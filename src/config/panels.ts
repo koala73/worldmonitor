@@ -23,7 +23,7 @@ export const DEFAULT_PANELS: Record<string, PanelConfig> = {
 export const DEFAULT_MAP_LAYERS: MapLayers = {
   conflicts: true,
   bases: true,
-  cables: true,
+  cables: false,
   pipelines: false,
   hotspots: true,
   ais: false,
@@ -33,12 +33,12 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   earthquakes: true,
   weather: true,
   economic: true,
-  countries: false,
-  waterways: false,
+  countries: true,
+  waterways: true,
   outages: true,
   datacenters: false,
   protests: true,
-  flights: true,
+  flights: false,
 };
 
 export const MONITOR_COLORS = [
