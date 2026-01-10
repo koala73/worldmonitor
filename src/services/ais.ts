@@ -1,9 +1,11 @@
 import type { AisDisruptionEvent, AisDensityZone } from '@/types';
 
-// WebSocket to aisstream.io fails from browsers (Origin header blocked)
-// In dev: use local relay (node scripts/ais-relay.cjs)
-// In prod: disabled until external WebSocket relay is deployed
-const AISSTREAM_URL = import.meta.env.DEV ? 'ws://localhost:3004' : null;
+// WebSocket relay for live vessel tracking
+// Dev: local relay (node scripts/ais-relay.cjs)
+// Prod: Railway-hosted relay
+const AISSTREAM_URL = import.meta.env.DEV
+  ? 'ws://localhost:3004'
+  : 'wss://worldmonitor-production.up.railway.app';
 
 // Grid cell size for density aggregation (degrees)
 const GRID_SIZE = 2;
@@ -124,11 +126,6 @@ function handleMessage(event: MessageEvent): void {
 }
 
 function connect(): void {
-  if (!AISSTREAM_URL) {
-    console.log('[Shipping] Live vessel tracking disabled in production (requires WebSocket relay)');
-    return;
-  }
-
   if (!apiKey) {
     console.warn('[Shipping] No API key configured. Set VITE_AISSTREAM_API_KEY to enable live AIS data.');
     return;
@@ -322,12 +319,6 @@ function calculateDensityZones(): AisDensityZone[] {
 
 export function initAisStream(key?: string): void {
   console.log('[Shipping] Initializing AIS stream...');
-
-  if (!AISSTREAM_URL) {
-    console.log('[Shipping] Disabled in production - requires external WebSocket relay');
-    return;
-  }
-
   apiKey = key || import.meta.env.VITE_AISSTREAM_API_KEY || null;
 
   if (!apiKey) {
