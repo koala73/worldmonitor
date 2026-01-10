@@ -1,7 +1,7 @@
 import * as d3 from 'd3';
 import * as topojson from 'topojson-client';
 import type { Topology, GeometryCollection } from 'topojson-specification';
-import type { MapLayers, Hotspot, NewsItem, Earthquake, InternetOutage } from '@/types';
+import type { MapLayers, Hotspot, NewsItem, Earthquake, InternetOutage, SocialUnrestEvent } from '@/types';
 import type { WeatherAlert } from '@/services/weather';
 import { getSeverityColor } from '@/services/weather';
 import {
@@ -38,6 +38,11 @@ interface HotspotWithBreaking extends Hotspot {
   hasBreaking?: boolean;
 }
 
+interface ProtestEventWithCluster extends SocialUnrestEvent {
+  clusterSize: number;
+  clusterWindowHours: number;
+}
+
 interface WorldTopology extends Topology {
   objects: {
     countries: GeometryCollection;
@@ -62,6 +67,7 @@ export class MapComponent {
   private earthquakes: Earthquake[] = [];
   private weatherAlerts: WeatherAlert[] = [];
   private outages: InternetOutage[] = [];
+  private protests: ProtestEventWithCluster[] = [];
   private news: NewsItem[] = [];
   private popup: MapPopup;
   private onHotspotClick?: (hotspot: Hotspot) => void;
@@ -188,12 +194,46 @@ export class MapComponent {
     });
   }
 
+  private getProtestLocationKey(event: SocialUnrestEvent): string {
+    return `${event.city ?? ''}|${event.country}`;
+  }
+
+  private calculateProtestClusters(events: SocialUnrestEvent[]): ProtestEventWithCluster[] {
+    const windowHours = 48;
+    const windowMs = windowHours * 60 * 60 * 1000;
+
+    return events.map((event) => {
+      const key = this.getProtestLocationKey(event);
+      const clusterSize = events.filter((other) => {
+        if (this.getProtestLocationKey(other) !== key) return false;
+        return Math.abs(other.time.getTime() - event.time.getTime()) <= windowMs;
+      }).length;
+
+      return {
+        ...event,
+        clusterSize,
+        clusterWindowHours: windowHours,
+      };
+    });
+  }
+
+  private getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const toRad = (deg: number) => (deg * Math.PI) / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return 6371 * c;
+  }
+
   private createLayerToggles(): HTMLElement {
     const toggles = document.createElement('div');
     toggles.className = 'layer-toggles';
     toggles.id = 'layerToggles';
 
-    const layers: (keyof MapLayers)[] = ['conflicts', 'bases', 'cables', 'pipelines', 'hotspots', 'earthquakes', 'weather', 'nuclear', 'irradiators', 'outages', 'datacenters', 'sanctions', 'economic', 'countries', 'waterways'];
+    const layers: (keyof MapLayers)[] = ['conflicts', 'bases', 'cables', 'pipelines', 'hotspots', 'protests', 'earthquakes', 'weather', 'nuclear', 'irradiators', 'outages', 'datacenters', 'sanctions', 'economic', 'countries', 'waterways'];
 
     layers.forEach((layer) => {
       const btn = document.createElement('button');
@@ -216,6 +256,7 @@ export class MapComponent {
       <div class="map-legend-item"><span class="legend-dot low"></span>MONITORING</div>
       <div class="map-legend-item"><span class="map-legend-icon conflict">⚔</span>CONFLICT</div>
       <div class="map-legend-item"><span class="map-legend-icon earthquake">●</span>EARTHQUAKE</div>
+      <div class="map-legend-item"><span class="map-legend-icon protest">✊</span>PROTEST</div>
       <div class="map-legend-item"><span class="map-legend-icon apt">⚠</span>APT</div>
     `;
     return legend;
@@ -832,6 +873,44 @@ export class MapComponent {
       });
     }
 
+    // Protests / Social Unrest
+    if (this.state.layers.protests) {
+      const filteredEvents = this.filterByTime(this.protests);
+      filteredEvents.forEach((event) => {
+        const pos = projection([event.lon, event.lat]);
+        if (!pos) return;
+
+        const div = document.createElement('div');
+        div.className = `protest-marker ${event.severity}`;
+        div.style.left = `${pos[0]}px`;
+        div.style.top = `${pos[1]}px`;
+
+        const label = event.city ?? event.country;
+        const clusterBadge = event.clusterSize > 1
+          ? `<div class="protest-cluster">${event.clusterSize}</div>`
+          : '';
+
+        div.innerHTML = `
+          ${clusterBadge}
+          <div class="protest-icon">✊</div>
+          <div class="protest-label">${label}</div>
+        `;
+
+        div.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const rect = this.container.getBoundingClientRect();
+          this.popup.show({
+            type: 'protest',
+            data: event,
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top,
+          });
+        });
+
+        this.overlays.appendChild(div);
+      });
+    }
+
     // Military bases
     if (this.state.layers.bases) {
       MILITARY_BASES.forEach((base) => {
@@ -1165,13 +1244,17 @@ export class MapComponent {
       .map(x => x.item);
   }
 
-  public updateHotspotActivity(news: NewsItem[]): void {
+  public updateHotspotActivity(news: NewsItem[], protests: SocialUnrestEvent[] = []): void {
     this.news = news; // Store for related news lookup
+    const protestEvents = this.protests.length > 0
+      ? this.protests
+      : this.calculateProtestClusters(protests);
 
     this.hotspots.forEach((spot) => {
       let score = 0;
       let hasBreaking = false;
       let matchedCount = 0;
+      let protestNote: string | null = null;
 
       news.forEach((item) => {
         const titleLower = item.title.toLowerCase();
@@ -1200,6 +1283,23 @@ export class MapComponent {
 
       spot.hasBreaking = hasBreaking;
 
+      const protestMatches = protestEvents.filter((event) => {
+        if (event.relatedHotspots?.includes(spot.id)) return true;
+        const distance = this.getDistanceKm(spot.lat, spot.lon, event.lat, event.lon);
+        return distance <= 250;
+      });
+
+      if (protestMatches.length > 0) {
+        const hasCluster = protestMatches.some(event => event.clusterSize > 1);
+        const highSeverity = protestMatches.some(event => event.severity === 'high');
+
+        score += protestMatches.length * 3;
+        if (hasCluster) score += 4;
+        if (highSeverity) score += 3;
+
+        protestNote = hasCluster ? 'Protest cluster nearby' : 'Protest activity nearby';
+      }
+
       // Dynamic level calculation - sensitive to real activity
       // HIGH: Breaking news OR 4+ matching articles OR score >= 10
       // ELEVATED: 2+ matching articles OR score >= 4
@@ -1216,6 +1316,10 @@ export class MapComponent {
       } else {
         spot.level = 'low';
         spot.status = 'Monitoring';
+      }
+
+      if (protestNote) {
+        spot.status = `${spot.status} • ${protestNote}`;
       }
     });
 
@@ -1529,6 +1633,11 @@ export class MapComponent {
 
   public setOutages(outages: InternetOutage[]): void {
     this.outages = outages;
+    this.render();
+  }
+
+  public setProtests(protests: SocialUnrestEvent[]): void {
+    this.protests = this.calculateProtestClusters(protests);
     this.render();
   }
 

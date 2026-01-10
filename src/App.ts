@@ -10,7 +10,7 @@ import {
   DEFAULT_MAP_LAYERS,
   STORAGE_KEYS,
 } from '@/config';
-import { fetchCategoryFeeds, fetchMultipleStocks, fetchCrypto, fetchPredictions, fetchEarthquakes, fetchWeatherAlerts, fetchFredData, fetchInternetOutages, initDB, updateBaseline, calculateDeviation, analyzeCorrelations, clusterNews, addToSignalHistory, saveSnapshot, cleanOldSnapshots } from '@/services';
+import { fetchCategoryFeeds, fetchMultipleStocks, fetchCrypto, fetchPredictions, fetchEarthquakes, fetchWeatherAlerts, fetchFredData, fetchInternetOutages, fetchProtestEvents, initDB, updateBaseline, calculateDeviation, analyzeCorrelations, clusterNews, addToSignalHistory, saveSnapshot, cleanOldSnapshots } from '@/services';
 import { loadFromStorage, saveToStorage, ExportPanel } from '@/utils';
 import {
   MapComponent,
@@ -33,7 +33,7 @@ import { INTEL_HOTSPOTS, CONFLICT_ZONES, MILITARY_BASES, UNDERSEA_CABLES, NUCLEA
 import { PIPELINES } from '@/config/pipelines';
 import { AI_DATA_CENTERS } from '@/config/ai-datacenters';
 import { GAMMA_IRRADIATORS } from '@/config/irradiators';
-import type { PredictionMarket, MarketData, ClusteredEvent } from '@/types';
+import type { PredictionMarket, MarketData, ClusteredEvent, SocialUnrestEvent } from '@/types';
 
 export class App {
   private container: HTMLElement;
@@ -53,6 +53,7 @@ export class App {
   private latestPredictions: PredictionMarket[] = [];
   private latestMarkets: MarketData[] = [];
   private latestClusters: ClusteredEvent[] = [];
+  private protestEvents: SocialUnrestEvent[] = [];
   private isPlaybackMode = false;
 
   constructor(containerId: string) {
@@ -65,7 +66,8 @@ export class App {
       STORAGE_KEYS.panels,
       DEFAULT_PANELS
     );
-    this.mapLayers = loadFromStorage<MapLayers>(STORAGE_KEYS.mapLayers, DEFAULT_MAP_LAYERS);
+    const storedLayers = loadFromStorage<MapLayers>(STORAGE_KEYS.mapLayers, DEFAULT_MAP_LAYERS);
+    this.mapLayers = { ...DEFAULT_MAP_LAYERS, ...storedLayers };
   }
 
   public async init(): Promise<void> {
@@ -793,6 +795,7 @@ export class App {
       this.loadWeatherAlerts(),
       this.loadFredData(),
       this.loadOutages(),
+      this.loadProtests(),
     ]);
 
     // Update search index after all data loads
@@ -861,13 +864,24 @@ export class App {
     this.allNews.push(...intel);
 
     // Update map hotspots
-    this.map?.updateHotspotActivity(this.allNews);
+    this.map?.updateHotspotActivity(this.allNews, this.protestEvents);
 
     // Update monitors
     this.updateMonitorResults();
 
     // Update clusters for correlation analysis
     this.latestClusters = clusterNews(this.allNews);
+  }
+
+  private async loadProtests(): Promise<void> {
+    try {
+      this.protestEvents = await fetchProtestEvents();
+      this.map?.setProtests(this.protestEvents);
+      this.map?.updateHotspotActivity(this.allNews, this.protestEvents);
+      this.statusPanel?.updateFeed('Protests', { status: 'ok', itemCount: this.protestEvents.length });
+    } catch (error) {
+      this.statusPanel?.updateFeed('Protests', { status: 'error', errorMessage: String(error) });
+    }
   }
 
   private async loadMarkets(): Promise<void> {

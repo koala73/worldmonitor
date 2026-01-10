@@ -1176,6 +1176,58 @@ body.playback-mode .status-dot {
   50% { opacity: 0.6; transform: translate(-50%, -50%) scale(calc(var(--marker-scale, 1) * 1.2)); }
 }
 
+/* Protest markers */
+.protest-marker {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: translate(-50%, -50%) scale(var(--marker-scale, 1));
+  transform-origin: center;
+  cursor: pointer;
+  z-index: 14;
+}
+
+.protest-marker.low {
+  --protest-color: #7bdff2;
+}
+
+.protest-marker.medium {
+  --protest-color: #ffd166;
+}
+
+.protest-marker.high {
+  --protest-color: #ef476f;
+}
+
+.protest-icon {
+  font-size: 16px;
+  filter: drop-shadow(0 0 4px var(--protest-color, #7bdff2));
+}
+
+.protest-label {
+  font-size: 8px;
+  color: var(--protest-color, #7bdff2);
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 2px;
+  text-shadow: 0 0 4px var(--bg), 0 0 8px var(--bg);
+}
+
+.protest-cluster {
+  position: absolute;
+  top: -12px;
+  right: -10px;
+  background: var(--protest-color, #7bdff2);
+  color: var(--bg);
+  font-size: 9px;
+  font-weight: bold;
+  padding: 2px 5px;
+  border-radius: 10px;
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.4);
+}
+
 /* Outage popup header */
 .popup-header.outage.total {
   border-bottom-color: #ff2222;
@@ -1976,6 +2028,14 @@ body.playback-mode .status-dot {
   color: #ff8c00;
 }
 
+.popup-header.protest {
+  border-bottom-color: #ef476f;
+}
+
+.popup-header.protest .popup-title {
+  color: #ef476f;
+}
+
 .popup-title.magnitude {
   font-size: 28px;
 }
@@ -2293,6 +2353,7 @@ body.playback-mode .status-dot {
 .map-legend-icon.cable { color: #00ffaa; }
 .map-legend-icon.conflict { color: #ff4444; }
 .map-legend-icon.earthquake { color: #ffaa00; }
+.map-legend-icon.protest { color: #ef476f; }
 .map-legend-icon.apt { color: #ff6600; }
 
 .legend-dot {

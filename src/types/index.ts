@@ -246,6 +246,7 @@ export interface MapLayers {
   cables: boolean;
   pipelines: boolean;
   hotspots: boolean;
+  protests: boolean;
   nuclear: boolean;
   irradiators: boolean;
   sanctions: boolean;
@@ -256,6 +257,25 @@ export interface MapLayers {
   waterways: boolean;
   outages: boolean;
   datacenters: boolean;
+}
+
+export type ProtestSeverity = 'low' | 'medium' | 'high';
+
+export interface SocialUnrestEvent {
+  id: string;
+  title: string;
+  summary?: string;
+  city?: string;
+  country: string;
+  lat: number;
+  lon: number;
+  time: Date;
+  severity: ProtestSeverity;
+  sources: string[];
+  tags?: string[];
+  relatedHotspots?: string[];
+  clusterSize?: number;
+  clusterWindowHours?: number;
 }
 
 export interface AIDataCenter {

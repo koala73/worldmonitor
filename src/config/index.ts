@@ -5,6 +5,7 @@ export * from './panels';
 export * from './irradiators';
 export * from './pipelines';
 export * from './ai-datacenters';
+export * from './protests';
 
 export const API_URLS = {
   yahooFinance: (symbol: string) =>

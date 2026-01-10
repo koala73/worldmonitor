@@ -1,11 +1,11 @@
-import type { ConflictZone, Hotspot, Earthquake, NewsItem, MilitaryBase, StrategicWaterway, APTGroup, NuclearFacility, EconomicCenter, GammaIrradiator, Pipeline, UnderseaCable, InternetOutage, AIDataCenter } from '@/types';
+import type { ConflictZone, Hotspot, Earthquake, NewsItem, MilitaryBase, StrategicWaterway, APTGroup, NuclearFacility, EconomicCenter, GammaIrradiator, Pipeline, UnderseaCable, InternetOutage, AIDataCenter, SocialUnrestEvent } from '@/types';
 import type { WeatherAlert } from '@/services/weather';
 
-export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'outage' | 'datacenter';
+export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'outage' | 'datacenter' | 'protest';
 
 interface PopupData {
   type: PopupType;
-  data: ConflictZone | Hotspot | Earthquake | WeatherAlert | MilitaryBase | StrategicWaterway | APTGroup | NuclearFacility | EconomicCenter | GammaIrradiator | Pipeline | UnderseaCable | InternetOutage | AIDataCenter;
+  data: ConflictZone | Hotspot | Earthquake | WeatherAlert | MilitaryBase | StrategicWaterway | APTGroup | NuclearFacility | EconomicCenter | GammaIrradiator | Pipeline | UnderseaCable | InternetOutage | AIDataCenter | SocialUnrestEvent;
   relatedNews?: NewsItem[];
   x: number;
   y: number;
@@ -95,6 +95,8 @@ export class MapPopup {
         return this.renderOutagePopup(data.data as InternetOutage);
       case 'datacenter':
         return this.renderDatacenterPopup(data.data as AIDataCenter);
+      case 'protest':
+        return this.renderProtestPopup(data.data as SocialUnrestEvent);
       default:
         return '';
     }
@@ -227,6 +229,53 @@ export class MapPopup {
           </div>
         </div>
         <a href="${earthquake.url}" target="_blank" class="popup-link">View on USGS →</a>
+      </div>
+    `;
+  }
+
+  private renderProtestPopup(event: SocialUnrestEvent): string {
+    const severityClass = event.severity ?? 'low';
+    const severityLabel = event.severity?.toUpperCase() ?? 'LOW';
+    const location = [event.city, event.country].filter(Boolean).join(', ');
+    const clusterInfo = event.clusterSize && event.clusterSize > 1
+      ? `<div class="popup-stat"><span class="stat-label">CLUSTER</span><span class="stat-value">${event.clusterSize} events / ${event.clusterWindowHours ?? 48}h</span></div>`
+      : '';
+
+    return `
+      <div class="popup-header protest">
+        <span class="popup-title">${event.title.toUpperCase()}</span>
+        <span class="popup-badge ${severityClass}">${severityLabel}</span>
+        <button class="popup-close">×</button>
+      </div>
+      <div class="popup-body">
+        ${event.summary ? `<p class="popup-description">${event.summary}</p>` : ''}
+        <div class="popup-stats">
+          <div class="popup-stat">
+            <span class="stat-label">LOCATION</span>
+            <span class="stat-value">${location}</span>
+          </div>
+          <div class="popup-stat">
+            <span class="stat-label">TIME</span>
+            <span class="stat-value">${event.time.toUTCString().replace('GMT', 'UTC')}</span>
+          </div>
+          ${clusterInfo}
+        </div>
+        ${event.tags && event.tags.length > 0 ? `
+          <div class="popup-section">
+            <span class="section-label">TAGS</span>
+            <div class="popup-tags">
+              ${event.tags.map(t => `<span class="popup-tag">${t}</span>`).join('')}
+            </div>
+          </div>
+        ` : ''}
+        ${event.sources && event.sources.length > 0 ? `
+          <div class="popup-section">
+            <span class="section-label">SOURCES</span>
+            <div class="popup-tags">
+              ${event.sources.map(s => `<span class="popup-tag">${s}</span>`).join('')}
+            </div>
+          </div>
+        ` : ''}
       </div>
     `;
   }
