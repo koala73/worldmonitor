@@ -1,11 +1,11 @@
-import type { ConflictZone, Hotspot, Earthquake, NewsItem, MilitaryBase, StrategicWaterway, APTGroup, NuclearFacility, EconomicCenter, GammaIrradiator, Pipeline, UnderseaCable, InternetOutage, AIDataCenter } from '@/types';
+import type { ConflictZone, Hotspot, Earthquake, NewsItem, MilitaryBase, StrategicWaterway, APTGroup, NuclearFacility, EconomicCenter, GammaIrradiator, Pipeline, UnderseaCable, InternetOutage, AIDataCenter, PowerGridAlert } from '@/types';
 import type { WeatherAlert } from '@/services/weather';
 
-export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'outage' | 'datacenter';
+export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'outage' | 'datacenter' | 'grid';
 
 interface PopupData {
   type: PopupType;
-  data: ConflictZone | Hotspot | Earthquake | WeatherAlert | MilitaryBase | StrategicWaterway | APTGroup | NuclearFacility | EconomicCenter | GammaIrradiator | Pipeline | UnderseaCable | InternetOutage | AIDataCenter;
+  data: ConflictZone | Hotspot | Earthquake | WeatherAlert | MilitaryBase | StrategicWaterway | APTGroup | NuclearFacility | EconomicCenter | GammaIrradiator | Pipeline | UnderseaCable | InternetOutage | AIDataCenter | PowerGridAlert;
   relatedNews?: NewsItem[];
   x: number;
   y: number;
@@ -95,6 +95,8 @@ export class MapPopup {
         return this.renderOutagePopup(data.data as InternetOutage);
       case 'datacenter':
         return this.renderDatacenterPopup(data.data as AIDataCenter);
+      case 'grid':
+        return this.renderGridPopup(data.data as PowerGridAlert);
       default:
         return '';
     }
@@ -603,6 +605,69 @@ export class MapPopup {
         ` : ''}
         <p class="popup-description">${outage.description.slice(0, 250)}${outage.description.length > 250 ? '...' : ''}</p>
         <a href="${outage.link}" target="_blank" class="popup-link">Read full report →</a>
+      </div>
+    `;
+  }
+
+  private renderGridPopup(alert: PowerGridAlert): string {
+    const severityClass = alert.severity === 'critical' ? 'high' : alert.severity === 'warning' ? 'medium' : 'low';
+    const signalLabel = alert.signalType === 'stress' ? 'GRID STRESS' : 'OUTAGE CLUSTER';
+    const timeAgo = this.getTimeAgo(alert.time);
+
+    return `
+      <div class="popup-header grid ${alert.severity}">
+        <span class="popup-title">⚡ ${alert.region.toUpperCase()}</span>
+        <span class="popup-badge ${severityClass}">${alert.severity.toUpperCase()}</span>
+        <button class="popup-close">×</button>
+      </div>
+      <div class="popup-body">
+        <div class="popup-subtitle">${signalLabel}: ${alert.title}</div>
+        <p class="popup-description">${alert.description}</p>
+        <div class="popup-stats">
+          <div class="popup-stat">
+            <span class="stat-label">STATUS</span>
+            <span class="stat-value">${signalLabel}</span>
+          </div>
+          <div class="popup-stat">
+            <span class="stat-label">REPORTED</span>
+            <span class="stat-value">${timeAgo}</span>
+          </div>
+          <div class="popup-stat">
+            <span class="stat-label">COORDINATES</span>
+            <span class="stat-value">${alert.lat.toFixed(2)}°, ${alert.lon.toFixed(2)}°</span>
+          </div>
+          ${alert.reserveMargin !== undefined ? `
+          <div class="popup-stat">
+            <span class="stat-label">RESERVE MARGIN</span>
+            <span class="stat-value">${alert.reserveMargin.toFixed(1)}%</span>
+          </div>
+          ` : ''}
+          ${alert.frequencyHz !== undefined ? `
+          <div class="popup-stat">
+            <span class="stat-label">FREQUENCY</span>
+            <span class="stat-value">${alert.frequencyHz.toFixed(2)} Hz</span>
+          </div>
+          ` : ''}
+          ${alert.customersAffected !== undefined ? `
+          <div class="popup-stat">
+            <span class="stat-label">CUSTOMERS AFFECTED</span>
+            <span class="stat-value">${alert.customersAffected.toLocaleString()}</span>
+          </div>
+          ` : ''}
+          ${alert.outageCount !== undefined ? `
+          <div class="popup-stat">
+            <span class="stat-label">OUTAGE CLUSTERS</span>
+            <span class="stat-value">${alert.outageCount}</span>
+          </div>
+          ` : ''}
+        </div>
+        <div class="popup-section">
+          <span class="section-label">SOURCE</span>
+          <div class="popup-tags">
+            <span class="popup-tag">${alert.source}</span>
+          </div>
+        </div>
+        ${alert.sourceUrl ? `<a href="${alert.sourceUrl}" target="_blank" class="popup-link">View grid dashboard →</a>` : ''}
       </div>
     `;
   }

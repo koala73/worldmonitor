@@ -1,4 +1,4 @@
-import type { NewsItem, Monitor, PanelConfig, MapLayers } from '@/types';
+import type { NewsItem, Monitor, PanelConfig, MapLayers, PowerGridAlert } from '@/types';
 import {
   FEEDS,
   INTEL_SOURCES,
@@ -10,7 +10,7 @@ import {
   DEFAULT_MAP_LAYERS,
   STORAGE_KEYS,
 } from '@/config';
-import { fetchCategoryFeeds, fetchMultipleStocks, fetchCrypto, fetchPredictions, fetchEarthquakes, fetchWeatherAlerts, fetchFredData, fetchInternetOutages, initDB, updateBaseline, calculateDeviation, analyzeCorrelations, clusterNews, addToSignalHistory, saveSnapshot, cleanOldSnapshots } from '@/services';
+import { fetchCategoryFeeds, fetchMultipleStocks, fetchCrypto, fetchPredictions, fetchEarthquakes, fetchWeatherAlerts, fetchFredData, fetchInternetOutages, fetchPowerGridAlerts, initDB, updateBaseline, calculateDeviation, analyzeCorrelations, clusterNews, addToSignalHistory, saveSnapshot, cleanOldSnapshots } from '@/services';
 import { loadFromStorage, saveToStorage, ExportPanel } from '@/utils';
 import {
   MapComponent,
@@ -53,6 +53,7 @@ export class App {
   private latestPredictions: PredictionMarket[] = [];
   private latestMarkets: MarketData[] = [];
   private latestClusters: ClusteredEvent[] = [];
+  private latestGridAlerts: PowerGridAlert[] = [];
   private isPlaybackMode = false;
 
   constructor(containerId: string) {
@@ -65,7 +66,8 @@ export class App {
       STORAGE_KEYS.panels,
       DEFAULT_PANELS
     );
-    this.mapLayers = loadFromStorage<MapLayers>(STORAGE_KEYS.mapLayers, DEFAULT_MAP_LAYERS);
+    const storedLayers = loadFromStorage<MapLayers>(STORAGE_KEYS.mapLayers, DEFAULT_MAP_LAYERS);
+    this.mapLayers = { ...DEFAULT_MAP_LAYERS, ...storedLayers };
   }
 
   public async init(): Promise<void> {
@@ -791,6 +793,7 @@ export class App {
       this.loadPredictions(),
       this.loadEarthquakes(),
       this.loadWeatherAlerts(),
+      this.loadPowerGridAlerts(),
       this.loadFredData(),
       this.loadOutages(),
     ]);
@@ -949,6 +952,17 @@ export class App {
     }
   }
 
+  private async loadPowerGridAlerts(): Promise<void> {
+    try {
+      const alerts = await fetchPowerGridAlerts();
+      this.latestGridAlerts = alerts;
+      this.map?.setPowerGridAlerts(alerts);
+      this.statusPanel?.updateFeed('Grid', { status: 'ok', itemCount: alerts.length });
+    } catch {
+      this.statusPanel?.updateFeed('Grid', { status: 'error' });
+    }
+  }
+
   private async loadFredData(): Promise<void> {
     try {
       this.economicPanel?.setLoading(true);
@@ -989,6 +1003,7 @@ export class App {
     setInterval(() => this.loadPredictions(), REFRESH_INTERVALS.predictions);
     setInterval(() => this.loadEarthquakes(), 5 * 60 * 1000);
     setInterval(() => this.loadWeatherAlerts(), 10 * 60 * 1000);
+    setInterval(() => this.loadPowerGridAlerts(), 20 * 60 * 1000);
     setInterval(() => this.loadFredData(), 30 * 60 * 1000);
     setInterval(() => this.loadOutages(), 60 * 60 * 1000); // 1 hour - Cloudflare rate limit
   }

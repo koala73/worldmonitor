@@ -1,7 +1,7 @@
 import * as d3 from 'd3';
 import * as topojson from 'topojson-client';
 import type { Topology, GeometryCollection } from 'topojson-specification';
-import type { MapLayers, Hotspot, NewsItem, Earthquake, InternetOutage } from '@/types';
+import type { MapLayers, Hotspot, NewsItem, Earthquake, InternetOutage, PowerGridAlert } from '@/types';
 import type { WeatherAlert } from '@/services/weather';
 import { getSeverityColor } from '@/services/weather';
 import {
@@ -50,6 +50,15 @@ interface USTopology extends Topology {
   };
 }
 
+const BLACKOUT_KEYWORDS = [
+  'blackout',
+  'power outage',
+  'grid stress',
+  'load shedding',
+  'brownout',
+  'rolling blackout',
+];
+
 export class MapComponent {
   private container: HTMLElement;
   private svg: d3.Selection<SVGSVGElement, unknown, null, undefined>;
@@ -62,6 +71,7 @@ export class MapComponent {
   private earthquakes: Earthquake[] = [];
   private weatherAlerts: WeatherAlert[] = [];
   private outages: InternetOutage[] = [];
+  private gridAlerts: PowerGridAlert[] = [];
   private news: NewsItem[] = [];
   private popup: MapPopup;
   private onHotspotClick?: (hotspot: Hotspot) => void;
@@ -193,7 +203,7 @@ export class MapComponent {
     toggles.className = 'layer-toggles';
     toggles.id = 'layerToggles';
 
-    const layers: (keyof MapLayers)[] = ['conflicts', 'bases', 'cables', 'pipelines', 'hotspots', 'earthquakes', 'weather', 'nuclear', 'irradiators', 'outages', 'datacenters', 'sanctions', 'economic', 'countries', 'waterways'];
+    const layers: (keyof MapLayers)[] = ['conflicts', 'bases', 'cables', 'pipelines', 'hotspots', 'earthquakes', 'weather', 'grid', 'nuclear', 'irradiators', 'outages', 'datacenters', 'sanctions', 'economic', 'countries', 'waterways'];
 
     layers.forEach((layer) => {
       const btn = document.createElement('button');
@@ -217,6 +227,8 @@ export class MapComponent {
       <div class="map-legend-item"><span class="map-legend-icon conflict">⚔</span>CONFLICT</div>
       <div class="map-legend-item"><span class="map-legend-icon earthquake">●</span>EARTHQUAKE</div>
       <div class="map-legend-item"><span class="map-legend-icon apt">⚠</span>APT</div>
+      <div class="map-legend-item"><span class="map-legend-icon grid">⚡</span>GRID STRESS</div>
+      <div class="map-legend-item"><span class="map-legend-icon grid">⛔</span>OUTAGE CLUSTER</div>
     `;
     return legend;
   }
@@ -981,6 +993,49 @@ export class MapComponent {
       });
     }
 
+    // Power Grid Alerts
+    if (this.state.layers.grid) {
+      const filteredAlerts = this.filterByTime(this.gridAlerts);
+      filteredAlerts.forEach((alert) => {
+        const pos = projection([alert.lon, alert.lat]);
+        if (!pos) return;
+
+        const severityScale = alert.severity === 'critical' ? 1.35 : alert.severity === 'warning' ? 1.15 : 1;
+        const baseSize = alert.signalType === 'stress' ? 170 : 120;
+        const radiusFromImpact = alert.impactRadiusKm ? alert.impactRadiusKm * 0.6 : 0;
+        const size = Math.max(baseSize * severityScale, radiusFromImpact);
+
+        const div = document.createElement('div');
+        div.className = `grid-alert grid-${alert.signalType} ${alert.severity}`;
+        div.style.left = `${pos[0]}px`;
+        div.style.top = `${pos[1]}px`;
+        div.style.setProperty('--grid-size', `${size}px`);
+
+        const icon = document.createElement('div');
+        icon.className = 'grid-icon';
+        icon.textContent = alert.signalType === 'stress' ? '⚡' : '⛔';
+        div.appendChild(icon);
+
+        const label = document.createElement('div');
+        label.className = 'grid-label';
+        label.textContent = alert.region;
+        div.appendChild(label);
+
+        div.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const rect = this.container.getBoundingClientRect();
+          this.popup.show({
+            type: 'grid',
+            data: alert,
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top,
+          });
+        });
+
+        this.overlays.appendChild(div);
+      });
+    }
+
     // Internet Outages
     if (this.state.layers.outages) {
       this.outages.forEach((outage) => {
@@ -1137,6 +1192,7 @@ export class MapComponent {
       .map((item) => {
         const titleLower = item.title.toLowerCase();
         const matchedKeywords = hotspot.keywords.filter((kw) => titleLower.includes(kw.toLowerCase()));
+        const hasBlackoutKeyword = BLACKOUT_KEYWORDS.some((kw) => titleLower.includes(kw));
 
         if (matchedKeywords.length === 0) return null;
 
@@ -1156,7 +1212,7 @@ export class MapComponent {
         }
 
         // Score: more keyword matches = more relevant
-        const score = matchedKeywords.length;
+        const score = matchedKeywords.length + (hasBlackoutKeyword ? 1 : 0);
         return { item, score };
       })
       .filter((x): x is { item: NewsItem; score: number } => x !== null)
@@ -1176,11 +1232,16 @@ export class MapComponent {
       news.forEach((item) => {
         const titleLower = item.title.toLowerCase();
         const matches = spot.keywords.filter((kw) => titleLower.includes(kw.toLowerCase()));
+        const hasBlackoutKeyword = BLACKOUT_KEYWORDS.some((kw) => titleLower.includes(kw));
 
         if (matches.length > 0) {
           matchedCount++;
           // Base score per match
           score += matches.length * 2;
+
+          if (hasBlackoutKeyword) {
+            score += 2;
+          }
 
           // Breaking news is critical
           if (item.isAlert) {
@@ -1438,13 +1499,13 @@ export class MapComponent {
   }
 
   private updateLabelVisibility(zoom: number): void {
-    const labels = this.overlays.querySelectorAll('.hotspot-label, .earthquake-label, .nuclear-label, .weather-label, .apt-label');
+    const labels = this.overlays.querySelectorAll('.hotspot-label, .earthquake-label, .nuclear-label, .weather-label, .apt-label, .grid-label');
     const labelRects: { el: Element; rect: DOMRect; priority: number }[] = [];
 
     // Collect all label bounds with priority
     labels.forEach((label) => {
       const el = label as HTMLElement;
-      const parent = el.closest('.hotspot, .earthquake-marker, .nuclear-marker, .weather-marker, .apt-marker');
+      const parent = el.closest('.hotspot, .earthquake-marker, .nuclear-marker, .weather-marker, .apt-marker, .grid-alert');
 
       // Assign priority based on parent type and level
       let priority = 1;
@@ -1462,6 +1523,10 @@ export class MapComponent {
       } else if (parent?.classList.contains('nuclear-marker')) {
         if (parent.classList.contains('contested')) priority = 5;
         else priority = 3;
+      } else if (parent?.classList.contains('grid-alert')) {
+        if (parent.classList.contains('critical')) priority = 5;
+        else if (parent.classList.contains('warning')) priority = 4;
+        else priority = 2;
       }
 
       // Reset visibility first
@@ -1529,6 +1594,11 @@ export class MapComponent {
 
   public setOutages(outages: InternetOutage[]): void {
     this.outages = outages;
+    this.render();
+  }
+
+  public setPowerGridAlerts(alerts: PowerGridAlert[]): void {
+    this.gridAlerts = alerts;
     this.render();
   }
 
