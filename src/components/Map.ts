@@ -1548,6 +1548,10 @@ export class MapComponent {
     this.render();
   }
 
+  private static readonly ASYNC_DATA_LAYERS: Set<keyof MapLayers> = new Set([
+    'earthquakes', 'weather', 'outages', 'ais', 'protests', 'flights',
+  ]);
+
   public toggleLayer(layer: keyof MapLayers): void {
     this.state.layers[layer] = !this.state.layers[layer];
     if (this.state.layers[layer]) {
@@ -1561,8 +1565,19 @@ export class MapComponent {
       delete this.layerZoomOverrides[layer];
     }
 
-    const btn = document.querySelector(`[data-layer="${layer}"]`);
-    btn?.classList.toggle('active');
+    const btn = this.container.querySelector(`[data-layer="${layer}"]`);
+    const isEnabled = this.state.layers[layer];
+    const isAsyncLayer = MapComponent.ASYNC_DATA_LAYERS.has(layer);
+
+    if (isEnabled && isAsyncLayer) {
+      // Async layers: start in loading state, will be set to active when data arrives
+      btn?.classList.remove('active');
+      btn?.classList.add('loading');
+    } else {
+      // Static layers or disabling: toggle active immediately
+      btn?.classList.toggle('active', isEnabled);
+      btn?.classList.remove('loading');
+    }
 
     this.onLayerChange?.(layer, this.state.layers[layer]);
     // Defer render to next frame to avoid blocking the click handler
@@ -1584,6 +1599,18 @@ export class MapComponent {
     const btn = this.container.querySelector(`.layer-toggle[data-layer="${layer}"]`);
     if (btn) {
       btn.classList.toggle('loading', loading);
+    }
+  }
+
+  public setLayerReady(layer: keyof MapLayers, hasData: boolean): void {
+    const btn = this.container.querySelector(`.layer-toggle[data-layer="${layer}"]`);
+    if (!btn) return;
+
+    btn.classList.remove('loading');
+    if (this.state.layers[layer] && hasData) {
+      btn.classList.add('active');
+    } else {
+      btn.classList.remove('active');
     }
   }
 

@@ -1213,8 +1213,10 @@ export class App {
     try {
       const earthquakes = await fetchEarthquakes();
       this.map?.setEarthquakes(earthquakes);
+      this.map?.setLayerReady('earthquakes', earthquakes.length > 0);
       this.statusPanel?.updateApi('USGS', { status: 'ok' });
     } catch {
+      this.map?.setLayerReady('earthquakes', false);
       this.statusPanel?.updateApi('USGS', { status: 'error' });
     }
   }
@@ -1223,8 +1225,10 @@ export class App {
     try {
       const alerts = await fetchWeatherAlerts();
       this.map?.setWeatherAlerts(alerts);
+      this.map?.setLayerReady('weather', alerts.length > 0);
       this.statusPanel?.updateFeed('Weather', { status: 'ok', itemCount: alerts.length });
     } catch {
+      this.map?.setLayerReady('weather', false);
       this.statusPanel?.updateFeed('Weather', { status: 'error' });
     }
   }
@@ -1233,8 +1237,10 @@ export class App {
     try {
       const outages = await fetchInternetOutages();
       this.map?.setOutages(outages);
+      this.map?.setLayerReady('outages', outages.length > 0);
       this.statusPanel?.updateFeed('NetBlocks', { status: 'ok', itemCount: outages.length });
     } catch {
+      this.map?.setLayerReady('outages', false);
       this.statusPanel?.updateFeed('NetBlocks', { status: 'error' });
     }
   }
@@ -1246,6 +1252,9 @@ export class App {
       console.log('[Ships] Events:', { disruptions: disruptions.length, density: density.length, vessels: aisStatus.vessels });
       this.map?.setAisData(disruptions, density);
 
+      const hasData = disruptions.length > 0 || density.length > 0;
+      this.map?.setLayerReady('ais', hasData);
+
       this.statusPanel?.updateFeed('Ships', {
         status: aisStatus.connected ? 'ok' : 'error',
         itemCount: disruptions.length + density.length,
@@ -1255,6 +1264,7 @@ export class App {
         status: aisStatus.connected ? 'ok' : 'error',
       });
     } catch (error) {
+      this.map?.setLayerReady('ais', false);
       this.statusPanel?.updateFeed('Ships', { status: 'error', errorMessage: String(error) });
       this.statusPanel?.updateApi('AISStream', { status: 'error' });
     }
@@ -1276,6 +1286,7 @@ export class App {
 
       if (attempts >= maxAttempts) {
         this.map?.setLayerLoading('ais', false);
+        this.map?.setLayerReady('ais', false);
         this.statusPanel?.updateFeed('Ships', {
           status: 'error',
           errorMessage: 'Connection timeout'
@@ -1304,6 +1315,7 @@ export class App {
     try {
       const protestData = await fetchProtestEvents();
       this.map?.setProtests(protestData.events);
+      this.map?.setLayerReady('protests', protestData.events.length > 0);
       const status = getProtestStatus();
 
       this.statusPanel?.updateFeed('Protests', {
@@ -1317,6 +1329,7 @@ export class App {
       }
       this.statusPanel?.updateApi('GDELT', { status: 'ok' });
     } catch (error) {
+      this.map?.setLayerReady('protests', false);
       this.statusPanel?.updateFeed('Protests', { status: 'error', errorMessage: String(error) });
       this.statusPanel?.updateApi('ACLED', { status: 'error' });
       this.statusPanel?.updateApi('GDELT', { status: 'error' });
@@ -1327,12 +1340,14 @@ export class App {
     try {
       const delays = await fetchFlightDelays();
       this.map?.setFlightDelays(delays);
+      this.map?.setLayerReady('flights', delays.length > 0);
       this.statusPanel?.updateFeed('Flights', {
         status: 'ok',
         itemCount: delays.length,
       });
       this.statusPanel?.updateApi('FAA', { status: 'ok' });
     } catch (error) {
+      this.map?.setLayerReady('flights', false);
       this.statusPanel?.updateFeed('Flights', { status: 'error', errorMessage: String(error) });
       this.statusPanel?.updateApi('FAA', { status: 'error' });
     }
