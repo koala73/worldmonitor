@@ -3676,3 +3676,51 @@ body.playback-mode .status-dot {
     box-shadow: none;
   }
 }
+
+/* ============================================
+   Virtual Scrolling / Windowed List
+   ============================================ */
+
+/* Windowed list container */
+.windowed-list {
+  contain: strict;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Chunk containers for windowed rendering */
+.windowed-chunk {
+  contain: content;
+}
+
+/* Placeholder for unrendered chunks */
+.windowed-chunk:not(.rendered) {
+  min-height: 100px; /* Estimated height before render */
+}
+
+/* Virtual list viewport */
+.virtual-viewport {
+  overflow-y: auto;
+  overflow-x: hidden;
+  height: 100%;
+  contain: strict;
+}
+
+.virtual-content {
+  position: relative;
+}
+
+.virtual-item {
+  contain: content;
+  will-change: transform;
+}
+
+.virtual-spacer {
+  pointer-events: none;
+}
+
+/* Performance hints for scrolling */
+.panel-content {
+  will-change: scroll-position;
+  contain: layout style;
+}

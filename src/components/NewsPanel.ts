@@ -1,7 +1,20 @@
 import { Panel } from './Panel';
+import { WindowedList } from './VirtualList';
 import type { NewsItem, ClusteredEvent, DeviationLevel, RelatedAsset, RelatedAssetContext } from '@/types';
 import { formatTime } from '@/utils';
 import { clusterNews, enrichWithVelocity, getClusterAssetContext, getAssetLabel, MAX_DISTANCE_KM, activityTracker } from '@/services';
+
+/** Threshold for enabling virtual scrolling */
+const VIRTUAL_SCROLL_THRESHOLD = 15;
+
+/** Prepared cluster data for rendering */
+interface PreparedCluster {
+  cluster: ClusteredEvent;
+  isNew: boolean;
+  shouldHighlight: boolean;
+  showNewTag: boolean;
+  html: string;
+}
 
 export class NewsPanel extends Panel {
   private clusteredMode = true;
@@ -11,11 +24,26 @@ export class NewsPanel extends Panel {
   private onRelatedAssetsFocus?: (assets: RelatedAsset[], originLabel: string) => void;
   private onRelatedAssetsClear?: () => void;
   private isFirstRender = true;
+  private windowedList: WindowedList<PreparedCluster> | null = null;
+  private useVirtualScroll = true;
 
   constructor(id: string, title: string) {
     super({ id, title, showCount: true, trackActivity: true });
     this.createDeviationIndicator();
     this.setupActivityTracking();
+    this.initWindowedList();
+  }
+
+  private initWindowedList(): void {
+    this.windowedList = new WindowedList<PreparedCluster>(
+      {
+        container: this.content,
+        chunkSize: 8, // Render 8 items per chunk
+        bufferChunks: 1, // 1 chunk buffer above/below
+      },
+      (prepared) => prepared.html,
+      () => this.bindRelatedAssetEvents()
+    );
   }
 
   private setupActivityTracking(): void {
@@ -131,67 +159,96 @@ export class NewsPanel extends Panel {
       newItemIds = new Set(newIds);
     }
 
-    const html = clusters
-      .map((cluster) => {
-        const isNew = newItemIds.has(cluster.id);
-        const shouldHighlight = activityTracker.shouldHighlight(this.panelId, cluster.id);
-        const showNewTag = activityTracker.isNewItem(this.panelId, cluster.id) && isNew;
+    // Prepare all clusters with their rendering data
+    const prepared: PreparedCluster[] = clusters.map(cluster => {
+      const isNew = newItemIds.has(cluster.id);
+      const shouldHighlight = activityTracker.shouldHighlight(this.panelId, cluster.id);
+      const showNewTag = activityTracker.isNewItem(this.panelId, cluster.id) && isNew;
 
-        const sourceBadge = cluster.sourceCount > 1
-          ? `<span class="source-count">${cluster.sourceCount} sources</span>`
-          : '';
+      return {
+        cluster,
+        isNew,
+        shouldHighlight,
+        showNewTag,
+        html: this.renderClusterHtml(cluster, isNew, shouldHighlight, showNewTag),
+      };
+    });
 
-        const velocity = cluster.velocity;
-        const velocityBadge = velocity && velocity.level !== 'normal' && cluster.sourceCount > 1
-          ? `<span class="velocity-badge ${velocity.level}">${velocity.trend === 'rising' ? '↑' : ''}+${velocity.sourcesPerHour}/hr</span>`
-          : '';
+    // Use windowed rendering for large lists, direct render for small
+    if (this.useVirtualScroll && clusters.length > VIRTUAL_SCROLL_THRESHOLD && this.windowedList) {
+      this.windowedList.setItems(prepared);
+    } else {
+      // Direct render for small lists
+      const html = prepared.map(p => p.html).join('');
+      this.setContent(html);
+      this.bindRelatedAssetEvents();
+    }
+  }
 
-        const sentimentIcon = velocity?.sentiment === 'negative' ? '⚠' : velocity?.sentiment === 'positive' ? '✓' : '';
-        const sentimentBadge = sentimentIcon && Math.abs(velocity?.sentimentScore || 0) > 2
-          ? `<span class="sentiment-badge ${velocity?.sentiment}">${sentimentIcon}</span>`
-          : '';
+  /**
+   * Render a single cluster to HTML string
+   */
+  private renderClusterHtml(
+    cluster: ClusteredEvent,
+    isNew: boolean,
+    shouldHighlight: boolean,
+    showNewTag: boolean
+  ): string {
+    const sourceBadge = cluster.sourceCount > 1
+      ? `<span class="source-count">${cluster.sourceCount} sources</span>`
+      : '';
 
-        const newTag = showNewTag ? '<span class="new-tag">NEW</span>' : '';
+    const velocity = cluster.velocity;
+    const velocityBadge = velocity && velocity.level !== 'normal' && cluster.sourceCount > 1
+      ? `<span class="velocity-badge ${velocity.level}">${velocity.trend === 'rising' ? '↑' : ''}+${velocity.sourcesPerHour}/hr</span>`
+      : '';
 
-        const topSourcesHtml = cluster.topSources
-          .map(s => `<span class="top-source tier-${s.tier}">${s.name}</span>`)
-          .join('');
+    const sentimentIcon = velocity?.sentiment === 'negative' ? '⚠' : velocity?.sentiment === 'positive' ? '✓' : '';
+    const sentimentBadge = sentimentIcon && Math.abs(velocity?.sentimentScore || 0) > 2
+      ? `<span class="sentiment-badge ${velocity?.sentiment}">${sentimentIcon}</span>`
+      : '';
 
-        const assetContext = getClusterAssetContext(cluster);
-        if (assetContext && assetContext.assets.length > 0) {
-          this.relatedAssetContext.set(cluster.id, assetContext);
-        }
+    const newTag = showNewTag ? '<span class="new-tag">NEW</span>' : '';
 
-        const relatedAssetsHtml = assetContext && assetContext.assets.length > 0
-          ? `
-            <div class="related-assets" data-cluster-id="${cluster.id}">
-              <div class="related-assets-header">
-                Related assets near ${assetContext.origin.label}
-                <span class="related-assets-range">(${MAX_DISTANCE_KM}km)</span>
-              </div>
-              <div class="related-assets-list">
-                ${assetContext.assets.map(asset => `
-                  <button class="related-asset" data-cluster-id="${cluster.id}" data-asset-id="${asset.id}" data-asset-type="${asset.type}">
-                    <span class="related-asset-type">${getAssetLabel(asset.type)}</span>
-                    <span class="related-asset-name">${asset.name}</span>
-                    <span class="related-asset-distance">${Math.round(asset.distanceKm)}km</span>
-                  </button>
-                `).join('')}
-              </div>
-            </div>
-          `
-          : '';
+    const topSourcesHtml = cluster.topSources
+      .map(s => `<span class="top-source tier-${s.tier}">${s.name}</span>`)
+      .join('');
 
-        // Build class list for item
-        const itemClasses = [
-          'item',
-          'clustered',
-          cluster.isAlert ? 'alert' : '',
-          shouldHighlight ? 'item-new-highlight' : '',
-          isNew ? 'item-new' : '',
-        ].filter(Boolean).join(' ');
+    const assetContext = getClusterAssetContext(cluster);
+    if (assetContext && assetContext.assets.length > 0) {
+      this.relatedAssetContext.set(cluster.id, assetContext);
+    }
 
-        return `
+    const relatedAssetsHtml = assetContext && assetContext.assets.length > 0
+      ? `
+        <div class="related-assets" data-cluster-id="${cluster.id}">
+          <div class="related-assets-header">
+            Related assets near ${assetContext.origin.label}
+            <span class="related-assets-range">(${MAX_DISTANCE_KM}km)</span>
+          </div>
+          <div class="related-assets-list">
+            ${assetContext.assets.map(asset => `
+              <button class="related-asset" data-cluster-id="${cluster.id}" data-asset-id="${asset.id}" data-asset-type="${asset.type}">
+                <span class="related-asset-type">${getAssetLabel(asset.type)}</span>
+                <span class="related-asset-name">${asset.name}</span>
+                <span class="related-asset-distance">${Math.round(asset.distanceKm)}km</span>
+              </button>
+            `).join('')}
+          </div>
+        </div>
+      `
+      : '';
+
+    // Build class list for item
+    const itemClasses = [
+      'item',
+      'clustered',
+      cluster.isAlert ? 'alert' : '',
+      shouldHighlight ? 'item-new-highlight' : '',
+      isNew ? 'item-new' : '',
+    ].filter(Boolean).join(' ');
+
+    return `
       <div class="${itemClasses}" ${cluster.monitorColor ? `style="border-left-color: ${cluster.monitorColor}"` : ''} data-cluster-id="${cluster.id}" data-news-id="${cluster.primaryLink}">
         <div class="item-source">
           ${cluster.primarySource}
@@ -209,11 +266,6 @@ export class NewsPanel extends Panel {
         ${relatedAssetsHtml}
       </div>
     `;
-      })
-      .join('');
-
-    this.setContent(html);
-    this.bindRelatedAssetEvents();
   }
 
   private bindRelatedAssetEvents(): void {

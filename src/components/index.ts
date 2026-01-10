@@ -1,4 +1,5 @@
 export * from './Panel';
+export * from './VirtualList';
 export * from './Map';
 export * from './MapPopup';
 export * from './NewsPanel';
