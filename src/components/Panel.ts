@@ -9,6 +9,7 @@ export interface PanelOptions {
 export class Panel {
   protected element: HTMLElement;
   protected content: HTMLElement;
+  protected header: HTMLElement;
   protected countEl: HTMLElement | null = null;
   protected newBadgeEl: HTMLElement | null = null;
   protected panelId: string;
@@ -19,8 +20,8 @@ export class Panel {
     this.element.className = `panel ${options.className || ''}`;
     this.element.dataset.panel = options.id;
 
-    const header = document.createElement('div');
-    header.className = 'panel-header';
+    this.header = document.createElement('div');
+    this.header.className = 'panel-header';
 
     const headerLeft = document.createElement('div');
     headerLeft.className = 'panel-header-left';
@@ -38,20 +39,20 @@ export class Panel {
       headerLeft.appendChild(this.newBadgeEl);
     }
 
-    header.appendChild(headerLeft);
+    this.header.appendChild(headerLeft);
 
     if (options.showCount) {
       this.countEl = document.createElement('span');
       this.countEl.className = 'panel-count';
       this.countEl.textContent = '0';
-      header.appendChild(this.countEl);
+      this.header.appendChild(this.countEl);
     }
 
     this.content = document.createElement('div');
     this.content.className = 'panel-content';
     this.content.id = `${options.id}Content`;
 
-    this.element.appendChild(header);
+    this.element.appendChild(this.header);
     this.element.appendChild(this.content);
 
     this.showLoading();
@@ -72,6 +73,15 @@ export class Panel {
   public setCount(count: number): void {
     if (this.countEl) {
       this.countEl.textContent = count.toString();
+    }
+  }
+
+  public setErrorState(hasError: boolean, tooltip?: string): void {
+    this.header.classList.toggle('panel-header-error', hasError);
+    if (tooltip) {
+      this.header.title = tooltip;
+    } else {
+      this.header.removeAttribute('title');
     }
   }
 

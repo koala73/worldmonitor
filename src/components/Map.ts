@@ -65,6 +65,8 @@ export class MapComponent {
   private svg: d3.Selection<SVGSVGElement, unknown, null, undefined>;
   private wrapper: HTMLElement;
   private overlays: HTMLElement;
+  private clusterCanvas: HTMLCanvasElement;
+  private clusterGl: WebGLRenderingContext | null = null;
   private state: MapState;
   private worldData: WorldTopology | null = null;
   private usData: USTopology | null = null;
@@ -107,6 +109,11 @@ export class MapComponent {
     svgElement.id = 'mapSvg';
     this.wrapper.appendChild(svgElement);
 
+    this.clusterCanvas = document.createElement('canvas');
+    this.clusterCanvas.className = 'map-cluster-canvas';
+    this.clusterCanvas.id = 'mapClusterCanvas';
+    this.wrapper.appendChild(this.clusterCanvas);
+
     // Overlays inside wrapper so they transform together on zoom/pan
     this.overlays = document.createElement('div');
     this.overlays.id = 'mapOverlays';
@@ -121,6 +128,7 @@ export class MapComponent {
 
     this.svg = d3.select(svgElement);
     this.popup = new MapPopup(container);
+    this.initClusterRenderer();
 
     this.setupZoomHandlers();
     this.loadMapData();
@@ -441,6 +449,26 @@ export class MapComponent {
     }
   }
 
+  private initClusterRenderer(): void {
+    // WebGL clustering disabled - just get context for clearing canvas
+    const gl = this.clusterCanvas.getContext('webgl');
+    if (!gl) return;
+    this.clusterGl = gl;
+  }
+
+  private clearClusterCanvas(): void {
+    if (!this.clusterGl) return;
+    this.clusterGl.clearColor(0, 0, 0, 0);
+    this.clusterGl.clear(this.clusterGl.COLOR_BUFFER_BIT);
+  }
+
+  private renderClusterLayer(_projection: d3.GeoProjection): void {
+    // WebGL clustering disabled - all layers use HTML markers for visual fidelity
+    // (severity colors, emoji icons, magnitude sizing, animations)
+    this.wrapper.classList.toggle('cluster-active', false);
+    this.clearClusterCanvas();
+  }
+
   public render(): void {
     const width = this.container.clientWidth;
     const height = this.container.clientHeight;
@@ -490,6 +518,9 @@ export class MapComponent {
     if (this.state.layers.sanctions && showGlobalLayers) {
       this.renderSanctions();
     }
+
+    // GPU-accelerated cluster markers (LOD)
+    this.renderClusterLayer(projection);
 
     // Overlays
     this.renderOverlays(projection);
@@ -766,7 +797,7 @@ export class MapComponent {
       this.renderAPTMarkers(projection);
     }
 
-    // Nuclear facilities
+    // Nuclear facilities (always HTML - shapes convey status)
     if (this.state.layers.nuclear) {
       NUCLEAR_FACILITIES.forEach((facility) => {
         const pos = projection([facility.lon, facility.lat]);
@@ -860,7 +891,7 @@ export class MapComponent {
       });
     }
 
-    // Hotspots
+    // Hotspots (always HTML - level colors and BREAKING badges)
     if (this.state.layers.hotspots) {
       this.hotspots.forEach((spot) => {
         const pos = projection([spot.lon, spot.lat]);
@@ -904,7 +935,7 @@ export class MapComponent {
       });
     }
 
-    // Military bases
+    // Military bases (always HTML - nation colors matter)
     if (this.state.layers.bases) {
       MILITARY_BASES.forEach((base) => {
         const pos = projection([base.lon, base.lat]);
@@ -936,7 +967,7 @@ export class MapComponent {
       });
     }
 
-    // Earthquakes
+    // Earthquakes (magnitude-based sizing)
     if (this.state.layers.earthquakes) {
       console.log('[Map] Rendering earthquakes. Total:', this.earthquakes.length, 'Layer enabled:', this.state.layers.earthquakes);
       const filteredQuakes = this.filterByTime(this.earthquakes);
@@ -980,7 +1011,7 @@ export class MapComponent {
       console.log('[Map] Actually rendered', rendered, 'earthquake markers');
     }
 
-    // Economic Centers
+    // Economic Centers (always HTML - emoji icons for type distinction)
     if (this.state.layers.economic) {
       ECONOMIC_CENTERS.forEach((center) => {
         const pos = projection([center.lon, center.lat]);
@@ -1016,7 +1047,7 @@ export class MapComponent {
       });
     }
 
-    // Weather Alerts
+    // Weather Alerts (severity icons)
     if (this.state.layers.weather) {
       this.weatherAlerts.forEach((alert) => {
         if (!alert.centroid) return;
@@ -1054,7 +1085,7 @@ export class MapComponent {
       });
     }
 
-    // Internet Outages
+    // Internet Outages (severity colors)
     if (this.state.layers.outages) {
       this.outages.forEach((outage) => {
         const pos = projection([outage.lon, outage.lat]);
@@ -1159,7 +1190,7 @@ export class MapComponent {
       });
     }
 
-    // AI Data Centers (filter to significant clusters only: ≥10k GPUs)
+    // AI Data Centers (always HTML - 🖥️ icons, filter to ≥10k GPUs)
     const MIN_GPU_COUNT = 10000;
     if (this.state.layers.datacenters) {
       AI_DATA_CENTERS.filter(dc => (dc.chipCount || 0) >= MIN_GPU_COUNT).forEach((dc) => {
@@ -1197,7 +1228,7 @@ export class MapComponent {
       });
     }
 
-    // Protests / Social Unrest Events
+    // Protests / Social Unrest Events (severity colors + icons)
     if (this.state.layers.protests) {
       this.protests.forEach((event) => {
         const pos = projection([event.lon, event.lat]);
@@ -1239,7 +1270,7 @@ export class MapComponent {
       });
     }
 
-    // Flight Delays
+    // Flight Delays (delay severity colors + ✈️ icons)
     if (this.state.layers.flights) {
       this.flightDelays.forEach((delay) => {
         const pos = projection([delay.lon, delay.lat]);
@@ -1534,7 +1565,8 @@ export class MapComponent {
     btn?.classList.toggle('active');
 
     this.onLayerChange?.(layer, this.state.layers[layer]);
-    this.render();
+    // Defer render to next frame to avoid blocking the click handler
+    requestAnimationFrame(() => this.render());
   }
 
   public setOnLayerChange(callback: (layer: keyof MapLayers, enabled: boolean) => void): void {

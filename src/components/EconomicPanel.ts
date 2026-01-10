@@ -6,6 +6,8 @@ export class EconomicPanel {
   private data: FredSeries[] = [];
   private isLoading = true;
   private lastUpdate: Date | null = null;
+  private hasError = false;
+  private errorMessage = '';
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -15,6 +17,7 @@ export class EconomicPanel {
   public update(data: FredSeries[]): void {
     this.data = data;
     this.isLoading = false;
+    this.hasError = false;
     this.lastUpdate = new Date();
     this.render();
   }
@@ -24,11 +27,20 @@ export class EconomicPanel {
     this.render();
   }
 
+  public setErrorState(hasError: boolean, message = ''): void {
+    this.hasError = hasError;
+    this.errorMessage = message;
+    this.render();
+  }
+
   private render(): void {
+    const headerClass = this.hasError ? 'panel-header panel-header-error' : 'panel-header';
+    const headerTitle = this.hasError && this.errorMessage ? ` title="${this.errorMessage}"` : '';
+
     if (this.isLoading) {
       this.container.innerHTML = `
         <div class="economic-panel">
-          <div class="panel-header">
+          <div class="${headerClass}"${headerTitle}>
             <span class="panel-title">ECONOMIC INDICATORS</span>
             <span class="panel-source">FRED</span>
           </div>
@@ -41,11 +53,11 @@ export class EconomicPanel {
     if (this.data.length === 0) {
       this.container.innerHTML = `
         <div class="economic-panel">
-          <div class="panel-header">
+          <div class="${headerClass}"${headerTitle}>
             <span class="panel-title">ECONOMIC INDICATORS</span>
             <span class="panel-source">FRED</span>
           </div>
-          <div class="panel-empty">No data available</div>
+          <div class="panel-empty">${this.hasError ? this.errorMessage || 'Failed to load data' : 'No data available'}</div>
         </div>
       `;
       return;
@@ -79,7 +91,7 @@ export class EconomicPanel {
 
     this.container.innerHTML = `
       <div class="economic-panel">
-        <div class="panel-header">
+        <div class="${headerClass}"${headerTitle}>
           <span class="panel-title">ECONOMIC INDICATORS</span>
           <span class="panel-source">FRED • ${updateTime}</span>
         </div>

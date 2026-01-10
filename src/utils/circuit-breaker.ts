@@ -124,3 +124,17 @@ export function getCircuitBreakerStatus(): Record<string, string> {
   });
   return status;
 }
+
+export function isCircuitBreakerOnCooldown(name: string): boolean {
+  const breaker = breakers.get(name);
+  return breaker ? breaker.isOnCooldown() : false;
+}
+
+export function getCircuitBreakerCooldownInfo(name: string): { onCooldown: boolean; remainingSeconds: number } {
+  const breaker = breakers.get(name);
+  if (!breaker) return { onCooldown: false, remainingSeconds: 0 };
+  return {
+    onCooldown: breaker.isOnCooldown(),
+    remainingSeconds: breaker.getCooldownRemaining()
+  };
+}

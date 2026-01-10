@@ -47,7 +47,13 @@ export default defineConfig({
           });
         },
       },
-      // FRED Economic Data
+      // FRED Official API (requires API key)
+      '/api/fred-api': {
+        target: 'https://api.stlouisfed.org',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/fred-api/, '/fred/series/observations'),
+      },
+      // FRED Economic Data (legacy)
       '/api/fred': {
         target: 'https://fred.stlouisfed.org',
         changeOrigin: true,
@@ -335,6 +341,12 @@ export default defineConfig({
         target: 'https://acleddata.com',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/acled/, ''),
+      },
+      // GDELT GEO 2.0 API - Geolocation endpoint (must come before /api/gdelt)
+      '/api/gdelt-geo': {
+        target: 'https://api.gdeltproject.org',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/gdelt-geo/, '/api/v2/geo/geo'),
       },
       // GDELT GEO 2.0 API - Global event data
       '/api/gdelt': {

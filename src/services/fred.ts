@@ -18,6 +18,15 @@ interface FredConfig {
   precision: number;
 }
 
+interface FredObservation {
+  date: string;
+  value: string;
+}
+
+interface FredApiResponse {
+  observations: FredObservation[];
+}
+
 const FRED_SERIES: FredConfig[] = [
   { id: 'WALCL', name: 'Fed Total Assets', unit: '$B', precision: 0 },
   { id: 'FEDFUNDS', name: 'Fed Funds Rate', unit: '%', precision: 2 },
@@ -28,34 +37,39 @@ const FRED_SERIES: FredConfig[] = [
   { id: 'VIXCLS', name: 'VIX', unit: '', precision: 2 },
 ];
 
-const FRED_CSV_BASE = '/api/fred-data';
+const FRED_API_KEY = '74adf7652674f7527be1f07321ce39c5';
+const FRED_API_BASE = '/api/fred-api';
 const breaker = createCircuitBreaker<FredSeries[]>({ name: 'FRED Economic' });
 
 async function fetchSeriesData(seriesId: string): Promise<{ date: string; value: number }[]> {
-  const endDate = new Date().toISOString().split('T')[0];
-  const startDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const endDate = new Date().toISOString().split('T')[0] as string;
+  const startDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] as string;
 
-  const url = `${FRED_CSV_BASE}?id=${seriesId}&cosd=${startDate}&coed=${endDate}`;
-  const response = await fetch(url, {
-    headers: { 'Accept': 'text/csv', 'User-Agent': 'WorldMonitor/1.0' }
+  const params = new URLSearchParams();
+  params.set('series_id', seriesId);
+  params.set('api_key', FRED_API_KEY);
+  params.set('file_type', 'json');
+  params.set('observation_start', startDate);
+  params.set('observation_end', endDate);
+  params.set('sort_order', 'desc');
+  params.set('limit', '10');
+
+  const response = await fetch(`${FRED_API_BASE}?${params}`, {
+    headers: { Accept: 'application/json' },
   });
 
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-  const csv = await response.text();
-  const lines = csv.trim().split('\n').slice(1);
+  const data: FredApiResponse = await response.json();
 
-  return lines
-    .map(line => {
-      const parts = line.split(',');
-      const date = parts[0];
-      const valueStr = parts[1];
-      if (!date || !valueStr) return null;
-      const value = parseFloat(valueStr);
-      if (!isNaN(value)) return { date, value };
-      return null;
+  return (data.observations || [])
+    .map(obs => {
+      const value = parseFloat(obs.value);
+      if (isNaN(value) || obs.value === '.') return null;
+      return { date: obs.date, value };
     })
-    .filter((d): d is { date: string; value: number } => d !== null);
+    .filter((d): d is { date: string; value: number } => d !== null)
+    .reverse();
 }
 
 export async function fetchFredData(): Promise<FredSeries[]> {

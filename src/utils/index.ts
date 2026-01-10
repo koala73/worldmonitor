@@ -92,5 +92,5 @@ export { proxyUrl, fetchWithProxy } from './proxy';
 export { exportToJSON, exportToCSV, ExportPanel } from './export';
 export { buildMapUrl, parseMapUrlState } from './urlState';
 export type { ParsedMapUrlState } from './urlState';
-export { CircuitBreaker, createCircuitBreaker, getCircuitBreakerStatus } from './circuit-breaker';
+export { CircuitBreaker, createCircuitBreaker, getCircuitBreakerStatus, getCircuitBreakerCooldownInfo } from './circuit-breaker';
 export type { CircuitBreakerOptions } from './circuit-breaker';
