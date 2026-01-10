@@ -246,6 +246,7 @@ export interface MapLayers {
   cables: boolean;
   pipelines: boolean;
   hotspots: boolean;
+  grid: boolean;
   nuclear: boolean;
   irradiators: boolean;
   sanctions: boolean;
@@ -289,6 +290,28 @@ export interface InternetOutage {
   cause?: string;
   outageType?: string;
   endDate?: Date;
+}
+
+export type PowerGridSeverity = 'watch' | 'warning' | 'critical';
+export type PowerGridSignal = 'stress' | 'outage';
+
+export interface PowerGridAlert {
+  id: string;
+  title: string;
+  description: string;
+  region: string;
+  lat: number;
+  lon: number;
+  severity: PowerGridSeverity;
+  signalType: PowerGridSignal;
+  reserveMargin?: number;
+  frequencyHz?: number;
+  customersAffected?: number;
+  outageCount?: number;
+  impactRadiusKm?: number;
+  time: Date;
+  source: string;
+  sourceUrl?: string;
 }
 
 export type EconomicCenterType = 'exchange' | 'central-bank' | 'financial-hub';

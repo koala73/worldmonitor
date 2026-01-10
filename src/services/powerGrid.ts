@@ -1,0 +1,76 @@
+import type { PowerGridAlert } from '@/types';
+
+const GRID_ALERT_TEMPLATES: Array<Omit<PowerGridAlert, 'time'> & { timeOffsetMinutes: number }> = [
+  {
+    id: 'ercot-reserve-margin',
+    title: 'ERCOT reserve margin stress',
+    description: 'Operating reserves tightened after a demand surge and generation derates. Operators issued conservation requests.',
+    region: 'Texas, USA',
+    lat: 31.2,
+    lon: -99.4,
+    severity: 'critical',
+    signalType: 'stress',
+    reserveMargin: 2.4,
+    frequencyHz: 59.86,
+    impactRadiusKm: 320,
+    source: 'ERCOT Grid Alert',
+    sourceUrl: 'https://www.ercot.com/gridinfo',
+    timeOffsetMinutes: 95,
+  },
+  {
+    id: 'ng-frequency-deviation',
+    title: 'Frequency deviation event',
+    description: 'Short-duration frequency dip observed during evening ramp with tight reserve margins.',
+    region: 'Great Britain',
+    lat: 52.6,
+    lon: -1.6,
+    severity: 'warning',
+    signalType: 'stress',
+    reserveMargin: 4.9,
+    frequencyHz: 49.62,
+    impactRadiusKm: 260,
+    source: 'National Grid ESO',
+    sourceUrl: 'https://www.nationalgrideso.com/data-portal',
+    timeOffsetMinutes: 180,
+  },
+  {
+    id: 'north-india-outages',
+    title: 'Outage cluster across northern feeders',
+    description: 'Multiple substation trips triggered rolling outages across industrial corridors.',
+    region: 'Northern India',
+    lat: 28.9,
+    lon: 77.1,
+    severity: 'critical',
+    signalType: 'outage',
+    customersAffected: 2400000,
+    outageCount: 19,
+    impactRadiusKm: 220,
+    source: 'Regional outage dashboard',
+    sourceUrl: 'https://poweroutage.in/',
+    timeOffsetMinutes: 70,
+  },
+  {
+    id: 'south-africa-load-shed',
+    title: 'Stage 4 load shedding',
+    description: 'Generation shortfall pushed load shedding to Stage 4 with rotating blackouts.',
+    region: 'South Africa',
+    lat: -28.5,
+    lon: 24.7,
+    severity: 'warning',
+    signalType: 'outage',
+    customersAffected: 1100000,
+    outageCount: 12,
+    impactRadiusKm: 260,
+    source: 'Eskom System Status',
+    sourceUrl: 'https://www.eskom.co.za/dataportal/',
+    timeOffsetMinutes: 210,
+  },
+];
+
+export async function fetchPowerGridAlerts(): Promise<PowerGridAlert[]> {
+  const now = Date.now();
+  return GRID_ALERT_TEMPLATES.map((alert) => ({
+    ...alert,
+    time: new Date(now - alert.timeOffsetMinutes * 60 * 1000),
+  }));
+}

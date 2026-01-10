@@ -1176,6 +1176,76 @@ body.playback-mode .status-dot {
   50% { opacity: 0.6; transform: translate(-50%, -50%) scale(calc(var(--marker-scale, 1) * 1.2)); }
 }
 
+/* Power grid alerts */
+.grid-alert {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  transform: translate(-50%, -50%) scale(var(--marker-scale, 1));
+  transform-origin: center;
+  cursor: pointer;
+  z-index: 14;
+}
+
+.grid-alert.watch {
+  --grid-color: #ffb347;
+}
+
+.grid-alert.warning {
+  --grid-color: #ff7a3a;
+}
+
+.grid-alert.critical {
+  --grid-color: #ff2e2e;
+  animation: grid-pulse 1.6s ease-in-out infinite;
+}
+
+.grid-alert.grid-stress {
+  width: var(--grid-size, 160px);
+  height: var(--grid-size, 160px);
+  border-radius: 50%;
+  border: 1px solid var(--grid-color);
+  background: radial-gradient(circle, rgba(255, 125, 0, 0.28) 0%, rgba(255, 80, 0, 0.12) 45%, rgba(255, 20, 0, 0.03) 70%);
+  box-shadow: 0 0 14px var(--grid-color);
+}
+
+.grid-alert.grid-outage {
+  width: calc(var(--grid-size, 120px) * 0.55);
+  height: calc(var(--grid-size, 120px) * 0.55);
+  border-radius: 50%;
+  border: 1px solid var(--grid-color);
+  background: rgba(60, 0, 0, 0.45);
+  box-shadow: 0 0 10px var(--grid-color);
+}
+
+.grid-icon {
+  font-size: 14px;
+  color: var(--grid-color);
+  filter: drop-shadow(0 0 4px var(--grid-color));
+}
+
+.grid-alert.grid-stress .grid-icon {
+  font-size: 16px;
+}
+
+.grid-label {
+  position: absolute;
+  bottom: -10px;
+  font-size: 8px;
+  color: var(--grid-color);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  white-space: nowrap;
+  text-shadow: 0 0 4px var(--bg), 0 0 8px var(--bg);
+}
+
+@keyframes grid-pulse {
+  0%, 100% { opacity: 1; transform: translate(-50%, -50%) scale(var(--marker-scale, 1)); }
+  50% { opacity: 0.65; transform: translate(-50%, -50%) scale(calc(var(--marker-scale, 1) * 1.15)); }
+}
+
 /* Outage popup header */
 .popup-header.outage.total {
   border-bottom-color: #ff2222;
@@ -1187,6 +1257,19 @@ body.playback-mode .status-dot {
 
 .popup-header.outage.partial {
   border-bottom-color: #ffaa00;
+}
+
+/* Grid popup header */
+.popup-header.grid.watch {
+  border-bottom-color: #ffb347;
+}
+
+.popup-header.grid.warning {
+  border-bottom-color: #ff7a3a;
+}
+
+.popup-header.grid.critical {
+  border-bottom-color: #ff2e2e;
 }
 
 /* Conflict zones */
@@ -2294,6 +2377,7 @@ body.playback-mode .status-dot {
 .map-legend-icon.conflict { color: #ff4444; }
 .map-legend-icon.earthquake { color: #ffaa00; }
 .map-legend-icon.apt { color: #ff6600; }
+.map-legend-icon.grid { color: #ff8844; }
 
 .legend-dot {
   width: 8px;
