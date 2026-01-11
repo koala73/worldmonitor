@@ -1,3 +1,5 @@
+import { escapeHtml } from '@/utils/sanitize';
+
 export type SearchResultType = 'news' | 'hotspot' | 'market' | 'prediction' | 'conflict' | 'base' | 'pipeline' | 'cable' | 'datacenter' | 'earthquake' | 'outage' | 'nuclear' | 'irradiator';
 
 export interface SearchResult {
@@ -215,9 +217,9 @@ export class SearchModal {
         <span class="search-result-icon">${icons[result.type]}</span>
         <div class="search-result-content">
           <div class="search-result-title">${this.highlightMatch(result.title)}</div>
-          ${result.subtitle ? `<div class="search-result-subtitle">${result.subtitle}</div>` : ''}
+          ${result.subtitle ? `<div class="search-result-subtitle">${escapeHtml(result.subtitle)}</div>` : ''}
         </div>
-        <span class="search-result-type">${result.type}</span>
+        <span class="search-result-type">${escapeHtml(result.type)}</span>
       </div>
     `).join('');
 
@@ -231,10 +233,12 @@ export class SearchModal {
 
   private highlightMatch(text: string): string {
     const query = this.input?.value.trim() || '';
-    if (!query) return text;
+    const escapedText = escapeHtml(text);
+    if (!query) return escapedText;
 
-    const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-    return text.replace(regex, '<mark>$1</mark>');
+    const escapedQuery = escapeHtml(query);
+    const regex = new RegExp(`(${escapedQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+    return escapedText.replace(regex, '<mark>$1</mark>');
   }
 
   private handleKeydown(e: KeyboardEvent): void {

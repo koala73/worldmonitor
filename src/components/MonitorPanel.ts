@@ -2,6 +2,7 @@ import { Panel } from './Panel';
 import type { Monitor, NewsItem } from '@/types';
 import { MONITOR_COLORS } from '@/config';
 import { generateId, formatTime } from '@/utils';
+import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 
 export class MonitorPanel extends Panel {
   private monitors: Monitor[] = [];
@@ -76,9 +77,9 @@ export class MonitorPanel extends Panel {
       .map(
         (m) => `
       <span class="monitor-tag">
-        <span class="monitor-tag-color" style="background: ${m.color}"></span>
-        ${m.keywords.join(', ')}
-        <span class="monitor-tag-remove" data-id="${m.id}">×</span>
+        <span class="monitor-tag-color" style="background: ${escapeHtml(m.color)}"></span>
+        ${m.keywords.map(k => escapeHtml(k)).join(', ')}
+        <span class="monitor-tag-remove" data-id="${escapeHtml(m.id)}">×</span>
       </span>
     `
       )
@@ -125,9 +126,9 @@ export class MonitorPanel extends Panel {
       .slice(0, 10)
       .map(
         (item) => `
-      <div class="item" style="border-left: 2px solid ${item.monitorColor}; padding-left: 8px; margin-left: -8px;">
-        <div class="item-source">${item.source}</div>
-        <a class="item-title" href="${item.link}" target="_blank" rel="noopener">${item.title}</a>
+      <div class="item" style="border-left: 2px solid ${escapeHtml(item.monitorColor || '')}; padding-left: 8px; margin-left: -8px;">
+        <div class="item-source">${escapeHtml(item.source)}</div>
+        <a class="item-title" href="${sanitizeUrl(item.link)}" target="_blank" rel="noopener">${escapeHtml(item.title)}</a>
         <div class="item-time">${formatTime(item.pubDate)}</div>
       </div>
     `

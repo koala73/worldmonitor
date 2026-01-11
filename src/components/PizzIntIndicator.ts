@@ -1,4 +1,5 @@
 import type { PizzIntStatus, GdeltTensionPair } from '@/types';
+import { escapeHtml } from '@/utils/sanitize';
 
 const DEFCON_COLORS: Record<number, string> = {
   1: '#ff0040',
@@ -261,7 +262,7 @@ export class PizzIntIndicator {
       const statusLabel = this.getStatusLabel(loc);
       return `
         <div class="pizzint-location">
-          <span class="pizzint-location-name">${loc.name}</span>
+          <span class="pizzint-location-name">${escapeHtml(loc.name)}</span>
           <span class="pizzint-location-status ${statusClass}">${statusLabel}</span>
         </div>
       `;
@@ -278,12 +279,13 @@ export class PizzIntIndicator {
     listEl.innerHTML = this.tensions.map(t => {
       const trendIcon = t.trend === 'rising' ? '↑' : t.trend === 'falling' ? '↓' : '→';
       const changeText = t.changePercent > 0 ? `+${t.changePercent}%` : `${t.changePercent}%`;
+      const trendClass = escapeHtml(t.trend);
       return `
         <div class="pizzint-tension-row">
-          <span class="pizzint-tension-label">${t.label}</span>
+          <span class="pizzint-tension-label">${escapeHtml(t.label)}</span>
           <span class="pizzint-tension-score">
             <span class="pizzint-tension-value">${t.score.toFixed(1)}</span>
-            <span class="pizzint-tension-trend ${t.trend}">${trendIcon} ${changeText}</span>
+            <span class="pizzint-tension-trend ${trendClass}">${trendIcon} ${changeText}</span>
           </span>
         </div>
       `;
