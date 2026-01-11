@@ -26,6 +26,8 @@ export const SOURCE_TIERS: Record<string, number> = {
   'MarketWatch': 2,
   'Al Jazeera': 2,
   'Financial Times': 2,
+  'Politico': 2,
+  'The Telegraph': 2,
   'Reuters World': 1,
   'Reuters Business': 1,
   'OpenAI News': 3,
@@ -97,7 +99,7 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   'BBC World': 'mainstream', 'BBC Middle East': 'mainstream',
   'Guardian World': 'mainstream', 'Guardian ME': 'mainstream',
   'NPR News': 'mainstream', 'Al Jazeera': 'mainstream',
-  'CNN Middle East': 'mainstream',
+  'CNN Middle East': 'mainstream', 'Politico': 'mainstream', 'The Telegraph': 'mainstream',
 
   // Market/Finance
   'CNBC': 'market', 'MarketWatch': 'market', 'Yahoo Finance': 'market',
@@ -120,8 +122,10 @@ export const FEEDS: Record<string, Feed[]> = {
     { name: 'NPR News', url: rss('https://feeds.npr.org/1001/rss.xml') },
     { name: 'Guardian World', url: rss('https://www.theguardian.com/world/rss') },
     { name: 'AP News', url: rss('https://news.google.com/rss/search?q=site:apnews.com&hl=en-US&gl=US&ceid=US:en') },
-    { name: 'The Diplomat', url: rss('https://thediplomat.com/feed/') },
     { name: 'Reuters World', url: rss('https://news.google.com/rss/search?q=site:reuters.com+world&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Politico', url: rss('https://www.politico.com/rss/politicopicks.xml') },
+    { name: 'The Telegraph', url: rss('https://www.telegraph.co.uk/news/rss.xml') },
+    { name: 'The Diplomat', url: rss('https://thediplomat.com/feed/') },
   ],
   middleeast: [
     { name: 'BBC Middle East', url: rss('https://feeds.bbci.co.uk/news/world/middle_east/rss.xml') },
