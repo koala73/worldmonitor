@@ -85,7 +85,7 @@ export default async function handler(req) {
       _format: 'json',
     });
 
-    const response = await fetch(`https://api.acleddata.com/acled/read?${params}`, {
+    const response = await fetch(`https://acleddata.com/api/acled/read?${params}`, {
       headers: {
         'Accept': 'application/json',
         'Authorization': `Bearer ${token}`,

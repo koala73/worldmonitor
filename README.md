@@ -47,7 +47,7 @@ Layers are organized into logical groups for efficient monitoring:
 | Layer | Description |
 |-------|-------------|
 | **Ships (AIS)** | Live vessel tracking via AIS with chokepoint monitoring |
-| **Flights** | FAA airport delay status and ground stops |
+| **Delays** | FAA airport delay status and ground stops |
 
 **Natural Events**
 | Layer | Description |
@@ -77,11 +77,11 @@ Multi-source RSS aggregation across categories:
 - **Congress Trades** - Congressional stock trading activity
 
 ### Market Data
-- **Stocks** - Major indices and tech stocks
-- **Commodities** - Oil, gold, natural gas, copper
-- **Crypto** - Bitcoin, Ethereum, and top cryptocurrencies
-- **Sector Heatmap** - Visual sector performance
-- **Economic Indicators** - Fed data (GDP, inflation, unemployment)
+- **Stocks** - Major indices and tech stocks via Finnhub (Yahoo Finance backup)
+- **Commodities** - Oil, gold, natural gas, copper, VIX
+- **Crypto** - Bitcoin, Ethereum, Solana via CoinGecko
+- **Sector Heatmap** - Visual sector performance (11 SPDR sectors)
+- **Economic Indicators** - Fed data via FRED (assets, rates, yields)
 
 ### Prediction Markets
 - Polymarket integration for event probability tracking
@@ -819,7 +819,8 @@ The dashboard fetches data from various public APIs and data sources:
 | Service | Data | Auth Required |
 |---------|------|---------------|
 | RSS2JSON | News feed parsing | No |
-| Yahoo Finance | Stock quotes, indices | No |
+| Finnhub | Stock quotes (primary) | Yes (free) |
+| Yahoo Finance | Stock indices & commodities (backup) | No |
 | CoinGecko | Cryptocurrency prices | No |
 | USGS | Earthquake data | No |
 | NWS | Weather alerts | No |
@@ -839,6 +840,7 @@ Some features require API credentials. Without them, the corresponding layer is 
 
 | Variable | Service | How to Get |
 |----------|---------|------------|
+| `FINNHUB_API_KEY` | Stock quotes (primary) | Free registration at [finnhub.io](https://finnhub.io/) |
 | `VITE_WS_RELAY_URL` | AIS vessel tracking | Deploy AIS relay or use hosted service |
 | `VITE_OPENSKY_RELAY_URL` | Military aircraft | Deploy OpenSky relay (rate limit bypass) |
 | `CLOUDFLARE_API_TOKEN` | Internet outages | Free Cloudflare account with Radar access |
@@ -883,7 +885,7 @@ src/
 │   ├── flights.ts            # FAA delay parsing
 │   ├── outages.ts            # Cloudflare Radar integration
 │   ├── rss.ts                # RSS parsing with circuit breakers
-│   ├── markets.ts            # Yahoo Finance, CoinGecko
+│   ├── markets.ts            # Finnhub, Yahoo Finance, CoinGecko
 │   ├── earthquakes.ts        # USGS integration
 │   ├── weather.ts            # NWS alerts
 │   ├── fred.ts               # Federal Reserve data
@@ -908,10 +910,11 @@ api/                          # Vercel Edge serverless proxies
 ├── cloudflare-outages.js     # Proxies Cloudflare Radar
 ├── coingecko.js              # Crypto prices with validation
 ├── faa-status.js             # FAA ground stops/delays
+├── finnhub.js                # Stock quotes (batch, primary)
 ├── fred-data.js              # Federal Reserve economic data
 ├── gdelt-geo.js              # GDELT event geolocation
 ├── polymarket.js             # Prediction markets with validation
-├── yahoo-finance.js          # Stock quotes with validation
+├── yahoo-finance.js          # Stock indices/commodities (backup)
 └── opensky-relay.js          # Military aircraft tracking
 ```
 
@@ -994,7 +997,7 @@ Data provided by [The OpenSky Network](https://opensky-network.org). If you use 
 - **GDELT**: Global Database of Events, Language, and Tone. Source: [The GDELT Project](https://www.gdeltproject.org/).
 
 ### Financial Data
-- **Market Data**: Powered by [Yahoo Finance](https://finance.yahoo.com/)
+- **Stock Quotes**: Powered by [Finnhub](https://finnhub.io/) (primary), with [Yahoo Finance](https://finance.yahoo.com/) as backup for indices and commodities
 - **Cryptocurrency**: Powered by [CoinGecko API](https://www.coingecko.com/en/api)
 - **Economic Indicators**: Data from [FRED](https://fred.stlouisfed.org/), Federal Reserve Bank of St. Louis
 
