@@ -94,8 +94,8 @@ export class ExportPanel {
     this.element.innerHTML = `
       <button class="export-btn" title="Export Data">⬇</button>
       <div class="export-menu hidden">
-        <button class="export-option" data-format="json">Export JSON</button>
         <button class="export-option" data-format="csv">Export CSV</button>
+        <button class="export-option" data-format="json">Export JSON</button>
       </div>
     `;
 

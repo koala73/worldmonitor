@@ -7,26 +7,57 @@ interface LiveChannel {
 }
 
 const LIVE_CHANNELS: LiveChannel[] = [
-  { id: 'aljazeera', name: 'AlJazeera', videoId: 'gCNeDWCI0vo' },
-  { id: 'sky', name: 'SkyNews', videoId: 'YDvsBbKfLPA' },
   { id: 'bloomberg', name: 'Bloomberg', videoId: 'iEpJwprxDdk' },
-  { id: 'france24', name: 'France24', videoId: 'Ap-UM1O9RBU' },
-  { id: 'dw', name: 'DW', videoId: 'LuKwFajn37U' },
+  { id: 'sky', name: 'SkyNews', videoId: 'YDvsBbKfLPA' },
   { id: 'euronews', name: 'Euronews', videoId: 'pykpO5kQJ98' },
+  { id: 'dw', name: 'DW', videoId: 'LuKwFajn37U' },
+  { id: 'france24', name: 'France24', videoId: 'Ap-UM1O9RBU' },
   { id: 'alarabiya', name: 'AlArabiya', videoId: 'n7eQejkXbnM' },
+  { id: 'aljazeera', name: 'AlJazeera', videoId: 'gCNeDWCI0vo' },
 ];
 
 export class LiveNewsPanel extends Panel {
   private activeChannel: LiveChannel = LIVE_CHANNELS[0]!;
   private channelSwitcher: HTMLElement | null = null;
   private isMuted = true;
+  private isPlaying = true;
   private muteBtn: HTMLButtonElement | null = null;
+  private liveBtn: HTMLButtonElement | null = null;
 
   constructor() {
     super({ id: 'live-news', title: 'Live News', showCount: false, trackActivity: false });
     this.element.classList.add('panel-wide');
+    this.createLiveButton();
     this.createMuteButton();
     this.createChannelSwitcher();
+    this.renderPlayer();
+  }
+
+  private createLiveButton(): void {
+    this.liveBtn = document.createElement('button');
+    this.liveBtn.className = 'live-indicator-btn';
+    this.liveBtn.title = 'Toggle playback';
+    this.updateLiveIndicator();
+    this.liveBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.togglePlayback();
+    });
+
+    const header = this.element.querySelector('.panel-header');
+    header?.appendChild(this.liveBtn);
+  }
+
+  private updateLiveIndicator(): void {
+    if (!this.liveBtn) return;
+    this.liveBtn.innerHTML = this.isPlaying
+      ? '<span class="live-dot"></span>Live'
+      : '<span class="live-dot paused"></span>Paused';
+    this.liveBtn.classList.toggle('paused', !this.isPlaying);
+  }
+
+  private togglePlayback(): void {
+    this.isPlaying = !this.isPlaying;
+    this.updateLiveIndicator();
     this.renderPlayer();
   }
 
@@ -88,7 +119,8 @@ export class LiveNewsPanel extends Panel {
 
   private renderPlayer(): void {
     const muteParam = this.isMuted ? '1' : '0';
-    const embedUrl = `https://www.youtube.com/embed/${this.activeChannel.videoId}?autoplay=1&mute=${muteParam}&rel=0`;
+    const autoplayParam = this.isPlaying ? '1' : '0';
+    const embedUrl = `https://www.youtube.com/embed/${this.activeChannel.videoId}?autoplay=${autoplayParam}&mute=${muteParam}&rel=0`;
 
     this.content.innerHTML = `
       <div class="live-news-player">

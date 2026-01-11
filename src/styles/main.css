@@ -471,6 +471,48 @@ body {
   color: var(--green);
 }
 
+.live-indicator-btn {
+  background: transparent;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  padding: 4px 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  transition: opacity 0.2s;
+}
+
+.live-indicator-btn:hover {
+  opacity: 0.8;
+}
+
+.live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--red);
+  animation: live-blink 1.5s ease-in-out infinite;
+}
+
+.live-dot.paused {
+  background: var(--text-dim);
+  animation: none;
+}
+
+.live-indicator-btn.paused {
+  color: var(--text-dim);
+}
+
+@keyframes live-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
 #live-news .panel-content {
   padding: 0;
   flex: 1;
