@@ -1696,15 +1696,18 @@ export class MapComponent {
   private renderAisDensity(projection: d3.GeoProjection): void {
     const densityGroup = this.svg.append('g').attr('class', 'ais-density');
 
-    this.aisDensity.forEach((zone) => {
+    // Filter: only show zones with significant traffic (intensity > 0.4)
+    const significantZones = this.aisDensity.filter(z => z.intensity > 0.4);
+
+    significantZones.forEach((zone) => {
       const pos = projection([zone.lon, zone.lat]);
       if (!pos) return;
 
-      const intensity = Math.min(Math.max(zone.intensity, 0.15), 1);
-      const radius = 18 + intensity * 45;
+      const intensity = Math.min(zone.intensity, 1);
+      const radius = 12 + intensity * 25;  // Smaller circles (was 18 + 45)
       const isCongested = zone.deltaPct >= 15;
       const color = isCongested ? '#ffb703' : '#00d1ff';
-      const fillOpacity = 0.08 + intensity * 0.22;
+      const fillOpacity = 0.04 + intensity * 0.08;  // Lower opacity (was 0.08 + 0.22)
 
       densityGroup
         .append('circle')
@@ -1715,7 +1718,7 @@ export class MapComponent {
         .attr('fill', color)
         .attr('fill-opacity', fillOpacity)
         .attr('stroke', color)
-        .attr('stroke-opacity', 0.35)
+        .attr('stroke-opacity', 0.15)  // Lower stroke opacity (was 0.35)
         .attr('stroke-width', 1);
     });
   }
