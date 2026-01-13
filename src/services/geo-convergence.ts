@@ -1,6 +1,7 @@
 import type { SocialUnrestEvent, MilitaryFlight, MilitaryVessel, Earthquake } from '@/types';
 import { generateSignalId } from '@/utils/analysis-constants';
 import type { CorrelationSignalCore } from './analysis-core';
+import { INTEL_HOTSPOTS, CONFLICT_ZONES, STRATEGIC_WATERWAYS } from '@/config/geo';
 
 export type GeoEventType = 'protest' | 'military_flight' | 'military_vessel' | 'earthquake';
 
@@ -127,14 +128,68 @@ const TYPE_LABELS: Record<GeoEventType, string> = {
   earthquake: 'seismic activity',
 };
 
+// Haversine distance in km
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// Reverse geocode coordinates to human-readable location
+function getLocationName(lat: number, lon: number): string {
+  // Check conflict zones first (most relevant for convergence)
+  for (const zone of CONFLICT_ZONES) {
+    const [zoneLon, zoneLat] = zone.center;
+    const dist = haversineKm(lat, lon, zoneLat, zoneLon);
+    if (dist < 300) {
+      return zone.name.replace(' Conflict', '').replace(' Civil War', '');
+    }
+  }
+
+  // Check strategic waterways
+  for (const waterway of STRATEGIC_WATERWAYS) {
+    const dist = haversineKm(lat, lon, waterway.lat, waterway.lon);
+    if (dist < 200) {
+      return waterway.name;
+    }
+  }
+
+  // Check intel hotspots (major cities)
+  let nearestHotspot: { name: string; dist: number } | null = null;
+  for (const hotspot of INTEL_HOTSPOTS) {
+    const dist = haversineKm(lat, lon, hotspot.lat, hotspot.lon);
+    if (dist < 150 && (!nearestHotspot || dist < nearestHotspot.dist)) {
+      nearestHotspot = { name: hotspot.name, dist };
+    }
+  }
+  if (nearestHotspot) {
+    return `near ${nearestHotspot.name}`;
+  }
+
+  // Regional fallback based on lat/lon ranges
+  if (lat >= 25 && lat <= 40 && lon >= 25 && lon <= 75) return 'Middle East';
+  if (lat >= 30 && lat <= 45 && lon >= 100 && lon <= 145) return 'East Asia';
+  if (lat >= -10 && lat <= 25 && lon >= 90 && lon <= 130) return 'Southeast Asia';
+  if (lat >= 35 && lat <= 70 && lon >= -10 && lon <= 40) return 'Europe';
+  if (lat >= 44 && lat <= 75 && lon >= 20 && lon <= 180) return 'Russia';
+  if (lat >= -35 && lat <= 35 && lon >= -20 && lon <= 55) return 'Africa';
+  if (lat >= 25 && lat <= 50 && lon >= -125 && lon <= -65) return 'North America';
+  if (lat >= -60 && lat <= 15 && lon >= -80 && lon <= -30) return 'South America';
+
+  return `${lat.toFixed(1)}°, ${lon.toFixed(1)}°`;
+}
+
 export function geoConvergenceToSignal(alert: GeoConvergenceAlert): CorrelationSignalCore {
   const typeDescriptions = alert.types.map(t => TYPE_LABELS[t]).join(', ');
+  const locationName = getLocationName(alert.lat, alert.lon);
 
   return {
     id: generateSignalId(),
     type: 'geo_convergence',
     title: `Geographic Convergence (${alert.types.length} types)`,
-    description: `${typeDescriptions} in region (~${alert.lat.toFixed(1)}°, ${alert.lon.toFixed(1)}°) - ${alert.totalEvents} events/24h`,
+    description: `${typeDescriptions} in ${locationName} - ${alert.totalEvents} events/24h`,
     confidence: alert.score / 100,
     timestamp: new Date(),
     data: {
