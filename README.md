@@ -46,7 +46,7 @@ Layers are organized into logical groups for efficient monitoring:
 **Transport**
 | Layer | Description |
 |-------|-------------|
-| **Ships (AIS)** | Live vessel tracking via AIS with chokepoint monitoring* |
+| **Ships (AIS)** | Live vessel tracking via AIS with chokepoint monitoring and 61 strategic ports* |
 | **Delays** | FAA airport delay status and ground stops |
 
 *\*AIS data via [AISStream.io](https://aisstream.io) uses terrestrial receivers with stronger coverage in European/Atlantic waters. Middle East, Asia, and open ocean coverage is limited. Satellite AIS providers (Spire, Kpler) offer global coverage but require commercial licenses.*
@@ -895,6 +895,7 @@ src/
 │   ├── feeds.ts              # 45+ RSS feeds, source tiers
 │   ├── geo.ts                # Hotspots, conflicts, 55 cables, waterways
 │   ├── pipelines.ts          # 88 oil & gas pipelines
+│   ├── ports.ts              # 61 strategic ports worldwide
 │   ├── bases-expanded.ts     # 220+ military bases
 │   ├── ai-datacenters.ts     # 313 AI clusters (filtered to 111)
 │   ├── airports.ts           # 30 monitored US airports
@@ -998,6 +999,7 @@ Aggregates **45+ RSS feeds** from major news outlets, government sources, and sp
 - **Nuclear**: 100+ power plants, weapons labs, enrichment facilities
 - **AI Infrastructure**: 111 major compute clusters (≥10k GPUs)
 - **Strategic Waterways**: 8 critical chokepoints
+- **Ports**: 61 strategic ports (container, oil/LNG, naval, chokepoint)
 
 ### Live APIs
 - **USGS**: Earthquake feed (M4.5+ global)
