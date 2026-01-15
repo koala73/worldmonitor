@@ -636,7 +636,6 @@ export class MapComponent {
 
     // Setup projection
     const projection = this.getProjection(width, height);
-    const path = d3.geoPath().projection(projection);
 
     this.updateCountryFills();
 
