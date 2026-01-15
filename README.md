@@ -1135,6 +1135,207 @@ This ensures the panel shows markets like "Will Russia withdraw from Ukraine?" r
 
 ---
 
+## Panel Management
+
+The dashboard organizes data into **draggable, collapsible panels** that persist user preferences across sessions.
+
+### Drag-to-Reorder
+
+Panels can be reorganized by dragging:
+
+1. Grab the panel header (grip icon appears on hover)
+2. Drag to desired position
+3. Drop to reorder
+4. New order saves automatically to LocalStorage
+
+This enables personalized layouts—put your most-watched panels at the top.
+
+### Panel Visibility
+
+Toggle panels on/off via the Settings menu (⚙):
+
+- **Hidden panels**: Don't render, don't fetch data
+- **Visible panels**: Full functionality
+- **Collapsed panels**: Header only, data still refreshes
+
+Hiding a panel is different from disabling a layer—the panel itself doesn't appear in the interface.
+
+### Default Panel Order
+
+Panels are organized by intelligence priority:
+
+| Priority | Panels | Purpose |
+|----------|--------|---------|
+| **Critical** | Strategic Risk, Live Intel | Immediate situational awareness |
+| **Primary** | News, CII, Markets | Core monitoring data |
+| **Supporting** | Predictions, Economic, Monitor | Supplementary analysis |
+| **Reference** | Live News Video | Background context |
+
+### Persistence
+
+Panel state survives browser restarts:
+
+- **LocalStorage**: Panel order, visibility, collapsed state
+- **Automatic save**: Changes persist immediately
+- **Per-device**: Settings are browser-specific (not synced)
+
+---
+
+## Mobile Experience
+
+The dashboard adapts for smaller screens while maintaining core functionality.
+
+### Mobile Detection
+
+On screens narrower than 768px:
+
+- **Warning modal** appears recommending desktop for full experience
+- **Reduced default layers** to prevent overwhelm
+- **Touch-optimized controls** for map navigation
+- **Simplified panel layout** with full-width panels
+
+### Layer Defaults by Device
+
+| Device | Default Layers |
+|--------|----------------|
+| **Desktop** | Conflicts, Hotspots, Military Bases, Sanctions, Weather |
+| **Mobile** | Conflicts, Hotspots, Weather |
+
+Mobile users can still enable additional layers—defaults just prioritize performance.
+
+### Touch Gestures
+
+Map navigation supports:
+
+- **Pinch zoom**: Two-finger zoom in/out
+- **Drag pan**: Single-finger map movement
+- **Tap markers**: Show popup (replaces hover)
+- **Double-tap**: Quick zoom
+
+---
+
+## Energy Flow Detection
+
+The correlation engine detects signals related to energy infrastructure and commodity markets.
+
+### Pipeline Keywords
+
+The system monitors news for pipeline-related events:
+
+**Infrastructure terms**: pipeline, pipeline explosion, pipeline leak, pipeline attack, pipeline sabotage, pipeline disruption, nord stream, keystone, druzhba
+
+**Flow indicators**: gas flow, oil flow, supply disruption, transit halt, capacity reduction
+
+### Flow Drop Signals
+
+When news mentions flow disruptions, two signal types may trigger:
+
+| Signal | Criteria | Meaning |
+|--------|----------|---------|
+| **Flow Drop** | Pipeline keywords + disruption terms | Potential supply interruption |
+| **Flow-Price Divergence** | Flow drop news + oil price stable (< $1.50 move) | Markets not yet pricing in disruption |
+
+### Why This Matters
+
+Energy supply disruptions create cascading effects:
+
+1. **Immediate**: Spot price volatility
+2. **Short-term**: Industrial production impacts
+3. **Long-term**: Geopolitical leverage shifts
+
+Early detection of flow drops—especially when markets haven't reacted—provides an information edge.
+
+---
+
+## Cross-Module Integration
+
+Intelligence modules don't operate in isolation. Data flows between systems to enable composite analysis.
+
+### Data Flow Architecture
+
+```
+News Feeds → Clustering → Velocity Analysis → Hotspot Correlation
+                ↓                                    ↓
+         Topic Extraction                    CII Information Score
+                ↓                                    ↓
+         Keyword Monitors              Strategic Risk Overview
+                                                     ↑
+Military Flights → Near-Hotspot Detection ──────────┤
+                                                     ↑
+AIS Vessels → Chokepoint Monitoring ────────────────┤
+                                                     ↑
+ACLED/GDELT → Protest Events ───────────────────────┤
+                       ↓
+                CII Unrest Score
+```
+
+### Module Dependencies
+
+| Consumer Module | Data Source | Integration |
+|----------------|-------------|-------------|
+| **CII Unrest Score** | ACLED, GDELT protests | Event count, fatalities |
+| **CII Security Score** | Military flights, vessels | Activity near hotspots |
+| **CII Information Score** | News clusters | Velocity, keyword matches |
+| **Strategic Risk** | CII, Convergence, Cascade | Composite scoring |
+| **Related Assets** | News location inference | Pipeline/cable proximity |
+| **Geographic Convergence** | All geo-located events | Multi-type clustering |
+
+### Alert Propagation
+
+When a threshold is crossed:
+
+1. **Source module** generates alert (e.g., CII spike)
+2. **Alert merges** with related alerts (same country/region)
+3. **Strategic Risk** receives composite alert
+4. **UI updates** header badge and panel indicators
+
+This ensures a single escalation (e.g., Ukraine military flights + protests + news spike) surfaces as one coherent signal rather than three separate alerts.
+
+---
+
+## Refresh Intervals
+
+Different data sources update at different frequencies based on volatility and API constraints.
+
+### Polling Schedule
+
+| Data Type | Interval | Rationale |
+|-----------|----------|-----------|
+| **News feeds** | 5 min | Balance freshness vs. rate limits |
+| **Stock quotes** | 1 min | Market hours require near-real-time |
+| **Crypto prices** | 1 min | 24/7 markets, high volatility |
+| **Predictions** | 5 min | Probabilities shift slowly |
+| **Earthquakes** | 5 min | USGS updates every 5 min |
+| **Weather alerts** | 10 min | NWS alert frequency |
+| **Flight delays** | 10 min | FAA status update cadence |
+| **Internet outages** | 60 min | BGP events are rare |
+| **Economic data** | 30 min | FRED data rarely changes intraday |
+| **Military tracking** | 5 min | Activity patterns need timely updates |
+| **PizzINT** | 10 min | Foot traffic changes slowly |
+
+### Real-Time Streams
+
+AIS vessel tracking uses WebSocket for true real-time:
+
+- **Connection**: Persistent WebSocket to Railway relay
+- **Messages**: Position updates as vessels transmit
+- **Reconnection**: Automatic with exponential backoff (5s → 10s → 20s)
+
+### User Control
+
+Time range selector affects displayed data, not fetch frequency:
+
+| Selection | Effect |
+|-----------|--------|
+| **1 hour** | Show only events from last 60 minutes |
+| **6 hours** | Show events from last 6 hours |
+| **24 hours** | Show events from last day |
+| **7 days** | Show all recent events |
+
+Historical filtering is client-side—all data is fetched but filtered for display.
+
+---
+
 ## Tech Stack
 
 | Layer | Technology | Purpose |
