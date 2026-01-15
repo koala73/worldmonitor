@@ -57,6 +57,11 @@ export class MapComponent {
     economic: { minZoom: 2, showLabels: 4 },
     natural: { minZoom: 1, showLabels: 2 },
   };
+  private static readonly CLUSTER_LOD_ZOOM = 1.6;
+  private static readonly CLUSTER_LOD_MAX_ZOOM = 2.4;
+  private static readonly CLUSTER_DENSITY_THRESHOLD = 280;
+  private static readonly CLUSTER_QUAKE_HTML_THRESHOLD = 6;
+  private static readonly CLUSTER_NATURAL_HTML_MAG_THRESHOLD = 100;
 
   private container: HTMLElement;
   private svg: d3.Selection<SVGSVGElement, unknown, null, undefined>;
@@ -64,6 +69,8 @@ export class MapComponent {
   private overlays: HTMLElement;
   private clusterCanvas: HTMLCanvasElement;
   private clusterGl: WebGLRenderingContext | null = null;
+  private clusterCtx: CanvasRenderingContext2D | null = null;
+  private clusterMode = false;
   private state: MapState;
   private worldData: WorldTopology | null = null;
   private hotspots: HotspotWithBreaking[];
@@ -561,21 +568,173 @@ export class MapComponent {
   private initClusterRenderer(): void {
     // WebGL clustering disabled - just get context for clearing canvas
     const gl = this.clusterCanvas.getContext('webgl');
+    const ctx = this.clusterCanvas.getContext('2d');
+    this.clusterCtx = ctx;
     if (!gl) return;
     this.clusterGl = gl;
   }
 
   private clearClusterCanvas(): void {
+    if (this.clusterCtx) {
+      const width = this.clusterCanvas.width / (window.devicePixelRatio || 1);
+      const height = this.clusterCanvas.height / (window.devicePixelRatio || 1);
+      this.clusterCtx.clearRect(0, 0, width, height);
+      return;
+    }
     if (!this.clusterGl) return;
     this.clusterGl.clearColor(0, 0, 0, 0);
     this.clusterGl.clear(this.clusterGl.COLOR_BUFFER_BIT);
   }
 
-  private renderClusterLayer(_projection: d3.GeoProjection): void {
-    // WebGL clustering disabled - all layers use HTML markers for visual fidelity
-    // (severity colors, emoji icons, magnitude sizing, animations)
-    this.wrapper.classList.toggle('cluster-active', false);
+  private renderClusterLayer(projection: d3.GeoProjection): void {
+    // LOD cluster rendering: canvas at low zoom/high density, HTML at higher zoom
+    this.clusterMode = this.shouldUseClusterCanvas();
+    this.wrapper.classList.toggle('cluster-active', this.clusterMode);
+    this.resizeClusterCanvas();
     this.clearClusterCanvas();
+    if (!this.clusterMode || !this.clusterCtx) return;
+    this.renderClusterCanvas(projection, this.clusterCtx);
+  }
+
+  private resizeClusterCanvas(): void {
+    const width = this.container.clientWidth;
+    const height = this.container.clientHeight;
+    const dpr = window.devicePixelRatio || 1;
+    const scaledWidth = Math.floor(width * dpr);
+    const scaledHeight = Math.floor(height * dpr);
+    if (this.clusterCanvas.width !== scaledWidth || this.clusterCanvas.height !== scaledHeight) {
+      this.clusterCanvas.width = scaledWidth;
+      this.clusterCanvas.height = scaledHeight;
+    }
+    if (this.clusterCtx) {
+      this.clusterCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+  }
+
+  private shouldUseClusterCanvas(): boolean {
+    const zoom = this.state.zoom;
+    const densityCount = this.getClusterDensityCount();
+    if (densityCount === 0) return false;
+    if (zoom < MapComponent.CLUSTER_LOD_ZOOM) return true;
+    return zoom < MapComponent.CLUSTER_LOD_MAX_ZOOM && densityCount > MapComponent.CLUSTER_DENSITY_THRESHOLD;
+  }
+
+  private getClusterDensityCount(): number {
+    let count = 0;
+    if (this.state.layers.natural) {
+      count += this.filterByTime(this.earthquakes).length;
+      count += this.naturalEvents.length;
+    }
+    if (this.state.layers.weather) count += this.weatherAlerts.length;
+    if (this.state.layers.outages) count += this.outages.length;
+    if (this.state.layers.protests) count += this.filterByTime(this.protests).length;
+    if (this.state.layers.flights) count += this.flightDelays.length;
+    if (this.state.layers.ais) count += this.aisDisruptions.length;
+    return count;
+  }
+
+  private renderClusterCanvas(projection: d3.GeoProjection, ctx: CanvasRenderingContext2D): void {
+    const drawDot = (x: number, y: number, radius: number, color: string, stroke?: string) => {
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+      if (stroke) {
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+    };
+
+    if (this.state.layers.natural) {
+      const filteredQuakes = this.filterByTime(this.earthquakes);
+      filteredQuakes.forEach((eq) => {
+        const pos = projection([eq.lon, eq.lat]);
+        if (!pos) return;
+        const radius = Math.max(2, Math.min(6, eq.magnitude * 1.1));
+        drawDot(pos[0], pos[1], radius, 'rgba(255, 140, 0, 0.55)', '#ff8c00');
+      });
+
+      const naturalCategoryColors: Partial<Record<NaturalEvent['category'], string>> = {
+        wildfires: 'rgba(255, 107, 0, 0.5)',
+        volcanoes: 'rgba(255, 70, 70, 0.55)',
+        severeStorms: 'rgba(120, 190, 255, 0.45)',
+        floods: 'rgba(0, 190, 255, 0.45)',
+        drought: 'rgba(210, 170, 80, 0.45)',
+        landslides: 'rgba(160, 120, 90, 0.45)',
+      };
+
+      this.naturalEvents.forEach((event) => {
+        const pos = projection([event.lon, event.lat]);
+        if (!pos) return;
+        const color = naturalCategoryColors[event.category] || 'rgba(180, 220, 200, 0.4)';
+        const radius = event.magnitude ? Math.min(6, Math.max(2, event.magnitude / 20)) : 2.5;
+        drawDot(pos[0], pos[1], radius, color);
+      });
+    }
+
+    if (this.state.layers.weather) {
+      this.weatherAlerts.forEach((alert) => {
+        if (!alert.centroid) return;
+        const pos = projection(alert.centroid);
+        if (!pos) return;
+        drawDot(pos[0], pos[1], 3, `${getSeverityColor(alert.severity)}80`);
+      });
+    }
+
+    if (this.state.layers.outages) {
+      const outageColors: Record<InternetOutage['severity'], string> = {
+        partial: 'rgba(255, 214, 0, 0.5)',
+        major: 'rgba(255, 153, 0, 0.55)',
+        total: 'rgba(255, 70, 70, 0.6)',
+      };
+      this.outages.forEach((outage) => {
+        const pos = projection([outage.lon, outage.lat]);
+        if (!pos) return;
+        drawDot(pos[0], pos[1], 3, outageColors[outage.severity]);
+      });
+    }
+
+    if (this.state.layers.protests) {
+      const protestColors: Record<SocialUnrestEvent['severity'], string> = {
+        low: 'rgba(255, 221, 170, 0.4)',
+        medium: 'rgba(255, 176, 0, 0.5)',
+        high: 'rgba(255, 80, 80, 0.6)',
+      };
+      this.filterByTime(this.protests).forEach((event) => {
+        const pos = projection([event.lon, event.lat]);
+        if (!pos) return;
+        drawDot(pos[0], pos[1], 2.8, protestColors[event.severity]);
+      });
+    }
+
+    if (this.state.layers.flights) {
+      const delayColors: Record<AirportDelayAlert['severity'], string> = {
+        normal: 'rgba(140, 200, 255, 0.35)',
+        minor: 'rgba(120, 220, 200, 0.4)',
+        moderate: 'rgba(255, 200, 120, 0.5)',
+        major: 'rgba(255, 140, 0, 0.55)',
+        severe: 'rgba(255, 70, 70, 0.6)',
+      };
+      this.flightDelays.forEach((delay) => {
+        const pos = projection([delay.lon, delay.lat]);
+        if (!pos) return;
+        drawDot(pos[0], pos[1], 2.5, delayColors[delay.severity]);
+      });
+    }
+
+    if (this.state.layers.ais) {
+      const aisColors: Record<AisDisruptionEvent['severity'], string> = {
+        low: 'rgba(100, 200, 255, 0.35)',
+        elevated: 'rgba(255, 200, 120, 0.45)',
+        high: 'rgba(255, 120, 60, 0.6)',
+      };
+      this.aisDisruptions.forEach((event) => {
+        const pos = projection([event.lon, event.lat]);
+        if (!pos) return;
+        drawDot(pos[0], pos[1], 2.5, aisColors[event.severity]);
+      });
+    }
   }
 
   public render(): void {
@@ -852,6 +1011,7 @@ export class MapComponent {
 
   private renderOverlays(projection: d3.GeoProjection): void {
     this.overlays.innerHTML = '';
+    const useClusterCanvas = this.clusterMode;
 
     // Country labels (rendered first so they appear behind other overlays)
     if (this.state.layers.countries) {
@@ -869,7 +1029,10 @@ export class MapComponent {
     }
 
     if (this.state.layers.ais) {
-      this.renderAisDisruptions(projection);
+      const aisDisruptions = useClusterCanvas
+        ? this.aisDisruptions.filter(event => event.severity === 'high')
+        : this.aisDisruptions;
+      this.renderAisDisruptions(projection, aisDisruptions);
       this.renderPorts(projection);
     }
 
@@ -1046,9 +1209,12 @@ export class MapComponent {
     if (this.state.layers.natural) {
       console.log('[Map] Rendering earthquakes. Total:', this.earthquakes.length, 'Layer enabled:', this.state.layers.natural);
       const filteredQuakes = this.filterByTime(this.earthquakes);
+      const quakesToRender = useClusterCanvas
+        ? filteredQuakes.filter(eq => eq.magnitude >= MapComponent.CLUSTER_QUAKE_HTML_THRESHOLD)
+        : filteredQuakes;
       console.log('[Map] After time filter:', filteredQuakes.length, 'earthquakes. TimeRange:', this.state.timeRange);
       let rendered = 0;
-      filteredQuakes.forEach((eq) => {
+      quakesToRender.forEach((eq) => {
         const pos = projection([eq.lon, eq.lat]);
         if (!pos) {
           console.log('[Map] Earthquake position null for:', eq.place, eq.lon, eq.lat);
@@ -1124,7 +1290,10 @@ export class MapComponent {
 
     // Weather Alerts (severity icons)
     if (this.state.layers.weather) {
-      this.weatherAlerts.forEach((alert) => {
+      const alertsToRender = useClusterCanvas
+        ? this.weatherAlerts.filter(alert => alert.severity === 'Extreme' || alert.severity === 'Severe')
+        : this.weatherAlerts;
+      alertsToRender.forEach((alert) => {
         if (!alert.centroid) return;
         const pos = projection(alert.centroid);
         if (!pos) return;
@@ -1162,7 +1331,10 @@ export class MapComponent {
 
     // Internet Outages (severity colors)
     if (this.state.layers.outages) {
-      this.outages.forEach((outage) => {
+      const outagesToRender = useClusterCanvas
+        ? this.outages.filter(outage => outage.severity === 'major' || outage.severity === 'total')
+        : this.outages;
+      outagesToRender.forEach((outage) => {
         const pos = projection([outage.lon, outage.lat]);
         if (!pos) return;
 
@@ -1300,7 +1472,10 @@ export class MapComponent {
 
     // Protests / Social Unrest Events (severity colors + icons)
     if (this.state.layers.protests) {
-      this.protests.forEach((event) => {
+      const protestsToRender = useClusterCanvas
+        ? this.filterByTime(this.protests).filter(event => event.severity === 'high' || event.validated)
+        : this.protests;
+      protestsToRender.forEach((event) => {
         const pos = projection([event.lon, event.lat]);
         if (!pos) return;
 
@@ -1342,7 +1517,10 @@ export class MapComponent {
 
     // Flight Delays (delay severity colors + ✈️ icons)
     if (this.state.layers.flights) {
-      this.flightDelays.forEach((delay) => {
+      const delaysToRender = useClusterCanvas
+        ? this.flightDelays.filter(delay => delay.severity === 'major' || delay.severity === 'severe')
+        : this.flightDelays;
+      delaysToRender.forEach((delay) => {
         const pos = projection([delay.lon, delay.lat]);
         if (!pos) return;
 
@@ -1587,7 +1765,20 @@ export class MapComponent {
 
     // Natural Events (NASA EONET) - part of NATURAL layer
     if (this.state.layers.natural) {
-      this.naturalEvents.forEach((event) => {
+      const highImpactCategories: NaturalEvent['category'][] = [
+        'wildfires',
+        'volcanoes',
+        'severeStorms',
+        'floods',
+        'drought',
+        'tempExtremes',
+      ];
+      const eventsToRender = useClusterCanvas
+        ? this.naturalEvents.filter(event =>
+          (event.magnitude ?? 0) >= MapComponent.CLUSTER_NATURAL_HTML_MAG_THRESHOLD ||
+          highImpactCategories.includes(event.category))
+        : this.naturalEvents;
+      eventsToRender.forEach((event) => {
         const pos = projection([event.lon, event.lat]);
         if (!pos) return;
 
@@ -1677,8 +1868,8 @@ export class MapComponent {
     });
   }
 
-  private renderAisDisruptions(projection: d3.GeoProjection): void {
-    this.aisDisruptions.forEach((event) => {
+  private renderAisDisruptions(projection: d3.GeoProjection, disruptions: AisDisruptionEvent[]): void {
+    disruptions.forEach((event) => {
       const pos = projection([event.lon, event.lat]);
       if (!pos) return;
 
