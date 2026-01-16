@@ -1531,7 +1531,7 @@ src/
 api/                          # Vercel Edge serverless proxies
 ├── cloudflare-outages.js     # Proxies Cloudflare Radar
 ├── coingecko.js              # Crypto prices with validation
-├── eia.js                    # EIA petroleum data (oil prices, production)
+├── eia/[[...path]].js        # EIA petroleum data (oil prices, production)
 ├── faa-status.js             # FAA ground stops/delays
 ├── finnhub.js                # Stock quotes (batch, primary)
 ├── fred-data.js              # Federal Reserve economic data
