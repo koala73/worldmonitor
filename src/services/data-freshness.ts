@@ -293,3 +293,60 @@ export function getStatusIcon(status: FreshnessStatus): string {
     case 'no_data': return '○';
   }
 }
+
+// Intelligence gap messages - explains what analysts CAN'T see (Quick Win #1)
+const INTELLIGENCE_GAP_MESSAGES: Record<DataSourceId, string> = {
+  acled: 'Protest/conflict events may be missed—ACLED data unavailable',
+  opensky: 'Military aircraft positions unknown—flight tracking offline',
+  wingbits: 'Aircraft identification limited—enrichment service unavailable',
+  ais: 'Vessel positions outdated—possible dark shipping or AIS transponder-off activity undetected',
+  usgs: 'Recent earthquakes may not be shown—seismic data unavailable',
+  gdelt: 'News event velocity unknown—GDELT intelligence feed offline',
+  rss: 'Breaking news may be missed—RSS feeds not updating',
+  polymarket: 'Prediction market signals unavailable—early warning capability degraded',
+  outages: 'Internet disruptions may be unreported—outage monitoring offline',
+  weather: 'Severe weather warnings may be missed—weather alerts unavailable',
+  economic: 'Economic indicators stale—Fed/Treasury data not updating',
+  oil: 'Oil market analytics unavailable—EIA data not updating',
+  spending: 'Government spending data unavailable',
+};
+
+/**
+ * Get intelligence gap warnings for stale or unavailable data sources.
+ * These warnings help analysts understand what they CANNOT see.
+ */
+export function getIntelligenceGaps(): { source: DataSourceId; message: string; severity: 'warning' | 'critical' }[] {
+  const gaps: { source: DataSourceId; message: string; severity: 'warning' | 'critical' }[] = [];
+
+  for (const source of dataFreshness.getAllSources()) {
+    if (source.status === 'no_data' || source.status === 'very_stale' || source.status === 'error') {
+      const message = INTELLIGENCE_GAP_MESSAGES[source.id] || `${source.name} data unavailable`;
+      const severity = source.requiredForRisk || source.status === 'error' ? 'critical' : 'warning';
+      gaps.push({ source: source.id, message, severity });
+    }
+  }
+
+  return gaps.sort((a, b) => {
+    // Critical first
+    if (a.severity !== b.severity) return a.severity === 'critical' ? -1 : 1;
+    return 0;
+  });
+}
+
+/**
+ * Get a formatted intelligence gap summary for display.
+ */
+export function getIntelligenceGapSummary(): string[] {
+  const gaps = getIntelligenceGaps();
+  return gaps.map(gap => {
+    const icon = gap.severity === 'critical' ? '⚠️ CRITICAL' : '⚡';
+    return `${icon}: ${gap.message}`;
+  });
+}
+
+/**
+ * Check if there are any critical intelligence gaps.
+ */
+export function hasCriticalGaps(): boolean {
+  return getIntelligenceGaps().some(gap => gap.severity === 'critical');
+}

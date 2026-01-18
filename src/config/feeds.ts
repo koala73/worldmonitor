@@ -140,6 +140,59 @@ export function getSourceType(sourceName: string): SourceType {
   return SOURCE_TYPES[sourceName] ?? 'other';
 }
 
+// Propaganda risk assessment for sources (Quick Win #5)
+// 'high' = State-controlled media, known to push government narratives
+// 'medium' = State-affiliated or known editorial bias toward specific governments
+// 'low' = Independent journalism with editorial standards
+export type PropagandaRisk = 'low' | 'medium' | 'high';
+
+export interface SourceRiskProfile {
+  risk: PropagandaRisk;
+  stateAffiliated?: string;
+  knownBiases?: string[];
+  note?: string;
+}
+
+export const SOURCE_PROPAGANDA_RISK: Record<string, SourceRiskProfile> = {
+  // High risk - State-controlled media
+  'Xinhua': { risk: 'high', stateAffiliated: 'China', note: 'Official CCP news agency' },
+  'TASS': { risk: 'high', stateAffiliated: 'Russia', note: 'Russian state news agency' },
+  'RT': { risk: 'high', stateAffiliated: 'Russia', note: 'Russian state media, banned in EU' },
+  'Sputnik': { risk: 'high', stateAffiliated: 'Russia', note: 'Russian state media' },
+  'CGTN': { risk: 'high', stateAffiliated: 'China', note: 'Chinese state broadcaster' },
+  'Press TV': { risk: 'high', stateAffiliated: 'Iran', note: 'Iranian state media' },
+  'KCNA': { risk: 'high', stateAffiliated: 'North Korea', note: 'North Korean state media' },
+
+  // Medium risk - State-affiliated or known bias
+  'Al Jazeera': { risk: 'medium', stateAffiliated: 'Qatar', note: 'Qatari state-funded, independent editorial' },
+  'Al Arabiya': { risk: 'medium', stateAffiliated: 'Saudi Arabia', note: 'Saudi-owned, reflects Gulf perspective' },
+  'TRT World': { risk: 'medium', stateAffiliated: 'Turkey', note: 'Turkish state broadcaster' },
+  'France 24': { risk: 'medium', stateAffiliated: 'France', note: 'French state-funded, editorially independent' },
+  'DW News': { risk: 'medium', stateAffiliated: 'Germany', note: 'German state-funded, editorially independent' },
+  'Voice of America': { risk: 'medium', stateAffiliated: 'USA', note: 'US government-funded' },
+  'Kyiv Independent': { risk: 'medium', knownBiases: ['Pro-Ukraine'], note: 'Ukrainian perspective on Russia-Ukraine war' },
+  'Moscow Times': { risk: 'medium', knownBiases: ['Anti-Kremlin'], note: 'Independent, critical of Russian government' },
+
+  // Low risk - Independent with editorial standards (explicit)
+  'Reuters': { risk: 'low', note: 'Wire service, strict editorial standards' },
+  'AP News': { risk: 'low', note: 'Wire service, nonprofit cooperative' },
+  'AFP': { risk: 'low', note: 'Wire service, editorially independent' },
+  'BBC World': { risk: 'low', note: 'Public broadcaster, editorial independence charter' },
+  'BBC Middle East': { risk: 'low', note: 'Public broadcaster, editorial independence charter' },
+  'Guardian World': { risk: 'low', knownBiases: ['Center-left'], note: 'Scott Trust ownership, no shareholders' },
+  'Financial Times': { risk: 'low', note: 'Business focus, Nikkei-owned' },
+  'Bellingcat': { risk: 'low', note: 'Open-source investigations, methodology transparent' },
+};
+
+export function getSourcePropagandaRisk(sourceName: string): SourceRiskProfile {
+  return SOURCE_PROPAGANDA_RISK[sourceName] ?? { risk: 'low' };
+}
+
+export function isStateAffiliatedSource(sourceName: string): boolean {
+  const profile = SOURCE_PROPAGANDA_RISK[sourceName];
+  return !!profile?.stateAffiliated;
+}
+
 export const FEEDS: Record<string, Feed[]> = {
   politics: [
     { name: 'BBC World', url: rss('https://feeds.bbci.co.uk/news/world/rss.xml') },

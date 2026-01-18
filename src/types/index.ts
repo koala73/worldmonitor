@@ -1,8 +1,12 @@
+export type PropagandaRisk = 'low' | 'medium' | 'high';
+
 export interface Feed {
   name: string;
   url: string;
   type?: string;
   region?: string;
+  propagandaRisk?: PropagandaRisk;
+  stateAffiliated?: string;  // e.g., "Russia", "China", "Iran"
 }
 
 export interface NewsItem {
@@ -89,6 +93,16 @@ export interface CryptoData {
   change: number;
 }
 
+export type EscalationTrend = 'escalating' | 'stable' | 'de-escalating';
+
+export interface HistoricalContext {
+  lastMajorEvent?: string;
+  lastMajorEventDate?: string;
+  precedentCount?: number;
+  precedentDescription?: string;
+  cyclicalRisk?: string;
+}
+
 export interface Hotspot {
   id: string;
   name: string;
@@ -100,6 +114,13 @@ export interface Hotspot {
   level?: 'low' | 'elevated' | 'high';
   description?: string;
   status?: string;
+  // Escalation indicators (Quick Win #2)
+  escalationScore?: 1 | 2 | 3 | 4 | 5;
+  escalationTrend?: EscalationTrend;
+  escalationIndicators?: string[];
+  // Historical context (Quick Win #4)
+  history?: HistoricalContext;
+  whyItMatters?: string;
 }
 
 export interface StrategicWaterway {
