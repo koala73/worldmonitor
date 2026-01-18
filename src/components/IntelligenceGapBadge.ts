@@ -2,13 +2,20 @@ import { getRecentSignals, type CorrelationSignal } from '@/services/correlation
 import { getSignalContext } from '@/utils/analysis-constants';
 import { escapeHtml } from '@/utils/sanitize';
 
-export class IntelligenceGapBadge {
+const LOW_COUNT_THRESHOLD = 3;
+const MAX_VISIBLE_FINDINGS = 10;
+const SORT_TIME_TOLERANCE_MS = 60000;
+const REFRESH_INTERVAL_MS = 10000;
+
+export class IntelligenceFindingsBadge {
   private badge: HTMLElement;
   private dropdown: HTMLElement;
   private isOpen = false;
   private refreshInterval: ReturnType<typeof setInterval> | null = null;
   private lastSignalCount = 0;
   private onSignalClick: ((signal: CorrelationSignal) => void) | null = null;
+  private signals: CorrelationSignal[] = [];
+  private boundCloseDropdown = () => this.closeDropdown();
 
   constructor() {
     this.badge = document.createElement('button');
@@ -24,7 +31,20 @@ export class IntelligenceGapBadge {
       this.toggleDropdown();
     });
 
-    document.addEventListener('click', () => this.closeDropdown());
+    // Event delegation for finding items
+    this.dropdown.addEventListener('click', (e) => {
+      const item = (e.target as HTMLElement).closest('.finding-item');
+      if (!item) return;
+      e.stopPropagation();
+      const id = item.getAttribute('data-signal-id');
+      const signal = this.signals.find(s => s.id === id);
+      if (signal && this.onSignalClick) {
+        this.onSignalClick(signal);
+        this.closeDropdown();
+      }
+    });
+
+    document.addEventListener('click', this.boundCloseDropdown);
 
     this.mount();
     this.update();
@@ -44,12 +64,12 @@ export class IntelligenceGapBadge {
   }
 
   private startRefresh(): void {
-    this.refreshInterval = setInterval(() => this.update(), 10000);
+    this.refreshInterval = setInterval(() => this.update(), REFRESH_INTERVAL_MS);
   }
 
   public update(): void {
-    const signals = getRecentSignals();
-    const count = signals.length;
+    this.signals = getRecentSignals();
+    const count = this.signals.length;
 
     const countEl = this.badge.querySelector('.findings-count');
     if (countEl) {
@@ -68,7 +88,7 @@ export class IntelligenceGapBadge {
     if (count === 0) {
       this.badge.classList.add('status-none');
       this.badge.title = 'No recent intelligence findings';
-    } else if (count <= 3) {
+    } else if (count <= LOW_COUNT_THRESHOLD) {
       this.badge.classList.add('status-low');
       this.badge.title = `${count} intelligence finding${count > 1 ? 's' : ''}`;
     } else {
@@ -76,11 +96,11 @@ export class IntelligenceGapBadge {
       this.badge.title = `${count} intelligence findings - review recommended`;
     }
 
-    this.renderDropdown(signals);
+    this.renderDropdown();
   }
 
-  private renderDropdown(signals: CorrelationSignal[]): void {
-    if (signals.length === 0) {
+  private renderDropdown(): void {
+    if (this.signals.length === 0) {
       this.dropdown.innerHTML = `
         <div class="findings-header">
           <span class="header-title">Intelligence Findings</span>
@@ -97,17 +117,17 @@ export class IntelligenceGapBadge {
     }
 
     // Sort by timestamp (newest first) and confidence
-    const sorted = [...signals].sort((a, b) => {
+    const sorted = [...this.signals].sort((a, b) => {
       const timeDiff = b.timestamp.getTime() - a.timestamp.getTime();
-      if (Math.abs(timeDiff) < 60000) return b.confidence - a.confidence;
+      if (Math.abs(timeDiff) < SORT_TIME_TOLERANCE_MS) return b.confidence - a.confidence;
       return timeDiff;
     });
 
     const highConfidence = sorted.filter(s => s.confidence >= 70).length;
     const statusClass = highConfidence > 0 ? 'high' : 'moderate';
-    const statusText = highConfidence > 0 ? `${highConfidence} HIGH CONFIDENCE` : `${signals.length} DETECTED`;
+    const statusText = highConfidence > 0 ? `${highConfidence} HIGH CONFIDENCE` : `${this.signals.length} DETECTED`;
 
-    const findingsHtml = sorted.slice(0, 10).map(signal => {
+    const findingsHtml = sorted.slice(0, MAX_VISIBLE_FINDINGS).map(signal => {
       const context = getSignalContext(signal.type);
       const confidenceClass = signal.confidence >= 70 ? 'high' : signal.confidence >= 50 ? 'medium' : 'low';
       const timeAgo = this.formatTimeAgo(signal.timestamp);
@@ -127,6 +147,7 @@ export class IntelligenceGapBadge {
       `;
     }).join('');
 
+    const moreCount = this.signals.length - MAX_VISIBLE_FINDINGS;
     this.dropdown.innerHTML = `
       <div class="findings-header">
         <span class="header-title">Intelligence Findings</span>
@@ -136,22 +157,9 @@ export class IntelligenceGapBadge {
         <div class="findings-list">
           ${findingsHtml}
         </div>
-        ${signals.length > 10 ? `<div class="findings-more">+${signals.length - 10} more findings</div>` : ''}
+        ${moreCount > 0 ? `<div class="findings-more">+${moreCount} more findings</div>` : ''}
       </div>
     `;
-
-    // Add click handlers for individual findings
-    this.dropdown.querySelectorAll('.finding-item').forEach(item => {
-      item.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const id = item.getAttribute('data-signal-id');
-        const signal = signals.find(s => s.id === id);
-        if (signal && this.onSignalClick) {
-          this.onSignalClick(signal);
-          this.closeDropdown();
-        }
-      });
-    });
   }
 
   private getTypeIcon(type: string): string {
@@ -163,6 +171,12 @@ export class IntelligenceGapBadge {
       prediction_leads_news: '🔮',
       geo_convergence: '🌍',
       hotspot_escalation: '⚠️',
+      news_leads_markets: '📰',
+      velocity_spike: '📈',
+      convergence: '🔀',
+      triangulation: '🔺',
+      flow_drop: '⬇️',
+      sector_cascade: '🌊',
     };
     return icons[type] || '📌';
   }
@@ -194,7 +208,10 @@ export class IntelligenceGapBadge {
     if (this.refreshInterval) {
       clearInterval(this.refreshInterval);
     }
+    document.removeEventListener('click', this.boundCloseDropdown);
     this.badge.remove();
-    this.dropdown.remove();
   }
 }
+
+// Re-export with old name for backwards compatibility
+export { IntelligenceFindingsBadge as IntelligenceGapBadge };
