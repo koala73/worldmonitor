@@ -63,7 +63,7 @@ export class MapComponent {
     Record<keyof MapLayers, { minZoom: number; showLabels?: number }>
   > = {
     bases: { minZoom: 3, showLabels: 5 },
-    nuclear: { minZoom: 2, showLabels: 4 },
+    nuclear: { minZoom: 2 },
     conflicts: { minZoom: 1, showLabels: 3 },
     economic: { minZoom: 2, showLabels: 4 },
     natural: { minZoom: 1, showLabels: 2 },
@@ -903,11 +903,6 @@ export class MapComponent {
         div.style.top = `${pos[1]}px`;
         div.title = `${facility.name} (${facility.type})`;
 
-        const label = document.createElement('div');
-        label.className = 'nuclear-label';
-        label.textContent = facility.name;
-        div.appendChild(label);
-
         div.addEventListener('click', (e) => {
           e.stopPropagation();
           const rect = this.container.getBoundingClientRect();
@@ -1380,8 +1375,22 @@ export class MapComponent {
     }
 
     // Protests / Social Unrest Events (severity colors + icons)
+    // Filter to show only significant events on map (all events still used for CII analysis)
     if (this.state.layers.protests) {
-      this.protests.forEach((event) => {
+      const significantProtests = this.protests.filter((event) => {
+        // Always show: riots, high severity, or events with fatalities
+        if (event.eventType === 'riot') return true;
+        if (event.severity === 'high') return true;
+        if (event.fatalities && event.fatalities > 0) return true;
+        // Show medium severity at higher zoom levels
+        if (event.severity === 'medium' && this.state.zoom >= 3) return true;
+        // Show validated events
+        if (event.validated) return true;
+        // Hide low severity protests from map (still counted in CII)
+        return false;
+      });
+
+      significantProtests.forEach((event) => {
         const pos = projection([event.lon, event.lat]);
         if (!pos) return;
 
@@ -2367,13 +2376,13 @@ export class MapComponent {
   }
 
   private updateLabelVisibility(zoom: number): void {
-    const labels = this.overlays.querySelectorAll('.hotspot-label, .earthquake-label, .nuclear-label, .weather-label, .apt-label');
+    const labels = this.overlays.querySelectorAll('.hotspot-label, .earthquake-label, .weather-label, .apt-label');
     const labelRects: { el: Element; rect: DOMRect; priority: number }[] = [];
 
     // Collect all label bounds with priority
     labels.forEach((label) => {
       const el = label as HTMLElement;
-      const parent = el.closest('.hotspot, .earthquake-marker, .nuclear-marker, .weather-marker, .apt-marker');
+      const parent = el.closest('.hotspot, .earthquake-marker, .weather-marker, .apt-marker');
 
       // Assign priority based on parent type and level
       let priority = 1;
@@ -2388,9 +2397,6 @@ export class MapComponent {
         if (parent.classList.contains('extreme')) priority = 5;
         else if (parent.classList.contains('severe')) priority = 4;
         else priority = 2;
-      } else if (parent?.classList.contains('nuclear-marker')) {
-        if (parent.classList.contains('contested')) priority = 5;
-        else priority = 3;
       }
 
       // Reset visibility first
