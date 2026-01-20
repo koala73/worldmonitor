@@ -2362,6 +2362,60 @@ export class MapComponent {
     });
   }
 
+  public triggerTechCompanyClick(id: string): void {
+    const company = TECH_COMPANIES.find(c => c.id === id);
+    if (!company) return;
+
+    const width = this.container.clientWidth;
+    const height = this.container.clientHeight;
+    const projection = this.getProjection(width, height);
+    const pos = projection([company.lon, company.lat]);
+    if (!pos) return;
+
+    this.popup.show({
+      type: 'tech-company',
+      data: company,
+      x: pos[0],
+      y: pos[1],
+    });
+  }
+
+  public triggerAILabClick(id: string): void {
+    const lab = AI_RESEARCH_LABS.find(l => l.id === id);
+    if (!lab) return;
+
+    const width = this.container.clientWidth;
+    const height = this.container.clientHeight;
+    const projection = this.getProjection(width, height);
+    const pos = projection([lab.lon, lab.lat]);
+    if (!pos) return;
+
+    this.popup.show({
+      type: 'ai-lab',
+      data: lab,
+      x: pos[0],
+      y: pos[1],
+    });
+  }
+
+  public triggerStartupEcosystemClick(id: string): void {
+    const ecosystem = STARTUP_ECOSYSTEMS.find(e => e.id === id);
+    if (!ecosystem) return;
+
+    const width = this.container.clientWidth;
+    const height = this.container.clientHeight;
+    const projection = this.getProjection(width, height);
+    const pos = projection([ecosystem.lon, ecosystem.lat]);
+    if (!pos) return;
+
+    this.popup.show({
+      type: 'startup-ecosystem',
+      data: ecosystem,
+      x: pos[0],
+      y: pos[1],
+    });
+  }
+
   public enableLayer(layer: keyof MapLayers): void {
     if (!this.state.layers[layer]) {
       this.state.layers[layer] = true;
