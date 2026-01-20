@@ -1,7 +1,6 @@
 import type { NewsItem, Monitor, PanelConfig, MapLayers, RelatedAsset } from '@/types';
 import {
   FEEDS,
-  INTEL_SOURCES,
   SECTORS,
   COMMODITIES,
   MARKET_SYMBOLS,
@@ -1443,22 +1442,8 @@ export class App {
       }
     });
 
-    // Intel (uses different source) - run in parallel with category processing
-    const intelResult = await Promise.allSettled([fetchCategoryFeeds(INTEL_SOURCES)]);
-    if (intelResult[0]?.status === 'fulfilled') {
-      const intel = intelResult[0].value;
-      const intelPanel = this.newsPanels['intel'];
-      if (intelPanel) {
-        intelPanel.renderNews(intel);
-        const baseline = await updateBaseline('news:intel', intel.length);
-        const deviation = calculateDeviation(intel.length, baseline);
-        intelPanel.setDeviation(deviation.zScore, deviation.percentChange, deviation.level);
-      }
-      this.statusPanel?.updateFeed('Intel', { status: 'ok', itemCount: intel.length });
-      collectedNews.push(...intel);
-    } else {
-      console.error('[App] Intel feed failed:', intelResult[0]?.reason);
-    }
+    // Note: Intel feeds removed in tech/AI transformation
+    // All news now comes from tech/AI focused categories
 
     this.allNews = collectedNews;
 

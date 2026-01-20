@@ -108,6 +108,20 @@ export function getSourceType(sourceName: string): SourceType {
   return SOURCE_TYPES[sourceName] ?? 'other';
 }
 
+// Propaganda risk assessment - simplified for tech/AI focus (always returns low risk)
+export interface SourceRiskProfile {
+  risk: 'low' | 'medium' | 'high';
+  stateAffiliated?: string;
+  knownBiases?: string[];
+  note?: string;
+}
+
+export function getSourcePropagandaRisk(sourceName: string): SourceRiskProfile {
+  // For tech/AI sources, we don't need propaganda risk assessment
+  // All sources are independent tech media
+  return { risk: 'low' };
+}
+
 export const FEEDS: Record<string, Feed[]> = {
   // Core Tech News
   tech: [
@@ -234,8 +248,8 @@ export const ALERT_KEYWORDS = [
   'emergency patch', 'recall',
 ];
 
-// Major tech companies to track
-export const TECH_COMPANIES = [
+// Major tech companies to track (company names for filtering/matching)
+export const TECH_COMPANY_NAMES = [
   'OpenAI', 'Anthropic', 'Google', 'Microsoft', 'Meta', 'Apple', 'Amazon',
   'NVIDIA', 'AMD', 'Intel', 'Tesla', 'SpaceX', 'Salesforce', 'Oracle',
   'IBM', 'SAP', 'Adobe', 'Shopify', 'Stripe', 'Databricks', 'Snowflake',
