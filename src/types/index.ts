@@ -385,27 +385,28 @@ export interface PanelConfig {
 }
 
 export interface MapLayers {
-  conflicts: boolean;
-  bases: boolean;
+  // Infrastructure (kept from original)
   cables: boolean;
-  pipelines: boolean;
-  hotspots: boolean;
-  ais: boolean;
-  nuclear: boolean;
-  irradiators: boolean;
-  sanctions: boolean;
-  weather: boolean;
-  economic: boolean;
-  countries: boolean;
-  waterways: boolean;
   outages: boolean;
+
+  // Tech/AI specific layers
   datacenters: boolean;
-  protests: boolean;
-  flights: boolean;
-  military: boolean;
+  techCompanies: boolean;
+  aiLabs: boolean;
+  startupEcosystems: boolean;
+
+  // Market & stocks
+  techStocks: boolean;
+
+  // News & Research
+  arxivPapers: boolean;
+  hackernews: boolean;
+  githubTrending: boolean;
+
+  // Generic
+  weather: boolean;
   natural: boolean;
-  spaceports: boolean;
-  minerals: boolean;
+  countries: boolean;
 }
 
 export interface AIDataCenter {
@@ -422,6 +423,75 @@ export interface AIDataCenter {
   h100Equivalent?: number;
   sector?: string;
   note?: string;
+}
+
+// Tech Company Types
+export type TechSector =
+  | 'AI Research'
+  | 'Cloud/AI'
+  | 'Social/AI'
+  | 'AI Chips'
+  | 'AI Platform'
+  | 'AI Data'
+  | 'Enterprise/AI'
+  | 'Media/AI'
+  | 'Consumer/AI';
+
+export type OfficeType = 'headquarters' | 'major office' | 'research lab';
+
+export interface TechCompany {
+  id: string;
+  name: string;
+  sector: TechSector;
+  officeType: OfficeType;
+  city: string;
+  country: string;
+  lat: number;
+  lon: number;
+  employees?: number;
+  foundedYear?: number;
+  keyProducts?: string[];
+  stockSymbol?: string;
+  valuation?: number; // in USD
+}
+
+// AI Research Lab Types
+export type ResearchLabType = 'academic' | 'industry' | 'research institute';
+
+export interface AIResearchLab {
+  id: string;
+  name: string;
+  type: ResearchLabType;
+  city: string;
+  country: string;
+  lat: number;
+  lon: number;
+  foundedYear?: number;
+  focusAreas: string[];
+  notableWork?: string[];
+  publications?: number;
+  faculty?: number;
+}
+
+// Startup Ecosystem Types
+export type EcosystemTier = 'tier1' | 'tier2' | 'tier3';
+
+export interface StartupEcosystem {
+  id: string;
+  name: string;
+  city: string;
+  country: string;
+  lat: number;
+  lon: number;
+  ecosystemTier: EcosystemTier;
+  totalFunding2024: number; // in USD
+  activeStartups: number;
+  unicorns: number;
+  topSectors: string[];
+  majorVCs: string[];
+  notableStartups: string[];
+  avgSeedRound?: number; // in USD
+  avgSeriesA?: number; // in USD
 }
 
 export interface InternetOutage {
