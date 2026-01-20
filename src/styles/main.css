@@ -2568,6 +2568,215 @@ body.playback-mode .status-dot {
   border-left-color: #ffaa44;
 }
 
+/* Tech Company Markers */
+.tech-company-marker {
+  position: absolute;
+  transform: translate(-50%, -50%) scale(var(--marker-scale, 1));
+  transform-origin: center;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  z-index: 52;
+  cursor: pointer;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  background: #44ff88;
+  box-shadow: 0 0 8px #44ff8880, 0 0 16px #44ff8840;
+}
+
+.tech-company-marker:hover {
+  transform: translate(-50%, -50%) scale(calc(var(--marker-scale, 1) * 1.4));
+  background: #66ffaa;
+  box-shadow: 0 0 12px #44ff88, 0 0 24px #44ff8860;
+}
+
+/* Sector-specific colors */
+.tech-company-marker.ai-research { background: #ff44ff; box-shadow: 0 0 8px #ff44ff80; }
+.tech-company-marker.cloud-ai { background: #44aaff; box-shadow: 0 0 8px #44aaff80; }
+.tech-company-marker.social-ai { background: #ff8844; box-shadow: 0 0 8px #ff884480; }
+.tech-company-marker.ai-chips { background: #ffff44; box-shadow: 0 0 8px #ffff4480; }
+.tech-company-marker.ai-platform { background: #44ffff; box-shadow: 0 0 8px #44ffff80; }
+.tech-company-marker.ai-data { background: #aa88ff; box-shadow: 0 0 8px #aa88ff80; }
+.tech-company-marker.enterprise-ai { background: #88ff44; box-shadow: 0 0 8px #88ff4480; }
+.tech-company-marker.media-ai { background: #ff88ff; box-shadow: 0 0 8px #ff88ff80; }
+.tech-company-marker.consumer-ai { background: #88ffff; box-shadow: 0 0 8px #88ffff80; }
+
+.tech-company-label {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%) scale(calc(var(--label-scale, 1) * var(--marker-scale, 1)));
+  transform-origin: top center;
+  white-space: nowrap;
+  font-size: 7px;
+  color: #44ff88;
+  text-shadow: 0 0 4px var(--bg), 0 0 8px var(--bg);
+  font-weight: bold;
+  text-transform: uppercase;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tech-company-marker:hover .tech-company-label {
+  opacity: 1;
+}
+
+.popup-header.tech-company {
+  background: linear-gradient(135deg, #1a4a3020, #0a3a2010);
+  border-left: 3px solid #44ff88;
+}
+
+/* AI Research Lab Markers */
+.ai-lab-marker {
+  position: absolute;
+  transform: translate(-50%, -50%) scale(var(--marker-scale, 1));
+  transform-origin: center;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  z-index: 52;
+  cursor: pointer;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  background: #ff44ff;
+  box-shadow: 0 0 8px #ff44ff80, 0 0 16px #ff44ff40;
+  border: 1px solid #ff66ff;
+}
+
+.ai-lab-marker:hover {
+  transform: translate(-50%, -50%) scale(calc(var(--marker-scale, 1) * 1.4));
+  background: #ff66ff;
+  box-shadow: 0 0 12px #ff44ff, 0 0 24px #ff44ff60;
+}
+
+.ai-lab-marker.academic { background: #4488ff; border-color: #66aaff; box-shadow: 0 0 8px #4488ff80; }
+.ai-lab-marker.industry { background: #ff8844; border-color: #ffaa66; box-shadow: 0 0 8px #ff884480; }
+.ai-lab-marker.research-institute { background: #88ff44; border-color: #aaff66; box-shadow: 0 0 8px #88ff4480; }
+
+.ai-lab-label {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%) scale(calc(var(--label-scale, 1) * var(--marker-scale, 1)));
+  transform-origin: top center;
+  white-space: nowrap;
+  font-size: 7px;
+  color: #ff66ff;
+  text-shadow: 0 0 4px var(--bg), 0 0 8px var(--bg);
+  font-weight: bold;
+  text-transform: uppercase;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ai-lab-marker:hover .ai-lab-label {
+  opacity: 1;
+}
+
+.popup-header.ai-lab {
+  background: linear-gradient(135deg, #3a225520, #2a113310);
+  border-left: 3px solid #ff44ff;
+}
+
+/* Startup Ecosystem Markers */
+.startup-ecosystem-marker {
+  position: absolute;
+  transform: translate(-50%, -50%) scale(var(--marker-scale, 1));
+  transform-origin: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  z-index: 53;
+  cursor: pointer;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  background: #ffaa44;
+  box-shadow: 0 0 10px #ffaa4480, 0 0 20px #ffaa4440;
+  border: 2px solid #ffcc66;
+}
+
+.startup-ecosystem-marker:hover {
+  transform: translate(-50%, -50%) scale(calc(var(--marker-scale, 1) * 1.5));
+  background: #ffcc66;
+  box-shadow: 0 0 16px #ffaa44, 0 0 32px #ffaa4460;
+}
+
+.startup-ecosystem-marker.tier1 {
+  background: #ffaa44;
+  border-color: #ffcc66;
+  box-shadow: 0 0 12px #ffaa44, 0 0 24px #ffaa4480;
+}
+.startup-ecosystem-marker.tier2 {
+  background: #ff8844;
+  border-color: #ffaa66;
+  box-shadow: 0 0 10px #ff8844, 0 0 20px #ff884460;
+}
+.startup-ecosystem-marker.tier3 {
+  background: #ff6644;
+  border-color: #ff8866;
+  box-shadow: 0 0 8px #ff6644, 0 0 16px #ff664440;
+}
+
+.startup-ecosystem-label {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%) scale(calc(var(--label-scale, 1) * var(--marker-scale, 1)));
+  transform-origin: top center;
+  white-space: nowrap;
+  font-size: 8px;
+  color: #ffcc66;
+  text-shadow: 0 0 4px var(--bg), 0 0 8px var(--bg);
+  font-weight: bold;
+  text-transform: uppercase;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+  max-width: 90px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.startup-ecosystem-marker:hover .startup-ecosystem-label {
+  opacity: 1;
+}
+
+.popup-header.startup-ecosystem {
+  background: linear-gradient(135deg, #3a2a1520, #2a150a10);
+  border-left: 3px solid #ffaa44;
+}
+
+/* Tech/AI popup content styles */
+.tech-products,
+.vc-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.tech-product-tag,
+.vc-tag {
+  font-size: 9px;
+  padding: 3px 6px;
+  background: rgba(68, 255, 136, 0.1);
+  border: 1px solid rgba(68, 255, 136, 0.3);
+  border-radius: 3px;
+  color: #44ff88;
+  white-space: nowrap;
+}
+
+.vc-tag {
+  background: rgba(255, 170, 68, 0.1);
+  border-color: rgba(255, 170, 68, 0.3);
+  color: #ffaa44;
+}
+
 /* Heatmap */
 .heatmap {
   display: grid;
