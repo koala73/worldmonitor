@@ -243,7 +243,7 @@ export const TECH_COMPANIES: TechCompany[] = [
   {
     id: 'bytedance-hq',
     name: 'ByteDance',
-    sector: 'AI/Social',
+    sector: 'Social/AI',
     officeType: 'headquarters',
     city: 'Beijing',
     country: 'China',

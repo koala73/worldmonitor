@@ -3,29 +3,17 @@ import * as topojson from 'topojson-client';
 import { escapeHtml } from '@/utils/sanitize';
 import type { Topology, GeometryCollection } from 'topojson-specification';
 import type { Feature, Geometry } from 'geojson';
-import type { MapLayers, Hotspot, NewsItem, Earthquake, InternetOutage, RelatedAsset, AssetType, AisDisruptionEvent, AisDensityZone, CableAdvisory, RepairShip, SocialUnrestEvent, AirportDelayAlert, MilitaryFlight, MilitaryVessel, MilitaryFlightCluster, MilitaryVesselCluster, NaturalEvent } from '@/types';
+import type { MapLayers, Hotspot, NewsItem, Earthquake, InternetOutage, RelatedAsset, AssetType, CableAdvisory, RepairShip, NaturalEvent } from '@/types';
 import { getNaturalEventIcon } from '@/services/eonet';
 import type { WeatherAlert } from '@/services/weather';
 import { getSeverityColor } from '@/services/weather';
 import {
   MAP_URLS,
   INTEL_HOTSPOTS,
-  CONFLICT_ZONES,
-  MILITARY_BASES,
   UNDERSEA_CABLES,
-  NUCLEAR_FACILITIES,
-  GAMMA_IRRADIATORS,
-  PIPELINES,
-  PIPELINE_COLORS,
-  SANCTIONED_COUNTRIES,
-  STRATEGIC_WATERWAYS,
   APT_GROUPS,
   COUNTRY_LABELS,
-  ECONOMIC_CENTERS,
   AI_DATA_CENTERS,
-  PORTS,
-  SPACEPORTS,
-  CRITICAL_MINERALS,
   TECH_COMPANIES,
   AI_RESEARCH_LABS,
   STARTUP_ECOSYSTEMS,
@@ -34,7 +22,6 @@ import { MapPopup } from './MapPopup';
 import {
   updateHotspotEscalation,
   getHotspotEscalation,
-  setMilitaryData,
   setCIIGetter,
   setGeoAlertGetter,
 } from '@/services/hotspot-escalation';
@@ -66,10 +53,6 @@ export class MapComponent {
   private static readonly LAYER_ZOOM_THRESHOLDS: Partial<
     Record<keyof MapLayers, { minZoom: number; showLabels?: number }>
   > = {
-    bases: { minZoom: 3, showLabels: 5 },
-    nuclear: { minZoom: 2 },
-    conflicts: { minZoom: 1, showLabels: 3 },
-    economic: { minZoom: 2 },
     natural: { minZoom: 1, showLabels: 2 },
   };
 
@@ -91,16 +74,8 @@ export class MapComponent {
   private earthquakes: Earthquake[] = [];
   private weatherAlerts: WeatherAlert[] = [];
   private outages: InternetOutage[] = [];
-  private aisDisruptions: AisDisruptionEvent[] = [];
-  private aisDensity: AisDensityZone[] = [];
   private cableAdvisories: CableAdvisory[] = [];
   private repairShips: RepairShip[] = [];
-  private protests: SocialUnrestEvent[] = [];
-  private flightDelays: AirportDelayAlert[] = [];
-  private militaryFlights: MilitaryFlight[] = [];
-  private militaryFlightClusters: MilitaryFlightCluster[] = [];
-  private militaryVessels: MilitaryVessel[] = [];
-  private militaryVesselClusters: MilitaryVesselCluster[] = [];
   private naturalEvents: NaturalEvent[] = [];
   private news: NewsItem[] = [];
   private popup: MapPopup;
@@ -110,11 +85,11 @@ export class MapComponent {
   private layerZoomOverrides: Partial<Record<keyof MapLayers, boolean>> = {};
   private onStateChange?: (state: MapState) => void;
   private highlightedAssets: Record<AssetType, Set<string>> = {
-    pipeline: new Set(),
     cable: new Set(),
     datacenter: new Set(),
-    base: new Set(),
-    nuclear: new Set(),
+    'tech-company': new Set(),
+    'ai-lab': new Set(),
+    'startup-ecosystem': new Set(),
   };
   private boundVisibilityHandler!: () => void;
   private renderScheduled = false;
@@ -298,21 +273,17 @@ export class MapComponent {
     toggles.className = 'layer-toggles';
     toggles.id = 'layerToggles';
 
-    // Grouped: geopolitical | military | infrastructure | transport | natural | economic | labels
+    // Grouped: infrastructure | natural | tech/AI | labels
     const layers: (keyof MapLayers)[] = [
-      'conflicts', 'hotspots', 'sanctions', 'protests',  // geopolitical
-      'bases', 'nuclear', 'irradiators',                 // military/strategic
-      'military',                                         // military tracking (flights + vessels)
-      'cables', 'pipelines', 'outages', 'datacenters',   // infrastructure
-      'ais', 'flights',                                   // transport
+      'cables', 'outages', 'datacenters',                // infrastructure
       'natural', 'weather',                               // natural
-      'economic',                                         // economic
-      'countries', 'waterways',                           // labels
+      'techCompanies', 'aiLabs', 'startupEcosystems',    // tech/AI
+      'countries',                                        // labels
     ];
     const layerLabels: Partial<Record<keyof MapLayers, string>> = {
-      ais: 'Shipping',
-      flights: 'Delays',
-      military: 'Military',
+      techCompanies: 'Tech Companies',
+      aiLabs: 'AI Labs',
+      startupEcosystems: 'Startups',
     };
 
     layers.forEach((layer) => {
@@ -354,44 +325,28 @@ export class MapComponent {
           <div class="layer-help-title">Time Filter (top-right)</div>
           <div class="layer-help-item"><span>1H/6H/24H</span> Filter time-based data to recent hours</div>
           <div class="layer-help-item"><span>7D/30D/ALL</span> Show data from past week, month, or all time</div>
-          <div class="layer-help-note">Affects: Earthquakes, Weather, Protests, Outages</div>
-        </div>
-        <div class="layer-help-section">
-          <div class="layer-help-title">Geopolitical</div>
-          <div class="layer-help-item"><span>CONFLICTS</span> Active war zones (Ukraine, Gaza, etc.) with boundaries</div>
-          <div class="layer-help-item"><span>HOTSPOTS</span> Tension regions - color-coded by news activity level</div>
-          <div class="layer-help-item"><span>SANCTIONS</span> Countries under US/EU/UN economic sanctions</div>
-          <div class="layer-help-item"><span>PROTESTS</span> Civil unrest, demonstrations (time-filtered)</div>
-        </div>
-        <div class="layer-help-section">
-          <div class="layer-help-title">Military & Strategic</div>
-          <div class="layer-help-item"><span>BASES</span> US/NATO, China, Russia military installations (150+)</div>
-          <div class="layer-help-item"><span>NUCLEAR</span> Power plants, enrichment, weapons facilities</div>
-          <div class="layer-help-item"><span>IRRADIATORS</span> Industrial gamma irradiator facilities</div>
-          <div class="layer-help-item"><span>MILITARY</span> Live military aircraft and vessel tracking</div>
+          <div class="layer-help-note">Affects: Earthquakes, Weather, Outages</div>
         </div>
         <div class="layer-help-section">
           <div class="layer-help-title">Infrastructure</div>
           <div class="layer-help-item"><span>CABLES</span> Major undersea fiber optic cables (20 backbone routes)</div>
-          <div class="layer-help-item"><span>PIPELINES</span> Oil/gas pipelines (Nord Stream, TAPI, etc.)</div>
           <div class="layer-help-item"><span>OUTAGES</span> Internet blackouts and disruptions</div>
           <div class="layer-help-item"><span>DATACENTERS</span> AI compute clusters ≥10,000 GPUs only</div>
         </div>
         <div class="layer-help-section">
-          <div class="layer-help-title">Transport</div>
-          <div class="layer-help-item"><span>SHIPPING</span> Vessels, chokepoints, 61 strategic ports</div>
-          <div class="layer-help-item"><span>DELAYS</span> Airport delays and ground stops (FAA)</div>
-        </div>
-        <div class="layer-help-section">
-          <div class="layer-help-title">Natural & Economic</div>
+          <div class="layer-help-title">Natural Events</div>
           <div class="layer-help-item"><span>NATURAL</span> Earthquakes (USGS) + storms, fires, volcanoes, floods (NASA EONET)</div>
           <div class="layer-help-item"><span>WEATHER</span> Severe weather alerts</div>
-          <div class="layer-help-item"><span>ECONOMIC</span> Stock exchanges & central banks</div>
+        </div>
+        <div class="layer-help-section">
+          <div class="layer-help-title">Tech & AI</div>
+          <div class="layer-help-item"><span>TECH COMPANIES</span> Major technology company headquarters and offices</div>
+          <div class="layer-help-item"><span>AI LABS</span> Leading AI research laboratories</div>
+          <div class="layer-help-item"><span>STARTUPS</span> Startup ecosystem hubs</div>
         </div>
         <div class="layer-help-section">
           <div class="layer-help-title">Labels</div>
           <div class="layer-help-item"><span>COUNTRIES</span> Country name overlays</div>
-          <div class="layer-help-item"><span>WATERWAYS</span> Strategic chokepoint labels</div>
         </div>
       </div>
     `;
@@ -732,18 +687,6 @@ export class MapComponent {
       this.renderCables(projection);
     }
 
-    if (this.state.layers.pipelines) {
-      this.renderPipelines(projection);
-    }
-
-    if (this.state.layers.conflicts) {
-      this.renderConflicts(projection);
-    }
-
-    if (this.state.layers.ais) {
-      this.renderAisDensity(projection);
-    }
-
     // Tech/AI layers
     if (this.state.layers.techCompanies) {
       this.renderTechCompanies(projection);
@@ -886,97 +829,14 @@ export class MapComponent {
     });
   }
 
-  private renderPipelines(projection: d3.GeoProjection): void {
-    if (!this.dynamicLayerGroup) return;
-    const pipelineGroup = this.dynamicLayerGroup.append('g').attr('class', 'pipelines');
-
-    PIPELINES.forEach((pipeline) => {
-      const lineGenerator = d3
-        .line<[number, number]>()
-        .x((d) => projection(d)?.[0] ?? 0)
-        .y((d) => projection(d)?.[1] ?? 0)
-        .curve(d3.curveCardinal.tension(0.5));
-
-      const color = PIPELINE_COLORS[pipeline.type] || '#888888';
-      const opacity = 0.85;
-      const dashArray = pipeline.status === 'construction' ? '4,2' : 'none';
-
-      const isHighlighted = this.highlightedAssets.pipeline.has(pipeline.id);
-      const path = pipelineGroup
-        .append('path')
-        .attr('class', `pipeline-path pipeline-${pipeline.type} pipeline-${pipeline.status}${isHighlighted ? ' asset-highlight asset-highlight-pipeline' : ''}`)
-        .attr('d', lineGenerator(pipeline.points))
-        .attr('fill', 'none')
-        .attr('stroke', color)
-        .attr('stroke-width', 2.5)
-        .attr('stroke-opacity', opacity)
-        .attr('stroke-linecap', 'round')
-        .attr('stroke-linejoin', 'round');
-
-      if (dashArray !== 'none') {
-        path.attr('stroke-dasharray', dashArray);
-      }
-
-      path.append('title').text(`${pipeline.name} (${pipeline.type.toUpperCase()})`);
-
-      path.on('click', (event: MouseEvent) => {
-        event.stopPropagation();
-        const rect = this.container.getBoundingClientRect();
-        this.popup.show({
-          type: 'pipeline',
-          data: pipeline,
-          x: event.clientX - rect.left,
-          y: event.clientY - rect.top,
-        });
-      });
-    });
-  }
-
-  private renderConflicts(projection: d3.GeoProjection): void {
-    if (!this.dynamicLayerGroup) return;
-    const conflictGroup = this.dynamicLayerGroup.append('g').attr('class', 'conflicts');
-
-    CONFLICT_ZONES.forEach((zone) => {
-      const points = zone.coords
-        .map((c) => projection(c as [number, number]))
-        .filter((p): p is [number, number] => p !== null);
-
-      if (points.length > 0) {
-        conflictGroup
-          .append('polygon')
-          .attr('class', 'conflict-zone')
-          .attr('points', points.map((p) => p.join(',')).join(' '));
-        // Labels are now rendered as HTML overlays in renderConflictLabels()
-      }
-    });
-  }
-
 
   private updateCountryFills(): void {
     if (!this.baseLayerGroup || !this.countryFeatures) return;
 
-    const sanctionColors: Record<string, string> = {
-      severe: 'rgba(255, 0, 0, 0.35)',
-      high: 'rgba(255, 100, 0, 0.25)',
-      moderate: 'rgba(255, 200, 0, 0.2)',
-    };
     const defaultFill = '#0d3028';
-    const useSanctions = this.state.layers.sanctions;
 
-    this.baseLayerGroup.selectAll('.country').each(function (datum) {
+    this.baseLayerGroup.selectAll('.country').each(function () {
       const el = d3.select(this);
-      const id = datum as { id?: number };
-      if (!useSanctions) {
-        el.attr('fill', defaultFill);
-        return;
-      }
-      if (id?.id !== undefined && SANCTIONED_COUNTRIES[id.id]) {
-        const level = SANCTIONED_COUNTRIES[id.id];
-        if (level) {
-          el.attr('fill', sanctionColors[level] || defaultFill);
-          return;
-        }
-      }
       el.attr('fill', defaultFill);
     });
   }
@@ -989,179 +849,8 @@ export class MapComponent {
       this.renderCountryLabels(projection);
     }
 
-
-    // Strategic waterways
-    if (this.state.layers.waterways) {
-      this.renderWaterways(projection);
-    }
-
-    if (this.state.layers.ais) {
-      this.renderAisDisruptions(projection);
-      this.renderPorts(projection);
-    }
-
     // APT groups
     this.renderAPTMarkers(projection);
-
-    // Nuclear facilities (always HTML - shapes convey status)
-    if (this.state.layers.nuclear) {
-      NUCLEAR_FACILITIES.forEach((facility) => {
-        const pos = projection([facility.lon, facility.lat]);
-        if (!pos) return;
-
-        const div = document.createElement('div');
-        const isHighlighted = this.highlightedAssets.nuclear.has(facility.id);
-        div.className = `nuclear-marker ${facility.status}${isHighlighted ? ' asset-highlight asset-highlight-nuclear' : ''}`;
-        div.style.left = `${pos[0]}px`;
-        div.style.top = `${pos[1]}px`;
-        div.title = `${facility.name} (${facility.type})`;
-
-        div.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const rect = this.container.getBoundingClientRect();
-          this.popup.show({
-            type: 'nuclear',
-            data: facility,
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top,
-          });
-        });
-
-        this.overlays.appendChild(div);
-      });
-    }
-
-    // Gamma irradiators (IAEA DIIF)
-    if (this.state.layers.irradiators) {
-      GAMMA_IRRADIATORS.forEach((irradiator) => {
-        const pos = projection([irradiator.lon, irradiator.lat]);
-        if (!pos) return;
-
-        const div = document.createElement('div');
-        div.className = 'irradiator-marker';
-        div.style.left = `${pos[0]}px`;
-        div.style.top = `${pos[1]}px`;
-        div.title = `${irradiator.city}, ${irradiator.country}`;
-
-        const label = document.createElement('div');
-        label.className = 'irradiator-label';
-        label.textContent = irradiator.city;
-        div.appendChild(label);
-
-        div.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const rect = this.container.getBoundingClientRect();
-          this.popup.show({
-            type: 'irradiator',
-            data: irradiator,
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top,
-          });
-        });
-
-        this.overlays.appendChild(div);
-      });
-    }
-
-    // Conflict zone click areas
-    if (this.state.layers.conflicts) {
-      CONFLICT_ZONES.forEach((zone) => {
-        const centerPos = projection(zone.center as [number, number]);
-        if (!centerPos) return;
-
-        const clickArea = document.createElement('div');
-        clickArea.className = 'conflict-click-area';
-        clickArea.style.left = `${centerPos[0] - 40}px`;
-        clickArea.style.top = `${centerPos[1] - 20}px`;
-        clickArea.style.width = '80px';
-        clickArea.style.height = '40px';
-        clickArea.style.cursor = 'pointer';
-
-        clickArea.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const rect = this.container.getBoundingClientRect();
-          this.popup.show({
-            type: 'conflict',
-            data: zone,
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top,
-          });
-        });
-
-        this.overlays.appendChild(clickArea);
-      });
-    }
-
-    // Hotspots (always HTML - level colors and BREAKING badges)
-    if (this.state.layers.hotspots) {
-      this.hotspots.forEach((spot) => {
-        const pos = projection([spot.lon, spot.lat]);
-        if (!pos) return;
-
-        const div = document.createElement('div');
-        div.className = 'hotspot';
-        div.style.left = `${pos[0]}px`;
-        div.style.top = `${pos[1]}px`;
-
-        const breakingBadge = spot.hasBreaking
-          ? '<div class="hotspot-breaking">BREAKING</div>'
-          : '';
-
-        div.innerHTML = `
-          ${breakingBadge}
-          <div class="hotspot-marker ${escapeHtml(spot.level || 'low')}"></div>
-        `;
-
-        div.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const relatedNews = this.getRelatedNews(spot);
-          const rect = this.container.getBoundingClientRect();
-          this.popup.show({
-            type: 'hotspot',
-            data: spot,
-            relatedNews,
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top,
-          });
-          this.popup.loadHotspotGdeltContext(spot);
-          this.onHotspotClick?.(spot);
-        });
-
-        this.overlays.appendChild(div);
-      });
-    }
-
-    // Military bases (always HTML - nation colors matter)
-    if (this.state.layers.bases) {
-      MILITARY_BASES.forEach((base) => {
-        const pos = projection([base.lon, base.lat]);
-        if (!pos) return;
-
-        const div = document.createElement('div');
-        const isHighlighted = this.highlightedAssets.base.has(base.id);
-        div.className = `base-marker ${base.type}${isHighlighted ? ' asset-highlight asset-highlight-base' : ''}`;
-        div.style.left = `${pos[0]}px`;
-        div.style.top = `${pos[1]}px`;
-
-        const label = document.createElement('div');
-        label.className = 'base-label';
-        label.textContent = base.name;
-        div.appendChild(label);
-
-        div.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const rect = this.container.getBoundingClientRect();
-          this.popup.show({
-            type: 'base',
-            data: base,
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top,
-          });
-        });
-
-        this.overlays.appendChild(div);
-      });
-    }
 
     // Earthquakes (magnitude-based sizing) - part of NATURAL layer
     if (this.state.layers.natural) {
@@ -1207,37 +896,6 @@ export class MapComponent {
       console.log('[Map] Actually rendered', rendered, 'earthquake markers');
     }
 
-    // Economic Centers (always HTML - emoji icons for type distinction)
-    if (this.state.layers.economic) {
-      ECONOMIC_CENTERS.forEach((center) => {
-        const pos = projection([center.lon, center.lat]);
-        if (!pos) return;
-
-        const div = document.createElement('div');
-        div.className = `economic-marker ${center.type}`;
-        div.style.left = `${pos[0]}px`;
-        div.style.top = `${pos[1]}px`;
-
-        const icon = document.createElement('div');
-        icon.className = 'economic-icon';
-        icon.textContent = center.type === 'exchange' ? '📈' : center.type === 'central-bank' ? '🏛' : '💰';
-        div.appendChild(icon);
-        div.title = center.name;
-
-        div.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const rect = this.container.getBoundingClientRect();
-          this.popup.show({
-            type: 'economic',
-            data: center,
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top,
-          });
-        });
-
-        this.overlays.appendChild(div);
-      });
-    }
 
     // Weather Alerts (severity icons)
     if (this.state.layers.weather) {
@@ -1410,367 +1068,6 @@ export class MapComponent {
       });
     }
 
-    // Spaceports (🚀 icon)
-    if (this.state.layers.spaceports) {
-      SPACEPORTS.forEach((port) => {
-        const pos = projection([port.lon, port.lat]);
-        if (!pos) return;
-
-        const div = document.createElement('div');
-        div.className = `spaceport-marker ${port.status}`;
-        div.style.left = `${pos[0]}px`;
-        div.style.top = `${pos[1]}px`;
-
-        const icon = document.createElement('div');
-        icon.className = 'spaceport-icon';
-        icon.textContent = '🚀';
-        div.appendChild(icon);
-
-        const label = document.createElement('div');
-        label.className = 'spaceport-label';
-        label.textContent = port.name;
-        div.appendChild(label);
-
-        div.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const rect = this.container.getBoundingClientRect();
-          this.popup.show({
-            type: 'spaceport',
-            data: port,
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top,
-          });
-        });
-
-        this.overlays.appendChild(div);
-      });
-    }
-
-    // Critical Minerals (💎 icon)
-    if (this.state.layers.minerals) {
-      CRITICAL_MINERALS.forEach((mine) => {
-        const pos = projection([mine.lon, mine.lat]);
-        if (!pos) return;
-
-        const div = document.createElement('div');
-        div.className = `mineral-marker ${mine.status}`;
-        div.style.left = `${pos[0]}px`;
-        div.style.top = `${pos[1]}px`;
-
-        const icon = document.createElement('div');
-        icon.className = 'mineral-icon';
-        // Select icon based on mineral type
-        icon.textContent = mine.mineral === 'Lithium' ? '🔋' : mine.mineral === 'Rare Earths' ? '🧲' : '💎';
-        div.appendChild(icon);
-
-        const label = document.createElement('div');
-        label.className = 'mineral-label';
-        label.textContent = `${mine.mineral} - ${mine.name}`;
-        div.appendChild(label);
-
-        div.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const rect = this.container.getBoundingClientRect();
-          this.popup.show({
-            type: 'mineral',
-            data: mine,
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top,
-          });
-        });
-
-        this.overlays.appendChild(div);
-      });
-    }
-
-    // Protests / Social Unrest Events (severity colors + icons)
-    // Filter to show only significant events on map (all events still used for CII analysis)
-    if (this.state.layers.protests) {
-      const significantProtests = this.protests.filter((event) => {
-        // Only show riots and high severity (red markers)
-        // All protests still counted in CII analysis
-        return event.eventType === 'riot' || event.severity === 'high';
-      });
-
-      significantProtests.forEach((event) => {
-        const pos = projection([event.lon, event.lat]);
-        if (!pos) return;
-
-        const div = document.createElement('div');
-        div.className = `protest-marker ${event.severity} ${event.eventType}`;
-        div.style.left = `${pos[0]}px`;
-        div.style.top = `${pos[1]}px`;
-
-        const icon = document.createElement('div');
-        icon.className = 'protest-icon';
-        icon.textContent = event.eventType === 'riot' ? '🔥' : event.eventType === 'strike' ? '✊' : '📢';
-        div.appendChild(icon);
-        div.title = `${event.city || event.country} - ${event.eventType} (${event.severity})`;
-
-        if (event.validated) {
-          div.classList.add('validated');
-        }
-
-        div.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const rect = this.container.getBoundingClientRect();
-          this.popup.show({
-            type: 'protest',
-            data: event,
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top,
-          });
-        });
-
-        this.overlays.appendChild(div);
-      });
-    }
-
-    // Flight Delays (delay severity colors + ✈️ icons)
-    if (this.state.layers.flights) {
-      this.flightDelays.forEach((delay) => {
-        const pos = projection([delay.lon, delay.lat]);
-        if (!pos) return;
-
-        const div = document.createElement('div');
-        div.className = `flight-delay-marker ${delay.severity}`;
-        div.style.left = `${pos[0]}px`;
-        div.style.top = `${pos[1]}px`;
-
-        const icon = document.createElement('div');
-        icon.className = 'flight-delay-icon';
-        icon.textContent = delay.delayType === 'ground_stop' ? '🛑' : delay.severity === 'severe' ? '✈️' : '🛫';
-        div.appendChild(icon);
-
-        if (this.state.zoom >= 3) {
-          const label = document.createElement('div');
-          label.className = 'flight-delay-label';
-          label.textContent = `${delay.iata} ${delay.avgDelayMinutes > 0 ? `+${delay.avgDelayMinutes}m` : ''}`;
-          div.appendChild(label);
-        }
-
-        div.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const rect = this.container.getBoundingClientRect();
-          this.popup.show({
-            type: 'flight',
-            data: delay,
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top,
-          });
-        });
-
-        this.overlays.appendChild(div);
-      });
-    }
-
-    // Military Tracking (flights and vessels)
-    if (this.state.layers.military) {
-      // Render individual flights
-      this.militaryFlights.forEach((flight) => {
-        const pos = projection([flight.lon, flight.lat]);
-        if (!pos) return;
-
-        const div = document.createElement('div');
-        div.className = `military-flight-marker ${flight.operator} ${flight.aircraftType}${flight.isInteresting ? ' interesting' : ''}`;
-        div.style.left = `${pos[0]}px`;
-        div.style.top = `${pos[1]}px`;
-
-        // Crosshair icon - rotates with heading
-        const icon = document.createElement('div');
-        icon.className = `military-flight-icon ${flight.aircraftType}`;
-        icon.style.transform = `rotate(${flight.heading}deg)`;
-        // CSS handles the crosshair rendering
-        div.appendChild(icon);
-
-        // Show callsign at higher zoom levels
-        if (this.state.zoom >= 3) {
-          const label = document.createElement('div');
-          label.className = 'military-flight-label';
-          label.textContent = flight.callsign;
-          div.appendChild(label);
-        }
-
-        // Show altitude indicator
-        if (flight.altitude > 0) {
-          const alt = document.createElement('div');
-          alt.className = 'military-flight-altitude';
-          alt.textContent = `FL${Math.round(flight.altitude / 100)}`;
-          div.appendChild(alt);
-        }
-
-        div.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const rect = this.container.getBoundingClientRect();
-          this.popup.show({
-            type: 'militaryFlight',
-            data: flight,
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top,
-          });
-        });
-
-        this.overlays.appendChild(div);
-
-        // Render flight track if available
-        if (flight.track && flight.track.length > 1 && this.state.zoom >= 2) {
-          const trackLine = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
-          const points = flight.track
-            .map((p) => {
-              const pt = projection([p[1], p[0]]);
-              return pt ? `${pt[0]},${pt[1]}` : null;
-            })
-            .filter(Boolean)
-            .join(' ');
-
-          if (points) {
-            trackLine.setAttribute('points', points);
-            trackLine.setAttribute('class', `military-flight-track ${flight.operator}`);
-            trackLine.setAttribute('fill', 'none');
-            trackLine.setAttribute('stroke-width', '1.5');
-            trackLine.setAttribute('stroke-dasharray', '4,2');
-            this.dynamicLayerGroup?.select('.overlays-svg').append(() => trackLine);
-          }
-        }
-      });
-
-      // Render flight clusters
-      this.militaryFlightClusters.forEach((cluster) => {
-        const pos = projection([cluster.lon, cluster.lat]);
-        if (!pos) return;
-
-        const div = document.createElement('div');
-        div.className = `military-cluster-marker flight-cluster ${cluster.activityType || 'unknown'}`;
-        div.style.left = `${pos[0]}px`;
-        div.style.top = `${pos[1]}px`;
-
-        const count = document.createElement('div');
-        count.className = 'cluster-count';
-        count.textContent = String(cluster.flightCount);
-        div.appendChild(count);
-
-        const label = document.createElement('div');
-        label.className = 'cluster-label';
-        label.textContent = cluster.name;
-        div.appendChild(label);
-
-        div.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const rect = this.container.getBoundingClientRect();
-          this.popup.show({
-            type: 'militaryFlightCluster',
-            data: cluster,
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top,
-          });
-        });
-
-        this.overlays.appendChild(div);
-      });
-
-      // Military Vessels (warships, carriers, submarines)
-      // Render individual vessels
-      this.militaryVessels.forEach((vessel) => {
-        const pos = projection([vessel.lon, vessel.lat]);
-        if (!pos) return;
-
-        const div = document.createElement('div');
-        div.className = `military-vessel-marker ${vessel.operator} ${vessel.vesselType}${vessel.isDark ? ' dark-vessel' : ''}${vessel.isInteresting ? ' interesting' : ''}`;
-        div.style.left = `${pos[0]}px`;
-        div.style.top = `${pos[1]}px`;
-
-        const icon = document.createElement('div');
-        icon.className = `military-vessel-icon ${vessel.vesselType}`;
-        icon.style.transform = `rotate(${vessel.heading}deg)`;
-        // CSS handles the diamond/anchor rendering
-        div.appendChild(icon);
-
-        // Dark vessel warning indicator
-        if (vessel.isDark) {
-          const darkIndicator = document.createElement('div');
-          darkIndicator.className = 'dark-vessel-indicator';
-          darkIndicator.textContent = '⚠️';
-          darkIndicator.title = 'AIS Signal Lost';
-          div.appendChild(darkIndicator);
-        }
-
-        // Show vessel name at higher zoom
-        if (this.state.zoom >= 3) {
-          const label = document.createElement('div');
-          label.className = 'military-vessel-label';
-          label.textContent = vessel.name;
-          div.appendChild(label);
-        }
-
-        div.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const rect = this.container.getBoundingClientRect();
-          this.popup.show({
-            type: 'militaryVessel',
-            data: vessel,
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top,
-          });
-        });
-
-        this.overlays.appendChild(div);
-
-        // Render vessel track if available
-        if (vessel.track && vessel.track.length > 1 && this.state.zoom >= 2) {
-          const trackLine = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
-          const points = vessel.track
-            .map((p) => {
-              const pt = projection([p[1], p[0]]);
-              return pt ? `${pt[0]},${pt[1]}` : null;
-            })
-            .filter(Boolean)
-            .join(' ');
-
-          if (points) {
-            trackLine.setAttribute('points', points);
-            trackLine.setAttribute('class', `military-vessel-track ${vessel.operator}`);
-            trackLine.setAttribute('fill', 'none');
-            trackLine.setAttribute('stroke-width', '2');
-            this.dynamicLayerGroup?.select('.overlays-svg').append(() => trackLine);
-          }
-        }
-      });
-
-      // Render vessel clusters
-      this.militaryVesselClusters.forEach((cluster) => {
-        const pos = projection([cluster.lon, cluster.lat]);
-        if (!pos) return;
-
-        const div = document.createElement('div');
-        div.className = `military-cluster-marker vessel-cluster ${cluster.activityType || 'unknown'}`;
-        div.style.left = `${pos[0]}px`;
-        div.style.top = `${pos[1]}px`;
-
-        const count = document.createElement('div');
-        count.className = 'cluster-count';
-        count.textContent = String(cluster.vesselCount);
-        div.appendChild(count);
-
-        const label = document.createElement('div');
-        label.className = 'cluster-label';
-        label.textContent = cluster.name;
-        div.appendChild(label);
-
-        div.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const rect = this.container.getBoundingClientRect();
-          this.popup.show({
-            type: 'militaryVesselCluster',
-            data: cluster,
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top,
-          });
-        });
-
-        this.overlays.appendChild(div);
-      });
-    }
-
     // Natural Events (NASA EONET) - part of NATURAL layer
     if (this.state.layers.natural) {
       this.naturalEvents.forEach((event) => {
@@ -1828,132 +1125,6 @@ export class MapComponent {
       div.style.top = `${pos[1]}px`;
       div.textContent = country.name;
       div.dataset.countryId = String(country.id);
-
-      this.overlays.appendChild(div);
-    });
-  }
-
-  private renderWaterways(projection: d3.GeoProjection): void {
-    STRATEGIC_WATERWAYS.forEach((waterway) => {
-      const pos = projection([waterway.lon, waterway.lat]);
-      if (!pos) return;
-
-      const div = document.createElement('div');
-      div.className = 'waterway-marker';
-      div.style.left = `${pos[0]}px`;
-      div.style.top = `${pos[1]}px`;
-      div.title = waterway.name;
-
-      const diamond = document.createElement('div');
-      diamond.className = 'waterway-diamond';
-      div.appendChild(diamond);
-
-      div.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const rect = this.container.getBoundingClientRect();
-        this.popup.show({
-          type: 'waterway',
-          data: waterway,
-          x: e.clientX - rect.left,
-          y: e.clientY - rect.top,
-        });
-      });
-
-      this.overlays.appendChild(div);
-    });
-  }
-
-  private renderAisDisruptions(projection: d3.GeoProjection): void {
-    this.aisDisruptions.forEach((event) => {
-      const pos = projection([event.lon, event.lat]);
-      if (!pos) return;
-
-      const div = document.createElement('div');
-      div.className = `ais-disruption-marker ${event.severity} ${event.type}`;
-      div.style.left = `${pos[0]}px`;
-      div.style.top = `${pos[1]}px`;
-
-      const icon = document.createElement('div');
-      icon.className = 'ais-disruption-icon';
-      icon.textContent = event.type === 'gap_spike' ? '🛰️' : '🚢';
-      div.appendChild(icon);
-
-      const label = document.createElement('div');
-      label.className = 'ais-disruption-label';
-      label.textContent = event.name;
-      div.appendChild(label);
-
-      div.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const rect = this.container.getBoundingClientRect();
-        this.popup.show({
-          type: 'ais',
-          data: event,
-          x: e.clientX - rect.left,
-          y: e.clientY - rect.top,
-        });
-      });
-
-      this.overlays.appendChild(div);
-    });
-  }
-
-  private renderAisDensity(projection: d3.GeoProjection): void {
-    if (!this.dynamicLayerGroup) return;
-    const densityGroup = this.dynamicLayerGroup.append('g').attr('class', 'ais-density');
-
-    this.aisDensity.forEach((zone) => {
-      const pos = projection([zone.lon, zone.lat]);
-      if (!pos) return;
-
-      const intensity = Math.min(Math.max(zone.intensity, 0.15), 1);
-      const radius = 4 + intensity * 8;  // Small dots (4-12px)
-      const isCongested = zone.deltaPct >= 15;
-      const color = isCongested ? '#ffb703' : '#00d1ff';
-      const fillOpacity = 0.15 + intensity * 0.25;  // More visible individual dots
-
-      densityGroup
-        .append('circle')
-        .attr('class', 'ais-density-spot')
-        .attr('cx', pos[0])
-        .attr('cy', pos[1])
-        .attr('r', radius)
-        .attr('fill', color)
-        .attr('fill-opacity', fillOpacity)
-        .attr('stroke', 'none');
-    });
-  }
-
-  private renderPorts(projection: d3.GeoProjection): void {
-    PORTS.forEach((port) => {
-      const pos = projection([port.lon, port.lat]);
-      if (!pos) return;
-
-      const div = document.createElement('div');
-      div.className = `port-marker port-${port.type}`;
-      div.style.left = `${pos[0]}px`;
-      div.style.top = `${pos[1]}px`;
-
-      const icon = document.createElement('div');
-      icon.className = 'port-icon';
-      icon.textContent = port.type === 'naval' ? '⚓' : port.type === 'oil' || port.type === 'lng' ? '🛢️' : '🏭';
-      div.appendChild(icon);
-
-      const label = document.createElement('div');
-      label.className = 'port-label';
-      label.textContent = port.name;
-      div.appendChild(label);
-
-      div.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const rect = this.container.getBoundingClientRect();
-        this.popup.show({
-          type: 'port',
-          data: port,
-          x: e.clientX - rect.left,
-          y: e.clientY - rect.top,
-        });
-      });
 
       this.overlays.appendChild(div);
     });
@@ -2090,10 +1261,6 @@ export class MapComponent {
     setGeoAlertGetter(getAlertsNearLocation);
   }
 
-  public updateMilitaryForEscalation(flights: MilitaryFlight[], vessels: MilitaryVessel[]): void {
-    setMilitaryData(flights, vessels);
-  }
-
   public getHotspotDynamicScore(hotspotId: string) {
     return getHotspotEscalation(hotspotId);
   }
@@ -2122,7 +1289,7 @@ export class MapComponent {
   }
 
   private static readonly ASYNC_DATA_LAYERS: Set<keyof MapLayers> = new Set([
-    'natural', 'weather', 'outages', 'ais', 'protests', 'flights', 'military',
+    'natural', 'weather', 'outages',
   ]);
 
   public toggleLayer(layer: keyof MapLayers): void {
@@ -2234,61 +1401,6 @@ export class MapComponent {
     this.onHotspotClick?.(hotspot);
   }
 
-  public triggerConflictClick(id: string): void {
-    const conflict = CONFLICT_ZONES.find(c => c.id === id);
-    if (!conflict) return;
-
-    const width = this.container.clientWidth;
-    const height = this.container.clientHeight;
-    const projection = this.getProjection(width, height);
-    const pos = projection(conflict.center as [number, number]);
-    if (!pos) return;
-
-    this.popup.show({
-      type: 'conflict',
-      data: conflict,
-      x: pos[0],
-      y: pos[1],
-    });
-  }
-
-  public triggerBaseClick(id: string): void {
-    const base = MILITARY_BASES.find(b => b.id === id);
-    if (!base) return;
-
-    const width = this.container.clientWidth;
-    const height = this.container.clientHeight;
-    const projection = this.getProjection(width, height);
-    const pos = projection([base.lon, base.lat]);
-    if (!pos) return;
-
-    this.popup.show({
-      type: 'base',
-      data: base,
-      x: pos[0],
-      y: pos[1],
-    });
-  }
-
-  public triggerPipelineClick(id: string): void {
-    const pipeline = PIPELINES.find(p => p.id === id);
-    if (!pipeline || pipeline.points.length === 0) return;
-
-    const width = this.container.clientWidth;
-    const height = this.container.clientHeight;
-    const projection = this.getProjection(width, height);
-    const midPoint = pipeline.points[Math.floor(pipeline.points.length / 2)] as [number, number];
-    const pos = projection(midPoint);
-    if (!pos) return;
-
-    this.popup.show({
-      type: 'pipeline',
-      data: pipeline,
-      x: pos[0],
-      y: pos[1],
-    });
-  }
-
   public triggerCableClick(id: string): void {
     const cable = UNDERSEA_CABLES.find(c => c.id === id);
     if (!cable || cable.points.length === 0) return;
@@ -2321,42 +1433,6 @@ export class MapComponent {
     this.popup.show({
       type: 'datacenter',
       data: dc,
-      x: pos[0],
-      y: pos[1],
-    });
-  }
-
-  public triggerNuclearClick(id: string): void {
-    const facility = NUCLEAR_FACILITIES.find(n => n.id === id);
-    if (!facility) return;
-
-    const width = this.container.clientWidth;
-    const height = this.container.clientHeight;
-    const projection = this.getProjection(width, height);
-    const pos = projection([facility.lon, facility.lat]);
-    if (!pos) return;
-
-    this.popup.show({
-      type: 'nuclear',
-      data: facility,
-      x: pos[0],
-      y: pos[1],
-    });
-  }
-
-  public triggerIrradiatorClick(id: string): void {
-    const irradiator = GAMMA_IRRADIATORS.find(i => i.id === id);
-    if (!irradiator) return;
-
-    const width = this.container.clientWidth;
-    const height = this.container.clientHeight;
-    const projection = this.getProjection(width, height);
-    const pos = projection([irradiator.lon, irradiator.lat]);
-    if (!pos) return;
-
-    this.popup.show({
-      type: 'irradiator',
-      data: irradiator,
       x: pos[0],
       y: pos[1],
     });
@@ -2669,12 +1745,6 @@ export class MapComponent {
     this.render();
   }
 
-  public setAisData(disruptions: AisDisruptionEvent[], density: AisDensityZone[]): void {
-    this.aisDisruptions = disruptions;
-    this.aisDensity = density;
-    this.render();
-  }
-
   public setCableActivity(advisories: CableAdvisory[], repairShips: RepairShip[]): void {
     this.cableAdvisories = advisories;
     this.repairShips = repairShips;
@@ -2682,27 +1752,6 @@ export class MapComponent {
     this.render();
   }
 
-  public setProtests(events: SocialUnrestEvent[]): void {
-    this.protests = events;
-    this.render();
-  }
-
-  public setFlightDelays(delays: AirportDelayAlert[]): void {
-    this.flightDelays = delays;
-    this.render();
-  }
-
-  public setMilitaryFlights(flights: MilitaryFlight[], clusters: MilitaryFlightCluster[] = []): void {
-    this.militaryFlights = flights;
-    this.militaryFlightClusters = clusters;
-    this.render();
-  }
-
-  public setMilitaryVessels(vessels: MilitaryVessel[], clusters: MilitaryVesselCluster[] = []): void {
-    this.militaryVessels = vessels;
-    this.militaryVesselClusters = clusters;
-    this.render();
-  }
 
   public setNaturalEvents(events: NaturalEvent[]): void {
     this.naturalEvents = events;

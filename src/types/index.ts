@@ -46,7 +46,7 @@ export interface ClusteredEvent {
   velocity?: VelocityMetrics;
 }
 
-export type AssetType = 'pipeline' | 'cable' | 'datacenter' | 'base' | 'nuclear';
+export type AssetType = 'cable' | 'datacenter' | 'tech-company' | 'ai-lab' | 'startup-ecosystem';
 
 export interface RelatedAsset {
   id: string;

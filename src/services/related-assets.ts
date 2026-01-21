@@ -1,31 +1,29 @@
 import type { ClusteredEvent, RelatedAsset, AssetType, RelatedAssetContext } from '@/types';
 import {
-  INTEL_HOTSPOTS,
-  CONFLICT_ZONES,
-  MILITARY_BASES,
   UNDERSEA_CABLES,
-  NUCLEAR_FACILITIES,
   AI_DATA_CENTERS,
-  PIPELINES,
+  TECH_COMPANIES,
+  AI_RESEARCH_LABS,
+  STARTUP_ECOSYSTEMS,
 } from '@/config';
 
 const MAX_DISTANCE_KM = 600;
 const MAX_ASSETS_PER_TYPE = 3;
 
 const ASSET_KEYWORDS: Record<AssetType, string[]> = {
-  pipeline: ['pipeline', 'oil pipeline', 'gas pipeline', 'fuel pipeline', 'pipeline leak', 'pipeline spill'],
   cable: ['cable', 'undersea cable', 'subsea cable', 'fiber cable', 'fiber optic', 'internet cable'],
   datacenter: ['datacenter', 'data center', 'server farm', 'colocation', 'hyperscale'],
-  base: ['military base', 'airbase', 'naval base', 'base', 'garrison'],
-  nuclear: ['nuclear', 'reactor', 'uranium', 'enrichment', 'nuclear plant'],
+  'tech-company': ['tech company', 'technology company', 'startup', 'silicon valley', 'ai company'],
+  'ai-lab': ['ai research', 'ai lab', 'research lab', 'machine learning', 'deep learning'],
+  'startup-ecosystem': ['startup hub', 'tech hub', 'innovation hub', 'venture capital', 'ecosystem'],
 };
 
 const ASSET_LABELS: Record<AssetType, string> = {
-  pipeline: 'Pipeline',
   cable: 'Cable',
   datacenter: 'Datacenter',
-  base: 'Base',
-  nuclear: 'Nuclear',
+  'tech-company': 'Tech Company',
+  'ai-lab': 'AI Lab',
+  'startup-ecosystem': 'Startup Hub',
 };
 
 interface AssetOrigin {
@@ -48,29 +46,23 @@ function detectAssetTypes(titles: string[]): AssetType[] {
   return types;
 }
 
-function countKeywordMatches(titles: string[], keywords: string[]): number {
-  const normalized = toTitleLower(titles);
-  return keywords.reduce((count, keyword) => {
-    return count + normalized.filter(title => title.includes(keyword)).length;
-  }, 0);
-}
-
 function inferOrigin(titles: string[]): AssetOrigin | null {
-  const hotspotCandidates = INTEL_HOTSPOTS.map((hotspot) => ({
-    label: hotspot.name,
-    lat: hotspot.lat,
-    lon: hotspot.lon,
-    score: countKeywordMatches(titles, hotspot.keywords),
+  // Try to infer origin from tech company names or AI lab names in titles
+  const companyCandidates = TECH_COMPANIES.map((company) => ({
+    label: company.name,
+    lat: company.lat,
+    lon: company.lon,
+    score: titles.some(title => title.toLowerCase().includes(company.name.toLowerCase())) ? 1 : 0,
   })).filter(candidate => candidate.score > 0);
 
-  const conflictCandidates = CONFLICT_ZONES.map((conflict) => ({
-    label: conflict.name,
-    lat: conflict.center[1],
-    lon: conflict.center[0],
-    score: countKeywordMatches(titles, conflict.keywords ?? []),
+  const labCandidates = AI_RESEARCH_LABS.map((lab) => ({
+    label: lab.name,
+    lat: lab.lat,
+    lon: lab.lon,
+    score: titles.some(title => title.toLowerCase().includes(lab.name.toLowerCase())) ? 1 : 0,
   })).filter(candidate => candidate.score > 0);
 
-  const allCandidates = [...hotspotCandidates, ...conflictCandidates];
+  const allCandidates = [...companyCandidates, ...labCandidates];
   if (allCandidates.length === 0) return null;
 
   return allCandidates.sort((a, b) => b.score - a.score)[0] ?? null;
@@ -97,12 +89,6 @@ function midpoint(points: [number, number][]): { lat: number; lon: number } | nu
 
 function buildAssetIndex(type: AssetType): Array<{ id: string; name: string; lat: number; lon: number } | null> {
   switch (type) {
-    case 'pipeline':
-      return PIPELINES.map(pipeline => {
-        const mid = midpoint(pipeline.points);
-        if (!mid) return null;
-        return { id: pipeline.id, name: pipeline.name, lat: mid.lat, lon: mid.lon };
-      });
     case 'cable':
       return UNDERSEA_CABLES.map(cable => {
         const mid = midpoint(cable.points);
@@ -111,10 +97,12 @@ function buildAssetIndex(type: AssetType): Array<{ id: string; name: string; lat
       });
     case 'datacenter':
       return AI_DATA_CENTERS.map(dc => ({ id: dc.id, name: dc.name, lat: dc.lat, lon: dc.lon }));
-    case 'base':
-      return MILITARY_BASES.map(base => ({ id: base.id, name: base.name, lat: base.lat, lon: base.lon }));
-    case 'nuclear':
-      return NUCLEAR_FACILITIES.map(site => ({ id: site.id, name: site.name, lat: site.lat, lon: site.lon }));
+    case 'tech-company':
+      return TECH_COMPANIES.map(company => ({ id: company.id, name: company.name, lat: company.lat, lon: company.lon }));
+    case 'ai-lab':
+      return AI_RESEARCH_LABS.map(lab => ({ id: lab.id, name: lab.name, lat: lab.lat, lon: lab.lon }));
+    case 'startup-ecosystem':
+      return STARTUP_ECOSYSTEMS.map(ecosystem => ({ id: ecosystem.id, name: ecosystem.name, lat: ecosystem.lat, lon: ecosystem.lon }));
     default:
       return [];
   }

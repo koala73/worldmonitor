@@ -2,22 +2,15 @@ import type { MapLayers } from '@/types';
 import type { MapView, TimeRange } from '@/components/Map';
 
 const LAYER_KEYS: (keyof MapLayers)[] = [
-  'conflicts',
-  'bases',
   'cables',
-  'pipelines',
-  'hotspots',
-  'nuclear',
-  'irradiators',
-  'sanctions',
-  'weather',
-  'economic',
-  'countries',
-  'waterways',
   'outages',
   'datacenters',
-  'flights',
+  'techCompanies',
+  'aiLabs',
+  'startupEcosystems',
+  'weather',
   'natural',
+  'countries',
 ];
 
 const TIME_RANGES: TimeRange[] = ['1h', '6h', '24h', '48h', '7d', 'all'];

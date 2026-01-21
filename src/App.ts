@@ -10,9 +10,9 @@ import {
   MOBILE_DEFAULT_MAP_LAYERS,
   STORAGE_KEYS,
 } from '@/config';
-import { fetchCategoryFeeds, fetchMultipleStocks, fetchCrypto, fetchPredictions, fetchEarthquakes, fetchWeatherAlerts, fetchFredData, fetchInternetOutages, isOutagesConfigured, fetchAisSignals, initAisStream, getAisStatus, disconnectAisStream, isAisConfigured, fetchCableActivity, fetchProtestEvents, getProtestStatus, fetchFlightDelays, fetchMilitaryFlights, fetchMilitaryVessels, initMilitaryVesselStream, isMilitaryVesselTrackingConfigured, initDB, updateBaseline, calculateDeviation, addToSignalHistory, saveSnapshot, cleanOldSnapshots, analysisWorker, fetchPizzIntStatus, fetchGdeltTensions, fetchNaturalEvents, fetchRecentAwards, fetchOilAnalytics } from '@/services';
-import { ingestProtests, ingestFlights, ingestVessels, ingestEarthquakes, detectGeoConvergence, geoConvergenceToSignal } from '@/services/geo-convergence';
-import { ingestProtestsForCII, ingestMilitaryForCII, ingestNewsForCII, ingestOutagesForCII, startLearning } from '@/services/country-instability';
+import { fetchCategoryFeeds, fetchMultipleStocks, fetchCrypto, fetchPredictions, fetchEarthquakes, fetchWeatherAlerts, fetchFredData, fetchInternetOutages, isOutagesConfigured, fetchCableActivity, initDB, updateBaseline, calculateDeviation, addToSignalHistory, saveSnapshot, cleanOldSnapshots, analysisWorker, fetchPizzIntStatus, fetchGdeltTensions, fetchNaturalEvents, fetchRecentAwards, fetchOilAnalytics } from '@/services';
+import { ingestEarthquakes, detectGeoConvergence, geoConvergenceToSignal } from '@/services/geo-convergence';
+import { ingestNewsForCII, ingestOutagesForCII, startLearning } from '@/services/country-instability';
 import { dataFreshness, type DataSourceId } from '@/services/data-freshness';
 import { buildMapUrl, debounce, loadFromStorage, parseMapUrlState, saveToStorage, ExportPanel, getCircuitBreakerCooldownInfo, isMobileDevice } from '@/utils';
 import type { ParsedMapUrlState } from '@/utils';
@@ -106,13 +106,6 @@ export class App {
   public async init(): Promise<void> {
     await initDB();
 
-    // Check AIS configuration before init
-    if (!isAisConfigured()) {
-      this.mapLayers.ais = false;
-    } else if (this.mapLayers.ais) {
-      initAisStream();
-    }
-
     this.renderLayout();
     this.signalModal = new SignalModal();
     this.signalModal.setLocationClickHandler((lat, lon) => {
@@ -142,9 +135,6 @@ export class App {
     startLearning();
 
     // Hide unconfigured layers after first data load
-    if (!isAisConfigured()) {
-      this.map?.hideLayerToggle('ais');
-    }
     if (isOutagesConfigured() === false) {
       this.map?.hideLayerToggle('outages');
     }
@@ -219,12 +209,9 @@ export class App {
   private syncDataFreshnessWithLayers(): void {
     // Map layer toggles to data source IDs
     const layerToSource: Partial<Record<keyof MapLayers, DataSourceId[]>> = {
-      military: ['opensky', 'wingbits'],
-      ais: ['ais'],
       natural: ['usgs'],
       weather: ['weather'],
       outages: ['outages'],
-      protests: ['acled'],
     };
 
     for (const [layer, sourceIds] of Object.entries(layerToSource)) {
@@ -235,9 +222,6 @@ export class App {
     }
 
     // Mark sources as disabled if not configured
-    if (!isAisConfigured()) {
-      dataFreshness.setEnabled('ais', false);
-    }
     if (isOutagesConfigured() === false) {
       dataFreshness.setEnabled('outages', false);
     }
@@ -251,30 +235,15 @@ export class App {
 
       // Sync data freshness tracker
       const layerToSource: Partial<Record<keyof MapLayers, DataSourceId[]>> = {
-        military: ['opensky', 'wingbits'],
-        ais: ['ais'],
         natural: ['usgs'],
         weather: ['weather'],
         outages: ['outages'],
-        protests: ['acled'],
       };
       const sourceIds = layerToSource[layer];
       if (sourceIds) {
         for (const sourceId of sourceIds) {
           dataFreshness.setEnabled(sourceId, enabled);
         }
-      }
-
-      // Handle AIS WebSocket connection
-      if (layer === 'ais') {
-        if (enabled) {
-          this.map?.setLayerLoading('ais', true);
-          initAisStream();
-          this.waitForAisData();
-        } else {
-          disconnectAisStream();
-        }
-        return;
       }
 
       // Load data when layer is enabled (if not already loaded)
@@ -652,9 +621,8 @@ export class App {
       this.boundVisibilityHandler = null;
     }
 
-    // Clean up map and AIS
+    // Clean up map
     this.map?.destroy();
-    disconnectAisStream();
   }
 
   private createPanels(): void {
@@ -1237,11 +1205,7 @@ export class App {
     if (this.mapLayers.natural) tasks.push({ name: 'natural', task: runGuarded('natural', () => this.loadNatural()) });
     if (this.mapLayers.weather) tasks.push({ name: 'weather', task: runGuarded('weather', () => this.loadWeatherAlerts()) });
     if (this.mapLayers.outages) tasks.push({ name: 'outages', task: runGuarded('outages', () => this.loadOutages()) });
-    if (this.mapLayers.ais) tasks.push({ name: 'ais', task: runGuarded('ais', () => this.loadAisSignals()) });
     if (this.mapLayers.cables) tasks.push({ name: 'cables', task: runGuarded('cables', () => this.loadCableActivity()) });
-    if (this.mapLayers.protests) tasks.push({ name: 'protests', task: runGuarded('protests', () => this.loadProtests()) });
-    if (this.mapLayers.flights) tasks.push({ name: 'flights', task: runGuarded('flights', () => this.loadFlightDelays()) });
-    if (this.mapLayers.military) tasks.push({ name: 'military', task: runGuarded('military', () => this.loadMilitary()) });
 
     // Use allSettled to ensure all tasks complete and search index always updates
     const results = await Promise.allSettled(tasks.map(t => t.task));
@@ -1272,20 +1236,8 @@ export class App {
         case 'outages':
           await this.loadOutages();
           break;
-        case 'ais':
-          await this.loadAisSignals();
-          break;
         case 'cables':
           await this.loadCableActivity();
-          break;
-        case 'protests':
-          await this.loadProtests();
-          break;
-        case 'flights':
-          await this.loadFlightDelays();
-          break;
-        case 'military':
-          await this.loadMilitary();
           break;
       }
     } finally {
@@ -1558,66 +1510,8 @@ export class App {
     }
   }
 
-  private async loadAisSignals(): Promise<void> {
-    try {
-      const { disruptions, density } = await fetchAisSignals();
-      const aisStatus = getAisStatus();
-      console.log('[Ships] Events:', { disruptions: disruptions.length, density: density.length, vessels: aisStatus.vessels });
-      this.map?.setAisData(disruptions, density);
-
-      const hasData = disruptions.length > 0 || density.length > 0;
-      this.map?.setLayerReady('ais', hasData);
-
-      const shippingCount = disruptions.length + density.length;
-      const shippingStatus = shippingCount > 0 ? 'ok' : (aisStatus.connected ? 'warning' : 'error');
-      this.statusPanel?.updateFeed('Shipping', {
-        status: shippingStatus,
-        itemCount: shippingCount,
-        errorMessage: !aisStatus.connected && shippingCount === 0 ? 'WebSocket disconnected' : undefined,
-      });
-      this.statusPanel?.updateApi('AISStream', {
-        status: aisStatus.connected ? 'ok' : 'warning',
-      });
-      if (hasData) {
-        dataFreshness.recordUpdate('ais', shippingCount);
-      }
-    } catch (error) {
-      this.map?.setLayerReady('ais', false);
-      this.statusPanel?.updateFeed('Shipping', { status: 'error', errorMessage: String(error) });
-      this.statusPanel?.updateApi('AISStream', { status: 'error' });
-      dataFreshness.recordError('ais', String(error));
-    }
-  }
-
-  private waitForAisData(): void {
-    const maxAttempts = 30;
-    let attempts = 0;
-
-    const checkData = () => {
-      attempts++;
-      const status = getAisStatus();
-
-      if (status.vessels > 0 || status.connected) {
-        this.loadAisSignals();
-        this.map?.setLayerLoading('ais', false);
-        return;
-      }
-
-      if (attempts >= maxAttempts) {
-        this.map?.setLayerLoading('ais', false);
-        this.map?.setLayerReady('ais', false);
-        this.statusPanel?.updateFeed('Shipping', {
-          status: 'error',
-          errorMessage: 'Connection timeout'
-        });
-        return;
-      }
-
-      setTimeout(checkData, 1000);
-    };
-
-    checkData();
-  }
+  // Removed: loadAisSignals() - AIS tracking removed in tech/AI transformation
+  // Removed: waitForAisData() - AIS tracking removed in tech/AI transformation
 
   private async loadCableActivity(): Promise<void> {
     try {
@@ -1630,103 +1524,9 @@ export class App {
     }
   }
 
-  private async loadProtests(): Promise<void> {
-    try {
-      const protestData = await fetchProtestEvents();
-      this.map?.setProtests(protestData.events);
-      this.map?.setLayerReady('protests', protestData.events.length > 0);
-      ingestProtests(protestData.events);
-      ingestProtestsForCII(protestData.events);
-
-      // Record data freshness AFTER CII ingestion to avoid race conditions
-      // For 'acled' source: count GDELT protests too since GDELT serves as fallback
-      const protestCount = protestData.sources.acled + protestData.sources.gdelt;
-      if (protestCount > 0) {
-        dataFreshness.recordUpdate('acled', protestCount);
-      }
-      if (protestData.sources.gdelt > 0) {
-        dataFreshness.recordUpdate('gdelt', protestData.sources.gdelt);
-      }
-
-      (this.panels['cii'] as CIIPanel)?.refresh();
-      const status = getProtestStatus();
-
-      this.statusPanel?.updateFeed('Protests', {
-        status: 'ok',
-        itemCount: protestData.events.length,
-        errorMessage: status.acledConfigured === false ? 'ACLED not configured - using GDELT only' : undefined,
-      });
-
-      if (status.acledConfigured === true) {
-        this.statusPanel?.updateApi('ACLED', { status: 'ok' });
-      } else if (status.acledConfigured === null) {
-        this.statusPanel?.updateApi('ACLED', { status: 'warning' });
-      }
-      this.statusPanel?.updateApi('GDELT', { status: 'ok' });
-    } catch (error) {
-      this.map?.setLayerReady('protests', false);
-      this.statusPanel?.updateFeed('Protests', { status: 'error', errorMessage: String(error) });
-      this.statusPanel?.updateApi('ACLED', { status: 'error' });
-      this.statusPanel?.updateApi('GDELT', { status: 'error' });
-    }
-  }
-
-  private async loadFlightDelays(): Promise<void> {
-    try {
-      const delays = await fetchFlightDelays();
-      this.map?.setFlightDelays(delays);
-      this.map?.setLayerReady('flights', delays.length > 0);
-      this.statusPanel?.updateFeed('Flights', {
-        status: 'ok',
-        itemCount: delays.length,
-      });
-      this.statusPanel?.updateApi('FAA', { status: 'ok' });
-    } catch (error) {
-      this.map?.setLayerReady('flights', false);
-      this.statusPanel?.updateFeed('Flights', { status: 'error', errorMessage: String(error) });
-      this.statusPanel?.updateApi('FAA', { status: 'error' });
-    }
-  }
-
-  private async loadMilitary(): Promise<void> {
-    try {
-      // Initialize vessel stream if not already running
-      if (isMilitaryVesselTrackingConfigured()) {
-        initMilitaryVesselStream();
-      }
-
-      // Load both flights and vessels in parallel
-      const [flightData, vesselData] = await Promise.all([
-        fetchMilitaryFlights(),
-        fetchMilitaryVessels(),
-      ]);
-
-      this.map?.setMilitaryFlights(flightData.flights, flightData.clusters);
-      this.map?.setMilitaryVessels(vesselData.vessels, vesselData.clusters);
-      ingestFlights(flightData.flights);
-      ingestVessels(vesselData.vessels);
-      ingestMilitaryForCII(flightData.flights, vesselData.vessels);
-      this.map?.updateMilitaryForEscalation(flightData.flights, vesselData.vessels);
-      (this.panels['cii'] as CIIPanel)?.refresh();
-
-      const hasData = flightData.flights.length > 0 || vesselData.vessels.length > 0;
-      this.map?.setLayerReady('military', hasData);
-
-      const militaryCount = flightData.flights.length + vesselData.vessels.length;
-      this.statusPanel?.updateFeed('Military', {
-        status: militaryCount > 0 ? 'ok' : 'warning',
-        itemCount: militaryCount,
-        errorMessage: militaryCount === 0 ? 'No military activity in view' : undefined,
-      });
-      this.statusPanel?.updateApi('OpenSky', { status: 'ok' }); // API worked, just no data in view
-      dataFreshness.recordUpdate('opensky', flightData.flights.length);
-    } catch (error) {
-      this.map?.setLayerReady('military', false);
-      this.statusPanel?.updateFeed('Military', { status: 'error', errorMessage: String(error) });
-      this.statusPanel?.updateApi('OpenSky', { status: 'error' });
-      dataFreshness.recordError('opensky', String(error));
-    }
-  }
+  // Removed: loadProtests() - Protest tracking removed in tech/AI transformation
+  // Removed: loadFlightDelays() - Flight delay tracking removed in tech/AI transformation
+  // Removed: loadMilitary() - Military tracking removed in tech/AI transformation
 
 
   private async loadFredData(): Promise<void> {
@@ -1888,10 +1688,6 @@ export class App {
     this.scheduleRefresh('oil', () => this.loadOilAnalytics(), 30 * 60 * 1000);
     this.scheduleRefresh('spending', () => this.loadGovernmentSpending(), 60 * 60 * 1000);
     this.scheduleRefresh('outages', () => this.loadOutages(), 60 * 60 * 1000, () => this.mapLayers.outages);
-    this.scheduleRefresh('ais', () => this.loadAisSignals(), REFRESH_INTERVALS.ais, () => this.mapLayers.ais);
     this.scheduleRefresh('cables', () => this.loadCableActivity(), 30 * 60 * 1000, () => this.mapLayers.cables);
-    this.scheduleRefresh('protests', () => this.loadProtests(), 15 * 60 * 1000, () => this.mapLayers.protests);
-    this.scheduleRefresh('flights', () => this.loadFlightDelays(), 10 * 60 * 1000, () => this.mapLayers.flights);
-    this.scheduleRefresh('military', () => this.loadMilitary(), 5 * 60 * 1000, () => this.mapLayers.military);
   }
 }

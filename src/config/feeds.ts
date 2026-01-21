@@ -116,7 +116,7 @@ export interface SourceRiskProfile {
   note?: string;
 }
 
-export function getSourcePropagandaRisk(sourceName: string): SourceRiskProfile {
+export function getSourcePropagandaRisk(_sourceName: string): SourceRiskProfile {
   // For tech/AI sources, we don't need propaganda risk assessment
   // All sources are independent tech media
   return { risk: 'low' };
