@@ -1,5 +1,6 @@
 import type { PredictionMarket } from '@/types';
 import { createCircuitBreaker } from '@/utils';
+import { SITE_VARIANT } from '@/config';
 
 interface PolymarketMarket {
   question: string;
@@ -12,6 +13,29 @@ interface PolymarketMarket {
 }
 
 const breaker = createCircuitBreaker<PredictionMarket[]>({ name: 'Polymarket' });
+
+// Tech/AI/Startup keywords for tech variant
+const TECH_KEYWORDS = [
+  // AI & ML
+  'ai', 'artificial intelligence', 'openai', 'chatgpt', 'gpt', 'claude', 'anthropic', 'google ai', 'gemini',
+  'machine learning', 'neural', 'llm', 'agi', 'deepmind', 'midjourney', 'stable diffusion', 'copilot',
+  // Tech Companies
+  'apple', 'google', 'microsoft', 'amazon', 'meta', 'facebook', 'nvidia', 'tesla', 'spacex',
+  'twitter', 'x.com', 'tiktok', 'bytedance', 'alibaba', 'tencent', 'samsung', 'intel', 'amd', 'tsmc',
+  // Startups & VC
+  'startup', 'ipo', 'unicorn', 'valuation', 'funding', 'series a', 'series b', 'y combinator', 'vc',
+  'venture capital', 'acquisition', 'merger', 'layoff', 'layoffs',
+  // Tech Topics
+  'crypto', 'bitcoin', 'ethereum', 'blockchain', 'web3', 'nft',
+  'autonomous', 'self-driving', 'robotics', 'drone', 'ev', 'electric vehicle',
+  'quantum', 'chip', 'semiconductor', 'gpu', 'processor',
+  'cybersecurity', 'hack', 'breach', 'ransomware',
+  'social media', 'app store', 'cloud', 'saas', 'software',
+  // Tech Regulation
+  'antitrust', 'ftc', 'eu commission', 'tech regulation', 'data privacy', 'gdpr',
+  // Tech Leaders
+  'elon musk', 'sam altman', 'mark zuckerberg', 'sundar pichai', 'satya nadella', 'tim cook', 'jensen huang',
+];
 
 // Geopolitical keywords for filtering relevant markets
 const GEOPOLITICAL_KEYWORDS = [
@@ -77,7 +101,7 @@ function tagsAreExcluded(tags: Array<{ slug: string }> | undefined): boolean {
   });
 }
 
-function isGeopoliticallyRelevant(title: string, tags?: Array<{ slug: string }>): boolean {
+function isRelevant(title: string, tags?: Array<{ slug: string }>): boolean {
   const normalized = normalizeText(title);
   if (!normalized) return false;
 
@@ -88,8 +112,9 @@ function isGeopoliticallyRelevant(title: string, tags?: Array<{ slug: string }>)
     return false;
   }
 
-  // Include if has geopolitical keywords
-  return GEOPOLITICAL_KEYWORDS.some(kw => containsKeyword(normalized, kw));
+  // Use variant-specific keywords
+  const keywords = SITE_VARIANT === 'tech' ? TECH_KEYWORDS : GEOPOLITICAL_KEYWORDS;
+  return keywords.some(kw => containsKeyword(normalized, kw));
 }
 
 export async function fetchPredictions(): Promise<PredictionMarket[]> {
@@ -125,8 +150,8 @@ export async function fetchPredictions(): Promise<PredictionMarket[]> {
       .filter((p) => {
         if (!p.title || isNaN(p.yesPrice)) return false;
 
-        // Must be geopolitically relevant
-        if (!isGeopoliticallyRelevant(p.title, p.tags)) return false;
+        // Must be relevant to variant (tech or geopolitical)
+        if (!isRelevant(p.title, p.tags)) return false;
 
         // Must have meaningful signal (not 50/50) or high volume
         const discrepancy = Math.abs(p.yesPrice - 50);
