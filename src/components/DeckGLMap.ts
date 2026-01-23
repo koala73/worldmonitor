@@ -221,6 +221,14 @@ export class DeckGLMap {
         },
         layers: [
           {
+            // Background layer to prevent transparent gaps while tiles load
+            id: 'background',
+            type: 'background',
+            paint: {
+              'background-color': '#0a0f0c',
+            },
+          },
+          {
             id: 'carto-dark-layer',
             type: 'raster',
             source: 'carto-dark',
@@ -276,6 +284,12 @@ export class DeckGLMap {
       getTooltip: (info: PickingInfo) => this.getTooltip(info),
       onClick: (info: PickingInfo) => this.handleClick(info),
       pickingRadius: 5,
+      // Ensure transparent canvas background
+      onWebGLInitialized: (gl: WebGLRenderingContext) => {
+        gl.clearColor(0, 0, 0, 0);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      },
     });
   }
 
