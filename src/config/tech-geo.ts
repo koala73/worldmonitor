@@ -390,52 +390,28 @@ export const TECH_HQS: TechHQ[] = [
   { id: 'talabat', company: 'Talabat', city: 'Dubai', country: 'UAE', lat: 25.0972, lon: 55.1611, type: 'unicorn' },
   { id: 'g42', company: 'G42', city: 'Abu Dhabi', country: 'UAE', lat: 24.4669, lon: 54.3659, type: 'unicorn' },
   { id: 'anghami', company: 'Anghami', city: 'Abu Dhabi', country: 'UAE', lat: 24.4539, lon: 54.3773, type: 'public' },
-  { id: 'kitopi', company: 'Kitopi', city: 'Dubai', country: 'UAE', lat: 25.0994, lon: 55.1641, type: 'unicorn' },
   { id: 'dubizzle', company: 'Dubizzle Group', city: 'Dubai', country: 'UAE', lat: 25.1152, lon: 55.1375, type: 'unicorn' },
   { id: 'tabby-uae', company: 'Tabby', city: 'Dubai', country: 'UAE', lat: 25.0773, lon: 55.1409, type: 'unicorn', marketCap: '$4.5B' },
-  { id: 'xpanceo', company: 'XPANCEO', city: 'Dubai', country: 'UAE', lat: 25.0867, lon: 55.1522, type: 'unicorn' },
-  { id: 'propertyfinder', company: 'Property Finder', city: 'Dubai', country: 'UAE', lat: 25.0693, lon: 55.1413, type: 'unicorn' },
   { id: 'swvl', company: 'Swvl', city: 'Dubai', country: 'UAE', lat: 25.0657, lon: 55.1713, type: 'public' },
   { id: 'aramex', company: 'Aramex', city: 'Dubai', country: 'UAE', lat: 25.0717, lon: 55.1335, type: 'public' },
   { id: 'etisalat', company: 'e&', city: 'Abu Dhabi', country: 'UAE', lat: 24.4872, lon: 54.3563, type: 'public' },
   { id: 'mashreq', company: 'Mashreq Neo', city: 'Dubai', country: 'UAE', lat: 25.2614, lon: 55.2977, type: 'public' },
-  { id: 'yallacompare', company: 'Yallacompare', city: 'Dubai', country: 'UAE', lat: 25.0761, lon: 55.1392, type: 'unicorn' },
 
   // MENA - Saudi Arabia
-  { id: 'tamara', company: 'Tamara', city: 'Riyadh', country: 'Saudi Arabia', lat: 24.7136, lon: 46.6753, type: 'unicorn' },
-  { id: 'ninja-ksa', company: 'Ninja', city: 'Riyadh', country: 'Saudi Arabia', lat: 24.7255, lon: 46.6720, type: 'unicorn', marketCap: '$1.5B' },
-  { id: 'foodics', company: 'Foodics', city: 'Riyadh', country: 'Saudi Arabia', lat: 24.6877, lon: 46.6850, type: 'unicorn' },
+  { id: 'tamara', company: 'Tamara', city: 'Riyadh', country: 'Saudi Arabia', lat: 24.7136, lon: 46.6753, type: 'unicorn', marketCap: '$1B' }, // BNPL
   { id: 'stc', company: 'STC', city: 'Riyadh', country: 'Saudi Arabia', lat: 24.6877, lon: 46.6850, type: 'public' },
   { id: 'stc-pay', company: 'stc pay', city: 'Riyadh', country: 'Saudi Arabia', lat: 24.7001, lon: 46.6753, type: 'unicorn' },
   { id: 'jahez', company: 'Jahez', city: 'Riyadh', country: 'Saudi Arabia', lat: 24.7070, lon: 46.6890, type: 'public' },
-  { id: 'sary', company: 'Sary', city: 'Riyadh', country: 'Saudi Arabia', lat: 24.6950, lon: 46.7100, type: 'unicorn' },
-  { id: 'salla', company: 'Salla', city: 'Riyadh', country: 'Saudi Arabia', lat: 24.7219, lon: 46.6587, type: 'unicorn' },
-  { id: 'tabby-ksa', company: 'Tabby HQ', city: 'Riyadh', country: 'Saudi Arabia', lat: 24.7136, lon: 46.6753, type: 'unicorn' },
-  { id: 'nana', company: 'Nana', city: 'Riyadh', country: 'Saudi Arabia', lat: 24.7470, lon: 46.6348, type: 'unicorn' },
-  { id: 'morni', company: 'Morni', city: 'Riyadh', country: 'Saudi Arabia', lat: 24.7326, lon: 46.6416, type: 'unicorn' },
-  { id: 'trukker', company: 'TruKKer', city: 'Riyadh', country: 'Saudi Arabia', lat: 24.6948, lon: 46.7256, type: 'unicorn' },
+  { id: 'sary', company: 'Sary', city: 'Riyadh', country: 'Saudi Arabia', lat: 24.6950, lon: 46.7100, type: 'unicorn', marketCap: '$1B' }, // B2B marketplace
+  { id: 'nana', company: 'Nana', city: 'Riyadh', country: 'Saudi Arabia', lat: 24.7470, lon: 46.6348, type: 'unicorn', marketCap: '$1B' }, // Grocery delivery
   { id: 'leejam', company: 'Leejam Sports', city: 'Riyadh', country: 'Saudi Arabia', lat: 24.7003, lon: 46.6859, type: 'public' },
-  { id: 'lucidya', company: 'Lucidya', city: 'Riyadh', country: 'Saudi Arabia', lat: 24.6878, lon: 46.7219, type: 'unicorn' },
-  { id: 'rewaa', company: 'Rewaa', city: 'Riyadh', country: 'Saudi Arabia', lat: 24.7409, lon: 46.6525, type: 'unicorn' },
 
   // MENA - Egypt
   { id: 'halan', company: 'MNT-Halan', city: 'Cairo', country: 'Egypt', lat: 30.0444, lon: 31.2357, type: 'unicorn', marketCap: '$1B' },
-  { id: 'vezeeta', company: 'Vezeeta', city: 'Cairo', country: 'Egypt', lat: 30.0626, lon: 31.2497, type: 'unicorn' },
   { id: 'fawry', company: 'Fawry', city: 'Cairo', country: 'Egypt', lat: 30.0500, lon: 31.2333, type: 'public' },
-  { id: 'paymob', company: 'Paymob', city: 'Cairo', country: 'Egypt', lat: 30.0561, lon: 31.2394, type: 'unicorn' },
-  { id: 'maxab', company: 'MaxAB', city: 'Cairo', country: 'Egypt', lat: 30.0478, lon: 31.2369, type: 'unicorn' },
-  { id: 'trella', company: 'Trella', city: 'Cairo', country: 'Egypt', lat: 30.0595, lon: 31.2291, type: 'unicorn' },
-  { id: 'instashop-eg', company: 'InstaShop', city: 'Cairo', country: 'Egypt', lat: 30.0713, lon: 31.0219, type: 'unicorn' },
-  { id: 'breadfast', company: 'Breadfast', city: 'Cairo', country: 'Egypt', lat: 30.0445, lon: 31.2357, type: 'unicorn' },
-  { id: 'capiter', company: 'Capiter', city: 'Cairo', country: 'Egypt', lat: 30.0553, lon: 31.2267, type: 'unicorn' },
 
   // MENA - Other
   { id: 'zain', company: 'Zain', city: 'Kuwait City', country: 'Kuwait', lat: 29.3759, lon: 47.9774, type: 'public' },
-  { id: 'oasis500-jordan', company: 'Mawdoo3', city: 'Amman', country: 'Jordan', lat: 31.9454, lon: 35.9284, type: 'unicorn' },
-  { id: 'opensooq', company: 'OpenSooq', city: 'Amman', country: 'Jordan', lat: 31.9566, lon: 35.9106, type: 'unicorn' },
-  { id: 'beehive', company: 'Beehive', city: 'Dubai', country: 'UAE', lat: 25.0913, lon: 55.1544, type: 'unicorn' },
-  { id: 'iyelo', company: 'Yelo', city: 'Dubai', country: 'UAE', lat: 25.0994, lon: 55.1641, type: 'unicorn' },
-  { id: 'ziina', company: 'Ziina', city: 'Dubai', country: 'UAE', lat: 25.0785, lon: 55.1419, type: 'unicorn' },
 
   // ============ CHINA ============
   { id: 'tencent', company: 'Tencent', city: 'Shenzhen', country: 'China', lat: 22.5333, lon: 114.1333, type: 'public', marketCap: '$400B' },
