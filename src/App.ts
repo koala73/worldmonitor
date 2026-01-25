@@ -657,12 +657,14 @@ export class App {
     if (!this.searchModal) return;
 
     // Update news sources (use link as unique id) - index up to 500 items for better search coverage
-    this.searchModal.registerSource('news', this.allNews.slice(0, 500).map(n => ({
+    const newsItems = this.allNews.slice(0, 500).map(n => ({
       id: n.link,
       title: n.title,
       subtitle: n.source,
       data: n,
-    })));
+    }));
+    console.log(`[Search] Indexing ${newsItems.length} news items (allNews total: ${this.allNews.length})`);
+    this.searchModal.registerSource('news', newsItems);
 
     // Update predictions if available
     if (this.latestPredictions.length > 0) {
