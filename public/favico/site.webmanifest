@@ -1,6 +1,7 @@
 {
-  "name": "WorldMonitor",
+  "name": "World Monitor - AI Intelligence Dashboard",
   "short_name": "WorldMonitor",
+  "description": "AI-powered real-time global intelligence dashboard",
   "icons": [
     {
       "src": "/android-chrome-192x192.png",
