@@ -16,12 +16,13 @@ export class CIIPanel extends Panel {
         Score (0-100) per country based on:
         <ul>
           <li>40% baseline geopolitical risk</li>
-          <li>Unrest: protests, fatalities, internet outages</li>
-          <li>Security: military flights/vessels over territory</li>
-          <li>Information: news velocity and alerts</li>
+          <li><strong>U</strong>nrest: protests, fatalities, internet outages</li>
+          <li><strong>S</strong>ecurity: military flights/vessels over territory</li>
+          <li><strong>I</strong>nformation: news velocity and focal point correlation</li>
           <li>Hotspot proximity boost (strategic locations)</li>
         </ul>
-        Event multipliers adjust for media coverage bias.`,
+        <em>U:S:I values show component scores.</em>
+        Focal Point Detection correlates news entities with map signals for accurate scoring.`,
     });
     // Show loading state until focal points ready
     this.content.innerHTML = `
