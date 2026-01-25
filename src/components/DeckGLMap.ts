@@ -45,6 +45,8 @@ import {
   ACCELERATORS,
   TECH_HQS,
   CLOUD_REGIONS,
+  PORTS,
+  SPACEPORTS,
 } from '@/config';
 import { MapPopup, type PopupType } from './MapPopup';
 import {
@@ -154,6 +156,7 @@ export class DeckGLMap {
   private militaryVessels: MilitaryVessel[] = [];
   private naturalEvents: NaturalEvent[] = [];
   private techEvents: TechEventMarker[] = [];
+  private flightDelays: AirportDelayAlert[] = [];
 
   // Callbacks
   private onHotspotClick?: (hotspot: Hotspot) => void;
@@ -584,6 +587,16 @@ export class DeckGLMap {
       layers.push(this.createNuclearLayer());
     }
 
+    // Gamma irradiators layer
+    if (mapLayers.irradiators) {
+      layers.push(this.createIrradiatorsLayer());
+    }
+
+    // Spaceports layer
+    if (mapLayers.spaceports) {
+      layers.push(this.createSpaceportsLayer());
+    }
+
     // Hotspots layer
     if (mapLayers.hotspots) {
       layers.push(this.createHotspotsLayer());
@@ -617,6 +630,16 @@ export class DeckGLMap {
     // AIS density layer
     if (mapLayers.ais && this.aisDensity.length > 0) {
       layers.push(this.createAisDensityLayer());
+    }
+
+    // Strategic ports layer (shown with AIS)
+    if (mapLayers.ais) {
+      layers.push(this.createPortsLayer());
+    }
+
+    // Flight delays layer
+    if (mapLayers.flights && this.flightDelays.length > 0) {
+      layers.push(this.createFlightDelaysLayer());
     }
 
     // Protests layer - rendered via HTML overlays in renderClusterOverlays() for clustering support
@@ -792,6 +815,66 @@ export class DeckGLMap {
       sizeScale: 1,
       sizeMinPixels: 6,
       sizeMaxPixels: 15,
+      pickable: true,
+    });
+  }
+
+  private createIrradiatorsLayer(): ScatterplotLayer {
+    return new ScatterplotLayer({
+      id: 'irradiators-layer',
+      data: GAMMA_IRRADIATORS,
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: 6000,
+      getFillColor: [255, 100, 255, 180] as [number, number, number, number], // Magenta
+      radiusMinPixels: 4,
+      radiusMaxPixels: 10,
+      pickable: true,
+    });
+  }
+
+  private createSpaceportsLayer(): ScatterplotLayer {
+    return new ScatterplotLayer({
+      id: 'spaceports-layer',
+      data: SPACEPORTS,
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: 10000,
+      getFillColor: [200, 100, 255, 200] as [number, number, number, number], // Purple
+      radiusMinPixels: 5,
+      radiusMaxPixels: 12,
+      pickable: true,
+    });
+  }
+
+  private createPortsLayer(): ScatterplotLayer {
+    return new ScatterplotLayer({
+      id: 'ports-layer',
+      data: PORTS,
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: 5000,
+      getFillColor: [0, 200, 255, 160] as [number, number, number, number], // Cyan
+      radiusMinPixels: 3,
+      radiusMaxPixels: 8,
+      pickable: true,
+    });
+  }
+
+  private createFlightDelaysLayer(): ScatterplotLayer {
+    return new ScatterplotLayer({
+      id: 'flight-delays-layer',
+      data: this.flightDelays,
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: (d) => {
+        if (d.severity === 'GDP') return 15000; // Ground Delay Program
+        if (d.severity === 'GS') return 12000; // Ground Stop
+        return 8000;
+      },
+      getFillColor: (d) => {
+        if (d.severity === 'GS') return [255, 50, 50, 200] as [number, number, number, number]; // Red for ground stops
+        if (d.severity === 'GDP') return [255, 150, 0, 200] as [number, number, number, number]; // Orange for delays
+        return [255, 200, 100, 180] as [number, number, number, number]; // Yellow
+      },
+      radiusMinPixels: 4,
+      radiusMaxPixels: 15,
       pickable: true,
     });
   }
@@ -1128,6 +1211,22 @@ export class DeckGLMap {
       return { html: `<div class="deckgl-tooltip"><strong>${obj.title || ''}</strong><br/>${obj.location || ''}</div>` };
     }
 
+    if (layerId === 'irradiators-layer') {
+      return { html: `<div class="deckgl-tooltip"><strong>${obj.name || ''}</strong><br/>${obj.type || 'Gamma Irradiator'}</div>` };
+    }
+
+    if (layerId === 'spaceports-layer') {
+      return { html: `<div class="deckgl-tooltip"><strong>${obj.name || ''}</strong><br/>${obj.country || 'Spaceport'}</div>` };
+    }
+
+    if (layerId === 'ports-layer') {
+      return { html: `<div class="deckgl-tooltip"><strong>${obj.name || ''}</strong><br/>${obj.country || 'Port'}</div>` };
+    }
+
+    if (layerId === 'flight-delays-layer') {
+      return { html: `<div class="deckgl-tooltip"><strong>${obj.airport || ''}</strong><br/>${obj.severity || ''}: ${obj.reason || ''}</div>` };
+    }
+
     return null;
   }
 
@@ -1149,6 +1248,7 @@ export class DeckGLMap {
       'conflict-zones-layer': 'conflict',
       'bases-layer': 'base',
       'nuclear-layer': 'nuclear',
+      'irradiators-layer': 'irradiator',
       'datacenters-layer': 'datacenter',
       'cables-layer': 'cable',
       'pipelines-layer': 'pipeline',
@@ -1161,6 +1261,9 @@ export class DeckGLMap {
       'natural-events-layer': 'natEvent',
       'waterways-layer': 'waterway',
       'economic-centers-layer': 'economic',
+      'spaceports-layer': 'spaceport',
+      'ports-layer': 'port',
+      'flight-delays-layer': 'flight',
       'startup-hubs-layer': 'startupHub',
       'tech-hqs-layer': 'techHQ',
       'accelerators-layer': 'accelerator',
@@ -1533,7 +1636,8 @@ export class DeckGLMap {
     this.updateLayers();
   }
 
-  public setFlightDelays(_delays: AirportDelayAlert[]): void {
+  public setFlightDelays(delays: AirportDelayAlert[]): void {
+    this.flightDelays = delays;
     this.updateLayers();
   }
 
