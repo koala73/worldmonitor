@@ -826,9 +826,19 @@ export class DeckGLMap {
       layers.push(this.createMilitaryVesselsLayer());
     }
 
+    // Military vessel clusters layer
+    if (mapLayers.military && this.militaryVesselClusters.length > 0) {
+      layers.push(this.createMilitaryVesselClustersLayer());
+    }
+
     // Military flights layer
     if (mapLayers.military && this.militaryFlights.length > 0) {
       layers.push(this.createMilitaryFlightsLayer());
+    }
+
+    // Military flight clusters layer
+    if (mapLayers.military && this.militaryFlightClusters.length > 0) {
+      layers.push(this.createMilitaryFlightClustersLayer());
     }
 
     // Strategic waterways layer
@@ -1037,10 +1047,21 @@ export class DeckGLMap {
       id: 'ports-layer',
       data: PORTS,
       getPosition: (d) => [d.lon, d.lat],
-      getRadius: 5000,
-      getFillColor: [0, 200, 255, 160] as [number, number, number, number], // Cyan
-      radiusMinPixels: 3,
-      radiusMaxPixels: 8,
+      getRadius: 6000,
+      getFillColor: (d) => {
+        // Color by port type (matching old Map.ts icons)
+        switch (d.type) {
+          case 'naval': return [100, 150, 255, 200] as [number, number, number, number]; // Blue - ⚓
+          case 'oil': return [255, 140, 0, 200] as [number, number, number, number]; // Orange - 🛢️
+          case 'lng': return [255, 200, 50, 200] as [number, number, number, number]; // Yellow - 🛢️
+          case 'container': return [0, 200, 255, 180] as [number, number, number, number]; // Cyan - 🏭
+          case 'mixed': return [150, 200, 150, 180] as [number, number, number, number]; // Green
+          case 'bulk': return [180, 150, 120, 180] as [number, number, number, number]; // Brown
+          default: return [0, 200, 255, 160] as [number, number, number, number];
+        }
+      },
+      radiusMinPixels: 4,
+      radiusMaxPixels: 10,
       pickable: true,
     });
   }
@@ -1197,13 +1218,19 @@ export class DeckGLMap {
       id: 'ais-density-layer',
       data: this.aisDensity,
       getPosition: (d) => [d.lon, d.lat],
-      getRadius: (d) => 5000 + d.intensity * 2000,
+      getRadius: (d) => 4000 + d.intensity * 8000,
       getFillColor: (d) => {
-        const alpha = Math.min(50 + d.intensity * 20, 200);
-        return [100, 200, 255, alpha] as [number, number, number, number];
+        const intensity = Math.min(Math.max(d.intensity, 0.15), 1);
+        const isCongested = (d.deltaPct || 0) >= 15;
+        const alpha = Math.round(40 + intensity * 160);
+        // Orange for congested areas, cyan for normal traffic
+        if (isCongested) {
+          return [255, 183, 3, alpha] as [number, number, number, number]; // #ffb703
+        }
+        return [0, 209, 255, alpha] as [number, number, number, number]; // #00d1ff
       },
-      radiusMinPixels: 3,
-      radiusMaxPixels: 20,
+      radiusMinPixels: 4,
+      radiusMaxPixels: 12,
       pickable: true,
     });
   }
@@ -1285,8 +1312,26 @@ export class DeckGLMap {
     });
   }
 
+  private createMilitaryVesselClustersLayer(): ScatterplotLayer {
+    return new ScatterplotLayer({
+      id: 'military-vessel-clusters-layer',
+      data: this.militaryVesselClusters,
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: (d) => 15000 + (d.vesselCount || 1) * 3000,
+      getFillColor: (d) => {
+        // Vessel types: 'exercise' | 'deployment' | 'transit' | 'unknown'
+        const activity = d.activityType || 'unknown';
+        if (activity === 'exercise' || activity === 'deployment') return [255, 100, 100, 200] as [number, number, number, number];
+        if (activity === 'transit') return [255, 180, 100, 180] as [number, number, number, number];
+        return [200, 150, 150, 160] as [number, number, number, number];
+      },
+      radiusMinPixels: 8,
+      radiusMaxPixels: 25,
+      pickable: true,
+    });
+  }
+
   private createMilitaryFlightsLayer(): ScatterplotLayer {
-    // Render military flights as scatter points (simpler than arcs)
     return new ScatterplotLayer({
       id: 'military-flights-layer',
       data: this.militaryFlights,
@@ -1295,6 +1340,24 @@ export class DeckGLMap {
       getFillColor: COLORS.flightMilitary,
       radiusMinPixels: 4,
       radiusMaxPixels: 12,
+      pickable: true,
+    });
+  }
+
+  private createMilitaryFlightClustersLayer(): ScatterplotLayer {
+    return new ScatterplotLayer({
+      id: 'military-flight-clusters-layer',
+      data: this.militaryFlightClusters,
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: (d) => 15000 + (d.flightCount || 1) * 3000,
+      getFillColor: (d) => {
+        const activity = d.activityType || 'unknown';
+        if (activity === 'exercise' || activity === 'patrol') return [100, 150, 255, 200] as [number, number, number, number];
+        if (activity === 'transport') return [255, 200, 100, 180] as [number, number, number, number];
+        return [150, 150, 200, 160] as [number, number, number, number];
+      },
+      radiusMinPixels: 8,
+      radiusMaxPixels: 25,
       pickable: true,
     });
   }
@@ -1432,6 +1495,14 @@ export class DeckGLMap {
       return { html: `<div class="deckgl-tooltip"><strong>${obj.callsign || obj.registration || 'Military Aircraft'}</strong><br/>${obj.type || ''}</div>` };
     }
 
+    if (layerId === 'military-vessel-clusters-layer') {
+      return { html: `<div class="deckgl-tooltip"><strong>${obj.name || 'Vessel Cluster'}</strong><br/>${obj.vesselCount || 0} vessels<br/>${obj.activityType || ''}</div>` };
+    }
+
+    if (layerId === 'military-flight-clusters-layer') {
+      return { html: `<div class="deckgl-tooltip"><strong>${obj.name || 'Flight Cluster'}</strong><br/>${obj.flightCount || 0} aircraft<br/>${obj.activityType || ''}</div>` };
+    }
+
     if (layerId === 'protests-layer') {
       return { html: `<div class="deckgl-tooltip"><strong>${obj.title || ''}</strong><br/>${obj.country || ''}</div>` };
     }
@@ -1515,7 +1586,8 @@ export class DeckGLMap {
     }
 
     if (layerId === 'ports-layer') {
-      return { html: `<div class="deckgl-tooltip"><strong>${obj.name || ''}</strong><br/>${obj.country || 'Port'}</div>` };
+      const typeIcon = obj.type === 'naval' ? '⚓' : obj.type === 'oil' || obj.type === 'lng' ? '🛢️' : '🏭';
+      return { html: `<div class="deckgl-tooltip"><strong>${typeIcon} ${obj.name || ''}</strong><br/>${obj.type || 'Port'} - ${obj.country || ''}</div>` };
     }
 
     if (layerId === 'flight-delays-layer') {
@@ -1582,6 +1654,8 @@ export class DeckGLMap {
       'protests-layer': 'protest',
       'military-flights-layer': 'militaryFlight',
       'military-vessels-layer': 'militaryVessel',
+      'military-vessel-clusters-layer': 'militaryVesselCluster',
+      'military-flight-clusters-layer': 'militaryFlightCluster',
       'natural-events-layer': 'natEvent',
       'waterways-layer': 'waterway',
       'economic-centers-layer': 'economic',
@@ -2243,15 +2317,15 @@ export class DeckGLMap {
   public getHotspotLevels(): Record<string, string> {
     const levels: Record<string, string> = {};
     this.hotspots.forEach(h => {
-      levels[h.id] = h.level || 'low';
+      levels[h.name] = h.level || 'low';
     });
     return levels;
   }
 
   public setHotspotLevels(levels: Record<string, string>): void {
     this.hotspots.forEach(h => {
-      if (levels[h.id]) {
-        h.level = levels[h.id] as 'low' | 'elevated' | 'high';
+      if (levels[h.name]) {
+        h.level = levels[h.name] as 'low' | 'elevated' | 'high';
       }
     });
     this.updateLayers();
@@ -2275,9 +2349,14 @@ export class DeckGLMap {
 
   public setLayerReady(layer: keyof MapLayers, hasData: boolean): void {
     const toggle = this.container.querySelector(`.layer-toggle[data-layer="${layer}"]`);
-    if (toggle) {
-      toggle.classList.remove('loading');
-      toggle.classList.toggle('has-data', hasData);
+    if (!toggle) return;
+
+    toggle.classList.remove('loading');
+    // Match old Map.ts behavior: set 'active' only when layer enabled AND has data
+    if (this.state.layers[layer] && hasData) {
+      toggle.classList.add('active');
+    } else {
+      toggle.classList.remove('active');
     }
   }
 
