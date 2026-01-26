@@ -746,9 +746,19 @@ const POSTURE_THEATERS: PostureTheater[] = [
     shortName: 'E.MED',
     targetNation: null,
     regions: ['eastern-med', 'levant'],
-    bounds: { north: 37, south: 30, east: 37, west: 25 },
+    bounds: { north: 37, south: 33, east: 37, west: 25 },
     thresholds: { elevated: 15, critical: 30 },
     strikeIndicators: { minTankers: 3, minAwacs: 1, minFighters: 10 },
+  },
+  {
+    id: 'israel-gaza-theater',
+    name: 'Israel/Gaza',
+    shortName: 'GAZA',
+    targetNation: 'Gaza',
+    regions: ['israel', 'gaza', 'west-bank'],
+    bounds: { north: 33, south: 29, east: 36, west: 33 },
+    thresholds: { elevated: 10, critical: 25 },
+    strikeIndicators: { minTankers: 2, minAwacs: 1, minFighters: 8 },
   },
 ];
 

@@ -11,7 +11,7 @@ export const config = {
 };
 
 const CACHE_TTL_SECONDS = 300; // 5 minutes
-const CACHE_KEY = 'theater-posture:v2';
+const CACHE_KEY = 'theater-posture:v3';
 
 // Theater definitions (matches client-side POSTURE_THEATERS)
 const POSTURE_THEATERS = [
@@ -74,9 +74,18 @@ const POSTURE_THEATERS = [
     name: 'Eastern Mediterranean',
     shortName: 'E.MED',
     targetNation: null,
-    bounds: { north: 37, south: 30, east: 37, west: 25 },
+    bounds: { north: 37, south: 33, east: 37, west: 25 },
     thresholds: { elevated: 15, critical: 30 },
     strikeIndicators: { minTankers: 3, minAwacs: 1, minFighters: 10 },
+  },
+  {
+    id: 'israel-gaza-theater',
+    name: 'Israel/Gaza',
+    shortName: 'GAZA',
+    targetNation: 'Gaza',
+    bounds: { north: 33, south: 29, east: 36, west: 33 },
+    thresholds: { elevated: 10, critical: 25 },
+    strikeIndicators: { minTankers: 2, minAwacs: 1, minFighters: 8 },
   },
 ];
 
