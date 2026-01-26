@@ -494,9 +494,7 @@ export function calculateCII(): CountryScore[] {
     // Blend baseline risk with detected events + all boosts
     // - 40% baseline risk (geopolitical context always matters)
     // - 60% event-based (current detected activity)
-    // - Hotspot boost adds up to 30 points for activity near strategic locations
-    // - News urgency boost ensures breaking news elevates score
-    // - Focal boost adds intelligence synthesis (news + signals correlation)
+    // - Boosts: hotspot(10) + news(5) + focal(8) = max 23 points
     const blendedScore = baselineRisk * 0.4 + eventScore * 0.6 + hotspotBoost + newsUrgencyBoost + focalBoost;
 
     // Active conflict zones have a FLOOR score - they're inherently more unstable
