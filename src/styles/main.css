@@ -10165,3 +10165,31 @@ body.has-critical-banner .panels-grid {
   font-size: 12px;
   color: rgba(255, 255, 255, 0.6);
 }
+
+.posture-retry-btn {
+  margin-top: 12px;
+  padding: 8px 16px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s;
+}
+
+.posture-retry-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+.posture-stale-warning {
+  background: rgba(255, 170, 0, 0.15);
+  border: 1px solid rgba(255, 170, 0, 0.3);
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  font-size: 11px;
+  color: #ffaa00;
+  text-align: center;
+}

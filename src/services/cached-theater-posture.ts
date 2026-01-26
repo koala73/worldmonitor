@@ -11,6 +11,8 @@ export interface CachedTheaterPosture {
   totalFlights: number;
   timestamp: string;
   cached: boolean;
+  stale?: boolean;
+  error?: string;
 }
 
 let cachedPosture: CachedTheaterPosture | null = null;

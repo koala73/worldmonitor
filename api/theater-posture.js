@@ -11,7 +11,9 @@ export const config = {
 };
 
 const CACHE_TTL_SECONDS = 300; // 5 minutes
+const STALE_CACHE_TTL_SECONDS = 3600; // 1 hour - serve stale data when API is down
 const CACHE_KEY = 'theater-posture:v4';
+const STALE_CACHE_KEY = 'theater-posture:stale:v4';
 
 // Theater definitions (matches client-side POSTURE_THEATERS)
 const POSTURE_THEATERS = [
@@ -385,10 +387,13 @@ export default async function handler(req) {
       cached: false,
     };
 
-    // Cache the result
+    // Cache the result (both regular and stale backup)
     if (redisClient) {
       try {
-        await redisClient.set(CACHE_KEY, result, { ex: CACHE_TTL_SECONDS });
+        await Promise.all([
+          redisClient.set(CACHE_KEY, result, { ex: CACHE_TTL_SECONDS }),
+          redisClient.set(STALE_CACHE_KEY, result, { ex: STALE_CACHE_TTL_SECONDS }),
+        ]);
         console.log('[TheaterPosture] Cached result');
       } catch (err) {
         console.warn('[TheaterPosture] Cache write error:', err.message);
@@ -403,6 +408,32 @@ export default async function handler(req) {
     });
   } catch (error) {
     console.error('[TheaterPosture] Error:', error);
+
+    // Try to return stale cached data when API fails
+    const redisClient = getRedis();
+    if (redisClient) {
+      try {
+        const stale = await redisClient.get(STALE_CACHE_KEY);
+        if (stale) {
+          console.log('[TheaterPosture] Returning stale cached data due to API error');
+          return Response.json({
+            ...stale,
+            cached: true,
+            stale: true,
+            error: 'Using cached data - live feed temporarily unavailable',
+          }, {
+            headers: {
+              ...corsHeaders,
+              'Cache-Control': 'public, max-age=30',
+            },
+          });
+        }
+      } catch (cacheErr) {
+        console.warn('[TheaterPosture] Stale cache read error:', cacheErr.message);
+      }
+    }
+
+    // No stale data available - return error
     return Response.json({
       error: error.message,
       postures: [],

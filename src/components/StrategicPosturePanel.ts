@@ -9,6 +9,7 @@ export class StrategicPosturePanel extends Panel {
   private refreshInterval: ReturnType<typeof setInterval> | null = null;
   private onLocationClick?: (lat: number, lon: number) => void;
   private lastTimestamp: string = '';
+  private isStale: boolean = false;
 
   constructor() {
     super({
@@ -67,6 +68,7 @@ export class StrategicPosturePanel extends Panel {
         byOperator: { ...p.byOperator },
       }));
       this.lastTimestamp = data.timestamp;
+      this.isStale = data.stale || false;
 
       // Try to augment with vessel data (client-side)
       await this.augmentWithVessels();
@@ -163,13 +165,16 @@ export class StrategicPosturePanel extends Panel {
       <div class="posture-panel">
         <div class="posture-no-data">
           <div class="posture-no-data-icon">📡</div>
-          <div class="posture-no-data-title">No Data Available</div>
+          <div class="posture-no-data-title">Acquiring Data</div>
           <div class="posture-no-data-desc">
-            Theater posture data is currently unavailable.
+            Military flight tracking uses public ADS-B transponder data.
+            Data may take a moment to load, or the feed may be temporarily rate-limited.
           </div>
+          <button class="posture-retry-btn">↻ Try Again</button>
         </div>
       </div>
     `);
+    this.content.querySelector('.posture-retry-btn')?.addEventListener('click', () => this.refresh());
   }
 
   private showFetchError(): void {
@@ -177,13 +182,16 @@ export class StrategicPosturePanel extends Panel {
       <div class="posture-panel">
         <div class="posture-no-data">
           <div class="posture-no-data-icon">⚠️</div>
-          <div class="posture-no-data-title">Error Loading</div>
+          <div class="posture-no-data-title">Feed Temporarily Unavailable</div>
           <div class="posture-no-data-desc">
-            Failed to fetch theater posture data. Will retry.
+            The OpenSky flight feed is rate-limited or temporarily down.
+            This is normal during peak hours. Will retry automatically.
           </div>
+          <button class="posture-retry-btn">↻ Try Again</button>
         </div>
       </div>
     `);
+    this.content.querySelector('.posture-retry-btn')?.addEventListener('click', () => this.refresh());
   }
 
   private getPostureBadge(level: string): string {
@@ -284,12 +292,17 @@ export class StrategicPosturePanel extends Panel {
       ? new Date(this.lastTimestamp).toLocaleTimeString()
       : new Date().toLocaleTimeString();
 
+    const staleWarning = this.isStale
+      ? '<div class="posture-stale-warning">⚠️ Using cached data - live feed temporarily unavailable</div>'
+      : '';
+
     const html = `
       <div class="posture-panel">
+        ${staleWarning}
         ${sorted.map((p) => this.renderTheater(p)).join('')}
 
         <div class="posture-footer">
-          <span class="posture-updated">Updated: ${updatedTime}</span>
+          <span class="posture-updated">${this.isStale ? '⚠️ ' : ''}Updated: ${updatedTime}</span>
           <button class="posture-refresh-btn" title="Refresh">↻</button>
         </div>
       </div>
