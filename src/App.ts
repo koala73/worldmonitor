@@ -1247,8 +1247,13 @@ export class App {
 
       const strategicPosturePanel = new StrategicPosturePanel();
       strategicPosturePanel.setLocationClickHandler((lat, lon) => {
-        this.map?.setCenter(lat, lon);
-        this.map?.setZoom(4);
+        console.log('[App] StrategicPosture handler called:', { lat, lon, hasMap: !!this.map });
+        if (this.map) {
+          this.map.setCenter(lat, lon);
+          this.map.setZoom(4);
+        } else {
+          console.error('[App] Map not available for navigation!');
+        }
       });
       this.panels['strategic-posture'] = strategicPosturePanel;
     }

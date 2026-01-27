@@ -446,8 +446,10 @@ export class StrategicPosturePanel extends Panel {
   }
 
   public setLocationClickHandler(handler: (lat: number, lon: number) => void): void {
-    console.log('[StrategicPosturePanel] setLocationClickHandler called');
+    console.log('[StrategicPosturePanel] setLocationClickHandler called, handler:', typeof handler);
     this.onLocationClick = handler;
+    // Verify it's stored
+    console.log('[StrategicPosturePanel] Handler stored, onLocationClick now:', typeof this.onLocationClick);
   }
 
   public destroy(): void {
