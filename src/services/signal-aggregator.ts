@@ -18,7 +18,11 @@ export type SignalType =
   | 'military_flight'
   | 'military_vessel'
   | 'protest'
-  | 'ais_disruption';
+  | 'ais_disruption'
+  | 'satellite_fire'        // NASA FIRMS thermal anomalies
+  | 'defense_activity'      // Military drills, mobilization
+  | 'infrastructure_status' // IXP, cable, gateway status
+  | 'sentiment_shift'       // Social media sentiment alerts
 
 export interface GeoSignal {
   type: SignalType;
@@ -232,6 +236,136 @@ class SignalAggregator {
     this.pruneOld();
   }
 
+  // ============ NEW SIGNAL INGESTION METHODS ============
+
+  /**
+   * Ingest satellite fire detection from NASA FIRMS
+   * Source: src/services/firms-satellite.ts
+   */
+  ingestSatelliteFires(fires: Array<{
+    lat: number;
+    lon: number;
+    brightness: number;
+    frp: number;
+    region: string;
+    acq_date: string;
+  }>): void {
+    this.clearSignalType('satellite_fire');
+    
+    for (const fire of fires) {
+      const code = this.coordsToCountry(fire.lat, fire.lon) || normalizeCountryCode(fire.region);
+      const severity = fire.brightness > 360 ? 'high' : fire.brightness > 320 ? 'medium' : 'low';
+      
+      this.signals.push({
+        type: 'satellite_fire',
+        country: code,
+        countryName: fire.region,
+        lat: fire.lat,
+        lon: fire.lon,
+        severity,
+        title: `Thermal anomaly detected (${Math.round(fire.brightness)}K, ${fire.frp.toFixed(1)}MW)`,
+        timestamp: new Date(fire.acq_date),
+      });
+    }
+    this.pruneOld();
+  }
+
+  /**
+   * Ingest defense activity from war analysis
+   * Source: src/services/war-analysis.ts
+   */
+  ingestDefenseActivity(activities: Array<{
+    country: string;
+    type: 'drill' | 'mobilization' | 'deployment' | 'exercise' | 'procurement';
+    scale: 'small' | 'medium' | 'large' | 'massive';
+    description: string;
+    date: Date;
+    reliability: number;
+  }>): void {
+    this.clearSignalType('defense_activity');
+    
+    for (const activity of activities) {
+      const code = normalizeCountryCode(activity.country);
+      const severity = activity.scale === 'massive' ? 'high' : activity.scale === 'large' ? 'medium' : 'low';
+      
+      this.signals.push({
+        type: 'defense_activity',
+        country: code,
+        countryName: activity.country,
+        lat: 0,
+        lon: 0,
+        severity,
+        title: `${activity.scale} ${activity.type}: ${activity.description}`,
+        timestamp: activity.date,
+      });
+    }
+    this.pruneOld();
+  }
+
+  /**
+   * Ingest infrastructure status from infrastructure map
+   * Source: src/services/infrastructure-map.ts
+   */
+  ingestInfrastructureStatus(nodes: Array<{
+    id: string;
+    type: 'ixp' | 'datacenter' | 'cable_landing' | 'gateway';
+    name: string;
+    country: string;
+    lat: number;
+    lon: number;
+    status: 'active' | 'degraded' | 'offline';
+  }>): void {
+    this.clearSignalType('infrastructure_status');
+    
+    for (const node of nodes) {
+      const code = normalizeCountryCode(node.country);
+      const severity = node.status === 'offline' ? 'high' : node.status === 'degraded' ? 'medium' : 'low';
+      
+      this.signals.push({
+        type: 'infrastructure_status',
+        country: code,
+        countryName: node.country,
+        lat: node.lat,
+        lon: node.lon,
+        severity,
+        title: `${node.type} ${node.name}: ${node.status}`,
+        timestamp: new Date(),
+      });
+    }
+    this.pruneOld();
+  }
+
+  /**
+   * Ingest sentiment alerts from sentiment tracker
+   * Source: src/services/sentiment-tracker.ts
+   */
+  ingestSentimentAlerts(alerts: Array<{
+    country: string;
+    type: 'spike' | 'drop' | 'keyword';
+    message: string;
+    severity: 'info' | 'warning' | 'critical';
+    timestamp: Date;
+  }>): void {
+    this.clearSignalType('sentiment_shift');
+    
+    for (const alert of alerts) {
+      const code = normalizeCountryCode(alert.country);
+      const severity = alert.severity === 'critical' ? 'high' : alert.severity === 'warning' ? 'medium' : 'low';
+      
+      this.signals.push({
+        type: 'sentiment_shift',
+        country: code,
+        countryName: alert.country,
+        lat: 0,
+        lon: 0,
+        severity,
+        title: alert.message,
+        timestamp: alert.timestamp,
+      });
+    }
+    this.pruneOld();
+  }
+
   private coordsToCountry(lat: number, lon: number): string {
     if (lat >= 25 && lat <= 40 && lon >= 44 && lon <= 63) return 'IR';
     if (lat >= 29 && lat <= 33 && lon >= 34 && lon <= 36) return 'IL';
@@ -307,6 +441,10 @@ class SignalAggregator {
           military_vessel: 'naval presence',
           protest: 'civil unrest',
           ais_disruption: 'shipping anomalies',
+          satellite_fire: 'thermal anomalies',
+          defense_activity: 'military activity',
+          infrastructure_status: 'infrastructure issues',
+          sentiment_shift: 'sentiment shifts',
         };
 
         const typeDescriptions = [...allTypes].map(t => typeLabels[t]).join(', ');
@@ -360,6 +498,10 @@ class SignalAggregator {
       military_vessel: 0,
       protest: 0,
       ais_disruption: 0,
+      satellite_fire: 0,
+      defense_activity: 0,
+      infrastructure_status: 0,
+      sentiment_shift: 0,
     };
 
     for (const s of this.signals) {
