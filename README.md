@@ -495,7 +495,7 @@ The `.env.example` file documents every variable with descriptions and registrat
 | **Tracking** | `WINGBITS_API_KEY`, `AISSTREAM_API_KEY` | Free |
 | **Geopolitical** | `ACLED_ACCESS_TOKEN`, `CLOUDFLARE_API_TOKEN`, `NASA_FIRMS_API_KEY` | Free for researchers |
 | **Relay** | `WS_RELAY_URL`, `VITE_WS_RELAY_URL`, `OPENSKY_CLIENT_ID/SECRET` | Self-hosted |
-| **UI** | `VITE_VARIANT`, `VITE_MAP_INTERACTION_MODE` (`flat` or `3d`) | N/A |
+| **UI** | `VITE_VARIANT`, `VITE_MAP_INTERACTION_MODE` (`flat` or `3d`, default `3d`) | N/A |
 
 See [`.env.example`](./.env.example) for the complete list with registration links.
 

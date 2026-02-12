@@ -105,7 +105,7 @@ const VIEW_PRESETS: Record<DeckMapView, { longitude: number; latitude: number; z
 };
 
 const MAP_INTERACTION_MODE: MapInteractionMode =
-  import.meta.env.VITE_MAP_INTERACTION_MODE === '3d' ? '3d' : 'flat';
+  import.meta.env.VITE_MAP_INTERACTION_MODE === 'flat' ? 'flat' : '3d';
 
 // Zoom thresholds for layer visibility and labels (matches old Map.ts)
 // Used in renderClusterOverlays for zoom-dependent label visibility
@@ -221,10 +221,7 @@ export class DeckGLMap {
   private lastClusterState: Map<string, { x: number; y: number; count: number }> = new Map();
   private clusterResultCache: Map<string, Array<{ items: unknown[]; center: [number, number]; screenPos: [number, number] }>> = new Map();
   private lastClusterZoom = -1;
-  private techEventsVersion = 0;
-  private protestsVersion = 0;
-  private newsPulseFrameId: number | null = null;
-  private lastPulseUpdateTime = 0;
+  private newsPulseIntervalId: ReturnType<typeof setInterval> | null = null;
   private lastCableHighlightSignature = '';
   private lastPipelineHighlightSignature = '';
   private throttledRenderClusters: () => void;
@@ -549,7 +546,7 @@ export class DeckGLMap {
 
       if (this.state.layers.techEvents && this.techEvents.length > 0) {
         const clusterRadius = zoom >= 4 ? 15 : zoom >= 3 ? 25 : 40;
-        const cacheKey = `event-${this.techEventsVersion}-${clusterRadius}`;
+        const cacheKey = `event-${clusterRadius}`;
         let clusters = this.clusterResultCache.get(cacheKey) as Array<{ items: Array<TechEventMarker & { lon: number }>; center: [number, number]; screenPos: [number, number] }> | undefined;
         if (!clusters || zoomChanged) {
           const eventsWithLon = this.techEvents.map(e => ({ ...e, lon: e.lng }));
@@ -569,7 +566,7 @@ export class DeckGLMap {
 
     if (this.state.layers.protests && this.protests.length > 0) {
       const clusterRadius = zoom >= 4 ? 12 : zoom >= 3 ? 20 : 35;
-      const cacheKey = `protest-${this.protestsVersion}-${clusterRadius}`;
+      const cacheKey = `protest-${clusterRadius}`;
       let clusters = this.clusterResultCache.get(cacheKey) as Array<{ items: SocialUnrestEvent[]; center: [number, number]; screenPos: [number, number] }> | undefined;
       if (!clusters || zoomChanged) {
         const significantProtests = this.protests.filter(p => p.severity === 'high' || p.eventType === 'riot');
@@ -1721,34 +1718,26 @@ export class DeckGLMap {
   private pulseTime = 0;
 
   private startNewsPulseAnimation(): void {
-    if (this.newsPulseFrameId !== null) return;
+    if (this.newsPulseIntervalId !== null) return;
     const PULSE_UPDATE_INTERVAL_MS = 250;
 
-    const animate = (): void => {
+    this.newsPulseIntervalId = setInterval(() => {
       const now = Date.now();
-      if (now - this.lastPulseUpdateTime >= PULSE_UPDATE_INTERVAL_MS) {
-        const hasRecent = this.hasRecentNews(now);
-        if (!hasRecent) {
-          this.pulseTime = now;
-          this.stopNewsPulseAnimation();
-          this.rafUpdateLayers();
-          return;
-        }
+      if (!this.hasRecentNews(now)) {
         this.pulseTime = now;
-        this.lastPulseUpdateTime = now;
+        this.stopNewsPulseAnimation();
         this.rafUpdateLayers();
+        return;
       }
-      this.newsPulseFrameId = requestAnimationFrame(animate);
-    };
-
-    this.lastPulseUpdateTime = 0;
-    this.newsPulseFrameId = requestAnimationFrame(animate);
+      this.pulseTime = now;
+      this.rafUpdateLayers();
+    }, PULSE_UPDATE_INTERVAL_MS);
   }
 
   private stopNewsPulseAnimation(): void {
-    if (this.newsPulseFrameId !== null) {
-      cancelAnimationFrame(this.newsPulseFrameId);
-      this.newsPulseFrameId = null;
+    if (this.newsPulseIntervalId !== null) {
+      clearInterval(this.newsPulseIntervalId);
+      this.newsPulseIntervalId = null;
     }
   }
 
@@ -1831,40 +1820,86 @@ export class DeckGLMap {
     const layerId = info.layer?.id || '';
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const obj = info.object as any;
+    const text = (value: unknown): string => escapeHtml(String(value ?? ''));
 
     switch (layerId) {
       case 'hotspots-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>${obj.name || ''}</strong><br/>${obj.subtext || ''}</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.subtext)}</div>` };
       case 'earthquakes-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>M${(obj.magnitude || 0).toFixed(1)} Earthquake</strong><br/>${obj.place || ''}</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>M${(obj.magnitude || 0).toFixed(1)} Earthquake</strong><br/>${text(obj.place)}</div>` };
       case 'military-vessels-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>${obj.name || ''}</strong><br/>${obj.operatorCountry || ''}</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.operatorCountry)}</div>` };
       case 'military-flights-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>${obj.callsign || obj.registration || 'Military Aircraft'}</strong><br/>${obj.type || ''}</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.callsign || obj.registration || 'Military Aircraft')}</strong><br/>${text(obj.type)}</div>` };
       case 'military-vessel-clusters-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>${obj.name || 'Vessel Cluster'}</strong><br/>${obj.vesselCount || 0} vessels</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name || 'Vessel Cluster')}</strong><br/>${obj.vesselCount || 0} vessels<br/>${text(obj.activityType)}</div>` };
       case 'military-flight-clusters-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>${obj.name || 'Flight Cluster'}</strong><br/>${obj.flightCount || 0} aircraft</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name || 'Flight Cluster')}</strong><br/>${obj.flightCount || 0} aircraft<br/>${text(obj.activityType)}</div>` };
+      case 'protests-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.title)}</strong><br/>${text(obj.country)}</div>` };
+      case 'bases-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.country)}</div>` };
+      case 'nuclear-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.type)}</div>` };
+      case 'datacenters-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.owner)}</div>` };
       case 'cables-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>${obj.name || ''}</strong><br/>Undersea Cable</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>Undersea Cable</div>` };
       case 'pipelines-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>${obj.name || ''}</strong><br/>${obj.type || ''} Pipeline</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.type)} Pipeline</div>` };
       case 'conflict-zones-layer': {
         const props = obj.properties || obj;
-        return { html: `<div class="deckgl-tooltip"><strong>${props.name || ''}</strong><br/>Conflict Zone</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(props.name)}</strong><br/>Conflict Zone</div>` };
       }
-      case 'protests-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>${obj.title || ''}</strong><br/>${obj.country || ''}</div>` };
-      case 'datacenters-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>${obj.name || ''}</strong><br/>${obj.owner || ''}</div>` };
+      case 'natural-events-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.title)}</strong><br/>${text(obj.category || 'Natural Event')}</div>` };
+      case 'ais-density-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>Ship Traffic</strong><br/>Intensity: ${text(obj.intensity)}</div>` };
+      case 'waterways-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>Strategic Waterway</div>` };
+      case 'economic-centers-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.country)}</div>` };
+      case 'startup-hubs-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.city)}</strong><br/>${text(obj.country)}</div>` };
+      case 'tech-hqs-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.company)}</strong><br/>${text(obj.city)}</div>` };
+      case 'accelerators-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.city)}</div>` };
+      case 'cloud-regions-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.provider)}</strong><br/>${text(obj.region)}</div>` };
+      case 'tech-events-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.title)}</strong><br/>${text(obj.location)}</div>` };
+      case 'irradiators-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.type || 'Gamma Irradiator')}</div>` };
+      case 'spaceports-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.country || 'Spaceport')}</div>` };
+      case 'ports-layer': {
+        const typeIcon = obj.type === 'naval' ? '⚓' : obj.type === 'oil' || obj.type === 'lng' ? '🛢️' : '🏭';
+        return { html: `<div class="deckgl-tooltip"><strong>${typeIcon} ${text(obj.name)}</strong><br/>${text(obj.type || 'Port')} - ${text(obj.country)}</div>` };
+      }
+      case 'flight-delays-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.airport)}</strong><br/>${text(obj.severity)}: ${text(obj.reason)}</div>` };
+      case 'apt-groups-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.aka)}<br/>Sponsor: ${text(obj.sponsor)}</div>` };
+      case 'minerals-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.mineral)} - ${text(obj.country)}<br/>${text(obj.operator)}</div>` };
+      case 'ais-disruptions-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>AIS ${text(obj.type || 'Disruption')}</strong><br/>${text(obj.severity)} severity<br/>${text(obj.description)}</div>` };
+      case 'cable-advisories-layer': {
+        const cableName = UNDERSEA_CABLES.find(c => c.id === obj.cableId)?.name || obj.cableId;
+        return { html: `<div class="deckgl-tooltip"><strong>${text(cableName)}</strong><br/>${text(obj.severity || 'Advisory')}<br/>${text(obj.description)}</div>` };
+      }
+      case 'repair-ships-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name || 'Repair Ship')}</strong><br/>${text(obj.status)}</div>` };
       case 'weather-layer': {
-        const area = obj.areaDesc ? `<br/><small>${obj.areaDesc.slice(0, 50)}${obj.areaDesc.length > 50 ? '...' : ''}</small>` : '';
-        return { html: `<div class="deckgl-tooltip"><strong>${obj.event || 'Weather Alert'}</strong><br/>${obj.severity || ''}${area}</div>` };
+        const areaDesc = typeof obj.areaDesc === 'string' ? obj.areaDesc : '';
+        const area = areaDesc ? `<br/><small>${text(areaDesc.slice(0, 50))}${areaDesc.length > 50 ? '...' : ''}</small>` : '';
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.event || 'Weather Alert')}</strong><br/>${text(obj.severity)}${area}</div>` };
       }
       case 'outages-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>${obj.asn || 'Internet Outage'}</strong><br/>${obj.country || ''}</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.asn || 'Internet Outage')}</strong><br/>${text(obj.country)}</div>` };
       case 'news-locations-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>📰 News</strong><br/>${escapeHtml(obj.title?.slice(0, 80) || '')}</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>📰 News</strong><br/>${text(obj.title?.slice(0, 80) || '')}</div>` };
       default:
         return null;
     }
@@ -2447,7 +2482,6 @@ export class DeckGLMap {
 
   public setProtests(events: SocialUnrestEvent[]): void {
     this.protests = events;
-    this.protestsVersion += 1;
     this.clusterResultCache.clear();
     this.render();
   }
@@ -2481,7 +2515,6 @@ export class DeckGLMap {
 
   public setTechEvents(events: TechEventMarker[]): void {
     this.techEvents = events;
-    this.techEventsVersion += 1;
     this.clusterResultCache.clear();
     this.render();
   }
@@ -2500,7 +2533,7 @@ export class DeckGLMap {
     this.render();
 
     const hasRecent = this.hasRecentNews(now);
-    if (hasRecent && this.newsPulseFrameId === null) {
+    if (hasRecent && this.newsPulseIntervalId === null) {
       this.startNewsPulseAnimation();
     } else if (!hasRecent) {
       this.stopNewsPulseAnimation();
