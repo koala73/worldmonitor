@@ -52,6 +52,8 @@ import {
   APT_GROUPS,
   CRITICAL_MINERALS,
 } from '@/config';
+import { GULF_INVESTMENTS } from '@/config/gulf-fdi';
+import type { GulfInvestment } from '@/types';
 import { MapPopup, type PopupType } from './MapPopup';
 import {
   updateHotspotEscalation,
@@ -118,6 +120,7 @@ const LAYER_ZOOM_THRESHOLDS: Partial<Record<keyof MapLayers, { minZoom: number; 
   datacenters: { minZoom: 5 },
   irradiators: { minZoom: 4 },
   spaceports: { minZoom: 3 },
+  gulfInvestments: { minZoom: 2, showLabels: 5 },
 };
 // Export for external use
 export { LAYER_ZOOM_THRESHOLDS };
@@ -143,6 +146,9 @@ const COLORS = {
   techHQ: [100, 200, 255, 200] as [number, number, number, number],
   accelerator: [255, 200, 0, 200] as [number, number, number, number],
   cloudRegion: [150, 100, 255, 180] as [number, number, number, number],
+  // Gulf FDI investment markers
+  gulfInvestmentSA:  [0, 168, 107, 220] as [number, number, number, number],   // Saudi green
+  gulfInvestmentUAE: [255, 0, 100, 220] as [number, number, number, number],    // UAE red
 };
 
 // SVG icons as data URLs for different marker shapes
@@ -1096,6 +1102,11 @@ export class DeckGLMap {
       // techEvents rendered via HTML overlays in renderClusterOverlays()
     }
 
+    // Gulf FDI investments layer (infra variant only)
+    if (SITE_VARIANT === 'infra' && mapLayers.gulfInvestments) {
+      layers.push(this.createGulfInvestmentsLayer());
+    }
+
     // News geo-locations (always shown if data exists)
     if (this.newsLocations.length > 0) {
       layers.push(...this.createNewsLocationsLayer());
@@ -1744,6 +1755,30 @@ export class DeckGLMap {
     });
   }
 
+  // Infra variant: Gulf FDI investment markers
+  private createGulfInvestmentsLayer(): ScatterplotLayer {
+    return new ScatterplotLayer<GulfInvestment>({
+      id: 'gulf-investments-layer',
+      data: GULF_INVESTMENTS,
+      getPosition: (d: GulfInvestment) => [d.lon, d.lat],
+      getRadius: (d: GulfInvestment) => {
+        if (!d.investmentUSD) return 20000;
+        if (d.investmentUSD >= 50000) return 70000;
+        if (d.investmentUSD >= 10000) return 55000;
+        if (d.investmentUSD >= 1000) return 40000;
+        return 25000;
+      },
+      getFillColor: (d: GulfInvestment) =>
+        d.investingCountry === 'SA' ? COLORS.gulfInvestmentSA : COLORS.gulfInvestmentUAE,
+      getLineColor: [255, 255, 255, 80] as [number, number, number, number],
+      lineWidthMinPixels: 1,
+      radiusMinPixels: 5,
+      radiusMaxPixels: 28,
+      pickable: true,
+      parameters: { depthTest: false },
+    });
+  }
+
   private pulseTime = 0;
 
   private startNewsPulseAnimation(): void {
@@ -1929,6 +1964,23 @@ export class DeckGLMap {
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.asn || 'Internet Outage')}</strong><br/>${text(obj.country)}</div>` };
       case 'news-locations-layer':
         return { html: `<div class="deckgl-tooltip"><strong>📰 News</strong><br/>${text(obj.title?.slice(0, 80) || '')}</div>` };
+      case 'gulf-investments-layer': {
+        const inv = obj as GulfInvestment;
+        const flag = inv.investingCountry === 'SA' ? '🇸🇦' : '🇦🇪';
+        const usd = inv.investmentUSD != null
+          ? (inv.investmentUSD >= 1000 ? `$${(inv.investmentUSD / 1000).toFixed(1)}B` : `$${inv.investmentUSD}M`)
+          : 'Undisclosed';
+        const stake = inv.stakePercent != null ? `<br/>${text(String(inv.stakePercent))}% stake` : '';
+        return {
+          html: `<div class="deckgl-tooltip">
+            <strong>${flag} ${text(inv.assetName)}</strong><br/>
+            <em>${text(inv.investingEntity)}</em><br/>
+            ${text(inv.targetCountry)} · ${text(inv.sector)}<br/>
+            <strong>${usd}</strong>${stake}<br/>
+            <span style="text-transform:capitalize">${text(inv.status)}</span>
+          </div>`,
+        };
+      }
       default:
         return null;
     }

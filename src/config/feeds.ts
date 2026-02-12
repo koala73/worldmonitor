@@ -641,8 +641,63 @@ const TECH_FEEDS: Record<string, Feed[]> = {
   ],
 };
 
+// ============================================
+// INFRA VARIANT FEEDS (Gulf FDI Tracker)
+// ============================================
+const INFRA_FEEDS: Record<string, Feed[]> = {
+  // Live FDI & Gulf business news
+  fdiNews: [
+    { name: 'MEED', url: rss('https://www.meed.com/rss/') },
+    { name: 'Arabian Business', url: rss('https://www.arabianbusiness.com/rss') },
+    { name: 'The National', url: rss('https://www.thenationalnews.com/rss/') },
+    { name: 'Arab News', url: rss('https://www.arabnews.com/rss.xml') },
+    { name: 'Gulf Business', url: rss('https://news.google.com/rss/search?q=(PIF+OR+"DP+World"+OR+Mubadala+OR+ADNOC+OR+Masdar+OR+"ACWA+Power")+infrastructure+when:7d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Reuters GCC', url: rss('https://news.google.com/rss/search?q=("Saudi+Arabia"+OR+"UAE"+OR+"Abu+Dhabi")+investment+infrastructure+when:7d&hl=en-US&gl=US&ceid=US:en') },
+  ],
+  // Entity-specific news streams
+  entityNews: [
+    { name: 'DP World News', url: rss('https://news.google.com/rss/search?q="DP+World"+port+OR+terminal+OR+logistics+when:14d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'PIF News', url: rss('https://news.google.com/rss/search?q=("Public+Investment+Fund"+OR+"PIF+Saudi")+investment+when:14d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Mubadala News', url: rss('https://news.google.com/rss/search?q=Mubadala+investment+when:14d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'ADNOC News', url: rss('https://news.google.com/rss/search?q=ADNOC+(acquisition+OR+investment+OR+stake)+when:14d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Masdar News', url: rss('https://news.google.com/rss/search?q=Masdar+("clean+energy"+OR+"renewable")+investment+when:14d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'ACWA Power News', url: rss('https://news.google.com/rss/search?q="ACWA+Power"+(project+OR+investment+OR+contract)+when:14d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'AD Ports News', url: rss('https://news.google.com/rss/search?q=("AD+Ports"+OR+"Abu+Dhabi+Ports")+terminal+OR+investment+when:14d&hl=en-US&gl=US&ceid=US:en') },
+  ],
+  // Infrastructure sector media
+  infraMedia: [
+    { name: 'Port Technology', url: rss('https://www.porttechnology.org/feed/') },
+    { name: 'Offshore Energy', url: rss('https://www.offshore-energy.biz/feed/') },
+    { name: 'NS Energy', url: rss('https://www.nsenergybusiness.com/feed/') },
+    { name: 'Infrastructure Intel', url: rss('https://news.google.com/rss/search?q=(port+OR+pipeline+OR+"energy+project")+(Saudi+Arabia+OR+UAE+OR+"Gulf")+infrastructure+when:7d&hl=en-US&gl=US&ceid=US:en') },
+  ],
+  // New project announcements
+  announcements: [
+    { name: 'Gulf FDI Tracker', url: rss('https://news.google.com/rss/search?q=("foreign+direct+investment"+OR+FDI)+(Saudi+Arabia+OR+UAE+OR+"Abu+Dhabi"+OR+Dubai)+(port+OR+pipeline+OR+energy+OR+datacenter+OR+railway)+when:7d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Vision 2030 Projects', url: rss('https://news.google.com/rss/search?q="Vision+2030"+(project+OR+investment+OR+announced)+when:14d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'NEOM Updates', url: rss('https://news.google.com/rss/search?q=(NEOM+OR+KAEC+OR+ROSHN)+infrastructure+project+when:14d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Gulf PR Wire', url: rss('https://news.google.com/rss/search?q=site:prnewswire.com+(Mubadala+OR+ADNOC+OR+"DP+World"+OR+Masdar+OR+PIF)+when:14d&hl=en-US&gl=US&ceid=US:en') },
+  ],
+  // Regional coverage of investment destinations
+  regional: [
+    { name: 'Energy Monitor', url: rss('https://www.energymonitor.ai/feed/') },
+    { name: 'Trade Arabia', url: rss('https://www.tradearabia.com/rss/') },
+    { name: 'The Africa Report', url: rss('https://www.theafricareport.com/feed/') },
+    { name: 'Gulf Investments', url: rss('https://news.google.com/rss/search?q=(Saudi+Arabia+OR+UAE)+investment+(port+OR+pipeline+OR+energy+OR+infrastructure)+when:14d&hl=en-US&gl=US&ceid=US:en') },
+  ],
+  // Energy & resources context
+  energy: [
+    { name: 'Oil Price', url: rss('https://news.google.com/rss/search?q=(OPEC+OR+"Saudi+Aramco"+OR+ADNOC)+oil+gas+when:7d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'LNG World', url: rss('https://news.google.com/rss/search?q=LNG+(Saudi+Arabia+OR+UAE+OR+Qatar)+export+when:7d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Renewables GCC', url: rss('https://news.google.com/rss/search?q=(solar+OR+wind+OR+"green+hydrogen")+(Saudi+Arabia+OR+UAE)+project+when:7d&hl=en-US&gl=US&ceid=US:en') },
+  ],
+};
+
 // Variant-aware exports
-export const FEEDS = SITE_VARIANT === 'tech' ? TECH_FEEDS : FULL_FEEDS;
+export const FEEDS =
+  SITE_VARIANT === 'tech' ? TECH_FEEDS :
+  SITE_VARIANT === 'infra' ? INFRA_FEEDS :
+  FULL_FEEDS;
 
 export const INTEL_SOURCES: Feed[] = [
   // Defense & Security (Tier 1)

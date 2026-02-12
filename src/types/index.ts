@@ -424,6 +424,8 @@ export interface MapLayers {
   accelerators: boolean;
   techHQs: boolean;
   techEvents: boolean;
+  // Infra variant layers
+  gulfInvestments: boolean;
 }
 
 export interface AIDataCenter {
@@ -1037,4 +1039,69 @@ export interface FocalPointSummary {
   aiContext: string;
   topCountries: FocalPoint[];
   topCompanies: FocalPoint[];
+}
+
+// ============================================
+// GULF FDI / INFRA VARIANT TYPES
+// ============================================
+
+export type GulfInvestorCountry = 'SA' | 'UAE';
+
+export type GulfInvestmentSector =
+  | 'ports'
+  | 'pipelines'
+  | 'energy'
+  | 'datacenters'
+  | 'airports'
+  | 'railways'
+  | 'telecoms'
+  | 'water'
+  | 'logistics'
+  | 'mining'
+  | 'real-estate'
+  | 'manufacturing';
+
+export type GulfInvestmentStatus =
+  | 'operational'
+  | 'under-construction'
+  | 'announced'
+  | 'rumoured'
+  | 'cancelled'
+  | 'divested';
+
+export type GulfInvestingEntity =
+  | 'DP World'
+  | 'AD Ports'
+  | 'Mubadala'
+  | 'ADIA'
+  | 'ADNOC'
+  | 'Masdar'
+  | 'PIF'
+  | 'Saudi Aramco'
+  | 'ACWA Power'
+  | 'STC'
+  | 'Mawani'
+  | 'NEOM'
+  | 'Emirates Global Aluminium'
+  | 'Other';
+
+export interface GulfInvestment {
+  id: string;
+  investingEntity: GulfInvestingEntity;
+  investingCountry: GulfInvestorCountry;
+  targetCountry: string;
+  targetCountryIso: string;        // ISO 3166-1 alpha-2
+  sector: GulfInvestmentSector;
+  assetType: string;               // e.g. "Container Terminal"
+  assetName: string;               // e.g. "London Gateway Port"
+  lat: number;
+  lon: number;
+  investmentUSD?: number;          // USD millions, undefined = undisclosed
+  stakePercent?: number;           // 0–100, undefined = undisclosed
+  status: GulfInvestmentStatus;
+  yearAnnounced?: number;
+  yearOperational?: number;
+  description: string;
+  sourceUrl?: string;
+  tags?: string[];
 }

@@ -65,6 +65,7 @@ import {
   MacroSignalsPanel,
   ETFFlowsPanel,
   StablecoinPanel,
+  InvestmentsPanel,
 } from '@/components';
 import type { SearchResult } from '@/components/SearchModal';
 import { collectStoryData } from '@/services/story-data';
@@ -1078,8 +1079,8 @@ export class App {
       <div class="header">
         <div class="header-left">
           <div class="variant-switcher">
-            <a href="${SITE_VARIANT === 'tech' ? 'https://worldmonitor.app' : '#'}"
-               class="variant-option ${SITE_VARIANT !== 'tech' ? 'active' : ''}"
+            <a href="${SITE_VARIANT === 'full' ? '#' : 'https://worldmonitor.app'}"
+               class="variant-option ${SITE_VARIANT === 'full' ? 'active' : ''}"
                data-variant="world"
                title="Geopolitical Intelligence">
               <span class="variant-icon">🌍</span>
@@ -1092,6 +1093,14 @@ export class App {
                title="Tech & AI Intelligence">
               <span class="variant-icon">💻</span>
               <span class="variant-label">TECH</span>
+            </a>
+            <span class="variant-divider"></span>
+            <a href="${SITE_VARIANT === 'infra' ? '#' : 'https://infra.worldmonitor.app'}"
+               class="variant-option ${SITE_VARIANT === 'infra' ? 'active' : ''}"
+               data-variant="infra"
+               title="Gulf FDI Infrastructure Tracker">
+              <span class="variant-icon">🏗️</span>
+              <span class="variant-label">INFRA</span>
             </a>
           </div>
           <span class="logo">MONITOR</span><span class="version">v${__APP_VERSION__}</span>
@@ -1132,7 +1141,7 @@ export class App {
         <div class="map-section" id="mapSection">
           <div class="panel-header">
             <div class="panel-header-left">
-              <span class="panel-title">${SITE_VARIANT === 'tech' ? 'Global Tech' : 'Global Situation'}</span>
+              <span class="panel-title">${SITE_VARIANT === 'tech' ? 'Global Tech' : SITE_VARIANT === 'infra' ? 'Gulf FDI Map' : 'Global Situation'}</span>
             </div>
             <button class="map-pin-btn" id="mapPinBtn" title="Pin map to top">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -1514,6 +1523,44 @@ export class App {
         this.map?.setCenter(lat, lon, 4);
       });
       this.panels['strategic-posture'] = strategicPosturePanel;
+    }
+
+    // Infra variant panels (Gulf FDI tracker)
+    if (SITE_VARIANT === 'infra') {
+      const investmentsPanel = new InvestmentsPanel((inv) => {
+        this.map?.setCenter(inv.lat, inv.lon, 6);
+      });
+      this.panels['fdi-investments'] = investmentsPanel;
+
+      const announcementsPanel = new NewsPanel('fdi-announcements', 'New Announcements');
+      this.attachRelatedAssetHandlers(announcementsPanel);
+      this.newsPanels['fdi-announcements'] = announcementsPanel;
+      this.panels['fdi-announcements'] = announcementsPanel;
+
+      const fdiNewsPanel = new NewsPanel('fdiNews', 'Gulf Business News');
+      this.attachRelatedAssetHandlers(fdiNewsPanel);
+      this.newsPanels['fdiNews'] = fdiNewsPanel;
+      this.panels['fdiNews'] = fdiNewsPanel;
+
+      const entityNewsPanel = new NewsPanel('entityNews', 'Entity News');
+      this.attachRelatedAssetHandlers(entityNewsPanel);
+      this.newsPanels['entityNews'] = entityNewsPanel;
+      this.panels['entityNews'] = entityNewsPanel;
+
+      const infraMediaPanel = new NewsPanel('infraMedia', 'Infrastructure Media');
+      this.attachRelatedAssetHandlers(infraMediaPanel);
+      this.newsPanels['infraMedia'] = infraMediaPanel;
+      this.panels['infraMedia'] = infraMediaPanel;
+
+      const announcementsFeedPanel = new NewsPanel('announcements', 'New Project Announcements');
+      this.attachRelatedAssetHandlers(announcementsFeedPanel);
+      this.newsPanels['announcements'] = announcementsFeedPanel;
+      this.panels['announcements'] = announcementsFeedPanel;
+
+      const regionalPanel = new NewsPanel('regional', 'Regional Coverage');
+      this.attachRelatedAssetHandlers(regionalPanel);
+      this.newsPanels['regional'] = regionalPanel;
+      this.panels['regional'] = regionalPanel;
     }
 
     const liveNewsPanel = new LiveNewsPanel();
@@ -2398,6 +2445,13 @@ export class App {
       { key: 'dev', feeds: FEEDS.dev },
       { key: 'github', feeds: FEEDS.github },
       { key: 'ipo', feeds: FEEDS.ipo },
+      // Infra variant categories (Gulf FDI tracker)
+      { key: 'fdi-announcements', feeds: [...(FEEDS.announcements ?? []), ...(FEEDS.entityNews ?? [])] },
+      { key: 'fdiNews', feeds: FEEDS.fdiNews },
+      { key: 'entityNews', feeds: FEEDS.entityNews },
+      { key: 'infraMedia', feeds: FEEDS.infraMedia },
+      { key: 'announcements', feeds: FEEDS.announcements },
+      { key: 'regional', feeds: FEEDS.regional },
     ];
     // Filter to only categories that have feeds defined
     const categories = allCategories.filter(c => c.feeds && c.feeds.length > 0);

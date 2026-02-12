@@ -6,9 +6,11 @@
   "scripts": {
     "dev": "vite",
     "dev:tech": "VITE_VARIANT=tech vite",
+    "dev:infra": "VITE_VARIANT=infra vite",
     "build": "tsc && vite build",
     "build:full": "VITE_VARIANT=full tsc && VITE_VARIANT=full vite build",
     "build:tech": "VITE_VARIANT=tech tsc && VITE_VARIANT=tech vite build",
+    "build:infra": "VITE_VARIANT=infra tsc && VITE_VARIANT=infra vite build",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "test:e2e:full": "VITE_VARIANT=full playwright test",

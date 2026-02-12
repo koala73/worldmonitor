@@ -154,6 +154,17 @@ const ALLOWED_DOMAINS = [
   'www.imf.org',
   // Additional
   'news.ycombinator.com',
+  // Infra variant domains (Gulf FDI tracker)
+  'www.meed.com',
+  'www.arabianbusiness.com',
+  'www.thenationalnews.com',
+  'www.arabnews.com',
+  'www.porttechnology.org',
+  'www.offshore-energy.biz',
+  'www.nsenergybusiness.com',
+  'www.energymonitor.ai',
+  'www.tradearabia.com',
+  'www.theafricareport.com',
 ];
 
 // CORS helper - allow worldmonitor.app and Vercel preview domains

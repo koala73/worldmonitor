@@ -99,3 +99,13 @@ export {
   type TechHQ,
   type CloudRegion,
 } from './tech-geo';
+
+// Infra variant - Gulf FDI investment database
+export { GULF_INVESTMENTS } from './gulf-fdi';
+export type {
+  GulfInvestment,
+  GulfInvestingEntity,
+  GulfInvestorCountry,
+  GulfInvestmentSector,
+  GulfInvestmentStatus,
+} from '@/types';

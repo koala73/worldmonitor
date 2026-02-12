@@ -70,6 +70,8 @@ const FULL_MAP_LAYERS: MapLayers = {
   accelerators: false,
   techHQs: false,
   techEvents: false,
+  // Infra layer (disabled in full variant)
+  gulfInvestments: false,
 };
 
 const FULL_MOBILE_MAP_LAYERS: MapLayers = {
@@ -100,6 +102,8 @@ const FULL_MOBILE_MAP_LAYERS: MapLayers = {
   accelerators: false,
   techHQs: false,
   techEvents: false,
+  // Infra layer (disabled in full variant)
+  gulfInvestments: false,
 };
 
 // ============================================
@@ -169,6 +173,8 @@ const TECH_MAP_LAYERS: MapLayers = {
   accelerators: false,
   techHQs: true,
   techEvents: true,
+  // Infra layer (disabled in tech variant)
+  gulfInvestments: false,
 };
 
 const TECH_MOBILE_MAP_LAYERS: MapLayers = {
@@ -199,14 +205,104 @@ const TECH_MOBILE_MAP_LAYERS: MapLayers = {
   accelerators: false,
   techHQs: false,
   techEvents: true,
+  // Infra layer (disabled in tech variant)
+  gulfInvestments: false,
+};
+
+// ============================================
+// INFRA VARIANT (Gulf FDI / Critical Infrastructure)
+// ============================================
+const INFRA_PANELS: Record<string, PanelConfig> = {
+  map:                  { name: 'Gulf FDI World Map',           enabled: true,  priority: 1 },
+  'fdi-investments':    { name: 'Investment Database',           enabled: true,  priority: 1 },
+  'fdi-announcements':  { name: 'New Announcements',             enabled: true,  priority: 1 },
+  'live-news':          { name: 'Live FDI News',                 enabled: true,  priority: 1 },
+  fdiNews:              { name: 'Gulf Business News',            enabled: true,  priority: 1 },
+  entityNews:           { name: 'Entity News',                   enabled: true,  priority: 1 },
+  infraMedia:           { name: 'Infrastructure Media',          enabled: true,  priority: 1 },
+  announcements:        { name: 'New Project Announcements',     enabled: true,  priority: 1 },
+  regional:             { name: 'Regional Coverage',             enabled: true,  priority: 2 },
+  markets:              { name: 'Markets',                       enabled: true,  priority: 2 },
+  energy:               { name: 'Energy & Resources',            enabled: true,  priority: 2 },
+  insights:             { name: 'AI Insights',                   enabled: true,  priority: 2 },
+  monitors:             { name: 'My Monitors',                   enabled: true,  priority: 2 },
+};
+
+const INFRA_MAP_LAYERS: MapLayers = {
+  conflicts:        false,
+  bases:            false,
+  cables:           false,
+  pipelines:        true,
+  hotspots:         false,
+  ais:              true,
+  nuclear:          false,
+  irradiators:      false,
+  sanctions:        false,
+  weather:          false,
+  economic:         true,
+  waterways:        true,
+  outages:          false,
+  datacenters:      false,
+  protests:         false,
+  flights:          false,
+  military:         false,
+  natural:          false,
+  spaceports:       false,
+  minerals:         true,
+  fires:            false,
+  startupHubs:      false,
+  cloudRegions:     false,
+  accelerators:     false,
+  techHQs:          false,
+  techEvents:       false,
+  gulfInvestments:  true,
+};
+
+const INFRA_MOBILE_MAP_LAYERS: MapLayers = {
+  conflicts:        false,
+  bases:            false,
+  cables:           false,
+  pipelines:        false,
+  hotspots:         false,
+  ais:              false,
+  nuclear:          false,
+  irradiators:      false,
+  sanctions:        false,
+  weather:          false,
+  economic:         false,
+  waterways:        true,
+  outages:          false,
+  datacenters:      false,
+  protests:         false,
+  flights:          false,
+  military:         false,
+  natural:          false,
+  spaceports:       false,
+  minerals:         false,
+  fires:            false,
+  startupHubs:      false,
+  cloudRegions:     false,
+  accelerators:     false,
+  techHQs:          false,
+  techEvents:       false,
+  gulfInvestments:  true,
 };
 
 // ============================================
 // VARIANT-AWARE EXPORTS
 // ============================================
-export const DEFAULT_PANELS = SITE_VARIANT === 'tech' ? TECH_PANELS : FULL_PANELS;
-export const DEFAULT_MAP_LAYERS = SITE_VARIANT === 'tech' ? TECH_MAP_LAYERS : FULL_MAP_LAYERS;
-export const MOBILE_DEFAULT_MAP_LAYERS = SITE_VARIANT === 'tech' ? TECH_MOBILE_MAP_LAYERS : FULL_MOBILE_MAP_LAYERS;
+export const DEFAULT_PANELS =
+  SITE_VARIANT === 'tech' ? TECH_PANELS :
+  SITE_VARIANT === 'infra' ? INFRA_PANELS :
+  FULL_PANELS;
+export const DEFAULT_MAP_LAYERS =
+  SITE_VARIANT === 'tech' ? TECH_MAP_LAYERS :
+  SITE_VARIANT === 'infra' ? INFRA_MAP_LAYERS :
+  FULL_MAP_LAYERS;
+export const MOBILE_DEFAULT_MAP_LAYERS =
+  SITE_VARIANT === 'tech' ? TECH_MOBILE_MAP_LAYERS :
+  SITE_VARIANT === 'infra' ? INFRA_MOBILE_MAP_LAYERS :
+  FULL_MOBILE_MAP_LAYERS;
 
 export const MONITOR_COLORS = [
   '#44ff88',

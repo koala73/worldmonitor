@@ -51,6 +51,23 @@ const VARIANT_META: Record<string, {
       'Service status monitoring',
     ],
   },
+  infra: {
+    title: 'Gulf FDI Monitor — Saudi & UAE Critical Infrastructure Investment Tracker',
+    description: 'Track Saudi Arabia and UAE foreign direct investment in global critical infrastructure: ports, pipelines, energy, data centers, airports, railways, and telecoms.',
+    keywords: 'Gulf FDI, Saudi Arabia investment, UAE investment, PIF, DP World, Mubadala, ADNOC, Masdar, ACWA Power, AD Ports, critical infrastructure, Vision 2030, port investment, energy infrastructure, data center investment, Gulf sovereign wealth fund, ADIA',
+    url: 'https://infra.worldmonitor.app/',
+    siteName: 'Gulf FDI Monitor',
+    features: [
+      'Gulf FDI investment database',
+      'Real-time project announcements',
+      'Interactive investment world map',
+      'Entity-level tracking (PIF, DP World, Mubadala, ADNOC)',
+      'Sector filtering (ports, energy, telecoms, manufacturing)',
+      'News from MEED, Arabian Business, The National',
+      'Vision 2030 project tracking',
+      'Infrastructure project pipeline',
+    ],
+  },
 };
 
 function htmlVariantPlugin(): Plugin {
