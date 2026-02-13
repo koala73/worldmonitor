@@ -1107,18 +1107,20 @@ export class App {
       <div class="header">
         <div class="header-left">
           <div class="variant-switcher">
-            <a href="${this.isDesktopApp ? '#' : (SITE_VARIANT === 'tech' ? 'https://worldmonitor.app' : '#')}"
-               class="variant-option ${SITE_VARIANT !== 'tech' ? 'active' : ''} ${this.isDesktopApp ? 'desktop-locked' : ''}"
+            <a href="${SITE_VARIANT === 'tech' ? 'https://worldmonitor.app' : '#'}"
+               class="variant-option ${SITE_VARIANT !== 'tech' ? 'active' : ''}"
                data-variant="world"
-               title="${this.isDesktopApp ? 'Desktop build runs a single bundled variant' : 'Geopolitical Intelligence'}">
+               ${SITE_VARIANT !== 'tech' && this.isDesktopApp ? '' : 'target="_blank" rel="noopener"'}
+               title="Geopolitical Intelligence${this.isDesktopApp && SITE_VARIANT !== 'tech' ? ' (current)' : ''}">
               <span class="variant-icon">🌍</span>
               <span class="variant-label">WORLD</span>
             </a>
             <span class="variant-divider"></span>
-            <a href="${this.isDesktopApp ? '#' : (SITE_VARIANT === 'tech' ? '#' : 'https://tech.worldmonitor.app')}"
-               class="variant-option ${SITE_VARIANT === 'tech' ? 'active' : ''} ${this.isDesktopApp ? 'desktop-locked' : ''}"
+            <a href="${SITE_VARIANT === 'tech' ? '#' : 'https://tech.worldmonitor.app'}"
+               class="variant-option ${SITE_VARIANT === 'tech' ? 'active' : ''}"
                data-variant="tech"
-               title="${this.isDesktopApp ? 'Desktop build runs a single bundled variant' : 'Tech & AI Intelligence'}">
+               ${SITE_VARIANT === 'tech' && this.isDesktopApp ? '' : 'target="_blank" rel="noopener"'}
+               title="Tech & AI Intelligence${this.isDesktopApp && SITE_VARIANT === 'tech' ? ' (current)' : ''}">
               <span class="variant-icon">💻</span>
               <span class="variant-label">TECH</span>
             </a>
@@ -3426,10 +3428,14 @@ export class App {
             signalAggregator.ingestTemporalAnomalies(anomalies);
           }
         }).catch(() => {});
+      } else {
+        // Still update panel so it exits loading spinner
+        (this.panels['satellite-fires'] as SatelliteFiresPanel)?.update([], 0);
       }
       this.statusPanel?.updateApi('FIRMS', { status: 'ok' });
     } catch (e) {
       console.warn('[App] FIRMS load failed:', e);
+      (this.panels['satellite-fires'] as SatelliteFiresPanel)?.update([], 0);
       this.statusPanel?.updateApi('FIRMS', { status: 'error' });
       dataFreshness.recordError('firms', String(e));
     }

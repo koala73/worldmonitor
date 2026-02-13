@@ -153,13 +153,20 @@ export async function fetchPredictions(): Promise<PredictionMarket[]> {
     }
 
     // Sort by volume descending, then filter for meaningful signal
-    return markets
+    const result = markets
       .filter(m => {
         const discrepancy = Math.abs(m.yesPrice - 50);
         return discrepancy > 5 || (m.volume && m.volume > 50000);
       })
       .sort((a, b) => (b.volume ?? 0) - (a.volume ?? 0))
       .slice(0, 15);
+
+    // Throw on empty so circuit breaker doesn't cache a failed upstream as "success"
+    if (result.length === 0 && markets.length === 0) {
+      throw new Error('No markets returned — upstream may be down');
+    }
+
+    return result;
   }, []);
 }
 

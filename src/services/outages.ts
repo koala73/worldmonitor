@@ -206,7 +206,7 @@ export async function fetchInternetOutages(): Promise<InternetOutage[]> {
 
     if (data.configured === false) {
       outagesConfigured = false;
-      return [];
+      throw new Error('Outages API not configured');
     }
 
     outagesConfigured = true;

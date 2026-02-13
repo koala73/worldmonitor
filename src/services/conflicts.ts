@@ -64,7 +64,7 @@ async function fetchAcledConflictEvents(): Promise<ConflictEvent[]> {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
     const result = await response.json();
-    if (result.configured === false) return [];
+    if (result.configured === false) throw new Error('ACLED not configured');
 
     const events: AcledConflictEvent[] = result.data || [];
 

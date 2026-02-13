@@ -591,7 +591,7 @@ export default async function handler(req) {
       },
     });
   } catch (error) {
-    console.error('[TheaterPosture] Error:', error);
+    console.warn('[TheaterPosture] Error:', error.message);
 
     // Try to return cached data when API fails (stale first, then backup)
     const staleRedisClient = getRedis();

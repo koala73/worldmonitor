@@ -166,31 +166,27 @@ export async function getAircraftDetails(icao24: string): Promise<WingbitsAircra
     // Check if configured
     if (wingbitsConfigured === false) return null;
 
-    try {
-      const response = await fetch(`${WINGBITS_PROXY_URL}/details/${key}`);
+    const response = await fetch(`${WINGBITS_PROXY_URL}/details/${key}`);
 
-      if (!response.ok) {
-        if (response.status === 404) {
-          // Cache negative result
-          setLocalCache(key, { icao24: key } as WingbitsAircraftDetails);
-          return null;
-        }
+    if (!response.ok) {
+      if (response.status === 404) {
+        // Cache negative result
+        setLocalCache(key, { icao24: key } as WingbitsAircraftDetails);
         return null;
       }
-
-      const data = await response.json();
-
-      if (data.configured === false) {
-        wingbitsConfigured = false;
-        return null;
-      }
-
-      // Cache the result
-      setLocalCache(key, data);
-      return data;
-    } catch {
-      return null;
+      throw new Error(`HTTP ${response.status}`);
     }
+
+    const data = await response.json();
+
+    if (data.configured === false) {
+      wingbitsConfigured = false;
+      throw new Error('Wingbits not configured');
+    }
+
+    // Cache the result
+    setLocalCache(key, data);
+    return data;
   }, null);
 }
 

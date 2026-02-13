@@ -510,6 +510,10 @@ export async function fetchMilitaryFlights(): Promise<{
     // Fetch from OpenSky (regional queries for efficiency)
     let flights = await fetchFromOpenSky();
 
+    if (flights.length === 0) {
+      throw new Error('No flights returned — upstream may be down');
+    }
+
     // Enrich with Wingbits aircraft details (owner, operator, type)
     flights = await enrichFlightsWithWingbits(flights);
 

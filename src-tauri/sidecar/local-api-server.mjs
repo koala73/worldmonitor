@@ -154,15 +154,28 @@ function pickModule(pathname, routes) {
 }
 
 const moduleCache = new Map();
+const failedImports = new Set();
+const fallbackCounts = new Map();
+const cloudPreferred = new Set();
 
 async function importHandler(modulePath) {
-  const cacheKey = modulePath;
-  const cached = moduleCache.get(cacheKey);
+  if (failedImports.has(modulePath)) {
+    throw new Error(`cached-failure:${path.basename(modulePath)}`);
+  }
+
+  const cached = moduleCache.get(modulePath);
   if (cached) return cached;
 
-  const mod = await import(pathToFileURL(modulePath).href);
-  moduleCache.set(cacheKey, mod);
-  return mod;
+  try {
+    const mod = await import(pathToFileURL(modulePath).href);
+    moduleCache.set(modulePath, mod);
+    return mod;
+  } catch (error) {
+    if (error.code === 'ERR_MODULE_NOT_FOUND') {
+      failedImports.add(modulePath);
+    }
+    throw error;
+  }
 }
 
 function resolveConfig(options = {}) {
@@ -208,7 +221,17 @@ async function handleLocalServiceStatus(context) {
 
 async function tryCloudFallback(requestUrl, req, context, reason) {
   if (reason) {
-    context.logger.warn('[local-api] local route fallback to cloud', requestUrl.pathname, reason);
+    const route = requestUrl.pathname;
+    const count = (fallbackCounts.get(route) || 0) + 1;
+    fallbackCounts.set(route, count);
+    if (count === 1) {
+      const brief = reason instanceof Error
+        ? (reason.code === 'ERR_MODULE_NOT_FOUND' ? 'missing npm dependency' : reason.message)
+        : reason;
+      context.logger.warn(`[local-api] ${route} → cloud (${brief})`);
+    } else if (count === 5 || count % 100 === 0) {
+      context.logger.warn(`[local-api] ${route} → cloud x${count}`);
+    }
   }
   try {
     return await proxyToCloud(requestUrl, req, context.remoteBase);
@@ -231,6 +254,11 @@ async function dispatch(requestUrl, req, routes, context) {
       remoteBase: context.remoteBase,
       routes: routes.length,
     });
+  }
+
+  if (cloudPreferred.has(requestUrl.pathname)) {
+    const cloudResponse = await tryCloudFallback(requestUrl, req, context);
+    if (cloudResponse) return cloudResponse;
   }
 
   const modulePath = pickModule(requestUrl.pathname, routes);
@@ -259,7 +287,7 @@ async function dispatch(requestUrl, req, routes, context) {
     const response = await mod.default(request);
     if (!(response instanceof Response)) {
       const cloudResponse = await tryCloudFallback(requestUrl, req, context, 'handler returned non-Response');
-      if (cloudResponse) return cloudResponse;
+      if (cloudResponse) { cloudPreferred.add(requestUrl.pathname); return cloudResponse; }
       return json({ error: `Handler returned invalid response for ${requestUrl.pathname}` }, 500);
     }
 
@@ -267,13 +295,13 @@ async function dispatch(requestUrl, req, routes, context) {
     // Prefer cloud parity response when available.
     if (!response.ok) {
       const cloudResponse = await tryCloudFallback(requestUrl, req, context, `local status ${response.status}`);
-      if (cloudResponse) return cloudResponse;
+      if (cloudResponse) { cloudPreferred.add(requestUrl.pathname); return cloudResponse; }
     }
 
     return response;
   } catch (error) {
     const cloudResponse = await tryCloudFallback(requestUrl, req, context, error);
-    if (cloudResponse) return cloudResponse;
+    if (cloudResponse) { cloudPreferred.add(requestUrl.pathname); return cloudResponse; }
     return json({ error: 'Local handler failed and cloud fallback unavailable' }, 502);
   }
 }

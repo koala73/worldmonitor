@@ -138,10 +138,6 @@ body.animations-paused *::after {
   pointer-events: none;
 }
 
-.variant-option.desktop-locked {
-  opacity: 0.65;
-  pointer-events: none;
-}
 
 .variant-option.active .variant-icon {
   filter: grayscale(0%) drop-shadow(0 0 4px var(--green));

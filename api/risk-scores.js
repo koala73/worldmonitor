@@ -240,6 +240,13 @@ export default async function handler(request) {
     });
   }
 
+  if (!process.env.ACLED_ACCESS_TOKEN) {
+    return new Response(JSON.stringify({ error: 'ACLED_ACCESS_TOKEN not configured' }), {
+      status: 503,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
   const redisClient = getRedis();
 
   // Check cache first

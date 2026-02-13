@@ -1,6 +1,6 @@
 import { Panel } from './Panel';
 import { fetchLiveVideoId } from '@/services/live-news';
-import { isDesktopRuntime, toRuntimeUrl } from '@/services/runtime';
+import { isDesktopRuntime, getRemoteApiBaseUrl } from '@/services/runtime';
 
 // YouTube IFrame Player API types
 type YouTubePlayer = {
@@ -387,33 +387,7 @@ export class LiveNewsPanel extends Panel {
     return `/api/youtube/embed?${params.toString()}`;
   }
 
-  private sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-  }
 
-  private async ensureDesktopEmbedRouteReady(videoId: string): Promise<void> {
-    const path = toRuntimeUrl(this.buildDesktopEmbedPath(videoId));
-    const maxAttempts = 8;
-    let lastError = 'unknown';
-
-    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-      try {
-        const response = await fetch(path, { cache: 'no-store' });
-        if (response.ok) {
-          return;
-        }
-        lastError = `HTTP ${response.status}`;
-      } catch (error) {
-        lastError = error instanceof Error ? error.message : 'network';
-      }
-
-      if (attempt < maxAttempts) {
-        await this.sleep(120 * attempt);
-      }
-    }
-
-    throw new Error(`Desktop embed route unavailable at ${path}: ${lastError}`);
-  }
 
   private renderDesktopEmbed(force = false): void {
     if (!this.useDesktopEmbedProxy) return;
@@ -437,7 +411,8 @@ export class LiveNewsPanel extends Panel {
     this.currentVideoId = videoId;
     this.isPlayerReady = true;
 
-    if (!this.playerContainer) {
+    // Always recreate if container was removed from DOM (e.g. showEmbedError replaced content).
+    if (!this.playerContainer || !this.playerContainer.parentElement) {
       this.ensurePlayerContainer();
     }
 
@@ -445,39 +420,32 @@ export class LiveNewsPanel extends Panel {
       return;
     }
 
-    this.playerContainer.innerHTML = '<div class="panel-loading-text">Loading live stream...</div>';
+    this.playerContainer.innerHTML = '';
 
-    try {
-      const embedUrl = toRuntimeUrl(this.buildDesktopEmbedPath(videoId));
-      await this.ensureDesktopEmbedRouteReady(videoId);
-      if (renderToken !== this.desktopEmbedRenderToken || !this.playerContainer) {
-        return;
-      }
+    // Use cloud URL so the bridge page is served from worldmonitor.app —
+    // this makes the YouTube origin param match the actual page origin,
+    // preventing Error 153 on desktop.
+    const remoteBase = getRemoteApiBaseUrl();
+    const embedUrl = `${remoteBase}${this.buildDesktopEmbedPath(videoId)}`;
 
-      this.playerContainer.innerHTML = '';
-
-      const iframe = document.createElement('iframe');
-      iframe.className = 'live-news-embed-frame';
-      iframe.src = embedUrl;
-      iframe.title = `${this.activeChannel.name} live feed`;
-      iframe.style.width = '100%';
-      iframe.style.height = '100%';
-      iframe.style.border = '0';
-      iframe.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
-      iframe.allowFullscreen = true;
-      iframe.referrerPolicy = 'strict-origin-when-cross-origin';
-      iframe.setAttribute('loading', 'eager');
-
-      this.playerContainer.appendChild(iframe);
-      this.desktopEmbedIframe = iframe;
-    } catch (error) {
-      if (renderToken !== this.desktopEmbedRenderToken) {
-        return;
-      }
-
-      console.warn('[LiveNews] Desktop embed bridge failed', error);
-      this.showEmbedError(this.activeChannel, 153);
+    if (renderToken !== this.desktopEmbedRenderToken) {
+      return;
     }
+
+    const iframe = document.createElement('iframe');
+    iframe.className = 'live-news-embed-frame';
+    iframe.src = embedUrl;
+    iframe.title = `${this.activeChannel.name} live feed`;
+    iframe.style.width = '100%';
+    iframe.style.height = '100%';
+    iframe.style.border = '0';
+    iframe.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+    iframe.allowFullscreen = true;
+    iframe.referrerPolicy = 'strict-origin-when-cross-origin';
+    iframe.setAttribute('loading', 'eager');
+
+    this.playerContainer.appendChild(iframe);
+    this.desktopEmbedIframe = iframe;
   }
 
   private static loadYouTubeApi(): Promise<void> {
