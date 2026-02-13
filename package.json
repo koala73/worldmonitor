@@ -22,7 +22,7 @@
     "test:e2e:visual:update": "npm run test:e2e:visual:update:full && npm run test:e2e:visual:update:tech",
     "desktop:dev": "npx @tauri-apps/cli dev",
     "desktop:build:full": "VITE_VARIANT=full npx @tauri-apps/cli build",
-    "desktop:build:tech": "VITE_VARIANT=tech npx @tauri-apps/cli build"
+    "desktop:build:tech": "VITE_VARIANT=tech npx @tauri-apps/cli build --config src-tauri/tauri.tech.conf.json"
   },
   "devDependencies": {
     "@playwright/test": "^1.52.0",

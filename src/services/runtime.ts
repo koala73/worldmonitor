@@ -13,7 +13,11 @@ export function isDesktopRuntime(): boolean {
     return false;
   }
 
-  return '__TAURI_INTERNALS__' in window || '__TAURI__' in window;
+  const hasTauriGlobals = '__TAURI_INTERNALS__' in window || '__TAURI__' in window;
+  const userAgent = window.navigator?.userAgent ?? '';
+  const tauriInUserAgent = userAgent.includes('Tauri');
+
+  return hasTauriGlobals || tauriInUserAgent;
 }
 
 export function getApiBaseUrl(): string {

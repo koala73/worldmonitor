@@ -1,0 +1,17 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Tech Monitor",
+  "mainBinaryName": "tech-monitor",
+  "identifier": "app.worldmonitor.tech.desktop",
+  "app": {
+    "windows": [
+      {
+        "title": "Tech Monitor"
+      }
+    ]
+  },
+  "bundle": {
+    "shortDescription": "Tech Monitor desktop app",
+    "longDescription": "Tech Monitor desktop app for real-time AI and technology intelligence."
+  }
+}
