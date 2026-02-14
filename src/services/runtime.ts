@@ -165,6 +165,7 @@ export function installRuntimeFetchPatch(): void {
   const nativeFetch = window.fetch.bind(window);
   const localBase = getApiBaseUrl();
   const remoteBase = getRemoteApiBaseUrl();
+  let localApiToken: string | null = null;
 
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const target = getApiTargetFromRequestInput(input);
@@ -172,11 +173,27 @@ export function installRuntimeFetchPatch(): void {
       return nativeFetch(input, init);
     }
 
+    // Lazy load the local API token from the vault on the first local request
+    if (isDesktopRuntime() && !localApiToken) {
+      try {
+        localApiToken = await tryInvokeTauri<string>('get_local_api_token');
+      } catch (e) {
+        console.warn('[runtime] Failed to retrieve local API token', e);
+      }
+    }
+
     const localUrl = `${localBase}${target}`;
     const remoteUrl = `${remoteBase}${target}`;
 
+    // Prepare headers with the local API token
+    const headers = new Headers(init?.headers);
+    if (localApiToken) {
+      headers.set('Authorization', `Bearer ${localApiToken}`);
+    }
+    const localInit = { ...init, headers };
+
     try {
-      const localResponse = await fetchLocalWithStartupRetry(nativeFetch, localUrl, init);
+      const localResponse = await fetchLocalWithStartupRetry(nativeFetch, localUrl, localInit);
       if (localResponse.ok) {
         return localResponse;
       }

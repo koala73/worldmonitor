@@ -41,6 +41,7 @@ const SUPPORTED_SECRET_KEYS: [&str; 15] = [
 #[derive(Default)]
 struct LocalApiState {
     child: Mutex<Option<Child>>,
+    token: Mutex<Option<String>>,
 }
 
 fn secret_entry(key: &str) -> Result<Entry, String> {
@@ -48,6 +49,15 @@ fn secret_entry(key: &str) -> Result<Entry, String> {
         return Err(format!("Unsupported secret key: {key}"));
     }
     Entry::new(KEYRING_SERVICE, key).map_err(|e| format!("Keyring init failed: {e}"))
+}
+
+#[tauri::command]
+fn get_local_api_token(state: tauri::State<'_, LocalApiState>) -> Result<String, String> {
+    let token = state
+        .token
+        .lock()
+        .map_err(|_| "Failed to lock local API token".to_string())?;
+    token.clone().ok_or_else(|| "Token not generated".to_string())
 }
 
 #[tauri::command]
@@ -387,6 +397,18 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
         return Ok(());
     }
 
+    // Generate a random token for local API authentication if it doesn't exist
+    let mut token_slot = state.token.lock().map_err(|_| "Failed to lock token slot")?;
+    if token_slot.is_none() {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let random_token = format!("{:x}", timestamp); // Simple unique token
+        *token_slot = Some(random_token);
+    }
+    let local_api_token = token_slot.as_ref().unwrap();
+
     let (script, resource_root) = local_api_paths(app);
     if !script.exists() {
         return Err(format!(
@@ -425,8 +447,18 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
         .env("LOCAL_API_PORT", LOCAL_API_PORT)
         .env("LOCAL_API_RESOURCE_DIR", resource_root)
         .env("LOCAL_API_MODE", "tauri-sidecar")
+        .env("LOCAL_API_TOKEN", local_api_token)
         .stdout(Stdio::from(log_file))
         .stderr(Stdio::from(log_file_err));
+
+    // Inject all supported secrets from the keyring into the sidecar environment
+    for key in SUPPORTED_SECRET_KEYS {
+        if let Ok(entry) = Entry::new(KEYRING_SERVICE, key) {
+            if let Ok(value) = entry.get_password() {
+                cmd.env(key, value);
+            }
+        }
+    }
 
     let child = cmd
         .spawn()
@@ -461,7 +493,8 @@ fn main() {
             write_cache_entry,
             open_logs_folder,
             open_sidecar_log_file,
-            open_settings_window_command
+            open_settings_window_command,
+            get_local_api_token
         ])
         .setup(|app| {
             if let Err(err) = start_local_api(&app.handle()) {
