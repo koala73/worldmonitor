@@ -263,7 +263,7 @@ fn open_sidecar_log_file(app: AppHandle) -> Result<String, String> {
 }
 
 #[tauri::command]
-fn open_settings_window_command(app: AppHandle) -> Result<(), String> {
+async fn open_settings_window_command(app: AppHandle) -> Result<(), String> {
     open_settings_window(&app)
 }
 
@@ -311,13 +311,19 @@ fn open_settings_window(app: &AppHandle) -> Result<(), String> {
         return Ok(());
     }
 
-    WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("settings.html".into()))
+    let _settings_window = WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("settings.html".into()))
         .title("World Monitor Settings")
         .inner_size(980.0, 760.0)
         .min_inner_size(820.0, 620.0)
         .resizable(true)
+        .visible(false)
         .build()
         .map_err(|e| format!("Failed to create settings window: {e}"))?;
+
+    // On Windows/Linux, menus are per-window. Remove the inherited app menu
+    // from the settings window (macOS uses a shared app-wide menu bar instead).
+    #[cfg(not(target_os = "macos"))]
+    let _ = _settings_window.remove_menu();
 
     Ok(())
 }

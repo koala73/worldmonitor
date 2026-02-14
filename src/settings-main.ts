@@ -200,4 +200,7 @@ function initDiagnostics(): void {
   startAutoRefresh();
 }
 
-void initSettingsWindow();
+void initSettingsWindow().then(() => {
+  void tryInvokeTauri<void>('plugin:window|show', { label: 'settings' });
+  void tryInvokeTauri<void>('plugin:window|set_focus', { label: 'settings' });
+});
