@@ -2,6 +2,13 @@
 
 All notable changes to World Monitor are documented here.
 
+## [Unreleased]
+
+### Added
+
+- **Self-hosted Docker image**: Single container runs the full dashboard (SPA + 45+ API handlers). `Dockerfile` and `docker-compose.yml` with optional env file for API keys. Sidecar supports `LOCAL_API_MODE=standalone` to serve static `dist/` and listen on `0.0.0.0` for in-container use. README updated with Option 4 (Self-hosted Docker) and roadmap item marked done.
+- **Static serving security**: Standalone mode uses `path.relative()` to enforce in-directory resolution and prevent path traversal when serving files from `dist/`.
+
 ## [2.3.4] - 2026-02-16
 
 ### Fixed
