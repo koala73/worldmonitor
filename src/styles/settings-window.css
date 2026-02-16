@@ -1,16 +1,16 @@
 /* Native-style settings window */
 .settings-shell {
-  --settings-bg: #2d2d2d;
-  --settings-surface: #383838;
-  --settings-surface-inset: #1e1e1e;
-  --settings-border: rgba(255, 255, 255, 0.1);
-  --settings-border-strong: rgba(255, 255, 255, 0.18);
-  --settings-text: #f0f0f0;
-  --settings-text-secondary: #999;
-  --settings-accent: #0A84FF;
-  --settings-green: #30d158;
-  --settings-yellow: #ffd60a;
-  --settings-red: #ff453a;
+  --settings-bg: var(--bg-secondary);
+  --settings-surface: var(--surface-hover);
+  --settings-surface-inset: var(--surface);
+  --settings-border: var(--overlay-medium);
+  --settings-border-strong: var(--overlay-heavy);
+  --settings-text: var(--text);
+  --settings-text-secondary: var(--text-dim);
+  --settings-accent: var(--semantic-info);
+  --settings-green: var(--status-live);
+  --settings-yellow: var(--yellow);
+  --settings-red: var(--semantic-critical);
 
   height: 100vh;
   background: var(--settings-bg);
@@ -51,7 +51,7 @@
 
 .settings-tab:hover {
   color: var(--settings-text);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--overlay-subtle);
 }
 
 .settings-tab.active {
@@ -164,17 +164,17 @@
 
 .settings-runtime-panel .runtime-pill.ok {
   color: var(--settings-green);
-  border-color: rgba(48, 209, 88, 0.3);
+  border-color: color-mix(in srgb, var(--settings-green) 30%, transparent);
 }
 
 .settings-runtime-panel .runtime-pill.warn {
   color: var(--settings-yellow);
-  border-color: rgba(255, 214, 10, 0.3);
+  border-color: color-mix(in srgb, var(--settings-yellow) 30%, transparent);
 }
 
 .settings-runtime-panel .runtime-pill.staged {
   color: var(--settings-green);
-  border-color: rgba(48, 209, 88, 0.3);
+  border-color: color-mix(in srgb, var(--settings-green) 30%, transparent);
   opacity: 0.7;
 }
 
@@ -192,15 +192,15 @@
 .settings-runtime-panel .runtime-secret-row input:focus {
   outline: none;
   border-color: var(--settings-accent);
-  box-shadow: 0 0 0 2px rgba(10, 132, 255, 0.25);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--settings-accent) 25%, transparent);
 }
 
 .settings-runtime-panel .runtime-secret-row input::placeholder {
-  color: rgba(255, 255, 255, 0.25);
+  color: var(--text-ghost);
 }
 
 .settings-runtime-panel .runtime-secret-meta {
-  color: rgba(255, 255, 255, 0.56);
+  color: var(--text-faint);
 }
 
 .settings-runtime-panel .runtime-secret-status.ok {
@@ -242,7 +242,7 @@
 }
 
 .settings-runtime-panel .runtime-secret-row input.valid-staged {
-  border-color: rgba(48, 209, 88, 0.5);
+  border-color: color-mix(in srgb, var(--settings-green) 50%, transparent);
 }
 
 .settings-runtime-panel .runtime-secret-row input.invalid {
@@ -302,18 +302,18 @@
 }
 
 .settings-btn-secondary:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--overlay-medium);
 }
 
 .settings-btn-primary {
   background: var(--settings-accent);
   border: 1px solid var(--settings-accent);
-  color: #fff;
+  color: var(--accent);
 }
 
 .settings-btn-primary:hover {
-  background: #0b6fdb;
-  border-color: #0b6fdb;
+  background: color-mix(in srgb, var(--settings-accent) 85%, black);
+  border-color: color-mix(in srgb, var(--settings-accent) 85%, black);
 }
 
 /* Debug tab */
@@ -336,7 +336,7 @@
 }
 
 .debug-actions button:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--overlay-medium);
 }
 
 /* Diagnostics */
@@ -424,7 +424,7 @@
 }
 
 .diag-traffic-controls button:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--overlay-light);
   color: var(--settings-text);
 }
 
@@ -462,7 +462,7 @@
 
 .diag-table td {
   padding: 3px 8px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid var(--overlay-subtle);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

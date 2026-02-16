@@ -1,8 +1,8 @@
 import { Panel } from './Panel';
 import { WindowedList } from './VirtualList';
 import type { NewsItem, ClusteredEvent, DeviationLevel, RelatedAsset, RelatedAssetContext } from '@/types';
-import { THREAT_PRIORITY, THREAT_COLORS } from '@/services/threat-classifier';
-import { formatTime } from '@/utils';
+import { THREAT_PRIORITY } from '@/services/threat-classifier';
+import { formatTime, getCSSColor } from '@/utils';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { analysisWorker, enrichWithVelocityML, getClusterAssetContext, getAssetLabel, MAX_DISTANCE_KM, activityTracker, generateSummary } from '@/services';
 import { getSourcePropagandaRisk, getSourceTier, getSourceType } from '@/config/feeds';
@@ -418,7 +418,8 @@ export class NewsPanel extends Panel {
     // Category tag from threat classification
     const cat = cluster.threat?.category;
     const catLabel = cat && cat !== 'general' ? cat.charAt(0).toUpperCase() + cat.slice(1) : '';
-    const catColor = cluster.threat ? THREAT_COLORS[cluster.threat.level] : '';
+    const threatVarMap: Record<string, string> = { critical: '--threat-critical', high: '--threat-high', medium: '--threat-medium', low: '--threat-low', info: '--threat-info' };
+    const catColor = cluster.threat ? getCSSColor(threatVarMap[cluster.threat.level] || '--text-dim') : '';
     const categoryBadge = catLabel
       ? `<span class="category-tag" style="color:${catColor};border-color:${catColor}40;background:${catColor}20">${catLabel}</span>`
       : '';

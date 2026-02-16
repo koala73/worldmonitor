@@ -1,4 +1,4 @@
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker, getCSSColor } from '@/utils';
 
 export interface WeatherAlert {
   id: string;
@@ -103,10 +103,10 @@ function calculateCentroid(coords: [number, number][]): [number, number] | undef
 
 export function getSeverityColor(severity: WeatherAlert['severity']): string {
   switch (severity) {
-    case 'Extreme': return '#ff0000';
-    case 'Severe': return '#ff6600';
-    case 'Moderate': return '#ffaa00';
-    case 'Minor': return '#ffff00';
-    default: return '#888888';
+    case 'Extreme': return getCSSColor('--semantic-critical');
+    case 'Severe': return getCSSColor('--semantic-high');
+    case 'Moderate': return getCSSColor('--semantic-elevated');
+    case 'Minor': return getCSSColor('--semantic-elevated');
+    default: return getCSSColor('--text-dim');
   }
 }

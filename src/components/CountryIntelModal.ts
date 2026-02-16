@@ -2,6 +2,7 @@
  * CountryIntelModal - Shows AI-generated intelligence brief when user clicks a country
  */
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
+import { getCSSColor } from '@/utils';
 import type { CountryScore } from '@/services/country-instability';
 import type { PredictionMarket } from '@/types';
 
@@ -81,20 +82,20 @@ export class CountryIntelModal {
   }
 
   private levelBadge(level: string): string {
-    const colors: Record<string, string> = {
-      critical: '#ff4444',
-      high: '#ff8800',
-      elevated: '#ffaa00',
-      normal: '#44aa44',
-      low: '#3388ff',
+    const varMap: Record<string, string> = {
+      critical: '--semantic-critical',
+      high: '--semantic-high',
+      elevated: '--semantic-elevated',
+      normal: '--semantic-normal',
+      low: '--semantic-low',
     };
-    const color = colors[level] || '#888';
+    const color = getCSSColor(varMap[level] || '--text-dim');
     return `<span class="cii-badge" style="background:${color}20;color:${color};border:1px solid ${color}40">${level.toUpperCase()}</span>`;
   }
 
   private scoreBar(score: number): string {
     const pct = Math.min(100, Math.max(0, score));
-    const color = pct >= 70 ? '#ff4444' : pct >= 50 ? '#ff8800' : pct >= 30 ? '#ffaa00' : '#44aa44';
+    const color = pct >= 70 ? getCSSColor('--semantic-critical') : pct >= 50 ? getCSSColor('--semantic-high') : pct >= 30 ? getCSSColor('--semantic-elevated') : getCSSColor('--semantic-normal');
     return `
       <div class="cii-score-bar">
         <div class="cii-score-fill" style="width:${pct}%;background:${color}"></div>

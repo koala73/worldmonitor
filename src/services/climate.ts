@@ -1,4 +1,4 @@
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker, getCSSColor } from '@/utils';
 import type { ClimateAnomaly } from '@/types';
 
 interface ClimateResponse {
@@ -34,12 +34,12 @@ export async function fetchClimateAnomalies(): Promise<ClimateFetchResult> {
 
 export function getSeverityColor(anomaly: ClimateAnomaly): string {
   if (anomaly.severity === 'extreme') {
-    return anomaly.type === 'cold' ? '#4488ff' : '#ff4444';
+    return anomaly.type === 'cold' ? getCSSColor('--semantic-low') : getCSSColor('--semantic-critical');
   }
   if (anomaly.severity === 'moderate') {
-    return anomaly.type === 'cold' ? '#6699ff' : '#ff8844';
+    return anomaly.type === 'cold' ? getCSSColor('--semantic-info') : getCSSColor('--semantic-high');
   }
-  return '#888888';
+  return getCSSColor('--text-dim');
 }
 
 export function getSeverityIcon(anomaly: ClimateAnomaly): string {

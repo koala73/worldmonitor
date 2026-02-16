@@ -78,24 +78,24 @@ export class ClimateAnomalyPanel extends Panel {
       <style>
         .climate-panel-content { font-size: 12px; }
         .climate-table { width: 100%; border-collapse: collapse; }
-        .climate-table th { text-align: left; color: #666; font-weight: 600; font-size: 10px; text-transform: uppercase; padding: 4px 8px; border-bottom: 1px solid #222; }
+        .climate-table th { text-align: left; color: var(--text-muted); font-weight: 600; font-size: 10px; text-transform: uppercase; padding: 4px 8px; border-bottom: 1px solid var(--border); }
         .climate-table th:nth-child(2), .climate-table th:nth-child(3) { text-align: right; }
-        .climate-table td { padding: 5px 8px; border-bottom: 1px solid #1a1a1a; color: #ccc; }
+        .climate-table td { padding: 5px 8px; border-bottom: 1px solid var(--border-subtle); color: var(--text-secondary); }
         .climate-row { cursor: pointer; }
-        .climate-row:hover { background: #1a1a1a; }
-        .climate-extreme-row { background: rgba(255, 68, 68, 0.05); }
-        .climate-extreme-row:hover { background: rgba(255, 68, 68, 0.1); }
+        .climate-row:hover { background: var(--surface-hover); }
+        .climate-extreme-row { background: color-mix(in srgb, var(--semantic-critical) 5%, transparent); }
+        .climate-extreme-row:hover { background: color-mix(in srgb, var(--semantic-critical) 10%, transparent); }
         .climate-zone { white-space: nowrap; }
         .climate-icon { margin-right: 6px; }
         .climate-num { text-align: right; font-variant-numeric: tabular-nums; }
-        .climate-warm { color: #ff6644; }
-        .climate-cold { color: #4488ff; }
-        .climate-wet { color: #4488ff; }
-        .climate-dry { color: #ff8844; }
+        .climate-warm { color: var(--semantic-high); }
+        .climate-cold { color: var(--semantic-low); }
+        .climate-wet { color: var(--semantic-low); }
+        .climate-dry { color: var(--threat-high); }
         .climate-badge { font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 3px; letter-spacing: 0.5px; }
-        .severity-extreme { background: rgba(255, 68, 68, 0.2); color: #ff4444; }
-        .severity-moderate { background: rgba(255, 136, 68, 0.15); color: #ff8844; }
-        .severity-normal { background: rgba(136, 136, 136, 0.1); color: #888; }
+        .severity-extreme { background: color-mix(in srgb, var(--semantic-critical) 20%, transparent); color: var(--semantic-critical); }
+        .severity-moderate { background: color-mix(in srgb, var(--semantic-high) 15%, transparent); color: var(--semantic-high); }
+        .severity-normal { background: var(--overlay-medium); color: var(--text-dim); }
       </style>
     `);
 

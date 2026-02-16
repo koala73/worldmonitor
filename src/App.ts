@@ -32,7 +32,8 @@ import { fetchUcdpEvents, deduplicateAgainstAcled } from '@/services/ucdp-events
 import { fetchUnhcrPopulation } from '@/services/unhcr';
 import { fetchClimateAnomalies } from '@/services/climate';
 import { enrichEventsWithExposure } from '@/services/population-exposure';
-import { buildMapUrl, debounce, loadFromStorage, parseMapUrlState, saveToStorage, ExportPanel, getCircuitBreakerCooldownInfo, isMobileDevice } from '@/utils';
+import { buildMapUrl, debounce, loadFromStorage, parseMapUrlState, saveToStorage, ExportPanel, getCircuitBreakerCooldownInfo, isMobileDevice, setTheme, getCurrentTheme } from '@/utils';
+import type { Theme } from '@/utils';
 import { reverseGeocode } from '@/utils/reverse-geocode';
 import { CountryBriefPage } from '@/components/CountryBriefPage';
 import { maybeShowDownloadBanner } from '@/components/DownloadBanner';
@@ -1537,9 +1538,23 @@ export class App {
       <div class="modal-overlay" id="settingsModal">
         <div class="modal">
           <div class="modal-header">
-            <span class="modal-title">Panel Settings</span>
+            <span class="modal-title">Settings</span>
             <button class="modal-close" id="modalClose">×</button>
           </div>
+          <div class="theme-toggle-section">
+            <span class="section-label">APPEARANCE</span>
+            <div class="theme-toggle-group" id="themeToggle">
+              <label class="theme-option ${getCurrentTheme() === 'dark' ? 'active' : ''}">
+                <input type="radio" name="theme" value="dark" ${getCurrentTheme() === 'dark' ? 'checked' : ''}>
+                <span>Dark</span>
+              </label>
+              <label class="theme-option ${getCurrentTheme() === 'light' ? 'active' : ''}">
+                <input type="radio" name="theme" value="light" ${getCurrentTheme() === 'light' ? 'checked' : ''}>
+                <span>Light</span>
+              </label>
+            </div>
+          </div>
+          <div class="section-label">PANELS</div>
           <div class="panel-toggle-grid" id="panelToggles"></div>
         </div>
       </div>
@@ -2195,6 +2210,19 @@ export class App {
       }
     });
 
+    // Theme toggle
+    const themeToggle = document.getElementById('themeToggle');
+    themeToggle?.addEventListener('change', (e) => {
+      const target = e.target as HTMLInputElement;
+      if (target.type === 'radio' && target.name === 'theme') {
+        setTheme(target.value as Theme);
+        // Update active class on labels
+        themeToggle.querySelectorAll('.theme-option').forEach(label => {
+          label.classList.toggle('active', (label.querySelector('input') as HTMLInputElement)?.checked);
+        });
+      }
+    });
+
     // Sources modal
     this.setupSourcesModal();
 
@@ -2255,6 +2283,11 @@ export class App {
     // Refresh CII when focal points are ready (ensures focal point urgency is factored in)
     window.addEventListener('focal-points-ready', () => {
       (this.panels['cii'] as CIIPanel)?.refresh(true); // forceLocal to use focal point data
+    });
+
+    // Re-render components with baked getCSSColor() values on theme change
+    window.addEventListener('theme-changed', () => {
+      this.map?.render();
     });
 
     // Idle detection - pause animations after 2 minutes of inactivity

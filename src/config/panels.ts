@@ -231,6 +231,7 @@ export const DEFAULT_PANELS = SITE_VARIANT === 'tech' ? TECH_PANELS : FULL_PANEL
 export const DEFAULT_MAP_LAYERS = SITE_VARIANT === 'tech' ? TECH_MAP_LAYERS : FULL_MAP_LAYERS;
 export const MOBILE_DEFAULT_MAP_LAYERS = SITE_VARIANT === 'tech' ? TECH_MOBILE_MAP_LAYERS : FULL_MOBILE_MAP_LAYERS;
 
+// Monitor palette — fixed category colors persisted to localStorage (not theme-dependent)
 export const MONITOR_COLORS = [
   '#44ff88',
   '#ff8844',

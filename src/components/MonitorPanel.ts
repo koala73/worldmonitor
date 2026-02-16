@@ -1,7 +1,7 @@
 import { Panel } from './Panel';
 import type { Monitor, NewsItem } from '@/types';
 import { MONITOR_COLORS } from '@/config';
-import { generateId, formatTime } from '@/utils';
+import { generateId, formatTime, getCSSColor } from '@/utils';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 
 export class MonitorPanel extends Panel {
@@ -54,7 +54,7 @@ export class MonitorPanel extends Panel {
     const monitor: Monitor = {
       id: generateId(),
       keywords: keywords.split(',').map((k) => k.trim().toLowerCase()),
-      color: MONITOR_COLORS[this.monitors.length % MONITOR_COLORS.length] ?? '#44ff88',
+      color: MONITOR_COLORS[this.monitors.length % MONITOR_COLORS.length] ?? getCSSColor('--status-live'),
     };
 
     this.monitors.push(monitor);

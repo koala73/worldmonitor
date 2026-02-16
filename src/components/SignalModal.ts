@@ -2,6 +2,7 @@ import type { CorrelationSignal } from '@/services/correlation';
 import type { UnifiedAlert } from '@/services/cross-module-integration';
 import { suppressTrendingTerm } from '@/services/trending-keywords';
 import { escapeHtml } from '@/utils/sanitize';
+import { getCSSColor } from '@/utils';
 import { getSignalContext, type SignalType } from '@/utils/analysis-constants';
 
 export class SignalModal {
@@ -111,10 +112,10 @@ export class SignalModal {
     if (document.fullscreenElement) return;
     const content = this.element.querySelector('.signal-modal-content')!;
     const priorityColors: Record<string, string> = {
-      critical: '#ff4444',
-      high: '#ff9944',
-      medium: '#4488ff',
-      low: '#888888',
+      critical: getCSSColor('--semantic-critical'),
+      high: getCSSColor('--semantic-high'),
+      medium: getCSSColor('--semantic-low'),
+      low: getCSSColor('--text-dim'),
     };
     const typeIcons: Record<string, string> = {
       cii_spike: '📊',

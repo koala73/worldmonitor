@@ -1,5 +1,6 @@
 import { Panel } from './Panel';
 import { escapeHtml } from '@/utils/sanitize';
+import { getCSSColor } from '@/utils';
 import { calculateCII, type CountryScore } from '@/services/country-instability';
 
 export class CIIPanel extends Panel {
@@ -34,11 +35,11 @@ export class CIIPanel extends Panel {
 
   private getLevelColor(level: CountryScore['level']): string {
     switch (level) {
-      case 'critical': return '#ff4444';
-      case 'high': return '#ff8800';
-      case 'elevated': return '#ffaa00';
-      case 'normal': return '#88aa44';
-      case 'low': return '#22aa88';
+      case 'critical': return getCSSColor('--semantic-critical');
+      case 'high': return getCSSColor('--semantic-high');
+      case 'elevated': return getCSSColor('--semantic-elevated');
+      case 'normal': return getCSSColor('--semantic-normal');
+      case 'low': return getCSSColor('--semantic-low');
     }
   }
 

@@ -1,6 +1,7 @@
 import { Panel } from './Panel';
 import type { GeoHubActivity } from '@/services/geo-activity';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
+import { getCSSColor } from '@/utils';
 
 const COUNTRY_FLAGS: Record<string, string> = {
   'USA': '🇺🇸', 'Russia': '🇷🇺', 'China': '🇨🇳', 'UK': '🇬🇧', 'Belgium': '🇧🇪',
@@ -44,9 +45,9 @@ export class GeoHubsPanel extends Panel {
         • ⚓ Strategic — Chokepoints and key regions<br>
         • 🏢 Organizations — UN, NATO, IAEA, etc.<br><br>
         <em>Activity levels:</em><br>
-        • <span style="color: #ff4444">High</span> — Breaking news or 70+ score<br>
-        • <span style="color: #ff8844">Elevated</span> — Score 40-69<br>
-        • <span style="color: #888">Low</span> — Score below 40<br><br>
+        • <span style="color: ${getCSSColor('--semantic-critical')}">High</span> — Breaking news or 70+ score<br>
+        • <span style="color: ${getCSSColor('--semantic-high')}">Elevated</span> — Score 40-69<br>
+        • <span style="color: ${getCSSColor('--text-dim')}">Low</span> — Score below 40<br><br>
         Click a hub to zoom to its location.
       `,
     });

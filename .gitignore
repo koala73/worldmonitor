@@ -1,4 +1,6 @@
 node_modules/
+.idea/
+.planning/
 dist/
 .DS_Store
 *.log

@@ -41,7 +41,7 @@ import { ArcLayer } from '@deck.gl/layers';
 import { HeatmapLayer } from '@deck.gl/aggregation-layers';
 import type { WeatherAlert } from '@/services/weather';
 import { escapeHtml } from '@/utils/sanitize';
-import { debounce, rafSchedule } from '@/utils/index';
+import { debounce, rafSchedule, getCurrentTheme } from '@/utils/index';
 import {
   INTEL_HOTSPOTS,
   CONFLICT_ZONES,
@@ -127,6 +127,20 @@ const VIEW_PRESETS: Record<DeckMapView, { longitude: number; latitude: number; z
 const MAP_INTERACTION_MODE: MapInteractionMode =
   import.meta.env.VITE_MAP_INTERACTION_MODE === 'flat' ? 'flat' : '3d';
 
+// Theme-aware basemap tile URLs
+const DARK_TILES = [
+  'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
+  'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
+  'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
+];
+const LIGHT_TILES = [
+  'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
+  'https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
+  'https://c.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
+];
+const DARK_BG = '#0a0f0c';
+const LIGHT_BG = '#e8f0f8';
+
 // Zoom thresholds for layer visibility and labels (matches old Map.ts)
 // Zoom-dependent layer visibility and labels
 const LAYER_ZOOM_THRESHOLDS: Partial<Record<keyof MapLayers, { minZoom: number; showLabels?: number }>> = {
@@ -142,31 +156,51 @@ const LAYER_ZOOM_THRESHOLDS: Partial<Record<keyof MapLayers, { minZoom: number; 
 // Export for external use
 export { LAYER_ZOOM_THRESHOLDS };
 
-// Color constants matching the dark theme
-const COLORS = {
-  hotspotHigh: [255, 68, 68, 200] as [number, number, number, number],
-  hotspotElevated: [255, 165, 0, 200] as [number, number, number, number],
-  hotspotLow: [255, 255, 0, 180] as [number, number, number, number],
-  conflict: [255, 0, 0, 100] as [number, number, number, number],
-  base: [0, 150, 255, 200] as [number, number, number, number],
-  nuclear: [255, 215, 0, 200] as [number, number, number, number],
-  datacenter: [0, 255, 200, 180] as [number, number, number, number],
-  cable: [0, 200, 255, 150] as [number, number, number, number],
-  cableHighlight: [255, 100, 100, 200] as [number, number, number, number],
-  earthquake: [255, 100, 50, 200] as [number, number, number, number],
-  vesselMilitary: [255, 100, 100, 220] as [number, number, number, number],
-  flightMilitary: [255, 50, 50, 220] as [number, number, number, number],
-  protest: [255, 150, 0, 200] as [number, number, number, number],
-  outage: [255, 50, 50, 180] as [number, number, number, number],
-  weather: [100, 150, 255, 180] as [number, number, number, number],
-  startupHub: [0, 255, 150, 200] as [number, number, number, number],
-  techHQ: [100, 200, 255, 200] as [number, number, number, number],
-  accelerator: [255, 200, 0, 200] as [number, number, number, number],
-  cloudRegion: [150, 100, 255, 180] as [number, number, number, number],
-  ucdpStateBased: [255, 50, 50, 200] as [number, number, number, number],
-  ucdpNonState: [255, 165, 0, 200] as [number, number, number, number],
-  ucdpOneSided: [255, 255, 0, 200] as [number, number, number, number],
-};
+// Theme-aware overlay color function — refreshed each buildLayers() call
+function getOverlayColors() {
+  const isLight = getCurrentTheme() === 'light';
+  return {
+    // Threat dots: IDENTICAL in both modes (user locked decision)
+    hotspotHigh: [255, 68, 68, 200] as [number, number, number, number],
+    hotspotElevated: [255, 165, 0, 200] as [number, number, number, number],
+    hotspotLow: [255, 255, 0, 180] as [number, number, number, number],
+
+    // Conflict zone fills: more transparent in light mode
+    conflict: isLight
+      ? [255, 0, 0, 60] as [number, number, number, number]
+      : [255, 0, 0, 100] as [number, number, number, number],
+
+    // Infrastructure/category markers: darker variants in light mode for map readability
+    base: [0, 150, 255, 200] as [number, number, number, number],
+    nuclear: isLight
+      ? [180, 120, 0, 220] as [number, number, number, number]
+      : [255, 215, 0, 200] as [number, number, number, number],
+    datacenter: isLight
+      ? [13, 148, 136, 200] as [number, number, number, number]
+      : [0, 255, 200, 180] as [number, number, number, number],
+    cable: [0, 200, 255, 150] as [number, number, number, number],
+    cableHighlight: [255, 100, 100, 200] as [number, number, number, number],
+    earthquake: [255, 100, 50, 200] as [number, number, number, number],
+    vesselMilitary: [255, 100, 100, 220] as [number, number, number, number],
+    flightMilitary: [255, 50, 50, 220] as [number, number, number, number],
+    protest: [255, 150, 0, 200] as [number, number, number, number],
+    outage: [255, 50, 50, 180] as [number, number, number, number],
+    weather: [100, 150, 255, 180] as [number, number, number, number],
+    startupHub: isLight
+      ? [22, 163, 74, 220] as [number, number, number, number]
+      : [0, 255, 150, 200] as [number, number, number, number],
+    techHQ: [100, 200, 255, 200] as [number, number, number, number],
+    accelerator: isLight
+      ? [180, 120, 0, 220] as [number, number, number, number]
+      : [255, 200, 0, 200] as [number, number, number, number],
+    cloudRegion: [150, 100, 255, 180] as [number, number, number, number],
+    ucdpStateBased: [255, 50, 50, 200] as [number, number, number, number],
+    ucdpNonState: [255, 165, 0, 200] as [number, number, number, number],
+    ucdpOneSided: [255, 255, 0, 200] as [number, number, number, number],
+  };
+}
+// Initialize and refresh on every buildLayers() call
+let COLORS = getOverlayColors();
 
 // SVG icons as data URLs for different marker shapes
 const MARKER_ICONS = {
@@ -286,6 +320,14 @@ export class DeckGLMap {
     this.setupDOM();
     this.popup = new MapPopup(container);
 
+    window.addEventListener('theme-changed', (e: Event) => {
+      const theme = (e as CustomEvent).detail?.theme as 'dark' | 'light';
+      if (theme) {
+        this.switchBasemap(theme);
+        this.render(); // Rebuilds Deck.GL layers with new theme-aware colors
+      }
+    });
+
     this.initMapLibre();
 
     this.maplibreMap?.on('load', () => {
@@ -320,20 +362,20 @@ export class DeckGLMap {
 
   private initMapLibre(): void {
     const preset = VIEW_PRESETS[this.state.view];
+    const initialTheme = getCurrentTheme();
+    const initialTiles = initialTheme === 'light' ? LIGHT_TILES : DARK_TILES;
+    const initialBg = initialTheme === 'light' ? LIGHT_BG : DARK_BG;
+    const styleName = initialTheme === 'light' ? 'Light' : 'Dark';
 
     this.maplibreMap = new maplibregl.Map({
       container: 'deckgl-basemap',
       style: {
         version: 8,
-        name: 'Dark',
+        name: styleName,
         sources: {
           'carto-dark': {
             type: 'raster',
-            tiles: [
-              'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
-              'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
-              'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
-            ],
+            tiles: initialTiles,
             tileSize: 256,
             attribution: '&copy; <a href="https://carto.com/">CARTO</a>',
           },
@@ -343,7 +385,7 @@ export class DeckGLMap {
             id: 'background',
             type: 'background',
             paint: {
-              'background-color': '#0a0f0c',
+              'background-color': initialBg,
             },
           },
           {
@@ -800,6 +842,8 @@ export class DeckGLMap {
 
   private buildLayers(): LayersList {
     const startTime = performance.now();
+    // Refresh theme-aware overlay colors on each rebuild
+    COLORS = getOverlayColors();
     const layers: (Layer | null | false)[] = [];
     const { layers: mapLayers } = this.state;
 
@@ -1088,7 +1132,9 @@ export class DeckGLMap {
       filled: true,
       stroked: true,
       getFillColor: () => COLORS.conflict,
-      getLineColor: () => [255, 0, 0, 180] as [number, number, number, number],
+      getLineColor: () => getCurrentTheme() === 'light'
+        ? [255, 0, 0, 120] as [number, number, number, number]
+        : [255, 0, 0, 180] as [number, number, number, number],
       getLineWidth: 2,
       lineWidthMinPixels: 1,
       pickable: true,
@@ -2676,20 +2722,21 @@ export class DeckGLMap {
       hexagon: (color: string) => `<svg width="12" height="12" viewBox="0 0 12 12"><polygon points="6,1 10.5,3.5 10.5,8.5 6,11 1.5,8.5 1.5,3.5" fill="${color}"/></svg>`,
     };
 
+    const isLight = getCurrentTheme() === 'light';
     const legendItems = SITE_VARIANT === 'tech'
       ? [
-          { shape: shapes.circle('rgb(0, 255, 150)'), label: 'Startup Hub' },
+          { shape: shapes.circle(isLight ? 'rgb(22, 163, 74)' : 'rgb(0, 255, 150)'), label: 'Startup Hub' },
           { shape: shapes.circle('rgb(100, 200, 255)'), label: 'Tech HQ' },
-          { shape: shapes.circle('rgb(255, 200, 0)'), label: 'Accelerator' },
+          { shape: shapes.circle(isLight ? 'rgb(180, 120, 0)' : 'rgb(255, 200, 0)'), label: 'Accelerator' },
           { shape: shapes.circle('rgb(150, 100, 255)'), label: 'Cloud Region' },
           { shape: shapes.square('rgb(136, 68, 255)'), label: 'Datacenter' },
         ]
       : [
           { shape: shapes.circle('rgb(255, 68, 68)'), label: 'High Alert' },
           { shape: shapes.circle('rgb(255, 165, 0)'), label: 'Elevated' },
-          { shape: shapes.circle('rgb(255, 255, 0)'), label: 'Monitoring' },
+          { shape: shapes.circle(isLight ? 'rgb(180, 120, 0)' : 'rgb(255, 255, 0)'), label: 'Monitoring' },
           { shape: shapes.triangle('rgb(68, 136, 255)'), label: 'Base' },
-          { shape: shapes.hexagon('rgb(255, 220, 0)'), label: 'Nuclear' },
+          { shape: shapes.hexagon(isLight ? 'rgb(180, 120, 0)' : 'rgb(255, 220, 0)'), label: 'Nuclear' },
           { shape: shapes.square('rgb(136, 68, 255)'), label: 'Datacenter' },
         ];
 
@@ -2876,8 +2923,8 @@ export class DeckGLMap {
       data: top50,
       getSourcePosition: (d) => [d.originLon!, d.originLat!],
       getTargetPosition: (d) => [d.asylumLon!, d.asylumLat!],
-      getSourceColor: [100, 150, 255, 180],
-      getTargetColor: [100, 255, 200, 180],
+      getSourceColor: getCurrentTheme() === 'light' ? [50, 80, 180, 220] : [100, 150, 255, 180],
+      getTargetColor: getCurrentTheme() === 'light' ? [20, 150, 100, 220] : [100, 255, 200, 180],
       getWidth: (d) => Math.max(1, (d.refugees / maxCount) * 8),
       widthMinPixels: 1,
       widthMaxPixels: 8,
@@ -3495,6 +3542,28 @@ export class DeckGLMap {
       this.maplibreMap.setFilter('country-highlight-fill', noMatch);
       this.maplibreMap.setFilter('country-highlight-border', noMatch);
     } catch { /* layer not ready */ }
+  }
+
+  private switchBasemap(theme: 'dark' | 'light'): void {
+    if (!this.maplibreMap) return;
+    const source = this.maplibreMap.getSource('carto-dark') as maplibregl.RasterTileSource;
+    if (!source) return;
+    source.setTiles(theme === 'light' ? LIGHT_TILES : DARK_TILES);
+    try {
+      this.maplibreMap.setPaintProperty('background', 'background-color',
+        theme === 'light' ? LIGHT_BG : DARK_BG);
+    } catch { /* background layer may not exist */ }
+    this.updateCountryLayerPaint(theme);
+  }
+
+  private updateCountryLayerPaint(theme: 'dark' | 'light'): void {
+    if (!this.maplibreMap || !this.countryGeoJsonLoaded) return;
+    const hoverOpacity = theme === 'light' ? 0.10 : 0.06;
+    const highlightOpacity = theme === 'light' ? 0.18 : 0.12;
+    try {
+      this.maplibreMap.setPaintProperty('country-hover-fill', 'fill-opacity', hoverOpacity);
+      this.maplibreMap.setPaintProperty('country-highlight-fill', 'fill-opacity', highlightOpacity);
+    } catch { /* layers may not be ready */ }
   }
 
   public destroy(): void {

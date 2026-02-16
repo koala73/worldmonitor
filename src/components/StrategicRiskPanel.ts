@@ -1,5 +1,6 @@
 import { Panel } from './Panel';
 import { escapeHtml } from '@/utils/sanitize';
+import { getCSSColor } from '@/utils';
 import {
   calculateStrategicRiskOverview,
   getRecentAlerts,
@@ -100,10 +101,10 @@ export class StrategicRiskPanel extends Panel {
   }
 
   private getScoreColor(score: number): string {
-    if (score >= 70) return '#ff4444';
-    if (score >= 50) return '#ff8800';
-    if (score >= 30) return '#ffaa00';
-    return '#44aa44';
+    if (score >= 70) return getCSSColor('--semantic-critical');
+    if (score >= 50) return getCSSColor('--semantic-high');
+    if (score >= 30) return getCSSColor('--semantic-elevated');
+    return getCSSColor('--semantic-normal');
   }
 
   private getScoreLevel(score: number): string {
@@ -123,19 +124,19 @@ export class StrategicRiskPanel extends Panel {
 
   private getTrendColor(trend: string): string {
     switch (trend) {
-      case 'escalating': return '#ff4444';
-      case 'de-escalating': return '#44aa44';
-      default: return '#888888';
+      case 'escalating': return getCSSColor('--semantic-critical');
+      case 'de-escalating': return getCSSColor('--semantic-normal');
+      default: return getCSSColor('--text-dim');
     }
   }
 
 
   private getPriorityColor(priority: AlertPriority): string {
     switch (priority) {
-      case 'critical': return '#ff4444';
-      case 'high': return '#ff8800';
-      case 'medium': return '#ffaa00';
-      case 'low': return '#88aa44';
+      case 'critical': return getCSSColor('--semantic-critical');
+      case 'high': return getCSSColor('--semantic-high');
+      case 'medium': return getCSSColor('--semantic-elevated');
+      case 'low': return getCSSColor('--semantic-normal');
     }
   }
 

@@ -4,6 +4,8 @@
  * showing misleading "all clear" when we actually have no data.
  */
 
+import { getCSSColor } from '@/utils';
+
 export type DataSourceId =
   | 'acled'      // Protests/conflicts
   | 'opensky'    // Military flights
@@ -291,12 +293,12 @@ export const dataFreshness = new DataFreshnessTracker();
 // Helper to get status color
 export function getStatusColor(status: FreshnessStatus): string {
   switch (status) {
-    case 'fresh': return '#44aa44';
-    case 'stale': return '#ffaa00';
-    case 'very_stale': return '#ff8800';
-    case 'error': return '#ff4444';
-    case 'disabled': return '#666666';
-    case 'no_data': return '#888888';
+    case 'fresh': return getCSSColor('--semantic-normal');
+    case 'stale': return getCSSColor('--semantic-elevated');
+    case 'very_stale': return getCSSColor('--semantic-high');
+    case 'error': return getCSSColor('--semantic-critical');
+    case 'disabled': return getCSSColor('--text-muted');
+    case 'no_data': return getCSSColor('--text-dim');
   }
 }
 
