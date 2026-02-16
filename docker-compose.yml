@@ -1,0 +1,16 @@
+# World Monitor — self-hosted stack
+# Usage: docker compose up -d
+# Optional: cp .env.example .env, add API keys, then uncomment env_file below.
+
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    # env_file: [ .env ]
+    environment:
+      NODE_ENV: production
+      LOCAL_API_MODE: standalone
+      LOCAL_API_PORT: 3000
+      LOCAL_API_CLOUD_FALLBACK: "true"
+    restart: unless-stopped

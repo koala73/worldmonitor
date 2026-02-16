@@ -904,6 +904,36 @@ npm run dev    # Vite dev server on http://localhost:5173
 
 This runs the frontend without the API layer. Panels that require server-side proxying will show "No data available". The interactive map, static data layers (bases, cables, pipelines), and browser-side ML models still work.
 
+### Option 4: Self-hosted Docker
+
+Run the full dashboard (SPA + 45+ API handlers) in a single container. The image serves the built frontend and the same Node-based API layer used by the desktop app, with optional cloud fallback when handlers fail.
+
+```bash
+# Build and run (no API keys required; panels without keys stay empty or use cloud fallback)
+docker build -t worldmonitor .
+docker run -p 3000:3000 worldmonitor
+```
+
+Open [http://localhost:3000](http://localhost:3000). To enable AI, markets, or other features, pass env vars (see `.env.example`):
+
+```bash
+docker run -p 3000:3000 \
+  -e GROQ_API_KEY=your_groq_key \
+  -e UPSTASH_REDIS_REST_URL=... \
+  -e UPSTASH_REDIS_REST_TOKEN=... \
+  worldmonitor
+```
+
+Or use a compose file and an env file:
+
+```bash
+cp .env.example .env
+# Edit .env with your keys (optional)
+docker compose up -d
+```
+
+The container listens on `0.0.0.0:3000`. With `LOCAL_API_CLOUD_FALLBACK=true` (default), any handler that errors or is missing will transparently use the cloud API (worldmonitor.app).
+
 ### Platform Notes
 
 | Platform | Status | Notes |
@@ -911,8 +941,8 @@ This runs the frontend without the API layer. Panels that require server-side pr
 | **Vercel** | Full support | Recommended deployment target |
 | **Linux x86_64** | Works with `vercel dev` | Full local development |
 | **macOS** | Works with `vercel dev` | Full local development |
-| **Raspberry Pi / ARM** | Partial | `vercel dev` edge runtime emulation may not work on ARM. Use Option 1 (deploy to Vercel) or Option 3 (static frontend) instead |
-| **Docker** | Planned | See [Roadmap](#roadmap) |
+| **Raspberry Pi / ARM** | Partial | `vercel dev` edge runtime emulation may not work on ARM. Use Option 1 (deploy to Vercel), Option 3 (static frontend), or Option 4 (Docker on ARM if Node image supports it) |
+| **Docker** | Supported | Single image: SPA + API. See [Option 4](#option-4-self-hosted-docker) above. |
 
 ### Railway Relay (Optional)
 
@@ -1009,7 +1039,7 @@ Desktop release details, signing hooks, variant outputs, and clean-machine valid
 - [x] Entity index with cross-source correlation and confidence scoring
 - [ ] Mobile-optimized views
 - [ ] Push notifications for critical alerts
-- [ ] Self-hosted Docker image
+- [x] Self-hosted Docker image
 
 See [full roadmap](./docs/DOCUMENTATION.md#roadmap).
 

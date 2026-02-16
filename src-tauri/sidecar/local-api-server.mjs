@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import http, { createServer } from 'node:http';
 import https from 'node:https';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, createReadStream, statSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { gzipSync } from 'node:zlib';
 import path from 'node:path';
@@ -312,6 +312,8 @@ function resolveConfig(options = {}) {
   const mode = String(options.mode ?? process.env.LOCAL_API_MODE ?? 'desktop-sidecar');
   const cloudFallback = String(options.cloudFallback ?? process.env.LOCAL_API_CLOUD_FALLBACK ?? '') === 'true';
   const logger = options.logger ?? console;
+  const distDir = options.distDir ?? (mode === 'standalone' ? path.join(resourceDir, 'dist') : null);
+  const host = options.host ?? (mode === 'standalone' ? '0.0.0.0' : '127.0.0.1');
 
   return {
     port,
@@ -321,6 +323,8 @@ function resolveConfig(options = {}) {
     mode,
     cloudFallback,
     logger,
+    distDir: distDir && existsSync(distDir) ? distDir : null,
+    host,
   };
 }
 
@@ -833,10 +837,61 @@ export async function createLocalApiServer(options = {}) {
   loadVerboseState(context.resourceDir);
   const routes = await buildRouteTable(context.apiDir);
 
+  const MIME_TYPES = {
+    '.html': 'text/html; charset=utf-8',
+    '.js': 'application/javascript; charset=utf-8',
+    '.css': 'text/css; charset=utf-8',
+    '.json': 'application/json',
+    '.ico': 'image/x-icon',
+    '.png': 'image/png',
+    '.svg': 'image/svg+xml',
+    '.woff2': 'font/woff2',
+    '.woff': 'font/woff',
+    '.map': 'application/json',
+  };
+
+  function serveStatic(requestUrl, res, req) {
+    if (!context.distDir || (req.method !== 'GET' && req.method !== 'HEAD')) return false;
+    const safePath = requestUrl.pathname.replace(/^\/+/, '').replace(/\/+/g, '/');
+    if (safePath.includes('..') || path.isAbsolute(safePath)) return false;
+    const filePath = path.join(context.distDir, safePath || 'index.html');
+    const resolved = path.resolve(filePath);
+    const rel = path.relative(context.distDir, resolved);
+    if (rel.startsWith('..') || path.isAbsolute(rel)) return false;
+    let target = resolved;
+    if (!existsSync(target)) {
+      if (!safePath || safePath.endsWith('/')) {
+        target = path.join(resolved, 'index.html');
+      } else {
+        target = path.join(context.distDir, 'index.html');
+      }
+      if (!existsSync(target)) return false;
+    }
+    const stat = statSync(target);
+    if (stat.isDirectory()) {
+      target = path.join(target, 'index.html');
+      if (!existsSync(target)) return false;
+    }
+    const ext = path.extname(target);
+    const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+    const stat2 = statSync(target);
+    const headers = { 'content-type': contentType, ...makeCorsHeaders(req) };
+    if (req.method === 'HEAD') {
+      headers['content-length'] = String(stat2.size);
+      res.writeHead(200, headers);
+      res.end();
+    } else {
+      res.writeHead(200, headers);
+      createReadStream(target).pipe(res);
+    }
+    return true;
+  }
+
   const server = createServer(async (req, res) => {
     const requestUrl = new URL(req.url || '/', `http://127.0.0.1:${context.port}`);
 
     if (!requestUrl.pathname.startsWith('/api/')) {
+      if (serveStatic(requestUrl, res, req)) return;
       res.writeHead(404, { 'content-type': 'application/json', ...makeCorsHeaders(req) });
       res.end(JSON.stringify({ error: 'Not found' }));
       return;
@@ -913,12 +968,13 @@ export async function createLocalApiServer(options = {}) {
 
         server.once('listening', onListening);
         server.once('error', onError);
-        server.listen(context.port, '127.0.0.1');
+        server.listen(context.port, context.host);
       });
 
       const address = server.address();
       const boundPort = typeof address === 'object' && address?.port ? address.port : context.port;
-      context.logger.log(`[local-api] listening on http://127.0.0.1:${boundPort} (apiDir=${context.apiDir}, routes=${routes.length}, cloudFallback=${context.cloudFallback})`);
+      const bindHost = context.host === '0.0.0.0' ? '0.0.0.0' : '127.0.0.1';
+      context.logger.log(`[local-api] listening on http://${bindHost}:${boundPort} (apiDir=${context.apiDir}, routes=${routes.length}, cloudFallback=${context.cloudFallback}${context.distDir ? ', static=' + context.distDir : ''})`);
       return { port: boundPort };
     },
     async close() {

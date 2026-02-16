@@ -1,0 +1,36 @@
+# Dependencies and build artifacts
+node_modules
+dist
+.git
+.gitignore
+
+# IDE and OS
+.vscode
+.idea
+*.log
+.DS_Store
+Thumbs.db
+
+# Env and secrets (mount at runtime)
+.env
+.env.local
+.env.*.local
+
+# Tauri build outputs (not needed for Docker image)
+src-tauri/target
+
+# Tests and dev
+e2e
+tests
+*.spec.ts
+*.test.mjs
+playwright
+playwright.config.*
+
+# Docs and meta (optional: remove if you want them in image)
+docs
+*.md
+!README.md
+
+# Desktop packaging
+scripts/desktop-package.mjs
