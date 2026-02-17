@@ -8,6 +8,7 @@ const MAX_VISIBLE_FINDINGS = 10;
 const SORT_TIME_TOLERANCE_MS = 60000;
 const REFRESH_INTERVAL_MS = 10000;
 const ALERT_HOURS = 6;
+const STORAGE_KEY = 'worldmonitor-intel-findings';
 
 type FindingSource = 'signal' | 'alert';
 
@@ -35,8 +36,12 @@ export class IntelligenceFindingsBadge {
   private boundCloseDropdown = () => this.closeDropdown();
   private audio: HTMLAudioElement | null = null;
   private audioEnabled = true;
+  private enabled: boolean;
+  private contextMenu: HTMLElement | null = null;
 
   constructor() {
+    this.enabled = localStorage.getItem(STORAGE_KEY) !== 'hidden';
+
     this.badge = document.createElement('button');
     this.badge.className = 'intel-findings-badge';
     this.badge.title = 'Intelligence findings';
@@ -48,6 +53,12 @@ export class IntelligenceFindingsBadge {
     this.badge.addEventListener('click', (e) => {
       e.stopPropagation();
       this.toggleDropdown();
+    });
+
+    this.badge.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.showContextMenu(e.clientX, e.clientY);
     });
 
     // Event delegation for finding items and "more" link
@@ -80,10 +91,12 @@ export class IntelligenceFindingsBadge {
 
     document.addEventListener('click', this.boundCloseDropdown);
 
-    this.mount();
-    this.initAudio();
-    this.update();
-    this.startRefresh();
+    if (this.enabled) {
+      this.mount();
+      this.initAudio();
+      this.update();
+      this.startRefresh();
+    }
   }
 
   private initAudio(): void {
@@ -104,6 +117,60 @@ export class IntelligenceFindingsBadge {
 
   public setOnAlertClick(handler: (alert: UnifiedAlert) => void): void {
     this.onAlertClick = handler;
+  }
+
+  public isEnabled(): boolean {
+    return this.enabled;
+  }
+
+  public setEnabled(enabled: boolean): void {
+    if (this.enabled === enabled) return;
+    this.enabled = enabled;
+
+    if (enabled) {
+      localStorage.removeItem(STORAGE_KEY);
+      this.mount();
+      this.initAudio();
+      this.update();
+      this.startRefresh();
+    } else {
+      localStorage.setItem(STORAGE_KEY, 'hidden');
+      if (this.refreshInterval) {
+        clearInterval(this.refreshInterval);
+        this.refreshInterval = null;
+      }
+      this.closeDropdown();
+      this.badge.remove();
+    }
+  }
+
+  private showContextMenu(x: number, y: number): void {
+    this.dismissContextMenu();
+
+    const menu = document.createElement('div');
+    menu.className = 'intel-findings-context-menu';
+    menu.style.left = `${x}px`;
+    menu.style.top = `${y}px`;
+    menu.innerHTML = '<div class="context-menu-item">Hide Intelligence Findings</div>';
+
+    menu.querySelector('.context-menu-item')!.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.setEnabled(false);
+      this.dismissContextMenu();
+    });
+
+    const dismiss = () => this.dismissContextMenu();
+    document.addEventListener('click', dismiss, { once: true });
+
+    this.contextMenu = menu;
+    document.body.appendChild(menu);
+  }
+
+  private dismissContextMenu(): void {
+    if (this.contextMenu) {
+      this.contextMenu.remove();
+      this.contextMenu = null;
+    }
   }
 
   private mount(): void {

@@ -9192,6 +9192,29 @@ a.prediction-link:hover {
   color: var(--text-dim);
 }
 
+.intel-findings-context-menu {
+  position: fixed;
+  z-index: 10000;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  padding: 4px 0;
+  min-width: 200px;
+}
+
+.context-menu-item {
+  padding: 8px 14px;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.context-menu-item:hover {
+  background: var(--bg-hover);
+}
+
 /* ===== Tech Events Panel ===== */
 .tech-events-panel {
   display: flex;
