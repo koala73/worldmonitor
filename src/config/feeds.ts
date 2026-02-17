@@ -80,6 +80,11 @@ export const SOURCE_TIERS: Record<string, number> = {
   'Xinhua': 3,
   'TASS': 3,
   'Layoffs.fyi': 3,
+  'BBC Persian': 2,
+  'Iran International': 3,
+  'Fars News': 3,
+  'MIIT (China)': 1,
+  'MOFCOM (China)': 1,
 
   // Tier 2 - Premium Startup/VC Sources
   'Y Combinator Blog': 2,
@@ -357,6 +362,9 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     // Arab News and Times of Israel removed — 403 from cloud IPs
     { name: 'Guardian ME', url: rss('https://www.theguardian.com/world/middleeast/rss') },
     { name: 'CNN World', url: rss('http://rss.cnn.com/rss/cnn_world.rss') },
+    { name: 'BBC Persian', url: rss('http://feeds.bbci.co.uk/persian/tv-and-radio-37434376/rss.xml') },
+    { name: 'Iran International', url: rss('https://news.google.com/rss/search?q=site:iranintl.com+when:2d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Fars News', url: rss('https://news.google.com/rss/search?q=site:farsnews.ir+when:2d&hl=en-US&gl=US&ceid=US:en') },
   ],
   tech: [
     { name: 'Hacker News', url: rss('https://hnrss.org/frontpage') },
@@ -448,6 +456,8 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'BBC Asia', url: rss('https://feeds.bbci.co.uk/news/world/asia/rss.xml') },
     { name: 'South China Morning Post', url: railwayRss('https://www.scmp.com/rss/91/feed/') },
     { name: 'Reuters Asia', url: rss('https://news.google.com/rss/search?q=site:reuters.com+(China+OR+Japan+OR+Taiwan+OR+Korea)+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'MIIT (China)', url: rss('https://rsshub.app/gov/miit/zcjd') },
+    { name: 'MOFCOM (China)', url: rss('https://rsshub.app/gov/mofcom/article/xwfb') },
   ],
   energy: [
     { name: 'Oil & Gas', url: rss('https://news.google.com/rss/search?q=(oil+price+OR+OPEC+OR+"natural+gas"+OR+pipeline+OR+LNG)+when:2d&hl=en-US&gl=US&ceid=US:en') },
