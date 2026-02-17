@@ -14,6 +14,8 @@ All notable changes to World Monitor are documented here.
 - **Variant feed loading**: `loadNews` now enumerates categories dynamically and stages category fetches with bounded concurrency across variants
 - **Feed resilience**: Replaced direct MarketWatch RSS usage in finance/full/tech paths with Google News-backed fallback queries
 - **Classification pressure controls**: Tightened AI classification budgets for tech/full and tuned per-feed caps to reduce startup burst pressure
+- **Timeline behavior**: Wired timeline filtering consistently across map and news panels
+- **AI summarization defaults**: Switched OpenRouter summarization to auto-routed free-tier model selection
 
 ### Fixed
 
@@ -22,6 +24,8 @@ All notable changes to World Monitor are documented here.
 - **Polymarket fallback**: Added one-time direct connectivity probe and memoized fallback to prevent repeated `ERR_CONNECTION_RESET` storms
 - **FRED fallback behavior**: Missing `FRED_API_KEY` now returns graceful empty payloads instead of repeated hard 500s
 - **Preview CSP tooling**: Allowed `https://vercel.live` script in CSP so Vercel preview feedback injection is not blocked
+- **Trending quality**: Suppressed noisy generic finance terms in keyword spike detection
+- **Mobile UX**: Hidden desktop download prompt on mobile devices
 
 ## [2.3.7] - 2026-02-16
 
