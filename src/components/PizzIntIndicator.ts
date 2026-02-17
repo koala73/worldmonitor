@@ -63,15 +63,15 @@ export class PizzIntIndicator {
         align-items: center;
         gap: 6px;
         background: transparent;
-        border: 1px solid rgba(255, 255, 255, 0.2);
+        border: 1px solid var(--overlay-heavy);
         border-radius: 4px;
         padding: 4px 8px;
         cursor: pointer;
         transition: all 0.2s;
       }
       .pizzint-toggle:hover {
-        background: rgba(255, 255, 255, 0.1);
-        border-color: rgba(255, 255, 255, 0.4);
+        background: var(--overlay-medium);
+        border-color: var(--border-strong);
       }
       .pizzint-icon { font-size: 14px; }
       .pizzint-defcon {
@@ -79,12 +79,12 @@ export class PizzIntIndicator {
         font-weight: bold;
         padding: 2px 5px;
         border-radius: 3px;
-        background: #444;
-        color: #fff;
+        background: var(--text-ghost);
+        color: var(--accent);
       }
       .pizzint-score {
         font-size: 10px;
-        color: rgba(255, 255, 255, 0.7);
+        color: var(--text-dim);
       }
       .pizzint-panel {
         position: absolute;
@@ -92,11 +92,11 @@ export class PizzIntIndicator {
         left: 0;
         margin-top: 8px;
         width: 320px;
-        background: rgba(0, 0, 0, 0.95);
-        border: 1px solid rgba(255, 255, 255, 0.2);
+        background: var(--bg);
+        border: 1px solid var(--overlay-heavy);
         border-radius: 12px;
         overflow: hidden;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        box-shadow: 0 8px 32px var(--shadow-color);
       }
       .pizzint-panel.hidden { display: none; }
       .pizzint-header {
@@ -104,32 +104,32 @@ export class PizzIntIndicator {
         justify-content: space-between;
         align-items: center;
         padding: 12px 16px;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        border-bottom: 1px solid var(--overlay-medium);
       }
       .pizzint-title {
         font-size: 14px;
         font-weight: bold;
-        color: #fff;
+        color: var(--accent);
       }
       .pizzint-close {
         background: none;
         border: none;
-        color: rgba(255, 255, 255, 0.5);
+        color: var(--text-faint);
         font-size: 20px;
         cursor: pointer;
         padding: 0;
         line-height: 1;
       }
-      .pizzint-close:hover { color: #fff; }
+      .pizzint-close:hover { color: var(--accent); }
       .pizzint-status-bar {
         padding: 12px 16px;
-        background: rgba(255, 255, 255, 0.05);
+        background: var(--overlay-light);
       }
       .pizzint-defcon-label {
         font-size: 11px;
         text-transform: uppercase;
         letter-spacing: 1px;
-        color: rgba(255, 255, 255, 0.9);
+        color: var(--text);
         text-align: center;
       }
       .pizzint-locations {
@@ -142,12 +142,12 @@ export class PizzIntIndicator {
         justify-content: space-between;
         align-items: center;
         padding: 6px 0;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        border-bottom: 1px solid var(--overlay-light);
         font-size: 11px;
       }
       .pizzint-location:last-child { border-bottom: none; }
       .pizzint-location-name {
-        color: rgba(255, 255, 255, 0.8);
+        color: var(--text);
         flex: 1;
         white-space: nowrap;
         overflow: hidden;
@@ -161,21 +161,21 @@ export class PizzIntIndicator {
         font-weight: bold;
         text-transform: uppercase;
       }
-      .pizzint-location-status.spike { background: #ff0040; color: #fff; }
-      .pizzint-location-status.high { background: #ff4400; color: #fff; }
-      .pizzint-location-status.elevated { background: #ffaa00; color: #000; }
-      .pizzint-location-status.nominal { background: #00aaff; color: #fff; }
-      .pizzint-location-status.quiet { background: #00ff88; color: #000; }
-      .pizzint-location-status.closed { background: #444; color: #888; }
+      .pizzint-location-status.spike { background: var(--defcon-1); color: var(--accent); }
+      .pizzint-location-status.high { background: var(--defcon-2); color: var(--accent); }
+      .pizzint-location-status.elevated { background: var(--defcon-3); color: var(--bg); }
+      .pizzint-location-status.nominal { background: var(--defcon-4); color: var(--accent); }
+      .pizzint-location-status.quiet { background: var(--status-live); color: var(--bg); }
+      .pizzint-location-status.closed { background: var(--text-ghost); color: var(--text-dim); }
       .pizzint-tensions {
         padding: 12px 16px;
-        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        border-top: 1px solid var(--overlay-medium);
       }
       .pizzint-tensions-title {
         font-size: 11px;
         text-transform: uppercase;
         letter-spacing: 1px;
-        color: rgba(255, 255, 255, 0.5);
+        color: var(--text-faint);
         margin-bottom: 8px;
       }
       .pizzint-tension-row {
@@ -185,30 +185,30 @@ export class PizzIntIndicator {
         padding: 4px 0;
         font-size: 11px;
       }
-      .pizzint-tension-label { color: rgba(255, 255, 255, 0.8); }
+      .pizzint-tension-label { color: var(--text); }
       .pizzint-tension-score {
         display: flex;
         align-items: center;
         gap: 6px;
       }
-      .pizzint-tension-value { color: #fff; font-weight: bold; }
+      .pizzint-tension-value { color: var(--accent); font-weight: bold; }
       .pizzint-tension-trend { font-size: 10px; }
-      .pizzint-tension-trend.rising { color: #ff4400; }
-      .pizzint-tension-trend.falling { color: #00ff88; }
-      .pizzint-tension-trend.stable { color: #888; }
+      .pizzint-tension-trend.rising { color: var(--defcon-2); }
+      .pizzint-tension-trend.falling { color: var(--status-live); }
+      .pizzint-tension-trend.stable { color: var(--text-dim); }
       .pizzint-footer {
         display: flex;
         justify-content: space-between;
         padding: 8px 16px;
-        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        border-top: 1px solid var(--overlay-medium);
         font-size: 10px;
-        color: rgba(255, 255, 255, 0.4);
+        color: var(--text-ghost);
       }
       .pizzint-footer a {
-        color: rgba(255, 255, 255, 0.6);
+        color: var(--text-faint);
         text-decoration: none;
       }
-      .pizzint-footer a:hover { color: #fff; }
+      .pizzint-footer a:hover { color: var(--accent); }
     `;
     document.head.appendChild(style);
   }

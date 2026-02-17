@@ -446,23 +446,24 @@ export async function loadDesktopSecrets(): Promise<void> {
   if (!isDesktopRuntime()) return;
 
   try {
-    const keys = await invokeTauri<RuntimeSecretKey[]>('list_supported_secret_keys');
+    // Single batch call to read all keychain secrets at once.
+    // This triggers only ONE macOS Keychain prompt instead of 18 individual ones.
+    const allSecrets = await invokeTauri<Record<string, string>>('get_all_secrets');
 
-    const results = await Promise.allSettled(keys.map(async (key) => {
-      const value = await invokeTauri<string | null>('get_secret', { key });
-      if (value && value.trim()) {
-        runtimeConfig.secrets[key] = { value: value.trim(), source: 'vault' };
+    const syncResults = await Promise.allSettled(
+      Object.entries(allSecrets).map(async ([key, value]) => {
+        runtimeConfig.secrets[key as RuntimeSecretKey] = { value, source: 'vault' };
         try {
-          await pushSecretToSidecar(key, value.trim());
+          await pushSecretToSidecar(key as RuntimeSecretKey, value);
         } catch (error) {
           console.warn(`[runtime-config] Failed to sync ${key} to sidecar`, error);
         }
-      }
-    }));
+      })
+    );
 
-    const failures = results.filter((r) => r.status === 'rejected');
+    const failures = syncResults.filter((r) => r.status === 'rejected');
     if (failures.length > 0) {
-      console.warn(`[runtime-config] ${failures.length} key(s) failed to load from vault`);
+      console.warn(`[runtime-config] ${failures.length} key(s) failed to sync to sidecar`);
     }
 
     notifyConfigChanged();

@@ -133,30 +133,30 @@ export class VerificationChecklist extends Component {
         h('button', { class: 'reset-btn', onClick: () => this.reset() }, 'Reset Checklist'),
       ),
       h('style', null, `
-        .verification-checklist { background: #0d0d0d; border-radius: 8px; padding: 16px; max-width: 400px; }
-        .checklist-header h3 { margin: 0 0 4px; font-size: 14px; color: #fff; }
-        .hint { margin: 0; font-size: 11px; color: #666; }
+        .verification-checklist { background: var(--bg); border-radius: 8px; padding: 16px; max-width: 400px; }
+        .checklist-header h3 { margin: 0 0 4px; font-size: 14px; color: var(--accent); }
+        .hint { margin: 0; font-size: 11px; color: var(--text-muted); }
         .score-display { margin: 16px 0; padding: 16px; border-radius: 8px; border: 2px solid; text-align: center; }
-        .score-value { font-size: 32px; font-weight: 700; color: #fff; }
+        .score-value { font-size: 32px; font-weight: 700; color: var(--accent); }
         .score-label { font-size: 12px; font-weight: 600; text-transform: uppercase; }
         .checks-grid { display: flex; flex-direction: column; gap: 8px; margin: 16px 0; }
-        .check-item { display: flex; align-items: center; gap: 8px; padding: 8px; background: #1a1a1a; border-radius: 4px; cursor: pointer; transition: background 0.2s; }
-        .check-item:hover { background: #222; }
-        .check-item.checked { background: #1a3a1a; }
+        .check-item { display: flex; align-items: center; gap: 8px; padding: 8px; background: var(--surface-hover); border-radius: 4px; cursor: pointer; transition: background 0.2s; }
+        .check-item:hover { background: var(--border); }
+        .check-item.checked { background: color-mix(in srgb, var(--semantic-normal) 15%, var(--bg)); }
         .check-item input { width: 16px; height: 16px; }
         .icon { font-size: 14px; }
-        .label { font-size: 12px; color: #ddd; }
-        .notes-section { margin-top: 16px; padding-top: 16px; border-top: 1px solid #222; }
-        .notes-section h4 { margin: 0 0 8px; font-size: 12px; color: #888; }
+        .label { font-size: 12px; color: var(--text); }
+        .notes-section { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+        .notes-section h4 { margin: 0 0 8px; font-size: 12px; color: var(--text-dim); }
         .notes-list { max-height: 100px; overflow-y: auto; }
-        .note-item { font-size: 11px; color: #aaa; padding: 4px 0; }
-        .empty { font-size: 11px; color: #444; font-style: italic; }
+        .note-item { font-size: 11px; color: var(--text-faint); padding: 4px 0; }
+        .empty { font-size: 11px; color: var(--text-ghost); font-style: italic; }
         .add-note { display: flex; gap: 8px; margin-top: 8px; }
-        .add-note input { flex: 1; padding: 6px 8px; background: #1a1a1a; border: 1px solid #333; border-radius: 4px; color: #ddd; font-size: 12px; }
-        .add-note button { padding: 6px 12px; background: #333; border: none; border-radius: 4px; color: #fff; font-size: 12px; cursor: pointer; }
-        .checklist-actions { margin-top: 16px; padding-top: 16px; border-top: 1px solid #222; }
-        .reset-btn { width: 100%; padding: 8px; background: #2a2a2a; border: none; border-radius: 4px; color: #888; font-size: 12px; cursor: pointer; }
-        .reset-btn:hover { background: #333; color: #aaa; }
+        .add-note input { flex: 1; padding: 6px 8px; background: var(--surface-hover); border: 1px solid var(--border-strong); border-radius: 4px; color: var(--text); font-size: 12px; }
+        .add-note button { padding: 6px 12px; background: var(--border-strong); border: none; border-radius: 4px; color: var(--accent); font-size: 12px; cursor: pointer; }
+        .checklist-actions { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+        .reset-btn { width: 100%; padding: 8px; background: var(--border); border: none; border-radius: 4px; color: var(--text-dim); font-size: 12px; cursor: pointer; }
+        .reset-btn:hover { background: var(--border-strong); color: var(--text-faint); }
       `),
     );
   }

@@ -126,29 +126,29 @@ export class DisplacementPanel extends Panel {
       <style>
         .disp-panel-content { font-size: 12px; }
         .disp-stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 8px; }
-        .disp-stat-box { background: rgba(255, 255, 255, 0.03); border: 1px solid #222; border-radius: 4px; padding: 8px 6px; text-align: center; }
-        .disp-stat-value { display: block; font-size: 16px; font-weight: 700; color: #ccc; font-variant-numeric: tabular-nums; }
-        .disp-stat-label { display: block; font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
-        .disp-stat-refugees .disp-stat-value { color: #ef4444; }
-        .disp-stat-asylum .disp-stat-value { color: #f97316; }
-        .disp-stat-idps .disp-stat-value { color: #eab308; }
-        .disp-stat-total .disp-stat-value { color: #fff; }
+        .disp-stat-box { background: var(--overlay-subtle); border: 1px solid var(--border); border-radius: 4px; padding: 8px 6px; text-align: center; }
+        .disp-stat-value { display: block; font-size: 16px; font-weight: 700; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+        .disp-stat-label { display: block; font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+        .disp-stat-refugees .disp-stat-value { color: var(--threat-critical); }
+        .disp-stat-asylum .disp-stat-value { color: var(--threat-high); }
+        .disp-stat-idps .disp-stat-value { color: var(--threat-medium); }
+        .disp-stat-total .disp-stat-value { color: var(--accent); }
         .disp-tabs { display: flex; gap: 2px; margin-bottom: 6px; }
-        .disp-tab { background: transparent; border: 1px solid #333; color: #888; padding: 4px 14px; font-size: 11px; cursor: pointer; border-radius: 3px; transition: all 0.15s; }
-        .disp-tab:hover { border-color: #555; color: #ccc; }
-        .disp-tab-active { background: rgba(239, 68, 68, 0.1); border-color: #ef4444; color: #ef4444; }
+        .disp-tab { background: transparent; border: 1px solid var(--border-strong); color: var(--text-dim); padding: 4px 14px; font-size: 11px; cursor: pointer; border-radius: 3px; transition: all 0.15s; }
+        .disp-tab:hover { border-color: var(--text-faint); color: var(--text-secondary); }
+        .disp-tab-active { background: color-mix(in srgb, var(--threat-critical) 10%, transparent); border-color: var(--threat-critical); color: var(--threat-critical); }
         .disp-table { width: 100%; border-collapse: collapse; }
-        .disp-table th { text-align: left; color: #666; font-weight: 600; font-size: 10px; text-transform: uppercase; padding: 4px 8px; border-bottom: 1px solid #222; }
+        .disp-table th { text-align: left; color: var(--text-muted); font-weight: 600; font-size: 10px; text-transform: uppercase; padding: 4px 8px; border-bottom: 1px solid var(--border); }
         .disp-table th:nth-child(3) { text-align: right; }
-        .disp-table td { padding: 5px 8px; border-bottom: 1px solid #1a1a1a; color: #ccc; }
+        .disp-table td { padding: 5px 8px; border-bottom: 1px solid var(--border-subtle); color: var(--text-secondary); }
         .disp-row { cursor: pointer; }
-        .disp-row:hover { background: #1a1a1a; }
+        .disp-row:hover { background: var(--surface-hover); }
         .disp-name { white-space: nowrap; }
         .disp-status { width: 70px; }
         .disp-badge { font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 3px; letter-spacing: 0.5px; }
-        .disp-crisis { background: rgba(255, 50, 50, 0.2); color: #ff3232; }
-        .disp-high { background: rgba(255, 150, 0, 0.15); color: #ff9600; }
-        .disp-elevated { background: rgba(255, 220, 0, 0.12); color: #ffdc00; }
+        .disp-crisis { background: color-mix(in srgb, var(--semantic-critical) 20%, transparent); color: var(--semantic-critical); }
+        .disp-high { background: color-mix(in srgb, var(--semantic-high) 15%, transparent); color: var(--semantic-high); }
+        .disp-elevated { background: color-mix(in srgb, var(--semantic-elevated) 12%, transparent); color: var(--semantic-elevated); }
         .disp-count { text-align: right; font-variant-numeric: tabular-nums; }
       </style>
     `);

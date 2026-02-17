@@ -6,6 +6,7 @@ import { debugInjectTestEvents, debugGetCells, getCellCount } from '@/services/g
 import { initMetaTags } from '@/services/meta-tags';
 import { installRuntimeFetchPatch } from '@/services/runtime';
 import { loadDesktopSecrets } from '@/services/runtime-config';
+import { applyStoredTheme } from '@/utils/theme-manager';
 
 // Initialize Vercel Analytics
 inject();
@@ -16,6 +17,14 @@ initMetaTags();
 // In desktop mode, route /api/* calls to the local Tauri sidecar backend.
 installRuntimeFetchPatch();
 void loadDesktopSecrets();
+
+// Apply stored theme preference before app initialization (safety net for inline script)
+applyStoredTheme();
+
+// Remove no-transition class after first paint to enable smooth theme transitions
+requestAnimationFrame(() => {
+  document.documentElement.classList.remove('no-transition');
+});
 
 const app = new App('app');
 app.init().catch(console.error);

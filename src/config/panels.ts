@@ -39,10 +39,10 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   'macro-signals': { name: 'Market Radar', enabled: true, priority: 2 },
   'etf-flows': { name: 'BTC ETF Tracker', enabled: true, priority: 2 },
   stablecoins: { name: 'Stablecoins', enabled: true, priority: 2 },
-  'ucdp-events': { name: 'UCDP Conflict Events', enabled: false, priority: 2 },
-  displacement: { name: 'UNHCR Displacement', enabled: false, priority: 2 },
-  climate: { name: 'Climate Anomalies', enabled: false, priority: 2 },
-  'population-exposure': { name: 'Population Exposure', enabled: false, priority: 2 },
+  'ucdp-events': { name: 'UCDP Conflict Events', enabled: true, priority: 2 },
+  displacement: { name: 'UNHCR Displacement', enabled: true, priority: 2 },
+  climate: { name: 'Climate Anomalies', enabled: true, priority: 2 },
+  'population-exposure': { name: 'Population Exposure', enabled: true, priority: 2 },
 };
 
 const FULL_MAP_LAYERS: MapLayers = {
@@ -363,6 +363,7 @@ export const DEFAULT_PANELS = SITE_VARIANT === 'tech' ? TECH_PANELS : SITE_VARIA
 export const DEFAULT_MAP_LAYERS = SITE_VARIANT === 'tech' ? TECH_MAP_LAYERS : SITE_VARIANT === 'finance' ? FINANCE_MAP_LAYERS : FULL_MAP_LAYERS;
 export const MOBILE_DEFAULT_MAP_LAYERS = SITE_VARIANT === 'tech' ? TECH_MOBILE_MAP_LAYERS : SITE_VARIANT === 'finance' ? FINANCE_MOBILE_MAP_LAYERS : FULL_MOBILE_MAP_LAYERS;
 
+// Monitor palette — fixed category colors persisted to localStorage (not theme-dependent)
 export const MONITOR_COLORS = [
   '#44ff88',
   '#ff8844',

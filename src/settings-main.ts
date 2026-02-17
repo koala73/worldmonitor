@@ -4,6 +4,7 @@ import { RuntimeConfigPanel } from '@/components/RuntimeConfigPanel';
 import { loadDesktopSecrets } from '@/services/runtime-config';
 import { tryInvokeTauri } from '@/services/tauri-bridge';
 import { escapeHtml } from '@/utils/sanitize';
+import { applyStoredTheme } from '@/utils/theme-manager';
 
 let diagnosticsInitialized = false;
 
@@ -62,6 +63,13 @@ function closeSettingsWindow(): void {
 }
 
 async function initSettingsWindow(): Promise<void> {
+  applyStoredTheme();
+
+  // Remove no-transition class after first paint to enable smooth theme transitions
+  requestAnimationFrame(() => {
+    document.documentElement.classList.remove('no-transition');
+  });
+
   await loadDesktopSecrets();
 
   const mount = document.getElementById('settingsApp');

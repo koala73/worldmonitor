@@ -12,6 +12,7 @@ use std::os::windows::process::CommandExt;
 
 use keyring::Entry;
 use reqwest::Url;
+use serde::Serialize;
 use serde_json::{Map, Value};
 use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Manager, RunEvent, WindowEvent, WebviewUrl, WebviewWindowBuilder};
@@ -50,6 +51,12 @@ struct LocalApiState {
     token: Mutex<Option<String>>,
 }
 
+#[derive(Serialize)]
+struct DesktopRuntimeInfo {
+    os: String,
+    arch: String,
+}
+
 fn secret_entry(key: &str) -> Result<Entry, String> {
     if !SUPPORTED_SECRET_KEYS.contains(&key) {
         return Err(format!("Unsupported secret key: {key}"));
@@ -84,6 +91,14 @@ fn get_local_api_token(state: tauri::State<'_, LocalApiState>) -> Result<String,
 }
 
 #[tauri::command]
+fn get_desktop_runtime_info() -> DesktopRuntimeInfo {
+    DesktopRuntimeInfo {
+        os: env::consts::OS.to_string(),
+        arch: env::consts::ARCH.to_string(),
+    }
+}
+
+#[tauri::command]
 fn list_supported_secret_keys() -> Vec<String> {
     SUPPORTED_SECRET_KEYS.iter().map(|key| (*key).to_string()).collect()
 }
@@ -96,6 +111,21 @@ fn get_secret(key: String) -> Result<Option<String>, String> {
         Err(keyring::Error::NoEntry) => Ok(None),
         Err(err) => Err(format!("Failed to read keyring secret: {err}")),
     }
+}
+
+#[tauri::command]
+fn get_all_secrets() -> std::collections::HashMap<String, String> {
+    let mut result = std::collections::HashMap::new();
+    for key in SUPPORTED_SECRET_KEYS.iter() {
+        if let Ok(entry) = Entry::new(KEYRING_SERVICE, key) {
+            if let Ok(value) = entry.get_password() {
+                if !value.trim().is_empty() {
+                    result.insert((*key).to_string(), value.trim().to_string());
+                }
+            }
+        }
+    }
+    result
 }
 
 #[tauri::command]
@@ -422,15 +452,50 @@ fn handle_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
     }
 }
 
-/// Strip the `\\?\` extended-length path prefix that Windows `canonicalize()` adds.
-/// Node.js module resolution cannot handle UNC-prefixed paths and walks up to a
-/// bare drive letter like `C:` which then fails with `EISDIR: lstat 'C:'`.
+/// Strip Windows extended-length path prefixes that `canonicalize()` adds.
+/// Preserve UNC semantics: `\\?\UNC\server\share\...` must become
+/// `\\server\share\...` (not `UNC\server\share\...`).
 fn sanitize_path_for_node(p: &Path) -> String {
     let s = p.to_string_lossy();
-    if s.starts_with("\\\\?\\") {
-        s[4..].to_string()
+    if let Some(stripped_unc) = s.strip_prefix("\\\\?\\UNC\\") {
+        format!("\\\\{stripped_unc}")
+    } else if let Some(stripped) = s.strip_prefix("\\\\?\\") {
+        stripped.to_string()
     } else {
         s.into_owned()
+    }
+}
+
+#[cfg(test)]
+mod sanitize_path_tests {
+    use super::sanitize_path_for_node;
+    use std::path::Path;
+
+    #[test]
+    fn strips_extended_drive_prefix() {
+        let raw = Path::new(r"\\?\C:\Program Files\nodejs\node.exe");
+        assert_eq!(
+            sanitize_path_for_node(raw),
+            r"C:\Program Files\nodejs\node.exe".to_string()
+        );
+    }
+
+    #[test]
+    fn strips_extended_unc_prefix_and_preserves_unc_root() {
+        let raw = Path::new(r"\\?\UNC\server\share\sidecar\local-api-server.mjs");
+        assert_eq!(
+            sanitize_path_for_node(raw),
+            r"\\server\share\sidecar\local-api-server.mjs".to_string()
+        );
+    }
+
+    #[test]
+    fn leaves_standard_paths_unchanged() {
+        let raw = Path::new(r"C:\Users\alice\sidecar\local-api-server.mjs");
+        assert_eq!(
+            sanitize_path_for_node(raw),
+            r"C:\Users\alice\sidecar\local-api-server.mjs".to_string()
+        );
     }
 }
 
@@ -467,11 +532,29 @@ fn local_api_paths(app: &AppHandle) -> (PathBuf, PathBuf) {
     (sidecar_script, api_dir_root)
 }
 
-fn resolve_node_binary() -> Option<PathBuf> {
+fn resolve_node_binary(app: &AppHandle) -> Option<PathBuf> {
     if let Ok(explicit) = env::var("LOCAL_API_NODE_BIN") {
         let explicit_path = PathBuf::from(explicit);
-        if explicit_path.exists() {
+        if explicit_path.is_file() {
             return Some(explicit_path);
+        }
+        append_desktop_log(
+            app,
+            "WARN",
+            &format!(
+                "LOCAL_API_NODE_BIN is set but not a valid file: {}",
+                explicit_path.display()
+            ),
+        );
+    }
+
+    if !cfg!(debug_assertions) {
+        let node_name = if cfg!(windows) { "node.exe" } else { "node" };
+        if let Ok(resource_dir) = app.path().resource_dir() {
+            let bundled = resource_dir.join("sidecar").join("node").join(node_name);
+            if bundled.is_file() {
+                return Some(bundled);
+            }
         }
     }
 
@@ -479,7 +562,7 @@ fn resolve_node_binary() -> Option<PathBuf> {
     if let Some(path_var) = env::var_os("PATH") {
         for dir in env::split_paths(&path_var) {
             let candidate = dir.join(node_name);
-            if candidate.exists() {
+            if candidate.is_file() {
                 return Some(candidate);
             }
         }
@@ -499,7 +582,7 @@ fn resolve_node_binary() -> Option<PathBuf> {
         ]
     };
 
-    common_locations.into_iter().find(|path| path.exists())
+    common_locations.into_iter().find(|path| path.is_file())
 }
 
 fn start_local_api(app: &AppHandle) -> Result<(), String> {
@@ -519,7 +602,7 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
             script.display()
         ));
     }
-    let node_binary = resolve_node_binary().ok_or_else(|| {
+    let node_binary = resolve_node_binary(app).ok_or_else(|| {
         "Node.js executable not found. Install Node 18+ or set LOCAL_API_NODE_BIN".to_string()
     })?;
 
@@ -614,9 +697,11 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             list_supported_secret_keys,
             get_secret,
+            get_all_secrets,
             set_secret,
             delete_secret,
             get_local_api_token,
+            get_desktop_runtime_info,
             read_cache_entry,
             write_cache_entry,
             open_logs_folder,

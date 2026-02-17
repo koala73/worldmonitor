@@ -1,7 +1,7 @@
 {
   "name": "world-monitor",
   "private": true,
-  "version": "2.3.6",
+  "version": "2.3.7",
   "type": "module",
   "scripts": {
     "lint:md": "markdownlint-cli2 '**/*.md'",

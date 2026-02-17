@@ -5,7 +5,7 @@ import type { StartupHub, Accelerator, TechHQ, CloudRegion } from '@/config/tech
 import type { TechHubActivity } from '@/services/tech-activity';
 import type { GeoHubActivity } from '@/services/geo-activity';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
-import { isMobileDevice } from '@/utils';
+import { isMobileDevice, getCSSColor } from '@/utils';
 import { fetchHotspotContext, formatArticleDate, extractDomain, type GdeltArticle } from '@/services/gdelt-intel';
 import { getNaturalEventIcon } from '@/services/eonet';
 import { getHotspotEscalation, getEscalationChange24h } from '@/services/hotspot-escalation';
@@ -385,10 +385,10 @@ export class MapPopup {
     const change24h = getEscalationChange24h(hotspot.id);
 
     // Escalation score display
-    const escalationColors: Record<number, string> = { 1: '#44aa44', 2: '#88aa44', 3: '#ffaa00', 4: '#ff6600', 5: '#ff2222' };
+    const escalationColors: Record<number, string> = { 1: getCSSColor('--semantic-normal'), 2: getCSSColor('--semantic-normal'), 3: getCSSColor('--semantic-elevated'), 4: getCSSColor('--semantic-high'), 5: getCSSColor('--semantic-critical') };
     const escalationLabels: Record<number, string> = { 1: 'STABLE', 2: 'WATCH', 3: 'ELEVATED', 4: 'HIGH', 5: 'CRITICAL' };
     const trendIcons: Record<string, string> = { 'escalating': '↑', 'stable': '→', 'de-escalating': '↓' };
-    const trendColors: Record<string, string> = { 'escalating': '#ff4444', 'stable': '#ffaa00', 'de-escalating': '#44aa44' };
+    const trendColors: Record<string, string> = { 'escalating': getCSSColor('--semantic-critical'), 'stable': getCSSColor('--semantic-elevated'), 'de-escalating': getCSSColor('--semantic-normal') };
 
     const displayScore = dynamicScore?.combinedScore ?? hotspot.escalationScore ?? 3;
     const displayScoreInt = Math.round(displayScore);
@@ -398,11 +398,11 @@ export class MapPopup {
       <div class="popup-section escalation-section">
         <span class="section-label">ESCALATION ASSESSMENT</span>
         <div class="escalation-display">
-          <div class="escalation-score" style="background: ${escalationColors[displayScoreInt] || '#888'}">
+          <div class="escalation-score" style="background: ${escalationColors[displayScoreInt] || getCSSColor('--text-dim')}">
             <span class="score-value">${displayScore.toFixed(1)}/5</span>
             <span class="score-label">${escalationLabels[displayScoreInt] || 'UNKNOWN'}</span>
           </div>
-          <div class="escalation-trend" style="color: ${trendColors[displayTrend] || '#888'}">
+          <div class="escalation-trend" style="color: ${trendColors[displayTrend] || getCSSColor('--text-dim')}">
             <span class="trend-icon">${trendIcons[displayTrend] || ''}</span>
             <span class="trend-label">${escapeHtml(displayTrend.toUpperCase())}</span>
           </div>

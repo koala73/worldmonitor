@@ -107,7 +107,7 @@ export class MacroSignalsPanel extends Panel {
     }
 
     if (this.data.unavailable) {
-      this.showError('Upstream API unavailable — will retry automatically');
+      this.showError('Market data source temporarily unavailable — will retry automatically');
       return;
     }
 

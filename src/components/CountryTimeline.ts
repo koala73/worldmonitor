@@ -1,5 +1,6 @@
 import * as d3 from 'd3';
 import { escapeHtml } from '@/utils/sanitize';
+import { getCSSColor } from '@/utils';
 
 export interface TimelineEvent {
   timestamp: number;
@@ -42,6 +43,17 @@ export class CountryTimeline {
       if (this.currentEvents.length > 0) this.render(this.currentEvents);
     });
     this.resizeObserver.observe(this.container);
+
+    window.addEventListener('theme-changed', () => {
+      // Re-create tooltip with new theme colors
+      if (this.tooltip) {
+        this.tooltip.remove();
+        this.tooltip = null;
+      }
+      this.createTooltip();
+      // Re-render chart with new colors
+      if (this.currentEvents.length > 0) this.render(this.currentEvents);
+    });
   }
 
   private createTooltip(): void {
@@ -49,16 +61,16 @@ export class CountryTimeline {
     Object.assign(this.tooltip.style, {
       position: 'absolute',
       pointerEvents: 'none',
-      background: 'rgba(20, 20, 30, 0.95)',
-      border: '1px solid rgba(255, 255, 255, 0.15)',
+      background: getCSSColor('--bg'),
+      border: `1px solid ${getCSSColor('--border')}`,
       borderRadius: '6px',
       padding: '6px 10px',
       fontSize: '12px',
-      color: 'rgba(255, 255, 255, 0.85)',
+      color: getCSSColor('--text'),
       zIndex: '9999',
       display: 'none',
       whiteSpace: 'nowrap',
-      boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+      boxShadow: `0 2px 8px ${getCSSColor('--shadow-color')}`,
     });
     this.container.style.position = 'relative';
     this.container.appendChild(this.tooltip);
@@ -117,7 +129,7 @@ export class CountryTimeline {
       .attr('x2', (d) => xScale(d))
       .attr('y1', 0)
       .attr('y2', innerH)
-      .attr('stroke', 'rgba(255,255,255,0.05)')
+      .attr('stroke', getCSSColor('--border-subtle'))
       .attr('stroke-width', 1);
   }
 
@@ -137,9 +149,9 @@ export class CountryTimeline {
       .attr('transform', `translate(0,${innerH})`)
       .call(xAxis);
 
-    xAxisG.selectAll('text').attr('fill', 'rgba(255,255,255,0.5)').attr('font-size', '10px');
-    xAxisG.selectAll('line').attr('stroke', 'rgba(255,255,255,0.15)');
-    xAxisG.select('.domain').attr('stroke', 'rgba(255,255,255,0.15)');
+    xAxisG.selectAll('text').attr('fill', getCSSColor('--text-dim')).attr('font-size', '10px');
+    xAxisG.selectAll('line').attr('stroke', getCSSColor('--border'));
+    xAxisG.select('.domain').attr('stroke', getCSSColor('--border'));
 
     const laneLabels: Record<string, string> = {
       protest: 'Protest',
@@ -173,7 +185,7 @@ export class CountryTimeline {
       .attr('x2', x)
       .attr('y1', 0)
       .attr('y2', innerH)
-      .attr('stroke', '#ffffff')
+      .attr('stroke', getCSSColor('--text'))
       .attr('stroke-width', 1)
       .attr('stroke-dasharray', '4,3')
       .attr('opacity', 0.6);
@@ -182,7 +194,7 @@ export class CountryTimeline {
       .attr('x', x)
       .attr('y', -6)
       .attr('text-anchor', 'middle')
-      .attr('fill', 'rgba(255,255,255,0.4)')
+      .attr('fill', getCSSColor('--text-muted'))
       .attr('font-size', '9px')
       .text('now');
   }
@@ -203,7 +215,7 @@ export class CountryTimeline {
       .attr('y', (d) => (yScale(d) ?? 0) + yScale.bandwidth() / 2)
       .attr('text-anchor', 'middle')
       .attr('dominant-baseline', 'central')
-      .attr('fill', 'rgba(255,255,255,0.2)')
+      .attr('fill', getCSSColor('--text-ghost'))
       .attr('font-size', '10px')
       .attr('font-style', 'italic')
       .text('No events in 7 days');
@@ -228,10 +240,10 @@ export class CountryTimeline {
       .attr('fill', (d) => LANE_COLORS[d.lane])
       .attr('opacity', 0.85)
       .attr('cursor', 'pointer')
-      .attr('stroke', 'rgba(0,0,0,0.3)')
+      .attr('stroke', getCSSColor('--shadow-color'))
       .attr('stroke-width', 0.5)
       .on('mouseenter', function (event: MouseEvent, d: TimelineEvent) {
-        d3.select(this).attr('opacity', 1).attr('stroke', '#fff').attr('stroke-width', 1.5);
+        d3.select(this).attr('opacity', 1).attr('stroke', getCSSColor('--text')).attr('stroke-width', 1.5);
         const dateStr = fmt(new Date(d.timestamp));
         tooltip.innerHTML = `<strong>${escapeHtml(d.label)}</strong><br/>${escapeHtml(dateStr)}`;
         tooltip.style.display = 'block';
@@ -249,7 +261,7 @@ export class CountryTimeline {
         tooltip.style.top = `${y}px`;
       })
       .on('mouseleave', function () {
-        d3.select(this).attr('opacity', 0.85).attr('stroke', 'rgba(0,0,0,0.3)').attr('stroke-width', 0.5);
+        d3.select(this).attr('opacity', 0.85).attr('stroke', getCSSColor('--shadow-color')).attr('stroke-width', 0.5);
         tooltip.style.display = 'none';
       });
   }

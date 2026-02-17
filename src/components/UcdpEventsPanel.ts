@@ -117,25 +117,25 @@ export class UcdpEventsPanel extends Panel {
         .ucdp-panel-content { font-size: 12px; }
         .ucdp-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 4px; }
         .ucdp-tabs { display: flex; gap: 2px; }
-        .ucdp-tab { background: transparent; border: 1px solid #333; color: #888; padding: 4px 10px; font-size: 11px; cursor: pointer; border-radius: 3px; transition: all 0.15s; }
-        .ucdp-tab:hover { border-color: #555; color: #ccc; }
-        .ucdp-tab-active { background: rgba(239, 68, 68, 0.1); border-color: #ef4444; color: #ef4444; }
+        .ucdp-tab { background: transparent; border: 1px solid var(--border-strong); color: var(--text-dim); padding: 4px 10px; font-size: 11px; cursor: pointer; border-radius: 3px; transition: all 0.15s; }
+        .ucdp-tab:hover { border-color: var(--text-faint); color: var(--text-secondary); }
+        .ucdp-tab-active { background: color-mix(in srgb, var(--threat-critical) 10%, transparent); border-color: var(--threat-critical); color: var(--threat-critical); }
         .ucdp-tab-count { font-variant-numeric: tabular-nums; opacity: 0.7; margin-left: 2px; }
-        .ucdp-total-deaths { color: #ef4444; font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
+        .ucdp-total-deaths { color: var(--threat-critical); font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
         .ucdp-table { width: 100%; border-collapse: collapse; }
-        .ucdp-table th { text-align: left; color: #666; font-weight: 600; font-size: 10px; text-transform: uppercase; padding: 4px 8px; border-bottom: 1px solid #222; }
+        .ucdp-table th { text-align: left; color: var(--text-muted); font-weight: 600; font-size: 10px; text-transform: uppercase; padding: 4px 8px; border-bottom: 1px solid var(--border); }
         .ucdp-table th:nth-child(2) { text-align: right; }
-        .ucdp-table td { padding: 5px 8px; border-bottom: 1px solid #1a1a1a; color: #ccc; }
+        .ucdp-table td { padding: 5px 8px; border-bottom: 1px solid var(--border-subtle); color: var(--text-secondary); }
         .ucdp-row { cursor: pointer; }
-        .ucdp-row:hover { background: #1a1a1a; }
-        .ucdp-date { color: #666; white-space: nowrap; }
+        .ucdp-row:hover { background: var(--surface-hover); }
+        .ucdp-date { color: var(--text-muted); white-space: nowrap; }
         .ucdp-deaths { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-        .ucdp-deaths-state { color: #ff4444; font-weight: 600; }
-        .ucdp-deaths-nonstate { color: #ff8800; font-weight: 600; }
-        .ucdp-deaths-onesided { color: #ffcc00; font-weight: 600; }
-        .ucdp-deaths-zero { color: #555; }
-        .ucdp-range { color: #555; font-size: 10px; }
-        .ucdp-actors { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #777; font-size: 11px; }
+        .ucdp-deaths-state { color: var(--semantic-critical); font-weight: 600; }
+        .ucdp-deaths-nonstate { color: var(--semantic-high); font-weight: 600; }
+        .ucdp-deaths-onesided { color: var(--semantic-elevated); font-weight: 600; }
+        .ucdp-deaths-zero { color: var(--text-faint); }
+        .ucdp-range { color: var(--text-faint); font-size: 10px; }
+        .ucdp-actors { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dim); font-size: 11px; }
         .ucdp-country { white-space: nowrap; }
       </style>
     `);

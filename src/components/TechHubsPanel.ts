@@ -1,6 +1,7 @@
 import { Panel } from './Panel';
 import type { TechHubActivity } from '@/services/tech-activity';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
+import { getCSSColor } from '@/utils';
 
 const COUNTRY_FLAGS: Record<string, string> = {
   'USA': '🇺🇸', 'United States': '🇺🇸',
@@ -70,9 +71,9 @@ export class TechHubsPanel extends Panel {
         <strong>Tech Hub Activity</strong><br>
         Shows tech hubs with the most news activity.<br><br>
         <em>Activity levels:</em><br>
-        • <span style="color: #00ff88">High</span> — Breaking news or 50+ score<br>
-        • <span style="color: #ffc800">Elevated</span> — Score 20-49<br>
-        • <span style="color: #888">Low</span> — Score below 20<br><br>
+        • <span style="color: ${getCSSColor('--semantic-normal')}">High</span> — Breaking news or 50+ score<br>
+        • <span style="color: ${getCSSColor('--semantic-elevated')}">Elevated</span> — Score 20-49<br>
+        • <span style="color: ${getCSSColor('--text-dim')}">Low</span> — Score below 20<br><br>
         Click a hub to zoom to its location.
       `,
     });

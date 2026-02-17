@@ -12,6 +12,9 @@ export interface ThreatClassification {
   source: 'keyword' | 'ml' | 'llm';
 }
 
+import { getCSSColor } from '@/utils';
+
+/** @deprecated Use getThreatColor() instead for runtime CSS variable reads */
 export const THREAT_COLORS: Record<ThreatLevel, string> = {
   critical: '#ef4444',
   high: '#f97316',
@@ -19,6 +22,18 @@ export const THREAT_COLORS: Record<ThreatLevel, string> = {
   low: '#22c55e',
   info: '#3b82f6',
 };
+
+const THREAT_VAR_MAP: Record<ThreatLevel, string> = {
+  critical: '--threat-critical',
+  high: '--threat-high',
+  medium: '--threat-medium',
+  low: '--threat-low',
+  info: '--threat-info',
+};
+
+export function getThreatColor(level: string): string {
+  return getCSSColor(THREAT_VAR_MAP[level as ThreatLevel] || '--text-dim');
+}
 
 export const THREAT_PRIORITY: Record<ThreatLevel, number> = {
   critical: 5,

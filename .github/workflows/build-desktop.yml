@@ -37,14 +37,17 @@ jobs:
         include:
           - platform: 'macos-14'
             args: '--target aarch64-apple-darwin'
+            node_target: 'aarch64-apple-darwin'
             label: 'macOS-ARM64'
             timeout: 180
           - platform: 'macos-latest'
             args: '--target x86_64-apple-darwin'
+            node_target: 'x86_64-apple-darwin'
             label: 'macOS-x64'
             timeout: 180
           - platform: 'windows-latest'
             args: ''
+            node_target: 'x86_64-pc-windows-msvc'
             label: 'Windows-x64'
             timeout: 120
 
@@ -79,6 +82,25 @@ jobs:
 
       - name: Install frontend dependencies
         run: npm ci
+
+      - name: Bundle Node.js runtime
+        shell: bash
+        env:
+          NODE_VERSION: '22.14.0'
+          NODE_TARGET: ${{ matrix.node_target }}
+        run: bash scripts/download-node.sh --target "$NODE_TARGET"
+
+      - name: Verify bundled Node.js payload
+        shell: bash
+        run: |
+          if [ "${{ matrix.node_target }}" = "x86_64-pc-windows-msvc" ]; then
+            test -f src-tauri/sidecar/node/node.exe
+            ls -lh src-tauri/sidecar/node/node.exe
+          else
+            test -f src-tauri/sidecar/node/node
+            test -x src-tauri/sidecar/node/node
+            ls -lh src-tauri/sidecar/node/node
+          fi
 
       # ── Detect whether Apple signing secrets are configured ──
       - name: Check Apple signing secrets
@@ -229,6 +251,23 @@ jobs:
           tauriScript: npx tauri
           args: --config src-tauri/tauri.tech.conf.json ${{ matrix.args }}
           retryAttempts: 1
+
+      - name: Verify signed macOS bundle + embedded runtime
+        if: contains(matrix.platform, 'macos') && steps.apple-signing.outputs.available == 'true' && env.SKIP_SIGNING != 'true'
+        shell: bash
+        run: |
+          APP_PATH=$(find src-tauri/target -type d -path '*/bundle/macos/*.app' | head -1)
+          if [ -z "$APP_PATH" ]; then
+            echo "::error::No macOS .app bundle found after build."
+            exit 1
+          fi
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+          NODE_PATH=$(find "$APP_PATH/Contents/Resources" -type f -path '*/sidecar/node/node' | head -1)
+          if [ -z "$NODE_PATH" ]; then
+            echo "::error::Bundled Node runtime missing from app resources."
+            exit 1
+          fi
+          echo "Verified signed app bundle and embedded Node runtime: $NODE_PATH"
 
       - name: Cleanup Apple signing materials
         if: always() && contains(matrix.platform, 'macos')

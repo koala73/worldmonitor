@@ -2,6 +2,29 @@
 
 All notable changes to World Monitor are documented here.
 
+## [2.3.7] - 2026-02-16
+
+### Added
+
+- **Full light mode theme**: Complete light/dark theme system with CSS custom properties, ThemeManager module, FOUC prevention, and `getCSSColor()` utility for theme-aware inline styles
+- **Theme-aware maps and charts**: Deck.GL basemap, overlay layers, and CountryTimeline charts respond to theme changes in real time
+- **Dark/light mode header toggle**: Sun/moon icon in the header bar for quick theme switching, replacing the duplicate UTC clock
+- **Desktop update checker**: Architecture-aware download links for macOS (ARM/Intel) and Windows
+- **Node.js bundled in Tauri installer**: Sidecar no longer requires system Node.js
+- **Markdown linting**: Added markdownlint config and CI workflow
+
+### Changed
+
+- **Panels modal**: Reverted from "Settings" back to "Panels" — removed redundant Appearance section now that header has theme toggle
+- **Default panels**: Enabled UCDP Conflict Events, UNHCR Displacement, Climate Anomalies, and Population Exposure panels by default
+
+### Fixed
+
+- **CORS for Tauri desktop**: Fixed CORS issues for desktop app requests
+- **Markets panel**: Keep Yahoo-backed data visible when Finnhub API key is skipped
+- **Windows UNC paths**: Preserve extended-length path prefix when sanitizing sidecar script path
+- **Light mode readability**: Darkened neon semantic colors and overlay backgrounds for light mode contrast
+
 ## [2.3.6] - 2026-02-16
 
 ### Fixed

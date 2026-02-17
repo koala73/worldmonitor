@@ -3,8 +3,8 @@ const ALLOWED_ORIGIN_PATTERNS = [
   /^https:\/\/worldmonitor-[a-z0-9-]+-elie-habib-projects\.vercel\.app$/,
   /^https?:\/\/localhost(:\d+)?$/,
   /^https?:\/\/127\.0\.0\.1(:\d+)?$/,
-  /^https:\/\/tauri\.localhost(:\d+)?$/,
-  /^https:\/\/[a-z0-9-]+\.tauri\.localhost(:\d+)?$/i,
+  /^https?:\/\/tauri\.localhost(:\d+)?$/,
+  /^https?:\/\/[a-z0-9-]+\.tauri\.localhost(:\d+)?$/i,
   /^tauri:\/\/localhost$/,
   /^asset:\/\/localhost$/,
 ];

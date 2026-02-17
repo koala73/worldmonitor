@@ -1,4 +1,5 @@
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
+import { getCSSColor } from '@/utils';
 import type { CountryScore } from '@/services/country-instability';
 import type { PredictionMarket, NewsItem } from '@/types';
 import type { AssetType } from '@/types';
@@ -100,14 +101,14 @@ export class CountryBriefPage {
   }
 
   private levelColor(level: string): string {
-    const colors: Record<string, string> = {
-      critical: '#ff4444',
-      high: '#ff8800',
-      elevated: '#ffaa00',
-      normal: '#44aa44',
-      low: '#3388ff',
+    const varMap: Record<string, string> = {
+      critical: '--semantic-critical',
+      high: '--semantic-high',
+      elevated: '--semantic-elevated',
+      normal: '--semantic-normal',
+      low: '--semantic-low',
     };
-    return colors[level] || '#888';
+    return getCSSColor(varMap[level] || '--text-dim');
   }
 
   private levelBadge(level: string): string {
@@ -149,7 +150,7 @@ export class CountryBriefPage {
     ];
     return items.map(({ label, value, icon }) => {
       const pct = Math.min(100, Math.max(0, value));
-      const color = pct >= 70 ? '#ff4444' : pct >= 50 ? '#ff8800' : pct >= 30 ? '#ffaa00' : '#44aa44';
+      const color = pct >= 70 ? getCSSColor('--semantic-critical') : pct >= 50 ? getCSSColor('--semantic-high') : pct >= 30 ? getCSSColor('--semantic-elevated') : getCSSColor('--semantic-normal');
       return `
         <div class="cb-comp-row">
           <span class="cb-comp-icon">${icon}</span>
@@ -457,10 +458,10 @@ export class CountryBriefPage {
 
     content.innerHTML = items.map((item, i) => {
       const safeUrl = sanitizeUrl(item.link);
-      const threatColor = item.threat?.level === 'critical' ? '#ff4444'
-        : item.threat?.level === 'high' ? '#ff8800'
-        : item.threat?.level === 'medium' ? '#ffaa00'
-        : '#64b4ff';
+      const threatColor = item.threat?.level === 'critical' ? getCSSColor('--threat-critical')
+        : item.threat?.level === 'high' ? getCSSColor('--threat-high')
+        : item.threat?.level === 'medium' ? getCSSColor('--threat-medium')
+        : getCSSColor('--threat-info');
       const timeAgo = this.timeAgo(item.pubDate);
       const cardBody = `
         <span class="cb-news-threat" style="background:${threatColor}"></span>

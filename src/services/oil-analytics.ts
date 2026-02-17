@@ -6,6 +6,7 @@
 
 import { dataFreshness } from './data-freshness';
 import { isFeatureAvailable } from './runtime-config';
+import { getCSSColor } from '@/utils';
 
 export interface OilDataPoint {
   date: string;
@@ -179,12 +180,12 @@ export function getTrendIndicator(trend: OilMetric['trend']): string {
  */
 export function getTrendColor(trend: OilMetric['trend'], inverse = false): string {
   // For prices, up = bad (red), down = good (green) - unless inverse
-  const upColor = inverse ? '#44ff88' : '#ff6b6b';
-  const downColor = inverse ? '#ff6b6b' : '#44ff88';
+  const upColor = inverse ? getCSSColor('--semantic-normal') : getCSSColor('--semantic-critical');
+  const downColor = inverse ? getCSSColor('--semantic-critical') : getCSSColor('--semantic-normal');
 
   switch (trend) {
     case 'up': return upColor;
     case 'down': return downColor;
-    default: return '#888888';
+    default: return getCSSColor('--text-dim');
   }
 }

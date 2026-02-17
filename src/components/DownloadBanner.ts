@@ -37,9 +37,9 @@ function buildPanel(): HTMLElement {
         right: 0;
         z-index: 900;
         width: 230px;
-        background: var(--surface, #141414);
-        border-left: 3px solid var(--green, #44ff88);
-        border-bottom: 1px solid var(--border, #2a2a2a);
+        background: var(--surface);
+        border-left: 3px solid var(--green);
+        border-bottom: 1px solid var(--border);
         border-bottom-left-radius: 8px;
         padding: 14px;
         transform: translateX(110%);
@@ -49,16 +49,16 @@ function buildPanel(): HTMLElement {
       .wm-dl-panel.wm-dl-show { transform: translateX(0); }
       .wm-dl-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
       .wm-dl-title {
-        font-size: 11px; font-weight: 700; color: var(--green, #44ff88);
+        font-size: 11px; font-weight: 700; color: var(--green);
         text-transform: uppercase; letter-spacing: 0.5px;
         display: flex; align-items: center; gap: 5px;
       }
       .wm-dl-close {
-        background: none; border: none; color: var(--text-dim, #888);
+        background: none; border: none; color: var(--text-dim);
         font-size: 14px; cursor: pointer; padding: 0 2px; line-height: 1;
       }
-      .wm-dl-close:hover { color: var(--text, #e8e8e8); }
-      .wm-dl-body { font-size: 11px; color: var(--text-dim, #888); line-height: 1.5; margin-bottom: 12px; }
+      .wm-dl-close:hover { color: var(--text); }
+      .wm-dl-body { font-size: 11px; color: var(--text-dim); line-height: 1.5; margin-bottom: 12px; }
       .wm-dl-btns { display: flex; flex-direction: column; gap: 5px; }
       .wm-dl-btn {
         display: flex; align-items: center; gap: 6px;
@@ -68,17 +68,17 @@ function buildPanel(): HTMLElement {
         transition: background 0.15s;
       }
       .wm-dl-btn.mac {
-        background: rgba(68, 255, 136, 0.1);
-        border: 1px solid rgba(68, 255, 136, 0.2);
-        color: var(--green, #44ff88);
+        background: color-mix(in srgb, var(--green) 10%, transparent);
+        border: 1px solid color-mix(in srgb, var(--green) 20%, transparent);
+        color: var(--green);
       }
-      .wm-dl-btn.mac:hover { background: rgba(68, 255, 136, 0.18); }
+      .wm-dl-btn.mac:hover { background: color-mix(in srgb, var(--green) 18%, transparent); }
       .wm-dl-btn.win {
-        background: rgba(6, 182, 212, 0.08);
-        border: 1px solid rgba(6, 182, 212, 0.18);
-        color: #06b6d4;
+        background: color-mix(in srgb, var(--semantic-info) 8%, transparent);
+        border: 1px solid color-mix(in srgb, var(--semantic-info) 18%, transparent);
+        color: var(--semantic-info);
       }
-      .wm-dl-btn.win:hover { background: rgba(6, 182, 212, 0.15); }
+      .wm-dl-btn.win:hover { background: color-mix(in srgb, var(--semantic-info) 15%, transparent); }
     </style>
     <div class="wm-dl-head">
       <div class="wm-dl-title">\u{1F5A5} Desktop Available</div>

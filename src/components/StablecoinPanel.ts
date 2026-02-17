@@ -96,7 +96,7 @@ export class StablecoinPanel extends Panel {
     }
 
     if (this.isUpstreamUnavailable()) {
-      this.showError('Upstream API unavailable — will retry automatically');
+      this.showError('CoinGecko API temporarily unavailable — will retry automatically');
       return;
     }
 

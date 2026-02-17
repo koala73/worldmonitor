@@ -1,6 +1,7 @@
 import * as d3 from 'd3';
 import * as topojson from 'topojson-client';
 import { escapeHtml } from '@/utils/sanitize';
+import { getCSSColor } from '@/utils';
 import type { Topology, GeometryCollection } from 'topojson-specification';
 import type { Feature, Geometry } from 'geojson';
 import type { MapLayers, Hotspot, NewsItem, Earthquake, InternetOutage, RelatedAsset, AssetType, AisDisruptionEvent, AisDensityZone, CableAdvisory, RepairShip, SocialUnrestEvent, AirportDelayAlert, MilitaryFlight, MilitaryVessel, MilitaryFlightCluster, MilitaryVesselCluster, NaturalEvent, CyberThreat } from '@/types';
@@ -191,6 +192,11 @@ export class MapComponent {
     this.setupZoomHandlers();
     this.loadMapData();
     this.setupResizeObserver();
+
+    window.addEventListener('theme-changed', () => {
+      this.baseRendered = false;
+      this.render();
+    });
   }
 
   private setupResizeObserver(): void {
@@ -831,7 +837,7 @@ export class MapComponent {
         .attr('y', -height)
         .attr('width', width * 3)
         .attr('height', height * 3)
-        .attr('fill', '#020a08');
+        .attr('fill', getCSSColor('--map-bg'));
 
       // Grid
       this.renderGrid(this.baseLayerGroup, width, height);
@@ -914,7 +920,7 @@ export class MapComponent {
         .attr('y1', yStart)
         .attr('x2', x)
         .attr('y2', yStart + height)
-        .attr('stroke', '#0a2a20')
+        .attr('stroke', getCSSColor('--map-grid'))
         .attr('stroke-width', 0.5);
     }
 
@@ -925,7 +931,7 @@ export class MapComponent {
         .attr('y1', y)
         .attr('x2', width)
         .attr('y2', y)
-        .attr('stroke', '#0a2a20')
+        .attr('stroke', getCSSColor('--map-grid'))
         .attr('stroke-width', 0.5);
     }
   }
@@ -961,7 +967,7 @@ export class MapComponent {
       .attr('class', 'graticule')
       .attr('d', path)
       .attr('fill', 'none')
-      .attr('stroke', '#1a5045')
+      .attr('stroke', getCSSColor('--map-stroke'))
       .attr('stroke-width', 0.4);
   }
 
@@ -978,8 +984,8 @@ export class MapComponent {
       .append('path')
       .attr('class', 'country')
       .attr('d', path as unknown as string)
-      .attr('fill', '#0d3028')
-      .attr('stroke', '#1a8060')
+      .attr('fill', getCSSColor('--map-country'))
+      .attr('stroke', getCSSColor('--map-stroke'))
       .attr('stroke-width', 0.7);
   }
 
@@ -1030,7 +1036,7 @@ export class MapComponent {
         .y((d) => projection(d)?.[1] ?? 0)
         .curve(d3.curveCardinal.tension(0.5));
 
-      const color = PIPELINE_COLORS[pipeline.type] || '#888888';
+      const color = PIPELINE_COLORS[pipeline.type] || getCSSColor('--text-dim');
       const opacity = 0.85;
       const dashArray = pipeline.status === 'construction' ? '4,2' : 'none';
 
@@ -1093,7 +1099,7 @@ export class MapComponent {
       high: 'rgba(255, 100, 0, 0.25)',
       moderate: 'rgba(255, 200, 0, 0.2)',
     };
-    const defaultFill = '#0d3028';
+    const defaultFill = getCSSColor('--map-country');
     const useSanctions = this.state.layers.sanctions;
 
     this.baseLayerGroup.selectAll('.country').each(function (datum) {
@@ -2501,7 +2507,7 @@ export class MapComponent {
         const pos = projection([fire.lon, fire.lat]);
         if (!pos) return;
 
-        const color = fire.brightness > 400 ? '#ff1e00' : fire.brightness > 350 ? '#ff8c00' : '#ffdc32';
+        const color = fire.brightness > 400 ? getCSSColor('--semantic-critical') : fire.brightness > 350 ? getCSSColor('--semantic-high') : getCSSColor('--semantic-elevated');
         const size = Math.max(4, Math.min(10, (fire.frp || 1) * 0.5));
 
         const dot = document.createElement('div');
@@ -2594,7 +2600,7 @@ export class MapComponent {
       const intensity = Math.min(Math.max(zone.intensity, 0.15), 1);
       const radius = 4 + intensity * 8;  // Small dots (4-12px)
       const isCongested = zone.deltaPct >= 15;
-      const color = isCongested ? '#ffb703' : '#00d1ff';
+      const color = isCongested ? getCSSColor('--semantic-elevated') : getCSSColor('--semantic-info');
       const fillOpacity = 0.15 + intensity * 0.25;  // More visible individual dots
 
       densityGroup

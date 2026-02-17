@@ -95,7 +95,7 @@ export class ETFFlowsPanel extends Panel {
     }
 
     if (this.isUpstreamUnavailable()) {
-      this.showError('Upstream API unavailable — will retry automatically');
+      this.showError('ETF data source temporarily unavailable — will retry automatically');
       return;
     }
 

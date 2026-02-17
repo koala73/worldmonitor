@@ -1,4 +1,6 @@
 node_modules/
+.idea/
+.planning/
 dist/
 .DS_Store
 *.log
@@ -14,4 +16,7 @@ CLAUDE.md
 .factory/
 .windsurf/
 skills/
+ideas/
 test-results/
+src-tauri/sidecar/node/*
+!src-tauri/sidecar/node/.gitkeep

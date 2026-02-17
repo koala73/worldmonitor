@@ -1,4 +1,4 @@
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker, getCSSColor } from '@/utils';
 import type { UnhcrSummary, CountryDisplacement } from '@/types';
 
 interface UnhcrApiResponse extends UnhcrSummary {
@@ -48,9 +48,9 @@ export function getDisplacementColor(totalDisplaced: number): [number, number, n
 }
 
 export function getDisplacementBadge(totalDisplaced: number): { label: string; color: string } {
-  if (totalDisplaced >= 1_000_000) return { label: 'CRISIS', color: '#ff3232' };
-  if (totalDisplaced >= 500_000) return { label: 'HIGH', color: '#ff9600' };
-  if (totalDisplaced >= 100_000) return { label: 'ELEVATED', color: '#ffdc00' };
+  if (totalDisplaced >= 1_000_000) return { label: 'CRISIS', color: getCSSColor('--semantic-critical') };
+  if (totalDisplaced >= 500_000) return { label: 'HIGH', color: getCSSColor('--semantic-high') };
+  if (totalDisplaced >= 100_000) return { label: 'ELEVATED', color: getCSSColor('--semantic-elevated') };
   return { label: '', color: '' };
 }
 
