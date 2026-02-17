@@ -26,7 +26,61 @@ function dismiss(panel: HTMLElement): void {
   panel.addEventListener('transitionend', () => panel.remove(), { once: true });
 }
 
+type Platform = 'macos-arm64' | 'macos-x64' | 'windows' | 'unknown';
+
+function detectPlatform(): Platform {
+  const ua = navigator.userAgent;
+  if (/Windows/i.test(ua)) return 'windows';
+  if (/Mac/i.test(ua)) {
+    // WebGL renderer can reveal Apple Silicon GPU on some browsers
+    try {
+      const c = document.createElement('canvas');
+      const gl = c.getContext('webgl') as WebGLRenderingContext | null;
+      if (gl) {
+        const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+        if (dbg) {
+          const renderer = gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL);
+          if (/Apple M/i.test(renderer)) return 'macos-arm64';
+        }
+      }
+    } catch { /* ignore */ }
+    // Fallback: assume Apple Silicon for modern macOS visitors
+    return 'macos-arm64';
+  }
+  return 'unknown';
+}
+
+interface DlButton { cls: string; href: string; label: string }
+
+const ALL_BUTTONS: DlButton[] = [
+  { cls: 'mac', href: '/api/download?platform=macos-arm64', label: '\uF8FF macOS (Apple Silicon)' },
+  { cls: 'mac', href: '/api/download?platform=macos-x64',   label: '\uF8FF macOS (Intel)' },
+  { cls: 'win', href: '/api/download?platform=windows-exe',  label: '\u229E Windows (.exe)' },
+];
+
+function buttonsForPlatform(p: Platform): DlButton[] {
+  switch (p) {
+    case 'macos-arm64': return ALL_BUTTONS.filter(b => b.href.includes('macos-arm64'));
+    case 'macos-x64':   return ALL_BUTTONS.filter(b => b.href.includes('macos-x64'));
+    case 'windows':     return ALL_BUTTONS.filter(b => b.cls === 'win');
+    default:            return ALL_BUTTONS;
+  }
+}
+
+function renderButtons(container: HTMLElement, buttons: DlButton[], panel: HTMLElement): void {
+  container.innerHTML = buttons
+    .map(b => `<a class="wm-dl-btn ${b.cls}" href="${b.href}">${b.label}</a>`)
+    .join('');
+  container.querySelectorAll('.wm-dl-btn').forEach(btn =>
+    btn.addEventListener('click', () => dismiss(panel))
+  );
+}
+
 function buildPanel(): HTMLElement {
+  const platform = detectPlatform();
+  const primaryButtons = buttonsForPlatform(platform);
+  const showToggle = platform !== 'unknown' && primaryButtons.length < ALL_BUTTONS.length;
+
   const el = document.createElement('div');
   el.className = 'wm-dl-panel';
   el.innerHTML = `
@@ -79,23 +133,36 @@ function buildPanel(): HTMLElement {
         color: #06b6d4;
       }
       .wm-dl-btn.win:hover { background: rgba(6, 182, 212, 0.15); }
+      .wm-dl-toggle {
+        background: none; border: none; color: var(--text-dim, #888);
+        font-size: 9px; cursor: pointer; padding: 4px 0 0; text-align: center;
+        width: 100%;
+      }
+      .wm-dl-toggle:hover { color: var(--text, #e8e8e8); }
     </style>
     <div class="wm-dl-head">
       <div class="wm-dl-title">\u{1F5A5} Desktop Available</div>
       <button class="wm-dl-close" aria-label="Dismiss">\u00D7</button>
     </div>
     <div class="wm-dl-body">Native performance, secure local key storage, offline map tiles.</div>
-    <div class="wm-dl-btns">
-      <a class="wm-dl-btn mac" href="/api/download?platform=macos-arm64">\uF8FF macOS (Apple Silicon)</a>
-      <a class="wm-dl-btn mac" href="/api/download?platform=macos-x64">\uF8FF macOS (Intel)</a>
-      <a class="wm-dl-btn win" href="/api/download?platform=windows-exe">\u229E Windows (.exe)</a>
-    </div>
+    <div class="wm-dl-btns"></div>
+    ${showToggle ? '<button class="wm-dl-toggle">Show all platforms</button>' : ''}
   `;
 
+  const btnsContainer = el.querySelector('.wm-dl-btns') as HTMLElement;
+  renderButtons(btnsContainer, primaryButtons, el);
+
   el.querySelector('.wm-dl-close')!.addEventListener('click', () => dismiss(el));
-  el.querySelectorAll('.wm-dl-btn').forEach(btn =>
-    btn.addEventListener('click', () => dismiss(el))
-  );
+
+  const toggle = el.querySelector('.wm-dl-toggle');
+  if (toggle) {
+    let showingAll = false;
+    toggle.addEventListener('click', () => {
+      showingAll = !showingAll;
+      renderButtons(btnsContainer, showingAll ? ALL_BUTTONS : primaryButtons, el);
+      toggle.textContent = showingAll ? 'Show less' : 'Show all platforms';
+    });
+  }
 
   return el;
 }
