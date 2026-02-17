@@ -267,6 +267,7 @@ export class DeckGLMap {
   // Country highlight state
   private countryGeoJsonLoaded = false;
   private countryHoverSetup = false;
+  private highlightedCountryCode: string | null = null;
 
   // Callbacks
   private onHotspotClick?: (hotspot: Hotspot) => void;
@@ -3732,6 +3733,7 @@ export class DeckGLMap {
 
         if (!this.countryHoverSetup) this.setupCountryHover();
         this.updateCountryLayerPaint(getCurrentTheme());
+        if (this.highlightedCountryCode) this.highlightCountry(this.highlightedCountryCode);
         console.log('[DeckGLMap] Country boundaries loaded');
       })
       .catch((err) => console.warn('[DeckGLMap] Failed to load country boundaries:', err));
@@ -3769,8 +3771,8 @@ export class DeckGLMap {
   }
 
   public highlightCountry(code: string): void {
+    this.highlightedCountryCode = code;
     if (!this.maplibreMap || !this.countryGeoJsonLoaded) return;
-    // Update MapLibre filter to highlight this country
     const filter: maplibregl.FilterSpecification = ['==', ['get', 'ISO3166-1-Alpha-2'], code];
     try {
       this.maplibreMap.setFilter('country-highlight-fill', filter);
@@ -3779,8 +3781,8 @@ export class DeckGLMap {
   }
 
   public clearCountryHighlight(): void {
+    this.highlightedCountryCode = null;
     if (!this.maplibreMap) return;
-    // Clear highlight filter
     const noMatch: maplibregl.FilterSpecification = ['==', ['get', 'ISO3166-1-Alpha-2'], ''];
     try {
       this.maplibreMap.setFilter('country-highlight-fill', noMatch);
