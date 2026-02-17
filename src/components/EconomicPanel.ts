@@ -51,16 +51,16 @@ export class EconomicPanel extends Panel {
     const tabsHtml = `
       <div class="economic-tabs">
         <button class="economic-tab ${this.activeTab === 'indicators' ? 'active' : ''}" data-tab="indicators">
-          📊 Indicators
+          📊 ${t('components.economic.indicators')}
         </button>
         ${hasOil ? `
           <button class="economic-tab ${this.activeTab === 'oil' ? 'active' : ''}" data-tab="oil">
-            🛢️ Oil
+            🛢️ ${t('components.economic.oil')}
           </button>
         ` : ''}
         ${hasSpending ? `
           <button class="economic-tab ${this.activeTab === 'spending' ? 'active' : ''}" data-tab="spending">
-            🏛️ Gov
+            🏛️ ${t('components.economic.gov')}
           </button>
         ` : ''}
       </div>
@@ -116,7 +116,7 @@ export class EconomicPanel extends Panel {
 
   private renderIndicators(): string {
     if (this.fredData.length === 0) {
-      return '<div class="economic-empty">No indicator data yet — FRED may be loading</div>';
+      return `<div class="economic-empty">${t('components.economic.noIndicatorData')}</div>`;
     }
 
     return `
@@ -148,7 +148,7 @@ export class EconomicPanel extends Panel {
 
   private renderOil(): string {
     if (!this.oilData) {
-      return '<div class="economic-empty">Oil data temporarily unavailable — will retry</div>';
+      return `<div class="economic-empty">${t('components.economic.noOilDataRetry')}</div>`;
     }
 
     const metrics = [
@@ -159,7 +159,7 @@ export class EconomicPanel extends Panel {
     ].filter(Boolean);
 
     if (metrics.length === 0) {
-      return '<div class="economic-empty">EIA_API_KEY not configured — add in Settings for oil data</div>';
+      return `<div class="economic-empty">${t('components.economic.noOilMetrics')}</div>`;
     }
 
     return `
@@ -180,7 +180,7 @@ export class EconomicPanel extends Panel {
                   ${escapeHtml(trendIcon)} ${escapeHtml(String(metric.changePct > 0 ? '+' : ''))}${escapeHtml(String(metric.changePct))}%
                 </span>
               </div>
-              <div class="indicator-date">vs previous week</div>
+              <div class="indicator-date">${t('components.economic.vsPreviousWeek')}</div>
             </div>
           `;
     }).join('')}
@@ -190,7 +190,7 @@ export class EconomicPanel extends Panel {
 
   private renderSpending(): string {
     if (!this.spendingData || this.spendingData.awards.length === 0) {
-      return '<div class="economic-empty">No recent government awards</div>';
+      return `<div class="economic-empty">${t('components.economic.noSpending')}</div>`;
     }
 
     const { awards, totalAmount, periodStart, periodEnd } = this.spendingData;
@@ -198,7 +198,7 @@ export class EconomicPanel extends Panel {
     return `
       <div class="spending-summary">
         <div class="spending-total">
-          ${escapeHtml(formatAwardAmount(totalAmount))} in ${escapeHtml(String(awards.length))} awards
+          ${escapeHtml(formatAwardAmount(totalAmount))} ${t('components.economic.in')} ${escapeHtml(String(awards.length))} ${t('components.economic.awards')}
           <span class="spending-period">${escapeHtml(periodStart)} – ${escapeHtml(periodEnd)}</span>
         </div>
       </div>

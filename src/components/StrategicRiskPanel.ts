@@ -34,7 +34,7 @@ export class StrategicRiskPanel extends Panel {
   constructor() {
     super({
       id: 'strategic-risk',
-      title: 'Strategic Risk Overview',
+      title: t('panels.strategicRisk'),
       showCount: false,
       trackActivity: true,
       infoTooltip: `<strong>Methodology</strong>

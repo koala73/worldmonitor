@@ -10,6 +10,7 @@ import { isMobileDevice } from '@/utils';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { SITE_VARIANT } from '@/config';
 import { getPersistentCache, setPersistentCache } from '@/services/persistent-cache';
+import { t } from '@/services/i18n';
 import type { ClusteredEvent, FocalPoint, MilitaryFlight } from '@/types';
 
 export class InsightsPanel extends Panel {
@@ -26,7 +27,7 @@ export class InsightsPanel extends Panel {
   constructor() {
     super({
       id: 'insights',
-      title: 'AI INSIGHTS',
+      title: t('panels.insights'),
       showCount: false,
       infoTooltip: `
         <strong>AI-Powered Analysis</strong><br>

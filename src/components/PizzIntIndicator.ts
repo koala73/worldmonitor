@@ -255,7 +255,7 @@ export class PizzIntIndicator {
     defconEl.style.color = this.status.defconLevel <= 3 ? '#000' : '#fff';
 
     scoreEl.textContent = `${this.status.aggregateActivity}%`;
-    labelEl.textContent = this.status.defconLabel;
+    labelEl.textContent = this.getDefconLabel(this.status.defconLevel);
     labelEl.style.color = color;
 
     locationsEl.innerHTML = this.status.locations.map(loc => {
@@ -316,6 +316,12 @@ export class PizzIntIndicator {
     if (diff < 60000) return t('components.pizzint.justNow');
     if (diff < 3600000) return t('components.pizzint.minutesAgo', { m: String(Math.floor(diff / 60000)) });
     return t('components.pizzint.hoursAgo', { h: String(Math.floor(diff / 3600000)) });
+  }
+
+  private getDefconLabel(level: number): string {
+    const key = `components.pizzint.defconLabels.${level}`;
+    const localized = t(key);
+    return localized === key ? this.status?.defconLabel || '' : localized;
   }
 
   public getElement(): HTMLElement {

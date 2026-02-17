@@ -14,7 +14,7 @@ export class DisplacementPanel extends Panel {
   constructor() {
     super({
       id: 'displacement',
-      title: 'UNHCR Displacement',
+      title: t('panels.displacement'),
       showCount: true,
       trackActivity: true,
       infoTooltip: `<strong>UNHCR Displacement Data</strong>
@@ -45,10 +45,10 @@ export class DisplacementPanel extends Panel {
     const g = this.data.globalTotals;
 
     const stats = [
-      { label: 'Refugees', value: formatPopulation(g.refugees), cls: 'disp-stat-refugees' },
-      { label: 'Asylum Seekers', value: formatPopulation(g.asylumSeekers), cls: 'disp-stat-asylum' },
-      { label: 'IDPs', value: formatPopulation(g.idps), cls: 'disp-stat-idps' },
-      { label: 'Total', value: formatPopulation(g.total), cls: 'disp-stat-total' },
+      { label: t('components.displacement.refugees'), value: formatPopulation(g.refugees), cls: 'disp-stat-refugees' },
+      { label: t('components.displacement.asylumSeekers'), value: formatPopulation(g.asylumSeekers), cls: 'disp-stat-asylum' },
+      { label: t('components.displacement.idps'), value: formatPopulation(g.idps), cls: 'disp-stat-idps' },
+      { label: t('components.displacement.total'), value: formatPopulation(g.total), cls: 'disp-stat-total' },
     ];
 
     const statsHtml = stats.map(s =>
@@ -60,8 +60,8 @@ export class DisplacementPanel extends Panel {
 
     const tabsHtml = `
       <div class="disp-tabs">
-        <button class="disp-tab ${this.activeTab === 'origins' ? 'disp-tab-active' : ''}" data-tab="origins">Origins</button>
-        <button class="disp-tab ${this.activeTab === 'hosts' ? 'disp-tab-active' : ''}" data-tab="hosts">Hosts</button>
+        <button class="disp-tab ${this.activeTab === 'origins' ? 'disp-tab-active' : ''}" data-tab="origins">${t('components.displacement.origins')}</button>
+        <button class="disp-tab ${this.activeTab === 'hosts' ? 'disp-tab-active' : ''}" data-tab="hosts">${t('components.displacement.hosts')}</button>
       </div>
     `;
 
@@ -90,9 +90,9 @@ export class DisplacementPanel extends Panel {
           : total >= 500_000 ? 'disp-high'
             : total >= 100_000 ? 'disp-elevated'
               : '';
-        const badgeLabel = total >= 1_000_000 ? 'CRISIS'
-          : total >= 500_000 ? 'HIGH'
-            : total >= 100_000 ? 'ELEVATED'
+        const badgeLabel = total >= 1_000_000 ? t('components.displacement.badges.crisis')
+          : total >= 500_000 ? t('components.displacement.badges.high')
+            : total >= 100_000 ? t('components.displacement.badges.elevated')
               : '';
         const badgeHtml = badgeLabel
           ? `<span class="disp-badge ${badgeCls}">${badgeLabel}</span>`
@@ -109,9 +109,9 @@ export class DisplacementPanel extends Panel {
         <table class="disp-table">
           <thead>
             <tr>
-              <th>Country</th>
-              <th>Status</th>
-              <th>Count</th>
+              <th>${t('components.displacement.country')}</th>
+              <th>${t('components.displacement.status')}</th>
+              <th>${t('components.displacement.count')}</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>

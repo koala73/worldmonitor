@@ -1692,9 +1692,9 @@ export class App {
                class="variant-option ${SITE_VARIANT === 'finance' ? 'active' : ''}"
                data-variant="finance"
                ${!this.isDesktopApp && SITE_VARIANT !== 'finance' ? 'target="_blank" rel="noopener"' : ''}
-               title="Finance & Trading${SITE_VARIANT === 'finance' ? ' (current)' : ''}">
+               title="${t('header.finance')}${SITE_VARIANT === 'finance' ? ' (current)' : ''}">
               <span class="variant-icon">📈</span>
-              <span class="variant-label">FINANCE</span>
+              <span class="variant-label">${t('header.finance')}</span>
             </a>
           </div>
           <span class="logo">MONITOR</span><span class="version">v${__APP_VERSION__}</span>
@@ -1713,12 +1713,12 @@ export class App {
             <select id="regionSelect" class="region-select">
               <option value="global">${t('components.deckgl.views.global')}</option>
               <option value="america">${t('components.deckgl.views.americas')}</option>
-              <option value="mena">MENA</option>
+              <option value="mena">${t('components.deckgl.views.mena')}</option>
               <option value="eu">${t('components.deckgl.views.europe')}</option>
-              <option value="asia">Asia</option>
+              <option value="asia">${t('components.deckgl.views.asia')}</option>
               <option value="latam">${t('components.deckgl.views.latam')}</option>
-              <option value="africa">Africa</option>
-              <option value="oceania">Oceania</option>
+              <option value="africa">${t('components.deckgl.views.africa')}</option>
+              <option value="oceania">${t('components.deckgl.views.oceania')}</option>
             </select>
           </div>
         </div>
@@ -1728,7 +1728,7 @@ export class App {
           </select>
           <button class="search-btn" id="searchBtn"><kbd>⌘K</kbd> ${t('header.search')}</button>
           ${this.isDesktopApp ? '' : `<button class="copy-link-btn" id="copyLinkBtn">${t('header.copyLink')}</button>`}
-          <button class="theme-toggle-btn" id="headerThemeToggle" title="Toggle dark/light mode">
+          <button class="theme-toggle-btn" id="headerThemeToggle" title="${t('header.toggleTheme')}">
             ${getCurrentTheme() === 'dark'
               ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>'
               : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>'}
@@ -2699,7 +2699,7 @@ export class App {
         ([key, panel]) => `
         <div class="panel-toggle-item ${panel.enabled ? 'active' : ''}" data-panel="${key}">
           <div class="panel-toggle-checkbox">${panel.enabled ? '✓' : ''}</div>
-          <span class="panel-toggle-label">${panel.name}</span>
+          <span class="panel-toggle-label">${this.getLocalizedPanelName(key, panel.name)}</span>
         </div>
       `
       )
@@ -2720,6 +2720,16 @@ export class App {
         }
       });
     });
+  }
+
+  private getLocalizedPanelName(panelKey: string, fallback: string): string {
+    if (panelKey === 'runtime-config') {
+      return t('modals.runtimeConfig.title');
+    }
+    const key = panelKey.replace(/-([a-z])/g, (_match, group: string) => group.toUpperCase());
+    const lookup = `panels.${key}`;
+    const localized = t(lookup);
+    return localized === lookup ? fallback : localized;
   }
 
   private getAllSourceNames(): string[] {

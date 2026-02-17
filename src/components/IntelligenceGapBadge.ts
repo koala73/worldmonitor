@@ -1,5 +1,6 @@
 import { getRecentSignals, type CorrelationSignal } from '@/services/correlation';
 import { getRecentAlerts, type UnifiedAlert } from '@/services/cross-module-integration';
+import { t } from '@/services/i18n';
 import { getSignalContext } from '@/utils/analysis-constants';
 import { escapeHtml } from '@/utils/sanitize';
 
@@ -39,7 +40,7 @@ export class IntelligenceFindingsBadge {
   constructor() {
     this.badge = document.createElement('button');
     this.badge.className = 'intel-findings-badge';
-    this.badge.title = 'Intelligence findings';
+    this.badge.title = t('components.intelligenceFindings.badgeTitle');
     this.badge.innerHTML = '<span class="findings-icon">🎯</span><span class="findings-count">0</span>';
 
     this.dropdown = document.createElement('div');
@@ -142,16 +143,16 @@ export class IntelligenceFindingsBadge {
     this.badge.classList.remove('status-none', 'status-low', 'status-high');
     if (count === 0) {
       this.badge.classList.add('status-none');
-      this.badge.title = 'No recent intelligence findings';
+      this.badge.title = t('components.intelligenceFindings.none');
     } else if (hasCritical || hasHigh) {
       this.badge.classList.add('status-high');
-      this.badge.title = `${count} intelligence findings - review recommended`;
+      this.badge.title = t('components.intelligenceFindings.reviewRecommended', { count: String(count) });
     } else if (count <= LOW_COUNT_THRESHOLD) {
       this.badge.classList.add('status-low');
-      this.badge.title = `${count} intelligence finding${count > 1 ? 's' : ''}`;
+      this.badge.title = t('components.intelligenceFindings.count', { count: String(count) });
     } else {
       this.badge.classList.add('status-high');
-      this.badge.title = `${count} intelligence findings - review recommended`;
+      this.badge.title = t('components.intelligenceFindings.reviewRecommended', { count: String(count) });
     }
 
     this.renderDropdown();
@@ -209,13 +210,13 @@ export class IntelligenceFindingsBadge {
     if (this.findings.length === 0) {
       this.dropdown.innerHTML = `
         <div class="findings-header">
-          <span class="header-title">Intelligence Findings</span>
-          <span class="findings-badge none">MONITORING</span>
+          <span class="header-title">${t('components.intelligenceFindings.title')}</span>
+          <span class="findings-badge none">${t('components.intelligenceFindings.monitoring')}</span>
         </div>
         <div class="findings-content">
           <div class="findings-empty">
             <span class="empty-icon">📡</span>
-            <span class="empty-text">Scanning for correlations and anomalies...</span>
+            <span class="empty-text">${t('components.intelligenceFindings.scanning')}</span>
           </div>
         </div>
       `;
@@ -226,13 +227,13 @@ export class IntelligenceFindingsBadge {
     const highCount = this.findings.filter(f => f.priority === 'high' || f.confidence >= 70).length;
 
     let statusClass = 'moderate';
-    let statusText = `${this.findings.length} DETECTED`;
+    let statusText = t('components.intelligenceFindings.detected', { count: String(this.findings.length) });
     if (criticalCount > 0) {
       statusClass = 'critical';
-      statusText = `${criticalCount} CRITICAL`;
+      statusText = t('components.intelligenceFindings.critical', { count: String(criticalCount) });
     } else if (highCount > 0) {
       statusClass = 'high';
-      statusText = `${highCount} HIGH PRIORITY`;
+      statusText = t('components.intelligenceFindings.highPriority', { count: String(highCount) });
     }
 
     const findingsHtml = this.findings.slice(0, MAX_VISIBLE_FINDINGS).map(finding => {
@@ -245,7 +246,7 @@ export class IntelligenceFindingsBadge {
         <div class="finding-item ${priorityClass}" data-finding-id="${escapeHtml(finding.id)}">
           <div class="finding-header">
             <span class="finding-type">${icon} ${escapeHtml(finding.title)}</span>
-            <span class="finding-confidence ${priorityClass}">${finding.priority.toUpperCase()}</span>
+            <span class="finding-confidence ${priorityClass}">${t(`components.intelligenceFindings.priority.${finding.priority}`)}</span>
           </div>
           <div class="finding-description">${escapeHtml(finding.description)}</div>
           <div class="finding-meta">
@@ -259,14 +260,14 @@ export class IntelligenceFindingsBadge {
     const moreCount = this.findings.length - MAX_VISIBLE_FINDINGS;
     this.dropdown.innerHTML = `
       <div class="findings-header">
-        <span class="header-title">Intelligence Findings</span>
+        <span class="header-title">${t('components.intelligenceFindings.title')}</span>
         <span class="findings-badge ${statusClass}">${statusText}</span>
       </div>
       <div class="findings-content">
         <div class="findings-list">
           ${findingsHtml}
         </div>
-        ${moreCount > 0 ? `<div class="findings-more">+${moreCount} more findings</div>` : ''}
+        ${moreCount > 0 ? `<div class="findings-more">${t('components.intelligenceFindings.more', { count: String(moreCount) })}</div>` : ''}
       </div>
     `;
   }
@@ -280,13 +281,13 @@ export class IntelligenceFindingsBadge {
     const alert = finding.original as UnifiedAlert;
     if (alert.type === 'cii_spike') {
       const cii = alert.components.ciiChange;
-      if (cii && cii.change >= 30) return 'Critical destabilization - immediate attention';
-      if (cii && cii.change >= 20) return 'Significant shift - monitor closely';
-      return 'Developing situation - track for escalation';
+      if (cii && cii.change >= 30) return t('components.intelligenceFindings.insights.criticalDestabilization');
+      if (cii && cii.change >= 20) return t('components.intelligenceFindings.insights.significantShift');
+      return t('components.intelligenceFindings.insights.developingSituation');
     }
-    if (alert.type === 'convergence') return 'Multiple events clustering in region';
-    if (alert.type === 'cascade') return 'Infrastructure disruption spreading';
-    return 'Review for situational awareness';
+    if (alert.type === 'convergence') return t('components.intelligenceFindings.insights.convergence');
+    if (alert.type === 'cascade') return t('components.intelligenceFindings.insights.cascade');
+    return t('components.intelligenceFindings.insights.review');
   }
 
   private getTypeIcon(type: string): string {
@@ -316,10 +317,10 @@ export class IntelligenceFindingsBadge {
 
   private formatTimeAgo(date: Date): string {
     const ms = Date.now() - date.getTime();
-    if (ms < 60000) return 'just now';
-    if (ms < 3600000) return `${Math.floor(ms / 60000)}m ago`;
-    if (ms < 86400000) return `${Math.floor(ms / 3600000)}h ago`;
-    return `${Math.floor(ms / 86400000)}d ago`;
+    if (ms < 60000) return t('components.intelligenceFindings.time.justNow');
+    if (ms < 3600000) return t('components.intelligenceFindings.time.minutesAgo', { count: String(Math.floor(ms / 60000)) });
+    if (ms < 86400000) return t('components.intelligenceFindings.time.hoursAgo', { count: String(Math.floor(ms / 3600000)) });
+    return t('components.intelligenceFindings.time.daysAgo', { count: String(Math.floor(ms / 86400000)) });
   }
 
   private toggleDropdown(): void {
@@ -351,7 +352,7 @@ export class IntelligenceFindingsBadge {
         <div class="findings-modal-item ${finding.priority}" data-finding-id="${escapeHtml(finding.id)}">
           <div class="findings-modal-item-header">
             <span class="findings-modal-item-type">${icon} ${escapeHtml(finding.title)}</span>
-            <span class="findings-modal-item-priority ${finding.priority}">${finding.priority.toUpperCase()}</span>
+            <span class="findings-modal-item-priority ${finding.priority}">${t(`components.intelligenceFindings.priority.${finding.priority}`)}</span>
           </div>
           <div class="findings-modal-item-desc">${escapeHtml(finding.description)}</div>
           <div class="findings-modal-item-meta">
@@ -365,7 +366,7 @@ export class IntelligenceFindingsBadge {
     overlay.innerHTML = `
       <div class="findings-modal">
         <div class="findings-modal-header">
-          <span class="findings-modal-title">🎯 All Intelligence Findings (${this.findings.length})</span>
+          <span class="findings-modal-title">🎯 ${t('components.intelligenceFindings.all', { count: String(this.findings.length) })}</span>
           <button class="findings-modal-close">×</button>
         </div>
         <div class="findings-modal-content">

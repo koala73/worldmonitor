@@ -15,7 +15,9 @@
     "viewOnGitHub": "View on GitHub",
     "pinMap": "Pin map to top",
     "filterSources": "Filter sources...",
-    "sourcesEnabled": "{{enabled}}/{{total}} enabled"
+    "sourcesEnabled": "{{enabled}}/{{total}} abilitate",
+    "finance": "FINANZA",
+    "toggleTheme": "Attiva/disattiva tema chiaro/scuro"
   },
   "panels": {
     "liveNews": "Notizie in diretta",
@@ -28,7 +30,7 @@
     "cii": "Instabilità del paese",
     "strategicRisk": "Panoramica dei rischi strategici",
     "intel": "Feed di intelligence",
-    "gdeltIntel": "Intelligence in diretta",
+    "gdeltIntel": "Intelligence in tempo reale",
     "cascade": "Cascata infrastrutturale",
     "politics": "Notizie mondiali",
     "middleeast": "Medio Oriente",
@@ -53,7 +55,7 @@
     "etfFlows": "Tracciamento ETF BTC",
     "stablecoins": "Stablecoins",
     "ucdpEvents": "Eventi di conflitto UCDP",
-    "displacement": "Spostamenti UNHCR",
+    "displacement": "Sfollamenti UNHCR",
     "climate": "Anomalie climatiche",
     "populationExposure": "Esposizione della popolazione",
     "startups": "Startup e VC",
@@ -74,18 +76,20 @@
     "events": "Eventi tecnologici",
     "serviceStatus": "Stato del servizio",
     "techReadiness": "Indice di prontezza tecnologica",
-    "techHubs": "Hot Tech Hubs"
+    "techHubs": "Hot Tech Hubs",
+    "geoHubs": "Hotspot geopolitici",
+    "gccInvestments": "Investimenti GCC"
   },
   "modals": {
     "search": {
-      "placeholder": "Search news, pipelines, bases, markets...",
-      "hint": "News • Pipelines • Bases • Cables • Datacenters • Markets",
-      "recent": "Recent Searches",
-      "empty": "Search across all data sources",
-      "noResults": "No results found",
-      "navigate": "navigate",
-      "select": "select",
-      "close": "close",
+      "placeholder": "Cerca notizie, oleodotti, basi, mercati...",
+      "hint": "Notizie • Oleodotti • Basi • Cavi • Datacenter • Mercati",
+      "recent": "Ricerche recenti",
+      "empty": "Cerca in tutte le fonti dati",
+      "noResults": "Nessun risultato",
+      "navigate": "naviga",
+      "select": "seleziona",
+      "close": "chiudi",
       "types": {
         "country": "Paese",
         "news": "Notizie",
@@ -108,10 +112,10 @@
         "techhq": "Sede tecnologica",
         "accelerator": "Acceleratore"
       },
-      "placeholderTech": "Search companies, AI labs, startups, events...",
-      "hintTech": "HQs • Companies • AI Labs • Startups • Accelerators • Events",
-      "placeholderFinance": "Search exchanges, markets, central banks...",
-      "hintFinance": "Exchanges • Financial Centers • Central Banks • Commodities"
+      "placeholderTech": "Cerca aziende, laboratori IA, startup, eventi...",
+      "hintTech": "Sedi • Aziende • Laboratori IA • Startup • Acceleratori • Eventi",
+      "placeholderFinance": "Cerca borse, mercati, banche centrali...",
+      "hintFinance": "Borse • Centri finanziari • Banche centrali • Materie prime"
     },
     "signal": {
       "title": "INTELLIGENCE FINDING",
@@ -224,7 +228,7 @@
       "cached": "Cached",
       "fresh": "Fresh",
       "noMarkets": "No prediction markets found",
-      "predictionMarkets": "Prediction Markets",
+      "predictionMarkets": "Mercati predittivi",
       "unavailable": "AI brief unavailable — configure GROQ_API_KEY in Settings."
     },
     "countryBrief": {
@@ -244,28 +248,28 @@
         "climate": "Climate stress",
         "conflictEvents": "conflict events"
       },
-      "loadingIndex": "Loading index...",
-      "identifying": "Identifying country...",
-      "locating": "Locating region...",
-      "limitedCoverage": "Limited coverage",
-      "instabilityIndex": "Instability Index",
-      "notTracked": "Not tracked — {{country}} is not in the CII tier-1 list",
-      "intelBrief": "Intelligence Brief",
-      "generatingBrief": "Generating intelligence brief...",
-      "topNews": "Top News",
-      "activeSignals": "Active Signals",
-      "timeline": "7-Day Timeline",
-      "predictionMarkets": "Prediction Markets",
-      "loadingMarkets": "Loading prediction markets...",
+      "loadingIndex": "Caricamento indice...",
+      "identifying": "Identificazione del paese...",
+      "locating": "Localizzazione della regione...",
+      "limitedCoverage": "Copertura limitata",
+      "instabilityIndex": "Indice di instabilità",
+      "notTracked": "{{country}} non è nel livello CII tier-1",
+      "intelBrief": "Brief di intelligence",
+      "generatingBrief": "Generazione del brief di intelligence...",
+      "topNews": "Notizie principali",
+      "activeSignals": "Segnali attivi",
+      "timeline": "Timeline 7 giorni",
+      "predictionMarkets": "Mercati predittivi",
+      "loadingMarkets": "Caricamento mercati predittivi...",
       "infrastructure": "Infrastructure Exposure",
       "briefUnavailable": "AI brief unavailable — configure GROQ_API_KEY in Settings.",
-      "cached": "Cached",
-      "fresh": "Fresh",
-      "noMarkets": "No prediction markets found",
+      "cached": "In cache",
+      "fresh": "Aggiornato",
+      "noMarkets": "Nessun mercato predittivo trovato",
       "timeAgo": {
-        "m": "m ago",
-        "h": "h ago",
-        "d": "d ago"
+        "m": "{{count}} min fa",
+        "h": "{{count}} h fa",
+        "d": "{{count}} g fa"
       }
     },
     "settingsWindow": {
@@ -293,13 +297,13 @@
   },
   "components": {
     "monitor": {
-      "placeholder": "Keywords (comma separated)",
-      "add": "+ Add Monitor",
-      "addKeywords": "Add keywords to monitor news",
-      "noMatches": "No matches in {{count}} articles",
-      "showingMatches": "Showing {{count}} of {{total}} matches",
-      "match": "match",
-      "matches": "matches"
+      "placeholder": "Parole chiave (separate da virgole)",
+      "add": "+ Aggiungi monitor",
+      "addKeywords": "Aggiungi parole chiave per monitorare le notizie",
+      "noMatches": "Nessuna corrispondenza in {{count}} articoli",
+      "showingMatches": "Mostra {{count}} di {{total}} corrispondenze",
+      "match": "corrispondenza",
+      "matches": "corrispondenze"
     },
     "regulation": {
       "timeline": "Timeline",
@@ -327,7 +331,11 @@
       "noOilData": "Oil data not available",
       "noOilMetrics": "No oil metrics available. Add EIA_API_KEY to enable.",
       "noSpending": "No recent government awards",
-      "awards": "awards"
+      "awards": "awards",
+      "noIndicatorData": "Nessun dato indicatore disponibile - FRED potrebbe essere in caricamento",
+      "noOilDataRetry": "Dati petrolio temporaneamente non disponibili - nuovo tentativo in corso",
+      "vsPreviousWeek": "rispetto alla settimana precedente",
+      "in": "in"
     },
     "gdelt": {
       "empty": "No recent articles for this topic"
@@ -369,40 +377,58 @@
         "techHQs": "Tech HQs",
         "accelerators": "Accelerators",
         "cloudRegions": "Cloud Regions",
-        "aiDataCenters": "AI Data Centers",
-        "underseaCables": "Undersea Cables",
-        "internetOutages": "Internet Outages",
-        "cyberThreats": "Cyber Threats",
+        "aiDataCenters": "Data center IA",
+        "underseaCables": "Cavi sottomarini",
+        "internetOutages": "Interruzioni internet",
+        "cyberThreats": "Minacce cyber",
         "techEvents": "Tech Events",
-        "naturalEvents": "Natural Events",
-        "fires": "Fires",
-        "intelHotspots": "Intel Hotspots",
-        "conflictZones": "Conflict Zones",
-        "militaryBases": "Military Bases",
-        "nuclearSites": "Nuclear Sites",
-        "gammaIrradiators": "Gamma Irradiators",
-        "spaceports": "Spaceports",
-        "pipelines": "Pipelines",
-        "militaryActivity": "Military Activity",
-        "shipTraffic": "Ship Traffic",
-        "flightDelays": "Flight Delays",
-        "protests": "Protests",
-        "ucdpEvents": "UCDP Events",
-        "displacementFlows": "Displacement Flows",
-        "climateAnomalies": "Climate Anomalies",
-        "weatherAlerts": "Weather Alerts",
-        "strategicWaterways": "Strategic Waterways",
-        "economicCenters": "Economic Centers",
-        "criticalMinerals": "Critical Minerals"
+        "naturalEvents": "Eventi naturali",
+        "fires": "Incendi",
+        "intelHotspots": "Hotspot di intelligence",
+        "conflictZones": "Zone di conflitto",
+        "militaryBases": "Basi militari",
+        "nuclearSites": "Siti nucleari",
+        "gammaIrradiators": "Irradiatori gamma",
+        "spaceports": "Spazioporti",
+        "pipelines": "Condotte",
+        "militaryActivity": "Attività militare",
+        "shipTraffic": "Traffico navale",
+        "flightDelays": "Ritardi voli",
+        "protests": "Proteste",
+        "ucdpEvents": "Eventi UCDP",
+        "displacementFlows": "Flussi di sfollamento",
+        "climateAnomalies": "Anomalie climatiche",
+        "weatherAlerts": "Allerte meteo",
+        "strategicWaterways": "Vie d’acqua strategiche",
+        "economicCenters": "Centri economici",
+        "criticalMinerals": "Minerali critici",
+        "stockExchanges": "Stock Exchanges",
+        "financialCenters": "Financial Centers",
+        "centralBanks": "Central Banks",
+        "commodityHubs": "Commodity Hubs",
+        "gulfInvestments": "GCC Investments"
       },
-      "layersTitle": "Layers",
+      "layersTitle": "Livelli",
       "layerGuide": "Layer Guide"
     },
     "climate": {
-      "noAnomalies": "No significant anomalies detected"
+      "noAnomalies": "No significant anomalies detected",
+      "zone": "Area",
+      "temp": "Temp",
+      "precip": "Precip",
+      "severityLabel": "Gravità",
+      "severity": {
+        "extreme": "ESTREMA",
+        "moderate": "MODERATA",
+        "normal": "NORMALE"
+      }
     },
     "newsPanel": {
-      "close": "Close"
+      "close": "Close",
+      "summarize": "Riassumi questo pannello",
+      "generatingSummary": "Generazione riassunto...",
+      "sources": "{{count}} fonti",
+      "relatedAssetsNear": "Asset correlati vicino a {{location}}"
     },
     "countryBrief": {
       "shareStory": "Share story",
@@ -411,8 +437,8 @@
       "sourceRef": "Source [{{n}}]"
     },
     "pizzint": {
-      "title": "Pentagon Pizza Index",
-      "tensionsTitle": "Geopolitical Tensions",
+      "title": "Indice Pizza del Pentagono",
+      "tensionsTitle": "Tensioni geopolitiche",
       "source": "Source:",
       "defcon": "DEFCON {{level}}",
       "updated": "Updated {{timeAgo}}",
@@ -424,7 +450,14 @@
       "statusQuiet": "QUIET",
       "justNow": "just now",
       "minutesAgo": "{{m}}m ago",
-      "hoursAgo": "{{h}}h ago"
+      "hoursAgo": "{{h}}h ago",
+      "defconLabels": {
+        "1": "PISTOLA ARMATA - PRONTEZZA MASSIMA",
+        "2": "RITMO RAPIDO - FORZE ARMATE PRONTE",
+        "3": "ROUND HOUSE - AUMENTARE PRONTEZZA FORZE",
+        "4": "DOPPIO SGUARDO - INTELLIGENCE RAFFORZATA",
+        "5": "FADE OUT - PRONTEZZA MINIMA"
+      }
     },
     "playback": {
       "toggleMode": "Toggle Playback Mode",
@@ -470,6 +503,102 @@
       "internetUsers": "Internet Users",
       "mobileSubscriptions": "Mobile Subscriptions",
       "rdSpending": "R&D Spending"
+    },
+    "cascade": {
+      "filters": {
+        "cables": "Cavi",
+        "pipelines": "Condotte",
+        "ports": "Porti",
+        "chokepoints": "Stretti strategici"
+      },
+      "filterType": {
+        "cable": "cavo",
+        "pipeline": "condotta",
+        "port": "porto",
+        "chokepoint": "stretto",
+        "country": "paese"
+      },
+      "selectPrompt": "Seleziona {{type}}...",
+      "analyzeImpact": "Analizza impatto",
+      "impactLevels": {
+        "critical": "critico",
+        "high": "alto",
+        "medium": "medio",
+        "low": "basso"
+      },
+      "capacityPercent": "{{percent}}% capacità",
+      "noCountryImpacts": "Nessun impatto sui paesi rilevato",
+      "alternativeRoutes": "Rotte alternative",
+      "countriesAffected": "Paesi interessati ({{count}})",
+      "links": "collegamenti",
+      "selectInfrastructureHint": "Seleziona un’infrastruttura per analizzare l’impatto a cascata"
+    },
+    "intelligenceFindings": {
+      "badgeTitle": "Rilevamenti di intelligence",
+      "title": "Rilevamenti di intelligence",
+      "none": "Nessun rilevamento di intelligence recente",
+      "monitoring": "MONITORAGGIO",
+      "scanning": "Scansione di correlazioni e anomalie...",
+      "reviewRecommended": "{{count}} rilevamenti di intelligence - revisione consigliata",
+      "count": "{{count}} rilevamento di intelligence",
+      "detected": "{{count}} RILEVATI",
+      "critical": "{{count}} CRITICI",
+      "highPriority": "{{count}} ALTA PRIORITÀ",
+      "more": "+{{count}} altri rilevamenti",
+      "all": "Tutti i rilevamenti di intelligence ({{count}})",
+      "priority": {
+        "critical": "CRITICO",
+        "high": "ALTO",
+        "medium": "MEDIO",
+        "low": "BASSO"
+      },
+      "insights": {
+        "criticalDestabilization": "Destabilizzazione critica - attenzione immediata",
+        "significantShift": "Spostamento significativo - monitorare da vicino",
+        "developingSituation": "Situazione in evoluzione - monitorare escalation",
+        "convergence": "Più eventi concentrati nella stessa area",
+        "cascade": "Interruzione infrastrutturale in propagazione",
+        "review": "Rivedere per consapevolezza situazionale"
+      },
+      "time": {
+        "justNow": "proprio ora",
+        "minutesAgo": "{{count}} min fa",
+        "hoursAgo": "{{count}} h fa",
+        "daysAgo": "{{count}} g fa"
+      }
+    },
+    "satelliteFires": {
+      "region": "Regione",
+      "fires": "Incendi",
+      "high": "Alto",
+      "total": "Totale",
+      "never": "mai",
+      "time": {
+        "justNow": "proprio ora",
+        "minutesAgo": "{{count}} min fa",
+        "hoursAgo": "{{count}} h fa"
+      }
+    },
+    "displacement": {
+      "refugees": "Rifugiati",
+      "asylumSeekers": "Richiedenti asilo",
+      "idps": "Sfollati interni",
+      "total": "Totale",
+      "origins": "Origini",
+      "hosts": "Paesi ospitanti",
+      "badges": {
+        "crisis": "CRISI",
+        "high": "ALTO",
+        "elevated": "ELEVATO"
+      },
+      "country": "Paese",
+      "status": "Stato",
+      "count": "Conteggio"
+    },
+    "populationExposure": {
+      "totalAffected": "Totale esposto",
+      "affectedCount": "{{count}} interessati",
+      "radiusKm": "raggio {{km}} km"
     }
   },
   "popups": {
@@ -717,7 +846,15 @@
     "security": "Sicurezza",
     "information": "Informazione",
     "shareStory": "Condividi storia",
-    "selectAll": "Select All",
-    "selectNone": "Select None"
+    "selectAll": "Seleziona tutto",
+    "selectNone": "Deseleziona tutto",
+    "new": "NUOVO"
+  },
+  "countryBrief": {
+    "timeAgo": {
+      "m": "{{count}} min fa",
+      "h": "{{count}} h fa",
+      "d": "{{count}} g fa"
+    }
   }
 }

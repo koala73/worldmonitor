@@ -8,6 +8,7 @@ import type {
   GulfInvestmentStatus,
 } from '@/types';
 import { escapeHtml } from '@/utils/sanitize';
+import { t } from '@/services/i18n';
 
 interface InvestmentFilters {
   investingCountry: GulfInvestorCountry | 'ALL';
@@ -68,7 +69,7 @@ export class InvestmentsPanel extends Panel {
   constructor(onInvestmentClick?: (inv: GulfInvestment) => void) {
     super({
       id: 'gcc-investments',
-      title: 'GCC Investments',
+      title: t('panels.gccInvestments'),
       showCount: true,
       infoTooltip: 'Database of Saudi Arabia and UAE foreign direct investments in global critical infrastructure. Click a row to fly to the investment on the map.',
     });

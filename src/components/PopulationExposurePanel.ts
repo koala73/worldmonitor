@@ -10,7 +10,7 @@ export class PopulationExposurePanel extends Panel {
   constructor() {
     super({
       id: 'population-exposure',
-      title: 'Population Exposure',
+      title: t('panels.populationExposure'),
       showCount: true,
       trackActivity: true,
       infoTooltip: `<strong>Population Exposure Estimates</strong>
@@ -46,8 +46,8 @@ export class PopulationExposurePanel extends Panel {
       return `<div class="popexp-card">
         <div class="popexp-card-name">${typeIcon} ${escapeHtml(e.eventName)}</div>
         <div class="popexp-card-meta">
-          <span class="popexp-card-pop${popClass}">${formatPopulation(e.exposedPopulation)} affected</span>
-          <span class="popexp-card-radius">${e.exposureRadiusKm}km radius</span>
+          <span class="popexp-card-pop${popClass}">${t('components.populationExposure.affectedCount', { count: formatPopulation(e.exposedPopulation) })}</span>
+          <span class="popexp-card-radius">${t('components.populationExposure.radiusKm', { km: String(e.exposureRadiusKm) })}</span>
         </div>
       </div>`;
     }).join('');
@@ -55,7 +55,7 @@ export class PopulationExposurePanel extends Panel {
     this.setContent(`
       <div class="popexp-panel-content">
         <div class="popexp-summary">
-          <span class="popexp-label">Total Affected</span>
+          <span class="popexp-label">${t('components.populationExposure.totalAffected')}</span>
           <span class="popexp-total">${formatPopulation(totalAffected)}</span>
         </div>
         <div class="popexp-list">${cards}</div>

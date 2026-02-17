@@ -11,7 +11,7 @@ export class ClimateAnomalyPanel extends Panel {
   constructor() {
     super({
       id: 'climate',
-      title: 'Climate Anomalies',
+      title: t('panels.climate'),
       showCount: true,
       trackActivity: true,
       infoTooltip: `<strong>Climate Anomaly Monitor</strong>
@@ -58,7 +58,7 @@ export class ClimateAnomalyPanel extends Panel {
         <td class="climate-zone"><span class="climate-icon">${icon}</span>${escapeHtml(a.zone)}</td>
         <td class="climate-num ${tempClass}">${formatDelta(a.tempDelta, '°C')}</td>
         <td class="climate-num ${precipClass}">${formatDelta(a.precipDelta, 'mm')}</td>
-        <td><span class="climate-badge ${sevClass}">${a.severity.toUpperCase()}</span></td>
+        <td><span class="climate-badge ${sevClass}">${t(`components.climate.severity.${a.severity}`)}</span></td>
       </tr>`;
     }).join('');
 
@@ -67,10 +67,10 @@ export class ClimateAnomalyPanel extends Panel {
         <table class="climate-table">
           <thead>
             <tr>
-              <th>Zone</th>
-              <th>Temp</th>
-              <th>Precip</th>
-              <th>Severity</th>
+              <th>${t('components.climate.zone')}</th>
+              <th>${t('components.climate.temp')}</th>
+              <th>${t('components.climate.precip')}</th>
+              <th>${t('components.climate.severityLabel')}</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>

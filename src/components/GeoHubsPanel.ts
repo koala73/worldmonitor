@@ -35,7 +35,7 @@ export class GeoHubsPanel extends Panel {
   constructor() {
     super({
       id: 'geo-hubs',
-      title: 'Geopolitical Hotspots',
+      title: t('panels.geoHubs'),
       showCount: true,
       infoTooltip: `
         <strong>Geopolitical Activity Hubs</strong><br>
@@ -98,7 +98,7 @@ export class GeoHubsPanel extends Panel {
               ${breakingTag}
             </div>
             <div class="hub-meta">
-              <span class="hub-news-count">${hub.newsCount} ${hub.newsCount === 1 ? 'story' : 'stories'}</span>
+              <span class="hub-news-count">${hub.newsCount} ${hub.newsCount === 1 ? t('components.geoHubs.story') : t('components.geoHubs.stories')}</span>
               ${trendIcon ? `<span class="hub-trend ${hub.trend}">${trendIcon}</span>` : ''}
               <span class="geo-hub-type">${this.getTypeIcon(hub.type)} ${this.getTypeLabel(hub.type)}</span>
             </div>

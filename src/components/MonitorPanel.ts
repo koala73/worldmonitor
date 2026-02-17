@@ -100,7 +100,7 @@ export class MonitorPanel extends Panel {
 
     if (this.monitors.length === 0) {
       results.innerHTML =
-        '<div style="color: var(--text-dim); font-size: 10px; margin-top: 12px;">Add keywords to monitor news</div>';
+        `<div style="color: var(--text-dim); font-size: 10px; margin-top: 12px;">${t('components.monitor.addKeywords')}</div>`;
       return;
     }
 
@@ -137,8 +137,8 @@ export class MonitorPanel extends Panel {
     }
 
     const countText = unique.length > 10
-      ? `Showing 10 of ${unique.length} matches`
-      : `${unique.length} match${unique.length === 1 ? '' : 'es'}`;
+      ? t('components.monitor.showingMatches', { count: '10', total: String(unique.length) })
+      : `${unique.length} ${unique.length === 1 ? t('components.monitor.match') : t('components.monitor.matches')}`;
 
     results.innerHTML = `
       <div style="color: var(--text-dim); font-size: 10px; margin: 12px 0 8px;">${countText}</div>

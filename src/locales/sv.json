@@ -51,7 +51,17 @@
     "events": "Tech Events",
     "techHubs": "Hot Tech Hubs",
     "techReadiness": "Tech Readiness Index",
-    "ucdpEvents": "UCDP Conflict Events"
+    "ucdpEvents": "UCDP Conflict Events",
+    "geoHubs": "Geopolitical Hotspots",
+    "gccInvestments": "GCC Investments",
+    "cascade": "Infrastructure Cascade",
+    "climate": "Climate Anomalies",
+    "displacement": "UNHCR Displacement",
+    "gdeltIntel": "Live Intelligence",
+    "polymarket": "Predictions",
+    "populationExposure": "Population Exposure",
+    "satelliteFires": "Fires",
+    "strategicRisk": "Strategic Risk Overview"
   },
   "modals": {
     "search": {
@@ -239,9 +249,9 @@
       "fresh": "Fresh",
       "noMarkets": "No prediction markets found",
       "timeAgo": {
-        "m": "m ago",
-        "h": "h ago",
-        "d": "d ago"
+        "m": "{{count}}m ago",
+        "h": "{{count}}h ago",
+        "d": "{{count}}d ago"
       }
     },
     "story": {
@@ -348,16 +358,34 @@
         "weatherAlerts": "Weather Alerts",
         "strategicWaterways": "Strategic Waterways",
         "economicCenters": "Economic Centers",
-        "criticalMinerals": "Critical Minerals"
+        "criticalMinerals": "Critical Minerals",
+        "stockExchanges": "Stock Exchanges",
+        "financialCenters": "Financial Centers",
+        "centralBanks": "Central Banks",
+        "commodityHubs": "Commodity Hubs",
+        "gulfInvestments": "GCC Investments"
       },
       "layersTitle": "Layers",
       "layerGuide": "Layer Guide"
     },
     "climate": {
-      "noAnomalies": "No significant anomalies detected"
+      "noAnomalies": "No significant anomalies detected",
+      "zone": "Zone",
+      "temp": "Temp",
+      "precip": "Precip",
+      "severityLabel": "Severity",
+      "severity": {
+        "extreme": "EXTREME",
+        "moderate": "MODERATE",
+        "normal": "NORMAL"
+      }
     },
     "newsPanel": {
-      "close": "Close"
+      "close": "Close",
+      "summarize": "Summarize this panel",
+      "generatingSummary": "Generating summary...",
+      "sources": "{{count}} sources",
+      "relatedAssetsNear": "Related assets near {{location}}"
     },
     "countryBrief": {
       "shareStory": "Share story",
@@ -379,7 +407,14 @@
       "statusQuiet": "QUIET",
       "justNow": "just now",
       "minutesAgo": "{{m}}m ago",
-      "hoursAgo": "{{h}}h ago"
+      "hoursAgo": "{{h}}h ago",
+      "defconLabels": {
+        "1": "COCKED PISTOL - MAXIMUM READINESS",
+        "2": "FAST PACE - ARMED FORCES READY",
+        "3": "ROUND HOUSE - INCREASE FORCE READINESS",
+        "4": "DOUBLE TAKE - INCREASED INTELLIGENCE WATCH",
+        "5": "FADE OUT - LOWEST READINESS"
+      }
     },
     "status": {
       "systemStatus": "System Status",
@@ -420,6 +455,126 @@
       "internetUsers": "Internet Users",
       "mobileSubscriptions": "Mobile Subscriptions",
       "rdSpending": "R&D Spending"
+    },
+    "cascade": {
+      "filters": {
+        "cables": "Cables",
+        "pipelines": "Pipelines",
+        "ports": "Ports",
+        "chokepoints": "Chokepoints"
+      },
+      "filterType": {
+        "cable": "cable",
+        "pipeline": "pipeline",
+        "port": "port",
+        "chokepoint": "chokepoint",
+        "country": "country"
+      },
+      "selectPrompt": "Select {{type}}...",
+      "analyzeImpact": "Analyze Impact",
+      "impactLevels": {
+        "critical": "critical",
+        "high": "high",
+        "medium": "medium",
+        "low": "low"
+      },
+      "capacityPercent": "{{percent}}% capacity",
+      "noCountryImpacts": "No country impacts detected",
+      "alternativeRoutes": "Alternative Routes",
+      "countriesAffected": "Countries Affected ({{count}})",
+      "links": "links",
+      "selectInfrastructureHint": "Select infrastructure to analyze cascade impact"
+    },
+    "intelligenceFindings": {
+      "badgeTitle": "Intelligence findings",
+      "title": "Intelligence Findings",
+      "none": "No recent intelligence findings",
+      "monitoring": "MONITORING",
+      "scanning": "Scanning for correlations and anomalies...",
+      "reviewRecommended": "{{count}} intelligence findings - review recommended",
+      "count": "{{count}} intelligence finding",
+      "detected": "{{count}} DETECTED",
+      "critical": "{{count}} CRITICAL",
+      "highPriority": "{{count}} HIGH PRIORITY",
+      "more": "+{{count}} more findings",
+      "all": "All Intelligence Findings ({{count}})",
+      "priority": {
+        "critical": "CRITICAL",
+        "high": "HIGH",
+        "medium": "MEDIUM",
+        "low": "LOW"
+      },
+      "insights": {
+        "criticalDestabilization": "Critical destabilization - immediate attention",
+        "significantShift": "Significant shift - monitor closely",
+        "developingSituation": "Developing situation - track for escalation",
+        "convergence": "Multiple events clustering in region",
+        "cascade": "Infrastructure disruption spreading",
+        "review": "Review for situational awareness"
+      },
+      "time": {
+        "justNow": "just now",
+        "minutesAgo": "{{count}}m ago",
+        "hoursAgo": "{{count}}h ago",
+        "daysAgo": "{{count}}d ago"
+      }
+    },
+    "economic": {
+      "noIndicatorData": "No indicator data yet - FRED may be loading",
+      "noOilDataRetry": "Oil data temporarily unavailable - will retry",
+      "vsPreviousWeek": "vs previous week",
+      "in": "in",
+      "awards": "awards",
+      "gov": "Gov",
+      "indicators": "Indicators",
+      "noOilMetrics": "No oil metrics available. Add EIA_API_KEY to enable.",
+      "noSpending": "No recent government awards",
+      "oil": "Oil"
+    },
+    "satelliteFires": {
+      "region": "Region",
+      "fires": "Fires",
+      "high": "High",
+      "total": "Total",
+      "never": "never",
+      "time": {
+        "justNow": "just now",
+        "minutesAgo": "{{count}}m ago",
+        "hoursAgo": "{{count}}h ago"
+      }
+    },
+    "displacement": {
+      "refugees": "Refugees",
+      "asylumSeekers": "Asylum Seekers",
+      "idps": "IDPs",
+      "total": "Total",
+      "origins": "Origins",
+      "hosts": "Hosts",
+      "badges": {
+        "crisis": "CRISIS",
+        "high": "HIGH",
+        "elevated": "ELEVATED"
+      },
+      "country": "Country",
+      "status": "Status",
+      "count": "Count"
+    },
+    "populationExposure": {
+      "totalAffected": "Total Affected",
+      "affectedCount": "{{count}} affected",
+      "radiusKm": "{{km}}km radius"
+    },
+    "gdelt": {
+      "empty": "No recent articles for this topic"
+    },
+    "geoHubs": {
+      "stories": "stories",
+      "story": "story"
+    },
+    "predictions": {
+      "no": "No",
+      "vol": "Vol",
+      "yes": "Yes"
     }
   },
   "popups": {
@@ -671,7 +826,8 @@
     "information": "Information",
     "shareStory": "Dela historia",
     "selectAll": "Select All",
-    "selectNone": "Select None"
+    "selectNone": "Select None",
+    "new": "NEW"
   },
   "header": {
     "world": "WORLD",
@@ -685,6 +841,15 @@
     "sources": "SOURCES",
     "pinMap": "Pin map to top",
     "filterSources": "Filter sources...",
-    "sourcesEnabled": "{{enabled}}/{{total}} enabled"
+    "sourcesEnabled": "{{enabled}}/{{total}} enabled",
+    "finance": "FINANCE",
+    "toggleTheme": "Toggle dark/light mode"
+  },
+  "countryBrief": {
+    "timeAgo": {
+      "m": "{{count}}m ago",
+      "h": "{{count}}h ago",
+      "d": "{{count}}d ago"
+    }
   }
 }

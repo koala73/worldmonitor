@@ -10,7 +10,7 @@ export class SatelliteFiresPanel extends Panel {
   constructor() {
     super({
       id: 'satellite-fires',
-      title: 'Fires',
+      title: t('panels.satelliteFires'),
       showCount: true,
       trackActivity: true,
       infoTooltip: 'NASA FIRMS VIIRS satellite thermal detections across monitored conflict regions. High-intensity = brightness &gt;360K &amp; confidence &gt;80%.',
@@ -53,23 +53,23 @@ export class SatelliteFiresPanel extends Panel {
 
     const totalFrp = this.stats.reduce((sum, s) => sum + s.totalFrp, 0);
     const totalHigh = this.stats.reduce((sum, s) => sum + s.highIntensityCount, 0);
-    const ago = this.lastUpdated ? timeSince(this.lastUpdated) : 'never';
+    const ago = this.lastUpdated ? timeSince(this.lastUpdated) : t('components.satelliteFires.never');
 
     this.setContent(`
       <div class="fires-panel-content">
         <table class="fires-table">
           <thead>
             <tr>
-              <th>Region</th>
-              <th>Fires</th>
-              <th>High</th>
+              <th>${t('components.satelliteFires.region')}</th>
+              <th>${t('components.satelliteFires.fires')}</th>
+              <th>${t('components.satelliteFires.high')}</th>
               <th>FRP</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
           <tfoot>
             <tr class="fire-totals">
-              <td>Total</td>
+              <td>${t('components.satelliteFires.total')}</td>
               <td>${this.totalCount}</td>
               <td>${totalHigh}</td>
               <td>${totalFrp >= 1000 ? `${(totalFrp / 1000).toFixed(1)}k` : Math.round(totalFrp).toLocaleString()}</td>
@@ -104,9 +104,9 @@ function escapeHtml(s: string): string {
 
 function timeSince(date: Date): string {
   const secs = Math.floor((Date.now() - date.getTime()) / 1000);
-  if (secs < 60) return 'just now';
+  if (secs < 60) return t('components.satelliteFires.time.justNow');
   const mins = Math.floor(secs / 60);
-  if (mins < 60) return `${mins}m ago`;
+  if (mins < 60) return t('components.satelliteFires.time.minutesAgo', { count: String(mins) });
   const hrs = Math.floor(mins / 60);
-  return `${hrs}h ago`;
+  return t('components.satelliteFires.time.hoursAgo', { count: String(hrs) });
 }

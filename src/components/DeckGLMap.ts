@@ -2717,19 +2717,19 @@ export class DeckGLMap {
       ]
       : SITE_VARIANT === 'finance'
       ? [
-          { key: 'stockExchanges', label: 'Stock Exchanges', icon: '&#127963;' },
-          { key: 'financialCenters', label: 'Financial Centers', icon: '&#128176;' },
-          { key: 'centralBanks', label: 'Central Banks', icon: '&#127974;' },
-          { key: 'commodityHubs', label: 'Commodity Hubs', icon: '&#128230;' },
-          { key: 'gulfInvestments', label: 'GCC Investments', icon: '&#127760;' },
-          { key: 'cables', label: 'Undersea Cables', icon: '&#128268;' },
-          { key: 'pipelines', label: 'Pipelines', icon: '&#128738;' },
-          { key: 'outages', label: 'Internet Outages', icon: '&#128225;' },
-          { key: 'weather', label: 'Weather Alerts', icon: '&#9928;' },
-          { key: 'economic', label: 'Economic Centers', icon: '&#128176;' },
-          { key: 'waterways', label: 'Strategic Waterways', icon: '&#9875;' },
-          { key: 'natural', label: 'Natural Events', icon: '&#127755;' },
-          { key: 'cyberThreats', label: 'Cyber Threats', icon: '&#128737;' },
+          { key: 'stockExchanges', label: t('components.deckgl.layers.stockExchanges'), icon: '&#127963;' },
+          { key: 'financialCenters', label: t('components.deckgl.layers.financialCenters'), icon: '&#128176;' },
+          { key: 'centralBanks', label: t('components.deckgl.layers.centralBanks'), icon: '&#127974;' },
+          { key: 'commodityHubs', label: t('components.deckgl.layers.commodityHubs'), icon: '&#128230;' },
+          { key: 'gulfInvestments', label: t('components.deckgl.layers.gulfInvestments'), icon: '&#127760;' },
+          { key: 'cables', label: t('components.deckgl.layers.underseaCables'), icon: '&#128268;' },
+          { key: 'pipelines', label: t('components.deckgl.layers.pipelines'), icon: '&#128738;' },
+          { key: 'outages', label: t('components.deckgl.layers.internetOutages'), icon: '&#128225;' },
+          { key: 'weather', label: t('components.deckgl.layers.weatherAlerts'), icon: '&#9928;' },
+          { key: 'economic', label: t('components.deckgl.layers.economicCenters'), icon: '&#128176;' },
+          { key: 'waterways', label: t('components.deckgl.layers.strategicWaterways'), icon: '&#9875;' },
+          { key: 'natural', label: t('components.deckgl.layers.naturalEvents'), icon: '&#127755;' },
+          { key: 'cyberThreats', label: t('components.deckgl.layers.cyberThreats'), icon: '&#128737;' },
         ]
       : [
         { key: 'hotspots', label: t('components.deckgl.layers.intelHotspots'), icon: '&#127919;' },

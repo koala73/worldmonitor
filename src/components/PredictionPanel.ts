@@ -7,7 +7,7 @@ export class PredictionPanel extends Panel {
   constructor() {
     super({
       id: 'polymarket',
-      title: 'Prediction Markets',
+      title: t('panels.polymarket'),
       infoTooltip: `<strong>Prediction Markets</strong>
         Real-money forecasting markets:
         <ul>
@@ -46,13 +46,13 @@ export class PredictionPanel extends Panel {
         return `
       <div class="prediction-item">
         ${titleHtml}
-        ${volumeStr ? `<div class="prediction-volume">Vol: ${volumeStr}</div>` : ''}
+        ${volumeStr ? `<div class="prediction-volume">${t('components.predictions.vol')}: ${volumeStr}</div>` : ''}
         <div class="prediction-bar">
           <div class="prediction-yes" style="width: ${yesPercent}%">
-            <span class="prediction-label">Yes ${yesPercent}%</span>
+            <span class="prediction-label">${t('components.predictions.yes')} ${yesPercent}%</span>
           </div>
           <div class="prediction-no" style="width: ${noPercent}%">
-            <span class="prediction-label">No ${noPercent}%</span>
+            <span class="prediction-label">${t('components.predictions.no')} ${noPercent}%</span>
           </div>
         </div>
       </div>

@@ -19,7 +19,7 @@ export class GdeltIntelPanel extends Panel {
   constructor() {
     super({
       id: 'gdelt-intel',
-      title: 'Live Intelligence',
+      title: t('panels.gdeltIntel'),
       showCount: true,
       trackActivity: true,
       infoTooltip: `<strong>GDELT Intelligence</strong>
@@ -86,7 +86,7 @@ export class GdeltIntelPanel extends Panel {
 
   private renderArticles(articles: GdeltArticle[]): void {
     if (articles.length === 0) {
-      this.content.innerHTML = '<div class="empty-state">No recent articles for this topic</div>';
+      this.content.innerHTML = `<div class="empty-state">${t('components.gdelt.empty')}</div>`;
       return;
     }
 
