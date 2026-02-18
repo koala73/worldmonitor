@@ -1636,8 +1636,8 @@ export class App {
       });
     };
 
-    saveCurrentSnapshot();
-    this.snapshotIntervalId = setInterval(saveCurrentSnapshot, 15 * 60 * 1000);
+    void saveCurrentSnapshot().catch(() => {});
+    this.snapshotIntervalId = setInterval(() => void saveCurrentSnapshot().catch(() => {}), 15 * 60 * 1000);
   }
 
   private restoreSnapshot(snapshot: import('@/services/storage').DashboardSnapshot): void {
@@ -3152,9 +3152,11 @@ export class App {
           pendingItems = null;
         }
 
-        const baseline = await updateBaseline(`news:${category}`, items.length);
-        const deviation = calculateDeviation(items.length, baseline);
-        panel.setDeviation(deviation.zScore, deviation.percentChange, deviation.level);
+        try {
+          const baseline = await updateBaseline(`news:${category}`, items.length);
+          const deviation = calculateDeviation(items.length, baseline);
+          panel.setDeviation(deviation.zScore, deviation.percentChange, deviation.level);
+        } catch { /* baseline write failed — feed data already rendered, ignore */ }
       }
 
       this.statusPanel?.updateFeed(category.charAt(0).toUpperCase() + category.slice(1), {
@@ -3217,9 +3219,11 @@ export class App {
           const intel = intelResult[0].value;
           this.renderNewsForCategory('intel', intel);
           if (intelPanel) {
-            const baseline = await updateBaseline('news:intel', intel.length);
-            const deviation = calculateDeviation(intel.length, baseline);
-            intelPanel.setDeviation(deviation.zScore, deviation.percentChange, deviation.level);
+            try {
+              const baseline = await updateBaseline('news:intel', intel.length);
+              const deviation = calculateDeviation(intel.length, baseline);
+              intelPanel.setDeviation(deviation.zScore, deviation.percentChange, deviation.level);
+            } catch { /* baseline write failed — intel data already rendered, ignore */ }
           }
           this.statusPanel?.updateFeed('Intel', { status: 'ok', itemCount: intel.length });
           collectedNews.push(...intel);
