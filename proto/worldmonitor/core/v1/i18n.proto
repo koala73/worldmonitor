@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package worldmonitor.core.v1;
+
+import "buf/validate/validate.proto";
+
+// LocalizableString represents a string value with its associated language.
+// Used for API response strings that may have locale context. WorldMonitor receives
+// pre-localized strings from upstream APIs, so this is a simple value+language pair
+// rather than a full translation system.
+message LocalizableString {
+  // The string value in the specified language.
+  string value = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // BCP 47 language tag (e.g., "en", "ar", "fr").
+  string language = 2;
+}

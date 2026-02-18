@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package worldmonitor.core.v1;
+
+import "buf/validate/validate.proto";
+
+// HotspotID represents a unique identifier for a geographic hotspot.
+// Used for cross-domain references to hotspot entities.
+message HotspotID {
+  // Unique identifier of the hotspot.
+  string value = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.example = "hotspot_123456",
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 100
+  ];
+}
+
+// EventID represents a unique identifier for a cross-domain event.
+// Used for referencing events that span multiple monitoring domains.
+message EventID {
+  // Unique identifier of the event.
+  string value = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.example = "event_789012",
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 100
+  ];
+}
+
+// ProviderID represents a unique identifier for an upstream data provider.
+// Used for referencing the source of monitoring data across domains.
+message ProviderID {
+  // Unique identifier of the data provider.
+  string value = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.example = "provider_usgs",
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 100
+  ];
+}

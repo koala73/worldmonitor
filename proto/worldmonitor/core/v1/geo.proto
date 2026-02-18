@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package worldmonitor.core.v1;
+
+import "buf/validate/validate.proto";
+
+// GeoCoordinates represents a geographic location using WGS84 coordinates.
+message GeoCoordinates {
+  // Latitude in decimal degrees (-90 to 90).
+  double latitude = 1 [
+    (buf.validate.field).double.gte = -90,
+    (buf.validate.field).double.lte = 90
+  ];
+  // Longitude in decimal degrees (-180 to 180).
+  double longitude = 2 [
+    (buf.validate.field).double.gte = -180,
+    (buf.validate.field).double.lte = 180
+  ];
+}
+
+// BoundingBox represents a rectangular geographic area defined by its corners.
+// Used for spatial queries to filter results within a geographic region.
+message BoundingBox {
+  // The north-east corner of the bounding box.
+  GeoCoordinates north_east = 1;
+  // The south-west corner of the bounding box.
+  GeoCoordinates south_west = 2;
+}
