@@ -36,7 +36,7 @@ proto/worldmonitor/
 - [x] **Phase 2A: All Domain Protos** - Define all 17 domain proto packages with correct boundaries
 - [x] **Phase 2B: Server Runtime** - Router, CORS, error mapper, catch-all gateway, first handler
 - [x] **Phase 2E: Climate Migration** - Open-Meteo anomalies with enum-heavy responses (completed 2026-02-18)
-- [ ] **Phase 2F: Prediction Migration** - Polymarket prediction markets with query params and multi-strategy fetch (1/2 plans complete)
+- [x] **Phase 2F: Prediction Migration** - Polymarket prediction markets with query params and multi-strategy fetch (1/2 plans complete) (completed 2026-02-18)
 - [ ] **Phase 2G-2S: Domain Migrations** - Remaining domains, one sub-phase each
 
 ## Phase Details
@@ -101,7 +101,7 @@ Plans:
 **Depends on**: Phase 2E
 **Status**: In progress (1/2 plans complete)
 **Requirements:** [DOMAIN-02, SERVER-02]
-**Plans:** 1/2 plans complete
+**Plans:** 3/3 plans complete
 Plans:
 - [x] 2F-01-PLAN.md -- Prediction handler (Gamma API proxy with graceful degradation) + gateway wiring + sidecar rebuild
 - [ ] 2F-02-PLAN.md -- Prediction service module (multi-strategy fetch, tag aggregation, country markets) + consumer rewiring + yesPrice bug fixes + legacy deletion
@@ -151,6 +151,5 @@ Each migration step:
 | 2C. Seismology Migration | Complete | 2026-02-18 |
 | 2D. Wildfire Migration | Complete | 2026-02-18 |
 | 2E. Climate Migration | Complete | 2026-02-18 |
-| 2F. Prediction Migration | 1/2 plans | - |
-| 2G-2S. Domain Migrations (0/13) | Not started | - |
+| 2F. Prediction Migration | 3/3 | Complete   | 2026-02-18 | 2G-2S. Domain Migrations (0/13) | Not started | - |
 | 2T. Legacy Cleanup | Not started | - |

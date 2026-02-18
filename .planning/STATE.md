@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-18)
 
 **Core value:** Every API integration is defined in a .proto file with generated type-safe TypeScript clients and server handlers, eliminating hand-written fetch boilerplate.
-**Current focus:** Phase 2F: Prediction Migration (in progress)
+**Current focus:** Phase 2F: Prediction Migration (complete)
 
 ## Current Position
 
-Phase: 2F (Prediction Migration) -- in progress
-Current Plan: 01 of 02 complete
-Status: Prediction handler and gateway wiring complete; consumer wiring and legacy deletion remaining
-Last activity: 2026-02-18 -- Plan 2F-01 executed (execute-phase)
+Phase: 2F (Prediction Migration) -- COMPLETE
+Current Plan: 02 of 02 complete
+Status: All prediction domain migration complete; service module, consumer wiring, bug fixes, legacy deletion done
+Last activity: 2026-02-18 -- Plan 2F-02 executed (execute-phase)
 
-Progress: [████████████] ~65%
+Progress: [██████████████] ~70%
 
 ## Performance Metrics
 
@@ -31,6 +31,7 @@ Progress: [████████████] ~65%
 - Phase 2E Plan 01: Climate Handler (2 tasks, 2min, 2 files created/modified)
 - Phase 2E Plan 02: Climate Client Wiring (2 tasks, 3min, 9 files created/modified/deleted)
 - Phase 2F Plan 01: Prediction Handler (2 tasks, 2min, 2 files created/modified)
+- Phase 2F Plan 02: Prediction Consumer Wiring (2 tasks, 4min, 12 files created/modified/deleted)
 
 ## Accumulated Context
 
@@ -74,6 +75,9 @@ Progress: [████████████] ~65%
 - [2F-01]: Handler returns empty markets on ANY fetch failure -- Cloudflare JA3 blocking is expected, not an error
 - [2F-01]: yesPrice in 0-1 proto scale; service module (Plan 02) will handle 0-1 to 0-100 consumer conversion
 - [2F-01]: No error logging on Cloudflare failures to avoid noise in production logs
+- [2F-02]: Strategy 4 in polyFetch replaced Vercel edge proxy with PredictionServiceClient; proto 0-1 yesPrice mapped through outcomePrices for uniform parseMarketPrice pipeline
+- [2F-02]: getPolymarketStatus() dropped as confirmed dead code (exported but never imported)
+- [2F-02]: Production fallback (strategy 5) kept pointing to worldmonitor.app/api/polymarket for now as safety net
 
 ### Pending Todos
 
@@ -87,7 +91,7 @@ Progress: [████████████] ~65%
 ## Session Continuity
 
 Last session: 2026-02-18
-Stopped at: Completed 2F-01-PLAN.md
-Resume file: .planning/phases/2F-prediction-migration/2F-01-SUMMARY.md
+Stopped at: Completed 2F-02-PLAN.md (Phase 2F complete)
+Resume file: .planning/phases/2F-prediction-migration/2F-02-SUMMARY.md
 PR: #106 (draft) — https://github.com/koala73/worldmonitor/pull/106
-Next steps: Execute Plan 2F-02 (prediction consumer wiring, legacy deletion).
+Next steps: Phase 2F complete. Proceed to next domain migration phase.
