@@ -5,7 +5,8 @@ type: execute
 wave: 2
 depends_on: [2E-01]
 files_modified:
-  - src/services/climate.ts
+  - src/services/climate.ts (delete)
+  - src/services/climate/index.ts (create)
   - src/App.ts
   - src/components/ClimateAnomalyPanel.ts
   - src/components/DeckGLMap.ts
@@ -28,27 +29,27 @@ must_haves:
     - "ClimateAnomaly and AnomalySeverity types removed from src/types/index.ts"
     - "getSeverityColor dead code is dropped from the rewritten service module"
   artifacts:
-    - path: "src/services/climate.ts"
+    - path: "src/services/climate/index.ts"
       provides: "Climate service port/adapter with fetchClimateAnomalies, getSeverityIcon, formatDelta"
       exports: ["fetchClimateAnomalies", "getSeverityIcon", "formatDelta", "ClimateAnomaly", "ClimateFetchResult"]
     - path: "src/App.ts"
       provides: "Climate data loading using new service module"
       contains: "@/services/climate"
   key_links:
-    - from: "src/services/climate.ts"
+    - from: "src/services/climate/index.ts"
       to: "src/generated/client/worldmonitor/climate/v1/service_client.ts"
       via: "ClimateServiceClient.listClimateAnomalies"
       pattern: "ClimateServiceClient"
     - from: "src/App.ts"
-      to: "src/services/climate.ts"
+      to: "src/services/climate/index.ts"
       via: "import fetchClimateAnomalies"
       pattern: "@/services/climate"
     - from: "src/components/ClimateAnomalyPanel.ts"
-      to: "src/services/climate.ts"
+      to: "src/services/climate/index.ts"
       via: "import ClimateAnomaly type + getSeverityIcon + formatDelta"
       pattern: "@/services/climate"
     - from: "src/components/DeckGLMap.ts"
-      to: "src/services/climate.ts"
+      to: "src/services/climate/index.ts"
       via: "import ClimateAnomaly type for heatmap layer"
       pattern: "@/services/climate"
 ---
@@ -73,8 +74,8 @@ Output: All climate data flows through sebuf. Legacy endpoint deleted. Dead type
 @.planning/phases/2E-climate-migration/2E-01-SUMMARY.md
 @.planning/phases/2C-seismology-migration/2C-02-SUMMARY.md
 
-@src/services/climate.ts
-@src/services/earthquakes.ts
+@src/services/climate.ts (legacy, to be deleted and replaced with directory)
+@src/services/wildfires/index.ts (reference for directory pattern)
 @src/generated/client/worldmonitor/climate/v1/service_client.ts
 @src/App.ts (lines 30-36, 3688-3707)
 @src/components/ClimateAnomalyPanel.ts
@@ -90,7 +91,8 @@ Output: All climate data flows through sebuf. Legacy endpoint deleted. Dead type
 <task type="auto">
   <name>Task 1: Rewrite climate service module and rewire all consumers</name>
   <files>
-    src/services/climate.ts
+    src/services/climate.ts (delete)
+    src/services/climate/index.ts (create)
     src/App.ts
     src/components/ClimateAnomalyPanel.ts
     src/components/DeckGLMap.ts
@@ -99,9 +101,9 @@ Output: All climate data flows through sebuf. Legacy endpoint deleted. Dead type
     src/services/conflict-impact.ts
   </files>
   <action>
-**Step 1: Rewrite `src/services/climate.ts` as port/adapter.**
+**Step 1: Replace `src/services/climate.ts` with `src/services/climate/index.ts` directory module.**
 
-Replace the entire file. The new version uses ClimateServiceClient and maps proto types to the consumer-friendly legacy shape. This is a thin port/adapter like earthquakes.ts, NOT a directory-per-service module -- the business logic (baseline comparison, classification) lives entirely in the handler.
+Delete `src/services/climate.ts` and create `src/services/climate/index.ts`. Uses the directory-per-service pattern established by wildfires (`src/services/wildfires/index.ts`) for consistency — every domain gets its own directory under `src/services/`. Import paths (`@/services/climate`) resolve identically for both file and directory-with-index.
 
 ```typescript
 import {
@@ -285,7 +287,7 @@ Run `npx tsc --noEmit` to confirm zero errors.
 Run `npx tsc --noEmit` -- zero errors. Grep the codebase for `ClimateAnomaly.*from '@/types'` -- should have zero matches. Grep for `@/services/climate` -- should appear in App.ts, ClimateAnomalyPanel.ts, DeckGLMap.ts, MapContainer.ts, country-instability.ts, and conflict-impact.ts.
   </verify>
   <done>
-Climate service module rewritten at `src/services/climate.ts` as port/adapter using ClimateServiceClient. All 6 consumer files import ClimateAnomaly from `@/services/climate` instead of `@/types`. Proto enum and GeoCoordinates mapping handled internally by the service module. Severity icon and delta formatting helpers preserved. Dead `getSeverityColor` function dropped. Type check passes.
+Legacy `src/services/climate.ts` deleted. New climate service module at `src/services/climate/index.ts` as port/adapter using ClimateServiceClient (directory pattern matching wildfires). All 6 consumer files import ClimateAnomaly from `@/services/climate` instead of `@/types`. Proto enum and GeoCoordinates mapping handled internally by the service module. Severity icon and delta formatting helpers preserved. Dead `getSeverityColor` function dropped. Type check passes.
   </done>
 </task>
 
@@ -350,7 +352,7 @@ Legacy climate endpoint deleted. Dead `ClimateAnomaly` and `AnomalySeverity` typ
 </tasks>
 
 <verification>
-1. `src/services/climate.ts` exports `fetchClimateAnomalies`, `getSeverityIcon`, `formatDelta`, `ClimateAnomaly`, `ClimateFetchResult`
+1. `src/services/climate/index.ts` exports `fetchClimateAnomalies`, `getSeverityIcon`, `formatDelta`, `ClimateAnomaly`, `ClimateFetchResult` (old `src/services/climate.ts` deleted)
 2. `src/App.ts` imports `fetchClimateAnomalies` from `@/services/climate` (unchanged)
 3. `src/components/ClimateAnomalyPanel.ts` imports `ClimateAnomaly` from `@/services/climate` (not `@/types`)
 4. `src/components/DeckGLMap.ts` imports `ClimateAnomaly` from `@/services/climate` (not `@/types`)

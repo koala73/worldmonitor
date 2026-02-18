@@ -35,7 +35,7 @@ proto/worldmonitor/
 - [x] **Phase 1: Proto Foundation** - Buf toolchain, shared types, and code generation pipeline
 - [x] **Phase 2A: All Domain Protos** - Define all 17 domain proto packages with correct boundaries
 - [x] **Phase 2B: Server Runtime** - Router, CORS, error mapper, catch-all gateway, first handler
-- [ ] **Phase 2E: Climate Migration** - Open-Meteo anomalies with enum-heavy responses
+- [x] **Phase 2E: Climate Migration** - Open-Meteo anomalies with enum-heavy responses (completed 2026-02-18)
 - [ ] **Phase 2F-2S: Domain Migrations** - Remaining domains, one sub-phase each
 
 ## Phase Details
@@ -89,7 +89,7 @@ Plans:
 **Goal**: Migrate climate/Open-Meteo domain to sebuf -- implement handler with 15-zone monitoring, 30-day baseline comparison, severity/type classification, create service module with port/adapter pattern, rewire all consumers (panel, map heatmap, country instability), delete legacy endpoint
 **Depends on**: Phase 2D
 **Requirements:** [DOMAIN-01, SERVER-02]
-**Plans:** 1/2 plans complete
+**Plans:** 3/3 plans complete
 Plans:
 - [x] 2E-01-PLAN.md -- Climate handler + gateway wiring + sidecar rebuild
 - [ ] 2E-02-PLAN.md -- Climate service module + consumer rewiring + legacy deletion
@@ -138,6 +138,5 @@ Each migration step:
 | 2B. Server Runtime | Complete | 2026-02-18 |
 | 2C. Seismology Migration | Complete | 2026-02-18 |
 | 2D. Wildfire Migration | Complete | 2026-02-18 |
-| 2E. Climate Migration | In progress (1/2) | - |
-| 2F-2S. Domain Migrations (0/14) | Not started | - |
+| 2E. Climate Migration | 3/3 | Complete   | 2026-02-18 | 2F-2S. Domain Migrations (0/14) | Not started | - |
 | 2T. Legacy Cleanup | Not started | - |
