@@ -79,7 +79,7 @@ Plans:
 **Depends on**: Phase 2C
 **Status**: In progress
 **Requirements:** [DOMAIN-01, SERVER-02]
-**Plans:** 1/2 plans complete
+**Plans:** 3/3 plans complete
 Plans:
 - [x] 2D-01-PLAN.md -- Proto enhancement + wildfire handler + gateway wiring + sidecar rebuild
 - [ ] 2D-02-PLAN.md -- Wildfires service module + consumer rewiring + legacy deletion
@@ -127,6 +127,5 @@ Each migration step:
 | 2A. All Domain Protos | Complete | 2026-02-18 |
 | 2B. Server Runtime | Complete | 2026-02-18 |
 | 2C. Seismology Migration | Complete | 2026-02-18 |
-| 2D. Wildfire Migration | In progress (1/2) | - |
-| 2E-2S. Domain Migrations (0/15) | Not started | - |
+| 2D. Wildfire Migration | 3/3 | Complete   | 2026-02-18 | 2E-2S. Domain Migrations (0/15) | Not started | - |
 | 2T. Legacy Cleanup | Not started | - |

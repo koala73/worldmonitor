@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-18)
 
 **Core value:** Every API integration is defined in a .proto file with generated type-safe TypeScript clients and server handlers, eliminating hand-written fetch boilerplate.
-**Current focus:** Phase 2D: Wildfire Migration
+**Current focus:** Phase 2D: Wildfire Migration (COMPLETE)
 
 ## Current Position
 
-Phase: 2D (Wildfire Migration)
-Current Plan: 01 of 02 complete
-Status: Plan 2D-01 complete -- wildfire handler implemented, gateway wired, sidecar rebuilt
-Last activity: 2026-02-18 -- Plan 2D-01 executed (execute-phase)
+Phase: 2D (Wildfire Migration) -- COMPLETE
+Current Plan: 02 of 02 complete
+Status: Phase 2D complete -- wildfire domain fully migrated to sebuf
+Last activity: 2026-02-18 -- Plan 2D-02 executed (execute-phase)
 
-Progress: [████████░░] ~48%
+Progress: [█████████░] ~52%
 
 ## Performance Metrics
 
@@ -27,6 +27,7 @@ Progress: [████████░░] ~48%
 - Phase 2C Plan 01: INT64_ENCODING_NUMBER (1 task, 14min, 81 files modified)
 - Phase 2C Plan 02: Seismology Client Wiring (2 tasks, 9min, 10 files modified/deleted)
 - Phase 2D Plan 01: Wildfire Handler (2 tasks, 2min, 7 files created/modified)
+- Phase 2D Plan 02: Wildfire Consumer Wiring (2 tasks, 3min, 6 files created/modified/deleted)
 
 ## Accumulated Context
 
@@ -58,6 +59,9 @@ Progress: [████████░░] ~48%
 - [2D-01]: Confidence enum mapped as string union ('FIRE_CONFIDENCE_HIGH' etc.) matching generated FireConfidence type
 - [2D-01]: Fire detection ID uses composite key (lat-lon-date-time) for uniqueness across regions
 - [2D-01]: Graceful degradation returns empty list (no error) when API key is missing
+- [2D-02]: toMapFires adapter preserves map layer shape without modifying 3 map components
+- [2D-02]: Empty response heuristic: zero fireDetections treated as skipped matching legacy behavior
+- [2D-02]: confidenceToNumber maps FIRE_CONFIDENCE_HIGH->95, NOMINAL->50, LOW->20 for map thresholds
 
 ### Pending Todos
 
@@ -71,7 +75,7 @@ Progress: [████████░░] ~48%
 ## Session Continuity
 
 Last session: 2026-02-18
-Stopped at: Completed 2D-01-PLAN.md
-Resume file: .planning/phases/2D-wildfire-migration/2D-01-SUMMARY.md
+Stopped at: Completed 2D-02-PLAN.md (Phase 2D complete)
+Resume file: .planning/phases/2D-wildfire-migration/2D-02-SUMMARY.md
 PR: #106 (draft) — https://github.com/koala73/worldmonitor/pull/106
-Next steps: Execute 2D-02-PLAN.md (service module, consumer rewiring, legacy deletion)
+Next steps: Plan and execute next domain migration phase
