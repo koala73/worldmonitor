@@ -65,10 +65,11 @@ Plans:
 - [x] 02-02-PLAN.md -- Vercel catch-all gateway + Vite dev plugin + tsconfig.api.json
 - [x] 02-03-PLAN.md -- Gap closure: esbuild compilation of sebuf gateway for Tauri sidecar (SERVER-05)
 
-### Phase 2C: Seismology Migration
+### Phase 2C: Seismology Migration (COMPLETE)
 **Goal**: First end-to-end domain migration -- enable INT64_ENCODING_NUMBER project-wide, wire frontend to generated SeismologyServiceClient via port/adapter pattern, adapt components to proto types, delete legacy endpoint
 **Depends on**: Phase 2B
-**Plans:** 2 plans
+**Status**: Complete (2026-02-18)
+**Plans:** 2/2 plans complete
 Plans:
 - [x] 2C-01-PLAN.md -- INT64_ENCODING_NUMBER prerequisite: annotate all proto time fields, regenerate, fix handler
 - [x] 2C-02-PLAN.md -- Client switchover: rewrite adapter, adapt components, delete legacy endpoint + proxy
