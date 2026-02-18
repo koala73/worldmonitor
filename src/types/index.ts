@@ -295,20 +295,6 @@ export interface UnhcrSummary {
   topFlows: DisplacementFlow[];
 }
 
-// Climate Anomaly Data (Open-Meteo / ERA5)
-export type AnomalySeverity = 'normal' | 'moderate' | 'extreme';
-
-export interface ClimateAnomaly {
-  zone: string;
-  lat: number;
-  lon: number;
-  tempDelta: number;
-  precipDelta: number;
-  severity: AnomalySeverity;
-  type: 'warm' | 'cold' | 'wet' | 'dry' | 'mixed';
-  period: string;
-}
-
 // WorldPop Population Exposure
 export interface CountryPopulation {
   code: string;
