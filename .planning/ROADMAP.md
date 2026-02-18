@@ -58,10 +58,11 @@ proto/worldmonitor/
 ### Phase 2B: Server Runtime
 **Goal**: Shared server infrastructure (router, CORS, error mapper) and catch-all gateway, validated with first handler (seismology)
 **Depends on**: Phase 2A
-**Plans:** 2 plans
+**Plans:** 3 plans
 Plans:
 - [x] 02-01-PLAN.md -- Shared server infra (router, CORS, error mapper) + seismology handler
-- [ ] 02-02-PLAN.md -- Vercel catch-all gateway + Vite dev plugin + tsconfig.api.json
+- [x] 02-02-PLAN.md -- Vercel catch-all gateway + Vite dev plugin + tsconfig.api.json
+- [ ] 02-03-PLAN.md -- Gap closure: esbuild compilation of sebuf gateway for Tauri sidecar (SERVER-05)
 **Success Criteria**:
   1. `api/server/router.ts` matches routes from RouteDescriptor[]
   2. `api/server/cors.ts` provides CORS middleware adapted from `api/_cors.js`
@@ -110,6 +111,6 @@ Each migration step:
 |-------|--------|-----------|
 | 1. Proto Foundation | Complete | 2026-02-18 |
 | 2A. All Domain Protos | Complete | 2026-02-18 |
-| 2B. Server Runtime | In Progress (1/2 plans) | - |
+| 2B. Server Runtime | In Progress (2/3 plans) | - |
 | 2C-2S. Domain Migrations (0/17) | Not started | - |
 | 2T. Legacy Cleanup | Not started | - |
