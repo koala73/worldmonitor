@@ -9,18 +9,19 @@ See: .planning/PROJECT.md (updated 2026-02-18)
 
 ## Current Position
 
-Phase: 2A complete (All Domain Protos)
-Next: Phase 2B (Server Runtime)
-Status: Ready for Phase 2B
-Last activity: 2026-02-18 -- Completed Phase 2A (all 17 domain proto packages)
+Phase: 2B in progress (Server Runtime)
+Current Plan: 02 of 02
+Status: Plan 01 complete, Plan 02 next
+Last activity: 2026-02-18 -- Completed Plan 01 (server infrastructure + seismology handler)
 
-Progress: [████░░░░░░] ~25%
+Progress: [█████░░░░░] ~30%
 
 ## Performance Metrics
 
 **Completed Phases:**
 - Phase 1: Proto Foundation (2 plans, 7min total)
 - Phase 2A: All Domain Protos (1 session)
+- Phase 2B Plan 01: Server Infrastructure (2 tasks, 2min, 4 files created)
 
 ## Accumulated Context
 
@@ -34,11 +35,13 @@ Progress: [████░░░░░░] ~25%
 - [2A]: No `oneof success/error` in responses — throw errors in handler, map with `onError`
 - [2A]: All RPCs use POST, kebab-case paths under `/api/{domain}/v1/`
 - [2A]: Test domain protos removed (served their Phase 1 purpose)
+- [2B-01]: Defined RouteDescriptor locally in router.ts instead of importing from a generated file
+- [2B-01]: Hardcoded CORS methods to 'POST, OPTIONS' since all sebuf routes are POST-only
+- [2B-01]: Network/fetch errors detected via TypeError + message check for 502 upstream-down mapping
 
 ### Pending Todos
 
-- Phase 2B: Build server runtime (router.ts, cors.ts, error-mapper.ts, catch-all gateway)
-- Phase 2B: Implement seismology handler as first end-to-end proof
+- Phase 2B Plan 02: Build catch-all gateway (api/[[...path]].ts) wiring router + CORS + handlers
 
 ### Blockers/Concerns
 
@@ -48,7 +51,7 @@ Progress: [████░░░░░░] ~25%
 ## Session Continuity
 
 Last session: 2026-02-18
-Stopped at: Phase 2A complete, ready for Phase 2B (Server Runtime)
+Stopped at: Completed 02-01-PLAN.md (server infrastructure + seismology handler)
 Resume file: .planning/phases/02-server-runtime/02-CONTEXT.md
 PR: #106 (draft) — https://github.com/koala73/worldmonitor/pull/106
-Next steps: /gsd:plan-phase for Phase 2B, then execute
+Next steps: Execute 02-02-PLAN.md (catch-all gateway)

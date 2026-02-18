@@ -45,12 +45,12 @@ Requirements for full sebuf integration. Each maps to roadmap phases.
 
 ### Server Implementation
 
-- [ ] **SERVER-01**: TypeScript server handler interfaces generated for all 9 domains via protoc-gen-ts-server (sebuf's own TS server codegen)
-- [ ] **SERVER-02**: Handler implementations for each domain that proxy requests to upstream external APIs and return proto-typed responses
+- [x] **SERVER-01**: TypeScript server handler interfaces generated for all 9 domains via protoc-gen-ts-server (sebuf's own TS server codegen)
+- [x] **SERVER-02**: Handler implementations for each domain that proxy requests to upstream external APIs and return proto-typed responses
 - [ ] **SERVER-03**: Vite dev server plugin that mounts generated RouteDescriptor[] for local development
 - [ ] **SERVER-04**: Vercel catch-all edge function that mounts generated RouteDescriptor[] for production deployment
 - [ ] **SERVER-05**: Tauri sidecar adapter that mounts generated RouteDescriptor[] for desktop deployment
-- [ ] **SERVER-06**: Server handlers preserve existing CORS, rate limiting, and caching patterns from current api/*.js edge functions
+- [x] **SERVER-06**: Server handlers preserve existing CORS, rate limiting, and caching patterns from current api/*.js edge functions
 
 ### Cleanup & Consolidation
 
@@ -101,12 +101,12 @@ Requirements for full sebuf integration. Each maps to roadmap phases.
 | CLIENT-01 | Phase 3 | Pending |
 | CLIENT-02 | Phase 3 | Pending |
 | CLIENT-04 | Phase 3 | Pending |
-| SERVER-01 | Phase 4 | Pending |
-| SERVER-02 | Phase 4 | Pending |
+| SERVER-01 | Phase 4 | Complete |
+| SERVER-02 | Phase 4 | Complete |
 | SERVER-03 | Phase 4 | Pending |
 | SERVER-04 | Phase 4 | Pending |
 | SERVER-05 | Phase 4 | Pending |
-| SERVER-06 | Phase 4 | Pending |
+| SERVER-06 | Phase 4 | Complete |
 | DOMAIN-02 | Phase 5 | Pending |
 | DOMAIN-03 | Phase 6 | Pending |
 | DOMAIN-04 | Phase 6 | Pending |

@@ -60,7 +60,7 @@ proto/worldmonitor/
 **Depends on**: Phase 2A
 **Plans:** 2 plans
 Plans:
-- [ ] 02-01-PLAN.md -- Shared server infra (router, CORS, error mapper) + seismology handler
+- [x] 02-01-PLAN.md -- Shared server infra (router, CORS, error mapper) + seismology handler
 - [ ] 02-02-PLAN.md -- Vercel catch-all gateway + Vite dev plugin + tsconfig.api.json
 **Success Criteria**:
   1. `api/server/router.ts` matches routes from RouteDescriptor[]
@@ -110,6 +110,6 @@ Each migration step:
 |-------|--------|-----------|
 | 1. Proto Foundation | Complete | 2026-02-18 |
 | 2A. All Domain Protos | Complete | 2026-02-18 |
-| 2B. Server Runtime | Not started | - |
+| 2B. Server Runtime | In Progress (1/2 plans) | - |
 | 2C-2S. Domain Migrations (0/17) | Not started | - |
 | 2T. Legacy Cleanup | Not started | - |
