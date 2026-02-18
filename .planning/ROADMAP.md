@@ -151,5 +151,5 @@ Each migration step:
 | 2C. Seismology Migration | Complete | 2026-02-18 |
 | 2D. Wildfire Migration | Complete | 2026-02-18 |
 | 2E. Climate Migration | Complete | 2026-02-18 |
-| 2F. Prediction Migration | 3/3 | Complete   | 2026-02-18 | 2G-2S. Domain Migrations (0/13) | Not started | - |
+| 2F. Prediction Migration | 3/3 | Complete    | 2026-02-18 | 2G-2S. Domain Migrations (0/13) | Not started | - |
 | 2T. Legacy Cleanup | Not started | - |
