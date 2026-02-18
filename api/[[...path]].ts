@@ -14,6 +14,8 @@ import { createSeismologyServiceRoutes } from '../src/generated/server/worldmoni
 import { seismologyHandler } from './server/worldmonitor/seismology/v1/handler';
 import { createWildfireServiceRoutes } from '../src/generated/server/worldmonitor/wildfire/v1/service_server';
 import { wildfireHandler } from './server/worldmonitor/wildfire/v1/handler';
+import { createClimateServiceRoutes } from '../src/generated/server/worldmonitor/climate/v1/service_server';
+import { climateHandler } from './server/worldmonitor/climate/v1/handler';
 
 import type { ServerOptions } from '../src/generated/server/worldmonitor/seismology/v1/service_server';
 
@@ -22,6 +24,7 @@ const serverOptions: ServerOptions = { onError: mapErrorToResponse };
 const allRoutes = [
   ...createSeismologyServiceRoutes(seismologyHandler, serverOptions),
   ...createWildfireServiceRoutes(wildfireHandler, serverOptions),
+  ...createClimateServiceRoutes(climateHandler, serverOptions),
 ];
 
 const router = createRouter(allRoutes);
