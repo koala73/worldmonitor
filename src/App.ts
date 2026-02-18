@@ -3621,13 +3621,13 @@ export class App {
           if (surgeAlerts.length > 0) {
             const surgeSignals = surgeAlerts.map(surgeAlertToSignal);
             addToSignalHistory(surgeSignals);
-            this.signalModal?.show(surgeSignals);
+            if (this.findingsBadge?.isEnabled()) this.signalModal?.show(surgeSignals);
           }
           const foreignAlerts = detectForeignMilitaryPresence(flightData.flights);
           if (foreignAlerts.length > 0) {
             const foreignSignals = foreignAlerts.map(foreignPresenceToSignal);
             addToSignalHistory(foreignSignals);
-            this.signalModal?.show(foreignSignals);
+            if (this.findingsBadge?.isEnabled()) this.signalModal?.show(foreignSignals);
           }
         }
       } catch (error) {
@@ -3991,13 +3991,13 @@ export class App {
         if (surgeAlerts.length > 0) {
           const surgeSignals = surgeAlerts.map(surgeAlertToSignal);
           addToSignalHistory(surgeSignals);
-          this.signalModal?.show(surgeSignals);
+          if (this.findingsBadge?.isEnabled()) this.signalModal?.show(surgeSignals);
         }
         const foreignAlerts = detectForeignMilitaryPresence(flightData.flights);
         if (foreignAlerts.length > 0) {
           const foreignSignals = foreignAlerts.map(foreignPresenceToSignal);
           addToSignalHistory(foreignSignals);
-          this.signalModal?.show(foreignSignals);
+          if (this.findingsBadge?.isEnabled()) this.signalModal?.show(foreignSignals);
         }
       }
 
@@ -4143,7 +4143,7 @@ export class App {
       const allSignals = [...signals, ...geoSignals, ...keywordSpikeSignals];
       if (allSignals.length > 0) {
         addToSignalHistory(allSignals);
-        this.signalModal?.show(allSignals);
+        if (this.findingsBadge?.isEnabled()) this.signalModal?.show(allSignals);
       }
     } catch (error) {
       console.error('[App] Correlation analysis failed:', error);
