@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-18)
 
 **Core value:** Every API integration is defined in a .proto file with generated type-safe TypeScript clients and server handlers, eliminating hand-written fetch boilerplate.
-**Current focus:** Phase 2E: Climate Migration (complete)
+**Current focus:** Phase 2F: Prediction Migration (in progress)
 
 ## Current Position
 
-Phase: 2E (Climate Migration) -- complete
-Current Plan: 02 of 02 complete
-Status: Climate domain fully migrated to sebuf -- handler, client wiring, legacy cleanup all done
-Last activity: 2026-02-18 -- Plan 2E-02 executed (execute-phase)
+Phase: 2F (Prediction Migration) -- in progress
+Current Plan: 01 of 02 complete
+Status: Prediction handler and gateway wiring complete; consumer wiring and legacy deletion remaining
+Last activity: 2026-02-18 -- Plan 2F-01 executed (execute-phase)
 
-Progress: [██████████] ~60%
+Progress: [████████████] ~65%
 
 ## Performance Metrics
 
@@ -30,6 +30,7 @@ Progress: [██████████] ~60%
 - Phase 2D Plan 02: Wildfire Consumer Wiring (2 tasks, 3min, 6 files created/modified/deleted)
 - Phase 2E Plan 01: Climate Handler (2 tasks, 2min, 2 files created/modified)
 - Phase 2E Plan 02: Climate Client Wiring (2 tasks, 3min, 9 files created/modified/deleted)
+- Phase 2F Plan 01: Prediction Handler (2 tasks, 2min, 2 files created/modified)
 
 ## Accumulated Context
 
@@ -70,6 +71,9 @@ Progress: [██████████] ~60%
 - [2E-02]: Proto enum mapping (ANOMALY_SEVERITY_EXTREME -> extreme) keeps consumer code unchanged
 - [2E-02]: getSeverityColor dropped as dead code; only getSeverityIcon and formatDelta preserved
 - [2E-02]: minSeverity defaults to ANOMALY_SEVERITY_UNSPECIFIED to return all anomalies
+- [2F-01]: Handler returns empty markets on ANY fetch failure -- Cloudflare JA3 blocking is expected, not an error
+- [2F-01]: yesPrice in 0-1 proto scale; service module (Plan 02) will handle 0-1 to 0-100 consumer conversion
+- [2F-01]: No error logging on Cloudflare failures to avoid noise in production logs
 
 ### Pending Todos
 
@@ -83,7 +87,7 @@ Progress: [██████████] ~60%
 ## Session Continuity
 
 Last session: 2026-02-18
-Stopped at: Completed 2E-02-PLAN.md
-Resume file: .planning/phases/2E-climate-migration/2E-02-SUMMARY.md
+Stopped at: Completed 2F-01-PLAN.md
+Resume file: .planning/phases/2F-prediction-migration/2F-01-SUMMARY.md
 PR: #106 (draft) — https://github.com/koala73/worldmonitor/pull/106
-Next steps: Phase 2E complete. Next domain migration phase.
+Next steps: Execute Plan 2F-02 (prediction consumer wiring, legacy deletion).
