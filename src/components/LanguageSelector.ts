@@ -1,4 +1,4 @@
-import { LANGUAGES, changeLanguage, getCurrentLanguage } from '../services/i18n';
+import { ENABLED_LANGUAGES, changeLanguage, getCurrentLanguage } from '../services/i18n';
 
 export class LanguageSelector {
     private element: HTMLElement;
@@ -31,14 +31,15 @@ export class LanguageSelector {
             nl: 'nl',
             sv: 'se',
             ru: 'ru',
-            ja: 'jp'
+            ja: 'jp',
+            he: 'il'
         };
         const countryCode = map[langCode] || langCode;
         return `https://flagcdn.com/24x18/${countryCode}.png`;
     }
 
     private render(): void {
-        const currentLangObj = LANGUAGES.find(l => l.code === this.currentLang) || LANGUAGES[0];
+        const currentLangObj = ENABLED_LANGUAGES.find(l => l.code === this.currentLang) || ENABLED_LANGUAGES[0];
 
         this.element.innerHTML = `
       <button class="lang-selector-btn" aria-label="Select Language">
@@ -47,7 +48,7 @@ export class LanguageSelector {
         <span class="lang-arrow">▼</span>
       </button>
       <div class="lang-dropdown hidden">
-        ${LANGUAGES.map(lang => `
+        ${ENABLED_LANGUAGES.map(lang => `
           <div class="lang-option ${lang.code === this.currentLang ? 'active' : ''}" data-code="${lang.code}">
             <img src="${this.getFlagUrl(lang.code)}" alt="${lang.label}" class="lang-flag-icon" />
             <span class="lang-name">${lang.label}</span>

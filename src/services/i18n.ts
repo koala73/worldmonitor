@@ -1,7 +1,7 @@
 import i18next from 'i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
 
-const SUPPORTED_LANGUAGES = ['en', 'fr', 'de', 'es', 'it', 'pl', 'pt', 'nl', 'sv', 'ru', 'ar', 'zh', 'ja'] as const;
+const SUPPORTED_LANGUAGES = ['en', 'fr', 'de', 'es', 'it', 'pl', 'pt', 'nl', 'sv', 'ru', 'ar', 'zh', 'ja', 'he'] as const;
 type SupportedLanguage = typeof SUPPORTED_LANGUAGES[number];
 type TranslationDictionary = Record<string, unknown>;
 
@@ -22,9 +22,10 @@ const LOCALE_LOADERS: Record<SupportedLanguage, () => Promise<TranslationDiction
   ar: async () => (await import('../locales/ar.json')).default as TranslationDictionary,
   zh: async () => (await import('../locales/zh.json')).default as TranslationDictionary,
   ja: async () => (await import('../locales/ja.json')).default as TranslationDictionary,
+  he: async () => (await import('../locales/he.json')).default as TranslationDictionary,
 };
 
-const RTL_LANGUAGES = new Set(['ar']);
+const RTL_LANGUAGES = new Set(['ar', 'he']);
 
 function normalizeLanguage(lng: string): SupportedLanguage {
   const base = (lng || 'en').split('-')[0]?.toLowerCase() || 'en';
@@ -128,6 +129,7 @@ export function getLocale(): string {
 export const LANGUAGES = [
   { code: 'en', label: 'English', flag: '🇬🇧' },
   { code: 'ar', label: 'العربية', flag: '🇸🇦' },
+  { code: 'he', label: 'עברית', flag: '🇮🇱' },
   { code: 'zh', label: '中文', flag: '🇨🇳' },
   { code: 'fr', label: 'Français', flag: '🇫🇷' },
   { code: 'de', label: 'Deutsch', flag: '🇩🇪' },
@@ -140,3 +142,12 @@ export const LANGUAGES = [
   { code: 'ru', label: 'Русский', flag: '🇷🇺' },
   { code: 'ja', label: '日本語', flag: '🇯🇵' },
 ];
+
+// Env-configurable language filter: only these appear in the UI dropdown.
+// Default: English, Russian, Arabic if not set.
+const _enabledCodes = (import.meta.env.VITE_ENABLED_LANGUAGES as string || 'en,ru,ar')
+  .split(',')
+  .map(c => c.trim().toLowerCase())
+  .filter(c => SUPPORTED_LANGUAGE_SET.has(c as SupportedLanguage));
+
+export const ENABLED_LANGUAGES = LANGUAGES.filter(l => _enabledCodes.includes(l.code));
