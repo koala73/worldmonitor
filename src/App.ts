@@ -19,7 +19,7 @@ import { clusterNewsHybrid } from '@/services/clustering';
 import { ingestProtests, ingestFlights, ingestVessels, ingestEarthquakes, detectGeoConvergence, geoConvergenceToSignal } from '@/services/geo-convergence';
 import { signalAggregator } from '@/services/signal-aggregator';
 import { updateAndCheck } from '@/services/temporal-baseline';
-import { fetchAllFires, flattenFires, computeRegionStats } from '@/services/firms-satellite';
+import { fetchAllFires, flattenFires, computeRegionStats, toMapFires } from '@/services/wildfires';
 import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
 import { analyzeFlightsForSurge, surgeAlertToSignal, detectForeignMilitaryPresence, foreignPresenceToSignal, type TheaterPostureSummary } from '@/services/military-surge';
 import { fetchCachedTheaterPosture } from '@/services/cached-theater-posture';
@@ -4167,16 +4167,16 @@ export class App {
 
         // Feed signal aggregator
         signalAggregator.ingestSatelliteFires(flat.map(f => ({
-          lat: f.lat,
-          lon: f.lon,
+          lat: f.location?.latitude ?? 0,
+          lon: f.location?.longitude ?? 0,
           brightness: f.brightness,
           frp: f.frp,
           region: f.region,
-          acq_date: f.acq_date,
+          acq_date: new Date(f.detectedAt).toISOString().slice(0, 10),
         })));
 
         // Feed map layer
-        this.map?.setFires(flat);
+        this.map?.setFires(toMapFires(flat));
 
         // Feed panel
         (this.panels['satellite-fires'] as SatelliteFiresPanel)?.update(stats, totalCount);

@@ -1,5 +1,5 @@
 import { Panel } from './Panel';
-import type { FireRegionStats } from '@/services/firms-satellite';
+import type { FireRegionStats } from '@/services/wildfires';
 import { t } from '@/services/i18n';
 
 export class SatelliteFiresPanel extends Panel {
