@@ -50,6 +50,7 @@ Requirements for full sebuf integration. Each maps to roadmap phases.
 - [x] **SERVER-03**: Vite dev server plugin that mounts generated RouteDescriptor[] for local development
 - [x] **SERVER-04**: Vercel catch-all edge function that mounts generated RouteDescriptor[] for production deployment
 - [x] **SERVER-05**: Tauri sidecar adapter that mounts generated RouteDescriptor[] for desktop deployment
+  (closed via gap plan 02-03: esbuild compiles api/[[...path]].ts to .js bundle for sidecar discovery)
 - [x] **SERVER-06**: Server handlers preserve existing CORS, rate limiting, and caching patterns from current api/*.js edge functions
 
 ### Cleanup & Consolidation
