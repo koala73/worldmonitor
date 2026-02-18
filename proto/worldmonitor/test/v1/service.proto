@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package worldmonitor.test.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/test/v1/get_test_items.proto";
+
+// TestService provides APIs for the test domain, used to validate the end-to-end
+// code generation pipeline. This service will be replaced by real domain services
+// in Phase 3+.
+service TestService {
+  option (sebuf.http.service_config) = {base_path: "/api/test/v1"};
+
+  // GetTestItems retrieves a paginated list of test items filtered by time range.
+  // Validates that core type imports (TimeRange, Pagination) flow through code generation.
+  rpc GetTestItems(GetTestItemsRequest) returns (GetTestItemsResponse) {
+    option (sebuf.http.config) = {path: "/get-test-items"};
+  }
+}

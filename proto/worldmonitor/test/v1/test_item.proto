@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package worldmonitor.test.v1;
+
+import "buf/validate/validate.proto";
+import "worldmonitor/core/v1/geo.proto";
+
+// TestItem represents a test domain entity used to validate the code generation pipeline.
+// This message exercises core type imports and protovalidate constraints.
+message TestItem {
+  // Unique identifier for the test item.
+  string id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 100,
+    (buf.validate.field).string.example = "test_123"
+  ];
+  // Human-readable name of the test item.
+  string name = 2 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.example = "Test Item"
+  ];
+  // Optional description providing additional details about the test item.
+  string description = 3;
+  // Geographic location of the test item, proving core GeoCoordinates import works.
+  worldmonitor.core.v1.GeoCoordinates location = 4;
+  // Timestamp when the test item was created, as Unix epoch milliseconds.
+  int64 created_at = 5;
+}

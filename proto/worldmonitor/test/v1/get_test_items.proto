@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package worldmonitor.test.v1;
+
+import "buf/validate/validate.proto";
+import "worldmonitor/core/v1/pagination.proto";
+import "worldmonitor/core/v1/time.proto";
+import "worldmonitor/test/v1/test_item.proto";
+
+// GetTestItemsRequest specifies filters and pagination for retrieving test items.
+message GetTestItemsRequest {
+  // Time range filter to restrict results to a specific period, proving TimeRange import works.
+  worldmonitor.core.v1.TimeRange time_range = 1;
+  // Pagination parameters for cursor-based page navigation, proving PaginationRequest import works.
+  worldmonitor.core.v1.PaginationRequest pagination = 2;
+}
+
+// GetTestItemsError represents an error that occurred while retrieving test items.
+message GetTestItemsError {
+  // Human-readable error message describing what went wrong.
+  string message = 1 [
+    (buf.validate.field).required = true
+  ];
+}
+
+// GetTestItemsResponse wraps the result of a GetTestItems call as either success or error.
+message GetTestItemsResponse {
+  // The result of the GetTestItems operation.
+  oneof response {
+    // Successful response containing test items and pagination metadata.
+    GetTestItemsSuccess success = 1;
+    // Error response with details about the failure.
+    GetTestItemsError error = 2;
+  }
+}
+
+// GetTestItemsSuccess contains the list of test items and pagination metadata on success.
+message GetTestItemsSuccess {
+  // The list of test items matching the request filters.
+  repeated TestItem items = 1;
+  // Pagination metadata for fetching subsequent pages, proving PaginationResponse import works.
+  worldmonitor.core.v1.PaginationResponse pagination = 2;
+}
