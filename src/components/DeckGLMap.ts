@@ -29,7 +29,6 @@ import type {
   NaturalEvent,
   UcdpGeoEvent,
   DisplacementFlow,
-  ClimateAnomaly,
   MapProtestCluster,
   MapTechHQCluster,
   MapTechEventCluster,
@@ -37,6 +36,7 @@ import type {
   CyberThreat,
 } from '@/types';
 import type { Earthquake } from '@/services/earthquakes';
+import type { ClimateAnomaly } from '@/services/climate';
 import { ArcLayer } from '@deck.gl/layers';
 import { HeatmapLayer } from '@deck.gl/aggregation-layers';
 import type { WeatherAlert } from '@/services/weather';

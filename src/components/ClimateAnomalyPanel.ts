@@ -1,7 +1,6 @@
 import { Panel } from './Panel';
 import { escapeHtml } from '@/utils/sanitize';
-import type { ClimateAnomaly } from '@/types';
-import { getSeverityIcon, formatDelta } from '@/services/climate';
+import { type ClimateAnomaly, getSeverityIcon, formatDelta } from '@/services/climate';
 import { t } from '@/services/i18n';
 
 export class ClimateAnomalyPanel extends Panel {

@@ -25,10 +25,10 @@ import type {
   NaturalEvent,
   UcdpGeoEvent,
   DisplacementFlow,
-  ClimateAnomaly,
   CyberThreat,
 } from '@/types';
 import type { Earthquake } from '@/services/earthquakes';
+import type { ClimateAnomaly } from '@/services/climate';
 import type { WeatherAlert } from '@/services/weather';
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
