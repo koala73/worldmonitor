@@ -20,3 +20,6 @@ ideas/
 test-results/
 src-tauri/sidecar/node/*
 !src-tauri/sidecar/node/.gitkeep
+
+# Compiled sebuf gateway bundle (built by scripts/build-sidecar-sebuf.mjs)
+api/[[][[].*.js
