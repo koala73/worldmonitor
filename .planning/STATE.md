@@ -10,28 +10,28 @@ See: .planning/PROJECT.md (updated 2026-02-18)
 ## Current Position
 
 Phase: 1 of 8 (Proto Foundation)
-Plan: 0 of TBD in current phase
-Status: Ready to plan
-Last activity: 2026-02-18 -- Roadmap created with 8 phases covering 34 requirements
+Plan: 1 of 2 in current phase
+Status: Executing
+Last activity: 2026-02-18 -- Completed 01-01 (Buf toolchain + core proto types)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█░░░░░░░░░] ~6%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 0
-- Average duration: -
-- Total execution time: 0 hours
+- Total plans completed: 1
+- Average duration: 4min
+- Total execution time: 0.07 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| 01-proto-foundation | 1 | 4min | 4min |
 
 **Recent Trend:**
-- Last 5 plans: none
-- Trend: N/A
+- Last 5 plans: 01-01 (4min)
+- Trend: N/A (single data point)
 
 *Updated after each plan completion*
 
@@ -45,6 +45,10 @@ Recent decisions affecting current work:
 - [Roadmap]: sebuf TS server codegen (protoc-gen-ts-server) confirmed available -- all server handlers use TS server codegen, not Go
 - [Roadmap]: Environmental domain chosen as first migration target -- simplest domain, proves full pipeline cheaply
 - [Roadmap]: Markets domain tackled before batch migration -- hardest single domain proves complex cases early
+- [01-01]: buf.yaml at proto/ subdirectory (not project root) -- keeps proto tooling self-contained
+- [01-01]: OpenAPI output to docs/api/ (not docs/) -- avoids mixing with existing documentation files
+- [01-01]: LocalizableString as simple value+language pair -- WorldMonitor receives pre-localized strings
+- [01-01]: protoc-gen-ts-server installed from local source (post-v0.6.0) -- not yet in a tagged release
 
 ### Pending Todos
 
@@ -59,5 +63,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-18
-Stopped at: Phase 1 context gathered
-Resume file: .planning/phases/01-proto-foundation/01-CONTEXT.md
+Stopped at: Completed 01-01-PLAN.md
+Resume file: .planning/phases/01-proto-foundation/01-01-SUMMARY.md

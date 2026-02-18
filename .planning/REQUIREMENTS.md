@@ -9,9 +9,9 @@ Requirements for full sebuf integration. Each maps to roadmap phases.
 
 ### Proto Foundation
 
-- [ ] **PROTO-01**: Buf toolchain configured (buf.yaml, buf.gen.yaml) with sebuf plugin dependencies (buf.build/sebmelki/sebuf, buf.build/bufbuild/protovalidate)
-- [ ] **PROTO-02**: Proto directory structure created following sebuf multi-service pattern (proto/models/ for shared types, proto/services/{domain}/v1/ for service definitions)
-- [ ] **PROTO-03**: Shared proto messages defined for cross-domain types (GeoCoordinates, TimeRange, PaginationRequest/Response, ErrorResponse)
+- [x] **PROTO-01**: Buf toolchain configured (buf.yaml, buf.gen.yaml) with sebuf plugin dependencies (buf.build/sebmelki/sebuf, buf.build/bufbuild/protovalidate)
+- [x] **PROTO-02**: Proto directory structure created following sebuf multi-service pattern (proto/models/ for shared types, proto/services/{domain}/v1/ for service definitions)
+- [x] **PROTO-03**: Shared proto messages defined for cross-domain types (GeoCoordinates, TimeRange, PaginationRequest/Response, ErrorResponse)
 - [ ] **PROTO-04**: Code generation pipeline runs via `buf generate` producing TypeScript clients and server handlers
 - [ ] **PROTO-05**: OpenAPI v3 specs auto-generated from proto definitions via protoc-gen-openapiv3
 
@@ -85,9 +85,9 @@ Requirements for full sebuf integration. Each maps to roadmap phases.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PROTO-01 | Phase 1 | Pending |
-| PROTO-02 | Phase 1 | Pending |
-| PROTO-03 | Phase 1 | Pending |
+| PROTO-01 | Phase 1 | Complete |
+| PROTO-02 | Phase 1 | Complete |
+| PROTO-03 | Phase 1 | Complete |
 | PROTO-04 | Phase 1 | Pending |
 | PROTO-05 | Phase 1 | Pending |
 | MIGRATE-01 | Phase 2 | Pending |
