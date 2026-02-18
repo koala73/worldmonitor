@@ -89,9 +89,9 @@ Plans:
 **Goal**: Migrate climate/Open-Meteo domain to sebuf -- implement handler with 15-zone monitoring, 30-day baseline comparison, severity/type classification, create service module with port/adapter pattern, rewire all consumers (panel, map heatmap, country instability), delete legacy endpoint
 **Depends on**: Phase 2D
 **Requirements:** [DOMAIN-01, SERVER-02]
-**Plans:** 2 plans
+**Plans:** 1/2 plans complete
 Plans:
-- [ ] 2E-01-PLAN.md -- Climate handler + gateway wiring + sidecar rebuild
+- [x] 2E-01-PLAN.md -- Climate handler + gateway wiring + sidecar rebuild
 - [ ] 2E-02-PLAN.md -- Climate service module + consumer rewiring + legacy deletion
 
 ### Phase 2F-2S: Remaining Domain Migrations
@@ -138,6 +138,6 @@ Each migration step:
 | 2B. Server Runtime | Complete | 2026-02-18 |
 | 2C. Seismology Migration | Complete | 2026-02-18 |
 | 2D. Wildfire Migration | Complete | 2026-02-18 |
-| 2E. Climate Migration | Not started | - |
+| 2E. Climate Migration | In progress (1/2) | - |
 | 2F-2S. Domain Migrations (0/14) | Not started | - |
 | 2T. Legacy Cleanup | Not started | - |

@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-18)
 
 **Core value:** Every API integration is defined in a .proto file with generated type-safe TypeScript clients and server handlers, eliminating hand-written fetch boilerplate.
-**Current focus:** Phase 2D: Wildfire Migration (COMPLETE)
+**Current focus:** Phase 2E: Climate Migration (Plan 01 complete)
 
 ## Current Position
 
-Phase: 2D (Wildfire Migration) -- COMPLETE
-Current Plan: 02 of 02 complete
-Status: Phase 2D complete -- wildfire domain fully migrated to sebuf
-Last activity: 2026-02-18 -- Plan 2D-02 executed (execute-phase)
+Phase: 2E (Climate Migration) -- Plan 01 complete
+Current Plan: 01 of 02 complete
+Status: Climate handler implemented and wired into gateway -- awaiting client wiring (plan 02)
+Last activity: 2026-02-18 -- Plan 2E-01 executed (execute-phase)
 
-Progress: [█████████░] ~52%
+Progress: [█████████░] ~55%
 
 ## Performance Metrics
 
@@ -28,6 +28,7 @@ Progress: [█████████░] ~52%
 - Phase 2C Plan 02: Seismology Client Wiring (2 tasks, 9min, 10 files modified/deleted)
 - Phase 2D Plan 01: Wildfire Handler (2 tasks, 2min, 7 files created/modified)
 - Phase 2D Plan 02: Wildfire Consumer Wiring (2 tasks, 3min, 6 files created/modified/deleted)
+- Phase 2E Plan 01: Climate Handler (2 tasks, 2min, 2 files created/modified)
 
 ## Accumulated Context
 
@@ -62,6 +63,8 @@ Progress: [█████████░] ~52%
 - [2D-02]: toMapFires adapter preserves map layer shape without modifying 3 map components
 - [2D-02]: Empty response heuristic: zero fireDetections treated as skipped matching legacy behavior
 - [2D-02]: confidenceToNumber maps FIRE_CONFIDENCE_HIGH->95, NOMINAL->50, LOW->20 for map thresholds
+- [2E-01]: Paired null filtering: only keep data points where both temp and precip are non-null at same index
+- [2E-01]: Severity/type classification uses proto enum strings directly (ANOMALY_SEVERITY_EXTREME etc.)
 
 ### Pending Todos
 
@@ -75,7 +78,7 @@ Progress: [█████████░] ~52%
 ## Session Continuity
 
 Last session: 2026-02-18
-Stopped at: Completed 2D-02-PLAN.md (Phase 2D complete)
-Resume file: .planning/phases/2D-wildfire-migration/2D-02-SUMMARY.md
+Stopped at: Completed 2E-01-PLAN.md
+Resume file: .planning/phases/2E-climate-migration/2E-01-SUMMARY.md
 PR: #106 (draft) — https://github.com/koala73/worldmonitor/pull/106
-Next steps: Plan and execute next domain migration phase
+Next steps: Execute 2E-02-PLAN.md (climate client wiring + legacy deletion)
