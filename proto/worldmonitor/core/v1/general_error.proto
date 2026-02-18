@@ -2,8 +2,6 @@ syntax = "proto3";
 
 package worldmonitor.core.v1;
 
-import "google/protobuf/timestamp.proto";
-
 // GeneralError represents application-wide error conditions that any endpoint may return.
 // Each error subtype carries the specific information needed for the client to handle it.
 message GeneralError {
@@ -48,6 +46,6 @@ message GeoBlocked {
 // MaintenanceMode indicates the service is temporarily unavailable for maintenance.
 // Client action: Show maintenance message and estimated end time.
 message MaintenanceMode {
-  // Estimated time when maintenance will end.
-  google.protobuf.Timestamp estimated_end = 1;
+  // Estimated time when maintenance will end, as Unix epoch milliseconds.
+  int64 estimated_end = 1;
 }
