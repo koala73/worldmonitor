@@ -356,7 +356,7 @@ export class App {
 
     this.setupRefreshIntervals();
     this.setupSnapshotSaving();
-    cleanOldSnapshots().catch(() => {});
+    cleanOldSnapshots().catch((e) => console.warn('[Storage] Snapshot cleanup failed:', e));
 
     // Handle deep links for story sharing
     this.handleDeepLinks();

@@ -17,11 +17,26 @@ Sentry.init({
   ignoreErrors: [
     'Invalid WebGL2RenderingContext',
     'WebGL context lost',
+    /reading 'imageManager'/,
     /ResizeObserver loop/,
     /NotAllowedError/,
     /InvalidAccessError/,
     /importScripts/,
+    /^TypeError: Load failed$/,
+    /^TypeError: Failed to fetch/,
+    /^TypeError: cancelled$/,
+    /^TypeError: NetworkError/,
+    /runtime\.sendMessage\(\)/,
+    /Java object is gone/,
+    /^Object captured as promise rejection with keys:/,
+    /Unable to load image/,
+    /Non-Error promise rejection captured with value:/,
   ],
+  beforeSend(event) {
+    const msg = event.exception?.values?.[0]?.value ?? '';
+    if (msg.length <= 3 && /^[a-zA-Z_$]+$/.test(msg)) return null;
+    return event;
+  },
 });
 // Suppress NotAllowedError from YouTube IFrame API's internal play() — browser autoplay policy,
 // not actionable. The YT IFrame API doesn't expose the play() promise so it leaks as unhandled.

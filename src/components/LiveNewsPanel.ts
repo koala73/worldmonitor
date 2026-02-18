@@ -525,6 +525,8 @@ export class LiveNewsPanel extends Panel {
       script.dataset.youtubeIframeApi = 'true';
       script.onerror = () => {
         console.warn('[LiveNews] YouTube IFrame API failed to load (ad blocker or network issue)');
+        LiveNewsPanel.apiPromise = null;
+        script.remove();
         resolve();
       };
       document.head.appendChild(script);

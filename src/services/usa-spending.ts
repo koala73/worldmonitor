@@ -79,9 +79,9 @@ export async function fetchRecentAwards(options: {
   if (awardTypes.includes('grant')) awardTypeCodes.push('02', '03', '04', '05', '06', '10');
   if (awardTypes.includes('loan')) awardTypeCodes.push('07', '08');
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000);
     const response = await fetch(`${API_BASE}/search/spending_by_award/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -105,7 +105,6 @@ export async function fetchRecentAwards(options: {
         sort: 'Award Amount',
       }),
     });
-    clearTimeout(timeout);
 
     if (!response.ok) {
       throw new Error(`USASpending API error: ${response.status}`);
@@ -148,6 +147,8 @@ export async function fetchRecentAwards(options: {
       periodEnd,
       fetchedAt: new Date(),
     };
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
