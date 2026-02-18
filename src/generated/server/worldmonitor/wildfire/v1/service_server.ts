@@ -40,6 +40,8 @@ export interface FireDetection {
   confidence: FireConfidence;
   satellite: string;
   detectedAt: number;
+  region: string;
+  dayNight: string;
 }
 
 export interface PaginationResponse {

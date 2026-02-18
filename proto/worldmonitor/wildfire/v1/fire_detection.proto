@@ -26,6 +26,10 @@ message FireDetection {
   string satellite = 6;
   // Time the fire was detected, as Unix epoch milliseconds.
   int64 detected_at = 7 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Monitored region name (e.g., "Ukraine", "Russia", "Iran").
+  string region = 8;
+  // Day or night detection ("D" or "N").
+  string day_night = 9;
 }
 
 // FireConfidence represents the confidence level of a fire detection.
