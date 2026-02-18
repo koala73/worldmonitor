@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-02-18)
 
 ## Current Position
 
-Phase: 2B in progress (Server Runtime)
-Current Plan: 02 of 02
-Status: Plan 01 complete, Plan 02 next
-Last activity: 2026-02-18 -- Completed Plan 01 (server infrastructure + seismology handler)
+Phase: 2B complete (Server Runtime)
+Current Plan: 02 of 02 (all complete)
+Status: Phase 2B complete — all plans executed
+Last activity: 2026-02-18 -- Completed Plan 02 (catch-all gateway + Vite plugin)
 
-Progress: [█████░░░░░] ~30%
+Progress: [██████░░░░] ~35%
 
 ## Performance Metrics
 
@@ -22,6 +22,7 @@ Progress: [█████░░░░░] ~30%
 - Phase 1: Proto Foundation (2 plans, 7min total)
 - Phase 2A: All Domain Protos (1 session)
 - Phase 2B Plan 01: Server Infrastructure (2 tasks, 2min, 4 files created)
+- Phase 2B Plan 02: Gateway Integration (2 tasks, 2min, 2 files created, 2 files modified)
 
 ## Accumulated Context
 
@@ -38,10 +39,13 @@ Progress: [█████░░░░░] ~30%
 - [2B-01]: Defined RouteDescriptor locally in router.ts instead of importing from a generated file
 - [2B-01]: Hardcoded CORS methods to 'POST, OPTIONS' since all sebuf routes are POST-only
 - [2B-01]: Network/fetch errors detected via TypeError + message check for 502 upstream-down mapping
+- [2B-02]: Dynamic imports in Vite plugin to lazily load handler modules inside configureServer
+- [2B-02]: Separate tsconfig.api.json with empty types array to exclude vite/client from edge runtime code
+- [2B-02]: sebufApiPlugin placed after youtubeLivePlugin in plugin array for correct middleware ordering
 
 ### Pending Todos
 
-- Phase 2B Plan 02: Build catch-all gateway (api/[[...path]].ts) wiring router + CORS + handlers
+- None for Phase 2B (complete)
 
 ### Blockers/Concerns
 
@@ -51,7 +55,7 @@ Progress: [█████░░░░░] ~30%
 ## Session Continuity
 
 Last session: 2026-02-18
-Stopped at: Completed 02-01-PLAN.md (server infrastructure + seismology handler)
+Stopped at: Completed 02-02-PLAN.md (catch-all gateway + Vite plugin) -- Phase 2B complete
 Resume file: .planning/phases/02-server-runtime/02-CONTEXT.md
 PR: #106 (draft) — https://github.com/koala73/worldmonitor/pull/106
-Next steps: Execute 02-02-PLAN.md (catch-all gateway)
+Next steps: Phase 2C+ domain handler migration (one phase per domain)
