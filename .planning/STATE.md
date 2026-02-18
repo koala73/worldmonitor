@@ -5,14 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-02-18)
 
 **Core value:** Every API integration is defined in a .proto file with generated type-safe TypeScript clients and server handlers, eliminating hand-written fetch boilerplate.
-**Current focus:** Phase 2B: Server Runtime
+**Current focus:** Phase 2C: Seismology Migration
 
 ## Current Position
 
-Phase: 2B complete (Server Runtime)
-Current Plan: 03 of 03 (all complete)
-Status: Phase 2B complete — all plans executed (including gap closure plan 03)
-Last activity: 2026-02-18 -- Completed Plan 03 (sidecar sebuf bundle compilation)
+Phase: 2C (Seismology Migration)
+Current Plan: 00 of 00 (context gathered, not yet planned)
+Status: Phase 2C context gathered — ready for planning
+Last activity: 2026-02-18 -- Phase 2C context captured (discuss-phase)
 
 Progress: [██████░░░░] ~35%
 
@@ -58,7 +58,7 @@ Progress: [██████░░░░] ~35%
 ## Session Continuity
 
 Last session: 2026-02-18
-Stopped at: Completed 02-03-PLAN.md (sidecar sebuf bundle) -- Phase 2B fully complete (including gap closure)
-Resume file: .planning/phases/02-server-runtime/02-CONTEXT.md
+Stopped at: Phase 2C context gathered — ready for planning
+Resume file: .planning/phases/2C-seismology-migration/2C-CONTEXT.md
 PR: #106 (draft) — https://github.com/koala73/worldmonitor/pull/106
-Next steps: Phase 2C+ domain handler migration (one phase per domain)
+Next steps: /gsd:plan-phase 2C → research + plan seismology migration
