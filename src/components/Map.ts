@@ -4,7 +4,8 @@ import { escapeHtml } from '@/utils/sanitize';
 import { getCSSColor } from '@/utils';
 import type { Topology, GeometryCollection } from 'topojson-specification';
 import type { Feature, Geometry } from 'geojson';
-import type { MapLayers, Hotspot, NewsItem, Earthquake, InternetOutage, RelatedAsset, AssetType, AisDisruptionEvent, AisDensityZone, CableAdvisory, RepairShip, SocialUnrestEvent, AirportDelayAlert, MilitaryFlight, MilitaryVessel, MilitaryFlightCluster, MilitaryVesselCluster, NaturalEvent, CyberThreat } from '@/types';
+import type { MapLayers, Hotspot, NewsItem, InternetOutage, RelatedAsset, AssetType, AisDisruptionEvent, AisDensityZone, CableAdvisory, RepairShip, SocialUnrestEvent, AirportDelayAlert, MilitaryFlight, MilitaryVessel, MilitaryFlightCluster, MilitaryVesselCluster, NaturalEvent, CyberThreat } from '@/types';
+import type { Earthquake } from '@/services/earthquakes';
 import type { TechHubActivity } from '@/services/tech-activity';
 import type { GeoHubActivity } from '@/services/geo-activity';
 import { getNaturalEventIcon } from '@/services/eonet';
@@ -318,15 +319,7 @@ export class MapComponent {
     return ranges[this.state.timeRange];
   }
 
-  private filterByTime<T extends { time?: Date }>(items: T[]): T[] {
-    if (this.state.timeRange === 'all') return items;
-    const now = Date.now();
-    const cutoff = now - this.getTimeRangeMs();
-    return items.filter((item) => {
-      if (!item.time) return true;
-      return item.time.getTime() >= cutoff;
-    });
-  }
+
 
   private createLayerToggles(): HTMLElement {
     const toggles = document.createElement('div');
@@ -1391,13 +1384,15 @@ export class MapComponent {
     // Earthquakes (magnitude-based sizing) - part of NATURAL layer
     if (this.state.layers.natural) {
       console.log('[Map] Rendering earthquakes. Total:', this.earthquakes.length, 'Layer enabled:', this.state.layers.natural);
-      const filteredQuakes = this.filterByTime(this.earthquakes);
+      const filteredQuakes = this.state.timeRange === 'all'
+        ? this.earthquakes
+        : this.earthquakes.filter((eq) => eq.occurredAt >= Date.now() - this.getTimeRangeMs());
       console.log('[Map] After time filter:', filteredQuakes.length, 'earthquakes. TimeRange:', this.state.timeRange);
       let rendered = 0;
       filteredQuakes.forEach((eq) => {
-        const pos = projection([eq.lon, eq.lat]);
+        const pos = projection([eq.location?.longitude ?? 0, eq.location?.latitude ?? 0]);
         if (!pos) {
-          console.log('[Map] Earthquake position null for:', eq.place, eq.lon, eq.lat);
+          console.log('[Map] Earthquake position null for:', eq.place, eq.location?.longitude, eq.location?.latitude);
           return;
         }
         rendered++;

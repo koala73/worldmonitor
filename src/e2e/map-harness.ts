@@ -33,7 +33,6 @@ import type {
   AirportDelayAlert,
   CableAdvisory,
   CyberThreat,
-  Earthquake,
   InternetOutage,
   MapLayers,
   MilitaryFlight,
@@ -45,6 +44,7 @@ import type {
   RepairShip,
   SocialUnrestEvent,
 } from '../types';
+import type { Earthquake } from '../services/earthquakes';
 import type { WeatherAlert } from '../services/weather';
 
 type Scenario = 'alpha' | 'beta';
@@ -799,11 +799,10 @@ const seedAllDynamicData = (): void => {
       id: 'e2e-eq-1',
       place: 'Harness Fault',
       magnitude: 5.8,
-      lat: 34.1,
-      lon: -118.2,
-      depth: 12,
-      time: new Date('2026-02-01T10:00:00.000Z'),
-      url: 'https://example.com/eq',
+      depthKm: 12,
+      location: { latitude: 34.1, longitude: -118.2 },
+      occurredAt: new Date('2026-02-01T10:00:00.000Z').getTime(),
+      sourceUrl: 'https://example.com/eq',
     },
   ];
 

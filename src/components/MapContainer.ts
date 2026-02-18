@@ -9,7 +9,6 @@ import type {
   MapLayers,
   Hotspot,
   NewsItem,
-  Earthquake,
   InternetOutage,
   RelatedAsset,
   AssetType,
@@ -29,6 +28,7 @@ import type {
   ClimateAnomaly,
   CyberThreat,
 } from '@/types';
+import type { Earthquake } from '@/services/earthquakes';
 import type { WeatherAlert } from '@/services/weather';
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';

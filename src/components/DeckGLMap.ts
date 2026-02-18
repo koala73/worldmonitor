@@ -12,7 +12,6 @@ import type {
   MapLayers,
   Hotspot,
   NewsItem,
-  Earthquake,
   InternetOutage,
   RelatedAsset,
   AssetType,
@@ -37,6 +36,7 @@ import type {
   MapDatacenterCluster,
   CyberThreat,
 } from '@/types';
+import type { Earthquake } from '@/services/earthquakes';
 import { ArcLayer } from '@deck.gl/layers';
 import { HeatmapLayer } from '@deck.gl/aggregation-layers';
 import type { WeatherAlert } from '@/services/weather';
@@ -903,7 +903,7 @@ export class DeckGLMap {
     COLORS = getOverlayColors();
     const layers: (Layer | null | false)[] = [];
     const { layers: mapLayers } = this.state;
-    const filteredEarthquakes = this.filterByTime(this.earthquakes, (eq) => eq.time);
+    const filteredEarthquakes = this.filterByTime(this.earthquakes, (eq) => eq.occurredAt);
     const filteredNaturalEvents = this.filterByTime(this.naturalEvents, (event) => event.date);
     const filteredWeatherAlerts = this.filterByTime(this.weatherAlerts, (alert) => alert.onset);
     const filteredOutages = this.filterByTime(this.outages, (outage) => outage.pubDate);
@@ -970,7 +970,7 @@ export class DeckGLMap {
     // Earthquakes layer + ghost for easier picking
     if (mapLayers.natural && filteredEarthquakes.length > 0) {
       layers.push(this.createEarthquakesLayer(filteredEarthquakes));
-      layers.push(this.createGhostLayer('earthquakes-layer', filteredEarthquakes, d => [d.lon, d.lat], { radiusMinPixels: 12 }));
+      layers.push(this.createGhostLayer('earthquakes-layer', filteredEarthquakes, d => [d.location?.longitude ?? 0, d.location?.latitude ?? 0], { radiusMinPixels: 12 }));
     }
 
     // Natural events layer
@@ -1419,7 +1419,7 @@ export class DeckGLMap {
     return new ScatterplotLayer({
       id: 'earthquakes-layer',
       data: earthquakes,
-      getPosition: (d) => [d.lon, d.lat],
+      getPosition: (d) => [d.location?.longitude ?? 0, d.location?.latitude ?? 0],
       getRadius: (d) => Math.pow(2, d.magnitude) * 1000,
       getFillColor: (d) => {
         const mag = d.magnitude;

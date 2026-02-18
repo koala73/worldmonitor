@@ -902,9 +902,9 @@ export class App {
 
     if (this.intelligenceCache.earthquakes) {
       for (const eq of this.intelligenceCache.earthquakes) {
-        if (inCountry(eq.lat, eq.lon) || eq.place?.toLowerCase().includes(countryLower)) {
+        if (inCountry(eq.location?.latitude ?? 0, eq.location?.longitude ?? 0) || eq.place?.toLowerCase().includes(countryLower)) {
           events.push({
-            timestamp: new Date(eq.time).getTime(),
+            timestamp: eq.occurredAt,
             lane: 'natural',
             label: `M${eq.magnitude.toFixed(1)} ${eq.place}`,
             severity: eq.magnitude >= 6 ? 'critical' : eq.magnitude >= 5 ? 'high' : eq.magnitude >= 4 ? 'medium' : 'low',
@@ -1087,7 +1087,7 @@ export class App {
     let earthquakes = 0;
     if (this.intelligenceCache.earthquakes) {
       earthquakes = this.intelligenceCache.earthquakes.filter((eq) => {
-        if (hasGeoShape) return this.isInCountry(eq.lat, eq.lon, code);
+        if (hasGeoShape) return this.isInCountry(eq.location?.latitude ?? 0, eq.location?.longitude ?? 0, code);
         return eq.place?.toLowerCase().includes(countryLower);
       }).length;
     }
@@ -3477,7 +3477,7 @@ export class App {
     outages?: InternetOutage[];
     protests?: { events: SocialUnrestEvent[]; sources: { acled: number; gdelt: number } };
     military?: { flights: MilitaryFlight[]; flightClusters: MilitaryFlightCluster[]; vessels: MilitaryVessel[]; vesselClusters: MilitaryVesselCluster[] };
-    earthquakes?: import('@/types').Earthquake[];
+    earthquakes?: import('@/services/earthquakes').Earthquake[];
   } = {};
   private cyberThreatsCache: CyberThreat[] | null = null;
 
