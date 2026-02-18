@@ -36,7 +36,8 @@ proto/worldmonitor/
 - [x] **Phase 2A: All Domain Protos** - Define all 17 domain proto packages with correct boundaries
 - [x] **Phase 2B: Server Runtime** - Router, CORS, error mapper, catch-all gateway, first handler
 - [x] **Phase 2E: Climate Migration** - Open-Meteo anomalies with enum-heavy responses (completed 2026-02-18)
-- [ ] **Phase 2F-2S: Domain Migrations** - Remaining domains, one sub-phase each
+- [ ] **Phase 2F: Prediction Migration** - Polymarket prediction markets with query params and multi-strategy fetch
+- [ ] **Phase 2G-2S: Domain Migrations** - Remaining domains, one sub-phase each
 
 ## Phase Details
 
@@ -95,15 +96,25 @@ Plans:
 - [x] 2E-01-PLAN.md -- Climate handler + gateway wiring + sidecar rebuild
 - [x] 2E-02-PLAN.md -- Climate service module + consumer rewiring + legacy deletion
 
-### Phase 2F-2S: Remaining Domain Migrations
-**Goal**: Each remaining domain migrated one at a time in order of complexity
+### Phase 2F: Prediction Migration
+**Goal**: Migrate prediction/Polymarket domain to sebuf -- implement handler proxying Gamma API with query param validation, create service module with port/adapter pattern preserving multi-strategy fetch (direct/Tauri/Railway/proxy), tag-based event aggregation, country market filtering, rewire all consumers, delete legacy endpoint
 **Depends on**: Phase 2E
+**Status**: Not started
+**Requirements:** [DOMAIN-02, SERVER-02]
+**Plans:** 2 plans
+Plans:
+- [ ] 2F-01-PLAN.md -- Prediction handler (Gamma API proxy with graceful degradation) + gateway wiring + sidecar rebuild
+- [ ] 2F-02-PLAN.md -- Prediction service module (multi-strategy fetch, tag aggregation, country markets) + consumer rewiring + yesPrice bug fixes + legacy deletion
+
+### Phase 2G-2S: Remaining Domain Migrations
+**Goal**: Each remaining domain migrated one at a time in order of complexity
+**Depends on**: Phase 2F
 
 Migration order (one sub-phase each):
 1. ~~seismology~~ (complete, Phase 2C)
 2. ~~wildfire~~ (Phase 2D)
 3. ~~climate~~ (Phase 2E)
-4. prediction -- validates query params
+4. ~~prediction~~ (Phase 2F)
 5. displacement -- validates multi-entity responses
 6. aviation -- validates XML upstream parsing
 7. research -- validates 3-RPC service pattern
@@ -140,5 +151,6 @@ Each migration step:
 | 2C. Seismology Migration | Complete | 2026-02-18 |
 | 2D. Wildfire Migration | Complete | 2026-02-18 |
 | 2E. Climate Migration | Complete | 2026-02-18 |
-| 2F-2S. Domain Migrations (0/14) | Not started | - |
+| 2F. Prediction Migration | Not started | - |
+| 2G-2S. Domain Migrations (0/13) | Not started | - |
 | 2T. Legacy Cleanup | Not started | - |
