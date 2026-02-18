@@ -1,4 +1,5 @@
-import type { NewsItem, ClusteredEvent, MarketData, PredictionMarket } from '@/types';
+import type { NewsItem, ClusteredEvent, MarketData } from '@/types';
+import type { PredictionMarket } from '@/services/prediction';
 import { t } from '@/services/i18n';
 
 type ExportFormat = 'json' | 'csv';

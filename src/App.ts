@@ -13,7 +13,7 @@ import {
   SITE_VARIANT,
 } from '@/config';
 import { fetchCategoryFeeds, fetchMultipleStocks, fetchCrypto, fetchPredictions, fetchEarthquakes, fetchWeatherAlerts, fetchFredData, fetchInternetOutages, isOutagesConfigured, fetchAisSignals, initAisStream, getAisStatus, disconnectAisStream, isAisConfigured, fetchCableActivity, fetchProtestEvents, getProtestStatus, fetchFlightDelays, fetchMilitaryFlights, fetchMilitaryVessels, initMilitaryVesselStream, isMilitaryVesselTrackingConfigured, initDB, updateBaseline, calculateDeviation, addToSignalHistory, saveSnapshot, cleanOldSnapshots, analysisWorker, fetchPizzIntStatus, fetchGdeltTensions, fetchNaturalEvents, fetchRecentAwards, fetchOilAnalytics, fetchCyberThreats, drainTrendingSignals } from '@/services';
-import { fetchCountryMarkets } from '@/services/polymarket';
+import { fetchCountryMarkets } from '@/services/prediction';
 import { mlWorker } from '@/services/ml-worker';
 import { clusterNewsHybrid } from '@/services/clustering';
 import { ingestProtests, ingestFlights, ingestVessels, ingestEarthquakes, detectGeoConvergence, geoConvergenceToSignal } from '@/services/geo-convergence';
@@ -100,7 +100,8 @@ import { invokeTauri } from '@/services/tauri-bridge';
 import { getCountryAtCoordinates, hasCountryGeometry, isCoordinateInCountry, preloadCountryGeometry } from '@/services/country-geometry';
 import { initI18n, t, changeLanguage, getCurrentLanguage, LANGUAGES } from '@/services/i18n';
 
-import type { PredictionMarket, MarketData, ClusteredEvent } from '@/types';
+import type { MarketData, ClusteredEvent } from '@/types';
+import type { PredictionMarket } from '@/services/prediction';
 
 type IntlDisplayNamesCtor = new (
   locales: string | string[],
@@ -1557,7 +1558,7 @@ export class App {
       this.searchModal.registerSource('prediction', this.latestPredictions.map(p => ({
         id: p.title,
         title: p.title,
-        subtitle: `${(p.yesPrice * 100).toFixed(0)}% probability`,
+        subtitle: `${Math.round(p.yesPrice)}% probability`,
         data: p,
       })));
     }
@@ -1652,7 +1653,7 @@ export class App {
       id: `snap-${i}`,
       title: p.title,
       yesPrice: p.yesPrice,
-      noPrice: 1 - p.yesPrice,
+      noPrice: 100 - p.yesPrice,
       volume24h: 0,
       liquidity: 0,
     }));

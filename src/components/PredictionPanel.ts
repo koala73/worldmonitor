@@ -1,5 +1,5 @@
 import { Panel } from './Panel';
-import type { PredictionMarket } from '@/types';
+import type { PredictionMarket } from '@/services/prediction';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
 

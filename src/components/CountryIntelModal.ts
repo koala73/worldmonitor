@@ -6,7 +6,7 @@ import { t } from '@/services/i18n';
 import { sanitizeUrl } from '@/utils/sanitize';
 import { getCSSColor } from '@/utils';
 import type { CountryScore } from '@/services/country-instability';
-import type { PredictionMarket } from '@/types';
+import type { PredictionMarket } from '@/services/prediction';
 
 interface CountryIntelData {
   brief: string;
@@ -233,7 +233,7 @@ export class CountryIntelModal {
         <a href="${href}" target="_blank" rel="noopener noreferrer" class="prediction-market-card">
         <div class="market-provider">Polymarket</div>
         <div class="market-question">${escapeHtml(market.title)}</div>
-        <div class="market-prob">${(market.yesPrice * 100).toFixed(1)}%</div>
+        <div class="market-prob">${market.yesPrice.toFixed(1)}%</div>
       </a>
     `;
     }).join('');
