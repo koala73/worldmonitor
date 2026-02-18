@@ -37,7 +37,8 @@ proto/worldmonitor/
 - [x] **Phase 2B: Server Runtime** - Router, CORS, error mapper, catch-all gateway, first handler
 - [x] **Phase 2E: Climate Migration** - Open-Meteo anomalies with enum-heavy responses (completed 2026-02-18)
 - [x] **Phase 2F: Prediction Migration** - Polymarket prediction markets with query params and multi-strategy fetch (completed 2026-02-18)
-- [ ] **Phase 2G-2S: Domain Migrations** - Remaining domains, one sub-phase each
+- [ ] **Phase 2G: Displacement Migration** - UNHCR refugees/IDPs with multi-entity responses
+- [ ] **Phase 2H-2S: Domain Migrations** - Remaining domains, one sub-phase each
 
 ## Phase Details
 
@@ -106,16 +107,26 @@ Plans:
 - [x] 2F-01-PLAN.md -- Prediction handler (Gamma API proxy with graceful degradation) + gateway wiring + sidecar rebuild
 - [x] 2F-02-PLAN.md -- Prediction service module (multi-strategy fetch, tag aggregation, country markets) + consumer rewiring + yesPrice bug fixes + legacy deletion
 
-### Phase 2G-2S: Remaining Domain Migrations
-**Goal**: Each remaining domain migrated one at a time in order of complexity
+### Phase 2G: Displacement Migration
+**Goal**: Migrate displacement/UNHCR domain to sebuf -- implement handler proxying UNHCR Population API with multi-entity responses (refugees, IDPs, asylum seekers), create service module with port/adapter pattern, rewire all consumers, delete legacy endpoint
 **Depends on**: Phase 2F
+**Status**: Not started
+**Requirements:** [DOMAIN-07, SERVER-02]
+**Plans:** 2 plans
+Plans:
+- [ ] 2G-01-PLAN.md -- Displacement handler (UNHCR API pagination, per-country aggregation, flow computation, country centroids) + gateway wiring + sidecar rebuild
+- [ ] 2G-02-PLAN.md -- Displacement service module (int64 string->number, GeoCoordinates->flat lat/lon mapping) + consumer rewiring + legacy deletion
+
+### Phase 2H-2S: Remaining Domain Migrations
+**Goal**: Each remaining domain migrated one at a time in order of complexity
+**Depends on**: Phase 2G
 
 Migration order (one sub-phase each):
 1. ~~seismology~~ (complete, Phase 2C)
 2. ~~wildfire~~ (Phase 2D)
 3. ~~climate~~ (Phase 2E)
 4. ~~prediction~~ (Phase 2F)
-5. displacement -- validates multi-entity responses
+5. ~~displacement~~ (Phase 2G)
 6. aviation -- validates XML upstream parsing
 7. research -- validates 3-RPC service pattern
 8. unrest -- validates ACLED auth token
@@ -151,5 +162,7 @@ Each migration step:
 | 2C. Seismology Migration | Complete | 2026-02-18 |
 | 2D. Wildfire Migration | Complete | 2026-02-18 |
 | 2E. Climate Migration | Complete | 2026-02-18 |
-| 2F. Prediction Migration | 3/3 | Complete    | 2026-02-18 | 2G-2S. Domain Migrations (0/13) | Not started | - |
+| 2F. Prediction Migration | Complete | 2026-02-18 |
+| 2G. Displacement Migration | Not started | - |
+| 2H-2S. Domain Migrations (0/12) | Not started | - |
 | 2T. Legacy Cleanup | Not started | - |
