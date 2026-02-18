@@ -608,13 +608,6 @@ export interface CriticalMineralProject {
   significance: string;
 }
 
-export interface PredictionMarket {
-  title: string;
-  yesPrice: number;
-  volume?: number;
-  url?: string;
-}
-
 export interface AppState {
   currentView: 'global' | 'us';
   mapZoom: number;
