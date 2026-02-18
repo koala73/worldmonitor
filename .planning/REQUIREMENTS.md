@@ -90,7 +90,23 @@ Requirements for full sebuf integration. Each maps to roadmap phases.
 | PROTO-03 | Phase 1 | Pending |
 | PROTO-04 | Phase 1 | Pending |
 | PROTO-05 | Phase 1 | Pending |
+| MIGRATE-01 | Phase 2 | Pending |
+| MIGRATE-02 | Phase 2 | Pending |
+| MIGRATE-03 | Phase 2 | Pending |
+| MIGRATE-04 | Phase 2 | Pending |
+| MIGRATE-05 | Phase 2 | Pending |
+| CLIENT-03 | Phase 2 | Pending |
 | DOMAIN-01 | Phase 3 | Pending |
+| DOMAIN-10 | Phase 3 | Pending |
+| CLIENT-01 | Phase 3 | Pending |
+| CLIENT-02 | Phase 3 | Pending |
+| CLIENT-04 | Phase 3 | Pending |
+| SERVER-01 | Phase 4 | Pending |
+| SERVER-02 | Phase 4 | Pending |
+| SERVER-03 | Phase 4 | Pending |
+| SERVER-04 | Phase 4 | Pending |
+| SERVER-05 | Phase 4 | Pending |
+| SERVER-06 | Phase 4 | Pending |
 | DOMAIN-02 | Phase 5 | Pending |
 | DOMAIN-03 | Phase 6 | Pending |
 | DOMAIN-04 | Phase 6 | Pending |
@@ -99,22 +115,6 @@ Requirements for full sebuf integration. Each maps to roadmap phases.
 | DOMAIN-07 | Phase 7 | Pending |
 | DOMAIN-08 | Phase 7 | Pending |
 | DOMAIN-09 | Phase 7 | Pending |
-| DOMAIN-10 | Phase 3 | Pending |
-| CLIENT-01 | Phase 3 | Pending |
-| CLIENT-02 | Phase 3 | Pending |
-| CLIENT-03 | Phase 2 | Pending |
-| CLIENT-04 | Phase 3 | Pending |
-| MIGRATE-01 | Phase 2 | Pending |
-| MIGRATE-02 | Phase 2 | Pending |
-| MIGRATE-03 | Phase 2 | Pending |
-| MIGRATE-04 | Phase 2 | Pending |
-| MIGRATE-05 | Phase 2 | Pending |
-| SERVER-01 | Phase 4 | Pending |
-| SERVER-02 | Phase 4 | Pending |
-| SERVER-03 | Phase 4 | Pending |
-| SERVER-04 | Phase 4 | Pending |
-| SERVER-05 | Phase 4 | Pending |
-| SERVER-06 | Phase 4 | Pending |
 | CLEAN-01 | Phase 8 | Pending |
 | CLEAN-02 | Phase 8 | Pending |
 | CLEAN-03 | Phase 8 | Pending |
@@ -127,4 +127,4 @@ Requirements for full sebuf integration. Each maps to roadmap phases.
 
 ---
 *Requirements defined: 2026-02-18*
-*Last updated: 2026-02-18 after initial definition*
+*Last updated: 2026-02-18 after roadmap creation*
