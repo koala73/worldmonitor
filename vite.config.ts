@@ -326,6 +326,8 @@ export default defineConfig({
     },
   },
   build: {
+    cssCodeSplit: true,
+    chunkSizeWarningLimit: 800,
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
@@ -346,6 +348,15 @@ export default defineConfig({
             if (id.includes('/topojson-client/')) {
               return 'topojson';
             }
+            if (id.includes('/i18next')) {
+              return 'i18n';
+            }
+            if (id.includes('/@sentry/')) {
+              return 'sentry';
+            }
+          }
+          if (id.includes('/src/components/') && id.endsWith('Panel.ts')) {
+            return 'panels';
           }
           return undefined;
         },
