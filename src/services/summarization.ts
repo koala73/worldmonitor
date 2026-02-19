@@ -1,7 +1,7 @@
 /**
  * Summarization Service with Fallback Chain
  * Server-side Redis caching handles cross-user deduplication
- * Fallback: Groq -> OpenRouter -> Browser T5
+ * Fallback: AI4U primary model -> AI4U fallback model -> Browser T5
  */
 
 import { mlWorker } from './ml-worker';
@@ -9,7 +9,7 @@ import { SITE_VARIANT } from '@/config';
 import { BETA_MODE } from '@/config/beta';
 import { isFeatureAvailable } from './runtime-config';
 
-export type SummarizationProvider = 'groq' | 'openrouter' | 'browser' | 'cache';
+export type SummarizationProvider = 'ai4u' | 'browser' | 'cache';
 
 export interface SummarizationResult {
   summary: string;
@@ -31,25 +31,25 @@ async function tryGroq(headlines: string[], geoContext?: string, lang?: string):
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
       if (data.fallback) return null;
-      throw new Error(`Groq error: ${response.status}`);
+      throw new Error(`AI4U primary error: ${response.status}`);
     }
 
     const data = await response.json();
-    const provider = data.cached ? 'cache' : 'groq';
-    console.log(`[Summarization] ${provider === 'cache' ? 'Redis cache hit' : 'Groq success'}:`, data.model);
+    const provider = data.cached ? 'cache' : 'ai4u';
+    console.log(`[Summarization] ${provider === 'cache' ? 'Redis cache hit' : 'AI4U primary success'}:`, data.model);
     return {
       summary: data.summary,
       provider: provider as SummarizationProvider,
       cached: !!data.cached,
     };
   } catch (error) {
-    console.warn('[Summarization] Groq failed:', error);
+    console.warn('[Summarization] AI4U primary failed:', error);
     return null;
   }
 }
 
 async function tryOpenRouter(headlines: string[], geoContext?: string, lang?: string): Promise<SummarizationResult | null> {
-  if (!isFeatureAvailable('aiOpenRouter')) return null;
+  if (!isFeatureAvailable('aiGroq')) return null;
   try {
     const response = await fetch('/api/openrouter-summarize', {
       method: 'POST',
@@ -60,19 +60,19 @@ async function tryOpenRouter(headlines: string[], geoContext?: string, lang?: st
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
       if (data.fallback) return null;
-      throw new Error(`OpenRouter error: ${response.status}`);
+      throw new Error(`AI4U fallback error: ${response.status}`);
     }
 
     const data = await response.json();
-    const provider = data.cached ? 'cache' : 'openrouter';
-    console.log(`[Summarization] ${provider === 'cache' ? 'Redis cache hit' : 'OpenRouter success'}:`, data.model);
+    const provider = data.cached ? 'cache' : 'ai4u';
+    console.log(`[Summarization] ${provider === 'cache' ? 'Redis cache hit' : 'AI4U fallback success'}:`, data.model);
     return {
       summary: data.summary,
       provider: provider as SummarizationProvider,
       cached: !!data.cached,
     };
   } catch (error) {
-    console.warn('[Summarization] OpenRouter failed:', error);
+    console.warn('[Summarization] AI4U fallback failed:', error);
     return null;
   }
 }
@@ -106,7 +106,7 @@ async function tryBrowserT5(headlines: string[], modelId?: string): Promise<Summ
 }
 
 /**
- * Generate a summary using the fallback chain: Groq -> OpenRouter -> Browser T5
+ * Generate a summary using fallback chain: AI4U primary -> AI4U fallback -> Browser T5
  * Server-side Redis caching is handled by the API endpoints
  * @param geoContext Optional geographic signal context to include in the prompt
  */
@@ -131,17 +131,17 @@ export async function generateSummary(
       if (browserResult) {
         console.log('[BETA] Browser T5-small:', browserResult.summary);
         tryGroq(headlines, geoContext).then(r => {
-          if (r) console.log('[BETA] Groq comparison:', r.summary);
+          if (r) console.log('[BETA] AI4U comparison:', r.summary);
         }).catch(() => {});
         return browserResult;
       }
 
       // Warm model failed inference — cloud fallback
-      onProgress?.(2, totalSteps, 'Connecting to Groq AI...');
+      onProgress?.(2, totalSteps, 'Connecting to AI4U...');
       const groqResult = await tryGroq(headlines, geoContext);
       if (groqResult) return groqResult;
 
-      onProgress?.(3, totalSteps, 'Trying OpenRouter...');
+      onProgress?.(3, totalSteps, 'Trying AI4U fallback model...');
       const openRouterResult = await tryOpenRouter(headlines, geoContext);
       if (openRouterResult) return openRouterResult;
     } else {
@@ -153,14 +153,14 @@ export async function generateSummary(
       }
 
       // Cloud providers while model loads
-      onProgress?.(1, totalSteps, 'Connecting to Groq AI...');
+      onProgress?.(1, totalSteps, 'Connecting to AI4U...');
       const groqResult = await tryGroq(headlines, geoContext);
       if (groqResult) {
-        console.log('[BETA] Groq:', groqResult.summary);
+        console.log('[BETA] AI4U primary:', groqResult.summary);
         return groqResult;
       }
 
-      onProgress?.(2, totalSteps, 'Trying OpenRouter...');
+      onProgress?.(2, totalSteps, 'Trying AI4U fallback model...');
       const openRouterResult = await tryOpenRouter(headlines, geoContext);
       if (openRouterResult) return openRouterResult;
 
@@ -180,15 +180,15 @@ export async function generateSummary(
 
   const totalSteps = 3;
 
-  // Step 1: Try Groq (fast, 14.4K/day with 8b-instant + Redis cache)
-  onProgress?.(1, totalSteps, 'Connecting to Groq AI...');
+  // Step 1: Try AI4U primary model
+  onProgress?.(1, totalSteps, 'Connecting to AI4U...');
   const groqResult = await tryGroq(headlines, geoContext, lang);
   if (groqResult) {
     return groqResult;
   }
 
-  // Step 2: Try OpenRouter (fallback, 50/day + Redis cache)
-  onProgress?.(2, totalSteps, 'Trying OpenRouter...');
+  // Step 2: Try AI4U fallback model
+  onProgress?.(2, totalSteps, 'Trying AI4U fallback model...');
   const openRouterResult = await tryOpenRouter(headlines, geoContext, lang);
   if (openRouterResult) {
     return openRouterResult;
@@ -218,9 +218,9 @@ export async function translateText(
 ): Promise<string | null> {
   if (!text) return null;
 
-  // Step 1: Try Groq
+  // Step 1: Try AI4U primary model endpoint
   if (isFeatureAvailable('aiGroq')) {
-    onProgress?.(1, 2, 'Translating with Groq...');
+    onProgress?.(1, 2, 'Translating with AI4U...');
     try {
       const response = await fetch('/api/groq-summarize', {
         method: 'POST',
@@ -237,13 +237,13 @@ export async function translateText(
         return data.summary;
       }
     } catch (e) {
-      console.warn('Groq translation failed', e);
+      console.warn('AI4U primary translation failed', e);
     }
   }
 
-  // Step 2: Try OpenRouter
-  if (isFeatureAvailable('aiOpenRouter')) {
-    onProgress?.(2, 2, 'Translating with OpenRouter...');
+  // Step 2: Try AI4U fallback model endpoint
+  if (isFeatureAvailable('aiGroq')) {
+    onProgress?.(2, 2, 'Translating with AI4U fallback model...');
     try {
       const response = await fetch('/api/openrouter-summarize', {
         method: 'POST',
@@ -260,7 +260,7 @@ export async function translateText(
         return data.summary;
       }
     } catch (e) {
-      console.warn('OpenRouter translation failed', e);
+      console.warn('AI4U fallback translation failed', e);
     }
   }
 

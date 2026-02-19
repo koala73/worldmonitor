@@ -6,52 +6,52 @@
    ============================================================ */
 :root {
   /* Backgrounds */
-  --bg: #0a0a0a;
-  --bg-secondary: #111;
-  --surface: #141414;
-  --surface-hover: #1e1e1e;
-  --surface-active: #1a1a2e;
+  --bg: #041e42;
+  --bg-secondary: #062a58;
+  --surface: #0b2f63;
+  --surface-hover: #12407f;
+  --surface-active: #1d4f94;
 
   /* Borders */
-  --border: #2a2a2a;
-  --border-strong: #444;
-  --border-subtle: #1a1a1a;
+  --border: #24508b;
+  --border-strong: #3a6cae;
+  --border-subtle: #123564;
 
   /* Text */
-  --text: #e8e8e8;
-  --text-secondary: #ccc;
-  --text-dim: #888;
-  --text-muted: #666;
-  --text-faint: #555;
-  --text-ghost: #444;
-  --accent: #fff;
+  --text: #fff9e5;
+  --text-secondary: #f4e6ad;
+  --text-dim: #d4bf74;
+  --text-muted: #b69f57;
+  --text-faint: #937d3c;
+  --text-ghost: #6f5e2b;
+  --accent: #ffcb05;
 
   /* Overlays & shadows */
-  --overlay-subtle: rgba(255, 255, 255, 0.03);
-  --overlay-light: rgba(255, 255, 255, 0.05);
-  --overlay-medium: rgba(255, 255, 255, 0.1);
-  --overlay-heavy: rgba(255, 255, 255, 0.2);
+  --overlay-subtle: rgba(255, 203, 5, 0.06);
+  --overlay-light: rgba(255, 203, 5, 0.1);
+  --overlay-medium: rgba(255, 203, 5, 0.16);
+  --overlay-heavy: rgba(255, 203, 5, 0.26);
   --shadow-color: rgba(0, 0, 0, 0.5);
   --darken-light: rgba(0, 0, 0, 0.15);
   --darken-medium: rgba(0, 0, 0, 0.2);
   --darken-heavy: rgba(0, 0, 0, 0.3);
 
   /* Scrollbar */
-  --scrollbar-thumb: #333;
-  --scrollbar-thumb-hover: #555;
+  --scrollbar-thumb: #2e4d81;
+  --scrollbar-thumb-hover: #4a6aa0;
 
   /* Input */
-  --input-bg: #1a1a1a;
+  --input-bg: #0f356f;
 
   /* Panels */
-  --panel-bg: #141414;
-  --panel-border: #2a2a2a;
+  --panel-bg: #0b2f63;
+  --panel-border: #24508b;
 
   /* Map */
-  --map-bg: #020a08;
-  --map-grid: #0a2a20;
-  --map-country: #0a2018;
-  --map-stroke: #0f5040;
+  --map-bg: #031a36;
+  --map-grid: #164982;
+  --map-country: #0f2f5b;
+  --map-stroke: #2c67a6;
 
   /* Font stack */
   --font-body: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
@@ -135,53 +135,52 @@
   /* Tailwind amber-600 (was #ffaa00) */
 
   /* Backgrounds */
-  --bg: #f8f9fa;
-  --bg-secondary: #f0f1f3;
-  --surface: #ffffff;
-  --surface-hover: #f0f0f0;
-  --surface-active: #e8e8f0;
+  --bg: #fff9e6;
+  --bg-secondary: #fff3cc;
+  --surface: #fffef8;
+  --surface-hover: #fff7df;
+  --surface-active: #ffeeb8;
 
   /* Borders */
-  --border: #d4d4d4;
-  --border-strong: #b0b0b0;
-  --border-subtle: #e8e8e8;
+  --border: #d7c27f;
+  --border-strong: #bd9f4e;
+  --border-subtle: #ead9a5;
 
   /* Text */
-  --text: #1a1a1a;
-  --text-secondary: #333;
-  --text-dim: #6b6b6b;
-  --text-muted: #767676;
-  /* WCAG AA: 4.54:1 vs #f8f9fa */
-  --text-faint: #aaa;
-  --text-ghost: #bbb;
-  --accent: #111111;
+  --text: #0b2954;
+  --text-secondary: #13356b;
+  --text-dim: #39598e;
+  --text-muted: #4c6a9d;
+  --text-faint: #6f84ad;
+  --text-ghost: #8fa0c2;
+  --accent: #0b2954;
 
   /* Overlays & shadows */
-  --overlay-subtle: rgba(0, 0, 0, 0.02);
-  --overlay-light: rgba(0, 0, 0, 0.04);
-  --overlay-medium: rgba(0, 0, 0, 0.08);
-  --overlay-heavy: rgba(0, 0, 0, 0.12);
+  --overlay-subtle: rgba(0, 39, 76, 0.03);
+  --overlay-light: rgba(0, 39, 76, 0.06);
+  --overlay-medium: rgba(0, 39, 76, 0.1);
+  --overlay-heavy: rgba(0, 39, 76, 0.16);
   --shadow-color: rgba(0, 0, 0, 0.1);
   --darken-light: rgba(0, 0, 0, 0.1);
   --darken-medium: rgba(0, 0, 0, 0.15);
   --darken-heavy: rgba(0, 0, 0, 0.2);
 
   /* Scrollbar */
-  --scrollbar-thumb: #c0c0c0;
-  --scrollbar-thumb-hover: #999;
+  --scrollbar-thumb: #c4b07a;
+  --scrollbar-thumb-hover: #a58f56;
 
   /* Input */
-  --input-bg: #f0f0f0;
+  --input-bg: #fff4d1;
 
   /* Panels */
-  --panel-bg: #ffffff;
-  --panel-border: #d4d4d4;
+  --panel-bg: #fffef8;
+  --panel-border: #d7c27f;
 
   /* Map */
-  --map-bg: #e8f0f8;
-  --map-grid: #b0c8d8;
-  --map-country: #f0e8d8;
-  --map-stroke: #c8b8a8;
+  --map-bg: #e8f1ff;
+  --map-grid: #b5c9ea;
+  --map-country: #fff0c2;
+  --map-stroke: #6e90c4;
 }
 
 * {

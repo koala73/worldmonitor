@@ -271,8 +271,36 @@ class MLWorkerManager {
    * Generate embeddings for texts
    */
   async embedTexts(texts: string[]): Promise<number[][]> {
+    if (!texts.length) return [];
+
+    // Prefer remote embeddings when AI4U is configured; local model remains fallback.
+    const remote = await this.tryRemoteEmbeddings(texts);
+    if (remote) return remote;
+
     if (!this.isReady) throw new Error('ML Worker not ready');
     return this.request<number[][]>('embed', { texts });
+  }
+
+  private async tryRemoteEmbeddings(texts: string[]): Promise<number[][] | null> {
+    try {
+      const response = await fetch('/api/ai4u-embeddings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ texts }),
+      });
+
+      if (!response.ok) return null;
+      const data = await response.json();
+      if (data?.fallback) return null;
+
+      if (!Array.isArray(data?.embeddings)) return null;
+      if (data.embeddings.length !== texts.length) return null;
+      if (!data.embeddings.every((row: unknown) => Array.isArray(row))) return null;
+
+      return data.embeddings as number[][];
+    } catch {
+      return null;
+    }
   }
 
   /**

@@ -17,7 +17,7 @@
     "predictionMarkets": "Prognosemärkte",
     "loadingMarkets": "Prognosemärkte werden geladen...",
     "infrastructure": "Infrastrukturexposition",
-    "briefUnavailable": "KI-Brief nicht verfügbar – konfigurieren Sie GROQ_API_KEY in den Einstellungen.",
+    "briefUnavailable": "KI-Brief nicht verfügbar – konfigurieren Sie AI4U_API_KEY in den Einstellungen.",
     "cached": "Zwischengespeichert",
     "fresh": "Aktuell",
     "noMarkets": "Keine Prognosemärkte gefunden",
@@ -288,7 +288,7 @@
       "fresh": "Frisch",
       "noMarkets": "Keine Prognosemärkte gefunden",
       "predictionMarkets": "Prognosemärkte",
-      "unavailable": "KI-Brief nicht verfügbar – konfigurieren Sie GROQ_API_KEY in den Einstellungen."
+      "unavailable": "KI-Brief nicht verfügbar – konfigurieren Sie AI4U_API_KEY in den Einstellungen."
     },
     "countryBrief": {
       "components": {
@@ -321,7 +321,7 @@
       "predictionMarkets": "Prognosemärkte",
       "loadingMarkets": "Prognosemärkte werden geladen...",
       "infrastructure": "Infrastrukturexposition",
-      "briefUnavailable": "KI-Brief nicht verfügbar – konfigurieren Sie GROQ_API_KEY in den Einstellungen.",
+      "briefUnavailable": "KI-Brief nicht verfügbar – konfigurieren Sie AI4U_API_KEY in den Einstellungen.",
       "cached": "zwischengespeichert",
       "fresh": "Frisch",
       "noMarkets": "Keine Prognosemärkte gefunden",

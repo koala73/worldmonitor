@@ -185,8 +185,8 @@ export default defineConfig({
         scope: '/',
         display: 'standalone',
         orientation: 'any',
-        theme_color: '#0a0f0a',
-        background_color: '#0a0f0a',
+        theme_color: '#041e42',
+        background_color: '#041e42',
         categories: activeMeta.categories,
         icons: [
           { src: '/favico/android-chrome-192x192.png', sizes: '192x192', type: 'image/png' },

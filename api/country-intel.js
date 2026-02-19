@@ -1,18 +1,18 @@
 /**
  * Country Intelligence Brief Endpoint
- * Generates AI-powered country situation briefs using Groq
+ * Generates AI-powered country situation briefs using AI4U
  * Redis cached (2h TTL) for cross-user deduplication
  */
 
 import { getCachedJson, setCachedJson, hashString } from './_upstash-cache.js';
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
+import { getAi4uApiKey, getAi4uModel, postAi4u } from './_ai4u.js';
 
 export const config = {
   runtime: 'edge',
 };
 
-const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const MODEL = 'llama-3.1-8b-instant';
+const MODEL = getAi4uModel('AI4U_COUNTRY_INTEL_MODEL', 'sonnet-4.5');
 const CACHE_TTL_SECONDS = 7200; // 2 hours
 const CACHE_VERSION = 'ci-v2';
 
@@ -37,9 +37,9 @@ export default async function handler(request) {
     });
   }
 
-  const apiKey = process.env.GROQ_API_KEY;
+  const apiKey = getAi4uApiKey();
   if (!apiKey) {
-    return new Response(JSON.stringify({ intel: null, fallback: true, skipped: true, reason: 'GROQ_API_KEY not configured' }), {
+    return new Response(JSON.stringify({ intel: null, fallback: true, skipped: true, reason: 'AI4U_API_KEY not configured' }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
@@ -136,13 +136,7 @@ Rules:
 
     const userPrompt = `Country: ${country} (${code})${dataSection}`;
 
-    const groqRes = await fetch(GROQ_API_URL, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
+    const ai4uRes = await postAi4u('/chat/completions', apiKey, {
         model: MODEL,
         messages: [
           { role: 'system', content: systemPrompt },
@@ -150,20 +144,19 @@ Rules:
         ],
         temperature: 0.4,
         max_tokens: 900,
-      }),
     });
 
-    if (!groqRes.ok) {
-      const errText = await groqRes.text();
-      console.error('[CountryIntel] Groq error:', groqRes.status, errText);
+    if (!ai4uRes.ok) {
+      const errText = await ai4uRes.text();
+      console.error('[CountryIntel] AI4U error:', ai4uRes.status, errText);
       return new Response(JSON.stringify({ error: 'AI service error', fallback: true }), {
         status: 502,
         headers: { 'Content-Type': 'application/json' },
       });
     }
 
-    const groqData = await groqRes.json();
-    const brief = groqData.choices?.[0]?.message?.content || '';
+    const ai4uData = await ai4uRes.json();
+    const brief = ai4uData.choices?.[0]?.message?.content || '';
 
     const result = {
       brief,

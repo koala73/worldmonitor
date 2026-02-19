@@ -17,7 +17,7 @@
     "predictionMarkets": "Mercati predittivi",
     "loadingMarkets": "Caricamento mercati predittivi...",
     "infrastructure": "Esposizione infrastrutturale",
-    "briefUnavailable": "Rapporto IA non disponibile — configura GROQ_API_KEY nelle Impostazioni.",
+    "briefUnavailable": "Rapporto IA non disponibile — configura AI4U_API_KEY nelle Impostazioni.",
     "cached": "In cache",
     "fresh": "Aggiornato",
     "noMarkets": "Nessun mercato predittivo trovato",
@@ -288,7 +288,7 @@
       "fresh": "Fresco",
       "noMarkets": "Nessun mercato di previsione trovato",
       "predictionMarkets": "Mercati predittivi",
-      "unavailable": "Brief AI non disponibile: configura GROQ_API_KEY in Impostazioni."
+      "unavailable": "Brief AI non disponibile: configura AI4U_API_KEY in Impostazioni."
     },
     "countryBrief": {
       "components": {
@@ -321,7 +321,7 @@
       "predictionMarkets": "Mercati predittivi",
       "loadingMarkets": "Caricamento mercati predittivi...",
       "infrastructure": "Esposizione alle infrastrutture",
-      "briefUnavailable": "Brief AI non disponibile: configura GROQ_API_KEY in Impostazioni.",
+      "briefUnavailable": "Brief AI non disponibile: configura AI4U_API_KEY in Impostazioni.",
       "cached": "In cache",
       "fresh": "Aggiornato",
       "noMarkets": "Nessun mercato predittivo trovato",

@@ -2,6 +2,7 @@ import { isDesktopRuntime } from './runtime';
 import { invokeTauri } from './tauri-bridge';
 
 export type RuntimeSecretKey =
+  | 'AI4U_API_KEY'
   | 'GROQ_API_KEY'
   | 'OPENROUTER_API_KEY'
   | 'FRED_API_KEY'
@@ -23,7 +24,6 @@ export type RuntimeSecretKey =
 
 export type RuntimeFeatureId =
   | 'aiGroq'
-  | 'aiOpenRouter'
   | 'economicFred'
   | 'energyEia'
   | 'internetOutages'
@@ -62,7 +62,6 @@ const SIDECAR_SECRET_VALIDATE_URL = 'http://127.0.0.1:46123/api/local-validate-s
 
 const defaultToggles: Record<RuntimeFeatureId, boolean> = {
   aiGroq: true,
-  aiOpenRouter: true,
   economicFred: true,
   energyEia: true,
   internetOutages: true,
@@ -80,17 +79,10 @@ const defaultToggles: Record<RuntimeFeatureId, boolean> = {
 export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
   {
     id: 'aiGroq',
-    name: 'Groq summarization',
-    description: 'Primary fast LLM provider used for AI summary generation.',
-    requiredSecrets: ['GROQ_API_KEY'],
-    fallback: 'Falls back to OpenRouter, then local browser model.',
-  },
-  {
-    id: 'aiOpenRouter',
-    name: 'OpenRouter summarization',
-    description: 'Secondary LLM provider for AI summary fallback.',
-    requiredSecrets: ['OPENROUTER_API_KEY'],
-    fallback: 'Falls back to local browser model only.',
+    name: 'AI4U LLM provider',
+    description: 'Primary/fallback chat models and translation through api.ai4u.now.',
+    requiredSecrets: ['AI4U_API_KEY'],
+    fallback: 'Falls back to local browser summarization/embeddings.',
   },
   {
     id: 'economicFred',

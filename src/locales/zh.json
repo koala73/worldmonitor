@@ -17,7 +17,7 @@
     "predictionMarkets": "预测市场",
     "loadingMarkets": "正在加载预测市场...",
     "infrastructure": "基础设施暴露",
-    "briefUnavailable": "AI简报不可用 — 请在设置中配置GROQ_API_KEY。",
+    "briefUnavailable": "AI简报不可用 — 请在设置中配置AI4U_API_KEY。",
     "cached": "已缓存",
     "fresh": "最新",
     "noMarkets": "未找到预测市场",
@@ -310,7 +310,7 @@
       "fresh": "最新",
       "noMarkets": "未找到预测市场",
       "predictionMarkets": "预测市场",
-      "unavailable": "AI简报不可用 — 请在设置中配置GROQ_API_KEY。"
+      "unavailable": "AI简报不可用 — 请在设置中配置AI4U_API_KEY。"
     },
     "countryBrief": {
       "identifying": "正在识别国家...",
@@ -326,7 +326,7 @@
       "predictionMarkets": "预测市场",
       "loadingMarkets": "正在加载预测市场...",
       "infrastructure": "基础设施暴露",
-      "briefUnavailable": "AI简报不可用 — 请在设置中配置GROQ_API_KEY。",
+      "briefUnavailable": "AI简报不可用 — 请在设置中配置AI4U_API_KEY。",
       "cached": "已缓存",
       "fresh": "最新",
       "noMarkets": "未找到预测市场",
