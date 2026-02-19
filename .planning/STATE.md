@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-18)
 
 **Core value:** Every API integration is defined in a .proto file with generated type-safe TypeScript clients and server handlers, eliminating hand-written fetch boilerplate.
-**Current focus:** Phase 2K: Conflict Migration (COMPLETE -- all 2 plans done)
+**Current focus:** Phase 2L: Maritime Migration (Plan 01 of 02 complete)
 
 ## Current Position
 
-Phase: 2K (Conflict Migration) -- COMPLETE
-Current Plan: 02 of 02 complete
-Status: Conflict domain fully migrated -- handler + service module + consumer wiring + 9 legacy files deleted
-Last activity: 2026-02-19 -- Plan 2K-02 executed (execute-phase)
+Phase: 2L (Maritime Migration) -- IN PROGRESS
+Current Plan: 01 of 02 complete
+Status: Maritime handler implemented with 2 RPCs, routes mounted in gateway
+Last activity: 2026-02-19 -- Plan 2L-01 executed (execute-phase)
 
-Progress: [████████████████████] ~100%
+Progress: [██████████----------] ~50%
 
 ## Performance Metrics
 
@@ -42,6 +42,7 @@ Progress: [████████████████████] ~100%
 - Phase 2J Plan 02: Unrest Service Module (2 tasks, 2min, 5 files created/modified/deleted)
 - Phase 2K Plan 01: Conflict Handler (2 tasks, 2min, 2 files created/modified)
 - Phase 2K Plan 02: Conflict Service Module (2 tasks, 3min, 12 files created/modified/deleted)
+- Phase 2L Plan 01: Maritime Handler (2 tasks, 2min, 2 files created/modified)
 
 ## Accumulated Context
 
@@ -122,6 +123,10 @@ Progress: [████████████████████] ~100%
 - [2K-02]: fetchHapiSummary calls RPC per tier-1 country via Promise.allSettled (20 parallel calls)
 - [2K-02]: Used substring(0,10) instead of split('T')[0] for ISO dates (noUncheckedIndexedAccess compliance)
 - [2K-02]: UcdpGeoEvent/UcdpEventType preserved in src/types/index.ts (scope guard for map components)
+- [2L-01]: No caching in maritime handler -- legacy 3-layer Redis+memory+stale caching removed; client-side polling manages refresh
+- [2L-01]: NGA warning id encodes navArea-msgYear-msgNumber for downstream cable-activity parsing
+- [2L-01]: NGA warning area encodes navArea + subregion for downstream cable-activity parsing
+- [2L-01]: Disruption type/severity mapped via Record<string, enum> lookup with UNSPECIFIED fallback
 
 ### Pending Todos
 
@@ -135,7 +140,7 @@ Progress: [████████████████████] ~100%
 ## Session Continuity
 
 Last session: 2026-02-19
-Stopped at: Completed 2K-02-PLAN.md (Conflict service module + consumer wiring + 9 legacy files deleted)
-Resume file: .planning/phases/2K-conflict-migration/2K-02-SUMMARY.md
+Stopped at: Completed 2L-01-PLAN.md (Maritime handler with 2 RPCs + gateway wiring)
+Resume file: .planning/phases/2L-maritime-migration/2L-01-SUMMARY.md
 PR: #106 (draft) — https://github.com/koala73/worldmonitor/pull/106
-Next steps: Phase 2K complete. All sebuf domain migrations done.
+Next steps: Phase 2L Plan 02 -- maritime service module + consumer wiring.

@@ -165,7 +165,7 @@ Plans:
 **Goal**: Migrate maritime domain (AIS vessel snapshot + NGA navigational warnings) to sebuf -- implement 2-RPC handler proxying WS relay for AIS data and NGA MSI API for navigational warnings, create service module with port/adapter pattern preserving polling/callback architecture and hybrid fetch strategy (proto RPC for snapshot, raw relay for candidateReports), rewire cable-activity and all consumers, delete legacy endpoints
 **Depends on**: Phase 2K
 **Requirements:** [DOMAIN-06, SERVER-02]
-**Plans:** 2 plans
+**Plans:** 3/3 plans complete
 Plans:
 - [ ] 2L-01-PLAN.md -- Maritime handler (2 RPCs: WS relay proxy for AIS snapshot, NGA MSI proxy for navigational warnings) + gateway wiring + sidecar rebuild
 - [ ] 2L-02-PLAN.md -- Maritime service module (hybrid fetch, polling/callback preservation, proto-to-legacy type mapping) + cable-activity rewiring + consumer imports + legacy deletion (3 files)
@@ -221,6 +221,5 @@ Each migration step:
 | 2I. Research Migration | Complete | 2026-02-19 |
 | 2J. Unrest Migration | Complete | 2026-02-19 |
 | 2K. Conflict Migration | Complete | 2026-02-19 |
-| 2L. Maritime Migration | Not started | - |
-| 2M-2S. Domain Migrations (0/7) | Not started | - |
+| 2L. Maritime Migration | 3/3 | Complete   | 2026-02-19 | 2M-2S. Domain Migrations (0/7) | Not started | - |
 | 2T. Legacy Cleanup | Not started | - |
