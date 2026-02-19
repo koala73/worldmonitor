@@ -44,7 +44,7 @@ export default async function handler(req) {
     const res = await fetch(RELEASES_URL, {
       headers: {
         'Accept': 'application/vnd.github+json',
-        'User-Agent': 'WorldMonitor-Download-Redirect',
+        'User-Agent': 'IntelHQ-Download-Redirect',
       },
     });
 

@@ -3,7 +3,7 @@ import test from 'node:test';
 import handler from './embed.js';
 
 function makeRequest(query = '') {
-  return new Request(`https://worldmonitor.app/api/youtube/embed${query}`);
+  return new Request(`https://intelhq.io/api/youtube/embed${query}`);
 }
 
 test('rejects missing or invalid video ids', async () => {
@@ -24,7 +24,7 @@ test('returns embeddable html for valid video id', async () => {
   assert.equal(html.includes("host:'https://www.youtube-nocookie.com'"), true);
   assert.equal(html.includes('autoplay:0'), true);
   assert.equal(html.includes('mute:1'), true);
-  assert.equal(html.includes('origin:"https://worldmonitor.app"'), true);
+  assert.equal(html.includes('origin:"https://intelhq.io"'), true);
   assert.equal(html.includes('postMessage'), true);
 });
 

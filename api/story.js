@@ -37,7 +37,7 @@ export default function handler(req, res) {
 
   // Bots → serve meta tags
   const countryName = COUNTRY_NAMES[countryCode] || countryCode || 'Global';
-  const title = `${countryName} Intelligence Brief | World Monitor`;
+  const title = `${countryName} Intelligence Brief | IntelHQ`;
   const description = `Real-time instability analysis for ${countryName}. Country Instability Index, military posture, threat classification, and prediction markets. Free, open-source geopolitical intelligence.`;
   const imageParams = `c=${countryCode}&t=${type}${score ? `&s=${score}` : ''}${level ? `&l=${level}` : ''}`;
   const imageUrl = `${baseUrl}/api/og-story?${imageParams}`;
@@ -57,10 +57,10 @@ export default function handler(req, res) {
   <meta property="og:image:width" content="1200"/>
   <meta property="og:image:height" content="630"/>
   <meta property="og:url" content="${esc(storyUrl)}"/>
-  <meta property="og:site_name" content="World Monitor"/>
+  <meta property="og:site_name" content="IntelHQ"/>
 
   <meta name="twitter:card" content="summary_large_image"/>
-  <meta name="twitter:site" content="@WorldMonitorApp"/>
+  <meta name="twitter:site" content="@IntelHQApp"/>
   <meta name="twitter:title" content="${esc(title)}"/>
   <meta name="twitter:description" content="${esc(description)}"/>
   <meta name="twitter:image" content="${esc(imageUrl)}"/>

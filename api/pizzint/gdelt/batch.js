@@ -20,7 +20,7 @@ export default async function handler(req) {
     const response = await fetch(targetUrl, {
       headers: {
         'Accept': 'application/json',
-        'User-Agent': 'WorldMonitor/1.0',
+        'User-Agent': 'IntelHQ/1.0',
       },
     });
 

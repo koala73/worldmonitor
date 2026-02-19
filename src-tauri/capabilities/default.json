@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capabilities for World Monitor main and settings windows",
+  "description": "Capabilities for IntelHQ main and settings windows",
   "windows": ["main", "settings"],
   "permissions": ["core:default"]
 }

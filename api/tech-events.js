@@ -632,10 +632,10 @@ export default async function handler(req) {
     // Fetch both sources in parallel
     const [icsResponse, rssResponse] = await Promise.allSettled([
       fetch(ICS_URL, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; WorldMonitor/1.0)' },
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; IntelHQ/1.0)' },
       }),
       fetch(DEV_EVENTS_RSS, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; WorldMonitor/1.0)' },
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; IntelHQ/1.0)' },
       }),
     ]);
 

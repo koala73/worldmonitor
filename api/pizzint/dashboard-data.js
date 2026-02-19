@@ -10,7 +10,7 @@ export default async function handler(request) {
     const response = await fetch('https://www.pizzint.watch/api/dashboard-data', {
       headers: {
         'Accept': 'application/json',
-        'User-Agent': 'WorldMonitor/1.0',
+        'User-Agent': 'IntelHQ/1.0',
       },
     });
 

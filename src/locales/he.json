@@ -1,7 +1,7 @@
 {
   "app": {
     "title": "IntelHQ",
-    "description": "Global Situation with AI Insights"
+    "description": "מצב עולמי עם תובנות בינה מלאכותית"
   },
   "countryBrief": {
     "identifying": "Identifying country...",
@@ -53,34 +53,34 @@
     }
   },
   "header": {
-    "world": "WORLD",
-    "tech": "TECH",
-    "live": "LIVE",
-    "search": "Search",
-    "settings": "PANELS",
-    "sources": "SOURCES",
-    "copyLink": "Copy Link",
-    "fullscreen": "Fullscreen",
-    "pinMap": "Pin map to top",
-    "viewOnGitHub": "View on GitHub",
-    "filterSources": "Filter sources...",
-    "sourcesEnabled": "{{enabled}}/{{total}} enabled",
-    "finance": "FINANCE",
-    "toggleTheme": "Toggle dark/light mode"
+    "world": "עולם",
+    "tech": "טכנולוגיה",
+    "live": "שידור חי",
+    "search": "חיפוש",
+    "settings": "פאנלים",
+    "sources": "מקורות",
+    "copyLink": "העתק קישור",
+    "fullscreen": "מסך מלא",
+    "pinMap": "הצמד מפה למעלה",
+    "viewOnGitHub": "צפה ב-GitHub",
+    "filterSources": "סנן מקורות...",
+    "sourcesEnabled": "{{enabled}}/{{total}} מופעלים",
+    "finance": "פיננסים",
+    "toggleTheme": "החלף מצב כהה/בהיר"
   },
   "panels": {
-    "liveNews": "Live News",
-    "markets": "Markets",
-    "map": "Global Situation",
+    "liveNews": "חדשות בשידור חי",
+    "markets": "שווקים",
+    "map": "מצב עולמי",
     "techMap": "Global Tech",
     "techHubs": "Hot Tech Hubs",
     "status": "System Status",
-    "insights": "AI Insights",
-    "strategicPosture": "AI Strategic Posture",
-    "cii": "Country Instability",
-    "strategicRisk": "Strategic Risk Overview",
-    "intel": "Intel Feed",
-    "gdeltIntel": "Live Intelligence",
+    "insights": "תובנות AI",
+    "strategicPosture": "מצב אסטרטגי AI",
+    "cii": "אי-יציבות מדינתית",
+    "strategicRisk": "סקירת סיכונים אסטרטגיים",
+    "intel": "פיד מודיעין",
+    "gdeltIntel": "מודיעין חי",
     "cascade": "Infrastructure Cascade",
     "politics": "World News",
     "middleeast": "Middle East",
@@ -128,8 +128,8 @@
     "techReadiness": "Tech Readiness Index",
     "gccInvestments": "GCC Investments",
     "geoHubs": "Geopolitical Hubs",
-    "liveWebcams": "Live Webcams",
-    "orefSirens": "Israel Sirens"
+    "liveWebcams": "מצלמות חיות",
+    "orefSirens": "אזעקות ישראל"
   },
   "modals": {
     "search": {
@@ -360,42 +360,10 @@
         "base": "Military Bases",
         "nuclear": "Nuclear Facilities",
         "port": "Ports"
-      },
-      "levels": {
-        "critical": "Critical",
-        "high": "High",
-        "elevated": "Elevated",
-        "moderate": "Moderate",
-        "normal": "Normal",
-        "low": "Low"
-      },
-      "trends": {
-        "rising": "Rising",
-        "falling": "Falling",
-        "stable": "Stable"
-      },
-      "fallback": {
-        "instabilityIndex": "**Instability Index: {{score}}/100** ({{level}}, {{trend}})",
-        "protestsDetected": "{{count}} active protests detected",
-        "aircraftTracked": "{{count}} military aircraft tracked",
-        "vesselsTracked": "{{count}} military vessels tracked",
-        "internetOutages": "{{count}} internet outages",
-        "recentEarthquakes": "{{count}} recent earthquakes",
-        "stockIndex": "Stock index: {{value}}",
-        "recentHeadlines": "**Recent headlines:**"
       }
     }
   },
   "components": {
-    "webcams": {
-      "regions": {
-        "all": "ALL",
-        "mideast": "MIDEAST",
-        "europe": "EUROPE",
-        "americas": "AMERICAS",
-        "asia": "ASIA"
-      }
-    },
     "monitor": {
       "placeholder": "Keywords (comma separated)",
       "add": "+ Add Monitor",
@@ -527,46 +495,7 @@
         "auxiliary": "Auxiliary",
         "navalVessels": "Naval Vessels"
       },
-      "infoTooltip": "<strong>Methodology</strong><p>Aggregates military aircraft and naval vessels by theater.</p><ul><li><strong>Normal:</strong> Baseline activity</li><li><strong>Elevated:</strong> Above threshold (50+ aircraft)</li><li><strong>Critical:</strong> High concentration (100+ aircraft)</li></ul><p><strong>Strike Capable:</strong> Tankers + AWACS + Fighters present in sufficient numbers for sustained operations.</p>",
-      "scanningTheaters": "Scanning Theaters",
-      "positions": "Aircraft positions",
-      "navalVesselsLoading": "Naval vessels",
-      "theaterAnalysis": "Theater analysis",
-      "connectingStreams": "Connecting to live ADS-B & AIS streams...",
-      "initialLoadNote": "Initial load takes 30-60 seconds as tracking data accumulates",
-      "acquiringData": "Acquiring Data",
-      "acquiringDesc": "Connecting to ADS-B network for military flight data. This may take 30-60 seconds on first load.",
-      "openSkyAdsb": "OpenSky ADS-B",
-      "aisVesselStream": "AIS Vessel Stream",
-      "retryNow": "Retry Now",
-      "feedRateLimited": "Feed Rate Limited",
-      "rateLimitedDesc": "OpenSky API has request limits. The panel will automatically retry in a few minutes, or you can try again now.",
-      "rateLimitedTip": "Tip: Peak hours (UTC 12:00-20:00) often see higher limits.",
-      "tryAgain": "Try Again",
-      "badges": {
-        "critical": "CRIT",
-        "elevated": "ELEV",
-        "normal": "NORM"
-      },
-      "trendStable": "stable",
-      "domains": {
-        "air": "AIR",
-        "sea": "SEA"
-      },
-      "strike": "STRIKE",
-      "staleWarning": "Using cached data - live feed temporarily unavailable",
-      "updated": "Updated:",
-      "theaters": {
-        "iran-theater": "Iran Theater",
-        "taiwan-theater": "Taiwan Strait",
-        "baltic-theater": "Baltic Theater",
-        "blacksea-theater": "Black Sea",
-        "korea-theater": "Korean Peninsula",
-        "south-china-sea": "South China Sea",
-        "east-med-theater": "Eastern Mediterranean",
-        "israel-gaza-theater": "Israel/Gaza",
-        "yemen-redsea-theater": "Yemen/Red Sea"
-      }
+      "infoTooltip": "<strong>Methodology</strong><p>Aggregates military aircraft and naval vessels by theater.</p><ul><li><strong>Normal:</strong> Baseline activity</li><li><strong>Elevated:</strong> Above threshold (50+ aircraft)</li><li><strong>Critical:</strong> High concentration (100+ aircraft)</li></ul><p><strong>Strike Capable:</strong> Tankers + AWACS + Fighters present in sufficient numbers for sustained operations.</p>"
     },
     "countryBrief": {
       "shareStory": "Share story",
@@ -801,18 +730,6 @@
     },
     "strategicRisk": {
       "noRisks": "No significant risks detected",
-      "levels": {
-        "critical": "Critical",
-        "elevated": "Elevated",
-        "moderate": "Moderate",
-        "low": "Low"
-      },
-      "trend": "Trend",
-      "trends": {
-        "escalating": "Escalating",
-        "deEscalating": "De-escalating",
-        "stable": "Stable"
-      },
       "infoTooltip": "<strong>Methodology</strong> Composite score (0-100) blending:<ul><li>50% Country Instability (top 5 weighted)</li><li>30% Geographic convergence zones</li><li>20% Infrastructure incidents</li></ul>Auto-refreshes every 5 minutes."
     },
     "techEvents": {
@@ -849,14 +766,14 @@
       "infoTooltip": "NASA FIRMS VIIRS satellite thermal detections across monitored conflict regions. High-intensity = brightness >360K & confidence >80%."
     },
     "orefSirens": {
-      "checking": "Checking sirens...",
-      "noAlerts": "No active sirens",
-      "activeSirens": "{{count}} active siren(s)",
-      "area": "Area",
-      "time": "Time",
-      "justNow": "just now",
-      "notConfigured": "Oref proxy not configured",
-      "infoTooltip": "<strong>Israel Home Front Command (Pikud HaOref)</strong> Real-time siren alerts from the Israeli civil defense system. Data proxied via Israel VPS due to geo-restrictions."
+      "checking": "בודק אזעקות...",
+      "noAlerts": "אין אזעקות פעילות",
+      "activeSirens": "{{count}} אזעקות פעילות",
+      "area": "אזור",
+      "time": "שעה",
+      "justNow": "עכשיו",
+      "notConfigured": "פרוקסי פיקוד העורף לא מוגדר",
+      "infoTooltip": "<strong>פיקוד העורף</strong> שידור חי של אזעקות ממערכת ההתרעה האזרחית. נתונים מועברים דרך שרת בישראל."
     },
     "ucdpEvents": {
       "stateBased": "State-Based",
@@ -961,39 +878,6 @@
     },
     "prediction": {
       "infoTooltip": "<strong>Prediction Markets</strong> Real-money forecasting markets:<ul><li>Prices reflect crowd probability estimates</li><li>Higher volume = more reliable signal</li><li>Geopolitical and current events focus</li></ul>Source: Polymarket (polymarket.com)"
-    },
-    "etfFlows": {
-      "unavailable": "ETF data temporarily unavailable",
-      "netFlow": "Net Flow",
-      "estFlow": "Est. Flow",
-      "totalVol": "Total Vol",
-      "etfs": "ETFs",
-      "netInflow": "NET INFLOW",
-      "netOutflow": "NET OUTFLOW",
-      "table": {
-        "ticker": "Ticker",
-        "issuer": "Issuer",
-        "estFlow": "Est. Flow",
-        "volume": "Volume",
-        "change": "Change"
-      }
-    },
-    "macroSignals": {
-      "overall": "Overall",
-      "verdict": {
-        "buy": "BUY",
-        "cash": "CASH"
-      },
-      "bullish": "{{count}}/{{total}} bullish",
-      "signals": {
-        "liquidity": "Liquidity",
-        "flow": "Flow",
-        "regime": "Regime",
-        "btcTrend": "BTC Trend",
-        "hashRate": "Hash Rate",
-        "mining": "Mining",
-        "fearGreed": "Fear & Greed"
-      }
     }
   },
   "popups": {
@@ -1568,14 +1452,14 @@
     }
   },
   "common": {
-    "loading": "Loading...",
-    "error": "Error",
-    "noData": "No data available",
-    "noDataAvailable": "No data available",
-    "updated": "Updated just now",
-    "ago": "{{time}} ago",
-    "failedToLoad": "Failed to load data",
-    "noDataShort": "No data",
+    "loading": "טוען...",
+    "error": "שגיאה",
+    "noData": "אין נתונים זמינים",
+    "noDataAvailable": "אין נתונים זמינים",
+    "updated": "עודכן כרגע",
+    "ago": "לפני {{time}}",
+    "failedToLoad": "טעינת נתונים נכשלה",
+    "noDataShort": "אין נתונים",
     "upstreamUnavailable": "Upstream API unavailable — will retry automatically",
     "loadingUcdpEvents": "Loading UCDP events",
     "loadingStablecoins": "Loading stablecoins...",
@@ -1617,7 +1501,7 @@
     "live": "LIVE",
     "cached": "CACHED",
     "unavailable": "UNAVAILABLE",
-    "close": "Close",
-    "currentVariant": "(current)"
+    "close": "סגור",
+    "currentVariant": "(נוכחי)"
   }
 }
