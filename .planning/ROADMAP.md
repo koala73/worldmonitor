@@ -40,7 +40,8 @@ proto/worldmonitor/
 - [x] **Phase 2G: Displacement Migration** - UNHCR refugees/IDPs with multi-entity responses (completed 2026-02-19)
 - [x] **Phase 2H: Aviation Migration** - FAA XML parsing, simulated non-US delays, MONITORED_AIRPORTS config (completed 2026-02-19)
 - [x] **Phase 2I: Research Migration** - arXiv, GitHub trending, Hacker News with thin port/adapter (completed 2026-02-19)
-- [ ] **Phase 2J-2S: Domain Migrations** - Remaining domains, one sub-phase each
+- [ ] **Phase 2J: Unrest Migration** - ACLED protests/riots with auth token validation and GDELT enrichment
+- [ ] **Phase 2K-2S: Domain Migrations** - Remaining domains, one sub-phase each
 
 ## Phase Details
 
@@ -139,9 +140,18 @@ Plans:
 - [x] 2I-01-PLAN.md -- Research handler (3 RPCs: arXiv XML parsing, GitHub trending with fallback, HN Firebase 2-step fetch) + gateway wiring + sidecar rebuild
 - [x] 2I-02-PLAN.md -- Research service module (port/adapter with circuit breakers) + legacy deletion (6 files) + config cleanup
 
-### Phase 2J-2S: Remaining Domain Migrations
-**Goal**: Each remaining domain migrated one at a time in order of complexity
+### Phase 2J: Unrest Migration
+**Goal**: Migrate unrest domain (ACLED protests/riots/strikes) to sebuf -- implement handler proxying ACLED API with auth token, optional GDELT enrichment, event clustering, severity classification, create service module with port/adapter pattern, rewire all consumers, delete legacy endpoint
 **Depends on**: Phase 2I
+**Requirements:** [DOMAIN-07, SERVER-02]
+**Plans:** 2 plans
+Plans:
+- [ ] 2J-01-PLAN.md -- Unrest handler (ACLED + GDELT dual-fetch, deduplication, severity classification) + gateway wiring + sidecar rebuild
+- [ ] 2J-02-PLAN.md -- Unrest service module (proto-to-legacy SocialUnrestEvent mapping) + consumer rewiring + legacy deletion (3 files)
+
+### Phase 2K-2S: Remaining Domain Migrations
+**Goal**: Each remaining domain migrated one at a time in order of complexity
+**Depends on**: Phase 2J
 
 Migration order (one sub-phase each):
 1. ~~seismology~~ (complete, Phase 2C)
@@ -188,5 +198,6 @@ Each migration step:
 | 2G. Displacement Migration | Complete | 2026-02-19 |
 | 2H. Aviation Migration | Complete | 2026-02-19 |
 | 2I. Research Migration | Complete | 2026-02-19 |
-| 2J-2S. Domain Migrations (0/10) | Not started | - |
+| 2J. Unrest Migration | Not started | - |
+| 2K-2S. Domain Migrations (0/9) | Not started | - |
 | 2T. Legacy Cleanup | Not started | - |
