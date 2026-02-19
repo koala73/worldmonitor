@@ -24,9 +24,9 @@ import type {
   MilitaryVesselCluster,
   NaturalEvent,
   UcdpGeoEvent,
-  DisplacementFlow,
   CyberThreat,
 } from '@/types';
+import type { DisplacementFlow } from '@/services/displacement';
 import type { Earthquake } from '@/services/earthquakes';
 import type { ClimateAnomaly } from '@/services/climate';
 import type { WeatherAlert } from '@/services/weather';

@@ -5,7 +5,7 @@ import { focalPointDetector } from './focal-point-detector';
 import type { ConflictEvent } from './conflicts';
 import type { UcdpConflictStatus } from './ucdp';
 import type { HapiConflictSummary } from './hapi';
-import type { CountryDisplacement } from '@/types';
+import type { CountryDisplacement } from '@/services/displacement';
 import type { ClimateAnomaly } from '@/services/climate';
 import { getCountryAtCoordinates } from './country-geometry';
 

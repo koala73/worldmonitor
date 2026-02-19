@@ -30,7 +30,7 @@ import { fetchConflictEvents } from '@/services/conflicts';
 import { fetchUcdpClassifications } from '@/services/ucdp';
 import { fetchHapiSummary } from '@/services/hapi';
 import { fetchUcdpEvents, deduplicateAgainstAcled } from '@/services/ucdp-events';
-import { fetchUnhcrPopulation } from '@/services/unhcr';
+import { fetchUnhcrPopulation } from '@/services/displacement';
 import { fetchClimateAnomalies } from '@/services/climate';
 import { enrichEventsWithExposure } from '@/services/population-exposure';
 import { buildMapUrl, debounce, loadFromStorage, parseMapUrlState, saveToStorage, ExportPanel, getCircuitBreakerCooldownInfo, isMobileDevice, setTheme, getCurrentTheme } from '@/utils';

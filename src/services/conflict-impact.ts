@@ -1,4 +1,5 @@
-import type { UcdpGeoEvent, CountryDisplacement, PopulationExposure } from '@/types';
+import type { UcdpGeoEvent, PopulationExposure } from '@/types';
+import type { CountryDisplacement } from '@/services/displacement';
 import type { ClimateAnomaly } from '@/services/climate';
 
 export interface ConflictImpactLink {

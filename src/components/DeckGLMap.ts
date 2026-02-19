@@ -28,13 +28,13 @@ import type {
   MilitaryVesselCluster,
   NaturalEvent,
   UcdpGeoEvent,
-  DisplacementFlow,
   MapProtestCluster,
   MapTechHQCluster,
   MapTechEventCluster,
   MapDatacenterCluster,
   CyberThreat,
 } from '@/types';
+import type { DisplacementFlow } from '@/services/displacement';
 import type { Earthquake } from '@/services/earthquakes';
 import type { ClimateAnomaly } from '@/services/climate';
 import { ArcLayer } from '@deck.gl/layers';

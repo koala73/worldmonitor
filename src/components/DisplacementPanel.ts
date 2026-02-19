@@ -1,7 +1,7 @@
 import { Panel } from './Panel';
 import { escapeHtml } from '@/utils/sanitize';
-import type { UnhcrSummary, CountryDisplacement } from '@/types';
-import { formatPopulation } from '@/services/unhcr';
+import type { UnhcrSummary, CountryDisplacement } from '@/services/displacement';
+import { formatPopulation } from '@/services/displacement';
 import { t } from '@/services/i18n';
 
 type DisplacementTab = 'origins' | 'hosts';
