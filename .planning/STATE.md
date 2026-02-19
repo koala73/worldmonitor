@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-18)
 
 **Core value:** Every API integration is defined in a .proto file with generated type-safe TypeScript clients and server handlers, eliminating hand-written fetch boilerplate.
-**Current focus:** Phase 2G: Displacement Migration (in progress)
+**Current focus:** Phase 2G: Displacement Migration (complete)
 
 ## Current Position
 
 Phase: 2G (Displacement Migration)
-Current Plan: 01 of 02 complete
-Status: Displacement handler implemented with UNHCR API pagination, aggregation, flow corridors; gateway wired
-Last activity: 2026-02-19 -- Plan 2G-01 executed (execute-phase)
+Current Plan: 02 of 02 complete
+Status: Phase 2G complete -- displacement domain fully migrated to sebuf end-to-end
+Last activity: 2026-02-19 -- Plan 2G-02 executed (execute-phase)
 
-Progress: [███████████████] ~75%
+Progress: [████████████████] ~80%
 
 ## Performance Metrics
 
@@ -33,6 +33,7 @@ Progress: [███████████████] ~75%
 - Phase 2F Plan 01: Prediction Handler (2 tasks, 2min, 2 files created/modified)
 - Phase 2F Plan 02: Prediction Consumer Wiring (2 tasks, 4min, 12 files created/modified/deleted)
 - Phase 2G Plan 01: Displacement Handler (2 tasks, 2min, 2 files created/modified)
+- Phase 2G Plan 02: Displacement Consumer Wiring (2 tasks, 3min, 10 files created/modified/deleted)
 
 ## Accumulated Context
 
@@ -83,6 +84,10 @@ Progress: [███████████████] ~75%
 - [2G-01]: Year fallback tries current year, then current-1, then current-2 until data found
 - [2G-01]: All int64 displacement fields returned as String() matching generated DisplacementServiceHandler interface
 - [2G-01]: Graceful empty response on ANY UNHCR API failure following established 2F-01 pattern
+- [2G-02]: Preserved circuit breaker from legacy for upstream failure protection
+- [2G-02]: cachedAt field dropped (never set by sebuf handler) but kept in interface for type compat
+- [2G-02]: ok heuristic: data !== emptyResult && countries.length > 0
+- [2G-02]: flowLimit 50 matching legacy top-flows count
 
 ### Pending Todos
 
@@ -96,7 +101,7 @@ Progress: [███████████████] ~75%
 ## Session Continuity
 
 Last session: 2026-02-19
-Stopped at: Completed 2G-01-PLAN.md
-Resume file: .planning/phases/2G-displacement-migration/2G-01-SUMMARY.md
+Stopped at: Completed 2G-02-PLAN.md (Phase 2G complete)
+Resume file: .planning/phases/2G-displacement-migration/2G-02-SUMMARY.md
 PR: #106 (draft) — https://github.com/koala73/worldmonitor/pull/106
-Next steps: Execute 2G-02 (displacement consumer wiring, service module, legacy deletion).
+Next steps: Phase 2G complete. Proceed to next migration phase or milestone wrap-up.

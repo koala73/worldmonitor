@@ -37,7 +37,7 @@ proto/worldmonitor/
 - [x] **Phase 2B: Server Runtime** - Router, CORS, error mapper, catch-all gateway, first handler
 - [x] **Phase 2E: Climate Migration** - Open-Meteo anomalies with enum-heavy responses (completed 2026-02-18)
 - [x] **Phase 2F: Prediction Migration** - Polymarket prediction markets with query params and multi-strategy fetch (completed 2026-02-18)
-- [ ] **Phase 2G: Displacement Migration** - UNHCR refugees/IDPs with multi-entity responses (1/2 plans complete)
+- [x] **Phase 2G: Displacement Migration** - UNHCR refugees/IDPs with multi-entity responses (1/2 plans complete) (completed 2026-02-19)
 - [ ] **Phase 2H-2S: Domain Migrations** - Remaining domains, one sub-phase each
 
 ## Phase Details
@@ -112,7 +112,7 @@ Plans:
 **Depends on**: Phase 2F
 **Status**: In progress
 **Requirements:** [DOMAIN-07, SERVER-02]
-**Plans:** 1/2 plans complete
+**Plans:** 3/3 plans complete
 Plans:
 - [x] 2G-01-PLAN.md -- Displacement handler (UNHCR API pagination, per-country aggregation, flow computation, country centroids) + gateway wiring + sidecar rebuild
 - [ ] 2G-02-PLAN.md -- Displacement service module (int64 string->number, GeoCoordinates->flat lat/lon mapping) + consumer rewiring + legacy deletion
@@ -163,5 +163,5 @@ Each migration step:
 | 2D. Wildfire Migration | Complete | 2026-02-18 |
 | 2E. Climate Migration | Complete | 2026-02-18 |
 | 2F. Prediction Migration | Complete | 2026-02-18 |
-| 2G. Displacement Migration | 1/2 | In progress | 2026-02-19 | 2H-2S. Domain Migrations (0/12) | Not started | - |
+| 2G. Displacement Migration | 3/3 | Complete   | 2026-02-19 | 2H-2S. Domain Migrations (0/12) | Not started | - |
 | 2T. Legacy Cleanup | Not started | - |
