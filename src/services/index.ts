@@ -12,7 +12,7 @@ export * from './weather';
 export * from './fred';
 export * from './outages';
 export * from './cyber-threats';
-export * from './ais';
+export * from './maritime';
 export * from './cable-activity';
 export * from './unrest';
 export * from './aviation';

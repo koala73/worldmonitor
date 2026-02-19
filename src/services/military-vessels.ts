@@ -12,7 +12,7 @@ import {
   isAisConfigured,
   initAisStream,
   type AisPositionData,
-} from './ais';
+} from './maritime';
 
 // Cache for API responses
 let vesselCache: { data: MilitaryVessel[]; timestamp: number } | null = null;

@@ -1,5 +1,8 @@
 import type { CableAdvisory, RepairShip, UnderseaCable } from '@/types';
 import { UNDERSEA_CABLES } from '@/config';
+import { MaritimeServiceClient, type NavigationalWarning } from '@/generated/client/worldmonitor/maritime/v1/service_client';
+
+const maritimeClient = new MaritimeServiceClient('');
 
 interface CableActivity {
   advisories: CableAdvisory[];
@@ -16,8 +19,6 @@ interface NgaWarning {
   issueDate: string;
   authority: string;
 }
-
-const NGA_API_URL = '/api/nga-warnings';
 
 const CABLE_KEYWORDS = [
   'CABLE',
@@ -244,20 +245,45 @@ function processWarnings(warnings: NgaWarning[]): CableActivity {
   return { advisories, repairShips };
 }
 
+function protoToNgaWarning(w: NavigationalWarning): NgaWarning {
+  // Parse id format: "navArea-msgYear-msgNumber" (e.g., "IV-2024-42")
+  const idParts = w.id.split('-');
+  const navArea = idParts.length >= 3 ? idParts.slice(0, -2).join('-') : (idParts[0] || '');
+  const msgYear = idParts.length >= 2 ? Number(idParts[idParts.length - 2]) || 0 : 0;
+  const msgNumber = idParts.length >= 1 ? Number(idParts[idParts.length - 1]) || 0 : 0;
+
+  // Parse area format: "navArea subregion" (e.g., "IV 21")
+  const areaParts = w.area.split(' ');
+  const subregion = areaParts.length > 1 ? areaParts.slice(1).join(' ') : '';
+
+  return {
+    msgYear,
+    msgNumber,
+    navArea,
+    subregion,
+    text: w.text,
+    status: 'A', // All warnings from the active endpoint have status A
+    issueDate: w.issuedAt ? formatNgaDate(w.issuedAt) : '',
+    authority: w.authority,
+  };
+}
+
+function formatNgaDate(epochMs: number): string {
+  if (!epochMs) return '';
+  const d = new Date(epochMs);
+  const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  const hours = String(d.getUTCHours()).padStart(2, '0');
+  const minutes = String(d.getUTCMinutes()).padStart(2, '0');
+  const month = months[d.getUTCMonth()] || 'JAN';
+  const year = d.getUTCFullYear();
+  return `${day}${hours}${minutes}Z ${month} ${year}`;
+}
+
 export async function fetchCableActivity(): Promise<CableActivity> {
   try {
-    const response = await fetch(NGA_API_URL, {
-      headers: {
-        'Accept': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`NGA API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    const warnings: NgaWarning[] = Array.isArray(data) ? data : (data?.warnings ?? []);
+    const response = await maritimeClient.listNavigationalWarnings({ area: '' });
+    const warnings: NgaWarning[] = response.warnings.map(protoToNgaWarning);
     console.log(`[CableActivity] Fetched ${warnings.length} NGA warnings`);
 
     const activity = processWarnings(warnings);
