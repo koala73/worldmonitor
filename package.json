@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "lint:md": "markdownlint-cli2 '**/*.md'",
+    "lint:innerhtml": "bash scripts/check-innerhtml.sh",
     "version:sync": "node scripts/sync-desktop-version.mjs",
     "version:check": "node scripts/sync-desktop-version.mjs --check",
     "dev": "vite",

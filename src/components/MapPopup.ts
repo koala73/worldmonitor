@@ -814,16 +814,16 @@ export class MapPopup {
 
     return `
       <div class="popup-header base">
-        <span class="popup-title">${base.name.toUpperCase()}</span>
-        <span class="popup-badge ${typeColors[base.type] || 'low'}">${typeLabels[base.type] || base.type.toUpperCase()}</span>
+        <span class="popup-title">${escapeHtml(base.name.toUpperCase())}</span>
+        <span class="popup-badge ${typeColors[base.type] || 'low'}">${escapeHtml(typeLabels[base.type] || base.type.toUpperCase())}</span>
         <button class="popup-close">×</button>
       </div>
       <div class="popup-body">
-        ${base.description ? `<p class="popup-description">${base.description}</p>` : ''}
+        ${base.description ? `<p class="popup-description">${escapeHtml(base.description)}</p>` : ''}
         <div class="popup-stats">
           <div class="popup-stat">
             <span class="stat-label">${t('popups.type')}</span>
-            <span class="stat-value">${typeLabels[base.type] || base.type}</span>
+            <span class="stat-value">${escapeHtml(typeLabels[base.type] || base.type)}</span>
           </div>
           <div class="popup-stat">
             <span class="stat-label">${t('popups.coordinates')}</span>
@@ -837,12 +837,12 @@ export class MapPopup {
   private renderWaterwayPopup(waterway: StrategicWaterway): string {
     return `
       <div class="popup-header waterway">
-        <span class="popup-title">${waterway.name}</span>
+        <span class="popup-title">${escapeHtml(waterway.name)}</span>
         <span class="popup-badge elevated">${t('popups.strategic')}</span>
         <button class="popup-close">×</button>
       </div>
       <div class="popup-body">
-        ${waterway.description ? `<p class="popup-description">${waterway.description}</p>` : ''}
+        ${waterway.description ? `<p class="popup-description">${escapeHtml(waterway.description)}</p>` : ''}
         <div class="popup-stats">
           <div class="popup-stat">
             <span class="stat-label">${t('popups.coordinates')}</span>
@@ -1062,16 +1062,16 @@ export class MapPopup {
   private renderAPTPopup(apt: APTGroup): string {
     return `
       <div class="popup-header apt">
-        <span class="popup-title">${apt.name}</span>
+        <span class="popup-title">${escapeHtml(apt.name)}</span>
         <span class="popup-badge high">${t('popups.threat')}</span>
         <button class="popup-close">×</button>
       </div>
       <div class="popup-body">
-        <div class="popup-subtitle">${t('popups.aka')}: ${apt.aka}</div>
+        <div class="popup-subtitle">${t('popups.aka')}: ${escapeHtml(apt.aka)}</div>
         <div class="popup-stats">
           <div class="popup-stat">
             <span class="stat-label">${t('popups.sponsor')}</span>
-            <span class="stat-value">${apt.sponsor}</span>
+            <span class="stat-value">${escapeHtml(apt.sponsor)}</span>
           </div>
           <div class="popup-stat">
             <span class="stat-label">${t('popups.origin')}</span>
@@ -1150,19 +1150,19 @@ export class MapPopup {
 
     return `
       <div class="popup-header nuclear">
-        <span class="popup-title">${facility.name.toUpperCase()}</span>
-        <span class="popup-badge ${statusColors[facility.status] || 'low'}">${facility.status.toUpperCase()}</span>
+        <span class="popup-title">${escapeHtml(facility.name.toUpperCase())}</span>
+        <span class="popup-badge ${statusColors[facility.status] || 'low'}">${escapeHtml(facility.status.toUpperCase())}</span>
         <button class="popup-close">×</button>
       </div>
       <div class="popup-body">
         <div class="popup-stats">
           <div class="popup-stat">
             <span class="stat-label">${t('popups.type')}</span>
-            <span class="stat-value">${typeLabels[facility.type] || facility.type.toUpperCase()}</span>
+            <span class="stat-value">${escapeHtml(typeLabels[facility.type] || facility.type.toUpperCase())}</span>
           </div>
           <div class="popup-stat">
             <span class="stat-label">${t('popups.status')}</span>
-            <span class="stat-value">${facility.status.toUpperCase()}</span>
+            <span class="stat-value">${escapeHtml(facility.status.toUpperCase())}</span>
           </div>
           <div class="popup-stat">
             <span class="stat-label">${t('popups.coordinates')}</span>
@@ -1197,25 +1197,25 @@ export class MapPopup {
 
     return `
       <div class="popup-header economic ${center.type}">
-        <span class="popup-title">${typeIcons[center.type] || ''} ${center.name.toUpperCase()}</span>
-        <span class="popup-badge ${marketStatus === 'open' ? 'elevated' : 'low'}">${marketStatusLabel || typeLabels[center.type]}</span>
+        <span class="popup-title">${typeIcons[center.type] || ''} ${escapeHtml(center.name.toUpperCase())}</span>
+        <span class="popup-badge ${marketStatus === 'open' ? 'elevated' : 'low'}">${escapeHtml(marketStatusLabel || typeLabels[center.type] || '')}</span>
         <button class="popup-close">×</button>
       </div>
       <div class="popup-body">
-        ${center.description ? `<p class="popup-description">${center.description}</p>` : ''}
+        ${center.description ? `<p class="popup-description">${escapeHtml(center.description)}</p>` : ''}
         <div class="popup-stats">
           <div class="popup-stat">
             <span class="stat-label">${t('popups.type')}</span>
-            <span class="stat-value">${typeLabels[center.type] || center.type.toUpperCase()}</span>
+            <span class="stat-value">${escapeHtml(typeLabels[center.type] || center.type.toUpperCase())}</span>
           </div>
           <div class="popup-stat">
             <span class="stat-label">${t('popups.country')}</span>
-            <span class="stat-value">${center.country}</span>
+            <span class="stat-value">${escapeHtml(center.country)}</span>
           </div>
           ${center.marketHours ? `
           <div class="popup-stat">
             <span class="stat-label">${t('popups.tradingHours')}</span>
-            <span class="stat-value">${center.marketHours.open} - ${center.marketHours.close}</span>
+            <span class="stat-value">${escapeHtml(center.marketHours.open)} - ${escapeHtml(center.marketHours.close)}</span>
           </div>
           ` : ''}
           <div class="popup-stat">
@@ -1231,7 +1231,7 @@ export class MapPopup {
   private renderIrradiatorPopup(irradiator: GammaIrradiator): string {
     return `
       <div class="popup-header irradiator">
-        <span class="popup-title">☢ ${irradiator.city.toUpperCase()}</span>
+        <span class="popup-title">☢ ${escapeHtml(irradiator.city.toUpperCase())}</span>
         <span class="popup-badge elevated">${t('popups.gamma')}</span>
         <button class="popup-close">×</button>
       </div>
@@ -1240,11 +1240,11 @@ export class MapPopup {
         <div class="popup-stats">
           <div class="popup-stat">
             <span class="stat-label">${t('popups.country')}</span>
-            <span class="stat-value">${irradiator.country}</span>
+            <span class="stat-value">${escapeHtml(irradiator.country)}</span>
           </div>
           <div class="popup-stat">
             <span class="stat-label">${t('popups.city')}</span>
-            <span class="stat-value">${irradiator.city}</span>
+            <span class="stat-value">${escapeHtml(irradiator.city)}</span>
           </div>
           <div class="popup-stat">
             <span class="stat-label">${t('popups.coordinates')}</span>
@@ -1276,8 +1276,8 @@ export class MapPopup {
 
     return `
       <div class="popup-header pipeline ${pipeline.type}">
-        <span class="popup-title">${typeIcon} ${pipeline.name.toUpperCase()}</span>
-        <span class="popup-badge ${typeColors[pipeline.type] || 'low'}">${pipeline.type.toUpperCase()}</span>
+        <span class="popup-title">${typeIcon} ${escapeHtml(pipeline.name.toUpperCase())}</span>
+        <span class="popup-badge ${typeColors[pipeline.type] || 'low'}">${escapeHtml(pipeline.type.toUpperCase())}</span>
         <button class="popup-close">×</button>
       </div>
       <div class="popup-body">
@@ -1285,24 +1285,24 @@ export class MapPopup {
         <div class="popup-stats">
           <div class="popup-stat">
             <span class="stat-label">${t('popups.status')}</span>
-            <span class="stat-value">${statusLabels[pipeline.status] || pipeline.status.toUpperCase()}</span>
+            <span class="stat-value">${escapeHtml(statusLabels[pipeline.status] || pipeline.status.toUpperCase())}</span>
           </div>
           ${pipeline.capacity ? `
           <div class="popup-stat">
             <span class="stat-label">${t('popups.capacity')}</span>
-            <span class="stat-value">${pipeline.capacity}</span>
+            <span class="stat-value">${escapeHtml(pipeline.capacity)}</span>
           </div>
           ` : ''}
           ${pipeline.length ? `
           <div class="popup-stat">
             <span class="stat-label">${t('popups.length')}</span>
-            <span class="stat-value">${pipeline.length}</span>
+            <span class="stat-value">${escapeHtml(pipeline.length)}</span>
           </div>
           ` : ''}
           ${pipeline.operator ? `
           <div class="popup-stat">
             <span class="stat-label">${t('popups.operator')}</span>
-            <span class="stat-value">${pipeline.operator}</span>
+            <span class="stat-value">${escapeHtml(pipeline.operator)}</span>
           </div>
           ` : ''}
         </div>
@@ -1310,7 +1310,7 @@ export class MapPopup {
           <div class="popup-section">
             <span class="section-label">${t('popups.countries')}</span>
             <div class="popup-tags">
-              ${pipeline.countries.map(c => `<span class="popup-tag">${c}</span>`).join('')}
+              ${pipeline.countries.map(c => `<span class="popup-tag">${escapeHtml(c)}</span>`).join('')}
             </div>
           </div>
         ` : ''}
@@ -1549,12 +1549,12 @@ export class MapPopup {
 
     return `
       <div class="popup-header datacenter ${dc.status}">
-        <span class="popup-title">🖥️ ${dc.name}</span>
+        <span class="popup-title">🖥️ ${escapeHtml(dc.name)}</span>
         <span class="popup-badge ${statusColors[dc.status] || 'normal'}">${statusLabels[dc.status] || t('popups.datacenter.status.unknown')}</span>
         <button class="popup-close">×</button>
       </div>
       <div class="popup-body">
-        <div class="popup-subtitle">${dc.owner} • ${dc.country}</div>
+        <div class="popup-subtitle">${escapeHtml(dc.owner)} • ${escapeHtml(dc.country)}</div>
         <div class="popup-stats">
           <div class="popup-stat">
             <span class="stat-label">${t('popups.datacenter.gpuChipCount')}</span>
@@ -1562,7 +1562,7 @@ export class MapPopup {
           </div>
           <div class="popup-stat">
             <span class="stat-label">${t('popups.datacenter.chipType')}</span>
-            <span class="stat-value">${dc.chipType || t('popups.unknown')}</span>
+            <span class="stat-value">${escapeHtml(dc.chipType || t('popups.unknown'))}</span>
           </div>
           ${dc.powerMW ? `
           <div class="popup-stat">
@@ -1573,11 +1573,11 @@ export class MapPopup {
           ${dc.sector ? `
           <div class="popup-stat">
             <span class="stat-label">${t('popups.datacenter.sector')}</span>
-            <span class="stat-value">${dc.sector}</span>
+            <span class="stat-value">${escapeHtml(dc.sector)}</span>
           </div>
           ` : ''}
         </div>
-        ${dc.note ? `<p class="popup-description">${dc.note}</p>` : ''}
+        ${dc.note ? `<p class="popup-description">${escapeHtml(dc.note)}</p>` : ''}
         <div class="popup-attribution">${t('popups.datacenter.attribution')}</div>
       </div>
     `;
@@ -1678,7 +1678,7 @@ export class MapPopup {
     return `
       <div class="popup-header cloud-region ${region.provider}">
         <span class="popup-title">${providerIcons[region.provider] || '☁️'} ${escapeHtml(region.name)}</span>
-        <span class="popup-badge ${region.provider}">${region.provider.toUpperCase()}</span>
+        <span class="popup-badge ${region.provider}">${escapeHtml(region.provider.toUpperCase())}</span>
         <button class="popup-close">×</button>
       </div>
       <div class="popup-body">
@@ -1686,7 +1686,7 @@ export class MapPopup {
         <div class="popup-stats">
           <div class="popup-stat">
             <span class="stat-label">${t('popups.cloudRegion.provider')}</span>
-            <span class="stat-value">${providerNames[region.provider] || region.provider}</span>
+            <span class="stat-value">${escapeHtml(providerNames[region.provider] || region.provider)}</span>
           </div>
           ${region.zones ? `
           <div class="popup-stat">
@@ -1820,7 +1820,7 @@ export class MapPopup {
 
     const listItems = sortedItems.map(hq => {
       const icon = hq.type === 'faang' ? '🏛️' : hq.type === 'unicorn' ? '🦄' : '🏢';
-      const marketCap = hq.marketCap ? ` (${hq.marketCap})` : '';
+      const marketCap = hq.marketCap ? ` (${escapeHtml(hq.marketCap)})` : '';
       return `<li class="cluster-item ${hq.type}">${icon} ${escapeHtml(hq.company)}${marketCap}</li>`;
     }).join('');
 

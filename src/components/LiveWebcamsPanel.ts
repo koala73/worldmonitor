@@ -1,5 +1,6 @@
 import { Panel } from './Panel';
 import { isDesktopRuntime, getRemoteApiBaseUrl } from '@/services/runtime';
+import { escapeHtml } from '@/utils/sanitize';
 import { t } from '../services/i18n';
 
 type WebcamRegion = 'middle-east' | 'europe' | 'asia' | 'americas';
@@ -213,7 +214,7 @@ export class LiveWebcamsPanel extends Panel {
 
       const label = document.createElement('div');
       label.className = 'webcam-cell-label';
-      label.innerHTML = `<span class="webcam-live-dot"></span><span class="webcam-city">${feed.city.toUpperCase()}</span>`;
+      label.innerHTML = `<span class="webcam-live-dot"></span><span class="webcam-city">${escapeHtml(feed.city.toUpperCase())}</span>`;
 
       const iframe = this.createIframe(feed);
       cell.appendChild(iframe);
