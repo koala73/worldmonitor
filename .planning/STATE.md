@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-18)
 
 **Core value:** Every API integration is defined in a .proto file with generated type-safe TypeScript clients and server handlers, eliminating hand-written fetch boilerplate.
-**Current focus:** Phase 2L: Maritime Migration (Plan 01 of 02 complete)
+**Current focus:** Phase 2L: Maritime Migration (Plan 02 of 02 complete -- PHASE COMPLETE)
 
 ## Current Position
 
-Phase: 2L (Maritime Migration) -- IN PROGRESS
-Current Plan: 01 of 02 complete
-Status: Maritime handler implemented with 2 RPCs, routes mounted in gateway
-Last activity: 2026-02-19 -- Plan 2L-01 executed (execute-phase)
+Phase: 2L (Maritime Migration) -- COMPLETE
+Current Plan: 02 of 02 complete
+Status: Maritime service module + consumer wiring complete, 3 legacy files deleted
+Last activity: 2026-02-19 -- Plan 2L-02 executed (execute-phase)
 
-Progress: [██████████----------] ~50%
+Progress: [████████████████████] 100%
 
 ## Performance Metrics
 
@@ -43,6 +43,7 @@ Progress: [██████████----------] ~50%
 - Phase 2K Plan 01: Conflict Handler (2 tasks, 2min, 2 files created/modified)
 - Phase 2K Plan 02: Conflict Service Module (2 tasks, 3min, 12 files created/modified/deleted)
 - Phase 2L Plan 01: Maritime Handler (2 tasks, 2min, 2 files created/modified)
+- Phase 2L Plan 02: Maritime Service Module (2 tasks, 4min, 8 files created/modified/deleted)
 
 ## Accumulated Context
 
@@ -127,6 +128,11 @@ Progress: [██████████----------] ~50%
 - [2L-01]: NGA warning id encodes navArea-msgYear-msgNumber for downstream cable-activity parsing
 - [2L-01]: NGA warning area encodes navArea + subregion for downstream cable-activity parsing
 - [2L-01]: Disruption type/severity mapped via Record<string, enum> lookup with UNSPECIFIED fallback
+- [2L-02]: Hybrid fetch: proto RPC for snapshot-only (no candidates), raw WS relay for candidates (military vessel tracking)
+- [2L-02]: Proto-to-legacy mapping done in fetchSnapshotPayload so parseSnapshot receives legacy shapes unchanged
+- [2L-02]: Removed VERCEL_SNAPSHOT_API strategy; proto RPC replaces Vercel edge proxy path
+- [2L-02]: cable-activity NgaWarning reconstruction: id split for navArea/msgYear/msgNumber, area split for subregion
+- [2L-02]: formatNgaDate produces military date format matching parseIssueDate expectations
 
 ### Pending Todos
 
@@ -140,7 +146,7 @@ Progress: [██████████----------] ~50%
 ## Session Continuity
 
 Last session: 2026-02-19
-Stopped at: Completed 2L-01-PLAN.md (Maritime handler with 2 RPCs + gateway wiring)
-Resume file: .planning/phases/2L-maritime-migration/2L-01-SUMMARY.md
+Stopped at: Completed 2L-02-PLAN.md (Maritime service module + consumer wiring + legacy deletion)
+Resume file: .planning/phases/2L-maritime-migration/2L-02-SUMMARY.md
 PR: #106 (draft) — https://github.com/koala73/worldmonitor/pull/106
-Next steps: Phase 2L Plan 02 -- maritime service module + consumer wiring.
+Next steps: Phase 2L complete. Next domain migration phase.
