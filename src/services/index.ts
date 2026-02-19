@@ -10,7 +10,7 @@ export * from './storage';
 export * from './correlation';
 export * from './weather';
 export * from './economic';
-export * from './outages';
+export * from './infrastructure';
 export * from './cyber';
 export * from './maritime';
 export * from './cable-activity';
