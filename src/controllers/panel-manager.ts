@@ -1,0 +1,1018 @@
+/**
+ * PanelManager — manages panel lifecycle: creating panels, rendering layout
+ * HTML, panel ordering, drag-and-drop, panel toggles, playback control,
+ * snapshot restoration, critical banner, and map resize/pin UI.
+ *
+ * Extracted from App.ts to isolate panel-related concerns.  Receives an
+ * {@link AppContext} for shared state and a {@link PanelManagerCallbacks}
+ * object for cross-controller actions.
+ */
+
+declare const __APP_VERSION__: string;
+
+import type { AppContext } from './app-context';
+import type { RelatedAsset, ClusteredEvent } from '@/types';
+import {
+  FEEDS,
+  DEFAULT_PANELS,
+  SITE_VARIANT,
+  STORAGE_KEYS,
+} from '@/config';
+import { BETA_MODE } from '@/config/beta';
+import { saveToStorage, getCurrentTheme } from '@/utils';
+import { focusInvestmentOnMap } from '@/services/investments-focus';
+import { t } from '@/services/i18n';
+import {
+  MapContainer,
+  NewsPanel,
+  MarketPanel,
+  HeatmapPanel,
+  CommoditiesPanel,
+  CryptoPanel,
+  PredictionPanel,
+  MonitorPanel,
+  PlaybackControl,
+  EconomicPanel,
+  GdeltIntelPanel,
+  LiveNewsPanel,
+  LiveWebcamsPanel,
+  CIIPanel,
+  CascadePanel,
+  StrategicRiskPanel,
+  StrategicPosturePanel,
+  IntelligenceGapBadge,
+  TechEventsPanel,
+  ServiceStatusPanel,
+  RuntimeConfigPanel,
+  InsightsPanel,
+  TechReadinessPanel,
+  MacroSignalsPanel,
+  ETFFlowsPanel,
+  StablecoinPanel,
+  UcdpEventsPanel,
+  DisplacementPanel,
+  ClimateAnomalyPanel,
+  PopulationExposurePanel,
+  InvestmentsPanel,
+} from '@/components';
+import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
+import { OrefSirensPanel } from '@/components/OrefSirensPanel';
+import type { TheaterPostureSummary } from '@/services/military-surge';
+import type { DashboardSnapshot } from '@/services/storage';
+
+/* ------------------------------------------------------------------ */
+/*  Callback interface for cross-controller actions                    */
+/* ------------------------------------------------------------------ */
+
+export interface PanelManagerCallbacks {
+  openCountryStory: (code: string, name: string) => void;
+  loadAllData: () => Promise<void>;
+  applyTimeRangeFilterToNewsPanelsDebounced: () => void;
+  applyInitialUrlState: () => void;
+}
+
+/* ------------------------------------------------------------------ */
+/*  PanelManager                                                       */
+/* ------------------------------------------------------------------ */
+
+export class PanelManager {
+  constructor(
+    private ctx: AppContext,
+    private callbacks: PanelManagerCallbacks,
+  ) {}
+
+  /* ---------------------------------------------------------------- */
+  /*  setupPlaybackControl                                             */
+  /* ---------------------------------------------------------------- */
+
+  setupPlaybackControl(): void {
+    this.ctx.playbackControl = new PlaybackControl();
+    this.ctx.playbackControl.onSnapshot((snapshot) => {
+      if (snapshot) {
+        this.ctx.isPlaybackMode = true;
+        this.restoreSnapshot(snapshot);
+      } else {
+        this.ctx.isPlaybackMode = false;
+        void this.callbacks.loadAllData();
+      }
+    });
+
+    const headerRight = this.ctx.container.querySelector('.header-right');
+    if (headerRight) {
+      headerRight.insertBefore(
+        this.ctx.playbackControl.getElement(),
+        headerRight.firstChild,
+      );
+    }
+  }
+
+  /* ---------------------------------------------------------------- */
+  /*  restoreSnapshot                                                  */
+  /* ---------------------------------------------------------------- */
+
+  restoreSnapshot(snapshot: DashboardSnapshot): void {
+    for (const panel of Object.values(this.ctx.newsPanels)) {
+      panel.showLoading();
+    }
+
+    const events = snapshot.events as ClusteredEvent[];
+    this.ctx.latestClusters = events;
+
+    const predictions = snapshot.predictions.map((p, i) => ({
+      id: `snap-${i}`,
+      title: p.title,
+      yesPrice: p.yesPrice,
+      noPrice: 1 - p.yesPrice,
+      volume24h: 0,
+      liquidity: 0,
+    }));
+    this.ctx.latestPredictions = predictions;
+    (this.ctx.panels['polymarket'] as PredictionPanel).renderPredictions(predictions);
+
+    this.ctx.map?.setHotspotLevels(snapshot.hotspotLevels);
+  }
+
+  /* ---------------------------------------------------------------- */
+  /*  renderLayout                                                     */
+  /* ---------------------------------------------------------------- */
+
+  renderLayout(): void {
+    this.ctx.container.innerHTML = `
+      <div class="header">
+        <div class="header-left">
+          <div class="variant-switcher">
+            <a href="${this.ctx.isDesktopApp ? '#' : (SITE_VARIANT === 'full' ? '#' : 'https://intelhq.io')}"
+               class="variant-option ${SITE_VARIANT === 'full' ? 'active' : ''}"
+               data-variant="full"
+               ${!this.ctx.isDesktopApp && SITE_VARIANT !== 'full' ? 'target="_blank" rel="noopener"' : ''}
+               title="${t('header.world')}${SITE_VARIANT === 'full' ? ` ${t('common.currentVariant')}` : ''}">
+              <span class="variant-icon">🌍</span>
+              <span class="variant-label">${t('header.world')}</span>
+            </a>
+            <span class="variant-divider"></span>
+            <a href="${this.ctx.isDesktopApp ? '#' : (SITE_VARIANT === 'tech' ? '#' : 'https://tech.worldmonitor.app')}"
+               class="variant-option ${SITE_VARIANT === 'tech' ? 'active' : ''}"
+               data-variant="tech"
+               ${!this.ctx.isDesktopApp && SITE_VARIANT !== 'tech' ? 'target="_blank" rel="noopener"' : ''}
+               title="${t('header.tech')}${SITE_VARIANT === 'tech' ? ` ${t('common.currentVariant')}` : ''}">
+              <span class="variant-icon">💻</span>
+              <span class="variant-label">${t('header.tech')}</span>
+            </a>
+            <span class="variant-divider"></span>
+            <a href="${this.ctx.isDesktopApp ? '#' : (SITE_VARIANT === 'finance' ? '#' : 'https://finance.worldmonitor.app')}"
+               class="variant-option ${SITE_VARIANT === 'finance' ? 'active' : ''}"
+               data-variant="finance"
+               ${!this.ctx.isDesktopApp && SITE_VARIANT !== 'finance' ? 'target="_blank" rel="noopener"' : ''}
+               title="${t('header.finance')}${SITE_VARIANT === 'finance' ? ` ${t('common.currentVariant')}` : ''}">
+              <span class="variant-icon">📈</span>
+              <span class="variant-label">${t('header.finance')}</span>
+            </a>
+          </div>
+          <span class="logo">MONITOR</span><span class="version">v${__APP_VERSION__}</span>${BETA_MODE ? '<span class="beta-badge">BETA</span>' : ''}
+          <a href="https://x.com/eliehabib" target="_blank" rel="noopener" class="credit-link">
+            <svg class="x-logo" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+            <span class="credit-text">@eliehabib</span>
+          </a>
+          <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noopener" class="github-link" title="${t('header.viewOnGitHub')}">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          </a>
+          <div class="status-indicator">
+            <span class="status-dot"></span>
+            <span>${t('header.live')}</span>
+          </div>
+          <div class="region-selector">
+            <select id="regionSelect" class="region-select">
+              <option value="global">${t('components.deckgl.views.global')}</option>
+              <option value="america">${t('components.deckgl.views.americas')}</option>
+              <option value="mena">${t('components.deckgl.views.mena')}</option>
+              <option value="eu">${t('components.deckgl.views.europe')}</option>
+              <option value="asia">${t('components.deckgl.views.asia')}</option>
+              <option value="latam">${t('components.deckgl.views.latam')}</option>
+              <option value="africa">${t('components.deckgl.views.africa')}</option>
+              <option value="oceania">${t('components.deckgl.views.oceania')}</option>
+            </select>
+          </div>
+        </div>
+        <div class="header-right">
+          <button class="search-btn" id="searchBtn"><kbd>⌘K</kbd> ${t('header.search')}</button>
+          ${this.ctx.isDesktopApp ? '' : `<button class="copy-link-btn" id="copyLinkBtn">${t('header.copyLink')}</button>`}
+          <button class="theme-toggle-btn" id="headerThemeToggle" title="${t('header.toggleTheme')}">
+            ${getCurrentTheme() === 'dark'
+        ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>'
+        : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>'}
+          </button>
+          ${this.ctx.isDesktopApp ? '' : `<button class="fullscreen-btn" id="fullscreenBtn" title="${t('header.fullscreen')}">⛶</button>`}
+          <button class="settings-btn" id="settingsBtn">⚙ ${t('header.settings')}</button>
+          <button class="sources-btn" id="sourcesBtn">📡 ${t('header.sources')}</button>
+        </div>
+      </div>
+      <div class="main-content">
+        <div class="map-section" id="mapSection">
+          <div class="panel-header">
+            <div class="panel-header-left">
+              <span class="panel-title">${SITE_VARIANT === 'tech' ? t('panels.techMap') : t('panels.map')}</span>
+            </div>
+            <span class="header-clock" id="headerClock"></span>
+            <button class="map-pin-btn" id="mapPinBtn" title="${t('header.pinMap')}">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 17v5M9 10.76a2 2 0 01-1.11 1.79l-1.78.9A2 2 0 005 15.24V16a1 1 0 001 1h12a1 1 0 001-1v-.76a2 2 0 00-1.11-1.79l-1.78-.9A2 2 0 0115 10.76V7a1 1 0 011-1 1 1 0 001-1V4a1 1 0 00-1-1H8a1 1 0 00-1 1v1a1 1 0 001 1 1 1 0 011 1v3.76z"/>
+              </svg>
+            </button>
+          </div>
+          <div class="map-container" id="mapContainer"></div>
+          <div class="map-resize-handle" id="mapResizeHandle"></div>
+        </div>
+        <div class="panels-grid" id="panelsGrid"></div>
+      </div>
+      <div class="modal-overlay" id="settingsModal">
+        <div class="modal">
+          <div class="modal-header">
+            <span class="modal-title">${t('header.settings')}</span>
+            <button class="modal-close" id="modalClose">×</button>
+          </div>
+          <div class="panel-toggle-grid" id="panelToggles"></div>
+        </div>
+      </div>
+      <div class="modal-overlay" id="sourcesModal">
+        <div class="modal sources-modal">
+          <div class="modal-header">
+            <span class="modal-title">${t('header.sources')}</span>
+            <span class="sources-counter" id="sourcesCounter"></span>
+            <button class="modal-close" id="sourcesModalClose">×</button>
+          </div>
+          <div class="sources-search">
+            <input type="text" id="sourcesSearch" placeholder="${t('header.filterSources')}" />
+          </div>
+          <div class="sources-toggle-grid" id="sourceToggles"></div>
+          <div class="sources-footer">
+            <button class="sources-select-all" id="sourcesSelectAll">${t('common.selectAll')}</button>
+            <button class="sources-select-none" id="sourcesSelectNone">${t('common.selectNone')}</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    this.createPanels();
+    this.renderPanelToggles();
+  }
+
+  /* ---------------------------------------------------------------- */
+  /*  renderCriticalBanner                                             */
+  /* ---------------------------------------------------------------- */
+
+  renderCriticalBanner(postures: TheaterPostureSummary[]): void {
+    if (this.ctx.isMobile) {
+      if (this.ctx.criticalBannerEl) {
+        this.ctx.criticalBannerEl.remove();
+        this.ctx.criticalBannerEl = null;
+      }
+      document.body.classList.remove('has-critical-banner');
+      return;
+    }
+
+    // Check if banner was dismissed this session
+    const dismissedAt = sessionStorage.getItem('banner-dismissed');
+    if (dismissedAt && Date.now() - parseInt(dismissedAt, 10) < 30 * 60 * 1000) {
+      return; // Stay dismissed for 30 minutes
+    }
+
+    const critical = postures.filter(
+      (p) => p.postureLevel === 'critical' || (p.postureLevel === 'elevated' && p.strikeCapable),
+    );
+
+    if (critical.length === 0) {
+      if (this.ctx.criticalBannerEl) {
+        this.ctx.criticalBannerEl.remove();
+        this.ctx.criticalBannerEl = null;
+        document.body.classList.remove('has-critical-banner');
+      }
+      return;
+    }
+
+    const top = critical[0]!;
+    const isCritical = top.postureLevel === 'critical';
+
+    if (!this.ctx.criticalBannerEl) {
+      this.ctx.criticalBannerEl = document.createElement('div');
+      this.ctx.criticalBannerEl.className = 'critical-posture-banner';
+      const header = document.querySelector('.header');
+      if (header) header.insertAdjacentElement('afterend', this.ctx.criticalBannerEl);
+    }
+
+    // Always ensure body class is set when showing banner
+    document.body.classList.add('has-critical-banner');
+    this.ctx.criticalBannerEl.className = `critical-posture-banner ${isCritical ? 'severity-critical' : 'severity-elevated'}`;
+    this.ctx.criticalBannerEl.innerHTML = `
+      <div class="banner-content">
+        <span class="banner-icon">${isCritical ? '🚨' : '⚠️'}</span>
+        <span class="banner-headline">${top.headline}</span>
+        <span class="banner-stats">${top.totalAircraft} aircraft • ${top.summary}</span>
+        ${top.strikeCapable ? '<span class="banner-strike">STRIKE CAPABLE</span>' : ''}
+      </div>
+      <button class="banner-view" data-lat="${top.centerLat}" data-lon="${top.centerLon}">View Region</button>
+      <button class="banner-dismiss">×</button>
+    `;
+
+    // Event handlers
+    this.ctx.criticalBannerEl.querySelector('.banner-view')?.addEventListener('click', () => {
+      console.log('[Banner] View Region clicked:', top.theaterId, 'lat:', top.centerLat, 'lon:', top.centerLon);
+      // Use typeof check - truthy check would fail for coordinate 0
+      if (typeof top.centerLat === 'number' && typeof top.centerLon === 'number') {
+        this.ctx.map?.setCenter(top.centerLat, top.centerLon, 4);
+      } else {
+        console.error('[Banner] Missing coordinates for', top.theaterId);
+      }
+    });
+
+    this.ctx.criticalBannerEl.querySelector('.banner-dismiss')?.addEventListener('click', () => {
+      this.ctx.criticalBannerEl?.classList.add('dismissed');
+      document.body.classList.remove('has-critical-banner');
+      sessionStorage.setItem('banner-dismissed', Date.now().toString());
+    });
+  }
+
+  /* ---------------------------------------------------------------- */
+  /*  createPanels                                                     */
+  /* ---------------------------------------------------------------- */
+
+  createPanels(): void {
+    const panelsGrid = document.getElementById('panelsGrid')!;
+
+    // Initialize map in the map section
+    // Default to MENA view on mobile for better focus
+    // Uses deck.gl (WebGL) on desktop, falls back to D3/SVG on mobile
+    const mapContainer = document.getElementById('mapContainer') as HTMLElement;
+    this.ctx.map = new MapContainer(mapContainer, {
+      zoom: this.ctx.isMobile ? 2.5 : 1.0,
+      pan: { x: 0, y: 0 },  // Centered view to show full world
+      view: this.ctx.isMobile ? 'mena' : 'global',
+      layers: this.ctx.mapLayers,
+      timeRange: '7d',
+    });
+
+    // Initialize escalation service with data getters
+    this.ctx.map.initEscalationGetters();
+    this.ctx.currentTimeRange = this.ctx.map.getTimeRange();
+
+    // Create all panels
+    const politicsPanel = new NewsPanel('politics', t('panels.politics'));
+    this.attachRelatedAssetHandlers(politicsPanel);
+    this.ctx.newsPanels['politics'] = politicsPanel;
+    this.ctx.panels['politics'] = politicsPanel;
+
+    const techPanel = new NewsPanel('tech', t('panels.tech'));
+    this.attachRelatedAssetHandlers(techPanel);
+    this.ctx.newsPanels['tech'] = techPanel;
+    this.ctx.panels['tech'] = techPanel;
+
+    const financePanel = new NewsPanel('finance', t('panels.finance'));
+    this.attachRelatedAssetHandlers(financePanel);
+    this.ctx.newsPanels['finance'] = financePanel;
+    this.ctx.panels['finance'] = financePanel;
+
+    const heatmapPanel = new HeatmapPanel();
+    this.ctx.panels['heatmap'] = heatmapPanel;
+
+    const marketsPanel = new MarketPanel();
+    this.ctx.panels['markets'] = marketsPanel;
+
+    const monitorPanel = new MonitorPanel(this.ctx.monitors);
+    this.ctx.panels['monitors'] = monitorPanel;
+    monitorPanel.onChanged((monitors) => {
+      this.ctx.monitors = monitors;
+      saveToStorage(STORAGE_KEYS.monitors, monitors);
+    });
+
+    const commoditiesPanel = new CommoditiesPanel();
+    this.ctx.panels['commodities'] = commoditiesPanel;
+
+    const predictionPanel = new PredictionPanel();
+    this.ctx.panels['polymarket'] = predictionPanel;
+
+    const govPanel = new NewsPanel('gov', t('panels.gov'));
+    this.attachRelatedAssetHandlers(govPanel);
+    this.ctx.newsPanels['gov'] = govPanel;
+    this.ctx.panels['gov'] = govPanel;
+
+    const intelPanel = new NewsPanel('intel', t('panels.intel'));
+    this.attachRelatedAssetHandlers(intelPanel);
+    this.ctx.newsPanels['intel'] = intelPanel;
+    this.ctx.panels['intel'] = intelPanel;
+
+    const cryptoPanel = new CryptoPanel();
+    this.ctx.panels['crypto'] = cryptoPanel;
+
+    const middleeastPanel = new NewsPanel('middleeast', t('panels.middleeast'));
+    this.attachRelatedAssetHandlers(middleeastPanel);
+    this.ctx.newsPanels['middleeast'] = middleeastPanel;
+    this.ctx.panels['middleeast'] = middleeastPanel;
+
+    const layoffsPanel = new NewsPanel('layoffs', t('panels.layoffs'));
+    this.attachRelatedAssetHandlers(layoffsPanel);
+    this.ctx.newsPanels['layoffs'] = layoffsPanel;
+    this.ctx.panels['layoffs'] = layoffsPanel;
+
+    const aiPanel = new NewsPanel('ai', t('panels.ai'));
+    this.attachRelatedAssetHandlers(aiPanel);
+    this.ctx.newsPanels['ai'] = aiPanel;
+    this.ctx.panels['ai'] = aiPanel;
+
+    // Tech variant panels
+    const startupsPanel = new NewsPanel('startups', t('panels.startups'));
+    this.attachRelatedAssetHandlers(startupsPanel);
+    this.ctx.newsPanels['startups'] = startupsPanel;
+    this.ctx.panels['startups'] = startupsPanel;
+
+    const vcblogsPanel = new NewsPanel('vcblogs', t('panels.vcblogs'));
+    this.attachRelatedAssetHandlers(vcblogsPanel);
+    this.ctx.newsPanels['vcblogs'] = vcblogsPanel;
+    this.ctx.panels['vcblogs'] = vcblogsPanel;
+
+    const regionalStartupsPanel = new NewsPanel('regionalStartups', t('panels.regionalStartups'));
+    this.attachRelatedAssetHandlers(regionalStartupsPanel);
+    this.ctx.newsPanels['regionalStartups'] = regionalStartupsPanel;
+    this.ctx.panels['regionalStartups'] = regionalStartupsPanel;
+
+    const unicornsPanel = new NewsPanel('unicorns', t('panels.unicorns'));
+    this.attachRelatedAssetHandlers(unicornsPanel);
+    this.ctx.newsPanels['unicorns'] = unicornsPanel;
+    this.ctx.panels['unicorns'] = unicornsPanel;
+
+    const acceleratorsPanel = new NewsPanel('accelerators', t('panels.accelerators'));
+    this.attachRelatedAssetHandlers(acceleratorsPanel);
+    this.ctx.newsPanels['accelerators'] = acceleratorsPanel;
+    this.ctx.panels['accelerators'] = acceleratorsPanel;
+
+    const fundingPanel = new NewsPanel('funding', t('panels.funding'));
+    this.attachRelatedAssetHandlers(fundingPanel);
+    this.ctx.newsPanels['funding'] = fundingPanel;
+    this.ctx.panels['funding'] = fundingPanel;
+
+    const producthuntPanel = new NewsPanel('producthunt', t('panels.producthunt'));
+    this.attachRelatedAssetHandlers(producthuntPanel);
+    this.ctx.newsPanels['producthunt'] = producthuntPanel;
+    this.ctx.panels['producthunt'] = producthuntPanel;
+
+    const securityPanel = new NewsPanel('security', t('panels.security'));
+    this.attachRelatedAssetHandlers(securityPanel);
+    this.ctx.newsPanels['security'] = securityPanel;
+    this.ctx.panels['security'] = securityPanel;
+
+    const policyPanel = new NewsPanel('policy', t('panels.policy'));
+    this.attachRelatedAssetHandlers(policyPanel);
+    this.ctx.newsPanels['policy'] = policyPanel;
+    this.ctx.panels['policy'] = policyPanel;
+
+    const hardwarePanel = new NewsPanel('hardware', t('panels.hardware'));
+    this.attachRelatedAssetHandlers(hardwarePanel);
+    this.ctx.newsPanels['hardware'] = hardwarePanel;
+    this.ctx.panels['hardware'] = hardwarePanel;
+
+    const cloudPanel = new NewsPanel('cloud', t('panels.cloud'));
+    this.attachRelatedAssetHandlers(cloudPanel);
+    this.ctx.newsPanels['cloud'] = cloudPanel;
+    this.ctx.panels['cloud'] = cloudPanel;
+
+    const devPanel = new NewsPanel('dev', t('panels.dev'));
+    this.attachRelatedAssetHandlers(devPanel);
+    this.ctx.newsPanels['dev'] = devPanel;
+    this.ctx.panels['dev'] = devPanel;
+
+    const githubPanel = new NewsPanel('github', t('panels.github'));
+    this.attachRelatedAssetHandlers(githubPanel);
+    this.ctx.newsPanels['github'] = githubPanel;
+    this.ctx.panels['github'] = githubPanel;
+
+    const ipoPanel = new NewsPanel('ipo', t('panels.ipo'));
+    this.attachRelatedAssetHandlers(ipoPanel);
+    this.ctx.newsPanels['ipo'] = ipoPanel;
+    this.ctx.panels['ipo'] = ipoPanel;
+
+    const thinktanksPanel = new NewsPanel('thinktanks', t('panels.thinktanks'));
+    this.attachRelatedAssetHandlers(thinktanksPanel);
+    this.ctx.newsPanels['thinktanks'] = thinktanksPanel;
+    this.ctx.panels['thinktanks'] = thinktanksPanel;
+
+    const economicPanel = new EconomicPanel();
+    this.ctx.panels['economic'] = economicPanel;
+
+    // New Regional Panels
+    const africaPanel = new NewsPanel('africa', t('panels.africa'));
+    this.attachRelatedAssetHandlers(africaPanel);
+    this.ctx.newsPanels['africa'] = africaPanel;
+    this.ctx.panels['africa'] = africaPanel;
+
+    const latamPanel = new NewsPanel('latam', t('panels.latam'));
+    this.attachRelatedAssetHandlers(latamPanel);
+    this.ctx.newsPanels['latam'] = latamPanel;
+    this.ctx.panels['latam'] = latamPanel;
+
+    const asiaPanel = new NewsPanel('asia', t('panels.asia'));
+    this.attachRelatedAssetHandlers(asiaPanel);
+    this.ctx.newsPanels['asia'] = asiaPanel;
+    this.ctx.panels['asia'] = asiaPanel;
+
+    const energyPanel = new NewsPanel('energy', t('panels.energy'));
+    this.attachRelatedAssetHandlers(energyPanel);
+    this.ctx.newsPanels['energy'] = energyPanel;
+    this.ctx.panels['energy'] = energyPanel;
+
+    // Dynamically create NewsPanel instances for any FEEDS category.
+    // If a category key collides with an existing data panel key (e.g. markets),
+    // create a separate `${key}-news` panel to avoid clobbering the data panel.
+    for (const key of Object.keys(FEEDS)) {
+      if (this.ctx.newsPanels[key]) continue;
+      if (!Array.isArray((FEEDS as Record<string, unknown>)[key])) continue;
+      const panelKey = this.ctx.panels[key] && !this.ctx.newsPanels[key] ? `${key}-news` : key;
+      if (this.ctx.panels[panelKey]) continue;
+      const panelConfig = DEFAULT_PANELS[panelKey] ?? DEFAULT_PANELS[key];
+      const label = panelConfig?.name ?? key.charAt(0).toUpperCase() + key.slice(1);
+      const panel = new NewsPanel(panelKey, label);
+      this.attachRelatedAssetHandlers(panel);
+      this.ctx.newsPanels[key] = panel;
+      this.ctx.panels[panelKey] = panel;
+    }
+
+    // Geopolitical-only panels (not needed for tech variant)
+    if (SITE_VARIANT === 'full') {
+      const gdeltIntelPanel = new GdeltIntelPanel();
+      this.ctx.panels['gdelt-intel'] = gdeltIntelPanel;
+
+      const ciiPanel = new CIIPanel();
+      ciiPanel.setShareStoryHandler((code, name) => {
+        this.callbacks.openCountryStory(code, name);
+      });
+      this.ctx.panels['cii'] = ciiPanel;
+
+      const cascadePanel = new CascadePanel();
+      this.ctx.panels['cascade'] = cascadePanel;
+
+      const satelliteFiresPanel = new SatelliteFiresPanel();
+      this.ctx.panels['satellite-fires'] = satelliteFiresPanel;
+
+      const orefSirensPanel = new OrefSirensPanel();
+      this.ctx.panels['oref-sirens'] = orefSirensPanel;
+
+      const strategicRiskPanel = new StrategicRiskPanel();
+      strategicRiskPanel.setLocationClickHandler((lat, lon) => {
+        this.ctx.map?.setCenter(lat, lon, 4);
+      });
+      this.ctx.panels['strategic-risk'] = strategicRiskPanel;
+
+      const strategicPosturePanel = new StrategicPosturePanel();
+      strategicPosturePanel.setLocationClickHandler((lat, lon) => {
+        console.log('[PanelManager] StrategicPosture handler called:', { lat, lon, hasMap: !!this.ctx.map });
+        this.ctx.map?.setCenter(lat, lon, 4);
+      });
+      this.ctx.panels['strategic-posture'] = strategicPosturePanel;
+
+      const ucdpEventsPanel = new UcdpEventsPanel();
+      ucdpEventsPanel.setEventClickHandler((lat, lon) => {
+        this.ctx.map?.setCenter(lat, lon, 5);
+      });
+      this.ctx.panels['ucdp-events'] = ucdpEventsPanel;
+
+      const displacementPanel = new DisplacementPanel();
+      displacementPanel.setCountryClickHandler((lat, lon) => {
+        this.ctx.map?.setCenter(lat, lon, 4);
+      });
+      this.ctx.panels['displacement'] = displacementPanel;
+
+      const climatePanel = new ClimateAnomalyPanel();
+      climatePanel.setZoneClickHandler((lat, lon) => {
+        this.ctx.map?.setCenter(lat, lon, 4);
+      });
+      this.ctx.panels['climate'] = climatePanel;
+
+      const populationExposurePanel = new PopulationExposurePanel();
+      this.ctx.panels['population-exposure'] = populationExposurePanel;
+    }
+
+    // GCC Investments Panel (finance variant)
+    if (SITE_VARIANT === 'finance') {
+      const investmentsPanel = new InvestmentsPanel((inv) => {
+        focusInvestmentOnMap(this.ctx.map, this.ctx.mapLayers, inv.lat, inv.lon);
+      });
+      this.ctx.panels['gcc-investments'] = investmentsPanel;
+    }
+
+    const liveNewsPanel = new LiveNewsPanel();
+    this.ctx.panels['live-news'] = liveNewsPanel;
+
+    const liveWebcamsPanel = new LiveWebcamsPanel();
+    this.ctx.panels['live-webcams'] = liveWebcamsPanel;
+
+    // Tech Events Panel (tech variant only - but create for all to allow toggling)
+    this.ctx.panels['events'] = new TechEventsPanel('events');
+
+    // Service Status Panel (primarily for tech variant)
+    const serviceStatusPanel = new ServiceStatusPanel();
+    this.ctx.panels['service-status'] = serviceStatusPanel;
+
+    if (this.ctx.isDesktopApp) {
+      const runtimeConfigPanel = new RuntimeConfigPanel({ mode: 'alert' });
+      this.ctx.panels['runtime-config'] = runtimeConfigPanel;
+    }
+
+    // Tech Readiness Panel (tech variant only - World Bank tech indicators)
+    const techReadinessPanel = new TechReadinessPanel();
+    this.ctx.panels['tech-readiness'] = techReadinessPanel;
+
+    // Crypto & Market Intelligence Panels
+    this.ctx.panels['macro-signals'] = new MacroSignalsPanel();
+    this.ctx.panels['etf-flows'] = new ETFFlowsPanel();
+    this.ctx.panels['stablecoins'] = new StablecoinPanel();
+
+    // AI Insights Panel (desktop only - hides itself on mobile)
+    const insightsPanel = new InsightsPanel();
+    this.ctx.panels['insights'] = insightsPanel;
+
+    // Add panels to grid in saved order
+    // Use DEFAULT_PANELS keys for variant-aware panel order
+    const defaultOrder = Object.keys(DEFAULT_PANELS).filter(k => k !== 'map');
+    const savedOrder = this.getSavedPanelOrder();
+    // Merge saved order with default to include new panels
+    let panelOrder = defaultOrder;
+    if (savedOrder.length > 0) {
+      // Add any missing panels from default that aren't in saved order
+      const missing = defaultOrder.filter(k => !savedOrder.includes(k));
+      // Remove any saved panels that no longer exist
+      const valid = savedOrder.filter(k => defaultOrder.includes(k));
+      // Insert missing panels after 'politics' (except monitors which goes at end)
+      const monitorsIdx = valid.indexOf('monitors');
+      if (monitorsIdx !== -1) valid.splice(monitorsIdx, 1); // Remove monitors temporarily
+      const insertIdx = valid.indexOf('politics') + 1 || 0;
+      const newPanels = missing.filter(k => k !== 'monitors');
+      valid.splice(insertIdx, 0, ...newPanels);
+      valid.push('monitors'); // Always put monitors last
+      panelOrder = valid;
+    }
+
+    // CRITICAL: live-news MUST be first for CSS Grid layout (spans 2 columns)
+    // Move it to position 0 if it exists and isn't already first
+    const liveNewsIdx = panelOrder.indexOf('live-news');
+    if (liveNewsIdx > 0) {
+      panelOrder.splice(liveNewsIdx, 1);
+      panelOrder.unshift('live-news');
+    }
+
+    // live-webcams MUST follow live-news (one-time migration for existing users)
+    const webcamsIdx = panelOrder.indexOf('live-webcams');
+    if (webcamsIdx !== -1 && webcamsIdx !== panelOrder.indexOf('live-news') + 1) {
+      panelOrder.splice(webcamsIdx, 1);
+      const afterNews = panelOrder.indexOf('live-news') + 1;
+      panelOrder.splice(afterNews, 0, 'live-webcams');
+    }
+
+    // Desktop configuration should stay easy to reach in Tauri builds.
+    if (this.ctx.isDesktopApp) {
+      const runtimeIdx = panelOrder.indexOf('runtime-config');
+      if (runtimeIdx > 1) {
+        panelOrder.splice(runtimeIdx, 1);
+        panelOrder.splice(1, 0, 'runtime-config');
+      } else if (runtimeIdx === -1) {
+        panelOrder.splice(1, 0, 'runtime-config');
+      }
+    }
+
+    panelOrder.forEach((key: string) => {
+      const panel = this.ctx.panels[key];
+      if (panel) {
+        const el = panel.getElement();
+        this.makeDraggable(el, key);
+        panelsGrid.appendChild(el);
+      }
+    });
+
+    this.ctx.map.onTimeRangeChanged((range) => {
+      this.ctx.currentTimeRange = range;
+      this.callbacks.applyTimeRangeFilterToNewsPanelsDebounced();
+    });
+
+    this.applyPanelSettings();
+    this.callbacks.applyInitialUrlState();
+  }
+
+  /* ---------------------------------------------------------------- */
+  /*  applyPanelSettings                                               */
+  /* ---------------------------------------------------------------- */
+
+  applyPanelSettings(): void {
+    Object.entries(this.ctx.panelSettings).forEach(([key, config]) => {
+      if (key === 'map') {
+        const mapSection = document.getElementById('mapSection');
+        if (mapSection) {
+          mapSection.classList.toggle('hidden', !config.enabled);
+        }
+        return;
+      }
+      const panel = this.ctx.panels[key];
+      panel?.toggle(config.enabled);
+    });
+  }
+
+  /* ---------------------------------------------------------------- */
+  /*  getSavedPanelOrder                                               */
+  /* ---------------------------------------------------------------- */
+
+  getSavedPanelOrder(): string[] {
+    try {
+      const saved = localStorage.getItem(this.ctx.PANEL_ORDER_KEY);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  /* ---------------------------------------------------------------- */
+  /*  savePanelOrder                                                   */
+  /* ---------------------------------------------------------------- */
+
+  savePanelOrder(): void {
+    const grid = document.getElementById('panelsGrid');
+    if (!grid) return;
+    const order = Array.from(grid.children)
+      .map((el) => (el as HTMLElement).dataset.panel)
+      .filter((key): key is string => !!key);
+    localStorage.setItem(this.ctx.PANEL_ORDER_KEY, JSON.stringify(order));
+  }
+
+  /* ---------------------------------------------------------------- */
+  /*  attachRelatedAssetHandlers                                       */
+  /* ---------------------------------------------------------------- */
+
+  attachRelatedAssetHandlers(panel: NewsPanel): void {
+    panel.setRelatedAssetHandlers({
+      onRelatedAssetClick: (asset) => this.handleRelatedAssetClick(asset),
+      onRelatedAssetsFocus: (assets) => this.ctx.map?.highlightAssets(assets),
+      onRelatedAssetsClear: () => this.ctx.map?.highlightAssets(null),
+    });
+  }
+
+  /* ---------------------------------------------------------------- */
+  /*  handleRelatedAssetClick                                          */
+  /* ---------------------------------------------------------------- */
+
+  handleRelatedAssetClick(asset: RelatedAsset): void {
+    if (!this.ctx.map) return;
+
+    switch (asset.type) {
+      case 'pipeline':
+        this.ctx.map.enableLayer('pipelines');
+        this.ctx.mapLayers.pipelines = true;
+        saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
+        this.ctx.map.triggerPipelineClick(asset.id);
+        break;
+      case 'cable':
+        this.ctx.map.enableLayer('cables');
+        this.ctx.mapLayers.cables = true;
+        saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
+        this.ctx.map.triggerCableClick(asset.id);
+        break;
+      case 'datacenter':
+        this.ctx.map.enableLayer('datacenters');
+        this.ctx.mapLayers.datacenters = true;
+        saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
+        this.ctx.map.triggerDatacenterClick(asset.id);
+        break;
+      case 'base':
+        this.ctx.map.enableLayer('bases');
+        this.ctx.mapLayers.bases = true;
+        saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
+        this.ctx.map.triggerBaseClick(asset.id);
+        break;
+      case 'nuclear':
+        this.ctx.map.enableLayer('nuclear');
+        this.ctx.mapLayers.nuclear = true;
+        saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
+        this.ctx.map.triggerNuclearClick(asset.id);
+        break;
+    }
+  }
+
+  /* ---------------------------------------------------------------- */
+  /*  makeDraggable                                                    */
+  /* ---------------------------------------------------------------- */
+
+  makeDraggable(el: HTMLElement, key: string): void {
+    el.draggable = true;
+    el.dataset.panel = key;
+
+    el.addEventListener('dragstart', (e) => {
+      const target = e.target as HTMLElement;
+      // Don't start drag if panel is being resized
+      if (el.dataset.resizing === 'true') {
+        e.preventDefault();
+        return;
+      }
+      // Don't start drag if target is the resize handle
+      if (target.classList?.contains('panel-resize-handle') || target.closest?.('.panel-resize-handle')) {
+        e.preventDefault();
+        return;
+      }
+      el.classList.add('dragging');
+      e.dataTransfer?.setData('text/plain', key);
+    });
+
+    el.addEventListener('dragend', () => {
+      el.classList.remove('dragging');
+      this.savePanelOrder();
+    });
+
+    el.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      const dragging = document.querySelector('.dragging');
+      if (!dragging || dragging === el) return;
+
+      const grid = document.getElementById('panelsGrid');
+      if (!grid) return;
+
+      const rowTolerancePx = 24;
+      const siblings = Array.from(grid.children).filter((c) => {
+        if (c === dragging) return false;
+        const el = c as HTMLElement;
+        return !el.classList.contains('hidden');
+      });
+      const orderedSiblings = siblings.sort((a, b) => {
+        const aRect = a.getBoundingClientRect();
+        const bRect = b.getBoundingClientRect();
+        if (Math.abs(aRect.top - bRect.top) <= rowTolerancePx) {
+          return aRect.left - bRect.left;
+        }
+        return aRect.top - bRect.top;
+      });
+
+      const nextSibling = orderedSiblings.find((sibling) => {
+        const rect = sibling.getBoundingClientRect();
+        const beforeRow = e.clientY < rect.top + rowTolerancePx;
+        if (beforeRow) return true;
+
+        const inRowBand = e.clientY >= rect.top + rowTolerancePx && e.clientY <= rect.bottom - rowTolerancePx;
+        if (inRowBand) {
+          return e.clientX < rect.left + rect.width / 2;
+        }
+
+        return e.clientY < rect.top + rect.height / 2;
+      });
+
+      if (nextSibling) {
+        grid.insertBefore(dragging, nextSibling);
+      } else {
+        grid.appendChild(dragging);
+      }
+    });
+  }
+
+  /* ---------------------------------------------------------------- */
+  /*  renderPanelToggles                                               */
+  /* ---------------------------------------------------------------- */
+
+  renderPanelToggles(): void {
+    const container = document.getElementById('panelToggles')!;
+    const panelHtml = Object.entries(this.ctx.panelSettings)
+      .filter(([key]) => key !== 'runtime-config' || this.ctx.isDesktopApp)
+      .map(
+        ([key, panel]) => `
+        <div class="panel-toggle-item ${panel.enabled ? 'active' : ''}" data-panel="${key}">
+          <div class="panel-toggle-checkbox">${panel.enabled ? '✓' : ''}</div>
+          <span class="panel-toggle-label">${this.getLocalizedPanelName(key, panel.name)}</span>
+        </div>
+      `,
+      )
+      .join('');
+
+    const findingsHtml = this.ctx.isMobile
+      ? ''
+      : (() => {
+        const findingsEnabled = this.ctx.findingsBadge?.isEnabled() ?? IntelligenceGapBadge.getStoredEnabledState();
+        return `
+      <div class="panel-toggle-item ${findingsEnabled ? 'active' : ''}" data-panel="intel-findings">
+        <div class="panel-toggle-checkbox">${findingsEnabled ? '✓' : ''}</div>
+        <span class="panel-toggle-label">Intelligence Findings</span>
+      </div>
+    `;
+      })();
+
+    container.innerHTML = panelHtml + findingsHtml;
+
+    container.querySelectorAll('.panel-toggle-item').forEach((item) => {
+      item.addEventListener('click', () => {
+        const panelKey = (item as HTMLElement).dataset.panel!;
+
+        if (panelKey === 'intel-findings') {
+          if (!this.ctx.findingsBadge) return;
+          this.ctx.findingsBadge.setEnabled(!this.ctx.findingsBadge.isEnabled());
+          this.renderPanelToggles();
+          return;
+        }
+
+        const config = this.ctx.panelSettings[panelKey];
+        console.log('[Panel Toggle] Clicked:', panelKey, 'Current enabled:', config?.enabled);
+        if (config) {
+          config.enabled = !config.enabled;
+          console.log('[Panel Toggle] New enabled:', config.enabled);
+          saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
+          this.renderPanelToggles();
+          this.applyPanelSettings();
+          console.log('[Panel Toggle] After apply - config.enabled:', this.ctx.panelSettings[panelKey]?.enabled);
+        }
+      });
+    });
+  }
+
+  /* ---------------------------------------------------------------- */
+  /*  getLocalizedPanelName                                            */
+  /* ---------------------------------------------------------------- */
+
+  getLocalizedPanelName(panelKey: string, fallback: string): string {
+    if (panelKey === 'runtime-config') {
+      return t('modals.runtimeConfig.title');
+    }
+    const key = panelKey.replace(/-([a-z])/g, (_match, group: string) => group.toUpperCase());
+    const lookup = `panels.${key}`;
+    const localized = t(lookup);
+    return localized === lookup ? fallback : localized;
+  }
+
+  /* ---------------------------------------------------------------- */
+  /*  setupMapResize                                                   */
+  /* ---------------------------------------------------------------- */
+
+  setupMapResize(): void {
+    const mapSection = document.getElementById('mapSection');
+    const resizeHandle = document.getElementById('mapResizeHandle');
+    if (!mapSection || !resizeHandle) return;
+
+    const getMinHeight = () => (window.innerWidth >= 2000 ? 320 : 400);
+    const getMaxHeight = () => Math.max(getMinHeight(), window.innerHeight - 60);
+
+    // Load saved height
+    const savedHeight = localStorage.getItem('map-height');
+    if (savedHeight) {
+      const numeric = Number.parseInt(savedHeight, 10);
+      if (Number.isFinite(numeric)) {
+        const clamped = Math.max(getMinHeight(), Math.min(numeric, getMaxHeight()));
+        mapSection.style.height = `${clamped}px`;
+        if (clamped !== numeric) {
+          localStorage.setItem('map-height', `${clamped}px`);
+        }
+      } else {
+        localStorage.removeItem('map-height');
+      }
+    }
+
+    let isResizing = false;
+    let startY = 0;
+    let startHeight = 0;
+
+    resizeHandle.addEventListener('mousedown', (e) => {
+      isResizing = true;
+      startY = e.clientY;
+      startHeight = mapSection.offsetHeight;
+      mapSection.classList.add('resizing');
+      document.body.style.cursor = 'ns-resize';
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!isResizing) return;
+      const deltaY = e.clientY - startY;
+      const newHeight = Math.max(getMinHeight(), Math.min(startHeight + deltaY, getMaxHeight()));
+      mapSection.style.height = `${newHeight}px`;
+      this.ctx.map?.render();
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (!isResizing) return;
+      isResizing = false;
+      mapSection.classList.remove('resizing');
+      document.body.style.cursor = '';
+      // Save height preference
+      localStorage.setItem('map-height', mapSection.style.height);
+      this.ctx.map?.render();
+    });
+  }
+
+  /* ---------------------------------------------------------------- */
+  /*  setupMapPin                                                      */
+  /* ---------------------------------------------------------------- */
+
+  setupMapPin(): void {
+    const mapSection = document.getElementById('mapSection');
+    const pinBtn = document.getElementById('mapPinBtn');
+    if (!mapSection || !pinBtn) return;
+
+    // Load saved pin state
+    const isPinned = localStorage.getItem('map-pinned') === 'true';
+    if (isPinned) {
+      mapSection.classList.add('pinned');
+      pinBtn.classList.add('active');
+    }
+
+    pinBtn.addEventListener('click', () => {
+      const nowPinned = mapSection.classList.toggle('pinned');
+      pinBtn.classList.toggle('active', nowPinned);
+      localStorage.setItem('map-pinned', String(nowPinned));
+    });
+  }
+}

@@ -13,6 +13,7 @@ Each entry includes severity, description, affected files, and dependencies on o
 |---|---|
 | **Severity** | Critical (architectural) |
 | **Affected** | `src/App.ts` |
+| **Status** | 🟡 Phase 1 complete — controllers extracted |
 | **Depends on** | — |
 
 **Description**
@@ -22,6 +23,20 @@ Any change risks regressions elsewhere; HMR is fragile because the whole class m
 **AI instructions**
 Split `App.ts` into focused controllers (e.g., `DataLoader`, `PanelManager`, `MapController`, `RefreshScheduler`, `DeepLinkHandler`), each in a separate file under `src/controllers/`.
 Keep the `App` class as a thin composition root that wires controllers together.
+
+**Resolution progress**
+- **Phase 1 ✅** — All seven controllers created under `src/controllers/`:
+  - `app-context.ts` (169 lines) — `AppContext` interface: shared mutable state surface
+  - `refresh-scheduler.ts` (215 lines) — periodic refresh intervals, snapshot saving
+  - `deep-link-handler.ts` (192 lines) — URL state, deep linking, clipboard
+  - `desktop-updater.ts` (195 lines) — Tauri update checking, badge display
+  - `country-intel.ts` (535 lines) — country briefs, timeline, story, CII signals
+  - `ui-setup.ts` (937 lines) — event listeners, search/source modals, idle detection
+  - `data-loader.ts` (1 540 lines) — all data loading, news rendering, correlation
+  - `panel-manager.ts` (1 028 lines) — panel creation, layout, drag-and-drop, toggles
+  - `index.ts` — barrel export
+  - **All files pass TypeScript strict-mode compilation with zero errors.**
+- **Phase 2 ⬜** — Refactor `App.ts` into thin composition root (~400–500 lines) that instantiates controllers and delegates. This phase must be done incrementally, method-by-method, to avoid regressions.
 
 ---
 
@@ -86,10 +101,11 @@ Change the log message to `v1.9`.
 |---|---|
 | **Severity** | High (maintenance risk) |
 | **Affected** | `src/App.ts` — `syncDataFreshnessWithLayers()` (line ~606) and `setupMapLayerHandlers()` (line ~643) |
-| **Depends on** | BUG-001 |
+| **Depends on** | BUG-001 (Phase 2) |
 
 **Description**
 The `layerToSource` map is copy-pasted in two places. If a new layer is added to one and not the other, freshness tracking silently breaks for that layer.
+Note: These methods remain in `App.ts` and were not extracted into controllers (they bridge map and freshness). Once BUG-001 Phase 2 wires the composition root, this becomes easier to refactor.
 
 **AI instructions**
 Extract `layerToSource` to a shared constant (e.g., in `src/config/panels.ts`), import it in both locations.
@@ -135,7 +151,8 @@ Wrap each cluster card render in a try/catch. Log the bad cluster and render a "
 | Field | Value |
 |---|---|
 | **Severity** | High (memory leak on HMR) |
-| **Affected** | `src/App.ts` (line ~523) |
+| **Affected** | `src/App.ts` (line ~523), `src/controllers/ui-setup.ts` |
+| **Status** | 🟡 Fixed in extracted controller; original `App.ts` still has the bug until Phase 2 wiring |
 | **Depends on** | — |
 
 **Description**
@@ -144,6 +161,7 @@ On Vite HMR reload the old interval keeps ticking, doubling DOM writes each hot 
 
 **AI instructions**
 Store the interval ID and clear it in `App.destroy()`.
+Note: The extracted `UISetupController` already stores the interval in `clockIntervalId` and provides `clearClockInterval()`. Once BUG-001 Phase 2 wires the composition root, this bug will be fully resolved.
 
 ---
 
@@ -274,7 +292,7 @@ Add `**/ml-*.js` to `globPatterns` exclude (it's in `globIgnores` already — ve
 |---|---|
 | **Severity** | Medium (maintainability) |
 | **Affected** | `src/components/MapPopup.ts` (113 133 bytes) |
-| **Depends on** | BUG-001 |
+| **Depends on** | BUG-001 (Phase 2 — independent of `App.ts`, but same decomposition pattern applies) |
 
 **Description**
 A single file handling popup rendering for every data layer type (conflicts, bases, cables, pipelines, ports, vessels, aircraft, protests, earthquakes, nuclear, datacenters, tech HQs, etc.).
