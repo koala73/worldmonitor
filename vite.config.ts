@@ -158,6 +158,7 @@ function sebufApiPlugin(): Plugin {
             cyberServerMod, cyberHandlerMod,
             economicServerMod, economicHandlerMod,
             infrastructureServerMod, infrastructureHandlerMod,
+            marketServerMod, marketHandlerMod,
           ] = await Promise.all([
               import('./api/server/router'),
               import('./api/server/cors'),
@@ -188,6 +189,8 @@ function sebufApiPlugin(): Plugin {
               import('./api/server/worldmonitor/economic/v1/handler'),
               import('./src/generated/server/worldmonitor/infrastructure/v1/service_server'),
               import('./api/server/worldmonitor/infrastructure/v1/handler'),
+              import('./src/generated/server/worldmonitor/market/v1/service_server'),
+              import('./api/server/worldmonitor/market/v1/handler'),
             ]);
 
           const serverOptions = { onError: errorMod.mapErrorToResponse };
@@ -205,6 +208,7 @@ function sebufApiPlugin(): Plugin {
             ...cyberServerMod.createCyberServiceRoutes(cyberHandlerMod.cyberHandler, serverOptions),
             ...economicServerMod.createEconomicServiceRoutes(economicHandlerMod.economicHandler, serverOptions),
             ...infrastructureServerMod.createInfrastructureServiceRoutes(infrastructureHandlerMod.infrastructureHandler, serverOptions),
+            ...marketServerMod.createMarketServiceRoutes(marketHandlerMod.marketHandler, serverOptions),
           ];
           const router = routerMod.createRouter(allRoutes);
 
