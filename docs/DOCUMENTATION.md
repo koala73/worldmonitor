@@ -1293,6 +1293,141 @@ Early visibility into cable operations—even maintenance windows—provides adv
 
 ---
 
+## Cable Health Layer
+
+The Cable Health layer provides a composite health status for each submarine cable by combining multiple signal sources with time-decay scoring. This goes beyond raw activity alerts to produce a single, confidence-weighted health assessment per cable.
+
+### Health Statuses
+
+| Status | Score Threshold | Visual | Meaning |
+|--------|----------------|--------|---------|
+| **Fault** | >= 0.80 (with operator fault) | Red, dashed line, pulse animation | Active fault or confirmed damage |
+| **Degraded** | >= 0.50 | Orange line | Maintenance, repair activity, or partial disruption |
+| **OK** | < 0.50 | Green line | No active issues detected |
+| **Unknown** | No signals | Gray line | No health data available |
+
+### Signal Types
+
+The health score is derived from two signal types, each with independent severity, confidence, and TTL:
+
+| Signal | Source | Severity | TTL | Description |
+|--------|--------|----------|-----|-------------|
+| **Operator Fault** | NGA maritime warnings | 0.6 - 1.0 | 3-5 days | Keywords like FAULT, BREAK, DAMAGE, SEVERED in cable-related warnings |
+| **Repair Activity** | NGA maritime warnings | 0.5 - 0.8 | 12-24 hours | Cable ship detected (CS Reliance, etc.) with optional "on station" status |
+
+### Scoring Algorithm
+
+Each signal produces an effective score using time-decay:
+
+```
+effective = severity * confidence * recencyWeight
+recencyWeight = clamp(1 - ageSeconds / ttlSeconds, 0, 1)
+```
+
+The composite health per cable uses the maximum effective signal. Key rules:
+
+1. **Conservative attribution**: Fault status requires an `operator_fault` signal with effective score >= 0.50. Repair activity alone caps at "degraded".
+2. **Confidence weighting**: Name-matched cables receive higher confidence (0.8-0.9) than geometry-matched (distance-degraded).
+3. **Time decay**: Signals gradually lose influence and are fully excluded once they exceed their TTL.
+4. **Evidence-first**: Up to 3 evidence items are surfaced per cable, including source, summary, and timestamp.
+
+### Cable Identification
+
+Cables are identified from NGA warnings using two methods:
+
+1. **Name matching**: Direct lookup against a dictionary of 20+ cable names (MAREA, GRACE HOPPER, SEA-ME-WE, 2AFRICA, etc.)
+2. **Geometry matching**: When no name is found, DMS coordinates from the warning text are matched to the nearest cable landing point within a 5-degree radius (~555 km)
+
+Name-matched cables receive higher confidence scores than geometry-matched ones.
+
+### Landing-to-ASN Mapping
+
+The `data/landing-asn.json` file maps each cable's landing points to local ASNs (Autonomous System Numbers). This enables future internet health inference by correlating BGP anomalies with cable infrastructure:
+
+```json
+{
+  "marea": {
+    "US-Virginia Beach": [8075, 32934, 6461, 7922],
+    "ES-Bilbao": [12479, 3352, 12357]
+  }
+}
+```
+
+Currently 16 cables with 60+ landing points are mapped. This data supports planned Phase 2-4 signal adapters for inferred degradation.
+
+### API Endpoint
+
+**`GET /api/cable-health`**
+
+Returns the current health status for all cables with active signals.
+
+**Response format:**
+
+```json
+{
+  "generatedAt": "2026-02-15T12:00:00.000Z",
+  "cables": {
+    "marea": {
+      "status": "fault",
+      "score": 0.90,
+      "confidence": 0.85,
+      "lastUpdated": "2026-02-15T10:00:00.000Z",
+      "evidence": [
+        {
+          "source": "NGA",
+          "summary": "Fault/damage reported: SUBMARINE CABLE FAULT...",
+          "ts": "2026-02-15T10:00:00.000Z"
+        }
+      ]
+    }
+  }
+}
+```
+
+**Caching**: 3-minute server-side cache (Upstash Redis), 1-minute client-side cache. Cache-Control headers enable CDN caching with stale-while-revalidate.
+
+### Map Rendering
+
+The cable health layer modifies the visual appearance of submarine cables on both map renderers:
+
+**deck.gl (desktop)**:
+
+- Color-coded by health status (red/orange/green/gray)
+- Fault cables rendered with dashed lines and increased width
+- Click opens cable health bottom sheet
+
+**D3/SVG (mobile)**:
+
+- CSS class-based styling (`cable-health-fault`, `cable-health-degraded`, etc.)
+- Fault cables have a pulse animation
+- Tap opens cable health bottom sheet
+
+### Bottom Sheet Popup
+
+The cable health popup displays:
+
+- Status indicator with color-coded icon
+- Health score (0-1) and confidence percentage
+- Last updated timestamp
+- Up to 3 evidence items with source attribution
+- Cable metadata (name, landing points)
+
+### Configuration
+
+The cable health layer is toggled independently from the base cables layer:
+
+| Variant | Desktop Default | Mobile Default |
+|---------|----------------|----------------|
+| **Full (Geopolitical)** | Off | Off |
+| **Tech** | On | Off |
+| **Finance** | On | Off |
+
+### Polling
+
+The frontend polls the cable health API every 5 minutes when the layer is enabled. Polling is paused when the layer is toggled off.
+
+---
+
 ## Strategic Risk Overview
 
 The Strategic Risk Overview provides a **composite dashboard** that synthesizes all intelligence modules into a single risk assessment.

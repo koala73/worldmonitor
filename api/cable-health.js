@@ -399,3 +399,29 @@ function computeHealthMap(signals) {
 
   return healthMap;
 }
+
+// ── Test helpers (exported for unit tests, not used in production) ──
+
+export function __testProcessNgaSignals(warnings) {
+  return processNgaSignals(warnings);
+}
+
+export function __testComputeHealthMap(signals) {
+  return computeHealthMap(signals);
+}
+
+export function __testIsCableRelated(text) {
+  return isCableRelated(text);
+}
+
+export function __testMatchCableByName(text) {
+  return matchCableByName(text);
+}
+
+export function __testFindNearestCable(lat, lon) {
+  return findNearestCable(lat, lon);
+}
+
+export function __testParseCoordinates(text) {
+  return parseCoordinates(text);
+}
