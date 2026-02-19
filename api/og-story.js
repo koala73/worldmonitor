@@ -1,3 +1,4 @@
+// Non-sebuf: returns XML/HTML, stays as standalone Vercel function
 /**
  * Dynamic OG Image Generator for Story Sharing
  * Returns an SVG image (1200x630) — rich intelligence card for social previews.

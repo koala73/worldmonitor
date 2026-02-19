@@ -1,3 +1,4 @@
+// Non-sebuf: returns XML/HTML, stays as standalone Vercel function
 /**
  * Story Page for Social Crawlers
  * Returns HTML with proper og:image and twitter:card meta tags.
