@@ -14,7 +14,7 @@ export * from './outages';
 export * from './cyber-threats';
 export * from './ais';
 export * from './cable-activity';
-export * from './protests';
+export * from './unrest';
 export * from './aviation';
 export * from './military-flights';
 export * from './military-vessels';
