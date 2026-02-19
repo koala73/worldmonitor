@@ -1,32 +1,10 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
+import { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
+import type { ListEtfFlowsResponse } from '@/generated/client/worldmonitor/market/v1/service_client';
 
-interface ETFData {
-  ticker: string;
-  issuer: string;
-  price: number;
-  priceChange: number;
-  volume: number;
-  avgVolume: number;
-  volumeRatio: number;
-  direction: 'inflow' | 'outflow' | 'neutral';
-  estFlow: number;
-}
-
-interface ETFFlowsResult {
-  timestamp: string;
-  summary: {
-    etfCount: number;
-    totalVolume: number;
-    totalEstFlow: number;
-    netDirection: string;
-    inflowCount: number;
-    outflowCount: number;
-  };
-  etfs: ETFData[];
-  unavailable?: boolean;
-}
+type ETFFlowsResult = ListEtfFlowsResponse;
 
 function formatVolume(v: number): string {
   if (Math.abs(v) >= 1e9) return `${(v / 1e9).toFixed(1)}B`;
@@ -68,9 +46,8 @@ export class ETFFlowsPanel extends Panel {
 
   private async fetchData(): Promise<void> {
     try {
-      const res = await fetch('/api/etf-flows');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      this.data = await res.json();
+      const client = new MarketServiceClient('', { fetch: fetch.bind(globalThis) });
+      this.data = await client.listEtfFlows({});
       this.error = null;
     } catch (err) {
       this.error = err instanceof Error ? err.message : 'Failed to fetch';
@@ -78,10 +55,6 @@ export class ETFFlowsPanel extends Panel {
       this.loading = false;
       this.renderPanel();
     }
-  }
-
-  private isUpstreamUnavailable(): boolean {
-    return this.data?.unavailable === true;
   }
 
   private renderPanel(): void {
@@ -95,18 +68,13 @@ export class ETFFlowsPanel extends Panel {
       return;
     }
 
-    if (this.isUpstreamUnavailable()) {
-      this.showError(t('common.upstreamUnavailable'));
-      return;
-    }
-
     const d = this.data;
     if (!d.etfs.length) {
       this.setContent(`<div class="panel-loading-text">${t('components.etfFlows.unavailable')}</div>`);
       return;
     }
 
-    const s = d.summary;
+    const s = d.summary || { etfCount: 0, totalVolume: 0, totalEstFlow: 0, netDirection: 'NEUTRAL', inflowCount: 0, outflowCount: 0 };
     const dirClass = s.netDirection.includes('INFLOW') ? 'flow-inflow' : s.netDirection.includes('OUTFLOW') ? 'flow-outflow' : 'flow-neutral';
 
     const rows = d.etfs.map(etf => `
