@@ -161,9 +161,18 @@ Plans:
 - [x] 2K-01-PLAN.md -- Conflict handler (3 RPCs: ACLED conflicts, UCDP GED events with version discovery, HAPI humanitarian summary) + gateway wiring + sidecar rebuild
 - [x] 2K-02-PLAN.md -- Conflict service module (4-shape proto-to-legacy mapping, UCDP classification derivation, deduplication) + consumer rewiring + legacy deletion (9 files)
 
-### Phase 2L-2S: Remaining Domain Migrations
-**Goal**: Each remaining domain migrated one at a time in order of complexity
+### Phase 2L: Maritime Migration
+**Goal**: Migrate maritime domain (AIS vessel snapshot + NGA navigational warnings) to sebuf -- implement 2-RPC handler proxying WS relay for AIS data and NGA MSI API for navigational warnings, create service module with port/adapter pattern preserving polling/callback architecture and hybrid fetch strategy (proto RPC for snapshot, raw relay for candidateReports), rewire cable-activity and all consumers, delete legacy endpoints
 **Depends on**: Phase 2K
+**Requirements:** [DOMAIN-06, SERVER-02]
+**Plans:** 2 plans
+Plans:
+- [ ] 2L-01-PLAN.md -- Maritime handler (2 RPCs: WS relay proxy for AIS snapshot, NGA MSI proxy for navigational warnings) + gateway wiring + sidecar rebuild
+- [ ] 2L-02-PLAN.md -- Maritime service module (hybrid fetch, polling/callback preservation, proto-to-legacy type mapping) + cable-activity rewiring + consumer imports + legacy deletion (3 files)
+
+### Phase 2M-2S: Remaining Domain Migrations
+**Goal**: Each remaining domain migrated one at a time in order of complexity
+**Depends on**: Phase 2L
 
 Migration order (one sub-phase each):
 1. ~~seismology~~ (complete, Phase 2C)
@@ -175,7 +184,7 @@ Migration order (one sub-phase each):
 7. ~~research~~ (Phase 2I)
 8. ~~unrest~~ (Phase 2J)
 9. ~~conflict~~ (Phase 2K)
-10. maritime -- validates AIS snapshot caching
+10. ~~maritime~~ (Phase 2L)
 11. cyber -- validates multi-source aggregation
 12. infrastructure -- validates external service fan-out
 13. economic -- validates FRED/WorldBank/EIA
@@ -212,5 +221,6 @@ Each migration step:
 | 2I. Research Migration | Complete | 2026-02-19 |
 | 2J. Unrest Migration | Complete | 2026-02-19 |
 | 2K. Conflict Migration | Complete | 2026-02-19 |
-| 2L-2S. Domain Migrations (0/8) | Not started | - |
+| 2L. Maritime Migration | Not started | - |
+| 2M-2S. Domain Migrations (0/7) | Not started | - |
 | 2T. Legacy Cleanup | Not started | - |
