@@ -17,7 +17,7 @@
     "predictionMarkets": "Рынки прогнозов",
     "loadingMarkets": "Загрузка рынков прогнозов...",
     "infrastructure": "Инфраструктурная уязвимость",
-    "briefUnavailable": "ИИ-сводка недоступна — настройте GROQ_API_KEY в Настройках.",
+    "briefUnavailable": "ИИ-сводка недоступна — настройте AI4U_API_KEY в Настройках.",
     "cached": "Кэш",
     "fresh": "Свежие",
     "noMarkets": "Рынки прогнозов не найдены",
@@ -310,7 +310,7 @@
       "fresh": "Свежие",
       "noMarkets": "Рынки прогнозов не найдены",
       "predictionMarkets": "Рынки прогнозов",
-      "unavailable": "ИИ-сводка недоступна — настройте GROQ_API_KEY в Настройках."
+      "unavailable": "ИИ-сводка недоступна — настройте AI4U_API_KEY в Настройках."
     },
     "countryBrief": {
       "identifying": "Определение страны...",
@@ -326,7 +326,7 @@
       "predictionMarkets": "Рынки прогнозов",
       "loadingMarkets": "Загрузка рынков прогнозов...",
       "infrastructure": "Инфраструктурная уязвимость",
-      "briefUnavailable": "ИИ-сводка недоступна — настройте GROQ_API_KEY в Настройках.",
+      "briefUnavailable": "ИИ-сводка недоступна — настройте AI4U_API_KEY в Настройках.",
       "cached": "Кэш",
       "fresh": "Свежие",
       "noMarkets": "Рынки прогнозов не найдены",

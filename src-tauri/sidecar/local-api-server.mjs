@@ -81,6 +81,7 @@ globalThis.fetch = function ipv4Fetch(input, init) {
 };
 
 const ALLOWED_ENV_KEYS = new Set([
+  'AI4U_API_KEY',
   'GROQ_API_KEY', 'OPENROUTER_API_KEY', 'FRED_API_KEY', 'EIA_API_KEY',
   'CLOUDFLARE_API_TOKEN', 'ACLED_ACCESS_TOKEN', 'URLHAUS_AUTH_KEY',
   'OTX_API_KEY', 'ABUSEIPDB_API_KEY', 'WINGBITS_API_KEY', 'WS_RELAY_URL',
@@ -460,6 +461,16 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
 
   try {
     switch (key) {
+    case 'AI4U_API_KEY': {
+      const response = await fetchWithTimeout('https://api.ai4u.now/v1/models', {
+        headers: { Authorization: `Bearer ${value}` },
+      });
+      const text = await response.text();
+      if (isAuthFailure(response.status, text)) return fail('AI4U rejected this key');
+      if (!response.ok) return fail(`AI4U probe failed (${response.status})`);
+      return ok('AI4U key verified');
+    }
+
     case 'GROQ_API_KEY': {
       const response = await fetchWithTimeout('https://api.groq.com/openai/v1/models', {
         headers: { Authorization: `Bearer ${value}` },

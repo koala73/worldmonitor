@@ -20,6 +20,7 @@ import { isDesktopRuntime } from '@/services/runtime';
 import { t } from '@/services/i18n';
 
 const SIGNUP_URLS: Partial<Record<RuntimeSecretKey, string>> = {
+  AI4U_API_KEY: 'https://api.ai4u.now/',
   GROQ_API_KEY: 'https://console.groq.com/keys',
   OPENROUTER_API_KEY: 'https://openrouter.ai/settings/keys',
   FRED_API_KEY: 'https://fred.stlouisfed.org/docs/api/api_key.html',

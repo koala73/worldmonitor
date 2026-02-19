@@ -20,6 +20,7 @@ export class LanguageSelector {
     private getFlagUrl(langCode: string): string {
         const map: Record<string, string> = {
             en: 'gb',
+            vi: 'vn',
             ar: 'sa',
             zh: 'cn',
             fr: 'fr',

@@ -958,7 +958,7 @@ export class App {
           if (lines.length > 0) {
             this.countryBriefPage!.updateBrief({ brief: lines.join('\n'), country, code, fallback: true });
           } else {
-            this.countryBriefPage!.updateBrief({ brief: '', country, code, error: 'No AI service available. Configure GROQ_API_KEY in Settings for full briefs.' });
+            this.countryBriefPage!.updateBrief({ brief: '', country, code, error: 'No AI service available. Configure AI4U_API_KEY in Settings for full briefs.' });
           }
         }
       }

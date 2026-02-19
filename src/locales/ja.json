@@ -17,7 +17,7 @@
     "predictionMarkets": "予測市場",
     "loadingMarkets": "予測市場を読み込み中...",
     "infrastructure": "インフラ露出度",
-    "briefUnavailable": "AIブリーフ利用不可 — 設定でGROQ_API_KEYを構成してください。",
+    "briefUnavailable": "AIブリーフ利用不可 — 設定でAI4U_API_KEYを構成してください。",
     "cached": "キャッシュ済",
     "fresh": "最新",
     "noMarkets": "予測市場が見つからない",
@@ -310,7 +310,7 @@
       "fresh": "最新",
       "noMarkets": "予測市場が見つからない",
       "predictionMarkets": "予測市場",
-      "unavailable": "AIブリーフ利用不可 — 設定でGROQ_API_KEYを構成してください。"
+      "unavailable": "AIブリーフ利用不可 — 設定でAI4U_API_KEYを構成してください。"
     },
     "countryBrief": {
       "identifying": "国を特定中...",
@@ -326,7 +326,7 @@
       "predictionMarkets": "予測市場",
       "loadingMarkets": "予測市場を読み込み中...",
       "infrastructure": "インフラ露出度",
-      "briefUnavailable": "AIブリーフ利用不可 — 設定でGROQ_API_KEYを構成してください。",
+      "briefUnavailable": "AIブリーフ利用不可 — 設定でAI4U_API_KEYを構成してください。",
       "cached": "キャッシュ済",
       "fresh": "最新",
       "noMarkets": "予測市場が見つからない",

@@ -1,20 +1,17 @@
 /**
- * OpenRouter API Summarization Endpoint with Redis Caching
- * Fallback when Groq is rate-limited
- * Uses OpenRouter auto-routed free model
- * Free tier: 50 requests/day (20/min)
- * Server-side Redis cache for cross-user deduplication
+ * Fallback AI4U summarization endpoint with Redis caching.
+ * Uses a fast secondary model on the same AI4U OpenAI-compatible API.
  */
 
 import { getCachedJson, setCachedJson, hashString } from './_upstash-cache.js';
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
+import { getAi4uApiKey, getAi4uModel, postAi4u } from './_ai4u.js';
 
 export const config = {
   runtime: 'edge',
 };
 
-const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const MODEL = 'openrouter/free';
+const MODEL = getAi4uModel('AI4U_SUMMARY_FALLBACK_MODEL', 'gemini-3-flash');
 const CACHE_TTL_SECONDS = 86400; // 24 hours
 
 const CACHE_VERSION = 'v3';
@@ -90,9 +87,9 @@ export default async function handler(request) {
     });
   }
 
-  const apiKey = process.env.OPENROUTER_API_KEY;
+  const apiKey = getAi4uApiKey();
   if (!apiKey) {
-    return new Response(JSON.stringify({ summary: null, fallback: true, skipped: true, reason: 'OPENROUTER_API_KEY not configured' }), {
+    return new Response(JSON.stringify({ summary: null, fallback: true, skipped: true, reason: 'AI4U_API_KEY not configured' }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
@@ -116,11 +113,11 @@ export default async function handler(request) {
       });
     }
 
-    // Check cache first (shared with Groq endpoint)
+    // Check cache first (shared with primary summarization endpoint)
     const cacheKey = getCacheKey(headlines, mode, geoContext, variant, lang);
     const cached = await getCachedJson(cacheKey);
     if (cached && typeof cached === 'object' && cached.summary) {
-      console.log('[OpenRouter] Cache hit:', cacheKey);
+      console.log('[AI4U Fallback] Cache hit:', cacheKey);
       return new Response(JSON.stringify({
         summary: cached.summary,
         model: cached.model || MODEL,
@@ -214,15 +211,7 @@ Rules:
       userPrompt = `Key takeaway:\n${headlineText}${intelSection}`;
     }
 
-    const response = await fetch(OPENROUTER_API_URL, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://worldmonitor.app',
-        'X-Title': 'WorldMonitor',
-      },
-      body: JSON.stringify({
+    const response = await postAi4u('/chat/completions', apiKey, {
         model: MODEL,
         messages: [
           { role: 'system', content: systemPrompt },
@@ -231,12 +220,11 @@ Rules:
         temperature: 0.3,
         max_tokens: 150,
         top_p: 0.9,
-      }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('[OpenRouter] API error:', response.status, errorText);
+      console.error('[AI4U Fallback] API error:', response.status, errorText);
 
       // Return fallback signal for rate limiting
       if (response.status === 429) {
@@ -246,7 +234,7 @@ Rules:
         });
       }
 
-      return new Response(JSON.stringify({ error: 'OpenRouter API error', fallback: true }), {
+      return new Response(JSON.stringify({ error: 'AI4U API error', fallback: true }), {
         status: response.status,
         headers: { 'Content-Type': 'application/json' },
       });
@@ -262,7 +250,7 @@ Rules:
       });
     }
 
-    // Store in cache (shared with Groq endpoint)
+    // Store in cache (shared with primary summarization endpoint)
     await setCachedJson(cacheKey, {
       summary,
       model: MODEL,
@@ -272,7 +260,7 @@ Rules:
     return new Response(JSON.stringify({
       summary,
       model: MODEL,
-      provider: 'openrouter',
+      provider: 'ai4u',
       cached: false,
       tokens: data.usage?.total_tokens || 0,
     }), {
@@ -285,7 +273,7 @@ Rules:
     });
 
   } catch (error) {
-    console.error('[OpenRouter] Error:', error);
+    console.error('[AI4U Fallback] Error:', error);
     return new Response(JSON.stringify({ error: error.message, fallback: true }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },

@@ -1,12 +1,12 @@
 import { getCachedJson, setCachedJson, mget, hashString } from './_upstash-cache.js';
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
+import { getAi4uApiKey, getAi4uModel, postAi4u } from './_ai4u.js';
 
 export const config = {
   runtime: 'edge',
 };
 
-const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const MODEL = 'llama-3.1-8b-instant';
+const MODEL = getAi4uModel('AI4U_CLASSIFY_MODEL', 'gemini-3-flash');
 const CACHE_TTL_SECONDS = 86400;
 const CACHE_VERSION = 'v1';
 const MAX_BATCH_SIZE = 20;
@@ -39,9 +39,9 @@ export default async function handler(request) {
     });
   }
 
-  const apiKey = process.env.GROQ_API_KEY;
+  const apiKey = getAi4uApiKey();
   if (!apiKey) {
-    return new Response(JSON.stringify({ results: [], fallback: true, skipped: true, reason: 'GROQ_API_KEY not configured' }), {
+    return new Response(JSON.stringify({ results: [], fallback: true, skipped: true, reason: 'AI4U_API_KEY not configured' }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
@@ -111,13 +111,7 @@ ${isTech ? 'Focus: technology, startups, AI, cybersecurity. Most tech news is "l
 Return a JSON array with one object per headline in order: [{"level":"...","category":"..."},...]`;
 
   try {
-    const response = await fetch(GROQ_API_URL, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
+    const response = await postAi4u('/chat/completions', apiKey, {
         model: MODEL,
         messages: [
           { role: 'system', content: systemPrompt },
@@ -125,11 +119,10 @@ Return a JSON array with one object per headline in order: [{"level":"...","cate
         ],
         temperature: 0,
         max_tokens: uncachedTitles.length * 60,
-      }),
     });
 
     if (!response.ok) {
-      console.error('[ClassifyBatch] Groq error:', response.status);
+      console.error('[ClassifyBatch] AI4U error:', response.status);
       return new Response(JSON.stringify({ results, fallback: true }), {
         status: response.status,
         headers: { 'Content-Type': 'application/json' },

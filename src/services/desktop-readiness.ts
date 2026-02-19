@@ -21,7 +21,6 @@ export interface DesktopReadinessCheck {
 
 const keyBackedFeatures: RuntimeFeatureId[] = [
   'aiGroq',
-  'aiOpenRouter',
   'economicFred',
   'internetOutages',
   'acledConflicts',
@@ -82,7 +81,7 @@ export const DESKTOP_PARITY_FEATURES: DesktopParityFeature[] = [
     apiRoutes: ['/api/groq-summarize', '/api/openrouter-summarize'],
     apiHandlers: ['api/groq-summarize.js', 'api/openrouter-summarize.js'],
     locality: 'api-key',
-    fallback: 'Browser summarizer executes when hosted LLM providers are unavailable.',
+    fallback: 'Browser summarizer executes when hosted AI4U models are unavailable.',
     priority: 2,
   },
   {
@@ -128,7 +127,7 @@ export function getDesktopReadinessChecks(localBackendEnabled: boolean): Desktop
     { id: 'startup', label: 'Desktop startup + sidecar API health', ready: localBackendEnabled },
     { id: 'map', label: 'Map rendering (local layers + static geo assets)', ready: true },
     { id: 'core-intel', label: 'Core intelligence panels (Live News, Monitor, Strategic Risk)', ready: true },
-    { id: 'summaries', label: 'Summaries (provider-backed or browser fallback)', ready: isFeatureAvailable('aiGroq') || isFeatureAvailable('aiOpenRouter') },
+    { id: 'summaries', label: 'Summaries (provider-backed or browser fallback)', ready: isFeatureAvailable('aiGroq') },
     { id: 'market', label: 'Market panel live data paths', ready: true },
     { id: 'live-tracking', label: 'At least one live-tracking mode (AIS or OpenSky)', ready: liveTrackingReady },
   ];

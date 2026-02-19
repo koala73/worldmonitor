@@ -1,19 +1,17 @@
 /**
- * Groq API Summarization Endpoint with Redis Caching
- * Uses Llama 3.1 8B Instant for high-throughput summarization
- * Free tier: 14,400 requests/day (14x more than 70B model)
- * Server-side Redis cache for cross-user deduplication
+ * Primary AI4U summarization endpoint with Redis caching.
+ * Uses OpenAI-compatible API at https://api.ai4u.now/v1/chat/completions.
  */
 
 import { getCachedJson, setCachedJson, hashString } from './_upstash-cache.js';
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
+import { getAi4uApiKey, getAi4uModel, postAi4u } from './_ai4u.js';
 
 export const config = {
   runtime: 'edge',
 };
 
-const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const MODEL = 'llama-3.1-8b-instant'; // 14.4K RPD vs 1K for 70b
+const MODEL = getAi4uModel('AI4U_SUMMARY_MODEL', 'sonnet-4.5');
 const CACHE_TTL_SECONDS = 86400; // 24 hours
 
 const CACHE_VERSION = 'v3';
@@ -89,9 +87,9 @@ export default async function handler(request) {
     });
   }
 
-  const apiKey = process.env.GROQ_API_KEY;
+  const apiKey = getAi4uApiKey();
   if (!apiKey) {
-    return new Response(JSON.stringify({ summary: null, fallback: true, skipped: true, reason: 'GROQ_API_KEY not configured' }), {
+    return new Response(JSON.stringify({ summary: null, fallback: true, skipped: true, reason: 'AI4U_API_KEY not configured' }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
@@ -119,7 +117,7 @@ export default async function handler(request) {
     const cacheKey = getCacheKey(headlines, mode, geoContext, variant, lang);
     const cached = await getCachedJson(cacheKey);
     if (cached && typeof cached === 'object' && cached.summary) {
-      console.log('[Groq] Cache hit:', cacheKey);
+      console.log('[AI4U Primary] Cache hit:', cacheKey);
       return new Response(JSON.stringify({
         summary: cached.summary,
         model: cached.model || MODEL,
@@ -214,13 +212,7 @@ Rules:
       userPrompt = `Key takeaway:\n${headlineText}${intelSection}`;
     }
 
-    const response = await fetch(GROQ_API_URL, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
+    const response = await postAi4u('/chat/completions', apiKey, {
         model: MODEL,
         messages: [
           { role: 'system', content: systemPrompt },
@@ -229,12 +221,11 @@ Rules:
         temperature: 0.3,
         max_tokens: 150,
         top_p: 0.9,
-      }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('[Groq] API error:', response.status, errorText);
+      console.error('[AI4U Primary] API error:', response.status, errorText);
 
       // Return fallback signal for rate limiting
       if (response.status === 429) {
@@ -244,7 +235,7 @@ Rules:
         });
       }
 
-      return new Response(JSON.stringify({ error: 'Groq API error', fallback: true }), {
+      return new Response(JSON.stringify({ error: 'AI4U API error', fallback: true }), {
         status: response.status,
         headers: { 'Content-Type': 'application/json' },
       });
@@ -270,7 +261,7 @@ Rules:
     return new Response(JSON.stringify({
       summary,
       model: MODEL,
-      provider: 'groq',
+      provider: 'ai4u',
       cached: false,
       tokens: data.usage?.total_tokens || 0,
     }), {
@@ -283,7 +274,7 @@ Rules:
     });
 
   } catch (error) {
-    console.error('[Groq] Error:', error.name, error.message, error.stack?.split('\n')[1]);
+    console.error('[AI4U Primary] Error:', error.name, error.message, error.stack?.split('\n')[1]);
     return new Response(JSON.stringify({
       error: error.message,
       errorType: error.name,
