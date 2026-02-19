@@ -22,6 +22,8 @@ import { createDisplacementServiceRoutes } from '../src/generated/server/worldmo
 import { displacementHandler } from './server/worldmonitor/displacement/v1/handler';
 import { createAviationServiceRoutes } from '../src/generated/server/worldmonitor/aviation/v1/service_server';
 import { aviationHandler } from './server/worldmonitor/aviation/v1/handler';
+import { createResearchServiceRoutes } from '../src/generated/server/worldmonitor/research/v1/service_server';
+import { researchHandler } from './server/worldmonitor/research/v1/handler';
 
 import type { ServerOptions } from '../src/generated/server/worldmonitor/seismology/v1/service_server';
 
@@ -34,6 +36,7 @@ const allRoutes = [
   ...createPredictionServiceRoutes(predictionHandler, serverOptions),
   ...createDisplacementServiceRoutes(displacementHandler, serverOptions),
   ...createAviationServiceRoutes(aviationHandler, serverOptions),
+  ...createResearchServiceRoutes(researchHandler, serverOptions),
 ];
 
 const router = createRouter(allRoutes);
