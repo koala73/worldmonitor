@@ -193,13 +193,13 @@ Additional client-side migrations (post-2L, pre-Phase 3):
 ### Phase 3: Legacy Edge Function Migration (IN PROGRESS)
 **Goal**: Migrate remaining `api/*.js` legacy edge functions into sebuf domain RPCs or tag as non-migratable
 **Depends on**: Phase 2M-2S
-**Status**: In progress — planned, ready for execution
+**Status**: In progress (2/5 plans complete)
 **Requirements:** [CLEAN-02, DOMAIN-04, DOMAIN-09, DOMAIN-10]
 **Plans:** 5 plans
 
 Plans:
-- [ ] 03-01-PLAN.md — Wingbits commit + GDELT doc migration + delete _ip-rate-limit.js
-- [ ] 03-02-PLAN.md — Summarization migration (SummarizeArticle RPC with provider param)
+- [x] 03-01-PLAN.md — Wingbits commit + GDELT doc migration + delete _ip-rate-limit.js
+- [x] 03-02-PLAN.md — Summarization migration (SummarizeArticle RPC with provider param)
 - [ ] 03-03-PLAN.md — Macro-signals migration (GetMacroSignals RPC)
 - [ ] 03-04-PLAN.md — Tech-events migration (ListTechEvents RPC + city-coords data)
 - [ ] 03-05-PLAN.md — Temporal-baseline + non-JSON tagging + final cleanup

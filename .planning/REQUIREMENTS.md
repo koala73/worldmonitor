@@ -26,7 +26,7 @@ Requirements for full sebuf integration. Each maps to roadmap phases.
 - [x] **DOMAIN-07**: Geopolitical domain proto (ACLED conflicts, UCDP events, GDELT tensions, HAPI humanitarian, UNHCR refugees) with service RPCs and HTTP annotations
 - [x] **DOMAIN-08**: Military domain proto (OpenSky flights, Wingbits enrichment, FAA airport status, ADS-B exchange) — HTTP-only RPCs, excluding WebSocket streams
 - [ ] **DOMAIN-09**: News domain proto (RSS feed aggregation — single GetFeedItems RPC with server-side domain validation, feed categories)
-- [ ] **DOMAIN-10**: Proto messages match existing TypeScript interfaces in src/types/index.ts (not upstream API response shapes)
+- [x] **DOMAIN-10**: Proto messages match existing TypeScript interfaces in src/types/index.ts (not upstream API response shapes)
 
 ### Client Generation
 
@@ -98,7 +98,7 @@ Requirements for full sebuf integration. Each maps to roadmap phases.
 | MIGRATE-05 | Phase 2 | Pending |
 | CLIENT-03 | Phase 2 | Pending |
 | DOMAIN-01 | Phase 3 | Complete |
-| DOMAIN-10 | Phase 3 | Pending |
+| DOMAIN-10 | Phase 3 | Complete |
 | CLIENT-01 | Phase 2C | Complete |
 | CLIENT-02 | Phase 3 | Complete |
 | CLIENT-04 | Phase 3 | Complete |
