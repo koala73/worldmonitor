@@ -1,12 +1,15 @@
 /**
  * Infrastructure service handler -- implements the generated
- * InfrastructureServiceHandler interface with 2 RPCs:
+ * InfrastructureServiceHandler interface with 4 RPCs:
  *   - ListInternetOutages  (Cloudflare Radar internet outage annotations)
  *   - ListServiceStatuses  (checks ~30 tech service status pages)
+ *   - GetTemporalBaseline  (anomaly detection via Welford's online algorithm)
+ *   - RecordBaselineSnapshot (batch baseline update via Welford's algorithm)
  *
  * Consolidates legacy edge functions:
  *   api/cloudflare-outages.js
  *   api/service-status.js
+ *   api/temporal-baseline.js
  *
  * All RPCs have graceful degradation: return empty on upstream failure.
  */
@@ -20,6 +23,10 @@ import type {
   ListInternetOutagesResponse,
   ListServiceStatusesRequest,
   ListServiceStatusesResponse,
+  GetTemporalBaselineRequest,
+  GetTemporalBaselineResponse,
+  RecordBaselineSnapshotRequest,
+  RecordBaselineSnapshotResponse,
   InternetOutage,
   ServiceStatus,
   OutageSeverity,
@@ -27,11 +34,82 @@ import type {
 } from '../../../../../src/generated/server/worldmonitor/infrastructure/v1/service_server';
 
 // ========================================================================
+// Upstash Redis helpers (inline -- edge-compatible)
+// ========================================================================
+
+async function getCachedJson(key: string): Promise<unknown | null> {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+  try {
+    const resp = await fetch(`${url}/get/${encodeURIComponent(key)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!resp.ok) return null;
+    const data = (await resp.json()) as { result?: string };
+    return data.result ? JSON.parse(data.result) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function setCachedJson(key: string, value: unknown, ttlSeconds: number): Promise<void> {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return;
+  try {
+    await fetch(`${url}/set/${encodeURIComponent(key)}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(JSON.stringify(value)),
+      signal: AbortSignal.timeout(5_000),
+    });
+    await fetch(`${url}/expire/${encodeURIComponent(key)}/${ttlSeconds}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(5_000),
+    });
+  } catch { /* best-effort */ }
+}
+
+async function mgetJson(keys: string[]): Promise<(unknown | null)[]> {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return keys.map(() => null);
+  try {
+    const resp = await fetch(`${url}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(['MGET', ...keys]),
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!resp.ok) return keys.map(() => null);
+    const data = (await resp.json()) as { result?: (string | null)[] };
+    return (data.result || []).map(v => v ? JSON.parse(v) : null);
+  } catch {
+    return keys.map(() => null);
+  }
+}
+
+// ========================================================================
 // Constants
 // ========================================================================
 
 const CLOUDFLARE_RADAR_URL = 'https://api.cloudflare.com/client/v4/radar/annotations/outages';
 const UPSTREAM_TIMEOUT_MS = 10_000;
+
+// Temporal baseline constants
+const BASELINE_TTL = 7776000; // 90 days in seconds
+const MIN_SAMPLES = 10;
+const Z_THRESHOLD_LOW = 1.5;
+const Z_THRESHOLD_MEDIUM = 2.0;
+const Z_THRESHOLD_HIGH = 3.0;
+
+const VALID_BASELINE_TYPES = ['military_flights', 'vessels', 'protests', 'news', 'ais_gaps', 'satellite_fires'];
 
 // ========================================================================
 // Country coordinates (centroid for mapping outage locations)
@@ -376,6 +454,28 @@ async function checkServiceStatus(service: ServiceDef): Promise<ServiceStatus> {
 }
 
 // ========================================================================
+// Temporal baseline helpers
+// ========================================================================
+
+interface BaselineEntry {
+  mean: number;
+  m2: number;
+  sampleCount: number;
+  lastUpdated: string;
+}
+
+function makeBaselineKey(type: string, region: string, weekday: number, month: number): string {
+  return `baseline:${type}:${region}:${weekday}:${month}`;
+}
+
+function getBaselineSeverity(zScore: number): string {
+  if (zScore >= Z_THRESHOLD_HIGH) return 'critical';
+  if (zScore >= Z_THRESHOLD_MEDIUM) return 'high';
+  if (zScore >= Z_THRESHOLD_LOW) return 'medium';
+  return 'normal';
+}
+
+// ========================================================================
 // Outage severity mapping
 // ========================================================================
 
@@ -506,6 +606,126 @@ export const infrastructureHandler: InfrastructureServiceHandler = {
       return { statuses: filtered };
     } catch {
       return { statuses: [] };
+    }
+  },
+
+  async getTemporalBaseline(
+    _ctx: ServerContext,
+    req: GetTemporalBaselineRequest,
+  ): Promise<GetTemporalBaselineResponse> {
+    try {
+      const { type, count } = req;
+      const region = req.region || 'global';
+
+      if (!type || !VALID_BASELINE_TYPES.includes(type) || typeof count !== 'number' || isNaN(count)) {
+        return {
+          learning: false,
+          sampleCount: 0,
+          samplesNeeded: 0,
+          error: 'Missing or invalid params: type and count required',
+        };
+      }
+
+      const now = new Date();
+      const weekday = now.getUTCDay();
+      const month = now.getUTCMonth() + 1;
+      const key = makeBaselineKey(type, region, weekday, month);
+
+      const baseline = await getCachedJson(key) as BaselineEntry | null;
+
+      if (!baseline || baseline.sampleCount < MIN_SAMPLES) {
+        return {
+          learning: true,
+          sampleCount: baseline?.sampleCount || 0,
+          samplesNeeded: MIN_SAMPLES,
+          error: '',
+        };
+      }
+
+      const variance = Math.max(0, baseline.m2 / (baseline.sampleCount - 1));
+      const stdDev = Math.sqrt(variance);
+      const zScore = stdDev > 0 ? Math.abs((count - baseline.mean) / stdDev) : 0;
+      const severity = getBaselineSeverity(zScore);
+      const multiplier = baseline.mean > 0
+        ? Math.round((count / baseline.mean) * 100) / 100
+        : count > 0 ? 999 : 1;
+
+      return {
+        anomaly: zScore >= Z_THRESHOLD_LOW ? {
+          zScore: Math.round(zScore * 100) / 100,
+          severity,
+          multiplier,
+        } : undefined,
+        baseline: {
+          mean: Math.round(baseline.mean * 100) / 100,
+          stdDev: Math.round(stdDev * 100) / 100,
+          sampleCount: baseline.sampleCount,
+        },
+        learning: false,
+        sampleCount: baseline.sampleCount,
+        samplesNeeded: MIN_SAMPLES,
+        error: '',
+      };
+    } catch {
+      return {
+        learning: false,
+        sampleCount: 0,
+        samplesNeeded: 0,
+        error: 'Internal error',
+      };
+    }
+  },
+
+  async recordBaselineSnapshot(
+    _ctx: ServerContext,
+    req: RecordBaselineSnapshotRequest,
+  ): Promise<RecordBaselineSnapshotResponse> {
+    try {
+      const updates = req.updates;
+
+      if (!Array.isArray(updates) || updates.length === 0) {
+        return { updated: 0, error: 'Body must have updates array' };
+      }
+
+      const batch = updates.slice(0, 20);
+      const now = new Date();
+      const weekday = now.getUTCDay();
+      const month = now.getUTCMonth() + 1;
+
+      const keys = batch.map(u => makeBaselineKey(u.type, u.region || 'global', weekday, month));
+      const existing = await mgetJson(keys) as (BaselineEntry | null)[];
+
+      const writes: Promise<void>[] = [];
+
+      for (let i = 0; i < batch.length; i++) {
+        const { type, count } = batch[i];
+        const region = batch[i].region || 'global';
+        if (!VALID_BASELINE_TYPES.includes(type) || typeof count !== 'number' || isNaN(count)) continue;
+
+        const prev: BaselineEntry = existing[i] as BaselineEntry || { mean: 0, m2: 0, sampleCount: 0, lastUpdated: '' };
+
+        // Welford's online algorithm
+        const n = prev.sampleCount + 1;
+        const delta = count - prev.mean;
+        const newMean = prev.mean + delta / n;
+        const delta2 = count - newMean;
+        const newM2 = prev.m2 + delta * delta2;
+
+        writes.push(setCachedJson(keys[i], {
+          mean: newMean,
+          m2: newM2,
+          sampleCount: n,
+          lastUpdated: now.toISOString(),
+        }, BASELINE_TTL));
+      }
+
+      if (writes.length > 0) {
+        await Promise.all(writes);
+      }
+
+      return { updated: writes.length, error: '' };
+    } catch {
+      return { updated: 0, error: 'Internal error' };
     }
   },
 };

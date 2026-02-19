@@ -67,6 +67,70 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/infrastructure/v1/get-temporal-baseline:
+        post:
+            tags:
+                - InfrastructureService
+            summary: GetTemporalBaseline
+            description: GetTemporalBaseline checks current activity count against stored baseline for anomaly detection.
+            operationId: GetTemporalBaseline
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/GetTemporalBaselineRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetTemporalBaselineResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/infrastructure/v1/record-baseline-snapshot:
+        post:
+            tags:
+                - InfrastructureService
+            summary: RecordBaselineSnapshot
+            description: RecordBaselineSnapshot batch-updates baseline statistics using Welford's online algorithm.
+            operationId: RecordBaselineSnapshot
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/RecordBaselineSnapshotRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/RecordBaselineSnapshotResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -287,3 +351,103 @@ components:
                     format: int32
                     description: Response latency in milliseconds.
             description: ServiceStatus represents the operational status of a monitored external service.
+        GetTemporalBaselineRequest:
+            type: object
+            properties:
+                type:
+                    type: string
+                    description: 'Activity type: "military_flights", "vessels", "protests", "news", "ais_gaps", "satellite_fires".'
+                region:
+                    type: string
+                    description: Geographic region key, defaults to "global".
+                count:
+                    type: number
+                    format: double
+                    description: Current observed count to compare against baseline.
+            description: GetTemporalBaselineRequest checks current activity count against stored baseline.
+        GetTemporalBaselineResponse:
+            type: object
+            properties:
+                anomaly:
+                    $ref: '#/components/schemas/BaselineAnomaly'
+                baseline:
+                    $ref: '#/components/schemas/BaselineStats'
+                learning:
+                    type: boolean
+                    description: True if insufficient samples have been collected.
+                sampleCount:
+                    type: integer
+                    format: int32
+                    description: Current number of samples stored.
+                samplesNeeded:
+                    type: integer
+                    format: int32
+                    description: Minimum samples required before anomaly detection activates.
+                error:
+                    type: string
+                    description: Error message if request was invalid.
+            description: GetTemporalBaselineResponse returns anomaly info or learning status.
+        BaselineAnomaly:
+            type: object
+            properties:
+                zScore:
+                    type: number
+                    format: double
+                    description: Number of standard deviations from the mean.
+                severity:
+                    type: string
+                    description: 'Severity label: "critical", "high", "medium", "normal".'
+                multiplier:
+                    type: number
+                    format: double
+                    description: Ratio of current count to baseline mean.
+            description: BaselineAnomaly describes a detected deviation from historical baseline.
+        BaselineStats:
+            type: object
+            properties:
+                mean:
+                    type: number
+                    format: double
+                    description: Running mean of observed counts.
+                stdDev:
+                    type: number
+                    format: double
+                    description: Standard deviation derived from Welford's M2.
+                sampleCount:
+                    type: integer
+                    format: int32
+                    description: Number of samples incorporated so far.
+            description: BaselineStats contains the running statistics for a baseline key.
+        RecordBaselineSnapshotRequest:
+            type: object
+            properties:
+                updates:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/BaselineUpdate'
+            description: RecordBaselineSnapshotRequest batch-updates baselines using Welford's online algorithm.
+        BaselineUpdate:
+            type: object
+            properties:
+                type:
+                    type: string
+                    description: Activity type key.
+                region:
+                    type: string
+                    description: Geographic region key, defaults to "global".
+                count:
+                    type: number
+                    format: double
+                    description: Observed count value.
+            description: BaselineUpdate is a single metric observation to incorporate into the running baseline.
+        RecordBaselineSnapshotResponse:
+            type: object
+            properties:
+                updated:
+                    type: integer
+                    format: int32
+                    description: Number of baselines that were written.
+                error:
+                    type: string
+                    description: Error message if the request was invalid.
+            description: RecordBaselineSnapshotResponse reports how many baselines were successfully updated.

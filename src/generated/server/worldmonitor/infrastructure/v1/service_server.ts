@@ -66,6 +66,48 @@ export interface ServiceStatus {
   latencyMs: number;
 }
 
+export interface GetTemporalBaselineRequest {
+  type: string;
+  region: string;
+  count: number;
+}
+
+export interface GetTemporalBaselineResponse {
+  anomaly?: BaselineAnomaly;
+  baseline?: BaselineStats;
+  learning: boolean;
+  sampleCount: number;
+  samplesNeeded: number;
+  error: string;
+}
+
+export interface BaselineAnomaly {
+  zScore: number;
+  severity: string;
+  multiplier: number;
+}
+
+export interface BaselineStats {
+  mean: number;
+  stdDev: number;
+  sampleCount: number;
+}
+
+export interface RecordBaselineSnapshotRequest {
+  updates: BaselineUpdate[];
+}
+
+export interface BaselineUpdate {
+  type: string;
+  region: string;
+  count: number;
+}
+
+export interface RecordBaselineSnapshotResponse {
+  updated: number;
+  error: string;
+}
+
 export type OutageSeverity = "OUTAGE_SEVERITY_UNSPECIFIED" | "OUTAGE_SEVERITY_PARTIAL" | "OUTAGE_SEVERITY_MAJOR" | "OUTAGE_SEVERITY_TOTAL";
 
 export type ServiceOperationalStatus = "SERVICE_OPERATIONAL_STATUS_UNSPECIFIED" | "SERVICE_OPERATIONAL_STATUS_OPERATIONAL" | "SERVICE_OPERATIONAL_STATUS_DEGRADED" | "SERVICE_OPERATIONAL_STATUS_PARTIAL_OUTAGE" | "SERVICE_OPERATIONAL_STATUS_MAJOR_OUTAGE" | "SERVICE_OPERATIONAL_STATUS_MAINTENANCE";
@@ -117,6 +159,8 @@ export interface RouteDescriptor {
 export interface InfrastructureServiceHandler {
   listInternetOutages(ctx: ServerContext, req: ListInternetOutagesRequest): Promise<ListInternetOutagesResponse>;
   listServiceStatuses(ctx: ServerContext, req: ListServiceStatusesRequest): Promise<ListServiceStatusesResponse>;
+  getTemporalBaseline(ctx: ServerContext, req: GetTemporalBaselineRequest): Promise<GetTemporalBaselineResponse>;
+  recordBaselineSnapshot(ctx: ServerContext, req: RecordBaselineSnapshotRequest): Promise<RecordBaselineSnapshotResponse>;
 }
 
 export function createInfrastructureServiceRoutes(
@@ -189,6 +233,92 @@ export function createInfrastructureServiceRoutes(
 
           const result = await handler.listServiceStatuses(ctx, body);
           return new Response(JSON.stringify(result as ListServiceStatusesResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/infrastructure/v1/get-temporal-baseline",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = await req.json() as GetTemporalBaselineRequest;
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getTemporalBaseline", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getTemporalBaseline(ctx, body);
+          return new Response(JSON.stringify(result as GetTemporalBaselineResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/infrastructure/v1/record-baseline-snapshot",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = await req.json() as RecordBaselineSnapshotRequest;
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("recordBaselineSnapshot", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.recordBaselineSnapshot(ctx, body);
+          return new Response(JSON.stringify(result as RecordBaselineSnapshotResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

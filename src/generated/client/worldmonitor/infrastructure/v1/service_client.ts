@@ -66,6 +66,48 @@ export interface ServiceStatus {
   latencyMs: number;
 }
 
+export interface GetTemporalBaselineRequest {
+  type: string;
+  region: string;
+  count: number;
+}
+
+export interface GetTemporalBaselineResponse {
+  anomaly?: BaselineAnomaly;
+  baseline?: BaselineStats;
+  learning: boolean;
+  sampleCount: number;
+  samplesNeeded: number;
+  error: string;
+}
+
+export interface BaselineAnomaly {
+  zScore: number;
+  severity: string;
+  multiplier: number;
+}
+
+export interface BaselineStats {
+  mean: number;
+  stdDev: number;
+  sampleCount: number;
+}
+
+export interface RecordBaselineSnapshotRequest {
+  updates: BaselineUpdate[];
+}
+
+export interface BaselineUpdate {
+  type: string;
+  region: string;
+  count: number;
+}
+
+export interface RecordBaselineSnapshotResponse {
+  updated: number;
+  error: string;
+}
+
 export type OutageSeverity = "OUTAGE_SEVERITY_UNSPECIFIED" | "OUTAGE_SEVERITY_PARTIAL" | "OUTAGE_SEVERITY_MAJOR" | "OUTAGE_SEVERITY_TOTAL";
 
 export type ServiceOperationalStatus = "SERVICE_OPERATIONAL_STATUS_UNSPECIFIED" | "SERVICE_OPERATIONAL_STATUS_OPERATIONAL" | "SERVICE_OPERATIONAL_STATUS_DEGRADED" | "SERVICE_OPERATIONAL_STATUS_PARTIAL_OUTAGE" | "SERVICE_OPERATIONAL_STATUS_MAJOR_OUTAGE" | "SERVICE_OPERATIONAL_STATUS_MAINTENANCE";
@@ -164,6 +206,54 @@ export class InfrastructureServiceClient {
     }
 
     return await resp.json() as ListServiceStatusesResponse;
+  }
+
+  async getTemporalBaseline(req: GetTemporalBaselineRequest, options?: InfrastructureServiceCallOptions): Promise<GetTemporalBaselineResponse> {
+    let path = "/api/infrastructure/v1/get-temporal-baseline";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetTemporalBaselineResponse;
+  }
+
+  async recordBaselineSnapshot(req: RecordBaselineSnapshotRequest, options?: InfrastructureServiceCallOptions): Promise<RecordBaselineSnapshotResponse> {
+    let path = "/api/infrastructure/v1/record-baseline-snapshot";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as RecordBaselineSnapshotResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {
