@@ -252,49 +252,6 @@ export interface UcdpGeoEvent {
   source_original: string;
 }
 
-// UNHCR Displacement Data
-export interface DisplacementFlow {
-  originCode: string;
-  originName: string;
-  asylumCode: string;
-  asylumName: string;
-  refugees: number;
-  originLat?: number;
-  originLon?: number;
-  asylumLat?: number;
-  asylumLon?: number;
-}
-
-export interface CountryDisplacement {
-  code: string;
-  name: string;
-  // Origin-country displacement outflow metrics
-  refugees: number;
-  asylumSeekers: number;
-  idps: number;
-  stateless: number;
-  totalDisplaced: number;
-  // Host-country intake metrics
-  hostRefugees: number;
-  hostAsylumSeekers: number;
-  hostTotal: number;
-  lat?: number;
-  lon?: number;
-}
-
-export interface UnhcrSummary {
-  year: number;
-  globalTotals: {
-    refugees: number;
-    asylumSeekers: number;
-    idps: number;
-    stateless: number;
-    total: number;
-  };
-  countries: CountryDisplacement[];
-  topFlows: DisplacementFlow[];
-}
-
 // WorldPop Population Exposure
 export interface CountryPopulation {
   code: string;
