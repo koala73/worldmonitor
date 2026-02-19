@@ -83,6 +83,11 @@ export const SOURCE_TIERS: Record<string, number> = {
   'The War Zone': 3,
   'Defense News': 3,
   'Janes': 3,
+  'Military Times': 2,
+  'Task & Purpose': 3,
+  'USNI News': 2,
+  'Oryx OSINT': 2,
+  'UK MOD': 1,
   'Foreign Policy': 3,
   'The Diplomat': 3,
   'Bellingcat': 3,
@@ -259,7 +264,9 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
 
   // Intel/Defense specialty
   'Defense One': 'intel', 'Breaking Defense': 'intel', 'The War Zone': 'intel',
-  'Defense News': 'intel', 'Janes': 'intel', 'Bellingcat': 'intel', 'Krebs Security': 'intel',
+  'Defense News': 'intel', 'Janes': 'intel', 'Military Times': 'intel', 'Task & Purpose': 'intel',
+  'USNI News': 'intel', 'Oryx OSINT': 'intel', 'UK MOD': 'gov',
+  'Bellingcat': 'intel', 'Krebs Security': 'intel',
   'Foreign Policy': 'intel', 'The Diplomat': 'intel',
   'Atlantic Council': 'intel', 'Foreign Affairs': 'intel',
   'CrisisWatch': 'intel',
@@ -893,6 +900,11 @@ export const INTEL_SOURCES: Feed[] = [
   { name: 'The War Zone', url: rss('https://news.google.com/rss/search?q=site:thedrive.com+"war+zone"+when:7d&hl=en-US&gl=US&ceid=US:en'), type: 'defense' },
   { name: 'Defense News', url: rss('https://www.defensenews.com/arc/outboundfeeds/rss/?outputType=xml'), type: 'defense' },
   { name: 'Janes', url: rss('https://news.google.com/rss/search?q=site:janes.com+when:3d&hl=en-US&gl=US&ceid=US:en'), type: 'defense' },
+  { name: 'Military Times', url: rss('https://www.militarytimes.com/arc/outboundfeeds/rss/?outputType=xml'), type: 'defense' },
+  { name: 'Task & Purpose', url: rss('https://taskandpurpose.com/feed/'), type: 'defense' },
+  { name: 'USNI News', url: rss('https://news.usni.org/feed'), type: 'defense' },
+  { name: 'Oryx OSINT', url: rss('https://www.oryxspioenkop.com/feeds/posts/default?alt=rss'), type: 'defense' },
+  { name: 'UK MOD', url: rss('https://www.gov.uk/government/organisations/ministry-of-defence.atom'), type: 'defense' },
   { name: 'CSIS', url: rss('https://www.csis.org/analysis?type=analysis'), type: 'defense' },
 
   // International Relations (Tier 2)

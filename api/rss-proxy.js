@@ -63,6 +63,11 @@ const ALLOWED_DOMAINS = [
   'www.brookings.edu',
   'layoffs.fyi',
   'www.defensenews.com',
+  'www.militarytimes.com',
+  'taskandpurpose.com',
+  'news.usni.org',
+  'www.oryxspioenkop.com',
+  'www.gov.uk',
   'www.foreignaffairs.com',
   'www.atlanticcouncil.org',
   // Tech variant domains
