@@ -106,31 +106,6 @@ export class UcdpEventsPanel extends Panel {
         ${bodyHtml}
         ${moreHtml}
       </div>
-      <style>
-        .ucdp-panel-content { font-size: 12px; }
-        .ucdp-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 4px; }
-        .ucdp-tabs { display: flex; gap: 2px; }
-        .ucdp-tab { background: transparent; border: 1px solid var(--border-strong); color: var(--text-dim); padding: 4px 10px; font-size: 11px; cursor: pointer; border-radius: 3px; transition: all 0.15s; }
-        .ucdp-tab:hover { border-color: var(--text-faint); color: var(--text-secondary); }
-        .ucdp-tab-active { background: color-mix(in srgb, var(--threat-critical) 10%, transparent); border-color: var(--threat-critical); color: var(--threat-critical); }
-        .ucdp-tab-count { font-variant-numeric: tabular-nums; opacity: 0.7; margin-left: 2px; }
-        .ucdp-total-deaths { color: var(--threat-critical); font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
-        .ucdp-table { width: 100%; border-collapse: collapse; }
-        .ucdp-table th { text-align: left; color: var(--text-muted); font-weight: 600; font-size: 10px; text-transform: uppercase; padding: 4px 8px; border-bottom: 1px solid var(--border); }
-        .ucdp-table th:nth-child(2) { text-align: right; }
-        .ucdp-table td { padding: 5px 8px; border-bottom: 1px solid var(--border-subtle); color: var(--text-secondary); }
-        .ucdp-row { cursor: pointer; }
-        .ucdp-row:hover { background: var(--surface-hover); }
-        .ucdp-date { color: var(--text-muted); white-space: nowrap; }
-        .ucdp-deaths { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-        .ucdp-deaths-state { color: var(--semantic-critical); font-weight: 600; }
-        .ucdp-deaths-nonstate { color: var(--semantic-high); font-weight: 600; }
-        .ucdp-deaths-onesided { color: var(--semantic-elevated); font-weight: 600; }
-        .ucdp-deaths-zero { color: var(--text-faint); }
-        .ucdp-range { color: var(--text-faint); font-size: 10px; }
-        .ucdp-actors { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dim); font-size: 11px; }
-        .ucdp-country { white-space: nowrap; }
-      </style>
     `);
 
     this.content.querySelectorAll('.ucdp-tab').forEach(btn => {

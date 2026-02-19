@@ -1,5 +1,6 @@
 @import './lang-switcher.css';
 @import './rtl-overrides.css';
+@import './panels.css';
 
 /* ============================================================
    Theme Colors — overridden by [data-theme="light"] below

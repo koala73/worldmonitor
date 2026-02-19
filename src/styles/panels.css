@@ -1,0 +1,181 @@
+/* ==========================================================
+   Panel-specific styles
+   Extracted from inline <style> blocks to avoid CSSOM recalc
+   on every panel refresh (PERF-012).
+   ========================================================== */
+
+/* ----------------------------------------------------------
+   Satellite Fires Panel
+   ---------------------------------------------------------- */
+.fires-panel-content { font-size: 12px; }
+.fires-table { width: 100%; border-collapse: collapse; }
+.fires-table th { text-align: left; color: var(--text-muted); font-weight: 600; font-size: 10px; text-transform: uppercase; padding: 4px 8px; border-bottom: 1px solid var(--border); }
+.fires-table td { padding: 5px 8px; border-bottom: 1px solid var(--border-subtle); color: var(--text-secondary); }
+.fire-row:hover { background: var(--surface-hover); }
+.fire-row.fires-high .fire-region { color: var(--threat-high); }
+.fire-row.fires-high .fire-hi { color: var(--threat-critical); font-weight: 600; }
+.fire-count, .fire-hi, .fire-frp { text-align: right; font-variant-numeric: tabular-nums; }
+.fire-totals { border-top: 1px solid var(--border-strong); }
+.fire-totals td { color: var(--accent); font-weight: 600; }
+.fires-footer { display: flex; justify-content: space-between; padding: 8px 8px 0; color: var(--text-faint); font-size: 10px; }
+
+/* ----------------------------------------------------------
+   Population Exposure Panel
+   ---------------------------------------------------------- */
+.popexp-panel-content { font-size: 12px; }
+.popexp-summary { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; margin-bottom: 6px; background: color-mix(in srgb, var(--threat-critical) 8%, transparent); border-radius: 4px; border-left: 3px solid var(--threat-critical); }
+.popexp-label { color: var(--text-dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+.popexp-total { color: var(--accent); font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.popexp-list { display: flex; flex-direction: column; }
+.popexp-card { padding: 6px 10px; border-bottom: 1px solid var(--border-subtle); }
+.popexp-card:hover { background: var(--surface-hover); }
+.popexp-card-name { color: var(--text); font-size: 12px; line-height: 1.4; margin-bottom: 3px; word-break: break-word; }
+.popexp-card-meta { display: flex; justify-content: space-between; align-items: center; }
+.popexp-card-pop { color: var(--threat-critical); font-size: 11px; font-variant-numeric: tabular-nums; font-weight: 500; }
+.popexp-pop-large { color: var(--accent); font-weight: 700; }
+.popexp-card-radius { color: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+
+/* ----------------------------------------------------------
+   Climate Anomaly Panel
+   ---------------------------------------------------------- */
+.climate-panel-content { font-size: 12px; }
+.climate-table { width: 100%; border-collapse: collapse; }
+.climate-table th { text-align: left; color: var(--text-muted); font-weight: 600; font-size: 10px; text-transform: uppercase; padding: 4px 8px; border-bottom: 1px solid var(--border); }
+.climate-table th:nth-child(2), .climate-table th:nth-child(3) { text-align: right; }
+.climate-table td { padding: 5px 8px; border-bottom: 1px solid var(--border-subtle); color: var(--text-secondary); }
+.climate-row { cursor: pointer; }
+.climate-row:hover { background: var(--surface-hover); }
+.climate-extreme-row { background: color-mix(in srgb, var(--semantic-critical) 5%, transparent); }
+.climate-extreme-row:hover { background: color-mix(in srgb, var(--semantic-critical) 10%, transparent); }
+.climate-zone { white-space: nowrap; }
+.climate-icon { margin-right: 6px; }
+.climate-num { text-align: right; font-variant-numeric: tabular-nums; }
+.climate-warm { color: var(--semantic-high); }
+.climate-cold { color: var(--semantic-low); }
+.climate-wet { color: var(--semantic-low); }
+.climate-dry { color: var(--threat-high); }
+.climate-badge { font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 3px; letter-spacing: 0.5px; }
+.severity-extreme { background: color-mix(in srgb, var(--semantic-critical) 20%, transparent); color: var(--semantic-critical); }
+.severity-moderate { background: color-mix(in srgb, var(--semantic-high) 15%, transparent); color: var(--semantic-high); }
+.severity-normal { background: var(--overlay-medium); color: var(--text-dim); }
+
+/* ----------------------------------------------------------
+   Displacement Panel
+   ---------------------------------------------------------- */
+.disp-panel-content { font-size: 12px; }
+.disp-stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 8px; }
+.disp-stat-box { background: var(--overlay-subtle); border: 1px solid var(--border); border-radius: 4px; padding: 8px 6px; text-align: center; }
+.disp-stat-value { display: block; font-size: 16px; font-weight: 700; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.disp-stat-label { display: block; font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+.disp-stat-refugees .disp-stat-value { color: var(--threat-critical); }
+.disp-stat-asylum .disp-stat-value { color: var(--threat-high); }
+.disp-stat-idps .disp-stat-value { color: var(--threat-medium); }
+.disp-stat-total .disp-stat-value { color: var(--accent); }
+.disp-tabs { display: flex; gap: 2px; margin-bottom: 6px; }
+.disp-tab { background: transparent; border: 1px solid var(--border-strong); color: var(--text-dim); padding: 4px 14px; font-size: 11px; cursor: pointer; border-radius: 3px; transition: all 0.15s; }
+.disp-tab:hover { border-color: var(--text-faint); color: var(--text-secondary); }
+.disp-tab-active { background: color-mix(in srgb, var(--threat-critical) 10%, transparent); border-color: var(--threat-critical); color: var(--threat-critical); }
+.disp-table { width: 100%; border-collapse: collapse; }
+.disp-table th { text-align: left; color: var(--text-muted); font-weight: 600; font-size: 10px; text-transform: uppercase; padding: 4px 8px; border-bottom: 1px solid var(--border); }
+.disp-table th:nth-child(3) { text-align: right; }
+.disp-table td { padding: 5px 8px; border-bottom: 1px solid var(--border-subtle); color: var(--text-secondary); }
+.disp-row { cursor: pointer; }
+.disp-row:hover { background: var(--surface-hover); }
+.disp-name { white-space: nowrap; }
+.disp-status { width: 70px; }
+.disp-badge { font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 3px; letter-spacing: 0.5px; }
+.disp-crisis { background: color-mix(in srgb, var(--semantic-critical) 20%, transparent); color: var(--semantic-critical); }
+.disp-high { background: color-mix(in srgb, var(--semantic-high) 15%, transparent); color: var(--semantic-high); }
+.disp-elevated { background: color-mix(in srgb, var(--semantic-elevated) 12%, transparent); color: var(--semantic-elevated); }
+.disp-count { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ----------------------------------------------------------
+   UCDP Events Panel
+   ---------------------------------------------------------- */
+.ucdp-panel-content { font-size: 12px; }
+.ucdp-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 4px; }
+.ucdp-tabs { display: flex; gap: 2px; }
+.ucdp-tab { background: transparent; border: 1px solid var(--border-strong); color: var(--text-dim); padding: 4px 10px; font-size: 11px; cursor: pointer; border-radius: 3px; transition: all 0.15s; }
+.ucdp-tab:hover { border-color: var(--text-faint); color: var(--text-secondary); }
+.ucdp-tab-active { background: color-mix(in srgb, var(--threat-critical) 10%, transparent); border-color: var(--threat-critical); color: var(--threat-critical); }
+.ucdp-tab-count { font-variant-numeric: tabular-nums; opacity: 0.7; margin-left: 2px; }
+.ucdp-total-deaths { color: var(--threat-critical); font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.ucdp-table { width: 100%; border-collapse: collapse; }
+.ucdp-table th { text-align: left; color: var(--text-muted); font-weight: 600; font-size: 10px; text-transform: uppercase; padding: 4px 8px; border-bottom: 1px solid var(--border); }
+.ucdp-table th:nth-child(2) { text-align: right; }
+.ucdp-table td { padding: 5px 8px; border-bottom: 1px solid var(--border-subtle); color: var(--text-secondary); }
+.ucdp-row { cursor: pointer; }
+.ucdp-row:hover { background: var(--surface-hover); }
+.ucdp-date { color: var(--text-muted); white-space: nowrap; }
+.ucdp-deaths { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ucdp-deaths-state { color: var(--semantic-critical); font-weight: 600; }
+.ucdp-deaths-nonstate { color: var(--semantic-high); font-weight: 600; }
+.ucdp-deaths-onesided { color: var(--semantic-elevated); font-weight: 600; }
+.ucdp-deaths-zero { color: var(--text-faint); }
+.ucdp-range { color: var(--text-faint); font-size: 10px; }
+.ucdp-actors { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dim); font-size: 11px; }
+.ucdp-country { white-space: nowrap; }
+
+/* ----------------------------------------------------------
+   Download Banner
+   ---------------------------------------------------------- */
+.wm-dl-panel {
+  position: fixed;
+  top: 48px;
+  right: 0;
+  z-index: 900;
+  width: 230px;
+  background: var(--surface);
+  border-left: 3px solid var(--green);
+  border-bottom: 1px solid var(--border);
+  border-bottom-left-radius: 8px;
+  padding: 14px;
+  transform: translateX(110%);
+  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  font-family: inherit;
+}
+.wm-dl-panel.wm-dl-show { transform: translateX(0); }
+.wm-dl-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.wm-dl-title {
+  font-size: 11px; font-weight: 700; color: var(--green);
+  text-transform: uppercase; letter-spacing: 0.5px;
+  display: flex; align-items: center; gap: 5px;
+}
+.wm-dl-close {
+  background: none; border: none; color: var(--text-dim);
+  font-size: 14px; cursor: pointer; padding: 0 2px; line-height: 1;
+}
+.wm-dl-close:hover { color: var(--text); }
+.wm-dl-body { font-size: 11px; color: var(--text-dim); line-height: 1.5; margin-bottom: 12px; }
+.wm-dl-btns { display: flex; flex-direction: column; gap: 5px; }
+.wm-dl-btn {
+  display: flex; align-items: center; gap: 6px;
+  padding: 7px 10px; border-radius: 6px;
+  font-size: 10px; font-weight: 600;
+  cursor: pointer; text-decoration: none;
+  transition: background 0.15s;
+}
+.wm-dl-btn.mac {
+  background: color-mix(in srgb, var(--green) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--green) 20%, transparent);
+  color: var(--green);
+}
+.wm-dl-btn.mac:hover { background: color-mix(in srgb, var(--green) 18%, transparent); }
+.wm-dl-btn.win {
+  background: color-mix(in srgb, var(--semantic-info) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--semantic-info) 18%, transparent);
+  color: var(--semantic-info);
+}
+.wm-dl-btn.win:hover { background: color-mix(in srgb, var(--semantic-info) 15%, transparent); }
+.wm-dl-btn.linux {
+  background: color-mix(in srgb, var(--semantic-elevated) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--semantic-elevated) 18%, transparent);
+  color: var(--semantic-elevated);
+}
+.wm-dl-btn.linux:hover { background: color-mix(in srgb, var(--semantic-elevated) 15%, transparent); }
+.wm-dl-toggle {
+  background: none; border: none; color: var(--text-dim, #888);
+  font-size: 9px; cursor: pointer; padding: 4px 0 0; text-align: center;
+  width: 100%;
+}
+.wm-dl-toggle:hover { color: var(--text, #e8e8e8); }

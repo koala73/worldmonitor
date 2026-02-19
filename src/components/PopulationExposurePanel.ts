@@ -52,20 +52,6 @@ export class PopulationExposurePanel extends Panel {
         </div>
         <div class="popexp-list">${cards}</div>
       </div>
-      <style>
-        .popexp-panel-content { font-size: 12px; }
-        .popexp-summary { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; margin-bottom: 6px; background: color-mix(in srgb, var(--threat-critical) 8%, transparent); border-radius: 4px; border-left: 3px solid var(--threat-critical); }
-        .popexp-label { color: var(--text-dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
-        .popexp-total { color: var(--accent); font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
-        .popexp-list { display: flex; flex-direction: column; }
-        .popexp-card { padding: 6px 10px; border-bottom: 1px solid var(--border-subtle); }
-        .popexp-card:hover { background: var(--surface-hover); }
-        .popexp-card-name { color: var(--text); font-size: 12px; line-height: 1.4; margin-bottom: 3px; word-break: break-word; }
-        .popexp-card-meta { display: flex; justify-content: space-between; align-items: center; }
-        .popexp-card-pop { color: var(--threat-critical); font-size: 11px; font-variant-numeric: tabular-nums; font-weight: 500; }
-        .popexp-pop-large { color: var(--accent); font-weight: 700; }
-        .popexp-card-radius { color: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
-      </style>
     `);
   }
 
