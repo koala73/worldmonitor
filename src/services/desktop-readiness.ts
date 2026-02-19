@@ -20,6 +20,7 @@ export interface DesktopReadinessCheck {
 }
 
 const keyBackedFeatures: RuntimeFeatureId[] = [
+  'aiOllama',
   'aiGroq',
   'aiOpenRouter',
   'economicFred',
@@ -79,8 +80,8 @@ export const DESKTOP_PARITY_FEATURES: DesktopParityFeature[] = [
     id: 'summaries',
     panel: 'Summaries',
     serviceFiles: ['src/services/summarization.ts'],
-    apiRoutes: ['/api/groq-summarize', '/api/openrouter-summarize'],
-    apiHandlers: ['api/groq-summarize.js', 'api/openrouter-summarize.js'],
+    apiRoutes: ['/api/ollama-summarize', '/api/groq-summarize', '/api/openrouter-summarize'],
+    apiHandlers: ['api/ollama-summarize.js', 'api/groq-summarize.js', 'api/openrouter-summarize.js'],
     locality: 'api-key',
     fallback: 'Browser summarizer executes when hosted LLM providers are unavailable.',
     priority: 2,
@@ -128,7 +129,7 @@ export function getDesktopReadinessChecks(localBackendEnabled: boolean): Desktop
     { id: 'startup', label: 'Desktop startup + sidecar API health', ready: localBackendEnabled },
     { id: 'map', label: 'Map rendering (local layers + static geo assets)', ready: true },
     { id: 'core-intel', label: 'Core intelligence panels (Live News, Monitor, Strategic Risk)', ready: true },
-    { id: 'summaries', label: 'Summaries (provider-backed or browser fallback)', ready: isFeatureAvailable('aiGroq') || isFeatureAvailable('aiOpenRouter') },
+    { id: 'summaries', label: 'Summaries (provider-backed or browser fallback)', ready: isFeatureAvailable('aiOllama') || isFeatureAvailable('aiGroq') || isFeatureAvailable('aiOpenRouter') },
     { id: 'market', label: 'Market panel live data paths', ready: true },
     { id: 'live-tracking', label: 'At least one live-tracking mode (AIS or OpenSky)', ready: liveTrackingReady },
   ];

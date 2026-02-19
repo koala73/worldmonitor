@@ -346,10 +346,12 @@ export class App {
       this.findingsBadge = new IntelligenceGapBadge();
       this.findingsBadge.setOnSignalClick((signal) => {
         if (this.countryBriefPage?.isVisible()) return;
+        if (localStorage.getItem('wm-settings-open') === '1') return;
         this.signalModal?.showSignal(signal);
       });
       this.findingsBadge.setOnAlertClick((alert) => {
         if (this.countryBriefPage?.isVisible()) return;
+        if (localStorage.getItem('wm-settings-open') === '1') return;
         this.signalModal?.showAlert(alert);
       });
     }

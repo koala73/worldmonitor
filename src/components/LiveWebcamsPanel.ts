@@ -311,7 +311,7 @@ export class LiveWebcamsPanel extends Panel {
       }, this.IDLE_PAUSE_MS);
     };
 
-    ['mousedown', 'keydown', 'scroll', 'touchstart'].forEach(event => {
+    ['mousedown', 'keydown', 'scroll', 'touchstart', 'mousemove'].forEach(event => {
       document.addEventListener(event, this.boundIdleResetHandler, { passive: true });
     });
 
@@ -330,7 +330,7 @@ export class LiveWebcamsPanel extends Panel {
       this.idleTimeout = null;
     }
     document.removeEventListener('visibilitychange', this.boundVisibilityHandler);
-    ['mousedown', 'keydown', 'scroll', 'touchstart'].forEach(event => {
+    ['mousedown', 'keydown', 'scroll', 'touchstart', 'mousemove'].forEach(event => {
       document.removeEventListener(event, this.boundIdleResetHandler);
     });
     this.observer?.disconnect();

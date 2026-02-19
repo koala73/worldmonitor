@@ -86,6 +86,7 @@ const ALLOWED_ENV_KEYS = new Set([
   'OTX_API_KEY', 'ABUSEIPDB_API_KEY', 'WINGBITS_API_KEY', 'WS_RELAY_URL',
   'VITE_OPENSKY_RELAY_URL', 'OPENSKY_CLIENT_ID', 'OPENSKY_CLIENT_SECRET',
   'AISSTREAM_API_KEY', 'VITE_WS_RELAY_URL', 'FINNHUB_API_KEY', 'NASA_FIRMS_API_KEY',
+  'OLLAMA_API_URL', 'OLLAMA_MODEL',
 ]);
 
 function json(data, status = 200, extraHeaders = {}) {
@@ -616,6 +617,34 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
       return ok('NASA FIRMS key verified');
     }
 
+    case 'OLLAMA_API_URL': {
+      let probeUrl;
+      try {
+        const parsed = new URL(value);
+        if (!['http:', 'https:'].includes(parsed.protocol)) return fail('Must be an http(s) URL');
+        // Probe the OpenAI-compatible models endpoint
+        probeUrl = new URL('/v1/models', value).toString();
+      } catch {
+        return fail('Invalid URL');
+      }
+      const response = await fetchWithTimeout(probeUrl, { method: 'GET' }, 8000);
+      if (!response.ok) {
+        // Fall back to native Ollama /api/tags endpoint
+        try {
+          const tagsUrl = new URL('/api/tags', value).toString();
+          const tagsResponse = await fetchWithTimeout(tagsUrl, { method: 'GET' }, 8000);
+          if (!tagsResponse.ok) return fail(`Ollama probe failed (${tagsResponse.status})`);
+          return ok('Ollama endpoint verified (native API)');
+        } catch {
+          return fail(`Ollama probe failed (${response.status})`);
+        }
+      }
+      return ok('Ollama endpoint verified');
+    }
+
+    case 'OLLAMA_MODEL':
+      return ok('Model name stored');
+
     case 'WS_RELAY_URL':
     case 'VITE_WS_RELAY_URL':
     case 'VITE_OPENSKY_RELAY_URL': {
@@ -843,7 +872,8 @@ export async function createLocalApiServer(options = {}) {
     }
 
     const start = Date.now();
-    const skipRecord = requestUrl.pathname === '/api/local-traffic-log'
+    const skipRecord = req.method === 'OPTIONS'
+      || requestUrl.pathname === '/api/local-traffic-log'
       || requestUrl.pathname === '/api/local-debug-toggle'
       || requestUrl.pathname === '/api/local-env-update'
       || requestUrl.pathname === '/api/local-validate-secret';

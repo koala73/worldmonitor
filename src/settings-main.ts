@@ -1,7 +1,7 @@
 import './styles/main.css';
 import './styles/settings-window.css';
 import { RuntimeConfigPanel } from '@/components/RuntimeConfigPanel';
-import { loadDesktopSecrets } from '@/services/runtime-config';
+import { RUNTIME_FEATURES, loadDesktopSecrets } from '@/services/runtime-config';
 import { tryInvokeTauri } from '@/services/tauri-bridge';
 import { escapeHtml } from '@/utils/sanitize';
 import { initI18n, t } from '@/services/i18n';
@@ -63,41 +63,60 @@ function closeSettingsWindow(): void {
   void tryInvokeTauri<void>('close_settings_window').then(() => { }, () => window.close());
 }
 
+const LLM_FEATURES: Array<import('@/services/runtime-config').RuntimeFeatureId> = ['aiOllama', 'aiGroq', 'aiOpenRouter'];
+
+function mountPanel(panel: RuntimeConfigPanel, container: HTMLElement): void {
+  container.innerHTML = '';
+  const el = panel.getElement();
+  el.classList.remove('resized', 'span-2', 'span-3', 'span-4');
+  el.classList.add('settings-runtime-panel');
+  container.appendChild(el);
+}
+
 async function initSettingsWindow(): Promise<void> {
-  await initI18n(); // Initialize i18n first
+  await initI18n();
   applyStoredTheme();
 
-  // Remove no-transition class after first paint to enable smooth theme transitions
   requestAnimationFrame(() => {
     document.documentElement.classList.remove('no-transition');
   });
   await loadDesktopSecrets();
 
-  const mount = document.getElementById('settingsApp');
-  if (!mount) return;
+  const llmMount = document.getElementById('llmApp');
+  const apiMount = document.getElementById('apiKeysApp');
+  if (!llmMount || !apiMount) return;
 
-  const panel = new RuntimeConfigPanel({ mode: 'full', buffered: true });
-  const panelElement = panel.getElement();
-  panelElement.classList.remove('resized', 'span-2', 'span-3', 'span-4');
-  panelElement.classList.add('settings-runtime-panel');
-  mount.appendChild(panelElement);
+  const llmPanel = new RuntimeConfigPanel({ mode: 'full', buffered: true, featureFilter: LLM_FEATURES });
+  const apiPanel = new RuntimeConfigPanel({
+    mode: 'full',
+    buffered: true,
+    featureFilter: RUNTIME_FEATURES.filter(f => !LLM_FEATURES.includes(f.id)).map(f => f.id),
+  });
 
-  window.addEventListener('beforeunload', () => panel.destroy());
+  mountPanel(llmPanel, llmMount);
+  mountPanel(apiPanel, apiMount);
+
+  const panels = [llmPanel, apiPanel];
+
+  window.addEventListener('beforeunload', () => panels.forEach(p => p.destroy()));
 
   document.getElementById('okBtn')?.addEventListener('click', () => {
     void (async () => {
       try {
-        if (!panel.hasPendingChanges()) {
+        if (!panels.some(p => p.hasPendingChanges())) {
           closeSettingsWindow();
           return;
         }
         setActionStatus(t('modals.settingsWindow.validating'), 'ok');
-        const errors = await panel.verifyPendingSecrets();
-        console.log('[settings] verify done, errors:', errors.length, errors);
-        await panel.commitVerifiedSecrets();
-        console.log('[settings] commit done, remaining pending:', panel.hasPendingChanges());
-        if (errors.length > 0) {
-          setActionStatus(t('modals.settingsWindow.verifyFailed', { errors: errors.join(', ') }), 'error');
+        const missingRequired = panels.flatMap(p => p.getMissingRequiredSecrets());
+        if (missingRequired.length > 0) {
+          setActionStatus(`Missing required: ${missingRequired.join(', ')}`, 'error');
+          return;
+        }
+        const allErrors = (await Promise.all(panels.map(p => p.verifyPendingSecrets()))).flat();
+        await Promise.all(panels.map(p => p.commitVerifiedSecrets()));
+        if (allErrors.length > 0) {
+          setActionStatus(t('modals.settingsWindow.verifyFailed', { errors: allErrors.join(', ') }), 'error');
         } else {
           setActionStatus(t('modals.settingsWindow.saved'), 'ok');
           closeSettingsWindow();
@@ -109,18 +128,15 @@ async function initSettingsWindow(): Promise<void> {
     })();
   });
 
-  // Cancel: discard pending, close
   document.getElementById('cancelBtn')?.addEventListener('click', () => {
     closeSettingsWindow();
   });
 
-  const openLogsBtn = document.getElementById('openLogsBtn');
-  openLogsBtn?.addEventListener('click', () => {
+  document.getElementById('openLogsBtn')?.addEventListener('click', () => {
     void invokeDesktopAction('open_logs_folder', t('modals.settingsWindow.openLogs'));
   });
 
-  const openSidecarLogBtn = document.getElementById('openSidecarLogBtn');
-  openSidecarLogBtn?.addEventListener('click', () => {
+  document.getElementById('openSidecarLogBtn')?.addEventListener('click', () => {
     void invokeDesktopAction('open_sidecar_log_file', t('modals.settingsWindow.openApiLog'));
   });
 
@@ -221,7 +237,8 @@ function initDiagnostics(): void {
   startAutoRefresh();
 }
 
-void initSettingsWindow().finally(() => {
-  void tryInvokeTauri<void>('plugin:window|show', { label: 'settings' });
-  void tryInvokeTauri<void>('plugin:window|set_focus', { label: 'settings' });
-});
+// Signal main window that settings is open (suppresses alert popups)
+localStorage.setItem('wm-settings-open', '1');
+window.addEventListener('beforeunload', () => localStorage.removeItem('wm-settings-open'));
+
+void initSettingsWindow();

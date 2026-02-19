@@ -51,6 +51,12 @@ Sentry.init({
     /signal is aborted without reason/,
     /Failed to fetch dynamically imported module/,
     /Importing a module script failed/,
+    /contentWindow\.postMessage/,
+    /Could not compile vertex shader/,
+    /objectStoreNames/,
+    /Unexpected identifier 'https'/,
+    /Can't find variable: _0x/,
+    /WKWebView was deallocated/,
   ],
   beforeSend(event) {
     const msg = event.exception?.values?.[0]?.value ?? '';
@@ -96,6 +102,9 @@ applyStoredTheme();
 requestAnimationFrame(() => {
   document.documentElement.classList.remove('no-transition');
 });
+
+// Clear stale settings-open flag (survives ungraceful shutdown)
+localStorage.removeItem('wm-settings-open');
 
 const app = new App('app');
 app

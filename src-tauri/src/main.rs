@@ -4,6 +4,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::env;
@@ -24,7 +25,7 @@ const DESKTOP_LOG_FILE: &str = "desktop.log";
 const MENU_FILE_SETTINGS_ID: &str = "file.settings";
 const MENU_HELP_GITHUB_ID: &str = "help.github";
 const MENU_HELP_DEVTOOLS_ID: &str = "help.devtools";
-const SUPPORTED_SECRET_KEYS: [&str; 18] = [
+const SUPPORTED_SECRET_KEYS: [&str; 20] = [
     "GROQ_API_KEY",
     "OPENROUTER_API_KEY",
     "FRED_API_KEY",
@@ -43,6 +44,8 @@ const SUPPORTED_SECRET_KEYS: [&str; 18] = [
     "VITE_WS_RELAY_URL",
     "FINNHUB_API_KEY",
     "NASA_FIRMS_API_KEY",
+    "OLLAMA_API_URL",
+    "OLLAMA_MODEL",
 ];
 
 #[derive(Default)]
@@ -51,17 +54,77 @@ struct LocalApiState {
     token: Mutex<Option<String>>,
 }
 
+/// In-memory cache for keychain secrets. Populated once at startup to avoid
+/// repeated macOS Keychain prompts (each `Entry::get_password()` triggers one).
+struct SecretsCache {
+    secrets: Mutex<HashMap<String, String>>,
+}
+
+impl SecretsCache {
+    fn load_from_keychain() -> Self {
+        // Try consolidated vault first — single keychain prompt
+        if let Ok(entry) = Entry::new(KEYRING_SERVICE, "secrets-vault") {
+            if let Ok(json) = entry.get_password() {
+                if let Ok(map) = serde_json::from_str::<HashMap<String, String>>(&json) {
+                    let secrets: HashMap<String, String> = map
+                        .into_iter()
+                        .filter(|(k, v)| {
+                            SUPPORTED_SECRET_KEYS.contains(&k.as_str()) && !v.trim().is_empty()
+                        })
+                        .map(|(k, v)| (k, v.trim().to_string()))
+                        .collect();
+                    return SecretsCache { secrets: Mutex::new(secrets) };
+                }
+            }
+        }
+
+        // Migration: read individual keys (old format), consolidate into vault.
+        // This triggers one keychain prompt per key — happens only once.
+        let mut secrets = HashMap::new();
+        for key in SUPPORTED_SECRET_KEYS.iter() {
+            if let Ok(entry) = Entry::new(KEYRING_SERVICE, key) {
+                if let Ok(value) = entry.get_password() {
+                    let trimmed = value.trim().to_string();
+                    if !trimmed.is_empty() {
+                        secrets.insert((*key).to_string(), trimmed);
+                    }
+                }
+            }
+        }
+
+        // Write consolidated vault and clean up individual entries
+        if !secrets.is_empty() {
+            if let Ok(json) = serde_json::to_string(&secrets) {
+                if let Ok(vault_entry) = Entry::new(KEYRING_SERVICE, "secrets-vault") {
+                    if vault_entry.set_password(&json).is_ok() {
+                        for key in SUPPORTED_SECRET_KEYS.iter() {
+                            if let Ok(entry) = Entry::new(KEYRING_SERVICE, key) {
+                                let _ = entry.delete_credential();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        SecretsCache { secrets: Mutex::new(secrets) }
+    }
+}
+
 #[derive(Serialize)]
 struct DesktopRuntimeInfo {
     os: String,
     arch: String,
 }
 
-fn secret_entry(key: &str) -> Result<Entry, String> {
-    if !SUPPORTED_SECRET_KEYS.contains(&key) {
-        return Err(format!("Unsupported secret key: {key}"));
-    }
-    Entry::new(KEYRING_SERVICE, key).map_err(|e| format!("Keyring init failed: {e}"))
+fn save_vault(cache: &HashMap<String, String>) -> Result<(), String> {
+    let json = serde_json::to_string(cache)
+        .map_err(|e| format!("Failed to serialize vault: {e}"))?;
+    let entry = Entry::new(KEYRING_SERVICE, "secrets-vault")
+        .map_err(|e| format!("Keyring init failed: {e}"))?;
+    entry.set_password(&json)
+        .map_err(|e| format!("Failed to write vault: {e}"))?;
+    Ok(())
 }
 
 fn generate_local_token() -> String {
@@ -104,46 +167,49 @@ fn list_supported_secret_keys() -> Vec<String> {
 }
 
 #[tauri::command]
-fn get_secret(key: String) -> Result<Option<String>, String> {
-    let entry = secret_entry(&key)?;
-    match entry.get_password() {
-        Ok(value) => Ok(Some(value)),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(err) => Err(format!("Failed to read keyring secret: {err}")),
+fn get_secret(key: String, cache: tauri::State<'_, SecretsCache>) -> Result<Option<String>, String> {
+    if !SUPPORTED_SECRET_KEYS.contains(&key.as_str()) {
+        return Err(format!("Unsupported secret key: {key}"));
     }
+    let secrets = cache.secrets.lock().map_err(|_| "Lock poisoned".to_string())?;
+    Ok(secrets.get(&key).cloned())
 }
 
 #[tauri::command]
-fn get_all_secrets() -> std::collections::HashMap<String, String> {
-    let mut result = std::collections::HashMap::new();
-    for key in SUPPORTED_SECRET_KEYS.iter() {
-        if let Ok(entry) = Entry::new(KEYRING_SERVICE, key) {
-            if let Ok(value) = entry.get_password() {
-                if !value.trim().is_empty() {
-                    result.insert((*key).to_string(), value.trim().to_string());
-                }
-            }
-        }
-    }
-    result
+fn get_all_secrets(cache: tauri::State<'_, SecretsCache>) -> HashMap<String, String> {
+    cache.secrets.lock().unwrap_or_else(|e| e.into_inner()).clone()
 }
 
 #[tauri::command]
-fn set_secret(key: String, value: String) -> Result<(), String> {
-    let entry = secret_entry(&key)?;
-    entry
-        .set_password(&value)
-        .map_err(|e| format!("Failed to write keyring secret: {e}"))
+fn set_secret(key: String, value: String, cache: tauri::State<'_, SecretsCache>) -> Result<(), String> {
+    if !SUPPORTED_SECRET_KEYS.contains(&key.as_str()) {
+        return Err(format!("Unsupported secret key: {key}"));
+    }
+    let mut secrets = cache.secrets.lock().map_err(|_| "Lock poisoned".to_string())?;
+    let trimmed = value.trim().to_string();
+    // Build proposed state, persist first, then commit to cache
+    let mut proposed = secrets.clone();
+    if trimmed.is_empty() {
+        proposed.remove(&key);
+    } else {
+        proposed.insert(key, trimmed);
+    }
+    save_vault(&proposed)?;
+    *secrets = proposed;
+    Ok(())
 }
 
 #[tauri::command]
-fn delete_secret(key: String) -> Result<(), String> {
-    let entry = secret_entry(&key)?;
-    match entry.delete_credential() {
-        Ok(_) => Ok(()),
-        Err(keyring::Error::NoEntry) => Ok(()),
-        Err(err) => Err(format!("Failed to delete keyring secret: {err}")),
+fn delete_secret(key: String, cache: tauri::State<'_, SecretsCache>) -> Result<(), String> {
+    if !SUPPORTED_SECRET_KEYS.contains(&key.as_str()) {
+        return Err(format!("Unsupported secret key: {key}"));
     }
+    let mut secrets = cache.secrets.lock().map_err(|_| "Lock poisoned".to_string())?;
+    let mut proposed = secrets.clone();
+    proposed.remove(&key);
+    save_vault(&proposed)?;
+    *secrets = proposed;
+    Ok(())
 }
 
 fn cache_file_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -358,7 +424,6 @@ fn open_settings_window(app: &AppHandle) -> Result<(), String> {
         .inner_size(980.0, 760.0)
         .min_inner_size(820.0, 620.0)
         .resizable(true)
-        .visible(false)
         .build()
         .map_err(|e| format!("Failed to create settings window: {e}"))?;
 
@@ -656,16 +721,13 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
         cmd.current_dir(parent);
     }
 
-    // Pass keychain secrets to sidecar as env vars
+    // Pass cached keychain secrets to sidecar as env vars (no keychain re-read)
     let mut secret_count = 0u32;
-    for key in SUPPORTED_SECRET_KEYS.iter() {
-        if let Ok(entry) = Entry::new(KEYRING_SERVICE, key) {
-            if let Ok(value) = entry.get_password() {
-                if !value.trim().is_empty() {
-                    cmd.env(key, value.trim());
-                    secret_count += 1;
-                }
-            }
+    let secrets_cache = app.state::<SecretsCache>();
+    if let Ok(secrets) = secrets_cache.secrets.lock() {
+        for (key, value) in secrets.iter() {
+            cmd.env(key, value);
+            secret_count += 1;
         }
     }
     append_desktop_log(app, "INFO", &format!("injected {secret_count} keychain secrets into sidecar env"));
@@ -694,6 +756,7 @@ fn main() {
         .menu(build_app_menu)
         .on_menu_event(handle_menu_event)
         .manage(LocalApiState::default())
+        .manage(SecretsCache::load_from_keychain())
         .invoke_handler(tauri::generate_handler![
             list_supported_secret_keys,
             get_secret,

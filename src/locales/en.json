@@ -269,7 +269,9 @@
         "OTX_API_KEY": "Optional enrichment source for the cyber threat layer.",
         "ABUSEIPDB_API_KEY": "Optional enrichment source for malicious IP reputation.",
         "FINNHUB_API_KEY": "Real-time stock quotes and market data.",
-        "NASA_FIRMS_API_KEY": "Fire Information for Resource Management System."
+        "NASA_FIRMS_API_KEY": "Fire Information for Resource Management System.",
+        "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
+        "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
       }
     },
     "settingsWindow": {

@@ -6,16 +6,20 @@
     <title>World Monitor Settings</title>
     <script>(function(){try{var t=localStorage.getItem('worldmonitor-theme');if(t==='light')document.documentElement.dataset.theme='light';}catch(e){}document.documentElement.classList.add('no-transition');})()</script>
   </head>
-  <body>
+  <body style="background:#1a1c1e;color:#e8eaed;margin:0">
     <div class="settings-shell">
       <div class="settings-tabs" role="tablist">
-        <button class="settings-tab active" role="tab" aria-selected="true" aria-controls="tabPanelKeys" data-tab="keys">API Keys</button>
+        <button class="settings-tab active" role="tab" aria-selected="true" aria-controls="tabPanelLLMs" data-tab="llms">LLMs</button>
+        <button class="settings-tab" role="tab" aria-selected="false" aria-controls="tabPanelKeys" data-tab="keys">API Keys</button>
         <button class="settings-tab" role="tab" aria-selected="false" aria-controls="tabPanelDebug" data-tab="debug">Debug &amp; Logs</button>
       </div>
       <p id="settingsActionStatus" class="settings-action-status" aria-live="polite"></p>
       <div class="settings-tab-panels">
-        <div id="tabPanelKeys" class="settings-tab-panel active" role="tabpanel">
-          <main id="settingsApp" class="settings-content"></main>
+        <div id="tabPanelLLMs" class="settings-tab-panel active" role="tabpanel">
+          <main id="llmApp" class="settings-content"><div style="display:flex;align-items:center;justify-content:center;padding:60px 0;color:#9aa0a6;font-size:14px;gap:10px"><svg width="20" height="20" viewBox="0 0 24 24" style="animation:spin 1s linear infinite"><style>@keyframes spin{to{transform:rotate(360deg)}}</style><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" fill="none" stroke-dasharray="31 31"/></svg>Loading...</div></main>
+        </div>
+        <div id="tabPanelKeys" class="settings-tab-panel" role="tabpanel">
+          <main id="apiKeysApp" class="settings-content"><div style="display:flex;align-items:center;justify-content:center;padding:60px 0;color:#9aa0a6;font-size:14px;gap:10px"><svg width="20" height="20" viewBox="0 0 24 24" style="animation:spin 1s linear infinite"><style>@keyframes spin{to{transform:rotate(360deg)}}</style><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" fill="none" stroke-dasharray="31 31"/></svg>Loading...</div></main>
         </div>
         <div id="tabPanelDebug" class="settings-tab-panel" role="tabpanel">
           <div class="debug-actions">

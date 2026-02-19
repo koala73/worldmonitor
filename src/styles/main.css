@@ -13374,7 +13374,8 @@ body.has-critical-banner .panels-grid {
   color: var(--text-secondary);
 }
 
-.runtime-secret-row input {
+.runtime-secret-row input,
+.runtime-secret-row select {
   grid-area: input;
   width: 100%;
   background: var(--overlay-medium);
@@ -13383,6 +13384,10 @@ body.has-critical-banner .panels-grid {
   color: var(--accent);
   padding: 6px 8px;
   font-size: 11px;
+}
+
+.runtime-secret-row input.hidden-input {
+  display: none !important;
 }
 
 .runtime-secret-check {
