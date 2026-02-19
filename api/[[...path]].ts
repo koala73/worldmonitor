@@ -40,6 +40,8 @@ import { createMarketServiceRoutes } from '../src/generated/server/worldmonitor/
 import { marketHandler } from './server/worldmonitor/market/v1/handler';
 import { createNewsServiceRoutes } from '../src/generated/server/worldmonitor/news/v1/service_server';
 import { newsHandler } from './server/worldmonitor/news/v1/handler';
+import { createIntelligenceServiceRoutes } from '../src/generated/server/worldmonitor/intelligence/v1/service_server';
+import { intelligenceHandler } from './server/worldmonitor/intelligence/v1/handler';
 
 import type { ServerOptions } from '../src/generated/server/worldmonitor/seismology/v1/service_server';
 
@@ -61,6 +63,7 @@ const allRoutes = [
   ...createInfrastructureServiceRoutes(infrastructureHandler, serverOptions),
   ...createMarketServiceRoutes(marketHandler, serverOptions),
   ...createNewsServiceRoutes(newsHandler, serverOptions),
+  ...createIntelligenceServiceRoutes(intelligenceHandler, serverOptions),
 ];
 
 const router = createRouter(allRoutes);
