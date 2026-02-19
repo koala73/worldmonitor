@@ -4,7 +4,7 @@ import type { NewsItem, ClusteredEvent, DeviationLevel, RelatedAsset, RelatedAss
 import { THREAT_PRIORITY } from '@/services/threat-classifier';
 import { formatTime, getCSSColor } from '@/utils';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
-import { analysisWorker, enrichWithVelocityML, getClusterAssetContext, MAX_DISTANCE_KM, activityTracker, generateSummary, translateText } from '@/services';
+import { analysisWorker, enrichWithVelocityML, getClusterAssetContext, MAX_DISTANCE_KM, activityTracker, generateSummary, translateTextCached } from '@/services';
 import { getSourcePropagandaRisk, getSourceTier, getSourceType } from '@/config/feeds';
 import { SITE_VARIANT } from '@/config';
 import { t, getCurrentLanguage } from '@/services/i18n';
@@ -34,6 +34,7 @@ export class NewsPanel extends Panel {
   private windowedList: WindowedList<PreparedCluster> | null = null;
   private useVirtualScroll = true;
   private renderRequestId = 0;
+  private autoTranslateRunId = 0;
   private boundScrollHandler: (() => void) | null = null;
   private boundClickHandler: (() => void) | null = null;
 
@@ -179,17 +180,20 @@ export class NewsPanel extends Panel {
     const titleEl = element.closest('.item')?.querySelector('.item-title') as HTMLElement;
     if (!titleEl) return;
 
-    const originalText = titleEl.textContent || '';
+    const originalText = (titleEl.dataset.original || titleEl.textContent || text).trim();
+    if (!originalText) return;
 
     // Visual feedback
     element.innerHTML = '...';
     element.style.pointerEvents = 'none';
 
     try {
-      const translated = await translateText(text, currentLang);
+      const translated = await translateTextCached(originalText, currentLang);
       if (translated) {
         titleEl.textContent = translated;
         titleEl.dataset.original = originalText;
+        titleEl.dataset.translatedLang = currentLang;
+        element.dataset.text = originalText;
         element.innerHTML = '✓';
         element.title = 'Original: ' + originalText;
         element.classList.add('translated');
@@ -326,6 +330,7 @@ export class NewsPanel extends Panel {
       .join('');
 
     this.setContent(html);
+    this.bindRelatedAssetEvents();
   }
 
   private renderClusters(clusters: ClusteredEvent[]): void {
@@ -513,6 +518,8 @@ export class NewsPanel extends Panel {
   private bindRelatedAssetEvents(): void {
     const containers = this.content.querySelectorAll<HTMLDivElement>('.related-assets');
     containers.forEach((container) => {
+      if (container.dataset.boundHover === '1') return;
+      container.dataset.boundHover = '1';
       const clusterId = container.dataset.clusterId;
       if (!clusterId) return;
       const context = this.relatedAssetContext.get(clusterId);
@@ -529,6 +536,8 @@ export class NewsPanel extends Panel {
 
     const assetButtons = this.content.querySelectorAll<HTMLButtonElement>('.related-asset');
     assetButtons.forEach((button) => {
+      if (button.dataset.boundClick === '1') return;
+      button.dataset.boundClick = '1';
       button.addEventListener('click', (event) => {
         event.stopPropagation();
         const clusterId = button.dataset.clusterId;
@@ -546,12 +555,53 @@ export class NewsPanel extends Panel {
     // Translation buttons
     const translateBtns = this.content.querySelectorAll<HTMLElement>('.item-translate-btn');
     translateBtns.forEach(btn => {
+      if (btn.dataset.boundClick === '1') return;
+      btn.dataset.boundClick = '1';
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         const text = btn.dataset.text;
         if (text) this.handleTranslate(btn, text);
       });
     });
+
+    this.queueAutoTranslateItems();
+  }
+
+  private queueAutoTranslateItems(): void {
+    const lang = getCurrentLanguage();
+    if (lang === 'en') return;
+
+    const runId = ++this.autoTranslateRunId;
+    window.setTimeout(() => {
+      if (runId !== this.autoTranslateRunId) return;
+      void this.autoTranslateVisibleItems(lang);
+    }, 0);
+  }
+
+  private async autoTranslateVisibleItems(lang: string): Promise<void> {
+    const titleEls = Array.from(this.content.querySelectorAll<HTMLElement>('.item .item-title'));
+    if (titleEls.length === 0) return;
+
+    await Promise.allSettled(titleEls.map(async (titleEl) => {
+      if (titleEl.dataset.translatedLang === lang) return;
+
+      const sourceText = (titleEl.dataset.original || titleEl.textContent || '').trim();
+      if (!sourceText) return;
+
+      const translated = await translateTextCached(sourceText, lang);
+      if (!translated) return;
+
+      titleEl.dataset.original = sourceText;
+      titleEl.dataset.translatedLang = lang;
+      titleEl.textContent = translated;
+
+      const translateBtn = titleEl.closest('.item')?.querySelector<HTMLElement>('.item-translate-btn');
+      if (!translateBtn) return;
+      translateBtn.dataset.text = sourceText;
+      translateBtn.innerHTML = '✓';
+      translateBtn.classList.add('translated');
+      translateBtn.title = (lang === 'vi' ? 'Bản gốc: ' : 'Original: ') + sourceText;
+    }));
   }
 
   private getLocalizedAssetLabel(type: RelatedAsset['type']): string {

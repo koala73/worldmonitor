@@ -29,5 +29,5 @@ export * from './cross-module-integration';
 export * from './data-freshness';
 export * from './usa-spending';
 export * from './oil-analytics';
-export { generateSummary, translateText } from './summarization';
+export { generateSummary, translateText, translateTextCached } from './summarization';
 export * from './cached-theater-posture';

@@ -17,6 +17,62 @@ export interface SummarizationResult {
   cached: boolean;
 }
 
+const TRANSLATION_CACHE_PREFIX = 'wm-translation-v1';
+const TRANSLATION_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const translationMemoryCache = new Map<string, { value: string; expiresAt: number }>();
+const translationPending = new Map<string, Promise<string | null>>();
+
+function hashTranslationText(text: string): string {
+  let hash = 5381;
+  for (let i = 0; i < text.length; i++) {
+    hash = ((hash << 5) + hash) ^ text.charCodeAt(i);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function getTranslationCacheKey(text: string, targetLang: string): string {
+  const normalizedText = text.trim();
+  const normalizedLang = targetLang.trim().toLowerCase();
+  return `${normalizedLang}:${normalizedText.length}:${hashTranslationText(normalizedText)}`;
+}
+
+function readCachedTranslation(key: string): string | null {
+  const now = Date.now();
+  const mem = translationMemoryCache.get(key);
+  if (mem && mem.expiresAt > now) return mem.value;
+
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const raw = localStorage.getItem(`${TRANSLATION_CACHE_PREFIX}:${key}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { value?: string; expiresAt?: number };
+    if (!parsed?.value || typeof parsed.expiresAt !== 'number' || parsed.expiresAt <= now) {
+      localStorage.removeItem(`${TRANSLATION_CACHE_PREFIX}:${key}`);
+      return null;
+    }
+    translationMemoryCache.set(key, { value: parsed.value, expiresAt: parsed.expiresAt });
+    return parsed.value;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedTranslation(key: string, value: string): void {
+  const expiresAt = Date.now() + TRANSLATION_CACHE_TTL_MS;
+  translationMemoryCache.set(key, { value, expiresAt });
+
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(
+      `${TRANSLATION_CACHE_PREFIX}:${key}`,
+      JSON.stringify({ value, expiresAt })
+    );
+  } catch {
+    // ignore storage failures
+  }
+}
+
 export type ProgressCallback = (step: number, total: number, message: string) => void;
 
 async function tryGroq(headlines: string[], geoContext?: string, lang?: string): Promise<SummarizationResult | null> {
@@ -265,4 +321,35 @@ export async function translateText(
   }
 
   return null;
+}
+
+export async function translateTextCached(
+  text: string,
+  targetLang: string,
+  onProgress?: ProgressCallback
+): Promise<string | null> {
+  const normalizedText = String(text || '').trim();
+  const normalizedLang = String(targetLang || '').trim().toLowerCase();
+  if (!normalizedText || !normalizedLang || normalizedLang === 'en') return null;
+
+  const cacheKey = getTranslationCacheKey(normalizedText, normalizedLang);
+  const cached = readCachedTranslation(cacheKey);
+  if (cached) return cached;
+
+  const pending = translationPending.get(cacheKey);
+  if (pending) return pending;
+
+  const task = (async () => {
+    const translated = await translateText(normalizedText, normalizedLang, onProgress);
+    if (translated && translated.trim()) {
+      writeCachedTranslation(cacheKey, translated.trim());
+      return translated.trim();
+    }
+    return null;
+  })().finally(() => {
+    translationPending.delete(cacheKey);
+  });
+
+  translationPending.set(cacheKey, task);
+  return task;
 }
