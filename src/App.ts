@@ -11,6 +11,7 @@ import {
   MOBILE_DEFAULT_MAP_LAYERS,
   STORAGE_KEYS,
   SITE_VARIANT,
+  LAYER_TO_SOURCE,
 } from '@/config';
 import { BETA_MODE } from '@/config/beta';
 import { fetchCategoryFeeds, getFeedFailures, fetchMultipleStocks, fetchCrypto, fetchPredictions, fetchEarthquakes, fetchWeatherAlerts, fetchFredData, fetchInternetOutages, isOutagesConfigured, fetchAisSignals, initAisStream, getAisStatus, disconnectAisStream, isAisConfigured, fetchCableActivity, fetchProtestEvents, getProtestStatus, fetchFlightDelays, fetchMilitaryFlights, fetchMilitaryVessels, initMilitaryVesselStream, isMilitaryVesselTrackingConfigured, initDB, updateBaseline, calculateDeviation, addToSignalHistory, saveSnapshot, cleanOldSnapshots, analysisWorker, fetchPizzIntStatus, fetchGdeltTensions, fetchNaturalEvents, fetchRecentAwards, fetchOilAnalytics, fetchCyberThreats, drainTrendingSignals } from '@/services';
@@ -694,21 +695,7 @@ export class App {
   }
 
   private syncDataFreshnessWithLayers(): void {
-    // Map layer toggles to data source IDs
-    const layerToSource: Partial<Record<keyof MapLayers, DataSourceId[]>> = {
-      military: ['opensky', 'wingbits'],
-      ais: ['ais'],
-      natural: ['usgs'],
-      weather: ['weather'],
-      outages: ['outages'],
-      cyberThreats: ['cyber_threats'],
-      protests: ['acled'],
-      ucdpEvents: ['ucdp_events'],
-      displacement: ['unhcr'],
-      climate: ['climate'],
-    };
-
-    for (const [layer, sourceIds] of Object.entries(layerToSource)) {
+    for (const [layer, sourceIds] of Object.entries(LAYER_TO_SOURCE)) {
       const enabled = this.mapLayers[layer as keyof MapLayers] ?? false;
       for (const sourceId of sourceIds) {
         dataFreshness.setEnabled(sourceId as DataSourceId, enabled);
@@ -732,19 +719,7 @@ export class App {
       saveToStorage(STORAGE_KEYS.mapLayers, this.mapLayers);
 
       // Sync data freshness tracker
-      const layerToSource: Partial<Record<keyof MapLayers, DataSourceId[]>> = {
-        military: ['opensky', 'wingbits'],
-        ais: ['ais'],
-        natural: ['usgs'],
-        weather: ['weather'],
-        outages: ['outages'],
-        cyberThreats: ['cyber_threats'],
-        protests: ['acled'],
-        ucdpEvents: ['ucdp_events'],
-        displacement: ['unhcr'],
-        climate: ['climate'],
-      };
-      const sourceIds = layerToSource[layer];
+      const sourceIds = LAYER_TO_SOURCE[layer];
       if (sourceIds) {
         for (const sourceId of sourceIds) {
           dataFreshness.setEnabled(sourceId, enabled);
