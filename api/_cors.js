@@ -1,6 +1,9 @@
 const ALLOWED_ORIGIN_PATTERNS = [
   /^https:\/\/(.*\.)?worldmonitor\.app$/,
   /^https:\/\/worldmonitor-[a-z0-9-]+-elie-habib-projects\.vercel\.app$/,
+  // Vercel preview/alias URLs for forked project owners (e.g. nads-projects-b82272c6)
+  /^https:\/\/worldmonitor-[a-z0-9-]+-[a-z0-9-]+\.vercel\.app$/i,
+  /^https:\/\/worldmonitor-[a-z0-9-]+\.vercel\.app$/i,
   /^https?:\/\/localhost(:\d+)?$/,
   /^https?:\/\/127\.0\.0\.1(:\d+)?$/,
   /^https?:\/\/tauri\.localhost(:\d+)?$/,
