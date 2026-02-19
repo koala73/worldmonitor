@@ -121,12 +121,12 @@ Plans:
 ### Phase 2H: Aviation Migration
 **Goal**: Migrate aviation/FAA domain to sebuf -- implement handler proxying FAA NASSTATUS XML API with XML-to-JSON parsing, enrich with MONITORED_AIRPORTS config for non-US simulated delays, create service module with port/adapter pattern, rewire all consumers, delete legacy endpoint
 **Depends on**: Phase 2G
-**Status**: In progress (Plan 01 complete)
+**Status**: Complete (2026-02-19)
 **Requirements:** [DOMAIN-08, SERVER-02]
-**Plans:** 1/2 plans complete
+**Plans:** 2/2 plans complete
 Plans:
 - [x] 2H-01-PLAN.md -- Aviation handler (FAA XML parsing via fast-xml-parser, airport enrichment, simulated delays, severity classification) + gateway wiring + sidecar rebuild
-- [ ] 2H-02-PLAN.md -- Aviation service module (proto enum reverse mapping, GeoCoordinates unwrap, updatedAt->Date) + consumer rewiring + legacy deletion
+- [x] 2H-02-PLAN.md -- Aviation service module (proto enum reverse mapping, GeoCoordinates unwrap, updatedAt->Date) + consumer rewiring + legacy deletion
 
 ### Phase 2I-2S: Remaining Domain Migrations
 **Goal**: Each remaining domain migrated one at a time in order of complexity
@@ -175,6 +175,6 @@ Each migration step:
 | 2E. Climate Migration | Complete | 2026-02-18 |
 | 2F. Prediction Migration | Complete | 2026-02-18 |
 | 2G. Displacement Migration | Complete | 2026-02-19 |
-| 2H. Aviation Migration | 1/2 plans | In progress | 2026-02-19 |
+| 2H. Aviation Migration | Complete | 2026-02-19 |
 | 2I-2S. Domain Migrations | Not started | - |
 | 2T. Legacy Cleanup | Not started | - |
