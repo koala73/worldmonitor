@@ -18,6 +18,8 @@ import { createClimateServiceRoutes } from '../src/generated/server/worldmonitor
 import { climateHandler } from './server/worldmonitor/climate/v1/handler';
 import { createPredictionServiceRoutes } from '../src/generated/server/worldmonitor/prediction/v1/service_server';
 import { predictionHandler } from './server/worldmonitor/prediction/v1/handler';
+import { createDisplacementServiceRoutes } from '../src/generated/server/worldmonitor/displacement/v1/service_server';
+import { displacementHandler } from './server/worldmonitor/displacement/v1/handler';
 
 import type { ServerOptions } from '../src/generated/server/worldmonitor/seismology/v1/service_server';
 
@@ -28,6 +30,7 @@ const allRoutes = [
   ...createWildfireServiceRoutes(wildfireHandler, serverOptions),
   ...createClimateServiceRoutes(climateHandler, serverOptions),
   ...createPredictionServiceRoutes(predictionHandler, serverOptions),
+  ...createDisplacementServiceRoutes(displacementHandler, serverOptions),
 ];
 
 const router = createRouter(allRoutes);
