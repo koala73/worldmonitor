@@ -24,6 +24,8 @@ import { createAviationServiceRoutes } from '../src/generated/server/worldmonito
 import { aviationHandler } from './server/worldmonitor/aviation/v1/handler';
 import { createResearchServiceRoutes } from '../src/generated/server/worldmonitor/research/v1/service_server';
 import { researchHandler } from './server/worldmonitor/research/v1/handler';
+import { createUnrestServiceRoutes } from '../src/generated/server/worldmonitor/unrest/v1/service_server';
+import { unrestHandler } from './server/worldmonitor/unrest/v1/handler';
 
 import type { ServerOptions } from '../src/generated/server/worldmonitor/seismology/v1/service_server';
 
@@ -37,6 +39,7 @@ const allRoutes = [
   ...createDisplacementServiceRoutes(displacementHandler, serverOptions),
   ...createAviationServiceRoutes(aviationHandler, serverOptions),
   ...createResearchServiceRoutes(researchHandler, serverOptions),
+  ...createUnrestServiceRoutes(unrestHandler, serverOptions),
 ];
 
 const router = createRouter(allRoutes);
