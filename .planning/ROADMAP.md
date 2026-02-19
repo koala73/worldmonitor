@@ -41,7 +41,7 @@ proto/worldmonitor/
 - [x] **Phase 2H: Aviation Migration** - FAA XML parsing, simulated non-US delays, MONITORED_AIRPORTS config (completed 2026-02-19)
 - [x] **Phase 2I: Research Migration** - arXiv, GitHub trending, Hacker News with thin port/adapter (completed 2026-02-19)
 - [x] **Phase 2J: Unrest Migration** - ACLED protests/riots with auth token validation and GDELT enrichment (completed 2026-02-19)
-- [ ] **Phase 2K: Conflict Migration** - ACLED + UCDP dual-upstream conflict events
+- [ ] **Phase 2K: Conflict Migration** - ACLED + UCDP dual-upstream conflict events (in progress)
 - [ ] **Phase 2L-2S: Domain Migrations** - Remaining domains, one sub-phase each
 
 ## Phase Details
@@ -155,9 +155,9 @@ Plans:
 **Goal**: Migrate conflict domain (ACLED armed conflicts + UCDP events + HAPI humanitarian) to sebuf -- implement 3-RPC handler proxying three upstream APIs, create service module with 4-shape port/adapter pattern, rewire all consumers, delete legacy endpoints
 **Depends on**: Phase 2J
 **Requirements:** [DOMAIN-07, SERVER-02]
-**Plans:** 2 plans
+**Plans:** 3/3 plans complete
 Plans:
-- [ ] 2K-01-PLAN.md -- Conflict handler (3 RPCs: ACLED conflicts, UCDP GED events with version discovery, HAPI humanitarian summary) + gateway wiring + sidecar rebuild
+- [x] 2K-01-PLAN.md -- Conflict handler (3 RPCs: ACLED conflicts, UCDP GED events with version discovery, HAPI humanitarian summary) + gateway wiring + sidecar rebuild
 - [ ] 2K-02-PLAN.md -- Conflict service module (4-shape proto-to-legacy mapping, UCDP classification derivation, deduplication) + consumer rewiring + legacy deletion (9 files)
 
 ### Phase 2L-2S: Remaining Domain Migrations
@@ -210,6 +210,5 @@ Each migration step:
 | 2H. Aviation Migration | Complete | 2026-02-19 |
 | 2I. Research Migration | Complete | 2026-02-19 |
 | 2J. Unrest Migration | Complete | 2026-02-19 |
-| 2K. Conflict Migration | Not started | - |
-| 2L-2S. Domain Migrations (0/8) | Not started | - |
+| 2K. Conflict Migration | 1/2 | In Progress | 2026-02-19 | 2L-2S. Domain Migrations (0/8) | Not started | - |
 | 2T. Legacy Cleanup | Not started | - |

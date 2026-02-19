@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-18)
 
 **Core value:** Every API integration is defined in a .proto file with generated type-safe TypeScript clients and server handlers, eliminating hand-written fetch boilerplate.
-**Current focus:** Phase 2J: Unrest Migration (complete)
+**Current focus:** Phase 2K: Conflict Migration (Plan 01 complete)
 
 ## Current Position
 
-Phase: 2J (Unrest Migration)
-Current Plan: 02 of 02 complete
-Status: Phase 2J complete -- unrest service module with full proto-to-legacy adapter, barrel updated, 3 legacy files deleted
-Last activity: 2026-02-19 -- Plan 2J-02 executed (execute-phase)
+Phase: 2K (Conflict Migration)
+Current Plan: 01 of 02 complete
+Status: Conflict handler with 3 RPCs (ACLED, UCDP, HAPI) implemented and mounted in gateway
+Last activity: 2026-02-19 -- Plan 2K-01 executed (execute-phase)
 
-Progress: [████████████████████] ~97%
+Progress: [████████████████████] ~98%
 
 ## Performance Metrics
 
@@ -40,6 +40,7 @@ Progress: [████████████████████] ~97%
 - Phase 2I Plan 02: Research Consumer Wiring (1 task, 2min, 8 files created/modified/deleted)
 - Phase 2J Plan 01: Unrest Handler (2 tasks, 2min, 2 files created/modified)
 - Phase 2J Plan 02: Unrest Service Module (2 tasks, 2min, 5 files created/modified/deleted)
+- Phase 2K Plan 01: Conflict Handler (2 tasks, 2min, 2 files created/modified)
 
 ## Accumulated Context
 
@@ -111,6 +112,11 @@ Progress: [████████████████████] ~97%
 - [2J-02]: acledConfigured heuristic: infer ACLED config status from response events (ACLED present = true, only GDELT = false, empty = null)
 - [2J-02]: relatedHotspots, imageUrl, sentiment fields dropped from adapter (optional, never populated meaningfully)
 - [2J-02]: Dedup/sort logic moved server-side into handler; service module maps events without client-side dedup
+- [2K-01]: declare const process for edge runtime env access (matching wildfire/unrest handler pattern)
+- [2K-01]: UCDP version discovery probes year-based candidates dynamically (no hardcoded version)
+- [2K-01]: HAPI ISO-2 to ISO-3 mapping via lookup table; proceeds without filter if mapping not found
+- [2K-01]: populationAffected/peopleInNeed/internallyDisplaced set as String() matching generated int64 types without INT64_ENCODING_NUMBER
+- [2K-01]: No error logging on upstream failures following established 2F-01 pattern
 
 ### Pending Todos
 
@@ -124,7 +130,7 @@ Progress: [████████████████████] ~97%
 ## Session Continuity
 
 Last session: 2026-02-19
-Stopped at: Completed 2J-02-PLAN.md (Unrest service module + barrel update + legacy deletion)
-Resume file: .planning/phases/2J-unrest-migration/2J-02-SUMMARY.md
+Stopped at: Completed 2K-01-PLAN.md (Conflict handler with 3 RPCs + gateway wiring + sidecar rebuild)
+Resume file: .planning/phases/2K-conflict-migration/2K-01-SUMMARY.md
 PR: #106 (draft) — https://github.com/koala73/worldmonitor/pull/106
-Next steps: Phase 2J complete. Next domain migration phase or final cleanup.
+Next steps: Plan 2K-02 (conflict service module + consumer wiring + legacy deletion)
