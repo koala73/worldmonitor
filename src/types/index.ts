@@ -622,33 +622,6 @@ export interface ProtestCluster {
   primaryCause?: string;
 }
 
-// Flight Delay Types
-export type FlightDelaySource = 'faa' | 'eurocontrol' | 'computed';
-export type FlightDelaySeverity = 'normal' | 'minor' | 'moderate' | 'major' | 'severe';
-export type FlightDelayType = 'ground_stop' | 'ground_delay' | 'departure_delay' | 'arrival_delay' | 'general';
-export type AirportRegion = 'americas' | 'europe' | 'apac' | 'mena' | 'africa';
-
-export interface AirportDelayAlert {
-  id: string;
-  iata: string;
-  icao: string;
-  name: string;
-  city: string;
-  country: string;
-  lat: number;
-  lon: number;
-  region: AirportRegion;
-  delayType: FlightDelayType;
-  severity: FlightDelaySeverity;
-  avgDelayMinutes: number;
-  delayedFlightsPct?: number;
-  cancelledFlights?: number;
-  totalFlights?: number;
-  reason?: string;
-  source: FlightDelaySource;
-  updatedAt: Date;
-}
-
 export interface MonitoredAirport {
   iata: string;
   icao: string;
@@ -657,7 +630,7 @@ export interface MonitoredAirport {
   country: string;
   lat: number;
   lon: number;
-  region: AirportRegion;
+  region: 'americas' | 'europe' | 'apac' | 'mena' | 'africa';
 }
 
 // Military Flight Tracking Types
