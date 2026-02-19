@@ -176,5 +176,5 @@ Each migration step:
 | 2F. Prediction Migration | Complete | 2026-02-18 |
 | 2G. Displacement Migration | Complete | 2026-02-19 |
 | 2H. Aviation Migration | Complete | 2026-02-19 |
-| 2I-2S. Domain Migrations | Not started | - |
+| 2I-2S. Domain Migrations (0/11) | Not started | - |
 | 2T. Legacy Cleanup | Not started | - |
