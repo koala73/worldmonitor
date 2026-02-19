@@ -4,6 +4,7 @@ package worldmonitor.news.v1;
 
 import "sebuf/http/annotations.proto";
 import "worldmonitor/news/v1/list_news_items.proto";
+import "worldmonitor/news/v1/summarize_article.proto";
 import "worldmonitor/news/v1/summarize_headlines.proto";
 
 // NewsService provides APIs for news aggregation via RSS feeds and AI-powered summarization.
@@ -18,5 +19,10 @@ service NewsService {
   // SummarizeHeadlines generates an AI summary of recent headlines using Groq or OpenRouter.
   rpc SummarizeHeadlines(SummarizeHeadlinesRequest) returns (SummarizeHeadlinesResponse) {
     option (sebuf.http.config) = {path: "/summarize-headlines"};
+  }
+
+  // SummarizeArticle generates an LLM summary with provider selection and fallback support.
+  rpc SummarizeArticle(SummarizeArticleRequest) returns (SummarizeArticleResponse) {
+    option (sebuf.http.config) = {path: "/summarize-article"};
   }
 }

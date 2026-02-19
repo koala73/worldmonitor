@@ -66,6 +66,28 @@ export interface HeadlineSummary {
   model: string;
 }
 
+export interface SummarizeArticleRequest {
+  provider: string;
+  headlines: string[];
+  mode: string;
+  geoContext: string;
+  variant: string;
+  lang: string;
+}
+
+export interface SummarizeArticleResponse {
+  summary: string;
+  model: string;
+  provider: string;
+  cached: boolean;
+  tokens: number;
+  fallback: boolean;
+  skipped: boolean;
+  reason: string;
+  error: string;
+  errorType: string;
+}
+
 export type ThreatLevel = "THREAT_LEVEL_UNSPECIFIED" | "THREAT_LEVEL_LOW" | "THREAT_LEVEL_MEDIUM" | "THREAT_LEVEL_HIGH" | "THREAT_LEVEL_CRITICAL";
 
 export interface FieldViolation {
@@ -115,6 +137,7 @@ export interface RouteDescriptor {
 export interface NewsServiceHandler {
   listNewsItems(ctx: ServerContext, req: ListNewsItemsRequest): Promise<ListNewsItemsResponse>;
   summarizeHeadlines(ctx: ServerContext, req: SummarizeHeadlinesRequest): Promise<SummarizeHeadlinesResponse>;
+  summarizeArticle(ctx: ServerContext, req: SummarizeArticleRequest): Promise<SummarizeArticleResponse>;
 }
 
 export function createNewsServiceRoutes(
@@ -187,6 +210,49 @@ export function createNewsServiceRoutes(
 
           const result = await handler.summarizeHeadlines(ctx, body);
           return new Response(JSON.stringify(result as SummarizeHeadlinesResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/news/v1/summarize-article",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = await req.json() as SummarizeArticleRequest;
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("summarizeArticle", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.summarizeArticle(ctx, body);
+          return new Response(JSON.stringify(result as SummarizeArticleResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

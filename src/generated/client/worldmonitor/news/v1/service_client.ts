@@ -66,6 +66,28 @@ export interface HeadlineSummary {
   model: string;
 }
 
+export interface SummarizeArticleRequest {
+  provider: string;
+  headlines: string[];
+  mode: string;
+  geoContext: string;
+  variant: string;
+  lang: string;
+}
+
+export interface SummarizeArticleResponse {
+  summary: string;
+  model: string;
+  provider: string;
+  cached: boolean;
+  tokens: number;
+  fallback: boolean;
+  skipped: boolean;
+  reason: string;
+  error: string;
+  errorType: string;
+}
+
 export type ThreatLevel = "THREAT_LEVEL_UNSPECIFIED" | "THREAT_LEVEL_LOW" | "THREAT_LEVEL_MEDIUM" | "THREAT_LEVEL_HIGH" | "THREAT_LEVEL_CRITICAL";
 
 export interface FieldViolation {
@@ -162,6 +184,30 @@ export class NewsServiceClient {
     }
 
     return await resp.json() as SummarizeHeadlinesResponse;
+  }
+
+  async summarizeArticle(req: SummarizeArticleRequest, options?: NewsServiceCallOptions): Promise<SummarizeArticleResponse> {
+    let path = "/api/news/v1/summarize-article";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as SummarizeArticleResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {
