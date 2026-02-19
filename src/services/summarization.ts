@@ -9,7 +9,7 @@ import { SITE_VARIANT } from '@/config';
 import { BETA_MODE } from '@/config/beta';
 import { isFeatureAvailable } from './runtime-config';
 
-export type SummarizationProvider = 'groq' | 'openrouter' | 'browser' | 'cache';
+export type SummarizationProvider = 'groq' | 'astrai' | 'openrouter' | 'browser' | 'cache';
 
 export interface SummarizationResult {
   summary: string;
@@ -44,6 +44,35 @@ async function tryGroq(headlines: string[], geoContext?: string, lang?: string):
     };
   } catch (error) {
     console.warn('[Summarization] Groq failed:', error);
+    return null;
+  }
+}
+
+async function tryAstrai(headlines: string[], geoContext?: string, lang?: string): Promise<SummarizationResult | null> {
+  if (!isFeatureAvailable('aiAstrai')) return null;
+  try {
+    const response = await fetch('/api/astrai-summarize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ headlines, mode: 'brief', geoContext, variant: SITE_VARIANT, lang }),
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      if (data.fallback) return null;
+      throw new Error(`Astrai error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const provider = data.cached ? 'cache' : 'astrai';
+    console.log(`[Summarization] ${provider === 'cache' ? 'Redis cache hit' : 'Astrai success'}:`, data.model);
+    return {
+      summary: data.summary,
+      provider: provider as SummarizationProvider,
+      cached: !!data.cached,
+    };
+  } catch (error) {
+    console.warn('[Summarization] Astrai failed:', error);
     return null;
   }
 }
@@ -141,11 +170,15 @@ export async function generateSummary(
       const groqResult = await tryGroq(headlines, geoContext);
       if (groqResult) return groqResult;
 
+      onProgress?.(3, totalSteps, 'Trying Astrai router...');
+      const astraiResult = await tryAstrai(headlines, geoContext);
+      if (astraiResult) return astraiResult;
+
       onProgress?.(3, totalSteps, 'Trying OpenRouter...');
       const openRouterResult = await tryOpenRouter(headlines, geoContext);
       if (openRouterResult) return openRouterResult;
     } else {
-      const totalSteps = 4;
+      const totalSteps = 5;
       console.log('[BETA] T5-small not loaded yet, using cloud providers first');
       // Kick off model load in background for next time
       if (mlWorker.isAvailable) {
@@ -160,25 +193,29 @@ export async function generateSummary(
         return groqResult;
       }
 
-      onProgress?.(2, totalSteps, 'Trying OpenRouter...');
+      onProgress?.(2, totalSteps, 'Trying Astrai router...');
+      const astraiResult = await tryAstrai(headlines, geoContext);
+      if (astraiResult) return astraiResult;
+
+      onProgress?.(3, totalSteps, 'Trying OpenRouter...');
       const openRouterResult = await tryOpenRouter(headlines, geoContext);
       if (openRouterResult) return openRouterResult;
 
       // Last resort: try browser T5 (may have finished loading by now)
       if (mlWorker.isAvailable) {
-        onProgress?.(3, totalSteps, 'Waiting for local AI model...');
+        onProgress?.(4, totalSteps, 'Waiting for local AI model...');
         const browserResult = await tryBrowserT5(headlines, 'summarization-beta');
         if (browserResult) return browserResult;
       }
 
-      onProgress?.(4, totalSteps, 'No providers available');
+      onProgress?.(5, totalSteps, 'No providers available');
     }
 
     console.warn('[BETA] All providers failed');
     return null;
   }
 
-  const totalSteps = 3;
+  const totalSteps = 4;
 
   // Step 1: Try Groq (fast, 14.4K/day with 8b-instant + Redis cache)
   onProgress?.(1, totalSteps, 'Connecting to Groq AI...');
@@ -187,15 +224,22 @@ export async function generateSummary(
     return groqResult;
   }
 
-  // Step 2: Try OpenRouter (fallback, 50/day + Redis cache)
-  onProgress?.(2, totalSteps, 'Trying OpenRouter...');
+  // Step 2: Try Astrai (intelligent router — auto-selects cheapest model)
+  onProgress?.(2, totalSteps, 'Trying Astrai router...');
+  const astraiResult = await tryAstrai(headlines, geoContext, lang);
+  if (astraiResult) {
+    return astraiResult;
+  }
+
+  // Step 3: Try OpenRouter (fallback, 50/day + Redis cache)
+  onProgress?.(3, totalSteps, 'Trying OpenRouter...');
   const openRouterResult = await tryOpenRouter(headlines, geoContext, lang);
   if (openRouterResult) {
     return openRouterResult;
   }
 
-  // Step 3: Try Browser T5 (local, unlimited but slower)
-  onProgress?.(3, totalSteps, 'Loading local AI model...');
+  // Step 4: Try Browser T5 (local, unlimited but slower)
+  onProgress?.(4, totalSteps, 'Loading local AI model...');
   const browserResult = await tryBrowserT5(headlines);
   if (browserResult) {
     return browserResult;
@@ -220,7 +264,7 @@ export async function translateText(
 
   // Step 1: Try Groq
   if (isFeatureAvailable('aiGroq')) {
-    onProgress?.(1, 2, 'Translating with Groq...');
+    onProgress?.(1, 3, 'Translating with Groq...');
     try {
       const response = await fetch('/api/groq-summarize', {
         method: 'POST',
@@ -241,9 +285,32 @@ export async function translateText(
     }
   }
 
-  // Step 2: Try OpenRouter
+  // Step 2: Try Astrai
+  if (isFeatureAvailable('aiAstrai')) {
+    onProgress?.(2, 3, 'Translating with Astrai...');
+    try {
+      const response = await fetch('/api/astrai-summarize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          headlines: [text],
+          mode: 'translate',
+          variant: targetLang
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        return data.summary;
+      }
+    } catch (e) {
+      console.warn('Astrai translation failed', e);
+    }
+  }
+
+  // Step 3: Try OpenRouter
   if (isFeatureAvailable('aiOpenRouter')) {
-    onProgress?.(2, 2, 'Translating with OpenRouter...');
+    onProgress?.(3, 3, 'Translating with OpenRouter...');
     try {
       const response = await fetch('/api/openrouter-summarize', {
         method: 'POST',

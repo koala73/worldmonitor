@@ -3,6 +3,7 @@ import { invokeTauri } from './tauri-bridge';
 
 export type RuntimeSecretKey =
   | 'GROQ_API_KEY'
+  | 'ASTRAI_API_KEY'
   | 'OPENROUTER_API_KEY'
   | 'FRED_API_KEY'
   | 'EIA_API_KEY'
@@ -23,6 +24,7 @@ export type RuntimeSecretKey =
 
 export type RuntimeFeatureId =
   | 'aiGroq'
+  | 'aiAstrai'
   | 'aiOpenRouter'
   | 'economicFred'
   | 'energyEia'
@@ -62,6 +64,7 @@ const SIDECAR_SECRET_VALIDATE_URL = 'http://127.0.0.1:46123/api/local-validate-s
 
 const defaultToggles: Record<RuntimeFeatureId, boolean> = {
   aiGroq: true,
+  aiAstrai: true,
   aiOpenRouter: true,
   economicFred: true,
   energyEia: true,
@@ -83,6 +86,13 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
     name: 'Groq summarization',
     description: 'Primary fast LLM provider used for AI summary generation.',
     requiredSecrets: ['GROQ_API_KEY'],
+    fallback: 'Falls back to Astrai, then OpenRouter, then local browser model.',
+  },
+  {
+    id: 'aiAstrai',
+    name: 'Astrai intelligent router',
+    description: 'AI inference router that auto-selects the optimal model/provider by cost and latency.',
+    requiredSecrets: ['ASTRAI_API_KEY'],
     fallback: 'Falls back to OpenRouter, then local browser model.',
   },
   {
