@@ -239,9 +239,11 @@ test.describe('desktop runtime routing guardrails', () => {
       const appProto = App.prototype as unknown as {
         resolveUpdateDownloadUrl: (releaseUrl: string) => Promise<string>;
         mapDesktopDownloadPlatform: (os: string, arch: string) => string | null;
+        getDesktopBuildVariant: () => 'full' | 'tech' | 'finance';
       };
       const fakeApp = {
         mapDesktopDownloadPlatform: appProto.mapDesktopDownloadPlatform,
+        getDesktopBuildVariant: () => 'full' as const,
       };
 
       try {
@@ -279,8 +281,8 @@ test.describe('desktop runtime routing guardrails', () => {
       }
     });
 
-    expect(result.macArm).toBe('https://worldmonitor.app/api/download?platform=macos-arm64');
-    expect(result.windowsX64).toBe('https://worldmonitor.app/api/download?platform=windows-exe');
+    expect(result.macArm).toBe('https://worldmonitor.app/api/download?platform=macos-arm64&variant=full');
+    expect(result.windowsX64).toBe('https://worldmonitor.app/api/download?platform=windows-exe&variant=full');
     expect(result.linuxFallback).toBe('https://github.com/koala73/worldmonitor/releases/latest');
   });
 

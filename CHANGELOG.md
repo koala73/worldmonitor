@@ -2,6 +2,33 @@
 
 All notable changes to World Monitor are documented here.
 
+## [2.4.0] - 2026-02-19
+
+### Added
+
+- **Live Webcams Panel**: 2x2 grid of live YouTube webcam feeds from global hotspots with region filters (Middle East, Europe, Asia-Pacific, Americas), grid/single view toggle, idle detection, and full i18n support (#111)
+- **Linux download**: added `.AppImage` option to download banner
+
+### Changed
+
+- **Mobile detection**: use viewport width only for mobile detection; touch-capable notebooks (e.g. ROG Flow X13) now get desktop layout (#113)
+- **Webcam feeds**: curated Tel Aviv, Mecca, LA, Miami; replaced dead Tokyo feed; diverse ALL grid with Jerusalem, Tehran, Kyiv, Washington
+
+### Fixed
+
+- **Le Monde RSS**: English feed URL updated (`/en/rss/full.xml` → `/en/rss/une.xml`) to fix 404
+- **Workbox precache**: added `html` to `globPatterns` so `navigateFallback` works for offline PWA
+- **Panel ordering**: one-time migration ensures Live Webcams follows Live News for existing users
+- **Mobile popups**: improved sheet/touch/controls layout (#109)
+- **Intelligence alerts**: disabled on mobile to reduce noise (#110)
+- **RSS proxy**: added 8 missing domains to allowlist
+- **HTML tags**: repaired malformed tags in panel template literals
+- **ML worker**: wrapped `unloadModel()` in try/catch to prevent unhandled timeout rejections
+- **YouTube player**: optional chaining on `playVideo?.()` / `pauseVideo?.()` for initialization race
+- **Panel drag**: guarded `.closest()` on non-Element event targets
+- **Beta mode**: resolved race condition and timeout failures
+- **Sentry noise**: added filters for Firefox `too much recursion`, maplibre `_layers`/`id`/`type` null crashes
+
 ## [2.3.9] - 2026-02-18
 
 ### Added

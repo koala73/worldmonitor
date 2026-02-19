@@ -110,6 +110,12 @@ class MLWorkerManager {
           return;
         }
 
+        // Unsolicited model-loaded notification (implicit load inside summarize/sentiment/etc.)
+        if (data.type === 'model-loaded' && !('id' in data && data.id)) {
+          this.loadedModels.add(data.modelId);
+          return;
+        }
+
         if (data.type === 'error') {
           const pending = data.id ? this.pendingRequests.get(data.id) : null;
           if (pending) {
@@ -241,7 +247,12 @@ class MLWorkerManager {
    */
   async unloadModel(modelId: string): Promise<boolean> {
     if (!this.isReady || !this.loadedModels.has(modelId)) return false;
-    return this.request<boolean>('unload-model', { modelId });
+    try {
+      return await this.request<boolean>('unload-model', { modelId });
+    } catch {
+      this.loadedModels.delete(modelId);
+      return false;
+    }
   }
 
   /**
@@ -267,9 +278,9 @@ class MLWorkerManager {
   /**
    * Generate summaries for texts
    */
-  async summarize(texts: string[]): Promise<string[]> {
+  async summarize(texts: string[], modelId?: string): Promise<string[]> {
     if (!this.isReady) throw new Error('ML Worker not ready');
-    return this.request<string[]>('summarize', { texts });
+    return this.request<string[]>('summarize', { texts, ...(modelId && { modelId }) });
   }
 
   /**
@@ -357,6 +368,13 @@ class MLWorkerManager {
    */
   get loadedModelIds(): string[] {
     return Array.from(this.loadedModels);
+  }
+
+  /**
+   * Check if a specific model is already loaded (no waiting)
+   */
+  isModelLoaded(modelId: string): boolean {
+    return this.loadedModels.has(modelId);
   }
 }
 

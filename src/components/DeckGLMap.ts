@@ -289,6 +289,7 @@ export class DeckGLMap {
   private renderScheduled = false;
   private renderPaused = false;
   private renderPending = false;
+  private webglLost = false;
   private resizeObserver: ResizeObserver | null = null;
 
   private layerCache: Map<string, Layer> = new Map();
@@ -322,12 +323,12 @@ export class DeckGLMap {
     this.rebuildDatacenterSupercluster();
 
     this.debouncedRebuildLayers = debounce(() => {
-      if (this.renderPaused) return;
+      if (this.renderPaused || this.webglLost) return;
       this.maplibreMap?.resize();
       this.deckOverlay?.setProps({ layers: this.buildLayers() });
     }, 150);
     this.rafUpdateLayers = rafSchedule(() => {
-      if (this.renderPaused) return;
+      if (this.renderPaused || this.webglLost) return;
       this.deckOverlay?.setProps({ layers: this.buildLayers() });
     });
 
@@ -398,9 +399,11 @@ export class DeckGLMap {
     const canvas = this.maplibreMap.getCanvas();
     canvas.addEventListener('webglcontextlost', (e) => {
       e.preventDefault();
+      this.webglLost = true;
       console.warn('[DeckGLMap] WebGL context lost — will restore when browser recovers');
     });
     canvas.addEventListener('webglcontextrestored', () => {
+      this.webglLost = false;
       console.info('[DeckGLMap] WebGL context restored');
       this.maplibreMap?.triggerRepaint();
     });
@@ -3055,7 +3058,7 @@ export class DeckGLMap {
   }
 
   private updateLayers(): void {
-    if (this.renderPaused) return;
+    if (this.renderPaused || this.webglLost) return;
     const startTime = performance.now();
     if (this.deckOverlay) {
       this.deckOverlay.setProps({ layers: this.buildLayers() });

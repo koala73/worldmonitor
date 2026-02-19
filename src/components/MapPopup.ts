@@ -130,6 +130,11 @@ export class MapPopup {
   private onClose?: () => void;
   private cableAdvisories: CableAdvisory[] = [];
   private repairShips: RepairShip[] = [];
+  private isMobileSheet = false;
+  private sheetTouchStartY: number | null = null;
+  private sheetCurrentOffset = 0;
+  private readonly mobileDismissThreshold = 96;
+  private outsideListenerTimeoutId: number | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -138,73 +143,24 @@ export class MapPopup {
   public show(data: PopupData): void {
     this.hide();
 
+    this.isMobileSheet = isMobileDevice();
     this.popup = document.createElement('div');
-    this.popup.className = 'map-popup';
+    this.popup.className = this.isMobileSheet ? 'map-popup map-popup-sheet' : 'map-popup';
 
     const content = this.renderContent(data);
-    this.popup.innerHTML = content;
+    this.popup.innerHTML = this.isMobileSheet
+      ? `<button class="map-popup-sheet-handle" aria-label="${t('common.close')}"></button>${content}`
+      : content;
 
     // Get container's viewport position for absolute positioning
     const containerRect = this.container.getBoundingClientRect();
 
-    if (isMobileDevice()) {
-      // On mobile, center the popup horizontally and position in upper area
-      this.popup.style.left = '50%';
-      this.popup.style.transform = 'translateX(-50%)';
-      this.popup.style.top = `${Math.max(60, Math.min(containerRect.top + data.y, window.innerHeight * 0.4))}px`;
-    } else {
-      // Desktop: position near click with smart bounds checking
+    if (this.isMobileSheet) {
+      this.popup.style.left = '';
+      this.popup.style.top = '';
       this.popup.style.transform = '';
-      const popupWidth = 380;
-      const bottomBuffer = 50; // Buffer from viewport bottom
-      const topBuffer = 60; // Header height
-
-      // Temporarily append popup off-screen to measure actual height
-      this.popup.style.visibility = 'hidden';
-      this.popup.style.top = '0';
-      this.popup.style.left = '-9999px';
-      document.body.appendChild(this.popup);
-      const popupHeight = this.popup.offsetHeight;
-      document.body.removeChild(this.popup);
-      this.popup.style.visibility = '';
-
-      // Convert container-relative coords to viewport coords
-      const viewportX = containerRect.left + data.x;
-      const viewportY = containerRect.top + data.y;
-
-      // Horizontal positioning (viewport-relative)
-      const maxX = window.innerWidth - popupWidth - 20;
-      let left = viewportX + 20;
-      if (left > maxX) {
-        // Position to the left of click if it would overflow right
-        left = Math.max(10, viewportX - popupWidth - 20);
-      }
-
-      // Vertical positioning - prefer below click, but flip above if needed
-      const availableBelow = window.innerHeight - viewportY - bottomBuffer;
-      const availableAbove = viewportY - topBuffer;
-
-      let top: number;
-      if (availableBelow >= popupHeight) {
-        // Enough space below - position below click
-        top = viewportY + 10;
-      } else if (availableAbove >= popupHeight) {
-        // Not enough below, but enough above - position above click
-        top = viewportY - popupHeight - 10;
-      } else {
-        // Limited space both ways - position at top buffer
-        top = topBuffer;
-      }
-
-      // CRITICAL: Ensure popup stays within viewport vertically
-      top = Math.max(topBuffer, top);
-      const maxTop = window.innerHeight - popupHeight - bottomBuffer;
-      if (maxTop > topBuffer) {
-        top = Math.min(top, maxTop);
-      }
-
-      this.popup.style.left = `${left}px`;
-      this.popup.style.top = `${top}px`;
+    } else {
+      this.positionDesktopPopup(data, containerRect);
     }
 
     // Append to body to avoid container overflow clipping
@@ -212,24 +168,160 @@ export class MapPopup {
 
     // Close button handler
     this.popup.querySelector('.popup-close')?.addEventListener('click', () => this.hide());
+    this.popup.querySelector('.map-popup-sheet-handle')?.addEventListener('click', () => this.hide());
+
+    if (this.isMobileSheet) {
+      this.popup.addEventListener('touchstart', this.handleSheetTouchStart, { passive: true });
+      this.popup.addEventListener('touchmove', this.handleSheetTouchMove, { passive: false });
+      this.popup.addEventListener('touchend', this.handleSheetTouchEnd);
+      this.popup.addEventListener('touchcancel', this.handleSheetTouchEnd);
+      requestAnimationFrame(() => this.popup?.classList.add('open'));
+    }
 
     // Click outside to close
-    setTimeout(() => {
+    if (this.outsideListenerTimeoutId !== null) {
+      window.clearTimeout(this.outsideListenerTimeoutId);
+    }
+    this.outsideListenerTimeoutId = window.setTimeout(() => {
       document.addEventListener('click', this.handleOutsideClick);
-    }, 100);
+      document.addEventListener('touchstart', this.handleOutsideClick);
+      document.addEventListener('keydown', this.handleEscapeKey);
+      this.outsideListenerTimeoutId = null;
+    }, 0);
   }
 
-  private handleOutsideClick = (e: MouseEvent) => {
+  private positionDesktopPopup(data: PopupData, containerRect: DOMRect): void {
+    if (!this.popup) return;
+
+    const popupWidth = 380;
+    const bottomBuffer = 50; // Buffer from viewport bottom
+    const topBuffer = 60; // Header height
+
+    // Temporarily append popup off-screen to measure actual height
+    this.popup.style.visibility = 'hidden';
+    this.popup.style.top = '0';
+    this.popup.style.left = '-9999px';
+    document.body.appendChild(this.popup);
+    const popupHeight = this.popup.offsetHeight;
+    document.body.removeChild(this.popup);
+    this.popup.style.visibility = '';
+
+    // Convert container-relative coords to viewport coords
+    const viewportX = containerRect.left + data.x;
+    const viewportY = containerRect.top + data.y;
+
+    // Horizontal positioning (viewport-relative)
+    const maxX = window.innerWidth - popupWidth - 20;
+    let left = viewportX + 20;
+    if (left > maxX) {
+      // Position to the left of click if it would overflow right
+      left = Math.max(10, viewportX - popupWidth - 20);
+    }
+
+    // Vertical positioning - prefer below click, but flip above if needed
+    const availableBelow = window.innerHeight - viewportY - bottomBuffer;
+    const availableAbove = viewportY - topBuffer;
+
+    let top: number;
+    if (availableBelow >= popupHeight) {
+      // Enough space below - position below click
+      top = viewportY + 10;
+    } else if (availableAbove >= popupHeight) {
+      // Not enough below, but enough above - position above click
+      top = viewportY - popupHeight - 10;
+    } else {
+      // Limited space both ways - position at top buffer
+      top = topBuffer;
+    }
+
+    // CRITICAL: Ensure popup stays within viewport vertically
+    top = Math.max(topBuffer, top);
+    const maxTop = window.innerHeight - popupHeight - bottomBuffer;
+    if (maxTop > topBuffer) {
+      top = Math.min(top, maxTop);
+    }
+
+    this.popup.style.left = `${left}px`;
+    this.popup.style.top = `${top}px`;
+  }
+
+  private handleOutsideClick = (e: Event) => {
     if (this.popup && !this.popup.contains(e.target as Node)) {
       this.hide();
     }
   };
 
+  private handleEscapeKey = (e: KeyboardEvent): void => {
+    if (e.key === 'Escape') {
+      this.hide();
+    }
+  };
+
+  private handleSheetTouchStart = (e: TouchEvent): void => {
+    if (!this.popup || !this.isMobileSheet || e.touches.length !== 1) return;
+
+    const target = e.target as HTMLElement | null;
+    const popupBody = this.popup.querySelector('.popup-body');
+    if (target?.closest('.popup-body') && popupBody && popupBody.scrollTop > 0) {
+      this.sheetTouchStartY = null;
+      return;
+    }
+
+    this.sheetTouchStartY = e.touches[0]?.clientY ?? null;
+    this.sheetCurrentOffset = 0;
+    this.popup.classList.add('dragging');
+  };
+
+  private handleSheetTouchMove = (e: TouchEvent): void => {
+    if (!this.popup || !this.isMobileSheet || this.sheetTouchStartY === null) return;
+
+    const currentY = e.touches[0]?.clientY;
+    if (currentY == null) return;
+
+    const delta = Math.max(0, currentY - this.sheetTouchStartY);
+    if (delta <= 0) return;
+
+    this.sheetCurrentOffset = delta;
+    this.popup.style.transform = `translate3d(0, ${delta}px, 0)`;
+    e.preventDefault();
+  };
+
+  private handleSheetTouchEnd = (): void => {
+    if (!this.popup || !this.isMobileSheet || this.sheetTouchStartY === null) return;
+
+    const shouldDismiss = this.sheetCurrentOffset >= this.mobileDismissThreshold;
+    this.popup.classList.remove('dragging');
+    this.sheetTouchStartY = null;
+
+    if (shouldDismiss) {
+      this.hide();
+      return;
+    }
+
+    this.sheetCurrentOffset = 0;
+    this.popup.style.transform = '';
+    this.popup.classList.add('open');
+  };
+
   public hide(): void {
+    if (this.outsideListenerTimeoutId !== null) {
+      window.clearTimeout(this.outsideListenerTimeoutId);
+      this.outsideListenerTimeoutId = null;
+    }
+
     if (this.popup) {
+      this.popup.removeEventListener('touchstart', this.handleSheetTouchStart);
+      this.popup.removeEventListener('touchmove', this.handleSheetTouchMove);
+      this.popup.removeEventListener('touchend', this.handleSheetTouchEnd);
+      this.popup.removeEventListener('touchcancel', this.handleSheetTouchEnd);
       this.popup.remove();
       this.popup = null;
+      this.isMobileSheet = false;
+      this.sheetTouchStartY = null;
+      this.sheetCurrentOffset = 0;
       document.removeEventListener('click', this.handleOutsideClick);
+      document.removeEventListener('touchstart', this.handleOutsideClick);
+      document.removeEventListener('keydown', this.handleEscapeKey);
       this.onClose?.();
     }
   }

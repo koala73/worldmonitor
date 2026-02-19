@@ -37,6 +37,17 @@ if (!validVariants.has(variant)) {
   process.exit(1);
 }
 
+const syncVersionsResult = spawnSync(process.execPath, ['scripts/sync-desktop-version.mjs'], {
+  stdio: 'inherit'
+});
+if (syncVersionsResult.error) {
+  console.error(syncVersionsResult.error.message);
+  process.exit(1);
+}
+if ((syncVersionsResult.status ?? 1) !== 0) {
+  process.exit(syncVersionsResult.status ?? 1);
+}
+
 const bundles = os === 'macos' ? 'app,dmg' : os === 'linux' ? 'appimage' : 'nsis,msi';
 const env = {
   ...process.env,

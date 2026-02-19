@@ -127,7 +127,8 @@
     "techReadiness": "Indeks gotowości technologicznej",
     "techHubs": "Gorące centra technologiczne",
     "gccInvestments": "Inwestycje GCC",
-    "geoHubs": "Geopolitical Hotspots"
+    "geoHubs": "Geopolitical Hotspots",
+    "liveWebcams": "Kamery na Żywo"
   },
   "modals": {
     "search": {
@@ -231,6 +232,7 @@
       "macSilicon": "macOS (Apple Silicon)",
       "macIntel": "macOS (Intel)",
       "windows": "Windows (.exe)",
+      "linux": "Linux (.AppImage)",
       "dismiss": "Odrzucać",
       "showAllPlatforms": "Pokaż wszystkie platformy",
       "showLess": "Pokaż mniej"

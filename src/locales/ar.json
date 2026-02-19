@@ -127,7 +127,8 @@
     "serviceStatus": "حالة الخدمات",
     "techReadiness": "مؤشر الجاهزية التقنية",
     "gccInvestments": "استثمارات دول الخليج",
-    "geoHubs": "مراكز جيوسياسية"
+    "geoHubs": "مراكز جيوسياسية",
+    "liveWebcams": "كاميرات مباشرة"
   },
   "modals": {
     "search": {
@@ -231,6 +232,7 @@
       "macSilicon": "macOS (Apple Silicon)",
       "macIntel": "macOS (Intel)",
       "windows": "Windows (.exe)",
+      "linux": "Linux (.AppImage)",
       "showAllPlatforms": "عرض جميع المنصات",
       "showLess": "عرض أقل",
       "dismiss": "تجاهل"

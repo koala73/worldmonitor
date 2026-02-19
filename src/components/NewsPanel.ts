@@ -4,10 +4,10 @@ import type { NewsItem, ClusteredEvent, DeviationLevel, RelatedAsset, RelatedAss
 import { THREAT_PRIORITY } from '@/services/threat-classifier';
 import { formatTime, getCSSColor } from '@/utils';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
-import { analysisWorker, enrichWithVelocityML, getClusterAssetContext, MAX_DISTANCE_KM, activityTracker, generateSummary } from '@/services';
+import { analysisWorker, enrichWithVelocityML, getClusterAssetContext, MAX_DISTANCE_KM, activityTracker, generateSummary, translateText } from '@/services';
 import { getSourcePropagandaRisk, getSourceTier, getSourceType } from '@/config/feeds';
 import { SITE_VARIANT } from '@/config';
-import { t } from '@/services/i18n';
+import { t, getCurrentLanguage } from '@/services/i18n';
 
 /** Threshold for enabling virtual scrolling */
 const VIRTUAL_SCROLL_THRESHOLD = 15;
@@ -137,8 +137,9 @@ export class NewsPanel extends Panel {
     if (this.isSummarizing || !this.summaryContainer || !this.summaryBtn) return;
     if (this.currentHeadlines.length === 0) return;
 
-    // Check cache first (include variant and version to bust old caches)
-    const cacheKey = `panel_summary_v2_${SITE_VARIANT}_${this.panelId}`;
+    // Check cache first (include variant, version, and language)
+    const currentLang = getCurrentLanguage();
+    const cacheKey = `panel_summary_v3_${SITE_VARIANT}_${this.panelId}_${currentLang}`;
     const cached = this.getCachedSummary(cacheKey);
     if (cached) {
       this.showSummary(cached);
@@ -153,7 +154,7 @@ export class NewsPanel extends Panel {
     this.summaryContainer.innerHTML = `<div class="panel-summary-loading">${t('components.newsPanel.generatingSummary')}</div>`;
 
     try {
-      const result = await generateSummary(this.currentHeadlines.slice(0, 8));
+      const result = await generateSummary(this.currentHeadlines.slice(0, 8), undefined, undefined, currentLang);
       if (result?.summary) {
         this.setCachedSummary(cacheKey, result.summary);
         this.showSummary(result.summary);
@@ -168,6 +169,39 @@ export class NewsPanel extends Panel {
       this.isSummarizing = false;
       this.summaryBtn.innerHTML = '✨';
       this.summaryBtn.disabled = false;
+    }
+  }
+
+  private async handleTranslate(element: HTMLElement, text: string): Promise<void> {
+    const currentLang = getCurrentLanguage();
+    if (currentLang === 'en') return; // Assume news is mostly English, no need to translate if UI is English (or add detection later)
+
+    const titleEl = element.closest('.item')?.querySelector('.item-title') as HTMLElement;
+    if (!titleEl) return;
+
+    const originalText = titleEl.textContent || '';
+
+    // Visual feedback
+    element.innerHTML = '...';
+    element.style.pointerEvents = 'none';
+
+    try {
+      const translated = await translateText(text, currentLang);
+      if (translated) {
+        titleEl.textContent = translated;
+        titleEl.dataset.original = originalText;
+        element.innerHTML = '✓';
+        element.title = 'Original: ' + originalText;
+        element.classList.add('translated');
+      } else {
+        element.innerHTML = '文';
+        // Shake animation or error state could be added here
+      }
+    } catch (e) {
+      console.error('Translation failed', e);
+      element.innerHTML = '文';
+    } finally {
+      element.style.pointerEvents = 'auto';
     }
   }
 
@@ -275,13 +309,17 @@ export class NewsPanel extends Panel {
     const html = items
       .map(
         (item) => `
-      <div class="item ${item.isAlert ? 'alert' : ''}" ${item.monitorColor ? `style="border-left-color: ${escapeHtml(item.monitorColor)}"` : ''}>
+      <div class="item ${item.isAlert ? 'alert' : ''}" ${item.monitorColor ? `style="border-inline-start-color: ${escapeHtml(item.monitorColor)}"` : ''}>
         <div class="item-source">
           ${escapeHtml(item.source)}
+          ${item.lang && item.lang !== getCurrentLanguage() ? `<span class="lang-badge">${item.lang.toUpperCase()}</span>` : ''}
           ${item.isAlert ? '<span class="alert-tag">ALERT</span>' : ''}
         </div>
         <a class="item-title" href="${sanitizeUrl(item.link)}" target="_blank" rel="noopener">${escapeHtml(item.title)}</a>
-        <div class="item-time">${formatTime(item.pubDate)}</div>
+        <div class="item-time">
+          ${formatTime(item.pubDate)}
+          ${getCurrentLanguage() !== 'en' ? `<button class="item-translate-btn" title="Translate" data-text="${escapeHtml(item.title)}">文</button>` : ''}
+        </div>
       </div>
     `
       )
@@ -372,6 +410,9 @@ export class NewsPanel extends Panel {
       : '';
 
     const newTag = showNewTag ? `<span class="new-tag">${t('common.new')}</span>` : '';
+    const langBadge = cluster.lang && cluster.lang !== getCurrentLanguage()
+      ? `<span class="lang-badge">${cluster.lang.toUpperCase()}</span>`
+      : '';
 
     // Propaganda risk indicator for primary source
     const primaryPropRisk = getSourcePropagandaRisk(cluster.primarySource);
@@ -445,11 +486,12 @@ export class NewsPanel extends Panel {
     ].filter(Boolean).join(' ');
 
     return `
-      <div class="${itemClasses}" ${cluster.monitorColor ? `style="border-left-color: ${escapeHtml(cluster.monitorColor)}"` : ''} data-cluster-id="${escapeHtml(cluster.id)}" data-news-id="${escapeHtml(cluster.primaryLink)}">
+      <div class="${itemClasses}" ${cluster.monitorColor ? `style="border-inline-start-color: ${escapeHtml(cluster.monitorColor)}"` : ''} data-cluster-id="${escapeHtml(cluster.id)}" data-news-id="${escapeHtml(cluster.primaryLink)}">
         <div class="item-source">
           ${tierBadge}
           ${escapeHtml(cluster.primarySource)}
           ${primaryPropBadge}
+          ${langBadge}
           ${newTag}
           ${sourceBadge}
           ${velocityBadge}
@@ -461,6 +503,7 @@ export class NewsPanel extends Panel {
         <div class="cluster-meta">
           <span class="top-sources">${topSourcesHtml}</span>
           <span class="item-time">${formatTime(cluster.lastUpdated)}</span>
+          ${getCurrentLanguage() !== 'en' ? `<button class="item-translate-btn" title="Translate" data-text="${escapeHtml(cluster.primaryTitle)}">文</button>` : ''}
         </div>
         ${relatedAssetsHtml}
       </div>
@@ -497,6 +540,16 @@ export class NewsPanel extends Panel {
         if (asset) {
           this.onRelatedAssetClick?.(asset);
         }
+      });
+    });
+
+    // Translation buttons
+    const translateBtns = this.content.querySelectorAll<HTMLElement>('.item-translate-btn');
+    translateBtns.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const text = btn.dataset.text;
+        if (text) this.handleTranslate(btn, text);
       });
     });
   }

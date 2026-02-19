@@ -58,7 +58,8 @@
     "gccInvestments": "GCC-investeringar",
     "geoHubs": "Geopolitical Hotspots",
     "polymarket": "Förutsägelser",
-    "climate": "Klimatanomalier"
+    "climate": "Klimatanomalier",
+    "liveWebcams": "Webbkameror"
   },
   "modals": {
     "search": {
@@ -148,6 +149,7 @@
       "macSilicon": "macOS (Apple Silicon)",
       "macIntel": "macOS (Intel)",
       "windows": "Windows (.exe)",
+      "linux": "Linux (.AppImage)",
       "dismiss": "Avfärda",
       "showAllPlatforms": "Visa alla plattformar",
       "showLess": "Visa mindre"

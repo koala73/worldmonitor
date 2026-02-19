@@ -66,8 +66,8 @@ async function withTransaction<T>(
       if (err instanceof DOMException && err.name === 'InvalidStateError') {
         db = null;
         if (attempt === 0) continue;
-        // Connection still closing after retry — transient browser event, not actionable.
-        console.warn('[Storage] IndexedDB connection closing, skipping transaction');
+        console.warn('[Storage] IndexedDB connection closing after retry');
+        if (mode === 'readwrite') throw new DOMException('IndexedDB write failed — connection closing', 'InvalidStateError');
         return undefined as T;
       }
       throw err;

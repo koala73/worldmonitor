@@ -43,7 +43,7 @@ export class CIIPanel extends Panel {
   }
 
   private getTrendArrow(trend: CountryScore['trend'], change: number): string {
-    if (trend === 'rising') return `< span class= "trend-up" >↑${change > 0 ? change : ''} </span>`;
+    if (trend === 'rising') return `<span class="trend-up">↑${change > 0 ? change : ''}</span>`;
     if (trend === 'falling') return `<span class="trend-down">↓${Math.abs(change)}</span>`;
     return '<span class="trend-stable">→</span>';
   }

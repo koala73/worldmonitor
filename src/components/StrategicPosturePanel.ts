@@ -52,37 +52,33 @@ export class StrategicPosturePanel extends Panel {
   public override showLoading(): void {
     this.loadingStartTime = Date.now();
     this.setContent(`
-        < div class="posture-panel" >
-          <div class="posture-loading" >
-            <div class="posture-loading-radar" >
-              <div class="posture-radar-sweep" > </div>
-                < div class="posture-radar-dot" > </div>
-                  </div>
-                  < div class="posture-loading-title" > Scanning Theaters </div>
-                    < div class="posture-loading-stages" >
-                      <div class="posture-stage active" >
-                        <span class="posture-stage-dot" > </span>
-                          < span > Aircraft positions </span>
-                            </div>
-                            < div class="posture-stage pending" >
-                              <span class="posture-stage-dot" > </span>
-                                < span > Naval vessels </span>
-                                  </div>
-                                  < div class="posture-stage pending" >
-                                    <span class="posture-stage-dot" > </span>
-                                      < span > Theater analysis </span>
-                                        </div>
-                                        </div>
-                                        < div class="posture-loading-tip" >
-                                          Connecting to live ADS - B & amp; AIS streams...
-    </div>
-      < div class="posture-loading-elapsed" > Elapsed: 0s </div>
-        < div class="posture-loading-note" >
-          Initial load takes 30 - 60 seconds as tracking data accumulates
+      <div class="posture-panel">
+        <div class="posture-loading">
+          <div class="posture-loading-radar">
+            <div class="posture-radar-sweep"></div>
+            <div class="posture-radar-dot"></div>
+          </div>
+          <div class="posture-loading-title">Scanning Theaters</div>
+          <div class="posture-loading-stages">
+            <div class="posture-stage active">
+              <span class="posture-stage-dot"></span>
+              <span>Aircraft positions</span>
             </div>
+            <div class="posture-stage pending">
+              <span class="posture-stage-dot"></span>
+              <span>Naval vessels</span>
             </div>
+            <div class="posture-stage pending">
+              <span class="posture-stage-dot"></span>
+              <span>Theater analysis</span>
             </div>
-              `);
+          </div>
+          <div class="posture-loading-tip">Connecting to live ADS-B &amp; AIS streams...</div>
+          <div class="posture-loading-elapsed">Elapsed: 0s</div>
+          <div class="posture-loading-note">Initial load takes 30-60 seconds as tracking data accumulates</div>
+        </div>
+      </div>
+    `);
     this.startLoadingTimer();
   }
 
@@ -301,49 +297,49 @@ export class StrategicPosturePanel extends Panel {
   private showNoData(): void {
     this.stopLoadingTimer();
     this.setContent(`
-      < div class="posture-panel" >
-        <div class="posture-no-data" >
-          <div class="posture-no-data-icon pulse" >📡</div>
-            < div class="posture-no-data-title" > Acquiring Data </div>
-              < div class="posture-no-data-desc" >
-                Connecting to ADS - B network for military flight data.
-            This may take 30 - 60 seconds on first load.
+      <div class="posture-panel">
+        <div class="posture-no-data">
+          <div class="posture-no-data-icon pulse">📡</div>
+          <div class="posture-no-data-title">Acquiring Data</div>
+          <div class="posture-no-data-desc">
+            Connecting to ADS-B network for military flight data.
+            This may take 30-60 seconds on first load.
           </div>
-      < div class="posture-data-sources" >
-        <div class="posture-source" >
-          <span class="posture-source-icon connecting" >✈️</span>
-            < span > OpenSky ADS - B </span>
-              </div>
-              < div class="posture-source" >
-                <span class="posture-source-icon waiting" >🚢</span>
-                  < span > AIS Vessel Stream </span>
-                    </div>
-                    </div>
-                    < button class="posture-retry-btn" >↻ Retry Now </button>
-                      </div>
-                      </div>
-                        `);
+          <div class="posture-data-sources">
+            <div class="posture-source">
+              <span class="posture-source-icon connecting">✈️</span>
+              <span>OpenSky ADS-B</span>
+            </div>
+            <div class="posture-source">
+              <span class="posture-source-icon waiting">🚢</span>
+              <span>AIS Vessel Stream</span>
+            </div>
+          </div>
+          <button class="posture-retry-btn">↻ Retry Now</button>
+        </div>
+      </div>
+    `);
     this.content.querySelector('.posture-retry-btn')?.addEventListener('click', () => this.refresh());
   }
 
   private showFetchError(): void {
     this.stopLoadingTimer();
     this.setContent(`
-                      < div class="posture-panel" >
-                        <div class="posture-no-data" >
-                          <div class="posture-no-data-icon" >⚠️</div>
-                            < div class="posture-no-data-title" > Feed Rate Limited </div>
-                              < div class="posture-no-data-desc" >
-                                OpenSky API has request limits.The panel will automatically
-    retry in a few minutes, or you can try again now.
+      <div class="posture-panel">
+        <div class="posture-no-data">
+          <div class="posture-no-data-icon">⚠️</div>
+          <div class="posture-no-data-title">Feed Rate Limited</div>
+          <div class="posture-no-data-desc">
+            OpenSky API has request limits. The panel will automatically
+            retry in a few minutes, or you can try again now.
           </div>
-      < div class="posture-error-hint" >
-        <strong>Tip: </strong> Peak hours (UTC 12:00-20:00) often see higher limits.
+          <div class="posture-error-hint">
+            <strong>Tip:</strong> Peak hours (UTC 12:00-20:00) often see higher limits.
           </div>
-          < button class="posture-retry-btn" >↻ Try Again </button>
-            </div>
-            </div>
-              `);
+          <button class="posture-retry-btn">↻ Try Again</button>
+        </div>
+      </div>
+    `);
     this.content.querySelector('.posture-retry-btn')?.addEventListener('click', () => this.refresh());
   }
 
@@ -361,7 +357,7 @@ export class StrategicPosturePanel extends Panel {
   private getTrendIcon(trend: string, change: number): string {
     switch (trend) {
       case 'increasing':
-        return `< span class="posture-trend trend-up" >↗ +${change}% </span>`;
+        return `<span class="posture-trend trend-up">↗ +${change}%</span>`;
       case 'decreasing':
         return `<span class="posture-trend trend-down">↘ ${change}%</span>`;
       default:

@@ -1,36 +1,38 @@
 import i18next from 'i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
-import en from '../locales/en.json';
-import fr from '../locales/fr.json';
-import de from '../locales/de.json';
-import es from '../locales/es.json';
-import it from '../locales/it.json';
-import pl from '../locales/pl.json';
-import pt from '../locales/pt.json';
-import nl from '../locales/nl.json';
-import sv from '../locales/sv.json';
-import ru from '../locales/ru.json';
-import ar from '../locales/ar.json';
-import zh from '../locales/zh.json';
-import ja from '../locales/ja.json';
 
-const resources = {
-  en: { translation: en },
-  fr: { translation: fr },
-  de: { translation: de },
-  es: { translation: es },
-  it: { translation: it },
-  pl: { translation: pl },
-  pt: { translation: pt },
-  nl: { translation: nl },
-  sv: { translation: sv },
-  ru: { translation: ru },
-  ar: { translation: ar },
-  zh: { translation: zh },
-  ja: { translation: ja },
+const SUPPORTED_LANGUAGES = ['en', 'fr', 'de', 'es', 'it', 'pl', 'pt', 'nl', 'sv', 'ru', 'ar', 'zh', 'ja'] as const;
+type SupportedLanguage = typeof SUPPORTED_LANGUAGES[number];
+type TranslationDictionary = Record<string, unknown>;
+
+const SUPPORTED_LANGUAGE_SET = new Set<SupportedLanguage>(SUPPORTED_LANGUAGES);
+const loadedLanguages = new Set<SupportedLanguage>();
+
+const LOCALE_LOADERS: Record<SupportedLanguage, () => Promise<TranslationDictionary>> = {
+  en: async () => (await import('../locales/en.json')).default as TranslationDictionary,
+  fr: async () => (await import('../locales/fr.json')).default as TranslationDictionary,
+  de: async () => (await import('../locales/de.json')).default as TranslationDictionary,
+  es: async () => (await import('../locales/es.json')).default as TranslationDictionary,
+  it: async () => (await import('../locales/it.json')).default as TranslationDictionary,
+  pl: async () => (await import('../locales/pl.json')).default as TranslationDictionary,
+  pt: async () => (await import('../locales/pt.json')).default as TranslationDictionary,
+  nl: async () => (await import('../locales/nl.json')).default as TranslationDictionary,
+  sv: async () => (await import('../locales/sv.json')).default as TranslationDictionary,
+  ru: async () => (await import('../locales/ru.json')).default as TranslationDictionary,
+  ar: async () => (await import('../locales/ar.json')).default as TranslationDictionary,
+  zh: async () => (await import('../locales/zh.json')).default as TranslationDictionary,
+  ja: async () => (await import('../locales/ja.json')).default as TranslationDictionary,
 };
 
 const RTL_LANGUAGES = new Set(['ar']);
+
+function normalizeLanguage(lng: string): SupportedLanguage {
+  const base = (lng || 'en').split('-')[0]?.toLowerCase() || 'en';
+  if (SUPPORTED_LANGUAGE_SET.has(base as SupportedLanguage)) {
+    return base as SupportedLanguage;
+  }
+  return 'en';
+}
 
 function applyDocumentDirection(lang: string): void {
   const base = lang.split('-')[0] || lang;
@@ -42,13 +44,37 @@ function applyDocumentDirection(lang: string): void {
   }
 }
 
+async function ensureLanguageLoaded(lng: string): Promise<SupportedLanguage> {
+  const normalized = normalizeLanguage(lng);
+  if (loadedLanguages.has(normalized) && i18next.hasResourceBundle(normalized, 'translation')) {
+    return normalized;
+  }
+
+  const translation = await LOCALE_LOADERS[normalized]();
+  i18next.addResourceBundle(normalized, 'translation', translation, true, true);
+  loadedLanguages.add(normalized);
+  return normalized;
+}
+
 // Initialize i18n
 export async function initI18n(): Promise<void> {
+  if (i18next.isInitialized) {
+    const currentLanguage = normalizeLanguage(i18next.language || 'en');
+    await ensureLanguageLoaded(currentLanguage);
+    applyDocumentDirection(i18next.language || currentLanguage);
+    return;
+  }
+
+  const fallbackTranslation = await LOCALE_LOADERS.en();
+  loadedLanguages.add('en');
+
   await i18next
     .use(LanguageDetector)
     .init({
-      resources,
-      supportedLngs: ['en', 'fr', 'de', 'es', 'it', 'pl', 'pt', 'nl', 'sv', 'ru', 'ar', 'zh', 'ja'],
+      resources: {
+        en: { translation: fallbackTranslation },
+      },
+      supportedLngs: [...SUPPORTED_LANGUAGES],
       nonExplicitSupportedLngs: true,
       fallbackLng: 'en',
       debug: import.meta.env.DEV,
@@ -60,7 +86,14 @@ export async function initI18n(): Promise<void> {
         caches: ['localStorage'],
       },
     });
-  applyDocumentDirection(i18next.language || 'en');
+
+  const detectedLanguage = await ensureLanguageLoaded(i18next.language || 'en');
+  if (detectedLanguage !== 'en') {
+    // Re-trigger translation resolution now that the detected bundle is loaded.
+    await i18next.changeLanguage(detectedLanguage);
+  }
+
+  applyDocumentDirection(i18next.language || detectedLanguage);
 }
 
 // Helper to translate
@@ -70,8 +103,9 @@ export function t(key: string, options?: Record<string, unknown>): string {
 
 // Helper to change language
 export async function changeLanguage(lng: string): Promise<void> {
-  await i18next.changeLanguage(lng);
-  applyDocumentDirection(lng);
+  const normalized = await ensureLanguageLoaded(lng);
+  await i18next.changeLanguage(normalized);
+  applyDocumentDirection(normalized);
   window.location.reload(); // Simple reload to update all components for now
 }
 

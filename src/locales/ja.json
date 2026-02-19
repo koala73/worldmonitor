@@ -127,7 +127,8 @@
     "serviceStatus": "サービス状態",
     "techReadiness": "テック準備度指数",
     "gccInvestments": "GCC投資",
-    "geoHubs": "地政学ハブ"
+    "geoHubs": "地政学ハブ",
+    "liveWebcams": "ライブカメラ"
   },
   "modals": {
     "search": {
@@ -231,6 +232,7 @@
       "macSilicon": "macOS (Apple Silicon)",
       "macIntel": "macOS (Intel)",
       "windows": "Windows (.exe)",
+      "linux": "Linux (.AppImage)",
       "showAllPlatforms": "全プラットフォームを表示",
       "showLess": "折りたたむ",
       "dismiss": "閉じる"

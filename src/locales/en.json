@@ -127,7 +127,8 @@
     "serviceStatus": "Service Status",
     "techReadiness": "Tech Readiness Index",
     "gccInvestments": "GCC Investments",
-    "geoHubs": "Geopolitical Hubs"
+    "geoHubs": "Geopolitical Hubs",
+    "liveWebcams": "Live Webcams"
   },
   "modals": {
     "search": {
@@ -231,6 +232,7 @@
       "macSilicon": "macOS (Apple Silicon)",
       "macIntel": "macOS (Intel)",
       "windows": "Windows (.exe)",
+      "linux": "Linux (.AppImage)",
       "showAllPlatforms": "Show all platforms",
       "showLess": "Show less",
       "dismiss": "Dismiss"

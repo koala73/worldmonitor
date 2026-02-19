@@ -12,7 +12,8 @@ import {
   STORAGE_KEYS,
   SITE_VARIANT,
 } from '@/config';
-import { fetchCategoryFeeds, fetchMultipleStocks, fetchCrypto, fetchPredictions, fetchEarthquakes, fetchWeatherAlerts, fetchFredData, fetchInternetOutages, isOutagesConfigured, fetchAisSignals, initAisStream, getAisStatus, disconnectAisStream, isAisConfigured, fetchCableActivity, fetchProtestEvents, getProtestStatus, fetchFlightDelays, fetchMilitaryFlights, fetchMilitaryVessels, initMilitaryVesselStream, isMilitaryVesselTrackingConfigured, initDB, updateBaseline, calculateDeviation, addToSignalHistory, saveSnapshot, cleanOldSnapshots, analysisWorker, fetchPizzIntStatus, fetchGdeltTensions, fetchNaturalEvents, fetchRecentAwards, fetchOilAnalytics, fetchCyberThreats, drainTrendingSignals } from '@/services';
+import { BETA_MODE } from '@/config/beta';
+import { fetchCategoryFeeds, getFeedFailures, fetchMultipleStocks, fetchCrypto, fetchPredictions, fetchEarthquakes, fetchWeatherAlerts, fetchFredData, fetchInternetOutages, isOutagesConfigured, fetchAisSignals, initAisStream, getAisStatus, disconnectAisStream, isAisConfigured, fetchCableActivity, fetchProtestEvents, getProtestStatus, fetchFlightDelays, fetchMilitaryFlights, fetchMilitaryVessels, initMilitaryVesselStream, isMilitaryVesselTrackingConfigured, initDB, updateBaseline, calculateDeviation, addToSignalHistory, saveSnapshot, cleanOldSnapshots, analysisWorker, fetchPizzIntStatus, fetchGdeltTensions, fetchNaturalEvents, fetchRecentAwards, fetchOilAnalytics, fetchCyberThreats, drainTrendingSignals } from '@/services';
 import { fetchCountryMarkets } from '@/services/prediction';
 import { mlWorker } from '@/services/ml-worker';
 import { clusterNewsHybrid } from '@/services/clustering';
@@ -62,6 +63,7 @@ import {
   PizzIntIndicator,
   GdeltIntelPanel,
   LiveNewsPanel,
+  LiveWebcamsPanel,
   CIIPanel,
   CascadePanel,
   StrategicRiskPanel,
@@ -80,6 +82,7 @@ import {
   ClimateAnomalyPanel,
   PopulationExposurePanel,
   InvestmentsPanel,
+  LanguageSelector,
 } from '@/components';
 import type { SearchResult } from '@/components/SearchModal';
 import { collectStoryData } from '@/services/story-data';
@@ -98,7 +101,7 @@ import { isDesktopRuntime } from '@/services/runtime';
 import { isFeatureAvailable } from '@/services/runtime-config';
 import { invokeTauri } from '@/services/tauri-bridge';
 import { getCountryAtCoordinates, hasCountryGeometry, isCoordinateInCountry, preloadCountryGeometry } from '@/services/country-geometry';
-import { initI18n, t, changeLanguage, getCurrentLanguage, LANGUAGES } from '@/services/i18n';
+import { initI18n, t, changeLanguage } from '@/services/i18n';
 
 import type { MarketData, ClusteredEvent } from '@/types';
 import type { PredictionMarket } from '@/services/prediction';
@@ -113,7 +116,15 @@ interface DesktopRuntimeInfo {
   arch: string;
 }
 
+type UpdaterOutcome = 'no_update' | 'update_available' | 'open_failed' | 'fetch_failed';
+type DesktopBuildVariant = 'full' | 'tech' | 'finance';
+
 const CYBER_LAYER_ENABLED = import.meta.env.VITE_ENABLE_CYBER_LAYER === 'true';
+const DESKTOP_BUILD_VARIANT: DesktopBuildVariant = (
+  import.meta.env.VITE_VARIANT === 'tech' || import.meta.env.VITE_VARIANT === 'finance'
+    ? import.meta.env.VITE_VARIANT
+    : 'full'
+);
 
 export interface CountryBriefSignals {
   protests: number;
@@ -143,6 +154,7 @@ export class App {
   private playbackControl: PlaybackControl | null = null;
   private statusPanel: StatusPanel | null = null;
   private exportPanel: ExportPanel | null = null;
+  private languageSelector: LanguageSelector | null = null;
   private searchModal: SearchModal | null = null;
   private mobileWarningModal: MobileWarningModal | null = null;
   private pizzintIndicator: PizzIntIndicator | null = null;
@@ -179,6 +191,8 @@ export class App {
   private pendingDeepLinkCountry: string | null = null;
   private briefRequestToken = 0;
   private readonly isDesktopApp = isDesktopRuntime();
+  private readonly UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
+  private updateCheckIntervalId: ReturnType<typeof setInterval> | null = null;
 
   constructor(containerId: string) {
     const el = document.getElementById(containerId);
@@ -315,20 +329,23 @@ export class App {
     this.signalModal.setLocationClickHandler((lat, lon) => {
       this.map?.setCenter(lat, lon, 4);
     });
-    this.findingsBadge = new IntelligenceGapBadge();
-    this.findingsBadge.setOnSignalClick((signal) => {
-      if (this.countryBriefPage?.isVisible()) return;
-      this.signalModal?.showSignal(signal);
-    });
-    this.findingsBadge.setOnAlertClick((alert) => {
-      if (this.countryBriefPage?.isVisible()) return;
-      this.signalModal?.showAlert(alert);
-    });
+    if (!this.isMobile) {
+      this.findingsBadge = new IntelligenceGapBadge();
+      this.findingsBadge.setOnSignalClick((signal) => {
+        if (this.countryBriefPage?.isVisible()) return;
+        this.signalModal?.showSignal(signal);
+      });
+      this.findingsBadge.setOnAlertClick((alert) => {
+        if (this.countryBriefPage?.isVisible()) return;
+        this.signalModal?.showAlert(alert);
+      });
+    }
     this.setupMobileWarning();
     this.setupPlaybackControl();
     this.setupStatusPanel();
     this.setupPizzIntIndicator();
     this.setupExportPanel();
+    this.setupLanguageSelector();
     this.setupSearchModal();
     this.setupMapLayerHandlers();
     this.setupCountryIntel();
@@ -362,9 +379,7 @@ export class App {
     // Handle deep links for story sharing
     this.handleDeepLinks();
 
-    if (this.isDesktopApp) {
-      setTimeout(() => this.checkForUpdate(), 5000);
-    }
+    this.setupUpdateChecks();
   }
 
   private handleDeepLinks(): void {
@@ -415,25 +430,71 @@ export class App {
     }
   }
 
+  private setupUpdateChecks(): void {
+    if (!this.isDesktopApp || this.isDestroyed) return;
+
+    // Run once shortly after startup, then poll every 6 hours.
+    setTimeout(() => {
+      if (this.isDestroyed) return;
+      void this.checkForUpdate();
+    }, 5000);
+
+    if (this.updateCheckIntervalId) {
+      clearInterval(this.updateCheckIntervalId);
+    }
+    this.updateCheckIntervalId = setInterval(() => {
+      if (this.isDestroyed) return;
+      void this.checkForUpdate();
+    }, this.UPDATE_CHECK_INTERVAL_MS);
+  }
+
+  private logUpdaterOutcome(outcome: UpdaterOutcome, context: Record<string, unknown> = {}): void {
+    const logger = outcome === 'open_failed' || outcome === 'fetch_failed'
+      ? console.warn
+      : console.info;
+    logger('[updater]', outcome, context);
+  }
+
+  private getDesktopBuildVariant(): DesktopBuildVariant {
+    return DESKTOP_BUILD_VARIANT;
+  }
+
   private async checkForUpdate(): Promise<void> {
     try {
       const res = await fetch('https://worldmonitor.app/api/version');
-      if (!res.ok) return;
+      if (!res.ok) {
+        this.logUpdaterOutcome('fetch_failed', { status: res.status });
+        return;
+      }
       const data = await res.json();
       const remote = data.version as string;
-      if (!remote) return;
+      if (!remote) {
+        this.logUpdaterOutcome('fetch_failed', { reason: 'missing_remote_version' });
+        return;
+      }
 
       const current = __APP_VERSION__;
-      if (!this.isNewerVersion(remote, current)) return;
+      if (!this.isNewerVersion(remote, current)) {
+        this.logUpdaterOutcome('no_update', { current, remote });
+        return;
+      }
 
       const dismissKey = `wm-update-dismissed-${remote}`;
-      if (localStorage.getItem(dismissKey)) return;
+      if (localStorage.getItem(dismissKey)) {
+        this.logUpdaterOutcome('update_available', { current, remote, dismissed: true });
+        return;
+      }
 
       const releaseUrl = typeof data.url === 'string' && data.url
         ? data.url
         : 'https://github.com/koala73/worldmonitor/releases/latest';
+      this.logUpdaterOutcome('update_available', { current, remote, dismissed: false });
       await this.showUpdateBadge(remote, releaseUrl);
-    } catch { /* silent */ }
+    } catch (error) {
+      this.logUpdaterOutcome('fetch_failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   private isNewerVersion(remote: string, current: string): boolean {
@@ -473,7 +534,8 @@ export class App {
       const runtimeInfo = await invokeTauri<DesktopRuntimeInfo>('get_desktop_runtime_info');
       const platform = this.mapDesktopDownloadPlatform(runtimeInfo.os, runtimeInfo.arch);
       if (platform) {
-        return `https://worldmonitor.app/api/download?platform=${platform}`;
+        const variant = this.getDesktopBuildVariant();
+        return `https://worldmonitor.app/api/download?platform=${platform}&variant=${variant}`;
       }
     } catch {
       // Silent fallback to release page when desktop runtime info is unavailable.
@@ -484,14 +546,32 @@ export class App {
   private async showUpdateBadge(version: string, releaseUrl: string): Promise<void> {
     const versionSpan = this.container.querySelector('.version');
     if (!versionSpan) return;
-    const href = await this.resolveUpdateDownloadUrl(releaseUrl);
+    const existingBadge = this.container.querySelector<HTMLElement>('.update-badge');
+    if (existingBadge?.dataset.version === version) return;
+    existingBadge?.remove();
+
+    const url = await this.resolveUpdateDownloadUrl(releaseUrl);
 
     const badge = document.createElement('a');
     badge.className = 'update-badge';
-    badge.href = href;
-    badge.target = '_blank';
+    badge.dataset.version = version;
+    badge.href = url;
+    badge.target = this.isDesktopApp ? '_self' : '_blank';
     badge.rel = 'noopener';
     badge.textContent = `UPDATE v${version}`;
+    badge.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (this.isDesktopApp) {
+        void invokeTauri<void>('open_url', { url }).catch((error) => {
+          this.logUpdaterOutcome('open_failed', {
+            url,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        });
+        return;
+      }
+      window.open(url, '_blank', 'noopener');
+    });
 
     const dismiss = document.createElement('span');
     dismiss.className = 'update-badge-dismiss';
@@ -579,6 +659,19 @@ export class App {
     const headerRight = this.container.querySelector('.header-right');
     if (headerRight) {
       headerRight.insertBefore(this.exportPanel.getElement(), headerRight.firstChild);
+    }
+  }
+
+  private setupLanguageSelector(): void {
+    this.languageSelector = new LanguageSelector();
+    const headerRight = this.container.querySelector('.header-right');
+    const searchBtn = this.container.querySelector('#searchBtn');
+
+    if (headerRight && searchBtn) {
+      // Insert before search button or at the beginning if search button not found
+      headerRight.insertBefore(this.languageSelector.getElement(), searchBtn);
+    } else if (headerRight) {
+      headerRight.insertBefore(this.languageSelector.getElement(), headerRight.firstChild);
     }
   }
 
@@ -839,10 +932,11 @@ export class App {
       } else {
         const briefHeadlines = (context.headlines as string[] | undefined) || [];
         let fallbackBrief = '';
-        if (briefHeadlines.length >= 2 && mlWorker.isAvailable) {
+        const sumModelId = BETA_MODE ? 'summarization-beta' : 'summarization';
+        if (briefHeadlines.length >= 2 && mlWorker.isAvailable && mlWorker.isModelLoaded(sumModelId)) {
           try {
             const prompt = `Summarize the current situation in ${country} based on these headlines: ${briefHeadlines.slice(0, 8).join('. ')}`;
-            const [summary] = await mlWorker.summarize([prompt]);
+            const [summary] = await mlWorker.summarize([prompt], BETA_MODE ? 'summarization-beta' : undefined);
             if (summary && summary.length > 20) fallbackBrief = summary;
           } catch { /* T5 failed */ }
         }
@@ -1138,6 +1232,10 @@ export class App {
     setTimeout(() => { el.classList.remove('visible'); setTimeout(() => el.remove(), 300); }, 3000);
   }
 
+  private shouldShowIntelligenceNotifications(): boolean {
+    return !this.isMobile && !!this.findingsBadge?.isEnabled();
+  }
+
   private setupSearchModal(): void {
     const searchOptions = SITE_VARIANT === 'tech'
       ? {
@@ -1145,14 +1243,14 @@ export class App {
         hint: t('modals.search.hintTech'),
       }
       : SITE_VARIANT === 'finance'
-      ? {
+        ? {
           placeholder: t('modals.search.placeholderFinance'),
           hint: t('modals.search.hintFinance'),
         }
-      : {
-        placeholder: t('modals.search.placeholder'),
-        hint: t('modals.search.hint'),
-      };
+        : {
+          placeholder: t('modals.search.placeholder'),
+          hint: t('modals.search.hint'),
+        };
     this.searchModal = new SearchModal(this.container, searchOptions);
 
     if (SITE_VARIANT === 'tech') {
@@ -1637,8 +1735,8 @@ export class App {
       });
     };
 
-    saveCurrentSnapshot();
-    this.snapshotIntervalId = setInterval(saveCurrentSnapshot, 15 * 60 * 1000);
+    void saveCurrentSnapshot().catch((e) => console.warn('[Snapshot] save failed:', e));
+    this.snapshotIntervalId = setInterval(() => void saveCurrentSnapshot().catch((e) => console.warn('[Snapshot] save failed:', e)), 15 * 60 * 1000);
   }
 
   private restoreSnapshot(snapshot: import('@/services/storage').DashboardSnapshot): void {
@@ -1664,11 +1762,6 @@ export class App {
   }
 
   private renderLayout(): void {
-    const currentLang = getCurrentLanguage();
-    const langOptions = LANGUAGES.map(l =>
-      `<option value="${l.code}" ${l.code === currentLang ? 'selected' : ''}>${l.flag} ${l.code.toUpperCase()}</option>`
-    ).join('');
-
     this.container.innerHTML = `
       <div class="header">
         <div class="header-left">
@@ -1700,7 +1793,7 @@ export class App {
               <span class="variant-label">${t('header.finance')}</span>
             </a>
           </div>
-          <span class="logo">MONITOR</span><span class="version">v${__APP_VERSION__}</span>
+          <span class="logo">MONITOR</span><span class="version">v${__APP_VERSION__}</span>${BETA_MODE ? '<span class="beta-badge">BETA</span>' : ''}
           <a href="https://x.com/eliehabib" target="_blank" rel="noopener" class="credit-link">
             <svg class="x-logo" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
             <span class="credit-text">@eliehabib</span>
@@ -1726,15 +1819,12 @@ export class App {
           </div>
         </div>
         <div class="header-right">
-          <select id="langSelect" class="lang-select">
-            ${langOptions}
-          </select>
           <button class="search-btn" id="searchBtn"><kbd>⌘K</kbd> ${t('header.search')}</button>
           ${this.isDesktopApp ? '' : `<button class="copy-link-btn" id="copyLinkBtn">${t('header.copyLink')}</button>`}
           <button class="theme-toggle-btn" id="headerThemeToggle" title="${t('header.toggleTheme')}">
             ${getCurrentTheme() === 'dark'
-              ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>'
-              : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>'}
+        ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>'
+        : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>'}
           </button>
           ${this.isDesktopApp ? '' : `<button class="fullscreen-btn" id="fullscreenBtn" title="${t('header.fullscreen')}">⛶</button>`}
           <button class="settings-btn" id="settingsBtn">⚙ ${t('header.settings')}</button>
@@ -1795,6 +1885,15 @@ export class App {
    * Render critical military posture banner when buildup detected
    */
   private renderCriticalBanner(postures: TheaterPostureSummary[]): void {
+    if (this.isMobile) {
+      if (this.criticalBannerEl) {
+        this.criticalBannerEl.remove();
+        this.criticalBannerEl = null;
+      }
+      document.body.classList.remove('has-critical-banner');
+      return;
+    }
+
     // Check if banner was dismissed this session
     const dismissedAt = sessionStorage.getItem('banner-dismissed');
     if (dismissedAt && Date.now() - parseInt(dismissedAt, 10) < 30 * 60 * 1000) {
@@ -1866,6 +1965,11 @@ export class App {
     if (this.snapshotIntervalId) {
       clearInterval(this.snapshotIntervalId);
       this.snapshotIntervalId = null;
+    }
+
+    if (this.updateCheckIntervalId) {
+      clearInterval(this.updateCheckIntervalId);
+      this.updateCheckIntervalId = null;
     }
 
     // Clear all refresh timeouts
@@ -2171,6 +2275,9 @@ export class App {
     const liveNewsPanel = new LiveNewsPanel();
     this.panels['live-news'] = liveNewsPanel;
 
+    const liveWebcamsPanel = new LiveWebcamsPanel();
+    this.panels['live-webcams'] = liveWebcamsPanel;
+
     // Tech Events Panel (tech variant only - but create for all to allow toggling)
     this.panels['events'] = new TechEventsPanel('events');
 
@@ -2223,6 +2330,14 @@ export class App {
     if (liveNewsIdx > 0) {
       panelOrder.splice(liveNewsIdx, 1);
       panelOrder.unshift('live-news');
+    }
+
+    // live-webcams MUST follow live-news (one-time migration for existing users)
+    const webcamsIdx = panelOrder.indexOf('live-webcams');
+    if (webcamsIdx !== -1 && webcamsIdx !== panelOrder.indexOf('live-news') + 1) {
+      panelOrder.splice(webcamsIdx, 1);
+      const afterNews = panelOrder.indexOf('live-news') + 1;
+      panelOrder.splice(afterNews, 0, 'live-webcams');
     }
 
     // Desktop configuration should stay easy to reach in Tauri builds.
@@ -2371,7 +2486,7 @@ export class App {
         return;
       }
       // Don't start drag if target is the resize handle
-      if (target.classList.contains('panel-resize-handle') || target.closest('.panel-resize-handle')) {
+      if (target.classList?.contains('panel-resize-handle') || target.closest?.('.panel-resize-handle')) {
         e.preventDefault();
         return;
       }
@@ -2437,7 +2552,7 @@ export class App {
     });
 
     document.getElementById('settingsModal')?.addEventListener('click', (e) => {
-      if ((e.target as HTMLElement).classList.contains('modal-overlay')) {
+      if ((e.target as HTMLElement)?.classList?.contains('modal-overlay')) {
         document.getElementById('settingsModal')?.classList.remove('active');
       }
     });
@@ -2625,9 +2740,14 @@ export class App {
 
   private toggleFullscreen(): void {
     if (document.fullscreenElement) {
-      document.exitFullscreen();
+      void document.exitFullscreen().catch(() => {});
     } else {
-      document.documentElement.requestFullscreen();
+      const el = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => void };
+      if (el.requestFullscreen) {
+        void el.requestFullscreen().catch(() => {});
+      } else if (el.webkitRequestFullscreen) {
+        try { el.webkitRequestFullscreen(); } catch {}
+      }
     }
   }
 
@@ -2707,13 +2827,17 @@ export class App {
       )
       .join('');
 
-    const findingsEnabled = this.findingsBadge?.isEnabled() ?? IntelligenceGapBadge.getStoredEnabledState();
-    const findingsHtml = `
+    const findingsHtml = this.isMobile
+      ? ''
+      : (() => {
+        const findingsEnabled = this.findingsBadge?.isEnabled() ?? IntelligenceGapBadge.getStoredEnabledState();
+        return `
       <div class="panel-toggle-item ${findingsEnabled ? 'active' : ''}" data-panel="intel-findings">
         <div class="panel-toggle-checkbox">${findingsEnabled ? '✓' : ''}</div>
         <span class="panel-toggle-label">Intelligence Findings</span>
       </div>
     `;
+      })();
 
     container.innerHTML = panelHtml + findingsHtml;
 
@@ -2722,7 +2846,8 @@ export class App {
         const panelKey = (item as HTMLElement).dataset.panel!;
 
         if (panelKey === 'intel-findings') {
-          this.findingsBadge?.setEnabled(!this.findingsBadge.isEnabled());
+          if (!this.findingsBadge) return;
+          this.findingsBadge.setEnabled(!this.findingsBadge.isEnabled());
           this.renderPanelToggles();
           return;
         }
@@ -2814,7 +2939,7 @@ export class App {
     });
 
     document.getElementById('sourcesModal')?.addEventListener('click', (e) => {
-      if ((e.target as HTMLElement).classList.contains('modal-overlay')) {
+      if ((e.target as HTMLElement)?.classList?.contains('modal-overlay')) {
         document.getElementById('sourcesModal')?.classList.remove('active');
       }
     });
@@ -3148,9 +3273,20 @@ export class App {
           pendingItems = null;
         }
 
-        const baseline = await updateBaseline(`news:${category}`, items.length);
-        const deviation = calculateDeviation(items.length, baseline);
-        panel.setDeviation(deviation.zScore, deviation.percentChange, deviation.level);
+        if (items.length === 0) {
+          const failures = getFeedFailures();
+          const failedFeeds = enabledFeeds.filter(f => failures.has(f.name));
+          if (failedFeeds.length > 0) {
+            const names = failedFeeds.map(f => f.name).join(', ');
+            panel.showError(`${t('common.noNewsAvailable')} (${names} failed)`);
+          }
+        }
+
+        try {
+          const baseline = await updateBaseline(`news:${category}`, items.length);
+          const deviation = calculateDeviation(items.length, baseline);
+          panel.setDeviation(deviation.zScore, deviation.percentChange, deviation.level);
+        } catch (e) { console.warn(`[Baseline] news:${category} write failed:`, e); }
       }
 
       this.statusPanel?.updateFeed(category.charAt(0).toUpperCase() + category.slice(1), {
@@ -3213,9 +3349,11 @@ export class App {
           const intel = intelResult[0].value;
           this.renderNewsForCategory('intel', intel);
           if (intelPanel) {
-            const baseline = await updateBaseline('news:intel', intel.length);
-            const deviation = calculateDeviation(intel.length, baseline);
-            intelPanel.setDeviation(deviation.zScore, deviation.percentChange, deviation.level);
+            try {
+              const baseline = await updateBaseline('news:intel', intel.length);
+              const deviation = calculateDeviation(intel.length, baseline);
+              intelPanel.setDeviation(deviation.zScore, deviation.percentChange, deviation.level);
+            } catch (e) { console.warn('[Baseline] news:intel write failed:', e); }
           }
           this.statusPanel?.updateFeed('Intel', { status: 'ok', itemCount: intel.length });
           collectedNews.push(...intel);
@@ -3624,13 +3762,13 @@ export class App {
           if (surgeAlerts.length > 0) {
             const surgeSignals = surgeAlerts.map(surgeAlertToSignal);
             addToSignalHistory(surgeSignals);
-            if (this.findingsBadge?.isEnabled()) this.signalModal?.show(surgeSignals);
+            if (this.shouldShowIntelligenceNotifications()) this.signalModal?.show(surgeSignals);
           }
           const foreignAlerts = detectForeignMilitaryPresence(flightData.flights);
           if (foreignAlerts.length > 0) {
             const foreignSignals = foreignAlerts.map(foreignPresenceToSignal);
             addToSignalHistory(foreignSignals);
-            if (this.findingsBadge?.isEnabled()) this.signalModal?.show(foreignSignals);
+            if (this.shouldShowIntelligenceNotifications()) this.signalModal?.show(foreignSignals);
           }
         }
       } catch (error) {
@@ -3781,10 +3919,12 @@ export class App {
       this.map?.setCyberThreats(threats);
       this.map?.setLayerReady('cyberThreats', threats.length > 0);
       this.statusPanel?.updateFeed('Cyber Threats', { status: 'ok', itemCount: threats.length });
+      this.statusPanel?.updateApi('Cyber Threats API', { status: 'ok' });
       dataFreshness.recordUpdate('cyber_threats', threats.length);
     } catch (error) {
       this.map?.setLayerReady('cyberThreats', false);
       this.statusPanel?.updateFeed('Cyber Threats', { status: 'error', errorMessage: String(error) });
+      this.statusPanel?.updateApi('Cyber Threats API', { status: 'error' });
       dataFreshness.recordError('cyber_threats', String(error));
     }
   }
@@ -3885,7 +4025,7 @@ export class App {
       } else if (status.acledConfigured === null) {
         this.statusPanel?.updateApi('ACLED', { status: 'warning' });
       }
-      this.statusPanel?.updateApi('GDELT', { status: 'ok' });
+      this.statusPanel?.updateApi('GDELT Doc', { status: 'ok' });
       return;
     }
     try {
@@ -3911,12 +4051,12 @@ export class App {
       } else if (status.acledConfigured === null) {
         this.statusPanel?.updateApi('ACLED', { status: 'warning' });
       }
-      this.statusPanel?.updateApi('GDELT', { status: 'ok' });
+      this.statusPanel?.updateApi('GDELT Doc', { status: 'ok' });
     } catch (error) {
       this.map?.setLayerReady('protests', false);
       this.statusPanel?.updateFeed('Protests', { status: 'error', errorMessage: String(error) });
       this.statusPanel?.updateApi('ACLED', { status: 'error' });
-      this.statusPanel?.updateApi('GDELT', { status: 'error' });
+      this.statusPanel?.updateApi('GDELT Doc', { status: 'error' });
     }
   }
 
@@ -3994,13 +4134,13 @@ export class App {
         if (surgeAlerts.length > 0) {
           const surgeSignals = surgeAlerts.map(surgeAlertToSignal);
           addToSignalHistory(surgeSignals);
-          if (this.findingsBadge?.isEnabled()) this.signalModal?.show(surgeSignals);
+          if (this.shouldShowIntelligenceNotifications()) this.signalModal?.show(surgeSignals);
         }
         const foreignAlerts = detectForeignMilitaryPresence(flightData.flights);
         if (foreignAlerts.length > 0) {
           const foreignSignals = foreignAlerts.map(foreignPresenceToSignal);
           addToSignalHistory(foreignSignals);
-          if (this.findingsBadge?.isEnabled()) this.signalModal?.show(foreignSignals);
+          if (this.shouldShowIntelligenceNotifications()) this.signalModal?.show(foreignSignals);
         }
       }
 
@@ -4092,8 +4232,11 @@ export class App {
     try {
       const data = await fetchOilAnalytics();
       economicPanel?.updateOil(data);
+      const hasData = !!(data.wtiPrice || data.brentPrice || data.usProduction || data.usInventory);
+      this.statusPanel?.updateApi('EIA', { status: hasData ? 'ok' : 'error' });
     } catch (e) {
       console.error('[App] Oil analytics failed:', e);
+      this.statusPanel?.updateApi('EIA', { status: 'error' });
     }
   }
 
@@ -4102,8 +4245,10 @@ export class App {
     try {
       const data = await fetchRecentAwards({ daysBack: 7, limit: 15 });
       economicPanel?.updateSpending(data);
+      this.statusPanel?.updateApi('USASpending', { status: data.awards.length > 0 ? 'ok' : 'error' });
     } catch (e) {
       console.error('[App] Government spending failed:', e);
+      this.statusPanel?.updateApi('USASpending', { status: 'error' });
     }
   }
 
@@ -4146,7 +4291,7 @@ export class App {
       const allSignals = [...signals, ...geoSignals, ...keywordSpikeSignals];
       if (allSignals.length > 0) {
         addToSignalHistory(allSignals);
-        if (this.findingsBadge?.isEnabled()) this.signalModal?.show(allSignals);
+        if (this.shouldShowIntelligenceNotifications()) this.signalModal?.show(allSignals);
       }
     } catch (error) {
       console.error('[App] Correlation analysis failed:', error);

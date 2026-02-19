@@ -70,6 +70,7 @@ export interface NewsItemCore {
   lat?: number;
   lon?: number;
   locationName?: string;
+  lang?: string;
 }
 
 export type NewsItemWithTier = NewsItemCore & { tier: number };
@@ -90,6 +91,7 @@ export interface ClusteredEventCore {
   threat?: import('./threat-classifier').ThreatClassification;
   lat?: number;
   lon?: number;
+  lang?: string;
 }
 
 export interface PredictionMarketCore {
@@ -292,6 +294,7 @@ export function clusterNewsCore(
       monitorColor: cluster.find(i => i.monitorColor)?.monitorColor,
       threat,
       ...(clusterLat != null && { lat: clusterLat, lon: clusterLon }),
+      lang: primary.lang,
     };
   }).sort((a, b) => b.lastUpdated.getTime() - a.lastUpdated.getTime());
 }

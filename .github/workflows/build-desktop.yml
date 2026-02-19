@@ -94,6 +94,9 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Check version consistency
+        run: npm run version:check
+
       - name: Bundle Node.js runtime
         shell: bash
         env:

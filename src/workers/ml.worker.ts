@@ -38,6 +38,7 @@ interface SummarizeMessage {
   type: 'summarize';
   id: string;
   texts: string[];
+  modelId?: string;
 }
 
 interface SentimentMessage {
@@ -103,6 +104,11 @@ async function loadModel(modelId: string): Promise<void> {
   const startTime = Date.now();
 
   const loadPromise = (async () => {
+    // Suppress verbose ONNX Runtime warnings (CleanUnusedInitializersAndNodeArgs)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ort = (globalThis as any).ort;
+    if (ort?.env) { try { ort.env.logLevel = 'error'; } catch { /* ignore */ } }
+
     const pipe = await pipeline(config.task, config.hfModel, {
       progress_callback: (progress: { status: string; progress?: number }) => {
         if (progress.status === 'progress' && progress.progress !== undefined) {
@@ -118,6 +124,9 @@ async function loadModel(modelId: string): Promise<void> {
     loadedPipelines.set(modelId, pipe);
     loadingPromises.delete(modelId);
     console.log(`[MLWorker] Model loaded in ${Date.now() - startTime}ms: ${modelId}`);
+
+    // Notify manager that model is now available (no id = unsolicited notification)
+    self.postMessage({ type: 'model-loaded', modelId });
   })();
 
   loadingPromises.set(modelId, loadPromise);
@@ -145,9 +154,9 @@ async function embedTexts(texts: string[]): Promise<number[][]> {
   return results;
 }
 
-async function summarizeTexts(texts: string[]): Promise<string[]> {
-  await loadModel('summarization');
-  const pipe = loadedPipelines.get('summarization')!;
+async function summarizeTexts(texts: string[], modelId = 'summarization'): Promise<string[]> {
+  await loadModel(modelId);
+  const pipe = loadedPipelines.get(modelId)!;
 
   const results: string[] = [];
   for (const text of texts) {
@@ -310,7 +319,7 @@ self.onmessage = async (event: MessageEvent<MLWorkerMessage>) => {
       }
 
       case 'summarize': {
-        const summaries = await summarizeTexts(message.texts);
+        const summaries = await summarizeTexts(message.texts, message.modelId);
         self.postMessage({
           type: 'summarize-result',
           id: message.id,

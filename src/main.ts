@@ -4,14 +4,16 @@ import * as Sentry from '@sentry/browser';
 import { inject } from '@vercel/analytics';
 import { App } from './App';
 
+const sentryDsn = import.meta.env.VITE_SENTRY_DSN?.trim();
+
 // Initialize Sentry error tracking (early as possible)
 Sentry.init({
-  dsn: 'https://afc9a1c85c6ba49f8464a43f8de74ccd@o4509927897890816.ingest.us.sentry.io/4510906342113280',
+  dsn: sentryDsn || undefined,
   release: `worldmonitor@${__APP_VERSION__}`,
   environment: location.hostname === 'worldmonitor.app' ? 'production'
     : location.hostname.includes('vercel.app') ? 'preview'
     : 'development',
-  enabled: !location.hostname.startsWith('localhost') && !('__TAURI_INTERNALS__' in window),
+  enabled: Boolean(sentryDsn) && !location.hostname.startsWith('localhost') && !('__TAURI_INTERNALS__' in window),
   sendDefaultPii: true,
   tracesSampleRate: 0.1,
   ignoreErrors: [
@@ -23,7 +25,7 @@ Sentry.init({
     /InvalidAccessError/,
     /importScripts/,
     /^TypeError: Load failed$/,
-    /^TypeError: Failed to fetch/,
+    /^TypeError: Failed to fetch( \(.*\))?$/,
     /^TypeError: cancelled$/,
     /^TypeError: NetworkError/,
     /runtime\.sendMessage\(\)/,
@@ -31,10 +33,36 @@ Sentry.init({
     /^Object captured as promise rejection with keys:/,
     /Unable to load image/,
     /Non-Error promise rejection captured with value:/,
+    /Connection to Indexed Database server lost/,
+    /webkit\.messageHandlers/,
+    /unsafe-eval.*Content Security Policy/,
+    /Fullscreen request denied/,
+    /requestFullscreen/,
+    /vc_text_indicators_context/,
+    /Program failed to link: null/,
+    /too much recursion/,
+    /zaloJSV2/,
+    /Java bridge method invocation error/,
+    /Could not compile fragment shader/,
+    /can't redefine non-configurable property/,
+    /Can.t find variable: (CONFIG|currentInset)/,
+    /invalid origin/,
+    /\.data\.split is not a function/,
+    /signal is aborted without reason/,
+    /Failed to fetch dynamically imported module/,
   ],
   beforeSend(event) {
     const msg = event.exception?.values?.[0]?.value ?? '';
     if (msg.length <= 3 && /^[a-zA-Z_$]+$/.test(msg)) return null;
+    const frames = event.exception?.values?.[0]?.stacktrace?.frames ?? [];
+    // Suppress module-import failures only when originating from browser extensions.
+    if (/Importing a module script failed/.test(msg)) {
+      if (frames.some(f => /^(chrome|moz)-extension:/.test(f.filename ?? ''))) return null;
+    }
+    // Suppress maplibre internal null-access crashes (light, placement) only when stack is in map chunk
+    if (/this\.style\._layers|reading '_layers'|this\.light is null|can't access property "(type|setFilter)", \w+ is (null|undefined)|Cannot read properties of null \(reading '(id|type|setFilter|_layers)'\)|null is not an object \(evaluating '(E\.|this\.style)/.test(msg)) {
+      if (frames.some(f => /\/map-[A-Za-z0-9]+\.js/.test(f.filename ?? ''))) return null;
+    }
     return event;
   },
 });
@@ -87,6 +115,30 @@ app
   cells: debugGetCells,
   count: getCellCount,
 };
+
+// Beta mode toggle: type `beta=true` / `beta=false` in console
+Object.defineProperty(window, 'beta', {
+  get() {
+    const on = localStorage.getItem('worldmonitor-beta-mode') === 'true';
+    console.log(`[Beta] ${on ? 'ON' : 'OFF'}`);
+    return on;
+  },
+  set(v: boolean) {
+    if (v) localStorage.setItem('worldmonitor-beta-mode', 'true');
+    else localStorage.removeItem('worldmonitor-beta-mode');
+    location.reload();
+  },
+});
+
+// Suppress native WKWebView context menu in Tauri — allows custom JS context menus
+if ('__TAURI_INTERNALS__' in window || '__TAURI__' in window) {
+  document.addEventListener('contextmenu', (e) => {
+    const target = e.target as HTMLElement;
+    // Allow native menu on text inputs/textareas for copy/paste
+    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+    e.preventDefault();
+  });
+}
 
 if (!('__TAURI_INTERNALS__' in window) && !('__TAURI__' in window)) {
   import('virtual:pwa-register').then(({ registerSW }) => {

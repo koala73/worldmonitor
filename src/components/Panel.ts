@@ -196,8 +196,8 @@ export class Panel {
 
     // Prevent panel drag when resizing (capture phase runs before App.ts listener)
     this.element.addEventListener('dragstart', (e) => {
-      const target = e.target as HTMLElement;
-      if (this.isResizing || target === this.resizeHandle || target.closest('.panel-resize-handle')) {
+      const target = e.target;
+      if (this.isResizing || target === this.resizeHandle || (target instanceof Element && target.closest('.panel-resize-handle'))) {
         e.preventDefault();
         e.stopImmediatePropagation();
         return false;

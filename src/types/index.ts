@@ -2,11 +2,12 @@ export type PropagandaRisk = 'low' | 'medium' | 'high';
 
 export interface Feed {
   name: string;
-  url: string;
+  url: string | Record<string, string>;
   type?: string;
   region?: string;
   propagandaRisk?: PropagandaRisk;
   stateAffiliated?: string;  // e.g., "Russia", "China", "Iran"
+  lang?: string;             // ISO 2-letter code for filtering
 }
 
 export type { ThreatClassification, ThreatLevel, EventCategory } from '@/services/threat-classifier';
@@ -23,6 +24,7 @@ export interface NewsItem {
   lat?: number;
   lon?: number;
   locationName?: string;
+  lang?: string;
 }
 
 export type VelocityLevel = 'normal' | 'elevated' | 'spike';
@@ -53,6 +55,7 @@ export interface ClusteredEvent {
   threat?: import('@/services/threat-classifier').ThreatClassification;
   lat?: number;
   lon?: number;
+  lang?: string;
 }
 
 export type AssetType = 'pipeline' | 'cable' | 'datacenter' | 'base' | 'nuclear';

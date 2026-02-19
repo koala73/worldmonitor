@@ -8,11 +8,33 @@ const PLATFORM_PATTERNS = {
   'windows-msi': (name) => name.endsWith('_x64_en-US.msi'),
   'macos-arm64': (name) => name.endsWith('_aarch64.dmg'),
   'macos-x64': (name) => name.endsWith('_x64.dmg') && !name.includes('setup'),
+  'linux-appimage': (name) => name.endsWith('_amd64.AppImage'),
 };
+
+const VARIANT_PREFIXES = {
+  full: ['world-monitor'],
+  world: ['world-monitor'],
+  tech: ['tech-monitor'],
+  finance: ['finance-monitor'],
+};
+
+function findAssetForVariant(assets, variant, platformMatcher) {
+  const prefixes = VARIANT_PREFIXES[variant] ?? null;
+  if (!prefixes) return null;
+
+  return assets.find((asset) => {
+    const assetName = String(asset?.name || '').toLowerCase();
+    const hasVariantPrefix = prefixes.some((prefix) =>
+      assetName.startsWith(`${prefix.toLowerCase()}_`) || assetName.startsWith(`${prefix.toLowerCase()}-`)
+    );
+    return hasVariantPrefix && platformMatcher(String(asset?.name || ''));
+  }) ?? null;
+}
 
 export default async function handler(req) {
   const url = new URL(req.url);
   const platform = url.searchParams.get('platform');
+  const variant = (url.searchParams.get('variant') || '').toLowerCase();
 
   if (!platform || !PLATFORM_PATTERNS[platform]) {
     return Response.redirect(RELEASES_PAGE, 302);
@@ -32,7 +54,10 @@ export default async function handler(req) {
 
     const release = await res.json();
     const matcher = PLATFORM_PATTERNS[platform];
-    const asset = release.assets?.find((a) => matcher(a.name));
+    const assets = Array.isArray(release.assets) ? release.assets : [];
+    const asset = variant
+      ? findAssetForVariant(assets, variant, matcher)
+      : assets.find((a) => matcher(String(a?.name || '')));
 
     if (!asset) {
       return Response.redirect(RELEASES_PAGE, 302);

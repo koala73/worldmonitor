@@ -58,7 +58,8 @@
     "gccInvestments": "GCC-investeringen",
     "geoHubs": "Geopolitical Hotspots",
     "polymarket": "Voorspellingen",
-    "climate": "Klimaatafwijkingen"
+    "climate": "Klimaatafwijkingen",
+    "liveWebcams": "Live Webcams"
   },
   "modals": {
     "search": {
@@ -148,6 +149,7 @@
       "macSilicon": "macOS (Apple Silicon)",
       "macIntel": "macOS (Intel)",
       "windows": "Windows (.exe)",
+      "linux": "Linux (.AppImage)",
       "dismiss": "Afwijzen",
       "showAllPlatforms": "Toon alle platforms",
       "showLess": "Laat minder zien"

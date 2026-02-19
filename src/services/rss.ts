@@ -5,11 +5,13 @@ import { classifyByKeyword, classifyWithAI } from './threat-classifier';
 import { inferGeoHubsFromTitle } from './geo-hub-index';
 import { getPersistentCache, setPersistentCache } from './persistent-cache';
 import { ingestHeadlines } from './trending-keywords';
+import { getCurrentLanguage } from './i18n';
 
 // Per-feed circuit breaker: track failures and cooldowns
 const FEED_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes after failure
 const MAX_FAILURES = 2; // failures before cooldown
 const MAX_CACHE_ENTRIES = 100; // Prevent unbounded growth
+const FEED_SCOPE_SEPARATOR = '::';
 const feedFailures = new Map<string, { count: number; cooldownUntil: number }>();
 const feedCache = new Map<string, { items: NewsItem[]; timestamp: number }>();
 const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
@@ -30,10 +32,39 @@ function fromSerializable(items: Array<Omit<NewsItem, 'pubDate'> & { pubDate: st
   return items.map(item => ({ ...item, pubDate: new Date(item.pubDate) }));
 }
 
-async function loadPersistentFeed(feedName: string): Promise<NewsItem[] | null> {
-  const entry = await getPersistentCache<Array<Omit<NewsItem, 'pubDate'> & { pubDate: string }>>(`feed:${feedName}`);
+function getFeedScope(feedName: string, lang: string): string {
+  return `${feedName}${FEED_SCOPE_SEPARATOR}${lang}`;
+}
+
+function parseFeedScope(feedScope: string): { feedName: string; lang: string } {
+  const splitIndex = feedScope.lastIndexOf(FEED_SCOPE_SEPARATOR);
+  if (splitIndex === -1) return { feedName: feedScope, lang: 'en' };
+  return {
+    feedName: feedScope.slice(0, splitIndex),
+    lang: feedScope.slice(splitIndex + FEED_SCOPE_SEPARATOR.length),
+  };
+}
+
+function getPersistentFeedKey(feedScope: string): string {
+  return `feed:${feedScope}`;
+}
+
+async function readPersistentFeed(key: string): Promise<NewsItem[] | null> {
+  const entry = await getPersistentCache<Array<Omit<NewsItem, 'pubDate'> & { pubDate: string }>>(key);
   if (!entry?.data?.length) return null;
   return fromSerializable(entry.data);
+}
+
+async function loadPersistentFeed(feedScope: string): Promise<NewsItem[] | null> {
+  const scopedKey = getPersistentFeedKey(feedScope);
+  const scoped = await readPersistentFeed(scopedKey);
+  if (scoped) return scoped;
+
+  // Migration fallback: older builds stored feeds as `feed:<feedName>` without language scope.
+  // Only use this for English to avoid mixing cached content across locales.
+  const { feedName, lang } = parseFeedScope(feedScope);
+  if (lang !== 'en') return null;
+  return readPersistentFeed(`feed:${feedName}`);
 }
 
 // Clean up stale entries to prevent unbounded growth
@@ -62,26 +93,41 @@ function cleanupCaches(): void {
   }
 }
 
-function isFeedOnCooldown(feedName: string): boolean {
-  const state = feedFailures.get(feedName);
+function isFeedOnCooldown(feedScope: string): boolean {
+  const state = feedFailures.get(feedScope);
   if (!state) return false;
   if (Date.now() < state.cooldownUntil) return true;
-  if (state.cooldownUntil > 0) feedFailures.delete(feedName);
+  if (state.cooldownUntil > 0) feedFailures.delete(feedScope);
   return false;
 }
 
-function recordFeedFailure(feedName: string): void {
-  const state = feedFailures.get(feedName) || { count: 0, cooldownUntil: 0 };
+function recordFeedFailure(feedScope: string): void {
+  const state = feedFailures.get(feedScope) || { count: 0, cooldownUntil: 0 };
   state.count++;
   if (state.count >= MAX_FAILURES) {
     state.cooldownUntil = Date.now() + FEED_COOLDOWN_MS;
-    console.warn(`[RSS] ${feedName} on cooldown for 5 minutes after ${state.count} failures`);
+    const { feedName, lang } = parseFeedScope(feedScope);
+    console.warn(`[RSS] ${feedName} (${lang}) on cooldown for 5 minutes after ${state.count} failures`);
   }
-  feedFailures.set(feedName, state);
+  feedFailures.set(feedScope, state);
 }
 
-function recordFeedSuccess(feedName: string): void {
-  feedFailures.delete(feedName);
+function recordFeedSuccess(feedScope: string): void {
+  feedFailures.delete(feedScope);
+}
+
+export function getFeedFailures(): Map<string, { count: number; cooldownUntil: number }> {
+  const currentLang = getCurrentLanguage();
+  const currentLangFailures = new Map<string, { count: number; cooldownUntil: number }>();
+
+  for (const [feedScope, state] of feedFailures) {
+    const { feedName, lang } = parseFeedScope(feedScope);
+    if (lang === currentLang) {
+      currentLangFailures.set(feedName, state);
+    }
+  }
+
+  return currentLangFailures;
 }
 
 function toAiKey(title: string): string {
@@ -115,20 +161,29 @@ function canQueueAiClassification(title: string): boolean {
 
 export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
   if (feedCache.size > MAX_CACHE_ENTRIES / 2) cleanupCaches();
+  const currentLang = getCurrentLanguage();
+  const feedScope = getFeedScope(feed.name, currentLang);
 
-  if (isFeedOnCooldown(feed.name)) {
-    const cached = feedCache.get(feed.name);
+  if (isFeedOnCooldown(feedScope)) {
+    const cached = feedCache.get(feedScope);
     if (cached) return cached.items;
-    return (await loadPersistentFeed(feed.name)) || [];
+    return (await loadPersistentFeed(feedScope)) || [];
   }
 
-  const cached = feedCache.get(feed.name);
+  const cached = feedCache.get(feedScope);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
     return cached.items;
   }
 
   try {
-    const response = await fetchWithProxy(feed.url);
+    let url = typeof feed.url === 'string' ? feed.url : feed.url['en'];
+    if (typeof feed.url !== 'string') {
+      url = feed.url[currentLang] || feed.url['en'] || Object.values(feed.url)[0] || '';
+    }
+
+    if (!url) throw new Error(`No URL found for feed ${feed.name}`);
+
+    const response = await fetchWithProxy(url);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const text = await response.text();
     const parser = new DOMParser();
@@ -137,8 +192,8 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
     const parseError = doc.querySelector('parsererror');
     if (parseError) {
       console.warn(`Parse error for ${feed.name}`);
-      recordFeedFailure(feed.name);
-      const persistent = await loadPersistentFeed(feed.name);
+      recordFeedFailure(feedScope);
+      const persistent = await loadPersistentFeed(feedScope);
       return cached?.items || persistent || [];
     }
 
@@ -176,12 +231,13 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
           isAlert,
           threat,
           ...(topGeo && { lat: topGeo.hub.lat, lon: topGeo.hub.lon, locationName: topGeo.hub.name }),
+          lang: feed.lang,
         };
       });
 
-    feedCache.set(feed.name, { items: parsed, timestamp: Date.now() });
-    void setPersistentCache(`feed:${feed.name}`, toSerializable(parsed));
-    recordFeedSuccess(feed.name);
+    feedCache.set(feedScope, { items: parsed, timestamp: Date.now() });
+    void setPersistentCache(getPersistentFeedKey(feedScope), toSerializable(parsed));
+    recordFeedSuccess(feedScope);
     ingestHeadlines(parsed.map(item => ({
       title: item.title,
       pubDate: item.pubDate,
@@ -201,14 +257,14 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
           item.threat = aiResult;
           item.isAlert = aiResult.level === 'critical' || aiResult.level === 'high';
         }
-      }).catch(() => {});
+      }).catch(() => { });
     }
 
     return parsed;
   } catch (e) {
     console.error(`Failed to fetch ${feed.name}:`, e);
-    recordFeedFailure(feed.name);
-    const persistent = await loadPersistentFeed(feed.name);
+    recordFeedFailure(feedScope);
+    const persistent = await loadPersistentFeed(feedScope);
     return cached?.items || persistent || [];
   }
 }
@@ -222,7 +278,14 @@ export async function fetchCategoryFeeds(
 ): Promise<NewsItem[]> {
   const topLimit = 20;
   const batchSize = options.batchSize ?? 5;
-  const batches = chunkArray(feeds, batchSize);
+  const currentLang = getCurrentLanguage();
+
+  // Filter feeds by language:
+  // 1. Feeds with no explicit 'lang' are universal (or multi-url handled inside fetchFeed)
+  // 2. Feeds with explicit 'lang' must match current UI language
+  const filteredFeeds = feeds.filter(feed => !feed.lang || feed.lang === currentLang);
+
+  const batches = chunkArray(filteredFeeds, batchSize);
   const topItems: NewsItem[] = [];
   let totalItems = 0;
 

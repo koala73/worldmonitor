@@ -29,11 +29,12 @@ function dismiss(panel: HTMLElement): void {
   panel.addEventListener('transitionend', () => panel.remove(), { once: true });
 }
 
-type Platform = 'macos-arm64' | 'macos-x64' | 'macos' | 'windows' | 'unknown';
+type Platform = 'macos-arm64' | 'macos-x64' | 'macos' | 'windows' | 'linux' | 'unknown';
 
 function detectPlatform(): Platform {
   const ua = navigator.userAgent;
   if (/Windows/i.test(ua)) return 'windows';
+  if (/Linux/i.test(ua) && !/Android/i.test(ua)) return 'linux';
   if (/Mac/i.test(ua)) {
     // WebGL renderer can reveal Apple Silicon vs Intel GPU
     try {
@@ -61,6 +62,7 @@ function allButtons(): DlButton[] {
     { cls: 'mac', href: '/api/download?platform=macos-arm64', label: `\uF8FF ${t('modals.downloadBanner.macSilicon')}` },
     { cls: 'mac', href: '/api/download?platform=macos-x64', label: `\uF8FF ${t('modals.downloadBanner.macIntel')}` },
     { cls: 'win', href: '/api/download?platform=windows-exe', label: `\u229E ${t('modals.downloadBanner.windows')}` },
+    { cls: 'linux', href: '/api/download?platform=linux-appimage', label: `\u{1F427} ${t('modals.downloadBanner.linux')}` },
   ];
 }
 
@@ -71,6 +73,7 @@ function buttonsForPlatform(p: Platform): DlButton[] {
     case 'macos-x64': return buttons.filter(b => b.href.includes('macos-x64'));
     case 'macos': return buttons.filter(b => b.cls === 'mac');
     case 'windows': return buttons.filter(b => b.cls === 'win');
+    case 'linux': return buttons.filter(b => b.cls === 'linux');
     default: return buttons;
   }
 }
@@ -142,6 +145,12 @@ function buildPanel(): HTMLElement {
         color: var(--semantic-info);
       }
       .wm-dl-btn.win:hover { background: color-mix(in srgb, var(--semantic-info) 15%, transparent); }
+      .wm-dl-btn.linux {
+        background: color-mix(in srgb, var(--semantic-elevated) 8%, transparent);
+        border: 1px solid color-mix(in srgb, var(--semantic-elevated) 18%, transparent);
+        color: var(--semantic-elevated);
+      }
+      .wm-dl-btn.linux:hover { background: color-mix(in srgb, var(--semantic-elevated) 15%, transparent); }
       .wm-dl-toggle {
         background: none; border: none; color: var(--text-dim, #888);
         font-size: 9px; cursor: pointer; padding: 4px 0 0; text-align: center;

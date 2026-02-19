@@ -127,7 +127,8 @@
     "serviceStatus": "Статус сервисов",
     "techReadiness": "Индекс технологической готовности",
     "gccInvestments": "Инвестиции стран Залива",
-    "geoHubs": "Геополитические хабы"
+    "geoHubs": "Геополитические хабы",
+    "liveWebcams": "Веб-камеры"
   },
   "modals": {
     "search": {
@@ -231,6 +232,7 @@
       "macSilicon": "macOS (Apple Silicon)",
       "macIntel": "macOS (Intel)",
       "windows": "Windows (.exe)",
+      "linux": "Linux (.AppImage)",
       "showAllPlatforms": "Все платформы",
       "showLess": "Свернуть",
       "dismiss": "Скрыть"

@@ -127,7 +127,8 @@
     "serviceStatus": "服务状态",
     "techReadiness": "科技就绪指数",
     "gccInvestments": "GCC投资",
-    "geoHubs": "地缘政治枢纽"
+    "geoHubs": "地缘政治枢纽",
+    "liveWebcams": "实时摄像头"
   },
   "modals": {
     "search": {
@@ -231,6 +232,7 @@
       "macSilicon": "macOS (Apple Silicon)",
       "macIntel": "macOS (Intel)",
       "windows": "Windows (.exe)",
+      "linux": "Linux (.AppImage)",
       "showAllPlatforms": "显示所有平台",
       "showLess": "收起",
       "dismiss": "忽略"

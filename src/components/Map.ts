@@ -574,9 +574,9 @@ export class MapComponent {
     } else {
       // Geopolitical variant legend
       legend.innerHTML = `
-        <div class="map-legend-item"><span class="legend-dot high"></span>${escapeHtml(t('popups.hotspot.levels.high').toUpperCase())}</div>
-        <div class="map-legend-item"><span class="legend-dot elevated"></span>${escapeHtml(t('popups.hotspot.levels.elevated').toUpperCase())}</div>
-        <div class="map-legend-item"><span class="legend-dot low"></span>${escapeHtml(t('popups.monitoring').toUpperCase())}</div>
+        <div class="map-legend-item"><span class="legend-dot high"></span>${escapeHtml((t('popups.hotspot.levels.high') ?? 'HIGH').toUpperCase())}</div>
+        <div class="map-legend-item"><span class="legend-dot elevated"></span>${escapeHtml((t('popups.hotspot.levels.elevated') ?? 'ELEVATED').toUpperCase())}</div>
+        <div class="map-legend-item"><span class="legend-dot low"></span>${escapeHtml((t('popups.monitoring') ?? 'MONITORING').toUpperCase())}</div>
         <div class="map-legend-item"><span class="map-legend-icon conflict">⚔</span>${escapeHtml(t('modals.search.types.conflict').toUpperCase())}</div>
         <div class="map-legend-item"><span class="map-legend-icon earthquake">●</span>${escapeHtml(t('modals.search.types.earthquake').toUpperCase())}</div>
         <div class="map-legend-item"><span class="map-legend-icon apt">⚠</span>APT</div>
@@ -613,6 +613,14 @@ export class MapComponent {
     let lastPos = { x: 0, y: 0 };
     let lastTouchDist = 0;
     let lastTouchCenter = { x: 0, y: 0 };
+    const shouldIgnoreInteractionStart = (target: EventTarget | null): boolean => {
+      if (!(target instanceof Element)) return false;
+      return Boolean(
+        target.closest(
+          '.map-controls, .time-slider, .layer-toggles, .map-legend, .layer-help-popup, .map-popup, button, select, input, textarea, a'
+        )
+      );
+    };
 
     // Wheel zoom with smooth delta
     this.container.addEventListener(
@@ -645,6 +653,7 @@ export class MapComponent {
 
     // Mouse drag for panning
     this.container.addEventListener('mousedown', (e) => {
+      if (shouldIgnoreInteractionStart(e.target)) return;
       if (e.button === 0) { // Left click
         isDragging = true;
         lastPos = { x: e.clientX, y: e.clientY };
@@ -675,6 +684,7 @@ export class MapComponent {
 
     // Touch events for mobile and trackpad
     this.container.addEventListener('touchstart', (e) => {
+      if (shouldIgnoreInteractionStart(e.target)) return;
       const touch1 = e.touches[0];
       const touch2 = e.touches[1];
 
@@ -809,6 +819,7 @@ export class MapComponent {
     }
 
     // Simple viewBox matching container - keeps SVG and overlays aligned
+    if (!this.svg) return;
     this.svg.attr('viewBox', `0 0 ${width} ${height}`);
 
     // CRITICAL: Always refresh d3 selections from actual DOM to prevent stale references
