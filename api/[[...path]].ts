@@ -20,6 +20,8 @@ import { createPredictionServiceRoutes } from '../src/generated/server/worldmoni
 import { predictionHandler } from './server/worldmonitor/prediction/v1/handler';
 import { createDisplacementServiceRoutes } from '../src/generated/server/worldmonitor/displacement/v1/service_server';
 import { displacementHandler } from './server/worldmonitor/displacement/v1/handler';
+import { createAviationServiceRoutes } from '../src/generated/server/worldmonitor/aviation/v1/service_server';
+import { aviationHandler } from './server/worldmonitor/aviation/v1/handler';
 
 import type { ServerOptions } from '../src/generated/server/worldmonitor/seismology/v1/service_server';
 
@@ -31,6 +33,7 @@ const allRoutes = [
   ...createClimateServiceRoutes(climateHandler, serverOptions),
   ...createPredictionServiceRoutes(predictionHandler, serverOptions),
   ...createDisplacementServiceRoutes(displacementHandler, serverOptions),
+  ...createAviationServiceRoutes(aviationHandler, serverOptions),
 ];
 
 const router = createRouter(allRoutes);
