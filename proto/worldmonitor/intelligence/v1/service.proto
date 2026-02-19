@@ -7,6 +7,7 @@ import "worldmonitor/intelligence/v1/get_risk_scores.proto";
 import "worldmonitor/intelligence/v1/get_pizzint_status.proto";
 import "worldmonitor/intelligence/v1/classify_event.proto";
 import "worldmonitor/intelligence/v1/get_country_intel_brief.proto";
+import "worldmonitor/intelligence/v1/search_gdelt_documents.proto";
 
 // IntelligenceService provides APIs for cross-domain intelligence synthesis including
 // risk scores, PizzINT monitoring, GDELT tension analysis, and AI-powered classification.
@@ -31,5 +32,10 @@ service IntelligenceService {
   // GetCountryIntelBrief generates an AI intelligence brief for a country (OpenRouter).
   rpc GetCountryIntelBrief(GetCountryIntelBriefRequest) returns (GetCountryIntelBriefResponse) {
     option (sebuf.http.config) = {path: "/get-country-intel-brief"};
+  }
+
+  // SearchGdeltDocuments searches the GDELT 2.0 Doc API for news articles.
+  rpc SearchGdeltDocuments(SearchGdeltDocumentsRequest) returns (SearchGdeltDocumentsResponse) {
+    option (sebuf.http.config) = {path: "/search-gdelt-documents"};
   }
 }

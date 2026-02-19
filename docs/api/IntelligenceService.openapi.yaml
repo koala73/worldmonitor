@@ -131,6 +131,38 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/search-gdelt-documents:
+        post:
+            tags:
+                - IntelligenceService
+            summary: SearchGdeltDocuments
+            description: SearchGdeltDocuments searches the GDELT 2.0 Doc API for news articles.
+            operationId: SearchGdeltDocuments
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/SearchGdeltDocumentsRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SearchGdeltDocumentsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -508,3 +540,42 @@ components:
                     format: int64
                     description: 'Brief generation time, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
             description: GetCountryIntelBriefResponse contains an AI-generated intelligence brief for a country.
+        SearchGdeltDocumentsRequest:
+            type: object
+            properties:
+                query:
+                    type: string
+                maxRecords:
+                    type: integer
+                    format: int32
+                timespan:
+                    type: string
+        SearchGdeltDocumentsResponse:
+            type: object
+            properties:
+                articles:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/GdeltArticle'
+                query:
+                    type: string
+                error:
+                    type: string
+        GdeltArticle:
+            type: object
+            properties:
+                title:
+                    type: string
+                url:
+                    type: string
+                source:
+                    type: string
+                date:
+                    type: string
+                image:
+                    type: string
+                language:
+                    type: string
+                tone:
+                    type: number
+                    format: double

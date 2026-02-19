@@ -71,6 +71,81 @@ export interface EnergyPrice {
   priceAt: number;
 }
 
+export interface GetMacroSignalsRequest {
+}
+
+export interface GetMacroSignalsResponse {
+  timestamp: string;
+  verdict: string;
+  bullishCount: number;
+  totalCount: number;
+  signals?: MacroSignals;
+  meta?: MacroMeta;
+  unavailable: boolean;
+}
+
+export interface MacroSignals {
+  liquidity?: LiquiditySignal;
+  flowStructure?: FlowStructureSignal;
+  macroRegime?: MacroRegimeSignal;
+  technicalTrend?: TechnicalTrendSignal;
+  hashRate?: HashRateSignal;
+  miningCost?: MiningCostSignal;
+  fearGreed?: FearGreedSignal;
+}
+
+export interface LiquiditySignal {
+  status: string;
+  value?: number;
+  sparkline: number[];
+}
+
+export interface FlowStructureSignal {
+  status: string;
+  btcReturn5?: number;
+  qqqReturn5?: number;
+}
+
+export interface MacroRegimeSignal {
+  status: string;
+  qqqRoc20?: number;
+  xlpRoc20?: number;
+}
+
+export interface TechnicalTrendSignal {
+  status: string;
+  btcPrice?: number;
+  sma50?: number;
+  sma200?: number;
+  vwap30d?: number;
+  mayerMultiple?: number;
+  sparkline: number[];
+}
+
+export interface HashRateSignal {
+  status: string;
+  change30d?: number;
+}
+
+export interface MiningCostSignal {
+  status: string;
+}
+
+export interface FearGreedSignal {
+  status: string;
+  value?: number;
+  history: FearGreedHistoryEntry[];
+}
+
+export interface FearGreedHistoryEntry {
+  value: number;
+  date: string;
+}
+
+export interface MacroMeta {
+  qqqSparkline: number[];
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -189,6 +264,30 @@ export class EconomicServiceClient {
     }
 
     return await resp.json() as GetEnergyPricesResponse;
+  }
+
+  async getMacroSignals(req: GetMacroSignalsRequest, options?: EconomicServiceCallOptions): Promise<GetMacroSignalsResponse> {
+    let path = "/api/economic/v1/get-macro-signals";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetMacroSignalsResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package worldmonitor.intelligence.v1;
+
+message SearchGdeltDocumentsRequest {
+  string query = 1;
+  int32 max_records = 2;
+  string timespan = 3;
+}
+
+message GdeltArticle {
+  string title = 1;
+  string url = 2;
+  string source = 3;
+  string date = 4;
+  string image = 5;
+  string language = 6;
+  double tone = 7;
+}
+
+message SearchGdeltDocumentsResponse {
+  repeated GdeltArticle articles = 1;
+  string query = 2;
+  string error = 3;
+}
