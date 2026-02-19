@@ -141,6 +141,7 @@ export interface CountryBriefSignals {
 export class App {
   private container: HTMLElement;
   private readonly PANEL_ORDER_KEY = 'panel-order';
+  private readonly PANEL_SPANS_KEY = 'worldmonitor-panel-spans';
   private map: MapContainer | null = null;
   private panels: Record<string, Panel> = {};
   private newsPanels: Record<string, NewsPanel> = {};
@@ -216,6 +217,7 @@ export class App {
       localStorage.removeItem(STORAGE_KEYS.mapLayers);
       localStorage.removeItem(STORAGE_KEYS.panels);
       localStorage.removeItem(this.PANEL_ORDER_KEY);
+      localStorage.removeItem(this.PANEL_SPANS_KEY);
       this.mapLayers = { ...defaultLayers };
       this.panelSettings = { ...DEFAULT_PANELS };
     } else {
@@ -277,6 +279,20 @@ export class App {
           localStorage.setItem(TECH_INSIGHTS_MIGRATION_KEY, 'done');
         }
       }
+    }
+
+    // One-time migration: clear stale panel ordering and sizing state that can
+    // leave non-draggable gaps in mixed-size layouts on wide screens.
+    const LAYOUT_RESET_MIGRATION_KEY = 'worldmonitor-layout-reset-v2.5';
+    if (!localStorage.getItem(LAYOUT_RESET_MIGRATION_KEY)) {
+      const hadSavedOrder = !!localStorage.getItem(this.PANEL_ORDER_KEY);
+      const hadSavedSpans = !!localStorage.getItem(this.PANEL_SPANS_KEY);
+      if (hadSavedOrder || hadSavedSpans) {
+        localStorage.removeItem(this.PANEL_ORDER_KEY);
+        localStorage.removeItem(this.PANEL_SPANS_KEY);
+        console.log('[App] Applied layout reset migration (v2.5): cleared panel order/spans');
+      }
+      localStorage.setItem(LAYOUT_RESET_MIGRATION_KEY, 'done');
     }
 
     // Desktop key management panel must always remain accessible in Tauri.
@@ -567,6 +583,7 @@ export class App {
             url,
             error: error instanceof Error ? error.message : String(error),
           });
+          window.open(url, '_blank', 'noopener');
         });
         return;
       }
@@ -945,15 +962,15 @@ export class App {
           this.countryBriefPage!.updateBrief({ brief: fallbackBrief, country, code, fallback: true });
         } else {
           const lines: string[] = [];
-          if (score) lines.push(`**Instability Index: ${score.score}/100** (${score.level}, ${score.trend})`);
-          if (signals.protests > 0) lines.push(`${signals.protests} active protests detected`);
-          if (signals.militaryFlights > 0) lines.push(`${signals.militaryFlights} military aircraft tracked`);
-          if (signals.militaryVessels > 0) lines.push(`${signals.militaryVessels} military vessels tracked`);
-          if (signals.outages > 0) lines.push(`${signals.outages} internet outages`);
-          if (signals.earthquakes > 0) lines.push(`${signals.earthquakes} recent earthquakes`);
-          if (context.stockIndex) lines.push(`Stock index: ${context.stockIndex}`);
+          if (score) lines.push(t('countryBrief.fallback.instabilityIndex', { score: String(score.score), level: t(`countryBrief.levels.${score.level}`), trend: t(`countryBrief.trends.${score.trend}`) }));
+          if (signals.protests > 0) lines.push(t('countryBrief.fallback.protestsDetected', { count: String(signals.protests) }));
+          if (signals.militaryFlights > 0) lines.push(t('countryBrief.fallback.aircraftTracked', { count: String(signals.militaryFlights) }));
+          if (signals.militaryVessels > 0) lines.push(t('countryBrief.fallback.vesselsTracked', { count: String(signals.militaryVessels) }));
+          if (signals.outages > 0) lines.push(t('countryBrief.fallback.internetOutages', { count: String(signals.outages) }));
+          if (signals.earthquakes > 0) lines.push(t('countryBrief.fallback.recentEarthquakes', { count: String(signals.earthquakes) }));
+          if (context.stockIndex) lines.push(t('countryBrief.fallback.stockIndex', { value: context.stockIndex }));
           if (briefHeadlines.length > 0) {
-            lines.push('', '**Recent headlines:**');
+            lines.push('', t('countryBrief.fallback.recentHeadlines'));
             briefHeadlines.slice(0, 5).forEach(h => lines.push(`• ${h}`));
           }
           if (lines.length > 0) {
@@ -2507,9 +2524,31 @@ export class App {
       const grid = document.getElementById('panelsGrid');
       if (!grid) return;
 
-      const siblings = Array.from(grid.children).filter((c) => c !== dragging);
-      const nextSibling = siblings.find((sibling) => {
+      const rowTolerancePx = 24;
+      const siblings = Array.from(grid.children).filter((c) => {
+        if (c === dragging) return false;
+        const el = c as HTMLElement;
+        return !el.classList.contains('hidden');
+      });
+      const orderedSiblings = siblings.sort((a, b) => {
+        const aRect = a.getBoundingClientRect();
+        const bRect = b.getBoundingClientRect();
+        if (Math.abs(aRect.top - bRect.top) <= rowTolerancePx) {
+          return aRect.left - bRect.left;
+        }
+        return aRect.top - bRect.top;
+      });
+
+      const nextSibling = orderedSiblings.find((sibling) => {
         const rect = sibling.getBoundingClientRect();
+        const beforeRow = e.clientY < rect.top + rowTolerancePx;
+        if (beforeRow) return true;
+
+        const inRowBand = e.clientY >= rect.top + rowTolerancePx && e.clientY <= rect.bottom - rowTolerancePx;
+        if (inRowBand) {
+          return e.clientX < rect.left + rect.width / 2;
+        }
+
         return e.clientY < rect.top + rect.height / 2;
       });
 
@@ -2756,10 +2795,22 @@ export class App {
     const resizeHandle = document.getElementById('mapResizeHandle');
     if (!mapSection || !resizeHandle) return;
 
+    const getMinHeight = () => (window.innerWidth >= 2000 ? 320 : 400);
+    const getMaxHeight = () => Math.max(getMinHeight(), window.innerHeight - 60);
+
     // Load saved height
     const savedHeight = localStorage.getItem('map-height');
     if (savedHeight) {
-      mapSection.style.height = savedHeight;
+      const numeric = Number.parseInt(savedHeight, 10);
+      if (Number.isFinite(numeric)) {
+        const clamped = Math.max(getMinHeight(), Math.min(numeric, getMaxHeight()));
+        mapSection.style.height = `${clamped}px`;
+        if (clamped !== numeric) {
+          localStorage.setItem('map-height', `${clamped}px`);
+        }
+      } else {
+        localStorage.removeItem('map-height');
+      }
     }
 
     let isResizing = false;
@@ -2778,7 +2829,7 @@ export class App {
     document.addEventListener('mousemove', (e) => {
       if (!isResizing) return;
       const deltaY = e.clientY - startY;
-      const newHeight = Math.max(400, Math.min(startHeight + deltaY, window.innerHeight - 60));
+      const newHeight = Math.max(getMinHeight(), Math.min(startHeight + deltaY, getMaxHeight()));
       mapSection.style.height = `${newHeight}px`;
       this.map?.render();
     });

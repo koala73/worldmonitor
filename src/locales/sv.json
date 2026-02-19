@@ -303,6 +303,15 @@
       "match": "träff",
       "matches": "träffar"
     },
+    "webcams": {
+      "regions": {
+        "all": "ALLA",
+        "mideast": "MELLANÖSTERN",
+        "europe": "EUROPA",
+        "americas": "AMERIKA",
+        "asia": "ASIEN"
+      }
+    },
     "playback": {
       "live": "LIVE",
       "toggleMode": "Växla uppspelningsläge",
@@ -582,7 +591,46 @@
       },
       "clickToViewMap": "Klicka för att se på kartan",
       "refresh": "Uppdatera",
-      "infoTooltip": "<strong>Metodik</strong><p>Aggregerar militära flygplan och marinfartyg efter teater.</p><ul><li><strong>Normal:</strong> Baslinjeaktivitet</li><li><strong>Hög:</strong> (över 50 trösklar) flygplan)</li><li><strong>Kritisk:</strong> Hög koncentration (100+ flygplan)</li></ul><p><strong>Strike Capable:</strong> Tankers + AWACS + Jagarfartyg närvarande i tillräckligt antal för ihållande operationer.</p>"
+      "infoTooltip": "<strong>Metodik</strong><p>Aggregerar militära flygplan och marinfartyg efter teater.</p><ul><li><strong>Normal:</strong> Baslinjeaktivitet</li><li><strong>Hög:</strong> (över 50 trösklar) flygplan)</li><li><strong>Kritisk:</strong> Hög koncentration (100+ flygplan)</li></ul><p><strong>Strike Capable:</strong> Tankers + AWACS + Jagarfartyg närvarande i tillräckligt antal för ihållande operationer.</p>",
+      "scanningTheaters": "Skannar teatrar",
+      "positions": "Flygplanspositioner",
+      "navalVesselsLoading": "Marinfartyg",
+      "theaterAnalysis": "Teateranalys",
+      "connectingStreams": "Ansluter till live ADS-B & AIS-strömmar...",
+      "initialLoadNote": "Första laddningen tar 30-60 sekunder medan spårningsdata ackumuleras",
+      "acquiringData": "Hämtar data",
+      "acquiringDesc": "Ansluter till ADS-B-nätverket för militära flygdata. Detta kan ta 30-60 sekunder vid första laddningen.",
+      "openSkyAdsb": "OpenSky ADS-B",
+      "aisVesselStream": "AIS Fartygsström",
+      "retryNow": "Försök igen nu",
+      "feedRateLimited": "Flöde hastighetsbegränsat",
+      "rateLimitedDesc": "OpenSky API har begränsningar. Panelen försöker automatiskt igen om några minuter, eller så kan du prova nu.",
+      "rateLimitedTip": "Tips: Högtrafiktimmar (UTC 12:00-20:00) har ofta högre gränser.",
+      "tryAgain": "Försök igen",
+      "badges": {
+        "critical": "KRIT",
+        "elevated": "FÖRH",
+        "normal": "NORM"
+      },
+      "trendStable": "stabil",
+      "domains": {
+        "air": "LUFT",
+        "sea": "SJÖ"
+      },
+      "strike": "STRIKE",
+      "staleWarning": "Använder cachad data - liveflöde tillfälligt otillgängligt",
+      "updated": "Uppdaterad:",
+      "theaters": {
+        "iran-theater": "Iran-teatern",
+        "taiwan-theater": "Taiwansundet",
+        "baltic-theater": "Baltiska teatern",
+        "blacksea-theater": "Svarta havet",
+        "korea-theater": "Koreahalvön",
+        "south-china-sea": "Sydkinesiska havet",
+        "east-med-theater": "Östra Medelhavet",
+        "israel-gaza-theater": "Israel/Gaza",
+        "yemen-redsea-theater": "Jemen/Röda havet"
+      }
     },
     "techEvents": {
       "loading": "Laddar tekniska händelser...",
@@ -747,7 +795,19 @@
     },
     "strategicRisk": {
       "infoTooltip": "<strong>Metodik</strong> Sammansatt poäng (0-100) blandning:<ul><li>50 % Landinstabilitet (topp 5 viktade)</li><li>30% Geografiska konvergenszoner</li><li>20% infrastrukturincidenter PH_5______4 minuter PH_5____upps.",
-      "noRisks": "Inga betydande risker upptäckta"
+      "noRisks": "Inga betydande risker upptäckta",
+      "levels": {
+        "critical": "Kritisk",
+        "elevated": "Förhöjd",
+        "moderate": "Måttlig",
+        "low": "Låg"
+      },
+      "trend": "Trend",
+      "trends": {
+        "escalating": "Eskalerande",
+        "deEscalating": "Avtrappande",
+        "stable": "Stabil"
+      }
     },
     "insights": {
       "infoTooltip": "<strong>AI-driven analys</strong><br>• <strong>World Brief</strong>: AI-sammanfattning (Groq/OpenRouter)<br>• <strong>Sentiment</strong>: Nyhetstonanalys<br>• <strong>__2__hastighet: snabbrörlig PH______2__position: <strong>Fokalpunkter</strong>: Korrelerar nyhetsenheter med kartsignaler (militär, protester, avbrott)<br><em>Endast skrivbord • Drivs av Llama 3.3 + Focal Point Detection</em>",
@@ -792,6 +852,39 @@
       "active": "Aktiv",
       "proposed": "Föreslagen",
       "updated": "Uppdaterad"
+    },
+    "etfFlows": {
+      "unavailable": "ETF-data tillfälligt otillgänglig",
+      "netFlow": "Nettoflöde",
+      "estFlow": "Ber. flöde",
+      "totalVol": "Total volym",
+      "etfs": "ETF:er",
+      "netInflow": "NETTOINFLÖDE",
+      "netOutflow": "NETTOUTFLÖDE",
+      "table": {
+        "ticker": "Ticker",
+        "issuer": "Utgivare",
+        "estFlow": "Ber. flöde",
+        "volume": "Volym",
+        "change": "Förändring"
+      }
+    },
+    "macroSignals": {
+      "overall": "Totalt",
+      "verdict": {
+        "buy": "KÖP",
+        "cash": "KONTANT"
+      },
+      "bullish": "{{count}}/{{total}} hausse",
+      "signals": {
+        "liquidity": "Likviditet",
+        "flow": "Flöde",
+        "regime": "Regim",
+        "btcTrend": "BTC-trend",
+        "hashRate": "Hash Rate",
+        "mining": "Utvinning",
+        "fearGreed": "Rädsla &amp; Girighet"
+      }
     },
     "export": {
       "exportData": "Exportera data"
@@ -1491,6 +1584,29 @@
       "base": "Militärbaser",
       "nuclear": "Kärntekniska anläggningar",
       "port": "Hamnar"
+    },
+    "levels": {
+      "critical": "Kritisk",
+      "high": "Hög",
+      "elevated": "Förhöjd",
+      "moderate": "Måttlig",
+      "normal": "Normal",
+      "low": "Låg"
+    },
+    "trends": {
+      "rising": "Stigande",
+      "falling": "Fallande",
+      "stable": "Stabil"
+    },
+    "fallback": {
+      "instabilityIndex": "**Instabilitetsindex: {{score}}/100** ({{level}}, {{trend}})",
+      "protestsDetected": "{{count}} aktiva protester upptäckta",
+      "aircraftTracked": "{{count}} militära flygplan spårade",
+      "vesselsTracked": "{{count}} militära fartyg spårade",
+      "internetOutages": "{{count}} internetavbrott",
+      "recentEarthquakes": "{{count}} senaste jordbävningar",
+      "stockIndex": "Aktieindex: {{value}}",
+      "recentHeadlines": "**Senaste rubriker:**"
     }
   }
 }

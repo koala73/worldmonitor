@@ -27,7 +27,7 @@ The project is built with TypeScript, Vite, MapLibre GL JS, deck.gl, D3.js, and 
 - 150+ curated RSS feeds across geopolitics, defense, energy, tech, and finance with domain-allowlisted proxy
 - 8 live news video streams (Bloomberg, Sky News, Al Jazeera, Euronews, DW, France24, CNBC, Al Arabiya)
 - 19 live webcams from geopolitical hotspots across 4 regions
-- Multilingual UI supporting 13 languages (English, French, Spanish, German, Italian, Polish, Portuguese, Dutch, Swedish, Russian, Arabic, Chinese, Japanese) with RTL support
+- Multilingual UI supporting 14 languages (English, French, Spanish, German, Italian, Polish, Portuguese, Dutch, Swedish, Russian, Arabic, Chinese, Japanese, Turkish) with RTL support
 - 7-signal macro market radar with composite BUY/CASH verdict, BTC ETF flow tracking, stablecoin peg monitoring, Fear & Greed Index
 - Country brief pages with AI-generated analysis, CII score ring, prediction markets, 7-day timeline, infrastructure exposure, and stock index
 - Geographic convergence detection — identifies when multiple signal types spike in the same area

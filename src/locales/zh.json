@@ -50,6 +50,29 @@
       "base": "军事基地",
       "nuclear": "核设施",
       "port": "港口"
+    },
+    "levels": {
+      "critical": "危急",
+      "high": "高",
+      "elevated": "升高",
+      "moderate": "中等",
+      "normal": "正常",
+      "low": "低"
+    },
+    "trends": {
+      "rising": "上升",
+      "falling": "下降",
+      "stable": "稳定"
+    },
+    "fallback": {
+      "instabilityIndex": "**不稳定指数：{{score}}/100**（{{level}}，{{trend}}）",
+      "protestsDetected": "检测到{{count}}起活跃抗议",
+      "aircraftTracked": "追踪到{{count}}架军用飞机",
+      "vesselsTracked": "追踪到{{count}}艘军用舰艇",
+      "internetOutages": "{{count}}起互联网中断",
+      "recentEarthquakes": "{{count}}起近期地震",
+      "stockIndex": "股票指数：{{value}}",
+      "recentHeadlines": "**近期头条：**"
     }
   },
   "header": {
@@ -363,6 +386,15 @@
     }
   },
   "components": {
+    "webcams": {
+      "regions": {
+        "all": "全部",
+        "mideast": "中东",
+        "europe": "欧洲",
+        "americas": "美洲",
+        "asia": "亚洲"
+      }
+    },
     "monitor": {
       "placeholder": "关键词（逗号分隔）",
       "add": "+ 添加监控",
@@ -494,7 +526,46 @@
         "auxiliary": "辅助舰",
         "navalVessels": "海军舰艇"
       },
-      "infoTooltip": "<strong>方法论</strong><p>按战区聚合军用飞机和海军舰艇。</p><ul><li><strong>正常：</strong>基线活动</li><li><strong>升高：</strong>超过阈值（50+架飞机）</li><li><strong>危急：</strong>高浓度集结（100+架飞机）</li></ul><p><strong>具备打击能力：</strong>加油机 + AWACS + 战斗机数量足以支持持续作战。</p>"
+      "infoTooltip": "<strong>方法论</strong><p>按战区聚合军用飞机和海军舰艇。</p><ul><li><strong>正常：</strong>基线活动</li><li><strong>升高：</strong>超过阈值（50+架飞机）</li><li><strong>危急：</strong>高浓度集结（100+架飞机）</li></ul><p><strong>具备打击能力：</strong>加油机 + AWACS + 战斗机数量足以支持持续作战。</p>",
+      "scanningTheaters": "扫描战区",
+      "positions": "飞机位置",
+      "navalVesselsLoading": "海军舰艇",
+      "theaterAnalysis": "战区分析",
+      "connectingStreams": "正在连接ADS-B和AIS实时数据流...",
+      "initialLoadNote": "初始加载需要30-60秒以积累追踪数据",
+      "acquiringData": "正在获取数据",
+      "acquiringDesc": "正在连接ADS-B网络获取军用飞行数据。首次加载可能需要30-60秒。",
+      "openSkyAdsb": "OpenSky ADS-B",
+      "aisVesselStream": "AIS船舶数据流",
+      "retryNow": "立即重试",
+      "feedRateLimited": "数据源请求受限",
+      "rateLimitedDesc": "OpenSky API有请求限制。面板将在几分钟后自动重试，或您可以立即重试。",
+      "rateLimitedTip": "提示：高峰时段（UTC 12:00-20:00）通常有更高的限制。",
+      "tryAgain": "重试",
+      "badges": {
+        "critical": "危急",
+        "elevated": "升高",
+        "normal": "正常"
+      },
+      "trendStable": "稳定",
+      "domains": {
+        "air": "空域",
+        "sea": "海域"
+      },
+      "strike": "STRIKE",
+      "staleWarning": "使用缓存数据 - 实时数据流暂时不可用",
+      "updated": "更新时间：",
+      "theaters": {
+        "iran-theater": "伊朗战区",
+        "taiwan-theater": "台湾海峡",
+        "baltic-theater": "波罗的海战区",
+        "blacksea-theater": "黑海",
+        "korea-theater": "朝鲜半岛",
+        "south-china-sea": "南海",
+        "east-med-theater": "东地中海",
+        "israel-gaza-theater": "以色列/加沙",
+        "yemen-redsea-theater": "也门/红海"
+      }
     },
     "countryBrief": {
       "shareStory": "分享报道",
@@ -729,6 +800,18 @@
     },
     "strategicRisk": {
       "noRisks": "未检测到重大风险",
+      "levels": {
+        "critical": "危急",
+        "elevated": "升高",
+        "moderate": "中等",
+        "low": "低"
+      },
+      "trend": "趋势",
+      "trends": {
+        "escalating": "升级中",
+        "deEscalating": "缓和中",
+        "stable": "稳定"
+      },
       "infoTooltip": "<strong>方法论</strong>综合评分（0-100）混合：<ul><li>50% 国家不稳定性（前5名加权）</li><li>30% 地理趋同区域</li><li>20% 基础设施事故</li></ul>每5分钟自动刷新。"
     },
     "techEvents": {
@@ -867,6 +950,39 @@
     },
     "prediction": {
       "infoTooltip": "<strong>预测市场</strong>真金白银的预测市场：<ul><li>价格反映群体概率估计</li><li>交易量越高 = 信号越可靠</li><li>聚焦地缘政治和时事</li></ul>来源：Polymarket (polymarket.com)"
+    },
+    "etfFlows": {
+      "unavailable": "ETF数据暂时不可用",
+      "netFlow": "净流量",
+      "estFlow": "预估流量",
+      "totalVol": "总成交量",
+      "etfs": "ETFs",
+      "netInflow": "净流入",
+      "netOutflow": "净流出",
+      "table": {
+        "ticker": "代码",
+        "issuer": "发行方",
+        "estFlow": "预估流量",
+        "volume": "成交量",
+        "change": "涨跌幅"
+      }
+    },
+    "macroSignals": {
+      "overall": "综合",
+      "verdict": {
+        "buy": "买入",
+        "cash": "持币"
+      },
+      "bullish": "{{count}}/{{total}} 看涨",
+      "signals": {
+        "liquidity": "流动性",
+        "flow": "资金流",
+        "regime": "市场环境",
+        "btcTrend": "BTC趋势",
+        "hashRate": "Hash Rate",
+        "mining": "挖矿",
+        "fearGreed": "恐惧 &amp; 贪婪"
+      }
     }
   },
   "popups": {

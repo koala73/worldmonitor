@@ -50,6 +50,29 @@
       "base": "軍事基地",
       "nuclear": "核施設",
       "port": "港湾"
+    },
+    "levels": {
+      "critical": "危機的",
+      "high": "高",
+      "elevated": "上昇",
+      "moderate": "中程度",
+      "normal": "正常",
+      "low": "低"
+    },
+    "trends": {
+      "rising": "上昇中",
+      "falling": "下降中",
+      "stable": "安定"
+    },
+    "fallback": {
+      "instabilityIndex": "**不安定性指数：{{score}}/100**（{{level}}、{{trend}}）",
+      "protestsDetected": "{{count}}件の活発な抗議活動を検知",
+      "aircraftTracked": "{{count}}機の軍用機を追跡中",
+      "vesselsTracked": "{{count}}隻の軍艦を追跡中",
+      "internetOutages": "{{count}}件のインターネット障害",
+      "recentEarthquakes": "{{count}}件の最近の地震",
+      "stockIndex": "株価指数：{{value}}",
+      "recentHeadlines": "**最近のヘッドライン：**"
     }
   },
   "header": {
@@ -363,6 +386,15 @@
     }
   },
   "components": {
+    "webcams": {
+      "regions": {
+        "all": "すべて",
+        "mideast": "中東",
+        "europe": "ヨーロッパ",
+        "americas": "アメリカ",
+        "asia": "アジア"
+      }
+    },
     "monitor": {
       "placeholder": "キーワード（カンマ区切り）",
       "add": "+ モニター追加",
@@ -494,7 +526,46 @@
         "auxiliary": "補助艦",
         "navalVessels": "海軍艦艇"
       },
-      "infoTooltip": "<strong>方法論</strong><p>戦域ごとに軍用機と艦艇を集計。</p><ul><li><strong>通常:</strong> ベースライン活動</li><li><strong>上昇:</strong> 閾値超過（航空機50+機）</li><li><strong>危機:</strong> 高密度集結（航空機100+機）</li></ul><p><strong>攻撃能力あり:</strong> 空中給油機 + AWACS + 戦闘機が持続作戦に十分な数で存在。</p>"
+      "infoTooltip": "<strong>方法論</strong><p>戦域ごとに軍用機と艦艇を集計。</p><ul><li><strong>通常:</strong> ベースライン活動</li><li><strong>上昇:</strong> 閾値超過（航空機50+機）</li><li><strong>危機:</strong> 高密度集結（航空機100+機）</li></ul><p><strong>攻撃能力あり:</strong> 空中給油機 + AWACS + 戦闘機が持続作戦に十分な数で存在。</p>",
+      "scanningTheaters": "戦域スキャン中",
+      "positions": "航空機の位置",
+      "navalVesselsLoading": "海軍艦艇",
+      "theaterAnalysis": "戦域分析",
+      "connectingStreams": "ADS-BおよびAISライブストリームに接続中...",
+      "initialLoadNote": "追跡データの蓄積に30〜60秒かかります",
+      "acquiringData": "データ取得中",
+      "acquiringDesc": "軍用飛行データのためADS-Bネットワークに接続中。初回ロードには30〜60秒かかる場合があります。",
+      "openSkyAdsb": "OpenSky ADS-B",
+      "aisVesselStream": "AIS船舶ストリーム",
+      "retryNow": "今すぐ再試行",
+      "feedRateLimited": "フィードレート制限",
+      "rateLimitedDesc": "OpenSky APIにはリクエスト制限があります。パネルは数分後に自動的に再試行するか、今すぐ再試行できます。",
+      "rateLimitedTip": "ヒント：ピーク時間帯（UTC 12:00-20:00）はより高い制限が発生しやすくなります。",
+      "tryAgain": "再試行",
+      "badges": {
+        "critical": "危機",
+        "elevated": "上昇",
+        "normal": "通常"
+      },
+      "trendStable": "安定",
+      "domains": {
+        "air": "空域",
+        "sea": "海域"
+      },
+      "strike": "STRIKE",
+      "staleWarning": "キャッシュデータを使用中 - ライブフィードが一時的に利用不可",
+      "updated": "更新：",
+      "theaters": {
+        "iran-theater": "イラン戦域",
+        "taiwan-theater": "台湾海峡",
+        "baltic-theater": "バルト海戦域",
+        "blacksea-theater": "黒海",
+        "korea-theater": "朝鮮半島",
+        "south-china-sea": "南シナ海",
+        "east-med-theater": "東地中海",
+        "israel-gaza-theater": "イスラエル/ガザ",
+        "yemen-redsea-theater": "イエメン/紅海"
+      }
     },
     "countryBrief": {
       "shareStory": "ストーリーを共有",
@@ -729,6 +800,18 @@
     },
     "strategicRisk": {
       "noRisks": "重大なリスク未検出",
+      "levels": {
+        "critical": "危機的",
+        "elevated": "上昇",
+        "moderate": "中程度",
+        "low": "低"
+      },
+      "trend": "トレンド",
+      "trends": {
+        "escalating": "エスカレーション中",
+        "deEscalating": "沈静化中",
+        "stable": "安定"
+      },
       "infoTooltip": "<strong>方法論</strong> 複合スコア（0-100）の構成:<ul><li>50% 国家不安定性（上位5カ国加重）</li><li>30% 地理的収束地帯</li><li>20% インフラインシデント</li></ul>5分ごとに自動更新。"
     },
     "techEvents": {
@@ -867,6 +950,39 @@
     },
     "prediction": {
       "infoTooltip": "<strong>予測市場</strong> リアルマネー予測市場:<ul><li>価格は群衆の確率推定を反映</li><li>取引量が多いほど信頼性の高いシグナル</li><li>地政学・時事問題に焦点</li></ul>ソース: Polymarket (polymarket.com)"
+    },
+    "etfFlows": {
+      "unavailable": "ETFデータは一時的に利用不可",
+      "netFlow": "純フロー",
+      "estFlow": "推定フロー",
+      "totalVol": "総出来高",
+      "etfs": "ETFs",
+      "netInflow": "純流入",
+      "netOutflow": "純流出",
+      "table": {
+        "ticker": "ティッカー",
+        "issuer": "発行体",
+        "estFlow": "推定フロー",
+        "volume": "出来高",
+        "change": "変動率"
+      }
+    },
+    "macroSignals": {
+      "overall": "総合",
+      "verdict": {
+        "buy": "買い",
+        "cash": "現金"
+      },
+      "bullish": "{{count}}/{{total}} 強気",
+      "signals": {
+        "liquidity": "流動性",
+        "flow": "フロー",
+        "regime": "市場環境",
+        "btcTrend": "BTCトレンド",
+        "hashRate": "Hash Rate",
+        "mining": "マイニング",
+        "fearGreed": "恐怖 &amp; 貪欲"
+      }
     }
   },
   "popups": {

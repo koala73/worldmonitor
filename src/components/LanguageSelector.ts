@@ -31,7 +31,8 @@ export class LanguageSelector {
             nl: 'nl',
             sv: 'se',
             ru: 'ru',
-            ja: 'jp'
+            ja: 'jp',
+            tr: 'tr'
         };
         const countryCode = map[langCode] || langCode;
         return `https://flagcdn.com/24x18/${countryCode}.png`;

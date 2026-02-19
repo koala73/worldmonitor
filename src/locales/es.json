@@ -50,6 +50,29 @@
       "base": "Bases militares",
       "nuclear": "Instalaciones nucleares",
       "port": "Puertos"
+    },
+    "levels": {
+      "critical": "Crítico",
+      "high": "Alto",
+      "elevated": "Elevado",
+      "moderate": "Moderado",
+      "normal": "Normal",
+      "low": "Bajo"
+    },
+    "trends": {
+      "rising": "En alza",
+      "falling": "En descenso",
+      "stable": "Estable"
+    },
+    "fallback": {
+      "instabilityIndex": "**Índice de inestabilidad: {{score}}/100** ({{level}}, {{trend}})",
+      "protestsDetected": "{{count}} protestas activas detectadas",
+      "aircraftTracked": "{{count}} aeronaves militares rastreadas",
+      "vesselsTracked": "{{count}} buques militares rastreados",
+      "internetOutages": "{{count}} cortes de Internet",
+      "recentEarthquakes": "{{count}} terremotos recientes",
+      "stockIndex": "Índice bursátil: {{value}}",
+      "recentHeadlines": "**Titulares recientes:**"
     }
   },
   "header": {
@@ -337,6 +360,29 @@
         "base": "Bases militares",
         "nuclear": "Instalaciones nucleares",
         "port": "Puertos"
+      },
+      "levels": {
+        "critical": "Crítico",
+        "high": "Alto",
+        "elevated": "Elevado",
+        "moderate": "Moderado",
+        "normal": "Normal",
+        "low": "Bajo"
+      },
+      "trends": {
+        "rising": "En alza",
+        "falling": "En descenso",
+        "stable": "Estable"
+      },
+      "fallback": {
+        "instabilityIndex": "**Índice de inestabilidad: {{score}}/100** ({{level}}, {{trend}})",
+        "protestsDetected": "{{count}} protestas activas detectadas",
+        "aircraftTracked": "{{count}} aeronaves militares rastreadas",
+        "vesselsTracked": "{{count}} buques militares rastreados",
+        "internetOutages": "{{count}} cortes de Internet",
+        "recentEarthquakes": "{{count}} terremotos recientes",
+        "stockIndex": "Índice bursátil: {{value}}",
+        "recentHeadlines": "**Titulares recientes:**"
       }
     },
     "settingsWindow": {
@@ -371,6 +417,15 @@
       "showingMatches": "Mostrando {{count}} de {{total}} coincidencias",
       "match": "fósforo",
       "matches": "partidos"
+    },
+    "webcams": {
+      "regions": {
+        "all": "TODOS",
+        "mideast": "MEDIO ORIENTE",
+        "europe": "EUROPA",
+        "americas": "AMÉRICAS",
+        "asia": "ASIA"
+      }
     },
     "regulation": {
       "timeline": "Línea de tiempo",
@@ -705,7 +760,46 @@
       },
       "clickToViewMap": "Haga clic para ver en el mapa",
       "refresh": "Refrescar",
-      "infoTooltip": "<strong>Metodología</strong><p>Agrega aviones militares y buques de guerra por teatro.</p><ul><li><strong>Normal:</strong> Actividad de referencia</li><li><strong>Elevada:</strong> Por encima del umbral (50+ aviones)</li><li><strong>Crítico:</strong> Alta concentración (más de 100 aviones)</li></ul><p><strong>Capaz de ataque:</strong> Tanques + AWACS + Cazas presentes en cantidades suficientes para operaciones sostenidas.</p>"
+      "infoTooltip": "<strong>Metodología</strong><p>Agrega aviones militares y buques de guerra por teatro.</p><ul><li><strong>Normal:</strong> Actividad de referencia</li><li><strong>Elevada:</strong> Por encima del umbral (50+ aviones)</li><li><strong>Crítico:</strong> Alta concentración (más de 100 aviones)</li></ul><p><strong>Capaz de ataque:</strong> Tanques + AWACS + Cazas presentes en cantidades suficientes para operaciones sostenidas.</p>",
+      "scanningTheaters": "Escaneando teatros",
+      "positions": "Posiciones de aeronaves",
+      "navalVesselsLoading": "Buques de guerra",
+      "theaterAnalysis": "Análisis de teatro",
+      "connectingStreams": "Conectando a flujos ADS-B y AIS en vivo...",
+      "initialLoadNote": "La carga inicial tarda 30–60 segundos mientras se acumulan los datos de seguimiento",
+      "acquiringData": "Adquiriendo datos",
+      "acquiringDesc": "Conectando a la red ADS-B para datos de vuelos militares. Esto puede tardar 30–60 segundos en la primera carga.",
+      "openSkyAdsb": "OpenSky ADS-B",
+      "aisVesselStream": "Flujo AIS de buques",
+      "retryNow": "Reintentar ahora",
+      "feedRateLimited": "Límite de velocidad del feed",
+      "rateLimitedDesc": "La API de OpenSky tiene límites de solicitudes. El panel reintentarrá automáticamente en unos minutos, o puede intentarlo ahora.",
+      "rateLimitedTip": "Consejo: las horas pico (UTC 12:00–20:00) suelen tener límites más altos.",
+      "tryAgain": "Intentar de nuevo",
+      "badges": {
+        "critical": "CRÍT",
+        "elevated": "ELEV",
+        "normal": "NORM"
+      },
+      "trendStable": "estable",
+      "domains": {
+        "air": "AIRE",
+        "sea": "MAR"
+      },
+      "strike": "STRIKE",
+      "staleWarning": "Usando datos en caché — feed en vivo temporalmente no disponible",
+      "updated": "Actualizado:",
+      "theaters": {
+        "iran-theater": "Teatro iraní",
+        "taiwan-theater": "Estrecho de Taiwán",
+        "baltic-theater": "Teatro báltico",
+        "blacksea-theater": "Mar Negro",
+        "korea-theater": "Península coreana",
+        "south-china-sea": "Mar de China Meridional",
+        "east-med-theater": "Mediterráneo oriental",
+        "israel-gaza-theater": "Israel/Gaza",
+        "yemen-redsea-theater": "Yemen/Mar Rojo"
+      }
     },
     "techEvents": {
       "loading": "Cargando eventos tecnológicos...",
@@ -856,7 +950,19 @@
     },
     "strategicRisk": {
       "noRisks": "No se detectaron riesgos significativos",
-      "infoTooltip": "<strong>Metodología</strong> Puntuación compuesta (0-100) combinación:<ul><li>50% Inestabilidad del país (5 principales ponderados)</li><li>30% Zonas de convergencia geográfica</li><li>20% Incidentes de infraestructura</li></ul>Se actualiza automáticamente cada 5 minutos."
+      "infoTooltip": "<strong>Metodología</strong> Puntuación compuesta (0-100) combinación:<ul><li>50% Inestabilidad del país (5 principales ponderados)</li><li>30% Zonas de convergencia geográfica</li><li>20% Incidentes de infraestructura</li></ul>Se actualiza automáticamente cada 5 minutos.",
+      "levels": {
+        "critical": "Crítico",
+        "elevated": "Elevado",
+        "moderate": "Moderado",
+        "low": "Bajo"
+      },
+      "trend": "Tendencia",
+      "trends": {
+        "escalating": "En escalada",
+        "deEscalating": "En desescalada",
+        "stable": "Estable"
+      }
     },
     "insights": {
       "noStories": "Aún no hay noticias de última hora o de múltiples fuentes",
@@ -864,6 +970,39 @@
     },
     "export": {
       "exportData": "Exportar datos"
+    },
+    "etfFlows": {
+      "unavailable": "Datos ETF temporalmente no disponibles",
+      "netFlow": "Flujo neto",
+      "estFlow": "Flujo est.",
+      "totalVol": "Vol. total",
+      "etfs": "ETFs",
+      "netInflow": "ENTRADA NETA",
+      "netOutflow": "SALIDA NETA",
+      "table": {
+        "ticker": "Ticker",
+        "issuer": "Emisor",
+        "estFlow": "Flujo est.",
+        "volume": "Volumen",
+        "change": "Cambio"
+      }
+    },
+    "macroSignals": {
+      "overall": "General",
+      "verdict": {
+        "buy": "COMPRAR",
+        "cash": "CASH"
+      },
+      "bullish": "{{count}}/{{total}} alcista",
+      "signals": {
+        "liquidity": "Liquidez",
+        "flow": "Flujo",
+        "regime": "Régimen",
+        "btcTrend": "Tendencia BTC",
+        "hashRate": "Hash Rate",
+        "mining": "Minería",
+        "fearGreed": "Miedo &amp; Codicia"
+      }
     },
     "runtimeConfig": {
       "getApiKey": "Obtener clave API"

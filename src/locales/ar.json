@@ -50,6 +50,29 @@
       "base": "قواعد عسكرية",
       "nuclear": "منشآت نووية",
       "port": "موانئ"
+    },
+    "levels": {
+      "critical": "حرج",
+      "high": "مرتفع",
+      "elevated": "متصاعد",
+      "moderate": "معتدل",
+      "normal": "طبيعي",
+      "low": "منخفض"
+    },
+    "trends": {
+      "rising": "متصاعد",
+      "falling": "متراجع",
+      "stable": "مستقر"
+    },
+    "fallback": {
+      "instabilityIndex": "**مؤشر عدم الاستقرار: {{score}}/100** ({{level}}، {{trend}})",
+      "protestsDetected": "{{count}} احتجاج نشط مُكتشف",
+      "aircraftTracked": "{{count}} طائرة عسكرية مُتتبَّعة",
+      "vesselsTracked": "{{count}} سفينة عسكرية مُتتبَّعة",
+      "internetOutages": "{{count}} انقطاع إنترنت",
+      "recentEarthquakes": "{{count}} زلزال حديث",
+      "stockIndex": "مؤشر الأسهم: {{value}}",
+      "recentHeadlines": "**أحدث العناوين:**"
     }
   },
   "header": {
@@ -363,6 +386,15 @@
     }
   },
   "components": {
+    "webcams": {
+      "regions": {
+        "all": "الكل",
+        "mideast": "الشرق الأوسط",
+        "europe": "أوروبا",
+        "americas": "الأمريكتان",
+        "asia": "آسيا"
+      }
+    },
     "monitor": {
       "placeholder": "كلمات مفتاحية (مفصولة بفواصل)",
       "add": "+ إضافة مراقب",
@@ -494,7 +526,46 @@
         "auxiliary": "مساندة",
         "navalVessels": "سفن بحرية"
       },
-      "infoTooltip": "<strong>المنهجية</strong><p>يجمع الطائرات العسكرية والسفن البحرية حسب مسرح العمليات.</p><ul><li><strong>طبيعي:</strong> نشاط خط الأساس</li><li><strong>متصاعد:</strong> فوق الحد (50+ طائرة)</li><li><strong>حرج:</strong> تركيز عالٍ (100+ طائرة)</li></ul><p><strong>قدرة ضاربة:</strong> وجود ناقلات وقود + AWACS + مقاتلات بأعداد كافية لعمليات مستدامة.</p>"
+      "infoTooltip": "<strong>المنهجية</strong><p>يجمع الطائرات العسكرية والسفن البحرية حسب مسرح العمليات.</p><ul><li><strong>طبيعي:</strong> نشاط خط الأساس</li><li><strong>متصاعد:</strong> فوق الحد (50+ طائرة)</li><li><strong>حرج:</strong> تركيز عالٍ (100+ طائرة)</li></ul><p><strong>قدرة ضاربة:</strong> وجود ناقلات وقود + AWACS + مقاتلات بأعداد كافية لعمليات مستدامة.</p>",
+      "scanningTheaters": "مسح مسارح العمليات",
+      "positions": "مواقع الطائرات",
+      "navalVesselsLoading": "السفن البحرية",
+      "theaterAnalysis": "تحليل مسرح العمليات",
+      "connectingStreams": "جارٍ الاتصال ببث ADS-B و AIS المباشر...",
+      "initialLoadNote": "التحميل الأولي يستغرق 30-60 ثانية أثناء تجميع بيانات التتبع",
+      "acquiringData": "جارٍ الحصول على البيانات",
+      "acquiringDesc": "جارٍ الاتصال بشبكة ADS-B للحصول على بيانات الرحلات العسكرية. قد يستغرق 30-60 ثانية عند التحميل الأول.",
+      "openSkyAdsb": "OpenSky ADS-B",
+      "aisVesselStream": "بث AIS للسفن",
+      "retryNow": "إعادة المحاولة الآن",
+      "feedRateLimited": "تم تقييد معدل التغذية",
+      "rateLimitedDesc": "واجهة OpenSky API لديها حدود للطلبات. ستعيد اللوحة المحاولة تلقائياً خلال دقائق، أو يمكنك المحاولة الآن.",
+      "rateLimitedTip": "ملاحظة: ساعات الذروة (UTC 12:00-20:00) غالباً ما تشهد حدوداً أعلى.",
+      "tryAgain": "حاول مرة أخرى",
+      "badges": {
+        "critical": "حرج",
+        "elevated": "متصاعد",
+        "normal": "طبيعي"
+      },
+      "trendStable": "مستقر",
+      "domains": {
+        "air": "جوي",
+        "sea": "بحري"
+      },
+      "strike": "STRIKE",
+      "staleWarning": "استخدام بيانات مخزنة مؤقتاً - البث المباشر غير متاح مؤقتاً",
+      "updated": "آخر تحديث:",
+      "theaters": {
+        "iran-theater": "مسرح إيران",
+        "taiwan-theater": "مضيق تايوان",
+        "baltic-theater": "مسرح البلطيق",
+        "blacksea-theater": "البحر الأسود",
+        "korea-theater": "شبه الجزيرة الكورية",
+        "south-china-sea": "بحر الصين الجنوبي",
+        "east-med-theater": "شرق المتوسط",
+        "israel-gaza-theater": "إسرائيل/غزة",
+        "yemen-redsea-theater": "اليمن/البحر الأحمر"
+      }
     },
     "countryBrief": {
       "shareStory": "مشاركة القصة",
@@ -729,6 +800,18 @@
     },
     "strategicRisk": {
       "noRisks": "لم يتم رصد مخاطر كبيرة",
+      "levels": {
+        "critical": "حرج",
+        "elevated": "متصاعد",
+        "moderate": "معتدل",
+        "low": "منخفض"
+      },
+      "trend": "الاتجاه",
+      "trends": {
+        "escalating": "متصاعد",
+        "deEscalating": "متراجع",
+        "stable": "مستقر"
+      },
       "infoTooltip": "<strong>المنهجية</strong> درجة مركّبة (0-100) تمزج:<ul><li>50% عدم استقرار الدول (أعلى 5 مرجّحة)</li><li>30% مناطق التقارب الجغرافي</li><li>20% حوادث البنية التحتية</li></ul>يُحدّث تلقائياً كل 5 دقائق."
     },
     "techEvents": {
@@ -867,6 +950,39 @@
     },
     "prediction": {
       "infoTooltip": "<strong>أسواق التنبؤ</strong> أسواق تنبؤ بأموال حقيقية:<ul><li>الأسعار تعكس تقديرات احتمالات الجمهور</li><li>حجم تداول أعلى = إشارة أكثر موثوقية</li><li>تركيز على الأحداث الجيوسياسية والجارية</li></ul>المصدر: Polymarket (polymarket.com)"
+    },
+    "etfFlows": {
+      "unavailable": "بيانات ETF غير متاحة مؤقتاً",
+      "netFlow": "صافي التدفق",
+      "estFlow": "التدفق المقدّر",
+      "totalVol": "إجمالي الحجم",
+      "etfs": "ETFs",
+      "netInflow": "صافي تدفق داخل",
+      "netOutflow": "صافي تدفق خارج",
+      "table": {
+        "ticker": "الرمز",
+        "issuer": "الجهة المصدرة",
+        "estFlow": "التدفق المقدّر",
+        "volume": "الحجم",
+        "change": "التغيّر"
+      }
+    },
+    "macroSignals": {
+      "overall": "الإجمالي",
+      "verdict": {
+        "buy": "شراء",
+        "cash": "نقد"
+      },
+      "bullish": "{{count}}/{{total}} صعودي",
+      "signals": {
+        "liquidity": "السيولة",
+        "flow": "التدفق",
+        "regime": "النظام",
+        "btcTrend": "اتجاه BTC",
+        "hashRate": "Hash Rate",
+        "mining": "التعدين",
+        "fearGreed": "الخوف &amp; الجشع"
+      }
     }
   },
   "popups": {

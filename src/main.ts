@@ -50,15 +50,12 @@ Sentry.init({
     /\.data\.split is not a function/,
     /signal is aborted without reason/,
     /Failed to fetch dynamically imported module/,
+    /Importing a module script failed/,
   ],
   beforeSend(event) {
     const msg = event.exception?.values?.[0]?.value ?? '';
     if (msg.length <= 3 && /^[a-zA-Z_$]+$/.test(msg)) return null;
     const frames = event.exception?.values?.[0]?.stacktrace?.frames ?? [];
-    // Suppress module-import failures only when originating from browser extensions.
-    if (/Importing a module script failed/.test(msg)) {
-      if (frames.some(f => /^(chrome|moz)-extension:/.test(f.filename ?? ''))) return null;
-    }
     // Suppress maplibre internal null-access crashes (light, placement) only when stack is in map chunk
     if (/this\.style\._layers|reading '_layers'|this\.light is null|can't access property "(type|setFilter)", \w+ is (null|undefined)|Cannot read properties of null \(reading '(id|type|setFilter|_layers)'\)|null is not an object \(evaluating '(E\.|this\.style)/.test(msg)) {
       if (frames.some(f => /\/map-[A-Za-z0-9]+\.js/.test(f.filename ?? ''))) return null;

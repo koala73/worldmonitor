@@ -254,6 +254,29 @@
         "base": "Bases Militares",
         "nuclear": "Instalações Nucleares",
         "port": "Portos"
+      },
+      "levels": {
+        "critical": "Crítico",
+        "high": "Alto",
+        "elevated": "Elevado",
+        "moderate": "Moderado",
+        "normal": "Normal",
+        "low": "Baixo"
+      },
+      "trends": {
+        "rising": "Em alta",
+        "falling": "Em queda",
+        "stable": "Estável"
+      },
+      "fallback": {
+        "instabilityIndex": "**Índice de Instabilidade: {{score}}/100** ({{level}}, {{trend}})",
+        "protestsDetected": "{{count}} protestos ativos detectados",
+        "aircraftTracked": "{{count}} aeronaves militares rastreadas",
+        "vesselsTracked": "{{count}} embarcações militares rastreadas",
+        "internetOutages": "{{count}} interrupções de internet",
+        "recentEarthquakes": "{{count}} terremotos recentes",
+        "stockIndex": "Índice de ações: {{value}}",
+        "recentHeadlines": "**Manchetes recentes:**"
       }
     },
     "story": {
@@ -302,6 +325,15 @@
       "showingMatches": "Mostrando {{count}} de {{total}} correspondências",
       "match": "corresponder",
       "matches": "partidas"
+    },
+    "webcams": {
+      "regions": {
+        "all": "TODAS",
+        "mideast": "ORIENTE MÉDIO",
+        "europe": "EUROPA",
+        "americas": "AMÉRICAS",
+        "asia": "ÁSIA"
+      }
     },
     "playback": {
       "live": "Live",
@@ -582,7 +614,46 @@
       },
       "clickToViewMap": "Clique para visualizar no mapa",
       "refresh": "Atualizar",
-      "infoTooltip": "<strong>Metodologia</strong><p>Agrega aeronaves militares e embarcações navais por teatro.</p><ul><li><strong>Normal:</strong> Atividade de linha de base</li><li><strong>Elevado:</strong> Acima do limite (50+ aeronave)</li><li><strong>Crítico:</strong> Alta concentração (mais de 100 aeronaves)</li></ul><p><strong>Capacidade de ataque:</strong> Tanques + AWACS + Caças presentes em número suficiente para operações sustentadas.</p>"
+      "infoTooltip": "<strong>Metodologia</strong><p>Agrega aeronaves militares e embarcações navais por teatro.</p><ul><li><strong>Normal:</strong> Atividade de linha de base</li><li><strong>Elevado:</strong> Acima do limite (50+ aeronave)</li><li><strong>Crítico:</strong> Alta concentração (mais de 100 aeronaves)</li></ul><p><strong>Capacidade de ataque:</strong> Tanques + AWACS + Caças presentes em número suficiente para operações sustentadas.</p>",
+      "scanningTheaters": "Rastreando teatros",
+      "positions": "Posições de aeronaves",
+      "navalVesselsLoading": "Embarcações navais",
+      "theaterAnalysis": "Análise do teatro",
+      "connectingStreams": "Conectando aos fluxos ADS-B e AIS ao vivo...",
+      "initialLoadNote": "O carregamento inicial leva 30-60 segundos enquanto os dados de rastreamento se acumulam",
+      "acquiringData": "Adquirindo dados",
+      "acquiringDesc": "Conectando à rede ADS-B para dados de voos militares. Pode levar 30-60 segundos no primeiro carregamento.",
+      "openSkyAdsb": "OpenSky ADS-B",
+      "aisVesselStream": "AIS Vessel Stream",
+      "retryNow": "Tentar novamente",
+      "feedRateLimited": "Feed com limite de requisições",
+      "rateLimitedDesc": "A API OpenSky tem limites de requisições. O painel tentará novamente automaticamente em alguns minutos, ou você pode tentar agora.",
+      "rateLimitedTip": "Dica: horários de pico (UTC 12:00-20:00) frequentemente têm limites mais altos.",
+      "tryAgain": "Tentar novamente",
+      "badges": {
+        "critical": "CRÍT",
+        "elevated": "ELEV",
+        "normal": "NORM"
+      },
+      "trendStable": "estável",
+      "domains": {
+        "air": "AIR",
+        "sea": "SEA"
+      },
+      "strike": "STRIKE",
+      "staleWarning": "Usando dados em cache — feed ao vivo temporariamente indisponível",
+      "updated": "Atualizado:",
+      "theaters": {
+        "iran-theater": "Teatro iraniano",
+        "taiwan-theater": "Estreito de Taiwan",
+        "baltic-theater": "Teatro báltico",
+        "blacksea-theater": "Mar Negro",
+        "korea-theater": "Península Coreana",
+        "south-china-sea": "Mar da China Meridional",
+        "east-med-theater": "Mediterrâneo Oriental",
+        "israel-gaza-theater": "Israel/Gaza",
+        "yemen-redsea-theater": "Iémen/Mar Vermelho"
+      }
     },
     "techEvents": {
       "loading": "Carregando eventos de tecnologia...",
@@ -747,7 +818,19 @@
     },
     "strategicRisk": {
       "infoTooltip": "<strong>Metodologia</strong> Combinação de pontuação composta (0-100):<ul><li>50% Instabilidade do país (cinco principais ponderados)</li><li>30% Zonas de convergência geográfica</li><li>20% Incidentes de infraestrutura</li></ul>Atualização automática a cada 5 minutos.",
-      "noRisks": "Nenhum risco significativo detectado"
+      "noRisks": "Nenhum risco significativo detectado",
+      "levels": {
+        "critical": "Crítico",
+        "elevated": "Elevado",
+        "moderate": "Moderado",
+        "low": "Baixo"
+      },
+      "trend": "Tendência",
+      "trends": {
+        "escalating": "Escalando",
+        "deEscalating": "Desescalando",
+        "stable": "Estável"
+      }
     },
     "insights": {
       "infoTooltip": "<strong>Análise baseada em IA</strong><br>• <strong>World Brief</strong>: Resumo de IA (Groq/OpenRouter)<br>• <strong>Sentiment</strong>: Análise do tom de notícias<br>• <strong>Velocity</strong>: Histórias em movimento rápido<br>• <strong>Focal Pontos</strong>: correlaciona entidades de notícias com sinais de mapa (militares, protestos, interrupções)<br><em>Somente desktop • Desenvolvido por Llama 3.3 + Detecção de ponto focal</em>",
@@ -792,6 +875,39 @@
       "active": "Ativa",
       "proposed": "Proposta",
       "updated": "Atualizada"
+    },
+    "etfFlows": {
+      "unavailable": "Dados ETF temporariamente indisponíveis",
+      "netFlow": "Fluxo líquido",
+      "estFlow": "Fluxo est.",
+      "totalVol": "Vol. total",
+      "etfs": "ETFs",
+      "netInflow": "ENTRADA LÍQUIDA",
+      "netOutflow": "SAÍDA LÍQUIDA",
+      "table": {
+        "ticker": "Ticker",
+        "issuer": "Emissor",
+        "estFlow": "Fluxo est.",
+        "volume": "Volume",
+        "change": "Variação"
+      }
+    },
+    "macroSignals": {
+      "overall": "Geral",
+      "verdict": {
+        "buy": "BUY",
+        "cash": "CASH"
+      },
+      "bullish": "{{count}}/{{total}} otimistas",
+      "signals": {
+        "liquidity": "Liquidez",
+        "flow": "Fluxo",
+        "regime": "Regime",
+        "btcTrend": "BTC Trend",
+        "hashRate": "Hash Rate",
+        "mining": "Mining",
+        "fearGreed": "Fear &amp; Greed"
+      }
     },
     "export": {
       "exportData": "Exportar Dados"
@@ -1491,6 +1607,29 @@
       "base": "Bases Militares",
       "nuclear": "Instalações Nucleares",
       "port": "Portos"
+    },
+    "levels": {
+      "critical": "Crítico",
+      "high": "Alto",
+      "elevated": "Elevado",
+      "moderate": "Moderado",
+      "normal": "Normal",
+      "low": "Baixo"
+    },
+    "trends": {
+      "rising": "Em alta",
+      "falling": "Em queda",
+      "stable": "Estável"
+    },
+    "fallback": {
+      "instabilityIndex": "**Índice de Instabilidade: {{score}}/100** ({{level}}, {{trend}})",
+      "protestsDetected": "{{count}} protestos ativos detectados",
+      "aircraftTracked": "{{count}} aeronaves militares rastreadas",
+      "vesselsTracked": "{{count}} embarcações militares rastreadas",
+      "internetOutages": "{{count}} interrupções de internet",
+      "recentEarthquakes": "{{count}} terremotos recentes",
+      "stockIndex": "Índice de ações: {{value}}",
+      "recentHeadlines": "**Manchetes recentes:**"
     }
   }
 }

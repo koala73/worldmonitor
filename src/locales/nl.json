@@ -254,6 +254,29 @@
         "base": "Militaire bases",
         "nuclear": "Nucleaire faciliteiten",
         "port": "Havens"
+      },
+      "levels": {
+        "critical": "Kritiek",
+        "high": "Hoog",
+        "elevated": "Verhoogd",
+        "moderate": "Matig",
+        "normal": "Normaal",
+        "low": "Laag"
+      },
+      "trends": {
+        "rising": "Stijgend",
+        "falling": "Dalend",
+        "stable": "Stabiel"
+      },
+      "fallback": {
+        "instabilityIndex": "**Instabiliteitsindex: {{score}}/100** ({{level}}, {{trend}})",
+        "protestsDetected": "{{count}} actieve protesten gedetecteerd",
+        "aircraftTracked": "{{count}} militaire vliegtuigen gevolgd",
+        "vesselsTracked": "{{count}} militaire schepen gevolgd",
+        "internetOutages": "{{count}} internetstoringen",
+        "recentEarthquakes": "{{count}} recente aardbevingen",
+        "stockIndex": "Beursindex: {{value}}",
+        "recentHeadlines": "**Recente koppen:**"
       }
     },
     "story": {
@@ -302,6 +325,15 @@
       "showingMatches": "Toont {{count}} van {{total}} overeenkomsten",
       "match": "overeenkomst",
       "matches": "wedstrijden"
+    },
+    "webcams": {
+      "regions": {
+        "all": "ALLE",
+        "mideast": "MIDDEN-OOSTEN",
+        "europe": "EUROPA",
+        "americas": "AMERIKA",
+        "asia": "AZIË"
+      }
     },
     "playback": {
       "live": "Live",
@@ -582,7 +614,46 @@
       },
       "clickToViewMap": "Klik om op de kaart te bekijken",
       "refresh": "Vernieuwen",
-      "infoTooltip": "<strong>Methodologie</strong><p>Aggregeert militaire vliegtuigen en marineschepen per gebied.</p><ul><li><strong>Normaal:</strong> Basisactiviteit</li><li><strong>Verhoogd:</strong> Boven drempel (50+ vliegtuigen)</li><li><strong>Kritisch:</strong> Hoge concentratie (meer dan 100 vliegtuigen)</li></ul><p><strong>Strike Capable:</strong> Tankers + AWACS + gevechtsvliegtuigen in voldoende aantallen aanwezig voor duurzame operaties.</p>"
+      "infoTooltip": "<strong>Methodologie</strong><p>Aggregeert militaire vliegtuigen en marineschepen per gebied.</p><ul><li><strong>Normaal:</strong> Basisactiviteit</li><li><strong>Verhoogd:</strong> Boven drempel (50+ vliegtuigen)</li><li><strong>Kritisch:</strong> Hoge concentratie (meer dan 100 vliegtuigen)</li></ul><p><strong>Strike Capable:</strong> Tankers + AWACS + gevechtsvliegtuigen in voldoende aantallen aanwezig voor duurzame operaties.</p>",
+      "scanningTheaters": "Operatiegebieden scannen",
+      "positions": "Vliegtuigposities",
+      "navalVesselsLoading": "Marineschepen",
+      "theaterAnalysis": "Gebiedsanalyse",
+      "connectingStreams": "Verbinden met live ADS-B- en AIS-streams...",
+      "initialLoadNote": "Het eerste laden duurt 30-60 seconden terwijl trackinggegevens zich ophopen",
+      "acquiringData": "Gegevens verzamelen",
+      "acquiringDesc": "Verbinden met het ADS-B-netwerk voor militaire vluchtgegevens. Dit kan 30-60 seconden duren bij het eerste laden.",
+      "openSkyAdsb": "OpenSky ADS-B",
+      "aisVesselStream": "AIS Vessel Stream",
+      "retryNow": "Nu opnieuw proberen",
+      "feedRateLimited": "Feed met verzoeklimiet",
+      "rateLimitedDesc": "De OpenSky API heeft verzoeklimieten. Het paneel probeert het automatisch over een paar minuten opnieuw, of u kunt het nu proberen.",
+      "rateLimitedTip": "Tip: piekuren (UTC 12:00-20:00) hebben vaak hogere limieten.",
+      "tryAgain": "Opnieuw proberen",
+      "badges": {
+        "critical": "KRIT",
+        "elevated": "VERH",
+        "normal": "NORM"
+      },
+      "trendStable": "stabiel",
+      "domains": {
+        "air": "AIR",
+        "sea": "SEA"
+      },
+      "strike": "STRIKE",
+      "staleWarning": "Gebruik van gecachte gegevens — live feed tijdelijk niet beschikbaar",
+      "updated": "Bijgewerkt:",
+      "theaters": {
+        "iran-theater": "Iran-theater",
+        "taiwan-theater": "Straat van Taiwan",
+        "baltic-theater": "Baltisch theater",
+        "blacksea-theater": "Zwarte Zee",
+        "korea-theater": "Koreaans schiereiland",
+        "south-china-sea": "Zuid-Chinese Zee",
+        "east-med-theater": "Oostelijk Middellandse Zee",
+        "israel-gaza-theater": "Israël/Gaza",
+        "yemen-redsea-theater": "Jemen/Rode Zee"
+      }
     },
     "techEvents": {
       "loading": "Technische evenementen laden...",
@@ -747,7 +818,19 @@
     },
     "strategicRisk": {
       "infoTooltip": "<strong>Methodologie</strong> Samengestelde score (0-100) menging:<ul><li>50% Landinstabiliteit (top 5 gewogen)</li><li>30% Geografische convergentiezones</li><li>20% Infrastructuurincidenten</li></ul>Wordt elke 5 minuten automatisch vernieuwd.",
-      "noRisks": "Geen significante risico's gedetecteerd"
+      "noRisks": "Geen significante risico's gedetecteerd",
+      "levels": {
+        "critical": "Kritiek",
+        "elevated": "Verhoogd",
+        "moderate": "Matig",
+        "low": "Laag"
+      },
+      "trend": "Trend",
+      "trends": {
+        "escalating": "Escalerend",
+        "deEscalating": "De-escalerend",
+        "stable": "Stabiel"
+      }
     },
     "insights": {
       "infoTooltip": "<strong>AI-aangedreven analyse</strong><br>• <strong>World Brief</strong>: AI-samenvatting (Groq/OpenRouter)<br>• <strong>Sentiment</strong>: analyse van nieuwstoon<br>• <strong>Velocity</strong>: snel bewegende verhalen<br>• <strong>Focal Punten</strong>: correleert nieuwsentiteiten met kaartsignalen (militair, protesten, storingen)<br><em>Alleen desktop • Mogelijk gemaakt door Llama 3.3 + Focal Point-detectie</em>",
@@ -792,6 +875,39 @@
       "active": "Actief",
       "proposed": "Voorgesteld",
       "updated": "Bijgewerkt"
+    },
+    "etfFlows": {
+      "unavailable": "ETF-gegevens tijdelijk niet beschikbaar",
+      "netFlow": "Netto stroom",
+      "estFlow": "Gesch. stroom",
+      "totalVol": "Totaal vol.",
+      "etfs": "ETF's",
+      "netInflow": "NETTO INSTROOM",
+      "netOutflow": "NETTO UITSTROOM",
+      "table": {
+        "ticker": "Ticker",
+        "issuer": "Uitgever",
+        "estFlow": "Gesch. stroom",
+        "volume": "Volume",
+        "change": "Wijziging"
+      }
+    },
+    "macroSignals": {
+      "overall": "Totaal",
+      "verdict": {
+        "buy": "BUY",
+        "cash": "CASH"
+      },
+      "bullish": "{{count}}/{{total}} bullish",
+      "signals": {
+        "liquidity": "Liquiditeit",
+        "flow": "Stroom",
+        "regime": "Regime",
+        "btcTrend": "BTC Trend",
+        "hashRate": "Hash Rate",
+        "mining": "Mining",
+        "fearGreed": "Fear &amp; Greed"
+      }
     },
     "export": {
       "exportData": "Gegevens exporteren"
@@ -1491,6 +1607,29 @@
       "base": "Militaire bases",
       "nuclear": "Nucleaire faciliteiten",
       "port": "Havens"
+    },
+    "levels": {
+      "critical": "Kritiek",
+      "high": "Hoog",
+      "elevated": "Verhoogd",
+      "moderate": "Matig",
+      "normal": "Normaal",
+      "low": "Laag"
+    },
+    "trends": {
+      "rising": "Stijgend",
+      "falling": "Dalend",
+      "stable": "Stabiel"
+    },
+    "fallback": {
+      "instabilityIndex": "**Instabiliteitsindex: {{score}}/100** ({{level}}, {{trend}})",
+      "protestsDetected": "{{count}} actieve protesten gedetecteerd",
+      "aircraftTracked": "{{count}} militaire vliegtuigen gevolgd",
+      "vesselsTracked": "{{count}} militaire schepen gevolgd",
+      "internetOutages": "{{count}} internetstoringen",
+      "recentEarthquakes": "{{count}} recente aardbevingen",
+      "stockIndex": "Beursindex: {{value}}",
+      "recentHeadlines": "**Recente koppen:**"
     }
   }
 }

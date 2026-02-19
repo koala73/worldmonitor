@@ -359,10 +359,42 @@
         "base": "Military Bases",
         "nuclear": "Nuclear Facilities",
         "port": "Ports"
+      },
+      "levels": {
+        "critical": "Critical",
+        "high": "High",
+        "elevated": "Elevated",
+        "moderate": "Moderate",
+        "normal": "Normal",
+        "low": "Low"
+      },
+      "trends": {
+        "rising": "Rising",
+        "falling": "Falling",
+        "stable": "Stable"
+      },
+      "fallback": {
+        "instabilityIndex": "**Instability Index: {{score}}/100** ({{level}}, {{trend}})",
+        "protestsDetected": "{{count}} active protests detected",
+        "aircraftTracked": "{{count}} military aircraft tracked",
+        "vesselsTracked": "{{count}} military vessels tracked",
+        "internetOutages": "{{count}} internet outages",
+        "recentEarthquakes": "{{count}} recent earthquakes",
+        "stockIndex": "Stock index: {{value}}",
+        "recentHeadlines": "**Recent headlines:**"
       }
     }
   },
   "components": {
+    "webcams": {
+      "regions": {
+        "all": "ALL",
+        "mideast": "MIDEAST",
+        "europe": "EUROPE",
+        "americas": "AMERICAS",
+        "asia": "ASIA"
+      }
+    },
     "monitor": {
       "placeholder": "Keywords (comma separated)",
       "add": "+ Add Monitor",
@@ -494,7 +526,46 @@
         "auxiliary": "Auxiliary",
         "navalVessels": "Naval Vessels"
       },
-      "infoTooltip": "<strong>Methodology</strong><p>Aggregates military aircraft and naval vessels by theater.</p><ul><li><strong>Normal:</strong> Baseline activity</li><li><strong>Elevated:</strong> Above threshold (50+ aircraft)</li><li><strong>Critical:</strong> High concentration (100+ aircraft)</li></ul><p><strong>Strike Capable:</strong> Tankers + AWACS + Fighters present in sufficient numbers for sustained operations.</p>"
+      "infoTooltip": "<strong>Methodology</strong><p>Aggregates military aircraft and naval vessels by theater.</p><ul><li><strong>Normal:</strong> Baseline activity</li><li><strong>Elevated:</strong> Above threshold (50+ aircraft)</li><li><strong>Critical:</strong> High concentration (100+ aircraft)</li></ul><p><strong>Strike Capable:</strong> Tankers + AWACS + Fighters present in sufficient numbers for sustained operations.</p>",
+      "scanningTheaters": "Scanning Theaters",
+      "positions": "Aircraft positions",
+      "navalVesselsLoading": "Naval vessels",
+      "theaterAnalysis": "Theater analysis",
+      "connectingStreams": "Connecting to live ADS-B & AIS streams...",
+      "initialLoadNote": "Initial load takes 30-60 seconds as tracking data accumulates",
+      "acquiringData": "Acquiring Data",
+      "acquiringDesc": "Connecting to ADS-B network for military flight data. This may take 30-60 seconds on first load.",
+      "openSkyAdsb": "OpenSky ADS-B",
+      "aisVesselStream": "AIS Vessel Stream",
+      "retryNow": "Retry Now",
+      "feedRateLimited": "Feed Rate Limited",
+      "rateLimitedDesc": "OpenSky API has request limits. The panel will automatically retry in a few minutes, or you can try again now.",
+      "rateLimitedTip": "Tip: Peak hours (UTC 12:00-20:00) often see higher limits.",
+      "tryAgain": "Try Again",
+      "badges": {
+        "critical": "CRIT",
+        "elevated": "ELEV",
+        "normal": "NORM"
+      },
+      "trendStable": "stable",
+      "domains": {
+        "air": "AIR",
+        "sea": "SEA"
+      },
+      "strike": "STRIKE",
+      "staleWarning": "Using cached data - live feed temporarily unavailable",
+      "updated": "Updated:",
+      "theaters": {
+        "iran-theater": "Iran Theater",
+        "taiwan-theater": "Taiwan Strait",
+        "baltic-theater": "Baltic Theater",
+        "blacksea-theater": "Black Sea",
+        "korea-theater": "Korean Peninsula",
+        "south-china-sea": "South China Sea",
+        "east-med-theater": "Eastern Mediterranean",
+        "israel-gaza-theater": "Israel/Gaza",
+        "yemen-redsea-theater": "Yemen/Red Sea"
+      }
     },
     "countryBrief": {
       "shareStory": "Share story",
@@ -729,6 +800,18 @@
     },
     "strategicRisk": {
       "noRisks": "No significant risks detected",
+      "levels": {
+        "critical": "Critical",
+        "elevated": "Elevated",
+        "moderate": "Moderate",
+        "low": "Low"
+      },
+      "trend": "Trend",
+      "trends": {
+        "escalating": "Escalating",
+        "deEscalating": "De-escalating",
+        "stable": "Stable"
+      },
       "infoTooltip": "<strong>Methodology</strong> Composite score (0-100) blending:<ul><li>50% Country Instability (top 5 weighted)</li><li>30% Geographic convergence zones</li><li>20% Infrastructure incidents</li></ul>Auto-refreshes every 5 minutes."
     },
     "techEvents": {
@@ -867,6 +950,39 @@
     },
     "prediction": {
       "infoTooltip": "<strong>Prediction Markets</strong> Real-money forecasting markets:<ul><li>Prices reflect crowd probability estimates</li><li>Higher volume = more reliable signal</li><li>Geopolitical and current events focus</li></ul>Source: Polymarket (polymarket.com)"
+    },
+    "etfFlows": {
+      "unavailable": "ETF data temporarily unavailable",
+      "netFlow": "Net Flow",
+      "estFlow": "Est. Flow",
+      "totalVol": "Total Vol",
+      "etfs": "ETFs",
+      "netInflow": "NET INFLOW",
+      "netOutflow": "NET OUTFLOW",
+      "table": {
+        "ticker": "Ticker",
+        "issuer": "Issuer",
+        "estFlow": "Est. Flow",
+        "volume": "Volume",
+        "change": "Change"
+      }
+    },
+    "macroSignals": {
+      "overall": "Overall",
+      "verdict": {
+        "buy": "BUY",
+        "cash": "CASH"
+      },
+      "bullish": "{{count}}/{{total}} bullish",
+      "signals": {
+        "liquidity": "Liquidity",
+        "flow": "Flow",
+        "regime": "Regime",
+        "btcTrend": "BTC Trend",
+        "hashRate": "Hash Rate",
+        "mining": "Mining",
+        "fearGreed": "Fear & Greed"
+      }
     }
   },
   "popups": {

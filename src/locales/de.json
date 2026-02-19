@@ -50,6 +50,29 @@
       "base": "Militärstützpunkte",
       "nuclear": "Nuklearanlagen",
       "port": "Häfen"
+    },
+    "levels": {
+      "critical": "Kritisch",
+      "high": "Hoch",
+      "elevated": "Erhöht",
+      "moderate": "Mäßig",
+      "normal": "Normal",
+      "low": "Niedrig"
+    },
+    "trends": {
+      "rising": "Steigend",
+      "falling": "Fallend",
+      "stable": "Stabil"
+    },
+    "fallback": {
+      "instabilityIndex": "**Instabilitätsindex: {{score}}/100** ({{level}}, {{trend}})",
+      "protestsDetected": "{{count}} aktive Proteste erkannt",
+      "aircraftTracked": "{{count}} Militärflugzeuge verfolgt",
+      "vesselsTracked": "{{count}} Militärschiffe verfolgt",
+      "internetOutages": "{{count}} Internetausfälle",
+      "recentEarthquakes": "{{count}} jüngste Erdbeben",
+      "stockIndex": "Aktienindex: {{value}}",
+      "recentHeadlines": "**Aktuelle Schlagzeilen:**"
     }
   },
   "header": {
@@ -337,6 +360,29 @@
         "base": "Militärstützpunkte",
         "nuclear": "Nuklearanlagen",
         "port": "Häfen"
+      },
+      "levels": {
+        "critical": "Kritisch",
+        "high": "Hoch",
+        "elevated": "Erhöht",
+        "moderate": "Mäßig",
+        "normal": "Normal",
+        "low": "Niedrig"
+      },
+      "trends": {
+        "rising": "Steigend",
+        "falling": "Fallend",
+        "stable": "Stabil"
+      },
+      "fallback": {
+        "instabilityIndex": "**Instabilitätsindex: {{score}}/100** ({{level}}, {{trend}})",
+        "protestsDetected": "{{count}} aktive Proteste erkannt",
+        "aircraftTracked": "{{count}} Militärflugzeuge verfolgt",
+        "vesselsTracked": "{{count}} Militärschiffe verfolgt",
+        "internetOutages": "{{count}} Internetausfälle",
+        "recentEarthquakes": "{{count}} jüngste Erdbeben",
+        "stockIndex": "Aktienindex: {{value}}",
+        "recentHeadlines": "**Aktuelle Schlagzeilen:**"
       }
     },
     "settingsWindow": {
@@ -371,6 +417,15 @@
       "showingMatches": "Es werden {{count}} von {{total}} Übereinstimmungen angezeigt",
       "match": "übereinstimmen",
       "matches": "Streichhölzer"
+    },
+    "webcams": {
+      "regions": {
+        "all": "ALLE",
+        "mideast": "NAHOST",
+        "europe": "EUROPA",
+        "americas": "AMERIKA",
+        "asia": "ASIEN"
+      }
     },
     "regulation": {
       "timeline": "Zeitleiste",
@@ -705,7 +760,46 @@
       },
       "clickToViewMap": "Klicken Sie hier, um die Karte anzuzeigen",
       "refresh": "Aktualisieren",
-      "infoTooltip": "<strong>Methodik</strong><p>Zusammenfassung von Militärflugzeugen und Marineschiffen nach Einsatzgebiet.</p><ul><li><strong>Normal:</strong> Basisaktivität</li><li><strong>Erhöht:</strong> Über dem Schwellenwert (50+ Flugzeuge)</li><li><strong>Kritisch:</strong> Hohe Konzentration (100+ Flugzeuge)</li></ul><p><strong>Einschlagsfähig:</strong> Tanker + AWACS + Jäger in ausreichender Zahl für dauerhafte Einsätze vorhanden.</p>"
+      "infoTooltip": "<strong>Methodik</strong><p>Zusammenfassung von Militärflugzeugen und Marineschiffen nach Einsatzgebiet.</p><ul><li><strong>Normal:</strong> Basisaktivität</li><li><strong>Erhöht:</strong> Über dem Schwellenwert (50+ Flugzeuge)</li><li><strong>Kritisch:</strong> Hohe Konzentration (100+ Flugzeuge)</li></ul><p><strong>Einschlagsfähig:</strong> Tanker + AWACS + Jäger in ausreichender Zahl für dauerhafte Einsätze vorhanden.</p>",
+      "scanningTheaters": "Theater scannen",
+      "positions": "Flugzeugpositionen",
+      "navalVesselsLoading": "Marineschiffe",
+      "theaterAnalysis": "Theateranalyse",
+      "connectingStreams": "Verbindung zu Live-ADS-B- & AIS-Streams...",
+      "initialLoadNote": "Der erste Ladevorgang dauert 30–60 Sekunden, während sich die Tracking-Daten aufbauen",
+      "acquiringData": "Daten werden erfasst",
+      "acquiringDesc": "Verbindung zum ADS-B-Netzwerk für militärische Flugdaten. Dies kann beim ersten Laden 30–60 Sekunden dauern.",
+      "openSkyAdsb": "OpenSky ADS-B",
+      "aisVesselStream": "AIS-Schiffsstrom",
+      "retryNow": "Jetzt wiederholen",
+      "feedRateLimited": "Feed-Ratenbegrenzung",
+      "rateLimitedDesc": "Die OpenSky-API hat Anfragelimits. Das Panel versucht es automatisch in wenigen Minuten erneut, oder Sie können es jetzt versuchen.",
+      "rateLimitedTip": "Tipp: Zu Spitzenzeiten (UTC 12:00–20:00) gelten oft höhere Limits.",
+      "tryAgain": "Erneut versuchen",
+      "badges": {
+        "critical": "KRIT",
+        "elevated": "ERHÖHT",
+        "normal": "NORM"
+      },
+      "trendStable": "stabil",
+      "domains": {
+        "air": "LUFT",
+        "sea": "SEE"
+      },
+      "strike": "STRIKE",
+      "staleWarning": "Zwischengespeicherte Daten verwendet — Live-Feed vorübergehend nicht verfügbar",
+      "updated": "Aktualisiert:",
+      "theaters": {
+        "iran-theater": "Iran-Schauplatz",
+        "taiwan-theater": "Taiwanstraße",
+        "baltic-theater": "Ostsee-Schauplatz",
+        "blacksea-theater": "Schwarzes Meer",
+        "korea-theater": "Koreanische Halbinsel",
+        "south-china-sea": "Südchinesisches Meer",
+        "east-med-theater": "Östliches Mittelmeer",
+        "israel-gaza-theater": "Israel/Gaza",
+        "yemen-redsea-theater": "Jemen/Rotes Meer"
+      }
     },
     "techEvents": {
       "loading": "Tech-Events werden geladen...",
@@ -856,7 +950,19 @@
     },
     "strategicRisk": {
       "noRisks": "Keine signifikanten Risiken erkannt",
-      "infoTooltip": "<strong>Methodik</strong> Zusammengesetzte Bewertung (0–100), Mischung:<ul><li>50 % Länderinstabilität (Top 5 gewichtet)</li><li>30 % Geografische Konvergenzzonen</li><li>20 % Infrastrukturvorfälle</li></ul>Automatische Aktualisierung alle 5 Minuten."
+      "infoTooltip": "<strong>Methodik</strong> Zusammengesetzte Bewertung (0–100), Mischung:<ul><li>50 % Länderinstabilität (Top 5 gewichtet)</li><li>30 % Geografische Konvergenzzonen</li><li>20 % Infrastrukturvorfälle</li></ul>Automatische Aktualisierung alle 5 Minuten.",
+      "levels": {
+        "critical": "Kritisch",
+        "elevated": "Erhöht",
+        "moderate": "Mäßig",
+        "low": "Niedrig"
+      },
+      "trend": "Trend",
+      "trends": {
+        "escalating": "Eskalierend",
+        "deEscalating": "Deeskalierend",
+        "stable": "Stabil"
+      }
     },
     "insights": {
       "noStories": "Noch keine aktuellen oder quellenübergreifenden Meldungen",
@@ -864,6 +970,39 @@
     },
     "export": {
       "exportData": "Daten exportieren"
+    },
+    "etfFlows": {
+      "unavailable": "ETF-Daten vorübergehend nicht verfügbar",
+      "netFlow": "Nettofluss",
+      "estFlow": "Gesch. Fluss",
+      "totalVol": "Ges. Vol.",
+      "etfs": "ETFs",
+      "netInflow": "NETTO-ZUFLUSS",
+      "netOutflow": "NETTO-ABFLUSS",
+      "table": {
+        "ticker": "Ticker",
+        "issuer": "Emittent",
+        "estFlow": "Gesch. Fluss",
+        "volume": "Volumen",
+        "change": "Änderung"
+      }
+    },
+    "macroSignals": {
+      "overall": "Gesamt",
+      "verdict": {
+        "buy": "KAUFEN",
+        "cash": "CASH"
+      },
+      "bullish": "{{count}}/{{total}} bullisch",
+      "signals": {
+        "liquidity": "Liquidität",
+        "flow": "Fluss",
+        "regime": "Regime",
+        "btcTrend": "BTC-Trend",
+        "hashRate": "Hash Rate",
+        "mining": "Mining",
+        "fearGreed": "Angst &amp; Gier"
+      }
     },
     "runtimeConfig": {
       "getApiKey": "API-Schlüssel anfordern"
@@ -1352,7 +1491,7 @@
         "confidenceNote": "Sehr hohes Vertrauen, wenn Presse-, Regierungs- und Intelligence-Quellen übereinstimmen."
       },
       "triangulation": {
-        "whyItMatters": "Das \u201EAutoritätsdreieck\u201C (Nachrichtenagenturen, Regierungsquellen, Intelligence-Spezialisten) ist ausgerichtet — dies ist der Goldstandard für die Bestätigung von Breaking News.",
+        "whyItMatters": "Das „Autoritätsdreieck“ (Nachrichtenagenturen, Regierungsquellen, Intelligence-Spezialisten) ist ausgerichtet — dies ist der Goldstandard für die Bestätigung von Breaking News.",
         "actionableInsight": "Dies ist handlungsrelevante Intelligence; Markt-/Politikreaktionen unmittelbar zu erwarten.",
         "confidenceNote": "Höchstes Vertrauenssignal im System — mehrere maßgebliche Quellen stimmen überein."
       },

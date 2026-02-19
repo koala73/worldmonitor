@@ -1,7 +1,7 @@
 import i18next from 'i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
 
-const SUPPORTED_LANGUAGES = ['en', 'fr', 'de', 'es', 'it', 'pl', 'pt', 'nl', 'sv', 'ru', 'ar', 'zh', 'ja'] as const;
+const SUPPORTED_LANGUAGES = ['en', 'fr', 'de', 'es', 'it', 'pl', 'pt', 'nl', 'sv', 'ru', 'ar', 'zh', 'ja', 'tr'] as const;
 type SupportedLanguage = typeof SUPPORTED_LANGUAGES[number];
 type TranslationDictionary = Record<string, unknown>;
 
@@ -22,6 +22,7 @@ const LOCALE_LOADERS: Record<SupportedLanguage, () => Promise<TranslationDiction
   ar: async () => (await import('../locales/ar.json')).default as TranslationDictionary,
   zh: async () => (await import('../locales/zh.json')).default as TranslationDictionary,
   ja: async () => (await import('../locales/ja.json')).default as TranslationDictionary,
+  tr: async () => (await import('../locales/tr.json')).default as TranslationDictionary,
 };
 
 const RTL_LANGUAGES = new Set(['ar']);
@@ -121,7 +122,7 @@ export function isRTL(): boolean {
 
 export function getLocale(): string {
   const lang = getCurrentLanguage();
-  const map: Record<string, string> = { en: 'en-US', zh: 'zh-CN', pt: 'pt-BR', ja: 'ja-JP' };
+  const map: Record<string, string> = { en: 'en-US', zh: 'zh-CN', pt: 'pt-BR', ja: 'ja-JP', tr: 'tr-TR' };
   return map[lang] || lang;
 }
 
@@ -139,4 +140,5 @@ export const LANGUAGES = [
   { code: 'sv', label: 'Svenska', flag: '🇸🇪' },
   { code: 'ru', label: 'Русский', flag: '🇷🇺' },
   { code: 'ja', label: '日本語', flag: '🇯🇵' },
+  { code: 'tr', label: 'Türkçe', flag: '🇹🇷' },
 ];

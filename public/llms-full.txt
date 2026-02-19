@@ -152,7 +152,7 @@ The project is built with TypeScript, Vite, MapLibre GL JS, deck.gl, D3.js, and 
 
 ## Supported Languages
 
-English (en), French (fr), Spanish (es), German (de), Italian (it), Polish (pl), Portuguese (pt), Dutch (nl), Swedish (sv), Russian (ru), Arabic (ar) with RTL support, Chinese (zh), Japanese (ja). Language bundles are lazy-loaded on demand. Localized news feeds load region-specific RSS sources based on language preference. AI translation available for cross-language intelligence gathering.
+English (en), French (fr), Spanish (es), German (de), Italian (it), Polish (pl), Portuguese (pt), Dutch (nl), Swedish (sv), Russian (ru), Arabic (ar) with RTL support, Chinese (zh), Japanese (ja), Turkish (tr). Language bundles are lazy-loaded on demand. Localized news feeds load region-specific RSS sources based on language preference. AI translation available for cross-language intelligence gathering.
 
 ## Tri-Variant Build System
 
@@ -211,7 +211,7 @@ Native desktop app built with Tauri (Rust + Node.js sidecar). The sidecar mirror
 - 8 live news streams and 19 live webcams from geopolitical hotspots
 - 7-signal macro market radar with BUY/CASH verdict
 - Country brief pages with exportable intelligence dossiers (JSON, CSV, PNG)
-- Multilingual UI in 13 languages with RTL support
+- Multilingual UI in 14 languages with RTL support
 - Prediction market integration (Polymarket) with 3-tier JA3 bypass
 - Temporal baseline anomaly detection using Welford's algorithm
 - Dual-source protest tracking (ACLED + GDELT) with regime-aware scoring

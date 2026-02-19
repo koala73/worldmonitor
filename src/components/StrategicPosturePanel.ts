@@ -58,24 +58,24 @@ export class StrategicPosturePanel extends Panel {
             <div class="posture-radar-sweep"></div>
             <div class="posture-radar-dot"></div>
           </div>
-          <div class="posture-loading-title">Scanning Theaters</div>
+          <div class="posture-loading-title">${t('components.strategicPosture.scanningTheaters')}</div>
           <div class="posture-loading-stages">
             <div class="posture-stage active">
               <span class="posture-stage-dot"></span>
-              <span>Aircraft positions</span>
+              <span>${t('components.strategicPosture.positions')}</span>
             </div>
             <div class="posture-stage pending">
               <span class="posture-stage-dot"></span>
-              <span>Naval vessels</span>
+              <span>${t('components.strategicPosture.navalVesselsLoading')}</span>
             </div>
             <div class="posture-stage pending">
               <span class="posture-stage-dot"></span>
-              <span>Theater analysis</span>
+              <span>${t('components.strategicPosture.theaterAnalysis')}</span>
             </div>
           </div>
-          <div class="posture-loading-tip">Connecting to live ADS-B &amp; AIS streams...</div>
-          <div class="posture-loading-elapsed">Elapsed: 0s</div>
-          <div class="posture-loading-note">Initial load takes 30-60 seconds as tracking data accumulates</div>
+          <div class="posture-loading-tip">${t('components.strategicPosture.connectingStreams')}</div>
+          <div class="posture-loading-elapsed">${t('components.strategicPosture.elapsed', { elapsed: '0' })}</div>
+          <div class="posture-loading-note">${t('components.strategicPosture.initialLoadNote')}</div>
         </div>
       </div>
     `);
@@ -300,22 +300,21 @@ export class StrategicPosturePanel extends Panel {
       <div class="posture-panel">
         <div class="posture-no-data">
           <div class="posture-no-data-icon pulse">📡</div>
-          <div class="posture-no-data-title">Acquiring Data</div>
+          <div class="posture-no-data-title">${t('components.strategicPosture.acquiringData')}</div>
           <div class="posture-no-data-desc">
-            Connecting to ADS-B network for military flight data.
-            This may take 30-60 seconds on first load.
+            ${t('components.strategicPosture.acquiringDesc')}
           </div>
           <div class="posture-data-sources">
             <div class="posture-source">
               <span class="posture-source-icon connecting">✈️</span>
-              <span>OpenSky ADS-B</span>
+              <span>${t('components.strategicPosture.openSkyAdsb')}</span>
             </div>
             <div class="posture-source">
               <span class="posture-source-icon waiting">🚢</span>
-              <span>AIS Vessel Stream</span>
+              <span>${t('components.strategicPosture.aisVesselStream')}</span>
             </div>
           </div>
-          <button class="posture-retry-btn">↻ Retry Now</button>
+          <button class="posture-retry-btn">↻ ${t('components.strategicPosture.retryNow')}</button>
         </div>
       </div>
     `);
@@ -328,15 +327,14 @@ export class StrategicPosturePanel extends Panel {
       <div class="posture-panel">
         <div class="posture-no-data">
           <div class="posture-no-data-icon">⚠️</div>
-          <div class="posture-no-data-title">Feed Rate Limited</div>
+          <div class="posture-no-data-title">${t('components.strategicPosture.feedRateLimited')}</div>
           <div class="posture-no-data-desc">
-            OpenSky API has request limits. The panel will automatically
-            retry in a few minutes, or you can try again now.
+            ${t('components.strategicPosture.rateLimitedDesc')}
           </div>
           <div class="posture-error-hint">
-            <strong>Tip:</strong> Peak hours (UTC 12:00-20:00) often see higher limits.
+            <strong>${t('components.strategicPosture.rateLimitedTip')}</strong>
           </div>
-          <button class="posture-retry-btn">↻ Try Again</button>
+          <button class="posture-retry-btn">↻ ${t('components.strategicPosture.tryAgain')}</button>
         </div>
       </div>
     `);
@@ -346,11 +344,11 @@ export class StrategicPosturePanel extends Panel {
   private getPostureBadge(level: string): string {
     switch (level) {
       case 'critical':
-        return '<span class="posture-badge posture-critical">CRIT</span>';
+        return `<span class="posture-badge posture-critical">${t('components.strategicPosture.badges.critical')}</span>`;
       case 'elevated':
-        return '<span class="posture-badge posture-elevated">ELEV</span>';
+        return `<span class="posture-badge posture-elevated">${t('components.strategicPosture.badges.elevated')}</span>`;
       default:
-        return '<span class="posture-badge posture-normal">NORM</span>';
+        return `<span class="posture-badge posture-normal">${t('components.strategicPosture.badges.normal')}</span>`;
     }
   }
 
@@ -361,12 +359,19 @@ export class StrategicPosturePanel extends Panel {
       case 'decreasing':
         return `<span class="posture-trend trend-down">↘ ${change}%</span>`;
       default:
-        return '<span class="posture-trend trend-stable">→ stable</span>';
+        return `<span class="posture-trend trend-stable">→ ${t('components.strategicPosture.trendStable')}</span>`;
     }
+  }
+
+  private theaterDisplayName(p: TheaterPostureSummary): string {
+    const key = `components.strategicPosture.theaters.${p.theaterId}`;
+    const translated = t(key);
+    return translated !== key ? translated : p.theaterName;
   }
 
   private renderTheater(p: TheaterPostureSummary): string {
     const isExpanded = p.postureLevel !== 'normal';
+    const displayName = this.theaterDisplayName(p);
 
     if (!isExpanded) {
       // Compact single-line view for normal theaters
@@ -375,7 +380,7 @@ export class StrategicPosturePanel extends Panel {
       if (p.totalVessels > 0) chips.push(`<span class="posture-chip naval">⚓ ${p.totalVessels}</span>`);
 
       return `
-        <div class="posture-theater posture-compact" data-lat="${p.centerLat}" data-lon="${p.centerLon}" title="${t('components.strategicPosture.clickToView', { name: escapeHtml(p.theaterName) })}">
+        <div class="posture-theater posture-compact" data-lat="${p.centerLat}" data-lon="${p.centerLon}" title="${t('components.strategicPosture.clickToView', { name: escapeHtml(displayName) })}">
           <span class="posture-name">${escapeHtml(p.shortName)}</span>
           <div class="posture-chips">${chips.join('')}</div>
           ${this.getPostureBadge(p.postureLevel)}
@@ -415,17 +420,17 @@ export class StrategicPosturePanel extends Panel {
     return `
       <div class="posture-theater posture-expanded ${p.postureLevel}" data-lat="${p.centerLat}" data-lon="${p.centerLon}" title="${t('components.strategicPosture.clickToViewMap')}">
         <div class="posture-theater-header">
-          <span class="posture-name">${escapeHtml(p.theaterName)}</span>
+          <span class="posture-name">${escapeHtml(displayName)}</span>
           ${this.getPostureBadge(p.postureLevel)}
         </div>
 
         <div class="posture-forces">
-          ${hasAir ? `<div class="posture-force-row"><span class="posture-domain">AIR</span><div class="posture-stats">${airChips.join('')}</div></div>` : ''}
-          ${hasNaval ? `<div class="posture-force-row"><span class="posture-domain">SEA</span><div class="posture-stats">${navalChips.join('')}</div></div>` : ''}
+          ${hasAir ? `<div class="posture-force-row"><span class="posture-domain">${t('components.strategicPosture.domains.air')}</span><div class="posture-stats">${airChips.join('')}</div></div>` : ''}
+          ${hasNaval ? `<div class="posture-force-row"><span class="posture-domain">${t('components.strategicPosture.domains.sea')}</span><div class="posture-stats">${navalChips.join('')}</div></div>` : ''}
         </div>
 
         <div class="posture-footer">
-          ${p.strikeCapable ? '<span class="posture-strike">⚡ STRIKE</span>' : ''}
+          ${p.strikeCapable ? `<span class="posture-strike">⚡ ${t('components.strategicPosture.strike')}</span>` : ''}
           ${this.getTrendIcon(p.trend, p.changePercent)}
           ${p.targetNation ? `<span class="posture-focus">→ ${escapeHtml(p.targetNation)}</span>` : ''}
         </div>
@@ -445,7 +450,7 @@ export class StrategicPosturePanel extends Panel {
       : new Date().toLocaleTimeString();
 
     const staleWarning = this.isStale
-      ? '<div class="posture-stale-warning">⚠️ Using cached data - live feed temporarily unavailable</div>'
+      ? `<div class="posture-stale-warning">⚠️ ${t('components.strategicPosture.staleWarning')}</div>`
       : '';
 
     const html = `
@@ -454,7 +459,7 @@ export class StrategicPosturePanel extends Panel {
         ${sorted.map((p) => this.renderTheater(p)).join('')}
 
         <div class="posture-footer">
-          <span class="posture-updated">${this.isStale ? '⚠️ ' : ''}Updated: ${updatedTime}</span>
+          <span class="posture-updated">${this.isStale ? '⚠️ ' : ''}${t('components.strategicPosture.updated')} ${updatedTime}</span>
           <button class="posture-refresh-btn" title="${t('components.strategicPosture.refresh')}">↻</button>
         </div>
       </div>
