@@ -9,6 +9,7 @@ import "worldmonitor/market/v1/list_commodity_quotes.proto";
 import "worldmonitor/market/v1/get_sector_summary.proto";
 import "worldmonitor/market/v1/list_stablecoin_markets.proto";
 import "worldmonitor/market/v1/list_etf_flows.proto";
+import "worldmonitor/market/v1/get_country_stock_index.proto";
 
 // MarketService provides APIs for financial market data from Finnhub, Yahoo Finance, and CoinGecko.
 service MarketService {
@@ -42,5 +43,10 @@ service MarketService {
   // ListEtfFlows retrieves BTC spot ETF flow estimates from Yahoo Finance.
   rpc ListEtfFlows(ListEtfFlowsRequest) returns (ListEtfFlowsResponse) {
     option (sebuf.http.config) = {path: "/list-etf-flows"};
+  }
+
+  // GetCountryStockIndex retrieves the primary stock index for a country from Yahoo Finance.
+  rpc GetCountryStockIndex(GetCountryStockIndexRequest) returns (GetCountryStockIndexResponse) {
+    option (sebuf.http.config) = {path: "/get-country-stock-index"};
   }
 }

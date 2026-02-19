@@ -127,6 +127,21 @@ export interface EtfFlow {
   estFlow: number;
 }
 
+export interface GetCountryStockIndexRequest {
+  countryCode: string;
+}
+
+export interface GetCountryStockIndexResponse {
+  available: boolean;
+  code: string;
+  symbol: string;
+  indexName: string;
+  price: number;
+  weekChangePercent: number;
+  currency: string;
+  fetchedAt: string;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -317,6 +332,30 @@ export class MarketServiceClient {
     }
 
     return await resp.json() as ListEtfFlowsResponse;
+  }
+
+  async getCountryStockIndex(req: GetCountryStockIndexRequest, options?: MarketServiceCallOptions): Promise<GetCountryStockIndexResponse> {
+    let path = "/api/market/v1/get-country-stock-index";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetCountryStockIndexResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

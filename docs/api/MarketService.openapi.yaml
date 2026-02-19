@@ -131,6 +131,102 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/market/v1/list-stablecoin-markets:
+        post:
+            tags:
+                - MarketService
+            summary: ListStablecoinMarkets
+            description: ListStablecoinMarkets retrieves stablecoin peg health and market data from CoinGecko.
+            operationId: ListStablecoinMarkets
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ListStablecoinMarketsRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListStablecoinMarketsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/market/v1/list-etf-flows:
+        post:
+            tags:
+                - MarketService
+            summary: ListEtfFlows
+            description: ListEtfFlows retrieves BTC spot ETF flow estimates from Yahoo Finance.
+            operationId: ListEtfFlows
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ListEtfFlowsRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListEtfFlowsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/market/v1/get-country-stock-index:
+        post:
+            tags:
+                - MarketService
+            summary: GetCountryStockIndex
+            description: GetCountryStockIndex retrieves the primary stock index for a country from Yahoo Finance.
+            operationId: GetCountryStockIndex
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/GetCountryStockIndexRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetCountryStockIndexResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -322,3 +418,208 @@ components:
                     format: double
                     description: Percentage change over the measured period.
             description: SectorPerformance represents performance data for a market sector.
+        ListStablecoinMarketsRequest:
+            type: object
+            properties:
+                coins:
+                    type: array
+                    items:
+                        type: string
+                        description: CoinGecko IDs to retrieve (e.g. "tether,usd-coin"). Empty returns defaults.
+            description: ListStablecoinMarketsRequest specifies which stablecoins to retrieve.
+        ListStablecoinMarketsResponse:
+            type: object
+            properties:
+                timestamp:
+                    type: string
+                    description: Timestamp of the data fetch (ISO 8601).
+                summary:
+                    $ref: '#/components/schemas/StablecoinSummary'
+                stablecoins:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Stablecoin'
+            description: ListStablecoinMarketsResponse contains stablecoin market data.
+        StablecoinSummary:
+            type: object
+            properties:
+                totalMarketCap:
+                    type: number
+                    format: double
+                    description: Total market cap across all queried stablecoins.
+                totalVolume24h:
+                    type: number
+                    format: double
+                    description: Total 24h volume across all queried stablecoins.
+                coinCount:
+                    type: integer
+                    format: int32
+                    description: Number of stablecoins returned.
+                depeggedCount:
+                    type: integer
+                    format: int32
+                    description: Number of stablecoins in DEPEGGED state.
+                healthStatus:
+                    type: string
+                    description: 'Overall health: "HEALTHY", "CAUTION", or "WARNING".'
+            description: StablecoinSummary contains aggregate stablecoin market stats.
+        Stablecoin:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: CoinGecko ID.
+                symbol:
+                    type: string
+                    description: Ticker symbol (e.g. "USDT").
+                name:
+                    type: string
+                    description: Human-readable name.
+                price:
+                    type: number
+                    format: double
+                    description: Current price in USD.
+                deviation:
+                    type: number
+                    format: double
+                    description: Deviation from $1.00 peg, as a percentage.
+                pegStatus:
+                    type: string
+                    description: 'Peg status: "ON PEG", "SLIGHT DEPEG", or "DEPEGGED".'
+                marketCap:
+                    type: number
+                    format: double
+                    description: Market capitalization in USD.
+                volume24h:
+                    type: number
+                    format: double
+                    description: 24-hour trading volume in USD.
+                change24h:
+                    type: number
+                    format: double
+                    description: 24-hour price change percentage.
+                change7d:
+                    type: number
+                    format: double
+                    description: 7-day price change percentage.
+                image:
+                    type: string
+                    description: Coin image URL.
+            description: Stablecoin represents a single stablecoin with peg health data.
+        ListEtfFlowsRequest:
+            type: object
+            description: ListEtfFlowsRequest is empty; the handler uses a fixed list of BTC spot ETFs.
+        ListEtfFlowsResponse:
+            type: object
+            properties:
+                timestamp:
+                    type: string
+                    description: Timestamp of the data fetch (ISO 8601).
+                summary:
+                    $ref: '#/components/schemas/EtfFlowsSummary'
+                etfs:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/EtfFlow'
+            description: ListEtfFlowsResponse contains BTC spot ETF flow data.
+        EtfFlowsSummary:
+            type: object
+            properties:
+                etfCount:
+                    type: integer
+                    format: int32
+                    description: Number of ETFs with data.
+                totalVolume:
+                    type: integer
+                    format: int64
+                    description: 'Total volume across all ETFs.. Warning: Values > 2^53 may lose precision in JavaScript'
+                totalEstFlow:
+                    type: integer
+                    format: int64
+                    description: 'Total estimated flow across all ETFs.. Warning: Values > 2^53 may lose precision in JavaScript'
+                netDirection:
+                    type: string
+                    description: 'Net direction: "NET INFLOW", "NET OUTFLOW", or "NEUTRAL".'
+                inflowCount:
+                    type: integer
+                    format: int32
+                    description: Number of ETFs with inflow.
+                outflowCount:
+                    type: integer
+                    format: int32
+                    description: Number of ETFs with outflow.
+            description: EtfFlowsSummary contains aggregate ETF flow stats.
+        EtfFlow:
+            type: object
+            properties:
+                ticker:
+                    type: string
+                    description: Ticker symbol (e.g. "IBIT").
+                issuer:
+                    type: string
+                    description: Fund issuer (e.g. "BlackRock").
+                price:
+                    type: number
+                    format: double
+                    description: Latest closing price.
+                priceChange:
+                    type: number
+                    format: double
+                    description: Day-over-day price change percentage.
+                volume:
+                    type: integer
+                    format: int64
+                    description: 'Latest daily volume.. Warning: Values > 2^53 may lose precision in JavaScript'
+                avgVolume:
+                    type: integer
+                    format: int64
+                    description: 'Average volume over prior days.. Warning: Values > 2^53 may lose precision in JavaScript'
+                volumeRatio:
+                    type: number
+                    format: double
+                    description: Volume ratio (latest / average).
+                direction:
+                    type: string
+                    description: 'Flow direction: "inflow", "outflow", or "neutral".'
+                estFlow:
+                    type: integer
+                    format: int64
+                    description: 'Estimated dollar flow magnitude.. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: EtfFlow represents a single ETF with estimated flow data.
+        GetCountryStockIndexRequest:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                    description: ISO 3166-1 alpha-2 country code (e.g., "US", "GB", "JP").
+            description: GetCountryStockIndexRequest specifies which country's stock index to retrieve.
+        GetCountryStockIndexResponse:
+            type: object
+            properties:
+                available:
+                    type: boolean
+                    description: Whether stock index data is available for this country.
+                code:
+                    type: string
+                    description: ISO 3166-1 alpha-2 country code.
+                symbol:
+                    type: string
+                    description: Ticker symbol (e.g., "^GSPC").
+                indexName:
+                    type: string
+                    description: Index name (e.g., "S&P 500").
+                price:
+                    type: number
+                    format: double
+                    description: Latest closing price.
+                weekChangePercent:
+                    type: number
+                    format: double
+                    description: Weekly change percentage.
+                currency:
+                    type: string
+                    description: Currency of the index.
+                fetchedAt:
+                    type: string
+                    description: When the data was fetched (ISO 8601).
+            description: GetCountryStockIndexResponse contains the country's primary stock index data.

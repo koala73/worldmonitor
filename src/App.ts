@@ -86,6 +86,7 @@ import { collectStoryData } from '@/services/story-data';
 import { renderStoryToCanvas } from '@/services/story-renderer';
 import { openStoryModal } from '@/components/StoryModal';
 import { INTEL_HOTSPOTS, CONFLICT_ZONES, MILITARY_BASES, UNDERSEA_CABLES, NUCLEAR_FACILITIES } from '@/config/geo';
+import { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
 import { PIPELINES } from '@/config/pipelines';
 import { AI_DATA_CENTERS } from '@/config/ai-datacenters';
 import { GAMMA_IRRADIATORS } from '@/config/irradiators';
@@ -863,9 +864,18 @@ export class App {
     const shareUrl = this.getShareUrl();
     if (shareUrl) history.replaceState(null, '', shareUrl);
 
-    const stockPromise = fetch(`/api/stock-index?code=${encodeURIComponent(code)}`)
-      .then((r) => r.json())
-      .catch(() => ({ available: false }));
+    const marketClient = new MarketServiceClient('', { fetch: fetch.bind(globalThis) });
+    const stockPromise = marketClient.getCountryStockIndex({ countryCode: code })
+      .then((resp) => ({
+        available: resp.available,
+        code: resp.code,
+        symbol: resp.symbol,
+        indexName: resp.indexName,
+        price: String(resp.price),
+        weekChangePercent: String(resp.weekChangePercent),
+        currency: resp.currency,
+      }))
+      .catch(() => ({ available: false as const, code: '', symbol: '', indexName: '', price: '0', weekChangePercent: '0', currency: '' }));
 
     stockPromise.then((stock) => {
       if (this.countryBriefPage?.getCode() === code) this.countryBriefPage.updateStock(stock);

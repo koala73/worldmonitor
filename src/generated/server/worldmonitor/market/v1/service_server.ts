@@ -127,6 +127,21 @@ export interface EtfFlow {
   estFlow: number;
 }
 
+export interface GetCountryStockIndexRequest {
+  countryCode: string;
+}
+
+export interface GetCountryStockIndexResponse {
+  available: boolean;
+  code: string;
+  symbol: string;
+  indexName: string;
+  price: number;
+  weekChangePercent: number;
+  currency: string;
+  fetchedAt: string;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -178,6 +193,7 @@ export interface MarketServiceHandler {
   getSectorSummary(ctx: ServerContext, req: GetSectorSummaryRequest): Promise<GetSectorSummaryResponse>;
   listStablecoinMarkets(ctx: ServerContext, req: ListStablecoinMarketsRequest): Promise<ListStablecoinMarketsResponse>;
   listEtfFlows(ctx: ServerContext, req: ListEtfFlowsRequest): Promise<ListEtfFlowsResponse>;
+  getCountryStockIndex(ctx: ServerContext, req: GetCountryStockIndexRequest): Promise<GetCountryStockIndexResponse>;
 }
 
 export function createMarketServiceRoutes(
@@ -422,6 +438,49 @@ export function createMarketServiceRoutes(
 
           const result = await handler.listEtfFlows(ctx, body);
           return new Response(JSON.stringify(result as ListEtfFlowsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/market/v1/get-country-stock-index",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = await req.json() as GetCountryStockIndexRequest;
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getCountryStockIndex", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getCountryStockIndex(ctx, body);
+          return new Response(JSON.stringify(result as GetCountryStockIndexResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

@@ -35,6 +35,38 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/displacement/v1/get-population-exposure:
+        post:
+            tags:
+                - DisplacementService
+            summary: GetPopulationExposure
+            description: GetPopulationExposure returns country population data or estimates population within a radius.
+            operationId: GetPopulationExposure
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/GetPopulationExposureRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetPopulationExposureResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -216,3 +248,75 @@ components:
                 asylumLocation:
                     $ref: '#/components/schemas/GeoCoordinates'
             description: DisplacementFlow represents a refugee movement corridor between two countries.
+        GetPopulationExposureRequest:
+            type: object
+            properties:
+                mode:
+                    type: string
+                    description: 'Mode: "countries" (default) or "exposure".'
+                lat:
+                    type: number
+                    format: double
+                    description: Latitude (required for exposure mode).
+                lon:
+                    type: number
+                    format: double
+                    description: Longitude (required for exposure mode).
+                radius:
+                    type: number
+                    format: double
+                    description: Radius in km (required for exposure mode, defaults to 50).
+            description: |-
+                GetPopulationExposureRequest supports two modes:
+                 - countries mode (default): returns the priority countries list
+                 - exposure mode: estimates population within a radius of a point
+        GetPopulationExposureResponse:
+            type: object
+            properties:
+                success:
+                    type: boolean
+                    description: True if the request succeeded.
+                countries:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CountryPopulationEntry'
+                exposure:
+                    $ref: '#/components/schemas/ExposureResult'
+            description: GetPopulationExposureResponse returns either a countries list or an exposure estimate.
+        CountryPopulationEntry:
+            type: object
+            properties:
+                code:
+                    type: string
+                    description: ISO 3166-1 alpha-3 country code.
+                name:
+                    type: string
+                    description: Country name.
+                population:
+                    type: integer
+                    format: int64
+                    description: 'Total population.. Warning: Values > 2^53 may lose precision in JavaScript'
+                densityPerKm2:
+                    type: integer
+                    format: int32
+                    description: Population density per square kilometer.
+            description: CountryPopulationEntry represents a country with population data.
+        ExposureResult:
+            type: object
+            properties:
+                exposedPopulation:
+                    type: integer
+                    format: int64
+                    description: 'Estimated exposed population.. Warning: Values > 2^53 may lose precision in JavaScript'
+                exposureRadiusKm:
+                    type: number
+                    format: double
+                    description: Radius used for the estimate in km.
+                nearestCountry:
+                    type: string
+                    description: ISO3 code of nearest priority country.
+                densityPerKm2:
+                    type: integer
+                    format: int32
+                    description: Population density used for the estimate.
+            description: ExposureResult contains the population exposure estimate.
