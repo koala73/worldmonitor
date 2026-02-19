@@ -2,9 +2,7 @@ import type { SocialUnrestEvent, MilitaryFlight, MilitaryVessel, ClusteredEvent,
 import { INTEL_HOTSPOTS, CONFLICT_ZONES, STRATEGIC_WATERWAYS } from '@/config/geo';
 import { TIER1_COUNTRIES } from '@/config/countries';
 import { focalPointDetector } from './focal-point-detector';
-import type { ConflictEvent } from './conflicts';
-import type { UcdpConflictStatus } from './ucdp';
-import type { HapiConflictSummary } from './hapi';
+import type { ConflictEvent, UcdpConflictStatus, HapiConflictSummary } from './conflict';
 import type { CountryDisplacement } from '@/services/displacement';
 import type { ClimateAnomaly } from '@/services/climate';
 import { getCountryAtCoordinates } from './country-geometry';
