@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-18)
 
 **Core value:** Every API integration is defined in a .proto file with generated type-safe TypeScript clients and server handlers, eliminating hand-written fetch boilerplate.
-**Current focus:** Phase 2F: Prediction Migration (complete)
+**Current focus:** Phase 2G: Displacement Migration (in progress)
 
 ## Current Position
 
-Phase: 2F (Prediction Migration) -- COMPLETE
-Current Plan: 02 of 02 complete
-Status: All prediction domain migration complete; service module, consumer wiring, bug fixes, legacy deletion done
-Last activity: 2026-02-18 -- Plan 2F-02 executed (execute-phase)
+Phase: 2G (Displacement Migration)
+Current Plan: 01 of 02 complete
+Status: Displacement handler implemented with UNHCR API pagination, aggregation, flow corridors; gateway wired
+Last activity: 2026-02-19 -- Plan 2G-01 executed (execute-phase)
 
-Progress: [██████████████] ~70%
+Progress: [███████████████] ~75%
 
 ## Performance Metrics
 
@@ -32,6 +32,7 @@ Progress: [██████████████] ~70%
 - Phase 2E Plan 02: Climate Client Wiring (2 tasks, 3min, 9 files created/modified/deleted)
 - Phase 2F Plan 01: Prediction Handler (2 tasks, 2min, 2 files created/modified)
 - Phase 2F Plan 02: Prediction Consumer Wiring (2 tasks, 4min, 12 files created/modified/deleted)
+- Phase 2G Plan 01: Displacement Handler (2 tasks, 2min, 2 files created/modified)
 
 ## Accumulated Context
 
@@ -78,6 +79,10 @@ Progress: [██████████████] ~70%
 - [2F-02]: Strategy 4 in polyFetch replaced Vercel edge proxy with PredictionServiceClient; proto 0-1 yesPrice mapped through outcomePrices for uniform parseMarketPrice pipeline
 - [2F-02]: getPolymarketStatus() dropped as confirmed dead code (exported but never imported)
 - [2F-02]: Production fallback (strategy 5) kept pointing to worldmonitor.app/api/polymarket for now as safety net
+- [2G-01]: Ported exact UNHCR pagination logic from legacy with 10,000/page limit and 25-page guard
+- [2G-01]: Year fallback tries current year, then current-1, then current-2 until data found
+- [2G-01]: All int64 displacement fields returned as String() matching generated DisplacementServiceHandler interface
+- [2G-01]: Graceful empty response on ANY UNHCR API failure following established 2F-01 pattern
 
 ### Pending Todos
 
@@ -90,8 +95,8 @@ Progress: [██████████████] ~70%
 
 ## Session Continuity
 
-Last session: 2026-02-18
-Stopped at: Completed 2F-02-PLAN.md (Phase 2F complete)
-Resume file: .planning/phases/2F-prediction-migration/2F-02-SUMMARY.md
+Last session: 2026-02-19
+Stopped at: Completed 2G-01-PLAN.md
+Resume file: .planning/phases/2G-displacement-migration/2G-01-SUMMARY.md
 PR: #106 (draft) — https://github.com/koala73/worldmonitor/pull/106
-Next steps: Phase 2F complete. Proceed to next domain migration phase.
+Next steps: Execute 2G-02 (displacement consumer wiring, service module, legacy deletion).
