@@ -144,6 +144,51 @@ export interface TheaterPosture {
   assessedAt: number;
 }
 
+export interface GetAircraftDetailsRequest {
+  icao24: string;
+}
+
+export interface GetAircraftDetailsResponse {
+  details?: AircraftDetails;
+  configured: boolean;
+}
+
+export interface AircraftDetails {
+  icao24: string;
+  registration: string;
+  manufacturerIcao: string;
+  manufacturerName: string;
+  model: string;
+  typecode: string;
+  serialNumber: string;
+  icaoAircraftType: string;
+  operator: string;
+  operatorCallsign: string;
+  operatorIcao: string;
+  owner: string;
+  built: string;
+  engines: string;
+  categoryDescription: string;
+}
+
+export interface GetAircraftDetailsBatchRequest {
+  icao24s: string[];
+}
+
+export interface GetAircraftDetailsBatchResponse {
+  results: Record<string, AircraftDetails>;
+  fetched: number;
+  requested: number;
+  configured: boolean;
+}
+
+export interface GetWingbitsStatusRequest {
+}
+
+export interface GetWingbitsStatusResponse {
+  configured: boolean;
+}
+
 export type MilitaryActivityType = "MILITARY_ACTIVITY_TYPE_UNSPECIFIED" | "MILITARY_ACTIVITY_TYPE_EXERCISE" | "MILITARY_ACTIVITY_TYPE_PATROL" | "MILITARY_ACTIVITY_TYPE_TRANSPORT" | "MILITARY_ACTIVITY_TYPE_DEPLOYMENT" | "MILITARY_ACTIVITY_TYPE_TRANSIT" | "MILITARY_ACTIVITY_TYPE_UNKNOWN";
 
 export type MilitaryAircraftType = "MILITARY_AIRCRAFT_TYPE_UNSPECIFIED" | "MILITARY_AIRCRAFT_TYPE_FIGHTER" | "MILITARY_AIRCRAFT_TYPE_BOMBER" | "MILITARY_AIRCRAFT_TYPE_TRANSPORT" | "MILITARY_AIRCRAFT_TYPE_TANKER" | "MILITARY_AIRCRAFT_TYPE_AWACS" | "MILITARY_AIRCRAFT_TYPE_RECONNAISSANCE" | "MILITARY_AIRCRAFT_TYPE_HELICOPTER" | "MILITARY_AIRCRAFT_TYPE_DRONE" | "MILITARY_AIRCRAFT_TYPE_PATROL" | "MILITARY_AIRCRAFT_TYPE_SPECIAL_OPS" | "MILITARY_AIRCRAFT_TYPE_VIP" | "MILITARY_AIRCRAFT_TYPE_UNKNOWN";
@@ -272,6 +317,78 @@ export class MilitaryServiceClient {
     }
 
     return await resp.json() as GetTheaterPostureResponse;
+  }
+
+  async getAircraftDetails(req: GetAircraftDetailsRequest, options?: MilitaryServiceCallOptions): Promise<GetAircraftDetailsResponse> {
+    let path = "/api/military/v1/get-aircraft-details";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetAircraftDetailsResponse;
+  }
+
+  async getAircraftDetailsBatch(req: GetAircraftDetailsBatchRequest, options?: MilitaryServiceCallOptions): Promise<GetAircraftDetailsBatchResponse> {
+    let path = "/api/military/v1/get-aircraft-details-batch";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetAircraftDetailsBatchResponse;
+  }
+
+  async getWingbitsStatus(req: GetWingbitsStatusRequest, options?: MilitaryServiceCallOptions): Promise<GetWingbitsStatusResponse> {
+    let path = "/api/military/v1/get-wingbits-status";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetWingbitsStatusResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

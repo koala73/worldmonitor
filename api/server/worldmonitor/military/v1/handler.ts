@@ -1,12 +1,15 @@
 /**
  * Military service handler -- implements the generated
- * MilitaryServiceHandler interface with 3 RPCs:
- *   - ListMilitaryFlights   (stub -- client-side fetches from OpenSky/Wingbits directly)
+ * MilitaryServiceHandler interface with 6 RPCs:
+ *   - ListMilitaryFlights   (OpenSky bounded query)
  *   - ListMilitaryVessels   (stub -- client-side fetches from AIS stream)
  *   - GetTheaterPosture     (OpenSky + Wingbits -> theater posture aggregation)
+ *   - GetAircraftDetails    (Wingbits single aircraft lookup)
+ *   - GetAircraftDetailsBatch (Wingbits batch aircraft lookup)
+ *   - GetWingbitsStatus     (Wingbits API key check)
  *
- * Consolidates legacy edge function:
- *   api/theater-posture.js
+ * Consolidates legacy edge functions:
+ *   api/theater-posture.js, api/wingbits/
  */
 
 declare const process: { env: Record<string, string | undefined> };
@@ -21,6 +24,13 @@ import type {
   GetTheaterPostureRequest,
   GetTheaterPostureResponse,
   TheaterPosture,
+  GetAircraftDetailsRequest,
+  GetAircraftDetailsResponse,
+  GetAircraftDetailsBatchRequest,
+  GetAircraftDetailsBatchResponse,
+  GetWingbitsStatusRequest,
+  GetWingbitsStatusResponse,
+  AircraftDetails,
 } from '../../../../../src/generated/server/worldmonitor/military/v1/service_server';
 
 // @ts-expect-error -- JS data module, no declarations
@@ -463,4 +473,105 @@ export const militaryHandler: MilitaryServiceHandler = {
       return { theaters: [] };
     }
   },
+
+  // ======================================================================
+  // Wingbits aircraft enrichment RPCs (replaces api/wingbits/ proxy)
+  // ======================================================================
+
+  async getAircraftDetails(
+    _ctx: ServerContext,
+    req: GetAircraftDetailsRequest,
+  ): Promise<GetAircraftDetailsResponse> {
+    const apiKey = process.env.WINGBITS_API_KEY;
+    if (!apiKey) return { details: undefined, configured: false };
+
+    const icao24 = req.icao24.toLowerCase();
+    try {
+      const resp = await fetch(`https://customer-api.wingbits.com/v1/flights/details/${icao24}`, {
+        headers: { 'x-api-key': apiKey, Accept: 'application/json' },
+        signal: AbortSignal.timeout(10_000),
+      });
+
+      if (!resp.ok) {
+        return { details: undefined, configured: true };
+      }
+
+      const data = (await resp.json()) as Record<string, unknown>;
+      return {
+        details: mapWingbitsDetails(icao24, data),
+        configured: true,
+      };
+    } catch {
+      return { details: undefined, configured: true };
+    }
+  },
+
+  async getAircraftDetailsBatch(
+    _ctx: ServerContext,
+    req: GetAircraftDetailsBatchRequest,
+  ): Promise<GetAircraftDetailsBatchResponse> {
+    const apiKey = process.env.WINGBITS_API_KEY;
+    if (!apiKey) return { results: {}, fetched: 0, requested: 0, configured: false };
+
+    const limitedList = req.icao24s.slice(0, 20).map((id) => id.toLowerCase());
+    const results: Record<string, AircraftDetails> = {};
+
+    const fetches = limitedList.map(async (icao24) => {
+      try {
+        const resp = await fetch(`https://customer-api.wingbits.com/v1/flights/details/${icao24}`, {
+          headers: { 'x-api-key': apiKey, Accept: 'application/json' },
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (resp.ok) {
+          const data = (await resp.json()) as Record<string, unknown>;
+          return { icao24, details: mapWingbitsDetails(icao24, data) };
+        }
+      } catch { /* skip failed lookups */ }
+      return null;
+    });
+
+    const fetchResults = await Promise.all(fetches);
+    for (const r of fetchResults) {
+      if (r) results[r.icao24] = r.details;
+    }
+
+    return {
+      results,
+      fetched: Object.keys(results).length,
+      requested: limitedList.length,
+      configured: true,
+    };
+  },
+
+  async getWingbitsStatus(
+    _ctx: ServerContext,
+    _req: GetWingbitsStatusRequest,
+  ): Promise<GetWingbitsStatusResponse> {
+    const apiKey = process.env.WINGBITS_API_KEY;
+    return { configured: !!apiKey };
+  },
 };
+
+// ========================================================================
+// Wingbits response mapper
+// ========================================================================
+
+function mapWingbitsDetails(icao24: string, data: Record<string, unknown>): AircraftDetails {
+  return {
+    icao24,
+    registration: String(data.registration ?? ''),
+    manufacturerIcao: String(data.manufacturerIcao ?? ''),
+    manufacturerName: String(data.manufacturerName ?? ''),
+    model: String(data.model ?? ''),
+    typecode: String(data.typecode ?? ''),
+    serialNumber: String(data.serialNumber ?? ''),
+    icaoAircraftType: String(data.icaoAircraftType ?? ''),
+    operator: String(data.operator ?? ''),
+    operatorCallsign: String(data.operatorCallsign ?? ''),
+    operatorIcao: String(data.operatorIcao ?? ''),
+    owner: String(data.owner ?? ''),
+    built: String(data.built ?? ''),
+    engines: String(data.engines ?? ''),
+    categoryDescription: String(data.categoryDescription ?? ''),
+  };
+}

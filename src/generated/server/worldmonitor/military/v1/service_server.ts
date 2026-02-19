@@ -144,6 +144,51 @@ export interface TheaterPosture {
   assessedAt: number;
 }
 
+export interface GetAircraftDetailsRequest {
+  icao24: string;
+}
+
+export interface GetAircraftDetailsResponse {
+  details?: AircraftDetails;
+  configured: boolean;
+}
+
+export interface AircraftDetails {
+  icao24: string;
+  registration: string;
+  manufacturerIcao: string;
+  manufacturerName: string;
+  model: string;
+  typecode: string;
+  serialNumber: string;
+  icaoAircraftType: string;
+  operator: string;
+  operatorCallsign: string;
+  operatorIcao: string;
+  owner: string;
+  built: string;
+  engines: string;
+  categoryDescription: string;
+}
+
+export interface GetAircraftDetailsBatchRequest {
+  icao24s: string[];
+}
+
+export interface GetAircraftDetailsBatchResponse {
+  results: Record<string, AircraftDetails>;
+  fetched: number;
+  requested: number;
+  configured: boolean;
+}
+
+export interface GetWingbitsStatusRequest {
+}
+
+export interface GetWingbitsStatusResponse {
+  configured: boolean;
+}
+
 export type MilitaryActivityType = "MILITARY_ACTIVITY_TYPE_UNSPECIFIED" | "MILITARY_ACTIVITY_TYPE_EXERCISE" | "MILITARY_ACTIVITY_TYPE_PATROL" | "MILITARY_ACTIVITY_TYPE_TRANSPORT" | "MILITARY_ACTIVITY_TYPE_DEPLOYMENT" | "MILITARY_ACTIVITY_TYPE_TRANSIT" | "MILITARY_ACTIVITY_TYPE_UNKNOWN";
 
 export type MilitaryAircraftType = "MILITARY_AIRCRAFT_TYPE_UNSPECIFIED" | "MILITARY_AIRCRAFT_TYPE_FIGHTER" | "MILITARY_AIRCRAFT_TYPE_BOMBER" | "MILITARY_AIRCRAFT_TYPE_TRANSPORT" | "MILITARY_AIRCRAFT_TYPE_TANKER" | "MILITARY_AIRCRAFT_TYPE_AWACS" | "MILITARY_AIRCRAFT_TYPE_RECONNAISSANCE" | "MILITARY_AIRCRAFT_TYPE_HELICOPTER" | "MILITARY_AIRCRAFT_TYPE_DRONE" | "MILITARY_AIRCRAFT_TYPE_PATROL" | "MILITARY_AIRCRAFT_TYPE_SPECIAL_OPS" | "MILITARY_AIRCRAFT_TYPE_VIP" | "MILITARY_AIRCRAFT_TYPE_UNKNOWN";
@@ -202,6 +247,9 @@ export interface MilitaryServiceHandler {
   listMilitaryFlights(ctx: ServerContext, req: ListMilitaryFlightsRequest): Promise<ListMilitaryFlightsResponse>;
   listMilitaryVessels(ctx: ServerContext, req: ListMilitaryVesselsRequest): Promise<ListMilitaryVesselsResponse>;
   getTheaterPosture(ctx: ServerContext, req: GetTheaterPostureRequest): Promise<GetTheaterPostureResponse>;
+  getAircraftDetails(ctx: ServerContext, req: GetAircraftDetailsRequest): Promise<GetAircraftDetailsResponse>;
+  getAircraftDetailsBatch(ctx: ServerContext, req: GetAircraftDetailsBatchRequest): Promise<GetAircraftDetailsBatchResponse>;
+  getWingbitsStatus(ctx: ServerContext, req: GetWingbitsStatusRequest): Promise<GetWingbitsStatusResponse>;
 }
 
 export function createMilitaryServiceRoutes(
@@ -317,6 +365,135 @@ export function createMilitaryServiceRoutes(
 
           const result = await handler.getTheaterPosture(ctx, body);
           return new Response(JSON.stringify(result as GetTheaterPostureResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/military/v1/get-aircraft-details",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = await req.json() as GetAircraftDetailsRequest;
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getAircraftDetails", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getAircraftDetails(ctx, body);
+          return new Response(JSON.stringify(result as GetAircraftDetailsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/military/v1/get-aircraft-details-batch",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = await req.json() as GetAircraftDetailsBatchRequest;
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getAircraftDetailsBatch", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getAircraftDetailsBatch(ctx, body);
+          return new Response(JSON.stringify(result as GetAircraftDetailsBatchResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/military/v1/get-wingbits-status",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = await req.json() as GetWingbitsStatusRequest;
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getWingbitsStatus", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getWingbitsStatus(ctx, body);
+          return new Response(JSON.stringify(result as GetWingbitsStatusResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

@@ -99,6 +99,102 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/military/v1/get-aircraft-details:
+        post:
+            tags:
+                - MilitaryService
+            summary: GetAircraftDetails
+            description: GetAircraftDetails retrieves Wingbits aircraft enrichment data for a single ICAO24 hex.
+            operationId: GetAircraftDetails
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/GetAircraftDetailsRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetAircraftDetailsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/military/v1/get-aircraft-details-batch:
+        post:
+            tags:
+                - MilitaryService
+            summary: GetAircraftDetailsBatch
+            description: GetAircraftDetailsBatch retrieves Wingbits aircraft enrichment data for multiple ICAO24 hexes.
+            operationId: GetAircraftDetailsBatch
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/GetAircraftDetailsBatchRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetAircraftDetailsBatchResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/military/v1/get-wingbits-status:
+        post:
+            tags:
+                - MilitaryService
+            summary: GetWingbitsStatus
+            description: GetWingbitsStatus checks whether the Wingbits enrichment API is configured.
+            operationId: GetWingbitsStatus
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/GetWingbitsStatusRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetWingbitsStatusResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -671,3 +767,117 @@ components:
                     format: int64
                     description: 'Assessment timestamp, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
             description: TheaterPosture represents an assessed military posture for a geographic theater.
+        GetAircraftDetailsRequest:
+            type: object
+            properties:
+                icao24:
+                    type: string
+                    minLength: 1
+                    description: ICAO 24-bit hex address (lowercase).
+            required:
+                - icao24
+            description: GetAircraftDetailsRequest looks up a single aircraft by ICAO 24-bit hex.
+        GetAircraftDetailsResponse:
+            type: object
+            properties:
+                details:
+                    $ref: '#/components/schemas/AircraftDetails'
+                configured:
+                    type: boolean
+                    description: Whether the Wingbits API is configured.
+            description: GetAircraftDetailsResponse contains the aircraft enrichment data.
+        AircraftDetails:
+            type: object
+            properties:
+                icao24:
+                    type: string
+                    description: ICAO 24-bit hex address.
+                registration:
+                    type: string
+                    description: Aircraft registration number.
+                manufacturerIcao:
+                    type: string
+                    description: ICAO manufacturer code.
+                manufacturerName:
+                    type: string
+                    description: Full manufacturer name.
+                model:
+                    type: string
+                    description: Aircraft model.
+                typecode:
+                    type: string
+                    description: ICAO type designator code.
+                serialNumber:
+                    type: string
+                    description: Manufacturer serial number.
+                icaoAircraftType:
+                    type: string
+                    description: ICAO aircraft type designator.
+                operator:
+                    type: string
+                    description: Operator name.
+                operatorCallsign:
+                    type: string
+                    description: Operator callsign.
+                operatorIcao:
+                    type: string
+                    description: Operator ICAO code.
+                owner:
+                    type: string
+                    description: Registered owner.
+                built:
+                    type: string
+                    description: Build date.
+                engines:
+                    type: string
+                    description: Engine description.
+                categoryDescription:
+                    type: string
+                    description: ICAO category description.
+            description: AircraftDetails contains Wingbits aircraft enrichment data.
+        GetAircraftDetailsBatchRequest:
+            type: object
+            properties:
+                icao24s:
+                    type: array
+                    items:
+                        type: string
+                        description: ICAO 24-bit hex addresses (lowercase). Max 20.
+            description: GetAircraftDetailsBatchRequest looks up multiple aircraft by ICAO 24-bit hex.
+        GetAircraftDetailsBatchResponse:
+            type: object
+            properties:
+                results:
+                    type: object
+                    additionalProperties:
+                        $ref: '#/components/schemas/AircraftDetails'
+                    description: Map of icao24 -> aircraft details for found aircraft.
+                fetched:
+                    type: integer
+                    format: int32
+                    description: Number of aircraft successfully fetched from upstream.
+                requested:
+                    type: integer
+                    format: int32
+                    description: Number of aircraft requested.
+                configured:
+                    type: boolean
+                    description: Whether the Wingbits API is configured.
+            description: GetAircraftDetailsBatchResponse contains the batch lookup results.
+        ResultsEntry:
+            type: object
+            properties:
+                key:
+                    type: string
+                value:
+                    $ref: '#/components/schemas/AircraftDetails'
+        GetWingbitsStatusRequest:
+            type: object
+            description: GetWingbitsStatusRequest checks whether the Wingbits enrichment API is configured.
+        GetWingbitsStatusResponse:
+            type: object
+            properties:
+                configured:
+                    type: boolean
+                    description: Whether the Wingbits API key is configured on the server.
+            description: GetWingbitsStatusResponse indicates whether Wingbits is available.
