@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-18)
 
 **Core value:** Every API integration is defined in a .proto file with generated type-safe TypeScript clients and server handlers, eliminating hand-written fetch boilerplate.
-**Current focus:** Phase 2I: Research Migration (complete)
+**Current focus:** Phase 2J: Unrest Migration (in progress)
 
 ## Current Position
 
-Phase: 2I (Research Migration)
-Current Plan: 02 of 02 complete
-Status: Phase 2I complete -- all research domain migration done (handler + consumer wiring + legacy cleanup)
-Last activity: 2026-02-19 -- Plan 2I-02 executed (execute-phase)
+Phase: 2J (Unrest Migration)
+Current Plan: 01 of 02 complete
+Status: Plan 2J-01 complete -- unrest handler implemented with ACLED + GDELT dual-fetch, routes mounted in gateway
+Last activity: 2026-02-19 -- Plan 2J-01 executed (execute-phase)
 
-Progress: [████████████████████] ~95%
+Progress: [████████████████████] ~96%
 
 ## Performance Metrics
 
@@ -38,6 +38,7 @@ Progress: [████████████████████] ~95%
 - Phase 2H Plan 02: Aviation Consumer Wiring (2 tasks, 3min, 10 files created/modified/deleted)
 - Phase 2I Plan 01: Research Handler (2 tasks, 2min, 2 files created/modified)
 - Phase 2I Plan 02: Research Consumer Wiring (1 task, 2min, 8 files created/modified/deleted)
+- Phase 2J Plan 01: Unrest Handler (2 tasks, 2min, 2 files created/modified)
 
 ## Accumulated Context
 
@@ -102,6 +103,10 @@ Progress: [████████████████████] ~95%
 - [2I-01]: GitHub trending uses gitterapp primary with herokuapp fallback, both with 10s timeouts
 - [2I-02]: No enum mapping needed -- research proto types are clean, thin port/adapter wraps client with circuit breakers only
 - [2I-02]: Simplest domain module: no type transformation layer, proto types re-exported directly
+- [2J-01]: declare const process for edge runtime env access in strict tsconfig (matching wildfire handler pattern)
+- [2J-01]: Clusters returned as empty array (future enhancement, client-side Supercluster handles clustering)
+- [2J-01]: No error logging on upstream ACLED/GDELT failures following established 2F-01 pattern
+- [2J-01]: GDELT event IDs use coordinate-based deterministic format instead of client-side generateId()
 
 ### Pending Todos
 
@@ -115,7 +120,7 @@ Progress: [████████████████████] ~95%
 ## Session Continuity
 
 Last session: 2026-02-19
-Stopped at: Completed 2I-02-PLAN.md (Research consumer wiring + legacy cleanup)
-Resume file: .planning/phases/2I-research-migration/2I-02-SUMMARY.md
+Stopped at: Completed 2J-01-PLAN.md (Unrest handler + gateway wiring)
+Resume file: .planning/phases/2J-unrest-migration/2J-01-SUMMARY.md
 PR: #106 (draft) — https://github.com/koala73/worldmonitor/pull/106
-Next steps: Phase 2I complete. All domain migrations done. Ready for next milestone phase.
+Next steps: Execute 2J-02 (unrest service module + consumer rewiring + legacy deletion).

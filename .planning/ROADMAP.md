@@ -146,7 +146,7 @@ Plans:
 **Requirements:** [DOMAIN-07, SERVER-02]
 **Plans:** 2 plans
 Plans:
-- [ ] 2J-01-PLAN.md -- Unrest handler (ACLED + GDELT dual-fetch, deduplication, severity classification) + gateway wiring + sidecar rebuild
+- [x] 2J-01-PLAN.md -- Unrest handler (ACLED + GDELT dual-fetch, deduplication, severity classification) + gateway wiring + sidecar rebuild
 - [ ] 2J-02-PLAN.md -- Unrest service module (proto-to-legacy SocialUnrestEvent mapping) + consumer rewiring + legacy deletion (3 files)
 
 ### Phase 2K-2S: Remaining Domain Migrations
@@ -198,6 +198,6 @@ Each migration step:
 | 2G. Displacement Migration | Complete | 2026-02-19 |
 | 2H. Aviation Migration | Complete | 2026-02-19 |
 | 2I. Research Migration | Complete | 2026-02-19 |
-| 2J. Unrest Migration | Not started | - |
+| 2J. Unrest Migration | In progress (1/2 plans) | - |
 | 2K-2S. Domain Migrations (0/9) | Not started | - |
 | 2T. Legacy Cleanup | Not started | - |
