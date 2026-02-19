@@ -1,37 +1,12 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
-
-interface TechEventCoords {
-  lat: number;
-  lng: number;
-  country: string;
-  original: string;
-  virtual?: boolean;
-}
-
-interface TechEvent {
-  id: string;
-  title: string;
-  type: 'conference' | 'earnings' | 'ipo' | 'other';
-  location: string | null;
-  coords: TechEventCoords | null;
-  startDate: string;
-  endDate: string;
-  url: string | null;
-}
-
-interface TechEventsResponse {
-  success: boolean;
-  count: number;
-  conferenceCount: number;
-  mappableCount: number;
-  lastUpdated: string;
-  events: TechEvent[];
-  error?: string;
-}
+import { ResearchServiceClient } from '@/generated/client/worldmonitor/research/v1/service_client';
+import type { TechEvent } from '@/generated/client/worldmonitor/research/v1/service_client';
 
 type ViewMode = 'upcoming' | 'conferences' | 'earnings' | 'all';
+
+const researchClient = new ResearchServiceClient('', { fetch: fetch.bind(globalThis) });
 
 export class TechEventsPanel extends Panel {
   private viewMode: ViewMode = 'upcoming';
@@ -51,10 +26,12 @@ export class TechEventsPanel extends Panel {
     this.render();
 
     try {
-      const res = await fetch('/api/tech-events?days=180&limit=100');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-      const data: TechEventsResponse = await res.json();
+      const data = await researchClient.listTechEvents({
+        type: '',
+        mappable: false,
+        days: 180,
+        limit: 100,
+      });
       if (!data.success) throw new Error(data.error || 'Unknown error');
 
       this.events = data.events;

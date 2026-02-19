@@ -41,7 +41,14 @@ Progress: [███████████████░░░░] 80%
 - Deleted 5 legacy files (3 provider endpoints, shared handler factory, test)
 - Client rewired to NewsServiceClient.summarizeArticle()
 
-## What Remains (Phase 3, steps 5-10)
+**Phase 3 Plan 03 (step 6): COMPLETE**
+- Step 6: macro-signals → economic domain (GetMacroSignals RPC with 7-signal dashboard)
+- 6 parallel upstream fetches (Yahoo Finance x4, Alternative.me, Mempool)
+- In-memory cache (5min TTL), BUY/CASH/UNKNOWN verdict, fallback behavior preserved
+- MacroSignalsPanel rewired to EconomicServiceClient
+- Deleted api/macro-signals.js
+
+## What Remains (Phase 3, steps 7-10)
 
 **Migratable to sebuf RPCs:**
 | Step | Legacy File(s) | Target Domain | RPCs | Effort |
@@ -49,7 +56,7 @@ Progress: [███████████████░░░░] 80%
 | ~~3~~ | ~~api/wingbits/ (3 files)~~ | ~~military~~ | ~~GetAircraftDetails, GetAircraftDetailsBatch, GetWingbitsStatus~~ | ~~DONE~~ |
 | ~~4~~ | ~~api/gdelt-doc.js~~ | ~~intelligence~~ | ~~SearchGdeltDocuments~~ | ~~DONE~~ |
 | ~~5~~ | ~~api/*-summarize.js + _summarize-handler.js (4 files)~~ | ~~news~~ | ~~SummarizeArticle~~ | ~~DONE~~ |
-| 6 | api/macro-signals.js | economic | GetMacroSignals | High |
+| ~~6~~ | ~~api/macro-signals.js~~ | ~~economic~~ | ~~GetMacroSignals~~ | ~~DONE~~ |
 | 7 | api/tech-events.js | research | ListTechEvents | High |
 | 8 | api/temporal-baseline.js | infrastructure | GetTemporalBaseline, RecordBaselineSnapshot | Medium |
 
@@ -75,6 +82,7 @@ Progress: [███████████████░░░░] 80%
 - Proto files for simple types (string/int32/double) do not need sebuf/ts/options.proto import
 - Single SummarizeArticle RPC with provider field instead of per-provider RPCs
 - All prompt/cache/dedup logic ported inline into handler for edge-compatibility
+- Proto optional-to-null mapping: use mapProtoToData() at consumer boundary when UI expects null not undefined
 
 ### Blockers/Concerns
 - @sentry/browser missing from dependencies (pre-existing, unrelated)
@@ -82,7 +90,7 @@ Progress: [███████████████░░░░] 80%
 ## Session Continuity
 
 Last session: 2026-02-20
-Stopped at: Completed 03-02-PLAN.md (summarization migration)
+Stopped at: Completed 03-03-PLAN.md (macro-signals migration)
 Resume file: .planning/phases/3-sebuf-legacy-migration/.continue-here.md
 PR: #106 (draft) — https://github.com/koala73/worldmonitor/pull/106
-Next steps: Execute 03-03-PLAN.md (macro-signals migration, step 6)
+Next steps: Execute 03-04-PLAN.md (tech-events migration, step 7)

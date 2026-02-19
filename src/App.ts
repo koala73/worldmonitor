@@ -97,6 +97,7 @@ import { TECH_HQS, ACCELERATORS } from '@/config/tech-geo';
 import { STOCK_EXCHANGES, FINANCIAL_CENTERS, CENTRAL_BANKS, COMMODITY_HUBS } from '@/config/finance-geo';
 import { isDesktopRuntime } from '@/services/runtime';
 import { IntelligenceServiceClient } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
+import { ResearchServiceClient } from '@/generated/client/worldmonitor/research/v1/service_client';
 import { isFeatureAvailable } from '@/services/runtime-config';
 import { invokeTauri } from '@/services/tauri-bridge';
 import { getCountryAtCoordinates, hasCountryGeometry, isCoordinateInCountry, preloadCountryGeometry } from '@/services/country-geometry';
@@ -3605,29 +3606,24 @@ export class App {
     }
 
     try {
-      const res = await fetch('/api/tech-events?type=conference&mappable=true&days=90&limit=50');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-      const data = await res.json();
+      const client = new ResearchServiceClient('', { fetch: fetch.bind(globalThis) });
+      const data = await client.listTechEvents({
+        type: 'conference',
+        mappable: true,
+        days: 90,
+        limit: 50,
+      });
       if (!data.success) throw new Error(data.error || 'Unknown error');
 
       // Transform events for map markers
       const now = new Date();
-      const mapEvents = data.events.map((e: {
-        id: string;
-        title: string;
-        location: string;
-        coords: { lat: number; lng: number; country: string };
-        startDate: string;
-        endDate: string;
-        url: string | null;
-      }) => ({
+      const mapEvents = data.events.map((e) => ({
         id: e.id,
         title: e.title,
         location: e.location,
-        lat: e.coords.lat,
-        lng: e.coords.lng,
-        country: e.coords.country,
+        lat: e.coords?.lat ?? 0,
+        lng: e.coords?.lng ?? 0,
+        country: e.coords?.country ?? '',
         startDate: e.startDate,
         endDate: e.endDate,
         url: e.url,
