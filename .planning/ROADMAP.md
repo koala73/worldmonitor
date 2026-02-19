@@ -39,7 +39,8 @@ proto/worldmonitor/
 - [x] **Phase 2F: Prediction Migration** - Polymarket prediction markets with query params and multi-strategy fetch (completed 2026-02-18)
 - [x] **Phase 2G: Displacement Migration** - UNHCR refugees/IDPs with multi-entity responses (completed 2026-02-19)
 - [x] **Phase 2H: Aviation Migration** - FAA XML parsing, simulated non-US delays, MONITORED_AIRPORTS config (completed 2026-02-19)
-- [ ] **Phase 2I-2S: Domain Migrations** - Remaining domains, one sub-phase each
+- [x] **Phase 2I: Research Migration** - arXiv, GitHub trending, Hacker News with thin port/adapter (completed 2026-02-19)
+- [ ] **Phase 2J-2S: Domain Migrations** - Remaining domains, one sub-phase each
 
 ## Phase Details
 
@@ -131,12 +132,12 @@ Plans:
 ### Phase 2I: Research Migration
 **Goal**: Migrate research domain (arXiv papers, GitHub trending repos, Hacker News items) to sebuf -- implement handler with 3 RPCs proxying upstream APIs, create service module with port/adapter pattern, rewire all consumers, delete legacy endpoints
 **Depends on**: Phase 2H
-**Status**: In progress (1/2 plans complete)
+**Status**: Complete (2026-02-19)
 **Requirements:** [DOMAIN-05, SERVER-02]
-**Plans:** 1/2 plans complete
+**Plans:** 2/2 plans complete
 Plans:
 - [x] 2I-01-PLAN.md -- Research handler (3 RPCs: arXiv XML parsing, GitHub trending with fallback, HN Firebase 2-step fetch) + gateway wiring + sidecar rebuild
-- [ ] 2I-02-PLAN.md -- Research service module (port/adapter with circuit breakers) + legacy deletion (6 files) + config cleanup
+- [x] 2I-02-PLAN.md -- Research service module (port/adapter with circuit breakers) + legacy deletion (6 files) + config cleanup
 
 ### Phase 2J-2S: Remaining Domain Migrations
 **Goal**: Each remaining domain migrated one at a time in order of complexity
@@ -186,6 +187,6 @@ Each migration step:
 | 2F. Prediction Migration | Complete | 2026-02-18 |
 | 2G. Displacement Migration | Complete | 2026-02-19 |
 | 2H. Aviation Migration | Complete | 2026-02-19 |
-| 2I. Research Migration | In progress (1/2) | - |
+| 2I. Research Migration | Complete | 2026-02-19 |
 | 2J-2S. Domain Migrations (0/10) | Not started | - |
 | 2T. Legacy Cleanup | Not started | - |
