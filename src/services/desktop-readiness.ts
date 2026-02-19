@@ -68,9 +68,9 @@ export const DESKTOP_PARITY_FEATURES: DesktopParityFeature[] = [
   {
     id: 'map-layers-core',
     panel: 'Map layers (conflicts/outages/cyber/ais/flights)',
-    serviceFiles: ['src/services/conflicts.ts', 'src/services/outages.ts', 'src/services/cyber-threats.ts', 'src/services/maritime/index.ts', 'src/services/military-flights.ts'],
-    apiRoutes: ['/api/acled-conflict', '/api/cloudflare-outages', '/api/cyber-threats', '/api/maritime/v1/get-vessel-snapshot', '/api/opensky'],
-    apiHandlers: ['api/acled-conflict.js', 'api/cloudflare-outages.js', 'api/cyber-threats.js', 'api/server/worldmonitor/maritime/v1/handler.ts', 'api/opensky.js'],
+    serviceFiles: ['src/services/conflicts.ts', 'src/services/outages.ts', 'src/services/cyber/index.ts', 'src/services/maritime/index.ts', 'src/services/military-flights.ts'],
+    apiRoutes: ['/api/acled-conflict', '/api/cloudflare-outages', '/api/cyber/v1/list-cyber-threats', '/api/maritime/v1/get-vessel-snapshot', '/api/opensky'],
+    apiHandlers: ['api/acled-conflict.js', 'api/cloudflare-outages.js', 'api/server/worldmonitor/cyber/v1/handler.ts', 'api/server/worldmonitor/maritime/v1/handler.ts', 'api/opensky.js'],
     locality: 'api-key',
     fallback: 'Unavailable feeds are disabled while map rendering remains active for local/static layers.',
     priority: 1,

@@ -155,6 +155,8 @@ function sebufApiPlugin(): Plugin {
             unrestServerMod, unrestHandlerMod,
             conflictServerMod, conflictHandlerMod,
             maritimeServerMod, maritimeHandlerMod,
+            cyberServerMod, cyberHandlerMod,
+            economicServerMod, economicHandlerMod,
           ] = await Promise.all([
               import('./api/server/router'),
               import('./api/server/cors'),
@@ -179,6 +181,10 @@ function sebufApiPlugin(): Plugin {
               import('./api/server/worldmonitor/conflict/v1/handler'),
               import('./src/generated/server/worldmonitor/maritime/v1/service_server'),
               import('./api/server/worldmonitor/maritime/v1/handler'),
+              import('./src/generated/server/worldmonitor/cyber/v1/service_server'),
+              import('./api/server/worldmonitor/cyber/v1/handler'),
+              import('./src/generated/server/worldmonitor/economic/v1/service_server'),
+              import('./api/server/worldmonitor/economic/v1/handler'),
             ]);
 
           const serverOptions = { onError: errorMod.mapErrorToResponse };
@@ -193,6 +199,8 @@ function sebufApiPlugin(): Plugin {
             ...unrestServerMod.createUnrestServiceRoutes(unrestHandlerMod.unrestHandler, serverOptions),
             ...conflictServerMod.createConflictServiceRoutes(conflictHandlerMod.conflictHandler, serverOptions),
             ...maritimeServerMod.createMaritimeServiceRoutes(maritimeHandlerMod.maritimeHandler, serverOptions),
+            ...cyberServerMod.createCyberServiceRoutes(cyberHandlerMod.cyberHandler, serverOptions),
+            ...economicServerMod.createEconomicServiceRoutes(economicHandlerMod.economicHandler, serverOptions),
           ];
           const router = routerMod.createRouter(allRoutes);
 

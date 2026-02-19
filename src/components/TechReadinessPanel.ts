@@ -1,6 +1,6 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
-import { getTechReadinessRankings, type TechReadinessScore } from '@/services/worldbank';
+import { getTechReadinessRankings, type TechReadinessScore } from '@/services/economic';
 import { escapeHtml } from '@/utils/sanitize';
 
 const COUNTRY_FLAGS: Record<string, string> = {

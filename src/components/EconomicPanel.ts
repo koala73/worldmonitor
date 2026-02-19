@@ -1,10 +1,8 @@
 import { Panel } from './Panel';
-import type { FredSeries } from '@/services/fred';
+import type { FredSeries, OilAnalytics } from '@/services/economic';
 import { t } from '@/services/i18n';
-import type { OilAnalytics } from '@/services/oil-analytics';
 import type { SpendingSummary } from '@/services/usa-spending';
-import { getChangeClass, formatChange } from '@/services/fred';
-import { formatOilValue, getTrendIndicator, getTrendColor } from '@/services/oil-analytics';
+import { getChangeClass, formatChange, formatOilValue, getTrendIndicator, getTrendColor } from '@/services/economic';
 import { formatAwardAmount, getAwardTypeIcon } from '@/services/usa-spending';
 import { escapeHtml } from '@/utils/sanitize';
 
