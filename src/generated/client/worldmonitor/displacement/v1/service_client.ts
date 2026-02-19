@@ -55,6 +55,33 @@ export interface DisplacementFlow {
   asylumLocation?: GeoCoordinates;
 }
 
+export interface GetPopulationExposureRequest {
+  mode: string;
+  lat: number;
+  lon: number;
+  radius: number;
+}
+
+export interface GetPopulationExposureResponse {
+  success: boolean;
+  countries: CountryPopulationEntry[];
+  exposure?: ExposureResult;
+}
+
+export interface CountryPopulationEntry {
+  code: string;
+  name: string;
+  population: number;
+  densityPerKm2: number;
+}
+
+export interface ExposureResult {
+  exposedPopulation: number;
+  exposureRadiusKm: number;
+  nearestCountry: string;
+  densityPerKm2: number;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -125,6 +152,30 @@ export class DisplacementServiceClient {
     }
 
     return await resp.json() as GetDisplacementSummaryResponse;
+  }
+
+  async getPopulationExposure(req: GetPopulationExposureRequest, options?: DisplacementServiceCallOptions): Promise<GetPopulationExposureResponse> {
+    let path = "/api/displacement/v1/get-population-exposure";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetPopulationExposureResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

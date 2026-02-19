@@ -1,41 +1,32 @@
 import { createCircuitBreaker } from '@/utils';
 import type { CountryPopulation, PopulationExposure } from '@/types';
+import { DisplacementServiceClient } from '@/generated/client/worldmonitor/displacement/v1/service_client';
+import type { GetPopulationExposureResponse } from '@/generated/client/worldmonitor/displacement/v1/service_client';
 
-interface CountriesResponse {
-  success: boolean;
-  countries: CountryPopulation[];
+const client = new DisplacementServiceClient('', { fetch: fetch.bind(globalThis) });
+
+const countriesBreaker = createCircuitBreaker<GetPopulationExposureResponse>({ name: 'WorldPop Countries' });
+
+export async function fetchCountryPopulations(): Promise<CountryPopulation[]> {
+  const result = await countriesBreaker.execute(async () => {
+    return client.getPopulationExposure({ mode: 'countries', lat: 0, lon: 0, radius: 0 });
+  }, { success: false, countries: [] });
+
+  return result.countries;
 }
 
 interface ExposureResponse {
-  success: boolean;
   exposedPopulation: number;
   exposureRadiusKm: number;
   nearestCountry: string;
   densityPerKm2: number;
 }
 
-const countriesBreaker = createCircuitBreaker<CountriesResponse>({ name: 'WorldPop Countries' });
-
-export async function fetchCountryPopulations(): Promise<CountryPopulation[]> {
-  const result = await countriesBreaker.execute(async () => {
-    const response = await fetch('/api/worldpop-exposure?mode=countries', {
-      headers: { Accept: 'application/json' },
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return response.json();
-  }, { success: false, countries: [] });
-
-  return result.countries;
-}
-
 export async function fetchExposure(lat: number, lon: number, radiusKm: number): Promise<ExposureResponse | null> {
   try {
-    const response = await fetch(
-      `/api/worldpop-exposure?mode=exposure&lat=${lat}&lon=${lon}&radius=${radiusKm}`,
-      { headers: { Accept: 'application/json' } }
-    );
-    if (!response.ok) return null;
-    return response.json();
+    const result = await client.getPopulationExposure({ mode: 'exposure', lat, lon, radius: radiusKm });
+    if (!result.exposure) return null;
+    return result.exposure;
   } catch {
     return null;
   }

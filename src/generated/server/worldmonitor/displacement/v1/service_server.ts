@@ -55,6 +55,33 @@ export interface DisplacementFlow {
   asylumLocation?: GeoCoordinates;
 }
 
+export interface GetPopulationExposureRequest {
+  mode: string;
+  lat: number;
+  lon: number;
+  radius: number;
+}
+
+export interface GetPopulationExposureResponse {
+  success: boolean;
+  countries: CountryPopulationEntry[];
+  exposure?: ExposureResult;
+}
+
+export interface CountryPopulationEntry {
+  code: string;
+  name: string;
+  population: number;
+  densityPerKm2: number;
+}
+
+export interface ExposureResult {
+  exposedPopulation: number;
+  exposureRadiusKm: number;
+  nearestCountry: string;
+  densityPerKm2: number;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -101,6 +128,7 @@ export interface RouteDescriptor {
 
 export interface DisplacementServiceHandler {
   getDisplacementSummary(ctx: ServerContext, req: GetDisplacementSummaryRequest): Promise<GetDisplacementSummaryResponse>;
+  getPopulationExposure(ctx: ServerContext, req: GetPopulationExposureRequest): Promise<GetPopulationExposureResponse>;
 }
 
 export function createDisplacementServiceRoutes(
@@ -130,6 +158,49 @@ export function createDisplacementServiceRoutes(
 
           const result = await handler.getDisplacementSummary(ctx, body);
           return new Response(JSON.stringify(result as GetDisplacementSummaryResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/displacement/v1/get-population-exposure",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = await req.json() as GetPopulationExposureRequest;
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getPopulationExposure", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getPopulationExposure(ctx, body);
+          return new Response(JSON.stringify(result as GetPopulationExposureResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });
