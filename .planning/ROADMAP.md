@@ -171,40 +171,61 @@ Plans:
 - [x] 2L-01-PLAN.md -- Maritime handler (2 RPCs: WS relay proxy for AIS snapshot, NGA MSI proxy for navigational warnings) + gateway wiring + sidecar rebuild
 - [x] 2L-02-PLAN.md -- Maritime service module (hybrid fetch, polling/callback preservation, proto-to-legacy type mapping) + cable-activity rewiring + consumer imports + legacy deletion (3 files)
 
-### Phase 2M-2S: Remaining Domain Migrations
+### Phase 2M-2S: Remaining Domain Migrations (COMPLETE)
 **Goal**: Each remaining domain migrated one at a time in order of complexity
 **Depends on**: Phase 2L
+**Status**: Complete (2026-02-19)
 
-Migration order (one sub-phase each):
-1. ~~seismology~~ (complete, Phase 2C)
-2. ~~wildfire~~ (Phase 2D)
-3. ~~climate~~ (Phase 2E)
-4. ~~prediction~~ (Phase 2F)
-5. ~~displacement~~ (Phase 2G)
-6. ~~aviation~~ (Phase 2H)
-7. ~~research~~ (Phase 2I)
-8. ~~unrest~~ (Phase 2J)
-9. ~~conflict~~ (Phase 2K)
-10. ~~maritime~~ (Phase 2L)
-11. cyber -- validates multi-source aggregation
-12. infrastructure -- validates external service fan-out
-13. economic -- validates FRED/WorldBank/EIA
-14. market -- validates multi-source finance
-15. military -- validates OpenSky+Wingbits+Railway
-16. news -- validates RSS fan-out + AI summarization
-17. intelligence -- final: cross-domain computation
+All 17 domains migrated:
+1. ~~seismology~~ (Phase 2C) | 2. ~~wildfire~~ (Phase 2D) | 3. ~~climate~~ (Phase 2E) | 4. ~~prediction~~ (Phase 2F)
+5. ~~displacement~~ (Phase 2G) | 6. ~~aviation~~ (Phase 2H) | 7. ~~research~~ (Phase 2I) | 8. ~~unrest~~ (Phase 2J)
+9. ~~conflict~~ (Phase 2K) | 10. ~~maritime~~ (Phase 2L) | 11. ~~cyber~~ | 12. ~~infrastructure~~
+13. ~~economic~~ | 14. ~~market~~ | 15. ~~military~~ | 16. ~~news~~ | 17. ~~intelligence~~
 
-Each migration step:
-1. Implement handler in `api/server/worldmonitor/{domain}/v1/handler.ts`
-2. Mount routes in catch-all gateway
-3. Update frontend to use generated client
-4. Delete old `api/*.js` file(s)
+Additional client-side migrations (post-2L, pre-Phase 3):
+- stock-index, opensky → market/military handlers
+- etf-flows, stablecoin-markets → market handler
+- worldpop-exposure → displacement handler
+- theater-posture → military client
+- intelligence services, country-intel → intelligence client
+- Dead legacy files cleaned up
 
-### Phase 2T: Legacy Cleanup
-**Goal**: Remove shared legacy utilities and consolidate types
-- Remove `api/_cors.js`, `api/_upstash-cache.js`, `api/_ip-rate-limit.js`
-- Remove legacy types from `src/types/index.ts`
-- Remove old OpenAPI specs
+### Phase 3: Legacy Edge Function Migration (IN PROGRESS)
+**Goal**: Migrate remaining `api/*.js` legacy edge functions into sebuf domain RPCs or tag as non-migratable
+**Depends on**: Phase 2M-2S
+**Status**: In progress — planned, ready for execution
+**Requirements:** [CLEAN-02, DOMAIN-04, DOMAIN-09, DOMAIN-10]
+**Plans:** 5 plans
+
+Plans:
+- [ ] 03-01-PLAN.md — Wingbits commit + GDELT doc migration + delete _ip-rate-limit.js
+- [ ] 03-02-PLAN.md — Summarization migration (SummarizeArticle RPC with provider param)
+- [ ] 03-03-PLAN.md — Macro-signals migration (GetMacroSignals RPC)
+- [ ] 03-04-PLAN.md — Tech-events migration (ListTechEvents RPC + city-coords data)
+- [ ] 03-05-PLAN.md — Temporal-baseline + non-JSON tagging + final cleanup
+
+Remaining legacy files (17 files + wingbits dir):
+
+**Migratable to sebuf RPCs (steps 3-8):**
+- Step 3: `api/wingbits/` (3 files) → military domain (3 RPCs: GetAircraftDetails, GetAircraftDetailsBatch, GetWingbitsStatus)
+- Step 4: `api/gdelt-doc.js` → intelligence domain (1 RPC: SearchGdeltDocuments)
+- Step 5: `api/*-summarize.js` + `api/_summarize-handler.js` (4 files) → news domain (1 RPC: SummarizeArticle)
+- Step 6: `api/macro-signals.js` → economic domain (1 RPC: GetMacroSignals) — HIGH effort
+- Step 7: `api/tech-events.js` → research domain (1 RPC: ListTechEvents) — HIGH effort
+- Step 8: `api/temporal-baseline.js` → infrastructure domain (2 RPCs: GetTemporalBaseline, RecordBaselineSnapshot)
+
+**Non-migratable / keep as Vercel edge functions (step 9):**
+- `api/rss-proxy.js` — returns RSS XML
+- `api/fwdstart.js` — returns RSS XML
+- `api/story.js` — returns HTML
+- `api/og-story.js` — returns HTML with OG meta tags
+- `api/download.js` — returns redirects
+- `api/version.js` — simple JSON
+
+**Final cleanup (step 10):**
+- Delete `api/_cors.js`, `api/_upstash-cache.js`, `api/_ip-rate-limit.js` (once no importers remain)
+- Update desktop-readiness.ts
+- Sync main
 
 ## Progress
 
@@ -223,5 +244,5 @@ Each migration step:
 | 2J. Unrest Migration | Complete | 2026-02-19 |
 | 2K. Conflict Migration | Complete | 2026-02-19 |
 | 2L. Maritime Migration | Complete | 2026-02-19 |
-| 2M-2S. Domain Migrations (0/7) | Not started | - |
-| 2T. Legacy Cleanup | Not started | - |
+| 2M-2S. Domain Migrations (7/7) | Complete | 2026-02-19 |
+| 3. Legacy Edge Function Migration (3/10) | In progress | - |
