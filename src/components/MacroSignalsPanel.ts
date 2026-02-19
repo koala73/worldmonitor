@@ -121,17 +121,17 @@ export class MacroSignalsPanel extends Panel {
     const html = `
       <div class="macro-signals-container">
         <div class="macro-verdict ${verdictClass}">
-          <span class="verdict-label">Overall</span>
-          <span class="verdict-value">${escapeHtml(d.verdict)}</span>
-          <span class="verdict-detail">${d.bullishCount}/${d.totalCount} bullish</span>
+          <span class="verdict-label">${t('components.macroSignals.overall')}</span>
+          <span class="verdict-value">${d.verdict === 'BUY' ? t('components.macroSignals.verdict.buy') : d.verdict === 'CASH' ? t('components.macroSignals.verdict.cash') : escapeHtml(d.verdict)}</span>
+          <span class="verdict-detail">${t('components.macroSignals.bullish', { count: String(d.bullishCount), total: String(d.totalCount) })}</span>
         </div>
         <div class="signals-grid">
-          ${this.renderSignalCard('Liquidity', s.liquidity.status, formatNum(s.liquidity.value), sparklineSvg(s.liquidity.sparkline, 60, 20, '#4fc3f7'), 'JPY 30d ROC', 'https://www.tradingview.com/symbols/JPYUSD/')}
-          ${this.renderSignalCard('Flow', s.flowStructure.status, `BTC ${formatNum(s.flowStructure.btcReturn5)} / QQQ ${formatNum(s.flowStructure.qqqReturn5)}`, '', '5d returns', null)}
-          ${this.renderSignalCard('Regime', s.macroRegime.status, `QQQ ${formatNum(s.macroRegime.qqqRoc20)} / XLP ${formatNum(s.macroRegime.xlpRoc20)}`, sparklineSvg(d.meta.qqqSparkline, 60, 20, '#ab47bc'), '20d ROC', 'https://www.tradingview.com/symbols/QQQ/')}
-          ${this.renderSignalCard('BTC Trend', s.technicalTrend.status, `$${s.technicalTrend.btcPrice?.toLocaleString() ?? 'N/A'}`, sparklineSvg(s.technicalTrend.sparkline, 60, 20, '#ff9800'), `SMA50: $${s.technicalTrend.sma50?.toLocaleString() ?? '-'} | VWAP: $${s.technicalTrend.vwap30d?.toLocaleString() ?? '-'} | Mayer: ${s.technicalTrend.mayerMultiple ?? '-'}`, 'https://www.tradingview.com/symbols/BTCUSD/')}
-          ${this.renderSignalCard('Hash Rate', s.hashRate.status, formatNum(s.hashRate.change30d), '', '30d change', 'https://mempool.space/mining')}
-          ${this.renderSignalCard('Mining', s.miningCost.status, '', '', 'Hashprice model', null)}
+          ${this.renderSignalCard(t('components.macroSignals.signals.liquidity'), s.liquidity.status, formatNum(s.liquidity.value), sparklineSvg(s.liquidity.sparkline, 60, 20, '#4fc3f7'), 'JPY 30d ROC', 'https://www.tradingview.com/symbols/JPYUSD/')}
+          ${this.renderSignalCard(t('components.macroSignals.signals.flow'), s.flowStructure.status, `BTC ${formatNum(s.flowStructure.btcReturn5)} / QQQ ${formatNum(s.flowStructure.qqqReturn5)}`, '', '5d returns', null)}
+          ${this.renderSignalCard(t('components.macroSignals.signals.regime'), s.macroRegime.status, `QQQ ${formatNum(s.macroRegime.qqqRoc20)} / XLP ${formatNum(s.macroRegime.xlpRoc20)}`, sparklineSvg(d.meta.qqqSparkline, 60, 20, '#ab47bc'), '20d ROC', 'https://www.tradingview.com/symbols/QQQ/')}
+          ${this.renderSignalCard(t('components.macroSignals.signals.btcTrend'), s.technicalTrend.status, `$${s.technicalTrend.btcPrice?.toLocaleString() ?? 'N/A'}`, sparklineSvg(s.technicalTrend.sparkline, 60, 20, '#ff9800'), `SMA50: $${s.technicalTrend.sma50?.toLocaleString() ?? '-'} | VWAP: $${s.technicalTrend.vwap30d?.toLocaleString() ?? '-'} | Mayer: ${s.technicalTrend.mayerMultiple ?? '-'}`, 'https://www.tradingview.com/symbols/BTCUSD/')}
+          ${this.renderSignalCard(t('components.macroSignals.signals.hashRate'), s.hashRate.status, formatNum(s.hashRate.change30d), '', '30d change', 'https://mempool.space/mining')}
+          ${this.renderSignalCard(t('components.macroSignals.signals.mining'), s.miningCost.status, '', '', 'Hashprice model', null)}
           ${this.renderFearGreedCard(s.fearGreed)}
         </div>
       </div>
@@ -162,7 +162,7 @@ export class MacroSignalsPanel extends Panel {
     return `
       <div class="signal-card signal-card-fg">
         <div class="signal-header">
-          <span class="signal-name">Fear & Greed</span>
+          <span class="signal-name">${t('components.macroSignals.signals.fearGreed')}</span>
           <span class="signal-badge ${badgeClass}">${escapeHtml(fg.status)}</span>
         </div>
         <div class="signal-body signal-body-fg">

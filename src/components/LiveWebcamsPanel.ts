@@ -92,11 +92,11 @@ export class LiveWebcamsPanel extends Panel {
     regionGroup.className = 'webcam-toolbar-group';
 
     const regions: { key: RegionFilter; label: string }[] = [
-      { key: 'all', label: 'ALL' },
-      { key: 'middle-east', label: 'MIDEAST' },
-      { key: 'europe', label: 'EUROPE' },
-      { key: 'americas', label: 'AMERICAS' },
-      { key: 'asia', label: 'ASIA' },
+      { key: 'all', label: t('components.webcams.regions.all') },
+      { key: 'middle-east', label: t('components.webcams.regions.mideast') },
+      { key: 'europe', label: t('components.webcams.regions.europe') },
+      { key: 'americas', label: t('components.webcams.regions.americas') },
+      { key: 'asia', label: t('components.webcams.regions.asia') },
     ];
 
     regions.forEach(({ key, label }) => {

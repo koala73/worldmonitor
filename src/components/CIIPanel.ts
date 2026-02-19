@@ -111,7 +111,7 @@ export class CIIPanel extends Panel {
       this.setCount(withData.length);
 
       if (withData.length === 0) {
-        this.content.innerHTML = '<div class="empty-state">No instability signals detected</div>';
+        this.content.innerHTML = `<div class="empty-state">${t('components.cii.noSignals')}</div>`;
         return;
       }
 

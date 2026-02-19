@@ -102,10 +102,10 @@ export class StrategicRiskPanel extends Panel {
   }
 
   private getScoreLevel(score: number): string {
-    if (score >= 70) return 'Critical';
-    if (score >= 50) return 'Elevated';
-    if (score >= 30) return 'Moderate';
-    return 'Low';
+    if (score >= 70) return t('components.strategicRisk.levels.critical');
+    if (score >= 50) return t('components.strategicRisk.levels.elevated');
+    if (score >= 30) return t('components.strategicRisk.levels.moderate');
+    return t('components.strategicRisk.levels.low');
   }
 
   private getTrendEmoji(trend: string): string {
@@ -239,9 +239,9 @@ export class StrategicRiskPanel extends Panel {
             </div>
           </div>
           <div class="risk-trend-container">
-            <span class="risk-trend-label">Trend</span>
+            <span class="risk-trend-label">${t('components.strategicRisk.trend')}</span>
             <div class="risk-trend" style="color: ${this.getTrendColor(this.overview.trend)}">
-              ${this.getTrendEmoji(this.overview.trend)} ${this.overview.trend.charAt(0).toUpperCase() + this.overview.trend.slice(1)}
+              ${this.getTrendEmoji(this.overview.trend)} ${this.overview.trend === 'escalating' ? t('components.strategicRisk.trends.escalating') : this.overview.trend === 'de-escalating' ? t('components.strategicRisk.trends.deEscalating') : t('components.strategicRisk.trends.stable')}
             </div>
           </div>
         </div>

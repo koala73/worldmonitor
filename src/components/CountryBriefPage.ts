@@ -115,13 +115,17 @@ export class CountryBriefPage {
 
   private levelBadge(level: string): string {
     const color = this.levelColor(level);
-    return `<span class="cb-badge" style="background:${color}20;color:${color};border:1px solid ${color}40">${level.toUpperCase()}</span>`;
+    const levelKey = level as 'critical' | 'high' | 'elevated' | 'moderate' | 'normal' | 'low';
+    const label = t(`countryBrief.levels.${levelKey}`);
+    return `<span class="cb-badge" style="background:${color}20;color:${color};border:1px solid ${color}40">${label.toUpperCase()}</span>`;
   }
 
   private trendIndicator(trend: string): string {
     const arrow = trend === 'rising' ? '↗' : trend === 'falling' ? '↘' : '→';
     const cls = trend === 'rising' ? 'trend-up' : trend === 'falling' ? 'trend-down' : 'trend-stable';
-    return `<span class="cb-trend ${cls}">${arrow} ${trend}</span>`;
+    const trendKey = trend as 'rising' | 'falling' | 'stable';
+    const trendLabel = t(`countryBrief.trends.${trendKey}`);
+    return `<span class="cb-trend ${cls}">${arrow} ${trendLabel}</span>`;
   }
 
   private scoreRing(score: number, level: string): string {
