@@ -28,6 +28,8 @@ import { createUnrestServiceRoutes } from '../src/generated/server/worldmonitor/
 import { unrestHandler } from './server/worldmonitor/unrest/v1/handler';
 import { createConflictServiceRoutes } from '../src/generated/server/worldmonitor/conflict/v1/service_server';
 import { conflictHandler } from './server/worldmonitor/conflict/v1/handler';
+import { createMaritimeServiceRoutes } from '../src/generated/server/worldmonitor/maritime/v1/service_server';
+import { maritimeHandler } from './server/worldmonitor/maritime/v1/handler';
 
 import type { ServerOptions } from '../src/generated/server/worldmonitor/seismology/v1/service_server';
 
@@ -43,6 +45,7 @@ const allRoutes = [
   ...createResearchServiceRoutes(researchHandler, serverOptions),
   ...createUnrestServiceRoutes(unrestHandler, serverOptions),
   ...createConflictServiceRoutes(conflictHandler, serverOptions),
+  ...createMaritimeServiceRoutes(maritimeHandler, serverOptions),
 ];
 
 const router = createRouter(allRoutes);
