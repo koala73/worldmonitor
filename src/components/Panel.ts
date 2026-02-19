@@ -63,6 +63,9 @@ export class Panel {
   private onTouchMove: ((e: TouchEvent) => void) | null = null;
   private onTouchEnd: (() => void) | null = null;
   private onDocMouseUp: (() => void) | null = null;
+  /* PERF-009: Pending content for throttled DOM updates */
+  private pendingContent: string | null = null;
+  private contentRafId = 0;
 
   constructor(options: PanelOptions) {
     this.panelId = options.id;
@@ -330,6 +333,23 @@ export class Panel {
 
   public setContent(html: string): void {
     this.content.innerHTML = html;
+  }
+
+  /**
+   * PERF-009: Throttled setContent — buffers rapid DOM updates to one per animation frame.
+   * Use this for panels that refresh frequently (e.g. markets, live news) to avoid layout thrashing.
+   */
+  public setContentThrottled(html: string): void {
+    this.pendingContent = html;
+    if (!this.contentRafId) {
+      this.contentRafId = requestAnimationFrame(() => {
+        if (this.pendingContent !== null) {
+          this.content.innerHTML = this.pendingContent;
+          this.pendingContent = null;
+        }
+        this.contentRafId = 0;
+      });
+    }
   }
 
   public show(): void {

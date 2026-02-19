@@ -18,12 +18,12 @@ const VARIANT_META: Record<string, {
   features: string[];
 }> = {
   full: {
-    title: 'World Monitor - Real-Time Global Intelligence Dashboard',
+    title: 'IntelHQ - Real-Time Global Intelligence Dashboard',
     description: 'Real-time global intelligence dashboard with live news, markets, military tracking, infrastructure monitoring, and geopolitical data. OSINT in one view.',
     keywords: 'global intelligence, geopolitical dashboard, world news, market data, military bases, nuclear facilities, undersea cables, conflict zones, real-time monitoring, situation awareness, OSINT, flight tracking, AIS ships, earthquake monitor, protest tracker, power outages, oil prices, government spending, polymarket predictions',
-    url: 'https://worldmonitor.app/',
-    siteName: 'World Monitor',
-    shortName: 'WorldMonitor',
+    url: 'https://intelhq.io/',
+    siteName: 'IntelHQ',
+    shortName: 'IntelHQ',
     subject: 'Real-Time Global Intelligence and Situation Awareness',
     classification: 'Intelligence Dashboard, OSINT Tool, News Aggregator',
     categories: ['news', 'productivity'],
@@ -46,7 +46,7 @@ const VARIANT_META: Record<string, {
     title: 'Tech Monitor - Real-Time AI & Tech Industry Dashboard',
     description: 'Real-time AI and tech industry dashboard tracking tech giants, AI labs, startup ecosystems, funding rounds, and tech events worldwide.',
     keywords: 'tech dashboard, AI industry, startup ecosystem, tech companies, AI labs, venture capital, tech events, tech conferences, cloud infrastructure, datacenters, tech layoffs, funding rounds, unicorns, FAANG, tech HQ, accelerators, Y Combinator, tech news',
-    url: 'https://tech.worldmonitor.app/',
+    url: 'https://tech.intelhq.io/',
     siteName: 'Tech Monitor',
     shortName: 'TechMonitor',
     subject: 'AI, Tech Industry, and Startup Ecosystem Intelligence',
@@ -70,7 +70,7 @@ const VARIANT_META: Record<string, {
     title: 'Finance Monitor - Real-Time Markets & Trading Dashboard',
     description: 'Real-time finance and trading dashboard tracking global markets, stock exchanges, central banks, commodities, forex, crypto, and economic indicators worldwide.',
     keywords: 'finance dashboard, trading dashboard, stock market, forex, commodities, central banks, crypto, economic indicators, market news, financial centers, stock exchanges, bonds, derivatives, fintech, hedge funds, IPO tracker, market analysis',
-    url: 'https://finance.worldmonitor.app/',
+    url: 'https://finance.intelhq.io/',
     siteName: 'Finance Monitor',
     shortName: 'FinanceMonitor',
     subject: 'Global Markets, Trading, and Financial Intelligence',
@@ -115,8 +115,8 @@ function htmlVariantPlugin(): Plugin {
         .replace(/<meta name="twitter:url" content=".*?" \/>/, `<meta name="twitter:url" content="${activeMeta.url}" />`)
         .replace(/<meta name="twitter:title" content=".*?" \/>/, `<meta name="twitter:title" content="${activeMeta.title}" />`)
         .replace(/<meta name="twitter:description" content=".*?" \/>/, `<meta name="twitter:description" content="${activeMeta.description}" />`)
-        .replace(/"name": "World Monitor"/, `"name": "${activeMeta.siteName}"`)
-        .replace(/"alternateName": "WorldMonitor"/, `"alternateName": "${activeMeta.siteName.replace(' ', '')}"`)
+        .replace(/"name": "IntelHQ"/, `"name": "${activeMeta.siteName}"`)
+        .replace(/"alternateName": "IntelHQ"/, `"alternateName": "${activeMeta.siteName.replace(' ', '')}"`)
         .replace(/"url": "https:\/\/worldmonitor\.app\/"/, `"url": "${activeMeta.url}"`)
         .replace(/"description": "Real-time global intelligence dashboard with live news, markets, military tracking, infrastructure monitoring, and geopolitical data."/, `"description": "${activeMeta.description}"`)
         .replace(/"featureList": \[[\s\S]*?\]/, `"featureList": ${JSON.stringify(activeMeta.features, null, 8).replace(/\n/g, '\n      ')}`);
@@ -277,7 +277,10 @@ export default defineConfig({
       '@': resolve(__dirname, 'src'),
     },
   },
+  /* PERF-005: Enhanced chunk splitting — separate vendor groups for better caching */
   build: {
+    cssCodeSplit: true,
+    chunkSizeWarningLimit: 800,
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
@@ -297,6 +300,12 @@ export default defineConfig({
             }
             if (id.includes('/topojson-client/')) {
               return 'topojson';
+            }
+            if (id.includes('/i18next/') || id.includes('/i18next-browser-languagedetector/')) {
+              return 'i18n';
+            }
+            if (id.includes('/@sentry/')) {
+              return 'sentry';
             }
           }
           return undefined;
@@ -345,7 +354,7 @@ export default defineConfig({
       // Polymarket API — proxy through production Vercel edge function
       // Direct gamma-api.polymarket.com is blocked by Cloudflare JA3 fingerprinting
       '/api/polymarket': {
-        target: 'https://worldmonitor.app',
+        target: 'https://intelhq.io',
         changeOrigin: true,
         configure: (proxy) => {
           proxy.on('error', (err) => {

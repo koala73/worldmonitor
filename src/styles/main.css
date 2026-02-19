@@ -812,6 +812,8 @@ canvas,
   cursor: grab;
   transition: transform 0.15s, box-shadow 0.15s;
   position: relative;
+  /* PERF-014: CSS containment — isolate layout/paint recalculations per panel */
+  contain: content;
 }
 
 /* .panel.resized: Custom height set - use grid-row span for height */
@@ -890,6 +892,8 @@ canvas,
   opacity: 0.5;
   transform: scale(1.02);
   box-shadow: 0 8px 24px rgba(0, 255, 136, 0.2);
+  /* PERF-015: GPU-promote dragging animation */
+  will-change: transform, opacity;
 }
 
 .panel-header {

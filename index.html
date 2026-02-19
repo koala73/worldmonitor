@@ -1,57 +1,63 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https: http://localhost:5173 http://127.0.0.1:46123 ws: wss: blob: data:; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://www.youtube.com https://static.cloudflareinsights.com https://vercel.live; worker-src 'self' blob:; font-src 'self' data: https:; media-src 'self' data: blob: https:; frame-src 'self' http://127.0.0.1:46123 https://worldmonitor.app https://tech.worldmonitor.app https://www.youtube.com https://www.youtube-nocookie.com;" />
-    <meta name="referrer" content="strict-origin-when-cross-origin" />
 
-    <!-- Primary Meta Tags -->
-    <title>World Monitor - Global Situation with AI Insights</title>
-    <meta name="title" content="World Monitor - Global Situation with AI Insights" />
-    <meta name="description" content="AI-powered real-time global intelligence dashboard with live news, markets, military tracking, infrastructure monitoring, and geopolitical data. OSINT in one view." />
-    <meta name="keywords" content="AI intelligence, AI-powered dashboard, global intelligence, geopolitical dashboard, world news, market data, military bases, nuclear facilities, undersea cables, conflict zones, real-time monitoring, situation awareness, OSINT, flight tracking, AIS ships, earthquake monitor, protest tracker, power outages, oil prices, government spending, polymarket predictions" />
-    <meta name="author" content="Elie Habib" />
-    <meta name="theme-color" content="#0a0f0a" />
-    <meta name="robots" content="index, follow" />
-    <link rel="canonical" href="https://worldmonitor.app/" />
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; connect-src 'self' https: http://localhost:5173 http://127.0.0.1:46123 ws: wss: blob: data:; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://www.youtube.com https://static.cloudflareinsights.com https://vercel.live; worker-src 'self' blob:; font-src 'self' data: https:; media-src 'self' data: blob: https:; frame-src 'self' http://127.0.0.1:46123 https://intelhq.io https://tech.intelhq.io https://www.youtube.com https://www.youtube-nocookie.com;" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
 
-    <!-- Additional Search Discovery -->
-    <meta name="application-name" content="World Monitor" />
-    <meta name="subject" content="AI-Powered Global Intelligence and Situation Awareness" />
-    <meta name="classification" content="AI Intelligence Dashboard, OSINT Tool, News Aggregator" />
-    <meta name="coverage" content="Worldwide" />
-    <meta name="distribution" content="Global" />
-    <meta name="rating" content="General" />
+  <!-- Primary Meta Tags -->
+  <title>IntelHQ - Global Situation with AI Insights</title>
+  <meta name="title" content="IntelHQ - Global Situation with AI Insights" />
+  <meta name="description"
+    content="AI-powered real-time global intelligence dashboard with live news, markets, military tracking, infrastructure monitoring, and geopolitical data. OSINT in one view." />
+  <meta name="keywords"
+    content="AI intelligence, AI-powered dashboard, global intelligence, geopolitical dashboard, world news, market data, military bases, nuclear facilities, undersea cables, conflict zones, real-time monitoring, situation awareness, OSINT, flight tracking, AIS ships, earthquake monitor, protest tracker, power outages, oil prices, government spending, polymarket predictions" />
+  <meta name="author" content="Elie Habib" />
+  <meta name="theme-color" content="#0a0f0a" />
+  <meta name="robots" content="index, follow" />
+  <link rel="canonical" href="https://intelhq.io/" />
 
-    <!-- Open Graph / Facebook -->
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://worldmonitor.app/" />
-    <meta property="og:title" content="World Monitor - Global Situation with AI Insights" />
-    <meta property="og:description" content="AI-powered real-time global intelligence dashboard with live news, markets, military tracking, infrastructure monitoring, and geopolitical data." />
-    <meta property="og:image" content="https://worldmonitor.app/favico/og-image.png" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
-    <meta property="og:site_name" content="World Monitor" />
-    <meta property="og:locale" content="en_US" />
+  <!-- Additional Search Discovery -->
+  <meta name="application-name" content="IntelHQ" />
+  <meta name="subject" content="AI-Powered Global Intelligence and Situation Awareness" />
+  <meta name="classification" content="AI Intelligence Dashboard, OSINT Tool, News Aggregator" />
+  <meta name="coverage" content="Worldwide" />
+  <meta name="distribution" content="Global" />
+  <meta name="rating" content="General" />
 
-    <!-- Twitter -->
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:url" content="https://worldmonitor.app/" />
-    <meta name="twitter:title" content="World Monitor - Global Situation with AI Insights" />
-    <meta name="twitter:description" content="AI-powered real-time global intelligence dashboard with live news, markets, military tracking, infrastructure monitoring, and geopolitical data." />
-    <meta name="twitter:image" content="https://worldmonitor.app/favico/og-image.png" />
-    <meta name="twitter:site" content="@worldmonitorapp" />
-    <meta name="twitter:creator" content="@eliehabib" />
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://intelhq.io/" />
+  <meta property="og:title" content="IntelHQ - Global Situation with AI Insights" />
+  <meta property="og:description"
+    content="AI-powered real-time global intelligence dashboard with live news, markets, military tracking, infrastructure monitoring, and geopolitical data." />
+  <meta property="og:image" content="https://intelhq.io/favico/og-image.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:site_name" content="IntelHQ" />
+  <meta property="og:locale" content="en_US" />
 
-    <!-- JSON-LD Structured Data -->
-    <script type="application/ld+json">
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:url" content="https://intelhq.io/" />
+  <meta name="twitter:title" content="IntelHQ - Global Situation with AI Insights" />
+  <meta name="twitter:description"
+    content="AI-powered real-time global intelligence dashboard with live news, markets, military tracking, infrastructure monitoring, and geopolitical data." />
+  <meta name="twitter:image" content="https://intelhq.io/favico/og-image.png" />
+  <meta name="twitter:site" content="@worldmonitorapp" />
+  <meta name="twitter:creator" content="@eliehabib" />
+
+  <!-- JSON-LD Structured Data -->
+  <script type="application/ld+json">
     {
       "@context": "https://schema.org",
       "@type": "WebApplication",
-      "name": "World Monitor",
-      "alternateName": "WorldMonitor",
-      "url": "https://worldmonitor.app/",
+      "name": "IntelHQ",
+      "alternateName": "IntelHQ",
+      "url": "https://intelhq.io/",
       "description": "AI-powered real-time global intelligence dashboard with live news, markets, military tracking, infrastructure monitoring, and geopolitical data.",
       "applicationCategory": "UtilitiesApplication",
       "operatingSystem": "Web Browser",
@@ -79,26 +85,138 @@
         "Infrastructure monitoring",
         "Geopolitical intelligence"
       ],
-      "screenshot": "https://worldmonitor.app/favico/og-image.png",
+      "screenshot": "https://intelhq.io/favico/og-image.png",
       "keywords": "AI, OSINT, intelligence dashboard, geopolitical, real-time monitoring, situation awareness, AI-powered"
     }
     </script>
 
-    <!-- Favicons -->
-    <link rel="icon" type="image/x-icon" href="/favico/favicon.ico" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/favico/favicon-32x32.png" />
-    <link rel="icon" type="image/png" sizes="16x16" href="/favico/favicon-16x16.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/favico/apple-touch-icon.png" />
+  <!-- PERF-049: Preconnect to external domains to save DNS+TLS handshake time -->
+  <link rel="preconnect" href="https://api.maptiler.com" crossorigin />
+  <link rel="preconnect" href="https://a.basemaps.cartocdn.com" crossorigin />
+  <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="preconnect" href="https://intelhq.io" crossorigin />
+  <link rel="dns-prefetch" href="https://earthquake.usgs.gov" />
+  <link rel="dns-prefetch" href="https://api.gdeltproject.org" />
+  <link rel="dns-prefetch" href="https://query1.finance.yahoo.com" />
+
+  <!-- Favicons -->
+  <link rel="icon" type="image/x-icon" href="/favico/favicon.ico" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/favico/favicon-32x32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="/favico/favicon-16x16.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/favico/apple-touch-icon.png" />
 
 
-    <!-- Theme: apply stored preference before first paint to prevent FOUC -->
-    <script>(function(){try{var t=localStorage.getItem('worldmonitor-theme');if(t==='light')document.documentElement.dataset.theme='light';}catch(e){}document.documentElement.classList.add('no-transition');})()</script>
+  <!-- Theme: apply stored preference before first paint to prevent FOUC -->
+  <script>(function () { try { var t = localStorage.getItem('worldmonitor-theme'); if (t === 'light') document.documentElement.dataset.theme = 'light'; } catch (e) { } document.documentElement.classList.add('no-transition'); })()</script>
 
-    <!-- Styles -->
-    <link rel="stylesheet" href="/src/styles/main.css" />
-  </head>
-  <body>
-    <div id="app"></div>
-    <script type="module" src="/src/main.ts"></script>
-  </body>
+  <!-- Styles -->
+  <link rel="stylesheet" href="/src/styles/main.css" />
+</head>
+
+<body>
+  <!-- PERF-004: Critical CSS skeleton for instant perceived load -->
+  <div id="app">
+    <div class="skeleton-shell" aria-hidden="true">
+      <div class="skeleton-header"><span class="skeleton-logo">INTELHQ</span></div>
+      <div class="skeleton-body">
+        <div class="skeleton-map">
+          <div class="skeleton-shimmer"></div>
+        </div>
+        <div class="skeleton-panels">
+          <div class="skeleton-panel">
+            <div class="skeleton-shimmer"></div>
+          </div>
+          <div class="skeleton-panel">
+            <div class="skeleton-shimmer"></div>
+          </div>
+          <div class="skeleton-panel">
+            <div class="skeleton-shimmer"></div>
+          </div>
+          <div class="skeleton-panel">
+            <div class="skeleton-shimmer"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <style>
+    .skeleton-shell {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      background: #0a0a0a;
+      color: #e8e8e8;
+      font-family: monospace
+    }
+
+    .skeleton-header {
+      height: 40px;
+      background: #141414;
+      border-bottom: 1px solid #2a2a2a;
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      flex-shrink: 0
+    }
+
+    .skeleton-logo {
+      font-size: 14px;
+      font-weight: bold;
+      letter-spacing: 2px;
+      opacity: .7
+    }
+
+    .skeleton-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden
+    }
+
+    .skeleton-map {
+      height: 50vh;
+      min-height: 200px;
+      background: #020a08;
+      border: 1px solid #2a2a2a;
+      position: relative;
+      overflow: hidden
+    }
+
+    .skeleton-panels {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 4px;
+      padding: 4px
+    }
+
+    .skeleton-panel {
+      height: 200px;
+      background: #141414;
+      border: 1px solid #2a2a2a;
+      border-radius: 0;
+      position: relative;
+      overflow: hidden
+    }
+
+    .skeleton-shimmer {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, .03) 50%, transparent 100%);
+      animation: shimmer 1.5s infinite
+    }
+
+    @keyframes shimmer {
+      0% {
+        transform: translateX(-100%)
+      }
+
+      100% {
+        transform: translateX(100%)
+      }
+    }
+  </style>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+
 </html>
