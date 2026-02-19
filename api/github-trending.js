@@ -32,7 +32,7 @@ export default async function handler(request) {
     const response = await fetch(apiUrl, {
       headers: {
         'Accept': 'application/json',
-        'User-Agent': 'WorldMonitor/1.0 (Tech Tracker)',
+        'User-Agent': 'IntelHQ/1.0 (Tech Tracker)',
       },
       signal: AbortSignal.timeout(10000), // 10 second timeout
     });

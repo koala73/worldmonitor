@@ -14,7 +14,7 @@ const ORIGINAL_ABUSEIPDB_KEY = process.env.ABUSEIPDB_API_KEY;
 function makeRequest(path = '/api/cyber-threats', ip = '198.51.100.10') {
   const headers = new Headers();
   headers.set('x-forwarded-for', ip);
-  return new Request(`https://worldmonitor.app${path}`, { headers });
+  return new Request(`https://intelhq.io${path}`, { headers });
 }
 
 function jsonResponse(body, status = 200) {

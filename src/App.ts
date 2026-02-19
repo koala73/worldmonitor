@@ -22,6 +22,7 @@ import { signalAggregator } from '@/services/signal-aggregator';
 import { updateAndCheck } from '@/services/temporal-baseline';
 import { fetchAllFires, flattenFires, computeRegionStats } from '@/services/firms-satellite';
 import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
+import { OrefSirensPanel } from '@/components/OrefSirensPanel';
 import { analyzeFlightsForSurge, surgeAlertToSignal, detectForeignMilitaryPresence, foreignPresenceToSignal, type TheaterPostureSummary } from '@/services/military-surge';
 import { fetchCachedTheaterPosture } from '@/services/cached-theater-posture';
 import { ingestProtestsForCII, ingestMilitaryForCII, ingestNewsForCII, ingestOutagesForCII, ingestConflictsForCII, ingestUcdpForCII, ingestHapiForCII, ingestDisplacementForCII, ingestClimateForCII, startLearning, isInLearningMode, calculateCII, getCountryData, TIER1_COUNTRIES } from '@/services/country-instability';
@@ -476,11 +477,8 @@ export class App {
 
   private async checkForUpdate(): Promise<void> {
     try {
-      const res = await fetch('https://worldmonitor.app/api/version');
-      if (!res.ok) {
-        this.logUpdaterOutcome('fetch_failed', { status: res.status });
-        return;
-      }
+      const res = await fetch('https://intelhq.io/api/version');
+      if (!res.ok) return;
       const data = await res.json();
       const remote = data.version as string;
       if (!remote) {
@@ -549,8 +547,7 @@ export class App {
       const runtimeInfo = await invokeTauri<DesktopRuntimeInfo>('get_desktop_runtime_info');
       const platform = this.mapDesktopDownloadPlatform(runtimeInfo.os, runtimeInfo.arch);
       if (platform) {
-        const variant = this.getDesktopBuildVariant();
-        return `https://worldmonitor.app/api/download?platform=${platform}&variant=${variant}`;
+        return `https://intelhq.io/api/download?platform=${platform}`;
       }
     } catch {
       // Silent fallback to release page when desktop runtime info is unavailable.
@@ -1782,7 +1779,7 @@ export class App {
       <div class="header">
         <div class="header-left">
           <div class="variant-switcher">
-            <a href="${this.isDesktopApp ? '#' : (SITE_VARIANT === 'full' ? '#' : 'https://worldmonitor.app')}"
+            <a href="${this.isDesktopApp ? '#' : (SITE_VARIANT === 'full' ? '#' : 'https://intelhq.io')}"
                class="variant-option ${SITE_VARIANT === 'full' ? 'active' : ''}"
                data-variant="full"
                ${!this.isDesktopApp && SITE_VARIANT !== 'full' ? 'target="_blank" rel="noopener"' : ''}
@@ -2244,6 +2241,9 @@ export class App {
 
       const satelliteFiresPanel = new SatelliteFiresPanel();
       this.panels['satellite-fires'] = satelliteFiresPanel;
+
+      const orefSirensPanel = new OrefSirensPanel();
+      this.panels['oref-sirens'] = orefSirensPanel;
 
       const strategicRiskPanel = new StrategicRiskPanel();
       strategicRiskPanel.setLocationClickHandler((lat, lon) => {
@@ -2778,13 +2778,13 @@ export class App {
 
   private toggleFullscreen(): void {
     if (document.fullscreenElement) {
-      void document.exitFullscreen().catch(() => {});
+      void document.exitFullscreen().catch(() => { });
     } else {
       const el = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => void };
       if (el.requestFullscreen) {
-        void el.requestFullscreen().catch(() => {});
+        void el.requestFullscreen().catch(() => { });
       } else if (el.webkitRequestFullscreen) {
-        try { el.webkitRequestFullscreen(); } catch {}
+        try { el.webkitRequestFullscreen(); } catch { }
       }
     }
   }

@@ -240,7 +240,7 @@ async function fetchMilitaryFlights() {
     const response = await fetch(baseUrl, {
       headers: {
         'Accept': 'application/json',
-        'User-Agent': 'Mozilla/5.0 WorldMonitor/1.0',
+        'User-Agent': 'Mozilla/5.0 IntelHQ/1.0',
       },
       signal: controller.signal,
     });

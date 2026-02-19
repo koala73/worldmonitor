@@ -6,6 +6,7 @@ dist/
 *.log
 .env
 .env.local
+.credentials
 .playwright-mcp/
 .vercel
 .claude/

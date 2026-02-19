@@ -1,4 +1,4 @@
-// Finance/Trading variant - finance.worldmonitor.app
+// Finance/Trading variant - finance.intelhq.io
 import type { PanelConfig, MapLayers } from '@/types';
 import type { VariantConfig } from './base';
 

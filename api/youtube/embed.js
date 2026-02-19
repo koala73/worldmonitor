@@ -20,16 +20,16 @@ const ALLOWED_ORIGINS = [
 ];
 
 function sanitizeOrigin(raw) {
-  if (!raw) return 'https://worldmonitor.app';
+  if (!raw) return 'https://intelhq.io';
   try {
     const parsed = new URL(raw);
     if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:' && parsed.protocol !== 'tauri:') {
-      return 'https://worldmonitor.app';
+      return 'https://intelhq.io';
     }
     const origin = parsed.origin !== 'null' ? parsed.origin : raw;
     if (ALLOWED_ORIGINS.some(p => p.test(origin))) return origin;
   } catch { /* invalid URL */ }
-  return 'https://worldmonitor.app';
+  return 'https://intelhq.io';
 }
 
 export default async function handler(request) {

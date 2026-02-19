@@ -31,7 +31,7 @@ export async function reverseGeocode(lat: number, lon: number): Promise<GeoResul
   try {
     const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=3&accept-language=en`;
     const res = await fetch(url, {
-      headers: { 'User-Agent': 'WorldMonitor/2.0 (https://worldmonitor.app)' },
+      headers: { 'User-Agent': 'IntelHQ/2.0 (https://intelhq.io)' },
     });
     if (!res.ok) {
       cache.set(key, null);

@@ -78,7 +78,7 @@ async function checkStatusPage(service) {
     };
     // Don't send User-Agent for incident.io - they may block bots
     if (service.customParser !== 'incidentio') {
-      headers['User-Agent'] = 'Mozilla/5.0 (compatible; WorldMonitor/1.0)';
+      headers['User-Agent'] = 'Mozilla/5.0 (compatible; IntelHQ/1.0)';
     }
 
     const response = await fetch(service.statusPage, {
