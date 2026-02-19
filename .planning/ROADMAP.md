@@ -38,7 +38,8 @@ proto/worldmonitor/
 - [x] **Phase 2E: Climate Migration** - Open-Meteo anomalies with enum-heavy responses (completed 2026-02-18)
 - [x] **Phase 2F: Prediction Migration** - Polymarket prediction markets with query params and multi-strategy fetch (completed 2026-02-18)
 - [x] **Phase 2G: Displacement Migration** - UNHCR refugees/IDPs with multi-entity responses (completed 2026-02-19)
-- [ ] **Phase 2H-2S: Domain Migrations** - Remaining domains, one sub-phase each
+- [ ] **Phase 2H: Aviation Migration** - FAA XML parsing, simulated non-US delays, MONITORED_AIRPORTS config
+- [ ] **Phase 2I-2S: Domain Migrations** - Remaining domains, one sub-phase each
 
 ## Phase Details
 
@@ -117,9 +118,19 @@ Plans:
 - [x] 2G-01-PLAN.md -- Displacement handler (UNHCR API pagination, per-country aggregation, flow computation, country centroids) + gateway wiring + sidecar rebuild
 - [x] 2G-02-PLAN.md -- Displacement service module (int64 string->number, GeoCoordinates->flat lat/lon mapping) + consumer rewiring + legacy deletion
 
-### Phase 2H-2S: Remaining Domain Migrations
-**Goal**: Each remaining domain migrated one at a time in order of complexity
+### Phase 2H: Aviation Migration
+**Goal**: Migrate aviation/FAA domain to sebuf -- implement handler proxying FAA NASSTATUS XML API with XML-to-JSON parsing, enrich with MONITORED_AIRPORTS config for non-US simulated delays, create service module with port/adapter pattern, rewire all consumers, delete legacy endpoint
 **Depends on**: Phase 2G
+**Status**: Not started
+**Requirements:** [DOMAIN-08, SERVER-02]
+**Plans:** 2 plans
+Plans:
+- [ ] 2H-01-PLAN.md -- Aviation handler (FAA XML parsing via fast-xml-parser, airport enrichment, simulated delays, severity classification) + gateway wiring + sidecar rebuild
+- [ ] 2H-02-PLAN.md -- Aviation service module (proto enum reverse mapping, GeoCoordinates unwrap, updatedAt->Date) + consumer rewiring + legacy deletion
+
+### Phase 2I-2S: Remaining Domain Migrations
+**Goal**: Each remaining domain migrated one at a time in order of complexity
+**Depends on**: Phase 2H
 
 Migration order (one sub-phase each):
 1. ~~seismology~~ (complete, Phase 2C)
@@ -127,7 +138,7 @@ Migration order (one sub-phase each):
 3. ~~climate~~ (Phase 2E)
 4. ~~prediction~~ (Phase 2F)
 5. ~~displacement~~ (Phase 2G)
-6. aviation -- validates XML upstream parsing
+6. ~~aviation~~ (Phase 2H)
 7. research -- validates 3-RPC service pattern
 8. unrest -- validates ACLED auth token
 9. conflict -- validates dual-upstream
@@ -164,5 +175,6 @@ Each migration step:
 | 2E. Climate Migration | Complete | 2026-02-18 |
 | 2F. Prediction Migration | Complete | 2026-02-18 |
 | 2G. Displacement Migration | Complete | 2026-02-19 |
-| 2H-2S. Domain Migrations (0/12) | Not started | - |
+| 2H. Aviation Migration | Not started | - |
+| 2I-2S. Domain Migrations (0/11) | Not started | - |
 | 2T. Legacy Cleanup | Not started | - |
