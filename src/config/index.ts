@@ -8,7 +8,6 @@ export { SITE_VARIANT } from './variant';
 
 // Shared base configuration (always included)
 export {
-  API_URLS,
   REFRESH_INTERVALS,
   MONITOR_COLORS,
   STORAGE_KEYS,

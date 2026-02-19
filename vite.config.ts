@@ -559,26 +559,6 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/yahoo/, ''),
       },
-      // CoinGecko API
-      '/api/coingecko': {
-        target: 'https://api.coingecko.com',
-        changeOrigin: true,
-        rewrite: (path) => {
-          const idx = path.indexOf('?');
-          const qs = idx >= 0 ? path.substring(idx) : '';
-          const params = new URLSearchParams(qs);
-          if (params.get('endpoint') === 'markets') {
-            params.delete('endpoint');
-            const vs = params.get('vs_currencies') || 'usd';
-            params.delete('vs_currencies');
-            params.set('vs_currency', vs);
-            params.set('sparkline', 'true');
-            params.set('order', 'market_cap_desc');
-            return `/api/v3/coins/markets?${params.toString()}`;
-          }
-          return `/api/v3/simple/price${qs}`;
-        },
-      },
       // Polymarket handled by polymarketPlugin() — no prod proxy needed
       // USGS Earthquake API
       '/api/earthquake': {
