@@ -7,6 +7,8 @@ import "worldmonitor/market/v1/list_market_quotes.proto";
 import "worldmonitor/market/v1/list_crypto_quotes.proto";
 import "worldmonitor/market/v1/list_commodity_quotes.proto";
 import "worldmonitor/market/v1/get_sector_summary.proto";
+import "worldmonitor/market/v1/list_stablecoin_markets.proto";
+import "worldmonitor/market/v1/list_etf_flows.proto";
 
 // MarketService provides APIs for financial market data from Finnhub, Yahoo Finance, and CoinGecko.
 service MarketService {
@@ -30,5 +32,15 @@ service MarketService {
   // GetSectorSummary retrieves market sector performance data from Finnhub.
   rpc GetSectorSummary(GetSectorSummaryRequest) returns (GetSectorSummaryResponse) {
     option (sebuf.http.config) = {path: "/get-sector-summary"};
+  }
+
+  // ListStablecoinMarkets retrieves stablecoin peg health and market data from CoinGecko.
+  rpc ListStablecoinMarkets(ListStablecoinMarketsRequest) returns (ListStablecoinMarketsResponse) {
+    option (sebuf.http.config) = {path: "/list-stablecoin-markets"};
+  }
+
+  // ListEtfFlows retrieves BTC spot ETF flow estimates from Yahoo Finance.
+  rpc ListEtfFlows(ListEtfFlowsRequest) returns (ListEtfFlowsResponse) {
+    option (sebuf.http.config) = {path: "/list-etf-flows"};
   }
 }

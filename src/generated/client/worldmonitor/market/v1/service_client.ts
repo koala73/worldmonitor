@@ -65,6 +65,68 @@ export interface SectorPerformance {
   change: number;
 }
 
+export interface ListStablecoinMarketsRequest {
+  coins: string[];
+}
+
+export interface ListStablecoinMarketsResponse {
+  timestamp: string;
+  summary?: StablecoinSummary;
+  stablecoins: Stablecoin[];
+}
+
+export interface StablecoinSummary {
+  totalMarketCap: number;
+  totalVolume24h: number;
+  coinCount: number;
+  depeggedCount: number;
+  healthStatus: string;
+}
+
+export interface Stablecoin {
+  id: string;
+  symbol: string;
+  name: string;
+  price: number;
+  deviation: number;
+  pegStatus: string;
+  marketCap: number;
+  volume24h: number;
+  change24h: number;
+  change7d: number;
+  image: string;
+}
+
+export interface ListEtfFlowsRequest {
+}
+
+export interface ListEtfFlowsResponse {
+  timestamp: string;
+  summary?: EtfFlowsSummary;
+  etfs: EtfFlow[];
+}
+
+export interface EtfFlowsSummary {
+  etfCount: number;
+  totalVolume: number;
+  totalEstFlow: number;
+  netDirection: string;
+  inflowCount: number;
+  outflowCount: number;
+}
+
+export interface EtfFlow {
+  ticker: string;
+  issuer: string;
+  price: number;
+  priceChange: number;
+  volume: number;
+  avgVolume: number;
+  volumeRatio: number;
+  direction: string;
+  estFlow: number;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -207,6 +269,54 @@ export class MarketServiceClient {
     }
 
     return await resp.json() as GetSectorSummaryResponse;
+  }
+
+  async listStablecoinMarkets(req: ListStablecoinMarketsRequest, options?: MarketServiceCallOptions): Promise<ListStablecoinMarketsResponse> {
+    let path = "/api/market/v1/list-stablecoin-markets";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListStablecoinMarketsResponse;
+  }
+
+  async listEtfFlows(req: ListEtfFlowsRequest, options?: MarketServiceCallOptions): Promise<ListEtfFlowsResponse> {
+    let path = "/api/market/v1/list-etf-flows";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListEtfFlowsResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

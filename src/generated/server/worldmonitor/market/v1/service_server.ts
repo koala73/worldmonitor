@@ -65,6 +65,68 @@ export interface SectorPerformance {
   change: number;
 }
 
+export interface ListStablecoinMarketsRequest {
+  coins: string[];
+}
+
+export interface ListStablecoinMarketsResponse {
+  timestamp: string;
+  summary?: StablecoinSummary;
+  stablecoins: Stablecoin[];
+}
+
+export interface StablecoinSummary {
+  totalMarketCap: number;
+  totalVolume24h: number;
+  coinCount: number;
+  depeggedCount: number;
+  healthStatus: string;
+}
+
+export interface Stablecoin {
+  id: string;
+  symbol: string;
+  name: string;
+  price: number;
+  deviation: number;
+  pegStatus: string;
+  marketCap: number;
+  volume24h: number;
+  change24h: number;
+  change7d: number;
+  image: string;
+}
+
+export interface ListEtfFlowsRequest {
+}
+
+export interface ListEtfFlowsResponse {
+  timestamp: string;
+  summary?: EtfFlowsSummary;
+  etfs: EtfFlow[];
+}
+
+export interface EtfFlowsSummary {
+  etfCount: number;
+  totalVolume: number;
+  totalEstFlow: number;
+  netDirection: string;
+  inflowCount: number;
+  outflowCount: number;
+}
+
+export interface EtfFlow {
+  ticker: string;
+  issuer: string;
+  price: number;
+  priceChange: number;
+  volume: number;
+  avgVolume: number;
+  volumeRatio: number;
+  direction: string;
+  estFlow: number;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -114,6 +176,8 @@ export interface MarketServiceHandler {
   listCryptoQuotes(ctx: ServerContext, req: ListCryptoQuotesRequest): Promise<ListCryptoQuotesResponse>;
   listCommodityQuotes(ctx: ServerContext, req: ListCommodityQuotesRequest): Promise<ListCommodityQuotesResponse>;
   getSectorSummary(ctx: ServerContext, req: GetSectorSummaryRequest): Promise<GetSectorSummaryResponse>;
+  listStablecoinMarkets(ctx: ServerContext, req: ListStablecoinMarketsRequest): Promise<ListStablecoinMarketsResponse>;
+  listEtfFlows(ctx: ServerContext, req: ListEtfFlowsRequest): Promise<ListEtfFlowsResponse>;
 }
 
 export function createMarketServiceRoutes(
@@ -272,6 +336,92 @@ export function createMarketServiceRoutes(
 
           const result = await handler.getSectorSummary(ctx, body);
           return new Response(JSON.stringify(result as GetSectorSummaryResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/market/v1/list-stablecoin-markets",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = await req.json() as ListStablecoinMarketsRequest;
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listStablecoinMarkets", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listStablecoinMarkets(ctx, body);
+          return new Response(JSON.stringify(result as ListStablecoinMarketsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/market/v1/list-etf-flows",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = await req.json() as ListEtfFlowsRequest;
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listEtfFlows", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listEtfFlows(ctx, body);
+          return new Response(JSON.stringify(result as ListEtfFlowsResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

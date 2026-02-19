@@ -1,15 +1,19 @@
 /**
  * Market service handler -- implements the generated MarketServiceHandler
- * interface with 4 RPCs:
- *   - ListMarketQuotes   (Finnhub + Yahoo Finance for stocks/indices)
- *   - ListCryptoQuotes   (CoinGecko markets API)
- *   - ListCommodityQuotes (Yahoo Finance for commodity futures)
- *   - GetSectorSummary   (Finnhub for sector ETFs)
+ * interface with 6 RPCs:
+ *   - ListMarketQuotes      (Finnhub + Yahoo Finance for stocks/indices)
+ *   - ListCryptoQuotes      (CoinGecko markets API)
+ *   - ListCommodityQuotes   (Yahoo Finance for commodity futures)
+ *   - GetSectorSummary      (Finnhub for sector ETFs)
+ *   - ListStablecoinMarkets (CoinGecko stablecoin peg health)
+ *   - ListEtfFlows          (Yahoo Finance BTC spot ETF flow estimates)
  *
  * Consolidates legacy edge functions:
  *   api/finnhub.js
  *   api/yahoo-finance.js
  *   api/coingecko.js
+ *   api/stablecoin-markets.js
+ *   api/etf-flows.js
  *
  * All RPCs have graceful degradation: return empty on upstream failure.
  */
@@ -27,10 +31,16 @@ import type {
   ListCommodityQuotesResponse,
   GetSectorSummaryRequest,
   GetSectorSummaryResponse,
+  ListStablecoinMarketsRequest,
+  ListStablecoinMarketsResponse,
+  ListEtfFlowsRequest,
+  ListEtfFlowsResponse,
   MarketQuote,
   CryptoQuote,
   CommodityQuote,
   SectorPerformance,
+  Stablecoin,
+  EtfFlow,
 } from '../../../../../src/generated/server/worldmonitor/market/v1/service_server';
 
 // ========================================================================
@@ -153,6 +163,248 @@ async function fetchCoinGeckoMarkets(
     return Array.isArray(data) ? data : [];
   } catch {
     return [];
+  }
+}
+
+// ========================================================================
+// Stablecoin fetcher (CoinGecko)
+// ========================================================================
+
+const DEFAULT_STABLECOIN_IDS = 'tether,usd-coin,dai,first-digital-usd,ethena-usde';
+
+let stablecoinCache: ListStablecoinMarketsResponse | null = null;
+let stablecoinCacheTimestamp = 0;
+const STABLECOIN_CACHE_TTL = 120_000; // 2 minutes
+
+interface CoinGeckoStablecoinItem {
+  id: string;
+  symbol: string;
+  name: string;
+  current_price: number;
+  market_cap: number;
+  total_volume: number;
+  price_change_percentage_24h: number;
+  price_change_percentage_7d_in_currency?: number;
+  image: string;
+}
+
+async function handleListStablecoinMarkets(req: ListStablecoinMarketsRequest): Promise<ListStablecoinMarketsResponse> {
+  const now = Date.now();
+  if (stablecoinCache && now - stablecoinCacheTimestamp < STABLECOIN_CACHE_TTL) {
+    return stablecoinCache;
+  }
+
+  const coins = req.coins.length > 0
+    ? req.coins.filter(c => /^[a-z0-9-]+$/.test(c)).join(',')
+    : DEFAULT_STABLECOIN_IDS;
+
+  try {
+    const url = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${coins}&order=market_cap_desc&sparkline=false&price_change_percentage=7d`;
+    const resp = await fetch(url, {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    });
+
+    if (resp.status === 429 && stablecoinCache) return stablecoinCache;
+    if (!resp.ok) throw new Error(`CoinGecko HTTP ${resp.status}`);
+
+    const data = (await resp.json()) as CoinGeckoStablecoinItem[];
+
+    const stablecoins: Stablecoin[] = data.map(coin => {
+      const price = coin.current_price || 0;
+      const deviation = Math.abs(price - 1.0);
+      let pegStatus: string;
+      if (deviation <= 0.005) pegStatus = 'ON PEG';
+      else if (deviation <= 0.01) pegStatus = 'SLIGHT DEPEG';
+      else pegStatus = 'DEPEGGED';
+
+      return {
+        id: coin.id,
+        symbol: (coin.symbol || '').toUpperCase(),
+        name: coin.name,
+        price,
+        deviation: +(deviation * 100).toFixed(3),
+        pegStatus,
+        marketCap: coin.market_cap || 0,
+        volume24h: coin.total_volume || 0,
+        change24h: coin.price_change_percentage_24h || 0,
+        change7d: coin.price_change_percentage_7d_in_currency || 0,
+        image: coin.image || '',
+      };
+    });
+
+    const totalMarketCap = stablecoins.reduce((sum, c) => sum + c.marketCap, 0);
+    const totalVolume24h = stablecoins.reduce((sum, c) => sum + c.volume24h, 0);
+    const depeggedCount = stablecoins.filter(c => c.pegStatus === 'DEPEGGED').length;
+
+    const result: ListStablecoinMarketsResponse = {
+      timestamp: new Date().toISOString(),
+      summary: {
+        totalMarketCap,
+        totalVolume24h,
+        coinCount: stablecoins.length,
+        depeggedCount,
+        healthStatus: depeggedCount === 0 ? 'HEALTHY' : depeggedCount === 1 ? 'CAUTION' : 'WARNING',
+      },
+      stablecoins,
+    };
+
+    stablecoinCache = result;
+    stablecoinCacheTimestamp = now;
+    return result;
+  } catch {
+    if (stablecoinCache) return stablecoinCache;
+    return {
+      timestamp: new Date().toISOString(),
+      summary: {
+        totalMarketCap: 0,
+        totalVolume24h: 0,
+        coinCount: 0,
+        depeggedCount: 0,
+        healthStatus: 'UNAVAILABLE',
+      },
+      stablecoins: [],
+    };
+  }
+}
+
+// ========================================================================
+// ETF Flows fetcher (Yahoo Finance)
+// ========================================================================
+
+const ETF_LIST = [
+  { ticker: 'IBIT', issuer: 'BlackRock' },
+  { ticker: 'FBTC', issuer: 'Fidelity' },
+  { ticker: 'ARKB', issuer: 'ARK/21Shares' },
+  { ticker: 'BITB', issuer: 'Bitwise' },
+  { ticker: 'GBTC', issuer: 'Grayscale' },
+  { ticker: 'HODL', issuer: 'VanEck' },
+  { ticker: 'BRRR', issuer: 'Valkyrie' },
+  { ticker: 'EZBC', issuer: 'Franklin' },
+  { ticker: 'BTCO', issuer: 'Invesco' },
+  { ticker: 'BTCW', issuer: 'WisdomTree' },
+];
+
+let etfCache: ListEtfFlowsResponse | null = null;
+let etfCacheTimestamp = 0;
+const ETF_CACHE_TTL = 900_000; // 15 minutes
+
+async function fetchEtfChart(ticker: string): Promise<YahooChartResponse | null> {
+  try {
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?range=5d&interval=1d`;
+    const resp = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      },
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    });
+    if (!resp.ok) return null;
+    return (await resp.json()) as YahooChartResponse;
+  } catch {
+    return null;
+  }
+}
+
+function parseEtfChartData(chart: YahooChartResponse, ticker: string, issuer: string): EtfFlow | null {
+  try {
+    const result = chart?.chart?.result?.[0];
+    if (!result) return null;
+
+    const quote = result.indicators?.quote?.[0];
+    const closes = (quote as { close?: (number | null)[] })?.close || [];
+    const volumes = (quote as { volume?: (number | null)[] })?.volume || [];
+
+    const validCloses = closes.filter((p): p is number => p != null);
+    const validVolumes = volumes.filter((v): v is number => v != null);
+
+    if (validCloses.length < 2) return null;
+
+    const latestPrice = validCloses[validCloses.length - 1];
+    const prevPrice = validCloses[validCloses.length - 2];
+    const priceChange = prevPrice ? ((latestPrice - prevPrice) / prevPrice * 100) : 0;
+
+    const latestVolume = validVolumes.length > 0 ? validVolumes[validVolumes.length - 1] : 0;
+    const avgVolume = validVolumes.length > 1
+      ? validVolumes.slice(0, -1).reduce((a, b) => a + b, 0) / (validVolumes.length - 1)
+      : latestVolume;
+
+    const volumeRatio = avgVolume > 0 ? latestVolume / avgVolume : 1;
+    const direction = priceChange > 0.1 ? 'inflow' : priceChange < -0.1 ? 'outflow' : 'neutral';
+    const estFlowMagnitude = latestVolume * latestPrice * (priceChange > 0 ? 1 : -1) * 0.1;
+
+    return {
+      ticker,
+      issuer,
+      price: +latestPrice.toFixed(2),
+      priceChange: +priceChange.toFixed(2),
+      volume: latestVolume,
+      avgVolume: Math.round(avgVolume),
+      volumeRatio: +volumeRatio.toFixed(2),
+      direction,
+      estFlow: Math.round(estFlowMagnitude),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function handleListEtfFlows(): Promise<ListEtfFlowsResponse> {
+  const now = Date.now();
+  if (etfCache && now - etfCacheTimestamp < ETF_CACHE_TTL) {
+    return etfCache;
+  }
+
+  try {
+    const charts = await Promise.allSettled(
+      ETF_LIST.map(etf => fetchEtfChart(etf.ticker)),
+    );
+
+    const etfs: EtfFlow[] = [];
+    for (let i = 0; i < ETF_LIST.length; i++) {
+      const chart = charts[i].status === 'fulfilled' ? charts[i].value : null;
+      if (chart) {
+        const parsed = parseEtfChartData(chart, ETF_LIST[i].ticker, ETF_LIST[i].issuer);
+        if (parsed) etfs.push(parsed);
+      }
+    }
+
+    const totalVolume = etfs.reduce((sum, e) => sum + e.volume, 0);
+    const totalEstFlow = etfs.reduce((sum, e) => sum + e.estFlow, 0);
+    const inflowCount = etfs.filter(e => e.direction === 'inflow').length;
+    const outflowCount = etfs.filter(e => e.direction === 'outflow').length;
+
+    etfs.sort((a, b) => b.volume - a.volume);
+
+    const result: ListEtfFlowsResponse = {
+      timestamp: new Date().toISOString(),
+      summary: {
+        etfCount: etfs.length,
+        totalVolume,
+        totalEstFlow,
+        netDirection: totalEstFlow > 0 ? 'NET INFLOW' : totalEstFlow < 0 ? 'NET OUTFLOW' : 'NEUTRAL',
+        inflowCount,
+        outflowCount,
+      },
+      etfs,
+    };
+
+    etfCache = result;
+    etfCacheTimestamp = now;
+    return result;
+  } catch {
+    if (etfCache) return etfCache;
+    return {
+      timestamp: new Date().toISOString(),
+      summary: {
+        etfCount: 0,
+        totalVolume: 0,
+        totalEstFlow: 0,
+        netDirection: 'UNAVAILABLE',
+        inflowCount: 0,
+        outflowCount: 0,
+      },
+      etfs: [],
+    };
   }
 }
 
@@ -311,5 +563,19 @@ export const marketHandler: MarketServiceHandler = {
     } catch {
       return { sectors: [] };
     }
+  },
+
+  async listStablecoinMarkets(
+    _ctx: ServerContext,
+    req: ListStablecoinMarketsRequest,
+  ): Promise<ListStablecoinMarketsResponse> {
+    return handleListStablecoinMarkets(req);
+  },
+
+  async listEtfFlows(
+    _ctx: ServerContext,
+    _req: ListEtfFlowsRequest,
+  ): Promise<ListEtfFlowsResponse> {
+    return handleListEtfFlows();
   },
 };

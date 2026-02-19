@@ -1,33 +1,10 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
+import { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
+import type { ListStablecoinMarketsResponse } from '@/generated/client/worldmonitor/market/v1/service_client';
 
-interface StablecoinData {
-  id: string;
-  symbol: string;
-  name: string;
-  price: number;
-  deviation: number;
-  pegStatus: 'ON PEG' | 'SLIGHT DEPEG' | 'DEPEGGED';
-  marketCap: number;
-  volume24h: number;
-  change24h: number;
-  change7d: number;
-  image: string;
-}
-
-interface StablecoinResult {
-  timestamp: string;
-  summary: {
-    totalMarketCap: number;
-    totalVolume24h: number;
-    coinCount: number;
-    depeggedCount: number;
-    healthStatus: string;
-  };
-  stablecoins: StablecoinData[];
-  unavailable?: boolean;
-}
+type StablecoinResult = ListStablecoinMarketsResponse;
 
 function formatLargeNum(v: number): string {
   if (v >= 1e12) return `$${(v / 1e12).toFixed(1)}T`;
@@ -69,9 +46,8 @@ export class StablecoinPanel extends Panel {
 
   private async fetchData(): Promise<void> {
     try {
-      const res = await fetch('/api/stablecoin-markets');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      this.data = await res.json();
+      const client = new MarketServiceClient('', { fetch: fetch.bind(globalThis) });
+      this.data = await client.listStablecoinMarkets({ coins: [] });
       this.error = null;
     } catch (err) {
       this.error = err instanceof Error ? err.message : 'Failed to fetch';
@@ -79,10 +55,6 @@ export class StablecoinPanel extends Panel {
       this.loading = false;
       this.renderPanel();
     }
-  }
-
-  private isUpstreamUnavailable(): boolean {
-    return this.data?.unavailable === true;
   }
 
   private renderPanel(): void {
@@ -96,18 +68,13 @@ export class StablecoinPanel extends Panel {
       return;
     }
 
-    if (this.isUpstreamUnavailable()) {
-      this.showError(t('common.upstreamUnavailable'));
-      return;
-    }
-
     const d = this.data;
     if (!d.stablecoins.length) {
       this.setContent(`<div class="panel-loading-text">${t('components.stablecoins.unavailable')}</div>`);
       return;
     }
 
-    const s = d.summary;
+    const s = d.summary || { totalMarketCap: 0, totalVolume24h: 0, coinCount: 0, depeggedCount: 0, healthStatus: 'UNAVAILABLE' };
 
     const pegRows = d.stablecoins.map(c => `
       <div class="stable-row">
