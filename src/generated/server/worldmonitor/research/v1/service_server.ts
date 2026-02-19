@@ -73,6 +73,44 @@ export interface HackernewsItem {
   submittedAt: number;
 }
 
+export interface ListTechEventsRequest {
+  type: string;
+  mappable: boolean;
+  limit: number;
+  days: number;
+}
+
+export interface ListTechEventsResponse {
+  success: boolean;
+  count: number;
+  conferenceCount: number;
+  mappableCount: number;
+  lastUpdated: string;
+  events: TechEvent[];
+  error: string;
+}
+
+export interface TechEvent {
+  id: string;
+  title: string;
+  type: string;
+  location: string;
+  coords?: TechEventCoords;
+  startDate: string;
+  endDate: string;
+  url: string;
+  source: string;
+  description: string;
+}
+
+export interface TechEventCoords {
+  lat: number;
+  lng: number;
+  country: string;
+  original: string;
+  virtual: boolean;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -121,6 +159,7 @@ export interface ResearchServiceHandler {
   listArxivPapers(ctx: ServerContext, req: ListArxivPapersRequest): Promise<ListArxivPapersResponse>;
   listTrendingRepos(ctx: ServerContext, req: ListTrendingReposRequest): Promise<ListTrendingReposResponse>;
   listHackernewsItems(ctx: ServerContext, req: ListHackernewsItemsRequest): Promise<ListHackernewsItemsResponse>;
+  listTechEvents(ctx: ServerContext, req: ListTechEventsRequest): Promise<ListTechEventsResponse>;
 }
 
 export function createResearchServiceRoutes(
@@ -236,6 +275,49 @@ export function createResearchServiceRoutes(
 
           const result = await handler.listHackernewsItems(ctx, body);
           return new Response(JSON.stringify(result as ListHackernewsItemsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/research/v1/list-tech-events",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = await req.json() as ListTechEventsRequest;
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listTechEvents", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listTechEvents(ctx, body);
+          return new Response(JSON.stringify(result as ListTechEventsResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

@@ -73,6 +73,44 @@ export interface HackernewsItem {
   submittedAt: number;
 }
 
+export interface ListTechEventsRequest {
+  type: string;
+  mappable: boolean;
+  limit: number;
+  days: number;
+}
+
+export interface ListTechEventsResponse {
+  success: boolean;
+  count: number;
+  conferenceCount: number;
+  mappableCount: number;
+  lastUpdated: string;
+  events: TechEvent[];
+  error: string;
+}
+
+export interface TechEvent {
+  id: string;
+  title: string;
+  type: string;
+  location: string;
+  coords?: TechEventCoords;
+  startDate: string;
+  endDate: string;
+  url: string;
+  source: string;
+  description: string;
+}
+
+export interface TechEventCoords {
+  lat: number;
+  lng: number;
+  country: string;
+  original: string;
+  virtual: boolean;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -191,6 +229,30 @@ export class ResearchServiceClient {
     }
 
     return await resp.json() as ListHackernewsItemsResponse;
+  }
+
+  async listTechEvents(req: ListTechEventsRequest, options?: ResearchServiceCallOptions): Promise<ListTechEventsResponse> {
+    let path = "/api/research/v1/list-tech-events";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListTechEventsResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

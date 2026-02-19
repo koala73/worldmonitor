@@ -99,6 +99,38 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/research/v1/list-tech-events:
+        post:
+            tags:
+                - ResearchService
+            summary: ListTechEvents
+            description: ListTechEvents retrieves tech events from Techmeme ICS, dev.events RSS, and curated sources.
+            operationId: ListTechEvents
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ListTechEventsRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListTechEventsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -306,3 +338,104 @@ components:
                     format: int64
                     description: 'Submission time, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
             description: HackernewsItem represents an item from Hacker News.
+        ListTechEventsRequest:
+            type: object
+            properties:
+                type:
+                    type: string
+                    description: 'Event type filter: "all", "conferences", "earnings", "ipo", "other". Empty = all.'
+                mappable:
+                    type: boolean
+                    description: Only events with non-virtual coordinates.
+                limit:
+                    type: integer
+                    format: int32
+                    description: Max events to return (0 = unlimited).
+                days:
+                    type: integer
+                    format: int32
+                    description: Events within N days from now (0 = unlimited).
+            description: ListTechEventsRequest specifies filters for retrieving tech events.
+        ListTechEventsResponse:
+            type: object
+            properties:
+                success:
+                    type: boolean
+                    description: Whether the request succeeded.
+                count:
+                    type: integer
+                    format: int32
+                    description: Total event count in response.
+                conferenceCount:
+                    type: integer
+                    format: int32
+                    description: Number of conference-type events.
+                mappableCount:
+                    type: integer
+                    format: int32
+                    description: Number of mappable (non-virtual with coords) events.
+                lastUpdated:
+                    type: string
+                    description: ISO 8601 timestamp of last update.
+                events:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/TechEvent'
+                error:
+                    type: string
+                    description: Error message if success is false.
+            description: ListTechEventsResponse contains tech events matching the request.
+        TechEvent:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: Unique event identifier.
+                title:
+                    type: string
+                    description: Event title.
+                type:
+                    type: string
+                    description: 'Event type: "conference", "earnings", "ipo", "other".'
+                location:
+                    type: string
+                    description: Location description.
+                coords:
+                    $ref: '#/components/schemas/TechEventCoords'
+                startDate:
+                    type: string
+                    description: Start date (YYYY-MM-DD).
+                endDate:
+                    type: string
+                    description: End date (YYYY-MM-DD).
+                url:
+                    type: string
+                    description: Event URL.
+                source:
+                    type: string
+                    description: 'Source: "techmeme", "dev.events", "curated".'
+                description:
+                    type: string
+                    description: Event description.
+            description: TechEvent represents a single tech event (conference, earnings, IPO, etc.).
+        TechEventCoords:
+            type: object
+            properties:
+                lat:
+                    type: number
+                    format: double
+                    description: Latitude.
+                lng:
+                    type: number
+                    format: double
+                    description: Longitude.
+                country:
+                    type: string
+                    description: Country name or code.
+                original:
+                    type: string
+                    description: Original location string before normalization.
+                virtual:
+                    type: boolean
+                    description: Whether this is a virtual/online event.
+            description: TechEventCoords contains geocoded location data for a tech event.
