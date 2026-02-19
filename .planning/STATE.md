@@ -5,18 +5,18 @@
 See: .planning/PROJECT.md (updated 2026-02-18)
 
 **Core value:** Every API integration is defined in a .proto file with generated type-safe TypeScript clients and server handlers, eliminating hand-written fetch boilerplate.
-**Current focus:** Phase 3: Legacy Edge Function Migration (step 7/10 — tech-events)
+**Current focus:** Phase 3: Legacy Edge Function Migration (step 8/10 — temporal-baseline)
 
 ## Current Position
 
 Phase: 3 (Legacy Edge Function Migration)
-Current Plan: 4 of 5
-Current Step: 7 of 10 (tech-events → research domain)
+Current Plan: 5 of 5
+Current Step: 8 of 10 (temporal-baseline → infrastructure domain)
 Status: In progress
-Last activity: 2026-02-20 — Completed plan 03-03 (macro-signals migration)
+Last activity: 2026-02-20 — Completed plan 03-04 (tech-events migration)
 Branch: feat/sebuf-integration
 
-Progress: [███████████████░░░░] 80%
+Progress: [████████████████░░░] 85%
 
 ## What's Done
 
@@ -48,7 +48,15 @@ Progress: [███████████████░░░░] 80%
 - MacroSignalsPanel rewired to EconomicServiceClient
 - Deleted api/macro-signals.js
 
-## What Remains (Phase 3, steps 7-10)
+**Phase 3 Plan 04 (step 7): COMPLETE**
+- Step 7: tech-events → research domain (ListTechEvents RPC with ICS+RSS+curated)
+- 360-city geocoding table extracted to api/data/city-coords.ts
+- Techmeme ICS + dev.events RSS parsing + 5 curated events
+- Deduplication, filtering (type/mappable/days/limit)
+- TechEventsPanel + App.ts rewired to ResearchServiceClient
+- Deleted api/tech-events.js (737 lines)
+
+## What Remains (Phase 3, steps 8-10)
 
 **Migratable to sebuf RPCs:**
 | Step | Legacy File(s) | Target Domain | RPCs | Effort |
@@ -57,7 +65,7 @@ Progress: [███████████████░░░░] 80%
 | ~~4~~ | ~~api/gdelt-doc.js~~ | ~~intelligence~~ | ~~SearchGdeltDocuments~~ | ~~DONE~~ |
 | ~~5~~ | ~~api/*-summarize.js + _summarize-handler.js (4 files)~~ | ~~news~~ | ~~SummarizeArticle~~ | ~~DONE~~ |
 | ~~6~~ | ~~api/macro-signals.js~~ | ~~economic~~ | ~~GetMacroSignals~~ | ~~DONE~~ |
-| 7 | api/tech-events.js | research | ListTechEvents | High |
+| ~~7~~ | ~~api/tech-events.js~~ | ~~research~~ | ~~ListTechEvents~~ | ~~DONE~~ |
 | 8 | api/temporal-baseline.js | infrastructure | GetTemporalBaseline, RecordBaselineSnapshot | Medium |
 
 **Non-migratable (Vercel edge, non-JSON):**
@@ -83,6 +91,8 @@ Progress: [███████████████░░░░] 80%
 - Single SummarizeArticle RPC with provider field instead of per-provider RPCs
 - All prompt/cache/dedup logic ported inline into handler for edge-compatibility
 - Proto optional-to-null mapping: use mapProtoToData() at consumer boundary when UI expects null not undefined
+- Large data tables (geocoding, hex databases) extracted to api/data/*.ts for handler readability
+- Used `buf generate --path` to generate single domain when full generate fails due to unrelated proto errors
 
 ### Blockers/Concerns
 - @sentry/browser missing from dependencies (pre-existing, unrelated)
@@ -90,7 +100,7 @@ Progress: [███████████████░░░░] 80%
 ## Session Continuity
 
 Last session: 2026-02-20
-Stopped at: Completed 03-03-PLAN.md (macro-signals migration)
+Stopped at: Completed 03-04-PLAN.md (tech-events migration)
 Resume file: .planning/phases/3-sebuf-legacy-migration/.continue-here.md
 PR: #106 (draft) — https://github.com/koala73/worldmonitor/pull/106
-Next steps: Execute 03-04-PLAN.md (tech-events migration, step 7)
+Next steps: Execute 03-05-PLAN.md (temporal-baseline migration, step 8 + non-JSON tagging + final cleanup)
