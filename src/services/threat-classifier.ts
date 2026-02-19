@@ -289,7 +289,33 @@ export function classifyByKeyword(title: string, variant = 'full'): ThreatClassi
   return { level: 'info', category: 'general', confidence: 0.3, source: 'keyword' };
 }
 
-// Batched AI classification — collects headlines then sends one API call
+// Batched AI classification — collects headlines then fires parallel sebuf RPCs
+import {
+  IntelligenceServiceClient,
+  ApiError,
+  type ClassifyEventResponse,
+} from '@/generated/client/worldmonitor/intelligence/v1/service_client';
+
+const classifyClient = new IntelligenceServiceClient('', { fetch: fetch.bind(globalThis) });
+
+const VALID_LEVELS: Record<string, ThreatLevel> = {
+  critical: 'critical', high: 'high', medium: 'medium', low: 'low', info: 'info',
+};
+
+function toThreat(resp: ClassifyEventResponse): ThreatClassification | null {
+  const c = resp.classification;
+  if (!c) return null;
+  // Raw level preserved in subcategory by the handler
+  const level = VALID_LEVELS[c.subcategory] ?? VALID_LEVELS[c.category] ?? null;
+  if (!level) return null;
+  return {
+    level,
+    category: c.category as EventCategory,
+    confidence: c.confidence || 0.9,
+    source: 'llm',
+  };
+}
+
 const BATCH_SIZE = 20;
 const BATCH_DELAY_MS = 500;
 let batchPaused = false;
@@ -302,47 +328,28 @@ function flushBatch(): void {
 
   const batch = batchQueue.splice(0, BATCH_SIZE);
   if (batch.length === 0) return;
-  const variant = batch[0]!.variant;
-  const titles = batch.map(j => j.title);
 
-  fetch('/api/classify-batch', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ titles, variant }),
-  })
-    .then(resp => {
-      if (resp.status === 429 || resp.status >= 500) {
-        batchPaused = true;
-        const delay = resp.status === 429 ? 60_000 : 30_000;
-        console.warn(`[Classify] ${resp.status} — pausing AI classification for ${delay / 1000}s`);
-        for (const job of batch) job.resolve(null);
-        while (batchQueue.length > 0) batchQueue.shift()!.resolve(null);
-        setTimeout(() => { batchPaused = false; scheduleBatch(); }, delay);
-        return null;
-      }
-      if (!resp.ok) { for (const job of batch) job.resolve(null); return null; }
-      return resp.json();
-    })
-    .then(data => {
-      if (!data) return;
-      const results: Array<{ level?: string; category?: string } | null> = data.results || [];
-      for (let i = 0; i < batch.length; i++) {
-        const r = results[i];
-        const job = batch[i]!;
-        if (r && r.level && r.category) {
-          job.resolve({
-            level: r.level as ThreatLevel,
-            category: r.category as EventCategory,
-            confidence: 0.9,
-            source: 'llm',
-          });
-        } else {
-          job.resolve(null);
+  // Fire parallel classifyEvent RPCs for each headline
+  const promises = batch.map((job) =>
+    classifyClient
+      .classifyEvent({ title: job.title, description: '', source: '', country: '' })
+      .then((resp) => {
+        job.resolve(toThreat(resp));
+      })
+      .catch((err) => {
+        if (err instanceof ApiError && (err.statusCode === 429 || err.statusCode >= 500)) {
+          batchPaused = true;
+          const delay = err.statusCode === 429 ? 60_000 : 30_000;
+          console.warn(`[Classify] ${err.statusCode} — pausing AI classification for ${delay / 1000}s`);
+          // Drain remaining queue
+          while (batchQueue.length > 0) batchQueue.shift()!.resolve(null);
+          setTimeout(() => { batchPaused = false; scheduleBatch(); }, delay);
         }
-      }
-    })
-    .catch(() => { for (const job of batch) job.resolve(null); })
-    .finally(() => scheduleBatch());
+        job.resolve(null);
+      }),
+  );
+
+  Promise.allSettled(promises).then(() => scheduleBatch());
 }
 
 function scheduleBatch(): void {

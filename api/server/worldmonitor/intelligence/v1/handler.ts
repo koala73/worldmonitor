@@ -425,7 +425,7 @@ async function handleClassifyEvent(req: ClassifyEventRequest): Promise<ClassifyE
     return {
       classification: {
         category: cached.category,
-        subcategory: '',
+        subcategory: cached.level,
         severity: mapLevelToSeverity(cached.level),
         confidence: 0.9,
         analysis: '',
@@ -480,7 +480,7 @@ Return: {"level":"...","category":"..."}`;
     return {
       classification: {
         category,
-        subcategory: '',
+        subcategory: level,
         severity: mapLevelToSeverity(level),
         confidence: 0.9,
         analysis: '',
