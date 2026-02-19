@@ -1,4 +1,5 @@
 import type { ConflictZone, Hotspot, Earthquake, NewsItem, MilitaryBase, StrategicWaterway, APTGroup, NuclearFacility, EconomicCenter, GammaIrradiator, Pipeline, UnderseaCable, CableAdvisory, RepairShip, InternetOutage, AIDataCenter, AisDisruptionEvent, SocialUnrestEvent, AirportDelayAlert, MilitaryFlight, MilitaryVessel, MilitaryFlightCluster, MilitaryVesselCluster, NaturalEvent, Port, Spaceport, CriticalMineralProject, CyberThreat } from '@/types';
+import { getCableHealthRecord } from '@/services/cable-health';
 import type { WeatherAlert } from '@/services/weather';
 import { UNDERSEA_CABLES } from '@/config';
 import type { StartupHub, Accelerator, TechHQ, CloudRegion } from '@/config/tech-geo';
@@ -11,7 +12,7 @@ import { fetchHotspotContext, formatArticleDate, extractDomain, type GdeltArticl
 import { getNaturalEventIcon } from '@/services/eonet';
 import { getHotspotEscalation, getEscalationChange24h } from '@/services/hotspot-escalation';
 
-export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'cyberThreat' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'cable-advisory' | 'repair-ship' | 'outage' | 'datacenter' | 'datacenterCluster' | 'ais' | 'protest' | 'protestCluster' | 'flight' | 'militaryFlight' | 'militaryVessel' | 'militaryFlightCluster' | 'militaryVesselCluster' | 'natEvent' | 'port' | 'spaceport' | 'mineral' | 'startupHub' | 'cloudRegion' | 'techHQ' | 'accelerator' | 'techEvent' | 'techHQCluster' | 'techEventCluster' | 'techActivity' | 'geoActivity' | 'stockExchange' | 'financialCenter' | 'centralBank' | 'commodityHub';
+export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'cyberThreat' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'cable-health' | 'cable-advisory' | 'repair-ship' | 'outage' | 'datacenter' | 'datacenterCluster' | 'ais' | 'protest' | 'protestCluster' | 'flight' | 'militaryFlight' | 'militaryVessel' | 'militaryFlightCluster' | 'militaryVesselCluster' | 'natEvent' | 'port' | 'spaceport' | 'mineral' | 'startupHub' | 'cloudRegion' | 'techHQ' | 'accelerator' | 'techEvent' | 'techHQCluster' | 'techEventCluster' | 'techActivity' | 'geoActivity' | 'stockExchange' | 'financialCenter' | 'centralBank' | 'commodityHub';
 
 interface TechEventPopupData {
   id: string;
@@ -362,6 +363,8 @@ export class MapPopup {
         return this.renderPipelinePopup(data.data as Pipeline);
       case 'cable':
         return this.renderCablePopup(data.data as UnderseaCable);
+      case 'cable-health':
+        return this.renderCableHealthPopup(data.data as UnderseaCable);
       case 'cable-advisory':
         return this.renderCableAdvisoryPopup(data.data as CableAdvisory);
       case 'repair-ship':
@@ -1460,6 +1463,99 @@ export class MapPopup {
           ` : ''}
         </div>
         <p class="popup-description">${shipNote}</p>
+      </div>
+    `;
+  }
+
+  private renderCableHealthPopup(cable: UnderseaCable): string {
+    const health = getCableHealthRecord(cable.id);
+    const cableName = escapeHtml(cable.name.toUpperCase());
+
+    if (!health) {
+      return `
+        <div class="popup-header cable">
+          <span class="popup-title">🌐 ${cableName}</span>
+          <span class="popup-badge low">Unknown</span>
+          <button class="popup-close">×</button>
+        </div>
+        <div class="popup-body">
+          <div class="popup-subtitle">Cable Health</div>
+          <div class="popup-stats">
+            <div class="popup-stat">
+              <span class="stat-label">Status</span>
+              <span class="stat-value">No health data available</span>
+            </div>
+          </div>
+          <p class="popup-description">Health monitoring has not yet received signals for this cable.</p>
+        </div>
+      `;
+    }
+
+    const statusIcon = health.status === 'fault' ? '🔴'
+      : health.status === 'degraded' ? '🟠'
+      : health.status === 'ok' ? '🟢' : '⚪';
+    const badgeClass = health.status === 'fault' ? 'high'
+      : health.status === 'degraded' ? 'elevated' : 'low';
+    const statusLabel = health.status.charAt(0).toUpperCase() + health.status.slice(1);
+    const scorePercent = Math.round(health.score * 100);
+    const confidencePercent = Math.round(health.confidence * 100);
+    const lastUpdated = health.lastUpdated ? this.getTimeAgo(new Date(health.lastUpdated)) : 'N/A';
+
+    const evidenceHtml = health.evidence.length > 0
+      ? health.evidence.map(e => {
+          const evidenceTime = e.ts ? this.getTimeAgo(new Date(e.ts)) : '';
+          return `
+            <div class="popup-evidence-item">
+              <span class="evidence-source">${escapeHtml(e.source)}</span>
+              <span class="evidence-time">${evidenceTime}</span>
+              <p class="evidence-summary">${escapeHtml(e.summary)}</p>
+            </div>
+          `;
+        }).join('')
+      : '<p class="popup-description">No active signals.</p>';
+
+    return `
+      <div class="popup-header cable">
+        <span class="popup-title">${statusIcon} ${cableName}</span>
+        <span class="popup-badge ${badgeClass}">${statusLabel}</span>
+        <button class="popup-close">×</button>
+      </div>
+      <div class="popup-body">
+        <div class="popup-subtitle">Cable Health</div>
+        <div class="popup-stats">
+          <div class="popup-stat">
+            <span class="stat-label">Status</span>
+            <span class="stat-value">${statusLabel}</span>
+          </div>
+          <div class="popup-stat">
+            <span class="stat-label">Score</span>
+            <span class="stat-value">${scorePercent}%</span>
+          </div>
+          <div class="popup-stat">
+            <span class="stat-label">Confidence</span>
+            <span class="stat-value">${confidencePercent}%</span>
+          </div>
+          <div class="popup-stat">
+            <span class="stat-label">Last Update</span>
+            <span class="stat-value">${lastUpdated}</span>
+          </div>
+        </div>
+        <div class="popup-section">
+          <span class="section-label">Evidence</span>
+          <div class="popup-evidence-list">
+            ${evidenceHtml}
+          </div>
+        </div>
+        ${cable.capacityTbps ? `
+        <div class="popup-section">
+          <span class="section-label">Cable Info</span>
+          <div class="popup-tags">
+            <span class="popup-tag">${cable.capacityTbps} Tbps</span>
+            ${cable.rfsYear ? `<span class="popup-tag">RFS ${cable.rfsYear}</span>` : ''}
+            ${cable.major ? '<span class="popup-tag">Major</span>' : ''}
+          </div>
+        </div>
+        ` : ''}
       </div>
     `;
   }

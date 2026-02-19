@@ -28,6 +28,7 @@ import type {
   DisplacementFlow,
   ClimateAnomaly,
   CyberThreat,
+  CableHealthRecord,
 } from '@/types';
 import type { WeatherAlert } from '@/services/weather';
 
@@ -213,6 +214,14 @@ export class MapContainer {
       this.deckGLMap?.setCableActivity(advisories, repairShips);
     } else {
       this.svgMap?.setCableActivity(advisories, repairShips);
+    }
+  }
+
+  public setCableHealth(healthMap: Record<string, CableHealthRecord>): void {
+    if (this.useDeckGL) {
+      this.deckGLMap?.setCableHealth(healthMap);
+    } else {
+      this.svgMap?.setCableHealth(healthMap);
     }
   }
 

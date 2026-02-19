@@ -14,6 +14,7 @@ export * from './outages';
 export * from './cyber-threats';
 export * from './ais';
 export * from './cable-activity';
+export * from './cable-health';
 export * from './protests';
 export * from './flights';
 export * from './military-flights';

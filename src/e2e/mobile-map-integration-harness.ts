@@ -88,6 +88,7 @@ const layers = {
   conflicts: false,
   bases: false,
   cables: false,
+  cableHealth: false,
   pipelines: false,
   hotspots: true,
   ais: false,

@@ -1,0 +1,108 @@
+{
+  "_comment": "Maps cable landing points to ASNs for internet health inference. Format: landingId -> [asn...]",
+  "marea": {
+    "US-Virginia Beach": [8075, 32934, 6461, 7922],
+    "ES-Bilbao": [12479, 3352, 12357]
+  },
+  "grace_hopper": {
+    "US-New York": [15169, 396982, 7922, 6461],
+    "GB-Bude": [5607, 2856, 6453],
+    "ES-Bilbao": [12479, 3352, 12357]
+  },
+  "havfrue": {
+    "US-New Jersey": [15169, 32934, 7922, 6461],
+    "NO-Kristiansand": [2119, 2116, 29695],
+    "DK-Blaabjerg": [3292, 3308, 1835]
+  },
+  "faster": {
+    "US-Oregon": [15169, 396982, 7018],
+    "JP-Chikura": [2516, 17676, 2914],
+    "JP-Shima": [2516, 17676, 2914]
+  },
+  "southern_cross": {
+    "AU-Sydney": [4826, 7545, 1221],
+    "NZ-Auckland": [9500, 4771, 681],
+    "US-Los Angeles": [7018, 3356, 7922]
+  },
+  "curie": {
+    "US-Los Angeles": [15169, 396982, 7018],
+    "CL-Valparaiso": [7004, 22047, 27651]
+  },
+  "seamewe6": {
+    "SG-Singapore": [3758, 4657, 7473, 9506],
+    "IN-Mumbai": [9498, 4755, 55836],
+    "AE-Fujairah": [5384, 8966, 15802],
+    "SA-Jeddah": [25019, 39386, 35753],
+    "EG-Suez": [8452, 36992, 24863],
+    "FR-Marseille": [5511, 3215, 15557]
+  },
+  "flag": {
+    "GB-Porthcurno": [5607, 2856, 6453],
+    "EG-Alexandria": [8452, 36992, 24863],
+    "AE-Dubai": [5384, 8966, 15802],
+    "IN-Mumbai": [9498, 4755, 55836],
+    "SG-Singapore": [3758, 4657, 7473],
+    "JP-Tokyo": [2516, 17676, 2914]
+  },
+  "2africa": {
+    "GB-Bude": [5607, 2856, 6453],
+    "PT-Lisbon": [3243, 12542, 2860],
+    "SN-Dakar": [37196, 25250],
+    "NG-Lagos": [29465, 36873, 37148],
+    "ZA-Cape Town": [3741, 37457, 36937],
+    "KE-Mombasa": [36914, 33771, 12455],
+    "SA-Jeddah": [25019, 39386, 35753],
+    "EG-Port Said": [8452, 36992, 24863]
+  },
+  "wacs": {
+    "ZA-Cape Town": [3741, 37457, 36937],
+    "NG-Lagos": [29465, 36873, 37148],
+    "SN-Dakar": [37196, 25250],
+    "PT-Lisbon": [3243, 12542, 2860],
+    "GB-London": [5607, 2856, 6453]
+  },
+  "eassy": {
+    "ZA-Durban": [3741, 37457, 36937],
+    "MZ-Maputo": [37342, 327768],
+    "TZ-Dar es Salaam": [36908, 37084],
+    "KE-Mombasa": [36914, 33771, 12455],
+    "DJ-Djibouti": [36943, 30981]
+  },
+  "sam1": {
+    "BR-Rio de Janeiro": [4230, 7738, 16735],
+    "AR-Buenos Aires": [10318, 7303, 27747],
+    "US-Boca Raton": [7922, 7018, 6461]
+  },
+  "ellalink": {
+    "PT-Lisbon": [3243, 12542, 2860],
+    "BR-Fortaleza": [4230, 7738, 16735]
+  },
+  "apg": {
+    "JP-Tokyo": [2516, 17676, 2914],
+    "TW-Tanshui": [3462, 9924, 4780],
+    "HK-Hong Kong": [4515, 9304, 10026],
+    "SG-Singapore": [3758, 4657, 7473]
+  },
+  "indigo": {
+    "AU-Perth": [4826, 7545, 1221],
+    "SG-Singapore": [3758, 4657, 7473],
+    "ID-Jakarta": [4795, 7713, 17974]
+  },
+  "sjc": {
+    "JP-Tokyo": [2516, 17676, 2914],
+    "CN-Qingdao": [4134, 4837, 9808],
+    "SG-Singapore": [3758, 4657, 7473],
+    "HK-Hong Kong": [4515, 9304, 10026]
+  },
+  "farice": {
+    "IS-Reykjavik": [6677, 12969, 44735],
+    "FO-Torshavn": [20963],
+    "GB-Edinburgh": [5607, 2856, 6453]
+  },
+  "falcon": {
+    "AE-Fujairah": [5384, 8966, 15802],
+    "OM-Muscat": [28885, 8529],
+    "BH-Manama": [5416, 39015],
+    "KW-Kuwait City": [6412, 21050]
+  }
+}

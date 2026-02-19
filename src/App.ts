@@ -13,7 +13,7 @@ import {
   SITE_VARIANT,
 } from '@/config';
 import { BETA_MODE } from '@/config/beta';
-import { fetchCategoryFeeds, getFeedFailures, fetchMultipleStocks, fetchCrypto, fetchPredictions, fetchEarthquakes, fetchWeatherAlerts, fetchFredData, fetchInternetOutages, isOutagesConfigured, fetchAisSignals, initAisStream, getAisStatus, disconnectAisStream, isAisConfigured, fetchCableActivity, fetchProtestEvents, getProtestStatus, fetchFlightDelays, fetchMilitaryFlights, fetchMilitaryVessels, initMilitaryVesselStream, isMilitaryVesselTrackingConfigured, initDB, updateBaseline, calculateDeviation, addToSignalHistory, saveSnapshot, cleanOldSnapshots, analysisWorker, fetchPizzIntStatus, fetchGdeltTensions, fetchNaturalEvents, fetchRecentAwards, fetchOilAnalytics, fetchCyberThreats, drainTrendingSignals } from '@/services';
+import { fetchCategoryFeeds, getFeedFailures, fetchMultipleStocks, fetchCrypto, fetchPredictions, fetchEarthquakes, fetchWeatherAlerts, fetchFredData, fetchInternetOutages, isOutagesConfigured, fetchAisSignals, initAisStream, getAisStatus, disconnectAisStream, isAisConfigured, fetchCableActivity, fetchCableHealth, fetchProtestEvents, getProtestStatus, fetchFlightDelays, fetchMilitaryFlights, fetchMilitaryVessels, initMilitaryVesselStream, isMilitaryVesselTrackingConfigured, initDB, updateBaseline, calculateDeviation, addToSignalHistory, saveSnapshot, cleanOldSnapshots, analysisWorker, fetchPizzIntStatus, fetchGdeltTensions, fetchNaturalEvents, fetchRecentAwards, fetchOilAnalytics, fetchCyberThreats, drainTrendingSignals } from '@/services';
 import { fetchCountryMarkets } from '@/services/polymarket';
 import { mlWorker } from '@/services/ml-worker';
 import { clusterNewsHybrid } from '@/services/clustering';
@@ -3074,7 +3074,8 @@ export class App {
     if (this.mapLayers.natural) tasks.push({ name: 'natural', task: runGuarded('natural', () => this.loadNatural()) });
     if (this.mapLayers.weather) tasks.push({ name: 'weather', task: runGuarded('weather', () => this.loadWeatherAlerts()) });
     if (this.mapLayers.ais) tasks.push({ name: 'ais', task: runGuarded('ais', () => this.loadAisSignals()) });
-    if (this.mapLayers.cables) tasks.push({ name: 'cables', task: runGuarded('cables', () => this.loadCableActivity()) });
+    if (this.mapLayers.cables || this.mapLayers.cableHealth) tasks.push({ name: 'cables', task: runGuarded('cables', () => this.loadCableActivity()) });
+    if (this.mapLayers.cableHealth) tasks.push({ name: 'cableHealth', task: runGuarded('cableHealth', () => this.loadCableHealth()) });
     if (this.mapLayers.flights) tasks.push({ name: 'flights', task: runGuarded('flights', () => this.loadFlightDelays()) });
     if (CYBER_LAYER_ENABLED && this.mapLayers.cyberThreats) tasks.push({ name: 'cyberThreats', task: runGuarded('cyberThreats', () => this.loadCyberThreats()) });
     if (this.mapLayers.techEvents || SITE_VARIANT === 'tech') tasks.push({ name: 'techEvents', task: runGuarded('techEvents', () => this.loadTechEvents()) });
@@ -3124,6 +3125,10 @@ export class App {
           break;
         case 'cables':
           await this.loadCableActivity();
+          break;
+        case 'cableHealth':
+          await this.loadCableActivity();
+          await this.loadCableHealth();
           break;
         case 'protests':
           await this.loadProtests();
@@ -4058,6 +4063,19 @@ export class App {
     }
   }
 
+  private async loadCableHealth(): Promise<void> {
+    try {
+      const healthData = await fetchCableHealth();
+      this.map?.setCableHealth(healthData.cables);
+      const cableIds = Object.keys(healthData.cables);
+      const faultCount = cableIds.filter(id => healthData.cables[id]?.status === 'fault').length;
+      const degradedCount = cableIds.filter(id => healthData.cables[id]?.status === 'degraded').length;
+      this.statusPanel?.updateFeed('CableHealth', { status: 'ok', itemCount: faultCount + degradedCount });
+    } catch {
+      this.statusPanel?.updateFeed('CableHealth', { status: 'error' });
+    }
+  }
+
   private async loadProtests(): Promise<void> {
     // Use cached data if available (from loadIntelligenceSignals)
     if (this.intelligenceCache.protests) {
@@ -4475,7 +4493,8 @@ export class App {
     // NOTE: outages, protests, military are refreshed by intelligence schedule above
     this.scheduleRefresh('firms', () => this.loadFirmsData(), 30 * 60 * 1000);
     this.scheduleRefresh('ais', () => this.loadAisSignals(), REFRESH_INTERVALS.ais, () => this.mapLayers.ais);
-    this.scheduleRefresh('cables', () => this.loadCableActivity(), 30 * 60 * 1000, () => this.mapLayers.cables);
+    this.scheduleRefresh('cables', () => this.loadCableActivity(), 30 * 60 * 1000, () => this.mapLayers.cables || this.mapLayers.cableHealth);
+    this.scheduleRefresh('cableHealth', () => this.loadCableHealth(), 5 * 60 * 1000, () => this.mapLayers.cableHealth);
     this.scheduleRefresh('flights', () => this.loadFlightDelays(), 10 * 60 * 1000, () => this.mapLayers.flights);
     this.scheduleRefresh('cyberThreats', () => {
       this.cyberThreatsCache = null;

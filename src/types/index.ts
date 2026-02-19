@@ -413,6 +413,32 @@ export interface RepairShip {
   note?: string;
 }
 
+// Cable Health Types
+export type CableHealthStatus = 'ok' | 'degraded' | 'fault' | 'unknown';
+export type CableSignalKind = 'operator_fault' | 'repair_activity' | 'inferred_degradation';
+
+export interface CableHealthEvidence {
+  source: string;
+  summary: string;
+  ts: string;
+  url?: string;
+  geometry?: unknown;
+  meta?: Record<string, unknown>;
+}
+
+export interface CableHealthRecord {
+  status: CableHealthStatus;
+  score: number;
+  confidence: number;
+  lastUpdated: string;
+  evidence: CableHealthEvidence[];
+}
+
+export interface CableHealthResponse {
+  generatedAt: string;
+  cables: Record<string, CableHealthRecord>;
+}
+
 export interface ShippingChokepoint {
   id: string;
   name: string;
@@ -537,6 +563,8 @@ export interface MapLayers {
   spaceports: boolean;
   minerals: boolean;
   fires: boolean;
+  // Cable health layer
+  cableHealth: boolean;
   // Data source layers
   ucdpEvents: boolean;
   displacement: boolean;

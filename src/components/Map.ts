@@ -4,7 +4,7 @@ import { escapeHtml } from '@/utils/sanitize';
 import { getCSSColor } from '@/utils';
 import type { Topology, GeometryCollection } from 'topojson-specification';
 import type { Feature, Geometry } from 'geojson';
-import type { MapLayers, Hotspot, NewsItem, Earthquake, InternetOutage, RelatedAsset, AssetType, AisDisruptionEvent, AisDensityZone, CableAdvisory, RepairShip, SocialUnrestEvent, AirportDelayAlert, MilitaryFlight, MilitaryVessel, MilitaryFlightCluster, MilitaryVesselCluster, NaturalEvent, CyberThreat } from '@/types';
+import type { MapLayers, Hotspot, NewsItem, Earthquake, InternetOutage, RelatedAsset, AssetType, AisDisruptionEvent, AisDensityZone, CableAdvisory, RepairShip, SocialUnrestEvent, AirportDelayAlert, MilitaryFlight, MilitaryVessel, MilitaryFlightCluster, MilitaryVesselCluster, NaturalEvent, CyberThreat, CableHealthRecord } from '@/types';
 import type { TechHubActivity } from '@/services/tech-activity';
 import type { GeoHubActivity } from '@/services/geo-activity';
 import { getNaturalEventIcon } from '@/services/eonet';
@@ -119,6 +119,7 @@ export class MapComponent {
   private aisDensity: AisDensityZone[] = [];
   private cableAdvisories: CableAdvisory[] = [];
   private repairShips: RepairShip[] = [];
+  private healthByCableId: Record<string, CableHealthRecord> = {};
   private protests: SocialUnrestEvent[] = [];
   private flightDelays: AirportDelayAlert[] = [];
   private militaryFlights: MilitaryFlight[] = [];
@@ -338,7 +339,7 @@ export class MapComponent {
       'conflicts', 'hotspots', 'sanctions', 'protests',  // geopolitical
       'bases', 'nuclear', 'irradiators',                 // military/strategic
       'military',                                         // military tracking (flights + vessels)
-      'cables', 'pipelines', 'outages', 'datacenters',   // infrastructure
+      'cables', 'cableHealth', 'pipelines', 'outages', 'datacenters',   // infrastructure
       // cyberThreats is intentionally hidden on SVG/mobile fallback (DeckGL desktop only)
       'ais', 'flights',                                   // transport
       'natural', 'weather',                               // natural
@@ -346,14 +347,14 @@ export class MapComponent {
       'waterways',                                        // labels
     ];
     const techLayers: (keyof MapLayers)[] = [
-      'cables', 'datacenters', 'outages',                // tech infrastructure
+      'cables', 'cableHealth', 'datacenters', 'outages',  // tech infrastructure
       'startupHubs', 'cloudRegions', 'accelerators', 'techHQs', 'techEvents', // tech ecosystem
       'natural', 'weather',                               // natural events
       'economic',                                         // economic/geographic
     ];
     const financeLayers: (keyof MapLayers)[] = [
       'stockExchanges', 'financialCenters', 'centralBanks', 'commodityHubs', // finance ecosystem
-      'cables', 'pipelines', 'outages',                   // infrastructure
+      'cables', 'cableHealth', 'pipelines', 'outages',     // infrastructure
       'sanctions', 'economic', 'waterways',               // geopolitical/economic
       'natural', 'weather',                               // natural events
     ];
@@ -366,6 +367,7 @@ export class MapComponent {
       irradiators: 'components.deckgl.layers.gammaIrradiators',
       military: 'components.deckgl.layers.militaryActivity',
       cables: 'components.deckgl.layers.underseaCables',
+      cableHealth: 'Cables: Health',
       pipelines: 'components.deckgl.layers.pipelines',
       outages: 'components.deckgl.layers.internetOutages',
       datacenters: 'components.deckgl.layers.aiDataCenters',
@@ -910,8 +912,8 @@ export class MapComponent {
     // Update country fills (sanctions toggle without rebuilding geometry)
     this.updateCountryFills();
 
-    // Render dynamic map layers
-    if (this.state.layers.cables) {
+    // Render dynamic map layers (cables shown when either cables or cableHealth enabled)
+    if (this.state.layers.cables || this.state.layers.cableHealth) {
       this.renderCables(projection);
     }
 
@@ -1036,6 +1038,7 @@ export class MapComponent {
   private renderCables(projection: d3.GeoProjection): void {
     if (!this.dynamicLayerGroup) return;
     const cableGroup = this.dynamicLayerGroup.append('g').attr('class', 'cables');
+    const healthEnabled = this.state.layers.cableHealth;
 
     UNDERSEA_CABLES.forEach((cable) => {
       const lineGenerator = d3
@@ -1046,12 +1049,20 @@ export class MapComponent {
 
       const isHighlighted = this.highlightedAssets.cable.has(cable.id);
       const cableAdvisory = this.getCableAdvisory(cable.id);
-      const advisoryClass = cableAdvisory ? `cable-${cableAdvisory.severity}` : '';
+      const healthRecord = healthEnabled ? this.healthByCableId[cable.id] : null;
+
+      // Health status class takes priority when cable health layer is active
+      let statusClass = '';
+      if (healthEnabled && healthRecord) {
+        statusClass = `cable-health-${healthRecord.status}`;
+      } else if (cableAdvisory) {
+        statusClass = `cable-${cableAdvisory.severity}`;
+      }
       const highlightClass = isHighlighted ? 'asset-highlight asset-highlight-cable' : '';
 
       const path = cableGroup
         .append('path')
-        .attr('class', `cable-path ${advisoryClass} ${highlightClass}`.trim())
+        .attr('class', `cable-path ${statusClass} ${highlightClass}`.trim())
         .attr('d', lineGenerator(cable.points));
 
       path.append('title').text(cable.name);
@@ -1060,7 +1071,7 @@ export class MapComponent {
         event.stopPropagation();
         const rect = this.container.getBoundingClientRect();
         this.popup.show({
-          type: 'cable',
+          type: healthEnabled ? 'cable-health' : 'cable',
           data: cable,
           x: event.clientX - rect.left,
           y: event.clientY - rect.top,
@@ -1545,7 +1556,7 @@ export class MapComponent {
     }
 
     // Cable advisories & repair ships
-    if (this.state.layers.cables) {
+    if (this.state.layers.cables || this.state.layers.cableHealth) {
       this.cableAdvisories.forEach((advisory) => {
         const pos = projection([advisory.lon, advisory.lat]);
         if (!pos) return;
@@ -3402,6 +3413,11 @@ export class MapComponent {
     this.cableAdvisories = advisories;
     this.repairShips = repairShips;
     this.popup.setCableActivity(advisories, repairShips);
+    this.render();
+  }
+
+  public setCableHealth(healthMap: Record<string, CableHealthRecord>): void {
+    this.healthByCableId = healthMap;
     this.render();
   }
 
