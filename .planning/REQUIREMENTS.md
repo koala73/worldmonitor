@@ -21,7 +21,7 @@ Requirements for full sebuf integration. Each maps to roadmap phases.
 - [x] **DOMAIN-02**: Markets domain proto (Finnhub stocks, Yahoo Finance indices/forex, CoinGecko crypto, Polymarket predictions, stablecoins, ETF flows) with service RPCs and HTTP annotations
 - [ ] **DOMAIN-03**: Cyber domain proto (URLhaus, ThreatFox, AlienVault OTX, AbuseIPDB) with service RPCs and HTTP annotations
 - [ ] **DOMAIN-04**: Economic domain proto (FRED series, USA Spending, World Bank indicators, EIA oil/energy) with service RPCs and HTTP annotations
-- [ ] **DOMAIN-05**: Research domain proto (arXiv papers, GitHub trending, Hacker News) with service RPCs and HTTP annotations
+- [x] **DOMAIN-05**: Research domain proto (arXiv papers, GitHub trending, Hacker News) with service RPCs and HTTP annotations
 - [ ] **DOMAIN-06**: Infrastructure domain proto (Cloudflare Radar outages, PizzINT, NGA maritime warnings) with service RPCs and HTTP annotations
 - [x] **DOMAIN-07**: Geopolitical domain proto (ACLED conflicts, UCDP events, GDELT tensions, HAPI humanitarian, UNHCR refugees) with service RPCs and HTTP annotations
 - [x] **DOMAIN-08**: Military domain proto (OpenSky flights, Wingbits enrichment, FAA airport status, ADS-B exchange) — HTTP-only RPCs, excluding WebSocket streams
@@ -111,7 +111,7 @@ Requirements for full sebuf integration. Each maps to roadmap phases.
 | DOMAIN-02 | Phase 5 | Complete |
 | DOMAIN-03 | Phase 6 | Pending |
 | DOMAIN-04 | Phase 6 | Pending |
-| DOMAIN-05 | Phase 6 | Pending |
+| DOMAIN-05 | Phase 6 | Complete |
 | DOMAIN-06 | Phase 6 | Pending |
 | DOMAIN-07 | Phase 7 | Complete |
 | DOMAIN-08 | Phase 7 | Complete |

@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-18)
 
 **Core value:** Every API integration is defined in a .proto file with generated type-safe TypeScript clients and server handlers, eliminating hand-written fetch boilerplate.
-**Current focus:** Phase 2H: Aviation Migration (complete)
+**Current focus:** Phase 2I: Research Migration (in progress)
 
 ## Current Position
 
-Phase: 2H (Aviation Migration)
-Current Plan: 02 of 02 complete
-Status: Phase 2H complete -- aviation domain fully migrated to sebuf
-Last activity: 2026-02-19 -- Plan 2H-02 executed (execute-phase)
+Phase: 2I (Research Migration)
+Current Plan: 01 of 02 complete
+Status: Plan 2I-01 complete -- research handler implemented, routes mounted
+Last activity: 2026-02-19 -- Plan 2I-01 executed (execute-phase)
 
-Progress: [██████████████████] ~90%
+Progress: [███████████████████] ~92%
 
 ## Performance Metrics
 
@@ -36,6 +36,7 @@ Progress: [██████████████████] ~90%
 - Phase 2G Plan 02: Displacement Consumer Wiring (2 tasks, 3min, 10 files created/modified/deleted)
 - Phase 2H Plan 01: Aviation Handler (2 tasks, 3min, 4 files created/modified)
 - Phase 2H Plan 02: Aviation Consumer Wiring (2 tasks, 3min, 10 files created/modified/deleted)
+- Phase 2I Plan 01: Research Handler (2 tasks, 2min, 2 files created/modified)
 
 ## Accumulated Context
 
@@ -95,6 +96,9 @@ Progress: [██████████████████] ~90%
 - [2H-01]: Graceful empty alerts on ANY upstream failure following established 2F-01 pattern
 - [2H-02]: Removed unused ProtoResponse import alias from plan template (TS6133 unused variable)
 - [2H-02]: Inlined AirportRegion type union in MonitoredAirport rather than keeping standalone type alias in src/types/index.ts
+- [2I-01]: XMLParser ignoreAttributes: false (unlike aviation handler) because arXiv uses XML attributes for category term, link href/rel
+- [2I-01]: HN Firebase bounded concurrency of 10 with 5s per-item timeout to avoid overwhelming API
+- [2I-01]: GitHub trending uses gitterapp primary with herokuapp fallback, both with 10s timeouts
 
 ### Pending Todos
 
@@ -108,7 +112,7 @@ Progress: [██████████████████] ~90%
 ## Session Continuity
 
 Last session: 2026-02-19
-Stopped at: Completed 2H-02-PLAN.md (Aviation consumer wiring -- Phase 2H complete)
-Resume file: .planning/phases/2H-aviation-migration/2H-02-SUMMARY.md
+Stopped at: Completed 2I-01-PLAN.md (Research handler with 3 RPCs)
+Resume file: .planning/phases/2I-research-migration/2I-01-SUMMARY.md
 PR: #106 (draft) — https://github.com/koala73/worldmonitor/pull/106
-Next steps: Phase 2H complete. All aviation data flows through sebuf. Ready for next migration phase.
+Next steps: Plan 2I-01 complete. Research handler operational. Ready for Plan 2I-02: consumer wiring.

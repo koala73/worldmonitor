@@ -131,11 +131,11 @@ Plans:
 ### Phase 2I: Research Migration
 **Goal**: Migrate research domain (arXiv papers, GitHub trending repos, Hacker News items) to sebuf -- implement handler with 3 RPCs proxying upstream APIs, create service module with port/adapter pattern, rewire all consumers, delete legacy endpoints
 **Depends on**: Phase 2H
-**Status**: Planning complete
+**Status**: In progress (1/2 plans complete)
 **Requirements:** [DOMAIN-05, SERVER-02]
-**Plans:** 2 plans
+**Plans:** 1/2 plans complete
 Plans:
-- [ ] 2I-01-PLAN.md -- Research handler (3 RPCs: arXiv XML parsing, GitHub trending with fallback, HN Firebase 2-step fetch) + gateway wiring + sidecar rebuild
+- [x] 2I-01-PLAN.md -- Research handler (3 RPCs: arXiv XML parsing, GitHub trending with fallback, HN Firebase 2-step fetch) + gateway wiring + sidecar rebuild
 - [ ] 2I-02-PLAN.md -- Research service module (port/adapter with circuit breakers) + legacy deletion (6 files) + config cleanup
 
 ### Phase 2J-2S: Remaining Domain Migrations
@@ -186,6 +186,6 @@ Each migration step:
 | 2F. Prediction Migration | Complete | 2026-02-18 |
 | 2G. Displacement Migration | Complete | 2026-02-19 |
 | 2H. Aviation Migration | Complete | 2026-02-19 |
-| 2I. Research Migration | Not started | - |
+| 2I. Research Migration | In progress (1/2) | - |
 | 2J-2S. Domain Migrations (0/10) | Not started | - |
 | 2T. Legacy Cleanup | Not started | - |
