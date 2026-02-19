@@ -38,7 +38,7 @@ proto/worldmonitor/
 - [x] **Phase 2E: Climate Migration** - Open-Meteo anomalies with enum-heavy responses (completed 2026-02-18)
 - [x] **Phase 2F: Prediction Migration** - Polymarket prediction markets with query params and multi-strategy fetch (completed 2026-02-18)
 - [x] **Phase 2G: Displacement Migration** - UNHCR refugees/IDPs with multi-entity responses (completed 2026-02-19)
-- [ ] **Phase 2H: Aviation Migration** - FAA XML parsing, simulated non-US delays, MONITORED_AIRPORTS config
+- [x] **Phase 2H: Aviation Migration** - FAA XML parsing, simulated non-US delays, MONITORED_AIRPORTS config (completed 2026-02-19)
 - [ ] **Phase 2I-2S: Domain Migrations** - Remaining domains, one sub-phase each
 
 ## Phase Details
@@ -121,11 +121,11 @@ Plans:
 ### Phase 2H: Aviation Migration
 **Goal**: Migrate aviation/FAA domain to sebuf -- implement handler proxying FAA NASSTATUS XML API with XML-to-JSON parsing, enrich with MONITORED_AIRPORTS config for non-US simulated delays, create service module with port/adapter pattern, rewire all consumers, delete legacy endpoint
 **Depends on**: Phase 2G
-**Status**: Not started
+**Status**: In progress (Plan 01 complete)
 **Requirements:** [DOMAIN-08, SERVER-02]
-**Plans:** 2 plans
+**Plans:** 1/2 plans complete
 Plans:
-- [ ] 2H-01-PLAN.md -- Aviation handler (FAA XML parsing via fast-xml-parser, airport enrichment, simulated delays, severity classification) + gateway wiring + sidecar rebuild
+- [x] 2H-01-PLAN.md -- Aviation handler (FAA XML parsing via fast-xml-parser, airport enrichment, simulated delays, severity classification) + gateway wiring + sidecar rebuild
 - [ ] 2H-02-PLAN.md -- Aviation service module (proto enum reverse mapping, GeoCoordinates unwrap, updatedAt->Date) + consumer rewiring + legacy deletion
 
 ### Phase 2I-2S: Remaining Domain Migrations
@@ -175,6 +175,6 @@ Each migration step:
 | 2E. Climate Migration | Complete | 2026-02-18 |
 | 2F. Prediction Migration | Complete | 2026-02-18 |
 | 2G. Displacement Migration | Complete | 2026-02-19 |
-| 2H. Aviation Migration | Not started | - |
-| 2I-2S. Domain Migrations (0/11) | Not started | - |
+| 2H. Aviation Migration | 1/2 plans | In progress | 2026-02-19 |
+| 2I-2S. Domain Migrations | Not started | - |
 | 2T. Legacy Cleanup | Not started | - |

@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-18)
 
 **Core value:** Every API integration is defined in a .proto file with generated type-safe TypeScript clients and server handlers, eliminating hand-written fetch boilerplate.
-**Current focus:** Phase 2G: Displacement Migration (complete)
+**Current focus:** Phase 2H: Aviation Migration (in progress)
 
 ## Current Position
 
-Phase: 2G (Displacement Migration)
-Current Plan: 02 of 02 complete
-Status: Phase 2G complete -- displacement domain fully migrated to sebuf end-to-end
-Last activity: 2026-02-19 -- Plan 2G-02 executed (execute-phase)
+Phase: 2H (Aviation Migration)
+Current Plan: 01 of 02 complete
+Status: Aviation handler implemented and wired into gateway -- consumer wiring next
+Last activity: 2026-02-19 -- Plan 2H-01 executed (execute-phase)
 
-Progress: [████████████████] ~80%
+Progress: [█████████████████] ~85%
 
 ## Performance Metrics
 
@@ -34,6 +34,7 @@ Progress: [████████████████] ~80%
 - Phase 2F Plan 02: Prediction Consumer Wiring (2 tasks, 4min, 12 files created/modified/deleted)
 - Phase 2G Plan 01: Displacement Handler (2 tasks, 2min, 2 files created/modified)
 - Phase 2G Plan 02: Displacement Consumer Wiring (2 tasks, 3min, 10 files created/modified/deleted)
+- Phase 2H Plan 01: Aviation Handler (2 tasks, 3min, 4 files created/modified)
 
 ## Accumulated Context
 
@@ -88,6 +89,9 @@ Progress: [████████████████] ~80%
 - [2G-02]: cachedAt field dropped (never set by sebuf handler) but kept in interface for type compat
 - [2G-02]: ok heuristic: data !== emptyResult && countries.length > 0
 - [2G-02]: flowLimit 50 matching legacy top-flows count
+- [2H-01]: fast-xml-parser isArray option forces array wrapping for Ground_Delay, Ground_Stop, Delay, Airport to prevent single-item-as-object bug
+- [2H-01]: Proto enum mapping via Record<string, EnumType> lookup objects with fallback defaults
+- [2H-01]: Graceful empty alerts on ANY upstream failure following established 2F-01 pattern
 
 ### Pending Todos
 
@@ -101,7 +105,7 @@ Progress: [████████████████] ~80%
 ## Session Continuity
 
 Last session: 2026-02-19
-Stopped at: Completed 2G-02-PLAN.md (Phase 2G complete)
-Resume file: .planning/phases/2G-displacement-migration/2G-02-SUMMARY.md
+Stopped at: Completed 2H-01-PLAN.md (Aviation handler + gateway wiring)
+Resume file: .planning/phases/2H-aviation-migration/2H-01-SUMMARY.md
 PR: #106 (draft) — https://github.com/koala73/worldmonitor/pull/106
-Next steps: Phase 2G complete. Proceed to next migration phase or milestone wrap-up.
+Next steps: Execute 2H-02 (aviation consumer wiring) to complete Phase 2H.
