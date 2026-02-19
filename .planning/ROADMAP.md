@@ -178,7 +178,7 @@ Plans:
 
 All 17 domains migrated:
 1. ~~seismology~~ (Phase 2C) | 2. ~~wildfire~~ (Phase 2D) | 3. ~~climate~~ (Phase 2E) | 4. ~~prediction~~ (Phase 2F)
-5. ~~displacement~~ (Phase 2G) | 6. ~~aviation~~ (Phase 2H) | 7. ~~research~~ (Phase 2I) | 8. ~~unrest~~ (Phase 2J)
+5. ~~displacement~~ (Phase 2G) | Complete    | 2026-02-19 | 8. ~~unrest~~ (Phase 2J)
 9. ~~conflict~~ (Phase 2K) | 10. ~~maritime~~ (Phase 2L) | 11. ~~cyber~~ | 12. ~~infrastructure~~
 13. ~~economic~~ | 14. ~~market~~ | 15. ~~military~~ | 16. ~~news~~ | 17. ~~intelligence~~
 
@@ -195,7 +195,7 @@ Additional client-side migrations (post-2L, pre-Phase 3):
 **Depends on**: Phase 2M-2S
 **Status**: In progress (2/5 plans complete)
 **Requirements:** [CLEAN-02, DOMAIN-04, DOMAIN-09, DOMAIN-10]
-**Plans:** 5 plans
+**Plans:** 5/5 plans complete
 
 Plans:
 - [x] 03-01-PLAN.md — Wingbits commit + GDELT doc migration + delete _ip-rate-limit.js
