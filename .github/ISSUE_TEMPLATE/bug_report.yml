@@ -18,6 +18,7 @@ body:
         - finance.worldmonitor.app (Finance)
         - Desktop app (Windows)
         - Desktop app (macOS)
+        - Desktop app (Linux)
     validations:
       required: true
 
@@ -37,6 +38,8 @@ body:
         - Live video streams
         - Desktop app (Tauri)
         - Settings / API keys
+        - Settings / LLMs (Ollama, Groq, OpenRouter)
+        - Live webcams
         - Other
     validations:
       required: true

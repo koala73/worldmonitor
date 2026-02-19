@@ -124,6 +124,53 @@ function htmlVariantPlugin(): Plugin {
   };
 }
 
+function polymarketPlugin(): Plugin {
+  const GAMMA_BASE = 'https://gamma-api.polymarket.com';
+  const ALLOWED_ORDER = ['volume', 'liquidity', 'startDate', 'endDate', 'spread'];
+
+  return {
+    name: 'polymarket-dev',
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        if (!req.url?.startsWith('/api/polymarket')) return next();
+
+        const url = new URL(req.url, 'http://localhost');
+        const endpoint = url.searchParams.get('endpoint') || 'markets';
+        const closed = ['true', 'false'].includes(url.searchParams.get('closed') ?? '') ? url.searchParams.get('closed') : 'false';
+        const order = ALLOWED_ORDER.includes(url.searchParams.get('order') ?? '') ? url.searchParams.get('order') : 'volume';
+        const ascending = ['true', 'false'].includes(url.searchParams.get('ascending') ?? '') ? url.searchParams.get('ascending') : 'false';
+        const rawLimit = parseInt(url.searchParams.get('limit') ?? '', 10);
+        const limit = isNaN(rawLimit) ? 50 : Math.max(1, Math.min(100, rawLimit));
+
+        const params = new URLSearchParams({ closed: closed!, order: order!, ascending: ascending!, limit: String(limit) });
+        if (endpoint === 'events') {
+          const tag = (url.searchParams.get('tag') ?? '').replace(/[^a-z0-9-]/gi, '').slice(0, 100);
+          if (tag) params.set('tag_slug', tag);
+        }
+
+        const gammaUrl = `${GAMMA_BASE}/${endpoint === 'events' ? 'events' : 'markets'}?${params}`;
+
+        res.setHeader('Content-Type', 'application/json');
+        try {
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 8000);
+          const resp = await fetch(gammaUrl, { headers: { Accept: 'application/json' }, signal: controller.signal });
+          clearTimeout(timer);
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          const data = await resp.text();
+          res.setHeader('Cache-Control', 'public, max-age=120');
+          res.setHeader('X-Polymarket-Source', 'gamma');
+          res.end(data);
+        } catch {
+          // Expected: Cloudflare JA3 blocks server-side TLS — return empty array
+          res.setHeader('Cache-Control', 'public, max-age=300');
+          res.end('[]');
+        }
+      });
+    },
+  };
+}
+
 /**
  * Vite dev server plugin for sebuf API routes.
  *
@@ -354,6 +401,7 @@ export default defineConfig({
   },
   plugins: [
     htmlVariantPlugin(),
+    polymarketPlugin(),
     youtubeLivePlugin(),
     sebufApiPlugin(),
     VitePWA({
@@ -531,14 +579,16 @@ export default defineConfig({
           return `/api/v3/simple/price${qs}`;
         },
       },
-      // Polymarket API — proxy through production Vercel edge function
-      // Direct gamma-api.polymarket.com is blocked by Cloudflare JA3 fingerprinting
-      '/api/polymarket': {
-        target: 'https://worldmonitor.app',
+      // Polymarket handled by polymarketPlugin() — no prod proxy needed
+      // USGS Earthquake API
+      '/api/earthquake': {
+        target: 'https://earthquake.usgs.gov',
         changeOrigin: true,
+        timeout: 30000,
+        rewrite: (path) => path.replace(/^\/api\/earthquake/, ''),
         configure: (proxy) => {
           proxy.on('error', (err) => {
-            console.log('Polymarket proxy error:', err.message);
+            console.log('Earthquake proxy error:', err.message);
           });
         },
       },
