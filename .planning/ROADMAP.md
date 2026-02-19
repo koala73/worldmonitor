@@ -128,9 +128,19 @@ Plans:
 - [x] 2H-01-PLAN.md -- Aviation handler (FAA XML parsing via fast-xml-parser, airport enrichment, simulated delays, severity classification) + gateway wiring + sidecar rebuild
 - [x] 2H-02-PLAN.md -- Aviation service module (proto enum reverse mapping, GeoCoordinates unwrap, updatedAt->Date) + consumer rewiring + legacy deletion
 
-### Phase 2I-2S: Remaining Domain Migrations
-**Goal**: Each remaining domain migrated one at a time in order of complexity
+### Phase 2I: Research Migration
+**Goal**: Migrate research domain (arXiv papers, GitHub trending repos, Hacker News items) to sebuf -- implement handler with 3 RPCs proxying upstream APIs, create service module with port/adapter pattern, rewire all consumers, delete legacy endpoints
 **Depends on**: Phase 2H
+**Status**: Planning complete
+**Requirements:** [DOMAIN-05, SERVER-02]
+**Plans:** 2 plans
+Plans:
+- [ ] 2I-01-PLAN.md -- Research handler (3 RPCs: arXiv XML parsing, GitHub trending with fallback, HN Firebase 2-step fetch) + gateway wiring + sidecar rebuild
+- [ ] 2I-02-PLAN.md -- Research service module (port/adapter with circuit breakers) + legacy deletion (6 files) + config cleanup
+
+### Phase 2J-2S: Remaining Domain Migrations
+**Goal**: Each remaining domain migrated one at a time in order of complexity
+**Depends on**: Phase 2I
 
 Migration order (one sub-phase each):
 1. ~~seismology~~ (complete, Phase 2C)
@@ -139,7 +149,7 @@ Migration order (one sub-phase each):
 4. ~~prediction~~ (Phase 2F)
 5. ~~displacement~~ (Phase 2G)
 6. ~~aviation~~ (Phase 2H)
-7. research -- validates 3-RPC service pattern
+7. ~~research~~ (Phase 2I)
 8. unrest -- validates ACLED auth token
 9. conflict -- validates dual-upstream
 10. maritime -- validates AIS snapshot caching
@@ -176,5 +186,6 @@ Each migration step:
 | 2F. Prediction Migration | Complete | 2026-02-18 |
 | 2G. Displacement Migration | Complete | 2026-02-19 |
 | 2H. Aviation Migration | Complete | 2026-02-19 |
-| 2I-2S. Domain Migrations (0/11) | Not started | - |
+| 2I. Research Migration | Not started | - |
+| 2J-2S. Domain Migrations (0/10) | Not started | - |
 | 2T. Legacy Cleanup | Not started | - |
