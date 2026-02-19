@@ -1,6 +1,8 @@
 import { Panel } from './Panel';
 import { escapeHtml } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
+import { EconomicServiceClient } from '@/generated/client/worldmonitor/economic/v1/service_client';
+import type { GetMacroSignalsResponse } from '@/generated/client/worldmonitor/economic/v1/service_client';
 
 interface MacroSignalData {
   timestamp: string;
@@ -18,6 +20,59 @@ interface MacroSignalData {
   };
   meta: { qqqSparkline: number[] };
   unavailable?: boolean;
+}
+
+const economicClient = new EconomicServiceClient('', { fetch: fetch.bind(globalThis) });
+
+/** Map proto response (optional fields = undefined) to MacroSignalData (null for absent values). */
+function mapProtoToData(r: GetMacroSignalsResponse): MacroSignalData {
+  const s = r.signals;
+  return {
+    timestamp: r.timestamp,
+    verdict: r.verdict,
+    bullishCount: r.bullishCount,
+    totalCount: r.totalCount,
+    signals: {
+      liquidity: {
+        status: s?.liquidity?.status ?? 'UNKNOWN',
+        value: s?.liquidity?.value ?? null,
+        sparkline: s?.liquidity?.sparkline ?? [],
+      },
+      flowStructure: {
+        status: s?.flowStructure?.status ?? 'UNKNOWN',
+        btcReturn5: s?.flowStructure?.btcReturn5 ?? null,
+        qqqReturn5: s?.flowStructure?.qqqReturn5 ?? null,
+      },
+      macroRegime: {
+        status: s?.macroRegime?.status ?? 'UNKNOWN',
+        qqqRoc20: s?.macroRegime?.qqqRoc20 ?? null,
+        xlpRoc20: s?.macroRegime?.xlpRoc20 ?? null,
+      },
+      technicalTrend: {
+        status: s?.technicalTrend?.status ?? 'UNKNOWN',
+        btcPrice: s?.technicalTrend?.btcPrice ?? null,
+        sma50: s?.technicalTrend?.sma50 ?? null,
+        sma200: s?.technicalTrend?.sma200 ?? null,
+        vwap30d: s?.technicalTrend?.vwap30d ?? null,
+        mayerMultiple: s?.technicalTrend?.mayerMultiple ?? null,
+        sparkline: s?.technicalTrend?.sparkline ?? [],
+      },
+      hashRate: {
+        status: s?.hashRate?.status ?? 'UNKNOWN',
+        change30d: s?.hashRate?.change30d ?? null,
+      },
+      miningCost: {
+        status: s?.miningCost?.status ?? 'UNKNOWN',
+      },
+      fearGreed: {
+        status: s?.fearGreed?.status ?? 'UNKNOWN',
+        value: s?.fearGreed?.value ?? null,
+        history: s?.fearGreed?.history ?? [],
+      },
+    },
+    meta: { qqqSparkline: r.meta?.qqqSparkline ?? [] },
+    unavailable: r.unavailable,
+  };
 }
 
 function sparklineSvg(data: number[], width = 80, height = 24, color = '#4fc3f7'): string {
@@ -85,9 +140,8 @@ export class MacroSignalsPanel extends Panel {
 
   private async fetchData(): Promise<void> {
     try {
-      const res = await fetch('/api/macro-signals');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      this.data = await res.json();
+      const res = await economicClient.getMacroSignals({});
+      this.data = mapProtoToData(res);
       this.error = null;
     } catch (err) {
       this.error = err instanceof Error ? err.message : 'Failed to fetch';
