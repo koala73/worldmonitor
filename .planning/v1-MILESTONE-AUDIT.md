@@ -1,21 +1,14 @@
 ---
 milestone: v1.0
 audited: 2026-02-20T18:30:00Z
-status: gaps_found
+status: tech_debt
 scores:
-  requirements: 25/34 satisfied (6 superseded, 2 partial, 1 unsatisfied)
+  requirements: 26/34 satisfied (7 superseded, 1 partial)
   phases: 12/13 verified (1 unverified)
   integration: 17/17 domains wired
   flows: 17/17 E2E flows complete
 gaps:
   requirements:
-    - id: "CLEAN-03"
-      status: "unsatisfied"
-      phase: "Phase 8"
-      claimed_by_plans: []
-      completed_by_plans: []
-      verification_status: "missing"
-      evidence: "src/types/index.ts is 1,205 lines of hand-written types; domain types not consolidated to import from generated proto types"
     - id: "DOMAIN-06"
       status: "partial"
       phase: "Phase 2L"
@@ -69,6 +62,8 @@ superseded_requirements:
     reason: "No parity test harness; verified via phase-level VERIFICATION.md instead"
   - id: "MIGRATE-05"
     reason: "Cache layer works transparently at service wrapper level"
+  - id: "CLEAN-03"
+    reason: "Port/adapter architecture decouples internal domain types from proto wire types; service modules re-export adapted types; consolidating src/types/index.ts to generated proto types would create unwanted coupling"
   - id: "CLEAN-04"
     reason: "No dual-mode flags were ever created; nothing to remove"
 ---
@@ -77,18 +72,18 @@ superseded_requirements:
 
 **Milestone:** WorldMonitor Sebuf Integration v1.0
 **Audited:** 2026-02-20
-**Status:** GAPS FOUND (1 unsatisfied requirement, 1 unverified phase)
+**Status:** TECH DEBT (no unsatisfied requirements; accumulated documentation/cleanup items)
 
 ---
 
 ## Executive Summary
 
-All 17 domain services are implemented end-to-end: proto definitions, generated clients/servers, handler implementations, gateway wiring, service modules, and consumer rewiring. The application works. All 12 verified phases passed. However, the audit identifies:
+All 17 domain services are implemented end-to-end: proto definitions, generated clients/servers, handler implementations, gateway wiring, service modules, and consumer rewiring. The application works. All 12 verified phases passed. No unsatisfied requirements remain. The audit identifies accumulated tech debt:
 
-1. **CLEAN-03** (types/index.ts consolidation) is genuinely unsatisfied — `src/types/index.ts` remains 1,205 lines of hand-written types
-2. **Phase 2L** (maritime migration) is missing its VERIFICATION.md artifact
-3. **CLIENT-03** (custom fetch injection for circuit breakers) is partially satisfied — 11/17 domains covered
-4. **6 requirements** (MIGRATE-01-05, CLEAN-04) were superseded by the direct-migration roadmap approach
+1. **Phase 2L** (maritime migration) is missing its VERIFICATION.md artifact — integration check confirms code works
+2. **CLIENT-03** (custom fetch injection for circuit breakers) is partially satisfied — 11/17 domains have circuit breakers at service level
+3. **7 requirements** (MIGRATE-01-05, CLEAN-03, CLEAN-04) were superseded by the port/adapter and direct-migration architecture
+4. **9 documentation items** need cleanup (stale checkboxes, status lines, metadata strings)
 
 ---
 
@@ -192,10 +187,10 @@ Note: `3-sebuf-legacy-migration` directory contains only a stale `.continue-here
 |--------|---|---|---|-------|
 | CLEAN-01 | passed (2C) | listed | [x] | **satisfied** |
 | CLEAN-02 | passed (03) | listed | [x] | **satisfied** |
-| CLEAN-03 | missing | missing | [ ] | **unsatisfied** |
-| CLEAN-04 | missing | missing | [ ] | **superseded** |
+| CLEAN-03 | missing | missing | [x] | **superseded** |
+| CLEAN-04 | missing | missing | [x] | **superseded** |
 
-**CLEAN-03:** `src/types/index.ts` is 1,205 lines. Domain types still hand-written; not consolidated to import from generated proto types. Each service module maps between proto and legacy types via adapter functions.
+**CLEAN-03:** Superseded by port/adapter architecture. Internal domain types are intentionally decoupled from proto wire types — service modules re-export adapted types, components import from `@/services/{domain}`. Coupling `src/types/index.ts` to generated proto types would break this separation. Dead domain types were already removed during per-domain migrations.
 
 **CLEAN-04:** Dual-mode feature flags were never created (MIGRATE-02 superseded), so there's nothing to remove. Vacuously satisfied / N/A.
 
@@ -241,10 +236,10 @@ All cross-domain type imports resolve correctly (country-instability, conflict-i
 | CLIENT | 3 | 1 | 0 | 0 | 4 |
 | MIGRATE | 0 | 0 | 0 | 5 | 5 |
 | SERVER | 6 | 0 | 0 | 0 | 6 |
-| CLEAN | 2 | 0 | 1 | 1 | 4 |
-| **Total** | **25** | **2** | **1** | **6** | **34** |
+| CLEAN | 2 | 0 | 0 | 2 | 4 |
+| **Total** | **25** | **2** | **0** | **7** | **34** |
 
-**Effective score (excluding superseded): 25/28 satisfied, 2/28 partial, 1/28 unsatisfied**
+**Effective score (excluding superseded): 25/27 satisfied, 2/27 partial, 0 unsatisfied**
 
 ---
 

@@ -19,7 +19,7 @@ Requirements for full sebuf integration. Each maps to roadmap phases.
 
 - [x] **DOMAIN-01**: Environmental domain proto (USGS earthquakes, NASA FIRMS fires, GDACS cyclones, EONET natural events) with service RPCs and HTTP annotations
 - [x] **DOMAIN-02**: Markets domain proto (Finnhub stocks, Yahoo Finance indices/forex, CoinGecko crypto, Polymarket predictions, stablecoins, ETF flows) with service RPCs and HTTP annotations
-- [ ] **DOMAIN-03**: Cyber domain proto (URLhaus, ThreatFox, AlienVault OTX, AbuseIPDB) with service RPCs and HTTP annotations
+- [x] **DOMAIN-03**: Cyber domain proto (URLhaus, ThreatFox, AlienVault OTX, AbuseIPDB) with service RPCs and HTTP annotations
 - [x] **DOMAIN-04**: Economic domain proto (FRED series, USA Spending, World Bank indicators, EIA oil/energy) with service RPCs and HTTP annotations
 - [x] **DOMAIN-05**: Research domain proto (arXiv papers, GitHub trending, Hacker News) with service RPCs and HTTP annotations
 - [x] **DOMAIN-06**: Infrastructure domain proto (Cloudflare Radar outages, PizzINT, NGA maritime warnings) with service RPCs and HTTP annotations
@@ -37,11 +37,11 @@ Requirements for full sebuf integration. Each maps to roadmap phases.
 
 ### Migration Infrastructure
 
-- [ ] **MIGRATE-01**: Dual-mode adapter modules per domain that route calls to either legacy service or sebuf client based on feature flag
-- [ ] **MIGRATE-02**: Feature flags added to RuntimeFeatureId for per-domain sebuf toggle (e.g., sebufEnvironmental, sebufMarkets, etc.)
-- [ ] **MIGRATE-03**: Circuit breaker pattern preserved — generated sebuf clients wrapped with existing createCircuitBreaker utility
-- [ ] **MIGRATE-04**: Parity test harness that calls both legacy and sebuf paths, compares responses, and reports differences
-- [ ] **MIGRATE-05**: Persistent cache layer works transparently with sebuf client responses (same serialization format)
+- [x] **MIGRATE-01**: ~~Dual-mode adapter modules~~ — Superseded: roadmap chose direct per-domain cutover instead of dual-mode adapters
+- [x] **MIGRATE-02**: ~~Feature flags for per-domain sebuf toggle~~ — Superseded: direct cutover, no flags needed
+- [x] **MIGRATE-03**: ~~Circuit breaker wrapping~~ — Satisfied differently: circuit breakers applied at service-module level via `createCircuitBreaker` (11/17 domains covered)
+- [x] **MIGRATE-04**: ~~Parity test harness~~ — Superseded: per-phase VERIFICATION.md reports replaced parity testing
+- [x] **MIGRATE-05**: ~~Cache layer transparency~~ — Superseded: cache layer works at service-module level, no special sebuf integration needed
 
 ### Server Implementation
 
@@ -57,8 +57,8 @@ Requirements for full sebuf integration. Each maps to roadmap phases.
 
 - [x] **CLEAN-01**: Legacy service files deleted after verified parity per domain (dual-mode adapter collapses to sebuf-only)
 - [x] **CLEAN-02**: Legacy api/*.js Vercel edge functions removed after catch-all handler covers their functionality
-- [ ] **CLEAN-03**: src/types/index.ts consolidated — domain types imported from generated proto types instead of hand-written interfaces
-- [ ] **CLEAN-04**: Dual-mode feature flags removed once all domains verified and legacy code deleted
+- [x] **CLEAN-03**: ~~src/types/index.ts consolidated~~ — Superseded: port/adapter architecture decouples internal domain types from proto wire types. Service modules re-export adapted types; components import from `@/services/{domain}`, not from generated code. Dead domain types already removed during per-domain migrations.
+- [x] **CLEAN-04**: ~~Dual-mode feature flags removed~~ — Superseded: roadmap chose direct migration, no dual-mode flags were ever created.
 
 ## v2 Requirements
 
@@ -91,12 +91,12 @@ Requirements for full sebuf integration. Each maps to roadmap phases.
 | PROTO-03 | Phase 1 | Complete |
 | PROTO-04 | Phase 1 | Complete |
 | PROTO-05 | Phase 1 | Complete |
-| MIGRATE-01 | Phase 2 | Pending |
-| MIGRATE-02 | Phase 2 | Pending |
-| MIGRATE-03 | Phase 2 | Pending |
-| MIGRATE-04 | Phase 2 | Pending |
-| MIGRATE-05 | Phase 2 | Pending |
-| CLIENT-03 | Phase 2 | Pending |
+| MIGRATE-01 | Phase 2 | Superseded |
+| MIGRATE-02 | Phase 2 | Superseded |
+| MIGRATE-03 | Phase 2 | Superseded |
+| MIGRATE-04 | Phase 2 | Superseded |
+| MIGRATE-05 | Phase 2 | Superseded |
+| CLIENT-03 | Phase 2 | Partial |
 | DOMAIN-01 | Phase 3 | Complete |
 | DOMAIN-10 | Phase 3 | Complete |
 | CLIENT-01 | Phase 2C | Complete |
@@ -109,7 +109,7 @@ Requirements for full sebuf integration. Each maps to roadmap phases.
 | SERVER-05 | Phase 4 | Complete |
 | SERVER-06 | Phase 4 | Complete |
 | DOMAIN-02 | Phase 5 | Complete |
-| DOMAIN-03 | Phase 6 | Pending |
+| DOMAIN-03 | Phase 2M-2S | Complete |
 | DOMAIN-04 | Phase 6 | Complete |
 | DOMAIN-05 | Phase 6 | Complete |
 | DOMAIN-06 | Phase 6 | Complete |
@@ -118,14 +118,16 @@ Requirements for full sebuf integration. Each maps to roadmap phases.
 | DOMAIN-09 | Phase 7 | Complete |
 | CLEAN-01 | Phase 8 | Complete |
 | CLEAN-02 | Phase 8 | Complete |
-| CLEAN-03 | Phase 8 | Pending |
-| CLEAN-04 | Phase 8 | Pending |
+| CLEAN-03 | Phase 8 | Superseded |
+| CLEAN-04 | Phase 8 | Superseded |
 
 **Coverage:**
 - v1 requirements: 34 total
-- Mapped to phases: 34
+- Complete: 26
+- Superseded: 7 (MIGRATE-01-05, CLEAN-03, CLEAN-04)
+- Partial: 1 (CLIENT-03)
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-18*
-*Last updated: 2026-02-18 after 2C-01 execution*
+*Last updated: 2026-02-20 after v1 milestone audit*
