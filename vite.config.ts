@@ -143,22 +143,56 @@ function sebufApiPlugin(): Plugin {
 
         try {
           // Lazy-load handler modules (avoids issues with vite.config.ts loading order)
-          const [routerMod, corsMod, errorMod, seismologyServerMod, seismologyHandlerMod] =
-            await Promise.all([
+          const [
+            routerMod, corsMod, errorMod,
+            seismologyServerMod, seismologyHandlerMod,
+            wildfireServerMod, wildfireHandlerMod,
+            climateServerMod, climateHandlerMod,
+            predictionServerMod, predictionHandlerMod,
+            displacementServerMod, displacementHandlerMod,
+            aviationServerMod, aviationHandlerMod,
+            researchServerMod, researchHandlerMod,
+            unrestServerMod, unrestHandlerMod,
+            conflictServerMod, conflictHandlerMod,
+            maritimeServerMod, maritimeHandlerMod,
+          ] = await Promise.all([
               import('./api/server/router'),
               import('./api/server/cors'),
               import('./api/server/error-mapper'),
               import('./src/generated/server/worldmonitor/seismology/v1/service_server'),
               import('./api/server/worldmonitor/seismology/v1/handler'),
+              import('./src/generated/server/worldmonitor/wildfire/v1/service_server'),
+              import('./api/server/worldmonitor/wildfire/v1/handler'),
+              import('./src/generated/server/worldmonitor/climate/v1/service_server'),
+              import('./api/server/worldmonitor/climate/v1/handler'),
+              import('./src/generated/server/worldmonitor/prediction/v1/service_server'),
+              import('./api/server/worldmonitor/prediction/v1/handler'),
+              import('./src/generated/server/worldmonitor/displacement/v1/service_server'),
+              import('./api/server/worldmonitor/displacement/v1/handler'),
+              import('./src/generated/server/worldmonitor/aviation/v1/service_server'),
+              import('./api/server/worldmonitor/aviation/v1/handler'),
+              import('./src/generated/server/worldmonitor/research/v1/service_server'),
+              import('./api/server/worldmonitor/research/v1/handler'),
+              import('./src/generated/server/worldmonitor/unrest/v1/service_server'),
+              import('./api/server/worldmonitor/unrest/v1/handler'),
+              import('./src/generated/server/worldmonitor/conflict/v1/service_server'),
+              import('./api/server/worldmonitor/conflict/v1/handler'),
+              import('./src/generated/server/worldmonitor/maritime/v1/service_server'),
+              import('./api/server/worldmonitor/maritime/v1/handler'),
             ]);
 
           const serverOptions = { onError: errorMod.mapErrorToResponse };
           const allRoutes = [
-            ...seismologyServerMod.createSeismologyServiceRoutes(
-              seismologyHandlerMod.seismologyHandler,
-              serverOptions,
-            ),
-            // Add more domains here as handlers are implemented
+            ...seismologyServerMod.createSeismologyServiceRoutes(seismologyHandlerMod.seismologyHandler, serverOptions),
+            ...wildfireServerMod.createWildfireServiceRoutes(wildfireHandlerMod.wildfireHandler, serverOptions),
+            ...climateServerMod.createClimateServiceRoutes(climateHandlerMod.climateHandler, serverOptions),
+            ...predictionServerMod.createPredictionServiceRoutes(predictionHandlerMod.predictionHandler, serverOptions),
+            ...displacementServerMod.createDisplacementServiceRoutes(displacementHandlerMod.displacementHandler, serverOptions),
+            ...aviationServerMod.createAviationServiceRoutes(aviationHandlerMod.aviationHandler, serverOptions),
+            ...researchServerMod.createResearchServiceRoutes(researchHandlerMod.researchHandler, serverOptions),
+            ...unrestServerMod.createUnrestServiceRoutes(unrestHandlerMod.unrestHandler, serverOptions),
+            ...conflictServerMod.createConflictServiceRoutes(conflictHandlerMod.conflictHandler, serverOptions),
+            ...maritimeServerMod.createMaritimeServiceRoutes(maritimeHandlerMod.maritimeHandler, serverOptions),
           ];
           const router = routerMod.createRouter(allRoutes);
 

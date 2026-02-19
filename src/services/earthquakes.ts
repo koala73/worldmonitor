@@ -6,7 +6,7 @@ import {
 // Re-export the proto Earthquake type as the domain's public type
 export type { Earthquake };
 
-const client = new SeismologyServiceClient('');
+const client = new SeismologyServiceClient('', { fetch: fetch.bind(globalThis) });
 
 export async function fetchEarthquakes(): Promise<Earthquake[]> {
   const response = await client.listEarthquakes({ minMagnitude: 0 });

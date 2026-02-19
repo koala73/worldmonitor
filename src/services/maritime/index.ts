@@ -8,7 +8,7 @@ import { dataFreshness } from '../data-freshness';
 import { isFeatureAvailable } from '../runtime-config';
 
 // ---- Client ----
-const client = new MaritimeServiceClient('');
+const client = new MaritimeServiceClient('', { fetch: fetch.bind(globalThis) });
 
 // ---- Proto-to-Legacy Type Mapping ----
 

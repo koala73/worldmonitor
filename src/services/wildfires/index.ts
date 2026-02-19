@@ -36,7 +36,7 @@ export interface MapFire {
 
 // -- Client --
 
-const client = new WildfireServiceClient('');
+const client = new WildfireServiceClient('', { fetch: fetch.bind(globalThis) });
 
 // -- Public API --
 

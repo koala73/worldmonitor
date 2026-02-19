@@ -12,7 +12,7 @@ import { createCircuitBreaker } from '@/utils';
 
 // ---- Client + Circuit Breakers (3 separate breakers for 3 RPCs) ----
 
-const client = new ConflictServiceClient('');
+const client = new ConflictServiceClient('', { fetch: fetch.bind(globalThis) });
 const acledBreaker = createCircuitBreaker<ListAcledEventsResponse>({ name: 'ACLED Conflicts' });
 const ucdpBreaker = createCircuitBreaker<ListUcdpEventsResponse>({ name: 'UCDP Events' });
 const hapiBreaker = createCircuitBreaker<GetHumanitarianSummaryResponse>({ name: 'HDX HAPI' });

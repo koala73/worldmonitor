@@ -25,7 +25,7 @@ export interface ClimateFetchResult {
   anomalies: ClimateAnomaly[];
 }
 
-const client = new ClimateServiceClient('');
+const client = new ClimateServiceClient('', { fetch: fetch.bind(globalThis) });
 
 export async function fetchClimateAnomalies(): Promise<ClimateFetchResult> {
   try {

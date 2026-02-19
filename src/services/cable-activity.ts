@@ -2,7 +2,7 @@ import type { CableAdvisory, RepairShip, UnderseaCable } from '@/types';
 import { UNDERSEA_CABLES } from '@/config';
 import { MaritimeServiceClient, type NavigationalWarning } from '@/generated/client/worldmonitor/maritime/v1/service_client';
 
-const maritimeClient = new MaritimeServiceClient('');
+const maritimeClient = new MaritimeServiceClient('', { fetch: fetch.bind(globalThis) });
 
 interface CableActivity {
   advisories: CableAdvisory[];

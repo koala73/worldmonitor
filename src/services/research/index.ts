@@ -9,7 +9,7 @@ import { createCircuitBreaker } from '@/utils';
 // Re-export proto types (no legacy mapping needed -- proto types are clean)
 export type { ArxivPaper, GithubRepo, HackernewsItem };
 
-const client = new ResearchServiceClient('');
+const client = new ResearchServiceClient('', { fetch: fetch.bind(globalThis) });
 
 const arxivBreaker = createCircuitBreaker<ArxivPaper[]>({ name: 'ArXiv Papers' });
 const trendingBreaker = createCircuitBreaker<GithubRepo[]>({ name: 'GitHub Trending' });

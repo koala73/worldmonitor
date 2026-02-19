@@ -46,7 +46,7 @@ const RAILWAY_POLY_URL = wsRelayUrl
 const breaker = createCircuitBreaker<PredictionMarket[]>({ name: 'Polymarket' });
 
 // Sebuf client for strategy 4
-const client = new PredictionServiceClient('');
+const client = new PredictionServiceClient('', { fetch: fetch.bind(globalThis) });
 
 // Track whether direct browser->Polymarket fetch works
 // Cloudflare blocks server-side TLS but browsers pass JA3 fingerprint checks
