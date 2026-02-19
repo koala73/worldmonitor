@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-18)
 
 **Core value:** Every API integration is defined in a .proto file with generated type-safe TypeScript clients and server handlers, eliminating hand-written fetch boilerplate.
-**Current focus:** Phase 2K: Conflict Migration (Plan 01 complete)
+**Current focus:** Phase 2K: Conflict Migration (COMPLETE -- all 2 plans done)
 
 ## Current Position
 
-Phase: 2K (Conflict Migration)
-Current Plan: 01 of 02 complete
-Status: Conflict handler with 3 RPCs (ACLED, UCDP, HAPI) implemented and mounted in gateway
-Last activity: 2026-02-19 -- Plan 2K-01 executed (execute-phase)
+Phase: 2K (Conflict Migration) -- COMPLETE
+Current Plan: 02 of 02 complete
+Status: Conflict domain fully migrated -- handler + service module + consumer wiring + 9 legacy files deleted
+Last activity: 2026-02-19 -- Plan 2K-02 executed (execute-phase)
 
-Progress: [████████████████████] ~98%
+Progress: [████████████████████] ~100%
 
 ## Performance Metrics
 
@@ -41,6 +41,7 @@ Progress: [████████████████████] ~98%
 - Phase 2J Plan 01: Unrest Handler (2 tasks, 2min, 2 files created/modified)
 - Phase 2J Plan 02: Unrest Service Module (2 tasks, 2min, 5 files created/modified/deleted)
 - Phase 2K Plan 01: Conflict Handler (2 tasks, 2min, 2 files created/modified)
+- Phase 2K Plan 02: Conflict Service Module (2 tasks, 3min, 12 files created/modified/deleted)
 
 ## Accumulated Context
 
@@ -117,6 +118,10 @@ Progress: [████████████████████] ~98%
 - [2K-01]: HAPI ISO-2 to ISO-3 mapping via lookup table; proceeds without filter if mapping not found
 - [2K-01]: populationAffected/peopleInNeed/internallyDisplaced set as String() matching generated int64 types without INT64_ENCODING_NUMBER
 - [2K-01]: No error logging on upstream failures following established 2F-01 pattern
+- [2K-02]: UCDP classifications derived heuristically from GED events (deaths>1000/events>100=war, events>10=minor, else none)
+- [2K-02]: fetchHapiSummary calls RPC per tier-1 country via Promise.allSettled (20 parallel calls)
+- [2K-02]: Used substring(0,10) instead of split('T')[0] for ISO dates (noUncheckedIndexedAccess compliance)
+- [2K-02]: UcdpGeoEvent/UcdpEventType preserved in src/types/index.ts (scope guard for map components)
 
 ### Pending Todos
 
@@ -130,7 +135,7 @@ Progress: [████████████████████] ~98%
 ## Session Continuity
 
 Last session: 2026-02-19
-Stopped at: Completed 2K-01-PLAN.md (Conflict handler with 3 RPCs + gateway wiring + sidecar rebuild)
-Resume file: .planning/phases/2K-conflict-migration/2K-01-SUMMARY.md
+Stopped at: Completed 2K-02-PLAN.md (Conflict service module + consumer wiring + 9 legacy files deleted)
+Resume file: .planning/phases/2K-conflict-migration/2K-02-SUMMARY.md
 PR: #106 (draft) — https://github.com/koala73/worldmonitor/pull/106
-Next steps: Plan 2K-02 (conflict service module + consumer wiring + legacy deletion)
+Next steps: Phase 2K complete. All sebuf domain migrations done.
