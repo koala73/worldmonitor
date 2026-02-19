@@ -1,6 +1,6 @@
 import type { PizzIntStatus, GdeltTensionPair } from '@/types';
-import { escapeHtml } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
+import { h, replaceChildren } from '@/utils/dom-utils';
 
 const DEFCON_COLORS: Record<number, string> = {
   1: '#ff0040',
@@ -17,36 +17,45 @@ export class PizzIntIndicator {
   private tensions: GdeltTensionPair[] = [];
 
   constructor() {
-    this.element = document.createElement('div');
-    this.element.className = 'pizzint-indicator';
-    this.element.innerHTML = `
-      <button class="pizzint-toggle" title="${t('components.pizzint.title')}">
-        <span class="pizzint-icon">🍕</span>
-        <span class="pizzint-defcon">--</span>
-        <span class="pizzint-score">--%</span>
-      </button>
-      <div class="pizzint-panel hidden">
-        <div class="pizzint-header">
-          <span class="pizzint-title">${t('components.pizzint.title')}</span>
-          <button class="pizzint-close">×</button>
-        </div>
-        <div class="pizzint-status-bar">
-          <div class="pizzint-defcon-label"></div>
-        </div>
-        <div class="pizzint-locations"></div>
-        <div class="pizzint-tensions">
-          <div class="pizzint-tensions-title">${t('components.pizzint.tensionsTitle')}</div>
-          <div class="pizzint-tensions-list"></div>
-        </div>
-        <div class="pizzint-footer">
-          <span class="pizzint-source">${t('components.pizzint.source')} <a href="https://pizzint.watch" target="_blank" rel="noopener">PizzINT</a></span>
-          <span class="pizzint-updated"></span>
-        </div>
-      </div>
-    `;
+    const panel = h('div', { className: 'pizzint-panel hidden' },
+      h('div', { className: 'pizzint-header' },
+        h('span', { className: 'pizzint-title' }, t('components.pizzint.title')),
+        h('button', {
+          className: 'pizzint-close',
+          onClick: () => { this.isExpanded = false; panel.classList.add('hidden'); },
+        }, '×'),
+      ),
+      h('div', { className: 'pizzint-status-bar' },
+        h('div', { className: 'pizzint-defcon-label' }),
+      ),
+      h('div', { className: 'pizzint-locations' }),
+      h('div', { className: 'pizzint-tensions' },
+        h('div', { className: 'pizzint-tensions-title' }, t('components.pizzint.tensionsTitle')),
+        h('div', { className: 'pizzint-tensions-list' }),
+      ),
+      h('div', { className: 'pizzint-footer' },
+        h('span', { className: 'pizzint-source' },
+          t('components.pizzint.source'), ' ',
+          h('a', { href: 'https://pizzint.watch', target: '_blank', rel: 'noopener' }, 'PizzINT'),
+        ),
+        h('span', { className: 'pizzint-updated' }),
+      ),
+    );
+
+    this.element = h('div', { className: 'pizzint-indicator' },
+      h('button', {
+        className: 'pizzint-toggle',
+        title: t('components.pizzint.title'),
+        onClick: () => { this.isExpanded = !this.isExpanded; panel.classList.toggle('hidden', !this.isExpanded); },
+      },
+        h('span', { className: 'pizzint-icon' }, '🍕'),
+        h('span', { className: 'pizzint-defcon' }, '--'),
+        h('span', { className: 'pizzint-score' }, '--%'),
+      ),
+      panel,
+    );
 
     this.injectStyles();
-    this.setupEventListeners();
   }
 
   private injectStyles(): void {
@@ -214,22 +223,6 @@ export class PizzIntIndicator {
     document.head.appendChild(style);
   }
 
-  private setupEventListeners(): void {
-    const toggle = this.element.querySelector('.pizzint-toggle')!;
-    const panel = this.element.querySelector('.pizzint-panel')!;
-    const closeBtn = this.element.querySelector('.pizzint-close')!;
-
-    toggle.addEventListener('click', () => {
-      this.isExpanded = !this.isExpanded;
-      panel.classList.toggle('hidden', !this.isExpanded);
-    });
-
-    closeBtn.addEventListener('click', () => {
-      this.isExpanded = false;
-      panel.classList.add('hidden');
-    });
-  }
-
   public updateStatus(status: PizzIntStatus): void {
     this.status = status;
     this.render();
@@ -258,16 +251,14 @@ export class PizzIntIndicator {
     labelEl.textContent = this.getDefconLabel(this.status.defconLevel);
     labelEl.style.color = color;
 
-    locationsEl.innerHTML = this.status.locations.map(loc => {
-      const statusClass = this.getStatusClass(loc);
-      const statusLabel = this.getStatusLabel(loc);
-      return `
-        <div class="pizzint-location">
-          <span class="pizzint-location-name">${escapeHtml(loc.name)}</span>
-          <span class="pizzint-location-status ${statusClass}">${statusLabel}</span>
-        </div>
-      `;
-    }).join('');
+    replaceChildren(locationsEl,
+      ...this.status.locations.map(loc =>
+        h('div', { className: 'pizzint-location' },
+          h('span', { className: 'pizzint-location-name' }, loc.name),
+          h('span', { className: `pizzint-location-status ${this.getStatusClass(loc)}` }, this.getStatusLabel(loc)),
+        ),
+      ),
+    );
 
     const timeAgo = this.formatTimeAgo(this.status.lastUpdate);
     updatedEl.textContent = t('components.pizzint.updated', { timeAgo });
@@ -277,20 +268,19 @@ export class PizzIntIndicator {
     const listEl = this.element.querySelector('.pizzint-tensions-list') as HTMLElement;
     if (!listEl) return;
 
-    listEl.innerHTML = this.tensions.map(t => {
-      const trendIcon = t.trend === 'rising' ? '↑' : t.trend === 'falling' ? '↓' : '→';
-      const changeText = t.changePercent > 0 ? `+${t.changePercent}%` : `${t.changePercent}%`;
-      const trendClass = escapeHtml(t.trend);
-      return `
-        <div class="pizzint-tension-row">
-          <span class="pizzint-tension-label">${escapeHtml(t.label)}</span>
-          <span class="pizzint-tension-score">
-            <span class="pizzint-tension-value">${t.score.toFixed(1)}</span>
-            <span class="pizzint-tension-trend ${trendClass}">${trendIcon} ${changeText}</span>
-          </span>
-        </div>
-      `;
-    }).join('');
+    replaceChildren(listEl,
+      ...this.tensions.map(tp => {
+        const trendIcon = tp.trend === 'rising' ? '↑' : tp.trend === 'falling' ? '↓' : '→';
+        const changeText = tp.changePercent > 0 ? `+${tp.changePercent}%` : `${tp.changePercent}%`;
+        return h('div', { className: 'pizzint-tension-row' },
+          h('span', { className: 'pizzint-tension-label' }, tp.label),
+          h('span', { className: 'pizzint-tension-score' },
+            h('span', { className: 'pizzint-tension-value' }, tp.score.toFixed(1)),
+            h('span', { className: `pizzint-tension-trend ${tp.trend}` }, `${trendIcon} ${changeText}`),
+          ),
+        );
+      }),
+    );
   }
 
   private getStatusClass(loc: { is_closed_now: boolean; is_spike: boolean; current_popularity: number }): string {

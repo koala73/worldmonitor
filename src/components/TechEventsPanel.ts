@@ -1,6 +1,7 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
-import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
+import { sanitizeUrl } from '@/utils/sanitize';
+import { h, replaceChildren } from '@/utils/dom-utils';
 
 interface TechEventCoords {
   lat: number;
@@ -70,23 +71,23 @@ export class TechEventsPanel extends Panel {
 
   protected render(): void {
     if (this.loading) {
-      this.content.innerHTML = `
-        <div class="tech-events-loading">
-          <div class="loading-spinner"></div>
-          <span>${t('components.techEvents.loading')}</span>
-        </div>
-      `;
+      replaceChildren(this.content,
+        h('div', { className: 'tech-events-loading' },
+          h('div', { className: 'loading-spinner' }),
+          h('span', null, t('components.techEvents.loading')),
+        ),
+      );
       return;
     }
 
     if (this.error) {
-      this.content.innerHTML = `
-        <div class="tech-events-error">
-          <span class="error-icon">⚠️</span>
-          <span class="error-text">${escapeHtml(this.error)}</span>
-          <button class="retry-btn" onclick="this.closest('.panel').querySelector('.panel-content').__panel?.refresh()">Retry</button>
-        </div>
-      `;
+      replaceChildren(this.content,
+        h('div', { className: 'tech-events-error' },
+          h('span', { className: 'error-icon' }, '⚠️'),
+          h('span', { className: 'error-text' }, this.error),
+          h('button', { className: 'retry-btn', onClick: () => this.refresh() }, 'Retry'),
+        ),
+      );
       return;
     }
 
@@ -94,48 +95,34 @@ export class TechEventsPanel extends Panel {
     const upcomingConferences = this.events.filter(e => e.type === 'conference' && new Date(e.startDate) >= new Date());
     const mappableCount = upcomingConferences.filter(e => e.coords && !e.coords.virtual).length;
 
-    this.content.innerHTML = `
-      <div class="tech-events-panel">
-        <div class="tech-events-tabs">
-          <button class="tab ${this.viewMode === 'upcoming' ? 'active' : ''}" data-view="upcoming">Upcoming</button>
-          <button class="tab ${this.viewMode === 'conferences' ? 'active' : ''}" data-view="conferences">Conferences</button>
-          <button class="tab ${this.viewMode === 'earnings' ? 'active' : ''}" data-view="earnings">Earnings</button>
-          <button class="tab ${this.viewMode === 'all' ? 'active' : ''}" data-view="all">All</button>
-        </div>
-        <div class="tech-events-stats">
-          <span class="stat">📅 ${upcomingConferences.length} conferences</span>
-          <span class="stat">📍 ${mappableCount} on map</span>
-          <a href="https://www.techmeme.com/events" target="_blank" rel="noopener" class="source-link">Techmeme Events ↗</a>
-        </div>
-        <div class="tech-events-list">
-          ${filteredEvents.length > 0
-        ? filteredEvents.map(e => this.renderEvent(e)).join('')
-        : `<div class="empty-state">${t('components.techEvents.noEvents')}</div>`
-      }
-        </div>
-      </div>
-    `;
+    const tabEntries: [ViewMode, string][] = [
+      ['upcoming', 'Upcoming'], ['conferences', 'Conferences'],
+      ['earnings', 'Earnings'], ['all', 'All'],
+    ];
 
-    // Add tab listeners
-    this.content.querySelectorAll('.tab').forEach(tab => {
-      tab.addEventListener('click', (e) => {
-        const view = (e.target as HTMLElement).dataset.view as ViewMode;
-        if (view) {
-          this.viewMode = view;
-          this.render();
-        }
-      });
-    });
-
-    // Add map link listeners
-    this.content.querySelectorAll('.event-map-link').forEach(link => {
-      link.addEventListener('click', (e) => {
-        e.preventDefault();
-        const lat = parseFloat((link as HTMLElement).dataset.lat || '0');
-        const lng = parseFloat((link as HTMLElement).dataset.lng || '0');
-        this.panToLocation(lat, lng);
-      });
-    });
+    replaceChildren(this.content,
+      h('div', { className: 'tech-events-panel' },
+        h('div', { className: 'tech-events-tabs' },
+          ...tabEntries.map(([view, label]) =>
+            h('button', {
+              className: `tab ${this.viewMode === view ? 'active' : ''}`,
+              dataset: { view },
+              onClick: () => { this.viewMode = view; this.render(); },
+            }, label),
+          ),
+        ),
+        h('div', { className: 'tech-events-stats' },
+          h('span', { className: 'stat' }, `📅 ${upcomingConferences.length} conferences`),
+          h('span', { className: 'stat' }, `📍 ${mappableCount} on map`),
+          h('a', { href: 'https://www.techmeme.com/events', target: '_blank', rel: 'noopener', className: 'source-link' }, 'Techmeme Events ↗'),
+        ),
+        h('div', { className: 'tech-events-list' },
+          ...(filteredEvents.length > 0
+            ? filteredEvents.map(e => this.buildEvent(e))
+            : [h('div', { className: 'empty-state' }, t('components.techEvents.noEvents'))]),
+        ),
+      ),
+    );
   }
 
   private getFilteredEvents(): TechEvent[] {
@@ -163,7 +150,7 @@ export class TechEventsPanel extends Panel {
     }
   }
 
-  private renderEvent(event: TechEvent): string {
+  private buildEvent(event: TechEvent): HTMLElement {
     const startDate = new Date(event.startDate);
     const endDate = new Date(event.endDate);
     const now = new Date();
@@ -191,41 +178,49 @@ export class TechEventsPanel extends Panel {
       other: 'type-other',
     };
 
-    const mapLink = event.coords && !event.coords.virtual
-      ? `<button class="event-map-link" data-lat="${event.coords.lat}" data-lng="${event.coords.lng}" title="${t('components.techEvents.showOnMap')}">📍</button>`
-      : '';
-
-    const locationText = event.location
-      ? `<span class="event-location">${escapeHtml(event.location)}</span>`
-      : '';
+    const className = [
+      'tech-event',
+      typeClasses[event.type],
+      isToday ? 'is-today' : '',
+      isSoon ? 'is-soon' : '',
+      isThisWeek ? 'is-this-week' : '',
+    ].filter(Boolean).join(' ');
 
     const safeEventUrl = sanitizeUrl(event.url || '');
-    const urlLink = safeEventUrl
-      ? `<a href="${safeEventUrl}" target="_blank" rel="noopener" class="event-url" title="${t('components.techEvents.moreInfo')}">↗</a>`
-      : '';
 
-    return `
-      <div class="tech-event ${typeClasses[event.type]} ${isToday ? 'is-today' : ''} ${isSoon ? 'is-soon' : ''} ${isThisWeek ? 'is-this-week' : ''}">
-        <div class="event-date">
-          <span class="event-month">${startDate.toLocaleDateString('en-US', { month: 'short' }).toUpperCase()}</span>
-          <span class="event-day">${startDate.getDate()}</span>
-          ${isToday ? '<span class="today-badge">TODAY</span>' : ''}
-          ${isSoon ? '<span class="soon-badge">SOON</span>' : ''}
-        </div>
-        <div class="event-content">
-          <div class="event-header">
-            <span class="event-icon">${typeIcons[event.type]}</span>
-            <span class="event-title">${escapeHtml(event.title)}</span>
-            ${urlLink}
-          </div>
-          <div class="event-meta">
-            <span class="event-dates">${dateStr}${endDateStr}</span>
-            ${locationText}
-            ${mapLink}
-          </div>
-        </div>
-      </div>
-    `;
+    return h('div', { className },
+      h('div', { className: 'event-date' },
+        h('span', { className: 'event-month' }, startDate.toLocaleDateString('en-US', { month: 'short' }).toUpperCase()),
+        h('span', { className: 'event-day' }, String(startDate.getDate())),
+        isToday ? h('span', { className: 'today-badge' }, 'TODAY') : false,
+        isSoon ? h('span', { className: 'soon-badge' }, 'SOON') : false,
+      ),
+      h('div', { className: 'event-content' },
+        h('div', { className: 'event-header' },
+          h('span', { className: 'event-icon' }, typeIcons[event.type] ?? '📌'),
+          h('span', { className: 'event-title' }, event.title),
+          safeEventUrl
+            ? h('a', { href: safeEventUrl, target: '_blank', rel: 'noopener', className: 'event-url', title: t('components.techEvents.moreInfo') }, '↗')
+            : false,
+        ),
+        h('div', { className: 'event-meta' },
+          h('span', { className: 'event-dates' }, `${dateStr}${endDateStr}`),
+          event.location
+            ? h('span', { className: 'event-location' }, event.location)
+            : false,
+          event.coords && !event.coords.virtual
+            ? h('button', {
+              className: 'event-map-link',
+              title: t('components.techEvents.showOnMap'),
+              onClick: (e: Event) => {
+                e.preventDefault();
+                this.panToLocation(event.coords!.lat, event.coords!.lng);
+              },
+            }, '📍')
+            : false,
+        ),
+      ),
+    );
   }
 
   private panToLocation(lat: number, lng: number): void {
