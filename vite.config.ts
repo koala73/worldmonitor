@@ -244,7 +244,7 @@ export default defineConfig({
       },
 
       workbox: {
-        globPatterns: ['**/*.{js,css,ico,png,svg,woff2}', 'index.html'],
+        globPatterns: ['**/*.{js,css,ico,png,svg,woff2}'],
         globIgnores: ['**/ml-*.js', '**/onnx*.wasm'],
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api\//, /^\/settings/],
