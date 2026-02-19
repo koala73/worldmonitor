@@ -1,4 +1,4 @@
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker, fetchWithCache } from '@/utils';
 
 export type ConflictIntensity = 'none' | 'minor' | 'war';
 
@@ -59,13 +59,10 @@ const ucdpBreaker = createCircuitBreaker<Map<string, UcdpConflictStatus>>({ name
 
 export async function fetchUcdpClassifications(): Promise<Map<string, UcdpConflictStatus>> {
   return ucdpBreaker.execute(async () => {
-    const response = await fetch('/api/ucdp', {
+    const result = await fetchWithCache<{ conflicts?: UcdpApiConflict[] }>('/api/ucdp', {
+      ttl: 300_000,
       headers: { Accept: 'application/json' },
     });
-
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-    const result = await response.json();
     const conflicts: UcdpApiConflict[] = result.conflicts || [];
 
     const byCountry = new Map<string, UcdpConflictStatus>();

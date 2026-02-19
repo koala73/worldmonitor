@@ -20,6 +20,8 @@ export interface TemporalAnomaly {
   severity: 'medium' | 'high' | 'critical';
 }
 
+import { fetchWithCache } from '@/utils';
+
 const BASELINE_API = '/api/temporal-baseline';
 
 const TYPE_LABELS: Record<TemporalEventType, string> = {
@@ -78,10 +80,9 @@ export async function checkAnomaly(
 ): Promise<TemporalAnomaly | null> {
   try {
     const params = new URLSearchParams({ type, region, count: String(count) });
-    const res = await fetch(`${BASELINE_API}?${params}`);
-    if (!res.ok) return null;
-
-    const data = await res.json();
+    const data = await fetchWithCache<{ anomaly?: { zScore: number; multiplier: number }; baseline: { mean: number } }>(
+      `${BASELINE_API}?${params}`, { ttl: 60_000 },
+    );
     if (!data.anomaly) return null;
 
     return {

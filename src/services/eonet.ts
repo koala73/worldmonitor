@@ -1,4 +1,5 @@
 import type { NaturalEvent, NaturalEventCategory } from '@/types';
+import { fetchWithCache } from '@/utils';
 import { fetchGDACSEvents, type GDACSEvent } from './gdacs';
 
 interface EonetGeometry {
@@ -118,13 +119,7 @@ export async function fetchNaturalEvents(days = 30): Promise<NaturalEvent[]> {
 async function fetchEonetEvents(days: number): Promise<NaturalEvent[]> {
   try {
     const url = `${EONET_API_URL}?status=open&days=${days}`;
-    const response = await fetch(url);
-
-    if (!response.ok) {
-      throw new Error(`EONET API error: ${response.status}`);
-    }
-
-    const data: EonetResponse = await response.json();
+    const data = await fetchWithCache<EonetResponse>(url, { ttl: 120_000 });
     const events: NaturalEvent[] = [];
     const now = Date.now();
 

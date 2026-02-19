@@ -1,4 +1,4 @@
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker, fetchWithCache } from '@/utils';
 
 export interface HapiConflictSummary {
   iso3: string;
@@ -24,13 +24,10 @@ const hapiBreaker = createCircuitBreaker<Map<string, HapiConflictSummary>>({ nam
 
 export async function fetchHapiSummary(): Promise<Map<string, HapiConflictSummary>> {
   return hapiBreaker.execute(async () => {
-    const response = await fetch('/api/hapi', {
+    const result = await fetchWithCache<{ countries?: HapiConflictSummary[] }>('/api/hapi', {
+      ttl: 300_000,
       headers: { Accept: 'application/json' },
     });
-
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-    const result = await response.json();
     const countries: HapiConflictSummary[] = result.countries || [];
 
     const byCode = new Map<string, HapiConflictSummary>();

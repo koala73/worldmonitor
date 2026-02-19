@@ -147,6 +147,8 @@ export { buildMapUrl, parseMapUrlState } from './urlState';
 export type { ParsedMapUrlState } from './urlState';
 export { CircuitBreaker, createCircuitBreaker, getCircuitBreakerStatus, getCircuitBreakerCooldownInfo } from './circuit-breaker';
 export type { CircuitBreakerOptions } from './circuit-breaker';
+export { fetchWithCache, clearFetchCache, invalidateFetchCache, getFetchCacheStats } from './fetch-cache';
+export type { FetchCacheOptions } from './fetch-cache';
 export * from './analysis-constants';
 export { getCSSColor, invalidateColorCache } from './theme-colors';
 export { getStoredTheme, getCurrentTheme, setTheme, applyStoredTheme } from './theme-manager';

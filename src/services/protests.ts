@@ -1,6 +1,6 @@
 import type { SocialUnrestEvent, ProtestSeverity, ProtestEventType } from '@/types';
 import { INTEL_HOTSPOTS } from '@/config';
-import { generateId, createCircuitBreaker } from '@/utils';
+import { generateId, createCircuitBreaker, fetchWithCache } from '@/utils';
 
 // ACLED API - proxied through serverless function (token kept server-side)
 const ACLED_PROXY_URL = '/api/acled';
@@ -75,18 +75,10 @@ interface AcledEvent {
 async function fetchAcledEvents(): Promise<SocialUnrestEvent[]> {
   return acledBreaker.execute(async () => {
     // Use server-side proxy (token not exposed to client)
-    const response = await fetch(ACLED_PROXY_URL, {
+    const result = await fetchWithCache<{ configured?: boolean; data?: AcledEvent[] }>(ACLED_PROXY_URL, {
+      ttl: 120_000,
       headers: { Accept: 'application/json' },
     });
-
-    if (!response.ok) {
-      if (response.status === 429) {
-        console.warn('[ACLED] Rate limited, will retry later');
-      }
-      throw new Error(`HTTP ${response.status}`);
-    }
-
-    const result = await response.json();
 
     // Check if ACLED is configured on server
     if (result.configured === false) {
@@ -159,13 +151,10 @@ async function fetchGdeltEvents(): Promise<SocialUnrestEvent[]> {
       timespan: '7d',
     });
 
-    const response = await fetch(`${GDELT_GEO_URL}?${params}`, {
+    const data = await fetchWithCache<GdeltGeoResponse>(`${GDELT_GEO_URL}?${params}`, {
+      ttl: 120_000,
       headers: { Accept: 'application/json' },
     });
-
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-    const data: GdeltGeoResponse = await response.json();
     const allEvents: SocialUnrestEvent[] = [];
     const seenLocations = new Set<string>();
 

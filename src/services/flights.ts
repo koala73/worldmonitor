@@ -1,6 +1,6 @@
 import type { AirportDelayAlert, FlightDelaySeverity, FlightDelayType, MonitoredAirport } from '@/types';
 import { MONITORED_AIRPORTS, FAA_AIRPORTS, DELAY_SEVERITY_THRESHOLDS } from '@/config/airports';
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker, fetchWithCache } from '@/utils';
 
 interface FAADelayInfo {
   airport: string;
@@ -123,16 +123,11 @@ async function fetchFAADelays(): Promise<Map<string, FAADelayInfo>> {
   try {
     const url = '/api/faa-status';
 
-    const response = await fetch(url, {
+    const xml = await fetchWithCache<string>(url, {
+      ttl: 120_000,
       headers: { Accept: 'application/xml' },
+      parseAs: 'text',
     });
-
-    if (!response.ok) {
-      console.warn(`[Flights] FAA NASSTATUS error: ${response.status}`);
-      return new Map();
-    }
-
-    const xml = await response.text();
     const delays = parseXMLDelays(xml);
 
     faaCache = { data: delays, timestamp: Date.now() };

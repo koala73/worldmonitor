@@ -1,4 +1,4 @@
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker, fetchWithCache } from '@/utils';
 import type { UcdpGeoEvent } from '@/types';
 
 interface UcdpEventsResponse {
@@ -17,9 +17,10 @@ const VERCEL_URL = '/api/ucdp-events';
 const breaker = createCircuitBreaker<UcdpEventsResponse>({ name: 'UCDP Events' });
 
 async function fetchFromUrl(url: string): Promise<UcdpEventsResponse> {
-  const response = await fetch(url, { headers: { Accept: 'application/json' } });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return response.json();
+  return fetchWithCache<UcdpEventsResponse>(url, {
+    ttl: 120_000,
+    headers: { Accept: 'application/json' },
+  });
 }
 
 export async function fetchUcdpEvents(): Promise<UcdpEventsResponse> {

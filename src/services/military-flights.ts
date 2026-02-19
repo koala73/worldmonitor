@@ -1,5 +1,5 @@
 import type { MilitaryFlight, MilitaryFlightCluster, MilitaryAircraftType, MilitaryOperator } from '@/types';
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker, fetchWithCache } from '@/utils';
 import {
   identifyByCallsign,
   identifyByAircraftType,
@@ -265,19 +265,10 @@ async function fetchHotspotRegion(hotspot: typeof MILITARY_HOTSPOTS[number]): Pr
     const lomin = hotspot.lon - hotspot.radius;
     const lomax = hotspot.lon + hotspot.radius;
 
-    const response = await fetch(
+    const data = await fetchWithCache<OpenSkyResponse>(
       `${OPENSKY_BASE_URL}?lamin=${lamin}&lamax=${lamax}&lomin=${lomin}&lomax=${lomax}`,
-      { headers: { 'Accept': 'application/json' } }
+      { ttl: 60_000, headers: { Accept: 'application/json' } },
     );
-
-    if (!response.ok) {
-      if (response.status === 429) {
-        console.warn(`[Military Flights] Rate limited for ${hotspot.name}`);
-      }
-      return [];
-    }
-
-    const data: OpenSkyResponse = await response.json();
     return parseOpenSkyResponse(data);
   } catch {
     return [];

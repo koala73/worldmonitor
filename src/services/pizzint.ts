@@ -1,5 +1,5 @@
 import type { PizzIntStatus, PizzIntLocation, PizzIntDefconLevel, GdeltTensionPair } from '@/types';
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker, fetchWithCache } from '@/utils';
 import { t } from '@/services/i18n';
 
 interface PizzIntApiResponse {
@@ -80,10 +80,7 @@ const defaultStatus: PizzIntStatus = {
 
 export async function fetchPizzIntStatus(): Promise<PizzIntStatus> {
   return pizzintBreaker.execute(async () => {
-    const response = await fetch('/api/pizzint/dashboard-data');
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-    const data: PizzIntApiResponse = await response.json();
+    const data = await fetchWithCache<PizzIntApiResponse>('/api/pizzint/dashboard-data', { ttl: 60_000 });
     if (!data.success || !data.data) throw new Error('Invalid response');
 
     const locations: PizzIntLocation[] = data.data.map(loc => ({
@@ -143,10 +140,10 @@ export async function fetchGdeltTensions(): Promise<GdeltTensionPair[]> {
     const endDate = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     const startDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10).replace(/-/g, '');
 
-    const response = await fetch(`/api/pizzint/gdelt/batch?pairs=${pairs}&method=gpr&dateStart=${startDate}&dateEnd=${endDate}`);
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-    const data: GdeltApiResponse = await response.json();
+    const data = await fetchWithCache<GdeltApiResponse>(
+      `/api/pizzint/gdelt/batch?pairs=${pairs}&method=gpr&dateStart=${startDate}&dateEnd=${endDate}`,
+      { ttl: 300_000 },
+    );
 
     return TENSION_PAIRS.map(pair => {
       const pairData = data[pair.id] || [];

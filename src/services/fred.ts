@@ -1,4 +1,4 @@
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker, fetchWithCache } from '@/utils';
 import { isFeatureAvailable } from './runtime-config';
 
 export interface FredSeries {
@@ -50,13 +50,10 @@ async function fetchSeriesData(seriesId: string): Promise<{ date: string; value:
   params.set('observation_start', startDate);
   params.set('observation_end', endDate);
 
-  const response = await fetch(`${FRED_API_BASE}?${params}`, {
+  const data = await fetchWithCache<FredApiResponse>(`${FRED_API_BASE}?${params}`, {
+    ttl: 120_000,
     headers: { Accept: 'application/json' },
   });
-
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-  const data: FredApiResponse = await response.json();
 
   return (data.observations || [])
     .map(obs => {

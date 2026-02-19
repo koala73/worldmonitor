@@ -1,4 +1,4 @@
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker, fetchWithCache } from '@/utils';
 import { isFeatureAvailable } from './runtime-config';
 
 export type ConflictEventType = 'battle' | 'explosion' | 'remote_violence' | 'violence_against_civilians';
@@ -57,13 +57,10 @@ async function fetchAcledConflictEvents(): Promise<ConflictEvent[]> {
   if (!isFeatureAvailable('acledConflicts')) return [];
 
   return conflictBreaker.execute(async () => {
-    const response = await fetch('/api/acled-conflict', {
+    const result = await fetchWithCache<{ configured?: boolean; data?: AcledConflictEvent[] }>('/api/acled-conflict', {
+      ttl: 120_000,
       headers: { Accept: 'application/json' },
     });
-
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-    const result = await response.json();
     if (result.configured === false) throw new Error('ACLED not configured');
 
     const events: AcledConflictEvent[] = result.data || [];

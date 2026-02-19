@@ -2,6 +2,8 @@
 // Fetches active fire detections via /api/firms-fires edge function
 // Detects thermal anomalies in monitored conflict regions
 
+import { fetchWithCache } from '@/utils';
+
 export interface FireDataPoint {
   lat: number;
   lon: number;
@@ -36,12 +38,9 @@ export interface FiresFetchResult {
 
 export async function fetchAllFires(days: number = 1): Promise<FiresFetchResult> {
   try {
-    const res = await fetch(`${FIRMS_API}?days=${days}`);
-    if (!res.ok) {
-      console.warn(`[FIRMS] API returned ${res.status}`);
-      return { regions: {}, totalCount: 0 };
-    }
-    const data = await res.json();
+    const data = await fetchWithCache<{ skipped?: boolean; reason?: string; regions?: Record<string, FireDataPoint[]>; totalCount?: number }>(
+      `${FIRMS_API}?days=${days}`, { ttl: 120_000 },
+    );
     if (data.skipped) {
       return { regions: {}, totalCount: 0, skipped: true, reason: data.reason || 'NASA_FIRMS_API_KEY not configured' };
     }
@@ -55,9 +54,9 @@ export async function fetchAllFires(days: number = 1): Promise<FiresFetchResult>
 // Fetch fires for a single region
 export async function fetchFiresForRegion(region: string, days: number = 1): Promise<FireDataPoint[]> {
   try {
-    const res = await fetch(`${FIRMS_API}?region=${encodeURIComponent(region)}&days=${days}`);
-    if (!res.ok) return [];
-    const data = await res.json();
+    const data = await fetchWithCache<{ regions?: Record<string, FireDataPoint[]> }>(
+      `${FIRMS_API}?region=${encodeURIComponent(region)}&days=${days}`, { ttl: 120_000 },
+    );
     return data.regions?.[region] || [];
   } catch (e) {
     console.warn(`[FIRMS] Fetch failed for ${region}:`, e);

@@ -1,5 +1,5 @@
 import { API_URLS } from '@/config';
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker, fetchWithCache } from '@/utils';
 
 export interface HackerNewsStory {
   id: number;
@@ -27,10 +27,7 @@ export async function fetchHackerNews(
   limit: number = 30
 ): Promise<HackerNewsStory[]> {
   return breaker.execute(async () => {
-    const response = await fetch(API_URLS.hackernews(type, limit));
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-    const data: HNApiResponse = await response.json();
+    const data = await fetchWithCache<HNApiResponse>(API_URLS.hackernews(type, limit), { ttl: 60_000 });
 
     return data.stories.map((story: any) => ({
       id: story.id || 0,

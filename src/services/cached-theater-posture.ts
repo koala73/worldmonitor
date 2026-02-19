@@ -6,6 +6,7 @@
  */
 
 import type { TheaterPostureSummary } from './military-surge';
+import { fetchWithCache } from '@/utils';
 
 export interface CachedTheaterPosture {
   postures: TheaterPostureSummary[];
@@ -70,13 +71,7 @@ export async function fetchCachedTheaterPosture(): Promise<CachedTheaterPosture 
 
   fetchPromise = (async () => {
     try {
-      const response = await fetch('/api/theater-posture');
-      if (!response.ok) {
-        console.warn('[CachedTheaterPosture] API error:', response.status);
-        return cachedPosture; // Return stale cache on error
-      }
-
-      const data = await response.json();
+      const data = await fetchWithCache<CachedTheaterPosture>('/api/theater-posture', { ttl: 300_000 });
       cachedPosture = data;
       lastFetchTime = Date.now();
       saveToStorage(data);

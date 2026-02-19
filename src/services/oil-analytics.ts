@@ -6,7 +6,7 @@
 
 import { dataFreshness } from './data-freshness';
 import { isFeatureAvailable } from './runtime-config';
-import { getCSSColor } from '@/utils';
+import { fetchWithCache, getCSSColor } from '@/utils';
 
 export interface OilDataPoint {
   date: string;
@@ -53,8 +53,7 @@ const CACHE_TTL = 30 * 60 * 1000; // 30 minutes
 export async function checkEiaStatus(): Promise<boolean> {
   if (!isFeatureAvailable('energyEia')) return false;
   try {
-    const response = await fetch(`${EIA_PROXY_URL}/health`);
-    const data = await response.json();
+    const data = await fetchWithCache<{ configured?: boolean }>(`${EIA_PROXY_URL}/health`, { ttl: 300_000 });
     return data.configured === true;
   } catch {
     return false;
@@ -82,17 +81,12 @@ export async function fetchOilAnalytics(): Promise<OilAnalytics> {
   };
 
   try {
-    const response = await fetch(`${EIA_PROXY_URL}/petroleum`);
-
-    if (!response.ok) {
-      if (response.status === 503) {
-        console.log('[EIA] API not configured');
-        return result;
-      }
-      throw new Error(`EIA API error: ${response.status}`);
-    }
-
-    const data = await response.json();
+    const data = await fetchWithCache<{
+      wti?: { current?: number; previous?: number; date?: string };
+      brent?: { current?: number; previous?: number; date?: string };
+      production?: { current?: number; previous?: number; date?: string };
+      inventory?: { current?: number; previous?: number; date?: string };
+    }>(`${EIA_PROXY_URL}/petroleum`, { ttl: 300_000 });
 
     if (data.wti) {
       result.wtiPrice = parseMetric(data.wti, 'WTI Crude', '$/barrel');

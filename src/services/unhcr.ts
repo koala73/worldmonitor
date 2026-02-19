@@ -1,4 +1,4 @@
-import { createCircuitBreaker, getCSSColor } from '@/utils';
+import { createCircuitBreaker, fetchWithCache, getCSSColor } from '@/utils';
 import type { UnhcrSummary, CountryDisplacement } from '@/types';
 
 interface UnhcrApiResponse extends UnhcrSummary {
@@ -23,13 +23,12 @@ const emptyResult: UnhcrSummary = {
 
 export async function fetchUnhcrPopulation(): Promise<UnhcrFetchResult> {
   const result = await breaker.execute(async () => {
-    const response = await fetch('/api/unhcr-population', {
+    const data = await fetchWithCache<UnhcrApiResponse>('/api/unhcr-population', {
+      ttl: 300_000,
       headers: { Accept: 'application/json' },
     });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const data = await response.json();
     if (!data.success) throw new Error('UNHCR API returned failure');
-    return data as UnhcrApiResponse;
+    return data;
   }, { success: false, ...emptyResult });
 
   const { success, cached_at, ...summary } = result;

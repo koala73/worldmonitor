@@ -1,6 +1,6 @@
 import type { Earthquake } from '@/types';
 import { API_URLS } from '@/config';
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker, fetchWithCache } from '@/utils';
 import { getPersistentCache, setPersistentCache } from './persistent-cache';
 
 interface USGSFeature {
@@ -31,10 +31,7 @@ async function getFallbackEarthquakes(): Promise<Earthquake[]> {
 
 export async function fetchEarthquakes(): Promise<Earthquake[]> {
   const live = await breaker.execute(async () => {
-    const response = await fetch(API_URLS.earthquakes);
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-    const data: USGSResponse = await response.json();
+    const data = await fetchWithCache<USGSResponse>(API_URLS.earthquakes, { ttl: 60_000 });
     return data.features.map((feature) => ({
       id: feature.id,
       place: feature.properties.place || 'Unknown',

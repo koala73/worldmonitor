@@ -1,5 +1,5 @@
 import { API_URLS } from '@/config';
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker, fetchWithCache } from '@/utils';
 
 export interface ArxivPaper {
   id: string;
@@ -77,10 +77,7 @@ export async function fetchArxivPapers(
   maxResults: number = 50
 ): Promise<ArxivPaper[]> {
   return breaker.execute(async () => {
-    const response = await fetch(API_URLS.arxiv(category, maxResults));
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-    const xmlText = await response.text();
+    const xmlText = await fetchWithCache<string>(API_URLS.arxiv(category, maxResults), { ttl: 300_000, parseAs: 'text' });
     return parseArxivXML(xmlText);
   }, []);
 }

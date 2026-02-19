@@ -1,5 +1,6 @@
 import type { CableAdvisory, RepairShip, UnderseaCable } from '@/types';
 import { UNDERSEA_CABLES } from '@/config';
+import { fetchWithCache } from '@/utils';
 
 interface CableActivity {
   advisories: CableAdvisory[];
@@ -246,18 +247,11 @@ function processWarnings(warnings: NgaWarning[]): CableActivity {
 
 export async function fetchCableActivity(): Promise<CableActivity> {
   try {
-    const response = await fetch(NGA_API_URL, {
-      headers: {
-        'Accept': 'application/json',
-      },
+    const data = await fetchWithCache<unknown>(NGA_API_URL, {
+      ttl: 300_000,
+      headers: { Accept: 'application/json' },
     });
-
-    if (!response.ok) {
-      throw new Error(`NGA API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    const warnings: NgaWarning[] = Array.isArray(data) ? data : (data?.warnings ?? []);
+    const warnings: NgaWarning[] = Array.isArray(data) ? data : ((data as { warnings?: NgaWarning[] })?.warnings ?? []);
     console.log(`[CableActivity] Fetched ${warnings.length} NGA warnings`);
 
     const activity = processWarnings(warnings);

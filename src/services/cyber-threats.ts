@@ -1,5 +1,5 @@
 import type { CyberThreat, CyberThreatIndicatorType, CyberThreatSeverity, CyberThreatSource, CyberThreatType } from '@/types';
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker, fetchWithCache } from '@/utils';
 
 const API_URL = '/api/cyber-threats';
 const DEFAULT_LIMIT = 500;
@@ -137,21 +137,16 @@ export async function fetchCyberThreats(options: { limit?: number; days?: number
   const days = clampInt(options.days, DEFAULT_DAYS, 1, MAX_DAYS);
 
   return breaker.execute(async () => {
-    const response = await fetch(`${API_URL}?limit=${limit}&days=${days}`, {
-      headers: { Accept: 'application/json' },
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-
-    const payload = await response.json() as {
+    const payload = await fetchWithCache<{
       success?: boolean;
       partial?: boolean;
       data?: unknown[];
       sources?: { feodo?: unknown; urlhaus?: unknown; c2intel?: unknown; otx?: unknown; abuseipdb?: unknown };
       cachedAt?: string;
-    };
+    }>(`${API_URL}?limit=${limit}&days=${days}`, {
+      ttl: 120_000,
+      headers: { Accept: 'application/json' },
+    });
 
     if (payload.success === false) {
       throw new Error('Cyber threat endpoint returned success=false');

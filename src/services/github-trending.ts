@@ -1,5 +1,5 @@
 import { API_URLS } from '@/config';
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker, fetchWithCache } from '@/utils';
 
 export interface GitHubRepo {
   author: string;
@@ -25,10 +25,7 @@ export async function fetchGitHubTrending(
   since: string = 'daily'
 ): Promise<GitHubRepo[]> {
   return breaker.execute(async () => {
-    const response = await fetch(API_URLS.githubTrending(language, since));
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-    const data = await response.json();
+    const data = await fetchWithCache<unknown[]>(API_URLS.githubTrending(language, since), { ttl: 120_000 });
 
     // The API returns different structures depending on the endpoint
     // Normalize the response

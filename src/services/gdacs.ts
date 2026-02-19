@@ -1,4 +1,4 @@
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker, fetchWithCache } from '@/utils';
 
 export interface GDACSEvent {
   id: string;
@@ -55,13 +55,10 @@ const EVENT_TYPE_NAMES: Record<string, string> = {
 
 export async function fetchGDACSEvents(): Promise<GDACSEvent[]> {
   return breaker.execute(async () => {
-    const response = await fetch(GDACS_API, {
-      headers: { 'Accept': 'application/json' }
+    const data = await fetchWithCache<GDACSResponse>(GDACS_API, {
+      ttl: 120_000,
+      headers: { Accept: 'application/json' },
     });
-
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-    const data: GDACSResponse = await response.json();
 
     const seen = new Set<string>();
     return data.features

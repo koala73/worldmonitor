@@ -1,4 +1,4 @@
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker, fetchWithCache } from '@/utils';
 import type { CountryPopulation, PopulationExposure } from '@/types';
 
 interface CountriesResponse {
@@ -18,11 +18,10 @@ const countriesBreaker = createCircuitBreaker<CountriesResponse>({ name: 'WorldP
 
 export async function fetchCountryPopulations(): Promise<CountryPopulation[]> {
   const result = await countriesBreaker.execute(async () => {
-    const response = await fetch('/api/worldpop-exposure?mode=countries', {
+    return fetchWithCache<CountriesResponse>('/api/worldpop-exposure?mode=countries', {
+      ttl: 300_000,
       headers: { Accept: 'application/json' },
     });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return response.json();
   }, { success: false, countries: [] });
 
   return result.countries;
@@ -30,12 +29,10 @@ export async function fetchCountryPopulations(): Promise<CountryPopulation[]> {
 
 export async function fetchExposure(lat: number, lon: number, radiusKm: number): Promise<ExposureResponse | null> {
   try {
-    const response = await fetch(
+    return fetchWithCache<ExposureResponse>(
       `/api/worldpop-exposure?mode=exposure&lat=${lat}&lon=${lon}&radius=${radiusKm}`,
-      { headers: { Accept: 'application/json' } }
+      { ttl: 300_000, headers: { Accept: 'application/json' } },
     );
-    if (!response.ok) return null;
-    return response.json();
   } catch {
     return null;
   }

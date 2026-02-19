@@ -1,4 +1,4 @@
-import { createCircuitBreaker, getCSSColor } from '@/utils';
+import { createCircuitBreaker, fetchWithCache, getCSSColor } from '@/utils';
 
 export interface WeatherAlert {
   id: string;
@@ -39,13 +39,10 @@ const breaker = createCircuitBreaker<WeatherAlert[]>({ name: 'NWS Weather' });
 
 export async function fetchWeatherAlerts(): Promise<WeatherAlert[]> {
   return breaker.execute(async () => {
-    const response = await fetch(NWS_API, {
-      headers: { 'User-Agent': 'WorldMonitor/1.0' }
+    const data = await fetchWithCache<NWSResponse>(NWS_API, {
+      ttl: 120_000,
+      headers: { 'User-Agent': 'WorldMonitor/1.0' },
     });
-
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-    const data: NWSResponse = await response.json();
 
     return data.features
       .filter(alert => alert.properties.severity !== 'Unknown')
