@@ -5,18 +5,18 @@
 See: .planning/PROJECT.md (updated 2026-02-18)
 
 **Core value:** Every API integration is defined in a .proto file with generated type-safe TypeScript clients and server handlers, eliminating hand-written fetch boilerplate.
-**Current focus:** Phase 3: Legacy Edge Function Migration (step 6/10 — macro-signals)
+**Current focus:** Phase 3: Legacy Edge Function Migration (step 7/10 — tech-events)
 
 ## Current Position
 
 Phase: 3 (Legacy Edge Function Migration)
-Current Plan: 3 of 5
-Current Step: 6 of 10 (macro-signals → economic domain)
+Current Plan: 4 of 5
+Current Step: 7 of 10 (tech-events → research domain)
 Status: In progress
-Last activity: 2026-02-20 — Completed plan 03-02 (summarization migration)
+Last activity: 2026-02-20 — Completed plan 03-03 (macro-signals migration)
 Branch: feat/sebuf-integration
 
-Progress: [██████████████░░░░░] 75%
+Progress: [███████████████░░░░] 80%
 
 ## What's Done
 
@@ -73,6 +73,8 @@ Progress: [██████████████░░░░░] 75%
 - Non-JSON endpoints (step 9): cannot move into api/server/ — Vercel file-based routing requires them in api/ root. Tag with comments instead.
 - GDELT errors returned in-band via response error field (not HTTP errors), matching legacy behavior
 - Proto files for simple types (string/int32/double) do not need sebuf/ts/options.proto import
+- Single SummarizeArticle RPC with provider field instead of per-provider RPCs
+- All prompt/cache/dedup logic ported inline into handler for edge-compatibility
 
 ### Blockers/Concerns
 - @sentry/browser missing from dependencies (pre-existing, unrelated)
@@ -80,7 +82,7 @@ Progress: [██████████████░░░░░] 75%
 ## Session Continuity
 
 Last session: 2026-02-20
-Stopped at: Completed 03-01-PLAN.md (wingbits commit + GDELT doc migration)
+Stopped at: Completed 03-02-PLAN.md (summarization migration)
 Resume file: .planning/phases/3-sebuf-legacy-migration/.continue-here.md
 PR: #106 (draft) — https://github.com/koala73/worldmonitor/pull/106
-Next steps: Execute 03-02-PLAN.md (summarization migration, step 5)
+Next steps: Execute 03-03-PLAN.md (macro-signals migration, step 6)

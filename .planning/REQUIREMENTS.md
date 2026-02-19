@@ -25,7 +25,7 @@ Requirements for full sebuf integration. Each maps to roadmap phases.
 - [x] **DOMAIN-06**: Infrastructure domain proto (Cloudflare Radar outages, PizzINT, NGA maritime warnings) with service RPCs and HTTP annotations
 - [x] **DOMAIN-07**: Geopolitical domain proto (ACLED conflicts, UCDP events, GDELT tensions, HAPI humanitarian, UNHCR refugees) with service RPCs and HTTP annotations
 - [x] **DOMAIN-08**: Military domain proto (OpenSky flights, Wingbits enrichment, FAA airport status, ADS-B exchange) — HTTP-only RPCs, excluding WebSocket streams
-- [ ] **DOMAIN-09**: News domain proto (RSS feed aggregation — single GetFeedItems RPC with server-side domain validation, feed categories)
+- [x] **DOMAIN-09**: News domain proto (RSS feed aggregation — single GetFeedItems RPC with server-side domain validation, feed categories)
 - [x] **DOMAIN-10**: Proto messages match existing TypeScript interfaces in src/types/index.ts (not upstream API response shapes)
 
 ### Client Generation
@@ -115,7 +115,7 @@ Requirements for full sebuf integration. Each maps to roadmap phases.
 | DOMAIN-06 | Phase 6 | Complete |
 | DOMAIN-07 | Phase 7 | Complete |
 | DOMAIN-08 | Phase 7 | Complete |
-| DOMAIN-09 | Phase 7 | Pending |
+| DOMAIN-09 | Phase 7 | Complete |
 | CLEAN-01 | Phase 8 | Complete |
 | CLEAN-02 | Phase 8 | Complete |
 | CLEAN-03 | Phase 8 | Pending |
