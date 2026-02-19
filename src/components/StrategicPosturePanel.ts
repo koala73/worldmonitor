@@ -121,7 +121,7 @@ export class StrategicPosturePanel extends Panel {
     try {
       // Fetch aircraft data from server
       this.showLoadingStage('aircraft');
-      const data = await fetchCachedTheaterPosture();
+      const data = await fetchCachedTheaterPosture(this.signal);
       if (!data || data.postures.length === 0) {
         this.showNoData();
         return;
@@ -148,6 +148,7 @@ export class StrategicPosturePanel extends Panel {
         setTimeout(() => this.fetchAndRender(), 3000);
       }
     } catch (error) {
+      if (this.isAbortError(error)) return;
       console.error('[StrategicPosturePanel] Fetch error:', error);
       this.showFetchError();
     }

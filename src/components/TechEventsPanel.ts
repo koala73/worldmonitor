@@ -1,6 +1,7 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
+import { fetchWithCache } from '@/utils/fetch-cache';
 
 interface TechEventCoords {
   lat: number;
@@ -51,15 +52,13 @@ export class TechEventsPanel extends Panel {
     this.render();
 
     try {
-      const res = await fetch('/api/tech-events?days=180&limit=100');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-      const data: TechEventsResponse = await res.json();
+      const data = await fetchWithCache<TechEventsResponse>('/api/tech-events?days=180&limit=100', { signal: this.signal });
       if (!data.success) throw new Error(data.error || 'Unknown error');
 
       this.events = data.events;
       this.setCount(data.conferenceCount);
     } catch (err) {
+      if (this.isAbortError(err)) return;
       this.error = err instanceof Error ? err.message : 'Failed to fetch events';
       console.error('[TechEvents] Fetch error:', err);
     } finally {

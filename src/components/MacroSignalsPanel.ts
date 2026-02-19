@@ -1,6 +1,7 @@
 import { Panel } from './Panel';
 import { escapeHtml } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
+import { fetchWithCache } from '@/utils/fetch-cache';
 
 interface MacroSignalData {
   timestamp: string;
@@ -85,11 +86,10 @@ export class MacroSignalsPanel extends Panel {
 
   private async fetchData(): Promise<void> {
     try {
-      const res = await fetch('/api/macro-signals');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      this.data = await res.json();
+      this.data = await fetchWithCache<MacroSignalData>('/api/macro-signals', { signal: this.signal });
       this.error = null;
     } catch (err) {
+      if (this.isAbortError(err)) return;
       this.error = err instanceof Error ? err.message : 'Failed to fetch';
     } finally {
       this.loading = false;

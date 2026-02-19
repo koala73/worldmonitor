@@ -2,6 +2,7 @@ import { escapeHtml } from '../utils/sanitize';
 import { isDesktopRuntime } from '../services/runtime';
 import { invokeTauri } from '../services/tauri-bridge';
 import { t } from '../services/i18n';
+import { isAbortError } from '../utils/fetch-cache';
 
 export interface PanelOptions {
   id: string;
@@ -55,6 +56,8 @@ export class Panel {
   protected statusBadgeEl: HTMLElement | null = null;
   protected newBadgeEl: HTMLElement | null = null;
   protected panelId: string;
+  /** AbortController for cancelling in-flight fetch requests on destroy. */
+  protected abortController: AbortController = new AbortController();
   private tooltipCloseHandler: (() => void) | null = null;
   private resizeHandle: HTMLElement | null = null;
   private isResizing = false;
@@ -396,9 +399,29 @@ export class Panel {
   }
 
   /**
-   * Clean up event listeners and resources
+   * Get the AbortSignal for this panel's fetch requests.
+   * Pass this to fetchWithCache() or fetch() so requests are cancelled on destroy.
+   */
+  protected get signal(): AbortSignal {
+    return this.abortController.signal;
+  }
+
+  /**
+   * Check whether an error is an AbortError (request was cancelled).
+   * Subclasses can use this to silently ignore cancellation errors.
+   */
+  protected isAbortError(error: unknown): boolean {
+    return isAbortError(error);
+  }
+
+  /**
+   * Clean up event listeners and resources.
+   * Aborts any in-flight fetch requests owned by this panel.
    */
   public destroy(): void {
+    // Cancel any in-flight fetch requests
+    this.abortController.abort();
+
     if (this.tooltipCloseHandler) {
       document.removeEventListener('click', this.tooltipCloseHandler);
       this.tooltipCloseHandler = null;

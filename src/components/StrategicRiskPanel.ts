@@ -76,7 +76,7 @@ export class StrategicRiskPanel extends Panel {
     const { inLearning } = getLearningProgress();
     this.usedCachedScores = false;
     if (inLearning) {
-      const cached = await fetchCachedRiskScores();
+      const cached = await fetchCachedRiskScores(this.signal);
       if (cached && cached.strategicRisk) {
         this.usedCachedScores = true;
         console.log('[StrategicRiskPanel] Using cached scores from backend');
@@ -480,6 +480,7 @@ export class StrategicRiskPanel extends Panel {
     if (this.unsubscribeFreshness) {
       this.unsubscribeFreshness();
     }
+    super.destroy();
   }
 
   public getOverview(): StrategicRiskOverview | null {

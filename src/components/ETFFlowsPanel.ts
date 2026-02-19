@@ -1,6 +1,7 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
+import { fetchWithCache } from '@/utils/fetch-cache';
 
 interface ETFData {
   ticker: string;
@@ -68,11 +69,10 @@ export class ETFFlowsPanel extends Panel {
 
   private async fetchData(): Promise<void> {
     try {
-      const res = await fetch('/api/etf-flows');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      this.data = await res.json();
+      this.data = await fetchWithCache<ETFFlowsResult>('/api/etf-flows', { signal: this.signal });
       this.error = null;
     } catch (err) {
+      if (this.isAbortError(err)) return;
       this.error = err instanceof Error ? err.message : 'Failed to fetch';
     } finally {
       this.loading = false;

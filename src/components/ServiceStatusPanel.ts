@@ -3,6 +3,7 @@ import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
 import { isDesktopRuntime } from '@/services/runtime';
+import { fetchWithCache } from '@/utils/fetch-cache';
 import {
   getDesktopReadinessChecks,
   getKeyBackedAvailabilitySummary,
@@ -71,16 +72,14 @@ export class ServiceStatusPanel extends Panel {
 
   private async fetchStatus(): Promise<void> {
     try {
-      const res = await fetch('/api/service-status');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-      const data: ServiceStatusResponse = await res.json();
+      const data = await fetchWithCache<ServiceStatusResponse>('/api/service-status', { signal: this.signal });
       if (!data.success) throw new Error('Failed to load status');
 
       this.services = data.services;
       this.localBackend = data.local ?? null;
       this.error = null;
     } catch (err) {
+      if (this.isAbortError(err)) return;
       this.error = err instanceof Error ? err.message : 'Failed to fetch';
       console.error('[ServiceStatus] Fetch error:', err);
     } finally {

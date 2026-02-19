@@ -75,6 +75,8 @@ export class CountryBriefPage {
   private onExportImage?: (code: string, name: string) => void;
   private boundExportMenuClose: (() => void) | null = null;
   private boundCitationClick: ((e: Event) => void) | null = null;
+  /** AbortController cancelled when the brief page is hidden. */
+  private abortController: AbortController = new AbortController();
 
   constructor() {
     this.overlay = document.createElement('div');
@@ -219,6 +221,10 @@ export class CountryBriefPage {
   }
 
   public show(country: string, code: string, score: CountryScore | null, signals: CountryBriefSignals): void {
+    // Abort any previous brief's in-flight requests and create fresh controller
+    this.abortController.abort();
+    this.abortController = new AbortController();
+
     this.currentCode = code;
     this.currentName = country;
     this.currentScore = score;
@@ -613,6 +619,8 @@ export class CountryBriefPage {
   }
 
   public hide(): void {
+    // Cancel any in-flight requests for this brief
+    this.abortController.abort();
     this.overlay.classList.remove('active');
     this.currentCode = null;
     this.currentName = null;
@@ -625,5 +633,14 @@ export class CountryBriefPage {
 
   public isVisible(): boolean {
     return this.overlay.classList.contains('active');
+  }
+
+  /**
+   * Get the AbortSignal for the current brief page session.
+   * Callers making requests on behalf of this page should pass this signal
+   * so requests are cancelled when the page is closed or a new country is shown.
+   */
+  public get signal(): AbortSignal {
+    return this.abortController.signal;
   }
 }

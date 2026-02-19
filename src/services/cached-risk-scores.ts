@@ -51,7 +51,7 @@ async function loadPersistentRiskScores(): Promise<CachedRiskScores | null> {
   return entry?.data ?? null;
 }
 
-export async function fetchCachedRiskScores(): Promise<CachedRiskScores | null> {
+export async function fetchCachedRiskScores(signal?: AbortSignal): Promise<CachedRiskScores | null> {
   const now = Date.now();
 
   if (cachedScores && now - lastFetchTime < REFETCH_INTERVAL_MS) {
@@ -64,7 +64,7 @@ export async function fetchCachedRiskScores(): Promise<CachedRiskScores | null> 
 
   fetchPromise = (async () => {
     try {
-      const response = await fetch('/api/risk-scores');
+      const response = await fetch('/api/risk-scores', { signal });
       if (!response.ok) {
         console.warn('[CachedRiskScores] API error:', response.status);
         return cachedScores ?? await loadPersistentRiskScores();
@@ -78,6 +78,9 @@ export async function fetchCachedRiskScores(): Promise<CachedRiskScores | null> 
       console.log('[CachedRiskScores] Loaded', data.cached ? '(from Redis)' : '(computed)');
       return cachedScores;
     } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw error;
+      }
       console.error('[CachedRiskScores] Fetch error:', error);
       return cachedScores ?? await loadPersistentRiskScores();
     } finally {
