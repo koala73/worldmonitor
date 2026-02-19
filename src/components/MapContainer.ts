@@ -17,7 +17,6 @@ import type {
   CableAdvisory,
   RepairShip,
   SocialUnrestEvent,
-  AirportDelayAlert,
   MilitaryFlight,
   MilitaryVessel,
   MilitaryFlightCluster,
@@ -26,6 +25,7 @@ import type {
   UcdpGeoEvent,
   CyberThreat,
 } from '@/types';
+import type { AirportDelayAlert } from '@/services/aviation';
 import type { DisplacementFlow } from '@/services/displacement';
 import type { Earthquake } from '@/services/earthquakes';
 import type { ClimateAnomaly } from '@/services/climate';

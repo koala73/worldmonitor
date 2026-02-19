@@ -21,7 +21,6 @@ import type {
   RepairShip,
   SocialUnrestEvent,
   AIDataCenter,
-  AirportDelayAlert,
   MilitaryFlight,
   MilitaryVessel,
   MilitaryFlightCluster,
@@ -34,6 +33,7 @@ import type {
   MapDatacenterCluster,
   CyberThreat,
 } from '@/types';
+import type { AirportDelayAlert } from '@/services/aviation';
 import type { DisplacementFlow } from '@/services/displacement';
 import type { Earthquake } from '@/services/earthquakes';
 import type { ClimateAnomaly } from '@/services/climate';

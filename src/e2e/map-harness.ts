@@ -30,7 +30,6 @@ import {
 import type {
   AisDensityZone,
   AisDisruptionEvent,
-  AirportDelayAlert,
   CableAdvisory,
   CyberThreat,
   InternetOutage,
@@ -44,6 +43,7 @@ import type {
   RepairShip,
   SocialUnrestEvent,
 } from '../types';
+import type { AirportDelayAlert } from '../services/aviation';
 import type { Earthquake } from '../services/earthquakes';
 import type { WeatherAlert } from '../services/weather';
 

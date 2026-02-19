@@ -15,7 +15,7 @@ export * from './cyber-threats';
 export * from './ais';
 export * from './cable-activity';
 export * from './protests';
-export * from './flights';
+export * from './aviation';
 export * from './military-flights';
 export * from './military-vessels';
 export * from './pizzint';
