@@ -7,6 +7,8 @@ dist/
 .env.local
 .playwright-mcp/
 .vercel
+api/\[domain\]/v1/\[rpc\].js
+api/\[\[...path\]\].js
 .claude/
 .cursor/
 CLAUDE.md
@@ -20,6 +22,9 @@ ideas/
 test-results/
 src-tauri/sidecar/node/*
 !src-tauri/sidecar/node/.gitkeep
+
+# AI planning session state (not source code)
+.planning/
 
 # Compiled sebuf gateway bundle (built by scripts/build-sidecar-sebuf.mjs)
 api/[[][[].*.js

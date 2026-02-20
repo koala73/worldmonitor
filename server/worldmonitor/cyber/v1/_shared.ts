@@ -247,6 +247,7 @@ function sanitizeRawThreat(threat: Partial<RawThreat> & { indicator?: string }):
 // GeoIP hydration (in-memory cache only -- no Redis in handler layer)
 // ========================================================================
 
+const GEO_CACHE_MAX_SIZE = 2048;
 const geoCache = new Map<string, { lat: number; lon: number; country: string; ts: number }>();
 
 function getGeoCached(ip: string): { lat: number; lon: number; country: string } | null {
@@ -260,6 +261,11 @@ function getGeoCached(ip: string): { lat: number; lon: number; country: string }
 }
 
 function setGeoCached(ip: string, geo: { lat: number; lon: number; country: string }): void {
+  // Evict oldest entries when cache exceeds max size (C-1 fix)
+  if (geoCache.size >= GEO_CACHE_MAX_SIZE) {
+    const keysToDelete = Array.from(geoCache.keys()).slice(0, Math.floor(GEO_CACHE_MAX_SIZE / 4));
+    for (const key of keysToDelete) geoCache.delete(key);
+  }
   geoCache.set(ip, { ...geo, ts: Date.now() });
 }
 

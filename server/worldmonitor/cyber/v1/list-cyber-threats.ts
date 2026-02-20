@@ -69,18 +69,11 @@ export async function listCyberThreats(
 
     const hydrated = await hydrateThreatCoordinates(combined);
 
-    // Filter to only threats with valid coordinates, apply sorting + limit
+    // Filter to only threats with valid coordinates
     let results = hydrated
-      .filter((t) => t.lat !== null && t.lon !== null && t.lat >= -90 && t.lat <= 90 && t.lon >= -180 && t.lon <= 180)
-      .sort((a, b) => {
-        const bySeverity = (SEVERITY_RANK[SEVERITY_MAP[b.severity] || ''] || 0)
-          - (SEVERITY_RANK[SEVERITY_MAP[a.severity] || ''] || 0);
-        if (bySeverity !== 0) return bySeverity;
-        return (b.lastSeen || b.firstSeen) - (a.lastSeen || a.firstSeen);
-      })
-      .slice(0, pageSize);
+      .filter((t) => t.lat !== null && t.lon !== null && t.lat >= -90 && t.lat <= 90 && t.lon >= -180 && t.lon <= 180);
 
-    // Apply optional filters from request
+    // Apply optional filters BEFORE sorting + slicing (C-2 fix)
     if (req.type && req.type !== 'CYBER_THREAT_TYPE_UNSPECIFIED') {
       const filterType = req.type;
       results = results.filter((t) => THREAT_TYPE_MAP[t.type] === filterType);
@@ -93,6 +86,16 @@ export async function listCyberThreats(
       const minRank = SEVERITY_RANK[req.minSeverity] || 0;
       results = results.filter((t) => (SEVERITY_RANK[SEVERITY_MAP[t.severity] || ''] || 0) >= minRank);
     }
+
+    // Sort by severity then recency, then apply page size limit
+    results = results
+      .sort((a, b) => {
+        const bySeverity = (SEVERITY_RANK[SEVERITY_MAP[b.severity] || ''] || 0)
+          - (SEVERITY_RANK[SEVERITY_MAP[a.severity] || ''] || 0);
+        if (bySeverity !== 0) return bySeverity;
+        return (b.lastSeen || b.firstSeen) - (a.lastSeen || a.firstSeen);
+      })
+      .slice(0, pageSize);
 
     return {
       threats: results.map(toProtoCyberThreat),

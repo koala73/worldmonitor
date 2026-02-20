@@ -7,6 +7,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/infrastructure/v1/service_server';
 
 import { UPSTREAM_TIMEOUT_MS } from './_shared';
+import { getCachedJson, setCachedJson } from '../../../_shared/redis';
 
 // ========================================================================
 // Service status page definitions and parsers
@@ -282,12 +283,23 @@ async function checkServiceStatus(service: ServiceDef): Promise<ServiceStatus> {
 // RPC implementation
 // ========================================================================
 
+const INFRA_CACHE_KEY = 'infra:service-statuses:v1';
+const INFRA_CACHE_TTL = 300; // 5 minutes
+
 export async function listServiceStatuses(
   _ctx: ServerContext,
   req: ListServiceStatusesRequest,
 ): Promise<ListServiceStatusesResponse> {
   try {
-    const results = await Promise.all(SERVICES.map(checkServiceStatus));
+    // Check Redis cache first to avoid hammering 30+ external status pages (H-8 fix)
+    const cached = (await getCachedJson(INFRA_CACHE_KEY)) as ServiceStatus[] | null;
+    const results = cached && Array.isArray(cached)
+      ? cached
+      : await (async () => {
+          const fresh = await Promise.all(SERVICES.map(checkServiceStatus));
+          await setCachedJson(INFRA_CACHE_KEY, fresh, INFRA_CACHE_TTL);
+          return fresh;
+        })();
 
     // Apply optional status filter
     let filtered = results;

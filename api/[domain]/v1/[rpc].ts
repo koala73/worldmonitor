@@ -96,8 +96,17 @@ export default async function handler(request: Request): Promise<Response> {
     });
   }
 
-  // Execute handler
-  const response = await matchedHandler(request);
+  // Execute handler with top-level error boundary (H-1 fix)
+  let response: Response;
+  try {
+    response = await matchedHandler(request);
+  } catch (err) {
+    console.error('[gateway] Unhandled handler error:', err);
+    response = new Response(JSON.stringify({ message: 'Internal server error' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
 
   // Merge CORS headers into response
   const mergedHeaders = new Headers(response.headers);

@@ -81,26 +81,31 @@ async function fetchUcdpGedEvents(req: ListUcdpEventsRequest): Promise<UcdpViole
     const totalPages = Math.max(1, Number(page0?.TotalPages) || 1);
     const newestPage = totalPages - 1;
 
+    // Fetch pages in parallel (ported from main branch improvement #198)
+    const FAILED = Symbol('failed');
+    const pagesToFetch: Promise<any>[] = [];
+    for (let offset = 0; offset < MAX_PAGES && (newestPage - offset) >= 0; offset++) {
+      const page = newestPage - offset;
+      if (page === 0) {
+        pagesToFetch.push(Promise.resolve(page0));
+      } else {
+        pagesToFetch.push(fetchGedPage(version, page).catch(() => FAILED));
+      }
+    }
+
+    const pageResults = await Promise.all(pagesToFetch);
+
     const allEvents: any[] = [];
     let latestDatasetMs = NaN;
 
-    for (let offset = 0; offset < MAX_PAGES && (newestPage - offset) >= 0; offset++) {
-      const page = newestPage - offset;
-      const rawData = page === 0 ? page0 : await fetchGedPage(version, page);
+    for (const rawData of pageResults) {
+      if (rawData === FAILED) continue;
       const events: any[] = Array.isArray(rawData?.Result) ? rawData.Result : [];
       allEvents.push(...events);
 
       const pageMaxMs = getMaxDateMs(events);
       if (!Number.isFinite(latestDatasetMs) && Number.isFinite(pageMaxMs)) {
         latestDatasetMs = pageMaxMs;
-      }
-
-      // Pages are ordered oldest->newest; once fully outside trailing window, stop.
-      if (Number.isFinite(latestDatasetMs) && Number.isFinite(pageMaxMs)) {
-        const cutoffMs = latestDatasetMs - TRAILING_WINDOW_MS;
-        if (pageMaxMs < cutoffMs) {
-          break;
-        }
       }
     }
 

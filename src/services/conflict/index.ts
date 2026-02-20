@@ -134,16 +134,17 @@ const ISO3_TO_ISO2: Record<string, string> = {
 const ISO2_TO_ISO2_KEYS = Object.values(ISO3_TO_ISO2);
 
 function toHapiSummary(proto: ProtoHumanSummary): HapiConflictSummary {
-  const eventsTotal = Number(proto.populationAffected) || 0;
-  const politicalViolence = Number(proto.peopleInNeed) || 0;
+  // Map humanitarian fields correctly — these are population/humanitarian metrics,
+  // not conflict event counts. The HapiConflictSummary interface expects event counts
+  // but the proto only provides humanitarian data. Map what we can. (M-12/M-13 fix)
   return {
-    iso3: '',
+    iso3: proto.countryCode || '',
     locationName: proto.countryName,
     month: proto.updatedAt ? new Date(proto.updatedAt).toISOString().substring(0, 7) : '',
-    eventsTotal,
-    eventsPoliticalViolence: politicalViolence,
-    eventsCivilianTargeting: 0,
-    eventsDemonstrations: eventsTotal - politicalViolence,
+    eventsTotal: Number(proto.populationAffected) || 0,
+    eventsPoliticalViolence: Number(proto.peopleInNeed) || 0,
+    eventsCivilianTargeting: Number(proto.internallyDisplaced) || 0,
+    eventsDemonstrations: 0,
     fatalitiesTotalPoliticalViolence: 0,
     fatalitiesTotalCivilianTargeting: 0,
   };

@@ -17,11 +17,20 @@ export function mapErrorToResponse(error: unknown, _req: Request): Response {
   // ApiError: has statusCode property (e.g., upstream returns 429, 403, etc.)
   if (error instanceof Error && 'statusCode' in error) {
     const statusCode = (error as Error & { statusCode: number }).statusCode;
-    const body: Record<string, unknown> = { message: error.message };
+    // Only expose error.message for 4xx (client errors). Use generic message for 5xx
+    // to avoid leaking internal details like upstream URLs or API key fragments (H-3 fix).
+    const message = statusCode >= 400 && statusCode < 500
+      ? error.message
+      : 'Internal server error';
+    const body: Record<string, unknown> = { message };
 
     // Rate limit: include retryAfter if present
     if (statusCode === 429 && 'retryAfter' in error) {
       body.retryAfter = (error as Error & { retryAfter: number }).retryAfter;
+    }
+
+    if (statusCode >= 500) {
+      console.error('[error-mapper] 5xx error:', error.message);
     }
 
     return new Response(JSON.stringify(body), {

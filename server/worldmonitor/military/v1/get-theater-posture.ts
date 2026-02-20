@@ -176,16 +176,19 @@ export async function getTheaterPosture(
   if (cached) return cached;
 
   try {
+    // Race both sources in parallel instead of sequential fallback (H-6 fix)
     let flights: RawFlight[];
-    try {
-      flights = await fetchMilitaryFlightsFromOpenSky();
-    } catch {
-      const wingbits = await fetchMilitaryFlightsFromWingbits();
-      if (wingbits && wingbits.length > 0) {
-        flights = wingbits;
-      } else {
-        throw new Error('Both OpenSky and Wingbits unavailable');
-      }
+    const [openskyResult, wingbitsResult] = await Promise.allSettled([
+      fetchMilitaryFlightsFromOpenSky(),
+      fetchMilitaryFlightsFromWingbits(),
+    ]);
+
+    if (openskyResult.status === 'fulfilled' && openskyResult.value.length > 0) {
+      flights = openskyResult.value;
+    } else if (wingbitsResult.status === 'fulfilled' && wingbitsResult.value && wingbitsResult.value.length > 0) {
+      flights = wingbitsResult.value;
+    } else {
+      throw new Error('Both OpenSky and Wingbits unavailable');
     }
 
     const theaters = calculatePostures(flights);
