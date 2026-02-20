@@ -656,4 +656,98 @@ test.describe('desktop runtime routing guardrails', () => {
     expect(result.apiStatuses.some((entry) => entry.name === 'Finnhub' && entry.status === 'error')).toBe(true);
     expect(result.apiStatuses.some((entry) => entry.name === 'CoinGecko' && entry.status === 'ok')).toBe(true);
   });
+
+  test('fetchHapiSummary maps proto countryCode to iso2 field', async ({ page }) => {
+    await page.goto('/tests/runtime-harness.html');
+
+    const result = await page.evaluate(async () => {
+      const originalFetch = window.fetch.bind(window);
+      const toUrl = (input: RequestInfo | URL): string => {
+        if (typeof input === 'string') return new URL(input, window.location.origin).toString();
+        if (input instanceof URL) return input.toString();
+        return new URL(input.url, window.location.origin).toString();
+      };
+      const responseJson = (body: unknown, status = 200) =>
+        new Response(JSON.stringify(body), {
+          status,
+          headers: { 'content-type': 'application/json' },
+        });
+
+      const seenCountryCodes = new Set<string>();
+
+      window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const parsed = new URL(toUrl(input));
+        if (parsed.pathname === '/api/conflict/v1/get-humanitarian-summary') {
+          const body = init?.body ? JSON.parse(String(init.body)) : {};
+          const countryCode = String(body.countryCode || '').toUpperCase();
+          seenCountryCodes.add(countryCode);
+          return responseJson({
+            summary: {
+              countryCode,
+              countryName: countryCode,
+              conflictEventsTotal: 1,
+              conflictPoliticalViolenceEvents: 1,
+              conflictFatalities: 1,
+              referencePeriod: '2026-02',
+              conflictDemonstrations: 0,
+              updatedAt: Date.now(),
+            },
+          });
+        }
+        return responseJson({});
+      }) as typeof window.fetch;
+
+      try {
+        const conflict = await import('/src/services/conflict/index.ts');
+        const summaries = await conflict.fetchHapiSummary();
+        const us = summaries.get('US') as Record<string, unknown> | undefined;
+        return {
+          fetchedCount: seenCountryCodes.size,
+          usIso2: us?.iso2 ?? null,
+          hasIso3Field: !!us && Object.prototype.hasOwnProperty.call(us, 'iso3'),
+        };
+      } finally {
+        window.fetch = originalFetch;
+      }
+    });
+
+    expect(result.fetchedCount).toBeGreaterThan(0);
+    expect(result.usIso2).toBe('US');
+    expect(result.hasIso3Field).toBe(false);
+  });
+
+  test('country-instability HAPI fallback ignores eventsCivilianTargeting in score', async ({ page }) => {
+    await page.goto('/tests/runtime-harness.html');
+
+    const result = await page.evaluate(async () => {
+      const cii = await import('/src/services/country-instability.ts');
+
+      const makeSummary = (eventsCivilianTargeting: number) => ({
+        iso2: 'US',
+        locationName: 'United States',
+        month: '2026-02',
+        eventsTotal: 0,
+        eventsPoliticalViolence: 1,
+        eventsCivilianTargeting,
+        eventsDemonstrations: 0,
+        fatalitiesTotalPoliticalViolence: 0,
+        fatalitiesTotalCivilianTargeting: 0,
+      });
+
+      cii.clearCountryData();
+      cii.ingestHapiForCII(new Map([['US', makeSummary(0)]]));
+      const scoreWithoutCivilian = cii.getCountryScore('US');
+
+      cii.clearCountryData();
+      cii.ingestHapiForCII(new Map([['US', makeSummary(999)]]));
+      const scoreWithCivilian = cii.getCountryScore('US');
+
+      return { scoreWithoutCivilian, scoreWithCivilian };
+    });
+
+    expect(result.scoreWithoutCivilian).not.toBeNull();
+    expect(result.scoreWithCivilian).not.toBeNull();
+    expect(result.scoreWithoutCivilian).toBe(result.scoreWithCivilian);
+    expect(result.scoreWithCivilian as number).toBeLessThan(10);
+  });
 });

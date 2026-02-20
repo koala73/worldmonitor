@@ -220,6 +220,11 @@ describe('getVesselSnapshot caching (HIGH-1)', () => {
       'Should clear in-flight promise in finally block');
   });
 
+  it('serves stale snapshot when relay fetch fails', () => {
+    assert.match(src, /return\s+result\s*\?\?\s*cachedSnapshot/,
+      'Should return stale cached snapshot when fresh relay fetch fails');
+  });
+
   // NOTE: Full integration test (mocking fetch, verifying cache hits) requires
   // a TypeScript-capable test runner. This structural test verifies the pattern.
 });
