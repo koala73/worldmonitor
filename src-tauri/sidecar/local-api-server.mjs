@@ -389,6 +389,20 @@ function makeCorsHeaders(req) {
   };
 }
 
+function appendVary(existing, token) {
+  const value = typeof existing === 'string' ? existing : '';
+  const parts = value
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  const hasToken = parts.some((part) => part.toLowerCase() === token.toLowerCase());
+  if (!hasToken) {
+    parts.push(token);
+  }
+  return parts.join(', ');
+}
+
 async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
   // Use node:https with IPv4 forced — Node.js built-in fetch (undici) tries IPv6
   // first and some servers (EIA, NASA FIRMS) have broken IPv6 causing ETIMEDOUT.
@@ -885,7 +899,7 @@ export async function createLocalApiServer(options = {}) {
       const headers = Object.fromEntries(response.headers.entries());
       const corsOrigin = getSidecarCorsOrigin(req);
       headers['access-control-allow-origin'] = corsOrigin;
-      headers['vary'] = headers['vary'] ? headers['vary'] + ', Origin' : 'Origin';
+      headers['vary'] = appendVary(headers['vary'], 'Origin');
 
       if (!skipRecord) {
         recordTraffic({
@@ -901,7 +915,7 @@ export async function createLocalApiServer(options = {}) {
       if (acceptEncoding.includes('gzip') && body.length > 1024) {
         body = gzipSync(body);
         headers['content-encoding'] = 'gzip';
-        headers['vary'] = 'Accept-Encoding';
+        headers['vary'] = appendVary(headers['vary'], 'Accept-Encoding');
       }
 
       res.writeHead(response.status, headers);

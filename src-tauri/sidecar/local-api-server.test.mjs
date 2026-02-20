@@ -323,6 +323,50 @@ test('responds to OPTIONS preflight with CORS headers', async () => {
   }
 });
 
+test('preserves Origin in Vary when gzip compression is applied', async () => {
+  const localApi = await setupApiDir({
+    'large.js': `
+      export default async function handler() {
+        return new Response(JSON.stringify({ payload: 'x'.repeat(4096) }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        });
+      }
+    `,
+  });
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/api/large`, {
+      headers: {
+        Origin: 'https://tauri.localhost',
+        'Accept-Encoding': 'gzip',
+      },
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('access-control-allow-origin'), 'https://tauri.localhost');
+    assert.equal(response.headers.get('content-encoding'), 'gzip');
+
+    const vary = (response.headers.get('vary') || '')
+      .split(',')
+      .map((part) => part.trim().toLowerCase())
+      .filter(Boolean);
+
+    assert.equal(vary.includes('origin'), true);
+    assert.equal(vary.includes('accept-encoding'), true);
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
 test('resolves packaged tauri resource layout under _up_/api', async () => {
   const remote = await setupRemoteServer();
   const localResource = await setupResourceDirWithUpApi({
