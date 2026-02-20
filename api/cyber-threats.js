@@ -151,13 +151,22 @@ const COUNTRY_CENTROIDS = {
   SN:[14.5,-14.5],CM:[7.4,12.4],CI:[7.5,-5.5],TZ:[-6.4,34.9],UG:[1.4,32.3],
 };
 
-function getCountryCentroid(countryCode) {
+function getCountryCentroid(countryCode, seed = '') {
   if (!countryCode) return null;
   const code = countryCode.toUpperCase();
   const coords = COUNTRY_CENTROIDS[code];
   if (!coords) return null;
-  const jitter = () => (Math.random() - 0.5) * 2;
-  return { lat: coords[0] + jitter(), lon: coords[1] + jitter() };
+  // Deterministic jitter: hash the seed so the same input always yields the
+  // same offset, preventing markers from "jumping" across requests.
+  let h = 0x811c9dc5;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  h = h >>> 0;
+  const jitterLat = ((h & 0xffff) / 0xffff - 0.5) * 2;
+  const jitterLon = ((h >>> 16) / 0xffff - 0.5) * 2;
+  return { lat: coords[0] + jitterLat, lon: coords[1] + jitterLon };
 }
 
 function normalizeTags(input, maxTags = 8) {
@@ -629,7 +638,7 @@ async function hydrateThreatCoordinates(threats) {
       };
     }
 
-    const centroid = getCountryCentroid(threat.country);
+    const centroid = getCountryCentroid(threat.country, threat.indicator || '');
     if (centroid) {
       return { ...threat, lat: centroid.lat, lon: centroid.lon };
     }
