@@ -4,6 +4,8 @@ All JSON API endpoints in WorldMonitor **must** use sebuf. Do not create standal
 
 This guide walks through adding a new RPC to an existing service and adding an entirely new service.
 
+> **Important:** After modifying any `.proto` file, you **must** run `make generate` before building or pushing. The generated TypeScript files in `src/generated/` are checked into the repo and must stay in sync with the proto definitions. CI does not run generation yet — this is your responsibility until we add it to the pipeline (see [#200](https://github.com/koala73/worldmonitor/issues/200)).
+
 ## Prerequisites
 
 You need these tools on your PATH:
@@ -13,10 +15,11 @@ You need these tools on your PATH:
 - **protoc-gen-ts-server** — generates TypeScript server handler interfaces (from sebuf)
 - **protoc-gen-openapiv3** — generates OpenAPI v3 specs (from sebuf)
 
-All code generation runs from the `proto/` directory:
+Install everything with `make install`, then run code generation from the repo root:
 
 ```bash
-cd proto && buf generate
+make install    # one-time: installs sebuf protoc plugins + buf dependencies
+make generate   # regenerate all TypeScript + OpenAPI from protos
 ```
 
 This produces three outputs per service:
@@ -77,7 +80,7 @@ service SeismologyService {
 ### 3. Lint and generate
 
 ```bash
-cd proto && buf lint && buf generate
+make check   # lint + generate in one step
 ```
 
 At this point, `npx tsc --noEmit` will **fail** because the handler doesn't implement the new method yet. This is by design — the compiler enforces the contract.
@@ -245,7 +248,7 @@ service SanctionsService {
 ### 5. Generate
 
 ```bash
-cd proto && buf lint && buf generate
+make check   # lint + generate in one step
 ```
 
 ### 6. Implement the handler
@@ -437,7 +440,7 @@ The empty string base URL works because both Vite dev server and Vercel serve th
 
 ## Generated documentation
 
-Every time you run `cd proto && buf generate`, OpenAPI v3 specs are generated for each service:
+Every time you run `make generate`, OpenAPI v3 specs are generated for each service:
 
 - `docs/api/{Domain}Service.openapi.yaml` — human-readable YAML
 - `docs/api/{Domain}Service.openapi.json` — machine-readable JSON

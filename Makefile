@@ -23,9 +23,9 @@ install: install-plugins deps ## Install everything (plugins + dependencies)
 
 install-plugins: ## Install sebuf protoc plugins
 	@echo "Installing sebuf protoc plugins..."
-	@$(GO_INSTALL) github.com/SebastienMelki/sebuf/cmd/protoc-gen-ts-client@v0.6.0
-	@$(GO_INSTALL) github.com/SebastienMelki/sebuf/cmd/protoc-gen-ts-server@v0.6.0
-	@$(GO_INSTALL) github.com/SebastienMelki/sebuf/cmd/protoc-gen-openapiv3@v0.6.0
+	@$(GO_INSTALL) github.com/SebastienMelki/sebuf/cmd/protoc-gen-ts-client@v0.7.0
+	@$(GO_INSTALL) github.com/SebastienMelki/sebuf/cmd/protoc-gen-ts-server@v0.7.0
+	@$(GO_INSTALL) github.com/SebastienMelki/sebuf/cmd/protoc-gen-openapiv3@v0.7.0
 	@echo "Plugins installed!"
 
 deps: ## Install/update buf dependencies
