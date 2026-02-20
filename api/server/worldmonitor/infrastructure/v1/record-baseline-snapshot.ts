@@ -40,7 +40,6 @@ export async function recordBaselineSnapshot(
 
     for (let i = 0; i < batch.length; i++) {
       const { type, count } = batch[i]!;
-      const _region = batch[i]!.region || 'global';
       if (!VALID_BASELINE_TYPES.includes(type) || typeof count !== 'number' || isNaN(count)) continue;
 
       const prev: BaselineEntry = existing[i] as BaselineEntry || { mean: 0, m2: 0, sampleCount: 0, lastUpdated: '' };
