@@ -96,38 +96,39 @@ Requirements for full sebuf integration. Each maps to roadmap phases.
 | MIGRATE-03 | Phase 2 | Superseded |
 | MIGRATE-04 | Phase 2 | Superseded |
 | MIGRATE-05 | Phase 2 | Superseded |
-| CLIENT-03 | Phase 2 | Partial |
-| DOMAIN-01 | Phase 3 | Complete |
-| DOMAIN-10 | Phase 3 | Complete |
-| CLIENT-01 | Phase 2C | Complete |
-| CLIENT-02 | Phase 3 | Complete |
-| CLIENT-04 | Phase 3 | Complete |
-| SERVER-01 | Phase 4 | Complete |
-| SERVER-02 | Phase 4 | Complete |
-| SERVER-03 | Phase 4 | Complete |
-| SERVER-04 | Phase 4 | Complete |
-| SERVER-05 | Phase 4 | Complete |
-| SERVER-06 | Phase 4 | Complete |
-| DOMAIN-02 | Phase 5 | Complete |
+| CLIENT-03 | Phase 4 | Pending |
+| DOMAIN-01 | Phase 2D, 2E | Complete |
+| DOMAIN-02 | Phase 2F, 2M-2S | Complete |
 | DOMAIN-03 | Phase 2M-2S | Complete |
-| DOMAIN-04 | Phase 6 | Complete |
-| DOMAIN-05 | Phase 6 | Complete |
-| DOMAIN-06 | Phase 6 | Complete |
-| DOMAIN-07 | Phase 7 | Complete |
-| DOMAIN-08 | Phase 7 | Complete |
-| DOMAIN-09 | Phase 7 | Complete |
-| CLEAN-01 | Phase 8 | Complete |
-| CLEAN-02 | Phase 8 | Complete |
-| CLEAN-03 | Phase 8 | Superseded |
-| CLEAN-04 | Phase 8 | Superseded |
+| DOMAIN-04 | Phase 2M-2S, 3 | Complete |
+| DOMAIN-05 | Phase 2I | Complete |
+| DOMAIN-06 | Phase 2L, 2M-2S | Complete |
+| DOMAIN-07 | Phase 2G, 2J, 2K | Complete |
+| DOMAIN-08 | Phase 2H, 2M-2S | Complete |
+| DOMAIN-09 | Phase 2M-2S, 3 | Complete |
+| DOMAIN-10 | Phase 2C-3 | Complete |
+| CLIENT-01 | Phase 2C | Complete |
+| CLIENT-02 | Phase 2C | Complete |
+| CLIENT-04 | Phase 2C | Complete |
+| SERVER-01 | Phase 2B | Complete |
+| SERVER-02 | Phase 2B | Complete |
+| SERVER-03 | Phase 2B | Complete |
+| SERVER-04 | Phase 2B | Complete |
+| SERVER-05 | Phase 2B | Complete |
+| SERVER-06 | Phase 2B | Complete |
+| CLEAN-01 | Phase 2C-3 | Complete |
+| CLEAN-02 | Phase 3 | Complete |
+| CLEAN-03 | — | Superseded |
+| CLEAN-04 | — | Superseded |
 
 **Coverage:**
 - v1 requirements: 34 total
-- Complete: 26
+- Complete: 25
 - Superseded: 7 (MIGRATE-01-05, CLEAN-03, CLEAN-04)
-- Partial: 1 (CLIENT-03)
+- Partial: 1 (CLIENT-03 — Phase 4 gap closure)
+- Pending: 1 (CLIENT-03 circuit breaker coverage assigned to Phase 4)
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-18*
-*Last updated: 2026-02-20 after v1 milestone audit*
+*Last updated: 2026-02-20 after gap closure planning*

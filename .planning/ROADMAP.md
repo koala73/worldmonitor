@@ -193,7 +193,7 @@ Additional client-side migrations (post-2L, pre-Phase 3):
 ### Phase 3: Legacy Edge Function Migration (IN PROGRESS)
 **Goal**: Migrate remaining `api/*.js` legacy edge functions into sebuf domain RPCs or tag as non-migratable
 **Depends on**: Phase 2M-2S
-**Status**: In progress (2/5 plans complete)
+**Status**: Complete (5/5 plans complete)
 **Requirements:** [CLEAN-02, DOMAIN-04, DOMAIN-09, DOMAIN-10]
 **Plans:** 5/5 plans complete
 
@@ -227,6 +227,19 @@ Remaining legacy files (17 files + wingbits dir):
 - Update desktop-readiness.ts
 - Sync main
 
+### Phase 4: v1 Milestone Cleanup
+**Goal**: Close all audit gaps — fix documentation staleness, create missing verification artifact, clean up orphaned code, complete circuit breaker coverage
+**Depends on**: Phase 3
+**Status**: Pending
+**Requirements:** [CLIENT-03, DOMAIN-03, DOMAIN-06]
+**Gap Closure:** Closes all gaps from v1-MILESTONE-AUDIT.md
+
+Tasks:
+1. Requirements & roadmap documentation fixes (DOMAIN-03 verification gap, traceability table corrections, coverage count, .continue-here.md)
+2. Phase 2L retroactive VERIFICATION.md (DOMAIN-06 — integration checker confirmed full stack wired)
+3. Code cleanup (orphaned test file, desktop-readiness.ts stale metadata, service barrel re-exports)
+4. Circuit breaker coverage for 6 remaining domains: seismology, wildfire, climate, maritime, news, intelligence (CLIENT-03)
+
 ## Progress
 
 | Phase | Status | Completed |
@@ -245,4 +258,5 @@ Remaining legacy files (17 files + wingbits dir):
 | 2K. Conflict Migration | Complete | 2026-02-19 |
 | 2L. Maritime Migration | Complete | 2026-02-19 |
 | 2M-2S. Domain Migrations (7/7) | Complete | 2026-02-19 |
-| 3. Legacy Edge Function Migration (3/10) | In progress | - |
+| 3. Legacy Edge Function Migration (10/10) | Complete | 2026-02-20 |
+| 4. v1 Milestone Cleanup | Pending | - |
