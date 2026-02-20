@@ -1,6 +1,12 @@
-import type { MilitaryVessel, MilitaryVesselCluster, USNIFleetReport } from '@/types';
+import type { MilitaryVessel, MilitaryVesselCluster, USNIFleetReport, USNIVesselEntry } from '@/types';
 import { createCircuitBreaker } from '@/utils';
 import { getUSNIRegionApproxCoords, getUSNIRegionCoords } from '@/config/military';
+import {
+  MilitaryServiceClient,
+  type GetUSNIFleetReportResponse,
+} from '@/generated/client/worldmonitor/military/v1/service_client';
+
+const client = new MilitaryServiceClient('', { fetch: fetch.bind(globalThis) });
 
 const breaker = createCircuitBreaker<USNIFleetReport | null>({
   name: 'USNI Fleet Tracker',
@@ -13,17 +19,47 @@ let lastReport: USNIFleetReport | null = null;
 let lastFetchTime = 0;
 const LOCAL_CACHE_TTL = 60 * 60 * 1000; // 1 hour
 
+function mapProtoToReport(resp: GetUSNIFleetReportResponse): USNIFleetReport | null {
+  const r = resp.report;
+  if (!r) return null;
+
+  const vessels: USNIVesselEntry[] = r.vessels.map((v) => ({
+    name: v.name,
+    hullNumber: v.hullNumber,
+    vesselType: v.vesselType as USNIVesselEntry['vesselType'],
+    region: v.region,
+    regionLat: v.regionLat,
+    regionLon: v.regionLon,
+    deploymentStatus: v.deploymentStatus as USNIVesselEntry['deploymentStatus'],
+    homePort: v.homePort || undefined,
+    strikeGroup: v.strikeGroup || undefined,
+    activityDescription: v.activityDescription || undefined,
+    usniArticleUrl: v.articleUrl,
+    usniArticleDate: v.articleDate,
+  }));
+
+  return {
+    articleUrl: r.articleUrl,
+    articleDate: r.articleDate,
+    articleTitle: r.articleTitle,
+    battleForceSummary: r.battleForceSummary,
+    vessels,
+    strikeGroups: r.strikeGroups,
+    regions: r.regions,
+    parsingWarnings: r.parsingWarnings,
+    timestamp: new Date(r.timestamp).toISOString(),
+  };
+}
+
 export async function fetchUSNIFleetReport(): Promise<USNIFleetReport | null> {
   if (lastReport && Date.now() - lastFetchTime < LOCAL_CACHE_TTL) {
     return lastReport;
   }
 
   const report = await breaker.execute(async () => {
-    const response = await fetch('/api/usni-fleet');
-    if (!response.ok) throw new Error(`USNI API error: ${response.status}`);
-    const data = await response.json();
-    if (data.skipped || data.error) return null;
-    return data as USNIFleetReport;
+    const resp = await client.getUSNIFleetReport({ forceRefresh: false });
+    if (resp.error && !resp.report) return null;
+    return mapProtoToReport(resp);
   }, null);
 
   if (report) {

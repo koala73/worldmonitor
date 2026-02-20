@@ -189,6 +189,58 @@ export interface GetWingbitsStatusResponse {
   configured: boolean;
 }
 
+export interface GetUSNIFleetReportRequest {
+  forceRefresh: boolean;
+}
+
+export interface GetUSNIFleetReportResponse {
+  report?: USNIFleetReport;
+  cached: boolean;
+  stale: boolean;
+  error: string;
+}
+
+export interface USNIFleetReport {
+  articleUrl: string;
+  articleDate: string;
+  articleTitle: string;
+  battleForceSummary?: BattleForceSummary;
+  vessels: USNIVessel[];
+  strikeGroups: USNIStrikeGroup[];
+  regions: string[];
+  parsingWarnings: string[];
+  timestamp: number;
+}
+
+export interface BattleForceSummary {
+  totalShips: number;
+  deployed: number;
+  underway: number;
+}
+
+export interface USNIVessel {
+  name: string;
+  hullNumber: string;
+  vesselType: string;
+  region: string;
+  regionLat: number;
+  regionLon: number;
+  deploymentStatus: string;
+  homePort: string;
+  strikeGroup: string;
+  activityDescription: string;
+  articleUrl: string;
+  articleDate: string;
+}
+
+export interface USNIStrikeGroup {
+  name: string;
+  carrier: string;
+  airWing: string;
+  destroyerSquadron: string;
+  escorts: string[];
+}
+
 export type MilitaryActivityType = "MILITARY_ACTIVITY_TYPE_UNSPECIFIED" | "MILITARY_ACTIVITY_TYPE_EXERCISE" | "MILITARY_ACTIVITY_TYPE_PATROL" | "MILITARY_ACTIVITY_TYPE_TRANSPORT" | "MILITARY_ACTIVITY_TYPE_DEPLOYMENT" | "MILITARY_ACTIVITY_TYPE_TRANSIT" | "MILITARY_ACTIVITY_TYPE_UNKNOWN";
 
 export type MilitaryAircraftType = "MILITARY_AIRCRAFT_TYPE_UNSPECIFIED" | "MILITARY_AIRCRAFT_TYPE_FIGHTER" | "MILITARY_AIRCRAFT_TYPE_BOMBER" | "MILITARY_AIRCRAFT_TYPE_TRANSPORT" | "MILITARY_AIRCRAFT_TYPE_TANKER" | "MILITARY_AIRCRAFT_TYPE_AWACS" | "MILITARY_AIRCRAFT_TYPE_RECONNAISSANCE" | "MILITARY_AIRCRAFT_TYPE_HELICOPTER" | "MILITARY_AIRCRAFT_TYPE_DRONE" | "MILITARY_AIRCRAFT_TYPE_PATROL" | "MILITARY_AIRCRAFT_TYPE_SPECIAL_OPS" | "MILITARY_AIRCRAFT_TYPE_VIP" | "MILITARY_AIRCRAFT_TYPE_UNKNOWN";
@@ -389,6 +441,30 @@ export class MilitaryServiceClient {
     }
 
     return await resp.json() as GetWingbitsStatusResponse;
+  }
+
+  async getUSNIFleetReport(req: GetUSNIFleetReportRequest, options?: MilitaryServiceCallOptions): Promise<GetUSNIFleetReportResponse> {
+    let path = "/api/military/v1/get-usni-fleet-report";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetUSNIFleetReportResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

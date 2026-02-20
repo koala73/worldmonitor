@@ -195,6 +195,38 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/military/v1/get-usni-fleet-report:
+        post:
+            tags:
+                - MilitaryService
+            summary: GetUSNIFleetReport
+            description: GetUSNIFleetReport retrieves the latest parsed USNI Fleet Tracker report.
+            operationId: GetUSNIFleetReport
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/GetUSNIFleetReportRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetUSNIFleetReportResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -881,3 +913,141 @@ components:
                     type: boolean
                     description: Whether the Wingbits API key is configured on the server.
             description: GetWingbitsStatusResponse indicates whether Wingbits is available.
+        GetUSNIFleetReportRequest:
+            type: object
+            properties:
+                forceRefresh:
+                    type: boolean
+                    description: When true, bypass cache and fetch fresh data from USNI.
+            description: GetUSNIFleetReportRequest requests the latest USNI Fleet Tracker report.
+        GetUSNIFleetReportResponse:
+            type: object
+            properties:
+                report:
+                    $ref: '#/components/schemas/USNIFleetReport'
+                cached:
+                    type: boolean
+                    description: Whether the response was served from cache.
+                stale:
+                    type: boolean
+                    description: Whether the cached data is stale (served after a fetch failure).
+                error:
+                    type: string
+                    description: Error message, if any.
+            description: GetUSNIFleetReportResponse returns the parsed USNI Fleet Tracker report.
+        USNIFleetReport:
+            type: object
+            properties:
+                articleUrl:
+                    type: string
+                    description: URL of the source article.
+                articleDate:
+                    type: string
+                    description: Publication date of the article.
+                articleTitle:
+                    type: string
+                    description: Title of the article.
+                battleForceSummary:
+                    $ref: '#/components/schemas/BattleForceSummary'
+                vessels:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/USNIVessel'
+                strikeGroups:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/USNIStrikeGroup'
+                regions:
+                    type: array
+                    items:
+                        type: string
+                        description: Unique region names mentioned in the article.
+                parsingWarnings:
+                    type: array
+                    items:
+                        type: string
+                        description: Warnings generated during parsing.
+                timestamp:
+                    type: integer
+                    format: int64
+                    description: 'Time the report was generated, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: USNIFleetReport is the full parsed output of a USNI Fleet Tracker article.
+        BattleForceSummary:
+            type: object
+            properties:
+                totalShips:
+                    type: integer
+                    format: int32
+                    description: Total ships in the battle force.
+                deployed:
+                    type: integer
+                    format: int32
+                    description: Number of ships currently deployed.
+                underway:
+                    type: integer
+                    format: int32
+                    description: Number of ships currently underway.
+            description: BattleForceSummary contains fleet-wide ship count statistics.
+        USNIVessel:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: Vessel name (e.g., "USS Abraham Lincoln").
+                hullNumber:
+                    type: string
+                    description: Hull designation (e.g., "CVN-72", "DDG-51").
+                vesselType:
+                    type: string
+                    description: Vessel type classification (e.g., "carrier", "destroyer", "submarine").
+                region:
+                    type: string
+                    description: Region name where the vessel is operating.
+                regionLat:
+                    type: number
+                    format: double
+                    description: Approximate latitude for the region.
+                regionLon:
+                    type: number
+                    format: double
+                    description: Approximate longitude for the region.
+                deploymentStatus:
+                    type: string
+                    description: Deployment status (e.g., "deployed", "underway", "in-port", "unknown").
+                homePort:
+                    type: string
+                    description: Home port, if identified from the article text.
+                strikeGroup:
+                    type: string
+                    description: Strike group assignment, if any.
+                activityDescription:
+                    type: string
+                    description: Brief activity description parsed from article prose.
+                articleUrl:
+                    type: string
+                    description: URL of the USNI article this vessel was parsed from.
+                articleDate:
+                    type: string
+                    description: Publication date of the USNI article.
+            description: USNIVessel represents a single vessel parsed from a USNI Fleet Tracker article.
+        USNIStrikeGroup:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: Strike group name (e.g., "Abraham Lincoln Carrier Strike Group").
+                carrier:
+                    type: string
+                    description: Carrier name and hull (e.g., "USS Abraham Lincoln (CVN-72)").
+                airWing:
+                    type: string
+                    description: Assigned air wing (e.g., "Carrier Air Wing Nine").
+                destroyerSquadron:
+                    type: string
+                    description: Assigned destroyer squadron.
+                escorts:
+                    type: array
+                    items:
+                        type: string
+                        description: Escort vessels in the strike group.
+            description: USNIStrikeGroup represents a carrier strike group parsed from the article.

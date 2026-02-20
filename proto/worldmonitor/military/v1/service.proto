@@ -9,6 +9,7 @@ import "worldmonitor/military/v1/get_theater_posture.proto";
 import "worldmonitor/military/v1/get_aircraft_details.proto";
 import "worldmonitor/military/v1/get_aircraft_details_batch.proto";
 import "worldmonitor/military/v1/get_wingbits_status.proto";
+import "worldmonitor/military/v1/get_usni_fleet_report.proto";
 
 // MilitaryService provides APIs for military flight and vessel tracking
 // sourced from OpenSky, Wingbits, and AIS data.
@@ -43,5 +44,10 @@ service MilitaryService {
   // GetWingbitsStatus checks whether the Wingbits enrichment API is configured.
   rpc GetWingbitsStatus(GetWingbitsStatusRequest) returns (GetWingbitsStatusResponse) {
     option (sebuf.http.config) = {path: "/get-wingbits-status"};
+  }
+
+  // GetUSNIFleetReport retrieves the latest parsed USNI Fleet Tracker report.
+  rpc GetUSNIFleetReport(GetUSNIFleetReportRequest) returns (GetUSNIFleetReportResponse) {
+    option (sebuf.http.config) = {path: "/get-usni-fleet-report"};
   }
 }

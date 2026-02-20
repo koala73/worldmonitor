@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package worldmonitor.military.v1;
+
+import "worldmonitor/military/v1/usni_fleet.proto";
+
+// GetUSNIFleetReportRequest requests the latest USNI Fleet Tracker report.
+message GetUSNIFleetReportRequest {
+  // When true, bypass cache and fetch fresh data from USNI.
+  bool force_refresh = 1;
+}
+
+// GetUSNIFleetReportResponse returns the parsed USNI Fleet Tracker report.
+message GetUSNIFleetReportResponse {
+  // The parsed fleet report, if available.
+  USNIFleetReport report = 1;
+  // Whether the response was served from cache.
+  bool cached = 2;
+  // Whether the cached data is stale (served after a fetch failure).
+  bool stale = 3;
+  // Error message, if any.
+  string error = 4;
+}
