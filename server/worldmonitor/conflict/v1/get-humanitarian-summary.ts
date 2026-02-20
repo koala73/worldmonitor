@@ -129,7 +129,7 @@ async function fetchHapiSummary(countryCode: string): Promise<HumanitarianCountr
     if (!entry) return undefined;
 
     return {
-      countryCode: countryCode || '',
+      countryCode: ISO2_TO_ISO3[countryCode.toUpperCase()] || countryCode || '',
       countryName: entry.locationName,
       populationAffected: String(entry.eventsTotal),
       peopleInNeed: String(entry.eventsPoliticalViolence + entry.eventsCivilianTargeting),

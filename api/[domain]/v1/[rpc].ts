@@ -80,7 +80,12 @@ export default async function handler(request: Request): Promise<Response> {
     });
   }
 
-  const corsHeaders = getCorsHeaders(request);
+  let corsHeaders: Record<string, string>;
+  try {
+    corsHeaders = getCorsHeaders(request);
+  } catch {
+    corsHeaders = { 'Access-Control-Allow-Origin': '*' };
+  }
 
   // OPTIONS preflight
   if (request.method === 'OPTIONS') {

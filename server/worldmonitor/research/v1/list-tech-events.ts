@@ -294,7 +294,8 @@ async function fetchTechEvents(req: ListTechEventsRequest): Promise<ListTechEven
   // Deduplicate by title similarity (rough match)
   const seen = new Set<string>();
   events = events.filter(e => {
-    const key = e.title.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 30);
+    const year = e.startDate.slice(0, 4);
+    const key = e.title.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 30) + year;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;

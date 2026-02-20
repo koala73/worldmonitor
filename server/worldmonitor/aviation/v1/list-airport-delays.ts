@@ -29,6 +29,7 @@ export async function listAirportDelays(
     // 1. Fetch and parse FAA XML
     const faaResponse = await fetch(FAA_URL, {
       headers: { Accept: 'application/xml' },
+      signal: AbortSignal.timeout(15_000),
     });
 
     let faaDelays = new Map<string, { airport: string; reason: string; avgDelay: number; type: string }>();

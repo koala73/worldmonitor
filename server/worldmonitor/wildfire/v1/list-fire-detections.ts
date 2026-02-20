@@ -98,6 +98,7 @@ export const listFireDetections: WildfireServiceHandler['listFireDetections'] = 
       const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${apiKey}/${FIRMS_SOURCE}/${bbox}/1`;
       const res = await fetch(url, {
         headers: { Accept: 'text/csv' },
+        signal: AbortSignal.timeout(15_000),
       });
       if (!res.ok) {
         throw new Error(`FIRMS ${res.status} for ${regionName}`);

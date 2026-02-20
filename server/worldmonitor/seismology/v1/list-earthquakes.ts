@@ -21,7 +21,7 @@ const CACHE_TTL = 300; // 5 minutes
 
 export const listEarthquakes: SeismologyServiceHandler['listEarthquakes'] = async (
   _ctx: ServerContext,
-  _req: ListEarthquakesRequest,
+  req: ListEarthquakesRequest,
 ): Promise<ListEarthquakesResponse> => {
   // Check Redis cache first (H-4 fix)
   const cached = (await getCachedJson(CACHE_KEY)) as ListEarthquakesResponse | null;
@@ -55,7 +55,8 @@ export const listEarthquakes: SeismologyServiceHandler['listEarthquakes'] = asyn
       sourceUrl: (f.properties?.url as string) || '',
     }));
 
-  const result: ListEarthquakesResponse = { earthquakes, pagination: undefined };
+  const pageSize = _req.pagination?.pageSize || 500;
+  const result: ListEarthquakesResponse = { earthquakes: earthquakes.slice(0, pageSize), pagination: undefined };
   await setCachedJson(CACHE_KEY, result, CACHE_TTL);
   return result;
 };
