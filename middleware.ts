@@ -10,15 +10,15 @@ const BOT_UA =
 const SOCIAL_PREVIEW_UA =
   /twitterbot|facebookexternalhit|linkedinbot|slackbot|telegrambot|whatsapp|discordbot|redditbot/i;
 
-const SOCIAL_PREVIEW_PATHS = ['/api/story', '/api/og-story'];
+const SOCIAL_PREVIEW_PATHS = new Set(['/api/story', '/api/og-story']);
 
 export default function middleware(request: Request) {
   const ua = request.headers.get('user-agent') ?? '';
   const url = new URL(request.url);
   const path = url.pathname;
 
-  // Allow social preview bots on OG routes
-  if (SOCIAL_PREVIEW_UA.test(ua) && SOCIAL_PREVIEW_PATHS.some((p) => path.startsWith(p))) {
+  // Allow social preview bots on exact OG routes only
+  if (SOCIAL_PREVIEW_UA.test(ua) && SOCIAL_PREVIEW_PATHS.has(path)) {
     return;
   }
 
