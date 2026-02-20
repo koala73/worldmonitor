@@ -1,4 +1,4 @@
-import { LANGUAGES, changeLanguage, getCurrentLanguage } from '../services/i18n';
+import { LANGUAGES, changeLanguage, getCurrentLanguage, t } from '../services/i18n';
 
 export class LanguageSelector {
     private element: HTMLElement;
@@ -42,7 +42,7 @@ export class LanguageSelector {
         const currentLangObj = LANGUAGES.find(l => l.code === this.currentLang) || LANGUAGES[0];
 
         this.element.innerHTML = `
-      <button class="lang-selector-btn" aria-label="Select Language">
+      <button class="lang-selector-btn" aria-label="${t('components.languageSelector.selectLanguage')}">
         <img src="${this.getFlagUrl(this.currentLang)}" alt="${currentLangObj?.label}" class="lang-flag-icon" />
         <span class="lang-code">${this.currentLang.toUpperCase()}</span>
         <span class="lang-arrow">▼</span>

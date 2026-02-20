@@ -152,6 +152,96 @@ test.describe('desktop runtime routing guardrails', () => {
     expect(result.calls.some((url) => url.includes('worldmonitor.app/api/stablecoin-markets'))).toBe(true);
   });
 
+  test('runtime fetch patch never sends local-only endpoints to cloud', async ({ page }) => {
+    await page.goto('/tests/runtime-harness.html');
+
+    const result = await page.evaluate(async () => {
+      const runtime = await import('/src/services/runtime.ts');
+      const globalWindow = window as unknown as Record<string, unknown>;
+      const originalFetch = window.fetch.bind(window);
+
+      const calls: string[] = [];
+      const responseJson = (body: unknown, status = 200) =>
+        new Response(JSON.stringify(body), {
+          status,
+          headers: { 'content-type': 'application/json' },
+        });
+
+      window.fetch = (async (input: RequestInfo | URL) => {
+        const url =
+          typeof input === 'string'
+            ? input
+            : input instanceof URL
+            ? input.toString()
+            : input.url;
+        calls.push(url);
+
+        if (url.includes('127.0.0.1:46123/api/local-env-update')) {
+          return responseJson({ error: 'Unauthorized' }, 401);
+        }
+        if (url.includes('127.0.0.1:46123/api/local-validate-secret')) {
+          throw new Error('ECONNREFUSED');
+        }
+
+        if (url.includes('worldmonitor.app/api/local-env-update')) {
+          return responseJson({ leaked: true }, 200);
+        }
+        if (url.includes('worldmonitor.app/api/local-validate-secret')) {
+          return responseJson({ leaked: true }, 200);
+        }
+
+        return responseJson({ ok: true }, 200);
+      }) as typeof window.fetch;
+
+      const previousTauri = globalWindow.__TAURI__;
+      globalWindow.__TAURI__ = { core: { invoke: () => Promise.resolve(null) } };
+      delete globalWindow.__wmFetchPatched;
+
+      try {
+        runtime.installRuntimeFetchPatch();
+
+        const envUpdateResponse = await window.fetch('/api/local-env-update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: 'GROQ_API_KEY', value: 'sk-secret-value' }),
+        });
+
+        let validateError: string | null = null;
+        try {
+          await window.fetch('/api/local-validate-secret', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ key: 'GROQ_API_KEY', value: 'sk-secret-value' }),
+          });
+        } catch (error) {
+          validateError = error instanceof Error ? error.message : String(error);
+        }
+
+        return {
+          envUpdateStatus: envUpdateResponse.status,
+          validateError,
+          calls,
+        };
+      } finally {
+        window.fetch = originalFetch;
+        delete globalWindow.__wmFetchPatched;
+        if (previousTauri === undefined) {
+          delete globalWindow.__TAURI__;
+        } else {
+          globalWindow.__TAURI__ = previousTauri;
+        }
+      }
+    });
+
+    expect(result.envUpdateStatus).toBe(401);
+    expect(result.validateError).toContain('ECONNREFUSED');
+
+    expect(result.calls.some((url) => url.includes('127.0.0.1:46123/api/local-env-update'))).toBe(true);
+    expect(result.calls.some((url) => url.includes('127.0.0.1:46123/api/local-validate-secret'))).toBe(true);
+    expect(result.calls.some((url) => url.includes('worldmonitor.app/api/local-env-update'))).toBe(false);
+    expect(result.calls.some((url) => url.includes('worldmonitor.app/api/local-validate-secret'))).toBe(false);
+  });
+
   test('chunk preload reload guard is one-shot until app boot clears it', async ({ page }) => {
     await page.goto('/tests/runtime-harness.html');
 
@@ -284,6 +374,134 @@ test.describe('desktop runtime routing guardrails', () => {
     expect(result.macArm).toBe('https://worldmonitor.app/api/download?platform=macos-arm64&variant=full');
     expect(result.windowsX64).toBe('https://worldmonitor.app/api/download?platform=windows-exe&variant=full');
     expect(result.linuxFallback).toBe('https://github.com/koala73/worldmonitor/releases/latest');
+  });
+
+  test('MapContainer falls back to SVG when WebGL2 is unavailable', async ({ page }) => {
+    await page.goto('/tests/runtime-harness.html');
+
+    const result = await page.evaluate(async () => {
+      const { DEFAULT_MAP_LAYERS } = await import('/src/config/index.ts');
+      const { initI18n } = await import('/src/services/i18n.ts');
+      await initI18n();
+      const { MapContainer } = await import('/src/components/MapContainer.ts');
+
+      const mapHost = document.createElement('div');
+      mapHost.className = 'map-container';
+      mapHost.style.width = '1200px';
+      mapHost.style.height = '720px';
+      document.body.appendChild(mapHost);
+
+      const originalGetContext = HTMLCanvasElement.prototype.getContext;
+      let map: InstanceType<typeof MapContainer> | null = null;
+
+      try {
+        HTMLCanvasElement.prototype.getContext = (function (
+          this: HTMLCanvasElement,
+          contextId: string,
+          options?: unknown
+        ) {
+          if (contextId === 'webgl2') return null;
+          return originalGetContext.call(this, contextId, options as never);
+        }) as typeof HTMLCanvasElement.prototype.getContext;
+
+        map = new MapContainer(mapHost, {
+          zoom: 1,
+          pan: { x: 0, y: 0 },
+          view: 'global',
+          layers: { ...DEFAULT_MAP_LAYERS },
+          timeRange: '7d',
+        });
+
+        return {
+          isDeckGLMode: map.isDeckGLMode(),
+          hasSvgModeClass: mapHost.classList.contains('svg-mode'),
+          hasDeckModeClass: mapHost.classList.contains('deckgl-mode'),
+          deckWrapperCount: mapHost.querySelectorAll('.deckgl-map-wrapper').length,
+          svgWrapperCount: mapHost.querySelectorAll('.map-wrapper').length,
+        };
+      } finally {
+        HTMLCanvasElement.prototype.getContext = originalGetContext;
+        map?.destroy();
+        mapHost.remove();
+      }
+    });
+
+    expect(result.isDeckGLMode).toBe(false);
+    expect(result.hasSvgModeClass).toBe(true);
+    expect(result.hasDeckModeClass).toBe(false);
+    expect(result.deckWrapperCount).toBe(0);
+    expect(result.svgWrapperCount).toBe(1);
+  });
+
+  test('MapContainer clears partial DeckGL DOM after constructor failure fallback', async ({ page }) => {
+    await page.goto('/tests/runtime-harness.html');
+
+    const result = await page.evaluate(async () => {
+      const { DEFAULT_MAP_LAYERS } = await import('/src/config/index.ts');
+      const { initI18n } = await import('/src/services/i18n.ts');
+      await initI18n();
+      const { MapContainer } = await import('/src/components/MapContainer.ts');
+
+      const mapHost = document.createElement('div');
+      mapHost.className = 'map-container';
+      mapHost.style.width = '1200px';
+      mapHost.style.height = '720px';
+      document.body.appendChild(mapHost);
+
+      const originalGetContext = HTMLCanvasElement.prototype.getContext;
+      const originalGetElementById = Document.prototype.getElementById;
+      let map: InstanceType<typeof MapContainer> | null = null;
+
+      try {
+        HTMLCanvasElement.prototype.getContext = (function (
+          this: HTMLCanvasElement,
+          contextId: string,
+          options?: unknown
+        ) {
+          if (contextId === 'webgl2') {
+            return {} as WebGL2RenderingContext;
+          }
+          return originalGetContext.call(this, contextId, options as never);
+        }) as typeof HTMLCanvasElement.prototype.getContext;
+
+        Document.prototype.getElementById = (function (
+          this: Document,
+          id: string
+        ): HTMLElement | null {
+          if (id === 'deckgl-basemap') {
+            return null;
+          }
+          return originalGetElementById.call(this, id);
+        }) as typeof Document.prototype.getElementById;
+
+        map = new MapContainer(mapHost, {
+          zoom: 1,
+          pan: { x: 0, y: 0 },
+          view: 'global',
+          layers: { ...DEFAULT_MAP_LAYERS },
+          timeRange: '7d',
+        });
+
+        return {
+          isDeckGLMode: map.isDeckGLMode(),
+          hasSvgModeClass: mapHost.classList.contains('svg-mode'),
+          hasDeckModeClass: mapHost.classList.contains('deckgl-mode'),
+          deckWrapperCount: mapHost.querySelectorAll('.deckgl-map-wrapper').length,
+          svgWrapperCount: mapHost.querySelectorAll('.map-wrapper').length,
+        };
+      } finally {
+        HTMLCanvasElement.prototype.getContext = originalGetContext;
+        Document.prototype.getElementById = originalGetElementById;
+        map?.destroy();
+        mapHost.remove();
+      }
+    });
+
+    expect(result.isDeckGLMode).toBe(false);
+    expect(result.hasSvgModeClass).toBe(true);
+    expect(result.hasDeckModeClass).toBe(false);
+    expect(result.deckWrapperCount).toBe(0);
+    expect(result.svgWrapperCount).toBe(1);
   });
 
   test('loadMarkets keeps Yahoo-backed data when Finnhub is skipped', async ({ page }) => {

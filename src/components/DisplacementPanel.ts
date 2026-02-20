@@ -117,34 +117,6 @@ export class DisplacementPanel extends Panel {
         ${tabsHtml}
         ${tableHtml}
       </div>
-      <style>
-        .disp-panel-content { font-size: 12px; }
-        .disp-stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 8px; }
-        .disp-stat-box { background: var(--overlay-subtle); border: 1px solid var(--border); border-radius: 4px; padding: 8px 6px; text-align: center; }
-        .disp-stat-value { display: block; font-size: 16px; font-weight: 700; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
-        .disp-stat-label { display: block; font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
-        .disp-stat-refugees .disp-stat-value { color: var(--threat-critical); }
-        .disp-stat-asylum .disp-stat-value { color: var(--threat-high); }
-        .disp-stat-idps .disp-stat-value { color: var(--threat-medium); }
-        .disp-stat-total .disp-stat-value { color: var(--accent); }
-        .disp-tabs { display: flex; gap: 2px; margin-bottom: 6px; }
-        .disp-tab { background: transparent; border: 1px solid var(--border-strong); color: var(--text-dim); padding: 4px 14px; font-size: 11px; cursor: pointer; border-radius: 3px; transition: all 0.15s; }
-        .disp-tab:hover { border-color: var(--text-faint); color: var(--text-secondary); }
-        .disp-tab-active { background: color-mix(in srgb, var(--threat-critical) 10%, transparent); border-color: var(--threat-critical); color: var(--threat-critical); }
-        .disp-table { width: 100%; border-collapse: collapse; }
-        .disp-table th { text-align: left; color: var(--text-muted); font-weight: 600; font-size: 10px; text-transform: uppercase; padding: 4px 8px; border-bottom: 1px solid var(--border); }
-        .disp-table th:nth-child(3) { text-align: right; }
-        .disp-table td { padding: 5px 8px; border-bottom: 1px solid var(--border-subtle); color: var(--text-secondary); }
-        .disp-row { cursor: pointer; }
-        .disp-row:hover { background: var(--surface-hover); }
-        .disp-name { white-space: nowrap; }
-        .disp-status { width: 70px; }
-        .disp-badge { font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 3px; letter-spacing: 0.5px; }
-        .disp-crisis { background: color-mix(in srgb, var(--semantic-critical) 20%, transparent); color: var(--semantic-critical); }
-        .disp-high { background: color-mix(in srgb, var(--semantic-high) 15%, transparent); color: var(--semantic-high); }
-        .disp-elevated { background: color-mix(in srgb, var(--semantic-elevated) 12%, transparent); color: var(--semantic-elevated); }
-        .disp-count { text-align: right; font-variant-numeric: tabular-nums; }
-      </style>
     `);
 
     this.content.querySelectorAll('.disp-tab').forEach(btn => {

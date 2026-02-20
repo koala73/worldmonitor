@@ -1,5 +1,6 @@
 @import './lang-switcher.css';
 @import './rtl-overrides.css';
+@import './panels.css';
 
 /* ============================================================
    Theme Colors — overridden by [data-theme="light"] below
@@ -813,6 +814,7 @@ canvas,
   cursor: grab;
   transition: transform 0.15s, box-shadow 0.15s;
   position: relative;
+  contain: content;
 }
 
 /* .panel.resized: Custom height set - use grid-row span for height */
@@ -891,6 +893,7 @@ canvas,
   opacity: 0.5;
   transform: scale(1.02);
   box-shadow: 0 8px 24px rgba(0, 255, 136, 0.2);
+  will-change: transform, opacity;
 }
 
 .panel-header {
@@ -2132,6 +2135,7 @@ canvas,
   overflow: hidden;
   box-shadow: 0 0 30px rgba(0, 170, 255, 0.3);
   animation: signal-pulse 0.5s ease-out;
+  will-change: transform, opacity;
 }
 
 @keyframes signal-pulse {
@@ -4752,6 +4756,7 @@ a.prediction-link:hover {
   box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.35);
   transform: translate3d(0, 110%, 0);
   transition: transform 0.22s ease-out;
+  will-change: transform;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
 }
@@ -7640,6 +7645,7 @@ a.prediction-link:hover {
   width: 100%;
   box-shadow: 0 8px 32px var(--shadow-color);
   animation: mobile-warning-appear 0.3s ease-out;
+  will-change: transform, opacity;
 }
 
 @keyframes mobile-warning-appear {
@@ -10531,6 +10537,7 @@ a.prediction-link:hover {
   box-shadow: 0 2px 6px var(--shadow-color);
   transform: translate(-50%, -50%) scale(var(--marker-scale, 1));
   transform-origin: center;
+  will-change: transform;
 }
 
 .tech-event-marker:hover {

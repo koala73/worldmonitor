@@ -13,7 +13,7 @@ import {
   SITE_VARIANT,
 } from '@/config';
 import { BETA_MODE } from '@/config/beta';
-import { fetchCategoryFeeds, getFeedFailures, fetchMultipleStocks, fetchCrypto, fetchPredictions, fetchEarthquakes, fetchWeatherAlerts, fetchFredData, fetchInternetOutages, isOutagesConfigured, fetchAisSignals, initAisStream, getAisStatus, disconnectAisStream, isAisConfigured, fetchCableActivity, fetchProtestEvents, getProtestStatus, fetchFlightDelays, fetchMilitaryFlights, fetchMilitaryVessels, initMilitaryVesselStream, isMilitaryVesselTrackingConfigured, initDB, updateBaseline, calculateDeviation, addToSignalHistory, saveSnapshot, cleanOldSnapshots, analysisWorker, fetchPizzIntStatus, fetchGdeltTensions, fetchNaturalEvents, fetchRecentAwards, fetchOilAnalytics, fetchCyberThreats, drainTrendingSignals } from '@/services';
+import { fetchCategoryFeeds, getFeedFailures, fetchMultipleStocks, fetchCrypto, fetchPredictions, fetchEarthquakes, fetchWeatherAlerts, fetchFredData, fetchInternetOutages, isOutagesConfigured, fetchAisSignals, initAisStream, getAisStatus, disconnectAisStream, isAisConfigured, fetchCableActivity, fetchProtestEvents, getProtestStatus, fetchFlightDelays, fetchMilitaryFlights, fetchMilitaryVessels, initMilitaryVesselStream, isMilitaryVesselTrackingConfigured, fetchUSNIFleetReport, initDB, updateBaseline, calculateDeviation, addToSignalHistory, saveSnapshot, cleanOldSnapshots, analysisWorker, fetchPizzIntStatus, fetchGdeltTensions, fetchNaturalEvents, fetchRecentAwards, fetchOilAnalytics, fetchCyberThreats, drainTrendingSignals } from '@/services';
 import { fetchCountryMarkets } from '@/services/prediction';
 import { mlWorker } from '@/services/ml-worker';
 import { clusterNewsHybrid } from '@/services/clustering';
@@ -194,6 +194,7 @@ export class App {
   private readonly isDesktopApp = isDesktopRuntime();
   private readonly UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
   private updateCheckIntervalId: ReturnType<typeof setInterval> | null = null;
+  private clockIntervalId: ReturnType<typeof setInterval> | null = null;
 
   constructor(containerId: string) {
     const el = document.getElementById(containerId);
@@ -402,6 +403,9 @@ export class App {
 
   private handleDeepLinks(): void {
     const url = new URL(window.location.href);
+    const MAX_DEEP_LINK_RETRIES = 60;
+    const DEEP_LINK_RETRY_INTERVAL_MS = 500;
+    const DEEP_LINK_INITIAL_DELAY_MS = 2000;
 
     // Check for story deep link: /story?c=UA&t=ciianalysis
     if (url.pathname === '/story' || url.searchParams.has('c')) {
@@ -417,14 +421,21 @@ export class App {
         const countryName = countryNames[countryCode.toUpperCase()] || countryCode;
 
         // Wait for data to load, then open story
+        let attempts = 0;
         const checkAndOpen = () => {
           if (dataFreshness.hasSufficientData() && this.latestClusters.length > 0) {
             this.openCountryStory(countryCode.toUpperCase(), countryName);
+            return;
+          }
+          attempts += 1;
+          if (attempts >= MAX_DEEP_LINK_RETRIES) {
+            this.showToast('Data not available');
+            return;
           } else {
-            setTimeout(checkAndOpen, 500);
+            setTimeout(checkAndOpen, DEEP_LINK_RETRY_INTERVAL_MS);
           }
         };
-        setTimeout(checkAndOpen, 2000);
+        setTimeout(checkAndOpen, DEEP_LINK_INITIAL_DELAY_MS);
 
         // Update URL without reload
         history.replaceState(null, '', '/');
@@ -437,14 +448,21 @@ export class App {
     this.pendingDeepLinkCountry = null;
     if (deepLinkCountry) {
       const cName = App.resolveCountryName(deepLinkCountry);
+      let attempts = 0;
       const checkAndOpenBrief = () => {
         if (dataFreshness.hasSufficientData()) {
           this.openCountryBriefByCode(deepLinkCountry, cName);
+          return;
+        }
+        attempts += 1;
+        if (attempts >= MAX_DEEP_LINK_RETRIES) {
+          this.showToast('Data not available');
+          return;
         } else {
-          setTimeout(checkAndOpenBrief, 500);
+          setTimeout(checkAndOpenBrief, DEEP_LINK_RETRY_INTERVAL_MS);
         }
       };
-      setTimeout(checkAndOpenBrief, 2000);
+      setTimeout(checkAndOpenBrief, DEEP_LINK_INITIAL_DELAY_MS);
     }
   }
 
@@ -613,7 +631,7 @@ export class App {
       el.textContent = new Date().toUTCString().replace('GMT', 'UTC');
     };
     tick();
-    setInterval(tick, 1000);
+    this.clockIntervalId = setInterval(tick, 1000);
   }
 
   private setupMobileWarning(): void {
@@ -653,6 +671,7 @@ export class App {
       if (status.locationsMonitored === 0) {
         this.pizzintIndicator?.hide();
         this.statusPanel?.updateApi('PizzINT', { status: 'error' });
+        dataFreshness.recordError('pizzint', 'No monitored locations returned');
         return;
       }
 
@@ -660,10 +679,12 @@ export class App {
       this.pizzintIndicator?.updateStatus(status);
       this.pizzintIndicator?.updateTensions(tensions);
       this.statusPanel?.updateApi('PizzINT', { status: 'ok' });
+      dataFreshness.recordUpdate('pizzint', Math.max(status.locationsMonitored, tensions.length));
     } catch (error) {
       console.error('[App] PizzINT load failed:', error);
       this.pizzintIndicator?.hide();
       this.statusPanel?.updateApi('PizzINT', { status: 'error' });
+      dataFreshness.recordError('pizzint', String(error));
     }
   }
 
@@ -703,7 +724,7 @@ export class App {
       weather: ['weather'],
       outages: ['outages'],
       cyberThreats: ['cyber_threats'],
-      protests: ['acled'],
+      protests: ['acled', 'gdelt_doc'],
       ucdpEvents: ['ucdp_events'],
       displacement: ['unhcr'],
       climate: ['climate'],
@@ -740,7 +761,7 @@ export class App {
         weather: ['weather'],
         outages: ['outages'],
         cyberThreats: ['cyber_threats'],
-        protests: ['acled'],
+        protests: ['acled', 'gdelt_doc'],
         ucdpEvents: ['ucdp_events'],
         displacement: ['unhcr'],
         climate: ['climate'],
@@ -1995,6 +2016,11 @@ export class App {
     if (this.updateCheckIntervalId) {
       clearInterval(this.updateCheckIntervalId);
       this.updateCheckIntervalId = null;
+    }
+
+    if (this.clockIntervalId) {
+      clearInterval(this.clockIntervalId);
+      this.clockIntervalId = null;
     }
 
     // Clear all refresh timeouts
@@ -3546,6 +3572,7 @@ export class App {
       this.statusPanel?.updateFeed('Polymarket', { status: 'ok', itemCount: predictions.length });
       this.statusPanel?.updateApi('Polymarket', { status: 'ok' });
       dataFreshness.recordUpdate('polymarket', predictions.length);
+      dataFreshness.recordUpdate('predictions', predictions.length);
 
       // Run correlation analysis in background (fire-and-forget via Web Worker)
       void this.runCorrelationAnalysis();
@@ -3553,6 +3580,7 @@ export class App {
       this.statusPanel?.updateFeed('Polymarket', { status: 'error', errorMessage: String(error) });
       this.statusPanel?.updateApi('Polymarket', { status: 'error' });
       dataFreshness.recordError('polymarket', String(error));
+      dataFreshness.recordError('predictions', String(error));
     }
   }
 
@@ -3671,6 +3699,7 @@ export class App {
     protests?: { events: SocialUnrestEvent[]; sources: { acled: number; gdelt: number } };
     military?: { flights: MilitaryFlight[]; flightClusters: MilitaryFlightCluster[]; vessels: MilitaryVessel[]; vesselClusters: MilitaryVesselCluster[] };
     earthquakes?: import('@/services/earthquakes').Earthquake[];
+    usniFleet?: import('@/types').USNIFleetReport;
   } = {};
   private cyberThreatsCache: CyberThreat[] | null = null;
 
@@ -3714,6 +3743,7 @@ export class App {
         const protestCount = protestData.sources.acled + protestData.sources.gdelt;
         if (protestCount > 0) dataFreshness.recordUpdate('acled', protestCount);
         if (protestData.sources.gdelt > 0) dataFreshness.recordUpdate('gdelt', protestData.sources.gdelt);
+        if (protestData.sources.gdelt > 0) dataFreshness.recordUpdate('gdelt_doc', protestData.sources.gdelt);
         // Update map only if layer is visible
         if (this.mapLayers.protests) {
           this.map?.setProtests(protestData.events);
@@ -3786,6 +3816,10 @@ export class App {
           vessels: vesselData.vessels,
           vesselClusters: vesselData.clusters,
         };
+        // Store USNI fleet report for strategic posture panel (non-blocking)
+        fetchUSNIFleetReport().then((report) => {
+          if (report) this.intelligenceCache.usniFleet = report;
+        }).catch(() => {});
         ingestFlights(flightData.flights);
         ingestVessels(vesselData.vessels);
         ingestMilitaryForCII(flightData.flights, vesselData.vessels);
@@ -4080,6 +4114,7 @@ export class App {
         this.statusPanel?.updateApi('ACLED', { status: 'warning' });
       }
       this.statusPanel?.updateApi('GDELT Doc', { status: 'ok' });
+      if (protestData.sources.gdelt > 0) dataFreshness.recordUpdate('gdelt_doc', protestData.sources.gdelt);
       return;
     }
     try {
@@ -4093,6 +4128,7 @@ export class App {
       const protestCount = protestData.sources.acled + protestData.sources.gdelt;
       if (protestCount > 0) dataFreshness.recordUpdate('acled', protestCount);
       if (protestData.sources.gdelt > 0) dataFreshness.recordUpdate('gdelt', protestData.sources.gdelt);
+      if (protestData.sources.gdelt > 0) dataFreshness.recordUpdate('gdelt_doc', protestData.sources.gdelt);
       (this.panels['cii'] as CIIPanel)?.refresh();
       const status = getProtestStatus();
       this.statusPanel?.updateFeed('Protests', {
@@ -4111,6 +4147,7 @@ export class App {
       this.statusPanel?.updateFeed('Protests', { status: 'error', errorMessage: String(error) });
       this.statusPanel?.updateApi('ACLED', { status: 'error' });
       this.statusPanel?.updateApi('GDELT Doc', { status: 'error' });
+      dataFreshness.recordError('gdelt_doc', String(error));
     }
   }
 
@@ -4167,6 +4204,9 @@ export class App {
         vessels: vesselData.vessels,
         vesselClusters: vesselData.clusters,
       };
+      fetchUSNIFleetReport().then((report) => {
+        if (report) this.intelligenceCache.usniFleet = report;
+      }).catch(() => {});
       this.map?.setMilitaryFlights(flightData.flights, flightData.clusters);
       this.map?.setMilitaryVessels(vesselData.vessels, vesselData.clusters);
       ingestFlights(flightData.flights);
@@ -4288,9 +4328,16 @@ export class App {
       economicPanel?.updateOil(data);
       const hasData = !!(data.wtiPrice || data.brentPrice || data.usProduction || data.usInventory);
       this.statusPanel?.updateApi('EIA', { status: hasData ? 'ok' : 'error' });
+      if (hasData) {
+        const metricCount = [data.wtiPrice, data.brentPrice, data.usProduction, data.usInventory].filter(Boolean).length;
+        dataFreshness.recordUpdate('oil', metricCount || 1);
+      } else {
+        dataFreshness.recordError('oil', 'Oil analytics returned no values');
+      }
     } catch (e) {
       console.error('[App] Oil analytics failed:', e);
       this.statusPanel?.updateApi('EIA', { status: 'error' });
+      dataFreshness.recordError('oil', String(e));
     }
   }
 
@@ -4300,9 +4347,15 @@ export class App {
       const data = await fetchRecentAwards({ daysBack: 7, limit: 15 });
       economicPanel?.updateSpending(data);
       this.statusPanel?.updateApi('USASpending', { status: data.awards.length > 0 ? 'ok' : 'error' });
+      if (data.awards.length > 0) {
+        dataFreshness.recordUpdate('spending', data.awards.length);
+      } else {
+        dataFreshness.recordError('spending', 'No awards returned');
+      }
     } catch (e) {
       console.error('[App] Government spending failed:', e);
       this.statusPanel?.updateApi('USASpending', { status: 'error' });
+      dataFreshness.recordError('spending', String(e));
     }
   }
 

@@ -235,7 +235,7 @@ export class InsightsPanel extends Panel {
           <div class="insights-progress-fill" style="width: ${percent}%"></div>
         </div>
         <div class="insights-progress-info">
-          <span class="insights-progress-step">Step ${step}/${total}</span>
+          <span class="insights-progress-step">${t('components.insights.step', { step: String(step), total: String(total) })}</span>
           <span class="insights-progress-message">${message}</span>
         </div>
       </div>
@@ -247,7 +247,7 @@ export class InsightsPanel extends Panel {
 
     if (clusters.length === 0) {
       this.setDataBadge('unavailable');
-      this.setContent('<div class="insights-empty">Waiting for news data...</div>');
+      this.setContent(`<div class="insights-empty">${t('components.insights.waitingForData')}</div>`);
       return;
     }
 
@@ -255,7 +255,7 @@ export class InsightsPanel extends Panel {
 
     try {
       // Step 1: Filter and rank stories by composite importance score
-      this.setProgress(1, totalSteps, 'Ranking important stories...');
+      this.setProgress(1, totalSteps, t('components.insights.rankingStories'));
 
       const importantClusters = this.selectTopStories(clusters, 8);
 
@@ -316,14 +316,14 @@ export class InsightsPanel extends Panel {
       }
 
       if (importantClusters.length === 0) {
-        this.setContent('<div class="insights-empty">No breaking or multi-source stories yet</div>');
+        this.setContent(`<div class="insights-empty">${t('components.insights.noStories')}</div>`);
         return;
       }
 
       const titles = importantClusters.map(c => c.primaryTitle);
 
       // Step 2: Analyze sentiment (browser-based, fast)
-      this.setProgress(2, totalSteps, 'Analyzing sentiment...');
+      this.setProgress(2, totalSteps, t('components.insights.analyzingSentiment'));
       let sentiments: Array<{ label: string; score: number }> | null = null;
 
       if (mlWorker.isAvailable) {
@@ -337,7 +337,7 @@ export class InsightsPanel extends Panel {
 
       let usedCachedBrief = loadedFromPersistentCache;
       if (!worldBrief || now - this.lastBriefUpdate > InsightsPanel.BRIEF_COOLDOWN_MS) {
-        this.setProgress(3, totalSteps, 'Generating world brief...');
+        this.setProgress(3, totalSteps, t('components.insights.generatingBrief'));
 
         // Pass focal point context + theater posture to AI for correlation-aware summarization
         // Tech variant: no geopolitical context, just tech news summarization

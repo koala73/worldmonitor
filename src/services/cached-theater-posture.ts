@@ -144,7 +144,7 @@ if (stored) {
   console.log('[CachedTheaterPosture] Restored from localStorage (stale)');
 }
 
-export async function fetchCachedTheaterPosture(): Promise<CachedTheaterPosture | null> {
+export async function fetchCachedTheaterPosture(_signal?: AbortSignal): Promise<CachedTheaterPosture | null> {
   const now = Date.now();
 
   // Return cached if fresh
@@ -173,6 +173,7 @@ export async function fetchCachedTheaterPosture(): Promise<CachedTheaterPosture 
       );
       return cachedPosture;
     } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') throw error;
       console.error('[CachedTheaterPosture] Fetch error:', error);
       return cachedPosture; // Return stale cache on error
     } finally {

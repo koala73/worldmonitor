@@ -94,11 +94,80 @@
     <!-- Theme: apply stored preference before first paint to prevent FOUC -->
     <script>(function(){try{var t=localStorage.getItem('worldmonitor-theme');if(t==='light')document.documentElement.dataset.theme='light';}catch(e){}document.documentElement.classList.add('no-transition');})()</script>
 
+    <!-- Critical CSS: inline skeleton visible before JS boots -->
+    <style>
+      /* ---------- skeleton shell (dark default) ---------- */
+      .skeleton-shell{display:flex;flex-direction:column;height:100vh;background:#0a0a0a;font-family:'SF Mono','Monaco','Inconsolata','Fira Code',monospace;overflow:hidden}
+      .skeleton-header{display:flex;align-items:center;justify-content:space-between;height:40px;padding:8px 16px;background:#141414;border-bottom:1px solid #2a2a2a;flex-shrink:0}
+      .skeleton-header-left{display:flex;align-items:center;gap:12px}
+      .skeleton-header-right{display:flex;align-items:center;gap:12px}
+      .skeleton-pill{height:24px;border-radius:4px;background:#1e1e1e}
+      .skeleton-dot{width:8px;height:8px;border-radius:50%;background:#0f5040}
+      .skeleton-main{flex:1;display:flex;flex-direction:column;overflow:hidden;background:#0a0a0a}
+      .skeleton-map{height:50vh;min-height:200px;border:1px solid #2a2a2a;background:#020a08;display:flex;flex-direction:column;flex-shrink:0}
+      .skeleton-map-bar{height:32px;display:flex;align-items:center;padding:0 12px;background:#141414;border-bottom:1px solid #2a2a2a}
+      .skeleton-map-body{flex:1;position:relative;overflow:hidden}
+      .skeleton-map-body::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 60% 50% at 50% 50%,#0a2a20 0%,#020a08 100%);opacity:.5}
+      .skeleton-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:4px;padding:4px;align-content:start}
+      .skeleton-panel{height:320px;background:#141414;border:1px solid #2a2a2a;border-radius:0;display:flex;flex-direction:column}
+      .skeleton-panel-header{height:36px;display:flex;align-items:center;padding:0 12px;border-bottom:1px solid #1a1a1a}
+      .skeleton-panel-body{flex:1;padding:12px;display:flex;flex-direction:column;gap:10px}
+      .skeleton-line{height:14px;border-radius:4px;background:linear-gradient(90deg,rgba(255,255,255,.05) 25%,rgba(255,255,255,.1) 50%,rgba(255,255,255,.05) 75%);background-size:200% 100%;animation:skel-shimmer 1.5s infinite}
+      .skeleton-line.w75{width:75%}.skeleton-line.w60{width:60%}.skeleton-line.w50{width:50%}.skeleton-line.w85{width:85%}.skeleton-line.w40{width:40%}
+
+      @keyframes skel-shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+
+      /* ---------- skeleton shell (light theme) ---------- */
+      [data-theme="light"] .skeleton-shell{background:#f8f9fa}
+      [data-theme="light"] .skeleton-header{background:#fff;border-bottom-color:#d4d4d4}
+      [data-theme="light"] .skeleton-pill{background:#f0f0f0}
+      [data-theme="light"] .skeleton-dot{background:#16a34a}
+      [data-theme="light"] .skeleton-main{background:#f8f9fa}
+      [data-theme="light"] .skeleton-map{border-color:#d4d4d4;background:#e8f0f8}
+      [data-theme="light"] .skeleton-map-bar{background:#fff;border-bottom-color:#d4d4d4}
+      [data-theme="light"] .skeleton-map-body::after{background:radial-gradient(ellipse 60% 50% at 50% 50%,#b0c8d8 0%,#e8f0f8 100%)}
+      [data-theme="light"] .skeleton-panel{background:#fff;border-color:#d4d4d4}
+      [data-theme="light"] .skeleton-panel-header{border-bottom-color:#e8e8e8}
+      [data-theme="light"] .skeleton-line{background:linear-gradient(90deg,rgba(0,0,0,.04) 25%,rgba(0,0,0,.08) 50%,rgba(0,0,0,.04) 75%);background-size:200% 100%;animation:skel-shimmer 1.5s infinite}
+    </style>
+
     <!-- Styles -->
     <link rel="stylesheet" href="/src/styles/main.css" />
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <!-- Pre-render skeleton: visible instantly, replaced when JS calls renderLayout() -->
+      <div class="skeleton-shell" aria-hidden="true">
+        <div class="skeleton-header">
+          <div class="skeleton-header-left">
+            <div class="skeleton-pill" style="width:120px"></div>
+            <div class="skeleton-pill" style="width:72px"></div>
+            <div class="skeleton-dot"></div>
+          </div>
+          <div class="skeleton-header-right">
+            <div class="skeleton-pill" style="width:80px"></div>
+            <div class="skeleton-pill" style="width:28px;height:28px"></div>
+            <div class="skeleton-pill" style="width:64px"></div>
+          </div>
+        </div>
+        <div class="skeleton-main">
+          <div class="skeleton-map">
+            <div class="skeleton-map-bar">
+              <div class="skeleton-pill" style="width:48px;height:16px"></div>
+            </div>
+            <div class="skeleton-map-body"></div>
+          </div>
+          <div class="skeleton-grid">
+            <div class="skeleton-panel"><div class="skeleton-panel-header"><div class="skeleton-pill" style="width:80px;height:14px"></div></div><div class="skeleton-panel-body"><div class="skeleton-line w85"></div><div class="skeleton-line w75"></div><div class="skeleton-line w60"></div><div class="skeleton-line"></div><div class="skeleton-line w50"></div><div class="skeleton-line w75"></div></div></div>
+            <div class="skeleton-panel"><div class="skeleton-panel-header"><div class="skeleton-pill" style="width:64px;height:14px"></div></div><div class="skeleton-panel-body"><div class="skeleton-line w75"></div><div class="skeleton-line"></div><div class="skeleton-line w60"></div><div class="skeleton-line w85"></div><div class="skeleton-line w40"></div><div class="skeleton-line w75"></div></div></div>
+            <div class="skeleton-panel"><div class="skeleton-panel-header"><div class="skeleton-pill" style="width:96px;height:14px"></div></div><div class="skeleton-panel-body"><div class="skeleton-line"></div><div class="skeleton-line w60"></div><div class="skeleton-line w85"></div><div class="skeleton-line w50"></div><div class="skeleton-line w75"></div><div class="skeleton-line w40"></div></div></div>
+            <div class="skeleton-panel"><div class="skeleton-panel-header"><div class="skeleton-pill" style="width:72px;height:14px"></div></div><div class="skeleton-panel-body"><div class="skeleton-line w60"></div><div class="skeleton-line w85"></div><div class="skeleton-line w75"></div><div class="skeleton-line"></div><div class="skeleton-line w50"></div><div class="skeleton-line w60"></div></div></div>
+            <div class="skeleton-panel"><div class="skeleton-panel-header"><div class="skeleton-pill" style="width:88px;height:14px"></div></div><div class="skeleton-panel-body"><div class="skeleton-line w85"></div><div class="skeleton-line w50"></div><div class="skeleton-line w75"></div><div class="skeleton-line w60"></div><div class="skeleton-line"></div><div class="skeleton-line w40"></div></div></div>
+            <div class="skeleton-panel"><div class="skeleton-panel-header"><div class="skeleton-pill" style="width:56px;height:14px"></div></div><div class="skeleton-panel-body"><div class="skeleton-line w75"></div><div class="skeleton-line w60"></div><div class="skeleton-line"></div><div class="skeleton-line w85"></div><div class="skeleton-line w50"></div><div class="skeleton-line w75"></div></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

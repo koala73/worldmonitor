@@ -1628,10 +1628,19 @@ export class DeckGLMap {
       data: vessels,
       getPosition: (d) => [d.lon, d.lat],
       getRadius: 6000,
-      getFillColor: COLORS.vesselMilitary,
+      getFillColor: (d) => {
+        if (d.usniSource) return [255, 160, 60, 160] as [number, number, number, number]; // Orange, lower alpha for USNI-only
+        return COLORS.vesselMilitary;
+      },
       radiusMinPixels: 4,
       radiusMaxPixels: 10,
       pickable: true,
+      stroked: true,
+      getLineColor: (d) => {
+        if (d.usniSource) return [255, 180, 80, 200] as [number, number, number, number]; // Orange outline
+        return [0, 0, 0, 0] as [number, number, number, number]; // No outline for AIS
+      },
+      lineWidthMinPixels: 2,
     });
   }
 

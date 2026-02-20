@@ -549,7 +549,7 @@ export function calculateCascade(
         country: code,
         countryName: affectedNode.node.name,
         impactLevel: affectedNode.impactLevel,
-        affectedCapacity: getCapacityForCountry(sourceId, code),
+        affectedCapacity: getCapacityForCountry(sourceId, code, graph, affectedNode.dependencyChain),
       });
     }
   }
@@ -569,14 +569,47 @@ export function calculateCascade(
   };
 }
 
-function getCapacityForCountry(sourceId: string, countryCode: string): number {
+function getCapacityForCountry(
+  sourceId: string,
+  countryCode: string,
+  graph: DependencyGraph,
+  dependencyChain: string[],
+): number {
   if (sourceId.startsWith('cable:')) {
     const cableId = sourceId.replace('cable:', '');
     const cable = UNDERSEA_CABLES.find(c => c.id === cableId);
     const countryData = cable?.countriesServed?.find(cs => cs.country === countryCode);
     return countryData?.capacityShare || 0;
   }
-  return 0.1;
+
+  // Check direct edges from source → country
+  const countryId = `country:${countryCode}`;
+  const outgoing = graph.outgoing.get(sourceId) || [];
+  const direct = outgoing.filter(e => e.to === countryId);
+  if (direct.length > 0) {
+    const effective = direct.map(e => e.strength * (1 - (e.redundancy || 0)));
+    return Math.max(...effective);
+  }
+
+  // Walk the BFS dependency chain for indirect impacts (e.g. chokepoint → port → country)
+  if (dependencyChain.length > 2) {
+    let pathCapacity = 1;
+    for (let i = 0; i < dependencyChain.length - 1; i++) {
+      const from = dependencyChain[i]!;
+      const to = dependencyChain[i + 1]!;
+      const stepEdges = graph.outgoing.get(from) || [];
+      const edge = stepEdges.find(e => e.to === to);
+      if (edge) {
+        pathCapacity *= edge.strength * (1 - (edge.redundancy || 0));
+      } else {
+        pathCapacity = 0;
+        break;
+      }
+    }
+    if (pathCapacity > 0) return pathCapacity;
+  }
+
+  return 0;
 }
 
 function findRedundancies(sourceId: string): CascadeResult['redundancies'] {

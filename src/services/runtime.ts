@@ -144,6 +144,12 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function isLocalOnlyApiTarget(target: string): boolean {
+  // Security boundary: endpoints that can carry local secrets must use the
+  // `/api/local-*` prefix so cloud fallback is automatically blocked.
+  return target.startsWith('/api/local-');
+}
+
 async function fetchLocalWithStartupRetry(
   nativeFetch: typeof window.fetch,
   localUrl: string,
@@ -212,8 +218,12 @@ export function installRuntimeFetchPatch(): void {
 
     const localUrl = `${localBase}${target}`;
     if (debug) console.log(`[fetch] intercept → ${target}`);
+    const allowCloudFallback = !isLocalOnlyApiTarget(target);
 
     const cloudFallback = async () => {
+      if (!allowCloudFallback) {
+        throw new Error(`Cloud fallback blocked for local-only endpoint: ${target}`);
+      }
       const cloudUrl = `${getRemoteApiBaseUrl()}${target}`;
       if (debug) console.log(`[fetch] cloud fallback → ${cloudUrl}`);
       return nativeFetch(cloudUrl, init);
@@ -224,12 +234,19 @@ export function installRuntimeFetchPatch(): void {
       const response = await fetchLocalWithStartupRetry(nativeFetch, localUrl, localInit);
       if (debug) console.log(`[fetch] ${target} → ${response.status} (${Math.round(performance.now() - t0)}ms)`);
       if (!response.ok) {
+        if (!allowCloudFallback) {
+          if (debug) console.log(`[fetch] local-only endpoint ${target} returned ${response.status}; skipping cloud fallback`);
+          return response;
+        }
         if (debug) console.log(`[fetch] local ${response.status}, falling back to cloud`);
         return cloudFallback();
       }
       return response;
     } catch (error) {
       if (debug) console.warn(`[runtime] Local API unavailable for ${target}`, error);
+      if (!allowCloudFallback) {
+        throw error;
+      }
       return cloudFallback();
     }
   };

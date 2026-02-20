@@ -3,9 +3,12 @@ import http, { createServer } from 'node:http';
 import https from 'node:https';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
-import { gzipSync } from 'node:zlib';
+import { promisify } from 'node:util';
+import { brotliCompress, gzipSync } from 'node:zlib';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+
+const brotliCompressAsync = promisify(brotliCompress);
 
 // Monkey-patch globalThis.fetch to force IPv4 for HTTPS requests.
 // Node.js built-in fetch (undici) tries IPv6 first via Happy Eyeballs.
@@ -94,6 +97,36 @@ function json(data, status = 200, extraHeaders = {}) {
     status,
     headers: { 'content-type': 'application/json', ...extraHeaders },
   });
+}
+
+function canCompress(headers, body) {
+  return body.length > 1024 && !headers['content-encoding'];
+}
+
+function appendVary(existing, token) {
+  const value = typeof existing === 'string' ? existing : '';
+  const parts = value.split(',').map((p) => p.trim()).filter(Boolean);
+  if (!parts.some((p) => p.toLowerCase() === token.toLowerCase())) {
+    parts.push(token);
+  }
+  return parts.join(', ');
+}
+
+async function maybeCompressResponseBody(body, headers, acceptEncoding = '') {
+  if (!canCompress(headers, body)) return body;
+  headers['vary'] = appendVary(headers['vary'], 'Accept-Encoding');
+
+  if (acceptEncoding.includes('br')) {
+    headers['content-encoding'] = 'br';
+    return brotliCompressAsync(body);
+  }
+
+  if (acceptEncoding.includes('gzip')) {
+    headers['content-encoding'] = 'gzip';
+    return gzipSync(body);
+  }
+
+  return body;
 }
 
 function isBracketSegment(segment) {
@@ -885,7 +918,7 @@ export async function createLocalApiServer(options = {}) {
       const headers = Object.fromEntries(response.headers.entries());
       const corsOrigin = getSidecarCorsOrigin(req);
       headers['access-control-allow-origin'] = corsOrigin;
-      headers['vary'] = headers['vary'] ? headers['vary'] + ', Origin' : 'Origin';
+      headers['vary'] = appendVary(headers['vary'], 'Origin');
 
       if (!skipRecord) {
         recordTraffic({
@@ -898,10 +931,10 @@ export async function createLocalApiServer(options = {}) {
       }
 
       const acceptEncoding = req.headers['accept-encoding'] || '';
-      if (acceptEncoding.includes('gzip') && body.length > 1024) {
-        body = gzipSync(body);
-        headers['content-encoding'] = 'gzip';
-        headers['vary'] = 'Accept-Encoding';
+      body = await maybeCompressResponseBody(body, headers, acceptEncoding);
+
+      if (headers['content-encoding']) {
+        delete headers['content-length'];
       }
 
       res.writeHead(response.status, headers);

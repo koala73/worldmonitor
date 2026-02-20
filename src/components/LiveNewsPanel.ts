@@ -371,8 +371,8 @@ export class LiveNewsPanel extends Panel {
     this.content.innerHTML = `
       <div class="live-offline">
         <div class="offline-icon">📺</div>
-        <div class="offline-text">${channel.name} is not currently live</div>
-        <button class="offline-retry" onclick="this.closest('.panel').querySelector('.live-channel-btn.active')?.click()">Retry</button>
+        <div class="offline-text">${t('components.liveNews.notLive', { name: channel.name })}</div>
+        <button class="offline-retry" onclick="this.closest('.panel').querySelector('.live-channel-btn.active')?.click()">${t('common.retry')}</button>
       </div>
     `;
   }
@@ -385,8 +385,8 @@ export class LiveNewsPanel extends Panel {
     this.content.innerHTML = `
       <div class="live-offline">
         <div class="offline-icon">!</div>
-        <div class="offline-text">${channel.name} cannot be embedded in this app (YouTube ${errorCode})</div>
-        <a class="offline-retry" href="${watchUrl}" target="_blank" rel="noopener noreferrer">Open on YouTube</a>
+        <div class="offline-text">${t('components.liveNews.cannotEmbed', { name: channel.name, code: String(errorCode) })}</div>
+        <a class="offline-retry" href="${watchUrl}" target="_blank" rel="noopener noreferrer">${t('components.liveNews.openOnYouTube')}</a>
       </div>
     `;
   }

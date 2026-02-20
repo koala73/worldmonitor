@@ -76,6 +76,7 @@ export class CountryBriefPage {
   private onExportImage?: (code: string, name: string) => void;
   private boundExportMenuClose: (() => void) | null = null;
   private boundCitationClick: ((e: Event) => void) | null = null;
+  private abortController: AbortController = new AbortController();
 
   constructor() {
     this.overlay = document.createElement('div');
@@ -219,7 +220,13 @@ export class CountryBriefPage {
     this.overlay.classList.add('active');
   }
 
+  public get signal(): AbortSignal {
+    return this.abortController.signal;
+  }
+
   public show(country: string, code: string, score: CountryScore | null, signals: CountryBriefSignals): void {
+    this.abortController.abort();
+    this.abortController = new AbortController();
     this.currentCode = code;
     this.currentName = country;
     this.currentScore = score;
@@ -614,6 +621,7 @@ export class CountryBriefPage {
   }
 
   public hide(): void {
+    this.abortController.abort();
     this.overlay.classList.remove('active');
     this.currentCode = null;
     this.currentName = null;

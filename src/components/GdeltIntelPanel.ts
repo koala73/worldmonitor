@@ -1,6 +1,7 @@
 import { Panel } from './Panel';
-import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
+import { sanitizeUrl } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
+import { h, replaceChildren } from '@/utils/dom-utils';
 import {
   getIntelTopics,
   fetchTopicIntelligence,
@@ -29,19 +30,19 @@ export class GdeltIntelPanel extends Panel {
   }
 
   private createTabs(): void {
-    this.tabsEl = document.createElement('div');
-    this.tabsEl.className = 'gdelt-intel-tabs';
-
-    getIntelTopics().forEach(topic => {
-      const tab = document.createElement('button');
-      tab.className = `gdelt-intel-tab ${topic.id === this.activeTopic.id ? 'active' : ''}`;
-      tab.dataset.topicId = topic.id;
-      tab.title = topic.description;
-      tab.innerHTML = `<span class="tab-icon">${topic.icon}</span><span class="tab-label">${escapeHtml(topic.name)}</span>`;
-
-      tab.addEventListener('click', () => this.selectTopic(topic));
-      this.tabsEl!.appendChild(tab);
-    });
+    this.tabsEl = h('div', { className: 'gdelt-intel-tabs' },
+      ...getIntelTopics().map(topic =>
+        h('button', {
+          className: `gdelt-intel-tab ${topic.id === this.activeTopic.id ? 'active' : ''}`,
+          dataset: { topicId: topic.id },
+          title: topic.description,
+          onClick: () => this.selectTopic(topic),
+        },
+          h('span', { className: 'tab-icon' }, topic.icon),
+          h('span', { className: 'tab-label' }, topic.name),
+        ),
+      ),
+    );
 
     this.element.insertBefore(this.tabsEl, this.content);
   }
@@ -79,28 +80,34 @@ export class GdeltIntelPanel extends Panel {
 
   private renderArticles(articles: GdeltArticle[]): void {
     if (articles.length === 0) {
-      this.content.innerHTML = `<div class="empty-state">${t('components.gdelt.empty')}</div>`;
+      replaceChildren(this.content, h('div', { className: 'empty-state' }, t('components.gdelt.empty')));
       return;
     }
 
-    const html = articles.map(article => this.renderArticle(article)).join('');
-    this.content.innerHTML = `<div class="gdelt-intel-articles">${html}</div>`;
+    replaceChildren(this.content,
+      h('div', { className: 'gdelt-intel-articles' },
+        ...articles.map(article => this.buildArticle(article)),
+      ),
+    );
   }
 
-  private renderArticle(article: GdeltArticle): string {
+  private buildArticle(article: GdeltArticle): HTMLElement {
     const domain = article.source || extractDomain(article.url);
     const timeAgo = formatArticleDate(article.date);
     const toneClass = article.tone ? (article.tone < -2 ? 'tone-negative' : article.tone > 2 ? 'tone-positive' : '') : '';
 
-    return `
-      <a href="${sanitizeUrl(article.url)}" target="_blank" rel="noopener" class="gdelt-intel-article ${toneClass}">
-        <div class="article-header">
-          <span class="article-source">${escapeHtml(domain)}</span>
-          <span class="article-time">${escapeHtml(timeAgo)}</span>
-        </div>
-        <div class="article-title">${escapeHtml(article.title)}</div>
-      </a>
-    `;
+    return h('a', {
+      href: sanitizeUrl(article.url),
+      target: '_blank',
+      rel: 'noopener',
+      className: `gdelt-intel-article ${toneClass}`.trim(),
+    },
+      h('div', { className: 'article-header' },
+        h('span', { className: 'article-source' }, domain),
+        h('span', { className: 'article-time' }, timeAgo),
+      ),
+      h('div', { className: 'article-title' }, article.title),
+    );
   }
 
   public async refresh(): Promise<void> {

@@ -1,4 +1,5 @@
 import { h, Component } from 'preact';
+import { t } from '@/services/i18n';
 
 export interface VerificationCheck {
   id: string;
@@ -14,19 +15,21 @@ export interface VerificationResult {
   notes: string[];
 }
 
-const VERIFICATION_TEMPLATE: VerificationCheck[] = [
-  { id: 'recency', label: 'Recent timestamp confirmed', checked: false, icon: '🕐' },
-  { id: 'geolocation', label: 'Location verified', checked: false, icon: '📍' },
-  { id: 'source', label: 'Primary source identified', checked: false, icon: '📰' },
-  { id: 'crossref', label: 'Cross-referenced with other sources', checked: false, icon: '🔗' },
-  { id: 'no_ai', label: 'No AI generation artifacts', checked: false, icon: '🤖' },
-  { id: 'no_recrop', label: 'Not recycled/old footage', checked: false, icon: '🔄' },
-  { id: 'metadata', label: 'Metadata verified', checked: false, icon: '📋' },
-  { id: 'context', label: 'Context established', checked: false, icon: '📖' },
-];
+function getVerificationTemplate(): VerificationCheck[] {
+  return [
+    { id: 'recency', label: t('components.verification.checks.recency'), checked: false, icon: '🕐' },
+    { id: 'geolocation', label: t('components.verification.checks.geolocation'), checked: false, icon: '📍' },
+    { id: 'source', label: t('components.verification.checks.source'), checked: false, icon: '📰' },
+    { id: 'crossref', label: t('components.verification.checks.crossref'), checked: false, icon: '🔗' },
+    { id: 'no_ai', label: t('components.verification.checks.noAi'), checked: false, icon: '🤖' },
+    { id: 'no_recrop', label: t('components.verification.checks.noRecrop'), checked: false, icon: '🔄' },
+    { id: 'metadata', label: t('components.verification.checks.metadata'), checked: false, icon: '📋' },
+    { id: 'context', label: t('components.verification.checks.context'), checked: false, icon: '📖' },
+  ];
+}
 
 export class VerificationChecklist extends Component {
-  private checks: VerificationCheck[] = VERIFICATION_TEMPLATE.map(c => ({ ...c }));
+  private checks: VerificationCheck[] = getVerificationTemplate();
   private notes: string[] = [];
   private manualNote: string = '';
 
@@ -59,7 +62,7 @@ export class VerificationChecklist extends Component {
   }
 
   private reset(): void {
-    this.checks = VERIFICATION_TEMPLATE.map(c => ({ ...c }));
+    this.checks = getVerificationTemplate();
     this.notes = [];
     this.manualNote = '';
     this.setState({});
@@ -76,16 +79,16 @@ export class VerificationChecklist extends Component {
     };
 
     const verdictLabels: Record<string, string> = {
-      verified: 'VERIFIED',
-      likely: 'LIKELY AUTHENTIC',
-      uncertain: 'UNCERTAIN',
-      unreliable: 'UNRELIABLE',
+      verified: t('components.verification.verdicts.verified'),
+      likely: t('components.verification.verdicts.likely'),
+      uncertain: t('components.verification.verdicts.uncertain'),
+      unreliable: t('components.verification.verdicts.unreliable'),
     };
 
     return h('div', { class: 'verification-checklist' },
       h('div', { class: 'checklist-header' },
-        h('h3', null, 'Information Verification Checklist'),
-        h('p', { class: 'hint' }, 'Based on Bellingcat\'s OSH Framework'),
+        h('h3', null, t('components.verification.title')),
+        h('p', { class: 'hint' }, t('components.verification.hint')),
       ),
       h('div', {
         class: 'score-display',
@@ -110,10 +113,10 @@ export class VerificationChecklist extends Component {
         ),
       ),
       h('div', { class: 'notes-section' },
-        h('h4', null, 'Verification Notes'),
+        h('h4', null, t('components.verification.notesTitle')),
         h('div', { class: 'notes-list' },
           this.notes.length === 0
-            ? h('p', { class: 'empty' }, 'No notes added')
+            ? h('p', { class: 'empty' }, t('components.verification.noNotes'))
             : this.notes.map((note, i) =>
                 h('div', { key: i, class: 'note-item' }, `• ${note}`)
               ),
@@ -123,14 +126,14 @@ export class VerificationChecklist extends Component {
             type: 'text',
             value: this.manualNote,
             onInput: (e: Event) => { this.manualNote = (e.target as HTMLInputElement).value; },
-            placeholder: 'Add verification note...',
+            placeholder: t('components.verification.addNotePlaceholder'),
             onKeyPress: (e: KeyboardEvent) => { if (e.key === 'Enter') this.addNote(); },
           }),
-          h('button', { onClick: () => this.addNote() }, 'Add'),
+          h('button', { onClick: () => this.addNote() }, t('components.verification.add')),
         ),
       ),
       h('div', { class: 'checklist-actions' },
-        h('button', { class: 'reset-btn', onClick: () => this.reset() }, 'Reset Checklist'),
+        h('button', { class: 'reset-btn', onClick: () => this.reset() }, t('components.verification.resetChecklist')),
       ),
       h('style', null, `
         .verification-checklist { background: var(--bg); border-radius: 8px; padding: 16px; max-width: 400px; }

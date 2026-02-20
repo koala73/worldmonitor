@@ -35,9 +35,10 @@ Sentry.init({
     /Non-Error promise rejection captured with value:/,
     /Connection to Indexed Database server lost/,
     /webkit\.messageHandlers/,
-    /unsafe-eval.*Content Security Policy/,
+    /(?:unsafe-eval.*Content Security Policy|Content Security Policy.*unsafe-eval)/,
     /Fullscreen request denied/,
     /requestFullscreen/,
+    /webkitEnterFullscreen/,
     /vc_text_indicators_context/,
     /Program failed to link: null/,
     /too much recursion/,
@@ -57,13 +58,14 @@ Sentry.init({
     /Unexpected identifier 'https'/,
     /Can't find variable: _0x/,
     /WKWebView was deallocated/,
+    /Unexpected end of input/,
   ],
   beforeSend(event) {
     const msg = event.exception?.values?.[0]?.value ?? '';
     if (msg.length <= 3 && /^[a-zA-Z_$]+$/.test(msg)) return null;
     const frames = event.exception?.values?.[0]?.stacktrace?.frames ?? [];
     // Suppress maplibre internal null-access crashes (light, placement) only when stack is in map chunk
-    if (/this\.style\._layers|reading '_layers'|this\.light is null|can't access property "(type|setFilter)", \w+ is (null|undefined)|Cannot read properties of null \(reading '(id|type|setFilter|_layers)'\)|null is not an object \(evaluating '(E\.|this\.style)/.test(msg)) {
+    if (/this\.style\._layers|reading '_layers'|this\.light is null|can't access property "(id|type|setFilter)", \w+ is (null|undefined)|Cannot read properties of null \(reading '(id|type|setFilter|_layers)'\)|null is not an object \(evaluating '(E\.|this\.style)/.test(msg)) {
       if (frames.some(f => /\/map-[A-Za-z0-9]+\.js/.test(f.filename ?? ''))) return null;
     }
     return event;

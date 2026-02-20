@@ -13,6 +13,7 @@ import {
   initAisStream,
   type AisPositionData,
 } from './maritime';
+import { fetchUSNIFleetReport, mergeUSNIWithAIS } from './usni-fleet';
 
 // Cache for API responses
 let vesselCache: { data: MilitaryVessel[]; timestamp: number } | null = null;
@@ -553,35 +554,48 @@ export async function fetchMilitaryVessels(): Promise<{
   console.log(`[Military Vessels] fetchMilitaryVessels called - isTracking: ${isTracking}, isAisConfigured: ${isAisConfigured()}, trackedVessels.size: ${trackedVessels.size}`);
 
   return breaker.execute(async () => {
-    // Check cache first
+    let vessels: MilitaryVessel[] = [];
+
+    // Check cache first, but still run USNI merge so output is consistent.
     if (vesselCache && Date.now() - vesselCache.timestamp < CACHE_TTL) {
-      console.log(`[Military Vessels] Returning cached: ${vesselCache.data.length} vessels`);
-      const clusters = clusterVessels(vesselCache.data);
-      return { vessels: vesselCache.data, clusters };
+      vessels = vesselCache.data;
+      console.log(`[Military Vessels] Returning cached base vessels: ${vessels.length}`);
+    } else {
+      // Initialize stream if not running
+      if (!isTracking && isAisConfigured()) {
+        console.log('[Military Vessels] Initializing stream from fetchMilitaryVessels...');
+        initMilitaryVesselStream();
+      }
+
+      // Clean up old data
+      cleanup();
+
+      // Convert tracked vessels to array
+      vessels = Array.from(trackedVessels.values());
+      console.log(`[Military Vessels] After cleanup, returning ${vessels.length} vessels (trackedVessels.size: ${trackedVessels.size})`);
+
+      // Only cache non-empty results - empty results due to timing shouldn't block future calls
+      if (vessels.length > 0) {
+        vesselCache = { data: vessels, timestamp: Date.now() };
+      }
     }
 
-    // Initialize stream if not running
-    if (!isTracking && isAisConfigured()) {
-      console.log('[Military Vessels] Initializing stream from fetchMilitaryVessels...');
-      initMilitaryVesselStream();
+    // Generate AIS-only clusters
+    const aisClusters = clusterVessels(vessels);
+
+    // Merge with USNI Fleet Tracker data (non-blocking)
+    try {
+      const usniReport = await fetchUSNIFleetReport();
+      if (usniReport && usniReport.vessels.length > 0) {
+        const merged = mergeUSNIWithAIS(vessels, usniReport, aisClusters);
+        console.log(`[Military Vessels] USNI merge: ${vessels.length} AIS + ${usniReport.vessels.length} USNI → ${merged.vessels.length} total`);
+        return merged;
+      }
+    } catch (e) {
+      console.warn('[Military Vessels] USNI merge failed, using AIS only:', (e as Error).message);
     }
 
-    // Clean up old data
-    cleanup();
-
-    // Convert tracked vessels to array
-    const vessels = Array.from(trackedVessels.values());
-    console.log(`[Military Vessels] After cleanup, returning ${vessels.length} vessels (trackedVessels.size: ${trackedVessels.size})`);
-
-    // Only cache non-empty results - empty results due to timing shouldn't block future calls
-    if (vessels.length > 0) {
-      vesselCache = { data: vessels, timestamp: Date.now() };
-    }
-
-    // Generate clusters
-    const clusters = clusterVessels(vessels);
-
-    return { vessels, clusters };
+    return { vessels, clusters: aisClusters };
   }, { vessels: [], clusters: [] });
 }
 

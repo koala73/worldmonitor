@@ -36,6 +36,12 @@ export class SignalModal {
     document.body.appendChild(this.element);
     this.setupEventListeners();
     this.initAudio();
+
+    // Remove will-change after entrance animation to free GPU memory
+    const modal = this.element.querySelector('.signal-modal') as HTMLElement | null;
+    modal?.addEventListener('animationend', () => {
+      modal.style.willChange = 'auto';
+    }, { once: true });
   }
 
   private initAudio(): void {

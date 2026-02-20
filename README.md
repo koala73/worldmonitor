@@ -860,7 +860,7 @@ All three variants run on three platforms that work together:
            │  ┌───────────────────────────────────┐
            │  │     Tauri Desktop (Rust + Node)   │
            │  │  OS keychain · Token-auth sidecar │
-           │  │  60+ local API handlers · gzip    │
+           │  │  60+ local API handlers · br/gzip    │
            │  │  Cloud fallback · Traffic logging │
            │  └───────────────────────────────────┘
            │
@@ -883,7 +883,7 @@ All three variants run on three platforms that work together:
 
 The Vercel edge functions connect to Railway via `WS_RELAY_URL` (server-side, HTTPS) while browser clients connect via `VITE_WS_RELAY_URL` (client-side, WSS). This separation keeps the relay URL configurable per deployment without leaking server-side configuration to the browser.
 
-All Railway relay responses are gzip-compressed (zlib `gzipSync`) when the client accepts it and the payload exceeds 1KB, reducing egress by ~80% for JSON and XML responses.
+All Railway relay responses are gzip-compressed (zlib `gzipSync`) when the client accepts it and the payload exceeds 1KB, reducing egress by ~80% for JSON and XML responses. The desktop local sidecar now prefers Brotli (`br`) and falls back to gzip for payloads larger than 1KB, setting `Content-Encoding` and `Vary: Accept-Encoding` automatically.
 
 ---
 
@@ -967,9 +967,25 @@ Every API edge function includes `Cache-Control` headers that enable Vercel's CD
 
 Static assets use content-hash filenames with 1-year immutable cache headers. The service worker file (`sw.js`) is never cached (`max-age=0, must-revalidate`) to ensure update detection.
 
+### Brotli Pre-Compression (Build-Time)
+
+`vite build` now emits pre-compressed Brotli artifacts (`*.br`) for static assets larger than 1KB (JS, CSS, HTML, SVG, JSON, XML, TXT, WASM). This reduces transfer size by roughly 20–30% vs gzip-only delivery when the edge can serve Brotli directly.
+
+For the Hetzner Nginx origin, enable static compressed file serving so `dist/*.br` files are returned without runtime recompression:
+
+```nginx
+gzip on;
+gzip_static on;
+
+brotli on;
+brotli_static on;
+```
+
+Cloudflare will negotiate Brotli automatically for compatible clients when the origin/edge has Brotli assets available.
+
 ### Railway Relay Compression
 
-All relay server responses pass through `gzipSync` when the client accepts gzip and the payload exceeds 1KB. This applies to OpenSky aircraft JSON, RSS XML feeds, UCDP event data, AIS snapshots, and health checks — reducing wire size by approximately 80%.
+All relay server responses pass through `gzipSync` when the client accepts gzip and the payload exceeds 1KB. Sidecar API responses prefer Brotli and use gzip fallback with proper `Content-Encoding`/`Vary` headers for the same threshold. This applies to OpenSky aircraft JSON, RSS XML feeds, UCDP event data, AIS snapshots, and health checks — reducing wire size by approximately 50–80%.
 
 ### Frontend Polling Intervals
 

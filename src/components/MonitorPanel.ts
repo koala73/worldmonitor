@@ -3,7 +3,8 @@ import { t } from '@/services/i18n';
 import type { Monitor, NewsItem } from '@/types';
 import { MONITOR_COLORS } from '@/config';
 import { generateId, formatTime, getCSSColor } from '@/utils';
-import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
+import { sanitizeUrl } from '@/utils/sanitize';
+import { h, replaceChildren, clearChildren } from '@/utils/dom-utils';
 
 export class MonitorPanel extends Panel {
   private monitors: Monitor[] = [];
@@ -16,32 +17,29 @@ export class MonitorPanel extends Panel {
   }
 
   private renderInput(): void {
-    this.content.innerHTML = '';
-    const inputContainer = document.createElement('div');
-    inputContainer.className = 'monitor-input-container';
-    inputContainer.innerHTML = `
-      <input type="text" class="monitor-input" id="monitorKeywords" placeholder="${t('components.monitor.placeholder')}">
-      <button class="monitor-add-btn" id="addMonitorBtn">${t('components.monitor.add')}</button>
-    `;
+    clearChildren(this.content);
+
+    const input = h('input', {
+      type: 'text',
+      className: 'monitor-input',
+      id: 'monitorKeywords',
+      placeholder: t('components.monitor.placeholder'),
+      onKeypress: (e: Event) => { if ((e as KeyboardEvent).key === 'Enter') this.addMonitor(); },
+    });
+
+    const inputContainer = h('div', { className: 'monitor-input-container' },
+      input,
+      h('button', { className: 'monitor-add-btn', id: 'addMonitorBtn', onClick: () => this.addMonitor() },
+        t('components.monitor.add'),
+      ),
+    );
+
+    const monitorsList = h('div', { id: 'monitorsList' });
+    const monitorsResults = h('div', { id: 'monitorsResults' });
 
     this.content.appendChild(inputContainer);
-
-    const monitorsList = document.createElement('div');
-    monitorsList.id = 'monitorsList';
     this.content.appendChild(monitorsList);
-
-    const monitorsResults = document.createElement('div');
-    monitorsResults.id = 'monitorsResults';
     this.content.appendChild(monitorsResults);
-
-    inputContainer.querySelector('#addMonitorBtn')?.addEventListener('click', () => {
-      this.addMonitor();
-    });
-
-    const input = inputContainer.querySelector('#monitorKeywords') as HTMLInputElement;
-    input?.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') this.addMonitor();
-    });
 
     this.renderMonitorsList();
   }
@@ -74,24 +72,18 @@ export class MonitorPanel extends Panel {
     const list = document.getElementById('monitorsList');
     if (!list) return;
 
-    list.innerHTML = this.monitors
-      .map(
-        (m) => `
-      <span class="monitor-tag">
-        <span class="monitor-tag-color" style="background: ${escapeHtml(m.color)}"></span>
-        ${m.keywords.map(k => escapeHtml(k)).join(', ')}
-        <span class="monitor-tag-remove" data-id="${escapeHtml(m.id)}">×</span>
-      </span>
-    `
-      )
-      .join('');
-
-    list.querySelectorAll('.monitor-tag-remove').forEach((el) => {
-      el.addEventListener('click', (e) => {
-        const id = (e.target as HTMLElement).dataset.id;
-        if (id) this.removeMonitor(id);
-      });
-    });
+    replaceChildren(list,
+      ...this.monitors.map((m) =>
+        h('span', { className: 'monitor-tag' },
+          h('span', { className: 'monitor-tag-color', style: { background: m.color } }),
+          m.keywords.join(', '),
+          h('span', {
+            className: 'monitor-tag-remove',
+            onClick: () => this.removeMonitor(m.id),
+          }, '×'),
+        ),
+      ),
+    );
   }
 
   public renderResults(news: NewsItem[]): void {
@@ -99,8 +91,11 @@ export class MonitorPanel extends Panel {
     if (!results) return;
 
     if (this.monitors.length === 0) {
-      results.innerHTML =
-        `<div style="color: var(--text-dim); font-size: 10px; margin-top: 12px;">${t('components.monitor.addKeywords')}</div>`;
+      replaceChildren(results,
+        h('div', { style: 'color: var(--text-dim); font-size: 10px; margin-top: 12px;' },
+          t('components.monitor.addKeywords'),
+        ),
+      );
       return;
     }
 
@@ -131,8 +126,11 @@ export class MonitorPanel extends Panel {
     });
 
     if (unique.length === 0) {
-      results.innerHTML =
-        `<div style="color: var(--text-dim); font-size: 10px; margin-top: 12px;">${t('components.monitor.noMatches', { count: String(news.length) })}</div>`;
+      replaceChildren(results,
+        h('div', { style: 'color: var(--text-dim); font-size: 10px; margin-top: 12px;' },
+          t('components.monitor.noMatches', { count: String(news.length) }),
+        ),
+      );
       return;
     }
 
@@ -140,20 +138,24 @@ export class MonitorPanel extends Panel {
       ? t('components.monitor.showingMatches', { count: '10', total: String(unique.length) })
       : `${unique.length} ${unique.length === 1 ? t('components.monitor.match') : t('components.monitor.matches')}`;
 
-    results.innerHTML = `
-      <div style="color: var(--text-dim); font-size: 10px; margin: 12px 0 8px;">${countText}</div>
-      ${unique
-        .slice(0, 10)
-        .map(
-          (item) => `
-        <div class="item" style="border-left: 2px solid ${escapeHtml(item.monitorColor || '')}; padding-left: 8px; margin-left: -8px;">
-          <div class="item-source">${escapeHtml(item.source)}</div>
-          <a class="item-title" href="${sanitizeUrl(item.link)}" target="_blank" rel="noopener">${escapeHtml(item.title)}</a>
-          <div class="item-time">${formatTime(item.pubDate)}</div>
-        </div>
-      `
-        )
-        .join('')}`;
+    replaceChildren(results,
+      h('div', { style: 'color: var(--text-dim); font-size: 10px; margin: 12px 0 8px;' }, countText),
+      ...unique.slice(0, 10).map((item) =>
+        h('div', {
+          className: 'item',
+          style: `border-left: 2px solid ${item.monitorColor || ''}; padding-left: 8px; margin-left: -8px;`,
+        },
+          h('div', { className: 'item-source' }, item.source),
+          h('a', {
+            className: 'item-title',
+            href: sanitizeUrl(item.link),
+            target: '_blank',
+            rel: 'noopener',
+          }, item.title),
+          h('div', { className: 'item-time' }, formatTime(item.pubDate)),
+        ),
+      ),
+    );
   }
 
   public onChanged(callback: (monitors: Monitor[]) => void): void {

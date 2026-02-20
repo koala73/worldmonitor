@@ -58,7 +58,7 @@ export class NewsPanel extends Panel {
         chunkSize: 8, // Render 8 items per chunk
         bufferChunks: 1, // 1 chunk buffer above/below
       },
-      (prepared) => this.renderClusterHtml(
+      (prepared) => this.renderClusterHtmlSafely(
         prepared.cluster,
         prepared.isNew,
         prepared.shouldHighlight,
@@ -379,10 +379,30 @@ export class NewsPanel extends Panel {
     } else {
       // Direct render for small lists
       const html = prepared
-        .map(p => this.renderClusterHtml(p.cluster, p.isNew, p.shouldHighlight, p.showNewTag))
+        .map(p => this.renderClusterHtmlSafely(p.cluster, p.isNew, p.shouldHighlight, p.showNewTag))
         .join('');
       this.setContent(html);
       this.bindRelatedAssetEvents();
+    }
+  }
+
+  private renderClusterHtmlSafely(
+    cluster: ClusteredEvent,
+    isNew: boolean,
+    shouldHighlight: boolean,
+    showNewTag: boolean
+  ): string {
+    try {
+      return this.renderClusterHtml(cluster, isNew, shouldHighlight, showNewTag);
+    } catch (error) {
+      console.error('[NewsPanel] Failed to render cluster card:', error, cluster);
+      const clusterId = typeof cluster?.id === 'string' ? cluster.id : 'unknown-cluster';
+      return `
+        <div class="item clustered item-render-error" data-cluster-id="${escapeHtml(clusterId)}">
+          <div class="item-source">${t('common.error')}</div>
+          <div class="item-title">Failed to display this cluster.</div>
+        </div>
+      `;
     }
   }
 

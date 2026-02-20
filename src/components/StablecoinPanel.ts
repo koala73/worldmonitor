@@ -50,6 +50,7 @@ export class StablecoinPanel extends Panel {
       this.data = await client.listStablecoinMarkets({ coins: [] });
       this.error = null;
     } catch (err) {
+      if (this.isAbortError(err)) return;
       this.error = err instanceof Error ? err.message : 'Failed to fetch';
     } finally {
       this.loading = false;

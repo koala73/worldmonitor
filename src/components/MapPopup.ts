@@ -176,7 +176,14 @@ export class MapPopup {
       this.popup.addEventListener('touchmove', this.handleSheetTouchMove, { passive: false });
       this.popup.addEventListener('touchend', this.handleSheetTouchEnd);
       this.popup.addEventListener('touchcancel', this.handleSheetTouchEnd);
-      requestAnimationFrame(() => this.popup?.classList.add('open'));
+      requestAnimationFrame(() => {
+        if (!this.popup) return;
+        this.popup.classList.add('open');
+        // Remove will-change after slide-in transition to free GPU memory
+        this.popup.addEventListener('transitionend', () => {
+          if (this.popup) this.popup.style.willChange = 'auto';
+        }, { once: true });
+      });
     }
 
     // Click outside to close
@@ -2015,6 +2022,11 @@ export class MapPopup {
       ? `<span class="popup-badge high">${t('popups.militaryVessel.aisDark')}</span>`
       : '';
 
+    // USNI deployment status badge
+    const deploymentBadge = vessel.usniDeploymentStatus && vessel.usniDeploymentStatus !== 'unknown'
+      ? `<span class="popup-badge ${vessel.usniDeploymentStatus === 'deployed' ? 'high' : vessel.usniDeploymentStatus === 'underway' ? 'elevated' : 'low'}">${vessel.usniDeploymentStatus.toUpperCase().replace('-', ' ')}</span>`
+      : '';
+
     // Show AIS ship type when military type is unknown
     const displayType = vessel.vesselType === 'unknown' && vessel.aisShipType
       ? vessel.aisShipType
@@ -2026,7 +2038,7 @@ export class MapPopup {
     const vesselOperator = escapeHtml(operatorLabels[vessel.operator] || vessel.operatorCountry || t('popups.unknown'));
     const vesselTypeLabel = escapeHtml(displayType);
     const vesselBadgeType = escapeHtml(badgeType);
-    const vesselMmsi = escapeHtml(vessel.mmsi);
+    const vesselMmsi = escapeHtml(vessel.mmsi || '—');
     const vesselHull = vessel.hullNumber ? escapeHtml(vessel.hullNumber) : '';
     const vesselNote = vessel.note ? escapeHtml(vessel.note) : '';
 
@@ -2034,6 +2046,7 @@ export class MapPopup {
       <div class="popup-header military-vessel ${vessel.operator}">
         <span class="popup-title">${vesselName}</span>
         ${darkWarning}
+        ${deploymentBadge}
         <span class="popup-badge elevated">${vesselBadgeType}</span>
         <button class="popup-close">×</button>
       </div>
@@ -2044,6 +2057,18 @@ export class MapPopup {
             <span class="stat-label">${t('popups.type')}</span>
             <span class="stat-value">${vesselTypeLabel}</span>
           </div>
+          ${vessel.usniRegion ? `
+          <div class="popup-stat">
+            <span class="stat-label">${t('popups.militaryVessel.region')}</span>
+            <span class="stat-value">${escapeHtml(vessel.usniRegion)}</span>
+          </div>
+          ` : ''}
+          ${vessel.usniStrikeGroup ? `
+          <div class="popup-stat">
+            <span class="stat-label">${t('popups.militaryVessel.strikeGroup')}</span>
+            <span class="stat-value">${escapeHtml(vessel.usniStrikeGroup)}</span>
+          </div>
+          ` : ''}
           <div class="popup-stat">
             <span class="stat-label">${t('popups.militaryVessel.speed')}</span>
             <span class="stat-value">${vessel.speed} kts</span>
@@ -2052,10 +2077,12 @@ export class MapPopup {
             <span class="stat-label">${t('popups.militaryVessel.heading')}</span>
             <span class="stat-value">${Math.round(vessel.heading)}°</span>
           </div>
+          ${vessel.mmsi ? `
           <div class="popup-stat">
             <span class="stat-label">${t('popups.militaryVessel.mmsi')}</span>
             <span class="stat-value">${vesselMmsi}</span>
           </div>
+          ` : ''}
           ${vessel.hullNumber ? `
           <div class="popup-stat">
             <span class="stat-label">${t('popups.militaryVessel.hull')}</span>
@@ -2063,8 +2090,11 @@ export class MapPopup {
           </div>
           ` : ''}
         </div>
+        ${vessel.usniActivityDescription ? `<p class="popup-description"><strong>${t('popups.militaryVessel.usniIntel')}:</strong> ${escapeHtml(vessel.usniActivityDescription)}</p>` : ''}
         ${vessel.note ? `<p class="popup-description">${vesselNote}</p>` : ''}
         ${vessel.isDark ? `<p class="popup-description alert">${t('popups.militaryVessel.darkDescription')}</p>` : ''}
+        ${vessel.usniSource ? `<p class="popup-description" style="opacity:0.7;font-size:0.85em">${t('popups.militaryVessel.approximatePosition')}</p>` : ''}
+        ${vessel.usniArticleUrl ? `<div class="popup-attribution"><a href="${escapeHtml(vessel.usniArticleUrl)}" target="_blank" rel="noopener">${t('popups.militaryVessel.usniSource')}${vessel.usniArticleDate ? ` (${new Date(vessel.usniArticleDate).toLocaleDateString()})` : ''}</a></div>` : ''}
       </div>
     `;
   }

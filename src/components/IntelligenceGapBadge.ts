@@ -158,7 +158,7 @@ export class IntelligenceFindingsBadge {
     menu.className = 'intel-findings-context-menu';
     menu.style.left = `${x}px`;
     menu.style.top = `${y}px`;
-    menu.innerHTML = '<div class="context-menu-item">Hide Intelligence Findings</div>';
+    menu.innerHTML = `<div class="context-menu-item">${t('components.intelligenceFindings.hideFindings')}</div>`;
 
     menu.querySelector('.context-menu-item')!.addEventListener('click', (e) => {
       e.stopPropagation();

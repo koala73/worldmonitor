@@ -142,7 +142,7 @@ async function loadPersistentRiskScores(): Promise<CachedRiskScores | null> {
   return entry?.data ?? null;
 }
 
-export async function fetchCachedRiskScores(): Promise<CachedRiskScores | null> {
+export async function fetchCachedRiskScores(_signal?: AbortSignal): Promise<CachedRiskScores | null> {
   const now = Date.now();
 
   if (cachedScores && now - lastFetchTime < REFETCH_INTERVAL_MS) {
@@ -164,6 +164,7 @@ export async function fetchCachedRiskScores(): Promise<CachedRiskScores | null> 
       console.log('[CachedRiskScores] Loaded via sebuf RPC');
       return cachedScores;
     } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') throw error;
       console.error('[CachedRiskScores] Fetch error:', error);
       return cachedScores ?? await loadPersistentRiskScores();
     } finally {

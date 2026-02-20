@@ -750,6 +750,54 @@ export interface MilitaryVessel {
   confidence: 'high' | 'medium' | 'low';
   isInteresting?: boolean;
   note?: string;
+  usniRegion?: string;
+  usniDeploymentStatus?: USNIDeploymentStatus;
+  usniStrikeGroup?: string;
+  usniActivityDescription?: string;
+  usniArticleUrl?: string;
+  usniArticleDate?: string;
+  usniSource?: boolean;
+}
+
+export type USNIDeploymentStatus = 'deployed' | 'underway' | 'in-port' | 'unknown';
+
+export interface USNIVesselEntry {
+  name: string;
+  hullNumber: string;
+  vesselType: MilitaryVesselType;
+  region: string;
+  regionLat: number;
+  regionLon: number;
+  deploymentStatus: USNIDeploymentStatus;
+  homePort?: string;
+  strikeGroup?: string;
+  activityDescription?: string;
+  usniArticleUrl: string;
+  usniArticleDate: string;
+}
+
+export interface USNIStrikeGroup {
+  name: string;
+  carrier?: string;
+  airWing?: string;
+  destroyerSquadron?: string;
+  escorts: string[];
+}
+
+export interface USNIFleetReport {
+  articleUrl: string;
+  articleDate: string;
+  articleTitle: string;
+  battleForceSummary?: {
+    totalShips: number;
+    deployed: number;
+    underway: number;
+  };
+  vessels: USNIVesselEntry[];
+  strikeGroups: USNIStrikeGroup[];
+  regions: string[];
+  parsingWarnings: string[];
+  timestamp: string;
 }
 
 export interface MilitaryVesselCluster {

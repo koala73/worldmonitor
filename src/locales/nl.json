@@ -186,7 +186,9 @@
         "OTX_API_KEY": "Optionele verrijkingsbron voor de cyberdreigingslaag.",
         "ABUSEIPDB_API_KEY": "Optionele verrijkingsbron voor reputatie van kwaadaardige IP-adressen.",
         "FINNHUB_API_KEY": "Realtime aandelenkoersen en marktgegevens.",
-        "NASA_FIRMS_API_KEY": "Brandinformatiesysteem voor Resourcebeheer."
+        "NASA_FIRMS_API_KEY": "Brandinformatiesysteem voor Resourcebeheer.",
+        "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
+        "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
       }
     },
     "countryIntel": {
@@ -659,13 +661,31 @@
       "loading": "Technische evenementen laden...",
       "noEvents": "Er zijn geen evenementen om weer te geven",
       "showOnMap": "Toon op kaart",
-      "moreInfo": "Meer informatie"
+      "moreInfo": "Meer informatie",
+      "retry": "Retry",
+      "upcoming": "Upcoming",
+      "conferences": "Conferences",
+      "earnings": "Earnings",
+      "all": "All",
+      "conferencesCount": "{{count}} conferences",
+      "onMap": "{{count}} on map",
+      "techmemeEvents": "Techmeme Events ↗",
+      "today": "TODAY",
+      "soon": "SOON"
     },
     "techReadiness": {
       "internetUsers": "Internetgebruikers",
       "mobileSubscriptions": "Mobiele abonnementen",
       "rdSpending": "R&D-uitgaven",
-      "infoTooltip": "<strong>Global Tech Readiness</strong><br>Samengestelde score (0-100) gebaseerd op gegevens van de Wereldbank:<br><br><strong>Getoonde statistieken:</strong><br>🌐 Internetgebruikers (% van de bevolking)<br>📱 Mobiele abonnementen (per 100 personen)<br>🔬 R&D Uitgaven (% van het bbp)<br><br><strong>Gewichten:</strong> R&D (35%), internet (30%), breedband (20%), mobiel (15%)<br><br><em>— = Geen recente gegevens beschikbaar</em><br><em>Bron: Open Data van de Wereldbank (2019-2024)</em>"
+      "infoTooltip": "<strong>Global Tech Readiness</strong><br>Samengestelde score (0-100) gebaseerd op gegevens van de Wereldbank:<br><br><strong>Getoonde statistieken:</strong><br>🌐 Internetgebruikers (% van de bevolking)<br>📱 Mobiele abonnementen (per 100 personen)<br>🔬 R&D Uitgaven (% van het bbp)<br><br><strong>Gewichten:</strong> R&D (35%), internet (30%), breedband (20%), mobiel (15%)<br><br><em>— = Geen recente gegevens beschikbaar</em><br><em>Bron: Open Data van de Wereldbank (2019-2024)</em>",
+      "fetchingData": "Fetching World Bank Data",
+      "internetUsersIndicator": "Internet Users",
+      "mobileSubscriptionsIndicator": "Mobile Subscriptions",
+      "broadbandAccess": "Broadband Access",
+      "rdExpenditure": "R&D Expenditure",
+      "analyzingCountries": "Analyzing 200+ countries...",
+      "source": "Source: World Bank",
+      "updated": "Updated: {{date}}"
     },
     "cascade": {
       "filters": {
@@ -730,7 +750,8 @@
         "minutesAgo": "{{count}}m geleden",
         "hoursAgo": "{{count}}u geleden",
         "daysAgo": "{{count}}d geleden"
-      }
+      },
+      "hideFindings": "Hide Intelligence Findings"
     },
     "economic": {
       "noIndicatorData": "Nog geen indicatorgegevens - FRED wordt mogelijk geladen",
@@ -798,7 +819,41 @@
       "infoTooltip": "<strong>GDELT Intelligence</strong> Realtime monitoring van mondiaal nieuws:<ul><li>Samengestelde onderwerpcategorieën (conflicten, cyber, etc.)</li><li>Artikelen uit meer dan 100 talen vertaald</li><li>Updates elke 15 minuten</li></ul>Bron: GDELT Project (gdeltproject.org)"
     },
     "investments": {
-      "infoTooltip": "Database van directe buitenlandse investeringen van Saoedi-Arabië en de VAE in mondiale kritieke infrastructuur. Klik op een rij om naar de investering op de kaart te vliegen."
+      "infoTooltip": "Database van directe buitenlandse investeringen van Saoedi-Arabië en de VAE in mondiale kritieke infrastructuur. Klik op een rij om naar de investering op de kaart te vliegen.",
+      "searchPlaceholder": "Search assets, countries, entities…",
+      "allCountries": "All Countries",
+      "saudiArabia": "Saudi Arabia",
+      "uae": "UAE",
+      "allSectors": "All Sectors",
+      "allEntities": "All Entities",
+      "allStatuses": "All Statuses",
+      "operational": "Operational",
+      "underConstruction": "Under Construction",
+      "announced": "Announced",
+      "rumoured": "Rumoured",
+      "divested": "Divested",
+      "asset": "Asset",
+      "country": "Country",
+      "sector": "Sector",
+      "status": "Status",
+      "investment": "Investment",
+      "year": "Year",
+      "noMatch": "No investments match filters",
+      "undisclosed": "Undisclosed",
+      "sectors": {
+        "ports": "Ports",
+        "pipelines": "Pipelines",
+        "energy": "Energy",
+        "datacenters": "Data Centers",
+        "airports": "Airports",
+        "railways": "Railways",
+        "telecoms": "Telecoms",
+        "water": "Water",
+        "logistics": "Logistics",
+        "mining": "Mining",
+        "realEstate": "Real Estate",
+        "manufacturing": "Manufacturing"
+      }
     },
     "prediction": {
       "infoTooltip": "<strong>Voorspellingsmarkten</strong> Voorspellingsmarkten voor echt geld:<ul><li>Prijzen weerspiegelen schattingen van de waarschijnlijkheid van het publiek</li><li>Hoger volume = betrouwbaarder signaal</li><li>Focus op geopolitieke en actuele gebeurtenissen</li></ul>Bron: Polymarket (polymarket.com)"
@@ -830,11 +885,39 @@
         "escalating": "Escalerend",
         "deEscalating": "De-escalerend",
         "stable": "Stabiel"
+      },
+      "insufficientData": "Insufficient Data",
+      "unableToAssess": "Unable to assess risk level.",
+      "enableDataSources": "Enable data sources to begin monitoring.",
+      "requiredDataSources": "Required Data Sources",
+      "optionalSources": "Optional Sources",
+      "enableCoreFeeds": "Enable Core Feeds",
+      "waitingForData": "Waiting for data...",
+      "refresh": "Refresh",
+      "learningMode": "Learning Mode - {{minutes}}m until reliable",
+      "noData": "no data",
+      "enable": "Enable",
+      "convergenceMetric": "Convergence",
+      "ciiDeviation": "CII Deviation",
+      "infraEvents": "Infra Events",
+      "highAlerts": "High Alerts",
+      "topRisks": "Top Risks",
+      "recentAlerts": "Recent Alerts ({{count}})",
+      "updated": "Updated: {{time}}",
+      "time": {
+        "justNow": "just now",
+        "minutesAgo": "{{count}}m ago",
+        "hoursAgo": "{{count}}h ago"
       }
     },
     "insights": {
       "infoTooltip": "<strong>AI-aangedreven analyse</strong><br>• <strong>World Brief</strong>: AI-samenvatting (Groq/OpenRouter)<br>• <strong>Sentiment</strong>: analyse van nieuwstoon<br>• <strong>Velocity</strong>: snel bewegende verhalen<br>• <strong>Focal Punten</strong>: correleert nieuwsentiteiten met kaartsignalen (militair, protesten, storingen)<br><em>Alleen desktop • Mogelijk gemaakt door Llama 3.3 + Focal Point-detectie</em>",
-      "noStories": "Nog geen breaking of multi-source verhalen"
+      "noStories": "Nog geen breaking of multi-source verhalen",
+      "step": "Step {{step}}/{{total}}",
+      "waitingForData": "Waiting for news data...",
+      "rankingStories": "Ranking important stories...",
+      "analyzingSentiment": "Analyzing sentiment...",
+      "generatingBrief": "Generating world brief..."
     },
     "techHubs": {
       "infoTooltip": "<strong>Tech Hub-activiteit</strong><br>Toont tech-hubs met de meeste nieuwsactiviteit.<br><br><em>Activiteitsniveaus:</em><br>• <span style=\"color: {{highColor}}\">Hoog</span> — Breaking news of 50+ score<br>• <span style=\"color: {{elevatedColor}}\">Verhoogd</span> — Score 20-49<br>• <span style=\"color: {{lowColor}}\">Laag</span> — Score lager dan 20<br><br>Klik op een hub om naar de locatie ervan te zoomen.",
@@ -874,7 +957,21 @@
       "learnMore": "Meer informatie",
       "active": "Actief",
       "proposed": "Voorgesteld",
-      "updated": "Bijgewerkt"
+      "updated": "Bijgewerkt",
+      "dashboard": "AI Regulation Dashboard",
+      "actionsCount": "{{count}} actions",
+      "deadlinesCount": "{{count}} deadlines",
+      "days": "days",
+      "activeCount": "Active Regulations ({{count}})",
+      "proposedCount": "Proposed Regulations ({{count}})",
+      "moreProvisions": "+{{count}} more...",
+      "source": "Source",
+      "stances": {
+        "strict": "Strict",
+        "moderate": "Moderate",
+        "permissive": "Permissive",
+        "undefined": "Undefined"
+      }
     },
     "etfFlows": {
       "unavailable": "ETF-gegevens tijdelijk niet beschikbaar",
@@ -914,6 +1011,64 @@
     },
     "runtimeConfig": {
       "getApiKey": "API-sleutel ophalen"
+    },
+    "panel": {
+      "showMethodologyInfo": "Show methodology info",
+      "dragToResize": "Drag to resize (double-click to reset)",
+      "openSettings": "Open Settings"
+    },
+    "languageSelector": {
+      "selectLanguage": "Select Language"
+    },
+    "serviceStatus": {
+      "checkingServices": "Checking services...",
+      "allOperational": "All services operational",
+      "ok": "OK",
+      "degraded": "Degraded",
+      "outage": "Outage",
+      "backendUnavailable": "Desktop local backend unavailable. Falling back to cloud API.",
+      "desktopReadiness": "Desktop readiness",
+      "acceptanceChecks": "Acceptance checks: {{ready}}/{{total}} ready · key-backed features {{available}}/{{featureTotal}}",
+      "nonParityFallbacks": "Non-parity fallbacks ({{count}})",
+      "categories": {
+        "all": "All",
+        "cloud": "Cloud",
+        "dev": "Dev Tools",
+        "comm": "Comms",
+        "ai": "AI",
+        "saas": "SaaS"
+      }
+    },
+    "verification": {
+      "title": "Information Verification Checklist",
+      "hint": "Based on Bellingcat's OSH Framework",
+      "verdicts": {
+        "verified": "VERIFIED",
+        "likely": "LIKELY AUTHENTIC",
+        "uncertain": "UNCERTAIN",
+        "unreliable": "UNRELIABLE"
+      },
+      "notesTitle": "Verification Notes",
+      "noNotes": "No notes added",
+      "addNotePlaceholder": "Add verification note...",
+      "add": "Add",
+      "resetChecklist": "Reset Checklist",
+      "checks": {
+        "recency": "Recent timestamp confirmed",
+        "geolocation": "Location verified",
+        "source": "Primary source identified",
+        "crossref": "Cross-referenced with other sources",
+        "noAi": "No AI generation artifacts",
+        "noRecrop": "Not recycled/old footage",
+        "metadata": "Metadata verified",
+        "context": "Context established"
+      }
+    },
+    "liveNews": {
+      "retry": "Retry",
+      "notLive": "{{name}} is not currently live",
+      "cannotEmbed": "{{name}} cannot be embedded in this app (YouTube {{code}})",
+      "openOnYouTube": "Open on YouTube"
     }
   },
   "popups": {
@@ -1261,6 +1416,12 @@
       "heading": "RUBRIEK",
       "mmsi": "MMSI",
       "hull": "ROMP #",
+      "region": "REGION",
+      "strikeGroup": "STRIKE GROUP",
+      "deploymentStatus": "STATUS",
+      "usniIntel": "USNI Intel",
+      "usniSource": "Source: USNI News Fleet Tracker",
+      "approximatePosition": "Position approximate — based on USNI weekly report, not real-time AIS.",
       "darkDescription": "⚠ Het schip is donker geworden - AIS-signaal verloren. Kan duiden op gevoelige operaties."
     },
     "militaryCluster": {
@@ -1538,7 +1699,9 @@
     "noData": "Geen gegevens beschikbaar",
     "ago": "{{time}} geleden",
     "close": "Sluiten",
-    "currentVariant": "(huidig)"
+    "currentVariant": "(huidig)",
+    "retry": "Retry",
+    "refresh": "Refresh"
   },
   "header": {
     "world": "WERELD",

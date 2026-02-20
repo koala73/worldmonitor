@@ -35,6 +35,11 @@ describe('deploy/cache configuration guardrails', () => {
     assert.doesNotMatch(viteConfigSource, /globPatterns:\s*\['\*\*\/\*\.\{js,css,html/);
   });
 
+  it('explicitly disables navigateFallback when HTML is not precached', () => {
+    assert.match(viteConfigSource, /navigateFallback:\s*null/);
+    assert.doesNotMatch(viteConfigSource, /navigateFallbackDenylist:\s*\[/);
+  });
+
   it('uses network-first runtime caching for navigation requests', () => {
     assert.match(viteConfigSource, /request\.mode === 'navigate'/);
     assert.match(viteConfigSource, /handler:\s*'NetworkFirst'/);
