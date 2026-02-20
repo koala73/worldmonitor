@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package worldmonitor.maritime.v1;
 
+import "buf/validate/validate.proto";
 import "sebuf/http/annotations.proto";
 import "worldmonitor/core/v1/geo.proto";
 
@@ -18,13 +19,19 @@ message VesselSnapshot {
 // AisDensityZone represents a zone of concentrated vessel traffic.
 message AisDensityZone {
   // Zone identifier.
-  string id = 1;
+  string id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
   // Zone name (e.g., "Strait of Malacca").
   string name = 2;
   // Zone centroid location.
   worldmonitor.core.v1.GeoCoordinates location = 3;
   // Traffic intensity score (0-100).
-  double intensity = 4;
+  double intensity = 4 [
+    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.lte = 100
+  ];
   // Change from baseline as a percentage.
   double delta_pct = 5;
   // Estimated ships per day.
@@ -36,7 +43,10 @@ message AisDensityZone {
 // AisDisruption represents a detected anomaly in AIS vessel tracking data.
 message AisDisruption {
   // Disruption identifier.
-  string id = 1;
+  string id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
   // Descriptive name.
   string name = 2;
   // Type of AIS disruption.

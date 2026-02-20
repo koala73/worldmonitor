@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package worldmonitor.research.v1;
 
+import "buf/validate/validate.proto";
+
 // ListTechEventsRequest specifies filters for retrieving tech events.
 message ListTechEventsRequest {
   // Event type filter: "all", "conferences", "earnings", "ipo", "other". Empty = all.
@@ -9,9 +11,12 @@ message ListTechEventsRequest {
   // Only events with non-virtual coordinates.
   bool mappable = 2;
   // Max events to return (0 = unlimited).
-  int32 limit = 3;
+  int32 limit = 3 [
+    (buf.validate.field).int32.gte = 0,
+    (buf.validate.field).int32.lte = 500
+  ];
   // Events within N days from now (0 = unlimited).
-  int32 days = 4;
+  int32 days = 4 [(buf.validate.field).int32.gte = 0];
 }
 
 // TechEventCoords contains geocoded location data for a tech event.

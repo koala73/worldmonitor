@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package worldmonitor.market.v1;
 
-import "sebuf/http/annotations.proto";
+import "buf/validate/validate.proto";
 
 // ListStablecoinMarketsRequest specifies which stablecoins to retrieve.
 message ListStablecoinMarketsRequest {
@@ -13,13 +13,19 @@ message ListStablecoinMarketsRequest {
 // Stablecoin represents a single stablecoin with peg health data.
 message Stablecoin {
   // CoinGecko ID.
-  string id = 1;
+  string id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
   // Ticker symbol (e.g. "USDT").
-  string symbol = 2;
+  string symbol = 2 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
   // Human-readable name.
   string name = 3;
   // Current price in USD.
-  double price = 4;
+  double price = 4 [(buf.validate.field).double.gte = 0];
   // Deviation from $1.00 peg, as a percentage.
   double deviation = 5;
   // Peg status: "ON PEG", "SLIGHT DEPEG", or "DEPEGGED".

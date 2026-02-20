@@ -282,6 +282,7 @@ components:
             properties:
                 symbol:
                     type: string
+                    minLength: 1
                     description: Ticker symbol (e.g., "AAPL", "^GSPC").
                 name:
                     type: string
@@ -303,6 +304,8 @@ components:
                         type: number
                         format: double
                         description: Sparkline data points (recent price history).
+            required:
+                - symbol
             description: MarketQuote represents a stock or index quote from Finnhub or Yahoo Finance.
         ListCryptoQuotesRequest:
             type: object
@@ -329,6 +332,7 @@ components:
                     description: Cryptocurrency name (e.g., "Bitcoin").
                 symbol:
                     type: string
+                    minLength: 1
                     description: Ticker symbol (e.g., "BTC").
                 price:
                     type: number
@@ -344,6 +348,8 @@ components:
                         type: number
                         format: double
                         description: Sparkline data points (recent price history).
+            required:
+                - symbol
             description: CryptoQuote represents a cryptocurrency quote from CoinGecko.
         ListCommodityQuotesRequest:
             type: object
@@ -367,6 +373,7 @@ components:
             properties:
                 symbol:
                     type: string
+                    minLength: 1
                     description: Commodity symbol (e.g., "CL=F" for crude oil).
                 name:
                     type: string
@@ -388,6 +395,8 @@ components:
                         type: number
                         format: double
                         description: Sparkline data points.
+            required:
+                - symbol
             description: CommodityQuote represents a commodity price quote from Yahoo Finance.
         GetSectorSummaryRequest:
             type: object
@@ -409,6 +418,7 @@ components:
             properties:
                 symbol:
                     type: string
+                    minLength: 1
                     description: Sector symbol.
                 name:
                     type: string
@@ -417,6 +427,8 @@ components:
                     type: number
                     format: double
                     description: Percentage change over the measured period.
+            required:
+                - symbol
             description: SectorPerformance represents performance data for a market sector.
         ListStablecoinMarketsRequest:
             type: object
@@ -468,15 +480,18 @@ components:
             properties:
                 id:
                     type: string
+                    minLength: 1
                     description: CoinGecko ID.
                 symbol:
                     type: string
+                    minLength: 1
                     description: Ticker symbol (e.g. "USDT").
                 name:
                     type: string
                     description: Human-readable name.
                 price:
                     type: number
+                    minimum: 0
                     format: double
                     description: Current price in USD.
                 deviation:
@@ -505,6 +520,9 @@ components:
                 image:
                     type: string
                     description: Coin image URL.
+            required:
+                - id
+                - symbol
             description: Stablecoin represents a single stablecoin with peg health data.
         ListEtfFlowsRequest:
             type: object
@@ -554,6 +572,7 @@ components:
             properties:
                 ticker:
                     type: string
+                    minLength: 1
                     description: Ticker symbol (e.g. "IBIT").
                 issuer:
                     type: string
@@ -585,13 +604,18 @@ components:
                     type: integer
                     format: int64
                     description: 'Estimated dollar flow magnitude.. Warning: Values > 2^53 may lose precision in JavaScript'
+            required:
+                - ticker
             description: EtfFlow represents a single ETF with estimated flow data.
         GetCountryStockIndexRequest:
             type: object
             properties:
                 countryCode:
                     type: string
+                    pattern: ^[A-Z]{2}$
                     description: ISO 3166-1 alpha-2 country code (e.g., "US", "GB", "JP").
+            required:
+                - countryCode
             description: GetCountryStockIndexRequest specifies which country's stock index to retrieve.
         GetCountryStockIndexResponse:
             type: object

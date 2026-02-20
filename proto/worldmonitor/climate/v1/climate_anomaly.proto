@@ -2,13 +2,17 @@ syntax = "proto3";
 
 package worldmonitor.climate.v1;
 
+import "buf/validate/validate.proto";
 import "worldmonitor/core/v1/geo.proto";
 
 // ClimateAnomaly represents a temperature or precipitation deviation from historical norms.
 // Sourced from Open-Meteo / ERA5 reanalysis data.
 message ClimateAnomaly {
   // Climate zone name (e.g., "Northern Europe", "Sahel").
-  string zone = 1;
+  string zone = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
   // Representative location for the anomaly zone.
   worldmonitor.core.v1.GeoCoordinates location = 2;
   // Temperature deviation from normal in degrees Celsius.
@@ -20,7 +24,10 @@ message ClimateAnomaly {
   // Type of climate anomaly observed.
   AnomalyType type = 6;
   // Time period covered (e.g., "2024-W03", "2024-01").
-  string period = 7;
+  string period = 7 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
 }
 
 // AnomalySeverity represents the severity of a climate anomaly.

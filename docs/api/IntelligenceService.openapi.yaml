@@ -223,14 +223,20 @@ components:
                     description: Region or country identifier.
                 staticBaseline:
                     type: number
+                    maximum: 100
+                    minimum: 0
                     format: double
                     description: Static baseline score (0-100).
                 dynamicScore:
                     type: number
+                    maximum: 100
+                    minimum: 0
                     format: double
                     description: Dynamic real-time score (0-100).
                 combinedScore:
                     type: number
+                    maximum: 100
+                    minimum: 0
                     format: double
                     description: Combined weighted score (0-100).
                 trend:
@@ -255,18 +261,26 @@ components:
             properties:
                 newsActivity:
                     type: number
+                    maximum: 100
+                    minimum: 0
                     format: double
                     description: News activity signal contribution (0-100).
                 ciiContribution:
                     type: number
+                    maximum: 100
+                    minimum: 0
                     format: double
                     description: CII index contribution (0-100).
                 geoConvergence:
                     type: number
+                    maximum: 100
+                    minimum: 0
                     format: double
                     description: Geographic convergence score (0-100).
                 militaryActivity:
                     type: number
+                    maximum: 100
+                    minimum: 0
                     format: double
                     description: Military activity contribution (0-100).
             description: CiiComponents represents the contributing factors to a CII score.
@@ -288,6 +302,8 @@ components:
                          Maps to existing TS unions: 'low' | 'medium' | 'high'.
                 score:
                     type: number
+                    maximum: 100
+                    minimum: 0
                     format: double
                     description: Risk score (0-100).
                 factors:
@@ -328,6 +344,8 @@ components:
             properties:
                 defconLevel:
                     type: integer
+                    maximum: 5
+                    minimum: 1
                     format: int32
                     description: DEFCON-style level (1-5).
                 defconLabel:
@@ -433,6 +451,8 @@ components:
                     description: Human-readable label (e.g., "US-China").
                 score:
                     type: number
+                    maximum: 100
+                    minimum: 0
                     format: double
                     description: Tension score (0-100).
                 trend:
@@ -499,6 +519,8 @@ components:
                          Maps to existing TS unions: 'low' | 'medium' | 'high'.
                 confidence:
                     type: number
+                    maximum: 1
+                    minimum: 0
                     format: double
                     description: Classification confidence (0.0 to 1.0).
                 analysis:
@@ -545,11 +567,20 @@ components:
             properties:
                 query:
                     type: string
+                    minLength: 1
+                    description: Search query string.
                 maxRecords:
                     type: integer
+                    maximum: 250
+                    minimum: 1
                     format: int32
+                    description: Maximum number of articles to return (1-250).
                 timespan:
                     type: string
+                    description: Time span filter (e.g., "15min", "1h", "24h").
+            required:
+                - query
+            description: SearchGdeltDocumentsRequest specifies filters for searching GDELT news articles.
         SearchGdeltDocumentsResponse:
             type: object
             properties:
@@ -559,23 +590,34 @@ components:
                         $ref: '#/components/schemas/GdeltArticle'
                 query:
                     type: string
+                    description: Echo of the search query.
                 error:
                     type: string
+                    description: Error message if the search failed.
+            description: SearchGdeltDocumentsResponse contains GDELT article search results.
         GdeltArticle:
             type: object
             properties:
                 title:
                     type: string
+                    description: Article headline.
                 url:
                     type: string
+                    description: Article URL.
                 source:
                     type: string
+                    description: Source domain name.
                 date:
                     type: string
+                    description: Publication date string.
                 image:
                     type: string
+                    description: Article image URL.
                 language:
                     type: string
+                    description: Article language code.
                 tone:
                     type: number
                     format: double
+                    description: GDELT tone score (negative = negative tone, positive = positive tone).
+            description: GdeltArticle represents a single article from the GDELT document API.

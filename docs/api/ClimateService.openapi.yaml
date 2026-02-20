@@ -112,6 +112,7 @@ components:
             properties:
                 zone:
                     type: string
+                    minLength: 1
                     description: Climate zone name (e.g., "Northern Europe", "Sahel").
                 location:
                     $ref: '#/components/schemas/GeoCoordinates'
@@ -147,7 +148,11 @@ components:
                          Maps to existing TS union: 'warm' | 'cold' | 'wet' | 'dry' | 'mixed'.
                 period:
                     type: string
+                    minLength: 1
                     description: Time period covered (e.g., "2024-W03", "2024-01").
+            required:
+                - zone
+                - period
             description: |-
                 ClimateAnomaly represents a temperature or precipitation deviation from historical norms.
                  Sourced from Open-Meteo / ERA5 reanalysis data.

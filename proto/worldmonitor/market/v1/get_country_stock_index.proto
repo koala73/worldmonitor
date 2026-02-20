@@ -2,12 +2,16 @@ syntax = "proto3";
 
 package worldmonitor.market.v1;
 
-import "sebuf/http/annotations.proto";
+import "buf/validate/validate.proto";
 
 // GetCountryStockIndexRequest specifies which country's stock index to retrieve.
 message GetCountryStockIndexRequest {
   // ISO 3166-1 alpha-2 country code (e.g., "US", "GB", "JP").
-  string country_code = 1;
+  string country_code = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.len = 2,
+    (buf.validate.field).string.pattern = "^[A-Z]{2}$"
+  ];
 }
 
 // GetCountryStockIndexResponse contains the country's primary stock index data.

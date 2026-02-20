@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package worldmonitor.seismology.v1;
 
+import "buf/validate/validate.proto";
 import "worldmonitor/core/v1/pagination.proto";
 import "worldmonitor/core/v1/time.proto";
 import "worldmonitor/seismology/v1/earthquake.proto";
@@ -13,7 +14,7 @@ message ListEarthquakesRequest {
   // Pagination parameters.
   worldmonitor.core.v1.PaginationRequest pagination = 2;
   // Minimum magnitude filter (e.g., 4.0 for significant quakes).
-  double min_magnitude = 3;
+  double min_magnitude = 3 [(buf.validate.field).double.gte = 0];
 }
 
 // ListEarthquakesResponse contains the list of earthquakes matching the request filters.

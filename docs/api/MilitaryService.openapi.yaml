@@ -874,7 +874,11 @@ components:
                     type: array
                     items:
                         type: string
+                        maxItems: 20
+                        minItems: 1
                         description: ICAO 24-bit hex addresses (lowercase). Max 20.
+                    maxItems: 20
+                    minItems: 1
             description: GetAircraftDetailsBatchRequest looks up multiple aircraft by ICAO 24-bit hex.
         GetAircraftDetailsBatchResponse:
             type: object
@@ -977,14 +981,17 @@ components:
             properties:
                 totalShips:
                     type: integer
+                    minimum: 0
                     format: int32
                     description: Total ships in the battle force.
                 deployed:
                     type: integer
+                    minimum: 0
                     format: int32
                     description: Number of ships currently deployed.
                 underway:
                     type: integer
+                    minimum: 0
                     format: int32
                     description: Number of ships currently underway.
             description: BattleForceSummary contains fleet-wide ship count statistics.
@@ -993,9 +1000,11 @@ components:
             properties:
                 name:
                     type: string
+                    minLength: 1
                     description: Vessel name (e.g., "USS Abraham Lincoln").
                 hullNumber:
                     type: string
+                    minLength: 1
                     description: Hull designation (e.g., "CVN-72", "DDG-51").
                 vesselType:
                     type: string
@@ -1029,6 +1038,9 @@ components:
                 articleDate:
                     type: string
                     description: Publication date of the USNI article.
+            required:
+                - name
+                - hullNumber
             description: USNIVessel represents a single vessel parsed from a USNI Fleet Tracker article.
         USNIStrikeGroup:
             type: object

@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package worldmonitor.economic.v1;
 
+import "buf/validate/validate.proto";
+
 // GetMacroSignalsRequest requests the current macro signal dashboard.
 message GetMacroSignalsRequest {}
 
@@ -106,7 +108,10 @@ message MiningCostSignal {
 // FearGreedHistoryEntry is a single day's Fear & Greed index reading.
 message FearGreedHistoryEntry {
   // Index value (0-100).
-  int32 value = 1;
+  int32 value = 1 [
+    (buf.validate.field).int32.gte = 0,
+    (buf.validate.field).int32.lte = 100
+  ];
   // Date string (YYYY-MM-DD).
   string date = 2;
 }

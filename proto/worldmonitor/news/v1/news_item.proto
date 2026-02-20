@@ -2,15 +2,22 @@ syntax = "proto3";
 
 package worldmonitor.news.v1;
 
+import "buf/validate/validate.proto";
 import "sebuf/http/annotations.proto";
 import "worldmonitor/core/v1/geo.proto";
 
 // NewsItem represents a single news article from RSS feed aggregation.
 message NewsItem {
   // Source feed name.
-  string source = 1;
+  string source = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
   // Article headline.
-  string title = 2;
+  string title = 2 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
   // Article URL.
   string link = 3;
   // Publication time, as Unix epoch milliseconds.
@@ -32,7 +39,10 @@ message ThreatClassification {
   // Event category.
   string category = 2;
   // Confidence score (0.0 to 1.0).
-  double confidence = 3;
+  double confidence = 3 [
+    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.lte = 1
+  ];
 }
 
 // HeadlineSummary represents an AI-generated summary of recent headlines.

@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package worldmonitor.intelligence.v1;
 
+import "buf/validate/validate.proto";
 import "sebuf/http/annotations.proto";
 import "worldmonitor/core/v1/severity.proto";
 
@@ -10,11 +11,20 @@ message CiiScore {
   // Region or country identifier.
   string region = 1;
   // Static baseline score (0-100).
-  double static_baseline = 2;
+  double static_baseline = 2 [
+    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.lte = 100
+  ];
   // Dynamic real-time score (0-100).
-  double dynamic_score = 3;
+  double dynamic_score = 3 [
+    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.lte = 100
+  ];
   // Combined weighted score (0-100).
-  double combined_score = 4;
+  double combined_score = 4 [
+    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.lte = 100
+  ];
   // Score trend direction.
   worldmonitor.core.v1.TrendDirection trend = 5;
   // Contributing component scores.
@@ -26,13 +36,25 @@ message CiiScore {
 // CiiComponents represents the contributing factors to a CII score.
 message CiiComponents {
   // News activity signal contribution (0-100).
-  double news_activity = 1;
+  double news_activity = 1 [
+    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.lte = 100
+  ];
   // CII index contribution (0-100).
-  double cii_contribution = 2;
+  double cii_contribution = 2 [
+    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.lte = 100
+  ];
   // Geographic convergence score (0-100).
-  double geo_convergence = 3;
+  double geo_convergence = 3 [
+    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.lte = 100
+  ];
   // Military activity contribution (0-100).
-  double military_activity = 4;
+  double military_activity = 4 [
+    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.lte = 100
+  ];
 }
 
 // StrategicRisk represents a strategic risk assessment for a country or region.
@@ -42,7 +64,10 @@ message StrategicRisk {
   // Risk level.
   worldmonitor.core.v1.SeverityLevel level = 2;
   // Risk score (0-100).
-  double score = 3;
+  double score = 3 [
+    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.lte = 100
+  ];
   // Risk factors contributing to the assessment.
   repeated string factors = 4;
   // Trend direction.
@@ -52,7 +77,10 @@ message StrategicRisk {
 // PizzintStatus represents the Pentagon Pizza Index status (proxy for late-night DC activity).
 message PizzintStatus {
   // DEFCON-style level (1-5).
-  int32 defcon_level = 1;
+  int32 defcon_level = 1 [
+    (buf.validate.field).int32.gte = 1,
+    (buf.validate.field).int32.lte = 5
+  ];
   // Human-readable DEFCON label.
   string defcon_label = 2;
   // Aggregate activity score.
@@ -110,7 +138,10 @@ message GdeltTensionPair {
   // Human-readable label (e.g., "US-China").
   string label = 3;
   // Tension score (0-100).
-  double score = 4;
+  double score = 4 [
+    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.lte = 100
+  ];
   // Trend direction.
   worldmonitor.core.v1.TrendDirection trend = 5;
   // Percentage change from previous period.
@@ -128,7 +159,10 @@ message EventClassification {
   // Severity assessment.
   worldmonitor.core.v1.SeverityLevel severity = 3;
   // Classification confidence (0.0 to 1.0).
-  double confidence = 4;
+  double confidence = 4 [
+    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.lte = 1
+  ];
   // Brief AI-generated analysis.
   string analysis = 5;
   // Related entities identified.

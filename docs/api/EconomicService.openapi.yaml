@@ -189,6 +189,7 @@ components:
             properties:
                 seriesId:
                     type: string
+                    minLength: 1
                     description: Series identifier (e.g., "GDP", "UNRATE", "CPIAUCSL").
                 title:
                     type: string
@@ -203,6 +204,8 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/FredObservation'
+            required:
+                - seriesId
             description: FredSeries represents a FRED time series with metadata.
         FredObservation:
             type: object
@@ -220,6 +223,7 @@ components:
             properties:
                 indicatorCode:
                     type: string
+                    minLength: 1
                     description: World Bank indicator code (e.g., "NY.GDP.MKTP.CD").
                 countryCode:
                     type: string
@@ -230,6 +234,8 @@ components:
                     description: Optional year filter. Defaults to latest available.
                 pagination:
                     $ref: '#/components/schemas/PaginationRequest'
+            required:
+                - indicatorCode
             description: ListWorldBankIndicatorsRequest specifies filters for retrieving World Bank data.
         PaginationRequest:
             type: object
@@ -259,12 +265,14 @@ components:
             properties:
                 countryCode:
                     type: string
+                    minLength: 1
                     description: ISO 3166-1 alpha-2 country code.
                 countryName:
                     type: string
                     description: Country name.
                 indicatorCode:
                     type: string
+                    minLength: 1
                     description: World Bank indicator code (e.g., "NY.GDP.MKTP.CD").
                 indicatorName:
                     type: string
@@ -277,6 +285,9 @@ components:
                     type: number
                     format: double
                     description: Indicator value.
+            required:
+                - countryCode
+                - indicatorCode
             description: WorldBankCountryData represents a World Bank indicator value for a country.
         PaginationResponse:
             type: object
@@ -311,6 +322,7 @@ components:
             properties:
                 commodity:
                     type: string
+                    minLength: 1
                     description: Energy commodity identifier.
                 name:
                     type: string
@@ -330,6 +342,8 @@ components:
                     type: integer
                     format: int64
                     description: 'Price date, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+            required:
+                - commodity
             description: EnergyPrice represents a current energy commodity price from EIA.
         GetMacroSignalsRequest:
             type: object
@@ -495,6 +509,8 @@ components:
             properties:
                 value:
                     type: integer
+                    maximum: 100
+                    minimum: 0
                     format: int32
                     description: Index value (0-100).
                 date:

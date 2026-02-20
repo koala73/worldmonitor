@@ -159,6 +159,7 @@ components:
             properties:
                 id:
                     type: string
+                    minLength: 1
                     description: Zone identifier.
                 name:
                     type: string
@@ -167,6 +168,8 @@ components:
                     $ref: '#/components/schemas/GeoCoordinates'
                 intensity:
                     type: number
+                    maximum: 100
+                    minimum: 0
                     format: double
                     description: Traffic intensity score (0-100).
                 deltaPct:
@@ -180,12 +183,15 @@ components:
                 note:
                     type: string
                     description: Analyst note.
+            required:
+                - id
             description: AisDensityZone represents a zone of concentrated vessel traffic.
         AisDisruption:
             type: object
             properties:
                 id:
                     type: string
+                    minLength: 1
                     description: Disruption identifier.
                 name:
                     type: string
@@ -231,6 +237,8 @@ components:
                 description:
                     type: string
                     description: Human-readable description.
+            required:
+                - id
             description: AisDisruption represents a detected anomaly in AIS vessel tracking data.
         ListNavigationalWarningsRequest:
             type: object

@@ -2,10 +2,15 @@ syntax = "proto3";
 
 package worldmonitor.infrastructure.v1;
 
+import "buf/validate/validate.proto";
+
 // GetTemporalBaselineRequest checks current activity count against stored baseline.
 message GetTemporalBaselineRequest {
   // Activity type: "military_flights", "vessels", "protests", "news", "ais_gaps", "satellite_fires".
-  string type = 1;
+  string type = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
   // Geographic region key, defaults to "global".
   string region = 2;
   // Current observed count to compare against baseline.

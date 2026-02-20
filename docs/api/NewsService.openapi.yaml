@@ -188,9 +188,11 @@ components:
             properties:
                 source:
                     type: string
+                    minLength: 1
                     description: Source feed name.
                 title:
                     type: string
+                    minLength: 1
                     description: Article headline.
                 link:
                     type: string
@@ -209,6 +211,9 @@ components:
                 locationName:
                     type: string
                     description: Human-readable location name.
+            required:
+                - source
+                - title
             description: NewsItem represents a single news article from RSS feed aggregation.
         ThreatClassification:
             type: object
@@ -227,6 +232,8 @@ components:
                     description: Event category.
                 confidence:
                     type: number
+                    maximum: 1
+                    minimum: 0
                     format: double
                     description: Confidence score (0.0 to 1.0).
             description: ThreatClassification represents an AI-assessed threat level for a news item.
@@ -262,6 +269,8 @@ components:
             properties:
                 maxHeadlines:
                     type: integer
+                    maximum: 100
+                    minimum: 1
                     format: int32
                     description: Maximum number of headlines to include in the summary.
                 topic:
@@ -297,12 +306,15 @@ components:
             properties:
                 provider:
                     type: string
+                    minLength: 1
                     description: 'LLM provider: "ollama", "groq", "openrouter"'
                 headlines:
                     type: array
                     items:
                         type: string
+                        minItems: 1
                         description: Headlines to summarize (max 8 used).
+                    minItems: 1
                 mode:
                     type: string
                     description: 'Summarization mode: "brief", "analysis", "translate", "" (default).'
@@ -315,6 +327,8 @@ components:
                 lang:
                     type: string
                     description: Output language code, default "en".
+            required:
+                - provider
             description: SummarizeArticleRequest specifies parameters for LLM article summarization.
         SummarizeArticleResponse:
             type: object

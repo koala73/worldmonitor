@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package worldmonitor.economic.v1;
 
+import "buf/validate/validate.proto";
 import "sebuf/http/annotations.proto";
 
 // FredObservation represents a single data point from a FRED economic series.
@@ -15,7 +16,10 @@ message FredObservation {
 // FredSeries represents a FRED time series with metadata.
 message FredSeries {
   // Series identifier (e.g., "GDP", "UNRATE", "CPIAUCSL").
-  string series_id = 1;
+  string series_id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
   // Series title.
   string title = 2;
   // Unit of measurement.
@@ -29,11 +33,17 @@ message FredSeries {
 // WorldBankCountryData represents a World Bank indicator value for a country.
 message WorldBankCountryData {
   // ISO 3166-1 alpha-2 country code.
-  string country_code = 1;
+  string country_code = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
   // Country name.
   string country_name = 2;
   // World Bank indicator code (e.g., "NY.GDP.MKTP.CD").
-  string indicator_code = 3;
+  string indicator_code = 3 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
   // Indicator name.
   string indicator_name = 4;
   // Data year.
@@ -45,7 +55,10 @@ message WorldBankCountryData {
 // EnergyPrice represents a current energy commodity price from EIA.
 message EnergyPrice {
   // Energy commodity identifier.
-  string commodity = 1;
+  string commodity = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
   // Human-readable name (e.g., "WTI Crude Oil", "Henry Hub Natural Gas").
   string name = 2;
   // Current price in USD.

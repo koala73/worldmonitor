@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package worldmonitor.displacement.v1;
 
+import "buf/validate/validate.proto";
 import "sebuf/http/annotations.proto";
 
 // GetPopulationExposureRequest supports two modes:
@@ -11,11 +12,17 @@ message GetPopulationExposureRequest {
   // Mode: "countries" (default) or "exposure".
   string mode = 1;
   // Latitude (required for exposure mode).
-  double lat = 2;
+  double lat = 2 [
+    (buf.validate.field).double.gte = -90,
+    (buf.validate.field).double.lte = 90
+  ];
   // Longitude (required for exposure mode).
-  double lon = 3;
+  double lon = 3 [
+    (buf.validate.field).double.gte = -180,
+    (buf.validate.field).double.lte = 180
+  ];
   // Radius in km (required for exposure mode, defaults to 50).
-  double radius = 4;
+  double radius = 4 [(buf.validate.field).double.gte = 0];
 }
 
 // CountryPopulationEntry represents a country with population data.

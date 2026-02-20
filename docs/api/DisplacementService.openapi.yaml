@@ -105,14 +105,17 @@ components:
             properties:
                 year:
                     type: integer
+                    minimum: 0
                     format: int32
                     description: Data year to retrieve (e.g., 2023). Uses latest available if zero.
                 countryLimit:
                     type: integer
+                    minimum: 0
                     format: int32
                     description: Maximum number of country entries to return.
                 flowLimit:
                     type: integer
+                    minimum: 0
                     format: int32
                     description: Maximum number of displacement flows to return.
             description: GetDisplacementSummaryRequest specifies parameters for retrieving displacement data.
@@ -145,22 +148,27 @@ components:
             properties:
                 refugees:
                     type: string
+                    minimum: 0
                     format: int64
                     description: Total recognized refugees worldwide.
                 asylumSeekers:
                     type: string
+                    minimum: 0
                     format: int64
                     description: Total asylum seekers worldwide.
                 idps:
                     type: string
+                    minimum: 0
                     format: int64
                     description: Total internally displaced persons worldwide.
                 stateless:
                     type: string
+                    minimum: 0
                     format: int64
                     description: Total stateless persons worldwide.
                 total:
                     type: string
+                    minimum: 0
                     format: int64
                     description: Grand total of displaced persons.
             description: GlobalDisplacementTotals represents worldwide displacement figures.
@@ -169,6 +177,7 @@ components:
             properties:
                 code:
                     type: string
+                    minLength: 1
                     description: ISO 3166-1 alpha-2 country code.
                 name:
                     type: string
@@ -207,6 +216,8 @@ components:
                     description: Total persons hosted by this country.
                 location:
                     $ref: '#/components/schemas/GeoCoordinates'
+            required:
+                - code
             description: CountryDisplacement represents displacement metrics for a single country.
         GeoCoordinates:
             type: object
@@ -229,12 +240,14 @@ components:
             properties:
                 originCode:
                     type: string
+                    minLength: 1
                     description: ISO 3166-1 alpha-2 code of the origin country.
                 originName:
                     type: string
                     description: Origin country name.
                 asylumCode:
                     type: string
+                    minLength: 1
                     description: ISO 3166-1 alpha-2 code of the asylum country.
                 asylumName:
                     type: string
@@ -247,6 +260,9 @@ components:
                     $ref: '#/components/schemas/GeoCoordinates'
                 asylumLocation:
                     $ref: '#/components/schemas/GeoCoordinates'
+            required:
+                - originCode
+                - asylumCode
             description: DisplacementFlow represents a refugee movement corridor between two countries.
         GetPopulationExposureRequest:
             type: object
@@ -256,14 +272,19 @@ components:
                     description: 'Mode: "countries" (default) or "exposure".'
                 lat:
                     type: number
+                    maximum: 90
+                    minimum: -90
                     format: double
                     description: Latitude (required for exposure mode).
                 lon:
                     type: number
+                    maximum: 180
+                    minimum: -180
                     format: double
                     description: Longitude (required for exposure mode).
                 radius:
                     type: number
+                    minimum: 0
                     format: double
                     description: Radius in km (required for exposure mode, defaults to 50).
             description: |-

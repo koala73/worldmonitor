@@ -108,16 +108,20 @@ components:
             properties:
                 id:
                     type: string
+                    minLength: 1
                     description: Unique market identifier or slug.
                 title:
                     type: string
                     description: Market question or title.
                 yesPrice:
                     type: number
+                    maximum: 1
+                    minimum: 0
                     format: double
                     description: Current "Yes" price (0.0 to 1.0, representing probability).
                 volume:
                     type: number
+                    minimum: 0
                     format: double
                     description: Trading volume in USD.
                 url:
@@ -130,6 +134,8 @@ components:
                 category:
                     type: string
                     description: Market category (e.g., "Politics", "Crypto", "Sports").
+            required:
+                - id
             description: PredictionMarket represents a prediction market contract from Polymarket.
         PaginationResponse:
             type: object

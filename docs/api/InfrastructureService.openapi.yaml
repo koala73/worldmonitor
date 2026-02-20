@@ -356,6 +356,7 @@ components:
             properties:
                 type:
                     type: string
+                    minLength: 1
                     description: 'Activity type: "military_flights", "vessels", "protests", "news", "ais_gaps", "satellite_fires".'
                 region:
                     type: string
@@ -364,6 +365,8 @@ components:
                     type: number
                     format: double
                     description: Current observed count to compare against baseline.
+            required:
+                - type
             description: GetTemporalBaselineRequest checks current activity count against stored baseline.
         GetTemporalBaselineResponse:
             type: object
@@ -431,6 +434,7 @@ components:
             properties:
                 type:
                     type: string
+                    minLength: 1
                     description: Activity type key.
                 region:
                     type: string
@@ -439,6 +443,8 @@ components:
                     type: number
                     format: double
                     description: Observed count value.
+            required:
+                - type
             description: BaselineUpdate is a single metric observation to incorporate into the running baseline.
         RecordBaselineSnapshotResponse:
             type: object

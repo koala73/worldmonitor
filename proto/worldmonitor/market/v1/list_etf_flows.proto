@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package worldmonitor.market.v1;
 
+import "buf/validate/validate.proto";
 import "sebuf/http/annotations.proto";
 
 // ListEtfFlowsRequest is empty; the handler uses a fixed list of BTC spot ETFs.
@@ -10,7 +11,10 @@ message ListEtfFlowsRequest {}
 // EtfFlow represents a single ETF with estimated flow data.
 message EtfFlow {
   // Ticker symbol (e.g. "IBIT").
-  string ticker = 1;
+  string ticker = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
   // Fund issuer (e.g. "BlackRock").
   string issuer = 2;
   // Latest closing price.

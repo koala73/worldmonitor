@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package worldmonitor.displacement.v1;
 
+import "buf/validate/validate.proto";
 import "worldmonitor/core/v1/geo.proto";
 
 // DisplacementSummary represents a global overview of displacement data from UNHCR.
@@ -19,21 +20,24 @@ message DisplacementSummary {
 // GlobalDisplacementTotals represents worldwide displacement figures.
 message GlobalDisplacementTotals {
   // Total recognized refugees worldwide.
-  int64 refugees = 1;
+  int64 refugees = 1 [(buf.validate.field).int64.gte = 0];
   // Total asylum seekers worldwide.
-  int64 asylum_seekers = 2;
+  int64 asylum_seekers = 2 [(buf.validate.field).int64.gte = 0];
   // Total internally displaced persons worldwide.
-  int64 idps = 3;
+  int64 idps = 3 [(buf.validate.field).int64.gte = 0];
   // Total stateless persons worldwide.
-  int64 stateless = 4;
+  int64 stateless = 4 [(buf.validate.field).int64.gte = 0];
   // Grand total of displaced persons.
-  int64 total = 5;
+  int64 total = 5 [(buf.validate.field).int64.gte = 0];
 }
 
 // CountryDisplacement represents displacement metrics for a single country.
 message CountryDisplacement {
   // ISO 3166-1 alpha-2 country code.
-  string code = 1;
+  string code = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
   // Country name.
   string name = 2;
   // Refugees originating from this country.
@@ -59,11 +63,17 @@ message CountryDisplacement {
 // DisplacementFlow represents a refugee movement corridor between two countries.
 message DisplacementFlow {
   // ISO 3166-1 alpha-2 code of the origin country.
-  string origin_code = 1;
+  string origin_code = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
   // Origin country name.
   string origin_name = 2;
   // ISO 3166-1 alpha-2 code of the asylum country.
-  string asylum_code = 3;
+  string asylum_code = 3 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
   // Asylum country name.
   string asylum_name = 4;
   // Number of refugees in this flow.
