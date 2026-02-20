@@ -3994,20 +3994,23 @@ PRs that don't follow the code style or introduce security issues will be asked 
 
 ### Development Tips
 
+**Adding or Modifying API Endpoints**
+
+All JSON API endpoints **must** use sebuf. Do not create standalone `api/*.js` files — the legacy pattern is deprecated.
+
+See **[docs/ADDING_ENDPOINTS.md](ADDING_ENDPOINTS.md)** for the complete guide covering:
+- Adding an RPC to an existing service
+- Adding an entirely new service
+- Proto conventions (validation, time fields, shared types)
+- Generated OpenAPI documentation
+
 **Adding a New Data Layer**
 
-1. Create service in `src/services/` for data fetching
-2. Add layer toggle in `src/components/Map.ts`
-3. Add rendering logic for map markers/overlays
-4. Add to help panel documentation
-5. Update README with layer description
-
-**Adding a New API Proxy**
-
-1. Create handler in `api/` directory
-2. Implement input validation (see existing proxies)
-3. Add appropriate cache headers
-4. Document any required environment variables
+1. Define the proto contract and generate code (see [ADDING_ENDPOINTS.md](ADDING_ENDPOINTS.md))
+2. Implement the handler in `api/server/worldmonitor/{domain}/v1/`
+3. Create the frontend service wrapper in `src/services/`
+4. Add layer toggle in `src/components/Map.ts`
+5. Add rendering logic for map markers/overlays
 
 **Debugging**
 
