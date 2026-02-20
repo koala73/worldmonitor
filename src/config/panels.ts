@@ -1,4 +1,5 @@
 import type { PanelConfig, MapLayers } from '@/types';
+import type { DataSourceId } from '@/services/data-freshness';
 import { SITE_VARIANT } from './variant';
 
 // ============================================
@@ -373,6 +374,20 @@ const FINANCE_MOBILE_MAP_LAYERS: MapLayers = {
 export const DEFAULT_PANELS = SITE_VARIANT === 'tech' ? TECH_PANELS : SITE_VARIANT === 'finance' ? FINANCE_PANELS : FULL_PANELS;
 export const DEFAULT_MAP_LAYERS = SITE_VARIANT === 'tech' ? TECH_MAP_LAYERS : SITE_VARIANT === 'finance' ? FINANCE_MAP_LAYERS : FULL_MAP_LAYERS;
 export const MOBILE_DEFAULT_MAP_LAYERS = SITE_VARIANT === 'tech' ? TECH_MOBILE_MAP_LAYERS : SITE_VARIANT === 'finance' ? FINANCE_MOBILE_MAP_LAYERS : FULL_MOBILE_MAP_LAYERS;
+
+/** Maps map-layer toggle keys to their data-freshness source IDs (single source of truth). */
+export const LAYER_TO_SOURCE: Partial<Record<keyof MapLayers, DataSourceId[]>> = {
+  military: ['opensky', 'wingbits'],
+  ais: ['ais'],
+  natural: ['usgs'],
+  weather: ['weather'],
+  outages: ['outages'],
+  cyberThreats: ['cyber_threats'],
+  protests: ['acled', 'gdelt_doc'],
+  ucdpEvents: ['ucdp_events'],
+  displacement: ['unhcr'],
+  climate: ['climate'],
+};
 
 // Monitor palette — fixed category colors persisted to localStorage (not theme-dependent)
 export const MONITOR_COLORS = [

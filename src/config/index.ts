@@ -40,6 +40,7 @@ export {
   DEFAULT_PANELS,
   DEFAULT_MAP_LAYERS,
   MOBILE_DEFAULT_MAP_LAYERS,
+  LAYER_TO_SOURCE,
 } from './panels';
 
 // ============================================
