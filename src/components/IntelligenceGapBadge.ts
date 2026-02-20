@@ -348,7 +348,7 @@ export class IntelligenceFindingsBadge {
   private getInsight(finding: UnifiedFinding): string {
     if (finding.source === 'signal') {
       const context = getSignalContext((finding.original as CorrelationSignal).type);
-      return context.actionableInsight.split('.')[0] || '';
+      return (context.actionableInsight ?? '').split('.')[0] || '';
     }
     // For alerts, provide actionable insight based on type and severity
     const alert = finding.original as UnifiedAlert;

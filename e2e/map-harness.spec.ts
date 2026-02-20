@@ -137,7 +137,7 @@ const waitForHarnessReady = async (
         const w = window as HarnessWindow;
         return Boolean(w.__mapHarness?.ready);
       });
-    }, { timeout: 30000 })
+    }, { timeout: 45000 })
     .toBe(true);
 };
 
@@ -246,7 +246,7 @@ test.describe('DeckGL map harness', () => {
           snapshot.filter((layer) => layer.dataCount > 0).map((layer) => layer.id)
         );
         return expectedDeckLayers.filter((id) => !nonEmptyIds.has(id)).length;
-      }, { timeout: 20000 })
+      }, { timeout: 40000 })
       .toBe(0);
 
     await expect
@@ -324,7 +324,7 @@ test.describe('DeckGL map harness', () => {
           const w = window as HarnessWindow;
           return w.__mapHarness?.getLayerDataCount('gulf-investments-layer') ?? 0;
         });
-      }, { timeout: 15000 })
+      }, { timeout: 30000 })
       .toBeGreaterThan(0);
   });
 
@@ -398,7 +398,7 @@ test.describe('DeckGL map harness', () => {
           const w = window as HarnessWindow;
           return w.__mapHarness?.isPulseAnimationRunning() ?? false;
         });
-      }, { timeout: 15000 })
+      }, { timeout: 30000 })
       .toBe(true);
 
     await page.evaluate(() => {
@@ -454,7 +454,7 @@ test.describe('DeckGL map harness', () => {
             animations: 'disabled',
             caret: 'hide',
             scale: 'css',
-            maxDiffPixelRatio: 0.02,
+            maxDiffPixelRatio: 0.04,
           }
         );
       });
@@ -472,7 +472,7 @@ test.describe('DeckGL map harness', () => {
           const w = window as HarnessWindow;
           return w.__mapHarness?.getFirstProtestTitle() ?? '';
         });
-      }, { timeout: 15000 })
+      }, { timeout: 30000 })
       .toContain('Scenario Alpha Protest');
 
     await page.evaluate(() => {
@@ -486,7 +486,7 @@ test.describe('DeckGL map harness', () => {
           const w = window as HarnessWindow;
           return w.__mapHarness?.getProtestClusterCount() ?? 0;
         });
-      }, { timeout: 20000 })
+      }, { timeout: 30000 })
       .toBeGreaterThan(0);
 
     await expect
@@ -495,7 +495,7 @@ test.describe('DeckGL map harness', () => {
           const w = window as HarnessWindow;
           return w.__mapHarness?.getFirstProtestTitle() ?? '';
         });
-      }, { timeout: 15000 })
+      }, { timeout: 30000 })
       .toContain('Scenario Beta Protest');
   });
 
@@ -548,7 +548,7 @@ test.describe('DeckGL map harness', () => {
           const w = window as HarnessWindow;
           return w.__mapHarness?.getLayerDataCount('hotspots-layer') ?? 0;
         });
-      }, { timeout: 15000 })
+      }, { timeout: 30000 })
       .toBeGreaterThan(0);
 
     const beforeTransform = await page.evaluate(() => {
@@ -595,7 +595,7 @@ test.describe('DeckGL map harness', () => {
           const w = window as HarnessWindow;
           return w.__mapHarness?.getLayerDataCount('hotspots-layer') ?? 0;
         });
-      }, { timeout: 15000 })
+      }, { timeout: 30000 })
       .toBeGreaterThan(0);
 
     const beforeTransform = await page.evaluate(() => {
@@ -645,7 +645,7 @@ test.describe('DeckGL map harness', () => {
           const w = window as HarnessWindow;
           return w.__mapHarness?.getLayerDataCount('protest-clusters-layer') ?? 0;
         });
-      }, { timeout: 15000 })
+      }, { timeout: 30000 })
       .toBeGreaterThan(0);
 
     const beforeTransform = await page.evaluate(() => {

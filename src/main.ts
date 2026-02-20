@@ -59,6 +59,7 @@ Sentry.init({
     /Can't find variable: _0x/,
     /WKWebView was deallocated/,
     /Unexpected end of input/,
+    /window\.android\.\w+ is not a function/,
   ],
   beforeSend(event) {
     const msg = event.exception?.values?.[0]?.value ?? '';
@@ -67,6 +68,11 @@ Sentry.init({
     // Suppress maplibre internal null-access crashes (light, placement) only when stack is in map chunk
     if (/this\.style\._layers|reading '_layers'|this\.light is null|can't access property "(id|type|setFilter)", \w+ is (null|undefined)|Cannot read properties of null \(reading '(id|type|setFilter|_layers)'\)|null is not an object \(evaluating '(E\.|this\.style)/.test(msg)) {
       if (frames.some(f => /\/map-[A-Za-z0-9]+\.js/.test(f.filename ?? ''))) return null;
+    }
+    // Suppress any TypeError that happens entirely within maplibre internals (no app code outside the map chunk)
+    if (/^TypeError:/.test(msg) && frames.length > 0) {
+      const appFrames = frames.filter(f => f.in_app && !/\/sentry-[A-Za-z0-9]+\.js/.test(f.filename ?? ''));
+      if (appFrames.length > 0 && appFrames.every(f => /\/map-[A-Za-z0-9]+\.js/.test(f.filename ?? ''))) return null;
     }
     return event;
   },

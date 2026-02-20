@@ -5,6 +5,8 @@ test.describe('keyword spike modal/badge flow', () => {
     await page.goto('/tests/runtime-harness.html');
 
     const setup = await page.evaluate(async () => {
+      const { initI18n } = await import('/src/services/i18n.ts');
+      await initI18n();
       const { SignalModal } = await import('/src/components/SignalModal.ts');
       const { IntelligenceGapBadge } = await import('/src/components/IntelligenceGapBadge.ts');
       const trending = await import('/src/services/trending-keywords.ts');
@@ -27,13 +29,15 @@ test.describe('keyword spike modal/badge flow', () => {
       });
 
       const now = new Date();
+      // Headlines must have the spike term ("Iran") mid-sentence (not only at index 0)
+      // so that isLikelyProperNoun detects it as a capitalized proper noun.
       const headlines = [
-        { source: 'Reuters', title: 'Iran sanctions pressure rises amid talks', link: 'https://example.com/reuters/1' },
-        { source: 'AP', title: 'Iran sanctions debate intensifies in Washington', link: 'https://example.com/ap/1' },
-        { source: 'BBC', title: 'Iran sanctions trigger fresh market concerns', link: 'https://example.com/bbc/1' },
-        { source: 'Reuters', title: 'Iran sanctions package draws regional response', link: 'https://example.com/reuters/2' },
-        { source: 'AP', title: 'Iran sanctions proposal gains momentum', link: 'https://example.com/ap/2' },
-        { source: 'BBC', title: 'Iran sanctions timeline shortens after warnings', link: 'https://example.com/bbc/2' },
+        { source: 'Reuters', title: 'Pressure rises as Iran sanctions debate grows', link: 'https://example.com/reuters/1' },
+        { source: 'AP', title: 'Washington intensifies Iran sanctions push', link: 'https://example.com/ap/1' },
+        { source: 'BBC', title: 'Fresh concerns over Iran sanctions impact', link: 'https://example.com/bbc/1' },
+        { source: 'Reuters', title: 'Regional response to Iran sanctions package', link: 'https://example.com/reuters/2' },
+        { source: 'AP', title: 'New momentum behind Iran sanctions proposal', link: 'https://example.com/ap/2' },
+        { source: 'BBC', title: 'Timeline shortens for Iran sanctions after warnings', link: 'https://example.com/bbc/2' },
       ].map(item => ({
         ...item,
         pubDate: now,
@@ -42,8 +46,9 @@ test.describe('keyword spike modal/badge flow', () => {
       trending.ingestHeadlines(headlines);
 
       let spikes = trending.drainTrendingSignals();
-      for (let i = 0; i < 20 && spikes.length === 0; i += 1) {
-        await new Promise(resolve => setTimeout(resolve, 50));
+      // handleSpike is async (calls isSignificantTerm) — allow enough time for it to resolve
+      for (let i = 0; i < 60 && spikes.length === 0; i += 1) {
+        await new Promise(resolve => setTimeout(resolve, 100));
         spikes = trending.drainTrendingSignals();
       }
 

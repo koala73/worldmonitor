@@ -77,6 +77,7 @@ export class InvestmentsPanel extends Panel {
       infoTooltip: t('components.investments.infoTooltip'),
     });
     this.onInvestmentClick = onInvestmentClick;
+    this.setupEventDelegation();
     this.render();
   }
 
@@ -182,32 +183,30 @@ export class InvestmentsPanel extends Panel {
 
     this.setContent(html);
     if (this.countEl) this.countEl.textContent = String(filtered.length);
-
-    this.attachListeners();
   }
 
-  private attachListeners(): void {
-    const content = this.content;
-
-    // Search input
-    const searchEl = content.querySelector<HTMLInputElement>('.fdi-search');
-    searchEl?.addEventListener('input', () => {
-      this.filters.search = searchEl.value;
-      this.render();
+  private setupEventDelegation(): void {
+    this.content.addEventListener('input', (e) => {
+      const target = e.target as HTMLElement;
+      if (target.classList.contains('fdi-search')) {
+        this.filters.search = (target as HTMLInputElement).value;
+        this.render();
+      }
     });
 
-    // Filter dropdowns
-    content.querySelectorAll<HTMLSelectElement>('.fdi-filter').forEach(sel => {
-      sel.addEventListener('change', () => {
+    this.content.addEventListener('change', (e) => {
+      const sel = (e.target as HTMLElement).closest('.fdi-filter') as HTMLSelectElement | null;
+      if (sel) {
         const key = sel.dataset.filter as keyof InvestmentFilters;
         (this.filters as unknown as Record<string, string>)[key] = sel.value;
         this.render();
-      });
+      }
     });
 
-    // Sort headers
-    content.querySelectorAll<HTMLElement>('.fdi-sort').forEach(th => {
-      th.addEventListener('click', () => {
+    this.content.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      const th = target.closest('.fdi-sort') as HTMLElement | null;
+      if (th) {
         const key = th.dataset.sort as keyof GulfInvestment;
         if (this.sortKey === key) {
           this.sortAsc = !this.sortAsc;
@@ -216,17 +215,15 @@ export class InvestmentsPanel extends Panel {
           this.sortAsc = true;
         }
         this.render();
-      });
-    });
-
-    // Row click → fly to map
-    content.querySelectorAll<HTMLElement>('.fdi-row').forEach(row => {
-      row.addEventListener('click', () => {
+        return;
+      }
+      const row = target.closest('.fdi-row') as HTMLElement | null;
+      if (row) {
         const inv = GULF_INVESTMENTS.find(i => i.id === row.dataset.id);
         if (inv && this.onInvestmentClick) {
           this.onInvestmentClick(inv);
         }
-      });
+      }
     });
   }
 }

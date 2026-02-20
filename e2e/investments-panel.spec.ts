@@ -49,8 +49,15 @@ test.describe('GCC investments coverage', () => {
     await page.goto('/tests/runtime-harness.html');
 
     const result = await page.evaluate(async () => {
+      const { initI18n } = await import('/src/services/i18n.ts');
+      await initI18n();
       const { InvestmentsPanel } = await import('/src/components/InvestmentsPanel.ts');
       const { GULF_INVESTMENTS } = await import('/src/config/gulf-fdi.ts');
+
+      const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
+      const pollUntil = async (pred: () => boolean, maxMs = 2000) => {
+        for (let i = 0; i < maxMs / 50 && !pred(); i++) await wait(50);
+      };
 
       const clickedIds: string[] = [];
       const panel = new InvestmentsPanel((inv) => {
@@ -59,31 +66,47 @@ test.describe('GCC investments coverage', () => {
       document.body.appendChild(panel.getElement());
 
       const root = panel.getElement();
-      const totalRows = root.querySelectorAll('.fdi-row').length;
+      await pollUntil(() => !!root.querySelector('.fdi-search'));
 
+      const totalRows = root.querySelectorAll('.fdi-row').length;
       const firstInvestment = GULF_INVESTMENTS[0];
       const searchToken = firstInvestment?.assetName.split(/\s+/)[0]?.toLowerCase() ?? '';
 
-      const searchInput = root.querySelector<HTMLInputElement>('.fdi-search');
-      searchInput!.value = searchToken;
-      searchInput!.dispatchEvent(new Event('input', { bubbles: true }));
+      // --- Search filter ---
+      let searchEl = root.querySelector<HTMLInputElement>('.fdi-search');
+      if (!searchEl) return { error: 'fdi-search not found' } as never;
+      searchEl.value = searchToken;
+      searchEl.dispatchEvent(new Event('input', { bubbles: true }));
+      await pollUntil(() => root.querySelectorAll('.fdi-row').length !== totalRows);
       const searchRows = root.querySelectorAll('.fdi-row').length;
 
-      searchInput!.value = '';
-      searchInput!.dispatchEvent(new Event('input', { bubbles: true }));
+      // Re-query after debounced re-render (old element destroyed by innerHTML)
+      searchEl = root.querySelector<HTMLInputElement>('.fdi-search')!;
+      searchEl.value = '';
+      searchEl.dispatchEvent(new Event('input', { bubbles: true }));
+      await pollUntil(() => root.querySelectorAll('.fdi-row').length === totalRows);
 
+      // --- Country filter ---
       const countrySelect = root.querySelector<HTMLSelectElement>(
         '.fdi-filter[data-filter="investingCountry"]'
-      );
-      countrySelect!.value = 'SA';
-      countrySelect!.dispatchEvent(new Event('change', { bubbles: true }));
-
+      )!;
+      countrySelect.value = 'SA';
+      countrySelect.dispatchEvent(new Event('change', { bubbles: true }));
+      await pollUntil(() => root.querySelectorAll('.fdi-row').length !== totalRows);
       const saRows = root.querySelectorAll('.fdi-row').length;
       const expectedSaRows = GULF_INVESTMENTS.filter((inv) => inv.investingCountry === 'SA').length;
 
-      const investmentSort = root.querySelector<HTMLElement>('.fdi-sort[data-sort="investmentUSD"]');
-      investmentSort!.click(); // asc
-      investmentSort!.click(); // desc
+      // --- Sort by investment desc ---
+      // Re-query sort header after country filter re-render
+      let investmentSort = root.querySelector<HTMLElement>('.fdi-sort[data-sort="investmentUSD"]');
+      const rowsBefore1 = root.querySelector<HTMLElement>('.fdi-row')?.dataset.id;
+      investmentSort?.click(); // asc
+      await pollUntil(() => root.querySelector<HTMLElement>('.fdi-row')?.dataset.id !== rowsBefore1);
+      // Re-query after sort re-render
+      investmentSort = root.querySelector<HTMLElement>('.fdi-sort[data-sort="investmentUSD"]');
+      const rowsBefore2 = root.querySelector<HTMLElement>('.fdi-row')?.dataset.id;
+      investmentSort?.click(); // desc
+      await pollUntil(() => root.querySelector<HTMLElement>('.fdi-row')?.dataset.id !== rowsBefore2);
 
       const firstRow = root.querySelector<HTMLElement>('.fdi-row');
       const firstRowId = firstRow?.dataset.id ?? null;

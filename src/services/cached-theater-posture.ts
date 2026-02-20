@@ -116,6 +116,34 @@ let fetchPromise: Promise<CachedTheaterPosture | null> | null = null;
 let lastFetchTime = 0;
 const REFETCH_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes (matches server TTL)
 
+function createAbortError(): DOMException {
+  return new DOMException('The operation was aborted.', 'AbortError');
+}
+
+function withCallerAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(createAbortError());
+
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => {
+      signal.removeEventListener('abort', onAbort);
+      reject(createAbortError());
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+
+    promise.then(
+      (value) => {
+        signal.removeEventListener('abort', onAbort);
+        resolve(value);
+      },
+      (error) => {
+        signal.removeEventListener('abort', onAbort);
+        reject(error);
+      },
+    );
+  });
+}
+
 function loadFromStorage(): CachedTheaterPosture | null {
   try {
     const raw = localStorage.getItem(LS_KEY);
@@ -144,7 +172,8 @@ if (stored) {
   console.log('[CachedTheaterPosture] Restored from localStorage (stale)');
 }
 
-export async function fetchCachedTheaterPosture(_signal?: AbortSignal): Promise<CachedTheaterPosture | null> {
+export async function fetchCachedTheaterPosture(signal?: AbortSignal): Promise<CachedTheaterPosture | null> {
+  if (signal?.aborted) throw createAbortError();
   const now = Date.now();
 
   // Return cached if fresh
@@ -154,7 +183,7 @@ export async function fetchCachedTheaterPosture(_signal?: AbortSignal): Promise<
 
   // Deduplicate concurrent fetches
   if (fetchPromise) {
-    return fetchPromise;
+    return withCallerAbort(fetchPromise, signal);
   }
 
   // If we have stale localStorage data, return it immediately but fetch in background
@@ -186,7 +215,7 @@ export async function fetchCachedTheaterPosture(_signal?: AbortSignal): Promise<
     return cachedPosture;
   }
 
-  return fetchPromise;
+  return withCallerAbort(fetchPromise, signal);
 }
 
 export function getCachedPosture(): CachedTheaterPosture | null {

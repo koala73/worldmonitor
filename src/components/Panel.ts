@@ -1,7 +1,7 @@
 import { isDesktopRuntime } from '../services/runtime';
 import { invokeTauri } from '../services/tauri-bridge';
 import { t } from '../services/i18n';
-import { h, replaceChildren } from '../utils/dom-utils';
+import { h, replaceChildren, rawHtml } from '../utils/dom-utils';
 
 export interface PanelOptions {
   id: string;
@@ -88,7 +88,8 @@ export class Panel {
     if (options.infoTooltip) {
       const infoBtn = h('button', { className: 'panel-info-btn', 'aria-label': t('components.panel.showMethodologyInfo') }, '?');
 
-      const tooltip = h('div', { className: 'panel-info-tooltip' }, options.infoTooltip);
+      const tooltip = h('div', { className: 'panel-info-tooltip' });
+      tooltip.appendChild(rawHtml(options.infoTooltip));
 
       infoBtn.addEventListener('click', (e) => {
         e.stopPropagation();
