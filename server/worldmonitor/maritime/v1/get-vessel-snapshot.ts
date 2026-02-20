@@ -35,7 +35,38 @@ const SEVERITY_MAP: Record<string, AisDisruptionSeverity> = {
   high: 'AIS_DISRUPTION_SEVERITY_HIGH',
 };
 
+// In-memory cache (matches old /api/ais-snapshot behavior)
+const SNAPSHOT_CACHE_TTL_MS = 10_000; // 10 seconds -- matches client poll interval
+let cachedSnapshot: VesselSnapshot | undefined;
+let cacheTimestamp = 0;
+let inFlightRequest: Promise<VesselSnapshot | undefined> | null = null;
+
 async function fetchVesselSnapshot(): Promise<VesselSnapshot | undefined> {
+  // Return cached if fresh
+  const now = Date.now();
+  if (cachedSnapshot && (now - cacheTimestamp) < SNAPSHOT_CACHE_TTL_MS) {
+    return cachedSnapshot;
+  }
+
+  // In-flight dedup: if a request is already running, await it
+  if (inFlightRequest) {
+    return inFlightRequest;
+  }
+
+  inFlightRequest = fetchVesselSnapshotFromRelay();
+  try {
+    const result = await inFlightRequest;
+    if (result) {
+      cachedSnapshot = result;
+      cacheTimestamp = Date.now();
+    }
+    return result;
+  } finally {
+    inFlightRequest = null;
+  }
+}
+
+async function fetchVesselSnapshotFromRelay(): Promise<VesselSnapshot | undefined> {
   try {
     const relayBaseUrl = getRelayBaseUrl();
     if (!relayBaseUrl) return undefined;
