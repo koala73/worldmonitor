@@ -21,7 +21,7 @@ const client = new MarketServiceClient('', { fetch: (...args: Parameters<typeof 
 const stockBreaker = createCircuitBreaker<ListMarketQuotesResponse>({ name: 'Market Quotes', cacheTtlMs: 0 });
 const cryptoBreaker = createCircuitBreaker<ListCryptoQuotesResponse>({ name: 'Crypto Quotes' });
 
-const emptyStockFallback: ListMarketQuotesResponse = { quotes: [] };
+const emptyStockFallback: ListMarketQuotesResponse = { quotes: [], finnhubSkipped: false, skipReason: '' };
 const emptyCryptoFallback: ListCryptoQuotesResponse = { quotes: [] };
 
 // ---- Proto -> legacy adapters ----
