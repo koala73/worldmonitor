@@ -131,9 +131,9 @@ async function fetchHapiSummary(countryCode: string): Promise<HumanitarianCountr
     return {
       countryCode: ISO2_TO_ISO3[countryCode.toUpperCase()] || countryCode || '',
       countryName: entry.locationName,
-      populationAffected: String(entry.eventsTotal),
-      peopleInNeed: String(entry.eventsPoliticalViolence + entry.eventsCivilianTargeting),
-      internallyDisplaced: String(0), // HAPI conflict events endpoint does not provide displacement data
+      populationAffected: entry.eventsTotal,
+      peopleInNeed: entry.eventsPoliticalViolence + entry.eventsCivilianTargeting,
+      internallyDisplaced: 0, // HAPI conflict events endpoint does not provide displacement data
       foodInsecurityLevel: '', // Not available from this endpoint
       waterAccessPct: 0, // Not available from this endpoint
       updatedAt: Date.now(),

@@ -21,7 +21,8 @@ export const CACHE_VERSION = 'v3';
 // Hash utility (unified FNV-1a 52-bit — H-7 fix)
 // ========================================================================
 
-export { hashString } from '../../../_shared/hash';
+import { hashString } from '../../../_shared/hash';
+export { hashString };
 
 // ========================================================================
 // Cache key builder (ported from _summarize-handler.js)

@@ -3,5 +3,5 @@
   "compilerOptions": {
     "types": []
   },
-  "include": ["api", "src/generated"]
+  "include": ["api", "src/generated", "server"]
 }

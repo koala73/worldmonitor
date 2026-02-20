@@ -23,9 +23,13 @@ export const listEarthquakes: SeismologyServiceHandler['listEarthquakes'] = asyn
   _ctx: ServerContext,
   req: ListEarthquakesRequest,
 ): Promise<ListEarthquakesResponse> => {
-  // Check Redis cache first (H-4 fix)
-  const cached = (await getCachedJson(CACHE_KEY)) as ListEarthquakesResponse | null;
-  if (cached) return cached;
+  const pageSize = req.pagination?.pageSize || 500;
+
+  // Check Redis cache first (H-4 fix) — cache stores full set, slice on read (C-4 fix)
+  const cached = (await getCachedJson(CACHE_KEY)) as { earthquakes: ListEarthquakesResponse['earthquakes'] } | null;
+  if (cached?.earthquakes) {
+    return { earthquakes: cached.earthquakes.slice(0, pageSize), pagination: undefined };
+  }
 
   const response = await fetch(USGS_FEED_URL, {
     headers: { Accept: 'application/json' },
@@ -55,8 +59,8 @@ export const listEarthquakes: SeismologyServiceHandler['listEarthquakes'] = asyn
       sourceUrl: (f.properties?.url as string) || '',
     }));
 
-  const pageSize = _req.pagination?.pageSize || 500;
-  const result: ListEarthquakesResponse = { earthquakes: earthquakes.slice(0, pageSize), pagination: undefined };
-  await setCachedJson(CACHE_KEY, result, CACHE_TTL);
-  return result;
+  // Cache the full set, slice on read (C-4 fix: avoids polluting cache with partial results)
+  await setCachedJson(CACHE_KEY, { earthquakes }, CACHE_TTL);
+
+  return { earthquakes: earthquakes.slice(0, pageSize), pagination: undefined };
 };
