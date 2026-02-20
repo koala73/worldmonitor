@@ -11,11 +11,11 @@ message HumanitarianCountrySummary {
   // Country name.
   string country_name = 2;
   // Total population affected by humanitarian crises.
-  int64 population_affected = 3;
+  int64 population_affected = 3 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
   // Number of people in need of humanitarian assistance.
-  int64 people_in_need = 4;
+  int64 people_in_need = 4 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
   // Number of internally displaced persons.
-  int64 internally_displaced = 5;
+  int64 internally_displaced = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
   // Food insecurity level description.
   string food_insecurity_level = 6;
   // Percentage of population with access to clean water.

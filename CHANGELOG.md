@@ -2,6 +2,32 @@
 
 All notable changes to World Monitor are documented here.
 
+## [2.5.1] - 2026-02-20
+
+### Performance
+
+- **Batch FRED API requests** — frontend now sends a single request with comma-separated series IDs instead of 7 parallel edge function invocations, eliminating Vercel 25s timeouts
+- **Parallel UCDP page fetches** — replaced sequential loop with Promise.all for up to 12 pages, cutting fetch time from ~96s worst-case to ~8s
+- **Bot protection middleware** — blocks known social-media crawlers from hitting API routes, reducing unnecessary edge function invocations
+- **Extended API cache TTLs** — country-intel 12h→24h, GDELT 2h→4h, nuclear 12h→24h; Vercel ignoreCommand skips non-code deploys
+
+### Fixed
+
+- **Partial UCDP cache poisoning** — failed page fetches no longer silently produce incomplete results cached for 6h; partial results get 10-min TTL in both Redis and memory, with `partial: true` flag propagated to CDN cache headers
+- **FRED upstream error masking** — single-series failures now return 502 instead of empty 200; batch mode surfaces per-series errors and returns 502 when all fail
+- **Sentry `Load failed` filter** — widened regex from `^TypeError: Load failed$` to `^TypeError: Load failed( \(.*\))?$` to catch host-suffixed variants (e.g., gamma-api.polymarket.com)
+- **Tooltip XSS hardening** — replaced `rawHtml()` with `safeHtml()` allowlist sanitizer for panel info tooltips
+- **UCDP country endpoint** — added missing HTTP method guards (OPTIONS/GET)
+- **Middleware exact path matching** — social preview bot allowlist uses `Set.has()` instead of `startsWith()` prefix matching
+
+### Changed
+
+- FRED batch API supports up to 15 comma-separated series IDs with deduplication
+- Missing FRED API key returns 200 with `X-Data-Status: skipped-no-api-key` header instead of silent empty response
+- LAYER_TO_SOURCE config extracted from duplicate inline mappings into shared constant
+
+---
+
 ## [2.5.0] - 2026-02-20
 
 ### Highlights

@@ -72,19 +72,19 @@ const allRoutes = [
 const router = createRouter(allRoutes);
 
 export default async function handler(request: Request): Promise<Response> {
+  // Origin check first — skip CORS headers for disallowed origins (M-2 fix)
+  if (isDisallowedOrigin(request)) {
+    return new Response(JSON.stringify({ error: 'Origin not allowed' }), {
+      status: 403,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
   const corsHeaders = getCorsHeaders(request);
 
   // OPTIONS preflight
   if (request.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
-  }
-
-  // Origin check
-  if (isDisallowedOrigin(request)) {
-    return new Response(JSON.stringify({ error: 'Origin not allowed' }), {
-      status: 403,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders },
-    });
   }
 
   // Route matching

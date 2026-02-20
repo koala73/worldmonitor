@@ -9,6 +9,22 @@
  */
 
 /**
+ * Detects network/fetch errors across runtimes. Per Fetch spec, network
+ * errors throw TypeError. We also check common error message patterns
+ * for V8, Deno, Bun, and Cloudflare Workers edge runtimes.
+ */
+function isNetworkError(error: unknown): boolean {
+  if (!(error instanceof TypeError)) return false;
+  const msg = error.message.toLowerCase();
+  return msg.includes('fetch') ||
+    msg.includes('network') ||
+    msg.includes('connect') ||
+    msg.includes('econnrefused') ||
+    msg.includes('enotfound') ||
+    msg.includes('socket');
+}
+
+/**
  * Maps a thrown error to an appropriate HTTP Response.
  * Matches the `ServerOptions.onError` signature:
  *   (error: unknown, req: Request) => Response | Promise<Response>
@@ -30,7 +46,9 @@ export function mapErrorToResponse(error: unknown, _req: Request): Response {
     }
 
     if (statusCode >= 500) {
-      console.error('[error-mapper] 5xx error:', error.message);
+      // Log upstream response body (truncated) for debugging (M-4 fix)
+      const apiBody = 'body' in error ? String((error as any).body).slice(0, 500) : '';
+      console.error(`[error-mapper] ${statusCode}:`, error.message, apiBody ? `| body: ${apiBody}` : '');
     }
 
     return new Response(JSON.stringify(body), {
@@ -39,8 +57,8 @@ export function mapErrorToResponse(error: unknown, _req: Request): Response {
     });
   }
 
-  // Network/fetch errors: upstream is unreachable
-  if (error instanceof TypeError && error.message.toLowerCase().includes('fetch')) {
+  // Network/fetch errors: upstream is unreachable (M-5 fix: runtime-agnostic detection)
+  if (isNetworkError(error)) {
     return new Response(JSON.stringify({ message: 'Upstream unavailable' }), {
       status: 502,
       headers: { 'Content-Type': 'application/json' },
@@ -48,6 +66,7 @@ export function mapErrorToResponse(error: unknown, _req: Request): Response {
   }
 
   // Catch-all: 500 Internal Server Error
+  console.error('[error-mapper] Unhandled error:', error instanceof Error ? error.message : error);
   return new Response(JSON.stringify({ message: 'Internal server error' }), {
     status: 500,
     headers: { 'Content-Type': 'application/json' },

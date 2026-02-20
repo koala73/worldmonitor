@@ -24,7 +24,7 @@ Sentry.init({
     /NotAllowedError/,
     /InvalidAccessError/,
     /importScripts/,
-    /^TypeError: Load failed$/,
+    /^TypeError: Load failed( \(.*\))?$/,
     /^TypeError: Failed to fetch( \(.*\))?$/,
     /^TypeError: cancelled$/,
     /^TypeError: NetworkError/,
