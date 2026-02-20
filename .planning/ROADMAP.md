@@ -230,14 +230,14 @@ Remaining legacy files (17 files + wingbits dir):
 ### Phase 4: v1 Milestone Cleanup
 **Goal**: Close all audit gaps — fix documentation staleness, create missing verification artifact, clean up orphaned code, complete circuit breaker coverage
 **Depends on**: Phase 3
-**Status**: In Progress (1/2 plans complete)
+**Status**: Complete (2/2 plans complete)
 **Requirements:** [CLIENT-03, DOMAIN-03, DOMAIN-06]
 **Gap Closure:** Closes all gaps from v1-MILESTONE-AUDIT.md
 **Plans:** 2 plans
 
 Plans:
 - [x] 04-01-PLAN.md — Documentation fixes, retroactive 2L-VERIFICATION.md, desktop-readiness.ts cleanup, service barrel re-exports
-- [ ] 04-02-PLAN.md — Circuit breaker coverage for 6 remaining domains (seismology, wildfire, climate, maritime, news, intelligence)
+- [x] 04-02-PLAN.md — Circuit breaker coverage for 6 remaining domains (seismology, wildfire, climate, maritime, news, intelligence)
 
 ## Progress
 
@@ -258,4 +258,4 @@ Plans:
 | 2L. Maritime Migration | Complete | 2026-02-19 |
 | 2M-2S. Domain Migrations (7/7) | Complete | 2026-02-19 |
 | 3. Legacy Edge Function Migration (10/10) | Complete | 2026-02-20 |
-| 4. v1 Milestone Cleanup (1/2) | In Progress | - |
+| 4. v1 Milestone Cleanup (2/2) | Complete | 2026-02-20 |

@@ -123,10 +123,10 @@ Requirements for full sebuf integration. Each maps to roadmap phases.
 
 **Coverage:**
 - v1 requirements: 34 total
-- Complete: 25
+- Complete: 27
 - Superseded: 7 (MIGRATE-01-05, CLEAN-03, CLEAN-04)
-- Partial: 1 (CLIENT-03 — Phase 4 gap closure)
-- Pending: 1 (CLIENT-03 circuit breaker coverage assigned to Phase 4)
+- Partial: 0
+- Pending: 0
 - Unmapped: 0
 
 ---
