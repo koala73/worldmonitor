@@ -1,4 +1,5 @@
 import { escapeHtml } from '@/utils/sanitize';
+import { batchReplaceChildren } from '@/utils/dom-utils';
 import { SITE_VARIANT } from '@/config';
 
 type StatusLevel = 'ok' | 'warning' | 'error' | 'disabled';
@@ -195,25 +196,57 @@ export class StatusPanel extends Panel {
     const storageInfo = this.element.querySelector('.storage-info')!;
     const lastCheck = this.element.querySelector('.last-check')!;
 
-    feedsList.innerHTML = [...this.feeds.values()].map(feed => `
-      <div class="status-row">
-        <span class="status-dot ${escapeHtml(feed.status)}"></span>
-        <span class="status-name">${escapeHtml(feed.name)}</span>
-        <span class="status-detail">${escapeHtml(String(feed.itemCount))} items</span>
-        <span class="status-time">${escapeHtml(feed.lastUpdate ? this.formatTime(feed.lastUpdate) : 'Never')}</span>
-      </div>
-    `).join('');
-
-    apisList.innerHTML = [...this.apis.values()].map(api => `
-      <div class="status-row">
-        <span class="status-dot ${escapeHtml(api.status)}"></span>
-        <span class="status-name">${escapeHtml(api.name)}</span>
-        ${api.latency ? `<span class="status-detail">${escapeHtml(String(api.latency))}ms</span>` : ''}
-      </div>
-    `).join('');
+    batchReplaceChildren(feedsList, [...this.feeds.values()].map(feed => this.createFeedRow(feed)));
+    batchReplaceChildren(apisList, [...this.apis.values()].map(api => this.createApiRow(api)));
 
     this.updateStorageInfo(storageInfo);
     lastCheck.textContent = t('components.status.updatedAt', { time: this.formatTime(new Date()) });
+  }
+
+  private createFeedRow(feed: FeedStatus): HTMLElement {
+    const row = document.createElement('div');
+    row.className = 'status-row';
+
+    const dot = document.createElement('span');
+    dot.className = `status-dot ${escapeHtml(feed.status)}`;
+
+    const name = document.createElement('span');
+    name.className = 'status-name';
+    name.textContent = feed.name;
+
+    const detail = document.createElement('span');
+    detail.className = 'status-detail';
+    detail.textContent = `${feed.itemCount} items`;
+
+    const time = document.createElement('span');
+    time.className = 'status-time';
+    time.textContent = feed.lastUpdate ? this.formatTime(feed.lastUpdate) : 'Never';
+
+    row.append(dot, name, detail, time);
+    return row;
+  }
+
+  private createApiRow(api: ApiStatus): HTMLElement {
+    const row = document.createElement('div');
+    row.className = 'status-row';
+
+    const dot = document.createElement('span');
+    dot.className = `status-dot ${escapeHtml(api.status)}`;
+
+    const name = document.createElement('span');
+    name.className = 'status-name';
+    name.textContent = api.name;
+
+    row.append(dot, name);
+
+    if (api.latency) {
+      const detail = document.createElement('span');
+      detail.className = 'status-detail';
+      detail.textContent = `${api.latency}ms`;
+      row.append(detail);
+    }
+
+    return row;
   }
 
   private async updateStorageInfo(container: Element): Promise<void> {

@@ -1,5 +1,5 @@
 import type { PizzIntStatus, GdeltTensionPair } from '@/types';
-import { escapeHtml } from '@/utils/sanitize';
+import { batchReplaceChildren } from '@/utils/dom-utils';
 import { t } from '@/services/i18n';
 
 const DEFCON_COLORS: Record<number, string> = {
@@ -258,16 +258,21 @@ export class PizzIntIndicator {
     labelEl.textContent = this.getDefconLabel(this.status.defconLevel);
     labelEl.style.color = color;
 
-    locationsEl.innerHTML = this.status.locations.map(loc => {
-      const statusClass = this.getStatusClass(loc);
-      const statusLabel = this.getStatusLabel(loc);
-      return `
-        <div class="pizzint-location">
-          <span class="pizzint-location-name">${escapeHtml(loc.name)}</span>
-          <span class="pizzint-location-status ${statusClass}">${statusLabel}</span>
-        </div>
-      `;
-    }).join('');
+    batchReplaceChildren(locationsEl, this.status.locations.map(loc => {
+      const row = document.createElement('div');
+      row.className = 'pizzint-location';
+
+      const name = document.createElement('span');
+      name.className = 'pizzint-location-name';
+      name.textContent = loc.name;
+
+      const status = document.createElement('span');
+      status.className = `pizzint-location-status ${this.getStatusClass(loc)}`;
+      status.textContent = this.getStatusLabel(loc);
+
+      row.append(name, status);
+      return row;
+    }));
 
     const timeAgo = this.formatTimeAgo(this.status.lastUpdate);
     updatedEl.textContent = t('components.pizzint.updated', { timeAgo });
@@ -277,20 +282,31 @@ export class PizzIntIndicator {
     const listEl = this.element.querySelector('.pizzint-tensions-list') as HTMLElement;
     if (!listEl) return;
 
-    listEl.innerHTML = this.tensions.map(t => {
-      const trendIcon = t.trend === 'rising' ? '↑' : t.trend === 'falling' ? '↓' : '→';
-      const changeText = t.changePercent > 0 ? `+${t.changePercent}%` : `${t.changePercent}%`;
-      const trendClass = escapeHtml(t.trend);
-      return `
-        <div class="pizzint-tension-row">
-          <span class="pizzint-tension-label">${escapeHtml(t.label)}</span>
-          <span class="pizzint-tension-score">
-            <span class="pizzint-tension-value">${t.score.toFixed(1)}</span>
-            <span class="pizzint-tension-trend ${trendClass}">${trendIcon} ${changeText}</span>
-          </span>
-        </div>
-      `;
-    }).join('');
+    batchReplaceChildren(listEl, this.tensions.map(tension => {
+      const row = document.createElement('div');
+      row.className = 'pizzint-tension-row';
+
+      const label = document.createElement('span');
+      label.className = 'pizzint-tension-label';
+      label.textContent = tension.label;
+
+      const scoreContainer = document.createElement('span');
+      scoreContainer.className = 'pizzint-tension-score';
+
+      const value = document.createElement('span');
+      value.className = 'pizzint-tension-value';
+      value.textContent = tension.score.toFixed(1);
+
+      const trend = document.createElement('span');
+      trend.className = `pizzint-tension-trend ${tension.trend}`;
+      const trendIcon = tension.trend === 'rising' ? '↑' : tension.trend === 'falling' ? '↓' : '→';
+      const changeText = tension.changePercent > 0 ? `+${tension.changePercent}%` : `${tension.changePercent}%`;
+      trend.textContent = `${trendIcon} ${changeText}`;
+
+      scoreContainer.append(value, trend);
+      row.append(label, scoreContainer);
+      return row;
+    }));
   }
 
   private getStatusClass(loc: { is_closed_now: boolean; is_spike: boolean; current_popularity: number }): string {
