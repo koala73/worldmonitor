@@ -12,6 +12,7 @@ import { SITE_VARIANT } from '@/config';
 import { BETA_MODE } from '@/config/beta';
 import { isFeatureAvailable, type RuntimeFeatureId } from './runtime-config';
 import { NewsServiceClient, type SummarizeArticleResponse } from '@/generated/client/worldmonitor/news/v1/service_client';
+import { createCircuitBreaker } from '@/utils';
 
 export type SummarizationProvider = 'ollama' | 'groq' | 'openrouter' | 'browser' | 'cache';
 
@@ -26,6 +27,9 @@ export type ProgressCallback = (step: number, total: number, message: string) =>
 // ── Sebuf client (replaces direct fetch to /api/{provider}-summarize) ──
 
 const newsClient = new NewsServiceClient('', { fetch: fetch.bind(globalThis) });
+const summaryBreaker = createCircuitBreaker<SummarizeArticleResponse>({ name: 'News Summarization' });
+
+const emptySummaryFallback: SummarizeArticleResponse = { summary: '', provider: '', model: '', cached: false, skipped: false, fallback: true, tokens: 0, reason: '', error: '', errorType: '' };
 
 // ── Provider definitions ──
 
@@ -51,14 +55,16 @@ async function tryApiProvider(
 ): Promise<SummarizationResult | null> {
   if (!isFeatureAvailable(providerDef.featureId)) return null;
   try {
-    const resp: SummarizeArticleResponse = await newsClient.summarizeArticle({
-      provider: providerDef.provider,
-      headlines,
-      mode: 'brief',
-      geoContext: geoContext || '',
-      variant: SITE_VARIANT,
-      lang: lang || 'en',
-    });
+    const resp: SummarizeArticleResponse = await summaryBreaker.execute(async () => {
+      return newsClient.summarizeArticle({
+        provider: providerDef.provider,
+        headlines,
+        mode: 'brief',
+        geoContext: geoContext || '',
+        variant: SITE_VARIANT,
+        lang: lang || 'en',
+      });
+    }, emptySummaryFallback);
 
     // Provider skipped (credentials missing) or signaled fallback
     if (resp.skipped || resp.fallback) return null;
@@ -226,14 +232,16 @@ export async function translateText(
 
     onProgress?.(i + 1, totalSteps, `Translating with ${providerDef.label}...`);
     try {
-      const resp = await newsClient.summarizeArticle({
-        provider: providerDef.provider,
-        headlines: [text],
-        mode: 'translate',
-        geoContext: '',
-        variant: targetLang,
-        lang: '',
-      });
+      const resp = await summaryBreaker.execute(async () => {
+        return newsClient.summarizeArticle({
+          provider: providerDef.provider,
+          headlines: [text],
+          mode: 'translate',
+          geoContext: '',
+          variant: targetLang,
+          lang: '',
+        });
+      }, emptySummaryFallback);
 
       if (resp.fallback || resp.skipped) continue;
       const summary = typeof resp.summary === 'string' ? resp.summary.trim() : '';
