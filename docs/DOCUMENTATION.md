@@ -3999,6 +3999,7 @@ PRs that don't follow the code style or introduce security issues will be asked 
 All JSON API endpoints **must** use sebuf. Do not create standalone `api/*.js` files — the legacy pattern is deprecated.
 
 See **[docs/ADDING_ENDPOINTS.md](ADDING_ENDPOINTS.md)** for the complete guide covering:
+
 - Adding an RPC to an existing service
 - Adding an entirely new service
 - Proto conventions (validation, time fields, shared types)

@@ -20,6 +20,7 @@ cd proto && buf generate
 ```
 
 This produces three outputs per service:
+
 - `src/generated/client/{domain}/v1/service_client.ts` — typed fetch client for the frontend
 - `src/generated/server/{domain}/v1/service_server.ts` — handler interface + route factory for the backend
 - `docs/api/{Domain}Service.openapi.yaml` + `.json` — OpenAPI v3 documentation
@@ -442,6 +443,7 @@ Every time you run `cd proto && buf generate`, OpenAPI v3 specs are generated fo
 - `docs/api/{Domain}Service.openapi.json` — machine-readable JSON
 
 These specs include:
+
 - All endpoints with request/response schemas
 - Validation constraints from `buf.validate` annotations (min/max, required fields, ranges)
 - Field descriptions from proto comments
