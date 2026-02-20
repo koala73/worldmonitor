@@ -5,7 +5,6 @@ import {
   SECTORS,
   COMMODITIES,
   MARKET_SYMBOLS,
-  REFRESH_INTERVALS,
   DEFAULT_PANELS,
   DEFAULT_MAP_LAYERS,
   MOBILE_DEFAULT_MAP_LAYERS,
@@ -99,7 +98,7 @@ import { TECH_HQS, ACCELERATORS } from '@/config/tech-geo';
 import { STOCK_EXCHANGES, FINANCIAL_CENTERS, CENTRAL_BANKS, COMMODITY_HUBS } from '@/config/finance-geo';
 import { isDesktopRuntime } from '@/services/runtime';
 import { isFeatureAvailable } from '@/services/runtime-config';
-import { invokeTauri } from '@/services/tauri-bridge';
+import { RefreshScheduler, DeepLinkHandler, DesktopUpdater } from '@/controllers';
 import { getCountryAtCoordinates, hasCountryGeometry, isCoordinateInCountry, preloadCountryGeometry } from '@/services/country-geometry';
 import { initI18n, t, changeLanguage } from '@/services/i18n';
 
@@ -110,12 +109,6 @@ type IntlDisplayNamesCtor = new (
   options: { type: 'region' }
 ) => { of: (code: string) => string | undefined };
 
-interface DesktopRuntimeInfo {
-  os: string;
-  arch: string;
-}
-
-type UpdaterOutcome = 'no_update' | 'update_available' | 'open_failed' | 'fetch_failed';
 type DesktopBuildVariant = 'full' | 'tech' | 'finance';
 
 const CYBER_LAYER_ENABLED = import.meta.env.VITE_ENABLE_CYBER_LAYER === 'true';
@@ -170,7 +163,6 @@ export class App {
   private isMobile: boolean;
   private seenGeoAlerts: Set<string> = new Set();
   private snapshotIntervalId: ReturnType<typeof setInterval> | null = null;
-  private refreshTimeoutIds: Map<string, ReturnType<typeof setTimeout>> = new Map();
   private isDestroyed = false;
   private boundKeydownHandler: ((e: KeyboardEvent) => void) | null = null;
   private boundFullscreenHandler: (() => void) | null = null;
@@ -192,12 +184,68 @@ export class App {
   private briefRequestToken = 0;
   private readonly isDesktopApp = isDesktopRuntime();
   private readonly UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
-  private updateCheckIntervalId: ReturnType<typeof setInterval> | null = null;
+  private readonly refreshScheduler: RefreshScheduler;
+  private readonly deepLinkHandler: DeepLinkHandler;
+  private readonly desktopUpdater: DesktopUpdater;
 
   constructor(containerId: string) {
     const el = document.getElementById(containerId);
     if (!el) throw new Error(`Container ${containerId} not found`);
     this.container = el;
+
+    this.refreshScheduler = new RefreshScheduler({
+      isDestroyed: () => this.isDestroyed,
+      mapLayers: () => this.mapLayers,
+      isInFlight: (name) => this.inFlight.has(name),
+      markInFlight: (name) => {
+        this.inFlight.add(name);
+      },
+      clearInFlight: (name) => {
+        this.inFlight.delete(name);
+      },
+      shouldRefreshCyberThreats: () => CYBER_LAYER_ENABLED,
+      loadNews: () => this.loadNews(),
+      loadMarkets: () => this.loadMarkets(),
+      loadPredictions: () => this.loadPredictions(),
+      loadPizzInt: () => this.loadPizzInt(),
+      loadNatural: () => this.loadNatural(),
+      loadWeatherAlerts: () => this.loadWeatherAlerts(),
+      loadFredData: () => this.loadFredData(),
+      loadOilAnalytics: () => this.loadOilAnalytics(),
+      loadGovernmentSpending: () => this.loadGovernmentSpending(),
+      refreshIntelligence: () => {
+        this.intelligenceCache = {};
+        return this.loadIntelligenceSignals();
+      },
+      loadFirmsData: () => this.loadFirmsData(),
+      loadAisSignals: () => this.loadAisSignals(),
+      loadCableActivity: () => this.loadCableActivity(),
+      loadFlightDelays: () => this.loadFlightDelays(),
+      loadCyberThreats: () => {
+        this.cyberThreatsCache = null;
+        return this.loadCyberThreats();
+      },
+    });
+
+    this.deepLinkHandler = new DeepLinkHandler({
+      getLatestClustersCount: () => this.latestClusters.length,
+      consumePendingCountry: () => {
+        const country = this.pendingDeepLinkCountry;
+        this.pendingDeepLinkCountry = null;
+        return country;
+      },
+      openCountryStory: (code, name) => this.openCountryStory(code, name),
+      openCountryBriefByCode: (code, name) => this.openCountryBriefByCode(code, name),
+      resolveCountryName: (code) => App.resolveCountryName(code),
+    });
+
+    this.desktopUpdater = new DesktopUpdater({
+      container: this.container,
+      isDesktopApp: this.isDesktopApp,
+      isDestroyed: () => this.isDestroyed,
+      getBuildVariant: () => this.getDesktopBuildVariant(),
+      updateIntervalMs: this.UPDATE_CHECK_INTERVAL_MS,
+    });
 
     this.isMobile = isMobileDevice();
     this.monitors = loadFromStorage<Monitor[]>(STORAGE_KEYS.monitors, []);
@@ -389,221 +437,20 @@ export class App {
       this.map?.hideLayerToggle('cyberThreats');
     }
 
-    this.setupRefreshIntervals();
+    this.refreshScheduler.setupIntervals();
     this.setupSnapshotSaving();
     cleanOldSnapshots().catch((e) => console.warn('[Storage] Snapshot cleanup failed:', e));
 
     // Handle deep links for story sharing
-    this.handleDeepLinks();
+    this.deepLinkHandler.handle();
 
-    this.setupUpdateChecks();
-  }
-
-  private handleDeepLinks(): void {
-    const url = new URL(window.location.href);
-
-    // Check for story deep link: /story?c=UA&t=ciianalysis
-    if (url.pathname === '/story' || url.searchParams.has('c')) {
-      const countryCode = url.searchParams.get('c');
-      if (countryCode) {
-        const countryNames: Record<string, string> = {
-          UA: 'Ukraine', RU: 'Russia', CN: 'China', US: 'United States',
-          IR: 'Iran', IL: 'Israel', TW: 'Taiwan', KP: 'North Korea',
-          SA: 'Saudi Arabia', TR: 'Turkey', PL: 'Poland', DE: 'Germany',
-          FR: 'France', GB: 'United Kingdom', IN: 'India', PK: 'Pakistan',
-          SY: 'Syria', YE: 'Yemen', MM: 'Myanmar', VE: 'Venezuela',
-        };
-        const countryName = countryNames[countryCode.toUpperCase()] || countryCode;
-
-        // Wait for data to load, then open story
-        const checkAndOpen = () => {
-          if (dataFreshness.hasSufficientData() && this.latestClusters.length > 0) {
-            this.openCountryStory(countryCode.toUpperCase(), countryName);
-          } else {
-            setTimeout(checkAndOpen, 500);
-          }
-        };
-        setTimeout(checkAndOpen, 2000);
-
-        // Update URL without reload
-        history.replaceState(null, '', '/');
-        return;
-      }
-    }
-
-    // Check for country brief deep link: ?country=UA (captured before URL sync)
-    const deepLinkCountry = this.pendingDeepLinkCountry;
-    this.pendingDeepLinkCountry = null;
-    if (deepLinkCountry) {
-      const cName = App.resolveCountryName(deepLinkCountry);
-      const checkAndOpenBrief = () => {
-        if (dataFreshness.hasSufficientData()) {
-          this.openCountryBriefByCode(deepLinkCountry, cName);
-        } else {
-          setTimeout(checkAndOpenBrief, 500);
-        }
-      };
-      setTimeout(checkAndOpenBrief, 2000);
-    }
-  }
-
-  private setupUpdateChecks(): void {
-    if (!this.isDesktopApp || this.isDestroyed) return;
-
-    // Run once shortly after startup, then poll every 6 hours.
-    setTimeout(() => {
-      if (this.isDestroyed) return;
-      void this.checkForUpdate();
-    }, 5000);
-
-    if (this.updateCheckIntervalId) {
-      clearInterval(this.updateCheckIntervalId);
-    }
-    this.updateCheckIntervalId = setInterval(() => {
-      if (this.isDestroyed) return;
-      void this.checkForUpdate();
-    }, this.UPDATE_CHECK_INTERVAL_MS);
-  }
-
-  private logUpdaterOutcome(outcome: UpdaterOutcome, context: Record<string, unknown> = {}): void {
-    const logger = outcome === 'open_failed' || outcome === 'fetch_failed'
-      ? console.warn
-      : console.info;
-    logger('[updater]', outcome, context);
+    this.desktopUpdater.setup();
   }
 
   private getDesktopBuildVariant(): DesktopBuildVariant {
     return DESKTOP_BUILD_VARIANT;
   }
 
-  private async checkForUpdate(): Promise<void> {
-    try {
-      const res = await fetch('https://worldmonitor.app/api/version');
-      if (!res.ok) {
-        this.logUpdaterOutcome('fetch_failed', { status: res.status });
-        return;
-      }
-      const data = await res.json();
-      const remote = data.version as string;
-      if (!remote) {
-        this.logUpdaterOutcome('fetch_failed', { reason: 'missing_remote_version' });
-        return;
-      }
-
-      const current = __APP_VERSION__;
-      if (!this.isNewerVersion(remote, current)) {
-        this.logUpdaterOutcome('no_update', { current, remote });
-        return;
-      }
-
-      const dismissKey = `wm-update-dismissed-${remote}`;
-      if (localStorage.getItem(dismissKey)) {
-        this.logUpdaterOutcome('update_available', { current, remote, dismissed: true });
-        return;
-      }
-
-      const releaseUrl = typeof data.url === 'string' && data.url
-        ? data.url
-        : 'https://github.com/koala73/worldmonitor/releases/latest';
-      this.logUpdaterOutcome('update_available', { current, remote, dismissed: false });
-      await this.showUpdateBadge(remote, releaseUrl);
-    } catch (error) {
-      this.logUpdaterOutcome('fetch_failed', {
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
-
-  private isNewerVersion(remote: string, current: string): boolean {
-    const r = remote.split('.').map(Number);
-    const c = current.split('.').map(Number);
-    for (let i = 0; i < Math.max(r.length, c.length); i++) {
-      const rv = r[i] ?? 0;
-      const cv = c[i] ?? 0;
-      if (rv > cv) return true;
-      if (rv < cv) return false;
-    }
-    return false;
-  }
-
-  private mapDesktopDownloadPlatform(os: string, arch: string): string | null {
-    const normalizedOs = os.toLowerCase();
-    const normalizedArch = arch.toLowerCase()
-      .replace('amd64', 'x86_64')
-      .replace('x64', 'x86_64')
-      .replace('arm64', 'aarch64');
-
-    if (normalizedOs === 'windows') {
-      return normalizedArch === 'x86_64' ? 'windows-exe' : null;
-    }
-
-    if (normalizedOs === 'macos' || normalizedOs === 'darwin') {
-      if (normalizedArch === 'aarch64') return 'macos-arm64';
-      if (normalizedArch === 'x86_64') return 'macos-x64';
-      return null;
-    }
-
-    return null;
-  }
-
-  private async resolveUpdateDownloadUrl(releaseUrl: string): Promise<string> {
-    try {
-      const runtimeInfo = await invokeTauri<DesktopRuntimeInfo>('get_desktop_runtime_info');
-      const platform = this.mapDesktopDownloadPlatform(runtimeInfo.os, runtimeInfo.arch);
-      if (platform) {
-        const variant = this.getDesktopBuildVariant();
-        return `https://worldmonitor.app/api/download?platform=${platform}&variant=${variant}`;
-      }
-    } catch {
-      // Silent fallback to release page when desktop runtime info is unavailable.
-    }
-    return releaseUrl;
-  }
-
-  private async showUpdateBadge(version: string, releaseUrl: string): Promise<void> {
-    const versionSpan = this.container.querySelector('.version');
-    if (!versionSpan) return;
-    const existingBadge = this.container.querySelector<HTMLElement>('.update-badge');
-    if (existingBadge?.dataset.version === version) return;
-    existingBadge?.remove();
-
-    const url = await this.resolveUpdateDownloadUrl(releaseUrl);
-
-    const badge = document.createElement('a');
-    badge.className = 'update-badge';
-    badge.dataset.version = version;
-    badge.href = url;
-    badge.target = this.isDesktopApp ? '_self' : '_blank';
-    badge.rel = 'noopener';
-    badge.textContent = `UPDATE v${version}`;
-    badge.addEventListener('click', (e) => {
-      e.preventDefault();
-      if (this.isDesktopApp) {
-        void invokeTauri<void>('open_url', { url }).catch((error) => {
-          this.logUpdaterOutcome('open_failed', {
-            url,
-            error: error instanceof Error ? error.message : String(error),
-          });
-          window.open(url, '_blank', 'noopener');
-        });
-        return;
-      }
-      window.open(url, '_blank', 'noopener');
-    });
-
-    const dismiss = document.createElement('span');
-    dismiss.className = 'update-badge-dismiss';
-    dismiss.textContent = '\u00d7';
-    dismiss.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      localStorage.setItem(`wm-update-dismissed-${version}`, '1');
-      badge.remove();
-    });
-
-    badge.appendChild(dismiss);
-    versionSpan.insertAdjacentElement('afterend', badge);
-  }
 
   private startHeaderClock(): void {
     const el = document.getElementById('headerClock');
@@ -1985,16 +1832,8 @@ export class App {
       this.snapshotIntervalId = null;
     }
 
-    if (this.updateCheckIntervalId) {
-      clearInterval(this.updateCheckIntervalId);
-      this.updateCheckIntervalId = null;
-    }
-
-    // Clear all refresh timeouts
-    for (const timeoutId of this.refreshTimeoutIds.values()) {
-      clearTimeout(timeoutId);
-    }
-    this.refreshTimeoutIds.clear();
+    this.desktopUpdater.teardown();
+    this.refreshScheduler.teardown();
 
     // Remove global event listeners
     if (this.boundKeydownHandler) {
@@ -4402,86 +4241,4 @@ export class App {
     }
   }
 
-  private scheduleRefresh(
-    name: string,
-    fn: () => Promise<void>,
-    intervalMs: number,
-    condition?: () => boolean
-  ): void {
-    const HIDDEN_REFRESH_MULTIPLIER = 4;
-    const JITTER_FRACTION = 0.1;
-    const MIN_REFRESH_MS = 1000;
-    const computeDelay = (baseMs: number, isHidden: boolean) => {
-      const adjusted = baseMs * (isHidden ? HIDDEN_REFRESH_MULTIPLIER : 1);
-      const jitterRange = adjusted * JITTER_FRACTION;
-      const jittered = adjusted + (Math.random() * 2 - 1) * jitterRange;
-      return Math.max(MIN_REFRESH_MS, Math.round(jittered));
-    };
-    const scheduleNext = (delay: number) => {
-      if (this.isDestroyed) return;
-      const timeoutId = setTimeout(run, delay);
-      this.refreshTimeoutIds.set(name, timeoutId);
-    };
-    const run = async () => {
-      if (this.isDestroyed) return;
-      const isHidden = document.visibilityState === 'hidden';
-      if (isHidden) {
-        scheduleNext(computeDelay(intervalMs, true));
-        return;
-      }
-      if (condition && !condition()) {
-        scheduleNext(computeDelay(intervalMs, false));
-        return;
-      }
-      if (this.inFlight.has(name)) {
-        scheduleNext(computeDelay(intervalMs, false));
-        return;
-      }
-      this.inFlight.add(name);
-      try {
-        await fn();
-      } catch (e) {
-        console.error(`[App] Refresh ${name} failed:`, e);
-      } finally {
-        this.inFlight.delete(name);
-        scheduleNext(computeDelay(intervalMs, false));
-      }
-    };
-    scheduleNext(computeDelay(intervalMs, document.visibilityState === 'hidden'));
-  }
-
-  private setupRefreshIntervals(): void {
-    // Always refresh news, markets, predictions, pizzint
-    this.scheduleRefresh('news', () => this.loadNews(), REFRESH_INTERVALS.feeds);
-    this.scheduleRefresh('markets', () => this.loadMarkets(), REFRESH_INTERVALS.markets);
-    this.scheduleRefresh('predictions', () => this.loadPredictions(), REFRESH_INTERVALS.predictions);
-    this.scheduleRefresh('pizzint', () => this.loadPizzInt(), 10 * 60 * 1000);
-
-    // Only refresh layer data if layer is enabled
-    this.scheduleRefresh('natural', () => this.loadNatural(), 5 * 60 * 1000, () => this.mapLayers.natural);
-    this.scheduleRefresh('weather', () => this.loadWeatherAlerts(), 10 * 60 * 1000, () => this.mapLayers.weather);
-    this.scheduleRefresh('fred', () => this.loadFredData(), 30 * 60 * 1000);
-    this.scheduleRefresh('oil', () => this.loadOilAnalytics(), 30 * 60 * 1000);
-    this.scheduleRefresh('spending', () => this.loadGovernmentSpending(), 60 * 60 * 1000);
-
-    // Refresh intelligence signals for CII (geopolitical variant only)
-    // This handles outages, protests, military - updates map when layers enabled
-    if (SITE_VARIANT === 'full') {
-      this.scheduleRefresh('intelligence', () => {
-        this.intelligenceCache = {}; // Clear cache to force fresh fetch
-        return this.loadIntelligenceSignals();
-      }, 5 * 60 * 1000);
-    }
-
-    // Non-intelligence layer refreshes only
-    // NOTE: outages, protests, military are refreshed by intelligence schedule above
-    this.scheduleRefresh('firms', () => this.loadFirmsData(), 30 * 60 * 1000);
-    this.scheduleRefresh('ais', () => this.loadAisSignals(), REFRESH_INTERVALS.ais, () => this.mapLayers.ais);
-    this.scheduleRefresh('cables', () => this.loadCableActivity(), 30 * 60 * 1000, () => this.mapLayers.cables);
-    this.scheduleRefresh('flights', () => this.loadFlightDelays(), 10 * 60 * 1000, () => this.mapLayers.flights);
-    this.scheduleRefresh('cyberThreats', () => {
-      this.cyberThreatsCache = null;
-      return this.loadCyberThreats();
-    }, 10 * 60 * 1000, () => CYBER_LAYER_ENABLED && this.mapLayers.cyberThreats);
-  }
 }
