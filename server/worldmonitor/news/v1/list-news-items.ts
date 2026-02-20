@@ -10,5 +10,5 @@ export async function listNewsItems(
 ): Promise<ListNewsItemsResponse> {
   // RSS feed parsing requires DOMParser (browser-only).
   // Client-side rss.ts continues to handle this via proxy URLs.
-  return { items: [], pagination: undefined };
+  throw new Error('UNIMPLEMENTED: ListNewsItems — RSS parsing is client-side only');
 }

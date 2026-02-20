@@ -8,6 +8,6 @@ export async function listMilitaryVessels(
   _ctx: ServerContext,
   _req: ListMilitaryVesselsRequest,
 ): Promise<ListMilitaryVesselsResponse> {
-  // Vessel tracking is client-side (AIS stream).
-  return { vessels: [], clusters: [], pagination: undefined };
+  // Vessel tracking is client-side via AIS stream callbacks.
+  throw new Error('UNIMPLEMENTED: ListMilitaryVessels — vessel tracking is client-side only');
 }
