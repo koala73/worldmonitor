@@ -3266,7 +3266,7 @@ export class App {
   private async loadNewsCategory(category: string, feeds: typeof FEEDS.politics): Promise<NewsItem[]> {
     try {
       const panel = this.newsPanels[category];
-      const renderIntervalMs = 250;
+      const renderIntervalMs = 100;
       let lastRenderTime = 0;
       let renderTimeout: ReturnType<typeof setTimeout> | null = null;
       let pendingItems: NewsItem[] | null = null;
@@ -3367,7 +3367,7 @@ export class App {
       .map(([key, feeds]) => ({ key, feeds }));
 
     // Stage category fetches to avoid startup bursts and API pressure in all variants.
-    const maxCategoryConcurrency = SITE_VARIANT === 'finance' ? 3 : SITE_VARIANT === 'tech' ? 4 : 5;
+    const maxCategoryConcurrency = SITE_VARIANT === 'tech' ? 4 : 5;
     const categoryConcurrency = Math.max(1, Math.min(maxCategoryConcurrency, categories.length));
     const categoryResults: PromiseSettledResult<NewsItem[]>[] = [];
     for (let i = 0; i < categories.length; i += categoryConcurrency) {

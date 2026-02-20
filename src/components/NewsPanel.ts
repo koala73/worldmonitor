@@ -272,10 +272,12 @@ export class NewsPanel extends Panel {
 
     this.setDataBadge('live');
 
+    // Always show flat items immediately for instant visual feedback,
+    // then upgrade to clustered view in the background when ready.
+    this.renderFlat(items);
+
     if (this.clusteredMode) {
       void this.renderClustersAsync(items);
-    } else {
-      this.renderFlat(items);
     }
   }
 
