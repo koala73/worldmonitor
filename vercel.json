@@ -1,4 +1,5 @@
 {
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- api/ src/ public/ index.html vite.config.ts package.json tsconfig.json",
   "headers": [
     {
       "source": "/",
