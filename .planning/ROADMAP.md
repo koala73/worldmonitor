@@ -258,4 +258,4 @@ Plans:
 | 2L. Maritime Migration | Complete | 2026-02-19 |
 | 2M-2S. Domain Migrations (7/7) | Complete | 2026-02-19 |
 | 3. Legacy Edge Function Migration (10/10) | Complete | 2026-02-20 |
-| 4. v1 Milestone Cleanup | Pending | - |
+| 4. v1 Milestone Cleanup (1/2) | In Progress | - |
