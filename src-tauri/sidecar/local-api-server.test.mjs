@@ -169,6 +169,63 @@ test('falls back to cloud when cloudFallback is enabled and local handler return
   }
 });
 
+test('preserves POST body when cloud fallback is triggered after local non-OK response', async () => {
+  const remoteBodies = [];
+  const remote = createServer((req, res) => {
+    const chunks = [];
+    req.on('data', (chunk) => chunks.push(chunk));
+    req.on('end', () => {
+      const body = Buffer.concat(chunks).toString('utf8');
+      remoteBodies.push(body);
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ source: 'remote', body }));
+    });
+  });
+  const remotePort = await listen(remote);
+
+  const localApi = await setupApiDir({
+    'post-fail.js': `
+      export default async function handler(req) {
+        await req.text();
+        return new Response(JSON.stringify({ source: 'local-error' }), {
+          status: 500,
+          headers: { 'content-type': 'application/json' }
+        });
+      }
+    `,
+  });
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    remoteBase: `http://127.0.0.1:${remotePort}`,
+    cloudFallback: 'true',
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+
+  try {
+    const payload = JSON.stringify({ secret: 'keep-body' });
+    const response = await fetch(`http://127.0.0.1:${port}/api/post-fail`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: payload,
+    });
+    assert.equal(response.status, 200);
+
+    const body = await response.json();
+    assert.equal(body.source, 'remote');
+    assert.equal(body.body, payload);
+    assert.equal(remoteBodies[0], payload);
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+    await new Promise((resolve, reject) => {
+      remote.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+});
+
 test('uses local handler response when local handler succeeds', async () => {
   const remote = await setupRemoteServer();
   const localApi = await setupApiDir({

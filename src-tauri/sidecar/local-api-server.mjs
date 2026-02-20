@@ -223,10 +223,18 @@ async function buildRouteTable(root) {
   return files;
 }
 
+const REQUEST_BODY_CACHE = Symbol('requestBodyCache');
+
 async function readBody(req) {
+  if (Object.prototype.hasOwnProperty.call(req, REQUEST_BODY_CACHE)) {
+    return req[REQUEST_BODY_CACHE];
+  }
+
   const chunks = [];
   for await (const chunk of req) chunks.push(chunk);
-  return chunks.length ? Buffer.concat(chunks) : undefined;
+  const body = chunks.length ? Buffer.concat(chunks) : undefined;
+  req[REQUEST_BODY_CACHE] = body;
+  return body;
 }
 
 function toHeaders(nodeHeaders, options = {}) {
