@@ -211,9 +211,104 @@ function polymarketPlugin(): Plugin {
  * paths fall through to existing proxy rules.
  */
 function sebufApiPlugin(): Plugin {
+  // Cache router across requests (H-13 fix). Invalidated by Vite's module graph on HMR.
+  let cachedRouter: Awaited<ReturnType<typeof buildRouter>> | null = null;
+  let cachedCorsMod: any = null;
+
+  async function buildRouter() {
+    const [
+      routerMod, corsMod, errorMod,
+      seismologyServerMod, seismologyHandlerMod,
+      wildfireServerMod, wildfireHandlerMod,
+      climateServerMod, climateHandlerMod,
+      predictionServerMod, predictionHandlerMod,
+      displacementServerMod, displacementHandlerMod,
+      aviationServerMod, aviationHandlerMod,
+      researchServerMod, researchHandlerMod,
+      unrestServerMod, unrestHandlerMod,
+      conflictServerMod, conflictHandlerMod,
+      maritimeServerMod, maritimeHandlerMod,
+      cyberServerMod, cyberHandlerMod,
+      economicServerMod, economicHandlerMod,
+      infrastructureServerMod, infrastructureHandlerMod,
+      marketServerMod, marketHandlerMod,
+      newsServerMod, newsHandlerMod,
+      intelligenceServerMod, intelligenceHandlerMod,
+      militaryServerMod, militaryHandlerMod,
+    ] = await Promise.all([
+        import('./server/router'),
+        import('./server/cors'),
+        import('./server/error-mapper'),
+        import('./src/generated/server/worldmonitor/seismology/v1/service_server'),
+        import('./server/worldmonitor/seismology/v1/handler'),
+        import('./src/generated/server/worldmonitor/wildfire/v1/service_server'),
+        import('./server/worldmonitor/wildfire/v1/handler'),
+        import('./src/generated/server/worldmonitor/climate/v1/service_server'),
+        import('./server/worldmonitor/climate/v1/handler'),
+        import('./src/generated/server/worldmonitor/prediction/v1/service_server'),
+        import('./server/worldmonitor/prediction/v1/handler'),
+        import('./src/generated/server/worldmonitor/displacement/v1/service_server'),
+        import('./server/worldmonitor/displacement/v1/handler'),
+        import('./src/generated/server/worldmonitor/aviation/v1/service_server'),
+        import('./server/worldmonitor/aviation/v1/handler'),
+        import('./src/generated/server/worldmonitor/research/v1/service_server'),
+        import('./server/worldmonitor/research/v1/handler'),
+        import('./src/generated/server/worldmonitor/unrest/v1/service_server'),
+        import('./server/worldmonitor/unrest/v1/handler'),
+        import('./src/generated/server/worldmonitor/conflict/v1/service_server'),
+        import('./server/worldmonitor/conflict/v1/handler'),
+        import('./src/generated/server/worldmonitor/maritime/v1/service_server'),
+        import('./server/worldmonitor/maritime/v1/handler'),
+        import('./src/generated/server/worldmonitor/cyber/v1/service_server'),
+        import('./server/worldmonitor/cyber/v1/handler'),
+        import('./src/generated/server/worldmonitor/economic/v1/service_server'),
+        import('./server/worldmonitor/economic/v1/handler'),
+        import('./src/generated/server/worldmonitor/infrastructure/v1/service_server'),
+        import('./server/worldmonitor/infrastructure/v1/handler'),
+        import('./src/generated/server/worldmonitor/market/v1/service_server'),
+        import('./server/worldmonitor/market/v1/handler'),
+        import('./src/generated/server/worldmonitor/news/v1/service_server'),
+        import('./server/worldmonitor/news/v1/handler'),
+        import('./src/generated/server/worldmonitor/intelligence/v1/service_server'),
+        import('./server/worldmonitor/intelligence/v1/handler'),
+        import('./src/generated/server/worldmonitor/military/v1/service_server'),
+        import('./server/worldmonitor/military/v1/handler'),
+      ]);
+
+    const serverOptions = { onError: errorMod.mapErrorToResponse };
+    const allRoutes = [
+      ...seismologyServerMod.createSeismologyServiceRoutes(seismologyHandlerMod.seismologyHandler, serverOptions),
+      ...wildfireServerMod.createWildfireServiceRoutes(wildfireHandlerMod.wildfireHandler, serverOptions),
+      ...climateServerMod.createClimateServiceRoutes(climateHandlerMod.climateHandler, serverOptions),
+      ...predictionServerMod.createPredictionServiceRoutes(predictionHandlerMod.predictionHandler, serverOptions),
+      ...displacementServerMod.createDisplacementServiceRoutes(displacementHandlerMod.displacementHandler, serverOptions),
+      ...aviationServerMod.createAviationServiceRoutes(aviationHandlerMod.aviationHandler, serverOptions),
+      ...researchServerMod.createResearchServiceRoutes(researchHandlerMod.researchHandler, serverOptions),
+      ...unrestServerMod.createUnrestServiceRoutes(unrestHandlerMod.unrestHandler, serverOptions),
+      ...conflictServerMod.createConflictServiceRoutes(conflictHandlerMod.conflictHandler, serverOptions),
+      ...maritimeServerMod.createMaritimeServiceRoutes(maritimeHandlerMod.maritimeHandler, serverOptions),
+      ...cyberServerMod.createCyberServiceRoutes(cyberHandlerMod.cyberHandler, serverOptions),
+      ...economicServerMod.createEconomicServiceRoutes(economicHandlerMod.economicHandler, serverOptions),
+      ...infrastructureServerMod.createInfrastructureServiceRoutes(infrastructureHandlerMod.infrastructureHandler, serverOptions),
+      ...marketServerMod.createMarketServiceRoutes(marketHandlerMod.marketHandler, serverOptions),
+      ...newsServerMod.createNewsServiceRoutes(newsHandlerMod.newsHandler, serverOptions),
+      ...intelligenceServerMod.createIntelligenceServiceRoutes(intelligenceHandlerMod.intelligenceHandler, serverOptions),
+      ...militaryServerMod.createMilitaryServiceRoutes(militaryHandlerMod.militaryHandler, serverOptions),
+    ];
+    cachedCorsMod = corsMod;
+    return routerMod.createRouter(allRoutes);
+  }
+
   return {
     name: 'sebuf-api',
     configureServer(server) {
+      // Invalidate cached router on HMR updates to server/ files
+      server.watcher.on('change', (file) => {
+        if (file.includes('/server/') || file.includes('/src/generated/server/')) {
+          cachedRouter = null;
+        }
+      });
+
       server.middlewares.use(async (req, res, next) => {
         // Only intercept sebuf routes: /api/{domain}/v1/*
         if (!req.url || !/^\/api\/[a-z]+\/v1\//.test(req.url)) {
@@ -221,87 +316,12 @@ function sebufApiPlugin(): Plugin {
         }
 
         try {
-          // Lazy-load handler modules (avoids issues with vite.config.ts loading order)
-          const [
-            routerMod, corsMod, errorMod,
-            seismologyServerMod, seismologyHandlerMod,
-            wildfireServerMod, wildfireHandlerMod,
-            climateServerMod, climateHandlerMod,
-            predictionServerMod, predictionHandlerMod,
-            displacementServerMod, displacementHandlerMod,
-            aviationServerMod, aviationHandlerMod,
-            researchServerMod, researchHandlerMod,
-            unrestServerMod, unrestHandlerMod,
-            conflictServerMod, conflictHandlerMod,
-            maritimeServerMod, maritimeHandlerMod,
-            cyberServerMod, cyberHandlerMod,
-            economicServerMod, economicHandlerMod,
-            infrastructureServerMod, infrastructureHandlerMod,
-            marketServerMod, marketHandlerMod,
-            newsServerMod, newsHandlerMod,
-            intelligenceServerMod, intelligenceHandlerMod,
-            militaryServerMod, militaryHandlerMod,
-          ] = await Promise.all([
-              import('./server/router'),
-              import('./server/cors'),
-              import('./server/error-mapper'),
-              import('./src/generated/server/worldmonitor/seismology/v1/service_server'),
-              import('./server/worldmonitor/seismology/v1/handler'),
-              import('./src/generated/server/worldmonitor/wildfire/v1/service_server'),
-              import('./server/worldmonitor/wildfire/v1/handler'),
-              import('./src/generated/server/worldmonitor/climate/v1/service_server'),
-              import('./server/worldmonitor/climate/v1/handler'),
-              import('./src/generated/server/worldmonitor/prediction/v1/service_server'),
-              import('./server/worldmonitor/prediction/v1/handler'),
-              import('./src/generated/server/worldmonitor/displacement/v1/service_server'),
-              import('./server/worldmonitor/displacement/v1/handler'),
-              import('./src/generated/server/worldmonitor/aviation/v1/service_server'),
-              import('./server/worldmonitor/aviation/v1/handler'),
-              import('./src/generated/server/worldmonitor/research/v1/service_server'),
-              import('./server/worldmonitor/research/v1/handler'),
-              import('./src/generated/server/worldmonitor/unrest/v1/service_server'),
-              import('./server/worldmonitor/unrest/v1/handler'),
-              import('./src/generated/server/worldmonitor/conflict/v1/service_server'),
-              import('./server/worldmonitor/conflict/v1/handler'),
-              import('./src/generated/server/worldmonitor/maritime/v1/service_server'),
-              import('./server/worldmonitor/maritime/v1/handler'),
-              import('./src/generated/server/worldmonitor/cyber/v1/service_server'),
-              import('./server/worldmonitor/cyber/v1/handler'),
-              import('./src/generated/server/worldmonitor/economic/v1/service_server'),
-              import('./server/worldmonitor/economic/v1/handler'),
-              import('./src/generated/server/worldmonitor/infrastructure/v1/service_server'),
-              import('./server/worldmonitor/infrastructure/v1/handler'),
-              import('./src/generated/server/worldmonitor/market/v1/service_server'),
-              import('./server/worldmonitor/market/v1/handler'),
-              import('./src/generated/server/worldmonitor/news/v1/service_server'),
-              import('./server/worldmonitor/news/v1/handler'),
-              import('./src/generated/server/worldmonitor/intelligence/v1/service_server'),
-              import('./server/worldmonitor/intelligence/v1/handler'),
-              import('./src/generated/server/worldmonitor/military/v1/service_server'),
-              import('./server/worldmonitor/military/v1/handler'),
-            ]);
-
-          const serverOptions = { onError: errorMod.mapErrorToResponse };
-          const allRoutes = [
-            ...seismologyServerMod.createSeismologyServiceRoutes(seismologyHandlerMod.seismologyHandler, serverOptions),
-            ...wildfireServerMod.createWildfireServiceRoutes(wildfireHandlerMod.wildfireHandler, serverOptions),
-            ...climateServerMod.createClimateServiceRoutes(climateHandlerMod.climateHandler, serverOptions),
-            ...predictionServerMod.createPredictionServiceRoutes(predictionHandlerMod.predictionHandler, serverOptions),
-            ...displacementServerMod.createDisplacementServiceRoutes(displacementHandlerMod.displacementHandler, serverOptions),
-            ...aviationServerMod.createAviationServiceRoutes(aviationHandlerMod.aviationHandler, serverOptions),
-            ...researchServerMod.createResearchServiceRoutes(researchHandlerMod.researchHandler, serverOptions),
-            ...unrestServerMod.createUnrestServiceRoutes(unrestHandlerMod.unrestHandler, serverOptions),
-            ...conflictServerMod.createConflictServiceRoutes(conflictHandlerMod.conflictHandler, serverOptions),
-            ...maritimeServerMod.createMaritimeServiceRoutes(maritimeHandlerMod.maritimeHandler, serverOptions),
-            ...cyberServerMod.createCyberServiceRoutes(cyberHandlerMod.cyberHandler, serverOptions),
-            ...economicServerMod.createEconomicServiceRoutes(economicHandlerMod.economicHandler, serverOptions),
-            ...infrastructureServerMod.createInfrastructureServiceRoutes(infrastructureHandlerMod.infrastructureHandler, serverOptions),
-            ...marketServerMod.createMarketServiceRoutes(marketHandlerMod.marketHandler, serverOptions),
-            ...newsServerMod.createNewsServiceRoutes(newsHandlerMod.newsHandler, serverOptions),
-            ...intelligenceServerMod.createIntelligenceServiceRoutes(intelligenceHandlerMod.intelligenceHandler, serverOptions),
-            ...militaryServerMod.createMilitaryServiceRoutes(militaryHandlerMod.militaryHandler, serverOptions),
-          ];
-          const router = routerMod.createRouter(allRoutes);
+          // Build router once, reuse across requests (H-13 fix)
+          if (!cachedRouter) {
+            cachedRouter = await buildRouter();
+          }
+          const router = cachedRouter;
+          const corsMod = cachedCorsMod;
 
           // Convert Connect IncomingMessage to Web Standard Request
           const port = server.config.server.port || 3000;

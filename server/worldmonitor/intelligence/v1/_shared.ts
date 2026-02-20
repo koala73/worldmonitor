@@ -25,11 +25,4 @@ export const TIER1_COUNTRIES: Record<string, string> = {
 // Helpers
 // ========================================================================
 
-export function hashString(str: string): string {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    const c = str.charCodeAt(i);
-    hash = ((hash << 5) - hash + c) | 0;
-  }
-  return Math.abs(hash).toString(36);
-}
+export { hashString } from '../../../_shared/hash';

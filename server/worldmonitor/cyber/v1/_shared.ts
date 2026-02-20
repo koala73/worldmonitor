@@ -269,11 +269,14 @@ function setGeoCached(ip: string, geo: { lat: number; lon: number; country: stri
   geoCache.set(ip, { ...geo, ts: Date.now() });
 }
 
-async function fetchGeoIp(ip: string): Promise<{ lat: number; lon: number; country: string } | null> {
+async function fetchGeoIp(
+  ip: string,
+  signal?: AbortSignal,
+): Promise<{ lat: number; lon: number; country: string } | null> {
   // Primary: ipinfo.io
   try {
     const resp = await fetch(`https://ipinfo.io/${encodeURIComponent(ip)}/json`, {
-      signal: AbortSignal.timeout(GEO_PER_IP_TIMEOUT_MS),
+      signal: signal || AbortSignal.timeout(GEO_PER_IP_TIMEOUT_MS),
     });
     if (resp.ok) {
       const data = await resp.json() as { loc?: string; country?: string };
@@ -286,10 +289,13 @@ async function fetchGeoIp(ip: string): Promise<{ lat: number; lon: number; count
     }
   } catch { /* fall through */ }
 
+  // Check if already aborted before fallback
+  if (signal?.aborted) return null;
+
   // Fallback: freeipapi.com
   try {
     const resp = await fetch(`https://freeipapi.com/api/json/${encodeURIComponent(ip)}`, {
-      signal: AbortSignal.timeout(GEO_PER_IP_TIMEOUT_MS),
+      signal: signal || AbortSignal.timeout(GEO_PER_IP_TIMEOUT_MS),
     });
     if (!resp.ok) return null;
     const data = await resp.json() as { latitude?: number; longitude?: number; countryCode?: string; countryName?: string };
@@ -302,10 +308,13 @@ async function fetchGeoIp(ip: string): Promise<{ lat: number; lon: number; count
   }
 }
 
-async function geolocateIp(ip: string): Promise<{ lat: number; lon: number; country: string } | null> {
+async function geolocateIp(
+  ip: string,
+  signal?: AbortSignal,
+): Promise<{ lat: number; lon: number; country: string } | null> {
   const cached = getGeoCached(ip);
   if (cached) return cached;
-  const geo = await fetchGeoIp(ip);
+  const geo = await fetchGeoIp(ip, signal);
   if (geo) setGeoCached(ip, geo);
   return geo;
 }
@@ -327,22 +336,26 @@ export async function hydrateThreatCoordinates(threats: RawThreat[]): Promise<Ra
   const capped = unresolvedIps.slice(0, GEO_MAX_UNRESOLVED);
   const resolvedByIp = new Map<string, { lat: number; lon: number; country: string }>();
 
+  // AbortController cancels orphaned workers on timeout (M-16 fix)
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), GEO_OVERALL_TIMEOUT_MS);
+
   // Concurrent workers
   const queue = [...capped];
   const workerCount = Math.min(GEO_CONCURRENCY, queue.length);
   const workers = Array.from({ length: workerCount }, async () => {
-    while (queue.length > 0) {
+    while (queue.length > 0 && !controller.signal.aborted) {
       const ip = queue.shift();
       if (!ip) continue;
-      const geo = await geolocateIp(ip);
+      const geo = await geolocateIp(ip, controller.signal);
       if (geo) resolvedByIp.set(ip, geo);
     }
   });
 
-  await Promise.race([
-    Promise.all(workers),
-    new Promise((resolve) => setTimeout(resolve, GEO_OVERALL_TIMEOUT_MS)),
-  ]);
+  try {
+    await Promise.all(workers);
+  } catch { /* aborted — expected */ }
+  clearTimeout(timeoutId);
 
   return threats.map((threat) => {
     if (hasValidCoordinates(threat.lat, threat.lon)) return threat;

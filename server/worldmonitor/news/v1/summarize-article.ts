@@ -22,7 +22,16 @@ export async function summarizeArticle(
   _ctx: ServerContext,
   req: SummarizeArticleRequest,
 ): Promise<SummarizeArticleResponse> {
-  const { provider, headlines, mode = 'brief', geoContext = '', variant = 'full', lang = 'en' } = req;
+  const { provider, mode = 'brief', geoContext = '', variant = 'full', lang = 'en' } = req;
+
+  // Input sanitization (M-14 fix): limit headline count and length
+  const MAX_HEADLINES = 10;
+  const MAX_HEADLINE_LEN = 500;
+  const MAX_GEO_CONTEXT_LEN = 2000;
+  const headlines = (req.headlines || [])
+    .slice(0, MAX_HEADLINES)
+    .map(h => typeof h === 'string' ? h.slice(0, MAX_HEADLINE_LEN) : '');
+  const sanitizedGeoContext = typeof geoContext === 'string' ? geoContext.slice(0, MAX_GEO_CONTEXT_LEN) : '';
 
   // Provider credential check
   const skipReasons: Record<string, string> = {
@@ -67,7 +76,7 @@ export async function summarizeArticle(
 
   try {
     // Check cache first (shared across all providers)
-    const cacheKey = getCacheKey(headlines, mode, geoContext, variant, lang);
+    const cacheKey = getCacheKey(headlines, mode, sanitizedGeoContext, variant, lang);
     const cached = await getCachedJson(cacheKey);
     if (cached && typeof cached === 'object' && (cached as any).summary) {
       const c = cached as { summary: string; model?: string };
@@ -90,7 +99,7 @@ export async function summarizeArticle(
     const uniqueHeadlines = deduplicateHeadlines(headlines.slice(0, 8));
     const { systemPrompt, userPrompt } = buildArticlePrompts(headlines, uniqueHeadlines, {
       mode,
-      geoContext,
+      geoContext: sanitizedGeoContext,
       variant,
       lang,
     });

@@ -13,10 +13,22 @@ import type {
   UcdpViolenceEvent,
   UcdpViolenceType,
 } from '../../../../src/generated/server/worldmonitor/conflict/v1/service_server';
+import { getCachedJson, setCachedJson } from '../../../_shared/redis';
 
 const UCDP_PAGE_SIZE = 1000;
 const MAX_PAGES = 12;
 const TRAILING_WINDOW_MS = 365 * 24 * 60 * 60 * 1000;
+
+const CACHE_KEY = 'ucdp:gedevents:sebuf:v1';
+const CACHE_TTL_FULL = 6 * 60 * 60;        // 6 hours for complete results
+const CACHE_TTL_PARTIAL = 10 * 60;          // 10 minutes for partial results (M-16 port)
+
+// In-memory fallback cache with per-entry TTL
+let fallbackCache: { data: UcdpViolenceEvent[] | null; timestamp: number; ttlMs: number } = {
+  data: null,
+  timestamp: 0,
+  ttlMs: CACHE_TTL_FULL * 1000,
+};
 
 const VIOLENCE_TYPE_MAP: Record<number, UcdpViolenceType> = {
   1: 'UCDP_VIOLENCE_TYPE_STATE_BASED',
@@ -97,9 +109,10 @@ async function fetchUcdpGedEvents(req: ListUcdpEventsRequest): Promise<UcdpViole
 
     const allEvents: any[] = [];
     let latestDatasetMs = NaN;
+    let failedPages = 0;
 
     for (const rawData of pageResults) {
-      if (rawData === FAILED) continue;
+      if (rawData === FAILED) { failedPages++; continue; }
       const events: any[] = Array.isArray(rawData?.Result) ? rawData.Result : [];
       allEvents.push(...events);
 
@@ -108,6 +121,8 @@ async function fetchUcdpGedEvents(req: ListUcdpEventsRequest): Promise<UcdpViole
         latestDatasetMs = pageMaxMs;
       }
     }
+
+    const isPartial = failedPages > 0;
 
     // Filter events within trailing window
     const filtered = allEvents.filter((event) => {
@@ -144,6 +159,11 @@ async function fetchUcdpGedEvents(req: ListUcdpEventsRequest): Promise<UcdpViole
     // Sort by dateStart descending (newest first)
     mapped.sort((a, b) => b.dateStart - a.dateStart);
 
+    // Cache with TTL based on completeness (ported from main #198)
+    const ttl = isPartial ? CACHE_TTL_PARTIAL : CACHE_TTL_FULL;
+    await setCachedJson(CACHE_KEY, mapped, ttl).catch(() => {});
+    fallbackCache = { data: mapped, timestamp: Date.now(), ttlMs: ttl * 1000 };
+
     return mapped;
   } catch {
     return [];
@@ -154,10 +174,31 @@ export async function listUcdpEvents(
   _ctx: ServerContext,
   req: ListUcdpEventsRequest,
 ): Promise<ListUcdpEventsResponse> {
+  // Check Redis cache first
+  const cached = await getCachedJson(CACHE_KEY) as UcdpViolenceEvent[] | null;
+  if (cached && Array.isArray(cached) && cached.length > 0) {
+    let events = cached;
+    if (req.country) events = events.filter((e) => e.country === req.country);
+    return { events, pagination: undefined };
+  }
+
+  // Check in-memory fallback cache
+  if (fallbackCache.data && (Date.now() - fallbackCache.timestamp) < fallbackCache.ttlMs) {
+    let events = fallbackCache.data;
+    if (req.country) events = events.filter((e) => e.country === req.country);
+    return { events, pagination: undefined };
+  }
+
   try {
     const events = await fetchUcdpGedEvents(req);
     return { events, pagination: undefined };
   } catch {
+    // Last resort: stale fallback data
+    if (fallbackCache.data) {
+      let events = fallbackCache.data;
+      if (req.country) events = events.filter((e) => e.country === req.country);
+      return { events, pagination: undefined };
+    }
     return { events: [], pagination: undefined };
   }
 }

@@ -147,30 +147,30 @@ components:
             type: object
             properties:
                 refugees:
-                    type: string
+                    type: integer
                     minimum: 0
                     format: int64
-                    description: Total recognized refugees worldwide.
+                    description: 'Total recognized refugees worldwide.. Warning: Values > 2^53 may lose precision in JavaScript'
                 asylumSeekers:
-                    type: string
+                    type: integer
                     minimum: 0
                     format: int64
-                    description: Total asylum seekers worldwide.
+                    description: 'Total asylum seekers worldwide.. Warning: Values > 2^53 may lose precision in JavaScript'
                 idps:
-                    type: string
+                    type: integer
                     minimum: 0
                     format: int64
-                    description: Total internally displaced persons worldwide.
+                    description: 'Total internally displaced persons worldwide.. Warning: Values > 2^53 may lose precision in JavaScript'
                 stateless:
-                    type: string
+                    type: integer
                     minimum: 0
                     format: int64
-                    description: Total stateless persons worldwide.
+                    description: 'Total stateless persons worldwide.. Warning: Values > 2^53 may lose precision in JavaScript'
                 total:
-                    type: string
+                    type: integer
                     minimum: 0
                     format: int64
-                    description: Grand total of displaced persons.
+                    description: 'Grand total of displaced persons.. Warning: Values > 2^53 may lose precision in JavaScript'
             description: GlobalDisplacementTotals represents worldwide displacement figures.
         CountryDisplacement:
             type: object
@@ -183,37 +183,37 @@ components:
                     type: string
                     description: Country name.
                 refugees:
-                    type: string
+                    type: integer
                     format: int64
-                    description: Refugees originating from this country.
+                    description: 'Refugees originating from this country.. Warning: Values > 2^53 may lose precision in JavaScript'
                 asylumSeekers:
-                    type: string
+                    type: integer
                     format: int64
-                    description: Asylum seekers from this country.
+                    description: 'Asylum seekers from this country.. Warning: Values > 2^53 may lose precision in JavaScript'
                 idps:
-                    type: string
+                    type: integer
                     format: int64
-                    description: Internally displaced persons within this country.
+                    description: 'Internally displaced persons within this country.. Warning: Values > 2^53 may lose precision in JavaScript'
                 stateless:
-                    type: string
+                    type: integer
                     format: int64
-                    description: Stateless persons associated with this country.
+                    description: 'Stateless persons associated with this country.. Warning: Values > 2^53 may lose precision in JavaScript'
                 totalDisplaced:
-                    type: string
+                    type: integer
                     format: int64
-                    description: Total displaced from this country.
+                    description: 'Total displaced from this country.. Warning: Values > 2^53 may lose precision in JavaScript'
                 hostRefugees:
-                    type: string
+                    type: integer
                     format: int64
-                    description: Refugees hosted by this country.
+                    description: 'Refugees hosted by this country.. Warning: Values > 2^53 may lose precision in JavaScript'
                 hostAsylumSeekers:
-                    type: string
+                    type: integer
                     format: int64
-                    description: Asylum seekers hosted by this country.
+                    description: 'Asylum seekers hosted by this country.. Warning: Values > 2^53 may lose precision in JavaScript'
                 hostTotal:
-                    type: string
+                    type: integer
                     format: int64
-                    description: Total persons hosted by this country.
+                    description: 'Total persons hosted by this country.. Warning: Values > 2^53 may lose precision in JavaScript'
                 location:
                     $ref: '#/components/schemas/GeoCoordinates'
             required:
@@ -253,9 +253,9 @@ components:
                     type: string
                     description: Asylum country name.
                 refugees:
-                    type: string
+                    type: integer
                     format: int64
-                    description: Number of refugees in this flow.
+                    description: 'Number of refugees in this flow.. Warning: Values > 2^53 may lose precision in JavaScript'
                 originLocation:
                     $ref: '#/components/schemas/GeoCoordinates'
                 asylumLocation:

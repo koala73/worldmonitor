@@ -18,16 +18,10 @@ export const CACHE_TTL_SECONDS = 86400; // 24 hours
 export const CACHE_VERSION = 'v3';
 
 // ========================================================================
-// Hash utility (ported from _upstash-cache.js)
+// Hash utility (unified FNV-1a 52-bit — H-7 fix)
 // ========================================================================
 
-export function hashString(input: string): string {
-  let hash = 5381;
-  for (let i = 0; i < input.length; i++) {
-    hash = ((hash << 5) + hash) + input.charCodeAt(i);
-  }
-  return (hash >>> 0).toString(36);
-}
+export { hashString } from '../../../_shared/hash';
 
 // ========================================================================
 // Cache key builder (ported from _summarize-handler.js)

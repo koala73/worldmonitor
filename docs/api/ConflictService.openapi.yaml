@@ -345,17 +345,17 @@ components:
                     type: string
                     description: Country name.
                 populationAffected:
-                    type: string
+                    type: integer
                     format: int64
-                    description: Total population affected by humanitarian crises.
+                    description: 'Total population affected by humanitarian crises.. Warning: Values > 2^53 may lose precision in JavaScript'
                 peopleInNeed:
-                    type: string
+                    type: integer
                     format: int64
-                    description: Number of people in need of humanitarian assistance.
+                    description: 'Number of people in need of humanitarian assistance.. Warning: Values > 2^53 may lose precision in JavaScript'
                 internallyDisplaced:
-                    type: string
+                    type: integer
                     format: int64
-                    description: Number of internally displaced persons.
+                    description: 'Number of internally displaced persons.. Warning: Values > 2^53 may lose precision in JavaScript'
                 foodInsecurityLevel:
                     type: string
                     description: Food insecurity level description.

@@ -43,7 +43,12 @@ export async function classifyEvent(
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) return { classification: undefined };
 
-  const cacheKey = `classify:sebuf:v1:${hashString(req.title.toLowerCase())}`;
+  // Input sanitization (M-14 fix): limit title length
+  const MAX_TITLE_LEN = 500;
+  const title = typeof req.title === 'string' ? req.title.slice(0, MAX_TITLE_LEN) : '';
+  if (!title) return { classification: undefined };
+
+  const cacheKey = `classify:sebuf:v1:${hashString(title.toLowerCase())}`;
   const cached = (await getCachedJson(cacheKey)) as { level: string; category: string } | null;
   if (cached?.level && cached?.category) {
     return {
@@ -75,7 +80,7 @@ Return: {"level":"...","category":"..."}`;
         model: GROQ_MODEL,
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: req.title },
+          { role: 'user', content: title },
         ],
         temperature: 0,
         max_tokens: 50,

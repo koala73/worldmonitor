@@ -19,24 +19,24 @@ export interface DisplacementSummary {
 }
 
 export interface GlobalDisplacementTotals {
-  refugees: string;
-  asylumSeekers: string;
-  idps: string;
-  stateless: string;
-  total: string;
+  refugees: number;
+  asylumSeekers: number;
+  idps: number;
+  stateless: number;
+  total: number;
 }
 
 export interface CountryDisplacement {
   code: string;
   name: string;
-  refugees: string;
-  asylumSeekers: string;
-  idps: string;
-  stateless: string;
-  totalDisplaced: string;
-  hostRefugees: string;
-  hostAsylumSeekers: string;
-  hostTotal: string;
+  refugees: number;
+  asylumSeekers: number;
+  idps: number;
+  stateless: number;
+  totalDisplaced: number;
+  hostRefugees: number;
+  hostAsylumSeekers: number;
+  hostTotal: number;
   location?: GeoCoordinates;
 }
 
@@ -50,7 +50,7 @@ export interface DisplacementFlow {
   originName: string;
   asylumCode: string;
   asylumName: string;
-  refugees: string;
+  refugees: number;
   originLocation?: GeoCoordinates;
   asylumLocation?: GeoCoordinates;
 }
