@@ -2,7 +2,9 @@ import {
   WildfireServiceClient,
   type FireDetection,
   type FireConfidence,
+  type ListFireDetectionsResponse,
 } from '@/generated/client/worldmonitor/wildfire/v1/service_client';
+import { createCircuitBreaker } from '@/utils';
 
 export type { FireDetection };
 
@@ -37,29 +39,29 @@ export interface MapFire {
 // -- Client --
 
 const client = new WildfireServiceClient('', { fetch: fetch.bind(globalThis) });
+const breaker = createCircuitBreaker<ListFireDetectionsResponse>({ name: 'Wildfires' });
+
+const emptyFallback: ListFireDetectionsResponse = { fireDetections: [] };
 
 // -- Public API --
 
 export async function fetchAllFires(_days?: number): Promise<FetchResult> {
-  try {
-    const response = await client.listFireDetections({});
-    const detections = response.fireDetections;
+  const response = await breaker.execute(async () => {
+    return client.listFireDetections({});
+  }, emptyFallback);
+  const detections = response.fireDetections;
 
-    if (detections.length === 0) {
-      return { regions: {}, totalCount: 0, skipped: true, reason: 'NASA_FIRMS_API_KEY not configured' };
-    }
-
-    const regions: Record<string, FireDetection[]> = {};
-    for (const d of detections) {
-      const r = d.region || 'Unknown';
-      (regions[r] ??= []).push(d);
-    }
-
-    return { regions, totalCount: detections.length };
-  } catch (e) {
-    console.warn('[FIRMS] Fetch failed:', e);
-    return { regions: {}, totalCount: 0 };
+  if (detections.length === 0) {
+    return { regions: {}, totalCount: 0, skipped: true, reason: 'NASA_FIRMS_API_KEY not configured' };
   }
+
+  const regions: Record<string, FireDetection[]> = {};
+  for (const d of detections) {
+    const r = d.region || 'Unknown';
+    (regions[r] ??= []).push(d);
+  }
+
+  return { regions, totalCount: detections.length };
 }
 
 export function computeRegionStats(regions: Record<string, FireDetection[]>): FireRegionStats[] {

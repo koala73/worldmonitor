@@ -2,13 +2,18 @@ import {
   MaritimeServiceClient,
   type AisDensityZone as ProtoDensityZone,
   type AisDisruption as ProtoDisruption,
+  type GetVesselSnapshotResponse,
 } from '@/generated/client/worldmonitor/maritime/v1/service_client';
+import { createCircuitBreaker } from '@/utils';
 import type { AisDisruptionEvent, AisDensityZone, AisDisruptionType } from '@/types';
 import { dataFreshness } from '../data-freshness';
 import { isFeatureAvailable } from '../runtime-config';
 
-// ---- Client ----
+// ---- Client + Circuit Breaker ----
 const client = new MaritimeServiceClient('', { fetch: fetch.bind(globalThis) });
+const snapshotBreaker = createCircuitBreaker<GetVesselSnapshotResponse>({ name: 'Maritime Snapshot' });
+
+const emptySnapshotFallback: GetVesselSnapshotResponse = { snapshot: undefined };
 
 // ---- Proto-to-Legacy Type Mapping ----
 
@@ -198,26 +203,26 @@ async function fetchSnapshotPayload(includeCandidates: boolean): Promise<unknown
     return fetchRawRelaySnapshot(true);
   }
 
-  // When no candidates needed, use proto RPC for type-safe snapshot
-  try {
-    const response = await client.getVesselSnapshot({});
-    if (response.snapshot) {
-      // Convert proto snapshot back to the raw format that parseSnapshot() expects
-      // This is necessary because the rest of the polling system (parseSnapshot,
-      // latestDisruptions, latestDensity) expects the legacy AisDisruptionEvent shape
-      return {
-        sequence: 0, // Proto doesn't carry sequence; use 0 (safe: no candidates)
-        status: { connected: true, vessels: 0, messages: 0 },
-        disruptions: response.snapshot.disruptions.map(toDisruptionEvent),
-        density: response.snapshot.densityZones.map(toDensityZone),
-        candidateReports: [],
-      };
-    }
-    return null;
-  } catch {
-    // Proto RPC failed, try raw fallback
-    return fetchRawRelaySnapshot(false);
+  // When no candidates needed, use proto RPC for type-safe snapshot (with circuit breaker)
+  const response = await snapshotBreaker.execute(async () => {
+    return client.getVesselSnapshot({});
+  }, emptySnapshotFallback);
+
+  if (response.snapshot) {
+    // Convert proto snapshot back to the raw format that parseSnapshot() expects
+    // This is necessary because the rest of the polling system (parseSnapshot,
+    // latestDisruptions, latestDensity) expects the legacy AisDisruptionEvent shape
+    return {
+      sequence: 0, // Proto doesn't carry sequence; use 0 (safe: no candidates)
+      status: { connected: true, vessels: 0, messages: 0 },
+      disruptions: response.snapshot.disruptions.map(toDisruptionEvent),
+      density: response.snapshot.densityZones.map(toDensityZone),
+      candidateReports: [],
+    };
   }
+
+  // Circuit breaker returned fallback (snapshot undefined), try raw relay
+  return fetchRawRelaySnapshot(false);
 }
 
 // ---- Callback Emission ----
