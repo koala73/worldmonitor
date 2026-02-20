@@ -496,6 +496,13 @@ async function fetchJsonWithTimeout(url, init = {}, timeoutMs = UPSTREAM_TIMEOUT
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
+  // Forward external abort signal (e.g. overall GeoIP timeout) to our controller
+  const externalSignal = init.signal;
+  if (externalSignal) {
+    if (externalSignal.aborted) controller.abort();
+    else externalSignal.addEventListener('abort', () => controller.abort(), { once: true });
+  }
+
   try {
     return await fetch(url, {
       ...init,
@@ -526,10 +533,12 @@ async function setGeoCache(ip, geo) {
   void setCachedJson(cacheKey, geo, GEO_CACHE_TTL_SECONDS);
 }
 
-async function fetchGeoIp(ip) {
+async function fetchGeoIp(ip, signal) {
+  const init = signal ? { signal } : {};
+
   // Primary: ipinfo.io (HTTPS, works from Edge runtime & Node.js, 50K/mo free)
   try {
-    const primary = await fetchJsonWithTimeout(`https://ipinfo.io/${encodeURIComponent(ip)}/json`, {}, GEO_PER_IP_TIMEOUT_MS);
+    const primary = await fetchJsonWithTimeout(`https://ipinfo.io/${encodeURIComponent(ip)}/json`, init, GEO_PER_IP_TIMEOUT_MS);
     if (primary.ok) {
       const data = await primary.json();
       const locParts = (data?.loc || '').split(',');
@@ -547,7 +556,7 @@ async function fetchGeoIp(ip) {
 
   // Fallback: freeipapi.com (HTTPS, works from Edge runtime, 60/min)
   try {
-    const fallback = await fetchJsonWithTimeout(`https://freeipapi.com/api/json/${encodeURIComponent(ip)}`, {}, GEO_PER_IP_TIMEOUT_MS);
+    const fallback = await fetchJsonWithTimeout(`https://freeipapi.com/api/json/${encodeURIComponent(ip)}`, init, GEO_PER_IP_TIMEOUT_MS);
     if (!fallback.ok) return null;
 
     const data = await fallback.json();
@@ -565,12 +574,12 @@ async function fetchGeoIp(ip) {
   }
 }
 
-async function geolocateIp(ip) {
+async function geolocateIp(ip, signal) {
   const cached = await getGeoFromCache(ip);
   if (cached) return cached;
 
   try {
-    const geo = await fetchGeoIp(ip);
+    const geo = await fetchGeoIp(ip, signal);
     if (!geo) return null;
     await setGeoCache(ip, geo);
     return geo;
@@ -597,23 +606,28 @@ async function hydrateThreatCoordinates(threats) {
   const cappedIps = unresolvedIps.slice(0, GEO_MAX_UNRESOLVED_PER_RUN);
   const resolvedByIp = new Map();
 
+  const controller = new AbortController();
+  const { signal } = controller;
+
   const queue = [...cappedIps];
   const workerCount = Math.min(GEO_CONCURRENCY, queue.length);
   const workers = Array.from({ length: workerCount }, async () => {
-    while (queue.length > 0) {
+    while (queue.length > 0 && !signal.aborted) {
       const ip = queue.shift();
       if (!ip) continue;
-      const geo = await geolocateIp(ip);
+      const geo = await geolocateIp(ip, signal);
       if (geo) {
         resolvedByIp.set(ip, geo);
       }
     }
   });
 
-  await Promise.race([
-    Promise.all(workers),
-    new Promise((resolve) => setTimeout(resolve, GEO_OVERALL_TIMEOUT_MS)),
-  ]);
+  const timeout = setTimeout(() => controller.abort(), GEO_OVERALL_TIMEOUT_MS);
+  try {
+    await Promise.all(workers);
+  } catch { /* AbortError from cancelled fetches */ } finally {
+    clearTimeout(timeout);
+  }
 
   return threats.map((threat) => {
     const hasCoords = hasValidCoordinates(threat.lat, threat.lon);

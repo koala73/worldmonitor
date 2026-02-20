@@ -177,9 +177,10 @@ export async function mget(...keys) {
 }
 
 export function hashString(input) {
-  let hash = 5381;
+  let hash = 0xcbf29ce484222325n;
   for (let i = 0; i < input.length; i++) {
-    hash = ((hash << 5) + hash) + input.charCodeAt(i);
+    hash ^= BigInt(input.charCodeAt(i));
+    hash = BigInt.asUintN(64, hash * 0x100000001b3n);
   }
-  return (hash >>> 0).toString(36);
+  return hash.toString(36);
 }
