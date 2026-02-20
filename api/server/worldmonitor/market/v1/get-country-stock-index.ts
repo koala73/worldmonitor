@@ -109,8 +109,8 @@ export async function getCountryStockIndex(
     if (!allCloses || allCloses.length < 2) return notAvailable;
 
     const closes = allCloses.slice(-6);
-    const latest = closes[closes.length - 1];
-    const oldest = closes[0];
+    const latest = closes[closes.length - 1]!;
+    const oldest = closes[0]!;
     const weekChange = ((latest - oldest) / oldest) * 100;
     const meta = result.meta || {};
 

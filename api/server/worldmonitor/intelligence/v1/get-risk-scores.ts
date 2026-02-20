@@ -99,7 +99,7 @@ function computeCIIScores(protests: AcledEvent[]): CiiScore[] {
   }
 
   const scores: CiiScore[] = [];
-  for (const [code, name] of Object.entries(TIER1_COUNTRIES)) {
+  for (const [code, _name] of Object.entries(TIER1_COUNTRIES)) {
     const events = countryEvents.get(code) || { protests: 0, riots: 0 };
     const baseline = BASELINE_RISK[code] || 20;
     const multiplier = EVENT_MULTIPLIER[code] || 1.0;
@@ -132,7 +132,7 @@ function computeStrategicRisks(ciiScores: CiiScore[]): StrategicRisk[] {
   const top5 = ciiScores.slice(0, 5);
   const weights = top5.map((_, i) => 1 - i * 0.15);
   const totalWeight = weights.reduce((sum, w) => sum + w, 0);
-  const weightedSum = top5.reduce((sum, s, i) => sum + s.combinedScore * weights[i], 0);
+  const weightedSum = top5.reduce((sum, s, i) => sum + s.combinedScore * weights[i]!, 0);
   const overallScore = Math.min(100, Math.round((weightedSum / totalWeight) * 0.7 + 15));
 
   return [

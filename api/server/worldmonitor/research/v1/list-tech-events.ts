@@ -18,7 +18,7 @@ import type {
   TechEvent,
   TechEventCoords,
 } from '../../../../../src/generated/server/worldmonitor/research/v1/service_server';
-import { CITY_COORDS, type CityCoord } from '../../../../data/city-coords';
+import { CITY_COORDS } from '../../../../data/city-coords';
 
 // ---------- Constants ----------
 
@@ -104,15 +104,15 @@ function normalizeLocation(location: string | null): (TechEventCoords) | null {
   // Direct lookup
   if (CITY_COORDS[normalized]) {
     const c = CITY_COORDS[normalized];
-    return { lat: c.lat, lng: c.lng, country: c.country, original: location, virtual: c.virtual ?? false };
+    return { lat: c!.lat, lng: c!.lng, country: c!.country, original: location, virtual: c!.virtual ?? false };
   }
 
   // Try removing state/country suffix
   const parts = normalized.split(',');
   if (parts.length > 1) {
-    const city = parts[0].trim();
+    const city = parts[0]!.trim();
     if (CITY_COORDS[city]) {
-      const c = CITY_COORDS[city];
+      const c = CITY_COORDS[city]!;
       return { lat: c.lat, lng: c.lng, country: c.country, original: location, virtual: c.virtual ?? false };
     }
   }
@@ -142,12 +142,12 @@ function parseICS(icsText: string): TechEvent[] {
     const uidMatch = block.match(/UID:(.+)/);
 
     if (summaryMatch && dtstartMatch) {
-      const summary = summaryMatch[1].trim();
-      const location = locationMatch ? locationMatch[1].trim() : '';
-      const startDate = dtstartMatch[1];
-      const endDate = dtendMatch ? dtendMatch[1] : startDate;
-      const url = urlMatch ? urlMatch[1].trim() : '';
-      const uid = uidMatch ? uidMatch[1].trim() : '';
+      const summary = summaryMatch[1]!.trim();
+      const location = locationMatch ? locationMatch[1]!.trim() : '';
+      const startDate = dtstartMatch[1]!;
+      const endDate = dtendMatch ? dtendMatch[1]! : startDate;
+      const url = urlMatch ? urlMatch[1]!.trim() : '';
+      const uid = uidMatch ? uidMatch[1]!.trim() : '';
 
       // Determine event type
       let type = 'other';
@@ -185,17 +185,17 @@ function parseDevEventsRSS(rssText: string): TechEvent[] {
   const itemMatches = rssText.matchAll(/<item>([\s\S]*?)<\/item>/g);
 
   for (const match of itemMatches) {
-    const item = match[1];
+    const item = match[1]!;
 
     const titleMatch = item.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>|<title>(.*?)<\/title>/);
     const linkMatch = item.match(/<link>(.*?)<\/link>/);
     const descMatch = item.match(/<description><!\[CDATA\[(.*?)\]\]><\/description>|<description>(.*?)<\/description>/s);
     const guidMatch = item.match(/<guid[^>]*>(.*?)<\/guid>/);
 
-    const title = titleMatch ? (titleMatch[1] || titleMatch[2]) : null;
-    const link = linkMatch ? linkMatch[1] : '';
-    const description = descMatch ? (descMatch[1] || descMatch[2]) : '';
-    const guid = guidMatch ? guidMatch[1] : '';
+    const title = titleMatch ? (titleMatch[1] ?? titleMatch[2]) : null;
+    const link = linkMatch ? linkMatch[1] ?? '' : '';
+    const description = descMatch ? (descMatch[1] ?? descMatch[2] ?? '') : '';
+    const guid = guidMatch ? guidMatch[1] ?? '' : '';
 
     if (!title) continue;
 
@@ -203,9 +203,9 @@ function parseDevEventsRSS(rssText: string): TechEvent[] {
     const dateMatch = description.match(/on\s+(\w+\s+\d{1,2},?\s+\d{4})/i);
     let startDate: string | null = null;
     if (dateMatch) {
-      const parsed = new Date(dateMatch[1]);
+      const parsed = new Date(dateMatch[1]!);
       if (!isNaN(parsed.getTime())) {
-        startDate = parsed.toISOString().split('T')[0];
+        startDate = parsed.toISOString().split('T')[0]!;
       }
     }
 
@@ -214,7 +214,7 @@ function parseDevEventsRSS(rssText: string): TechEvent[] {
     const locationMatch = description.match(/(?:in|at)\s+([A-Za-z\s]+,\s*[A-Za-z\s]+)(?:\.|$)/i) ||
                           description.match(/Location:\s*([^<\n]+)/i);
     if (locationMatch) {
-      location = locationMatch[1].trim();
+      location = locationMatch[1]!.trim();
     }
     // Check for "Online" events
     if (description.toLowerCase().includes('online')) {

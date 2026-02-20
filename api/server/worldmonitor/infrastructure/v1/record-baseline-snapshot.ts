@@ -39,8 +39,8 @@ export async function recordBaselineSnapshot(
     const writes: Promise<void>[] = [];
 
     for (let i = 0; i < batch.length; i++) {
-      const { type, count } = batch[i];
-      const region = batch[i].region || 'global';
+      const { type, count } = batch[i]!;
+      const _region = batch[i]!.region || 'global';
       if (!VALID_BASELINE_TYPES.includes(type) || typeof count !== 'number' || isNaN(count)) continue;
 
       const prev: BaselineEntry = existing[i] as BaselineEntry || { mean: 0, m2: 0, sampleCount: 0, lastUpdated: '' };
@@ -52,7 +52,7 @@ export async function recordBaselineSnapshot(
       const delta2 = count - newMean;
       const newM2 = prev.m2 + delta * delta2;
 
-      writes.push(setCachedJson(keys[i], {
+      writes.push(setCachedJson(keys[i]!, {
         mean: newMean,
         m2: newM2,
         sampleCount: n,

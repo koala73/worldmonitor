@@ -66,11 +66,11 @@ function parseEtfChartData(chart: YahooChartResponse, ticker: string, issuer: st
 
     if (validCloses.length < 2) return null;
 
-    const latestPrice = validCloses[validCloses.length - 1];
-    const prevPrice = validCloses[validCloses.length - 2];
+    const latestPrice = validCloses[validCloses.length - 1]!;
+    const prevPrice = validCloses[validCloses.length - 2]!;
     const priceChange = prevPrice ? ((latestPrice - prevPrice) / prevPrice * 100) : 0;
 
-    const latestVolume = validVolumes.length > 0 ? validVolumes[validVolumes.length - 1] : 0;
+    const latestVolume = validVolumes.length > 0 ? validVolumes[validVolumes.length - 1]! : 0;
     const avgVolume = validVolumes.length > 1
       ? validVolumes.slice(0, -1).reduce((a, b) => a + b, 0) / (validVolumes.length - 1)
       : latestVolume;
@@ -115,10 +115,10 @@ export async function listEtfFlows(
 
     const etfs: EtfFlow[] = [];
     for (let i = 0; i < ETF_LIST.length; i++) {
-      const settled = charts[i];
+      const settled = charts[i]!;
       const chart = settled.status === 'fulfilled' ? settled.value : null;
       if (chart) {
-        const parsed = parseEtfChartData(chart, ETF_LIST[i].ticker, ETF_LIST[i].issuer);
+        const parsed = parseEtfChartData(chart, ETF_LIST[i]!.ticker, ETF_LIST[i]!.issuer);
         if (parsed) etfs.push(parsed);
       }
     }

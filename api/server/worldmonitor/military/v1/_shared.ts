@@ -5,7 +5,7 @@ import type {
 } from '../../../../../src/generated/server/worldmonitor/military/v1/service_server';
 
 // @ts-expect-error -- JS data module, no declarations
-import { MILITARY_HEX_LIST } from '../../../../data/military-hex-db.js';
+import { MILITARY_HEX_LIST } from './military-hex-db.js';
 
 // ========================================================================
 // Military identification

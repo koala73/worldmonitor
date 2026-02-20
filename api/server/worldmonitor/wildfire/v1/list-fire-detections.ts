@@ -7,6 +7,8 @@
  * Gracefully degrades to empty results when NASA_FIRMS_API_KEY is not set.
  */
 
+declare const process: { env: Record<string, string | undefined> };
+
 import type {
   WildfireServiceHandler,
   ServerContext,
@@ -49,16 +51,16 @@ function parseCSV(csv: string): Record<string, string>[] {
   const lines = csv.trim().split('\n');
   if (lines.length < 2) return [];
 
-  const headers = lines[0].split(',').map((h) => h.trim());
+  const headers = lines[0]!.split(',').map((h) => h.trim());
   const results: Record<string, string>[] = [];
 
   for (let i = 1; i < lines.length; i++) {
-    const vals = lines[i].split(',').map((v) => v.trim());
+    const vals = lines[i]!.split(',').map((v) => v.trim());
     if (vals.length < headers.length) continue;
 
     const row: Record<string, string> = {};
     headers.forEach((h, idx) => {
-      row[h] = vals[idx];
+      row[h] = vals[idx]!;
     });
     results.push(row);
   }
@@ -117,13 +119,13 @@ export const listFireDetections: WildfireServiceHandler['listFireDetections'] = 
           row.acq_time || '',
         );
         fireDetections.push({
-          id: `${row.latitude}-${row.longitude}-${row.acq_date}-${row.acq_time}`,
+          id: `${row.latitude ?? ''}-${row.longitude ?? ''}-${row.acq_date ?? ''}-${row.acq_time ?? ''}`,
           location: {
-            latitude: parseFloat(row.latitude) || 0,
-            longitude: parseFloat(row.longitude) || 0,
+            latitude: parseFloat(row.latitude ?? '0') || 0,
+            longitude: parseFloat(row.longitude ?? '0') || 0,
           },
-          brightness: parseFloat(row.bright_ti4) || 0,
-          frp: parseFloat(row.frp) || 0,
+          brightness: parseFloat(row.bright_ti4 ?? '0') || 0,
+          frp: parseFloat(row.frp ?? '0') || 0,
           confidence: mapConfidence(row.confidence || ''),
           satellite: row.satellite || '',
           detectedAt,

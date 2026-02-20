@@ -65,7 +65,7 @@ export async function getPopulationExposure(
       }
     }
 
-    const info = bestMatch ? PRIORITY_COUNTRIES[bestMatch] : { pop: 50000000, area: 500000 };
+    const info = bestMatch ? PRIORITY_COUNTRIES[bestMatch]! : { pop: 50000000, area: 500000 };
     const density = info.pop / info.area;
     const areaKm2 = Math.PI * radius * radius;
     const exposed = Math.round(density * areaKm2);

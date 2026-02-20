@@ -51,7 +51,7 @@ function detectDeploymentStatus(text: string): string {
 
 function extractHomePort(text: string): string | undefined {
   const match = text.match(/homeported (?:at|in) ([^.,]+)/i) || text.match(/home[ -]?ported (?:at|in) ([^.,]+)/i);
-  return match ? match[1].trim() : undefined;
+  return match ? match[1]!.trim() : undefined;
 }
 
 function stripHtml(html: string): string {
@@ -136,10 +136,10 @@ function extractBattleForceSummary(tableHtml: string): BattleForceSummary | unde
   const rows = Array.from(tableHtml.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi));
   if (rows.length < 2) return undefined;
 
-  const headerCells = Array.from(rows[0][1].matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi))
-    .map((m) => stripHtml(m[1]).toLowerCase());
-  const valueCells = Array.from(rows[1][1].matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi))
-    .map((m) => parseLeadingInteger(stripHtml(m[1])));
+  const headerCells = Array.from(rows[0]![1]!.matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi))
+    .map((m) => stripHtml(m[1]!).toLowerCase());
+  const valueCells = Array.from(rows[1]![1]!.matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi))
+    .map((m) => parseLeadingInteger(stripHtml(m[1]!)));
 
   const summary: BattleForceSummary = { totalShips: 0, deployed: 0, underway: 0 };
   let matched = false;
@@ -173,9 +173,9 @@ function extractBattleForceSummary(tableHtml: string): BattleForceSummary | unde
 
   if (!totalMatch && !deployedMatch && !underwayMatch) return undefined;
   return {
-    totalShips: totalMatch ? parseInt(totalMatch[1].replace(/,/g, ''), 10) : 0,
-    deployed: deployedMatch ? parseInt(deployedMatch[1].replace(/,/g, ''), 10) : 0,
-    underway: underwayMatch ? parseInt(underwayMatch[1].replace(/,/g, ''), 10) : 0,
+    totalShips: totalMatch ? parseInt(totalMatch[1]!.replace(/,/g, ''), 10) : 0,
+    deployed: deployedMatch ? parseInt(deployedMatch[1]!.replace(/,/g, ''), 10) : 0,
+    underway: underwayMatch ? parseInt(underwayMatch[1]!.replace(/,/g, ''), 10) : 0,
   };
 }
 
@@ -202,13 +202,13 @@ function parseUSNIArticle(
   let battleForceSummary: BattleForceSummary | undefined;
   const tableMatch = html.match(/<table[^>]*>([\s\S]*?)<\/table>/i);
   if (tableMatch) {
-    battleForceSummary = extractBattleForceSummary(tableMatch[1]);
+    battleForceSummary = extractBattleForceSummary(tableMatch[1]!);
   }
 
   const h2Parts = html.split(/<h2[^>]*>/i);
 
   for (let i = 1; i < h2Parts.length; i++) {
-    const part = h2Parts[i];
+    const part = h2Parts[i]!;
     const h2EndIdx = part.indexOf('</h2>');
     if (h2EndIdx === -1) continue;
     const regionRaw = stripHtml(part.substring(0, h2EndIdx));
@@ -234,7 +234,7 @@ function parseUSNIArticle(
     let currentStrikeGroup: ParsedStrikeGroup | null = null;
 
     for (let j = 0; j < h3Parts.length; j++) {
-      const section = h3Parts[j];
+      const section = h3Parts[j]!;
 
       if (j > 0) {
         const h3EndIdx = section.indexOf('</h3>');
@@ -279,8 +279,8 @@ function parseUSNIArticle(
       };
 
       while ((match = shipRegex.exec(section)) !== null) {
-        const shipName = match[1].trim();
-        const hullNumber = match[2].trim();
+        const shipName = match[1]!.trim();
+        const hullNumber = match[2]!.trim();
         const vesselType = hullToVesselType(hullNumber);
 
         if (vesselType === 'carrier' && currentStrikeGroup) {
@@ -308,8 +308,8 @@ function parseUSNIArticle(
 
       const usnsRegex = /USNS\s+<(?:em|i)>([^<]+)<\/(?:em|i)>\s*\(([^)]+)\)/gi;
       while ((match = usnsRegex.exec(section)) !== null) {
-        const shipName = match[1].trim();
-        const hullNumber = match[2].trim();
+        const shipName = match[1]!.trim();
+        const hullNumber = match[2]!.trim();
         upsertVessel({
           name: `USNS ${shipName}`,
           hullNumber,
@@ -397,7 +397,7 @@ export async function getUSNIFleetReport(
       return { report: undefined, cached: false, stale: false, error: 'No USNI fleet tracker articles found' };
     }
 
-    const post = wpData[0];
+    const post = wpData[0]!;
     const articleUrl = (post.link as string) || `https://news.usni.org/?p=${post.id}`;
     const articleDate = (post.date as string) || new Date().toISOString();
     const articleTitle = stripHtml(((post.title as Record<string, string>)?.rendered) || 'USNI Fleet Tracker');

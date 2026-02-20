@@ -15,7 +15,7 @@ import { fetchFinnhubQuote } from './_shared';
 
 export async function getSectorSummary(
   _ctx: ServerContext,
-  req: GetSectorSummaryRequest,
+  _req: GetSectorSummaryRequest,
 ): Promise<GetSectorSummaryResponse> {
   try {
     const apiKey = process.env.FINNHUB_API_KEY;

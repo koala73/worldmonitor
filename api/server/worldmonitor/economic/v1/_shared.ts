@@ -27,7 +27,7 @@ export function rateOfChange(prices: number[], days: number): number | null {
   const recent = prices[prices.length - 1];
   const past = prices[prices.length - 1 - days];
   if (!past || past === 0) return null;
-  return ((recent - past) / past) * 100;
+  return ((recent! - past) / past) * 100;
 }
 
 /**

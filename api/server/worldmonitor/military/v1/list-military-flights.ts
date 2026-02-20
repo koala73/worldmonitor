@@ -4,6 +4,7 @@ import type {
   ServerContext,
   ListMilitaryFlightsRequest,
   ListMilitaryFlightsResponse,
+  MilitaryAircraftType,
 } from '../../../../../src/generated/server/worldmonitor/military/v1/service_server';
 
 import { isMilitaryCallsign, isMilitaryHex, detectAircraftType, UPSTREAM_TIMEOUT_MS } from './_shared';
@@ -64,7 +65,7 @@ export async function listMilitaryFlights(
         callsign: (callsign || '').trim(),
         hexCode: icao24,
         registration: '',
-        aircraftType: AIRCRAFT_TYPE_MAP[aircraftType] || 'MILITARY_AIRCRAFT_TYPE_UNKNOWN',
+        aircraftType: (AIRCRAFT_TYPE_MAP[aircraftType] || 'MILITARY_AIRCRAFT_TYPE_UNKNOWN') as MilitaryAircraftType,
         aircraftModel: '',
         operator: 'MILITARY_OPERATOR_OTHER',
         operatorCountry: '',

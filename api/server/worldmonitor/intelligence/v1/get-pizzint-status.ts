@@ -117,8 +117,8 @@ export async function getPizzintStatus(
         const raw = (await resp.json()) as Record<string, Array<{ t: number; v: number }>>;
         tensionPairs = Object.entries(raw).map(([pairKey, dataPoints]) => {
           const countries = pairKey.split('_');
-          const latest = dataPoints[dataPoints.length - 1];
-          const prev = dataPoints.length > 1 ? dataPoints[dataPoints.length - 2] : latest;
+          const latest = dataPoints[dataPoints.length - 1]!;
+          const prev = dataPoints.length > 1 ? dataPoints[dataPoints.length - 2]! : latest;
           const change = prev.v > 0 ? ((latest.v - prev.v) / prev.v) * 100 : 0;
           const trend: TrendDirection = change > 5
             ? 'TREND_DIRECTION_RISING'
