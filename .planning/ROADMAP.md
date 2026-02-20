@@ -190,7 +190,7 @@ Additional client-side migrations (post-2L, pre-Phase 3):
 - intelligence services, country-intel → intelligence client
 - Dead legacy files cleaned up
 
-### Phase 3: Legacy Edge Function Migration (IN PROGRESS)
+### Phase 3: Legacy Edge Function Migration (COMPLETE)
 **Goal**: Migrate remaining `api/*.js` legacy edge functions into sebuf domain RPCs or tag as non-migratable
 **Depends on**: Phase 2M-2S
 **Status**: Complete (5/5 plans complete)
@@ -200,9 +200,9 @@ Additional client-side migrations (post-2L, pre-Phase 3):
 Plans:
 - [x] 03-01-PLAN.md — Wingbits commit + GDELT doc migration + delete _ip-rate-limit.js
 - [x] 03-02-PLAN.md — Summarization migration (SummarizeArticle RPC with provider param)
-- [ ] 03-03-PLAN.md — Macro-signals migration (GetMacroSignals RPC)
-- [ ] 03-04-PLAN.md — Tech-events migration (ListTechEvents RPC + city-coords data)
-- [ ] 03-05-PLAN.md — Temporal-baseline + non-JSON tagging + final cleanup
+- [x] 03-03-PLAN.md — Macro-signals migration (GetMacroSignals RPC)
+- [x] 03-04-PLAN.md — Tech-events migration (ListTechEvents RPC + city-coords data)
+- [x] 03-05-PLAN.md — Temporal-baseline + non-JSON tagging + final cleanup
 
 Remaining legacy files (17 files + wingbits dir):
 
