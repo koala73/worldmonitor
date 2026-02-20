@@ -20,7 +20,7 @@ export async function listMarketQuotes(
   try {
     const apiKey = process.env.FINNHUB_API_KEY;
     const symbols = req.symbols;
-    if (!symbols.length) return { quotes: [] };
+    if (!symbols.length) return { quotes: [], finnhubSkipped: !apiKey, skipReason: !apiKey ? 'FINNHUB_API_KEY not configured' : '' };
 
     const finnhubSymbols = symbols.filter((s) => !YAHOO_ONLY_SYMBOLS.has(s));
     const yahooSymbols = symbols.filter((s) => YAHOO_ONLY_SYMBOLS.has(s));
@@ -67,8 +67,8 @@ export async function listMarketQuotes(
       }
     }
 
-    return { quotes };
+    return { quotes, finnhubSkipped: !apiKey, skipReason: !apiKey ? 'FINNHUB_API_KEY not configured' : '' };
   } catch {
-    return { quotes: [] };
+    return { quotes: [], finnhubSkipped: false, skipReason: '' };
   }
 }

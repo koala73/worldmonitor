@@ -7,6 +7,8 @@ export interface ListMarketQuotesRequest {
 
 export interface ListMarketQuotesResponse {
   quotes: MarketQuote[];
+  finnhubSkipped: boolean;
+  skipReason: string;
 }
 
 export interface MarketQuote {

@@ -17,8 +17,8 @@ import { createCircuitBreaker } from '@/utils';
 
 // ---- Client + Circuit Breakers ----
 
-const client = new MarketServiceClient('', { fetch: fetch.bind(globalThis) });
-const stockBreaker = createCircuitBreaker<ListMarketQuotesResponse>({ name: 'Market Quotes' });
+const client = new MarketServiceClient('', { fetch: (...args: Parameters<typeof fetch>) => fetch(...args) });
+const stockBreaker = createCircuitBreaker<ListMarketQuotesResponse>({ name: 'Market Quotes', cacheTtlMs: 0 });
 const cryptoBreaker = createCircuitBreaker<ListCryptoQuotesResponse>({ name: 'Crypto Quotes' });
 
 const emptyStockFallback: ListMarketQuotesResponse = { quotes: [] };
@@ -90,7 +90,11 @@ export async function fetchMultipleStocks(
   }
 
   const data = results.length > 0 ? results : lastSuccessfulResults;
-  return { data };
+  return {
+    data,
+    skipped: resp.finnhubSkipped || undefined,
+    reason: resp.skipReason || undefined,
+  };
 }
 
 export async function fetchStockQuote(

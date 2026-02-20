@@ -1,4 +1,4 @@
-.PHONY: help lint generate breaking format check clean deps install install-buf install-plugins install-npm
+.PHONY: help lint generate breaking format check clean deps install install-buf install-plugins install-npm install-playwright
 .DEFAULT_GOAL := help
 
 # Variables
@@ -22,7 +22,7 @@ help: ## Show this help message
 	@echo 'Targets:'
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-install: install-buf install-plugins install-npm deps ## Install everything (buf, sebuf plugins, npm deps, proto deps)
+install: install-buf install-plugins install-npm install-playwright deps ## Install everything (buf, sebuf plugins, npm deps, proto deps, browsers)
 
 install-buf: ## Install buf CLI
 	@if command -v buf >/dev/null 2>&1; then \
@@ -42,6 +42,9 @@ install-plugins: ## Install sebuf protoc plugins (requires Go)
 
 install-npm: ## Install npm dependencies
 	npm install
+
+install-playwright: ## Install Playwright browsers for e2e tests
+	npx playwright install chromium
 
 deps: ## Install/update buf proto dependencies
 	cd $(PROTO_DIR) && buf dep update
