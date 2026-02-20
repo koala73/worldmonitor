@@ -230,15 +230,14 @@ Remaining legacy files (17 files + wingbits dir):
 ### Phase 4: v1 Milestone Cleanup
 **Goal**: Close all audit gaps — fix documentation staleness, create missing verification artifact, clean up orphaned code, complete circuit breaker coverage
 **Depends on**: Phase 3
-**Status**: Pending
+**Status**: In Progress (0/2 plans complete)
 **Requirements:** [CLIENT-03, DOMAIN-03, DOMAIN-06]
 **Gap Closure:** Closes all gaps from v1-MILESTONE-AUDIT.md
+**Plans:** 2 plans
 
-Tasks:
-1. Requirements & roadmap documentation fixes (DOMAIN-03 verification gap, traceability table corrections, coverage count, .continue-here.md)
-2. Phase 2L retroactive VERIFICATION.md (DOMAIN-06 — integration checker confirmed full stack wired)
-3. Code cleanup (orphaned test file, desktop-readiness.ts stale metadata, service barrel re-exports)
-4. Circuit breaker coverage for 6 remaining domains: seismology, wildfire, climate, maritime, news, intelligence (CLIENT-03)
+Plans:
+- [ ] 04-01-PLAN.md — Documentation fixes, retroactive 2L-VERIFICATION.md, desktop-readiness.ts cleanup, service barrel re-exports
+- [ ] 04-02-PLAN.md — Circuit breaker coverage for 6 remaining domains (seismology, wildfire, climate, maritime, news, intelligence)
 
 ## Progress
 
