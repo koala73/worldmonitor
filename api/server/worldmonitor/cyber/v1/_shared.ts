@@ -747,4 +747,3 @@ export function toProtoCyberThreat(raw: RawThreat): CyberThreat {
   };
 }
 
-export { process };

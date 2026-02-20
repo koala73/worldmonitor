@@ -143,4 +143,3 @@ export function mapWingbitsDetails(icao24: string, data: Record<string, unknown>
   };
 }
 
-export { process };

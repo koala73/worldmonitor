@@ -347,4 +347,3 @@ export async function tryOpenRouter(
   }
 }
 
-export { process };

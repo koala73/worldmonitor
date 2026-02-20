@@ -124,4 +124,3 @@ export function sortBySeverityAndRecency(events: UnrestEvent[]): UnrestEvent[] {
   });
 }
 
-export { process };
