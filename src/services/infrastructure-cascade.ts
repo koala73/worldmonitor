@@ -576,7 +576,16 @@ function getCapacityForCountry(sourceId: string, countryCode: string): number {
     const countryData = cable?.countriesServed?.find(cs => cs.country === countryCode);
     return countryData?.capacityShare || 0;
   }
-  return 0.1;
+  const graph = buildDependencyGraph();
+  const countryId = `country:${countryCode}`;
+  const outgoing = graph.outgoing.get(sourceId) || [];
+  const direct = outgoing.filter(e => e.to === countryId);
+
+  if (direct.length > 0) {
+    const effective = direct.map(e => e.strength * (1 - (e.redundancy || 0)));
+    return Math.max(...effective);
+  }
+  return 0;
 }
 
 function findRedundancies(sourceId: string): CascadeResult['redundancies'] {
