@@ -5,15 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-02-18)
 
 **Core value:** Every API integration is defined in a .proto file with generated type-safe TypeScript clients and server handlers, eliminating hand-written fetch boilerplate.
-**Current focus:** Phase 3: Legacy Edge Function Migration -- COMPLETE (all 10 steps done)
+**Current focus:** Phase 4: V1 Milestone Cleanup -- Plan 02 COMPLETE
 
 ## Current Position
 
-Phase: 3 (Legacy Edge Function Migration)
-Current Plan: 5 of 5 -- COMPLETE
-Current Step: 10 of 10 (all steps complete)
+Phase: 4 (V1 Milestone Cleanup)
+Current Plan: 2 of 2 -- COMPLETE
 Status: Phase complete
-Last activity: 2026-02-20 -- Completed plan 03-05 (temporal-baseline + non-JSON tagging + final cleanup)
+Last activity: 2026-02-20 -- Completed plan 04-02 (circuit breaker coverage for remaining 6 domains)
 Branch: feat/sebuf-integration
 
 Progress: [████████████████████] 100%
@@ -64,6 +63,20 @@ Progress: [████████████████████] 100%
 - Step 9: 6 non-JSON edge functions tagged with // Non-sebuf: comment
 - Step 10: desktop-readiness.ts updated, final cleanup complete
 
+**Phase 4 Plan 01: Documentation + Verification + Cleanup: COMPLETE**
+- ROADMAP.md Phase 3 heading fixed (IN PROGRESS -> COMPLETE), plans 03-03/04/05 checked
+- Retroactive 2L-VERIFICATION.md created (12/12 truths verified)
+- desktop-readiness.ts stale references fixed (map-layers-core, market-panel, opensky-relay-cloud)
+- Service barrel completed (5 domain re-exports added: conflict, displacement, research, wildfires, climate)
+- .continue-here.md deleted
+
+**Phase 4 Plan 02: COMPLETE**
+- Circuit breakers added to all 6 remaining domains: seismology, wildfire, climate, maritime, news (summarization), intelligence (gdelt-intel)
+- CLIENT-03 requirement fully satisfied: 17/17 domains have circuit breaker coverage
+- Manual try/catch blocks replaced with breaker.execute in wildfire, climate, GDELT
+- Maritime breaker wraps only proto RPC path, preserving raw relay fallback
+- Summarization breaker wraps individual RPC calls within multi-provider fallback chain
+
 ## What Remains (Phase 3)
 
 **ALL STEPS COMPLETE.** Phase 3 legacy edge function migration is finished.
@@ -108,13 +121,20 @@ All migratable legacy edge functions now use sebuf RPCs:
 - Non-JSON files tagged with `// Non-sebuf:` header comment for grep-ability
 - api/_cors.js retained (still needed by non-JSON standalone Vercel functions)
 
+### Key Decisions (Phase 4)
+- Skip military/intelligence/news barrel re-exports to avoid duplicate export collisions with existing individual re-exports
+- Fix opensky-relay-cloud entry in desktop-readiness.ts (beyond plan spec) because must_haves required no opensky.js references
+- Circuit breaker wraps individual RPC calls, not entire fallback chains (summarization)
+- Maritime breaker wraps only proto getVesselSnapshot, not raw relay candidateReports path
+- Climate always returns ok:true with breaker since cached/fallback is intentional graceful degradation
+- GDELT query-specific articleCache coexists with breaker's RPC-level cache (different purposes)
+
 ### Blockers/Concerns
 - @sentry/browser missing from dependencies (pre-existing, unrelated)
 
 ## Session Continuity
 
 Last session: 2026-02-20
-Stopped at: Completed 03-05-PLAN.md (temporal-baseline + non-JSON tagging + final cleanup) -- Phase 3 COMPLETE
-Resume file: .planning/phases/3-sebuf-legacy-migration/.continue-here.md
+Stopped at: Completed 04-02-PLAN.md (circuit breaker coverage for remaining 6 domains) -- Phase 4 COMPLETE
 PR: #106 (draft) -- https://github.com/koala73/worldmonitor/pull/106
-Next steps: Phase 3 complete. Merge feat/sebuf-integration branch or proceed to Phase 4.
+Next steps: Phase 4 complete. All v1 milestone cleanup done. Merge feat/sebuf-integration branch.

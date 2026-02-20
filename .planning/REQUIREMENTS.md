@@ -32,7 +32,7 @@ Requirements for full sebuf integration. Each maps to roadmap phases.
 
 - [x] **CLIENT-01**: TypeScript sebuf clients generated for all 9 domain services via protoc-gen-ts-client
 - [x] **CLIENT-02**: Generated clients use relative URLs (/api/v1/...) to work with existing fetch patch (runtime.ts) across Vercel, Vite dev, and Tauri
-- [ ] **CLIENT-03**: Generated clients support custom fetch function injection for circuit breaker wrapping
+- [x] **CLIENT-03**: Generated clients support custom fetch function injection for circuit breaker wrapping
 - [x] **CLIENT-04**: Generated client response types align with existing TypeScript interfaces used by components
 
 ### Migration Infrastructure
@@ -96,7 +96,7 @@ Requirements for full sebuf integration. Each maps to roadmap phases.
 | MIGRATE-03 | Phase 2 | Superseded |
 | MIGRATE-04 | Phase 2 | Superseded |
 | MIGRATE-05 | Phase 2 | Superseded |
-| CLIENT-03 | Phase 4 | Pending |
+| CLIENT-03 | Phase 4 | Complete |
 | DOMAIN-01 | Phase 2D, 2E | Complete |
 | DOMAIN-02 | Phase 2F, 2M-2S | Complete |
 | DOMAIN-03 | Phase 2M-2S | Complete |
