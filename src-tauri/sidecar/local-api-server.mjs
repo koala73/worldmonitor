@@ -34,13 +34,9 @@ async function resolveRequestBody(input, init, method, isRequest) {
   }
 
   if (isRequest && input?.body) {
-    try {
-      const clone = typeof input.clone === 'function' ? input.clone() : input;
-      const buffer = await clone.arrayBuffer();
-      return normalizeRequestBody(buffer);
-    } catch {
-      return null;
-    }
+    const clone = typeof input.clone === 'function' ? input.clone() : input;
+    const buffer = await clone.arrayBuffer();
+    return normalizeRequestBody(buffer);
   }
 
   return null;
