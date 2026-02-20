@@ -26,6 +26,26 @@ function normalizeRequestBody(body) {
   return body;
 }
 
+async function resolveRequestBody(input, init, method, isRequest) {
+  if (method === 'GET' || method === 'HEAD') return null;
+
+  if (init?.body != null) {
+    return normalizeRequestBody(init.body);
+  }
+
+  if (isRequest && input?.body) {
+    try {
+      const clone = typeof input.clone === 'function' ? input.clone() : input;
+      const buffer = await clone.arrayBuffer();
+      return normalizeRequestBody(buffer);
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
 function buildSafeResponse(statusCode, statusText, headers, bodyBuffer) {
   const status = Number.isInteger(statusCode) ? statusCode : 500;
   const body = (status === 204 || status === 205 || status === 304) ? null : bodyBuffer;
@@ -42,13 +62,14 @@ function isTransientVerificationError(error) {
   return /timed out|timeout|network|fetch failed|failed to fetch|socket hang up/i.test(error.message);
 }
 
-globalThis.fetch = function ipv4Fetch(input, init) {
+globalThis.fetch = async function ipv4Fetch(input, init) {
   const isRequest = input && typeof input === 'object' && 'url' in input;
   let url;
   try { url = new URL(typeof input === 'string' ? input : input.url); } catch { return _originalFetch(input, init); }
   if (url.protocol !== 'https:' && url.protocol !== 'http:') return _originalFetch(input, init);
   const mod = url.protocol === 'https:' ? https : http;
   const method = init?.method || (isRequest ? input.method : 'GET');
+  const body = await resolveRequestBody(input, init, method, isRequest);
   const headers = {};
   const rawHeaders = init?.headers || (isRequest ? input.headers : null);
   if (rawHeaders) {
@@ -75,10 +96,7 @@ globalThis.fetch = function ipv4Fetch(input, init) {
     });
     req.on('error', reject);
     if (init?.signal) { init.signal.addEventListener('abort', () => req.destroy()); }
-    if (init?.body) {
-      const body = normalizeRequestBody(init.body);
-      if (body != null) req.write(body);
-    }
+    if (body != null) req.write(body);
     req.end();
   });
 };
