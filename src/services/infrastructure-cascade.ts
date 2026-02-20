@@ -549,7 +549,7 @@ export function calculateCascade(
         country: code,
         countryName: affectedNode.node.name,
         impactLevel: affectedNode.impactLevel,
-        affectedCapacity: getCapacityForCountry(sourceId, code),
+        affectedCapacity: getCapacityForCountry(sourceId, code, graph, affectedNode.dependencyChain),
       });
     }
   }
@@ -569,14 +569,35 @@ export function calculateCascade(
   };
 }
 
-function getCapacityForCountry(sourceId: string, countryCode: string): number {
+function getCapacityForCountry(sourceId: string, countryCode: string, graph: DependencyGraph, dependencyChain: string[]): number {
   if (sourceId.startsWith('cable:')) {
     const cableId = sourceId.replace('cable:', '');
     const cable = UNDERSEA_CABLES.find(c => c.id === cableId);
     const countryData = cable?.countriesServed?.find(cs => cs.country === countryCode);
     return countryData?.capacityShare || 0;
   }
-  return 0.1;
+
+  const countryId = `country:${countryCode}`;
+  const outgoing = graph.outgoing.get(sourceId) || [];
+  const direct = outgoing.filter(e => e.to === countryId);
+
+  if (direct.length > 0) {
+    const effective = direct.map(e => e.strength * (1 - (e.redundancy || 0)));
+    return Math.max(...effective);
+  }
+
+  // Walk the dependency chain for indirect impacts (e.g. chokepoint → port → country)
+  let compound = 1;
+  for (let i = 0; i < dependencyChain.length - 1; i++) {
+    const edges = graph.outgoing.get(dependencyChain[i]) || [];
+    const edge = edges.find(e => e.to === dependencyChain[i + 1]);
+    if (edge) {
+      compound *= edge.strength * (1 - (edge.redundancy || 0));
+    } else {
+      return 0;
+    }
+  }
+  return compound;
 }
 
 function findRedundancies(sourceId: string): CascadeResult['redundancies'] {
