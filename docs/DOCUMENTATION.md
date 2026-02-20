@@ -3298,13 +3298,15 @@ const header = `World Monitor v${__APP_VERSION__}`;
 
 ## Installation
 
+**Requirements:** Go 1.21+ and Node.js 18+.
+
 ```bash
 # Clone the repository
 git clone https://github.com/koala73/worldmonitor.git
 cd worldmonitor
 
-# Install dependencies
-npm install
+# Install everything (buf, sebuf plugins, npm deps, proto deps)
+make install
 
 # Start development server
 npm run dev
@@ -3312,6 +3314,14 @@ npm run dev
 # Build for production
 npm run build
 ```
+
+If you modify any `.proto` files, regenerate before building or pushing:
+
+```bash
+make generate   # regenerate TypeScript clients, servers, and OpenAPI docs
+```
+
+See [ADDING_ENDPOINTS.md](ADDING_ENDPOINTS.md) for the full proto workflow.
 
 ## API Dependencies
 

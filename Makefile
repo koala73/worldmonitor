@@ -1,5 +1,4 @@
-.PHONY: help lint generate breaking format check clean deps install install-plugins
-
+.PHONY: help lint generate breaking format check clean deps install install-buf install-plugins install-npm
 .DEFAULT_GOAL := help
 
 # Variables
@@ -13,22 +12,38 @@ GO_PROXY := GOPROXY=direct
 GO_PRIVATE := GOPRIVATE=github.com/SebastienMelki
 GO_INSTALL := $(GO_PROXY) $(GO_PRIVATE) go install
 
+# Required tool versions
+BUF_VERSION := v1.64.0
+SEBUF_VERSION := v0.7.0
+
 help: ## Show this help message
 	@echo 'Usage: make [target]'
 	@echo ''
 	@echo 'Targets:'
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-install: install-plugins deps ## Install everything (plugins + dependencies)
+install: install-buf install-plugins install-npm deps ## Install everything (buf, sebuf plugins, npm deps, proto deps)
 
-install-plugins: ## Install sebuf protoc plugins
-	@echo "Installing sebuf protoc plugins..."
-	@$(GO_INSTALL) github.com/SebastienMelki/sebuf/cmd/protoc-gen-ts-client@v0.7.0
-	@$(GO_INSTALL) github.com/SebastienMelki/sebuf/cmd/protoc-gen-ts-server@v0.7.0
-	@$(GO_INSTALL) github.com/SebastienMelki/sebuf/cmd/protoc-gen-openapiv3@v0.7.0
+install-buf: ## Install buf CLI
+	@if command -v buf >/dev/null 2>&1; then \
+		echo "buf already installed: $$(buf --version)"; \
+	else \
+		echo "Installing buf..."; \
+		$(GO_INSTALL) github.com/bufbuild/buf/cmd/buf@$(BUF_VERSION); \
+		echo "buf installed!"; \
+	fi
+
+install-plugins: ## Install sebuf protoc plugins (requires Go)
+	@echo "Installing sebuf protoc plugins $(SEBUF_VERSION)..."
+	@$(GO_INSTALL) github.com/SebastienMelki/sebuf/cmd/protoc-gen-ts-client@$(SEBUF_VERSION)
+	@$(GO_INSTALL) github.com/SebastienMelki/sebuf/cmd/protoc-gen-ts-server@$(SEBUF_VERSION)
+	@$(GO_INSTALL) github.com/SebastienMelki/sebuf/cmd/protoc-gen-openapiv3@$(SEBUF_VERSION)
 	@echo "Plugins installed!"
 
-deps: ## Install/update buf dependencies
+install-npm: ## Install npm dependencies
+	npm install
+
+deps: ## Install/update buf proto dependencies
 	cd $(PROTO_DIR) && buf dep update
 
 lint: ## Lint protobuf files

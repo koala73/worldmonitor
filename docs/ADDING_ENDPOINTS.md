@@ -8,17 +8,23 @@ This guide walks through adding a new RPC to an existing service and adding an e
 
 ## Prerequisites
 
-You need these tools on your PATH:
+You need **Go 1.21+** and **Node.js 18+** installed. Everything else is installed automatically:
+
+```bash
+make install    # one-time: installs buf, sebuf plugins, npm deps, proto deps
+```
+
+This installs:
 
 - **buf** — proto linting, dependency management, and code generation orchestrator
 - **protoc-gen-ts-client** — generates TypeScript client classes (from [sebuf](https://github.com/SebastienMelki/sebuf))
 - **protoc-gen-ts-server** — generates TypeScript server handler interfaces (from sebuf)
 - **protoc-gen-openapiv3** — generates OpenAPI v3 specs (from sebuf)
+- **npm dependencies** — all Node.js packages
 
-Install everything with `make install`, then run code generation from the repo root:
+Run code generation from the repo root:
 
 ```bash
-make install    # one-time: installs sebuf protoc plugins + buf dependencies
 make generate   # regenerate all TypeScript + OpenAPI from protos
 ```
 
