@@ -1,7 +1,7 @@
 /**
  * Vercel edge function for sebuf RPC routes.
  *
- * Matches /api/{domain}/v1/{rpc} via Vercel's dynamic segment routing.
+ * Matches /api/{domain}/v1/{rpc} via Vercel dynamic segment routing.
  * CORS headers are applied to every response (200, 204, 403, 404).
  */
 
