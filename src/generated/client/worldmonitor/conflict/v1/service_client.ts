@@ -81,11 +81,11 @@ export interface GetHumanitarianSummaryResponse {
 export interface HumanitarianCountrySummary {
   countryCode: string;
   countryName: string;
-  populationAffected: number;
-  peopleInNeed: number;
-  internallyDisplaced: number;
-  foodInsecurityLevel: string;
-  waterAccessPct: number;
+  conflictEventsTotal: number;
+  conflictPoliticalViolenceEvents: number;
+  conflictFatalities: number;
+  referencePeriod: string;
+  conflictDemonstrations: number;
   updatedAt: number;
 }
 

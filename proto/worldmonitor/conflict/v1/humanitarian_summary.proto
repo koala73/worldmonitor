@@ -4,22 +4,22 @@ package worldmonitor.conflict.v1;
 
 import "sebuf/http/annotations.proto";
 
-// HumanitarianCountrySummary represents a humanitarian overview for a country from HAPI/HDX.
+// HumanitarianCountrySummary represents HAPI conflict event counts for a country.
 message HumanitarianCountrySummary {
   // ISO 3166-1 alpha-2 country code.
   string country_code = 1;
   // Country name.
   string country_name = 2;
-  // Total population affected by humanitarian crises.
-  int64 population_affected = 3 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
-  // Number of people in need of humanitarian assistance.
-  int64 people_in_need = 4 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
-  // Number of internally displaced persons.
-  int64 internally_displaced = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
-  // Food insecurity level description.
-  string food_insecurity_level = 6;
-  // Percentage of population with access to clean water.
-  double water_access_pct = 7;
+  // Total conflict events in the reference period.
+  int32 conflict_events_total = 3;
+  // Political violence + civilian targeting event count.
+  int32 conflict_political_violence_events = 4;
+  // Total fatalities from political violence and civilian targeting.
+  int32 conflict_fatalities = 5;
+  // Reference period start date (YYYY-MM-DD).
+  string reference_period = 6;
+  // Number of demonstration events.
+  int32 conflict_demonstrations = 7;
   // Last data update time, as Unix epoch milliseconds.
   int64 updated_at = 8 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
 }

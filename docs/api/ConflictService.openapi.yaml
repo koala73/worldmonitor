@@ -344,27 +344,27 @@ components:
                 countryName:
                     type: string
                     description: Country name.
-                populationAffected:
+                conflictEventsTotal:
                     type: integer
-                    format: int64
-                    description: 'Total population affected by humanitarian crises.. Warning: Values > 2^53 may lose precision in JavaScript'
-                peopleInNeed:
+                    format: int32
+                    description: Total conflict events in the reference period.
+                conflictPoliticalViolenceEvents:
                     type: integer
-                    format: int64
-                    description: 'Number of people in need of humanitarian assistance.. Warning: Values > 2^53 may lose precision in JavaScript'
-                internallyDisplaced:
+                    format: int32
+                    description: Political violence + civilian targeting event count.
+                conflictFatalities:
                     type: integer
-                    format: int64
-                    description: 'Number of internally displaced persons.. Warning: Values > 2^53 may lose precision in JavaScript'
-                foodInsecurityLevel:
+                    format: int32
+                    description: Total fatalities from political violence and civilian targeting.
+                referencePeriod:
                     type: string
-                    description: Food insecurity level description.
-                waterAccessPct:
-                    type: number
-                    format: double
-                    description: Percentage of population with access to clean water.
+                    description: Reference period start date (YYYY-MM-DD).
+                conflictDemonstrations:
+                    type: integer
+                    format: int32
+                    description: Number of demonstration events.
                 updatedAt:
                     type: integer
                     format: int64
                     description: 'Last data update time, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
-            description: HumanitarianCountrySummary represents a humanitarian overview for a country from HAPI/HDX.
+            description: HumanitarianCountrySummary represents HAPI conflict event counts for a country.

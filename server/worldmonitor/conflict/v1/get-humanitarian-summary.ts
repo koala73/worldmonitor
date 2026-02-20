@@ -40,13 +40,12 @@ async function fetchHapiSummary(countryCode: string): Promise<HumanitarianCountr
     const appId = btoa('worldmonitor:monitor@worldmonitor.app');
     let url = `https://hapi.humdata.org/api/v2/coordination-context/conflict-events?output_format=json&limit=1000&offset=0&app_identifier=${appId}`;
 
-    // Optionally filter by country
+    // Filter by country — if a specific country was requested but has no ISO3 mapping,
+    // return undefined immediately rather than silently returning unrelated data (BLOCKING-1 fix)
     if (countryCode) {
       const iso3 = ISO2_TO_ISO3[countryCode.toUpperCase()];
-      if (iso3) {
-        url += `&location_code=${iso3}`;
-      }
-      // If no mapping exists, proceed without country filter
+      if (!iso3) return undefined;
+      url += `&location_code=${iso3}`;
     }
 
     const response = await fetch(url, {
@@ -115,13 +114,9 @@ async function fetchHapiSummary(countryCode: string): Promise<HumanitarianCountr
     let entry: HapiCountryAgg | undefined;
     if (countryCode) {
       const iso3 = ISO2_TO_ISO3[countryCode.toUpperCase()];
-      if (iso3) {
-        entry = byCountry[iso3];
-      }
-      // If no direct match, try finding by any key
-      if (!entry) {
-        entry = Object.values(byCountry)[0];
-      }
+      // iso3 is guaranteed non-null here (early return above handles missing mapping)
+      entry = iso3 ? byCountry[iso3] : undefined;
+      if (!entry) return undefined; // Country not in HAPI data
     } else {
       entry = Object.values(byCountry)[0];
     }
@@ -129,13 +124,13 @@ async function fetchHapiSummary(countryCode: string): Promise<HumanitarianCountr
     if (!entry) return undefined;
 
     return {
-      countryCode: ISO2_TO_ISO3[countryCode.toUpperCase()] || countryCode || '',
+      countryCode: countryCode ? countryCode.toUpperCase() : '',
       countryName: entry.locationName,
-      populationAffected: entry.eventsTotal,
-      peopleInNeed: entry.eventsPoliticalViolence + entry.eventsCivilianTargeting,
-      internallyDisplaced: 0, // HAPI conflict events endpoint does not provide displacement data
-      foodInsecurityLevel: '', // Not available from this endpoint
-      waterAccessPct: 0, // Not available from this endpoint
+      conflictEventsTotal: entry.eventsTotal,
+      conflictPoliticalViolenceEvents: entry.eventsPoliticalViolence + entry.eventsCivilianTargeting,
+      conflictFatalities: entry.fatalitiesTotalPoliticalViolence + entry.fatalitiesTotalCivilianTargeting,
+      referencePeriod: entry.month,
+      conflictDemonstrations: entry.eventsDemonstrations,
       updatedAt: Date.now(),
     };
   } catch {
