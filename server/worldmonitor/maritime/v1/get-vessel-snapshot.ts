@@ -60,7 +60,7 @@ async function fetchVesselSnapshot(): Promise<VesselSnapshot | undefined> {
       cachedSnapshot = result;
       cacheTimestamp = Date.now();
     }
-    return result;
+    return result ?? cachedSnapshot; // serve stale on relay failure
   } finally {
     inFlightRequest = null;
   }

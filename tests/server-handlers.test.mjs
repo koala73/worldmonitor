@@ -15,6 +15,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { deduplicateHeadlines } from '../server/worldmonitor/news/v1/dedup.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -122,27 +123,7 @@ describe('LLM prompt political context (LOW-1)', () => {
 // ========================================================================
 
 describe('headline deduplication', () => {
-  // Re-implement the dedup algorithm from _shared.ts for testing
-  // (since we cannot import TypeScript directly without a loader)
-  function deduplicateHeadlines(headlines) {
-    const seen = [];
-    const unique = [];
-    for (const headline of headlines) {
-      const normalized = headline.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim();
-      const words = new Set(normalized.split(' ').filter((w) => w.length >= 4));
-      let isDuplicate = false;
-      for (const seenWords of seen) {
-        const intersection = [...words].filter((w) => seenWords.has(w));
-        const similarity = intersection.length / Math.min(words.size, seenWords.size);
-        if (similarity > 0.6) { isDuplicate = true; break; }
-      }
-      if (!isDuplicate) {
-        seen.push(words);
-        unique.push(headline);
-      }
-    }
-    return unique;
-  }
+  // Imports the real deduplicateHeadlines from dedup.mjs (shared with _shared.ts)
 
   it('removes near-duplicate headlines', () => {
     const headlines = [

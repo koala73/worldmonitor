@@ -534,10 +534,12 @@ function calcConflictScore(data: CountryData, countryCode: string): number {
   const civilianBoost = civilianCount > 0 ? Math.min(10, civilianCount * 3) : 0;
 
   // HAPI fallback: if no ACLED conflict events but HAPI shows political violence
+  // Note: eventsCivilianTargeting is folded into eventsPoliticalViolence (HAPI doesn't
+  // split them), so we use a blended weight of 3 to avoid underweighting civilian targeting.
   let hapiFallback = 0;
   if (events.length === 0 && data.hapiSummary) {
     const h = data.hapiSummary;
-    hapiFallback = Math.min(60, (h.eventsPoliticalViolence * 2 + h.eventsCivilianTargeting * 3) * multiplier);
+    hapiFallback = Math.min(60, h.eventsPoliticalViolence * 3 * multiplier);
   }
 
   return Math.min(100, Math.max(eventScore + fatalityScore + civilianBoost, hapiFallback));

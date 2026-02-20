@@ -57,7 +57,7 @@ export interface UcdpConflictStatus {
 }
 
 export interface HapiConflictSummary {
-  iso3: string;
+  iso2: string;
   locationName: string;
   month: string;
   eventsTotal: number;
@@ -136,7 +136,7 @@ const ISO2_TO_ISO2_KEYS = Object.values(ISO3_TO_ISO2);
 function toHapiSummary(proto: ProtoHumanSummary): HapiConflictSummary {
   // Proto fields now accurately represent HAPI conflict event data (MEDIUM-1 fix)
   return {
-    iso3: proto.countryCode || '',
+    iso2: proto.countryCode || '',
     locationName: proto.countryName,
     month: proto.referencePeriod || '',
     eventsTotal: proto.conflictEventsTotal || 0,
