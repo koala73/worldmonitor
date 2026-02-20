@@ -103,7 +103,7 @@ export const CITY_COORDS: Record<string, CityCoord> = {
   'tijuana': { lat: 32.5149, lng: -117.0382, country: 'Mexico' },
   'cancun': { lat: 21.1619, lng: -86.8515, country: 'Mexico' },
   'panama city': { lat: 8.9824, lng: -79.5199, country: 'Panama' },
-  'san jose': { lat: 9.9281, lng: -84.0907, country: 'Costa Rica' },
+  'san jose cr': { lat: 9.9281, lng: -84.0907, country: 'Costa Rica' },
 
   // South America
   'sao paulo': { lat: -23.5505, lng: -46.6333, country: 'Brazil' },
@@ -125,7 +125,7 @@ export const CITY_COORDS: Record<string, CityCoord> = {
 
   // Europe - UK & Ireland
   'london': { lat: 51.5074, lng: -0.1278, country: 'UK' },
-  'cambridge': { lat: 52.2053, lng: 0.1218, country: 'UK' },
+  'cambridge uk': { lat: 52.2053, lng: 0.1218, country: 'UK' },
   'oxford': { lat: 51.7520, lng: -1.2577, country: 'UK' },
   'manchester': { lat: 53.4808, lng: -2.2426, country: 'UK' },
   'birmingham': { lat: 52.4862, lng: -1.8904, country: 'UK' },
