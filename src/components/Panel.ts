@@ -48,6 +48,9 @@ function setSpanClass(element: HTMLElement, span: number): void {
 }
 
 export class Panel {
+  private static pendingContentUpdates = new Map<Panel, string>();
+  private static contentFlushFrameId: number | null = null;
+
   protected element: HTMLElement;
   protected content: HTMLElement;
   protected header: HTMLElement;
@@ -329,7 +332,34 @@ export class Panel {
   }
 
   public setContent(html: string): void {
-    this.content.innerHTML = html;
+    this.setContentThrottled(html);
+  }
+
+  public setContentThrottled(html: string): void {
+    Panel.pendingContentUpdates.set(this, html);
+
+    if (Panel.contentFlushFrameId !== null) {
+      return;
+    }
+
+    if (typeof requestAnimationFrame === 'function') {
+      Panel.contentFlushFrameId = requestAnimationFrame(() => {
+        Panel.flushPendingContentUpdates();
+      });
+      return;
+    }
+
+    Panel.flushPendingContentUpdates();
+  }
+
+  private static flushPendingContentUpdates(): void {
+    const pendingUpdates = Panel.pendingContentUpdates;
+    Panel.pendingContentUpdates = new Map<Panel, string>();
+    Panel.contentFlushFrameId = null;
+
+    pendingUpdates.forEach((html, panel) => {
+      panel.content.innerHTML = html;
+    });
   }
 
   public show(): void {
@@ -399,6 +429,7 @@ export class Panel {
    * Clean up event listeners and resources
    */
   public destroy(): void {
+    Panel.pendingContentUpdates.delete(this);
     if (this.tooltipCloseHandler) {
       document.removeEventListener('click', this.tooltipCloseHandler);
       this.tooltipCloseHandler = null;
