@@ -84,7 +84,7 @@ At this point, `npx tsc --noEmit` will **fail** because the handler doesn't impl
 
 ### 4. Implement the handler
 
-Create `api/server/worldmonitor/seismology/v1/get-earthquake-details.ts`:
+Create `server/worldmonitor/seismology/v1/get-earthquake-details.ts`:
 
 ```typescript
 import type {
@@ -92,7 +92,7 @@ import type {
   ServerContext,
   GetEarthquakeDetailsRequest,
   GetEarthquakeDetailsResponse,
-} from '../../../../../src/generated/server/worldmonitor/seismology/v1/service_server';
+} from '../../../../src/generated/server/worldmonitor/seismology/v1/service_server';
 
 export const getEarthquakeDetails: SeismologyServiceHandler['getEarthquakeDetails'] = async (
   _ctx: ServerContext,
@@ -124,10 +124,10 @@ export const getEarthquakeDetails: SeismologyServiceHandler['getEarthquakeDetail
 
 ### 5. Wire it into the handler re-export
 
-Edit `api/server/worldmonitor/seismology/v1/handler.ts`:
+Edit `server/worldmonitor/seismology/v1/handler.ts`:
 
 ```typescript
-import type { SeismologyServiceHandler } from '../../../../../src/generated/server/worldmonitor/seismology/v1/service_server';
+import type { SeismologyServiceHandler } from '../../../../src/generated/server/worldmonitor/seismology/v1/service_server';
 
 import { listEarthquakes } from './list-earthquakes';
 import { getEarthquakeDetails } from './get-earthquake-details';
@@ -253,19 +253,19 @@ cd proto && buf lint && buf generate
 Create the handler directory and files:
 
 ```
-api/server/worldmonitor/sanctions/v1/
+server/worldmonitor/sanctions/v1/
 ├── handler.ts               # thin re-export
 └── list-sanctions.ts        # RPC implementation
 ```
 
-`api/server/worldmonitor/sanctions/v1/list-sanctions.ts`:
+`server/worldmonitor/sanctions/v1/list-sanctions.ts`:
 ```typescript
 import type {
   SanctionsServiceHandler,
   ServerContext,
   ListSanctionsRequest,
   ListSanctionsResponse,
-} from '../../../../../src/generated/server/worldmonitor/sanctions/v1/service_server';
+} from '../../../../src/generated/server/worldmonitor/sanctions/v1/service_server';
 
 export const listSanctions: SanctionsServiceHandler['listSanctions'] = async (
   _ctx: ServerContext,
@@ -276,9 +276,9 @@ export const listSanctions: SanctionsServiceHandler['listSanctions'] = async (
 };
 ```
 
-`api/server/worldmonitor/sanctions/v1/handler.ts`:
+`server/worldmonitor/sanctions/v1/handler.ts`:
 ```typescript
-import type { SanctionsServiceHandler } from '../../../../../src/generated/server/worldmonitor/sanctions/v1/service_server';
+import type { SanctionsServiceHandler } from '../../../../src/generated/server/worldmonitor/sanctions/v1/service_server';
 
 import { listSanctions } from './list-sanctions';
 
@@ -289,7 +289,7 @@ export const sanctionsHandler: SanctionsServiceHandler = {
 
 ### 7. Register the service in the gateway
 
-Edit `api/[[...path]].ts` — add the import and mount the routes:
+Edit `api/[[...path]].js` — add the import and mount the routes:
 
 ```typescript
 import { createSanctionsServiceRoutes } from '../src/generated/server/worldmonitor/sanctions/v1/service_server';

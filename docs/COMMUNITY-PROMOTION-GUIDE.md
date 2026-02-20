@@ -154,6 +154,7 @@ Run AI summarization entirely on your own hardware — no API keys, no cloud, no
 
 | Version | Feature |
 |---------|---------|
+| v2.5.1 | Batch FRED fetching, parallel UCDP, partial cache TTL, bot middleware |
 | v2.5.0 | Ollama/LM Studio local LLM support, settings split into LLMs + API Keys tabs, keychain vault consolidation |
 | v2.4.1 | Ultra-wide layout (panels wrap around map on 2000px+ screens) |
 | v2.4.0 | Live webcams from 19 geopolitical hotspots, 4 regions |

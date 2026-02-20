@@ -7,7 +7,7 @@ AI-powered real-time global intelligence dashboard aggregating news, markets, ge
 ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat&logo=typescript&logoColor=white)
 ![Vite](https://img.shields.io/badge/Vite-646CFF?style=flat&logo=vite&logoColor=white)
 ![D3.js](https://img.shields.io/badge/D3.js-F9A03C?style=flat&logo=d3.js&logoColor=white)
-![Version](https://img.shields.io/badge/version-2.1.4-blue)
+![Version](https://img.shields.io/badge/version-2.5.1-blue)
 
 ![World Monitor Dashboard](../new-world-monitor.png)
 
@@ -3642,7 +3642,7 @@ The system degrades gracefully—blocked sources are skipped while others contin
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) for detailed planning. Recent intelligence enhancements:
+See [ROADMAP.md](../.planning/ROADMAP.md) for detailed planning. Recent intelligence enhancements:
 
 ### Completed
 
@@ -3698,7 +3698,7 @@ See [ROADMAP.md](ROADMAP.md) for detailed planning. Recent intelligence enhancem
 - **Additional Data Sources** - World Bank, IMF, OFAC sanctions, UNHCR refugee data, FAO food security
 - **Think Tank Feeds** - RUSI, Chatham House, ECFR, CFR, Wilson Center, CNAS, Arms Control Association
 
-The full [ROADMAP.md](ROADMAP.md) documents implementation details, API endpoints, and 30+ free data sources for future integration.
+The full [ROADMAP.md](../.planning/ROADMAP.md) documents implementation details, API endpoints, and 30+ free data sources for future integration.
 
 ---
 
@@ -4008,7 +4008,7 @@ See **[docs/ADDING_ENDPOINTS.md](ADDING_ENDPOINTS.md)** for the complete guide c
 **Adding a New Data Layer**
 
 1. Define the proto contract and generate code (see [ADDING_ENDPOINTS.md](ADDING_ENDPOINTS.md))
-2. Implement the handler in `api/server/worldmonitor/{domain}/v1/`
+2. Implement the handler in `server/worldmonitor/{domain}/v1/`
 3. Create the frontend service wrapper in `src/services/`
 4. Add layer toggle in `src/components/Map.ts`
 5. Add rendering logic for map markers/overlays
