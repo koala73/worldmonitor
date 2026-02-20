@@ -1,24 +1,14 @@
 declare const process: { env: Record<string, string | undefined> };
 
-import type {
-  HeadlineSummary,
-} from '../../../../src/generated/server/worldmonitor/news/v1/service_server';
-
 // ========================================================================
 // Constants
 // ========================================================================
-
-export const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-export const GROQ_MODEL = 'llama-3.1-8b-instant';
-export const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
-export const OPENROUTER_MODEL = 'openrouter/free';
-export const UPSTREAM_TIMEOUT_MS = 15_000;
 
 export const CACHE_TTL_SECONDS = 86400; // 24 hours
 export const CACHE_VERSION = 'v3';
 
 // ========================================================================
-// Hash utility (unified FNV-1a 52-bit — H-7 fix)
+// Hash utility (unified FNV-1a 52-bit -- H-7 fix)
 // ========================================================================
 
 import { hashString } from '../../../_shared/hash';
@@ -50,7 +40,7 @@ export function getCacheKey(
 }
 
 // ========================================================================
-// Headline deduplication (shared by SummarizeHeadlines + SummarizeArticle)
+// Headline deduplication (used by SummarizeArticle)
 // ========================================================================
 
 export function deduplicateHeadlines(headlines: string[]): string[] {
@@ -75,31 +65,6 @@ export function deduplicateHeadlines(headlines: string[]): string[] {
   }
 
   return unique;
-}
-
-// ========================================================================
-// SummarizeHeadlines: LLM prompt builder
-// ========================================================================
-
-export function buildPrompt(headlines: string[], topic: string): { system: string; user: string } {
-  const uniqueHeadlines = deduplicateHeadlines(headlines.slice(0, 8));
-  const headlineText = uniqueHeadlines.map((h, i) => `${i + 1}. ${h}`).join('\n');
-  const dateContext = `Current date: ${new Date().toISOString().split('T')[0]}.`;
-
-  const system = `${dateContext}
-
-Summarize the key development in 2-3 sentences.
-Rules:
-- Lead with WHAT happened and WHERE - be specific
-- NEVER start with "Breaking news", "Good evening", "Tonight", or TV-style openings
-- Start directly with the subject
-- No bullet points, no meta-commentary`;
-
-  const user = topic
-    ? `Summarize the top story about "${topic}":\n${headlineText}`
-    : `Summarize the top story:\n${headlineText}`;
-
-  return { system, user };
 }
 
 // ========================================================================
@@ -246,99 +211,3 @@ export function getProviderCredentials(provider: string): ProviderCredentials | 
 
   return null;
 }
-
-// ========================================================================
-// SummarizeHeadlines: Groq provider
-// ========================================================================
-
-export async function tryGroq(
-  headlines: string[],
-  topic: string,
-): Promise<HeadlineSummary | null> {
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) return null;
-
-  try {
-    const { system, user } = buildPrompt(headlines, topic);
-    const resp = await fetch(GROQ_API_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: GROQ_MODEL,
-        messages: [
-          { role: 'system', content: system },
-          { role: 'user', content: user },
-        ],
-        temperature: 0.3,
-        max_tokens: 150,
-        top_p: 0.9,
-      }),
-      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-    });
-
-    if (!resp.ok) return null;
-    const data = await resp.json() as any;
-    const text = data.choices?.[0]?.message?.content?.trim();
-    if (!text) return null;
-
-    return {
-      text,
-      headlineCount: headlines.length,
-      generatedAt: Date.now(),
-      model: GROQ_MODEL,
-    };
-  } catch {
-    return null;
-  }
-}
-
-// ========================================================================
-// SummarizeHeadlines: OpenRouter provider
-// ========================================================================
-
-export async function tryOpenRouter(
-  headlines: string[],
-  topic: string,
-): Promise<HeadlineSummary | null> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) return null;
-
-  try {
-    const { system, user } = buildPrompt(headlines, topic);
-    const resp = await fetch(OPENROUTER_API_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: OPENROUTER_MODEL,
-        messages: [
-          { role: 'system', content: system },
-          { role: 'user', content: user },
-        ],
-        temperature: 0.3,
-        max_tokens: 150,
-      }),
-      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-    });
-
-    if (!resp.ok) return null;
-    const data = await resp.json() as any;
-    const text = data.choices?.[0]?.message?.content?.trim();
-    if (!text) return null;
-
-    return {
-      text,
-      headlineCount: headlines.length,
-      generatedAt: Date.now(),
-      model: OPENROUTER_MODEL,
-    };
-  } catch {
-    return null;
-  }
-}
-

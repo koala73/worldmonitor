@@ -4,7 +4,6 @@
  * These tests verify:
  * - Humanitarian summary handler rejects unmapped country codes
  * - Humanitarian summary returns ISO-2 country_code (not ISO-3)
- * - Stubbed RPCs throw UNIMPLEMENTED instead of returning empty data
  * - Hardcoded political context is removed from LLM prompts
  * - Headline deduplication logic works correctly
  * - Cache key builder produces deterministic output
@@ -101,34 +100,7 @@ describe('humanitarian_summary.proto', () => {
 });
 
 // ========================================================================
-// 3. Stubbed RPCs throw UNIMPLEMENTED
-// ========================================================================
-
-describe('stubbed RPCs throw UNIMPLEMENTED (HIGH-2)', () => {
-  it('listNewsItems throws UNIMPLEMENTED', () => {
-    const src = readSrc('server/worldmonitor/news/v1/list-news-items.ts');
-    assert.match(src, /throw new Error\('UNIMPLEMENTED: ListNewsItems/);
-    assert.doesNotMatch(src, /return\s*\{.*items:\s*\[\]/,
-      'Should not return empty items array');
-  });
-
-  it('summarizeHeadlines throws UNIMPLEMENTED', () => {
-    const src = readSrc('server/worldmonitor/news/v1/summarize-headlines.ts');
-    assert.match(src, /throw new Error\('UNIMPLEMENTED: SummarizeHeadlines/);
-    assert.doesNotMatch(src, /return\s*\{.*summary:\s*undefined/,
-      'Should not return empty summary');
-  });
-
-  it('listMilitaryVessels throws UNIMPLEMENTED', () => {
-    const src = readSrc('server/worldmonitor/military/v1/list-military-vessels.ts');
-    assert.match(src, /throw new Error\('UNIMPLEMENTED: ListMilitaryVessels/);
-    assert.doesNotMatch(src, /return\s*\{.*vessels:\s*\[\]/,
-      'Should not return empty vessels array');
-  });
-});
-
-// ========================================================================
-// 4. Hardcoded political context removed (LOW-1)
+// 3. Hardcoded political context removed (LOW-1)
 // ========================================================================
 
 describe('LLM prompt political context (LOW-1)', () => {
@@ -146,7 +118,7 @@ describe('LLM prompt political context (LOW-1)', () => {
 });
 
 // ========================================================================
-// 5. Headline deduplication (ported logic test)
+// 4. Headline deduplication (ported logic test)
 // ========================================================================
 
 describe('headline deduplication', () => {
@@ -208,7 +180,7 @@ describe('headline deduplication', () => {
 });
 
 // ========================================================================
-// 6. Cache key builder (determinism test)
+// 5. Cache key builder (determinism test)
 // ========================================================================
 
 describe('getCacheKey determinism', () => {
@@ -231,7 +203,7 @@ describe('getCacheKey determinism', () => {
 });
 
 // ========================================================================
-// 7. Vessel snapshot caching (structural verification)
+// 6. Vessel snapshot caching (structural verification)
 // ========================================================================
 
 describe('getVesselSnapshot caching (HIGH-1)', () => {

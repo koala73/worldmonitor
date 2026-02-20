@@ -80,53 +80,6 @@ export interface PaginationResponse {
   totalCount: number;
 }
 
-export interface ListMilitaryVesselsRequest {
-  pagination?: PaginationRequest;
-  boundingBox?: BoundingBox;
-  operator: MilitaryOperator;
-  vesselType: MilitaryVesselType;
-}
-
-export interface ListMilitaryVesselsResponse {
-  vessels: MilitaryVessel[];
-  clusters: MilitaryVesselCluster[];
-  pagination?: PaginationResponse;
-}
-
-export interface MilitaryVessel {
-  id: string;
-  mmsi: string;
-  name: string;
-  vesselType: MilitaryVesselType;
-  aisShipType: string;
-  hullNumber: string;
-  operator: MilitaryOperator;
-  operatorCountry: string;
-  location?: GeoCoordinates;
-  heading: number;
-  speed: number;
-  course: number;
-  destination: string;
-  lastAisUpdateAt: number;
-  aisGapMinutes: number;
-  isDark: boolean;
-  nearChokepoint: string;
-  nearBase: string;
-  confidence: MilitaryConfidence;
-  isInteresting: boolean;
-  note: string;
-}
-
-export interface MilitaryVesselCluster {
-  id: string;
-  name: string;
-  location?: GeoCoordinates;
-  vesselCount: number;
-  vessels: MilitaryVessel[];
-  region: string;
-  activityType: MilitaryActivityType;
-}
-
 export interface GetTheaterPostureRequest {
   theater: string;
 }
@@ -249,8 +202,6 @@ export type MilitaryConfidence = "MILITARY_CONFIDENCE_UNSPECIFIED" | "MILITARY_C
 
 export type MilitaryOperator = "MILITARY_OPERATOR_UNSPECIFIED" | "MILITARY_OPERATOR_USAF" | "MILITARY_OPERATOR_USN" | "MILITARY_OPERATOR_USMC" | "MILITARY_OPERATOR_USA" | "MILITARY_OPERATOR_RAF" | "MILITARY_OPERATOR_RN" | "MILITARY_OPERATOR_FAF" | "MILITARY_OPERATOR_GAF" | "MILITARY_OPERATOR_PLAAF" | "MILITARY_OPERATOR_PLAN" | "MILITARY_OPERATOR_VKS" | "MILITARY_OPERATOR_IAF" | "MILITARY_OPERATOR_NATO" | "MILITARY_OPERATOR_OTHER";
 
-export type MilitaryVesselType = "MILITARY_VESSEL_TYPE_UNSPECIFIED" | "MILITARY_VESSEL_TYPE_CARRIER" | "MILITARY_VESSEL_TYPE_DESTROYER" | "MILITARY_VESSEL_TYPE_FRIGATE" | "MILITARY_VESSEL_TYPE_SUBMARINE" | "MILITARY_VESSEL_TYPE_AMPHIBIOUS" | "MILITARY_VESSEL_TYPE_PATROL" | "MILITARY_VESSEL_TYPE_AUXILIARY" | "MILITARY_VESSEL_TYPE_RESEARCH" | "MILITARY_VESSEL_TYPE_ICEBREAKER" | "MILITARY_VESSEL_TYPE_SPECIAL" | "MILITARY_VESSEL_TYPE_UNKNOWN";
-
 export interface FieldViolation {
   field: string;
   description: string;
@@ -297,7 +248,6 @@ export interface RouteDescriptor {
 
 export interface MilitaryServiceHandler {
   listMilitaryFlights(ctx: ServerContext, req: ListMilitaryFlightsRequest): Promise<ListMilitaryFlightsResponse>;
-  listMilitaryVessels(ctx: ServerContext, req: ListMilitaryVesselsRequest): Promise<ListMilitaryVesselsResponse>;
   getTheaterPosture(ctx: ServerContext, req: GetTheaterPostureRequest): Promise<GetTheaterPostureResponse>;
   getAircraftDetails(ctx: ServerContext, req: GetAircraftDetailsRequest): Promise<GetAircraftDetailsResponse>;
   getAircraftDetailsBatch(ctx: ServerContext, req: GetAircraftDetailsBatchRequest): Promise<GetAircraftDetailsBatchResponse>;
@@ -332,49 +282,6 @@ export function createMilitaryServiceRoutes(
 
           const result = await handler.listMilitaryFlights(ctx, body);
           return new Response(JSON.stringify(result as ListMilitaryFlightsResponse), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          });
-        } catch (err: unknown) {
-          if (err instanceof ValidationError) {
-            return new Response(JSON.stringify({ violations: err.violations }), {
-              status: 400,
-              headers: { "Content-Type": "application/json" },
-            });
-          }
-          if (options?.onError) {
-            return options.onError(err, req);
-          }
-          const message = err instanceof Error ? err.message : String(err);
-          return new Response(JSON.stringify({ message }), {
-            status: 500,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-      },
-    },
-    {
-      method: "POST",
-      path: "/api/military/v1/list-military-vessels",
-      handler: async (req: Request): Promise<Response> => {
-        try {
-          const pathParams: Record<string, string> = {};
-          const body = await req.json() as ListMilitaryVesselsRequest;
-          if (options?.validateRequest) {
-            const bodyViolations = options.validateRequest("listMilitaryVessels", body);
-            if (bodyViolations) {
-              throw new ValidationError(bodyViolations);
-            }
-          }
-
-          const ctx: ServerContext = {
-            request: req,
-            pathParams,
-            headers: Object.fromEntries(req.headers.entries()),
-          };
-
-          const result = await handler.listMilitaryVessels(ctx, body);
-          return new Response(JSON.stringify(result as ListMilitaryVesselsResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

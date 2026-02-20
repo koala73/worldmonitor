@@ -80,53 +80,6 @@ export interface PaginationResponse {
   totalCount: number;
 }
 
-export interface ListMilitaryVesselsRequest {
-  pagination?: PaginationRequest;
-  boundingBox?: BoundingBox;
-  operator: MilitaryOperator;
-  vesselType: MilitaryVesselType;
-}
-
-export interface ListMilitaryVesselsResponse {
-  vessels: MilitaryVessel[];
-  clusters: MilitaryVesselCluster[];
-  pagination?: PaginationResponse;
-}
-
-export interface MilitaryVessel {
-  id: string;
-  mmsi: string;
-  name: string;
-  vesselType: MilitaryVesselType;
-  aisShipType: string;
-  hullNumber: string;
-  operator: MilitaryOperator;
-  operatorCountry: string;
-  location?: GeoCoordinates;
-  heading: number;
-  speed: number;
-  course: number;
-  destination: string;
-  lastAisUpdateAt: number;
-  aisGapMinutes: number;
-  isDark: boolean;
-  nearChokepoint: string;
-  nearBase: string;
-  confidence: MilitaryConfidence;
-  isInteresting: boolean;
-  note: string;
-}
-
-export interface MilitaryVesselCluster {
-  id: string;
-  name: string;
-  location?: GeoCoordinates;
-  vesselCount: number;
-  vessels: MilitaryVessel[];
-  region: string;
-  activityType: MilitaryActivityType;
-}
-
 export interface GetTheaterPostureRequest {
   theater: string;
 }
@@ -249,8 +202,6 @@ export type MilitaryConfidence = "MILITARY_CONFIDENCE_UNSPECIFIED" | "MILITARY_C
 
 export type MilitaryOperator = "MILITARY_OPERATOR_UNSPECIFIED" | "MILITARY_OPERATOR_USAF" | "MILITARY_OPERATOR_USN" | "MILITARY_OPERATOR_USMC" | "MILITARY_OPERATOR_USA" | "MILITARY_OPERATOR_RAF" | "MILITARY_OPERATOR_RN" | "MILITARY_OPERATOR_FAF" | "MILITARY_OPERATOR_GAF" | "MILITARY_OPERATOR_PLAAF" | "MILITARY_OPERATOR_PLAN" | "MILITARY_OPERATOR_VKS" | "MILITARY_OPERATOR_IAF" | "MILITARY_OPERATOR_NATO" | "MILITARY_OPERATOR_OTHER";
 
-export type MilitaryVesselType = "MILITARY_VESSEL_TYPE_UNSPECIFIED" | "MILITARY_VESSEL_TYPE_CARRIER" | "MILITARY_VESSEL_TYPE_DESTROYER" | "MILITARY_VESSEL_TYPE_FRIGATE" | "MILITARY_VESSEL_TYPE_SUBMARINE" | "MILITARY_VESSEL_TYPE_AMPHIBIOUS" | "MILITARY_VESSEL_TYPE_PATROL" | "MILITARY_VESSEL_TYPE_AUXILIARY" | "MILITARY_VESSEL_TYPE_RESEARCH" | "MILITARY_VESSEL_TYPE_ICEBREAKER" | "MILITARY_VESSEL_TYPE_SPECIAL" | "MILITARY_VESSEL_TYPE_UNKNOWN";
-
 export interface FieldViolation {
   field: string;
   description: string;
@@ -321,30 +272,6 @@ export class MilitaryServiceClient {
     }
 
     return await resp.json() as ListMilitaryFlightsResponse;
-  }
-
-  async listMilitaryVessels(req: ListMilitaryVesselsRequest, options?: MilitaryServiceCallOptions): Promise<ListMilitaryVesselsResponse> {
-    let path = "/api/military/v1/list-military-vessels";
-    const url = this.baseURL + path;
-
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      ...this.defaultHeaders,
-      ...options?.headers,
-    };
-
-    const resp = await this.fetchFn(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(req),
-      signal: options?.signal,
-    });
-
-    if (!resp.ok) {
-      return this.handleError(resp);
-    }
-
-    return await resp.json() as ListMilitaryVesselsResponse;
   }
 
   async getTheaterPosture(req: GetTheaterPostureRequest, options?: MilitaryServiceCallOptions): Promise<GetTheaterPostureResponse> {
