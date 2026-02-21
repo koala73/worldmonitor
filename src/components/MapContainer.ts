@@ -24,6 +24,7 @@ import type {
   NaturalEvent,
   UcdpGeoEvent,
   CyberThreat,
+  CableHealthRecord,
 } from '@/types';
 import type { AirportDelayAlert } from '@/services/aviation';
 import type { DisplacementFlow } from '@/services/displacement';
@@ -231,6 +232,14 @@ export class MapContainer {
       this.deckGLMap?.setCableActivity(advisories, repairShips);
     } else {
       this.svgMap?.setCableActivity(advisories, repairShips);
+    }
+  }
+
+  public setCableHealth(healthMap: Record<string, CableHealthRecord>): void {
+    if (this.useDeckGL) {
+      this.deckGLMap?.setCableHealth(healthMap);
+    } else {
+      this.svgMap?.setCableHealth(healthMap);
     }
   }
 

@@ -2946,6 +2946,25 @@ body.playback-mode .status-dot {
   filter: drop-shadow(0 0 4px var(--semantic-elevated));
 }
 
+.cable-path.cable-health-fault {
+  stroke: #ff3232;
+  stroke-dasharray: 6 3;
+  opacity: 0.9;
+  filter: drop-shadow(0 0 5px #ff3232);
+  animation: cable-health-fault-pulse 1.4s ease-in-out infinite;
+}
+
+.cable-path.cable-health-degraded {
+  stroke: #ffa500;
+  opacity: 0.8;
+  filter: drop-shadow(0 0 4px #ffa500);
+}
+
+@keyframes cable-health-fault-pulse {
+  0%, 100% { opacity: 0.9; }
+  50% { opacity: 0.5; }
+}
+
 @keyframes cable-pulse {
 
   0%,
@@ -4964,6 +4983,18 @@ a.prediction-link:hover {
   letter-spacing: 1px;
   display: block;
   margin-bottom: 8px;
+}
+
+.evidence-list {
+  margin: 4px 0 0;
+  padding-left: 16px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.evidence-item {
+  margin-bottom: 4px;
 }
 
 .popup-tags {

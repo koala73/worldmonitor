@@ -108,6 +108,30 @@ export interface RecordBaselineSnapshotResponse {
   error: string;
 }
 
+export interface GetCableHealthRequest {
+}
+
+export interface GetCableHealthResponse {
+  generatedAt: number;
+  cables: Record<string, CableHealthRecord>;
+}
+
+export interface CableHealthRecord {
+  status: CableHealthStatus;
+  score: number;
+  confidence: number;
+  lastUpdated: number;
+  evidence: CableHealthEvidence[];
+}
+
+export interface CableHealthEvidence {
+  source: string;
+  summary: string;
+  ts: number;
+}
+
+export type CableHealthStatus = "CABLE_HEALTH_STATUS_UNSPECIFIED" | "CABLE_HEALTH_STATUS_OK" | "CABLE_HEALTH_STATUS_DEGRADED" | "CABLE_HEALTH_STATUS_FAULT";
+
 export type OutageSeverity = "OUTAGE_SEVERITY_UNSPECIFIED" | "OUTAGE_SEVERITY_PARTIAL" | "OUTAGE_SEVERITY_MAJOR" | "OUTAGE_SEVERITY_TOTAL";
 
 export type ServiceOperationalStatus = "SERVICE_OPERATIONAL_STATUS_UNSPECIFIED" | "SERVICE_OPERATIONAL_STATUS_OPERATIONAL" | "SERVICE_OPERATIONAL_STATUS_DEGRADED" | "SERVICE_OPERATIONAL_STATUS_PARTIAL_OUTAGE" | "SERVICE_OPERATIONAL_STATUS_MAJOR_OUTAGE" | "SERVICE_OPERATIONAL_STATUS_MAINTENANCE";
@@ -161,6 +185,7 @@ export interface InfrastructureServiceHandler {
   listServiceStatuses(ctx: ServerContext, req: ListServiceStatusesRequest): Promise<ListServiceStatusesResponse>;
   getTemporalBaseline(ctx: ServerContext, req: GetTemporalBaselineRequest): Promise<GetTemporalBaselineResponse>;
   recordBaselineSnapshot(ctx: ServerContext, req: RecordBaselineSnapshotRequest): Promise<RecordBaselineSnapshotResponse>;
+  getCableHealth(ctx: ServerContext, req: GetCableHealthRequest): Promise<GetCableHealthResponse>;
 }
 
 export function createInfrastructureServiceRoutes(
@@ -319,6 +344,49 @@ export function createInfrastructureServiceRoutes(
 
           const result = await handler.recordBaselineSnapshot(ctx, body);
           return new Response(JSON.stringify(result as RecordBaselineSnapshotResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/infrastructure/v1/get-cable-health",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = await req.json() as GetCableHealthRequest;
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getCableHealth", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getCableHealth(ctx, body);
+          return new Response(JSON.stringify(result as GetCableHealthResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

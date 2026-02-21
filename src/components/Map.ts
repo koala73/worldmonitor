@@ -4,7 +4,7 @@ import { escapeHtml } from '@/utils/sanitize';
 import { getCSSColor } from '@/utils';
 import type { Topology, GeometryCollection } from 'topojson-specification';
 import type { Feature, Geometry } from 'geojson';
-import type { MapLayers, Hotspot, NewsItem, InternetOutage, RelatedAsset, AssetType, AisDisruptionEvent, AisDensityZone, CableAdvisory, RepairShip, SocialUnrestEvent, MilitaryFlight, MilitaryVessel, MilitaryFlightCluster, MilitaryVesselCluster, NaturalEvent, CyberThreat } from '@/types';
+import type { MapLayers, Hotspot, NewsItem, InternetOutage, RelatedAsset, AssetType, AisDisruptionEvent, AisDensityZone, CableAdvisory, RepairShip, SocialUnrestEvent, MilitaryFlight, MilitaryVessel, MilitaryFlightCluster, MilitaryVesselCluster, NaturalEvent, CyberThreat, CableHealthRecord } from '@/types';
 import type { AirportDelayAlert } from '@/services/aviation';
 import type { Earthquake } from '@/services/earthquakes';
 import type { TechHubActivity } from '@/services/tech-activity';
@@ -121,6 +121,7 @@ export class MapComponent {
   private aisDensity: AisDensityZone[] = [];
   private cableAdvisories: CableAdvisory[] = [];
   private repairShips: RepairShip[] = [];
+  private healthByCableId: Record<string, CableHealthRecord> = {};
   private protests: SocialUnrestEvent[] = [];
   private flightDelays: AirportDelayAlert[] = [];
   private militaryFlights: MilitaryFlight[] = [];
@@ -1041,11 +1042,13 @@ export class MapComponent {
       const isHighlighted = this.highlightedAssets.cable.has(cable.id);
       const cableAdvisory = this.getCableAdvisory(cable.id);
       const advisoryClass = cableAdvisory ? `cable-${cableAdvisory.severity}` : '';
+      const healthRecord = this.healthByCableId[cable.id];
+      const healthClass = healthRecord?.status === 'fault' ? 'cable-health-fault' : healthRecord?.status === 'degraded' ? 'cable-health-degraded' : '';
       const highlightClass = isHighlighted ? 'asset-highlight asset-highlight-cable' : '';
 
       const path = cableGroup
         .append('path')
-        .attr('class', `cable-path ${advisoryClass} ${highlightClass}`.trim())
+        .attr('class', `cable-path ${advisoryClass} ${healthClass} ${highlightClass}`.trim())
         .attr('d', lineGenerator(cable.points));
 
       path.append('title').text(cable.name);
@@ -3398,6 +3401,11 @@ export class MapComponent {
     this.cableAdvisories = advisories;
     this.repairShips = repairShips;
     this.popup.setCableActivity(advisories, repairShips);
+    this.render();
+  }
+
+  public setCableHealth(healthMap: Record<string, CableHealthRecord>): void {
+    this.healthByCableId = healthMap;
     this.render();
   }
 

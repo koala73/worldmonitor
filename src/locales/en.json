@@ -1297,6 +1297,9 @@
         "onStation": "On Station",
         "enRoute": "En Route"
       },
+      "health": {
+        "evidence": "HEALTH EVIDENCE"
+      },
       "description": "Undersea telecommunications cable carrying international internet traffic. These fiber optic cables form the backbone of global internet connectivity, transmitting over 95% of intercontinental data."
     },
     "repairShip": {

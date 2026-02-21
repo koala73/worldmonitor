@@ -12,6 +12,7 @@ import { t } from '@/services/i18n';
 import { fetchHotspotContext, formatArticleDate, extractDomain, type GdeltArticle } from '@/services/gdelt-intel';
 import { getNaturalEventIcon } from '@/services/eonet';
 import { getHotspotEscalation, getEscalationChange24h } from '@/services/hotspot-escalation';
+import { getCableHealthRecord } from '@/services/cable-health';
 
 export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'cyberThreat' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'cable-advisory' | 'repair-ship' | 'outage' | 'datacenter' | 'datacenterCluster' | 'ais' | 'protest' | 'protestCluster' | 'flight' | 'militaryFlight' | 'militaryVessel' | 'militaryFlightCluster' | 'militaryVesselCluster' | 'natEvent' | 'port' | 'spaceport' | 'mineral' | 'startupHub' | 'cloudRegion' | 'techHQ' | 'accelerator' | 'techEvent' | 'techHQCluster' | 'techEventCluster' | 'techActivity' | 'geoActivity' | 'stockExchange' | 'financialCenter' | 'centralBank' | 'commodityHub';
 
@@ -1332,8 +1333,24 @@ export class MapPopup {
   private renderCablePopup(cable: UnderseaCable): string {
     const advisory = this.getLatestCableAdvisory(cable.id);
     const repairShip = this.getPriorityRepairShip(cable.id);
-    const statusLabel = advisory ? (advisory.severity === 'fault' ? t('popups.cable.fault') : t('popups.cable.degraded')) : t('popups.cable.active');
-    const statusBadge = advisory ? (advisory.severity === 'fault' ? 'high' : 'elevated') : 'low';
+    const healthRecord = getCableHealthRecord(cable.id);
+
+    // Health data takes priority over advisory for status display
+    let statusLabel: string;
+    let statusBadge: string;
+    if (healthRecord?.status === 'fault') {
+      statusLabel = t('popups.cable.fault');
+      statusBadge = 'high';
+    } else if (healthRecord?.status === 'degraded') {
+      statusLabel = t('popups.cable.degraded');
+      statusBadge = 'elevated';
+    } else if (advisory) {
+      statusLabel = advisory.severity === 'fault' ? t('popups.cable.fault') : t('popups.cable.degraded');
+      statusBadge = advisory.severity === 'fault' ? 'high' : 'elevated';
+    } else {
+      statusLabel = t('popups.cable.active');
+      statusBadge = 'low';
+    }
     const repairEta = repairShip?.eta || advisory?.repairEta;
     const cableName = escapeHtml(cable.name.toUpperCase());
     const safeStatusLabel = escapeHtml(statusLabel);
@@ -1390,6 +1407,14 @@ export class MapPopup {
               <span class="popup-tag">${repairShip.status === 'on-station' ? t('popups.cable.repairStatus.onStation') : t('popups.cable.repairStatus.enRoute')}</span>
             </div>
             <p class="popup-description">${repairShipNote}</p>
+          </div>
+        ` : ''}
+        ${healthRecord?.evidence?.length ? `
+          <div class="popup-section">
+            <span class="section-label">${t('popups.cable.health.evidence')}</span>
+            <ul class="evidence-list">
+              ${healthRecord.evidence.map((e) => `<li class="evidence-item"><strong>${escapeHtml(e.source)}</strong>: ${escapeHtml(e.summary)}</li>`).join('')}
+            </ul>
           </div>
         ` : ''}
         <p class="popup-description">${t('popups.cable.description')}</p>

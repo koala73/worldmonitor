@@ -131,6 +131,38 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/infrastructure/v1/get-cable-health:
+        post:
+            tags:
+                - InfrastructureService
+            summary: GetCableHealth
+            description: GetCableHealth computes health status for submarine cables from NGA maritime warning signals.
+            operationId: GetCableHealth
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/GetCableHealthRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetCableHealthResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -457,3 +489,68 @@ components:
                     type: string
                     description: Error message if the request was invalid.
             description: RecordBaselineSnapshotResponse reports how many baselines were successfully updated.
+        GetCableHealthRequest:
+            type: object
+            description: GetCableHealthRequest requests the current health status of all monitored submarine cables.
+        GetCableHealthResponse:
+            type: object
+            properties:
+                generatedAt:
+                    type: integer
+                    format: int64
+                    description: 'Generation timestamp, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                cables:
+                    type: object
+                    additionalProperties:
+                        $ref: '#/components/schemas/CableHealthRecord'
+                    description: Health records keyed by cable identifier.
+            description: GetCableHealthResponse contains health status for submarine cables with active signals.
+        CablesEntry:
+            type: object
+            properties:
+                key:
+                    type: string
+                value:
+                    $ref: '#/components/schemas/CableHealthRecord'
+        CableHealthRecord:
+            type: object
+            properties:
+                status:
+                    type: string
+                    enum:
+                        - CABLE_HEALTH_STATUS_UNSPECIFIED
+                        - CABLE_HEALTH_STATUS_OK
+                        - CABLE_HEALTH_STATUS_DEGRADED
+                        - CABLE_HEALTH_STATUS_FAULT
+                    description: CableHealthStatus represents the computed health status of a submarine cable.
+                score:
+                    type: number
+                    format: double
+                    description: Composite health score (0.0 = healthy, 1.0 = confirmed fault).
+                confidence:
+                    type: number
+                    format: double
+                    description: Confidence in the health assessment (0.0–1.0).
+                lastUpdated:
+                    type: integer
+                    format: int64
+                    description: 'Last signal update time, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                evidence:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CableHealthEvidence'
+            description: CableHealthRecord contains the computed health status and supporting evidence for a cable.
+        CableHealthEvidence:
+            type: object
+            properties:
+                source:
+                    type: string
+                    description: Evidence source (e.g. "NGA").
+                summary:
+                    type: string
+                    description: Human-readable summary of the evidence.
+                ts:
+                    type: integer
+                    format: int64
+                    description: 'Evidence timestamp, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: CableHealthEvidence represents a single piece of evidence supporting a health assessment.

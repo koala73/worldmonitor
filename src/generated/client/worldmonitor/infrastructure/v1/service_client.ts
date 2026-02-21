@@ -108,6 +108,30 @@ export interface RecordBaselineSnapshotResponse {
   error: string;
 }
 
+export interface GetCableHealthRequest {
+}
+
+export interface GetCableHealthResponse {
+  generatedAt: number;
+  cables: Record<string, CableHealthRecord>;
+}
+
+export interface CableHealthRecord {
+  status: CableHealthStatus;
+  score: number;
+  confidence: number;
+  lastUpdated: number;
+  evidence: CableHealthEvidence[];
+}
+
+export interface CableHealthEvidence {
+  source: string;
+  summary: string;
+  ts: number;
+}
+
+export type CableHealthStatus = "CABLE_HEALTH_STATUS_UNSPECIFIED" | "CABLE_HEALTH_STATUS_OK" | "CABLE_HEALTH_STATUS_DEGRADED" | "CABLE_HEALTH_STATUS_FAULT";
+
 export type OutageSeverity = "OUTAGE_SEVERITY_UNSPECIFIED" | "OUTAGE_SEVERITY_PARTIAL" | "OUTAGE_SEVERITY_MAJOR" | "OUTAGE_SEVERITY_TOTAL";
 
 export type ServiceOperationalStatus = "SERVICE_OPERATIONAL_STATUS_UNSPECIFIED" | "SERVICE_OPERATIONAL_STATUS_OPERATIONAL" | "SERVICE_OPERATIONAL_STATUS_DEGRADED" | "SERVICE_OPERATIONAL_STATUS_PARTIAL_OUTAGE" | "SERVICE_OPERATIONAL_STATUS_MAJOR_OUTAGE" | "SERVICE_OPERATIONAL_STATUS_MAINTENANCE";
@@ -254,6 +278,30 @@ export class InfrastructureServiceClient {
     }
 
     return await resp.json() as RecordBaselineSnapshotResponse;
+  }
+
+  async getCableHealth(req: GetCableHealthRequest, options?: InfrastructureServiceCallOptions): Promise<GetCableHealthResponse> {
+    let path = "/api/infrastructure/v1/get-cable-health";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetCableHealthResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

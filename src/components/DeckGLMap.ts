@@ -32,6 +32,7 @@ import type {
   MapTechEventCluster,
   MapDatacenterCluster,
   CyberThreat,
+  CableHealthRecord,
 } from '@/types';
 import type { AirportDelayAlert } from '@/services/aviation';
 import type { DisplacementFlow } from '@/services/displacement';
@@ -178,6 +179,8 @@ function getOverlayColors() {
       : [0, 255, 200, 180] as [number, number, number, number],
     cable: [0, 200, 255, 150] as [number, number, number, number],
     cableHighlight: [255, 100, 100, 200] as [number, number, number, number],
+    cableFault: [255, 50, 50, 220] as [number, number, number, number],
+    cableDegraded: [255, 165, 0, 200] as [number, number, number, number],
     earthquake: [255, 100, 50, 200] as [number, number, number, number],
     vesselMilitary: [255, 100, 100, 220] as [number, number, number, number],
     flightMilitary: [255, 50, 50, 220] as [number, number, number, number],
@@ -249,6 +252,7 @@ export class DeckGLMap {
   private aisDensity: AisDensityZone[] = [];
   private cableAdvisories: CableAdvisory[] = [];
   private repairShips: RepairShip[] = [];
+  private healthByCableId: Record<string, CableHealthRecord> = {};
   private protests: SocialUnrestEvent[] = [];
   private militaryFlights: MilitaryFlight[] = [];
   private militaryFlightClusters: MilitaryFlightCluster[] = [];
@@ -309,6 +313,7 @@ export class DeckGLMap {
   private newsPulseIntervalId: ReturnType<typeof setInterval> | null = null;
   private readonly startupTime = Date.now();
   private lastCableHighlightSignature = '';
+  private lastCableHealthSignature = '';
   private lastPipelineHighlightSignature = '';
   private debouncedRebuildLayers: () => void;
   private rafUpdateLayers: () => void;
@@ -1154,22 +1159,36 @@ export class DeckGLMap {
     const cacheKey = 'cables-layer';
     const cached = this.layerCache.get(cacheKey) as PathLayer | undefined;
     const highlightSignature = this.getSetSignature(highlightedCables);
-    if (cached && highlightSignature === this.lastCableHighlightSignature) return cached;
+    const healthSignature = Object.keys(this.healthByCableId).sort().join(',');
+    if (cached && highlightSignature === this.lastCableHighlightSignature && healthSignature === this.lastCableHealthSignature) return cached;
 
+    const health = this.healthByCableId;
     const layer = new PathLayer({
       id: cacheKey,
       data: UNDERSEA_CABLES,
       getPath: (d) => d.points,
-      getColor: (d) =>
-        highlightedCables.has(d.id) ? COLORS.cableHighlight : COLORS.cable,
-      getWidth: (d) => highlightedCables.has(d.id) ? 3 : 1,
+      getColor: (d) => {
+        if (highlightedCables.has(d.id)) return COLORS.cableHighlight;
+        const h = health[d.id];
+        if (h?.status === 'fault') return COLORS.cableFault;
+        if (h?.status === 'degraded') return COLORS.cableDegraded;
+        return COLORS.cable;
+      },
+      getWidth: (d) => {
+        if (highlightedCables.has(d.id)) return 3;
+        const h = health[d.id];
+        if (h?.status === 'fault') return 2.5;
+        if (h?.status === 'degraded') return 2;
+        return 1;
+      },
       widthMinPixels: 1,
       widthMaxPixels: 5,
       pickable: true,
-      updateTriggers: { highlighted: highlightSignature },
+      updateTriggers: { highlighted: highlightSignature, health: healthSignature },
     });
 
     this.lastCableHighlightSignature = highlightSignature;
+    this.lastCableHealthSignature = healthSignature;
     this.layerCache.set(cacheKey, layer);
     return layer;
   }
@@ -3261,6 +3280,12 @@ export class DeckGLMap {
   public setCableActivity(advisories: CableAdvisory[], repairShips: RepairShip[]): void {
     this.cableAdvisories = advisories;
     this.repairShips = repairShips;
+    this.render();
+  }
+
+  public setCableHealth(healthMap: Record<string, CableHealthRecord>): void {
+    this.healthByCableId = healthMap;
+    this.layerCache.delete('cables-layer');
     this.render();
   }
 
