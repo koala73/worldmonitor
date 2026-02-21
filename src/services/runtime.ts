@@ -222,15 +222,10 @@ export function installRuntimeFetchPatch(): void {
 
     if (allowCloudFallback) {
       try {
-        const { getSecretState, secretsReady } = await import('@/services/runtime-config');
+        const { secretsReady } = await import('@/services/runtime-config');
         await Promise.race([secretsReady, new Promise<void>(r => setTimeout(r, 2000))]);
-        const wmKey = getSecretState('WORLDMONITOR_API_KEY' as import('@/services/runtime-config').RuntimeSecretKey);
-        if (!wmKey.present || !wmKey.valid) {
-          allowCloudFallback = false;
-          if (debug) console.log(`[fetch] cloud fallback blocked — no WorldMonitor API key`);
-        }
       } catch {
-        allowCloudFallback = false;
+        // secrets module failed to load — still allow cloud fallback
       }
     }
 

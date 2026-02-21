@@ -52,6 +52,7 @@ const SECRET_ANALYTICS_NAMES: Record<RuntimeSecretKey, string> = {
   UC_DP_KEY: 'uc_dp',
   OLLAMA_API_URL: 'ollama_url',
   OLLAMA_MODEL: 'ollama_model',
+  WORLDMONITOR_API_KEY: 'worldmonitor',
 };
 
 // ── Typed event schemas (allowlisted properties per event) ──
