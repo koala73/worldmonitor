@@ -1950,8 +1950,8 @@ export class App {
     this.criticalBannerEl.innerHTML = `
       <div class="banner-content">
         <span class="banner-icon">${isCritical ? '🚨' : '⚠️'}</span>
-        <span class="banner-headline">${top.headline}</span>
-        <span class="banner-stats">${top.totalAircraft} aircraft • ${top.summary}</span>
+        <span class="banner-headline">${escapeHtml(top.headline)}</span>
+        <span class="banner-stats">${top.totalAircraft} aircraft • ${escapeHtml(top.summary)}</span>
         ${top.strikeCapable ? '<span class="banner-strike">STRIKE CAPABLE</span>' : ''}
       </div>
       <button class="banner-view" data-lat="${top.centerLat}" data-lon="${top.centerLon}">View Region</button>
