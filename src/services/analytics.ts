@@ -134,7 +134,9 @@ let posthogInstance: PostHogInstance | null = null;
 let initPromise: Promise<void> | null = null;
 
 const POSTHOG_KEY = import.meta.env.VITE_POSTHOG_KEY as string | undefined;
-const POSTHOG_HOST = (import.meta.env.VITE_POSTHOG_HOST as string | undefined) || 'https://us.i.posthog.com';
+const POSTHOG_HOST = isDesktopRuntime()
+  ? ((import.meta.env.VITE_POSTHOG_HOST as string | undefined) || 'https://us.i.posthog.com')
+  : '/ingest'; // Reverse proxy through own domain to bypass ad blockers
 
 // ── Public API ──
 
@@ -151,7 +153,7 @@ export async function initAnalytics(): Promise<void> {
         api_host: POSTHOG_HOST,
         persistence: 'localStorage',
         autocapture: false,
-        capture_pageview: false,
+        capture_pageview: true,
         capture_pageleave: true,
         disable_session_recording: true,
         bootstrap: { distinctID: getOrCreateInstallationId() },
