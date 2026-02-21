@@ -596,6 +596,148 @@ tr.diag-ok td { color: var(--settings-text-secondary); }
 tr.diag-warn td { color: var(--settings-yellow); }
 tr.diag-err td { color: var(--settings-red); }
 
+/* ── World Monitor tab ── */
+.wm-tab {
+  max-width: 560px;
+}
+
+.wm-section {
+  margin-bottom: 24px;
+}
+
+.wm-section-title {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--settings-text);
+}
+
+.wm-section-desc {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--settings-text-secondary);
+  line-height: 1.5;
+}
+
+.wm-key-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.wm-input-wrap {
+  position: relative;
+  flex: 1;
+}
+
+.wm-input {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--settings-border-strong);
+  border-radius: 6px;
+  color: var(--settings-text);
+  padding: 8px 36px 8px 12px;
+  font-size: 13px;
+  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+
+.wm-input:focus {
+  outline: none;
+  border-color: var(--settings-accent);
+  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.2);
+}
+
+.wm-input::placeholder {
+  color: rgba(255, 255, 255, 0.2);
+}
+
+.wm-toggle-vis {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--settings-text-secondary);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 2px 4px;
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+
+.wm-toggle-vis:hover {
+  opacity: 1;
+}
+
+.wm-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.wm-badge.ok {
+  color: var(--settings-green);
+  background: rgba(52, 211, 153, 0.12);
+}
+
+.wm-badge.warn {
+  color: var(--settings-yellow);
+  background: rgba(251, 191, 36, 0.12);
+}
+
+.wm-register-row {
+  display: flex;
+  gap: 10px;
+}
+
+.wm-email {
+  flex: 1;
+}
+
+.wm-submit-btn {
+  background: var(--settings-accent);
+  border: 1px solid var(--settings-accent);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+
+.wm-submit-btn:hover {
+  background: color-mix(in srgb, var(--settings-accent) 85%, white);
+}
+
+.wm-submit-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.wm-reg-status {
+  margin: 8px 0 0;
+  font-size: 13px;
+  min-height: 20px;
+}
+
+.wm-reg-status.ok {
+  color: var(--settings-green);
+}
+
+.wm-reg-status.error {
+  color: var(--settings-red);
+}
+
 @media (max-width: 860px) {
   .debug-actions {
     width: 100%;

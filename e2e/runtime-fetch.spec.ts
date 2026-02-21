@@ -73,6 +73,7 @@ test.describe('desktop runtime routing guardrails', () => {
 
     const result = await page.evaluate(async () => {
       const runtime = await import('/src/services/runtime.ts');
+      const runtimeConfig = await import('/src/services/runtime-config.ts');
       const globalWindow = window as unknown as Record<string, unknown>;
       const originalFetch = window.fetch.bind(window);
 
@@ -114,6 +115,9 @@ test.describe('desktop runtime routing guardrails', () => {
       globalWindow.__TAURI__ = { core: { invoke: () => Promise.resolve(null) } };
       delete globalWindow.__wmFetchPatched;
 
+      // Set a valid WM API key so cloud fallback is allowed
+      await runtimeConfig.setSecretValue('WORLDMONITOR_API_KEY' as import('/src/services/runtime-config.ts').RuntimeSecretKey, 'wm_test_key_1234567890abcdef');
+
       try {
         runtime.installRuntimeFetchPatch();
 
@@ -138,6 +142,7 @@ test.describe('desktop runtime routing guardrails', () => {
         } else {
           globalWindow.__TAURI__ = previousTauri;
         }
+        await runtimeConfig.setSecretValue('WORLDMONITOR_API_KEY' as import('/src/services/runtime-config.ts').RuntimeSecretKey, '');
       }
     });
 
@@ -714,6 +719,156 @@ test.describe('desktop runtime routing guardrails', () => {
     expect(result.fetchedCount).toBeGreaterThan(0);
     expect(result.usIso2).toBe('US');
     expect(result.hasIso3Field).toBe(false);
+  });
+
+  test('cloud fallback blocked without WorldMonitor API key', async ({ page }) => {
+    await page.goto('/tests/runtime-harness.html');
+
+    const result = await page.evaluate(async () => {
+      const runtime = await import('/src/services/runtime.ts');
+      const globalWindow = window as unknown as Record<string, unknown>;
+      const originalFetch = window.fetch.bind(window);
+
+      const calls: string[] = [];
+      const responseJson = (body: unknown, status = 200) =>
+        new Response(JSON.stringify(body), {
+          status,
+          headers: { 'content-type': 'application/json' },
+        });
+
+      window.fetch = (async (input: RequestInfo | URL) => {
+        const url =
+          typeof input === 'string'
+            ? input
+            : input instanceof URL
+            ? input.toString()
+            : input.url;
+
+        calls.push(url);
+
+        if (url.includes('127.0.0.1:46123/api/fred-data')) {
+          throw new Error('ECONNREFUSED');
+        }
+        if (url.includes('worldmonitor.app/api/fred-data')) {
+          return responseJson({ observations: [{ value: '999' }] }, 200);
+        }
+        return responseJson({ ok: true }, 200);
+      }) as typeof window.fetch;
+
+      const previousTauri = globalWindow.__TAURI__;
+      globalWindow.__TAURI__ = { core: { invoke: () => Promise.resolve(null) } };
+      delete globalWindow.__wmFetchPatched;
+
+      try {
+        runtime.installRuntimeFetchPatch();
+
+        let fetchError: string | null = null;
+        try {
+          await window.fetch('/api/fred-data?series_id=CPIAUCSL');
+        } catch (err) {
+          fetchError = err instanceof Error ? err.message : String(err);
+        }
+
+        const cloudCalls = calls.filter(u => u.includes('worldmonitor.app'));
+
+        return {
+          fetchError,
+          cloudCalls: cloudCalls.length,
+          localCalls: calls.filter(u => u.includes('127.0.0.1')).length,
+        };
+      } finally {
+        window.fetch = originalFetch;
+        delete globalWindow.__wmFetchPatched;
+        if (previousTauri === undefined) {
+          delete globalWindow.__TAURI__;
+        } else {
+          globalWindow.__TAURI__ = previousTauri;
+        }
+      }
+    });
+
+    expect(result.fetchError).not.toBeNull();
+    expect(result.cloudCalls).toBe(0);
+    expect(result.localCalls).toBeGreaterThan(0);
+  });
+
+  test('cloud fallback allowed with valid WorldMonitor API key', async ({ page }) => {
+    await page.goto('/tests/runtime-harness.html');
+
+    const result = await page.evaluate(async () => {
+      const runtime = await import('/src/services/runtime.ts');
+      const runtimeConfig = await import('/src/services/runtime-config.ts');
+      const globalWindow = window as unknown as Record<string, unknown>;
+      const originalFetch = window.fetch.bind(window);
+
+      const calls: string[] = [];
+      const capturedHeaders: Record<string, string> = {};
+      const responseJson = (body: unknown, status = 200) =>
+        new Response(JSON.stringify(body), {
+          status,
+          headers: { 'content-type': 'application/json' },
+        });
+
+      window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url =
+          typeof input === 'string'
+            ? input
+            : input instanceof URL
+            ? input.toString()
+            : input.url;
+
+        calls.push(url);
+
+        if (url.includes('worldmonitor.app') && init?.headers) {
+          const h = new Headers(init.headers);
+          const wmKey = h.get('X-WorldMonitor-Key');
+          if (wmKey) capturedHeaders['X-WorldMonitor-Key'] = wmKey;
+        }
+
+        if (url.includes('127.0.0.1:46123/api/market/v1/test')) {
+          throw new Error('ECONNREFUSED');
+        }
+        if (url.includes('worldmonitor.app/api/market/v1/test')) {
+          return responseJson({ quotes: [] }, 200);
+        }
+        return responseJson({ ok: true }, 200);
+      }) as typeof window.fetch;
+
+      const previousTauri = globalWindow.__TAURI__;
+      globalWindow.__TAURI__ = { core: { invoke: () => Promise.resolve(null) } };
+      delete globalWindow.__wmFetchPatched;
+
+      const testKey = 'wm_test_key_1234567890abcdef';
+      await runtimeConfig.setSecretValue('WORLDMONITOR_API_KEY' as import('/src/services/runtime-config.ts').RuntimeSecretKey, testKey);
+
+      try {
+        runtime.installRuntimeFetchPatch();
+
+        const response = await window.fetch('/api/market/v1/test');
+        const body = await response.json() as { quotes?: unknown[] };
+
+        return {
+          status: response.status,
+          hasQuotes: Array.isArray(body.quotes),
+          cloudCalls: calls.filter(u => u.includes('worldmonitor.app')).length,
+          wmKeyHeader: capturedHeaders['X-WorldMonitor-Key'] || null,
+        };
+      } finally {
+        window.fetch = originalFetch;
+        delete globalWindow.__wmFetchPatched;
+        if (previousTauri === undefined) {
+          delete globalWindow.__TAURI__;
+        } else {
+          globalWindow.__TAURI__ = previousTauri;
+        }
+        await runtimeConfig.setSecretValue('WORLDMONITOR_API_KEY' as import('/src/services/runtime-config.ts').RuntimeSecretKey, '');
+      }
+    });
+
+    expect(result.status).toBe(200);
+    expect(result.hasQuotes).toBe(true);
+    expect(result.cloudCalls).toBe(1);
+    expect(result.wmKeyHeader).toBe('wm_test_key_1234567890abcdef');
   });
 
   test('country-instability HAPI fallback ignores eventsCivilianTargeting in score', async ({ page }) => {

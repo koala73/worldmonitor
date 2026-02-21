@@ -9,6 +9,8 @@ export const config = { runtime: 'edge' };
 
 import { createRouter } from '../../../server/router';
 import { getCorsHeaders, isDisallowedOrigin } from '../../../server/cors';
+// @ts-expect-error — JS module, no declaration file
+import { validateApiKey } from '../../_api-key.js';
 import { mapErrorToResponse } from '../../../server/error-mapper';
 import { createSeismologyServiceRoutes } from '../../../src/generated/server/worldmonitor/seismology/v1/service_server';
 import { seismologyHandler } from '../../../server/worldmonitor/seismology/v1/handler';
@@ -90,6 +92,15 @@ export default async function handler(request: Request): Promise<Response> {
   // OPTIONS preflight
   if (request.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
+  }
+
+  // API key validation (origin-aware)
+  const keyCheck = validateApiKey(request);
+  if (keyCheck.required && !keyCheck.valid) {
+    return new Response(JSON.stringify({ error: keyCheck.error }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders },
+    });
   }
 
   // Route matching

@@ -21,7 +21,8 @@ export type RuntimeSecretKey =
   | 'NASA_FIRMS_API_KEY'
   | 'UC_DP_KEY'
   | 'OLLAMA_API_URL'
-  | 'OLLAMA_MODEL';
+  | 'OLLAMA_MODEL'
+  | 'WORLDMONITOR_API_KEY';
 
 export type RuntimeFeatureId =
   | 'aiGroq'
@@ -240,8 +241,18 @@ export function validateSecret(key: RuntimeSecretKey, value: string): { valid: b
     }
   }
 
+  if (key === 'WORLDMONITOR_API_KEY') {
+    if (trimmed.length < 16) return { valid: false, hint: 'API key must be at least 16 characters' };
+    return { valid: true };
+  }
+
   return { valid: true };
 }
+
+let secretsReadyResolve!: () => void;
+export const secretsReady = new Promise<void>(r => { secretsReadyResolve = r; });
+
+if (!isDesktopRuntime()) secretsReadyResolve();
 
 const listeners = new Set<() => void>();
 
@@ -488,5 +499,7 @@ export async function loadDesktopSecrets(): Promise<void> {
     notifyConfigChanged();
   } catch (error) {
     console.warn('[runtime-config] Failed to load desktop secrets from vault', error);
+  } finally {
+    secretsReadyResolve();
   }
 }

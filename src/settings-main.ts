@@ -1,6 +1,7 @@
 import './styles/main.css';
 import './styles/settings-window.css';
 import { RuntimeConfigPanel } from '@/components/RuntimeConfigPanel';
+import { WorldMonitorTab } from '@/components/WorldMonitorTab';
 import { RUNTIME_FEATURES, loadDesktopSecrets } from '@/services/runtime-config';
 import { tryInvokeTauri } from '@/services/tauri-bridge';
 import { escapeHtml } from '@/utils/sanitize';
@@ -84,6 +85,7 @@ async function initSettingsWindow(): Promise<void> {
 
   const llmMount = document.getElementById('llmApp');
   const apiMount = document.getElementById('apiKeysApp');
+  const wmMount = document.getElementById('worldmonitorApp');
   if (!llmMount || !apiMount) return;
 
   const llmPanel = new RuntimeConfigPanel({ mode: 'full', buffered: true, featureFilter: LLM_FEATURES });
@@ -96,17 +98,28 @@ async function initSettingsWindow(): Promise<void> {
   mountPanel(llmPanel, llmMount);
   mountPanel(apiPanel, apiMount);
 
+  const wmTab = new WorldMonitorTab();
+  if (wmMount) {
+    wmMount.innerHTML = '';
+    wmMount.appendChild(wmTab.getElement());
+  }
+
   const panels = [llmPanel, apiPanel];
 
-  window.addEventListener('beforeunload', () => panels.forEach(p => p.destroy()));
+  window.addEventListener('beforeunload', () => {
+    panels.forEach(p => p.destroy());
+    wmTab.destroy();
+  });
 
   document.getElementById('okBtn')?.addEventListener('click', () => {
     void (async () => {
       try {
-        if (!panels.some(p => p.hasPendingChanges())) {
+        const hasWmChanges = wmTab.hasPendingChanges();
+        if (!panels.some(p => p.hasPendingChanges()) && !hasWmChanges) {
           closeSettingsWindow();
           return;
         }
+        if (hasWmChanges) await wmTab.save();
         setActionStatus(t('modals.settingsWindow.validating'), 'ok');
         const missingRequired = panels.flatMap(p => p.getMissingRequiredSecrets());
         if (missingRequired.length > 0) {

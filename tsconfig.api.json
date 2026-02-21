@@ -1,7 +1,7 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "types": []
+    "types": ["vite/client"]
   },
   "include": ["api", "src/generated", "server"]
 }

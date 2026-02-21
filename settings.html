@@ -12,6 +12,7 @@
         <button class="settings-tab active" role="tab" aria-selected="true" aria-controls="tabPanelLLMs" data-tab="llms">LLMs</button>
         <button class="settings-tab" role="tab" aria-selected="false" aria-controls="tabPanelKeys" data-tab="keys">API Keys</button>
         <button class="settings-tab" role="tab" aria-selected="false" aria-controls="tabPanelDebug" data-tab="debug">Debug &amp; Logs</button>
+        <button class="settings-tab" role="tab" aria-selected="false" aria-controls="tabPanelWorldMonitor" data-tab="worldmonitor">World Monitor</button>
       </div>
       <p id="settingsActionStatus" class="settings-action-status" aria-live="polite"></p>
       <div class="settings-tab-panels">
@@ -44,6 +45,9 @@
             </div>
             <div id="trafficLog" class="diag-traffic-log"></div>
           </section>
+        </div>
+        <div id="tabPanelWorldMonitor" class="settings-tab-panel" role="tabpanel">
+          <main id="worldmonitorApp" class="settings-content"></main>
         </div>
       </div>
       <footer class="settings-footer">

@@ -288,6 +288,26 @@
       "noTraffic": "No traffic recorded yet.",
       "sidecarUnreachable": "Sidecar not reachable.",
       "logCleared": "Log cleared.",
+      "worldMonitor": {
+        "tabLabel": "World Monitor",
+        "apiKey": {
+          "title": "API Key",
+          "placeholder": "Enter your WorldMonitor API key",
+          "description": "Required for cloud fallback access from the desktop app.",
+          "statusValid": "Key set",
+          "statusMissing": "No key configured"
+        },
+        "register": {
+          "title": "Register Interest",
+          "description": "Sign up to receive a WorldMonitor API key when available.",
+          "emailPlaceholder": "your@email.com",
+          "submitBtn": "Register Interest",
+          "submitting": "Submitting...",
+          "success": "Registered! We'll be in touch.",
+          "alreadyRegistered": "You're already registered.",
+          "error": "Registration failed. Please try again."
+        }
+      },
       "table": {
         "time": "Time",
         "method": "Method",

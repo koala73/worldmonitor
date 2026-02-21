@@ -25,7 +25,7 @@ const DESKTOP_LOG_FILE: &str = "desktop.log";
 const MENU_FILE_SETTINGS_ID: &str = "file.settings";
 const MENU_HELP_GITHUB_ID: &str = "help.github";
 const MENU_HELP_DEVTOOLS_ID: &str = "help.devtools";
-const SUPPORTED_SECRET_KEYS: [&str; 20] = [
+const SUPPORTED_SECRET_KEYS: [&str; 21] = [
     "GROQ_API_KEY",
     "OPENROUTER_API_KEY",
     "FRED_API_KEY",
@@ -46,6 +46,7 @@ const SUPPORTED_SECRET_KEYS: [&str; 20] = [
     "NASA_FIRMS_API_KEY",
     "OLLAMA_API_URL",
     "OLLAMA_MODEL",
+    "WORLDMONITOR_API_KEY",
 ];
 
 #[derive(Default)]
