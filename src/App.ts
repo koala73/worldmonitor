@@ -100,6 +100,7 @@ import { isDesktopRuntime } from '@/services/runtime';
 import { IntelligenceServiceClient } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import { ResearchServiceClient } from '@/generated/client/worldmonitor/research/v1/service_client';
 import { isFeatureAvailable } from '@/services/runtime-config';
+import { trackEvent, trackPanelView } from '@/services/analytics';
 import { invokeTauri } from '@/services/tauri-bridge';
 import { getCountryAtCoordinates, hasCountryGeometry, isCoordinateInCountry, preloadCountryGeometry } from '@/services/country-geometry';
 import { initI18n, t, changeLanguage } from '@/services/i18n';
@@ -328,6 +329,7 @@ export class App {
   }
 
   public async init(): Promise<void> {
+    const initStart = performance.now();
     await initDB();
     await initI18n();
 
@@ -400,6 +402,15 @@ export class App {
     this.handleDeepLinks();
 
     this.setupUpdateChecks();
+
+    // Track app load timing and panel count
+    trackEvent('wm_app_loaded', {
+      load_time_ms: Math.round(performance.now() - initStart),
+      panel_count: Object.keys(this.panels).length,
+    });
+
+    // Observe panel visibility for usage analytics
+    this.setupPanelViewTracking();
   }
 
   private handleDeepLinks(): void {
@@ -464,6 +475,30 @@ export class App {
         }
       };
       setTimeout(checkAndOpenBrief, DEEP_LINK_INITIAL_DELAY_MS);
+    }
+  }
+
+  private setupPanelViewTracking(): void {
+    const viewedPanels = new Set<string>();
+    const observer = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.3) {
+          const id = (entry.target as HTMLElement).dataset.panel;
+          if (id && !viewedPanels.has(id)) {
+            viewedPanels.add(id);
+            trackPanelView(id);
+          }
+        }
+      }
+    }, { threshold: 0.3 });
+
+    const grid = document.getElementById('panelsGrid');
+    if (grid) {
+      for (const child of Array.from(grid.children)) {
+        if ((child as HTMLElement).dataset.panel) {
+          observer.observe(child);
+        }
+      }
     }
   }
 

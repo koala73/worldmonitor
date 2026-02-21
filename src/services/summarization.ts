@@ -11,6 +11,7 @@ import { mlWorker } from './ml-worker';
 import { SITE_VARIANT } from '@/config';
 import { BETA_MODE } from '@/config/beta';
 import { isFeatureAvailable, type RuntimeFeatureId } from './runtime-config';
+import { trackLLMUsage, trackLLMFailure } from './analytics';
 import { NewsServiceClient, type SummarizeArticleResponse } from '@/generated/client/worldmonitor/news/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 
@@ -150,6 +151,26 @@ export async function generateSummary(
     return null;
   }
 
+  const result = await generateSummaryInternal(headlines, onProgress, geoContext, lang);
+
+  // Track at generateSummary return only (not inside tryApiProvider) to avoid
+  // double-counting beta comparison traffic. Only the winning provider is recorded.
+  if (result) {
+    trackLLMUsage(result.provider, result.provider, result.cached);
+  } else {
+    const lastProvider = API_PROVIDERS[API_PROVIDERS.length - 1];
+    trackLLMFailure(lastProvider ? lastProvider.provider : 'none');
+  }
+
+  return result;
+}
+
+async function generateSummaryInternal(
+  headlines: string[],
+  onProgress: ProgressCallback | undefined,
+  geoContext: string | undefined,
+  lang: string,
+): Promise<SummarizationResult | null> {
   if (BETA_MODE) {
     const modelReady = mlWorker.isAvailable && mlWorker.isModelLoaded('summarization-beta');
 

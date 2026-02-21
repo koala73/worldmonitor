@@ -98,6 +98,7 @@ import { debugInjectTestEvents, debugGetCells, getCellCount } from '@/services/g
 import { initMetaTags } from '@/services/meta-tags';
 import { installRuntimeFetchPatch } from '@/services/runtime';
 import { loadDesktopSecrets } from '@/services/runtime-config';
+import { initAnalytics, trackApiKeysSnapshot } from '@/services/analytics';
 import { applyStoredTheme } from '@/utils/theme-manager';
 import { clearChunkReloadGuard, installChunkReloadGuard } from '@/bootstrap/chunk-reload';
 
@@ -107,12 +108,15 @@ const chunkReloadStorageKey = installChunkReloadGuard(__APP_VERSION__);
 // Initialize Vercel Analytics
 inject();
 
+// Initialize PostHog product analytics
+void initAnalytics();
+
 // Initialize dynamic meta tags for sharing
 initMetaTags();
 
 // In desktop mode, route /api/* calls to the local Tauri sidecar backend.
 installRuntimeFetchPatch();
-void loadDesktopSecrets();
+loadDesktopSecrets().then(() => trackApiKeysSnapshot()).catch(() => {});
 
 // Apply stored theme preference before app initialization (safety net for inline script)
 applyStoredTheme();
