@@ -108,6 +108,7 @@
     "displacement": "UNHCR Displacement",
     "climate": "Climate Anomalies",
     "populationExposure": "Population Exposure",
+    "sanctions": "OFAC Sanctions",
     "startups": "Startups & VC",
     "vcblogs": "VC Insights & Essays",
     "regionalStartups": "Global Startup News",
@@ -1251,6 +1252,13 @@
     },
     "cyberThreat": {
       "title": "CYBER THREAT"
+    },
+    "sanctions": {
+      "title": "OFAC Sanctions",
+      "infoTooltip": "<strong>OFAC Sanctions</strong> US Treasury Office of Foreign Assets Control designated entities:<ul><li>SDN (Specially Designated Nationals) list</li><li>Individuals, entities, vessels, aircraft</li><li>Program-based filtering (SDGT, IRAN, DPRK, etc.)</li><li>Updates hourly from treasury.gov</li></ul>",
+      "searchPlaceholder": "Search entities...",
+      "noResults": "No matching entities found",
+      "unavailable": "Sanctions data unavailable"
     },
     "nuclear": {
       "types": {

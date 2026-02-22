@@ -52,6 +52,8 @@ enum CyberThreatType {
   CYBER_THREAT_TYPE_PHISHING = 3;
   // Malicious URL.
   CYBER_THREAT_TYPE_MALICIOUS_URL = 4;
+  // Software vulnerability (CVE).
+  CYBER_THREAT_TYPE_VULNERABILITY = 5;
 }
 
 // CyberThreatSource represents the intelligence source of a cyber threat.
@@ -69,6 +71,10 @@ enum CyberThreatSource {
   CYBER_THREAT_SOURCE_OTX = 4;
   // AbuseIPDB.
   CYBER_THREAT_SOURCE_ABUSEIPDB = 5;
+  // NIST National Vulnerability Database.
+  CYBER_THREAT_SOURCE_NVD = 6;
+  // GreyNoise Intelligence.
+  CYBER_THREAT_SOURCE_GREYNOISE = 7;
 }
 
 // CyberThreatIndicatorType represents the type of threat indicator.

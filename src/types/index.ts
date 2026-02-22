@@ -199,8 +199,8 @@ export interface APTGroup {
   lon: number;
 }
 
-export type CyberThreatType = 'c2_server' | 'malware_host' | 'phishing' | 'malicious_url';
-export type CyberThreatSource = 'feodo' | 'urlhaus' | 'c2intel' | 'otx' | 'abuseipdb';
+export type CyberThreatType = 'c2_server' | 'malware_host' | 'phishing' | 'malicious_url' | 'vulnerability';
+export type CyberThreatSource = 'feodo' | 'urlhaus' | 'c2intel' | 'otx' | 'abuseipdb' | 'nvd' | 'greynoise';
 export type CyberThreatSeverity = 'low' | 'medium' | 'high' | 'critical';
 export type CyberThreatIndicatorType = 'ip' | 'domain' | 'url';
 

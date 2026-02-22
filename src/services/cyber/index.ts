@@ -26,6 +26,7 @@ const THREAT_TYPE_REVERSE: Record<string, CyberThreatType> = {
   CYBER_THREAT_TYPE_MALWARE_HOST: 'malware_host',
   CYBER_THREAT_TYPE_PHISHING: 'phishing',
   CYBER_THREAT_TYPE_MALICIOUS_URL: 'malicious_url',
+  CYBER_THREAT_TYPE_VULNERABILITY: 'vulnerability',
 };
 
 const SOURCE_REVERSE: Record<string, CyberThreatSource> = {
@@ -34,6 +35,8 @@ const SOURCE_REVERSE: Record<string, CyberThreatSource> = {
   CYBER_THREAT_SOURCE_C2INTEL: 'c2intel',
   CYBER_THREAT_SOURCE_OTX: 'otx',
   CYBER_THREAT_SOURCE_ABUSEIPDB: 'abuseipdb',
+  CYBER_THREAT_SOURCE_NVD: 'nvd',
+  CYBER_THREAT_SOURCE_GREYNOISE: 'greynoise',
 };
 
 const INDICATOR_TYPE_REVERSE: Record<string, CyberThreatIndicatorType> = {

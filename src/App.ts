@@ -80,6 +80,7 @@ import {
   ClimateAnomalyPanel,
   PopulationExposurePanel,
   InvestmentsPanel,
+  SanctionsPanel,
   LanguageSelector,
 } from '@/components';
 import type { SearchResult } from '@/components/SearchModal';
@@ -2299,6 +2300,9 @@ export class App {
       const cascadePanel = new CascadePanel();
       this.panels['cascade'] = cascadePanel;
 
+      const sanctionsPanel = new SanctionsPanel();
+      this.panels['sanctions'] = sanctionsPanel;
+
       const satelliteFiresPanel = new SatelliteFiresPanel();
       this.panels['satellite-fires'] = satelliteFiresPanel;
 
@@ -3141,6 +3145,7 @@ export class App {
     if (this.mapLayers.cables) tasks.push({ name: 'cableHealth', task: runGuarded('cableHealth', () => this.loadCableHealth()) });
     if (this.mapLayers.flights) tasks.push({ name: 'flights', task: runGuarded('flights', () => this.loadFlightDelays()) });
     if (CYBER_LAYER_ENABLED && this.mapLayers.cyberThreats) tasks.push({ name: 'cyberThreats', task: runGuarded('cyberThreats', () => this.loadCyberThreats()) });
+    if (this.mapLayers.sanctions) tasks.push({ name: 'sanctions', task: runGuarded('sanctions', () => this.loadSanctions()) });
     if (this.mapLayers.techEvents || SITE_VARIANT === 'tech') tasks.push({ name: 'techEvents', task: runGuarded('techEvents', () => this.loadTechEvents()) });
 
     // Tech Readiness panel (tech variant only)
@@ -3182,6 +3187,9 @@ export class App {
           break;
         case 'cyberThreats':
           await this.loadCyberThreats();
+          break;
+        case 'sanctions':
+          await this.loadSanctions();
           break;
         case 'ais':
           await this.loadAisSignals();
@@ -4062,6 +4070,15 @@ export class App {
     }
   }
 
+  private async loadSanctions(): Promise<void> {
+    try {
+      const panel = this.panels['sanctions'] as import('@/components/SanctionsPanel').SanctionsPanel | undefined;
+      await panel?.refresh();
+    } catch (error) {
+      console.warn('[App] Sanctions load failed:', error);
+    }
+  }
+
   private async loadAisSignals(): Promise<void> {
     try {
       const { disruptions, density } = await fetchAisSignals();
@@ -4624,5 +4641,6 @@ export class App {
       this.cyberThreatsCache = null;
       return this.loadCyberThreats();
     }, 10 * 60 * 1000, () => CYBER_LAYER_ENABLED && this.mapLayers.cyberThreats);
+    this.scheduleRefresh('sanctions', () => this.loadSanctions(), 30 * 60 * 1000, () => this.mapLayers.sanctions);
   }
 }

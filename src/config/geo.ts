@@ -1102,7 +1102,7 @@ export const NUCLEAR_FACILITIES: NuclearFacility[] = [
   { id: 'lasalle', name: 'LaSalle', lat: 41.24, lon: -88.67, type: 'plant', status: 'active' },
   { id: 'dresden', name: 'Dresden', lat: 41.39, lon: -88.27, type: 'plant', status: 'active' },
   { id: 'quad_cities', name: 'Quad Cities', lat: 41.73, lon: -90.34, type: 'plant', status: 'active' },
-  { id: 'palisades', name: 'Palisades', lat: 42.32, lon: -86.32, type: 'plant', status: 'inactive' },
+  { id: 'palisades', name: 'Palisades', lat: 42.32, lon: -86.32, type: 'plant', status: 'construction' },  // Restart pending — Holtec $1.5B DOE loan, targeting 2025-2026
   { id: 'dc_cook', name: 'D.C. Cook', lat: 41.98, lon: -86.56, type: 'plant', status: 'active' },
   { id: 'davis_besse', name: 'Davis-Besse', lat: 41.60, lon: -83.09, type: 'plant', status: 'active' },
   { id: 'beaver_valley', name: 'Beaver Valley', lat: 40.62, lon: -80.43, type: 'plant', status: 'active' },
@@ -1175,7 +1175,7 @@ export const NUCLEAR_FACILITIES: NuclearFacility[] = [
   // Canada
   { id: 'bruce', name: 'Bruce', lat: 44.33, lon: -81.60, type: 'plant', status: 'active' },
   { id: 'darlington', name: 'Darlington', lat: 43.87, lon: -78.72, type: 'plant', status: 'active' },
-  { id: 'pickering', name: 'Pickering', lat: 43.81, lon: -79.07, type: 'plant', status: 'inactive' },
+  { id: 'pickering', name: 'Pickering', lat: 43.81, lon: -79.07, type: 'plant', status: 'active' },  // Units 5-8 operating through 2026
   // Others
   { id: 'paks', name: 'Paks', lat: 46.57, lon: 18.86, type: 'plant', status: 'active' },
   { id: 'temelin', name: 'Temelín', lat: 49.18, lon: 14.38, type: 'plant', status: 'active' },
@@ -1220,9 +1220,17 @@ export const SANCTIONED_COUNTRIES: Record<number, 'severe' | 'high' | 'moderate'
   364: 'high',     // Iran
   643: 'high',     // Russia
   112: 'high',     // Belarus
+  192: 'high',     // Cuba
   862: 'moderate', // Venezuela
   104: 'moderate', // Myanmar
   178: 'moderate', // Congo
+  706: 'moderate', // Somalia
+  434: 'moderate', // Libya
+  729: 'moderate', // Sudan
+  887: 'moderate', // Yemen
+  716: 'moderate', // Zimbabwe
+  558: 'moderate', // Nicaragua
+  466: 'moderate', // Mali
 };
 
 export const MAP_URLS = {

@@ -21,6 +21,8 @@ import {
   fetchC2IntelSource,
   fetchOtxSource,
   fetchAbuseIpDbSource,
+  fetchNvdSource,
+  fetchGreynoiseSource,
   dedupeThreats,
   hydrateThreatCoordinates,
   toProtoCyberThreat,
@@ -45,15 +47,17 @@ export async function listCyberThreats(
     const cutoffMs = now - days * 24 * 60 * 60 * 1000;
 
     // Fetch all sources in parallel
-    const [feodo, urlhaus, c2intel, otx, abuseipdb] = await Promise.all([
+    const [feodo, urlhaus, c2intel, otx, abuseipdb, nvd, greynoise] = await Promise.all([
       fetchFeodoSource(pageSize, cutoffMs),
       fetchUrlhausSource(pageSize, cutoffMs),
       fetchC2IntelSource(pageSize),
       fetchOtxSource(pageSize, days),
       fetchAbuseIpDbSource(pageSize),
+      fetchNvdSource(pageSize, cutoffMs),
+      fetchGreynoiseSource(pageSize),
     ]);
 
-    const anySucceeded = feodo.ok || urlhaus.ok || c2intel.ok || otx.ok || abuseipdb.ok;
+    const anySucceeded = feodo.ok || urlhaus.ok || c2intel.ok || otx.ok || abuseipdb.ok || nvd.ok || greynoise.ok;
     if (!anySucceeded) {
       return { threats: [], pagination: undefined };
     }
@@ -65,6 +69,8 @@ export async function listCyberThreats(
       ...c2intel.threats,
       ...otx.threats,
       ...abuseipdb.threats,
+      ...nvd.threats,
+      ...greynoise.threats,
     ]);
 
     const hydrated = await hydrateThreatCoordinates(combined);

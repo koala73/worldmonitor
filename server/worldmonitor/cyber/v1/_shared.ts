@@ -38,6 +38,8 @@ const URLHAUS_RECENT_URL = (limit: number) => `https://urlhaus-api.abuse.ch/v1/u
 const C2INTEL_URL = 'https://raw.githubusercontent.com/drb-ra/C2IntelFeeds/master/feeds/IPC2s-30day.csv';
 const OTX_INDICATORS_URL = 'https://otx.alienvault.com/api/v1/indicators/export?type=IPv4&modified_since=';
 const ABUSEIPDB_BLACKLIST_URL = 'https://api.abuseipdb.com/api/v2/blacklist';
+const NVD_CVES_URL = 'https://services.nvd.nist.gov/rest/json/cves/2.0';
+const GREYNOISE_GNQL_URL = 'https://api.greynoise.io/v3/community/';
 
 const UPSTREAM_TIMEOUT_MS = 8000;
 const GEO_MAX_UNRESOLVED = 250;
@@ -134,6 +136,7 @@ export const THREAT_TYPE_MAP: Record<string, CyberThreatType> = {
   malware_host: 'CYBER_THREAT_TYPE_MALWARE_HOST',
   phishing: 'CYBER_THREAT_TYPE_PHISHING',
   malicious_url: 'CYBER_THREAT_TYPE_MALICIOUS_URL',
+  vulnerability: 'CYBER_THREAT_TYPE_VULNERABILITY',
 };
 
 export const SOURCE_MAP: Record<string, CyberThreatSource> = {
@@ -142,6 +145,8 @@ export const SOURCE_MAP: Record<string, CyberThreatSource> = {
   c2intel: 'CYBER_THREAT_SOURCE_C2INTEL',
   otx: 'CYBER_THREAT_SOURCE_OTX',
   abuseipdb: 'CYBER_THREAT_SOURCE_ABUSEIPDB',
+  nvd: 'CYBER_THREAT_SOURCE_NVD',
+  greynoise: 'CYBER_THREAT_SOURCE_GREYNOISE',
 };
 
 const INDICATOR_TYPE_MAP: Record<string, CyberThreatIndicatorType> = {
@@ -705,6 +710,178 @@ export async function fetchAbuseIpDbSource(limit: number): Promise<SourceResult>
         tags: normalizeTags([`score:${score}`]),
         firstSeen: 0,
         lastSeen: toEpochMs(record?.lastReportedAt),
+      });
+      if (threat) parsed.push(threat);
+      if (parsed.length >= limit) break;
+    }
+
+    return { ok: true, threats: parsed };
+  } catch {
+    return { ok: false, threats: [] };
+  }
+}
+
+// ========================================================================
+// Source 6: NVD (National Vulnerability Database)
+// ========================================================================
+
+function inferNvdSeverity(baseScore: number | null): string {
+  if (baseScore === null) return 'medium';
+  if (baseScore >= 9.0) return 'critical';
+  if (baseScore >= 7.0) return 'high';
+  if (baseScore >= 4.0) return 'medium';
+  return 'low';
+}
+
+function parseNvdCve(cve: any, cutoffMs: number): RawThreat | null {
+  const id = cleanString(cve?.id || cve?.cve?.id || '', 30);
+  if (!id || !id.startsWith('CVE-')) return null;
+
+  const published = toEpochMs(cve?.published || cve?.cve?.published);
+  if (published && published < cutoffMs) return null;
+
+  const metrics = cve?.metrics || cve?.cve?.metrics || {};
+  const cvssV31 = metrics?.cvssMetricV31?.[0]?.cvssData;
+  const cvssV30 = metrics?.cvssMetricV30?.[0]?.cvssData;
+  const cvssData = cvssV31 || cvssV30;
+  const baseScore = toFiniteNumber(cvssData?.baseScore);
+
+  const descriptions = cve?.descriptions || cve?.cve?.descriptions || [];
+  const enDesc = descriptions.find((d: any) => d?.lang === 'en');
+  const description = cleanString(enDesc?.value || descriptions[0]?.value || '', 255);
+
+  const references = cve?.references || cve?.cve?.references || [];
+  const tags: string[] = [];
+  for (const ref of references.slice(0, 5)) {
+    const refTags = ref?.tags || [];
+    for (const tag of refTags) {
+      const cleaned = cleanString(String(tag), 40).toLowerCase();
+      if (cleaned) tags.push(cleaned);
+    }
+  }
+
+  const weaknesses = cve?.weaknesses || cve?.cve?.weaknesses || [];
+  for (const w of weaknesses) {
+    for (const d of w?.description || []) {
+      const val = cleanString(d?.value || '', 20);
+      if (val && val !== 'NVD-CWE-noinfo' && val !== 'NVD-CWE-Other') tags.push(val.toLowerCase());
+    }
+  }
+
+  return sanitizeRawThreat({
+    id: `nvd:${id}`,
+    type: 'vulnerability',
+    source: 'nvd',
+    indicator: id,
+    indicatorType: 'domain', // CVEs are not IPs — use domain as closest fit
+    lat: null,
+    lon: null,
+    country: '',
+    severity: inferNvdSeverity(baseScore),
+    malwareFamily: description,
+    tags: normalizeTags([`cvss:${baseScore ?? 'N/A'}`, ...tags]),
+    firstSeen: published,
+    lastSeen: toEpochMs(cve?.lastModified || cve?.cve?.lastModified) || published,
+  });
+}
+
+export async function fetchNvdSource(limit: number, cutoffMs: number): Promise<SourceResult> {
+  try {
+    const startDate = new Date(cutoffMs).toISOString().replace(/\.\d+Z$/, '.000');
+    const url = `${NVD_CVES_URL}?cvssV3Severity=HIGH&pubStartDate=${encodeURIComponent(startDate)}&resultsPerPage=${Math.min(limit, 200)}`;
+    const headers: Record<string, string> = { Accept: 'application/json' };
+    const apiKey = cleanString(process.env.NVD_API_KEY || '', 200);
+    if (apiKey) headers['apiKey'] = apiKey;
+
+    const response = await fetch(url, {
+      headers,
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    });
+    if (!response.ok) return { ok: false, threats: [] };
+
+    const payload = await response.json();
+    const vulnerabilities: any[] = Array.isArray(payload?.vulnerabilities) ? payload.vulnerabilities : [];
+
+    const parsed = vulnerabilities
+      .map((v) => parseNvdCve(v?.cve || v, cutoffMs))
+      .filter((t): t is RawThreat => t !== null)
+      .sort((a, b) => (b.lastSeen || b.firstSeen) - (a.lastSeen || a.firstSeen))
+      .slice(0, limit);
+
+    return { ok: true, threats: parsed };
+  } catch {
+    return { ok: false, threats: [] };
+  }
+}
+
+// ========================================================================
+// Source 7: GreyNoise Intelligence
+// ========================================================================
+
+function inferGreynoiseSeverity(classification: string, tags: string[]): string {
+  if (classification === 'malicious') {
+    if (tags.some((t) => /worm|ransomware|apt|exploit/i.test(t))) return 'critical';
+    return 'high';
+  }
+  if (classification === 'unknown') return 'medium';
+  return 'low';
+}
+
+function inferGreynoiseType(classification: string, tags: string[]): string {
+  if (tags.some((t) => /c2|botnet|command.?and.?control/i.test(t))) return 'c2_server';
+  if (tags.some((t) => /scan|brute|crawl/i.test(t))) return 'malware_host';
+  if (tags.some((t) => /phish/i.test(t))) return 'phishing';
+  if (classification === 'malicious') return 'malware_host';
+  return 'malicious_url';
+}
+
+export async function fetchGreynoiseSource(limit: number): Promise<SourceResult> {
+  const apiKey = cleanString(process.env.GREYNOISE_API_KEY || '', 200);
+  if (!apiKey) return { ok: false, threats: [] };
+
+  try {
+    // Use the GNQL API for malicious IPs seen in the last 7 days
+    const query = encodeURIComponent('classification:malicious last_seen:7d');
+    const url = `https://api.greynoise.io/v3/experimental/gnql?query=${query}&size=${Math.min(limit, 200)}`;
+    const response = await fetch(url, {
+      headers: {
+        Accept: 'application/json',
+        key: apiKey,
+      },
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    });
+    if (!response.ok) return { ok: false, threats: [] };
+
+    const payload = await response.json();
+    const records: any[] = Array.isArray(payload?.data) ? payload.data : [];
+
+    const parsed: RawThreat[] = [];
+    for (const record of records) {
+      const ip = cleanString(record?.ip || '', 80).toLowerCase();
+      if (!isIpAddress(ip)) continue;
+
+      const classification = cleanString(record?.classification || '', 30).toLowerCase();
+      const recordTags = normalizeTags(record?.tags || []);
+      const actor = cleanString(record?.actor || record?.metadata?.organization || '', 80);
+
+      const lat = toFiniteNumber(record?.metadata?.city_latitude ?? record?.metadata?.latitude);
+      const lon = toFiniteNumber(record?.metadata?.city_longitude ?? record?.metadata?.longitude);
+      const country = normalizeCountry(record?.metadata?.country_code || record?.metadata?.country || '');
+
+      const threat = sanitizeRawThreat({
+        id: `greynoise:${ip}`,
+        type: inferGreynoiseType(classification, recordTags),
+        source: 'greynoise',
+        indicator: ip,
+        indicatorType: 'ip',
+        lat,
+        lon,
+        country,
+        severity: inferGreynoiseSeverity(classification, recordTags),
+        malwareFamily: actor,
+        tags: normalizeTags([classification, ...recordTags]),
+        firstSeen: toEpochMs(record?.first_seen),
+        lastSeen: toEpochMs(record?.last_seen),
       });
       if (threat) parsed.push(threat);
       if (parsed.length >= limit) break;
