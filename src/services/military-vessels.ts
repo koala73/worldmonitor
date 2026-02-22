@@ -102,7 +102,7 @@ function analyzeMmsi(mmsi: string): { isPotentialMilitary: boolean; country?: st
     '272': 'Ukraine', '273': 'Russia', '274': 'North Macedonia',
     '275': 'Latvia', '276': 'Estonia', '277': 'Lithuania',
     '278': 'Slovenia', '279': 'Serbia',
-    '301': 'Anguilla', '303': 'Alaska',
+    '301': 'Anguilla', '303': 'USA',
     '304': 'Antigua', '305': 'Antigua', '306': 'Sint Maarten',
     '307': 'Aruba', '308': 'Bahamas', '309': 'Bahamas',
     '310': 'Bermuda', '311': 'Bahamas', '312': 'Belize',

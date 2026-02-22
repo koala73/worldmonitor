@@ -311,15 +311,57 @@ class SignalAggregator {
   }
 
   private coordsToCountry(lat: number, lon: number): string {
-    if (lat >= 25 && lat <= 40 && lon >= 44 && lon <= 63) return 'IR';
-    if (lat >= 29 && lat <= 33 && lon >= 34 && lon <= 36) return 'IL';
-    if (lat >= 15 && lat <= 32 && lon >= 34 && lon <= 55) return 'SA';
-    if (lat >= 20 && lat <= 55 && lon >= 73 && lon <= 135) return 'CN';
+    // Most specific / smallest regions first to avoid being swallowed by larger boxes
+
+    // Taiwan — must come before China
     if (lat >= 22 && lat <= 25 && lon >= 120 && lon <= 122) return 'TW';
-    if (lat >= 8 && lat <= 37 && lon >= 68 && lon <= 97) return 'IN';
-    if (lat >= 44 && lat <= 52 && lon >= 22 && lon <= 40) return 'UA';
-    if (lat >= 50 && lat <= 82 && lon >= 20 && lon <= 180) return 'RU';
+    // Israel — must come before Saudi Arabia
+    if (lat >= 29 && lat <= 33 && lon >= 34 && lon <= 36) return 'IL';
+    // North Korea — must come before China
+    if (lat >= 37 && lat <= 43 && lon >= 124 && lon <= 130) return 'KP';
+    // South Korea — must come before China/Japan
+    if (lat >= 33 && lat <= 39 && lon >= 124 && lon <= 130) return 'KR';
+
+    // Medium-sized regions
+    // Japan — narrowed lon to avoid overlap with China
+    if (lat >= 30 && lat <= 46 && lon >= 129 && lon <= 146) return 'JP';
+    // Pakistan — must come before India
+    if (lat >= 23 && lat <= 37 && lon >= 60 && lon <= 77) return 'PK';
+    // Syria — must come before Saudi Arabia and Iran
+    if (lat >= 32 && lat <= 37 && lon >= 35 && lon <= 42) return 'SY';
+    // Yemen — must come before Saudi Arabia
+    if (lat >= 12 && lat <= 19 && lon >= 42 && lon <= 54) return 'YE';
+    // Myanmar — must come before India and China
+    if (lat >= 9 && lat <= 29 && lon >= 92 && lon <= 102) return 'MM';
+    // Turkey
+    if (lat >= 36 && lat <= 42 && lon >= 26 && lon <= 45) return 'TR';
+    // Egypt — must come before Saudi Arabia
     if (lat >= 22 && lat <= 32 && lon >= 25 && lon <= 35) return 'EG';
+    // Poland — must come before Russia/Ukraine
+    if (lat >= 49 && lat <= 55 && lon >= 14 && lon <= 24) return 'PL';
+    // Germany
+    if (lat >= 47 && lat <= 55 && lon >= 5 && lon <= 16) return 'DE';
+    // France
+    if (lat >= 42 && lat <= 51 && lon >= -5 && lon <= 9) return 'FR';
+    // Venezuela — must come before Brazil
+    if (lat >= 1 && lat <= 12 && lon >= -73 && lon <= -60) return 'VE';
+    // Brazil
+    if (lat >= -34 && lat <= 5 && lon >= -74 && lon <= -35) return 'BR';
+    // Ukraine — must come before Russia
+    if (lat >= 44 && lat <= 52 && lon >= 22 && lon <= 40) return 'UA';
+
+    // Large regions last
+    // Iran — lon narrowed to avoid overlap with Pakistan
+    if (lat >= 25 && lat <= 40 && lon >= 44 && lon <= 63) return 'IR';
+    // Saudi Arabia
+    if (lat >= 15 && lat <= 32 && lon >= 34 && lon <= 55) return 'SA';
+    // India — lon narrowed to avoid Pakistan; Myanmar already handled
+    if (lat >= 8 && lat <= 37 && lon >= 68 && lon <= 97) return 'IN';
+    // China — lon capped at 123 to exclude Japan
+    if (lat >= 20 && lat <= 55 && lon >= 73 && lon <= 123) return 'CN';
+    // Russia
+    if (lat >= 50 && lat <= 82 && lon >= 20 && lon <= 180) return 'RU';
+
     return 'XX';
   }
 

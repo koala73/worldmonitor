@@ -76,7 +76,8 @@ function mapProtoEventType(eventType: string): ConflictEventType {
   if (lower.includes('explosion')) return 'explosion';
   if (lower.includes('remote violence')) return 'remote_violence';
   if (lower.includes('violence against')) return 'violence_against_civilians';
-  return 'battle';
+  if (lower.includes('riot')) return 'battle';
+  return 'remote_violence'; // Strategic developments, looting etc. → least inflating default
 }
 
 function toConflictEvent(proto: ProtoAcledEvent): ConflictEvent {
@@ -129,6 +130,7 @@ const ISO3_TO_ISO2: Record<string, string> = {
   ISR: 'IL', TWN: 'TW', PRK: 'KP', SAU: 'SA', TUR: 'TR',
   POL: 'PL', DEU: 'DE', FRA: 'FR', GBR: 'GB', IND: 'IN',
   PAK: 'PK', SYR: 'SY', YEM: 'YE', MMR: 'MM', VEN: 'VE',
+  BRA: 'BR', ARE: 'AE',
 };
 
 const ISO2_TO_ISO2_KEYS = Object.values(ISO3_TO_ISO2);
@@ -169,9 +171,9 @@ function deriveUcdpClassifications(events: ProtoUcdpEvent[]): Map<string, UcdpCo
     const eventCount = recentEvents.length;
 
     let intensity: ConflictIntensity;
-    if (totalDeaths > 1000 || eventCount > 100) {
+    if (totalDeaths > 1000) {
       intensity = 'war';
-    } else if (eventCount > 10) {
+    } else if (totalDeaths > 25 || eventCount > 10) {
       intensity = 'minor';
     } else {
       intensity = 'none';

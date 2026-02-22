@@ -375,9 +375,9 @@ export const INTEL_HOTSPOTS: Hotspot[] = [
     lat: 33.5,
     lon: 36.3,
     location: 'Syria',
-    keywords: ['syria', 'damascus', 'assad', 'syrian', 'hts'],
-    agencies: ['Syrian Govt', 'HTS', 'Russian Forces', 'Turkish Forces'],
-    description: 'Syrian civil war aftermath. Multiple foreign interventions.',
+    keywords: ['syria', 'damascus', 'assad', 'syrian', 'hts', 'al-jolani'],
+    agencies: ['Transitional Government', 'HTS', 'Russian Forces', 'Turkish Forces'],
+    description: 'Post-Assad transition. Assad regime fell December 2024. HTS-led transitional government consolidating control.',
     status: 'Monitoring',
   },
   {
@@ -411,7 +411,7 @@ export const INTEL_HOTSPOTS: Hotspot[] = [
     lat: 33.9,
     lon: 35.5,
     location: 'Lebanon',
-    keywords: ['lebanon', 'beirut', 'hezbollah', 'lebanese', 'nasrallah'],
+    keywords: ['lebanon', 'beirut', 'hezbollah', 'lebanese', 'qassem'],
     agencies: ['LAF', 'Hezbollah', 'UNIFIL'],
     description: 'Lebanon crisis. Hezbollah stronghold. Israel border tensions.',
     status: 'Monitoring',
@@ -452,7 +452,7 @@ export const INTEL_HOTSPOTS: Hotspot[] = [
 ];
 
 export const STRATEGIC_WATERWAYS: StrategicWaterway[] = [
-  { id: 'taiwan_strait', name: 'TAIWAN STRAIT', lat: 24.0, lon: 119.5, description: 'Critical shipping lane, PLA activity' },
+  { id: 'taiwan_strait', name: 'TAIWAN STRAIT', lat: 24.0, lon: 120.0, description: 'Critical shipping lane, PLA activity' },
   { id: 'malacca_strait', name: 'MALACCA STRAIT', lat: 2.5, lon: 101.5, description: 'Major oil shipping route' },
   { id: 'hormuz_strait', name: 'STRAIT OF HORMUZ', lat: 26.5, lon: 56.5, description: 'Oil chokepoint, Iran control' },
   { id: 'bosphorus', name: 'BOSPHORUS STRAIT', lat: 41.1, lon: 29.0, description: 'Black Sea access, Turkey control' },
@@ -553,15 +553,15 @@ export const CONFLICT_ZONES: ConflictZone[] = [
     // Coords in [lon, lat] format for GeoJSON - Lebanon border is around 35-36°E, 33-34°N
     coords: [[35.1, 33.0], [35.1, 33.4], [35.8, 33.4], [35.8, 33.0]],
     center: [35.4, 33.2],
-    intensity: 'high',
+    intensity: 'low',
     parties: ['Israel (IDF)', 'Hezbollah'],
     casualties: '500+ killed',
     displaced: '150k+ displaced',
     keywords: ['hezbollah', 'lebanon', 'israel', 'border', 'rocket', 'airstrike'],
     startDate: 'Oct 8, 2023',
     location: 'Southern Lebanon / Northern Israel',
-    description: 'Cross-border artillery and rocket fire. Targeted assassinations. High risk of full-scale escalation.',
-    keyDevelopments: ['Daily rocket fire', 'IDF airstrikes', 'Buffer zone evacuation', 'Litani River tensions'],
+    description: 'Ceasefire in effect since November 2024. Monitoring for violations.',
+    keyDevelopments: ['Ceasefire monitoring', 'UNIFIL deployment', 'Buffer zone evacuation', 'Litani River tensions'],
   },
 ];
 
@@ -1029,7 +1029,7 @@ export const NUCLEAR_FACILITIES: NuclearFacility[] = [
   { id: 'lasalle', name: 'LaSalle', lat: 41.24, lon: -88.67, type: 'plant', status: 'active' },
   { id: 'dresden', name: 'Dresden', lat: 41.39, lon: -88.27, type: 'plant', status: 'active' },
   { id: 'quad_cities', name: 'Quad Cities', lat: 41.73, lon: -90.34, type: 'plant', status: 'active' },
-  { id: 'palisades', name: 'Palisades', lat: 42.32, lon: -86.32, type: 'plant', status: 'active' },
+  { id: 'palisades', name: 'Palisades', lat: 42.32, lon: -86.32, type: 'plant', status: 'inactive' },
   { id: 'dc_cook', name: 'D.C. Cook', lat: 41.98, lon: -86.56, type: 'plant', status: 'active' },
   { id: 'davis_besse', name: 'Davis-Besse', lat: 41.60, lon: -83.09, type: 'plant', status: 'active' },
   { id: 'beaver_valley', name: 'Beaver Valley', lat: 40.62, lon: -80.43, type: 'plant', status: 'active' },
@@ -1102,7 +1102,7 @@ export const NUCLEAR_FACILITIES: NuclearFacility[] = [
   // Canada
   { id: 'bruce', name: 'Bruce', lat: 44.33, lon: -81.60, type: 'plant', status: 'active' },
   { id: 'darlington', name: 'Darlington', lat: 43.87, lon: -78.72, type: 'plant', status: 'active' },
-  { id: 'pickering', name: 'Pickering', lat: 43.81, lon: -79.07, type: 'plant', status: 'active' },
+  { id: 'pickering', name: 'Pickering', lat: 43.81, lon: -79.07, type: 'plant', status: 'inactive' },
   // Others
   { id: 'paks', name: 'Paks', lat: 46.57, lon: 18.86, type: 'plant', status: 'active' },
   { id: 'temelin', name: 'Temelín', lat: 49.18, lon: 14.38, type: 'plant', status: 'active' },

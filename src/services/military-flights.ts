@@ -126,8 +126,8 @@ function getCountryFromOperator(operator: MilitaryOperator): string {
     usn: 'USA',
     usmc: 'USA',
     usa: 'USA',
-    raf: 'UK',
-    rn: 'UK',
+    raf: 'GB',
+    rn: 'GB',
     faf: 'France',
     gaf: 'Germany',
     plaaf: 'China',
@@ -164,7 +164,7 @@ function isMilitaryFlight(state: OpenSkyStateArray): boolean {
     'Turkey', 'Saudi Arabia', 'United Arab Emirates', 'Qatar', 'Kuwait',
     'Japan', 'South Korea', 'Australia', 'Canada', 'Italy', 'Spain',
     'Netherlands', 'Poland', 'Greece', 'Norway', 'Sweden', 'India',
-    'Pakistan', 'Egypt', 'Singapore', 'Taiwan'
+    'Pakistan', 'Egypt', 'Singapore', 'Taiwan', 'Russia', 'China'
   ];
 
   if (militaryCountries.includes(originCountry)) {

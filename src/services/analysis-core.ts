@@ -404,7 +404,7 @@ export function detectConvergence(
           id: generateSignalId(),
           type: 'convergence',
           title: 'Source Convergence',
-          description: `"${event.primaryTitle.slice(0, 50)}..." reported by ${types.join(', ')} (${recentItems.length} sources in 30m)`,
+          description: `"${event.primaryTitle.slice(0, 50)}..." reported by ${types.join(', ')} (${recentItems.length} sources in 60m)`,
           confidence: Math.min(0.95, 0.6 + sourceTypes.size * 0.1),
           timestamp: new Date(),
           data: {

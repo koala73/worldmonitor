@@ -111,7 +111,7 @@ const COUNTRY_KEYWORDS: Record<string, string[]> = {
   PK: ['pakistan', 'islamabad'],
   SY: ['syria', 'damascus', 'assad'],
   YE: ['yemen', 'sanaa', 'houthi'],
-  MM: ['myanmar', 'burma', 'rangoon'],
+  MM: ['myanmar', 'burma', 'rangoon', 'yangon'],
   VE: ['venezuela', 'caracas', 'maduro'],
   BR: ['brazil', 'brasilia', 'lula', 'bolsonaro'],
   AE: ['uae', 'emirates', 'dubai', 'abu dhabi'],
@@ -266,7 +266,7 @@ export function ingestDisplacementForCII(countries: CountryDisplacement[]): void
 
   for (const c of countries) {
     const code = c.code?.length === 3
-      ? ISO3_TO_ISO2[c.code] || c.code.substring(0, 2)
+      ? ISO3_TO_ISO2[c.code] || null
       : COUNTRY_NAME_TO_ISO[c.name] || c.code;
     if (!code || !TIER1_COUNTRIES[code]) continue;
     if (!countryDataMap.has(code)) countryDataMap.set(code, initCountryData());
@@ -278,6 +278,11 @@ export function ingestDisplacementForCII(countries: CountryDisplacement[]): void
 const ZONE_COUNTRY_MAP: Record<string, string[]> = {
   'Ukraine': ['UA'], 'Middle East': ['IR', 'IL', 'SA', 'SY', 'YE'],
   'South Asia': ['PK', 'IN'], 'Myanmar': ['MM'],
+  'Taiwan Strait': ['TW', 'CN'], 'Horn of Africa': ['YE', 'SA'],
+  'Sahel': ['MM'], 'Central Africa': ['MM'],
+  'Mediterranean': ['TR', 'IL', 'FR'], 'Central Asia': ['RU', 'CN'],
+  'California': ['US'], 'Amazon': ['BR'], 'Caribbean': ['VE'],
+  'Australia': [], 'Southern Africa': [],
 };
 
 export function ingestClimateForCII(anomalies: ClimateAnomaly[]): void {
@@ -340,7 +345,7 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): nu
 const HOTSPOT_COUNTRY_MAP: Record<string, string> = {
   tehran: 'IR', moscow: 'RU', beijing: 'CN', kyiv: 'UA', taipei: 'TW',
   telaviv: 'IL', pyongyang: 'KP', riyadh: 'SA', ankara: 'TR', damascus: 'SY',
-  sanaa: 'YE', caracas: 'VE', dc: 'US', london: 'GB', brussels: 'FR',
+  sanaa: 'YE', caracas: 'VE', dc: 'US', london: 'GB', brussels: 'BE',
   baghdad: 'IQ', beirut: 'LB', doha: 'QA', abudhabi: 'AE',
 };
 

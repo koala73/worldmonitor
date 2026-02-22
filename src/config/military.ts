@@ -81,7 +81,7 @@ export const NATO_ALLIED_CALLSIGNS: CallsignPattern[] = [
 
   // Royal Navy (UK)
   { pattern: '^RN', operator: 'rn', description: 'Royal Navy aircraft' },
-  { pattern: '^NAVY', operator: 'rn', description: 'RN aircraft' },
+  { pattern: '^NAVY[0-9]{2}[A-Z]', operator: 'rn', description: 'RN aircraft' },
 
   // French Air Force
   { pattern: '^FAF', operator: 'faf', description: 'French Air Force' },
@@ -287,7 +287,7 @@ export const MILITARY_HEX_RANGES: { start: string; end: string; operator: Milita
   { start: 'A00000', end: 'A3FFFF', operator: 'usaf', country: 'USA' }, // Additional US military
 
   // UK Military
-  { start: '43C000', end: '43CFFF', operator: 'raf', country: 'UK' },
+  { start: '43C000', end: '43CFFF', operator: 'raf', country: 'GB' },
 
   // France Military
   { start: '3A0000', end: '3AFFFF', operator: 'faf', country: 'France' },
@@ -382,8 +382,8 @@ export const MILITARY_VESSEL_PATTERNS: VesselPattern[] = [
   { mmsiPrefix: '369970', operator: 'usn', country: 'USA' },
 
   // UK Royal Navy
-  { mmsiPrefix: '232', operator: 'rn', country: 'UK' },
-  { mmsiPrefix: '2320', operator: 'rn', country: 'UK' },
+  { mmsiPrefix: '232', operator: 'rn', country: 'GB' },
+  { mmsiPrefix: '2320', operator: 'rn', country: 'GB' },
 
   // Note: Many military vessels don't broadcast AIS or use obscured identities
 ];
@@ -416,8 +416,8 @@ export const KNOWN_NAVAL_VESSELS: KnownNavalVessel[] = [
   { name: 'USS Nimitz', hullNumber: 'CVN-68', operator: 'usn', country: 'USA', vesselType: 'carrier' },
 
   // UK Carriers
-  { name: 'HMS Queen Elizabeth', hullNumber: 'R08', operator: 'rn', country: 'UK', vesselType: 'carrier' },
-  { name: 'HMS Prince of Wales', hullNumber: 'R09', operator: 'rn', country: 'UK', vesselType: 'carrier' },
+  { name: 'HMS Queen Elizabeth', hullNumber: 'R08', operator: 'rn', country: 'GB', vesselType: 'carrier' },
+  { name: 'HMS Prince of Wales', hullNumber: 'R09', operator: 'rn', country: 'GB', vesselType: 'carrier' },
 
   // Chinese Carriers
   { name: 'Liaoning', hullNumber: '16', operator: 'plan', country: 'China', vesselType: 'carrier' },
@@ -429,8 +429,8 @@ export const KNOWN_NAVAL_VESSELS: KnownNavalVessel[] = [
 
   // Notable Destroyers/Cruisers
   { name: 'USS Zumwalt', hullNumber: 'DDG-1000', operator: 'usn', country: 'USA', vesselType: 'destroyer' },
-  { name: 'HMS Defender', hullNumber: 'D36', operator: 'rn', country: 'UK', vesselType: 'destroyer' },
-  { name: 'HMS Duncan', hullNumber: 'D37', operator: 'rn', country: 'UK', vesselType: 'destroyer' },
+  { name: 'HMS Defender', hullNumber: 'D36', operator: 'rn', country: 'GB', vesselType: 'destroyer' },
+  { name: 'HMS Duncan', hullNumber: 'D37', operator: 'rn', country: 'GB', vesselType: 'destroyer' },
 
   // Research/Intel Vessels
   { name: 'USNS Victorious', hullNumber: 'T-AGOS-19', operator: 'usn', country: 'USA', vesselType: 'research' },

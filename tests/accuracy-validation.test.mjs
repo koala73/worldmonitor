@@ -255,4 +255,185 @@ describe('Military base data accuracy', () => {
     assert.ok(match, 'Could not find Al Udeid');
     assert.equal(match[1], 'Qatar');
   });
+
+  it('French Chad base is closed', () => {
+    const match = src.match(/ndjamena.*?status:\s*'(\w+)'/si);
+    assert.ok(match);
+    assert.equal(match[1], 'closed');
+  });
+
+  it('French Niger base is closed', () => {
+    const match = src.match(/niamey.*?status:\s*'(\w+)'/si);
+    assert.ok(match);
+    assert.equal(match[1], 'closed');
+  });
+
+  it('Italian Afghanistan base is closed with correct name', () => {
+    assert.ok(src.includes('Herat Military Base'), 'Herat name not fixed');
+    assert.ok(!src.includes('Heart miliraty'), 'Old typo still present');
+  });
+
+  it('Japan Djibouti base has correct arm field', () => {
+    const match = src.match(/japan_selfdefense.*?arm:\s*'([^']+)'/si);
+    assert.ok(match);
+    assert.ok(match[1].includes('Japan'), `arm should mention Japan, got: ${match[1]}`);
+  });
+
+  it('no instances of "militaray" typo', () => {
+    assert.ok(!src.includes('militaray'), 'Found typo "militaray"');
+  });
+});
+
+// ========================================================================
+// 6. Signal aggregator — bounding box ordering
+// ========================================================================
+
+describe('Signal aggregator country attribution', () => {
+  const src = readSrc('src/services/signal-aggregator.ts');
+
+  it('Taiwan check comes before China check', () => {
+    // Search within coordsToCountry method body only (return 'TW' / return 'CN')
+    const methodStart = src.indexOf('coordsToCountry');
+    assert.ok(methodStart > 0, 'Could not find coordsToCountry method');
+    const methodBody = src.slice(methodStart);
+    const twIdx = methodBody.indexOf("return 'TW'");
+    const cnIdx = methodBody.indexOf("return 'CN'");
+    assert.ok(twIdx > 0 && cnIdx > 0, 'Could not find TW/CN returns in coordsToCountry');
+    assert.ok(twIdx < cnIdx, 'Taiwan must be checked before China');
+  });
+
+  it('Pakistan check comes before India check', () => {
+    const methodStart = src.indexOf('coordsToCountry');
+    assert.ok(methodStart > 0, 'Could not find coordsToCountry method');
+    const methodBody = src.slice(methodStart);
+    const pkIdx = methodBody.indexOf("return 'PK'");
+    const inIdx = methodBody.indexOf("return 'IN'");
+    assert.ok(pkIdx > 0 && inIdx > 0, 'Could not find PK/IN returns in coordsToCountry');
+    assert.ok(pkIdx < inIdx, 'Pakistan must be checked before India');
+  });
+
+  it('includes Japan bounding box', () => {
+    assert.ok(src.includes("'JP'"), 'Missing Japan (JP) bounding box');
+  });
+
+  it('includes Brazil bounding box', () => {
+    assert.ok(src.includes("'BR'"), 'Missing Brazil (BR) bounding box');
+  });
+});
+
+// ========================================================================
+// 7. Country instability — round 2 fixes
+// ========================================================================
+
+describe('CII round 2 fixes', () => {
+  const src = readSrc('src/services/country-instability.ts');
+
+  it('Brussels maps to BE (Belgium)', () => {
+    assert.match(src, /brussels:\s*'BE'/);
+  });
+
+  it('Myanmar keywords include yangon', () => {
+    assert.ok(src.includes("'yangon'"), 'Missing yangon keyword for Myanmar');
+  });
+
+  it('COD substring fallback removed', () => {
+    assert.ok(!src.includes('substring(0, 2)'), 'Dangerous substring fallback still present');
+  });
+
+  it('ZONE_COUNTRY_MAP includes Taiwan Strait', () => {
+    assert.ok(src.includes("'Taiwan Strait'"), 'Missing Taiwan Strait in ZONE_COUNTRY_MAP');
+  });
+
+  it('ZONE_COUNTRY_MAP includes Horn of Africa', () => {
+    assert.ok(src.includes("'Horn of Africa'"), 'Missing Horn of Africa in ZONE_COUNTRY_MAP');
+  });
+});
+
+// ========================================================================
+// 8. Military tracking fixes
+// ========================================================================
+
+describe('Military tracking accuracy', () => {
+  const flights = readSrc('src/services/military-flights.ts');
+  const vessels = readSrc('src/services/military-vessels.ts');
+  const military = readSrc('src/config/military.ts');
+
+  it('RAF/RN operator returns GB not UK', () => {
+    assert.ok(flights.includes("raf: 'GB'"), 'RAF should map to GB');
+    assert.ok(flights.includes("rn: 'GB'"), 'RN should map to GB');
+  });
+
+  it('militaryCountries includes Russia and China', () => {
+    assert.ok(flights.includes("'Russia'"), 'Missing Russia from militaryCountries');
+    assert.ok(flights.includes("'China'"), 'Missing China from militaryCountries');
+  });
+
+  it('MID 303 maps to USA not Alaska', () => {
+    assert.ok(!vessels.includes("'Alaska'"), 'MID 303 should not map to Alaska');
+  });
+
+  it('no country: UK in military config (should be GB)', () => {
+    assert.ok(!military.includes("country: 'UK'"), 'Found country UK, should be GB');
+  });
+});
+
+// ========================================================================
+// 9. Conflict service fixes
+// ========================================================================
+
+describe('Conflict service accuracy', () => {
+  const src = readSrc('src/services/conflict/index.ts');
+
+  it('ISO3_TO_ISO2 includes BRA and ARE', () => {
+    assert.ok(src.includes("BRA: 'BR'"), 'Missing BRA→BR mapping');
+    assert.ok(src.includes("ARE: 'AE'"), 'Missing ARE→AE mapping');
+  });
+
+  it('UCDP war threshold does not use eventCount alone', () => {
+    assert.ok(!src.includes('eventCount > 100'), 'eventCount > 100 as war trigger is not UCDP methodology');
+  });
+});
+
+// ========================================================================
+// 10. Geo config freshness
+// ========================================================================
+
+describe('Geo config accuracy', () => {
+  const geo = readSrc('src/config/geo.ts');
+  const airports = readSrc('src/config/airports.ts');
+
+  it('Taiwan Strait lon >= 119.8', () => {
+    const match = geo.match(/taiwan_strait.*?lon:\s*([\d.]+)/si);
+    assert.ok(match);
+    assert.ok(Number(match[1]) >= 119.8, `Taiwan Strait lon too low: ${match[1]}`);
+  });
+
+  it('Palisades nuclear plant is inactive', () => {
+    const match = geo.match(/palisades.*?status:\s*'(\w+)'/si);
+    assert.ok(match);
+    assert.equal(match[1], 'inactive');
+  });
+
+  it('Pickering nuclear plant is inactive', () => {
+    const match = geo.match(/pickering.*?status:\s*'(\w+)'/si);
+    assert.ok(match);
+    assert.equal(match[1], 'inactive');
+  });
+
+  it('Mexico City airport uses MMSM ICAO code', () => {
+    const match = airports.match(/MEX.*?icao:\s*'(\w+)'/si);
+    assert.ok(match);
+    assert.equal(match[1], 'MMSM');
+  });
+
+  it('Damascus description mentions post-Assad', () => {
+    const match = geo.match(/damascus.*?description:\s*'([^']+)'/si);
+    assert.ok(match);
+    assert.ok(match[1].toLowerCase().includes('assad'), 'Should reference Assad transition');
+  });
+
+  it('Beirut keywords include qassem (not nasrallah)', () => {
+    // Find beirut hotspot keywords
+    assert.ok(geo.includes("'qassem'"), 'Missing qassem in Beirut keywords');
+  });
 });
