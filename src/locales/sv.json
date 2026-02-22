@@ -59,7 +59,9 @@
     "geoHubs": "Geopolitical Hotspots",
     "polymarket": "Förutsägelser",
     "climate": "Klimatanomalier",
-    "liveWebcams": "Webbkameror"
+    "liveWebcams": "Webbkameror",
+    "sanctions": "OFAC-sanktioner",
+    "reliefweb": "Krisrapporter"
   },
   "modals": {
     "search": {
@@ -1076,6 +1078,20 @@
       "notLive": "{{name}} is not currently live",
       "cannotEmbed": "{{name}} cannot be embedded in this app (YouTube {{code}})",
       "openOnYouTube": "Open on YouTube"
+    },
+    "sanctions": {
+      "title": "OFAC-sanktioner",
+      "infoTooltip": "<strong>OFAC-sanktioner</strong> Enheter utsedda av amerikanska finansdepartementets Office of Foreign Assets Control:<ul><li>SDN-listan (Specially Designated Nationals)</li><li>Individer, enheter, fartyg, flygplan</li><li>Programfiltrering (SDGT, IRAN, DPRK m.fl.)</li><li>Uppdateras varje timme från treasury.gov</li></ul>",
+      "searchPlaceholder": "Sök enheter...",
+      "noResults": "Inga matchande enheter hittades",
+      "unavailable": "Sanktionsdata ej tillgängliga"
+    },
+    "reliefweb": {
+      "title": "Krisrapporter",
+      "infoTooltip": "<strong>Krisrapporter</strong> Humanitära lägesrapporter från FN:s OCHA ReliefWeb:<ul><li>Naturkatastrofer, konflikter, epidemier</li><li>Geokodade rapporter från över 100 länder</li><li>Källor: FN-organ, NGO:er, regeringar</li><li>Uppdateras var 15:e minut</li></ul>",
+      "searchPlaceholder": "Sök rapporter...",
+      "noResults": "Inga matchande rapporter hittades",
+      "unavailable": "Krisrapporter ej tillgängliga"
     }
   },
   "popups": {

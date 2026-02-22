@@ -523,6 +523,8 @@ export interface MapLayers {
   commodityHubs: boolean;
   // Gulf FDI layers
   gulfInvestments: boolean;
+  // Humanitarian layers
+  reliefweb: boolean;
 }
 
 export interface AIDataCenter {

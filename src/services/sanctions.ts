@@ -6,6 +6,7 @@
  */
 
 import { createCircuitBreaker } from '@/utils';
+import { SANCTIONS_COUNTRY_CENTROIDS } from '@/config/geo';
 
 // ---- Types ----
 
@@ -71,6 +72,54 @@ export async function fetchSanctionsData(): Promise<SanctionsResponse> {
 
   return result;
 }
+
+// ---- Map point generation ----
+
+export interface SanctionsEntityMapPoint {
+  name: string;
+  type: 'individual' | 'entity' | 'vessel' | 'aircraft';
+  program: string;
+  country: string;
+  severity: 'severe' | 'high' | 'moderate';
+  lat: number;
+  lon: number;
+}
+
+const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5)); // ~2.399 radians
+
+export function getSanctionsMapPoints(data: SanctionsResponse): SanctionsEntityMapPoint[] {
+  const points: SanctionsEntityMapPoint[] = [];
+  const countByCountry = new Map<string, number>();
+
+  for (const entity of data.entities) {
+    const key = entity.country.toLowerCase();
+    const centroid = SANCTIONS_COUNTRY_CENTROIDS[key];
+    if (!centroid) continue;
+
+    const idx = countByCountry.get(key) ?? 0;
+    countByCountry.set(key, idx + 1);
+
+    // Golden-angle spiral jitter (1.5° max radius)
+    const r = 1.5 * Math.sqrt(idx + 1) / Math.sqrt(data.entities.length / Object.keys(SANCTIONS_COUNTRY_CENTROIDS).length + 1);
+    const theta = idx * GOLDEN_ANGLE;
+    const lon = centroid[0] + r * Math.cos(theta);
+    const lat = centroid[1] + r * Math.sin(theta);
+
+    points.push({
+      name: entity.name,
+      type: entity.type,
+      program: entity.program,
+      country: entity.country,
+      severity: entity.severity,
+      lat,
+      lon,
+    });
+  }
+
+  return points;
+}
+
+// ---- Entity filter ----
 
 export function getSanctionsEntities(data: SanctionsResponse, options?: {
   country?: string;

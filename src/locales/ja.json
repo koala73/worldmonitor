@@ -151,7 +151,9 @@
     "techReadiness": "テック準備度指数",
     "gccInvestments": "GCC投資",
     "geoHubs": "地政学ハブ",
-    "liveWebcams": "ライブカメラ"
+    "liveWebcams": "ライブカメラ",
+    "sanctions": "OFAC制裁",
+    "reliefweb": "危機レポート"
   },
   "modals": {
     "search": {
@@ -1168,6 +1170,20 @@
       "notLive": "{{name}} is not currently live",
       "cannotEmbed": "{{name}} cannot be embedded in this app (YouTube {{code}})",
       "openOnYouTube": "Open on YouTube"
+    },
+    "sanctions": {
+      "title": "OFAC制裁",
+      "infoTooltip": "<strong>OFAC制裁</strong> 米国財務省外国資産管理局の指定エンティティ：<ul><li>SDN（特別指定国民）リスト</li><li>個人、法人、船舶、航空機</li><li>プログラム別フィルタリング（SDGT、IRAN、DPRKなど）</li><li>treasury.govから毎時更新</li></ul>",
+      "searchPlaceholder": "エンティティを検索...",
+      "noResults": "一致するエンティティが見つかりません",
+      "unavailable": "制裁データは利用できません"
+    },
+    "reliefweb": {
+      "title": "危機レポート",
+      "infoTooltip": "<strong>危機レポート</strong> 国連OCHA ReliefWebの人道的状況報告：<ul><li>自然災害、紛争、感染症</li><li>100カ国以上からのジオコード付きレポート</li><li>国連機関、NGO、政府が情報源</li><li>15分ごとに更新</li></ul>",
+      "searchPlaceholder": "レポートを検索...",
+      "noResults": "一致するレポートが見つかりません",
+      "unavailable": "危機レポートは利用できません"
     }
   },
   "popups": {

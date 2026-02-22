@@ -22,20 +22,28 @@ export class SanctionsPanel extends Panel {
 
     try {
       this.data = await fetchSanctionsData();
-
-      if (!this.data.generatedAt) {
-        this.showError(t('components.sanctions.unavailable'));
-        this.setDataBadge('unavailable');
-        return;
-      }
-
-      this.setCount(this.data.totalEntities);
-      this.setDataBadge('live', new Date(this.data.generatedAt).toLocaleTimeString());
-      this.render();
+      this.applyData();
     } catch {
       this.showError(t('common.failedToLoad'));
       this.setDataBadge('unavailable');
     }
+  }
+
+  public setData(data: SanctionsResponse): void {
+    this.data = data;
+    this.applyData();
+  }
+
+  private applyData(): void {
+    if (!this.data || !this.data.generatedAt) {
+      this.showError(t('components.sanctions.unavailable'));
+      this.setDataBadge('unavailable');
+      return;
+    }
+
+    this.setCount(this.data.totalEntities);
+    this.setDataBadge('live', new Date(this.data.generatedAt).toLocaleTimeString());
+    this.render();
   }
 
   private render(): void {

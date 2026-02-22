@@ -151,7 +151,9 @@
     "techReadiness": "Teknoloji Hazirlik Endeksi",
     "gccInvestments": "GCC Yatirimlari",
     "geoHubs": "Jeopolitik Merkezler",
-    "liveWebcams": "Canli Web Kameralari"
+    "liveWebcams": "Canli Web Kameralari",
+    "sanctions": "OFAC Yaptırımları",
+    "reliefweb": "Kriz Raporları"
   },
   "modals": {
     "search": {
@@ -1168,6 +1170,20 @@
       "notLive": "{{name}} is not currently live",
       "cannotEmbed": "{{name}} cannot be embedded in this app (YouTube {{code}})",
       "openOnYouTube": "Open on YouTube"
+    },
+    "sanctions": {
+      "title": "OFAC Yaptırımları",
+      "infoTooltip": "<strong>OFAC Yaptırımları</strong> ABD Hazine Bakanlığı Yabancı Varlıklar Kontrol Ofisi tarafından belirlenen kuruluşlar:<ul><li>SDN listesi (Özel Olarak Belirlenen Vatandaşlar)</li><li>Bireyler, kuruluşlar, gemiler, uçaklar</li><li>Program bazlı filtreleme (SDGT, IRAN, DPRK vb.)</li><li>treasury.gov'dan saatlik güncelleme</li></ul>",
+      "searchPlaceholder": "Kuruluş ara...",
+      "noResults": "Eşleşen kuruluş bulunamadı",
+      "unavailable": "Yaptırım verileri kullanılamıyor"
+    },
+    "reliefweb": {
+      "title": "Kriz Raporları",
+      "infoTooltip": "<strong>Kriz Raporları</strong> BM OCHA ReliefWeb insani durum raporları:<ul><li>Doğal afetler, çatışmalar, salgınlar</li><li>100'den fazla ülkeden coğrafi kodlu raporlar</li><li>Kaynaklar: BM ajansları, STK'lar, hükümetler</li><li>Her 15 dakikada güncelleme</li></ul>",
+      "searchPlaceholder": "Rapor ara...",
+      "noResults": "Eşleşen rapor bulunamadı",
+      "unavailable": "Kriz raporları kullanılamıyor"
     }
   },
   "popups": {

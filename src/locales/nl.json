@@ -59,7 +59,9 @@
     "geoHubs": "Geopolitical Hotspots",
     "polymarket": "Voorspellingen",
     "climate": "Klimaatafwijkingen",
-    "liveWebcams": "Live Webcams"
+    "liveWebcams": "Live Webcams",
+    "sanctions": "OFAC-sancties",
+    "reliefweb": "Crisisrapporten"
   },
   "modals": {
     "search": {
@@ -1076,6 +1078,20 @@
       "notLive": "{{name}} is not currently live",
       "cannotEmbed": "{{name}} cannot be embedded in this app (YouTube {{code}})",
       "openOnYouTube": "Open on YouTube"
+    },
+    "sanctions": {
+      "title": "OFAC-sancties",
+      "infoTooltip": "<strong>OFAC-sancties</strong> Door het US Treasury Office of Foreign Assets Control aangewezen entiteiten:<ul><li>SDN-lijst (Specially Designated Nationals)</li><li>Individuen, entiteiten, schepen, vliegtuigen</li><li>Programmafiltering (SDGT, IRAN, DPRK, enz.)</li><li>Elk uur bijgewerkt via treasury.gov</li></ul>",
+      "searchPlaceholder": "Entiteiten zoeken...",
+      "noResults": "Geen overeenkomende entiteiten gevonden",
+      "unavailable": "Sanctiegegevens niet beschikbaar"
+    },
+    "reliefweb": {
+      "title": "Crisisrapporten",
+      "infoTooltip": "<strong>Crisisrapporten</strong> Humanitaire situatierapporten van VN OCHA ReliefWeb:<ul><li>Natuurrampen, conflicten, epidemieën</li><li>Geografisch gekoppelde rapporten uit meer dan 100 landen</li><li>Bronnen: VN-agentschappen, NGO's, overheden</li><li>Elke 15 minuten bijgewerkt</li></ul>",
+      "searchPlaceholder": "Rapporten zoeken...",
+      "noResults": "Geen overeenkomende rapporten gevonden",
+      "unavailable": "Crisisrapporten niet beschikbaar"
     }
   },
   "popups": {

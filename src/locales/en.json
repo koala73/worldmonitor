@@ -129,7 +129,8 @@
     "techReadiness": "Tech Readiness Index",
     "gccInvestments": "GCC Investments",
     "geoHubs": "Geopolitical Hubs",
-    "liveWebcams": "Live Webcams"
+    "liveWebcams": "Live Webcams",
+    "reliefweb": "Crisis Reports"
   },
   "modals": {
     "search": {
@@ -246,7 +247,7 @@
         "some": "Some features need API keys"
       },
       "openSettings": "Open Settings",
-      "skipSetup": "Skip the setup \u2014 a single World Monitor license unlocks everything. Join the waitlist for early access.",
+      "skipSetup": "Skip the setup — a single World Monitor license unlocks everything. Join the waitlist for early access.",
       "summary": {
         "desktop": "Desktop mode",
         "web": "Web mode (read-only, server-managed credentials)",
@@ -1172,6 +1173,20 @@
       "notLive": "{{name}} is not currently live",
       "cannotEmbed": "{{name}} cannot be embedded in this app (YouTube {{code}})",
       "openOnYouTube": "Open on YouTube"
+    },
+    "sanctions": {
+      "title": "OFAC Sanctions",
+      "infoTooltip": "<strong>OFAC Sanctions</strong> US Treasury Office of Foreign Assets Control designated entities:<ul><li>SDN (Specially Designated Nationals) list</li><li>Individuals, entities, vessels, aircraft</li><li>Program-based filtering (SDGT, IRAN, DPRK, etc.)</li><li>Updates hourly from treasury.gov</li></ul>",
+      "searchPlaceholder": "Search entities...",
+      "noResults": "No matching entities found",
+      "unavailable": "Sanctions data unavailable"
+    },
+    "reliefweb": {
+      "title": "Crisis Reports",
+      "infoTooltip": "<strong>Crisis Reports</strong> UN OCHA ReliefWeb humanitarian situation reports:<ul><li>Natural disasters, conflicts, epidemics</li><li>Geocoded reports from 100+ countries</li><li>Sources include UN agencies, NGOs, governments</li><li>Updated every 15 minutes</li></ul>",
+      "searchPlaceholder": "Search reports...",
+      "noResults": "No matching reports found",
+      "unavailable": "Crisis reports unavailable"
     }
   },
   "popups": {

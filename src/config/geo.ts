@@ -1320,3 +1320,32 @@ export const CRITICAL_MINERALS: CriticalMineralProject[] = [
   { id: 'wedabay', name: 'Weda Bay', lat: 0.47, lon: 127.94, mineral: 'Nickel', country: 'Indonesia', operator: 'Tsingshan/Eramet', status: 'producing', significance: 'Massive nickel pig iron production' },
   { id: 'norilsk', name: 'Norilsk', lat: 69.33, lon: 88.21, mineral: 'Nickel', country: 'Russia', operator: 'Nornickel', status: 'producing', significance: 'Major palladium/nickel source' },
 ];
+
+// Country centroids for OFAC sanctions entity mapping [lon, lat]
+export const SANCTIONS_COUNTRY_CENTROIDS: Record<string, [number, number]> = {
+  'iran': [53.0, 32.5],
+  'north korea': [127.0, 40.0],
+  'russia': [38.0, 56.0],
+  'syria': [38.5, 35.0],
+  'cuba': [-79.5, 22.0],
+  'venezuela': [-66.9, 7.4],
+  'belarus': [27.9, 53.7],
+  'myanmar': [96.0, 19.8],
+  'balkans': [20.5, 44.0],
+  'zimbabwe': [29.8, -19.0],
+  'somalia': [45.3, 5.2],
+  'libya': [17.2, 27.0],
+  'sudan': [30.0, 15.5],
+  'yemen': [44.2, 15.4],
+  'nicaragua': [-85.2, 12.8],
+  'mali': [-2.0, 17.5],
+  'china': [104.0, 35.0],
+  'iraq': [44.0, 33.2],
+  'lebanon': [35.9, 33.9],
+  'afghanistan': [67.7, 33.9],
+  'pakistan': [69.3, 30.4],
+  'eritrea': [39.8, 15.2],
+  'congo': [25.0, -2.9],
+  'south sudan': [31.6, 6.9],
+  'ukraine': [32.0, 49.0],
+};

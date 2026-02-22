@@ -151,7 +151,9 @@
     "techHubs": "Hub tecnologici caldi",
     "gccInvestments": "Investimenti GCC",
     "geoHubs": "Hotspot geopolitici",
-    "liveWebcams": "Webcam in Diretta"
+    "liveWebcams": "Webcam in Diretta",
+    "sanctions": "Sanzioni OFAC",
+    "reliefweb": "Rapporti di Crisi"
   },
   "modals": {
     "search": {
@@ -1168,6 +1170,20 @@
       "notLive": "{{name}} is not currently live",
       "cannotEmbed": "{{name}} cannot be embedded in this app (YouTube {{code}})",
       "openOnYouTube": "Open on YouTube"
+    },
+    "sanctions": {
+      "title": "Sanzioni OFAC",
+      "infoTooltip": "<strong>Sanzioni OFAC</strong> Entità designate dall'Ufficio per il Controllo dei Beni Stranieri del Tesoro USA:<ul><li>Lista SDN (Specially Designated Nationals)</li><li>Individui, entità, navi, aeromobili</li><li>Filtraggio per programma (SDGT, IRAN, DPRK, ecc.)</li><li>Aggiornamento orario da treasury.gov</li></ul>",
+      "searchPlaceholder": "Cerca entità...",
+      "noResults": "Nessuna entità corrispondente trovata",
+      "unavailable": "Dati sulle sanzioni non disponibili"
+    },
+    "reliefweb": {
+      "title": "Rapporti di Crisi",
+      "infoTooltip": "<strong>Rapporti di Crisi</strong> Rapporti sulla situazione umanitaria di ReliefWeb (ONU OCHA):<ul><li>Disastri naturali, conflitti, epidemie</li><li>Rapporti georeferenziati da oltre 100 paesi</li><li>Fonti: agenzie ONU, ONG, governi</li><li>Aggiornamento ogni 15 minuti</li></ul>",
+      "searchPlaceholder": "Cerca rapporti...",
+      "noResults": "Nessun rapporto corrispondente trovato",
+      "unavailable": "Rapporti di crisi non disponibili"
     }
   },
   "popups": {

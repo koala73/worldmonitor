@@ -42,6 +42,7 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   'etf-flows': { name: 'BTC ETF Tracker', enabled: true, priority: 2 },
   stablecoins: { name: 'Stablecoins', enabled: true, priority: 2 },
   sanctions: { name: 'OFAC Sanctions', enabled: true, priority: 2 },
+  reliefweb: { name: 'Crisis Reports', enabled: true, priority: 2 },
   'ucdp-events': { name: 'UCDP Conflict Events', enabled: true, priority: 2 },
   displacement: { name: 'UNHCR Displacement', enabled: true, priority: 2 },
   climate: { name: 'Climate Anomalies', enabled: true, priority: 2 },
@@ -87,6 +88,7 @@ const FULL_MAP_LAYERS: MapLayers = {
   centralBanks: false,
   commodityHubs: false,
   gulfInvestments: false,
+  reliefweb: true,
 };
 
 const FULL_MOBILE_MAP_LAYERS: MapLayers = {
@@ -128,6 +130,7 @@ const FULL_MOBILE_MAP_LAYERS: MapLayers = {
   centralBanks: false,
   commodityHubs: false,
   gulfInvestments: false,
+  reliefweb: false,
 };
 
 // ============================================
@@ -209,6 +212,7 @@ const TECH_MAP_LAYERS: MapLayers = {
   centralBanks: false,
   commodityHubs: false,
   gulfInvestments: false,
+  reliefweb: false,
 };
 
 const TECH_MOBILE_MAP_LAYERS: MapLayers = {
@@ -250,6 +254,7 @@ const TECH_MOBILE_MAP_LAYERS: MapLayers = {
   centralBanks: false,
   commodityHubs: false,
   gulfInvestments: false,
+  reliefweb: false,
 };
 
 // ============================================
@@ -326,6 +331,7 @@ const FINANCE_MAP_LAYERS: MapLayers = {
   centralBanks: true,
   commodityHubs: false,
   gulfInvestments: false,
+  reliefweb: false,
 };
 
 const FINANCE_MOBILE_MAP_LAYERS: MapLayers = {
@@ -367,6 +373,7 @@ const FINANCE_MOBILE_MAP_LAYERS: MapLayers = {
   centralBanks: true,
   commodityHubs: false,
   gulfInvestments: false,
+  reliefweb: false,
 };
 
 // ============================================
@@ -408,6 +415,7 @@ const NORDIC_PANELS: Record<string, PanelConfig> = {
   'ucdp-events': { name: 'UCDP Conflict Events', enabled: true, priority: 2 },
   displacement: { name: 'UNHCR Displacement', enabled: true, priority: 2 },
   climate: { name: 'Climate Anomalies', enabled: true, priority: 2 },
+  reliefweb: { name: 'Crisis Reports', enabled: true, priority: 2 },
 };
 
 const NORDIC_MAP_LAYERS: MapLayers = {
@@ -448,6 +456,7 @@ const NORDIC_MAP_LAYERS: MapLayers = {
   centralBanks: false,
   commodityHubs: false,
   gulfInvestments: false,
+  reliefweb: true,
 };
 
 const NORDIC_MOBILE_MAP_LAYERS: MapLayers = {
@@ -488,6 +497,7 @@ const NORDIC_MOBILE_MAP_LAYERS: MapLayers = {
   centralBanks: false,
   commodityHubs: false,
   gulfInvestments: false,
+  reliefweb: false,
 };
 
 // ============================================

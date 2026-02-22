@@ -151,7 +151,9 @@
     "techReadiness": "مؤشر الجاهزية التقنية",
     "gccInvestments": "استثمارات دول الخليج",
     "geoHubs": "مراكز جيوسياسية",
-    "liveWebcams": "كاميرات مباشرة"
+    "liveWebcams": "كاميرات مباشرة",
+    "sanctions": "عقوبات OFAC",
+    "reliefweb": "تقارير الأزمات"
   },
   "modals": {
     "search": {
@@ -1168,6 +1170,20 @@
       "notLive": "{{name}} is not currently live",
       "cannotEmbed": "{{name}} cannot be embedded in this app (YouTube {{code}})",
       "openOnYouTube": "Open on YouTube"
+    },
+    "sanctions": {
+      "title": "عقوبات OFAC",
+      "infoTooltip": "<strong>عقوبات OFAC</strong> الكيانات المُعيَّنة من مكتب مراقبة الأصول الأجنبية بوزارة الخزانة الأمريكية:<ul><li>قائمة SDN (المواطنون المعيَّنون خصيصاً)</li><li>أفراد وكيانات وسفن وطائرات</li><li>تصفية حسب البرنامج (SDGT، IRAN، DPRK، إلخ)</li><li>تحديثات كل ساعة من treasury.gov</li></ul>",
+      "searchPlaceholder": "البحث عن كيانات...",
+      "noResults": "لم يتم العثور على كيانات مطابقة",
+      "unavailable": "بيانات العقوبات غير متوفرة"
+    },
+    "reliefweb": {
+      "title": "تقارير الأزمات",
+      "infoTooltip": "<strong>تقارير الأزمات</strong> تقارير الأوضاع الإنسانية من ReliefWeb التابع لمكتب الأمم المتحدة لتنسيق الشؤون الإنسانية:<ul><li>كوارث طبيعية ونزاعات وأوبئة</li><li>تقارير مرجعية جغرافياً من أكثر من 100 دولة</li><li>مصادر تشمل وكالات الأمم المتحدة والمنظمات غير الحكومية والحكومات</li><li>تحديث كل 15 دقيقة</li></ul>",
+      "searchPlaceholder": "البحث في التقارير...",
+      "noResults": "لم يتم العثور على تقارير مطابقة",
+      "unavailable": "تقارير الأزمات غير متوفرة"
     }
   },
   "popups": {

@@ -151,7 +151,9 @@
     "techHubs": "Gorące centra technologiczne",
     "gccInvestments": "Inwestycje GCC",
     "geoHubs": "Geopolitical Hotspots",
-    "liveWebcams": "Kamery na Żywo"
+    "liveWebcams": "Kamery na Żywo",
+    "sanctions": "Sankcje OFAC",
+    "reliefweb": "Raporty kryzysowe"
   },
   "modals": {
     "search": {
@@ -1168,6 +1170,20 @@
       "notLive": "{{name}} is not currently live",
       "cannotEmbed": "{{name}} cannot be embedded in this app (YouTube {{code}})",
       "openOnYouTube": "Open on YouTube"
+    },
+    "sanctions": {
+      "title": "Sankcje OFAC",
+      "infoTooltip": "<strong>Sankcje OFAC</strong> Podmioty wyznaczone przez Biuro Kontroli Aktywów Zagranicznych Departamentu Skarbu USA:<ul><li>Lista SDN (Specially Designated Nationals)</li><li>Osoby fizyczne, podmioty, statki, samoloty</li><li>Filtrowanie programowe (SDGT, IRAN, DPRK itp.)</li><li>Aktualizacja co godzinę z treasury.gov</li></ul>",
+      "searchPlaceholder": "Szukaj podmiotów...",
+      "noResults": "Nie znaleziono pasujących podmiotów",
+      "unavailable": "Dane o sankcjach niedostępne"
+    },
+    "reliefweb": {
+      "title": "Raporty kryzysowe",
+      "infoTooltip": "<strong>Raporty kryzysowe</strong> Raporty sytuacji humanitarnej z ReliefWeb ONZ OCHA:<ul><li>Klęski żywiołowe, konflikty, epidemie</li><li>Geolokalizowane raporty z ponad 100 krajów</li><li>Źródła: agencje ONZ, organizacje pozarządowe, rządy</li><li>Aktualizacja co 15 minut</li></ul>",
+      "searchPlaceholder": "Szukaj raportów...",
+      "noResults": "Nie znaleziono pasujących raportów",
+      "unavailable": "Raporty kryzysowe niedostępne"
     }
   },
   "popups": {

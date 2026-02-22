@@ -120,6 +120,7 @@ const layers = {
   centralBanks: false,
   commodityHubs: false,
   gulfInvestments: false,
+  reliefweb: false,
 };
 
 await initI18n();

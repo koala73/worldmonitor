@@ -151,7 +151,9 @@
     "techReadiness": "科技就绪指数",
     "gccInvestments": "GCC投资",
     "geoHubs": "地缘政治枢纽",
-    "liveWebcams": "实时摄像头"
+    "liveWebcams": "实时摄像头",
+    "sanctions": "OFAC制裁",
+    "reliefweb": "危机报告"
   },
   "modals": {
     "search": {
@@ -1168,6 +1170,20 @@
       "notLive": "{{name}} is not currently live",
       "cannotEmbed": "{{name}} cannot be embedded in this app (YouTube {{code}})",
       "openOnYouTube": "Open on YouTube"
+    },
+    "sanctions": {
+      "title": "OFAC制裁",
+      "infoTooltip": "<strong>OFAC制裁</strong> 美国财政部外国资产控制办公室指定实体：<ul><li>SDN（特别指定国民）名单</li><li>个人、实体、船只、飞机</li><li>按项目筛选（SDGT、IRAN、DPRK等）</li><li>每小时从treasury.gov更新</li></ul>",
+      "searchPlaceholder": "搜索实体...",
+      "noResults": "未找到匹配的实体",
+      "unavailable": "制裁数据不可用"
+    },
+    "reliefweb": {
+      "title": "危机报告",
+      "infoTooltip": "<strong>危机报告</strong> 联合国人道主义事务协调办公室ReliefWeb人道主义形势报告：<ul><li>自然灾害、冲突、疫情</li><li>来自100多个国家的地理编码报告</li><li>来源：联合国机构、非政府组织、各国政府</li><li>每15分钟更新</li></ul>",
+      "searchPlaceholder": "搜索报告...",
+      "noResults": "未找到匹配的报告",
+      "unavailable": "危机报告不可用"
     }
   },
   "popups": {

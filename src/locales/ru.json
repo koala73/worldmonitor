@@ -151,7 +151,9 @@
     "techReadiness": "Индекс технологической готовности",
     "gccInvestments": "Инвестиции стран Залива",
     "geoHubs": "Геополитические хабы",
-    "liveWebcams": "Веб-камеры"
+    "liveWebcams": "Веб-камеры",
+    "sanctions": "Санкции OFAC",
+    "reliefweb": "Кризисные отчёты"
   },
   "modals": {
     "search": {
@@ -1168,6 +1170,20 @@
       "notLive": "{{name}} is not currently live",
       "cannotEmbed": "{{name}} cannot be embedded in this app (YouTube {{code}})",
       "openOnYouTube": "Open on YouTube"
+    },
+    "sanctions": {
+      "title": "Санкции OFAC",
+      "infoTooltip": "<strong>Санкции OFAC</strong> Лица, включённые в списки Управления по контролю за иностранными активами Минфина США:<ul><li>Список SDN (Specially Designated Nationals)</li><li>Физические лица, организации, суда, воздушные суда</li><li>Фильтрация по программам (SDGT, IRAN, DPRK и др.)</li><li>Обновление ежечасно с treasury.gov</li></ul>",
+      "searchPlaceholder": "Поиск субъектов...",
+      "noResults": "Совпадающие субъекты не найдены",
+      "unavailable": "Данные о санкциях недоступны"
+    },
+    "reliefweb": {
+      "title": "Кризисные отчёты",
+      "infoTooltip": "<strong>Кризисные отчёты</strong> Гуманитарные ситуационные отчёты ReliefWeb (ООН УКГД):<ul><li>Стихийные бедствия, конфликты, эпидемии</li><li>Геокодированные отчёты из более чем 100 стран</li><li>Источники: агентства ООН, НПО, правительства</li><li>Обновление каждые 15 минут</li></ul>",
+      "searchPlaceholder": "Поиск отчётов...",
+      "noResults": "Совпадающие отчёты не найдены",
+      "unavailable": "Кризисные отчёты недоступны"
     }
   },
   "popups": {

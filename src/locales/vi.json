@@ -128,7 +128,9 @@
     "techReadiness": "Chỉ số Sẵn sàng Công nghệ",
     "gccInvestments": "Đầu tư GCC",
     "geoHubs": "Trung tâm Địa chính trị",
-    "liveWebcams": "Webcam Trực tiếp"
+    "liveWebcams": "Webcam Trực tiếp",
+    "sanctions": "Trừng phạt OFAC",
+    "reliefweb": "Báo cáo Khủng hoảng"
   },
   "modals": {
     "search": {
@@ -1145,6 +1147,20 @@
       "notLive": "{{name}} hiện không phát trực tiếp",
       "cannotEmbed": "{{name}} không thể nhúng trong ứng dụng này (YouTube {{code}})",
       "openOnYouTube": "Mở trên YouTube"
+    },
+    "sanctions": {
+      "title": "Trừng phạt OFAC",
+      "infoTooltip": "<strong>Trừng phạt OFAC</strong> Các thực thể bị chỉ định bởi Văn phòng Kiểm soát Tài sản Nước ngoài, Bộ Tài chính Hoa Kỳ:<ul><li>Danh sách SDN (Specially Designated Nationals)</li><li>Cá nhân, tổ chức, tàu biển, máy bay</li><li>Lọc theo chương trình (SDGT, IRAN, DPRK, v.v.)</li><li>Cập nhật hàng giờ từ treasury.gov</li></ul>",
+      "searchPlaceholder": "Tìm kiếm thực thể...",
+      "noResults": "Không tìm thấy thực thể phù hợp",
+      "unavailable": "Dữ liệu trừng phạt không khả dụng"
+    },
+    "reliefweb": {
+      "title": "Báo cáo Khủng hoảng",
+      "infoTooltip": "<strong>Báo cáo Khủng hoảng</strong> Báo cáo tình hình nhân đạo từ ReliefWeb của OCHA Liên Hợp Quốc:<ul><li>Thiên tai, xung đột, dịch bệnh</li><li>Báo cáo có tọa độ địa lý từ hơn 100 quốc gia</li><li>Nguồn: cơ quan LHQ, NGO, chính phủ</li><li>Cập nhật mỗi 15 phút</li></ul>",
+      "searchPlaceholder": "Tìm kiếm báo cáo...",
+      "noResults": "Không tìm thấy báo cáo phù hợp",
+      "unavailable": "Báo cáo khủng hoảng không khả dụng"
     }
   },
   "popups": {

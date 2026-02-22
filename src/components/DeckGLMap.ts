@@ -38,6 +38,8 @@ import type { AirportDelayAlert } from '@/services/aviation';
 import type { DisplacementFlow } from '@/services/displacement';
 import type { Earthquake } from '@/services/earthquakes';
 import type { ClimateAnomaly } from '@/services/climate';
+import type { SanctionsEntityMapPoint } from '@/services/sanctions';
+import type { ReliefWebReport } from '@/services/reliefweb';
 import { ArcLayer } from '@deck.gl/layers';
 import { HeatmapLayer } from '@deck.gl/aggregation-layers';
 import type { WeatherAlert } from '@/services/weather';
@@ -268,6 +270,8 @@ export class DeckGLMap {
   private ucdpEvents: UcdpGeoEvent[] = [];
   private displacementFlows: DisplacementFlow[] = [];
   private climateAnomalies: ClimateAnomaly[] = [];
+  private sanctionEntities: SanctionsEntityMapPoint[] = [];
+  private reliefWebReports: ReliefWebReport[] = [];
 
   // Country highlight state
   private countryGeoJsonLoaded = false;
@@ -1012,6 +1016,18 @@ export class DeckGLMap {
       layers.push(this.createGhostLayer('cyber-threats-layer', this.cyberThreats, d => [d.lon, d.lat], { radiusMinPixels: 12 }));
     }
 
+    // Sanctions entities layer
+    if (mapLayers.sanctions && this.sanctionEntities.length > 0) {
+      layers.push(this.createSanctionsEntitiesLayer());
+      layers.push(this.createGhostLayer('sanctions-entities-layer', this.sanctionEntities, d => [d.lon, d.lat], { radiusMinPixels: 12 }));
+    }
+
+    // ReliefWeb crisis reports layer
+    if (mapLayers.reliefweb && this.reliefWebReports.length > 0) {
+      layers.push(this.createReliefWebLayer());
+      layers.push(this.createGhostLayer('reliefweb-layer', this.reliefWebReports, d => [d.lon, d.lat], { radiusMinPixels: 14 }));
+    }
+
     // AIS density layer
     if (mapLayers.ais && this.aisDensity.length > 0) {
       layers.push(this.createAisDensityLayer());
@@ -1563,6 +1579,57 @@ export class DeckGLMap {
       pickable: true,
       stroked: true,
       getLineColor: [255, 255, 255, 160] as [number, number, number, number],
+      lineWidthMinPixels: 1,
+    });
+  }
+
+  private getReliefWebColor(type: string): [number, number, number, number] {
+    const t = (type || '').toLowerCase();
+    if (t.includes('flood')) return [0, 100, 255, 200];
+    if (t.includes('earthquake')) return [180, 80, 0, 200];
+    if (t.includes('cyclone') || t.includes('storm') || t.includes('hurricane') || t.includes('typhoon')) return [100, 0, 200, 200];
+    if (t.includes('conflict') || t.includes('war')) return [220, 20, 20, 200];
+    if (t.includes('drought') || t.includes('heat')) return [200, 150, 0, 200];
+    if (t.includes('epidemic') || t.includes('disease')) return [0, 160, 140, 200];
+    if (t.includes('volcano')) return [139, 0, 0, 200];
+    if (t.includes('fire')) return [255, 102, 0, 200];
+    return [0, 180, 160, 200]; // teal default
+  }
+
+  private createReliefWebLayer(): ScatterplotLayer<ReliefWebReport> {
+    return new ScatterplotLayer<ReliefWebReport>({
+      id: 'reliefweb-layer',
+      data: this.reliefWebReports,
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: 18000,
+      getFillColor: (d) => this.getReliefWebColor(d.disasterType),
+      radiusMinPixels: 5,
+      radiusMaxPixels: 16,
+      pickable: true,
+      stroked: true,
+      getLineColor: [255, 255, 255, 150] as [number, number, number, number],
+      lineWidthMinPixels: 1,
+    });
+  }
+
+  private createSanctionsEntitiesLayer(): ScatterplotLayer<SanctionsEntityMapPoint> {
+    return new ScatterplotLayer<SanctionsEntityMapPoint>({
+      id: 'sanctions-entities-layer',
+      data: this.sanctionEntities,
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: 15000,
+      getFillColor: (d) => {
+        switch (d.severity) {
+          case 'severe': return [220, 20, 20, 210] as [number, number, number, number];
+          case 'high': return [220, 110, 0, 190] as [number, number, number, number];
+          default: return [200, 170, 0, 170] as [number, number, number, number];
+        }
+      },
+      radiusMinPixels: 4,
+      radiusMaxPixels: 14,
+      pickable: true,
+      stroked: true,
+      getLineColor: [255, 255, 255, 140] as [number, number, number, number],
       lineWidthMinPixels: 1,
     });
   }
@@ -2459,6 +2526,10 @@ export class DeckGLMap {
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.asn || t('components.deckgl.tooltip.internetOutage'))}</strong><br/>${text(obj.country)}</div>` };
       case 'cyber-threats-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${t('popups.cyberThreat.title')}</strong><br/>${text(obj.severity || t('components.deckgl.tooltip.medium'))} · ${text(obj.country || t('popups.unknown'))}</div>` };
+      case 'sanctions-entities-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.country)} · ${text(obj.program)}<br/>${text(obj.type)} · ${text(obj.severity)}</div>` };
+      case 'reliefweb-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.title?.slice(0, 80) || '')}</strong><br/>${text(obj.country)}${obj.disasterType ? ` · ${text(obj.disasterType)}` : ''}<br/><small>${text(obj.source || '')}</small></div>` };
       case 'news-locations-layer':
         return { html: `<div class="deckgl-tooltip"><strong>📰 ${t('components.deckgl.tooltip.news')}</strong><br/>${text(obj.title?.slice(0, 80) || '')}</div>` };
       case 'gulf-investments-layer': {
@@ -3351,6 +3422,16 @@ export class DeckGLMap {
 
   public setClimateAnomalies(anomalies: ClimateAnomaly[]): void {
     this.climateAnomalies = anomalies;
+    this.render();
+  }
+
+  public setSanctionEntities(entities: SanctionsEntityMapPoint[]): void {
+    this.sanctionEntities = entities;
+    this.render();
+  }
+
+  public setReliefWebReports(reports: ReliefWebReport[]): void {
+    this.reliefWebReports = reports;
     this.render();
   }
 

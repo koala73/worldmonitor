@@ -151,7 +151,9 @@
     "techHubs": "Heiße Tech-Hubs",
     "gccInvestments": "GCC-Investitionen",
     "geoHubs": "Geopolitical Hotspots",
-    "liveWebcams": "Live-Webcams"
+    "liveWebcams": "Live-Webcams",
+    "sanctions": "OFAC-Sanktionen",
+    "reliefweb": "Krisenberichte"
   },
   "modals": {
     "search": {
@@ -1168,6 +1170,20 @@
       "notLive": "{{name}} is not currently live",
       "cannotEmbed": "{{name}} cannot be embedded in this app (YouTube {{code}})",
       "openOnYouTube": "Open on YouTube"
+    },
+    "sanctions": {
+      "title": "OFAC-Sanktionen",
+      "infoTooltip": "<strong>OFAC-Sanktionen</strong> Vom US-Finanzministerium (OFAC) designierte Einheiten:<ul><li>SDN-Liste (Specially Designated Nationals)</li><li>Einzelpersonen, Unternehmen, Schiffe, Flugzeuge</li><li>Programmbasierte Filterung (SDGT, IRAN, DPRK usw.)</li><li>Stündliche Aktualisierung von treasury.gov</li></ul>",
+      "searchPlaceholder": "Einheiten suchen...",
+      "noResults": "Keine passenden Einheiten gefunden",
+      "unavailable": "Sanktionsdaten nicht verfügbar"
+    },
+    "reliefweb": {
+      "title": "Krisenberichte",
+      "infoTooltip": "<strong>Krisenberichte</strong> Humanitäre Lageberichte von UN OCHA ReliefWeb:<ul><li>Naturkatastrophen, Konflikte, Epidemien</li><li>Georeferenzierte Berichte aus über 100 Ländern</li><li>Quellen: UN-Agenturen, NGOs, Regierungen</li><li>Alle 15 Minuten aktualisiert</li></ul>",
+      "searchPlaceholder": "Berichte suchen...",
+      "noResults": "Keine passenden Berichte gefunden",
+      "unavailable": "Krisenberichte nicht verfügbar"
     }
   },
   "popups": {

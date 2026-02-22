@@ -128,7 +128,9 @@
     "techReadiness": "ดัชนีความพร้อมด้านเทคโนโลยี",
     "gccInvestments": "การลงทุน GCC",
     "geoHubs": "ศูนย์กลางภูมิรัฐศาสตร์",
-    "liveWebcams": "เว็บแคมสด"
+    "liveWebcams": "เว็บแคมสด",
+    "sanctions": "มาตรการคว่ำบาตร OFAC",
+    "reliefweb": "รายงานวิกฤต"
   },
   "modals": {
     "search": {
@@ -1145,6 +1147,20 @@
       "notLive": "{{name}} ไม่ได้ถ่ายทอดสดอยู่ในขณะนี้",
       "cannotEmbed": "ไม่สามารถฝัง {{name}} ในแอปนี้ได้ (YouTube {{code}})",
       "openOnYouTube": "เปิดบน YouTube"
+    },
+    "sanctions": {
+      "title": "มาตรการคว่ำบาตร OFAC",
+      "infoTooltip": "<strong>มาตรการคว่ำบาตร OFAC</strong> หน่วยงานที่ถูกกำหนดโดยสำนักงานควบคุมทรัพย์สินต่างประเทศ กระทรวงการคลังสหรัฐฯ:<ul><li>รายชื่อ SDN (Specially Designated Nationals)</li><li>บุคคล นิติบุคคล เรือ อากาศยาน</li><li>กรองตามโปรแกรม (SDGT, IRAN, DPRK ฯลฯ)</li><li>อัปเดตทุกชั่วโมงจาก treasury.gov</li></ul>",
+      "searchPlaceholder": "ค้นหาเอนทิตี...",
+      "noResults": "ไม่พบเอนทิตีที่ตรงกัน",
+      "unavailable": "ข้อมูลมาตรการคว่ำบาตรไม่พร้อมใช้งาน"
+    },
+    "reliefweb": {
+      "title": "รายงานวิกฤต",
+      "infoTooltip": "<strong>รายงานวิกฤต</strong> รายงานสถานการณ์ด้านมนุษยธรรมจาก ReliefWeb สำนักงาน OCHA สหประชาชาติ:<ul><li>ภัยธรรมชาติ ความขัดแย้ง โรคระบาด</li><li>รายงานพิกัดภูมิศาสตร์จากกว่า 100 ประเทศ</li><li>แหล่งข้อมูล: หน่วยงาน UN, NGO, รัฐบาล</li><li>อัปเดตทุก 15 นาที</li></ul>",
+      "searchPlaceholder": "ค้นหารายงาน...",
+      "noResults": "ไม่พบรายงานที่ตรงกัน",
+      "unavailable": "รายงานวิกฤตไม่พร้อมใช้งาน"
     }
   },
   "popups": {

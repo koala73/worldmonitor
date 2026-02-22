@@ -59,7 +59,9 @@
     "geoHubs": "Geopolitical Hotspots",
     "polymarket": "Previsões",
     "climate": "Anomalias Climáticas",
-    "liveWebcams": "Câmeras ao Vivo"
+    "liveWebcams": "Câmeras ao Vivo",
+    "sanctions": "Sanções OFAC",
+    "reliefweb": "Relatórios de Crise"
   },
   "modals": {
     "search": {
@@ -1076,6 +1078,20 @@
       "notLive": "{{name}} is not currently live",
       "cannotEmbed": "{{name}} cannot be embedded in this app (YouTube {{code}})",
       "openOnYouTube": "Open on YouTube"
+    },
+    "sanctions": {
+      "title": "Sanções OFAC",
+      "infoTooltip": "<strong>Sanções OFAC</strong> Entidades designadas pelo Escritório de Controle de Ativos Estrangeiros do Tesouro dos EUA:<ul><li>Lista SDN (Specially Designated Nationals)</li><li>Indivíduos, entidades, embarcações, aeronaves</li><li>Filtragem por programa (SDGT, IRAN, DPRK, etc.)</li><li>Atualização horária de treasury.gov</li></ul>",
+      "searchPlaceholder": "Pesquisar entidades...",
+      "noResults": "Nenhuma entidade correspondente encontrada",
+      "unavailable": "Dados de sanções indisponíveis"
+    },
+    "reliefweb": {
+      "title": "Relatórios de Crise",
+      "infoTooltip": "<strong>Relatórios de Crise</strong> Relatórios de situação humanitária do ReliefWeb da ONU OCHA:<ul><li>Desastres naturais, conflitos, epidemias</li><li>Relatórios geocodificados de mais de 100 países</li><li>Fontes: agências da ONU, ONGs, governos</li><li>Atualização a cada 15 minutos</li></ul>",
+      "searchPlaceholder": "Pesquisar relatórios...",
+      "noResults": "Nenhum relatório correspondente encontrado",
+      "unavailable": "Relatórios de crise indisponíveis"
     }
   },
   "popups": {

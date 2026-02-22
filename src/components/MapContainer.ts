@@ -325,6 +325,18 @@ export class MapContainer {
     }
   }
 
+  public setSanctionEntities(entities: import('@/services/sanctions').SanctionsEntityMapPoint[]): void {
+    if (this.useDeckGL) {
+      this.deckGLMap?.setSanctionEntities(entities);
+    }
+  }
+
+  public setReliefWebReports(reports: import('@/services/reliefweb').ReliefWebReport[]): void {
+    if (this.useDeckGL) {
+      this.deckGLMap?.setReliefWebReports(reports);
+    }
+  }
+
   public setNewsLocations(data: Array<{ lat: number; lon: number; title: string; threatLevel: string; timestamp?: Date }>): void {
     if (this.useDeckGL) {
       this.deckGLMap?.setNewsLocations(data);

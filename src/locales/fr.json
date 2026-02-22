@@ -151,7 +151,9 @@
     "techHubs": "Pôles Technologiques",
     "gccInvestments": "Investissements du CCG",
     "geoHubs": "Centres géopolitiques",
-    "liveWebcams": "Webcams en Direct"
+    "liveWebcams": "Webcams en Direct",
+    "sanctions": "Sanctions OFAC",
+    "reliefweb": "Rapports de Crise"
   },
   "modals": {
     "search": {
@@ -1168,6 +1170,20 @@
       "notLive": "{{name}} is not currently live",
       "cannotEmbed": "{{name}} cannot be embedded in this app (YouTube {{code}})",
       "openOnYouTube": "Open on YouTube"
+    },
+    "sanctions": {
+      "title": "Sanctions OFAC",
+      "infoTooltip": "<strong>Sanctions OFAC</strong> Entités désignées par le Bureau de contrôle des avoirs étrangers du Trésor américain :<ul><li>Liste SDN (Specially Designated Nationals)</li><li>Individus, entités, navires, aéronefs</li><li>Filtrage par programme (SDGT, IRAN, DPRK, etc.)</li><li>Mise à jour horaire depuis treasury.gov</li></ul>",
+      "searchPlaceholder": "Rechercher des entités...",
+      "noResults": "Aucune entité correspondante trouvée",
+      "unavailable": "Données de sanctions indisponibles"
+    },
+    "reliefweb": {
+      "title": "Rapports de Crise",
+      "infoTooltip": "<strong>Rapports de Crise</strong> Rapports de situation humanitaire de ReliefWeb (ONU OCHA) :<ul><li>Catastrophes naturelles, conflits, épidémies</li><li>Rapports géolocalisés de plus de 100 pays</li><li>Sources : agences de l'ONU, ONG, gouvernements</li><li>Mise à jour toutes les 15 minutes</li></ul>",
+      "searchPlaceholder": "Rechercher des rapports...",
+      "noResults": "Aucun rapport correspondant trouvé",
+      "unavailable": "Rapports de crise indisponibles"
     }
   },
   "popups": {

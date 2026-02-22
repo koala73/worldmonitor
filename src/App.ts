@@ -31,6 +31,8 @@ import { focusInvestmentOnMap } from '@/services/investments-focus';
 import { fetchConflictEvents, fetchUcdpClassifications, fetchHapiSummary, fetchUcdpEvents, deduplicateAgainstAcled } from '@/services/conflict';
 import { fetchUnhcrPopulation } from '@/services/displacement';
 import { fetchClimateAnomalies } from '@/services/climate';
+import { fetchSanctionsData, getSanctionsMapPoints } from '@/services/sanctions';
+import { fetchReliefWebReports } from '@/services/reliefweb';
 import { enrichEventsWithExposure } from '@/services/population-exposure';
 import { buildMapUrl, debounce, loadFromStorage, parseMapUrlState, saveToStorage, ExportPanel, getCircuitBreakerCooldownInfo, isMobileDevice, setTheme, getCurrentTheme } from '@/utils';
 import { reverseGeocode } from '@/utils/reverse-geocode';
@@ -83,6 +85,7 @@ import {
   SanctionsPanel,
   LanguageSelector,
 } from '@/components';
+import { ReliefWebPanel } from '@/components/ReliefWebPanel';
 import type { SearchResult } from '@/components/SearchModal';
 import { collectStoryData } from '@/services/story-data';
 import { renderStoryToCanvas } from '@/services/story-renderer';
@@ -2303,6 +2306,9 @@ export class App {
       const sanctionsPanel = new SanctionsPanel();
       this.panels['sanctions'] = sanctionsPanel;
 
+      const reliefWebPanel = new ReliefWebPanel();
+      this.panels['reliefweb'] = reliefWebPanel;
+
       const satelliteFiresPanel = new SatelliteFiresPanel();
       this.panels['satellite-fires'] = satelliteFiresPanel;
 
@@ -3146,6 +3152,7 @@ export class App {
     if (this.mapLayers.flights) tasks.push({ name: 'flights', task: runGuarded('flights', () => this.loadFlightDelays()) });
     if (CYBER_LAYER_ENABLED && this.mapLayers.cyberThreats) tasks.push({ name: 'cyberThreats', task: runGuarded('cyberThreats', () => this.loadCyberThreats()) });
     if (this.mapLayers.sanctions) tasks.push({ name: 'sanctions', task: runGuarded('sanctions', () => this.loadSanctions()) });
+    if (this.mapLayers.reliefweb) tasks.push({ name: 'reliefweb', task: runGuarded('reliefweb', () => this.loadReliefWeb()) });
     if (this.mapLayers.techEvents || SITE_VARIANT === 'tech') tasks.push({ name: 'techEvents', task: runGuarded('techEvents', () => this.loadTechEvents()) });
 
     // Tech Readiness panel (tech variant only)
@@ -3190,6 +3197,9 @@ export class App {
           break;
         case 'sanctions':
           await this.loadSanctions();
+          break;
+        case 'reliefweb':
+          await this.loadReliefWeb();
           break;
         case 'ais':
           await this.loadAisSignals();
@@ -4072,10 +4082,25 @@ export class App {
 
   private async loadSanctions(): Promise<void> {
     try {
+      const data = await fetchSanctionsData();
       const panel = this.panels['sanctions'] as import('@/components/SanctionsPanel').SanctionsPanel | undefined;
-      await panel?.refresh();
+      panel?.setData(data);
+
+      const points = getSanctionsMapPoints(data);
+      this.map?.setSanctionEntities(points);
     } catch (error) {
       console.warn('[App] Sanctions load failed:', error);
+    }
+  }
+
+  private async loadReliefWeb(): Promise<void> {
+    try {
+      const data = await fetchReliefWebReports();
+      const panel = this.panels['reliefweb'] as ReliefWebPanel | undefined;
+      panel?.setData(data);
+      this.map?.setReliefWebReports(data.reports);
+    } catch (error) {
+      console.warn('[App] ReliefWeb load failed:', error);
     }
   }
 
@@ -4642,5 +4667,6 @@ export class App {
       return this.loadCyberThreats();
     }, 10 * 60 * 1000, () => CYBER_LAYER_ENABLED && this.mapLayers.cyberThreats);
     this.scheduleRefresh('sanctions', () => this.loadSanctions(), 30 * 60 * 1000, () => this.mapLayers.sanctions);
+    this.scheduleRefresh('reliefweb', () => this.loadReliefWeb(), 15 * 60 * 1000, () => this.mapLayers.reliefweb);
   }
 }
