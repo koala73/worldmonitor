@@ -8,9 +8,8 @@ GEN_SERVER_DIR := src/generated/server
 DOCS_API_DIR := docs/api
 
 # Go install settings
-GO_PROXY := GOPROXY=direct
 GO_PRIVATE := GOPRIVATE=github.com/SebastienMelki
-GO_INSTALL := $(GO_PROXY) $(GO_PRIVATE) go install
+GO_INSTALL := $(GO_PRIVATE) go install
 
 # Required tool versions
 BUF_VERSION := v1.64.0

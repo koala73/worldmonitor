@@ -86,7 +86,7 @@ export default async function handler(request: Request): Promise<Response> {
   try {
     corsHeaders = getCorsHeaders(request);
   } catch {
-    corsHeaders = { 'Access-Control-Allow-Origin': '*' };
+    corsHeaders = { 'Access-Control-Allow-Origin': 'https://worldmonitor.app' };
   }
 
   // OPTIONS preflight

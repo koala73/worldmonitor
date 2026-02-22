@@ -30,12 +30,12 @@ async function fetchArxivPapers(req: ListArxivPapersRequest): Promise<ArxivPaper
 
   let searchQuery: string;
   if (req.query) {
-    searchQuery = `all:${req.query}+AND+cat:${category}`;
+    searchQuery = `all:${encodeURIComponent(req.query)}+AND+cat:${encodeURIComponent(category)}`;
   } else {
-    searchQuery = `cat:${category}`;
+    searchQuery = `cat:${encodeURIComponent(category)}`;
   }
 
-  const url = `https://export.arxiv.org/api/query?search_query=${searchQuery}&start=0&max_results=${pageSize}`;
+  const url = `https://export.arxiv.org/api/query?search_query=${searchQuery}&start=0&max_results=${encodeURIComponent(String(pageSize))}`;
 
   const response = await fetch(url, {
     headers: { Accept: 'application/xml' },

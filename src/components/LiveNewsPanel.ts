@@ -372,9 +372,13 @@ export class LiveNewsPanel extends Panel {
       <div class="live-offline">
         <div class="offline-icon">📺</div>
         <div class="offline-text">${t('components.liveNews.notLive', { name: channel.name })}</div>
-        <button class="offline-retry" onclick="this.closest('.panel').querySelector('.live-channel-btn.active')?.click()">${t('common.retry')}</button>
+        <button class="offline-retry">${t('common.retry')}</button>
       </div>
     `;
+    const retryBtn = this.content.querySelector('.offline-retry');
+    retryBtn?.addEventListener('click', () => {
+      (this.content.closest('.panel')?.querySelector('.live-channel-btn.active') as HTMLElement)?.click();
+    });
   }
 
   private showEmbedError(channel: LiveChannel, errorCode: number): void {
