@@ -356,13 +356,17 @@ export interface RepairShip {
   note?: string;
 }
 
-// Cable health types (computed from NGA maritime warning signals)
+// Cable Health Types
 export type CableHealthStatus = 'ok' | 'degraded' | 'fault' | 'unknown';
+export type CableSignalKind = 'operator_fault' | 'repair_activity' | 'inferred_degradation';
 
 export interface CableHealthEvidence {
   source: string;
   summary: string;
   ts: string;
+  url?: string;
+  geometry?: unknown;
+  meta?: Record<string, unknown>;
 }
 
 export interface CableHealthRecord {

@@ -2946,23 +2946,62 @@ body.playback-mode .status-dot {
   filter: drop-shadow(0 0 4px var(--semantic-elevated));
 }
 
+/* Cable Health status styles */
 .cable-path.cable-health-fault {
   stroke: #ff3232;
-  stroke-dasharray: 6 3;
+  stroke-width: 3;
+  stroke-dasharray: 8 4;
   opacity: 0.9;
-  filter: drop-shadow(0 0 5px #ff3232);
-  animation: cable-health-fault-pulse 1.4s ease-in-out infinite;
+  filter: drop-shadow(0 0 6px rgba(255, 50, 50, 0.7));
+  animation: cable-health-fault-pulse 1.5s ease-in-out infinite;
 }
 
 .cable-path.cable-health-degraded {
   stroke: #ffa500;
-  opacity: 0.8;
-  filter: drop-shadow(0 0 4px #ffa500);
+  stroke-width: 2.5;
+  opacity: 0.85;
+  filter: drop-shadow(0 0 4px rgba(255, 165, 0, 0.5));
 }
 
 @keyframes cable-health-fault-pulse {
   0%, 100% { opacity: 0.9; }
   50% { opacity: 0.5; }
+}
+
+/* Cable health evidence list in popup */
+.popup-evidence-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.popup-evidence-item {
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border-left: 3px solid var(--accent-cyan, #00c8ff);
+  border-radius: 0 4px 4px 0;
+}
+
+.popup-evidence-item .evidence-source {
+  font-weight: 600;
+  font-size: 0.75rem;
+  color: var(--accent-cyan, #00c8ff);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.popup-evidence-item .evidence-time {
+  font-size: 0.7rem;
+  color: var(--text-tertiary, rgba(255,255,255,0.4));
+  margin-left: 6px;
+}
+
+.popup-evidence-item .evidence-summary {
+  font-size: 0.8rem;
+  color: var(--text-secondary, rgba(255,255,255,0.7));
+  margin: 3px 0 0;
+  line-height: 1.3;
 }
 
 @keyframes cable-pulse {

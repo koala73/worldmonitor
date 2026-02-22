@@ -1041,14 +1041,22 @@ export class MapComponent {
 
       const isHighlighted = this.highlightedAssets.cable.has(cable.id);
       const cableAdvisory = this.getCableAdvisory(cable.id);
-      const advisoryClass = cableAdvisory ? `cable-${cableAdvisory.severity}` : '';
       const healthRecord = this.healthByCableId[cable.id];
-      const healthClass = healthRecord?.status === 'fault' ? 'cable-health-fault' : healthRecord?.status === 'degraded' ? 'cable-health-degraded' : '';
+
+      // Highlight problems only — fault/degraded get visual treatment, ok/unknown stay default
+      let statusClass = '';
+      if (healthRecord?.status === 'fault') {
+        statusClass = 'cable-health-fault';
+      } else if (healthRecord?.status === 'degraded') {
+        statusClass = 'cable-health-degraded';
+      } else if (cableAdvisory) {
+        statusClass = `cable-${cableAdvisory.severity}`;
+      }
       const highlightClass = isHighlighted ? 'asset-highlight asset-highlight-cable' : '';
 
       const path = cableGroup
         .append('path')
-        .attr('class', `cable-path ${advisoryClass} ${healthClass} ${highlightClass}`.trim())
+        .attr('class', `cable-path ${statusClass} ${highlightClass}`.trim())
         .attr('d', lineGenerator(cable.points));
 
       path.append('title').text(cable.name);

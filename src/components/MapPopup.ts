@@ -1412,9 +1412,18 @@ export class MapPopup {
         ${healthRecord?.evidence?.length ? `
           <div class="popup-section">
             <span class="section-label">${t('popups.cable.health.evidence')}</span>
-            <ul class="evidence-list">
-              ${healthRecord.evidence.map((e) => `<li class="evidence-item"><strong>${escapeHtml(e.source)}</strong>: ${escapeHtml(e.summary)}</li>`).join('')}
-            </ul>
+            <div class="popup-evidence-list">
+              ${healthRecord.evidence.map((e) => {
+                const evidenceTime = e.ts ? this.getTimeAgo(new Date(e.ts)) : '';
+                return `
+                  <div class="popup-evidence-item">
+                    <span class="evidence-source">${escapeHtml(e.source)}</span>
+                    <span class="evidence-time">${evidenceTime}</span>
+                    <p class="evidence-summary">${escapeHtml(e.summary)}</p>
+                  </div>
+                `;
+              }).join('')}
+            </div>
           </div>
         ` : ''}
         <p class="popup-description">${t('popups.cable.description')}</p>

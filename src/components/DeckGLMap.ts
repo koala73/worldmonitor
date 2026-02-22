@@ -1156,35 +1156,45 @@ export class DeckGLMap {
   // Layer creation methods
   private createCablesLayer(): PathLayer {
     const highlightedCables = this.highlightedAssets.cable;
+    const healthMap = this.healthByCableId;
     const cacheKey = 'cables-layer';
-    const cached = this.layerCache.get(cacheKey) as PathLayer | undefined;
     const highlightSignature = this.getSetSignature(highlightedCables);
-    const healthSignature = Object.keys(this.healthByCableId).sort().join(',');
+    // Only track fault/degraded cables for cache invalidation (ok/unknown use default color)
+    const healthSignature = Object.entries(healthMap)
+      .filter(([, v]) => v.status === 'fault' || v.status === 'degraded')
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([k, v]) => `${k}:${v.status}`)
+      .join(',');
+
+    const cached = this.layerCache.get(cacheKey) as PathLayer | undefined;
     if (cached && highlightSignature === this.lastCableHighlightSignature && healthSignature === this.lastCableHealthSignature) return cached;
 
-    const health = this.healthByCableId;
     const layer = new PathLayer({
       id: cacheKey,
       data: UNDERSEA_CABLES,
       getPath: (d) => d.points,
       getColor: (d) => {
         if (highlightedCables.has(d.id)) return COLORS.cableHighlight;
-        const h = health[d.id];
+        // Highlight only problems — fault/degraded get distinct colors, everything else stays default
+        const h = healthMap[d.id];
         if (h?.status === 'fault') return COLORS.cableFault;
         if (h?.status === 'degraded') return COLORS.cableDegraded;
         return COLORS.cable;
       },
       getWidth: (d) => {
         if (highlightedCables.has(d.id)) return 3;
-        const h = health[d.id];
-        if (h?.status === 'fault') return 2.5;
-        if (h?.status === 'degraded') return 2;
+        const h = healthMap[d.id];
+        if (h?.status === 'fault') return 4;
+        if (h?.status === 'degraded') return 2.5;
         return 1;
       },
       widthMinPixels: 1,
-      widthMaxPixels: 5,
+      widthMaxPixels: 8,
       pickable: true,
-      updateTriggers: { highlighted: highlightSignature, health: healthSignature },
+      updateTriggers: {
+        getColor: [healthSignature, highlightSignature],
+        getWidth: [healthSignature, highlightSignature],
+      },
     });
 
     this.lastCableHighlightSignature = highlightSignature;
