@@ -1,9 +1,10 @@
 /* ============================================================
    Happy Variant Theme — Calm & Serene
    Sage green + warm gold on cream. No dark military aesthetic.
+   Imported AFTER main.css in main.ts so cascade order wins.
    ============================================================ */
 
-/* ---------- Happy Light Mode (default) ---------- */
+/* ---------- Happy Light Mode (default + explicit light) ---------- */
 :root[data-variant="happy"],
 :root[data-variant="happy"][data-theme="light"] {
   /* Backgrounds */
@@ -59,6 +60,38 @@
 
   /* Panel border radius — soft rounded corners */
   --panel-radius: 14px;
+
+  /* Severity levels — remapped to positive semantics */
+  --semantic-critical: #C4A35A;
+  --semantic-high: #6B8F5E;
+  --semantic-elevated: #7BA5C4;
+  --semantic-normal: #6B8F5E;
+  --semantic-low: #C48B9F;
+  --semantic-info: #7BA5C4;
+
+  /* Threat levels — remapped to positive tones */
+  --threat-critical: #C4A35A;
+  --threat-high: #8BAF7A;
+  --threat-medium: #7BA5C4;
+  --threat-low: #6B8F5E;
+  --threat-info: #7BA5C4;
+
+  /* DEFCON levels — warm gradient instead of warning */
+  --defcon-1: #C4A35A;
+  --defcon-2: #A8B86B;
+  --defcon-3: #7BA5C4;
+  --defcon-4: #6B8F5E;
+  --defcon-5: #8BAF7A;
+
+  /* Status indicators */
+  --status-live: #6B8F5E;
+  --status-cached: #C4A35A;
+  --status-unavailable: #C48B9F;
+
+  /* Legacy color aliases */
+  --red: #C48B9F;
+  --green: #6B8F5E;
+  --yellow: #C4A35A;
 }
 
 /* ---------- Happy Dark Mode ---------- */
@@ -114,48 +147,10 @@
   /* Typography inherits from light variant selector */
   --font-body: 'Nunito', system-ui, -apple-system, sans-serif;
 
-  /* Panel border radius — soft rounded corners */
+  /* Panel border radius */
   --panel-radius: 14px;
-}
 
-/* ---------- Happy Semantic Colors (both modes) ---------- */
-:root[data-variant="happy"] {
-  /* Severity levels — remapped to positive semantics */
-  --semantic-critical: #C4A35A;    /* celebration gold */
-  --semantic-high: #6B8F5E;        /* growth green (sage) */
-  --semantic-elevated: #7BA5C4;    /* hope blue */
-  --semantic-normal: #6B8F5E;      /* growth green */
-  --semantic-low: #C48B9F;         /* kindness pink */
-  --semantic-info: #7BA5C4;        /* hope blue */
-
-  /* Threat levels — remapped to positive tones */
-  --threat-critical: #C4A35A;      /* gold */
-  --threat-high: #8BAF7A;          /* lighter sage */
-  --threat-medium: #7BA5C4;        /* blue */
-  --threat-low: #6B8F5E;           /* sage green */
-  --threat-info: #7BA5C4;          /* blue */
-
-  /* DEFCON levels — warm gradient instead of warning */
-  --defcon-1: #C4A35A;
-  --defcon-2: #A8B86B;
-  --defcon-3: #7BA5C4;
-  --defcon-4: #6B8F5E;
-  --defcon-5: #8BAF7A;
-
-  /* Status indicators */
-  --status-live: #6B8F5E;          /* sage green pulse */
-  --status-cached: #C4A35A;        /* warm gold */
-  --status-unavailable: #C48B9F;   /* soft pink, not alarming red */
-
-  /* Legacy color aliases */
-  --red: #C48B9F;                  /* kindness pink replaces red */
-  --green: #6B8F5E;               /* sage green */
-  --yellow: #C4A35A;              /* warm gold */
-}
-
-/* ---------- Happy Dark Mode Semantic Adjustments ---------- */
-:root[data-variant="happy"][data-theme="dark"] {
-  /* Lighter variants for dark backgrounds */
+  /* Semantic — lighter variants for dark backgrounds */
   --semantic-critical: #D4B36A;
   --semantic-high: #8BAF7A;
   --semantic-elevated: #8BB5D4;
@@ -168,6 +163,12 @@
   --threat-medium: #8BB5D4;
   --threat-low: #8BAF7A;
   --threat-info: #8BB5D4;
+
+  --defcon-1: #D4B36A;
+  --defcon-2: #B8C87B;
+  --defcon-3: #8BB5D4;
+  --defcon-4: #8BAF7A;
+  --defcon-5: #9BBF8A;
 
   --status-live: #8BAF7A;
   --status-cached: #D4B36A;
@@ -262,8 +263,6 @@
 /* ==========================================================
    Happy Loading States — Gentle pulse instead of radar sweep
    ========================================================== */
-
-/* Hide the military radar sweep animation */
 [data-variant="happy"] .panel-loading-radar {
   border-color: rgba(107, 143, 94, 0.25);
 }
@@ -284,7 +283,6 @@
   animation: happy-pulse 2s ease-in-out infinite;
 }
 
-/* Gentle pulse for status dots */
 [data-variant="happy"] .status-dot {
   animation: happy-pulse 2.5s ease-in-out infinite;
 }
@@ -294,7 +292,6 @@
   50% { opacity: 0.6; transform: scale(1.08); }
 }
 
-/* Loading text — friendly tone */
 [data-variant="happy"] .panel-loading-text {
   letter-spacing: 0.2px;
 }
