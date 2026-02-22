@@ -1,6 +1,9 @@
 # Keeps nordic variant 100% current with zero manual work.
 # Fetches upstream/main every Sunday and opens a PR if there are changes.
 # Safe: never force-pushes, never auto-merges — human reviews the PR.
+#
+# Nordic-only files (.gitattributes merge=ours) are kept as-is on conflict.
+# Shared files are validated post-merge to ensure Nordic markers survive.
 
 name: Sync upstream
 
@@ -13,6 +16,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  issues: write
 
 jobs:
   sync:
@@ -40,6 +44,7 @@ jobs:
           fi
 
       - name: Create sync branch and merge upstream
+        id: merge
         if: steps.check.outputs.behind != '0'
         run: |
           DATE=$(date +%Y-%m-%d)
@@ -47,30 +52,143 @@ jobs:
           git checkout -b "$BRANCH"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git merge upstream/main --no-edit || {
-            echo "::warning::Merge conflict detected — resolve manually"
+
+          # Enable "ours" merge driver so .gitattributes merge=ours works.
+          # Nordic-only files (nb.json, nordic.ts, this workflow) keep our version.
+          git config merge.ours.driver true
+
+          if git merge upstream/main --no-edit; then
+            echo "status=ok" >> "$GITHUB_OUTPUT"
+          else
+            # Collect conflict list before aborting
+            CONFLICTS=$(git diff --name-only --diff-filter=U | tr '\n' ', ' | sed 's/,$//')
+            echo "status=conflict" >> "$GITHUB_OUTPUT"
+            echo "conflicts=$CONFLICTS" >> "$GITHUB_OUTPUT"
             git merge --abort
-            exit 1
-          }
-          git push origin "$BRANCH"
+          fi
+
           echo "SYNC_BRANCH=$BRANCH" >> "$GITHUB_ENV"
           echo "SYNC_DATE=$DATE" >> "$GITHUB_ENV"
 
+      - name: Validate Nordic markers after merge
+        id: validate
+        if: steps.merge.outputs.status == 'ok'
+        run: |
+          WARNINGS=""
+
+          # Check shared files for key Nordic markers
+          if ! grep -q "SITE_VARIANT === 'nordic'" src/config/feeds.ts 2>/dev/null; then
+            WARNINGS="${WARNINGS}- \`feeds.ts\`: missing Nordic variant gate\n"
+          fi
+
+          if ! grep -q "isNordicVariant" server/worldmonitor/news/v1/_shared.ts 2>/dev/null; then
+            WARNINGS="${WARNINGS}- \`_shared.ts\`: missing NordicMonitor persona\n"
+          fi
+
+          if ! grep -q "'nb'" src/services/i18n.ts 2>/dev/null; then
+            WARNINGS="${WARNINGS}- \`i18n.ts\`: missing nb locale mapping\n"
+          fi
+
+          if ! grep -q "nordic" src/config/panels.ts 2>/dev/null; then
+            WARNINGS="${WARNINGS}- \`panels.ts\`: missing Nordic panel config\n"
+          fi
+
+          if ! grep -q "www.nrk.no" api/rss-proxy.js 2>/dev/null; then
+            WARNINGS="${WARNINGS}- \`rss-proxy.js\`: missing Nordic proxy domains\n"
+          fi
+
+          if [ -n "$WARNINGS" ]; then
+            echo "status=warn" >> "$GITHUB_OUTPUT"
+            # Write to file to preserve newlines
+            printf '%s' "$WARNINGS" > /tmp/warnings.txt
+            echo "has_warnings=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "status=pass" >> "$GITHUB_OUTPUT"
+            echo "has_warnings=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Push sync branch
+        if: steps.merge.outputs.status == 'ok'
+        run: git push origin "$SYNC_BRANCH"
+
       - name: Open pull request
-        if: steps.check.outputs.behind != '0'
+        if: steps.merge.outputs.status == 'ok'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          if [ "${{ steps.validate.outputs.has_warnings }}" = "true" ]; then
+            VALIDATION_SECTION=$(cat <<'INNER'
+
+          ### ⚠️ Nordic marker validation warnings
+
+          The following Nordic customizations may have been affected by the merge:
+          INNER
+          )
+            VALIDATION_SECTION="${VALIDATION_SECTION}
+          $(cat /tmp/warnings.txt)
+
+          **Please check these files before merging.**"
+          else
+            VALIDATION_SECTION="
+          ✅ All Nordic markers validated — no issues detected."
+          fi
+
           gh pr create \
             --title "chore: sync upstream $SYNC_DATE" \
-            --body "## Upstream sync
+            --body "$(cat <<EOF
+          ## Upstream sync
 
           Merges **${{ steps.check.outputs.behind }}** new commits from [upstream/main](https://github.com/koala73/worldmonitor).
 
           **Automated** — runs every Sunday at 00:00 UTC.
-          Nordic config changes are isolated to \`src/config/\`, \`api/rss-proxy.js\`, and \`server/worldmonitor/news/v1/_shared.ts\`, so conflicts should be rare.
+          ${VALIDATION_SECTION}
 
-          Please review before merging." \
+          ### Protected files (.gitattributes merge=ours)
+          - \`src/config/variants/nordic.ts\` — kept as-is
+          - \`src/locales/nb.json\` — kept as-is
+          - \`.github/workflows/sync-upstream.yml\` — kept as-is
+
+          ### Shared files (validated post-merge)
+          - \`src/config/feeds.ts\` — Nordic variant gate
+          - \`server/worldmonitor/news/v1/_shared.ts\` — NordicMonitor persona
+          - \`src/services/i18n.ts\` — nb/sv locale mappings
+          - \`src/config/panels.ts\` — Nordic panel config
+          - \`api/rss-proxy.js\` — Nordic proxy domains
+
+          Please review before merging.
+          EOF
+          )" \
             --base main \
             --head "$SYNC_BRANCH" \
+            --label upstream-sync
+
+      - name: Create issue on merge conflict
+        if: steps.merge.outputs.status == 'conflict'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create \
+            --title "Upstream sync conflict — $SYNC_DATE" \
+            --body "$(cat <<EOF
+          ## Merge conflict with upstream
+
+          The weekly upstream sync found **${{ steps.check.outputs.behind }}** new commits but could not merge cleanly.
+
+          **Conflicting files:** ${{ steps.merge.outputs.conflicts }}
+
+          ### How to resolve
+
+          \`\`\`bash
+          git fetch upstream main
+          git checkout -b chore/sync-upstream-${SYNC_DATE} main
+          git merge upstream/main
+          # Resolve conflicts, keeping Nordic customizations
+          git add .
+          git commit
+          git push origin chore/sync-upstream-${SYNC_DATE}
+          \`\`\`
+
+          Then open a PR from \`chore/sync-upstream-${SYNC_DATE}\` → \`main\`.
+          EOF
+          )" \
             --label upstream-sync

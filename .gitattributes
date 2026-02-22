@@ -1,0 +1,5 @@
+# Nordic-only files — always keep our version on upstream merge conflicts.
+# Requires `git config merge.ours.driver true` (set in sync-upstream workflow).
+src/config/variants/nordic.ts merge=ours
+src/locales/nb.json merge=ours
+.github/workflows/sync-upstream.yml merge=ours
