@@ -3,6 +3,7 @@ import { getCSSColor } from '@/utils';
 import { calculateCII, type CountryScore } from '@/services/country-instability';
 import { t } from '../services/i18n';
 import { h, replaceChildren, rawHtml } from '@/utils/dom-utils';
+import type { ElectionProximity } from '@/config/elections';
 
 export class CIIPanel extends Panel {
   private scores: CountryScore[] = [];
@@ -50,6 +51,32 @@ export class CIIPanel extends Panel {
     return h('span', { className: 'trend-stable' }, '→');
   }
 
+  private buildElectionBadge(proximity?: ElectionProximity, daysUntil?: number | null): HTMLElement | null {
+    if (!proximity || proximity === 'none') return null;
+    
+    const colors: Record<ElectionProximity, string> = {
+      'election-day': '#ff4444',
+      'imminent': '#ff8800',
+      'elevated': '#ffaa00',
+      'awareness': '#88aa44',
+      'none': 'transparent',
+    };
+    
+    const labels: Record<ElectionProximity, string> = {
+      'election-day': '🗳️ TODAY',
+      'imminent': `🗳️ ${daysUntil}d`,
+      'elevated': `🗳️ ${daysUntil}d`,
+      'awareness': `🗳️ ${daysUntil}d`,
+      'none': '',
+    };
+    
+    return h('span', {
+      className: 'cii-election-badge',
+      style: `background: ${colors[proximity]};`,
+      title: `Election in ${daysUntil ?? 0} days`,
+    }, labels[proximity]);
+  }
+
   private buildCountry(country: CountryScore): HTMLElement {
     const color = this.getLevelColor(country.level);
     const emoji = this.getLevelEmoji(country.level);
@@ -61,14 +88,25 @@ export class CIIPanel extends Panel {
     });
     shareBtn.appendChild(rawHtml(CIIPanel.SHARE_SVG));
 
+    const electionBadge = this.buildElectionBadge(country.electionProximity, country.electionDaysUntil);
+
+    const headerChildren: (HTMLElement | string)[] = [
+      h('span', { className: 'cii-emoji' }, emoji),
+      h('span', { className: 'cii-name' }, country.name),
+    ];
+    
+    if (electionBadge) {
+      headerChildren.push(electionBadge);
+    }
+    
+    headerChildren.push(
+      h('span', { className: 'cii-score' }, String(country.score)),
+      this.buildTrendArrow(country.trend, country.change24h),
+      shareBtn,
+    );
+
     return h('div', { className: 'cii-country', dataset: { code: country.code } },
-      h('div', { className: 'cii-header' },
-        h('span', { className: 'cii-emoji' }, emoji),
-        h('span', { className: 'cii-name' }, country.name),
-        h('span', { className: 'cii-score' }, String(country.score)),
-        this.buildTrendArrow(country.trend, country.change24h),
-        shareBtn,
-      ),
+      h('div', { className: 'cii-header' }, ...headerChildren),
       h('div', { className: 'cii-bar-container' },
         h('div', { className: 'cii-bar', style: `width: ${country.score}%; background: ${color};` }),
       ),

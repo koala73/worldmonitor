@@ -72,6 +72,24 @@ export { GAMMA_IRRADIATORS } from './irradiators';
 export { PIPELINES, PIPELINE_COLORS } from './pipelines';
 export { PORTS } from './ports';
 export { MONITORED_AIRPORTS, FAA_AIRPORTS } from './airports';
+
+// Election Calendar - used for CII scoring boost
+export {
+  ELECTIONS_2026_2027,
+  ELECTION_CII_BOOST,
+  SIGNIFICANCE_MULTIPLIER,
+  getElectionCIIBoost,
+  getUpcomingElections,
+  getCountryElections,
+  getElectionProximity,
+  getDaysUntilElection,
+  formatElectionLabel,
+  getAllElectionsSorted,
+  type Election,
+  type ElectionType,
+  type ElectionSignificance,
+  type ElectionProximity,
+} from './elections';
 export {
   ENTITY_REGISTRY,
   getEntityById,
