@@ -1,0 +1,77 @@
+# Keeps nordic variant 100% current with zero manual work.
+# Fetches upstream/main every Sunday and opens a PR if there are changes.
+# Safe: never force-pushes, never auto-merges — human reviews the PR.
+
+name: Sync upstream
+
+on:
+  schedule:
+    # Every Sunday at 00:00 UTC
+    - cron: '0 0 * * 0'
+  workflow_dispatch: # Manual trigger from Actions tab
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fork
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Add upstream remote
+        run: |
+          git remote add upstream https://github.com/koala73/worldmonitor.git || true
+          git fetch upstream main
+
+      - name: Check for new upstream commits
+        id: check
+        run: |
+          BEHIND=$(git rev-list --count HEAD..upstream/main)
+          echo "behind=$BEHIND" >> "$GITHUB_OUTPUT"
+          if [ "$BEHIND" -eq 0 ]; then
+            echo "Already up to date with upstream/main"
+          else
+            echo "$BEHIND new commits from upstream"
+          fi
+
+      - name: Create sync branch and merge upstream
+        if: steps.check.outputs.behind != '0'
+        run: |
+          DATE=$(date +%Y-%m-%d)
+          BRANCH="chore/sync-upstream-${DATE}"
+          git checkout -b "$BRANCH"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git merge upstream/main --no-edit || {
+            echo "::warning::Merge conflict detected — resolve manually"
+            git merge --abort
+            exit 1
+          }
+          git push origin "$BRANCH"
+          echo "SYNC_BRANCH=$BRANCH" >> "$GITHUB_ENV"
+          echo "SYNC_DATE=$DATE" >> "$GITHUB_ENV"
+
+      - name: Open pull request
+        if: steps.check.outputs.behind != '0'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ env.SYNC_BRANCH }}
+          base: main
+          title: "chore: sync upstream ${{ env.SYNC_DATE }}"
+          body: |
+            ## Upstream sync
+
+            Merges **${{ steps.check.outputs.behind }}** new commits from [upstream/main](https://github.com/koala73/worldmonitor).
+
+            **Automated** — runs every Sunday at 00:00 UTC.
+            Nordic config changes are isolated to `src/config/`, `api/rss-proxy.js`, and `server/worldmonitor/news/v1/_shared.ts`, so conflicts should be rare.
+
+            Please review before merging.
+          labels: upstream-sync
+          delete-branch: true

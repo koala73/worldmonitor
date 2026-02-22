@@ -15,19 +15,6 @@ export * from '../military';
 export * from '../airports';
 export * from '../entities';
 
-// Nordic-focused feeds (full feeds + dedicated nordic category)
-export {
-  SOURCE_TIERS,
-  getSourceTier,
-  SOURCE_TYPES,
-  getSourceType,
-  getSourcePropagandaRisk,
-  ALERT_KEYWORDS,
-  ALERT_EXCLUSIONS,
-  type SourceRiskProfile,
-  type SourceType,
-} from '../feeds';
-
 // Panel configuration for Nordic analysis
 export const DEFAULT_PANELS: Record<string, PanelConfig> = {
   map: { name: 'Nordic Map', enabled: true, priority: 1 },

@@ -69,6 +69,8 @@ export const SOURCE_TIERS: Record<string, number> = {
   'E24': 2,
   'Dagens Næringsliv': 2,
   'NTB': 1,
+  'Dagens Industri': 2,
+  'Ny Teknik': 3,
   // Nordic Energy & Defense
   'Teknisk Ukeblad': 3,
   'Energi og Klima': 3,
@@ -325,6 +327,7 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   'NOS Nieuws': 'mainstream', 'NRC': 'mainstream', 'De Telegraaf': 'mainstream',
   'SVT Nyheter': 'mainstream', 'Dagens Nyheter': 'mainstream', 'Svenska Dagbladet': 'mainstream',
   'Expressen': 'mainstream',
+  'Dagens Industri': 'market', 'Ny Teknik': 'tech',
   // Norwegian
   'NRK Nyheter': 'mainstream', 'Aftenposten': 'mainstream', 'VG': 'mainstream',
   'E24': 'market', 'Dagens Næringsliv': 'market', 'NTB': 'wire',
@@ -981,6 +984,7 @@ const NORDIC_FEEDS: Record<string, Feed[]> = {
     { name: 'High North News', url: rss('https://www.highnorthnews.com/en/rss.xml') },
     { name: 'The Barents Observer', url: rss('https://thebarentsobserver.com/en/rss.xml') },
     { name: 'Altinget.no', url: rss('https://www.altinget.no/rss'), lang: 'nb' },
+    { name: 'NTB', url: rss('https://news.google.com/rss/search?q=site:ntb.no+when:2d&hl=nb&gl=NO&ceid=NO:nb'), lang: 'nb' },
     // ── Sweden (sv) — Tier 1-2 ──
     { name: 'SVT Nyheter', url: rss('https://www.svt.se/nyheter/rss.xml'), lang: 'sv' },
     { name: 'Dagens Nyheter', url: rss('https://www.dn.se/rss/senaste-nytt/'), lang: 'sv' },
@@ -1060,6 +1064,7 @@ export const ALERT_KEYWORDS = [
   // Nordic-specific alert keywords
   'Norge', 'Oslo', 'Sverige', 'Stockholm', 'Arktis', 'North Sea',
   'Nord Pool', 'Statnett', 'Equinor', 'Barents', 'Vattenfall', 'Fortum',
+  'SVT', 'NRK',
 ];
 
 // Patterns that indicate non-alert content (lifestyle, entertainment, etc.)
