@@ -4,11 +4,26 @@
 
 declare const process: { env: Record<string, string | undefined> };
 
+import { CHROME_UA, yahooGate } from '../../../_shared/constants';
+
 // ========================================================================
 // Constants
 // ========================================================================
 
 export const UPSTREAM_TIMEOUT_MS = 10_000;
+
+const delay = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
+
+export async function fetchYahooQuotesBatch(
+  symbols: string[],
+): Promise<Map<string, { price: number; change: number; sparkline: number[] }>> {
+  const results = new Map<string, { price: number; change: number; sparkline: number[] }>();
+  for (let i = 0; i < symbols.length; i++) {
+    const q = await fetchYahooQuote(symbols[i]!);
+    if (q) results.set(symbols[i]!, q);
+  }
+  return results;
+}
 
 // Yahoo-only symbols: indices and futures not on Finnhub free tier
 export const YAHOO_ONLY_SYMBOLS = new Set([
@@ -61,7 +76,7 @@ export async function fetchFinnhubQuote(
   try {
     const url = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${apiKey}`;
     const resp = await fetch(url, {
-      headers: { Accept: 'application/json' },
+      headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
     if (!resp.ok) return null;
@@ -78,15 +93,21 @@ export async function fetchFinnhubQuote(
 // ========================================================================
 // Yahoo Finance quote fetcher
 // ========================================================================
+// TODO: Yahoo v8 chart API aggressively rate-limits (429) at the IP level.
+// When user has a WorldMonitor API key, fall back to cloud relay through
+// worldmonitor.app instead of direct Yahoo calls. Also evaluate alternative
+// free finance APIs (Alpha Vantage, Twelve Data, or Financial Modeling Prep).
+// ========================================================================
 
 export async function fetchYahooQuote(
   symbol: string,
 ): Promise<{ price: number; change: number; sparkline: number[] } | null> {
   try {
+    await yahooGate();
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`;
     const resp = await fetch(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'User-Agent': CHROME_UA,
       },
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
@@ -117,17 +138,19 @@ export async function fetchYahooQuote(
 export async function fetchCoinGeckoMarkets(
   ids: string[],
 ): Promise<CoinGeckoMarketItem[]> {
-  try {
-    const url = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids.join(',')}&order=market_cap_desc&sparkline=true&price_change_percentage=24h`;
-    const resp = await fetch(url, {
-      headers: { Accept: 'application/json' },
-      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-    });
-    if (!resp.ok) return [];
-
-    const data = await resp.json();
-    return Array.isArray(data) ? data : [];
-  } catch {
-    return [];
+  const url = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids.join(',')}&order=market_cap_desc&sparkline=true&price_change_percentage=24h`;
+  const resp = await fetch(url, {
+    headers: { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' },
+    signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+  });
+  if (!resp.ok) {
+    const body = await resp.text().catch(() => '');
+    throw new Error(`CoinGecko HTTP ${resp.status}: ${body.slice(0, 200)}`);
   }
+
+  const data = await resp.json();
+  if (!Array.isArray(data)) {
+    throw new Error(`CoinGecko returned non-array: ${JSON.stringify(data).slice(0, 200)}`);
+  }
+  return data;
 }
