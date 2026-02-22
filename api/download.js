@@ -64,10 +64,16 @@ export default async function handler(req) {
       return Response.redirect(RELEASES_PAGE, 302);
     }
 
+    // Validate redirect URL is a GitHub download
+    const downloadUrl = String(asset.browser_download_url || '');
+    if (!downloadUrl.startsWith('https://github.com/')) {
+      return Response.redirect(RELEASES_PAGE, 302);
+    }
+
     return new Response(null, {
       status: 302,
       headers: {
-        'Location': asset.browser_download_url,
+        'Location': downloadUrl,
         'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=60',
       },
     });

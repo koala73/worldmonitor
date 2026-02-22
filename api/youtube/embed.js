@@ -13,7 +13,6 @@ function sanitizeVideoId(value) {
 const ALLOWED_ORIGINS = [
   /^https:\/\/(.*\.)?worldmonitor\.app$/,
   /^https:\/\/worldmonitor-[a-z0-9-]+-elie-habib-projects\.vercel\.app$/,
-  /^https:\/\/worldmonitor-[a-z0-9-]+\.vercel\.app$/,
   /^https?:\/\/localhost(:\d+)?$/,
   /^https?:\/\/127\.0\.0\.1(:\d+)?$/,
   /^tauri:\/\/localhost$/,
@@ -88,12 +87,12 @@ export default async function handler(request) {
         playerVars:{autoplay:${autoplay},mute:${mute},playsinline:1,rel:0,controls:1,modestbranding:1,enablejsapi:1,origin:${JSON.stringify(origin)},widget_referrer:${JSON.stringify(origin)}},
         events:{
           onReady:function(){
-            window.parent.postMessage({type:'yt-ready'},'*');
+            window.parent.postMessage({type:'yt-ready'},${JSON.stringify(origin)});
             if(${autoplay}===1){player.playVideo()}
           },
-          onError:function(e){window.parent.postMessage({type:'yt-error',code:e.data},'*')},
+          onError:function(e){window.parent.postMessage({type:'yt-error',code:e.data},${JSON.stringify(origin)})},
           onStateChange:function(e){
-            window.parent.postMessage({type:'yt-state',state:e.data},'*');
+            window.parent.postMessage({type:'yt-state',state:e.data},${JSON.stringify(origin)});
             if(e.data===1||e.data===3){hideOverlay();started=true}
           }
         }
@@ -103,7 +102,9 @@ export default async function handler(request) {
       if(player&&player.playVideo){player.playVideo();player.unMute();hideOverlay()}
     });
     setTimeout(function(){if(!started)overlay.classList.remove('hidden')},3000);
+    var allowedOrigin=${JSON.stringify(origin)};
     window.addEventListener('message',function(e){
+      if(e.origin!==allowedOrigin)return;
       if(!player||!player.getPlayerState)return;
       var m=e.data;if(!m||!m.type)return;
       switch(m.type){

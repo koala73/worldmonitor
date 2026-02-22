@@ -54,6 +54,7 @@ export function replaceChildren(el: Element, ...children: DomChild[]): void {
   el.appendChild(frag);
 }
 
+/** @internal SECURITY: Only use with trusted, hardcoded HTML strings. Never pass user/external data. */
 export function rawHtml(html: string): DocumentFragment {
   const tpl = document.createElement('template');
   tpl.innerHTML = html;
@@ -63,7 +64,7 @@ export function rawHtml(html: string): DocumentFragment {
 const SAFE_TAGS = new Set([
   'strong', 'em', 'b', 'i', 'br', 'p', 'ul', 'ol', 'li', 'span', 'div', 'a',
 ]);
-const SAFE_ATTRS = new Set(['style', 'class', 'href', 'target', 'rel']);
+const SAFE_ATTRS = new Set(['class', 'href', 'target', 'rel']);
 
 /** Like rawHtml() but strips tags and attributes not in the allowlist. */
 export function safeHtml(html: string): DocumentFragment {

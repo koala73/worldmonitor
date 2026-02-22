@@ -23,6 +23,14 @@ export default async function handler(request) {
     });
   }
 
+  // Validate channel parameter to prevent path traversal
+  if (!/^@?[A-Za-z0-9_.\-]{1,100}$/.test(channel)) {
+    return new Response(JSON.stringify({ error: 'Invalid channel parameter' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
   try {
     // Try to fetch the channel's live page
     const channelHandle = channel.startsWith('@') ? channel : `@${channel}`;
