@@ -58,20 +58,19 @@ jobs:
 
       - name: Open pull request
         if: steps.check.outputs.behind != '0'
-        uses: peter-evans/create-pull-request@v7
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          branch: ${{ env.SYNC_BRANCH }}
-          base: main
-          title: "chore: sync upstream ${{ env.SYNC_DATE }}"
-          body: |
-            ## Upstream sync
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr create \
+            --title "chore: sync upstream $SYNC_DATE" \
+            --body "## Upstream sync
 
-            Merges **${{ steps.check.outputs.behind }}** new commits from [upstream/main](https://github.com/koala73/worldmonitor).
+          Merges **${{ steps.check.outputs.behind }}** new commits from [upstream/main](https://github.com/koala73/worldmonitor).
 
-            **Automated** — runs every Sunday at 00:00 UTC.
-            Nordic config changes are isolated to `src/config/`, `api/rss-proxy.js`, and `server/worldmonitor/news/v1/_shared.ts`, so conflicts should be rare.
+          **Automated** — runs every Sunday at 00:00 UTC.
+          Nordic config changes are isolated to \`src/config/\`, \`api/rss-proxy.js\`, and \`server/worldmonitor/news/v1/_shared.ts\`, so conflicts should be rare.
 
-            Please review before merging.
-          labels: upstream-sync
-          delete-branch: true
+          Please review before merging." \
+            --base main \
+            --head "$SYNC_BRANCH" \
+            --label upstream-sync

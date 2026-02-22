@@ -1061,10 +1061,12 @@ export const ALERT_KEYWORDS = [
   'airstrike', 'drone strike', 'troops deployed', 'armed conflict', 'bombing', 'casualties',
   'ceasefire', 'peace treaty', 'nato', 'coup', 'martial law',
   'assassination', 'terrorist', 'terror attack', 'cyber attack', 'hostage', 'evacuation order',
-  // Nordic-specific alert keywords
-  'Norge', 'Oslo', 'Sverige', 'Stockholm', 'Arktis', 'North Sea',
-  'Nord Pool', 'Statnett', 'Equinor', 'Barents', 'Vattenfall', 'Fortum',
-  'SVT', 'NRK',
+  // Nordic-specific alert keywords (only active for nordic variant)
+  ...(SITE_VARIANT === 'nordic' ? [
+    'Norge', 'Oslo', 'Sverige', 'Stockholm', 'Arktis', 'North Sea',
+    'Nord Pool', 'Statnett', 'Equinor', 'Barents', 'Vattenfall', 'Fortum',
+    'SVT', 'NRK',
+  ] : []),
 ];
 
 // Patterns that indicate non-alert content (lifestyle, entertainment, etc.)

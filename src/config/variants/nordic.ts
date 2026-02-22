@@ -15,7 +15,8 @@ export * from '../military';
 export * from '../airports';
 export * from '../entities';
 
-// Panel configuration for Nordic analysis
+// Standalone panel config for Nordic — intentionally a minimal subset (20 panels).
+// The main app uses NORDIC_PANELS from panels.ts (37 panels) via the SITE_VARIANT ternary.
 export const DEFAULT_PANELS: Record<string, PanelConfig> = {
   map: { name: 'Nordic Map', enabled: true, priority: 1 },
   'live-news': { name: 'Nordic Headlines', enabled: true, priority: 1 },
