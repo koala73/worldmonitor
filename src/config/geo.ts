@@ -160,8 +160,8 @@ export const INTEL_HOTSPOTS: Hotspot[] = [
     escalationTrend: 'stable',
     escalationIndicators: ['Taiwan Strait exercises', 'South China Sea militarization', 'Tech decoupling', 'Xi third term'],
     history: {
-      lastMajorEvent: 'Xi unprecedented third term',
-      lastMajorEventDate: '2022-10-22',
+      lastMajorEvent: 'PLA Joint Sword-2025A exercises around Taiwan',
+      lastMajorEventDate: '2025-01-06',
       precedentCount: 3,
       precedentDescription: 'Tiananmen 1989, Hong Kong crackdown 2020, COVID lockdowns 2022',
       cyclicalRisk: 'Party Congress (every 5 years), Tiananmen anniversary (June 4)',
@@ -183,8 +183,8 @@ export const INTEL_HOTSPOTS: Hotspot[] = [
     escalationTrend: 'stable',
     escalationIndicators: ['Active combat operations', 'Western weapons deliveries', 'Drone warfare escalation', 'Nuclear plant risks'],
     history: {
-      lastMajorEvent: 'Russian full invasion',
-      lastMajorEventDate: '2022-02-24',
+      lastMajorEvent: 'Ukraine Kursk incursion',
+      lastMajorEventDate: '2024-08-06',
       precedentCount: 2,
       precedentDescription: 'Crimea annexation 2014, Donbas war 2014-2022',
       cyclicalRisk: 'Spring/summer offensive season, Winter energy attacks',
@@ -206,8 +206,8 @@ export const INTEL_HOTSPOTS: Hotspot[] = [
     escalationTrend: 'stable',
     escalationIndicators: ['PLA exercises around Taiwan', 'US arms sales', 'TSMC Arizona fab', 'DPP governance'],
     history: {
-      lastMajorEvent: 'Pelosi Taiwan visit',
-      lastMajorEventDate: '2022-08-02',
+      lastMajorEvent: 'PLA Joint Sword-2024B exercises',
+      lastMajorEventDate: '2024-10-14',
       precedentCount: 3,
       precedentDescription: '1954-55 Strait Crisis, 1995-96 missile crisis, 2022 exercises',
       cyclicalRisk: 'US-Taiwan political visits, PRC National Day (Oct 1)',

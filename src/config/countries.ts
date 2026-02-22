@@ -26,4 +26,9 @@ export const TIER1_COUNTRIES: Record<string, string> = {
   VE: 'Venezuela',
   BR: 'Brazil',
   AE: 'United Arab Emirates',
+  AF: 'Afghanistan',
+  SD: 'Sudan',
+  SO: 'Somalia',
+  ET: 'Ethiopia',
+  IQ: 'Iraq',
 };

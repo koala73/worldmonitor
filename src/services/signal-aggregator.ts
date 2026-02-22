@@ -350,6 +350,17 @@ class SignalAggregator {
     // Ukraine — must come before Russia
     if (lat >= 44 && lat <= 52 && lon >= 22 && lon <= 40) return 'UA';
 
+    // Iraq — must come before Iran and Saudi
+    if (lat >= 29 && lat <= 37 && lon >= 39 && lon <= 49) return 'IQ';
+    // Afghanistan — must come before Iran
+    if (lat >= 29 && lat <= 39 && lon >= 60 && lon <= 75) return 'AF';
+    // Ethiopia
+    if (lat >= 3 && lat <= 15 && lon >= 33 && lon <= 48) return 'ET';
+    // Somalia
+    if (lat >= -2 && lat <= 12 && lon >= 41 && lon <= 51) return 'SO';
+    // Sudan
+    if (lat >= 8 && lat <= 22 && lon >= 22 && lon <= 39) return 'SD';
+
     // Large regions last
     // Iran — lon narrowed to avoid overlap with Pakistan
     if (lat >= 25 && lat <= 40 && lon >= 44 && lon <= 63) return 'IR';

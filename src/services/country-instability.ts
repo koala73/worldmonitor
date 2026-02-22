@@ -142,6 +142,11 @@ const BASELINE_RISK: Record<string, number> = {
   US: 12,   // FSI ~40/120, polarization
   GB: 12,   // FSI ~33/120
   DE: 10,   // FSI ~30/120
+  SD: 88,   // FSI ~108/120, active civil war
+  SO: 85,   // FSI ~112/120, failed state
+  AF: 78,   // FSI ~102/120, Taliban rule
+  ET: 65,   // FSI ~95/120, Tigray aftermath
+  IQ: 62,   // FSI ~90/120, militia fragmentation
 };
 
 // Event significance multipliers
@@ -170,6 +175,11 @@ const EVENT_MULTIPLIER: Record<string, number> = {
   VE: 1.8,  // Suppressed
   BR: 0.6,  // Large democracy, many events
   AE: 1.5,  // Events rare, significant when occur
+  SD: 0.8,  // Civil war, events expected
+  SO: 0.7,  // Failed state, events expected
+  AF: 1.5,  // Taliban suppression
+  ET: 1.0,  // Mixed media environment
+  IQ: 0.9,  // Frequent militia activity
 };
 
 const countryDataMap = new Map<string, CountryData>();
@@ -278,8 +288,8 @@ export function ingestDisplacementForCII(countries: CountryDisplacement[]): void
 const ZONE_COUNTRY_MAP: Record<string, string[]> = {
   'Ukraine': ['UA'], 'Middle East': ['IR', 'IL', 'SA', 'SY', 'YE'],
   'South Asia': ['PK', 'IN'], 'Myanmar': ['MM'],
-  'Taiwan Strait': ['TW', 'CN'], 'Horn of Africa': ['YE', 'SA'],
-  'Sahel': ['MM'], 'Central Africa': ['MM'],
+  'Taiwan Strait': ['TW', 'CN'], 'Horn of Africa': ['ET', 'SO', 'YE'],
+  'Sahel': ['SD', 'FR'], 'Central Africa': ['SD'],
   'Mediterranean': ['TR', 'IL', 'FR'], 'Central Asia': ['RU', 'CN'],
   'California': ['US'], 'Amazon': ['BR'], 'Caribbean': ['VE'],
   'Australia': [], 'Southern Africa': [],
@@ -367,7 +377,8 @@ function trackHotspotActivity(lat: number, lon: number, weight: number = 1): voi
     const dist = haversineKm(lat, lon, zoneLat, zoneLon);
     if (dist < 300) {
       const zoneCountries: Record<string, string[]> = {
-        ukraine: ['UA', 'RU'], gaza: ['IL', 'IR'], sudan: ['SA'], myanmar: ['MM'],
+        ukraine: ['UA', 'RU'], gaza: ['IL', 'IR'], sudan: ['SD', 'SA'], myanmar: ['MM'],
+        yemen_redsea: ['YE', 'SA'], south_lebanon: ['IL', 'SY'],
       };
       const countries = zoneCountries[zone.id] || [];
       for (const code of countries) {

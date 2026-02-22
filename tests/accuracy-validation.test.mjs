@@ -436,4 +436,94 @@ describe('Geo config accuracy', () => {
     // Find beirut hotspot keywords
     assert.ok(geo.includes("'qassem'"), 'Missing qassem in Beirut keywords');
   });
+
+  it('Beijing lastMajorEventDate is 2024 or later', () => {
+    const match = geo.match(/id:\s*'beijing'[\s\S]*?lastMajorEventDate:\s*'(\d{4})/);
+    assert.ok(match, 'Could not find Beijing lastMajorEventDate');
+    assert.ok(Number(match[1]) >= 2024, `Beijing event date too old: ${match[1]}`);
+  });
+
+  it('Kyiv lastMajorEventDate is 2024 or later', () => {
+    const match = geo.match(/id:\s*'kyiv'[\s\S]*?lastMajorEventDate:\s*'(\d{4})/);
+    assert.ok(match, 'Could not find Kyiv lastMajorEventDate');
+    assert.ok(Number(match[1]) >= 2024, `Kyiv event date too old: ${match[1]}`);
+  });
+
+  it('Taipei lastMajorEventDate is 2024 or later', () => {
+    const match = geo.match(/id:\s*'taipei'[\s\S]*?lastMajorEventDate:\s*'(\d{4})/);
+    assert.ok(match, 'Could not find Taipei lastMajorEventDate');
+    assert.ok(Number(match[1]) >= 2024, `Taipei event date too old: ${match[1]}`);
+  });
+});
+
+// ========================================================================
+// 11. TIER1 coverage and zone mapping accuracy
+// ========================================================================
+
+describe('TIER1 country coverage', () => {
+  const countries = readSrc('src/config/countries.ts');
+  const cii = readSrc('src/services/country-instability.ts');
+  const serverShared = readSrc('server/worldmonitor/intelligence/v1/_shared.ts');
+  const serverRisk = readSrc('server/worldmonitor/intelligence/v1/get-risk-scores.ts');
+  const agg = readSrc('src/services/signal-aggregator.ts');
+
+  for (const code of ['AF', 'SD', 'SO', 'ET', 'IQ']) {
+    it(`TIER1_COUNTRIES includes ${code}`, () => {
+      assert.ok(countries.includes(`${code}:`), `Missing ${code} in TIER1_COUNTRIES`);
+    });
+
+    it(`BASELINE_RISK includes ${code}`, () => {
+      assert.ok(cii.includes(`${code}:`), `Missing ${code} in client BASELINE_RISK`);
+    });
+
+    it(`server TIER1 includes ${code}`, () => {
+      assert.ok(serverShared.includes(`${code}:`), `Missing ${code} in server TIER1`);
+    });
+
+    it(`server BASELINE_RISK includes ${code}`, () => {
+      assert.ok(serverRisk.includes(`${code}:`), `Missing ${code} in server BASELINE_RISK`);
+    });
+
+    it(`signal aggregator has ${code} bounding box`, () => {
+      const methodStart = agg.indexOf('coordsToCountry');
+      const methodBody = agg.slice(methodStart);
+      assert.ok(methodBody.includes(`return '${code}'`), `Missing ${code} bounding box in coordsToCountry`);
+    });
+  }
+});
+
+describe('ZONE_COUNTRY_MAP accuracy', () => {
+  const cii = readSrc('src/services/country-instability.ts');
+
+  it('Sahel does NOT map to MM', () => {
+    const match = cii.match(/'Sahel':\s*\[([^\]]+)\]/);
+    assert.ok(match, 'Could not find Sahel zone mapping');
+    assert.ok(!match[1].includes("'MM'"), 'Sahel should not map to Myanmar');
+  });
+
+  it('Central Africa does NOT map to MM', () => {
+    const match = cii.match(/'Central Africa':\s*\[([^\]]+)\]/);
+    assert.ok(match, 'Could not find Central Africa zone mapping');
+    assert.ok(!match[1].includes("'MM'"), 'Central Africa should not map to Myanmar');
+  });
+
+  it('Horn of Africa includes ET (Ethiopia)', () => {
+    const match = cii.match(/'Horn of Africa':\s*\[([^\]]+)\]/);
+    assert.ok(match, 'Could not find Horn of Africa zone mapping');
+    assert.ok(match[1].includes("'ET'"), 'Horn of Africa should include Ethiopia');
+  });
+
+  it('zoneCountries includes yemen_redsea', () => {
+    assert.ok(cii.includes('yemen_redsea:'), 'Missing yemen_redsea in conflict zone countries');
+  });
+
+  it('zoneCountries includes south_lebanon', () => {
+    assert.ok(cii.includes('south_lebanon:'), 'Missing south_lebanon in conflict zone countries');
+  });
+
+  it('sudan conflict zone maps to SD', () => {
+    const match = cii.match(/sudan:\s*\[([^\]]+)\]/);
+    assert.ok(match, 'Could not find sudan zone mapping');
+    assert.ok(match[1].includes("'SD'"), 'Sudan zone should map to SD');
+  });
 });
