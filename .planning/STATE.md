@@ -5,22 +5,22 @@
 See: .planning/PROJECT.md (updated 2026-02-22)
 
 **Core value:** Every piece of content on the dashboard makes the viewer feel genuinely better about humanity
-**Current focus:** Phase 2 complete - Curated Content Pipeline
+**Current focus:** Phase 2 complete - Curated Content Pipeline (all 3 plans done)
 
 ## Current Position
 
 Phase: 2 of 9 (Curated Content Pipeline) -- COMPLETE
-Plan: 2 of 2 in current phase (02-02 complete)
+Plan: 3 of 3 in current phase (02-03 complete)
 Status: Phase Complete
-Last activity: 2026-02-22 -- Completed 02-02-PLAN.md (Content Category Classifier)
+Last activity: 2026-02-22 -- Completed 02-03-PLAN.md (Classifier Wiring Gap Closure)
 
-Progress: [#####.....] 56%
+Progress: [######....] 67%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 5
-- Average duration: 25 min
+- Total plans completed: 6
+- Average duration: 22 min
 - Total execution time: 2.1 hours
 
 **By Phase:**
@@ -28,11 +28,11 @@ Progress: [#####.....] 56%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01 | 3 | 120 min | 40 min |
-| 02 | 2 | 6 min | 3 min |
+| 02 | 3 | 7 min | 2 min |
 
 **Recent Trend:**
-- Last 5 plans: 2m, 113m, 3m, 3m
-- Trend: Phase 2 consistently fast -- config + classifier work, no complex debugging
+- Last 5 plans: 113m, 3m, 3m, 1m
+- Trend: Phase 2 consistently fast -- config + classifier + wiring work, no complex debugging
 
 *Updated after each plan completion*
 
@@ -61,6 +61,8 @@ Recent decisions affecting current work:
 - [02-02]: Priority-ordered keyword tuples (Array<[string, category]>) guarantee evaluation order -- specific keywords checked before generic.
 - [02-02]: Default category is 'humanity-kindness' for curated positive sources that don't match any keyword.
 - [02-02]: Source-based pre-mapping for GNN category feeds (fast path) before keyword scan (slow path).
+- [02-03]: In-place for..of mutation in loadNewsCategory() since items array already referenced by closures.
+- [02-03]: Classification after fetchCategoryFeeds completes (not in onBatch callback) -- final render uses complete set.
 
 ### Pending Todos
 
@@ -75,5 +77,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-22
-Stopped at: Completed 02-02-PLAN.md (Content Category Classifier) -- Phase 2 COMPLETE
-Resume file: .planning/phases/02-curated-content-pipeline/02-02-SUMMARY.md
+Stopped at: Completed 02-03-PLAN.md (Classifier Wiring Gap Closure) -- Phase 2 fully COMPLETE (3/3 plans)
+Resume file: .planning/phases/02-curated-content-pipeline/02-03-SUMMARY.md

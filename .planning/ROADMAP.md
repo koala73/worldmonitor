@@ -52,9 +52,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 02-01-PLAN.md -- Positive RSS feed configuration and GDELT tone filter extension (FEED-01, FEED-03)
-- [ ] 02-02-PLAN.md -- Content category classifier, type extension, and feed wiring verification (FEED-04)
-- [ ] 02-03-PLAN.md -- Gap closure: wire classifyNewsItem into ingestion pipeline (FEED-04)
+- [x] 02-01-PLAN.md -- Positive RSS feed configuration and GDELT tone filter extension (FEED-01, FEED-03)
+- [x] 02-02-PLAN.md -- Content category classifier, type extension, and feed wiring verification (FEED-04)
+- [x] 02-03-PLAN.md -- Gap closure: wire classifyNewsItem into ingestion pipeline (FEED-04)
 
 ### Phase 3: Positive News Feed & Quality Pipeline
 **Goal**: Users see a scrolling, real-time positive news feed as the primary content panel, with category filtering and ML-backed quality assurance
