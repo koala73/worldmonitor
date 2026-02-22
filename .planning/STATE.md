@@ -5,34 +5,34 @@
 See: .planning/PROJECT.md (updated 2026-02-22)
 
 **Core value:** Every piece of content on the dashboard makes the viewer feel genuinely better about humanity
-**Current focus:** Phase 2 in progress - Curated Content Pipeline
+**Current focus:** Phase 2 complete - Curated Content Pipeline
 
 ## Current Position
 
-Phase: 2 of 9 (Curated Content Pipeline)
-Plan: 1 of 2 in current phase (02-01 complete)
-Status: In Progress
-Last activity: 2026-02-22 -- Completed 02-01-PLAN.md (Positive Feeds & GDELT Tone Filtering)
+Phase: 2 of 9 (Curated Content Pipeline) -- COMPLETE
+Plan: 2 of 2 in current phase (02-02 complete)
+Status: Phase Complete
+Last activity: 2026-02-22 -- Completed 02-02-PLAN.md (Content Category Classifier)
 
-Progress: [####......] 44%
+Progress: [#####.....] 56%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4
-- Average duration: 31 min
-- Total execution time: 2.05 hours
+- Total plans completed: 5
+- Average duration: 25 min
+- Total execution time: 2.1 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01 | 3 | 120 min | 40 min |
-| 02 | 1 | 3 min | 3 min |
+| 02 | 2 | 6 min | 3 min |
 
 **Recent Trend:**
-- Last 5 plans: 5m, 2m, 113m, 3m
-- Trend: 02-01 fast -- straightforward config + proto extension, no CSS debugging
+- Last 5 plans: 2m, 113m, 3m, 3m
+- Trend: Phase 2 consistently fast -- config + classifier work, no complex debugging
 
 *Updated after each plan completion*
 
@@ -58,6 +58,9 @@ Recent decisions affecting current work:
 - [02-01]: 8 feeds from 4 verified positive sources (GNN, Positive.News, Reasons to be Cheerful, Optimist Daily) -- unverified sources excluded.
 - [02-01]: GDELT tone_filter appended server-side to query string, sort param replaces hardcoded 'date' -- backward compatible with empty defaults.
 - [02-01]: Existing fetchGdeltArticles() passes empty toneFilter/sort to satisfy generated type requirements without changing behavior.
+- [02-02]: Priority-ordered keyword tuples (Array<[string, category]>) guarantee evaluation order -- specific keywords checked before generic.
+- [02-02]: Default category is 'humanity-kindness' for curated positive sources that don't match any keyword.
+- [02-02]: Source-based pre-mapping for GNN category feeds (fast path) before keyword scan (slow path).
 
 ### Pending Todos
 
@@ -72,5 +75,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-22
-Stopped at: Completed 02-01-PLAN.md (Positive Feeds & GDELT Tone Filtering)
-Resume file: .planning/phases/02-curated-content-pipeline/02-01-SUMMARY.md
+Stopped at: Completed 02-02-PLAN.md (Content Category Classifier) -- Phase 2 COMPLETE
+Resume file: .planning/phases/02-curated-content-pipeline/02-02-SUMMARY.md
