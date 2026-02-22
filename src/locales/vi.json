@@ -679,7 +679,9 @@
         "financialCenters": "Trung tâm Tài chính",
         "centralBanks": "Ngân hàng Trung ương",
         "commodityHubs": "Trung tâm Hàng hóa",
-        "gulfInvestments": "Đầu tư GCC"
+        "gulfInvestments": "Đầu tư GCC",
+        "sanctions": "Lệnh trừng phạt OFAC",
+        "reliefweb": "Báo cáo Khủng hoảng"
       },
       "tooltip": {
         "earthquake": "Động đất",

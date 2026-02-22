@@ -411,7 +411,9 @@
         "financialCenters": "Centros Financeiros",
         "centralBanks": "Bancos Centrais",
         "commodityHubs": "Centros de commodities",
-        "gulfInvestments": "Investimentos do CCG"
+        "gulfInvestments": "Investimentos do CCG",
+        "sanctions": "Sanções OFAC",
+        "reliefweb": "Relatórios de Crise"
       },
       "layersTitle": "Camadas",
       "layerGuide": "Guia de camadas",

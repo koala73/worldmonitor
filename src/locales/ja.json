@@ -702,7 +702,9 @@
         "financialCenters": "金融センター",
         "centralBanks": "中央銀行",
         "commodityHubs": "コモディティハブ",
-        "gulfInvestments": "GCC投資"
+        "gulfInvestments": "GCC投資",
+        "sanctions": "OFAC制裁",
+        "reliefweb": "危機報告"
       },
       "tooltip": {
         "earthquake": "地震",

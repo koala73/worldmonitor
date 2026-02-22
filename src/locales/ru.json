@@ -702,7 +702,9 @@
         "financialCenters": "Финансовые центры",
         "centralBanks": "Центральные банки",
         "commodityHubs": "Сырьевые хабы",
-        "gulfInvestments": "Инвестиции стран Залива"
+        "gulfInvestments": "Инвестиции стран Залива",
+        "sanctions": "Санкции OFAC",
+        "reliefweb": "Кризисные отчёты"
       },
       "tooltip": {
         "earthquake": "Землетрясение",

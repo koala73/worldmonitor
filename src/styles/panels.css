@@ -179,3 +179,81 @@
   width: 100%;
 }
 .wm-dl-toggle:hover { color: var(--text, #e8e8e8); }
+
+/* ----------------------------------------------------------
+   Sanctions Panel
+   ---------------------------------------------------------- */
+.sanctions-search { padding: 0 8px 6px; }
+.sanctions-search-input {
+  width: 100%; padding: 5px 8px; border: 1px solid var(--border);
+  border-radius: 4px; background: var(--surface); color: var(--text);
+  font-size: 11px; outline: none; box-sizing: border-box;
+}
+.sanctions-search-input:focus { border-color: var(--accent); }
+.sanctions-programs { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 8px 8px; }
+.sanctions-program-badge {
+  background: var(--overlay-subtle); border: 1px solid var(--border);
+  color: var(--text-dim); padding: 2px 8px; font-size: 10px; border-radius: 3px;
+  cursor: pointer; transition: all 0.15s;
+}
+.sanctions-program-badge:hover { border-color: var(--text-faint); color: var(--text-secondary); }
+.sanctions-program-badge.active { background: color-mix(in srgb, var(--threat-critical) 10%, transparent); border-color: var(--threat-critical); color: var(--threat-critical); }
+.sanctions-summary { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 8px 8px; }
+.sanctions-country-chip {
+  font-size: 10px; padding: 2px 7px; border-radius: 3px; cursor: default;
+  font-variant-numeric: tabular-nums;
+}
+.sanctions-country-chip.severity-severe { background: color-mix(in srgb, var(--semantic-critical) 15%, transparent); color: var(--semantic-critical); }
+.sanctions-country-chip.severity-high { background: color-mix(in srgb, var(--semantic-high) 12%, transparent); color: var(--semantic-high); }
+.sanctions-country-chip.severity-moderate { background: color-mix(in srgb, var(--semantic-elevated) 10%, transparent); color: var(--semantic-elevated); }
+.sanctions-list { display: flex; flex-direction: column; }
+.sanctions-entity {
+  display: flex; align-items: flex-start; gap: 8px; padding: 5px 8px;
+  border-bottom: 1px solid var(--border-subtle); cursor: default;
+}
+.sanctions-entity:hover { background: var(--surface-hover); }
+.sanctions-entity.severity-severe { border-left: 2px solid var(--semantic-critical); }
+.sanctions-entity.severity-high { border-left: 2px solid var(--semantic-high); }
+.sanctions-entity.severity-moderate { border-left: 2px solid var(--semantic-elevated); }
+.sanctions-entity-icon { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
+.sanctions-entity-info { flex: 1; min-width: 0; }
+.sanctions-entity-name { color: var(--text); font-size: 12px; line-height: 1.3; word-break: break-word; }
+.sanctions-entity-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+.sanctions-entity-country, .sanctions-entity-program, .sanctions-entity-type {
+  font-size: 10px; color: var(--text-muted);
+}
+.sanctions-entity-country { color: var(--text-dim); font-weight: 500; }
+
+/* ----------------------------------------------------------
+   ReliefWeb Crisis Reports Panel
+   ---------------------------------------------------------- */
+.reliefweb-search { padding: 0 8px 6px; }
+.reliefweb-search-input {
+  width: 100%; padding: 5px 8px; border: 1px solid var(--border);
+  border-radius: 4px; background: var(--surface); color: var(--text);
+  font-size: 11px; outline: none; box-sizing: border-box;
+}
+.reliefweb-search-input:focus { border-color: var(--accent); }
+.reliefweb-list { display: flex; flex-direction: column; }
+.reliefweb-report {
+  display: flex; align-items: flex-start; gap: 8px; padding: 6px 8px;
+  border-bottom: 1px solid var(--border-subtle); text-decoration: none;
+  color: inherit; transition: background 0.15s;
+}
+.reliefweb-report:hover { background: var(--surface-hover); }
+.reliefweb-report-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  margin-top: 4px;
+}
+.reliefweb-report-info { flex: 1; min-width: 0; }
+.reliefweb-report-title {
+  color: var(--text); font-size: 12px; line-height: 1.3;
+  word-break: break-word;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.reliefweb-report:hover .reliefweb-report-title { color: var(--accent); }
+.reliefweb-report-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+.reliefweb-report-country { font-size: 10px; color: var(--text-dim); font-weight: 500; }
+.reliefweb-report-type { font-size: 10px; font-weight: 600; }
+.reliefweb-report-date { font-size: 10px; color: var(--text-muted); font-variant-numeric: tabular-nums; }

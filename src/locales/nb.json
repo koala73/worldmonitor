@@ -411,7 +411,9 @@
         "financialCenters": "Finansielle sentre",
         "centralBanks": "sentralbanker",
         "commodityHubs": "Råvarehubber",
-        "gulfInvestments": "GCC-investeringar"
+        "gulfInvestments": "GCC-investeringar",
+        "sanctions": "OFAC-sanksjoner",
+        "reliefweb": "Kriserapporter"
       },
       "layersTitle": "Lag",
       "layerGuide": "Lagveileder",

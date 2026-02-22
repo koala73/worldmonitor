@@ -339,6 +339,7 @@ export class MapComponent {
       'natural', 'weather',                               // natural
       'economic',                                         // economic
       'waterways',                                        // labels
+      'reliefweb',                                        // humanitarian
     ];
     const techLayers: (keyof MapLayers)[] = [
       'cables', 'datacenters', 'outages',                // tech infrastructure
@@ -380,9 +381,10 @@ export class MapComponent {
       centralBanks: 'components.deckgl.layers.centralBanks',
       commodityHubs: 'components.deckgl.layers.commodityHubs',
       gulfInvestments: 'components.deckgl.layers.gulfInvestments',
+      sanctions: 'components.deckgl.layers.sanctions',
+      reliefweb: 'components.deckgl.layers.reliefweb',
     };
     const getLayerLabel = (layer: keyof MapLayers): string => {
-      if (layer === 'sanctions') return t('components.deckgl.layerHelp.labels.sanctions');
       const key = layerLabelKeys[layer];
       return key ? t(key) : layer;
     };

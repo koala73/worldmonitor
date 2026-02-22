@@ -705,7 +705,9 @@
         "financialCenters": "Financial Centers",
         "centralBanks": "Central Banks",
         "commodityHubs": "Commodity Hubs",
-        "gulfInvestments": "GCC Investments"
+        "gulfInvestments": "GCC Investments",
+        "sanctions": "OFAC Sanctions",
+        "reliefweb": "Crisis Reports"
       },
       "tooltip": {
         "earthquake": "Earthquake",

@@ -411,7 +411,9 @@
         "financialCenters": "Financiële centra",
         "centralBanks": "Centrale banken",
         "commodityHubs": "Grondstoffenhubs",
-        "gulfInvestments": "GCC-investeringen"
+        "gulfInvestments": "GCC-investeringen",
+        "sanctions": "OFAC-sancties",
+        "reliefweb": "Crisisrapporten"
       },
       "layersTitle": "Lagen",
       "layerGuide": "Lagengids",

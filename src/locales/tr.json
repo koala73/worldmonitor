@@ -702,7 +702,9 @@
         "financialCenters": "Finans Merkezleri",
         "centralBanks": "Merkez Bankalari",
         "commodityHubs": "Emtia Merkezleri",
-        "gulfInvestments": "GCC Yatirimlari"
+        "gulfInvestments": "GCC Yatirimlari",
+        "sanctions": "OFAC Yaptırımları",
+        "reliefweb": "Kriz Raporları"
       },
       "tooltip": {
         "earthquake": "Deprem",

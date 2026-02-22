@@ -2892,6 +2892,8 @@ export class DeckGLMap {
         { key: 'waterways', label: t('components.deckgl.layers.strategicWaterways'), icon: '&#9875;' },
         { key: 'economic', label: t('components.deckgl.layers.economicCenters'), icon: '&#128176;' },
         { key: 'minerals', label: t('components.deckgl.layers.criticalMinerals'), icon: '&#128142;' },
+        { key: 'sanctions', label: t('components.deckgl.layers.sanctions'), icon: '&#128683;' },
+        { key: 'reliefweb', label: t('components.deckgl.layers.reliefweb'), icon: '&#127973;' },
       ];
 
     toggles.innerHTML = `

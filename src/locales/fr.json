@@ -702,7 +702,9 @@
         "financialCenters": "Centres financiers",
         "centralBanks": "Banques centrales",
         "commodityHubs": "Centres de matières premières",
-        "gulfInvestments": "Investissements du CCG"
+        "gulfInvestments": "Investissements du CCG",
+        "sanctions": "Sanctions OFAC",
+        "reliefweb": "Rapports de crise"
       },
       "tooltip": {
         "earthquake": "Tremblement de terre",

@@ -566,7 +566,9 @@
         "financialCenters": "Finanzzentren",
         "centralBanks": "Zentralbanken",
         "commodityHubs": "Rohstoffzentren",
-        "gulfInvestments": "GCC-Investitionen"
+        "gulfInvestments": "GCC-Investitionen",
+        "sanctions": "OFAC-Sanktionen",
+        "reliefweb": "Krisenberichte"
       },
       "layersTitle": "Schichten",
       "layerGuide": "Ebenenführer",

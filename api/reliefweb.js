@@ -148,3 +148,8 @@ function parseReports(data) {
 
   return reports;
 }
+
+// ── Test helpers (named exports for unit tests) ──
+export function __testParseReports(data) {
+  return parseReports(data);
+}

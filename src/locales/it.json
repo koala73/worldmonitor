@@ -566,7 +566,9 @@
         "financialCenters": "Centri finanziari",
         "centralBanks": "Banche Centrali",
         "commodityHubs": "Hub delle materie prime",
-        "gulfInvestments": "Investimenti del GCC"
+        "gulfInvestments": "Investimenti del GCC",
+        "sanctions": "Sanzioni OFAC",
+        "reliefweb": "Rapporti di crisi"
       },
       "layersTitle": "Livelli",
       "layerGuide": "Guida ai livelli",

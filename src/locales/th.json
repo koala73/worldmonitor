@@ -679,7 +679,9 @@
         "financialCenters": "ศูนย์กลางการเงิน",
         "centralBanks": "ธนาคารกลาง",
         "commodityHubs": "ศูนย์กลางสินค้าโภคภัณฑ์",
-        "gulfInvestments": "การลงทุน GCC"
+        "gulfInvestments": "การลงทุน GCC",
+        "sanctions": "การคว่ำบาตร OFAC",
+        "reliefweb": "รายงานวิกฤต"
       },
       "tooltip": {
         "earthquake": "แผ่นดินไหว",

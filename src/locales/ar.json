@@ -702,7 +702,9 @@
         "financialCenters": "مراكز مالية",
         "centralBanks": "بنوك مركزية",
         "commodityHubs": "مراكز سلعية",
-        "gulfInvestments": "استثمارات دول الخليج"
+        "gulfInvestments": "استثمارات دول الخليج",
+        "sanctions": "عقوبات OFAC",
+        "reliefweb": "تقارير الأزمات"
       },
       "tooltip": {
         "earthquake": "زلزال",
