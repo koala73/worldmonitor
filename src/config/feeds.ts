@@ -61,6 +61,22 @@ export const SOURCE_TIERS: Record<string, number> = {
   'SVT Nyheter': 1,
   'Dagens Nyheter': 2,
   'Svenska Dagbladet': 2,
+  'Expressen': 2,
+  // Norwegian
+  'NRK Nyheter': 1,
+  'Aftenposten': 2,
+  'VG': 2,
+  'E24': 2,
+  'Dagens Næringsliv': 2,
+  'NTB': 1,
+  // Nordic Energy & Defense
+  'Teknisk Ukeblad': 3,
+  'Energi og Klima': 3,
+  'Altinget.no': 3,
+  'Altinget.se': 3,
+  'High North News': 3,
+  'The Barents Observer': 3,
+  'Montel News': 2,
   'Reuters World': 1,
   'Reuters Business': 1,
   'OpenAI News': 3,
@@ -308,6 +324,14 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   'ANSA': 'wire', 'Corriere della Sera': 'mainstream', 'Repubblica': 'mainstream',
   'NOS Nieuws': 'mainstream', 'NRC': 'mainstream', 'De Telegraaf': 'mainstream',
   'SVT Nyheter': 'mainstream', 'Dagens Nyheter': 'mainstream', 'Svenska Dagbladet': 'mainstream',
+  'Expressen': 'mainstream',
+  // Norwegian
+  'NRK Nyheter': 'mainstream', 'Aftenposten': 'mainstream', 'VG': 'mainstream',
+  'E24': 'market', 'Dagens Næringsliv': 'market', 'NTB': 'wire',
+  // Nordic specialty
+  'Teknisk Ukeblad': 'tech', 'Energi og Klima': 'market', 'Altinget.no': 'intel',
+  'Altinget.se': 'intel', 'High North News': 'intel', 'The Barents Observer': 'intel',
+  'Montel News': 'market',
 
   // Market/Finance
   'CNBC': 'market', 'MarketWatch': 'market', 'Yahoo Finance': 'market',
@@ -467,6 +491,13 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'SVT Nyheter', url: rss('https://www.svt.se/nyheter/rss.xml'), lang: 'sv' },
     { name: 'Dagens Nyheter', url: rss('https://www.dn.se/rss/senaste-nytt/'), lang: 'sv' },
     { name: 'Svenska Dagbladet', url: rss('https://www.svd.se/feed/articles.rss'), lang: 'sv' },
+    { name: 'Expressen', url: rss('https://feeds.expressen.se/nyheter/'), lang: 'sv' },
+    // Norwegian (NB)
+    { name: 'NRK Nyheter', url: rss('https://www.nrk.no/toppsaker.rss'), lang: 'nb' },
+    { name: 'Aftenposten', url: rss('https://www.aftenposten.no/rss'), lang: 'nb' },
+    { name: 'VG', url: rss('https://www.vg.no/rss/feed/?categories=nyheter'), lang: 'nb' },
+    { name: 'E24', url: rss('https://e24.no/rss2/'), lang: 'nb' },
+    { name: 'Dagens Næringsliv', url: rss('https://www.dn.no/rss'), lang: 'nb' },
     // Turkish (TR)
     { name: 'BBC Turkce', url: rss('https://feeds.bbci.co.uk/turkce/rss.xml'), lang: 'tr' },
     { name: 'DW Turkish', url: rss('https://rss.dw.com/xml/rss-tur-all'), lang: 'tr' },
@@ -932,8 +963,44 @@ const FINANCE_FEEDS: Record<string, Feed[]> = {
   ],
 };
 
+// Nordic variant feeds — balanced Norway + Sweden coverage
+// Uses FULL_FEEDS as base and adds dedicated Nordic category
+const NORDIC_FEEDS: Record<string, Feed[]> = {
+  // Include all full geopolitical feeds as base
+  ...FULL_FEEDS,
+  // Dedicated Nordic panel — 10 Norwegian + 10 Swedish sources (equal balance)
+  nordic: [
+    // ── Norway (nb) — Tier 1-2 ──
+    { name: 'NRK Nyheter', url: rss('https://www.nrk.no/toppsaker.rss'), lang: 'nb' },
+    { name: 'Aftenposten', url: rss('https://www.aftenposten.no/rss'), lang: 'nb' },
+    { name: 'VG', url: rss('https://www.vg.no/rss/feed/?categories=nyheter'), lang: 'nb' },
+    { name: 'E24', url: rss('https://e24.no/rss2/'), lang: 'nb' },
+    { name: 'Dagens Næringsliv', url: rss('https://www.dn.no/rss'), lang: 'nb' },
+    { name: 'Teknisk Ukeblad', url: rss('https://www.tu.no/rss'), lang: 'nb' },
+    { name: 'Energi og Klima', url: rss('https://energiogklima.no/feed/'), lang: 'nb' },
+    { name: 'High North News', url: rss('https://www.highnorthnews.com/en/rss.xml') },
+    { name: 'The Barents Observer', url: rss('https://thebarentsobserver.com/en/rss.xml') },
+    { name: 'Altinget.no', url: rss('https://www.altinget.no/rss'), lang: 'nb' },
+    // ── Sweden (sv) — Tier 1-2 ──
+    { name: 'SVT Nyheter', url: rss('https://www.svt.se/nyheter/rss.xml'), lang: 'sv' },
+    { name: 'Dagens Nyheter', url: rss('https://www.dn.se/rss/senaste-nytt/'), lang: 'sv' },
+    { name: 'Svenska Dagbladet', url: rss('https://www.svd.se/feed/articles.rss'), lang: 'sv' },
+    { name: 'Expressen', url: rss('https://feeds.expressen.se/nyheter/'), lang: 'sv' },
+    { name: 'Dagens Industri', url: rss('https://www.di.se/rss'), lang: 'sv' },
+    { name: 'Ny Teknik', url: rss('https://www.nyteknik.se/rss'), lang: 'sv' },
+    { name: 'Altinget.se', url: rss('https://www.altinget.se/rss'), lang: 'sv' },
+    { name: 'Montel News', url: rss('https://www.montelnews.com/rss'), lang: 'en' },
+    // ── Shared Nordic (en) — defense, NATO, Arctic ──
+    { name: 'Nordic Defence', url: rss('https://news.google.com/rss/search?q=(Norway+OR+Sweden+OR+Nordic)+defense+OR+military+OR+NATO+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Arctic & Barents', url: rss('https://news.google.com/rss/search?q=(Arctic+OR+Barents+OR+"North+Sea"+OR+"Norwegian+Sea")+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Nord Pool Energy', url: rss('https://news.google.com/rss/search?q=("Nord+Pool"+OR+Equinor+OR+Vattenfall+OR+Statnett+OR+Fortum)+energy+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Nordic NATO', url: rss('https://news.google.com/rss/search?q=(NATO+Nordic+OR+"NATO+northern+flank"+OR+Finland+Sweden+NATO)+when:7d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Undersea Cables Nordic', url: rss('https://news.google.com/rss/search?q=("undersea+cable"+OR+"submarine+cable")+Nordic+OR+Baltic+OR+Norway+OR+Sweden+when:7d&hl=en-US&gl=US&ceid=US:en') },
+  ],
+};
+
 // Variant-aware exports
-export const FEEDS = SITE_VARIANT === 'tech' ? TECH_FEEDS : SITE_VARIANT === 'finance' ? FINANCE_FEEDS : FULL_FEEDS;
+export const FEEDS = SITE_VARIANT === 'tech' ? TECH_FEEDS : SITE_VARIANT === 'finance' ? FINANCE_FEEDS : SITE_VARIANT === 'nordic' ? NORDIC_FEEDS : FULL_FEEDS;
 
 export const INTEL_SOURCES: Feed[] = [
   // Defense & Security (Tier 1)
@@ -990,6 +1057,9 @@ export const ALERT_KEYWORDS = [
   'airstrike', 'drone strike', 'troops deployed', 'armed conflict', 'bombing', 'casualties',
   'ceasefire', 'peace treaty', 'nato', 'coup', 'martial law',
   'assassination', 'terrorist', 'terror attack', 'cyber attack', 'hostage', 'evacuation order',
+  // Nordic-specific alert keywords
+  'Norge', 'Oslo', 'Sverige', 'Stockholm', 'Arktis', 'North Sea',
+  'Nord Pool', 'Statnett', 'Equinor', 'Barents', 'Vattenfall', 'Fortum',
 ];
 
 // Patterns that indicate non-alert content (lifestyle, entertainment, etc.)

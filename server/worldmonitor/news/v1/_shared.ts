@@ -58,8 +58,12 @@ export function buildArticlePrompts(
   const headlineText = uniqueHeadlines.map((h, i) => `${i + 1}. ${h}`).join('\n');
   const intelSection = opts.geoContext ? `\n\n${opts.geoContext}` : '';
   const isTechVariant = opts.variant === 'tech';
+  const isNordicVariant = opts.variant === 'nordic';
   const dateContext = `Current date: ${new Date().toISOString().split('T')[0]}.${isTechVariant ? '' : ' Provide geopolitical context appropriate for the current date.'}`;
   const langInstruction = opts.lang && opts.lang !== 'en' ? `\nIMPORTANT: Output the summary in ${opts.lang.toUpperCase()} language.` : '';
+
+  // NordicMonitor persona — appended to all nordic variant prompts
+  const nordicPersona = isNordicVariant ? `\nYou are NordicMonitor. Always deliver cold, fact-based strategic analysis with EQUAL weight on Norway AND Sweden: implications for Oslo AND Stockholm, Norway AND Sweden, Scandinavia, North Sea/Barents energy, Nord Pool, Arctic, NATO northern flank, supply security, Equinor/Statnett/Fortum/Vattenfall, undersea cables. Never alarmist.` : '';
 
   let systemPrompt: string;
   let userPrompt: string;
@@ -85,7 +89,7 @@ Rules:
 - Start directly with the subject: "Iran's regime...", "The US Treasury...", "Protests in..."
 - CRITICAL FOCAL POINTS are the main actors - mention them by name
 - If focal points show news + signals convergence, that's the lead
-- No bullet points, no meta-commentary${langInstruction}`;
+- No bullet points, no meta-commentary${langInstruction}${nordicPersona}`;
     }
     userPrompt = `Summarize the top story:\n${headlineText}${intelSection}`;
   } else if (opts.mode === 'analysis') {
@@ -108,7 +112,7 @@ Rules:
 - Start with substance: "Iran faces...", "The escalation in...", "Multiple signals suggest..."
 - CRITICAL FOCAL POINTS are your main actors - explain WHY they matter
 - If focal points show news-signal correlation, flag as escalation
-- Connect dots, be specific about implications`;
+- Connect dots, be specific about implications${nordicPersona}`;
     }
     userPrompt = isTechVariant
       ? `What's the key tech trend or development?\n${headlineText}${intelSection}`
@@ -125,7 +129,7 @@ Rules:
   } else {
     systemPrompt = isTechVariant
       ? `${dateContext}\n\nSynthesize tech news in 2 sentences. Focus on startups, AI, funding, products. Ignore politics unless directly about tech regulation.${langInstruction}`
-      : `${dateContext}\n\nSynthesize in 2 sentences max. Lead with substance. NEVER start with "Breaking news" or "Tonight" - just state the insight directly. CRITICAL focal points with news-signal convergence are significant.${langInstruction}`;
+      : `${dateContext}\n\nSynthesize in 2 sentences max. Lead with substance. NEVER start with "Breaking news" or "Tonight" - just state the insight directly. CRITICAL focal points with news-signal convergence are significant.${langInstruction}${nordicPersona}`;
     userPrompt = `Key takeaway:\n${headlineText}${intelSection}`;
   }
 

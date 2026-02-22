@@ -193,6 +193,28 @@ const ALLOWED_DOMAINS = [
   'seekingalpha.com',
   'www.coindesk.com',
   'cointelegraph.com',
+  // Nordic variant — Norway
+  'www.nrk.no',
+  'www.aftenposten.no',
+  'www.vg.no',
+  'e24.no',
+  'www.dn.no',
+  'www.tu.no',
+  'energiogklima.no',
+  'www.altinget.no',
+  'www.highnorthnews.com',
+  'thebarentsobserver.com',
+  // Nordic variant — Sweden
+  'www.svt.se',
+  'www.dn.se',
+  'www.svd.se',
+  'feeds.expressen.se',
+  'www.expressen.se',
+  'www.di.se',
+  'www.nyteknik.se',
+  'www.altinget.se',
+  // Nordic variant — Shared
+  'www.montelnews.com',
 ];
 
 export default async function handler(req) {

@@ -1008,6 +1008,101 @@ export const PIPELINES: Pipeline[] = [
     countries: ['Australia'],
   },
 
+  // ===== NORDIC PIPELINES & INTERCONNECTORS =====
+
+  // Norway — Gas export pipelines
+  {
+    id: 'langeled',
+    name: 'Langeled Pipeline',
+    type: 'gas',
+    status: 'operating',
+    points: [[2.2, 61.3], [1.5, 59.5], [0.5, 57.0], [0.0, 54.0], [0.5, 53.5]],
+    capacity: '25.5 bcm/year',
+    length: '1,166 km',
+    operator: 'Gassco',
+    countries: ['Norway', 'UK'],
+  },
+  {
+    id: 'europipe-i',
+    name: 'Europipe I',
+    type: 'gas',
+    status: 'operating',
+    points: [[2.5, 59.5], [3.0, 58.0], [4.5, 56.0], [6.0, 54.5], [7.5, 54.0]],
+    capacity: '18 bcm/year',
+    length: '620 km',
+    operator: 'Gassco',
+    countries: ['Norway', 'Germany'],
+  },
+  {
+    id: 'europipe-ii',
+    name: 'Europipe II',
+    type: 'gas',
+    status: 'operating',
+    points: [[2.0, 60.5], [2.5, 59.0], [4.0, 57.0], [6.5, 55.5], [7.0, 54.5]],
+    capacity: '24 bcm/year',
+    length: '658 km',
+    operator: 'Gassco',
+    countries: ['Norway', 'Germany'],
+  },
+  {
+    id: 'norpipe',
+    name: 'Norpipe',
+    type: 'oil',
+    status: 'operating',
+    points: [[3.2, 56.5], [4.5, 56.5], [6.0, 56.0], [8.0, 55.5]],
+    capacity: '900,000 bpd',
+    length: '354 km',
+    operator: 'Gassco',
+    countries: ['Norway', 'Germany'],
+  },
+  // Baltic Pipe — Denmark-Poland
+  {
+    id: 'baltic-pipe',
+    name: 'Baltic Pipe',
+    type: 'gas',
+    status: 'operating',
+    points: [[3.0, 57.0], [8.0, 55.5], [10.0, 55.0], [12.0, 55.5], [14.5, 55.0], [16.0, 54.5]],
+    capacity: '10 bcm/year',
+    length: '900 km',
+    operator: 'Energinet/GAZ-SYSTEM',
+    countries: ['Norway', 'Denmark', 'Poland'],
+  },
+  // NordBalt — Sweden-Lithuania power interconnector (undersea cable/HVDC)
+  {
+    id: 'nordbalt',
+    name: 'NordBalt HVDC',
+    type: 'products',
+    status: 'operating',
+    points: [[16.5, 56.5], [18.0, 56.5], [20.0, 55.5], [21.0, 55.7]],
+    capacity: '700 MW',
+    length: '453 km',
+    operator: 'Svenska kraftnät / Litgrid',
+    countries: ['Sweden', 'Lithuania'],
+  },
+  // NorNed — Norway-Netherlands power interconnector
+  {
+    id: 'norned',
+    name: 'NorNed HVDC',
+    type: 'products',
+    status: 'operating',
+    points: [[5.5, 60.0], [4.5, 58.0], [3.5, 55.5], [4.0, 53.0]],
+    capacity: '700 MW',
+    length: '580 km',
+    operator: 'Statnett / TenneT',
+    countries: ['Norway', 'Netherlands'],
+  },
+  // North Sea Link — Norway-UK power interconnector
+  {
+    id: 'north-sea-link',
+    name: 'North Sea Link HVDC',
+    type: 'products',
+    status: 'operating',
+    points: [[6.0, 60.5], [3.0, 59.0], [0.0, 57.0], [-1.5, 55.0]],
+    capacity: '1,400 MW',
+    length: '720 km',
+    operator: 'Statnett / National Grid',
+    countries: ['Norway', 'UK'],
+  },
 ];
 
 import { getCSSColor } from '@/utils';

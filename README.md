@@ -53,11 +53,12 @@
 
 | Variant             | URL                                                          | Focus                                            |
 | ------------------- | ------------------------------------------------------------ | ------------------------------------------------ |
-| **World Monitor**   | [worldmonitor.app](https://worldmonitor.app)                 | Geopolitics, military, conflicts, infrastructure |
-| **Tech Monitor**    | [tech.worldmonitor.app](https://tech.worldmonitor.app)       | Startups, AI/ML, cloud, cybersecurity            |
-| **Finance Monitor** | [finance.worldmonitor.app](https://finance.worldmonitor.app) | Global markets, trading, central banks, Gulf FDI |
+| **World Monitor**   | [worldmonitor.app](https://worldmonitor.app)                 | Geopolitics, military, conflicts, infrastructure         |
+| **Tech Monitor**    | [tech.worldmonitor.app](https://tech.worldmonitor.app)       | Startups, AI/ML, cloud, cybersecurity                    |
+| **Finance Monitor** | [finance.worldmonitor.app](https://finance.worldmonitor.app) | Global markets, trading, central banks, Gulf FDI         |
+| **Nordic Monitor**  | Self-hosted (`VITE_VARIANT=nordic`)                          | Norway + Sweden, NATO, Arctic, energy, Nord Pool, cables |
 
-All three variants run from a single codebase — switch between them with one click via the header bar (🌍 WORLD | 💻 TECH | 📈 FINANCE).
+All four variants run from a single codebase — switch between them with one click via the header bar or by setting `VITE_VARIANT`.
 
 ---
 
@@ -856,9 +857,27 @@ A single codebase produces three specialized dashboards, each with distinct feed
 | **Unique Map Layers** | Military bases, nuclear facilities, hotspots         | Tech HQs, cloud regions, startup hubs           | Stock exchanges, central banks, Gulf investments |
 | **Desktop App**       | World Monitor.app / .exe / .AppImage                 | Tech Monitor.app / .exe / .AppImage             | Finance Monitor.app / .exe / .AppImage           |
 
+### Nordic Variant (NordicMonitor)
+
+The `nordic` variant adds a dedicated Norway + Sweden intelligence layer on top of the full geopolitical dashboard:
+
+- **25 curated Nordic feeds** — balanced 10 NO + 10 SE + 5 shared (NRK, VG, Aftenposten, E24, DN, SVT, Dagens Nyheter, SvD, Expressen, DI, etc.)
+- **NordicMonitor AI persona** — summarization prompts tuned for Scandinavian strategic analysis (energy, NATO, Arctic, cables)
+- **Nordic hotspots** — North Sea energy, Barents/Arctic, Baltic Sea, Oslo, Stockholm
+- **Nordic pipelines** — Langeled, Europipe I/II, Norpipe, Baltic Pipe, NordBalt/NorNed/North Sea Link HVDC
+- **Alert keywords** — Norge, Oslo, Sverige, Stockholm, Arktis, NATO, Nord Pool, Equinor, Vattenfall, Statnett, Barents, Fortum
+- **Default locale** — `nb` (Norwegian Bokmål), with full `sv` (Swedish) support
+
+```bash
+# Quick start — Nordic variant
+cp .env.example .env.local
+# Set VITE_VARIANT=nordic in .env.local
+npm run dev
+```
+
 **Build-time selection** — the `VITE_VARIANT` environment variable controls which configuration is bundled. A Vite HTML plugin transforms meta tags, Open Graph data, PWA manifest, and JSON-LD structured data at build time. Each variant tree-shakes unused data files — the finance build excludes military base coordinates and APT group data, while the geopolitical build excludes stock exchange listings.
 
-**Runtime switching** — a variant selector in the header bar (🌍 WORLD | 💻 TECH | 📈 FINANCE) navigates between deployed domains on the web, or sets `localStorage['worldmonitor-variant']` in the desktop app to switch without rebuilding.
+**Runtime switching** — a variant selector in the header bar navigates between deployed domains on the web, or sets `localStorage['worldmonitor-variant']` in the desktop app to switch without rebuilding. Valid values: `full`, `tech`, `finance`, `nordic`.
 
 ---
 
