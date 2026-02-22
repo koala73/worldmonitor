@@ -872,8 +872,24 @@ The `nordic` variant adds a dedicated Norway + Sweden intelligence layer on top 
 # Quick start — Nordic variant
 cp .env.example .env.local
 # Set VITE_VARIANT=nordic in .env.local
-npm run dev
+npm run dev:nordic
 ```
+
+**Deploy to Vercel:**
+
+```bash
+# 1. Fork this repo (or use it directly)
+# 2. Import into Vercel → set environment variables:
+#      VITE_VARIANT=nordic
+#      (plus any API keys from .env.example)
+# 3. Deploy — Vercel auto-detects the Vite build
+
+# Or deploy via CLI:
+npm run build:nordic
+vercel --prod
+```
+
+**Upstream sync** — A GitHub Actions workflow (`.github/workflows/sync-upstream.yml`) runs every Sunday at 00:00 UTC, fetching new commits from [upstream/main](https://github.com/koala73/worldmonitor) and opening a PR. Nordic-only files (`nordic.ts`, `nb.json`, the sync workflow itself) are protected via `.gitattributes merge=ours`. Shared files are validated post-merge to ensure Nordic markers survive. Merge conflicts create a GitHub issue with resolution instructions.
 
 **Build-time selection** — the `VITE_VARIANT` environment variable controls which configuration is bundled. A Vite HTML plugin transforms meta tags, Open Graph data, PWA manifest, and JSON-LD structured data at build time. Each variant tree-shakes unused data files — the finance build excludes military base coordinates and APT group data, while the geopolitical build excludes stock exchange listings.
 
@@ -897,7 +913,7 @@ npm run dev
 | **Bandwidth efficiency**            | Gzip compression on all relay responses (80% reduction). Content-hash static assets with 1-year immutable cache. Staggered polling intervals prevent synchronized API storms. Animations and polling pause on hidden tabs.                                                                                                                |
 | **Baseline-aware alerting**         | Trending keyword detection uses rolling 2-hour windows against 7-day baselines with per-term spike multipliers, cooldowns, and source diversity requirements — surfacing genuine surges while suppressing noise.                                                                                                                          |
 | **Contract-first APIs**             | Every API endpoint starts as a `.proto` definition with field validation, HTTP annotations, and examples. Code generation produces typed TypeScript clients and servers, eliminating schema drift. Breaking changes are caught automatically at CI time.                                                                                 |
-| **Run anywhere**                    | Same codebase produces three specialized variants (geopolitical, tech, finance) and deploys to Vercel (web), Railway (relay), Tauri (desktop), and PWA (installable). Desktop sidecar mirrors all cloud API handlers locally. Service worker caches map tiles for offline use while keeping intelligence data always-fresh (NetworkOnly). |
+| **Run anywhere**                    | Same codebase produces four specialized variants (geopolitical, tech, finance, nordic) and deploys to Vercel (web), Railway (relay), Tauri (desktop), and PWA (installable). Desktop sidecar mirrors all cloud API handlers locally. Service worker caches map tiles for offline use while keeping intelligence data always-fresh (NetworkOnly). |
 
 ---
 
@@ -934,7 +950,7 @@ All edge functions include circuit breaker logic and return cached stale data wh
 
 ## Multi-Platform Architecture
 
-All three variants run on three platforms that work together:
+All four variants run on three platforms that work together:
 
 ```
 ┌─────────────────────────────────────┐
@@ -1286,11 +1302,13 @@ Contributions welcome! See [CONTRIBUTING](./docs/DOCUMENTATION.md#contributing) 
 npm run dev          # Full variant (worldmonitor.app)
 npm run dev:tech     # Tech variant (tech.worldmonitor.app)
 npm run dev:finance  # Finance variant (finance.worldmonitor.app)
+npm run dev:nordic   # Nordic variant (self-hosted)
 
 # Production builds
 npm run build:full      # Build full variant
 npm run build:tech      # Build tech variant
 npm run build:finance   # Build finance variant
+npm run build:nordic    # Build nordic variant
 
 # Quality
 npm run typecheck    # TypeScript type checking
@@ -1320,7 +1338,7 @@ Desktop release details, signing hooks, variant outputs, and clean-machine valid
 ## Roadmap
 
 - [x] 60+ API edge functions for programmatic access
-- [x] Tri-variant system (geopolitical + tech + finance)
+- [x] Quad-variant system (geopolitical + tech + finance + nordic)
 - [x] Market intelligence (macro signals, ETF flows, stablecoin peg monitoring)
 - [x] Railway relay for WebSocket and blocked-domain proxying
 - [x] CORS origin allowlist and security hardening
@@ -1367,6 +1385,7 @@ Desktop release details, signing hooks, variant outputs, and clean-machine valid
 - [x] Dynamic Open Graph images for social sharing (SVG card generation with CII scores)
 - [x] Storage quota management (graceful degradation on exhausted localStorage/IndexedDB)
 - [x] Chunk reload guard (one-shot recovery from stale-asset 404s after deployments)
+- [x] Nordic variant with Norway + Sweden intelligence layer, 25 curated feeds, NordicMonitor AI persona, and automated upstream sync
 - [ ] Mobile-optimized views
 - [ ] Push notifications for critical alerts
 - [ ] Self-hosted Docker image
