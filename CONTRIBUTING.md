@@ -166,7 +166,19 @@ Use a descriptive title that summarizes the change:
 
 ## AI-Assisted Development
 
-We fully embrace AI-assisted development. Many of our own PRs are tagged with the LLM that helped produce them (e.g., `Co-Authored-By: Claude`), and contributors are welcome to use any AI tools they find helpful.
+We fully embrace AI-assisted development. Contributors are welcome to use any AI tools they find helpful — Claude, Codex, Cursor, or anything else.
+
+### PR Labels for LLM Attribution
+
+We label every PR with the LLM that produced it (e.g., `claude`, `codex`, `cursor`). This serves a few purposes:
+
+- **Cross-LLM collaboration** — contributors using different AI tools work seamlessly on the same repo, and the labels make that visible
+- **LLM adoption trends** — over time, label frequency shows which tools developers gravitate toward, which is a useful signal for which LLMs offer the best developer experience
+- **Code quality evaluation** — labels let us retrospectively assess the quality of code produced by different LLMs, helping us (and the community) make informed tooling choices
+
+If your PR was written with AI assistance, apply the appropriate label when opening it. See [past labeled PRs](https://github.com/koala73/worldmonitor/pulls?q=is%3Apr+label%3Aclaude%2Ccodex%2Ccursor) for examples.
+
+### Quality Bar
 
 That said, **all code is held to the same quality bar regardless of how it was written**. AI-generated code will be reviewed with the same scrutiny as human-written code. Contributors are responsible for understanding and being able to explain every line they submit. Blindly pasting LLM output without review is discouraged — treat AI as a collaborator, not a replacement for your own judgement.
 
