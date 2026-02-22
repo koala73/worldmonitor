@@ -40,30 +40,9 @@ export const ELECTIONS_2026_2027: Election[] = [
   // ============== 2026 ==============
   
   // Q1 2026
-  {
-    country: 'Iran',
-    countryCode: 'IR',
-    type: 'presidential',
-    date: new Date('2026-06-18'),
-    significance: 'high',
-    notes: 'Supreme Leader succession tensions; regional proxy conflicts',
-  },
-  {
-    country: 'Mexico',
-    countryCode: 'MX',
-    type: 'legislative',
-    date: new Date('2026-06-07'),
-    significance: 'medium',
-    notes: 'Mid-term legislative elections; cartel violence monitoring',
-  },
-  {
-    country: 'Philippines',
-    countryCode: 'PH',
-    type: 'legislative',
-    date: new Date('2026-05-11'),
-    significance: 'medium',
-    notes: 'Mid-term elections; South China Sea tensions',
-  },
+  // NOTE: Iran presidential 2026 removed - IFES shows 2024 election with 4-year term (next: 2028)
+  // NOTE: Mexico 2026 removed - IFES shows off-cycle (next deputies election: 2027)
+  // NOTE: Philippines 2026 removed - IFES shows 2025-05-12 election (off-cycle)
   {
     country: 'Colombia',
     countryCode: 'CO',
@@ -148,9 +127,9 @@ export const ELECTIONS_2026_2027: Election[] = [
     country: 'Germany',
     countryCode: 'DE',
     type: 'parliamentary',
-    date: new Date('2027-09-26'),
+    date: new Date('2029-02-23'),
     significance: 'high',
-    notes: 'Federal election; EU leadership, energy policy, defense spending',
+    notes: 'Federal election; EU leadership, energy policy, defense spending (4-year term from 2025-02-23)',
   },
   {
     country: 'France',
@@ -172,17 +151,17 @@ export const ELECTIONS_2026_2027: Election[] = [
     country: 'South Korea',
     countryCode: 'KR',
     type: 'presidential',
-    date: new Date('2027-03-09'),
+    date: new Date('2030-06-03'),
     significance: 'high',
-    notes: 'Presidential election; North Korea policy; US alliance',
+    notes: 'Presidential election; North Korea policy; US alliance (5-year term from 2025-06-03)',
   },
   {
     country: 'India',
     countryCode: 'IN',
     type: 'parliamentary',
-    date: new Date('2027-05-01'),
+    date: new Date('2029-05-01'),
     significance: 'high',
-    notes: 'General election; world\'s largest democracy; regional power dynamics',
+    notes: 'General election; world\'s largest democracy; regional power dynamics (5-year term from 2024)',
   },
 
   // Q2-Q3 2027
@@ -214,9 +193,9 @@ export const ELECTIONS_2026_2027: Election[] = [
     country: 'Norway',
     countryCode: 'NO',
     type: 'parliamentary',
-    date: new Date('2027-09-13'),
+    date: new Date('2029-09-10'),
     significance: 'low',
-    notes: 'Parliamentary election; Arctic policy, NATO Northern Flank',
+    notes: 'Parliamentary election; Arctic policy, NATO Northern Flank (4-year term from 2025-09-08)',
   },
   {
     country: 'Angola',
@@ -238,17 +217,17 @@ export const ELECTIONS_2026_2027: Election[] = [
     country: 'Liberia',
     countryCode: 'LR',
     type: 'presidential',
-    date: new Date('2027-10-12'),
+    date: new Date('2029-10-09'),
     significance: 'medium',
-    notes: 'Presidential election; West Africa stability',
+    notes: 'Presidential election; West Africa stability (6-year term from 2023)',
   },
   {
     country: 'Chile',
     countryCode: 'CL',
     type: 'presidential',
-    date: new Date('2027-11-21'),
+    date: new Date('2029-11-18'),
     significance: 'medium',
-    notes: 'Presidential election; lithium policy; regional dynamics',
+    notes: 'Presidential election; lithium policy; regional dynamics (4-year term from 2025)',
   },
   {
     country: 'Iran',
@@ -289,10 +268,20 @@ export const SIGNIFICANCE_MULTIPLIER: Record<ElectionSignificance, number> = {
 /**
  * Calculate days until/since an election
  * Negative values mean the election has passed
+ * 
+ * NOTE: Uses UTC midnight for both dates to avoid timezone off-by-one errors.
+ * new Date('YYYY-MM-DD') parses as UTC midnight, so we normalize 'now' to UTC midnight as well.
  */
 export function getDaysUntilElection(election: Election): number {
   const now = new Date();
-  const diff = election.date.getTime() - now.getTime();
+  // Normalize to UTC midnight to match election date parsing
+  const nowUTC = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const electionUTC = Date.UTC(
+    election.date.getUTCFullYear(),
+    election.date.getUTCMonth(),
+    election.date.getUTCDate()
+  );
+  const diff = electionUTC - nowUTC;
   return Math.floor(diff / (1000 * 60 * 60 * 24));
 }
 
@@ -366,7 +355,7 @@ export function getCountryElections(countryCode: string): Election[] {
 /**
  * Get election proximity status for display
  */
-export type ElectionProximity = 'election-day' | 'imminent' | 'elevated' | 'awareness' | 'none';
+export type ElectionProximity = 'election-day' | 'imminent' | 'elevated' | 'awareness' | 'post-election' | 'none';
 
 export function getElectionProximity(countryCode: string): { 
   proximity: ElectionProximity; 
@@ -380,6 +369,9 @@ export function getElectionProximity(countryCode: string): {
     
     if (days === 0) {
       return { proximity: 'election-day', election, daysUntil: 0 };
+    } else if (days < 0 && days >= -3) {
+      // Post-election uncertainty period (up to 3 days after)
+      return { proximity: 'post-election', election, daysUntil: days };
     } else if (days > 0 && days <= 7) {
       return { proximity: 'imminent', election, daysUntil: days };
     } else if (days > 7 && days <= 30) {

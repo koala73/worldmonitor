@@ -800,7 +800,14 @@
     "cii": {
       "shareStory": "分享报道",
       "noSignals": "未检测到不稳定信号",
-      "infoTooltip": "<strong>方法论</strong><ul><li><strong>动</strong>荡：社会骚乱与抗议</li><li><strong>冲</strong>突：武装冲突强度</li><li><strong>安</strong>全：领土上空军用飞机/舰艇</li><li><strong>信</strong>息：新闻速度和焦点关联</li><li>热点邻近度提升（战略位置）</li></ul><em>U:C:S:I值显示各分项评分。</em>焦点检测将新闻实体与地图信号关联以实现精确评分。"
+      "infoTooltip": "<strong>方法论</strong><ul><li><strong>动</strong>荡：社会骚乱与抗议</li><li><strong>冲</strong>突：武装冲突强度</li><li><strong>安</strong>全：领土上空军用飞机/舰艇</li><li><strong>信</strong>息：新闻速度和焦点关联</li><li>热点邻近度提升（战略位置）</li></ul><em>U:C:S:I值显示各分项评分。</em>焦点检测将新闻实体与地图信号关联以实现精确评分。",
+      "election": {
+        "today": "今天",
+        "postElection": "选后",
+        "daysUntil": "{{days}}天",
+        "tooltip": "{{days}}天后选举",
+        "postElectionTooltip": "选举在{{days}}天前"
+      }
     },
     "insights": {
       "noStories": "暂无突发或多源报道",
