@@ -187,6 +187,30 @@ const ALLOWED_DOMAINS = [
   'www.bangkokpost.com',
   'vnexpress.net',
   'www.abc.net.au',
+  // European locale feeds (es, de, it, nl, fr)
+  'feeds.elpais.com',
+  'e00-elmundo.uecdn.es',
+  'www.bbc.com',
+  'www.tagesschau.de',
+  'www.spiegel.de',
+  'newsfeed.zeit.de',
+  'www.ansa.it',
+  'www.repubblica.it',
+  'xml2.corriereobjects.it',
+  'feeds.nos.nl',
+  'www.nrc.nl',
+  'www.telegraaf.nl',
+  'www.lorientlejour.com',
+  // Latin American feeds
+  'www.clarin.com',
+  'oglobo.globo.com',
+  'feeds.folha.uol.com.br',
+  'www.eltiempo.com',
+  'www.eluniversal.com.mx',
+  // African & Asian feeds
+  'www.jeuneafrique.com',
+  'fr.africanews.com',
+  'www.asahi.com',
   // Additional
   'news.ycombinator.com',
   // Finance variant

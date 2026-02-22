@@ -101,7 +101,7 @@ Rules:
 - Focus ONLY on technology implications: funding trends, AI developments, market shifts, product strategy
 - IGNORE political implications, trade wars, government unless directly about tech policy
 - Lead with the insight for tech industry
-- Connect to startup ecosystem, VC trends, or technical implications`;
+- Connect to startup ecosystem, VC trends, or technical implications${langInstruction}`;
     } else {
       systemPrompt = `${dateContext}
 
@@ -112,7 +112,7 @@ Rules:
 - Start with substance: "Iran faces...", "The escalation in...", "Multiple signals suggest..."
 - CRITICAL FOCAL POINTS are your main actors - explain WHY they matter
 - If focal points show news-signal correlation, flag as escalation
-- Connect dots, be specific about implications${nordicPersona}`;
+- Connect dots, be specific about implications${langInstruction}${nordicPersona}`;
     }
     userPrompt = isTechVariant
       ? `What's the key tech trend or development?\n${headlineText}${intelSection}`
