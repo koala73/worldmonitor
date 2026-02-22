@@ -1,6 +1,7 @@
 import type { SocialUnrestEvent, MilitaryFlight, MilitaryVessel, ClusteredEvent, InternetOutage } from '@/types';
 import { INTEL_HOTSPOTS, CONFLICT_ZONES, STRATEGIC_WATERWAYS } from '@/config/geo';
 import { TIER1_COUNTRIES } from '@/config/countries';
+import { getElectionCIIBoost, getElectionProximity, type ElectionProximity } from '@/config/elections';
 import { focalPointDetector } from './focal-point-detector';
 import type { ConflictEvent, UcdpConflictStatus, HapiConflictSummary } from './conflict';
 import type { CountryDisplacement } from '@/services/displacement';
@@ -15,6 +16,8 @@ export interface CountryScore {
   trend: 'rising' | 'stable' | 'falling';
   change24h: number;
   components: ComponentScores;
+  electionProximity?: ElectionProximity;
+  electionDaysUntil?: number | null;
   lastUpdated: Date;
 }
 
@@ -641,7 +644,11 @@ export function calculateCII(): CountryScore[] {
       : 0;
     const climateBoost = data.climateStress;
 
-    const blendedScore = baselineRisk * 0.4 + eventScore * 0.6 + hotspotBoost + newsUrgencyBoost + focalBoost + displacementBoost + climateBoost;
+    // Election proximity boost - heightened instability risk around elections
+    const electionBoost = getElectionCIIBoost(code);
+    const electionStatus = getElectionProximity(code);
+
+    const blendedScore = baselineRisk * 0.4 + eventScore * 0.6 + hotspotBoost + newsUrgencyBoost + focalBoost + displacementBoost + climateBoost + electionBoost;
 
     // UCDP-derived conflict floor replaces hardcoded floors
     // war (1000+ deaths/yr) → 70, minor (25-999) → 50, none → 0
@@ -658,6 +665,8 @@ export function calculateCII(): CountryScore[] {
       trend: getTrend(code, score),
       change24h: score - prev,
       components,
+      electionProximity: electionStatus.proximity,
+      electionDaysUntil: electionStatus.daysUntil,
       lastUpdated: new Date(),
     });
 
@@ -696,7 +705,8 @@ export function getCountryScore(code: string): number | null {
     : data.displacementOutflow >= 100_000 ? 4
     : 0;
   const climateBoost = data.climateStress;
-  const blendedScore = baselineRisk * 0.4 + eventScore * 0.6 + hotspotBoost + newsUrgencyBoost + focalBoost + displacementBoost + climateBoost;
+  const electionBoost = getElectionCIIBoost(code);
+  const blendedScore = baselineRisk * 0.4 + eventScore * 0.6 + hotspotBoost + newsUrgencyBoost + focalBoost + displacementBoost + climateBoost + electionBoost;
 
   const floor = getUcdpFloor(data);
   return Math.round(Math.min(100, Math.max(floor, blendedScore)));
