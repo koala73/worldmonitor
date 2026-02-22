@@ -16,7 +16,27 @@ interface GeoCell {
 
 const cells = new Map<string, GeoCell>();
 const WINDOW_MS = 24 * 60 * 60 * 1000;
-const CONVERGENCE_THRESHOLD = 3;
+const DEFAULT_CONVERGENCE_THRESHOLD = 3;
+
+// Per-region convergence threshold overrides
+// [minLat, maxLat, minLon, maxLon, threshold, label]
+const REGION_OVERRIDES: Array<[number, number, number, number, number, string]> = [
+  [22, 28, 117, 127, 5, 'Taiwan Strait'],           // Normal shipping+military+fishing co-location
+  [31, 37, 33, 37,  5, 'Eastern Mediterranean'],     // Israel/Lebanon coast, dense co-location
+  [24, 28, 54, 58,  5, 'Strait of Hormuz'],          // Oil chokepoint, permanent naval presence
+  [11, 14, 42, 45,  4, 'Bab el-Mandeb'],             // Red Sea chokepoint, Houthi zone
+  [5, 20, -10, 25,  2, 'Central Africa - Sahel'],    // Sparse data, any convergence is significant
+  [-5, 5, 25, 35,   2, 'Central Africa - Great Lakes'], // DRC/Rwanda, sparse reporting
+];
+
+function getThresholdForCell(lat: number, lon: number): number {
+  for (const [minLat, maxLat, minLon, maxLon, threshold] of REGION_OVERRIDES) {
+    if (lat >= minLat && lat <= maxLat && lon >= minLon && lon <= maxLon) {
+      return threshold;
+    }
+  }
+  return DEFAULT_CONVERGENCE_THRESHOLD;
+}
 
 export function getCellId(lat: number, lon: number): string {
   return `${Math.floor(lat)},${Math.floor(lon)}`;
@@ -103,14 +123,19 @@ export function detectGeoConvergence(seenAlerts: Set<string>): GeoConvergenceAle
   const alerts: GeoConvergenceAlert[] = [];
 
   for (const [cellId, cell] of cells) {
-    if (cell.events.size >= CONVERGENCE_THRESHOLD) {
+    const threshold = getThresholdForCell(cell.lat, cell.lon);
+
+    if (cell.events.size >= threshold) {
       if (seenAlerts.has(cellId)) continue;
 
       const types = Array.from(cell.events.keys());
       const totalEvents = Array.from(cell.events.values())
         .reduce((sum, d) => sum + d.count, 0);
 
-      const typeScore = cell.events.size * 25;
+      // Score proportional to how far above threshold we are
+      // Exceeding a higher threshold yields proportionally higher score
+      const excessTypes = cell.events.size - threshold;
+      const typeScore = (threshold * 20) + (excessTypes * 30);
       const countBoost = Math.min(25, totalEvents * 2);
       const score = Math.min(100, typeScore + countBoost);
 

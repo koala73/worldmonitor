@@ -6,12 +6,18 @@ declare const process: { env: Record<string, string | undefined> };
 
 export const UPSTREAM_TIMEOUT_MS = 10_000;
 
-// Temporal baseline constants
+// Temporal baseline constants — long-term
 export const BASELINE_TTL = 7776000; // 90 days in seconds
 export const MIN_SAMPLES = 10;
 export const Z_THRESHOLD_LOW = 1.5;
 export const Z_THRESHOLD_MEDIUM = 2.0;
 export const Z_THRESHOLD_HIGH = 3.0;
+
+// Temporal baseline constants — short-term (dual-baseline)
+export const SHORT_BASELINE_TTL = 604800; // 7 days in seconds
+export const MIN_SAMPLES_SHORT = 3;
+export const EMA_ALPHA = 0.05;
+export const ANCHOR_FREEZE_COUNT = 20;
 
 export const VALID_BASELINE_TYPES = [
   'military_flights', 'vessels', 'protests', 'news', 'ais_gaps', 'satellite_fires',
@@ -26,10 +32,18 @@ export interface BaselineEntry {
   m2: number;
   sampleCount: number;
   lastUpdated: string;
+  // Dual-baseline fields (optional for backwards compatibility)
+  emaMean?: number;
+  anchorMean?: number;
+  anchorSampleCount?: number;
 }
 
 export function makeBaselineKey(type: string, region: string, weekday: number, month: number): string {
   return `baseline:${type}:${region}:${weekday}:${month}`;
+}
+
+export function makeShortBaselineKey(type: string, region: string): string {
+  return `baseline:short:${type}:${region}`;
 }
 
 export function getBaselineSeverity(zScore: number): string {
@@ -37,6 +51,11 @@ export function getBaselineSeverity(zScore: number): string {
   if (zScore >= Z_THRESHOLD_MEDIUM) return 'high';
   if (zScore >= Z_THRESHOLD_LOW) return 'medium';
   return 'normal';
+}
+
+export function getDualBaselineSeverity(zScoreShort: number, zScoreLong: number): string {
+  const maxZ = Math.max(zScoreShort, zScoreLong);
+  return getBaselineSeverity(maxZ);
 }
 
 // ========================================================================

@@ -1,0 +1,258 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const root = resolve(__dirname, '..');
+
+function readSrc(relPath) {
+  return readFileSync(resolve(root, relPath), 'utf-8');
+}
+
+// ========================================================================
+// 1. Threat Classifier — keyword expansion & contextual overrides
+// ========================================================================
+
+describe('Threat classifier accuracy', () => {
+  const src = readSrc('src/services/threat-classifier.ts');
+
+  const requiredHighKeywords = [
+    'explosions', 'shelling', 'clash', 'clashes', 'killed', 'massacre',
+    'atrocity', 'bombardment', 'wounded', 'ambush', 'mortar', 'artillery',
+    'sniper', 'mass graves', 'militia attack',
+    'car bomb', 'suicide bomb', 'suicide bomber', 'suicide bombing',
+    'ied', 'kidnapping', 'hostage crisis',
+    'isis', 'isil', 'al-qaeda', 'al qaeda', 'boko haram', 'taliban',
+  ];
+
+  for (const kw of requiredHighKeywords) {
+    it(`HIGH_KEYWORDS contains "${kw}"`, () => {
+      assert.ok(src.includes(`'${kw}'`), `Missing HIGH keyword: ${kw}`);
+    });
+  }
+
+  it('SHORT_KEYWORDS includes short conflict terms', () => {
+    for (const kw of ['clash', 'killed', 'mortar', 'ied', 'isis', 'isil', 'sniper']) {
+      assert.ok(src.includes(`'${kw}'`), `Missing SHORT keyword: ${kw}`);
+    }
+  });
+
+  it('has CONTEXTUAL_OVERRIDES array', () => {
+    assert.ok(src.includes('CONTEXTUAL_OVERRIDES'), 'Missing CONTEXTUAL_OVERRIDES');
+  });
+
+  it('has isContextuallySuppressed function', () => {
+    assert.ok(src.includes('isContextuallySuppressed'), 'Missing isContextuallySuppressed');
+  });
+
+  it('suppresses "flood" for marathon/runners context', () => {
+    assert.match(src, /flood.*marathon|marathon.*flood/s);
+  });
+
+  it('suppresses "killed" for slang usage', () => {
+    // Source uses regex like /\bkilled\s+the\s+game\b/
+    assert.ok(
+      src.includes("keyword: 'killed'") && src.includes('game') && src.includes('vibe'),
+      'Missing killed contextual suppression for slang',
+    );
+  });
+
+  it('expanded exclusion list includes entertainment terms', () => {
+    for (const term of ['box office', 'album', 'playlist', 'skincare', 'real estate', 'gardening']) {
+      assert.ok(src.includes(`'${term}'`), `Missing exclusion: ${term}`);
+    }
+  });
+});
+
+// ========================================================================
+// 2. CII — baseline recalibration & hotspot map fixes
+// ========================================================================
+
+describe('CII baseline accuracy', () => {
+  const src = readSrc('src/services/country-instability.ts');
+
+  it('Yemen baseline >= 85', () => {
+    const match = src.match(/YE:\s*(\d+)/);
+    assert.ok(match, 'Could not find YE baseline');
+    assert.ok(Number(match[1]) >= 85, `YE baseline too low: ${match[1]}`);
+  });
+
+  it('Syria baseline >= 85', () => {
+    const match = src.match(/SY:\s*(\d+)/);
+    assert.ok(match, 'Could not find SY baseline');
+    assert.ok(Number(match[1]) >= 85, `SY baseline too low: ${match[1]}`);
+  });
+
+  it('US baseline <= 20', () => {
+    const match = src.match(/US:\s*(\d+)/);
+    assert.ok(match, 'Could not find US baseline');
+    assert.ok(Number(match[1]) <= 20, `US baseline too high: ${match[1]}`);
+  });
+
+  it('Germany baseline <= 15', () => {
+    const match = src.match(/DE:\s*(\d+)/);
+    assert.ok(match, 'Could not find DE baseline');
+    assert.ok(Number(match[1]) <= 15, `DE baseline too high: ${match[1]}`);
+  });
+
+  it('Baghdad maps to IQ (Iraq), not IR (Iran)', () => {
+    assert.match(src, /baghdad:\s*'IQ'/);
+  });
+
+  it('Beirut maps to LB (Lebanon), not IR (Iran)', () => {
+    assert.match(src, /beirut:\s*'LB'/);
+  });
+
+  it('Doha maps to QA (Qatar), not SA (Saudi)', () => {
+    assert.match(src, /doha:\s*'QA'/);
+  });
+
+  it('Abu Dhabi maps to AE (UAE), not SA (Saudi)', () => {
+    assert.match(src, /abudhabi:\s*'AE'/);
+  });
+});
+
+// ========================================================================
+// 3. Anomaly detection — dual-baseline keys, EMA/anchor, short-term min
+// ========================================================================
+
+describe('Dual-baseline anomaly detection', () => {
+  const shared = readSrc('server/worldmonitor/infrastructure/v1/_shared.ts');
+  const record = readSrc('server/worldmonitor/infrastructure/v1/record-baseline-snapshot.ts');
+  const get = readSrc('server/worldmonitor/infrastructure/v1/get-temporal-baseline.ts');
+
+  it('defines SHORT_BASELINE_TTL', () => {
+    assert.ok(shared.includes('SHORT_BASELINE_TTL'), 'Missing SHORT_BASELINE_TTL');
+  });
+
+  it('defines EMA_ALPHA', () => {
+    assert.ok(shared.includes('EMA_ALPHA'), 'Missing EMA_ALPHA');
+  });
+
+  it('defines anchorMean in BaselineEntry', () => {
+    assert.ok(shared.includes('anchorMean'), 'Missing anchorMean field');
+  });
+
+  it('defines emaMean in BaselineEntry', () => {
+    assert.ok(shared.includes('emaMean'), 'Missing emaMean field');
+  });
+
+  it('defines makeShortBaselineKey', () => {
+    assert.ok(shared.includes('makeShortBaselineKey'), 'Missing makeShortBaselineKey');
+  });
+
+  it('defines getDualBaselineSeverity', () => {
+    assert.ok(shared.includes('getDualBaselineSeverity'), 'Missing getDualBaselineSeverity');
+  });
+
+  it('record-baseline writes to short-term keys', () => {
+    assert.ok(record.includes('makeShortBaselineKey'), 'record-baseline does not use short keys');
+    assert.ok(record.includes('SHORT_BASELINE_TTL'), 'record-baseline does not use SHORT_BASELINE_TTL');
+  });
+
+  it('record-baseline computes EMA', () => {
+    assert.ok(record.includes('EMA_ALPHA'), 'record-baseline does not compute EMA');
+    assert.ok(record.includes('emaMean'), 'record-baseline does not store emaMean');
+  });
+
+  it('record-baseline computes anchor mean', () => {
+    assert.ok(record.includes('anchorMean'), 'record-baseline does not store anchorMean');
+    assert.ok(record.includes('ANCHOR_FREEZE_COUNT'), 'record-baseline does not use ANCHOR_FREEZE_COUNT');
+  });
+
+  it('get-temporal-baseline fetches both baselines', () => {
+    assert.ok(get.includes('makeShortBaselineKey'), 'get-temporal does not fetch short baseline');
+    assert.ok(get.includes('Promise.all'), 'get-temporal does not fetch in parallel');
+  });
+
+  it('short-term min samples < 10', () => {
+    const match = shared.match(/MIN_SAMPLES_SHORT\s*=\s*(\d+)/);
+    assert.ok(match, 'Could not find MIN_SAMPLES_SHORT');
+    assert.ok(Number(match[1]) < 10, `MIN_SAMPLES_SHORT too high: ${match[1]}`);
+  });
+
+  it('get-temporal-baseline uses anchor mean for boiling frog detection', () => {
+    assert.ok(get.includes('anchorMean'), 'get-temporal does not reference anchorMean');
+  });
+});
+
+// ========================================================================
+// 4. Geo-convergence — region overrides
+// ========================================================================
+
+describe('Geo-convergence per-region thresholds', () => {
+  const src = readSrc('src/services/geo-convergence.ts');
+
+  it('defines REGION_OVERRIDES', () => {
+    assert.ok(src.includes('REGION_OVERRIDES'), 'Missing REGION_OVERRIDES');
+  });
+
+  it('defines getThresholdForCell function', () => {
+    assert.ok(src.includes('getThresholdForCell'), 'Missing getThresholdForCell');
+  });
+
+  it('Taiwan Strait threshold >= 4', () => {
+    const match = src.match(/Taiwan Strait.*?(\d+)/s);
+    assert.ok(match, 'Could not find Taiwan Strait override');
+    assert.ok(Number(match[1]) >= 4, `Taiwan Strait threshold too low: ${match[1]}`);
+  });
+
+  it('detectGeoConvergence uses per-cell thresholds', () => {
+    assert.ok(src.includes('getThresholdForCell('), 'detectGeoConvergence does not call getThresholdForCell');
+  });
+
+  it('Sahel has lower threshold than default (<=3)', () => {
+    assert.ok(src.includes('Sahel'), 'Missing Sahel region override');
+    // REGION_OVERRIDES format: [minLat, maxLat, minLon, maxLon, threshold, label]
+    // Find the line with Sahel and extract the 5th element (threshold)
+    const sahelLine = src.split('\n').find(l => l.includes('Sahel'));
+    assert.ok(sahelLine, 'Could not find Sahel line');
+    const nums = sahelLine.match(/[\d.-]+/g);
+    // 5th number is the threshold (after minLat, maxLat, minLon, maxLon)
+    assert.ok(nums && nums.length >= 5, 'Could not parse Sahel numbers');
+    const threshold = Number(nums[4]);
+    assert.ok(threshold <= 3, `Sahel threshold should be <= 3, got ${threshold}`);
+  });
+});
+
+// ========================================================================
+// 5. Military bases — data fixes
+// ========================================================================
+
+describe('Military base data accuracy', () => {
+  const src = readSrc('src/config/bases-expanded.ts');
+
+  it('Diego Garcia latitude is negative (Southern Hemisphere)', () => {
+    const match = src.match(/diego_garcia.*?lat:\s*([-\d.]+)/si);
+    assert.ok(match, 'Could not find Diego Garcia');
+    assert.ok(Number(match[1]) < 0, `Diego Garcia lat should be negative, got ${match[1]}`);
+  });
+
+  it('Camp Victory status is closed', () => {
+    const match = src.match(/camp_victory.*?status:\s*'(\w+)'/si);
+    assert.ok(match, 'Could not find Camp Victory');
+    assert.equal(match[1], 'closed');
+  });
+
+  it('Camp Victory description mentions "Closed 2011"', () => {
+    const match = src.match(/camp_victory.*?description:\s*'([^']+)'/si);
+    assert.ok(match, 'Could not find Camp Victory description');
+    assert.ok(match[1].includes('Closed 2011'), `Description should mention Closed 2011`);
+  });
+
+  it('no instances of "Quatar" (should be "Qatar")', () => {
+    assert.ok(!src.includes('Quatar'), 'Found misspelling "Quatar"');
+  });
+
+  it('no instances of "United Kingdoms" (should be "United Kingdom")', () => {
+    assert.ok(!src.includes('United Kingdoms'), 'Found misspelling "United Kingdoms"');
+  });
+
+  it('Al Udeid country is Qatar', () => {
+    const match = src.match(/al_udeid.*?country:\s*'([^']+)'/si);
+    assert.ok(match, 'Could not find Al Udeid');
+    assert.equal(match[1], 'Qatar');
+  });
+});

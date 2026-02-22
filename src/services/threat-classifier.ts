@@ -107,6 +107,37 @@ const HIGH_KEYWORDS: KeywordMap = {
   'tsunami': 'disaster',
   'hurricane': 'disaster',
   'typhoon': 'disaster',
+  // Conflict synonyms (added for HIGH recall)
+  'explosions': 'conflict',
+  'shelling': 'conflict',
+  'clash': 'conflict',
+  'clashes': 'conflict',
+  'killed': 'conflict',
+  'massacre': 'conflict',
+  'atrocity': 'conflict',
+  'bombardment': 'conflict',
+  'wounded': 'conflict',
+  'ambush': 'conflict',
+  'mortar': 'conflict',
+  'artillery': 'conflict',
+  'sniper': 'conflict',
+  'mass graves': 'conflict',
+  'militia attack': 'conflict',
+  // Terrorism synonyms
+  'car bomb': 'terrorism',
+  'suicide bomb': 'terrorism',
+  'suicide bomber': 'terrorism',
+  'suicide bombing': 'terrorism',
+  'ied': 'terrorism',
+  'kidnapping': 'terrorism',
+  'hostage crisis': 'terrorism',
+  // Named actors
+  'isis': 'terrorism',
+  'isil': 'terrorism',
+  'al-qaeda': 'terrorism',
+  'al qaeda': 'terrorism',
+  'boko haram': 'terrorism',
+  'taliban': 'terrorism',
 };
 
 const MEDIUM_KEYWORDS: KeywordMap = {
@@ -217,11 +248,14 @@ const EXCLUSIONS = [
   'recipe', 'cooking', 'shopping', 'fashion', 'celebrity', 'movie',
   'tv show', 'sports', 'game', 'concert', 'festival', 'wedding',
   'vacation', 'travel tips', 'life hack', 'self-care', 'wellness',
+  'box office', 'album', 'playlist', 'workout', 'skincare',
+  'real estate', 'home improvement', 'gardening', 'pet',
 ];
 
 const SHORT_KEYWORDS = new Set([
   'war', 'coup', 'ban', 'vote', 'riot', 'riots', 'hack', 'talks', 'ipo', 'gdp',
   'virus', 'disease', 'flood',
+  'clash', 'killed', 'mortar', 'ied', 'isis', 'isil', 'sniper',
 ]);
 
 const keywordRegexCache = new Map<string, RegExp>();
@@ -243,10 +277,31 @@ function matchKeywords(
 ): { keyword: string; category: EventCategory } | null {
   for (const [kw, cat] of Object.entries(keywords)) {
     if (getKeywordRegex(kw).test(titleLower)) {
+      if (isContextuallySuppressed(kw, titleLower)) continue;
       return { keyword: kw, category: cat };
     }
   }
   return null;
+}
+
+// Contextual overrides: suppress keyword matches when headline context is metaphorical
+const CONTEXTUAL_OVERRIDES: Array<{ keyword: string; suppressWhen: RegExp }> = [
+  { keyword: 'flood', suppressWhen: /marathon|runners|fans|tourists|shoppers|inbox|emails|applications|requests/ },
+  { keyword: 'flooding', suppressWhen: /marathon|runners|fans|tourists|shoppers|inbox|emails|applications|requests/ },
+  { keyword: 'killed', suppressWhen: /\bkilled\s+it\b|\bkilled\s+the\s+game\b|\bkilled\s+the\s+vibe\b/ },
+  { keyword: 'clash', suppressWhen: /fashion|style|color|colour|personality|titans?\s+clash|clash\s+royale/ },
+  { keyword: 'explosion', suppressWhen: /population\s+explosion|explosion\s+of\s+(flavor|colour|color|creativity|growth)/ },
+  { keyword: 'mortar', suppressWhen: /brick\s+and\s+mortar|mortar\s+and\s+pestle/ },
+  { keyword: 'war', suppressWhen: /star\s+wars|storage\s+wars|turf\s+war|bidding\s+war|flame\s+war|war\s+of\s+words/ },
+];
+
+function isContextuallySuppressed(keyword: string, titleLower: string): boolean {
+  for (const override of CONTEXTUAL_OVERRIDES) {
+    if (override.keyword === keyword && override.suppressWhen.test(titleLower)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function classifyByKeyword(title: string, variant = 'full'): ThreatClassification {

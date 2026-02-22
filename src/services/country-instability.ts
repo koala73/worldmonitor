@@ -117,31 +117,31 @@ const COUNTRY_KEYWORDS: Record<string, string[]> = {
   AE: ['uae', 'emirates', 'dubai', 'abu dhabi'],
 };
 
-// Geopolitical baseline risk scores (0-50)
+// Geopolitical baseline risk scores (0-100, FSI-equivalent scale)
 // Reflects inherent instability regardless of current events
 const BASELINE_RISK: Record<string, number> = {
-  US: 5,    // Stable democracy, high media coverage inflates event counts
-  RU: 35,   // Authoritarian, active in Ukraine conflict
-  CN: 25,   // Authoritarian, Taiwan tensions, internal repression
-  UA: 50,   // Active war zone
-  IR: 40,   // Authoritarian, regional tensions, under-reported
-  IL: 45,   // Active conflict with Gaza/Lebanon
-  TW: 30,   // China tensions, invasion risk
-  KP: 45,   // Rogue state, nuclear threat, near-zero reporting
-  SA: 20,   // Regional tensions but relatively stable
-  TR: 25,   // Regional involvement, internal tensions
-  PL: 10,   // NATO frontline but stable
-  DE: 5,    // Stable democracy
-  FR: 10,   // Social tensions but stable
-  GB: 5,    // Stable democracy
-  IN: 20,   // Regional tensions, internal issues
-  PK: 35,   // Nuclear state, instability, terrorism
-  SY: 50,   // Active civil war
-  YE: 50,   // Active civil war
-  MM: 45,   // Military coup, civil conflict
-  VE: 40,   // Economic collapse, authoritarian
-  BR: 15,   // Large democracy, social tensions, Amazon deforestation
-  AE: 10,   // Stable, regional hub, low internal unrest
+  YE: 93,   // FSI ~112/120, active civil war
+  SY: 90,   // FSI ~110/120, failed state
+  MM: 82,   // FSI ~100/120, military coup
+  KP: 80,   // FSI ~100/120, rogue state
+  UA: 72,   // FSI ~90/120, active invasion
+  VE: 68,   // FSI ~88/120, economic collapse
+  IR: 65,   // FSI ~85/120, authoritarian
+  PK: 60,   // FSI ~85/120, instability
+  IL: 60,   // FSI ~78/120, active conflict
+  RU: 55,   // FSI ~75/120, authoritarian at war
+  CN: 45,   // FSI ~68/120, authoritarian
+  TR: 40,   // FSI ~63/120, regional tensions
+  IN: 38,   // FSI ~65/120, communal issues
+  SA: 35,   // FSI ~60/120, regional tensions
+  TW: 30,   // No FSI but existential PRC threat
+  BR: 25,   // FSI ~52/120, inequality
+  FR: 18,   // FSI ~38/120, social tensions
+  AE: 18,   // FSI ~40/120
+  PL: 15,   // FSI ~35/120
+  US: 12,   // FSI ~40/120, polarization
+  GB: 12,   // FSI ~33/120
+  DE: 10,   // FSI ~30/120
 };
 
 // Event significance multipliers
@@ -341,7 +341,7 @@ const HOTSPOT_COUNTRY_MAP: Record<string, string> = {
   tehran: 'IR', moscow: 'RU', beijing: 'CN', kyiv: 'UA', taipei: 'TW',
   telaviv: 'IL', pyongyang: 'KP', riyadh: 'SA', ankara: 'TR', damascus: 'SY',
   sanaa: 'YE', caracas: 'VE', dc: 'US', london: 'GB', brussels: 'FR',
-  baghdad: 'IR', beirut: 'IR', doha: 'SA', abudhabi: 'SA',
+  baghdad: 'IQ', beirut: 'LB', doha: 'QA', abudhabi: 'AE',
 };
 
 const hotspotActivityMap = new Map<string, number>();
@@ -641,7 +641,7 @@ export function calculateCII(): CountryScore[] {
       : 0;
     const climateBoost = data.climateStress;
 
-    const blendedScore = baselineRisk * 0.4 + eventScore * 0.6 + hotspotBoost + newsUrgencyBoost + focalBoost + displacementBoost + climateBoost;
+    const blendedScore = baselineRisk * 0.25 + eventScore * 0.75 + hotspotBoost + newsUrgencyBoost + focalBoost + displacementBoost + climateBoost;
 
     // UCDP-derived conflict floor replaces hardcoded floors
     // war (1000+ deaths/yr) → 70, minor (25-999) → 50, none → 0
@@ -696,7 +696,7 @@ export function getCountryScore(code: string): number | null {
     : data.displacementOutflow >= 100_000 ? 4
     : 0;
   const climateBoost = data.climateStress;
-  const blendedScore = baselineRisk * 0.4 + eventScore * 0.6 + hotspotBoost + newsUrgencyBoost + focalBoost + displacementBoost + climateBoost;
+  const blendedScore = baselineRisk * 0.25 + eventScore * 0.75 + hotspotBoost + newsUrgencyBoost + focalBoost + displacementBoost + climateBoost;
 
   const floor = getUcdpFloor(data);
   return Math.round(Math.min(100, Math.max(floor, blendedScore)));
