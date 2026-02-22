@@ -1655,6 +1655,7 @@
     "loading": "Laddar...",
     "error": "Ett fel inträffade",
     "updated": "Uppdaterad: {{time}}",
+    "retrying": "Försöker igen…",
     "failedToLoad": "Kunde inte ladda data",
     "noDataShort": "Inga data",
     "noDataAvailable": "Inga data tillgängliga",

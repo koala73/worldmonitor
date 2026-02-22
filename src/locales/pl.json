@@ -1749,6 +1749,7 @@
     "noData": "Brak danych",
     "updated": "Zaktualizowano przed chwilą",
     "ago": "{{time}} temu",
+    "retrying": "Ponowna próba…",
     "failedToLoad": "Nie udało się załadować danych",
     "noDataShort": "Brak danych",
     "noDataAvailable": "Brak dostępnych danych",

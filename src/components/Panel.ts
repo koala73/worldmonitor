@@ -304,6 +304,18 @@ export class Panel {
     replaceChildren(this.content, h('div', { className: 'error-message' }, message));
   }
 
+  public showRetrying(message = t('common.retrying')): void {
+    replaceChildren(this.content,
+      h('div', { className: 'panel-loading' },
+        h('div', { className: 'panel-loading-radar' },
+          h('div', { className: 'panel-radar-sweep' }),
+          h('div', { className: 'panel-radar-dot' }),
+        ),
+        h('div', { className: 'panel-loading-text' }, message),
+      ),
+    );
+  }
+
   public showConfigError(message: string): void {
     const msgEl = h('div', { className: 'config-error-message' }, message);
     if (isDesktopRuntime()) {

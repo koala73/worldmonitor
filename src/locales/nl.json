@@ -1655,6 +1655,7 @@
     "loading": "Laden...",
     "error": "Er is een fout opgetreden",
     "updated": "Bijgewerkt: {{time}}",
+    "retrying": "Opnieuw proberen…",
     "failedToLoad": "Laden van gegevens mislukt",
     "noDataShort": "Geen gegevens",
     "noDataAvailable": "Geen gegevens beschikbaar",

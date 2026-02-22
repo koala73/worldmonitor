@@ -1750,6 +1750,7 @@
     "noDataAvailable": "لا تتوفر بيانات",
     "updated": "تم التحديث للتو",
     "ago": "منذ {{time}}",
+    "retrying": "جارٍ إعادة المحاولة…",
     "failedToLoad": "فشل تحميل البيانات",
     "noDataShort": "لا بيانات",
     "upstreamUnavailable": "واجهة API المصدر غير متاحة — ستتم إعادة المحاولة تلقائياً",

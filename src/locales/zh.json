@@ -1750,6 +1750,7 @@
     "noDataAvailable": "无可用数据",
     "updated": "刚刚更新",
     "ago": "{{time}}前",
+    "retrying": "正在重试…",
     "failedToLoad": "加载数据失败",
     "noDataShort": "无数据",
     "upstreamUnavailable": "上游API不可用 — 将自动重试",

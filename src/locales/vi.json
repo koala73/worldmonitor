@@ -1727,6 +1727,7 @@
     "noDataAvailable": "Không có dữ liệu",
     "updated": "Vừa cập nhật",
     "ago": "{{time}} trước",
+    "retrying": "Đang thử lại…",
     "failedToLoad": "Không thể tải dữ liệu",
     "noDataShort": "Không có dữ liệu",
     "upstreamUnavailable": "API nguồn không khả dụng — sẽ tự động thử lại",

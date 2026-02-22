@@ -1750,6 +1750,7 @@
     "noDataAvailable": "データなし",
     "updated": "たった今更新",
     "ago": "{{time}}前",
+    "retrying": "再試行中…",
     "failedToLoad": "データの読み込みに失敗",
     "noDataShort": "データなし",
     "upstreamUnavailable": "上流APIが利用不可 — 自動リトライ予定",

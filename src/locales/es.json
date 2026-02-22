@@ -1749,6 +1749,7 @@
     "noData": "No hay datos disponibles",
     "updated": "Actualizado ahora",
     "ago": "hace {{time}}",
+    "retrying": "Reintentando…",
     "failedToLoad": "Error al cargar los datos",
     "noDataShort": "Sin datos",
     "noDataAvailable": "No hay datos disponibles",

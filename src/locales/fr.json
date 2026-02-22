@@ -1749,6 +1749,7 @@
     "noData": "Aucune donnée disponible",
     "updated": "Mis à jour à l'instant",
     "ago": "il y a {{time}}",
+    "retrying": "Nouvelle tentative…",
     "failedToLoad": "Échec du chargement des données",
     "noDataShort": "Aucune donnée",
     "upstreamUnavailable": "API source indisponible — nouvelle tentative automatique",

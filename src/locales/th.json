@@ -1727,6 +1727,7 @@
     "noDataAvailable": "ไม่มีข้อมูล",
     "updated": "อัปเดตเมื่อสักครู่",
     "ago": "{{time}} ที่แล้ว",
+    "retrying": "กำลังลองใหม่…",
     "failedToLoad": "โหลดข้อมูลไม่สำเร็จ",
     "noDataShort": "ไม่มีข้อมูล",
     "upstreamUnavailable": "API ต้นทางไม่พร้อมใช้งาน — จะลองใหม่อัตโนมัติ",

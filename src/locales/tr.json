@@ -1750,6 +1750,7 @@
     "noDataAvailable": "Veri mevcut degil",
     "updated": "Az once guncellendi",
     "ago": "{{time}} once",
+    "retrying": "Yeniden deneniyor…",
     "failedToLoad": "Veri yuklenemedi",
     "noDataShort": "Veri yok",
     "upstreamUnavailable": "Ust kaynak API'si kullanilamiyor — otomatik yeniden denenecek",

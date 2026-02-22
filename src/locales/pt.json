@@ -1655,6 +1655,7 @@
     "loading": "Carregando...",
     "error": "Ocorreu um erro",
     "updated": "Atualizado: {{time}}",
+    "retrying": "Tentando novamente…",
     "failedToLoad": "Falha ao carregar os dados",
     "noDataShort": "Sem dados",
     "noDataAvailable": "Nenhum dado disponível",
