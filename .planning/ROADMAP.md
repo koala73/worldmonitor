@@ -66,12 +66,12 @@ Plans:
   3. The feed auto-refreshes on a configurable interval, maintaining the same real-time feel as WorldMonitor
   4. Mixed-source feeds (non-curated) pass through DistilBERT-SST2 sentiment filtering with a configurable confidence threshold, and only positive stories (score >= 0.85) appear
   5. The multi-stage quality pipeline prioritizes curated sources as primary content, with sentiment-filtered mainstream as supplement
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 03-01: TBD
-- [ ] 03-02: TBD
-- [ ] 03-03: TBD
+- [ ] 03-01-PLAN.md -- App.ts happy variant integration: DEFCON exclusion, variant switcher, data loading guards, refresh interval filtering (NEWS-03)
+- [ ] 03-02-PLAN.md -- PositiveNewsFeedPanel component with image cards, category filter bar, and RSS image extraction (NEWS-01, NEWS-02)
+- [ ] 03-03-PLAN.md -- Sentiment gate service, multi-stage quality pipeline, and panel wiring in App.ts (NEWS-03, FEED-02, FEED-05)
 
 ### Phase 4: Global Map & Positive Events
 **Goal**: Users see positive events and acts of kindness geolocated on the interactive map with warm-colored animated markers
@@ -177,8 +177,8 @@ Note: Phases 4, 5, 6, 7 can partially parallelize after Phase 2 completes (they 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Variant Shell & Visual Foundation | 3/3 | Complete | 2026-02-22 |
-| 2. Curated Content Pipeline | 0/2 | Complete    | 2026-02-22 |
-| 3. Positive News Feed & Quality Pipeline | 0/3 | Not started | - |
+| 2. Curated Content Pipeline | 3/3 | Complete    | 2026-02-22 |
+| 3. Positive News Feed & Quality Pipeline | 0/3 | In Progress | - |
 | 4. Global Map & Positive Events | 0/2 | Not started | - |
 | 5. Humanity Data Panels | 0/3 | Not started | - |
 | 6. Content Spotlight Panels | 0/3 | Not started | - |
