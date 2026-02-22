@@ -800,7 +800,14 @@
     "cii": {
       "shareStory": "ストーリーを共有",
       "noSignals": "不安定性シグナル未検出",
-      "infoTooltip": "<strong>方法論</strong><ul><li><strong>U</strong>nrest: 市民の騒乱・抗議活動</li><li><strong>C</strong>onflict: 武力紛争の強度</li><li><strong>S</strong>ecurity: 領土上の軍事飛行/艦艇</li><li><strong>I</strong>nformation: ニュース速度と焦点相関</li><li>ホットスポット近接ブースト（戦略的拠点）</li></ul><em>U:C:S:I値はコンポーネントスコアを表示。</em> 焦点検出はニュースエンティティとマップシグナルを相関させ正確なスコアリングを実現。"
+      "infoTooltip": "<strong>方法論</strong><ul><li><strong>U</strong>nrest: 市民の騒乱・抗議活動</li><li><strong>C</strong>onflict: 武力紛争の強度</li><li><strong>S</strong>ecurity: 領土上の軍事飛行/艦艇</li><li><strong>I</strong>nformation: ニュース速度と焦点相関</li><li>ホットスポット近接ブースト（戦略的拠点）</li></ul><em>U:C:S:I値はコンポーネントスコアを表示。</em> 焦点検出はニュースエンティティとマップシグナルを相関させ正確なスコアリングを実現。",
+      "election": {
+        "today": "本日",
+        "postElection": "選挙後",
+        "daysUntil": "{{days}}日",
+        "tooltip": "選挙まで{{days}}日",
+        "postElectionTooltip": "選挙から{{days}}日経過"
+      }
     },
     "insights": {
       "noStories": "速報またはマルチソースストーリーはまだなし",

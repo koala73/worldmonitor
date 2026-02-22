@@ -56,25 +56,40 @@ export class CIIPanel extends Panel {
     
     const colors: Record<ElectionProximity, string> = {
       'election-day': '#ff4444',
+      'post-election': '#cc4444',
       'imminent': '#ff8800',
       'elevated': '#ffaa00',
       'awareness': '#88aa44',
       'none': 'transparent',
     };
     
-    const labels: Record<ElectionProximity, string> = {
-      'election-day': '🗳️ TODAY',
-      'imminent': `🗳️ ${daysUntil}d`,
-      'elevated': `🗳️ ${daysUntil}d`,
-      'awareness': `🗳️ ${daysUntil}d`,
-      'none': '',
+    const getLabel = (prox: ElectionProximity): string => {
+      switch (prox) {
+        case 'election-day':
+          return `🗳️ ${t('components.cii.election.today')}`;
+        case 'post-election':
+          return `🗳️ ${t('components.cii.election.postElection')}`;
+        case 'imminent':
+        case 'elevated':
+        case 'awareness':
+          return `🗳️ ${t('components.cii.election.daysUntil', { days: daysUntil })}`;
+        default:
+          return '';
+      }
+    };
+
+    const getTooltip = (prox: ElectionProximity): string => {
+      if (prox === 'post-election') {
+        return t('components.cii.election.postElectionTooltip', { days: Math.abs(daysUntil ?? 0) });
+      }
+      return t('components.cii.election.tooltip', { days: daysUntil ?? 0 });
     };
     
     return h('span', {
       className: 'cii-election-badge',
       style: `background: ${colors[proximity]};`,
-      title: `Election in ${daysUntil ?? 0} days`,
-    }, labels[proximity]);
+      title: getTooltip(proximity),
+    }, getLabel(proximity));
   }
 
   private buildCountry(country: CountryScore): HTMLElement {
