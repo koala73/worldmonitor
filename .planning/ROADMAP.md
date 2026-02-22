@@ -49,11 +49,12 @@ Plans:
   1. At least 5 dedicated positive news RSS feeds are actively ingesting stories (Good News Network, Positive.News, Reasons to be Cheerful, etc.)
   2. GDELT integration returns only positive-tone stories (tone>5 filter) when queried by the happy variant
   3. Every ingested story is tagged with one of the defined content categories (Science & Health, Nature & Wildlife, Humanity & Kindness, Innovation & Tech, Climate Wins, Culture & Community)
-**Plans**: 2 plans
+**Plans**: 3 plans
 
 Plans:
 - [ ] 02-01-PLAN.md -- Positive RSS feed configuration and GDELT tone filter extension (FEED-01, FEED-03)
 - [ ] 02-02-PLAN.md -- Content category classifier, type extension, and feed wiring verification (FEED-04)
+- [ ] 02-03-PLAN.md -- Gap closure: wire classifyNewsItem into ingestion pipeline (FEED-04)
 
 ### Phase 3: Positive News Feed & Quality Pipeline
 **Goal**: Users see a scrolling, real-time positive news feed as the primary content panel, with category filtering and ML-backed quality assurance
