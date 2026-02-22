@@ -1,5 +1,5 @@
 {
-  "ignoreCommand": "if [ -z \"$VERCEL_GIT_PREVIOUS_SHA\" ]; then exit 1; fi; git diff --quiet $VERCEL_GIT_PREVIOUS_SHA $VERCEL_GIT_COMMIT_SHA -- api/ src/ server/ proto/ public/ index.html settings.html middleware.ts vite.config.ts vercel.json package.json tsconfig.json data/",
+  "ignoreCommand": "if [ -z \"$VERCEL_GIT_PREVIOUS_SHA\" ]; then exit 1; fi; git cat-file -e $VERCEL_GIT_PREVIOUS_SHA 2>/dev/null || exit 1; git diff --quiet $VERCEL_GIT_PREVIOUS_SHA $VERCEL_GIT_COMMIT_SHA -- api/ src/ server/ proto/ public/ index.html settings.html middleware.ts vite.config.ts vercel.json package.json tsconfig.json data/",
   "rewrites": [
     { "source": "/ingest/static/:path*", "destination": "https://us-assets.i.posthog.com/static/:path*" },
     { "source": "/ingest/:path*", "destination": "https://us.i.posthog.com/:path*" }
