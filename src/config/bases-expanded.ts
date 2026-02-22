@@ -4,7 +4,7 @@
 //
 // STATUS UPDATES SINCE DATASET (2020):
 //   - French Chad, Niger, Senegal, Ivory Coast: CLOSED 2024-25
-//   - US Niger Air Base 201: CLOSING 2024
+//   - US Niger Air Base 201: CLOSED August 2024
 //   - Chinese Ream Naval Base: OPERATIONAL April 2025
 //   - US Afghanistan bases: CLOSED 2021
 
@@ -192,7 +192,7 @@ export const MILITARY_BASES_EXPANDED: MilitaryBase[] = [
   { id: 'camp_buehring', name: 'Camp Buehring', lat: 29.69520, lon: 47.42120, type: 'us-nato', country: 'Kuwait', arm: 'Base', status: 'active', description: 'Base. Host: Kuwait.' },
   { id: 'kuwait_naval_base', name: 'Kuwait Naval Base', lat: 28.86430, lon: 48.27750, type: 'us-nato', country: 'Kuwait', arm: 'Army, Navy, Coastal Guard', status: 'active', description: 'Army, Navy, Coastal Guard. Host: Kuwait.' },
   { id: 'usag_schinnen', name: 'USAG Schinnen', lat: 50.94330, lon: 5.88889, type: 'us-nato', country: 'Netherlands', arm: 'Army', status: 'active', description: 'Army. Host: Netherlands.' },
-  { id: 'niger_air_base_201', name: 'Niger Air Base 201', lat: 16.92120, lon: 8.02595, type: 'us-nato', country: 'Niger', arm: 'Air Force', status: 'active', description: 'Air Force. Host: Niger.' },
+  { id: 'niger_air_base_201', name: 'Niger Air Base 201', lat: 16.92120, lon: 8.02595, type: 'us-nato', country: 'Niger', arm: 'Air Force', status: 'closed', description: 'Air Force. Host: Niger. Closed 2024 (US withdrawal completed August 2024).' },
   { id: 'masirah_aira_base', name: 'Masirah Aira Base', lat: 20.66710, lon: 58.89710, type: 'us-nato', country: 'Oman', arm: 'Air Force', status: 'active', description: 'Air Force. Host: Oman.' },
   { id: 'rafo_thumrait', name: 'RAFO Thumrait', lat: 17.66410, lon: 54.02550, type: 'us-nato', country: 'Oman', arm: 'Air Force', status: 'active', description: 'Air Force. Host: Oman.' },
   { id: 'antonio_bautista_air_base', name: 'Antonio Bautista Air Base', lat: 9.74346, lon: 118.76000, type: 'us-nato', country: 'Philippines', arm: 'Air Force', status: 'active', description: 'Air Force. Host: Philippines.' },

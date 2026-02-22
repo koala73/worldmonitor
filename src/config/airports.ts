@@ -19,7 +19,7 @@ export const MONITORED_AIRPORTS: MonitoredAirport[] = [
   // Americas - Other
   { iata: 'YYZ', icao: 'CYYZ', name: 'Toronto Pearson', city: 'Toronto', country: 'Canada', lat: 43.6777, lon: -79.6248, region: 'americas' },
   { iata: 'YVR', icao: 'CYVR', name: 'Vancouver International', city: 'Vancouver', country: 'Canada', lat: 49.1947, lon: -123.1792, region: 'americas' },
-  { iata: 'MEX', icao: 'MMSM', name: 'Felipe Angeles International', city: 'Mexico City', country: 'Mexico', lat: 19.7500, lon: -99.0200, region: 'americas' },
+  { iata: 'MEX', icao: 'MMMX', name: 'Benito Juárez International', city: 'Mexico City', country: 'Mexico', lat: 19.4363, lon: -99.0721, region: 'americas' },
   { iata: 'GRU', icao: 'SBGR', name: 'São Paulo–Guarulhos', city: 'São Paulo', country: 'Brazil', lat: -23.4356, lon: -46.4731, region: 'americas' },
   { iata: 'EZE', icao: 'SAEZ', name: 'Ministro Pistarini', city: 'Buenos Aires', country: 'Argentina', lat: -34.8222, lon: -58.5358, region: 'americas' },
   { iata: 'BOG', icao: 'SKBO', name: 'El Dorado International', city: 'Bogotá', country: 'Colombia', lat: 4.7016, lon: -74.1469, region: 'americas' },

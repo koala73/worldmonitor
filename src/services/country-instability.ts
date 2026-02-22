@@ -291,8 +291,8 @@ export function ingestDisplacementForCII(countries: CountryDisplacement[]): void
 const ZONE_COUNTRY_MAP: Record<string, string[]> = {
   'Ukraine': ['UA'], 'Middle East': ['IR', 'IL', 'SA', 'SY', 'YE'],
   'South Asia': ['PK', 'IN'], 'Myanmar': ['MM'],
-  'Taiwan Strait': ['TW', 'CN'], 'Horn of Africa': ['ET', 'SO', 'YE'],
-  'Sahel': ['SD', 'FR'], 'Central Africa': ['SD'],
+  'Taiwan Strait': ['TW', 'CN'], 'Horn of Africa': ['SO', 'ET', 'ER', 'DJ'],
+  'Sahel': ['ML', 'BF', 'NE', 'TD', 'MR', 'SD'], 'Central Africa': ['CF', 'CD', 'CM', 'CG'],
   'Mediterranean': ['TR', 'IL', 'FR'], 'Central Asia': ['RU', 'CN'],
   'California': ['US'], 'Amazon': ['BR'], 'Caribbean': ['VE'],
   'Australia': [], 'Southern Africa': [],

@@ -268,6 +268,12 @@ describe('Military base data accuracy', () => {
     assert.equal(match[1], 'closed');
   });
 
+  it('Niger Air Base 201 is closed (US withdrawal 2024)', () => {
+    const match = src.match(/niger_air_base_201.*?status:\s*'(\w+)'/si);
+    assert.ok(match, 'Could not find Niger Air Base 201');
+    assert.equal(match[1], 'closed');
+  });
+
   it('Italian Afghanistan base is closed with correct name', () => {
     assert.ok(src.includes('Herat Military Base'), 'Herat name not fixed');
     assert.ok(!src.includes('Heart miliraty'), 'Old typo still present');
@@ -310,6 +316,37 @@ describe('Signal aggregator country attribution', () => {
     const inIdx = methodBody.indexOf("return 'IN'");
     assert.ok(pkIdx > 0 && inIdx > 0, 'Could not find PK/IN returns in coordsToCountry');
     assert.ok(pkIdx < inIdx, 'Pakistan must be checked before India');
+  });
+
+  it('South Korea check comes before North Korea (Seoul must resolve to KR)', () => {
+    const methodStart = src.indexOf('coordsToCountry');
+    assert.ok(methodStart > 0, 'Could not find coordsToCountry method');
+    const methodBody = src.slice(methodStart);
+    const krIdx = methodBody.indexOf("return 'KR'");
+    const kpIdx = methodBody.indexOf("return 'KP'");
+    assert.ok(krIdx > 0 && kpIdx > 0, 'Could not find KR/KP returns');
+    assert.ok(krIdx < kpIdx, 'South Korea must be checked before North Korea');
+  });
+
+  it('North Korea south boundary excludes Seoul (>= 39)', () => {
+    const methodStart = src.indexOf('coordsToCountry');
+    const methodBody = src.slice(methodStart);
+    // Find the NK line (return 'KP') and extract latitude bound
+    const kpLine = methodBody.split('\n').find(l => l.includes("return 'KP'"));
+    assert.ok(kpLine, 'Could not find KP bounding box');
+    const latMatch = kpLine.match(/lat\s*>=\s*([\d.]+)/);
+    assert.ok(latMatch, 'Could not parse NK south latitude');
+    assert.ok(Number(latMatch[1]) >= 39, `NK south boundary ${latMatch[1]} too low — would catch Seoul at 37.56°N`);
+  });
+
+  it('Pakistan east boundary excludes western India (<= 74)', () => {
+    const methodStart = src.indexOf('coordsToCountry');
+    const methodBody = src.slice(methodStart);
+    const pkLine = methodBody.split('\n').find(l => l.includes("return 'PK'"));
+    assert.ok(pkLine, 'Could not find PK bounding box');
+    const lonMatch = pkLine.match(/lon\s*<=\s*([\d.]+)/);
+    assert.ok(lonMatch, 'Could not parse PK east longitude');
+    assert.ok(Number(lonMatch[1]) <= 74, `PK east boundary ${lonMatch[1]} too wide — would catch Mumbai at 72.8°E`);
   });
 
   it('includes Japan bounding box', () => {
@@ -408,22 +445,22 @@ describe('Geo config accuracy', () => {
     assert.ok(Number(match[1]) >= 119.8, `Taiwan Strait lon too low: ${match[1]}`);
   });
 
-  it('Palisades nuclear plant is inactive', () => {
+  it('Palisades nuclear plant is construction (restart pending)', () => {
     const match = geo.match(/palisades.*?status:\s*'(\w+)'/si);
     assert.ok(match);
-    assert.equal(match[1], 'inactive');
+    assert.equal(match[1], 'construction');
   });
 
-  it('Pickering nuclear plant is inactive', () => {
+  it('Pickering nuclear plant is active (units 5-8 operating)', () => {
     const match = geo.match(/pickering.*?status:\s*'(\w+)'/si);
     assert.ok(match);
-    assert.equal(match[1], 'inactive');
+    assert.equal(match[1], 'active');
   });
 
-  it('Mexico City airport uses MMSM ICAO code', () => {
+  it('Mexico City airport uses MMMX ICAO code (Benito Juárez)', () => {
     const match = airports.match(/MEX.*?icao:\s*'(\w+)'/si);
     assert.ok(match);
-    assert.equal(match[1], 'MMSM');
+    assert.equal(match[1], 'MMMX');
   });
 
   it('Damascus description mentions post-Assad', () => {
@@ -495,22 +532,29 @@ describe('TIER1 country coverage', () => {
 describe('ZONE_COUNTRY_MAP accuracy', () => {
   const cii = readSrc('src/services/country-instability.ts');
 
-  it('Sahel does NOT map to MM', () => {
+  it('Sahel maps to correct African countries (not MM)', () => {
     const match = cii.match(/'Sahel':\s*\[([^\]]+)\]/);
     assert.ok(match, 'Could not find Sahel zone mapping');
     assert.ok(!match[1].includes("'MM'"), 'Sahel should not map to Myanmar');
+    assert.ok(match[1].includes("'ML'"), 'Sahel should include Mali');
+    assert.ok(match[1].includes("'BF'"), 'Sahel should include Burkina Faso');
+    assert.ok(match[1].includes("'NE'"), 'Sahel should include Niger');
   });
 
-  it('Central Africa does NOT map to MM', () => {
+  it('Central Africa maps to correct countries (not MM)', () => {
     const match = cii.match(/'Central Africa':\s*\[([^\]]+)\]/);
     assert.ok(match, 'Could not find Central Africa zone mapping');
     assert.ok(!match[1].includes("'MM'"), 'Central Africa should not map to Myanmar');
+    assert.ok(match[1].includes("'CF'"), 'Central Africa should include CAR');
+    assert.ok(match[1].includes("'CD'"), 'Central Africa should include DRC');
   });
 
-  it('Horn of Africa includes ET (Ethiopia)', () => {
+  it('Horn of Africa includes ET and SO (not YE/SA)', () => {
     const match = cii.match(/'Horn of Africa':\s*\[([^\]]+)\]/);
     assert.ok(match, 'Could not find Horn of Africa zone mapping');
     assert.ok(match[1].includes("'ET'"), 'Horn of Africa should include Ethiopia');
+    assert.ok(match[1].includes("'SO'"), 'Horn of Africa should include Somalia');
+    assert.ok(!match[1].includes("'SA'"), 'Horn of Africa should not include Saudi Arabia');
   });
 
   it('zoneCountries includes yemen_redsea', () => {

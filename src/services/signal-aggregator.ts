@@ -311,22 +311,24 @@ class SignalAggregator {
   }
 
   private coordsToCountry(lat: number, lon: number): string {
-    // Most specific / smallest regions first to avoid being swallowed by larger boxes
+    // IMPORTANT: Check order matters for overlapping regions. Smaller/more-specific
+    // boxes must come before larger ones that encompass them. Do NOT reorder without
+    // verifying that Seoul (37.56N,127E)→KR, Mumbai (19N,72.8E)→IN, Taipei (25N,121.5E)→TW.
 
     // Taiwan — must come before China
     if (lat >= 22 && lat <= 25 && lon >= 120 && lon <= 122) return 'TW';
     // Israel — must come before Saudi Arabia
     if (lat >= 29 && lat <= 33 && lon >= 34 && lon <= 36) return 'IL';
-    // North Korea — must come before China
-    if (lat >= 37 && lat <= 43 && lon >= 124 && lon <= 130) return 'KP';
-    // South Korea — must come before China/Japan
+    // South Korea — must come before North Korea (Seoul at 37.56°N falls in overlap)
     if (lat >= 33 && lat <= 39 && lon >= 124 && lon <= 130) return 'KR';
+    // North Korea — south boundary at 39.5 to avoid capturing Seoul
+    if (lat >= 39.5 && lat <= 43 && lon >= 124 && lon <= 131) return 'KP';
 
     // Medium-sized regions
     // Japan — narrowed lon to avoid overlap with China
     if (lat >= 30 && lat <= 46 && lon >= 129 && lon <= 146) return 'JP';
-    // Pakistan — must come before India
-    if (lat >= 23 && lat <= 37 && lon >= 60 && lon <= 77) return 'PK';
+    // Pakistan — lon capped at 73°E to avoid western India (Mumbai at 72.8°E)
+    if (lat >= 23 && lat <= 37 && lon >= 60 && lon <= 73) return 'PK';
     // Syria — must come before Saudi Arabia and Iran
     if (lat >= 32 && lat <= 37 && lon >= 35 && lon <= 42) return 'SY';
     // Yemen — must come before Saudi Arabia
