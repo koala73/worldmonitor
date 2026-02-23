@@ -174,6 +174,8 @@ export class App {
   private seenGeoAlerts: Set<string> = new Set();
   private snapshotIntervalId: ReturnType<typeof setInterval> | null = null;
   private refreshTimeoutIds: Map<string, ReturnType<typeof setTimeout>> = new Map();
+  private refreshRunners = new Map<string, { run: () => Promise<void>; intervalMs: number }>();
+  private hiddenSince = 0;
   private isDestroyed = false;
   private boundKeydownHandler: ((e: KeyboardEvent) => void) | null = null;
   private boundFullscreenHandler: (() => void) | null = null;
@@ -2050,6 +2052,7 @@ export class App {
       clearTimeout(timeoutId);
     }
     this.refreshTimeoutIds.clear();
+    this.refreshRunners.clear();
 
     // Remove global event listeners
     if (this.boundKeydownHandler) {
@@ -2715,13 +2718,16 @@ export class App {
     // Map pin toggle
     this.setupMapPin();
 
-    // Pause animations when tab is hidden, unload ML models to free memory
+    // Pause animations when tab is hidden, unload ML models to free memory.
+    // On return, flush any data refreshes that went stale while hidden.
     this.boundVisibilityHandler = () => {
       document.body.classList.toggle('animations-paused', document.hidden);
       if (document.hidden) {
+        this.hiddenSince = this.hiddenSince || Date.now();
         mlWorker.unloadOptionalModels();
       } else {
         this.resetIdleTimer();
+        this.flushStaleRefreshes();
       }
     };
     document.addEventListener('visibilitychange', this.boundVisibilityHandler);
@@ -4587,7 +4593,25 @@ export class App {
         scheduleNext(computeDelay(intervalMs, false));
       }
     };
+    this.refreshRunners.set(name, { run, intervalMs });
     scheduleNext(computeDelay(intervalMs, document.visibilityState === 'hidden'));
+  }
+
+  /** Cancel pending timeouts for stale services and re-trigger them immediately. */
+  private flushStaleRefreshes(): void {
+    if (!this.hiddenSince) return;
+    const hiddenMs = Date.now() - this.hiddenSince;
+    this.hiddenSince = 0;
+
+    let stagger = 0;
+    for (const [name, { run, intervalMs }] of this.refreshRunners) {
+      if (hiddenMs < intervalMs) continue;
+      const pending = this.refreshTimeoutIds.get(name);
+      if (pending) clearTimeout(pending);
+      const delay = stagger;
+      stagger += 150;
+      this.refreshTimeoutIds.set(name, setTimeout(() => void run(), delay));
+    }
   }
 
   private setupRefreshIntervals(): void {
