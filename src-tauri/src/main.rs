@@ -464,6 +464,24 @@ fn close_settings_window(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+async fn open_live_channels_window_command(
+    app: AppHandle,
+    base_url: Option<String>,
+) -> Result<(), String> {
+    open_live_channels_window(&app, base_url)
+}
+
+#[tauri::command]
+fn close_live_channels_window(app: AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("live-channels") {
+        window
+            .close()
+            .map_err(|e| format!("Failed to close live channels window: {e}"))?;
+    }
+    Ok(())
+}
+
 /// Fetch JSON from Polymarket Gamma API using native TLS (bypasses Cloudflare JA3 blocking).
 /// Called from frontend when browser CORS and sidecar Node.js TLS both fail.
 #[tauri::command]
@@ -515,6 +533,41 @@ fn open_settings_window(app: &AppHandle) -> Result<(), String> {
     // from the settings window (macOS uses a shared app-wide menu bar instead).
     #[cfg(not(target_os = "macos"))]
     let _ = _settings_window.remove_menu();
+
+    Ok(())
+}
+
+fn open_live_channels_window(app: &AppHandle, base_url: Option<String>) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("live-channels") {
+        let _ = window.show();
+        window
+            .set_focus()
+            .map_err(|e| format!("Failed to focus live channels window: {e}"))?;
+        return Ok(());
+    }
+
+    // In dev, use the same origin as the main window (e.g. http://localhost:3001) so we don't
+    // get "connection refused" when Vite runs on a different port than devUrl.
+    let url = match base_url {
+        Some(ref origin) if !origin.is_empty() => {
+            let path = origin.trim_end_matches('/');
+            let full_url = format!("{}/live-channels.html", path);
+            WebviewUrl::External(Url::parse(&full_url).map_err(|_| "Invalid base URL".to_string())?)
+        }
+        _ => WebviewUrl::App("live-channels.html".into()),
+    };
+
+    let _live_channels_window = WebviewWindowBuilder::new(app, "live-channels", url)
+    .title("Channel management - World Monitor")
+    .inner_size(440.0, 560.0)
+    .min_inner_size(360.0, 480.0)
+    .resizable(true)
+    .background_color(tauri::webview::Color(26, 28, 30, 255))
+    .build()
+    .map_err(|e| format!("Failed to create live channels window: {e}"))?;
+
+    #[cfg(not(target_os = "macos"))]
+    let _ = _live_channels_window.remove_menu();
 
     Ok(())
 }
@@ -904,6 +957,8 @@ fn main() {
             open_sidecar_log_file,
             open_settings_window_command,
             close_settings_window,
+            open_live_channels_window_command,
+            close_live_channels_window,
             open_url,
             fetch_polymarket
         ])
