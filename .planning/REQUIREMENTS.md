@@ -97,9 +97,9 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Ambient / TV Mode
 
-- [ ] **TV-01**: Full-screen lean-back mode designed for TV/second monitor with auto-cycling between panels
-- [ ] **TV-02**: Configurable panel rotation interval (30s-2min), suppressed interactive elements, larger typography
-- [ ] **TV-03**: Subtle ambient animations (floating particles, gentle transitions) for warm background feel
+- [x] **TV-01**: Full-screen lean-back mode designed for TV/second monitor with auto-cycling between panels
+- [x] **TV-02**: Configurable panel rotation interval (30s-2min), suppressed interactive elements, larger typography
+- [x] **TV-03**: Subtle ambient animations (floating particles, gentle transitions) for warm background feel
 
 ## v2 Requirements
 
@@ -178,9 +178,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SHARE-01 | Phase 9 | Pending |
 | SHARE-02 | Phase 9 | Pending |
 | SHARE-03 | Phase 9 | Pending |
-| TV-01 | Phase 9 | Pending |
-| TV-02 | Phase 9 | Pending |
-| TV-03 | Phase 9 | Pending |
+| TV-01 | Phase 9 | Complete |
+| TV-02 | Phase 9 | Complete |
+| TV-03 | Phase 9 | Complete |
 
 **Coverage:**
 - v1 requirements: 49 total
