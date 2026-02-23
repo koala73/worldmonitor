@@ -122,6 +122,9 @@ const layers = {
   gulfInvestments: false,
   positiveEvents: false,
   kindness: false,
+  happiness: false,
+  speciesRecovery: false,
+  renewableInstallations: false,
 };
 
 await initI18n();

@@ -24,6 +24,11 @@ export interface SpeciesRecovery {
   source: string;
   region: string;
   lastUpdated: string;
+  recoveryZone?: {
+    name: string;
+    lat: number;
+    lon: number;
+  };
 }
 
 /**

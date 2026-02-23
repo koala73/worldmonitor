@@ -61,6 +61,9 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   // Happy variant layers
   positiveEvents: true,
   kindness: true,
+  happiness: true,
+  speciesRecovery: false,
+  renewableInstallations: false,
 };
 
 // Mobile defaults — same as desktop for happy variant
@@ -106,6 +109,9 @@ export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   // Happy variant layers
   positiveEvents: true,
   kindness: true,
+  happiness: true,
+  speciesRecovery: false,
+  renewableInstallations: false,
 };
 
 export const VARIANT_CONFIG: VariantConfig = {

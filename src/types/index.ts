@@ -526,6 +526,9 @@ export interface MapLayers {
   // Happy variant layers
   positiveEvents: boolean;
   kindness: boolean;
+  happiness: boolean;
+  speciesRecovery: boolean;
+  renewableInstallations: boolean;
 }
 
 export interface AIDataCenter {

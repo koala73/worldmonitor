@@ -89,6 +89,9 @@ const FULL_MAP_LAYERS: MapLayers = {
   // Happy variant layers
   positiveEvents: false,
   kindness: false,
+  happiness: false,
+  speciesRecovery: false,
+  renewableInstallations: false,
 };
 
 const FULL_MOBILE_MAP_LAYERS: MapLayers = {
@@ -133,6 +136,9 @@ const FULL_MOBILE_MAP_LAYERS: MapLayers = {
   // Happy variant layers
   positiveEvents: false,
   kindness: false,
+  happiness: false,
+  speciesRecovery: false,
+  renewableInstallations: false,
 };
 
 // ============================================
@@ -217,6 +223,9 @@ const TECH_MAP_LAYERS: MapLayers = {
   // Happy variant layers
   positiveEvents: false,
   kindness: false,
+  happiness: false,
+  speciesRecovery: false,
+  renewableInstallations: false,
 };
 
 const TECH_MOBILE_MAP_LAYERS: MapLayers = {
@@ -261,6 +270,9 @@ const TECH_MOBILE_MAP_LAYERS: MapLayers = {
   // Happy variant layers
   positiveEvents: false,
   kindness: false,
+  happiness: false,
+  speciesRecovery: false,
+  renewableInstallations: false,
 };
 
 // ============================================
@@ -340,6 +352,9 @@ const FINANCE_MAP_LAYERS: MapLayers = {
   // Happy variant layers
   positiveEvents: false,
   kindness: false,
+  happiness: false,
+  speciesRecovery: false,
+  renewableInstallations: false,
 };
 
 const FINANCE_MOBILE_MAP_LAYERS: MapLayers = {
@@ -384,6 +399,9 @@ const FINANCE_MOBILE_MAP_LAYERS: MapLayers = {
   // Happy variant layers
   positiveEvents: false,
   kindness: false,
+  happiness: false,
+  speciesRecovery: false,
+  renewableInstallations: false,
 };
 
 // ============================================
@@ -443,6 +461,9 @@ const HAPPY_MAP_LAYERS: MapLayers = {
   // Happy variant layers
   positiveEvents: true,
   kindness: true,
+  happiness: true,
+  speciesRecovery: false,
+  renewableInstallations: false,
 };
 
 const HAPPY_MOBILE_MAP_LAYERS: MapLayers = {
@@ -487,6 +508,9 @@ const HAPPY_MOBILE_MAP_LAYERS: MapLayers = {
   // Happy variant layers
   positiveEvents: true,
   kindness: true,
+  happiness: true,
+  speciesRecovery: false,
+  renewableInstallations: false,
 };
 
 // ============================================
