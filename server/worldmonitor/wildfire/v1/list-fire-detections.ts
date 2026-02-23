@@ -21,7 +21,7 @@ import { CHROME_UA } from '../../../_shared/constants';
 import { getCachedJson, setCachedJson } from '../../../_shared/redis';
 
 const REDIS_CACHE_KEY = 'wildfire:fires:v1';
-const REDIS_CACHE_TTL = 1800; // 30 min — daily FIRMS data
+const REDIS_CACHE_TTL = 3600; // 1h — NASA FIRMS VIIRS NRT updates every ~3 hours
 
 const FIRMS_SOURCE = 'VIIRS_SNPP_NRT';
 

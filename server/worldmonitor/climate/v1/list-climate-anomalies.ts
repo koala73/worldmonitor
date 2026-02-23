@@ -21,7 +21,7 @@ import { CHROME_UA } from '../../../_shared/constants';
 import { getCachedJson, setCachedJson } from '../../../_shared/redis';
 
 const REDIS_CACHE_KEY = 'climate:anomalies:v1';
-const REDIS_CACHE_TTL = 1800; // 30 min — daily archive data, slow-moving
+const REDIS_CACHE_TTL = 10800; // 3h — Open-Meteo Archive uses ERA5 reanalysis with 2-7 day lag
 
 /** The 15 monitored zones matching the legacy api/climate-anomalies.js list. */
 const ZONES: { name: string; lat: number; lon: number }[] = [
