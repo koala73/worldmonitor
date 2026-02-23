@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package worldmonitor.giving.v1;
+
+import "worldmonitor/giving/v1/giving.proto";
+
+// GetGivingSummaryRequest specifies parameters for retrieving the global giving summary.
+message GetGivingSummaryRequest {
+  // Number of platforms to include (0 = all).
+  int32 platform_limit = 1;
+  // Number of category breakdowns to include (0 = all).
+  int32 category_limit = 2;
+}
+
+// GetGivingSummaryResponse contains the global giving activity summary.
+message GetGivingSummaryResponse {
+  // The giving summary.
+  GivingSummary summary = 1;
+}

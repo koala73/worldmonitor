@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package worldmonitor.giving.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/giving/v1/get_giving_summary.proto";
+
+// GivingService provides APIs for global personal giving and philanthropy tracking.
+service GivingService {
+  option (sebuf.http.service_config) = {base_path: "/api/giving/v1"};
+
+  // GetGivingSummary retrieves a composite global giving activity index and platform breakdowns.
+  rpc GetGivingSummary(GetGivingSummaryRequest) returns (GetGivingSummaryResponse) {
+    option (sebuf.http.config) = {path: "/get-giving-summary"};
+  }
+}

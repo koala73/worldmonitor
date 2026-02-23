@@ -16,6 +16,7 @@ export * from './maritime';
 export * from './cable-activity';
 export * from './cable-health';
 export * from './conflict';
+export * from './giving';
 export * from './displacement';
 export * from './research';
 export * from './wildfires';

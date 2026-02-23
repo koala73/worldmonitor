@@ -46,6 +46,8 @@ import { createIntelligenceServiceRoutes } from '../../../src/generated/server/w
 import { intelligenceHandler } from '../../../server/worldmonitor/intelligence/v1/handler';
 import { createMilitaryServiceRoutes } from '../../../src/generated/server/worldmonitor/military/v1/service_server';
 import { militaryHandler } from '../../../server/worldmonitor/military/v1/handler';
+import { createGivingServiceRoutes } from '../../../src/generated/server/worldmonitor/giving/v1/service_server';
+import { givingHandler } from '../../../server/worldmonitor/giving/v1/handler';
 
 import type { ServerOptions } from '../../../src/generated/server/worldmonitor/seismology/v1/service_server';
 
@@ -69,6 +71,7 @@ const allRoutes = [
   ...createNewsServiceRoutes(newsHandler, serverOptions),
   ...createIntelligenceServiceRoutes(intelligenceHandler, serverOptions),
   ...createMilitaryServiceRoutes(militaryHandler, serverOptions),
+  ...createGivingServiceRoutes(givingHandler, serverOptions),
 ];
 
 const router = createRouter(allRoutes);

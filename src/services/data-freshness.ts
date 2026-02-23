@@ -31,7 +31,8 @@ export type DataSourceId =
   | 'ucdp_events'    // UCDP georeferenced conflict events
   | 'unhcr'          // UNHCR displacement data
   | 'climate'        // Climate anomaly data (Open-Meteo)
-  | 'worldpop';      // WorldPop population exposure
+  | 'worldpop'       // WorldPop population exposure
+  | 'giving';        // Global giving activity data
 
 export type FreshnessStatus = 'fresh' | 'stale' | 'very_stale' | 'no_data' | 'disabled' | 'error';
 
@@ -93,6 +94,7 @@ const SOURCE_METADATA: Record<DataSourceId, { name: string; requiredForRisk: boo
   unhcr: { name: 'UNHCR Displacement', requiredForRisk: false, panelId: 'displacement' },
   climate: { name: 'Climate Anomalies', requiredForRisk: false, panelId: 'climate' },
   worldpop: { name: 'Population Exposure', requiredForRisk: false, panelId: 'population-exposure' },
+  giving: { name: 'Global Giving Activity', requiredForRisk: false, panelId: 'giving' },
 };
 
 class DataFreshnessTracker {
