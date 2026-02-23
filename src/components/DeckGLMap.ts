@@ -3106,7 +3106,6 @@ export class DeckGLMap {
       ? [
           { key: 'positiveEvents', label: 'Positive Events', icon: '&#127775;' },
           { key: 'kindness', label: 'Acts of Kindness', icon: '&#128154;' },
-          { key: 'natural', label: t('components.deckgl.layers.naturalEvents'), icon: '&#127755;' },
           { key: 'happiness', label: 'World Happiness', icon: '&#128522;' },
           { key: 'speciesRecovery', label: 'Species Recovery', icon: '&#128062;' },
           { key: 'renewableInstallations', label: 'Clean Energy', icon: '&#9889;' },

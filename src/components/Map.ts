@@ -353,7 +353,7 @@ export class MapComponent {
       'natural', 'weather',                               // natural events
     ];
     const happyLayers: (keyof MapLayers)[] = [
-      'natural',                                           // natural events only
+      'positiveEvents', 'kindness', 'happiness', 'speciesRecovery', 'renewableInstallations',
     ];
     const layers = SITE_VARIANT === 'tech' ? techLayers : SITE_VARIANT === 'finance' ? financeLayers : SITE_VARIANT === 'happy' ? happyLayers : fullLayers;
     const layerLabelKeys: Partial<Record<keyof MapLayers, string>> = {

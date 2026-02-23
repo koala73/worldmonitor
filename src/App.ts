@@ -255,6 +255,11 @@ export class App {
       this.panelSettings = { ...DEFAULT_PANELS };
     } else {
       this.mapLayers = loadFromStorage<MapLayers>(STORAGE_KEYS.mapLayers, defaultLayers);
+      // Happy variant: force non-happy layers off even if localStorage has stale true values
+      if (currentVariant === 'happy') {
+        const unhappyLayers: (keyof MapLayers)[] = ['conflicts', 'bases', 'hotspots', 'nuclear', 'irradiators', 'sanctions', 'military', 'protests', 'pipelines', 'waterways', 'ais', 'flights', 'spaceports', 'minerals', 'natural', 'fires', 'outages', 'cyberThreats', 'weather', 'economic', 'cables', 'datacenters', 'ucdpEvents', 'displacement', 'climate'];
+        unhappyLayers.forEach(layer => { this.mapLayers[layer] = false; });
+      }
       this.panelSettings = loadFromStorage<Record<string, PanelConfig>>(
         STORAGE_KEYS.panels,
         DEFAULT_PANELS
@@ -347,6 +352,14 @@ export class App {
         const geoLayers: (keyof MapLayers)[] = ['conflicts', 'bases', 'hotspots', 'nuclear', 'irradiators', 'sanctions', 'military', 'protests', 'pipelines', 'waterways', 'ais', 'flights', 'spaceports', 'minerals'];
         const urlLayers = this.initialUrlState.layers;
         geoLayers.forEach(layer => {
+          urlLayers[layer] = false;
+        });
+      }
+      // For happy variant, force off all non-happy layers (including natural events)
+      if (currentVariant === 'happy') {
+        const unhappyLayers: (keyof MapLayers)[] = ['conflicts', 'bases', 'hotspots', 'nuclear', 'irradiators', 'sanctions', 'military', 'protests', 'pipelines', 'waterways', 'ais', 'flights', 'spaceports', 'minerals', 'natural', 'fires', 'outages', 'cyberThreats', 'weather', 'economic', 'cables', 'datacenters', 'ucdpEvents', 'displacement', 'climate'];
+        const urlLayers = this.initialUrlState.layers;
+        unhappyLayers.forEach(layer => {
           urlLayers[layer] = false;
         });
       }
