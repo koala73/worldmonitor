@@ -40,9 +40,9 @@ Requirements for initial release. Each maps to roadmap phases.
 
 - [x] **MAP-01**: Interactive map displaying geocoded positive events with warm-colored markers (green/gold pulses instead of red threat markers)
 - [x] **MAP-02**: Positive event layer showing news stories geolocated on the map
-- [ ] **MAP-03**: World happiness heatmap choropleth layer (World Happiness Report data, green = happy)
-- [ ] **MAP-04**: Species recovery zones as map overlay (IUCN data, wildlife comeback locations)
-- [ ] **MAP-05**: Renewable energy installation locations as map layer
+- [x] **MAP-03**: World happiness heatmap choropleth layer (World Happiness Report data, green = happy)
+- [x] **MAP-04**: Species recovery zones as map overlay (IUCN data, wildlife comeback locations)
+- [x] **MAP-05**: Renewable energy installation locations as map layer
 
 ### Live Humanity Counters Panel
 
@@ -151,9 +151,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | NEWS-03 | Phase 3 | Complete |
 | MAP-01 | Phase 4 | Complete |
 | MAP-02 | Phase 4 | Complete |
-| MAP-03 | Phase 8 | Pending |
-| MAP-04 | Phase 8 | Pending |
-| MAP-05 | Phase 8 | Pending |
+| MAP-03 | Phase 8 | Complete |
+| MAP-04 | Phase 8 | Complete |
+| MAP-05 | Phase 8 | Complete |
 | COUNT-01 | Phase 5 | Complete |
 | COUNT-02 | Phase 5 | Complete |
 | COUNT-03 | Phase 5 | Complete |

@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-22)
 
 **Core value:** Every piece of content on the dashboard makes the viewer feel genuinely better about humanity
-**Current focus:** Phase 7 complete - Conservation & Energy Trackers (3/3 plans done)
+**Current focus:** Phase 8 in progress - Map Data Overlays (1/2 plans done)
 
 ## Current Position
 
-Phase: 7 of 9 (Conservation & Energy Trackers)
-Plan: 3 of 3 in current phase (07-01, 07-02, 07-03 complete)
-Status: Phase Complete
-Last activity: 2026-02-23 -- Completed 07-03-PLAN.md (Panel Wiring & CSS)
+Phase: 8 of 9 (Map Data Overlays)
+Plan: 1 of 2 in current phase (08-01 complete)
+Status: In Progress
+Last activity: 2026-02-23 -- Completed 08-01-PLAN.md (Data Foundation)
 
-Progress: [########=-] 88%
+Progress: [#########-] 92%
 
 ## Performance Metrics
 
@@ -52,6 +52,7 @@ Progress: [########=-] 88%
 | Phase 07 P01 | 3 | 2 tasks | 3 files |
 | Phase 07 P02 | 2 | 2 tasks | 2 files |
 | Phase 07 P03 | 3 | 2 tasks | 3 files |
+| Phase 08 P01 | 6 | 2 tasks | 15 files |
 
 ## Accumulated Context
 
@@ -124,6 +125,9 @@ Recent decisions affecting current work:
 - [07-02]: Gauge size 140px with 70% inner radius for clean donut proportion.
 - [07-03]: Followed established happy panel wiring pattern exactly: separate if-blocks for each panel in createPanels(), data tasks in refreshAll() block, destroy before map cleanup.
 - [07-03]: Species and renewable data tasks grouped inside existing SITE_VARIANT === 'happy' block alongside progress data task.
+- [08-01]: Happiness layer enabled by default in happy variant; speciesRecovery and renewableInstallations off to avoid visual clutter.
+- [08-01]: 152 WHR 2025 country scores curated with verified ISO-2 mappings for known naming mismatches (Turkiye, Czechia, Congo variants).
+- [08-01]: 92 renewable installations curated at utility-scale only (>100MW solar/wind, >500MW hydro) for meaningful map density.
 
 ### Pending Todos
 
@@ -138,5 +142,5 @@ Recent decisions affecting current work:
 ## Session Continuity
 
 Last session: 2026-02-23
-Stopped at: Completed 07-03-PLAN.md (Panel Wiring & CSS) -- Phase 7 complete
-Resume file: .planning/phases/07-conservation-energy-trackers/07-03-SUMMARY.md
+Stopped at: Completed 08-01-PLAN.md (Data Foundation) -- Phase 8 plan 1/2
+Resume file: .planning/phases/08-map-data-overlays/08-01-SUMMARY.md
