@@ -2791,6 +2791,12 @@ export class DeckGLMap {
           { key: 'natural', label: t('components.deckgl.layers.naturalEvents'), icon: '&#127755;' },
           { key: 'cyberThreats', label: t('components.deckgl.layers.cyberThreats'), icon: '&#128737;' },
         ]
+      : SITE_VARIANT === 'happy'
+      ? [
+          { key: 'positiveEvents', label: 'Positive Events', icon: '&#127775;' },
+          { key: 'kindness', label: 'Acts of Kindness', icon: '&#128154;' },
+          { key: 'natural', label: t('components.deckgl.layers.naturalEvents'), icon: '&#127755;' },
+        ]
       : [
         { key: 'hotspots', label: t('components.deckgl.layers.intelHotspots'), icon: '&#127919;' },
         { key: 'conflicts', label: t('components.deckgl.layers.conflictZones'), icon: '&#9876;' },
@@ -3046,6 +3052,13 @@ export class DeckGLMap {
           { shape: shapes.hexagon('rgb(255, 210, 80)'), label: t('components.deckgl.legend.centralBank') },
           { shape: shapes.square('rgb(255, 150, 80)'), label: t('components.deckgl.legend.commodityHub') },
           { shape: shapes.triangle('rgb(80, 170, 255)'), label: t('components.deckgl.legend.waterway') },
+        ]
+      : SITE_VARIANT === 'happy'
+      ? [
+          { shape: shapes.circle('rgb(34, 197, 94)'), label: 'Positive Event' },
+          { shape: shapes.circle('rgb(234, 179, 8)'), label: 'Breakthrough' },
+          { shape: shapes.circle('rgb(74, 222, 128)'), label: 'Act of Kindness' },
+          { shape: shapes.circle('rgb(255, 100, 50)'), label: 'Natural Event' },
         ]
       : [
           { shape: shapes.circle('rgb(255, 68, 68)'), label: t('components.deckgl.legend.highAlert') },
