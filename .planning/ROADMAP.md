@@ -18,8 +18,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 4: Global Map & Positive Events** - Interactive map with geocoded positive events and live kindness layer (completed 2026-02-23)
 - [x] **Phase 5: Humanity Data Panels** - Live ticking counters and long-term progress charts showing humanity getting better (completed 2026-02-23)
 - [x] **Phase 6: Content Spotlight Panels** - Scientific breakthroughs ticker, today's best human spotlight, and daily digest (completed 2026-02-23)
-- [ ] **Phase 7: Conservation & Energy Trackers** - Species comeback cards and renewable energy growth visualizations
-- [ ] **Phase 7.1: Renewable Energy Installation & Coal Retirement Data** - EIA capacity data for solar/wind growth and coal plant closures (INSERTED — gap closure from Phase 7 verification)
+- [x] **Phase 7: Conservation & Energy Trackers** - Species comeback cards and renewable energy growth visualizations (completed 2026-02-23)
+- [x] **Phase 7.1: Renewable Energy Installation & Coal Retirement Data** - EIA capacity data for solar/wind growth and coal plant closures (INSERTED — gap closure from Phase 7 verification) (completed 2026-02-23)
 - [x] **Phase 8: Map Data Overlays** - World happiness heatmap, species recovery zones, and renewable energy installation layers (completed 2026-02-23)
 - [x] **Phase 9: Sharing, TV Mode & Polish** - Shareable story cards, full-screen ambient mode, and celebration animations (completed 2026-02-23)
 
@@ -135,9 +135,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 07-01-PLAN.md -- Conservation wins static data + SpeciesComebackPanel with D3 sparklines (SPECIES-01, SPECIES-02, SPECIES-03)
-- [ ] 07-02-PLAN.md -- Renewable energy data service + RenewableEnergyPanel with D3 arc gauge (ENERGY-01, ENERGY-02, ENERGY-03)
-- [ ] 07-03-PLAN.md -- App.ts panel wiring, happy.ts config, and happy-theme.css styling (all requirements)
+- [x] 07-01-PLAN.md -- Conservation wins static data + SpeciesComebackPanel with D3 sparklines (SPECIES-01, SPECIES-02, SPECIES-03)
+- [x] 07-02-PLAN.md -- Renewable energy data service + RenewableEnergyPanel with D3 arc gauge (ENERGY-01, ENERGY-02, ENERGY-03)
+- [x] 07-03-PLAN.md -- App.ts panel wiring, happy.ts config, and happy-theme.css styling (all requirements)
 
 ### Phase 7.1: Renewable Energy Installation & Coal Retirement Data (INSERTED)
 **Goal**: The renewable energy panel gains solar/wind installation growth and coal plant closure visualizations using EIA operating-generator-capacity data, closing verification gaps from Phase 7
@@ -151,8 +151,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 71-01-PLAN.md -- Proto + server handler + client service for EIA GetEnergyCapacity RPC (ENERGY-01, ENERGY-03)
-- [ ] 71-02-PLAN.md -- D3 stacked area chart in RenewableEnergyPanel + App.ts wiring (ENERGY-01, ENERGY-03)
+- [x] 71-01-PLAN.md -- Proto + server handler + client service for EIA GetEnergyCapacity RPC (ENERGY-01, ENERGY-03)
+- [x] 71-02-PLAN.md -- D3 stacked area chart in RenewableEnergyPanel + App.ts wiring (ENERGY-01, ENERGY-03)
 
 ### Phase 8: Map Data Overlays
 **Goal**: The map gains choropleth and overlay layers for world happiness, species recovery zones, and renewable energy installations
@@ -203,6 +203,6 @@ Note: Phases 4, 5, 6, 7 can partially parallelize after Phase 2 completes (they 
 | 5. Humanity Data Panels | 0/3 | Complete    | 2026-02-23 |
 | 6. Content Spotlight Panels | 0/3 | Complete    | 2026-02-23 |
 | 7. Conservation & Energy Trackers | 3/3 | Complete | 2026-02-23 |
-| 7.1 Renewable Energy Installation & Coal Data | 0/2 | Not started | - |
+| 7.1 Renewable Energy Installation & Coal Data | 2/2 | Complete | 2026-02-23 |
 | 8. Map Data Overlays | 2/2 | Complete    | 2026-02-23 |
 | 9. Sharing, TV Mode & Polish | 0/3 | Complete    | 2026-02-23 |
