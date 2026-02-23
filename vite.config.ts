@@ -127,6 +127,12 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),
+      child_process: resolve(__dirname, 'src/shims/child-process.ts'),
+      'node:child_process': resolve(__dirname, 'src/shims/child-process.ts'),
+      '@loaders.gl/worker-utils/dist/lib/process-utils/child-process-proxy.js': resolve(
+        __dirname,
+        'src/shims/child-process-proxy.ts'
+      ),
     },
   },
   build: {
