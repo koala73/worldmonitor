@@ -58,19 +58,19 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Scientific Breakthroughs Ticker
 
-- [ ] **SCI-01**: Horizontal scrolling ticker of recent scientific discoveries and medical advances
-- [ ] **SCI-02**: RSS feeds from ScienceDaily, Nature, Science, Live Science filtered for breakthrough/positive content
+- [x] **SCI-01**: Horizontal scrolling ticker of recent scientific discoveries and medical advances
+- [x] **SCI-02**: RSS feeds from ScienceDaily, Nature, Science, Live Science filtered for breakthrough/positive content
 
 ### Today's Best Human Spotlight
 
-- [ ] **HERO-01**: Daily featured story card of an individual doing extraordinary good (hero, inventor, rescuer, volunteer)
-- [ ] **HERO-02**: Full-width card with photo, story excerpt, and location shown on map
-- [ ] **HERO-03**: Curated from GNN Heroes feed and editorial picks
+- [x] **HERO-01**: Daily featured story card of an individual doing extraordinary good (hero, inventor, rescuer, volunteer)
+- [x] **HERO-02**: Full-width card with photo, story excerpt, and location shown on map
+- [x] **HERO-03**: Curated from GNN Heroes feed and editorial picks
 
 ### Daily Digest / "5 Good Things"
 
-- [ ] **DIGEST-01**: Summary panel showing 5 curated top positive stories of the day in 50 words or less each
-- [ ] **DIGEST-02**: AI summarization via existing Flan-T5 model in ML worker
+- [x] **DIGEST-01**: Summary panel showing 5 curated top positive stories of the day in 50 words or less each
+- [x] **DIGEST-02**: AI summarization via existing Flan-T5 model in ML worker
 
 ### Species Comeback Tracker Panel
 
@@ -160,13 +160,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PROG-01 | Phase 5 | Complete |
 | PROG-02 | Phase 5 | Complete |
 | PROG-03 | Phase 5 | Complete |
-| SCI-01 | Phase 6 | Pending |
-| SCI-02 | Phase 6 | Pending |
-| HERO-01 | Phase 6 | Pending |
-| HERO-02 | Phase 6 | Pending |
-| HERO-03 | Phase 6 | Pending |
-| DIGEST-01 | Phase 6 | Pending |
-| DIGEST-02 | Phase 6 | Pending |
+| SCI-01 | Phase 6 | Complete |
+| SCI-02 | Phase 6 | Complete |
+| HERO-01 | Phase 6 | Complete |
+| HERO-02 | Phase 6 | Complete |
+| HERO-03 | Phase 6 | Complete |
+| DIGEST-01 | Phase 6 | Complete |
+| DIGEST-02 | Phase 6 | Complete |
 | SPECIES-01 | Phase 7 | Pending |
 | SPECIES-02 | Phase 7 | Pending |
 | SPECIES-03 | Phase 7 | Pending |

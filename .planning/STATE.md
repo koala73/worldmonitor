@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-22)
 
 **Core value:** Every piece of content on the dashboard makes the viewer feel genuinely better about humanity
-**Current focus:** Phase 5 complete - Humanity Data Panels (3/3 plans done)
+**Current focus:** Phase 6 in progress - Content Spotlight Panels (2/3 plans done)
 
 ## Current Position
 
-Phase: 5 of 9 (Humanity Data Panels) -- COMPLETE
-Plan: 3 of 3 in current phase (05-03 complete)
-Status: Phase Complete
-Last activity: 2026-02-23 -- Completed 05-03-PLAN.md (Panel Wiring & CSS)
+Phase: 6 of 9 (Content Spotlight Panels)
+Plan: 2 of 3 in current phase (06-02 complete)
+Status: Executing
+Last activity: 2026-02-23 -- Completed 06-02-PLAN.md (Good Things Digest Panel)
 
-Progress: [######----] 67%
+Progress: [#######---] 74%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 15
-- Average duration: 11 min
-- Total execution time: 2.9 hours
+- Total plans completed: 17
+- Average duration: 10 min
+- Total execution time: 3.0 hours
 
 **By Phase:**
 
@@ -32,10 +32,11 @@ Progress: [######----] 67%
 | 03 | 3 | 9 min | 3 min |
 | 04 | 3 | 19 min | 6 min |
 | 05 | 3 | 8 min | 2.7 min |
+| 06 | 2 | 4 min | 2 min |
 
 **Recent Trend:**
-- Last 5 plans: 9m, 6m, 2m, 3m, 3m
-- Trend: Phase 5 COMPLETE -- all 3 plans done
+- Last 5 plans: 2m, 3m, 3m, 2m, 2m
+- Trend: Phase 6 in progress -- 2 of 3 plans done
 
 *Updated after each plan completion*
 | Phase 04 P01 | 4 | 2 tasks | 9 files |
@@ -44,6 +45,8 @@ Progress: [######----] 67%
 | Phase 05 P01 | 2 | 2 tasks | 2 files |
 | Phase 05 P02 | 3 | 2 tasks | 4 files |
 | Phase 05 P03 | 3 | 2 tasks | 2 files |
+| Phase 06 P01 | 2 | 2 tasks | 3 files |
+| Phase 06 P02 | 2 | 1 task | 1 file |
 
 ## Accumulated Context
 
@@ -100,10 +103,15 @@ Recent decisions affecting current work:
 - [05-03]: startTicking() called explicitly in createPanels() despite constructor already calling it -- harmless no-op guard, follows plan spec.
 - [05-03]: loadProgressData() added as async task in refreshAll(); counters excluded since they tick from hardcoded rates.
 - [05-03]: Both panel destroy() calls placed before map cleanup in App.destroy() for clean shutdown order.
+- [06-01]: Ticker uses doubled HTML content for seamless infinite CSS scroll -- no JS animation needed.
+- [06-01]: Hero map button only renders when both lat AND lon are defined -- prevents broken map interactions.
+- [06-01]: onLocationRequest callback pattern allows App.ts to wire map integration without tight coupling.
+- [06-02]: Renamed abortController to summaryAbort in GoodThingsDigestPanel to avoid conflict with Panel base class private field.
+- [06-02]: Pass [title, source] as two headlines to generateSummary() -- satisfies minimum length requirement (headlines.length >= 2) while giving useful context.
 
 ### Pending Todos
 
-None yet.
+- Add click-to-source links on counter cards (and similar data panels) — each metric should link to its original data source page. Apply pattern to all data-backed panels.
 
 ### Blockers/Concerns
 
@@ -114,5 +122,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-23
-Stopped at: Completed 05-03-PLAN.md (Panel Wiring & CSS) -- Phase 5 COMPLETE
-Resume file: .planning/phases/05-humanity-data-panels/05-03-SUMMARY.md
+Stopped at: Completed 06-02-PLAN.md (Good Things Digest Panel)
+Resume file: .planning/phases/06-content-spotlight-panels/06-02-SUMMARY.md
