@@ -191,12 +191,25 @@ const COUNTRY_CENTROIDS: Record<string, [number, number]> = {
   SN:[14.5,-14.5],CM:[7.4,12.4],CI:[7.5,-5.5],TZ:[-6.4,34.9],UG:[1.4,32.3],
 };
 
-function getCountryCentroid(countryCode: string): { lat: number; lon: number } | null {
+/**
+ * Simple deterministic hash (djb2) that returns a float in [-0.5, 0.5).
+ * Same seed always produces the same value.
+ */
+function hashJitter(seed: string, index: number): number {
+  let hash = 5381;
+  const s = `${seed}:${index}`;
+  for (let i = 0; i < s.length; i++) {
+    hash = ((hash << 5) + hash + s.charCodeAt(i)) | 0;
+  }
+  return ((hash & 0x7fffffff) / 0x7fffffff - 0.5) * 2;
+}
+
+function getCountryCentroid(countryCode: string, seed?: string): { lat: number; lon: number } | null {
   if (!countryCode) return null;
   const coords = COUNTRY_CENTROIDS[countryCode.toUpperCase()];
   if (!coords) return null;
-  const jitter = () => (Math.random() - 0.5) * 2;
-  return { lat: coords[0] + jitter(), lon: coords[1] + jitter() };
+  const key = seed || countryCode;
+  return { lat: coords[0] + hashJitter(key, 0), lon: coords[1] + hashJitter(key, 1) };
 }
 
 // ========================================================================
@@ -366,7 +379,7 @@ export async function hydrateThreatCoordinates(threats: RawThreat[]): Promise<Ra
       return { ...threat, lat: lookup.lat, lon: lookup.lon, country: threat.country || lookup.country };
     }
 
-    const centroid = getCountryCentroid(threat.country);
+    const centroid = getCountryCentroid(threat.country, threat.id);
     if (centroid) {
       return { ...threat, lat: centroid.lat, lon: centroid.lon };
     }
