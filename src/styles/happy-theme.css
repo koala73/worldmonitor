@@ -854,3 +854,248 @@
 [data-variant="happy"][data-theme="dark"] .digest-card:hover {
   background: rgba(255, 255, 255, 0.12);
 }
+
+/* ==========================================================
+   Phase 7 — Species Comeback Panel
+   ========================================================== */
+
+[data-variant='happy'] .species-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  padding: 12px;
+}
+
+@media (max-width: 768px) {
+  [data-variant='happy'] .species-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+[data-variant='happy'] .species-card {
+  background: var(--bg-secondary);
+  border-radius: var(--panel-radius, 14px);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+[data-variant='happy'] .species-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+[data-variant='happy'] .species-photo {
+  width: 100%;
+  height: 120px;
+  overflow: hidden;
+}
+
+[data-variant='happy'] .species-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+[data-variant='happy'] .species-info {
+  padding: 8px 12px 4px;
+}
+
+[data-variant='happy'] .species-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0 0 2px;
+}
+
+[data-variant='happy'] .species-scientific {
+  font-size: 11px;
+  font-style: italic;
+  color: var(--text-dim);
+  display: block;
+  margin-bottom: 6px;
+}
+
+[data-variant='happy'] .species-badges {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+[data-variant='happy'] .species-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+[data-variant='happy'] .badge-recovered {
+  background: rgba(107, 143, 94, 0.15);
+  color: var(--green);
+}
+
+[data-variant='happy'] .badge-recovering {
+  background: rgba(196, 163, 90, 0.15);
+  color: var(--yellow);
+}
+
+[data-variant='happy'] .badge-stabilized {
+  background: rgba(123, 165, 196, 0.15);
+  color: var(--semantic-info);
+}
+
+[data-variant='happy'] .badge-iucn {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--text-dim);
+}
+
+[data-variant='happy'] .species-region {
+  font-size: 11px;
+  color: var(--text-dim);
+  display: block;
+  margin-bottom: 4px;
+}
+
+[data-variant='happy'] .species-sparkline {
+  padding: 0 8px;
+}
+
+[data-variant='happy'] .species-sparkline svg {
+  width: 100%;
+  display: block;
+}
+
+[data-variant='happy'] .species-sparkline text {
+  font-size: 9px;
+  fill: var(--text-dim);
+}
+
+[data-variant='happy'] .species-summary {
+  padding: 4px 12px 10px;
+}
+
+[data-variant='happy'] .species-summary p {
+  font-size: 12px;
+  color: var(--text);
+  margin: 0 0 4px;
+  line-height: 1.4;
+}
+
+[data-variant='happy'] .species-source {
+  font-size: 10px;
+  color: var(--text-dim);
+  font-style: normal;
+}
+
+/* ==========================================================
+   Phase 7 — Renewable Energy Panel
+   ========================================================== */
+
+[data-variant='happy'] .renewable-container {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+[data-variant='happy'] .renewable-gauge-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+[data-variant='happy'] .renewable-gauge-section svg {
+  max-width: 180px;
+  width: 100%;
+}
+
+[data-variant='happy'] .gauge-value {
+  font-size: 28px;
+  font-weight: 700;
+  fill: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+[data-variant='happy'] .gauge-label {
+  font-size: 12px;
+  fill: var(--text-dim);
+}
+
+[data-variant='happy'] .gauge-year {
+  font-size: 11px;
+  color: var(--text-dim);
+  text-align: center;
+  margin-top: 4px;
+}
+
+/* Historical trend sparkline below gauge */
+[data-variant='happy'] .renewable-history {
+  padding: 0 16px;
+}
+
+[data-variant='happy'] .renewable-history svg {
+  width: 100%;
+  display: block;
+}
+
+/* Regional breakdown */
+[data-variant='happy'] .renewable-regions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+[data-variant='happy'] .region-row {
+  display: grid;
+  grid-template-columns: 140px 1fr 48px;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+@media (max-width: 768px) {
+  [data-variant='happy'] .region-row {
+    grid-template-columns: 100px 1fr 40px;
+    font-size: 11px;
+  }
+}
+
+[data-variant='happy'] .region-name {
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+[data-variant='happy'] .region-bar-container {
+  height: 8px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+[data-variant='happy'] .region-bar {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 1s ease-out;
+}
+
+[data-variant='happy'] .region-value {
+  color: var(--text-dim);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ==========================================================
+   Phase 7 — Dark Mode Overrides
+   ========================================================== */
+
+[data-variant='happy'][data-theme='dark'] .species-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+[data-variant='happy'][data-theme='dark'] .badge-iucn {
+  background: rgba(255, 255, 255, 0.08);
+}
