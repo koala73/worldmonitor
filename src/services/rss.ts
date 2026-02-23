@@ -4,6 +4,7 @@ import { chunkArray, fetchWithProxy } from '@/utils';
 import { classifyByKeyword, classifyWithAI } from './threat-classifier';
 import { inferGeoHubsFromTitle } from './geo-hub-index';
 import { getPersistentCache, setPersistentCache } from './persistent-cache';
+import { dataFreshness } from './data-freshness';
 
 // Per-feed circuit breaker: track failures and cooldowns
 const FEED_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes after failure
@@ -204,9 +205,7 @@ export async function fetchCategoryFeeds(
   }
 
   if (totalItems > 0) {
-    import('./data-freshness').then(({ dataFreshness }) => {
-      dataFreshness.recordUpdate('rss', totalItems);
-    });
+    dataFreshness.recordUpdate('rss', totalItems);
   }
 
   return ensureSortedDescending();
