@@ -10168,7 +10168,7 @@ a.prediction-link:hover {
 }
 
 .popup-toggle-switch.on {
-  background: var(--accent);
+  background: #3b82f6;
 }
 
 .popup-toggle-knob {
@@ -10178,12 +10178,13 @@ a.prediction-link:hover {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: var(--text);
-  transition: transform 0.2s;
+  background: #888;
+  transition: transform 0.2s, background 0.2s;
 }
 
 .popup-toggle-switch.on .popup-toggle-knob {
   transform: translateX(14px);
+  background: #fff;
 }
 
 .findings-content {
