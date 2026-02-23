@@ -5,7 +5,7 @@ import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 
 export const config = { runtime: 'edge' };
 
-async function fetchWithTimeout(url, options, timeoutMs = 12000) {
+async function fetchWithTimeout(url, options, timeoutMs = 25000) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -26,13 +26,18 @@ export default async function handler(req) {
     return new Response(JSON.stringify({ error: 'Origin not allowed' }), { status: 403, headers: cors });
   }
 
-  const relay = process.env.WS_RELAY_URL;
+  let relay = process.env.WS_RELAY_URL;
   if (!relay) {
     return new Response(JSON.stringify({ error: 'WS_RELAY_URL not configured' }), {
       status: 503,
       headers: { 'Content-Type': 'application/json', ...cors },
     });
   }
+
+  // Guard: WS_RELAY_URL should be HTTP(S) for server-side fetches.
+  // If someone accidentally sets a ws:// or wss:// URL, normalize it.
+  if (relay.startsWith('wss://')) relay = relay.replace('wss://', 'https://');
+  if (relay.startsWith('ws://')) relay = relay.replace('ws://', 'http://');
 
   const url = new URL(req.url);
   const limit = Math.max(1, Math.min(200, parseInt(url.searchParams.get('limit') || '50', 10) || 50));
@@ -47,7 +52,7 @@ export default async function handler(req) {
   try {
     const res = await fetchWithTimeout(relayUrl.toString(), {
       headers: { 'Accept': 'application/json' },
-    }, 12000);
+    }, 25000);
 
     const text = await res.text();
     return new Response(text, {
@@ -61,8 +66,14 @@ export default async function handler(req) {
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return new Response(JSON.stringify({ error: 'Telegram relay fetch failed', detail: msg }), {
-      status: 502,
+    const isAbort = err && (err.name === 'AbortError' || /aborted/i.test(msg));
+    return new Response(JSON.stringify({
+      error: isAbort ? 'Telegram relay request aborted (timeout)' : 'Telegram relay fetch failed',
+      detail: msg,
+      relayUrl: relayUrl.toString(),
+      hint: 'Check that WS_RELAY_URL is https://..., Railway relay is up, and /health responds. This endpoint times out after 25s.'
+    }), {
+      status: isAbort ? 504 : 502,
       headers: { 'Content-Type': 'application/json', ...cors },
     });
   }
