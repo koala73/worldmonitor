@@ -130,6 +130,9 @@ export default defineConfig({
     },
   },
   build: {
+    // Geospatial bundles (maplibre/deck) are expected to be large even when split.
+    // Raise warning threshold to reduce noisy false alarms in CI.
+    chunkSizeWarningLimit: 1200,
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
@@ -138,11 +141,23 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (id.includes('node_modules')) {
-            if (id.includes('/@xenova/transformers/') || id.includes('/onnxruntime-web/')) {
-              return 'ml';
+            if (id.includes('/@xenova/transformers/')) {
+              return 'transformers';
             }
-            if (id.includes('/@deck.gl/') || id.includes('/maplibre-gl/') || id.includes('/h3-js/')) {
-              return 'map';
+            if (id.includes('/onnxruntime-web/')) {
+              return 'onnxruntime';
+            }
+            if (id.includes('/maplibre-gl/')) {
+              return 'maplibre';
+            }
+            if (
+              id.includes('/@deck.gl/')
+              || id.includes('/@luma.gl/')
+              || id.includes('/@loaders.gl/')
+              || id.includes('/@math.gl/')
+              || id.includes('/h3-js/')
+            ) {
+              return 'deck-stack';
             }
             if (id.includes('/d3/')) {
               return 'd3';
