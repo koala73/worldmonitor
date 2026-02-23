@@ -12,6 +12,7 @@
   --settings-yellow: #fbbf24;
   --settings-red: var(--semantic-critical);
   --settings-blue: #60a5fa;
+  --font-mono: 'SF Mono', 'Monaco', 'Cascadia Code', 'Fira Code', 'DejaVu Sans Mono', 'Liberation Mono', monospace;
 
   height: 100vh;
   background: var(--settings-bg);
@@ -231,7 +232,7 @@
   color: var(--settings-text);
   padding: 8px 12px;
   font-size: 13px;
-  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'DejaVu Sans Mono', 'Liberation Mono', monospace;
+  font-family: var(--font-mono);
   transition: border-color 0.15s;
 }
 
@@ -253,7 +254,7 @@
   color: var(--settings-text);
   padding: 8px 12px;
   font-size: 13px;
-  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'DejaVu Sans Mono', 'Liberation Mono', monospace;
+  font-family: var(--font-mono);
   width: 100%;
   cursor: pointer;
   transition: border-color 0.15s;
@@ -561,7 +562,7 @@
 .diag-table {
   width: 100%;
   border-collapse: collapse;
-  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'DejaVu Sans Mono', 'Liberation Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
 }
 
@@ -707,7 +708,7 @@ tr.diag-err td { color: var(--settings-red); }
   color: var(--settings-text);
   padding: 8px 36px 8px 12px;
   font-size: 13px;
-  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'DejaVu Sans Mono', 'Liberation Mono', monospace;
+  font-family: var(--font-mono);
   transition: border-color 0.15s;
   box-sizing: border-box;
 }

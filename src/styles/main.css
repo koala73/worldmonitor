@@ -55,7 +55,8 @@
   --map-stroke: #0f5040;
 
   /* Font stack */
-  --font-body: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'DejaVu Sans Mono', 'Liberation Mono', monospace;
+  --font-mono: 'SF Mono', 'Monaco', 'Cascadia Code', 'Fira Code', 'DejaVu Sans Mono', 'Liberation Mono', monospace;
+  --font-body: var(--font-mono);
 }
 
 [dir="rtl"] {
@@ -927,7 +928,7 @@ canvas,
   left: 50%;
   transform: translateX(-50%);
   font-size: 11px;
-  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+  font-family: var(--font-mono);
   color: var(--text-secondary);
   letter-spacing: 0.5px;
   pointer-events: none;
@@ -1478,7 +1479,7 @@ canvas,
 }
 
 .webcam-city {
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 700;
   color: #fff;
@@ -7783,7 +7784,7 @@ a.prediction-link:hover {
 .pizzint-indicator {
   position: relative;
   z-index: 1000;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
 }
 .pizzint-toggle {
   display: flex;
