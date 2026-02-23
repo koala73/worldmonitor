@@ -100,6 +100,9 @@ import { STOCK_EXCHANGES, FINANCIAL_CENTERS, CENTRAL_BANKS, COMMODITY_HUBS } fro
 import { PositiveNewsFeedPanel } from '@/components/PositiveNewsFeedPanel';
 import { CountersPanel } from '@/components/CountersPanel';
 import { ProgressChartsPanel } from '@/components/ProgressChartsPanel';
+import { BreakthroughsTickerPanel } from '@/components/BreakthroughsTickerPanel';
+import { HeroSpotlightPanel } from '@/components/HeroSpotlightPanel';
+import { GoodThingsDigestPanel } from '@/components/GoodThingsDigestPanel';
 import { fetchProgressData } from '@/services/progress-data';
 import { filterBySentiment } from '@/services/sentiment-gate';
 import { fetchAllPositiveTopicIntelligence } from '@/services/gdelt-intel';
@@ -209,6 +212,9 @@ export class App {
   private positivePanel: PositiveNewsFeedPanel | null = null;
   private countersPanel?: CountersPanel;
   private progressPanel?: ProgressChartsPanel;
+  private breakthroughsPanel?: BreakthroughsTickerPanel;
+  private heroPanel?: HeroSpotlightPanel;
+  private digestPanel?: GoodThingsDigestPanel;
   private happyAllItems: NewsItem[] = [];
 
   constructor(containerId: string) {
@@ -2114,6 +2120,9 @@ export class App {
     // Clean up happy variant panels
     this.countersPanel?.destroy();
     this.progressPanel?.destroy();
+    this.breakthroughsPanel?.destroy();
+    this.heroPanel?.destroy();
+    this.digestPanel?.destroy();
 
     // Clean up map and AIS
     this.map?.destroy();
@@ -2426,6 +2435,29 @@ export class App {
     if (SITE_VARIANT === 'happy') {
       this.progressPanel = new ProgressChartsPanel();
       this.panels['progress'] = this.progressPanel;
+    }
+
+    // Breakthroughs Ticker Panel (happy variant only)
+    if (SITE_VARIANT === 'happy') {
+      this.breakthroughsPanel = new BreakthroughsTickerPanel();
+      this.panels['breakthroughs'] = this.breakthroughsPanel;
+    }
+
+    // Hero Spotlight Panel (happy variant only)
+    if (SITE_VARIANT === 'happy') {
+      this.heroPanel = new HeroSpotlightPanel();
+      this.panels['spotlight'] = this.heroPanel;
+      // Wire map location callback
+      this.heroPanel.onLocationRequest = (lat: number, lon: number) => {
+        this.map?.setCenter(lat, lon, 4);
+        this.map?.flashLocation(lat, lon, 3000);
+      };
+    }
+
+    // Good Things Digest Panel (happy variant only)
+    if (SITE_VARIANT === 'happy') {
+      this.digestPanel = new GoodThingsDigestPanel();
+      this.panels['digest'] = this.digestPanel;
     }
 
     // AI Insights Panel (desktop only - hides itself on mobile) -- available for all variants
@@ -3676,6 +3708,25 @@ export class App {
       merged.sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime());
       this.positivePanel.renderPositiveNews(merged);
     }
+
+    // Feed data to Phase 6 panels
+    const scienceSources = ['GNN Science', 'ScienceDaily', 'Nature News', 'Live Science', 'New Scientist'];
+    const scienceItems = this.happyAllItems.filter(item =>
+      scienceSources.includes(item.source) || item.happyCategory === 'science-health'
+    );
+    this.breakthroughsPanel?.setItems(scienceItems);
+
+    // Hero: pick most recent inspiring item
+    const heroItem = this.happyAllItems
+      .filter(item => item.happyCategory === 'humanity-kindness')
+      .sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime())[0];
+    this.heroPanel?.setHeroStory(heroItem);
+
+    // Digest: top 5 most recent items across all categories
+    const digestItems = [...this.happyAllItems]
+      .sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime())
+      .slice(0, 5);
+    this.digestPanel?.setStories(digestItems);
   }
 
   private async loadPositiveEvents(): Promise<void> {
