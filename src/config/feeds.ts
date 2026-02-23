@@ -64,6 +64,8 @@ export const SOURCE_TIERS: Record<string, number> = {
   'Reuters World': 1,
   'Reuters Business': 1,
   'OpenAI News': 3,
+  // Portuguese
+  'Brasil Paralelo': 2
 
   // Tier 1 - Official Government & International Orgs
   'White House': 1,
@@ -308,6 +310,8 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   'ANSA': 'wire', 'Corriere della Sera': 'mainstream', 'Repubblica': 'mainstream',
   'NOS Nieuws': 'mainstream', 'NRC': 'mainstream', 'De Telegraaf': 'mainstream',
   'SVT Nyheter': 'mainstream', 'Dagens Nyheter': 'mainstream', 'Svenska Dagbladet': 'mainstream',
+  // Brazilian Addition
+  'Brasil Paralelo': 'mainstream',
 
   // Market/Finance
   'CNBC': 'market', 'MarketWatch': 'market', 'Yahoo Finance': 'market',
@@ -398,6 +402,7 @@ export const SOURCE_PROPAGANDA_RISK: Record<string, SourceRiskProfile> = {
   'Guardian World': { risk: 'low', knownBiases: ['Center-left'], note: 'Scott Trust ownership, no shareholders' },
   'Financial Times': { risk: 'low', note: 'Business focus, Nikkei-owned' },
   'Bellingcat': { risk: 'low', note: 'Open-source investigations, methodology transparent' },
+  'Brasil Paralelo': { risk: 'low', note: 'Independent media company: no political ties, no public funding, 100% subscriber-funded.' },
 };
 
 export function getSourcePropagandaRisk(sourceName: string): SourceRiskProfile {
@@ -592,6 +597,7 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'Clarín', url: rss('https://www.clarin.com/rss/lo-ultimo/'), lang: 'es' },
     { name: 'O Globo', url: rss('https://oglobo.globo.com/rss/top_noticias/'), lang: 'pt' },
     { name: 'Folha de S.Paulo', url: rss('https://feeds.folha.uol.com.br/emcimadahora/rss091.xml'), lang: 'pt' },
+    { name: 'Brasil Paralelo', url: rss('www.brasilparalelo.com.br/noticias/rss.xml'), lang: 'pt' },
     { name: 'El Tiempo', url: rss('https://www.eltiempo.com/rss/mundo_latinoamerica.xml'), lang: 'es' },
     { name: 'El Universal', url: rss('https://www.eluniversal.com.mx/rss.xml'), lang: 'es' },
     { name: 'La Silla Vacía', url: rss('https://www.lasillavacia.com/rss') },
