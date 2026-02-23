@@ -92,8 +92,20 @@
 
 
     <!-- Theme: apply stored preference before first paint to prevent FOUC -->
-    <script>(function(){try{var t=localStorage.getItem('worldmonitor-theme');if(t==='light')document.documentElement.dataset.theme='light';}catch(e){}document.documentElement.classList.add('no-transition');})()</script>
-
+    <script>
+  (function(){
+    try{
+      var t=localStorage.getItem('worldmonitor-theme');
+      if(t==='light')document.documentElement.dataset.theme='light';
+    }catch(e){}
+    document.documentElement.classList.add('no-transition');
+    
+    // Check for embed parameter
+    if (new URLSearchParams(window.location.search).get('embed') === 'true') {
+      document.body.classList.add('embed-mode');
+    }
+  })()
+    </script>
     <!-- Critical CSS: inline skeleton visible before JS boots -->
     <style>
       /* ---------- skeleton shell (dark default) ---------- */
@@ -129,6 +141,32 @@
       [data-theme="light"] .skeleton-panel{background:#fff;border-color:#d4d4d4}
       [data-theme="light"] .skeleton-panel-header{border-bottom-color:#e8e8e8}
       [data-theme="light"] .skeleton-line{background:linear-gradient(90deg,rgba(0,0,0,.04) 25%,rgba(0,0,0,.08) 50%,rgba(0,0,0,.04) 75%);background-size:200% 100%;animation:skel-shimmer 1.5s infinite}
+      /* --- Embed Mode --- */
+      body.embed-mode .header,
+      body.embed-mode .panels-grid,
+      body.embed-mode .map-resize-handle,
+      body.embed-mode .map-pin-btn {
+        display: none !important;
+      }
+
+      body.embed-mode .skeleton-header,
+      body.embed-mode .skeleton-grid,
+      body.embed-mode .skeleton-map-bar {
+        display: none !important;
+      }
+
+      body.embed-mode .main-content {
+        height: 100vh !important;
+        overflow: hidden !important;
+      }
+
+      body.embed-mode .map-section {
+        height: 100vh !important;
+        min-height: 100vh !important;
+        border: none !important;
+        margin: 0 !important;
+        flex: 1;
+      }
     </style>
 
     <!-- Styles -->
