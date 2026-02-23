@@ -146,11 +146,11 @@ Plans:
   1. A world happiness heatmap choropleth layer colors countries by happiness score (World Happiness Report data), with green indicating happier nations
   2. Species recovery zones appear as map overlays showing wildlife comeback locations sourced from IUCN data
   3. Renewable energy installation locations are displayed as a map layer showing where new capacity is being built
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 08-01: TBD
-- [ ] 08-02: TBD
+- [ ] 08-01-PLAN.md -- Static data files (happiness scores, renewable installations, species coordinates), typed services, and MapLayers type extension (MAP-03, MAP-04, MAP-05)
+- [ ] 08-02-PLAN.md -- Deck.gl overlay layers (choropleth, scatterplots), toggles, legend, tooltips, MapContainer delegation, App.ts wiring (MAP-03, MAP-04, MAP-05)
 
 ### Phase 9: Sharing, TV Mode & Polish
 **Goal**: Users can share stories as branded image cards, watch HappyMonitor on a TV in ambient mode, and see celebration animations for milestone moments
