@@ -2838,11 +2838,11 @@ export class App {
 
   private toggleFullscreen(): void {
     if (document.fullscreenElement) {
-      void document.exitFullscreen().catch(() => {});
+      try { void document.exitFullscreen()?.catch(() => {}); } catch {}
     } else {
       const el = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => void };
       if (el.requestFullscreen) {
-        void el.requestFullscreen().catch(() => {});
+        try { void el.requestFullscreen()?.catch(() => {}); } catch {}
       } else if (el.webkitRequestFullscreen) {
         try { el.webkitRequestFullscreen(); } catch {}
       }

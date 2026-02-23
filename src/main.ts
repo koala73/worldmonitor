@@ -40,7 +40,7 @@ Sentry.init({
     /requestFullscreen/,
     /webkitEnterFullscreen/,
     /vc_text_indicators_context/,
-    /Program failed to link: null/,
+    /Program failed to link/,
     /too much recursion/,
     /zaloJSV2/,
     /Java bridge method invocation error/,
@@ -61,6 +61,7 @@ Sentry.init({
     /Unexpected end of input/,
     /window\.android\.\w+ is not a function/,
     /Attempted to assign to readonly property/,
+    /Cannot assign to read only property/,
     /FetchEvent\.respondWith/,
     /e\.toLowerCase is not a function/,
     /\.trim is not a function/,
@@ -81,6 +82,11 @@ Sentry.init({
     /Style is not done loading/,
     /Event `CustomEvent`.*captured as promise rejection/,
     /getProgramInfoLog/,
+    /__firefox__/,
+    /ifameElement\.contentDocument/,
+    /Invalid video id/,
+    /Fetch is aborted/,
+    /Stylesheet append timeout/,
   ],
   beforeSend(event) {
     const msg = event.exception?.values?.[0]?.value ?? '';

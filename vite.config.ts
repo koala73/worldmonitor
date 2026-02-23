@@ -535,14 +535,27 @@ export default defineConfig({
           {
             urlPattern: /^https?:\/\/.*\/api\/.*/i,
             handler: 'NetworkOnly',
+            method: 'GET',
+          },
+          {
+            urlPattern: /^https?:\/\/.*\/api\/.*/i,
+            handler: 'NetworkOnly',
+            method: 'POST',
           },
           {
             urlPattern: /^https?:\/\/.*\/ingest\/.*/i,
             handler: 'NetworkOnly',
+            method: 'GET',
+          },
+          {
+            urlPattern: /^https?:\/\/.*\/ingest\/.*/i,
+            handler: 'NetworkOnly',
+            method: 'POST',
           },
           {
             urlPattern: /^https?:\/\/.*\/rss\/.*/i,
             handler: 'NetworkOnly',
+            method: 'GET',
           },
           {
             urlPattern: /^https:\/\/api\.maptiler\.com\//,
