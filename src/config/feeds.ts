@@ -65,7 +65,7 @@ export const SOURCE_TIERS: Record<string, number> = {
   'Reuters Business': 1,
   'OpenAI News': 3,
   // Portuguese
-  'Brasil Paralelo': 2
+  'Brasil Paralelo': 2,
 
   // Tier 1 - Official Government & International Orgs
   'White House': 1,
@@ -597,7 +597,7 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'Clarín', url: rss('https://www.clarin.com/rss/lo-ultimo/'), lang: 'es' },
     { name: 'O Globo', url: rss('https://oglobo.globo.com/rss/top_noticias/'), lang: 'pt' },
     { name: 'Folha de S.Paulo', url: rss('https://feeds.folha.uol.com.br/emcimadahora/rss091.xml'), lang: 'pt' },
-    { name: 'Brasil Paralelo', url: rss('www.brasilparalelo.com.br/noticias/rss.xml'), lang: 'pt' },
+    { name: 'Brasil Paralelo', url: rss('https://www.brasilparalelo.com.br/noticias/rss.xml'), lang: 'pt' },
     { name: 'El Tiempo', url: rss('https://www.eltiempo.com/rss/mundo_latinoamerica.xml'), lang: 'es' },
     { name: 'El Universal', url: rss('https://www.eluniversal.com.mx/rss.xml'), lang: 'es' },
     { name: 'La Silla Vacía', url: rss('https://www.lasillavacia.com/rss') },
