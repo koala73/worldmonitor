@@ -33,6 +33,7 @@ export async function listCyberThreats(
   try {
     const now = Date.now();
     const pageSize = clampInt(req.pagination?.pageSize, DEFAULT_LIMIT, 1, MAX_LIMIT);
+    const offset = req.pagination?.cursor ? parseInt(req.pagination.cursor, 10) || 0 : 0;
 
     // Derive days from timeRange or use default
     let days = DEFAULT_DAYS;
@@ -55,7 +56,7 @@ export async function listCyberThreats(
 
     const anySucceeded = feodo.ok || urlhaus.ok || c2intel.ok || otx.ok || abuseipdb.ok;
     if (!anySucceeded) {
-      return { threats: [], pagination: undefined };
+      return { threats: [], pagination: { totalCount: 0, nextCursor: '' } };
     }
 
     // Merge, deduplicate, hydrate coordinates
@@ -95,13 +96,18 @@ export async function listCyberThreats(
         if (bySeverity !== 0) return bySeverity;
         return (b.lastSeen || b.firstSeen) - (a.lastSeen || a.firstSeen);
       })
-      .slice(0, pageSize);
+    const totalCount = results.length;
+    const paged = results.slice(offset, offset + pageSize);
+    const nextOffset = offset + paged.length;
 
     return {
-      threats: results.map(toProtoCyberThreat),
-      pagination: undefined,
+      threats: paged.map(toProtoCyberThreat),
+      pagination: {
+        totalCount,
+        nextCursor: nextOffset < totalCount ? String(nextOffset) : '',
+      },
     };
   } catch {
-    return { threats: [], pagination: undefined };
+    return { threats: [], pagination: { totalCount: 0, nextCursor: '' } };
   }
 }
