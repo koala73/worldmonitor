@@ -12,7 +12,7 @@
 const http = require('http');
 const zlib = require('zlib');
 const path = require('path');
-const { readFileSync, writeFileSync, existsSync } = require('fs');
+const { readFileSync } = require('fs');
 const { WebSocketServer, WebSocket } = require('ws');
 
 const AISSTREAM_URL = 'wss://stream.aisstream.io/v0/stream';
@@ -95,6 +95,10 @@ function loadTelegramChannels() {
         maxMessages: c.maxMessages != null ? Number(c.maxMessages) : undefined,
       }))
       .filter(c => c.enabled);
+
+    if (!telegramState.channels.length) {
+      console.warn(`[Relay] Telegram channel set "${set}" is empty — no channels to poll`);
+    }
 
     return telegramState.channels;
   } catch (e) {
@@ -192,8 +196,13 @@ async function pollTelegramOnce() {
   }
 
   if (newItems.length) {
+    const seen = new Set();
     telegramState.items = [...newItems, ...telegramState.items]
-      .filter((item, idx, arr) => arr.findIndex(x => x.id === item.id) === idx)
+      .filter(item => {
+        if (seen.has(item.id)) return false;
+        seen.add(item.id);
+        return true;
+      })
       .sort((a, b) => (b.ts || '').localeCompare(a.ts || ''))
       .slice(0, TELEGRAM_MAX_FEED_ITEMS);
   }
@@ -205,9 +214,9 @@ function startTelegramPollLoop() {
   if (!TELEGRAM_ENABLED) return;
   loadTelegramChannels();
   // Don’t block server startup.
-  pollTelegramOnce().catch(() => {});
+  pollTelegramOnce().catch(e => console.warn('[Relay] Telegram poll error:', e?.message || e));
   setInterval(() => {
-    pollTelegramOnce().catch(() => {});
+    pollTelegramOnce().catch(e => console.warn('[Relay] Telegram poll error:', e?.message || e));
   }, TELEGRAM_POLL_INTERVAL_MS).unref?.();
   console.log('[Relay] Telegram poll loop started');
 }
@@ -1271,7 +1280,7 @@ const server = http.createServer(async (req, res) => {
         channels: telegramState.channels?.length || 0,
         items: telegramState.items?.length || 0,
         lastPollAt: telegramState.lastPollAt ? new Date(telegramState.lastPollAt).toISOString() : null,
-        lastError: telegramState.lastError,
+        hasError: !!telegramState.lastError,
       },
       cache: {
         opensky: openskyResponseCache.size,
@@ -1358,7 +1367,7 @@ const server = http.createServer(async (req, res) => {
 
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
     res.end(JSON.stringify(diag, null, 2));
-  } else if (req.url.startsWith('/telegram')) {
+  } else if (req.url === '/telegram' || req.url.startsWith('/telegram/') || req.url.startsWith('/telegram?')) {
     // Telegram Early Signals feed (public channels)
     try {
       const url = new URL(req.url, `http://localhost:${PORT}`);
@@ -1382,12 +1391,11 @@ const server = http.createServer(async (req, res) => {
         enabled: TELEGRAM_ENABLED,
         count: filtered.length,
         updatedAt: telegramState.lastPollAt ? new Date(telegramState.lastPollAt).toISOString() : null,
-        lastError: telegramState.lastError,
         items: filtered,
       }));
     } catch (e) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: e?.message || String(e) }));
+      res.end(JSON.stringify({ error: 'Internal error' }));
     }
   } else if (req.url.startsWith('/rss')) {
     // Proxy RSS feeds that block Vercel IPs

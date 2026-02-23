@@ -68,10 +68,7 @@ export default async function handler(req) {
     const msg = err instanceof Error ? err.message : String(err);
     const isAbort = err && (err.name === 'AbortError' || /aborted/i.test(msg));
     return new Response(JSON.stringify({
-      error: isAbort ? 'Telegram relay request aborted (timeout)' : 'Telegram relay fetch failed',
-      detail: msg,
-      relayUrl: relayUrl.toString(),
-      hint: 'Check that WS_RELAY_URL is https://..., Railway relay is up, and /health responds. This endpoint times out after 25s.'
+      error: isAbort ? 'Telegram relay request timed out' : 'Telegram relay fetch failed',
     }), {
       status: isAbort ? 504 : 502,
       headers: { 'Content-Type': 'application/json', ...cors },
