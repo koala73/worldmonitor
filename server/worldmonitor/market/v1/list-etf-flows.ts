@@ -123,10 +123,9 @@ export async function listEtfFlows(
   }
 
   try {
-    const charts: PromiseSettledResult<YahooChartResponse | null>[] = [];
-    for (const etf of ETF_LIST) {
-      charts.push(await Promise.allSettled([fetchEtfChart(etf.ticker)]).then(r => r[0]!));
-    }
+    const charts = await Promise.allSettled(
+      ETF_LIST.map((etf) => fetchEtfChart(etf.ticker)),
+    );
 
     const etfs: EtfFlow[] = [];
     for (let i = 0; i < ETF_LIST.length; i++) {
