@@ -177,7 +177,7 @@ const ALLOWED_DOMAINS = [
   'www.fao.org',
   'worldbank.org',
   'www.imf.org',
-  // Regional locale feeds (tr, pl, ru, th, vi)
+  // Regional locale feeds (tr, pl, ru, th, vi, pt)
   'www.hurriyet.com.tr',
   'tvn24.pl',
   'www.polsatnews.pl',
@@ -187,6 +187,7 @@ const ALLOWED_DOMAINS = [
   'www.bangkokpost.com',
   'vnexpress.net',
   'www.abc.net.au',
+  'www.brasilparalelo.com.br',
   // Additional
   'news.ycombinator.com',
   // Finance variant
