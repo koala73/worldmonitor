@@ -15,6 +15,7 @@ type YouTubePlayer = {
   loadVideoById(videoId: string): void;
   cueVideoById(videoId: string): void;
   getIframe?(): HTMLIFrameElement;
+  getVolume?(): number;
   destroy(): void;
 };
 
@@ -218,6 +219,8 @@ export class LiveNewsPanel extends Panel {
   private desktopEmbedIframe: HTMLIFrameElement | null = null;
   private desktopEmbedRenderToken = 0;
   private boundMessageHandler!: (e: MessageEvent) => void;
+  private muteSyncInterval: ReturnType<typeof setInterval> | null = null;
+  private readonly MUTE_SYNC_POLL_MS = 500;
 
   constructor() {
     super({ id: 'live-news', title: t('panels.liveNews') });
@@ -261,6 +264,12 @@ export class LiveNewsPanel extends Panel {
           this.renderDesktopEmbed(true);
         } else {
           this.showEmbedError(this.activeChannel, code);
+        }
+      } else if (msg.type === 'yt-mute-state') {
+        const muted = msg.muted === true;
+        if (this.isMuted !== muted) {
+          this.isMuted = muted;
+          this.updateMuteIcon();
         }
       }
     };
@@ -328,7 +337,32 @@ export class LiveNewsPanel extends Panel {
     this.destroyPlayer();
   }
 
+  private stopMuteSyncPolling(): void {
+    if (this.muteSyncInterval !== null) {
+      clearInterval(this.muteSyncInterval);
+      this.muteSyncInterval = null;
+    }
+  }
+
+  private startMuteSyncPolling(): void {
+    this.stopMuteSyncPolling();
+    this.muteSyncInterval = setInterval(() => this.syncMuteStateFromPlayer(), this.MUTE_SYNC_POLL_MS);
+  }
+
+  private syncMuteStateFromPlayer(): void {
+    if (this.useDesktopEmbedProxy || !this.player || !this.isPlayerReady) return;
+    const p = this.player as { getVolume?(): number; isMuted?(): boolean };
+    const muted = typeof p.isMuted === 'function'
+      ? p.isMuted()
+      : (p.getVolume?.() === 0);
+    if (typeof muted === 'boolean' && muted !== this.isMuted) {
+      this.isMuted = muted;
+      this.updateMuteIcon();
+    }
+  }
+
   private destroyPlayer(): void {
+    this.stopMuteSyncPolling();
     if (this.player) {
       this.player.destroy();
       this.player = null;
@@ -786,6 +820,7 @@ export class LiveNewsPanel extends Panel {
           const iframe = this.player?.getIframe?.();
           if (iframe) iframe.referrerPolicy = 'strict-origin-when-cross-origin';
           this.syncPlayerState();
+          this.startMuteSyncPolling();
         },
         onError: (event) => {
           const errorCode = Number(event?.data ?? 0);
@@ -896,6 +931,7 @@ export class LiveNewsPanel extends Panel {
   }
 
   public destroy(): void {
+    this.stopMuteSyncPolling();
     if (this.idleTimeout) {
       clearTimeout(this.idleTimeout);
       this.idleTimeout = null;
