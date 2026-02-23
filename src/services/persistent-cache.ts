@@ -130,7 +130,7 @@ export async function setPersistentCache<T>(key: string, data: T): Promise<void>
 export async function deletePersistentCache(key: string): Promise<void> {
   if (isDesktopRuntime()) {
     try {
-      await invokeTauri<void>('write_cache_entry', { key, value: '' });
+      await invokeTauri<void>('delete_cache_entry', { key });
       return;
     } catch {
       // Fall through to browser storage

@@ -163,7 +163,6 @@ export class CircuitBreaker<T> {
   clearCache(): void {
     this.cache = null;
     if (this.persistEnabled) {
-      this.persistentLoaded = false;
       this.deletePersistentCache();
     }
   }

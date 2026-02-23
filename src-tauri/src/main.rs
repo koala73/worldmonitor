@@ -315,6 +315,32 @@ fn read_cache_entry(cache: tauri::State<'_, PersistentCache>, key: String) -> Re
 }
 
 #[tauri::command]
+fn delete_cache_entry(app: AppHandle, cache: tauri::State<'_, PersistentCache>, key: String) -> Result<(), String> {
+    let _write_guard = cache.write_lock.lock().unwrap_or_else(|e| e.into_inner());
+    {
+        let mut data = cache.data.lock().unwrap_or_else(|e| e.into_inner());
+        data.remove(&key);
+    }
+    {
+        let mut dirty = cache.dirty.lock().unwrap_or_else(|e| e.into_inner());
+        *dirty = true;
+    }
+
+    let path = cache_file_path(&app)?;
+    let data = cache.data.lock().unwrap_or_else(|e| e.into_inner());
+    let serialized = serde_json::to_string(&Value::Object(data.clone()))
+        .map_err(|e| format!("Failed to serialize cache: {e}"))?;
+    drop(data);
+    std::fs::write(&path, &serialized)
+        .map_err(|e| format!("Failed to write cache {}: {e}", path.display()))?;
+    {
+        let mut dirty = cache.dirty.lock().unwrap_or_else(|e| e.into_inner());
+        *dirty = false;
+    }
+    Ok(())
+}
+
+#[tauri::command]
 fn write_cache_entry(app: AppHandle, cache: tauri::State<'_, PersistentCache>, key: String, value: String) -> Result<(), String> {
     let parsed_value: Value = serde_json::from_str(&value)
         .map_err(|e| format!("Invalid cache payload JSON: {e}"))?;
@@ -967,6 +993,7 @@ fn main() {
             get_desktop_runtime_info,
             read_cache_entry,
             write_cache_entry,
+            delete_cache_entry,
             open_logs_folder,
             open_sidecar_log_file,
             open_settings_window_command,
