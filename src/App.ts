@@ -105,6 +105,7 @@ import { HeroSpotlightPanel } from '@/components/HeroSpotlightPanel';
 import { GoodThingsDigestPanel } from '@/components/GoodThingsDigestPanel';
 import { SpeciesComebackPanel } from '@/components/SpeciesComebackPanel';
 import { RenewableEnergyPanel } from '@/components/RenewableEnergyPanel';
+import { TvModeController } from '@/services/tv-mode';
 import { fetchProgressData } from '@/services/progress-data';
 import { fetchConservationWins } from '@/services/conservation-data';
 import { fetchRenewableEnergyData, fetchEnergyCapacity } from '@/services/renewable-energy-data';
@@ -223,6 +224,7 @@ export class App {
   private digestPanel?: GoodThingsDigestPanel;
   private speciesPanel?: SpeciesComebackPanel;
   private renewablePanel?: RenewableEnergyPanel;
+  private tvMode: TvModeController | null = null;
   private happyAllItems: NewsItem[] = [];
 
   constructor(containerId: string) {
@@ -1936,6 +1938,7 @@ export class App {
         ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>'
         : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>'}
           </button>
+          ${SITE_VARIANT === 'happy' ? `<button class="tv-mode-btn" id="tvModeBtn" title="TV Mode (Shift+T)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></button>` : ''}
           ${this.isDesktopApp ? '' : `<button class="fullscreen-btn" id="fullscreenBtn" title="${t('header.fullscreen')}">⛶</button>`}
           <button class="settings-btn" id="settingsBtn">⚙ ${t('header.settings')}</button>
           <button class="sources-btn" id="sourcesBtn">📡 ${t('header.sources')}</button>
@@ -1985,6 +1988,7 @@ export class App {
           </div>
         </div>
       </div>
+      ${SITE_VARIANT === 'happy' ? '<button class="tv-exit-btn" id="tvExitBtn">Exit TV Mode</button>' : ''}
     `;
 
     this.createPanels();
@@ -2126,6 +2130,8 @@ export class App {
     }
 
     // Clean up happy variant panels
+    this.tvMode?.destroy();
+    this.tvMode = null;
     this.countersPanel?.destroy();
     this.progressPanel?.destroy();
     this.breakthroughsPanel?.destroy();
@@ -2805,6 +2811,28 @@ export class App {
       document.addEventListener('fullscreenchange', this.boundFullscreenHandler);
     }
 
+    // TV Mode (happy variant only)
+    if (SITE_VARIANT === 'happy') {
+      const tvBtn = document.getElementById('tvModeBtn');
+      const tvExitBtn = document.getElementById('tvExitBtn');
+      if (tvBtn) {
+        tvBtn.addEventListener('click', () => this.toggleTvMode());
+      }
+      if (tvExitBtn) {
+        tvExitBtn.addEventListener('click', () => this.toggleTvMode());
+      }
+      // Keyboard shortcut: Shift+T
+      document.addEventListener('keydown', (e) => {
+        if (e.shiftKey && e.key === 'T' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          const active = document.activeElement;
+          if (active?.tagName !== 'INPUT' && active?.tagName !== 'TEXTAREA') {
+            e.preventDefault();
+            this.toggleTvMode();
+          }
+        }
+      });
+    }
+
     // Region selector
     const regionSelect = document.getElementById('regionSelect') as HTMLSelectElement;
     regionSelect?.addEventListener('change', () => {
@@ -2962,6 +2990,20 @@ export class App {
         try { el.webkitRequestFullscreen(); } catch {}
       }
     }
+  }
+
+  private toggleTvMode(): void {
+    if (!this.tvMode) {
+      const panelKeys = Object.keys(DEFAULT_PANELS);
+      this.tvMode = new TvModeController({
+        panelKeys,
+        onPanelChange: () => {
+          document.getElementById('tvModeBtn')?.classList.toggle('active', this.tvMode?.active ?? false);
+        }
+      });
+    }
+    this.tvMode.toggle();
+    document.getElementById('tvModeBtn')?.classList.toggle('active', this.tvMode.active);
   }
 
   private setupMapResize(): void {
