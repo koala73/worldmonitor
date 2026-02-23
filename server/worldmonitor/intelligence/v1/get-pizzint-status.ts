@@ -111,8 +111,7 @@ export async function getPizzintStatus(
           locations,
         };
       }
-    }
-  } catch { /* PizzINT unavailable — continue to GDELT */ }
+    } catch (_) { /* PizzINT unavailable — continue to GDELT */ }
 
   // Fetch GDELT tension pairs
   let tensionPairs: GdeltTensionPair[] = [];
