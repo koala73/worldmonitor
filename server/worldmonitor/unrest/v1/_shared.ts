@@ -10,7 +10,6 @@ import type {
 // API URLs
 // ========================================================================
 
-export const ACLED_API_URL = 'https://acleddata.com/api/acled/read';
 export const GDELT_GEO_URL = 'https://api.gdeltproject.org/api/v2/geo/geo';
 
 // ========================================================================
