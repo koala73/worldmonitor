@@ -79,7 +79,7 @@ export default async function handler(request) {
     var tag=document.createElement('script');
     tag.src='https://www.youtube.com/iframe_api';
     document.head.appendChild(tag);
-    var player,overlay=document.getElementById('play-overlay'),started=false,muteSyncIntervalId;
+    var player,overlay=document.getElementById('play-overlay'),started=false,muteSyncIntervalId,parentOrigin=${JSON.stringify(origin)};
     function hideOverlay(){overlay.classList.add('hidden')}
     function readMuted(){
       if(!player)return null;
@@ -87,13 +87,14 @@ export default async function handler(request) {
       if(typeof player.getVolume==='function')return player.getVolume()===0;
       return null;
     }
+    function stopMuteSync(){if(muteSyncIntervalId){clearInterval(muteSyncIntervalId);muteSyncIntervalId=null}}
     function startMuteSync(){
       if(muteSyncIntervalId)return;
       var lastMuted=readMuted();
-      if(lastMuted!==null)window.parent.postMessage({type:'yt-mute-state',muted:lastMuted},'*');
+      if(lastMuted!==null)window.parent.postMessage({type:'yt-mute-state',muted:lastMuted},parentOrigin);
       muteSyncIntervalId=setInterval(function(){
         var m=readMuted();
-        if(m!==null&&m!==lastMuted){lastMuted=m;window.parent.postMessage({type:'yt-mute-state',muted:m},'*')}
+        if(m!==null&&m!==lastMuted){lastMuted=m;window.parent.postMessage({type:'yt-mute-state',muted:m},parentOrigin)}
       },500);
     }
     function onYouTubeIframeAPIReady(){
@@ -103,13 +104,13 @@ export default async function handler(request) {
         playerVars:{autoplay:${autoplay},mute:${mute},playsinline:1,rel:0,controls:1,modestbranding:1,enablejsapi:1,origin:${JSON.stringify(origin)},widget_referrer:${JSON.stringify(origin)}},
         events:{
           onReady:function(){
-            window.parent.postMessage({type:'yt-ready'},'*');
+            window.parent.postMessage({type:'yt-ready'},parentOrigin);
             if(${autoplay}===1){player.playVideo()}
             startMuteSync();
           },
-          onError:function(e){window.parent.postMessage({type:'yt-error',code:e.data},'*')},
+          onError:function(e){stopMuteSync();window.parent.postMessage({type:'yt-error',code:e.data},parentOrigin)},
           onStateChange:function(e){
-            window.parent.postMessage({type:'yt-state',state:e.data},'*');
+            window.parent.postMessage({type:'yt-state',state:e.data},parentOrigin);
             if(e.data===1||e.data===3){hideOverlay();started=true}
           }
         }

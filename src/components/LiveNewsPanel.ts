@@ -220,7 +220,7 @@ export class LiveNewsPanel extends Panel {
   private desktopEmbedRenderToken = 0;
   private boundMessageHandler!: (e: MessageEvent) => void;
   private muteSyncInterval: ReturnType<typeof setInterval> | null = null;
-  private readonly MUTE_SYNC_POLL_MS = 500;
+  private static readonly MUTE_SYNC_POLL_MS = 500;
 
   constructor() {
     super({ id: 'live-news', title: t('panels.liveNews') });
@@ -346,7 +346,7 @@ export class LiveNewsPanel extends Panel {
 
   private startMuteSyncPolling(): void {
     this.stopMuteSyncPolling();
-    this.muteSyncInterval = setInterval(() => this.syncMuteStateFromPlayer(), this.MUTE_SYNC_POLL_MS);
+    this.muteSyncInterval = setInterval(() => this.syncMuteStateFromPlayer(), LiveNewsPanel.MUTE_SYNC_POLL_MS);
   }
 
   private syncMuteStateFromPlayer(): void {
@@ -931,7 +931,8 @@ export class LiveNewsPanel extends Panel {
   }
 
   public destroy(): void {
-    this.stopMuteSyncPolling();
+    this.destroyPlayer();
+
     if (this.idleTimeout) {
       clearTimeout(this.idleTimeout);
       this.idleTimeout = null;
@@ -943,14 +944,7 @@ export class LiveNewsPanel extends Panel {
       document.removeEventListener(event, this.boundIdleResetHandler);
     });
 
-    if (this.player) {
-      this.player.destroy();
-      this.player = null;
-    }
-    this.desktopEmbedIframe = null;
-    this.isPlayerReady = false;
     this.playerContainer = null;
-    this.playerElement = null;
 
     super.destroy();
   }
