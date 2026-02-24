@@ -14671,6 +14671,11 @@ body.has-critical-banner .panels-grid {
 
 /* Print styles */
 @media print {
+  body {
+    background: #fff !important;
+    color: #111 !important;
+  }
+
   .country-brief-overlay {
     position: static;
     background: none;
@@ -14686,12 +14691,15 @@ body.has-critical-banner .panels-grid {
     box-shadow: none;
     border-radius: 0;
     min-height: auto;
+    background: #fff !important;
+    color: #111 !important;
   }
 
   .cb-header {
     position: static;
-    background: var(--accent);
     border-radius: 0;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
   }
 
   .cb-close,
@@ -14706,8 +14714,32 @@ body.has-critical-banner .panels-grid {
     grid-template-columns: 1fr;
   }
 
+  .cb-grid > * {
+    break-inside: avoid;
+  }
+
   .cb-timeline-section {
     display: none;
+  }
+
+  .cb-body {
+    background: #fff !important;
+    color: #111 !important;
+  }
+
+  .cb-section {
+    background: #f8f8f8 !important;
+    color: #111 !important;
+    border-color: #ddd !important;
+  }
+
+  .cb-section-title {
+    color: #333 !important;
+  }
+
+  .cb-badge, .cb-trend {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
   }
 
   body>*:not(.country-brief-overlay) {
