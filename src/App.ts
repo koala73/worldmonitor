@@ -435,6 +435,7 @@ export class App {
           SA: 'Saudi Arabia', TR: 'Turkey', PL: 'Poland', DE: 'Germany',
           FR: 'France', GB: 'United Kingdom', IN: 'India', PK: 'Pakistan',
           SY: 'Syria', YE: 'Yemen', MM: 'Myanmar', VE: 'Venezuela',
+          MX: 'Mexico',
         };
         const countryName = countryNames[countryCode.toUpperCase()] || countryCode;
 
