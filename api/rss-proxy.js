@@ -200,6 +200,12 @@ const ALLOWED_DOMAINS = [
   'www.abc.net.au',
   'islandtimes.org',
   'www.brasilparalelo.com.br',
+  // Mexico & LatAm Security
+  'mexiconewsdaily.com',
+  'animalpolitico.com',
+  'www.proceso.com.mx',
+  'www.milenio.com',
+  'insightcrime.org',
   // Additional
   'news.ycombinator.com',
   // Finance variant
