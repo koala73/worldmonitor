@@ -36,13 +36,16 @@ export default async function handler(request) {
     });
 
     if (!response.ok) {
-      return new Response(JSON.stringify({ videoId: null }), {
+      return new Response(JSON.stringify({ videoId: null, channelExists: false }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       });
     }
 
     const html = await response.text();
+
+    // Channel exists if the page contains canonical channel metadata
+    const channelExists = html.includes('"channelId"') || html.includes('og:url');
 
     // Scope both fields to the same videoDetails block so we don't
     // combine a videoId from one object with isLive from another.
@@ -57,7 +60,7 @@ export default async function handler(request) {
       }
     }
 
-    return new Response(JSON.stringify({ videoId, isLive: videoId !== null }), {
+    return new Response(JSON.stringify({ videoId, isLive: videoId !== null, channelExists }), {
       status: 200,
       headers: {
         'Content-Type': 'application/json',

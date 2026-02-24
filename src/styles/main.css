@@ -1441,6 +1441,10 @@ canvas,
   color: var(--text);
   border-radius: 4px;
 }
+.live-news-manage-handle.invalid {
+  border-color: #f44;
+  box-shadow: 0 0 0 1px rgba(255, 68, 68, 0.3);
+}
 .live-news-manage-add-btn {
   padding: 10px 18px;
   font-size: 14px;

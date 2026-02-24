@@ -26,11 +26,10 @@ const ALLOWED_PARENT_ORIGINS = [
 ];
 
 function sanitizeAllowedOrigin(raw, fallback, allowList = ALLOWED_ORIGINS) {
-  if (raw === '*') return '*';
   if (!raw) return fallback;
   try {
     const parsed = new URL(raw);
-    if (!['https:', 'http:', 'tauri:', 'asset:'].includes(parsed.protocol)) {
+    if (!['https:', 'http:', 'tauri:'].includes(parsed.protocol)) {
       return fallback;
     }
     const origin = parsed.origin !== 'null' ? parsed.origin : raw;
@@ -95,7 +94,7 @@ export default async function handler(request) {
     var tag=document.createElement('script');
     tag.src='https://www.youtube.com/iframe_api';
     document.head.appendChild(tag);
-    var player,overlay=document.getElementById('play-overlay'),started=false,muteSyncIntervalId,parentOrigin=${JSON.stringify(parentOrigin)};
+    var player,overlay=document.getElementById('play-overlay'),started=false,muteSyncIntervalId,parentOrigin=${JSON.stringify(parentOrigin)},allowedOrigin=${JSON.stringify(parentOrigin)};
     function hideOverlay(){overlay.classList.add('hidden')}
     function readMuted(){
       if(!player)return null;
@@ -137,6 +136,7 @@ export default async function handler(request) {
     });
     setTimeout(function(){if(!started)overlay.classList.remove('hidden')},3000);
     window.addEventListener('message',function(e){
+      if(allowedOrigin!=='*'&&e.origin!==allowedOrigin)return;
       if(!player||!player.getPlayerState)return;
       var m=e.data;if(!m||!m.type)return;
       switch(m.type){

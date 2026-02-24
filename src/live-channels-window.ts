@@ -13,6 +13,7 @@ import {
 } from '@/components/LiveNewsPanel';
 import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
+import { isDesktopRuntime, getRemoteApiBaseUrl } from '@/services/runtime';
 
 /** Builds a stable custom channel id from a YouTube handle (e.g. @Foo -> custom-foo). */
 function customChannelIdFromHandle(handle: string): string {
@@ -413,6 +414,11 @@ export function initLiveChannelsWindow(): void {
   setupListDnD(listEl);
   renderList(listEl);
 
+  // Clear validation state on input
+  document.getElementById('liveChannelsHandle')?.addEventListener('input', (e) => {
+    (e.target as HTMLInputElement).classList.remove('invalid');
+  });
+
   document.getElementById('liveChannelsRestoreBtn')?.addEventListener('click', () => {
     const missing = getMissingDefaultChannels();
     if (missing.length === 0) return;
@@ -421,15 +427,55 @@ export function initLiveChannelsWindow(): void {
     renderList(listEl);
   });
 
-  document.getElementById('liveChannelsAddBtn')?.addEventListener('click', () => {
+  const addBtn = document.getElementById('liveChannelsAddBtn') as HTMLButtonElement | null;
+  addBtn?.addEventListener('click', async () => {
     const handleInput = document.getElementById('liveChannelsHandle') as HTMLInputElement | null;
     const nameInput = document.getElementById('liveChannelsName') as HTMLInputElement | null;
     const raw = handleInput?.value?.trim();
     if (!raw) return;
     const handle = raw.startsWith('@') ? raw : `@${raw}`;
-    const name = nameInput?.value?.trim() || handle;
+
+    // Validate YouTube handle format: @<3-30 alphanumeric/dot/hyphen/underscore chars>
+    if (!/^@[\w.-]{3,30}$/i.test(handle)) {
+      if (handleInput) {
+        handleInput.classList.add('invalid');
+        handleInput.setAttribute('title', t('components.liveNews.invalidHandle') ?? 'Enter a valid YouTube handle (e.g. @ChannelName)');
+      }
+      return;
+    }
+
     const id = customChannelIdFromHandle(handle);
     if (channels.some((c) => c.id === id)) return;
+
+    // Validate channel exists on YouTube
+    if (addBtn) {
+      addBtn.disabled = true;
+      addBtn.textContent = t('components.liveNews.verifying') ?? 'Verifying…';
+    }
+    if (handleInput) handleInput.classList.remove('invalid');
+
+    try {
+      const baseUrl = isDesktopRuntime() ? getRemoteApiBaseUrl() : '';
+      const res = await fetch(`${baseUrl}/api/youtube/live?channel=${encodeURIComponent(handle)}`);
+      const data = await res.json();
+      if (!data.channelExists) {
+        if (handleInput) {
+          handleInput.classList.add('invalid');
+          handleInput.setAttribute('title', t('components.liveNews.channelNotFound') ?? 'YouTube channel not found');
+        }
+        return;
+      }
+    } catch (e) {
+      // Network error — allow adding anyway (offline tolerance)
+      console.warn('[LiveChannels] YouTube validation failed, allowing add:', e);
+    } finally {
+      if (addBtn) {
+        addBtn.disabled = false;
+        addBtn.textContent = t('components.liveNews.addChannel') ?? 'Add channel';
+      }
+    }
+
+    const name = nameInput?.value?.trim() || handle;
     channels.push({ id, name, handle });
     saveChannelsToStorage(channels);
     renderList(listEl);

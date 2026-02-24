@@ -505,6 +505,9 @@ function relayToHttpUrl(rawUrl) {
 }
 
 function isAuthFailure(status, text = '') {
+  // Intentionally broad for provider auth responses.
+  // Callers MUST check isCloudflareChallenge403() first or CF challenge pages
+  // may be misclassified as credential failures.
   if (status === 401 || status === 403) return true;
   return /unauthori[sz]ed|forbidden|invalid api key|invalid token|bad credentials/i.test(text);
 }
@@ -515,13 +518,13 @@ function isCloudflareChallenge403(response, text = '') {
   const body = String(text || '').toLowerCase();
   const looksLikeHtml = contentType.includes('text/html') || body.includes('<html');
   if (!looksLikeHtml) return false;
-  return [
+  const matches = [
     'attention required',
-    'cloudflare',
     'cf-browser-verification',
     '__cf_chl',
     'ray id',
-  ].some((marker) => body.includes(marker));
+  ].filter((marker) => body.includes(marker)).length;
+  return matches >= 2;
 }
 
 async function validateSecretAgainstProvider(key, rawValue, context = {}) {

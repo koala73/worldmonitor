@@ -1197,7 +1197,10 @@
       "regionEurope": "Europe",
       "regionLatinAmerica": "Latin America",
       "regionAsia": "Asia",
-      "regionAfrica": "Africa"
+      "regionAfrica": "Africa",
+      "invalidHandle": "Enter a valid YouTube handle (e.g. @ChannelName)",
+      "channelNotFound": "YouTube channel not found",
+      "verifying": "Verifying…"
     }
   },
   "popups": {
