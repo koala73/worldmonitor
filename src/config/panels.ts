@@ -42,6 +42,7 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   'etf-flows': { name: 'BTC ETF Tracker', enabled: true, priority: 2 },
   stablecoins: { name: 'Stablecoins', enabled: true, priority: 2 },
   'ucdp-events': { name: 'UCDP Conflict Events', enabled: true, priority: 2 },
+  giving: { name: 'Global Giving', enabled: true, priority: 2 },
   displacement: { name: 'UNHCR Displacement', enabled: true, priority: 2 },
   climate: { name: 'Climate Anomalies', enabled: true, priority: 2 },
   'population-exposure': { name: 'Population Exposure', enabled: true, priority: 2 },
@@ -417,6 +418,7 @@ const HAPPY_PANELS: Record<string, PanelConfig> = {
   digest: { name: '5 Good Things', enabled: true, priority: 1 },
   species: { name: 'Conservation Wins', enabled: true, priority: 1 },
   renewable: { name: 'Renewable Energy', enabled: true, priority: 1 },
+  giving: { name: 'Global Giving', enabled: true, priority: 1 },
 };
 
 const HAPPY_MAP_LAYERS: MapLayers = {

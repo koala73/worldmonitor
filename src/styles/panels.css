@@ -179,3 +179,45 @@
   width: 100%;
 }
 .wm-dl-toggle:hover { color: var(--text, #e8e8e8); }
+
+/* ----------------------------------------------------------
+   Giving Panel (Global Giving Activity Index)
+   ---------------------------------------------------------- */
+.giving-panel-content { font-size: 12px; }
+.giving-stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 8px; }
+.giving-stat-box { background: var(--overlay-subtle); border: 1px solid var(--border); border-radius: 4px; padding: 8px 6px; text-align: center; }
+.giving-stat-value { display: block; font-size: 16px; font-weight: 700; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.giving-stat-label { display: block; font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+.giving-stat-index .giving-stat-value { font-size: 22px; }
+.giving-tabs { display: flex; gap: 2px; margin-bottom: 6px; flex-wrap: wrap; }
+.giving-tab { background: transparent; border: 1px solid var(--border-strong); color: var(--text-dim); padding: 4px 10px; font-size: 11px; cursor: pointer; border-radius: 3px; transition: all 0.15s; }
+.giving-tab:hover { border-color: var(--text-faint); color: var(--text-secondary); }
+.giving-tab-active { background: color-mix(in srgb, var(--semantic-positive, #44ff88) 10%, transparent); border-color: var(--semantic-positive, #44ff88); color: var(--semantic-positive, #44ff88); }
+.giving-table { width: 100%; border-collapse: collapse; }
+.giving-table th { text-align: left; color: var(--text-muted); font-weight: 600; font-size: 10px; text-transform: uppercase; padding: 4px 8px; border-bottom: 1px solid var(--border); }
+.giving-table td { padding: 5px 8px; border-bottom: 1px solid var(--border-subtle); color: var(--text-secondary); }
+.giving-row:hover { background: var(--surface-hover); }
+.giving-platform-name { white-space: nowrap; font-weight: 600; }
+.giving-platform-vol { text-align: right; font-variant-numeric: tabular-nums; color: var(--accent); }
+.giving-platform-vel { text-align: right; font-variant-numeric: tabular-nums; }
+.giving-platform-fresh { text-align: right; }
+.giving-fresh-badge { font-size: 9px; font-weight: 600; padding: 2px 6px; border-radius: 3px; letter-spacing: 0.5px; }
+.giving-fresh-live { background: color-mix(in srgb, var(--semantic-positive, #44ff88) 15%, transparent); color: var(--semantic-positive, #44ff88); }
+.giving-fresh-daily { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); }
+.giving-fresh-weekly { background: color-mix(in srgb, var(--semantic-elevated) 12%, transparent); color: var(--semantic-elevated); }
+.giving-fresh-annual { background: color-mix(in srgb, var(--text-muted) 10%, transparent); color: var(--text-muted); }
+.giving-cat-table th:nth-child(2) { text-align: right; }
+.giving-cat-name { white-space: nowrap; }
+.giving-share-bar { display: inline-block; width: 60px; height: 6px; background: var(--border); border-radius: 3px; vertical-align: middle; margin-right: 6px; }
+.giving-share-fill { height: 100%; border-radius: 3px; background: var(--accent); }
+.giving-share-label { font-variant-numeric: tabular-nums; font-size: 11px; }
+.giving-trending-badge { font-size: 8px; font-weight: 700; padding: 1px 4px; border-radius: 2px; background: color-mix(in srgb, var(--semantic-positive, #44ff88) 12%, transparent); color: var(--semantic-positive, #44ff88); letter-spacing: 0.5px; vertical-align: middle; margin-left: 4px; }
+.giving-crypto-content { }
+.giving-crypto-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 10px; }
+.giving-crypto-receivers { }
+.giving-section-title { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; font-weight: 600; }
+.giving-receiver-list { list-style: none; padding: 0; margin: 0; }
+.giving-receiver-list li { padding: 3px 8px; border-bottom: 1px solid var(--border-subtle); color: var(--text-secondary); font-size: 11px; }
+.giving-receiver-list li:last-child { border-bottom: none; }
+.giving-inst-content { }
+.giving-inst-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }

@@ -31,6 +31,7 @@ import { focusInvestmentOnMap } from '@/services/investments-focus';
 import { classifyNewsItem } from '@/services/positive-classifier';
 import { fetchConflictEvents, fetchUcdpClassifications, fetchHapiSummary, fetchUcdpEvents, deduplicateAgainstAcled } from '@/services/conflict';
 import { fetchUnhcrPopulation } from '@/services/displacement';
+import { fetchGivingSummary } from '@/services/giving';
 import { fetchClimateAnomalies } from '@/services/climate';
 import { enrichEventsWithExposure } from '@/services/population-exposure';
 import { buildMapUrl, debounce, loadFromStorage, parseMapUrlState, saveToStorage, ExportPanel, getCircuitBreakerCooldownInfo, isMobileDevice, setTheme, getCurrentTheme } from '@/utils';
@@ -77,6 +78,7 @@ import {
   ETFFlowsPanel,
   StablecoinPanel,
   UcdpEventsPanel,
+  GivingPanel,
   DisplacementPanel,
   ClimateAnomalyPanel,
   PopulationExposurePanel,
@@ -2397,6 +2399,9 @@ export class App {
       });
       this.panels['ucdp-events'] = ucdpEventsPanel;
 
+      const givingPanel = new GivingPanel();
+      this.panels['giving'] = givingPanel;
+
       const displacementPanel = new DisplacementPanel();
       displacementPanel.setCountryClickHandler((lat, lon) => {
         this.map?.setCenter(lat, lon, 4);
@@ -4354,6 +4359,23 @@ export class App {
       } catch (error) {
         console.error('[Intelligence] UCDP events fetch failed:', error);
         dataFreshness.recordError('ucdp_events', String(error));
+      }
+    })());
+
+    // Fetch global giving activity data
+    tasks.push((async () => {
+      try {
+        const givingResult = await fetchGivingSummary();
+        if (!givingResult.ok) {
+          dataFreshness.recordError('giving', 'Giving data unavailable (retaining prior state)');
+          return;
+        }
+        const data = givingResult.data;
+        (this.panels['giving'] as GivingPanel)?.setData(data);
+        if (data.platforms.length > 0) dataFreshness.recordUpdate('giving', data.platforms.length);
+      } catch (error) {
+        console.error('[Intelligence] Global giving fetch failed:', error);
+        dataFreshness.recordError('giving', String(error));
       }
     })());
 

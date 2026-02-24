@@ -1,0 +1,91 @@
+syntax = "proto3";
+
+package worldmonitor.giving.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+// GivingSummary represents a global overview of personal giving activity across platforms.
+message GivingSummary {
+  // Timestamp of the summary generation (ISO 8601).
+  string generated_at = 1;
+  // Global giving activity index (0-100 composite score).
+  double activity_index = 2;
+  // Index trend direction.
+  string trend = 3; // "rising" | "stable" | "falling"
+  // Estimated daily global giving flow in USD (directional, not precise).
+  double estimated_daily_flow_usd = 4 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Per-platform aggregates.
+  repeated PlatformGiving platforms = 5;
+  // Per-category breakdown of campaign activity.
+  repeated CategoryBreakdown categories = 6;
+  // Crypto philanthropy wallet summary.
+  CryptoGivingSummary crypto = 7;
+  // Institutional / ODA data points.
+  InstitutionalGiving institutional = 8;
+}
+
+// PlatformGiving represents aggregated giving data from a single crowdfunding platform.
+message PlatformGiving {
+  // Platform name (e.g., "GoFundMe", "GlobalGiving", "JustGiving").
+  string platform = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // Estimated daily donation volume in USD.
+  double daily_volume_usd = 2;
+  // Number of active campaigns being sampled.
+  int32 active_campaigns_sampled = 3;
+  // New campaigns created in the last 24 hours.
+  int32 new_campaigns_24h = 4;
+  // Average donation velocity (donations per hour).
+  double donation_velocity = 5;
+  // Data freshness: "live", "daily", "weekly", "annual".
+  string data_freshness = 6;
+  // Last data update timestamp (ISO 8601).
+  string last_updated = 7;
+}
+
+// CategoryBreakdown represents giving activity within a specific cause category.
+message CategoryBreakdown {
+  // Category name (e.g., "Medical", "Disaster Relief", "Education").
+  string category = 1;
+  // Share of total giving activity (0-1).
+  double share = 2;
+  // 24-hour change in share percentage points.
+  double change_24h = 3;
+  // Number of active campaigns in this category.
+  int32 active_campaigns = 4;
+  // Trending indicator.
+  bool trending = 5;
+}
+
+// CryptoGivingSummary tracks transparent on-chain philanthropy.
+message CryptoGivingSummary {
+  // Total 24h inflow to tracked charity wallets (USD equivalent).
+  double daily_inflow_usd = 1;
+  // Number of tracked charity wallets.
+  int32 tracked_wallets = 2;
+  // Number of transactions in the last 24 hours.
+  int32 transactions_24h = 3;
+  // Top receiving platforms / DAOs.
+  repeated string top_receivers = 4;
+  // Percentage of total giving that is on-chain.
+  double pct_of_total = 5;
+}
+
+// InstitutionalGiving tracks large-scale structured philanthropy and ODA.
+message InstitutionalGiving {
+  // Latest OECD ODA total (annual, USD billions).
+  double oecd_oda_annual_usd_bn = 1;
+  // Year of latest OECD data.
+  int32 oecd_data_year = 2;
+  // CAF World Giving Index score (latest).
+  double caf_world_giving_index = 3;
+  // Year of latest CAF data.
+  int32 caf_data_year = 4;
+  // Number of foundation grants tracked (Candid).
+  int32 candid_grants_tracked = 5;
+  // Data lag description (e.g., "Quarterly", "Annual").
+  string data_lag = 6;
+}
