@@ -86,6 +86,7 @@ const FULL_MAP_LAYERS: MapLayers = {
   centralBanks: false,
   commodityHubs: false,
   gulfInvestments: false,
+  gatraAlerts: false,
 };
 
 const FULL_MOBILE_MAP_LAYERS: MapLayers = {
@@ -127,6 +128,7 @@ const FULL_MOBILE_MAP_LAYERS: MapLayers = {
   centralBanks: false,
   commodityHubs: false,
   gulfInvestments: false,
+  gatraAlerts: false,
 };
 
 // ============================================
@@ -208,6 +210,7 @@ const TECH_MAP_LAYERS: MapLayers = {
   centralBanks: false,
   commodityHubs: false,
   gulfInvestments: false,
+  gatraAlerts: false,
 };
 
 const TECH_MOBILE_MAP_LAYERS: MapLayers = {
@@ -249,6 +252,7 @@ const TECH_MOBILE_MAP_LAYERS: MapLayers = {
   centralBanks: false,
   commodityHubs: false,
   gulfInvestments: false,
+  gatraAlerts: false,
 };
 
 // ============================================
@@ -325,6 +329,7 @@ const FINANCE_MAP_LAYERS: MapLayers = {
   centralBanks: true,
   commodityHubs: false,
   gulfInvestments: false,
+  gatraAlerts: false,
 };
 
 const FINANCE_MOBILE_MAP_LAYERS: MapLayers = {
@@ -366,14 +371,121 @@ const FINANCE_MOBILE_MAP_LAYERS: MapLayers = {
   centralBanks: true,
   commodityHubs: false,
   gulfInvestments: false,
+  gatraAlerts: false,
+};
+
+// ============================================
+// CYBER VARIANT (Cybersecurity/GATRA)
+// ============================================
+const CYBER_PANELS: Record<string, PanelConfig> = {
+  map: { name: 'Global Cyber Map', enabled: true, priority: 1 },
+  'live-news': { name: 'Cyber Headlines', enabled: true, priority: 1 },
+  insights: { name: 'AI Insights', enabled: true, priority: 1 },
+  security: { name: 'Cybersecurity News', enabled: true, priority: 1 },
+  indonesia: { name: 'Indonesia Cyber (BSSN)', enabled: true, priority: 1 },
+  threats: { name: 'Threat Intelligence', enabled: true, priority: 1 },
+  malware: { name: 'Ransomware & Malware', enabled: true, priority: 1 },
+  infrastructure: { name: 'Infrastructure Security', enabled: true, priority: 1 },
+  geoCyber: { name: 'Nation-State Cyber', enabled: true, priority: 1 },
+  research: { name: 'Security Research', enabled: true, priority: 1 },
+  policy: { name: 'Cyber Policy', enabled: true, priority: 2 },
+  aiSecurity: { name: 'AI & Security', enabled: true, priority: 2 },
+  'gatra-soc': { name: 'GATRA SOC', enabled: true, priority: 1 },
+  monitors: { name: 'My Monitors', enabled: true, priority: 2 },
+};
+
+const CYBER_MAP_LAYERS: MapLayers = {
+  conflicts: true,
+  bases: false,
+  cables: true,
+  pipelines: false,
+  hotspots: false,
+  ais: false,
+  nuclear: false,
+  irradiators: false,
+  sanctions: false,
+  weather: false,
+  economic: false,
+  waterways: false,
+  outages: true,
+  cyberThreats: true,
+  datacenters: true,
+  protests: false,
+  flights: false,
+  military: true,
+  natural: true,
+  spaceports: false,
+  minerals: false,
+  fires: true,
+  // Data source layers
+  ucdpEvents: false,
+  displacement: false,
+  climate: false,
+  // Tech layers (disabled in cyber variant)
+  startupHubs: false,
+  cloudRegions: false,
+  accelerators: false,
+  techHQs: false,
+  techEvents: false,
+  // Finance layers (disabled in cyber variant)
+  stockExchanges: false,
+  financialCenters: false,
+  centralBanks: false,
+  commodityHubs: false,
+  gulfInvestments: false,
+  // GATRA SOC layer (enabled in cyber variant)
+  gatraAlerts: true,
+};
+
+const CYBER_MOBILE_MAP_LAYERS: MapLayers = {
+  conflicts: true,
+  bases: false,
+  cables: true,
+  pipelines: false,
+  hotspots: false,
+  ais: false,
+  nuclear: false,
+  irradiators: false,
+  sanctions: false,
+  weather: false,
+  economic: false,
+  waterways: false,
+  outages: true,
+  cyberThreats: true,
+  datacenters: false,
+  protests: false,
+  flights: false,
+  military: false,
+  natural: true,
+  spaceports: false,
+  minerals: false,
+  fires: true,
+  // Data source layers
+  ucdpEvents: false,
+  displacement: false,
+  climate: false,
+  // Tech layers
+  startupHubs: false,
+  cloudRegions: false,
+  accelerators: false,
+  techHQs: false,
+  techEvents: false,
+  // Finance layers
+  stockExchanges: false,
+  financialCenters: false,
+  centralBanks: false,
+  commodityHubs: false,
+  gulfInvestments: false,
+  // GATRA SOC layer (enabled in cyber variant)
+  gatraAlerts: true,
 };
 
 // ============================================
 // VARIANT-AWARE EXPORTS
 // ============================================
-export const DEFAULT_PANELS = SITE_VARIANT === 'tech' ? TECH_PANELS : SITE_VARIANT === 'finance' ? FINANCE_PANELS : FULL_PANELS;
-export const DEFAULT_MAP_LAYERS = SITE_VARIANT === 'tech' ? TECH_MAP_LAYERS : SITE_VARIANT === 'finance' ? FINANCE_MAP_LAYERS : FULL_MAP_LAYERS;
-export const MOBILE_DEFAULT_MAP_LAYERS = SITE_VARIANT === 'tech' ? TECH_MOBILE_MAP_LAYERS : SITE_VARIANT === 'finance' ? FINANCE_MOBILE_MAP_LAYERS : FULL_MOBILE_MAP_LAYERS;
+export const DEFAULT_PANELS = SITE_VARIANT === 'tech' ? TECH_PANELS : SITE_VARIANT === 'finance' ? FINANCE_PANELS : SITE_VARIANT === 'cyber' ? CYBER_PANELS : FULL_PANELS;
+export const DEFAULT_MAP_LAYERS = SITE_VARIANT === 'tech' ? TECH_MAP_LAYERS : SITE_VARIANT === 'finance' ? FINANCE_MAP_LAYERS : SITE_VARIANT === 'cyber' ? CYBER_MAP_LAYERS : FULL_MAP_LAYERS;
+export const MOBILE_DEFAULT_MAP_LAYERS = SITE_VARIANT === 'tech' ? TECH_MOBILE_MAP_LAYERS : SITE_VARIANT === 'finance' ? FINANCE_MOBILE_MAP_LAYERS : SITE_VARIANT === 'cyber' ? CYBER_MOBILE_MAP_LAYERS : FULL_MOBILE_MAP_LAYERS;
 
 /** Maps map-layer toggle keys to their data-freshness source IDs (single source of truth). */
 export const LAYER_TO_SOURCE: Partial<Record<keyof MapLayers, DataSourceId[]>> = {
@@ -387,6 +499,7 @@ export const LAYER_TO_SOURCE: Partial<Record<keyof MapLayers, DataSourceId[]>> =
   ucdpEvents: ['ucdp_events'],
   displacement: ['unhcr'],
   climate: ['climate'],
+  gatraAlerts: ['gatra'],
 };
 
 // Monitor palette — fixed category colors persisted to localStorage (not theme-dependent)
