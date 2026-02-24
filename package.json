@@ -15,7 +15,7 @@
     "test:e2e:tech": "VITE_VARIANT=tech playwright test",
     "test:e2e:runtime": "VITE_VARIANT=full playwright test e2e/runtime-fetch.spec.ts",
     "test:e2e": "npm run test:e2e:runtime && npm run test:e2e:full && npm run test:e2e:tech",
-    "test:sidecar": "node --test src-tauri/sidecar/local-api-server.test.mjs api/_cors.test.mjs api/youtube/embed.test.mjs",
+    "test:sidecar": "node --test src-tauri/sidecar/local-api-server.test.mjs api/_cors.test.mjs api/youtube/embed.test.mjs api/loaders-xml-wms-regression.test.mjs",
     "test:e2e:visual:full": "VITE_VARIANT=full playwright test -g \"matches golden screenshots per layer and zoom\"",
     "test:e2e:visual:tech": "VITE_VARIANT=tech playwright test -g \"matches golden screenshots per layer and zoom\"",
     "test:e2e:visual": "npm run test:e2e:visual:full && npm run test:e2e:visual:tech",
