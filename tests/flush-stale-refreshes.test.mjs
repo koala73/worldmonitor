@@ -1,10 +1,9 @@
 /**
  * Unit tests for flushStaleRefreshes logic.
  *
- * Tests the stale-refresh flushing algorithm directly without Playwright
- * overhead. The function under test lives in App.ts but is a pure algorithm
- * over two Maps + a timestamp — we replicate its logic from source to keep
- * tests fast and free of browser dependencies.
+ * Executes the actual flushStaleRefreshes method body extracted from App.ts
+ * using deterministic fake timers. This avoids Playwright/browser overhead,
+ * avoids wall-clock sleeps, and keeps behavior coverage aligned with source.
  */
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
@@ -16,69 +15,111 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const appSrc = readFileSync(resolve(__dirname, '..', 'src', 'App.ts'), 'utf-8');
 
-// ========================================================================
-// Verify source structure hasn't changed
-// ========================================================================
+function extractMethodBody(source, methodName) {
+  const signature = new RegExp(`private\\s+${methodName}\\s*\\(\\)\\s*(?::[^\\{]+)?\\{`);
+  const match = signature.exec(source);
+  if (!match) throw new Error(`Could not find ${methodName} in App.ts`);
 
-describe('flushStaleRefreshes source contract', () => {
-  it('method exists in App.ts', () => {
-    assert.match(appSrc, /private flushStaleRefreshes\(\): void/,
-      'flushStaleRefreshes must exist as a private method');
-  });
+  const bodyStart = match.index + match[0].length;
+  let depth = 1;
+  let state = 'code';
+  let escaped = false;
 
-  it('checks hiddenSince early return', () => {
-    assert.match(appSrc, /if \(!this\.hiddenSince\) return/,
-      'Must early-return when hiddenSince is falsy');
-  });
+  for (let i = bodyStart; i < source.length; i += 1) {
+    const ch = source[i];
+    const next = source[i + 1];
 
-  it('resets hiddenSince to 0', () => {
-    assert.match(appSrc, /this\.hiddenSince = 0/,
-      'Must reset hiddenSince to 0 after capturing duration');
-  });
+    if (state === 'line-comment') {
+      if (ch === '\n') state = 'code';
+      continue;
+    }
+    if (state === 'block-comment') {
+      if (ch === '*' && next === '/') {
+        state = 'code';
+        i += 1;
+      }
+      continue;
+    }
+    if (state === 'single-quote') {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === '\\') {
+        escaped = true;
+      } else if (ch === '\'') {
+        state = 'code';
+      }
+      continue;
+    }
+    if (state === 'double-quote') {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === '\\') {
+        escaped = true;
+      } else if (ch === '"') {
+        state = 'code';
+      }
+      continue;
+    }
+    if (state === 'template') {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === '\\') {
+        escaped = true;
+      } else if (ch === '`') {
+        state = 'code';
+      }
+      continue;
+    }
 
-  it('staggers by 150ms', () => {
-    assert.match(appSrc, /stagger \+= 150/,
-      'Must stagger re-triggers by 150ms');
-  });
+    if (ch === '/' && next === '/') {
+      state = 'line-comment';
+      i += 1;
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      state = 'block-comment';
+      i += 1;
+      continue;
+    }
+    if (ch === '\'') {
+      state = 'single-quote';
+      continue;
+    }
+    if (ch === '"') {
+      state = 'double-quote';
+      continue;
+    }
+    if (ch === '`') {
+      state = 'template';
+      continue;
+    }
 
-  it('skips non-stale services', () => {
-    assert.match(appSrc, /if \(hiddenMs < intervalMs\) continue/,
-      'Must skip services where hidden duration < interval');
-  });
-
-  it('clears pending timeout before re-triggering', () => {
-    assert.match(appSrc, /if \(pending\) clearTimeout\(pending\)/,
-      'Must clear existing timeout before setting new one');
-  });
-
-  it('sets new timeout in refreshTimeoutIds', () => {
-    assert.match(appSrc, /this\.refreshTimeoutIds\.set\(name, setTimeout/,
-      'Must store new timeout ID in the map');
-  });
-});
-
-// ========================================================================
-// Behavioral tests — replicate the algorithm to test logic
-// ========================================================================
-
-/**
- * Standalone implementation of flushStaleRefreshes extracted from App.ts.
- * Kept in sync by the source contract tests above.
- */
-function flushStaleRefreshes(ctx) {
-  if (!ctx.hiddenSince) return;
-  const hiddenMs = Date.now() - ctx.hiddenSince;
-  ctx.hiddenSince = 0;
-
-  let stagger = 0;
-  for (const [name, { run, intervalMs }] of ctx.refreshRunners) {
-    if (hiddenMs < intervalMs) continue;
-    const pending = ctx.refreshTimeoutIds.get(name);
-    if (pending) clearTimeout(pending);
-    const delay = stagger;
-    stagger += 150;
-    ctx.refreshTimeoutIds.set(name, setTimeout(() => void run(), delay));
+    if (ch === '{') {
+      depth += 1;
+      continue;
+    }
+    if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) return source.slice(bodyStart, i);
+    }
   }
+
+  throw new Error(`Could not extract body for ${methodName}`);
+}
+
+function buildFlushStaleRefreshes(timers) {
+  const methodBody = extractMethodBody(appSrc, 'flushStaleRefreshes');
+  const factory = new Function('Date', 'setTimeout', 'clearTimeout', `
+    return function flushStaleRefreshes() {
+      ${methodBody}
+    };
+  `);
+
+  return factory(
+    { now: () => timers.now },
+    timers.setTimeout.bind(timers),
+    timers.clearTimeout.bind(timers)
+  );
 }
 
 function createContext() {
@@ -89,53 +130,99 @@ function createContext() {
   };
 }
 
-// Track active timeouts for cleanup
-let activeTimeouts = [];
-const trackedSetTimeout = (fn, ms) => {
-  const id = setTimeout(fn, ms);
-  activeTimeouts.push(id);
-  return id;
-};
+function createFakeTimers(startMs = 1_000_000) {
+  const tasks = new Map();
+  let now = startMs;
+  let nextId = 1;
+
+  const sortedDueTasks = (target) =>
+    Array.from(tasks.entries())
+      .filter(([, task]) => task.at <= target)
+      .sort((a, b) => (a[1].at - b[1].at) || (a[0] - b[0]));
+
+  return {
+    get now() {
+      return now;
+    },
+    setTimeout(fn, delay = 0) {
+      const id = nextId;
+      nextId += 1;
+      tasks.set(id, { at: now + Math.max(0, delay), fn });
+      return id;
+    },
+    clearTimeout(id) {
+      tasks.delete(id);
+    },
+    advanceBy(ms) {
+      const target = now + Math.max(0, ms);
+      while (true) {
+        const due = sortedDueTasks(target);
+        if (!due.length) break;
+        const [id, task] = due[0];
+        tasks.delete(id);
+        now = task.at;
+        task.fn();
+      }
+      now = target;
+    },
+    runAll() {
+      while (tasks.size > 0) {
+        const [[id, task]] = Array.from(tasks.entries()).sort(
+          (a, b) => (a[1].at - b[1].at) || (a[0] - b[0])
+        );
+        tasks.delete(id);
+        now = task.at;
+        task.fn();
+      }
+    },
+    has(id) {
+      return tasks.has(id);
+    },
+  };
+}
 
 describe('flushStaleRefreshes behavior', () => {
   let ctx;
+  let timers;
+  let flushStaleRefreshes;
 
   beforeEach(() => {
     ctx = createContext();
-    activeTimeouts = [];
+    timers = createFakeTimers();
+    flushStaleRefreshes = buildFlushStaleRefreshes(timers);
   });
 
   afterEach(() => {
-    // Clean up ALL timeouts to prevent leaks
-    for (const id of activeTimeouts) clearTimeout(id);
-    for (const id of ctx.refreshTimeoutIds.values()) clearTimeout(id);
-    activeTimeouts = [];
+    timers.runAll();
   });
 
-  it('re-triggers services hidden longer than their interval', async () => {
+  it('loads flushStaleRefreshes from App.ts source', () => {
+    assert.equal(typeof flushStaleRefreshes, 'function');
+  });
+
+  it('re-triggers services hidden longer than their interval', () => {
     const flushed = [];
 
     ctx.refreshRunners.set('fast-service', {
-      run: async () => { flushed.push('fast-service'); },
+      run: () => { flushed.push('fast-service'); },
       intervalMs: 60_000,
     });
     ctx.refreshRunners.set('medium-service', {
-      run: async () => { flushed.push('medium-service'); },
+      run: () => { flushed.push('medium-service'); },
       intervalMs: 300_000,
     });
     ctx.refreshRunners.set('slow-service', {
-      run: async () => { flushed.push('slow-service'); },
+      run: () => { flushed.push('slow-service'); },
       intervalMs: 1_800_000,
     });
 
     for (const name of ctx.refreshRunners.keys()) {
-      ctx.refreshTimeoutIds.set(name, trackedSetTimeout(() => {}, 999_999));
+      ctx.refreshTimeoutIds.set(name, timers.setTimeout(() => {}, 999_999));
     }
 
-    ctx.hiddenSince = Date.now() - 600_000; // 10 min hidden
-    flushStaleRefreshes(ctx);
-
-    await new Promise((r) => setTimeout(r, 600));
+    ctx.hiddenSince = timers.now - 600_000; // 10 min hidden
+    flushStaleRefreshes.call(ctx);
+    timers.runAll();
 
     assert.ok(flushed.includes('fast-service'), 'fast-service (1m interval) should flush after 10m hidden');
     assert.ok(flushed.includes('medium-service'), 'medium-service (5m interval) should flush after 10m hidden');
@@ -143,88 +230,84 @@ describe('flushStaleRefreshes behavior', () => {
     assert.equal(ctx.hiddenSince, 0, 'hiddenSince must be reset to 0');
   });
 
-  it('does nothing when hiddenSince is 0', async () => {
+  it('does nothing when hiddenSince is 0', () => {
     let called = false;
     ctx.refreshRunners.set('service', {
-      run: async () => { called = true; },
+      run: () => { called = true; },
       intervalMs: 60_000,
     });
-    // No fake timeout needed — method should return before checking timeouts
 
     ctx.hiddenSince = 0;
-    flushStaleRefreshes(ctx);
-
-    await new Promise((r) => setTimeout(r, 100));
+    flushStaleRefreshes.call(ctx);
+    timers.runAll();
     assert.equal(called, false, 'No services should flush when hiddenSince is 0');
   });
 
-  it('skips services hidden for less than their interval', async () => {
+  it('skips services hidden for less than their interval', () => {
     let called = false;
     ctx.refreshRunners.set('service', {
-      run: async () => { called = true; },
+      run: () => { called = true; },
       intervalMs: 300_000,
     });
-    ctx.refreshTimeoutIds.set('service', trackedSetTimeout(() => {}, 999_999));
+    const originalId = timers.setTimeout(() => {}, 999_999);
+    ctx.refreshTimeoutIds.set('service', originalId);
 
-    ctx.hiddenSince = Date.now() - 30_000; // 30s hidden, 5m interval
-    flushStaleRefreshes(ctx);
-
-    await new Promise((r) => setTimeout(r, 300));
+    ctx.hiddenSince = timers.now - 30_000; // 30s hidden, 5m interval
+    flushStaleRefreshes.call(ctx);
+    timers.runAll();
     assert.equal(called, false, '30s hidden < 5m interval — should NOT flush');
     assert.equal(ctx.hiddenSince, 0, 'hiddenSince must still be reset even if no services flushed');
+    assert.equal(ctx.refreshTimeoutIds.get('service'), originalId,
+      'Non-stale service timeout should be untouched');
   });
 
-  it('staggers re-triggered services in order with minimum gaps', async () => {
+  it('staggers re-triggered services deterministically by 150ms', () => {
     const timestamps = [];
-    const start = Date.now();
+    const start = timers.now;
 
     for (const name of ['svc-a', 'svc-b', 'svc-c']) {
       ctx.refreshRunners.set(name, {
-        run: async () => { timestamps.push(Date.now() - start); },
+        run: () => { timestamps.push(timers.now - start); },
         intervalMs: 60_000,
       });
-      ctx.refreshTimeoutIds.set(name, trackedSetTimeout(() => {}, 999_999));
+      ctx.refreshTimeoutIds.set(name, timers.setTimeout(() => {}, 999_999));
     }
 
-    ctx.hiddenSince = Date.now() - 600_000;
-    flushStaleRefreshes(ctx);
-
-    await new Promise((r) => setTimeout(r, 700));
+    ctx.hiddenSince = timers.now - 600_000;
+    flushStaleRefreshes.call(ctx);
+    timers.runAll();
 
     assert.equal(timestamps.length, 3, 'All 3 services should fire');
-    // Assert ordering and minimum gaps instead of absolute time windows
-    assert.ok(timestamps[0] < timestamps[1], 'Second service fires after first');
-    assert.ok(timestamps[1] < timestamps[2], 'Third service fires after second');
-    assert.ok(timestamps[1] - timestamps[0] >= 100, 'Gap between 1st and 2nd >= 100ms');
-    assert.ok(timestamps[2] - timestamps[1] >= 100, 'Gap between 2nd and 3rd >= 100ms');
+    assert.deepEqual(timestamps, [0, 150, 300], 'Services should fire in 150ms steps');
   });
 
   it('replaces timeout IDs in refreshTimeoutIds after flush', () => {
     ctx.refreshRunners.set('svc', {
-      run: async () => {},
+      run: () => {},
       intervalMs: 60_000,
     });
-    const originalId = trackedSetTimeout(() => {}, 999_999);
+    const originalId = timers.setTimeout(() => {}, 999_999);
     ctx.refreshTimeoutIds.set('svc', originalId);
 
-    ctx.hiddenSince = Date.now() - 600_000;
-    flushStaleRefreshes(ctx);
+    ctx.hiddenSince = timers.now - 600_000;
+    flushStaleRefreshes.call(ctx);
 
     const newId = ctx.refreshTimeoutIds.get('svc');
     assert.ok(newId !== undefined, 'refreshTimeoutIds should still have an entry for the service');
     assert.notEqual(newId, originalId, 'Timeout ID should be replaced with a new one');
+    assert.equal(timers.has(originalId), false, 'Original timeout should be cleared');
   });
 
   it('does not touch timeout IDs for non-stale services', () => {
     ctx.refreshRunners.set('fresh', {
-      run: async () => {},
+      run: () => {},
       intervalMs: 1_800_000,
     });
-    const originalId = trackedSetTimeout(() => {}, 999_999);
+    const originalId = timers.setTimeout(() => {}, 999_999);
     ctx.refreshTimeoutIds.set('fresh', originalId);
 
-    ctx.hiddenSince = Date.now() - 60_000; // 1min hidden, 30min interval
-    flushStaleRefreshes(ctx);
+    ctx.hiddenSince = timers.now - 60_000; // 1min hidden, 30min interval
+    flushStaleRefreshes.call(ctx);
 
     assert.equal(ctx.refreshTimeoutIds.get('fresh'), originalId,
       'Non-stale service timeout should be untouched');
