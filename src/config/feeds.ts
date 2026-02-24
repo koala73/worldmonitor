@@ -620,6 +620,16 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'El Tiempo', url: rss('https://www.eltiempo.com/rss/mundo_latinoamerica.xml'), lang: 'es' },
     { name: 'El Universal', url: rss('https://www.eluniversal.com.mx/rss.xml'), lang: 'es' },
     { name: 'La Silla Vacía', url: rss('https://www.lasillavacia.com/rss') },
+    // Mexico
+    { name: 'Mexico News Daily', url: rss('https://mexiconewsdaily.com/feed/') },
+    { name: 'Animal Político', url: rss('https://animalpolitico.com/feed/'), lang: 'es' },
+    { name: 'Proceso', url: rss('https://www.proceso.com.mx/feed/'), lang: 'es' },
+    { name: 'Milenio', url: rss('https://www.milenio.com/rss'), lang: 'es' },
+    { name: 'Mexico Security', url: rss('https://news.google.com/rss/search?q=(Mexico+cartel+OR+Mexico+violence+OR+Mexico+troops+OR+narco+Mexico)+when:2d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'AP Mexico', url: rss('https://news.google.com/rss/search?q=site:apnews.com+Mexico+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    // LatAm Security
+    { name: 'InSight Crime', url: rss('https://insightcrime.org/feed/') },
+    { name: 'France 24 LatAm', url: rss('https://www.france24.com/en/americas/rss') },
   ],
   asia: [
     { name: 'Asia News', url: rss('https://news.google.com/rss/search?q=(China+OR+Japan+OR+Korea+OR+India+OR+ASEAN)+when:2d&hl=en-US&gl=US&ceid=US:en') },
