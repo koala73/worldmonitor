@@ -34,6 +34,7 @@ import { fetchClimateAnomalies } from '@/services/climate';
 import { enrichEventsWithExposure } from '@/services/population-exposure';
 import { buildMapUrl, debounce, loadFromStorage, parseMapUrlState, saveToStorage, ExportPanel, getCircuitBreakerCooldownInfo, isMobileDevice, setTheme, getCurrentTheme } from '@/utils';
 import { reverseGeocode } from '@/utils/reverse-geocode';
+import { tokenizeForMatch, matchKeyword } from '@/utils/keyword-match';
 import { CountryBriefPage } from '@/components/CountryBriefPage';
 import { maybeShowDownloadBanner } from '@/components/DownloadBanner';
 import { mountCommunityWidget } from '@/components/CommunityWidget';
@@ -3166,19 +3167,14 @@ export class App {
   }
 
   private findFlashLocation(title: string): { lat: number; lon: number } | null {
-    const titleLower = title.toLowerCase();
     let bestMatch: { lat: number; lon: number; matches: number } | null = null;
-
+    const tokens = tokenizeForMatch(title);
     const countKeywordMatches = (keywords: string[] | undefined): number => {
       if (!keywords) return 0;
       let matches = 0;
       for (const keyword of keywords) {
-        const cleaned = keyword.trim().toLowerCase();
-        if (cleaned.length >= 3) {
-          const escaped = cleaned.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          if (new RegExp(`\\b${escaped}\\b`, 'i').test(titleLower)) {
-            matches++;
-          }
+        if (matchKeyword(tokens, keyword)) {
+          matches++;
         }
       }
       return matches;

@@ -1,4 +1,5 @@
 // Geopolitical Hub Index - aggregates news by strategic locations
+import { tokenizeForMatch, matchKeyword } from '@/utils/keyword-match';
 
 export interface GeoHubLocation {
   id: string;
@@ -109,17 +110,11 @@ export interface GeoHubMatch {
 export function inferGeoHubsFromTitle(title: string): GeoHubMatch[] {
   const index = buildGeoHubIndex();
   const matches: GeoHubMatch[] = [];
-  const titleLower = title.toLowerCase();
+  const tokens = tokenizeForMatch(title);
   const seenHubs = new Set<string>();
 
   for (const [keyword, hubIds] of index.byKeyword) {
-    if (keyword.length < 2) continue;
-
-    // Word boundary check for all keywords to avoid false positives
-    // (e.g. "assad" matching inside "ambassador")
-    const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(`\\b${escaped}\\b`, 'i');
-    const found = regex.test(titleLower);
+    const found = matchKeyword(tokens, keyword);
 
     if (found) {
       for (const hubId of hubIds) {

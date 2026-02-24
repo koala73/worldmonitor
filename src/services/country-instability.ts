@@ -1,6 +1,7 @@
 import type { SocialUnrestEvent, MilitaryFlight, MilitaryVessel, ClusteredEvent, InternetOutage } from '@/types';
 import { INTEL_HOTSPOTS, CONFLICT_ZONES, STRATEGIC_WATERWAYS } from '@/config/geo';
 import { TIER1_COUNTRIES } from '@/config/countries';
+import { tokenizeForMatch, matchKeyword } from '@/utils/keyword-match';
 import { focalPointDetector } from './focal-point-detector';
 import type { ConflictEvent, UcdpConflictStatus, HapiConflictSummary } from './conflict';
 import type { CountryDisplacement } from '@/services/displacement';
@@ -196,12 +197,12 @@ export { COUNTRY_BOUNDS };
 export type { CountryData };
 
 function normalizeCountryName(name: string): string | null {
-  const lower = name.toLowerCase();
+  const tokens = tokenizeForMatch(name);
   for (const [code, keywords] of Object.entries(COUNTRY_KEYWORDS)) {
-    if (keywords.some(kw => new RegExp(`\\b${kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(lower))) return code;
+    if (keywords.some(kw => matchKeyword(tokens, kw))) return code;
   }
   for (const [code, countryName] of Object.entries(TIER1_COUNTRIES)) {
-    if (new RegExp(`\\b${countryName.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(lower)) return code;
+    if (matchKeyword(tokens, countryName)) return code;
   }
   return null;
 }
@@ -455,10 +456,10 @@ export function ingestMilitaryForCII(flights: MilitaryFlight[], vessels: Militar
 
 export function ingestNewsForCII(events: ClusteredEvent[]): void {
   for (const e of events) {
-    const title = e.primaryTitle.toLowerCase();
+    const tokens = tokenizeForMatch(e.primaryTitle);
     for (const [code] of Object.entries(TIER1_COUNTRIES)) {
       const keywords = COUNTRY_KEYWORDS[code] || [];
-      if (keywords.some(kw => new RegExp(`\\b${kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(title))) {
+      if (keywords.some(kw => matchKeyword(tokens, kw))) {
         if (!countryDataMap.has(code)) countryDataMap.set(code, initCountryData());
         countryDataMap.get(code)!.newsEvents.push(e);
       }

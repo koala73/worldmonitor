@@ -99,7 +99,6 @@ export function findEntitiesInText(text: string): EntityMatch[] {
   const index = getEntityIndex();
   const matches: EntityMatch[] = [];
   const seen = new Set<string>();
-  const textLower = text.toLowerCase();
 
   for (const [alias, entityId] of index.byAlias) {
     if (alias.length < 3) continue;

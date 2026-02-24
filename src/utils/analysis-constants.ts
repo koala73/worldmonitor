@@ -185,10 +185,7 @@ export function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
 }
 
 export function includesKeyword(text: string, keywords: string[]): boolean {
-  return keywords.some(keyword => {
-    const escaped = escapeRegex(keyword);
-    return new RegExp(`\\b${escaped}\\b`, 'i').test(text);
-  });
+  return keywords.some(keyword => text.includes(keyword));
 }
 
 export function escapeRegex(value: string): string {

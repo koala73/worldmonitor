@@ -1,6 +1,7 @@
 import { calculateCII, type CountryScore } from './country-instability';
 import type { ClusteredEvent } from '@/types';
 import type { ThreatLevel } from './threat-classifier';
+import { tokenizeForMatch, matchKeyword } from '@/utils/keyword-match';
 
 const COUNTRY_KEYWORDS: Record<string, string[]> = {
   US: ['united states', 'usa', 'america', 'washington', 'biden', 'trump', 'pentagon'],
@@ -87,8 +88,8 @@ export function collectStoryData(
 
   const keywords = COUNTRY_KEYWORDS[countryCode] || [countryName.toLowerCase()];
   const countryNews = allNews.filter(e => {
-    const lower = e.primaryTitle.toLowerCase();
-    return keywords.some(kw => new RegExp(`\\b${kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(lower));
+    const tokens = tokenizeForMatch(e.primaryTitle);
+    return keywords.some(kw => matchKeyword(tokens, kw));
   });
 
   const sortedNews = [...countryNews].sort((a, b) => {
@@ -104,8 +105,8 @@ export function collectStoryData(
   ) || null;
 
   const countryMarkets = predictionMarkets.filter(m => {
-    const lower = m.title.toLowerCase();
-    return keywords.some(kw => new RegExp(`\\b${kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(lower));
+    const tokens = tokenizeForMatch(m.title);
+    return keywords.some(kw => matchKeyword(tokens, kw));
   });
 
   const threatCounts = { critical: 0, high: 0, medium: 0, categories: new Set<string>() };
