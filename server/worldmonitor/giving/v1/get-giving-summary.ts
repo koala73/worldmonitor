@@ -2,15 +2,12 @@
  * GetGivingSummary RPC -- aggregates global personal giving data from multiple
  * sources into a composite Global Giving Activity Index.
  *
- * Data sources:
- * 1. GoFundMe public charity API (campaign sampling)
- * 2. GlobalGiving project listings API
- * 3. JustGiving public search API
- * 4. Endaoment / on-chain charity wallet tracking
+ * Data sources (all use published annual report baselines):
+ * 1. GoFundMe -- 2024 Year in Giving report
+ * 2. GlobalGiving -- 2024 annual report
+ * 3. JustGiving -- published cumulative totals
+ * 4. Endaoment / crypto giving -- industry estimates
  * 5. OECD ODA annual totals (institutional baseline)
- *
- * Campaign sampling: pulls active campaigns, computes 24h donation deltas,
- * and extrapolates directional daily flow estimates.
  */
 
 import type {
@@ -24,145 +21,54 @@ import type {
   InstitutionalGiving,
 } from '../../../../src/generated/server/worldmonitor/giving/v1/service_server';
 
-import { CHROME_UA } from '../../../_shared/constants';
 import { getCachedJson, setCachedJson } from '../../../_shared/redis';
 
 const REDIS_CACHE_KEY = 'giving:summary:v1';
-const REDIS_CACHE_TTL = 3600; // 1 hour -- campaign data shifts slowly
+const REDIS_CACHE_TTL = 3600; // 1 hour
 
-// ─── GoFundMe Campaign Sampling ───
+// ─── GoFundMe Estimate ───
+// GoFundMe's public search API (mvc.php) was removed ~2025. Their search now
+// uses Algolia internally. We use published annual report data as a baseline.
+//
+// Published data points (GoFundMe 2024 Year in Giving report):
+//   - $30B+ total raised since founding
+//   - ~$9B raised in 2024 alone
+//   - 200M+ unique donors
+//   - ~250,000 active campaigns at any time
+//   - Medical & health is the largest category (~33%)
 
-interface GoFundMeCampaign {
-  title: string;
-  category: string;
-  raised: number;
-  goal: number;
-  donations_count: number;
-  created_at: string;
-}
-
-async function sampleGoFundMeCampaigns(): Promise<{
-  campaigns: GoFundMeCampaign[];
-  dailyVolume: number;
-  velocity: number;
-  newCampaigns: number;
-}> {
-  // GoFundMe Charity search endpoint -- public JSON, no key required
-  const categories = ['medical', 'emergency', 'education', 'community', 'animals', 'environment'];
-  const allCampaigns: GoFundMeCampaign[] = [];
-
-  for (const cat of categories) {
-    try {
-      const resp = await fetch(
-        `https://www.gofundme.com/mvc.php?route=homepage_nor498/search&term=${cat}&country=all&postalCode=&locationText=&category=0&sort=trending&page=1&limit=20`,
-        {
-          headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-          signal: AbortSignal.timeout(8_000),
-        },
-      );
-      if (!resp.ok) continue;
-      const data = await resp.json() as { results?: Array<{
-        title?: string;
-        category?: { name?: string };
-        current_amount?: number;
-        goal_amount?: number;
-        donations_count?: number;
-        created_at?: string;
-      }> };
-      if (data.results) {
-        for (const r of data.results.slice(0, 20)) {
-          allCampaigns.push({
-            title: r.title ?? '',
-            category: r.category?.name ?? cat,
-            raised: r.current_amount ?? 0,
-            goal: r.goal_amount ?? 0,
-            donations_count: r.donations_count ?? 0,
-            created_at: r.created_at ?? '',
-          });
-        }
-      }
-    } catch {
-      // best-effort per category
-    }
-  }
-
-  // Estimate daily velocity from sample
-  const totalRaised = allCampaigns.reduce((s, c) => s + c.raised, 0);
-  const totalDonations = allCampaigns.reduce((s, c) => s + c.donations_count, 0);
-  const avgAge = allCampaigns.length > 0
-    ? allCampaigns.reduce((s, c) => {
-        const age = (Date.now() - new Date(c.created_at).getTime()) / (1000 * 60 * 60 * 24);
-        return s + Math.max(age, 1);
-      }, 0) / allCampaigns.length
-    : 30;
-
-  // GoFundMe reports ~$30B total raised. Estimate ~$25M/day average.
-  // Use sample as directional proxy.
-  const sampleDailyRate = allCampaigns.length > 0 ? totalRaised / avgAge : 0;
-  // Extrapolation factor: GoFundMe has ~250,000 active campaigns, we sample ~120
-  const extrapolationFactor = allCampaigns.length > 0 ? 250_000 / allCampaigns.length : 1;
-  const dailyVolume = sampleDailyRate * extrapolationFactor;
-  const velocity = totalDonations > 0 ? (totalDonations / avgAge) / 24 : 0;
-
-  // Count campaigns less than 24h old
-  const now = Date.now();
-  const newCampaigns = allCampaigns.filter(c => {
-    const created = new Date(c.created_at).getTime();
-    return (now - created) < 86_400_000;
-  }).length;
-
-  return { campaigns: allCampaigns, dailyVolume, velocity, newCampaigns };
-}
-
-// ─── GlobalGiving API ───
-
-async function fetchGlobalGivingStats(): Promise<PlatformGiving> {
-  const defaultResult: PlatformGiving = {
-    platform: 'GlobalGiving',
-    dailyVolumeUsd: 0,
+function getGoFundMeEstimate(): PlatformGiving {
+  return {
+    platform: 'GoFundMe',
+    dailyVolumeUsd: 9_000_000_000 / 365, // ~$24.7M/day from 2024 annual report
     activeCampaignsSampled: 0,
     newCampaigns24h: 0,
     donationVelocity: 0,
-    dataFreshness: 'weekly',
+    dataFreshness: 'annual',
     lastUpdated: new Date().toISOString(),
   };
+}
 
-  try {
-    // GlobalGiving public projects API (no key needed for basic listing)
-    const resp = await fetch(
-      'https://api.globalgiving.org/api/public/projectservice/all/projects/active?api_key=NOKEY&nextProjectId=0',
-      {
-        headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-        signal: AbortSignal.timeout(8_000),
-      },
-    );
-    if (!resp.ok) return defaultResult;
-    const data = await resp.json() as {
-      projects?: { project?: Array<{ funding?: number; numberOfDonations?: number; status?: string }> };
-      numberFound?: number;
-    };
-    const projects = data.projects?.project ?? [];
-    const totalFunding = projects.reduce((s, p) => s + (p.funding ?? 0), 0);
-    const totalDonations = projects.reduce((s, p) => s + (p.numberOfDonations ?? 0), 0);
+// ─── GlobalGiving Estimate ───
+// GlobalGiving's public API now requires a registered API key (returns 401
+// without one). We use published data as a baseline.
+//
+// Published data points (GlobalGiving 2024 annual report):
+//   - $900M+ total raised since founding (2002)
+//   - ~35,000 vetted projects in 175+ countries
+//   - 1.2M+ donors
+//   - ~$100M raised in recent years annually
 
-    // GlobalGiving handles ~$800M total. Estimate ~$2M/day.
-    // Use project count ratio for directional estimate.
-    const projectCount = data.numberFound ?? projects.length;
-    const sampledCount = projects.length;
-    const factor = sampledCount > 0 ? projectCount / sampledCount : 1;
-
-    return {
-      platform: 'GlobalGiving',
-      dailyVolumeUsd: (totalFunding / 365) * factor,
-      activeCampaignsSampled: sampledCount,
-      newCampaigns24h: 0, // not available from this endpoint
-      donationVelocity: totalDonations > 0 ? (totalDonations / 365) / 24 : 0,
-      dataFreshness: 'weekly',
-      lastUpdated: new Date().toISOString(),
-    };
-  } catch {
-    return defaultResult;
-  }
+function getGlobalGivingEstimate(): PlatformGiving {
+  return {
+    platform: 'GlobalGiving',
+    dailyVolumeUsd: 100_000_000 / 365, // ~$274K/day from annual reports
+    activeCampaignsSampled: 0,
+    newCampaigns24h: 0,
+    donationVelocity: 0,
+    dataFreshness: 'annual',
+    lastUpdated: new Date().toISOString(),
+  };
 }
 
 // ─── JustGiving Estimate ───
@@ -183,7 +89,7 @@ function getJustGivingEstimate(): PlatformGiving {
 
 // ─── Crypto Giving Estimate ───
 
-async function fetchCryptoGivingEstimate(): Promise<CryptoGivingSummary> {
+function getCryptoGivingEstimate(): CryptoGivingSummary {
   // On-chain charity tracking -- Endaoment, The Giving Block, etc.
   // Total crypto giving estimated at ~$2B/year (2024 data).
   // Endaoment alone processed ~$40M in 2023.
@@ -210,48 +116,7 @@ function getInstitutionalBaseline(): InstitutionalGiving {
   };
 }
 
-// ─── Category Breakdown (from sampled campaigns) ───
-
-function computeCategories(campaigns: GoFundMeCampaign[]): CategoryBreakdown[] {
-  if (campaigns.length === 0) {
-    return getDefaultCategories();
-  }
-
-  const catMap = new Map<string, { count: number; raised: number }>();
-  for (const c of campaigns) {
-    const cat = normalizeCategoryName(c.category);
-    const existing = catMap.get(cat) ?? { count: 0, raised: 0 };
-    existing.count++;
-    existing.raised += c.raised;
-    catMap.set(cat, existing);
-  }
-
-  const totalRaised = campaigns.reduce((s, c) => s + c.raised, 0) || 1;
-
-  return Array.from(catMap.entries())
-    .map(([category, { count, raised }]) => ({
-      category,
-      share: raised / totalRaised,
-      change24h: 0, // would need historical comparison
-      activeCampaigns: count,
-      trending: count >= 5,
-    }))
-    .sort((a, b) => b.share - a.share)
-    .slice(0, 10);
-}
-
-function normalizeCategoryName(raw: string): string {
-  const lower = raw.toLowerCase().trim();
-  if (lower.includes('medical') || lower.includes('health')) return 'Medical & Health';
-  if (lower.includes('emergency') || lower.includes('disaster')) return 'Disaster Relief';
-  if (lower.includes('education') || lower.includes('school')) return 'Education';
-  if (lower.includes('community')) return 'Community';
-  if (lower.includes('animal')) return 'Animals & Pets';
-  if (lower.includes('environment') || lower.includes('climate')) return 'Environment';
-  if (lower.includes('memorial') || lower.includes('funeral')) return 'Memorials';
-  if (lower.includes('hunger') || lower.includes('food')) return 'Hunger & Food';
-  return raw || 'Other';
-}
+// ─── Category Breakdown ───
 
 function getDefaultCategories(): CategoryBreakdown[] {
   // Based on published GoFundMe / GlobalGiving category distributions
@@ -314,34 +179,20 @@ export async function getGivingSummary(
   const cached = await getCachedJson(REDIS_CACHE_KEY) as GetGivingSummaryResponse | null;
   if (cached?.summary) return cached;
 
-  // Fetch from all sources concurrently
-  const [gofundme, globalGiving, cryptoEstimate] = await Promise.all([
-    sampleGoFundMeCampaigns(),
-    fetchGlobalGivingStats(),
-    fetchCryptoGivingEstimate(),
-  ]);
-
+  // Gather estimates from all sources
+  const cryptoEstimate = getCryptoGivingEstimate();
+  const gofundme = getGoFundMeEstimate();
+  const globalGiving = getGlobalGivingEstimate();
   const justGiving = getJustGivingEstimate();
   const institutional = getInstitutionalBaseline();
 
-  // Build platform list
-  const gofundmePlatform: PlatformGiving = {
-    platform: 'GoFundMe',
-    dailyVolumeUsd: gofundme.dailyVolume,
-    activeCampaignsSampled: gofundme.campaigns.length,
-    newCampaigns24h: gofundme.newCampaigns,
-    donationVelocity: gofundme.velocity,
-    dataFreshness: 'live',
-    lastUpdated: new Date().toISOString(),
-  };
-
-  let platforms = [gofundmePlatform, globalGiving, justGiving];
+  let platforms = [gofundme, globalGiving, justGiving];
   if (req.platformLimit > 0) {
     platforms = platforms.slice(0, req.platformLimit);
   }
 
-  // Compute categories from campaign samples
-  let categories = computeCategories(gofundme.campaigns);
+  // Use default category breakdown (from published reports)
+  let categories = getDefaultCategories();
   if (req.categoryLimit > 0) {
     categories = categories.slice(0, req.categoryLimit);
   }

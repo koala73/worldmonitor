@@ -121,7 +121,7 @@ function toDisplayInstitutional(proto?: ProtoInstitutional): InstitutionalGiving
   };
 }
 
-// ─── Client + circuit breaker ───
+// ─── Client + circuit breaker + caching ───
 
 const client = new GivingServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
 
@@ -138,23 +138,57 @@ const emptyResult: GivingSummary = {
 
 const breaker = createCircuitBreaker<GivingSummary>({
   name: 'Global Giving',
+  cacheTtlMs: 30 * 60 * 1000, // 30 min -- data is mostly static baselines
+  persistCache: true,          // survive page reloads
 });
+
+// In-memory cache + request deduplication
+let cachedData: GivingSummary | null = null;
+let cachedAt = 0;
+let fetchPromise: Promise<GivingFetchResult> | null = null;
+const REFETCH_INTERVAL_MS = 30 * 60 * 1000; // 30 min
 
 // ─── Main fetch (public API) ───
 
 export async function fetchGivingSummary(): Promise<GivingFetchResult> {
-  const data = await breaker.execute(async () => {
-    const response = await client.getGivingSummary({
-      platformLimit: 0,
-      categoryLimit: 0,
-    });
-    return toDisplaySummary(response);
-  }, emptyResult);
+  // Return in-memory cache if fresh
+  const now = Date.now();
+  if (cachedData && now - cachedAt < REFETCH_INTERVAL_MS) {
+    return { ok: true, data: cachedData, cachedAt: new Date(cachedAt).toISOString() };
+  }
 
-  return {
-    ok: data !== emptyResult && data.platforms.length > 0,
-    data,
-  };
+  // Deduplicate concurrent requests
+  if (fetchPromise) return fetchPromise;
+
+  fetchPromise = (async (): Promise<GivingFetchResult> => {
+    try {
+      const data = await breaker.execute(async () => {
+        const response = await client.getGivingSummary({
+          platformLimit: 0,
+          categoryLimit: 0,
+        });
+        return toDisplaySummary(response);
+      }, emptyResult);
+
+      const ok = data !== emptyResult && data.platforms.length > 0;
+      if (ok) {
+        cachedData = data;
+        cachedAt = Date.now();
+      }
+
+      return { ok, data, cachedAt: ok ? new Date(cachedAt).toISOString() : undefined };
+    } catch {
+      // Return stale cache if available
+      if (cachedData) {
+        return { ok: true, data: cachedData, cachedAt: new Date(cachedAt).toISOString() };
+      }
+      return { ok: false, data: emptyResult };
+    } finally {
+      fetchPromise = null;
+    }
+  })();
+
+  return fetchPromise;
 }
 
 // ─── Presentation helpers ───

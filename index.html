@@ -92,7 +92,7 @@
 
 
     <!-- Theme: apply stored preference before first paint to prevent FOUC -->
-    <script>(function(){try{var t=localStorage.getItem('worldmonitor-theme');if(t==='light')document.documentElement.dataset.theme='light';var v=localStorage.getItem('worldmonitor-variant');if(!v){var h=location.hostname;if(h.startsWith('happy.'))v='happy';else if(h.startsWith('tech.'))v='tech';else if(h.startsWith('finance.'))v='finance';}if(v)document.documentElement.dataset.variant=v;if(v==='happy'&&!t)document.documentElement.dataset.theme='light';}catch(e){}document.documentElement.classList.add('no-transition');})()</script>
+    <script>(function(){try{var t=localStorage.getItem('worldmonitor-theme');var v=localStorage.getItem('worldmonitor-variant');if(!v){var h=location.hostname;if(h.startsWith('happy.'))v='happy';else if(h.startsWith('tech.'))v='tech';else if(h.startsWith('finance.'))v='finance';}if(v)document.documentElement.dataset.variant=v;if(t==='dark'||t==='light'){document.documentElement.dataset.theme=t;}else if(v==='happy'){document.documentElement.dataset.theme='light';}}catch(e){}document.documentElement.classList.add('no-transition');})()</script>
 
     <!-- Critical CSS: inline skeleton visible before JS boots -->
     <style>
