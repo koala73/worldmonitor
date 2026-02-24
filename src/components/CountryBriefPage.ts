@@ -5,7 +5,7 @@ import type { CountryScore } from '@/services/country-instability';
 import type { NewsItem } from '@/types';
 import type { PredictionMarket } from '@/services/prediction';
 import type { AssetType } from '@/types';
-import type { CountryBriefSignals } from '@/App';
+import type { CountryBriefSignals } from '@/app/app-context';
 import type { StockIndexData } from '@/components/CountryIntelModal';
 import { getNearbyInfrastructure, haversineDistanceKm } from '@/services/related-assets';
 import { PORTS } from '@/config/ports';
