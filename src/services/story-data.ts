@@ -88,7 +88,7 @@ export function collectStoryData(
   const keywords = COUNTRY_KEYWORDS[countryCode] || [countryName.toLowerCase()];
   const countryNews = allNews.filter(e => {
     const lower = e.primaryTitle.toLowerCase();
-    return keywords.some(kw => lower.includes(kw));
+    return keywords.some(kw => new RegExp(`\\b${kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(lower));
   });
 
   const sortedNews = [...countryNews].sort((a, b) => {
@@ -105,7 +105,7 @@ export function collectStoryData(
 
   const countryMarkets = predictionMarkets.filter(m => {
     const lower = m.title.toLowerCase();
-    return keywords.some(kw => lower.includes(kw));
+    return keywords.some(kw => new RegExp(`\\b${kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(lower));
   });
 
   const threatCounts = { critical: 0, high: 0, medium: 0, categories: new Set<string>() };

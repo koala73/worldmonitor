@@ -115,14 +115,11 @@ export function inferGeoHubsFromTitle(title: string): GeoHubMatch[] {
   for (const [keyword, hubIds] of index.byKeyword) {
     if (keyword.length < 2) continue;
 
-    // Word boundary check for short keywords to avoid false positives
-    const regex = keyword.length < 5
-      ? new RegExp(`\\b${keyword}\\b`, 'i')
-      : null;
-
-    const found = regex
-      ? regex.test(titleLower)
-      : titleLower.includes(keyword);
+    // Word boundary check for all keywords to avoid false positives
+    // (e.g. "assad" matching inside "ambassador")
+    const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`\\b${escaped}\\b`, 'i');
+    const found = regex.test(titleLower);
 
     if (found) {
       for (const hubId of hubIds) {

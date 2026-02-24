@@ -375,7 +375,7 @@ export const INTEL_HOTSPOTS: Hotspot[] = [
     lat: 33.5,
     lon: 36.3,
     location: 'Syria',
-    keywords: ['syria', 'damascus', 'assad', 'syrian', 'hts'],
+    keywords: ['syria', 'damascus', 'assad', 'syrian', 'tahrir al-sham', 'hayat tahrir'],
     agencies: ['Syrian Govt', 'HTS', 'Russian Forces', 'Turkish Forces'],
     description: 'Syrian civil war aftermath. Multiple foreign interventions.',
     status: 'Monitoring',

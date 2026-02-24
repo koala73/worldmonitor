@@ -2738,13 +2738,16 @@ export class MapComponent {
     return this.news
       .map((item) => {
         const titleLower = item.title.toLowerCase();
-        const matchedKeywords = hotspot.keywords.filter((kw) => titleLower.includes(kw.toLowerCase()));
+        const matchedKeywords = hotspot.keywords.filter((kw) => {
+          const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          return new RegExp(`\\b${escaped}\\b`, 'i').test(titleLower);
+        });
 
         if (matchedKeywords.length === 0) return null;
 
         // Check if this news mentions other hotspot conflict topics
         const conflictMatches = conflictTopics.filter(t =>
-          titleLower.includes(t) && !hotspot.keywords.some(k => k.toLowerCase().includes(t))
+          new RegExp(`\\b${t}\\b`, 'i').test(titleLower) && !hotspot.keywords.some(k => k.toLowerCase().includes(t))
         );
 
         // If article mentions a major conflict topic that isn't this hotspot, deprioritize heavily
@@ -2777,7 +2780,10 @@ export class MapComponent {
 
       news.forEach((item) => {
         const titleLower = item.title.toLowerCase();
-        const matches = spot.keywords.filter((kw) => titleLower.includes(kw.toLowerCase()));
+        const matches = spot.keywords.filter((kw) => {
+          const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          return new RegExp(`\\b${escaped}\\b`, 'i').test(titleLower);
+        });
 
         if (matches.length > 0) {
           matchedCount++;

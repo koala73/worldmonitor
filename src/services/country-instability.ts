@@ -198,10 +198,10 @@ export type { CountryData };
 function normalizeCountryName(name: string): string | null {
   const lower = name.toLowerCase();
   for (const [code, keywords] of Object.entries(COUNTRY_KEYWORDS)) {
-    if (keywords.some(kw => lower.includes(kw))) return code;
+    if (keywords.some(kw => new RegExp(`\\b${kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(lower))) return code;
   }
   for (const [code, countryName] of Object.entries(TIER1_COUNTRIES)) {
-    if (lower.includes(countryName.toLowerCase())) return code;
+    if (new RegExp(`\\b${countryName.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(lower)) return code;
   }
   return null;
 }
@@ -458,7 +458,7 @@ export function ingestNewsForCII(events: ClusteredEvent[]): void {
     const title = e.primaryTitle.toLowerCase();
     for (const [code] of Object.entries(TIER1_COUNTRIES)) {
       const keywords = COUNTRY_KEYWORDS[code] || [];
-      if (keywords.some(kw => title.includes(kw))) {
+      if (keywords.some(kw => new RegExp(`\\b${kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(title))) {
         if (!countryDataMap.has(code)) countryDataMap.set(code, initCountryData());
         countryDataMap.get(code)!.newsEvents.push(e);
       }

@@ -35,7 +35,9 @@ function detectAssetTypes(titles: string[]): AssetType[] {
   const normalized = toTitleLower(titles);
   const types = Object.entries(ASSET_KEYWORDS)
     .filter(([, keywords]) =>
-      normalized.some(title => keywords.some(keyword => title.includes(keyword)))
+      normalized.some(title => keywords.some(keyword =>
+        new RegExp(`\\b${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(title)
+      ))
     )
     .map(([type]) => type as AssetType);
   return types;
@@ -44,7 +46,8 @@ function detectAssetTypes(titles: string[]): AssetType[] {
 function countKeywordMatches(titles: string[], keywords: string[]): number {
   const normalized = toTitleLower(titles);
   return keywords.reduce((count, keyword) => {
-    return count + normalized.filter(title => title.includes(keyword)).length;
+    const regex = new RegExp(`\\b${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+    return count + normalized.filter(title => regex.test(title)).length;
   }, 0);
 }
 

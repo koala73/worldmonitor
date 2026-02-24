@@ -123,18 +123,19 @@ export function findEntitiesInText(text: string): EntityMatch[] {
 
   for (const [keyword, entityIds] of index.byKeyword) {
     if (keyword.length < 3) continue;
-    if (!textLower.includes(keyword)) continue;
+    const kwRegex = new RegExp(`\\b${escapeRegex(keyword)}\\b`, 'gi');
+    const kwMatch = kwRegex.exec(text);
+    if (!kwMatch) continue;
 
     for (const entityId of entityIds) {
       if (seen.has(entityId)) continue;
 
-      const pos = textLower.indexOf(keyword);
       matches.push({
         entityId,
         matchedText: keyword,
         matchType: 'keyword',
         confidence: 0.7,
-        position: pos,
+        position: kwMatch.index,
       });
       seen.add(entityId);
     }

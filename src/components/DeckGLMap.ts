@@ -3383,9 +3383,10 @@ export class DeckGLMap {
 
     recentNews.forEach(item => {
       this.hotspots.forEach(hotspot => {
-        if (hotspot.keywords.some(kw =>
-          item.title.toLowerCase().includes(kw.toLowerCase())
-        )) {
+        if (hotspot.keywords.some(kw => {
+          const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          return new RegExp(`\\b${escaped}\\b`, 'i').test(item.title);
+        })) {
           breakingKeywords.add(hotspot.id);
           matchCounts.set(hotspot.id, (matchCounts.get(hotspot.id) || 0) + 1);
         }
@@ -3412,13 +3413,16 @@ export class DeckGLMap {
     return this.news
       .map((item) => {
         const titleLower = item.title.toLowerCase();
-        const matchedKeywords = hotspot.keywords.filter((kw) => titleLower.includes(kw.toLowerCase()));
+        const matchedKeywords = hotspot.keywords.filter((kw) => {
+          const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          return new RegExp(`\\b${escaped}\\b`, 'i').test(titleLower);
+        });
 
         if (matchedKeywords.length === 0) return null;
 
         // Check if this news mentions other hotspot conflict topics
         const conflictMatches = conflictTopics.filter(t =>
-          titleLower.includes(t) && !hotspot.keywords.some(k => k.toLowerCase().includes(t))
+          new RegExp(`\\b${t}\\b`, 'i').test(titleLower) && !hotspot.keywords.some(k => k.toLowerCase().includes(t))
         );
 
         // If article mentions a major conflict topic that isn't this hotspot, deprioritize heavily

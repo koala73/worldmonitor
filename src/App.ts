@@ -3174,8 +3174,11 @@ export class App {
       let matches = 0;
       for (const keyword of keywords) {
         const cleaned = keyword.trim().toLowerCase();
-        if (cleaned.length >= 3 && titleLower.includes(cleaned)) {
-          matches++;
+        if (cleaned.length >= 3) {
+          const escaped = cleaned.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          if (new RegExp(`\\b${escaped}\\b`, 'i').test(titleLower)) {
+            matches++;
+          }
         }
       }
       return matches;
