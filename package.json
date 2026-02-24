@@ -84,6 +84,6 @@
     "youtubei.js": "^16.0.1"
   },
   "overrides": {
-    "fast-xml-parser": "^5.3.6"
+    "fast-xml-parser": "^5.3.7"
   }
 }
