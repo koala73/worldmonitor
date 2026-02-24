@@ -141,6 +141,7 @@ const ALLOWED_DOMAINS = [
   'www.euronews.com',
   'www.lemonde.fr',
   'rss.dw.com',
+  'www.bild.de',
   'www.africanews.com',
   // Nigeria
   'www.premiumtimesng.com',
