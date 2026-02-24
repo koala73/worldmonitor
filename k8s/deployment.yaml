@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worldmonitor
+  namespace: worldmonitor
+  labels:
+    app.kubernetes.io/name: worldmonitor
+    app.kubernetes.io/component: fullstack
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: worldmonitor
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: worldmonitor
+        app.kubernetes.io/component: fullstack
+    spec:
+      containers:
+        - name: worldmonitor
+          image: worldmonitor:fullstack
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          envFrom:
+            - secretRef:
+                name: worldmonitor-api-keys
+          env:
+            # Sidecar config — no cloud fallback, use local handlers only
+            - name: LOCAL_API_PORT
+              value: "46123"
+            - name: LOCAL_API_CLOUD_FALLBACK
+              value: "false"
+            - name: NODE_ENV
+              value: "production"
+            # AIS relay runs inside the pod on port 3004
+            - name: WS_RELAY_URL
+              value: "http://127.0.0.1:3004"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: 3000m
+              memory: 12Gi
+          securityContext:
+            runAsNonRoot: false
+            readOnlyRootFilesystem: false
+      restartPolicy: Always

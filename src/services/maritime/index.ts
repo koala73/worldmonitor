@@ -197,6 +197,12 @@ async function fetchRawRelaySnapshot(includeCandidates: boolean): Promise<unknow
     if (local.ok) return local.json();
   }
 
+  // Same-origin fallback: relay available via nginx /ais/ proxy (K8s deployments)
+  if (isClientRuntime && !RAILWAY_SNAPSHOT_URL && !isLocalhost) {
+    const sameOrigin = await fetch(`/ais/snapshot${query}`, { headers: { Accept: 'application/json' } });
+    if (sameOrigin.ok) return sameOrigin.json();
+  }
+
   throw new Error('AIS raw relay snapshot unavailable');
 }
 

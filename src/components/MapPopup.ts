@@ -1969,11 +1969,19 @@ export class MapPopup {
     };
     const callsign = escapeHtml(flight.callsign || t('popups.unknown'));
     const aircraftTypeBadge = escapeHtml(flight.aircraftType.toUpperCase());
-    const operatorLabel = escapeHtml(operatorLabels[flight.operator] || flight.operatorCountry || t('popups.unknown'));
+    const operatorLabel = escapeHtml(
+      operatorLabels[flight.operator] ||
+      flight.enriched?.operatorName ||
+      flight.operatorCountry ||
+      t('popups.unknown')
+    );
     const hexCode = escapeHtml(flight.hexCode || '');
     const aircraftType = escapeHtml(typeLabels[flight.aircraftType] || flight.aircraftType);
     const squawk = flight.squawk ? escapeHtml(flight.squawk) : '';
     const note = flight.note ? escapeHtml(flight.note) : '';
+    const model = flight.aircraftModel ? escapeHtml(flight.aircraftModel) : '';
+    const registration = flight.registration ? escapeHtml(flight.registration) : '';
+    const owner = flight.enriched?.owner ? escapeHtml(flight.enriched.owner) : '';
 
     return `
       <div class="popup-header military-flight ${flight.operator}">
@@ -1983,6 +1991,7 @@ export class MapPopup {
       </div>
       <div class="popup-body">
         <div class="popup-subtitle">${operatorLabel}</div>
+        ${model ? `<div class="popup-subtitle" style="opacity:0.7;font-size:0.85em">${model}</div>` : ''}
         <div class="popup-stats">
           <div class="popup-stat">
             <span class="stat-label">${t('popups.militaryFlight.altitude')}</span>
@@ -2004,6 +2013,12 @@ export class MapPopup {
             <span class="stat-label">${t('popups.type')}</span>
             <span class="stat-value">${aircraftType}</span>
           </div>
+          ${registration ? `
+          <div class="popup-stat">
+            <span class="stat-label">REG</span>
+            <span class="stat-value">${registration}</span>
+          </div>
+          ` : ''}
           ${flight.squawk ? `
           <div class="popup-stat">
             <span class="stat-label">${t('popups.militaryFlight.squawk')}</span>
@@ -2011,6 +2026,7 @@ export class MapPopup {
           </div>
           ` : ''}
         </div>
+        ${owner ? `<p class="popup-description">${owner}</p>` : ''}
         ${flight.note ? `<p class="popup-description">${note}</p>` : ''}
         <div class="popup-attribution">${t('popups.militaryFlight.attribution')}</div>
       </div>

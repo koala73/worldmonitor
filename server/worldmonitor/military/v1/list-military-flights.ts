@@ -7,8 +7,7 @@ import type {
   MilitaryAircraftType,
 } from '../../../../src/generated/server/worldmonitor/military/v1/service_server';
 
-import { isMilitaryCallsign, isMilitaryHex, detectAircraftType, UPSTREAM_TIMEOUT_MS } from './_shared';
-import { CHROME_UA } from '../../../_shared/constants';
+import { isMilitaryCallsign, isMilitaryHex, detectAircraftType, UPSTREAM_TIMEOUT_MS, openSkyHeaders, fetchOpenSkyMetadataBatch, resolveTypeFromTypecode, resolveOperatorFromIcao, metadataToEnrichment } from './_shared';
 import { getCachedJson, setCachedJson } from '../../../_shared/redis';
 
 const REDIS_CACHE_KEY = 'military:flights:v1';
@@ -23,20 +22,6 @@ interface RequestBounds {
   north: number;
   west: number;
   east: number;
-}
-
-function getRelayRequestHeaders(): Record<string, string> {
-  const headers: Record<string, string> = {
-    Accept: 'application/json',
-    'User-Agent': CHROME_UA,
-  };
-  const relaySecret = process.env.RELAY_SHARED_SECRET;
-  if (relaySecret) {
-    const relayHeader = (process.env.RELAY_AUTH_HEADER || 'x-relay-key').toLowerCase();
-    headers[relayHeader] = relaySecret;
-    headers.Authorization = `Bearer ${relaySecret}`;
-  }
-  return headers;
 }
 
 function normalizeBounds(bb: NonNullable<ListMilitaryFlightsRequest['boundingBox']>): RequestBounds {
@@ -114,8 +99,9 @@ export async function listMilitaryFlights(
     params.set('lomax', String(fetchBB.lomax));
 
     const url = `${baseUrl}${params.toString() ? '?' + params.toString() : ''}`;
+    const headers = await openSkyHeaders();
     const resp = await fetch(url, {
-      headers: getRelayRequestHeaders(),
+      headers,
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
 
@@ -159,6 +145,55 @@ export async function listMilitaryFlights(
         note: '',
         enrichment: undefined,
       });
+    }
+
+    // ── Enrich flights with OpenSky aircraft metadata (type, model, reg, country) ──
+    if (flights.length > 0) {
+      try {
+        const hexCodes = flights.map(f => f.hexCode);
+        const metadataMap = await fetchOpenSkyMetadataBatch(hexCodes);
+
+        for (const flight of flights) {
+          const meta = metadataMap.get(flight.hexCode);
+          if (!meta) continue;
+
+          // Registration
+          if (meta.registration) flight.registration = meta.registration;
+
+          // Aircraft model (e.g. "C-130J Super Hercules")
+          if (meta.model) flight.aircraftModel = meta.model;
+
+          // Country (e.g. "Qatar")
+          if (meta.country) flight.operatorCountry = meta.country;
+
+          // Aircraft type — use typecode when callsign detection returned unknown
+          if (flight.aircraftType === ('MILITARY_AIRCRAFT_TYPE_UNKNOWN' as MilitaryAircraftType) && meta.typecode) {
+            const resolved = resolveTypeFromTypecode(meta.typecode);
+            if (resolved !== 'MILITARY_AIRCRAFT_TYPE_UNKNOWN') {
+              flight.aircraftType = resolved as MilitaryAircraftType;
+            }
+          }
+
+          // Operator — use operatorIcao when still generic
+          if (flight.operator === 'MILITARY_OPERATOR_OTHER' && meta.operatorIcao) {
+            flight.operator = resolveOperatorFromIcao(meta.operatorIcao);
+          }
+
+          // Confidence boost
+          const isMilitary = meta.dbFlags != null && (meta.dbFlags & 1) !== 0;
+          if (isMilitary) {
+            flight.confidence = 'MILITARY_CONFIDENCE_HIGH';
+            flight.isInteresting = true;
+          } else if (meta.registration || meta.model) {
+            flight.confidence = 'MILITARY_CONFIDENCE_MEDIUM';
+          }
+
+          // Enrichment proto (manufacturer, owner, etc.)
+          flight.enrichment = metadataToEnrichment(meta);
+        }
+      } catch {
+        // Metadata enrichment failed — flights still returned with basic data
+      }
     }
 
     // Cache the full quantized-cell payload, then filter per-request bbox before returning.

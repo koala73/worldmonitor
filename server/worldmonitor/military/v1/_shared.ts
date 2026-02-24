@@ -2,6 +2,8 @@ declare const process: { env: Record<string, string | undefined> };
 
 import type {
   AircraftDetails,
+  FlightEnrichment,
+  MilitaryOperator,
 } from '../../../../src/generated/server/worldmonitor/military/v1/service_server';
 
 
@@ -118,6 +120,287 @@ export interface RawFlight {
 }
 
 export const UPSTREAM_TIMEOUT_MS = 20_000;
+
+// ========================================================================
+// OpenSky OAuth2 token helper (client_credentials flow)
+// ========================================================================
+
+const OPENSKY_TOKEN_URL =
+  'https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token';
+
+let _cachedToken: { token: string; expiresAt: number } | null = null;
+
+/**
+ * Get a Bearer token for OpenSky API.  Returns undefined when credentials
+ * are not configured (falls back to unauthenticated).  Token is cached with
+ * a 60-second safety margin before its 1800-second expiry.
+ */
+export async function getOpenSkyToken(): Promise<string | undefined> {
+  const clientId = (process.env.OPENSKY_CLIENT_ID || '').trim();
+  const clientSecret = (process.env.OPENSKY_CLIENT_SECRET || '').trim();
+  if (!clientId || !clientSecret) return undefined;
+
+  const now = Date.now();
+  if (_cachedToken && now < _cachedToken.expiresAt) return _cachedToken.token;
+
+  const body = new URLSearchParams({
+    grant_type: 'client_credentials',
+    client_id: clientId,
+    client_secret: clientSecret,
+  });
+  const resp = await fetch(OPENSKY_TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body,
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!resp.ok) return undefined;
+
+  const json = (await resp.json()) as { access_token?: string; expires_in?: number };
+  if (!json.access_token) return undefined;
+
+  const expiresIn = (json.expires_in ?? 1800) * 1000;
+  _cachedToken = { token: json.access_token, expiresAt: now + expiresIn - 60_000 };
+  return _cachedToken.token;
+}
+
+/**
+ * Build headers for OpenSky API calls, using Bearer auth when available.
+ */
+export async function openSkyHeaders(): Promise<Record<string, string>> {
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+    'User-Agent': 'Mozilla/5.0 WorldMonitor/1.0',
+  };
+  const token = await getOpenSkyToken();
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  return headers;
+}
+
+// ========================================================================
+// OpenSky aircraft metadata enrichment (type, model, registration, country)
+// ========================================================================
+
+export interface OpenSkyMetadata {
+  icao24: string;
+  registration: string;
+  manufacturerIcao: string;
+  manufacturerName: string;
+  model: string;
+  typecode: string;
+  serialNumber: string;
+  icaoAircraftType: string;
+  operator: string;
+  operatorCallsign: string;
+  operatorIcao: string;
+  owner: string;
+  built: string;
+  engines: string;
+  categoryDescription: string;
+  country: string;
+  dbFlags: number;
+}
+
+// In-memory metadata cache: icao24 → { data | null, timestamp }
+const _metaCache = new Map<string, { data: OpenSkyMetadata | null; ts: number }>();
+const META_TTL_MS = 30 * 60 * 1000;     // 30 minutes (metadata is static)
+const META_NEG_TTL_MS = 5 * 60 * 1000;  // 5 minutes for 404s / not-found
+const META_BATCH_CONCURRENCY = 5;
+const META_MAX_PER_REQUEST = 50;
+
+/** ICAO typecodes → proto MilitaryAircraftType enum values */
+const TYPECODE_TO_PROTO_TYPE: Record<string, string> = {
+  // ── Transport ──
+  'C130': 'MILITARY_AIRCRAFT_TYPE_TRANSPORT',
+  'C30J': 'MILITARY_AIRCRAFT_TYPE_TRANSPORT',
+  'C17':  'MILITARY_AIRCRAFT_TYPE_TRANSPORT',
+  'C5':   'MILITARY_AIRCRAFT_TYPE_TRANSPORT',
+  'C5M':  'MILITARY_AIRCRAFT_TYPE_TRANSPORT',
+  'C5A':  'MILITARY_AIRCRAFT_TYPE_TRANSPORT',
+  'C5B':  'MILITARY_AIRCRAFT_TYPE_TRANSPORT',
+  'C40A': 'MILITARY_AIRCRAFT_TYPE_TRANSPORT',
+  'C40B': 'MILITARY_AIRCRAFT_TYPE_TRANSPORT',
+  'C32A': 'MILITARY_AIRCRAFT_TYPE_TRANSPORT',
+  'C27J': 'MILITARY_AIRCRAFT_TYPE_TRANSPORT',
+  'A400': 'MILITARY_AIRCRAFT_TYPE_TRANSPORT',
+  'A400M':'MILITARY_AIRCRAFT_TYPE_TRANSPORT',
+  'IL76': 'MILITARY_AIRCRAFT_TYPE_TRANSPORT',
+  'AN12': 'MILITARY_AIRCRAFT_TYPE_TRANSPORT',
+  'AN26': 'MILITARY_AIRCRAFT_TYPE_TRANSPORT',
+  'AN124':'MILITARY_AIRCRAFT_TYPE_TRANSPORT',
+  'Y20':  'MILITARY_AIRCRAFT_TYPE_TRANSPORT',
+  'CN35': 'MILITARY_AIRCRAFT_TYPE_TRANSPORT',
+  'C295': 'MILITARY_AIRCRAFT_TYPE_TRANSPORT',
+  'C160': 'MILITARY_AIRCRAFT_TYPE_TRANSPORT',
+  // ── Tanker ──
+  'K35R': 'MILITARY_AIRCRAFT_TYPE_TANKER',
+  'K35A': 'MILITARY_AIRCRAFT_TYPE_TANKER',
+  'K35E': 'MILITARY_AIRCRAFT_TYPE_TANKER',
+  'KC135':'MILITARY_AIRCRAFT_TYPE_TANKER',
+  'KC10': 'MILITARY_AIRCRAFT_TYPE_TANKER',
+  'KC46': 'MILITARY_AIRCRAFT_TYPE_TANKER',
+  'A332': 'MILITARY_AIRCRAFT_TYPE_TANKER',
+  'A339': 'MILITARY_AIRCRAFT_TYPE_TANKER',
+  'A310': 'MILITARY_AIRCRAFT_TYPE_TANKER',
+  'IL78': 'MILITARY_AIRCRAFT_TYPE_TANKER',
+  'VC10': 'MILITARY_AIRCRAFT_TYPE_TANKER',
+  // ── AWACS/AEW ──
+  'E3TF': 'MILITARY_AIRCRAFT_TYPE_AWACS',
+  'E3CF': 'MILITARY_AIRCRAFT_TYPE_AWACS',
+  'E3A':  'MILITARY_AIRCRAFT_TYPE_AWACS',
+  'E7A':  'MILITARY_AIRCRAFT_TYPE_AWACS',
+  'E2C':  'MILITARY_AIRCRAFT_TYPE_AWACS',
+  'E2D':  'MILITARY_AIRCRAFT_TYPE_AWACS',
+  'E767': 'MILITARY_AIRCRAFT_TYPE_AWACS',
+  'A50':  'MILITARY_AIRCRAFT_TYPE_AWACS',
+  // ── Reconnaissance ──
+  'R135': 'MILITARY_AIRCRAFT_TYPE_RECONNAISSANCE',
+  'RC135':'MILITARY_AIRCRAFT_TYPE_RECONNAISSANCE',
+  'E8A':  'MILITARY_AIRCRAFT_TYPE_RECONNAISSANCE',
+  'U2':   'MILITARY_AIRCRAFT_TYPE_RECONNAISSANCE',
+  'U2S':  'MILITARY_AIRCRAFT_TYPE_RECONNAISSANCE',
+  'EP3':  'MILITARY_AIRCRAFT_TYPE_RECONNAISSANCE',
+  'E6B':  'MILITARY_AIRCRAFT_TYPE_RECONNAISSANCE',
+  'E6':   'MILITARY_AIRCRAFT_TYPE_RECONNAISSANCE',
+  'WC135':'MILITARY_AIRCRAFT_TYPE_RECONNAISSANCE',
+  'OC135':'MILITARY_AIRCRAFT_TYPE_RECONNAISSANCE',
+  'P8':   'MILITARY_AIRCRAFT_TYPE_RECONNAISSANCE',
+  'P8A':  'MILITARY_AIRCRAFT_TYPE_RECONNAISSANCE',
+  'P3':   'MILITARY_AIRCRAFT_TYPE_RECONNAISSANCE',
+  'P1':   'MILITARY_AIRCRAFT_TYPE_RECONNAISSANCE',
+  // ── Drone/UAV ──
+  'RQ4':  'MILITARY_AIRCRAFT_TYPE_DRONE',
+  'RQ4B': 'MILITARY_AIRCRAFT_TYPE_DRONE',
+  'GLHK': 'MILITARY_AIRCRAFT_TYPE_DRONE',
+  'MQ9':  'MILITARY_AIRCRAFT_TYPE_DRONE',
+  'MQ9A': 'MILITARY_AIRCRAFT_TYPE_DRONE',
+  'MQ1':  'MILITARY_AIRCRAFT_TYPE_DRONE',
+  'MQ4C': 'MILITARY_AIRCRAFT_TYPE_DRONE',
+  'HRON': 'MILITARY_AIRCRAFT_TYPE_DRONE',
+  // ── Bomber ──
+  'B52':  'MILITARY_AIRCRAFT_TYPE_BOMBER',
+  'B52H': 'MILITARY_AIRCRAFT_TYPE_BOMBER',
+  'B1':   'MILITARY_AIRCRAFT_TYPE_BOMBER',
+  'B1B':  'MILITARY_AIRCRAFT_TYPE_BOMBER',
+  'B2':   'MILITARY_AIRCRAFT_TYPE_BOMBER',
+  'B2A':  'MILITARY_AIRCRAFT_TYPE_BOMBER',
+  'B21':  'MILITARY_AIRCRAFT_TYPE_BOMBER',
+  'TU95': 'MILITARY_AIRCRAFT_TYPE_BOMBER',
+  'TU160':'MILITARY_AIRCRAFT_TYPE_BOMBER',
+  'TU22': 'MILITARY_AIRCRAFT_TYPE_BOMBER',
+  'H6':   'MILITARY_AIRCRAFT_TYPE_BOMBER',
+};
+
+/** Operator ICAO code → proto MilitaryOperator enum */
+const OPERATOR_ICAO_TO_PROTO: Record<string, MilitaryOperator> = {
+  'USAF': 'MILITARY_OPERATOR_USAF',
+  'ANG':  'MILITARY_OPERATOR_USAF',
+  'USN':  'MILITARY_OPERATOR_USN',
+  'USMC': 'MILITARY_OPERATOR_USMC',
+  'USA':  'MILITARY_OPERATOR_USA',
+  'RAF':  'MILITARY_OPERATOR_RAF',
+  'RN':   'MILITARY_OPERATOR_RN',
+  'FAF':  'MILITARY_OPERATOR_FAF',
+  'GAF':  'MILITARY_OPERATOR_GAF',
+  'PLAAF':'MILITARY_OPERATOR_PLAAF',
+  'PLAN': 'MILITARY_OPERATOR_PLAN',
+  'VKS':  'MILITARY_OPERATOR_VKS',
+  'IAF':  'MILITARY_OPERATOR_IAF',
+  'NATO': 'MILITARY_OPERATOR_NATO',
+  'NAT':  'MILITARY_OPERATOR_NATO',
+  // Middle East
+  'QAF':  'MILITARY_OPERATOR_OTHER',
+  'RSAF': 'MILITARY_OPERATOR_OTHER',
+  'UAEAF':'MILITARY_OPERATOR_OTHER',
+  'THK':  'MILITARY_OPERATOR_OTHER',
+};
+
+/** Resolve proto aircraft type from ICAO typecode */
+export function resolveTypeFromTypecode(typecode: string): string {
+  if (!typecode) return 'MILITARY_AIRCRAFT_TYPE_UNKNOWN';
+  const normalized = typecode.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  return TYPECODE_TO_PROTO_TYPE[normalized] || 'MILITARY_AIRCRAFT_TYPE_UNKNOWN';
+}
+
+/** Resolve proto operator from operator ICAO code */
+export function resolveOperatorFromIcao(operatorIcao: string): MilitaryOperator {
+  if (!operatorIcao) return 'MILITARY_OPERATOR_OTHER';
+  return OPERATOR_ICAO_TO_PROTO[operatorIcao.toUpperCase()] || 'MILITARY_OPERATOR_OTHER';
+}
+
+/**
+ * Fetch OpenSky aircraft metadata for a batch of hex codes.
+ * Results are cached in-memory (30 min TTL).
+ */
+export async function fetchOpenSkyMetadataBatch(
+  icao24s: string[],
+): Promise<Map<string, OpenSkyMetadata>> {
+  const result = new Map<string, OpenSkyMetadata>();
+  const now = Date.now();
+  const toFetch: string[] = [];
+
+  // Check cache first
+  for (const hex of icao24s.slice(0, META_MAX_PER_REQUEST)) {
+    const cached = _metaCache.get(hex);
+    if (cached) {
+      const ttl = cached.data ? META_TTL_MS : META_NEG_TTL_MS;
+      if (now - cached.ts < ttl) {
+        if (cached.data) result.set(hex, cached.data);
+        continue;
+      }
+    }
+    toFetch.push(hex);
+  }
+
+  if (toFetch.length === 0) return result;
+
+  const headers = await openSkyHeaders();
+
+  // Fetch in batches of META_BATCH_CONCURRENCY
+  for (let i = 0; i < toFetch.length; i += META_BATCH_CONCURRENCY) {
+    const batch = toFetch.slice(i, i + META_BATCH_CONCURRENCY);
+    const promises = batch.map(async (hex): Promise<{ hex: string; data: OpenSkyMetadata } | null> => {
+      try {
+        const resp = await fetch(
+          `https://opensky-network.org/api/metadata/aircraft/icao/${hex}`,
+          { headers, signal: AbortSignal.timeout(8_000) },
+        );
+        if (resp.ok) {
+          const data = (await resp.json()) as OpenSkyMetadata;
+          _metaCache.set(hex, { data, ts: now });
+          return { hex, data };
+        }
+        // Negative cache (404, 403, etc.)
+        _metaCache.set(hex, { data: null, ts: now });
+      } catch {
+        // Network error — don't cache so we retry next time
+      }
+      return null;
+    });
+    const results = await Promise.all(promises);
+    for (const r of results) {
+      if (r) result.set(r.hex, r.data);
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Build a FlightEnrichment proto from OpenSky metadata.
+ */
+export function metadataToEnrichment(meta: OpenSkyMetadata): FlightEnrichment {
+  const isMilitary = meta.dbFlags != null && (meta.dbFlags & 1) !== 0;
+  return {
+    manufacturer: meta.manufacturerName || '',
+    owner: meta.owner || '',
+    operatorName: meta.operator || '',
+    typeCode: meta.typecode || '',
+    builtYear: meta.built || '',
+    confirmedMilitary: isMilitary,
+    militaryBranch: meta.operatorIcao || '',
+  };
+}
 
 // ========================================================================
 // Wingbits response mapper (shared by single + batch RPCs)

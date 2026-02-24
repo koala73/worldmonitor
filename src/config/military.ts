@@ -204,11 +204,22 @@ export const MILITARY_AIRCRAFT_TYPES: Record<string, { type: MilitaryAircraftTyp
 
   // Transports
   'C130': { type: 'transport', name: 'C-130 Hercules' },
+  'C30J': { type: 'transport', name: 'C-130J Super Hercules' },
+  'C30H': { type: 'transport', name: 'C-130H Hercules' },
   'C17': { type: 'transport', name: 'C-17 Globemaster III' },
   'C5': { type: 'transport', name: 'C-5 Galaxy' },
+  'C5A': { type: 'transport', name: 'C-5A Galaxy' },
+  'C5B': { type: 'transport', name: 'C-5B Galaxy' },
   'C5M': { type: 'transport', name: 'C-5M Super Galaxy' },
   'C40': { type: 'transport', name: 'C-40 Clipper' },
+  'C40A': { type: 'transport', name: 'C-40A Clipper' },
+  'C40B': { type: 'transport', name: 'C-40B' },
   'C32': { type: 'transport', name: 'C-32 (757)' },
+  'C32A': { type: 'transport', name: 'C-32A' },
+  'C27J': { type: 'transport', name: 'C-27J Spartan' },
+  'C295': { type: 'transport', name: 'C-295' },
+  'C160': { type: 'transport', name: 'C-160 Transall' },
+  'CN35': { type: 'transport', name: 'CN-235' },
   'VC25': { type: 'vip', name: 'VC-25 Air Force One' },
   'A400': { type: 'transport', name: 'A400M Atlas' },
   'IL76': { type: 'transport', name: 'Il-76 Candid' },
@@ -219,6 +230,8 @@ export const MILITARY_AIRCRAFT_TYPES: Record<string, { type: MilitaryAircraftTyp
   // Tankers
   'KC135': { type: 'tanker', name: 'KC-135 Stratotanker' },
   'K35R': { type: 'tanker', name: 'KC-135R Stratotanker' },
+  'K35A': { type: 'tanker', name: 'KC-135A Stratotanker' },
+  'K35E': { type: 'tanker', name: 'KC-135E Stratotanker' },
   'KC10': { type: 'tanker', name: 'KC-10 Extender' },
   'KC46': { type: 'tanker', name: 'KC-46 Pegasus' },
   'A330': { type: 'tanker', name: 'A330 MRTT' },
@@ -227,6 +240,8 @@ export const MILITARY_AIRCRAFT_TYPES: Record<string, { type: MilitaryAircraftTyp
   // AWACS/AEW
   'E3': { type: 'awacs', name: 'E-3 Sentry AWACS' },
   'E3TF': { type: 'awacs', name: 'E-3 Sentry AWACS' },
+  'E3CF': { type: 'awacs', name: 'E-3 Sentry AWACS' },
+  'E3A': { type: 'awacs', name: 'E-3A Sentry AWACS' },
   'E7': { type: 'awacs', name: 'E-7 Wedgetail' },
   'E2': { type: 'awacs', name: 'E-2 Hawkeye' },
   'A50': { type: 'awacs', name: 'A-50 Mainstay' },
@@ -235,12 +250,14 @@ export const MILITARY_AIRCRAFT_TYPES: Record<string, { type: MilitaryAircraftTyp
   // Reconnaissance
   'RC135': { type: 'reconnaissance', name: 'RC-135 Rivet Joint' },
   'R135': { type: 'reconnaissance', name: 'RC-135' },
+  'E6': { type: 'reconnaissance', name: 'E-6B Mercury' },
+  'E6B': { type: 'reconnaissance', name: 'E-6B Mercury' },
+  'WC135': { type: 'reconnaissance', name: 'WC-135 Constant Phoenix' },
+  'OC135': { type: 'reconnaissance', name: 'OC-135 Open Skies' },
   'U2': { type: 'reconnaissance', name: 'U-2 Dragon Lady' },
   'U2S': { type: 'reconnaissance', name: 'U-2S Dragon Lady' },
   'EP3': { type: 'reconnaissance', name: 'EP-3 Aries' },
   'E8': { type: 'reconnaissance', name: 'E-8 JSTARS' },
-  'WC135': { type: 'reconnaissance', name: 'WC-135 Constant Phoenix' },
-  'OC135': { type: 'reconnaissance', name: 'OC-135 Open Skies' },
 
   // Maritime Patrol
   'P8': { type: 'patrol', name: 'P-8 Poseidon' },
@@ -249,8 +266,11 @@ export const MILITARY_AIRCRAFT_TYPES: Record<string, { type: MilitaryAircraftTyp
 
   // Drones/UAV
   'RQ4': { type: 'drone', name: 'RQ-4 Global Hawk' },
+  'RQ4B': { type: 'drone', name: 'RQ-4B Global Hawk' },
   'GLHK': { type: 'drone', name: 'RQ-4 Global Hawk' },
+  'HRON': { type: 'drone', name: 'MQ-4C Triton' },
   'MQ9': { type: 'drone', name: 'MQ-9 Reaper' },
+  'MQ9A': { type: 'drone', name: 'MQ-9A Reaper' },
   'MQ1': { type: 'drone', name: 'MQ-1 Predator' },
   'RQ170': { type: 'drone', name: 'RQ-170 Sentinel' },
   'MQ4C': { type: 'drone', name: 'MQ-4C Triton' },

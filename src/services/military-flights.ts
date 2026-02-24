@@ -13,6 +13,10 @@ import {
   checkWingbitsStatus,
 } from './wingbits';
 import { isFeatureAvailable } from './runtime-config';
+import { MilitaryServiceClient } from '@/generated/client/worldmonitor/military/v1/service_client';
+
+// Server-side RPC client (used when direct relay URL is unavailable, e.g. K8s)
+const rpcClient = new MilitaryServiceClient('', { fetch: fetch.bind(globalThis) });
 
 // OpenSky API path — route through Vercel so Railway secret never reaches the browser.
 const OPENSKY_PROXY_URL = '/api/opensky';
@@ -324,6 +328,123 @@ async function fetchFromOpenSky(): Promise<MilitaryFlight[]> {
   return allFlights;
 }
 
+// Maps from proto enum strings → frontend type strings
+const PROTO_AIRCRAFT_TYPE_MAP: Record<string, MilitaryAircraftType> = {
+  MILITARY_AIRCRAFT_TYPE_TANKER: 'tanker',
+  MILITARY_AIRCRAFT_TYPE_AWACS: 'awacs',
+  MILITARY_AIRCRAFT_TYPE_TRANSPORT: 'transport',
+  MILITARY_AIRCRAFT_TYPE_RECONNAISSANCE: 'reconnaissance',
+  MILITARY_AIRCRAFT_TYPE_DRONE: 'drone',
+  MILITARY_AIRCRAFT_TYPE_BOMBER: 'bomber',
+  MILITARY_AIRCRAFT_TYPE_UNKNOWN: 'unknown',
+};
+
+/**
+ * Fetch military flights via server-side RPC (K8s / non-relay deployments).
+ * Queries each hotspot via the sebuf list-military-flights endpoint.
+ */
+async function fetchFromServerRPC(): Promise<MilitaryFlight[]> {
+  const allFlights: MilitaryFlight[] = [];
+  const seenHexCodes = new Set<string>();
+
+  const batchSize = 3;
+  for (let i = 0; i < MILITARY_HOTSPOTS.length; i += batchSize) {
+    const batch = MILITARY_HOTSPOTS.slice(i, i + batchSize);
+
+    const results = await Promise.all(batch.map(async (hotspot) => {
+      try {
+        const resp = await rpcClient.listMilitaryFlights({
+          boundingBox: {
+            southWest: {
+              latitude: hotspot.lat - hotspot.radius,
+              longitude: hotspot.lon - hotspot.radius,
+            },
+            northEast: {
+              latitude: hotspot.lat + hotspot.radius,
+              longitude: hotspot.lon + hotspot.radius,
+            },
+          },
+          operator: '' as any,
+          aircraftType: '' as any,
+        });
+        return resp.flights ?? [];
+      } catch {
+        return [];
+      }
+    }));
+
+    for (const flights of results) {
+      for (const pf of flights) {
+        if (!pf.hexCode || seenHexCodes.has(pf.hexCode)) continue;
+        seenHexCodes.add(pf.hexCode);
+
+        const csInfo = identifyByCallsign(pf.callsign || '');
+        const hexKnown = isKnownMilitaryHex(pf.hexCode);
+        const hotspot = getNearbyHotspot(pf.location?.latitude ?? 0, pf.location?.longitude ?? 0);
+
+        // Determine aircraft type — proto type first, then callsign, then enrichment typecode
+        let resolvedType: MilitaryAircraftType = PROTO_AIRCRAFT_TYPE_MAP[pf.aircraftType as string] || csInfo?.aircraftType || 'unknown';
+        if (resolvedType === 'unknown' && pf.enrichment?.typeCode) {
+          const typeMatch = identifyByAircraftType(pf.enrichment.typeCode);
+          if (typeMatch) resolvedType = typeMatch.type;
+        }
+
+        // Determine confidence — enrichment confirmation > hex/callsign > low
+        let resolvedConfidence: 'high' | 'medium' | 'low' = hexKnown || csInfo ? 'medium' : 'low';
+        if (pf.enrichment?.confirmedMilitary) resolvedConfidence = 'high';
+
+        const flight: MilitaryFlight = {
+          id: pf.id || pf.hexCode,
+          callsign: (pf.callsign || '').trim(),
+          hexCode: pf.hexCode,
+          registration: pf.registration || undefined,
+          aircraftType: resolvedType,
+          aircraftModel: pf.aircraftModel || undefined,
+          operator: csInfo?.operator || 'other',
+          operatorCountry: pf.operatorCountry || '',
+          lat: pf.location?.latitude ?? 0,
+          lon: pf.location?.longitude ?? 0,
+          altitude: pf.altitude ?? 0,
+          heading: pf.heading ?? 0,
+          speed: pf.speed ?? 0,
+          verticalRate: pf.verticalRate ?? undefined,
+          onGround: pf.onGround ?? false,
+          squawk: pf.squawk || undefined,
+          origin: pf.origin || undefined,
+          destination: pf.destination || undefined,
+          lastSeen: new Date(pf.lastSeenAt || Date.now()),
+          firstSeen: pf.firstSeenAt ? new Date(pf.firstSeenAt) : undefined,
+          confidence: resolvedConfidence,
+          isInteresting: !!hotspot || pf.enrichment?.confirmedMilitary || false,
+          note: hotspot ? `Near ${hotspot.name}` : undefined,
+        };
+
+        // Map server enrichment → frontend enriched field
+        if (pf.enrichment) {
+          flight.enriched = {
+            manufacturer: pf.enrichment.manufacturer || undefined,
+            owner: pf.enrichment.owner || undefined,
+            operatorName: pf.enrichment.operatorName || undefined,
+            typeCode: pf.enrichment.typeCode || undefined,
+            builtYear: pf.enrichment.builtYear || undefined,
+            confirmedMilitary: pf.enrichment.confirmedMilitary,
+            militaryBranch: pf.enrichment.militaryBranch || undefined,
+          };
+        }
+
+        allFlights.push(flight);
+      }
+    }
+
+    if (i + batchSize < MILITARY_HOTSPOTS.length) {
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  }
+
+  console.log(`[Military Flights] Found ${allFlights.length} military aircraft via server RPC from ${MILITARY_HOTSPOTS.length} regions`);
+  return allFlights;
+}
+
 
 /**
  * Enrich flights with Wingbits aircraft details
@@ -511,8 +632,13 @@ export async function fetchMilitaryFlights(): Promise<{
       return { flights: flightCache.data, clusters };
     }
 
-    // Fetch from OpenSky (regional queries for efficiency)
-    let flights = await fetchFromOpenSky();
+    // Fetch from OpenSky — direct relay if configured, otherwise server RPC
+    let flights: MilitaryFlight[];
+    if (OPENSKY_BASE_URL) {
+      flights = await fetchFromOpenSky();
+    } else {
+      flights = await fetchFromServerRPC();
+    }
 
     if (flights.length === 0) {
       throw new Error('No flights returned — upstream may be down');

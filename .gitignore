@@ -29,3 +29,6 @@ src-tauri/sidecar/node/*
 
 # Compiled sebuf gateway bundle (built by scripts/build-sidecar-sebuf.mjs)
 api/[[][[].*.js
+
+# K8s secrets
+k8s/secret.yaml
