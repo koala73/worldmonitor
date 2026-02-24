@@ -126,6 +126,7 @@ import { trackEvent, trackPanelView, trackVariantSwitch, trackThemeChanged, trac
 import { invokeTauri } from '@/services/tauri-bridge';
 import { getCountryAtCoordinates, hasCountryGeometry, isCoordinateInCountry, preloadCountryGeometry } from '@/services/country-geometry';
 import { initI18n, t, changeLanguage } from '@/services/i18n';
+import { getPersistentCache, setPersistentCache } from '@/services/persistent-cache';
 
 import type { MarketData, ClusteredEvent } from '@/types';
 import type { PredictionMarket } from '@/services/prediction';
@@ -431,6 +432,11 @@ export class App {
     this.setupUrlStateSync();
     this.syncDataFreshnessWithLayers();
     await preloadCountryGeometry();
+    // Happy variant: pre-populate panels from persistent cache for instant render
+    // while live RSS feeds load in the background
+    if (SITE_VARIANT === 'happy') {
+      await this.hydrateHappyPanelsFromCache();
+    }
     await this.loadAllData();
 
     // Start CII learning mode after first data load
@@ -3371,12 +3377,8 @@ export class App {
     // Happy variant skips all non-news data layers except natural (which is part of happy map layers)
     if (SITE_VARIANT === 'full') tasks.push({ name: 'firms', task: runGuarded('firms', () => this.loadFirmsData()) });
     if (this.mapLayers.natural) tasks.push({ name: 'natural', task: runGuarded('natural', () => this.loadNatural()) });
-    if (SITE_VARIANT === 'happy' && this.mapLayers.positiveEvents) {
-      tasks.push({ name: 'positiveEvents', task: runGuarded('positiveEvents', () => this.loadPositiveEvents()) });
-    }
-    if (SITE_VARIANT === 'happy' && this.mapLayers.kindness) {
-      tasks.push({ name: 'kindness', task: runGuarded('kindness', async () => this.loadKindnessData()) });
-    }
+    // NOTE: loadPositiveEvents & loadKindnessData depend on happyAllItems being
+    // populated by loadNews(), so they are called at the end of loadNews() — not here.
     // Progress charts data (happy variant only)
     if (SITE_VARIANT === 'happy') {
       tasks.push({
@@ -3792,9 +3794,15 @@ export class App {
     maybeShowDownloadBanner();
     mountCommunityWidget();
 
-    // Happy variant: run multi-stage positive news pipeline
+    // Happy variant: run multi-stage positive news pipeline + map layers
+    // These depend on happyAllItems being populated above, so they must run here (not in loadAllData).
     if (SITE_VARIANT === 'happy') {
       await this.loadHappySupplementaryAndRender();
+      // Load map layers that geocode from happyAllItems (parallel with each other, not with news)
+      await Promise.allSettled([
+        this.mapLayers.positiveEvents ? this.loadPositiveEvents() : Promise.resolve(),
+        this.mapLayers.kindness ? Promise.resolve(this.loadKindnessData()) : Promise.resolve(),
+      ]);
     }
 
     // Temporal baseline: report news volume
@@ -3837,6 +3845,43 @@ export class App {
       }
     } catch (error) {
       console.error('[App] Clustering failed, clusters unchanged:', error);
+    }
+  }
+
+  private static readonly HAPPY_ITEMS_CACHE_KEY = 'happy-all-items';
+
+  /**
+   * Pre-populate happy panels from persistent cache for instant render.
+   * Called right after panels are created, before live RSS feeds load.
+   */
+  private async hydrateHappyPanelsFromCache(): Promise<void> {
+    try {
+      type CachedItem = Omit<NewsItem, 'pubDate'> & { pubDate: number };
+      const entry = await getPersistentCache<CachedItem[]>(App.HAPPY_ITEMS_CACHE_KEY);
+      if (!entry || !entry.data || entry.data.length === 0) return;
+      // Discard cache older than 24h
+      if (Date.now() - entry.updatedAt > 24 * 60 * 60 * 1000) return;
+
+      const items: NewsItem[] = entry.data.map(item => ({
+        ...item,
+        pubDate: new Date(item.pubDate),
+      }));
+
+      // Feed panels immediately — these will be overwritten when live data arrives
+      const scienceSources = ['GNN Science', 'ScienceDaily', 'Nature News', 'Live Science', 'New Scientist'];
+      this.breakthroughsPanel?.setItems(
+        items.filter(item => scienceSources.includes(item.source) || item.happyCategory === 'science-health')
+      );
+      this.heroPanel?.setHeroStory(
+        items.filter(item => item.happyCategory === 'humanity-kindness')
+          .sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime())[0]
+      );
+      this.digestPanel?.setStories(
+        [...items].sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime()).slice(0, 5)
+      );
+      this.positivePanel?.renderPositiveNews(items);
+    } catch (err) {
+      console.warn('[App] Happy panel cache hydration failed:', err);
     }
   }
 
@@ -3903,6 +3948,13 @@ export class App {
       .sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime())
       .slice(0, 5);
     this.digestPanel?.setStories(digestItems);
+
+    // Persist happyAllItems for instant hydration on next page load
+    // Store pubDate as timestamp (number) since Date isn't JSON-safe
+    setPersistentCache(
+      App.HAPPY_ITEMS_CACHE_KEY,
+      this.happyAllItems.map(item => ({ ...item, pubDate: item.pubDate.getTime() }))
+    ).catch(() => {});
   }
 
   private async loadPositiveEvents(): Promise<void> {

@@ -211,6 +211,20 @@ export class CircuitBreaker<T> {
       return cached as R;
     }
 
+    // Stale-while-revalidate: if we have stale cached data (outside TTL but
+    // within the 24h persistent ceiling), return it instantly and refresh in
+    // the background. This prevents "Loading..." on every page reload when
+    // the persistent cache is older than the TTL.
+    if (this.cache !== null) {
+      this.lastDataState = { mode: 'cached', timestamp: this.cache.timestamp, offline };
+      // Fire-and-forget background refresh
+      fn().then(result => this.recordSuccess(result)).catch(e => {
+        console.warn(`[${this.name}] Background refresh failed:`, e);
+        this.recordFailure(String(e));
+      });
+      return this.cache.data as R;
+    }
+
     try {
       const result = await fn();
       this.recordSuccess(result);
@@ -219,8 +233,8 @@ export class CircuitBreaker<T> {
       const msg = String(e);
       console.error(`[${this.name}] Failed:`, msg);
       this.recordFailure(msg);
-      this.lastDataState = { mode: 'unavailable', timestamp: this.cache?.timestamp ?? null, offline };
-      return this.getCachedOrDefault(defaultValue) as R;
+      this.lastDataState = { mode: 'unavailable', timestamp: null, offline };
+      return defaultValue;
     }
   }
 }
