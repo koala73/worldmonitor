@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; font-src 'self' data: https:;" />
+    <title>Channel management - World Monitor</title>
+    <script>(function(){try{var t=localStorage.getItem('worldmonitor-theme');if(t==='light')document.documentElement.dataset.theme='light';}catch(e){}document.documentElement.classList.add('no-transition');})()</script>
+  </head>
+  <body style="margin:0;background:var(--bg,#1a1c1e);color:var(--text,#e8eaed)">
+    <div id="app"></div>
+    <script type="module" src="/src/live-channels-main.ts"></script>
+  </body>
+</html>

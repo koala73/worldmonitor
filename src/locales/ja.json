@@ -1,0 +1,1815 @@
+{
+  "app": {
+    "title": "World Monitor",
+    "description": "AIインサイト付きグローバル情勢"
+  },
+  "countryBrief": {
+    "identifying": "国を特定中...",
+    "locating": "地域を特定中...",
+    "limitedCoverage": "限定的なカバレッジ",
+    "instabilityIndex": "不安定性指数",
+    "notTracked": "未追跡 — {{country}}はCII第1階層リストに含まれていない",
+    "intelBrief": "インテリジェンスブリーフ",
+    "generatingBrief": "インテリジェンスブリーフを生成中...",
+    "topNews": "トップニュース",
+    "activeSignals": "アクティブシグナル",
+    "timeline": "7日間タイムライン",
+    "predictionMarkets": "予測市場",
+    "loadingMarkets": "予測市場を読み込み中...",
+    "infrastructure": "インフラ露出度",
+    "briefUnavailable": "AIブリーフ利用不可 — 設定でGROQ_API_KEYを構成してください。",
+    "cached": "キャッシュ済",
+    "fresh": "最新",
+    "noMarkets": "予測市場が見つからない",
+    "loadingIndex": "指数を読み込み中...",
+    "components": {
+      "unrest": "騒乱",
+      "conflict": "紛争",
+      "security": "安全保障",
+      "information": "情報"
+    },
+    "signals": {
+      "protests": "抗議活動",
+      "militaryAir": "軍用機",
+      "militarySea": "軍艦",
+      "outages": "障害",
+      "earthquakes": "地震",
+      "displaced": "避難民",
+      "climate": "気候ストレス",
+      "conflictEvents": "紛争イベント"
+    },
+    "timeAgo": {
+      "m": "{{count}}分前",
+      "h": "{{count}}時間前",
+      "d": "{{count}}日前"
+    },
+    "infra": {
+      "pipeline": "パイプライン",
+      "cable": "海底ケーブル",
+      "datacenter": "データセンター",
+      "base": "軍事基地",
+      "nuclear": "核施設",
+      "port": "港湾"
+    },
+    "levels": {
+      "critical": "危機的",
+      "high": "高",
+      "elevated": "上昇",
+      "moderate": "中程度",
+      "normal": "正常",
+      "low": "低"
+    },
+    "trends": {
+      "rising": "上昇中",
+      "falling": "下降中",
+      "stable": "安定"
+    },
+    "fallback": {
+      "instabilityIndex": "**不安定性指数：{{score}}/100**（{{level}}、{{trend}}）",
+      "protestsDetected": "{{count}}件の活発な抗議活動を検知",
+      "aircraftTracked": "{{count}}機の軍用機を追跡中",
+      "vesselsTracked": "{{count}}隻の軍艦を追跡中",
+      "internetOutages": "{{count}}件のインターネット障害",
+      "recentEarthquakes": "{{count}}件の最近の地震",
+      "stockIndex": "株価指数：{{value}}",
+      "recentHeadlines": "**最近のヘッドライン：**"
+    }
+  },
+  "header": {
+    "world": "世界",
+    "tech": "テック",
+    "live": "LIVE",
+    "search": "検索",
+    "settings": "パネル",
+    "sources": "ソース",
+    "copyLink": "リンクをコピー",
+    "fullscreen": "全画面",
+    "pinMap": "マップを上部に固定",
+    "viewOnGitHub": "GitHubで見る",
+    "filterSources": "ソースを絞り込み...",
+    "sourcesEnabled": "{{enabled}}/{{total}} 有効",
+    "finance": "金融",
+    "toggleTheme": "ダーク/ライトモード切替",
+    "panelDisplayCaption": "ダッシュボードに表示するパネルを選択"
+  },
+  "panels": {
+    "liveNews": "ライブニュース",
+    "markets": "市場",
+    "map": "グローバル情勢",
+    "techMap": "グローバルテック",
+    "techHubs": "注目テックハブ",
+    "status": "システム状態",
+    "insights": "AIインサイト",
+    "strategicPosture": "AI戦略態勢",
+    "cii": "国家不安定性",
+    "strategicRisk": "戦略リスク概観",
+    "intel": "インテルフィード",
+    "gdeltIntel": "ライブインテリジェンス",
+    "cascade": "インフラカスケード",
+    "politics": "世界ニュース",
+    "middleeast": "中東",
+    "africa": "アフリカ",
+    "latam": "中南米",
+    "asia": "アジア太平洋",
+    "energy": "エネルギー・資源",
+    "gov": "政府",
+    "thinktanks": "シンクタンク",
+    "polymarket": "予測",
+    "commodities": "コモディティ",
+    "economic": "経済指標",
+    "finance": "金融",
+    "tech": "テクノロジー",
+    "crypto": "暗号資産",
+    "heatmap": "セクターヒートマップ",
+    "ai": "AI/ML",
+    "layoffs": "レイオフ追跡",
+    "monitors": "マイモニター",
+    "satelliteFires": "火災",
+    "macroSignals": "マーケットレーダー",
+    "etfFlows": "BTC ETFトラッカー",
+    "stablecoins": "ステーブルコイン",
+    "ucdpEvents": "UCDP紛争イベント",
+    "displacement": "UNHCR避難民",
+    "climate": "気候異常",
+    "populationExposure": "人口露出度",
+    "startups": "スタートアップ & VC",
+    "vcblogs": "VCインサイト & エッセイ",
+    "regionalStartups": "グローバルスタートアップニュース",
+    "unicorns": "ユニコーントラッカー",
+    "accelerators": "アクセラレーター & デモデイ",
+    "security": "サイバーセキュリティ",
+    "policy": "AI政策・規制",
+    "regulation": "AI規制ダッシュボード",
+    "hardware": "半導体・ハードウェア",
+    "cloud": "クラウド・インフラ",
+    "dev": "開発者コミュニティ",
+    "github": "GitHubトレンド",
+    "ipo": "IPO & SPAC",
+    "funding": "ファンディング & VC",
+    "producthunt": "Product Hunt",
+    "events": "テックイベント",
+    "serviceStatus": "サービス状態",
+    "techReadiness": "テック準備度指数",
+    "gccInvestments": "GCC投資",
+    "geoHubs": "地政学ハブ",
+    "liveWebcams": "ライブカメラ"
+  },
+  "modals": {
+    "search": {
+      "placeholder": "ニュース、パイプライン、基地、市場を検索...",
+      "hint": "ニュース・パイプライン・基地・ケーブル・データセンター・市場",
+      "placeholderTech": "企業、AIラボ、スタートアップ、イベントを検索...",
+      "hintTech": "本社・企業・AIラボ・スタートアップ・アクセラレーター・イベント",
+      "placeholderFinance": "取引所、市場、中央銀行を検索...",
+      "hintFinance": "取引所・金融センター・中央銀行・コモディティ",
+      "recent": "最近の検索",
+      "empty": "全データソースを横断検索",
+      "noResults": "結果なし",
+      "navigate": "移動",
+      "select": "選択",
+      "close": "閉じる",
+      "types": {
+        "country": "国",
+        "news": "ニュース",
+        "hotspot": "ホットスポット",
+        "market": "市場",
+        "prediction": "予測",
+        "conflict": "紛争",
+        "base": "軍事基地",
+        "pipeline": "パイプライン",
+        "cable": "海底ケーブル",
+        "datacenter": "データセンター",
+        "earthquake": "地震",
+        "outage": "障害",
+        "nuclear": "核施設",
+        "irradiator": "照射施設",
+        "techcompany": "テック企業",
+        "ailab": "AIラボ",
+        "startup": "スタートアップ",
+        "techevent": "テックイベント",
+        "techhq": "テック本社",
+        "accelerator": "アクセラレーター"
+      }
+    },
+    "signal": {
+      "title": "インテリジェンス所見",
+      "soundAlerts": "サウンドアラート",
+      "dismiss": "閉じる",
+      "confidence": "信頼度",
+      "country": "国:",
+      "scoreChange": "スコア変動:",
+      "instabilityLevel": "不安定性レベル:",
+      "primaryDriver": "主要ドライバー:",
+      "location": "場所:",
+      "eventTypes": "イベントタイプ:",
+      "eventCount": "イベント数:",
+      "eventCountValue": "24時間で{{count}}件のイベント",
+      "source": "ソース:",
+      "countriesAffected": "影響を受ける国:",
+      "impactLevel": "影響レベル:",
+      "focalPoints": "相関焦点",
+      "newsCorrelation": "ニュース相関",
+      "viewOnMap": "マップで表示",
+      "whyItMatters": "重要な理由:",
+      "action": "アクション:",
+      "note": "備考:",
+      "suppress": "この用語を抑制",
+      "suppressed": "抑制済",
+      "predictionLeading": "予測先行",
+      "newsLeading": "ニュース先行",
+      "silentDivergence": "サイレント乖離",
+      "velocitySpike": "速度急上昇",
+      "keywordSpike": "キーワード急上昇",
+      "convergence": "収束",
+      "triangulation": "三角測量",
+      "flowDrop": "フロー低下",
+      "flowPriceDivergence": "フロー/価格乖離",
+      "geoConvergence": "地理的収束",
+      "marketMove": "市場変動の説明",
+      "sectorCascade": "セクターカスケード",
+      "militarySurge": "軍事活動急増"
+    },
+    "story": {
+      "generating": "ストーリーを生成中...",
+      "close": "閉じる",
+      "shareTitle": "ストーリーを共有",
+      "save": "保存",
+      "whatsapp": "WhatsApp",
+      "twitter": "X",
+      "linkedin": "LinkedIn",
+      "copyLink": "リンク",
+      "saved": "保存済！",
+      "copied": "コピー済！",
+      "opening": "開いています...",
+      "error": "ストーリーの生成に失敗。"
+    },
+    "mobileWarning": {
+      "title": "モバイル表示",
+      "description": "MENA地域に焦点を当てた簡易モバイル版を表示中です。必須レイヤーが有効になっています。",
+      "tip": "ヒント: ビューボタン（GLOBAL/US/MENA）で地域を切り替えられます。マーカーをタップすると詳細が表示されます。",
+      "dontShowAgain": "今後表示しない",
+      "gotIt": "了解"
+    },
+    "downloadBanner": {
+      "title": "デスクトップ版あり",
+      "description": "ネイティブパフォーマンス、安全なローカルキー保存、オフラインマップタイル。",
+      "macSilicon": "macOS (Apple Silicon)",
+      "macIntel": "macOS (Intel)",
+      "windows": "Windows (.exe)",
+      "linux": "Linux (.AppImage)",
+      "showAllPlatforms": "全プラットフォームを表示",
+      "showLess": "折りたたむ",
+      "dismiss": "閉じる"
+    },
+    "runtimeConfig": {
+      "title": "デスクトップ設定",
+      "alertTitle": {
+        "configured": "デスクトップ設定が構成済",
+        "needsKeys": "機能を有効にするためAPIキーを設定してください",
+        "some": "一部の機能にAPIキーが必要"
+      },
+      "openSettings": "設定を開く",
+      "summary": {
+        "desktop": "デスクトップモード",
+        "web": "Webモード（読み取り専用、サーバー管理の認証情報）",
+        "secrets": "ローカルシークレット設定済",
+        "available": "利用可能な機能"
+      },
+      "status": {
+        "ready": "準備完了",
+        "staged": "ステージ済",
+        "needsKeys": "キーが必要",
+        "invalid": "無効",
+        "missing": "未設定",
+        "valid": "有効",
+        "looksInvalid": "無効の可能性"
+      },
+      "placeholder": {
+        "setSecret": "シークレットを設定",
+        "staged": "ステージ済（OKで保存）"
+      },
+      "help": {
+        "URLHAUS_AUTH_KEY": "URLhausとThreatFox APIの両方で使用。",
+        "OTX_API_KEY": "サイバー脅威レイヤーのオプション追加ソース。",
+        "ABUSEIPDB_API_KEY": "悪意あるIPレピュテーションのオプション追加ソース。",
+        "FINNHUB_API_KEY": "リアルタイム株価・市場データ。",
+        "NASA_FIRMS_API_KEY": "Fire Information for Resource Management System。",
+        "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
+        "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
+      }
+    },
+    "settingsWindow": {
+      "validating": "APIキーを検証中...",
+      "saved": "設定を保存済",
+      "failed": "保存失敗: {{error}}",
+      "verifyFailed": "検証済キーを保存。失敗: {{errors}}",
+      "verboseOn": "詳細サイドカーログ ON（保存済）",
+      "verboseOff": "詳細サイドカーログ OFF（保存済）",
+      "invokeFail": "{{command}}の実行に失敗。デスクトップログを確認してください。",
+      "openLogs": "ログフォルダを開いた",
+      "openApiLog": "APIログを開いた",
+      "sidecarError": "詳細モード切替のためサイドカーに接続できない",
+      "noTraffic": "まだトラフィックが記録されていない。",
+      "sidecarUnreachable": "サイドカーに接続不能。",
+      "logCleared": "ログをクリア済。",
+      "table": {
+        "time": "時刻",
+        "method": "メソッド",
+        "path": "パス",
+        "status": "ステータス",
+        "duration": "所要時間"
+      }
+    },
+    "countryIntel": {
+      "identifying": "国を特定中...",
+      "locating": "地域を特定中...",
+      "instabilityIndex": "不安定性指数",
+      "protests": "抗議活動",
+      "militaryAircraft": "軍用機",
+      "militaryVessels": "軍艦",
+      "outages": "障害",
+      "earthquakes": "地震",
+      "loadingIndex": "指数を読み込み中...",
+      "loadingMarkets": "予測市場を読み込み中...",
+      "generatingBrief": "インテリジェンスブリーフを生成中...",
+      "cached": "キャッシュ済",
+      "fresh": "最新",
+      "noMarkets": "予測市場が見つからない",
+      "predictionMarkets": "予測市場",
+      "unavailable": "AIブリーフ利用不可 — 設定でGROQ_API_KEYを構成してください。"
+    },
+    "countryBrief": {
+      "identifying": "国を特定中...",
+      "locating": "地域を特定中...",
+      "limitedCoverage": "限定的なカバレッジ",
+      "instabilityIndex": "不安定性指数",
+      "notTracked": "未追跡 — {{country}}はCII第1階層リストに含まれていない",
+      "intelBrief": "インテリジェンスブリーフ",
+      "generatingBrief": "インテリジェンスブリーフを生成中...",
+      "topNews": "トップニュース",
+      "activeSignals": "アクティブシグナル",
+      "timeline": "7日間タイムライン",
+      "predictionMarkets": "予測市場",
+      "loadingMarkets": "予測市場を読み込み中...",
+      "infrastructure": "インフラ露出度",
+      "briefUnavailable": "AIブリーフ利用不可 — 設定でGROQ_API_KEYを構成してください。",
+      "cached": "キャッシュ済",
+      "fresh": "最新",
+      "noMarkets": "予測市場が見つからない",
+      "loadingIndex": "指数を読み込み中...",
+      "components": {
+        "unrest": "騒乱",
+        "conflict": "紛争",
+        "security": "安全保障",
+        "information": "情報"
+      },
+      "signals": {
+        "protests": "抗議活動",
+        "militaryAir": "軍用機",
+        "militarySea": "軍艦",
+        "outages": "障害",
+        "earthquakes": "地震",
+        "displaced": "避難民",
+        "climate": "気候ストレス",
+        "conflictEvents": "紛争イベント"
+      },
+      "timeAgo": {
+        "m": "{{count}}分前",
+        "h": "{{count}}時間前",
+        "d": "{{count}}日前"
+      },
+      "infra": {
+        "pipeline": "パイプライン",
+        "cable": "海底ケーブル",
+        "datacenter": "データセンター",
+        "base": "軍事基地",
+        "nuclear": "核施設",
+        "port": "港湾"
+      },
+      "levels": {
+        "critical": "Critical",
+        "high": "High",
+        "elevated": "Elevated",
+        "moderate": "Moderate",
+        "normal": "Normal",
+        "low": "Low"
+      },
+      "trends": {
+        "rising": "Rising",
+        "falling": "Falling",
+        "stable": "Stable"
+      },
+      "fallback": {
+        "instabilityIndex": "**Instability Index: {{score}}/100** ({{level}}, {{trend}})",
+        "protestsDetected": "{{count}} active protests detected",
+        "aircraftTracked": "{{count}} military aircraft tracked",
+        "vesselsTracked": "{{count}} military vessels tracked",
+        "internetOutages": "{{count}} internet outages",
+        "recentEarthquakes": "{{count}} recent earthquakes",
+        "stockIndex": "Stock index: {{value}}",
+        "recentHeadlines": "**Recent headlines:**"
+      }
+    }
+  },
+  "components": {
+    "webcams": {
+      "regions": {
+        "all": "すべて",
+        "mideast": "中東",
+        "europe": "ヨーロッパ",
+        "americas": "アメリカ",
+        "asia": "アジア"
+      }
+    },
+    "monitor": {
+      "placeholder": "キーワード（カンマ区切り）",
+      "add": "+ モニター追加",
+      "addKeywords": "ニュースを監視するキーワードを追加",
+      "noMatches": "{{count}}件の記事に一致なし",
+      "showingMatches": "{{total}}件中{{count}}件を表示",
+      "match": "件一致",
+      "matches": "件一致"
+    },
+    "regulation": {
+      "timeline": "タイムライン",
+      "deadlines": "期限",
+      "regulations": "規制",
+      "countries": "国",
+      "recentActions": "最近の規制措置（過去12ヶ月）",
+      "upcomingDeadlines": "今後のコンプライアンス期限",
+      "activeRegulations": "施行中の規制",
+      "proposedRegulations": "提案中の規制",
+      "globalLandscape": "グローバル規制環境",
+      "emptyActions": "最近の規制措置なし",
+      "emptyDeadlines": "今後12ヶ月以内のコンプライアンス期限なし",
+      "keyProvisions": "主要条項",
+      "learnMore": "詳細を見る",
+      "active": "施行中",
+      "proposed": "提案中",
+      "updated": "更新済",
+      "dashboard": "AI Regulation Dashboard",
+      "actionsCount": "{{count}} actions",
+      "deadlinesCount": "{{count}} deadlines",
+      "days": "days",
+      "activeCount": "Active Regulations ({{count}})",
+      "proposedCount": "Proposed Regulations ({{count}})",
+      "moreProvisions": "+{{count}} more...",
+      "source": "Source",
+      "stances": {
+        "strict": "Strict",
+        "moderate": "Moderate",
+        "permissive": "Permissive",
+        "undefined": "Undefined"
+      }
+    },
+    "economic": {
+      "indicators": "指標",
+      "oil": "石油",
+      "gov": "政府",
+      "noData": "経済データなし",
+      "noOilData": "石油データ利用不可",
+      "noOilMetrics": "石油指標なし。EIA_API_KEYを追加して有効にしてください。",
+      "noSpending": "最近の政府支出なし",
+      "awards": "件の支出",
+      "noIndicatorData": "指標データなし — FREDが読み込み中の可能性",
+      "noOilDataRetry": "石油データ一時利用不可 — 自動リトライ予定",
+      "vsPreviousWeek": "前週比",
+      "in": "内"
+    },
+    "gdelt": {
+      "empty": "このトピックの最新記事なし"
+    },
+    "geoHubs": {
+      "tooltip": "<strong>地政学アクティビティハブ</strong><br>ニュース活動が最も活発な地域を表示。<br><br><em>ハブタイプ:</em><br>• 🏛️ 首都 — 世界の首都・政府中枢<br>• ⚔️ 紛争地帯 — アクティブな紛争地域<br>• ⚓ 戦略拠点 — チョークポイント・主要地域<br>• 🏢 国際機関 — UN、NATO、IAEAなど<br><br><em>活動レベル:</em><br>• <span style=\"color: #ff4444\">高</span> — 速報または70+スコア<br>• <span style=\"color: #ff8844\">上昇</span> — スコア40-69<br>• <span style=\"color: #888\">低</span> — スコア40未満<br><br>ハブをクリックするとその場所にズーム。",
+      "noActive": "アクティブな地政学ハブなし",
+      "story": "件",
+      "stories": "件",
+      "infoTooltip": "<strong>地政学アクティビティハブ</strong><br>ニュース活動が最も活発な地域を表示。<br><br><em>ハブタイプ:</em><br>• 🏛️ 首都 — 世界の首都・政府中枢<br>• ⚔️ 紛争地帯 — アクティブな紛争地域<br>• ⚓ 戦略拠点 — チョークポイント・主要地域<br>• 🏢 国際機関 — UN、NATO、IAEAなど<br><br><em>活動レベル:</em><br>• <span style=\"color: {{highColor}}\">高</span> — 速報または70+スコア<br>• <span style=\"color: {{elevatedColor}}\">上昇</span> — スコア40-69<br>• <span style=\"color: {{lowColor}}\">低</span> — スコア40未満<br><br>ハブをクリックするとその場所にズーム。"
+    },
+    "techHubs": {
+      "tooltip": "<strong>テックハブアクティビティ</strong><br>ニュース活動が最も活発なテックハブを表示。<br><br><em>活動レベル:</em><br>• <span style=\"color: #00ff88\">高</span> — 速報または50+スコア<br>• <span style=\"color: #ffc800\">上昇</span> — スコア20-49<br>• <span style=\"color: #888\">低</span> — スコア20未満<br><br>ハブをクリックするとその場所にズーム。",
+      "noActive": "アクティブなテックハブなし",
+      "infoTooltip": "<strong>テックハブアクティビティ</strong><br>ニュース活動が最も活発なテックハブを表示。<br><br><em>活動レベル:</em><br>• <span style=\"color: {{highColor}}\">高</span> — 速報または50+スコア<br>• <span style=\"color: {{elevatedColor}}\">上昇</span> — スコア20-49<br>• <span style=\"color: {{lowColor}}\">低</span> — スコア20未満<br><br>ハブをクリックするとその場所にズーム。"
+    },
+    "predictions": {
+      "tooltip": "<strong>予測市場</strong><br>リアルマネー予測市場:<br><ul><li>価格は群衆の確率推定を反映</li><li>取引量が多いほど信頼性の高いシグナル</li><li>地政学・時事問題に焦点</li></ul>ソース: Polymarket (polymarket.com)",
+      "error": "予測の読み込みに失敗",
+      "yes": "はい",
+      "no": "いいえ",
+      "vol": "出来高"
+    },
+    "stablecoins": {
+      "pegHealth": "ペグ健全性",
+      "supplyVolume": "供給量 & 出来高",
+      "unavailable": "ステーブルコインデータ一時利用不可",
+      "token": "トークン",
+      "mcap": "時価総額",
+      "vol24h": "24h出来高",
+      "chg24h": "24h変動"
+    },
+    "status": {
+      "dataFeeds": "データフィード",
+      "apiStatus": "APIステータス",
+      "storage": "ストレージ",
+      "systemStatus": "システム状態",
+      "updatedJustNow": "たった今更新",
+      "updatedAt": "{{time}}に更新",
+      "storageUnavailable": "ストレージ情報利用不可"
+    },
+    "playback": {
+      "toggleMode": "再生モード切替",
+      "live": "LIVE",
+      "historicalPlayback": "ヒストリカル再生"
+    },
+    "pizzint": {
+      "title": "ペンタゴンピザ指数",
+      "defcon": "DEFCON {{level}}",
+      "updated": "{{timeAgo}}に更新",
+      "tensionsTitle": "地政学的緊張",
+      "source": "ソース:",
+      "statusClosed": "閉鎖",
+      "statusSpike": "急上昇",
+      "statusHigh": "高",
+      "statusElevated": "上昇",
+      "statusNominal": "通常",
+      "statusQuiet": "静穏",
+      "justNow": "たった今",
+      "minutesAgo": "{{m}}分前",
+      "hoursAgo": "{{h}}時間前",
+      "defconLabels": {
+        "1": "COCKED PISTOL — 最大即応態勢",
+        "2": "FAST PACE — 軍即応態勢",
+        "3": "ROUND HOUSE — 即応態勢強化",
+        "4": "DOUBLE TAKE — 情報監視強化",
+        "5": "FADE OUT — 最低即応態勢"
+      }
+    },
+    "strategicPosture": {
+      "elapsed": "経過: {{elapsed}} 秒",
+      "clickToView": "クリックして{{name}}をマップで表示",
+      "clickToViewMap": "クリックしてマップで表示",
+      "refresh": "更新",
+      "units": {
+        "fighters": "戦闘機",
+        "tankers": "空中給油機",
+        "awacs": "AWACS",
+        "recon": "偵察機",
+        "transport": "輸送機",
+        "bombers": "爆撃機",
+        "drones": "ドローン",
+        "aircraft": "航空機",
+        "carriers": "空母",
+        "destroyers": "駆逐艦",
+        "frigates": "フリゲート",
+        "submarines": "潜水艦",
+        "patrol": "哨戒艦",
+        "auxiliary": "補助艦",
+        "navalVessels": "海軍艦艇"
+      },
+      "infoTooltip": "<strong>方法論</strong><p>戦域ごとに軍用機と艦艇を集計。</p><ul><li><strong>通常:</strong> ベースライン活動</li><li><strong>上昇:</strong> 閾値超過（航空機50+機）</li><li><strong>危機:</strong> 高密度集結（航空機100+機）</li></ul><p><strong>攻撃能力あり:</strong> 空中給油機 + AWACS + 戦闘機が持続作戦に十分な数で存在。</p>",
+      "scanningTheaters": "戦域スキャン中",
+      "positions": "航空機の位置",
+      "navalVesselsLoading": "海軍艦艇",
+      "theaterAnalysis": "戦域分析",
+      "connectingStreams": "ADS-BおよびAISライブストリームに接続中...",
+      "initialLoadNote": "追跡データの蓄積に30〜60秒かかります",
+      "acquiringData": "データ取得中",
+      "acquiringDesc": "軍用飛行データのためADS-Bネットワークに接続中。初回ロードには30〜60秒かかる場合があります。",
+      "openSkyAdsb": "OpenSky ADS-B",
+      "aisVesselStream": "AIS船舶ストリーム",
+      "retryNow": "今すぐ再試行",
+      "feedRateLimited": "フィードレート制限",
+      "rateLimitedDesc": "OpenSky APIにはリクエスト制限があります。パネルは数分後に自動的に再試行するか、今すぐ再試行できます。",
+      "rateLimitedTip": "ヒント：ピーク時間帯（UTC 12:00-20:00）はより高い制限が発生しやすくなります。",
+      "tryAgain": "再試行",
+      "badges": {
+        "critical": "危機",
+        "elevated": "上昇",
+        "normal": "通常"
+      },
+      "trendStable": "安定",
+      "domains": {
+        "air": "空域",
+        "sea": "海域"
+      },
+      "strike": "STRIKE",
+      "staleWarning": "キャッシュデータを使用中 - ライブフィードが一時的に利用不可",
+      "updated": "更新：",
+      "theaters": {
+        "iran-theater": "イラン戦域",
+        "taiwan-theater": "台湾海峡",
+        "baltic-theater": "バルト海戦域",
+        "blacksea-theater": "黒海",
+        "korea-theater": "朝鮮半島",
+        "south-china-sea": "南シナ海",
+        "east-med-theater": "東地中海",
+        "israel-gaza-theater": "イスラエル/ガザ",
+        "yemen-redsea-theater": "イエメン/紅海"
+      }
+    },
+    "countryBrief": {
+      "shareStory": "ストーリーを共有",
+      "printPdf": "印刷 / PDF",
+      "exportData": "データをエクスポート",
+      "sourceRef": "出典 [{{n}}]"
+    },
+    "relatedAssets": {
+      "pipeline": "パイプライン",
+      "cable": "ケーブル",
+      "datacenter": "データセンター",
+      "base": "基地",
+      "nuclear": "核施設"
+    },
+    "community": {
+      "joinDiscussion": "ディスカッションに参加",
+      "openDiscussion": "ディスカッションを開く",
+      "dontShowAgain": "今後表示しない"
+    },
+    "threatLabels": {
+      "critical": "危険",
+      "high": "高",
+      "medium": "中",
+      "low": "低",
+      "info": "情報"
+    },
+    "deckgl": {
+      "zoomIn": "拡大",
+      "zoomOut": "縮小",
+      "resetView": "ビューをリセット",
+      "legend": {
+        "title": "凡例",
+        "startupHub": "スタートアップハブ",
+        "techHQ": "テック本社",
+        "accelerator": "アクセラレーター",
+        "cloudRegion": "クラウドリージョン",
+        "datacenter": "データセンター",
+        "stockExchange": "証券取引所",
+        "financialCenter": "金融センター",
+        "centralBank": "中央銀行",
+        "commodityHub": "コモディティハブ",
+        "waterway": "水路",
+        "highAlert": "高警戒",
+        "elevated": "上昇",
+        "monitoring": "監視中",
+        "base": "基地",
+        "nuclear": "核施設"
+      },
+      "layerGuide": "レイヤーガイド",
+      "layersTitle": "レイヤー",
+      "timeAll": "全期間",
+      "views": {
+        "global": "グローバル",
+        "americas": "アメリカ",
+        "mena": "MENA",
+        "europe": "ヨーロッパ",
+        "asia": "アジア",
+        "latam": "中南米",
+        "africa": "アフリカ",
+        "oceania": "オセアニア"
+      },
+      "layers": {
+        "startupHubs": "スタートアップハブ",
+        "techHQs": "テック本社",
+        "accelerators": "アクセラレーター",
+        "cloudRegions": "クラウドリージョン",
+        "aiDataCenters": "AIデータセンター",
+        "underseaCables": "海底ケーブル",
+        "internetOutages": "インターネット障害",
+        "cyberThreats": "サイバー脅威",
+        "techEvents": "テックイベント",
+        "naturalEvents": "自然災害",
+        "fires": "火災",
+        "intelHotspots": "インテルホットスポット",
+        "conflictZones": "紛争地帯",
+        "militaryBases": "軍事基地",
+        "nuclearSites": "核施設",
+        "gammaIrradiators": "ガンマ線照射施設",
+        "spaceports": "宇宙港",
+        "pipelines": "パイプライン",
+        "militaryActivity": "軍事活動",
+        "shipTraffic": "船舶交通",
+        "flightDelays": "フライト遅延",
+        "protests": "抗議活動",
+        "ucdpEvents": "UCDPイベント",
+        "displacementFlows": "避難民フロー",
+        "climateAnomalies": "気候異常",
+        "weatherAlerts": "気象警報",
+        "strategicWaterways": "戦略的水路",
+        "economicCenters": "経済中心地",
+        "criticalMinerals": "重要鉱物",
+        "stockExchanges": "証券取引所",
+        "financialCenters": "金融センター",
+        "centralBanks": "中央銀行",
+        "commodityHubs": "コモディティハブ",
+        "gulfInvestments": "GCC投資"
+      },
+      "tooltip": {
+        "earthquake": "地震",
+        "militaryAircraft": "軍用機",
+        "vesselCluster": "艦艇クラスター",
+        "vessels": "隻",
+        "flightCluster": "航空機クラスター",
+        "aircraft": "機",
+        "protest": "抗議活動",
+        "protestsCount": "{{count}}件の抗議活動",
+        "techHQsCount": "{{count}}件のテック本社",
+        "techEventsCount": "{{count}}件のテックイベント",
+        "dataCentersCount": "{{count}}件のデータセンター",
+        "underseaCable": "海底ケーブル",
+        "pipeline": "パイプライン",
+        "conflictZone": "紛争地帯",
+        "naturalEvent": "自然災害",
+        "financialCenter": "金融センター",
+        "port": "港湾",
+        "disruption": "障害",
+        "advisory": "勧告",
+        "repairShip": "修理船",
+        "internetOutage": "インターネット障害",
+        "medium": "中程度",
+        "news": "ニュース",
+        "undisclosed": "非公開",
+        "stake": "出資比率"
+      },
+      "layerHelp": {
+        "title": "マップレイヤーガイド",
+        "labels": {
+          "countries": "国名",
+          "timeRecent": "1H/6H/24H",
+          "timeExtended": "7D/30D/ALL",
+          "sanctions": "制裁",
+          "shipping": "海運"
+        },
+        "sections": {
+          "techEcosystem": "テックエコシステム",
+          "infrastructure": "インフラ",
+          "naturalEconomic": "自然・経済",
+          "financeCore": "金融コア",
+          "infrastructureRisk": "インフラ・リスク",
+          "macroContext": "マクロ環境",
+          "timeFilter": "時間フィルター（右上）",
+          "geopolitical": "地政学",
+          "militaryStrategic": "軍事・戦略",
+          "transport": "輸送",
+          "labels": "ラベル"
+        },
+        "descriptions": {
+          "techStartupHubs": "主要スタートアップエコシステム（SF、NYC、ロンドン等）",
+          "techCloudRegions": "AWS、Azure、GCPのデータセンターリージョン",
+          "techHQs": "主要テック企業の本社",
+          "techAccelerators": "Y Combinator、Techstars、500 Startupsの拠点",
+          "infraCables": "主要海底光ファイバーケーブル（インターネットの基幹）",
+          "infraDatacenters": "10,000 GPU以上のAIコンピュートクラスター",
+          "infraOutages": "インターネット遮断・サービス障害",
+          "naturalEventsTech": "地震、暴風雨、火災（データセンターに影響の可能性）",
+          "weatherAlerts": "気象警報",
+          "economicCenters": "証券取引所・中央銀行",
+          "countriesOverlay": "国名オーバーレイ",
+          "financeExchanges": "市場ティア別の主要グローバル取引所",
+          "financeCenters": "グローバルおよび地域金融ハブ",
+          "financeCentralBanks": "世界各国の金融政策機関",
+          "financeCommodityHubs": "主要取引所、港湾、精製ハブ",
+          "financeCables": "市場インフラに結びつく主要海底光ファイバールート",
+          "financePipelines": "エネルギー市場に影響する石油/ガスパイプラインルート",
+          "financeOutages": "市場運営に影響しうるインターネット障害",
+          "financeCyberThreats": "金融インフラ周辺のセキュリティイベント",
+          "macroWaterways": "コモディティ海運の戦略的チョークポイント",
+          "weatherAlertsMarket": "市場に関連する気象イベント",
+          "naturalEventsMacro": "地震、火災、洪水、その他の自然災害",
+          "timeRecent": "時間ベースデータを直近の時間に絞り込み",
+          "timeExtended": "過去1週間、1ヶ月、または全期間のデータを表示",
+          "geoConflicts": "アクティブな戦争地帯（ウクライナ、ガザ等）と境界",
+          "geoHotspots": "緊張地域 — ニュース活動レベルで色分け",
+          "geoSanctions": "米国/EU/UN経済制裁対象国",
+          "geoProtests": "市民の騒乱、デモ（時間フィルター付き）",
+          "militaryBases": "米国/NATO、中国、ロシアの軍事施設（150+）",
+          "militaryNuclear": "発電所、濃縮施設、兵器施設",
+          "militaryIrradiators": "産業用ガンマ線照射施設",
+          "militaryActivity": "軍用機・艦艇のリアルタイム追跡",
+          "infraCablesFull": "主要海底光ファイバーケーブル（基幹20ルート）",
+          "infraPipelinesFull": "石油/ガスパイプライン（Nord Stream、TAPI等）",
+          "infraDatacentersFull": "10,000 GPU以上のAIコンピュートクラスターのみ",
+          "transportShipping": "船舶、チョークポイント、61の戦略港湾",
+          "transportDelays": "空港の遅延とグラウンドストップ（FAA）",
+          "naturalEventsFull": "地震（USGS）+ 暴風雨、火災、火山、洪水（NASA EONET）",
+          "waterwaysLabels": "戦略的チョークポイントのラベル"
+        },
+        "notes": {
+          "timeAffects": "影響: 地震、気象、抗議活動、障害"
+        }
+      }
+    },
+    "cii": {
+      "shareStory": "ストーリーを共有",
+      "noSignals": "不安定性シグナル未検出",
+      "infoTooltip": "<strong>方法論</strong><ul><li><strong>U</strong>nrest: 市民の騒乱・抗議活動</li><li><strong>C</strong>onflict: 武力紛争の強度</li><li><strong>S</strong>ecurity: 領土上の軍事飛行/艦艇</li><li><strong>I</strong>nformation: ニュース速度と焦点相関</li><li>ホットスポット近接ブースト（戦略的拠点）</li></ul><em>U:C:S:I値はコンポーネントスコアを表示。</em> 焦点検出はニュースエンティティとマップシグナルを相関させ正確なスコアリングを実現。"
+    },
+    "insights": {
+      "noStories": "速報またはマルチソースストーリーはまだなし",
+      "infoTooltip": "<strong>AI分析</strong><br>• <strong>世界ブリーフ</strong>: AI要約（Groq/OpenRouter）<br>• <strong>センチメント</strong>: ニュースのトーン分析<br>• <strong>速度</strong>: 急速に広がるストーリー<br>• <strong>焦点</strong>: ニュースエンティティとマップシグナル（軍事、抗議、障害）を相関<br><em>デスクトップ版のみ・Llama 3.3 + 焦点検出搭載</em>",
+      "step": "Step {{step}}/{{total}}",
+      "waitingForData": "Waiting for news data...",
+      "rankingStories": "Ranking important stories...",
+      "analyzingSentiment": "Analyzing sentiment...",
+      "generatingBrief": "Generating world brief..."
+    },
+    "cascade": {
+      "noImpacts": "国への影響未検出",
+      "filters": {
+        "cables": "ケーブル",
+        "pipelines": "パイプライン",
+        "ports": "港湾",
+        "chokepoints": "チョークポイント"
+      },
+      "filterType": {
+        "cable": "ケーブル",
+        "pipeline": "パイプライン",
+        "port": "港湾",
+        "chokepoint": "チョークポイント",
+        "country": "国"
+      },
+      "selectPrompt": "{{type}}を選択...",
+      "analyzeImpact": "影響を分析",
+      "impactLevels": {
+        "critical": "危機的",
+        "high": "高",
+        "medium": "中",
+        "low": "低"
+      },
+      "capacityPercent": "容量{{percent}}%",
+      "noCountryImpacts": "国への影響未検出",
+      "alternativeRoutes": "代替ルート",
+      "countriesAffected": "影響を受ける国（{{count}}）",
+      "links": "リンク",
+      "selectInfrastructureHint": "カスケード影響を分析するインフラを選択",
+      "infoTooltip": "<strong>カスケード分析</strong> インフラ依存関係をモデル化:<ul><li>海底ケーブル、パイプライン、港湾、チョークポイント</li><li>インフラを選択して障害をシミュレーション</li><li>影響を受ける国と容量損失を表示</li><li>冗長ルートを特定</li></ul>TeleGeographyおよび業界ソースのデータ。"
+    },
+    "strategicRisk": {
+      "noRisks": "重大なリスク未検出",
+      "levels": {
+        "critical": "危機的",
+        "elevated": "上昇",
+        "moderate": "中程度",
+        "low": "低"
+      },
+      "trend": "トレンド",
+      "trends": {
+        "escalating": "エスカレーション中",
+        "deEscalating": "沈静化中",
+        "stable": "安定"
+      },
+      "infoTooltip": "<strong>方法論</strong> 複合スコア（0-100）の構成:<ul><li>50% 国家不安定性（上位5カ国加重）</li><li>30% 地理的収束地帯</li><li>20% インフラインシデント</li></ul>5分ごとに自動更新。",
+      "insufficientData": "Insufficient Data",
+      "unableToAssess": "Unable to assess risk level.",
+      "enableDataSources": "Enable data sources to begin monitoring.",
+      "requiredDataSources": "Required Data Sources",
+      "optionalSources": "Optional Sources",
+      "enableCoreFeeds": "Enable Core Feeds",
+      "waitingForData": "Waiting for data...",
+      "refresh": "Refresh",
+      "learningMode": "Learning Mode - {{minutes}}m until reliable",
+      "noData": "no data",
+      "enable": "Enable",
+      "convergenceMetric": "Convergence",
+      "ciiDeviation": "CII Deviation",
+      "infraEvents": "Infra Events",
+      "highAlerts": "High Alerts",
+      "topRisks": "Top Risks",
+      "recentAlerts": "Recent Alerts ({{count}})",
+      "updated": "Updated: {{time}}",
+      "time": {
+        "justNow": "just now",
+        "minutesAgo": "{{count}}m ago",
+        "hoursAgo": "{{count}}h ago"
+      }
+    },
+    "techEvents": {
+      "loading": "テックイベントを読み込み中...",
+      "noEvents": "表示するイベントなし",
+      "showOnMap": "マップで表示",
+      "moreInfo": "詳細",
+      "retry": "Retry",
+      "upcoming": "Upcoming",
+      "conferences": "Conferences",
+      "earnings": "Earnings",
+      "all": "All",
+      "conferencesCount": "{{count}} conferences",
+      "onMap": "{{count}} on map",
+      "techmemeEvents": "Techmeme Events ↗",
+      "today": "TODAY",
+      "soon": "SOON"
+    },
+    "techReadiness": {
+      "internetUsers": "インターネットユーザー",
+      "mobileSubscriptions": "モバイル契約数",
+      "rdSpending": "研究開発費",
+      "infoTooltip": "<strong>グローバルテック準備度</strong><br>世界銀行データに基づく複合スコア（0-100）:<br><br><strong>表示指標:</strong><br>🌐 インターネットユーザー（人口比%）<br>📱 モバイル契約数（100人あたり）<br>🔬 研究開発費（GDP比%）<br><br><strong>重み付け:</strong> 研究開発（35%）、インターネット（30%）、ブロードバンド（20%）、モバイル（15%）<br><br><em>— = 最新データなし</em><br><em>出典: 世界銀行オープンデータ（2019-2024）</em>",
+      "fetchingData": "Fetching World Bank Data",
+      "internetUsersIndicator": "Internet Users",
+      "mobileSubscriptionsIndicator": "Mobile Subscriptions",
+      "broadbandAccess": "Broadband Access",
+      "rdExpenditure": "R&D Expenditure",
+      "analyzingCountries": "Analyzing 200+ countries...",
+      "source": "Source: World Bank",
+      "updated": "Updated: {{date}}"
+    },
+    "populationExposure": {
+      "noData": "露出データなし",
+      "totalAffected": "影響を受ける総人口",
+      "affectedCount": "{{count}}人が影響",
+      "radiusKm": "半径{{km}}km",
+      "infoTooltip": "<strong>人口露出推定</strong> イベント影響半径内の推定人口。WorldPopの国別人口密度データに基づく。<ul><li>紛争: 半径50km</li><li>地震: 半径100km</li><li>洪水: 半径100km</li><li>山火事: 半径30km</li></ul>"
+    },
+    "satelliteFires": {
+      "noData": "火災データなし",
+      "region": "地域",
+      "fires": "火災",
+      "high": "高強度",
+      "total": "合計",
+      "never": "なし",
+      "time": {
+        "justNow": "たった今",
+        "minutesAgo": "{{count}}分前",
+        "hoursAgo": "{{count}}時間前"
+      },
+      "infoTooltip": "NASA FIRMS VIIRS衛星による監視対象紛争地域の熱検知。高強度 = 輝度>360K & 信頼度>80%。"
+    },
+    "ucdpEvents": {
+      "stateBased": "国家間",
+      "nonState": "非国家間",
+      "oneSided": "一方的暴力",
+      "country": "国",
+      "deaths": "死者数",
+      "date": "日付",
+      "actors": "当事者",
+      "deathsCount": "死者{{count}}人",
+      "moreNotShown": "他{{count}}件のイベントは非表示",
+      "noEvents": "このカテゴリにイベントなし",
+      "infoTooltip": "<strong>UCDP地理参照イベント</strong> ウプサラ大学によるイベントレベルの紛争データ。<ul><li><strong>国家間</strong>: 政府対反政府勢力</li><li><strong>非国家間</strong>: 武装グループ対武装グループ</li><li><strong>一方的暴力</strong>: 市民に対する暴力</li></ul>死者数は最良推定値（低-高範囲）で表示。ACLEDの重複は自動的に除外。"
+    },
+    "displacement": {
+      "noData": "データなし",
+      "refugees": "難民",
+      "asylumSeekers": "庇護申請者",
+      "idps": "国内避難民",
+      "total": "合計",
+      "origins": "出身国",
+      "hosts": "受入国",
+      "badges": {
+        "crisis": "危機",
+        "high": "高",
+        "elevated": "上昇"
+      },
+      "country": "国",
+      "status": "ステータス",
+      "count": "人数",
+      "infoTooltip": "<strong>UNHCR避難民データ</strong> UNHCRによる世界の難民、庇護申請者、国内避難民の数。<ul><li><strong>出身国</strong>: 人々が逃れる元の国</li><li><strong>受入国</strong>: 難民を受け入れている国</li><li>危機バッジ: 100万人超 | 高: 50万人超の避難民</li></ul>データは年次更新。CC BY 4.0ライセンス。"
+    },
+    "climate": {
+      "noAnomalies": "重大な異常は検出されず",
+      "zone": "ゾーン",
+      "temp": "気温",
+      "precip": "降水",
+      "severityLabel": "深刻度",
+      "severity": {
+        "extreme": "極端",
+        "moderate": "中程度",
+        "normal": "通常"
+      },
+      "infoTooltip": "<strong>気候異常モニター</strong> 30日間ベースラインからの気温・降水量の偏差。Open-Meteo（ERA5再解析）のデータ。<ul><li><strong>極端</strong>: >5°Cまたは>80mm/日の偏差</li><li><strong>中程度</strong>: >3°Cまたは>40mm/日の偏差</li></ul>15の紛争/災害多発ゾーンを監視。"
+    },
+    "newsPanel": {
+      "close": "閉じる",
+      "summarize": "このパネルを要約",
+      "generatingSummary": "要約を生成中...",
+      "sources": "{{count}}件のソース",
+      "relatedAssetsNear": "{{location}}付近の関連アセット"
+    },
+    "export": {
+      "exportData": "データをエクスポート"
+    },
+    "runtimeConfig": {
+      "getApiKey": "APIキーを取得"
+    },
+    "intelligenceFindings": {
+      "badgeTitle": "インテリジェンス所見",
+      "title": "インテリジェンス所見",
+      "none": "最近のインテリジェンス所見なし",
+      "monitoring": "監視中",
+      "scanning": "相関と異常をスキャン中...",
+      "reviewRecommended": "{{count}}件のインテリジェンス所見 — 確認推奨",
+      "count": "{{count}}件のインテリジェンス所見",
+      "detected": "{{count}}件 検出",
+      "critical": "{{count}}件 危機的",
+      "highPriority": "{{count}}件 高優先度",
+      "more": "+{{count}}件の追加所見",
+      "all": "全インテリジェンス所見（{{count}}件）",
+      "priority": {
+        "critical": "危機的",
+        "high": "高",
+        "medium": "中",
+        "low": "低"
+      },
+      "insights": {
+        "criticalDestabilization": "危機的不安定化 — 即座の注意が必要",
+        "significantShift": "重大な変化 — 注意深く監視",
+        "developingSituation": "発展中の状況 — エスカレーションを追跡",
+        "convergence": "複数のイベントが地域に集中",
+        "cascade": "インフラ障害が拡大中",
+        "review": "状況把握のため確認"
+      },
+      "time": {
+        "justNow": "たった今",
+        "minutesAgo": "{{count}}分前",
+        "hoursAgo": "{{count}}時間前",
+        "daysAgo": "{{count}}日前"
+      },
+      "hideFindings": "Hide Intelligence Findings"
+    },
+    "countryTimeline": {
+      "now": "現在",
+      "noEventsIn7Days": "7日間にイベントなし"
+    },
+    "gdeltIntel": {
+      "infoTooltip": "<strong>GDELTインテリジェンス</strong> リアルタイムグローバルニュース監視:<ul><li>厳選されたトピックカテゴリ（紛争、サイバー等）</li><li>100以上の言語から翻訳された記事</li><li>15分ごとに更新</li></ul>ソース: GDELT Project (gdeltproject.org)"
+    },
+    "investments": {
+      "infoTooltip": "サウジアラビアとUAEによるグローバル重要インフラへの外国直接投資データベース。行をクリックするとマップ上の投資先にズーム。",
+      "searchPlaceholder": "Search assets, countries, entities…",
+      "allCountries": "All Countries",
+      "saudiArabia": "Saudi Arabia",
+      "uae": "UAE",
+      "allSectors": "All Sectors",
+      "allEntities": "All Entities",
+      "allStatuses": "All Statuses",
+      "operational": "Operational",
+      "underConstruction": "Under Construction",
+      "announced": "Announced",
+      "rumoured": "Rumoured",
+      "divested": "Divested",
+      "asset": "Asset",
+      "country": "Country",
+      "sector": "Sector",
+      "status": "Status",
+      "investment": "Investment",
+      "year": "Year",
+      "noMatch": "No investments match filters",
+      "undisclosed": "Undisclosed",
+      "sectors": {
+        "ports": "Ports",
+        "pipelines": "Pipelines",
+        "energy": "Energy",
+        "datacenters": "Data Centers",
+        "airports": "Airports",
+        "railways": "Railways",
+        "telecoms": "Telecoms",
+        "water": "Water",
+        "logistics": "Logistics",
+        "mining": "Mining",
+        "realEstate": "Real Estate",
+        "manufacturing": "Manufacturing"
+      }
+    },
+    "prediction": {
+      "infoTooltip": "<strong>予測市場</strong> リアルマネー予測市場:<ul><li>価格は群衆の確率推定を反映</li><li>取引量が多いほど信頼性の高いシグナル</li><li>地政学・時事問題に焦点</li></ul>ソース: Polymarket (polymarket.com)"
+    },
+    "etfFlows": {
+      "unavailable": "ETFデータは一時的に利用不可",
+      "netFlow": "純フロー",
+      "estFlow": "推定フロー",
+      "totalVol": "総出来高",
+      "etfs": "ETFs",
+      "netInflow": "純流入",
+      "netOutflow": "純流出",
+      "table": {
+        "ticker": "ティッカー",
+        "issuer": "発行体",
+        "estFlow": "推定フロー",
+        "volume": "出来高",
+        "change": "変動率"
+      }
+    },
+    "macroSignals": {
+      "overall": "総合",
+      "verdict": {
+        "buy": "買い",
+        "cash": "現金"
+      },
+      "bullish": "{{count}}/{{total}} 強気",
+      "signals": {
+        "liquidity": "流動性",
+        "flow": "フロー",
+        "regime": "市場環境",
+        "btcTrend": "BTCトレンド",
+        "hashRate": "Hash Rate",
+        "mining": "マイニング",
+        "fearGreed": "恐怖 &amp; 貪欲"
+      }
+    },
+    "panel": {
+      "showMethodologyInfo": "Show methodology info",
+      "dragToResize": "Drag to resize (double-click to reset)",
+      "openSettings": "Open Settings"
+    },
+    "languageSelector": {
+      "selectLanguage": "Select Language"
+    },
+    "serviceStatus": {
+      "checkingServices": "Checking services...",
+      "allOperational": "All services operational",
+      "ok": "OK",
+      "degraded": "Degraded",
+      "outage": "Outage",
+      "backendUnavailable": "Desktop local backend unavailable. Falling back to cloud API.",
+      "desktopReadiness": "Desktop readiness",
+      "acceptanceChecks": "Acceptance checks: {{ready}}/{{total}} ready · key-backed features {{available}}/{{featureTotal}}",
+      "nonParityFallbacks": "Non-parity fallbacks ({{count}})",
+      "categories": {
+        "all": "All",
+        "cloud": "Cloud",
+        "dev": "Dev Tools",
+        "comm": "Comms",
+        "ai": "AI",
+        "saas": "SaaS"
+      }
+    },
+    "verification": {
+      "title": "Information Verification Checklist",
+      "hint": "Based on Bellingcat's OSH Framework",
+      "verdicts": {
+        "verified": "VERIFIED",
+        "likely": "LIKELY AUTHENTIC",
+        "uncertain": "UNCERTAIN",
+        "unreliable": "UNRELIABLE"
+      },
+      "notesTitle": "Verification Notes",
+      "noNotes": "No notes added",
+      "addNotePlaceholder": "Add verification note...",
+      "add": "Add",
+      "resetChecklist": "Reset Checklist",
+      "checks": {
+        "recency": "Recent timestamp confirmed",
+        "geolocation": "Location verified",
+        "source": "Primary source identified",
+        "crossref": "Cross-referenced with other sources",
+        "noAi": "No AI generation artifacts",
+        "noRecrop": "Not recycled/old footage",
+        "metadata": "Metadata verified",
+        "context": "Context established"
+      }
+    },
+    "liveNews": {
+      "retry": "Retry",
+      "notLive": "{{name}} is not currently live",
+      "cannotEmbed": "{{name}} cannot be embedded in this app (YouTube {{code}})",
+      "openOnYouTube": "Open on YouTube",
+      "manage": "チャンネル管理",
+      "addChannel": "チャンネルを追加",
+      "remove": "削除",
+      "youtubeHandle": "YouTube ハンドル（例: @Channel）",
+      "displayName": "表示名（任意）",
+      "openPanelSettings": "表示パネル設定",
+      "channelSettings": "チャンネル設定",
+      "save": "保存",
+      "cancel": "キャンセル",
+      "confirmDelete": "このチャンネルを削除しますか？",
+      "confirmTitle": "確認",
+      "restoreDefaults": "デフォルトのチャンネルを復元"
+    }
+  },
+  "popups": {
+    "startDate": "開始日",
+    "endDate": "終了日",
+    "magnitude": "マグニチュード",
+    "depth": "深度",
+    "intensity": "強度",
+    "type": "タイプ",
+    "status": "ステータス",
+    "severity": "深刻度",
+    "location": "場所",
+    "coordinates": "座標",
+    "casualties": "死傷者",
+    "displaced": "避難民",
+    "belligerents": "交戦国",
+    "keyDevelopments": "主要な展開",
+    "unknown": "不明",
+    "source": "ソース",
+    "target": "ターゲット",
+    "events": "イベント",
+    "impact": "影響",
+    "capacity": "容量",
+    "alerts": "アクティブアラート",
+    "updated": "更新済",
+    "common": {
+      "start": "開始",
+      "end": "終了",
+      "updated": "更新"
+    },
+    "conflict": {
+      "title": "紛争地帯"
+    },
+    "earthquake": {
+      "levels": {
+        "major": "大規模",
+        "moderate": "中規模",
+        "minor": "小規模"
+      }
+    },
+    "base": {
+      "types": {
+        "us-nato": "US/NATO",
+        "china": "中国",
+        "russia": "ロシア"
+      }
+    },
+    "protest": {
+      "acledVerified": "ACLED（検証済）",
+      "gdelt": "GDELT",
+      "riots": "暴動",
+      "highSeverity": "高深刻度"
+    },
+    "flight": {
+      "groundStop": "グラウンドストップ",
+      "groundDelay": "グラウンドディレイプログラム",
+      "departureDelay": "出発遅延",
+      "arrivalDelay": "到着遅延",
+      "delaysReported": "遅延報告あり",
+      "delays": "遅延",
+      "avgDelay": "平均遅延",
+      "cancelled": "欠航",
+      "sources": {
+        "faa": "FAA ASWS",
+        "eurocontrol": "Eurocontrol",
+        "computed": "算出値"
+      },
+      "regions": {
+        "americas": "アメリカ",
+        "europe": "ヨーロッパ",
+        "apac": "アジア太平洋",
+        "mena": "中東",
+        "africa": "アフリカ"
+      }
+    },
+    "apt": {
+      "description": "国家レベルの能力を持つ高度持続的脅威グループ。重要インフラ、政府、防衛セクターを標的とした高度なサイバー作戦で知られる。"
+    },
+    "cyberThreat": {
+      "title": "サイバー脅威"
+    },
+    "nuclear": {
+      "types": {
+        "plant": "発電所",
+        "enrichment": "濃縮施設",
+        "weapons": "兵器複合施設",
+        "research": "研究施設"
+      },
+      "description": "監視対象の核施設。地域安全保障と核不拡散の観点から戦略的重要性を持つ。"
+    },
+    "economic": {
+      "types": {
+        "exchange": "証券取引所",
+        "centralBank": "中央銀行",
+        "financialHub": "金融ハブ"
+      },
+      "closed": "閉場"
+    },
+    "irradiator": {
+      "subtitle": "産業用ガンマ線照射施設",
+      "description": "医療機器の滅菌、食品保存、または材料加工のためにコバルト60またはセシウム137線源を使用する産業用照射施設。出典: IAEA DIIFデータベース。"
+    },
+    "pipeline": {
+      "title": "パイプライン",
+      "types": {
+        "oil": "石油パイプライン",
+        "gas": "ガスパイプライン",
+        "products": "製品パイプライン"
+      },
+      "status": {
+        "operating": "稼働中",
+        "construction": "建設中"
+      },
+      "description": "主要な{{type}}パイプラインインフラ。{{status}}"
+    },
+    "pipelineStatusDesc": {
+      "operating": "現在稼働中で資源を輸送。",
+      "construction": "現在建設中。"
+    },
+    "cable": {
+      "fault": "障害",
+      "degraded": "劣化",
+      "active": "ACTIVE",
+      "major": "主要",
+      "cable": "ケーブル",
+      "subtitle": "海底光ファイバーケーブル",
+      "type": "海底ケーブル",
+      "advisory": "障害勧告",
+      "repairDeployment": "修理展開",
+      "repairStatus": {
+        "onStation": "現地到着",
+        "enRoute": "移動中"
+      },
+      "health": {
+        "evidence": "健全性の証拠"
+      },
+      "description": "国際インターネットトラフィックを伝送する海底通信ケーブル。これらの光ファイバーケーブルはグローバルインターネット接続の基盤を形成し、大陸間データの95%以上を伝送。"
+    },
+    "repairShip": {
+      "note": "修理船の追跡は障害箇所への展開中であることを示す。",
+      "badge": "修理船",
+      "description": "修理船の追跡は海底ケーブル復旧支援のための展開中であることを示す。",
+      "status": {
+        "onStation": "現地到着",
+        "enRoute": "移動中"
+      }
+    },
+    "strategic": "戦略的",
+    "verified": "検証済",
+    "sampledList": "{{count}}件のイベントのサンプルリストを表示。",
+    "reason": "理由",
+    "threat": "脅威",
+    "aka": "別名",
+    "sponsor": "支援国",
+    "origin": "出自",
+    "country": "国",
+    "malware": "マルウェア",
+    "lastSeen": "最終確認",
+    "open": "開場",
+    "tradingHours": "取引時間",
+    "gamma": "ガンマ",
+    "city": "都市",
+    "length": "全長",
+    "operator": "運用者",
+    "countries": "国",
+    "waypoints": "経由地",
+    "repairEta": "修理ETA",
+    "timeUnits": {
+      "m": "分",
+      "h": "時間",
+      "d": "日"
+    },
+    "hotspot": {
+      "escalation": "エスカレーション評価",
+      "baseline": "ベースライン",
+      "score": "スコア",
+      "trend": "トレンド",
+      "components": {
+        "news": "ニュース",
+        "cii": "CII",
+        "geo": "地理",
+        "military": "軍事"
+      },
+      "levels": {
+        "stable": "安定",
+        "watch": "監視",
+        "elevated": "上昇",
+        "high": "高",
+        "critical": "危機的"
+      }
+    },
+    "buttons": {
+      "track": "問題を追跡",
+      "details": "詳細を表示"
+    },
+    "historicalContext": "歴史的背景",
+    "lastMajorEvent": "直近の重大イベント",
+    "precedents": "前例",
+    "cyclicalPattern": "周期的パターン",
+    "whyItMatters": "重要な理由",
+    "keyEntities": "主要エンティティ",
+    "relatedHeadlines": "関連見出し",
+    "liveIntel": "ライブインテリジェンス",
+    "loadingNews": "グローバルニュースを読み込み中...",
+    "noCoverage": "最近のグローバル報道なし",
+    "time": "時刻",
+    "area": "地域",
+    "expires": "有効期限",
+    "aisGapSpike": "AISギャップ急増",
+    "chokepointCongestion": "チョークポイント渋滞",
+    "darkening": "暗転",
+    "density": "密度",
+    "darkShips": "ダークシップ",
+    "vesselCount": "船舶数",
+    "window": "期間",
+    "region": "地域",
+    "fatalities": "死亡者数",
+    "actors": "当事者",
+    "near": "付近",
+    "moreEvents": "件の追加イベント",
+    "monitoring": "監視中",
+    "viewUSGS": "USGSで表示",
+    "expired": "期限切れ",
+    "timeAgo": {
+      "s": "{{count}}秒前",
+      "m": "{{count}}分前",
+      "h": "{{count}}時間前",
+      "d": "{{count}}日前"
+    },
+    "cableAdvisory": {
+      "reported": "報告日",
+      "impact": "影響",
+      "eta": "ETA"
+    },
+    "outage": {
+      "levels": {
+        "total": "完全遮断",
+        "major": "大規模障害",
+        "partial": "部分的障害",
+        "disruption": "障害"
+      },
+      "reported": "報告日",
+      "categories": "カテゴリ",
+      "readReport": "全文レポートを読む"
+    },
+    "datacenter": {
+      "status": {
+        "existing": "稼働中",
+        "planned": "計画中",
+        "decommissioned": "廃止",
+        "unknown": "不明"
+      },
+      "gpuChipCount": "GPU/チップ数",
+      "chipType": "チップタイプ",
+      "power": "電力",
+      "sector": "セクター",
+      "attribution": "データ: Epoch AI GPU Clusters",
+      "chips": "チップ",
+      "cluster": {
+        "title": "{{count}}件のデータセンター",
+        "totalChips": "総チップ数",
+        "totalPower": "総電力",
+        "operational": "稼働中",
+        "planned": "計画中",
+        "moreDataCenters": "+ {{count}}件の追加データセンター",
+        "sampledSites": "{{count}}件のサイトのサンプルリストを表示。"
+      }
+    },
+    "startupHub": {
+      "tiers": {
+        "mega": "メガハブ",
+        "major": "メジャーハブ",
+        "emerging": "新興",
+        "hub": "ハブ"
+      },
+      "unicorns": "ユニコーン"
+    },
+    "cloudRegion": {
+      "provider": "プロバイダー",
+      "availabilityZones": "アベイラビリティゾーン"
+    },
+    "techHQ": {
+      "types": {
+        "faang": "ビッグテック",
+        "unicorn": "ユニコーン",
+        "public": "上場",
+        "tech": "テック"
+      },
+      "marketCap": "時価総額",
+      "employees": "従業員数"
+    },
+    "accelerator": {
+      "types": {
+        "accelerator": "アクセラレーター",
+        "incubator": "インキュベーター",
+        "studio": "スタートアップスタジオ"
+      },
+      "founded": "設立",
+      "notableAlumni": "著名な卒業企業"
+    },
+    "techEvent": {
+      "days": {
+        "today": "本日",
+        "tomorrow": "明日",
+        "inDays": "{{count}}日後"
+      },
+      "date": "日付",
+      "moreInformation": "詳細情報"
+    },
+    "techHQCluster": {
+      "companiesCount": "{{count}}社",
+      "bigTechCount": "ビッグテック{{count}}社",
+      "unicornsCount": "ユニコーン{{count}}社",
+      "publicCount": "上場{{count}}社",
+      "sampled": "{{count}}社のサンプルリストを表示。"
+    },
+    "techEventCluster": {
+      "eventsCount": "{{count}}件のイベント",
+      "upcomingWithin2Weeks": "2週間以内に{{count}}件開催予定",
+      "sampled": "{{count}}件のイベントのサンプルリストを表示。"
+    },
+    "militaryFlight": {
+      "types": {
+        "fighter": "戦闘機",
+        "bomber": "爆撃機",
+        "transport": "輸送機",
+        "tanker": "空中給油機",
+        "awacs": "AWACS/AEW",
+        "reconnaissance": "偵察機",
+        "helicopter": "ヘリコプター",
+        "drone": "UAV/ドローン",
+        "patrol": "哨戒機",
+        "specialOps": "特殊作戦",
+        "vip": "VIP輸送"
+      },
+      "altitude": "高度",
+      "ground": "地上",
+      "speed": "速度",
+      "heading": "方位",
+      "hexCode": "HEXコード",
+      "squawk": "スコーク",
+      "attribution": "ソース: OpenSky Network"
+    },
+    "militaryVessel": {
+      "aisDark": "AIS消失",
+      "vessel": "艦艇",
+      "speed": "速度",
+      "heading": "方位",
+      "mmsi": "MMSI",
+      "hull": "船体番号",
+      "region": "REGION",
+      "strikeGroup": "STRIKE GROUP",
+      "deploymentStatus": "STATUS",
+      "usniIntel": "USNI Intel",
+      "usniSource": "Source: USNI News Fleet Tracker",
+      "approximatePosition": "Position approximate — based on USNI weekly report, not real-time AIS.",
+      "darkDescription": "⚠ 艦艇がAIS信号を喪失 — 機密作戦の可能性。"
+    },
+    "militaryCluster": {
+      "flightActivity": {
+        "exercise": "軍事演習",
+        "patrol": "哨戒活動",
+        "transport": "輸送作戦",
+        "unknown": "軍事活動"
+      },
+      "moreAircraft": "+{{count}}機の追加航空機",
+      "aircraftCount": "{{count}}機",
+      "aircraft": "航空機",
+      "activity": "活動",
+      "primary": "主要",
+      "trackedAircraft": "追跡中の航空機",
+      "vesselActivity": {
+        "exercise": "海軍演習",
+        "deployment": "海軍展開",
+        "patrol": "哨戒活動",
+        "transit": "艦隊移動",
+        "unknown": "海軍活動"
+      },
+      "moreVessels": "+{{count}}隻の追加艦艇",
+      "vesselsCount": "{{count}}隻",
+      "vessels": "艦艇",
+      "trackedVessels": "追跡中の艦艇"
+    },
+    "naturalEvent": {
+      "closed": "終了",
+      "active": "ACTIVE",
+      "reported": "報告済",
+      "viewOnSource": "{{source}}で表示",
+      "attribution": "データ: NASA EONET"
+    },
+    "port": {
+      "types": {
+        "container": "コンテナ",
+        "oil": "石油ターミナル",
+        "lng": "LNGターミナル",
+        "naval": "軍港",
+        "mixed": "混合",
+        "bulk": "バルク"
+      },
+      "worldRank": "世界ランク"
+    },
+    "spaceport": {
+      "status": {
+        "active": "ACTIVE",
+        "construction": "建設中",
+        "inactive": "休止中"
+      },
+      "launchActivity": "打ち上げ活動",
+      "description": "戦略的宇宙発射施設。打ち上げ頻度と軌道到達能力は重要な地政学的指標。"
+    },
+    "mineral": {
+      "status": {
+        "producing": "生産中",
+        "development": "開発中",
+        "exploration": "探査中"
+      },
+      "projectSubtitle": "{{mineral}}プロジェクト"
+    },
+    "stockExchange": {
+      "marketCap": "時価総額"
+    },
+    "financialCenter": {
+      "gfciRank": "GFCIランク",
+      "specialties": "専門分野"
+    },
+    "centralBank": {
+      "currency": "通貨"
+    },
+    "commodityHub": {
+      "commodities": "コモディティ"
+    },
+    "hotspotSubtexts": {
+      "conflict_zone": "紛争地帯",
+      "dprk_watch": "北朝鮮監視",
+      "egypt_gis": "エジプト/GIS",
+      "energy_space": "エネルギー/宇宙",
+      "financial_hub": "金融ハブ",
+      "gchq_mi6": "GCHQ/MI6",
+      "greenland_intel": "グリーンランドインテル",
+      "haiti_crisis": "ハイチ危機",
+      "irgc_activity": "IRGC活動",
+      "insurgency_coups": "反乱/クーデター",
+      "iraq_pmf": "イラク/PMF",
+      "kremlin_activity": "クレムリン活動",
+      "lebanon_hezbollah": "レバノン/ヒズボラ",
+      "mossad_idf": "モサド/IDF",
+      "nato_hq": "NATO本部",
+      "pla_mss_activity": "PLA/MSS活動",
+      "pentagon_pizza_index": "ペンタゴンピザ指数",
+      "piracy_conflict": "海賊/紛争",
+      "qatar_al_udeid": "カタール/アルウデイド",
+      "saudi_gip_mbs": "サウジGIP/MBS",
+      "strait_watch": "海峡監視",
+      "syria_crisis": "シリア危機",
+      "tech_ai_hub": "テック/AIハブ",
+      "turkey_mit": "トルコ/MIT",
+      "uae_ecsr": "UAE/ECSR",
+      "venezuela_crisis": "ベネズエラ危機",
+      "yemen_houthis": "イエメン/フーシ"
+    }
+  },
+  "signals": {
+    "context": {
+      "prediction_leads_news": {
+        "whyItMatters": "予測市場はしばしばニュースより先に情報を織り込む — トレーダーが早期に情報を入手している可能性。",
+        "actionableInsight": "今後1-6時間以内に市場の動きを説明するニュースが出ないか監視。",
+        "confidenceNote": "複数の予測市場が同方向に動いている場合、信頼度が高い。"
+      },
+      "news_leads_markets": {
+        "whyItMatters": "市場の反応よりニュースが先行 — 潜在的なミスプライシングの機会。",
+        "actionableInsight": "アルゴリズムやトレーダーがニュースを消化するにつれ、市場の追いつきに注視。",
+        "confidenceNote": "ニュースが第1級通信社からの場合、より強いシグナル。"
+      },
+      "silent_divergence": {
+        "whyItMatters": "特定可能なニュース触媒なしに市場が大きく動いている — インサイダー知識、アルゴリズム取引、または未報告の展開の可能性。",
+        "actionableInsight": "代替データソースを調査。後に動きを説明するニュースが出る可能性。",
+        "confidenceNote": "原因不明のため信頼度は低い — 確認済インテリジェンスではなく早期警告として扱う。"
+      },
+      "velocity_spike": {
+        "whyItMatters": "ストーリーが複数のニュースソースで加速中 — 重要性の高まりと市場/政策への影響の可能性を示す。",
+        "actionableInsight": "このトピックは即座の注意が必要。公式声明や市場反応を予想。",
+        "confidenceNote": "ソースが多いほど信頼度が高い。第1級ソースが含まれているか確認。"
+      },
+      "keyword_spike": {
+        "whyItMatters": "ある用語が複数のソースにわたりベースラインを大幅に上回る頻度で出現 — 展開中のストーリーを示す。",
+        "actionableInsight": "関連見出しとAI要約を確認し、国家不安定性と市場の動きとの相関を確認。",
+        "confidenceNote": "ベースライン倍率が高くソースの多様性が広いほど信頼度が上昇。"
+      },
+      "convergence": {
+        "whyItMatters": "複数の独立したソースタイプが同一イベントを確認 — クロスバリデーションにより正確性の可能性が上昇。",
+        "actionableInsight": "高信頼度インテリジェンスとして扱う。三角測量が偽陽性リスクを低減。",
+        "confidenceNote": "通信社 + 政府 + インテルソースが一致する場合、信頼度は非常に高い。"
+      },
+      "triangulation": {
+        "whyItMatters": "「権威の三角形」（通信社、政府ソース、インテル専門家）が一致 — 速報確認のゴールドスタンダード。",
+        "actionableInsight": "これは実行可能なインテリジェンス。市場/政策の反応が差し迫っていることを予想。",
+        "confidenceNote": "システム内で最も高い信頼度のシグナル — 複数の権威あるソースが一致。"
+      },
+      "flow_drop": {
+        "whyItMatters": "物理的なコモディティフローの途絶を検知 — 供給制約はしばしば価格急騰に先行。",
+        "actionableInsight": "エネルギーコモディティ価格を監視。サプライチェーンの露出度を評価。",
+        "confidenceNote": "信頼度は途絶の期間と代替供給の可用性に依存。"
+      },
+      "flow_price_divergence": {
+        "whyItMatters": "供給途絶ニュースがまだコモディティ価格に反映されていない — 潜在的な情報優位。",
+        "actionableInsight": "市場の反応が遅いか、途絶が報道ほど深刻でない可能性。",
+        "confidenceNote": "中程度の信頼度 — 市場はニュース報道より正確な情報を持っている可能性。"
+      },
+      "geo_convergence": {
+        "whyItMatters": "同一地理的位置の周辺に複数のニュースイベントが集中 — エスカレーションまたは協調的活動の可能性。",
+        "actionableInsight": "この地域の監視優先度を上げる。利用可能なら衛星/AISデータとの相関を確認。",
+        "confidenceNote": "イベントが複数のソースタイプと時間帯にまたがる場合、信頼度が高い。"
+      },
+      "explained_market_move": {
+        "whyItMatters": "市場の動きに明確なニュース触媒あり — 謎はなく、価格動向は既知の情報を反映。",
+        "actionableInsight": "動きを駆動するナラティブを理解。反応が適切かどうかを評価。",
+        "confidenceNote": "高い信頼度 — ニュースと価格動向が相関。"
+      },
+      "hotspot_escalation": {
+        "whyItMatters": "地政学的ホットスポットがニュース活動、国家不安定性、地理的収束、軍事プレゼンスに基づき顕著なエスカレーションを示している。",
+        "actionableInsight": "監視優先度を上げる。インフラ、市場、地域安定性への下流影響を評価。",
+        "confidenceNote": "信頼度は複数のデータソースで加重 — ニュース（35%）、国家不安定性（25%）、地理的収束（25%）、軍事活動（15%）。"
+      },
+      "sector_cascade": {
+        "whyItMatters": "市場の動きが関連セクターに波及中 — 触媒イベントへのシステム的反応を示す。",
+        "actionableInsight": "主要触媒を特定。相関資産全体の露出度を評価。",
+        "confidenceNote": "複数のセクターが類似の速度と方向で動いている場合、信頼度が高い。"
+      },
+      "military_surge": {
+        "whyItMatters": "軍事輸送活動がベースラインを大幅に上回っている — 展開、人道作戦、または戦力投射の可能性を示す。",
+        "actionableInsight": "地域ニュースとの相関を確認。近隣の基地活動と海軍動向を評価。",
+        "confidenceNote": "複数時間にわたる持続的活動と多様な航空機タイプで信頼度が高い。"
+      },
+      "fallback": {
+        "whyItMatters": "シグナル検出。",
+        "actionableInsight": "動向を監視。",
+        "confidenceNote": "標準的な信頼度。"
+      }
+    }
+  },
+  "alerts": {
+    "instabilityRising": "{{country}} 不安定性上昇",
+    "instabilityFalling": "{{country}} 不安定性低下",
+    "indexRose": "不安定性指数が{{from}}から{{to}}に上昇（{{change}}）。ドライバー: {{driver}}",
+    "indexFell": "不安定性指数が{{from}}から{{to}}に低下（{{change}}）。ドライバー: {{driver}}",
+    "geoAlert": "地理的アラート: {{location}}",
+    "cascadeAlert": "インフラカスケードアラート",
+    "infraAlert": "インフラアラート: {{name}}",
+    "countriesAffected": "{{count}}カ国が影響、最大影響: {{impact}}",
+    "alert": "アラート: {{location}}",
+    "multipleRegions": "複数地域",
+    "trending": "\"{{term}}\" トレンド中 — {{hours}}時間で{{count}}件の言及",
+    "eventsDetected": "地域（{{lat}}°, {{lon}}°）で{{count}}件のイベントを検出"
+  },
+  "intel": {
+    "topics": {
+      "military": {
+        "name": "軍事活動",
+        "description": "軍事演習、展開、作戦"
+      },
+      "cyber": {
+        "name": "サイバー脅威",
+        "description": "サイバー攻撃、ランサムウェア、デジタル脅威"
+      },
+      "nuclear": {
+        "name": "核",
+        "description": "核プログラム、IAEA査察、拡散"
+      },
+      "sanctions": {
+        "name": "制裁",
+        "description": "経済制裁と貿易制限"
+      },
+      "intelligence": {
+        "name": "インテリジェンス",
+        "description": "スパイ活動、諜報作戦、監視"
+      },
+      "maritime": {
+        "name": "海洋安全保障",
+        "description": "海軍作戦、海上チョークポイント、シーレーン"
+      }
+    }
+  },
+  "common": {
+    "loading": "読み込み中...",
+    "error": "エラー",
+    "noData": "データなし",
+    "noDataAvailable": "データなし",
+    "updated": "たった今更新",
+    "ago": "{{time}}前",
+    "retrying": "再試行中...",
+    "failedToLoad": "データの読み込みに失敗",
+    "noDataShort": "データなし",
+    "upstreamUnavailable": "上流APIが利用不可 — 自動リトライ予定",
+    "loadingUcdpEvents": "UCDPイベントを読み込み中",
+    "loadingStablecoins": "ステーブルコインを読み込み中...",
+    "scanningThermalData": "熱データをスキャン中",
+    "calculatingExposure": "露出度を計算中",
+    "computingSignals": "シグナルを計算中...",
+    "loadingEtfData": "ETFデータを読み込み中...",
+    "loadingDisplacement": "避難民データを読み込み中",
+    "loadingClimateData": "気候データを読み込み中",
+    "failedTechReadiness": "テック準備度データの読み込みに失敗",
+    "failedRiskOverview": "リスク概観の計算に失敗",
+    "failedPredictions": "予測の読み込みに失敗",
+    "failedCII": "CIIの計算に失敗",
+    "failedDependencyGraph": "依存関係グラフの構築に失敗",
+    "failedIntelFeed": "インテリジェンスフィードの読み込みに失敗",
+    "failedMarketData": "市場データの読み込みに失敗",
+    "failedSectorData": "セクターデータの読み込みに失敗",
+    "failedCommodities": "コモディティの読み込みに失敗",
+    "failedCryptoData": "暗号資産データの読み込みに失敗",
+    "failedClusterNews": "ニュースのクラスタリングに失敗",
+    "noNewsAvailable": "ニュースなし",
+    "noActiveTechHubs": "アクティブなテックハブなし",
+    "noActiveGeoHubs": "アクティブな地政学ハブなし",
+    "allSourcesDisabled": "全ソース無効",
+    "allIntelSourcesDisabled": "全インテルソース無効",
+    "noEventsInCategory": "このカテゴリにイベントなし",
+    "exportCsv": "CSVエクスポート",
+    "exportJson": "JSONエクスポート",
+    "exportData": "データをエクスポート",
+    "selectAll": "全選択",
+    "selectNone": "全解除",
+    "unrest": "騒乱",
+    "conflict": "紛争",
+    "security": "安全保障",
+    "information": "情報",
+    "shareStory": "ストーリーを共有",
+    "exportImage": "画像をエクスポート",
+    "new": "NEW",
+    "live": "LIVE",
+    "cached": "CACHED",
+    "unavailable": "UNAVAILABLE",
+    "close": "閉じる",
+    "currentVariant": "（現在）",
+    "retry": "Retry",
+    "refresh": "Refresh"
+  }
+}

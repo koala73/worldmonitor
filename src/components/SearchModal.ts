@@ -1,6 +1,8 @@
 import { escapeHtml } from '@/utils/sanitize';
+import { t } from '@/services/i18n';
+import { trackSearchUsed } from '@/services/analytics';
 
-export type SearchResultType = 'news' | 'hotspot' | 'market' | 'prediction' | 'conflict' | 'base' | 'pipeline' | 'cable' | 'datacenter' | 'earthquake' | 'outage' | 'nuclear' | 'irradiator' | 'techcompany' | 'ailab' | 'startup' | 'techevent' | 'techhq' | 'accelerator';
+export type SearchResultType = 'country' | 'news' | 'hotspot' | 'market' | 'prediction' | 'conflict' | 'base' | 'pipeline' | 'cable' | 'datacenter' | 'earthquake' | 'outage' | 'nuclear' | 'irradiator' | 'techcompany' | 'ailab' | 'startup' | 'techevent' | 'techhq' | 'accelerator' | 'exchange' | 'financialcenter' | 'centralbank' | 'commodityhub';
 
 export interface SearchResult {
   type: SearchResultType;
@@ -39,8 +41,8 @@ export class SearchModal {
 
   constructor(container: HTMLElement, options?: SearchModalOptions) {
     this.container = container;
-    this.placeholder = options?.placeholder || 'Search news, pipelines, bases, markets...';
-    this.hint = options?.hint || 'News • Pipelines • Bases • Cables • Datacenters • Markets';
+    this.placeholder = options?.placeholder || t('modals.search.placeholder');
+    this.hint = options?.hint || t('modals.search.hint');
     this.loadRecentSearches();
   }
 
@@ -91,9 +93,9 @@ export class SearchModal {
         </div>
         <div class="search-results"></div>
         <div class="search-footer">
-          <span><kbd>↑↓</kbd> navigate</span>
-          <span><kbd>↵</kbd> select</span>
-          <span><kbd>esc</kbd> close</span>
+          <span><kbd>↑↓</kbd> ${t('modals.search.navigate')}</span>
+          <span><kbd>↵</kbd> ${t('modals.search.select')}</span>
+          <span><kbd>esc</kbd> ${t('modals.search.close')}</span>
         </div>
       </div>
     `;
@@ -147,7 +149,7 @@ export class SearchModal {
     // Prioritize: news first, then other dynamic data, then static infrastructure
     const priority: SearchResultType[] = [
       'news', 'prediction', 'market', 'earthquake', 'outage',  // Dynamic/timely
-      'conflict', 'hotspot',  // Current events
+      'conflict', 'hotspot', 'country',  // Current events + countries
       'base', 'pipeline', 'cable', 'datacenter', 'nuclear', 'irradiator',  // Infrastructure
       'techcompany', 'ailab', 'startup', 'techevent', 'techhq', 'accelerator'  // Tech
     ];
@@ -157,12 +159,13 @@ export class SearchModal {
     for (const type of priority) {
       const matches = byType.get(type) || [];
       matches.sort((a, b) => b._score - a._score);
-      const limit = type === 'news' ? 6 : 3;  // News gets 6 slots, others get 3
+      const limit = type === 'news' ? 6 : type === 'country' ? 4 : 3;
       this.results.push(...matches.slice(0, limit));
       if (this.results.length >= MAX_RESULTS) break;
     }
     this.results = this.results.slice(0, MAX_RESULTS);
 
+    trackSearchUsed(query.length, this.results.length);
     this.selectedIndex = 0;
     this.renderResults();
   }
@@ -180,7 +183,7 @@ export class SearchModal {
   private renderRecent(): void {
     if (!this.resultsList) return;
 
-    this.resultsList.innerHTML = '<div class="search-section-header">Recent Searches</div>';
+    this.resultsList.innerHTML = `<div class="search-section-header">${t('modals.search.recent')}</div>`;
 
     this.recentSearches.forEach((term, i) => {
       const item = document.createElement('div');
@@ -213,7 +216,7 @@ export class SearchModal {
     this.resultsList.innerHTML = `
       <div class="search-empty">
         <div class="search-empty-icon">🔍</div>
-        <div>Search across all data sources</div>
+        <div>${t('modals.search.empty')}</div>
         <div class="search-empty-hint">${this.hint}</div>
       </div>
     `;
@@ -226,13 +229,14 @@ export class SearchModal {
       this.resultsList.innerHTML = `
         <div class="search-empty">
           <div class="search-empty-icon">∅</div>
-          <div>No results found</div>
+          <div>${t('modals.search.noResults')}</div>
         </div>
       `;
       return;
     }
 
     const icons: Record<SearchResultType, string> = {
+      country: '🏳️',
       news: '📰',
       hotspot: '📍',
       market: '📈',
@@ -252,6 +256,10 @@ export class SearchModal {
       techevent: '📅',
       techhq: '🦄',
       accelerator: '🚀',
+      exchange: '🏛️',
+      financialcenter: '💰',
+      centralbank: '🏦',
+      commodityhub: '📦',
     };
 
     this.resultsList.innerHTML = this.results.map((result, i) => `
@@ -261,7 +269,7 @@ export class SearchModal {
           <div class="search-result-title">${this.highlightMatch(result.title)}</div>
           ${result.subtitle ? `<div class="search-result-subtitle">${escapeHtml(result.subtitle)}</div>` : ''}
         </div>
-        <span class="search-result-type">${escapeHtml(result.type)}</span>
+        <span class="search-result-type">${escapeHtml(t(`modals.search.types.${result.type}`) || result.type)}</span>
       </div>
     `).join('');
 

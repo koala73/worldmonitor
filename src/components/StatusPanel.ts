@@ -1,5 +1,5 @@
-import { escapeHtml } from '@/utils/sanitize';
 import { SITE_VARIANT } from '@/config';
+import { h, replaceChildren } from '@/utils/dom-utils';
 
 type StatusLevel = 'ok' | 'warning' | 'error' | 'disabled';
 
@@ -22,85 +22,89 @@ const TECH_FEEDS = new Set([
   'Tech', 'Ai', 'Startups', 'Vcblogs', 'RegionalStartups',
   'Unicorns', 'Accelerators', 'Security', 'Policy', 'Layoffs',
   'Finance', 'Hardware', 'Cloud', 'Dev', 'Tech Events', 'Crypto',
-  'Markets', 'Events', 'Producthunt', 'Funding', 'Polymarket'
+  'Markets', 'Events', 'Producthunt', 'Funding', 'Polymarket',
+  'Cyber Threats'
 ]);
 const TECH_APIS = new Set([
-  'RSS Proxy', 'Finnhub', 'CoinGecko', 'Tech Events API', 'Service Status', 'Polymarket'
+  'RSS Proxy', 'Finnhub', 'CoinGecko', 'Tech Events API', 'Service Status', 'Polymarket',
+  'Cyber Threats API'
 ]);
 
 const WORLD_FEEDS = new Set([
   'Politics', 'Middleeast', 'Tech', 'Ai', 'Finance',
   'Gov', 'Intel', 'Layoffs', 'Thinktanks', 'Energy',
-  'Polymarket', 'Weather', 'NetBlocks', 'Shipping', 'Military'
+  'Polymarket', 'Weather', 'NetBlocks', 'Shipping', 'Military',
+  'Cyber Threats'
 ]);
 const WORLD_APIS = new Set([
   'RSS2JSON', 'Finnhub', 'CoinGecko', 'Polymarket', 'USGS', 'FRED',
-  'AISStream', 'GDELT Doc', 'EIA', 'USASpending', 'PizzINT', 'FIRMS'
+  'AISStream', 'GDELT Doc', 'EIA', 'USASpending', 'PizzINT', 'FIRMS',
+  'Cyber Threats API'
 ]);
 
-export class StatusPanel {
-  private element: HTMLElement;
+import { t } from '../services/i18n';
+import { Panel } from './Panel';
+
+export class StatusPanel extends Panel {
   private isOpen = false;
   private feeds: Map<string, FeedStatus> = new Map();
   private apis: Map<string, ApiStatus> = new Map();
-  private allowedFeeds: Set<string>;
-  private allowedApis: Set<string>;
+  private allowedFeeds!: Set<string>;
+  private allowedApis!: Set<string>;
 
   constructor() {
-    // Set allowlists based on variant
+    super({ id: 'status', title: t('panels.status') });
+    // Title is hidden in CSS, we use custom header
+    this.init();
+  }
+
+  private init(): void {
     this.allowedFeeds = SITE_VARIANT === 'tech' ? TECH_FEEDS : WORLD_FEEDS;
     this.allowedApis = SITE_VARIANT === 'tech' ? TECH_APIS : WORLD_APIS;
 
-    this.element = document.createElement('div');
-    this.element.className = 'status-panel-container';
-    this.element.innerHTML = `
-      <button class="status-panel-toggle" title="System Status">
-        <span class="status-icon">◉</span>
-      </button>
-      <div class="status-panel hidden">
-        <div class="status-panel-header">
-          <span>System Health</span>
-          <button class="status-panel-close">×</button>
-        </div>
-        <div class="status-panel-content">
-          <div class="status-section">
-            <div class="status-section-title">Data Feeds</div>
-            <div class="feeds-list"></div>
-          </div>
-          <div class="status-section">
-            <div class="status-section-title">API Status</div>
-            <div class="apis-list"></div>
-          </div>
-          <div class="status-section">
-            <div class="status-section-title">Storage</div>
-            <div class="storage-info"></div>
-          </div>
-        </div>
-        <div class="status-panel-footer">
-          <span class="last-check">Updated just now</span>
-        </div>
-      </div>
-    `;
+    const panel = h('div', { className: 'status-panel hidden' },
+      h('div', { className: 'status-panel-header' },
+        h('span', null, t('panels.status')),
+        h('button', {
+          className: 'status-panel-close',
+          onClick: () => { this.isOpen = false; panel.classList.add('hidden'); },
+        }, '×'),
+      ),
+      h('div', { className: 'status-panel-content' },
+        h('div', { className: 'status-section' },
+          h('div', { className: 'status-section-title' }, t('components.status.dataFeeds')),
+          h('div', { className: 'feeds-list' }),
+        ),
+        h('div', { className: 'status-section' },
+          h('div', { className: 'status-section-title' }, t('components.status.apiStatus')),
+          h('div', { className: 'apis-list' }),
+        ),
+        h('div', { className: 'status-section' },
+          h('div', { className: 'status-section-title' }, t('components.status.storage')),
+          h('div', { className: 'storage-info' }),
+        ),
+      ),
+      h('div', { className: 'status-panel-footer' },
+        h('span', { className: 'last-check' }, t('components.status.updatedJustNow')),
+      ),
+    );
 
-    this.setupEventListeners();
+    this.element = h('div', { className: 'status-panel-container' },
+      h('button', {
+        className: 'status-panel-toggle',
+        title: t('components.status.systemStatus'),
+        onClick: () => {
+          this.isOpen = !this.isOpen;
+          panel.classList.toggle('hidden', !this.isOpen);
+          if (this.isOpen) this.updateDisplay();
+        },
+      },
+        h('span', { className: 'status-icon' }, '◉'),
+      ),
+      panel,
+    );
+
     this.initDefaultStatuses();
-  }
-
-  private setupEventListeners(): void {
-    const toggle = this.element.querySelector('.status-panel-toggle')!;
-    const panel = this.element.querySelector('.status-panel')!;
-    const closeBtn = this.element.querySelector('.status-panel-close')!;
-
-    toggle.addEventListener('click', () => {
-      this.isOpen = !this.isOpen;
-      panel.classList.toggle('hidden', !this.isOpen);
-      if (this.isOpen) this.updateDisplay();
-    });
-
-    closeBtn.addEventListener('click', () => {
-      this.isOpen = false;
-      panel.classList.add('hidden');
-    });
   }
 
   private initDefaultStatuses(): void {
@@ -160,9 +164,9 @@ export class StatusPanel {
     const enabledApis = [...this.apis.values()].filter(a => a.status !== 'disabled');
 
     const hasError = enabledFeeds.some(f => f.status === 'error') ||
-                     enabledApis.some(a => a.status === 'error');
+      enabledApis.some(a => a.status === 'error');
     const hasWarning = enabledFeeds.some(f => f.status === 'warning') ||
-                       enabledApis.some(a => a.status === 'warning');
+      enabledApis.some(a => a.status === 'warning');
 
     icon.className = 'status-icon';
     if (hasError) {
@@ -183,25 +187,29 @@ export class StatusPanel {
     const storageInfo = this.element.querySelector('.storage-info')!;
     const lastCheck = this.element.querySelector('.last-check')!;
 
-    feedsList.innerHTML = [...this.feeds.values()].map(feed => `
-      <div class="status-row">
-        <span class="status-dot ${escapeHtml(feed.status)}"></span>
-        <span class="status-name">${escapeHtml(feed.name)}</span>
-        <span class="status-detail">${escapeHtml(String(feed.itemCount))} items</span>
-        <span class="status-time">${escapeHtml(feed.lastUpdate ? this.formatTime(feed.lastUpdate) : 'Never')}</span>
-      </div>
-    `).join('');
+    replaceChildren(feedsList,
+      ...[...this.feeds.values()].map(feed =>
+        h('div', { className: 'status-row' },
+          h('span', { className: `status-dot ${feed.status}` }),
+          h('span', { className: 'status-name' }, feed.name),
+          h('span', { className: 'status-detail' }, `${feed.itemCount} items`),
+          h('span', { className: 'status-time' }, feed.lastUpdate ? this.formatTime(feed.lastUpdate) : 'Never'),
+        ),
+      ),
+    );
 
-    apisList.innerHTML = [...this.apis.values()].map(api => `
-      <div class="status-row">
-        <span class="status-dot ${escapeHtml(api.status)}"></span>
-        <span class="status-name">${escapeHtml(api.name)}</span>
-        ${api.latency ? `<span class="status-detail">${escapeHtml(String(api.latency))}ms</span>` : ''}
-      </div>
-    `).join('');
+    replaceChildren(apisList,
+      ...[...this.apis.values()].map(api =>
+        h('div', { className: 'status-row' },
+          h('span', { className: `status-dot ${api.status}` }),
+          h('span', { className: 'status-name' }, api.name),
+          api.latency ? h('span', { className: 'status-detail' }, `${api.latency}ms`) : false,
+        ),
+      ),
+    );
 
     this.updateStorageInfo(storageInfo);
-    lastCheck.textContent = `Updated ${this.formatTime(new Date())}`;
+    lastCheck.textContent = t('components.status.updatedAt', { time: this.formatTime(new Date()) });
   }
 
   private async updateStorageInfo(container: Element): Promise<void> {
@@ -210,17 +218,17 @@ export class StatusPanel {
         const estimate = await navigator.storage.estimate();
         const used = estimate.usage ? (estimate.usage / 1024 / 1024).toFixed(2) : '0';
         const quota = estimate.quota ? (estimate.quota / 1024 / 1024).toFixed(0) : 'N/A';
-        container.innerHTML = `
-          <div class="status-row">
-            <span class="status-name">IndexedDB</span>
-            <span class="status-detail">${used} MB / ${quota} MB</span>
-          </div>
-        `;
+        replaceChildren(container,
+          h('div', { className: 'status-row' },
+            h('span', { className: 'status-name' }, 'IndexedDB'),
+            h('span', { className: 'status-detail' }, `${used} MB / ${quota} MB`),
+          ),
+        );
       } else {
-        container.innerHTML = `<div class="status-row">Storage info unavailable</div>`;
+        replaceChildren(container, h('div', { className: 'status-row' }, t('components.status.storageUnavailable')));
       }
     } catch {
-      container.innerHTML = `<div class="status-row">Storage info unavailable</div>`;
+      replaceChildren(container, h('div', { className: 'status-row' }, t('components.status.storageUnavailable')));
     }
   }
 

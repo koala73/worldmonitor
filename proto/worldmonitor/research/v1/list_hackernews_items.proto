@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package worldmonitor.research.v1;
+
+import "worldmonitor/core/v1/pagination.proto";
+import "worldmonitor/research/v1/research_item.proto";
+
+// ListHackernewsItemsRequest specifies filters for retrieving Hacker News items.
+message ListHackernewsItemsRequest {
+  // Pagination parameters.
+  worldmonitor.core.v1.PaginationRequest pagination = 1;
+  // Feed type: "top", "new", "best", "ask", "show". Defaults to "top".
+  string feed_type = 2;
+}
+
+// ListHackernewsItemsResponse contains Hacker News items.
+message ListHackernewsItemsResponse {
+  // The list of Hacker News items.
+  repeated HackernewsItem items = 1;
+  // Pagination metadata.
+  worldmonitor.core.v1.PaginationResponse pagination = 2;
+}

@@ -1,0 +1,110 @@
+syntax = "proto3";
+
+package worldmonitor.aviation.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+import "worldmonitor/core/v1/geo.proto";
+
+// AirportDelayAlert represents a flight delay advisory at an airport.
+// Sourced from FAA and Eurocontrol.
+message AirportDelayAlert {
+  // Unique alert identifier.
+  string id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // IATA airport code (e.g., "JFK").
+  string iata = 2;
+  // ICAO airport code (e.g., "KJFK").
+  string icao = 3;
+  // Airport name.
+  string name = 4;
+  // City where the airport is located.
+  string city = 5;
+  // Country code (ISO 3166-1 alpha-2).
+  string country = 6;
+  // Airport location.
+  worldmonitor.core.v1.GeoCoordinates location = 7;
+  // Geographic region.
+  AirportRegion region = 8;
+  // Type of delay.
+  FlightDelayType delay_type = 9;
+  // Delay severity.
+  FlightDelaySeverity severity = 10;
+  // Average delay in minutes.
+  int32 avg_delay_minutes = 11;
+  // Percentage of delayed flights.
+  double delayed_flights_pct = 12;
+  // Number of cancelled flights.
+  int32 cancelled_flights = 13;
+  // Total flights scheduled.
+  int32 total_flights = 14;
+  // Human-readable reason for delays.
+  string reason = 15;
+  // Data source.
+  FlightDelaySource source = 16;
+  // Last data update time, as Unix epoch milliseconds.
+  int64 updated_at = 17 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}
+
+// AirportRegion represents the geographic region of an airport.
+enum AirportRegion {
+  // Unspecified region.
+  AIRPORT_REGION_UNSPECIFIED = 0;
+  // Americas (North, Central, South).
+  AIRPORT_REGION_AMERICAS = 1;
+  // Europe.
+  AIRPORT_REGION_EUROPE = 2;
+  // Asia-Pacific.
+  AIRPORT_REGION_APAC = 3;
+  // Middle East and North Africa.
+  AIRPORT_REGION_MENA = 4;
+  // Sub-Saharan Africa.
+  AIRPORT_REGION_AFRICA = 5;
+}
+
+// FlightDelayType represents the type of flight delay.
+enum FlightDelayType {
+  // Unspecified delay type.
+  FLIGHT_DELAY_TYPE_UNSPECIFIED = 0;
+  // Ground stop — no departures or arrivals.
+  FLIGHT_DELAY_TYPE_GROUND_STOP = 1;
+  // Ground delay program.
+  FLIGHT_DELAY_TYPE_GROUND_DELAY = 2;
+  // Departure delays.
+  FLIGHT_DELAY_TYPE_DEPARTURE_DELAY = 3;
+  // Arrival delays.
+  FLIGHT_DELAY_TYPE_ARRIVAL_DELAY = 4;
+  // General delay.
+  FLIGHT_DELAY_TYPE_GENERAL = 5;
+}
+
+// FlightDelaySeverity represents the severity of flight delays at an airport.
+// Maps to TS union: 'normal' | 'minor' | 'moderate' | 'major' | 'severe'.
+enum FlightDelaySeverity {
+  // Unspecified severity.
+  FLIGHT_DELAY_SEVERITY_UNSPECIFIED = 0;
+  // Normal operations.
+  FLIGHT_DELAY_SEVERITY_NORMAL = 1;
+  // Minor delays under 15 minutes.
+  FLIGHT_DELAY_SEVERITY_MINOR = 2;
+  // Moderate delays 15-45 minutes.
+  FLIGHT_DELAY_SEVERITY_MODERATE = 3;
+  // Major delays 45-90 minutes.
+  FLIGHT_DELAY_SEVERITY_MAJOR = 4;
+  // Severe delays over 90 minutes.
+  FLIGHT_DELAY_SEVERITY_SEVERE = 5;
+}
+
+// FlightDelaySource represents the source of delay data.
+enum FlightDelaySource {
+  // Unspecified source.
+  FLIGHT_DELAY_SOURCE_UNSPECIFIED = 0;
+  // FAA (US Federal Aviation Administration).
+  FLIGHT_DELAY_SOURCE_FAA = 1;
+  // Eurocontrol (European air traffic management).
+  FLIGHT_DELAY_SOURCE_EUROCONTROL = 2;
+  // Computed from multiple sources.
+  FLIGHT_DELAY_SOURCE_COMPUTED = 3;
+}

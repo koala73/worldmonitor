@@ -1,0 +1,623 @@
+openapi: 3.1.0
+info:
+    title: IntelligenceService API
+    version: 1.0.0
+paths:
+    /api/intelligence/v1/get-risk-scores:
+        post:
+            tags:
+                - IntelligenceService
+            summary: GetRiskScores
+            description: GetRiskScores retrieves composite instability and strategic risk assessments.
+            operationId: GetRiskScores
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/GetRiskScoresRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetRiskScoresResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/get-pizzint-status:
+        post:
+            tags:
+                - IntelligenceService
+            summary: GetPizzintStatus
+            description: GetPizzintStatus retrieves Pentagon Pizza Index and GDELT tension pair data.
+            operationId: GetPizzintStatus
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/GetPizzintStatusRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetPizzintStatusResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/classify-event:
+        post:
+            tags:
+                - IntelligenceService
+            summary: ClassifyEvent
+            description: ClassifyEvent classifies a real-world event using AI (Groq).
+            operationId: ClassifyEvent
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ClassifyEventRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ClassifyEventResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/get-country-intel-brief:
+        post:
+            tags:
+                - IntelligenceService
+            summary: GetCountryIntelBrief
+            description: GetCountryIntelBrief generates an AI intelligence brief for a country (OpenRouter).
+            operationId: GetCountryIntelBrief
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/GetCountryIntelBriefRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetCountryIntelBriefResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/search-gdelt-documents:
+        post:
+            tags:
+                - IntelligenceService
+            summary: SearchGdeltDocuments
+            description: SearchGdeltDocuments searches the GDELT 2.0 Doc API for news articles.
+            operationId: SearchGdeltDocuments
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/SearchGdeltDocumentsRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SearchGdeltDocumentsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+components:
+    schemas:
+        Error:
+            type: object
+            properties:
+                message:
+                    type: string
+                    description: Error message (e.g., 'user not found', 'database connection failed')
+            description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        FieldViolation:
+            type: object
+            properties:
+                field:
+                    type: string
+                    description: The field path that failed validation (e.g., 'user.email' for nested fields). For header validation, this will be the header name (e.g., 'X-API-Key')
+                description:
+                    type: string
+                    description: Human-readable description of the validation violation (e.g., 'must be a valid email address', 'required field missing')
+            required:
+                - field
+                - description
+            description: FieldViolation describes a single validation error for a specific field.
+        ValidationError:
+            type: object
+            properties:
+                violations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FieldViolation'
+                    description: List of validation violations
+            required:
+                - violations
+            description: ValidationError is returned when request validation fails. It contains a list of field violations describing what went wrong.
+        GetRiskScoresRequest:
+            type: object
+            properties:
+                region:
+                    type: string
+                    description: Optional region filter. Empty returns all tracked regions.
+            description: GetRiskScoresRequest specifies parameters for retrieving risk scores.
+        GetRiskScoresResponse:
+            type: object
+            properties:
+                ciiScores:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CiiScore'
+                strategicRisks:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/StrategicRisk'
+            description: GetRiskScoresResponse contains composite risk scores and strategic assessments.
+        CiiScore:
+            type: object
+            properties:
+                region:
+                    type: string
+                    description: Region or country identifier.
+                staticBaseline:
+                    type: number
+                    maximum: 100
+                    minimum: 0
+                    format: double
+                    description: Static baseline score (0-100).
+                dynamicScore:
+                    type: number
+                    maximum: 100
+                    minimum: 0
+                    format: double
+                    description: Dynamic real-time score (0-100).
+                combinedScore:
+                    type: number
+                    maximum: 100
+                    minimum: 0
+                    format: double
+                    description: Combined weighted score (0-100).
+                trend:
+                    type: string
+                    enum:
+                        - TREND_DIRECTION_UNSPECIFIED
+                        - TREND_DIRECTION_RISING
+                        - TREND_DIRECTION_STABLE
+                        - TREND_DIRECTION_FALLING
+                    description: |-
+                        TrendDirection represents the directional movement of a metric over time.
+                         Used in markets, GDELT tension scores, and risk assessments.
+                components:
+                    $ref: '#/components/schemas/CiiComponents'
+                computedAt:
+                    type: integer
+                    format: int64
+                    description: 'Last computation time, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: CiiScore represents a Composite Instability Index score for a region or country.
+        CiiComponents:
+            type: object
+            properties:
+                newsActivity:
+                    type: number
+                    maximum: 100
+                    minimum: 0
+                    format: double
+                    description: News activity signal contribution (0-100).
+                ciiContribution:
+                    type: number
+                    maximum: 100
+                    minimum: 0
+                    format: double
+                    description: CII index contribution (0-100).
+                geoConvergence:
+                    type: number
+                    maximum: 100
+                    minimum: 0
+                    format: double
+                    description: Geographic convergence score (0-100).
+                militaryActivity:
+                    type: number
+                    maximum: 100
+                    minimum: 0
+                    format: double
+                    description: Military activity contribution (0-100).
+            description: CiiComponents represents the contributing factors to a CII score.
+        StrategicRisk:
+            type: object
+            properties:
+                region:
+                    type: string
+                    description: Country or region identifier.
+                level:
+                    type: string
+                    enum:
+                        - SEVERITY_LEVEL_UNSPECIFIED
+                        - SEVERITY_LEVEL_LOW
+                        - SEVERITY_LEVEL_MEDIUM
+                        - SEVERITY_LEVEL_HIGH
+                    description: |-
+                        SeverityLevel represents a three-tier severity classification used across domains.
+                         Maps to existing TS unions: 'low' | 'medium' | 'high'.
+                score:
+                    type: number
+                    maximum: 100
+                    minimum: 0
+                    format: double
+                    description: Risk score (0-100).
+                factors:
+                    type: array
+                    items:
+                        type: string
+                        description: Risk factors contributing to the assessment.
+                trend:
+                    type: string
+                    enum:
+                        - TREND_DIRECTION_UNSPECIFIED
+                        - TREND_DIRECTION_RISING
+                        - TREND_DIRECTION_STABLE
+                        - TREND_DIRECTION_FALLING
+                    description: |-
+                        TrendDirection represents the directional movement of a metric over time.
+                         Used in markets, GDELT tension scores, and risk assessments.
+            description: StrategicRisk represents a strategic risk assessment for a country or region.
+        GetPizzintStatusRequest:
+            type: object
+            properties:
+                includeGdelt:
+                    type: boolean
+                    description: Whether to include GDELT tension pairs in the response.
+            description: GetPizzintStatusRequest specifies parameters for retrieving PizzINT and GDELT data.
+        GetPizzintStatusResponse:
+            type: object
+            properties:
+                pizzint:
+                    $ref: '#/components/schemas/PizzintStatus'
+                tensionPairs:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/GdeltTensionPair'
+            description: GetPizzintStatusResponse contains Pentagon Pizza Index and GDELT tension data.
+        PizzintStatus:
+            type: object
+            properties:
+                defconLevel:
+                    type: integer
+                    maximum: 5
+                    minimum: 1
+                    format: int32
+                    description: DEFCON-style level (1-5).
+                defconLabel:
+                    type: string
+                    description: Human-readable DEFCON label.
+                aggregateActivity:
+                    type: number
+                    format: double
+                    description: Aggregate activity score.
+                activeSpikes:
+                    type: integer
+                    format: int32
+                    description: Number of active spike locations.
+                locationsMonitored:
+                    type: integer
+                    format: int32
+                    description: Total monitored locations.
+                locationsOpen:
+                    type: integer
+                    format: int32
+                    description: Currently open locations.
+                updatedAt:
+                    type: integer
+                    format: int64
+                    description: 'Last data update time, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                dataFreshness:
+                    type: string
+                    enum:
+                        - DATA_FRESHNESS_UNSPECIFIED
+                        - DATA_FRESHNESS_FRESH
+                        - DATA_FRESHNESS_STALE
+                    description: DataFreshness represents how current the data is.
+                locations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/PizzintLocation'
+            description: PizzintStatus represents the Pentagon Pizza Index status (proxy for late-night DC activity).
+        PizzintLocation:
+            type: object
+            properties:
+                placeId:
+                    type: string
+                    description: Google Places ID.
+                name:
+                    type: string
+                    description: Location name.
+                address:
+                    type: string
+                    description: Street address.
+                currentPopularity:
+                    type: integer
+                    format: int32
+                    description: Current popularity score (0-200+).
+                percentageOfUsual:
+                    type: integer
+                    format: int32
+                    description: Percentage of usual activity. Zero if unavailable.
+                isSpike:
+                    type: boolean
+                    description: Whether activity constitutes a spike.
+                spikeMagnitude:
+                    type: number
+                    format: double
+                    description: Spike magnitude above baseline. Zero if no spike.
+                dataSource:
+                    type: string
+                    description: Data source identifier.
+                recordedAt:
+                    type: string
+                    description: Recording timestamp as ISO 8601 string.
+                dataFreshness:
+                    type: string
+                    enum:
+                        - DATA_FRESHNESS_UNSPECIFIED
+                        - DATA_FRESHNESS_FRESH
+                        - DATA_FRESHNESS_STALE
+                    description: DataFreshness represents how current the data is.
+                isClosedNow:
+                    type: boolean
+                    description: Whether the location is currently closed.
+                lat:
+                    type: number
+                    format: double
+                    description: Latitude of the location.
+                lng:
+                    type: number
+                    format: double
+                    description: Longitude of the location.
+            description: PizzintLocation represents a single monitored pizza location near the Pentagon.
+        GdeltTensionPair:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: Pair identifier.
+                countries:
+                    type: array
+                    items:
+                        type: string
+                        description: Country pair (ISO 3166-1 alpha-2 codes).
+                label:
+                    type: string
+                    description: Human-readable label (e.g., "US-China").
+                score:
+                    type: number
+                    maximum: 100
+                    minimum: 0
+                    format: double
+                    description: Tension score (0-100).
+                trend:
+                    type: string
+                    enum:
+                        - TREND_DIRECTION_UNSPECIFIED
+                        - TREND_DIRECTION_RISING
+                        - TREND_DIRECTION_STABLE
+                        - TREND_DIRECTION_FALLING
+                    description: |-
+                        TrendDirection represents the directional movement of a metric over time.
+                         Used in markets, GDELT tension scores, and risk assessments.
+                changePercent:
+                    type: number
+                    format: double
+                    description: Percentage change from previous period.
+                region:
+                    type: string
+                    description: Geographic region.
+            description: GdeltTensionPair represents a bilateral tension score between two countries from GDELT.
+        ClassifyEventRequest:
+            type: object
+            properties:
+                title:
+                    type: string
+                    minLength: 1
+                    description: Event title or headline.
+                description:
+                    type: string
+                    description: Event description or body text.
+                source:
+                    type: string
+                    description: Event source (e.g., "reuters", "acled").
+                country:
+                    type: string
+                    description: Country context (ISO 3166-1 alpha-2).
+            required:
+                - title
+            description: ClassifyEventRequest specifies an event to classify using AI.
+        ClassifyEventResponse:
+            type: object
+            properties:
+                classification:
+                    $ref: '#/components/schemas/EventClassification'
+            description: ClassifyEventResponse contains the AI-generated event classification.
+        EventClassification:
+            type: object
+            properties:
+                category:
+                    type: string
+                    description: Event category (e.g., "military", "economic", "social").
+                subcategory:
+                    type: string
+                    description: Event subcategory.
+                severity:
+                    type: string
+                    enum:
+                        - SEVERITY_LEVEL_UNSPECIFIED
+                        - SEVERITY_LEVEL_LOW
+                        - SEVERITY_LEVEL_MEDIUM
+                        - SEVERITY_LEVEL_HIGH
+                    description: |-
+                        SeverityLevel represents a three-tier severity classification used across domains.
+                         Maps to existing TS unions: 'low' | 'medium' | 'high'.
+                confidence:
+                    type: number
+                    maximum: 1
+                    minimum: 0
+                    format: double
+                    description: Classification confidence (0.0 to 1.0).
+                analysis:
+                    type: string
+                    description: Brief AI-generated analysis.
+                entities:
+                    type: array
+                    items:
+                        type: string
+                        description: Related entities identified.
+            description: EventClassification represents an AI-generated classification of a real-world event.
+        GetCountryIntelBriefRequest:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                    pattern: ^[A-Z]{2}$
+                    description: ISO 3166-1 alpha-2 country code.
+            required:
+                - countryCode
+            description: GetCountryIntelBriefRequest specifies which country to generate a brief for.
+        GetCountryIntelBriefResponse:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                    description: ISO 3166-1 alpha-2 country code.
+                countryName:
+                    type: string
+                    description: Country name.
+                brief:
+                    type: string
+                    description: AI-generated intelligence brief text.
+                model:
+                    type: string
+                    description: AI model used for generation.
+                generatedAt:
+                    type: integer
+                    format: int64
+                    description: 'Brief generation time, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: GetCountryIntelBriefResponse contains an AI-generated intelligence brief for a country.
+        SearchGdeltDocumentsRequest:
+            type: object
+            properties:
+                query:
+                    type: string
+                    minLength: 1
+                    description: Search query string.
+                maxRecords:
+                    type: integer
+                    maximum: 250
+                    minimum: 1
+                    format: int32
+                    description: Maximum number of articles to return (1-250).
+                timespan:
+                    type: string
+                    description: Time span filter (e.g., "15min", "1h", "24h").
+            required:
+                - query
+            description: SearchGdeltDocumentsRequest specifies filters for searching GDELT news articles.
+        SearchGdeltDocumentsResponse:
+            type: object
+            properties:
+                articles:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/GdeltArticle'
+                query:
+                    type: string
+                    description: Echo of the search query.
+                error:
+                    type: string
+                    description: Error message if the search failed.
+            description: SearchGdeltDocumentsResponse contains GDELT article search results.
+        GdeltArticle:
+            type: object
+            properties:
+                title:
+                    type: string
+                    description: Article headline.
+                url:
+                    type: string
+                    description: Article URL.
+                source:
+                    type: string
+                    description: Source domain name.
+                date:
+                    type: string
+                    description: Publication date string.
+                image:
+                    type: string
+                    description: Article image URL.
+                language:
+                    type: string
+                    description: Article language code.
+                tone:
+                    type: number
+                    format: double
+                    description: GDELT tone score (negative = negative tone, positive = positive tone).
+            description: GdeltArticle represents a single article from the GDELT document API.

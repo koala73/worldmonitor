@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package worldmonitor.military.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/military/v1/list_military_flights.proto";
+import "worldmonitor/military/v1/get_theater_posture.proto";
+import "worldmonitor/military/v1/get_aircraft_details.proto";
+import "worldmonitor/military/v1/get_aircraft_details_batch.proto";
+import "worldmonitor/military/v1/get_wingbits_status.proto";
+import "worldmonitor/military/v1/get_usni_fleet_report.proto";
+
+// MilitaryService provides APIs for military flight and vessel tracking
+// sourced from OpenSky, Wingbits, and AIS data.
+service MilitaryService {
+  option (sebuf.http.service_config) = {base_path: "/api/military/v1"};
+
+  // ListMilitaryFlights retrieves tracked military aircraft from OpenSky and Wingbits.
+  rpc ListMilitaryFlights(ListMilitaryFlightsRequest) returns (ListMilitaryFlightsResponse) {
+    option (sebuf.http.config) = {path: "/list-military-flights"};
+  }
+
+  // GetTheaterPosture retrieves military posture assessments for geographic theaters.
+  rpc GetTheaterPosture(GetTheaterPostureRequest) returns (GetTheaterPostureResponse) {
+    option (sebuf.http.config) = {path: "/get-theater-posture"};
+  }
+
+  // GetAircraftDetails retrieves Wingbits aircraft enrichment data for a single ICAO24 hex.
+  rpc GetAircraftDetails(GetAircraftDetailsRequest) returns (GetAircraftDetailsResponse) {
+    option (sebuf.http.config) = {path: "/get-aircraft-details"};
+  }
+
+  // GetAircraftDetailsBatch retrieves Wingbits aircraft enrichment data for multiple ICAO24 hexes.
+  rpc GetAircraftDetailsBatch(GetAircraftDetailsBatchRequest) returns (GetAircraftDetailsBatchResponse) {
+    option (sebuf.http.config) = {path: "/get-aircraft-details-batch"};
+  }
+
+  // GetWingbitsStatus checks whether the Wingbits enrichment API is configured.
+  rpc GetWingbitsStatus(GetWingbitsStatusRequest) returns (GetWingbitsStatusResponse) {
+    option (sebuf.http.config) = {path: "/get-wingbits-status"};
+  }
+
+  // GetUSNIFleetReport retrieves the latest parsed USNI Fleet Tracker report.
+  rpc GetUSNIFleetReport(GetUSNIFleetReportRequest) returns (GetUSNIFleetReportResponse) {
+    option (sebuf.http.config) = {path: "/get-usni-fleet-report"};
+  }
+}

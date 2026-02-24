@@ -1,4 +1,4 @@
-// Tech/AI variant - startups.worldmonitor.app
+// Tech/AI variant - tech.worldmonitor.app
 import type { PanelConfig, MapLayers } from '@/types';
 import type { VariantConfig } from './base';
 
@@ -116,7 +116,7 @@ export const FEEDS: Record<string, Feed[]> = {
   // Markets & Finance (tech-focused)
   finance: [
     { name: 'CNBC Tech', url: rss('https://www.cnbc.com/id/19854910/device/rss/rss.html') },
-    { name: 'MarketWatch Tech', url: rss('https://feeds.marketwatch.com/marketwatch/topstories/') },
+    { name: 'MarketWatch Tech', url: rss('https://news.google.com/rss/search?q=site:marketwatch.com+technology+markets+when:2d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Yahoo Finance', url: rss('https://finance.yahoo.com/rss/topstories') },
     { name: 'Seeking Alpha Tech', url: rss('https://seekingalpha.com/market_currents.xml') },
   ],
@@ -214,6 +214,7 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   economic: true,
   waterways: false,
   outages: true,
+  cyberThreats: false,
   datacenters: true,
   protests: false,
   flights: false,
@@ -231,6 +232,12 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   accelerators: false,
   techHQs: true,
   techEvents: true,
+  // Finance layers (disabled in tech variant)
+  stockExchanges: false,
+  financialCenters: false,
+  centralBanks: false,
+  commodityHubs: false,
+  gulfInvestments: false,
 };
 
 // Mobile defaults for tech variant
@@ -248,6 +255,7 @@ export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   economic: false,
   waterways: false,
   outages: true,
+  cyberThreats: false,
   datacenters: true,
   protests: false,
   flights: false,
@@ -265,6 +273,12 @@ export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   accelerators: false,
   techHQs: false,
   techEvents: true,
+  // Finance layers (disabled in tech variant)
+  stockExchanges: false,
+  financialCenters: false,
+  centralBanks: false,
+  commodityHubs: false,
+  gulfInvestments: false,
 };
 
 export const VARIANT_CONFIG: VariantConfig = {

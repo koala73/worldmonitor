@@ -240,7 +240,7 @@ class SignalAggregator {
 
   /**
    * Ingest satellite fire detection from NASA FIRMS
-   * Source: src/services/firms-satellite.ts
+   * Source: src/services/wildfires
    */
   ingestSatelliteFires(fires: Array<{
     lat: number;

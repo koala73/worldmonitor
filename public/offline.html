@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WorldMonitor - Offline</title>
+  <style>
+    body { background: #0a0f0a; color: #e0e0e0; font-family: system-ui;
+           display: flex; align-items: center; justify-content: center;
+           min-height: 100vh; margin: 0; }
+    .c { text-align: center; padding: 2rem; }
+    h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
+    p { color: #888; font-size: 0.9rem; }
+    button { margin-top: 1rem; padding: 0.5rem 1.5rem; background: #1a3a1a;
+             color: #4ade80; border: 1px solid #2a5a2a; border-radius: 4px;
+             cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div class="c">
+    <h1>You're Offline</h1>
+    <p>WorldMonitor requires an internet connection for real-time intelligence data.</p>
+    <button onclick="location.reload()">Retry</button>
+  </div>
+</body>
+</html>

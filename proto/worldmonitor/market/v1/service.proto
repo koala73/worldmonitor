@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package worldmonitor.market.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/market/v1/list_market_quotes.proto";
+import "worldmonitor/market/v1/list_crypto_quotes.proto";
+import "worldmonitor/market/v1/list_commodity_quotes.proto";
+import "worldmonitor/market/v1/get_sector_summary.proto";
+import "worldmonitor/market/v1/list_stablecoin_markets.proto";
+import "worldmonitor/market/v1/list_etf_flows.proto";
+import "worldmonitor/market/v1/get_country_stock_index.proto";
+
+// MarketService provides APIs for financial market data from Finnhub, Yahoo Finance, and CoinGecko.
+service MarketService {
+  option (sebuf.http.service_config) = {base_path: "/api/market/v1"};
+
+  // ListMarketQuotes retrieves stock and index quotes.
+  rpc ListMarketQuotes(ListMarketQuotesRequest) returns (ListMarketQuotesResponse) {
+    option (sebuf.http.config) = {path: "/list-market-quotes"};
+  }
+
+  // ListCryptoQuotes retrieves cryptocurrency quotes from CoinGecko.
+  rpc ListCryptoQuotes(ListCryptoQuotesRequest) returns (ListCryptoQuotesResponse) {
+    option (sebuf.http.config) = {path: "/list-crypto-quotes"};
+  }
+
+  // ListCommodityQuotes retrieves commodity price quotes from Yahoo Finance.
+  rpc ListCommodityQuotes(ListCommodityQuotesRequest) returns (ListCommodityQuotesResponse) {
+    option (sebuf.http.config) = {path: "/list-commodity-quotes"};
+  }
+
+  // GetSectorSummary retrieves market sector performance data from Finnhub.
+  rpc GetSectorSummary(GetSectorSummaryRequest) returns (GetSectorSummaryResponse) {
+    option (sebuf.http.config) = {path: "/get-sector-summary"};
+  }
+
+  // ListStablecoinMarkets retrieves stablecoin peg health and market data from CoinGecko.
+  rpc ListStablecoinMarkets(ListStablecoinMarketsRequest) returns (ListStablecoinMarketsResponse) {
+    option (sebuf.http.config) = {path: "/list-stablecoin-markets"};
+  }
+
+  // ListEtfFlows retrieves BTC spot ETF flow estimates from Yahoo Finance.
+  rpc ListEtfFlows(ListEtfFlowsRequest) returns (ListEtfFlowsResponse) {
+    option (sebuf.http.config) = {path: "/list-etf-flows"};
+  }
+
+  // GetCountryStockIndex retrieves the primary stock index for a country from Yahoo Finance.
+  rpc GetCountryStockIndex(GetCountryStockIndexRequest) returns (GetCountryStockIndexResponse) {
+    option (sebuf.http.config) = {path: "/get-country-stock-index"};
+  }
+}

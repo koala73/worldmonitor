@@ -1,32 +1,40 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::collections::HashMap;
+use std::env;
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
-use std::env;
 
 use keyring::Entry;
+use reqwest::Url;
+use serde::Serialize;
 use serde_json::{Map, Value};
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
-use tauri::{AppHandle, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
+use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::{AppHandle, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 
 const LOCAL_API_PORT: &str = "46123";
 const KEYRING_SERVICE: &str = "world-monitor";
 const LOCAL_API_LOG_FILE: &str = "local-api.log";
 const DESKTOP_LOG_FILE: &str = "desktop.log";
 const MENU_FILE_SETTINGS_ID: &str = "file.settings";
-const MENU_DEBUG_OPEN_LOGS_ID: &str = "debug.open_logs";
-const MENU_DEBUG_OPEN_SIDECAR_LOG_ID: &str = "debug.open_sidecar_log";
-const SUPPORTED_SECRET_KEYS: [&str; 15] = [
+const MENU_HELP_GITHUB_ID: &str = "help.github";
+const MENU_HELP_DEVTOOLS_ID: &str = "help.devtools";
+const SUPPORTED_SECRET_KEYS: [&str; 21] = [
     "GROQ_API_KEY",
     "OPENROUTER_API_KEY",
     "FRED_API_KEY",
     "EIA_API_KEY",
     "CLOUDFLARE_API_TOKEN",
     "ACLED_ACCESS_TOKEN",
+    "URLHAUS_AUTH_KEY",
+    "OTX_API_KEY",
+    "ABUSEIPDB_API_KEY",
     "WINGBITS_API_KEY",
     "WS_RELAY_URL",
     "VITE_OPENSKY_RELAY_URL",
@@ -36,51 +44,259 @@ const SUPPORTED_SECRET_KEYS: [&str; 15] = [
     "VITE_WS_RELAY_URL",
     "FINNHUB_API_KEY",
     "NASA_FIRMS_API_KEY",
+    "OLLAMA_API_URL",
+    "OLLAMA_MODEL",
+    "WORLDMONITOR_API_KEY",
 ];
 
 #[derive(Default)]
 struct LocalApiState {
     child: Mutex<Option<Child>>,
+    token: Mutex<Option<String>>,
 }
 
-fn secret_entry(key: &str) -> Result<Entry, String> {
-    if !SUPPORTED_SECRET_KEYS.contains(&key) {
-        return Err(format!("Unsupported secret key: {key}"));
+/// In-memory cache for keychain secrets. Populated once at startup to avoid
+/// repeated macOS Keychain prompts (each `Entry::get_password()` triggers one).
+struct SecretsCache {
+    secrets: Mutex<HashMap<String, String>>,
+}
+
+/// In-memory mirror of persistent-cache.json. The file can grow to 10+ MB,
+/// so reading/parsing/writing it on every IPC call blocks the main thread.
+/// Instead, load once into RAM and serialize writes to preserve ordering.
+struct PersistentCache {
+    data: Mutex<Map<String, Value>>,
+    dirty: Mutex<bool>,
+    write_lock: Mutex<()>,
+}
+
+impl SecretsCache {
+    fn load_from_keychain() -> Self {
+        // Try consolidated vault first — single keychain prompt
+        if let Ok(entry) = Entry::new(KEYRING_SERVICE, "secrets-vault") {
+            if let Ok(json) = entry.get_password() {
+                if let Ok(map) = serde_json::from_str::<HashMap<String, String>>(&json) {
+                    let secrets: HashMap<String, String> = map
+                        .into_iter()
+                        .filter(|(k, v)| {
+                            SUPPORTED_SECRET_KEYS.contains(&k.as_str()) && !v.trim().is_empty()
+                        })
+                        .map(|(k, v)| (k, v.trim().to_string()))
+                        .collect();
+                    return SecretsCache {
+                        secrets: Mutex::new(secrets),
+                    };
+                }
+            }
+        }
+
+        // Migration: read individual keys (old format), consolidate into vault.
+        // This triggers one keychain prompt per key — happens only once.
+        let mut secrets = HashMap::new();
+        for key in SUPPORTED_SECRET_KEYS.iter() {
+            if let Ok(entry) = Entry::new(KEYRING_SERVICE, key) {
+                if let Ok(value) = entry.get_password() {
+                    let trimmed = value.trim().to_string();
+                    if !trimmed.is_empty() {
+                        secrets.insert((*key).to_string(), trimmed);
+                    }
+                }
+            }
+        }
+
+        // Write consolidated vault and clean up individual entries
+        if !secrets.is_empty() {
+            if let Ok(json) = serde_json::to_string(&secrets) {
+                if let Ok(vault_entry) = Entry::new(KEYRING_SERVICE, "secrets-vault") {
+                    if vault_entry.set_password(&json).is_ok() {
+                        for key in SUPPORTED_SECRET_KEYS.iter() {
+                            if let Ok(entry) = Entry::new(KEYRING_SERVICE, key) {
+                                let _ = entry.delete_credential();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        SecretsCache {
+            secrets: Mutex::new(secrets),
+        }
     }
-    Entry::new(KEYRING_SERVICE, key).map_err(|e| format!("Keyring init failed: {e}"))
+}
+
+impl PersistentCache {
+    fn load(path: &Path) -> Self {
+        let data = if path.exists() {
+            std::fs::read_to_string(path)
+                .ok()
+                .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+                .and_then(|v| v.as_object().cloned())
+                .unwrap_or_default()
+        } else {
+            Map::new()
+        };
+        PersistentCache {
+            data: Mutex::new(data),
+            dirty: Mutex::new(false),
+            write_lock: Mutex::new(()),
+        }
+    }
+
+    fn get(&self, key: &str) -> Option<Value> {
+        let data = self.data.lock().unwrap_or_else(|e| e.into_inner());
+        data.get(key).cloned()
+    }
+
+    /// Flush to disk only if dirty. Returns Ok(true) if written.
+    fn flush(&self, path: &Path) -> Result<bool, String> {
+        let _write_guard = self.write_lock.lock().unwrap_or_else(|e| e.into_inner());
+
+        let is_dirty = {
+            let dirty = self.dirty.lock().unwrap_or_else(|e| e.into_inner());
+            *dirty
+        };
+        if !is_dirty {
+            return Ok(false);
+        }
+
+        let data = self.data.lock().unwrap_or_else(|e| e.into_inner());
+        let serialized = serde_json::to_string(&Value::Object(data.clone()))
+            .map_err(|e| format!("Failed to serialize cache: {e}"))?;
+        drop(data);
+        std::fs::write(path, serialized)
+            .map_err(|e| format!("Failed to write cache {}: {e}", path.display()))?;
+        let mut dirty = self.dirty.lock().unwrap_or_else(|e| e.into_inner());
+        *dirty = false;
+        Ok(true)
+    }
+}
+
+#[derive(Serialize)]
+struct DesktopRuntimeInfo {
+    os: String,
+    arch: String,
+}
+
+fn save_vault(cache: &HashMap<String, String>) -> Result<(), String> {
+    let json =
+        serde_json::to_string(cache).map_err(|e| format!("Failed to serialize vault: {e}"))?;
+    let entry = Entry::new(KEYRING_SERVICE, "secrets-vault")
+        .map_err(|e| format!("Keyring init failed: {e}"))?;
+    entry
+        .set_password(&json)
+        .map_err(|e| format!("Failed to write vault: {e}"))?;
+    Ok(())
+}
+
+fn generate_local_token() -> String {
+    use std::collections::hash_map::RandomState;
+    use std::hash::{BuildHasher, Hasher};
+    let state = RandomState::new();
+    let mut h1 = state.build_hasher();
+    h1.write_u64(std::process::id() as u64);
+    let a = h1.finish();
+    let mut h2 = state.build_hasher();
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    h2.write_u128(nanos);
+    let b = h2.finish();
+    format!("{a:016x}{b:016x}")
+}
+
+#[tauri::command]
+fn get_local_api_token(state: tauri::State<'_, LocalApiState>) -> Result<String, String> {
+    let token = state
+        .token
+        .lock()
+        .map_err(|_| "Failed to lock local API token".to_string())?;
+    token
+        .clone()
+        .ok_or_else(|| "Token not generated".to_string())
+}
+
+#[tauri::command]
+fn get_desktop_runtime_info() -> DesktopRuntimeInfo {
+    DesktopRuntimeInfo {
+        os: env::consts::OS.to_string(),
+        arch: env::consts::ARCH.to_string(),
+    }
 }
 
 #[tauri::command]
 fn list_supported_secret_keys() -> Vec<String> {
-    SUPPORTED_SECRET_KEYS.iter().map(|key| (*key).to_string()).collect()
+    SUPPORTED_SECRET_KEYS
+        .iter()
+        .map(|key| (*key).to_string())
+        .collect()
 }
 
 #[tauri::command]
-fn get_secret(key: String) -> Result<Option<String>, String> {
-    let entry = secret_entry(&key)?;
-    match entry.get_password() {
-        Ok(value) => Ok(Some(value)),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(err) => Err(format!("Failed to read keyring secret: {err}")),
+fn get_secret(
+    key: String,
+    cache: tauri::State<'_, SecretsCache>,
+) -> Result<Option<String>, String> {
+    if !SUPPORTED_SECRET_KEYS.contains(&key.as_str()) {
+        return Err(format!("Unsupported secret key: {key}"));
     }
+    let secrets = cache
+        .secrets
+        .lock()
+        .map_err(|_| "Lock poisoned".to_string())?;
+    Ok(secrets.get(&key).cloned())
 }
 
 #[tauri::command]
-fn set_secret(key: String, value: String) -> Result<(), String> {
-    let entry = secret_entry(&key)?;
-    entry
-        .set_password(&value)
-        .map_err(|e| format!("Failed to write keyring secret: {e}"))
+fn get_all_secrets(cache: tauri::State<'_, SecretsCache>) -> HashMap<String, String> {
+    cache
+        .secrets
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
 }
 
 #[tauri::command]
-fn delete_secret(key: String) -> Result<(), String> {
-    let entry = secret_entry(&key)?;
-    match entry.delete_credential() {
-        Ok(_) => Ok(()),
-        Err(keyring::Error::NoEntry) => Ok(()),
-        Err(err) => Err(format!("Failed to delete keyring secret: {err}")),
+fn set_secret(
+    key: String,
+    value: String,
+    cache: tauri::State<'_, SecretsCache>,
+) -> Result<(), String> {
+    if !SUPPORTED_SECRET_KEYS.contains(&key.as_str()) {
+        return Err(format!("Unsupported secret key: {key}"));
     }
+    let mut secrets = cache
+        .secrets
+        .lock()
+        .map_err(|_| "Lock poisoned".to_string())?;
+    let trimmed = value.trim().to_string();
+    // Build proposed state, persist first, then commit to cache
+    let mut proposed = secrets.clone();
+    if trimmed.is_empty() {
+        proposed.remove(&key);
+    } else {
+        proposed.insert(key, trimmed);
+    }
+    save_vault(&proposed)?;
+    *secrets = proposed;
+    Ok(())
+}
+
+#[tauri::command]
+fn delete_secret(key: String, cache: tauri::State<'_, SecretsCache>) -> Result<(), String> {
+    if !SUPPORTED_SECRET_KEYS.contains(&key.as_str()) {
+        return Err(format!("Unsupported secret key: {key}"));
+    }
+    let mut secrets = cache
+        .secrets
+        .lock()
+        .map_err(|_| "Lock poisoned".to_string())?;
+    let mut proposed = secrets.clone();
+    proposed.remove(&key);
+    save_vault(&proposed)?;
+    *secrets = proposed;
+    Ok(())
 }
 
 fn cache_file_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -94,45 +310,51 @@ fn cache_file_path(app: &AppHandle) -> Result<PathBuf, String> {
 }
 
 #[tauri::command]
-fn read_cache_entry(app: AppHandle, key: String) -> Result<Option<Value>, String> {
-    let path = cache_file_path(&app)?;
-    if !path.exists() {
-        return Ok(None);
-    }
-
-    let contents = std::fs::read_to_string(&path)
-        .map_err(|e| format!("Failed to read cache store {}: {e}", path.display()))?;
-    let parsed: Value = serde_json::from_str(&contents).unwrap_or_else(|_| Value::Object(Map::new()));
-    let Some(root) = parsed.as_object() else {
-        return Ok(None);
-    };
-
-    Ok(root.get(&key).cloned())
+fn read_cache_entry(cache: tauri::State<'_, PersistentCache>, key: String) -> Result<Option<Value>, String> {
+    Ok(cache.get(&key))
 }
 
 #[tauri::command]
-fn write_cache_entry(app: AppHandle, key: String, value: String) -> Result<(), String> {
-    let path = cache_file_path(&app)?;
+fn delete_cache_entry(cache: tauri::State<'_, PersistentCache>, key: String) -> Result<(), String> {
+    {
+        let mut data = cache.data.lock().unwrap_or_else(|e| e.into_inner());
+        data.remove(&key);
+    }
+    {
+        let mut dirty = cache.dirty.lock().unwrap_or_else(|e| e.into_inner());
+        *dirty = true;
+    }
+    // Disk flush deferred to exit handler (cache.flush) — avoids blocking main thread
+    Ok(())
+}
 
-    let mut root: Map<String, Value> = if path.exists() {
-        let contents = std::fs::read_to_string(&path)
-            .map_err(|e| format!("Failed to read cache store {}: {e}", path.display()))?;
-        serde_json::from_str::<Value>(&contents)
-            .ok()
-            .and_then(|v| v.as_object().cloned())
-            .unwrap_or_default()
-    } else {
-        Map::new()
-    };
-
+#[tauri::command]
+fn write_cache_entry(app: AppHandle, cache: tauri::State<'_, PersistentCache>, key: String, value: String) -> Result<(), String> {
     let parsed_value: Value = serde_json::from_str(&value)
         .map_err(|e| format!("Invalid cache payload JSON: {e}"))?;
-    root.insert(key, parsed_value);
+    let _write_guard = cache.write_lock.lock().unwrap_or_else(|e| e.into_inner());
+    {
+        let mut data = cache.data.lock().unwrap_or_else(|e| e.into_inner());
+        data.insert(key, parsed_value);
+    }
+    {
+        let mut dirty = cache.dirty.lock().unwrap_or_else(|e| e.into_inner());
+        *dirty = true;
+    }
 
-    let serialized = serde_json::to_string_pretty(&Value::Object(root))
-        .map_err(|e| format!("Failed to serialize cache store: {e}"))?;
-    std::fs::write(&path, serialized)
-        .map_err(|e| format!("Failed to write cache store {}: {e}", path.display()))
+    // Flush synchronously under write lock so concurrent writes cannot reorder.
+    let path = cache_file_path(&app)?;
+    let data = cache.data.lock().unwrap_or_else(|e| e.into_inner());
+    let serialized = serde_json::to_string(&Value::Object(data.clone()))
+        .map_err(|e| format!("Failed to serialize cache: {e}"))?;
+    drop(data);
+    std::fs::write(&path, &serialized)
+        .map_err(|e| format!("Failed to write cache {}: {e}", path.display()))?;
+    {
+        let mut dirty = cache.dirty.lock().unwrap_or_else(|e| e.into_inner());
+        *dirty = false;
+    }
+    Ok(())
 }
 
 fn logs_dir_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -169,32 +391,50 @@ fn append_desktop_log(app: &AppHandle, level: &str, message: &str) {
     let _ = writeln!(file, "[{timestamp}][{level}] {message}");
 }
 
-fn open_path_in_shell(path: &Path) -> Result<(), String> {
+fn open_in_shell(arg: &str) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     let mut command = {
         let mut cmd = Command::new("open");
-        cmd.arg(path);
+        cmd.arg(arg);
         cmd
     };
 
     #[cfg(target_os = "windows")]
     let mut command = {
         let mut cmd = Command::new("explorer");
-        cmd.arg(path);
+        cmd.arg(arg);
         cmd
     };
 
     #[cfg(all(unix, not(target_os = "macos")))]
     let mut command = {
         let mut cmd = Command::new("xdg-open");
-        cmd.arg(path);
+        cmd.arg(arg);
         cmd
     };
 
     command
         .spawn()
         .map(|_| ())
-        .map_err(|e| format!("Failed to open {}: {e}", path.display()))
+        .map_err(|e| format!("Failed to open {}: {e}", arg))
+}
+
+fn open_path_in_shell(path: &Path) -> Result<(), String> {
+    open_in_shell(&path.to_string_lossy())
+}
+
+#[tauri::command]
+fn open_url(url: String) -> Result<(), String> {
+    let parsed = Url::parse(&url).map_err(|_| "Invalid URL".to_string())?;
+
+    match parsed.scheme() {
+        "https" => open_in_shell(parsed.as_str()),
+        "http" => match parsed.host_str() {
+            Some("localhost") | Some("127.0.0.1") => open_in_shell(parsed.as_str()),
+            _ => Err("Only https:// URLs are allowed (http:// only for localhost)".to_string()),
+        },
+        _ => Err("Only https:// URLs are allowed (http:// only for localhost)".to_string()),
+    }
 }
 
 fn open_logs_folder_impl(app: &AppHandle) -> Result<PathBuf, String> {
@@ -224,8 +464,65 @@ fn open_sidecar_log_file(app: AppHandle) -> Result<String, String> {
 }
 
 #[tauri::command]
-fn open_settings_window_command(app: AppHandle) -> Result<(), String> {
+async fn open_settings_window_command(app: AppHandle) -> Result<(), String> {
     open_settings_window(&app)
+}
+
+#[tauri::command]
+fn close_settings_window(app: AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("settings") {
+        window
+            .close()
+            .map_err(|e| format!("Failed to close settings window: {e}"))?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn open_live_channels_window_command(
+    app: AppHandle,
+    base_url: Option<String>,
+) -> Result<(), String> {
+    open_live_channels_window(&app, base_url)
+}
+
+#[tauri::command]
+fn close_live_channels_window(app: AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("live-channels") {
+        window
+            .close()
+            .map_err(|e| format!("Failed to close live channels window: {e}"))?;
+    }
+    Ok(())
+}
+
+/// Fetch JSON from Polymarket Gamma API using native TLS (bypasses Cloudflare JA3 blocking).
+/// Called from frontend when browser CORS and sidecar Node.js TLS both fail.
+#[tauri::command]
+async fn fetch_polymarket(path: String, params: String) -> Result<String, String> {
+    let allowed = ["events", "markets", "tags"];
+    let segment = path.trim_start_matches('/');
+    if !allowed.iter().any(|a| segment.starts_with(a)) {
+        return Err("Invalid Polymarket path".into());
+    }
+    let url = format!("https://gamma-api.polymarket.com/{}?{}", segment, params);
+    let client = reqwest::Client::builder()
+        .use_native_tls()
+        .build()
+        .map_err(|e| format!("HTTP client error: {e}"))?;
+    let resp = client
+        .get(&url)
+        .header("Accept", "application/json")
+        .timeout(std::time::Duration::from_secs(10))
+        .send()
+        .await
+        .map_err(|e| format!("Polymarket fetch failed: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!("Polymarket HTTP {}", resp.status()));
+    }
+    resp.text()
+        .await
+        .map_err(|e| format!("Read body failed: {e}"))
 }
 
 fn open_settings_window(app: &AppHandle) -> Result<(), String> {
@@ -237,13 +534,54 @@ fn open_settings_window(app: &AppHandle) -> Result<(), String> {
         return Ok(());
     }
 
-    WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("settings.html".into()))
+    let _settings_window = WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("settings.html".into()))
         .title("World Monitor Settings")
         .inner_size(980.0, 760.0)
         .min_inner_size(820.0, 620.0)
         .resizable(true)
+        .background_color(tauri::webview::Color(26, 28, 30, 255))
         .build()
         .map_err(|e| format!("Failed to create settings window: {e}"))?;
+
+    // On Windows/Linux, menus are per-window. Remove the inherited app menu
+    // from the settings window (macOS uses a shared app-wide menu bar instead).
+    #[cfg(not(target_os = "macos"))]
+    let _ = _settings_window.remove_menu();
+
+    Ok(())
+}
+
+fn open_live_channels_window(app: &AppHandle, base_url: Option<String>) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("live-channels") {
+        let _ = window.show();
+        window
+            .set_focus()
+            .map_err(|e| format!("Failed to focus live channels window: {e}"))?;
+        return Ok(());
+    }
+
+    // In dev, use the same origin as the main window (e.g. http://localhost:3001) so we don't
+    // get "connection refused" when Vite runs on a different port than devUrl.
+    let url = match base_url {
+        Some(ref origin) if !origin.is_empty() => {
+            let path = origin.trim_end_matches('/');
+            let full_url = format!("{}/live-channels.html", path);
+            WebviewUrl::External(Url::parse(&full_url).map_err(|_| "Invalid base URL".to_string())?)
+        }
+        _ => WebviewUrl::App("live-channels.html".into()),
+    };
+
+    let _live_channels_window = WebviewWindowBuilder::new(app, "live-channels", url)
+    .title("Channel management - World Monitor")
+    .inner_size(680.0, 760.0)
+    .min_inner_size(520.0, 600.0)
+    .resizable(true)
+    .background_color(tauri::webview::Color(26, 28, 30, 255))
+    .build()
+    .map_err(|e| format!("Failed to create live channels window: {e}"))?;
+
+    #[cfg(not(target_os = "macos"))]
+    let _ = _live_channels_window.remove_menu();
 
     Ok(())
 }
@@ -258,31 +596,62 @@ fn build_app_menu(handle: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     )?;
     let separator = PredefinedMenuItem::separator(handle)?;
     let quit_item = PredefinedMenuItem::quit(handle, Some("Quit"))?;
-    let file_menu =
-        Submenu::with_items(handle, "File", true, &[&settings_item, &separator, &quit_item])?;
-
-    let open_logs_item = MenuItem::with_id(
+    let file_menu = Submenu::with_items(
         handle,
-        MENU_DEBUG_OPEN_LOGS_ID,
-        "Open Logs Folder",
+        "File",
+        true,
+        &[&settings_item, &separator, &quit_item],
+    )?;
+
+    let about_metadata = AboutMetadata {
+        name: Some("World Monitor".into()),
+        version: Some(env!("CARGO_PKG_VERSION").into()),
+        copyright: Some("\u{00a9} 2025 Elie Habib".into()),
+        website: Some("https://worldmonitor.app".into()),
+        website_label: Some("worldmonitor.app".into()),
+        ..Default::default()
+    };
+    let about_item =
+        PredefinedMenuItem::about(handle, Some("About World Monitor"), Some(about_metadata))?;
+    let github_item = MenuItem::with_id(
+        handle,
+        MENU_HELP_GITHUB_ID,
+        "GitHub Repository",
         true,
         None::<&str>,
     )?;
-    let open_sidecar_log_item = MenuItem::with_id(
+    let devtools_item = MenuItem::with_id(
         handle,
-        MENU_DEBUG_OPEN_SIDECAR_LOG_ID,
-        "Open Local API Log",
+        MENU_HELP_DEVTOOLS_ID,
+        "Toggle Developer Tools",
         true,
-        None::<&str>,
+        Some("CmdOrCtrl+Alt+I"),
     )?;
-    let debug_menu = Submenu::with_items(
+    let help_separator = PredefinedMenuItem::separator(handle)?;
+    let help_menu = Submenu::with_items(
         handle,
-        "Debug",
+        "Help",
         true,
-        &[&open_logs_item, &open_sidecar_log_item],
+        &[&about_item, &help_separator, &github_item, &devtools_item],
     )?;
 
-    Menu::with_items(handle, &[&file_menu, &debug_menu])
+    let edit_menu = {
+        let undo = PredefinedMenuItem::undo(handle, None)?;
+        let redo = PredefinedMenuItem::redo(handle, None)?;
+        let sep1 = PredefinedMenuItem::separator(handle)?;
+        let cut = PredefinedMenuItem::cut(handle, None)?;
+        let copy = PredefinedMenuItem::copy(handle, None)?;
+        let paste = PredefinedMenuItem::paste(handle, None)?;
+        let select_all = PredefinedMenuItem::select_all(handle, None)?;
+        Submenu::with_items(
+            handle,
+            "Edit",
+            true,
+            &[&undo, &redo, &sep1, &cut, &copy, &paste, &select_all],
+        )?
+    };
+
+    Menu::with_items(handle, &[&file_menu, &edit_menu, &help_menu])
 }
 
 fn handle_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
@@ -293,19 +662,66 @@ fn handle_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
                 eprintln!("[tauri] settings menu failed: {err}");
             }
         }
-        MENU_DEBUG_OPEN_LOGS_ID => {
-            if let Err(err) = open_logs_folder_impl(app) {
-                append_desktop_log(app, "ERROR", &format!("open logs folder failed: {err}"));
-                eprintln!("[tauri] open logs folder failed: {err}");
-            }
+        MENU_HELP_GITHUB_ID => {
+            let _ = open_in_shell("https://github.com/koala73/worldmonitor");
         }
-        MENU_DEBUG_OPEN_SIDECAR_LOG_ID => {
-            if let Err(err) = open_sidecar_log_impl(app) {
-                append_desktop_log(app, "ERROR", &format!("open sidecar log failed: {err}"));
-                eprintln!("[tauri] open sidecar log failed: {err}");
+        MENU_HELP_DEVTOOLS_ID => {
+            if let Some(window) = app.get_webview_window("main") {
+                if window.is_devtools_open() {
+                    window.close_devtools();
+                } else {
+                    window.open_devtools();
+                }
             }
         }
         _ => {}
+    }
+}
+
+/// Strip Windows extended-length path prefixes that `canonicalize()` adds.
+/// Preserve UNC semantics: `\\?\UNC\server\share\...` must become
+/// `\\server\share\...` (not `UNC\server\share\...`).
+fn sanitize_path_for_node(p: &Path) -> String {
+    let s = p.to_string_lossy();
+    if let Some(stripped_unc) = s.strip_prefix("\\\\?\\UNC\\") {
+        format!("\\\\{stripped_unc}")
+    } else if let Some(stripped) = s.strip_prefix("\\\\?\\") {
+        stripped.to_string()
+    } else {
+        s.into_owned()
+    }
+}
+
+#[cfg(test)]
+mod sanitize_path_tests {
+    use super::sanitize_path_for_node;
+    use std::path::Path;
+
+    #[test]
+    fn strips_extended_drive_prefix() {
+        let raw = Path::new(r"\\?\C:\Program Files\nodejs\node.exe");
+        assert_eq!(
+            sanitize_path_for_node(raw),
+            r"C:\Program Files\nodejs\node.exe".to_string()
+        );
+    }
+
+    #[test]
+    fn strips_extended_unc_prefix_and_preserves_unc_root() {
+        let raw = Path::new(r"\\?\UNC\server\share\sidecar\local-api-server.mjs");
+        assert_eq!(
+            sanitize_path_for_node(raw),
+            r"\\server\share\sidecar\local-api-server.mjs".to_string()
+        );
+    }
+
+    #[test]
+    fn leaves_standard_paths_unchanged() {
+        let raw = Path::new(r"C:\Users\alice\sidecar\local-api-server.mjs");
+        assert_eq!(
+            sanitize_path_for_node(raw),
+            r"C:\Users\alice\sidecar\local-api-server.mjs".to_string()
+        );
     }
 }
 
@@ -342,11 +758,29 @@ fn local_api_paths(app: &AppHandle) -> (PathBuf, PathBuf) {
     (sidecar_script, api_dir_root)
 }
 
-fn resolve_node_binary() -> Option<PathBuf> {
+fn resolve_node_binary(app: &AppHandle) -> Option<PathBuf> {
     if let Ok(explicit) = env::var("LOCAL_API_NODE_BIN") {
         let explicit_path = PathBuf::from(explicit);
-        if explicit_path.exists() {
+        if explicit_path.is_file() {
             return Some(explicit_path);
+        }
+        append_desktop_log(
+            app,
+            "WARN",
+            &format!(
+                "LOCAL_API_NODE_BIN is set but not a valid file: {}",
+                explicit_path.display()
+            ),
+        );
+    }
+
+    if !cfg!(debug_assertions) {
+        let node_name = if cfg!(windows) { "node.exe" } else { "node" };
+        if let Ok(resource_dir) = app.path().resource_dir() {
+            let bundled = resource_dir.join("sidecar").join("node").join(node_name);
+            if bundled.is_file() {
+                return Some(bundled);
+            }
         }
     }
 
@@ -354,7 +788,7 @@ fn resolve_node_binary() -> Option<PathBuf> {
     if let Some(path_var) = env::var_os("PATH") {
         for dir in env::split_paths(&path_var) {
             let candidate = dir.join(node_name);
-            if candidate.exists() {
+            if candidate.is_file() {
                 return Some(candidate);
             }
         }
@@ -374,7 +808,7 @@ fn resolve_node_binary() -> Option<PathBuf> {
         ]
     };
 
-    common_locations.into_iter().find(|path| path.exists())
+    common_locations.into_iter().find(|path| path.is_file())
 }
 
 fn start_local_api(app: &AppHandle) -> Result<(), String> {
@@ -394,7 +828,7 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
             script.display()
         ));
     }
-    let node_binary = resolve_node_binary().ok_or_else(|| {
+    let node_binary = resolve_node_binary(app).ok_or_else(|| {
         "Node.js executable not found. Install Node 18+ or set LOCAL_API_NODE_BIN".to_string()
     })?;
 
@@ -418,20 +852,77 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
             log_path.display()
         ),
     );
-    append_desktop_log(app, "INFO", &format!("resolved node binary={}", node_binary.display()));
+    append_desktop_log(
+        app,
+        "INFO",
+        &format!("resolved node binary={}", node_binary.display()),
+    );
+
+    // Generate a unique token for local API auth (prevents other local processes from accessing sidecar)
+    let mut token_slot = state
+        .token
+        .lock()
+        .map_err(|_| "Failed to lock token slot")?;
+    if token_slot.is_none() {
+        *token_slot = Some(generate_local_token());
+    }
+    let local_api_token = token_slot.clone().unwrap();
+    drop(token_slot);
 
     let mut cmd = Command::new(&node_binary);
-    cmd.arg(&script)
+    #[cfg(windows)]
+    cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW — hide the node.exe console
+                                    // Sanitize paths for Node.js on Windows: strip \\?\ UNC prefix and set
+                                    // explicit working directory to avoid bare drive-letter CWD issues that
+                                    // cause EISDIR errors in Node.js module resolution.
+    let script_for_node = sanitize_path_for_node(&script);
+    let resource_for_node = sanitize_path_for_node(&resource_root);
+    append_desktop_log(
+        app,
+        "INFO",
+        &format!("node args: script={script_for_node} resource_dir={resource_for_node}"),
+    );
+    cmd.arg(&script_for_node)
         .env("LOCAL_API_PORT", LOCAL_API_PORT)
-        .env("LOCAL_API_RESOURCE_DIR", resource_root)
+        .env("LOCAL_API_RESOURCE_DIR", &resource_for_node)
         .env("LOCAL_API_MODE", "tauri-sidecar")
+        .env("LOCAL_API_TOKEN", &local_api_token)
         .stdout(Stdio::from(log_file))
         .stderr(Stdio::from(log_file_err));
+    if let Some(parent) = script.parent() {
+        cmd.current_dir(parent);
+    }
+
+    // Pass cached keychain secrets to sidecar as env vars (no keychain re-read)
+    let mut secret_count = 0u32;
+    let secrets_cache = app.state::<SecretsCache>();
+    if let Ok(secrets) = secrets_cache.secrets.lock() {
+        for (key, value) in secrets.iter() {
+            cmd.env(key, value);
+            secret_count += 1;
+        }
+    }
+    append_desktop_log(
+        app,
+        "INFO",
+        &format!("injected {secret_count} keychain secrets into sidecar env"),
+    );
+
+    // Inject build-time secrets (CI) with runtime env fallback (dev)
+    if let Some(url) = option_env!("CONVEX_URL") {
+        cmd.env("CONVEX_URL", url);
+    } else if let Ok(url) = std::env::var("CONVEX_URL") {
+        cmd.env("CONVEX_URL", url);
+    }
 
     let child = cmd
         .spawn()
         .map_err(|e| format!("Failed to launch local API: {e}"))?;
-    append_desktop_log(app, "INFO", &format!("local API sidecar started pid={}", child.id()));
+    append_desktop_log(
+        app,
+        "INFO",
+        &format!("local API sidecar started pid={}", child.id()),
+    );
     *slot = Some(child);
     Ok(())
 }
@@ -447,23 +938,117 @@ fn stop_local_api(app: &AppHandle) {
     }
 }
 
+#[cfg(target_os = "linux")]
+fn resolve_appimage_gio_module_dir() -> Option<PathBuf> {
+    let appdir = env::var_os("APPDIR")?;
+    let appdir = PathBuf::from(appdir);
+
+    // Common layouts produced by AppImage/linuxdeploy on Debian and RPM families.
+    let preferred = [
+        "usr/lib/gio/modules",
+        "usr/lib64/gio/modules",
+        "usr/lib/x86_64-linux-gnu/gio/modules",
+        "usr/lib/aarch64-linux-gnu/gio/modules",
+        "usr/lib/arm-linux-gnueabihf/gio/modules",
+        "lib/gio/modules",
+        "lib64/gio/modules",
+    ];
+
+    for relative in preferred {
+        let candidate = appdir.join(relative);
+        if candidate.is_dir() {
+            return Some(candidate);
+        }
+    }
+
+    // Fallback: probe one level of arch-specific directories, e.g. usr/lib/<triplet>/gio/modules.
+    for lib_root in ["usr/lib", "usr/lib64", "lib", "lib64"] {
+        let root = appdir.join(lib_root);
+        if !root.is_dir() {
+            continue;
+        }
+        let entries = match fs::read_dir(&root) {
+            Ok(entries) => entries,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            let candidate = entry.path().join("gio/modules");
+            if candidate.is_dir() {
+                return Some(candidate);
+            }
+        }
+    }
+
+    None
+}
+
 fn main() {
+    // Work around WebKitGTK rendering issues on Linux that can cause blank white
+    // screens. DMA-BUF renderer failures are common with NVIDIA drivers and on
+    // immutable distros (e.g. Bazzite/Fedora Atomic).  Setting the env var before
+    // WebKit initialises forces a software fallback path.  Only set when the user
+    // hasn't explicitly configured the variable.
+    #[cfg(target_os = "linux")]
+    {
+        if env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+            // SAFETY: called before any threads are spawned (Tauri hasn't started yet).
+            unsafe { env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1") };
+        }
+
+        // Work around GLib version mismatch when running as an AppImage on newer
+        // distros (e.g. Ubuntu 25.10+).  The AppImage bundles GLib from the build
+        // system (currently Ubuntu 24.04, GLib 2.80).  When host GIO modules such
+        // as GVFS's libgvfsdbus.so are compiled against a newer GLib they reference
+        // symbols that do not exist in the bundled copy, producing:
+        //   "undefined symbol: g_task_set_static_name"
+        // Point GIO module scanning at the AppImage's bundled module directory
+        // instead of host directories. This keeps required modules (notably TLS)
+        // available while avoiding host GVFS modules that may depend on newer
+        // GLib symbols than the bundled runtime provides.
+        if env::var_os("APPIMAGE").is_some() && env::var_os("GIO_MODULE_DIR").is_none() {
+            if let Some(module_dir) = resolve_appimage_gio_module_dir() {
+                unsafe { env::set_var("GIO_MODULE_DIR", &module_dir) };
+            } else if env::var_os("GIO_USE_VFS").is_none() {
+                // Last-resort fallback: prefer local VFS backend if module path
+                // discovery fails, which reduces GVFS dependency surface.
+                unsafe { env::set_var("GIO_USE_VFS", "local") };
+                eprintln!(
+                    "[tauri] APPIMAGE detected but bundled gio/modules not found; using GIO_USE_VFS=local fallback"
+                );
+            }
+        }
+    }
+
     tauri::Builder::default()
         .menu(build_app_menu)
         .on_menu_event(handle_menu_event)
         .manage(LocalApiState::default())
+        .manage(SecretsCache::load_from_keychain())
         .invoke_handler(tauri::generate_handler![
             list_supported_secret_keys,
             get_secret,
+            get_all_secrets,
             set_secret,
             delete_secret,
+            get_local_api_token,
+            get_desktop_runtime_info,
             read_cache_entry,
             write_cache_entry,
+            delete_cache_entry,
             open_logs_folder,
             open_sidecar_log_file,
-            open_settings_window_command
+            open_settings_window_command,
+            close_settings_window,
+            open_live_channels_window_command,
+            close_live_channels_window,
+            open_url,
+            fetch_polymarket
         ])
         .setup(|app| {
+            // Load persistent cache into memory (avoids 14MB file I/O on every IPC call)
+            let cache_path = cache_file_path(&app.handle()).unwrap_or_default();
+            app.manage(PersistentCache::load(&cache_path));
+
             if let Err(err) = start_local_api(&app.handle()) {
                 append_desktop_log(
                     &app.handle(),
@@ -472,13 +1057,57 @@ fn main() {
                 );
                 eprintln!("[tauri] local API sidecar failed to start: {err}");
             }
+
             Ok(())
         })
         .build(tauri::generate_context!())
         .expect("error while running world-monitor tauri application")
         .run(|app, event| {
-            if matches!(event, RunEvent::ExitRequested { .. } | RunEvent::Exit) {
-                stop_local_api(&app);
+            match &event {
+                // macOS: hide window on close instead of quitting (standard behavior)
+                #[cfg(target_os = "macos")]
+                RunEvent::WindowEvent {
+                    label,
+                    event: WindowEvent::CloseRequested { api, .. },
+                    ..
+                } if label == "main" => {
+                    api.prevent_close();
+                    if let Some(w) = app.get_webview_window("main") {
+                        let _ = w.hide();
+                    }
+                }
+                // macOS: reshow window when dock icon is clicked
+                #[cfg(target_os = "macos")]
+                RunEvent::Reopen { .. } => {
+                    if let Some(w) = app.get_webview_window("main") {
+                        let _ = w.show();
+                        let _ = w.set_focus();
+                    }
+                }
+                // Only macOS needs explicit re-raising to keep settings above the main window.
+                // On Windows, focusing the settings window here can trigger rapid focus churn
+                // between windows and present as a UI hang.
+                #[cfg(target_os = "macos")]
+                RunEvent::WindowEvent {
+                    label,
+                    event: WindowEvent::Focused(true),
+                    ..
+                } if label == "main" => {
+                    if let Some(sw) = app.get_webview_window("settings") {
+                        let _ = sw.show();
+                        let _ = sw.set_focus();
+                    }
+                }
+                RunEvent::ExitRequested { .. } | RunEvent::Exit => {
+                    // Flush in-memory cache to disk before quitting
+                    if let Ok(path) = cache_file_path(app) {
+                        if let Some(cache) = app.try_state::<PersistentCache>() {
+                            let _ = cache.flush(&path);
+                        }
+                    }
+                    stop_local_api(app);
+                }
+                _ => {}
             }
         });
 }

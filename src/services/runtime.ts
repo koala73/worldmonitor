@@ -81,8 +81,8 @@ export function getRemoteApiBaseUrl(): string {
     return normalizeBaseUrl(configuredRemoteBase);
   }
 
-  const variant = import.meta.env.VITE_VARIANT || 'world';
-  return DEFAULT_REMOTE_HOSTS[variant] ?? DEFAULT_REMOTE_HOSTS.world ?? 'https://worldmonitor.app';
+  const variant = import.meta.env.VITE_VARIANT || 'full';
+  return DEFAULT_REMOTE_HOSTS[variant] ?? DEFAULT_REMOTE_HOSTS.full ?? 'https://worldmonitor.app';
 }
 
 export function toRuntimeUrl(path: string): string {
@@ -98,31 +98,60 @@ export function toRuntimeUrl(path: string): string {
   return `${baseUrl}${path}`;
 }
 
+const APP_HOSTS = new Set([
+  'worldmonitor.app',
+  'www.worldmonitor.app',
+  'tech.worldmonitor.app',
+  'localhost',
+  '127.0.0.1',
+]);
+
+function isAppOriginUrl(urlStr: string): boolean {
+  try {
+    const u = new URL(urlStr);
+    const host = u.hostname;
+    return APP_HOSTS.has(host) || host.endsWith('.worldmonitor.app');
+  } catch {
+    return false;
+  }
+}
+
 function getApiTargetFromRequestInput(input: RequestInfo | URL): string | null {
   if (typeof input === 'string') {
     if (input.startsWith('/')) return input;
-    try {
+    if (isAppOriginUrl(input)) {
       const u = new URL(input);
       return `${u.pathname}${u.search}`;
-    } catch {
-      return null;
     }
+    return null;
   }
 
   if (input instanceof URL) {
-    return `${input.pathname}${input.search}`;
-  }
-
-  try {
-    const u = new URL(input.url);
-    return `${u.pathname}${u.search}`;
-  } catch {
+    if (isAppOriginUrl(input.href)) {
+      return `${input.pathname}${input.search}`;
+    }
     return null;
   }
+
+  if (isAppOriginUrl(input.url)) {
+    const u = new URL(input.url);
+    return `${u.pathname}${u.search}`;
+  }
+  return null;
 }
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isLocalOnlyApiTarget(target: string): boolean {
+  // Security boundary: endpoints that can carry local secrets must use the
+  // `/api/local-*` prefix so cloud fallback is automatically blocked.
+  return target.startsWith('/api/local-');
+}
+
+function isKeyFreeApiTarget(target: string): boolean {
+  return target.startsWith('/api/register-interest');
 }
 
 async function fetchLocalWithStartupRetry(
@@ -164,38 +193,86 @@ export function installRuntimeFetchPatch(): void {
 
   const nativeFetch = window.fetch.bind(window);
   const localBase = getApiBaseUrl();
-  const remoteBase = getRemoteApiBaseUrl();
+  let localApiToken: string | null = null;
 
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const target = getApiTargetFromRequestInput(input);
+    const debug = localStorage.getItem('wm-debug-log') === '1';
+
     if (!target?.startsWith('/api/')) {
+      if (debug) {
+        const raw = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+        console.log(`[fetch] passthrough → ${raw.slice(0, 120)}`);
+      }
       return nativeFetch(input, init);
     }
 
+    if (!localApiToken) {
+      try {
+        const { tryInvokeTauri } = await import('@/services/tauri-bridge');
+        localApiToken = await tryInvokeTauri<string>('get_local_api_token');
+      } catch { /* token unavailable — sidecar may not require it */ }
+    }
+
+    const headers = new Headers(init?.headers);
+    if (localApiToken) {
+      headers.set('Authorization', `Bearer ${localApiToken}`);
+    }
+    const localInit = { ...init, headers };
+
     const localUrl = `${localBase}${target}`;
-    const remoteUrl = `${remoteBase}${target}`;
+    if (debug) console.log(`[fetch] intercept → ${target}`);
+    let allowCloudFallback = !isLocalOnlyApiTarget(target);
+
+    if (allowCloudFallback && !isKeyFreeApiTarget(target)) {
+      try {
+        const { getSecretState, secretsReady } = await import('@/services/runtime-config');
+        await Promise.race([secretsReady, new Promise<void>(r => setTimeout(r, 2000))]);
+        const wmKeyState = getSecretState('WORLDMONITOR_API_KEY');
+        if (!wmKeyState.present || !wmKeyState.valid) {
+          allowCloudFallback = false;
+        }
+      } catch {
+        allowCloudFallback = false;
+      }
+    }
+
+    const cloudFallback = async () => {
+      if (!allowCloudFallback) {
+        throw new Error(`Cloud fallback blocked for ${target}`);
+      }
+      const cloudUrl = `${getRemoteApiBaseUrl()}${target}`;
+      if (debug) console.log(`[fetch] cloud fallback → ${cloudUrl}`);
+      const cloudHeaders = new Headers(init?.headers);
+      if (/^\/api\/[^/]+\/v1\//.test(target)) {
+        const { getRuntimeConfigSnapshot } = await import('@/services/runtime-config');
+        const wmKeyValue = getRuntimeConfigSnapshot().secrets['WORLDMONITOR_API_KEY']?.value;
+        if (wmKeyValue) {
+          cloudHeaders.set('X-WorldMonitor-Key', wmKeyValue);
+        }
+      }
+      return nativeFetch(cloudUrl, { ...init, headers: cloudHeaders });
+    };
 
     try {
-      const localResponse = await fetchLocalWithStartupRetry(nativeFetch, localUrl, init);
-      if (localResponse.ok) {
-        return localResponse;
-      }
-
-      // Desktop local handlers can return 4xx/5xx when API keys are missing.
-      // Prefer remote parity response when available.
-      try {
-        const remoteResponse = await nativeFetch(remoteUrl, init);
-        if (remoteResponse.ok) {
-          return remoteResponse;
+      const t0 = performance.now();
+      const response = await fetchLocalWithStartupRetry(nativeFetch, localUrl, localInit);
+      if (debug) console.log(`[fetch] ${target} → ${response.status} (${Math.round(performance.now() - t0)}ms)`);
+      if (!response.ok) {
+        if (!allowCloudFallback) {
+          if (debug) console.log(`[fetch] local-only endpoint ${target} returned ${response.status}; skipping cloud fallback`);
+          return response;
         }
-      } catch (remoteError) {
-        console.warn(`[runtime] Remote API fallback failed for ${target}`, remoteError);
+        if (debug) console.log(`[fetch] local ${response.status}, falling back to cloud`);
+        return cloudFallback();
       }
-
-      return localResponse;
+      return response;
     } catch (error) {
-      console.warn(`[runtime] Local API fetch failed for ${target}, falling back to cloud`, error);
-      return nativeFetch(remoteUrl, init);
+      if (debug) console.warn(`[runtime] Local API unavailable for ${target}`, error);
+      if (!allowCloudFallback) {
+        throw error;
+      }
+      return cloudFallback();
     }
   };
 

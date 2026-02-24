@@ -1,4 +1,6 @@
-import type { NewsItem, ClusteredEvent, MarketData, PredictionMarket } from '@/types';
+import type { NewsItem, ClusteredEvent, MarketData } from '@/types';
+import type { PredictionMarket } from '@/services/prediction';
+import { t } from '@/services/i18n';
 
 type ExportFormat = 'json' | 'csv';
 
@@ -66,6 +68,63 @@ export function exportToCSV(data: ExportData, filename = 'worldmonitor-export'):
   downloadFile(lines.join('\n'), `${filename}.csv`, 'text/csv');
 }
 
+export interface CountryBriefExport {
+  country: string;
+  code: string;
+  score?: number;
+  level?: string;
+  trend?: string;
+  components?: { unrest: number; conflict: number; security: number; information: number };
+  signals?: Record<string, number>;
+  brief?: string;
+  headlines?: Array<{ title: string; source: string; link: string; pubDate?: string }>;
+  generatedAt: string;
+}
+
+export function exportCountryBriefJSON(data: CountryBriefExport): void {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  downloadFile(JSON.stringify(data, null, 2), `country-brief-${data.code}-${timestamp}.json`, 'application/json');
+}
+
+export function exportCountryBriefCSV(data: CountryBriefExport): void {
+  const lines: string[] = [];
+  lines.push(`Country Brief: ${data.country} (${data.code})`);
+  lines.push(`Generated: ${data.generatedAt}`);
+  lines.push('');
+  if (data.score != null) {
+    lines.push(`Score,${data.score}`);
+    lines.push(`Level,${data.level || ''}`);
+    lines.push(`Trend,${data.trend || ''}`);
+  }
+  if (data.components) {
+    lines.push('');
+    lines.push('Component,Value');
+    lines.push(`Unrest,${data.components.unrest}`);
+    lines.push(`Conflict,${data.components.conflict}`);
+    lines.push(`Security,${data.components.security}`);
+    lines.push(`Information,${data.components.information}`);
+  }
+  if (data.signals) {
+    lines.push('');
+    lines.push('Signal,Count');
+    for (const [k, v] of Object.entries(data.signals)) {
+      lines.push(csvRow([k, String(v)]));
+    }
+  }
+  if (data.headlines && data.headlines.length > 0) {
+    lines.push('');
+    lines.push('Title,Source,Link,Published');
+    data.headlines.forEach(h => lines.push(csvRow([h.title, h.source, h.link, h.pubDate || ''])));
+  }
+  if (data.brief) {
+    lines.push('');
+    lines.push('Intelligence Brief');
+    lines.push(`"${data.brief.replace(/"/g, '""')}"`);
+  }
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  downloadFile(lines.join('\n'), `country-brief-${data.code}-${timestamp}.csv`, 'text/csv');
+}
+
 function csvRow(values: string[]): string {
   return values.map(v => `"${(v || '').replace(/"/g, '""')}"`).join(',');
 }
@@ -92,10 +151,10 @@ export class ExportPanel {
     this.element = document.createElement('div');
     this.element.className = 'export-panel-container';
     this.element.innerHTML = `
-      <button class="export-btn" title="Export Data">⬇</button>
+      <button class="export-btn" title="${t('common.exportData')}">⬇</button>
       <div class="export-menu hidden">
-        <button class="export-option" data-format="csv">Export CSV</button>
-        <button class="export-option" data-format="json">Export JSON</button>
+        <button class="export-option" data-format="csv">${t('common.exportCsv')}</button>
+        <button class="export-option" data-format="json">${t('common.exportJson')}</button>
       </div>
     `;
 

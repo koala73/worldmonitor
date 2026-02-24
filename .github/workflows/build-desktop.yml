@@ -1,0 +1,348 @@
+name: 'Build Desktop App'
+
+on:
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: 'App variant'
+        required: true
+        default: 'full'
+        type: choice
+        options:
+          - full
+          - tech
+      draft:
+        description: 'Create as draft release'
+        required: false
+        default: true
+        type: boolean
+  push:
+    tags:
+      - 'v*'
+
+concurrency:
+  group: desktop-build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+
+jobs:
+  build-tauri:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'macos-14'
+            args: '--target aarch64-apple-darwin'
+            node_target: 'aarch64-apple-darwin'
+            label: 'macOS-ARM64'
+            timeout: 180
+          - platform: 'macos-latest'
+            args: '--target x86_64-apple-darwin'
+            node_target: 'x86_64-apple-darwin'
+            label: 'macOS-x64'
+            timeout: 180
+          - platform: 'windows-latest'
+            args: ''
+            node_target: 'x86_64-pc-windows-msvc'
+            label: 'Windows-x64'
+            timeout: 120
+          - platform: 'ubuntu-22.04'
+            args: ''
+            node_target: 'x86_64-unknown-linux-gnu'
+            label: 'Linux-x64'
+            timeout: 120
+
+    runs-on: ${{ matrix.platform }}
+    name: Build (${{ matrix.label }})
+    timeout-minutes: ${{ matrix.timeout }}
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Start job timer
+        shell: bash
+        run: echo "JOB_START_EPOCH=$(date +%s)" >> "$GITHUB_ENV"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7
+        with:
+          toolchain: stable
+          targets: ${{ contains(matrix.platform, 'macos') && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@ad397744b0d591a723ab90405b7247fac0e6b8db
+        with:
+          workspaces: './src-tauri -> target'
+          cache-on-failure: true
+
+      - name: Install Linux system dependencies
+        if: contains(matrix.platform, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Check version consistency
+        run: npm run version:check
+
+      - name: Bundle Node.js runtime
+        shell: bash
+        env:
+          NODE_VERSION: '22.14.0'
+          NODE_TARGET: ${{ matrix.node_target }}
+        run: bash scripts/download-node.sh --target "$NODE_TARGET"
+
+      - name: Verify bundled Node.js payload
+        shell: bash
+        run: |
+          if [ "${{ matrix.node_target }}" = "x86_64-pc-windows-msvc" ]; then
+            test -f src-tauri/sidecar/node/node.exe
+            ls -lh src-tauri/sidecar/node/node.exe
+          else
+            test -f src-tauri/sidecar/node/node
+            test -x src-tauri/sidecar/node/node
+            ls -lh src-tauri/sidecar/node/node
+          fi
+
+      # ── Detect whether Apple signing secrets are configured ──
+      - name: Check Apple signing secrets
+        if: contains(matrix.platform, 'macos')
+        id: apple-signing
+        shell: bash
+        run: |
+          if [ -n "${{ secrets.APPLE_CERTIFICATE }}" ] && [ -n "${{ secrets.APPLE_CERTIFICATE_PASSWORD }}" ] && [ -n "${{ secrets.KEYCHAIN_PASSWORD }}" ]; then
+            echo "available=true" >> $GITHUB_OUTPUT
+            echo "Apple signing secrets detected"
+          else
+            echo "available=false" >> $GITHUB_OUTPUT
+            echo "No Apple signing secrets — building unsigned"
+          fi
+
+      # ── macOS Code Signing (only when secrets are valid) ──
+      - name: Import Apple Developer Certificate
+        if: contains(matrix.platform, 'macos') && steps.apple-signing.outputs.available == 'true'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > certificate.p12
+          CERT_SIZE=$(wc -c < certificate.p12 | tr -d ' ')
+          if [ "$CERT_SIZE" -lt 100 ]; then
+            echo "::warning::Certificate file too small ($CERT_SIZE bytes) — likely invalid. Skipping signing."
+            echo "SKIP_SIGNING=true" >> $GITHUB_ENV
+            exit 0
+          fi
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security set-keychain-settings -t 3600 -u build.keychain
+          security import certificate.p12 -k build.keychain \
+            -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign || {
+            echo "::warning::Certificate import failed — building unsigned"
+            echo "SKIP_SIGNING=true" >> $GITHUB_ENV
+            exit 0
+          }
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" build.keychain
+
+          CERT_INFO=$(security find-identity -v -p codesigning build.keychain \
+            | grep "Developer ID Application" || true)
+          if [ -n "$CERT_INFO" ]; then
+            CERT_ID=$(echo "$CERT_INFO" | head -1 | awk -F'"' '{print $2}')
+            echo "APPLE_SIGNING_IDENTITY=$CERT_ID" >> $GITHUB_ENV
+            echo "Certificate imported: $CERT_ID"
+          else
+            echo "::warning::No Developer ID certificate found in keychain — building unsigned"
+            echo "SKIP_SIGNING=true" >> $GITHUB_ENV
+          fi
+
+      # ── Determine variant ──
+      - name: Set build variant
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "BUILD_VARIANT=${{ github.event.inputs.variant }}" >> $GITHUB_ENV
+          else
+            echo "BUILD_VARIANT=full" >> $GITHUB_ENV
+          fi
+
+      # ── Build with tauri-action ──
+      # Signed builds: only when Apple signing secrets are valid and imported
+      # Unsigned builds: fallback when no signing (Windows always uses this path)
+
+      # ── Build: Full variant (signed) ──
+      - name: Build Tauri app (full, signed)
+        if: env.BUILD_VARIANT == 'full' && steps.apple-signing.outputs.available == 'true' && env.SKIP_SIGNING != 'true'
+        uses: tauri-apps/tauri-action@79c624843491f12ae9d63592534ed49df3bc4adb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VITE_VARIANT: full
+          VITE_DESKTOP_RUNTIME: '1'
+          CONVEX_URL: ${{ secrets.CONVEX_URL }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          tagName: v__VERSION__
+          releaseName: 'World Monitor v__VERSION__'
+          releaseBody: 'See changelog below.'
+          releaseDraft: ${{ github.event_name == 'workflow_dispatch' && fromJSON(github.event.inputs.draft) }}
+          prerelease: false
+          args: ${{ matrix.args }}
+          retryAttempts: 1
+
+      # ── Build: Full variant (unsigned — no Apple certs) ──
+      - name: Build Tauri app (full, unsigned)
+        if: env.BUILD_VARIANT == 'full' && (steps.apple-signing.outputs.available != 'true' || env.SKIP_SIGNING == 'true')
+        uses: tauri-apps/tauri-action@79c624843491f12ae9d63592534ed49df3bc4adb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VITE_VARIANT: full
+          VITE_DESKTOP_RUNTIME: '1'
+          CONVEX_URL: ${{ secrets.CONVEX_URL }}
+        with:
+          tagName: v__VERSION__
+          releaseName: 'World Monitor v__VERSION__'
+          releaseBody: 'See changelog below.'
+          releaseDraft: ${{ github.event_name == 'workflow_dispatch' && fromJSON(github.event.inputs.draft) }}
+          prerelease: false
+          args: ${{ matrix.args }}
+          retryAttempts: 1
+
+      # ── Build: Tech variant (signed) ──
+      - name: Build Tauri app (tech, signed)
+        if: env.BUILD_VARIANT == 'tech' && steps.apple-signing.outputs.available == 'true' && env.SKIP_SIGNING != 'true'
+        uses: tauri-apps/tauri-action@79c624843491f12ae9d63592534ed49df3bc4adb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VITE_VARIANT: tech
+          VITE_DESKTOP_RUNTIME: '1'
+          CONVEX_URL: ${{ secrets.CONVEX_URL }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          tagName: v__VERSION__-tech
+          releaseName: 'Tech Monitor v__VERSION__'
+          releaseBody: 'See changelog below.'
+          releaseDraft: ${{ github.event_name == 'workflow_dispatch' && fromJSON(github.event.inputs.draft) }}
+          prerelease: false
+          tauriScript: npx tauri
+          args: --config src-tauri/tauri.tech.conf.json ${{ matrix.args }}
+          retryAttempts: 1
+
+      # ── Build: Tech variant (unsigned — no Apple certs) ──
+      - name: Build Tauri app (tech, unsigned)
+        if: env.BUILD_VARIANT == 'tech' && (steps.apple-signing.outputs.available != 'true' || env.SKIP_SIGNING == 'true')
+        uses: tauri-apps/tauri-action@79c624843491f12ae9d63592534ed49df3bc4adb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VITE_VARIANT: tech
+          VITE_DESKTOP_RUNTIME: '1'
+          CONVEX_URL: ${{ secrets.CONVEX_URL }}
+        with:
+          tagName: v__VERSION__-tech
+          releaseName: 'Tech Monitor v__VERSION__'
+          releaseBody: 'See changelog below.'
+          releaseDraft: ${{ github.event_name == 'workflow_dispatch' && fromJSON(github.event.inputs.draft) }}
+          prerelease: false
+          tauriScript: npx tauri
+          args: --config src-tauri/tauri.tech.conf.json ${{ matrix.args }}
+          retryAttempts: 1
+
+      - name: Verify signed macOS bundle + embedded runtime
+        if: contains(matrix.platform, 'macos') && steps.apple-signing.outputs.available == 'true' && env.SKIP_SIGNING != 'true'
+        shell: bash
+        run: |
+          APP_PATH=$(find src-tauri/target -type d -path '*/bundle/macos/*.app' | head -1)
+          if [ -z "$APP_PATH" ]; then
+            echo "::error::No macOS .app bundle found after build."
+            exit 1
+          fi
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+          NODE_PATH=$(find "$APP_PATH/Contents/Resources" -type f -path '*/sidecar/node/node' | head -1)
+          if [ -z "$NODE_PATH" ]; then
+            echo "::error::Bundled Node runtime missing from app resources."
+            exit 1
+          fi
+          echo "Verified signed app bundle and embedded Node runtime: $NODE_PATH"
+
+      - name: Cleanup Apple signing materials
+        if: always() && contains(matrix.platform, 'macos')
+        shell: bash
+        run: |
+          rm -f certificate.p12
+          security delete-keychain build.keychain || true
+
+      - name: Report build duration
+        if: always()
+        shell: bash
+        run: |
+          if [ -z "${JOB_START_EPOCH:-}" ]; then
+            echo "::warning::JOB_START_EPOCH missing; duration unavailable."
+            exit 0
+          fi
+          END_EPOCH=$(date +%s)
+          ELAPSED=$((END_EPOCH - JOB_START_EPOCH))
+          MINUTES=$((ELAPSED / 60))
+          SECONDS=$((ELAPSED % 60))
+          echo "Build duration for ${{ matrix.label }}: ${MINUTES}m ${SECONDS}s"
+
+  # ── Update release notes with changelog after all builds complete ──
+  update-release-notes:
+    needs: build-tauri
+    if: always() && contains(needs.build-tauri.result, 'success')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+
+      - name: Generate and update release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          VERSION=$(jq -r .version src-tauri/tauri.conf.json)
+          TAG="v${VERSION}"
+          PREV_TAG=$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || echo "")
+
+          if [ -z "$PREV_TAG" ]; then
+            COMMITS="Initial release"
+          else
+            COMMITS=$(git log "${PREV_TAG}..${TAG}" --oneline --no-merges | sed 's/^[a-f0-9]*//' | sed 's/^ /- /')
+          fi
+
+          BODY=$(cat <<NOTES
+          ## What's Changed
+
+          ${COMMITS}
+
+          **Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG:-initial}...${TAG}
+          NOTES
+          )
+
+          gh release edit "$TAG" --notes "$BODY"
+          echo "Updated release notes for $TAG"

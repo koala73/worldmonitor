@@ -1,5 +1,8 @@
 import { Panel } from './Panel';
 import { escapeHtml } from '@/utils/sanitize';
+import { t } from '@/services/i18n';
+import { EconomicServiceClient } from '@/generated/client/worldmonitor/economic/v1/service_client';
+import type { GetMacroSignalsResponse } from '@/generated/client/worldmonitor/economic/v1/service_client';
 
 interface MacroSignalData {
   timestamp: string;
@@ -16,6 +19,60 @@ interface MacroSignalData {
     fearGreed: { status: string; value: number | null; history: Array<{ value: number; date: string }> };
   };
   meta: { qqqSparkline: number[] };
+  unavailable?: boolean;
+}
+
+const economicClient = new EconomicServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+
+/** Map proto response (optional fields = undefined) to MacroSignalData (null for absent values). */
+function mapProtoToData(r: GetMacroSignalsResponse): MacroSignalData {
+  const s = r.signals;
+  return {
+    timestamp: r.timestamp,
+    verdict: r.verdict,
+    bullishCount: r.bullishCount,
+    totalCount: r.totalCount,
+    signals: {
+      liquidity: {
+        status: s?.liquidity?.status ?? 'UNKNOWN',
+        value: s?.liquidity?.value ?? null,
+        sparkline: s?.liquidity?.sparkline ?? [],
+      },
+      flowStructure: {
+        status: s?.flowStructure?.status ?? 'UNKNOWN',
+        btcReturn5: s?.flowStructure?.btcReturn5 ?? null,
+        qqqReturn5: s?.flowStructure?.qqqReturn5 ?? null,
+      },
+      macroRegime: {
+        status: s?.macroRegime?.status ?? 'UNKNOWN',
+        qqqRoc20: s?.macroRegime?.qqqRoc20 ?? null,
+        xlpRoc20: s?.macroRegime?.xlpRoc20 ?? null,
+      },
+      technicalTrend: {
+        status: s?.technicalTrend?.status ?? 'UNKNOWN',
+        btcPrice: s?.technicalTrend?.btcPrice ?? null,
+        sma50: s?.technicalTrend?.sma50 ?? null,
+        sma200: s?.technicalTrend?.sma200 ?? null,
+        vwap30d: s?.technicalTrend?.vwap30d ?? null,
+        mayerMultiple: s?.technicalTrend?.mayerMultiple ?? null,
+        sparkline: s?.technicalTrend?.sparkline ?? [],
+      },
+      hashRate: {
+        status: s?.hashRate?.status ?? 'UNKNOWN',
+        change30d: s?.hashRate?.change30d ?? null,
+      },
+      miningCost: {
+        status: s?.miningCost?.status ?? 'UNKNOWN',
+      },
+      fearGreed: {
+        status: s?.fearGreed?.status ?? 'UNKNOWN',
+        value: s?.fearGreed?.value ?? null,
+        history: s?.fearGreed?.history ?? [],
+      },
+    },
+    meta: { qqqSparkline: r.meta?.qqqSparkline ?? [] },
+    unavailable: r.unavailable,
+  };
 }
 
 function sparklineSvg(data: number[], width = 80, height = 24, color = '#4fc3f7'): string {
@@ -65,12 +122,13 @@ export class MacroSignalsPanel extends Panel {
   private data: MacroSignalData | null = null;
   private loading = true;
   private error: string | null = null;
+
   private refreshInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
-    super({ id: 'macro-signals', title: 'Market Radar', showCount: false });
+    super({ id: 'macro-signals', title: t('panels.macroSignals'), showCount: false });
     void this.fetchData();
-    this.refreshInterval = setInterval(() => this.fetchData(), 60000);
+    this.refreshInterval = setInterval(() => this.fetchData(), 3 * 60000);
   }
 
   public destroy(): void {
@@ -81,27 +139,45 @@ export class MacroSignalsPanel extends Panel {
   }
 
   private async fetchData(): Promise<void> {
-    try {
-      const res = await fetch('/api/macro-signals');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      this.data = await res.json();
-      this.error = null;
-    } catch (err) {
-      this.error = err instanceof Error ? err.message : 'Failed to fetch';
-    } finally {
-      this.loading = false;
-      this.renderPanel();
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const res = await economicClient.getMacroSignals({});
+        this.data = mapProtoToData(res);
+        this.error = null;
+
+        if (this.data && this.data.unavailable && attempt < 2) {
+          this.showRetrying();
+          await new Promise(r => setTimeout(r, 20_000));
+          continue;
+        }
+        break;
+      } catch (err) {
+        if (this.isAbortError(err)) return;
+        if (attempt < 2) {
+          this.showRetrying();
+          await new Promise(r => setTimeout(r, 20_000));
+          continue;
+        }
+        this.error = err instanceof Error ? err.message : 'Failed to fetch';
+      }
     }
+    this.loading = false;
+    this.renderPanel();
   }
 
   private renderPanel(): void {
     if (this.loading) {
-      this.showLoading('Computing signals...');
+      this.showLoading(t('common.computingSignals'));
       return;
     }
 
     if (this.error || !this.data) {
-      this.showError(this.error || 'No data');
+      this.showError(this.error || t('common.noDataShort'));
+      return;
+    }
+
+    if (this.data.unavailable) {
+      this.showError(t('common.upstreamUnavailable'));
       return;
     }
 
@@ -113,17 +189,17 @@ export class MacroSignalsPanel extends Panel {
     const html = `
       <div class="macro-signals-container">
         <div class="macro-verdict ${verdictClass}">
-          <span class="verdict-label">Overall</span>
-          <span class="verdict-value">${escapeHtml(d.verdict)}</span>
-          <span class="verdict-detail">${d.bullishCount}/${d.totalCount} bullish</span>
+          <span class="verdict-label">${t('components.macroSignals.overall')}</span>
+          <span class="verdict-value">${d.verdict === 'BUY' ? t('components.macroSignals.verdict.buy') : d.verdict === 'CASH' ? t('components.macroSignals.verdict.cash') : escapeHtml(d.verdict)}</span>
+          <span class="verdict-detail">${t('components.macroSignals.bullish', { count: String(d.bullishCount), total: String(d.totalCount) })}</span>
         </div>
         <div class="signals-grid">
-          ${this.renderSignalCard('Liquidity', s.liquidity.status, formatNum(s.liquidity.value), sparklineSvg(s.liquidity.sparkline, 60, 20, '#4fc3f7'), 'JPY 30d ROC', 'https://www.tradingview.com/symbols/JPYUSD/')}
-          ${this.renderSignalCard('Flow', s.flowStructure.status, `BTC ${formatNum(s.flowStructure.btcReturn5)} / QQQ ${formatNum(s.flowStructure.qqqReturn5)}`, '', '5d returns', null)}
-          ${this.renderSignalCard('Regime', s.macroRegime.status, `QQQ ${formatNum(s.macroRegime.qqqRoc20)} / XLP ${formatNum(s.macroRegime.xlpRoc20)}`, sparklineSvg(d.meta.qqqSparkline, 60, 20, '#ab47bc'), '20d ROC', 'https://www.tradingview.com/symbols/QQQ/')}
-          ${this.renderSignalCard('BTC Trend', s.technicalTrend.status, `$${s.technicalTrend.btcPrice?.toLocaleString() ?? 'N/A'}`, sparklineSvg(s.technicalTrend.sparkline, 60, 20, '#ff9800'), `SMA50: $${s.technicalTrend.sma50?.toLocaleString() ?? '-'} | VWAP: $${s.technicalTrend.vwap30d?.toLocaleString() ?? '-'} | Mayer: ${s.technicalTrend.mayerMultiple ?? '-'}`, 'https://www.tradingview.com/symbols/BTCUSD/')}
-          ${this.renderSignalCard('Hash Rate', s.hashRate.status, formatNum(s.hashRate.change30d), '', '30d change', 'https://mempool.space/mining')}
-          ${this.renderSignalCard('Mining', s.miningCost.status, '', '', 'Hashprice model', null)}
+          ${this.renderSignalCard(t('components.macroSignals.signals.liquidity'), s.liquidity.status, formatNum(s.liquidity.value), sparklineSvg(s.liquidity.sparkline, 60, 20, '#4fc3f7'), 'JPY 30d ROC', 'https://www.tradingview.com/symbols/JPYUSD/')}
+          ${this.renderSignalCard(t('components.macroSignals.signals.flow'), s.flowStructure.status, `BTC ${formatNum(s.flowStructure.btcReturn5)} / QQQ ${formatNum(s.flowStructure.qqqReturn5)}`, '', '5d returns', null)}
+          ${this.renderSignalCard(t('components.macroSignals.signals.regime'), s.macroRegime.status, `QQQ ${formatNum(s.macroRegime.qqqRoc20)} / XLP ${formatNum(s.macroRegime.xlpRoc20)}`, sparklineSvg(d.meta.qqqSparkline, 60, 20, '#ab47bc'), '20d ROC', 'https://www.tradingview.com/symbols/QQQ/')}
+          ${this.renderSignalCard(t('components.macroSignals.signals.btcTrend'), s.technicalTrend.status, `$${s.technicalTrend.btcPrice?.toLocaleString() ?? 'N/A'}`, sparklineSvg(s.technicalTrend.sparkline, 60, 20, '#ff9800'), `SMA50: $${s.technicalTrend.sma50?.toLocaleString() ?? '-'} | VWAP: $${s.technicalTrend.vwap30d?.toLocaleString() ?? '-'} | Mayer: ${s.technicalTrend.mayerMultiple ?? '-'}`, 'https://www.tradingview.com/symbols/BTCUSD/')}
+          ${this.renderSignalCard(t('components.macroSignals.signals.hashRate'), s.hashRate.status, formatNum(s.hashRate.change30d), '', '30d change', 'https://mempool.space/mining')}
+          ${this.renderSignalCard(t('components.macroSignals.signals.mining'), s.miningCost.status, '', '', 'Hashprice model', null)}
           ${this.renderFearGreedCard(s.fearGreed)}
         </div>
       </div>
@@ -154,7 +230,7 @@ export class MacroSignalsPanel extends Panel {
     return `
       <div class="signal-card signal-card-fg">
         <div class="signal-header">
-          <span class="signal-name">Fear & Greed</span>
+          <span class="signal-name">${t('components.macroSignals.signals.fearGreed')}</span>
           <span class="signal-badge ${badgeClass}">${escapeHtml(fg.status)}</span>
         </div>
         <div class="signal-body signal-body-fg">

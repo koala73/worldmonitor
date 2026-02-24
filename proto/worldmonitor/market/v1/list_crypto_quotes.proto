@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package worldmonitor.market.v1;
+
+import "worldmonitor/market/v1/market_quote.proto";
+
+// ListCryptoQuotesRequest specifies which cryptocurrencies to retrieve.
+message ListCryptoQuotesRequest {
+  // Cryptocurrency IDs to retrieve (CoinGecko IDs). Empty returns defaults.
+  repeated string ids = 1;
+}
+
+// ListCryptoQuotesResponse contains cryptocurrency quotes.
+message ListCryptoQuotesResponse {
+  // The list of cryptocurrency quotes.
+  repeated CryptoQuote quotes = 1;
+}

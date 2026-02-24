@@ -1,0 +1,6 @@
+// This file intentionally left empty.
+// Typed ID wrappers were removed (M-8 cleanup) — all domain entities use bare `string id`.
+// If typed IDs are adopted in the future, define them here.
+syntax = "proto3";
+
+package worldmonitor.core.v1;

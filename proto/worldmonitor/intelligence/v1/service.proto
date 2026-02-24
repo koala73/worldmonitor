@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package worldmonitor.intelligence.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/intelligence/v1/get_risk_scores.proto";
+import "worldmonitor/intelligence/v1/get_pizzint_status.proto";
+import "worldmonitor/intelligence/v1/classify_event.proto";
+import "worldmonitor/intelligence/v1/get_country_intel_brief.proto";
+import "worldmonitor/intelligence/v1/search_gdelt_documents.proto";
+
+// IntelligenceService provides APIs for cross-domain intelligence synthesis including
+// risk scores, PizzINT monitoring, GDELT tension analysis, and AI-powered classification.
+service IntelligenceService {
+  option (sebuf.http.service_config) = {base_path: "/api/intelligence/v1"};
+
+  // GetRiskScores retrieves composite instability and strategic risk assessments.
+  rpc GetRiskScores(GetRiskScoresRequest) returns (GetRiskScoresResponse) {
+    option (sebuf.http.config) = {path: "/get-risk-scores"};
+  }
+
+  // GetPizzintStatus retrieves Pentagon Pizza Index and GDELT tension pair data.
+  rpc GetPizzintStatus(GetPizzintStatusRequest) returns (GetPizzintStatusResponse) {
+    option (sebuf.http.config) = {path: "/get-pizzint-status"};
+  }
+
+  // ClassifyEvent classifies a real-world event using AI (Groq).
+  rpc ClassifyEvent(ClassifyEventRequest) returns (ClassifyEventResponse) {
+    option (sebuf.http.config) = {path: "/classify-event"};
+  }
+
+  // GetCountryIntelBrief generates an AI intelligence brief for a country (OpenRouter).
+  rpc GetCountryIntelBrief(GetCountryIntelBriefRequest) returns (GetCountryIntelBriefResponse) {
+    option (sebuf.http.config) = {path: "/get-country-intel-brief"};
+  }
+
+  // SearchGdeltDocuments searches the GDELT 2.0 Doc API for news articles.
+  rpc SearchGdeltDocuments(SearchGdeltDocumentsRequest) returns (SearchGdeltDocumentsResponse) {
+    option (sebuf.http.config) = {path: "/search-gdelt-documents"};
+  }
+}

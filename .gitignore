@@ -1,4 +1,5 @@
 node_modules/
+.idea/
 dist/
 .DS_Store
 *.log
@@ -6,11 +7,25 @@ dist/
 .env.local
 .playwright-mcp/
 .vercel
+api/\[domain\]/v1/\[rpc\].js
+api/\[\[...path\]\].js
 .claude/
 .cursor/
+CLAUDE.md
 .env.vercel-backup
+.env.vercel-export
 .agent/
 .factory/
 .windsurf/
 skills/
+ideas/
+docs/internal/
 test-results/
+src-tauri/sidecar/node/*
+!src-tauri/sidecar/node/.gitkeep
+
+# AI planning session state (not source code)
+.planning/
+
+# Compiled sebuf gateway bundle (built by scripts/build-sidecar-sebuf.mjs)
+api/[[][[].*.js

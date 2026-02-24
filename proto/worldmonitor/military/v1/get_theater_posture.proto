@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package worldmonitor.military.v1;
+
+import "worldmonitor/military/v1/military_vessel.proto";
+
+// GetTheaterPostureRequest specifies the theater to assess.
+message GetTheaterPostureRequest {
+  // Theater name (e.g., "indo-pacific", "european", "middle-east"). Empty for all theaters.
+  string theater = 1;
+}
+
+// GetTheaterPostureResponse contains theater posture assessments.
+message GetTheaterPostureResponse {
+  // Theater posture assessments (one per theater, or all if no filter).
+  repeated TheaterPosture theaters = 1;
+}

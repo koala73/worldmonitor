@@ -1,13 +1,13 @@
 // Configuration exports
 // For variant-specific builds, set VITE_VARIANT environment variable
-// VITE_VARIANT=tech → startups.worldmonitor.app (tech-focused)
+// VITE_VARIANT=tech → tech.worldmonitor.app (tech-focused)
 // VITE_VARIANT=full → worldmonitor.app (geopolitical)
+// VITE_VARIANT=finance → finance.worldmonitor.app (markets/trading)
 
-export const SITE_VARIANT = import.meta.env.VITE_VARIANT || 'full';
+export { SITE_VARIANT } from './variant';
 
 // Shared base configuration (always included)
 export {
-  API_URLS,
   REFRESH_INTERVALS,
   MONITOR_COLORS,
   STORAGE_KEYS,
@@ -40,6 +40,7 @@ export {
   DEFAULT_PANELS,
   DEFAULT_MAP_LAYERS,
   MOBILE_DEFAULT_MAP_LAYERS,
+  LAYER_TO_SOURCE,
 } from './panels';
 
 // ============================================
@@ -99,3 +100,18 @@ export {
   type TechHQ,
   type CloudRegion,
 } from './tech-geo';
+
+// Finance variant - these are included in finance builds
+export {
+  STOCK_EXCHANGES,
+  FINANCIAL_CENTERS,
+  CENTRAL_BANKS,
+  COMMODITY_HUBS,
+  type StockExchange,
+  type FinancialCenter,
+  type CentralBank,
+  type CommodityHub,
+} from './finance-geo';
+
+// Gulf FDI investment database
+export { GULF_INVESTMENTS } from './gulf-fdi';

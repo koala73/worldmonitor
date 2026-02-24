@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package worldmonitor.military.v1;
+
+import "buf/validate/validate.proto";
+
+// AircraftDetails contains Wingbits aircraft enrichment data.
+message AircraftDetails {
+  // ICAO 24-bit hex address.
+  string icao24 = 1;
+  // Aircraft registration number.
+  string registration = 2;
+  // ICAO manufacturer code.
+  string manufacturer_icao = 3;
+  // Full manufacturer name.
+  string manufacturer_name = 4;
+  // Aircraft model.
+  string model = 5;
+  // ICAO type designator code.
+  string typecode = 6;
+  // Manufacturer serial number.
+  string serial_number = 7;
+  // ICAO aircraft type designator.
+  string icao_aircraft_type = 8;
+  // Operator name.
+  string operator = 9;
+  // Operator callsign.
+  string operator_callsign = 10;
+  // Operator ICAO code.
+  string operator_icao = 11;
+  // Registered owner.
+  string owner = 12;
+  // Build date.
+  string built = 13;
+  // Engine description.
+  string engines = 14;
+  // ICAO category description.
+  string category_description = 15;
+}
+
+// GetAircraftDetailsRequest looks up a single aircraft by ICAO 24-bit hex.
+message GetAircraftDetailsRequest {
+  // ICAO 24-bit hex address (lowercase).
+  string icao24 = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+}
+
+// GetAircraftDetailsResponse contains the aircraft enrichment data.
+message GetAircraftDetailsResponse {
+  // Aircraft details, absent if not found.
+  AircraftDetails details = 1;
+  // Whether the Wingbits API is configured.
+  bool configured = 2;
+}

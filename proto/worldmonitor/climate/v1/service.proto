@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package worldmonitor.climate.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/climate/v1/list_climate_anomalies.proto";
+
+// ClimateService provides APIs for climate anomaly data sourced from Open-Meteo.
+service ClimateService {
+  option (sebuf.http.service_config) = {base_path: "/api/climate/v1"};
+
+  // ListClimateAnomalies retrieves temperature and precipitation anomalies from ERA5 data.
+  rpc ListClimateAnomalies(ListClimateAnomaliesRequest) returns (ListClimateAnomaliesResponse) {
+    option (sebuf.http.config) = {path: "/list-climate-anomalies"};
+  }
+}

@@ -1,6 +1,41 @@
 import { defineConfig, type Plugin } from 'vite';
-import { resolve } from 'path';
+import { VitePWA } from 'vite-plugin-pwa';
+import { resolve, dirname, extname } from 'path';
+import { mkdir, readFile, writeFile } from 'fs/promises';
+import { brotliCompress } from 'zlib';
+import { promisify } from 'util';
 import pkg from './package.json';
+
+const isE2E = process.env.VITE_E2E === '1';
+
+
+const brotliCompressAsync = promisify(brotliCompress);
+const BROTLI_EXTENSIONS = new Set(['.js', '.mjs', '.css', '.html', '.svg', '.json', '.txt', '.xml', '.wasm']);
+
+function brotliPrecompressPlugin(): Plugin {
+  return {
+    name: 'brotli-precompress',
+    apply: 'build',
+    async writeBundle(outputOptions, bundle) {
+      const outDir = outputOptions.dir;
+      if (!outDir) return;
+
+      await Promise.all(Object.keys(bundle).map(async (fileName) => {
+        const extension = extname(fileName).toLowerCase();
+        if (!BROTLI_EXTENSIONS.has(extension)) return;
+
+        const sourcePath = resolve(outDir, fileName);
+        const compressedPath = `${sourcePath}.br`;
+        const sourceBuffer = await readFile(sourcePath);
+        if (sourceBuffer.length < 1024) return;
+
+        const compressedBuffer = await brotliCompressAsync(sourceBuffer);
+        await mkdir(dirname(compressedPath), { recursive: true });
+        await writeFile(compressedPath, compressedBuffer);
+      }));
+    },
+  };
+}
 
 const VARIANT_META: Record<string, {
   title: string;
@@ -8,14 +43,22 @@ const VARIANT_META: Record<string, {
   keywords: string;
   url: string;
   siteName: string;
+  shortName: string;
+  subject: string;
+  classification: string;
+  categories: string[];
   features: string[];
 }> = {
-  world: {
+  full: {
     title: 'World Monitor - Real-Time Global Intelligence Dashboard',
     description: 'Real-time global intelligence dashboard with live news, markets, military tracking, infrastructure monitoring, and geopolitical data. OSINT in one view.',
     keywords: 'global intelligence, geopolitical dashboard, world news, market data, military bases, nuclear facilities, undersea cables, conflict zones, real-time monitoring, situation awareness, OSINT, flight tracking, AIS ships, earthquake monitor, protest tracker, power outages, oil prices, government spending, polymarket predictions',
     url: 'https://worldmonitor.app/',
     siteName: 'World Monitor',
+    shortName: 'WorldMonitor',
+    subject: 'Real-Time Global Intelligence and Situation Awareness',
+    classification: 'Intelligence Dashboard, OSINT Tool, News Aggregator',
+    categories: ['news', 'productivity'],
     features: [
       'Real-time news aggregation',
       'Stock market tracking',
@@ -37,6 +80,10 @@ const VARIANT_META: Record<string, {
     keywords: 'tech dashboard, AI industry, startup ecosystem, tech companies, AI labs, venture capital, tech events, tech conferences, cloud infrastructure, datacenters, tech layoffs, funding rounds, unicorns, FAANG, tech HQ, accelerators, Y Combinator, tech news',
     url: 'https://tech.worldmonitor.app/',
     siteName: 'Tech Monitor',
+    shortName: 'TechMonitor',
+    subject: 'AI, Tech Industry, and Startup Ecosystem Intelligence',
+    classification: 'Tech Dashboard, AI Tracker, Startup Intelligence',
+    categories: ['news', 'business'],
     features: [
       'Tech news aggregation',
       'AI lab tracking',
@@ -51,34 +98,315 @@ const VARIANT_META: Record<string, {
       'Service status monitoring',
     ],
   },
+  finance: {
+    title: 'Finance Monitor - Real-Time Markets & Trading Dashboard',
+    description: 'Real-time finance and trading dashboard tracking global markets, stock exchanges, central banks, commodities, forex, crypto, and economic indicators worldwide.',
+    keywords: 'finance dashboard, trading dashboard, stock market, forex, commodities, central banks, crypto, economic indicators, market news, financial centers, stock exchanges, bonds, derivatives, fintech, hedge funds, IPO tracker, market analysis',
+    url: 'https://finance.worldmonitor.app/',
+    siteName: 'Finance Monitor',
+    shortName: 'FinanceMonitor',
+    subject: 'Global Markets, Trading, and Financial Intelligence',
+    classification: 'Finance Dashboard, Market Tracker, Trading Intelligence',
+    categories: ['finance', 'news'],
+    features: [
+      'Real-time market data',
+      'Stock exchange mapping',
+      'Central bank monitoring',
+      'Commodity price tracking',
+      'Forex & currency news',
+      'Crypto & digital assets',
+      'Economic indicator alerts',
+      'IPO & earnings tracking',
+      'Financial center mapping',
+      'Sector heatmap',
+      'Market radar signals',
+    ],
+  },
 };
 
-function htmlVariantPlugin(): Plugin {
-  const variant = process.env.VITE_VARIANT || 'world';
-  const meta = VARIANT_META[variant] || VARIANT_META.world;
+const activeVariant = process.env.VITE_VARIANT || 'full';
+const activeMeta = VARIANT_META[activeVariant] || VARIANT_META.full;
 
+function htmlVariantPlugin(): Plugin {
   return {
     name: 'html-variant',
     transformIndexHtml(html) {
       return html
-        .replace(/<title>.*?<\/title>/, `<title>${meta.title}</title>`)
-        .replace(/<meta name="title" content=".*?" \/>/, `<meta name="title" content="${meta.title}" />`)
-        .replace(/<meta name="description" content=".*?" \/>/, `<meta name="description" content="${meta.description}" />`)
-        .replace(/<meta name="keywords" content=".*?" \/>/, `<meta name="keywords" content="${meta.keywords}" />`)
-        .replace(/<link rel="canonical" href=".*?" \/>/, `<link rel="canonical" href="${meta.url}" />`)
-        .replace(/<meta name="application-name" content=".*?" \/>/, `<meta name="application-name" content="${meta.siteName}" />`)
-        .replace(/<meta property="og:url" content=".*?" \/>/, `<meta property="og:url" content="${meta.url}" />`)
-        .replace(/<meta property="og:title" content=".*?" \/>/, `<meta property="og:title" content="${meta.title}" />`)
-        .replace(/<meta property="og:description" content=".*?" \/>/, `<meta property="og:description" content="${meta.description}" />`)
-        .replace(/<meta property="og:site_name" content=".*?" \/>/, `<meta property="og:site_name" content="${meta.siteName}" />`)
-        .replace(/<meta name="twitter:url" content=".*?" \/>/, `<meta name="twitter:url" content="${meta.url}" />`)
-        .replace(/<meta name="twitter:title" content=".*?" \/>/, `<meta name="twitter:title" content="${meta.title}" />`)
-        .replace(/<meta name="twitter:description" content=".*?" \/>/, `<meta name="twitter:description" content="${meta.description}" />`)
-        .replace(/"name": "World Monitor"/, `"name": "${meta.siteName}"`)
-        .replace(/"alternateName": "WorldMonitor"/, `"alternateName": "${meta.siteName.replace(' ', '')}"`)
-        .replace(/"url": "https:\/\/worldmonitor\.app\/"/, `"url": "${meta.url}"`)
-        .replace(/"description": "Real-time global intelligence dashboard with live news, markets, military tracking, infrastructure monitoring, and geopolitical data."/, `"description": "${meta.description}"`)
-        .replace(/"featureList": \[[\s\S]*?\]/, `"featureList": ${JSON.stringify(meta.features, null, 8).replace(/\n/g, '\n      ')}`);
+        .replace(/<title>.*?<\/title>/, `<title>${activeMeta.title}</title>`)
+        .replace(/<meta name="title" content=".*?" \/>/, `<meta name="title" content="${activeMeta.title}" />`)
+        .replace(/<meta name="description" content=".*?" \/>/, `<meta name="description" content="${activeMeta.description}" />`)
+        .replace(/<meta name="keywords" content=".*?" \/>/, `<meta name="keywords" content="${activeMeta.keywords}" />`)
+        .replace(/<link rel="canonical" href=".*?" \/>/, `<link rel="canonical" href="${activeMeta.url}" />`)
+        .replace(/<meta name="application-name" content=".*?" \/>/, `<meta name="application-name" content="${activeMeta.siteName}" />`)
+        .replace(/<meta property="og:url" content=".*?" \/>/, `<meta property="og:url" content="${activeMeta.url}" />`)
+        .replace(/<meta property="og:title" content=".*?" \/>/, `<meta property="og:title" content="${activeMeta.title}" />`)
+        .replace(/<meta property="og:description" content=".*?" \/>/, `<meta property="og:description" content="${activeMeta.description}" />`)
+        .replace(/<meta property="og:site_name" content=".*?" \/>/, `<meta property="og:site_name" content="${activeMeta.siteName}" />`)
+        .replace(/<meta name="subject" content=".*?" \/>/, `<meta name="subject" content="${activeMeta.subject}" />`)
+        .replace(/<meta name="classification" content=".*?" \/>/, `<meta name="classification" content="${activeMeta.classification}" />`)
+        .replace(/<meta name="twitter:url" content=".*?" \/>/, `<meta name="twitter:url" content="${activeMeta.url}" />`)
+        .replace(/<meta name="twitter:title" content=".*?" \/>/, `<meta name="twitter:title" content="${activeMeta.title}" />`)
+        .replace(/<meta name="twitter:description" content=".*?" \/>/, `<meta name="twitter:description" content="${activeMeta.description}" />`)
+        .replace(/"name": "World Monitor"/, `"name": "${activeMeta.siteName}"`)
+        .replace(/"alternateName": "WorldMonitor"/, `"alternateName": "${activeMeta.siteName.replace(' ', '')}"`)
+        .replace(/"url": "https:\/\/worldmonitor\.app\/"/, `"url": "${activeMeta.url}"`)
+        .replace(/"description": "Real-time global intelligence dashboard with live news, markets, military tracking, infrastructure monitoring, and geopolitical data."/, `"description": "${activeMeta.description}"`)
+        .replace(/"featureList": \[[\s\S]*?\]/, `"featureList": ${JSON.stringify(activeMeta.features, null, 8).replace(/\n/g, '\n      ')}`);
+    },
+  };
+}
+
+function polymarketPlugin(): Plugin {
+  const GAMMA_BASE = 'https://gamma-api.polymarket.com';
+  const ALLOWED_ORDER = ['volume', 'liquidity', 'startDate', 'endDate', 'spread'];
+
+  return {
+    name: 'polymarket-dev',
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        if (!req.url?.startsWith('/api/polymarket')) return next();
+
+        const url = new URL(req.url, 'http://localhost');
+        const endpoint = url.searchParams.get('endpoint') || 'markets';
+        const closed = ['true', 'false'].includes(url.searchParams.get('closed') ?? '') ? url.searchParams.get('closed') : 'false';
+        const order = ALLOWED_ORDER.includes(url.searchParams.get('order') ?? '') ? url.searchParams.get('order') : 'volume';
+        const ascending = ['true', 'false'].includes(url.searchParams.get('ascending') ?? '') ? url.searchParams.get('ascending') : 'false';
+        const rawLimit = parseInt(url.searchParams.get('limit') ?? '', 10);
+        const limit = isNaN(rawLimit) ? 50 : Math.max(1, Math.min(100, rawLimit));
+
+        const params = new URLSearchParams({ closed: closed!, order: order!, ascending: ascending!, limit: String(limit) });
+        if (endpoint === 'events') {
+          const tag = (url.searchParams.get('tag') ?? '').replace(/[^a-z0-9-]/gi, '').slice(0, 100);
+          if (tag) params.set('tag_slug', tag);
+        }
+
+        const gammaUrl = `${GAMMA_BASE}/${endpoint === 'events' ? 'events' : 'markets'}?${params}`;
+
+        res.setHeader('Content-Type', 'application/json');
+        try {
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 8000);
+          const resp = await fetch(gammaUrl, { headers: { Accept: 'application/json' }, signal: controller.signal });
+          clearTimeout(timer);
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          const data = await resp.text();
+          res.setHeader('Cache-Control', 'public, max-age=120');
+          res.setHeader('X-Polymarket-Source', 'gamma');
+          res.end(data);
+        } catch {
+          // Expected: Cloudflare JA3 blocks server-side TLS — return empty array
+          res.setHeader('Cache-Control', 'public, max-age=300');
+          res.end('[]');
+        }
+      });
+    },
+  };
+}
+
+/**
+ * Vite dev server plugin for sebuf API routes.
+ *
+ * Intercepts requests matching /api/{domain}/v1/* and routes them through
+ * the same handler pipeline as the Vercel catch-all gateway. Other /api/*
+ * paths fall through to existing proxy rules.
+ */
+function sebufApiPlugin(): Plugin {
+  // Cache router across requests (H-13 fix). Invalidated by Vite's module graph on HMR.
+  let cachedRouter: Awaited<ReturnType<typeof buildRouter>> | null = null;
+  let cachedCorsMod: any = null;
+
+  async function buildRouter() {
+    const [
+      routerMod, corsMod, errorMod,
+      seismologyServerMod, seismologyHandlerMod,
+      wildfireServerMod, wildfireHandlerMod,
+      climateServerMod, climateHandlerMod,
+      predictionServerMod, predictionHandlerMod,
+      displacementServerMod, displacementHandlerMod,
+      aviationServerMod, aviationHandlerMod,
+      researchServerMod, researchHandlerMod,
+      unrestServerMod, unrestHandlerMod,
+      conflictServerMod, conflictHandlerMod,
+      maritimeServerMod, maritimeHandlerMod,
+      cyberServerMod, cyberHandlerMod,
+      economicServerMod, economicHandlerMod,
+      infrastructureServerMod, infrastructureHandlerMod,
+      marketServerMod, marketHandlerMod,
+      newsServerMod, newsHandlerMod,
+      intelligenceServerMod, intelligenceHandlerMod,
+      militaryServerMod, militaryHandlerMod,
+    ] = await Promise.all([
+        import('./server/router'),
+        import('./server/cors'),
+        import('./server/error-mapper'),
+        import('./src/generated/server/worldmonitor/seismology/v1/service_server'),
+        import('./server/worldmonitor/seismology/v1/handler'),
+        import('./src/generated/server/worldmonitor/wildfire/v1/service_server'),
+        import('./server/worldmonitor/wildfire/v1/handler'),
+        import('./src/generated/server/worldmonitor/climate/v1/service_server'),
+        import('./server/worldmonitor/climate/v1/handler'),
+        import('./src/generated/server/worldmonitor/prediction/v1/service_server'),
+        import('./server/worldmonitor/prediction/v1/handler'),
+        import('./src/generated/server/worldmonitor/displacement/v1/service_server'),
+        import('./server/worldmonitor/displacement/v1/handler'),
+        import('./src/generated/server/worldmonitor/aviation/v1/service_server'),
+        import('./server/worldmonitor/aviation/v1/handler'),
+        import('./src/generated/server/worldmonitor/research/v1/service_server'),
+        import('./server/worldmonitor/research/v1/handler'),
+        import('./src/generated/server/worldmonitor/unrest/v1/service_server'),
+        import('./server/worldmonitor/unrest/v1/handler'),
+        import('./src/generated/server/worldmonitor/conflict/v1/service_server'),
+        import('./server/worldmonitor/conflict/v1/handler'),
+        import('./src/generated/server/worldmonitor/maritime/v1/service_server'),
+        import('./server/worldmonitor/maritime/v1/handler'),
+        import('./src/generated/server/worldmonitor/cyber/v1/service_server'),
+        import('./server/worldmonitor/cyber/v1/handler'),
+        import('./src/generated/server/worldmonitor/economic/v1/service_server'),
+        import('./server/worldmonitor/economic/v1/handler'),
+        import('./src/generated/server/worldmonitor/infrastructure/v1/service_server'),
+        import('./server/worldmonitor/infrastructure/v1/handler'),
+        import('./src/generated/server/worldmonitor/market/v1/service_server'),
+        import('./server/worldmonitor/market/v1/handler'),
+        import('./src/generated/server/worldmonitor/news/v1/service_server'),
+        import('./server/worldmonitor/news/v1/handler'),
+        import('./src/generated/server/worldmonitor/intelligence/v1/service_server'),
+        import('./server/worldmonitor/intelligence/v1/handler'),
+        import('./src/generated/server/worldmonitor/military/v1/service_server'),
+        import('./server/worldmonitor/military/v1/handler'),
+      ]);
+
+    const serverOptions = { onError: errorMod.mapErrorToResponse };
+    const allRoutes = [
+      ...seismologyServerMod.createSeismologyServiceRoutes(seismologyHandlerMod.seismologyHandler, serverOptions),
+      ...wildfireServerMod.createWildfireServiceRoutes(wildfireHandlerMod.wildfireHandler, serverOptions),
+      ...climateServerMod.createClimateServiceRoutes(climateHandlerMod.climateHandler, serverOptions),
+      ...predictionServerMod.createPredictionServiceRoutes(predictionHandlerMod.predictionHandler, serverOptions),
+      ...displacementServerMod.createDisplacementServiceRoutes(displacementHandlerMod.displacementHandler, serverOptions),
+      ...aviationServerMod.createAviationServiceRoutes(aviationHandlerMod.aviationHandler, serverOptions),
+      ...researchServerMod.createResearchServiceRoutes(researchHandlerMod.researchHandler, serverOptions),
+      ...unrestServerMod.createUnrestServiceRoutes(unrestHandlerMod.unrestHandler, serverOptions),
+      ...conflictServerMod.createConflictServiceRoutes(conflictHandlerMod.conflictHandler, serverOptions),
+      ...maritimeServerMod.createMaritimeServiceRoutes(maritimeHandlerMod.maritimeHandler, serverOptions),
+      ...cyberServerMod.createCyberServiceRoutes(cyberHandlerMod.cyberHandler, serverOptions),
+      ...economicServerMod.createEconomicServiceRoutes(economicHandlerMod.economicHandler, serverOptions),
+      ...infrastructureServerMod.createInfrastructureServiceRoutes(infrastructureHandlerMod.infrastructureHandler, serverOptions),
+      ...marketServerMod.createMarketServiceRoutes(marketHandlerMod.marketHandler, serverOptions),
+      ...newsServerMod.createNewsServiceRoutes(newsHandlerMod.newsHandler, serverOptions),
+      ...intelligenceServerMod.createIntelligenceServiceRoutes(intelligenceHandlerMod.intelligenceHandler, serverOptions),
+      ...militaryServerMod.createMilitaryServiceRoutes(militaryHandlerMod.militaryHandler, serverOptions),
+    ];
+    cachedCorsMod = corsMod;
+    return routerMod.createRouter(allRoutes);
+  }
+
+  return {
+    name: 'sebuf-api',
+    configureServer(server) {
+      // Invalidate cached router on HMR updates to server/ files
+      server.watcher.on('change', (file) => {
+        if (file.includes('/server/') || file.includes('/src/generated/server/')) {
+          cachedRouter = null;
+        }
+      });
+
+      server.middlewares.use(async (req, res, next) => {
+        // Only intercept sebuf routes: /api/{domain}/v1/*
+        if (!req.url || !/^\/api\/[a-z]+\/v1\//.test(req.url)) {
+          return next();
+        }
+
+        try {
+          // Build router once, reuse across requests (H-13 fix)
+          if (!cachedRouter) {
+            cachedRouter = await buildRouter();
+          }
+          const router = cachedRouter;
+          const corsMod = cachedCorsMod;
+
+          // Convert Connect IncomingMessage to Web Standard Request
+          const port = server.config.server.port || 3000;
+          const url = new URL(req.url, `http://localhost:${port}`);
+
+          // Read body for POST requests
+          let body: string | undefined;
+          if (req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH') {
+            const chunks: Buffer[] = [];
+            for await (const chunk of req) {
+              chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
+            }
+            body = Buffer.concat(chunks).toString();
+          }
+
+          // Extract headers from IncomingMessage
+          const headers: Record<string, string> = {};
+          for (const [key, value] of Object.entries(req.headers)) {
+            if (typeof value === 'string') {
+              headers[key] = value;
+            } else if (Array.isArray(value)) {
+              headers[key] = value.join(', ');
+            }
+          }
+
+          const webRequest = new Request(url.toString(), {
+            method: req.method,
+            headers,
+            body: body || undefined,
+          });
+
+          const corsHeaders = corsMod.getCorsHeaders(webRequest);
+
+          // OPTIONS preflight
+          if (req.method === 'OPTIONS') {
+            res.statusCode = 204;
+            for (const [key, value] of Object.entries(corsHeaders)) {
+              res.setHeader(key, value);
+            }
+            res.end();
+            return;
+          }
+
+          // Origin check
+          if (corsMod.isDisallowedOrigin(webRequest)) {
+            res.statusCode = 403;
+            res.setHeader('Content-Type', 'application/json');
+            for (const [key, value] of Object.entries(corsHeaders)) {
+              res.setHeader(key, value);
+            }
+            res.end(JSON.stringify({ error: 'Origin not allowed' }));
+            return;
+          }
+
+          // Route matching
+          const matchedHandler = router.match(webRequest);
+          if (!matchedHandler) {
+            res.statusCode = 404;
+            res.setHeader('Content-Type', 'application/json');
+            for (const [key, value] of Object.entries(corsHeaders)) {
+              res.setHeader(key, value);
+            }
+            res.end(JSON.stringify({ error: 'Not found' }));
+            return;
+          }
+
+          // Execute handler
+          const response = await matchedHandler(webRequest);
+
+          // Write response
+          res.statusCode = response.status;
+          response.headers.forEach((value, key) => {
+            res.setHeader(key, value);
+          });
+          for (const [key, value] of Object.entries(corsHeaders)) {
+            res.setHeader(key, value);
+          }
+          res.end(await response.text());
+        } catch (err) {
+          console.error('[sebuf-api] Error:', err);
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: 'Internal server error' }));
+        }
+      });
     },
   };
 }
@@ -103,11 +431,41 @@ function youtubeLivePlugin(): Plugin {
         }
 
         try {
-          // Use YouTube's oEmbed to check if a video is valid/live
-          // For now, return null to use fallback - will implement proper detection later
+          const channelHandle = channel.startsWith('@') ? channel : `@${channel}`;
+          const liveUrl = `https://www.youtube.com/${channelHandle}/live`;
+
+          const ytRes = await fetch(liveUrl, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            },
+            redirect: 'follow',
+          });
+
+          if (!ytRes.ok) {
+            res.setHeader('Content-Type', 'application/json');
+            res.setHeader('Cache-Control', 'public, max-age=300');
+            res.end(JSON.stringify({ videoId: null, channel }));
+            return;
+          }
+
+          const html = await ytRes.text();
+
+          // Scope both fields to the same videoDetails block so we don't
+          // combine a videoId from one object with isLive from another.
+          let videoId: string | null = null;
+          const detailsIdx = html.indexOf('"videoDetails"');
+          if (detailsIdx !== -1) {
+            const block = html.substring(detailsIdx, detailsIdx + 5000);
+            const vidMatch = block.match(/"videoId":"([a-zA-Z0-9_-]{11})"/);
+            const liveMatch = block.match(/"isLive"\s*:\s*true/);
+            if (vidMatch && liveMatch) {
+              videoId = vidMatch[1];
+            }
+          }
+
           res.setHeader('Content-Type', 'application/json');
           res.setHeader('Cache-Control', 'public, max-age=300');
-          res.end(JSON.stringify({ videoId: null, channel }));
+          res.end(JSON.stringify({ videoId, isLive: videoId !== null, channel }));
         } catch (error) {
           console.error(`[YouTube Live] Error:`, error);
           res.statusCode = 500;
@@ -123,7 +481,147 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
   },
-  plugins: [htmlVariantPlugin(), youtubeLivePlugin()],
+  plugins: [
+    htmlVariantPlugin(),
+    polymarketPlugin(),
+    youtubeLivePlugin(),
+    sebufApiPlugin(),
+    brotliPrecompressPlugin(),
+    VitePWA({
+      registerType: 'autoUpdate',
+      injectRegister: false,
+
+      includeAssets: [
+        'favico/favicon.ico',
+        'favico/apple-touch-icon.png',
+        'favico/favicon-32x32.png',
+      ],
+
+      manifest: {
+        name: `${activeMeta.siteName} - ${activeMeta.subject}`,
+        short_name: activeMeta.shortName,
+        description: activeMeta.description,
+        start_url: '/',
+        scope: '/',
+        display: 'standalone',
+        orientation: 'any',
+        theme_color: '#0a0f0a',
+        background_color: '#0a0f0a',
+        categories: activeMeta.categories,
+        icons: [
+          { src: '/favico/android-chrome-192x192.png', sizes: '192x192', type: 'image/png' },
+          { src: '/favico/android-chrome-512x512.png', sizes: '512x512', type: 'image/png' },
+          { src: '/favico/android-chrome-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+        ],
+      },
+
+      workbox: {
+        globPatterns: ['**/*.{js,css,ico,png,svg,woff2}'],
+        globIgnores: ['**/ml*.js', '**/onnx*.wasm', '**/locale-*.js'],
+        navigateFallback: null,
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true,
+
+        runtimeCaching: [
+          {
+            urlPattern: ({ request }: { request: Request }) => request.mode === 'navigate',
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'html-navigation',
+              networkTimeoutSeconds: 3,
+            },
+          },
+          {
+            urlPattern: ({ url, sameOrigin }: { url: URL; sameOrigin: boolean }) =>
+              sameOrigin && /^\/api\//.test(url.pathname),
+            handler: 'NetworkOnly',
+            method: 'GET',
+          },
+          {
+            urlPattern: ({ url, sameOrigin }: { url: URL; sameOrigin: boolean }) =>
+              sameOrigin && /^\/api\//.test(url.pathname),
+            handler: 'NetworkOnly',
+            method: 'POST',
+          },
+          {
+            urlPattern: ({ url, sameOrigin }: { url: URL; sameOrigin: boolean }) =>
+              sameOrigin && /^\/ingest\//.test(url.pathname),
+            handler: 'NetworkOnly',
+            method: 'GET',
+          },
+          {
+            urlPattern: ({ url, sameOrigin }: { url: URL; sameOrigin: boolean }) =>
+              sameOrigin && /^\/ingest\//.test(url.pathname),
+            handler: 'NetworkOnly',
+            method: 'POST',
+          },
+          {
+            urlPattern: ({ url, sameOrigin }: { url: URL; sameOrigin: boolean }) =>
+              sameOrigin && /^\/rss\//.test(url.pathname),
+            handler: 'NetworkOnly',
+            method: 'GET',
+          },
+          {
+            urlPattern: /^https:\/\/api\.maptiler\.com\//,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'map-tiles',
+              expiration: { maxEntries: 500, maxAgeSeconds: 30 * 24 * 60 * 60 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          {
+            urlPattern: /^https:\/\/[abc]\.basemaps\.cartocdn\.com\//,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'carto-tiles',
+              expiration: { maxEntries: 500, maxAgeSeconds: 30 * 24 * 60 * 60 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          {
+            urlPattern: /^https:\/\/fonts\.googleapis\.com\//,
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'google-fonts-css',
+              expiration: { maxEntries: 10, maxAgeSeconds: 365 * 24 * 60 * 60 },
+            },
+          },
+          {
+            urlPattern: /^https:\/\/fonts\.gstatic\.com\//,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'google-fonts-woff',
+              expiration: { maxEntries: 30, maxAgeSeconds: 365 * 24 * 60 * 60 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          {
+            urlPattern: /\/assets\/locale-.*\.js$/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'locale-files',
+              expiration: { maxEntries: 20, maxAgeSeconds: 30 * 24 * 60 * 60 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          {
+            urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp)$/i,
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'images',
+              expiration: { maxEntries: 100, maxAgeSeconds: 7 * 24 * 60 * 60 },
+            },
+          },
+        ],
+      },
+
+      devOptions: {
+        enabled: false,
+      },
+    }),
+  ],
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),
@@ -156,6 +654,7 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, 'index.html'),
         settings: resolve(__dirname, 'settings.html'),
+        liveChannels: resolve(__dirname, 'live-channels.html'),
       },
       output: {
         manualChunks(id) {
@@ -184,6 +683,22 @@ export default defineConfig({
             if (id.includes('/topojson-client/')) {
               return 'topojson';
             }
+            if (id.includes('/i18next')) {
+              return 'i18n';
+            }
+            if (id.includes('/@sentry/')) {
+              return 'sentry';
+            }
+          }
+          if (id.includes('/src/components/') && id.endsWith('Panel.ts')) {
+            return 'panels';
+          }
+          // Give lazy-loaded locale chunks a recognizable prefix so the
+          // service worker can exclude them from precache (en.json is
+          // statically imported into the main bundle).
+          const localeMatch = id.match(/\/locales\/(\w+)\.json$/);
+          if (localeMatch && localeMatch[1] !== 'en') {
+            return `locale-${localeMatch[1]}`;
           }
           return undefined;
         },
@@ -192,7 +707,15 @@ export default defineConfig({
   },
   server: {
     port: 3000,
-    open: true,
+    open: !isE2E,
+    hmr: isE2E ? false : undefined,
+    watch: {
+      ignored: [
+        '**/test-results/**',
+        '**/playwright-report/**',
+        '**/.playwright-mcp/**',
+      ],
+    },
     proxy: {
       // Yahoo Finance API
       '/api/yahoo': {
@@ -200,38 +723,7 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/yahoo/, ''),
       },
-      // CoinGecko API
-      '/api/coingecko': {
-        target: 'https://api.coingecko.com',
-        changeOrigin: true,
-        rewrite: (path) => {
-          const idx = path.indexOf('?');
-          const qs = idx >= 0 ? path.substring(idx) : '';
-          const params = new URLSearchParams(qs);
-          if (params.get('endpoint') === 'markets') {
-            params.delete('endpoint');
-            const vs = params.get('vs_currencies') || 'usd';
-            params.delete('vs_currencies');
-            params.set('vs_currency', vs);
-            params.set('sparkline', 'true');
-            params.set('order', 'market_cap_desc');
-            return `/api/v3/coins/markets?${params.toString()}`;
-          }
-          return `/api/v3/simple/price${qs}`;
-        },
-      },
-      // Polymarket API
-      '/api/polymarket': {
-        target: 'https://gamma-api.polymarket.com',
-        changeOrigin: true,
-        secure: false,
-        rewrite: (path) => path.replace(/^\/api\/polymarket/, ''),
-        configure: (proxy) => {
-          proxy.on('error', (err) => {
-            console.log('Polymarket proxy error:', err.message);
-          });
-        },
-      },
+      // Polymarket handled by polymarketPlugin() — no prod proxy needed
       // USGS Earthquake API
       '/api/earthquake': {
         target: 'https://earthquake.usgs.gov',
@@ -545,18 +1037,6 @@ export default defineConfig({
         target: 'https://msi.nga.mil',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/nga-msi/, ''),
-      },
-      // ACLED - Armed Conflict Location & Event Data (protests, riots)
-      '/api/acled': {
-        target: 'https://acleddata.com',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/acled/, ''),
-      },
-      // GDELT GEO 2.0 API - Geolocation endpoint (must come before /api/gdelt)
-      '/api/gdelt-geo': {
-        target: 'https://api.gdeltproject.org',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/gdelt-geo/, '/api/v2/geo/geo'),
       },
       // GDELT GEO 2.0 API - Global event data
       '/api/gdelt': {

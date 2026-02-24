@@ -1124,6 +1124,7 @@ export const NUCLEAR_FACILITIES: NuclearFacility[] = [
   { id: 'vandellos', name: 'Vandellòs', lat: 40.95, lon: 0.87, type: 'plant', status: 'active' },
   { id: 'trillo', name: 'Trillo', lat: 40.70, lon: -2.62, type: 'plant', status: 'active' },
   { id: 'krsko', name: 'Krško', lat: 45.94, lon: 15.52, type: 'plant', status: 'active' },
+  { id: 'koeberg', name: 'Koeberg', lat: -33.6767, lon: 18.4347, type: 'plant', status: 'active' },
   { id: 'atucha', name: 'Atucha', lat: -33.97, lon: -59.21, type: 'plant', status: 'active' },
   { id: 'embalse', name: 'Embalse', lat: -32.23, lon: -64.47, type: 'plant', status: 'active' },
   { id: 'angra', name: 'Angra', lat: -23.01, lon: -44.46, type: 'plant', status: 'active' },

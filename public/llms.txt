@@ -1,0 +1,62 @@
+# World Monitor
+
+> Real-time global intelligence dashboard — AI-powered news aggregation, geopolitical monitoring, and infrastructure tracking in a unified situational awareness interface.
+
+World Monitor is an open-source (AGPL-3.0) intelligence platform that aggregates 150+ news feeds, 35+ interactive map layers, and multiple AI models into a single dashboard. It runs as a web app, installable PWA, and native desktop application (Tauri) for macOS, Windows, and Linux.
+
+A single codebase produces three specialized variants — geopolitical, technology, and finance — each with distinct feeds, panels, map layers, and branding. The tri-variant architecture uses build-time selection via the VITE_VARIANT environment variable, with runtime switching available via the header bar.
+
+The project is built with TypeScript, Vite, MapLibre GL JS, deck.gl, D3.js, and Tauri. All intelligence analysis (clustering, instability scoring, surge detection) runs client-side in the browser — no backend compute dependency for core intelligence. A browser-side ML pipeline (Transformers.js) provides NER and sentiment analysis without server dependency.
+
+## Live Instances
+
+- [World Monitor](https://worldmonitor.app): Geopolitics, military, conflicts, infrastructure
+- [Tech Monitor](https://tech.worldmonitor.app): Startups, AI/ML, cloud, cybersecurity
+- [Finance Monitor](https://finance.worldmonitor.app): Global markets, trading, central banks, Gulf FDI
+
+## Documentation
+
+- [README](https://github.com/koala73/worldmonitor/blob/main/README.md): Full project documentation with architecture details
+- [Full Documentation](https://github.com/koala73/worldmonitor/blob/main/docs/DOCUMENTATION.md): Detailed feature documentation, data layers, and panel reference
+- [Extended LLM Documentation](https://worldmonitor.app/llms-full.txt): Comprehensive version of this file with all data layers, components, and data sources
+
+## Key Features
+
+- Interactive 3D WebGL globe with deck.gl rendering and 35+ toggleable data layers (conflicts, military bases, nuclear facilities, undersea cables, pipelines, datacenters, protests, disasters, cyber threats, and more)
+- AI-powered intelligence: LLM-synthesized world briefs, hybrid threat classification, focal point detection, country instability index for 22 nations, trending keyword spike detection, and strategic posture assessment
+- 150+ curated RSS feeds across geopolitics, defense, energy, tech, and finance with domain-allowlisted proxy
+- 8 live news video streams (Bloomberg, Sky News, Al Jazeera, Euronews, DW, France24, CNBC, Al Arabiya)
+- 19 live webcams from geopolitical hotspots across 4 regions
+- Multilingual UI supporting 14 languages (English, French, Spanish, German, Italian, Polish, Portuguese, Dutch, Swedish, Russian, Arabic, Chinese, Japanese, Turkish) with RTL support
+- 7-signal macro market radar with composite BUY/CASH verdict, BTC ETF flow tracking, stablecoin peg monitoring, Fear & Greed Index
+- Country brief pages with AI-generated analysis, CII score ring, prediction markets, 7-day timeline, infrastructure exposure, and stock index
+- Geographic convergence detection — identifies when multiple signal types spike in the same area
+- Infrastructure cascade modeling with dependency graphs for cables, pipelines, ports, and chokepoints
+- Native desktop app (Tauri) with OS keychain integration, local API sidecar, and cloud fallback
+- Progressive Web App with offline map support (500 cached tiles)
+- Shareable intelligence stories with multi-platform social export and canvas-based image generation
+- Cmd+K fuzzy search across 20+ result types
+- Dark/light theme, panel drag-and-drop reordering, ultra-wide monitor layout (2000px+)
+
+## Desktop App
+
+- [Windows Installer](https://worldmonitor.app/api/download?platform=windows-exe): Windows .exe installer
+- [macOS Apple Silicon](https://worldmonitor.app/api/download?platform=macos-arm64): macOS ARM64 build
+- [macOS Intel](https://worldmonitor.app/api/download?platform=macos-x64): macOS x64 build
+- [Linux AppImage](https://worldmonitor.app/api/download?platform=linux-appimage): Linux .AppImage
+
+## Tech Stack
+
+- **Frontend**: TypeScript, Vite, MapLibre GL JS, deck.gl, D3.js, Transformers.js (browser-side ML)
+- **Internationalization**: i18next with lazy-loaded language bundles and RTL support
+- **Desktop**: Tauri (Rust + Node.js sidecar) for macOS, Windows, Linux
+- **Backend**: 60+ Vercel Edge Functions, Railway relay server
+- **Data**: Upstash Redis caching, three-tier cache (in-memory, Redis, upstream)
+- **AI**: Groq (Llama 3.1), OpenRouter, browser-side T5 fallback
+- **Monitoring**: Sentry error tracking, data freshness tracker across 22 sources
+
+## Optional
+
+- [Source Code](https://github.com/koala73/worldmonitor): GitHub repository (AGPL-3.0)
+- [Releases](https://github.com/koala73/worldmonitor/releases): All desktop releases for macOS, Windows, and Linux
+- [Issues](https://github.com/koala73/worldmonitor/issues): Bug reports and feature requests

@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package worldmonitor.economic.v1;
+
+import "buf/validate/validate.proto";
+import "worldmonitor/core/v1/pagination.proto";
+import "worldmonitor/economic/v1/economic_data.proto";
+
+// ListWorldBankIndicatorsRequest specifies filters for retrieving World Bank data.
+message ListWorldBankIndicatorsRequest {
+  // World Bank indicator code (e.g., "NY.GDP.MKTP.CD").
+  string indicator_code = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // Optional country filter (ISO 3166-1 alpha-2).
+  string country_code = 2;
+  // Optional year filter. Defaults to latest available.
+  int32 year = 3;
+  // Pagination parameters.
+  worldmonitor.core.v1.PaginationRequest pagination = 4;
+}
+
+// ListWorldBankIndicatorsResponse contains World Bank indicator data.
+message ListWorldBankIndicatorsResponse {
+  // Country-level indicator data.
+  repeated WorldBankCountryData data = 1;
+  // Pagination metadata.
+  worldmonitor.core.v1.PaginationResponse pagination = 2;
+}

@@ -1,4 +1,5 @@
 import { getSnapshotTimestamps, getSnapshotAt, type DashboardSnapshot } from '@/services/storage';
+import { t } from '@/services/i18n';
 
 export class PlaybackControl {
   private element: HTMLElement;
@@ -11,22 +12,22 @@ export class PlaybackControl {
     this.element = document.createElement('div');
     this.element.className = 'playback-control';
     this.element.innerHTML = `
-      <button class="playback-toggle" title="Toggle Playback Mode">
+      <button class="playback-toggle" title="${t('components.playback.toggleMode')}">
         <span class="playback-icon">⏪</span>
       </button>
       <div class="playback-panel hidden">
         <div class="playback-header">
-          <span>Historical Playback</span>
+          <span>${t('components.playback.historicalPlayback')}</span>
           <button class="playback-close">×</button>
         </div>
         <div class="playback-slider-container">
           <input type="range" class="playback-slider" min="0" max="100" value="100">
-          <div class="playback-time">LIVE</div>
+          <div class="playback-time">${t('components.playback.live')}</div>
         </div>
         <div class="playback-controls">
           <button class="playback-btn" data-action="start">⏮</button>
           <button class="playback-btn" data-action="prev">◀</button>
-          <button class="playback-btn playback-live" data-action="live">LIVE</button>
+          <button class="playback-btn playback-live" data-action="live">${t('components.playback.live')}</button>
           <button class="playback-btn" data-action="next">▶</button>
           <button class="playback-btn" data-action="end">⏭</button>
         </div>
@@ -144,7 +145,7 @@ export class PlaybackControl {
     const display = this.element.querySelector('.playback-time')!;
 
     if (!this.isPlaybackMode || this.timestamps.length === 0) {
-      display.textContent = 'LIVE';
+      display.textContent = t('components.playback.live');
       display.classList.remove('historical');
       return;
     }

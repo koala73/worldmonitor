@@ -1,0 +1,834 @@
+openapi: 3.1.0
+info:
+    title: MilitaryService API
+    version: 1.0.0
+paths:
+    /api/military/v1/list-military-flights:
+        post:
+            tags:
+                - MilitaryService
+            summary: ListMilitaryFlights
+            description: ListMilitaryFlights retrieves tracked military aircraft from OpenSky and Wingbits.
+            operationId: ListMilitaryFlights
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ListMilitaryFlightsRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListMilitaryFlightsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/military/v1/get-theater-posture:
+        post:
+            tags:
+                - MilitaryService
+            summary: GetTheaterPosture
+            description: GetTheaterPosture retrieves military posture assessments for geographic theaters.
+            operationId: GetTheaterPosture
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/GetTheaterPostureRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetTheaterPostureResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/military/v1/get-aircraft-details:
+        post:
+            tags:
+                - MilitaryService
+            summary: GetAircraftDetails
+            description: GetAircraftDetails retrieves Wingbits aircraft enrichment data for a single ICAO24 hex.
+            operationId: GetAircraftDetails
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/GetAircraftDetailsRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetAircraftDetailsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/military/v1/get-aircraft-details-batch:
+        post:
+            tags:
+                - MilitaryService
+            summary: GetAircraftDetailsBatch
+            description: GetAircraftDetailsBatch retrieves Wingbits aircraft enrichment data for multiple ICAO24 hexes.
+            operationId: GetAircraftDetailsBatch
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/GetAircraftDetailsBatchRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetAircraftDetailsBatchResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/military/v1/get-wingbits-status:
+        post:
+            tags:
+                - MilitaryService
+            summary: GetWingbitsStatus
+            description: GetWingbitsStatus checks whether the Wingbits enrichment API is configured.
+            operationId: GetWingbitsStatus
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/GetWingbitsStatusRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetWingbitsStatusResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/military/v1/get-usni-fleet-report:
+        post:
+            tags:
+                - MilitaryService
+            summary: GetUSNIFleetReport
+            description: GetUSNIFleetReport retrieves the latest parsed USNI Fleet Tracker report.
+            operationId: GetUSNIFleetReport
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/GetUSNIFleetReportRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetUSNIFleetReportResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+components:
+    schemas:
+        Error:
+            type: object
+            properties:
+                message:
+                    type: string
+                    description: Error message (e.g., 'user not found', 'database connection failed')
+            description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        FieldViolation:
+            type: object
+            properties:
+                field:
+                    type: string
+                    description: The field path that failed validation (e.g., 'user.email' for nested fields). For header validation, this will be the header name (e.g., 'X-API-Key')
+                description:
+                    type: string
+                    description: Human-readable description of the validation violation (e.g., 'must be a valid email address', 'required field missing')
+            required:
+                - field
+                - description
+            description: FieldViolation describes a single validation error for a specific field.
+        ValidationError:
+            type: object
+            properties:
+                violations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FieldViolation'
+                    description: List of validation violations
+            required:
+                - violations
+            description: ValidationError is returned when request validation fails. It contains a list of field violations describing what went wrong.
+        ListMilitaryFlightsRequest:
+            type: object
+            properties:
+                pagination:
+                    $ref: '#/components/schemas/PaginationRequest'
+                boundingBox:
+                    $ref: '#/components/schemas/BoundingBox'
+                operator:
+                    type: string
+                    enum:
+                        - MILITARY_OPERATOR_UNSPECIFIED
+                        - MILITARY_OPERATOR_USAF
+                        - MILITARY_OPERATOR_USN
+                        - MILITARY_OPERATOR_USMC
+                        - MILITARY_OPERATOR_USA
+                        - MILITARY_OPERATOR_RAF
+                        - MILITARY_OPERATOR_RN
+                        - MILITARY_OPERATOR_FAF
+                        - MILITARY_OPERATOR_GAF
+                        - MILITARY_OPERATOR_PLAAF
+                        - MILITARY_OPERATOR_PLAN
+                        - MILITARY_OPERATOR_VKS
+                        - MILITARY_OPERATOR_IAF
+                        - MILITARY_OPERATOR_NATO
+                        - MILITARY_OPERATOR_OTHER
+                    description: MilitaryOperator represents the military branch or force operating an asset.
+                aircraftType:
+                    type: string
+                    enum:
+                        - MILITARY_AIRCRAFT_TYPE_UNSPECIFIED
+                        - MILITARY_AIRCRAFT_TYPE_FIGHTER
+                        - MILITARY_AIRCRAFT_TYPE_BOMBER
+                        - MILITARY_AIRCRAFT_TYPE_TRANSPORT
+                        - MILITARY_AIRCRAFT_TYPE_TANKER
+                        - MILITARY_AIRCRAFT_TYPE_AWACS
+                        - MILITARY_AIRCRAFT_TYPE_RECONNAISSANCE
+                        - MILITARY_AIRCRAFT_TYPE_HELICOPTER
+                        - MILITARY_AIRCRAFT_TYPE_DRONE
+                        - MILITARY_AIRCRAFT_TYPE_PATROL
+                        - MILITARY_AIRCRAFT_TYPE_SPECIAL_OPS
+                        - MILITARY_AIRCRAFT_TYPE_VIP
+                        - MILITARY_AIRCRAFT_TYPE_UNKNOWN
+                    description: MilitaryAircraftType represents the classification of a military aircraft.
+            description: ListMilitaryFlightsRequest specifies filters for retrieving military flight data.
+        PaginationRequest:
+            type: object
+            properties:
+                pageSize:
+                    type: integer
+                    maximum: 100
+                    minimum: 1
+                    format: int32
+                    description: Maximum number of items to return per page (1 to 100).
+                cursor:
+                    type: string
+                    description: Opaque cursor for fetching the next page. Empty string for the first page.
+            description: PaginationRequest specifies cursor-based pagination parameters for list endpoints.
+        BoundingBox:
+            type: object
+            properties:
+                northEast:
+                    $ref: '#/components/schemas/GeoCoordinates'
+                southWest:
+                    $ref: '#/components/schemas/GeoCoordinates'
+            description: |-
+                BoundingBox represents a rectangular geographic area defined by its corners.
+                 Used for spatial queries to filter results within a geographic region.
+        GeoCoordinates:
+            type: object
+            properties:
+                latitude:
+                    type: number
+                    maximum: 90
+                    minimum: -90
+                    format: double
+                    description: Latitude in decimal degrees (-90 to 90).
+                longitude:
+                    type: number
+                    maximum: 180
+                    minimum: -180
+                    format: double
+                    description: Longitude in decimal degrees (-180 to 180).
+            description: GeoCoordinates represents a geographic location using WGS84 coordinates.
+        ListMilitaryFlightsResponse:
+            type: object
+            properties:
+                flights:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/MilitaryFlight'
+                clusters:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/MilitaryFlightCluster'
+                pagination:
+                    $ref: '#/components/schemas/PaginationResponse'
+            description: ListMilitaryFlightsResponse contains military flights and clusters.
+        MilitaryFlight:
+            type: object
+            properties:
+                id:
+                    type: string
+                    minLength: 1
+                    description: Unique flight identifier.
+                callsign:
+                    type: string
+                    description: Aircraft callsign.
+                hexCode:
+                    type: string
+                    description: ICAO 24-bit hex address.
+                registration:
+                    type: string
+                    description: Aircraft registration number.
+                aircraftType:
+                    type: string
+                    enum:
+                        - MILITARY_AIRCRAFT_TYPE_UNSPECIFIED
+                        - MILITARY_AIRCRAFT_TYPE_FIGHTER
+                        - MILITARY_AIRCRAFT_TYPE_BOMBER
+                        - MILITARY_AIRCRAFT_TYPE_TRANSPORT
+                        - MILITARY_AIRCRAFT_TYPE_TANKER
+                        - MILITARY_AIRCRAFT_TYPE_AWACS
+                        - MILITARY_AIRCRAFT_TYPE_RECONNAISSANCE
+                        - MILITARY_AIRCRAFT_TYPE_HELICOPTER
+                        - MILITARY_AIRCRAFT_TYPE_DRONE
+                        - MILITARY_AIRCRAFT_TYPE_PATROL
+                        - MILITARY_AIRCRAFT_TYPE_SPECIAL_OPS
+                        - MILITARY_AIRCRAFT_TYPE_VIP
+                        - MILITARY_AIRCRAFT_TYPE_UNKNOWN
+                    description: MilitaryAircraftType represents the classification of a military aircraft.
+                aircraftModel:
+                    type: string
+                    description: Specific aircraft model (e.g., "F-35A", "C-17A").
+                operator:
+                    type: string
+                    enum:
+                        - MILITARY_OPERATOR_UNSPECIFIED
+                        - MILITARY_OPERATOR_USAF
+                        - MILITARY_OPERATOR_USN
+                        - MILITARY_OPERATOR_USMC
+                        - MILITARY_OPERATOR_USA
+                        - MILITARY_OPERATOR_RAF
+                        - MILITARY_OPERATOR_RN
+                        - MILITARY_OPERATOR_FAF
+                        - MILITARY_OPERATOR_GAF
+                        - MILITARY_OPERATOR_PLAAF
+                        - MILITARY_OPERATOR_PLAN
+                        - MILITARY_OPERATOR_VKS
+                        - MILITARY_OPERATOR_IAF
+                        - MILITARY_OPERATOR_NATO
+                        - MILITARY_OPERATOR_OTHER
+                    description: MilitaryOperator represents the military branch or force operating an asset.
+                operatorCountry:
+                    type: string
+                    description: Country operating the aircraft (ISO 3166-1 alpha-2).
+                location:
+                    $ref: '#/components/schemas/GeoCoordinates'
+                altitude:
+                    type: number
+                    format: double
+                    description: Altitude in feet.
+                heading:
+                    type: number
+                    format: double
+                    description: Heading in degrees.
+                speed:
+                    type: number
+                    format: double
+                    description: Speed in knots.
+                verticalRate:
+                    type: number
+                    format: double
+                    description: Vertical rate in feet per minute.
+                onGround:
+                    type: boolean
+                    description: Whether the aircraft is on the ground.
+                squawk:
+                    type: string
+                    description: Transponder squawk code.
+                origin:
+                    type: string
+                    description: ICAO code of the origin airport.
+                destination:
+                    type: string
+                    description: ICAO code of the destination airport.
+                lastSeenAt:
+                    type: integer
+                    format: int64
+                    description: 'Last seen time, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                firstSeenAt:
+                    type: integer
+                    format: int64
+                    description: 'First seen time, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                confidence:
+                    type: string
+                    enum:
+                        - MILITARY_CONFIDENCE_UNSPECIFIED
+                        - MILITARY_CONFIDENCE_LOW
+                        - MILITARY_CONFIDENCE_MEDIUM
+                        - MILITARY_CONFIDENCE_HIGH
+                    description: MilitaryConfidence represents confidence in asset identification.
+                isInteresting:
+                    type: boolean
+                    description: Whether flagged for unusual activity.
+                note:
+                    type: string
+                    description: Analyst note.
+                enrichment:
+                    $ref: '#/components/schemas/FlightEnrichment'
+            required:
+                - id
+            description: MilitaryFlight represents a tracked military aircraft from OpenSky or Wingbits.
+        FlightEnrichment:
+            type: object
+            properties:
+                manufacturer:
+                    type: string
+                    description: Aircraft manufacturer.
+                owner:
+                    type: string
+                    description: Registered owner.
+                operatorName:
+                    type: string
+                    description: Operator name.
+                typeCode:
+                    type: string
+                    description: ICAO type code.
+                builtYear:
+                    type: string
+                    description: Year the aircraft was built.
+                confirmedMilitary:
+                    type: boolean
+                    description: Whether confirmed as military.
+                militaryBranch:
+                    type: string
+                    description: Military branch designation.
+            description: FlightEnrichment contains additional data from Wingbits aircraft database.
+        MilitaryFlightCluster:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: Unique cluster identifier.
+                name:
+                    type: string
+                    description: Descriptive name of the cluster.
+                location:
+                    $ref: '#/components/schemas/GeoCoordinates'
+                flightCount:
+                    type: integer
+                    format: int32
+                    description: Number of flights in the cluster.
+                flights:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/MilitaryFlight'
+                dominantOperator:
+                    type: string
+                    enum:
+                        - MILITARY_OPERATOR_UNSPECIFIED
+                        - MILITARY_OPERATOR_USAF
+                        - MILITARY_OPERATOR_USN
+                        - MILITARY_OPERATOR_USMC
+                        - MILITARY_OPERATOR_USA
+                        - MILITARY_OPERATOR_RAF
+                        - MILITARY_OPERATOR_RN
+                        - MILITARY_OPERATOR_FAF
+                        - MILITARY_OPERATOR_GAF
+                        - MILITARY_OPERATOR_PLAAF
+                        - MILITARY_OPERATOR_PLAN
+                        - MILITARY_OPERATOR_VKS
+                        - MILITARY_OPERATOR_IAF
+                        - MILITARY_OPERATOR_NATO
+                        - MILITARY_OPERATOR_OTHER
+                    description: MilitaryOperator represents the military branch or force operating an asset.
+                activityType:
+                    type: string
+                    enum:
+                        - MILITARY_ACTIVITY_TYPE_UNSPECIFIED
+                        - MILITARY_ACTIVITY_TYPE_EXERCISE
+                        - MILITARY_ACTIVITY_TYPE_PATROL
+                        - MILITARY_ACTIVITY_TYPE_TRANSPORT
+                        - MILITARY_ACTIVITY_TYPE_DEPLOYMENT
+                        - MILITARY_ACTIVITY_TYPE_TRANSIT
+                        - MILITARY_ACTIVITY_TYPE_UNKNOWN
+                    description: MilitaryActivityType represents the assessed type of military activity.
+            description: MilitaryFlightCluster represents a geographic cluster of military flights.
+        PaginationResponse:
+            type: object
+            properties:
+                nextCursor:
+                    type: string
+                    description: Cursor for fetching the next page. Empty string indicates no more pages.
+                totalCount:
+                    type: integer
+                    format: int32
+                    description: Total count of items matching the query, if known. Zero if the total is unknown.
+            description: PaginationResponse contains pagination metadata returned alongside list results.
+        GetTheaterPostureRequest:
+            type: object
+            properties:
+                theater:
+                    type: string
+                    description: Theater name (e.g., "indo-pacific", "european", "middle-east"). Empty for all theaters.
+            description: GetTheaterPostureRequest specifies the theater to assess.
+        GetTheaterPostureResponse:
+            type: object
+            properties:
+                theaters:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/TheaterPosture'
+            description: GetTheaterPostureResponse contains theater posture assessments.
+        TheaterPosture:
+            type: object
+            properties:
+                theater:
+                    type: string
+                    description: Theater name (e.g., "Indo-Pacific", "European", "Middle East").
+                postureLevel:
+                    type: string
+                    description: Overall posture assessment.
+                activeFlights:
+                    type: integer
+                    format: int32
+                    description: Number of active flights in the theater.
+                trackedVessels:
+                    type: integer
+                    format: int32
+                    description: Number of tracked vessels in the theater.
+                activeOperations:
+                    type: array
+                    items:
+                        type: string
+                        description: Notable ongoing operations.
+                assessedAt:
+                    type: integer
+                    format: int64
+                    description: 'Assessment timestamp, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: TheaterPosture represents an assessed military posture for a geographic theater.
+        GetAircraftDetailsRequest:
+            type: object
+            properties:
+                icao24:
+                    type: string
+                    minLength: 1
+                    description: ICAO 24-bit hex address (lowercase).
+            required:
+                - icao24
+            description: GetAircraftDetailsRequest looks up a single aircraft by ICAO 24-bit hex.
+        GetAircraftDetailsResponse:
+            type: object
+            properties:
+                details:
+                    $ref: '#/components/schemas/AircraftDetails'
+                configured:
+                    type: boolean
+                    description: Whether the Wingbits API is configured.
+            description: GetAircraftDetailsResponse contains the aircraft enrichment data.
+        AircraftDetails:
+            type: object
+            properties:
+                icao24:
+                    type: string
+                    description: ICAO 24-bit hex address.
+                registration:
+                    type: string
+                    description: Aircraft registration number.
+                manufacturerIcao:
+                    type: string
+                    description: ICAO manufacturer code.
+                manufacturerName:
+                    type: string
+                    description: Full manufacturer name.
+                model:
+                    type: string
+                    description: Aircraft model.
+                typecode:
+                    type: string
+                    description: ICAO type designator code.
+                serialNumber:
+                    type: string
+                    description: Manufacturer serial number.
+                icaoAircraftType:
+                    type: string
+                    description: ICAO aircraft type designator.
+                operator:
+                    type: string
+                    description: Operator name.
+                operatorCallsign:
+                    type: string
+                    description: Operator callsign.
+                operatorIcao:
+                    type: string
+                    description: Operator ICAO code.
+                owner:
+                    type: string
+                    description: Registered owner.
+                built:
+                    type: string
+                    description: Build date.
+                engines:
+                    type: string
+                    description: Engine description.
+                categoryDescription:
+                    type: string
+                    description: ICAO category description.
+            description: AircraftDetails contains Wingbits aircraft enrichment data.
+        GetAircraftDetailsBatchRequest:
+            type: object
+            properties:
+                icao24s:
+                    type: array
+                    items:
+                        type: string
+                        maxItems: 20
+                        minItems: 1
+                        description: ICAO 24-bit hex addresses (lowercase). Max 20.
+                    maxItems: 20
+                    minItems: 1
+            description: GetAircraftDetailsBatchRequest looks up multiple aircraft by ICAO 24-bit hex.
+        GetAircraftDetailsBatchResponse:
+            type: object
+            properties:
+                results:
+                    type: object
+                    additionalProperties:
+                        $ref: '#/components/schemas/AircraftDetails'
+                    description: Map of icao24 -> aircraft details for found aircraft.
+                fetched:
+                    type: integer
+                    format: int32
+                    description: Number of aircraft successfully fetched from upstream.
+                requested:
+                    type: integer
+                    format: int32
+                    description: Number of aircraft requested.
+                configured:
+                    type: boolean
+                    description: Whether the Wingbits API is configured.
+            description: GetAircraftDetailsBatchResponse contains the batch lookup results.
+        ResultsEntry:
+            type: object
+            properties:
+                key:
+                    type: string
+                value:
+                    $ref: '#/components/schemas/AircraftDetails'
+        GetWingbitsStatusRequest:
+            type: object
+            description: GetWingbitsStatusRequest checks whether the Wingbits enrichment API is configured.
+        GetWingbitsStatusResponse:
+            type: object
+            properties:
+                configured:
+                    type: boolean
+                    description: Whether the Wingbits API key is configured on the server.
+            description: GetWingbitsStatusResponse indicates whether Wingbits is available.
+        GetUSNIFleetReportRequest:
+            type: object
+            properties:
+                forceRefresh:
+                    type: boolean
+                    description: When true, bypass cache and fetch fresh data from USNI.
+            description: GetUSNIFleetReportRequest requests the latest USNI Fleet Tracker report.
+        GetUSNIFleetReportResponse:
+            type: object
+            properties:
+                report:
+                    $ref: '#/components/schemas/USNIFleetReport'
+                cached:
+                    type: boolean
+                    description: Whether the response was served from cache.
+                stale:
+                    type: boolean
+                    description: Whether the cached data is stale (served after a fetch failure).
+                error:
+                    type: string
+                    description: Error message, if any.
+            description: GetUSNIFleetReportResponse returns the parsed USNI Fleet Tracker report.
+        USNIFleetReport:
+            type: object
+            properties:
+                articleUrl:
+                    type: string
+                    description: URL of the source article.
+                articleDate:
+                    type: string
+                    description: Publication date of the article.
+                articleTitle:
+                    type: string
+                    description: Title of the article.
+                battleForceSummary:
+                    $ref: '#/components/schemas/BattleForceSummary'
+                vessels:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/USNIVessel'
+                strikeGroups:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/USNIStrikeGroup'
+                regions:
+                    type: array
+                    items:
+                        type: string
+                        description: Unique region names mentioned in the article.
+                parsingWarnings:
+                    type: array
+                    items:
+                        type: string
+                        description: Warnings generated during parsing.
+                timestamp:
+                    type: integer
+                    format: int64
+                    description: 'Time the report was generated, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: USNIFleetReport is the full parsed output of a USNI Fleet Tracker article.
+        BattleForceSummary:
+            type: object
+            properties:
+                totalShips:
+                    type: integer
+                    minimum: 0
+                    format: int32
+                    description: Total ships in the battle force.
+                deployed:
+                    type: integer
+                    minimum: 0
+                    format: int32
+                    description: Number of ships currently deployed.
+                underway:
+                    type: integer
+                    minimum: 0
+                    format: int32
+                    description: Number of ships currently underway.
+            description: BattleForceSummary contains fleet-wide ship count statistics.
+        USNIVessel:
+            type: object
+            properties:
+                name:
+                    type: string
+                    minLength: 1
+                    description: Vessel name (e.g., "USS Abraham Lincoln").
+                hullNumber:
+                    type: string
+                    minLength: 1
+                    description: Hull designation (e.g., "CVN-72", "DDG-51").
+                vesselType:
+                    type: string
+                    description: Vessel type classification (e.g., "carrier", "destroyer", "submarine").
+                region:
+                    type: string
+                    description: Region name where the vessel is operating.
+                regionLat:
+                    type: number
+                    format: double
+                    description: Approximate latitude for the region.
+                regionLon:
+                    type: number
+                    format: double
+                    description: Approximate longitude for the region.
+                deploymentStatus:
+                    type: string
+                    description: Deployment status (e.g., "deployed", "underway", "in-port", "unknown").
+                homePort:
+                    type: string
+                    description: Home port, if identified from the article text.
+                strikeGroup:
+                    type: string
+                    description: Strike group assignment, if any.
+                activityDescription:
+                    type: string
+                    description: Brief activity description parsed from article prose.
+                articleUrl:
+                    type: string
+                    description: URL of the USNI article this vessel was parsed from.
+                articleDate:
+                    type: string
+                    description: Publication date of the USNI article.
+            required:
+                - name
+                - hullNumber
+            description: USNIVessel represents a single vessel parsed from a USNI Fleet Tracker article.
+        USNIStrikeGroup:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: Strike group name (e.g., "Abraham Lincoln Carrier Strike Group").
+                carrier:
+                    type: string
+                    description: Carrier name and hull (e.g., "USS Abraham Lincoln (CVN-72)").
+                airWing:
+                    type: string
+                    description: Assigned air wing (e.g., "Carrier Air Wing Nine").
+                destroyerSquadron:
+                    type: string
+                    description: Assigned destroyer squadron.
+                escorts:
+                    type: array
+                    items:
+                        type: string
+                        description: Escort vessels in the strike group.
+            description: USNIStrikeGroup represents a carrier strike group parsed from the article.

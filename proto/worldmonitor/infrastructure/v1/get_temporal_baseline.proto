@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package worldmonitor.infrastructure.v1;
+
+import "buf/validate/validate.proto";
+
+// GetTemporalBaselineRequest checks current activity count against stored baseline.
+message GetTemporalBaselineRequest {
+  // Activity type: "military_flights", "vessels", "protests", "news", "ais_gaps", "satellite_fires".
+  string type = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // Geographic region key, defaults to "global".
+  string region = 2;
+  // Current observed count to compare against baseline.
+  double count = 3;
+}
+
+// BaselineAnomaly describes a detected deviation from historical baseline.
+message BaselineAnomaly {
+  // Number of standard deviations from the mean.
+  double z_score = 1;
+  // Severity label: "critical", "high", "medium", "normal".
+  string severity = 2;
+  // Ratio of current count to baseline mean.
+  double multiplier = 3;
+}
+
+// BaselineStats contains the running statistics for a baseline key.
+message BaselineStats {
+  // Running mean of observed counts.
+  double mean = 1;
+  // Standard deviation derived from Welford's M2.
+  double std_dev = 2;
+  // Number of samples incorporated so far.
+  int32 sample_count = 3;
+}
+
+// GetTemporalBaselineResponse returns anomaly info or learning status.
+message GetTemporalBaselineResponse {
+  // Anomaly details; absent when count is within normal range.
+  BaselineAnomaly anomaly = 1;
+  // Baseline statistics; absent when still in learning phase.
+  BaselineStats baseline = 2;
+  // True if insufficient samples have been collected.
+  bool learning = 3;
+  // Current number of samples stored.
+  int32 sample_count = 4;
+  // Minimum samples required before anomaly detection activates.
+  int32 samples_needed = 5;
+  // Error message if request was invalid.
+  string error = 6;
+}

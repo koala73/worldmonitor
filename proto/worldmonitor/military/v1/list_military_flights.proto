@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package worldmonitor.military.v1;
+
+import "worldmonitor/core/v1/geo.proto";
+import "worldmonitor/core/v1/pagination.proto";
+import "worldmonitor/military/v1/military_flight.proto";
+
+// ListMilitaryFlightsRequest specifies filters for retrieving military flight data.
+message ListMilitaryFlightsRequest {
+  // Pagination parameters.
+  worldmonitor.core.v1.PaginationRequest pagination = 1;
+  // Optional bounding box for geographic filtering.
+  worldmonitor.core.v1.BoundingBox bounding_box = 2;
+  // Optional operator filter.
+  MilitaryOperator operator = 3;
+  // Optional aircraft type filter.
+  MilitaryAircraftType aircraft_type = 4;
+}
+
+// ListMilitaryFlightsResponse contains military flights and clusters.
+message ListMilitaryFlightsResponse {
+  // Individual military flights.
+  repeated MilitaryFlight flights = 1;
+  // Geographic clusters of flights.
+  repeated MilitaryFlightCluster clusters = 2;
+  // Pagination metadata.
+  worldmonitor.core.v1.PaginationResponse pagination = 3;
+}

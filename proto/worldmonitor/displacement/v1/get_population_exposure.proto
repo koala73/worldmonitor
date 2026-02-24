@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package worldmonitor.displacement.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+// GetPopulationExposureRequest supports two modes:
+// - countries mode (default): returns the priority countries list
+// - exposure mode: estimates population within a radius of a point
+message GetPopulationExposureRequest {
+  // Mode: "countries" (default) or "exposure".
+  string mode = 1;
+  // Latitude (required for exposure mode).
+  double lat = 2 [
+    (buf.validate.field).double.gte = -90,
+    (buf.validate.field).double.lte = 90
+  ];
+  // Longitude (required for exposure mode).
+  double lon = 3 [
+    (buf.validate.field).double.gte = -180,
+    (buf.validate.field).double.lte = 180
+  ];
+  // Radius in km (required for exposure mode, defaults to 50).
+  double radius = 4 [(buf.validate.field).double.gte = 0];
+}
+
+// CountryPopulationEntry represents a country with population data.
+message CountryPopulationEntry {
+  // ISO 3166-1 alpha-3 country code.
+  string code = 1;
+  // Country name.
+  string name = 2;
+  // Total population.
+  int64 population = 3 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Population density per square kilometer.
+  int32 density_per_km2 = 4;
+}
+
+// ExposureResult contains the population exposure estimate.
+message ExposureResult {
+  // Estimated exposed population.
+  int64 exposed_population = 1 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Radius used for the estimate in km.
+  double exposure_radius_km = 2;
+  // ISO3 code of nearest priority country.
+  string nearest_country = 3;
+  // Population density used for the estimate.
+  int32 density_per_km2 = 4;
+}
+
+// GetPopulationExposureResponse returns either a countries list or an exposure estimate.
+message GetPopulationExposureResponse {
+  // True if the request succeeded.
+  bool success = 1;
+  // Countries list (populated in countries mode).
+  repeated CountryPopulationEntry countries = 2;
+  // Exposure result (populated in exposure mode).
+  ExposureResult exposure = 3;
+}

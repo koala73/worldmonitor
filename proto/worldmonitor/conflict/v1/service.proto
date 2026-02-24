@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package worldmonitor.conflict.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/conflict/v1/list_acled_events.proto";
+import "worldmonitor/conflict/v1/list_ucdp_events.proto";
+import "worldmonitor/conflict/v1/get_humanitarian_summary.proto";
+
+// ConflictService provides APIs for armed conflict data from ACLED, UCDP, and HAPI/HDX.
+service ConflictService {
+  option (sebuf.http.service_config) = {base_path: "/api/conflict/v1"};
+
+  // ListAcledEvents retrieves armed conflict events from the ACLED dataset.
+  rpc ListAcledEvents(ListAcledEventsRequest) returns (ListAcledEventsResponse) {
+    option (sebuf.http.config) = {path: "/list-acled-events"};
+  }
+
+  // ListUcdpEvents retrieves georeferenced violence events from the UCDP dataset.
+  rpc ListUcdpEvents(ListUcdpEventsRequest) returns (ListUcdpEventsResponse) {
+    option (sebuf.http.config) = {path: "/list-ucdp-events"};
+  }
+
+  // GetHumanitarianSummary retrieves a humanitarian overview for a country from HAPI/HDX.
+  rpc GetHumanitarianSummary(GetHumanitarianSummaryRequest) returns (GetHumanitarianSummaryResponse) {
+    option (sebuf.http.config) = {path: "/get-humanitarian-summary"};
+  }
+}

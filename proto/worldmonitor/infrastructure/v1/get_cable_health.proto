@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package worldmonitor.infrastructure.v1;
+
+import "sebuf/http/annotations.proto";
+
+// GetCableHealthRequest requests the current health status of all monitored submarine cables.
+message GetCableHealthRequest {}
+
+// GetCableHealthResponse contains health status for submarine cables with active signals.
+message GetCableHealthResponse {
+  // Generation timestamp, as Unix epoch milliseconds.
+  int64 generated_at = 1 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Health records keyed by cable identifier.
+  map<string, CableHealthRecord> cables = 2;
+}
+
+// CableHealthStatus represents the computed health status of a submarine cable.
+enum CableHealthStatus {
+  // Unspecified status.
+  CABLE_HEALTH_STATUS_UNSPECIFIED = 0;
+  // Cable is operating normally.
+  CABLE_HEALTH_STATUS_OK = 1;
+  // Cable is experiencing degraded performance.
+  CABLE_HEALTH_STATUS_DEGRADED = 2;
+  // Cable has a confirmed fault.
+  CABLE_HEALTH_STATUS_FAULT = 3;
+}
+
+// CableHealthRecord contains the computed health status and supporting evidence for a cable.
+message CableHealthRecord {
+  // Computed health status.
+  CableHealthStatus status = 1;
+  // Composite health score (0.0 = healthy, 1.0 = confirmed fault).
+  double score = 2;
+  // Confidence in the health assessment (0.0–1.0).
+  double confidence = 3;
+  // Last signal update time, as Unix epoch milliseconds.
+  int64 last_updated = 4 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Supporting evidence items (up to 3).
+  repeated CableHealthEvidence evidence = 5;
+}
+
+// CableHealthEvidence represents a single piece of evidence supporting a health assessment.
+message CableHealthEvidence {
+  // Evidence source (e.g. "NGA").
+  string source = 1;
+  // Human-readable summary of the evidence.
+  string summary = 2;
+  // Evidence timestamp, as Unix epoch milliseconds.
+  int64 ts = 3 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}

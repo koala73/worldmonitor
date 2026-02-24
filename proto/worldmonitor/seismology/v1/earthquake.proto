@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package worldmonitor.seismology.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+import "worldmonitor/core/v1/geo.proto";
+
+// Earthquake represents a seismic event from USGS GeoJSON feed.
+message Earthquake {
+  // Unique USGS event identifier (e.g., "us7000abcd").
+  string id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 100
+  ];
+  // Human-readable place description (e.g., "10 km SW of Anchorage, Alaska").
+  string place = 2;
+  // Earthquake magnitude on the Richter scale.
+  double magnitude = 3;
+  // Depth in kilometers below the surface.
+  double depth_km = 4;
+  // Geographic location of the epicenter.
+  worldmonitor.core.v1.GeoCoordinates location = 5;
+  // Time the earthquake occurred, as Unix epoch milliseconds.
+  int64 occurred_at = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // URL to the USGS event detail page.
+  string source_url = 7;
+}

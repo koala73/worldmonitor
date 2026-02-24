@@ -1,3 +1,9 @@
+import { isDesktopRuntime } from '../services/runtime';
+import { invokeTauri } from '../services/tauri-bridge';
+import { t } from '../services/i18n';
+import { h, replaceChildren, safeHtml } from '../utils/dom-utils';
+import { trackPanelResized } from '@/services/analytics';
+
 export interface PanelOptions {
   id: string;
   title: string;
@@ -50,6 +56,7 @@ export class Panel {
   protected statusBadgeEl: HTMLElement | null = null;
   protected newBadgeEl: HTMLElement | null = null;
   protected panelId: string;
+  private abortController: AbortController = new AbortController();
   private tooltipCloseHandler: (() => void) | null = null;
   private resizeHandle: HTMLElement | null = null;
   private isResizing = false;
@@ -58,6 +65,9 @@ export class Panel {
   private onTouchMove: ((e: TouchEvent) => void) | null = null;
   private onTouchEnd: (() => void) | null = null;
   private onDocMouseUp: (() => void) | null = null;
+  private readonly contentDebounceMs = 150;
+  private pendingContentHtml: string | null = null;
+  private contentDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(options: PanelOptions) {
     this.panelId = options.id;
@@ -77,14 +87,10 @@ export class Panel {
     headerLeft.appendChild(title);
 
     if (options.infoTooltip) {
-      const infoBtn = document.createElement('button');
-      infoBtn.className = 'panel-info-btn';
-      infoBtn.innerHTML = '?';
-      infoBtn.setAttribute('aria-label', 'Show methodology info');
+      const infoBtn = h('button', { className: 'panel-info-btn', 'aria-label': t('components.panel.showMethodologyInfo') }, '?');
 
-      const tooltip = document.createElement('div');
-      tooltip.className = 'panel-info-tooltip';
-      tooltip.innerHTML = options.infoTooltip;
+      const tooltip = h('div', { className: 'panel-info-tooltip' });
+      tooltip.appendChild(safeHtml(options.infoTooltip));
 
       infoBtn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -133,7 +139,7 @@ export class Panel {
     // Add resize handle
     this.resizeHandle = document.createElement('div');
     this.resizeHandle.className = 'panel-resize-handle';
-    this.resizeHandle.title = 'Drag to resize (double-click to reset)';
+    this.resizeHandle.title = t('components.panel.dragToResize');
     this.resizeHandle.draggable = false; // Prevent parent's drag from capturing
     this.element.appendChild(this.resizeHandle);
     this.setupResizeHandlers();
@@ -182,17 +188,18 @@ export class Panel {
       document.removeEventListener('mouseup', onMouseUp);
 
       const currentSpan = this.element.classList.contains('span-4') ? 4 :
-                          this.element.classList.contains('span-3') ? 3 :
-                          this.element.classList.contains('span-2') ? 2 : 1;
+        this.element.classList.contains('span-3') ? 3 :
+          this.element.classList.contains('span-2') ? 2 : 1;
       savePanelSpan(this.panelId, currentSpan);
+      trackPanelResized(this.panelId, currentSpan);
     };
 
     this.resizeHandle.addEventListener('mousedown', onMouseDown);
 
     // Prevent panel drag when resizing (capture phase runs before App.ts listener)
     this.element.addEventListener('dragstart', (e) => {
-      const target = e.target as HTMLElement;
-      if (this.isResizing || target === this.resizeHandle || target.closest('.panel-resize-handle')) {
+      const target = e.target;
+      if (this.isResizing || target === this.resizeHandle || (target instanceof Element && target.closest('.panel-resize-handle'))) {
         e.preventDefault();
         e.stopImmediatePropagation();
         return false;
@@ -243,9 +250,10 @@ export class Panel {
       delete this.element.dataset.resizing;
       this.resizeHandle?.classList.remove('active');
       const currentSpan = this.element.classList.contains('span-4') ? 4 :
-                          this.element.classList.contains('span-3') ? 3 :
-                          this.element.classList.contains('span-2') ? 2 : 1;
+        this.element.classList.contains('span-3') ? 3 :
+          this.element.classList.contains('span-2') ? 2 : 1;
       savePanelSpan(this.panelId, currentSpan);
+      trackPanelResized(this.panelId, currentSpan);
     };
 
     this.onDocMouseUp = () => {
@@ -262,7 +270,11 @@ export class Panel {
 
   protected setDataBadge(state: 'live' | 'cached' | 'unavailable', detail?: string): void {
     if (!this.statusBadgeEl) return;
-    const labels = { live: 'LIVE', cached: 'CACHED', unavailable: 'UNAVAILABLE' } as const;
+    const labels = {
+      live: t('common.live'),
+      cached: t('common.cached'),
+      unavailable: t('common.unavailable'),
+    } as const;
     this.statusBadgeEl.textContent = detail ? `${labels[state]} · ${detail}` : labels[state];
     this.statusBadgeEl.className = `panel-data-badge ${state}`;
     this.statusBadgeEl.style.display = 'inline-flex';
@@ -276,20 +288,46 @@ export class Panel {
     return this.element;
   }
 
-  public showLoading(message = 'Loading'): void {
-    this.content.innerHTML = `
-      <div class="panel-loading">
-        <div class="panel-loading-radar">
-          <div class="panel-radar-sweep"></div>
-          <div class="panel-radar-dot"></div>
-        </div>
-        <div class="panel-loading-text">${message}</div>
-      </div>
-    `;
+  public showLoading(message = t('common.loading')): void {
+    replaceChildren(this.content,
+      h('div', { className: 'panel-loading' },
+        h('div', { className: 'panel-loading-radar' },
+          h('div', { className: 'panel-radar-sweep' }),
+          h('div', { className: 'panel-radar-dot' }),
+        ),
+        h('div', { className: 'panel-loading-text' }, message),
+      ),
+    );
   }
 
-  public showError(message = 'Failed to load data'): void {
-    this.content.innerHTML = `<div class="error-message">${message}</div>`;
+  public showError(message = t('common.failedToLoad')): void {
+    replaceChildren(this.content, h('div', { className: 'error-message' }, message));
+  }
+
+  public showRetrying(message = t('common.retrying')): void {
+    replaceChildren(this.content,
+      h('div', { className: 'panel-loading' },
+        h('div', { className: 'panel-loading-radar' },
+          h('div', { className: 'panel-radar-sweep' }),
+          h('div', { className: 'panel-radar-dot' }),
+        ),
+        h('div', { className: 'panel-loading-text retrying' }, message),
+      ),
+    );
+  }
+
+  public showConfigError(message: string): void {
+    const msgEl = h('div', { className: 'config-error-message' }, message);
+    if (isDesktopRuntime()) {
+      msgEl.appendChild(
+        h('button', {
+          type: 'button',
+          className: 'config-error-settings-btn',
+          onClick: () => void invokeTauri<void>('open_settings_window_command').catch(() => { }),
+        }, t('components.panel.openSettings')),
+      );
+    }
+    replaceChildren(this.content, msgEl);
   }
 
   public setCount(count: number): void {
@@ -308,7 +346,32 @@ export class Panel {
   }
 
   public setContent(html: string): void {
-    this.content.innerHTML = html;
+    if (this.pendingContentHtml === html || this.content.innerHTML === html) {
+      return;
+    }
+
+    this.pendingContentHtml = html;
+    if (this.contentDebounceTimer) {
+      clearTimeout(this.contentDebounceTimer);
+    }
+
+    this.contentDebounceTimer = setTimeout(() => {
+      if (this.pendingContentHtml !== null) {
+        this.setContentImmediate(this.pendingContentHtml);
+      }
+    }, this.contentDebounceMs);
+  }
+
+  private setContentImmediate(html: string): void {
+    if (this.contentDebounceTimer) {
+      clearTimeout(this.contentDebounceTimer);
+      this.contentDebounceTimer = null;
+    }
+
+    this.pendingContentHtml = null;
+    if (this.content.innerHTML !== html) {
+      this.content.innerHTML = html;
+    }
   }
 
   public show(): void {
@@ -339,7 +402,7 @@ export class Panel {
       return;
     }
 
-    this.newBadgeEl.textContent = count > 99 ? '99+' : `${count} new`;
+    this.newBadgeEl.textContent = count > 99 ? '99+' : `${count} ${t('common.new')}`;
     this.newBadgeEl.style.display = 'inline-flex';
     this.element.classList.add('has-new');
 
@@ -374,10 +437,22 @@ export class Panel {
     localStorage.setItem(PANEL_SPANS_KEY, JSON.stringify(spans));
   }
 
-  /**
-   * Clean up event listeners and resources
-   */
+  protected get signal(): AbortSignal {
+    return this.abortController.signal;
+  }
+
+  protected isAbortError(error: unknown): boolean {
+    return error instanceof DOMException && error.name === 'AbortError';
+  }
+
   public destroy(): void {
+    this.abortController.abort();
+    if (this.contentDebounceTimer) {
+      clearTimeout(this.contentDebounceTimer);
+      this.contentDebounceTimer = null;
+    }
+    this.pendingContentHtml = null;
+
     if (this.tooltipCloseHandler) {
       document.removeEventListener('click', this.tooltipCloseHandler);
       this.tooltipCloseHandler = null;

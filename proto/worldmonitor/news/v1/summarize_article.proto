@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package worldmonitor.news.v1;
+
+import "buf/validate/validate.proto";
+
+// SummarizeArticleRequest specifies parameters for LLM article summarization.
+message SummarizeArticleRequest {
+  // LLM provider: "ollama", "groq", "openrouter"
+  string provider = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // Headlines to summarize (max 8 used).
+  repeated string headlines = 2 [(buf.validate.field).repeated.min_items = 1];
+  // Summarization mode: "brief", "analysis", "translate", "" (default).
+  string mode = 3;
+  // Geographic signal context to include in the prompt.
+  string geo_context = 4;
+  // Variant: "full", "tech", or target language for translate mode.
+  string variant = 5;
+  // Output language code, default "en".
+  string lang = 6;
+}
+
+// SummarizeArticleResponse contains the LLM summarization result.
+message SummarizeArticleResponse {
+  // The generated summary text.
+  string summary = 1;
+  // Model identifier used for generation.
+  string model = 2;
+  // Provider that produced the result (or "cache").
+  string provider = 3;
+  // Whether the result came from Redis cache.
+  bool cached = 4;
+  // Token count from the LLM response.
+  int32 tokens = 5;
+  // Whether the client should try the next provider in the fallback chain.
+  bool fallback = 6;
+  // Whether this provider was skipped (credentials missing).
+  bool skipped = 7;
+  // Human-readable skip/error reason.
+  string reason = 8;
+  // Error message if the request failed.
+  string error = 9;
+  // Error type/name (e.g. "TypeError").
+  string error_type = 10;
+}

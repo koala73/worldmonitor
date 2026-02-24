@@ -15,6 +15,7 @@ const LAYER_KEYS: (keyof MapLayers)[] = [
   'economic',
   'waterways',
   'outages',
+  'cyberThreats',
   'datacenters',
   'protests',
   'flights',
@@ -43,6 +44,7 @@ export interface ParsedMapUrlState {
   lon?: number;
   timeRange?: TimeRange;
   layers?: MapLayers;
+  country?: string;
 }
 
 const clamp = (value: number, min: number, max: number): number =>
@@ -73,6 +75,9 @@ export function parseMapUrlState(
     ? (timeRangeParam as TimeRange)
     : undefined;
 
+  const countryParam = params.get('country');
+  const country = countryParam && /^[A-Z]{2}$/i.test(countryParam.trim()) ? countryParam.trim().toUpperCase() : undefined;
+
   const layersParam = params.get('layers');
   let layers: MapLayers | undefined;
   if (layersParam !== null) {
@@ -102,6 +107,7 @@ export function parseMapUrlState(
     lon,
     timeRange,
     layers,
+    country,
   };
 }
 
@@ -113,6 +119,7 @@ export function buildMapUrl(
     center?: { lat: number; lon: number } | null;
     timeRange: TimeRange;
     layers: MapLayers;
+    country?: string;
   }
 ): string {
   const url = new URL(baseUrl);
@@ -129,6 +136,10 @@ export function buildMapUrl(
 
   const activeLayers = LAYER_KEYS.filter((layer) => state.layers[layer]);
   params.set('layers', activeLayers.length > 0 ? activeLayers.join(',') : 'none');
+
+  if (state.country) {
+    params.set('country', state.country);
+  }
 
   url.search = params.toString();
   return url.toString();

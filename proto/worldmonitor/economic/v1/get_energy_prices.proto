@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package worldmonitor.economic.v1;
+
+import "worldmonitor/economic/v1/economic_data.proto";
+
+// GetEnergyPricesRequest specifies which energy commodities to retrieve.
+message GetEnergyPricesRequest {
+  // Optional commodity filter. Empty returns all tracked commodities.
+  repeated string commodities = 1;
+}
+
+// GetEnergyPricesResponse contains energy price data.
+message GetEnergyPricesResponse {
+  // The list of energy prices.
+  repeated EnergyPrice prices = 1;
+}

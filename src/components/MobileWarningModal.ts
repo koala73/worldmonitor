@@ -1,3 +1,6 @@
+import { t } from '@/services/i18n';
+import { isMobileDevice } from '@/utils';
+
 const STORAGE_KEY = 'mobile-warning-dismissed';
 
 export class MobileWarningModal {
@@ -10,24 +13,30 @@ export class MobileWarningModal {
       <div class="mobile-warning-modal">
         <div class="mobile-warning-header">
           <span class="mobile-warning-icon">📱</span>
-          <span class="mobile-warning-title">Mobile View</span>
+          <span class="mobile-warning-title">${t('modals.mobileWarning.title')}</span>
         </div>
         <div class="mobile-warning-content">
-          <p>You're viewing a simplified mobile version focused on MENA region with essential layers enabled.</p>
-          <p>Tip: Use the view buttons (GLOBAL/US/MENA) to switch regions. Tap markers to see details.</p>
+          <p>${t('modals.mobileWarning.description')}</p>
+          <p>${t('modals.mobileWarning.tip')}</p>
         </div>
         <div class="mobile-warning-footer">
           <label class="mobile-warning-remember">
             <input type="checkbox" id="mobileWarningRemember">
-            <span>Don't show again</span>
+            <span>${t('modals.mobileWarning.dontShowAgain')}</span>
           </label>
-          <button class="mobile-warning-btn">Got it</button>
+          <button class="mobile-warning-btn">${t('modals.mobileWarning.gotIt')}</button>
         </div>
       </div>
     `;
 
     document.body.appendChild(this.element);
     this.setupEventListeners();
+
+    // Remove will-change after entrance animation to free GPU memory
+    const modal = this.element.querySelector('.mobile-warning-modal') as HTMLElement | null;
+    modal?.addEventListener('animationend', () => {
+      modal.style.willChange = 'auto';
+    }, { once: true });
   }
 
   private setupEventListeners(): void {
@@ -59,16 +68,8 @@ export class MobileWarningModal {
   }
 
   public static shouldShow(): boolean {
-    // Check if already dismissed permanently
-    if (localStorage.getItem(STORAGE_KEY) === 'true') {
-      return false;
-    }
-
-    // Check if mobile device (screen width < 768px or touch-primary device)
-    const isMobileWidth = window.innerWidth < 768;
-    const isTouchDevice = window.matchMedia('(pointer: coarse)').matches;
-
-    return isMobileWidth || isTouchDevice;
+    if (localStorage.getItem(STORAGE_KEY) === 'true') return false;
+    return isMobileDevice();
   }
 
   public getElement(): HTMLElement {

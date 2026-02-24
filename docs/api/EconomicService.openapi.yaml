@@ -1,0 +1,529 @@
+openapi: 3.1.0
+info:
+    title: EconomicService API
+    version: 1.0.0
+paths:
+    /api/economic/v1/get-fred-series:
+        post:
+            tags:
+                - EconomicService
+            summary: GetFredSeries
+            description: GetFredSeries retrieves time series data from the Federal Reserve Economic Data.
+            operationId: GetFredSeries
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/GetFredSeriesRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetFredSeriesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/economic/v1/list-world-bank-indicators:
+        post:
+            tags:
+                - EconomicService
+            summary: ListWorldBankIndicators
+            description: ListWorldBankIndicators retrieves development indicator data from the World Bank.
+            operationId: ListWorldBankIndicators
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ListWorldBankIndicatorsRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListWorldBankIndicatorsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/economic/v1/get-energy-prices:
+        post:
+            tags:
+                - EconomicService
+            summary: GetEnergyPrices
+            description: GetEnergyPrices retrieves current energy commodity prices from EIA.
+            operationId: GetEnergyPrices
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/GetEnergyPricesRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetEnergyPricesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/economic/v1/get-macro-signals:
+        post:
+            tags:
+                - EconomicService
+            summary: GetMacroSignals
+            description: GetMacroSignals computes 7 macro signals from 6 upstream sources with BUY/CASH verdict.
+            operationId: GetMacroSignals
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/GetMacroSignalsRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetMacroSignalsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+components:
+    schemas:
+        Error:
+            type: object
+            properties:
+                message:
+                    type: string
+                    description: Error message (e.g., 'user not found', 'database connection failed')
+            description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        FieldViolation:
+            type: object
+            properties:
+                field:
+                    type: string
+                    description: The field path that failed validation (e.g., 'user.email' for nested fields). For header validation, this will be the header name (e.g., 'X-API-Key')
+                description:
+                    type: string
+                    description: Human-readable description of the validation violation (e.g., 'must be a valid email address', 'required field missing')
+            required:
+                - field
+                - description
+            description: FieldViolation describes a single validation error for a specific field.
+        ValidationError:
+            type: object
+            properties:
+                violations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FieldViolation'
+                    description: List of validation violations
+            required:
+                - violations
+            description: ValidationError is returned when request validation fails. It contains a list of field violations describing what went wrong.
+        GetFredSeriesRequest:
+            type: object
+            properties:
+                seriesId:
+                    type: string
+                    minLength: 1
+                    description: FRED series ID (e.g., "GDP", "UNRATE", "CPIAUCSL").
+                limit:
+                    type: integer
+                    format: int32
+                    description: Maximum number of observations to return. Defaults to 120.
+            required:
+                - seriesId
+            description: GetFredSeriesRequest specifies which FRED series to retrieve.
+        GetFredSeriesResponse:
+            type: object
+            properties:
+                series:
+                    $ref: '#/components/schemas/FredSeries'
+            description: GetFredSeriesResponse contains the requested FRED series data.
+        FredSeries:
+            type: object
+            properties:
+                seriesId:
+                    type: string
+                    minLength: 1
+                    description: Series identifier (e.g., "GDP", "UNRATE", "CPIAUCSL").
+                title:
+                    type: string
+                    description: Series title.
+                units:
+                    type: string
+                    description: Unit of measurement.
+                frequency:
+                    type: string
+                    description: Data frequency (e.g., "Monthly", "Quarterly").
+                observations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FredObservation'
+            required:
+                - seriesId
+            description: FredSeries represents a FRED time series with metadata.
+        FredObservation:
+            type: object
+            properties:
+                date:
+                    type: string
+                    description: Observation date as YYYY-MM-DD string.
+                value:
+                    type: number
+                    format: double
+                    description: Observation value.
+            description: FredObservation represents a single data point from a FRED economic series.
+        ListWorldBankIndicatorsRequest:
+            type: object
+            properties:
+                indicatorCode:
+                    type: string
+                    minLength: 1
+                    description: World Bank indicator code (e.g., "NY.GDP.MKTP.CD").
+                countryCode:
+                    type: string
+                    description: Optional country filter (ISO 3166-1 alpha-2).
+                year:
+                    type: integer
+                    format: int32
+                    description: Optional year filter. Defaults to latest available.
+                pagination:
+                    $ref: '#/components/schemas/PaginationRequest'
+            required:
+                - indicatorCode
+            description: ListWorldBankIndicatorsRequest specifies filters for retrieving World Bank data.
+        PaginationRequest:
+            type: object
+            properties:
+                pageSize:
+                    type: integer
+                    maximum: 100
+                    minimum: 1
+                    format: int32
+                    description: Maximum number of items to return per page (1 to 100).
+                cursor:
+                    type: string
+                    description: Opaque cursor for fetching the next page. Empty string for the first page.
+            description: PaginationRequest specifies cursor-based pagination parameters for list endpoints.
+        ListWorldBankIndicatorsResponse:
+            type: object
+            properties:
+                data:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/WorldBankCountryData'
+                pagination:
+                    $ref: '#/components/schemas/PaginationResponse'
+            description: ListWorldBankIndicatorsResponse contains World Bank indicator data.
+        WorldBankCountryData:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                    minLength: 1
+                    description: ISO 3166-1 alpha-2 country code.
+                countryName:
+                    type: string
+                    description: Country name.
+                indicatorCode:
+                    type: string
+                    minLength: 1
+                    description: World Bank indicator code (e.g., "NY.GDP.MKTP.CD").
+                indicatorName:
+                    type: string
+                    description: Indicator name.
+                year:
+                    type: integer
+                    format: int32
+                    description: Data year.
+                value:
+                    type: number
+                    format: double
+                    description: Indicator value.
+            required:
+                - countryCode
+                - indicatorCode
+            description: WorldBankCountryData represents a World Bank indicator value for a country.
+        PaginationResponse:
+            type: object
+            properties:
+                nextCursor:
+                    type: string
+                    description: Cursor for fetching the next page. Empty string indicates no more pages.
+                totalCount:
+                    type: integer
+                    format: int32
+                    description: Total count of items matching the query, if known. Zero if the total is unknown.
+            description: PaginationResponse contains pagination metadata returned alongside list results.
+        GetEnergyPricesRequest:
+            type: object
+            properties:
+                commodities:
+                    type: array
+                    items:
+                        type: string
+                        description: Optional commodity filter. Empty returns all tracked commodities.
+            description: GetEnergyPricesRequest specifies which energy commodities to retrieve.
+        GetEnergyPricesResponse:
+            type: object
+            properties:
+                prices:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/EnergyPrice'
+            description: GetEnergyPricesResponse contains energy price data.
+        EnergyPrice:
+            type: object
+            properties:
+                commodity:
+                    type: string
+                    minLength: 1
+                    description: Energy commodity identifier.
+                name:
+                    type: string
+                    description: Human-readable name (e.g., "WTI Crude Oil", "Henry Hub Natural Gas").
+                price:
+                    type: number
+                    format: double
+                    description: Current price in USD.
+                unit:
+                    type: string
+                    description: Unit of measurement (e.g., "$/barrel", "$/MMBtu").
+                change:
+                    type: number
+                    format: double
+                    description: Percentage change from previous period.
+                priceAt:
+                    type: integer
+                    format: int64
+                    description: 'Price date, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+            required:
+                - commodity
+            description: EnergyPrice represents a current energy commodity price from EIA.
+        GetMacroSignalsRequest:
+            type: object
+            description: GetMacroSignalsRequest requests the current macro signal dashboard.
+        GetMacroSignalsResponse:
+            type: object
+            properties:
+                timestamp:
+                    type: string
+                    description: ISO 8601 timestamp of computation.
+                verdict:
+                    type: string
+                    description: 'Overall verdict: "BUY", "CASH", or "UNKNOWN".'
+                bullishCount:
+                    type: integer
+                    format: int32
+                    description: Number of bullish signals.
+                totalCount:
+                    type: integer
+                    format: int32
+                    description: Total number of evaluated signals (excluding UNKNOWN).
+                signals:
+                    $ref: '#/components/schemas/MacroSignals'
+                meta:
+                    $ref: '#/components/schemas/MacroMeta'
+                unavailable:
+                    type: boolean
+                    description: True when upstream data is unavailable (fallback result).
+            description: GetMacroSignalsResponse contains the full macro signal dashboard with 7 signals and verdict.
+        MacroSignals:
+            type: object
+            properties:
+                liquidity:
+                    $ref: '#/components/schemas/LiquiditySignal'
+                flowStructure:
+                    $ref: '#/components/schemas/FlowStructureSignal'
+                macroRegime:
+                    $ref: '#/components/schemas/MacroRegimeSignal'
+                technicalTrend:
+                    $ref: '#/components/schemas/TechnicalTrendSignal'
+                hashRate:
+                    $ref: '#/components/schemas/HashRateSignal'
+                miningCost:
+                    $ref: '#/components/schemas/MiningCostSignal'
+                fearGreed:
+                    $ref: '#/components/schemas/FearGreedSignal'
+            description: MacroSignals contains all 7 individual signal computations.
+        LiquiditySignal:
+            type: object
+            properties:
+                status:
+                    type: string
+                    description: '"SQUEEZE", "NORMAL", or "UNKNOWN".'
+                value:
+                    type: number
+                    format: double
+                    description: JPY 30d ROC percentage, absent if unavailable.
+                sparkline:
+                    type: array
+                    items:
+                        type: number
+                        format: double
+                        description: Last 30 JPY close prices.
+            description: LiquiditySignal tracks JPY 30d rate of change as a liquidity proxy.
+        FlowStructureSignal:
+            type: object
+            properties:
+                status:
+                    type: string
+                    description: '"PASSIVE GAP", "ALIGNED", or "UNKNOWN".'
+                btcReturn5:
+                    type: number
+                    format: double
+                    description: BTC 5-day return percentage.
+                qqqReturn5:
+                    type: number
+                    format: double
+                    description: QQQ 5-day return percentage.
+            description: FlowStructureSignal compares BTC vs QQQ 5-day returns.
+        MacroRegimeSignal:
+            type: object
+            properties:
+                status:
+                    type: string
+                    description: '"RISK-ON", "DEFENSIVE", or "UNKNOWN".'
+                qqqRoc20:
+                    type: number
+                    format: double
+                    description: QQQ 20d ROC percentage.
+                xlpRoc20:
+                    type: number
+                    format: double
+                    description: XLP 20d ROC percentage.
+            description: MacroRegimeSignal compares QQQ vs XLP 20-day rate of change.
+        TechnicalTrendSignal:
+            type: object
+            properties:
+                status:
+                    type: string
+                    description: '"BULLISH", "BEARISH", "NEUTRAL", or "UNKNOWN".'
+                btcPrice:
+                    type: number
+                    format: double
+                    description: Current BTC price.
+                sma50:
+                    type: number
+                    format: double
+                    description: 50-day simple moving average.
+                sma200:
+                    type: number
+                    format: double
+                    description: 200-day simple moving average.
+                vwap30d:
+                    type: number
+                    format: double
+                    description: 30-day volume-weighted average price.
+                mayerMultiple:
+                    type: number
+                    format: double
+                    description: Mayer multiple (BTC price / SMA200).
+                sparkline:
+                    type: array
+                    items:
+                        type: number
+                        format: double
+                        description: Last 30 BTC close prices.
+            description: TechnicalTrendSignal evaluates BTC price vs moving averages and VWAP.
+        HashRateSignal:
+            type: object
+            properties:
+                status:
+                    type: string
+                    description: '"GROWING", "DECLINING", "STABLE", or "UNKNOWN".'
+                change30d:
+                    type: number
+                    format: double
+                    description: Hash rate change over 30 days as percentage.
+            description: HashRateSignal tracks Bitcoin hash rate momentum.
+        MiningCostSignal:
+            type: object
+            properties:
+                status:
+                    type: string
+                    description: '"PROFITABLE", "TIGHT", "SQUEEZE", or "UNKNOWN".'
+            description: MiningCostSignal estimates mining profitability from BTC price thresholds.
+        FearGreedSignal:
+            type: object
+            properties:
+                status:
+                    type: string
+                    description: Classification label (e.g., "Extreme Fear", "Greed").
+                value:
+                    type: integer
+                    format: int32
+                    description: Current index value (0-100).
+                history:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FearGreedHistoryEntry'
+            description: FearGreedSignal tracks the Crypto Fear & Greed index.
+        FearGreedHistoryEntry:
+            type: object
+            properties:
+                value:
+                    type: integer
+                    maximum: 100
+                    minimum: 0
+                    format: int32
+                    description: Index value (0-100).
+                date:
+                    type: string
+                    description: Date string (YYYY-MM-DD).
+            description: FearGreedHistoryEntry is a single day's Fear & Greed index reading.
+        MacroMeta:
+            type: object
+            properties:
+                qqqSparkline:
+                    type: array
+                    items:
+                        type: number
+                        format: double
+                        description: Last 30 QQQ close prices for sparkline.
+            description: MacroMeta contains supplementary chart data.

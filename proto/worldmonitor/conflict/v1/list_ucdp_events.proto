@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package worldmonitor.conflict.v1;
+
+import "worldmonitor/core/v1/pagination.proto";
+import "worldmonitor/core/v1/time.proto";
+import "worldmonitor/conflict/v1/ucdp_event.proto";
+
+// ListUcdpEventsRequest specifies filters for retrieving UCDP violence events.
+message ListUcdpEventsRequest {
+  // Time range to filter events.
+  worldmonitor.core.v1.TimeRange time_range = 1;
+  // Pagination parameters.
+  worldmonitor.core.v1.PaginationRequest pagination = 2;
+  // Optional country filter (ISO 3166-1 alpha-2).
+  string country = 3;
+}
+
+// ListUcdpEventsResponse contains UCDP violence events matching the request.
+message ListUcdpEventsResponse {
+  // The list of UCDP violence events.
+  repeated UcdpViolenceEvent events = 1;
+  // Pagination metadata.
+  worldmonitor.core.v1.PaginationResponse pagination = 2;
+}

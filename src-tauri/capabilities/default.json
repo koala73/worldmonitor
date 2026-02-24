@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default capability for the World Monitor desktop window",
-  "windows": ["main"],
+  "description": "Capabilities for World Monitor main and settings windows",
+  "windows": ["main", "settings", "live-channels"],
   "permissions": ["core:default"]
 }

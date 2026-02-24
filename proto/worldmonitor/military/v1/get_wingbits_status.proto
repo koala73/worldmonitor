@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package worldmonitor.military.v1;
+
+// GetWingbitsStatusRequest checks whether the Wingbits enrichment API is configured.
+message GetWingbitsStatusRequest {}
+
+// GetWingbitsStatusResponse indicates whether Wingbits is available.
+message GetWingbitsStatusResponse {
+  // Whether the Wingbits API key is configured on the server.
+  bool configured = 1;
+}

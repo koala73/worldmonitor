@@ -1,0 +1,130 @@
+/* RTL overrides for Arabic (dir="rtl") — targeted fixes only */
+
+/* Language selector: flip arrow and margins */
+[dir="rtl"] .lang-select {
+  padding: 4px 6px 4px 24px;
+  background-position: left 8px center;
+  margin-right: 0;
+  margin-left: 8px;
+}
+
+/* Header element margins */
+[dir="rtl"] .variant-switcher {
+  margin-right: 0;
+  margin-left: 6px;
+}
+
+[dir="rtl"] .version {
+  margin-left: 0;
+  margin-right: 6px;
+}
+
+[dir="rtl"] .update-badge {
+  margin-left: 0;
+  margin-right: 8px;
+}
+
+[dir="rtl"] .update-badge-dismiss {
+  margin-left: 0;
+  margin-right: 2px;
+}
+
+[dir="rtl"] .github-link {
+  margin-left: 0;
+  margin-right: 8px;
+}
+
+[dir="rtl"] .search-btn {
+  margin-right: 0;
+  margin-left: 8px;
+}
+
+/* Border-left accent bars → border-right */
+[dir="rtl"] .panel-summary {
+  border-left: none;
+  border-right: 3px solid var(--accent);
+}
+
+[dir="rtl"] .signal-item {
+  border-left: none;
+  border-right: 3px solid var(--accent);
+}
+
+[dir="rtl"] .signal-item.velocity_spike {
+  border-right-color: var(--red);
+}
+
+[dir="rtl"] .signal-item.keyword_spike {
+  border-right-color: var(--semantic-high);
+}
+
+[dir="rtl"] .signal-item.prediction_leads_news {
+  border-right-color: var(--yellow);
+}
+
+[dir="rtl"] .signal-item.silent_divergence {
+  border-right-color: var(--green);
+}
+
+[dir="rtl"] .signal-item.convergence {
+  border-right-color: var(--defcon-4);
+}
+
+[dir="rtl"] .signal-item.triangulation {
+  border-right-color: var(--semantic-high);
+}
+
+[dir="rtl"] .signal-item.flow_drop {
+  border-right-color: var(--semantic-info);
+}
+
+[dir="rtl"] .signal-item.flow_price_divergence {
+  border-right-color: var(--semantic-normal);
+}
+
+/* News/intel card borders */
+[dir="rtl"] .news-card,
+[dir="rtl"] .popup-header,
+[dir="rtl"] .trending-topic-item,
+[dir="rtl"] .intel-item {
+  border-left: none;
+  border-right-width: 3px;
+  border-right-style: solid;
+}
+
+[dir="rtl"] .item.alert {
+  border-left: none;
+  border-right: 2px solid var(--red);
+  padding-left: 0;
+  padding-right: 8px;
+  margin-left: 0;
+  margin-right: -8px;
+}
+
+/* Padding-left lists → padding-right */
+[dir="rtl"] .panel-info-tooltip ul {
+  padding-left: 0;
+  padding-right: 14px;
+}
+
+/* text-align flips */
+[dir="rtl"] .related-asset {
+  text-align: right;
+}
+
+[dir="rtl"] .export-option {
+  text-align: right;
+}
+
+/* margin-left: auto push patterns → margin-right: auto */
+[dir="rtl"] .cii-share-btn,
+[dir="rtl"] .country-intel-share-btn,
+[dir="rtl"] .sources-counter {
+  margin-left: 0;
+  margin-right: auto;
+}
+
+[dir="rtl"] .sources-counter {
+  margin-right: auto;
+  margin-left: 12px;
+}

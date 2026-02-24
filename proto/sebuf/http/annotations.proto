@@ -1,0 +1,92 @@
+syntax = "proto3";
+
+package sebuf.http;
+
+import "google/protobuf/descriptor.proto";
+
+option go_package = "github.com/SebastienMelki/sebuf/http;http";
+
+// HttpMethod specifies the HTTP verb for an RPC method
+enum HttpMethod {
+  // Unspecified defaults to POST for backward compatibility
+  HTTP_METHOD_UNSPECIFIED = 0;
+  HTTP_METHOD_GET = 1;
+  HTTP_METHOD_POST = 2;
+  HTTP_METHOD_PUT = 3;
+  HTTP_METHOD_DELETE = 4;
+  HTTP_METHOD_PATCH = 5;
+}
+
+// HttpConfig defines HTTP-specific configuration for an RPC method
+message HttpConfig {
+  // The HTTP path for this method (supports path variables like /users/{id})
+  string path = 1;
+
+  // The HTTP method (GET, POST, PUT, DELETE, PATCH). Defaults to POST if unspecified.
+  HttpMethod method = 2;
+}
+
+// Extension for method options
+extend google.protobuf.MethodOptions {
+  HttpConfig config = 50003;
+}
+
+// ServiceConfig defines HTTP-specific configuration for an entire service
+message ServiceConfig {
+  // Base path prefix for all methods in this service
+  string base_path = 1;
+}
+
+// Extension for service options
+extend google.protobuf.ServiceOptions {
+  ServiceConfig service_config = 50004;
+}
+
+// FieldExamples defines example values for a field
+message FieldExamples {
+  // List of example values for this field
+  repeated string values = 1;
+}
+
+// QueryConfig defines query parameter configuration for a message field
+message QueryConfig {
+  // The query parameter name in the URL (e.g., "page_size" for ?page_size=10)
+  string name = 1;
+
+  // Whether this query parameter is required
+  bool required = 2;
+}
+
+// Int64Encoding specifies how int64 fields should be encoded in generated TypeScript.
+// By default, int64 fields generate as `string` for JSON safety. When set to
+// INT64_ENCODING_NUMBER, the field generates as `number` instead -- suitable for
+// values that fit within Number.MAX_SAFE_INTEGER (e.g., Unix epoch milliseconds).
+enum Int64Encoding {
+  // Unspecified -- use default behavior (string).
+  INT64_ENCODING_UNSPECIFIED = 0;
+  // Encode as string (default JSON behavior for int64).
+  INT64_ENCODING_STRING = 1;
+  // Encode as number -- only use for values within Number.MAX_SAFE_INTEGER.
+  INT64_ENCODING_NUMBER = 2;
+}
+
+// Extension for field-level options
+extend google.protobuf.FieldOptions {
+  // Example values for documentation/OpenAPI
+  FieldExamples field_examples = 50007;
+
+  // Query parameter configuration for a field
+  QueryConfig query = 50008;
+
+  // Mark a repeated field for unwrapping when parent message is a map value.
+  // When set to true on a repeated field, and the message containing this field
+  // is used as a map value, the JSON serialization will collapse the wrapper
+  // to just the unwrapped field's array value.
+  // Constraints: Only valid on repeated fields, only one per message.
+  bool unwrap = 50009;
+
+  // Specify how an int64 field should be encoded in generated TypeScript code.
+  // Use INT64_ENCODING_NUMBER for timestamp fields (Unix epoch milliseconds)
+  // that safely fit within JavaScript's Number.MAX_SAFE_INTEGER.
+  Int64Encoding int64_encoding = 50010;
+}

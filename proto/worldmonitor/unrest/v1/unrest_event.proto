@@ -1,0 +1,113 @@
+syntax = "proto3";
+
+package worldmonitor.unrest.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+import "worldmonitor/core/v1/geo.proto";
+import "worldmonitor/core/v1/severity.proto";
+
+// UnrestEvent represents a social unrest incident (protest, riot, strike, etc.).
+// Aggregated from ACLED and GDELT sources.
+message UnrestEvent {
+  // Unique event identifier.
+  string id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // Event title or headline.
+  string title = 2;
+  // Brief summary of the event.
+  string summary = 3;
+  // Type of unrest event.
+  UnrestEventType event_type = 4;
+  // City where the event occurred.
+  string city = 5;
+  // Country where the event occurred.
+  string country = 6;
+  // Administrative region within the country.
+  string region = 7;
+  // Geographic location of the event.
+  worldmonitor.core.v1.GeoCoordinates location = 8;
+  // Time the event occurred, as Unix epoch milliseconds.
+  int64 occurred_at = 9 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Severity assessment.
+  worldmonitor.core.v1.SeverityLevel severity = 10;
+  // Reported fatalities, if any.
+  int32 fatalities = 11;
+  // Source identifiers.
+  repeated string sources = 12;
+  // Data source type.
+  UnrestSourceType source_type = 13;
+  // Descriptive tags.
+  repeated string tags = 14;
+  // Named actors involved.
+  repeated string actors = 15;
+  // Confidence in the event data.
+  ConfidenceLevel confidence = 16;
+}
+
+// UnrestCluster represents a geographic cluster of related unrest events.
+message UnrestCluster {
+  // Unique cluster identifier.
+  string id = 1;
+  // Country of the cluster.
+  string country = 2;
+  // Region within the country.
+  string region = 3;
+  // Number of events in this cluster.
+  int32 event_count = 4;
+  // The events in this cluster.
+  repeated UnrestEvent events = 5;
+  // Overall severity of the cluster.
+  worldmonitor.core.v1.SeverityLevel severity = 6;
+  // Start of the cluster time window, as Unix epoch milliseconds.
+  int64 start_at = 7 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // End of the cluster time window, as Unix epoch milliseconds.
+  int64 end_at = 8 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Primary cause or theme of the unrest.
+  string primary_cause = 9;
+}
+
+// UnrestEventType represents the classification of a social unrest event.
+// Maps to existing TS union: 'protest' | 'riot' | 'strike' | 'demonstration' | 'civil_unrest'.
+enum UnrestEventType {
+  // Unspecified event type.
+  UNREST_EVENT_TYPE_UNSPECIFIED = 0;
+  // Organized protest.
+  UNREST_EVENT_TYPE_PROTEST = 1;
+  // Violent riot.
+  UNREST_EVENT_TYPE_RIOT = 2;
+  // Labor or general strike.
+  UNREST_EVENT_TYPE_STRIKE = 3;
+  // Demonstration or march.
+  UNREST_EVENT_TYPE_DEMONSTRATION = 4;
+  // General civil unrest.
+  UNREST_EVENT_TYPE_CIVIL_UNREST = 5;
+}
+
+// UnrestSourceType represents the data source for an unrest event.
+// Maps to existing TS union: 'acled' | 'gdelt' | 'rss'.
+enum UnrestSourceType {
+  // Unspecified source.
+  UNREST_SOURCE_TYPE_UNSPECIFIED = 0;
+  // Armed Conflict Location & Event Data Project.
+  UNREST_SOURCE_TYPE_ACLED = 1;
+  // Global Database of Events, Language, and Tone.
+  UNREST_SOURCE_TYPE_GDELT = 2;
+  // RSS news feed aggregation.
+  UNREST_SOURCE_TYPE_RSS = 3;
+}
+
+// ConfidenceLevel represents the confidence in event data accuracy.
+// Used across multiple domains.
+enum ConfidenceLevel {
+  // Unspecified confidence.
+  CONFIDENCE_LEVEL_UNSPECIFIED = 0;
+  // Low confidence — limited corroboration.
+  CONFIDENCE_LEVEL_LOW = 1;
+  // Medium confidence — some corroboration.
+  CONFIDENCE_LEVEL_MEDIUM = 2;
+  // High confidence — well corroborated.
+  CONFIDENCE_LEVEL_HIGH = 3;
+}

@@ -1,92 +1,111 @@
 /**
  * Summarization Service with Fallback Chain
  * Server-side Redis caching handles cross-user deduplication
- * Fallback: Groq -> OpenRouter -> Browser T5
+ * Fallback: Ollama -> Groq -> OpenRouter -> Browser T5
+ *
+ * Uses NewsServiceClient.summarizeArticle() RPC instead of legacy
+ * per-provider fetch endpoints.
  */
 
 import { mlWorker } from './ml-worker';
 import { SITE_VARIANT } from '@/config';
-import { isFeatureAvailable } from './runtime-config';
+import { BETA_MODE } from '@/config/beta';
+import { isFeatureAvailable, type RuntimeFeatureId } from './runtime-config';
+import { trackLLMUsage, trackLLMFailure } from './analytics';
+import { NewsServiceClient, type SummarizeArticleResponse } from '@/generated/client/worldmonitor/news/v1/service_client';
+import { createCircuitBreaker } from '@/utils';
 
-export type SummarizationProvider = 'groq' | 'openrouter' | 'browser' | 'cache';
+export type SummarizationProvider = 'ollama' | 'groq' | 'openrouter' | 'browser' | 'cache';
 
 export interface SummarizationResult {
   summary: string;
   provider: SummarizationProvider;
+  model: string;
   cached: boolean;
 }
 
 export type ProgressCallback = (step: number, total: number, message: string) => void;
 
-async function tryGroq(headlines: string[], geoContext?: string): Promise<SummarizationResult | null> {
-  if (!isFeatureAvailable('aiGroq')) return null;
+// ── Sebuf client (replaces direct fetch to /api/{provider}-summarize) ──
+
+const newsClient = new NewsServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+const summaryBreaker = createCircuitBreaker<SummarizeArticleResponse>({ name: 'News Summarization' });
+
+const emptySummaryFallback: SummarizeArticleResponse = { summary: '', provider: '', model: '', cached: false, skipped: false, fallback: true, tokens: 0, reason: '', error: '', errorType: '' };
+
+// ── Provider definitions ──
+
+interface ApiProviderDef {
+  featureId: RuntimeFeatureId;
+  provider: SummarizationProvider;
+  label: string;
+}
+
+const API_PROVIDERS: ApiProviderDef[] = [
+  { featureId: 'aiOllama',      provider: 'ollama',     label: 'Ollama' },
+  { featureId: 'aiGroq',        provider: 'groq',       label: 'Groq AI' },
+  { featureId: 'aiOpenRouter',  provider: 'openrouter', label: 'OpenRouter' },
+];
+
+let lastAttemptedProvider = 'none';
+
+// ── Unified API provider caller (via SummarizeArticle RPC) ──
+
+async function tryApiProvider(
+  providerDef: ApiProviderDef,
+  headlines: string[],
+  geoContext?: string,
+  lang?: string,
+): Promise<SummarizationResult | null> {
+  if (!isFeatureAvailable(providerDef.featureId)) return null;
+  lastAttemptedProvider = providerDef.provider;
   try {
-    const response = await fetch('/api/groq-summarize', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ headlines, mode: 'brief', geoContext, variant: SITE_VARIANT }),
-    });
+    const resp: SummarizeArticleResponse = await summaryBreaker.execute(async () => {
+      return newsClient.summarizeArticle({
+        provider: providerDef.provider,
+        headlines,
+        mode: 'brief',
+        geoContext: geoContext || '',
+        variant: SITE_VARIANT,
+        lang: lang || 'en',
+      });
+    }, emptySummaryFallback);
 
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      if (data.fallback) return null;
-      throw new Error(`Groq error: ${response.status}`);
-    }
+    // Provider skipped (credentials missing) or signaled fallback
+    if (resp.skipped || resp.fallback) return null;
 
-    const data = await response.json();
-    const provider = data.cached ? 'cache' : 'groq';
-    console.log(`[Summarization] ${provider === 'cache' ? 'Redis cache hit' : 'Groq success'}:`, data.model);
+    const summary = typeof resp.summary === 'string' ? resp.summary.trim() : '';
+    if (!summary) return null;
+
+    const cached = Boolean(resp.cached);
+    const resultProvider = cached ? 'cache' : providerDef.provider;
+    console.log(`[Summarization] ${cached ? 'Redis cache hit' : `${providerDef.label} success`}:`, resp.model);
     return {
-      summary: data.summary,
-      provider: provider as SummarizationProvider,
-      cached: !!data.cached,
+      summary,
+      provider: resultProvider as SummarizationProvider,
+      model: resp.model || providerDef.provider,
+      cached,
     };
   } catch (error) {
-    console.warn('[Summarization] Groq failed:', error);
+    console.warn(`[Summarization] ${providerDef.label} failed:`, error);
     return null;
   }
 }
 
-async function tryOpenRouter(headlines: string[], geoContext?: string): Promise<SummarizationResult | null> {
-  if (!isFeatureAvailable('aiOpenRouter')) return null;
-  try {
-    const response = await fetch('/api/openrouter-summarize', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ headlines, mode: 'brief', geoContext, variant: SITE_VARIANT }),
-    });
+// ── Browser T5 provider (different interface -- no API call) ──
 
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      if (data.fallback) return null;
-      throw new Error(`OpenRouter error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    const provider = data.cached ? 'cache' : 'openrouter';
-    console.log(`[Summarization] ${provider === 'cache' ? 'Redis cache hit' : 'OpenRouter success'}:`, data.model);
-    return {
-      summary: data.summary,
-      provider: provider as SummarizationProvider,
-      cached: !!data.cached,
-    };
-  } catch (error) {
-    console.warn('[Summarization] OpenRouter failed:', error);
-    return null;
-  }
-}
-
-async function tryBrowserT5(headlines: string[]): Promise<SummarizationResult | null> {
+async function tryBrowserT5(headlines: string[], modelId?: string): Promise<SummarizationResult | null> {
   try {
     if (!mlWorker.isAvailable) {
       console.log('[Summarization] Browser ML not available');
       return null;
     }
+    lastAttemptedProvider = 'browser';
 
     const combinedText = headlines.slice(0, 6).map(h => h.slice(0, 80)).join('. ');
     const prompt = `Summarize the main themes from these news headlines in 2 sentences: ${combinedText}`;
 
-    const [summary] = await mlWorker.summarize([prompt]);
+    const [summary] = await mlWorker.summarize([prompt], modelId);
 
     if (!summary || summary.length < 20 || summary.toLowerCase().includes('summarize')) {
       return null;
@@ -96,6 +115,7 @@ async function tryBrowserT5(headlines: string[]): Promise<SummarizationResult | 
     return {
       summary,
       provider: 'browser',
+      model: modelId || 't5-small',
       cached: false,
     };
   } catch (error) {
@@ -104,44 +124,160 @@ async function tryBrowserT5(headlines: string[]): Promise<SummarizationResult | 
   }
 }
 
+// ── Fallback chain runner ──
+
+async function runApiChain(
+  providers: ApiProviderDef[],
+  headlines: string[],
+  geoContext: string | undefined,
+  lang: string | undefined,
+  onProgress: ProgressCallback | undefined,
+  stepOffset: number,
+  totalSteps: number,
+): Promise<SummarizationResult | null> {
+  for (const [i, provider] of providers.entries()) {
+    onProgress?.(stepOffset + i, totalSteps, `Connecting to ${provider.label}...`);
+    const result = await tryApiProvider(provider, headlines, geoContext, lang);
+    if (result) return result;
+  }
+  return null;
+}
+
 /**
- * Generate a summary using the fallback chain: Groq -> OpenRouter -> Browser T5
- * Server-side Redis caching is handled by the API endpoints
+ * Generate a summary using the fallback chain: Ollama -> Groq -> OpenRouter -> Browser T5
+ * Server-side Redis caching is handled by the SummarizeArticle RPC handler
  * @param geoContext Optional geographic signal context to include in the prompt
  */
 export async function generateSummary(
   headlines: string[],
   onProgress?: ProgressCallback,
-  geoContext?: string
+  geoContext?: string,
+  lang: string = 'en'
 ): Promise<SummarizationResult | null> {
   if (!headlines || headlines.length < 2) {
     return null;
   }
 
-  const totalSteps = 3;
+  lastAttemptedProvider = 'none';
+  const result = await generateSummaryInternal(headlines, onProgress, geoContext, lang);
 
-  // Step 1: Try Groq (fast, 14.4K/day with 8b-instant + Redis cache)
-  onProgress?.(1, totalSteps, 'Connecting to Groq AI...');
-  const groqResult = await tryGroq(headlines, geoContext);
-  if (groqResult) {
-    return groqResult;
+  // Track at generateSummary return only (not inside tryApiProvider) to avoid
+  // double-counting beta comparison traffic. Only the winning provider is recorded.
+  if (result) {
+    trackLLMUsage(result.provider, result.model, result.cached);
+  } else {
+    trackLLMFailure(lastAttemptedProvider);
   }
 
-  // Step 2: Try OpenRouter (fallback, 50/day + Redis cache)
-  onProgress?.(2, totalSteps, 'Trying OpenRouter...');
-  const openRouterResult = await tryOpenRouter(headlines, geoContext);
-  if (openRouterResult) {
-    return openRouterResult;
+  return result;
+}
+
+async function generateSummaryInternal(
+  headlines: string[],
+  onProgress: ProgressCallback | undefined,
+  geoContext: string | undefined,
+  lang: string,
+): Promise<SummarizationResult | null> {
+  if (BETA_MODE) {
+    const modelReady = mlWorker.isAvailable && mlWorker.isModelLoaded('summarization-beta');
+
+    if (modelReady) {
+      const totalSteps = 1 + API_PROVIDERS.length;
+      // Model already loaded -- use browser T5-small first
+      onProgress?.(1, totalSteps, 'Running local AI model (beta)...');
+      const browserResult = await tryBrowserT5(headlines, 'summarization-beta');
+      if (browserResult) {
+        console.log('[BETA] Browser T5-small:', browserResult.summary);
+        const groqProvider = API_PROVIDERS.find(p => p.provider === 'groq');
+        if (groqProvider) tryApiProvider(groqProvider, headlines, geoContext).then(r => {
+          if (r) console.log('[BETA] Groq comparison:', r.summary);
+        }).catch(() => {});
+
+        return browserResult;
+      }
+
+      // Warm model failed inference -- fallback through API providers
+      const chainResult = await runApiChain(API_PROVIDERS, headlines, geoContext, undefined, onProgress, 2, totalSteps);
+      if (chainResult) return chainResult;
+    } else {
+      const totalSteps = API_PROVIDERS.length + 2;
+      console.log('[BETA] T5-small not loaded yet, using cloud providers first');
+      if (mlWorker.isAvailable) {
+        mlWorker.loadModel('summarization-beta').catch(() => {});
+      }
+
+      // API providers while model loads
+      const chainResult = await runApiChain(API_PROVIDERS, headlines, geoContext, undefined, onProgress, 1, totalSteps);
+      if (chainResult) {
+        if (chainResult.provider === 'groq') console.log('[BETA] Groq:', chainResult.summary);
+        return chainResult;
+      }
+
+      // Last resort: try browser T5 (may have finished loading by now)
+      if (mlWorker.isAvailable) {
+        onProgress?.(API_PROVIDERS.length + 1, totalSteps, 'Waiting for local AI model...');
+        const browserResult = await tryBrowserT5(headlines, 'summarization-beta');
+        if (browserResult) return browserResult;
+      }
+
+      onProgress?.(totalSteps, totalSteps, 'No providers available');
+    }
+
+    console.warn('[BETA] All providers failed');
+    return null;
   }
 
-  // Step 3: Try Browser T5 (local, unlimited but slower)
-  onProgress?.(3, totalSteps, 'Loading local AI model...');
+  // Normal mode: API chain -> Browser T5
+  const totalSteps = API_PROVIDERS.length + 1;
+
+  const chainResult = await runApiChain(API_PROVIDERS, headlines, geoContext, lang, onProgress, 1, totalSteps);
+  if (chainResult) return chainResult;
+
+  onProgress?.(totalSteps, totalSteps, 'Loading local AI model...');
   const browserResult = await tryBrowserT5(headlines);
-  if (browserResult) {
-    return browserResult;
-  }
+  if (browserResult) return browserResult;
 
   console.warn('[Summarization] All providers failed');
   return null;
 }
 
+
+/**
+ * Translate text using the fallback chain (via SummarizeArticle RPC with mode='translate')
+ * @param text Text to translate
+ * @param targetLang Target language code (e.g., 'fr', 'es')
+ */
+export async function translateText(
+  text: string,
+  targetLang: string,
+  onProgress?: ProgressCallback
+): Promise<string | null> {
+  if (!text) return null;
+
+  const totalSteps = API_PROVIDERS.length;
+  for (const [i, providerDef] of API_PROVIDERS.entries()) {
+    if (!isFeatureAvailable(providerDef.featureId)) continue;
+
+    onProgress?.(i + 1, totalSteps, `Translating with ${providerDef.label}...`);
+    try {
+      const resp = await summaryBreaker.execute(async () => {
+        return newsClient.summarizeArticle({
+          provider: providerDef.provider,
+          headlines: [text],
+          mode: 'translate',
+          geoContext: '',
+          variant: targetLang,
+          lang: '',
+        });
+      }, emptySummaryFallback);
+
+      if (resp.fallback || resp.skipped) continue;
+      const summary = typeof resp.summary === 'string' ? resp.summary.trim() : '';
+      if (summary) return summary;
+    } catch (e) {
+      console.warn(`${providerDef.label} translation failed`, e);
+    }
+  }
+
+  return null;
+}

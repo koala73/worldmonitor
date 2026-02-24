@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package worldmonitor.economic.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/economic/v1/get_fred_series.proto";
+import "worldmonitor/economic/v1/list_world_bank_indicators.proto";
+import "worldmonitor/economic/v1/get_energy_prices.proto";
+import "worldmonitor/economic/v1/get_macro_signals.proto";
+
+// EconomicService provides APIs for macroeconomic data from FRED, World Bank, and EIA.
+service EconomicService {
+  option (sebuf.http.service_config) = {base_path: "/api/economic/v1"};
+
+  // GetFredSeries retrieves time series data from the Federal Reserve Economic Data.
+  rpc GetFredSeries(GetFredSeriesRequest) returns (GetFredSeriesResponse) {
+    option (sebuf.http.config) = {path: "/get-fred-series"};
+  }
+
+  // ListWorldBankIndicators retrieves development indicator data from the World Bank.
+  rpc ListWorldBankIndicators(ListWorldBankIndicatorsRequest) returns (ListWorldBankIndicatorsResponse) {
+    option (sebuf.http.config) = {path: "/list-world-bank-indicators"};
+  }
+
+  // GetEnergyPrices retrieves current energy commodity prices from EIA.
+  rpc GetEnergyPrices(GetEnergyPricesRequest) returns (GetEnergyPricesResponse) {
+    option (sebuf.http.config) = {path: "/get-energy-prices"};
+  }
+
+  // GetMacroSignals computes 7 macro signals from 6 upstream sources with BUY/CASH verdict.
+  rpc GetMacroSignals(GetMacroSignalsRequest) returns (GetMacroSignalsResponse) {
+    option (sebuf.http.config) = {path: "/get-macro-signals"};
+  }
+}

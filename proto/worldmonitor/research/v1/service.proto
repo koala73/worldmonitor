@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package worldmonitor.research.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/research/v1/list_arxiv_papers.proto";
+import "worldmonitor/research/v1/list_trending_repos.proto";
+import "worldmonitor/research/v1/list_hackernews_items.proto";
+import "worldmonitor/research/v1/list_tech_events.proto";
+
+// ResearchService provides APIs for academic papers, trending repos, and tech news.
+service ResearchService {
+  option (sebuf.http.service_config) = {base_path: "/api/research/v1"};
+
+  // ListArxivPapers retrieves recent papers from arXiv.
+  rpc ListArxivPapers(ListArxivPapersRequest) returns (ListArxivPapersResponse) {
+    option (sebuf.http.config) = {path: "/list-arxiv-papers"};
+  }
+
+  // ListTrendingRepos retrieves trending repositories from GitHub.
+  rpc ListTrendingRepos(ListTrendingReposRequest) returns (ListTrendingReposResponse) {
+    option (sebuf.http.config) = {path: "/list-trending-repos"};
+  }
+
+  // ListHackernewsItems retrieves top stories from Hacker News.
+  rpc ListHackernewsItems(ListHackernewsItemsRequest) returns (ListHackernewsItemsResponse) {
+    option (sebuf.http.config) = {path: "/list-hackernews-items"};
+  }
+
+  // ListTechEvents retrieves tech events from Techmeme ICS, dev.events RSS, and curated sources.
+  rpc ListTechEvents(ListTechEventsRequest) returns (ListTechEventsResponse) {
+    option (sebuf.http.config) = {path: "/list-tech-events"};
+  }
+}

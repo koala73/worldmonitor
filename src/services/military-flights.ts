@@ -15,11 +15,10 @@ import {
 import { isFeatureAvailable } from './runtime-config';
 
 // OpenSky Network API - use Railway relay (Vercel is blocked by OpenSky)
-// Convert WebSocket URL to HTTP URL for the same Railway server
 const wsRelayUrl = import.meta.env.VITE_WS_RELAY_URL || '';
 const OPENSKY_BASE_URL = wsRelayUrl
   ? wsRelayUrl.replace('wss://', 'https://').replace('ws://', 'http://').replace(/\/$/, '') + '/opensky'
-  : '/api/opensky'; // Fallback to Vercel proxy for dev
+  : '';
 
 // Cache configuration
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes - match refresh interval
@@ -260,6 +259,8 @@ function parseOpenSkyResponse(data: OpenSkyResponse): MilitaryFlight[] {
  */
 async function fetchHotspotRegion(hotspot: typeof MILITARY_HOTSPOTS[number]): Promise<MilitaryFlight[]> {
   try {
+    if (!OPENSKY_BASE_URL) return [];
+
     const lamin = hotspot.lat - hotspot.radius;
     const lamax = hotspot.lat + hotspot.radius;
     const lomin = hotspot.lon - hotspot.radius;

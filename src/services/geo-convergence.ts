@@ -1,4 +1,5 @@
-import type { SocialUnrestEvent, MilitaryFlight, MilitaryVessel, Earthquake } from '@/types';
+import type { SocialUnrestEvent, MilitaryFlight, MilitaryVessel } from '@/types';
+import type { Earthquake } from '@/services/earthquakes';
 import { generateSignalId } from '@/utils/analysis-constants';
 import type { CorrelationSignalCore } from './analysis-core';
 import { INTEL_HOTSPOTS, CONFLICT_ZONES, STRATEGIC_WATERWAYS } from '@/config/geo';
@@ -83,7 +84,7 @@ export function ingestVessels(vessels: MilitaryVessel[]): void {
 
 export function ingestEarthquakes(quakes: Earthquake[]): void {
   for (const q of quakes) {
-    ingestGeoEvent(q.lat, q.lon, 'earthquake', q.time);
+    ingestGeoEvent(q.location?.latitude ?? 0, q.location?.longitude ?? 0, 'earthquake', new Date(q.occurredAt));
   }
 }
 

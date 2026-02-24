@@ -1,11 +1,22 @@
 export function formatTime(date: Date): string {
   const now = new Date();
   const diff = Math.floor((now.getTime() - date.getTime()) / 1000);
+  const lang = getCurrentLanguage();
 
-  if (diff < 60) return 'Just now';
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
+  // Safe fallback if Intl is not available (though it is in all modern browsers)
+  try {
+    const rtf = new Intl.RelativeTimeFormat(lang, { numeric: 'auto' });
+
+    if (diff < 60) return rtf.format(-Math.round(diff), 'second');
+    if (diff < 3600) return rtf.format(-Math.round(diff / 60), 'minute');
+    if (diff < 86400) return rtf.format(-Math.round(diff / 3600), 'hour');
+    return rtf.format(-Math.round(diff / 86400), 'day');
+  } catch (e) {
+    if (diff < 60) return 'Just now';
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    return `${Math.floor(diff / 86400)}d ago`;
+  }
 }
 
 export function formatPrice(price: number): string {
@@ -101,11 +112,33 @@ export function loadFromStorage<T>(key: string, defaultValue: T): T {
   return defaultValue;
 }
 
+let _storageQuotaExceeded = false;
+
+export function isStorageQuotaExceeded(): boolean {
+  return _storageQuotaExceeded;
+}
+
+export function isQuotaError(e: unknown): boolean {
+  return e instanceof DOMException && (e.name === 'QuotaExceededError' || e.code === 22);
+}
+
+export function markStorageQuotaExceeded(): void {
+  if (!_storageQuotaExceeded) {
+    _storageQuotaExceeded = true;
+    console.warn('[Storage] Quota exceeded — disabling further writes');
+  }
+}
+
 export function saveToStorage<T>(key: string, value: T): void {
+  if (_storageQuotaExceeded) return;
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch (e) {
-    console.warn(`Failed to save ${key} to storage:`, e);
+    if (isQuotaError(e)) {
+      markStorageQuotaExceeded();
+    } else {
+      console.warn(`Failed to save ${key} to storage:`, e);
+    }
   }
 }
 
@@ -113,10 +146,12 @@ export function generateId(): string {
   return `id-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+/** Breakpoint (px): below this width the app uses the simplified mobile layout. Must match CSS @media (max-width: …). */
+export const MOBILE_BREAKPOINT_PX = 768;
+
+/** True when viewport is below mobile breakpoint. Touch-capable notebooks keep desktop layout. */
 export function isMobileDevice(): boolean {
-  const isMobileWidth = window.innerWidth < 768;
-  const isTouchDevice = window.matchMedia('(pointer: coarse)').matches;
-  return isMobileWidth || isTouchDevice;
+  return window.innerWidth < MOBILE_BREAKPOINT_PX;
 }
 
 export function chunkArray<T>(items: T[], size: number): T[][] {
@@ -135,3 +170,8 @@ export type { ParsedMapUrlState } from './urlState';
 export { CircuitBreaker, createCircuitBreaker, getCircuitBreakerStatus, getCircuitBreakerCooldownInfo } from './circuit-breaker';
 export type { CircuitBreakerOptions } from './circuit-breaker';
 export * from './analysis-constants';
+export { getCSSColor, invalidateColorCache } from './theme-colors';
+export { getStoredTheme, getCurrentTheme, setTheme, applyStoredTheme } from './theme-manager';
+export type { Theme } from './theme-manager';
+
+import { getCurrentLanguage } from '../services/i18n';

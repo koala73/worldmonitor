@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package worldmonitor.infrastructure.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/infrastructure/v1/list_internet_outages.proto";
+import "worldmonitor/infrastructure/v1/list_service_statuses.proto";
+import "worldmonitor/infrastructure/v1/get_temporal_baseline.proto";
+import "worldmonitor/infrastructure/v1/get_cable_health.proto";
+import "worldmonitor/infrastructure/v1/record_baseline_snapshot.proto";
+
+// InfrastructureService provides APIs for internet outage monitoring from Cloudflare Radar,
+// external service status tracking, and temporal baseline anomaly detection.
+service InfrastructureService {
+  option (sebuf.http.service_config) = {base_path: "/api/infrastructure/v1"};
+
+  // ListInternetOutages retrieves detected internet outages from Cloudflare Radar.
+  rpc ListInternetOutages(ListInternetOutagesRequest) returns (ListInternetOutagesResponse) {
+    option (sebuf.http.config) = {path: "/list-internet-outages"};
+  }
+
+  // ListServiceStatuses retrieves operational status of monitored external services.
+  rpc ListServiceStatuses(ListServiceStatusesRequest) returns (ListServiceStatusesResponse) {
+    option (sebuf.http.config) = {path: "/list-service-statuses"};
+  }
+
+  // GetTemporalBaseline checks current activity count against stored baseline for anomaly detection.
+  rpc GetTemporalBaseline(GetTemporalBaselineRequest) returns (GetTemporalBaselineResponse) {
+    option (sebuf.http.config) = {path: "/get-temporal-baseline"};
+  }
+
+  // RecordBaselineSnapshot batch-updates baseline statistics using Welford's online algorithm.
+  rpc RecordBaselineSnapshot(RecordBaselineSnapshotRequest) returns (RecordBaselineSnapshotResponse) {
+    option (sebuf.http.config) = {path: "/record-baseline-snapshot"};
+  }
+
+  // GetCableHealth computes health status for submarine cables from NGA maritime warning signals.
+  rpc GetCableHealth(GetCableHealthRequest) returns (GetCableHealthResponse) {
+    option (sebuf.http.config) = {path: "/get-cable-health"};
+  }
+}

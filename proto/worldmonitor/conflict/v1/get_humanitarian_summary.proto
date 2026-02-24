@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package worldmonitor.conflict.v1;
+
+import "buf/validate/validate.proto";
+import "worldmonitor/conflict/v1/humanitarian_summary.proto";
+
+// GetHumanitarianSummaryRequest specifies which country to retrieve the humanitarian summary for.
+message GetHumanitarianSummaryRequest {
+  // ISO 3166-1 alpha-2 country code (e.g., "YE", "SD", "SO").
+  string country_code = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.len = 2,
+    (buf.validate.field).string.pattern = "^[A-Z]{2}$"
+  ];
+}
+
+// GetHumanitarianSummaryResponse contains the humanitarian summary for the requested country.
+message GetHumanitarianSummaryResponse {
+  // The humanitarian summary for the country.
+  HumanitarianCountrySummary summary = 1;
+}

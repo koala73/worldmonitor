@@ -1,0 +1,86 @@
+syntax = "proto3";
+
+package worldmonitor.military.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+// USNIVessel represents a single vessel parsed from a USNI Fleet Tracker article.
+message USNIVessel {
+  // Vessel name (e.g., "USS Abraham Lincoln").
+  string name = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // Hull designation (e.g., "CVN-72", "DDG-51").
+  string hull_number = 2 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // Vessel type classification (e.g., "carrier", "destroyer", "submarine").
+  string vessel_type = 3;
+  // Region name where the vessel is operating.
+  string region = 4;
+  // Approximate latitude for the region.
+  double region_lat = 5;
+  // Approximate longitude for the region.
+  double region_lon = 6;
+  // Deployment status (e.g., "deployed", "underway", "in-port", "unknown").
+  string deployment_status = 7;
+  // Home port, if identified from the article text.
+  string home_port = 8;
+  // Strike group assignment, if any.
+  string strike_group = 9;
+  // Brief activity description parsed from article prose.
+  string activity_description = 10;
+  // URL of the USNI article this vessel was parsed from.
+  string article_url = 11;
+  // Publication date of the USNI article.
+  string article_date = 12;
+}
+
+// USNIStrikeGroup represents a carrier strike group parsed from the article.
+message USNIStrikeGroup {
+  // Strike group name (e.g., "Abraham Lincoln Carrier Strike Group").
+  string name = 1;
+  // Carrier name and hull (e.g., "USS Abraham Lincoln (CVN-72)").
+  string carrier = 2;
+  // Assigned air wing (e.g., "Carrier Air Wing Nine").
+  string air_wing = 3;
+  // Assigned destroyer squadron.
+  string destroyer_squadron = 4;
+  // Escort vessels in the strike group.
+  repeated string escorts = 5;
+}
+
+// BattleForceSummary contains fleet-wide ship count statistics.
+message BattleForceSummary {
+  // Total ships in the battle force.
+  int32 total_ships = 1 [(buf.validate.field).int32.gte = 0];
+  // Number of ships currently deployed.
+  int32 deployed = 2 [(buf.validate.field).int32.gte = 0];
+  // Number of ships currently underway.
+  int32 underway = 3 [(buf.validate.field).int32.gte = 0];
+}
+
+// USNIFleetReport is the full parsed output of a USNI Fleet Tracker article.
+message USNIFleetReport {
+  // URL of the source article.
+  string article_url = 1;
+  // Publication date of the article.
+  string article_date = 2;
+  // Title of the article.
+  string article_title = 3;
+  // Battle force summary statistics, if present in the article.
+  BattleForceSummary battle_force_summary = 4;
+  // All vessels identified in the article.
+  repeated USNIVessel vessels = 5;
+  // Carrier strike groups identified in the article.
+  repeated USNIStrikeGroup strike_groups = 6;
+  // Unique region names mentioned in the article.
+  repeated string regions = 7;
+  // Warnings generated during parsing.
+  repeated string parsing_warnings = 8;
+  // Time the report was generated, as Unix epoch milliseconds.
+  int64 timestamp = 9 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}

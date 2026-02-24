@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package worldmonitor.infrastructure.v1;
+
+import "worldmonitor/infrastructure/v1/infrastructure.proto";
+
+// ListServiceStatusesRequest specifies filters for retrieving service statuses.
+message ListServiceStatusesRequest {
+  // Optional status filter. Returns only services in this state.
+  ServiceOperationalStatus status = 1;
+}
+
+// ListServiceStatusesResponse contains service operational statuses.
+message ListServiceStatusesResponse {
+  // The list of service statuses.
+  repeated ServiceStatus statuses = 1;
+}

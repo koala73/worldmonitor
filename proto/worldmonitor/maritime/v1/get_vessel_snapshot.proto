@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package worldmonitor.maritime.v1;
+
+import "worldmonitor/core/v1/geo.proto";
+import "worldmonitor/maritime/v1/vessel_snapshot.proto";
+
+// GetVesselSnapshotRequest specifies filters for the vessel snapshot.
+message GetVesselSnapshotRequest {
+  // Optional bounding box for geographic filtering.
+  worldmonitor.core.v1.BoundingBox bounding_box = 1;
+}
+
+// GetVesselSnapshotResponse contains the vessel traffic snapshot.
+message GetVesselSnapshotResponse {
+  // The vessel traffic snapshot.
+  VesselSnapshot snapshot = 1;
+}

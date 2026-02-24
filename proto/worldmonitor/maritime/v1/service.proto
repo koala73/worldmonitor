@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package worldmonitor.maritime.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/maritime/v1/get_vessel_snapshot.proto";
+import "worldmonitor/maritime/v1/list_navigational_warnings.proto";
+
+// MaritimeService provides APIs for civilian AIS vessel data and NGA navigational warnings.
+service MaritimeService {
+  option (sebuf.http.service_config) = {base_path: "/api/maritime/v1"};
+
+  // GetVesselSnapshot retrieves a point-in-time view of AIS vessel traffic and disruptions.
+  rpc GetVesselSnapshot(GetVesselSnapshotRequest) returns (GetVesselSnapshotResponse) {
+    option (sebuf.http.config) = {path: "/get-vessel-snapshot"};
+  }
+
+  // ListNavigationalWarnings retrieves active maritime safety warnings from NGA.
+  rpc ListNavigationalWarnings(ListNavigationalWarningsRequest) returns (ListNavigationalWarningsResponse) {
+    option (sebuf.http.config) = {path: "/list-navigational-warnings"};
+  }
+}

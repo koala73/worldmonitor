@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package worldmonitor.market.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+// ListEtfFlowsRequest is empty; the handler uses a fixed list of BTC spot ETFs.
+message ListEtfFlowsRequest {}
+
+// EtfFlow represents a single ETF with estimated flow data.
+message EtfFlow {
+  // Ticker symbol (e.g. "IBIT").
+  string ticker = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // Fund issuer (e.g. "BlackRock").
+  string issuer = 2;
+  // Latest closing price.
+  double price = 3;
+  // Day-over-day price change percentage.
+  double price_change = 4;
+  // Latest daily volume.
+  int64 volume = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Average volume over prior days.
+  int64 avg_volume = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Volume ratio (latest / average).
+  double volume_ratio = 7;
+  // Flow direction: "inflow", "outflow", or "neutral".
+  string direction = 8;
+  // Estimated dollar flow magnitude.
+  int64 est_flow = 9 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}
+
+// EtfFlowsSummary contains aggregate ETF flow stats.
+message EtfFlowsSummary {
+  // Number of ETFs with data.
+  int32 etf_count = 1;
+  // Total volume across all ETFs.
+  int64 total_volume = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Total estimated flow across all ETFs.
+  int64 total_est_flow = 3 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Net direction: "NET INFLOW", "NET OUTFLOW", or "NEUTRAL".
+  string net_direction = 4;
+  // Number of ETFs with inflow.
+  int32 inflow_count = 5;
+  // Number of ETFs with outflow.
+  int32 outflow_count = 6;
+}
+
+// ListEtfFlowsResponse contains BTC spot ETF flow data.
+message ListEtfFlowsResponse {
+  // Timestamp of the data fetch (ISO 8601).
+  string timestamp = 1;
+  // Aggregate summary.
+  EtfFlowsSummary summary = 2;
+  // Individual ETF flow data, sorted by volume descending.
+  repeated EtfFlow etfs = 3;
+}

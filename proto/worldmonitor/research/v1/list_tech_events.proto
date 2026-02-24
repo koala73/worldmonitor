@@ -1,0 +1,76 @@
+syntax = "proto3";
+
+package worldmonitor.research.v1;
+
+import "buf/validate/validate.proto";
+
+// ListTechEventsRequest specifies filters for retrieving tech events.
+message ListTechEventsRequest {
+  // Event type filter: "all", "conferences", "earnings", "ipo", "other". Empty = all.
+  string type = 1;
+  // Only events with non-virtual coordinates.
+  bool mappable = 2;
+  // Max events to return (0 = unlimited).
+  int32 limit = 3 [
+    (buf.validate.field).int32.gte = 0,
+    (buf.validate.field).int32.lte = 500
+  ];
+  // Events within N days from now (0 = unlimited).
+  int32 days = 4 [(buf.validate.field).int32.gte = 0];
+}
+
+// TechEventCoords contains geocoded location data for a tech event.
+message TechEventCoords {
+  // Latitude.
+  double lat = 1;
+  // Longitude.
+  double lng = 2;
+  // Country name or code.
+  string country = 3;
+  // Original location string before normalization.
+  string original = 4;
+  // Whether this is a virtual/online event.
+  bool virtual = 5;
+}
+
+// TechEvent represents a single tech event (conference, earnings, IPO, etc.).
+message TechEvent {
+  // Unique event identifier.
+  string id = 1;
+  // Event title.
+  string title = 2;
+  // Event type: "conference", "earnings", "ipo", "other".
+  string type = 3;
+  // Location description.
+  string location = 4;
+  // Geocoded coordinates (may be absent).
+  TechEventCoords coords = 5;
+  // Start date (YYYY-MM-DD).
+  string start_date = 6;
+  // End date (YYYY-MM-DD).
+  string end_date = 7;
+  // Event URL.
+  string url = 8;
+  // Source: "techmeme", "dev.events", "curated".
+  string source = 9;
+  // Event description.
+  string description = 10;
+}
+
+// ListTechEventsResponse contains tech events matching the request.
+message ListTechEventsResponse {
+  // Whether the request succeeded.
+  bool success = 1;
+  // Total event count in response.
+  int32 count = 2;
+  // Number of conference-type events.
+  int32 conference_count = 3;
+  // Number of mappable (non-virtual with coords) events.
+  int32 mappable_count = 4;
+  // ISO 8601 timestamp of last update.
+  string last_updated = 5;
+  // The events.
+  repeated TechEvent events = 6;
+  // Error message if success is false.
+  string error = 7;
+}

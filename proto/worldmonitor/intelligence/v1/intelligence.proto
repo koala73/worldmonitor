@@ -1,0 +1,180 @@
+syntax = "proto3";
+
+package worldmonitor.intelligence.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+import "worldmonitor/core/v1/severity.proto";
+
+// CiiScore represents a Composite Instability Index score for a region or country.
+message CiiScore {
+  // Region or country identifier.
+  string region = 1;
+  // Static baseline score (0-100).
+  double static_baseline = 2 [
+    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.lte = 100
+  ];
+  // Dynamic real-time score (0-100).
+  double dynamic_score = 3 [
+    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.lte = 100
+  ];
+  // Combined weighted score (0-100).
+  double combined_score = 4 [
+    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.lte = 100
+  ];
+  // Score trend direction.
+  worldmonitor.core.v1.TrendDirection trend = 5;
+  // Contributing component scores.
+  CiiComponents components = 6;
+  // Last computation time, as Unix epoch milliseconds.
+  int64 computed_at = 7 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}
+
+// CiiComponents represents the contributing factors to a CII score.
+message CiiComponents {
+  // News activity signal contribution (0-100).
+  double news_activity = 1 [
+    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.lte = 100
+  ];
+  // CII index contribution (0-100).
+  double cii_contribution = 2 [
+    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.lte = 100
+  ];
+  // Geographic convergence score (0-100).
+  double geo_convergence = 3 [
+    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.lte = 100
+  ];
+  // Military activity contribution (0-100).
+  double military_activity = 4 [
+    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.lte = 100
+  ];
+}
+
+// StrategicRisk represents a strategic risk assessment for a country or region.
+message StrategicRisk {
+  // Country or region identifier.
+  string region = 1;
+  // Risk level.
+  worldmonitor.core.v1.SeverityLevel level = 2;
+  // Risk score (0-100).
+  double score = 3 [
+    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.lte = 100
+  ];
+  // Risk factors contributing to the assessment.
+  repeated string factors = 4;
+  // Trend direction.
+  worldmonitor.core.v1.TrendDirection trend = 5;
+}
+
+// PizzintStatus represents the Pentagon Pizza Index status (proxy for late-night DC activity).
+message PizzintStatus {
+  // DEFCON-style level (1-5).
+  int32 defcon_level = 1 [
+    (buf.validate.field).int32.gte = 1,
+    (buf.validate.field).int32.lte = 5
+  ];
+  // Human-readable DEFCON label.
+  string defcon_label = 2;
+  // Aggregate activity score.
+  double aggregate_activity = 3;
+  // Number of active spike locations.
+  int32 active_spikes = 4;
+  // Total monitored locations.
+  int32 locations_monitored = 5;
+  // Currently open locations.
+  int32 locations_open = 6;
+  // Last data update time, as Unix epoch milliseconds.
+  int64 updated_at = 7 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Data freshness assessment.
+  DataFreshness data_freshness = 8;
+  // Individual monitored locations.
+  repeated PizzintLocation locations = 9;
+}
+
+// PizzintLocation represents a single monitored pizza location near the Pentagon.
+message PizzintLocation {
+  // Google Places ID.
+  string place_id = 1;
+  // Location name.
+  string name = 2;
+  // Street address.
+  string address = 3;
+  // Current popularity score (0-200+).
+  int32 current_popularity = 4;
+  // Percentage of usual activity. Zero if unavailable.
+  int32 percentage_of_usual = 5;
+  // Whether activity constitutes a spike.
+  bool is_spike = 6;
+  // Spike magnitude above baseline. Zero if no spike.
+  double spike_magnitude = 7;
+  // Data source identifier.
+  string data_source = 8;
+  // Recording timestamp as ISO 8601 string.
+  string recorded_at = 9;
+  // Data freshness.
+  DataFreshness data_freshness = 10;
+  // Whether the location is currently closed.
+  bool is_closed_now = 11;
+  // Latitude of the location.
+  double lat = 12;
+  // Longitude of the location.
+  double lng = 13;
+}
+
+// GdeltTensionPair represents a bilateral tension score between two countries from GDELT.
+message GdeltTensionPair {
+  // Pair identifier.
+  string id = 1;
+  // Country pair (ISO 3166-1 alpha-2 codes).
+  repeated string countries = 2;
+  // Human-readable label (e.g., "US-China").
+  string label = 3;
+  // Tension score (0-100).
+  double score = 4 [
+    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.lte = 100
+  ];
+  // Trend direction.
+  worldmonitor.core.v1.TrendDirection trend = 5;
+  // Percentage change from previous period.
+  double change_percent = 6;
+  // Geographic region.
+  string region = 7;
+}
+
+// EventClassification represents an AI-generated classification of a real-world event.
+message EventClassification {
+  // Event category (e.g., "military", "economic", "social").
+  string category = 1;
+  // Event subcategory.
+  string subcategory = 2;
+  // Severity assessment.
+  worldmonitor.core.v1.SeverityLevel severity = 3;
+  // Classification confidence (0.0 to 1.0).
+  double confidence = 4 [
+    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.lte = 1
+  ];
+  // Brief AI-generated analysis.
+  string analysis = 5;
+  // Related entities identified.
+  repeated string entities = 6;
+}
+
+// DataFreshness represents how current the data is.
+enum DataFreshness {
+  // Unspecified freshness.
+  DATA_FRESHNESS_UNSPECIFIED = 0;
+  // Fresh — data is current.
+  DATA_FRESHNESS_FRESH = 1;
+  // Stale — data may be outdated.
+  DATA_FRESHNESS_STALE = 2;
+}

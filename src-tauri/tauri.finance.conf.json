@@ -1,0 +1,31 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Finance Monitor",
+  "mainBinaryName": "finance-monitor",
+  "identifier": "app.worldmonitor.finance.desktop",
+  "app": {
+    "windows": [
+      {
+        "title": "Finance Monitor"
+      }
+    ]
+  },
+  "bundle": {
+    "shortDescription": "Finance Monitor desktop app",
+    "longDescription": "Finance Monitor desktop app for real-time markets and trading intelligence.",
+    "targets": [
+      "app",
+      "dmg",
+      "nsis",
+      "msi",
+      "appimage"
+    ],
+    "macOS": {
+      "hardenedRuntime": true
+    },
+    "windows": {
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "https://timestamp.digicert.com"
+    }
+  }
+}

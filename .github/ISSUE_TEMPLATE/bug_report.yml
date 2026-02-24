@@ -1,0 +1,88 @@
+name: Bug Report
+description: Report a bug in World Monitor
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill out the sections below so we can reproduce and fix it.
+
+  - type: dropdown
+    id: variant
+    attributes:
+      label: Variant
+      description: Which variant are you using?
+      options:
+        - worldmonitor.app (Full / Geopolitical)
+        - tech.worldmonitor.app (Tech / Startup)
+        - finance.worldmonitor.app (Finance)
+        - Desktop app (Windows)
+        - Desktop app (macOS)
+        - Desktop app (Linux)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      description: Which part of the app is affected?
+      options:
+        - Map / Globe
+        - News panels / RSS feeds
+        - AI Insights / World Brief
+        - Market Radar / Crypto
+        - Service Status
+        - Trending Keywords
+        - Country Brief pages
+        - Live video streams
+        - Desktop app (Tauri)
+        - Settings / API keys
+        - Settings / LLMs (Ollama, Groq, OpenRouter)
+        - Live webcams
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug description
+      description: A clear description of what the bug is.
+      placeholder: Describe the bug...
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Steps to reproduce the behavior.
+      placeholder: |
+        1. Go to '...'
+        2. Click on '...'
+        3. Scroll down to '...'
+        4. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What you expected to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots / Console errors
+      description: If applicable, add screenshots or paste browser console errors.
+
+  - type: input
+    id: browser
+    attributes:
+      label: Browser & OS
+      description: e.g. Chrome 120 on Windows 11, Safari 17 on macOS Sonoma
+      placeholder: Chrome 120 on Windows 11

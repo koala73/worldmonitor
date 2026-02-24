@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package worldmonitor.seismology.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/seismology/v1/list_earthquakes.proto";
+
+// SeismologyService provides APIs for earthquake monitoring data sourced from USGS.
+service SeismologyService {
+  option (sebuf.http.service_config) = {base_path: "/api/seismology/v1"};
+
+  // ListEarthquakes retrieves recent earthquakes from the USGS GeoJSON feed.
+  rpc ListEarthquakes(ListEarthquakesRequest) returns (ListEarthquakesResponse) {
+    option (sebuf.http.config) = {path: "/list-earthquakes"};
+  }
+}

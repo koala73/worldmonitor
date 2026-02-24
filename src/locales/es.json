@@ -1,0 +1,1814 @@
+{
+  "app": {
+    "title": "World Monitor",
+    "description": "Situación global con información de IA"
+  },
+  "countryBrief": {
+    "identifying": "Identificando el país...",
+    "locating": "Localizando región...",
+    "limitedCoverage": "Cobertura limitada",
+    "instabilityIndex": "Índice de inestabilidad",
+    "notTracked": "Sin seguimiento: {{country}} no está en la lista de nivel 1 de CII",
+    "intelBrief": "Informe de inteligencia",
+    "generatingBrief": "Generando informe de inteligencia...",
+    "topNews": "Noticias principales",
+    "activeSignals": "Señales activas",
+    "timeline": "Cronograma de 7 días",
+    "predictionMarkets": "Mercados de predicción",
+    "loadingMarkets": "Cargando mercados de predicción...",
+    "infrastructure": "Exposición de infraestructura",
+    "briefUnavailable": "Resumen de IA no disponible: configure GROQ_API_KEY en Configuración.",
+    "cached": "En caché",
+    "fresh": "Actual",
+    "noMarkets": "No se encontraron mercados de predicción",
+    "loadingIndex": "Cargando índice...",
+    "components": {
+      "unrest": "Disturbios",
+      "conflict": "Conflicto",
+      "security": "Seguridad",
+      "information": "Información"
+    },
+    "signals": {
+      "protests": "protestas",
+      "militaryAir": "aeron. mil.",
+      "militarySea": "buques mil.",
+      "outages": "cortes",
+      "earthquakes": "terremotos",
+      "displaced": "desplazados",
+      "climate": "Estrés climático",
+      "conflictEvents": "eventos de conflicto"
+    },
+    "timeAgo": {
+      "m": "{{count}}hace m",
+      "h": "{{count}}hace h",
+      "d": "{{count}}hace d"
+    },
+    "infra": {
+      "pipeline": "Oleoductos",
+      "cable": "Cables submarinos",
+      "datacenter": "Centros de datos",
+      "base": "Bases militares",
+      "nuclear": "Instalaciones nucleares",
+      "port": "Puertos"
+    },
+    "levels": {
+      "critical": "Crítico",
+      "high": "Alto",
+      "elevated": "Elevado",
+      "moderate": "Moderado",
+      "normal": "Normal",
+      "low": "Bajo"
+    },
+    "trends": {
+      "rising": "En alza",
+      "falling": "En descenso",
+      "stable": "Estable"
+    },
+    "fallback": {
+      "instabilityIndex": "**Índice de inestabilidad: {{score}}/100** ({{level}}, {{trend}})",
+      "protestsDetected": "{{count}} protestas activas detectadas",
+      "aircraftTracked": "{{count}} aeronaves militares rastreadas",
+      "vesselsTracked": "{{count}} buques militares rastreados",
+      "internetOutages": "{{count}} cortes de Internet",
+      "recentEarthquakes": "{{count}} terremotos recientes",
+      "stockIndex": "Índice bursátil: {{value}}",
+      "recentHeadlines": "**Titulares recientes:**"
+    }
+  },
+  "header": {
+    "world": "MUNDO",
+    "tech": "TECH",
+    "live": "VIVO",
+    "search": "Buscar",
+    "settings": "PANELES",
+    "sources": "FUENTES",
+    "copyLink": "Copiar enlace",
+    "fullscreen": "Pantalla completa",
+    "viewOnGitHub": "Ver en GitHub",
+    "pinMap": "Anclar el mapa hacia arriba",
+    "filterSources": "Filtrar fuentes...",
+    "sourcesEnabled": "{{enabled}}/{{total}} habilitado",
+    "finance": "FINANCE",
+    "toggleTheme": "Alternar modo oscuro/claro"
+  },
+  "panels": {
+    "liveNews": "Noticias en vivo",
+    "markets": "Mercados",
+    "map": "Situación global",
+    "techMap": "Tech global",
+    "status": "Estado del sistema",
+    "insights": "Insights de IA",
+    "strategicPosture": "Postura estratégica de IA",
+    "cii": "Inestabilidad del país",
+    "strategicRisk": "Visión general de riesgos estratégicos",
+    "intel": "Feed de inteligencia",
+    "gdeltIntel": "Inteligencia en vivo",
+    "cascade": "Cascada de infraestructura",
+    "politics": "Noticias mundiales",
+    "middleeast": "Medio Oriente",
+    "africa": "África",
+    "latam": "América Latina",
+    "asia": "Asia-Pacífico",
+    "energy": "Energía y Recursos",
+    "gov": "Gobierno",
+    "thinktanks": "Centros de Estudio",
+    "polymarket": "Predicciones",
+    "commodities": "Materias primas",
+    "economic": "Indicadores económicos",
+    "finance": "Finanzas",
+    "tech": "Tecnología",
+    "crypto": "Cripto",
+    "heatmap": "Mapa de calor del sector",
+    "ai": "IA/ML",
+    "layoffs": "Rastreador de despidos",
+    "monitors": "Mis monitores",
+    "satelliteFires": "Incendios",
+    "macroSignals": "Radar de mercado",
+    "etfFlows": "Rastreador de ETF BTC",
+    "stablecoins": "Monedas estables",
+    "ucdpEvents": "Eventos de conflicto UCDP",
+    "displacement": "Desplazamiento ACNUR",
+    "climate": "Anomalías climáticas",
+    "populationExposure": "Exposición de la población",
+    "startups": "Startups y VC",
+    "vcblogs": "Insights de VC y Ensayos",
+    "regionalStartups": "Noticias globales de startups",
+    "unicorns": "Rastreador de unicornios",
+    "accelerators": "Aceleradores y días de demostración",
+    "security": "Ciberseguridad",
+    "policy": "Política y regulación de IA",
+    "regulation": "Panel de regulación de IA",
+    "hardware": "Semiconductores y Hardware",
+    "cloud": "Nube e Infraestructura",
+    "dev": "Comunidad de desarrolladores",
+    "github": "Tendencias de GitHub",
+    "ipo": "IPO y SPAC",
+    "funding": "Financiación y VC",
+    "producthunt": "Búsqueda de productos",
+    "events": "Eventos tecnológicos",
+    "serviceStatus": "Estado del servicio",
+    "techReadiness": "Índice de preparación tecnológica",
+    "techHubs": "Centros tecnológicos de moda",
+    "gccInvestments": "Inversiones del CCG",
+    "geoHubs": "Geopolitical Hotspots",
+    "liveWebcams": "Cámaras en Vivo"
+  },
+  "modals": {
+    "search": {
+      "placeholder": "Busca noticias, pipelines, bases, mercados...",
+      "hint": "Noticias • Ductos • Bases • Cables • Datacenters • Mercados",
+      "recent": "Búsquedas recientes",
+      "empty": "Buscar en todas las fuentes de datos",
+      "noResults": "No results found",
+      "navigate": "navegar por",
+      "select": "seleccionar",
+      "close": "cerca",
+      "types": {
+        "country": "País",
+        "news": "Noticias",
+        "hotspot": "Punto caliente",
+        "market": "Mercado",
+        "prediction": "Predicción",
+        "conflict": "Conflicto",
+        "base": "Base militar",
+        "pipeline": "Tubería",
+        "cable": "Cable submarino",
+        "datacenter": "Centro de datos",
+        "earthquake": "Terremoto",
+        "outage": "Apagón",
+        "nuclear": "Sitio nuclear",
+        "irradiator": "Irradiador",
+        "techcompany": "Empresa tecnológica",
+        "ailab": "Laboratorio de IA",
+        "startup": "Puesta en marcha",
+        "techevent": "Evento tecnológico",
+        "techhq": "Sede tecnológica",
+        "accelerator": "Aceleradora"
+      },
+      "placeholderTech": "Busca empresas, laboratorios de IA, startups, eventos...",
+      "hintTech": "Sedes centrales • Empresas • Laboratorios de IA • Startups • Aceleradoras • Eventos",
+      "placeholderFinance": "Buscar bolsas, mercados, bancos centrales...",
+      "hintFinance": "Bolsas • Centros financieros • Bancos centrales • Materias primas"
+    },
+    "signal": {
+      "title": "ENCUENTRO DE INTELIGENCIA",
+      "soundAlerts": "Alertas sonoras",
+      "dismiss": "Despedir",
+      "confidence": "Confianza",
+      "whyItMatters": "Por qué es importante:",
+      "action": "Acción:",
+      "note": "Nota:",
+      "suppress": "Suprimir este término",
+      "suppressed": "Suprimido",
+      "predictionLeading": "Predicción líder",
+      "newsLeading": "Noticias principales",
+      "silentDivergence": "Divergencia silenciosa",
+      "velocitySpike": "Pico de velocidad",
+      "keywordSpike": "Pico de palabras clave",
+      "convergence": "Convergencia",
+      "triangulation": "Triangulación",
+      "flowDrop": "Caída de flujo",
+      "flowPriceDivergence": "Divergencia de flujo/precio",
+      "geoConvergence": "Convergencia geográfica",
+      "marketMove": "Movimiento del mercado explicado",
+      "sectorCascade": "Cascada sectorial",
+      "militarySurge": "Aumento militar",
+      "country": "País:",
+      "scoreChange": "Cambio de puntuación:",
+      "instabilityLevel": "Nivel de inestabilidad:",
+      "primaryDriver": "Conductor principal:",
+      "location": "Ubicación:",
+      "eventTypes": "Tipos de eventos:",
+      "eventCount": "Recuento de eventos:",
+      "eventCountValue": "{{count}} eventos en 24h",
+      "source": "Fuente:",
+      "countriesAffected": "Países afectados:",
+      "impactLevel": "Nivel de impacto:",
+      "focalPoints": "PUNTOS FOCALES CORRELACIONADOS",
+      "newsCorrelation": "CORRELACIÓN DE NOTICIAS",
+      "viewOnMap": "Ver en el mapa"
+    },
+    "story": {
+      "generating": "Generando historia...",
+      "save": "Ahorrar",
+      "whatsapp": "WhatsApp",
+      "twitter": "X",
+      "linkedin": "LinkedIn",
+      "copyLink": "Enlace",
+      "saved": "¡Salvado!",
+      "copied": "¡Copiado!",
+      "opening": "Apertura...",
+      "error": "No se pudo generar la historia.",
+      "shareTitle": "Compartir historia",
+      "close": "Cerca"
+    },
+    "mobileWarning": {
+      "title": "Vista móvil",
+      "description": "Estás viendo una versión móvil simplificada centrada en la región MENA con capas esenciales habilitadas.",
+      "tip": "Consejo: Utilice los botones de vista (GLOBAL/US/MENA) para cambiar de región. Toque los marcadores para ver los detalles.",
+      "dontShowAgain": "No volver a mostrar",
+      "gotIt": "Entiendo"
+    },
+    "downloadBanner": {
+      "title": "Escritorio disponible",
+      "description": "Rendimiento nativo, almacenamiento de claves local seguro, mosaicos de mapas sin conexión.",
+      "macSilicon": "macOS (Apple Silicio)",
+      "macIntel": "MacOS (Intel)",
+      "windows": "Windows (.exe)",
+      "linux": "Linux (.AppImage)",
+      "dismiss": "Despedir",
+      "showAllPlatforms": "Mostrar todas las plataformas",
+      "showLess": "Mostrar menos"
+    },
+    "runtimeConfig": {
+      "title": "Configuración de escritorio",
+      "alertTitle": {
+        "configured": "Configuraciones de escritorio configuradas",
+        "needsKeys": "Configurar claves API para desbloquear funciones",
+        "some": "Algunas funciones necesitan claves API"
+      },
+      "openSettings": "Abrir configuración",
+      "summary": {
+        "desktop": "Modo escritorio",
+        "web": "Modo web (credenciales administradas por el servidor de solo lectura)",
+        "secrets": "secretos locales configurados",
+        "available": "características disponibles"
+      },
+      "status": {
+        "ready": "Listo",
+        "staged": "Escenificado",
+        "needsKeys": "Necesita llaves",
+        "invalid": "Inválido",
+        "missing": "Desaparecido",
+        "valid": "Válido",
+        "looksInvalid": "Parece inválido"
+      },
+      "placeholder": {
+        "setSecret": "Establecer secreto",
+        "staged": "Preparado (guardar con OK)"
+      },
+      "help": {
+        "URLHAUS_AUTH_KEY": "Se utiliza para las APIs de URLhaus y ThreatFox.",
+        "OTX_API_KEY": "Fuente de enriquecimiento opcional para la capa de ciberamenazas.",
+        "ABUSEIPDB_API_KEY": "Fuente de enriquecimiento opcional para reputación de IPs maliciosas.",
+        "FINNHUB_API_KEY": "Cotizaciones bursátiles en tiempo real y datos de mercado.",
+        "NASA_FIRMS_API_KEY": "Sistema de detección de incendios para gestión de recursos.",
+        "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
+        "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
+      }
+    },
+    "countryIntel": {
+      "identifying": "Identificando el país...",
+      "locating": "Localizando región...",
+      "instabilityIndex": "Índice de inestabilidad",
+      "protests": "protestas",
+      "militaryAircraft": "mil. aeronave",
+      "militaryVessels": "mil. vasos",
+      "outages": "cortes",
+      "earthquakes": "terremotos",
+      "loadingIndex": "Cargando índice...",
+      "loadingMarkets": "Cargando mercados de predicción...",
+      "generatingBrief": "Generando informe de inteligencia...",
+      "cached": "en cache",
+      "fresh": "Fresco",
+      "noMarkets": "No se encontraron mercados de predicción",
+      "predictionMarkets": "Mercados de predicción",
+      "unavailable": "Resumen de IA no disponible: configure GROQ_API_KEY en Configuración."
+    },
+    "countryBrief": {
+      "components": {
+        "unrest": "Disturbios",
+        "conflict": "Conflicto",
+        "security": "Seguridad",
+        "information": "Información"
+      },
+      "signals": {
+        "protests": "protestas",
+        "militaryAir": "mil. aeronave",
+        "militarySea": "mil. vasos",
+        "outages": "cortes",
+        "earthquakes": "terremotos",
+        "displaced": "desplazado",
+        "climate": "Estrés climático",
+        "conflictEvents": "eventos de conflicto"
+      },
+      "loadingIndex": "Cargando índice...",
+      "identifying": "Identificando el país...",
+      "locating": "Localizando región...",
+      "limitedCoverage": "Cobertura limitada",
+      "instabilityIndex": "Índice de inestabilidad",
+      "notTracked": "Sin seguimiento: {{country}} no está en la lista de nivel 1 de CII",
+      "intelBrief": "Informe de inteligencia",
+      "generatingBrief": "Generando informe de inteligencia...",
+      "topNews": "Noticias principales",
+      "activeSignals": "Señales activas",
+      "timeline": "Cronograma de 7 días",
+      "predictionMarkets": "Mercados de predicción",
+      "loadingMarkets": "Cargando mercados de predicción...",
+      "infrastructure": "Exposición de infraestructura",
+      "briefUnavailable": "Resumen de IA no disponible: configure GROQ_API_KEY en Configuración.",
+      "cached": "en cache",
+      "fresh": "Fresco",
+      "noMarkets": "No se encontraron mercados de predicción",
+      "timeAgo": {
+        "m": "Hace {{count}}m",
+        "h": "Hace {{count}}h",
+        "d": "Hace {{count}}d"
+      },
+      "infra": {
+        "pipeline": "Oleoductos",
+        "cable": "Cables submarinos",
+        "datacenter": "Centros de datos",
+        "base": "Bases militares",
+        "nuclear": "Instalaciones nucleares",
+        "port": "Puertos"
+      },
+      "levels": {
+        "critical": "Crítico",
+        "high": "Alto",
+        "elevated": "Elevado",
+        "moderate": "Moderado",
+        "normal": "Normal",
+        "low": "Bajo"
+      },
+      "trends": {
+        "rising": "En alza",
+        "falling": "En descenso",
+        "stable": "Estable"
+      },
+      "fallback": {
+        "instabilityIndex": "**Índice de inestabilidad: {{score}}/100** ({{level}}, {{trend}})",
+        "protestsDetected": "{{count}} protestas activas detectadas",
+        "aircraftTracked": "{{count}} aeronaves militares rastreadas",
+        "vesselsTracked": "{{count}} buques militares rastreados",
+        "internetOutages": "{{count}} cortes de Internet",
+        "recentEarthquakes": "{{count}} terremotos recientes",
+        "stockIndex": "Índice bursátil: {{value}}",
+        "recentHeadlines": "**Titulares recientes:**"
+      }
+    },
+    "settingsWindow": {
+      "invokeFail": "No se pudo ejecutar {{command}}. Verifique el registro del escritorio.",
+      "validating": "Validando claves API...",
+      "verifyFailed": "Claves verificadas guardadas. Error: {{errors}}",
+      "saved": "Configuración guardada",
+      "failed": "Error al guardar: {{error}}",
+      "openLogs": "Carpeta de registros abierta",
+      "openApiLog": "Registro de API abierto",
+      "verboseOn": "Inicio de sesión detallado en sidecar activado (guardado)",
+      "verboseOff": "Cierre de sesión detallado en sidecar (guardado)",
+      "sidecarError": "No se pudo alcanzar el sidecar para alternar el modo detallado",
+      "noTraffic": "Aún no se ha registrado tráfico.",
+      "table": {
+        "time": "Tiempo",
+        "method": "Método",
+        "path": "Camino",
+        "status": "Estado",
+        "duration": "Duración"
+      },
+      "sidecarUnreachable": "Sidecar no accesible.",
+      "logCleared": "Registro borrado."
+    }
+  },
+  "components": {
+    "monitor": {
+      "placeholder": "Palabras clave (separadas por comas)",
+      "add": "+ Agregar monitor",
+      "addKeywords": "Agregue palabras clave para monitorear las noticias",
+      "noMatches": "No hay coincidencias en {{count}} artículos",
+      "showingMatches": "Mostrando {{count}} de {{total}} coincidencias",
+      "match": "fósforo",
+      "matches": "partidos"
+    },
+    "webcams": {
+      "regions": {
+        "all": "TODOS",
+        "mideast": "MEDIO ORIENTE",
+        "europe": "EUROPA",
+        "americas": "AMÉRICAS",
+        "asia": "ASIA"
+      }
+    },
+    "regulation": {
+      "timeline": "Línea de tiempo",
+      "deadlines": "Plazos",
+      "regulations": "Reglamentos",
+      "countries": "Países",
+      "recentActions": "Acciones regulatorias recientes (últimos 12 meses)",
+      "upcomingDeadlines": "Próximos plazos de cumplimiento",
+      "activeRegulations": "Regulaciones activas",
+      "proposedRegulations": "Reglamentos propuestos",
+      "globalLandscape": "Panorama regulatorio global",
+      "emptyActions": "No hay acciones regulatorias recientes",
+      "emptyDeadlines": "No hay fechas límite de cumplimiento próximas en los próximos 12 meses",
+      "keyProvisions": "Disposiciones clave",
+      "learnMore": "Más información",
+      "active": "Activo",
+      "proposed": "Propuesto",
+      "updated": "Actualizado",
+      "dashboard": "AI Regulation Dashboard",
+      "actionsCount": "{{count}} actions",
+      "deadlinesCount": "{{count}} deadlines",
+      "days": "days",
+      "activeCount": "Active Regulations ({{count}})",
+      "proposedCount": "Proposed Regulations ({{count}})",
+      "moreProvisions": "+{{count}} more...",
+      "source": "Source",
+      "stances": {
+        "strict": "Strict",
+        "moderate": "Moderate",
+        "permissive": "Permissive",
+        "undefined": "Undefined"
+      }
+    },
+    "economic": {
+      "indicators": "Indicadores",
+      "oil": "Aceite",
+      "gov": "Gobernador",
+      "noData": "No hay datos económicos disponibles",
+      "noOilData": "Datos de petróleo no disponibles",
+      "noOilMetrics": "No hay métricas de petróleo disponibles. Agregue EIA_API_KEY para habilitar.",
+      "noSpending": "No hay premios gubernamentales recientes",
+      "awards": "premios",
+      "noIndicatorData": "Aún no hay datos del indicador: es posible que FRED se esté cargando",
+      "noOilDataRetry": "Los datos sobre el petróleo no están disponibles temporalmente; lo volveremos a intentar",
+      "vsPreviousWeek": "vs semana anterior",
+      "in": "en"
+    },
+    "gdelt": {
+      "empty": "No hay artículos recientes para este tema."
+    },
+    "geoHubs": {
+      "tooltip": "<strong>Centros de actividades geopolíticas</strong><br>Muestra las regiones con mayor actividad noticiosa.<br><br><em>Tipos de centros:</em><br>• 🏛️ Capitales: capitales mundiales y centros gubernamentales<br>• ⚔️ Zonas de conflicto: áreas de conflicto activas<br>• ⚓ Estratégicas: puntos críticos y regiones clave<br>• 🏢 Organizaciones: ONU, OTAN, OIEA, etc.<br><br><em>Niveles de actividad:</em><br>• <span style=\"color: #ff4444\">Alto</span> — Noticias de última hora o puntuación de 70+<br>• <span style=\"color: #ff8844\">Elevado</span> — Puntuación 40-69<br>• <span style=\"color: #888\">Baja</span> — Puntuación inferior 40<br><br>Haga clic en un centro para ampliar su ubicación.",
+      "noActive": "No hay centros geopolíticos activos",
+      "story": "historia",
+      "stories": "historias",
+      "infoTooltip": "<strong>Centros de actividades geopolíticas</strong><br>Muestra las regiones con mayor actividad noticiosa.<br><br><em>Tipos de centros:</em><br>• 🏛️ Capitales: capitales mundiales y centros gubernamentales<br>• ⚔️ Zonas de conflicto: áreas de conflicto activas<br>• ⚓ Estratégico: puntos críticos y puntos clave regiones<br>• 🏢 Organizaciones: ONU, OTAN, OIEA, etc.<br><br><em>Niveles de actividad:</em><br>• <span style=\"color: {{highColor}}\">Alto</span>: noticias de última hora o puntuación de 70+<br>• <span style=\"color: {{elevatedColor}}\">Elevado</span>: puntuación 40-69<br>• <span style=\"color: {{lowColor}}\">Bajo</span>: puntuación inferior a 40<br><br>Haga clic en un centro para ampliar su ubicación."
+    },
+    "techHubs": {
+      "tooltip": "<strong>Actividad del centro tecnológico</strong><br>Muestra los centros tecnológicos con la mayor actividad de noticias.<br><br><em>Niveles de actividad:</em><br>• <span style=\"color: #00ff88\">Alto</span> — Noticias de última hora o puntuación de 50+<br>• <span style=\"color: #ffc800\">Elevado</span> — Puntuación 20-49<br>• <span style=\"color: #888\">Bajo</span>: puntuación inferior a 20<br><br>Haga clic en un centro para ampliar su ubicación.",
+      "noActive": "No hay centros tecnológicos activos",
+      "infoTooltip": "<strong>Actividad del centro tecnológico</strong><br>Muestra los centros tecnológicos con la mayor actividad de noticias.<br><br><em>Niveles de actividad:</em><br>• <span style=\"color: {{highColor}}\">Alto</span>: noticias de última hora o puntuación de 50+<br>• <span style=\"color: {{elevatedColor}}\">Elevado</span> — Puntuación 20-49<br>• <span style=\"color: {{lowColor}}\">Bajo</span> — Puntuación inferior a 20<br><br>Haga clic en un centro para ampliar su ubicación."
+    },
+    "predictions": {
+      "tooltip": "<strong>Mercados de predicción</strong><br>Mercados de pronóstico de dinero real:<br><ul><li>Los precios reflejan estimaciones de probabilidad de multitudes</li><li>Mayor volumen = señal más confiable</li><li>Enfoque en eventos geopolíticos y actuales</li></ul>Fuente: Polymarket (polymarket.com)",
+      "error": "No se pudieron cargar las predicciones",
+      "yes": "Sí",
+      "no": "No",
+      "vol": "volumen"
+    },
+    "deckgl": {
+      "views": {
+        "global": "Global",
+        "americas": "Américas",
+        "europe": "Europa",
+        "latam": "América Latina",
+        "mena": "MENA",
+        "asia": "Asia",
+        "africa": "África",
+        "oceania": "Oceanía"
+      },
+      "zoomIn": "Dar un golpe de zoom",
+      "zoomOut": "Alejar",
+      "resetView": "Restablecer vista",
+      "legend": {
+        "title": "LEYENDA",
+        "startupHub": "Hub de Startups",
+        "techHQ": "Sede Tech",
+        "accelerator": "Aceleradora",
+        "cloudRegion": "Región Cloud",
+        "datacenter": "Centro de datos",
+        "stockExchange": "Bolsa de valores",
+        "financialCenter": "Centro financiero",
+        "centralBank": "Banco central",
+        "commodityHub": "Centro de materias primas",
+        "waterway": "Vía navegable",
+        "highAlert": "Alerta alta",
+        "elevated": "Elevado",
+        "monitoring": "Monitoreo",
+        "base": "Base",
+        "nuclear": "Nuclear"
+      },
+      "timeAll": "Todo",
+      "layers": {
+        "startupHubs": "Centros de inicio",
+        "techHQs": "Sedes tecnológicas",
+        "accelerators": "Aceleradores",
+        "cloudRegions": "Regiones de la nube",
+        "aiDataCenters": "Centros de datos de IA",
+        "underseaCables": "Cables submarinos",
+        "internetOutages": "Cortes de Internet",
+        "cyberThreats": "Amenazas cibernéticas",
+        "techEvents": "Eventos tecnológicos",
+        "naturalEvents": "Eventos naturales",
+        "fires": "Incendios",
+        "intelHotspots": "Puntos de acceso Intel",
+        "conflictZones": "Zonas de conflicto",
+        "militaryBases": "Bases militares",
+        "nuclearSites": "Sitios nucleares",
+        "gammaIrradiators": "Irradiadores gamma",
+        "spaceports": "Puertos espaciales",
+        "pipelines": "Tuberías",
+        "militaryActivity": "Actividad militar",
+        "shipTraffic": "Tráfico de barcos",
+        "flightDelays": "Retrasos de vuelos",
+        "protests": "Protestas",
+        "ucdpEvents": "Eventos de la UCDP",
+        "displacementFlows": "Flujos de desplazamiento",
+        "climateAnomalies": "Anomalías climáticas",
+        "weatherAlerts": "Alertas meteorológicas",
+        "strategicWaterways": "Vías navegables estratégicas",
+        "economicCenters": "Centros Económicos",
+        "criticalMinerals": "Minerales críticos",
+        "stockExchanges": "Bolsas de Valores",
+        "financialCenters": "Centros financieros",
+        "centralBanks": "Bancos centrales",
+        "commodityHubs": "Centros de productos básicos",
+        "gulfInvestments": "Inversiones del CCG"
+      },
+      "layersTitle": "capas",
+      "layerGuide": "Guía de capas",
+      "tooltip": {
+        "earthquake": "Terremoto",
+        "militaryAircraft": "Aviones militares",
+        "vesselCluster": "Grupo de buques",
+        "vessels": "vasos",
+        "flightCluster": "Grupo de vuelo",
+        "aircraft": "aeronave",
+        "protest": "Protesta",
+        "protestsCount": "{{count}} protestas",
+        "techHQsCount": "{{count}} sedes técnicas",
+        "techEventsCount": "{{count}} eventos tecnológicos",
+        "dataCentersCount": "{{count}} centros de datos",
+        "underseaCable": "Cable submarino",
+        "pipeline": "Tubería",
+        "conflictZone": "Zona de conflicto",
+        "naturalEvent": "Evento Natural",
+        "financialCenter": "centro financiero",
+        "port": "Puerto",
+        "disruption": "Ruptura",
+        "advisory": "Consultivo",
+        "repairShip": "Barco de reparación",
+        "internetOutage": "Corte de Internet",
+        "medium": "medio",
+        "news": "Noticias",
+        "undisclosed": "No revelado",
+        "stake": "apostar"
+      },
+      "layerHelp": {
+        "title": "Guía de capas de mapas",
+        "labels": {
+          "countries": "Países",
+          "timeRecent": "1H/6H/24H",
+          "timeExtended": "7D/30D/TODOS",
+          "sanctions": "Sanciones",
+          "shipping": "Envío"
+        },
+        "sections": {
+          "techEcosystem": "Ecosistema tecnológico",
+          "infrastructure": "Infraestructura",
+          "naturalEconomic": "Natural y Económico",
+          "financeCore": "Núcleo financiero",
+          "infrastructureRisk": "Infraestructura y Riesgo",
+          "macroContext": "Contexto macroeconómico",
+          "timeFilter": "Filtro de tiempo (arriba a la derecha)",
+          "geopolitical": "Geopolítico",
+          "militaryStrategic": "Militar y estratégico",
+          "transport": "Transporte",
+          "labels": "Etiquetas"
+        },
+        "descriptions": {
+          "techStartupHubs": "Principales ecosistemas de startups (SF, Nueva York, Londres, etc.)",
+          "techCloudRegions": "Regiones de centros de datos de AWS, Azure y GCP",
+          "techHQs": "Sedes de las principales empresas tecnológicas",
+          "techAccelerators": "Y Combinator, Techstars, 500 ubicaciones de startups",
+          "infraCables": "Principales cables submarinos de fibra óptica (troncal de Internet)",
+          "infraDatacenters": "Clústeres de computación de IA >=10 000 GPU",
+          "infraOutages": "Apagones de Internet e interrupciones del servicio.",
+          "naturalEventsTech": "Terremotos, tormentas, incendios (pueden afectar a los centros de datos)",
+          "weatherAlerts": "Alertas de clima severo",
+          "economicCenters": "Bolsas de valores y bancos centrales",
+          "countriesOverlay": "Superposiciones de nombres de países",
+          "financeExchanges": "Principales intercambios globales por nivel de mercado",
+          "financeCenters": "Centros financieros globales y regionales",
+          "financeCentralBanks": "Instituciones de política monetaria en todo el mundo",
+          "financeCommodityHubs": "Intercambios clave, puertos y centros de refinación",
+          "financeCables": "Principales rutas submarinas de fibra ligadas a la infraestructura del mercado",
+          "financePipelines": "Rutas de oleoductos y gasoductos que afectan a los mercados energéticos",
+          "financeOutages": "Interrupciones de Internet que pueden afectar las operaciones del mercado",
+          "financeCyberThreats": "Eventos de seguridad en torno a la infraestructura financiera",
+          "macroWaterways": "Puntos de estrangulamiento estratégicos para el transporte de mercancías",
+          "weatherAlertsMarket": "Eventos climáticos severos con relevancia para el mercado",
+          "naturalEventsMacro": "Terremotos, incendios, inundaciones y otras perturbaciones naturales",
+          "timeRecent": "Filtrar datos basados ​​en el tiempo a horas recientes",
+          "timeExtended": "Mostrar datos de la semana pasada, el mes o todo el tiempo",
+          "geoConflicts": "Zonas de guerra activas (Ucrania, Gaza, etc.) con fronteras",
+          "geoHotspots": "Regiones de tensión: codificadas por colores según el nivel de actividad de las noticias",
+          "geoSanctions": "Países bajo sanciones económicas de EE.UU., la UE y la ONU",
+          "geoProtests": "Disturbios civiles, manifestaciones (con tiempo filtrado)",
+          "militaryBases": "Instalaciones militares de EE. UU./OTAN, China y Rusia (más de 150)",
+          "militaryNuclear": "Centrales eléctricas, enriquecimiento, instalaciones armamentísticas.",
+          "militaryIrradiators": "Instalaciones industriales de irradiadores gamma.",
+          "militaryActivity": "Seguimiento en vivo de aviones y embarcaciones militares",
+          "infraCablesFull": "Principales cables submarinos de fibra óptica (20 rutas troncales)",
+          "infraPipelinesFull": "Oleoductos/gasoductos (Nord Stream, TAPI, etc.)",
+          "infraDatacentersFull": "Clústeres de computación de IA >=10 000 GPU únicamente",
+          "transportShipping": "Buques, cuellos de botella, 61 puertos estratégicos",
+          "transportDelays": "Retrasos en el aeropuerto y paradas en tierra (FAA)",
+          "naturalEventsFull": "Terremotos (USGS) + tormentas, incendios, volcanes, inundaciones (NASA EONET)",
+          "waterwaysLabels": "Etiquetas de cuellos de botella estratégicos"
+        },
+        "notes": {
+          "timeAffects": "Afecta: terremotos, clima, protestas, apagones"
+        }
+      }
+    },
+    "climate": {
+      "noAnomalies": "No se detectaron anomalías significativas",
+      "zone": "Zona",
+      "temp": "Temperatura",
+      "precip": "Precipicio",
+      "severityLabel": "Gravedad",
+      "severity": {
+        "extreme": "EXTREMO",
+        "moderate": "MODERADO",
+        "normal": "NORMAL"
+      },
+      "infoTooltip": "<strong>Monitor de anomalías climáticas</strong> Desviaciones de temperatura y precipitación con respecto a la línea base de 30 días. Datos de Open-Meteo (reanálisis ERA5).<ul><li><strong>Extremo</strong>: >5°C o >80mm/día de desviación</li><li><strong>Moderado</strong>: >3°C o >40mm/día de desviación</li></ul>Monitorea 15 zonas propensas a conflictos/desastres."
+    },
+    "newsPanel": {
+      "close": "Cerca",
+      "summarize": "Resumir este panel",
+      "generatingSummary": "Generando resumen...",
+      "sources": "{{count}} fuentes",
+      "relatedAssetsNear": "Activos relacionados cerca de {{location}}"
+    },
+    "countryBrief": {
+      "shareStory": "Compartir historia",
+      "printPdf": "Imprimir / PDF",
+      "exportData": "Exportar datos",
+      "sourceRef": "Fuente [{{n}}]"
+    },
+    "relatedAssets": {
+      "pipeline": "Ducto",
+      "cable": "Cable",
+      "datacenter": "Centro de datos",
+      "base": "Base",
+      "nuclear": "Nuclear"
+    },
+    "community": {
+      "joinDiscussion": "Únete a la discusión",
+      "openDiscussion": "Abrir discusión",
+      "dontShowAgain": "No mostrar de nuevo"
+    },
+    "threatLabels": {
+      "critical": "CRÍT",
+      "high": "ALTO",
+      "medium": "MED",
+      "low": "BAJO",
+      "info": "INFO"
+    },
+    "pizzint": {
+      "title": "Índice de pizza del Pentágono",
+      "tensionsTitle": "Tensiones geopolíticas",
+      "source": "Fuente:",
+      "defcon": "DEFCON {{level}}",
+      "updated": "Actualizado {{timeAgo}}",
+      "statusClosed": "CERRADO",
+      "statusSpike": "PICO",
+      "statusHigh": "ALTO",
+      "statusElevated": "ELEVADO",
+      "statusNominal": "NOMINAL",
+      "statusQuiet": "TRANQUILO",
+      "justNow": "En este momento",
+      "minutesAgo": "Hace {{m}}m",
+      "hoursAgo": "Hace {{h}}h",
+      "defconLabels": {
+        "1": "PISTOLA ARMADA - MÁXIMA PREPARACIÓN",
+        "2": "RITMO RÁPIDO - FUERZAS ARMADAS PREPARADAS",
+        "3": "CASA REDONDA - AUMENTAR LA PREPARACIÓN DE LA FUERZA",
+        "4": "DOBLE TOMA: VIGILANCIA DE INTELIGENCIA AUMENTADA",
+        "5": "DESVANECIMIENTO - PREPARACIÓN MÍNIMA"
+      }
+    },
+    "playback": {
+      "toggleMode": "Alternar modo de reproducción",
+      "historicalPlayback": "Reproducción histórica",
+      "live": "EN VIVO"
+    },
+    "stablecoins": {
+      "pegHealth": "Salud del anclaje",
+      "supplyVolume": "Oferta y volumen",
+      "unavailable": "Datos de stablecoins temporalmente no disponibles",
+      "token": "Token",
+      "mcap": "Cap. mercado",
+      "vol24h": "Vol. 24h",
+      "chg24h": "Chg. 24h"
+    },
+    "status": {
+      "dataFeeds": "Fuentes de datos",
+      "apiStatus": "Estado de API",
+      "storage": "Almacenamiento",
+      "systemStatus": "Estado del sistema",
+      "updatedJustNow": "Actualizado hace un momento",
+      "updatedAt": "Actualizado {{time}}",
+      "storageUnavailable": "Información de almacenamiento no disponible"
+    },
+    "strategicPosture": {
+      "elapsed": "Transcurrido: {{elapsed}} s",
+      "clickToView": "Haga clic para ver {{name}} en el mapa",
+      "units": {
+        "fighters": "luchadores",
+        "tankers": "petroleros",
+        "awacs": "AWACS",
+        "recon": "reconocimiento",
+        "transport": "Transporte",
+        "bombers": "Bombarderos",
+        "drones": "Drones",
+        "aircraft": "Aeronave",
+        "carriers": "Transportistas",
+        "destroyers": "Destructores",
+        "frigates": "Fragatas",
+        "submarines": "submarinos",
+        "patrol": "Patrulla",
+        "auxiliary": "Auxiliar",
+        "navalVessels": "Buques de guerra"
+      },
+      "clickToViewMap": "Haga clic para ver en el mapa",
+      "refresh": "Refrescar",
+      "infoTooltip": "<strong>Metodología</strong><p>Agrega aviones militares y buques de guerra por teatro.</p><ul><li><strong>Normal:</strong> Actividad de referencia</li><li><strong>Elevada:</strong> Por encima del umbral (50+ aviones)</li><li><strong>Crítico:</strong> Alta concentración (más de 100 aviones)</li></ul><p><strong>Capaz de ataque:</strong> Tanques + AWACS + Cazas presentes en cantidades suficientes para operaciones sostenidas.</p>",
+      "scanningTheaters": "Escaneando teatros",
+      "positions": "Posiciones de aeronaves",
+      "navalVesselsLoading": "Buques de guerra",
+      "theaterAnalysis": "Análisis de teatro",
+      "connectingStreams": "Conectando a flujos ADS-B y AIS en vivo...",
+      "initialLoadNote": "La carga inicial tarda 30–60 segundos mientras se acumulan los datos de seguimiento",
+      "acquiringData": "Adquiriendo datos",
+      "acquiringDesc": "Conectando a la red ADS-B para datos de vuelos militares. Esto puede tardar 30–60 segundos en la primera carga.",
+      "openSkyAdsb": "OpenSky ADS-B",
+      "aisVesselStream": "Flujo AIS de buques",
+      "retryNow": "Reintentar ahora",
+      "feedRateLimited": "Límite de velocidad del feed",
+      "rateLimitedDesc": "La API de OpenSky tiene límites de solicitudes. El panel reintentarrá automáticamente en unos minutos, o puede intentarlo ahora.",
+      "rateLimitedTip": "Consejo: las horas pico (UTC 12:00–20:00) suelen tener límites más altos.",
+      "tryAgain": "Intentar de nuevo",
+      "badges": {
+        "critical": "CRÍT",
+        "elevated": "ELEV",
+        "normal": "NORM"
+      },
+      "trendStable": "estable",
+      "domains": {
+        "air": "AIRE",
+        "sea": "MAR"
+      },
+      "strike": "STRIKE",
+      "staleWarning": "Usando datos en caché — feed en vivo temporalmente no disponible",
+      "updated": "Actualizado:",
+      "theaters": {
+        "iran-theater": "Teatro iraní",
+        "taiwan-theater": "Estrecho de Taiwán",
+        "baltic-theater": "Teatro báltico",
+        "blacksea-theater": "Mar Negro",
+        "korea-theater": "Península coreana",
+        "south-china-sea": "Mar de China Meridional",
+        "east-med-theater": "Mediterráneo oriental",
+        "israel-gaza-theater": "Israel/Gaza",
+        "yemen-redsea-theater": "Yemen/Mar Rojo"
+      }
+    },
+    "techEvents": {
+      "loading": "Cargando eventos tecnológicos...",
+      "noEvents": "No hay eventos para mostrar",
+      "showOnMap": "Mostrar en el mapa",
+      "moreInfo": "Más información",
+      "retry": "Retry",
+      "upcoming": "Upcoming",
+      "conferences": "Conferences",
+      "earnings": "Earnings",
+      "all": "All",
+      "conferencesCount": "{{count}} conferences",
+      "onMap": "{{count}} on map",
+      "techmemeEvents": "Techmeme Events ↗",
+      "today": "TODAY",
+      "soon": "SOON"
+    },
+    "techReadiness": {
+      "internetUsers": "Usuarios de Internet",
+      "mobileSubscriptions": "Suscripciones móviles",
+      "rdSpending": "Gasto en I+D",
+      "infoTooltip": "<strong>Preparación tecnológica global</strong><br>Puntuación compuesta (0-100) basada en datos del Banco Mundial:<br><br><strong>Métricas mostradas:</strong><br>🌐 Usuarios de Internet (% de la población)<br>📱 Suscripciones móviles (por cada 100 personas)<br>🔬 I+D Gasto (% del PIB)<br><br><strong>Peso:</strong> I+D (35%), Internet (30%), Banda ancha (20%), Móvil (15%)<br><br><em>— = No hay datos recientes disponibles</em><br><em>Fuente: Datos abiertos del Banco Mundial (2019-2024)</em>",
+      "fetchingData": "Fetching World Bank Data",
+      "internetUsersIndicator": "Internet Users",
+      "mobileSubscriptionsIndicator": "Mobile Subscriptions",
+      "broadbandAccess": "Broadband Access",
+      "rdExpenditure": "R&D Expenditure",
+      "analyzingCountries": "Analyzing 200+ countries...",
+      "source": "Source: World Bank",
+      "updated": "Updated: {{date}}"
+    },
+    "cascade": {
+      "noImpacts": "No se detectaron impactos en países",
+      "filters": {
+        "cables": "cables",
+        "pipelines": "Tuberías",
+        "ports": "Puertos",
+        "chokepoints": "Puntos de estrangulamiento"
+      },
+      "filterType": {
+        "cable": "cable",
+        "pipeline": "tubería",
+        "port": "puerto",
+        "chokepoint": "punto de estrangulamiento",
+        "country": "país"
+      },
+      "selectPrompt": "Seleccione {{type}}...",
+      "analyzeImpact": "Analizar Impacto",
+      "impactLevels": {
+        "critical": "crítico",
+        "high": "alto",
+        "medium": "medio",
+        "low": "bajo"
+      },
+      "capacityPercent": "{{percent}}% capacidad",
+      "noCountryImpacts": "No se detectaron impactos en el país",
+      "alternativeRoutes": "Rutas alternativas",
+      "countriesAffected": "Países afectados ({{count}})",
+      "links": "campo de golf",
+      "selectInfrastructureHint": "Seleccionar infraestructura para analizar el impacto en cascada",
+      "infoTooltip": "<strong>Análisis en cascada</strong> Modela dependencias de infraestructura:<ul><li>Cables submarinos, ductos, puertos, puntos de estrangulamiento</li><li>Selecciona infraestructura para simular fallas</li><li>Muestra los países afectados y la pérdida de capacidad</li><li>Identifica rutas redundantes</li></ul>Datos de TeleGeografía y fuentes de la industria."
+    },
+    "intelligenceFindings": {
+      "badgeTitle": "Hallazgos de inteligencia",
+      "title": "Hallazgos de inteligencia",
+      "none": "No hay hallazgos de inteligencia recientes",
+      "monitoring": "ESCUCHA",
+      "scanning": "Buscando correlaciones y anomalías...",
+      "reviewRecommended": "{{count}} hallazgos de inteligencia: se recomienda revisión",
+      "count": "{{count}} hallazgo de inteligencia",
+      "detected": "{{count}} DETECTADO",
+      "critical": "{{count}} CRÍTICO",
+      "highPriority": "{{count}} ALTA PRIORIDAD",
+      "more": "+{{count}} más hallazgos",
+      "all": "Todos los hallazgos de inteligencia ({{count}})",
+      "priority": {
+        "critical": "CRÍTICO",
+        "high": "ALTO",
+        "medium": "MEDIO",
+        "low": "BAJO"
+      },
+      "insights": {
+        "criticalDestabilization": "Desestabilización crítica: atención inmediata",
+        "significantShift": "Cambio significativo: supervise de cerca",
+        "developingSituation": "Situación en desarrollo: seguimiento de la escalada",
+        "convergence": "Múltiples eventos agrupados en la región",
+        "cascade": "La interrupción de la infraestructura se extiende",
+        "review": "Revisión para el conocimiento de la situación."
+      },
+      "time": {
+        "justNow": "En este momento",
+        "minutesAgo": "Hace {{count}}m",
+        "hoursAgo": "Hace {{count}}h",
+        "daysAgo": "Hace {{count}}d"
+      },
+      "hideFindings": "Hide Intelligence Findings"
+    },
+    "satelliteFires": {
+      "noData": "No hay datos de incendios disponibles",
+      "region": "Región",
+      "fires": "Incendios",
+      "high": "Alto",
+      "total": "Total",
+      "never": "nunca",
+      "time": {
+        "justNow": "En este momento",
+        "minutesAgo": "Hace {{count}}m",
+        "hoursAgo": "Hace {{count}}h"
+      },
+      "infoTooltip": "Detecciones térmicas del satélite FIRMS VIIRS de la NASA en regiones de conflicto monitoreadas. Alta intensidad = brillo >360K y confianza >80%."
+    },
+    "displacement": {
+      "noData": "Sin datos",
+      "refugees": "Refugiados",
+      "asylumSeekers": "Solicitantes de asilo",
+      "idps": "desplazados internos",
+      "total": "Total",
+      "origins": "Orígenes",
+      "hosts": "Anfitriones",
+      "badges": {
+        "crisis": "CRISIS",
+        "high": "ALTO",
+        "elevated": "ELEVADO"
+      },
+      "country": "País",
+      "status": "Estado",
+      "count": "Contar",
+      "infoTooltip": "<strong>Datos de desplazamiento del ACNUR</strong> Conteos globales de refugiados, solicitantes de asilo y desplazados internos del ACNUR.<ul><li><strong>Orígenes</strong>: Países de los que huye la gente</li><li><strong>Anfitriones</strong>: Países que acogen refugiados</li><li>Insignias de crisis: >1M | Alto: >500K desplazados</li></ul>Actualizaciones de datos anualmente. Licencia CC BY 4.0."
+    },
+    "populationExposure": {
+      "noData": "No hay datos de exposición disponibles",
+      "totalAffected": "Total de afectados",
+      "affectedCount": "{{count}} afectado",
+      "radiusKm": "{{km}}km de radio",
+      "infoTooltip": "<strong>Estimaciones de exposición de la población</strong> Población estimada dentro del radio de impacto del evento. Basado en datos de densidad de países de WorldPop.<ul><li>Conflicto: 50 km de radio</li><li>Terremoto: 100 km de radio</li><li>Inundación: 100 km de radio</li><li>Incendio forestal: 30 km de radio</li></ul>"
+    },
+    "countryTimeline": {
+      "now": "ahora",
+      "noEventsIn7Days": "Sin eventos en 7 días"
+    },
+    "cii": {
+      "shareStory": "Compartir historia",
+      "noSignals": "No se detectaron señales de inestabilidad",
+      "infoTooltip": "<strong>Metodología</strong><ul><li><strong>U</strong>nrest: desorden civil y protestas</li><li><strong>C</strong>onflicto: intensidad del conflicto armado</li><li><strong>S</strong>seguridad: vuelos/buques militares sobre territorio</li><li><strong>I</strong>nformación: velocidad de las noticias y correlación del punto focal</li><li>Aumento de proximidad del punto de acceso (ubicaciones estratégicas)</li></ul><em>Los valores U:C:S:I muestran puntuaciones de los componentes.</em> La detección de puntos focales correlaciona entidades de noticias con señales de mapa para una puntuación precisa."
+    },
+    "gdeltIntel": {
+      "infoTooltip": "<strong>GDELT Intelligence</strong> Monitoreo de noticias globales en tiempo real:<ul><li>Categorías de temas seleccionados (conflictos, cibernética, etc.)</li><li>Artículos de más de 100 idiomas traducidos</li><li>Actualizaciones cada 15 minutos</li></ul>Fuente: Proyecto GDELT (gdeltproject.org)"
+    },
+    "investments": {
+      "infoTooltip": "Base de datos de inversiones extranjeras directas de Arabia Saudita y Emiratos Árabes Unidos en infraestructura crítica global. Haga clic en una fila para volar a la inversión en el mapa.",
+      "searchPlaceholder": "Search assets, countries, entities…",
+      "allCountries": "All Countries",
+      "saudiArabia": "Saudi Arabia",
+      "uae": "UAE",
+      "allSectors": "All Sectors",
+      "allEntities": "All Entities",
+      "allStatuses": "All Statuses",
+      "operational": "Operational",
+      "underConstruction": "Under Construction",
+      "announced": "Announced",
+      "rumoured": "Rumoured",
+      "divested": "Divested",
+      "asset": "Asset",
+      "country": "Country",
+      "sector": "Sector",
+      "status": "Status",
+      "investment": "Investment",
+      "year": "Year",
+      "noMatch": "No investments match filters",
+      "undisclosed": "Undisclosed",
+      "sectors": {
+        "ports": "Ports",
+        "pipelines": "Pipelines",
+        "energy": "Energy",
+        "datacenters": "Data Centers",
+        "airports": "Airports",
+        "railways": "Railways",
+        "telecoms": "Telecoms",
+        "water": "Water",
+        "logistics": "Logistics",
+        "mining": "Mining",
+        "realEstate": "Real Estate",
+        "manufacturing": "Manufacturing"
+      }
+    },
+    "prediction": {
+      "infoTooltip": "<strong>Mercados de predicción</strong> Mercados de pronóstico de dinero real:<ul><li>Los precios reflejan estimaciones de probabilidad de multitudes</li><li>Mayor volumen = señal más confiable</li><li>Enfoque en eventos geopolíticos y actuales</li></ul>Fuente: Polymarket (polymarket.com)"
+    },
+    "ucdpEvents": {
+      "stateBased": "Estatal",
+      "nonState": "No estatal",
+      "oneSided": "Unilateral",
+      "country": "País",
+      "deaths": "Muertes",
+      "date": "Fecha",
+      "actors": "Actores",
+      "deathsCount": "{{count}} muertes",
+      "moreNotShown": "{{count}} eventos más no mostrados",
+      "noEvents": "Sin eventos en esta categoría",
+      "infoTooltip": "<strong>Eventos georreferenciados de la UCDP</strong> Datos de conflictos a nivel de evento de la Universidad de Uppsala.<ul><li><strong>Estatales</strong>: Gobierno versus grupo rebelde</li><li><strong>No estatal</strong>: Grupo armado versus grupo armado</li><li><strong>Unilateral</strong>: Violencia contra civiles</li></ul>Las muertes se muestran como la mejor estimación (rango bajo-alto). Los duplicados de ACLED se filtran automáticamente."
+    },
+    "strategicRisk": {
+      "noRisks": "No se detectaron riesgos significativos",
+      "infoTooltip": "<strong>Metodología</strong> Puntuación compuesta (0-100) combinación:<ul><li>50% Inestabilidad del país (5 principales ponderados)</li><li>30% Zonas de convergencia geográfica</li><li>20% Incidentes de infraestructura</li></ul>Se actualiza automáticamente cada 5 minutos.",
+      "levels": {
+        "critical": "Crítico",
+        "elevated": "Elevado",
+        "moderate": "Moderado",
+        "low": "Bajo"
+      },
+      "trend": "Tendencia",
+      "trends": {
+        "escalating": "En escalada",
+        "deEscalating": "En desescalada",
+        "stable": "Estable"
+      },
+      "insufficientData": "Insufficient Data",
+      "unableToAssess": "Unable to assess risk level.",
+      "enableDataSources": "Enable data sources to begin monitoring.",
+      "requiredDataSources": "Required Data Sources",
+      "optionalSources": "Optional Sources",
+      "enableCoreFeeds": "Enable Core Feeds",
+      "waitingForData": "Waiting for data...",
+      "refresh": "Refresh",
+      "learningMode": "Learning Mode - {{minutes}}m until reliable",
+      "noData": "no data",
+      "enable": "Enable",
+      "convergenceMetric": "Convergence",
+      "ciiDeviation": "CII Deviation",
+      "infraEvents": "Infra Events",
+      "highAlerts": "High Alerts",
+      "topRisks": "Top Risks",
+      "recentAlerts": "Recent Alerts ({{count}})",
+      "updated": "Updated: {{time}}",
+      "time": {
+        "justNow": "just now",
+        "minutesAgo": "{{count}}m ago",
+        "hoursAgo": "{{count}}h ago"
+      }
+    },
+    "insights": {
+      "noStories": "Aún no hay noticias de última hora o de múltiples fuentes",
+      "infoTooltip": "<strong>Análisis impulsado por IA</strong><br>• <strong>Resumen mundial</strong>: Resumen de IA (Groq/OpenRouter)<br>• <strong>Sentimento</strong>: Análisis del tono de las noticias<br>• <strong>Velocity</strong>: Historias de rápido movimiento<br>• <strong>Focal Puntos</strong>: Correlaciona entidades de noticias con señales de mapas (militares, protestas, cortes)<br><em>Solo escritorio • Desarrollado por Llama 3.3 + Detección de puntos focales</em>",
+      "step": "Step {{step}}/{{total}}",
+      "waitingForData": "Waiting for news data...",
+      "rankingStories": "Ranking important stories...",
+      "analyzingSentiment": "Analyzing sentiment...",
+      "generatingBrief": "Generating world brief..."
+    },
+    "export": {
+      "exportData": "Exportar datos"
+    },
+    "etfFlows": {
+      "unavailable": "Datos ETF temporalmente no disponibles",
+      "netFlow": "Flujo neto",
+      "estFlow": "Flujo est.",
+      "totalVol": "Vol. total",
+      "etfs": "ETFs",
+      "netInflow": "ENTRADA NETA",
+      "netOutflow": "SALIDA NETA",
+      "table": {
+        "ticker": "Ticker",
+        "issuer": "Emisor",
+        "estFlow": "Flujo est.",
+        "volume": "Volumen",
+        "change": "Cambio"
+      }
+    },
+    "macroSignals": {
+      "overall": "General",
+      "verdict": {
+        "buy": "COMPRAR",
+        "cash": "CASH"
+      },
+      "bullish": "{{count}}/{{total}} alcista",
+      "signals": {
+        "liquidity": "Liquidez",
+        "flow": "Flujo",
+        "regime": "Régimen",
+        "btcTrend": "Tendencia BTC",
+        "hashRate": "Hash Rate",
+        "mining": "Minería",
+        "fearGreed": "Miedo &amp; Codicia"
+      }
+    },
+    "runtimeConfig": {
+      "getApiKey": "Obtener clave API"
+    },
+    "panel": {
+      "showMethodologyInfo": "Show methodology info",
+      "dragToResize": "Drag to resize (double-click to reset)",
+      "openSettings": "Open Settings"
+    },
+    "languageSelector": {
+      "selectLanguage": "Select Language"
+    },
+    "serviceStatus": {
+      "checkingServices": "Checking services...",
+      "allOperational": "All services operational",
+      "ok": "OK",
+      "degraded": "Degraded",
+      "outage": "Outage",
+      "backendUnavailable": "Desktop local backend unavailable. Falling back to cloud API.",
+      "desktopReadiness": "Desktop readiness",
+      "acceptanceChecks": "Acceptance checks: {{ready}}/{{total}} ready · key-backed features {{available}}/{{featureTotal}}",
+      "nonParityFallbacks": "Non-parity fallbacks ({{count}})",
+      "categories": {
+        "all": "All",
+        "cloud": "Cloud",
+        "dev": "Dev Tools",
+        "comm": "Comms",
+        "ai": "AI",
+        "saas": "SaaS"
+      }
+    },
+    "verification": {
+      "title": "Information Verification Checklist",
+      "hint": "Based on Bellingcat's OSH Framework",
+      "verdicts": {
+        "verified": "VERIFIED",
+        "likely": "LIKELY AUTHENTIC",
+        "uncertain": "UNCERTAIN",
+        "unreliable": "UNRELIABLE"
+      },
+      "notesTitle": "Verification Notes",
+      "noNotes": "No notes added",
+      "addNotePlaceholder": "Add verification note...",
+      "add": "Add",
+      "resetChecklist": "Reset Checklist",
+      "checks": {
+        "recency": "Recent timestamp confirmed",
+        "geolocation": "Location verified",
+        "source": "Primary source identified",
+        "crossref": "Cross-referenced with other sources",
+        "noAi": "No AI generation artifacts",
+        "noRecrop": "Not recycled/old footage",
+        "metadata": "Metadata verified",
+        "context": "Context established"
+      }
+    },
+    "liveNews": {
+      "retry": "Retry",
+      "notLive": "{{name}} is not currently live",
+      "cannotEmbed": "{{name}} cannot be embedded in this app (YouTube {{code}})",
+      "openOnYouTube": "Open on YouTube",
+      "manage": "Gestionar canales",
+      "addChannel": "Añadir canal",
+      "remove": "Eliminar",
+      "youtubeHandle": "Handle de YouTube (ej. @Channel)",
+      "displayName": "Nombre para mostrar (opcional)",
+      "openPanelSettings": "Configuración de visualización del panel",
+      "channelSettings": "Configuración del canal",
+      "save": "Guardar",
+      "cancel": "Cancelar",
+      "confirmDelete": "Eliminar este canal?",
+      "confirmTitle": "Confirmar",
+      "restoreDefaults": "Restaurar canales predeterminados"
+    }
+  },
+  "popups": {
+    "startDate": "FECHA DE INICIO",
+    "endDate": "FECHA DE FIN",
+    "magnitude": "Magnitud",
+    "depth": "Profundidad",
+    "intensity": "Intensidad",
+    "type": "TIPO",
+    "status": "ESTADO",
+    "severity": "Gravedad",
+    "location": "UBICACIÓN",
+    "coordinates": "COORDENADAS",
+    "casualties": "VÍCTIMAS",
+    "displaced": "DESPLAZADOS",
+    "belligerents": "BELIGERANTES",
+    "keyDevelopments": "DESARROLLOS CLAVE",
+    "unknown": "Desconocido",
+    "source": "Fuente",
+    "target": "Objetivo",
+    "events": "Eventos",
+    "impact": "Impacto",
+    "capacity": "Capacidad",
+    "alerts": "Alertas Activas",
+    "common": {
+      "start": "INICIO",
+      "end": "FIN",
+      "updated": "ACTUALIZADO"
+    },
+    "conflict": {
+      "title": "ZONA DE CONFLICTO"
+    },
+    "earthquake": {
+      "levels": {
+        "major": "MAYOR",
+        "moderate": "MODERADO",
+        "minor": "MENOR"
+      }
+    },
+    "base": {
+      "types": {
+        "us-nato": "US/OTAN",
+        "china": "CHINA",
+        "russia": "RUSIA"
+      }
+    },
+    "protest": {
+      "acledVerified": "ACLED (verificado)",
+      "gdelt": "GDELT",
+      "riots": "Disturbios",
+      "highSeverity": "Alta Gravedad"
+    },
+    "flight": {
+      "groundStop": "PARADA EN TIERRA",
+      "groundDelay": "PROGRAMA DE RETRASO EN TIERRA",
+      "departureDelay": "RETRASOS DE SALIDA",
+      "arrivalDelay": "RETRASOS DE LLEGADA",
+      "delaysReported": "RETRASOS REPORTADOS",
+      "delays": "RETRASOS",
+      "avgDelay": "RETRASO PROM.",
+      "cancelled": "CANCELADO",
+      "sources": {
+        "faa": "ASWS de la FAA",
+        "eurocontrol": "Eurocontrol",
+        "computed": "Calculado"
+      },
+      "regions": {
+        "americas": "Américas",
+        "europe": "Europa",
+        "apac": "Asia-Pacífico",
+        "mena": "Oriente Medio",
+        "africa": "África"
+      }
+    },
+    "apt": {
+      "description": "Grupo de Amenaza Persistente Avanzada con capacidades a nivel estatal. Conocido por operaciones cibernéticas sofisticadas contra infraestructura crítica, gobierno y sectores de defensa."
+    },
+    "cyberThreat": {
+      "title": "CIBERAMENAZA"
+    },
+    "nuclear": {
+      "types": {
+        "plant": "CENTRAL ELÉCTRICA",
+        "enrichment": "ENRIQUECIMIENTO",
+        "weapons": "COMPLEJO DE ARMAS",
+        "research": "INVESTIGACIÓN"
+      },
+      "description": "Instalación nuclear bajo vigilancia. Importancia estratégica para la seguridad regional y la no proliferación."
+    },
+    "economic": {
+      "types": {
+        "exchange": "BOLSA DE VALORES",
+        "centralBank": "BANCO CENTRAL",
+        "financialHub": "CENTRO FINANCIERO"
+      },
+      "closed": "CERRADO"
+    },
+    "irradiator": {
+      "subtitle": "Instalación Industrial de Irradiación Gamma",
+      "description": "Instalación de irradiación industrial usando Cobalto-60 o Cesio-137 para esterilización de dispositivos médicos, conservación de alimentos o procesamiento de materiales. Fuente: Base de datos IAEA DIIF."
+    },
+    "pipeline": {
+      "title": "GASODUCTO",
+      "types": {
+        "oil": "OLEODUCTO",
+        "gas": "GASODUCTO",
+        "products": "POLIDUCTO"
+      },
+      "status": {
+        "operating": "EN OPERACIÓN",
+        "construction": "EN CONSTRUCCIÓN"
+      },
+      "description": "Infraestructura importante de {{type}}. {{status}}"
+    },
+    "pipelineStatusDesc": {
+      "operating": "Actualmente operativa y transportando recursos.",
+      "construction": "Actualmente en construcción."
+    },
+    "cable": {
+      "fault": "FALLA",
+      "degraded": "DEGRADADO",
+      "active": "ACTIVO",
+      "major": "MAYOR",
+      "cable": "CABLE",
+      "subtitle": "Cable Submarino de Fibra Óptica",
+      "type": "CABLE SUBMARINO",
+      "advisory": "AVISO DE FALLA",
+      "repairDeployment": "DESPLIEGUE DE REPARACIÓN",
+      "repairStatus": {
+        "onStation": "En la estación",
+        "enRoute": "En ruta"
+      },
+      "health": {
+        "evidence": "EVIDENCIA DE ESTADO"
+      },
+      "description": "Cable submarino de telecomunicaciones que transporta tráfico internacional de Internet. Estos cables de fibra óptica forman la columna vertebral de la conectividad global a Internet y transmiten más del 95% de los datos intercontinentales."
+    },
+    "repairShip": {
+      "note": "El rastreo del buque de reparación indica despliegue activo hacia el sitio de la falla.",
+      "badge": "BARCO DE REPARACIÓN",
+      "description": "El seguimiento del barco de reparación indica un despliegue activo en apoyo de la restauración del cable submarino.",
+      "status": {
+        "onStation": "EN LA ESTACIÓN",
+        "enRoute": "EN RUTA"
+      }
+    },
+    "strategic": "ESTRATÉGICO",
+    "verified": "VERIFICADO",
+    "sampledList": "Mostrando una lista muestreada de {{count}} eventos.",
+    "reason": "RAZÓN",
+    "threat": "AMENAZA",
+    "aka": "También conocido como",
+    "sponsor": "PATROCINADOR",
+    "origin": "ORIGEN",
+    "country": "PAÍS",
+    "malware": "MALWARE",
+    "lastSeen": "VISTO POR ÚLTIMA VEZ",
+    "open": "ABIERTO",
+    "tradingHours": "HORARIO DE NEGOCIACIÓN",
+    "gamma": "GAMMA",
+    "city": "CIUDAD",
+    "length": "LONGITUD",
+    "operator": "OPERADOR",
+    "countries": "PAÍSES",
+    "waypoints": "PUNTOS DE RUTA",
+    "repairEta": "ETA DE REPARACIÓN",
+    "timeUnits": {
+      "m": "metro",
+      "h": "h",
+      "d": "d"
+    },
+    "hotspot": {
+      "escalation": "EVALUACIÓN DE ESCALADA",
+      "baseline": "Línea base",
+      "score": "Puntuación",
+      "trend": "Tendencia",
+      "components": {
+        "news": "Noticias",
+        "cii": "CII",
+        "geo": "Geo",
+        "military": "Militar"
+      },
+      "levels": {
+        "stable": "ESTABLE",
+        "watch": "VIGILANCIA",
+        "elevated": "ELEVADO",
+        "high": "ALTO",
+        "critical": "CRÍTICO"
+      }
+    },
+    "buttons": {
+      "track": "Seguir problema",
+      "details": "Ver detalles"
+    },
+    "historicalContext": "CONTEXTO HISTÓRICO",
+    "lastMajorEvent": "Último evento importante",
+    "precedents": "Precedentes",
+    "cyclicalPattern": "Patrón cíclico",
+    "whyItMatters": "POR QUÉ IMPORTA",
+    "keyEntities": "ENTIDADES CLAVE",
+    "relatedHeadlines": "TITULARES RELACIONADOS",
+    "liveIntel": "Intelligence en vivo",
+    "loadingNews": "Cargando noticias globales...",
+    "noCoverage": "Sin cobertura global reciente",
+    "time": "Hora",
+    "area": "Área",
+    "expires": "Expira",
+    "aisGapSpike": "PICO DE BRECHA AIS",
+    "chokepointCongestion": "CONGESTIÓN DE PASO ESTRATÉGICO",
+    "darkening": "OSCURECIMIENTO",
+    "density": "DENSIDAD",
+    "darkShips": "BARCOS OSCUROS",
+    "vesselCount": "CONTEO DE BUQUES",
+    "window": "VENTANA",
+    "region": "REGIÓN",
+    "fatalities": "FATALIDADES",
+    "actors": "ACTORES",
+    "near": "Cerca de",
+    "moreEvents": "más eventos",
+    "monitoring": "Monitoreo",
+    "viewUSGS": "Ver en USGS",
+    "expired": "Expirado",
+    "timeAgo": {
+      "s": "{{count}}s atrás",
+      "m": "{{count}}m atrás",
+      "h": "{{count}}h atrás",
+      "d": "{{count}}d atrás"
+    },
+    "updated": "Actualizado",
+    "cableAdvisory": {
+      "reported": "REPORTADO",
+      "impact": "IMPACTO",
+      "eta": "ETA"
+    },
+    "outage": {
+      "levels": {
+        "total": "APAGÓN TOTAL",
+        "major": "CORTE GRANDE",
+        "partial": "DISRUPCIÓN PARCIAL",
+        "disruption": "RUPTURA"
+      },
+      "reported": "REPORTADO",
+      "categories": "CATEGORÍAS",
+      "readReport": "Leer informe completo"
+    },
+    "datacenter": {
+      "status": {
+        "existing": "OPERACIONAL",
+        "planned": "PLANIFICADO",
+        "decommissioned": "FUERA DE SERVICIO",
+        "unknown": "DESCONOCIDO"
+      },
+      "gpuChipCount": "NÚMERO DE GPU/CHIP",
+      "chipType": "TIPO DE CHIP",
+      "power": "FUERZA",
+      "sector": "SECTOR",
+      "attribution": "Datos: Clústeres de GPU Epoch AI",
+      "chips": "papas fritas",
+      "cluster": {
+        "title": "{{count}} Centros de datos",
+        "totalChips": "TOTAL DE FICHAS",
+        "totalPower": "PODER TOTAL",
+        "operational": "OPERACIONAL",
+        "planned": "PLANIFICADO",
+        "moreDataCenters": "+ {{count}} más centros de datos",
+        "sampledSites": "Mostrando una lista de muestra de {{count}} sitios."
+      }
+    },
+    "startupHub": {
+      "tiers": {
+        "mega": "MEGA CENTRO",
+        "major": "CENTRO PRINCIPAL",
+        "emerging": "EMERGENTE",
+        "hub": "CENTRO"
+      },
+      "unicorns": "UNICORNIOS"
+    },
+    "cloudRegion": {
+      "provider": "PROVEEDOR",
+      "availabilityZones": "ZONAS DE DISPONIBILIDAD"
+    },
+    "techHQ": {
+      "types": {
+        "faang": "GRAN TECNOLOGÍA",
+        "unicorn": "UNICORNIO",
+        "public": "PÚBLICO",
+        "tech": "TECNOLOGÍA"
+      },
+      "marketCap": "LÍMITE DE MERCADO",
+      "employees": "EMPLEADOS"
+    },
+    "accelerator": {
+      "types": {
+        "accelerator": "ACELERADOR",
+        "incubator": "INCUBADORA",
+        "studio": "ESTUDIO DE INICIO"
+      },
+      "founded": "FUNDADO",
+      "notableAlumni": "ALUMNOS NOTABLES"
+    },
+    "techEvent": {
+      "days": {
+        "today": "HOY",
+        "tomorrow": "MAÑANA",
+        "inDays": "EN {{count}} DÍAS"
+      },
+      "date": "FECHA",
+      "moreInformation": "Más información"
+    },
+    "techHQCluster": {
+      "companiesCount": "{{count}} EMPRESAS",
+      "bigTechCount": "{{count}} Gran tecnología",
+      "unicornsCount": "{{count}} Unicornios",
+      "publicCount": "{{count}} Público",
+      "sampled": "Mostrando una lista de muestra de {{count}} empresas."
+    },
+    "techEventCluster": {
+      "eventsCount": "{{count}} EVENTOS",
+      "upcomingWithin2Weeks": "{{count}} próximamente dentro de 2 semanas",
+      "sampled": "Mostrando una lista de muestra de {{count}} eventos."
+    },
+    "militaryFlight": {
+      "types": {
+        "fighter": "Combatiente",
+        "bomber": "Bombardeo",
+        "transport": "Transporte",
+        "tanker": "Petrolero",
+        "awacs": "AWACS/AEW",
+        "reconnaissance": "Reconocimiento",
+        "helicopter": "Helicóptero",
+        "drone": "UAV/Dron",
+        "patrol": "Patrulla",
+        "specialOps": "Operaciones Especiales",
+        "vip": "Transporte VIP"
+      },
+      "altitude": "ALTITUD",
+      "ground": "Suelo",
+      "speed": "VELOCIDAD",
+      "heading": "TÍTULO",
+      "hexCode": "CÓDIGO HEXAGONAL",
+      "squawk": "GRAZNIDO",
+      "attribution": "Fuente: Red OpenSky"
+    },
+    "militaryVessel": {
+      "aisDark": "AIS OSCURO",
+      "vessel": "Buque",
+      "speed": "VELOCIDAD",
+      "heading": "TÍTULO",
+      "mmsi": "MMSI",
+      "hull": "CASCO #",
+      "region": "REGION",
+      "strikeGroup": "STRIKE GROUP",
+      "deploymentStatus": "STATUS",
+      "usniIntel": "USNI Intel",
+      "usniSource": "Source: USNI News Fleet Tracker",
+      "approximatePosition": "Position approximate — based on USNI weekly report, not real-time AIS.",
+      "darkDescription": "⚠ La embarcación se ha quedado a oscuras: se perdió la señal AIS. Puede indicar operaciones sensibles."
+    },
+    "militaryCluster": {
+      "flightActivity": {
+        "exercise": "Ejercicio militar",
+        "patrol": "Actividad de patrulla",
+        "transport": "Operaciones de transporte",
+        "unknown": "Actividad militar"
+      },
+      "moreAircraft": "+{{count}} más aviones",
+      "aircraftCount": "{{count}} AERONAVE",
+      "aircraft": "AERONAVE",
+      "activity": "ACTIVIDAD",
+      "primary": "PRIMARIO",
+      "trackedAircraft": "AERONAVES ORUGADAS",
+      "vesselActivity": {
+        "exercise": "Ejercicio naval",
+        "deployment": "Despliegue naval",
+        "patrol": "Actividad de patrulla",
+        "transit": "Tránsito de flota",
+        "unknown": "Actividad Naval"
+      },
+      "moreVessels": "+{{count}} más buques",
+      "vesselsCount": "{{count}} BUQUES",
+      "vessels": "BUQUES",
+      "trackedVessels": "BUQUES CON ORUGAS"
+    },
+    "naturalEvent": {
+      "closed": "CERRADO",
+      "active": "ACTIVO",
+      "reported": "REPORTADO",
+      "viewOnSource": "Ver el {{source}}",
+      "attribution": "Datos: NASA EONET"
+    },
+    "port": {
+      "types": {
+        "container": "RECIPIENTE",
+        "oil": "TERMINAL PETROLERO",
+        "lng": "TERMINAL DE GNL",
+        "naval": "PUERTO NAVAL",
+        "mixed": "MEZCLADO",
+        "bulk": "A GRANEL"
+      },
+      "worldRank": "RANGO MUNDIAL"
+    },
+    "spaceport": {
+      "status": {
+        "active": "ACTIVO",
+        "construction": "CONSTRUCCIÓN",
+        "inactive": "INACTIVO"
+      },
+      "launchActivity": "ACTIVIDAD DE LANZAMIENTO",
+      "description": "Instalación estratégica de lanzamiento espacial. La cadencia de lanzamiento y las capacidades de acceso a la órbita son indicadores geopolíticos clave."
+    },
+    "mineral": {
+      "status": {
+        "producing": "PRODUCTOR",
+        "development": "DESARROLLO",
+        "exploration": "EXPLORACIÓN"
+      },
+      "projectSubtitle": "{{mineral}} PROYECTO"
+    },
+    "stockExchange": {
+      "marketCap": "LÍMITE DE MERCADO"
+    },
+    "financialCenter": {
+      "gfciRank": "RANGO DEL GFCI",
+      "specialties": "ESPECIALIDADES"
+    },
+    "centralBank": {
+      "currency": "DIVISA"
+    },
+    "commodityHub": {
+      "commodities": "COMERCIOS"
+    },
+    "hotspotSubtexts": {
+      "conflict_zone": "Zona de conflicto",
+      "dprk_watch": "Reloj de la RPDC",
+      "egypt_gis": "Egipto/SIG",
+      "energy_space": "Energía/Espacio",
+      "financial_hub": "Centro financiero",
+      "gchq_mi6": "GCHQ/MI6",
+      "greenland_intel": "Groenlandia Intel",
+      "haiti_crisis": "Crisis de Haití",
+      "irgc_activity": "Actividad del IRGC",
+      "insurgency_coups": "Insurgencia/Golpes",
+      "iraq_pmf": "Irak/FMP",
+      "kremlin_activity": "Actividad del Kremlin",
+      "lebanon_hezbollah": "Líbano/Hezbolá",
+      "mossad_idf": "Mossad/FDI",
+      "nato_hq": "Sede de la OTAN",
+      "pla_mss_activity": "Actividad PLA/MSS",
+      "pentagon_pizza_index": "Índice de pizza del Pentágono",
+      "piracy_conflict": "Piratería/Conflicto",
+      "qatar_al_udeid": "Catar/Al Udeid",
+      "saudi_gip_mbs": "GIP saudita/MBS",
+      "strait_watch": "Vigilancia del Estrecho",
+      "syria_crisis": "Crisis de Siria",
+      "tech_ai_hub": "Centro de tecnología/IA",
+      "turkey_mit": "Turquía/MIT",
+      "uae_ecsr": "EAU/ECSR",
+      "venezuela_crisis": "crisis venezolana",
+      "yemen_houthis": "Yemen/Hutíes"
+    }
+  },
+  "signals": {
+    "context": {
+      "prediction_leads_news": {
+        "whyItMatters": "Los mercados de predicción a menudo descuentan información antes de que se convierta en noticia: los operadores pueden tener acceso anticipado a los acontecimientos.",
+        "actionableInsight": "Monitorear noticias de última hora en las próximas 1-6 horas que puedan explicar el movimiento del mercado.",
+        "confidenceNote": "Mayor confianza si múltiples mercados de predicción se mueven en la misma dirección."
+      },
+      "news_leads_markets": {
+        "whyItMatters": "Las noticias avanzan más rápido que la reacción de los mercados: posible oportunidad de valoración errónea.",
+        "actionableInsight": "Observe la recuperación del mercado a medida que los algoritmos y operadores digieren la noticia.",
+        "confidenceNote": "Señal más fuerte si la noticia proviene de agencias de noticias de nivel 1."
+      },
+      "silent_divergence": {
+        "whyItMatters": "El mercado se mueve significativamente sin catalizador de noticias identificable: posible información privilegiada, trading algorítmico o desarrollo no reportado.",
+        "actionableInsight": "Investigar fuentes de datos alternativas; la noticia puede surgir más tarde explicando el movimiento.",
+        "confidenceNote": "Menor confianza ya que la causa es desconocida: tratar como alerta temprana, no como inteligencia confirmada."
+      },
+      "velocity_spike": {
+        "whyItMatters": "Una historia se está acelerando en múltiples fuentes de noticias: indica creciente importancia y potencial impacto en mercados o políticas.",
+        "actionableInsight": "Este tema requiere atención inmediata; esperar declaraciones oficiales o reacciones del mercado.",
+        "confidenceNote": "Mayor confianza con más fuentes; verificar si hay fuentes de nivel 1 entre ellas."
+      },
+      "keyword_spike": {
+        "whyItMatters": "Un término aparece con frecuencia significativamente mayor que su línea base en múltiples fuentes, indicando una historia en desarrollo.",
+        "actionableInsight": "Revisar titulares relacionados y resumen de IA, luego correlacionar con inestabilidad del país y movimientos del mercado.",
+        "confidenceNote": "La confianza aumenta con un multiplicador de línea base más fuerte y mayor diversidad de fuentes."
+      },
+      "convergence": {
+        "whyItMatters": "Múltiples tipos de fuentes independientes confirman el mismo evento: la validación cruzada aumenta la probabilidad de precisión.",
+        "actionableInsight": "Tratar esto como inteligencia de alta confianza; la triangulación reduce el riesgo de falsos positivos.",
+        "confidenceNote": "Confianza muy alta cuando se alinean fuentes de agencias, gubernamentales y de inteligencia."
+      },
+      "triangulation": {
+        "whyItMatters": "El \"triángulo de autoridad\" (agencias de noticias, fuentes gubernamentales, especialistas en inteligencia) está alineado: este es el estándar de oro para la confirmación de noticias de última hora.",
+        "actionableInsight": "Esta es inteligencia procesable; esperar reacciones del mercado o políticas de forma inminente.",
+        "confidenceNote": "Señal de mayor confianza en el sistema: múltiples fuentes autorizadas coinciden."
+      },
+      "flow_drop": {
+        "whyItMatters": "Interrupción detectada en el flujo físico de materias primas: las restricciones de suministro a menudo preceden a picos de precios.",
+        "actionableInsight": "Monitorear precios de materias primas energéticas; evaluar la exposición de la cadena de suministro.",
+        "confidenceNote": "La confianza depende de la duración de la interrupción y la disponibilidad de suministro alternativo."
+      },
+      "flow_price_divergence": {
+        "whyItMatters": "La interrupción del suministro no se refleja aún en los precios de las materias primas: posible ventaja informativa.",
+        "actionableInsight": "O los mercados tardan en reaccionar, o la interrupción es menos significativa de lo reportado.",
+        "confidenceNote": "Confianza media: los mercados pueden tener mejor información que los informes de noticias."
+      },
+      "geo_convergence": {
+        "whyItMatters": "Múltiples eventos noticiosos se agrupan en la misma ubicación geográfica: posible escalada o actividad coordinada.",
+        "actionableInsight": "Aumentar la prioridad de monitoreo para esta región; correlacionar con datos satelitales/AIS si están disponibles.",
+        "confidenceNote": "Mayor confianza si los eventos abarcan múltiples tipos de fuentes y períodos de tiempo."
+      },
+      "explained_market_move": {
+        "whyItMatters": "El movimiento del mercado tiene un catalizador de noticias claro: sin misterio, la acción del precio refleja información conocida.",
+        "actionableInsight": "Entender la narrativa que impulsa el movimiento; evaluar si la reacción es proporcional.",
+        "confidenceNote": "Alta confianza: noticias y acción del precio están correlacionadas."
+      },
+      "hotspot_escalation": {
+        "whyItMatters": "Un punto caliente geopolítico muestra una escalada significativa basada en actividad noticiosa, inestabilidad del país, convergencia geográfica y presencia militar.",
+        "actionableInsight": "Aumentar la prioridad de monitoreo; evaluar impactos secundarios en infraestructura, mercados y estabilidad regional.",
+        "confidenceNote": "Confianza ponderada por múltiples fuentes de datos: noticias (35%), inestabilidad del país (25%), geoconvergencia (25%), actividad militar (15%)."
+      },
+      "sector_cascade": {
+        "whyItMatters": "El movimiento del mercado se propaga en cascada a través de sectores relacionados: indica una reacción sistémica a un evento catalizador.",
+        "actionableInsight": "Identificar el catalizador principal; evaluar la exposición en activos correlacionados.",
+        "confidenceNote": "Mayor confianza cuando múltiples sectores se mueven con velocidad y dirección similares."
+      },
+      "military_surge": {
+        "whyItMatters": "La actividad de transporte militar significativamente por encima de la línea base: indica posible despliegue, operación humanitaria o proyección de fuerza.",
+        "actionableInsight": "Correlacionar con noticias regionales; evaluar actividad en bases cercanas y movimientos navales.",
+        "confidenceNote": "Mayor confianza con actividad sostenida durante múltiples horas y tipos de aeronaves diversas."
+      },
+      "fallback": {
+        "whyItMatters": "Señal detectada.",
+        "actionableInsight": "Monitorear desarrollos.",
+        "confidenceNote": "Confianza estándar."
+      }
+    }
+  },
+  "alerts": {
+    "instabilityRising": "Inestabilidad en aumento en {{country}}",
+    "instabilityFalling": "Inestabilidad en descenso en {{country}}",
+    "indexRose": "El índice de inestabilidad subió de {{from}} a {{to}} ({{change}}). Factor: {{driver}}",
+    "indexFell": "El índice de inestabilidad bajó de {{from}} a {{to}} ({{change}}). Factor: {{driver}}",
+    "geoAlert": "Alerta geográfica: {{location}}",
+    "cascadeAlert": "Alerta de cascada de infraestructura",
+    "infraAlert": "Alerta de infraestructura: {{name}}",
+    "countriesAffected": "{{count}} países afectados, mayor impacto: {{impact}}",
+    "alert": "Alerta: {{location}}",
+    "multipleRegions": "Múltiples regiones",
+    "trending": "\"{{term}}\" en tendencia — {{count}} menciones en {{hours}}h",
+    "eventsDetected": "{{count}} eventos detectados en la región ({{lat}}°, {{lon}}°)"
+  },
+  "intel": {
+    "topics": {
+      "military": {
+        "name": "Actividad militar",
+        "description": "Ejercicios militares, despliegues y operaciones"
+      },
+      "cyber": {
+        "name": "Amenazas cibernéticas",
+        "description": "Ciberataques, ransomware y amenazas digitales"
+      },
+      "nuclear": {
+        "name": "Nuclear",
+        "description": "Programas nucleares, inspecciones del OIEA, proliferación"
+      },
+      "sanctions": {
+        "name": "Sanciones",
+        "description": "Sanciones económicas y restricciones comerciales"
+      },
+      "intelligence": {
+        "name": "Inteligencia",
+        "description": "Espionaje, operaciones de inteligencia, vigilancia"
+      },
+      "maritime": {
+        "name": "Seguridad marítima",
+        "description": "Operaciones navales, puntos de estrangulamiento marítimos, rutas marítimas"
+      }
+    }
+  },
+  "common": {
+    "loading": "Cargando...",
+    "error": "Error",
+    "noData": "No hay datos disponibles",
+    "updated": "Actualizado ahora",
+    "ago": "hace {{time}}",
+    "retrying": "Reintentando...",
+    "failedToLoad": "Error al cargar los datos",
+    "noDataShort": "Sin datos",
+    "noDataAvailable": "No hay datos disponibles",
+    "upstreamUnavailable": "API de origen no disponible — reintento automático",
+    "loadingUcdpEvents": "Cargando eventos UCDP",
+    "loadingStablecoins": "Cargando stablecoins...",
+    "scanningThermalData": "Escaneando datos térmicos",
+    "calculatingExposure": "Calculando exposición",
+    "computingSignals": "Calculando señales...",
+    "loadingEtfData": "Cargando datos ETF...",
+    "loadingDisplacement": "Cargando datos de desplazamiento",
+    "loadingClimateData": "Cargando datos climáticos",
+    "failedTechReadiness": "Error al cargar datos de preparación tecnológica",
+    "failedRiskOverview": "Error al calcular el panorama de riesgos",
+    "failedPredictions": "Error al cargar las predicciones",
+    "failedCII": "Error al calcular el CII",
+    "failedDependencyGraph": "Error al construir el grafo de dependencias",
+    "failedIntelFeed": "Error al cargar el feed de inteligencia",
+    "failedMarketData": "Error al cargar datos de mercado",
+    "failedSectorData": "Error al cargar datos sectoriales",
+    "failedCommodities": "Error al cargar materias primas",
+    "failedCryptoData": "Error al cargar datos de criptomonedas",
+    "failedClusterNews": "Error al agrupar noticias",
+    "noNewsAvailable": "No hay noticias disponibles",
+    "noActiveTechHubs": "Sin hubs tecnológicos activos",
+    "noActiveGeoHubs": "Sin hubs geopolíticos activos",
+    "allSourcesDisabled": "Todas las fuentes desactivadas",
+    "allIntelSourcesDisabled": "Todas las fuentes Intel desactivadas",
+    "noEventsInCategory": "Sin eventos en esta categoría",
+    "exportCsv": "Exportar CSV",
+    "exportJson": "Exportar JSON",
+    "exportData": "Exportar datos",
+    "exportImage": "Exportar imagen",
+    "unrest": "Disturbios",
+    "conflict": "Conflicto",
+    "security": "Seguridad",
+    "information": "Información",
+    "shareStory": "Compartir historia",
+    "selectAll": "Seleccionar todo",
+    "selectNone": "Seleccionar Ninguno",
+    "new": "NUEVO",
+    "live": "EN VIVO",
+    "cached": "EN CACHE",
+    "unavailable": "NO DISPONIBLE",
+    "close": "Cerrar",
+    "currentVariant": "(actual)",
+    "retry": "Retry",
+    "refresh": "Refresh"
+  }
+}

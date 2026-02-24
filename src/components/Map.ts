@@ -1,9 +1,12 @@
 import * as d3 from 'd3';
 import * as topojson from 'topojson-client';
 import { escapeHtml } from '@/utils/sanitize';
+import { getCSSColor } from '@/utils';
 import type { Topology, GeometryCollection } from 'topojson-specification';
 import type { Feature, Geometry } from 'geojson';
-import type { MapLayers, Hotspot, NewsItem, Earthquake, InternetOutage, RelatedAsset, AssetType, AisDisruptionEvent, AisDensityZone, CableAdvisory, RepairShip, SocialUnrestEvent, AirportDelayAlert, MilitaryFlight, MilitaryVessel, MilitaryFlightCluster, MilitaryVesselCluster, NaturalEvent } from '@/types';
+import type { MapLayers, Hotspot, NewsItem, InternetOutage, RelatedAsset, AssetType, AisDisruptionEvent, AisDensityZone, CableAdvisory, RepairShip, SocialUnrestEvent, MilitaryFlight, MilitaryVessel, MilitaryFlightCluster, MilitaryVesselCluster, NaturalEvent, CyberThreat, CableHealthRecord } from '@/types';
+import type { AirportDelayAlert } from '@/services/aviation';
+import type { Earthquake } from '@/services/earthquakes';
 import type { TechHubActivity } from '@/services/tech-activity';
 import type { GeoHubActivity } from '@/services/geo-activity';
 import { getNaturalEventIcon } from '@/services/eonet';
@@ -33,6 +36,11 @@ import {
   ACCELERATORS,
   TECH_HQS,
   CLOUD_REGIONS,
+  // Finance variant data
+  STOCK_EXCHANGES,
+  FINANCIAL_CENTERS,
+  CENTRAL_BANKS,
+  COMMODITY_HUBS,
 } from '@/config';
 import { MapPopup } from './MapPopup';
 import {
@@ -44,6 +52,7 @@ import {
 } from '@/services/hotspot-escalation';
 import { getCountryScore } from '@/services/country-instability';
 import { getAlertsNearLocation } from '@/services/geo-convergence';
+import { t } from '@/services/i18n';
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
 export type MapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
@@ -112,6 +121,7 @@ export class MapComponent {
   private aisDensity: AisDensityZone[] = [];
   private cableAdvisories: CableAdvisory[] = [];
   private repairShips: RepairShip[] = [];
+  private healthByCableId: Record<string, CableHealthRecord> = {};
   private protests: SocialUnrestEvent[] = [];
   private flightDelays: AirportDelayAlert[] = [];
   private militaryFlights: MilitaryFlight[] = [];
@@ -129,7 +139,7 @@ export class MapComponent {
   private popup: MapPopup;
   private onHotspotClick?: (hotspot: Hotspot) => void;
   private onTimeRangeChange?: (range: TimeRange) => void;
-  private onLayerChange?: (layer: keyof MapLayers, enabled: boolean) => void;
+  private onLayerChange?: (layer: keyof MapLayers, enabled: boolean, source: 'user' | 'programmatic') => void;
   private layerZoomOverrides: Partial<Record<keyof MapLayers, boolean>> = {};
   private onStateChange?: (state: MapState) => void;
   private highlightedAssets: Record<AssetType, Set<string>> = {
@@ -143,7 +153,6 @@ export class MapComponent {
   private renderScheduled = false;
   private lastRenderTime = 0;
   private readonly MIN_RENDER_INTERVAL_MS = 100;
-  private timestampIntervalId: ReturnType<typeof setInterval> | null = null;
   private healthCheckIntervalId: ReturnType<typeof setInterval> | null = null;
 
   constructor(container: HTMLElement, initialState: MapState) {
@@ -175,7 +184,7 @@ export class MapComponent {
     container.appendChild(this.createTimeSlider());
     container.appendChild(this.createLayerToggles());
     container.appendChild(this.createLegend());
-    container.appendChild(this.createTimestamp());
+    this.healthCheckIntervalId = setInterval(() => this.runHealthCheck(), 30000);
 
     this.svg = d3.select(svgElement);
     this.baseLayerGroup = this.svg.append('g').attr('class', 'map-base');
@@ -186,6 +195,11 @@ export class MapComponent {
     this.setupZoomHandlers();
     this.loadMapData();
     this.setupResizeObserver();
+
+    window.addEventListener('theme-changed', () => {
+      this.baseRendered = false;
+      this.render();
+    });
   }
 
   private setupResizeObserver(): void {
@@ -214,10 +228,6 @@ export class MapComponent {
 
   public destroy(): void {
     document.removeEventListener('visibilitychange', this.boundVisibilityHandler);
-    if (this.timestampIntervalId) {
-      clearInterval(this.timestampIntervalId);
-      this.timestampIntervalId = null;
-    }
     if (this.healthCheckIntervalId) {
       clearInterval(this.healthCheckIntervalId);
       this.healthCheckIntervalId = null;
@@ -311,15 +321,7 @@ export class MapComponent {
     return ranges[this.state.timeRange];
   }
 
-  private filterByTime<T extends { time?: Date }>(items: T[]): T[] {
-    if (this.state.timeRange === 'all') return items;
-    const now = Date.now();
-    const cutoff = now - this.getTimeRangeMs();
-    return items.filter((item) => {
-      if (!item.time) return true;
-      return item.time.getTime() >= cutoff;
-    });
-  }
+
 
   private createLayerToggles(): HTMLElement {
     const toggles = document.createElement('div');
@@ -332,6 +334,7 @@ export class MapComponent {
       'bases', 'nuclear', 'irradiators',                 // military/strategic
       'military',                                         // military tracking (flights + vessels)
       'cables', 'pipelines', 'outages', 'datacenters',   // infrastructure
+      // cyberThreats is intentionally hidden on SVG/mobile fallback (DeckGL desktop only)
       'ais', 'flights',                                   // transport
       'natural', 'weather',                               // natural
       'economic',                                         // economic
@@ -343,18 +346,52 @@ export class MapComponent {
       'natural', 'weather',                               // natural events
       'economic',                                         // economic/geographic
     ];
-    const layers = SITE_VARIANT === 'tech' ? techLayers : fullLayers;
-    const layerLabels: Partial<Record<keyof MapLayers, string>> = {
-      ais: 'Shipping',
-      flights: 'Delays',
-      military: 'Military',
+    const financeLayers: (keyof MapLayers)[] = [
+      'stockExchanges', 'financialCenters', 'centralBanks', 'commodityHubs', // finance ecosystem
+      'cables', 'pipelines', 'outages',                   // infrastructure
+      'sanctions', 'economic', 'waterways',               // geopolitical/economic
+      'natural', 'weather',                               // natural events
+    ];
+    const layers = SITE_VARIANT === 'tech' ? techLayers : SITE_VARIANT === 'finance' ? financeLayers : fullLayers;
+    const layerLabelKeys: Partial<Record<keyof MapLayers, string>> = {
+      hotspots: 'components.deckgl.layers.intelHotspots',
+      conflicts: 'components.deckgl.layers.conflictZones',
+      bases: 'components.deckgl.layers.militaryBases',
+      nuclear: 'components.deckgl.layers.nuclearSites',
+      irradiators: 'components.deckgl.layers.gammaIrradiators',
+      military: 'components.deckgl.layers.militaryActivity',
+      cables: 'components.deckgl.layers.underseaCables',
+      pipelines: 'components.deckgl.layers.pipelines',
+      outages: 'components.deckgl.layers.internetOutages',
+      datacenters: 'components.deckgl.layers.aiDataCenters',
+      ais: 'components.deckgl.layers.shipTraffic',
+      flights: 'components.deckgl.layers.flightDelays',
+      natural: 'components.deckgl.layers.naturalEvents',
+      weather: 'components.deckgl.layers.weatherAlerts',
+      economic: 'components.deckgl.layers.economicCenters',
+      waterways: 'components.deckgl.layers.strategicWaterways',
+      startupHubs: 'components.deckgl.layers.startupHubs',
+      cloudRegions: 'components.deckgl.layers.cloudRegions',
+      accelerators: 'components.deckgl.layers.accelerators',
+      techHQs: 'components.deckgl.layers.techHQs',
+      techEvents: 'components.deckgl.layers.techEvents',
+      stockExchanges: 'components.deckgl.layers.stockExchanges',
+      financialCenters: 'components.deckgl.layers.financialCenters',
+      centralBanks: 'components.deckgl.layers.centralBanks',
+      commodityHubs: 'components.deckgl.layers.commodityHubs',
+      gulfInvestments: 'components.deckgl.layers.gulfInvestments',
+    };
+    const getLayerLabel = (layer: keyof MapLayers): string => {
+      if (layer === 'sanctions') return t('components.deckgl.layerHelp.labels.sanctions');
+      const key = layerLabelKeys[layer];
+      return key ? t(key) : layer;
     };
 
     layers.forEach((layer) => {
       const btn = document.createElement('button');
       btn.className = `layer-toggle ${this.state.layers[layer] ? 'active' : ''}`;
       btn.dataset.layer = layer;
-      btn.textContent = layerLabels[layer] || layer;
+      btn.textContent = getLayerLabel(layer);
       btn.addEventListener('click', () => this.toggleLayer(layer));
       toggles.appendChild(btn);
     });
@@ -363,7 +400,7 @@ export class MapComponent {
     const helpBtn = document.createElement('button');
     helpBtn.className = 'layer-help-btn';
     helpBtn.textContent = '?';
-    helpBtn.title = 'Layer descriptions';
+    helpBtn.title = t('components.deckgl.layerGuide');
     helpBtn.addEventListener('click', () => this.showLayerHelp());
     toggles.appendChild(helpBtn);
 
@@ -380,88 +417,126 @@ export class MapComponent {
     const popup = document.createElement('div');
     popup.className = 'layer-help-popup';
 
-    const techHelpContent = `
+    const label = (layerKey: string): string => t(`components.deckgl.layers.${layerKey}`).toUpperCase();
+    const staticLabel = (labelKey: string): string => t(`components.deckgl.layerHelp.labels.${labelKey}`).toUpperCase();
+    const helpItem = (layerLabel: string, descriptionKey: string): string =>
+      `<div class="layer-help-item"><span>${layerLabel}</span> ${t(`components.deckgl.layerHelp.descriptions.${descriptionKey}`)}</div>`;
+    const helpSection = (titleKey: string, items: string[], noteKey?: string): string => `
+      <div class="layer-help-section">
+        <div class="layer-help-title">${t(`components.deckgl.layerHelp.sections.${titleKey}`)}</div>
+        ${items.join('')}
+        ${noteKey ? `<div class="layer-help-note">${t(`components.deckgl.layerHelp.notes.${noteKey}`)}</div>` : ''}
+      </div>
+    `;
+    const helpHeader = `
       <div class="layer-help-header">
-        <span>Map Layers Guide</span>
+        <span>${t('components.deckgl.layerHelp.title')}</span>
         <button class="layer-help-close">×</button>
       </div>
+    `;
+
+    const techHelpContent = `
+      ${helpHeader}
       <div class="layer-help-content">
-        <div class="layer-help-section">
-          <div class="layer-help-title">Tech Ecosystem</div>
-          <div class="layer-help-item"><span>STARTUPHUBS</span> Major startup ecosystems (SF, NYC, London, etc.)</div>
-          <div class="layer-help-item"><span>CLOUDREGIONS</span> AWS, Azure, GCP data center regions</div>
-          <div class="layer-help-item"><span>TECHHQS</span> Headquarters of major tech companies</div>
-          <div class="layer-help-item"><span>ACCELERATORS</span> Y Combinator, Techstars, 500 Startups locations</div>
-        </div>
-        <div class="layer-help-section">
-          <div class="layer-help-title">Infrastructure</div>
-          <div class="layer-help-item"><span>CABLES</span> Major undersea fiber optic cables (internet backbone)</div>
-          <div class="layer-help-item"><span>DATACENTERS</span> AI compute clusters ≥10,000 GPUs</div>
-          <div class="layer-help-item"><span>OUTAGES</span> Internet blackouts and service disruptions</div>
-        </div>
-        <div class="layer-help-section">
-          <div class="layer-help-title">Natural & Economic</div>
-          <div class="layer-help-item"><span>NATURAL</span> Earthquakes, storms, fires (may affect data centers)</div>
-          <div class="layer-help-item"><span>WEATHER</span> Severe weather alerts</div>
-          <div class="layer-help-item"><span>ECONOMIC</span> Stock exchanges & central banks</div>
-          <div class="layer-help-item"><span>COUNTRIES</span> Country name overlays</div>
-        </div>
+        ${helpSection('techEcosystem', [
+          helpItem(label('startupHubs'), 'techStartupHubs'),
+          helpItem(label('cloudRegions'), 'techCloudRegions'),
+          helpItem(label('techHQs'), 'techHQs'),
+          helpItem(label('accelerators'), 'techAccelerators'),
+          helpItem(label('techEvents'), 'techEvents'),
+        ])}
+        ${helpSection('infrastructure', [
+          helpItem(label('underseaCables'), 'infraCables'),
+          helpItem(label('aiDataCenters'), 'infraDatacenters'),
+          helpItem(label('internetOutages'), 'infraOutages'),
+          helpItem(label('cyberThreats'), 'techCyberThreats'),
+        ])}
+        ${helpSection('naturalEconomic', [
+          helpItem(label('naturalEvents'), 'naturalEventsTech'),
+          helpItem(label('fires'), 'techFires'),
+          helpItem(staticLabel('countries'), 'countriesOverlay'),
+        ])}
+      </div>
+    `;
+
+    const financeHelpContent = `
+      ${helpHeader}
+      <div class="layer-help-content">
+        ${helpSection('financeCore', [
+          helpItem(label('stockExchanges'), 'financeExchanges'),
+          helpItem(label('financialCenters'), 'financeCenters'),
+          helpItem(label('centralBanks'), 'financeCentralBanks'),
+          helpItem(label('commodityHubs'), 'financeCommodityHubs'),
+          helpItem(label('gulfInvestments'), 'financeGulfInvestments'),
+        ])}
+        ${helpSection('infrastructureRisk', [
+          helpItem(label('underseaCables'), 'financeCables'),
+          helpItem(label('pipelines'), 'financePipelines'),
+          helpItem(label('internetOutages'), 'financeOutages'),
+          helpItem(label('cyberThreats'), 'financeCyberThreats'),
+        ])}
+        ${helpSection('macroContext', [
+          helpItem(label('economicCenters'), 'economicCenters'),
+          helpItem(label('strategicWaterways'), 'macroWaterways'),
+          helpItem(label('weatherAlerts'), 'weatherAlertsMarket'),
+          helpItem(label('naturalEvents'), 'naturalEventsMacro'),
+        ])}
       </div>
     `;
 
     const fullHelpContent = `
-      <div class="layer-help-header">
-        <span>Map Layers Guide</span>
-        <button class="layer-help-close">×</button>
-      </div>
+      ${helpHeader}
       <div class="layer-help-content">
-        <div class="layer-help-section">
-          <div class="layer-help-title">Time Filter (top-right)</div>
-          <div class="layer-help-item"><span>1H/6H/24H</span> Filter time-based data to recent hours</div>
-          <div class="layer-help-item"><span>7D/30D/ALL</span> Show data from past week, month, or all time</div>
-          <div class="layer-help-note">Affects: Earthquakes, Weather, Protests, Outages</div>
-        </div>
-        <div class="layer-help-section">
-          <div class="layer-help-title">Geopolitical</div>
-          <div class="layer-help-item"><span>CONFLICTS</span> Active war zones (Ukraine, Gaza, etc.) with boundaries</div>
-          <div class="layer-help-item"><span>HOTSPOTS</span> Tension regions - color-coded by news activity level</div>
-          <div class="layer-help-item"><span>SANCTIONS</span> Countries under US/EU/UN economic sanctions</div>
-          <div class="layer-help-item"><span>PROTESTS</span> Civil unrest, demonstrations (time-filtered)</div>
-        </div>
-        <div class="layer-help-section">
-          <div class="layer-help-title">Military & Strategic</div>
-          <div class="layer-help-item"><span>BASES</span> US/NATO, China, Russia military installations (150+)</div>
-          <div class="layer-help-item"><span>NUCLEAR</span> Power plants, enrichment, weapons facilities</div>
-          <div class="layer-help-item"><span>IRRADIATORS</span> Industrial gamma irradiator facilities</div>
-          <div class="layer-help-item"><span>MILITARY</span> Live military aircraft and vessel tracking</div>
-        </div>
-        <div class="layer-help-section">
-          <div class="layer-help-title">Infrastructure</div>
-          <div class="layer-help-item"><span>CABLES</span> Major undersea fiber optic cables (20 backbone routes)</div>
-          <div class="layer-help-item"><span>PIPELINES</span> Oil/gas pipelines (Nord Stream, TAPI, etc.)</div>
-          <div class="layer-help-item"><span>OUTAGES</span> Internet blackouts and disruptions</div>
-          <div class="layer-help-item"><span>DATACENTERS</span> AI compute clusters ≥10,000 GPUs only</div>
-        </div>
-        <div class="layer-help-section">
-          <div class="layer-help-title">Transport</div>
-          <div class="layer-help-item"><span>SHIPPING</span> Vessels, chokepoints, 61 strategic ports</div>
-          <div class="layer-help-item"><span>DELAYS</span> Airport delays and ground stops (FAA)</div>
-        </div>
-        <div class="layer-help-section">
-          <div class="layer-help-title">Natural & Economic</div>
-          <div class="layer-help-item"><span>NATURAL</span> Earthquakes (USGS) + storms, fires, volcanoes, floods (NASA EONET)</div>
-          <div class="layer-help-item"><span>WEATHER</span> Severe weather alerts</div>
-          <div class="layer-help-item"><span>ECONOMIC</span> Stock exchanges & central banks</div>
-        </div>
-        <div class="layer-help-section">
-          <div class="layer-help-title">Labels</div>
-          <div class="layer-help-item"><span>COUNTRIES</span> Country name overlays</div>
-          <div class="layer-help-item"><span>WATERWAYS</span> Strategic chokepoint labels</div>
-        </div>
+        ${helpSection('timeFilter', [
+          helpItem(staticLabel('timeRecent'), 'timeRecent'),
+          helpItem(staticLabel('timeExtended'), 'timeExtended'),
+        ], 'timeAffects')}
+        ${helpSection('geopolitical', [
+          helpItem(label('conflictZones'), 'geoConflicts'),
+          helpItem(label('intelHotspots'), 'geoHotspots'),
+          helpItem(staticLabel('sanctions'), 'geoSanctions'),
+          helpItem(label('protests'), 'geoProtests'),
+          helpItem(label('ucdpEvents'), 'geoUcdpEvents'),
+          helpItem(label('displacementFlows'), 'geoDisplacement'),
+        ])}
+        ${helpSection('militaryStrategic', [
+          helpItem(label('militaryBases'), 'militaryBases'),
+          helpItem(label('nuclearSites'), 'militaryNuclear'),
+          helpItem(label('gammaIrradiators'), 'militaryIrradiators'),
+          helpItem(label('militaryActivity'), 'militaryActivity'),
+          helpItem(label('spaceports'), 'militarySpaceports'),
+        ])}
+        ${helpSection('infrastructure', [
+          helpItem(label('underseaCables'), 'infraCablesFull'),
+          helpItem(label('pipelines'), 'infraPipelinesFull'),
+          helpItem(label('internetOutages'), 'infraOutages'),
+          helpItem(label('aiDataCenters'), 'infraDatacentersFull'),
+          helpItem(label('cyberThreats'), 'infraCyberThreats'),
+        ])}
+        ${helpSection('transport', [
+          helpItem(label('shipTraffic'), 'transportShipping'),
+          helpItem(label('flightDelays'), 'transportDelays'),
+        ])}
+        ${helpSection('naturalEconomic', [
+          helpItem(label('naturalEvents'), 'naturalEventsFull'),
+          helpItem(label('fires'), 'firesFull'),
+          helpItem(label('weatherAlerts'), 'weatherAlerts'),
+          helpItem(label('climateAnomalies'), 'climateAnomalies'),
+          helpItem(label('economicCenters'), 'economicCenters'),
+          helpItem(label('criticalMinerals'), 'mineralsFull'),
+        ])}
+        ${helpSection('labels', [
+          helpItem(staticLabel('countries'), 'countriesOverlay'),
+          helpItem(label('strategicWaterways'), 'waterwaysLabels'),
+        ])}
       </div>
     `;
 
-    popup.innerHTML = SITE_VARIANT === 'tech' ? techHelpContent : fullHelpContent;
+    popup.innerHTML = SITE_VARIANT === 'tech'
+      ? techHelpContent
+      : SITE_VARIANT === 'finance'
+      ? financeHelpContent
+      : fullHelpContent;
 
     popup.querySelector('.layer-help-close')?.addEventListener('click', () => popup.remove());
 
@@ -501,35 +576,24 @@ export class MapComponent {
     if (SITE_VARIANT === 'tech') {
       // Tech variant legend
       legend.innerHTML = `
-        <div class="map-legend-item"><span class="legend-dot" style="background:#8b5cf6"></span>TECH HQ</div>
-        <div class="map-legend-item"><span class="legend-dot" style="background:#06b6d4"></span>STARTUP HUB</div>
-        <div class="map-legend-item"><span class="legend-dot" style="background:#f59e0b"></span>CLOUD REGION</div>
-        <div class="map-legend-item"><span class="map-legend-icon" style="color:#a855f7">📅</span>TECH EVENT</div>
-        <div class="map-legend-item"><span class="map-legend-icon" style="color:#4ecdc4">💾</span>DATACENTER</div>
+        <div class="map-legend-item"><span class="legend-dot" style="background:#8b5cf6"></span>${escapeHtml(t('components.deckgl.layers.techHQs').toUpperCase())}</div>
+        <div class="map-legend-item"><span class="legend-dot" style="background:#06b6d4"></span>${escapeHtml(t('components.deckgl.layers.startupHubs').toUpperCase())}</div>
+        <div class="map-legend-item"><span class="legend-dot" style="background:#f59e0b"></span>${escapeHtml(t('components.deckgl.layers.cloudRegions').toUpperCase())}</div>
+        <div class="map-legend-item"><span class="map-legend-icon" style="color:#a855f7">📅</span>${escapeHtml(t('components.deckgl.layers.techEvents').toUpperCase())}</div>
+        <div class="map-legend-item"><span class="map-legend-icon" style="color:#4ecdc4">💾</span>${escapeHtml(t('components.deckgl.layers.aiDataCenters').toUpperCase())}</div>
       `;
     } else {
       // Geopolitical variant legend
       legend.innerHTML = `
-        <div class="map-legend-item"><span class="legend-dot high"></span>HIGH ALERT</div>
-        <div class="map-legend-item"><span class="legend-dot elevated"></span>ELEVATED</div>
-        <div class="map-legend-item"><span class="legend-dot low"></span>MONITORING</div>
-        <div class="map-legend-item"><span class="map-legend-icon conflict">⚔</span>CONFLICT</div>
-        <div class="map-legend-item"><span class="map-legend-icon earthquake">●</span>EARTHQUAKE</div>
+        <div class="map-legend-item"><span class="legend-dot high"></span>${escapeHtml((t('popups.hotspot.levels.high') ?? 'HIGH').toUpperCase())}</div>
+        <div class="map-legend-item"><span class="legend-dot elevated"></span>${escapeHtml((t('popups.hotspot.levels.elevated') ?? 'ELEVATED').toUpperCase())}</div>
+        <div class="map-legend-item"><span class="legend-dot low"></span>${escapeHtml((t('popups.monitoring') ?? 'MONITORING').toUpperCase())}</div>
+        <div class="map-legend-item"><span class="map-legend-icon conflict">⚔</span>${escapeHtml(t('modals.search.types.conflict').toUpperCase())}</div>
+        <div class="map-legend-item"><span class="map-legend-icon earthquake">●</span>${escapeHtml(t('modals.search.types.earthquake').toUpperCase())}</div>
         <div class="map-legend-item"><span class="map-legend-icon apt">⚠</span>APT</div>
       `;
     }
     return legend;
-  }
-
-  private createTimestamp(): HTMLElement {
-    const timestamp = document.createElement('div');
-    timestamp.className = 'map-timestamp';
-    timestamp.id = 'mapTimestamp';
-    this.updateTimestamp(timestamp);
-    this.timestampIntervalId = setInterval(() => this.updateTimestamp(timestamp), 60000);
-    // Health check every 30 seconds to detect and recover from base layer issues
-    this.healthCheckIntervalId = setInterval(() => this.runHealthCheck(), 30000);
-    return timestamp;
   }
 
   private runHealthCheck(): void {
@@ -555,16 +619,19 @@ export class MapComponent {
     }
   }
 
-  private updateTimestamp(el: HTMLElement): void {
-    const now = new Date();
-    el.innerHTML = `LAST UPDATE: ${now.toUTCString().replace('GMT', 'UTC')}`;
-  }
-
   private setupZoomHandlers(): void {
     let isDragging = false;
     let lastPos = { x: 0, y: 0 };
     let lastTouchDist = 0;
     let lastTouchCenter = { x: 0, y: 0 };
+    const shouldIgnoreInteractionStart = (target: EventTarget | null): boolean => {
+      if (!(target instanceof Element)) return false;
+      return Boolean(
+        target.closest(
+          '.map-controls, .time-slider, .layer-toggles, .map-legend, .layer-help-popup, .map-popup, button, select, input, textarea, a'
+        )
+      );
+    };
 
     // Wheel zoom with smooth delta
     this.container.addEventListener(
@@ -597,6 +664,7 @@ export class MapComponent {
 
     // Mouse drag for panning
     this.container.addEventListener('mousedown', (e) => {
+      if (shouldIgnoreInteractionStart(e.target)) return;
       if (e.button === 0) { // Left click
         isDragging = true;
         lastPos = { x: e.clientX, y: e.clientY };
@@ -627,6 +695,7 @@ export class MapComponent {
 
     // Touch events for mobile and trackpad
     this.container.addEventListener('touchstart', (e) => {
+      if (shouldIgnoreInteractionStart(e.target)) return;
       const touch1 = e.touches[0];
       const touch2 = e.touches[1];
 
@@ -761,6 +830,7 @@ export class MapComponent {
     }
 
     // Simple viewBox matching container - keeps SVG and overlays aligned
+    if (!this.svg) return;
     this.svg.attr('viewBox', `0 0 ${width} ${height}`);
 
     // CRITICAL: Always refresh d3 selections from actual DOM to prevent stale references
@@ -815,7 +885,7 @@ export class MapComponent {
         .attr('y', -height)
         .attr('width', width * 3)
         .attr('height', height * 3)
-        .attr('fill', '#020a08');
+        .attr('fill', getCSSColor('--map-bg'));
 
       // Grid
       this.renderGrid(this.baseLayerGroup, width, height);
@@ -898,7 +968,7 @@ export class MapComponent {
         .attr('y1', yStart)
         .attr('x2', x)
         .attr('y2', yStart + height)
-        .attr('stroke', '#0a2a20')
+        .attr('stroke', getCSSColor('--map-grid'))
         .attr('stroke-width', 0.5);
     }
 
@@ -909,7 +979,7 @@ export class MapComponent {
         .attr('y1', y)
         .attr('x2', width)
         .attr('y2', y)
-        .attr('stroke', '#0a2a20')
+        .attr('stroke', getCSSColor('--map-grid'))
         .attr('stroke-width', 0.5);
     }
   }
@@ -945,7 +1015,7 @@ export class MapComponent {
       .attr('class', 'graticule')
       .attr('d', path)
       .attr('fill', 'none')
-      .attr('stroke', '#1a5045')
+      .attr('stroke', getCSSColor('--map-stroke'))
       .attr('stroke-width', 0.4);
   }
 
@@ -962,8 +1032,8 @@ export class MapComponent {
       .append('path')
       .attr('class', 'country')
       .attr('d', path as unknown as string)
-      .attr('fill', '#0d3028')
-      .attr('stroke', '#1a8060')
+      .attr('fill', getCSSColor('--map-country'))
+      .attr('stroke', getCSSColor('--map-stroke'))
       .attr('stroke-width', 0.7);
   }
 
@@ -981,11 +1051,13 @@ export class MapComponent {
       const isHighlighted = this.highlightedAssets.cable.has(cable.id);
       const cableAdvisory = this.getCableAdvisory(cable.id);
       const advisoryClass = cableAdvisory ? `cable-${cableAdvisory.severity}` : '';
+      const healthRecord = this.healthByCableId[cable.id];
+      const healthClass = healthRecord?.status === 'fault' ? 'cable-health-fault' : healthRecord?.status === 'degraded' ? 'cable-health-degraded' : '';
       const highlightClass = isHighlighted ? 'asset-highlight asset-highlight-cable' : '';
 
       const path = cableGroup
         .append('path')
-        .attr('class', `cable-path ${advisoryClass} ${highlightClass}`.trim())
+        .attr('class', `cable-path ${advisoryClass} ${healthClass} ${highlightClass}`.trim())
         .attr('d', lineGenerator(cable.points));
 
       path.append('title').text(cable.name);
@@ -1014,7 +1086,7 @@ export class MapComponent {
         .y((d) => projection(d)?.[1] ?? 0)
         .curve(d3.curveCardinal.tension(0.5));
 
-      const color = PIPELINE_COLORS[pipeline.type] || '#888888';
+      const color = PIPELINE_COLORS[pipeline.type] || getCSSColor('--text-dim');
       const opacity = 0.85;
       const dashArray = pipeline.status === 'construction' ? '4,2' : 'none';
 
@@ -1077,7 +1149,7 @@ export class MapComponent {
       high: 'rgba(255, 100, 0, 0.25)',
       moderate: 'rgba(255, 200, 0, 0.2)',
     };
-    const defaultFill = '#0d3028';
+    const defaultFill = getCSSColor('--map-country');
     const useSanctions = this.state.layers.sanctions;
 
     this.baseLayerGroup.selectAll('.country').each(function (datum) {
@@ -1113,8 +1185,9 @@ export class MapComponent {
       if (assigned.has(i)) continue;
 
       const item = items[i]!;
+      if (!Number.isFinite(item.lat) || !Number.isFinite(item.lon)) continue;
       const pos = projection([item.lon, item.lat]);
-      if (!pos) continue;
+      if (!pos || !Number.isFinite(pos[0]) || !Number.isFinite(pos[1])) continue;
 
       const cluster: T[] = [item];
       assigned.add(i);
@@ -1128,8 +1201,9 @@ export class MapComponent {
         // Skip if different group keys (e.g., different cities)
         if (getGroupKey && getGroupKey(other) !== itemKey) continue;
 
+        if (!Number.isFinite(other.lat) || !Number.isFinite(other.lon)) continue;
         const otherPos = projection([other.lon, other.lat]);
-        if (!otherPos) continue;
+        if (!otherPos || !Number.isFinite(otherPos[0]) || !Number.isFinite(otherPos[1])) continue;
 
         const dx = pos[0] - otherPos[0];
         const dy = pos[1] - otherPos[1];
@@ -1150,11 +1224,13 @@ export class MapComponent {
       const centerLat = sumLat / cluster.length;
       const centerLon = sumLon / cluster.length;
       const centerPos = projection([centerLon, centerLat]);
+      const finalPos = (centerPos && Number.isFinite(centerPos[0]) && Number.isFinite(centerPos[1]))
+        ? centerPos : pos;
 
       clusters.push({
         items: cluster,
         center: [centerLon, centerLat],
-        pos: centerPos || pos,
+        pos: finalPos,
       });
     }
 
@@ -1274,12 +1350,7 @@ export class MapComponent {
         div.style.left = `${pos[0]}px`;
         div.style.top = `${pos[1]}px`;
 
-        const breakingBadge = spot.hasBreaking
-          ? '<div class="hotspot-breaking">BREAKING</div>'
-          : '';
-
         div.innerHTML = `
-          ${breakingBadge}
           <div class="hotspot-marker ${escapeHtml(spot.level || 'low')}"></div>
         `;
 
@@ -1337,13 +1408,15 @@ export class MapComponent {
     // Earthquakes (magnitude-based sizing) - part of NATURAL layer
     if (this.state.layers.natural) {
       console.log('[Map] Rendering earthquakes. Total:', this.earthquakes.length, 'Layer enabled:', this.state.layers.natural);
-      const filteredQuakes = this.filterByTime(this.earthquakes);
+      const filteredQuakes = this.state.timeRange === 'all'
+        ? this.earthquakes
+        : this.earthquakes.filter((eq) => eq.occurredAt >= Date.now() - this.getTimeRangeMs());
       console.log('[Map] After time filter:', filteredQuakes.length, 'earthquakes. TimeRange:', this.state.timeRange);
       let rendered = 0;
       filteredQuakes.forEach((eq) => {
-        const pos = projection([eq.lon, eq.lat]);
+        const pos = projection([eq.location?.longitude ?? 0, eq.location?.latitude ?? 0]);
         if (!pos) {
-          console.log('[Map] Earthquake position null for:', eq.place, eq.lon, eq.lat);
+          console.log('[Map] Earthquake position null for:', eq.place, eq.location?.longitude, eq.location?.latitude);
           return;
         }
         rendered++;
@@ -1902,6 +1975,154 @@ export class MapComponent {
       });
     }
 
+    // Stock Exchanges (🏛️ icon by tier)
+    if (this.state.layers.stockExchanges) {
+      STOCK_EXCHANGES.forEach((exchange) => {
+        const pos = projection([exchange.lon, exchange.lat]);
+        if (!pos || !Number.isFinite(pos[0]) || !Number.isFinite(pos[1])) return;
+
+        const icon = exchange.tier === 'mega' ? '🏛️' : exchange.tier === 'major' ? '📊' : '📈';
+        const div = document.createElement('div');
+        div.className = `map-marker exchange-marker tier-${exchange.tier}`;
+        div.style.left = `${pos[0]}px`;
+        div.style.top = `${pos[1]}px`;
+        div.style.zIndex = exchange.tier === 'mega' ? '50' : '40';
+        div.textContent = icon;
+        div.title = `${exchange.shortName} (${exchange.city})`;
+
+        if ((this.state.zoom >= 2 && exchange.tier === 'mega') || this.state.zoom >= 3) {
+          const label = document.createElement('span');
+          label.className = 'marker-label';
+          label.textContent = exchange.shortName;
+          div.appendChild(label);
+        }
+
+        div.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const rect = this.container.getBoundingClientRect();
+          this.popup.show({
+            type: 'stockExchange',
+            data: exchange,
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top,
+          });
+        });
+
+        this.overlays.appendChild(div);
+      });
+    }
+
+    // Financial Centers (💰 icon by type)
+    if (this.state.layers.financialCenters) {
+      FINANCIAL_CENTERS.forEach((center) => {
+        const pos = projection([center.lon, center.lat]);
+        if (!pos || !Number.isFinite(pos[0]) || !Number.isFinite(pos[1])) return;
+
+        const icon = center.type === 'global' ? '💰' : center.type === 'regional' ? '🏦' : '🏝️';
+        const div = document.createElement('div');
+        div.className = `map-marker financial-center-marker type-${center.type}`;
+        div.style.left = `${pos[0]}px`;
+        div.style.top = `${pos[1]}px`;
+        div.style.zIndex = center.type === 'global' ? '45' : '35';
+        div.textContent = icon;
+        div.title = `${center.name} Financial Center`;
+
+        if ((this.state.zoom >= 2 && center.type === 'global') || this.state.zoom >= 3) {
+          const label = document.createElement('span');
+          label.className = 'marker-label';
+          label.textContent = center.name;
+          div.appendChild(label);
+        }
+
+        div.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const rect = this.container.getBoundingClientRect();
+          this.popup.show({
+            type: 'financialCenter',
+            data: center,
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top,
+          });
+        });
+
+        this.overlays.appendChild(div);
+      });
+    }
+
+    // Central Banks (🏛️ icon by type)
+    if (this.state.layers.centralBanks) {
+      CENTRAL_BANKS.forEach((bank) => {
+        const pos = projection([bank.lon, bank.lat]);
+        if (!pos || !Number.isFinite(pos[0]) || !Number.isFinite(pos[1])) return;
+
+        const icon = bank.type === 'supranational' ? '🌐' : bank.type === 'major' ? '🏛️' : '🏦';
+        const div = document.createElement('div');
+        div.className = `map-marker central-bank-marker type-${bank.type}`;
+        div.style.left = `${pos[0]}px`;
+        div.style.top = `${pos[1]}px`;
+        div.style.zIndex = bank.type === 'supranational' ? '48' : bank.type === 'major' ? '42' : '38';
+        div.textContent = icon;
+        div.title = `${bank.shortName} - ${bank.name}`;
+
+        if ((this.state.zoom >= 2 && (bank.type === 'major' || bank.type === 'supranational')) || this.state.zoom >= 3) {
+          const label = document.createElement('span');
+          label.className = 'marker-label';
+          label.textContent = bank.shortName;
+          div.appendChild(label);
+        }
+
+        div.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const rect = this.container.getBoundingClientRect();
+          this.popup.show({
+            type: 'centralBank',
+            data: bank,
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top,
+          });
+        });
+
+        this.overlays.appendChild(div);
+      });
+    }
+
+    // Commodity Hubs (⛽ icon by type)
+    if (this.state.layers.commodityHubs) {
+      COMMODITY_HUBS.forEach((hub) => {
+        const pos = projection([hub.lon, hub.lat]);
+        if (!pos || !Number.isFinite(pos[0]) || !Number.isFinite(pos[1])) return;
+
+        const icon = hub.type === 'exchange' ? '📦' : hub.type === 'port' ? '🚢' : '⛽';
+        const div = document.createElement('div');
+        div.className = `map-marker commodity-hub-marker type-${hub.type}`;
+        div.style.left = `${pos[0]}px`;
+        div.style.top = `${pos[1]}px`;
+        div.style.zIndex = '38';
+        div.textContent = icon;
+        div.title = `${hub.name} (${hub.city})`;
+
+        if (this.state.zoom >= 3) {
+          const label = document.createElement('span');
+          label.className = 'marker-label';
+          label.textContent = hub.name;
+          div.appendChild(label);
+        }
+
+        div.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const rect = this.container.getBoundingClientRect();
+          this.popup.show({
+            type: 'commodityHub',
+            data: hub,
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top,
+          });
+        });
+
+        this.overlays.appendChild(div);
+      });
+    }
+
     // Tech Hub Activity Markers (shows activity heatmap for tech hubs with news activity)
     if (SITE_VARIANT === 'tech' && this.techActivities.length > 0) {
       this.techActivities.forEach((activity) => {
@@ -2010,7 +2231,7 @@ export class MapComponent {
           badge.className = 'cluster-badge';
           badge.textContent = String(cluster.items.length);
           div.appendChild(badge);
-          div.title = `${primaryEvent.country}: ${cluster.items.length} events`;
+          div.title = `${primaryEvent.country}: ${cluster.items.length} ${t('popups.events')}`;
         } else {
           div.title = `${primaryEvent.city || primaryEvent.country} - ${primaryEvent.eventType} (${primaryEvent.severity})`;
           if (primaryEvent.validated) {
@@ -2338,7 +2559,7 @@ export class MapComponent {
         const pos = projection([fire.lon, fire.lat]);
         if (!pos) return;
 
-        const color = fire.brightness > 400 ? '#ff1e00' : fire.brightness > 350 ? '#ff8c00' : '#ffdc32';
+        const color = fire.brightness > 400 ? getCSSColor('--semantic-critical') : fire.brightness > 350 ? getCSSColor('--semantic-high') : getCSSColor('--semantic-elevated');
         const size = Math.max(4, Math.min(10, (fire.frp || 1) * 0.5));
 
         const dot = document.createElement('div');
@@ -2431,7 +2652,7 @@ export class MapComponent {
       const intensity = Math.min(Math.max(zone.intensity, 0.15), 1);
       const radius = 4 + intensity * 8;  // Small dots (4-12px)
       const isCongested = zone.deltaPct >= 15;
-      const color = isCongested ? '#ffb703' : '#00d1ff';
+      const color = isCongested ? getCSSColor('--semantic-elevated') : getCSSColor('--semantic-info');
       const fillOpacity = 0.15 + intensity * 0.25;  // More visible individual dots
 
       densityGroup
@@ -2668,7 +2889,7 @@ export class MapComponent {
     'natural', 'weather', 'outages', 'ais', 'protests', 'flights', 'military', 'techEvents',
   ]);
 
-  public toggleLayer(layer: keyof MapLayers): void {
+  public toggleLayer(layer: keyof MapLayers, source: 'user' | 'programmatic' = 'user'): void {
     console.log(`[Map.toggleLayer] ${layer}: ${this.state.layers[layer]} -> ${!this.state.layers[layer]}`);
     this.state.layers[layer] = !this.state.layers[layer];
     if (this.state.layers[layer]) {
@@ -2696,12 +2917,12 @@ export class MapComponent {
       btn?.classList.remove('loading');
     }
 
-    this.onLayerChange?.(layer, this.state.layers[layer]);
+    this.onLayerChange?.(layer, this.state.layers[layer], source);
     // Defer render to next frame to avoid blocking the click handler
     requestAnimationFrame(() => this.render());
   }
 
-  public setOnLayerChange(callback: (layer: keyof MapLayers, enabled: boolean) => void): void {
+  public setOnLayerChange(callback: (layer: keyof MapLayers, enabled: boolean, source: 'user' | 'programmatic') => void): void {
     this.onLayerChange = callback;
   }
 
@@ -2917,7 +3138,7 @@ export class MapComponent {
       }
       const btn = document.querySelector(`[data-layer="${layer}"]`);
       btn?.classList.add('active');
-      this.onLayerChange?.(layer, true);
+      this.onLayerChange?.(layer, true, 'programmatic');
       this.render();
     }
   }
@@ -3192,6 +3413,11 @@ export class MapComponent {
     this.render();
   }
 
+  public setCableHealth(healthMap: Record<string, CableHealthRecord>): void {
+    this.healthByCableId = healthMap;
+    this.render();
+  }
+
   public setProtests(events: SocialUnrestEvent[]): void {
     this.protests = events;
     this.render();
@@ -3229,7 +3455,11 @@ export class MapComponent {
     this.render();
   }
 
-  public setNewsLocations(_data: Array<{ lat: number; lon: number; title: string; threatLevel: string }>): void {
+  public setCyberThreats(_threats: CyberThreat[]): void {
+    // SVG/mobile fallback intentionally does not render this layer to stay lightweight.
+  }
+
+  public setNewsLocations(_data: Array<{ lat: number; lon: number; title: string; threatLevel: string; timestamp?: Date }>): void {
     // SVG fallback: news locations rendered as simple circles
     // For now, skip on SVG map to keep mobile lightweight
   }

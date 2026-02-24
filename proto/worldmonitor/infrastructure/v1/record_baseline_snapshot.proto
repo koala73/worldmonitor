@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package worldmonitor.infrastructure.v1;
+
+import "buf/validate/validate.proto";
+
+// BaselineUpdate is a single metric observation to incorporate into the running baseline.
+message BaselineUpdate {
+  // Activity type key.
+  string type = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // Geographic region key, defaults to "global".
+  string region = 2;
+  // Observed count value.
+  double count = 3;
+}
+
+// RecordBaselineSnapshotRequest batch-updates baselines using Welford's online algorithm.
+message RecordBaselineSnapshotRequest {
+  // Up to 20 metric updates to apply.
+  repeated BaselineUpdate updates = 1;
+}
+
+// RecordBaselineSnapshotResponse reports how many baselines were successfully updated.
+message RecordBaselineSnapshotResponse {
+  // Number of baselines that were written.
+  int32 updated = 1;
+  // Error message if the request was invalid.
+  string error = 2;
+}

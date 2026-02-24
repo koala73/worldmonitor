@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package worldmonitor.climate.v1;
+
+import "worldmonitor/core/v1/pagination.proto";
+import "worldmonitor/climate/v1/climate_anomaly.proto";
+
+// ListClimateAnomaliesRequest specifies filters for retrieving climate anomaly data.
+message ListClimateAnomaliesRequest {
+  // Pagination parameters.
+  worldmonitor.core.v1.PaginationRequest pagination = 1;
+  // Optional filter by anomaly severity.
+  AnomalySeverity min_severity = 2;
+}
+
+// ListClimateAnomaliesResponse contains the list of climate anomalies.
+message ListClimateAnomaliesResponse {
+  // The list of climate anomalies.
+  repeated ClimateAnomaly anomalies = 1;
+  // Pagination metadata.
+  worldmonitor.core.v1.PaginationResponse pagination = 2;
+}

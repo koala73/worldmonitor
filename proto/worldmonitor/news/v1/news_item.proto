@@ -1,0 +1,72 @@
+syntax = "proto3";
+
+package worldmonitor.news.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+import "worldmonitor/core/v1/geo.proto";
+
+// NewsItem represents a single news article from RSS feed aggregation.
+message NewsItem {
+  // Source feed name.
+  string source = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // Article headline.
+  string title = 2 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // Article URL.
+  string link = 3;
+  // Publication time, as Unix epoch milliseconds.
+  int64 published_at = 4 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Whether this article triggered an alert condition.
+  bool is_alert = 5;
+  // Threat classification, if assessed.
+  ThreatClassification threat = 6;
+  // Geolocation extracted from the article.
+  worldmonitor.core.v1.GeoCoordinates location = 7;
+  // Human-readable location name.
+  string location_name = 8;
+}
+
+// ThreatClassification represents an AI-assessed threat level for a news item.
+message ThreatClassification {
+  // Overall threat level.
+  ThreatLevel level = 1;
+  // Event category.
+  string category = 2;
+  // Confidence score (0.0 to 1.0).
+  double confidence = 3 [
+    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.lte = 1
+  ];
+}
+
+// HeadlineSummary represents an AI-generated summary of recent headlines.
+message HeadlineSummary {
+  // Summary text.
+  string text = 1;
+  // Number of headlines analyzed.
+  int32 headline_count = 2;
+  // Summary generation time, as Unix epoch milliseconds.
+  int64 generated_at = 3 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // AI model used for summarization.
+  string model = 4;
+}
+
+// ThreatLevel represents the assessed threat level of a news event.
+enum ThreatLevel {
+  // Unspecified threat level.
+  THREAT_LEVEL_UNSPECIFIED = 0;
+  // Low threat — routine reporting.
+  THREAT_LEVEL_LOW = 1;
+  // Medium threat — warrants monitoring.
+  THREAT_LEVEL_MEDIUM = 2;
+  // High threat — significant concern.
+  THREAT_LEVEL_HIGH = 3;
+  // Critical threat — immediate attention required.
+  THREAT_LEVEL_CRITICAL = 4;
+}

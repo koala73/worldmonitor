@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+package worldmonitor.climate.v1;
+
+import "buf/validate/validate.proto";
+import "worldmonitor/core/v1/geo.proto";
+
+// ClimateAnomaly represents a temperature or precipitation deviation from historical norms.
+// Sourced from Open-Meteo / ERA5 reanalysis data.
+message ClimateAnomaly {
+  // Climate zone name (e.g., "Northern Europe", "Sahel").
+  string zone = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // Representative location for the anomaly zone.
+  worldmonitor.core.v1.GeoCoordinates location = 2;
+  // Temperature deviation from normal in degrees Celsius.
+  double temp_delta = 3;
+  // Precipitation deviation from normal as a percentage.
+  double precip_delta = 4;
+  // Severity classification of the anomaly.
+  AnomalySeverity severity = 5;
+  // Type of climate anomaly observed.
+  AnomalyType type = 6;
+  // Time period covered (e.g., "2024-W03", "2024-01").
+  string period = 7 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+}
+
+// AnomalySeverity represents the severity of a climate anomaly.
+// Maps to existing TS union: 'normal' | 'moderate' | 'extreme'.
+enum AnomalySeverity {
+  // Unspecified severity.
+  ANOMALY_SEVERITY_UNSPECIFIED = 0;
+  // Normal — within expected variation.
+  ANOMALY_SEVERITY_NORMAL = 1;
+  // Moderate — notable deviation from historical norms.
+  ANOMALY_SEVERITY_MODERATE = 2;
+  // Extreme — severe deviation requiring attention.
+  ANOMALY_SEVERITY_EXTREME = 3;
+}
+
+// AnomalyType represents the type of climate anomaly.
+// Maps to existing TS union: 'warm' | 'cold' | 'wet' | 'dry' | 'mixed'.
+enum AnomalyType {
+  // Unspecified anomaly type.
+  ANOMALY_TYPE_UNSPECIFIED = 0;
+  // Warm — above-normal temperatures.
+  ANOMALY_TYPE_WARM = 1;
+  // Cold — below-normal temperatures.
+  ANOMALY_TYPE_COLD = 2;
+  // Wet — above-normal precipitation.
+  ANOMALY_TYPE_WET = 3;
+  // Dry — below-normal precipitation.
+  ANOMALY_TYPE_DRY = 4;
+  // Mixed — combination of temperature and precipitation anomalies.
+  ANOMALY_TYPE_MIXED = 5;
+}

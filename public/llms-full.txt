@@ -1,0 +1,229 @@
+# World Monitor
+
+> Real-time global intelligence dashboard — AI-powered news aggregation, geopolitical monitoring, and infrastructure tracking in a unified situational awareness interface.
+
+World Monitor is an open-source (AGPL-3.0) intelligence platform that aggregates 150+ news feeds, 35+ interactive map layers, and multiple AI models into a single dashboard. It runs as a web app, installable PWA, and native desktop application (Tauri) for macOS, Windows, and Linux.
+
+A single codebase produces three specialized variants — geopolitical, technology, and finance — each with distinct feeds, panels, map layers, and branding. The tri-variant architecture uses build-time selection via the VITE_VARIANT environment variable, with runtime switching available via the header bar. Each variant tree-shakes unused data files — the finance build excludes military base coordinates and APT group data, while the geopolitical build excludes stock exchange listings.
+
+The project is built with TypeScript, Vite, MapLibre GL JS, deck.gl, D3.js, and Tauri. All intelligence analysis (clustering, instability scoring, surge detection) runs client-side in the browser — no backend compute dependency for core intelligence. A browser-side ML pipeline (Transformers.js) provides NER and sentiment analysis without server dependency.
+
+## Live Instances
+
+- [World Monitor](https://worldmonitor.app): Geopolitics, military, conflicts, infrastructure — ~25 RSS categories, 44 panels, military bases, nuclear facilities, hotspots
+- [Tech Monitor](https://tech.worldmonitor.app): Startups, AI/ML, cloud, cybersecurity — ~20 RSS categories, 31 panels, tech HQs, cloud regions, startup hubs
+- [Finance Monitor](https://finance.worldmonitor.app): Global markets, trading, central banks, Gulf FDI — ~18 RSS categories, 30 panels, stock exchanges, central banks, Gulf investments
+
+## Documentation
+
+- [README](https://github.com/koala73/worldmonitor/blob/main/README.md): Full project documentation with architecture details, algorithm descriptions, and data source specifications
+- [Full Documentation](https://github.com/koala73/worldmonitor/blob/main/docs/DOCUMENTATION.md): Detailed feature documentation, data layer reference, panel descriptions, and clustering logic
+
+## Data Layers — Geopolitical
+
+- **Conflicts**: Active conflict zones with involved parties and escalation status (UCDP + ACLED data)
+- **Hotspots**: Intelligence hotspots with activity levels based on multi-source news correlation and geo-convergence
+- **Sanctions**: Countries under economic sanctions regimes
+- **Protests**: Live social unrest events from dual sources (ACLED protests + GDELT geo-events), Haversine-deduplicated on 0.5-degree grid
+- **Cyber Threats**: Indicators of compromise (C2 servers, malware hosts, phishing, malicious URLs) from 5 threat intel feeds (Feodo Tracker, URLhaus, C2IntelFeeds, AlienVault OTX, AbuseIPDB), geo-enriched via ipinfo.io
+- **Weather Alerts**: NWS severe weather warnings
+
+## Data Layers — Military & Strategic
+
+- **Military Bases**: 220+ global military installations from 9 operators
+- **Nuclear Facilities**: Power plants, weapons labs, enrichment sites
+- **Gamma Irradiators**: IAEA-tracked Category 1-3 radiation sources
+- **APT Groups**: State-sponsored cyber threat actors with geographic attribution
+- **Spaceports**: 12 major launch facilities (NASA, SpaceX, Roscosmos, CNSA, ESA, ISRO, JAXA)
+- **Critical Minerals**: Strategic mineral deposits (lithium, cobalt, rare earths) with operator info
+- **Live Military Flights**: ADS-B tracking with surge detection
+- **Naval Vessels**: AIS vessel monitoring with chokepoint detection across 8 strategic waterways
+
+## Data Layers — Infrastructure
+
+- **Undersea Cables**: 55 major submarine cable routes with landing points
+- **Pipelines**: 88 operating oil and gas pipelines across all continents
+- **AI Datacenters**: 111 major AI compute clusters (10,000+ GPUs each)
+- **Strategic Ports**: 83 ports across 6 types (container, oil/LNG, chokepoint, naval, mixed, bulk) with throughput rankings
+- **Internet Outages**: Network disruptions via Cloudflare Radar
+- **NASA FIRMS**: Satellite fire detection (VIIRS thermal hotspots)
+
+## Data Layers — Natural Events
+
+- **Earthquakes**: USGS global earthquakes M4.5+ with 5-minute update frequency
+- **GDACS Alerts**: UN-coordinated disaster alerts (earthquakes, floods, cyclones, volcanoes, wildfires, droughts) with color-coded alert levels
+- **NASA EONET**: Earth observation events across 13 natural event categories (30-day open events)
+- **Climate Anomalies**: 15 conflict-prone zones monitored for temperature/precipitation deviations against 30-day ERA5 baselines
+
+## Data Layers — Market & Crypto Intelligence
+
+- **7-Signal Macro Radar**: Composite BUY/CASH verdict from JPY liquidity, BTC/QQQ flow structure, macro regime (QQQ vs XLP), technical trend (SMA50/VWAP), hash rate, mining cost, and Fear & Greed Index
+- **BTC Spot ETF Flows**: 10 ETFs tracked (IBIT, FBTC, ARKB, BITB, GBTC, HODL, BRRR, EZBC, BTCO, BTCW) with volume-based flow estimation
+- **Stablecoin Peg Monitor**: USDT, USDC, DAI, FDUSD, USDe — deviation tracking with ON PEG / SLIGHT DEPEG / DEPEGGED status
+- **Fear & Greed Index**: 30-day history with sentiment classification
+- **Oil & Energy Analytics**: WTI/Brent crude prices, US production (Mbbl/d), and inventory levels via EIA API
+
+## Data Layers — Tech Ecosystem (Tech Variant)
+
+- **Tech HQs**: Headquarters of major tech companies (Big Tech, unicorns, public companies) — Silicon Valley, Seattle, New York, London, Tel Aviv, Dubai, Singapore, Berlin, Tokyo
+- **Startup Hubs**: Major startup ecosystems with ecosystem tier, funding data, and notable companies
+- **Cloud Regions**: AWS, Azure, GCP data center regions with zone counts
+- **Accelerators**: Y Combinator, Techstars, 500 Startups, and regional accelerator locations
+- **Tech Events**: Upcoming conferences and tech events with countdown timers
+
+## Data Layers — Finance & Markets (Finance Variant)
+
+- **Stock Exchanges**: 92 global exchanges — mega (NYSE, NASDAQ, Shanghai, Euronext, Tokyo), major (Hong Kong, London, NSE/BSE, Toronto, Korea, Saudi Tadawul), and emerging markets — with market caps and trading hours
+- **Financial Centers**: 19 centers ranked by Global Financial Centres Index (New York through offshore centers)
+- **Central Banks**: 13 institutions (Federal Reserve, ECB, BoJ, BoE, PBoC, SNB, RBA, BoC, RBI, BoK, BCB, SAMA) plus supranational (BIS, IMF)
+- **Commodity Hubs**: 10 exchanges and physical hubs (CME Group, ICE, LME, SHFE, DCE, TOCOM, DGCX, MCX, Rotterdam, Houston)
+- **Gulf FDI Investments**: 64 Saudi/UAE foreign direct investments plotted globally, color-coded by status (operational, under-construction, announced), sized by investment amount — across ports, energy, manufacturing, renewables, megaprojects, telecoms
+
+## AI-Powered Intelligence
+
+- **World Brief**: LLM-synthesized summary of top global developments via Groq Llama 3.1, Redis-cached
+- **Hybrid Threat Classification**: Two-stage pipeline — instant keyword classifier (~120 threat keywords by severity tier) with async LLM override (Groq Llama 3.1 8B at temperature 0, 24h Redis cache). LLM overrides keyword result only when confidence is higher
+- **Focal Point Detection**: Correlates entities across news, military activity, protests, outages, and markets to identify convergence. Requires cross-source confirmation before escalating to critical
+- **Country Instability Index (CII)**: Real-time stability scores (0-100) for 22 monitored nations — US, Russia, China, Ukraine, Iran, Israel, Taiwan, North Korea, Saudi Arabia, Turkey, Poland, Germany, France, UK, India, Pakistan, Syria, Yemen, Myanmar, Venezuela, Brazil, UAE. Computed from baseline risk (40%), unrest events (20%), security activity (20%), and information velocity (20%)
+- **Trending Keyword Spike Detection**: 2-hour rolling window vs 7-day baseline. Spikes require 5+ mentions, 3x baseline surge, 2+ unique sources, and 30-minute cooldown. Extracts CVE identifiers and APT/FIN designators. Auto-summarized via Groq (5 summaries/hour limit)
+- **Strategic Posture Assessment**: 9 operational theaters (Iran/Persian Gulf, Taiwan Strait, Baltic/Kaliningrad, Korean Peninsula, Eastern Mediterranean, Horn of Africa, South China Sea, Arctic, Black Sea) assessed continuously. Posture levels: NORMAL, ELEVATED, CRITICAL based on aircraft count, strike capability, naval presence, and country instability
+- **Geographic Convergence Detection**: Events binned into 1-degree geographic cells within 24-hour window. 3+ distinct event types in one cell triggers convergence alert
+- **Infrastructure Cascade Modeling**: BFS propagation (depth 3) through dependency graph of cables, pipelines, ports, chokepoints, and countries. Models real-world dependencies (e.g., Strait of Hormuz carries 80% of Japan's oil)
+- **Temporal Baseline Anomaly Detection**: Welford's online algorithm for streaming mean/variance per event type, region, weekday, and month over 90-day window. Z-score thresholds: 1.5 (low), 2.0 (medium), 3.0 (high/critical)
+- **Browser-Side ML Pipeline**: Transformers.js running text embeddings (sentence-similarity), sequence classification (threat-classifier), summarization (T5-small fallback), and NER — all in-browser with no server dependency
+
+## Intelligence Panels
+
+- **AI Strategic Posture**: Theater-level military force aggregation with strike capability assessment across 9 theaters linked to 38+ military bases
+- **Strategic Risk Overview**: Composite risk score combining all intelligence modules with trend detection
+- **Country Instability Index**: Real-time stability scores for 22 monitored countries with 4-component breakdown (Unrest, Conflict, Security, Information)
+- **Infrastructure Cascade**: Dependency analysis for cables, pipelines, ports, and chokepoints with disruption propagation modeling
+- **Live Intelligence**: GDELT-powered topic feeds (Military, Cyber, Nuclear, Sanctions)
+- **Regional Panels**: Dedicated panels for Middle East, Africa, Latin America, Asia-Pacific, and Energy & Resources
+- **Climate Anomaly Panel**: 15 conflict-prone zones with temperature/precipitation deviation tracking
+- **Displacement Panel**: UN OCHA HAPI data with origins (countries people flee from) and hosts (countries absorbing displaced populations) perspectives
+- **Population Exposure**: WorldPop density data estimates civilians within event-specific radii (50-100km)
+- **Trending Keywords**: Real-time surging terms with spike severity, source count, and AI-generated context summaries
+- **Country Brief Pages**: Full-page intelligence dossier per country — CII score ring, AI-generated analysis with citation anchors, top 8 news headlines, active signals, 7-day D3.js timeline, prediction markets (Polymarket), infrastructure exposure, stock market index. Exportable as JSON, CSV, or PNG
+
+## News Aggregation
+
+- **150+ RSS feeds** across 15+ categories: World/Geopolitical (BBC, Reuters, AP, Guardian), Middle East (Al Jazeera, Al Arabiya, Times of Israel), Africa (BBC Africa, News24), Latin America, Asia-Pacific (SCMP), Energy & Resources, Technology (Hacker News, Ars Technica), AI/ML (ArXiv, VentureBeat), Finance (CNBC, MarketWatch, FT), Government (White House, Pentagon, Treasury, Fed, SEC, UN, CISA), Intel Feed (Defense One, Breaking Defense, Bellingcat, Krebs, Janes), Think Tanks (Foreign Policy, Atlantic Council, CSIS, RAND, Brookings, Carnegie), Crisis Watch (ICG, IAEA, WHO, UNHCR), Regional (Xinhua, TASS, Kyiv Independent)
+- **Source tiering**: Tier 1 (wire services, government), Tier 2 (major outlets), Tier 3 (specialized), Tier 4 (aggregators/blogs) — with propaganda risk ratings and state affiliation flags
+- **8 live video streams**: Bloomberg, Sky News, Al Jazeera, Euronews, DW, France24, CNBC, Al Arabiya — with automatic live detection scraping YouTube channel pages every 5 minutes
+- **19 live webcams**: Geopolitical hotspots across 4 regions — Middle East (Jerusalem, Tehran, Tel Aviv, Mecca), Europe (Kyiv, Odessa, Paris, London), Americas (Washington DC, New York, LA, Miami), Asia-Pacific (Taipei, Shanghai, Tokyo, Seoul, Sydney)
+- **Custom keyword monitors**: User-defined keyword alerts with word-boundary matching, auto color-coding, and multi-keyword support
+- **Entity extraction**: Auto-links countries, leaders, organizations across headlines
+- **Virtual scrolling**: Custom virtual list renderer with DOM pooling for panels with 15+ items
+
+## Data Sources
+
+- ACLED (Armed Conflict Location & Event Data): Protests, riots, conflicts — 30-day window, tokenized API
+- GDELT (Global Database of Events, Language, and Tone): Geo-events, protest keywords, topic feeds
+- UCDP (Uppsala Conflict Data Program): Conflict zone classification
+- USGS: Earthquakes M4.5+ globally, 5-minute updates
+- GDACS: UN disaster alerts (earthquakes, floods, cyclones, volcanoes, wildfires, droughts)
+- NASA EONET: Earth observation events, 13 natural event categories
+- NASA FIRMS: VIIRS satellite fire/thermal hotspot detection
+- Cloudflare Radar: Internet outage monitoring
+- ADS-B Exchange: Military flight tracking
+- AISStream.io: Vessel tracking via AIS (terrestrial receivers)
+- OpenSky Network: Aircraft position data
+- Polymarket: Prediction market probabilities for geopolitical events (3-tier JA3 bypass)
+- Yahoo Finance: Stock data, ETF prices, macro signals
+- CoinGecko: Stablecoin pricing and market caps
+- mempool.space: Bitcoin hash rate data
+- alternative.me: Fear & Greed Index
+- EIA (Energy Information Administration): Oil prices, US production, inventory
+- FRED (Federal Reserve Economic Data): Economic indicators
+- WorldPop: Population density data for exposure estimation
+- UN OCHA HAPI: Humanitarian access metrics and displacement flows
+- Open-Meteo ERA5: Climate reanalysis data for anomaly detection
+- abuse.ch (Feodo Tracker, URLhaus): C2 server and malware host IOCs
+- C2IntelFeeds: Community-sourced C2 indicators
+- AlienVault OTX: Open threat exchange IOCs
+- AbuseIPDB: Crowd-sourced abuse reports
+- ipinfo.io / freeipapi.com: IP geolocation enrichment
+- NWS (National Weather Service): Severe weather warnings
+- USASpending.gov: Government contracts and spending data
+- Groq API: Llama 3.1 for world briefs, threat classification, and spike summarization
+- OpenRouter API: LLM fallback provider
+- MapTiler: Base map tiles
+
+## Supported Languages
+
+English (en), French (fr), Spanish (es), German (de), Italian (it), Polish (pl), Portuguese (pt), Dutch (nl), Swedish (sv), Russian (ru), Arabic (ar) with RTL support, Chinese (zh), Japanese (ja), Turkish (tr). Language bundles are lazy-loaded on demand. Localized news feeds load region-specific RSS sources based on language preference. AI translation available for cross-language intelligence gathering.
+
+## Tri-Variant Build System
+
+A single codebase produces three specialized dashboards controlled by the VITE_VARIANT environment variable:
+
+- **World Monitor** (worldmonitor.app): ~25 RSS categories, 44 panels. Focus: geopolitics, military, conflicts, infrastructure security. Unique layers: military bases, nuclear facilities, hotspots, APT groups, spaceports, critical minerals
+- **Tech Monitor** (tech.worldmonitor.app): ~20 RSS categories, 31 panels. Focus: AI/ML, startups, cybersecurity, cloud. Unique layers: tech HQs, cloud regions, startup hubs, accelerators, tech events
+- **Finance Monitor** (finance.worldmonitor.app): ~18 RSS categories, 30 panels. Focus: global markets, trading, central banks, Gulf FDI. Unique layers: 92 stock exchanges, 19 financial centers, 13 central banks, 10 commodity hubs, 64 Gulf FDI investments
+
+Build-time: Vite HTML plugin transforms meta tags, Open Graph data, PWA manifest, and JSON-LD structured data. Each variant tree-shakes unused data files. Runtime: variant selector in header navigates between deployed domains (web) or sets localStorage preference (desktop).
+
+## Architecture Principles
+
+- **Speed over perfection**: Keyword classifier is instant; LLM refines asynchronously. Users never wait
+- **Assume failure**: Per-feed circuit breakers with 5-minute cooldowns. AI fallback chain: Groq, OpenRouter, browser-side T5. Redis failures degrade gracefully. Edge functions return stale cached data when upstream APIs are down
+- **Show what you can't see**: Intelligence gap tracker explicitly reports data source outages rather than silently hiding them
+- **Browser-first compute**: Analysis runs client-side — no backend compute dependency for core intelligence
+- **Local-first geolocation**: Country detection uses browser-side ray-casting against GeoJSON polygons (sub-millisecond, zero API dependency, works offline)
+- **Multi-signal correlation**: No single data source trusted alone. Focal points require convergence across news + military + markets + protests before escalating
+- **Geopolitical grounding**: Hard-coded conflict zones, baseline country risk, and strategic chokepoints prevent false alerts
+- **Defense in depth**: CORS origin allowlist, domain-allowlisted RSS proxy, server-side API key isolation, token-authenticated desktop sidecar, IP rate limiting
+- **Cache everything, trust nothing**: Three-tier caching (in-memory, Redis, upstream) with stale-on-error fallback
+- **Baseline-aware alerting**: Rolling temporal windows against learned baselines with per-term spike multipliers and cooldowns
+
+## Tech Stack
+
+- **Frontend**: TypeScript, Vite, MapLibre GL JS, deck.gl (WebGL), D3.js, Supercluster (marker clustering), Transformers.js (browser-side ML)
+- **Internationalization**: i18next with lazy-loaded language bundles, RTL support for Arabic/Hebrew
+- **Desktop**: Tauri 2.x (Rust core + Node.js sidecar), OS keychain integration (macOS Keychain, Windows Credential Manager), token-authenticated local API
+- **Backend**: 60+ Vercel Edge Functions, Railway relay server for blocked RSS feeds
+- **Data Store**: Upstash Redis (caching, Welford baselines, LLM dedup), IndexedDB (historical playback), localStorage (preferences, panel state)
+- **AI Pipeline**: Groq (Llama 3.1 8B), OpenRouter (fallback), Transformers.js (browser fallback for NER, sentiment, summarization)
+- **Monitoring**: Sentry error tracking, data freshness tracker across 22 sources with intelligence gap reporting
+- **Testing**: Playwright E2E tests (per-variant), Node.js test runner for data/sidecar tests
+- **PWA**: Service worker with CacheFirst map tiles (500 tiles, 30-day TTL), NetworkOnly for intelligence data, offline fallback page
+
+## Desktop Application
+
+Native desktop app built with Tauri (Rust + Node.js sidecar). The sidecar mirrors all 60+ cloud API handlers locally with gzip compression. Features:
+- OS keychain integration for 17 API keys (macOS Keychain, Windows Credential Manager)
+- Token-authenticated sidecar prevents unauthorized local access
+- Cloud fallback when local handlers fail
+- Settings window (Cmd+,) for API key management with validation
+- Verbose debug mode with persistent state and traffic logging (last 200 requests)
+- Auto-update checker polling every 6 hours with per-version dismiss
+- Available for macOS (Apple Silicon + Intel), Windows (.exe), and Linux (.AppImage)
+
+## Key Features Summary
+
+- Interactive 3D WebGL globe with 35+ toggleable data layers and smart clustering
+- AI-synthesized world briefs with hybrid threat classification
+- Country Instability Index for 22 nations with real-time scoring
+- 9-theater strategic posture assessment
+- Geographic convergence detection and infrastructure cascade modeling
+- 150+ curated RSS feeds with source tiering and propaganda risk ratings
+- 8 live news streams and 19 live webcams from geopolitical hotspots
+- 7-signal macro market radar with BUY/CASH verdict
+- Country brief pages with exportable intelligence dossiers (JSON, CSV, PNG)
+- Multilingual UI in 14 languages with RTL support
+- Prediction market integration (Polymarket) with 3-tier JA3 bypass
+- Temporal baseline anomaly detection using Welford's algorithm
+- Dual-source protest tracking (ACLED + GDELT) with regime-aware scoring
+- Population exposure estimation using WorldPop density data
+- Shareable intelligence stories with multi-platform social export
+- Cmd+K fuzzy search across 20+ result types
+- Historical playback via IndexedDB snapshots with time slider
+- Dark/light theme, panel reordering, ultra-wide layout (2000px+)
+- Feature toggles for 14 runtime data source controls
+
+## Optional
+
+- [Source Code](https://github.com/koala73/worldmonitor): GitHub repository (AGPL-3.0)
+- [Releases](https://github.com/koala73/worldmonitor/releases): All desktop releases for macOS, Windows, and Linux
+- [Issues](https://github.com/koala73/worldmonitor/issues): Bug reports and feature requests

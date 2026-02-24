@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package worldmonitor.prediction.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/prediction/v1/list_prediction_markets.proto";
+
+// PredictionService provides APIs for prediction market data from Polymarket.
+service PredictionService {
+  option (sebuf.http.service_config) = {base_path: "/api/prediction/v1"};
+
+  // ListPredictionMarkets retrieves active prediction markets from Polymarket.
+  rpc ListPredictionMarkets(ListPredictionMarketsRequest) returns (ListPredictionMarketsResponse) {
+    option (sebuf.http.config) = {path: "/list-prediction-markets"};
+  }
+}

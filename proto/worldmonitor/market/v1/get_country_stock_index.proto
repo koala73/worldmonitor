@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package worldmonitor.market.v1;
+
+import "buf/validate/validate.proto";
+
+// GetCountryStockIndexRequest specifies which country's stock index to retrieve.
+message GetCountryStockIndexRequest {
+  // ISO 3166-1 alpha-2 country code (e.g., "US", "GB", "JP").
+  string country_code = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.len = 2,
+    (buf.validate.field).string.pattern = "^[A-Z]{2}$"
+  ];
+}
+
+// GetCountryStockIndexResponse contains the country's primary stock index data.
+message GetCountryStockIndexResponse {
+  // Whether stock index data is available for this country.
+  bool available = 1;
+  // ISO 3166-1 alpha-2 country code.
+  string code = 2;
+  // Ticker symbol (e.g., "^GSPC").
+  string symbol = 3;
+  // Index name (e.g., "S&P 500").
+  string index_name = 4;
+  // Latest closing price.
+  double price = 5;
+  // Weekly change percentage.
+  double week_change_percent = 6;
+  // Currency of the index.
+  string currency = 7;
+  // When the data was fetched (ISO 8601).
+  string fetched_at = 8;
+}

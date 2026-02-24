@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package worldmonitor.conflict.v1;
+
+import "sebuf/http/annotations.proto";
+
+// HumanitarianCountrySummary represents HAPI conflict event counts for a country.
+message HumanitarianCountrySummary {
+  // ISO 3166-1 alpha-2 country code.
+  string country_code = 1;
+  // Country name.
+  string country_name = 2;
+  // Total conflict events in the reference period.
+  int32 conflict_events_total = 3;
+  // Political violence + civilian targeting event count.
+  int32 conflict_political_violence_events = 4;
+  // Total fatalities from political violence and civilian targeting.
+  int32 conflict_fatalities = 5;
+  // Reference period start date (YYYY-MM-DD).
+  string reference_period = 6;
+  // Number of demonstration events.
+  int32 conflict_demonstrations = 7;
+  // Last data update time, as Unix epoch milliseconds.
+  int64 updated_at = 8 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}

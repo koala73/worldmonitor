@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package worldmonitor.market.v1;
+
+import "worldmonitor/market/v1/market_quote.proto";
+
+// ListMarketQuotesRequest specifies which stock/index symbols to retrieve.
+message ListMarketQuotesRequest {
+  // Ticker symbols to retrieve (e.g., ["AAPL", "^GSPC"]). Empty returns defaults.
+  repeated string symbols = 1;
+}
+
+// ListMarketQuotesResponse contains stock and index quotes.
+message ListMarketQuotesResponse {
+  // The list of market quotes.
+  repeated MarketQuote quotes = 1;
+
+  // True when the Finnhub API key is not configured and stock quotes were skipped.
+  bool finnhub_skipped = 2;
+
+  // Human-readable reason when Finnhub was skipped (e.g., "FINNHUB_API_KEY not configured").
+  string skip_reason = 3;
+}

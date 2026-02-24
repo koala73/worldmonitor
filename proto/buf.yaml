@@ -1,0 +1,16 @@
+version: v2
+deps:
+  - buf.build/bufbuild/protovalidate
+lint:
+  use:
+    - STANDARD
+    - COMMENTS
+  enum_zero_value_suffix: _UNSPECIFIED
+  service_suffix: Service
+  ignore:
+    - sebuf
+breaking:
+  use:
+    - FILE
+    - PACKAGE
+    - WIRE_JSON

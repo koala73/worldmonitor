@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package worldmonitor.core.v1;
+
+import "sebuf/http/annotations.proto";
+
+// TimeRange represents a time interval defined by a start and end timestamp.
+// Used for filtering data within a specific time period.
+message TimeRange {
+  // Start of the time range (inclusive), as Unix epoch milliseconds.
+  int64 start = 1 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // End of the time range (inclusive), as Unix epoch milliseconds.
+  int64 end = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}

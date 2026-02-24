@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package worldmonitor.aviation.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/aviation/v1/list_airport_delays.proto";
+
+// AviationService provides APIs for flight delay data from FAA and Eurocontrol.
+service AviationService {
+  option (sebuf.http.service_config) = {base_path: "/api/aviation/v1"};
+
+  // ListAirportDelays retrieves current airport delay alerts.
+  rpc ListAirportDelays(ListAirportDelaysRequest) returns (ListAirportDelaysResponse) {
+    option (sebuf.http.config) = {path: "/list-airport-delays"};
+  }
+}

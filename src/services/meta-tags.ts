@@ -128,9 +128,14 @@ function setCanonicalLink(href: string): void {
 // Parse URL params for story pages
 export function parseStoryParams(url: URL): StoryMeta | null {
   const countryCode = url.searchParams.get('c');
-  const type = url.searchParams.get('t') as StoryMeta['type'] || 'ciianalysis';
-  
-  if (!countryCode) return null;
+  const type = url.searchParams.get('t') || 'ciianalysis';
+
+  if (!countryCode || !/^[A-Z]{2,3}$/i.test(countryCode)) return null;
+
+  const validTypes: StoryMeta['type'][] = ['ciianalysis', 'crisisalert', 'dailybrief', 'marketfocus'];
+  const safeType: StoryMeta['type'] = validTypes.includes(type as StoryMeta['type'])
+    ? (type as StoryMeta['type'])
+    : 'ciianalysis';
   
   // Get country name from mapping (would normally come from data)
   const countryNames: Record<string, string> = {
@@ -142,9 +147,9 @@ export function parseStoryParams(url: URL): StoryMeta | null {
   };
   
   return {
-    countryCode,
-    countryName: countryNames[countryCode.toUpperCase()] || countryCode,
-    type,
+    countryCode: countryCode.toUpperCase(),
+    countryName: countryNames[countryCode.toUpperCase()] || countryCode.toUpperCase(),
+    type: safeType,
   };
 }
 

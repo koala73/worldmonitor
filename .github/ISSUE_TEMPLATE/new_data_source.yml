@@ -1,0 +1,69 @@
+name: New Data Source
+description: Suggest a new RSS feed, API, or map layer
+labels: ["data-source"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        World Monitor aggregates 100+ feeds and data layers. Suggest a new one!
+
+  - type: dropdown
+    id: type
+    attributes:
+      label: Source type
+      description: What kind of data source is this?
+      options:
+        - RSS / News feed
+        - API integration
+        - Map layer (geospatial data)
+        - Live video stream
+        - Status page
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: variant
+    attributes:
+      label: Target variant
+      description: Which variant should this appear in?
+      options:
+        - Full (Geopolitical)
+        - Tech (Startup)
+        - Finance
+        - All variants
+    validations:
+      required: true
+
+  - type: input
+    id: source-name
+    attributes:
+      label: Source name
+      description: Name of the source or organization.
+      placeholder: e.g. RAND Corporation, CoinDesk, USGS
+    validations:
+      required: true
+
+  - type: input
+    id: url
+    attributes:
+      label: Feed / API URL
+      description: Direct URL to the RSS feed, API endpoint, or data source.
+      placeholder: https://example.com/rss
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Why add this source?
+      description: What value does this source bring? What does it cover that existing sources don't?
+      placeholder: This source provides coverage of...
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional notes
+      description: Any details about rate limits, authentication requirements, data format, or category placement.

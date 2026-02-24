@@ -1,11 +1,18 @@
 // YouTube Live Stream Detection API
 // Uses YouTube's oembed endpoint to check for live streams
 
+import { getCorsHeaders, isDisallowedOrigin } from '../_cors.js';
+
 export const config = {
   runtime: 'edge',
 };
 
 export default async function handler(request) {
+  const cors = getCorsHeaders(request);
+  if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
+  if (isDisallowedOrigin(request)) {
+    return new Response(JSON.stringify({ error: 'Origin not allowed' }), { status: 403, headers: cors });
+  }
   const url = new URL(request.url);
   const channel = url.searchParams.get('channel');
 
@@ -29,7 +36,7 @@ export default async function handler(request) {
     });
 
     if (!response.ok) {
-      return new Response(JSON.stringify({ videoId: null }), {
+      return new Response(JSON.stringify({ videoId: null, channelExists: false }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       });
@@ -37,26 +44,27 @@ export default async function handler(request) {
 
     const html = await response.text();
 
-    // Extract video ID from the page
-    const videoIdMatch = html.match(/"videoId":"([a-zA-Z0-9_-]{11})"/);
-    const isLiveMatch = html.match(/"isLive":\s*true/);
+    // Channel exists if the page contains canonical channel metadata
+    const channelExists = html.includes('"channelId"') || html.includes('og:url');
 
-    if (videoIdMatch && isLiveMatch) {
-      return new Response(JSON.stringify({ videoId: videoIdMatch[1], isLive: true }), {
-        status: 200,
-        headers: {
-          'Content-Type': 'application/json',
-          'Cache-Control': 'public, s-maxage=300', // Cache for 5 minutes
-        },
-      });
+    // Scope both fields to the same videoDetails block so we don't
+    // combine a videoId from one object with isLive from another.
+    let videoId = null;
+    const detailsIdx = html.indexOf('"videoDetails"');
+    if (detailsIdx !== -1) {
+      const block = html.substring(detailsIdx, detailsIdx + 5000);
+      const vidMatch = block.match(/"videoId":"([a-zA-Z0-9_-]{11})"/);
+      const liveMatch = block.match(/"isLive"\s*:\s*true/);
+      if (vidMatch && liveMatch) {
+        videoId = vidMatch[1];
+      }
     }
 
-    // Return null if no live stream found
-    return new Response(JSON.stringify({ videoId: null, isLive: false }), {
+    return new Response(JSON.stringify({ videoId, isLive: videoId !== null, channelExists }), {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
-        'Cache-Control': 'public, s-maxage=300',
+        'Cache-Control': 'public, max-age=300, s-maxage=300, stale-while-revalidate=60',
       },
     });
   } catch (error) {

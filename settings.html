@@ -4,21 +4,57 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>World Monitor Settings</title>
+    <script>(function(){try{var t=localStorage.getItem('worldmonitor-theme');if(t==='light')document.documentElement.dataset.theme='light';}catch(e){}document.documentElement.classList.add('no-transition');})()</script>
+    <style>.settings-tab-panel{display:none}.settings-tab-panel.active{display:block}.settings-shell{height:100vh;display:flex;flex-direction:column}.settings-tab-panels{flex:1;min-height:0;overflow-y:auto;padding:20px 24px}.settings-footer{display:flex;justify-content:flex-end;gap:10px;padding:12px 24px;border-top:1px solid rgba(255,255,255,0.08)}</style>
   </head>
-  <body>
+  <body style="background:#1a1c1e;color:#e8eaed;margin:0">
     <div class="settings-shell">
-      <header class="settings-header">
-        <div>
-          <h1>Settings</h1>
-          <p>Desktop runtime configuration and local API keys.</p>
-        </div>
-        <div class="settings-actions">
-          <button id="openLogsBtn" type="button">Open Logs Folder</button>
-          <button id="openSidecarLogBtn" type="button">Open API Log</button>
-        </div>
-      </header>
+      <div class="settings-tabs" role="tablist">
+        <button class="settings-tab active" role="tab" aria-selected="true" aria-controls="tabPanelWorldMonitor" data-tab="worldmonitor">World Monitor</button>
+        <button class="settings-tab" role="tab" aria-selected="false" aria-controls="tabPanelLLMs" data-tab="llms">LLMs</button>
+        <button class="settings-tab" role="tab" aria-selected="false" aria-controls="tabPanelKeys" data-tab="keys">API Keys</button>
+        <button class="settings-tab" role="tab" aria-selected="false" aria-controls="tabPanelDebug" data-tab="debug">Debug &amp; Logs</button>
+      </div>
       <p id="settingsActionStatus" class="settings-action-status" aria-live="polite"></p>
-      <main id="settingsApp" class="settings-content"></main>
+      <div class="settings-tab-panels">
+        <div id="tabPanelWorldMonitor" class="settings-tab-panel active" role="tabpanel">
+          <main id="worldmonitorApp" class="settings-content"></main>
+        </div>
+        <div id="tabPanelLLMs" class="settings-tab-panel" role="tabpanel">
+          <main id="llmApp" class="settings-content"><div style="display:flex;align-items:center;justify-content:center;padding:60px 0;color:#9aa0a6;font-size:14px;gap:10px"><svg width="20" height="20" viewBox="0 0 24 24" style="animation:spin 1s linear infinite"><style>@keyframes spin{to{transform:rotate(360deg)}}</style><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" fill="none" stroke-dasharray="31 31"/></svg>Loading...</div></main>
+        </div>
+        <div id="tabPanelKeys" class="settings-tab-panel" role="tabpanel">
+          <main id="apiKeysApp" class="settings-content"><div style="display:flex;align-items:center;justify-content:center;padding:60px 0;color:#9aa0a6;font-size:14px;gap:10px"><svg width="20" height="20" viewBox="0 0 24 24" style="animation:spin 1s linear infinite"><style>@keyframes spin{to{transform:rotate(360deg)}}</style><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" fill="none" stroke-dasharray="31 31"/></svg>Loading...</div></main>
+        </div>
+        <div id="tabPanelDebug" class="settings-tab-panel" role="tabpanel">
+          <div class="debug-actions">
+            <button id="openLogsBtn" type="button">Open Logs Folder</button>
+            <button id="openSidecarLogBtn" type="button">Open API Log</button>
+          </div>
+          <section class="settings-diagnostics" id="diagnosticsSection">
+            <header class="diag-header">
+              <h2>Diagnostics</h2>
+              <div class="diag-toggles">
+                <label><input type="checkbox" id="verboseApiLog"> Verbose Sidecar Log</label>
+                <label><input type="checkbox" id="fetchDebugLog"> Frontend Fetch Debug</label>
+              </div>
+            </header>
+            <div class="diag-traffic-bar">
+              <h3>API Traffic <span id="trafficCount"></span></h3>
+              <div class="diag-traffic-controls">
+                <label><input type="checkbox" id="autoRefreshLog" checked> Auto</label>
+                <button id="refreshLogBtn" type="button">Refresh</button>
+                <button id="clearLogBtn" type="button">Clear</button>
+              </div>
+            </div>
+            <div id="trafficLog" class="diag-traffic-log"></div>
+          </section>
+        </div>
+      </div>
+      <footer class="settings-footer">
+        <button id="cancelBtn" type="button" class="settings-btn settings-btn-secondary">Cancel</button>
+        <button id="okBtn" type="button" class="settings-btn settings-btn-primary">OK</button>
+      </footer>
     </div>
 
     <script type="module" src="/src/settings-main.ts"></script>

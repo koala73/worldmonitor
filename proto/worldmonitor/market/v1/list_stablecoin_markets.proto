@@ -1,0 +1,67 @@
+syntax = "proto3";
+
+package worldmonitor.market.v1;
+
+import "buf/validate/validate.proto";
+
+// ListStablecoinMarketsRequest specifies which stablecoins to retrieve.
+message ListStablecoinMarketsRequest {
+  // CoinGecko IDs to retrieve (e.g. "tether,usd-coin"). Empty returns defaults.
+  repeated string coins = 1;
+}
+
+// Stablecoin represents a single stablecoin with peg health data.
+message Stablecoin {
+  // CoinGecko ID.
+  string id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // Ticker symbol (e.g. "USDT").
+  string symbol = 2 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // Human-readable name.
+  string name = 3;
+  // Current price in USD.
+  double price = 4 [(buf.validate.field).double.gte = 0];
+  // Deviation from $1.00 peg, as a percentage.
+  double deviation = 5;
+  // Peg status: "ON PEG", "SLIGHT DEPEG", or "DEPEGGED".
+  string peg_status = 6;
+  // Market capitalization in USD.
+  double market_cap = 7;
+  // 24-hour trading volume in USD.
+  double volume_24h = 8;
+  // 24-hour price change percentage.
+  double change_24h = 9;
+  // 7-day price change percentage.
+  double change_7d = 10;
+  // Coin image URL.
+  string image = 11;
+}
+
+// StablecoinSummary contains aggregate stablecoin market stats.
+message StablecoinSummary {
+  // Total market cap across all queried stablecoins.
+  double total_market_cap = 1;
+  // Total 24h volume across all queried stablecoins.
+  double total_volume_24h = 2;
+  // Number of stablecoins returned.
+  int32 coin_count = 3;
+  // Number of stablecoins in DEPEGGED state.
+  int32 depegged_count = 4;
+  // Overall health: "HEALTHY", "CAUTION", or "WARNING".
+  string health_status = 5;
+}
+
+// ListStablecoinMarketsResponse contains stablecoin market data.
+message ListStablecoinMarketsResponse {
+  // Timestamp of the data fetch (ISO 8601).
+  string timestamp = 1;
+  // Aggregate summary.
+  StablecoinSummary summary = 2;
+  // Individual stablecoin data.
+  repeated Stablecoin stablecoins = 3;
+}

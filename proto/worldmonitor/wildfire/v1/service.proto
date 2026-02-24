@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package worldmonitor.wildfire.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/wildfire/v1/list_fire_detections.proto";
+
+// WildfireService provides APIs for active fire detection data sourced from NASA FIRMS.
+service WildfireService {
+  option (sebuf.http.service_config) = {base_path: "/api/wildfire/v1"};
+
+  // ListFireDetections retrieves satellite-detected active fires from NASA FIRMS.
+  rpc ListFireDetections(ListFireDetectionsRequest) returns (ListFireDetectionsResponse) {
+    option (sebuf.http.config) = {path: "/list-fire-detections"};
+  }
+}

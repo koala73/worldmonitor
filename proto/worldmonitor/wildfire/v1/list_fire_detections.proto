@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package worldmonitor.wildfire.v1;
+
+import "worldmonitor/core/v1/geo.proto";
+import "worldmonitor/core/v1/pagination.proto";
+import "worldmonitor/core/v1/time.proto";
+import "worldmonitor/wildfire/v1/fire_detection.proto";
+
+// ListFireDetectionsRequest specifies filters for retrieving fire detections from NASA FIRMS.
+message ListFireDetectionsRequest {
+  // Time range to filter detections.
+  worldmonitor.core.v1.TimeRange time_range = 1;
+  // Pagination parameters.
+  worldmonitor.core.v1.PaginationRequest pagination = 2;
+  // Optional bounding box to restrict results geographically.
+  worldmonitor.core.v1.BoundingBox bounding_box = 3;
+}
+
+// ListFireDetectionsResponse contains the list of fire detections matching the request filters.
+message ListFireDetectionsResponse {
+  // The list of fire detections.
+  repeated FireDetection fire_detections = 1;
+  // Pagination metadata.
+  worldmonitor.core.v1.PaginationResponse pagination = 2;
+}

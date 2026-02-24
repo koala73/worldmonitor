@@ -1,4 +1,5 @@
 import type { ClusteredEvent, RelatedAsset, AssetType, RelatedAssetContext } from '@/types';
+import { t } from '@/services/i18n';
 import {
   INTEL_HOTSPOTS,
   CONFLICT_ZONES,
@@ -18,14 +19,6 @@ const ASSET_KEYWORDS: Record<AssetType, string[]> = {
   datacenter: ['datacenter', 'data center', 'server farm', 'colocation', 'hyperscale'],
   base: ['military base', 'airbase', 'naval base', 'base', 'garrison'],
   nuclear: ['nuclear', 'reactor', 'uranium', 'enrichment', 'nuclear plant'],
-};
-
-const ASSET_LABELS: Record<AssetType, string> = {
-  pipeline: 'Pipeline',
-  cable: 'Cable',
-  datacenter: 'Datacenter',
-  base: 'Base',
-  nuclear: 'Nuclear',
 };
 
 interface AssetOrigin {
@@ -160,7 +153,15 @@ export function getClusterAssetContext(cluster: ClusteredEvent): RelatedAssetCon
 }
 
 export function getAssetLabel(type: AssetType): string {
-  return ASSET_LABELS[type];
+  return t(`components.relatedAssets.${type}`);
 }
+
+export function getNearbyInfrastructure(
+  lat: number, lon: number, types: AssetType[]
+): RelatedAsset[] {
+  return findNearbyAssets({ lat, lon, label: 'country-centroid' }, types);
+}
+
+export { haversineDistanceKm };
 
 export { MAX_DISTANCE_KM };

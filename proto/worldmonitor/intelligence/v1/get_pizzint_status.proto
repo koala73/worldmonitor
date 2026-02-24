@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package worldmonitor.intelligence.v1;
+
+import "worldmonitor/intelligence/v1/intelligence.proto";
+
+// GetPizzintStatusRequest specifies parameters for retrieving PizzINT and GDELT data.
+message GetPizzintStatusRequest {
+  // Whether to include GDELT tension pairs in the response.
+  bool include_gdelt = 1;
+}
+
+// GetPizzintStatusResponse contains Pentagon Pizza Index and GDELT tension data.
+message GetPizzintStatusResponse {
+  // Pentagon Pizza Index status.
+  PizzintStatus pizzint = 1;
+  // GDELT bilateral tension pairs.
+  repeated GdeltTensionPair tension_pairs = 2;
+}

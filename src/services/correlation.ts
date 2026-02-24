@@ -3,7 +3,8 @@
  * Core logic is in analysis-core.ts (shared with worker).
  */
 
-import type { ClusteredEvent, PredictionMarket, MarketData } from '@/types';
+import type { ClusteredEvent, MarketData } from '@/types';
+import type { PredictionMarket } from '@/services/prediction';
 import { getSourceType } from '@/config/feeds';
 import {
   analyzeCorrelationsCore,
@@ -27,6 +28,7 @@ const DEDUPE_TTLS: Record<string, number> = {
   flow_price_divergence: 6 * 60 * 60 * 1000,
   explained_market_move: 6 * 60 * 60 * 1000,
   prediction_leads_news: 2 * 60 * 60 * 1000,
+  keyword_spike: 30 * 60 * 1000,
 };
 
 function getDedupeType(key: string): string {

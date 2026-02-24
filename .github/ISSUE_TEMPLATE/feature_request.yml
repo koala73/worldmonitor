@@ -1,0 +1,55 @@
+name: Feature Request
+description: Suggest a new feature or improvement
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have an idea for World Monitor? We'd love to hear it!
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Feature area
+      description: Which area does this feature relate to?
+      options:
+        - Map / Globe / Data layers
+        - News panels / RSS feeds
+        - AI / Intelligence analysis
+        - Market data / Crypto
+        - Desktop app
+        - UI / UX
+        - API / Backend
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear description of the feature you'd like.
+      placeholder: I'd like to see...
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem it solves
+      description: What problem does this feature address? What's the use case?
+      placeholder: This would help with...
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Have you considered any alternative solutions or workarounds?
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Any mockups, screenshots, links, or references that help illustrate the idea.

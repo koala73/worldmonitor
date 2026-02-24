@@ -1,0 +1,113 @@
+syntax = "proto3";
+
+package worldmonitor.maritime.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+import "worldmonitor/core/v1/geo.proto";
+
+// VesselSnapshot represents a point-in-time view of civilian AIS vessel data.
+message VesselSnapshot {
+  // Snapshot timestamp, as Unix epoch milliseconds.
+  int64 snapshot_at = 1 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Density zones showing vessel concentrations.
+  repeated AisDensityZone density_zones = 2;
+  // Detected AIS disruptions.
+  repeated AisDisruption disruptions = 3;
+}
+
+// AisDensityZone represents a zone of concentrated vessel traffic.
+message AisDensityZone {
+  // Zone identifier.
+  string id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // Zone name (e.g., "Strait of Malacca").
+  string name = 2;
+  // Zone centroid location.
+  worldmonitor.core.v1.GeoCoordinates location = 3;
+  // Traffic intensity score (0-100).
+  double intensity = 4 [
+    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.lte = 100
+  ];
+  // Change from baseline as a percentage.
+  double delta_pct = 5;
+  // Estimated ships per day.
+  int32 ships_per_day = 6;
+  // Analyst note.
+  string note = 7;
+}
+
+// AisDisruption represents a detected anomaly in AIS vessel tracking data.
+message AisDisruption {
+  // Disruption identifier.
+  string id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // Descriptive name.
+  string name = 2;
+  // Type of AIS disruption.
+  AisDisruptionType type = 3;
+  // Location of the disruption.
+  worldmonitor.core.v1.GeoCoordinates location = 4;
+  // Disruption severity.
+  AisDisruptionSeverity severity = 5;
+  // Percentage change from normal.
+  double change_pct = 6;
+  // Analysis window in hours.
+  int32 window_hours = 7;
+  // Number of dark ships (AIS off) detected.
+  int32 dark_ships = 8;
+  // Number of vessels in the affected area.
+  int32 vessel_count = 9;
+  // Region name.
+  string region = 10;
+  // Human-readable description.
+  string description = 11;
+}
+
+// NavigationalWarning represents a maritime safety warning from NGA.
+message NavigationalWarning {
+  // Warning identifier.
+  string id = 1;
+  // Warning title.
+  string title = 2;
+  // Full warning text.
+  string text = 3;
+  // Geographic area affected.
+  string area = 4;
+  // Location of the warning.
+  worldmonitor.core.v1.GeoCoordinates location = 5;
+  // Warning issue date, as Unix epoch milliseconds.
+  int64 issued_at = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Warning expiry date, as Unix epoch milliseconds.
+  int64 expires_at = 7 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Warning source authority.
+  string authority = 8;
+}
+
+// AisDisruptionType represents the type of AIS tracking anomaly.
+// Maps to TS union: 'gap_spike' | 'chokepoint_congestion'.
+enum AisDisruptionType {
+  // Unspecified disruption type.
+  AIS_DISRUPTION_TYPE_UNSPECIFIED = 0;
+  // Sudden increase in AIS signal gaps.
+  AIS_DISRUPTION_TYPE_GAP_SPIKE = 1;
+  // Unusual congestion at a chokepoint.
+  AIS_DISRUPTION_TYPE_CHOKEPOINT_CONGESTION = 2;
+}
+
+// AisDisruptionSeverity represents the severity of an AIS disruption.
+enum AisDisruptionSeverity {
+  // Unspecified severity.
+  AIS_DISRUPTION_SEVERITY_UNSPECIFIED = 0;
+  // Low severity — minor anomaly.
+  AIS_DISRUPTION_SEVERITY_LOW = 1;
+  // Elevated severity — notable anomaly.
+  AIS_DISRUPTION_SEVERITY_ELEVATED = 2;
+  // High severity — significant anomaly.
+  AIS_DISRUPTION_SEVERITY_HIGH = 3;
+}

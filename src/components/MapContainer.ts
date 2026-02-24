@@ -4,12 +4,11 @@
  */
 import { isMobileDevice } from '@/utils';
 import { MapComponent } from './Map';
-import { DeckGLMap, type DeckMapView } from './DeckGLMap';
+import { DeckGLMap, type DeckMapView, type CountryClickPayload } from './DeckGLMap';
 import type {
   MapLayers,
   Hotspot,
   NewsItem,
-  Earthquake,
   InternetOutage,
   RelatedAsset,
   AssetType,
@@ -18,16 +17,19 @@ import type {
   CableAdvisory,
   RepairShip,
   SocialUnrestEvent,
-  AirportDelayAlert,
   MilitaryFlight,
   MilitaryVessel,
   MilitaryFlightCluster,
   MilitaryVesselCluster,
   NaturalEvent,
   UcdpGeoEvent,
-  DisplacementFlow,
-  ClimateAnomaly,
+  CyberThreat,
+  CableHealthRecord,
 } from '@/types';
+import type { AirportDelayAlert } from '@/services/aviation';
+import type { DisplacementFlow } from '@/services/displacement';
+import type { Earthquake } from '@/services/earthquakes';
+import type { ClimateAnomaly } from '@/services/climate';
 import type { WeatherAlert } from '@/services/weather';
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
@@ -80,25 +82,43 @@ export class MapContainer {
   private hasWebGLSupport(): boolean {
     try {
       const canvas = document.createElement('canvas');
-      const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
-      return !!gl;
+      // deck.gl + maplibre rely on WebGL2 features in desktop mode.
+      // Some Linux WebKitGTK builds expose only WebGL1, which can lead to
+      // an empty/black render surface instead of a usable map.
+      const gl2 = canvas.getContext('webgl2');
+      return !!gl2;
     } catch {
       return false;
     }
   }
 
+  private initSvgMap(logMessage: string): void {
+    console.log(logMessage);
+    this.useDeckGL = false;
+    this.deckGLMap = null;
+    this.container.classList.remove('deckgl-mode');
+    this.container.classList.add('svg-mode');
+    // DeckGLMap mutates DOM early during construction. If initialization throws,
+    // clear partial deck.gl nodes before creating the SVG fallback.
+    this.container.innerHTML = '';
+    this.svgMap = new MapComponent(this.container, this.initialState);
+  }
+
   private init(): void {
     if (this.useDeckGL) {
       console.log('[MapContainer] Initializing deck.gl map (desktop mode)');
-      this.container.classList.add('deckgl-mode');
-      this.deckGLMap = new DeckGLMap(this.container, {
-        ...this.initialState,
-        view: this.initialState.view as DeckMapView,
-      });
+      try {
+        this.container.classList.add('deckgl-mode');
+        this.deckGLMap = new DeckGLMap(this.container, {
+          ...this.initialState,
+          view: this.initialState.view as DeckMapView,
+        });
+      } catch (error) {
+        console.warn('[MapContainer] DeckGL initialization failed, falling back to SVG map', error);
+        this.initSvgMap('[MapContainer] Initializing SVG map (DeckGL fallback mode)');
+      }
     } else {
-      console.log('[MapContainer] Initializing SVG map (mobile/fallback mode)');
-      this.container.classList.add('svg-mode');
-      this.svgMap = new MapComponent(this.container, this.initialState);
+      this.initSvgMap('[MapContainer] Initializing SVG map (mobile/fallback mode)');
     }
   }
 
@@ -215,6 +235,14 @@ export class MapContainer {
     }
   }
 
+  public setCableHealth(healthMap: Record<string, CableHealthRecord>): void {
+    if (this.useDeckGL) {
+      this.deckGLMap?.setCableHealth(healthMap);
+    } else {
+      this.svgMap?.setCableHealth(healthMap);
+    }
+  }
+
   public setProtests(events: SocialUnrestEvent[]): void {
     if (this.useDeckGL) {
       this.deckGLMap?.setProtests(events);
@@ -289,7 +317,15 @@ export class MapContainer {
     }
   }
 
-  public setNewsLocations(data: Array<{ lat: number; lon: number; title: string; threatLevel: string }>): void {
+  public setCyberThreats(threats: CyberThreat[]): void {
+    if (this.useDeckGL) {
+      this.deckGLMap?.setCyberThreats(threats);
+    } else {
+      this.svgMap?.setCyberThreats(threats);
+    }
+  }
+
+  public setNewsLocations(data: Array<{ lat: number; lon: number; title: string; threatLevel: string; timestamp?: Date }>): void {
     if (this.useDeckGL) {
       this.deckGLMap?.setNewsLocations(data);
     } else {
@@ -345,7 +381,7 @@ export class MapContainer {
     }
   }
 
-  public setOnLayerChange(callback: (layer: keyof MapLayers, enabled: boolean) => void): void {
+  public setOnLayerChange(callback: (layer: keyof MapLayers, enabled: boolean, source: 'user' | 'programmatic') => void): void {
     if (this.useDeckGL) {
       this.deckGLMap?.setOnLayerChange(callback);
     } else {
@@ -500,7 +536,7 @@ export class MapContainer {
   }
 
   // Country click + highlight (deck.gl only)
-  public onCountryClicked(callback: (lat: number, lon: number) => void): void {
+  public onCountryClicked(callback: (country: CountryClickPayload) => void): void {
     if (this.useDeckGL) {
       this.deckGLMap?.setOnCountryClick(callback);
     }

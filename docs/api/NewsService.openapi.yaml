@@ -1,0 +1,134 @@
+openapi: 3.1.0
+info:
+    title: NewsService API
+    version: 1.0.0
+paths:
+    /api/news/v1/summarize-article:
+        post:
+            tags:
+                - NewsService
+            summary: SummarizeArticle
+            description: SummarizeArticle generates an LLM summary with provider selection and fallback support.
+            operationId: SummarizeArticle
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/SummarizeArticleRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SummarizeArticleResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+components:
+    schemas:
+        Error:
+            type: object
+            properties:
+                message:
+                    type: string
+                    description: Error message (e.g., 'user not found', 'database connection failed')
+            description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        FieldViolation:
+            type: object
+            properties:
+                field:
+                    type: string
+                    description: The field path that failed validation (e.g., 'user.email' for nested fields). For header validation, this will be the header name (e.g., 'X-API-Key')
+                description:
+                    type: string
+                    description: Human-readable description of the validation violation (e.g., 'must be a valid email address', 'required field missing')
+            required:
+                - field
+                - description
+            description: FieldViolation describes a single validation error for a specific field.
+        ValidationError:
+            type: object
+            properties:
+                violations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FieldViolation'
+                    description: List of validation violations
+            required:
+                - violations
+            description: ValidationError is returned when request validation fails. It contains a list of field violations describing what went wrong.
+        SummarizeArticleRequest:
+            type: object
+            properties:
+                provider:
+                    type: string
+                    minLength: 1
+                    description: 'LLM provider: "ollama", "groq", "openrouter"'
+                headlines:
+                    type: array
+                    items:
+                        type: string
+                        minItems: 1
+                        description: Headlines to summarize (max 8 used).
+                    minItems: 1
+                mode:
+                    type: string
+                    description: 'Summarization mode: "brief", "analysis", "translate", "" (default).'
+                geoContext:
+                    type: string
+                    description: Geographic signal context to include in the prompt.
+                variant:
+                    type: string
+                    description: 'Variant: "full", "tech", or target language for translate mode.'
+                lang:
+                    type: string
+                    description: Output language code, default "en".
+            required:
+                - provider
+            description: SummarizeArticleRequest specifies parameters for LLM article summarization.
+        SummarizeArticleResponse:
+            type: object
+            properties:
+                summary:
+                    type: string
+                    description: The generated summary text.
+                model:
+                    type: string
+                    description: Model identifier used for generation.
+                provider:
+                    type: string
+                    description: Provider that produced the result (or "cache").
+                cached:
+                    type: boolean
+                    description: Whether the result came from Redis cache.
+                tokens:
+                    type: integer
+                    format: int32
+                    description: Token count from the LLM response.
+                fallback:
+                    type: boolean
+                    description: Whether the client should try the next provider in the fallback chain.
+                skipped:
+                    type: boolean
+                    description: Whether this provider was skipped (credentials missing).
+                reason:
+                    type: string
+                    description: Human-readable skip/error reason.
+                error:
+                    type: string
+                    description: Error message if the request failed.
+                errorType:
+                    type: string
+                    description: Error type/name (e.g. "TypeError").
+            description: SummarizeArticleResponse contains the LLM summarization result.

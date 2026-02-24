@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package worldmonitor.core.v1;
+
+// SeverityLevel represents a three-tier severity classification used across domains.
+// Maps to existing TS unions: 'low' | 'medium' | 'high'.
+enum SeverityLevel {
+  // Unspecified severity level.
+  SEVERITY_LEVEL_UNSPECIFIED = 0;
+  // Low severity — minimal impact or concern.
+  SEVERITY_LEVEL_LOW = 1;
+  // Medium severity — moderate impact requiring attention.
+  SEVERITY_LEVEL_MEDIUM = 2;
+  // High severity — significant impact requiring immediate attention.
+  SEVERITY_LEVEL_HIGH = 3;
+}
+
+// CriticalityLevel represents a four-tier criticality classification for cyber and risk domains.
+// Maps to existing TS union: 'low' | 'medium' | 'high' | 'critical'.
+enum CriticalityLevel {
+  // Unspecified criticality level.
+  CRITICALITY_LEVEL_UNSPECIFIED = 0;
+  // Low criticality — routine or informational.
+  CRITICALITY_LEVEL_LOW = 1;
+  // Medium criticality — warrants investigation.
+  CRITICALITY_LEVEL_MEDIUM = 2;
+  // High criticality — active threat requiring response.
+  CRITICALITY_LEVEL_HIGH = 3;
+  // Critical — severe threat requiring immediate action.
+  CRITICALITY_LEVEL_CRITICAL = 4;
+}
+
+// TrendDirection represents the directional movement of a metric over time.
+// Used in markets, GDELT tension scores, and risk assessments.
+enum TrendDirection {
+  // Unspecified trend direction.
+  TREND_DIRECTION_UNSPECIFIED = 0;
+  // Rising — the metric is increasing.
+  TREND_DIRECTION_RISING = 1;
+  // Stable — the metric is relatively unchanged.
+  TREND_DIRECTION_STABLE = 2;
+  // Falling — the metric is decreasing.
+  TREND_DIRECTION_FALLING = 3;
+}

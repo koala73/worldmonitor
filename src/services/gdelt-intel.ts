@@ -1,5 +1,11 @@
-import { fetchWithProxy } from '@/utils';
 import type { Hotspot } from '@/types';
+import { t } from '@/services/i18n';
+import {
+  IntelligenceServiceClient,
+  type GdeltArticle as ProtoGdeltArticle,
+  type SearchGdeltDocumentsResponse,
+} from '@/generated/client/worldmonitor/intelligence/v1/service_client';
+import { createCircuitBreaker } from '@/utils';
 
 export interface GdeltArticle {
   title: string;
@@ -70,11 +76,35 @@ export const INTEL_TOPICS: IntelTopic[] = [
   },
 ];
 
+export function getIntelTopics(): IntelTopic[] {
+  return INTEL_TOPICS.map(topic => ({
+    ...topic,
+    name: t(`intel.topics.${topic.id}.name`),
+    description: t(`intel.topics.${topic.id}.description`),
+  }));
+}
+
+// ---- Sebuf client ----
+
+const client = new IntelligenceServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+const gdeltBreaker = createCircuitBreaker<SearchGdeltDocumentsResponse>({ name: 'GDELT Intelligence' });
+
+const emptyGdeltFallback: SearchGdeltDocumentsResponse = { articles: [], query: '', error: '' };
+
 const CACHE_TTL = 5 * 60 * 1000;
 const articleCache = new Map<string, { articles: GdeltArticle[]; timestamp: number }>();
 
-function buildGdeltDocUrl(query: string, maxrecords = 10, timespan = '24h'): string {
-  return `/api/gdelt-doc?query=${encodeURIComponent(query)}&maxrecords=${maxrecords}&timespan=${timespan}`;
+/** Map proto GdeltArticle (all required strings) to service GdeltArticle (optional fields) */
+function toGdeltArticle(a: ProtoGdeltArticle): GdeltArticle {
+  return {
+    title: a.title,
+    url: a.url,
+    source: a.source,
+    date: a.date,
+    image: a.image || undefined,
+    language: a.language || undefined,
+    tone: a.tone || undefined,
+  };
 }
 
 export async function fetchGdeltArticles(
@@ -89,24 +119,23 @@ export async function fetchGdeltArticles(
     return cached.articles;
   }
 
-  try {
-    const url = buildGdeltDocUrl(query, maxrecords, timespan);
-    const response = await fetchWithProxy(url);
+  const resp = await gdeltBreaker.execute(async () => {
+    return client.searchGdeltDocuments({
+      query,
+      maxRecords: maxrecords,
+      timespan,
+    });
+  }, emptyGdeltFallback);
 
-    if (!response.ok) {
-      console.warn(`[GDELT-Intel] Failed to fetch: ${response.status}`);
-      return cached?.articles || [];
-    }
-
-    const data = await response.json();
-    const articles: GdeltArticle[] = data.articles || [];
-
-    articleCache.set(cacheKey, { articles, timestamp: Date.now() });
-    return articles;
-  } catch (error) {
-    console.error('[GDELT-Intel] Fetch error:', error);
+  if (resp.error) {
+    console.warn(`[GDELT-Intel] RPC error: ${resp.error}`);
     return cached?.articles || [];
   }
+
+  const articles: GdeltArticle[] = (resp.articles || []).map(toGdeltArticle);
+
+  articleCache.set(cacheKey, { articles, timestamp: Date.now() });
+  return articles;
 }
 
 export async function fetchHotspotContext(hotspot: Hotspot): Promise<GdeltArticle[]> {

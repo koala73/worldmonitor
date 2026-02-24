@@ -1,0 +1,104 @@
+/* Language Switcher */
+.lang-select {
+  /* Legacy selector styles - keeping for fallback if needed, or remove if fully replaced */
+  padding: 4px 24px 4px 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%23888' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  margin-right: 8px;
+  min-width: 60px;
+}
+
+/* Custom Language Selector */
+.custom-lang-selector {
+  position: relative;
+  display: inline-block;
+  margin-right: 8px;
+}
+
+.lang-selector-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  min-width: 70px;
+  height: 26px; /* Match other header buttons */
+}
+
+.lang-selector-btn:hover {
+  border-color: var(--text-dim);
+  background: var(--bg-hover);
+}
+
+.lang-flag-icon {
+  width: 16px;
+  height: 12px;
+  object-fit: cover;
+  border-radius: 2px;
+}
+
+.lang-code {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.lang-arrow {
+  font-size: 8px;
+  color: var(--text-dim);
+  margin-left: auto;
+}
+
+.lang-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  max-height: 300px;
+  overflow-y: auto;
+  z-index: 1000;
+  min-width: 140px;
+}
+
+.lang-dropdown.hidden {
+  display: none;
+}
+
+.lang-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.lang-option:hover {
+  background: var(--bg-hover);
+}
+
+.lang-option.active {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.lang-option .lang-name {
+  font-size: 12px;
+}

@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package worldmonitor.aviation.v1;
+
+import "worldmonitor/core/v1/pagination.proto";
+import "worldmonitor/aviation/v1/airport_delay.proto";
+
+// ListAirportDelaysRequest specifies filters for retrieving airport delay alerts.
+message ListAirportDelaysRequest {
+  // Pagination parameters.
+  worldmonitor.core.v1.PaginationRequest pagination = 1;
+  // Optional region filter.
+  AirportRegion region = 2;
+  // Optional minimum severity filter.
+  FlightDelaySeverity min_severity = 3;
+}
+
+// ListAirportDelaysResponse contains airport delay alerts matching the request.
+message ListAirportDelaysResponse {
+  // The list of airport delay alerts.
+  repeated AirportDelayAlert alerts = 1;
+  // Pagination metadata.
+  worldmonitor.core.v1.PaginationResponse pagination = 2;
+}

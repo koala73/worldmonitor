@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+package worldmonitor.wildfire.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+import "worldmonitor/core/v1/geo.proto";
+
+// FireDetection represents a satellite-detected active fire from NASA FIRMS.
+message FireDetection {
+  // Unique detection identifier.
+  string id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 100
+  ];
+  // Geographic location of the fire detection.
+  worldmonitor.core.v1.GeoCoordinates location = 2;
+  // Brightness temperature in Kelvin.
+  double brightness = 3;
+  // Fire radiative power in MW.
+  double frp = 4;
+  // Detection confidence level.
+  FireConfidence confidence = 5;
+  // Satellite that detected the fire (e.g., "MODIS", "VIIRS", "LANDSAT").
+  string satellite = 6;
+  // Time the fire was detected, as Unix epoch milliseconds.
+  int64 detected_at = 7 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Monitored region name (e.g., "Ukraine", "Russia", "Iran").
+  string region = 8;
+  // Day or night detection ("D" or "N").
+  string day_night = 9;
+}
+
+// FireConfidence represents the confidence level of a fire detection.
+enum FireConfidence {
+  // Unspecified confidence.
+  FIRE_CONFIDENCE_UNSPECIFIED = 0;
+  // Low confidence detection.
+  FIRE_CONFIDENCE_LOW = 1;
+  // Nominal confidence detection.
+  FIRE_CONFIDENCE_NOMINAL = 2;
+  // High confidence detection.
+  FIRE_CONFIDENCE_HIGH = 3;
+}

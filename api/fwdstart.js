@@ -1,7 +1,13 @@
+// Non-sebuf: returns XML/HTML, stays as standalone Vercel function
+import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 export const config = { runtime: 'edge' };
 
 // Scrape FwdStart newsletter archive and return as RSS
 export default async function handler(req) {
+  const cors = getCorsHeaders(req);
+  if (isDisallowedOrigin(req)) {
+    return new Response(JSON.stringify({ error: 'Origin not allowed' }), { status: 403, headers: cors });
+  }
   try {
     const response = await fetch('https://www.fwdstart.me/archive', {
       headers: {
@@ -84,8 +90,8 @@ export default async function handler(req) {
     return new Response(rss, {
       headers: {
         'Content-Type': 'application/xml; charset=utf-8',
-        'Access-Control-Allow-Origin': '*',
-        'Cache-Control': 'public, max-age=1800',
+        ...cors,
+        'Cache-Control': 'public, max-age=1800, s-maxage=1800, stale-while-revalidate=300',
       },
     });
   } catch (error) {
@@ -97,7 +103,7 @@ export default async function handler(req) {
       status: 502,
       headers: {
         'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
+        ...cors,
       },
     });
   }

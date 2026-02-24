@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package worldmonitor.maritime.v1;
+
+import "worldmonitor/core/v1/pagination.proto";
+import "worldmonitor/maritime/v1/vessel_snapshot.proto";
+
+// ListNavigationalWarningsRequest specifies filters for retrieving NGA warnings.
+message ListNavigationalWarningsRequest {
+  // Pagination parameters.
+  worldmonitor.core.v1.PaginationRequest pagination = 1;
+  // Optional area filter (e.g., "NAVAREA IV", "Persian Gulf").
+  string area = 2;
+}
+
+// ListNavigationalWarningsResponse contains navigational warnings matching the request.
+message ListNavigationalWarningsResponse {
+  // The list of navigational warnings.
+  repeated NavigationalWarning warnings = 1;
+  // Pagination metadata.
+  worldmonitor.core.v1.PaginationResponse pagination = 2;
+}

@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package worldmonitor.economic.v1;
+
+import "buf/validate/validate.proto";
+import "worldmonitor/economic/v1/economic_data.proto";
+
+// GetFredSeriesRequest specifies which FRED series to retrieve.
+message GetFredSeriesRequest {
+  // FRED series ID (e.g., "GDP", "UNRATE", "CPIAUCSL").
+  string series_id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // Maximum number of observations to return. Defaults to 120.
+  int32 limit = 2;
+}
+
+// GetFredSeriesResponse contains the requested FRED series data.
+message GetFredSeriesResponse {
+  // The FRED time series.
+  FredSeries series = 1;
+}

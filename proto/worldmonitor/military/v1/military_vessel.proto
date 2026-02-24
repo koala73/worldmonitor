@@ -1,0 +1,119 @@
+syntax = "proto3";
+
+package worldmonitor.military.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+import "worldmonitor/core/v1/geo.proto";
+import "worldmonitor/military/v1/military_flight.proto";
+
+// MilitaryVessel represents a tracked military or special vessel from AIS data.
+message MilitaryVessel {
+  // Unique vessel identifier.
+  string id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // Maritime Mobile Service Identity.
+  string mmsi = 2;
+  // Vessel name.
+  string name = 3;
+  // Type of military vessel.
+  MilitaryVesselType vessel_type = 4;
+  // Human-readable AIS ship type (e.g., "Cargo", "Tanker").
+  string ais_ship_type = 5;
+  // Hull number (e.g., "DDG-51", "CVN-78").
+  string hull_number = 6;
+  // Operating military branch or force.
+  MilitaryOperator operator = 7;
+  // Country operating the vessel (ISO 3166-1 alpha-2).
+  string operator_country = 8;
+  // Current position.
+  worldmonitor.core.v1.GeoCoordinates location = 9;
+  // Heading in degrees.
+  double heading = 10;
+  // Speed in knots.
+  double speed = 11;
+  // Course over ground in degrees.
+  double course = 12;
+  // AIS-reported destination.
+  string destination = 13;
+  // Last AIS position update time, as Unix epoch milliseconds.
+  int64 last_ais_update_at = 14 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Minutes since last AIS signal.
+  int32 ais_gap_minutes = 15;
+  // Whether AIS appears disabled or suspicious.
+  bool is_dark = 16;
+  // Name of nearby strategic waterway, if any.
+  string near_chokepoint = 17;
+  // Name of nearby naval base, if any.
+  string near_base = 18;
+  // Confidence in vessel identification.
+  MilitaryConfidence confidence = 19;
+  // Whether flagged for unusual activity.
+  bool is_interesting = 20;
+  // Analyst note.
+  string note = 21;
+}
+
+// MilitaryVesselCluster represents a geographic cluster of military vessels.
+message MilitaryVesselCluster {
+  // Unique cluster identifier.
+  string id = 1;
+  // Descriptive name of the cluster.
+  string name = 2;
+  // Cluster centroid location.
+  worldmonitor.core.v1.GeoCoordinates location = 3;
+  // Number of vessels in the cluster.
+  int32 vessel_count = 4;
+  // The vessels in this cluster.
+  repeated MilitaryVessel vessels = 5;
+  // Region name.
+  string region = 6;
+  // Assessed activity type.
+  MilitaryActivityType activity_type = 7;
+}
+
+// TheaterPosture represents an assessed military posture for a geographic theater.
+message TheaterPosture {
+  // Theater name (e.g., "Indo-Pacific", "European", "Middle East").
+  string theater = 1;
+  // Overall posture assessment.
+  string posture_level = 2;
+  // Number of active flights in the theater.
+  int32 active_flights = 3;
+  // Number of tracked vessels in the theater.
+  int32 tracked_vessels = 4;
+  // Notable ongoing operations.
+  repeated string active_operations = 5;
+  // Assessment timestamp, as Unix epoch milliseconds.
+  int64 assessed_at = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}
+
+// MilitaryVesselType represents the classification of a military vessel.
+enum MilitaryVesselType {
+  // Unspecified vessel type.
+  MILITARY_VESSEL_TYPE_UNSPECIFIED = 0;
+  // Aircraft carrier.
+  MILITARY_VESSEL_TYPE_CARRIER = 1;
+  // Destroyer or cruiser.
+  MILITARY_VESSEL_TYPE_DESTROYER = 2;
+  // Frigate or corvette.
+  MILITARY_VESSEL_TYPE_FRIGATE = 3;
+  // Submarine (when surfaced or detected).
+  MILITARY_VESSEL_TYPE_SUBMARINE = 4;
+  // Amphibious assault ship (LHD, LPD, LST).
+  MILITARY_VESSEL_TYPE_AMPHIBIOUS = 5;
+  // Coast guard or patrol boat.
+  MILITARY_VESSEL_TYPE_PATROL = 6;
+  // Supply ship or fleet tanker.
+  MILITARY_VESSEL_TYPE_AUXILIARY = 7;
+  // Intelligence gathering or research vessel.
+  MILITARY_VESSEL_TYPE_RESEARCH = 8;
+  // Military icebreaker.
+  MILITARY_VESSEL_TYPE_ICEBREAKER = 9;
+  // Special mission vessel.
+  MILITARY_VESSEL_TYPE_SPECIAL = 10;
+  // Unknown vessel type.
+  MILITARY_VESSEL_TYPE_UNKNOWN = 11;
+}

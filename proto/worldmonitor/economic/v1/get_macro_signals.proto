@@ -1,0 +1,133 @@
+syntax = "proto3";
+
+package worldmonitor.economic.v1;
+
+import "buf/validate/validate.proto";
+
+// GetMacroSignalsRequest requests the current macro signal dashboard.
+message GetMacroSignalsRequest {}
+
+// GetMacroSignalsResponse contains the full macro signal dashboard with 7 signals and verdict.
+message GetMacroSignalsResponse {
+  // ISO 8601 timestamp of computation.
+  string timestamp = 1;
+  // Overall verdict: "BUY", "CASH", or "UNKNOWN".
+  string verdict = 2;
+  // Number of bullish signals.
+  int32 bullish_count = 3;
+  // Total number of evaluated signals (excluding UNKNOWN).
+  int32 total_count = 4;
+  // All 7 macro signals.
+  MacroSignals signals = 5;
+  // Additional metadata (e.g., QQQ sparkline).
+  MacroMeta meta = 6;
+  // True when upstream data is unavailable (fallback result).
+  bool unavailable = 7;
+}
+
+// MacroSignals contains all 7 individual signal computations.
+message MacroSignals {
+  // JPY-based liquidity squeeze detection.
+  LiquiditySignal liquidity = 1;
+  // BTC vs QQQ 5-day return comparison.
+  FlowStructureSignal flow_structure = 2;
+  // QQQ vs XLP 20-day rate of change regime.
+  MacroRegimeSignal macro_regime = 3;
+  // BTC price vs moving averages and VWAP.
+  TechnicalTrendSignal technical_trend = 4;
+  // Bitcoin mining hash rate momentum.
+  HashRateSignal hash_rate = 5;
+  // Mining profitability estimate.
+  MiningCostSignal mining_cost = 6;
+  // Crypto Fear & Greed index.
+  FearGreedSignal fear_greed = 7;
+}
+
+// LiquiditySignal tracks JPY 30d rate of change as a liquidity proxy.
+message LiquiditySignal {
+  // "SQUEEZE", "NORMAL", or "UNKNOWN".
+  string status = 1;
+  // JPY 30d ROC percentage, absent if unavailable.
+  optional double value = 2;
+  // Last 30 JPY close prices.
+  repeated double sparkline = 3;
+}
+
+// FlowStructureSignal compares BTC vs QQQ 5-day returns.
+message FlowStructureSignal {
+  // "PASSIVE GAP", "ALIGNED", or "UNKNOWN".
+  string status = 1;
+  // BTC 5-day return percentage.
+  optional double btc_return_5 = 2;
+  // QQQ 5-day return percentage.
+  optional double qqq_return_5 = 3;
+}
+
+// MacroRegimeSignal compares QQQ vs XLP 20-day rate of change.
+message MacroRegimeSignal {
+  // "RISK-ON", "DEFENSIVE", or "UNKNOWN".
+  string status = 1;
+  // QQQ 20d ROC percentage.
+  optional double qqq_roc_20 = 2;
+  // XLP 20d ROC percentage.
+  optional double xlp_roc_20 = 3;
+}
+
+// TechnicalTrendSignal evaluates BTC price vs moving averages and VWAP.
+message TechnicalTrendSignal {
+  // "BULLISH", "BEARISH", "NEUTRAL", or "UNKNOWN".
+  string status = 1;
+  // Current BTC price.
+  optional double btc_price = 2;
+  // 50-day simple moving average.
+  optional double sma_50 = 3;
+  // 200-day simple moving average.
+  optional double sma_200 = 4;
+  // 30-day volume-weighted average price.
+  optional double vwap_30d = 5;
+  // Mayer multiple (BTC price / SMA200).
+  optional double mayer_multiple = 6;
+  // Last 30 BTC close prices.
+  repeated double sparkline = 7;
+}
+
+// HashRateSignal tracks Bitcoin hash rate momentum.
+message HashRateSignal {
+  // "GROWING", "DECLINING", "STABLE", or "UNKNOWN".
+  string status = 1;
+  // Hash rate change over 30 days as percentage.
+  optional double change_30d = 2;
+}
+
+// MiningCostSignal estimates mining profitability from BTC price thresholds.
+message MiningCostSignal {
+  // "PROFITABLE", "TIGHT", "SQUEEZE", or "UNKNOWN".
+  string status = 1;
+}
+
+// FearGreedHistoryEntry is a single day's Fear & Greed index reading.
+message FearGreedHistoryEntry {
+  // Index value (0-100).
+  int32 value = 1 [
+    (buf.validate.field).int32.gte = 0,
+    (buf.validate.field).int32.lte = 100
+  ];
+  // Date string (YYYY-MM-DD).
+  string date = 2;
+}
+
+// FearGreedSignal tracks the Crypto Fear & Greed index.
+message FearGreedSignal {
+  // Classification label (e.g., "Extreme Fear", "Greed").
+  string status = 1;
+  // Current index value (0-100).
+  optional int32 value = 2;
+  // Last 30 days of history.
+  repeated FearGreedHistoryEntry history = 3;
+}
+
+// MacroMeta contains supplementary chart data.
+message MacroMeta {
+  // Last 30 QQQ close prices for sparkline.
+  repeated double qqq_sparkline = 1;
+}

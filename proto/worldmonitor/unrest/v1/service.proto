@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package worldmonitor.unrest.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/unrest/v1/list_unrest_events.proto";
+
+// UnrestService provides APIs for social unrest data aggregated from ACLED and GDELT.
+service UnrestService {
+  option (sebuf.http.service_config) = {base_path: "/api/unrest/v1"};
+
+  // ListUnrestEvents retrieves protest, riot, and civil unrest events.
+  rpc ListUnrestEvents(ListUnrestEventsRequest) returns (ListUnrestEventsResponse) {
+    option (sebuf.http.config) = {path: "/list-unrest-events"};
+  }
+}

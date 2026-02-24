@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package worldmonitor.market.v1;
+
+import "worldmonitor/market/v1/market_quote.proto";
+
+// GetSectorSummaryRequest specifies parameters for retrieving sector performance.
+message GetSectorSummaryRequest {
+  // Time period for performance calculation (e.g., "1d", "1w", "1m"). Defaults to "1d".
+  string period = 1;
+}
+
+// GetSectorSummaryResponse contains sector performance data.
+message GetSectorSummaryResponse {
+  // The list of sector performances.
+  repeated SectorPerformance sectors = 1;
+}

@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package worldmonitor.military.v1;
+
+import "buf/validate/validate.proto";
+import "worldmonitor/military/v1/get_aircraft_details.proto";
+
+// GetAircraftDetailsBatchRequest looks up multiple aircraft by ICAO 24-bit hex.
+message GetAircraftDetailsBatchRequest {
+  // ICAO 24-bit hex addresses (lowercase). Max 20.
+  repeated string icao24s = 1 [
+    (buf.validate.field).repeated.min_items = 1,
+    (buf.validate.field).repeated.max_items = 20
+  ];
+}
+
+// GetAircraftDetailsBatchResponse contains the batch lookup results.
+message GetAircraftDetailsBatchResponse {
+  // Map of icao24 -> aircraft details for found aircraft.
+  map<string, AircraftDetails> results = 1;
+  // Number of aircraft successfully fetched from upstream.
+  int32 fetched = 2;
+  // Number of aircraft requested.
+  int32 requested = 3;
+  // Whether the Wingbits API is configured.
+  bool configured = 4;
+}

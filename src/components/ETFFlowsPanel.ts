@@ -1,31 +1,10 @@
 import { Panel } from './Panel';
+import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
+import { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
+import type { ListEtfFlowsResponse } from '@/generated/client/worldmonitor/market/v1/service_client';
 
-interface ETFData {
-  ticker: string;
-  issuer: string;
-  price: number;
-  priceChange: number;
-  volume: number;
-  avgVolume: number;
-  volumeRatio: number;
-  direction: 'inflow' | 'outflow' | 'neutral';
-  estFlow: number;
-}
-
-interface ETFFlowsResult {
-  timestamp: string;
-  summary: {
-    etfCount: number;
-    totalVolume: number;
-    totalEstFlow: number;
-    netDirection: string;
-    inflowCount: number;
-    outflowCount: number;
-  };
-  etfs: ETFData[];
-  unavailable?: boolean;
-}
+type ETFFlowsResult = ListEtfFlowsResponse;
 
 function formatVolume(v: number): string {
   if (Math.abs(v) >= 1e9) return `${(v / 1e9).toFixed(1)}B`;
@@ -53,9 +32,11 @@ export class ETFFlowsPanel extends Panel {
   private refreshInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
-    super({ id: 'etf-flows', title: 'BTC ETF Tracker', showCount: false });
-    void this.fetchData();
-    this.refreshInterval = setInterval(() => this.fetchData(), 60000);
+    super({ id: 'etf-flows', title: t('panels.etfFlows'), showCount: false });
+    // Delay initial fetch by 8s to avoid competing with stock/commodity Yahoo calls
+    // during cold start — all share a global yahooGate() rate limiter on the sidecar
+    setTimeout(() => void this.fetchData(), 8_000);
+    this.refreshInterval = setInterval(() => this.fetchData(), 3 * 60000);
   }
 
   public destroy(): void {
@@ -66,37 +47,50 @@ export class ETFFlowsPanel extends Panel {
   }
 
   private async fetchData(): Promise<void> {
-    try {
-      const res = await fetch('/api/etf-flows');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      this.data = await res.json();
-      this.error = null;
-    } catch (err) {
-      this.error = err instanceof Error ? err.message : 'Failed to fetch';
-    } finally {
-      this.loading = false;
-      this.renderPanel();
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const client = new MarketServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+        this.data = await client.listEtfFlows({});
+        this.error = null;
+
+        if (this.data && this.data.etfs.length === 0 && attempt < 2) {
+          this.showRetrying();
+          await new Promise(r => setTimeout(r, 20_000));
+          continue;
+        }
+        break;
+      } catch (err) {
+        if (this.isAbortError(err)) return;
+        if (attempt < 2) {
+          this.showRetrying();
+          await new Promise(r => setTimeout(r, 20_000));
+          continue;
+        }
+        this.error = err instanceof Error ? err.message : 'Failed to fetch';
+      }
     }
+    this.loading = false;
+    this.renderPanel();
   }
 
   private renderPanel(): void {
     if (this.loading) {
-      this.showLoading('Loading ETF data...');
+      this.showLoading(t('common.loadingEtfData'));
       return;
     }
 
     if (this.error || !this.data) {
-      this.showError(this.error || 'No data');
+      this.showError(this.error || t('common.noDataShort'));
       return;
     }
 
     const d = this.data;
     if (!d.etfs.length) {
-      this.setContent('<div class="panel-loading-text">ETF data temporarily unavailable</div>');
+      this.setContent(`<div class="panel-loading-text">${t('components.etfFlows.unavailable')}</div>`);
       return;
     }
 
-    const s = d.summary;
+    const s = d.summary || { etfCount: 0, totalVolume: 0, totalEstFlow: 0, netDirection: 'NEUTRAL', inflowCount: 0, outflowCount: 0 };
     const dirClass = s.netDirection.includes('INFLOW') ? 'flow-inflow' : s.netDirection.includes('OUTFLOW') ? 'flow-outflow' : 'flow-neutral';
 
     const rows = d.etfs.map(etf => `
@@ -113,19 +107,19 @@ export class ETFFlowsPanel extends Panel {
       <div class="etf-flows-container">
         <div class="etf-summary ${dirClass}">
           <div class="etf-summary-item">
-            <span class="etf-summary-label">Net Flow</span>
-            <span class="etf-summary-value ${dirClass}">${escapeHtml(s.netDirection)}</span>
+            <span class="etf-summary-label">${t('components.etfFlows.netFlow')}</span>
+            <span class="etf-summary-value ${dirClass}">${s.netDirection.includes('INFLOW') ? t('components.etfFlows.netInflow') : t('components.etfFlows.netOutflow')}</span>
           </div>
           <div class="etf-summary-item">
-            <span class="etf-summary-label">Est. Flow</span>
+            <span class="etf-summary-label">${t('components.etfFlows.estFlow')}</span>
             <span class="etf-summary-value">$${formatVolume(Math.abs(s.totalEstFlow))}</span>
           </div>
           <div class="etf-summary-item">
-            <span class="etf-summary-label">Total Vol</span>
+            <span class="etf-summary-label">${t('components.etfFlows.totalVol')}</span>
             <span class="etf-summary-value">${formatVolume(s.totalVolume)}</span>
           </div>
           <div class="etf-summary-item">
-            <span class="etf-summary-label">ETFs</span>
+            <span class="etf-summary-label">${t('components.etfFlows.etfs')}</span>
             <span class="etf-summary-value">${s.inflowCount}↑ ${s.outflowCount}↓</span>
           </div>
         </div>
@@ -133,11 +127,11 @@ export class ETFFlowsPanel extends Panel {
           <table class="etf-table">
             <thead>
               <tr>
-                <th>Ticker</th>
-                <th>Issuer</th>
-                <th>Est. Flow</th>
-                <th>Volume</th>
-                <th>Change</th>
+                <th>${t('components.etfFlows.table.ticker')}</th>
+                <th>${t('components.etfFlows.table.issuer')}</th>
+                <th>${t('components.etfFlows.table.estFlow')}</th>
+                <th>${t('components.etfFlows.table.volume')}</th>
+                <th>${t('components.etfFlows.table.change')}</th>
               </tr>
             </thead>
             <tbody>${rows}</tbody>

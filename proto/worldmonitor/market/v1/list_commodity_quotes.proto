@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package worldmonitor.market.v1;
+
+import "worldmonitor/market/v1/market_quote.proto";
+
+// ListCommodityQuotesRequest specifies which commodities to retrieve.
+message ListCommodityQuotesRequest {
+  // Commodity symbols to retrieve (Yahoo symbols). Empty returns defaults.
+  repeated string symbols = 1;
+}
+
+// ListCommodityQuotesResponse contains commodity quotes.
+message ListCommodityQuotesResponse {
+  // The list of commodity quotes.
+  repeated CommodityQuote quotes = 1;
+}

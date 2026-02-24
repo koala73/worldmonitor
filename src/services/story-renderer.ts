@@ -1,4 +1,5 @@
 import type { StoryData } from './story-data';
+import { getLocale, t } from './i18n';
 
 const W = 1080;
 const H = 1920;
@@ -9,6 +10,7 @@ function humanizeSignalType(type: string): string {
     news_leads_markets: 'News Leading',
     silent_divergence: 'Silent Divergence',
     velocity_spike: 'Velocity Spike',
+    keyword_spike: 'Keyword Spike',
     convergence: 'Convergence',
     triangulation: 'Triangulation',
     flow_drop: 'Flow Drop',
@@ -74,7 +76,7 @@ export async function renderStoryToCanvas(data: StoryData): Promise<HTMLCanvasEl
   ctx.letterSpacing = '6px';
   ctx.fillText('WORLDMONITOR', textX, y + 26);
   ctx.letterSpacing = '0px';
-  const dateStr = new Date().toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+  const dateStr = new Date().toLocaleDateString(getLocale(), { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
   ctx.font = '400 24px Inter, system-ui, sans-serif';
   ctx.fillStyle = '#555';
   const dateW = ctx.measureText(dateStr).width;
@@ -159,10 +161,10 @@ export async function renderStoryToCanvas(data: StoryData): Promise<HTMLCanvasEl
   if (data.cii?.components) {
     y += 44;
     const comps = [
-      { label: 'UNREST', val: data.cii.components.unrest, color: '#f97316' },
-      { label: 'CONFLICT', val: data.cii.components.conflict, color: '#dc2626' },
-      { label: 'SECURITY', val: data.cii.components.security, color: '#ef4444' },
-      { label: 'INFORMATION', val: data.cii.components.information, color: '#8b5cf6' },
+      { label: t('common.unrest').toUpperCase(), val: data.cii.components.unrest, color: '#f97316' },
+      { label: t('common.conflict').toUpperCase(), val: data.cii.components.conflict, color: '#dc2626' },
+      { label: t('common.security').toUpperCase(), val: data.cii.components.security, color: '#ef4444' },
+      { label: t('common.information').toUpperCase(), val: data.cii.components.information, color: '#8b5cf6' },
     ];
     const compBarW = (barW - 24) / 3;
     for (const comp of comps) {

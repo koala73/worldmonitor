@@ -1,6 +1,8 @@
 import { Panel } from './Panel';
 import type { GeoHubActivity } from '@/services/geo-activity';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
+import { t } from '@/services/i18n';
+import { getCSSColor } from '@/utils';
 
 const COUNTRY_FLAGS: Record<string, string> = {
   'USA': '🇺🇸', 'Russia': '🇷🇺', 'China': '🇨🇳', 'UK': '🇬🇧', 'Belgium': '🇧🇪',
@@ -33,22 +35,13 @@ export class GeoHubsPanel extends Panel {
   constructor() {
     super({
       id: 'geo-hubs',
-      title: 'Geopolitical Hotspots',
+      title: t('panels.geoHubs'),
       showCount: true,
-      infoTooltip: `
-        <strong>Geopolitical Activity Hubs</strong><br>
-        Shows regions with the most news activity.<br><br>
-        <em>Hub types:</em><br>
-        • 🏛️ Capitals — World capitals and government centers<br>
-        • ⚔️ Conflict Zones — Active conflict areas<br>
-        • ⚓ Strategic — Chokepoints and key regions<br>
-        • 🏢 Organizations — UN, NATO, IAEA, etc.<br><br>
-        <em>Activity levels:</em><br>
-        • <span style="color: #ff4444">High</span> — Breaking news or 70+ score<br>
-        • <span style="color: #ff8844">Elevated</span> — Score 40-69<br>
-        • <span style="color: #888">Low</span> — Score below 40<br><br>
-        Click a hub to zoom to its location.
-      `,
+      infoTooltip: t('components.geoHubs.infoTooltip', {
+        highColor: getCSSColor('--semantic-critical'),
+        elevatedColor: getCSSColor('--semantic-high'),
+        lowColor: getCSSColor('--text-dim'),
+      }),
     });
   }
 
@@ -76,7 +69,7 @@ export class GeoHubsPanel extends Panel {
 
   private render(): void {
     if (this.activities.length === 0) {
-      this.showError('No active geopolitical hubs');
+      this.showError(t('common.noActiveGeoHubs'));
       return;
     }
 
@@ -96,7 +89,7 @@ export class GeoHubsPanel extends Panel {
               ${breakingTag}
             </div>
             <div class="hub-meta">
-              <span class="hub-news-count">${hub.newsCount} ${hub.newsCount === 1 ? 'story' : 'stories'}</span>
+              <span class="hub-news-count">${hub.newsCount} ${hub.newsCount === 1 ? t('components.geoHubs.story') : t('components.geoHubs.stories')}</span>
               ${trendIcon ? `<span class="hub-trend ${hub.trend}">${trendIcon}</span>` : ''}
               <span class="geo-hub-type">${this.getTypeIcon(hub.type)} ${this.getTypeLabel(hub.type)}</span>
             </div>

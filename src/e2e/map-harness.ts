@@ -22,13 +22,16 @@ import {
   SPACEPORTS,
   APT_GROUPS,
   CRITICAL_MINERALS,
+  STOCK_EXCHANGES,
+  FINANCIAL_CENTERS,
+  CENTRAL_BANKS,
+  COMMODITY_HUBS,
 } from '../config';
 import type {
   AisDensityZone,
   AisDisruptionEvent,
-  AirportDelayAlert,
   CableAdvisory,
-  Earthquake,
+  CyberThreat,
   InternetOutage,
   MapLayers,
   MilitaryFlight,
@@ -40,11 +43,19 @@ import type {
   RepairShip,
   SocialUnrestEvent,
 } from '../types';
+import type { AirportDelayAlert } from '../services/aviation';
+import type { Earthquake } from '../services/earthquakes';
 import type { WeatherAlert } from '../services/weather';
 
 type Scenario = 'alpha' | 'beta';
-type HarnessVariant = 'full' | 'tech';
+type HarnessVariant = 'full' | 'tech' | 'finance';
 type HarnessLayerKey = keyof MapLayers;
+type PulseProtestScenario =
+  | 'none'
+  | 'recent-acled-riot'
+  | 'recent-gdelt-riot'
+  | 'recent-protest';
+type NewsPulseScenario = 'none' | 'recent' | 'stale';
 
 type LayerSnapshot = {
   id: string;
@@ -85,7 +96,12 @@ type MapHarness = {
   variant: HarnessVariant;
   seedAllDynamicData: () => void;
   setProtestsScenario: (scenario: Scenario) => void;
+  setPulseProtestsScenario: (scenario: PulseProtestScenario) => void;
+  setNewsPulseScenario: (scenario: NewsPulseScenario) => void;
   setHotspotActivityScenario: (scenario: 'none' | 'breaking') => void;
+  forcePulseStartupElapsed: () => void;
+  resetPulseStartupTime: () => void;
+  isPulseAnimationRunning: () => boolean;
   setZoom: (zoom: number) => void;
   setLayersForSnapshot: (enabledLayers: HarnessLayerKey[]) => void;
   setCamera: (camera: CameraState) => void;
@@ -94,8 +110,12 @@ type MapHarness = {
   prepareVisualScenario: (scenarioId: string) => boolean;
   isVisualScenarioReady: (scenarioId: string) => boolean;
   getDeckLayerSnapshot: () => LayerSnapshot[];
+  getLayerDataCount: (layerId: string) => number;
+  getLayerFirstScreenTransform: (layerId: string) => string | null;
+  getFirstProtestTitle: () => string | null;
+  getProtestClusterCount: () => number;
   getOverlaySnapshot: () => OverlaySnapshot;
-  getClusterStateSize: () => number;
+  getCyberTooltipHtml: (indicator: string) => string;
   destroy: () => void;
 };
 
@@ -129,6 +149,7 @@ const allLayersEnabled: MapLayers = {
   economic: true,
   waterways: true,
   outages: true,
+  cyberThreats: true,
   datacenters: true,
   protests: true,
   flights: true,
@@ -145,6 +166,11 @@ const allLayersEnabled: MapLayers = {
   accelerators: true,
   techHQs: true,
   techEvents: true,
+  stockExchanges: true,
+  financialCenters: true,
+  centralBanks: true,
+  commodityHubs: true,
+  gulfInvestments: true,
 };
 
 const allLayersDisabled: MapLayers = {
@@ -161,6 +187,7 @@ const allLayersDisabled: MapLayers = {
   economic: false,
   waterways: false,
   outages: false,
+  cyberThreats: false,
   datacenters: false,
   protests: false,
   flights: false,
@@ -177,6 +204,11 @@ const allLayersDisabled: MapLayers = {
   accelerators: false,
   techHQs: false,
   techEvents: false,
+  stockExchanges: false,
+  financialCenters: false,
+  centralBanks: false,
+  commodityHubs: false,
+  gulfInvestments: false,
 };
 
 const SEEDED_NEWS_LOCATIONS: Array<{
@@ -198,17 +230,20 @@ const map = new DeckGLMap(app, {
   pan: { x: 0, y: 0 },
   view: 'global',
   layers: allLayersEnabled,
-  timeRange: '24h',
+  // Keep harness deterministic regardless of wall-clock date.
+  timeRange: 'all',
 });
 
 const DETERMINISTIC_BODY_CLASS = 'e2e-deterministic';
 
 const internals = map as unknown as {
   buildLayers?: () => Array<{ id: string; props?: { data?: unknown } }>;
-  lastClusterState?: Map<string, unknown>;
   maplibreMap?: MapLibreMap;
+  getTooltip?: (info: { object?: unknown; layer?: { id?: string } }) => { html?: string } | null;
   newsLocationFirstSeen?: Map<string, number>;
-  stopNewsPulseAnimation?: () => void;
+  newsPulseIntervalId?: ReturnType<typeof setInterval> | null;
+  startupTime?: number;
+  stopPulseAnimation?: () => void;
 };
 
 const buildLayerState = (enabledLayers: HarnessLayerKey[]): MapLayers => {
@@ -264,6 +299,50 @@ const getDeckLayerSnapshot = (): LayerSnapshot[] => {
   }));
 };
 
+const getLayerDataCount = (layerId: string): number => {
+  return getDeckLayerSnapshot().find((layer) => layer.id === layerId)?.dataCount ?? 0;
+};
+
+const getLayerFirstScreenTransform = (layerId: string): string | null => {
+  const maplibreMap = internals.maplibreMap;
+  if (!maplibreMap) return null;
+
+  const layers = internals.buildLayers?.() ?? [];
+  const target = layers.find((layer) => layer.id === layerId);
+  const data = target?.props?.data;
+  if (!Array.isArray(data) || data.length === 0) return null;
+
+  const first = data[0] as {
+    lon?: number;
+    lng?: number;
+    longitude?: number;
+    lat?: number;
+    latitude?: number;
+  };
+
+  const lon = first.lon ?? first.lng ?? first.longitude;
+  const lat = first.lat ?? first.latitude;
+  if (!Number.isFinite(lon) || !Number.isFinite(lat)) return null;
+
+  const point = maplibreMap.project([lon as number, lat as number]);
+  return `translate(${point.x.toFixed(2)}px, ${point.y.toFixed(2)}px)`;
+};
+
+const getFirstProtestTitle = (): string | null => {
+  const layers = internals.buildLayers?.() ?? [];
+  const protestLayer = layers.find((layer) => layer.id === 'protest-clusters-layer');
+  const data = protestLayer?.props?.data;
+  if (!Array.isArray(data) || data.length === 0) return null;
+
+  const first = data[0] as { items?: Array<{ title?: string }> };
+  const title = first.items?.[0]?.title;
+  return typeof title === 'string' ? title : null;
+};
+
+const getProtestClusterCount = (): number => {
+  return getLayerDataCount('protest-clusters-layer');
+};
+
 const getOverlaySnapshot = (): OverlaySnapshot => ({
   protestMarkers: document.querySelectorAll('.protest-marker').length,
   datacenterMarkers: document.querySelectorAll('.datacenter-marker').length,
@@ -306,6 +385,7 @@ const seededCameras = {
   ais: toCamera(55.0, 25.0, 5.2),
   weather: toCamera(-80.2, 25.7, 5.2),
   outages: toCamera(-0.1, 51.5, 5.2),
+  cyber: toCamera(-0.12, 51.5, 5.2),
   protests: toCamera(0.2, 20.1, 5.2),
   flights: toCamera(-73.9, 40.4, 5.2),
   military: toCamera(56.3, 26.1, 5.2),
@@ -333,6 +413,10 @@ const [techHQLon, techHQLat] = firstLatLon(TECH_HQS, [-122.0, 37.3]);
 const [cloudRegionLon, cloudRegionLat] = firstLatLon(CLOUD_REGIONS, [-122.3, 37.6]);
 const [aptLon, aptLat] = firstLatLon(APT_GROUPS, [116.4, 39.9]);
 const [portLon, portLat] = firstLatLon(PORTS, [32.5, 29.9]);
+const [exchangeLon, exchangeLat] = firstLatLon(STOCK_EXCHANGES, [-74.0, 40.7]);
+const [financialCenterLon, financialCenterLat] = firstLatLon(FINANCIAL_CENTERS, [-74.0, 40.7]);
+const [centralBankLon, centralBankLat] = firstLatLon(CENTRAL_BANKS, [-77.0, 38.9]);
+const [commodityHubLon, commodityHubLat] = firstLatLon(COMMODITY_HUBS, [-87.6, 41.8]);
 
 const VISUAL_SCENARIOS: VisualScenario[] = [
   {
@@ -440,12 +524,20 @@ const VISUAL_SCENARIOS: VisualScenario[] = [
     expectedSelectors: [],
   },
   {
+    id: 'cyber-z5',
+    variant: 'both',
+    enabledLayers: ['cyberThreats'],
+    camera: seededCameras.cyber,
+    expectedDeckLayers: ['cyber-threats-layer'],
+    expectedSelectors: [],
+  },
+  {
     id: 'datacenters-cluster-z3',
     variant: 'both',
     enabledLayers: ['datacenters'],
     camera: toCamera(datacenterLon, datacenterLat, 3.0),
-    expectedDeckLayers: [],
-    expectedSelectors: ['.datacenter-marker'],
+    expectedDeckLayers: ['datacenter-clusters-layer'],
+    expectedSelectors: [],
   },
   {
     id: 'datacenters-icons-z6',
@@ -460,8 +552,8 @@ const VISUAL_SCENARIOS: VisualScenario[] = [
     variant: 'both',
     enabledLayers: ['protests'],
     camera: seededCameras.protests,
-    expectedDeckLayers: [],
-    expectedSelectors: ['.protest-marker'],
+    expectedDeckLayers: ['protest-clusters-layer'],
+    expectedSelectors: [],
   },
   {
     id: 'flights-z5',
@@ -562,16 +654,48 @@ const VISUAL_SCENARIOS: VisualScenario[] = [
     variant: 'tech',
     enabledLayers: ['techHQs'],
     camera: toCamera(techHQLon, techHQLat, 5.2),
-    expectedDeckLayers: [],
-    expectedSelectors: ['.tech-hq-marker'],
+    expectedDeckLayers: ['tech-hq-clusters-layer'],
+    expectedSelectors: [],
   },
   {
     id: 'tech-events-z5',
     variant: 'tech',
     enabledLayers: ['techEvents'],
     camera: seededCameras.techEvents,
-    expectedDeckLayers: [],
-    expectedSelectors: ['.tech-event-marker'],
+    expectedDeckLayers: ['tech-event-clusters-layer'],
+    expectedSelectors: [],
+  },
+  {
+    id: 'stock-exchanges-z5',
+    variant: 'finance',
+    enabledLayers: ['stockExchanges'],
+    camera: toCamera(exchangeLon, exchangeLat, 5.2),
+    expectedDeckLayers: ['stock-exchanges-layer'],
+    expectedSelectors: [],
+  },
+  {
+    id: 'financial-centers-z5',
+    variant: 'finance',
+    enabledLayers: ['financialCenters'],
+    camera: toCamera(financialCenterLon, financialCenterLat, 5.2),
+    expectedDeckLayers: ['financial-centers-layer'],
+    expectedSelectors: [],
+  },
+  {
+    id: 'central-banks-z5',
+    variant: 'finance',
+    enabledLayers: ['centralBanks'],
+    camera: toCamera(centralBankLon, centralBankLat, 5.2),
+    expectedDeckLayers: ['central-banks-layer'],
+    expectedSelectors: [],
+  },
+  {
+    id: 'commodity-hubs-z5',
+    variant: 'finance',
+    enabledLayers: ['commodityHubs'],
+    camera: toCamera(commodityHubLon, commodityHubLat, 5.2),
+    expectedDeckLayers: ['commodity-hubs-layer'],
+    expectedSelectors: [],
   },
   // Note: `sanctions` has no map renderer in DeckGLMap today; excluded from visual scenarios.
 ];
@@ -583,6 +707,12 @@ const filterScenariosForVariant = (variant: HarnessVariant): VisualScenario[] =>
     (scenario) => scenario.variant === 'both' || scenario.variant === variant
   );
 };
+
+const currentHarnessVariant: HarnessVariant = SITE_VARIANT === 'tech'
+  ? 'tech'
+  : SITE_VARIANT === 'finance'
+  ? 'finance'
+  : 'full';
 
 const buildProtests = (scenario: Scenario): SocialUnrestEvent[] => {
   const title =
@@ -616,6 +746,37 @@ const buildProtests = (scenario: Scenario): SocialUnrestEvent[] => {
   ];
 };
 
+const buildPulseProtests = (scenario: PulseProtestScenario): SocialUnrestEvent[] => {
+  if (scenario === 'none') return [];
+
+  const now = new Date();
+  const isRiot = scenario !== 'recent-protest';
+  const sourceType = scenario === 'recent-gdelt-riot' ? 'gdelt' : 'acled';
+
+  return [
+    {
+      id: `e2e-pulse-protest-${scenario}`,
+      title: `Pulse Protest ${scenario}`,
+      summary: `Pulse protest fixture: ${scenario}`,
+      eventType: isRiot ? 'riot' : 'protest',
+      city: 'Harness City',
+      country: 'Harnessland',
+      lat: 20.1,
+      lon: 0.2,
+      time: now,
+      severity: isRiot ? 'high' : 'medium',
+      fatalities: isRiot ? 1 : 0,
+      sources: ['e2e'],
+      sourceType,
+      tags: ['e2e', 'pulse'],
+      actors: ['Harness Group'],
+      relatedHotspots: [],
+      confidence: 'high',
+      validated: true,
+    },
+  ];
+};
+
 const buildHotspotActivityNews = (
   scenario: 'none' | 'breaking'
 ): NewsItem[] => {
@@ -638,11 +799,10 @@ const seedAllDynamicData = (): void => {
       id: 'e2e-eq-1',
       place: 'Harness Fault',
       magnitude: 5.8,
-      lat: 34.1,
-      lon: -118.2,
-      depth: 12,
-      time: new Date('2026-02-01T10:00:00.000Z'),
-      url: 'https://example.com/eq',
+      depthKm: 12,
+      location: { latitude: 34.1, longitude: -118.2 },
+      occurredAt: new Date('2026-02-01T10:00:00.000Z').getTime(),
+      sourceUrl: 'https://example.com/eq',
     },
   ];
 
@@ -673,6 +833,24 @@ const seedAllDynamicData = (): void => {
       lon: -0.1,
       severity: 'major',
       categories: ['connectivity'],
+    },
+  ];
+
+  const cyberThreats: CyberThreat[] = [
+    {
+      id: 'e2e-cyber-1',
+      type: 'c2_server',
+      source: 'feodo',
+      indicator: '1.2.3.4',
+      indicatorType: 'ip',
+      lat: 51.5,
+      lon: -0.12,
+      country: 'GB',
+      severity: 'high',
+      malwareFamily: 'QakBot',
+      tags: ['botnet', 'c2'],
+      firstSeen: '2026-02-01T09:00:00.000Z',
+      lastSeen: '2026-02-01T10:00:00.000Z',
     },
   ];
 
@@ -830,6 +1008,7 @@ const seedAllDynamicData = (): void => {
   map.setEarthquakes(earthquakes);
   map.setWeatherAlerts(weather);
   map.setOutages(outages);
+  map.setCyberThreats(cyberThreats);
   map.setAisData(aisDisruptions, aisDensity);
   map.setCableActivity(cableAdvisories, repairShips);
   map.setProtests(buildProtests('alpha'));
@@ -887,7 +1066,30 @@ const makeNewsLocationsNonRecent = (): void => {
       internals.newsLocationFirstSeen.set(key, now - 120_000);
     }
   }
-  internals.stopNewsPulseAnimation?.();
+  internals.stopPulseAnimation?.();
+};
+
+const setNewsPulseScenario = (scenario: NewsPulseScenario): void => {
+  if (scenario === 'none') {
+    internals.newsLocationFirstSeen?.clear();
+    map.setNewsLocations([]);
+    return;
+  }
+
+  if (scenario === 'recent') {
+    map.setNewsLocations([
+      {
+        lat: 48.85,
+        lon: 2.35,
+        title: `Harness Pulse News ${Date.now()}`,
+        threatLevel: 'high',
+      },
+    ]);
+    return;
+  }
+
+  map.setNewsLocations(SEEDED_NEWS_LOCATIONS);
+  makeNewsLocationsNonRecent();
 };
 
 let deterministicVisualModeEnabled = false;
@@ -983,14 +1185,33 @@ const isVisualScenarioReady = (scenarioId: string): boolean => {
   return true;
 };
 
+const getCyberTooltipHtml = (indicator: string): string => {
+  const tooltip = internals.getTooltip?.({
+    object: {
+      country: indicator,
+      severity: 'high',
+      source: 'feodo',
+    },
+    layer: { id: 'cyber-threats-layer' },
+  });
+  return typeof tooltip?.html === 'string' ? tooltip.html : '';
+};
+
 seedAllDynamicData();
 
 let ready = false;
+const readyStartedAt = Date.now();
+const STYLE_READY_FALLBACK_MS = 12_000;
 const pollReady = (): void => {
   const hasCanvas = Boolean(document.querySelector('#deckgl-basemap canvas'));
   const maplibreMap = internals.maplibreMap;
+  const styleLoaded = Boolean(maplibreMap?.isStyleLoaded());
+  const allowStyleFallback =
+    hasCanvas &&
+    Boolean(maplibreMap) &&
+    Date.now() - readyStartedAt >= STYLE_READY_FALLBACK_MS;
 
-  if (hasCanvas && maplibreMap?.isStyleLoaded()) {
+  if ((hasCanvas && styleLoaded) || allowStyleFallback) {
     if (!deterministicVisualModeEnabled) {
       enableDeterministicVisualMode();
     }
@@ -1006,13 +1227,26 @@ window.__mapHarness = {
   get ready() {
     return ready;
   },
-  variant: SITE_VARIANT === 'tech' ? 'tech' : 'full',
+  variant: currentHarnessVariant,
   seedAllDynamicData,
   setProtestsScenario: (scenario: Scenario): void => {
     map.setProtests(buildProtests(scenario));
   },
+  setPulseProtestsScenario: (scenario: PulseProtestScenario): void => {
+    map.setProtests(buildPulseProtests(scenario));
+  },
+  setNewsPulseScenario,
   setHotspotActivityScenario: (scenario: 'none' | 'breaking'): void => {
     map.updateHotspotActivity(buildHotspotActivityNews(scenario));
+  },
+  forcePulseStartupElapsed: (): void => {
+    internals.startupTime = Date.now() - 61_000;
+  },
+  resetPulseStartupTime: (): void => {
+    internals.startupTime = Date.now();
+  },
+  isPulseAnimationRunning: (): boolean => {
+    return internals.newsPulseIntervalId != null;
   },
   setZoom: (zoom: number): void => {
     map.setZoom(zoom);
@@ -1022,8 +1256,7 @@ window.__mapHarness = {
   setCamera,
   enableDeterministicVisualMode,
   getVisualScenarios: (): VisualScenarioSummary[] => {
-    const variant = SITE_VARIANT === 'tech' ? 'tech' : 'full';
-    return filterScenariosForVariant(variant).map((scenario) => ({
+    return filterScenariosForVariant(currentHarnessVariant).map((scenario) => ({
       id: scenario.id,
       variant: scenario.variant,
     }));
@@ -1031,10 +1264,12 @@ window.__mapHarness = {
   prepareVisualScenario,
   isVisualScenarioReady,
   getDeckLayerSnapshot,
+  getLayerDataCount,
+  getLayerFirstScreenTransform,
+  getFirstProtestTitle,
+  getProtestClusterCount,
   getOverlaySnapshot,
-  getClusterStateSize: (): number => {
-    return internals.lastClusterState?.size ?? -1;
-  },
+  getCyberTooltipHtml,
   destroy: (): void => {
     map.destroy();
   },

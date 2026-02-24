@@ -2,6 +2,7 @@ import { getLocationName, type GeoConvergenceAlert } from './geo-convergence';
 import type { CountryScore } from './country-instability';
 import type { CascadeResult, CascadeImpactLevel } from '@/types';
 import { calculateCII, TIER1_COUNTRIES, isInLearningMode } from './country-instability';
+import { t } from '@/services/i18n';
 
 export type AlertPriority = 'critical' | 'high' | 'medium' | 'low';
 export type AlertType = 'convergence' | 'cii_spike' | 'cascade' | 'composite';
@@ -106,12 +107,13 @@ function getPriorityFromConvergence(score: number, typeCount: number): AlertPrio
 }
 
 function buildConvergenceAlert(convergence: GeoConvergenceAlert, alertId: string): UnifiedAlert {
+  const location = getCountriesNearLocation(convergence.lat, convergence.lon).join(', ') || 'Unknown';
   return {
     id: alertId,
     type: 'convergence',
     priority: getPriorityFromConvergence(convergence.score, convergence.types.length),
-    title: `Geographic Alert: ${getCountriesNearLocation(convergence.lat, convergence.lon).join(', ') || 'Unknown'}`,
-    summary: `${convergence.totalEvents} events detected in region (${convergence.lat.toFixed(1)}°, ${convergence.lon.toFixed(1)}°)`,
+    title: t('alerts.geoAlert', { location }),
+    summary: t('alerts.eventsDetected', { count: convergence.totalEvents, lat: convergence.lat.toFixed(1), lon: convergence.lon.toFixed(1) }),
     components: { convergence },
     location: { lat: convergence.lat, lon: convergence.lon },
     countries: getCountriesNearLocation(convergence.lat, convergence.lon),
@@ -146,15 +148,15 @@ export function createCIIAlert(
     driver,
   };
 
-  const direction = change > 0 ? 'rose' : 'fell';
   const changeStr = change > 0 ? `+${change}` : String(change);
+  const summaryKey = change > 0 ? 'alerts.indexRose' : 'alerts.indexFell';
 
   const alert: UnifiedAlert = {
     id: `cii-${country}`, // Stable ID for deduplication by country
     type: 'cii_spike',
     priority: getPriorityFromCIIChange(change, level),
-    title: `${countryName} Instability ${change > 0 ? 'Rising' : 'Falling'}`,
-    summary: `Instability index ${direction} from ${previousScore} to ${currentScore} (${changeStr}). Driver: ${driver}`,
+    title: t(change > 0 ? 'alerts.instabilityRising' : 'alerts.instabilityFalling', { country: countryName }),
+    summary: t(summaryKey, { from: previousScore, to: currentScore, change: changeStr, driver }),
     components: { ciiChange },
     countries: [country],
     timestamp: new Date(),
@@ -179,8 +181,8 @@ export function createCascadeAlert(cascade: CascadeResult): UnifiedAlert | null 
     id: generateAlertId(),
     type: 'cascade',
     priority: getPriorityFromCascadeImpact(highestImpact, cascade.countriesAffected.length),
-    title: `Infrastructure Alert: ${cascade.source.name}`,
-    summary: `${cascade.countriesAffected.length} countries affected, highest impact: ${highestImpact}`,
+    title: t('alerts.infraAlert', { name: cascade.source.name }),
+    summary: t('alerts.countriesAffected', { count: cascade.countriesAffected.length, impact: highestImpact }),
     components: { cascade: cascadeAlert },
     location: cascade.source.coordinates
       ? { lat: cascade.source.coordinates[1], lon: cascade.source.coordinates[0] }
@@ -235,28 +237,24 @@ function getCountryDisplayName(code: string): string {
 }
 
 function generateCompositeTitle(a: UnifiedAlert, b: UnifiedAlert): string {
-  // Get country name from CII change component if available
   const ciiChange = a.components.ciiChange || b.components.ciiChange;
   if (ciiChange) {
-    const direction = (ciiChange.change > 0) ? 'Rising' : 'Falling';
-    return `${ciiChange.countryName} Instability ${direction}`;
+    return t(ciiChange.change > 0 ? 'alerts.instabilityRising' : 'alerts.instabilityFalling', { country: ciiChange.countryName });
   }
 
-  // For convergence alerts
   if (a.components.convergence || b.components.convergence) {
     const countryCode = a.countries[0] || b.countries[0];
-    const location = countryCode ? getCountryDisplayName(countryCode) : 'Multiple Regions';
-    return `Geographic Alert: ${location}`;
+    const location = countryCode ? getCountryDisplayName(countryCode) : t('alerts.multipleRegions');
+    return t('alerts.geoAlert', { location });
   }
 
-  // For cascade alerts
   if (a.components.cascade || b.components.cascade) {
-    return 'Infrastructure Cascade Alert';
+    return t('alerts.cascadeAlert');
   }
 
   const countryCode = a.countries[0] || b.countries[0];
-  const location = countryCode ? getCountryDisplayName(countryCode) : 'Multiple Regions';
-  return `Alert: ${location}`;
+  const location = countryCode ? getCountryDisplayName(countryCode) : t('alerts.multipleRegions');
+  return t('alerts.alert', { location });
 }
 
 function generateCompositeSummary(a: UnifiedAlert, b: UnifiedAlert): string {
@@ -269,9 +267,9 @@ function generateCompositeSummary(a: UnifiedAlert, b: UnifiedAlert): string {
     const latest = ciiB.currentScore > ciiA.currentScore ? ciiB : ciiA;
     const earliest = ciiB.currentScore > ciiA.currentScore ? ciiA : ciiB;
     const totalChange = latest.currentScore - earliest.previousScore;
-    const direction = totalChange > 0 ? 'rose' : 'fell';
     const changeStr = totalChange > 0 ? `+${totalChange}` : `${totalChange}`;
-    return `Instability index ${direction} from ${earliest.previousScore} to ${latest.currentScore} (${changeStr}). Driver: ${latest.driver}`;
+    const summaryKey = totalChange > 0 ? 'alerts.indexRose' : 'alerts.indexFell';
+    return t(summaryKey, { from: earliest.previousScore, to: latest.currentScore, change: changeStr, driver: latest.driver });
   }
 
   // Otherwise combine summaries — limit to avoid unbounded growth

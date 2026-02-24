@@ -5,13 +5,13 @@
  */
 import { MapboxOverlay } from '@deck.gl/mapbox';
 import type { Layer, LayersList, PickingInfo } from '@deck.gl/core';
-import { GeoJsonLayer, ScatterplotLayer, PathLayer, IconLayer } from '@deck.gl/layers';
+import { GeoJsonLayer, ScatterplotLayer, PathLayer, IconLayer, TextLayer } from '@deck.gl/layers';
 import maplibregl from 'maplibre-gl';
+import Supercluster from 'supercluster';
 import type {
   MapLayers,
   Hotspot,
   NewsItem,
-  Earthquake,
   InternetOutage,
   RelatedAsset,
   AssetType,
@@ -20,21 +20,30 @@ import type {
   CableAdvisory,
   RepairShip,
   SocialUnrestEvent,
-  AirportDelayAlert,
+  AIDataCenter,
   MilitaryFlight,
   MilitaryVessel,
   MilitaryFlightCluster,
   MilitaryVesselCluster,
   NaturalEvent,
   UcdpGeoEvent,
-  DisplacementFlow,
-  ClimateAnomaly,
+  MapProtestCluster,
+  MapTechHQCluster,
+  MapTechEventCluster,
+  MapDatacenterCluster,
+  CyberThreat,
+  CableHealthRecord,
 } from '@/types';
+import type { AirportDelayAlert } from '@/services/aviation';
+import type { DisplacementFlow } from '@/services/displacement';
+import type { Earthquake } from '@/services/earthquakes';
+import type { ClimateAnomaly } from '@/services/climate';
 import { ArcLayer } from '@deck.gl/layers';
 import { HeatmapLayer } from '@deck.gl/aggregation-layers';
 import type { WeatherAlert } from '@/services/weather';
 import { escapeHtml } from '@/utils/sanitize';
-import { throttle, debounce, rafSchedule } from '@/utils/index';
+import { t } from '@/services/i18n';
+import { debounce, rafSchedule, getCurrentTheme } from '@/utils/index';
 import {
   INTEL_HOTSPOTS,
   CONFLICT_ZONES,
@@ -56,7 +65,13 @@ import {
   SPACEPORTS,
   APT_GROUPS,
   CRITICAL_MINERALS,
+  STOCK_EXCHANGES,
+  FINANCIAL_CENTERS,
+  CENTRAL_BANKS,
+  COMMODITY_HUBS,
+  GULF_INVESTMENTS,
 } from '@/config';
+import type { GulfInvestment } from '@/types';
 import { MapPopup, type PopupType } from './MapPopup';
 import {
   updateHotspotEscalation,
@@ -67,10 +82,18 @@ import {
 } from '@/services/hotspot-escalation';
 import { getCountryScore } from '@/services/country-instability';
 import { getAlertsNearLocation } from '@/services/geo-convergence';
+import { getCountriesGeoJson, getCountryAtCoordinates } from '@/services/country-geometry';
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
 export type DeckMapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
 type MapInteractionMode = 'flat' | '3d';
+
+export interface CountryClickPayload {
+  lat: number;
+  lon: number;
+  code?: string;
+  name?: string;
+}
 
 interface DeckMapState {
   zoom: number;
@@ -112,8 +135,12 @@ const VIEW_PRESETS: Record<DeckMapView, { longitude: number; latitude: number; z
 const MAP_INTERACTION_MODE: MapInteractionMode =
   import.meta.env.VITE_MAP_INTERACTION_MODE === 'flat' ? 'flat' : '3d';
 
+// Theme-aware basemap vector style URLs (English labels, no local scripts)
+const DARK_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
+const LIGHT_STYLE = 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json';
+
 // Zoom thresholds for layer visibility and labels (matches old Map.ts)
-// Used in renderClusterOverlays for zoom-dependent label visibility
+// Zoom-dependent layer visibility and labels
 const LAYER_ZOOM_THRESHOLDS: Partial<Record<keyof MapLayers, { minZoom: number; showLabels?: number }>> = {
   bases: { minZoom: 3, showLabels: 5 },
   nuclear: { minZoom: 3 },
@@ -123,35 +150,72 @@ const LAYER_ZOOM_THRESHOLDS: Partial<Record<keyof MapLayers, { minZoom: number; 
   datacenters: { minZoom: 5 },
   irradiators: { minZoom: 4 },
   spaceports: { minZoom: 3 },
+  gulfInvestments: { minZoom: 2, showLabels: 5 },
 };
 // Export for external use
 export { LAYER_ZOOM_THRESHOLDS };
 
-// Color constants matching the dark theme
-const COLORS = {
-  hotspotHigh: [255, 68, 68, 200] as [number, number, number, number],
-  hotspotElevated: [255, 165, 0, 200] as [number, number, number, number],
-  hotspotLow: [255, 255, 0, 180] as [number, number, number, number],
-  conflict: [255, 0, 0, 100] as [number, number, number, number],
-  base: [0, 150, 255, 200] as [number, number, number, number],
-  nuclear: [255, 215, 0, 200] as [number, number, number, number],
-  datacenter: [0, 255, 200, 180] as [number, number, number, number],
-  cable: [0, 200, 255, 150] as [number, number, number, number],
-  cableHighlight: [255, 100, 100, 200] as [number, number, number, number],
-  earthquake: [255, 100, 50, 200] as [number, number, number, number],
-  vesselMilitary: [255, 100, 100, 220] as [number, number, number, number],
-  flightMilitary: [255, 50, 50, 220] as [number, number, number, number],
-  protest: [255, 150, 0, 200] as [number, number, number, number],
-  outage: [255, 50, 50, 180] as [number, number, number, number],
-  weather: [100, 150, 255, 180] as [number, number, number, number],
-  startupHub: [0, 255, 150, 200] as [number, number, number, number],
-  techHQ: [100, 200, 255, 200] as [number, number, number, number],
-  accelerator: [255, 200, 0, 200] as [number, number, number, number],
-  cloudRegion: [150, 100, 255, 180] as [number, number, number, number],
-  ucdpStateBased: [255, 50, 50, 200] as [number, number, number, number],
-  ucdpNonState: [255, 165, 0, 200] as [number, number, number, number],
-  ucdpOneSided: [255, 255, 0, 200] as [number, number, number, number],
-};
+// Theme-aware overlay color function — refreshed each buildLayers() call
+function getOverlayColors() {
+  const isLight = getCurrentTheme() === 'light';
+  return {
+    // Threat dots: IDENTICAL in both modes (user locked decision)
+    hotspotHigh: [255, 68, 68, 200] as [number, number, number, number],
+    hotspotElevated: [255, 165, 0, 200] as [number, number, number, number],
+    hotspotLow: [255, 255, 0, 180] as [number, number, number, number],
+
+    // Conflict zone fills: more transparent in light mode
+    conflict: isLight
+      ? [255, 0, 0, 60] as [number, number, number, number]
+      : [255, 0, 0, 100] as [number, number, number, number],
+
+    // Infrastructure/category markers: darker variants in light mode for map readability
+    base: [0, 150, 255, 200] as [number, number, number, number],
+    nuclear: isLight
+      ? [180, 120, 0, 220] as [number, number, number, number]
+      : [255, 215, 0, 200] as [number, number, number, number],
+    datacenter: isLight
+      ? [13, 148, 136, 200] as [number, number, number, number]
+      : [0, 255, 200, 180] as [number, number, number, number],
+    cable: [0, 200, 255, 150] as [number, number, number, number],
+    cableHighlight: [255, 100, 100, 200] as [number, number, number, number],
+    cableFault: [255, 50, 50, 220] as [number, number, number, number],
+    cableDegraded: [255, 165, 0, 200] as [number, number, number, number],
+    earthquake: [255, 100, 50, 200] as [number, number, number, number],
+    vesselMilitary: [255, 100, 100, 220] as [number, number, number, number],
+    flightMilitary: [255, 50, 50, 220] as [number, number, number, number],
+    protest: [255, 150, 0, 200] as [number, number, number, number],
+    outage: [255, 50, 50, 180] as [number, number, number, number],
+    weather: [100, 150, 255, 180] as [number, number, number, number],
+    startupHub: isLight
+      ? [22, 163, 74, 220] as [number, number, number, number]
+      : [0, 255, 150, 200] as [number, number, number, number],
+    techHQ: [100, 200, 255, 200] as [number, number, number, number],
+    accelerator: isLight
+      ? [180, 120, 0, 220] as [number, number, number, number]
+      : [255, 200, 0, 200] as [number, number, number, number],
+    cloudRegion: [150, 100, 255, 180] as [number, number, number, number],
+    stockExchange: isLight
+      ? [20, 120, 200, 220] as [number, number, number, number]
+      : [80, 200, 255, 210] as [number, number, number, number],
+    financialCenter: isLight
+      ? [0, 150, 110, 215] as [number, number, number, number]
+      : [0, 220, 150, 200] as [number, number, number, number],
+    centralBank: isLight
+      ? [180, 120, 0, 220] as [number, number, number, number]
+      : [255, 210, 80, 210] as [number, number, number, number],
+    commodityHub: isLight
+      ? [190, 95, 40, 220] as [number, number, number, number]
+      : [255, 150, 80, 200] as [number, number, number, number],
+    gulfInvestmentSA: [0, 168, 107, 220] as [number, number, number, number],
+    gulfInvestmentUAE: [255, 0, 100, 220] as [number, number, number, number],
+    ucdpStateBased: [255, 50, 50, 200] as [number, number, number, number],
+    ucdpNonState: [255, 165, 0, 200] as [number, number, number, number],
+    ucdpOneSided: [255, 255, 0, 200] as [number, number, number, number],
+  };
+}
+// Initialize and refresh on every buildLayers() call
+let COLORS = getOverlayColors();
 
 // SVG icons as data URLs for different marker shapes
 const MARKER_ICONS = {
@@ -170,6 +234,8 @@ const MARKER_ICONS = {
 };
 
 export class DeckGLMap {
+  private static readonly MAX_CLUSTER_LEAVES = 200;
+
   private container: HTMLElement;
   private deckOverlay: MapboxOverlay | null = null;
   private maplibreMap: maplibregl.Map | null = null;
@@ -181,10 +247,12 @@ export class DeckGLMap {
   private earthquakes: Earthquake[] = [];
   private weatherAlerts: WeatherAlert[] = [];
   private outages: InternetOutage[] = [];
+  private cyberThreats: CyberThreat[] = [];
   private aisDisruptions: AisDisruptionEvent[] = [];
   private aisDensity: AisDensityZone[] = [];
   private cableAdvisories: CableAdvisory[] = [];
   private repairShips: RepairShip[] = [];
+  private healthByCableId: Record<string, CableHealthRecord> = {};
   private protests: SocialUnrestEvent[] = [];
   private militaryFlights: MilitaryFlight[] = [];
   private militaryFlightClusters: MilitaryFlightCluster[] = [];
@@ -195,7 +263,7 @@ export class DeckGLMap {
   private techEvents: TechEventMarker[] = [];
   private flightDelays: AirportDelayAlert[] = [];
   private news: NewsItem[] = [];
-  private newsLocations: Array<{ lat: number; lon: number; title: string; threatLevel: string }> = [];
+  private newsLocations: Array<{ lat: number; lon: number; title: string; threatLevel: string; timestamp?: Date }> = [];
   private newsLocationFirstSeen = new Map<string, number>();
   private ucdpEvents: UcdpGeoEvent[] = [];
   private displacementFlows: DisplacementFlow[] = [];
@@ -203,12 +271,14 @@ export class DeckGLMap {
 
   // Country highlight state
   private countryGeoJsonLoaded = false;
+  private countryHoverSetup = false;
+  private highlightedCountryCode: string | null = null;
 
   // Callbacks
   private onHotspotClick?: (hotspot: Hotspot) => void;
   private onTimeRangeChange?: (range: TimeRange) => void;
-  private onCountryClick?: (lat: number, lon: number) => void;
-  private onLayerChange?: (layer: keyof MapLayers, enabled: boolean) => void;
+  private onCountryClick?: (country: CountryClickPayload) => void;
+  private onLayerChange?: (layer: keyof MapLayers, enabled: boolean, source: 'user' | 'programmatic') => void;
   private onStateChange?: (state: DeckMapState) => void;
 
   // Highlighted assets
@@ -220,44 +290,63 @@ export class DeckGLMap {
     nuclear: new Set(),
   };
 
-  private timestampIntervalId: ReturnType<typeof setInterval> | null = null;
   private renderScheduled = false;
   private renderPaused = false;
   private renderPending = false;
+  private webglLost = false;
   private resizeObserver: ResizeObserver | null = null;
 
   private layerCache: Map<string, Layer> = new Map();
   private lastZoomThreshold = 0;
-  private clusterElementCache: Map<string, HTMLElement> = new Map();
-  private lastClusterState: Map<string, { x: number; y: number; count: number }> = new Map();
-  private clusterResultCache: Map<string, Array<{ items: unknown[]; center: [number, number]; screenPos: [number, number] }>> = new Map();
-  private lastClusterZoom = -1;
+  private protestSC: Supercluster | null = null;
+  private techHQSC: Supercluster | null = null;
+  private techEventSC: Supercluster | null = null;
+  private datacenterSC: Supercluster | null = null;
+  private protestClusters: MapProtestCluster[] = [];
+  private techHQClusters: MapTechHQCluster[] = [];
+  private techEventClusters: MapTechEventCluster[] = [];
+  private datacenterClusters: MapDatacenterCluster[] = [];
+  private lastSCZoom = -1;
+  private lastSCBoundsKey = '';
+  private lastSCMask = '';
+  private protestSuperclusterSource: SocialUnrestEvent[] = [];
   private newsPulseIntervalId: ReturnType<typeof setInterval> | null = null;
+  private readonly startupTime = Date.now();
   private lastCableHighlightSignature = '';
+  private lastCableHealthSignature = '';
   private lastPipelineHighlightSignature = '';
-  private throttledRenderClusters: () => void;
   private debouncedRebuildLayers: () => void;
   private rafUpdateLayers: () => void;
   private moveTimeoutId: ReturnType<typeof setTimeout> | null = null;
-  private hotspotSyncRafId: number | null = null;
-  private hotspotOverlayNeedsReconcile = false;
 
   constructor(container: HTMLElement, initialState: DeckMapState) {
     this.container = container;
     this.state = initialState;
     this.hotspots = [...INTEL_HOTSPOTS];
 
-    this.throttledRenderClusters = throttle(() => this.renderClusterOverlays(), 16);
+    this.rebuildTechHQSupercluster();
+    this.rebuildDatacenterSupercluster();
+
     this.debouncedRebuildLayers = debounce(() => {
-      this.maplibreMap?.resize();
-      this.deckOverlay?.setProps({ layers: this.buildLayers() });
+      if (this.renderPaused || this.webglLost || !this.maplibreMap) return;
+      this.maplibreMap.resize();
+      try { this.deckOverlay?.setProps({ layers: this.buildLayers() }); } catch { /* map mid-teardown */ }
     }, 150);
     this.rafUpdateLayers = rafSchedule(() => {
-      this.deckOverlay?.setProps({ layers: this.buildLayers() });
+      if (this.renderPaused || this.webglLost || !this.maplibreMap) return;
+      try { this.deckOverlay?.setProps({ layers: this.buildLayers() }); } catch { /* map mid-teardown */ }
     });
 
     this.setupDOM();
     this.popup = new MapPopup(container);
+
+    window.addEventListener('theme-changed', (e: Event) => {
+      const theme = (e as CustomEvent).detail?.theme as 'dark' | 'light';
+      if (theme) {
+        this.switchBasemap(theme);
+        this.render(); // Rebuilds Deck.GL layers with new theme-aware colors
+      }
+    });
 
     this.initMapLibre();
 
@@ -273,11 +362,7 @@ export class DeckGLMap {
     this.createTimeSlider();
     this.createLayerToggles();
     this.createLegend();
-    this.createTimestamp();
   }
-
-  // Cluster overlay container
-  private clusterOverlay: HTMLElement | null = null;
 
   private setupDOM(): void {
     const wrapper = document.createElement('div');
@@ -291,65 +376,41 @@ export class DeckGLMap {
     mapContainer.style.cssText = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%;';
     wrapper.appendChild(mapContainer);
 
-    // HTML overlay container for cluster markers (rendered on top of deck.gl)
-    this.clusterOverlay = document.createElement('div');
-    this.clusterOverlay.id = 'deckgl-cluster-overlay';
-    this.clusterOverlay.style.cssText = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10;';
-    wrapper.appendChild(this.clusterOverlay);
-
     this.container.appendChild(wrapper);
   }
 
   private initMapLibre(): void {
     const preset = VIEW_PRESETS[this.state.view];
+    const initialTheme = getCurrentTheme();
 
     this.maplibreMap = new maplibregl.Map({
       container: 'deckgl-basemap',
-      style: {
-        version: 8,
-        name: 'Dark',
-        sources: {
-          'carto-dark': {
-            type: 'raster',
-            tiles: [
-              'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
-              'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
-              'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
-            ],
-            tileSize: 256,
-            attribution: '&copy; <a href="https://carto.com/">CARTO</a>',
-          },
-        },
-        layers: [
-          {
-            id: 'background',
-            type: 'background',
-            paint: {
-              'background-color': '#0a0f0c',
-            },
-          },
-          {
-            id: 'carto-dark-layer',
-            type: 'raster',
-            source: 'carto-dark',
-            minzoom: 0,
-            maxzoom: 22,
-          },
-        ],
-        glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
-      },
+      style: initialTheme === 'light' ? LIGHT_STYLE : DARK_STYLE,
       center: [preset.longitude, preset.latitude],
       zoom: preset.zoom,
+      renderWorldCopies: false,
       attributionControl: false,
       interactive: true,
       ...(MAP_INTERACTION_MODE === 'flat'
         ? {
-            maxPitch: 0,
-            pitchWithRotate: false,
-            dragRotate: false,
-            touchPitch: false,
-          }
+          maxPitch: 0,
+          pitchWithRotate: false,
+          dragRotate: false,
+          touchPitch: false,
+        }
         : {}),
+    });
+
+    const canvas = this.maplibreMap.getCanvas();
+    canvas.addEventListener('webglcontextlost', (e) => {
+      e.preventDefault();
+      this.webglLost = true;
+      console.warn('[DeckGLMap] WebGL context lost — will restore when browser recovers');
+    });
+    canvas.addEventListener('webglcontextrestored', () => {
+      this.webglLost = false;
+      console.info('[DeckGLMap] WebGL context restored');
+      this.maplibreMap?.triggerRepaint();
     });
   }
 
@@ -357,12 +418,13 @@ export class DeckGLMap {
     if (!this.maplibreMap) return;
 
     this.deckOverlay = new MapboxOverlay({
-      interleaved: false,
+      interleaved: true,
       layers: this.buildLayers(),
       getTooltip: (info: PickingInfo) => this.getTooltip(info),
       onClick: (info: PickingInfo) => this.handleClick(info),
       pickingRadius: 10,
       useDevicePixels: window.devicePixelRatio > 2 ? 2 : true,
+      onError: (error: Error) => console.warn('[DeckGLMap] Render error (non-fatal):', error.message),
     });
 
     this.maplibreMap.addControl(this.deckOverlay as unknown as maplibregl.IControl);
@@ -372,25 +434,27 @@ export class DeckGLMap {
         clearTimeout(this.moveTimeoutId);
         this.moveTimeoutId = null;
       }
-      this.clusterOverlay!.style.opacity = '0.7';
     });
 
     this.maplibreMap.on('moveend', () => {
-      this.clusterOverlay!.style.opacity = '1';
-      this.scheduleHotspotOverlaySync({ reconcile: true });
-      this.throttledRenderClusters();
+      this.lastSCZoom = -1;
+      this.rafUpdateLayers();
     });
 
     this.maplibreMap.on('move', () => {
-      this.scheduleHotspotOverlaySync();
       if (this.moveTimeoutId) clearTimeout(this.moveTimeoutId);
-      this.moveTimeoutId = setTimeout(() => this.throttledRenderClusters(), 100);
+      this.moveTimeoutId = setTimeout(() => {
+        this.lastSCZoom = -1;
+        this.rafUpdateLayers();
+      }, 100);
     });
 
     this.maplibreMap.on('zoom', () => {
-      this.scheduleHotspotOverlaySync();
       if (this.moveTimeoutId) clearTimeout(this.moveTimeoutId);
-      this.moveTimeoutId = setTimeout(() => this.throttledRenderClusters(), 100);
+      this.moveTimeoutId = setTimeout(() => {
+        this.lastSCZoom = -1;
+        this.rafUpdateLayers();
+      }, 100);
     });
 
     this.maplibreMap.on('zoomend', () => {
@@ -404,87 +468,14 @@ export class DeckGLMap {
   }
 
   private setupResizeObserver(): void {
-    // Watch container for size changes and trigger MapLibre resize
     this.resizeObserver = new ResizeObserver(() => {
       if (this.maplibreMap) {
         this.maplibreMap.resize();
-        this.renderClusterOverlays();
       }
     });
     this.resizeObserver.observe(this.container);
   }
 
-  // Generic marker clustering - groups markers within pixelRadius into clusters
-  // groupKey function ensures only items with same key can cluster (e.g., same city)
-  private clusterMarkers<T extends { lat: number; lon?: number; lng?: number }>(
-    items: T[],
-    pixelRadius: number,
-    getGroupKey?: (item: T) => string
-  ): Array<{ items: T[]; center: [number, number]; screenPos: [number, number] }> {
-    if (!this.maplibreMap) return [];
-
-    const clusters: Array<{ items: T[]; center: [number, number]; screenPos: [number, number] }> = [];
-    const assigned = new Set<number>();
-
-    for (let i = 0; i < items.length; i++) {
-      if (assigned.has(i)) continue;
-
-      const item = items[i]!;
-      const itemLon = item.lon ?? item.lng ?? 0;
-      const pos = this.maplibreMap.project([itemLon, item.lat]);
-      if (!pos) continue;
-
-      const cluster: T[] = [item];
-      assigned.add(i);
-      const itemKey = getGroupKey?.(item);
-
-      // Find nearby items (must share same group key if provided)
-      for (let j = i + 1; j < items.length; j++) {
-        if (assigned.has(j)) continue;
-
-        const other = items[j]!;
-        const otherKey = getGroupKey?.(other);
-
-        // Skip if group keys don't match
-        if (itemKey !== undefined && otherKey !== undefined && itemKey !== otherKey) continue;
-
-        const otherLon = other.lon ?? other.lng ?? 0;
-        const otherPos = this.maplibreMap.project([otherLon, other.lat]);
-        if (!otherPos) continue;
-
-        const dist = Math.sqrt(
-          Math.pow(pos.x - otherPos.x, 2) + Math.pow(pos.y - otherPos.y, 2)
-        );
-
-        if (dist <= pixelRadius) {
-          cluster.push(other);
-          assigned.add(j);
-        }
-      }
-
-      // Calculate cluster center
-      let sumLat = 0, sumLon = 0;
-      for (const c of cluster) {
-        sumLat += c.lat;
-        sumLon += c.lon ?? c.lng ?? 0;
-      }
-      const centerLat = sumLat / cluster.length;
-      const centerLon = sumLon / cluster.length;
-      const centerPos = this.maplibreMap.project([centerLon, centerLat]);
-
-      clusters.push({
-        items: cluster,
-        center: [centerLon, centerLat],
-        screenPos: centerPos ? [centerPos.x, centerPos.y] : [pos.x, pos.y],
-      });
-    }
-
-    return clusters;
-  }
-
-  private getClusterKey(type: string, center: [number, number], count: number): string {
-    return `${type}-${center[0].toFixed(4)}-${center[1].toFixed(4)}-${count}`;
-  }
 
   private getSetSignature(set: Set<string>): string {
     return [...set].sort().join('|');
@@ -497,500 +488,415 @@ export class DeckGLMap {
     return false;
   }
 
-  private projectClusterCenter(
-    center: [number, number],
-    fallback: [number, number]
-  ): [number, number] {
-    if (!this.maplibreMap) return fallback;
-    const projected = this.maplibreMap.project(center);
-    if (!projected) return fallback;
-    return [projected.x, projected.y];
+  private getTimeRangeMs(range: TimeRange = this.state.timeRange): number {
+    const ranges: Record<TimeRange, number> = {
+      '1h': 60 * 60 * 1000,
+      '6h': 6 * 60 * 60 * 1000,
+      '24h': 24 * 60 * 60 * 1000,
+      '48h': 48 * 60 * 60 * 1000,
+      '7d': 7 * 24 * 60 * 60 * 1000,
+      'all': Infinity,
+    };
+    return ranges[range];
   }
 
-  private updateClusterElement(
-    key: string,
-    screenPos: [number, number],
-    renderFn: () => HTMLElement
-  ): HTMLElement {
-    const existing = this.clusterElementCache.get(key);
-    const x = Math.round(screenPos[0]);
-    const y = Math.round(screenPos[1]);
-
-    if (existing) {
-      existing.style.transform = `translate(${x - 16}px, ${y - 16}px)`;
-      return existing;
-    }
-
-    const element = renderFn();
-    element.style.position = 'absolute';
-    element.style.left = '0';
-    element.style.top = '0';
-    element.style.transform = `translate(${x - 16}px, ${y - 16}px)`;
-    element.dataset.clusterKey = key;
-    this.clusterElementCache.set(key, element);
-    return element;
+  private parseTime(value: Date | string | number | undefined | null): number | null {
+    if (value == null) return null;
+    const ts = value instanceof Date ? value.getTime() : new Date(value).getTime();
+    return Number.isFinite(ts) ? ts : null;
   }
 
-  private pruneClusterCache(activeKeys: Set<string>): void {
-    for (const [key, element] of this.clusterElementCache) {
-      if (!activeKeys.has(key)) {
-        element.remove();
-        this.clusterElementCache.delete(key);
-        this.lastClusterState.delete(key);
-      }
-    }
+  private filterByTime<T>(
+    items: T[],
+    getTime: (item: T) => Date | string | number | undefined | null
+  ): T[] {
+    if (this.state.timeRange === 'all') return items;
+    const cutoff = Date.now() - this.getTimeRangeMs();
+    return items.filter((item) => {
+      const ts = this.parseTime(getTime(item));
+      return ts == null ? true : ts >= cutoff;
+    });
   }
 
-  private invalidateClusterElementsByType(type: 'event' | 'protest'): void {
-    const prefix = `${type}-`;
-    for (const [key, element] of this.clusterElementCache) {
-      if (key.startsWith(prefix)) {
-        element.remove();
-        this.clusterElementCache.delete(key);
-      }
-    }
-    for (const key of this.lastClusterState.keys()) {
-      if (key.startsWith(prefix)) {
-        this.lastClusterState.delete(key);
-      }
-    }
+  private getFilteredProtests(): SocialUnrestEvent[] {
+    return this.filterByTime(this.protests, (event) => event.time);
   }
 
-  private renderClusterOverlays(): void {
-    if (!this.clusterOverlay || !this.maplibreMap) return;
+  private filterMilitaryFlightClustersByTime(clusters: MilitaryFlightCluster[]): MilitaryFlightCluster[] {
+    return clusters
+      .map((cluster) => {
+        const flights = this.filterByTime(cluster.flights ?? [], (flight) => flight.lastSeen);
+        if (flights.length === 0) return null;
+        return {
+          ...cluster,
+          flights,
+          flightCount: flights.length,
+        };
+      })
+      .filter((cluster): cluster is MilitaryFlightCluster => cluster !== null);
+  }
 
-    const startTime = performance.now();
-    const zoom = this.maplibreMap.getZoom();
-    const zoomChanged = Math.abs(zoom - this.lastClusterZoom) > 0.1;
-    if (zoomChanged) {
-      this.clusterResultCache.clear();
-      this.lastClusterZoom = zoom;
-    }
+  private filterMilitaryVesselClustersByTime(clusters: MilitaryVesselCluster[]): MilitaryVesselCluster[] {
+    return clusters
+      .map((cluster) => {
+        const vessels = this.filterByTime(cluster.vessels ?? [], (vessel) => vessel.lastAisUpdate);
+        if (vessels.length === 0) return null;
+        return {
+          ...cluster,
+          vessels,
+          vesselCount: vessels.length,
+        };
+      })
+      .filter((cluster): cluster is MilitaryVesselCluster => cluster !== null);
+  }
 
-    const activeKeys = new Set<string>();
+  private rebuildProtestSupercluster(source: SocialUnrestEvent[] = this.getFilteredProtests()): void {
+    this.protestSuperclusterSource = source;
+    const points = source.map((p, i) => ({
+      type: 'Feature' as const,
+      geometry: { type: 'Point' as const, coordinates: [p.lon, p.lat] as [number, number] },
+      properties: {
+        index: i,
+        country: p.country,
+        severity: p.severity,
+        eventType: p.eventType,
+        validated: Boolean(p.validated),
+        fatalities: Number.isFinite(p.fatalities) ? Number(p.fatalities) : 0,
+      },
+    }));
+    this.protestSC = new Supercluster({
+      radius: 60,
+      maxZoom: 14,
+      map: (props: Record<string, unknown>) => ({
+        index: Number(props.index ?? 0),
+        country: String(props.country ?? ''),
+        maxSeverityRank: props.severity === 'high' ? 2 : props.severity === 'medium' ? 1 : 0,
+        riotCount: props.eventType === 'riot' ? 1 : 0,
+        highSeverityCount: props.severity === 'high' ? 1 : 0,
+        verifiedCount: props.validated ? 1 : 0,
+        totalFatalities: Number(props.fatalities ?? 0) || 0,
+      }),
+      reduce: (acc: Record<string, unknown>, props: Record<string, unknown>) => {
+        acc.maxSeverityRank = Math.max(Number(acc.maxSeverityRank ?? 0), Number(props.maxSeverityRank ?? 0));
+        acc.riotCount = Number(acc.riotCount ?? 0) + Number(props.riotCount ?? 0);
+        acc.highSeverityCount = Number(acc.highSeverityCount ?? 0) + Number(props.highSeverityCount ?? 0);
+        acc.verifiedCount = Number(acc.verifiedCount ?? 0) + Number(props.verifiedCount ?? 0);
+        acc.totalFatalities = Number(acc.totalFatalities ?? 0) + Number(props.totalFatalities ?? 0);
+        if (!acc.country && props.country) acc.country = props.country;
+      },
+    });
+    this.protestSC.load(points);
+    this.lastSCZoom = -1;
+  }
 
-    if (SITE_VARIANT === 'tech') {
-      if (this.state.layers.techHQs) {
-        const clusterRadius = zoom >= 4 ? 15 : zoom >= 3 ? 25 : 40;
-        const cacheKey = `hq-${clusterRadius}`;
-        let clusters = this.clusterResultCache.get(cacheKey) as Array<{ items: typeof TECH_HQS; center: [number, number]; screenPos: [number, number] }> | undefined;
-        if (!clusters || zoomChanged) {
-          clusters = this.clusterMarkers(TECH_HQS, clusterRadius, hq => hq.city);
-          this.clusterResultCache.set(cacheKey, clusters);
+  private rebuildTechHQSupercluster(): void {
+    const points = TECH_HQS.map((h, i) => ({
+      type: 'Feature' as const,
+      geometry: { type: 'Point' as const, coordinates: [h.lon, h.lat] as [number, number] },
+      properties: {
+        index: i,
+        city: h.city,
+        country: h.country,
+        type: h.type,
+      },
+    }));
+    this.techHQSC = new Supercluster({
+      radius: 50,
+      maxZoom: 14,
+      map: (props: Record<string, unknown>) => ({
+        index: Number(props.index ?? 0),
+        city: String(props.city ?? ''),
+        country: String(props.country ?? ''),
+        faangCount: props.type === 'faang' ? 1 : 0,
+        unicornCount: props.type === 'unicorn' ? 1 : 0,
+        publicCount: props.type === 'public' ? 1 : 0,
+      }),
+      reduce: (acc: Record<string, unknown>, props: Record<string, unknown>) => {
+        acc.faangCount = Number(acc.faangCount ?? 0) + Number(props.faangCount ?? 0);
+        acc.unicornCount = Number(acc.unicornCount ?? 0) + Number(props.unicornCount ?? 0);
+        acc.publicCount = Number(acc.publicCount ?? 0) + Number(props.publicCount ?? 0);
+        if (!acc.city && props.city) acc.city = props.city;
+        if (!acc.country && props.country) acc.country = props.country;
+      },
+    });
+    this.techHQSC.load(points);
+    this.lastSCZoom = -1;
+  }
+
+  private rebuildTechEventSupercluster(): void {
+    const points = this.techEvents.map((e, i) => ({
+      type: 'Feature' as const,
+      geometry: { type: 'Point' as const, coordinates: [e.lng, e.lat] as [number, number] },
+      properties: {
+        index: i,
+        location: e.location,
+        country: e.country,
+        daysUntil: e.daysUntil,
+      },
+    }));
+    this.techEventSC = new Supercluster({
+      radius: 50,
+      maxZoom: 14,
+      map: (props: Record<string, unknown>) => {
+        const daysUntil = Number(props.daysUntil ?? Number.MAX_SAFE_INTEGER);
+        return {
+          index: Number(props.index ?? 0),
+          location: String(props.location ?? ''),
+          country: String(props.country ?? ''),
+          soonestDaysUntil: Number.isFinite(daysUntil) ? daysUntil : Number.MAX_SAFE_INTEGER,
+          soonCount: Number.isFinite(daysUntil) && daysUntil <= 14 ? 1 : 0,
+        };
+      },
+      reduce: (acc: Record<string, unknown>, props: Record<string, unknown>) => {
+        acc.soonestDaysUntil = Math.min(
+          Number(acc.soonestDaysUntil ?? Number.MAX_SAFE_INTEGER),
+          Number(props.soonestDaysUntil ?? Number.MAX_SAFE_INTEGER),
+        );
+        acc.soonCount = Number(acc.soonCount ?? 0) + Number(props.soonCount ?? 0);
+        if (!acc.location && props.location) acc.location = props.location;
+        if (!acc.country && props.country) acc.country = props.country;
+      },
+    });
+    this.techEventSC.load(points);
+    this.lastSCZoom = -1;
+  }
+
+  private rebuildDatacenterSupercluster(): void {
+    const activeDCs = AI_DATA_CENTERS.filter(dc => dc.status !== 'decommissioned');
+    const points = activeDCs.map((dc, i) => ({
+      type: 'Feature' as const,
+      geometry: { type: 'Point' as const, coordinates: [dc.lon, dc.lat] as [number, number] },
+      properties: {
+        index: i,
+        country: dc.country,
+        chipCount: dc.chipCount,
+        powerMW: dc.powerMW ?? 0,
+        status: dc.status,
+      },
+    }));
+    this.datacenterSC = new Supercluster({
+      radius: 70,
+      maxZoom: 14,
+      map: (props: Record<string, unknown>) => ({
+        index: Number(props.index ?? 0),
+        country: String(props.country ?? ''),
+        totalChips: Number(props.chipCount ?? 0) || 0,
+        totalPowerMW: Number(props.powerMW ?? 0) || 0,
+        existingCount: props.status === 'existing' ? 1 : 0,
+        plannedCount: props.status === 'planned' ? 1 : 0,
+      }),
+      reduce: (acc: Record<string, unknown>, props: Record<string, unknown>) => {
+        acc.totalChips = Number(acc.totalChips ?? 0) + Number(props.totalChips ?? 0);
+        acc.totalPowerMW = Number(acc.totalPowerMW ?? 0) + Number(props.totalPowerMW ?? 0);
+        acc.existingCount = Number(acc.existingCount ?? 0) + Number(props.existingCount ?? 0);
+        acc.plannedCount = Number(acc.plannedCount ?? 0) + Number(props.plannedCount ?? 0);
+        if (!acc.country && props.country) acc.country = props.country;
+      },
+    });
+    this.datacenterSC.load(points);
+    this.lastSCZoom = -1;
+  }
+
+  private updateClusterData(): void {
+    const zoom = Math.floor(this.maplibreMap?.getZoom() ?? 2);
+    const bounds = this.maplibreMap?.getBounds();
+    if (!bounds) return;
+    const bbox: [number, number, number, number] = [
+      bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth(),
+    ];
+    const boundsKey = `${bbox[0].toFixed(4)}:${bbox[1].toFixed(4)}:${bbox[2].toFixed(4)}:${bbox[3].toFixed(4)}`;
+    const layers = this.state.layers;
+    const useProtests = layers.protests && this.protestSuperclusterSource.length > 0;
+    const useTechHQ = SITE_VARIANT === 'tech' && layers.techHQs;
+    const useTechEvents = SITE_VARIANT === 'tech' && layers.techEvents && this.techEvents.length > 0;
+    const useDatacenterClusters = layers.datacenters && zoom < 5;
+    const layerMask = `${Number(useProtests)}${Number(useTechHQ)}${Number(useTechEvents)}${Number(useDatacenterClusters)}`;
+    if (zoom === this.lastSCZoom && boundsKey === this.lastSCBoundsKey && layerMask === this.lastSCMask) return;
+    this.lastSCZoom = zoom;
+    this.lastSCBoundsKey = boundsKey;
+    this.lastSCMask = layerMask;
+
+    if (useProtests && this.protestSC) {
+      this.protestClusters = this.protestSC.getClusters(bbox, zoom).map(f => {
+        const coords = f.geometry.coordinates as [number, number];
+        if (f.properties.cluster) {
+          const props = f.properties as Record<string, unknown>;
+          const leaves = this.protestSC!.getLeaves(f.properties.cluster_id!, DeckGLMap.MAX_CLUSTER_LEAVES);
+          const items = leaves.map(l => this.protestSuperclusterSource[l.properties.index]).filter((x): x is SocialUnrestEvent => !!x);
+          const maxSeverityRank = Number(props.maxSeverityRank ?? 0);
+          const maxSev = maxSeverityRank >= 2 ? 'high' : maxSeverityRank === 1 ? 'medium' : 'low';
+          const riotCount = Number(props.riotCount ?? 0);
+          const highSeverityCount = Number(props.highSeverityCount ?? 0);
+          const verifiedCount = Number(props.verifiedCount ?? 0);
+          const totalFatalities = Number(props.totalFatalities ?? 0);
+          const clusterCount = Number(f.properties.point_count ?? items.length);
+          const latestRiotEventTimeMs = items.reduce((max, it) => {
+            if (it.eventType !== 'riot' || it.sourceType === 'gdelt') return max;
+            const ts = it.time.getTime();
+            return Number.isFinite(ts) ? Math.max(max, ts) : max;
+          }, 0);
+          return {
+            id: `pc-${f.properties.cluster_id}`,
+            lat: coords[1], lon: coords[0],
+            count: clusterCount,
+            items,
+            country: String(props.country ?? items[0]?.country ?? ''),
+            maxSeverity: maxSev as 'low' | 'medium' | 'high',
+            hasRiot: riotCount > 0,
+            latestRiotEventTimeMs: latestRiotEventTimeMs || undefined,
+            totalFatalities,
+            riotCount,
+            highSeverityCount,
+            verifiedCount,
+            sampled: items.length < clusterCount,
+          };
         }
-        clusters.forEach((cluster) => {
-          const screenPos = this.projectClusterCenter(cluster.center, cluster.screenPos);
-          const key = this.getClusterKey('hq', cluster.center, cluster.items.length);
-          activeKeys.add(key);
-          if (this.hasClusterMoved(key, screenPos, cluster.items.length)) {
-            const element = this.updateClusterElement(key, screenPos, () => this.createTechHQClusterElement(cluster));
-            if (!element.parentElement) this.clusterOverlay!.appendChild(element);
-          }
-        });
-      }
-
-      if (this.state.layers.techEvents && this.techEvents.length > 0) {
-        const clusterRadius = zoom >= 4 ? 15 : zoom >= 3 ? 25 : 40;
-        const cacheKey = `event-${clusterRadius}`;
-        let clusters = this.clusterResultCache.get(cacheKey) as Array<{ items: Array<TechEventMarker & { lon: number }>; center: [number, number]; screenPos: [number, number] }> | undefined;
-        if (!clusters || zoomChanged) {
-          const eventsWithLon = this.techEvents.map(e => ({ ...e, lon: e.lng }));
-          clusters = this.clusterMarkers(eventsWithLon, clusterRadius, e => e.location);
-          this.clusterResultCache.set(cacheKey, clusters);
-        }
-        clusters.forEach((cluster) => {
-          const screenPos = this.projectClusterCenter(cluster.center, cluster.screenPos);
-          const key = this.getClusterKey('event', cluster.center, cluster.items.length);
-          activeKeys.add(key);
-          if (this.hasClusterMoved(key, screenPos, cluster.items.length)) {
-            const element = this.updateClusterElement(key, screenPos, () => this.createTechEventClusterElement(cluster));
-            if (!element.parentElement) this.clusterOverlay!.appendChild(element);
-          }
-        });
-      }
-    }
-
-    if (this.state.layers.protests && this.protests.length > 0) {
-      const clusterRadius = zoom >= 4 ? 12 : zoom >= 3 ? 20 : 35;
-      const cacheKey = `protest-${clusterRadius}`;
-      let clusters = this.clusterResultCache.get(cacheKey) as Array<{ items: SocialUnrestEvent[]; center: [number, number]; screenPos: [number, number] }> | undefined;
-      if (!clusters || zoomChanged) {
-        const significantProtests = this.protests.filter(p => p.severity === 'high' || p.eventType === 'riot');
-        clusters = this.clusterMarkers(significantProtests, clusterRadius, p => p.country);
-        this.clusterResultCache.set(cacheKey, clusters);
-      }
-      clusters.forEach((cluster) => {
-        const screenPos = this.projectClusterCenter(cluster.center, cluster.screenPos);
-        const key = this.getClusterKey('protest', cluster.center, cluster.items.length);
-        activeKeys.add(key);
-        if (this.hasClusterMoved(key, screenPos, cluster.items.length)) {
-          const element = this.updateClusterElement(key, screenPos, () => this.createProtestClusterElement(cluster));
-          if (!element.parentElement) this.clusterOverlay!.appendChild(element);
-        }
+        const item = this.protestSuperclusterSource[f.properties.index]!;
+        return {
+          id: `pp-${f.properties.index}`, lat: item.lat, lon: item.lon,
+          count: 1, items: [item], country: item.country,
+          maxSeverity: item.severity, hasRiot: item.eventType === 'riot',
+          latestRiotEventTimeMs:
+            item.eventType === 'riot' && item.sourceType !== 'gdelt' && Number.isFinite(item.time.getTime())
+              ? item.time.getTime()
+              : undefined,
+          totalFatalities: item.fatalities ?? 0,
+          riotCount: item.eventType === 'riot' ? 1 : 0,
+          highSeverityCount: item.severity === 'high' ? 1 : 0,
+          verifiedCount: item.validated ? 1 : 0,
+          sampled: false,
+        };
       });
+    } else {
+      this.protestClusters = [];
     }
 
-    if (this.state.layers.datacenters && zoom < 5) {
-      const clusterRadius = zoom >= 3 ? 30 : zoom >= 2 ? 50 : 70;
-      const cacheKey = `dc-${clusterRadius}`;
-      let clusters = this.clusterResultCache.get(cacheKey) as Array<{ items: typeof AI_DATA_CENTERS; center: [number, number]; screenPos: [number, number] }> | undefined;
-      if (!clusters || zoomChanged) {
-        const activeDCs = AI_DATA_CENTERS.filter(dc => dc.status !== 'decommissioned');
-        clusters = this.clusterMarkers(activeDCs, clusterRadius, dc => dc.country);
-        this.clusterResultCache.set(cacheKey, clusters);
-      }
-      clusters.forEach((cluster) => {
-        const screenPos = this.projectClusterCenter(cluster.center, cluster.screenPos);
-        const key = this.getClusterKey('dc', cluster.center, cluster.items.length);
-        activeKeys.add(key);
-        if (this.hasClusterMoved(key, screenPos, cluster.items.length)) {
-          const element = this.updateClusterElement(key, screenPos, () => this.createDatacenterClusterElement(cluster));
-          if (!element.parentElement) this.clusterOverlay!.appendChild(element);
+    if (useTechHQ && this.techHQSC) {
+      this.techHQClusters = this.techHQSC.getClusters(bbox, zoom).map(f => {
+        const coords = f.geometry.coordinates as [number, number];
+        if (f.properties.cluster) {
+          const props = f.properties as Record<string, unknown>;
+          const leaves = this.techHQSC!.getLeaves(f.properties.cluster_id!, DeckGLMap.MAX_CLUSTER_LEAVES);
+          const items = leaves.map(l => TECH_HQS[l.properties.index]).filter(Boolean) as typeof TECH_HQS;
+          const faangCount = Number(props.faangCount ?? 0);
+          const unicornCount = Number(props.unicornCount ?? 0);
+          const publicCount = Number(props.publicCount ?? 0);
+          const clusterCount = Number(f.properties.point_count ?? items.length);
+          const primaryType = faangCount >= unicornCount && faangCount >= publicCount
+            ? 'faang'
+            : unicornCount >= publicCount
+              ? 'unicorn'
+              : 'public';
+          return {
+            id: `hc-${f.properties.cluster_id}`,
+            lat: coords[1], lon: coords[0],
+            count: clusterCount,
+            items,
+            city: String(props.city ?? items[0]?.city ?? ''),
+            country: String(props.country ?? items[0]?.country ?? ''),
+            primaryType,
+            faangCount,
+            unicornCount,
+            publicCount,
+            sampled: items.length < clusterCount,
+          };
         }
+        const item = TECH_HQS[f.properties.index]!;
+        return {
+          id: `hp-${f.properties.index}`, lat: item.lat, lon: item.lon,
+          count: 1, items: [item], city: item.city, country: item.country,
+          primaryType: item.type,
+          faangCount: item.type === 'faang' ? 1 : 0,
+          unicornCount: item.type === 'unicorn' ? 1 : 0,
+          publicCount: item.type === 'public' ? 1 : 0,
+          sampled: false,
+        };
       });
+    } else {
+      this.techHQClusters = [];
     }
 
-    if (this.state.layers.hotspots) {
-      this.renderHotspotOverlays(activeKeys);
-    }
-
-    this.pruneClusterCache(activeKeys);
-
-    const elapsed = performance.now() - startTime;
-    if (import.meta.env.DEV && elapsed > 16) {
-      console.warn(`[DeckGLMap] renderClusterOverlays took ${elapsed.toFixed(2)}ms (>16ms budget)`);
-    }
-  }
-
-  private hasClusterMoved(key: string, screenPos: [number, number], count: number): boolean {
-    const last = this.lastClusterState.get(key);
-    if (!last) {
-      this.lastClusterState.set(key, { x: screenPos[0], y: screenPos[1], count });
-      return true;
-    }
-    const dx = Math.abs(last.x - screenPos[0]);
-    const dy = Math.abs(last.y - screenPos[1]);
-    const moved = dx > 5 || dy > 5 || last.count !== count;
-    if (moved) {
-      this.lastClusterState.set(key, { x: screenPos[0], y: screenPos[1], count });
-    }
-    return moved;
-  }
-
-  /** Render HTML overlays for high-activity hotspots with CSS pulsating animation */
-  private renderHotspotOverlays(activeKeys: Set<string>): void {
-    if (!this.clusterOverlay || !this.maplibreMap) return;
-
-    const zoom = this.maplibreMap.getZoom();
-    const highActivityHotspots = this.hotspots.filter(h => h.level === 'high' || h.hasBreaking);
-
-    const sorted = [...highActivityHotspots].sort(
-      (a, b) => (b.escalationScore || 0) - (a.escalationScore || 0)
-    );
-
-    const markerScale = zoom < 2.5 ? 0.7 : zoom < 4 ? 0.85 : 1.0;
-
-    sorted.forEach(hotspot => {
-      const pos = this.maplibreMap!.project([hotspot.lon, hotspot.lat]);
-      if (!pos) return;
-
-      const key = this.getClusterKey('hotspot', [hotspot.lon, hotspot.lat], 1);
-      activeKeys.add(key);
-      const existing = this.clusterElementCache.get(key);
-
-      if (existing) {
-        existing.style.transform = `translate(${pos.x - 16}px, ${pos.y - 16}px) scale(${markerScale})`;
-        if (!existing.parentElement) this.clusterOverlay!.appendChild(existing);
-        return;
-      }
-
-      const div = document.createElement('div');
-      div.className = 'hotspot';
-      div.style.cssText = `position: absolute; left: 0; top: 0; transform: translate(${pos.x - 16}px, ${pos.y - 16}px) scale(${markerScale}); pointer-events: auto; cursor: pointer; z-index: 100;`;
-      div.dataset.clusterKey = key;
-
-      div.innerHTML = `
-        <div class="hotspot-marker ${escapeHtml(hotspot.level || 'low')}"></div>
-      `;
-
-      div.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const relatedNews = this.getRelatedNews(hotspot);
-        const rect = this.container.getBoundingClientRect();
-        this.popup.show({
-          type: 'hotspot',
-          data: hotspot,
-          relatedNews,
-          x: e.clientX - rect.left,
-          y: e.clientY - rect.top,
-        });
-        this.popup.loadHotspotGdeltContext(hotspot);
-        this.onHotspotClick?.(hotspot);
+    if (useTechEvents && this.techEventSC) {
+      this.techEventClusters = this.techEventSC.getClusters(bbox, zoom).map(f => {
+        const coords = f.geometry.coordinates as [number, number];
+        if (f.properties.cluster) {
+          const props = f.properties as Record<string, unknown>;
+          const leaves = this.techEventSC!.getLeaves(f.properties.cluster_id!, DeckGLMap.MAX_CLUSTER_LEAVES);
+          const items = leaves.map(l => this.techEvents[l.properties.index]).filter((x): x is TechEventMarker => !!x);
+          const clusterCount = Number(f.properties.point_count ?? items.length);
+          const soonestDaysUntil = Number(props.soonestDaysUntil ?? Number.MAX_SAFE_INTEGER);
+          const soonCount = Number(props.soonCount ?? 0);
+          return {
+            id: `ec-${f.properties.cluster_id}`,
+            lat: coords[1], lon: coords[0],
+            count: clusterCount,
+            items,
+            location: String(props.location ?? items[0]?.location ?? ''),
+            country: String(props.country ?? items[0]?.country ?? ''),
+            soonestDaysUntil: Number.isFinite(soonestDaysUntil) ? soonestDaysUntil : Number.MAX_SAFE_INTEGER,
+            soonCount,
+            sampled: items.length < clusterCount,
+          };
+        }
+        const item = this.techEvents[f.properties.index]!;
+        return {
+          id: `ep-${f.properties.index}`, lat: item.lat, lon: item.lng,
+          count: 1, items: [item], location: item.location, country: item.country,
+          soonestDaysUntil: item.daysUntil,
+          soonCount: item.daysUntil <= 14 ? 1 : 0,
+          sampled: false,
+        };
       });
-
-      this.clusterElementCache.set(key, div);
-      this.clusterOverlay!.appendChild(div);
-    });
-  }
-
-  private updateHotspotPositions(): void {
-    if (!this.clusterOverlay || !this.maplibreMap || !this.state.layers.hotspots) return;
-
-    const zoom = this.maplibreMap.getZoom();
-    const markerScale = zoom < 2.5 ? 0.7 : zoom < 4 ? 0.85 : 1.0;
-
-    for (const [key, existing] of this.clusterElementCache) {
-      if (!key.startsWith('hotspot-')) continue;
-
-      const match = /^hotspot-(-?\d+\.\d+)-(-?\d+\.\d+)-\d+$/.exec(key);
-      if (!match) continue;
-      const lon = Number(match[1]);
-      const lat = Number(match[2]);
-      if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
-
-      const pos = this.maplibreMap.project([lon, lat]);
-      if (!pos) continue;
-
-      existing.style.transform = `translate(${pos.x - 16}px, ${pos.y - 16}px) scale(${markerScale})`;
-    }
-  }
-
-  private scheduleHotspotOverlaySync(options?: { reconcile?: boolean }): void {
-    if (!this.state.layers.hotspots) return;
-
-    if (options?.reconcile) {
-      this.hotspotOverlayNeedsReconcile = true;
-    }
-
-    if (this.hotspotSyncRafId !== null) return;
-
-    this.hotspotSyncRafId = requestAnimationFrame(() => {
-      this.hotspotSyncRafId = null;
-
-      if (!this.clusterOverlay || !this.maplibreMap || !this.state.layers.hotspots) {
-        this.hotspotOverlayNeedsReconcile = false;
-        return;
-      }
-
-      this.updateHotspotPositions();
-
-      if (this.hotspotOverlayNeedsReconcile) {
-        this.hotspotOverlayNeedsReconcile = false;
-        this.throttledRenderClusters();
-      }
-    });
-  }
-
-  private createTechHQClusterElement(cluster: { items: typeof TECH_HQS; center: [number, number]; screenPos: [number, number] }): HTMLElement {
-    const zoom = this.maplibreMap?.getZoom() || 2;
-    const primaryItem = cluster.items[0]!;
-    const isCluster = cluster.items.length > 1;
-    const unicornCount = cluster.items.filter(h => h.type === 'unicorn').length;
-    const faangCount = cluster.items.filter(h => h.type === 'faang').length;
-
-    const div = document.createElement('div');
-    div.className = `tech-hq-marker ${primaryItem.type} ${isCluster ? 'cluster' : ''}`;
-    div.style.cssText = 'pointer-events: auto; cursor: pointer;';
-
-    const icon = document.createElement('div');
-    icon.className = 'tech-hq-icon';
-    icon.textContent = faangCount > 0 ? '🏛️' : unicornCount > 0 ? '🦄' : '🏢';
-    div.appendChild(icon);
-
-    if (isCluster) {
-      const badge = document.createElement('div');
-      badge.className = 'cluster-badge';
-      badge.textContent = String(cluster.items.length);
-      div.appendChild(badge);
-      div.title = cluster.items.map(h => h.company).join(', ');
     } else {
-      if (zoom >= 3 || primaryItem.type === 'faang') {
-        const label = document.createElement('div');
-        label.className = 'tech-hq-label';
-        label.textContent = primaryItem.company;
-        div.appendChild(label);
-      }
-      div.title = primaryItem.company;
+      this.techEventClusters = [];
     }
 
-    div.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const rect = this.container.getBoundingClientRect();
-      if (isCluster) {
-        this.popup.show({
-          type: 'techHQCluster',
-          data: { items: cluster.items, city: primaryItem.city, country: primaryItem.country },
-          x: e.clientX - rect.left,
-          y: e.clientY - rect.top,
-        });
-      } else {
-        this.popup.show({
-          type: 'techHQ',
-          data: primaryItem,
-          x: e.clientX - rect.left,
-          y: e.clientY - rect.top,
-        });
-      }
-    });
-
-    return div;
-  }
-
-  private createTechEventClusterElement(cluster: { items: Array<TechEventMarker & { lon: number }>; center: [number, number]; screenPos: [number, number] }): HTMLElement {
-    const primaryEvent = cluster.items[0]!;
-    const isCluster = cluster.items.length > 1;
-    const hasUpcomingSoon = cluster.items.some(e => e.daysUntil <= 14);
-
-    const div = document.createElement('div');
-    div.className = `tech-event-marker ${hasUpcomingSoon ? 'upcoming-soon' : ''} ${isCluster ? 'cluster' : ''}`;
-    div.style.cssText = 'pointer-events: auto; cursor: pointer;';
-
-    const icon = document.createElement('div');
-    icon.className = 'tech-event-icon';
-    icon.textContent = '📅';
-    div.appendChild(icon);
-
-    if (isCluster) {
-      const badge = document.createElement('div');
-      badge.className = 'cluster-badge';
-      badge.textContent = String(cluster.items.length);
-      div.appendChild(badge);
-      div.title = cluster.items.map(e => e.title).join(', ');
+    if (useDatacenterClusters && this.datacenterSC) {
+      const activeDCs = AI_DATA_CENTERS.filter(dc => dc.status !== 'decommissioned');
+      this.datacenterClusters = this.datacenterSC.getClusters(bbox, zoom).map(f => {
+        const coords = f.geometry.coordinates as [number, number];
+        if (f.properties.cluster) {
+          const props = f.properties as Record<string, unknown>;
+          const leaves = this.datacenterSC!.getLeaves(f.properties.cluster_id!, DeckGLMap.MAX_CLUSTER_LEAVES);
+          const items = leaves.map(l => activeDCs[l.properties.index]).filter((x): x is AIDataCenter => !!x);
+          const clusterCount = Number(f.properties.point_count ?? items.length);
+          const existingCount = Number(props.existingCount ?? 0);
+          const plannedCount = Number(props.plannedCount ?? 0);
+          const totalChips = Number(props.totalChips ?? 0);
+          const totalPowerMW = Number(props.totalPowerMW ?? 0);
+          return {
+            id: `dc-${f.properties.cluster_id}`,
+            lat: coords[1], lon: coords[0],
+            count: clusterCount,
+            items,
+            region: String(props.country ?? items[0]?.country ?? ''),
+            country: String(props.country ?? items[0]?.country ?? ''),
+            totalChips,
+            totalPowerMW,
+            majorityExisting: existingCount >= Math.max(1, clusterCount / 2),
+            existingCount,
+            plannedCount,
+            sampled: items.length < clusterCount,
+          };
+        }
+        const item = activeDCs[f.properties.index]!;
+        return {
+          id: `dp-${f.properties.index}`, lat: item.lat, lon: item.lon,
+          count: 1, items: [item], region: item.country, country: item.country,
+          totalChips: item.chipCount, totalPowerMW: item.powerMW ?? 0,
+          majorityExisting: item.status === 'existing',
+          existingCount: item.status === 'existing' ? 1 : 0,
+          plannedCount: item.status === 'planned' ? 1 : 0,
+          sampled: false,
+        };
+      });
     } else {
-      div.title = primaryEvent.title;
+      this.datacenterClusters = [];
     }
-
-    div.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const rect = this.container.getBoundingClientRect();
-      if (isCluster) {
-        this.popup.show({
-          type: 'techEventCluster',
-          data: { items: cluster.items.map(({ lon, ...rest }) => rest), location: primaryEvent.location, country: primaryEvent.country },
-          x: e.clientX - rect.left,
-          y: e.clientY - rect.top,
-        });
-      } else {
-        this.popup.show({
-          type: 'techEvent',
-          data: primaryEvent,
-          x: e.clientX - rect.left,
-          y: e.clientY - rect.top,
-        });
-      }
-    });
-
-    return div;
   }
 
-  private createProtestClusterElement(cluster: { items: SocialUnrestEvent[]; center: [number, number]; screenPos: [number, number] }): HTMLElement {
-    const primaryEvent = cluster.items[0]!;
-    const isCluster = cluster.items.length > 1;
-    const hasRiot = cluster.items.some(e => e.eventType === 'riot');
-    const hasHighSeverity = cluster.items.some(e => e.severity === 'high');
 
-    const div = document.createElement('div');
-    div.className = `protest-marker ${hasHighSeverity ? 'high' : primaryEvent.severity} ${hasRiot ? 'riot' : primaryEvent.eventType} ${isCluster ? 'cluster' : ''}`;
-    div.style.cssText = 'pointer-events: auto; cursor: pointer;';
 
-    const icon = document.createElement('div');
-    icon.className = 'protest-icon';
-    icon.textContent = hasRiot ? '🔥' : primaryEvent.eventType === 'strike' ? '✊' : '✦';
-    div.appendChild(icon);
-
-    if (isCluster) {
-      const badge = document.createElement('div');
-      badge.className = 'cluster-badge';
-      badge.textContent = String(cluster.items.length);
-      div.appendChild(badge);
-      div.title = `${primaryEvent.country}: ${cluster.items.length} events`;
-    } else {
-      div.title = `${primaryEvent.city || primaryEvent.country} - ${primaryEvent.eventType} (${primaryEvent.severity})`;
-      if (primaryEvent.validated) {
-        div.classList.add('validated');
-      }
-    }
-
-    div.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const rect = this.container.getBoundingClientRect();
-      if (isCluster) {
-        this.popup.show({
-          type: 'protestCluster',
-          data: { items: cluster.items, country: primaryEvent.country },
-          x: e.clientX - rect.left,
-          y: e.clientY - rect.top,
-        });
-      } else {
-        this.popup.show({
-          type: 'protest',
-          data: primaryEvent,
-          x: e.clientX - rect.left,
-          y: e.clientY - rect.top,
-        });
-      }
-    });
-
-    return div;
-  }
-
-  private createDatacenterClusterElement(cluster: { items: typeof AI_DATA_CENTERS; center: [number, number]; screenPos: [number, number] }): HTMLElement {
-    const zoom = this.maplibreMap?.getZoom() || 2;
-    const primaryDC = cluster.items[0]!;
-    const isCluster = cluster.items.length > 1;
-    const totalChips = cluster.items.reduce((sum, dc) => sum + dc.chipCount, 0);
-    const hasPlanned = cluster.items.some(dc => dc.status === 'planned');
-    const hasExisting = cluster.items.some(dc => dc.status === 'existing');
-
-    const div = document.createElement('div');
-    div.className = `datacenter-marker ${hasPlanned && !hasExisting ? 'planned' : 'existing'} ${isCluster ? 'cluster' : ''}`;
-    div.style.cssText = 'pointer-events: auto; cursor: pointer;';
-
-    const icon = document.createElement('div');
-    icon.className = 'datacenter-icon';
-    icon.textContent = '🖥️';
-    div.appendChild(icon);
-
-    if (isCluster) {
-      const badge = document.createElement('div');
-      badge.className = 'cluster-badge';
-      badge.textContent = String(cluster.items.length);
-      div.appendChild(badge);
-
-      const formatNum = (n: number) => n >= 1000000 ? `${(n / 1000000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(0)}K` : String(n);
-      div.title = `${cluster.items.length} data centers • ${formatNum(totalChips)} chips`;
-    } else {
-      if (zoom >= 4) {
-        const label = document.createElement('div');
-        label.className = 'datacenter-label';
-        label.textContent = primaryDC.owner.split(',')[0] || primaryDC.name.slice(0, 15);
-        div.appendChild(label);
-      }
-      div.title = primaryDC.name;
-    }
-
-    div.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const rect = this.container.getBoundingClientRect();
-      if (isCluster) {
-        this.popup.show({
-          type: 'datacenterCluster',
-          data: { items: cluster.items, region: primaryDC.country, country: primaryDC.country },
-          x: e.clientX - rect.left,
-          y: e.clientY - rect.top,
-        });
-      } else {
-        this.popup.show({
-          type: 'datacenter',
-          data: primaryDC,
-          x: e.clientX - rect.left,
-          y: e.clientY - rect.top,
-        });
-      }
-    });
-
-    return div;
-  }
 
   private isLayerVisible(layerKey: keyof MapLayers): boolean {
     const threshold = LAYER_ZOOM_THRESHOLDS[layerKey];
@@ -1001,17 +907,34 @@ export class DeckGLMap {
 
   private buildLayers(): LayersList {
     const startTime = performance.now();
+    // Refresh theme-aware overlay colors on each rebuild
+    COLORS = getOverlayColors();
     const layers: (Layer | null | false)[] = [];
     const { layers: mapLayers } = this.state;
+    const filteredEarthquakes = this.filterByTime(this.earthquakes, (eq) => eq.occurredAt);
+    const filteredNaturalEvents = this.filterByTime(this.naturalEvents, (event) => event.date);
+    const filteredWeatherAlerts = this.filterByTime(this.weatherAlerts, (alert) => alert.onset);
+    const filteredOutages = this.filterByTime(this.outages, (outage) => outage.pubDate);
+    const filteredCableAdvisories = this.filterByTime(this.cableAdvisories, (advisory) => advisory.reported);
+    const filteredFlightDelays = this.filterByTime(this.flightDelays, (delay) => delay.updatedAt);
+    const filteredMilitaryFlights = this.filterByTime(this.militaryFlights, (flight) => flight.lastSeen);
+    const filteredMilitaryVessels = this.filterByTime(this.militaryVessels, (vessel) => vessel.lastAisUpdate);
+    const filteredMilitaryFlightClusters = this.filterMilitaryFlightClustersByTime(this.militaryFlightClusters);
+    const filteredMilitaryVesselClusters = this.filterMilitaryVesselClustersByTime(this.militaryVesselClusters);
+    const filteredUcdpEvents = this.filterByTime(this.ucdpEvents, (event) => event.date_start);
 
     // Undersea cables layer
     if (mapLayers.cables) {
       layers.push(this.createCablesLayer());
+    } else {
+      this.layerCache.delete('cables-layer');
     }
 
     // Pipelines layer
     if (mapLayers.pipelines) {
       layers.push(this.createPipelinesLayer());
+    } else {
+      this.layerCache.delete('pipelines-layer');
     }
 
     // Conflict zones layer
@@ -1019,14 +942,16 @@ export class DeckGLMap {
       layers.push(this.createConflictZonesLayer());
     }
 
-    // Military bases layer — hidden at low zoom (E: progressive disclosure)
+    // Military bases layer — hidden at low zoom (E: progressive disclosure) + ghost
     if (mapLayers.bases && this.isLayerVisible('bases')) {
       layers.push(this.createBasesLayer());
+      layers.push(this.createGhostLayer('bases-layer', MILITARY_BASES, d => [d.lon, d.lat], { radiusMinPixels: 12 }));
     }
 
-    // Nuclear facilities layer — hidden at low zoom
+    // Nuclear facilities layer — hidden at low zoom + ghost
     if (mapLayers.nuclear && this.isLayerVisible('nuclear')) {
       layers.push(this.createNuclearLayer());
+      layers.push(this.createGhostLayer('nuclear-layer', NUCLEAR_FACILITIES.filter(f => f.status !== 'decommissioned'), d => [d.lon, d.lat], { radiusMinPixels: 12 }));
     }
 
     // Gamma irradiators layer — hidden at low zoom
@@ -1039,25 +964,30 @@ export class DeckGLMap {
       layers.push(this.createSpaceportsLayer());
     }
 
-    // Hotspots layer
+    // Hotspots layer (all hotspots including high/breaking, with pulse + ghost)
     if (mapLayers.hotspots) {
-      layers.push(this.createHotspotsLayer());
+      layers.push(...this.createHotspotsLayers());
     }
 
-    // Datacenters layer - SQUARE icons (only at high zoom, clusters handle low zoom)
+    // Datacenters layer - SQUARE icons at zoom >= 5, cluster dots at zoom < 5
     const currentZoom = this.maplibreMap?.getZoom() || 2;
-    if (mapLayers.datacenters && currentZoom >= 5) {
-      layers.push(this.createDatacentersLayer());
+    if (mapLayers.datacenters) {
+      if (currentZoom >= 5) {
+        layers.push(this.createDatacentersLayer());
+      } else {
+        layers.push(...this.createDatacenterClusterLayers());
+      }
     }
 
-    // Earthquakes layer
-    if (mapLayers.natural && this.earthquakes.length > 0) {
-      layers.push(this.createEarthquakesLayer());
+    // Earthquakes layer + ghost for easier picking
+    if (mapLayers.natural && filteredEarthquakes.length > 0) {
+      layers.push(this.createEarthquakesLayer(filteredEarthquakes));
+      layers.push(this.createGhostLayer('earthquakes-layer', filteredEarthquakes, d => [d.location?.longitude ?? 0, d.location?.latitude ?? 0], { radiusMinPixels: 12 }));
     }
 
     // Natural events layer
-    if (mapLayers.natural && this.naturalEvents.length > 0) {
-      layers.push(this.createNaturalEventsLayer());
+    if (mapLayers.natural && filteredNaturalEvents.length > 0) {
+      layers.push(this.createNaturalEventsLayer(filteredNaturalEvents));
     }
 
     // Satellite fires layer (NASA FIRMS)
@@ -1066,13 +996,20 @@ export class DeckGLMap {
     }
 
     // Weather alerts layer
-    if (mapLayers.weather && this.weatherAlerts.length > 0) {
-      layers.push(this.createWeatherLayer());
+    if (mapLayers.weather && filteredWeatherAlerts.length > 0) {
+      layers.push(this.createWeatherLayer(filteredWeatherAlerts));
     }
 
-    // Internet outages layer
-    if (mapLayers.outages && this.outages.length > 0) {
-      layers.push(this.createOutagesLayer());
+    // Internet outages layer + ghost for easier picking
+    if (mapLayers.outages && filteredOutages.length > 0) {
+      layers.push(this.createOutagesLayer(filteredOutages));
+      layers.push(this.createGhostLayer('outages-layer', filteredOutages, d => [d.lon, d.lat], { radiusMinPixels: 12 }));
+    }
+
+    // Cyber threat IOC layer
+    if (mapLayers.cyberThreats && this.cyberThreats.length > 0) {
+      layers.push(this.createCyberThreatsLayer());
+      layers.push(this.createGhostLayer('cyber-threats-layer', this.cyberThreats, d => [d.lon, d.lat], { radiusMinPixels: 12 }));
     }
 
     // AIS density layer
@@ -1091,8 +1028,8 @@ export class DeckGLMap {
     }
 
     // Cable advisories layer (shown with cables)
-    if (mapLayers.cables && this.cableAdvisories.length > 0) {
-      layers.push(this.createCableAdvisoriesLayer());
+    if (mapLayers.cables && filteredCableAdvisories.length > 0) {
+      layers.push(this.createCableAdvisoriesLayer(filteredCableAdvisories));
     }
 
     // Repair ships layer (shown with cables)
@@ -1101,30 +1038,33 @@ export class DeckGLMap {
     }
 
     // Flight delays layer
-    if (mapLayers.flights && this.flightDelays.length > 0) {
-      layers.push(this.createFlightDelaysLayer());
+    if (mapLayers.flights && filteredFlightDelays.length > 0) {
+      layers.push(this.createFlightDelaysLayer(filteredFlightDelays));
     }
 
-    // Protests layer - rendered via HTML overlays in renderClusterOverlays() for clustering support
+    // Protests layer (Supercluster-based deck.gl layers)
+    if (mapLayers.protests && this.protests.length > 0) {
+      layers.push(...this.createProtestClusterLayers());
+    }
 
     // Military vessels layer
-    if (mapLayers.military && this.militaryVessels.length > 0) {
-      layers.push(this.createMilitaryVesselsLayer());
+    if (mapLayers.military && filteredMilitaryVessels.length > 0) {
+      layers.push(this.createMilitaryVesselsLayer(filteredMilitaryVessels));
     }
 
     // Military vessel clusters layer
-    if (mapLayers.military && this.militaryVesselClusters.length > 0) {
-      layers.push(this.createMilitaryVesselClustersLayer());
+    if (mapLayers.military && filteredMilitaryVesselClusters.length > 0) {
+      layers.push(this.createMilitaryVesselClustersLayer(filteredMilitaryVesselClusters));
     }
 
     // Military flights layer
-    if (mapLayers.military && this.militaryFlights.length > 0) {
-      layers.push(this.createMilitaryFlightsLayer());
+    if (mapLayers.military && filteredMilitaryFlights.length > 0) {
+      layers.push(this.createMilitaryFlightsLayer(filteredMilitaryFlights));
     }
 
     // Military flight clusters layer
-    if (mapLayers.military && this.militaryFlightClusters.length > 0) {
-      layers.push(this.createMilitaryFlightClustersLayer());
+    if (mapLayers.military && filteredMilitaryFlightClusters.length > 0) {
+      layers.push(this.createMilitaryFlightClustersLayer(filteredMilitaryFlightClusters));
     }
 
     // Strategic waterways layer
@@ -1135,6 +1075,20 @@ export class DeckGLMap {
     // Economic centers layer — hidden at low zoom
     if (mapLayers.economic && this.isLayerVisible('economic')) {
       layers.push(this.createEconomicCentersLayer());
+    }
+
+    // Finance variant layers
+    if (mapLayers.stockExchanges) {
+      layers.push(this.createStockExchangesLayer());
+    }
+    if (mapLayers.financialCenters) {
+      layers.push(this.createFinancialCentersLayer());
+    }
+    if (mapLayers.centralBanks) {
+      layers.push(this.createCentralBanksLayer());
+    }
+    if (mapLayers.commodityHubs) {
+      layers.push(this.createCommodityHubsLayer());
     }
 
     // Critical minerals layer
@@ -1148,8 +1102,8 @@ export class DeckGLMap {
     }
 
     // UCDP georeferenced events layer
-    if (mapLayers.ucdpEvents && this.ucdpEvents.length > 0) {
-      layers.push(this.createUcdpEventsLayer());
+    if (mapLayers.ucdpEvents && filteredUcdpEvents.length > 0) {
+      layers.push(this.createUcdpEventsLayer(filteredUcdpEvents));
     }
 
     // Displacement flows arc layer
@@ -1162,20 +1116,28 @@ export class DeckGLMap {
       layers.push(this.createClimateHeatmapLayer());
     }
 
-    // Tech variant layers
-    // Note: techHQs and techEvents are rendered via HTML overlays for clustering support
+    // Tech variant layers (Supercluster-based deck.gl layers for HQs and events)
     if (SITE_VARIANT === 'tech') {
       if (mapLayers.startupHubs) {
         layers.push(this.createStartupHubsLayer());
       }
-      // techHQs rendered via HTML overlays in renderClusterOverlays()
+      if (mapLayers.techHQs) {
+        layers.push(...this.createTechHQClusterLayers());
+      }
       if (mapLayers.accelerators) {
         layers.push(this.createAcceleratorsLayer());
       }
       if (mapLayers.cloudRegions) {
         layers.push(this.createCloudRegionsLayer());
       }
-      // techEvents rendered via HTML overlays in renderClusterOverlays()
+      if (mapLayers.techEvents && this.techEvents.length > 0) {
+        layers.push(...this.createTechEventClusterLayers());
+      }
+    }
+
+    // Gulf FDI investments layer
+    if (mapLayers.gulfInvestments) {
+      layers.push(this.createGulfInvestmentsLayer());
     }
 
     // News geo-locations (always shown if data exists)
@@ -1197,22 +1159,36 @@ export class DeckGLMap {
     const cacheKey = 'cables-layer';
     const cached = this.layerCache.get(cacheKey) as PathLayer | undefined;
     const highlightSignature = this.getSetSignature(highlightedCables);
-    if (cached && highlightSignature === this.lastCableHighlightSignature) return cached;
+    const healthSignature = Object.keys(this.healthByCableId).sort().join(',');
+    if (cached && highlightSignature === this.lastCableHighlightSignature && healthSignature === this.lastCableHealthSignature) return cached;
 
+    const health = this.healthByCableId;
     const layer = new PathLayer({
       id: cacheKey,
       data: UNDERSEA_CABLES,
       getPath: (d) => d.points,
-      getColor: (d) =>
-        highlightedCables.has(d.id) ? COLORS.cableHighlight : COLORS.cable,
-      getWidth: (d) => highlightedCables.has(d.id) ? 3 : 1,
+      getColor: (d) => {
+        if (highlightedCables.has(d.id)) return COLORS.cableHighlight;
+        const h = health[d.id];
+        if (h?.status === 'fault') return COLORS.cableFault;
+        if (h?.status === 'degraded') return COLORS.cableDegraded;
+        return COLORS.cable;
+      },
+      getWidth: (d) => {
+        if (highlightedCables.has(d.id)) return 3;
+        const h = health[d.id];
+        if (h?.status === 'fault') return 2.5;
+        if (h?.status === 'degraded') return 2;
+        return 1;
+      },
       widthMinPixels: 1,
       widthMaxPixels: 5,
       pickable: true,
-      updateTriggers: { highlighted: highlightSignature },
+      updateTriggers: { highlighted: highlightSignature, health: healthSignature },
     });
 
     this.lastCableHighlightSignature = highlightSignature;
+    this.lastCableHealthSignature = healthSignature;
     this.layerCache.set(cacheKey, layer);
     return layer;
   }
@@ -1269,7 +1245,9 @@ export class DeckGLMap {
       filled: true,
       stroked: true,
       getFillColor: () => COLORS.conflict,
-      getLineColor: () => [255, 0, 0, 180] as [number, number, number, number],
+      getLineColor: () => getCurrentTheme() === 'light'
+        ? [255, 0, 0, 120] as [number, number, number, number]
+        : [255, 0, 0, 180] as [number, number, number, number],
       getLineWidth: 2,
       lineWidthMinPixels: 1,
       pickable: true,
@@ -1400,10 +1378,10 @@ export class DeckGLMap {
     });
   }
 
-  private createFlightDelaysLayer(): ScatterplotLayer {
+  private createFlightDelaysLayer(delays: AirportDelayAlert[]): ScatterplotLayer {
     return new ScatterplotLayer({
       id: 'flight-delays-layer',
-      data: this.flightDelays,
+      data: delays,
       getPosition: (d) => [d.lon, d.lat],
       getRadius: (d) => {
         if (d.severity === 'GDP') return 15000; // Ground Delay Program
@@ -1421,39 +1399,18 @@ export class DeckGLMap {
     });
   }
 
-  private createHotspotsLayer(): ScatterplotLayer {
-    const lowMediumHotspots = this.hotspots.filter(h => h.level !== 'high' && !h.hasBreaking);
-    const zoom = this.maplibreMap?.getZoom() || 2;
-    // B: Zoom-adaptive sizing — smaller at world view, full size zoomed in
-    const zoomScale = Math.min(1, (zoom - 1) / 3); // 0 at zoom 1, 1 at zoom 4
-    const maxPx = 6 + Math.round(14 * zoomScale); // 6px at world, 20px zoomed
-    // F: Opacity falloff at low zoom
-    const baseOpacity = zoom < 2.5 ? 0.5 : zoom < 4 ? 0.7 : 1.0;
-
-    return new ScatterplotLayer({
-      id: 'hotspots-layer',
-      data: lowMediumHotspots,
-      getPosition: (d) => [d.lon, d.lat],
-      getRadius: (d) => {
-        const score = d.escalationScore || 1;
-        return 10000 + score * 5000;
-      },
-      getFillColor: (d) => {
-        const score = d.escalationScore || 1;
-        const a = Math.round((score >= 4 ? 200 : score >= 2 ? 200 : 180) * baseOpacity);
-        if (score >= 4) return [255, 68, 68, a] as [number, number, number, number];
-        if (score >= 2) return [255, 165, 0, a] as [number, number, number, number];
-        return [255, 255, 0, a] as [number, number, number, number];
-      },
-      radiusMinPixels: 4,
-      radiusMaxPixels: maxPx,
+  private createGhostLayer<T>(id: string, data: T[], getPosition: (d: T) => [number, number], opts: { radiusMinPixels?: number } = {}): ScatterplotLayer<T> {
+    return new ScatterplotLayer<T>({
+      id: `${id}-ghost`,
+      data,
+      getPosition,
+      getRadius: 1,
+      radiusMinPixels: opts.radiusMinPixels ?? 12,
+      getFillColor: [0, 0, 0, 0],
       pickable: true,
-      stroked: true,
-      getLineColor: (d) =>
-        d.hasBreaking ? [255, 255, 255, 255] as [number, number, number, number] : [0, 0, 0, 0] as [number, number, number, number],
-      lineWidthMinPixels: 2,
     });
   }
+
 
   private createDatacentersLayer(): IconLayer {
     const highlightedDC = this.highlightedAssets.datacenter;
@@ -1484,11 +1441,11 @@ export class DeckGLMap {
     });
   }
 
-  private createEarthquakesLayer(): ScatterplotLayer {
+  private createEarthquakesLayer(earthquakes: Earthquake[]): ScatterplotLayer {
     return new ScatterplotLayer({
       id: 'earthquakes-layer',
-      data: this.earthquakes,
-      getPosition: (d) => [d.lon, d.lat],
+      data: earthquakes,
+      getPosition: (d) => [d.location?.longitude ?? 0, d.location?.latitude ?? 0],
       getRadius: (d) => Math.pow(2, d.magnitude) * 1000,
       getFillColor: (d) => {
         const mag = d.magnitude;
@@ -1502,10 +1459,10 @@ export class DeckGLMap {
     });
   }
 
-  private createNaturalEventsLayer(): ScatterplotLayer {
+  private createNaturalEventsLayer(events: NaturalEvent[]): ScatterplotLayer {
     return new ScatterplotLayer({
       id: 'natural-events-layer',
-      data: this.naturalEvents,
+      data: events,
       getPosition: (d: NaturalEvent) => [d.lon, d.lat],
       getRadius: (d: NaturalEvent) => d.title.startsWith('🔴') ? 20000 : d.title.startsWith('🟠') ? 15000 : 8000,
       getFillColor: (d: NaturalEvent) => {
@@ -1536,9 +1493,9 @@ export class DeckGLMap {
     });
   }
 
-  private createWeatherLayer(): ScatterplotLayer {
+  private createWeatherLayer(alerts: WeatherAlert[]): ScatterplotLayer {
     // Filter weather alerts that have centroid coordinates
-    const alertsWithCoords = this.weatherAlerts.filter(a => a.centroid && a.centroid.length === 2);
+    const alertsWithCoords = alerts.filter(a => a.centroid && a.centroid.length === 2);
 
     return new ScatterplotLayer({
       id: 'weather-layer',
@@ -1557,16 +1514,46 @@ export class DeckGLMap {
     });
   }
 
-  private createOutagesLayer(): ScatterplotLayer {
+  private createOutagesLayer(outages: InternetOutage[]): ScatterplotLayer {
     return new ScatterplotLayer({
       id: 'outages-layer',
-      data: this.outages,
+      data: outages,
       getPosition: (d) => [d.lon, d.lat],
       getRadius: 20000,
       getFillColor: COLORS.outage,
       radiusMinPixels: 6,
       radiusMaxPixels: 18,
       pickable: true,
+    });
+  }
+
+  private createCyberThreatsLayer(): ScatterplotLayer<CyberThreat> {
+    return new ScatterplotLayer<CyberThreat>({
+      id: 'cyber-threats-layer',
+      data: this.cyberThreats,
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: (d) => {
+        switch (d.severity) {
+          case 'critical': return 22000;
+          case 'high': return 17000;
+          case 'medium': return 13000;
+          default: return 9000;
+        }
+      },
+      getFillColor: (d) => {
+        switch (d.severity) {
+          case 'critical': return [255, 61, 0, 225] as [number, number, number, number];
+          case 'high': return [255, 102, 0, 205] as [number, number, number, number];
+          case 'medium': return [255, 176, 0, 185] as [number, number, number, number];
+          default: return [255, 235, 59, 170] as [number, number, number, number];
+        }
+      },
+      radiusMinPixels: 6,
+      radiusMaxPixels: 18,
+      pickable: true,
+      stroked: true,
+      getLineColor: [255, 255, 255, 160] as [number, number, number, number],
+      lineWidthMinPixels: 1,
     });
   }
 
@@ -1618,11 +1605,11 @@ export class DeckGLMap {
     });
   }
 
-  private createCableAdvisoriesLayer(): ScatterplotLayer {
+  private createCableAdvisoriesLayer(advisories: CableAdvisory[]): ScatterplotLayer {
     // Cable fault/maintenance advisories
     return new ScatterplotLayer({
       id: 'cable-advisories-layer',
-      data: this.cableAdvisories,
+      data: advisories,
       getPosition: (d) => [d.lon, d.lat],
       getRadius: 10000,
       getFillColor: (d) => {
@@ -1654,25 +1641,32 @@ export class DeckGLMap {
     });
   }
 
-  // Note: Protests layer now rendered via HTML overlays in renderProtestClusters()
-
-  private createMilitaryVesselsLayer(): ScatterplotLayer {
+  private createMilitaryVesselsLayer(vessels: MilitaryVessel[]): ScatterplotLayer {
     return new ScatterplotLayer({
       id: 'military-vessels-layer',
-      data: this.militaryVessels,
+      data: vessels,
       getPosition: (d) => [d.lon, d.lat],
       getRadius: 6000,
-      getFillColor: COLORS.vesselMilitary,
+      getFillColor: (d) => {
+        if (d.usniSource) return [255, 160, 60, 160] as [number, number, number, number]; // Orange, lower alpha for USNI-only
+        return COLORS.vesselMilitary;
+      },
       radiusMinPixels: 4,
       radiusMaxPixels: 10,
       pickable: true,
+      stroked: true,
+      getLineColor: (d) => {
+        if (d.usniSource) return [255, 180, 80, 200] as [number, number, number, number]; // Orange outline
+        return [0, 0, 0, 0] as [number, number, number, number]; // No outline for AIS
+      },
+      lineWidthMinPixels: 2,
     });
   }
 
-  private createMilitaryVesselClustersLayer(): ScatterplotLayer {
+  private createMilitaryVesselClustersLayer(clusters: MilitaryVesselCluster[]): ScatterplotLayer {
     return new ScatterplotLayer({
       id: 'military-vessel-clusters-layer',
-      data: this.militaryVesselClusters,
+      data: clusters,
       getPosition: (d) => [d.lon, d.lat],
       getRadius: (d) => 15000 + (d.vesselCount || 1) * 3000,
       getFillColor: (d) => {
@@ -1688,10 +1682,10 @@ export class DeckGLMap {
     });
   }
 
-  private createMilitaryFlightsLayer(): ScatterplotLayer {
+  private createMilitaryFlightsLayer(flights: MilitaryFlight[]): ScatterplotLayer {
     return new ScatterplotLayer({
       id: 'military-flights-layer',
-      data: this.militaryFlights,
+      data: flights,
       getPosition: (d) => [d.lon, d.lat],
       getRadius: 8000,
       getFillColor: COLORS.flightMilitary,
@@ -1701,10 +1695,10 @@ export class DeckGLMap {
     });
   }
 
-  private createMilitaryFlightClustersLayer(): ScatterplotLayer {
+  private createMilitaryFlightClustersLayer(clusters: MilitaryFlightCluster[]): ScatterplotLayer {
     return new ScatterplotLayer({
       id: 'military-flight-clusters-layer',
-      data: this.militaryFlightClusters,
+      data: clusters,
       getPosition: (d) => [d.lon, d.lat],
       getRadius: (d) => 15000 + (d.flightCount || 1) * 3000,
       getFillColor: (d) => {
@@ -1741,6 +1735,74 @@ export class DeckGLMap {
       getFillColor: [255, 215, 0, 180] as [number, number, number, number],
       radiusMinPixels: 4,
       radiusMaxPixels: 10,
+      pickable: true,
+    });
+  }
+
+  private createStockExchangesLayer(): ScatterplotLayer {
+    return new ScatterplotLayer({
+      id: 'stock-exchanges-layer',
+      data: STOCK_EXCHANGES,
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: (d) => d.tier === 'mega' ? 18000 : d.tier === 'major' ? 14000 : 11000,
+      getFillColor: (d) => {
+        if (d.tier === 'mega') return [255, 215, 80, 220] as [number, number, number, number];
+        if (d.tier === 'major') return COLORS.stockExchange;
+        return [140, 210, 255, 190] as [number, number, number, number];
+      },
+      radiusMinPixels: 5,
+      radiusMaxPixels: 14,
+      pickable: true,
+    });
+  }
+
+  private createFinancialCentersLayer(): ScatterplotLayer {
+    return new ScatterplotLayer({
+      id: 'financial-centers-layer',
+      data: FINANCIAL_CENTERS,
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: (d) => d.type === 'global' ? 17000 : d.type === 'regional' ? 13000 : 10000,
+      getFillColor: (d) => {
+        if (d.type === 'global') return COLORS.financialCenter;
+        if (d.type === 'regional') return [0, 190, 130, 185] as [number, number, number, number];
+        return [0, 150, 110, 165] as [number, number, number, number];
+      },
+      radiusMinPixels: 4,
+      radiusMaxPixels: 12,
+      pickable: true,
+    });
+  }
+
+  private createCentralBanksLayer(): ScatterplotLayer {
+    return new ScatterplotLayer({
+      id: 'central-banks-layer',
+      data: CENTRAL_BANKS,
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: (d) => d.type === 'major' ? 15000 : d.type === 'supranational' ? 17000 : 12000,
+      getFillColor: (d) => {
+        if (d.type === 'major') return COLORS.centralBank;
+        if (d.type === 'supranational') return [255, 235, 140, 220] as [number, number, number, number];
+        return [235, 180, 80, 185] as [number, number, number, number];
+      },
+      radiusMinPixels: 4,
+      radiusMaxPixels: 12,
+      pickable: true,
+    });
+  }
+
+  private createCommodityHubsLayer(): ScatterplotLayer {
+    return new ScatterplotLayer({
+      id: 'commodity-hubs-layer',
+      data: COMMODITY_HUBS,
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: (d) => d.type === 'exchange' ? 14000 : d.type === 'port' ? 12000 : 10000,
+      getFillColor: (d) => {
+        if (d.type === 'exchange') return COLORS.commodityHub;
+        if (d.type === 'port') return [80, 170, 255, 190] as [number, number, number, number];
+        return [255, 110, 80, 185] as [number, number, number, number];
+      },
+      radiusMinPixels: 4,
+      radiusMaxPixels: 11,
       pickable: true,
     });
   }
@@ -1798,8 +1860,6 @@ export class DeckGLMap {
     });
   }
 
-  // Note: Tech HQs layer now rendered via HTML overlays in renderTechHQClusters()
-
   private createAcceleratorsLayer(): ScatterplotLayer {
     return new ScatterplotLayer({
       id: 'accelerators-layer',
@@ -1826,17 +1886,352 @@ export class DeckGLMap {
     });
   }
 
+  private createProtestClusterLayers(): Layer[] {
+    this.updateClusterData();
+    const layers: Layer[] = [];
+
+    layers.push(new ScatterplotLayer<MapProtestCluster>({
+      id: 'protest-clusters-layer',
+      data: this.protestClusters,
+      getPosition: d => [d.lon, d.lat],
+      getRadius: d => 15000 + d.count * 2000,
+      radiusMinPixels: 6,
+      radiusMaxPixels: 22,
+      getFillColor: d => {
+        if (d.hasRiot) return [220, 40, 40, 200] as [number, number, number, number];
+        if (d.maxSeverity === 'high') return [255, 80, 60, 180] as [number, number, number, number];
+        if (d.maxSeverity === 'medium') return [255, 160, 40, 160] as [number, number, number, number];
+        return [255, 220, 80, 140] as [number, number, number, number];
+      },
+      pickable: true,
+      updateTriggers: { getRadius: this.lastSCZoom, getFillColor: this.lastSCZoom },
+    }));
+
+    layers.push(this.createGhostLayer('protest-clusters-layer', this.protestClusters, d => [d.lon, d.lat], { radiusMinPixels: 14 }));
+
+    const multiClusters = this.protestClusters.filter(c => c.count > 1);
+    if (multiClusters.length > 0) {
+      layers.push(new TextLayer<MapProtestCluster>({
+        id: 'protest-clusters-badge',
+        data: multiClusters,
+        getText: d => String(d.count),
+        getPosition: d => [d.lon, d.lat],
+        background: true,
+        getBackgroundColor: [0, 0, 0, 180],
+        backgroundPadding: [4, 2, 4, 2],
+        getColor: [255, 255, 255, 255],
+        getSize: 12,
+        getPixelOffset: [0, -14],
+        pickable: false,
+        fontFamily: 'system-ui, sans-serif',
+        fontWeight: 700,
+      }));
+    }
+
+    const pulseClusters = this.protestClusters.filter(c => c.maxSeverity === 'high' || c.hasRiot);
+    if (pulseClusters.length > 0) {
+      const pulse = 1.0 + 0.8 * (0.5 + 0.5 * Math.sin((this.pulseTime || Date.now()) / 400));
+      layers.push(new ScatterplotLayer<MapProtestCluster>({
+        id: 'protest-clusters-pulse',
+        data: pulseClusters,
+        getPosition: d => [d.lon, d.lat],
+        getRadius: d => 15000 + d.count * 2000,
+        radiusScale: pulse,
+        radiusMinPixels: 8,
+        radiusMaxPixels: 30,
+        stroked: true,
+        filled: false,
+        getLineColor: d => d.hasRiot ? [220, 40, 40, 120] as [number, number, number, number] : [255, 80, 60, 100] as [number, number, number, number],
+        lineWidthMinPixels: 1.5,
+        pickable: false,
+        updateTriggers: { radiusScale: this.pulseTime },
+      }));
+    }
+
+    return layers;
+  }
+
+  private createTechHQClusterLayers(): Layer[] {
+    this.updateClusterData();
+    const layers: Layer[] = [];
+    const zoom = this.maplibreMap?.getZoom() || 2;
+
+    layers.push(new ScatterplotLayer<MapTechHQCluster>({
+      id: 'tech-hq-clusters-layer',
+      data: this.techHQClusters,
+      getPosition: d => [d.lon, d.lat],
+      getRadius: d => 10000 + d.count * 1500,
+      radiusMinPixels: 5,
+      radiusMaxPixels: 18,
+      getFillColor: d => {
+        if (d.primaryType === 'faang') return [0, 220, 120, 200] as [number, number, number, number];
+        if (d.primaryType === 'unicorn') return [255, 100, 200, 180] as [number, number, number, number];
+        return [80, 160, 255, 180] as [number, number, number, number];
+      },
+      pickable: true,
+      updateTriggers: { getRadius: this.lastSCZoom },
+    }));
+
+    layers.push(this.createGhostLayer('tech-hq-clusters-layer', this.techHQClusters, d => [d.lon, d.lat], { radiusMinPixels: 14 }));
+
+    const multiClusters = this.techHQClusters.filter(c => c.count > 1);
+    if (multiClusters.length > 0) {
+      layers.push(new TextLayer<MapTechHQCluster>({
+        id: 'tech-hq-clusters-badge',
+        data: multiClusters,
+        getText: d => String(d.count),
+        getPosition: d => [d.lon, d.lat],
+        background: true,
+        getBackgroundColor: [0, 0, 0, 180],
+        backgroundPadding: [4, 2, 4, 2],
+        getColor: [255, 255, 255, 255],
+        getSize: 12,
+        getPixelOffset: [0, -14],
+        pickable: false,
+        fontFamily: 'system-ui, sans-serif',
+        fontWeight: 700,
+      }));
+    }
+
+    if (zoom >= 3) {
+      const singles = this.techHQClusters.filter(c => c.count === 1);
+      if (singles.length > 0) {
+        layers.push(new TextLayer<MapTechHQCluster>({
+          id: 'tech-hq-clusters-label',
+          data: singles,
+          getText: d => d.items[0]?.company ?? '',
+          getPosition: d => [d.lon, d.lat],
+          getSize: 11,
+          getColor: [220, 220, 220, 200],
+          getPixelOffset: [0, 12],
+          pickable: false,
+          fontFamily: 'system-ui, sans-serif',
+        }));
+      }
+    }
+
+    return layers;
+  }
+
+  private createTechEventClusterLayers(): Layer[] {
+    this.updateClusterData();
+    const layers: Layer[] = [];
+
+    layers.push(new ScatterplotLayer<MapTechEventCluster>({
+      id: 'tech-event-clusters-layer',
+      data: this.techEventClusters,
+      getPosition: d => [d.lon, d.lat],
+      getRadius: d => 10000 + d.count * 1500,
+      radiusMinPixels: 5,
+      radiusMaxPixels: 18,
+      getFillColor: d => {
+        if (d.soonestDaysUntil <= 14) return [255, 220, 50, 200] as [number, number, number, number];
+        return [80, 140, 255, 180] as [number, number, number, number];
+      },
+      pickable: true,
+      updateTriggers: { getRadius: this.lastSCZoom },
+    }));
+
+    layers.push(this.createGhostLayer('tech-event-clusters-layer', this.techEventClusters, d => [d.lon, d.lat], { radiusMinPixels: 14 }));
+
+    const multiClusters = this.techEventClusters.filter(c => c.count > 1);
+    if (multiClusters.length > 0) {
+      layers.push(new TextLayer<MapTechEventCluster>({
+        id: 'tech-event-clusters-badge',
+        data: multiClusters,
+        getText: d => String(d.count),
+        getPosition: d => [d.lon, d.lat],
+        background: true,
+        getBackgroundColor: [0, 0, 0, 180],
+        backgroundPadding: [4, 2, 4, 2],
+        getColor: [255, 255, 255, 255],
+        getSize: 12,
+        getPixelOffset: [0, -14],
+        pickable: false,
+        fontFamily: 'system-ui, sans-serif',
+        fontWeight: 700,
+      }));
+    }
+
+    return layers;
+  }
+
+  private createDatacenterClusterLayers(): Layer[] {
+    this.updateClusterData();
+    const layers: Layer[] = [];
+
+    layers.push(new ScatterplotLayer<MapDatacenterCluster>({
+      id: 'datacenter-clusters-layer',
+      data: this.datacenterClusters,
+      getPosition: d => [d.lon, d.lat],
+      getRadius: d => 15000 + d.count * 2000,
+      radiusMinPixels: 6,
+      radiusMaxPixels: 20,
+      getFillColor: d => {
+        if (d.majorityExisting) return [160, 80, 255, 180] as [number, number, number, number];
+        return [80, 160, 255, 180] as [number, number, number, number];
+      },
+      pickable: true,
+      updateTriggers: { getRadius: this.lastSCZoom },
+    }));
+
+    layers.push(this.createGhostLayer('datacenter-clusters-layer', this.datacenterClusters, d => [d.lon, d.lat], { radiusMinPixels: 14 }));
+
+    const multiClusters = this.datacenterClusters.filter(c => c.count > 1);
+    if (multiClusters.length > 0) {
+      layers.push(new TextLayer<MapDatacenterCluster>({
+        id: 'datacenter-clusters-badge',
+        data: multiClusters,
+        getText: d => String(d.count),
+        getPosition: d => [d.lon, d.lat],
+        background: true,
+        getBackgroundColor: [0, 0, 0, 180],
+        backgroundPadding: [4, 2, 4, 2],
+        getColor: [255, 255, 255, 255],
+        getSize: 12,
+        getPixelOffset: [0, -14],
+        pickable: false,
+        fontFamily: 'system-ui, sans-serif',
+        fontWeight: 700,
+      }));
+    }
+
+    return layers;
+  }
+
+  private createHotspotsLayers(): Layer[] {
+    const zoom = this.maplibreMap?.getZoom() || 2;
+    const zoomScale = Math.min(1, (zoom - 1) / 3);
+    const maxPx = 6 + Math.round(14 * zoomScale);
+    const baseOpacity = zoom < 2.5 ? 0.5 : zoom < 4 ? 0.7 : 1.0;
+    const layers: Layer[] = [];
+
+    layers.push(new ScatterplotLayer({
+      id: 'hotspots-layer',
+      data: this.hotspots,
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: (d) => {
+        const score = d.escalationScore || 1;
+        return 10000 + score * 5000;
+      },
+      getFillColor: (d) => {
+        const score = d.escalationScore || 1;
+        const a = Math.round((score >= 4 ? 200 : score >= 2 ? 200 : 180) * baseOpacity);
+        if (score >= 4) return [255, 68, 68, a] as [number, number, number, number];
+        if (score >= 2) return [255, 165, 0, a] as [number, number, number, number];
+        return [255, 255, 0, a] as [number, number, number, number];
+      },
+      radiusMinPixels: 4,
+      radiusMaxPixels: maxPx,
+      pickable: true,
+      stroked: true,
+      getLineColor: (d) =>
+        d.hasBreaking ? [255, 255, 255, 255] as [number, number, number, number] : [0, 0, 0, 0] as [number, number, number, number],
+      lineWidthMinPixels: 2,
+    }));
+
+    layers.push(this.createGhostLayer('hotspots-layer', this.hotspots, d => [d.lon, d.lat], { radiusMinPixels: 14 }));
+
+    const highHotspots = this.hotspots.filter(h => h.level === 'high' || h.hasBreaking);
+    if (highHotspots.length > 0) {
+      const pulse = 1.0 + 0.8 * (0.5 + 0.5 * Math.sin((this.pulseTime || Date.now()) / 400));
+      layers.push(new ScatterplotLayer({
+        id: 'hotspots-pulse',
+        data: highHotspots,
+        getPosition: (d) => [d.lon, d.lat],
+        getRadius: (d) => {
+          const score = d.escalationScore || 1;
+          return 10000 + score * 5000;
+        },
+        radiusScale: pulse,
+        radiusMinPixels: 6,
+        radiusMaxPixels: 30,
+        stroked: true,
+        filled: false,
+        getLineColor: (d) => {
+          const a = Math.round(120 * baseOpacity);
+          return d.hasBreaking ? [255, 50, 50, a] as [number, number, number, number] : [255, 165, 0, a] as [number, number, number, number];
+        },
+        lineWidthMinPixels: 1.5,
+        pickable: false,
+        updateTriggers: { radiusScale: this.pulseTime },
+      }));
+
+    }
+
+    return layers;
+  }
+
+  private createGulfInvestmentsLayer(): ScatterplotLayer {
+    return new ScatterplotLayer<GulfInvestment>({
+      id: 'gulf-investments-layer',
+      data: GULF_INVESTMENTS,
+      getPosition: (d: GulfInvestment) => [d.lon, d.lat],
+      getRadius: (d: GulfInvestment) => {
+        if (!d.investmentUSD) return 20000;
+        if (d.investmentUSD >= 50000) return 70000;
+        if (d.investmentUSD >= 10000) return 55000;
+        if (d.investmentUSD >= 1000) return 40000;
+        return 25000;
+      },
+      getFillColor: (d: GulfInvestment) =>
+        d.investingCountry === 'SA' ? COLORS.gulfInvestmentSA : COLORS.gulfInvestmentUAE,
+      getLineColor: [255, 255, 255, 80] as [number, number, number, number],
+      lineWidthMinPixels: 1,
+      radiusMinPixels: 5,
+      radiusMaxPixels: 28,
+      pickable: true,
+    });
+  }
+
   private pulseTime = 0;
 
-  private startNewsPulseAnimation(): void {
+  private canPulse(now = Date.now()): boolean {
+    return now - this.startupTime > 60_000;
+  }
+
+  private hasRecentRiot(now = Date.now(), windowMs = 2 * 60 * 60 * 1000): boolean {
+    const hasRecentClusterRiot = this.protestClusters.some(c =>
+      c.hasRiot && c.latestRiotEventTimeMs != null && (now - c.latestRiotEventTimeMs) < windowMs
+    );
+    if (hasRecentClusterRiot) return true;
+
+    // Fallback to raw protests because syncPulseAnimation can run before cluster data refreshes.
+    return this.protests.some((p) => {
+      if (p.eventType !== 'riot' || p.sourceType === 'gdelt') return false;
+      const ts = p.time.getTime();
+      return Number.isFinite(ts) && (now - ts) < windowMs;
+    });
+  }
+
+  private needsPulseAnimation(now = Date.now()): boolean {
+    return this.hasRecentNews(now)
+      || this.hasRecentRiot(now)
+      || this.hotspots.some(h => h.hasBreaking);
+  }
+
+  private syncPulseAnimation(now = Date.now()): void {
+    if (this.renderPaused) {
+      if (this.newsPulseIntervalId !== null) this.stopPulseAnimation();
+      return;
+    }
+    const shouldPulse = this.canPulse(now) && this.needsPulseAnimation(now);
+    if (shouldPulse && this.newsPulseIntervalId === null) {
+      this.startPulseAnimation();
+    } else if (!shouldPulse && this.newsPulseIntervalId !== null) {
+      this.stopPulseAnimation();
+    }
+  }
+
+  private startPulseAnimation(): void {
     if (this.newsPulseIntervalId !== null) return;
-    const PULSE_UPDATE_INTERVAL_MS = 250;
+    const PULSE_UPDATE_INTERVAL_MS = 500;
 
     this.newsPulseIntervalId = setInterval(() => {
       const now = Date.now();
-      if (!this.hasRecentNews(now)) {
+      if (!this.needsPulseAnimation(now)) {
         this.pulseTime = now;
-        this.stopNewsPulseAnimation();
+        this.stopPulseAnimation();
         this.rafUpdateLayers();
         return;
       }
@@ -1845,7 +2240,7 @@ export class DeckGLMap {
     }, PULSE_UPDATE_INTERVAL_MS);
   }
 
-  private stopNewsPulseAnimation(): void {
+  private stopPulseAnimation(): void {
     if (this.newsPulseIntervalId !== null) {
       clearInterval(this.newsPulseIntervalId);
       this.newsPulseIntervalId = null;
@@ -1855,6 +2250,7 @@ export class DeckGLMap {
   private createNewsLocationsLayer(): ScatterplotLayer[] {
     const zoom = this.maplibreMap?.getZoom() || 2;
     const alphaScale = zoom < 2.5 ? 0.4 : zoom < 4 ? 0.7 : 1.0;
+    const filteredNewsLocations = this.filterByTime(this.newsLocations, (location) => location.timestamp);
     const THREAT_RGB: Record<string, [number, number, number]> = {
       critical: [239, 68, 68],
       high: [249, 115, 22],
@@ -1876,7 +2272,7 @@ export class DeckGLMap {
     const layers: ScatterplotLayer[] = [
       new ScatterplotLayer({
         id: 'news-locations-layer',
-        data: this.newsLocations,
+        data: filteredNewsLocations,
         getPosition: (d) => [d.lon, d.lat],
         getRadius: 18000,
         getFillColor: (d) => {
@@ -1890,7 +2286,7 @@ export class DeckGLMap {
       }),
     ];
 
-    const recentNews = this.newsLocations.filter(d => {
+    const recentNews = filteredNewsLocations.filter(d => {
       const firstSeen = this.newsLocationFirstSeen.get(d.title);
       return firstSeen && (now - firstSeen) < PULSE_DURATION;
     });
@@ -1928,7 +2324,8 @@ export class DeckGLMap {
   private getTooltip(info: PickingInfo): { html: string } | null {
     if (!info.object) return null;
 
-    const layerId = info.layer?.id || '';
+    const rawLayerId = info.layer?.id || '';
+    const layerId = rawLayerId.endsWith('-ghost') ? rawLayerId.slice(0, -6) : rawLayerId;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const obj = info.object as any;
     const text = (value: unknown): string => escapeHtml(String(value ?? ''));
@@ -1937,17 +2334,41 @@ export class DeckGLMap {
       case 'hotspots-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.subtext)}</div>` };
       case 'earthquakes-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>M${(obj.magnitude || 0).toFixed(1)} Earthquake</strong><br/>${text(obj.place)}</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>M${(obj.magnitude || 0).toFixed(1)} ${t('components.deckgl.tooltip.earthquake')}</strong><br/>${text(obj.place)}</div>` };
       case 'military-vessels-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.operatorCountry)}</div>` };
       case 'military-flights-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.callsign || obj.registration || 'Military Aircraft')}</strong><br/>${text(obj.type)}</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.callsign || obj.registration || t('components.deckgl.tooltip.militaryAircraft'))}</strong><br/>${text(obj.type)}</div>` };
       case 'military-vessel-clusters-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name || 'Vessel Cluster')}</strong><br/>${obj.vesselCount || 0} vessels<br/>${text(obj.activityType)}</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name || t('components.deckgl.tooltip.vesselCluster'))}</strong><br/>${obj.vesselCount || 0} ${t('components.deckgl.tooltip.vessels')}<br/>${text(obj.activityType)}</div>` };
       case 'military-flight-clusters-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name || 'Flight Cluster')}</strong><br/>${obj.flightCount || 0} aircraft<br/>${text(obj.activityType)}</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name || t('components.deckgl.tooltip.flightCluster'))}</strong><br/>${obj.flightCount || 0} ${t('components.deckgl.tooltip.aircraft')}<br/>${text(obj.activityType)}</div>` };
       case 'protests-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.title)}</strong><br/>${text(obj.country)}</div>` };
+      case 'protest-clusters-layer':
+        if (obj.count === 1) {
+          const item = obj.items?.[0];
+          return { html: `<div class="deckgl-tooltip"><strong>${text(item?.title || t('components.deckgl.tooltip.protest'))}</strong><br/>${text(item?.city || item?.country || '')}</div>` };
+        }
+        return { html: `<div class="deckgl-tooltip"><strong>${t('components.deckgl.tooltip.protestsCount', { count: String(obj.count) })}</strong><br/>${text(obj.country)}</div>` };
+      case 'tech-hq-clusters-layer':
+        if (obj.count === 1) {
+          const hq = obj.items?.[0];
+          return { html: `<div class="deckgl-tooltip"><strong>${text(hq?.company || '')}</strong><br/>${text(hq?.city || '')}</div>` };
+        }
+        return { html: `<div class="deckgl-tooltip"><strong>${t('components.deckgl.tooltip.techHQsCount', { count: String(obj.count) })}</strong><br/>${text(obj.city)}</div>` };
+      case 'tech-event-clusters-layer':
+        if (obj.count === 1) {
+          const ev = obj.items?.[0];
+          return { html: `<div class="deckgl-tooltip"><strong>${text(ev?.title || '')}</strong><br/>${text(ev?.location || '')}</div>` };
+        }
+        return { html: `<div class="deckgl-tooltip"><strong>${t('components.deckgl.tooltip.techEventsCount', { count: String(obj.count) })}</strong><br/>${text(obj.location)}</div>` };
+      case 'datacenter-clusters-layer':
+        if (obj.count === 1) {
+          const dc = obj.items?.[0];
+          return { html: `<div class="deckgl-tooltip"><strong>${text(dc?.name || '')}</strong><br/>${text(dc?.owner || '')}</div>` };
+        }
+        return { html: `<div class="deckgl-tooltip"><strong>${t('components.deckgl.tooltip.dataCentersCount', { count: String(obj.count) })}</strong><br/>${text(obj.country)}</div>` };
       case 'bases-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.country)}</div>` };
       case 'nuclear-layer':
@@ -1955,21 +2376,38 @@ export class DeckGLMap {
       case 'datacenters-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.owner)}</div>` };
       case 'cables-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>Undersea Cable</div>` };
-      case 'pipelines-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.type)} Pipeline</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${t('components.deckgl.tooltip.underseaCable')}</div>` };
+      case 'pipelines-layer': {
+        const pipelineType = String(obj.type || '').toLowerCase();
+        const pipelineTypeLabel = pipelineType === 'oil'
+          ? t('popups.pipeline.types.oil')
+          : pipelineType === 'gas'
+          ? t('popups.pipeline.types.gas')
+          : pipelineType === 'products'
+          ? t('popups.pipeline.types.products')
+          : `${text(obj.type)} ${t('components.deckgl.tooltip.pipeline')}`;
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${pipelineTypeLabel}</div>` };
+      }
       case 'conflict-zones-layer': {
         const props = obj.properties || obj;
-        return { html: `<div class="deckgl-tooltip"><strong>${text(props.name)}</strong><br/>Conflict Zone</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(props.name)}</strong><br/>${t('components.deckgl.tooltip.conflictZone')}</div>` };
       }
       case 'natural-events-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.title)}</strong><br/>${text(obj.category || 'Natural Event')}</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.title)}</strong><br/>${text(obj.category || t('components.deckgl.tooltip.naturalEvent'))}</div>` };
       case 'ais-density-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>Ship Traffic</strong><br/>Intensity: ${text(obj.intensity)}</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${t('components.deckgl.layers.shipTraffic')}</strong><br/>${t('popups.intensity')}: ${text(obj.intensity)}</div>` };
       case 'waterways-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>Strategic Waterway</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${t('components.deckgl.layers.strategicWaterways')}</div>` };
       case 'economic-centers-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.country)}</div>` };
+      case 'stock-exchanges-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.shortName)}</strong><br/>${text(obj.city)}, ${text(obj.country)}</div>` };
+      case 'financial-centers-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.type)} ${t('components.deckgl.tooltip.financialCenter')}</div>` };
+      case 'central-banks-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.shortName)}</strong><br/>${text(obj.city)}, ${text(obj.country)}</div>` };
+      case 'commodity-hubs-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.type)} · ${text(obj.city)}</div>` };
       case 'startup-hubs-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.city)}</strong><br/>${text(obj.country)}</div>` };
       case 'tech-hqs-layer':
@@ -1981,36 +2419,55 @@ export class DeckGLMap {
       case 'tech-events-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.title)}</strong><br/>${text(obj.location)}</div>` };
       case 'irradiators-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.type || 'Gamma Irradiator')}</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.type || t('components.deckgl.layers.gammaIrradiators'))}</div>` };
       case 'spaceports-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.country || 'Spaceport')}</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.country || t('components.deckgl.layers.spaceports'))}</div>` };
       case 'ports-layer': {
         const typeIcon = obj.type === 'naval' ? '⚓' : obj.type === 'oil' || obj.type === 'lng' ? '🛢️' : '🏭';
-        return { html: `<div class="deckgl-tooltip"><strong>${typeIcon} ${text(obj.name)}</strong><br/>${text(obj.type || 'Port')} - ${text(obj.country)}</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${typeIcon} ${text(obj.name)}</strong><br/>${text(obj.type || t('components.deckgl.tooltip.port'))} - ${text(obj.country)}</div>` };
       }
       case 'flight-delays-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.airport)}</strong><br/>${text(obj.severity)}: ${text(obj.reason)}</div>` };
       case 'apt-groups-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.aka)}<br/>Sponsor: ${text(obj.sponsor)}</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.aka)}<br/>${t('popups.sponsor')}: ${text(obj.sponsor)}</div>` };
       case 'minerals-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.mineral)} - ${text(obj.country)}<br/>${text(obj.operator)}</div>` };
       case 'ais-disruptions-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>AIS ${text(obj.type || 'Disruption')}</strong><br/>${text(obj.severity)} severity<br/>${text(obj.description)}</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>AIS ${text(obj.type || t('components.deckgl.tooltip.disruption'))}</strong><br/>${text(obj.severity)} ${t('popups.severity')}<br/>${text(obj.description)}</div>` };
       case 'cable-advisories-layer': {
         const cableName = UNDERSEA_CABLES.find(c => c.id === obj.cableId)?.name || obj.cableId;
-        return { html: `<div class="deckgl-tooltip"><strong>${text(cableName)}</strong><br/>${text(obj.severity || 'Advisory')}<br/>${text(obj.description)}</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(cableName)}</strong><br/>${text(obj.severity || t('components.deckgl.tooltip.advisory'))}<br/>${text(obj.description)}</div>` };
       }
       case 'repair-ships-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name || 'Repair Ship')}</strong><br/>${text(obj.status)}</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name || t('components.deckgl.tooltip.repairShip'))}</strong><br/>${text(obj.status)}</div>` };
       case 'weather-layer': {
         const areaDesc = typeof obj.areaDesc === 'string' ? obj.areaDesc : '';
         const area = areaDesc ? `<br/><small>${text(areaDesc.slice(0, 50))}${areaDesc.length > 50 ? '...' : ''}</small>` : '';
-        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.event || 'Weather Alert')}</strong><br/>${text(obj.severity)}${area}</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.event || t('components.deckgl.layers.weatherAlerts'))}</strong><br/>${text(obj.severity)}${area}</div>` };
       }
       case 'outages-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.asn || 'Internet Outage')}</strong><br/>${text(obj.country)}</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.asn || t('components.deckgl.tooltip.internetOutage'))}</strong><br/>${text(obj.country)}</div>` };
+      case 'cyber-threats-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${t('popups.cyberThreat.title')}</strong><br/>${text(obj.severity || t('components.deckgl.tooltip.medium'))} · ${text(obj.country || t('popups.unknown'))}</div>` };
       case 'news-locations-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>📰 News</strong><br/>${text(obj.title?.slice(0, 80) || '')}</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>📰 ${t('components.deckgl.tooltip.news')}</strong><br/>${text(obj.title?.slice(0, 80) || '')}</div>` };
+      case 'gulf-investments-layer': {
+        const inv = obj as GulfInvestment;
+        const flag = inv.investingCountry === 'SA' ? '🇸🇦' : '🇦🇪';
+        const usd = inv.investmentUSD != null
+          ? (inv.investmentUSD >= 1000 ? `$${(inv.investmentUSD / 1000).toFixed(1)}B` : `$${inv.investmentUSD}M`)
+          : t('components.deckgl.tooltip.undisclosed');
+        const stake = inv.stakePercent != null ? `<br/>${text(String(inv.stakePercent))}% ${t('components.deckgl.tooltip.stake')}` : '';
+        return {
+          html: `<div class="deckgl-tooltip">
+            <strong>${flag} ${text(inv.assetName)}</strong><br/>
+            <em>${text(inv.investingEntity)}</em><br/>
+            ${text(inv.targetCountry)} · ${text(inv.sector)}<br/>
+            <strong>${usd}</strong>${stake}<br/>
+            <span style="text-transform:capitalize">${text(inv.status)}</span>
+          </div>`,
+        };
+      }
       default:
         return null;
     }
@@ -2021,12 +2478,18 @@ export class DeckGLMap {
       // Empty map click → country detection
       if (info.coordinate && this.onCountryClick) {
         const [lon, lat] = info.coordinate as [number, number];
-        this.onCountryClick(lat, lon);
+        const country = this.resolveCountryFromCoordinate(lon, lat);
+        this.onCountryClick({
+          lat,
+          lon,
+          ...(country ? { code: country.code, name: country.name } : {}),
+        });
       }
       return;
     }
 
-    const layerId = info.layer?.id || '';
+    const rawClickLayerId = info.layer?.id || '';
+    const layerId = rawClickLayerId.endsWith('-ghost') ? rawClickLayerId.slice(0, -6) : rawClickLayerId;
 
     // Hotspots show popup with related news
     if (layerId === 'hotspots-layer') {
@@ -2044,6 +2507,99 @@ export class DeckGLMap {
       return;
     }
 
+    // Handle cluster layers with single/multi logic
+    if (layerId === 'protest-clusters-layer') {
+      const cluster = info.object as MapProtestCluster;
+      if (cluster.count === 1 && cluster.items[0]) {
+        this.popup.show({ type: 'protest', data: cluster.items[0], x: info.x, y: info.y });
+      } else {
+        this.popup.show({
+          type: 'protestCluster',
+          data: {
+            items: cluster.items,
+            country: cluster.country,
+            count: cluster.count,
+            riotCount: cluster.riotCount,
+            highSeverityCount: cluster.highSeverityCount,
+            verifiedCount: cluster.verifiedCount,
+            totalFatalities: cluster.totalFatalities,
+            sampled: cluster.sampled,
+          },
+          x: info.x,
+          y: info.y,
+        });
+      }
+      return;
+    }
+    if (layerId === 'tech-hq-clusters-layer') {
+      const cluster = info.object as MapTechHQCluster;
+      if (cluster.count === 1 && cluster.items[0]) {
+        this.popup.show({ type: 'techHQ', data: cluster.items[0], x: info.x, y: info.y });
+      } else {
+        this.popup.show({
+          type: 'techHQCluster',
+          data: {
+            items: cluster.items,
+            city: cluster.city,
+            country: cluster.country,
+            count: cluster.count,
+            faangCount: cluster.faangCount,
+            unicornCount: cluster.unicornCount,
+            publicCount: cluster.publicCount,
+            sampled: cluster.sampled,
+          },
+          x: info.x,
+          y: info.y,
+        });
+      }
+      return;
+    }
+    if (layerId === 'tech-event-clusters-layer') {
+      const cluster = info.object as MapTechEventCluster;
+      if (cluster.count === 1 && cluster.items[0]) {
+        this.popup.show({ type: 'techEvent', data: cluster.items[0], x: info.x, y: info.y });
+      } else {
+        this.popup.show({
+          type: 'techEventCluster',
+          data: {
+            items: cluster.items,
+            location: cluster.location,
+            country: cluster.country,
+            count: cluster.count,
+            soonCount: cluster.soonCount,
+            sampled: cluster.sampled,
+          },
+          x: info.x,
+          y: info.y,
+        });
+      }
+      return;
+    }
+    if (layerId === 'datacenter-clusters-layer') {
+      const cluster = info.object as MapDatacenterCluster;
+      if (cluster.count === 1 && cluster.items[0]) {
+        this.popup.show({ type: 'datacenter', data: cluster.items[0], x: info.x, y: info.y });
+      } else {
+        this.popup.show({
+          type: 'datacenterCluster',
+          data: {
+            items: cluster.items,
+            region: cluster.region || cluster.country,
+            country: cluster.country,
+            count: cluster.count,
+            totalChips: cluster.totalChips,
+            totalPowerMW: cluster.totalPowerMW,
+            existingCount: cluster.existingCount,
+            plannedCount: cluster.plannedCount,
+            sampled: cluster.sampled,
+          },
+          x: info.x,
+          y: info.y,
+        });
+      }
+      return;
+    }
+
     // Map layer IDs to popup types
     const layerToPopupType: Record<string, PopupType> = {
       'conflict-zones-layer': 'conflict',
@@ -2056,6 +2612,7 @@ export class DeckGLMap {
       'earthquakes-layer': 'earthquake',
       'weather-layer': 'weather',
       'outages-layer': 'outage',
+      'cyber-threats-layer': 'cyberThreat',
       'protests-layer': 'protest',
       'military-flights-layer': 'militaryFlight',
       'military-vessels-layer': 'militaryVessel',
@@ -2064,6 +2621,10 @@ export class DeckGLMap {
       'natural-events-layer': 'natEvent',
       'waterways-layer': 'waterway',
       'economic-centers-layer': 'economic',
+      'stock-exchanges-layer': 'stockExchange',
+      'financial-centers-layer': 'financialCenter',
+      'central-banks-layer': 'centralBank',
+      'commodity-hubs-layer': 'commodityHub',
       'spaceports-layer': 'spaceport',
       'ports-layer': 'port',
       'flight-delays-layer': 'flight',
@@ -2123,20 +2684,20 @@ export class DeckGLMap {
     controls.className = 'map-controls deckgl-controls';
     controls.innerHTML = `
       <div class="zoom-controls">
-        <button class="map-btn zoom-in" title="Zoom In">+</button>
-        <button class="map-btn zoom-out" title="Zoom Out">-</button>
-        <button class="map-btn zoom-reset" title="Reset View">&#8962;</button>
+        <button class="map-btn zoom-in" title="${t('components.deckgl.zoomIn')}">+</button>
+        <button class="map-btn zoom-out" title="${t('components.deckgl.zoomOut')}">-</button>
+        <button class="map-btn zoom-reset" title="${t('components.deckgl.resetView')}">&#8962;</button>
       </div>
       <div class="view-selector">
         <select class="view-select">
-          <option value="global">Global</option>
-          <option value="america">Americas</option>
-          <option value="mena">MENA</option>
-          <option value="eu">Europe</option>
-          <option value="asia">Asia</option>
-          <option value="latam">Latin America</option>
-          <option value="africa">Africa</option>
-          <option value="oceania">Oceania</option>
+          <option value="global">${t('components.deckgl.views.global')}</option>
+          <option value="america">${t('components.deckgl.views.americas')}</option>
+          <option value="mena">${t('components.deckgl.views.mena')}</option>
+          <option value="eu">${t('components.deckgl.views.europe')}</option>
+          <option value="asia">${t('components.deckgl.views.asia')}</option>
+          <option value="latam">${t('components.deckgl.views.latam')}</option>
+          <option value="africa">${t('components.deckgl.views.africa')}</option>
+          <option value="oceania">${t('components.deckgl.views.oceania')}</option>
         </select>
       </div>
     `;
@@ -2168,7 +2729,7 @@ export class DeckGLMap {
         <button class="time-btn ${this.state.timeRange === '24h' ? 'active' : ''}" data-range="24h">24h</button>
         <button class="time-btn ${this.state.timeRange === '48h' ? 'active' : ''}" data-range="48h">48h</button>
         <button class="time-btn ${this.state.timeRange === '7d' ? 'active' : ''}" data-range="7d">7d</button>
-        <button class="time-btn ${this.state.timeRange === 'all' ? 'active' : ''}" data-range="all">All</button>
+        <button class="time-btn ${this.state.timeRange === 'all' ? 'active' : ''}" data-range="all">${t('components.deckgl.timeAll')}</button>
       </div>
     `;
 
@@ -2178,9 +2739,16 @@ export class DeckGLMap {
       btn.addEventListener('click', () => {
         const range = (btn as HTMLElement).dataset.range as TimeRange;
         this.setTimeRange(range);
-        slider.querySelectorAll('.time-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
       });
+    });
+  }
+
+  private updateTimeSliderButtons(): void {
+    const slider = this.container.querySelector('.deckgl-time-slider');
+    if (!slider) return;
+    slider.querySelectorAll('.time-btn').forEach((btn) => {
+      const range = (btn as HTMLElement).dataset.range as TimeRange | undefined;
+      btn.classList.toggle('active', range === this.state.timeRange);
     });
   }
 
@@ -2190,50 +2758,68 @@ export class DeckGLMap {
 
     const layerConfig = SITE_VARIANT === 'tech'
       ? [
-          { key: 'startupHubs', label: 'Startup Hubs', icon: '&#128640;' },
-          { key: 'techHQs', label: 'Tech HQs', icon: '&#127970;' },
-          { key: 'accelerators', label: 'Accelerators', icon: '&#9889;' },
-          { key: 'cloudRegions', label: 'Cloud Regions', icon: '&#9729;' },
-          { key: 'datacenters', label: 'AI Data Centers', icon: '&#128421;' },
-          { key: 'cables', label: 'Undersea Cables', icon: '&#128268;' },
-          { key: 'outages', label: 'Internet Outages', icon: '&#128225;' },
-          { key: 'techEvents', label: 'Tech Events', icon: '&#128197;' },
-          { key: 'natural', label: 'Natural Events', icon: '&#127755;' },
-          { key: 'fires', label: 'Fires', icon: '&#128293;' },
+        { key: 'startupHubs', label: t('components.deckgl.layers.startupHubs'), icon: '&#128640;' },
+        { key: 'techHQs', label: t('components.deckgl.layers.techHQs'), icon: '&#127970;' },
+        { key: 'accelerators', label: t('components.deckgl.layers.accelerators'), icon: '&#9889;' },
+        { key: 'cloudRegions', label: t('components.deckgl.layers.cloudRegions'), icon: '&#9729;' },
+        { key: 'datacenters', label: t('components.deckgl.layers.aiDataCenters'), icon: '&#128421;' },
+        { key: 'cables', label: t('components.deckgl.layers.underseaCables'), icon: '&#128268;' },
+        { key: 'outages', label: t('components.deckgl.layers.internetOutages'), icon: '&#128225;' },
+        { key: 'cyberThreats', label: t('components.deckgl.layers.cyberThreats'), icon: '&#128737;' },
+        { key: 'techEvents', label: t('components.deckgl.layers.techEvents'), icon: '&#128197;' },
+        { key: 'natural', label: t('components.deckgl.layers.naturalEvents'), icon: '&#127755;' },
+        { key: 'fires', label: t('components.deckgl.layers.fires'), icon: '&#128293;' },
+      ]
+      : SITE_VARIANT === 'finance'
+      ? [
+          { key: 'stockExchanges', label: t('components.deckgl.layers.stockExchanges'), icon: '&#127963;' },
+          { key: 'financialCenters', label: t('components.deckgl.layers.financialCenters'), icon: '&#128176;' },
+          { key: 'centralBanks', label: t('components.deckgl.layers.centralBanks'), icon: '&#127974;' },
+          { key: 'commodityHubs', label: t('components.deckgl.layers.commodityHubs'), icon: '&#128230;' },
+          { key: 'gulfInvestments', label: t('components.deckgl.layers.gulfInvestments'), icon: '&#127760;' },
+          { key: 'cables', label: t('components.deckgl.layers.underseaCables'), icon: '&#128268;' },
+          { key: 'pipelines', label: t('components.deckgl.layers.pipelines'), icon: '&#128738;' },
+          { key: 'outages', label: t('components.deckgl.layers.internetOutages'), icon: '&#128225;' },
+          { key: 'weather', label: t('components.deckgl.layers.weatherAlerts'), icon: '&#9928;' },
+          { key: 'economic', label: t('components.deckgl.layers.economicCenters'), icon: '&#128176;' },
+          { key: 'waterways', label: t('components.deckgl.layers.strategicWaterways'), icon: '&#9875;' },
+          { key: 'natural', label: t('components.deckgl.layers.naturalEvents'), icon: '&#127755;' },
+          { key: 'cyberThreats', label: t('components.deckgl.layers.cyberThreats'), icon: '&#128737;' },
         ]
       : [
-          { key: 'hotspots', label: 'Intel Hotspots', icon: '&#127919;' },
-          { key: 'conflicts', label: 'Conflict Zones', icon: '&#9876;' },
-          { key: 'bases', label: 'Military Bases', icon: '&#127963;' },
-          { key: 'nuclear', label: 'Nuclear Sites', icon: '&#9762;' },
-          { key: 'irradiators', label: 'Gamma Irradiators', icon: '&#9888;' },
-          { key: 'spaceports', label: 'Spaceports', icon: '&#128640;' },
-          { key: 'cables', label: 'Undersea Cables', icon: '&#128268;' },
-          { key: 'pipelines', label: 'Pipelines', icon: '&#128738;' },
-          { key: 'datacenters', label: 'AI Data Centers', icon: '&#128421;' },
-          { key: 'military', label: 'Military Activity', icon: '&#9992;' },
-          { key: 'ais', label: 'Ship Traffic', icon: '&#128674;' },
-          { key: 'flights', label: 'Flight Delays', icon: '&#9992;' },
-          { key: 'protests', label: 'Protests', icon: '&#128226;' },
-          { key: 'ucdpEvents', label: 'UCDP Events', icon: '&#9876;' },
-          { key: 'displacement', label: 'Displacement Flows', icon: '&#128101;' },
-          { key: 'climate', label: 'Climate Anomalies', icon: '&#127787;' },
-          { key: 'weather', label: 'Weather Alerts', icon: '&#9928;' },
-          { key: 'outages', label: 'Internet Outages', icon: '&#128225;' },
-          { key: 'natural', label: 'Natural Events', icon: '&#127755;' },
-          { key: 'fires', label: 'Fires', icon: '&#128293;' },
-          { key: 'waterways', label: 'Strategic Waterways', icon: '&#9875;' },
-          { key: 'economic', label: 'Economic Centers', icon: '&#128176;' },
-          { key: 'minerals', label: 'Critical Minerals', icon: '&#128142;' },
-        ];
+        { key: 'hotspots', label: t('components.deckgl.layers.intelHotspots'), icon: '&#127919;' },
+        { key: 'conflicts', label: t('components.deckgl.layers.conflictZones'), icon: '&#9876;' },
+        { key: 'bases', label: t('components.deckgl.layers.militaryBases'), icon: '&#127963;' },
+        { key: 'nuclear', label: t('components.deckgl.layers.nuclearSites'), icon: '&#9762;' },
+        { key: 'irradiators', label: t('components.deckgl.layers.gammaIrradiators'), icon: '&#9888;' },
+        { key: 'spaceports', label: t('components.deckgl.layers.spaceports'), icon: '&#128640;' },
+        { key: 'cables', label: t('components.deckgl.layers.underseaCables'), icon: '&#128268;' },
+        { key: 'pipelines', label: t('components.deckgl.layers.pipelines'), icon: '&#128738;' },
+        { key: 'datacenters', label: t('components.deckgl.layers.aiDataCenters'), icon: '&#128421;' },
+        { key: 'military', label: t('components.deckgl.layers.militaryActivity'), icon: '&#9992;' },
+        { key: 'ais', label: t('components.deckgl.layers.shipTraffic'), icon: '&#128674;' },
+        { key: 'flights', label: t('components.deckgl.layers.flightDelays'), icon: '&#9992;' },
+        { key: 'protests', label: t('components.deckgl.layers.protests'), icon: '&#128226;' },
+        { key: 'ucdpEvents', label: t('components.deckgl.layers.ucdpEvents'), icon: '&#9876;' },
+        { key: 'displacement', label: t('components.deckgl.layers.displacementFlows'), icon: '&#128101;' },
+        { key: 'climate', label: t('components.deckgl.layers.climateAnomalies'), icon: '&#127787;' },
+        { key: 'weather', label: t('components.deckgl.layers.weatherAlerts'), icon: '&#9928;' },
+        { key: 'outages', label: t('components.deckgl.layers.internetOutages'), icon: '&#128225;' },
+        { key: 'cyberThreats', label: t('components.deckgl.layers.cyberThreats'), icon: '&#128737;' },
+        { key: 'natural', label: t('components.deckgl.layers.naturalEvents'), icon: '&#127755;' },
+        { key: 'fires', label: t('components.deckgl.layers.fires'), icon: '&#128293;' },
+        { key: 'waterways', label: t('components.deckgl.layers.strategicWaterways'), icon: '&#9875;' },
+        { key: 'economic', label: t('components.deckgl.layers.economicCenters'), icon: '&#128176;' },
+        { key: 'minerals', label: t('components.deckgl.layers.criticalMinerals'), icon: '&#128142;' },
+      ];
 
     toggles.innerHTML = `
       <div class="toggle-header">
-        <span>Layers</span>
-        <button class="layer-help-btn" title="Layer Guide">?</button>
+        <span>${t('components.deckgl.layersTitle')}</span>
+        <button class="layer-help-btn" title="${t('components.deckgl.layerGuide')}">?</button>
         <button class="toggle-collapse">&#9660;</button>
       </div>
-      <div class="toggle-list">
+      <div class="toggle-list" style="max-height: 32vh; overflow-y: auto; scrollbar-width: thin;">
         ${layerConfig.map(({ key, label, icon }) => `
           <label class="layer-toggle" data-layer="${key}">
             <input type="checkbox" ${this.state.layers[key as keyof MapLayers] ? 'checked' : ''}>
@@ -2253,7 +2839,7 @@ export class DeckGLMap {
         if (layer) {
           this.state.layers[layer] = (input as HTMLInputElement).checked;
           this.render();
-          this.onLayerChange?.(layer, (input as HTMLInputElement).checked);
+          this.onLayerChange?.(layer, (input as HTMLInputElement).checked, 'user');
         }
       });
     });
@@ -2265,6 +2851,16 @@ export class DeckGLMap {
     // Collapse toggle
     const collapseBtn = toggles.querySelector('.toggle-collapse');
     const toggleList = toggles.querySelector('.toggle-list');
+
+    // Manual scroll: intercept wheel, prevent map zoom, scroll the list ourselves
+    if (toggleList) {
+      toggles.addEventListener('wheel', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        toggleList.scrollTop += e.deltaY;
+      }, { passive: false });
+      toggles.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: false });
+    }
     collapseBtn?.addEventListener('click', () => {
       toggleList?.classList.toggle('collapsed');
       if (collapseBtn) collapseBtn.innerHTML = toggleList?.classList.contains('collapsed') ? '&#9654;' : '&#9660;';
@@ -2282,88 +2878,126 @@ export class DeckGLMap {
     const popup = document.createElement('div');
     popup.className = 'layer-help-popup';
 
-    const techHelpContent = `
+    const label = (layerKey: string): string => t(`components.deckgl.layers.${layerKey}`).toUpperCase();
+    const staticLabel = (labelKey: string): string => t(`components.deckgl.layerHelp.labels.${labelKey}`).toUpperCase();
+    const helpItem = (layerLabel: string, descriptionKey: string): string =>
+      `<div class="layer-help-item"><span>${layerLabel}</span> ${t(`components.deckgl.layerHelp.descriptions.${descriptionKey}`)}</div>`;
+    const helpSection = (titleKey: string, items: string[], noteKey?: string): string => `
+      <div class="layer-help-section">
+        <div class="layer-help-title">${t(`components.deckgl.layerHelp.sections.${titleKey}`)}</div>
+        ${items.join('')}
+        ${noteKey ? `<div class="layer-help-note">${t(`components.deckgl.layerHelp.notes.${noteKey}`)}</div>` : ''}
+      </div>
+    `;
+    const helpHeader = `
       <div class="layer-help-header">
-        <span>Map Layers Guide</span>
+        <span>${t('components.deckgl.layerHelp.title')}</span>
         <button class="layer-help-close">×</button>
       </div>
+    `;
+
+    const techHelpContent = `
+      ${helpHeader}
       <div class="layer-help-content">
-        <div class="layer-help-section">
-          <div class="layer-help-title">Tech Ecosystem</div>
-          <div class="layer-help-item"><span>STARTUPHUBS</span> Major startup ecosystems (SF, NYC, London, etc.)</div>
-          <div class="layer-help-item"><span>CLOUDREGIONS</span> AWS, Azure, GCP data center regions</div>
-          <div class="layer-help-item"><span>TECHHQS</span> Headquarters of major tech companies</div>
-          <div class="layer-help-item"><span>ACCELERATORS</span> Y Combinator, Techstars, 500 Startups locations</div>
-        </div>
-        <div class="layer-help-section">
-          <div class="layer-help-title">Infrastructure</div>
-          <div class="layer-help-item"><span>CABLES</span> Major undersea fiber optic cables (internet backbone)</div>
-          <div class="layer-help-item"><span>DATACENTERS</span> AI compute clusters ≥10,000 GPUs</div>
-          <div class="layer-help-item"><span>OUTAGES</span> Internet blackouts and service disruptions</div>
-        </div>
-        <div class="layer-help-section">
-          <div class="layer-help-title">Natural & Economic</div>
-          <div class="layer-help-item"><span>NATURAL</span> Earthquakes, storms, fires (may affect data centers)</div>
-          <div class="layer-help-item"><span>WEATHER</span> Severe weather alerts</div>
-          <div class="layer-help-item"><span>ECONOMIC</span> Stock exchanges & central banks</div>
-          <div class="layer-help-item"><span>COUNTRIES</span> Country name overlays</div>
-        </div>
+        ${helpSection('techEcosystem', [
+          helpItem(label('startupHubs'), 'techStartupHubs'),
+          helpItem(label('cloudRegions'), 'techCloudRegions'),
+          helpItem(label('techHQs'), 'techHQs'),
+          helpItem(label('accelerators'), 'techAccelerators'),
+          helpItem(label('techEvents'), 'techEvents'),
+        ])}
+        ${helpSection('infrastructure', [
+          helpItem(label('underseaCables'), 'infraCables'),
+          helpItem(label('aiDataCenters'), 'infraDatacenters'),
+          helpItem(label('internetOutages'), 'infraOutages'),
+          helpItem(label('cyberThreats'), 'techCyberThreats'),
+        ])}
+        ${helpSection('naturalEconomic', [
+          helpItem(label('naturalEvents'), 'naturalEventsTech'),
+          helpItem(label('fires'), 'techFires'),
+          helpItem(staticLabel('countries'), 'countriesOverlay'),
+        ])}
+      </div>
+    `;
+
+    const financeHelpContent = `
+      ${helpHeader}
+      <div class="layer-help-content">
+        ${helpSection('financeCore', [
+          helpItem(label('stockExchanges'), 'financeExchanges'),
+          helpItem(label('financialCenters'), 'financeCenters'),
+          helpItem(label('centralBanks'), 'financeCentralBanks'),
+          helpItem(label('commodityHubs'), 'financeCommodityHubs'),
+          helpItem(label('gulfInvestments'), 'financeGulfInvestments'),
+        ])}
+        ${helpSection('infrastructureRisk', [
+          helpItem(label('underseaCables'), 'financeCables'),
+          helpItem(label('pipelines'), 'financePipelines'),
+          helpItem(label('internetOutages'), 'financeOutages'),
+          helpItem(label('cyberThreats'), 'financeCyberThreats'),
+        ])}
+        ${helpSection('macroContext', [
+          helpItem(label('economicCenters'), 'economicCenters'),
+          helpItem(label('strategicWaterways'), 'macroWaterways'),
+          helpItem(label('weatherAlerts'), 'weatherAlertsMarket'),
+          helpItem(label('naturalEvents'), 'naturalEventsMacro'),
+        ])}
       </div>
     `;
 
     const fullHelpContent = `
-      <div class="layer-help-header">
-        <span>Map Layers Guide</span>
-        <button class="layer-help-close">×</button>
-      </div>
+      ${helpHeader}
       <div class="layer-help-content">
-        <div class="layer-help-section">
-          <div class="layer-help-title">Time Filter (top-right)</div>
-          <div class="layer-help-item"><span>1H/6H/24H</span> Filter time-based data to recent hours</div>
-          <div class="layer-help-item"><span>7D/30D/ALL</span> Show data from past week, month, or all time</div>
-          <div class="layer-help-note">Affects: Earthquakes, Weather, Protests, Outages</div>
-        </div>
-        <div class="layer-help-section">
-          <div class="layer-help-title">Geopolitical</div>
-          <div class="layer-help-item"><span>CONFLICTS</span> Active war zones (Ukraine, Gaza, etc.) with boundaries</div>
-          <div class="layer-help-item"><span>HOTSPOTS</span> Tension regions - color-coded by news activity level</div>
-          <div class="layer-help-item"><span>SANCTIONS</span> Countries under US/EU/UN economic sanctions</div>
-          <div class="layer-help-item"><span>PROTESTS</span> Civil unrest, demonstrations (time-filtered)</div>
-        </div>
-        <div class="layer-help-section">
-          <div class="layer-help-title">Military & Strategic</div>
-          <div class="layer-help-item"><span>BASES</span> US/NATO, China, Russia military installations (150+)</div>
-          <div class="layer-help-item"><span>NUCLEAR</span> Power plants, enrichment, weapons facilities</div>
-          <div class="layer-help-item"><span>IRRADIATORS</span> Industrial gamma irradiator facilities</div>
-          <div class="layer-help-item"><span>MILITARY</span> Live military aircraft and vessel tracking</div>
-        </div>
-        <div class="layer-help-section">
-          <div class="layer-help-title">Infrastructure</div>
-          <div class="layer-help-item"><span>CABLES</span> Major undersea fiber optic cables (20 backbone routes)</div>
-          <div class="layer-help-item"><span>PIPELINES</span> Oil/gas pipelines (Nord Stream, TAPI, etc.)</div>
-          <div class="layer-help-item"><span>OUTAGES</span> Internet blackouts and disruptions</div>
-          <div class="layer-help-item"><span>DATACENTERS</span> AI compute clusters ≥10,000 GPUs only</div>
-        </div>
-        <div class="layer-help-section">
-          <div class="layer-help-title">Transport</div>
-          <div class="layer-help-item"><span>SHIPPING</span> Vessels, chokepoints, 61 strategic ports</div>
-          <div class="layer-help-item"><span>DELAYS</span> Airport delays and ground stops (FAA)</div>
-        </div>
-        <div class="layer-help-section">
-          <div class="layer-help-title">Natural & Economic</div>
-          <div class="layer-help-item"><span>NATURAL</span> Earthquakes (USGS) + storms, fires, volcanoes, floods (NASA EONET)</div>
-          <div class="layer-help-item"><span>WEATHER</span> Severe weather alerts</div>
-          <div class="layer-help-item"><span>ECONOMIC</span> Stock exchanges & central banks</div>
-        </div>
-        <div class="layer-help-section">
-          <div class="layer-help-title">Labels</div>
-          <div class="layer-help-item"><span>COUNTRIES</span> Country name overlays</div>
-          <div class="layer-help-item"><span>WATERWAYS</span> Strategic chokepoint labels</div>
-        </div>
+        ${helpSection('timeFilter', [
+          helpItem(staticLabel('timeRecent'), 'timeRecent'),
+          helpItem(staticLabel('timeExtended'), 'timeExtended'),
+        ], 'timeAffects')}
+        ${helpSection('geopolitical', [
+          helpItem(label('conflictZones'), 'geoConflicts'),
+          helpItem(label('intelHotspots'), 'geoHotspots'),
+          helpItem(staticLabel('sanctions'), 'geoSanctions'),
+          helpItem(label('protests'), 'geoProtests'),
+          helpItem(label('ucdpEvents'), 'geoUcdpEvents'),
+          helpItem(label('displacementFlows'), 'geoDisplacement'),
+        ])}
+        ${helpSection('militaryStrategic', [
+          helpItem(label('militaryBases'), 'militaryBases'),
+          helpItem(label('nuclearSites'), 'militaryNuclear'),
+          helpItem(label('gammaIrradiators'), 'militaryIrradiators'),
+          helpItem(label('militaryActivity'), 'militaryActivity'),
+          helpItem(label('spaceports'), 'militarySpaceports'),
+        ])}
+        ${helpSection('infrastructure', [
+          helpItem(label('underseaCables'), 'infraCablesFull'),
+          helpItem(label('pipelines'), 'infraPipelinesFull'),
+          helpItem(label('internetOutages'), 'infraOutages'),
+          helpItem(label('aiDataCenters'), 'infraDatacentersFull'),
+          helpItem(label('cyberThreats'), 'infraCyberThreats'),
+        ])}
+        ${helpSection('transport', [
+          helpItem(label('shipTraffic'), 'transportShipping'),
+          helpItem(label('flightDelays'), 'transportDelays'),
+        ])}
+        ${helpSection('naturalEconomic', [
+          helpItem(label('naturalEvents'), 'naturalEventsFull'),
+          helpItem(label('fires'), 'firesFull'),
+          helpItem(label('weatherAlerts'), 'weatherAlerts'),
+          helpItem(label('climateAnomalies'), 'climateAnomalies'),
+          helpItem(label('economicCenters'), 'economicCenters'),
+          helpItem(label('criticalMinerals'), 'mineralsFull'),
+        ])}
+        ${helpSection('labels', [
+          helpItem(staticLabel('countries'), 'countriesOverlay'),
+          helpItem(label('strategicWaterways'), 'waterwaysLabels'),
+        ])}
       </div>
     `;
 
-    popup.innerHTML = SITE_VARIANT === 'tech' ? techHelpContent : fullHelpContent;
+    popup.innerHTML = SITE_VARIANT === 'tech'
+      ? techHelpContent
+      : SITE_VARIANT === 'finance'
+      ? financeHelpContent
+      : fullHelpContent;
 
     popup.querySelector('.layer-help-close')?.addEventListener('click', () => popup.remove());
 
@@ -2400,48 +3034,38 @@ export class DeckGLMap {
       hexagon: (color: string) => `<svg width="12" height="12" viewBox="0 0 12 12"><polygon points="6,1 10.5,3.5 10.5,8.5 6,11 1.5,8.5 1.5,3.5" fill="${color}"/></svg>`,
     };
 
+    const isLight = getCurrentTheme() === 'light';
     const legendItems = SITE_VARIANT === 'tech'
       ? [
-          { shape: shapes.circle('rgb(0, 255, 150)'), label: 'Startup Hub' },
-          { shape: shapes.circle('rgb(100, 200, 255)'), label: 'Tech HQ' },
-          { shape: shapes.circle('rgb(255, 200, 0)'), label: 'Accelerator' },
-          { shape: shapes.circle('rgb(150, 100, 255)'), label: 'Cloud Region' },
-          { shape: shapes.square('rgb(136, 68, 255)'), label: 'Datacenter' },
+          { shape: shapes.circle(isLight ? 'rgb(22, 163, 74)' : 'rgb(0, 255, 150)'), label: t('components.deckgl.legend.startupHub') },
+          { shape: shapes.circle('rgb(100, 200, 255)'), label: t('components.deckgl.legend.techHQ') },
+          { shape: shapes.circle(isLight ? 'rgb(180, 120, 0)' : 'rgb(255, 200, 0)'), label: t('components.deckgl.legend.accelerator') },
+          { shape: shapes.circle('rgb(150, 100, 255)'), label: t('components.deckgl.legend.cloudRegion') },
+          { shape: shapes.square('rgb(136, 68, 255)'), label: t('components.deckgl.legend.datacenter') },
+        ]
+      : SITE_VARIANT === 'finance'
+      ? [
+          { shape: shapes.circle('rgb(255, 215, 80)'), label: t('components.deckgl.legend.stockExchange') },
+          { shape: shapes.circle('rgb(0, 220, 150)'), label: t('components.deckgl.legend.financialCenter') },
+          { shape: shapes.hexagon('rgb(255, 210, 80)'), label: t('components.deckgl.legend.centralBank') },
+          { shape: shapes.square('rgb(255, 150, 80)'), label: t('components.deckgl.legend.commodityHub') },
+          { shape: shapes.triangle('rgb(80, 170, 255)'), label: t('components.deckgl.legend.waterway') },
         ]
       : [
-          { shape: shapes.circle('rgb(255, 68, 68)'), label: 'High Alert' },
-          { shape: shapes.circle('rgb(255, 165, 0)'), label: 'Elevated' },
-          { shape: shapes.circle('rgb(255, 255, 0)'), label: 'Monitoring' },
-          { shape: shapes.triangle('rgb(68, 136, 255)'), label: 'Base' },
-          { shape: shapes.hexagon('rgb(255, 220, 0)'), label: 'Nuclear' },
-          { shape: shapes.square('rgb(136, 68, 255)'), label: 'Datacenter' },
+          { shape: shapes.circle('rgb(255, 68, 68)'), label: t('components.deckgl.legend.highAlert') },
+          { shape: shapes.circle('rgb(255, 165, 0)'), label: t('components.deckgl.legend.elevated') },
+          { shape: shapes.circle(isLight ? 'rgb(180, 120, 0)' : 'rgb(255, 255, 0)'), label: t('components.deckgl.legend.monitoring') },
+          { shape: shapes.triangle('rgb(68, 136, 255)'), label: t('components.deckgl.legend.base') },
+          { shape: shapes.hexagon(isLight ? 'rgb(180, 120, 0)' : 'rgb(255, 220, 0)'), label: t('components.deckgl.legend.nuclear') },
+          { shape: shapes.square('rgb(136, 68, 255)'), label: t('components.deckgl.legend.datacenter') },
         ];
 
     legend.innerHTML = `
-      <span class="legend-label-title">LEGEND</span>
+      <span class="legend-label-title">${t('components.deckgl.legend.title')}</span>
       ${legendItems.map(({ shape, label }) => `<span class="legend-item">${shape}<span class="legend-label">${label}</span></span>`).join('')}
     `;
 
     this.container.appendChild(legend);
-  }
-
-  private createTimestamp(): void {
-    const timestamp = document.createElement('div');
-    // Only use deckgl-timestamp class - map-timestamp has conflicting positioning
-    timestamp.className = 'deckgl-timestamp';
-    timestamp.id = 'deckglTimestamp';
-    this.container.appendChild(timestamp);
-
-    this.updateTimestamp();
-    this.timestampIntervalId = setInterval(() => this.updateTimestamp(), 1000);
-  }
-
-  private updateTimestamp(): void {
-    const el = document.getElementById('deckglTimestamp');
-    if (el) {
-      const now = new Date();
-      el.textContent = `${now.toUTCString().replace('GMT', 'UTC')}`;
-    }
   }
 
   // Public API methods (matching MapComponent interface)
@@ -2460,7 +3084,14 @@ export class DeckGLMap {
   }
 
   public setRenderPaused(paused: boolean): void {
+    if (this.renderPaused === paused) return;
     this.renderPaused = paused;
+    if (paused) {
+      this.stopPulseAnimation();
+      return;
+    }
+
+    this.syncPulseAnimation();
     if (!paused && this.renderPending) {
       this.renderPending = false;
       this.render();
@@ -2468,11 +3099,11 @@ export class DeckGLMap {
   }
 
   private updateLayers(): void {
+    if (this.renderPaused || this.webglLost || !this.maplibreMap) return;
     const startTime = performance.now();
-    if (this.deckOverlay) {
-      this.deckOverlay.setProps({ layers: this.buildLayers() });
-    }
-    this.renderClusterOverlays();
+    try {
+      this.deckOverlay?.setProps({ layers: this.buildLayers() });
+    } catch { /* map may be mid-teardown (null.getProjection) */ }
     const elapsed = performance.now() - startTime;
     if (import.meta.env.DEV && elapsed > 16) {
       console.warn(`[DeckGLMap] updateLayers took ${elapsed.toFixed(2)}ms (>16ms budget)`);
@@ -2524,7 +3155,9 @@ export class DeckGLMap {
 
   public setTimeRange(range: TimeRange): void {
     this.state.timeRange = range;
+    this.rebuildProtestSupercluster();
     this.onTimeRangeChange?.(range);
+    this.updateTimeSliderButtons();
     this.render(); // Debounced
   }
 
@@ -2564,10 +3197,10 @@ export class DeckGLMap {
     this.setView('global');
   }
 
-  private createUcdpEventsLayer(): ScatterplotLayer<UcdpGeoEvent> {
+  private createUcdpEventsLayer(events: UcdpGeoEvent[]): ScatterplotLayer<UcdpGeoEvent> {
     return new ScatterplotLayer<UcdpGeoEvent>({
       id: 'ucdp-events-layer',
-      data: this.ucdpEvents,
+      data: events,
       getPosition: (d) => [d.longitude, d.latitude],
       getRadius: (d) => Math.max(4000, Math.sqrt(d.deaths_best || 1) * 3000),
       getFillColor: (d) => {
@@ -2593,8 +3226,8 @@ export class DeckGLMap {
       data: top50,
       getSourcePosition: (d) => [d.originLon!, d.originLat!],
       getTargetPosition: (d) => [d.asylumLon!, d.asylumLat!],
-      getSourceColor: [100, 150, 255, 180],
-      getTargetColor: [100, 255, 200, 180],
+      getSourceColor: getCurrentTheme() === 'light' ? [50, 80, 180, 220] : [100, 150, 255, 180],
+      getTargetColor: getCurrentTheme() === 'light' ? [20, 150, 100, 220] : [100, 255, 200, 180],
       getWidth: (d) => Math.max(1, (d.refugees / maxCount) * 8),
       widthMinPixels: 1,
       widthMaxPixels: 8,
@@ -2608,9 +3241,10 @@ export class DeckGLMap {
       data: this.climateAnomalies,
       getPosition: (d) => [d.lon, d.lat],
       getWeight: (d) => Math.abs(d.tempDelta) + Math.abs(d.precipDelta) * 0.1,
-      radiusPixels: 80,
-      intensity: 1.5,
-      threshold: 0.1,
+      radiusPixels: 40,
+      intensity: 0.6,
+      threshold: 0.15,
+      opacity: 0.45,
       colorRange: [
         [68, 136, 255],
         [100, 200, 255],
@@ -2641,6 +3275,11 @@ export class DeckGLMap {
     this.render();
   }
 
+  public setCyberThreats(threats: CyberThreat[]): void {
+    this.cyberThreats = threats;
+    this.render();
+  }
+
   public setAisData(disruptions: AisDisruptionEvent[], density: AisDensityZone[]): void {
     this.aisDisruptions = disruptions;
     this.aisDensity = density;
@@ -2653,11 +3292,17 @@ export class DeckGLMap {
     this.render();
   }
 
+  public setCableHealth(healthMap: Record<string, CableHealthRecord>): void {
+    this.healthByCableId = healthMap;
+    this.layerCache.delete('cables-layer');
+    this.render();
+  }
+
   public setProtests(events: SocialUnrestEvent[]): void {
     this.protests = events;
-    this.clusterResultCache.clear();
-    this.invalidateClusterElementsByType('protest');
+    this.rebuildProtestSupercluster();
     this.render();
+    this.syncPulseAnimation();
   }
 
   public setFlightDelays(delays: AirportDelayAlert[]): void {
@@ -2689,8 +3334,7 @@ export class DeckGLMap {
 
   public setTechEvents(events: TechEventMarker[]): void {
     this.techEvents = events;
-    this.clusterResultCache.clear();
-    this.invalidateClusterElementsByType('event');
+    this.rebuildTechEventSupercluster();
     this.render();
   }
 
@@ -2709,7 +3353,7 @@ export class DeckGLMap {
     this.render();
   }
 
-  public setNewsLocations(data: Array<{ lat: number; lon: number; title: string; threatLevel: string }>): void {
+  public setNewsLocations(data: Array<{ lat: number; lon: number; title: string; threatLevel: string; timestamp?: Date }>): void {
     const now = Date.now();
     for (const d of data) {
       if (!this.newsLocationFirstSeen.has(d.title)) {
@@ -2722,12 +3366,7 @@ export class DeckGLMap {
     this.newsLocations = data;
     this.render();
 
-    const hasRecent = this.hasRecentNews(now);
-    if (hasRecent && this.newsPulseIntervalId === null) {
-      this.startNewsPulseAnimation();
-    } else if (!hasRecent) {
-      this.stopNewsPulseAnimation();
-    }
+    this.syncPulseAnimation(now);
   }
 
   public updateHotspotActivity(news: NewsItem[]): void {
@@ -2761,8 +3400,8 @@ export class DeckGLMap {
       updateHotspotEscalation(h.id, matchCount, h.hasBreaking || false, velocity);
     });
 
-    this.scheduleHotspotOverlaySync({ reconcile: true });
-    this.render(); // Debounced
+    this.render();
+    this.syncPulseAnimation();
   }
 
   /** Get news items related to a hotspot by keyword matching */
@@ -2841,7 +3480,7 @@ export class DeckGLMap {
     this.onTimeRangeChange = callback;
   }
 
-  public setOnLayerChange(callback: (layer: keyof MapLayers, enabled: boolean) => void): void {
+  public setOnLayerChange(callback: (layer: keyof MapLayers, enabled: boolean, source: 'user' | 'programmatic') => void): void {
     this.onLayerChange = callback;
   }
 
@@ -2913,7 +3552,7 @@ export class DeckGLMap {
       const toggle = this.container.querySelector(`.layer-toggle[data-layer="${layer}"] input`) as HTMLInputElement;
       if (toggle) toggle.checked = true;
       this.render();
-      this.onLayerChange?.(layer, true);
+      this.onLayerChange?.(layer, true, 'programmatic');
     }
   }
 
@@ -2924,7 +3563,7 @@ export class DeckGLMap {
     const toggle = this.container.querySelector(`.layer-toggle[data-layer="${layer}"] input`) as HTMLInputElement;
     if (toggle) toggle.checked = this.state.layers[layer];
     this.render();
-    this.onLayerChange?.(layer, this.state.layers[layer]);
+    this.onLayerChange?.(layer, this.state.layers[layer], 'programmatic');
   }
 
   // Get center coordinates for programmatic popup positioning
@@ -3081,18 +3720,38 @@ export class DeckGLMap {
 
   // --- Country click + highlight ---
 
-  public setOnCountryClick(cb: (lat: number, lon: number) => void): void {
+  public setOnCountryClick(cb: (country: CountryClickPayload) => void): void {
     this.onCountryClick = cb;
+  }
+
+  private resolveCountryFromCoordinate(lon: number, lat: number): { code: string; name: string } | null {
+    const fromGeometry = getCountryAtCoordinates(lat, lon);
+    if (fromGeometry) return fromGeometry;
+    if (!this.maplibreMap || !this.countryGeoJsonLoaded) return null;
+    try {
+      const point = this.maplibreMap.project([lon, lat]);
+      const features = this.maplibreMap.queryRenderedFeatures(point, { layers: ['country-interactive'] });
+      const properties = (features?.[0]?.properties ?? {}) as Record<string, unknown>;
+      const code = typeof properties['ISO3166-1-Alpha-2'] === 'string'
+        ? properties['ISO3166-1-Alpha-2'].trim().toUpperCase()
+        : '';
+      const name = typeof properties.name === 'string'
+        ? properties.name.trim()
+        : '';
+      if (!code || !name) return null;
+      return { code, name };
+    } catch {
+      return null;
+    }
   }
 
   private loadCountryBoundaries(): void {
     if (!this.maplibreMap || this.countryGeoJsonLoaded) return;
     this.countryGeoJsonLoaded = true;
 
-    fetch('/data/countries.geojson')
-      .then((r) => r.json())
+    getCountriesGeoJson()
       .then((geojson) => {
-        if (!this.maplibreMap) return;
+        if (!this.maplibreMap || !geojson) return;
         this.maplibreMap.addSource('country-boundaries', {
           type: 'geojson',
           data: geojson,
@@ -3114,7 +3773,7 @@ export class DeckGLMap {
             'fill-color': '#3b82f6',
             'fill-opacity': 0.06,
           },
-          filter: ['==', ['get', 'ISO3166-1-Alpha-2'], ''],
+          filter: ['==', ['get', 'name'], ''],
         });
         this.maplibreMap.addLayer({
           id: 'country-highlight-fill',
@@ -3138,45 +3797,52 @@ export class DeckGLMap {
           filter: ['==', ['get', 'ISO3166-1-Alpha-2'], ''],
         });
 
-        this.setupCountryHover();
+        if (!this.countryHoverSetup) this.setupCountryHover();
+        this.updateCountryLayerPaint(getCurrentTheme());
+        if (this.highlightedCountryCode) this.highlightCountry(this.highlightedCountryCode);
         console.log('[DeckGLMap] Country boundaries loaded');
       })
       .catch((err) => console.warn('[DeckGLMap] Failed to load country boundaries:', err));
   }
 
   private setupCountryHover(): void {
-    if (!this.maplibreMap) return;
+    if (!this.maplibreMap || this.countryHoverSetup) return;
+    this.countryHoverSetup = true;
     const map = this.maplibreMap;
-    let hoveredCode: string | null = null;
+    let hoveredName: string | null = null;
 
     map.on('mousemove', (e) => {
       if (!this.onCountryClick) return;
       const features = map.queryRenderedFeatures(e.point, { layers: ['country-interactive'] });
-      const code = features?.[0]?.properties?.['ISO3166-1-Alpha-2'] as string | undefined;
+      const name = features?.[0]?.properties?.name as string | undefined;
 
-      if (code && code !== hoveredCode) {
-        hoveredCode = code;
-        map.setFilter('country-hover-fill', ['==', ['get', 'ISO3166-1-Alpha-2'], code]);
-        map.getCanvas().style.cursor = 'pointer';
-      } else if (!code && hoveredCode) {
-        hoveredCode = null;
-        map.setFilter('country-hover-fill', ['==', ['get', 'ISO3166-1-Alpha-2'], '']);
-        map.getCanvas().style.cursor = '';
-      }
+      try {
+        if (name && name !== hoveredName) {
+          hoveredName = name;
+          map.setFilter('country-hover-fill', ['==', ['get', 'name'], name]);
+          map.getCanvas().style.cursor = 'pointer';
+        } else if (!name && hoveredName) {
+          hoveredName = null;
+          map.setFilter('country-hover-fill', ['==', ['get', 'name'], '']);
+          map.getCanvas().style.cursor = '';
+        }
+      } catch { /* style not done loading during theme switch */ }
     });
 
     map.on('mouseout', () => {
-      if (hoveredCode) {
-        hoveredCode = null;
-        map.setFilter('country-hover-fill', ['==', ['get', 'ISO3166-1-Alpha-2'], '']);
+      if (hoveredName) {
+        hoveredName = null;
+        try {
+          map.setFilter('country-hover-fill', ['==', ['get', 'name'], '']);
+        } catch { /* style not done loading */ }
         map.getCanvas().style.cursor = '';
       }
     });
   }
 
   public highlightCountry(code: string): void {
+    this.highlightedCountryCode = code;
     if (!this.maplibreMap || !this.countryGeoJsonLoaded) return;
-    // Update MapLibre filter to highlight this country
     const filter: maplibregl.FilterSpecification = ['==', ['get', 'ISO3166-1-Alpha-2'], code];
     try {
       this.maplibreMap.setFilter('country-highlight-fill', filter);
@@ -3185,8 +3851,8 @@ export class DeckGLMap {
   }
 
   public clearCountryHighlight(): void {
+    this.highlightedCountryCode = null;
     if (!this.maplibreMap) return;
-    // Clear highlight filter
     const noMatch: maplibregl.FilterSpecification = ['==', ['get', 'ISO3166-1-Alpha-2'], ''];
     try {
       this.maplibreMap.setFilter('country-highlight-fill', noMatch);
@@ -3194,22 +3860,33 @@ export class DeckGLMap {
     } catch { /* layer not ready */ }
   }
 
-  public destroy(): void {
-    if (this.timestampIntervalId) {
-      clearInterval(this.timestampIntervalId);
-    }
+  private switchBasemap(theme: 'dark' | 'light'): void {
+    if (!this.maplibreMap) return;
+    this.maplibreMap.setStyle(theme === 'light' ? LIGHT_STYLE : DARK_STYLE);
+    // setStyle() replaces all sources/layers — reset guard so country layers are re-added
+    this.countryGeoJsonLoaded = false;
+    this.maplibreMap.once('style.load', () => {
+      this.loadCountryBoundaries();
+    });
+  }
 
+  private updateCountryLayerPaint(theme: 'dark' | 'light'): void {
+    if (!this.maplibreMap || !this.countryGeoJsonLoaded) return;
+    const hoverOpacity = theme === 'light' ? 0.10 : 0.06;
+    const highlightOpacity = theme === 'light' ? 0.18 : 0.12;
+    try {
+      this.maplibreMap.setPaintProperty('country-hover-fill', 'fill-opacity', hoverOpacity);
+      this.maplibreMap.setPaintProperty('country-highlight-fill', 'fill-opacity', highlightOpacity);
+    } catch { /* layers may not be ready */ }
+  }
+
+  public destroy(): void {
     if (this.moveTimeoutId) {
       clearTimeout(this.moveTimeoutId);
       this.moveTimeoutId = null;
     }
 
-    if (this.hotspotSyncRafId !== null) {
-      cancelAnimationFrame(this.hotspotSyncRafId);
-      this.hotspotSyncRafId = null;
-    }
-
-    this.stopNewsPulseAnimation();
+    this.stopPulseAnimation();
 
     if (this.resizeObserver) {
       this.resizeObserver.disconnect();
@@ -3217,12 +3894,11 @@ export class DeckGLMap {
     }
 
     this.layerCache.clear();
-    this.clusterElementCache.clear();
-    this.lastClusterState.clear();
-    this.clusterResultCache.clear();
 
     this.deckOverlay?.finalize();
+    this.deckOverlay = null;
     this.maplibreMap?.remove();
+    this.maplibreMap = null;
 
     this.container.innerHTML = '';
   }

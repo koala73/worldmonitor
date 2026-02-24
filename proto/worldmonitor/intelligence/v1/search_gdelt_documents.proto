@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package worldmonitor.intelligence.v1;
+
+import "buf/validate/validate.proto";
+
+// SearchGdeltDocumentsRequest specifies filters for searching GDELT news articles.
+message SearchGdeltDocumentsRequest {
+  // Search query string.
+  string query = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // Maximum number of articles to return (1-250).
+  int32 max_records = 2 [
+    (buf.validate.field).int32.gte = 1,
+    (buf.validate.field).int32.lte = 250
+  ];
+  // Time span filter (e.g., "15min", "1h", "24h").
+  string timespan = 3;
+}
+
+// GdeltArticle represents a single article from the GDELT document API.
+message GdeltArticle {
+  // Article headline.
+  string title = 1;
+  // Article URL.
+  string url = 2;
+  // Source domain name.
+  string source = 3;
+  // Publication date string.
+  string date = 4;
+  // Article image URL.
+  string image = 5;
+  // Article language code.
+  string language = 6;
+  // GDELT tone score (negative = negative tone, positive = positive tone).
+  double tone = 7;
+}
+
+// SearchGdeltDocumentsResponse contains GDELT article search results.
+message SearchGdeltDocumentsResponse {
+  // Matching articles.
+  repeated GdeltArticle articles = 1;
+  // Echo of the search query.
+  string query = 2;
+  // Error message if the search failed.
+  string error = 3;
+}

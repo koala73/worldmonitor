@@ -1,6 +1,6 @@
 import type { PanelConfig, MapLayers } from '@/types';
-
-const SITE_VARIANT = import.meta.env.VITE_VARIANT || 'full';
+import type { DataSourceId } from '@/services/data-freshness';
+import { SITE_VARIANT } from './variant';
 
 // ============================================
 // FULL VARIANT (Geopolitical)
@@ -10,6 +10,7 @@ const SITE_VARIANT = import.meta.env.VITE_VARIANT || 'full';
 const FULL_PANELS: Record<string, PanelConfig> = {
   map: { name: 'Global Map', enabled: true, priority: 1 },
   'live-news': { name: 'Live News', enabled: true, priority: 1 },
+  'live-webcams': { name: 'Live Webcams', enabled: true, priority: 1 },
   insights: { name: 'AI Insights', enabled: true, priority: 1 },
   'strategic-posture': { name: 'AI Strategic Posture', enabled: true, priority: 1 },
   cii: { name: 'Country Instability', enabled: true, priority: 1 },
@@ -40,11 +41,10 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   'macro-signals': { name: 'Market Radar', enabled: true, priority: 2 },
   'etf-flows': { name: 'BTC ETF Tracker', enabled: true, priority: 2 },
   stablecoins: { name: 'Stablecoins', enabled: true, priority: 2 },
-  'runtime-config': { name: 'Desktop Configuration', enabled: true, priority: 2 },
-  'ucdp-events': { name: 'UCDP Conflict Events', enabled: false, priority: 2 },
-  displacement: { name: 'UNHCR Displacement', enabled: false, priority: 2 },
-  climate: { name: 'Climate Anomalies', enabled: false, priority: 2 },
-  'population-exposure': { name: 'Population Exposure', enabled: false, priority: 2 },
+  'ucdp-events': { name: 'UCDP Conflict Events', enabled: true, priority: 2 },
+  displacement: { name: 'UNHCR Displacement', enabled: true, priority: 2 },
+  climate: { name: 'Climate Anomalies', enabled: true, priority: 2 },
+  'population-exposure': { name: 'Population Exposure', enabled: true, priority: 2 },
 };
 
 const FULL_MAP_LAYERS: MapLayers = {
@@ -61,6 +61,7 @@ const FULL_MAP_LAYERS: MapLayers = {
   economic: true,
   waterways: true,
   outages: true,
+  cyberThreats: false,
   datacenters: false,
   protests: false,
   flights: false,
@@ -79,6 +80,12 @@ const FULL_MAP_LAYERS: MapLayers = {
   accelerators: false,
   techHQs: false,
   techEvents: false,
+  // Finance layers (disabled in full variant)
+  stockExchanges: false,
+  financialCenters: false,
+  centralBanks: false,
+  commodityHubs: false,
+  gulfInvestments: false,
 };
 
 const FULL_MOBILE_MAP_LAYERS: MapLayers = {
@@ -95,6 +102,7 @@ const FULL_MOBILE_MAP_LAYERS: MapLayers = {
   economic: false,
   waterways: false,
   outages: true,
+  cyberThreats: false,
   datacenters: false,
   protests: false,
   flights: false,
@@ -113,6 +121,12 @@ const FULL_MOBILE_MAP_LAYERS: MapLayers = {
   accelerators: false,
   techHQs: false,
   techEvents: false,
+  // Finance layers (disabled in full variant)
+  stockExchanges: false,
+  financialCenters: false,
+  centralBanks: false,
+  commodityHubs: false,
+  gulfInvestments: false,
 };
 
 // ============================================
@@ -121,6 +135,7 @@ const FULL_MOBILE_MAP_LAYERS: MapLayers = {
 const TECH_PANELS: Record<string, PanelConfig> = {
   map: { name: 'Global Tech Map', enabled: true, priority: 1 },
   'live-news': { name: 'Tech Headlines', enabled: true, priority: 1 },
+  'live-webcams': { name: 'Live Webcams', enabled: true, priority: 2 },
   insights: { name: 'AI Insights', enabled: true, priority: 1 },
   ai: { name: 'AI/ML News', enabled: true, priority: 1 },
   tech: { name: 'Technology', enabled: true, priority: 1 },
@@ -146,7 +161,6 @@ const TECH_PANELS: Record<string, PanelConfig> = {
   producthunt: { name: 'Product Hunt', enabled: true, priority: 1 },
   events: { name: 'Tech Events', enabled: true, priority: 1 },
   'service-status': { name: 'Service Status', enabled: true, priority: 2 },
-  'runtime-config': { name: 'Desktop Configuration', enabled: true, priority: 2 },
   economic: { name: 'Economic Indicators', enabled: true, priority: 2 },
   'tech-readiness': { name: 'Tech Readiness Index', enabled: true, priority: 1 },
   'macro-signals': { name: 'Market Radar', enabled: true, priority: 2 },
@@ -169,6 +183,7 @@ const TECH_MAP_LAYERS: MapLayers = {
   economic: true,
   waterways: false,
   outages: true,
+  cyberThreats: false,
   datacenters: true,
   protests: false,
   flights: false,
@@ -187,6 +202,12 @@ const TECH_MAP_LAYERS: MapLayers = {
   accelerators: false,
   techHQs: true,
   techEvents: true,
+  // Finance layers (disabled in tech variant)
+  stockExchanges: false,
+  financialCenters: false,
+  centralBanks: false,
+  commodityHubs: false,
+  gulfInvestments: false,
 };
 
 const TECH_MOBILE_MAP_LAYERS: MapLayers = {
@@ -203,6 +224,7 @@ const TECH_MOBILE_MAP_LAYERS: MapLayers = {
   economic: false,
   waterways: false,
   outages: true,
+  cyberThreats: false,
   datacenters: true,
   protests: false,
   flights: false,
@@ -221,15 +243,153 @@ const TECH_MOBILE_MAP_LAYERS: MapLayers = {
   accelerators: false,
   techHQs: false,
   techEvents: true,
+  // Finance layers (disabled in tech variant)
+  stockExchanges: false,
+  financialCenters: false,
+  centralBanks: false,
+  commodityHubs: false,
+  gulfInvestments: false,
+};
+
+// ============================================
+// FINANCE VARIANT (Markets/Trading)
+// ============================================
+const FINANCE_PANELS: Record<string, PanelConfig> = {
+  map: { name: 'Global Markets Map', enabled: true, priority: 1 },
+  'live-news': { name: 'Market Headlines', enabled: true, priority: 1 },
+  'live-webcams': { name: 'Live Webcams', enabled: true, priority: 2 },
+  insights: { name: 'AI Market Insights', enabled: true, priority: 1 },
+  markets: { name: 'Live Markets', enabled: true, priority: 1 },
+  'markets-news': { name: 'Markets News', enabled: true, priority: 2 },
+  forex: { name: 'Forex & Currencies', enabled: true, priority: 1 },
+  bonds: { name: 'Fixed Income', enabled: true, priority: 1 },
+  commodities: { name: 'Commodities & Futures', enabled: true, priority: 1 },
+  'commodities-news': { name: 'Commodities News', enabled: true, priority: 2 },
+  crypto: { name: 'Crypto & Digital Assets', enabled: true, priority: 1 },
+  'crypto-news': { name: 'Crypto News', enabled: true, priority: 2 },
+  centralbanks: { name: 'Central Bank Watch', enabled: true, priority: 1 },
+  economic: { name: 'Economic Data', enabled: true, priority: 1 },
+  'economic-news': { name: 'Economic News', enabled: true, priority: 2 },
+  ipo: { name: 'IPOs, Earnings & M&A', enabled: true, priority: 1 },
+  heatmap: { name: 'Sector Heatmap', enabled: true, priority: 1 },
+  'macro-signals': { name: 'Market Radar', enabled: true, priority: 1 },
+  derivatives: { name: 'Derivatives & Options', enabled: true, priority: 2 },
+  fintech: { name: 'Fintech & Trading Tech', enabled: true, priority: 2 },
+  regulation: { name: 'Financial Regulation', enabled: true, priority: 2 },
+  institutional: { name: 'Hedge Funds & PE', enabled: true, priority: 2 },
+  analysis: { name: 'Market Analysis', enabled: true, priority: 2 },
+  'etf-flows': { name: 'BTC ETF Tracker', enabled: true, priority: 2 },
+  stablecoins: { name: 'Stablecoins', enabled: true, priority: 2 },
+  'gcc-investments': { name: 'GCC Investments', enabled: true, priority: 2 },
+  gccNews: { name: 'GCC Business News', enabled: true, priority: 2 },
+  polymarket: { name: 'Predictions', enabled: true, priority: 2 },
+  monitors: { name: 'My Monitors', enabled: true, priority: 2 },
+};
+
+const FINANCE_MAP_LAYERS: MapLayers = {
+  conflicts: false,
+  bases: false,
+  cables: true,
+  pipelines: true,
+  hotspots: false,
+  ais: false,
+  nuclear: false,
+  irradiators: false,
+  sanctions: true,
+  weather: true,
+  economic: true,
+  waterways: true,
+  outages: true,
+  cyberThreats: false,
+  datacenters: false,
+  protests: false,
+  flights: false,
+  military: false,
+  natural: true,
+  spaceports: false,
+  minerals: false,
+  fires: false,
+  // Data source layers
+  ucdpEvents: false,
+  displacement: false,
+  climate: false,
+  // Tech layers (disabled in finance variant)
+  startupHubs: false,
+  cloudRegions: false,
+  accelerators: false,
+  techHQs: false,
+  techEvents: false,
+  // Finance layers (enabled in finance variant)
+  stockExchanges: true,
+  financialCenters: true,
+  centralBanks: true,
+  commodityHubs: false,
+  gulfInvestments: false,
+};
+
+const FINANCE_MOBILE_MAP_LAYERS: MapLayers = {
+  conflicts: false,
+  bases: false,
+  cables: false,
+  pipelines: false,
+  hotspots: false,
+  ais: false,
+  nuclear: false,
+  irradiators: false,
+  sanctions: false,
+  weather: false,
+  economic: true,
+  waterways: false,
+  outages: true,
+  cyberThreats: false,
+  datacenters: false,
+  protests: false,
+  flights: false,
+  military: false,
+  natural: true,
+  spaceports: false,
+  minerals: false,
+  fires: false,
+  // Data source layers
+  ucdpEvents: false,
+  displacement: false,
+  climate: false,
+  // Tech layers (disabled)
+  startupHubs: false,
+  cloudRegions: false,
+  accelerators: false,
+  techHQs: false,
+  techEvents: false,
+  // Finance layers (limited on mobile)
+  stockExchanges: true,
+  financialCenters: false,
+  centralBanks: true,
+  commodityHubs: false,
+  gulfInvestments: false,
 };
 
 // ============================================
 // VARIANT-AWARE EXPORTS
 // ============================================
-export const DEFAULT_PANELS = SITE_VARIANT === 'tech' ? TECH_PANELS : FULL_PANELS;
-export const DEFAULT_MAP_LAYERS = SITE_VARIANT === 'tech' ? TECH_MAP_LAYERS : FULL_MAP_LAYERS;
-export const MOBILE_DEFAULT_MAP_LAYERS = SITE_VARIANT === 'tech' ? TECH_MOBILE_MAP_LAYERS : FULL_MOBILE_MAP_LAYERS;
+export const DEFAULT_PANELS = SITE_VARIANT === 'tech' ? TECH_PANELS : SITE_VARIANT === 'finance' ? FINANCE_PANELS : FULL_PANELS;
+export const DEFAULT_MAP_LAYERS = SITE_VARIANT === 'tech' ? TECH_MAP_LAYERS : SITE_VARIANT === 'finance' ? FINANCE_MAP_LAYERS : FULL_MAP_LAYERS;
+export const MOBILE_DEFAULT_MAP_LAYERS = SITE_VARIANT === 'tech' ? TECH_MOBILE_MAP_LAYERS : SITE_VARIANT === 'finance' ? FINANCE_MOBILE_MAP_LAYERS : FULL_MOBILE_MAP_LAYERS;
 
+/** Maps map-layer toggle keys to their data-freshness source IDs (single source of truth). */
+export const LAYER_TO_SOURCE: Partial<Record<keyof MapLayers, DataSourceId[]>> = {
+  military: ['opensky', 'wingbits'],
+  ais: ['ais'],
+  natural: ['usgs'],
+  weather: ['weather'],
+  outages: ['outages'],
+  cyberThreats: ['cyber_threats'],
+  protests: ['acled', 'gdelt_doc'],
+  ucdpEvents: ['ucdp_events'],
+  displacement: ['unhcr'],
+  climate: ['climate'],
+};
+
+// Monitor palette — fixed category colors persisted to localStorage (not theme-dependent)
 export const MONITOR_COLORS = [
   '#44ff88',
   '#ff8844',

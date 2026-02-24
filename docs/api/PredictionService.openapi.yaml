@@ -1,0 +1,150 @@
+openapi: 3.1.0
+info:
+    title: PredictionService API
+    version: 1.0.0
+paths:
+    /api/prediction/v1/list-prediction-markets:
+        post:
+            tags:
+                - PredictionService
+            summary: ListPredictionMarkets
+            description: ListPredictionMarkets retrieves active prediction markets from Polymarket.
+            operationId: ListPredictionMarkets
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ListPredictionMarketsRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListPredictionMarketsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+components:
+    schemas:
+        Error:
+            type: object
+            properties:
+                message:
+                    type: string
+                    description: Error message (e.g., 'user not found', 'database connection failed')
+            description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        FieldViolation:
+            type: object
+            properties:
+                field:
+                    type: string
+                    description: The field path that failed validation (e.g., 'user.email' for nested fields). For header validation, this will be the header name (e.g., 'X-API-Key')
+                description:
+                    type: string
+                    description: Human-readable description of the validation violation (e.g., 'must be a valid email address', 'required field missing')
+            required:
+                - field
+                - description
+            description: FieldViolation describes a single validation error for a specific field.
+        ValidationError:
+            type: object
+            properties:
+                violations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FieldViolation'
+                    description: List of validation violations
+            required:
+                - violations
+            description: ValidationError is returned when request validation fails. It contains a list of field violations describing what went wrong.
+        ListPredictionMarketsRequest:
+            type: object
+            properties:
+                pagination:
+                    $ref: '#/components/schemas/PaginationRequest'
+                category:
+                    type: string
+                    description: Optional category filter (e.g., "Politics").
+                query:
+                    type: string
+                    description: Optional search query for market titles.
+            description: ListPredictionMarketsRequest specifies filters for retrieving prediction markets.
+        PaginationRequest:
+            type: object
+            properties:
+                pageSize:
+                    type: integer
+                    maximum: 100
+                    minimum: 1
+                    format: int32
+                    description: Maximum number of items to return per page (1 to 100).
+                cursor:
+                    type: string
+                    description: Opaque cursor for fetching the next page. Empty string for the first page.
+            description: PaginationRequest specifies cursor-based pagination parameters for list endpoints.
+        ListPredictionMarketsResponse:
+            type: object
+            properties:
+                markets:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/PredictionMarket'
+                pagination:
+                    $ref: '#/components/schemas/PaginationResponse'
+            description: ListPredictionMarketsResponse contains prediction markets matching the request.
+        PredictionMarket:
+            type: object
+            properties:
+                id:
+                    type: string
+                    minLength: 1
+                    description: Unique market identifier or slug.
+                title:
+                    type: string
+                    description: Market question or title.
+                yesPrice:
+                    type: number
+                    maximum: 1
+                    minimum: 0
+                    format: double
+                    description: Current "Yes" price (0.0 to 1.0, representing probability).
+                volume:
+                    type: number
+                    minimum: 0
+                    format: double
+                    description: Trading volume in USD.
+                url:
+                    type: string
+                    description: URL to the Polymarket market page.
+                closesAt:
+                    type: integer
+                    format: int64
+                    description: 'Market close time, as Unix epoch milliseconds. Zero if no expiry.. Warning: Values > 2^53 may lose precision in JavaScript'
+                category:
+                    type: string
+                    description: Market category (e.g., "Politics", "Crypto", "Sports").
+            required:
+                - id
+            description: PredictionMarket represents a prediction market contract from Polymarket.
+        PaginationResponse:
+            type: object
+            properties:
+                nextCursor:
+                    type: string
+                    description: Cursor for fetching the next page. Empty string indicates no more pages.
+                totalCount:
+                    type: integer
+                    format: int32
+                    description: Total count of items matching the query, if known. Zero if the total is unknown.
+            description: PaginationResponse contains pagination metadata returned alongside list results.

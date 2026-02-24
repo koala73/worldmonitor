@@ -1,0 +1,85 @@
+syntax = "proto3";
+
+package worldmonitor.cyber.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+import "worldmonitor/core/v1/geo.proto";
+import "worldmonitor/core/v1/severity.proto";
+
+// CyberThreat represents a cyber threat indicator aggregated from multiple sources.
+// Sources include Feodo Tracker, URLhaus, OTX, AbuseIPDB, and C2Intel.
+message CyberThreat {
+  // Unique threat identifier.
+  string id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // Type of cyber threat.
+  CyberThreatType type = 2;
+  // Source of the threat intelligence.
+  CyberThreatSource source = 3;
+  // Threat indicator value (IP, domain, or URL).
+  string indicator = 4;
+  // Type of the indicator.
+  CyberThreatIndicatorType indicator_type = 5;
+  // Geolocation of the threat indicator.
+  worldmonitor.core.v1.GeoCoordinates location = 6;
+  // Country of origin (ISO 3166-1 alpha-2).
+  string country = 7;
+  // Threat criticality level.
+  worldmonitor.core.v1.CriticalityLevel severity = 8;
+  // Associated malware family, if known.
+  string malware_family = 9;
+  // Descriptive tags.
+  repeated string tags = 10;
+  // First seen time, as Unix epoch milliseconds.
+  int64 first_seen_at = 11 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Last seen time, as Unix epoch milliseconds.
+  int64 last_seen_at = 12 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}
+
+// CyberThreatType represents the classification of a cyber threat.
+// Maps to TS union: 'c2_server' | 'malware_host' | 'phishing' | 'malicious_url'.
+enum CyberThreatType {
+  // Unspecified threat type.
+  CYBER_THREAT_TYPE_UNSPECIFIED = 0;
+  // Command and control server.
+  CYBER_THREAT_TYPE_C2_SERVER = 1;
+  // Malware distribution host.
+  CYBER_THREAT_TYPE_MALWARE_HOST = 2;
+  // Phishing site or campaign.
+  CYBER_THREAT_TYPE_PHISHING = 3;
+  // Malicious URL.
+  CYBER_THREAT_TYPE_MALICIOUS_URL = 4;
+}
+
+// CyberThreatSource represents the intelligence source of a cyber threat.
+// Maps to TS union: 'feodo' | 'urlhaus' | 'c2intel' | 'otx' | 'abuseipdb'.
+enum CyberThreatSource {
+  // Unspecified source.
+  CYBER_THREAT_SOURCE_UNSPECIFIED = 0;
+  // Feodo Tracker (abuse.ch).
+  CYBER_THREAT_SOURCE_FEODO = 1;
+  // URLhaus (abuse.ch).
+  CYBER_THREAT_SOURCE_URLHAUS = 2;
+  // C2 Intelligence Feed.
+  CYBER_THREAT_SOURCE_C2INTEL = 3;
+  // AlienVault Open Threat Exchange.
+  CYBER_THREAT_SOURCE_OTX = 4;
+  // AbuseIPDB.
+  CYBER_THREAT_SOURCE_ABUSEIPDB = 5;
+}
+
+// CyberThreatIndicatorType represents the type of threat indicator.
+// Maps to TS union: 'ip' | 'domain' | 'url'.
+enum CyberThreatIndicatorType {
+  // Unspecified indicator type.
+  CYBER_THREAT_INDICATOR_TYPE_UNSPECIFIED = 0;
+  // IP address.
+  CYBER_THREAT_INDICATOR_TYPE_IP = 1;
+  // Domain name.
+  CYBER_THREAT_INDICATOR_TYPE_DOMAIN = 2;
+  // Full URL.
+  CYBER_THREAT_INDICATOR_TYPE_URL = 3;
+}

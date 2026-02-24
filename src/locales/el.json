@@ -1,0 +1,1819 @@
+{
+  "app": {
+    "title": "World Monitor",
+    "description": "Παγκόσμια Κατάσταση με Αναλύσεις AI"
+  },
+  "countryBrief": {
+    "identifying": "Αναγνώριση χώρας...",
+    "locating": "Εντοπισμός περιοχής...",
+    "limitedCoverage": "Περιορισμένη κάλυψη",
+    "instabilityIndex": "Δείκτης Αστάθειας",
+    "notTracked": "Δεν παρακολουθείται — η {{country}} δεν είναι στη λίστα CII tier-1",
+    "intelBrief": "Ενημέρωση Πληροφοριών",
+    "generatingBrief": "Δημιουργία ενημέρωσης πληροφοριών...",
+    "topNews": "Κορυφαίες Ειδήσεις",
+    "activeSignals": "Ενεργά Σήματα",
+    "timeline": "Χρονολόγιο 7 Ημερών",
+    "predictionMarkets": "Αγορές Προβλέψεων",
+    "loadingMarkets": "Φόρτωση αγορών προβλέψεων...",
+    "infrastructure": "Έκθεση Υποδομών",
+    "briefUnavailable": "Ενημέρωση AI μη διαθέσιμη — ρυθμίστε το GROQ_API_KEY στις Ρυθμίσεις.",
+    "cached": "Αποθηκευμένο",
+    "fresh": "Πρόσφατο",
+    "noMarkets": "Δεν βρέθηκαν αγορές προβλέψεων",
+    "loadingIndex": "Φόρτωση δείκτη...",
+    "components": {
+      "unrest": "Αναταραχή",
+      "conflict": "Σύγκρουση",
+      "security": "Ασφάλεια",
+      "information": "Πληροφορίες"
+    },
+    "signals": {
+      "protests": "διαμαρτυρίες",
+      "militaryAir": "στρατ. αεροσκάφη",
+      "militarySea": "στρατ. πλοία",
+      "outages": "διακοπές",
+      "earthquakes": "σεισμοί",
+      "displaced": "εκτοπισμένοι",
+      "climate": "Κλιματική πίεση",
+      "conflictEvents": "συγκρούσεις"
+    },
+    "timeAgo": {
+      "m": "{{count}}λ πριν",
+      "h": "{{count}}ω πριν",
+      "d": "{{count}}μ πριν"
+    },
+    "infra": {
+      "pipeline": "Αγωγοί",
+      "cable": "Υποθαλάσσια Καλώδια",
+      "datacenter": "Κέντρα Δεδομένων",
+      "base": "Στρατιωτικές Βάσεις",
+      "nuclear": "Πυρηνικές Εγκαταστάσεις",
+      "port": "Λιμάνια"
+    }
+  },
+  "header": {
+    "world": "ΚΟΣΜΟΣ",
+    "tech": "TECH",
+    "live": "ΖΩΝΤΑΝΑ",
+    "search": "Αναζήτηση",
+    "settings": "ΠΑΝΕΛ",
+    "sources": "ΠΗΓΕΣ",
+    "copyLink": "Αντιγραφή Συνδέσμου",
+    "fullscreen": "Πλήρης Οθόνη",
+    "pinMap": "Καρφίτσωμα χάρτη στην κορυφή",
+    "viewOnGitHub": "Προβολή στο GitHub",
+    "filterSources": "Φιλτράρισμα πηγών...",
+    "sourcesEnabled": "{{enabled}}/{{total}} ενεργές",
+    "finance": "ΧΡΗΜΑΤΟΟΙΚΟΝΟΜΙΚΑ",
+    "toggleTheme": "Εναλλαγή σκοτεινής/φωτεινής λειτουργίας"
+  },
+  "panels": {
+    "liveNews": "Ζωντανές Ειδήσεις",
+    "markets": "Αγορές",
+    "map": "Παγκόσμια Κατάσταση",
+    "techMap": "Παγκόσμια Τεχνολογία",
+    "techHubs": "Κορυφαία Tech Hubs",
+    "status": "Κατάσταση Συστήματος",
+    "insights": "Αναλύσεις AI",
+    "strategicPosture": "Στρατηγική Στάση AI",
+    "cii": "Αστάθεια Χωρών",
+    "strategicRisk": "Επισκόπηση Στρατηγικού Κινδύνου",
+    "intel": "Ροή Πληροφοριών",
+    "gdeltIntel": "Ζωντανές Πληροφορίες",
+    "cascade": "Αλυσιδωτή Αντίδραση Υποδομών",
+    "politics": "Παγκόσμιες Ειδήσεις",
+    "middleeast": "Μέση Ανατολή",
+    "africa": "Αφρική",
+    "latam": "Λατινική Αμερική",
+    "asia": "Ασία-Ειρηνικός",
+    "energy": "Ενέργεια & Πόροι",
+    "gov": "Κυβέρνηση",
+    "thinktanks": "Think Tanks",
+    "polymarket": "Προβλέψεις",
+    "commodities": "Εμπορεύματα",
+    "economic": "Οικονομικοί Δείκτες",
+    "finance": "Χρηματοοικονομικά",
+    "tech": "Τεχνολογία",
+    "crypto": "Crypto",
+    "heatmap": "Θερμικός Χάρτης Τομέων",
+    "ai": "AI/ML",
+    "layoffs": "Ανιχνευτής Απολύσεων",
+    "monitors": "Οι Παρακολουθήσεις μου",
+    "satelliteFires": "Πυρκαγιές",
+    "macroSignals": "Ραντάρ Αγορών",
+    "etfFlows": "BTC ETF Tracker",
+    "stablecoins": "Stablecoins",
+    "ucdpEvents": "Συγκρούσεις UCDP",
+    "displacement": "Εκτοπισμοί UNHCR",
+    "climate": "Κλιματικές Ανωμαλίες",
+    "populationExposure": "Έκθεση Πληθυσμού",
+    "startups": "Startups & VC",
+    "vcblogs": "Αναλύσεις & Άρθρα VC",
+    "regionalStartups": "Παγκόσμια Νέα Startups",
+    "unicorns": "Ανιχνευτής Unicorns",
+    "accelerators": "Accelerators & Demo Days",
+    "security": "Κυβερνοασφάλεια",
+    "policy": "Πολιτική & Ρύθμιση AI",
+    "regulation": "Πίνακας Ρύθμισης AI",
+    "hardware": "Ημιαγωγοί & Υλικό",
+    "cloud": "Cloud & Υποδομές",
+    "dev": "Κοινότητα Προγραμματιστών",
+    "github": "GitHub Trending",
+    "ipo": "IPO & SPAC",
+    "funding": "Χρηματοδότηση & VC",
+    "producthunt": "Product Hunt",
+    "events": "Tech Εκδηλώσεις",
+    "serviceStatus": "Κατάσταση Υπηρεσιών",
+    "techReadiness": "Δείκτης Τεχνολογικής Ετοιμότητας",
+    "gccInvestments": "Επενδύσεις GCC",
+    "geoHubs": "Γεωπολιτικά Κέντρα",
+    "liveWebcams": "Ζωντανές Κάμερες"
+  },
+  "modals": {
+    "search": {
+      "placeholder": "Αναζήτηση ειδήσεων, αγωγών, βάσεων, αγορών...",
+      "hint": "Ειδήσεις • Αγωγοί • Βάσεις • Καλώδια • Κέντρα Δεδομένων • Αγορές",
+      "placeholderTech": "Αναζήτηση εταιρειών, AI labs, startups, εκδηλώσεων...",
+      "hintTech": "Έδρες • Εταιρείες • AI Labs • Startups • Accelerators • Εκδηλώσεις",
+      "placeholderFinance": "Αναζήτηση χρηματιστηρίων, αγορών, κεντρικών τραπεζών...",
+      "hintFinance": "Χρηματιστήρια • Χρηματοπιστωτικά Κέντρα • Κεντρικές Τράπεζες • Εμπορεύματα",
+      "recent": "Πρόσφατες Αναζητήσεις",
+      "empty": "Αναζήτηση σε όλες τις πηγές δεδομένων",
+      "noResults": "Κανένα αποτέλεσμα",
+      "navigate": "πλοήγηση",
+      "select": "επιλογή",
+      "close": "κλείσιμο",
+      "types": {
+        "country": "Χώρα",
+        "news": "Ειδήσεις",
+        "hotspot": "Εστία",
+        "market": "Αγορά",
+        "prediction": "Πρόβλεψη",
+        "conflict": "Σύγκρουση",
+        "base": "Στρατιωτική Βάση",
+        "pipeline": "Αγωγός",
+        "cable": "Υποθαλάσσιο Καλώδιο",
+        "datacenter": "Κέντρο Δεδομένων",
+        "earthquake": "Σεισμός",
+        "outage": "Διακοπή",
+        "nuclear": "Πυρηνική Εγκατάσταση",
+        "irradiator": "Ακτινοβολητής",
+        "techcompany": "Εταιρεία Τεχνολογίας",
+        "ailab": "AI Lab",
+        "startup": "Startup",
+        "techevent": "Tech Εκδήλωση",
+        "techhq": "Tech Έδρα",
+        "accelerator": "Accelerator"
+      }
+    },
+    "signal": {
+      "title": "ΕΥΡΗΜΑ ΠΛΗΡΟΦΟΡΙΩΝ",
+      "soundAlerts": "Ηχητικές ειδοποιήσεις",
+      "dismiss": "Απόρριψη",
+      "confidence": "Βεβαιότητα",
+      "country": "Χώρα:",
+      "scoreChange": "Μεταβολή Βαθμολογίας:",
+      "instabilityLevel": "Επίπεδο Αστάθειας:",
+      "primaryDriver": "Κύριος Παράγοντας:",
+      "location": "Τοποθεσία:",
+      "eventTypes": "Τύποι Συμβάντων:",
+      "eventCount": "Αριθμός Συμβάντων:",
+      "eventCountValue": "{{count}} συμβάντα σε 24ω",
+      "source": "Πηγή:",
+      "countriesAffected": "Χώρες που Επηρεάζονται:",
+      "impactLevel": "Επίπεδο Επίπτωσης:",
+      "focalPoints": "ΣΥΣΧΕΤΙΖΟΜΕΝΑ ΕΣΤΙΑΚΑ ΣΗΜΕΙΑ",
+      "newsCorrelation": "ΣΥΣΧΕΤΙΣΗ ΕΙΔΗΣΕΩΝ",
+      "viewOnMap": "Προβολή στον χάρτη",
+      "whyItMatters": "Γιατί έχει σημασία:",
+      "action": "Ενέργεια:",
+      "note": "Σημείωση:",
+      "suppress": "Απόκρυψη αυτού του όρου",
+      "suppressed": "Αποκρύφθηκε",
+      "predictionLeading": "Πρόβλεψη Προηγείται",
+      "newsLeading": "Ειδήσεις Προηγούνται",
+      "silentDivergence": "Σιωπηλή Απόκλιση",
+      "velocitySpike": "Κορύφωση Ταχύτητας",
+      "keywordSpike": "Κορύφωση Λέξεων-Κλειδιών",
+      "convergence": "Σύγκλιση",
+      "triangulation": "Τριγωνισμός",
+      "flowDrop": "Πτώση Ροής",
+      "flowPriceDivergence": "Απόκλιση Ροής/Τιμής",
+      "geoConvergence": "Γεωγραφική Σύγκλιση",
+      "marketMove": "Εξηγημένη Κίνηση Αγοράς",
+      "sectorCascade": "Αλυσιδωτή Αντίδραση Τομέα",
+      "militarySurge": "Στρατιωτική Κλιμάκωση"
+    },
+    "story": {
+      "generating": "Δημιουργία ιστορίας...",
+      "close": "Κλείσιμο",
+      "shareTitle": "Κοινοποίηση ιστορίας",
+      "save": "Αποθήκευση",
+      "whatsapp": "WhatsApp",
+      "twitter": "X",
+      "linkedin": "LinkedIn",
+      "copyLink": "Σύνδεσμος",
+      "saved": "Αποθηκεύτηκε!",
+      "copied": "Αντιγράφηκε!",
+      "opening": "Άνοιγμα...",
+      "error": "Αποτυχία δημιουργίας ιστορίας."
+    },
+    "mobileWarning": {
+      "title": "Προβολή Κινητού",
+      "description": "Βλέπετε μια απλοποιημένη έκδοση κινητού εστιασμένη στην περιοχή MENA με ενεργοποιημένα τα βασικά επίπεδα.",
+      "tip": "Συμβουλή: Χρησιμοποιήστε τα κουμπιά προβολής (GLOBAL/US/MENA) για εναλλαγή περιοχών. Πατήστε δείκτες για λεπτομέρειες.",
+      "dontShowAgain": "Να μην εμφανιστεί ξανά",
+      "gotIt": "Κατάλαβα"
+    },
+    "downloadBanner": {
+      "title": "Διαθέσιμη Εφαρμογή Desktop",
+      "description": "Εγγενής απόδοση, ασφαλής τοπική αποθήκευση κλειδιών, offline πλακίδια χάρτη.",
+      "macSilicon": "macOS (Apple Silicon)",
+      "macIntel": "macOS (Intel)",
+      "windows": "Windows (.exe)",
+      "linux": "Linux (.AppImage)",
+      "showAllPlatforms": "Εμφάνιση όλων των πλατφορμών",
+      "showLess": "Εμφάνιση λιγότερων",
+      "dismiss": "Απόρριψη"
+    },
+    "runtimeConfig": {
+      "title": "Ρύθμιση Desktop",
+      "alertTitle": {
+        "configured": "Ρυθμίσεις desktop διαμορφώθηκαν",
+        "needsKeys": "Ρυθμίστε API keys για ξεκλείδωμα λειτουργιών",
+        "some": "Ορισμένες λειτουργίες χρειάζονται API keys"
+      },
+      "openSettings": "Άνοιγμα Ρυθμίσεων",
+      "skipSetup": "Παραλείψτε τη ρύθμιση — μία μόνο άδεια World Monitor ξεκλειδώνει τα πάντα. Γραφτείτε στη λίστα αναμονής για πρώιμη πρόσβαση.",
+      "summary": {
+        "desktop": "Λειτουργία desktop",
+        "web": "Λειτουργία web (μόνο ανάγνωση, διαχειριζόμενα διαπιστευτήρια)",
+        "secrets": "τοπικά μυστικά διαμορφώθηκαν",
+        "available": "διαθέσιμες λειτουργίες"
+      },
+      "status": {
+        "ready": "Έτοιμο",
+        "staged": "Σε αναμονή",
+        "needsKeys": "Χρειάζεται Keys",
+        "invalid": "Μη έγκυρο",
+        "missing": "Λείπει",
+        "valid": "Έγκυρο",
+        "looksInvalid": "Φαίνεται μη έγκυρο"
+      },
+      "placeholder": {
+        "setSecret": "Ορισμός μυστικού",
+        "staged": "Σε αναμονή (αποθήκευση με OK)"
+      },
+      "help": {
+        "URLHAUS_AUTH_KEY": "Χρησιμοποιείται για τα APIs URLhaus και ThreatFox.",
+        "OTX_API_KEY": "Προαιρετική πηγή εμπλουτισμού για το επίπεδο κυβερνοαπειλών.",
+        "ABUSEIPDB_API_KEY": "Προαιρετική πηγή εμπλουτισμού για φήμη κακόβουλων IP.",
+        "FINNHUB_API_KEY": "Τιμές μετοχών σε πραγματικό χρόνο και δεδομένα αγοράς.",
+        "NASA_FIRMS_API_KEY": "Σύστημα Πληροφοριών Πυρκαγιών για Διαχείριση Πόρων.",
+        "OLLAMA_API_URL": "π.χ. http://127.0.0.1:11434 (Ollama) ή http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-συμβατό endpoint.",
+        "OLLAMA_MODEL": "π.χ. llama3.1:8b — ετικέτα μοντέλου για περίληψη."
+      }
+    },
+    "settingsWindow": {
+      "validating": "Επικύρωση API keys...",
+      "saved": "Ρυθμίσεις αποθηκεύτηκαν",
+      "failed": "Αποτυχία αποθήκευσης: {{error}}",
+      "verifyFailed": "Αποθηκεύτηκαν τα επικυρωμένα keys. Απέτυχαν: {{errors}}",
+      "verboseOn": "Αναλυτική καταγραφή sidecar ΕΝΕΡΓΗ (αποθηκεύτηκε)",
+      "verboseOff": "Αναλυτική καταγραφή sidecar ΑΝΕΝΕΡΓΗ (αποθηκεύτηκε)",
+      "invokeFail": "Αποτυχία εκτέλεσης {{command}}. Ελέγξτε το αρχείο καταγραφής desktop.",
+      "openLogs": "Ο φάκελος αρχείων καταγραφής άνοιξε",
+      "openApiLog": "Το αρχείο καταγραφής API άνοιξε",
+      "sidecarError": "Αδυναμία πρόσβασης στο sidecar για εναλλαγή αναλυτικής λειτουργίας",
+      "noTraffic": "Δεν έχει καταγραφεί κίνηση ακόμα.",
+      "sidecarUnreachable": "Το sidecar δεν είναι προσβάσιμο.",
+      "logCleared": "Το αρχείο καταγραφής καθαρίστηκε.",
+      "worldMonitor": {
+        "tabLabel": "World Monitor",
+        "heroTitle": "Ένα κλειδί. Τα πάντα περιλαμβάνονται.",
+        "heroDescription": "Μία μόνο άδεια World Monitor αντικαθιστά κάθε API key και πάροχο LLM που θα ρυθμίζατε μόνοι σας. Περιλήψεις AI, πληροφορίες σε πραγματικό χρόνο, δεδομένα αγοράς, παρακολούθηση συγκρούσεων, ανίχνευση πυρκαγιών, δορυφορικές εικόνες — όλα ενεργοποιημένα, όλα διαχειριζόμενα, μηδενική ρύθμιση.",
+        "apiKey": {
+          "title": "Κλειδί Άδειας",
+          "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
+          "description": "Επικολλήστε την άδειά σας για άμεσο ξεκλείδωμα κάθε πηγής δεδομένων και λειτουργίας AI.",
+          "statusValid": "ΑΔΕΙΟΔΟΤΗΜΕΝΟ",
+          "statusMissing": "ΧΩΡΙΣ ΑΔΕΙΑ"
+        },
+        "dividerOr": "Ή",
+        "register": {
+          "title": "Κρατήστε τη Θέση σας",
+          "description": "Ετοιμαζόμαστε να λανσάρουμε τις άδειες World Monitor. Εγγραφείτε τώρα και γίνετε πρώτοι στη σειρά — τα πρώτα μέλη λαμβάνουν προτεραιότητα πρόσβασης και τιμολόγηση ιδρυτικού μέλους.",
+          "emailPlaceholder": "your@email.com",
+          "submitBtn": "Εγγραφή στη Λίστα",
+          "submitting": "Υποβολή...",
+          "success": "Είστε στη λίστα! Θα σας ειδοποιήσουμε πρώτους.",
+          "alreadyRegistered": "Είστε ήδη στη λίστα αναμονής.",
+          "error": "Η εγγραφή απέτυχε. Παρακαλώ δοκιμάστε ξανά.",
+          "invalidEmail": "Παρακαλώ εισάγετε μια έγκυρη διεύθυνση email."
+        },
+        "byokTitle": "Ή χρησιμοποιήστε τα δικά σας keys",
+        "byokDescription": "Προτιμάτε πλήρη έλεγχο; Μεταβείτε στις καρτέλες API Keys και LLMs για να ρυθμίσετε κάθε πηγή δεδομένων και πάροχο AI ξεχωριστά."
+      },
+      "table": {
+        "time": "Χρόνος",
+        "method": "Μέθοδος",
+        "path": "Διαδρομή",
+        "status": "Κατάσταση",
+        "duration": "Διάρκεια"
+      }
+    },
+    "countryIntel": {
+      "identifying": "Αναγνώριση χώρας...",
+      "locating": "Εντοπισμός περιοχής...",
+      "instabilityIndex": "Δείκτης Αστάθειας",
+      "protests": "διαμαρτυρίες",
+      "militaryAircraft": "στρατ. αεροσκάφη",
+      "militaryVessels": "στρατ. πλοία",
+      "outages": "διακοπές",
+      "earthquakes": "σεισμοί",
+      "loadingIndex": "Φόρτωση δείκτη...",
+      "loadingMarkets": "Φόρτωση αγορών προβλέψεων...",
+      "generatingBrief": "Δημιουργία ενημέρωσης πληροφοριών...",
+      "cached": "Αποθηκευμένο",
+      "fresh": "Πρόσφατο",
+      "noMarkets": "Δεν βρέθηκαν αγορές προβλέψεων",
+      "predictionMarkets": "Αγορές Προβλέψεων",
+      "unavailable": "Ενημέρωση AI μη διαθέσιμη — ρυθμίστε το GROQ_API_KEY στις Ρυθμίσεις."
+    },
+    "countryBrief": {
+      "identifying": "Αναγνώριση χώρας...",
+      "locating": "Εντοπισμός περιοχής...",
+      "limitedCoverage": "Περιορισμένη κάλυψη",
+      "instabilityIndex": "Δείκτης Αστάθειας",
+      "notTracked": "Δεν παρακολουθείται — η {{country}} δεν είναι στη λίστα CII tier-1",
+      "intelBrief": "Ενημέρωση Πληροφοριών",
+      "generatingBrief": "Δημιουργία ενημέρωσης πληροφοριών...",
+      "topNews": "Κορυφαίες Ειδήσεις",
+      "activeSignals": "Ενεργά Σήματα",
+      "timeline": "Χρονολόγιο 7 Ημερών",
+      "predictionMarkets": "Αγορές Προβλέψεων",
+      "loadingMarkets": "Φόρτωση αγορών προβλέψεων...",
+      "infrastructure": "Έκθεση Υποδομών",
+      "briefUnavailable": "Ενημέρωση AI μη διαθέσιμη — ρυθμίστε το GROQ_API_KEY στις Ρυθμίσεις.",
+      "cached": "Αποθηκευμένο",
+      "fresh": "Πρόσφατο",
+      "noMarkets": "Δεν βρέθηκαν αγορές προβλέψεων",
+      "loadingIndex": "Φόρτωση δείκτη...",
+      "components": {
+        "unrest": "Αναταραχή",
+        "conflict": "Σύγκρουση",
+        "security": "Ασφάλεια",
+        "information": "Πληροφορίες"
+      },
+      "signals": {
+        "protests": "διαμαρτυρίες",
+        "militaryAir": "στρατ. αεροσκάφη",
+        "militarySea": "στρατ. πλοία",
+        "outages": "διακοπές",
+        "earthquakes": "σεισμοί",
+        "displaced": "εκτοπισμένοι",
+        "climate": "Κλιματική πίεση",
+        "conflictEvents": "συγκρούσεις"
+      },
+      "timeAgo": {
+        "m": "{{count}}λ πριν",
+        "h": "{{count}}ω πριν",
+        "d": "{{count}}μ πριν"
+      },
+      "infra": {
+        "pipeline": "Αγωγοί",
+        "cable": "Υποθαλάσσια Καλώδια",
+        "datacenter": "Κέντρα Δεδομένων",
+        "base": "Στρατιωτικές Βάσεις",
+        "nuclear": "Πυρηνικές Εγκαταστάσεις",
+        "port": "Λιμάνια"
+      },
+      "levels": {
+        "critical": "Κρίσιμο",
+        "high": "Υψηλό",
+        "elevated": "Αυξημένο",
+        "moderate": "Μέτριο",
+        "normal": "Κανονικό",
+        "low": "Χαμηλό"
+      },
+      "trends": {
+        "rising": "Ανοδικά",
+        "falling": "Πτωτικά",
+        "stable": "Σταθερό"
+      },
+      "fallback": {
+        "instabilityIndex": "**Δείκτης Αστάθειας: {{score}}/100** ({{level}}, {{trend}})",
+        "protestsDetected": "{{count}} ενεργές διαμαρτυρίες ανιχνεύθηκαν",
+        "aircraftTracked": "{{count}} στρατιωτικά αεροσκάφη παρακολουθούνται",
+        "vesselsTracked": "{{count}} στρατιωτικά πλοία παρακολουθούνται",
+        "internetOutages": "{{count}} διακοπές διαδικτύου",
+        "recentEarthquakes": "{{count}} πρόσφατοι σεισμοί",
+        "stockIndex": "Χρηματιστηριακός δείκτης: {{value}}",
+        "recentHeadlines": "**Πρόσφατοι τίτλοι:**"
+      }
+    }
+  },
+  "components": {
+    "webcams": {
+      "regions": {
+        "all": "ΟΛΑ",
+        "mideast": "Μ. ΑΝΑΤΟΛΗ",
+        "europe": "ΕΥΡΩΠΗ",
+        "americas": "ΑΜΕΡΙΚΗ",
+        "asia": "ΑΣΙΑ"
+      }
+    },
+    "monitor": {
+      "placeholder": "Λέξεις-κλειδιά (διαχωρισμένες με κόμμα)",
+      "add": "+ Προσθήκη Παρακολούθησης",
+      "addKeywords": "Προσθέστε λέξεις-κλειδιά για παρακολούθηση ειδήσεων",
+      "noMatches": "Κανένα αποτέλεσμα σε {{count}} άρθρα",
+      "showingMatches": "Εμφάνιση {{count}} από {{total}} αποτελέσματα",
+      "match": "αποτέλεσμα",
+      "matches": "αποτελέσματα"
+    },
+    "regulation": {
+      "dashboard": "Πίνακας Ρύθμισης AI",
+      "timeline": "Χρονολόγιο",
+      "deadlines": "Προθεσμίες",
+      "regulations": "Κανονισμοί",
+      "countries": "Χώρες",
+      "recentActions": "Πρόσφατες Ρυθμιστικές Ενέργειες (Τελευταίοι 12 Μήνες)",
+      "upcomingDeadlines": "Επερχόμενες Προθεσμίες Συμμόρφωσης",
+      "activeRegulations": "Ενεργοί Κανονισμοί",
+      "proposedRegulations": "Προτεινόμενοι Κανονισμοί",
+      "globalLandscape": "Παγκόσμιο Ρυθμιστικό Τοπίο",
+      "emptyActions": "Δεν υπάρχουν πρόσφατες ρυθμιστικές ενέργειες",
+      "emptyDeadlines": "Δεν υπάρχουν επερχόμενες προθεσμίες συμμόρφωσης τους επόμενους 12 μήνες",
+      "keyProvisions": "Βασικές Διατάξεις",
+      "learnMore": "Μάθετε Περισσότερα",
+      "active": "Ενεργός",
+      "proposed": "Προτεινόμενος",
+      "updated": "Ενημερώθηκε",
+      "actionsCount": "{{count}} ενέργειες",
+      "deadlinesCount": "{{count}} προθεσμίες",
+      "days": "ημέρες",
+      "activeCount": "Ενεργοί Κανονισμοί ({{count}})",
+      "proposedCount": "Προτεινόμενοι Κανονισμοί ({{count}})",
+      "moreProvisions": "+{{count}} ακόμη...",
+      "source": "Πηγή",
+      "stances": {
+        "strict": "Αυστηρός",
+        "moderate": "Μέτριος",
+        "permissive": "Επιτρεπτικός",
+        "undefined": "Απροσδιόριστος"
+      }
+    },
+    "economic": {
+      "indicators": "Δείκτες",
+      "oil": "Πετρέλαιο",
+      "gov": "Κυβ.",
+      "noData": "Δεν υπάρχουν οικονομικά δεδομένα",
+      "noOilData": "Δεδομένα πετρελαίου μη διαθέσιμα",
+      "noOilMetrics": "Δεν υπάρχουν μετρήσεις πετρελαίου. Προσθέστε EIA_API_KEY για ενεργοποίηση.",
+      "noSpending": "Δεν υπάρχουν πρόσφατες κρατικές αναθέσεις",
+      "awards": "αναθέσεις",
+      "noIndicatorData": "Δεν υπάρχουν δεδομένα δεικτών ακόμα - το FRED φορτώνει",
+      "fredKeyMissing": "Απαιτείται FRED API key — προσθέστε το στις Ρυθμίσεις για ενεργοποίηση οικονομικών δεικτών",
+      "noOilDataRetry": "Δεδομένα πετρελαίου προσωρινά μη διαθέσιμα - θα γίνει επανάληψη",
+      "vsPreviousWeek": "σε σχέση με την προηγούμενη εβδομάδα",
+      "in": "σε"
+    },
+    "gdelt": {
+      "empty": "Δεν υπάρχουν πρόσφατα άρθρα για αυτό το θέμα"
+    },
+    "geoHubs": {
+      "tooltip": "<strong>Γεωπολιτικά Κέντρα Δραστηριότητας</strong><br>Εμφανίζει περιοχές με τη μεγαλύτερη ειδησεογραφική δραστηριότητα.<br><br><em>Τύποι κέντρων:</em><br>• 🏛️ Πρωτεύουσες — Παγκόσμιες πρωτεύουσες και κυβερνητικά κέντρα<br>• ⚔️ Ζώνες Σύγκρουσης — Ενεργές περιοχές σύγκρουσης<br>• ⚓ Στρατηγικά — Σημεία ελέγχου και κρίσιμες περιοχές<br>• 🏢 Οργανισμοί — UN, NATO, IAEA, κ.λπ.<br><br><em>Επίπεδα δραστηριότητας:</em><br>• <span style=\"color: #ff4444\">Υψηλό</span> — Έκτακτες ειδήσεις ή βαθμολογία 70+<br>• <span style=\"color: #ff8844\">Αυξημένο</span> — Βαθμολογία 40-69<br>• <span style=\"color: #888\">Χαμηλό</span> — Βαθμολογία κάτω από 40<br><br>Κάντε κλικ σε ένα κέντρο για μεγέθυνση στην τοποθεσία του.",
+      "noActive": "Δεν υπάρχουν ενεργά γεωπολιτικά κέντρα",
+      "story": "ιστορία",
+      "stories": "ιστορίες",
+      "infoTooltip": "<strong>Γεωπολιτικά Κέντρα Δραστηριότητας</strong><br>Εμφανίζει περιοχές με τη μεγαλύτερη ειδησεογραφική δραστηριότητα.<br><br><em>Τύποι κέντρων:</em><br>• 🏛️ Πρωτεύουσες — Παγκόσμιες πρωτεύουσες και κυβερνητικά κέντρα<br>• ⚔️ Ζώνες Σύγκρουσης — Ενεργές περιοχές σύγκρουσης<br>• ⚓ Στρατηγικά — Σημεία ελέγχου και κρίσιμες περιοχές<br>• 🏢 Οργανισμοί — UN, NATO, IAEA, κ.λπ.<br><br><em>Επίπεδα δραστηριότητας:</em><br>• <span style=\"color: {{highColor}}\">Υψηλό</span> — Έκτακτες ειδήσεις ή βαθμολογία 70+<br>• <span style=\"color: {{elevatedColor}}\">Αυξημένο</span> — Βαθμολογία 40-69<br>• <span style=\"color: {{lowColor}}\">Χαμηλό</span> — Βαθμολογία κάτω από 40<br><br>Κάντε κλικ σε ένα κέντρο για μεγέθυνση στην τοποθεσία του."
+    },
+    "techHubs": {
+      "tooltip": "<strong>Δραστηριότητα Tech Hubs</strong><br>Εμφανίζει tech hubs με τη μεγαλύτερη ειδησεογραφική δραστηριότητα.<br><br><em>Επίπεδα δραστηριότητας:</em><br>• <span style=\"color: #00ff88\">Υψηλό</span> — Έκτακτες ειδήσεις ή βαθμολογία 50+<br>• <span style=\"color: #ffc800\">Αυξημένο</span> — Βαθμολογία 20-49<br>• <span style=\"color: #888\">Χαμηλό</span> — Βαθμολογία κάτω από 20<br><br>Κάντε κλικ σε ένα hub για μεγέθυνση στην τοποθεσία του.",
+      "noActive": "Δεν υπάρχουν ενεργά tech hubs",
+      "infoTooltip": "<strong>Δραστηριότητα Tech Hubs</strong><br>Εμφανίζει tech hubs με τη μεγαλύτερη ειδησεογραφική δραστηριότητα.<br><br><em>Επίπεδα δραστηριότητας:</em><br>• <span style=\"color: {{highColor}}\">Υψηλό</span> — Έκτακτες ειδήσεις ή βαθμολογία 50+<br>• <span style=\"color: {{elevatedColor}}\">Αυξημένο</span> — Βαθμολογία 20-49<br>• <span style=\"color: {{lowColor}}\">Χαμηλό</span> — Βαθμολογία κάτω από 20<br><br>Κάντε κλικ σε ένα hub για μεγέθυνση στην τοποθεσία του."
+    },
+    "predictions": {
+      "tooltip": "<strong>Αγορές Προβλέψεων</strong><br>Αγορές πρόβλεψης με πραγματικό χρήμα:<br><ul><li>Οι τιμές αντικατοπτρίζουν εκτιμήσεις πιθανότητας πλήθους</li><li>Υψηλότερος όγκος = πιο αξιόπιστο σήμα</li><li>Εστίαση σε γεωπολιτικά και τρέχοντα γεγονότα</li></ul>Πηγή: Polymarket (polymarket.com)",
+      "error": "Αποτυχία φόρτωσης προβλέψεων",
+      "yes": "Ναι",
+      "no": "Όχι",
+      "vol": "Όγκ"
+    },
+    "stablecoins": {
+      "pegHealth": "Υγεία Σύνδεσης",
+      "supplyVolume": "Προσφορά & Όγκος",
+      "unavailable": "Δεδομένα stablecoin προσωρινά μη διαθέσιμα",
+      "token": "Token",
+      "mcap": "Κεφ/ποίηση",
+      "vol24h": "Όγκος 24ω",
+      "chg24h": "Μεταβ. 24ω"
+    },
+    "status": {
+      "dataFeeds": "Ροές Δεδομένων",
+      "apiStatus": "Κατάσταση API",
+      "storage": "Αποθήκευση",
+      "systemStatus": "Κατάσταση Συστήματος",
+      "updatedJustNow": "Ενημερώθηκε μόλις τώρα",
+      "updatedAt": "Ενημερώθηκε {{time}}",
+      "storageUnavailable": "Πληροφορίες αποθήκευσης μη διαθέσιμες"
+    },
+    "playback": {
+      "toggleMode": "Εναλλαγή Λειτουργίας Αναπαραγωγής",
+      "live": "ΖΩΝΤΑΝΑ",
+      "historicalPlayback": "Ιστορική Αναπαραγωγή"
+    },
+    "pizzint": {
+      "title": "Pentagon Pizza Index",
+      "defcon": "DEFCON {{level}}",
+      "updated": "Ενημερώθηκε {{timeAgo}}",
+      "tensionsTitle": "Γεωπολιτικές Εντάσεις",
+      "source": "Πηγή:",
+      "statusClosed": "ΚΛΕΙΣΤΟ",
+      "statusSpike": "ΚΟΡΥΦΩΣΗ",
+      "statusHigh": "ΥΨΗΛΟ",
+      "statusElevated": "ΑΥΞΗΜΕΝΟ",
+      "statusNominal": "ΚΑΝΟΝΙΚΟ",
+      "statusQuiet": "ΗΣΥΧΟ",
+      "justNow": "μόλις τώρα",
+      "minutesAgo": "{{m}}λ πριν",
+      "hoursAgo": "{{h}}ω πριν",
+      "defconLabels": {
+        "1": "COCKED PISTOL - ΜΕΓΙΣΤΗ ΕΤΟΙΜΟΤΗΤΑ",
+        "2": "FAST PACE - ΕΝΟΠΛΕΣ ΔΥΝΑΜΕΙΣ ΕΤΟΙΜΕΣ",
+        "3": "ROUND HOUSE - ΑΥΞΗΣΗ ΕΤΟΙΜΟΤΗΤΑΣ ΔΥΝΑΜΕΩΝ",
+        "4": "DOUBLE TAKE - ΑΥΞΗΜΕΝΗ ΕΠΙΤΗΡΗΣΗ ΠΛΗΡΟΦΟΡΙΩΝ",
+        "5": "FADE OUT - ΧΑΜΗΛΟΤΕΡΗ ΕΤΟΙΜΟΤΗΤΑ"
+      }
+    },
+    "strategicPosture": {
+      "elapsed": "Χρόνος: {{elapsed}} δ",
+      "clickToView": "Κάντε κλικ για προβολή {{name}} στον χάρτη",
+      "clickToViewMap": "Κάντε κλικ για προβολή στον χάρτη",
+      "refresh": "Ανανέωση",
+      "units": {
+        "fighters": "Μαχητικά",
+        "tankers": "Εναέριοι Τάνκερ",
+        "awacs": "AWACS",
+        "recon": "Αναγνώριση",
+        "transport": "Μεταφορά",
+        "bombers": "Βομβαρδιστικά",
+        "drones": "Drones",
+        "aircraft": "Αεροσκάφη",
+        "carriers": "Αεροπλανοφόρα",
+        "destroyers": "Αντιτορπιλικά",
+        "frigates": "Φρεγάτες",
+        "submarines": "Υποβρύχια",
+        "patrol": "Περιπολικά",
+        "auxiliary": "Βοηθητικά",
+        "navalVessels": "Πολεμικά Πλοία"
+      },
+      "infoTooltip": "<strong>Μεθοδολογία</strong><p>Συγκεντρώνει στρατιωτικά αεροσκάφη και πολεμικά πλοία ανά θέατρο.</p><ul><li><strong>Κανονικό:</strong> Δραστηριότητα βάσης</li><li><strong>Αυξημένο:</strong> Πάνω από όριο (50+ αεροσκάφη)</li><li><strong>Κρίσιμο:</strong> Υψηλή συγκέντρωση (100+ αεροσκάφη)</li></ul><p><strong>Ικανότητα Κρούσης:</strong> Τάνκερ + AWACS + Μαχητικά παρόντα σε επαρκείς αριθμούς για παρατεταμένες επιχειρήσεις.</p>",
+      "scanningTheaters": "Σάρωση Θεάτρων",
+      "positions": "Θέσεις αεροσκαφών",
+      "navalVesselsLoading": "Πολεμικά πλοία",
+      "theaterAnalysis": "Ανάλυση θεάτρου",
+      "connectingStreams": "Σύνδεση σε ζωντανές ροές ADS-B & AIS...",
+      "initialLoadNote": "Η αρχική φόρτωση χρειάζεται 30-60 δευτερόλεπτα καθώς συγκεντρώνονται δεδομένα",
+      "acquiringData": "Λήψη Δεδομένων",
+      "acquiringDesc": "Σύνδεση στο δίκτυο ADS-B για δεδομένα στρατιωτικών πτήσεων. Μπορεί να χρειαστούν 30-60 δευτερόλεπτα στην πρώτη φόρτωση.",
+      "openSkyAdsb": "OpenSky ADS-B",
+      "aisVesselStream": "Ροή Πλοίων AIS",
+      "retryNow": "Επανάληψη Τώρα",
+      "feedRateLimited": "Περιορισμός Ρυθμού Ροής",
+      "rateLimitedDesc": "Το OpenSky API έχει όρια αιτημάτων. Ο πίνακας θα επαναλάβει αυτόματα σε λίγα λεπτά, ή μπορείτε να δοκιμάσετε τώρα.",
+      "rateLimitedTip": "Συμβουλή: Ώρες αιχμής (UTC 12:00-20:00) έχουν συχνά υψηλότερα όρια.",
+      "tryAgain": "Δοκιμάστε Ξανά",
+      "badges": {
+        "critical": "ΚΡΙΣ",
+        "elevated": "ΑΥΞΗ",
+        "normal": "ΚΑΝΟΝ"
+      },
+      "trendStable": "σταθερό",
+      "domains": {
+        "air": "ΑΕΡΑΣ",
+        "sea": "ΘΑΛΑΣΣΑ"
+      },
+      "strike": "ΚΡΟΥΣΗ",
+      "staleWarning": "Χρήση αποθηκευμένων δεδομένων - η ζωντανή ροή προσωρινά μη διαθέσιμη",
+      "updated": "Ενημερώθηκε:",
+      "theaters": {
+        "iran-theater": "Θέατρο Ιράν",
+        "taiwan-theater": "Στενά Ταϊβάν",
+        "baltic-theater": "Θέατρο Βαλτικής",
+        "blacksea-theater": "Μαύρη Θάλασσα",
+        "korea-theater": "Κορεατική Χερσόνησος",
+        "south-china-sea": "Νότια Σινική Θάλασσα",
+        "east-med-theater": "Ανατολική Μεσόγειος",
+        "israel-gaza-theater": "Ισραήλ/Γάζα",
+        "yemen-redsea-theater": "Υεμένη/Ερυθρά Θάλασσα"
+      }
+    },
+    "countryBrief": {
+      "shareStory": "Κοινοποίηση ιστορίας",
+      "printPdf": "Εκτύπωση / PDF",
+      "exportData": "Εξαγωγή δεδομένων",
+      "sourceRef": "Πηγή [{{n}}]"
+    },
+    "relatedAssets": {
+      "pipeline": "Αγωγός",
+      "cable": "Καλώδιο",
+      "datacenter": "Κέντρο Δεδομένων",
+      "base": "Βάση",
+      "nuclear": "Πυρηνικό"
+    },
+    "community": {
+      "joinDiscussion": "Συμμετοχή στη Συζήτηση",
+      "openDiscussion": "Ανοιχτή Συζήτηση",
+      "dontShowAgain": "Να μην εμφανιστεί ξανά"
+    },
+    "threatLabels": {
+      "critical": "ΚΡΙΣ",
+      "high": "ΥΨΗΛ",
+      "medium": "ΜΕΣ",
+      "low": "ΧΑΜ",
+      "info": "ΠΛΗΡ"
+    },
+    "deckgl": {
+      "zoomIn": "Μεγέθυνση",
+      "zoomOut": "Σμίκρυνση",
+      "resetView": "Επαναφορά Προβολής",
+      "legend": {
+        "title": "ΥΠΟΜΝΗΜΑ",
+        "startupHub": "Startup Hub",
+        "techHQ": "Tech Έδρα",
+        "accelerator": "Accelerator",
+        "cloudRegion": "Cloud Περιοχή",
+        "datacenter": "Κέντρο Δεδομένων",
+        "stockExchange": "Χρηματιστήριο",
+        "financialCenter": "Χρηματοπιστωτικό Κέντρο",
+        "centralBank": "Κεντρική Τράπεζα",
+        "commodityHub": "Κέντρο Εμπορευμάτων",
+        "waterway": "Υδάτινη Οδός",
+        "highAlert": "Υψηλός Συναγερμός",
+        "elevated": "Αυξημένο",
+        "monitoring": "Παρακολούθηση",
+        "base": "Βάση",
+        "nuclear": "Πυρηνικό"
+      },
+      "layerGuide": "Οδηγός Επιπέδων",
+      "layersTitle": "Επίπεδα",
+      "timeAll": "Όλα",
+      "views": {
+        "global": "Παγκόσμια",
+        "americas": "Αμερική",
+        "mena": "MENA",
+        "europe": "Ευρώπη",
+        "asia": "Ασία",
+        "latam": "Λατινική Αμερική",
+        "africa": "Αφρική",
+        "oceania": "Ωκεανία"
+      },
+      "layers": {
+        "startupHubs": "Startup Hubs",
+        "techHQs": "Tech Έδρες",
+        "accelerators": "Accelerators",
+        "cloudRegions": "Cloud Περιοχές",
+        "aiDataCenters": "Κέντρα Δεδομένων AI",
+        "underseaCables": "Υποθαλάσσια Καλώδια",
+        "internetOutages": "Διακοπές Διαδικτύου",
+        "cyberThreats": "Κυβερνοαπειλές",
+        "techEvents": "Tech Εκδηλώσεις",
+        "naturalEvents": "Φυσικά Φαινόμενα",
+        "fires": "Πυρκαγιές",
+        "intelHotspots": "Εστίες Πληροφοριών",
+        "conflictZones": "Ζώνες Σύγκρουσης",
+        "militaryBases": "Στρατιωτικές Βάσεις",
+        "nuclearSites": "Πυρηνικές Εγκαταστάσεις",
+        "gammaIrradiators": "Ακτινοβολητές Γάμμα",
+        "spaceports": "Διαστημοδρόμια",
+        "pipelines": "Αγωγοί",
+        "militaryActivity": "Στρατιωτική Δραστηριότητα",
+        "shipTraffic": "Ναυτική Κυκλοφορία",
+        "flightDelays": "Καθυστερήσεις Πτήσεων",
+        "protests": "Διαμαρτυρίες",
+        "ucdpEvents": "Συμβάντα UCDP",
+        "displacementFlows": "Ροές Εκτοπισμού",
+        "climateAnomalies": "Κλιματικές Ανωμαλίες",
+        "weatherAlerts": "Καιρικές Προειδοποιήσεις",
+        "strategicWaterways": "Στρατηγικές Υδάτινες Οδοί",
+        "economicCenters": "Οικονομικά Κέντρα",
+        "criticalMinerals": "Κρίσιμα Ορυκτά",
+        "stockExchanges": "Χρηματιστήρια",
+        "financialCenters": "Χρηματοπιστωτικά Κέντρα",
+        "centralBanks": "Κεντρικές Τράπεζες",
+        "commodityHubs": "Κέντρα Εμπορευμάτων",
+        "gulfInvestments": "Επενδύσεις GCC"
+      },
+      "tooltip": {
+        "earthquake": "Σεισμός",
+        "militaryAircraft": "Στρατιωτικό Αεροσκάφος",
+        "vesselCluster": "Ομάδα Πλοίων",
+        "vessels": "πλοία",
+        "flightCluster": "Ομάδα Πτήσεων",
+        "aircraft": "αεροσκάφη",
+        "protest": "Διαμαρτυρία",
+        "protestsCount": "{{count}} διαμαρτυρίες",
+        "techHQsCount": "{{count}} tech έδρες",
+        "techEventsCount": "{{count}} tech εκδηλώσεις",
+        "dataCentersCount": "{{count}} κέντρα δεδομένων",
+        "underseaCable": "Υποθαλάσσιο Καλώδιο",
+        "pipeline": "Αγωγός",
+        "conflictZone": "Ζώνη Σύγκρουσης",
+        "naturalEvent": "Φυσικό Φαινόμενο",
+        "financialCenter": "χρηματοπιστωτικό κέντρο",
+        "port": "Λιμάνι",
+        "disruption": "Διακοπή",
+        "advisory": "Προειδοποίηση",
+        "repairShip": "Πλοίο Επισκευής",
+        "internetOutage": "Διακοπή Διαδικτύου",
+        "medium": "μέτριο",
+        "news": "Ειδήσεις",
+        "undisclosed": "Αδιευκρίνιστο",
+        "stake": "μερίδιο"
+      },
+      "layerHelp": {
+        "title": "Οδηγός Επιπέδων Χάρτη",
+        "labels": {
+          "countries": "Χώρες",
+          "timeRecent": "1Ω/6Ω/24Ω",
+          "timeExtended": "7Η/30Η/ΟΛΑ",
+          "sanctions": "Κυρώσεις",
+          "shipping": "Ναυτιλία"
+        },
+        "sections": {
+          "techEcosystem": "Οικοσύστημα Τεχνολογίας",
+          "infrastructure": "Υποδομές",
+          "naturalEconomic": "Φυσικά & Οικονομικά",
+          "financeCore": "Βασικά Χρηματοοικονομικά",
+          "infrastructureRisk": "Υποδομές & Κίνδυνος",
+          "macroContext": "Μακροοικονομικό Πλαίσιο",
+          "timeFilter": "Φίλτρο Χρόνου (πάνω δεξιά)",
+          "geopolitical": "Γεωπολιτικά",
+          "militaryStrategic": "Στρατιωτικά & Στρατηγικά",
+          "transport": "Μεταφορές",
+          "labels": "Ετικέτες"
+        },
+        "descriptions": {
+          "techStartupHubs": "Σημαντικά οικοσυστήματα startups (SF, NYC, Λονδίνο, κ.λπ.)",
+          "techCloudRegions": "Περιοχές κέντρων δεδομένων AWS, Azure, GCP",
+          "techHQs": "Έδρες μεγάλων εταιρειών τεχνολογίας",
+          "techAccelerators": "Τοποθεσίες Y Combinator, Techstars, 500 Startups",
+          "infraCables": "Σημαντικά υποθαλάσσια καλώδια οπτικών ινών (ραχοκοκαλιά διαδικτύου)",
+          "infraDatacenters": "Συστοιχίες υπολογιστών AI >=10.000 GPUs",
+          "infraOutages": "Blackout διαδικτύου και διακοπές υπηρεσιών",
+          "naturalEventsTech": "Σεισμοί, καταιγίδες, πυρκαγιές (μπορεί να επηρεάσουν κέντρα δεδομένων)",
+          "weatherAlerts": "Σοβαρές καιρικές προειδοποιήσεις",
+          "economicCenters": "Χρηματιστήρια & κεντρικές τράπεζες",
+          "countriesOverlay": "Επικαλύψεις ονομάτων χωρών",
+          "financeExchanges": "Σημαντικά παγκόσμια χρηματιστήρια ανά βαθμίδα αγοράς",
+          "financeCenters": "Παγκόσμια και περιφερειακά χρηματοπιστωτικά κέντρα",
+          "financeCentralBanks": "Ιδρύματα νομισματικής πολιτικής παγκοσμίως",
+          "financeCommodityHubs": "Κρίσιμα χρηματιστήρια, λιμάνια και κέντρα διύλισης",
+          "financeCables": "Σημαντικές υποθαλάσσιες διαδρομές ινών συνδεδεμένες με υποδομή αγοράς",
+          "financePipelines": "Διαδρομές αγωγών πετρελαίου/αερίου που επηρεάζουν τις ενεργειακές αγορές",
+          "financeOutages": "Διακοπές διαδικτύου που μπορούν να επηρεάσουν τις λειτουργίες αγοράς",
+          "financeCyberThreats": "Γεγονότα ασφαλείας γύρω από χρηματοπιστωτικές υποδομές",
+          "macroWaterways": "Στρατηγικά σημεία ελέγχου για ναυτιλία εμπορευμάτων",
+          "weatherAlertsMarket": "Σοβαρά καιρικά φαινόμενα με σημασία για τις αγορές",
+          "naturalEventsMacro": "Σεισμοί, πυρκαγιές, πλημμύρες και άλλες φυσικές καταστροφές",
+          "timeRecent": "Φιλτράρισμα χρονικών δεδομένων σε πρόσφατες ώρες",
+          "timeExtended": "Εμφάνιση δεδομένων από την προηγούμενη εβδομάδα, μήνα ή όλα",
+          "geoConflicts": "Ενεργές ζώνες πολέμου (Ουκρανία, Γάζα, κ.λπ.) με σύνορα",
+          "geoHotspots": "Περιοχές έντασης - χρωματικά κωδικοποιημένες κατά επίπεδο ειδησεογραφικής δραστηριότητας",
+          "geoSanctions": "Χώρες υπό οικονομικές κυρώσεις ΗΠΑ/ΕΕ/ΟΗΕ",
+          "geoProtests": "Κοινωνική αναταραχή, διαδηλώσεις (χρονικά φιλτραρισμένες)",
+          "militaryBases": "Στρατιωτικές εγκαταστάσεις ΗΠΑ/NATO, Κίνας, Ρωσίας (150+)",
+          "militaryNuclear": "Σταθμοί παραγωγής, εγκαταστάσεις εμπλουτισμού, εγκαταστάσεις όπλων",
+          "militaryIrradiators": "Βιομηχανικές εγκαταστάσεις ακτινοβολητών γάμμα",
+          "militaryActivity": "Ζωντανή παρακολούθηση στρατιωτικών αεροσκαφών και πλοίων",
+          "infraCablesFull": "Σημαντικά υποθαλάσσια καλώδια οπτικών ινών (20 κύριες διαδρομές)",
+          "infraPipelinesFull": "Αγωγοί πετρελαίου/αερίου (Nord Stream, TAPI, κ.λπ.)",
+          "infraDatacentersFull": "Συστοιχίες υπολογιστών AI μόνο >=10.000 GPUs",
+          "transportShipping": "Ζωντανή παρακολούθηση πλοίων μέσω AIS (θέσεις πλοίων)",
+          "transportDelays": "Καθυστερήσεις αεροδρομίων και αναστολές εδάφους (FAA)",
+          "naturalEventsFull": "Σεισμοί (USGS) + καταιγίδες, πυρκαγιές, ηφαίστεια, πλημμύρες (NASA EONET)",
+          "firesFull": "Ενεργές πυρκαγιές και περίμετροι φωτιάς (NASA FIRMS)",
+          "climateAnomalies": "Ανωμαλίες θερμοκρασίας και βροχόπτωσης",
+          "waterwaysLabels": "Ετικέτες στρατηγικών σημείων ελέγχου",
+          "geoUcdpEvents": "Ένοπλες συγκρούσεις Uppsala Conflict Data Program",
+          "geoDisplacement": "Ροές προσφύγων και εκτοπισμού",
+          "militarySpaceports": "Εγκαταστάσεις εκτόξευσης πυραύλων και διαστημικές εγκαταστάσεις",
+          "infraCyberThreats": "Κυβερνοεπιθέσεις και γεγονότα ασφαλείας",
+          "mineralsFull": "Στρατηγικά κοιτάσματα ορυκτών και εξορυκτικές τοποθεσίες",
+          "techCyberThreats": "Κυβερνοεπιθέσεις και γεγονότα ασφαλείας",
+          "techEvents": "Σημαντικά συνέδρια τεχνολογίας και εκδηλώσεις",
+          "techFires": "Ενεργές πυρκαγιές κοντά σε τεχνολογικές υποδομές",
+          "financeGulfInvestments": "Επενδύσεις κρατικών ταμείων πλούτου GCC και ΑΞΕ"
+        },
+        "notes": {
+          "timeAffects": "Επηρεάζει: Σεισμούς, Καιρό, Διαμαρτυρίες, Διακοπές"
+        }
+      }
+    },
+    "cii": {
+      "shareStory": "Κοινοποίηση ιστορίας",
+      "noSignals": "Δεν ανιχνεύθηκαν σήματα αστάθειας",
+      "infoTooltip": "<strong>Μεθοδολογία</strong><ul><li><strong>Α</strong>ναταραχή: πολιτική αναταραχή & διαμαρτυρίες</li><li><strong>Σ</strong>ύγκρουση: ένταση ένοπλων συγκρούσεων</li><li><strong>Α</strong>σφάλεια: στρατιωτικές πτήσεις/πλοία πάνω από επικράτεια</li><li><strong>Π</strong>ληροφορίες: ταχύτητα ειδήσεων και συσχέτιση εστιακών σημείων</li><li>Ενίσχυση εγγύτητας σε εστίες (στρατηγικές τοποθεσίες)</li></ul><em>Οι τιμές Α:Σ:Α:Π δείχνουν βαθμολογίες συνιστωσών.</em> Η Ανίχνευση Εστιακών Σημείων συσχετίζει οντότητες ειδήσεων με σήματα χάρτη για ακριβή βαθμολόγηση."
+    },
+    "insights": {
+      "noStories": "Δεν υπάρχουν ακόμα έκτακτες ή πολυπηγές ιστορίες",
+      "step": "Βήμα {{step}}/{{total}}",
+      "waitingForData": "Αναμονή δεδομένων ειδήσεων...",
+      "rankingStories": "Κατάταξη σημαντικών ιστοριών...",
+      "analyzingSentiment": "Ανάλυση συναισθήματος...",
+      "generatingBrief": "Δημιουργία παγκόσμιας ενημέρωσης...",
+      "infoTooltip": "<strong>Ανάλυση με AI</strong><br>• <strong>Παγκόσμια Ενημέρωση</strong>: Περίληψη AI (Groq/OpenRouter)<br>• <strong>Συναίσθημα</strong>: Ανάλυση τόνου ειδήσεων<br>• <strong>Ταχύτητα</strong>: Ταχέως εξελισσόμενες ιστορίες<br>• <strong>Εστιακά Σημεία</strong>: Συσχετίζει οντότητες ειδήσεων με σήματα χάρτη (στρατιωτικά, διαμαρτυρίες, διακοπές)<br><em>Μόνο desktop • Τροφοδοτείται από Llama 3.3 + Ανίχνευση Εστιακών Σημείων</em>"
+    },
+    "cascade": {
+      "noImpacts": "Δεν ανιχνεύθηκαν επιπτώσεις σε χώρες",
+      "filters": {
+        "cables": "Καλώδια",
+        "pipelines": "Αγωγοί",
+        "ports": "Λιμάνια",
+        "chokepoints": "Σημεία Ελέγχου"
+      },
+      "filterType": {
+        "cable": "καλώδιο",
+        "pipeline": "αγωγός",
+        "port": "λιμάνι",
+        "chokepoint": "σημείο ελέγχου",
+        "country": "χώρα"
+      },
+      "selectPrompt": "Επιλέξτε {{type}}...",
+      "analyzeImpact": "Ανάλυση Επίπτωσης",
+      "impactLevels": {
+        "critical": "κρίσιμο",
+        "high": "υψηλό",
+        "medium": "μέτριο",
+        "low": "χαμηλό"
+      },
+      "capacityPercent": "{{percent}}% χωρητικότητα",
+      "noCountryImpacts": "Δεν ανιχνεύθηκαν επιπτώσεις σε χώρες",
+      "alternativeRoutes": "Εναλλακτικές Διαδρομές",
+      "countriesAffected": "Χώρες που Επηρεάζονται ({{count}})",
+      "links": "σύνδεσμοι",
+      "selectInfrastructureHint": "Επιλέξτε υποδομή για ανάλυση αλυσιδωτής επίπτωσης",
+      "infoTooltip": "<strong>Ανάλυση Αλυσιδωτής Αντίδρασης</strong> Μοντελοποιεί εξαρτήσεις υποδομών:<ul><li>Υποθαλάσσια καλώδια, αγωγοί, λιμάνια, σημεία ελέγχου</li><li>Επιλέξτε υποδομή για προσομοίωση αστοχίας</li><li>Δείχνει χώρες που επηρεάζονται και απώλεια χωρητικότητας</li><li>Εντοπίζει εφεδρικές διαδρομές</li></ul>Δεδομένα από TeleGeography και βιομηχανικές πηγές."
+    },
+    "strategicRisk": {
+      "noRisks": "Δεν ανιχνεύθηκαν σημαντικοί κίνδυνοι",
+      "levels": {
+        "critical": "Κρίσιμο",
+        "elevated": "Αυξημένο",
+        "moderate": "Μέτριο",
+        "low": "Χαμηλό"
+      },
+      "trend": "Τάση",
+      "trends": {
+        "escalating": "Κλιμακώνεται",
+        "deEscalating": "Αποκλιμακώνεται",
+        "stable": "Σταθερό"
+      },
+      "insufficientData": "Ανεπαρκή Δεδομένα",
+      "unableToAssess": "Αδυναμία αξιολόγησης επιπέδου κινδύνου.",
+      "enableDataSources": "Ενεργοποιήστε πηγές δεδομένων για να ξεκινήσει η παρακολούθηση.",
+      "requiredDataSources": "Απαιτούμενες Πηγές Δεδομένων",
+      "optionalSources": "Προαιρετικές Πηγές",
+      "enableCoreFeeds": "Ενεργοποίηση Βασικών Ροών",
+      "waitingForData": "Αναμονή δεδομένων...",
+      "refresh": "Ανανέωση",
+      "learningMode": "Λειτουργία Εκμάθησης - {{minutes}}λ μέχρι αξιοπιστία",
+      "noData": "χωρίς δεδομένα",
+      "enable": "Ενεργοποίηση",
+      "convergenceMetric": "Σύγκλιση",
+      "ciiDeviation": "Απόκλιση CII",
+      "infraEvents": "Συμβάντα Υποδομών",
+      "highAlerts": "Υψηλοί Συναγερμοί",
+      "topRisks": "Κορυφαίοι Κίνδυνοι",
+      "recentAlerts": "Πρόσφατοι Συναγερμοί ({{count}})",
+      "updated": "Ενημερώθηκε: {{time}}",
+      "time": {
+        "justNow": "μόλις τώρα",
+        "minutesAgo": "{{count}}λ πριν",
+        "hoursAgo": "{{count}}ω πριν"
+      },
+      "infoTooltip": "<strong>Μεθοδολογία</strong> Σύνθετη βαθμολογία (0-100) που συνδυάζει:<ul><li>50% Αστάθεια Χωρών (κορυφαίες 5 σταθμισμένες)</li><li>30% Ζώνες γεωγραφικής σύγκλισης</li><li>20% Συμβάντα υποδομών</li></ul>Αυτόματη ανανέωση κάθε 5 λεπτά."
+    },
+    "techEvents": {
+      "loading": "Φόρτωση tech εκδηλώσεων...",
+      "noEvents": "Δεν υπάρχουν εκδηλώσεις",
+      "showOnMap": "Εμφάνιση στον χάρτη",
+      "moreInfo": "Περισσότερα",
+      "retry": "Επανάληψη",
+      "upcoming": "Επερχόμενες",
+      "conferences": "Συνέδρια",
+      "earnings": "Οικονομικά Αποτελέσματα",
+      "all": "Όλα",
+      "conferencesCount": "{{count}} συνέδρια",
+      "onMap": "{{count}} στον χάρτη",
+      "techmemeEvents": "Εκδηλώσεις Techmeme ↗",
+      "today": "ΣΗΜΕΡΑ",
+      "soon": "ΣΥΝΤΟΜΑ"
+    },
+    "techReadiness": {
+      "internetUsers": "Χρήστες Διαδικτύου",
+      "mobileSubscriptions": "Συνδρομές Κινητών",
+      "rdSpending": "Δαπάνες Ε&Α",
+      "fetchingData": "Ανάκτηση Δεδομένων World Bank",
+      "internetUsersIndicator": "Χρήστες Διαδικτύου",
+      "mobileSubscriptionsIndicator": "Συνδρομές Κινητών",
+      "broadbandAccess": "Πρόσβαση Ευρυζωνικού",
+      "rdExpenditure": "Δαπάνες Ε&Α",
+      "analyzingCountries": "Ανάλυση 200+ χωρών...",
+      "source": "Πηγή: World Bank",
+      "updated": "Ενημερώθηκε: {{date}}",
+      "infoTooltip": "<strong>Παγκόσμια Τεχνολογική Ετοιμότητα</strong><br>Σύνθετη βαθμολογία (0-100) βασισμένη σε δεδομένα World Bank:<br><br><strong>Μετρήσεις:</strong><br>🌐 Χρήστες Διαδικτύου (% πληθυσμού)<br>📱 Συνδρομές Κινητών (ανά 100 άτομα)<br>🔬 Δαπάνες Ε&Α (% ΑΕΠ)<br><br><strong>Βάρη:</strong> Ε&Α (35%), Διαδίκτυο (30%), Ευρυζωνικό (20%), Κινητά (15%)<br><br><em>— = Δεν υπάρχουν πρόσφατα δεδομένα</em><br><em>Πηγή: World Bank Open Data (2019-2024)</em>"
+    },
+    "populationExposure": {
+      "noData": "Δεν υπάρχουν δεδομένα έκθεσης",
+      "totalAffected": "Σύνολο Επηρεαζόμενων",
+      "affectedCount": "{{count}} επηρεαζόμενοι",
+      "radiusKm": "{{km}}χλμ ακτίνα",
+      "infoTooltip": "<strong>Εκτιμήσεις Έκθεσης Πληθυσμού</strong> Εκτιμώμενος πληθυσμός εντός ακτίνας επίπτωσης συμβάντος. Βασίζεται σε δεδομένα πυκνότητας WorldPop.<ul><li>Σύγκρουση: ακτίνα 50χλμ</li><li>Σεισμός: ακτίνα 100χλμ</li><li>Πλημμύρα: ακτίνα 100χλμ</li><li>Πυρκαγιά: ακτίνα 30χλμ</li></ul>"
+    },
+    "satelliteFires": {
+      "noData": "Δεν υπάρχουν δεδομένα πυρκαγιών",
+      "region": "Περιοχή",
+      "fires": "Πυρκαγιές",
+      "high": "Υψηλό",
+      "total": "Σύνολο",
+      "never": "ποτέ",
+      "time": {
+        "justNow": "μόλις τώρα",
+        "minutesAgo": "{{count}}λ πριν",
+        "hoursAgo": "{{count}}ω πριν"
+      },
+      "infoTooltip": "Θερμικές ανιχνεύσεις δορυφόρου NASA FIRMS VIIRS σε παρακολουθούμενες περιοχές σύγκρουσης. Υψηλής έντασης = φωτεινότητα >360K & βεβαιότητα >80%."
+    },
+    "ucdpEvents": {
+      "stateBased": "Κρατικές",
+      "nonState": "Μη Κρατικές",
+      "oneSided": "Μονόπλευρες",
+      "country": "Χώρα",
+      "deaths": "Θάνατοι",
+      "date": "Ημερομηνία",
+      "actors": "Δρώντες",
+      "deathsCount": "{{count}} θάνατοι",
+      "moreNotShown": "{{count}} ακόμη συμβάντα δεν εμφανίζονται",
+      "noEvents": "Δεν υπάρχουν συμβάντα σε αυτή την κατηγορία",
+      "infoTooltip": "<strong>Γεωαναφερόμενα Συμβάντα UCDP</strong> Δεδομένα συγκρούσεων σε επίπεδο συμβάντος από το Πανεπιστήμιο Uppsala.<ul><li><strong>Κρατικές</strong>: Κυβέρνηση εναντίον ανταρτών</li><li><strong>Μη Κρατικές</strong>: Ένοπλη ομάδα εναντίον ένοπλης ομάδας</li><li><strong>Μονόπλευρες</strong>: Βία κατά αμάχων</li></ul>Οι θάνατοι εμφανίζονται ως βέλτιστη εκτίμηση (εύρος χαμηλό-υψηλό). Τα αντίγραφα ACLED φιλτράρονται αυτόματα."
+    },
+    "displacement": {
+      "noData": "Χωρίς δεδομένα",
+      "refugees": "Πρόσφυγες",
+      "asylumSeekers": "Αιτούντες Άσυλο",
+      "idps": "Εσωτερικά Εκτοπισμένοι",
+      "total": "Σύνολο",
+      "origins": "Προέλευση",
+      "hosts": "Υποδοχή",
+      "badges": {
+        "crisis": "ΚΡΙΣΗ",
+        "high": "ΥΨΗΛΟ",
+        "elevated": "ΑΥΞΗΜΕΝΟ"
+      },
+      "country": "Χώρα",
+      "status": "Κατάσταση",
+      "count": "Αριθμός",
+      "infoTooltip": "<strong>Δεδομένα Εκτοπισμού UNHCR</strong> Παγκόσμιοι αριθμοί προσφύγων, αιτούντων ασύλου και εσωτερικά εκτοπισμένων από UNHCR.<ul><li><strong>Προέλευση</strong>: Χώρες από τις οποίες φεύγουν</li><li><strong>Υποδοχή</strong>: Χώρες που φιλοξενούν πρόσφυγες</li><li>Σήματα κρίσης: >1Μ | Υψηλό: >500Κ εκτοπισμένοι</li></ul>Τα δεδομένα ενημερώνονται ετησίως. Άδεια CC BY 4.0."
+    },
+    "climate": {
+      "noAnomalies": "Δεν ανιχνεύθηκαν σημαντικές ανωμαλίες",
+      "zone": "Ζώνη",
+      "temp": "Θερμ.",
+      "precip": "Βροχ.",
+      "severityLabel": "Σοβαρότητα",
+      "severity": {
+        "extreme": "ΑΚΡΑΙΑ",
+        "moderate": "ΜΕΤΡΙΑ",
+        "normal": "ΚΑΝΟΝΙΚΗ"
+      },
+      "infoTooltip": "<strong>Παρακολούθηση Κλιματικών Ανωμαλιών</strong> Αποκλίσεις θερμοκρασίας και βροχόπτωσης από βάση 30 ημερών. Δεδομένα από Open-Meteo (αναλύσεις ERA5).<ul><li><strong>Ακραία</strong>: >5°C ή >80mm/ημέρα απόκλιση</li><li><strong>Μέτρια</strong>: >3°C ή >40mm/ημέρα απόκλιση</li></ul>Παρακολουθεί 15 ζώνες επιρρεπείς σε συγκρούσεις/καταστροφές."
+    },
+    "newsPanel": {
+      "close": "Κλείσιμο",
+      "summarize": "Περίληψη αυτού του πάνελ",
+      "generatingSummary": "Δημιουργία περίληψης...",
+      "sources": "{{count}} πηγές",
+      "relatedAssetsNear": "Σχετικά στοιχεία κοντά σε {{location}}"
+    },
+    "export": {
+      "exportData": "Εξαγωγή Δεδομένων"
+    },
+    "runtimeConfig": {
+      "getApiKey": "Λήψη API key"
+    },
+    "intelligenceFindings": {
+      "hideFindings": "Απόκρυψη Ευρημάτων Πληροφοριών",
+      "popupAlerts": "Αναδυόμενες ειδοποιήσεις",
+      "badgeTitle": "Ευρήματα πληροφοριών",
+      "title": "Ευρήματα Πληροφοριών",
+      "none": "Δεν υπάρχουν πρόσφατα ευρήματα πληροφοριών",
+      "monitoring": "ΠΑΡΑΚΟΛΟΥΘΗΣΗ",
+      "scanning": "Σάρωση για συσχετίσεις και ανωμαλίες...",
+      "reviewRecommended": "{{count}} ευρήματα πληροφοριών - συνιστάται αξιολόγηση",
+      "count": "{{count}} εύρημα πληροφοριών",
+      "detected": "{{count}} ΑΝΙΧΝΕΥΘΗΚΑΝ",
+      "critical": "{{count}} ΚΡΙΣΙΜΑ",
+      "highPriority": "{{count}} ΥΨΗΛΗΣ ΠΡΟΤΕΡΑΙΟΤΗΤΑΣ",
+      "more": "+{{count}} ακόμη ευρήματα",
+      "all": "Όλα τα Ευρήματα Πληροφοριών ({{count}})",
+      "priority": {
+        "critical": "ΚΡΙΣΙΜΟ",
+        "high": "ΥΨΗΛΟ",
+        "medium": "ΜΕΤΡΙΟ",
+        "low": "ΧΑΜΗΛΟ"
+      },
+      "insights": {
+        "criticalDestabilization": "Κρίσιμη αποσταθεροποίηση - άμεση προσοχή",
+        "significantShift": "Σημαντική μεταβολή - στενή παρακολούθηση",
+        "developingSituation": "Εξελισσόμενη κατάσταση - παρακολούθηση για κλιμάκωση",
+        "convergence": "Πολλαπλά συμβάντα συγκεντρώνονται στην περιοχή",
+        "cascade": "Διακοπή υποδομών εξαπλώνεται",
+        "review": "Αξιολόγηση για επίγνωση κατάστασης"
+      },
+      "time": {
+        "justNow": "μόλις τώρα",
+        "minutesAgo": "{{count}}λ πριν",
+        "hoursAgo": "{{count}}ω πριν",
+        "daysAgo": "{{count}}μ πριν"
+      }
+    },
+    "countryTimeline": {
+      "now": "τώρα",
+      "noEventsIn7Days": "Κανένα συμβάν σε 7 ημέρες"
+    },
+    "gdeltIntel": {
+      "infoTooltip": "<strong>Πληροφορίες GDELT</strong> Παρακολούθηση παγκόσμιων ειδήσεων σε πραγματικό χρόνο:<ul><li>Επιμελημένες κατηγορίες θεμάτων (συγκρούσεις, κυβερνοαπειλές, κ.λπ.)</li><li>Άρθρα από 100+ γλώσσες μεταφρασμένα</li><li>Ενημερώσεις κάθε 15 λεπτά</li></ul>Πηγή: GDELT Project (gdeltproject.org)"
+    },
+    "investments": {
+      "infoTooltip": "Βάση δεδομένων άμεσων ξένων επενδύσεων Σαουδικής Αραβίας και ΗΑΕ σε παγκόσμιες κρίσιμες υποδομές. Κάντε κλικ σε μια γραμμή για μετάβαση στην επένδυση στον χάρτη.",
+      "searchPlaceholder": "Αναζήτηση στοιχείων, χωρών, οντοτήτων…",
+      "allCountries": "Όλες οι Χώρες",
+      "saudiArabia": "Σαουδική Αραβία",
+      "uae": "ΗΑΕ",
+      "allSectors": "Όλοι οι Τομείς",
+      "allEntities": "Όλες οι Οντότητες",
+      "allStatuses": "Όλες οι Καταστάσεις",
+      "operational": "Λειτουργικό",
+      "underConstruction": "Υπό Κατασκευή",
+      "announced": "Ανακοινωμένο",
+      "rumoured": "Φημολογούμενο",
+      "divested": "Αποεπένδυση",
+      "asset": "Στοιχείο",
+      "country": "Χώρα",
+      "sector": "Τομέας",
+      "status": "Κατάσταση",
+      "investment": "Επένδυση",
+      "year": "Έτος",
+      "noMatch": "Δεν βρέθηκαν επενδύσεις με τα φίλτρα",
+      "undisclosed": "Αδιευκρίνιστο",
+      "sectors": {
+        "ports": "Λιμάνια",
+        "pipelines": "Αγωγοί",
+        "energy": "Ενέργεια",
+        "datacenters": "Κέντρα Δεδομένων",
+        "airports": "Αεροδρόμια",
+        "railways": "Σιδηρόδρομοι",
+        "telecoms": "Τηλεπικοινωνίες",
+        "water": "Ύδρευση",
+        "logistics": "Εφοδιαστική",
+        "mining": "Εξόρυξη",
+        "realEstate": "Ακίνητα",
+        "manufacturing": "Μεταποίηση"
+      }
+    },
+    "prediction": {
+      "infoTooltip": "<strong>Αγορές Προβλέψεων</strong> Αγορές πρόβλεψης με πραγματικό χρήμα:<ul><li>Οι τιμές αντικατοπτρίζουν εκτιμήσεις πιθανότητας πλήθους</li><li>Υψηλότερος όγκος = πιο αξιόπιστο σήμα</li><li>Εστίαση σε γεωπολιτικά και τρέχοντα γεγονότα</li></ul>Πηγή: Polymarket (polymarket.com)"
+    },
+    "etfFlows": {
+      "unavailable": "Δεδομένα ETF προσωρινά μη διαθέσιμα",
+      "netFlow": "Καθαρή Ροή",
+      "estFlow": "Εκτ. Ροή",
+      "totalVol": "Συνολ. Όγκος",
+      "etfs": "ETFs",
+      "netInflow": "ΚΑΘΑΡΗ ΕΙΣΡΟΗ",
+      "netOutflow": "ΚΑΘΑΡΗ ΕΚΡΟΗ",
+      "table": {
+        "ticker": "Ticker",
+        "issuer": "Εκδότης",
+        "estFlow": "Εκτ. Ροή",
+        "volume": "Όγκος",
+        "change": "Μεταβολή"
+      }
+    },
+    "macroSignals": {
+      "overall": "Συνολικά",
+      "verdict": {
+        "buy": "ΑΓΟΡΑ",
+        "cash": "ΜΕΤΡΗΤΑ"
+      },
+      "bullish": "{{count}}/{{total}} ανοδικά",
+      "signals": {
+        "liquidity": "Ρευστότητα",
+        "flow": "Ροή",
+        "regime": "Καθεστώς",
+        "btcTrend": "Τάση BTC",
+        "hashRate": "Hash Rate",
+        "mining": "Εξόρυξη",
+        "fearGreed": "Φόβος & Απληστία"
+      }
+    },
+    "panel": {
+      "showMethodologyInfo": "Εμφάνιση πληροφοριών μεθοδολογίας",
+      "dragToResize": "Σύρετε για αλλαγή μεγέθους (διπλό κλικ για επαναφορά)",
+      "openSettings": "Άνοιγμα Ρυθμίσεων"
+    },
+    "languageSelector": {
+      "selectLanguage": "Επιλογή Γλώσσας"
+    },
+    "serviceStatus": {
+      "checkingServices": "Έλεγχος υπηρεσιών...",
+      "allOperational": "Όλες οι υπηρεσίες λειτουργούν",
+      "ok": "OK",
+      "degraded": "Υποβαθμισμένη",
+      "outage": "Διακοπή",
+      "backendUnavailable": "Τοπικό backend desktop μη διαθέσιμο. Εναλλαγή σε cloud API.",
+      "desktopReadiness": "Ετοιμότητα desktop",
+      "acceptanceChecks": "Έλεγχοι αποδοχής: {{ready}}/{{total}} έτοιμα · λειτουργίες με κλειδί {{available}}/{{featureTotal}}",
+      "nonParityFallbacks": "Εναλλακτικές χωρίς ισοτιμία ({{count}})",
+      "categories": {
+        "all": "Όλα",
+        "cloud": "Cloud",
+        "dev": "Εργαλεία Dev",
+        "comm": "Επικοινωνίες",
+        "ai": "AI",
+        "saas": "SaaS"
+      }
+    },
+    "verification": {
+      "title": "Λίστα Ελέγχου Επαλήθευσης Πληροφοριών",
+      "hint": "Βασίζεται στο πλαίσιο OSH του Bellingcat",
+      "verdicts": {
+        "verified": "ΕΠΑΛΗΘΕΥΜΕΝΟ",
+        "likely": "ΠΙΘΑΝΩΣ ΑΥΘΕΝΤΙΚΟ",
+        "uncertain": "ΑΒΕΒΑΙΟ",
+        "unreliable": "ΑΝΑΞΙΟΠΙΣΤΟ"
+      },
+      "notesTitle": "Σημειώσεις Επαλήθευσης",
+      "noNotes": "Δεν υπάρχουν σημειώσεις",
+      "addNotePlaceholder": "Προσθήκη σημείωσης επαλήθευσης...",
+      "add": "Προσθήκη",
+      "resetChecklist": "Επαναφορά Λίστας Ελέγχου",
+      "checks": {
+        "recency": "Πρόσφατη χρονοσήμανση επιβεβαιωμένη",
+        "geolocation": "Τοποθεσία επαληθευμένη",
+        "source": "Πρωτογενής πηγή αναγνωρίστηκε",
+        "crossref": "Διασταυρώθηκε με άλλες πηγές",
+        "noAi": "Χωρίς τεχνουργήματα δημιουργίας AI",
+        "noRecrop": "Δεν είναι ανακυκλωμένο/παλιό υλικό",
+        "metadata": "Μεταδεδομένα επαληθεύτηκαν",
+        "context": "Πλαίσιο καθορίστηκε"
+      }
+    },
+    "liveNews": {
+      "retry": "Επανάληψη",
+      "notLive": "Το {{name}} δεν είναι ζωντανά αυτή τη στιγμή",
+      "cannotEmbed": "Το {{name}} δεν μπορεί να ενσωματωθεί σε αυτή την εφαρμογή (YouTube {{code}})",
+      "openOnYouTube": "Άνοιγμα στο YouTube"
+    }
+  },
+  "popups": {
+    "startDate": "ΗΜΕΡΟΜΗΝΙΑ ΕΝΑΡΞΗΣ",
+    "endDate": "ΗΜΕΡΟΜΗΝΙΑ ΛΗΞΗΣ",
+    "magnitude": "Μέγεθος",
+    "depth": "Βάθος",
+    "intensity": "Ένταση",
+    "type": "Τύπος",
+    "status": "Κατάσταση",
+    "severity": "Σοβαρότητα",
+    "location": "ΤΟΠΟΘΕΣΙΑ",
+    "coordinates": "Συντεταγμένες",
+    "casualties": "ΘΥΜΑΤΑ",
+    "displaced": "ΕΚΤΟΠΙΣΜΕΝΟΙ",
+    "belligerents": "ΕΜΠΟΛΕΜΟΙ",
+    "keyDevelopments": "ΒΑΣΙΚΕΣ ΕΞΕΛΙΞΕΙΣ",
+    "unknown": "Άγνωστο",
+    "source": "Πηγή",
+    "target": "Στόχος",
+    "events": "Συμβάντα",
+    "impact": "Επίπτωση",
+    "capacity": "Χωρητικότητα",
+    "alerts": "Ενεργοί Συναγερμοί",
+    "updated": "Ενημερώθηκε",
+    "common": {
+      "start": "ΕΝΑΡΞΗ",
+      "end": "ΛΗΞΗ",
+      "updated": "ΕΝΗΜΕΡΩΘΗΚΕ"
+    },
+    "conflict": {
+      "title": "ΖΩΝΗ ΣΥΓΚΡΟΥΣΗΣ"
+    },
+    "earthquake": {
+      "levels": {
+        "major": "ΜΕΓΑΛΟΣ",
+        "moderate": "ΜΕΤΡΙΟΣ",
+        "minor": "ΜΙΚΡΟΣ"
+      }
+    },
+    "base": {
+      "types": {
+        "us-nato": "US/NATO",
+        "china": "ΚΙΝΑ",
+        "russia": "ΡΩΣΙΑ"
+      }
+    },
+    "protest": {
+      "acledVerified": "ACLED (επαληθευμένο)",
+      "gdelt": "GDELT",
+      "riots": "Ταραχές",
+      "highSeverity": "Υψηλή Σοβαρότητα"
+    },
+    "flight": {
+      "groundStop": "ΑΝΑΣΤΟΛΗ ΕΔΑΦΟΥΣ",
+      "groundDelay": "ΠΡΟΓΡΑΜΜΑ ΚΑΘΥΣΤΕΡΗΣΗΣ ΕΔΑΦΟΥΣ",
+      "departureDelay": "ΚΑΘΥΣΤΕΡΗΣΕΙΣ ΑΝΑΧΩΡΗΣΗΣ",
+      "arrivalDelay": "ΚΑΘΥΣΤΕΡΗΣΕΙΣ ΑΦΙΞΗΣ",
+      "delaysReported": "ΑΝΑΦΕΡΘΗΚΑΝ ΚΑΘΥΣΤΕΡΗΣΕΙΣ",
+      "delays": "ΚΑΘΥΣΤΕΡΗΣΕΙΣ",
+      "avgDelay": "ΜΕΣ. ΚΑΘΥΣΤΕΡΗΣΗ",
+      "cancelled": "ΑΚΥΡΩΘΗΚΑΝ",
+      "sources": {
+        "faa": "FAA ASWS",
+        "eurocontrol": "Eurocontrol",
+        "computed": "Υπολογισμένο"
+      },
+      "regions": {
+        "americas": "Αμερική",
+        "europe": "Ευρώπη",
+        "apac": "Ασία-Ειρηνικός",
+        "mena": "Μέση Ανατολή",
+        "africa": "Αφρική"
+      }
+    },
+    "apt": {
+      "description": "Ομάδα Προηγμένης Επίμονης Απειλής με δυνατότητες κρατικού επιπέδου. Γνωστή για εξελιγμένες κυβερνοεπιχειρήσεις που στοχεύουν κρίσιμες υποδομές, κυβερνητικούς και αμυντικούς τομείς."
+    },
+    "cyberThreat": {
+      "title": "ΚΥΒΕΡΝΟΑΠΕΙΛΗ"
+    },
+    "nuclear": {
+      "types": {
+        "plant": "ΣΤΑΘΜΟΣ ΠΑΡΑΓΩΓΗΣ",
+        "enrichment": "ΕΜΠΛΟΥΤΙΣΜΟΣ",
+        "weapons": "ΣΥΓΚΡΟΤΗΜΑ ΟΠΛΩΝ",
+        "research": "ΕΡΕΥΝΑ"
+      },
+      "description": "Πυρηνική εγκατάσταση υπό παρακολούθηση. Στρατηγική σημασία για την περιφερειακή ασφάλεια και τις ανησυχίες μη διάδοσης."
+    },
+    "economic": {
+      "types": {
+        "exchange": "ΧΡΗΜΑΤΙΣΤΗΡΙΟ",
+        "centralBank": "ΚΕΝΤΡΙΚΗ ΤΡΑΠΕΖΑ",
+        "financialHub": "ΧΡΗΜΑΤΟΠΙΣΤΩΤΙΚΟ ΚΕΝΤΡΟ"
+      },
+      "closed": "ΚΛΕΙΣΤΟ"
+    },
+    "irradiator": {
+      "subtitle": "Βιομηχανική Εγκατάσταση Ακτινοβολητή Γάμμα",
+      "description": "Βιομηχανική εγκατάσταση ακτινοβόλησης που χρησιμοποιεί πηγές Κοβαλτίου-60 ή Καισίου-137 για αποστείρωση ιατρικών συσκευών, συντήρηση τροφίμων ή επεξεργασία υλικών. Πηγή: Βάση Δεδομένων IAEA DIIF."
+    },
+    "pipeline": {
+      "title": "ΑΓΩΓΟΣ",
+      "types": {
+        "oil": "ΑΓΩΓΟΣ ΠΕΤΡΕΛΑΙΟΥ",
+        "gas": "ΑΓΩΓΟΣ ΑΕΡΙΟΥ",
+        "products": "ΑΓΩΓΟΣ ΠΡΟΪΟΝΤΩΝ"
+      },
+      "status": {
+        "operating": "ΣΕ ΛΕΙΤΟΥΡΓΙΑ",
+        "construction": "ΥΠΟ ΚΑΤΑΣΚΕΥΗ"
+      },
+      "description": "Σημαντική υποδομή αγωγού {{type}}. {{status}}"
+    },
+    "pipelineStatusDesc": {
+      "operating": "Σε λειτουργία και μεταφορά πόρων αυτή τη στιγμή.",
+      "construction": "Υπό κατασκευή αυτή τη στιγμή."
+    },
+    "cable": {
+      "fault": "ΒΛΑΒΗ",
+      "degraded": "ΥΠΟΒΑΘΜΙΣΜΕΝΟ",
+      "active": "ΕΝΕΡΓΟ",
+      "major": "ΣΗΜΑΝΤΙΚΟ",
+      "cable": "ΚΑΛΩΔΙΟ",
+      "subtitle": "Υποθαλάσσιο Καλώδιο Οπτικών Ινών",
+      "type": "ΥΠΟΘΑΛΑΣΣΙΟ ΚΑΛΩΔΙΟ",
+      "advisory": "ΕΙΔΟΠΟΙΗΣΗ ΒΛΑΒΗΣ",
+      "repairDeployment": "ΑΝΑΠΤΥΞΗ ΕΠΙΣΚΕΥΗΣ",
+      "repairStatus": {
+        "onStation": "Σε Θέση",
+        "enRoute": "Σε Πορεία"
+      },
+      "health": {
+        "evidence": "ΣΤΟΙΧΕΙΑ ΥΓΕΙΑΣ"
+      },
+      "description": "Υποθαλάσσιο τηλεπικοινωνιακό καλώδιο που μεταφέρει διεθνή κίνηση διαδικτύου. Αυτά τα καλώδια οπτικών ινών αποτελούν τη ραχοκοκαλιά της παγκόσμιας συνδεσιμότητας διαδικτύου, μεταδίδοντας πάνω από 95% των διηπειρωτικών δεδομένων."
+    },
+    "repairShip": {
+      "note": "Η παρακολούθηση πλοίου επισκευής δείχνει ενεργή ανάπτυξη προς το σημείο βλάβης.",
+      "badge": "ΠΛΟΙΟ ΕΠΙΣΚΕΥΗΣ",
+      "description": "Η παρακολούθηση πλοίου επισκευής δείχνει ενεργή ανάπτυξη για υποστήριξη αποκατάστασης υποθαλάσσιου καλωδίου.",
+      "status": {
+        "onStation": "ΣΕ ΘΕΣΗ",
+        "enRoute": "ΣΕ ΠΟΡΕΙΑ"
+      }
+    },
+    "strategic": "ΣΤΡΑΤΗΓΙΚΟ",
+    "verified": "ΕΠΑΛΗΘΕΥΜΕΝΟ",
+    "sampledList": "Εμφάνιση δειγματοληπτικής λίστας {{count}} συμβάντων.",
+    "reason": "ΑΙΤΙΑ",
+    "threat": "ΑΠΕΙΛΗ",
+    "aka": "Επίσης γνωστός ως",
+    "sponsor": "ΧΟΡΗΓΟΣ",
+    "origin": "ΠΡΟΕΛΕΥΣΗ",
+    "country": "ΧΩΡΑ",
+    "malware": "MALWARE",
+    "lastSeen": "ΤΕΛΕΥΤΑΙΑ ΕΜΦΑΝΙΣΗ",
+    "open": "ΑΝΟΙΧΤΟ",
+    "tradingHours": "ΩΡΕΣ ΣΥΝΑΛΛΑΓΩΝ",
+    "gamma": "GAMMA",
+    "city": "ΠΟΛΗ",
+    "length": "ΜΗΚΟΣ",
+    "operator": "ΔΙΑΧΕΙΡΙΣΤΗΣ",
+    "countries": "ΧΩΡΕΣ",
+    "waypoints": "ΣΗΜΕΙΑ ΔΙΑΔΡΟΜΗΣ",
+    "repairEta": "ΕΚΤΙΜΩΜΕΝΗ ΑΦΙΞΗ ΕΠΙΣΚΕΥΗΣ",
+    "timeUnits": {
+      "m": "λ",
+      "h": "ω",
+      "d": "η"
+    },
+    "hotspot": {
+      "escalation": "ΑΞΙΟΛΟΓΗΣΗ ΚΛΙΜΑΚΩΣΗΣ",
+      "baseline": "Βάση",
+      "score": "Βαθμολογία",
+      "trend": "Τάση",
+      "components": {
+        "news": "Ειδήσεις",
+        "cii": "CII",
+        "geo": "Γεω",
+        "military": "Στρατιωτικά"
+      },
+      "levels": {
+        "stable": "ΣΤΑΘΕΡΟ",
+        "watch": "ΕΠΙΤΗΡΗΣΗ",
+        "elevated": "ΑΥΞΗΜΕΝΟ",
+        "high": "ΥΨΗΛΟ",
+        "critical": "ΚΡΙΣΙΜΟ"
+      }
+    },
+    "buttons": {
+      "track": "Παρακολούθηση Ζητήματος",
+      "details": "Προβολή Λεπτομερειών"
+    },
+    "historicalContext": "ΙΣΤΟΡΙΚΟ ΠΛΑΙΣΙΟ",
+    "lastMajorEvent": "Τελευταίο Σημαντικό Γεγονός",
+    "precedents": "Προηγούμενα",
+    "cyclicalPattern": "Κυκλικό Μοτίβο",
+    "whyItMatters": "ΓΙΑΤΙ ΕΧΕΙ ΣΗΜΑΣΙΑ",
+    "keyEntities": "ΒΑΣΙΚΕΣ ΟΝΤΟΤΗΤΕΣ",
+    "relatedHeadlines": "ΣΧΕΤΙΚΟΙ ΤΙΤΛΟΙ",
+    "liveIntel": "Ζωντανές Πληροφορίες",
+    "loadingNews": "Φόρτωση παγκόσμιων ειδήσεων...",
+    "noCoverage": "Δεν υπάρχει πρόσφατη παγκόσμια κάλυψη",
+    "time": "Χρόνος",
+    "area": "Περιοχή",
+    "expires": "Λήγει",
+    "aisGapSpike": "ΚΟΡΥΦΩΣΗ ΚΕΝΟΥ AIS",
+    "chokepointCongestion": "ΣΥΜΦΟΡΗΣΗ ΣΗΜΕΙΟΥ ΕΛΕΓΧΟΥ",
+    "darkening": "ΣΚΟΤΕΙΝΑΣΜΑ",
+    "density": "ΠΥΚΝΟΤΗΤΑ",
+    "darkShips": "ΣΚΟΤΕΙΝΑ ΠΛΟΙΑ",
+    "vesselCount": "ΑΡΙΘΜΟΣ ΠΛΟΙΩΝ",
+    "window": "ΠΑΡΑΘΥΡΟ",
+    "region": "ΠΕΡΙΟΧΗ",
+    "fatalities": "ΘΑΝΑΤΟΙ",
+    "actors": "ΔΡΩΝΤΕΣ",
+    "near": "Κοντά σε",
+    "moreEvents": "περισσότερα συμβάντα",
+    "monitoring": "Παρακολούθηση",
+    "viewUSGS": "Προβολή στο USGS",
+    "expired": "Έληξε",
+    "timeAgo": {
+      "s": "{{count}}δ πριν",
+      "m": "{{count}}λ πριν",
+      "h": "{{count}}ω πριν",
+      "d": "{{count}}μ πριν"
+    },
+    "cableAdvisory": {
+      "reported": "ΑΝΑΦΕΡΘΗΚΕ",
+      "impact": "ΕΠΙΠΤΩΣΗ",
+      "eta": "ETA"
+    },
+    "outage": {
+      "levels": {
+        "total": "ΟΛΙΚΟ BLACKOUT",
+        "major": "ΜΕΓΑΛΗ ΔΙΑΚΟΠΗ",
+        "partial": "ΜΕΡΙΚΗ ΔΙΑΤΑΡΑΧΗ",
+        "disruption": "ΔΙΑΤΑΡΑΧΗ"
+      },
+      "reported": "ΑΝΑΦΕΡΘΗΚΕ",
+      "categories": "ΚΑΤΗΓΟΡΙΕΣ",
+      "readReport": "Διαβάστε την πλήρη αναφορά"
+    },
+    "datacenter": {
+      "status": {
+        "existing": "ΛΕΙΤΟΥΡΓΙΚΟ",
+        "planned": "ΠΡΟΓΡΑΜΜΑΤΙΣΜΕΝΟ",
+        "decommissioned": "ΠΑΡΟΠΛΙΣΜΕΝΟ",
+        "unknown": "ΑΓΝΩΣΤΟ"
+      },
+      "gpuChipCount": "ΑΡΙΘΜΟΣ GPU/CHIP",
+      "chipType": "ΤΥΠΟΣ CHIP",
+      "power": "ΙΣΧΥΣ",
+      "sector": "ΤΟΜΕΑΣ",
+      "attribution": "Δεδομένα: Epoch AI GPU Clusters",
+      "chips": "chips",
+      "cluster": {
+        "title": "{{count}} Κέντρα Δεδομένων",
+        "totalChips": "ΣΥΝΟΛΟ CHIPS",
+        "totalPower": "ΣΥΝΟΛΙΚΗ ΙΣΧΥΣ",
+        "operational": "ΛΕΙΤΟΥΡΓΙΚΑ",
+        "planned": "ΠΡΟΓΡΑΜΜΑΤΙΣΜΕΝΑ",
+        "moreDataCenters": "+ {{count}} ακόμη κέντρα δεδομένων",
+        "sampledSites": "Εμφάνιση δειγματοληπτικής λίστας {{count}} τοποθεσιών."
+      }
+    },
+    "startupHub": {
+      "tiers": {
+        "mega": "MEGA HUB",
+        "major": "MAJOR HUB",
+        "emerging": "ΑΝΑΔΥΟΜΕΝΟ",
+        "hub": "HUB"
+      },
+      "unicorns": "UNICORNS"
+    },
+    "cloudRegion": {
+      "provider": "ΠΑΡΟΧΟΣ",
+      "availabilityZones": "ΖΩΝΕΣ ΔΙΑΘΕΣΙΜΟΤΗΤΑΣ"
+    },
+    "techHQ": {
+      "types": {
+        "faang": "BIG TECH",
+        "unicorn": "UNICORN",
+        "public": "ΕΙΣΗΓΜΕΝΗ",
+        "tech": "TECH"
+      },
+      "marketCap": "ΚΕΦΑΛΑΙΟΠΟΙΗΣΗ",
+      "employees": "ΕΡΓΑΖΟΜΕΝΟΙ"
+    },
+    "accelerator": {
+      "types": {
+        "accelerator": "ACCELERATOR",
+        "incubator": "ΘΕΡΜΟΚΟΙΤΙΔΑ",
+        "studio": "STARTUP STUDIO"
+      },
+      "founded": "ΙΔΡΥΘΗΚΕ",
+      "notableAlumni": "ΑΞΙΟΣΗΜΕΙΩΤΟΙ ΑΠΟΦΟΙΤΟΙ"
+    },
+    "techEvent": {
+      "days": {
+        "today": "ΣΗΜΕΡΑ",
+        "tomorrow": "ΑΥΡΙΟ",
+        "inDays": "ΣΕ {{count}} ΗΜΕΡΕΣ"
+      },
+      "date": "ΗΜΕΡΟΜΗΝΙΑ",
+      "moreInformation": "Περισσότερες Πληροφορίες"
+    },
+    "techHQCluster": {
+      "companiesCount": "{{count}} ΕΤΑΙΡΕΙΕΣ",
+      "bigTechCount": "{{count}} Big Tech",
+      "unicornsCount": "{{count}} Unicorns",
+      "publicCount": "{{count}} Εισηγμένες",
+      "sampled": "Εμφάνιση δειγματοληπτικής λίστας {{count}} εταιρειών."
+    },
+    "techEventCluster": {
+      "eventsCount": "{{count}} ΕΚΔΗΛΩΣΕΙΣ",
+      "upcomingWithin2Weeks": "{{count}} επερχόμενες εντός 2 εβδομάδων",
+      "sampled": "Εμφάνιση δειγματοληπτικής λίστας {{count}} εκδηλώσεων."
+    },
+    "militaryFlight": {
+      "types": {
+        "fighter": "Μαχητικό",
+        "bomber": "Βομβαρδιστικό",
+        "transport": "Μεταφορικό",
+        "tanker": "Εναέριος Τάνκερ",
+        "awacs": "AWACS/AEW",
+        "reconnaissance": "Αναγνωριστικό",
+        "helicopter": "Ελικόπτερο",
+        "drone": "UAV/Drone",
+        "patrol": "Περιπολικό",
+        "specialOps": "Ειδικές Επιχειρήσεις",
+        "vip": "VIP Μεταφορά"
+      },
+      "altitude": "ΥΨΟΜΕΤΡΟ",
+      "ground": "Έδαφος",
+      "speed": "ΤΑΧΥΤΗΤΑ",
+      "heading": "ΠΟΡΕΙΑ",
+      "hexCode": "HEX CODE",
+      "squawk": "SQUAWK",
+      "attribution": "Πηγή: OpenSky Network"
+    },
+    "militaryVessel": {
+      "aisDark": "AIS ΣΚΟΤΕΙΝΟ",
+      "vessel": "Πλοίο",
+      "speed": "ΤΑΧΥΤΗΤΑ",
+      "heading": "ΠΟΡΕΙΑ",
+      "mmsi": "MMSI",
+      "hull": "ΑΡΙΘΜΟΣ ΣΚΑΦΟΥΣ",
+      "region": "ΠΕΡΙΟΧΗ",
+      "strikeGroup": "ΟΜΑΔΑ ΚΡΟΥΣΗΣ",
+      "deploymentStatus": "ΚΑΤΑΣΤΑΣΗ",
+      "usniIntel": "USNI Intel",
+      "usniSource": "Πηγή: USNI News Fleet Tracker",
+      "approximatePosition": "Κατά προσέγγιση θέση — βασίζεται στην εβδομαδιαία αναφορά USNI, όχι σε AIS πραγματικού χρόνου.",
+      "darkDescription": "⚠ Το πλοίο έχει σκοτεινιάσει - χάθηκε σήμα AIS. Μπορεί να υποδεικνύει ευαίσθητες επιχειρήσεις."
+    },
+    "militaryCluster": {
+      "flightActivity": {
+        "exercise": "Στρατιωτική Άσκηση",
+        "patrol": "Δραστηριότητα Περιπολίας",
+        "transport": "Επιχειρήσεις Μεταφοράς",
+        "unknown": "Στρατιωτική Δραστηριότητα"
+      },
+      "moreAircraft": "+{{count}} ακόμη αεροσκάφη",
+      "aircraftCount": "{{count}} ΑΕΡΟΣΚΑΦΗ",
+      "aircraft": "ΑΕΡΟΣΚΑΦΗ",
+      "activity": "ΔΡΑΣΤΗΡΙΟΤΗΤΑ",
+      "primary": "ΚΥΡΙΑ",
+      "trackedAircraft": "ΠΑΡΑΚΟΛΟΥΘΟΥΜΕΝΑ ΑΕΡΟΣΚΑΦΗ",
+      "vesselActivity": {
+        "exercise": "Ναυτική Άσκηση",
+        "deployment": "Ναυτική Ανάπτυξη",
+        "patrol": "Δραστηριότητα Περιπολίας",
+        "transit": "Διέλευση Στόλου",
+        "unknown": "Ναυτική Δραστηριότητα"
+      },
+      "moreVessels": "+{{count}} ακόμη πλοία",
+      "vesselsCount": "{{count}} ΠΛΟΙΑ",
+      "vessels": "ΠΛΟΙΑ",
+      "trackedVessels": "ΠΑΡΑΚΟΛΟΥΘΟΥΜΕΝΑ ΠΛΟΙΑ"
+    },
+    "naturalEvent": {
+      "closed": "ΚΛΕΙΣΤΟ",
+      "active": "ΕΝΕΡΓΟ",
+      "reported": "ΑΝΑΦΕΡΘΗΚΕ",
+      "viewOnSource": "Προβολή στο {{source}}",
+      "attribution": "Δεδομένα: NASA EONET"
+    },
+    "port": {
+      "types": {
+        "container": "ΕΜΠΟΡΕΥΜΑΤΟΚΙΒΩΤΙΩΝ",
+        "oil": "ΤΕΡΜΑΤΙΚΟΣ ΣΤΑΘΜΟΣ ΠΕΤΡΕΛΑΙΟΥ",
+        "lng": "ΤΕΡΜΑΤΙΚΟΣ ΣΤΑΘΜΟΣ LNG",
+        "naval": "ΝΑΥΤΙΚΟ ΛΙΜΑΝΙ",
+        "mixed": "ΜΙΚΤΟ",
+        "bulk": "ΧΥΔΗΝ"
+      },
+      "worldRank": "ΠΑΓΚΟΣΜΙΑ ΚΑΤΑΤΑΞΗ"
+    },
+    "spaceport": {
+      "status": {
+        "active": "ΕΝΕΡΓΟ",
+        "construction": "ΚΑΤΑΣΚΕΥΗ",
+        "inactive": "ΑΝΕΝΕΡΓΟ"
+      },
+      "launchActivity": "ΔΡΑΣΤΗΡΙΟΤΗΤΑ ΕΚΤΟΞΕΥΣΕΩΝ",
+      "description": "Στρατηγική εγκατάσταση διαστημικών εκτοξεύσεων. Ο ρυθμός εκτοξεύσεων και οι δυνατότητες πρόσβασης σε τροχιά αποτελούν βασικούς γεωπολιτικούς δείκτες."
+    },
+    "mineral": {
+      "status": {
+        "producing": "ΠΑΡΑΓΩΓΗ",
+        "development": "ΑΝΑΠΤΥΞΗ",
+        "exploration": "ΕΞΕΡΕΥΝΗΣΗ"
+      },
+      "projectSubtitle": "ΕΡΓΟ {{mineral}}"
+    },
+    "stockExchange": {
+      "marketCap": "ΚΕΦΑΛΑΙΟΠΟΙΗΣΗ"
+    },
+    "financialCenter": {
+      "gfciRank": "ΚΑΤΑΤΑΞΗ GFCI",
+      "specialties": "ΕΙΔΙΚΟΤΗΤΕΣ"
+    },
+    "centralBank": {
+      "currency": "ΝΟΜΙΣΜΑ"
+    },
+    "commodityHub": {
+      "commodities": "ΕΜΠΟΡΕΥΜΑΤΑ"
+    },
+    "hotspotSubtexts": {
+      "conflict_zone": "Ζώνη Σύγκρουσης",
+      "dprk_watch": "Παρακολούθηση DPRK",
+      "egypt_gis": "Αίγυπτος/GIS",
+      "energy_space": "Ενέργεια/Διάστημα",
+      "financial_hub": "Χρηματοπιστωτικό Κέντρο",
+      "gchq_mi6": "GCHQ/MI6",
+      "greenland_intel": "Πληροφορίες Γροιλανδίας",
+      "haiti_crisis": "Κρίση Αϊτής",
+      "irgc_activity": "Δραστηριότητα IRGC",
+      "insurgency_coups": "Εξεγέρσεις/Πραξικοπήματα",
+      "iraq_pmf": "Ιράκ/PMF",
+      "kremlin_activity": "Δραστηριότητα Κρεμλίνου",
+      "lebanon_hezbollah": "Λίβανος/Χεζμπολάχ",
+      "mossad_idf": "Mossad/IDF",
+      "nato_hq": "Αρχηγείο NATO",
+      "pla_mss_activity": "Δραστηριότητα PLA/MSS",
+      "pentagon_pizza_index": "Pentagon Pizza Index",
+      "piracy_conflict": "Πειρατεία/Σύγκρουση",
+      "qatar_al_udeid": "Κατάρ/Al Udeid",
+      "saudi_gip_mbs": "Σαουδική GIP/MBS",
+      "strait_watch": "Παρακολούθηση Στενών",
+      "syria_crisis": "Κρίση Συρίας",
+      "tech_ai_hub": "Tech/AI Hub",
+      "turkey_mit": "Τουρκία/MIT",
+      "uae_ecsr": "ΗΑΕ/ECSR",
+      "venezuela_crisis": "Κρίση Βενεζουέλας",
+      "yemen_houthis": "Υεμένη/Χούθι"
+    }
+  },
+  "signals": {
+    "context": {
+      "prediction_leads_news": {
+        "whyItMatters": "Οι αγορές προβλέψεων συχνά αποτιμούν πληροφορίες πριν γίνουν είδηση — οι traders μπορεί να έχουν πρώιμη πρόσβαση σε εξελίξεις.",
+        "actionableInsight": "Παρακολουθήστε για έκτακτες ειδήσεις τις επόμενες 1-6 ώρες που θα μπορούσαν να εξηγήσουν την κίνηση αγοράς.",
+        "confidenceNote": "Υψηλότερη βεβαιότητα αν πολλαπλές αγορές προβλέψεων κινούνται στην ίδια κατεύθυνση."
+      },
+      "news_leads_markets": {
+        "whyItMatters": "Οι ειδήσεις σπάνε ταχύτερα από ό,τι αντιδρούν οι αγορές — πιθανή ευκαιρία λανθασμένης τιμολόγησης.",
+        "actionableInsight": "Παρακολουθήστε για αντίδραση αγοράς καθώς αλγόριθμοι και traders αφομοιώνουν τις ειδήσεις.",
+        "confidenceNote": "Ισχυρότερο σήμα αν οι ειδήσεις προέρχονται από ειδησεογραφικά πρακτορεία Tier 1."
+      },
+      "silent_divergence": {
+        "whyItMatters": "Η αγορά κινείται σημαντικά χωρίς αναγνωρίσιμο ειδησεογραφικό καταλύτη — πιθανή εσωτερική πληροφόρηση, αλγοριθμικές συναλλαγές ή αδημοσίευτη εξέλιξη.",
+        "actionableInsight": "Ερευνήστε εναλλακτικές πηγές δεδομένων· ειδήσεις μπορεί να εμφανιστούν αργότερα εξηγώντας την κίνηση.",
+        "confidenceNote": "Χαμηλότερη βεβαιότητα καθώς η αιτία είναι άγνωστη — αντιμετωπίστε ως πρώιμη προειδοποίηση, όχι επιβεβαιωμένη πληροφορία."
+      },
+      "velocity_spike": {
+        "whyItMatters": "Μια ιστορία επιταχύνεται σε πολλαπλές ειδησεογραφικές πηγές — υποδεικνύει αυξανόμενη σημασία και δυνατότητα επίπτωσης στην αγορά/πολιτική.",
+        "actionableInsight": "Αυτό το θέμα απαιτεί άμεση προσοχή· αναμένετε επίσημες δηλώσεις ή αντιδράσεις αγοράς.",
+        "confidenceNote": "Υψηλότερη βεβαιότητα με περισσότερες πηγές· ελέγξτε αν πηγές Tier 1 είναι μεταξύ αυτών."
+      },
+      "keyword_spike": {
+        "whyItMatters": "Ένας όρος εμφανίζεται σε σημαντικά υψηλότερη συχνότητα από τη βάση του σε πολλαπλές πηγές, υποδεικνύοντας μια εξελισσόμενη ιστορία.",
+        "actionableInsight": "Εξετάστε σχετικούς τίτλους και περίληψη AI, στη συνέχεια συσχετίστε με αστάθεια χωρών και κινήσεις αγοράς.",
+        "confidenceNote": "Η βεβαιότητα αυξάνεται με ισχυρότερο πολλαπλασιαστή βάσης και ευρύτερη ποικιλία πηγών."
+      },
+      "convergence": {
+        "whyItMatters": "Πολλαπλοί ανεξάρτητοι τύποι πηγών επιβεβαιώνουν το ίδιο γεγονός — η διασταύρωση αυξάνει την πιθανότητα ακρίβειας.",
+        "actionableInsight": "Αντιμετωπίστε αυτό ως πληροφορία υψηλής βεβαιότητας· ο τριγωνισμός μειώνει τον κίνδυνο ψευδούς θετικού.",
+        "confidenceNote": "Πολύ υψηλή βεβαιότητα όταν ευθυγραμμίζονται πηγές ειδησεογραφικών πρακτορείων + κυβέρνησης + πληροφοριών."
+      },
+      "triangulation": {
+        "whyItMatters": "Το \"τρίγωνο αυθεντίας\" (ειδησεογραφικά πρακτορεία, κυβερνητικές πηγές, ειδικοί πληροφοριών) ευθυγραμμίζονται — αυτό είναι το χρυσό πρότυπο για επιβεβαίωση εκτάκτων ειδήσεων.",
+        "actionableInsight": "Αυτή είναι αξιοποιήσιμη πληροφορία· αναμένετε αντιδράσεις αγοράς/πολιτικής άμεσα.",
+        "confidenceNote": "Υψηλότερο σήμα βεβαιότητας στο σύστημα — πολλαπλές έγκυρες πηγές συμφωνούν."
+      },
+      "flow_drop": {
+        "whyItMatters": "Ανιχνεύθηκε διακοπή ροής φυσικών εμπορευμάτων — οι περιορισμοί προσφοράς συχνά προηγούνται αυξήσεων τιμών.",
+        "actionableInsight": "Παρακολουθήστε τιμές ενεργειακών εμπορευμάτων· αξιολογήστε έκθεση εφοδιαστικής αλυσίδας.",
+        "confidenceNote": "Η βεβαιότητα εξαρτάται από τη διάρκεια διακοπής και τη διαθεσιμότητα εναλλακτικής προσφοράς."
+      },
+      "flow_price_divergence": {
+        "whyItMatters": "Ειδήσεις διακοπής προσφοράς δεν αντικατοπτρίζονται ακόμα στις τιμές εμπορευμάτων — πιθανό πλεονέκτημα πληροφόρησης.",
+        "actionableInsight": "Είτε οι αγορές αντιδρούν αργά, είτε η διακοπή είναι λιγότερο σημαντική απ' ό,τι αναφέρεται.",
+        "confidenceNote": "Μέτρια βεβαιότητα — οι αγορές μπορεί να έχουν καλύτερες πληροφορίες από τις ειδήσεις."
+      },
+      "geo_convergence": {
+        "whyItMatters": "Πολλαπλά ειδησεογραφικά γεγονότα συγκεντρώνονται γύρω από την ίδια γεωγραφική τοποθεσία — πιθανή κλιμάκωση ή συντονισμένη δραστηριότητα.",
+        "actionableInsight": "Αυξήστε την προτεραιότητα παρακολούθησης για αυτή την περιοχή· συσχετίστε με δορυφορικά/AIS δεδομένα αν είναι διαθέσιμα.",
+        "confidenceNote": "Υψηλότερη βεβαιότητα αν τα γεγονότα εκτείνονται σε πολλαπλούς τύπους πηγών και χρονικές περιόδους."
+      },
+      "explained_market_move": {
+        "whyItMatters": "Η κίνηση αγοράς έχει σαφή ειδησεογραφικό καταλύτη — κανένα μυστήριο, η κίνηση τιμών αντικατοπτρίζει γνωστές πληροφορίες.",
+        "actionableInsight": "Κατανοήστε την αφήγηση πίσω από την κίνηση· αξιολογήστε αν η αντίδραση είναι αναλογική.",
+        "confidenceNote": "Υψηλή βεβαιότητα — ειδήσεις και κίνηση τιμών συσχετίζονται."
+      },
+      "hotspot_escalation": {
+        "whyItMatters": "Γεωπολιτική εστία δείχνει σημαντική κλιμάκωση βάσει ειδησεογραφικής δραστηριότητας, αστάθειας χώρας, γεωγραφικής σύγκλισης και στρατιωτικής παρουσίας.",
+        "actionableInsight": "Αυξήστε την προτεραιότητα παρακολούθησης· αξιολογήστε μεταγενέστερες επιπτώσεις σε υποδομές, αγορές και περιφερειακή σταθερότητα.",
+        "confidenceNote": "Βεβαιότητα σταθμισμένη από πολλαπλές πηγές δεδομένων — ειδήσεις (35%), αστάθεια χώρας (25%), γεωγραφική σύγκλιση (25%), στρατιωτική δραστηριότητα (15%)."
+      },
+      "sector_cascade": {
+        "whyItMatters": "Η κίνηση αγοράς εξαπλώνεται αλυσιδωτά σε σχετικούς τομείς — υποδεικνύει συστημική αντίδραση σε καταλυτικό γεγονός.",
+        "actionableInsight": "Αναγνωρίστε τον κύριο καταλύτη· αξιολογήστε έκθεση σε συσχετισμένα στοιχεία.",
+        "confidenceNote": "Υψηλότερη βεβαιότητα όταν πολλαπλοί τομείς κινούνται με παρόμοια ταχύτητα και κατεύθυνση."
+      },
+      "military_surge": {
+        "whyItMatters": "Στρατιωτική μεταφορική δραστηριότητα σημαντικά πάνω από τη βάση — υποδεικνύει πιθανή ανάπτυξη, ανθρωπιστική επιχείρηση ή προβολή ισχύος.",
+        "actionableInsight": "Συσχετίστε με περιφερειακές ειδήσεις· αξιολογήστε δραστηριότητα κοντινών βάσεων και ναυτικές κινήσεις.",
+        "confidenceNote": "Υψηλότερη βεβαιότητα με παρατεταμένη δραστηριότητα πολλών ωρών και ποικιλία τύπων αεροσκαφών."
+      },
+      "fallback": {
+        "whyItMatters": "Ανιχνεύθηκε σήμα.",
+        "actionableInsight": "Παρακολουθήστε για εξελίξεις.",
+        "confidenceNote": "Τυπική βεβαιότητα."
+      }
+    }
+  },
+  "alerts": {
+    "instabilityRising": "Αστάθεια {{country}} Αυξάνεται",
+    "instabilityFalling": "Αστάθεια {{country}} Μειώνεται",
+    "indexRose": "Ο δείκτης αστάθειας αυξήθηκε από {{from}} σε {{to}} ({{change}}). Παράγοντας: {{driver}}",
+    "indexFell": "Ο δείκτης αστάθειας μειώθηκε από {{from}} σε {{to}} ({{change}}). Παράγοντας: {{driver}}",
+    "geoAlert": "Γεωγραφικός Συναγερμός: {{location}}",
+    "cascadeAlert": "Συναγερμός Αλυσιδωτής Αντίδρασης Υποδομών",
+    "infraAlert": "Συναγερμός Υποδομών: {{name}}",
+    "countriesAffected": "{{count}} χώρες επηρεάζονται, μεγαλύτερη επίπτωση: {{impact}}",
+    "alert": "Συναγερμός: {{location}}",
+    "multipleRegions": "Πολλαπλές Περιοχές",
+    "trending": "\"{{term}}\" Τάση - {{count}} αναφορές σε {{hours}}ω",
+    "eventsDetected": "{{count}} συμβάντα ανιχνεύθηκαν στην περιοχή ({{lat}}°, {{lon}}°)"
+  },
+  "intel": {
+    "topics": {
+      "military": {
+        "name": "Στρατιωτική Δραστηριότητα",
+        "description": "Στρατιωτικές ασκήσεις, αναπτύξεις και επιχειρήσεις"
+      },
+      "cyber": {
+        "name": "Κυβερνοαπειλές",
+        "description": "Κυβερνοεπιθέσεις, ransomware και ψηφιακές απειλές"
+      },
+      "nuclear": {
+        "name": "Πυρηνικά",
+        "description": "Πυρηνικά προγράμματα, επιθεωρήσεις IAEA, διάδοση"
+      },
+      "sanctions": {
+        "name": "Κυρώσεις",
+        "description": "Οικονομικές κυρώσεις και εμπορικοί περιορισμοί"
+      },
+      "intelligence": {
+        "name": "Πληροφορίες",
+        "description": "Κατασκοπεία, επιχειρήσεις πληροφοριών, επιτήρηση"
+      },
+      "maritime": {
+        "name": "Θαλάσσια Ασφάλεια",
+        "description": "Ναυτικές επιχειρήσεις, θαλάσσια σημεία ελέγχου, θαλάσσιες οδοί"
+      }
+    }
+  },
+  "common": {
+    "loading": "Φόρτωση...",
+    "error": "Σφάλμα",
+    "noData": "Δεν υπάρχουν διαθέσιμα δεδομένα",
+    "noDataAvailable": "Δεν υπάρχουν διαθέσιμα δεδομένα",
+    "updated": "Ενημερώθηκε μόλις τώρα",
+    "ago": "{{time}} πριν",
+    "retrying": "Επανάληψη...",
+    "failedToLoad": "Αποτυχία φόρτωσης δεδομένων",
+    "noDataShort": "Χωρίς δεδομένα",
+    "upstreamUnavailable": "Το upstream API δεν είναι διαθέσιμο — θα γίνει αυτόματη επανάληψη",
+    "loadingUcdpEvents": "Φόρτωση συμβάντων UCDP",
+    "loadingStablecoins": "Φόρτωση stablecoins...",
+    "scanningThermalData": "Σάρωση θερμικών δεδομένων",
+    "calculatingExposure": "Υπολογισμός έκθεσης",
+    "computingSignals": "Υπολογισμός σημάτων...",
+    "loadingEtfData": "Φόρτωση δεδομένων ETF...",
+    "loadingDisplacement": "Φόρτωση δεδομένων εκτοπισμού",
+    "loadingClimateData": "Φόρτωση κλιματικών δεδομένων",
+    "failedTechReadiness": "Αποτυχία φόρτωσης δεδομένων τεχνολογικής ετοιμότητας",
+    "failedRiskOverview": "Αποτυχία υπολογισμού επισκόπησης κινδύνου",
+    "failedPredictions": "Αποτυχία φόρτωσης προβλέψεων",
+    "failedCII": "Αποτυχία υπολογισμού CII",
+    "failedDependencyGraph": "Αποτυχία δημιουργίας γραφήματος εξαρτήσεων",
+    "failedIntelFeed": "Αποτυχία φόρτωσης ροής πληροφοριών",
+    "failedMarketData": "Αποτυχία φόρτωσης δεδομένων αγοράς",
+    "failedSectorData": "Αποτυχία φόρτωσης δεδομένων τομέα",
+    "failedCommodities": "Αποτυχία φόρτωσης εμπορευμάτων",
+    "failedCryptoData": "Αποτυχία φόρτωσης δεδομένων crypto",
+    "failedClusterNews": "Αποτυχία ομαδοποίησης ειδήσεων",
+    "noNewsAvailable": "Δεν υπάρχουν διαθέσιμες ειδήσεις",
+    "noActiveTechHubs": "Δεν υπάρχουν ενεργά tech hubs",
+    "noActiveGeoHubs": "Δεν υπάρχουν ενεργά γεωπολιτικά κέντρα",
+    "allSourcesDisabled": "Όλες οι πηγές απενεργοποιημένες",
+    "allIntelSourcesDisabled": "Όλες οι πηγές πληροφοριών απενεργοποιημένες",
+    "noEventsInCategory": "Δεν υπάρχουν συμβάντα σε αυτή την κατηγορία",
+    "exportCsv": "Εξαγωγή CSV",
+    "exportJson": "Εξαγωγή JSON",
+    "exportData": "Εξαγωγή Δεδομένων",
+    "selectAll": "Επιλογή Όλων",
+    "selectNone": "Αποεπιλογή Όλων",
+    "unrest": "Αναταραχή",
+    "conflict": "Σύγκρουση",
+    "security": "Ασφάλεια",
+    "information": "Πληροφορίες",
+    "shareStory": "Κοινοποίηση ιστορίας",
+    "exportImage": "Εξαγωγή Εικόνας",
+    "new": "ΝΕΟ",
+    "live": "ΖΩΝΤΑΝΑ",
+    "cached": "ΑΠΟΘΗΚΕΥΜΕΝΟ",
+    "unavailable": "ΜΗ ΔΙΑΘΕΣΙΜΟ",
+    "close": "Κλείσιμο",
+    "currentVariant": "(τρέχον)",
+    "retry": "Επανάληψη",
+    "refresh": "Ανανέωση"
+  }
+}

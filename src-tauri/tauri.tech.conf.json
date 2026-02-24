@@ -17,7 +17,8 @@
       "app",
       "dmg",
       "nsis",
-      "msi"
+      "msi",
+      "appimage"
     ],
     "macOS": {
       "hardenedRuntime": true

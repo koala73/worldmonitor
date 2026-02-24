@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package worldmonitor.unrest.v1;
+
+import "worldmonitor/core/v1/geo.proto";
+import "worldmonitor/core/v1/pagination.proto";
+import "worldmonitor/core/v1/severity.proto";
+import "worldmonitor/core/v1/time.proto";
+import "worldmonitor/unrest/v1/unrest_event.proto";
+
+// ListUnrestEventsRequest specifies filters for retrieving social unrest events.
+message ListUnrestEventsRequest {
+  // Time range to filter events.
+  worldmonitor.core.v1.TimeRange time_range = 1;
+  // Pagination parameters.
+  worldmonitor.core.v1.PaginationRequest pagination = 2;
+  // Optional country filter (ISO 3166-1 alpha-2).
+  string country = 3;
+  // Optional minimum severity filter.
+  worldmonitor.core.v1.SeverityLevel min_severity = 4;
+  // Optional bounding box for geographic filtering.
+  worldmonitor.core.v1.BoundingBox bounding_box = 5;
+}
+
+// ListUnrestEventsResponse contains unrest events and clusters matching the request.
+message ListUnrestEventsResponse {
+  // Individual unrest events.
+  repeated UnrestEvent events = 1;
+  // Geographic clusters of related events.
+  repeated UnrestCluster clusters = 2;
+  // Pagination metadata.
+  worldmonitor.core.v1.PaginationResponse pagination = 3;
+}

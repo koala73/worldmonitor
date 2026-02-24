@@ -1,12 +1,13 @@
 import { Panel } from './Panel';
 import { WindowedList } from './VirtualList';
 import type { NewsItem, ClusteredEvent, DeviationLevel, RelatedAsset, RelatedAssetContext } from '@/types';
-import { THREAT_PRIORITY, THREAT_COLORS } from '@/services/threat-classifier';
-import { formatTime } from '@/utils';
+import { THREAT_PRIORITY } from '@/services/threat-classifier';
+import { formatTime, getCSSColor } from '@/utils';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
-import { analysisWorker, enrichWithVelocityML, getClusterAssetContext, getAssetLabel, MAX_DISTANCE_KM, activityTracker, generateSummary } from '@/services';
+import { analysisWorker, enrichWithVelocityML, getClusterAssetContext, MAX_DISTANCE_KM, activityTracker, generateSummary, translateText } from '@/services';
 import { getSourcePropagandaRisk, getSourceTier, getSourceType } from '@/config/feeds';
 import { SITE_VARIANT } from '@/config';
+import { t, getCurrentLanguage } from '@/services/i18n';
 
 /** Threshold for enabling virtual scrolling */
 const VIRTUAL_SCROLL_THRESHOLD = 15;
@@ -57,7 +58,7 @@ export class NewsPanel extends Panel {
         chunkSize: 8, // Render 8 items per chunk
         bufferChunks: 1, // 1 chunk buffer above/below
       },
-      (prepared) => this.renderClusterHtml(
+      (prepared) => this.renderClusterHtmlSafely(
         prepared.cluster,
         prepared.isNew,
         prepared.shouldHighlight,
@@ -120,7 +121,7 @@ export class NewsPanel extends Panel {
     this.summaryBtn = document.createElement('button');
     this.summaryBtn.className = 'panel-summarize-btn';
     this.summaryBtn.innerHTML = '✨';
-    this.summaryBtn.title = 'Summarize this panel';
+    this.summaryBtn.title = t('components.newsPanel.summarize');
     this.summaryBtn.addEventListener('click', () => this.handleSummarize());
 
     // Insert before count element (use inherited this.header directly)
@@ -136,8 +137,9 @@ export class NewsPanel extends Panel {
     if (this.isSummarizing || !this.summaryContainer || !this.summaryBtn) return;
     if (this.currentHeadlines.length === 0) return;
 
-    // Check cache first (include variant and version to bust old caches)
-    const cacheKey = `panel_summary_v2_${SITE_VARIANT}_${this.panelId}`;
+    // Check cache first (include variant, version, and language)
+    const currentLang = getCurrentLanguage();
+    const cacheKey = `panel_summary_v3_${SITE_VARIANT}_${this.panelId}_${currentLang}`;
     const cached = this.getCachedSummary(cacheKey);
     if (cached) {
       this.showSummary(cached);
@@ -149,10 +151,10 @@ export class NewsPanel extends Panel {
     this.summaryBtn.innerHTML = '<span class="panel-summarize-spinner"></span>';
     this.summaryBtn.disabled = true;
     this.summaryContainer.style.display = 'block';
-    this.summaryContainer.innerHTML = '<div class="panel-summary-loading">Generating summary...</div>';
+    this.summaryContainer.innerHTML = `<div class="panel-summary-loading">${t('components.newsPanel.generatingSummary')}</div>`;
 
     try {
-      const result = await generateSummary(this.currentHeadlines.slice(0, 8));
+      const result = await generateSummary(this.currentHeadlines.slice(0, 8), undefined, undefined, currentLang);
       if (result?.summary) {
         this.setCachedSummary(cacheKey, result.summary);
         this.showSummary(result.summary);
@@ -170,13 +172,46 @@ export class NewsPanel extends Panel {
     }
   }
 
+  private async handleTranslate(element: HTMLElement, text: string): Promise<void> {
+    const currentLang = getCurrentLanguage();
+    if (currentLang === 'en') return; // Assume news is mostly English, no need to translate if UI is English (or add detection later)
+
+    const titleEl = element.closest('.item')?.querySelector('.item-title') as HTMLElement;
+    if (!titleEl) return;
+
+    const originalText = titleEl.textContent || '';
+
+    // Visual feedback
+    element.innerHTML = '...';
+    element.style.pointerEvents = 'none';
+
+    try {
+      const translated = await translateText(text, currentLang);
+      if (translated) {
+        titleEl.textContent = translated;
+        titleEl.dataset.original = originalText;
+        element.innerHTML = '✓';
+        element.title = 'Original: ' + originalText;
+        element.classList.add('translated');
+      } else {
+        element.innerHTML = '文';
+        // Shake animation or error state could be added here
+      }
+    } catch (e) {
+      console.error('Translation failed', e);
+      element.innerHTML = '文';
+    } finally {
+      element.style.pointerEvents = 'auto';
+    }
+  }
+
   private showSummary(summary: string): void {
     if (!this.summaryContainer) return;
     this.summaryContainer.style.display = 'block';
     this.summaryContainer.innerHTML = `
       <div class="panel-summary-content">
         <span class="panel-summary-text">${escapeHtml(summary)}</span>
-        <button class="panel-summary-close" title="Close">×</button>
+        <button class="panel-summary-close" title="${t('components.newsPanel.close')}">×</button>
       </div>
     `;
     this.summaryContainer.querySelector('.panel-summary-close')?.addEventListener('click', () => this.hideSummary());
@@ -229,18 +264,30 @@ export class NewsPanel extends Panel {
 
   public renderNews(items: NewsItem[]): void {
     if (items.length === 0) {
+      this.renderRequestId += 1; // Cancel in-flight clustering from previous renders.
       this.setDataBadge('unavailable');
-      this.showError('No news available');
+      this.showError(t('common.noNewsAvailable'));
       return;
     }
 
     this.setDataBadge('live');
 
+    // Always show flat items immediately for instant visual feedback,
+    // then upgrade to clustered view in the background when ready.
+    this.renderFlat(items);
+
     if (this.clusteredMode) {
       void this.renderClustersAsync(items);
-    } else {
-      this.renderFlat(items);
     }
+  }
+
+  public renderFilteredEmpty(message: string): void {
+    this.renderRequestId += 1; // Cancel in-flight clustering from previous renders.
+    this.setDataBadge('live');
+    this.setCount(0);
+    this.relatedAssetContext.clear();
+    this.currentHeadlines = [];
+    this.setContent(`<div class="panel-empty">${escapeHtml(message)}</div>`);
   }
 
   private async renderClustersAsync(items: NewsItem[]): Promise<void> {
@@ -254,7 +301,7 @@ export class NewsPanel extends Panel {
     } catch (error) {
       if (requestId !== this.renderRequestId) return;
       console.error('[NewsPanel] Failed to cluster news:', error);
-      this.showError('Failed to cluster news');
+      this.showError(t('common.failedClusterNews'));
     }
   }
 
@@ -264,13 +311,17 @@ export class NewsPanel extends Panel {
     const html = items
       .map(
         (item) => `
-      <div class="item ${item.isAlert ? 'alert' : ''}" ${item.monitorColor ? `style="border-left-color: ${escapeHtml(item.monitorColor)}"` : ''}>
+      <div class="item ${item.isAlert ? 'alert' : ''}" ${item.monitorColor ? `style="border-inline-start-color: ${escapeHtml(item.monitorColor)}"` : ''}>
         <div class="item-source">
           ${escapeHtml(item.source)}
+          ${item.lang && item.lang !== getCurrentLanguage() ? `<span class="lang-badge">${item.lang.toUpperCase()}</span>` : ''}
           ${item.isAlert ? '<span class="alert-tag">ALERT</span>' : ''}
         </div>
         <a class="item-title" href="${sanitizeUrl(item.link)}" target="_blank" rel="noopener">${escapeHtml(item.title)}</a>
-        <div class="item-time">${formatTime(item.pubDate)}</div>
+        <div class="item-time">
+          ${formatTime(item.pubDate)}
+          ${getCurrentLanguage() !== 'en' ? `<button class="item-translate-btn" title="Translate" data-text="${escapeHtml(item.title)}">文</button>` : ''}
+        </div>
       </div>
     `
       )
@@ -330,10 +381,30 @@ export class NewsPanel extends Panel {
     } else {
       // Direct render for small lists
       const html = prepared
-        .map(p => this.renderClusterHtml(p.cluster, p.isNew, p.shouldHighlight, p.showNewTag))
+        .map(p => this.renderClusterHtmlSafely(p.cluster, p.isNew, p.shouldHighlight, p.showNewTag))
         .join('');
       this.setContent(html);
       this.bindRelatedAssetEvents();
+    }
+  }
+
+  private renderClusterHtmlSafely(
+    cluster: ClusteredEvent,
+    isNew: boolean,
+    shouldHighlight: boolean,
+    showNewTag: boolean
+  ): string {
+    try {
+      return this.renderClusterHtml(cluster, isNew, shouldHighlight, showNewTag);
+    } catch (error) {
+      console.error('[NewsPanel] Failed to render cluster card:', error, cluster);
+      const clusterId = typeof cluster?.id === 'string' ? cluster.id : 'unknown-cluster';
+      return `
+        <div class="item clustered item-render-error" data-cluster-id="${escapeHtml(clusterId)}">
+          <div class="item-source">${t('common.error')}</div>
+          <div class="item-title">Failed to display this cluster.</div>
+        </div>
+      `;
     }
   }
 
@@ -347,7 +418,7 @@ export class NewsPanel extends Panel {
     showNewTag: boolean
   ): string {
     const sourceBadge = cluster.sourceCount > 1
-      ? `<span class="source-count">${cluster.sourceCount} sources</span>`
+      ? `<span class="source-count">${t('components.newsPanel.sources', { count: String(cluster.sourceCount) })}</span>`
       : '';
 
     const velocity = cluster.velocity;
@@ -360,7 +431,10 @@ export class NewsPanel extends Panel {
       ? `<span class="sentiment-badge ${velocity?.sentiment}">${sentimentIcon}</span>`
       : '';
 
-    const newTag = showNewTag ? '<span class="new-tag">NEW</span>' : '';
+    const newTag = showNewTag ? `<span class="new-tag">${t('common.new')}</span>` : '';
+    const langBadge = cluster.lang && cluster.lang !== getCurrentLanguage()
+      ? `<span class="lang-badge">${cluster.lang.toUpperCase()}</span>`
+      : '';
 
     // Propaganda risk indicator for primary source
     const primaryPropRisk = getSourcePropagandaRisk(cluster.primarySource);
@@ -380,14 +454,14 @@ export class NewsPanel extends Panel {
     const otherSources = cluster.topSources.filter(s => s.name !== cluster.primarySource);
     const topSourcesHtml = otherSources.length > 0
       ? `<span class="also-reported">Also:</span>` + otherSources
-          .map(s => {
-            const propRisk = getSourcePropagandaRisk(s.name);
-            const propBadge = propRisk.risk !== 'low'
-              ? `<span class="propaganda-badge ${propRisk.risk}" title="${escapeHtml(propRisk.note || `State-affiliated: ${propRisk.stateAffiliated || 'Unknown'}`)}">${propRisk.risk === 'high' ? '⚠' : '!'}</span>`
-              : '';
-            return `<span class="top-source tier-${s.tier}">${escapeHtml(s.name)}${propBadge}</span>`;
-          })
-          .join('')
+        .map(s => {
+          const propRisk = getSourcePropagandaRisk(s.name);
+          const propBadge = propRisk.risk !== 'low'
+            ? `<span class="propaganda-badge ${propRisk.risk}" title="${escapeHtml(propRisk.note || `State-affiliated: ${propRisk.stateAffiliated || 'Unknown'}`)}">${propRisk.risk === 'high' ? '⚠' : '!'}</span>`
+            : '';
+          return `<span class="top-source tier-${s.tier}">${escapeHtml(s.name)}${propBadge}</span>`;
+        })
+        .join('')
       : '';
 
     const assetContext = getClusterAssetContext(cluster);
@@ -399,13 +473,13 @@ export class NewsPanel extends Panel {
       ? `
         <div class="related-assets" data-cluster-id="${escapeHtml(cluster.id)}">
           <div class="related-assets-header">
-            Related assets near ${escapeHtml(assetContext.origin.label)}
+            ${t('components.newsPanel.relatedAssetsNear', { location: escapeHtml(assetContext.origin.label) })}
             <span class="related-assets-range">(${MAX_DISTANCE_KM}km)</span>
           </div>
           <div class="related-assets-list">
             ${assetContext.assets.map(asset => `
               <button class="related-asset" data-cluster-id="${escapeHtml(cluster.id)}" data-asset-id="${escapeHtml(asset.id)}" data-asset-type="${escapeHtml(asset.type)}">
-                <span class="related-asset-type">${escapeHtml(getAssetLabel(asset.type))}</span>
+                <span class="related-asset-type">${escapeHtml(this.getLocalizedAssetLabel(asset.type))}</span>
                 <span class="related-asset-name">${escapeHtml(asset.name)}</span>
                 <span class="related-asset-distance">${Math.round(asset.distanceKm)}km</span>
               </button>
@@ -418,7 +492,8 @@ export class NewsPanel extends Panel {
     // Category tag from threat classification
     const cat = cluster.threat?.category;
     const catLabel = cat && cat !== 'general' ? cat.charAt(0).toUpperCase() + cat.slice(1) : '';
-    const catColor = cluster.threat ? THREAT_COLORS[cluster.threat.level] : '';
+    const threatVarMap: Record<string, string> = { critical: '--threat-critical', high: '--threat-high', medium: '--threat-medium', low: '--threat-low', info: '--threat-info' };
+    const catColor = cluster.threat ? getCSSColor(threatVarMap[cluster.threat.level] || '--text-dim') : '';
     const categoryBadge = catLabel
       ? `<span class="category-tag" style="color:${catColor};border-color:${catColor}40;background:${catColor}20">${catLabel}</span>`
       : '';
@@ -433,11 +508,12 @@ export class NewsPanel extends Panel {
     ].filter(Boolean).join(' ');
 
     return `
-      <div class="${itemClasses}" ${cluster.monitorColor ? `style="border-left-color: ${escapeHtml(cluster.monitorColor)}"` : ''} data-cluster-id="${escapeHtml(cluster.id)}" data-news-id="${escapeHtml(cluster.primaryLink)}">
+      <div class="${itemClasses}" ${cluster.monitorColor ? `style="border-inline-start-color: ${escapeHtml(cluster.monitorColor)}"` : ''} data-cluster-id="${escapeHtml(cluster.id)}" data-news-id="${escapeHtml(cluster.primaryLink)}">
         <div class="item-source">
           ${tierBadge}
           ${escapeHtml(cluster.primarySource)}
           ${primaryPropBadge}
+          ${langBadge}
           ${newTag}
           ${sourceBadge}
           ${velocityBadge}
@@ -449,6 +525,7 @@ export class NewsPanel extends Panel {
         <div class="cluster-meta">
           <span class="top-sources">${topSourcesHtml}</span>
           <span class="item-time">${formatTime(cluster.lastUpdated)}</span>
+          ${getCurrentLanguage() !== 'en' ? `<button class="item-translate-btn" title="Translate" data-text="${escapeHtml(cluster.primaryTitle)}">文</button>` : ''}
         </div>
         ${relatedAssetsHtml}
       </div>
@@ -487,6 +564,27 @@ export class NewsPanel extends Panel {
         }
       });
     });
+
+    // Translation buttons
+    const translateBtns = this.content.querySelectorAll<HTMLElement>('.item-translate-btn');
+    translateBtns.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const text = btn.dataset.text;
+        if (text) this.handleTranslate(btn, text);
+      });
+    });
+  }
+
+  private getLocalizedAssetLabel(type: RelatedAsset['type']): string {
+    const keyMap: Record<RelatedAsset['type'], string> = {
+      pipeline: 'modals.countryBrief.infra.pipeline',
+      cable: 'modals.countryBrief.infra.cable',
+      datacenter: 'modals.countryBrief.infra.datacenter',
+      base: 'modals.countryBrief.infra.base',
+      nuclear: 'modals.countryBrief.infra.nuclear',
+    };
+    return t(keyMap[type]);
   }
 
   /**

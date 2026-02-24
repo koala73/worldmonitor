@@ -1,9 +1,12 @@
 /**
  * CountryIntelModal - Shows AI-generated intelligence brief when user clicks a country
  */
-import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
+import { escapeHtml } from '@/utils/sanitize';
+import { t } from '@/services/i18n';
+import { sanitizeUrl } from '@/utils/sanitize';
+import { getCSSColor } from '@/utils';
 import type { CountryScore } from '@/services/country-instability';
-import type { PredictionMarket } from '@/types';
+import type { PredictionMarket } from '@/services/prediction';
 
 interface CountryIntelData {
   brief: string;
@@ -81,20 +84,20 @@ export class CountryIntelModal {
   }
 
   private levelBadge(level: string): string {
-    const colors: Record<string, string> = {
-      critical: '#ff4444',
-      high: '#ff8800',
-      elevated: '#ffaa00',
-      normal: '#44aa44',
-      low: '#3388ff',
+    const varMap: Record<string, string> = {
+      critical: '--semantic-critical',
+      high: '--semantic-high',
+      elevated: '--semantic-elevated',
+      normal: '--semantic-normal',
+      low: '--semantic-low',
     };
-    const color = colors[level] || '#888';
+    const color = getCSSColor(varMap[level] || '--text-dim');
     return `<span class="cii-badge" style="background:${color}20;color:${color};border:1px solid ${color}40">${level.toUpperCase()}</span>`;
   }
 
   private scoreBar(score: number): string {
     const pct = Math.min(100, Math.max(0, score));
-    const color = pct >= 70 ? '#ff4444' : pct >= 50 ? '#ff8800' : pct >= 30 ? '#ffaa00' : '#44aa44';
+    const color = pct >= 70 ? getCSSColor('--semantic-critical') : pct >= 50 ? getCSSColor('--semantic-high') : pct >= 30 ? getCSSColor('--semantic-elevated') : getCSSColor('--semantic-normal');
     return `
       <div class="cii-score-bar">
         <div class="cii-score-fill" style="width:${pct}%;background:${color}"></div>
@@ -107,52 +110,43 @@ export class CountryIntelModal {
     this.currentCode = '__loading__';
     this.headerEl.innerHTML = `
       <span class="country-flag">🌍</span>
-      <span class="country-name">Identifying country...</span>
+      <span class="country-name">${t('modals.countryIntel.identifying')}</span>
     `;
     this.contentEl.innerHTML = `
       <div class="intel-brief-section">
         <div class="intel-brief-loading">
           <div class="intel-skeleton"></div>
           <div class="intel-skeleton short"></div>
-          <span class="intel-loading-text">Locating region...</span>
+          <span class="intel-loading-text">${t('modals.countryIntel.locating')}</span>
         </div>
       </div>
     `;
     this.overlay.classList.add('active');
   }
 
-  public setShareStoryHandler(handler: (code: string, name: string) => void): void {
-    this.onShareStory = handler;
-  }
-
   public show(country: string, code: string, score: CountryScore | null, signals?: ActiveSignals): void {
     this.currentCode = code;
     this.currentName = country;
     const flag = this.countryFlag(code);
+    let html = '';
+    this.overlay.classList.add('active');
+
     this.headerEl.innerHTML = `
       <span class="country-flag">${flag}</span>
       <span class="country-name">${escapeHtml(country)}</span>
       ${score ? this.levelBadge(score.level) : ''}
-      <button class="country-intel-share-btn" title="Share story"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a2 2 0 002 2h12a2 2 0 002-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg></button>
+      <button class="country-intel-share-btn" title="${t('modals.story.shareTitle')}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a2 2 0 002 2h12a2 2 0 002-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg></button>
     `;
-    this.headerEl.querySelector('.country-intel-share-btn')?.addEventListener('click', () => {
-      if (this.onShareStory && this.currentCode && this.currentName) {
-        this.onShareStory(this.currentCode, this.currentName);
-      }
-    });
-
-    // Show loading state + any immediate data
-    let html = '';
 
     if (score) {
       html += `
         <div class="cii-section">
-          <div class="cii-label">Instability Index ${this.scoreBar(score.score)}</div>
+          <div class="cii-label">${t('modals.countryIntel.instabilityIndex')} ${this.scoreBar(score.score)}</div>
           <div class="cii-components">
-            <span title="Unrest">📢 ${score.components.unrest.toFixed(0)}</span>
-            <span title="Conflict">⚔ ${score.components.conflict.toFixed(0)}</span>
-            <span title="Security">🛡️ ${score.components.security.toFixed(0)}</span>
-            <span title="Information">📡 ${score.components.information.toFixed(0)}</span>
+            <span title="${t('common.unrest')}">📢 ${score.components.unrest.toFixed(0)}</span>
+            <span title="${t('common.conflict')}">⚔ ${score.components.conflict.toFixed(0)}</span>
+            <span title="${t('common.security')}">🛡️ ${score.components.security.toFixed(0)}</span>
+            <span title="${t('common.information')}">📡 ${score.components.information.toFixed(0)}</span>
             <span class="cii-trend ${score.trend}">${score.trend === 'rising' ? '↗' : score.trend === 'falling' ? '↘' : '→'} ${score.trend}</span>
           </div>
         </div>
@@ -161,16 +155,16 @@ export class CountryIntelModal {
 
     const chips: string[] = [];
     if (signals) {
-      if (signals.protests > 0) chips.push(`<span class="signal-chip protest">📢 ${signals.protests} protests</span>`);
-      if (signals.militaryFlights > 0) chips.push(`<span class="signal-chip military">✈️ ${signals.militaryFlights} mil. aircraft</span>`);
-      if (signals.militaryVessels > 0) chips.push(`<span class="signal-chip military">⚓ ${signals.militaryVessels} mil. vessels</span>`);
-      if (signals.outages > 0) chips.push(`<span class="signal-chip outage">🌐 ${signals.outages} outages</span>`);
-      if (signals.earthquakes > 0) chips.push(`<span class="signal-chip quake">🌍 ${signals.earthquakes} earthquakes</span>`);
+      if (signals.protests > 0) chips.push(`<span class="signal-chip protest">📢 ${signals.protests} ${t('modals.countryIntel.protests')}</span>`);
+      if (signals.militaryFlights > 0) chips.push(`<span class="signal-chip military">✈️ ${signals.militaryFlights} ${t('modals.countryIntel.militaryAircraft')}</span>`);
+      if (signals.militaryVessels > 0) chips.push(`<span class="signal-chip military">⚓ ${signals.militaryVessels} ${t('modals.countryIntel.militaryVessels')}</span>`);
+      if (signals.outages > 0) chips.push(`<span class="signal-chip outage">🌐 ${signals.outages} ${t('modals.countryIntel.outages')}</span>`);
+      if (signals.earthquakes > 0) chips.push(`<span class="signal-chip quake">🌍 ${signals.earthquakes} ${t('modals.countryIntel.earthquakes')}</span>`);
     }
-    chips.push(`<span class="signal-chip stock-loading">📈 Loading index...</span>`);
+    chips.push(`<span class="signal-chip stock-loading">📈 ${t('modals.countryIntel.loadingIndex')}</span>`);
     html += `<div class="active-signals">${chips.join('')}</div>`;
 
-    html += `<div class="country-markets-section"><span class="intel-loading-text">Loading prediction markets...</span></div>`;
+    html += `<div class="country-markets-section"><span class="intel-loading-text">${t('modals.countryIntel.loadingMarkets')}</span></div>`;
 
     html += `
       <div class="intel-brief-section">
@@ -179,33 +173,45 @@ export class CountryIntelModal {
           <div class="intel-skeleton short"></div>
           <div class="intel-skeleton"></div>
           <div class="intel-skeleton short"></div>
-          <span class="intel-loading-text">Generating intelligence brief...</span>
+          <span class="intel-loading-text">${t('modals.countryIntel.generatingBrief')}</span>
         </div>
       </div>
     `;
 
     this.contentEl.innerHTML = html;
-    this.overlay.classList.add('active');
+
+    const shareBtn = this.headerEl.querySelector('.country-intel-share-btn');
+    shareBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (this.currentCode && this.currentName && this.onShareStory) {
+        this.onShareStory(this.currentCode, this.currentName);
+      }
+    });
   }
 
-  public updateBrief(data: CountryIntelData): void {
-    if (data.code !== this.currentCode) return;
+  public updateBrief(data: CountryIntelData & { skipped?: boolean; reason?: string; fallback?: boolean }): void {
+    if (this.currentCode !== data.code && this.currentCode !== '__loading__') return;
+
+    // If modal closed, don't update
+    if (!this.isVisible()) return;
+
+    if (data.error || data.skipped || !data.brief) {
+      const msg = data.error || data.reason || t('modals.countryIntel.unavailable');
+      const briefSection = this.contentEl.querySelector('.intel-brief-section');
+      if (briefSection) {
+        briefSection.innerHTML = `<div class="intel-error">${escapeHtml(msg)}</div>`;
+      }
+      return;
+    }
 
     const briefSection = this.contentEl.querySelector('.intel-brief-section');
     if (!briefSection) return;
 
-    if (data.error) {
-      briefSection.innerHTML = `<div class="intel-error">Unable to generate brief. ${escapeHtml(data.error)}</div>`;
-      return;
-    }
-
-    // Convert markdown-like formatting to HTML
     const formatted = this.formatBrief(data.brief);
-
     briefSection.innerHTML = `
       <div class="intel-brief">${formatted}</div>
       <div class="intel-footer">
-        ${data.cached ? '<span class="intel-cached">📋 Cached</span>' : '<span class="intel-fresh">✨ Fresh</span>'}
+        ${data.cached ? `<span class="intel-cached">📋 ${t('modals.countryIntel.cached')}</span>` : `<span class="intel-fresh">✨ ${t('modals.countryIntel.fresh')}</span>`}
         <span class="intel-timestamp">${data.generatedAt ? new Date(data.generatedAt).toLocaleTimeString() : ''}</span>
       </div>
     `;
@@ -216,29 +222,23 @@ export class CountryIntelModal {
     if (!section) return;
 
     if (markets.length === 0) {
-      section.innerHTML = '<span class="intel-loading-text" style="opacity:0.5">No prediction markets found</span>';
+      section.innerHTML = `<span class="intel-loading-text" style="opacity:0.5">${t('modals.countryIntel.noMarkets')}</span>`;
       return;
     }
 
-    const items = markets.map(m => {
-      const pct = Math.round(m.yesPrice);
-      const noPct = 100 - pct;
-      const vol = m.volume ? `$${(m.volume / 1000).toFixed(0)}k vol` : '';
-      const safeUrl = sanitizeUrl(m.url || '');
-      const link = safeUrl ? ` <a href="${safeUrl}" target="_blank" rel="noopener" class="market-link">↗</a>` : '';
+    const items = markets.map(market => {
+      const href = sanitizeUrl(market.url || '#') || '#';
       return `
-        <div class="market-item">
-          <div class="market-title">${escapeHtml(m.title.slice(0, 80))}${link}</div>
-          <div class="market-bar">
-            <div class="market-yes" style="width:${pct}%">${pct}%</div>
-            <div class="market-no" style="width:${noPct}%">${noPct > 15 ? noPct + '%' : ''}</div>
-          </div>
-          ${vol ? `<div class="market-vol">${vol}</div>` : ''}
-        </div>
-      `;
+      <div class="market-item">
+        <a href="${href}" target="_blank" rel="noopener noreferrer" class="prediction-market-card">
+        <div class="market-provider">Polymarket</div>
+        <div class="market-question">${escapeHtml(market.title)}</div>
+        <div class="market-prob">${market.yesPrice.toFixed(1)}%</div>
+      </a>
+    `;
     }).join('');
 
-    section.innerHTML = `<div class="markets-label">📊 Prediction Markets</div>${items}`;
+    section.innerHTML = `<div class="markets-label">📊 ${t('modals.countryIntel.predictionMarkets')}</div>${items}`;
   }
 
   public updateStock(data: StockIndexData): void {

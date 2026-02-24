@@ -1,0 +1,72 @@
+syntax = "proto3";
+
+package worldmonitor.research.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+// ArxivPaper represents a research paper from arXiv.
+message ArxivPaper {
+  // arXiv paper ID (e.g., "2401.12345").
+  string id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // Paper title.
+  string title = 2 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // Paper abstract (may be truncated).
+  string summary = 3;
+  // Author names.
+  repeated string authors = 4;
+  // arXiv categories (e.g., "cs.AI", "cs.LG").
+  repeated string categories = 5;
+  // Publication time, as Unix epoch milliseconds.
+  int64 published_at = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // URL to the paper.
+  string url = 7;
+}
+
+// GithubRepo represents a trending repository from GitHub.
+message GithubRepo {
+  // Repository full name (e.g., "owner/repo").
+  string full_name = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // Repository description.
+  string description = 2;
+  // Primary programming language.
+  string language = 3;
+  // Total star count.
+  int32 stars = 4 [(buf.validate.field).int32.gte = 0];
+  // Stars gained in the trending period.
+  int32 stars_today = 5;
+  // Number of open forks.
+  int32 forks = 6;
+  // Repository URL.
+  string url = 7;
+}
+
+// HackernewsItem represents an item from Hacker News.
+message HackernewsItem {
+  // HN item ID.
+  int32 id = 1;
+  // Item title.
+  string title = 2 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // URL (empty for Ask HN / Show HN text posts).
+  string url = 3;
+  // Upvote score.
+  int32 score = 4 [(buf.validate.field).int32.gte = 0];
+  // Number of comments.
+  int32 comment_count = 5;
+  // Author username.
+  string by = 6;
+  // Submission time, as Unix epoch milliseconds.
+  int64 submitted_at = 7 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}

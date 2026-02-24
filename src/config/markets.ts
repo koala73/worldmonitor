@@ -55,10 +55,11 @@ export const MARKET_SYMBOLS: MarketSymbol[] = [
   { symbol: 'BAC', name: 'BofA', display: 'BAC' },
 ];
 
-export const CRYPTO_IDS = ['bitcoin', 'ethereum', 'solana'] as const;
+export const CRYPTO_IDS = ['bitcoin', 'ethereum', 'solana', 'ripple'] as const;
 
 export const CRYPTO_MAP: Record<string, { name: string; symbol: string }> = {
   bitcoin: { name: 'Bitcoin', symbol: 'BTC' },
   ethereum: { name: 'Ethereum', symbol: 'ETH' },
   solana: { name: 'Solana', symbol: 'SOL' },
+  ripple: { name: 'XRP', symbol: 'XRP' },
 };

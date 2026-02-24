@@ -1,0 +1,87 @@
+syntax = "proto3";
+
+package worldmonitor.infrastructure.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+import "worldmonitor/core/v1/geo.proto";
+
+// InternetOutage represents a detected internet outage event from Cloudflare Radar.
+message InternetOutage {
+  // Unique outage identifier.
+  string id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // Outage title.
+  string title = 2;
+  // URL to the outage report.
+  string link = 3;
+  // Outage description.
+  string description = 4;
+  // Detection time, as Unix epoch milliseconds.
+  int64 detected_at = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Affected country (ISO 3166-1 alpha-2).
+  string country = 6;
+  // Affected region within the country.
+  string region = 7;
+  // Outage location.
+  worldmonitor.core.v1.GeoCoordinates location = 8;
+  // Outage severity.
+  OutageSeverity severity = 9;
+  // Affected infrastructure categories.
+  repeated string categories = 10;
+  // Root cause, if determined.
+  string cause = 11;
+  // Outage type classification.
+  string outage_type = 12;
+  // End time of the outage, as Unix epoch milliseconds. Zero if ongoing.
+  int64 ended_at = 13 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}
+
+// ServiceStatus represents the operational status of a monitored external service.
+message ServiceStatus {
+  // Service identifier.
+  string id = 1;
+  // Service display name.
+  string name = 2;
+  // Current operational status.
+  ServiceOperationalStatus status = 3;
+  // Status description.
+  string description = 4;
+  // Service URL or homepage.
+  string url = 5;
+  // Last status check time, as Unix epoch milliseconds.
+  int64 checked_at = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Response latency in milliseconds.
+  int32 latency_ms = 7;
+}
+
+// OutageSeverity represents the severity of an internet outage.
+// Maps to TS union: 'partial' | 'major' | 'total'.
+enum OutageSeverity {
+  // Unspecified severity.
+  OUTAGE_SEVERITY_UNSPECIFIED = 0;
+  // Partial outage — some services affected.
+  OUTAGE_SEVERITY_PARTIAL = 1;
+  // Major outage — widespread service disruption.
+  OUTAGE_SEVERITY_MAJOR = 2;
+  // Total outage — complete service loss.
+  OUTAGE_SEVERITY_TOTAL = 3;
+}
+
+// ServiceOperationalStatus represents the current status of a service.
+enum ServiceOperationalStatus {
+  // Unspecified status.
+  SERVICE_OPERATIONAL_STATUS_UNSPECIFIED = 0;
+  // Service is fully operational.
+  SERVICE_OPERATIONAL_STATUS_OPERATIONAL = 1;
+  // Service is experiencing degraded performance.
+  SERVICE_OPERATIONAL_STATUS_DEGRADED = 2;
+  // Service is partially disrupted.
+  SERVICE_OPERATIONAL_STATUS_PARTIAL_OUTAGE = 3;
+  // Service is completely down.
+  SERVICE_OPERATIONAL_STATUS_MAJOR_OUTAGE = 4;
+  // Service is under maintenance.
+  SERVICE_OPERATIONAL_STATUS_MAINTENANCE = 5;
+}

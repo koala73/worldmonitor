@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package worldmonitor.conflict.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+import "worldmonitor/core/v1/geo.proto";
+
+// AcledConflictEvent represents an armed conflict event from the ACLED dataset.
+message AcledConflictEvent {
+  // Unique ACLED event identifier.
+  string id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // ACLED event type classification (e.g., "Battles", "Explosions/Remote violence").
+  string event_type = 2;
+  // Country where the event occurred.
+  string country = 3;
+  // Geographic location of the event.
+  worldmonitor.core.v1.GeoCoordinates location = 4;
+  // Time the event occurred, as Unix epoch milliseconds.
+  int64 occurred_at = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Reported fatalities from this event.
+  int32 fatalities = 6;
+  // Named actors involved in the event.
+  repeated string actors = 7;
+  // Source article or report.
+  string source = 8;
+  // Administrative region within the country.
+  string admin1 = 9;
+}

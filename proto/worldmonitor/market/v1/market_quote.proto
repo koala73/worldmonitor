@@ -1,0 +1,73 @@
+syntax = "proto3";
+
+package worldmonitor.market.v1;
+
+import "buf/validate/validate.proto";
+
+// MarketQuote represents a stock or index quote from Finnhub or Yahoo Finance.
+message MarketQuote {
+  // Ticker symbol (e.g., "AAPL", "^GSPC").
+  string symbol = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // Human-readable name.
+  string name = 2;
+  // Display label.
+  string display = 3;
+  // Current price.
+  double price = 4;
+  // Percentage change from previous close.
+  double change = 5;
+  // Sparkline data points (recent price history).
+  repeated double sparkline = 6;
+}
+
+// CryptoQuote represents a cryptocurrency quote from CoinGecko.
+message CryptoQuote {
+  // Cryptocurrency name (e.g., "Bitcoin").
+  string name = 1;
+  // Ticker symbol (e.g., "BTC").
+  string symbol = 2 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // Current price in USD.
+  double price = 3;
+  // 24-hour percentage change.
+  double change = 4;
+  // Sparkline data points (recent price history).
+  repeated double sparkline = 5;
+}
+
+// CommodityQuote represents a commodity price quote from Yahoo Finance.
+message CommodityQuote {
+  // Commodity symbol (e.g., "CL=F" for crude oil).
+  string symbol = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // Human-readable name.
+  string name = 2;
+  // Display label.
+  string display = 3;
+  // Current price.
+  double price = 4;
+  // Percentage change from previous close.
+  double change = 5;
+  // Sparkline data points.
+  repeated double sparkline = 6;
+}
+
+// SectorPerformance represents performance data for a market sector.
+message SectorPerformance {
+  // Sector symbol.
+  string symbol = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // Sector name.
+  string name = 2;
+  // Percentage change over the measured period.
+  double change = 3;
+}

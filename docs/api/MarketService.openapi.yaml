@@ -1,0 +1,655 @@
+openapi: 3.1.0
+info:
+    title: MarketService API
+    version: 1.0.0
+paths:
+    /api/market/v1/list-market-quotes:
+        post:
+            tags:
+                - MarketService
+            summary: ListMarketQuotes
+            description: ListMarketQuotes retrieves stock and index quotes.
+            operationId: ListMarketQuotes
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ListMarketQuotesRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListMarketQuotesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/market/v1/list-crypto-quotes:
+        post:
+            tags:
+                - MarketService
+            summary: ListCryptoQuotes
+            description: ListCryptoQuotes retrieves cryptocurrency quotes from CoinGecko.
+            operationId: ListCryptoQuotes
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ListCryptoQuotesRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListCryptoQuotesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/market/v1/list-commodity-quotes:
+        post:
+            tags:
+                - MarketService
+            summary: ListCommodityQuotes
+            description: ListCommodityQuotes retrieves commodity price quotes from Yahoo Finance.
+            operationId: ListCommodityQuotes
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ListCommodityQuotesRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListCommodityQuotesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/market/v1/get-sector-summary:
+        post:
+            tags:
+                - MarketService
+            summary: GetSectorSummary
+            description: GetSectorSummary retrieves market sector performance data from Finnhub.
+            operationId: GetSectorSummary
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/GetSectorSummaryRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetSectorSummaryResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/market/v1/list-stablecoin-markets:
+        post:
+            tags:
+                - MarketService
+            summary: ListStablecoinMarkets
+            description: ListStablecoinMarkets retrieves stablecoin peg health and market data from CoinGecko.
+            operationId: ListStablecoinMarkets
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ListStablecoinMarketsRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListStablecoinMarketsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/market/v1/list-etf-flows:
+        post:
+            tags:
+                - MarketService
+            summary: ListEtfFlows
+            description: ListEtfFlows retrieves BTC spot ETF flow estimates from Yahoo Finance.
+            operationId: ListEtfFlows
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ListEtfFlowsRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListEtfFlowsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/market/v1/get-country-stock-index:
+        post:
+            tags:
+                - MarketService
+            summary: GetCountryStockIndex
+            description: GetCountryStockIndex retrieves the primary stock index for a country from Yahoo Finance.
+            operationId: GetCountryStockIndex
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/GetCountryStockIndexRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetCountryStockIndexResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+components:
+    schemas:
+        Error:
+            type: object
+            properties:
+                message:
+                    type: string
+                    description: Error message (e.g., 'user not found', 'database connection failed')
+            description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        FieldViolation:
+            type: object
+            properties:
+                field:
+                    type: string
+                    description: The field path that failed validation (e.g., 'user.email' for nested fields). For header validation, this will be the header name (e.g., 'X-API-Key')
+                description:
+                    type: string
+                    description: Human-readable description of the validation violation (e.g., 'must be a valid email address', 'required field missing')
+            required:
+                - field
+                - description
+            description: FieldViolation describes a single validation error for a specific field.
+        ValidationError:
+            type: object
+            properties:
+                violations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FieldViolation'
+                    description: List of validation violations
+            required:
+                - violations
+            description: ValidationError is returned when request validation fails. It contains a list of field violations describing what went wrong.
+        ListMarketQuotesRequest:
+            type: object
+            properties:
+                symbols:
+                    type: array
+                    items:
+                        type: string
+                        description: Ticker symbols to retrieve (e.g., ["AAPL", "^GSPC"]). Empty returns defaults.
+            description: ListMarketQuotesRequest specifies which stock/index symbols to retrieve.
+        ListMarketQuotesResponse:
+            type: object
+            properties:
+                quotes:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/MarketQuote'
+                finnhubSkipped:
+                    type: boolean
+                    description: True when the Finnhub API key is not configured and stock quotes were skipped.
+                skipReason:
+                    type: string
+                    description: Human-readable reason when Finnhub was skipped (e.g., "FINNHUB_API_KEY not configured").
+            description: ListMarketQuotesResponse contains stock and index quotes.
+        MarketQuote:
+            type: object
+            properties:
+                symbol:
+                    type: string
+                    minLength: 1
+                    description: Ticker symbol (e.g., "AAPL", "^GSPC").
+                name:
+                    type: string
+                    description: Human-readable name.
+                display:
+                    type: string
+                    description: Display label.
+                price:
+                    type: number
+                    format: double
+                    description: Current price.
+                change:
+                    type: number
+                    format: double
+                    description: Percentage change from previous close.
+                sparkline:
+                    type: array
+                    items:
+                        type: number
+                        format: double
+                        description: Sparkline data points (recent price history).
+            required:
+                - symbol
+            description: MarketQuote represents a stock or index quote from Finnhub or Yahoo Finance.
+        ListCryptoQuotesRequest:
+            type: object
+            properties:
+                ids:
+                    type: array
+                    items:
+                        type: string
+                        description: Cryptocurrency IDs to retrieve (CoinGecko IDs). Empty returns defaults.
+            description: ListCryptoQuotesRequest specifies which cryptocurrencies to retrieve.
+        ListCryptoQuotesResponse:
+            type: object
+            properties:
+                quotes:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CryptoQuote'
+            description: ListCryptoQuotesResponse contains cryptocurrency quotes.
+        CryptoQuote:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: Cryptocurrency name (e.g., "Bitcoin").
+                symbol:
+                    type: string
+                    minLength: 1
+                    description: Ticker symbol (e.g., "BTC").
+                price:
+                    type: number
+                    format: double
+                    description: Current price in USD.
+                change:
+                    type: number
+                    format: double
+                    description: 24-hour percentage change.
+                sparkline:
+                    type: array
+                    items:
+                        type: number
+                        format: double
+                        description: Sparkline data points (recent price history).
+            required:
+                - symbol
+            description: CryptoQuote represents a cryptocurrency quote from CoinGecko.
+        ListCommodityQuotesRequest:
+            type: object
+            properties:
+                symbols:
+                    type: array
+                    items:
+                        type: string
+                        description: Commodity symbols to retrieve (Yahoo symbols). Empty returns defaults.
+            description: ListCommodityQuotesRequest specifies which commodities to retrieve.
+        ListCommodityQuotesResponse:
+            type: object
+            properties:
+                quotes:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CommodityQuote'
+            description: ListCommodityQuotesResponse contains commodity quotes.
+        CommodityQuote:
+            type: object
+            properties:
+                symbol:
+                    type: string
+                    minLength: 1
+                    description: Commodity symbol (e.g., "CL=F" for crude oil).
+                name:
+                    type: string
+                    description: Human-readable name.
+                display:
+                    type: string
+                    description: Display label.
+                price:
+                    type: number
+                    format: double
+                    description: Current price.
+                change:
+                    type: number
+                    format: double
+                    description: Percentage change from previous close.
+                sparkline:
+                    type: array
+                    items:
+                        type: number
+                        format: double
+                        description: Sparkline data points.
+            required:
+                - symbol
+            description: CommodityQuote represents a commodity price quote from Yahoo Finance.
+        GetSectorSummaryRequest:
+            type: object
+            properties:
+                period:
+                    type: string
+                    description: Time period for performance calculation (e.g., "1d", "1w", "1m"). Defaults to "1d".
+            description: GetSectorSummaryRequest specifies parameters for retrieving sector performance.
+        GetSectorSummaryResponse:
+            type: object
+            properties:
+                sectors:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SectorPerformance'
+            description: GetSectorSummaryResponse contains sector performance data.
+        SectorPerformance:
+            type: object
+            properties:
+                symbol:
+                    type: string
+                    minLength: 1
+                    description: Sector symbol.
+                name:
+                    type: string
+                    description: Sector name.
+                change:
+                    type: number
+                    format: double
+                    description: Percentage change over the measured period.
+            required:
+                - symbol
+            description: SectorPerformance represents performance data for a market sector.
+        ListStablecoinMarketsRequest:
+            type: object
+            properties:
+                coins:
+                    type: array
+                    items:
+                        type: string
+                        description: CoinGecko IDs to retrieve (e.g. "tether,usd-coin"). Empty returns defaults.
+            description: ListStablecoinMarketsRequest specifies which stablecoins to retrieve.
+        ListStablecoinMarketsResponse:
+            type: object
+            properties:
+                timestamp:
+                    type: string
+                    description: Timestamp of the data fetch (ISO 8601).
+                summary:
+                    $ref: '#/components/schemas/StablecoinSummary'
+                stablecoins:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Stablecoin'
+            description: ListStablecoinMarketsResponse contains stablecoin market data.
+        StablecoinSummary:
+            type: object
+            properties:
+                totalMarketCap:
+                    type: number
+                    format: double
+                    description: Total market cap across all queried stablecoins.
+                totalVolume24h:
+                    type: number
+                    format: double
+                    description: Total 24h volume across all queried stablecoins.
+                coinCount:
+                    type: integer
+                    format: int32
+                    description: Number of stablecoins returned.
+                depeggedCount:
+                    type: integer
+                    format: int32
+                    description: Number of stablecoins in DEPEGGED state.
+                healthStatus:
+                    type: string
+                    description: 'Overall health: "HEALTHY", "CAUTION", or "WARNING".'
+            description: StablecoinSummary contains aggregate stablecoin market stats.
+        Stablecoin:
+            type: object
+            properties:
+                id:
+                    type: string
+                    minLength: 1
+                    description: CoinGecko ID.
+                symbol:
+                    type: string
+                    minLength: 1
+                    description: Ticker symbol (e.g. "USDT").
+                name:
+                    type: string
+                    description: Human-readable name.
+                price:
+                    type: number
+                    minimum: 0
+                    format: double
+                    description: Current price in USD.
+                deviation:
+                    type: number
+                    format: double
+                    description: Deviation from $1.00 peg, as a percentage.
+                pegStatus:
+                    type: string
+                    description: 'Peg status: "ON PEG", "SLIGHT DEPEG", or "DEPEGGED".'
+                marketCap:
+                    type: number
+                    format: double
+                    description: Market capitalization in USD.
+                volume24h:
+                    type: number
+                    format: double
+                    description: 24-hour trading volume in USD.
+                change24h:
+                    type: number
+                    format: double
+                    description: 24-hour price change percentage.
+                change7d:
+                    type: number
+                    format: double
+                    description: 7-day price change percentage.
+                image:
+                    type: string
+                    description: Coin image URL.
+            required:
+                - id
+                - symbol
+            description: Stablecoin represents a single stablecoin with peg health data.
+        ListEtfFlowsRequest:
+            type: object
+            description: ListEtfFlowsRequest is empty; the handler uses a fixed list of BTC spot ETFs.
+        ListEtfFlowsResponse:
+            type: object
+            properties:
+                timestamp:
+                    type: string
+                    description: Timestamp of the data fetch (ISO 8601).
+                summary:
+                    $ref: '#/components/schemas/EtfFlowsSummary'
+                etfs:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/EtfFlow'
+            description: ListEtfFlowsResponse contains BTC spot ETF flow data.
+        EtfFlowsSummary:
+            type: object
+            properties:
+                etfCount:
+                    type: integer
+                    format: int32
+                    description: Number of ETFs with data.
+                totalVolume:
+                    type: integer
+                    format: int64
+                    description: 'Total volume across all ETFs.. Warning: Values > 2^53 may lose precision in JavaScript'
+                totalEstFlow:
+                    type: integer
+                    format: int64
+                    description: 'Total estimated flow across all ETFs.. Warning: Values > 2^53 may lose precision in JavaScript'
+                netDirection:
+                    type: string
+                    description: 'Net direction: "NET INFLOW", "NET OUTFLOW", or "NEUTRAL".'
+                inflowCount:
+                    type: integer
+                    format: int32
+                    description: Number of ETFs with inflow.
+                outflowCount:
+                    type: integer
+                    format: int32
+                    description: Number of ETFs with outflow.
+            description: EtfFlowsSummary contains aggregate ETF flow stats.
+        EtfFlow:
+            type: object
+            properties:
+                ticker:
+                    type: string
+                    minLength: 1
+                    description: Ticker symbol (e.g. "IBIT").
+                issuer:
+                    type: string
+                    description: Fund issuer (e.g. "BlackRock").
+                price:
+                    type: number
+                    format: double
+                    description: Latest closing price.
+                priceChange:
+                    type: number
+                    format: double
+                    description: Day-over-day price change percentage.
+                volume:
+                    type: integer
+                    format: int64
+                    description: 'Latest daily volume.. Warning: Values > 2^53 may lose precision in JavaScript'
+                avgVolume:
+                    type: integer
+                    format: int64
+                    description: 'Average volume over prior days.. Warning: Values > 2^53 may lose precision in JavaScript'
+                volumeRatio:
+                    type: number
+                    format: double
+                    description: Volume ratio (latest / average).
+                direction:
+                    type: string
+                    description: 'Flow direction: "inflow", "outflow", or "neutral".'
+                estFlow:
+                    type: integer
+                    format: int64
+                    description: 'Estimated dollar flow magnitude.. Warning: Values > 2^53 may lose precision in JavaScript'
+            required:
+                - ticker
+            description: EtfFlow represents a single ETF with estimated flow data.
+        GetCountryStockIndexRequest:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                    pattern: ^[A-Z]{2}$
+                    description: ISO 3166-1 alpha-2 country code (e.g., "US", "GB", "JP").
+            required:
+                - countryCode
+            description: GetCountryStockIndexRequest specifies which country's stock index to retrieve.
+        GetCountryStockIndexResponse:
+            type: object
+            properties:
+                available:
+                    type: boolean
+                    description: Whether stock index data is available for this country.
+                code:
+                    type: string
+                    description: ISO 3166-1 alpha-2 country code.
+                symbol:
+                    type: string
+                    description: Ticker symbol (e.g., "^GSPC").
+                indexName:
+                    type: string
+                    description: Index name (e.g., "S&P 500").
+                price:
+                    type: number
+                    format: double
+                    description: Latest closing price.
+                weekChangePercent:
+                    type: number
+                    format: double
+                    description: Weekly change percentage.
+                currency:
+                    type: string
+                    description: Currency of the index.
+                fetchedAt:
+                    type: string
+                    description: When the data was fetched (ISO 8601).
+            description: GetCountryStockIndexResponse contains the country's primary stock index data.

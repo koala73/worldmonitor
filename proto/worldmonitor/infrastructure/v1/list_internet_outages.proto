@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package worldmonitor.infrastructure.v1;
+
+import "worldmonitor/core/v1/pagination.proto";
+import "worldmonitor/core/v1/time.proto";
+import "worldmonitor/infrastructure/v1/infrastructure.proto";
+
+// ListInternetOutagesRequest specifies filters for retrieving internet outages.
+message ListInternetOutagesRequest {
+  // Time range to filter outages.
+  worldmonitor.core.v1.TimeRange time_range = 1;
+  // Pagination parameters.
+  worldmonitor.core.v1.PaginationRequest pagination = 2;
+  // Optional country filter (ISO 3166-1 alpha-2).
+  string country = 3;
+}
+
+// ListInternetOutagesResponse contains internet outages matching the request.
+message ListInternetOutagesResponse {
+  // The list of internet outages.
+  repeated InternetOutage outages = 1;
+  // Pagination metadata.
+  worldmonitor.core.v1.PaginationResponse pagination = 2;
+}

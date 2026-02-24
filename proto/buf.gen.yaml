@@ -1,0 +1,31 @@
+version: v2
+
+# Managed mode - automatically manages go_package options required by Go-based protoc plugins
+managed:
+  enabled: true
+  override:
+    - file_option: go_package_prefix
+      value: github.com/worldmonitor/proto
+    - file_option: go_package_prefix
+      module: buf.build/bufbuild/protovalidate
+      value: ""
+    # sebuf protos are now vendored locally (no BSR module override needed)
+
+plugins:
+  - local: protoc-gen-ts-client
+    out: ../src/generated/client
+    opt:
+      - paths=source_relative
+
+  - local: protoc-gen-ts-server
+    out: ../src/generated/server
+    opt:
+      - paths=source_relative
+
+  - local: protoc-gen-openapiv3
+    out: ../docs/api
+
+  - local: protoc-gen-openapiv3
+    out: ../docs/api
+    opt:
+      - format=json

@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package worldmonitor.displacement.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/displacement/v1/get_displacement_summary.proto";
+import "worldmonitor/displacement/v1/get_population_exposure.proto";
+
+// DisplacementService provides APIs for global displacement and refugee data from UNHCR.
+service DisplacementService {
+  option (sebuf.http.service_config) = {base_path: "/api/displacement/v1"};
+
+  // GetDisplacementSummary retrieves global refugee and IDP statistics from UNHCR.
+  rpc GetDisplacementSummary(GetDisplacementSummaryRequest) returns (GetDisplacementSummaryResponse) {
+    option (sebuf.http.config) = {path: "/get-displacement-summary"};
+  }
+
+  // GetPopulationExposure returns country population data or estimates population within a radius.
+  rpc GetPopulationExposure(GetPopulationExposureRequest) returns (GetPopulationExposureResponse) {
+    option (sebuf.http.config) = {path: "/get-population-exposure"};
+  }
+}

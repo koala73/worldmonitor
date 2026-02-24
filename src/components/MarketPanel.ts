@@ -1,4 +1,5 @@
 import { Panel } from './Panel';
+import { t } from '@/services/i18n';
 import type { MarketData, CryptoData } from '@/types';
 import { formatPrice, formatChange, getChangeClass, getHeatmapClass } from '@/utils';
 import { escapeHtml } from '@/utils/sanitize';
@@ -17,14 +18,16 @@ function miniSparkline(data: number[] | undefined, change: number | null, w = 50
   return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" class="mini-sparkline"><polyline points="${points}" fill="none" stroke="${color}" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 }
 
+
+
 export class MarketPanel extends Panel {
   constructor() {
-    super({ id: 'markets', title: 'Markets' });
+    super({ id: 'markets', title: t('panels.markets') });
   }
 
   public renderMarkets(data: MarketData[]): void {
     if (data.length === 0) {
-      this.showError('Failed to load market data');
+      this.showError(t('common.failedMarketData'));
       return;
     }
 
@@ -52,14 +55,14 @@ export class MarketPanel extends Panel {
 
 export class HeatmapPanel extends Panel {
   constructor() {
-    super({ id: 'heatmap', title: 'Sector Heatmap' });
+    super({ id: 'heatmap', title: t('panels.heatmap') });
   }
 
   public renderHeatmap(data: Array<{ name: string; change: number | null }>): void {
     const validData = data.filter((d) => d.change !== null);
 
     if (validData.length === 0) {
-      this.showError('Failed to load sector data');
+      this.showError(t('common.failedSectorData'));
       return;
     }
 
@@ -83,14 +86,14 @@ export class HeatmapPanel extends Panel {
 
 export class CommoditiesPanel extends Panel {
   constructor() {
-    super({ id: 'commodities', title: 'Commodities / VIX' });
+    super({ id: 'commodities', title: t('panels.commodities') });
   }
 
   public renderCommodities(data: Array<{ display: string; price: number | null; change: number | null; sparkline?: number[] }>): void {
     const validData = data.filter((d) => d.price !== null);
 
     if (validData.length === 0) {
-      this.showError('Failed to load commodities');
+      this.showError(t('common.failedCommodities'));
       return;
     }
 
@@ -116,12 +119,12 @@ export class CommoditiesPanel extends Panel {
 
 export class CryptoPanel extends Panel {
   constructor() {
-    super({ id: 'crypto', title: 'Crypto' });
+    super({ id: 'crypto', title: t('panels.crypto') });
   }
 
   public renderCrypto(data: CryptoData[]): void {
     if (data.length === 0) {
-      this.showError('Failed to load crypto data');
+      this.showError(t('common.failedCryptoData'));
       return;
     }
 

@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package worldmonitor.core.v1;
+
+import "buf/validate/validate.proto";
+
+// CountryCode represents a validated ISO 3166-1 alpha-2 country code.
+// Used for consistent country identification across all domains.
+message CountryCode {
+  // Two-letter ISO 3166-1 alpha-2 country code (e.g., "US", "GB", "FR").
+  string value = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.len = 2,
+    (buf.validate.field).string.pattern = "^[A-Z]{2}$"
+  ];
+}

@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package worldmonitor.cyber.v1;
+
+import "worldmonitor/core/v1/pagination.proto";
+import "worldmonitor/core/v1/severity.proto";
+import "worldmonitor/core/v1/time.proto";
+import "worldmonitor/cyber/v1/cyber_threat.proto";
+
+// ListCyberThreatsRequest specifies filters for retrieving cyber threat indicators.
+message ListCyberThreatsRequest {
+  // Time range to filter threats.
+  worldmonitor.core.v1.TimeRange time_range = 1;
+  // Pagination parameters.
+  worldmonitor.core.v1.PaginationRequest pagination = 2;
+  // Optional threat type filter.
+  CyberThreatType type = 3;
+  // Optional source filter.
+  CyberThreatSource source = 4;
+  // Optional minimum criticality filter.
+  worldmonitor.core.v1.CriticalityLevel min_severity = 5;
+}
+
+// ListCyberThreatsResponse contains cyber threats matching the request.
+message ListCyberThreatsResponse {
+  // The list of cyber threats.
+  repeated CyberThreat threats = 1;
+  // Pagination metadata.
+  worldmonitor.core.v1.PaginationResponse pagination = 2;
+}

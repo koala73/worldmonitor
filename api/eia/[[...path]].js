@@ -1,28 +1,22 @@
 // EIA (Energy Information Administration) API proxy
 // Keeps API key server-side
+import { getCorsHeaders, isDisallowedOrigin } from '../_cors.js';
 export const config = { runtime: 'edge' };
 
-function getCorsOrigin(req) {
-  const origin = req.headers.get('origin') || '';
-  // Allow *.worldmonitor.app and localhost
-  if (
-    origin.endsWith('.worldmonitor.app') ||
-    origin === 'https://worldmonitor.app' ||
-    origin.startsWith('http://localhost:')
-  ) {
-    return origin;
-  }
-  return 'https://worldmonitor.app';
-}
-
 export default async function handler(req) {
-  const corsOrigin = getCorsOrigin(req);
+  const cors = getCorsHeaders(req);
+  if (isDisallowedOrigin(req)) {
+    return new Response(JSON.stringify({ error: 'Origin not allowed' }), { status: 403, headers: cors });
+  }
 
   // Only allow GET and OPTIONS methods
-  if (req.method !== 'GET' && req.method !== 'OPTIONS') {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: cors });
+  }
+  if (req.method !== 'GET') {
     return Response.json({ error: 'Method not allowed' }, {
       status: 405,
-      headers: { 'Access-Control-Allow-Origin': corsOrigin },
+      headers: cors,
     });
   }
 
@@ -33,30 +27,19 @@ export default async function handler(req) {
 
   if (!apiKey) {
     return Response.json({
-      error: 'EIA API not configured',
       configured: false,
+      skipped: true,
+      reason: 'EIA_API_KEY not configured',
     }, {
-      status: 503,
-      headers: { 'Access-Control-Allow-Origin': corsOrigin },
-    });
-  }
-
-  // Handle CORS preflight
-  if (req.method === 'OPTIONS') {
-    return new Response(null, {
-      status: 204,
-      headers: {
-        'Access-Control-Allow-Origin': corsOrigin,
-        'Access-Control-Allow-Methods': 'GET, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type',
-      },
+      status: 200,
+      headers: cors,
     });
   }
 
   // Health check
   if (path === '/health' || path === '') {
     return Response.json({ configured: true }, {
-      headers: { 'Access-Control-Allow-Origin': corsOrigin },
+      headers: cors,
     });
   }
 
@@ -112,8 +95,8 @@ export default async function handler(req) {
 
       return Response.json(results, {
         headers: {
-          'Access-Control-Allow-Origin': corsOrigin,
-          'Cache-Control': 'public, max-age=1800', // 30 min cache
+          ...cors,
+          'Cache-Control': 'public, max-age=1800, s-maxage=1800, stale-while-revalidate=300',
         },
       });
     } catch (error) {
@@ -122,13 +105,13 @@ export default async function handler(req) {
         error: 'Failed to fetch EIA data',
       }, {
         status: 500,
-        headers: { 'Access-Control-Allow-Origin': corsOrigin },
+        headers: cors,
       });
     }
   }
 
   return Response.json({ error: 'Not found' }, {
     status: 404,
-    headers: { 'Access-Control-Allow-Origin': corsOrigin },
+    headers: cors,
   });
 }

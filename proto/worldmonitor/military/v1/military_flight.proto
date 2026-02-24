@@ -1,0 +1,190 @@
+syntax = "proto3";
+
+package worldmonitor.military.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+import "worldmonitor/core/v1/geo.proto";
+
+// MilitaryFlight represents a tracked military aircraft from OpenSky or Wingbits.
+message MilitaryFlight {
+  // Unique flight identifier.
+  string id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // Aircraft callsign.
+  string callsign = 2;
+  // ICAO 24-bit hex address.
+  string hex_code = 3;
+  // Aircraft registration number.
+  string registration = 4;
+  // Type of military aircraft.
+  MilitaryAircraftType aircraft_type = 5;
+  // Specific aircraft model (e.g., "F-35A", "C-17A").
+  string aircraft_model = 6;
+  // Operating military branch or force.
+  MilitaryOperator operator = 7;
+  // Country operating the aircraft (ISO 3166-1 alpha-2).
+  string operator_country = 8;
+  // Current position.
+  worldmonitor.core.v1.GeoCoordinates location = 9;
+  // Altitude in feet.
+  double altitude = 10;
+  // Heading in degrees.
+  double heading = 11;
+  // Speed in knots.
+  double speed = 12;
+  // Vertical rate in feet per minute.
+  double vertical_rate = 13;
+  // Whether the aircraft is on the ground.
+  bool on_ground = 14;
+  // Transponder squawk code.
+  string squawk = 15;
+  // ICAO code of the origin airport.
+  string origin = 16;
+  // ICAO code of the destination airport.
+  string destination = 17;
+  // Last seen time, as Unix epoch milliseconds.
+  int64 last_seen_at = 18 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // First seen time, as Unix epoch milliseconds.
+  int64 first_seen_at = 19 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Confidence in aircraft identification.
+  MilitaryConfidence confidence = 20;
+  // Whether flagged for unusual activity.
+  bool is_interesting = 21;
+  // Analyst note.
+  string note = 22;
+  // Wingbits enrichment data.
+  FlightEnrichment enrichment = 23;
+}
+
+// FlightEnrichment contains additional data from Wingbits aircraft database.
+message FlightEnrichment {
+  // Aircraft manufacturer.
+  string manufacturer = 1;
+  // Registered owner.
+  string owner = 2;
+  // Operator name.
+  string operator_name = 3;
+  // ICAO type code.
+  string type_code = 4;
+  // Year the aircraft was built.
+  string built_year = 5;
+  // Whether confirmed as military.
+  bool confirmed_military = 6;
+  // Military branch designation.
+  string military_branch = 7;
+}
+
+// MilitaryFlightCluster represents a geographic cluster of military flights.
+message MilitaryFlightCluster {
+  // Unique cluster identifier.
+  string id = 1;
+  // Descriptive name of the cluster.
+  string name = 2;
+  // Cluster centroid location.
+  worldmonitor.core.v1.GeoCoordinates location = 3;
+  // Number of flights in the cluster.
+  int32 flight_count = 4;
+  // The flights in this cluster.
+  repeated MilitaryFlight flights = 5;
+  // Dominant operator in the cluster.
+  MilitaryOperator dominant_operator = 6;
+  // Assessed activity type.
+  MilitaryActivityType activity_type = 7;
+}
+
+// MilitaryAircraftType represents the classification of a military aircraft.
+enum MilitaryAircraftType {
+  // Unspecified aircraft type.
+  MILITARY_AIRCRAFT_TYPE_UNSPECIFIED = 0;
+  // Fighter aircraft (F-15, F-16, F-22, Su-27, etc.).
+  MILITARY_AIRCRAFT_TYPE_FIGHTER = 1;
+  // Bomber aircraft (B-52, B-1, Tu-95, etc.).
+  MILITARY_AIRCRAFT_TYPE_BOMBER = 2;
+  // Transport aircraft (C-130, C-17, Il-76, etc.).
+  MILITARY_AIRCRAFT_TYPE_TRANSPORT = 3;
+  // Aerial refueling tanker (KC-135, KC-46, etc.).
+  MILITARY_AIRCRAFT_TYPE_TANKER = 4;
+  // Airborne early warning (E-3, E-7, A-50, etc.).
+  MILITARY_AIRCRAFT_TYPE_AWACS = 5;
+  // Reconnaissance aircraft (RC-135, U-2, EP-3, etc.).
+  MILITARY_AIRCRAFT_TYPE_RECONNAISSANCE = 6;
+  // Military helicopter (UH-60, CH-47, Mi-8, etc.).
+  MILITARY_AIRCRAFT_TYPE_HELICOPTER = 7;
+  // Unmanned aerial vehicle (RQ-4, MQ-9, etc.).
+  MILITARY_AIRCRAFT_TYPE_DRONE = 8;
+  // Maritime patrol (P-8, P-3, etc.).
+  MILITARY_AIRCRAFT_TYPE_PATROL = 9;
+  // Special operations (MC-130, CV-22, etc.).
+  MILITARY_AIRCRAFT_TYPE_SPECIAL_OPS = 10;
+  // VIP or government transport.
+  MILITARY_AIRCRAFT_TYPE_VIP = 11;
+  // Unknown or unclassified type.
+  MILITARY_AIRCRAFT_TYPE_UNKNOWN = 12;
+}
+
+// MilitaryOperator represents the military branch or force operating an asset.
+enum MilitaryOperator {
+  // Unspecified operator.
+  MILITARY_OPERATOR_UNSPECIFIED = 0;
+  // United States Air Force.
+  MILITARY_OPERATOR_USAF = 1;
+  // United States Navy.
+  MILITARY_OPERATOR_USN = 2;
+  // United States Marine Corps.
+  MILITARY_OPERATOR_USMC = 3;
+  // United States Army.
+  MILITARY_OPERATOR_USA = 4;
+  // Royal Air Force (United Kingdom).
+  MILITARY_OPERATOR_RAF = 5;
+  // Royal Navy (United Kingdom).
+  MILITARY_OPERATOR_RN = 6;
+  // French Air and Space Force.
+  MILITARY_OPERATOR_FAF = 7;
+  // German Air Force (Luftwaffe).
+  MILITARY_OPERATOR_GAF = 8;
+  // PLA Air Force (China).
+  MILITARY_OPERATOR_PLAAF = 9;
+  // PLA Navy (China).
+  MILITARY_OPERATOR_PLAN = 10;
+  // Russian Aerospace Forces.
+  MILITARY_OPERATOR_VKS = 11;
+  // Israeli Air Force.
+  MILITARY_OPERATOR_IAF = 12;
+  // NATO joint operations.
+  MILITARY_OPERATOR_NATO = 13;
+  // Other operator.
+  MILITARY_OPERATOR_OTHER = 14;
+}
+
+// MilitaryConfidence represents confidence in asset identification.
+enum MilitaryConfidence {
+  // Unspecified confidence.
+  MILITARY_CONFIDENCE_UNSPECIFIED = 0;
+  // Low confidence.
+  MILITARY_CONFIDENCE_LOW = 1;
+  // Medium confidence.
+  MILITARY_CONFIDENCE_MEDIUM = 2;
+  // High confidence.
+  MILITARY_CONFIDENCE_HIGH = 3;
+}
+
+// MilitaryActivityType represents the assessed type of military activity.
+enum MilitaryActivityType {
+  // Unspecified activity type.
+  MILITARY_ACTIVITY_TYPE_UNSPECIFIED = 0;
+  // Military exercise.
+  MILITARY_ACTIVITY_TYPE_EXERCISE = 1;
+  // Routine patrol.
+  MILITARY_ACTIVITY_TYPE_PATROL = 2;
+  // Transport or logistics.
+  MILITARY_ACTIVITY_TYPE_TRANSPORT = 3;
+  // Operational deployment.
+  MILITARY_ACTIVITY_TYPE_DEPLOYMENT = 4;
+  // Transit movement.
+  MILITARY_ACTIVITY_TYPE_TRANSIT = 5;
+  // Unknown activity.
+  MILITARY_ACTIVITY_TYPE_UNKNOWN = 6;
+}

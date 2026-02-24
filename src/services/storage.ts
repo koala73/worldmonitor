@@ -22,6 +22,7 @@ export async function initDB(): Promise<IDBDatabase> {
 
     request.onsuccess = () => {
       db = request.result;
+      db.onclose = () => { db = null; };
       resolve(db);
     };
 
@@ -40,21 +41,49 @@ export async function initDB(): Promise<IDBDatabase> {
   });
 }
 
+async function withTransaction<T>(
+  storeName: string,
+  mode: IDBTransactionMode,
+  fn: (store: IDBObjectStore, tx: IDBTransaction) => IDBRequest | void,
+  extractResult?: boolean,
+): Promise<T> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const database = await initDB();
+      return await new Promise<T>((resolve, reject) => {
+        const tx = database.transaction(storeName, mode);
+        const store = tx.objectStore(storeName);
+        const request = fn(store, tx);
+        if (request && extractResult !== false) {
+          request.onsuccess = () => resolve(request.result as T);
+          request.onerror = () => reject(request.error);
+        } else {
+          tx.oncomplete = () => resolve(undefined as T);
+          tx.onerror = () => reject(tx.error);
+        }
+      });
+    } catch (err: unknown) {
+      if (err instanceof DOMException && err.name === 'InvalidStateError') {
+        db = null;
+        if (attempt === 0) continue;
+        console.warn('[Storage] IndexedDB connection closing after retry');
+        if (mode === 'readwrite') throw new DOMException('IndexedDB write failed — connection closing', 'InvalidStateError');
+        return undefined as T;
+      }
+      throw err;
+    }
+  }
+  throw new Error('IndexedDB transaction failed after retry');
+}
+
 export async function getBaseline(key: string): Promise<BaselineEntry | null> {
-  const database = await initDB();
-
-  return new Promise((resolve, reject) => {
-    const tx = database.transaction('baselines', 'readonly');
-    const store = tx.objectStore('baselines');
-    const request = store.get(key);
-
-    request.onsuccess = () => resolve(request.result || null);
-    request.onerror = () => reject(request.error);
-  });
+  const result = await withTransaction<BaselineEntry | undefined>(
+    'baselines', 'readonly', (store) => store.get(key), true,
+  );
+  return result || null;
 }
 
 export async function updateBaseline(key: string, currentCount: number): Promise<BaselineEntry> {
-  const database = await initDB();
   const now = Date.now();
   const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -95,14 +124,10 @@ export async function updateBaseline(key: string, currentCount: number): Promise
     entry.lastUpdated = now;
   }
 
-  return new Promise((resolve, reject) => {
-    const tx = database.transaction('baselines', 'readwrite');
-    const store = tx.objectStore('baselines');
-    const request = store.put(entry);
-
-    request.onsuccess = () => resolve(entry!);
-    request.onerror = () => reject(request.error);
-  });
+  await withTransaction<void>(
+    'baselines', 'readwrite', (store) => { store.put(entry); }, false,
+  );
+  return entry!;
 }
 
 export function calculateDeviation(current: number, baseline: BaselineEntry): {
@@ -136,16 +161,9 @@ export function calculateDeviation(current: number, baseline: BaselineEntry): {
 }
 
 export async function getAllBaselines(): Promise<BaselineEntry[]> {
-  const database = await initDB();
-
-  return new Promise((resolve, reject) => {
-    const tx = database.transaction('baselines', 'readonly');
-    const store = tx.objectStore('baselines');
-    const request = store.getAll();
-
-    request.onsuccess = () => resolve(request.result || []);
-    request.onerror = () => reject(request.error);
-  });
+  return (await withTransaction<BaselineEntry[]>(
+    'baselines', 'readonly', (store) => store.getAll(), true,
+  )) || [];
 }
 
 // Snapshot types and functions
@@ -161,33 +179,20 @@ const SNAPSHOT_RETENTION_DAYS = 7;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export async function saveSnapshot(snapshot: DashboardSnapshot): Promise<void> {
-  const database = await initDB();
-
-  return new Promise((resolve, reject) => {
-    const tx = database.transaction('snapshots', 'readwrite');
-    const store = tx.objectStore('snapshots');
-    store.put(snapshot);
-
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
+  await withTransaction<void>(
+    'snapshots', 'readwrite', (store) => { store.put(snapshot); }, false,
+  );
 }
 
 export async function getSnapshots(fromTime?: number, toTime?: number): Promise<DashboardSnapshot[]> {
-  const database = await initDB();
   const from = fromTime ?? Date.now() - SNAPSHOT_RETENTION_DAYS * DAY_MS;
   const to = toTime ?? Date.now();
 
-  return new Promise((resolve, reject) => {
-    const tx = database.transaction('snapshots', 'readonly');
-    const store = tx.objectStore('snapshots');
-    const index = store.index('by_time');
-    const range = IDBKeyRange.bound(from, to);
-    const request = index.getAll(range);
-
-    request.onsuccess = () => resolve(request.result || []);
-    request.onerror = () => reject(request.error);
-  });
+  return (await withTransaction<DashboardSnapshot[]>(
+    'snapshots', 'readonly',
+    (store) => store.index('by_time').getAll(IDBKeyRange.bound(from, to)),
+    true,
+  )) || [];
 }
 
 export async function getSnapshotAt(timestamp: number): Promise<DashboardSnapshot | null> {
@@ -201,38 +206,24 @@ export async function getSnapshotAt(timestamp: number): Promise<DashboardSnapsho
 }
 
 export async function cleanOldSnapshots(): Promise<void> {
-  const database = await initDB();
   const cutoff = Date.now() - SNAPSHOT_RETENTION_DAYS * DAY_MS;
 
-  return new Promise((resolve, reject) => {
-    const tx = database.transaction('snapshots', 'readwrite');
-    const store = tx.objectStore('snapshots');
-    const index = store.index('by_time');
-    const range = IDBKeyRange.upperBound(cutoff);
-
-    const request = index.openCursor(range);
-    request.onsuccess = () => {
-      const cursor = request.result;
-      if (cursor) {
-        cursor.delete();
-        cursor.continue();
-      }
-    };
-
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
+  await withTransaction<void>(
+    'snapshots', 'readwrite',
+    (store, tx) => {
+      const request = store.index('by_time').openCursor(IDBKeyRange.upperBound(cutoff));
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (cursor) { cursor.delete(); cursor.continue(); }
+      };
+      void tx;
+    },
+    false,
+  );
 }
 
 export async function getSnapshotTimestamps(): Promise<number[]> {
-  const database = await initDB();
-
-  return new Promise((resolve, reject) => {
-    const tx = database.transaction('snapshots', 'readonly');
-    const store = tx.objectStore('snapshots');
-    const request = store.getAllKeys();
-
-    request.onsuccess = () => resolve((request.result as number[]) || []);
-    request.onerror = () => reject(request.error);
-  });
+  return (await withTransaction<number[]>(
+    'snapshots', 'readonly', (store) => store.getAllKeys() as IDBRequest<number[]>, true,
+  )) || [];
 }

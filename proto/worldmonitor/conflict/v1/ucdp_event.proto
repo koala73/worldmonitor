@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package worldmonitor.conflict.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+import "worldmonitor/core/v1/geo.proto";
+
+// UcdpViolenceEvent represents a georeferenced violence event from the UCDP dataset.
+message UcdpViolenceEvent {
+  // Unique UCDP event identifier.
+  string id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // Start date of the event, as Unix epoch milliseconds.
+  int64 date_start = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // End date of the event, as Unix epoch milliseconds.
+  int64 date_end = 3 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Geographic location of the event.
+  worldmonitor.core.v1.GeoCoordinates location = 4;
+  // Country where the event occurred.
+  string country = 5;
+  // Primary party in the conflict (Side A).
+  string side_a = 6;
+  // Secondary party in the conflict (Side B).
+  string side_b = 7;
+  // Best estimate of deaths.
+  int32 deaths_best = 8;
+  // Low estimate of deaths.
+  int32 deaths_low = 9;
+  // High estimate of deaths.
+  int32 deaths_high = 10;
+  // Type of violence.
+  UcdpViolenceType violence_type = 11;
+  // Original source of the event report.
+  string source_original = 12;
+}
+
+// UcdpViolenceType represents the UCDP violence classification.
+// Maps to existing TS union: 'state-based' | 'non-state' | 'one-sided'.
+enum UcdpViolenceType {
+  // Unspecified violence type.
+  UCDP_VIOLENCE_TYPE_UNSPECIFIED = 0;
+  // State-based armed conflict.
+  UCDP_VIOLENCE_TYPE_STATE_BASED = 1;
+  // Non-state conflict between organized groups.
+  UCDP_VIOLENCE_TYPE_NON_STATE = 2;
+  // One-sided violence against civilians.
+  UCDP_VIOLENCE_TYPE_ONE_SIDED = 3;
+}

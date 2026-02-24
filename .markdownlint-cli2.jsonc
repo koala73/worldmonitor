@@ -1,0 +1,10 @@
+{
+  // Only enforce the 3 rules from PR #72. Everything else is off.
+  "config": {
+    "default": false,
+    "MD012": true,
+    "MD022": true,
+    "MD032": true
+  },
+  "ignores": ["node_modules/**", "dist/**", "src-tauri/target/**", ".planning/**"]
+}

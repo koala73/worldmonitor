@@ -2,6 +2,7 @@ import { Panel } from './Panel';
 import { escapeHtml } from '@/utils/sanitize';
 import type { PopulationExposure } from '@/types';
 import { formatPopulation } from '@/services/population-exposure';
+import { t } from '@/services/i18n';
 
 export class PopulationExposurePanel extends Panel {
   private exposures: PopulationExposure[] = [];
@@ -9,20 +10,12 @@ export class PopulationExposurePanel extends Panel {
   constructor() {
     super({
       id: 'population-exposure',
-      title: 'Population Exposure',
+      title: t('panels.populationExposure'),
       showCount: true,
       trackActivity: true,
-      infoTooltip: `<strong>Population Exposure Estimates</strong>
-        Estimated population within event impact radius.
-        Based on WorldPop country density data.
-        <ul>
-          <li>Conflict: 50km radius</li>
-          <li>Earthquake: 100km radius</li>
-          <li>Flood: 100km radius</li>
-          <li>Wildfire: 30km radius</li>
-        </ul>`,
+      infoTooltip: t('components.populationExposure.infoTooltip'),
     });
-    this.showLoading('Calculating exposure');
+    this.showLoading(t('common.calculatingExposure'));
   }
 
   public setExposures(exposures: PopulationExposure[]): void {
@@ -33,30 +26,33 @@ export class PopulationExposurePanel extends Panel {
 
   private renderContent(): void {
     if (this.exposures.length === 0) {
-      this.setContent('<div class="panel-empty">No exposure data available</div>');
+      this.setContent(`<div class="panel-empty">${t('common.noDataAvailable')}</div>`);
       return;
     }
 
     const totalAffected = this.exposures.reduce((sum, e) => sum + e.exposedPopulation, 0);
 
-    const summaryHtml = `
-      <div class="popexp-summary">
-        <span class="popexp-total">Total Affected: <strong>${formatPopulation(totalAffected)}</strong></span>
-      </div>
-    `;
-
-    const listHtml = this.exposures.slice(0, 30).map(e => {
+    const cards = this.exposures.slice(0, 30).map(e => {
       const typeIcon = this.getTypeIcon(e.eventType);
-      return `
-        <div class="popexp-event">
-          <span class="popexp-icon">${typeIcon}</span>
-          <span class="popexp-name">${escapeHtml(e.eventName.substring(0, 60))}</span>
-          <span class="popexp-pop">${formatPopulation(e.exposedPopulation)}</span>
-          <span class="popexp-radius">${e.exposureRadiusKm}km</span>
-        </div>`;
+      const popClass = e.exposedPopulation >= 1_000_000 ? ' popexp-pop-large' : '';
+      return `<div class="popexp-card">
+        <div class="popexp-card-name">${typeIcon} ${escapeHtml(e.eventName)}</div>
+        <div class="popexp-card-meta">
+          <span class="popexp-card-pop${popClass}">${t('components.populationExposure.affectedCount', { count: formatPopulation(e.exposedPopulation) })}</span>
+          <span class="popexp-card-radius">${t('components.populationExposure.radiusKm', { km: String(e.exposureRadiusKm) })}</span>
+        </div>
+      </div>`;
     }).join('');
 
-    this.setContent(`${summaryHtml}<div class="popexp-list">${listHtml}</div>`);
+    this.setContent(`
+      <div class="popexp-panel-content">
+        <div class="popexp-summary">
+          <span class="popexp-label">${t('components.populationExposure.totalAffected')}</span>
+          <span class="popexp-total">${formatPopulation(totalAffected)}</span>
+        </div>
+        <div class="popexp-list">${cards}</div>
+      </div>
+    `);
   }
 
   private getTypeIcon(type: string): string {
@@ -66,16 +62,16 @@ export class PopulationExposurePanel extends Panel {
       case 'one-sided':
       case 'conflict':
       case 'battle':
-        return '⚔️';
+        return '\u2694\uFE0F';
       case 'earthquake':
-        return '🌍';
+        return '\uD83C\uDF0D';
       case 'flood':
-        return '🌊';
+        return '\uD83C\uDF0A';
       case 'fire':
       case 'wildfire':
-        return '🔥';
+        return '\uD83D\uDD25';
       default:
-        return '📍';
+        return '\uD83D\uDCCD';
     }
   }
 }

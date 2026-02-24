@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package worldmonitor.core.v1;
+
+import "buf/validate/validate.proto";
+
+// PaginationRequest specifies cursor-based pagination parameters for list endpoints.
+message PaginationRequest {
+  // Maximum number of items to return per page (1 to 100).
+  int32 page_size = 1 [
+    (buf.validate.field).int32.gte = 1,
+    (buf.validate.field).int32.lte = 100
+  ];
+  // Opaque cursor for fetching the next page. Empty string for the first page.
+  string cursor = 2;
+}
+
+// PaginationResponse contains pagination metadata returned alongside list results.
+message PaginationResponse {
+  // Cursor for fetching the next page. Empty string indicates no more pages.
+  string next_cursor = 1;
+  // Total count of items matching the query, if known. Zero if the total is unknown.
+  int32 total_count = 2;
+}

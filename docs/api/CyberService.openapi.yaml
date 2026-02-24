@@ -1,0 +1,256 @@
+openapi: 3.1.0
+info:
+    title: CyberService API
+    version: 1.0.0
+paths:
+    /api/cyber/v1/list-cyber-threats:
+        post:
+            tags:
+                - CyberService
+            summary: ListCyberThreats
+            description: ListCyberThreats retrieves threat indicators from multiple intelligence sources.
+            operationId: ListCyberThreats
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ListCyberThreatsRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListCyberThreatsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+components:
+    schemas:
+        Error:
+            type: object
+            properties:
+                message:
+                    type: string
+                    description: Error message (e.g., 'user not found', 'database connection failed')
+            description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        FieldViolation:
+            type: object
+            properties:
+                field:
+                    type: string
+                    description: The field path that failed validation (e.g., 'user.email' for nested fields). For header validation, this will be the header name (e.g., 'X-API-Key')
+                description:
+                    type: string
+                    description: Human-readable description of the validation violation (e.g., 'must be a valid email address', 'required field missing')
+            required:
+                - field
+                - description
+            description: FieldViolation describes a single validation error for a specific field.
+        ValidationError:
+            type: object
+            properties:
+                violations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FieldViolation'
+                    description: List of validation violations
+            required:
+                - violations
+            description: ValidationError is returned when request validation fails. It contains a list of field violations describing what went wrong.
+        ListCyberThreatsRequest:
+            type: object
+            properties:
+                timeRange:
+                    $ref: '#/components/schemas/TimeRange'
+                pagination:
+                    $ref: '#/components/schemas/PaginationRequest'
+                type:
+                    type: string
+                    enum:
+                        - CYBER_THREAT_TYPE_UNSPECIFIED
+                        - CYBER_THREAT_TYPE_C2_SERVER
+                        - CYBER_THREAT_TYPE_MALWARE_HOST
+                        - CYBER_THREAT_TYPE_PHISHING
+                        - CYBER_THREAT_TYPE_MALICIOUS_URL
+                    description: |-
+                        CyberThreatType represents the classification of a cyber threat.
+                         Maps to TS union: 'c2_server' | 'malware_host' | 'phishing' | 'malicious_url'.
+                source:
+                    type: string
+                    enum:
+                        - CYBER_THREAT_SOURCE_UNSPECIFIED
+                        - CYBER_THREAT_SOURCE_FEODO
+                        - CYBER_THREAT_SOURCE_URLHAUS
+                        - CYBER_THREAT_SOURCE_C2INTEL
+                        - CYBER_THREAT_SOURCE_OTX
+                        - CYBER_THREAT_SOURCE_ABUSEIPDB
+                    description: |-
+                        CyberThreatSource represents the intelligence source of a cyber threat.
+                         Maps to TS union: 'feodo' | 'urlhaus' | 'c2intel' | 'otx' | 'abuseipdb'.
+                minSeverity:
+                    type: string
+                    enum:
+                        - CRITICALITY_LEVEL_UNSPECIFIED
+                        - CRITICALITY_LEVEL_LOW
+                        - CRITICALITY_LEVEL_MEDIUM
+                        - CRITICALITY_LEVEL_HIGH
+                        - CRITICALITY_LEVEL_CRITICAL
+                    description: |-
+                        CriticalityLevel represents a four-tier criticality classification for cyber and risk domains.
+                         Maps to existing TS union: 'low' | 'medium' | 'high' | 'critical'.
+            description: ListCyberThreatsRequest specifies filters for retrieving cyber threat indicators.
+        TimeRange:
+            type: object
+            properties:
+                start:
+                    type: integer
+                    format: int64
+                    description: 'Start of the time range (inclusive), as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                end:
+                    type: integer
+                    format: int64
+                    description: 'End of the time range (inclusive), as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: |-
+                TimeRange represents a time interval defined by a start and end timestamp.
+                 Used for filtering data within a specific time period.
+        PaginationRequest:
+            type: object
+            properties:
+                pageSize:
+                    type: integer
+                    maximum: 100
+                    minimum: 1
+                    format: int32
+                    description: Maximum number of items to return per page (1 to 100).
+                cursor:
+                    type: string
+                    description: Opaque cursor for fetching the next page. Empty string for the first page.
+            description: PaginationRequest specifies cursor-based pagination parameters for list endpoints.
+        ListCyberThreatsResponse:
+            type: object
+            properties:
+                threats:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CyberThreat'
+                pagination:
+                    $ref: '#/components/schemas/PaginationResponse'
+            description: ListCyberThreatsResponse contains cyber threats matching the request.
+        CyberThreat:
+            type: object
+            properties:
+                id:
+                    type: string
+                    minLength: 1
+                    description: Unique threat identifier.
+                type:
+                    type: string
+                    enum:
+                        - CYBER_THREAT_TYPE_UNSPECIFIED
+                        - CYBER_THREAT_TYPE_C2_SERVER
+                        - CYBER_THREAT_TYPE_MALWARE_HOST
+                        - CYBER_THREAT_TYPE_PHISHING
+                        - CYBER_THREAT_TYPE_MALICIOUS_URL
+                    description: |-
+                        CyberThreatType represents the classification of a cyber threat.
+                         Maps to TS union: 'c2_server' | 'malware_host' | 'phishing' | 'malicious_url'.
+                source:
+                    type: string
+                    enum:
+                        - CYBER_THREAT_SOURCE_UNSPECIFIED
+                        - CYBER_THREAT_SOURCE_FEODO
+                        - CYBER_THREAT_SOURCE_URLHAUS
+                        - CYBER_THREAT_SOURCE_C2INTEL
+                        - CYBER_THREAT_SOURCE_OTX
+                        - CYBER_THREAT_SOURCE_ABUSEIPDB
+                    description: |-
+                        CyberThreatSource represents the intelligence source of a cyber threat.
+                         Maps to TS union: 'feodo' | 'urlhaus' | 'c2intel' | 'otx' | 'abuseipdb'.
+                indicator:
+                    type: string
+                    description: Threat indicator value (IP, domain, or URL).
+                indicatorType:
+                    type: string
+                    enum:
+                        - CYBER_THREAT_INDICATOR_TYPE_UNSPECIFIED
+                        - CYBER_THREAT_INDICATOR_TYPE_IP
+                        - CYBER_THREAT_INDICATOR_TYPE_DOMAIN
+                        - CYBER_THREAT_INDICATOR_TYPE_URL
+                    description: |-
+                        CyberThreatIndicatorType represents the type of threat indicator.
+                         Maps to TS union: 'ip' | 'domain' | 'url'.
+                location:
+                    $ref: '#/components/schemas/GeoCoordinates'
+                country:
+                    type: string
+                    description: Country of origin (ISO 3166-1 alpha-2).
+                severity:
+                    type: string
+                    enum:
+                        - CRITICALITY_LEVEL_UNSPECIFIED
+                        - CRITICALITY_LEVEL_LOW
+                        - CRITICALITY_LEVEL_MEDIUM
+                        - CRITICALITY_LEVEL_HIGH
+                        - CRITICALITY_LEVEL_CRITICAL
+                    description: |-
+                        CriticalityLevel represents a four-tier criticality classification for cyber and risk domains.
+                         Maps to existing TS union: 'low' | 'medium' | 'high' | 'critical'.
+                malwareFamily:
+                    type: string
+                    description: Associated malware family, if known.
+                tags:
+                    type: array
+                    items:
+                        type: string
+                        description: Descriptive tags.
+                firstSeenAt:
+                    type: integer
+                    format: int64
+                    description: 'First seen time, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                lastSeenAt:
+                    type: integer
+                    format: int64
+                    description: 'Last seen time, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+            required:
+                - id
+            description: |-
+                CyberThreat represents a cyber threat indicator aggregated from multiple sources.
+                 Sources include Feodo Tracker, URLhaus, OTX, AbuseIPDB, and C2Intel.
+        GeoCoordinates:
+            type: object
+            properties:
+                latitude:
+                    type: number
+                    maximum: 90
+                    minimum: -90
+                    format: double
+                    description: Latitude in decimal degrees (-90 to 90).
+                longitude:
+                    type: number
+                    maximum: 180
+                    minimum: -180
+                    format: double
+                    description: Longitude in decimal degrees (-180 to 180).
+            description: GeoCoordinates represents a geographic location using WGS84 coordinates.
+        PaginationResponse:
+            type: object
+            properties:
+                nextCursor:
+                    type: string
+                    description: Cursor for fetching the next page. Empty string indicates no more pages.
+                totalCount:
+                    type: integer
+                    format: int32
+                    description: Total count of items matching the query, if known. Zero if the total is unknown.
+            description: PaginationResponse contains pagination metadata returned alongside list results.

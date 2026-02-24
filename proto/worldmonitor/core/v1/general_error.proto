@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package worldmonitor.core.v1;
+
+import "sebuf/http/annotations.proto";
+
+// GeneralError represents application-wide error conditions that any endpoint may return.
+// Each error subtype carries the specific information needed for the client to handle it.
+message GeneralError {
+  // The specific type of general error.
+  oneof error_type {
+    // The request was rate-limited by an upstream provider.
+    RateLimited rate_limited = 1;
+    // An upstream data provider is unavailable.
+    UpstreamDown upstream_down = 2;
+    // The request was blocked due to geographic restrictions.
+    GeoBlocked geo_blocked = 3;
+    // The service is temporarily in maintenance mode.
+    MaintenanceMode maintenance_mode = 4;
+  }
+}
+
+// RateLimited indicates the request was throttled by an upstream data provider.
+// Client action: Wait for the specified duration before retrying.
+message RateLimited {
+  // Number of seconds to wait before retrying the request.
+  int32 retry_after_seconds = 1;
+  // Name of the upstream provider that imposed the rate limit.
+  string provider = 2;
+}
+
+// UpstreamDown indicates an upstream data provider is currently unavailable.
+// Client action: Show degraded state for affected data; retry later.
+message UpstreamDown {
+  // Name of the unavailable upstream provider.
+  string provider = 1;
+  // Human-readable description of the outage.
+  string message = 2;
+}
+
+// GeoBlocked indicates the request was blocked due to geographic restrictions.
+// Client action: Inform the user that the content is not available in their region.
+message GeoBlocked {
+  // Human-readable reason for the geographic restriction.
+  string reason = 1;
+}
+
+// MaintenanceMode indicates the service is temporarily unavailable for maintenance.
+// Client action: Show maintenance message and estimated end time.
+message MaintenanceMode {
+  // Estimated time when maintenance will end, as Unix epoch milliseconds.
+  int64 estimated_end = 1 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}

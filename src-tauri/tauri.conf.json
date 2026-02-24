@@ -2,11 +2,11 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "World Monitor",
   "mainBinaryName": "world-monitor",
-  "version": "0.1.0",
+  "version": "2.5.6",
   "identifier": "app.worldmonitor.desktop",
   "build": {
-    "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build",
+    "beforeDevCommand": "npm run build:sidecar-sebuf && npm run dev",
+    "beforeBuildCommand": "npm run build:desktop",
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173"
   },
@@ -19,11 +19,17 @@
         "minWidth": 1200,
         "minHeight": 720,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "backgroundColor": [
+          26,
+          28,
+          30,
+          255
+        ]
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' https: http://localhost:5173 http://127.0.0.1:46123 ws: wss: blob: data:; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://www.youtube.com; worker-src 'self' blob:; font-src 'self' data: https:; media-src 'self' data: blob: https:; frame-src 'self' http://127.0.0.1:46123 https://www.youtube.com https://www.youtube-nocookie.com;"
+      "csp": "default-src 'self'; connect-src 'self' https: http://localhost:5173 http://127.0.0.1:46123 ws: wss: blob: data:; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval' https://www.youtube.com https://us-assets.i.posthog.com; worker-src 'self' blob:; font-src 'self' data: https:; media-src 'self' data: blob: https:; frame-src 'self' http://127.0.0.1:46123 https://worldmonitor.app https://tech.worldmonitor.app https://www.youtube.com https://www.youtube-nocookie.com;"
     }
   },
   "bundle": {
@@ -32,7 +38,8 @@
       "app",
       "dmg",
       "nsis",
-      "msi"
+      "msi",
+      "appimage"
     ],
     "category": "Productivity",
     "shortDescription": "World Monitor desktop app (supports World and Tech variants)",
@@ -47,6 +54,8 @@
     "resources": [
       "../api",
       "sidecar/local-api-server.mjs",
+      "sidecar/package.json",
+      "sidecar/node",
       "../data",
       "../src/config"
     ],

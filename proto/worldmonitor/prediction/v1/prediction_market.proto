@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package worldmonitor.prediction.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+// PredictionMarket represents a prediction market contract from Polymarket.
+message PredictionMarket {
+  // Unique market identifier or slug.
+  string id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // Market question or title.
+  string title = 2;
+  // Current "Yes" price (0.0 to 1.0, representing probability).
+  double yes_price = 3 [
+    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.lte = 1
+  ];
+  // Trading volume in USD.
+  double volume = 4 [(buf.validate.field).double.gte = 0];
+  // URL to the Polymarket market page.
+  string url = 5;
+  // Market close time, as Unix epoch milliseconds. Zero if no expiry.
+  int64 closes_at = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Market category (e.g., "Politics", "Crypto", "Sports").
+  string category = 7;
+}

@@ -1,32 +1,10 @@
 import { Panel } from './Panel';
+import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
+import { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
+import type { ListStablecoinMarketsResponse } from '@/generated/client/worldmonitor/market/v1/service_client';
 
-interface StablecoinData {
-  id: string;
-  symbol: string;
-  name: string;
-  price: number;
-  deviation: number;
-  pegStatus: 'ON PEG' | 'SLIGHT DEPEG' | 'DEPEGGED';
-  marketCap: number;
-  volume24h: number;
-  change24h: number;
-  change7d: number;
-  image: string;
-}
-
-interface StablecoinResult {
-  timestamp: string;
-  summary: {
-    totalMarketCap: number;
-    totalVolume24h: number;
-    coinCount: number;
-    depeggedCount: number;
-    healthStatus: string;
-  };
-  stablecoins: StablecoinData[];
-  unavailable?: boolean;
-}
+type StablecoinResult = ListStablecoinMarketsResponse;
 
 function formatLargeNum(v: number): string {
   if (v >= 1e12) return `$${(v / 1e12).toFixed(1)}T`;
@@ -54,9 +32,9 @@ export class StablecoinPanel extends Panel {
   private refreshInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
-    super({ id: 'stablecoins', title: 'Stablecoins', showCount: false });
+    super({ id: 'stablecoins', title: t('panels.stablecoins'), showCount: false });
     void this.fetchData();
-    this.refreshInterval = setInterval(() => this.fetchData(), 60000);
+    this.refreshInterval = setInterval(() => this.fetchData(), 3 * 60000);
   }
 
   public destroy(): void {
@@ -67,37 +45,50 @@ export class StablecoinPanel extends Panel {
   }
 
   private async fetchData(): Promise<void> {
-    try {
-      const res = await fetch('/api/stablecoin-markets');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      this.data = await res.json();
-      this.error = null;
-    } catch (err) {
-      this.error = err instanceof Error ? err.message : 'Failed to fetch';
-    } finally {
-      this.loading = false;
-      this.renderPanel();
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const client = new MarketServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+        this.data = await client.listStablecoinMarkets({ coins: [] });
+        this.error = null;
+
+        if (this.data && this.data.stablecoins.length === 0 && attempt < 2) {
+          this.showRetrying();
+          await new Promise(r => setTimeout(r, 20_000));
+          continue;
+        }
+        break;
+      } catch (err) {
+        if (this.isAbortError(err)) return;
+        if (attempt < 2) {
+          this.showRetrying();
+          await new Promise(r => setTimeout(r, 20_000));
+          continue;
+        }
+        this.error = err instanceof Error ? err.message : 'Failed to fetch';
+      }
     }
+    this.loading = false;
+    this.renderPanel();
   }
 
   private renderPanel(): void {
     if (this.loading) {
-      this.showLoading('Loading stablecoins...');
+      this.showLoading(t('common.loadingStablecoins'));
       return;
     }
 
     if (this.error || !this.data) {
-      this.showError(this.error || 'No data');
+      this.showError(this.error || t('common.noDataShort'));
       return;
     }
 
     const d = this.data;
     if (!d.stablecoins.length) {
-      this.setContent('<div class="panel-loading-text">Stablecoin data temporarily unavailable</div>');
+      this.setContent(`<div class="panel-loading-text">${t('components.stablecoins.unavailable')}</div>`);
       return;
     }
 
-    const s = d.summary;
+    const s = d.summary || { totalMarketCap: 0, totalVolume24h: 0, coinCount: 0, depeggedCount: 0, healthStatus: 'UNAVAILABLE' };
 
     const pegRows = d.stablecoins.map(c => `
       <div class="stable-row">
@@ -129,13 +120,13 @@ export class StablecoinPanel extends Panel {
           <span class="health-detail">MCap: ${formatLargeNum(s.totalMarketCap)} | Vol: ${formatLargeNum(s.totalVolume24h)}</span>
         </div>
         <div class="stable-section">
-          <div class="stable-section-title">Peg Health</div>
+          <div class="stable-section-title">${t('components.stablecoins.pegHealth')}</div>
           <div class="stable-peg-list">${pegRows}</div>
         </div>
         <div class="stable-section">
-          <div class="stable-section-title">Supply & Volume</div>
+          <div class="stable-section-title">${t('components.stablecoins.supplyVolume')}</div>
           <div class="stable-supply-header">
-            <span>Token</span><span>MCap</span><span>24h Vol</span><span>24h Chg</span>
+            <span>${t('components.stablecoins.token')}</span><span>${t('components.stablecoins.mcap')}</span><span>${t('components.stablecoins.vol24h')}</span><span>${t('components.stablecoins.chg24h')}</span>
           </div>
           <div class="stable-supply-list">${supplyRows}</div>
         </div>

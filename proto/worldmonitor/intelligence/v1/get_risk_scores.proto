@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package worldmonitor.intelligence.v1;
+
+import "worldmonitor/intelligence/v1/intelligence.proto";
+
+// GetRiskScoresRequest specifies parameters for retrieving risk scores.
+message GetRiskScoresRequest {
+  // Optional region filter. Empty returns all tracked regions.
+  string region = 1;
+}
+
+// GetRiskScoresResponse contains composite risk scores and strategic assessments.
+message GetRiskScoresResponse {
+  // Composite Instability Index scores.
+  repeated CiiScore cii_scores = 1;
+  // Strategic risk assessments.
+  repeated StrategicRisk strategic_risks = 2;
+}
