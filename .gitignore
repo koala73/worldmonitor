@@ -24,8 +24,8 @@ test-results/
 src-tauri/sidecar/node/*
 !src-tauri/sidecar/node/.gitkeep
 
-# AI planning session state — tracked for this project
-# .planning/
+# AI planning session state
+.planning/
 
 # Compiled sebuf gateway bundle (built by scripts/build-sidecar-sebuf.mjs)
 api/[[][[].*.js
