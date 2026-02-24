@@ -33,6 +33,7 @@ import type {
   MapDatacenterCluster,
   CyberThreat,
   CableHealthRecord,
+  GatraAlert,
 } from '@/types';
 import type { AirportDelayAlert } from '@/services/aviation';
 import type { DisplacementFlow } from '@/services/displacement';
@@ -40,6 +41,7 @@ import type { Earthquake } from '@/services/earthquakes';
 import type { ClimateAnomaly } from '@/services/climate';
 import { ArcLayer } from '@deck.gl/layers';
 import { HeatmapLayer } from '@deck.gl/aggregation-layers';
+import { createGatraAlertsLayers as buildGatraLayers } from '@/layers/gatra-alerts-layer';
 import type { WeatherAlert } from '@/services/weather';
 import { escapeHtml } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
@@ -268,6 +270,7 @@ export class DeckGLMap {
   private ucdpEvents: UcdpGeoEvent[] = [];
   private displacementFlows: DisplacementFlow[] = [];
   private climateAnomalies: ClimateAnomaly[] = [];
+  private gatraAlerts: GatraAlert[] = [];
 
   // Country highlight state
   private countryGeoJsonLoaded = false;
@@ -1138,6 +1141,11 @@ export class DeckGLMap {
     // Gulf FDI investments layer
     if (mapLayers.gulfInvestments) {
       layers.push(this.createGulfInvestmentsLayer());
+    }
+
+    // GATRA SOC alerts layer
+    if (mapLayers.gatraAlerts && this.gatraAlerts.length > 0) {
+      layers.push(...this.createGatraAlertsLayers());
     }
 
     // News geo-locations (always shown if data exists)
@@ -2449,6 +2457,8 @@ export class DeckGLMap {
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.asn || t('components.deckgl.tooltip.internetOutage'))}</strong><br/>${text(obj.country)}</div>` };
       case 'cyber-threats-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${t('popups.cyberThreat.title')}</strong><br/>${text(obj.severity || t('components.deckgl.tooltip.medium'))} · ${text(obj.country || t('popups.unknown'))}</div>` };
+      case 'gatra-alerts-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>GATRA ${text(obj.severity?.toUpperCase() || 'ALERT')}</strong><br/>${text(obj.mitreId || '')} ${text(obj.mitreName || '')}<br/>${text(obj.locationName || '')} · ${text(obj.infrastructure || '')}<br/>${obj.confidence != null ? obj.confidence + '% confidence' : ''}</div>` };
       case 'news-locations-layer':
         return { html: `<div class="deckgl-tooltip"><strong>📰 ${t('components.deckgl.tooltip.news')}</strong><br/>${text(obj.title?.slice(0, 80) || '')}</div>` };
       case 'gulf-investments-layer': {
@@ -2785,6 +2795,18 @@ export class DeckGLMap {
           { key: 'waterways', label: t('components.deckgl.layers.strategicWaterways'), icon: '&#9875;' },
           { key: 'natural', label: t('components.deckgl.layers.naturalEvents'), icon: '&#127755;' },
           { key: 'cyberThreats', label: t('components.deckgl.layers.cyberThreats'), icon: '&#128737;' },
+        ]
+      : SITE_VARIANT === 'cyber'
+      ? [
+          { key: 'gatraAlerts', label: t('components.deckgl.layers.gatraAlerts'), icon: '&#128737;' },
+          { key: 'cyberThreats', label: t('components.deckgl.layers.cyberThreats'), icon: '&#128274;' },
+          { key: 'conflicts', label: t('components.deckgl.layers.conflictZones'), icon: '&#9876;' },
+          { key: 'cables', label: t('components.deckgl.layers.underseaCables'), icon: '&#128268;' },
+          { key: 'datacenters', label: t('components.deckgl.layers.aiDataCenters'), icon: '&#128421;' },
+          { key: 'military', label: t('components.deckgl.layers.militaryActivity'), icon: '&#9992;' },
+          { key: 'outages', label: t('components.deckgl.layers.internetOutages'), icon: '&#128225;' },
+          { key: 'natural', label: t('components.deckgl.layers.naturalEvents'), icon: '&#127755;' },
+          { key: 'fires', label: t('components.deckgl.layers.fires'), icon: '&#128293;' },
         ]
       : [
         { key: 'hotspots', label: t('components.deckgl.layers.intelHotspots'), icon: '&#127919;' },
@@ -3257,6 +3279,10 @@ export class DeckGLMap {
     });
   }
 
+  private createGatraAlertsLayers(): Layer[] {
+    return buildGatraLayers(this.gatraAlerts, this.pulseTime || Date.now());
+  }
+
   // Data setters - all use render() for debouncing
   public setEarthquakes(earthquakes: Earthquake[]): void {
     this.earthquakes = earthquakes;
@@ -3277,6 +3303,11 @@ export class DeckGLMap {
 
   public setCyberThreats(threats: CyberThreat[]): void {
     this.cyberThreats = threats;
+    this.render();
+  }
+
+  public setGatraAlerts(alerts: GatraAlert[]): void {
+    this.gatraAlerts = alerts;
     this.render();
   }
 

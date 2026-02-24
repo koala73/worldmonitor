@@ -82,6 +82,8 @@ import {
   InvestmentsPanel,
   LanguageSelector,
 } from '@/components';
+import { GatraSOCDashboardPanel } from '@/panels/gatra-soc-panel';
+import { refreshGatraData } from '@/gatra/connector';
 import type { SearchResult } from '@/components/SearchModal';
 import { collectStoryData } from '@/services/story-data';
 import { renderStoryToCanvas } from '@/services/story-renderer';
@@ -196,6 +198,7 @@ export class App {
   private pendingDeepLinkCountry: string | null = null;
   private briefRequestToken = 0;
   private readonly isDesktopApp = isDesktopRuntime();
+  private readonly isLocalDev = typeof window !== 'undefined' && window.location.hostname === 'localhost';
   private readonly UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
   private updateCheckIntervalId: ReturnType<typeof setInterval> | null = null;
   private clockIntervalId: ReturnType<typeof setInterval> | null = null;
@@ -1833,32 +1836,42 @@ export class App {
     this.container.innerHTML = `
       <div class="header">
         <div class="header-left">
+          ${ /* Variant switcher — on localhost/desktop, switch locally via localStorage */ ''}
           <div class="variant-switcher">
-            <a href="${this.isDesktopApp ? '#' : (SITE_VARIANT === 'full' ? '#' : 'https://worldmonitor.app')}"
+            <a href="${this.isDesktopApp || this.isLocalDev ? '#' : (SITE_VARIANT === 'full' ? '#' : 'https://worldmonitor.app')}"
                class="variant-option ${SITE_VARIANT === 'full' ? 'active' : ''}"
                data-variant="full"
-               ${!this.isDesktopApp && SITE_VARIANT !== 'full' ? 'target="_blank" rel="noopener"' : ''}
+               ${!(this.isDesktopApp || this.isLocalDev) && SITE_VARIANT !== 'full' ? 'target="_blank" rel="noopener"' : ''}
                title="${t('header.world')}${SITE_VARIANT === 'full' ? ` ${t('common.currentVariant')}` : ''}">
               <span class="variant-icon">🌍</span>
               <span class="variant-label">${t('header.world')}</span>
             </a>
             <span class="variant-divider"></span>
-            <a href="${this.isDesktopApp ? '#' : (SITE_VARIANT === 'tech' ? '#' : 'https://tech.worldmonitor.app')}"
+            <a href="${this.isDesktopApp || this.isLocalDev ? '#' : (SITE_VARIANT === 'tech' ? '#' : 'https://tech.worldmonitor.app')}"
                class="variant-option ${SITE_VARIANT === 'tech' ? 'active' : ''}"
                data-variant="tech"
-               ${!this.isDesktopApp && SITE_VARIANT !== 'tech' ? 'target="_blank" rel="noopener"' : ''}
+               ${!(this.isDesktopApp || this.isLocalDev) && SITE_VARIANT !== 'tech' ? 'target="_blank" rel="noopener"' : ''}
                title="${t('header.tech')}${SITE_VARIANT === 'tech' ? ` ${t('common.currentVariant')}` : ''}">
               <span class="variant-icon">💻</span>
               <span class="variant-label">${t('header.tech')}</span>
             </a>
             <span class="variant-divider"></span>
-            <a href="${this.isDesktopApp ? '#' : (SITE_VARIANT === 'finance' ? '#' : 'https://finance.worldmonitor.app')}"
+            <a href="${this.isDesktopApp || this.isLocalDev ? '#' : (SITE_VARIANT === 'finance' ? '#' : 'https://finance.worldmonitor.app')}"
                class="variant-option ${SITE_VARIANT === 'finance' ? 'active' : ''}"
                data-variant="finance"
-               ${!this.isDesktopApp && SITE_VARIANT !== 'finance' ? 'target="_blank" rel="noopener"' : ''}
+               ${!(this.isDesktopApp || this.isLocalDev) && SITE_VARIANT !== 'finance' ? 'target="_blank" rel="noopener"' : ''}
                title="${t('header.finance')}${SITE_VARIANT === 'finance' ? ` ${t('common.currentVariant')}` : ''}">
               <span class="variant-icon">📈</span>
               <span class="variant-label">${t('header.finance')}</span>
+            </a>
+            <span class="variant-divider"></span>
+            <a href="${this.isDesktopApp || this.isLocalDev ? '#' : (SITE_VARIANT === 'cyber' ? '#' : 'https://cyber.worldmonitor.app')}"
+               class="variant-option ${SITE_VARIANT === 'cyber' ? 'active' : ''}"
+               data-variant="cyber"
+               ${!(this.isDesktopApp || this.isLocalDev) && SITE_VARIANT !== 'cyber' ? 'target="_blank" rel="noopener"' : ''}
+               title="${t('header.cyber')}${SITE_VARIANT === 'cyber' ? ` ${t('common.currentVariant')}` : ''}">
+              <span class="variant-icon">🛡️</span>
+              <span class="variant-label">${t('header.cyber')}</span>
             </a>
           </div>
           <span class="logo">MONITOR</span><span class="version">v${__APP_VERSION__}</span>${BETA_MODE ? '<span class="beta-badge">BETA</span>' : ''}
@@ -2375,6 +2388,12 @@ export class App {
     this.panels['etf-flows'] = new ETFFlowsPanel();
     this.panels['stablecoins'] = new StablecoinPanel();
 
+    // GATRA SOC Panel (cyber variant)
+    if (SITE_VARIANT === 'cyber') {
+      const gatraPanel = new GatraSOCDashboardPanel();
+      this.panels['gatra-soc'] = gatraPanel;
+    }
+
     // AI Insights Panel (desktop only - hides itself on mobile)
     const insightsPanel = new InsightsPanel();
     this.panels['insights'] = insightsPanel;
@@ -2687,8 +2706,8 @@ export class App {
     // Sources modal
     this.setupSourcesModal();
 
-    // Variant switcher: switch variant locally on desktop (reload with new config)
-    if (this.isDesktopApp) {
+    // Variant switcher: switch variant locally on desktop or localhost (reload with new config)
+    if (this.isDesktopApp || this.isLocalDev) {
       this.container.querySelectorAll<HTMLAnchorElement>('.variant-option').forEach(link => {
         link.addEventListener('click', (e) => {
           const variant = link.dataset.variant;
@@ -3194,6 +3213,11 @@ export class App {
       tasks.push({ name: 'techReadiness', task: runGuarded('techReadiness', () => (this.panels['tech-readiness'] as TechReadinessPanel)?.refresh()) });
     }
 
+    // GATRA SOC data (cyber variant)
+    if (SITE_VARIANT === 'cyber' && this.mapLayers.gatraAlerts) {
+      tasks.push({ name: 'gatra', task: runGuarded('gatra', () => this.loadGatraData()) });
+    }
+
     // Use allSettled to ensure all tasks complete and search index always updates
     const results = await Promise.allSettled(tasks.map(t => t.task));
 
@@ -3228,6 +3252,9 @@ export class App {
           break;
         case 'cyberThreats':
           await this.loadCyberThreats();
+          break;
+        case 'gatraAlerts':
+          await this.loadGatraData();
           break;
         case 'ais':
           await this.loadAisSignals();
@@ -4108,6 +4135,20 @@ export class App {
     }
   }
 
+  private async loadGatraData(): Promise<void> {
+    try {
+      const snap = await refreshGatraData();
+      const gatraPanel = this.panels['gatra-soc'] as GatraSOCDashboardPanel | undefined;
+      gatraPanel?.refresh();
+      if (this.mapLayers.gatraAlerts) {
+        this.map?.setGatraAlerts(snap.alerts);
+      }
+      dataFreshness.recordUpdate('gatra' as DataSourceId, snap.alerts.length);
+    } catch (error) {
+      console.error('[App] GATRA data load failed:', error);
+    }
+  }
+
   private async loadAisSignals(): Promise<void> {
     try {
       const { disruptions, density } = await fetchAisSignals();
@@ -4688,5 +4729,10 @@ export class App {
       this.cyberThreatsCache = null;
       return this.loadCyberThreats();
     }, 10 * 60 * 1000, () => CYBER_LAYER_ENABLED && this.mapLayers.cyberThreats);
+
+    // GATRA SOC data (60s refresh, cyber variant only)
+    if (SITE_VARIANT === 'cyber') {
+      this.scheduleRefresh('gatra', () => this.loadGatraData(), 60 * 1000, () => this.mapLayers.gatraAlerts);
+    }
   }
 }

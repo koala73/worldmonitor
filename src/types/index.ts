@@ -519,6 +519,8 @@ export interface MapLayers {
   commodityHubs: boolean;
   // Gulf FDI layers
   gulfInvestments: boolean;
+  // GATRA SOC layers
+  gatraAlerts: boolean;
 }
 
 export interface AIDataCenter {
@@ -1272,4 +1274,90 @@ export interface MapDatacenterCluster {
   existingCount?: number;
   plannedCount?: number;
   sampled?: boolean;
+}
+
+// ============================================
+// GATRA SOC TYPES
+// ============================================
+
+export type GatraAlertSeverity = 'critical' | 'high' | 'medium' | 'low';
+export type GatraAgentName = 'ADA' | 'TAA' | 'CRA' | 'CLA' | 'RVA';
+export type GatraAgentStatusType = 'online' | 'processing' | 'degraded';
+
+export interface GatraAlert {
+  id: string;
+  severity: GatraAlertSeverity;
+  mitreId: string;
+  mitreName: string;
+  description: string;
+  confidence: number;
+  lat: number;
+  lon: number;
+  locationName: string;
+  infrastructure: string;
+  timestamp: Date;
+  agent: GatraAgentName;
+}
+
+export interface GatraAgentStatus {
+  name: GatraAgentName;
+  fullName: string;
+  status: GatraAgentStatusType;
+  lastHeartbeat: Date;
+}
+
+export interface GatraIncidentSummary {
+  activeIncidents: number;
+  mttrMinutes: number;
+  alerts24h: number;
+  responses24h: number;
+}
+
+export interface GatraCRAAction {
+  id: string;
+  action: string;
+  actionType: 'ip_blocked' | 'endpoint_isolated' | 'credential_rotated' | 'playbook_triggered' | 'rule_pushed' | 'rate_limited';
+  target: string;
+  timestamp: Date;
+  success: boolean;
+}
+
+export type KillChainPhase =
+  | 'reconnaissance'
+  | 'weaponization'
+  | 'delivery'
+  | 'exploitation'
+  | 'installation'
+  | 'c2'
+  | 'actions';
+
+export interface GatraTAAAnalysis {
+  id: string;
+  alertId: string;
+  actorAttribution: string;
+  campaign: string;
+  killChainPhase: KillChainPhase;
+  confidence: number;
+  iocs: string[];
+  timestamp: Date;
+}
+
+export interface GatraCorrelation {
+  id: string;
+  gatraAlertIds: string[];
+  worldMonitorEventType: 'geopolitical' | 'cyber_threat' | 'cii_spike' | 'apt_activity';
+  region: string;
+  summary: string;
+  severity: GatraAlertSeverity;
+  timestamp: Date;
+}
+
+export interface GatraConnectorSnapshot {
+  alerts: GatraAlert[];
+  agents: GatraAgentStatus[];
+  summary: GatraIncidentSummary;
+  craActions: GatraCRAAction[];
+  taaAnalyses: GatraTAAAnalysis[];
+  correlations: GatraCorrelation[];
+  lastRefresh: Date;
 }

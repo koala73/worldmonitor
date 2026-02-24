@@ -25,6 +25,7 @@ import type {
   UcdpGeoEvent,
   CyberThreat,
   CableHealthRecord,
+  GatraAlert,
 } from '@/types';
 import type { AirportDelayAlert } from '@/services/aviation';
 import type { DisplacementFlow } from '@/services/displacement';
@@ -322,6 +323,12 @@ export class MapContainer {
       this.deckGLMap?.setCyberThreats(threats);
     } else {
       this.svgMap?.setCyberThreats(threats);
+    }
+  }
+
+  public setGatraAlerts(alerts: GatraAlert[]): void {
+    if (this.useDeckGL) {
+      this.deckGLMap?.setGatraAlerts(alerts);
     }
   }
 

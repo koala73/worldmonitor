@@ -209,6 +209,7 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   centralBanks: true,
   commodityHubs: false,
   gulfInvestments: false,
+  gatraAlerts: false,
 };
 
 // Mobile defaults for finance variant
@@ -250,6 +251,7 @@ export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   centralBanks: true,
   commodityHubs: false,
   gulfInvestments: false,
+  gatraAlerts: false,
 };
 
 export const VARIANT_CONFIG: VariantConfig = {
