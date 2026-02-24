@@ -1,7 +1,6 @@
 import { Panel } from './Panel';
 import { fetchLiveVideoId } from '@/services/live-news';
 import { isDesktopRuntime, getRemoteApiBaseUrl } from '@/services/runtime';
-import { invokeTauri } from '@/services/tauri-bridge';
 import { t } from '../services/i18n';
 import { loadFromStorage, saveToStorage } from '@/utils';
 import { STORAGE_KEYS } from '@/config';
@@ -218,6 +217,7 @@ export class LiveNewsPanel extends Panel {
   private useDesktopEmbedProxy = false;
   private desktopEmbedIframe: HTMLIFrameElement | null = null;
   private desktopEmbedRenderToken = 0;
+  private suppressChannelClick = false;
   private boundMessageHandler!: (e: MessageEvent) => void;
   private muteSyncInterval: ReturnType<typeof setInterval> | null = null;
   private static readonly MUTE_SYNC_POLL_MS = 500;
@@ -463,22 +463,16 @@ export class LiveNewsPanel extends Panel {
     const btn = document.createElement('button');
     btn.className = `live-channel-btn ${channel.id === this.activeChannel.id ? 'active' : ''}`;
     btn.dataset.channelId = channel.id;
-    btn.draggable = true;
     btn.textContent = channel.name;
+    btn.style.cursor = 'grab';
     btn.addEventListener('click', (e) => {
+      if (this.suppressChannelClick) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
       e.preventDefault();
       this.switchChannel(channel);
-    });
-    btn.addEventListener('dragstart', (e) => {
-      btn.classList.add('live-channel-dragging');
-      if (e.dataTransfer) {
-        e.dataTransfer.setData('text/plain', channel.id);
-        e.dataTransfer.effectAllowed = 'move';
-      }
-    });
-    btn.addEventListener('dragend', () => {
-      btn.classList.remove('live-channel-dragging');
-      this.applyChannelOrderFromDom();
     });
     return btn;
   }
@@ -491,14 +485,34 @@ export class LiveNewsPanel extends Panel {
       this.channelSwitcher.appendChild(this.createChannelButton(channel));
     }
 
-    this.channelSwitcher.addEventListener('dragover', (e) => {
+    // Mouse-based drag reorder (works in WKWebView/Tauri)
+    let dragging: HTMLElement | null = null;
+    let dragStarted = false;
+    let startX = 0;
+    const THRESHOLD = 6;
+
+    this.channelSwitcher.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      const btn = (e.target as HTMLElement).closest('.live-channel-btn') as HTMLElement | null;
+      if (!btn) return;
+      this.suppressChannelClick = false;
+      dragging = btn;
+      dragStarted = false;
+      startX = e.clientX;
       e.preventDefault();
-      const dragging = this.channelSwitcher?.querySelector('.live-channel-dragging');
+    });
+
+    document.addEventListener('mousemove', (e) => {
       if (!dragging || !this.channelSwitcher) return;
-      const target = (e.target as HTMLElement).closest?.('.live-channel-btn');
+      if (!dragStarted) {
+        if (Math.abs(e.clientX - startX) < THRESHOLD) return;
+        dragStarted = true;
+        dragging.classList.add('live-channel-dragging');
+      }
+      const target = document.elementFromPoint(e.clientX, e.clientY)?.closest('.live-channel-btn') as HTMLElement | null;
       if (!target || target === dragging) return;
-      const all = Array.from(this.channelSwitcher.querySelectorAll('.live-channel-btn'));
-      const idx = all.indexOf(dragging as Element);
+      const all = Array.from(this.channelSwitcher!.querySelectorAll('.live-channel-btn'));
+      const idx = all.indexOf(dragging);
       const targetIdx = all.indexOf(target);
       if (idx === -1 || targetIdx === -1) return;
       if (idx < targetIdx) {
@@ -506,6 +520,20 @@ export class LiveNewsPanel extends Panel {
       } else {
         target.parentElement?.insertBefore(dragging, target);
       }
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (!dragging) return;
+      if (dragStarted) {
+        dragging.classList.remove('live-channel-dragging');
+        this.applyChannelOrderFromDom();
+        this.suppressChannelClick = true;
+        setTimeout(() => {
+          this.suppressChannelClick = false;
+        }, 0);
+      }
+      dragging = null;
+      dragStarted = false;
     });
 
     const toolbar = document.createElement('div');
@@ -523,17 +551,49 @@ export class LiveNewsPanel extends Panel {
     openBtn.innerHTML =
       '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
     openBtn.addEventListener('click', () => {
-      if (isDesktopRuntime()) {
-        void invokeTauri<void>('open_live_channels_window_command', {
-          base_url: window.location.origin,
-        }).catch(() => {});
-        return;
-      }
-      const url = new URL(window.location.href);
-      url.searchParams.set('live-channels', '1');
-      window.open(url.toString(), 'worldmonitor-live-channels', 'width=680,height=760,scrollbars=yes');
+      this.openChannelManagementModal();
     });
     toolbar.appendChild(openBtn);
+  }
+
+  private openChannelManagementModal(): void {
+    const existing = document.querySelector('.live-channels-modal-overlay');
+    if (existing) return;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'live-channels-modal-overlay';
+    overlay.setAttribute('aria-modal', 'true');
+
+    const modal = document.createElement('div');
+    modal.className = 'live-channels-modal';
+
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'live-channels-modal-close';
+    closeBtn.setAttribute('aria-label', t('common.close') ?? 'Close');
+    closeBtn.innerHTML = '&times;';
+
+    const container = document.createElement('div');
+
+    modal.appendChild(closeBtn);
+    modal.appendChild(container);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    requestAnimationFrame(() => overlay.classList.add('active'));
+
+    import('@/live-channels-window').then(({ initLiveChannelsWindow }) => {
+      initLiveChannelsWindow(container);
+    });
+
+    const close = () => {
+      overlay.remove();
+      this.refreshChannelsFromStorage();
+    };
+    closeBtn.addEventListener('click', close);
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) close();
+    });
   }
 
   private refreshChannelSwitcher(): void {
@@ -648,13 +708,26 @@ export class LiveNewsPanel extends Panel {
     this.content.appendChild(this.playerContainer);
   }
 
-  private buildDesktopEmbedPath(videoId: string, origin?: string): string {
+  private get parentPostMessageOrigin(): string | null {
+    try {
+      const { origin, protocol } = window.location;
+      if (origin && origin !== 'null') return origin;
+      if (protocol === 'tauri:' || protocol === 'asset:') return '*';
+    } catch {
+      // Ignore invalid location values.
+    }
+    return null;
+  }
+
+  private buildDesktopEmbedPath(videoId: string): string {
     const params = new URLSearchParams({
       videoId,
       autoplay: this.isPlaying ? '1' : '0',
       mute: this.isMuted ? '1' : '0',
     });
-    if (origin) params.set('origin', origin);
+    if (this.youtubeOrigin) params.set('origin', this.youtubeOrigin);
+    const parentOrigin = this.parentPostMessageOrigin;
+    if (parentOrigin) params.set('parentOrigin', parentOrigin);
     return `/api/youtube/embed?${params.toString()}`;
   }
 

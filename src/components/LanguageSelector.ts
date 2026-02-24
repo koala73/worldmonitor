@@ -23,6 +23,7 @@ export class LanguageSelector {
             en: 'gb',
             ar: 'sa',
             zh: 'cn',
+            el: 'gr',
             fr: 'fr',
             de: 'de',
             es: 'es',

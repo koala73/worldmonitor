@@ -1,6 +1,8 @@
 import { strict as assert } from 'node:assert';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
-import { createServer } from 'node:http';
+import { createServer, request as httpRequest } from 'node:http';
+import https from 'node:https';
+import { EventEmitter } from 'node:events';
 import { brotliDecompressSync, gunzipSync } from 'node:zlib';
 import os from 'node:os';
 import path from 'node:path';
@@ -27,6 +29,62 @@ async function listen(server, host = '127.0.0.1', port = 0) {
     throw new Error('Failed to resolve server address');
   }
   return address.port;
+}
+
+async function postJsonViaHttp(url, payload) {
+  const target = new URL(url);
+  const body = JSON.stringify(payload);
+  return new Promise((resolve, reject) => {
+    const req = httpRequest({
+      hostname: target.hostname,
+      port: Number(target.port || 80),
+      path: `${target.pathname}${target.search}`,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': String(Buffer.byteLength(body)),
+      },
+    }, (res) => {
+      const chunks = [];
+      res.on('data', (chunk) => chunks.push(chunk));
+      res.on('end', () => {
+        const text = Buffer.concat(chunks).toString('utf8');
+        let json = null;
+        try { json = JSON.parse(text); } catch { /* non-json response */ }
+        resolve({ status: res.statusCode || 0, text, json });
+      });
+    });
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+}
+
+function mockHttpsRequestOnce({ statusCode, headers, body }) {
+  const original = https.request;
+  https.request = (_options, onResponse) => {
+    const req = new EventEmitter();
+    req.setTimeout = () => {};
+    req.write = () => {};
+    req.destroy = (error) => {
+      if (error) req.emit('error', error);
+    };
+    req.end = () => {
+      queueMicrotask(() => {
+        const res = new EventEmitter();
+        res.statusCode = statusCode;
+        res.statusMessage = '';
+        res.headers = headers;
+        onResponse(res);
+        if (body) res.emit('data', Buffer.from(body));
+        res.emit('end');
+      });
+    };
+    return req;
+  };
+  return () => {
+    https.request = original;
+  };
 }
 
 async function setupRemoteServer() {
@@ -819,6 +877,72 @@ test('rejects OLLAMA_API_URL with non-http protocol', async () => {
     assert.equal(body.valid, false);
     assert.equal(body.message, 'Must be an http(s) URL');
   } finally {
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('treats Cloudflare challenge 403 as soft-pass during secret validation', async () => {
+  const localApi = await setupApiDir({});
+  const restoreHttps = mockHttpsRequestOnce({
+    statusCode: 403,
+    headers: {
+      'content-type': 'text/html; charset=utf-8',
+      'cf-ray': 'abc123',
+    },
+    body: '<html><title>Attention Required</title><body>Cloudflare Ray ID: 123</body></html>',
+  });
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await postJsonViaHttp(`http://127.0.0.1:${port}/api/local-validate-secret`, {
+      key: 'GROQ_API_KEY',
+      value: 'dummy-key',
+    });
+    assert.equal(response.status, 200);
+    assert.equal(response.json?.valid, true);
+    assert.equal(response.json?.message, 'Groq key stored (Cloudflare blocked verification)');
+  } finally {
+    restoreHttps();
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('does not soft-pass provider auth 403 JSON responses even with cf-ray header', async () => {
+  const localApi = await setupApiDir({});
+  const restoreHttps = mockHttpsRequestOnce({
+    statusCode: 403,
+    headers: {
+      'content-type': 'application/json',
+      'cf-ray': 'abc123',
+    },
+    body: JSON.stringify({ error: 'invalid api key' }),
+  });
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await postJsonViaHttp(`http://127.0.0.1:${port}/api/local-validate-secret`, {
+      key: 'GROQ_API_KEY',
+      value: 'invalid-key',
+    });
+    assert.equal(response.status, 422);
+    assert.equal(response.json?.valid, false);
+    assert.equal(response.json?.message, 'Groq rejected this key');
+  } finally {
+    restoreHttps();
     await app.close();
     await localApi.cleanup();
   }

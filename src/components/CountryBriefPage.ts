@@ -263,6 +263,7 @@ export class CountryBriefPage {
               </button>
               <div class="cb-export-menu hidden">
                 <button class="cb-export-option" data-format="image">${t('common.exportImage')}</button>
+                <button class="cb-export-option" data-format="pdf">${t('common.exportPdf')}</button>
                 <button class="cb-export-option" data-format="json">${t('common.exportJson')}</button>
                 <button class="cb-export-option" data-format="csv">${t('common.exportCsv')}</button>
               </div>
@@ -363,6 +364,8 @@ export class CountryBriefPage {
           if (this.onExportImage && this.currentCode && this.currentName) {
             this.onExportImage(this.currentCode, this.currentName);
           }
+        } else if (format === 'pdf') {
+          this.exportPdf();
         } else {
           this.exportBrief(format as 'json' | 'csv');
         }
@@ -618,6 +621,42 @@ export class CountryBriefPage {
     }
     if (format === 'json') exportCountryBriefJSON(data);
     else exportCountryBriefCSV(data);
+  }
+
+  private exportPdf(): void {
+    const content = this.overlay.querySelector('.cb-body');
+    const header = this.overlay.querySelector('.cb-header');
+    if (!content) return;
+
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:fixed;left:-9999px;width:0;height:0;border:none';
+    document.body.appendChild(iframe);
+    const doc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (!doc) { document.body.removeChild(iframe); return; }
+
+    const styles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+      .map(el => el.outerHTML).join('\n');
+
+    doc.open();
+    doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8">${styles}
+      <style>
+        @media print { body { margin: 0; padding: 16px; background: #fff; color: #111; }
+          .cb-grid { display: block !important; }
+          .cb-grid > * { break-inside: avoid; margin-bottom: 16px; }
+          .cb-badge, .cb-trend { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+          canvas { max-width: 100% !important; }
+        }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        .country-brief-overlay { position: static !important; background: none !important; }
+      </style>
+    </head><body>${header ? header.outerHTML : ''}${content.outerHTML}</body></html>`);
+    doc.close();
+
+    iframe.contentWindow!.onafterprint = () => document.body.removeChild(iframe);
+    setTimeout(() => {
+      iframe.contentWindow!.print();
+      setTimeout(() => { if (iframe.parentNode) document.body.removeChild(iframe); }, 5000);
+    }, 300);
   }
 
   public hide(): void {

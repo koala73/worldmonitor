@@ -1063,7 +1063,22 @@
       "waitingForData": "Waiting for news data...",
       "rankingStories": "Ranking important stories...",
       "analyzingSentiment": "Analyzing sentiment...",
-      "generatingBrief": "Generating world brief..."
+      "generatingBrief": "Generating world brief...",
+      "aiFlowTitle": "Configuración de análisis IA",
+      "aiFlowCloudLabel": "IA en la nube (Groq & OpenRouter)",
+      "aiFlowCloudDesc": "Enviar titulares a la nube para resumen con IA (recomendado)",
+      "aiFlowBrowserLabel": "Modelo local del navegador",
+      "aiFlowBrowserDesc": "Ejecutar IA localmente en su navegador",
+      "aiFlowBrowserWarn": "Se descargarán aproximadamente 250 MB de datos en su computadora",
+      "aiFlowOllamaCta": "¿Quiere IA completamente local?",
+      "aiFlowOllamaCtaDesc": "Descargue la app de escritorio para soporte de Ollama",
+      "aiFlowDownloadDesktop": "Descargar App de Escritorio →",
+      "aiFlowStatusActive": "IA en la nube activa",
+      "aiFlowStatusCloudAndBrowser": "IA en la nube + Modelo del navegador activos",
+      "aiFlowStatusBrowserOnly": "Solo modelo del navegador",
+      "aiFlowStatusDisabled": "Ningún proveedor de IA habilitado",
+      "insightsDisabledTitle": "El análisis de IA está desactivado",
+      "insightsDisabledHint": "Active proveedores usando el botón ⚙ de arriba"
     },
     "export": {
       "exportData": "Exportar datos"
@@ -1795,6 +1810,7 @@
     "exportJson": "Exportar JSON",
     "exportData": "Exportar datos",
     "exportImage": "Exportar imagen",
+    "exportPdf": "Exportar PDF",
     "unrest": "Disturbios",
     "conflict": "Conflicto",
     "security": "Seguridad",

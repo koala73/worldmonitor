@@ -2369,21 +2369,7 @@ export class DeckGLMap {
   }
 
   private createPositiveEventsLayers(): Layer[] {
-    const zoom = this.maplibreMap?.getZoom() || 2;
     const layers: Layer[] = [];
-
-    // Category → emoji + color
-    const getCategoryEmoji = (category: string): string => {
-      switch (category) {
-        case 'science-health': return '\u{1F52C}'; // 🔬
-        case 'nature-wildlife': return '\u{1F33F}'; // 🌿
-        case 'innovation-tech': return '\u{1F4A1}'; // 💡
-        case 'humanity-kindness': return '\u{1F49A}'; // 💚
-        case 'climate-wins': return '\u{1F331}'; // 🌱
-        case 'culture-community': return '\u{1F3AD}'; // 🎭
-        default: return '\u{2728}'; // ✨
-      }
-    };
 
     const getCategoryColor = (category: string): [number, number, number, number] => {
       switch (category) {
@@ -2401,30 +2387,7 @@ export class DeckGLMap {
       }
     };
 
-    const getBgColor = (category: string): [number, number, number, number] => {
-      switch (category) {
-        case 'nature-wildlife':
-        case 'humanity-kindness':
-          return [34, 197, 94, 210];
-        case 'science-health':
-        case 'innovation-tech':
-        case 'climate-wins':
-          return [180, 140, 8, 210];
-        case 'culture-community':
-          return [120, 70, 220, 210];
-        default:
-          return [34, 197, 94, 210];
-      }
-    };
-
-    // Truncate label: show emoji + name (max 30 chars)
-    const getLabel = (d: PositiveGeoEvent): string => {
-      const emoji = getCategoryEmoji(d.category);
-      const name = d.name.length > 30 ? d.name.slice(0, 28) + '\u2026' : d.name;
-      return `${emoji} ${name}`;
-    };
-
-    // Dot layer
+    // Dot layer (tooltip on hover via getTooltip)
     layers.push(new ScatterplotLayer({
       id: 'positive-events-layer',
       data: this.positiveEvents,
@@ -2435,30 +2398,6 @@ export class DeckGLMap {
       radiusMaxPixels: 10,
       pickable: true,
     }));
-
-    // Text label layer — filter by zoom to avoid clutter
-    const minCount = zoom < 3 ? 5 : zoom < 5 ? 2 : 0;
-    const labeledEvents = this.positiveEvents.filter(e => e.count >= minCount);
-    if (labeledEvents.length > 0) {
-      layers.push(new TextLayer<PositiveGeoEvent>({
-        id: 'positive-events-labels',
-        data: labeledEvents,
-        getPosition: (d: PositiveGeoEvent) => [d.lon, d.lat],
-        getText: getLabel,
-        getSize: zoom < 3 ? 11 : 12,
-        getColor: [255, 255, 255, 255],
-        getPixelOffset: [0, -16],
-        background: true,
-        getBackgroundColor: (d: PositiveGeoEvent) => getBgColor(d.category),
-        backgroundPadding: [6, 3, 6, 3],
-        fontFamily: 'system-ui, -apple-system, sans-serif',
-        fontWeight: 600,
-        pickable: false,
-        outlineWidth: 0,
-        billboard: true,
-        sizeUnits: 'pixels' as const,
-      }));
-    }
 
     // Gentle pulse ring for significant events (count > 8)
     const significantEvents = this.positiveEvents.filter(e => e.count > 8);
@@ -2486,10 +2425,9 @@ export class DeckGLMap {
 
   private createKindnessLayers(): Layer[] {
     const layers: Layer[] = [];
-    // Only render real kindness events (baseline was removed)
     if (this.kindnessPoints.length === 0) return layers;
 
-    // Dot layer
+    // Dot layer (tooltip on hover via getTooltip)
     layers.push(new ScatterplotLayer<KindnessPoint>({
       id: 'kindness-layer',
       data: this.kindnessPoints,
@@ -2499,28 +2437,6 @@ export class DeckGLMap {
       radiusMinPixels: 5,
       radiusMaxPixels: 10,
       pickable: true,
-    }));
-
-    // Text labels for real kindness events
-    layers.push(new TextLayer<KindnessPoint>({
-      id: 'kindness-labels',
-      data: this.kindnessPoints,
-      getPosition: (d: KindnessPoint) => [d.lon, d.lat],
-      getText: (d: KindnessPoint) => {
-        const name = d.name.length > 30 ? d.name.slice(0, 28) + '\u2026' : d.name;
-        return `\u{1F49A} ${name}`;
-      },
-      getSize: 11,
-      getColor: [255, 255, 255, 255],
-      getPixelOffset: [0, -16],
-      background: true,
-      getBackgroundColor: [74, 180, 110, 210] as [number, number, number, number],
-      backgroundPadding: [6, 3, 6, 3],
-      fontFamily: 'system-ui, -apple-system, sans-serif',
-      fontWeight: 600,
-      pickable: false,
-      billboard: true,
-      sizeUnits: 'pixels' as const,
     }));
 
     // Pulse for real events
@@ -4234,6 +4150,10 @@ export class DeckGLMap {
     this.countryGeoJsonLoaded = false;
     this.maplibreMap.once('style.load', () => {
       this.loadCountryBoundaries();
+      this.updateCountryLayerPaint(theme);
+      // Re-render deck.gl overlay after style swap — interleaved layers need
+      // the new MapLibre style to be loaded before they can re-insert.
+      this.render();
     });
   }
 

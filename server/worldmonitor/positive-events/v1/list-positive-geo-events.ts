@@ -44,6 +44,8 @@ async function fetchGdeltGeoPositive(query: string): Promise<PositiveGeoEvent[]>
   for (const feature of features as any[]) {
     const name: string = feature.properties?.name || '';
     if (!name || seenLocations.has(name)) continue;
+    // GDELT returns error messages as fake features — skip them
+    if (name.startsWith('ERROR:') || name.includes('unknown error')) continue;
 
     const count: number = feature.properties?.count || 1;
     if (count < 3) continue; // Noise filter

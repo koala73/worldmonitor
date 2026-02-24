@@ -1063,7 +1063,22 @@
       "waitingForData": "Waiting for news data...",
       "rankingStories": "Ranking important stories...",
       "analyzingSentiment": "Analyzing sentiment...",
-      "generatingBrief": "Generating world brief..."
+      "generatingBrief": "Generating world brief...",
+      "aiFlowTitle": "KI-Analyseeinstellungen",
+      "aiFlowCloudLabel": "Cloud-KI (Groq & OpenRouter)",
+      "aiFlowCloudDesc": "Schlagzeilen zur KI-Zusammenfassung an die Cloud senden (empfohlen)",
+      "aiFlowBrowserLabel": "Lokales Browser-Modell",
+      "aiFlowBrowserDesc": "KI lokal in Ihrem Browser ausführen",
+      "aiFlowBrowserWarn": "Es werden ca. 250 MB Daten auf Ihren Computer heruntergeladen",
+      "aiFlowOllamaCta": "Vollständig lokale KI gewünscht?",
+      "aiFlowOllamaCtaDesc": "Laden Sie die Desktop-App für Ollama-Unterstützung herunter",
+      "aiFlowDownloadDesktop": "Desktop-App herunterladen →",
+      "aiFlowStatusActive": "Cloud-KI aktiv",
+      "aiFlowStatusCloudAndBrowser": "Cloud-KI + Browser-Modell aktiv",
+      "aiFlowStatusBrowserOnly": "Nur Browser-Modell",
+      "aiFlowStatusDisabled": "Keine KI-Anbieter aktiviert",
+      "insightsDisabledTitle": "KI-Analyse ist deaktiviert",
+      "insightsDisabledHint": "Aktivieren Sie Anbieter über die ⚙-Schaltfläche oben"
     },
     "export": {
       "exportData": "Daten exportieren"
@@ -1795,6 +1810,7 @@
     "exportJson": "JSON exportieren",
     "exportData": "Daten exportieren",
     "exportImage": "Bild exportieren",
+    "exportPdf": "PDF exportieren",
     "unrest": "Unruhen",
     "conflict": "Konflikt",
     "security": "Sicherheit",

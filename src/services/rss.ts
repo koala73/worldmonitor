@@ -4,6 +4,7 @@ import { chunkArray, fetchWithProxy } from '@/utils';
 import { classifyByKeyword, classifyWithAI } from './threat-classifier';
 import { inferGeoHubsFromTitle } from './geo-hub-index';
 import { getPersistentCache, setPersistentCache } from './persistent-cache';
+import { dataFreshness } from './data-freshness';
 import { ingestHeadlines } from './trending-keywords';
 import { getCurrentLanguage } from './i18n';
 
@@ -387,9 +388,7 @@ export async function fetchCategoryFeeds(
   }
 
   if (totalItems > 0) {
-    import('./data-freshness').then(({ dataFreshness }) => {
-      dataFreshness.recordUpdate('rss', totalItems);
-    });
+    dataFreshness.recordUpdate('rss', totalItems);
   }
 
   return ensureSortedDescending();

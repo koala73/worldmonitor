@@ -50,6 +50,29 @@
       "base": "ฐานทัพ",
       "nuclear": "สิ่งอำนวยความสะดวกนิวเคลียร์",
       "port": "ท่าเรือ"
+    },
+    "levels": {
+      "critical": "วิกฤต",
+      "high": "สูง",
+      "elevated": "ยกระดับ",
+      "moderate": "ปานกลาง",
+      "normal": "ปกติ",
+      "low": "ต่ำ"
+    },
+    "trends": {
+      "rising": "เพิ่มขึ้น",
+      "falling": "ลดลง",
+      "stable": "คงที่"
+    },
+    "fallback": {
+      "instabilityIndex": "**ดัชนีความไม่มั่นคง: {{score}}/100** ({{level}}, {{trend}})",
+      "protestsDetected": "ตรวจพบการประท้วงที่ยังดำเนินอยู่ {{count}} รายการ",
+      "aircraftTracked": "ติดตามอากาศยานทหาร {{count}} ลำ",
+      "vesselsTracked": "ติดตามเรือรบ {{count}} ลำ",
+      "internetOutages": "การหยุดชะงักอินเทอร์เน็ต {{count}} รายการ",
+      "recentEarthquakes": "แผ่นดินไหวล่าสุด {{count}} ครั้ง",
+      "stockIndex": "ดัชนีหุ้น: {{value}}",
+      "recentHeadlines": "**พาดหัวข่าวล่าสุด:**"
     }
   },
   "header": {
@@ -786,7 +809,22 @@
       "rankingStories": "กำลังจัดอันดับเรื่องราวสำคัญ...",
       "analyzingSentiment": "กำลังวิเคราะห์ความรู้สึก...",
       "generatingBrief": "กำลังสร้างสรุปสถานการณ์โลก...",
-      "infoTooltip": "<strong>การวิเคราะห์ด้วย AI</strong><br>• <strong>สรุปโลก</strong>: สรุปจาก AI (Groq/OpenRouter)<br>• <strong>ความรู้สึก</strong>: การวิเคราะห์น้ำเสียงข่าว<br>• <strong>ความเร็ว</strong>: เรื่องราวที่เคลื่อนไหวเร็ว<br>• <strong>จุดโฟกัส</strong>: เชื่อมโยงเอนทิตีข่าวกับสัญญาณแผนที่ (ทหาร, การประท้วง, การหยุดชะงัก)<br><em>เดสก์ท็อปเท่านั้น • ขับเคลื่อนด้วย Llama 3.3 + การตรวจจับจุดโฟกัส</em>"
+      "infoTooltip": "<strong>การวิเคราะห์ด้วย AI</strong><br>• <strong>สรุปโลก</strong>: สรุปจาก AI (Groq/OpenRouter)<br>• <strong>ความรู้สึก</strong>: การวิเคราะห์น้ำเสียงข่าว<br>• <strong>ความเร็ว</strong>: เรื่องราวที่เคลื่อนไหวเร็ว<br>• <strong>จุดโฟกัส</strong>: เชื่อมโยงเอนทิตีข่าวกับสัญญาณแผนที่ (ทหาร, การประท้วง, การหยุดชะงัก)<br><em>เดสก์ท็อปเท่านั้น • ขับเคลื่อนด้วย Llama 3.3 + การตรวจจับจุดโฟกัส</em>",
+      "aiFlowTitle": "ตั้งค่าการวิเคราะห์ AI",
+      "aiFlowCloudLabel": "Cloud AI (Groq & OpenRouter)",
+      "aiFlowCloudDesc": "ส่งพาดหัวข่าวไปยังคลาวด์เพื่อสรุปด้วย AI (แนะนำ)",
+      "aiFlowBrowserLabel": "โมเดลท้องถิ่นในเบราว์เซอร์",
+      "aiFlowBrowserDesc": "เรียกใช้ AI ในเบราว์เซอร์ของคุณ",
+      "aiFlowBrowserWarn": "จะดาวน์โหลดข้อมูลประมาณ 250MB ลงในคอมพิวเตอร์ของคุณ",
+      "aiFlowOllamaCta": "ต้องการ AI ท้องถิ่นเต็มรูปแบบ?",
+      "aiFlowOllamaCtaDesc": "ดาวน์โหลดแอปเดสก์ท็อปเพื่อรองรับ Ollama",
+      "aiFlowDownloadDesktop": "ดาวน์โหลด Desktop App →",
+      "aiFlowStatusActive": "Cloud AI ทำงานอยู่",
+      "aiFlowStatusCloudAndBrowser": "Cloud AI + โมเดลเบราว์เซอร์ทำงานอยู่",
+      "aiFlowStatusBrowserOnly": "โมเดลเบราว์เซอร์เท่านั้น",
+      "aiFlowStatusDisabled": "ไม่มีผู้ให้บริการ AI ที่เปิดใช้งาน",
+      "insightsDisabledTitle": "การวิเคราะห์ AI ถูกปิดใช้งาน",
+      "insightsDisabledHint": "เปิดใช้งานผู้ให้บริการโดยใช้ปุ่ม ⚙ ด้านบน"
     },
     "cascade": {
       "noImpacts": "ไม่พบผลกระทบต่อประเทศ",
@@ -1779,6 +1817,7 @@
     "information": "ข้อมูล",
     "shareStory": "แชร์เรื่องราว",
     "exportImage": "ส่งออกรูปภาพ",
+    "exportPdf": "ส่งออก PDF",
     "new": "ใหม่",
     "live": "สด",
     "cached": "แคช",

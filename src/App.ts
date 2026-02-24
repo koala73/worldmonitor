@@ -204,6 +204,7 @@ export class App {
   private boundFullscreenHandler: (() => void) | null = null;
   private boundResizeHandler: (() => void) | null = null;
   private boundVisibilityHandler: (() => void) | null = null;
+  private boundDesktopExternalLinkHandler: ((e: MouseEvent) => void) | null = null;
   private idleTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private boundIdleResetHandler: (() => void) | null = null;
   private isIdle = false;
@@ -232,6 +233,7 @@ export class App {
   private renewablePanel?: RenewableEnergyPanel;
   private tvMode: TvModeController | null = null;
   private happyAllItems: NewsItem[] = [];
+  private panelDragCleanupHandlers: Array<() => void> = [];
 
   constructor(containerId: string) {
     const el = document.getElementById(containerId);
@@ -2147,6 +2149,10 @@ export class App {
       document.removeEventListener('visibilitychange', this.boundVisibilityHandler);
       this.boundVisibilityHandler = null;
     }
+    if (this.boundDesktopExternalLinkHandler) {
+      document.removeEventListener('click', this.boundDesktopExternalLinkHandler, true);
+      this.boundDesktopExternalLinkHandler = null;
+    }
 
     // Clean up idle detection
     if (this.idleTimeoutId) {
@@ -2170,6 +2176,10 @@ export class App {
     this.digestPanel?.destroy();
     this.speciesPanel?.destroy();
     this.renewablePanel?.destroy();
+
+    // Clean up panel drag listeners (used by mouse-based panel reordering).
+    this.panelDragCleanupHandlers.forEach((cleanup) => cleanup());
+    this.panelDragCleanupHandlers = [];
 
     // Clean up map and AIS
     this.map?.destroy();
@@ -2704,72 +2714,116 @@ export class App {
   }
 
   private makeDraggable(el: HTMLElement, key: string): void {
-    el.draggable = true;
     el.dataset.panel = key;
+    let isDragging = false;
+    let dragStarted = false;
+    let startX = 0;
+    let startY = 0;
+    let rafId = 0;
+    const DRAG_THRESHOLD = 8;
 
-    el.addEventListener('dragstart', (e) => {
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button !== 0) return;
       const target = e.target as HTMLElement;
-      // Don't start drag if panel is being resized
-      if (el.dataset.resizing === 'true') {
-        e.preventDefault();
-        return;
-      }
-      // Don't start drag if target is the resize handle
-      if (target.classList?.contains('panel-resize-handle') || target.closest?.('.panel-resize-handle')) {
-        e.preventDefault();
-        return;
-      }
-      el.classList.add('dragging');
-      e.dataTransfer?.setData('text/plain', key);
-    });
+      if (el.dataset.resizing === 'true') return;
+      if (target.classList?.contains('panel-resize-handle') || target.closest?.('.panel-resize-handle')) return;
+      if (target.closest('button, a, input, select, textarea, .panel-content')) return;
 
-    el.addEventListener('dragend', () => {
-      el.classList.remove('dragging');
-      this.savePanelOrder();
-    });
-
-    el.addEventListener('dragover', (e) => {
+      isDragging = true;
+      dragStarted = false;
+      startX = e.clientX;
+      startY = e.clientY;
       e.preventDefault();
-      const dragging = document.querySelector('.dragging');
-      if (!dragging || dragging === el) return;
+    };
 
-      const grid = document.getElementById('panelsGrid');
-      if (!grid) return;
-
-      const rowTolerancePx = 24;
-      const siblings = Array.from(grid.children).filter((c) => {
-        if (c === dragging) return false;
-        const el = c as HTMLElement;
-        return !el.classList.contains('hidden');
-      });
-      const orderedSiblings = siblings.sort((a, b) => {
-        const aRect = a.getBoundingClientRect();
-        const bRect = b.getBoundingClientRect();
-        if (Math.abs(aRect.top - bRect.top) <= rowTolerancePx) {
-          return aRect.left - bRect.left;
-        }
-        return aRect.top - bRect.top;
-      });
-
-      const nextSibling = orderedSiblings.find((sibling) => {
-        const rect = sibling.getBoundingClientRect();
-        const beforeRow = e.clientY < rect.top + rowTolerancePx;
-        if (beforeRow) return true;
-
-        const inRowBand = e.clientY >= rect.top + rowTolerancePx && e.clientY <= rect.bottom - rowTolerancePx;
-        if (inRowBand) {
-          return e.clientX < rect.left + rect.width / 2;
-        }
-
-        return e.clientY < rect.top + rect.height / 2;
-      });
-
-      if (nextSibling) {
-        grid.insertBefore(dragging, nextSibling);
-      } else {
-        grid.appendChild(dragging);
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isDragging) return;
+      if (!dragStarted) {
+        const dx = Math.abs(e.clientX - startX);
+        const dy = Math.abs(e.clientY - startY);
+        if (dx < DRAG_THRESHOLD && dy < DRAG_THRESHOLD) return;
+        dragStarted = true;
+        el.classList.add('dragging');
       }
+      // Throttle to animation frame to avoid reflow storms
+      const cx = e.clientX;
+      const cy = e.clientY;
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        this.handlePanelDragMove(el, cx, cy);
+        rafId = 0;
+      });
+    };
+
+    const onMouseUp = () => {
+      if (!isDragging) return;
+      isDragging = false;
+      if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+      if (dragStarted) {
+        el.classList.remove('dragging');
+        this.savePanelOrder();
+      }
+      dragStarted = false;
+    };
+
+    el.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+
+    this.panelDragCleanupHandlers.push(() => {
+      el.removeEventListener('mousedown', onMouseDown);
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = 0;
+      }
+      isDragging = false;
+      dragStarted = false;
+      el.classList.remove('dragging');
     });
+  }
+
+  private handlePanelDragMove(dragging: HTMLElement, clientX: number, clientY: number): void {
+    const grid = document.getElementById('panelsGrid');
+    if (!grid) return;
+
+    // Temporarily hide dragging element so elementFromPoint finds the panel beneath
+    dragging.style.pointerEvents = 'none';
+    const target = document.elementFromPoint(clientX, clientY);
+    dragging.style.pointerEvents = '';
+
+    if (!target) return;
+    const targetPanel = target.closest('.panel') as HTMLElement | null;
+    if (!targetPanel || targetPanel === dragging || targetPanel.classList.contains('hidden')) return;
+    // Ensure target is a direct child of the grid
+    if (targetPanel.parentElement !== grid) return;
+
+    const targetRect = targetPanel.getBoundingClientRect();
+    const draggingRect = dragging.getBoundingClientRect();
+
+    // Get current DOM positions
+    const children = Array.from(grid.children);
+    const dragIdx = children.indexOf(dragging);
+    const targetIdx = children.indexOf(targetPanel);
+    if (dragIdx === -1 || targetIdx === -1) return;
+
+    // Detect if panels are on the same row (tops within 30px)
+    const sameRow = Math.abs(draggingRect.top - targetRect.top) < 30;
+    const targetMid = sameRow
+      ? targetRect.left + targetRect.width / 2
+      : targetRect.top + targetRect.height / 2;
+    const cursorPos = sameRow ? clientX : clientY;
+
+    if (dragIdx < targetIdx) {
+      if (cursorPos > targetMid) {
+        grid.insertBefore(dragging, targetPanel.nextSibling);
+      }
+    } else {
+      if (cursorPos < targetMid) {
+        grid.insertBefore(dragging, targetPanel);
+      }
+    }
   }
 
   private setupEventListeners(): void {
@@ -2941,8 +2995,12 @@ export class App {
     // Desktop: intercept external link clicks and open in system browser.
     // Tauri WKWebView/WebView2 traps target="_blank" — links don't open otherwise.
     if (this.isDesktopApp) {
-      document.addEventListener('click', (e) => {
-        const anchor = (e.target as HTMLElement).closest?.('a[href]') as HTMLAnchorElement | null;
+      if (this.boundDesktopExternalLinkHandler) {
+        document.removeEventListener('click', this.boundDesktopExternalLinkHandler, true);
+      }
+      this.boundDesktopExternalLinkHandler = (e: MouseEvent) => {
+        if (!(e.target instanceof Element)) return;
+        const anchor = e.target.closest('a[href]') as HTMLAnchorElement | null;
         if (!anchor) return;
         const href = anchor.href;
         if (!href || href.startsWith('javascript:') || href === '#' || href.startsWith('#')) return;
@@ -2955,7 +3013,8 @@ export class App {
             window.open(url.toString(), '_blank');
           });
         } catch { /* malformed URL — let browser handle */ }
-      }, true);
+      };
+      document.addEventListener('click', this.boundDesktopExternalLinkHandler, true);
     }
 
     // Idle detection - pause animations after 2 minutes of inactivity
@@ -3824,8 +3883,8 @@ export class App {
         ? await clusterNewsHybrid(this.allNews)
         : await analysisWorker.clusterNews(this.allNews);
 
-      // Update AI Insights panel with new clusters (if ML available)
-      if (mlWorker.isAvailable && this.latestClusters.length > 0) {
+      // Update AI Insights panel with new clusters
+      if (this.latestClusters.length > 0) {
         const insightsPanel = this.panels['insights'] as InsightsPanel | undefined;
         insightsPanel?.updateInsights(this.latestClusters);
       }

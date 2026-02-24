@@ -19,17 +19,31 @@ const ALLOWED_ORIGINS = [
   /^tauri:\/\/localhost$/,
 ];
 
-function sanitizeOrigin(raw) {
-  if (!raw) return 'https://worldmonitor.app';
+const ALLOWED_PARENT_ORIGINS = [
+  ...ALLOWED_ORIGINS,
+  /^https?:\/\/tauri\.localhost$/,
+  /^https?:\/\/[a-z0-9-]+\.tauri\.localhost$/,
+];
+
+function sanitizeAllowedOrigin(raw, fallback, allowList = ALLOWED_ORIGINS) {
+  if (!raw) return fallback;
   try {
     const parsed = new URL(raw);
-    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:' && parsed.protocol !== 'tauri:') {
-      return 'https://worldmonitor.app';
+    if (!['https:', 'http:', 'tauri:'].includes(parsed.protocol)) {
+      return fallback;
     }
     const origin = parsed.origin !== 'null' ? parsed.origin : raw;
-    if (ALLOWED_ORIGINS.some(p => p.test(origin))) return origin;
+    if (allowList.some(p => p.test(origin))) return origin;
   } catch { /* invalid URL */ }
-  return 'https://worldmonitor.app';
+  return fallback;
+}
+
+function sanitizeOrigin(raw) {
+  return sanitizeAllowedOrigin(raw, 'https://worldmonitor.app', ALLOWED_ORIGINS);
+}
+
+function sanitizeParentOrigin(raw, fallback) {
+  return sanitizeAllowedOrigin(raw, fallback, ALLOWED_PARENT_ORIGINS);
 }
 
 export default async function handler(request) {
@@ -47,6 +61,7 @@ export default async function handler(request) {
   const mute = parseFlag(url.searchParams.get('mute'), '1');
 
   const origin = sanitizeOrigin(url.searchParams.get('origin'));
+  const parentOrigin = sanitizeParentOrigin(url.searchParams.get('parentOrigin'), origin);
 
   const embedSrc = new URL(`https://www.youtube-nocookie.com/embed/${videoId}`);
   embedSrc.searchParams.set('autoplay', autoplay);
@@ -79,7 +94,7 @@ export default async function handler(request) {
     var tag=document.createElement('script');
     tag.src='https://www.youtube.com/iframe_api';
     document.head.appendChild(tag);
-    var player,overlay=document.getElementById('play-overlay'),started=false,muteSyncIntervalId,parentOrigin=${JSON.stringify(origin)};
+    var player,overlay=document.getElementById('play-overlay'),started=false,muteSyncIntervalId,parentOrigin=${JSON.stringify(parentOrigin)},allowedOrigin=${JSON.stringify(parentOrigin)};
     function hideOverlay(){overlay.classList.add('hidden')}
     function readMuted(){
       if(!player)return null;
@@ -121,6 +136,7 @@ export default async function handler(request) {
     });
     setTimeout(function(){if(!started)overlay.classList.remove('hidden')},3000);
     window.addEventListener('message',function(e){
+      if(allowedOrigin!=='*'&&e.origin!==allowedOrigin)return;
       if(!player||!player.getPlayerState)return;
       var m=e.data;if(!m||!m.type)return;
       switch(m.type){

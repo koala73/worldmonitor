@@ -1,6 +1,6 @@
 import { Panel } from './Panel';
 import { mlWorker } from '@/services/ml-worker';
-import { generateSummary } from '@/services/summarization';
+import { generateSummary, type SummarizeOptions } from '@/services/summarization';
 import { parallelAnalysis, type AnalyzedHeadline } from '@/services/parallel-analysis';
 import { signalAggregator, logSignalSummary, type RegionalConvergence } from '@/services/signal-aggregator';
 import { focalPointDetector } from '@/services/focal-point-detector';
@@ -9,8 +9,11 @@ import { getTheaterPostureSummaries } from '@/services/military-surge';
 import { isMobileDevice } from '@/utils';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { SITE_VARIANT } from '@/config';
-import { getPersistentCache, setPersistentCache } from '@/services/persistent-cache';
+import { deletePersistentCache, getPersistentCache, setPersistentCache } from '@/services/persistent-cache';
 import { t } from '@/services/i18n';
+import { isDesktopRuntime } from '@/services/runtime';
+import { AiFlowPopup } from './AiFlowPopup';
+import { getAiFlowSettings, isAnyAiProviderEnabled, subscribeAiFlowChange } from '@/services/ai-flow-settings';
 import type { ClusteredEvent, FocalPoint, MilitaryFlight } from '@/types';
 
 export class InsightsPanel extends Panel {
@@ -21,6 +24,10 @@ export class InsightsPanel extends Panel {
   private lastConvergenceZones: RegionalConvergence[] = [];
   private lastFocalPoints: FocalPoint[] = [];
   private lastMilitaryFlights: MilitaryFlight[] = [];
+  private lastClusters: ClusteredEvent[] = [];
+  private aiFlowPopup: AiFlowPopup | null = null;
+  private aiFlowUnsubscribe: (() => void) | null = null;
+  private updateGeneration = 0;
   private static readonly BRIEF_COOLDOWN_MS = 120000; // 2 min cooldown (API has limits)
   private static readonly BRIEF_CACHE_KEY = 'summary:world-brief';
 
@@ -35,6 +42,18 @@ export class InsightsPanel extends Panel {
     if (isMobileDevice()) {
       this.hide();
       this.isHidden = true;
+    }
+
+    // Web-only: add gear icon for AI flow settings
+    if (!isDesktopRuntime() && !isMobileDevice()) {
+      this.aiFlowPopup = new AiFlowPopup();
+      const headerLeft = this.header.querySelector('.panel-header-left');
+      if (headerLeft) {
+        headerLeft.appendChild(this.aiFlowPopup.wrapper);
+      }
+      this.aiFlowUnsubscribe = subscribeAiFlowChange(() => {
+        void this.onAiFlowChanged();
+      });
     }
   }
 
@@ -245,11 +264,29 @@ export class InsightsPanel extends Panel {
   public async updateInsights(clusters: ClusteredEvent[]): Promise<void> {
     if (this.isHidden) return;
 
+    this.lastClusters = clusters;
+    this.updateGeneration++;
+    const thisGeneration = this.updateGeneration;
+
     if (clusters.length === 0) {
       this.setDataBadge('unavailable');
       this.setContent(`<div class="insights-empty">${t('components.insights.waitingForData')}</div>`);
       return;
     }
+
+    // Web-only: if no AI providers enabled, show disabled state
+    if (!isDesktopRuntime() && !isAnyAiProviderEnabled()) {
+      this.setDataBadge('unavailable');
+      this.renderDisabledState();
+      return;
+    }
+
+    // Build summarize options from AI flow settings (web) or defaults (desktop)
+    const aiFlow = isDesktopRuntime() ? { cloudLlm: true, browserModel: true } : getAiFlowSettings();
+    const summarizeOpts: SummarizeOptions = {
+      skipCloudProviders: !aiFlow.cloudLlm,
+      skipBrowserFallback: !aiFlow.browserModel,
+    };
 
     const totalSteps = 4;
 
@@ -329,9 +366,12 @@ export class InsightsPanel extends Panel {
       if (mlWorker.isAvailable) {
         sentiments = await mlWorker.classifySentiment(titles).catch(() => null);
       }
+      if (this.updateGeneration !== thisGeneration) return;
 
       // Step 3: Generate World Brief (with cooldown)
       const loadedFromPersistentCache = await this.loadBriefFromCache();
+      if (this.updateGeneration !== thisGeneration) return;
+
       let worldBrief = this.cachedBrief;
       const now = Date.now();
 
@@ -348,7 +388,9 @@ export class InsightsPanel extends Panel {
         const result = await generateSummary(titles, (_step, _total, msg) => {
           // Show sub-progress for summarization
           this.setProgress(3, totalSteps, `Generating brief: ${msg}`);
-        }, geoContext);
+        }, geoContext, undefined, summarizeOpts);
+
+        if (this.updateGeneration !== thisGeneration) return;
 
         if (result) {
           worldBrief = result.summary;
@@ -368,6 +410,8 @@ export class InsightsPanel extends Panel {
       // Step 4: Wait for parallel analysis to complete
       this.setProgress(4, totalSteps, 'Multi-perspective analysis...');
       await parallelPromise;
+
+      if (this.updateGeneration !== thisGeneration) return;
 
       this.renderInsights(importantClusters, sentiments, worldBrief);
     } catch (error) {
@@ -629,5 +673,47 @@ export class InsightsPanel extends Panel {
         ${focalPointsHtml}
       </div>
     `;
+  }
+
+  private renderDisabledState(): void {
+    this.setContent(`
+      <div class="insights-disabled">
+        <div class="insights-disabled-icon">⚡</div>
+        <div class="insights-disabled-title">${t('components.insights.insightsDisabledTitle')}</div>
+        <div class="insights-disabled-hint">${t('components.insights.insightsDisabledHint')}</div>
+      </div>
+    `);
+  }
+
+  private async onAiFlowChanged(): Promise<void> {
+    this.updateGeneration++;
+    // Reset brief cache so new provider settings take effect immediately
+    this.cachedBrief = null;
+    this.lastBriefUpdate = 0;
+    try {
+      await deletePersistentCache(InsightsPanel.BRIEF_CACHE_KEY);
+    } catch {
+      // Best effort; fallback regeneration still works from memory reset.
+    }
+
+    if (!isAnyAiProviderEnabled()) {
+      this.setDataBadge('unavailable');
+      this.renderDisabledState();
+      return;
+    }
+
+    if (this.lastClusters.length > 0) {
+      void this.updateInsights(this.lastClusters);
+      return;
+    }
+
+    this.setDataBadge('unavailable');
+    this.setContent(`<div class="insights-empty">${t('components.insights.waitingForData')}</div>`);
+  }
+
+  public override destroy(): void {
+    this.aiFlowPopup?.destroy();
+    this.aiFlowUnsubscribe?.();
+    super.destroy();
   }
 }

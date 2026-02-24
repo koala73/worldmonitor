@@ -7,6 +7,7 @@
 import type { HappyContentCategory } from './positive-classifier';
 import { PositiveEventsServiceClient } from '@/generated/client/worldmonitor/positive_events/v1/service_client';
 import { inferGeoHubsFromTitle } from './geo-hub-index';
+import { createCircuitBreaker } from '@/utils';
 
 export interface PositiveGeoEvent {
   lat: number;
@@ -21,12 +22,18 @@ const client = new PositiveEventsServiceClient('', {
   fetch: fetch.bind(globalThis),
 });
 
+const breaker = createCircuitBreaker<PositiveGeoEvent[]>({
+  name: 'Positive Geo Events',
+  cacheTtlMs: 10 * 60 * 1000, // 10min — GDELT data refreshes frequently
+  persistCache: true,
+});
+
 /**
  * Fetch geocoded positive events from server-side GDELT GEO RPC.
- * Returns empty array on failure (graceful degradation).
+ * Returns instantly from IndexedDB cache on subsequent loads.
  */
 export async function fetchPositiveGeoEvents(): Promise<PositiveGeoEvent[]> {
-  try {
+  return breaker.execute(async () => {
     const response = await client.listPositiveGeoEvents({});
     return response.events.map(event => ({
       lat: event.latitude,
@@ -36,10 +43,7 @@ export async function fetchPositiveGeoEvents(): Promise<PositiveGeoEvent[]> {
       count: event.count,
       timestamp: event.timestamp,
     }));
-  } catch {
-    console.warn('[positive-events-geo] Failed to fetch positive geo events');
-    return [];
-  }
+  }, []);
 }
 
 /**

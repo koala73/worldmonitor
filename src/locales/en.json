@@ -50,6 +50,29 @@
       "base": "Military Bases",
       "nuclear": "Nuclear Facilities",
       "port": "Ports"
+    },
+    "levels": {
+      "critical": "Critical",
+      "high": "High",
+      "elevated": "Elevated",
+      "moderate": "Moderate",
+      "normal": "Normal",
+      "low": "Low"
+    },
+    "trends": {
+      "rising": "Rising",
+      "falling": "Falling",
+      "stable": "Stable"
+    },
+    "fallback": {
+      "instabilityIndex": "**Instability Index: {{score}}/100** ({{level}}, {{trend}})",
+      "protestsDetected": "{{count}} active protests detected",
+      "aircraftTracked": "{{count}} military aircraft tracked",
+      "vesselsTracked": "{{count}} military vessels tracked",
+      "internetOutages": "{{count}} internet outages",
+      "recentEarthquakes": "{{count}} recent earthquakes",
+      "stockIndex": "Stock index: {{value}}",
+      "recentHeadlines": "**Recent headlines:**"
     }
   },
   "header": {
@@ -827,7 +850,22 @@
       "rankingStories": "Ranking important stories...",
       "analyzingSentiment": "Analyzing sentiment...",
       "generatingBrief": "Generating world brief...",
-      "infoTooltip": "<strong>AI-Powered Analysis</strong><br>• <strong>World Brief</strong>: AI summary (Groq/OpenRouter)<br>• <strong>Sentiment</strong>: News tone analysis<br>• <strong>Velocity</strong>: Fast-moving stories<br>• <strong>Focal Points</strong>: Correlates news entities with map signals (military, protests, outages)<br><em>Desktop only • Powered by Llama 3.3 + Focal Point Detection</em>"
+      "infoTooltip": "<strong>AI-Powered Analysis</strong><br>• <strong>World Brief</strong>: AI summary (Groq/OpenRouter)<br>• <strong>Sentiment</strong>: News tone analysis<br>• <strong>Velocity</strong>: Fast-moving stories<br>• <strong>Focal Points</strong>: Correlates news entities with map signals (military, protests, outages)<br><em>Desktop only • Powered by Llama 3.3 + Focal Point Detection</em>",
+      "aiFlowTitle": "AI Analysis Settings",
+      "aiFlowCloudLabel": "Cloud AI (Groq & OpenRouter)",
+      "aiFlowCloudDesc": "Send headlines to cloud for AI summarization (recommended)",
+      "aiFlowBrowserLabel": "Browser Local Model",
+      "aiFlowBrowserDesc": "Run AI locally in your browser",
+      "aiFlowBrowserWarn": "This will download approximately 250MB of data to your computer",
+      "aiFlowOllamaCta": "Want fully local AI?",
+      "aiFlowOllamaCtaDesc": "Download the desktop app for Ollama support",
+      "aiFlowDownloadDesktop": "Download Desktop App →",
+      "aiFlowStatusActive": "Cloud AI active",
+      "aiFlowStatusCloudAndBrowser": "Cloud AI + Browser model active",
+      "aiFlowStatusBrowserOnly": "Browser model only",
+      "aiFlowStatusDisabled": "No AI providers enabled",
+      "insightsDisabledTitle": "AI analysis is disabled",
+      "insightsDisabledHint": "Enable providers using the gear button above"
     },
     "cascade": {
       "noImpacts": "No country impacts detected",
@@ -1226,7 +1264,10 @@
       "regionEurope": "Europe",
       "regionLatinAmerica": "Latin America",
       "regionAsia": "Asia",
-      "regionAfrica": "Africa"
+      "regionAfrica": "Africa",
+      "invalidHandle": "Enter a valid YouTube handle (e.g. @ChannelName)",
+      "channelNotFound": "YouTube channel not found",
+      "verifying": "Verifying…"
     }
   },
   "popups": {
@@ -1857,6 +1898,7 @@
     "information": "Information",
     "shareStory": "Share story",
     "exportImage": "Export Image",
+    "exportPdf": "Export PDF",
     "new": "NEW",
     "live": "LIVE",
     "cached": "CACHED",

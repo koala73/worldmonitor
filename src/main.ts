@@ -88,6 +88,12 @@ Sentry.init({
     /Invalid video id/,
     /Fetch is aborted/,
     /Stylesheet append timeout/,
+    /Worker is not a constructor/,
+    /_pcmBridgeCallbackHandler/,
+    /UCShellJava/,
+    /Cannot define multiple custom elements/,
+    /maxTextureDimension2D/,
+    /Container app not found/,
   ],
   beforeSend(event) {
     const msg = event.exception?.values?.[0]?.value ?? '';
@@ -95,12 +101,12 @@ Sentry.init({
     const frames = event.exception?.values?.[0]?.stacktrace?.frames ?? [];
     // Suppress maplibre internal null-access crashes (light, placement) only when stack is in map chunk
     if (/this\.style\._layers|reading '_layers'|this\.light is null|can't access property "(id|type|setFilter)", \w+ is (null|undefined)|Cannot read properties of null \(reading '(id|type|setFilter|_layers)'\)|null is not an object \(evaluating '(E\.|this\.style)|^\w{1,2} is null$/.test(msg)) {
-      if (frames.some(f => /\/map-[A-Za-z0-9]+\.js/.test(f.filename ?? ''))) return null;
+      if (frames.some(f => /\/(map|deck-stack)-[A-Za-z0-9]+\.js/.test(f.filename ?? ''))) return null;
     }
-    // Suppress any TypeError that happens entirely within maplibre internals (no app code outside the map chunk)
+    // Suppress any TypeError that happens entirely within maplibre or deck.gl internals
     if (/^TypeError:/.test(msg) && frames.length > 0) {
       const appFrames = frames.filter(f => f.in_app && !/\/sentry-[A-Za-z0-9]+\.js/.test(f.filename ?? ''));
-      if (appFrames.length > 0 && appFrames.every(f => /\/map-[A-Za-z0-9]+\.js/.test(f.filename ?? ''))) return null;
+      if (appFrames.length > 0 && appFrames.every(f => /\/(map|deck-stack)-[A-Za-z0-9]+\.js/.test(f.filename ?? ''))) return null;
     }
     return event;
   },

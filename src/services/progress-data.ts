@@ -11,6 +11,7 @@
  */
 
 import { getIndicatorData } from '@/services/economic';
+import { createCircuitBreaker } from '@/utils';
 
 // ---- Types ----
 
@@ -87,82 +88,77 @@ export const PROGRESS_INDICATORS: ProgressIndicator[] = [
   },
 ];
 
+// ---- Circuit Breaker (persistent cache for instant reload) ----
+
+const breaker = createCircuitBreaker<ProgressDataSet[]>({
+  name: 'Progress Data',
+  cacheTtlMs: 60 * 60 * 1000, // 1h — World Bank data changes yearly
+  persistCache: true,
+});
+
 // ---- Data Fetching ----
 
-/**
- * Fetch progress data for all 4 indicators from the World Bank API
- * via the existing sebuf RPC.
- *
- * Returns an array of ProgressDataSets, one per indicator.
- * Null values are filtered out, data is sorted by year ascending,
- * and changePercent is calculated (positive = improvement).
- *
- * Gracefully degrades: if any indicator fails, returns empty data
- * for that indicator; if the entire fetch fails, returns empty arrays.
- */
-export async function fetchProgressData(): Promise<ProgressDataSet[]> {
-  try {
-    const results = await Promise.all(
-      PROGRESS_INDICATORS.map(async (indicator): Promise<ProgressDataSet> => {
-        try {
-          const response = await getIndicatorData(indicator.code, {
-            countries: ['1W'],
-            years: indicator.years,
-          });
+async function fetchProgressDataFresh(): Promise<ProgressDataSet[]> {
+  const results = await Promise.all(
+    PROGRESS_INDICATORS.map(async (indicator): Promise<ProgressDataSet> => {
+      try {
+        const response = await getIndicatorData(indicator.code, {
+          countries: ['1W'],
+          years: indicator.years,
+        });
 
-          // Extract year/value pairs from the World-level data.
-          // World Bank API returns countryiso3code "WLD" for world aggregate (request code "1W").
-          const countryData = response.byCountry['WLD'];
-          if (!countryData || countryData.values.length === 0) {
-            return emptyDataSet(indicator);
-          }
-
-          // Build data points, filtering out null/undefined/NaN values.
-          const data: ProgressDataPoint[] = countryData.values
-            .filter(v => v.value != null && Number.isFinite(v.value))
-            .map(v => ({
-              year: parseInt(v.year, 10),
-              value: v.value,
-            }))
-            .filter(d => !isNaN(d.year))
-            .sort((a, b) => a.year - b.year);
-
-          if (data.length === 0) {
-            return emptyDataSet(indicator);
-          }
-
-          const oldestValue = data[0]!.value;
-          const latestValue = data[data.length - 1]!.value;
-
-          // Calculate change percent. For invertTrend indicators (mortality,
-          // poverty), a decrease is positive, so we negate the raw change
-          // so that a positive changePercent always means "improvement".
-          const rawChangePercent = oldestValue !== 0
-            ? ((latestValue - oldestValue) / Math.abs(oldestValue)) * 100
-            : 0;
-          const changePercent = indicator.invertTrend
-            ? -rawChangePercent
-            : rawChangePercent;
-
-          return {
-            indicator,
-            data,
-            latestValue,
-            oldestValue,
-            changePercent: Math.round(changePercent * 10) / 10,
-          };
-        } catch {
-          // Individual indicator failure -- return empty for graceful degradation
+        const countryData = response.byCountry['WLD'];
+        if (!countryData || countryData.values.length === 0) {
           return emptyDataSet(indicator);
         }
-      }),
-    );
 
-    return results;
-  } catch {
-    // Complete failure -- return empty datasets for all indicators
-    return PROGRESS_INDICATORS.map(emptyDataSet);
-  }
+        const data: ProgressDataPoint[] = countryData.values
+          .filter(v => v.value != null && Number.isFinite(v.value))
+          .map(v => ({
+            year: parseInt(v.year, 10),
+            value: v.value,
+          }))
+          .filter(d => !isNaN(d.year))
+          .sort((a, b) => a.year - b.year);
+
+        if (data.length === 0) {
+          return emptyDataSet(indicator);
+        }
+
+        const oldestValue = data[0]!.value;
+        const latestValue = data[data.length - 1]!.value;
+
+        const rawChangePercent = oldestValue !== 0
+          ? ((latestValue - oldestValue) / Math.abs(oldestValue)) * 100
+          : 0;
+        const changePercent = indicator.invertTrend
+          ? -rawChangePercent
+          : rawChangePercent;
+
+        return {
+          indicator,
+          data,
+          latestValue,
+          oldestValue,
+          changePercent: Math.round(changePercent * 10) / 10,
+        };
+      } catch {
+        return emptyDataSet(indicator);
+      }
+    }),
+  );
+  return results;
+}
+
+/**
+ * Fetch progress data with persistent caching.
+ * Returns instantly from IndexedDB cache on subsequent loads.
+ */
+export async function fetchProgressData(): Promise<ProgressDataSet[]> {
+  return breaker.execute(
+    () => fetchProgressDataFresh(),
+    PROGRESS_INDICATORS.map(emptyDataSet),
+  );
 }
 
 function emptyDataSet(indicator: ProgressIndicator): ProgressDataSet {

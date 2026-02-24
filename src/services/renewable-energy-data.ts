@@ -12,6 +12,7 @@
  */
 
 import { getIndicatorData, fetchEnergyCapacityRpc } from '@/services/economic';
+import { createCircuitBreaker } from '@/utils';
 
 // ---- Types ----
 
@@ -55,16 +56,23 @@ const EMPTY_DATA: RenewableEnergyData = {
   regions: [],
 };
 
+// ---- Circuit Breaker (persistent cache for instant reload) ----
+
+const renewableBreaker = createCircuitBreaker<RenewableEnergyData>({
+  name: 'Renewable Energy',
+  cacheTtlMs: 60 * 60 * 1000, // 1h — World Bank data changes yearly
+  persistCache: true,
+});
+
+const capacityBreaker = createCircuitBreaker<CapacitySeries[]>({
+  name: 'Energy Capacity',
+  cacheTtlMs: 60 * 60 * 1000,
+  persistCache: true,
+});
+
 // ---- Data Fetching ----
 
-/**
- * Fetch renewable energy data for all regions from the World Bank API
- * via the existing sebuf RPC.
- *
- * Returns global percentage + historical time-series + regional breakdown.
- * Gracefully degrades: on failure returns zeroed data.
- */
-export async function fetchRenewableEnergyData(): Promise<RenewableEnergyData> {
+async function fetchRenewableEnergyDataFresh(): Promise<RenewableEnergyData> {
   try {
     const response = await getIndicatorData(INDICATOR_CODE, {
       countries: REGIONS.map(r => r.code),
@@ -142,9 +150,16 @@ export async function fetchRenewableEnergyData(): Promise<RenewableEnergyData> {
       regions,
     };
   } catch {
-    // Complete failure -- return empty/zeroed data
     return EMPTY_DATA;
   }
+}
+
+/**
+ * Fetch renewable energy data with persistent caching.
+ * Returns instantly from IndexedDB cache on subsequent loads.
+ */
+export async function fetchRenewableEnergyData(): Promise<RenewableEnergyData> {
+  return renewableBreaker.execute(() => fetchRenewableEnergyDataFresh(), EMPTY_DATA);
 }
 
 // ========================================================================
@@ -168,14 +183,12 @@ export interface CapacitySeries {
  * Gracefully degrades: on failure returns empty array.
  */
 export async function fetchEnergyCapacity(): Promise<CapacitySeries[]> {
-  try {
+  return capacityBreaker.execute(async () => {
     const resp = await fetchEnergyCapacityRpc(['SUN', 'WND', 'COL'], 25);
     return resp.series.map(s => ({
       source: s.energySource,
       name: s.name,
       data: s.data.map(d => ({ year: d.year, capacityMw: d.capacityMw })),
     }));
-  } catch {
-    return [];
-  }
+  }, []);
 }

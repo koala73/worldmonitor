@@ -795,10 +795,32 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),
+      child_process: resolve(__dirname, 'src/shims/child-process.ts'),
+      'node:child_process': resolve(__dirname, 'src/shims/child-process.ts'),
+      '@loaders.gl/worker-utils/dist/lib/process-utils/child-process-proxy.js': resolve(
+        __dirname,
+        'src/shims/child-process-proxy.ts'
+      ),
     },
   },
   build: {
+    // Geospatial bundles (maplibre/deck) are expected to be large even when split.
+    // Raise warning threshold to reduce noisy false alarms in CI.
+    chunkSizeWarningLimit: 1200,
     rollupOptions: {
+      onwarn(warning, warn) {
+        // onnxruntime-web ships a minified browser bundle that intentionally uses eval.
+        // Keep build logs focused by filtering this known third-party warning only.
+        if (
+          warning.code === 'EVAL'
+          && typeof warning.id === 'string'
+          && warning.id.includes('/onnxruntime-web/dist/ort-web.min.js')
+        ) {
+          return;
+        }
+
+        warn(warning);
+      },
       input: {
         main: resolve(__dirname, 'index.html'),
         settings: resolve(__dirname, 'settings.html'),
@@ -807,11 +829,23 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (id.includes('node_modules')) {
-            if (id.includes('/@xenova/transformers/') || id.includes('/onnxruntime-web/')) {
-              return 'ml';
+            if (id.includes('/@xenova/transformers/')) {
+              return 'transformers';
             }
-            if (id.includes('/@deck.gl/') || id.includes('/maplibre-gl/') || id.includes('/h3-js/')) {
-              return 'map';
+            if (id.includes('/onnxruntime-web/')) {
+              return 'onnxruntime';
+            }
+            if (id.includes('/maplibre-gl/')) {
+              return 'maplibre';
+            }
+            if (
+              id.includes('/@deck.gl/')
+              || id.includes('/@luma.gl/')
+              || id.includes('/@loaders.gl/')
+              || id.includes('/@math.gl/')
+              || id.includes('/h3-js/')
+            ) {
+              return 'deck-stack';
             }
             if (id.includes('/d3/')) {
               return 'd3';

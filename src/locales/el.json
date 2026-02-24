@@ -50,6 +50,29 @@
       "base": "Στρατιωτικές Βάσεις",
       "nuclear": "Πυρηνικές Εγκαταστάσεις",
       "port": "Λιμάνια"
+    },
+    "levels": {
+      "critical": "Κρίσιμο",
+      "high": "Υψηλό",
+      "elevated": "Αυξημένο",
+      "moderate": "Μέτριο",
+      "normal": "Κανονικό",
+      "low": "Χαμηλό"
+    },
+    "trends": {
+      "rising": "Ανοδικά",
+      "falling": "Πτωτικά",
+      "stable": "Σταθερό"
+    },
+    "fallback": {
+      "instabilityIndex": "**Δείκτης Αστάθειας: {{score}}/100** ({{level}}, {{trend}})",
+      "protestsDetected": "{{count}} ενεργές διαμαρτυρίες ανιχνεύθηκαν",
+      "aircraftTracked": "{{count}} στρατιωτικά αεροσκάφη παρακολουθούνται",
+      "vesselsTracked": "{{count}} στρατιωτικά πλοία παρακολουθούνται",
+      "internetOutages": "{{count}} διακοπές διαδικτύου",
+      "recentEarthquakes": "{{count}} πρόσφατοι σεισμοί",
+      "stockIndex": "Χρηματιστηριακός δείκτης: {{value}}",
+      "recentHeadlines": "**Πρόσφατοι τίτλοι:**"
     }
   },
   "header": {
@@ -825,7 +848,22 @@
       "rankingStories": "Κατάταξη σημαντικών ιστοριών...",
       "analyzingSentiment": "Ανάλυση συναισθήματος...",
       "generatingBrief": "Δημιουργία παγκόσμιας ενημέρωσης...",
-      "infoTooltip": "<strong>Ανάλυση με AI</strong><br>• <strong>Παγκόσμια Ενημέρωση</strong>: Περίληψη AI (Groq/OpenRouter)<br>• <strong>Συναίσθημα</strong>: Ανάλυση τόνου ειδήσεων<br>• <strong>Ταχύτητα</strong>: Ταχέως εξελισσόμενες ιστορίες<br>• <strong>Εστιακά Σημεία</strong>: Συσχετίζει οντότητες ειδήσεων με σήματα χάρτη (στρατιωτικά, διαμαρτυρίες, διακοπές)<br><em>Μόνο desktop • Τροφοδοτείται από Llama 3.3 + Ανίχνευση Εστιακών Σημείων</em>"
+      "infoTooltip": "<strong>Ανάλυση με AI</strong><br>• <strong>Παγκόσμια Ενημέρωση</strong>: Περίληψη AI (Groq/OpenRouter)<br>• <strong>Συναίσθημα</strong>: Ανάλυση τόνου ειδήσεων<br>• <strong>Ταχύτητα</strong>: Ταχέως εξελισσόμενες ιστορίες<br>• <strong>Εστιακά Σημεία</strong>: Συσχετίζει οντότητες ειδήσεων με σήματα χάρτη (στρατιωτικά, διαμαρτυρίες, διακοπές)<br><em>Μόνο desktop • Τροφοδοτείται από Llama 3.3 + Ανίχνευση Εστιακών Σημείων</em>",
+      "aiFlowTitle": "Ρυθμίσεις Ανάλυσης AI",
+      "aiFlowCloudLabel": "Cloud AI (Groq & OpenRouter)",
+      "aiFlowCloudDesc": "Αποστολή τίτλων στο cloud για σύνοψη AI (συνιστάται)",
+      "aiFlowBrowserLabel": "Τοπικό Μοντέλο Περιηγητή",
+      "aiFlowBrowserDesc": "Εκτέλεση AI τοπικά στον περιηγητή σας",
+      "aiFlowBrowserWarn": "Θα ληφθούν περίπου 250MB δεδομένων στον υπολογιστή σας",
+      "aiFlowOllamaCta": "Θέλετε πλήρως τοπικό AI;",
+      "aiFlowOllamaCtaDesc": "Κατεβάστε την εφαρμογή desktop για υποστήριξη Ollama",
+      "aiFlowDownloadDesktop": "Λήψη Desktop App →",
+      "aiFlowStatusActive": "Cloud AI ενεργό",
+      "aiFlowStatusCloudAndBrowser": "Cloud AI + Τοπικό μοντέλο ενεργά",
+      "aiFlowStatusBrowserOnly": "Μόνο τοπικό μοντέλο",
+      "aiFlowStatusDisabled": "Κανένας πάροχος AI ενεργοποιημένος",
+      "insightsDisabledTitle": "Η ανάλυση AI είναι απενεργοποιημένη",
+      "insightsDisabledHint": "Ενεργοποιήστε παρόχους χρησιμοποιώντας το κουμπί ⚙ παραπάνω"
     },
     "cascade": {
       "noImpacts": "Δεν ανιχνεύθηκαν επιπτώσεις σε χώρες",
@@ -1807,6 +1845,7 @@
     "information": "Πληροφορίες",
     "shareStory": "Κοινοποίηση ιστορίας",
     "exportImage": "Εξαγωγή Εικόνας",
+    "exportPdf": "Εξαγωγή PDF",
     "new": "ΝΕΟ",
     "live": "ΖΩΝΤΑΝΑ",
     "cached": "ΑΠΟΘΗΚΕΥΜΕΝΟ",
