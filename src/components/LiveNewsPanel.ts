@@ -462,22 +462,11 @@ export class LiveNewsPanel extends Panel {
     const btn = document.createElement('button');
     btn.className = `live-channel-btn ${channel.id === this.activeChannel.id ? 'active' : ''}`;
     btn.dataset.channelId = channel.id;
-    btn.draggable = true;
     btn.textContent = channel.name;
+    btn.style.cursor = 'grab';
     btn.addEventListener('click', (e) => {
       e.preventDefault();
       this.switchChannel(channel);
-    });
-    btn.addEventListener('dragstart', (e) => {
-      btn.classList.add('live-channel-dragging');
-      if (e.dataTransfer) {
-        e.dataTransfer.setData('text/plain', channel.id);
-        e.dataTransfer.effectAllowed = 'move';
-      }
-    });
-    btn.addEventListener('dragend', () => {
-      btn.classList.remove('live-channel-dragging');
-      this.applyChannelOrderFromDom();
     });
     return btn;
   }
@@ -490,14 +479,33 @@ export class LiveNewsPanel extends Panel {
       this.channelSwitcher.appendChild(this.createChannelButton(channel));
     }
 
-    this.channelSwitcher.addEventListener('dragover', (e) => {
+    // Mouse-based drag reorder (works in WKWebView/Tauri)
+    let dragging: HTMLElement | null = null;
+    let dragStarted = false;
+    let startX = 0;
+    const THRESHOLD = 6;
+
+    this.channelSwitcher.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      const btn = (e.target as HTMLElement).closest('.live-channel-btn') as HTMLElement | null;
+      if (!btn) return;
+      dragging = btn;
+      dragStarted = false;
+      startX = e.clientX;
       e.preventDefault();
-      const dragging = this.channelSwitcher?.querySelector('.live-channel-dragging');
+    });
+
+    document.addEventListener('mousemove', (e) => {
       if (!dragging || !this.channelSwitcher) return;
-      const target = (e.target as HTMLElement).closest?.('.live-channel-btn');
+      if (!dragStarted) {
+        if (Math.abs(e.clientX - startX) < THRESHOLD) return;
+        dragStarted = true;
+        dragging.classList.add('live-channel-dragging');
+      }
+      const target = document.elementFromPoint(e.clientX, e.clientY)?.closest('.live-channel-btn') as HTMLElement | null;
       if (!target || target === dragging) return;
-      const all = Array.from(this.channelSwitcher.querySelectorAll('.live-channel-btn'));
-      const idx = all.indexOf(dragging as Element);
+      const all = Array.from(this.channelSwitcher!.querySelectorAll('.live-channel-btn'));
+      const idx = all.indexOf(dragging);
       const targetIdx = all.indexOf(target);
       if (idx === -1 || targetIdx === -1) return;
       if (idx < targetIdx) {
@@ -505,6 +513,16 @@ export class LiveNewsPanel extends Panel {
       } else {
         target.parentElement?.insertBefore(dragging, target);
       }
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (!dragging) return;
+      if (dragStarted) {
+        dragging.classList.remove('live-channel-dragging');
+        this.applyChannelOrderFromDom();
+      }
+      dragging = null;
+      dragStarted = false;
     });
 
     const toolbar = document.createElement('div');

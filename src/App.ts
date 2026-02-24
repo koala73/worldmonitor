@@ -2556,72 +2556,103 @@ export class App {
   }
 
   private makeDraggable(el: HTMLElement, key: string): void {
-    el.draggable = true;
     el.dataset.panel = key;
+    let isDragging = false;
+    let dragStarted = false;
+    let startX = 0;
+    let startY = 0;
+    let rafId = 0;
+    const DRAG_THRESHOLD = 8;
 
-    el.addEventListener('dragstart', (e) => {
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button !== 0) return;
       const target = e.target as HTMLElement;
-      // Don't start drag if panel is being resized
-      if (el.dataset.resizing === 'true') {
-        e.preventDefault();
-        return;
-      }
-      // Don't start drag if target is the resize handle
-      if (target.classList?.contains('panel-resize-handle') || target.closest?.('.panel-resize-handle')) {
-        e.preventDefault();
-        return;
-      }
-      el.classList.add('dragging');
-      e.dataTransfer?.setData('text/plain', key);
-    });
+      if (el.dataset.resizing === 'true') return;
+      if (target.classList?.contains('panel-resize-handle') || target.closest?.('.panel-resize-handle')) return;
+      if (target.closest('button, a, input, select, textarea, .panel-content')) return;
 
-    el.addEventListener('dragend', () => {
-      el.classList.remove('dragging');
-      this.savePanelOrder();
-    });
-
-    el.addEventListener('dragover', (e) => {
+      isDragging = true;
+      dragStarted = false;
+      startX = e.clientX;
+      startY = e.clientY;
       e.preventDefault();
-      const dragging = document.querySelector('.dragging');
-      if (!dragging || dragging === el) return;
+    };
 
-      const grid = document.getElementById('panelsGrid');
-      if (!grid) return;
-
-      const rowTolerancePx = 24;
-      const siblings = Array.from(grid.children).filter((c) => {
-        if (c === dragging) return false;
-        const el = c as HTMLElement;
-        return !el.classList.contains('hidden');
-      });
-      const orderedSiblings = siblings.sort((a, b) => {
-        const aRect = a.getBoundingClientRect();
-        const bRect = b.getBoundingClientRect();
-        if (Math.abs(aRect.top - bRect.top) <= rowTolerancePx) {
-          return aRect.left - bRect.left;
-        }
-        return aRect.top - bRect.top;
-      });
-
-      const nextSibling = orderedSiblings.find((sibling) => {
-        const rect = sibling.getBoundingClientRect();
-        const beforeRow = e.clientY < rect.top + rowTolerancePx;
-        if (beforeRow) return true;
-
-        const inRowBand = e.clientY >= rect.top + rowTolerancePx && e.clientY <= rect.bottom - rowTolerancePx;
-        if (inRowBand) {
-          return e.clientX < rect.left + rect.width / 2;
-        }
-
-        return e.clientY < rect.top + rect.height / 2;
-      });
-
-      if (nextSibling) {
-        grid.insertBefore(dragging, nextSibling);
-      } else {
-        grid.appendChild(dragging);
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isDragging) return;
+      if (!dragStarted) {
+        const dx = Math.abs(e.clientX - startX);
+        const dy = Math.abs(e.clientY - startY);
+        if (dx < DRAG_THRESHOLD && dy < DRAG_THRESHOLD) return;
+        dragStarted = true;
+        el.classList.add('dragging');
       }
-    });
+      // Throttle to animation frame to avoid reflow storms
+      const cx = e.clientX;
+      const cy = e.clientY;
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        this.handlePanelDragMove(el, cx, cy);
+        rafId = 0;
+      });
+    };
+
+    const onMouseUp = () => {
+      if (!isDragging) return;
+      isDragging = false;
+      if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+      if (dragStarted) {
+        el.classList.remove('dragging');
+        this.savePanelOrder();
+      }
+      dragStarted = false;
+    };
+
+    el.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  }
+
+  private handlePanelDragMove(dragging: HTMLElement, clientX: number, clientY: number): void {
+    const grid = document.getElementById('panelsGrid');
+    if (!grid) return;
+
+    // Temporarily hide dragging element so elementFromPoint finds the panel beneath
+    dragging.style.pointerEvents = 'none';
+    const target = document.elementFromPoint(clientX, clientY);
+    dragging.style.pointerEvents = '';
+
+    if (!target) return;
+    const targetPanel = target.closest('.panel') as HTMLElement | null;
+    if (!targetPanel || targetPanel === dragging || targetPanel.classList.contains('hidden')) return;
+    // Ensure target is a direct child of the grid
+    if (targetPanel.parentElement !== grid) return;
+
+    const targetRect = targetPanel.getBoundingClientRect();
+    const draggingRect = dragging.getBoundingClientRect();
+
+    // Get current DOM positions
+    const children = Array.from(grid.children);
+    const dragIdx = children.indexOf(dragging);
+    const targetIdx = children.indexOf(targetPanel);
+    if (dragIdx === -1 || targetIdx === -1) return;
+
+    // Detect if panels are on the same row (tops within 30px)
+    const sameRow = Math.abs(draggingRect.top - targetRect.top) < 30;
+    const targetMid = sameRow
+      ? targetRect.left + targetRect.width / 2
+      : targetRect.top + targetRect.height / 2;
+    const cursorPos = sameRow ? clientX : clientY;
+
+    if (dragIdx < targetIdx) {
+      if (cursorPos > targetMid) {
+        grid.insertBefore(dragging, targetPanel.nextSibling);
+      }
+    } else {
+      if (cursorPos < targetMid) {
+        grid.insertBefore(dragging, targetPanel);
+      }
+    }
   }
 
   private setupEventListeners(): void {

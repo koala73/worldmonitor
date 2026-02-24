@@ -140,7 +140,6 @@ export class Panel {
     this.resizeHandle = document.createElement('div');
     this.resizeHandle.className = 'panel-resize-handle';
     this.resizeHandle.title = t('components.panel.dragToResize');
-    this.resizeHandle.draggable = false; // Prevent parent's drag from capturing
     this.element.appendChild(this.resizeHandle);
     this.setupResizeHandlers();
 
@@ -164,7 +163,6 @@ export class Panel {
       this.startY = e.clientY;
       this.startHeight = this.element.getBoundingClientRect().height;
       this.element.classList.add('resizing');
-      this.element.draggable = false;
       this.resizeHandle?.classList.add('active');
       document.addEventListener('mousemove', onMouseMove);
       document.addEventListener('mouseup', onMouseUp);
@@ -182,7 +180,6 @@ export class Panel {
       if (!this.isResizing) return;
       this.isResizing = false;
       this.element.classList.remove('resizing');
-      this.element.draggable = true;
       this.resizeHandle?.classList.remove('active');
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
@@ -195,16 +192,6 @@ export class Panel {
     };
 
     this.resizeHandle.addEventListener('mousedown', onMouseDown);
-
-    // Prevent panel drag when resizing (capture phase runs before App.ts listener)
-    this.element.addEventListener('dragstart', (e) => {
-      const target = e.target;
-      if (this.isResizing || target === this.resizeHandle || (target instanceof Element && target.closest('.panel-resize-handle'))) {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        return false;
-      }
-    }, true);
 
     // Mark element as resizing for external listeners
     this.resizeHandle.addEventListener('mousedown', () => {
@@ -226,7 +213,6 @@ export class Panel {
       this.startY = touch.clientY;
       this.startHeight = this.element.getBoundingClientRect().height;
       this.element.classList.add('resizing');
-      this.element.draggable = false;
       this.element.dataset.resizing = 'true';
       this.resizeHandle?.classList.add('active');
     }, { passive: false });
@@ -246,7 +232,6 @@ export class Panel {
       if (!this.isResizing) return;
       this.isResizing = false;
       this.element.classList.remove('resizing');
-      this.element.draggable = true;
       delete this.element.dataset.resizing;
       this.resizeHandle?.classList.remove('active');
       const currentSpan = this.element.classList.contains('span-4') ? 4 :

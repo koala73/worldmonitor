@@ -57,14 +57,34 @@ export function initLiveChannelsWindow(containerEl?: HTMLElement): void {
   }
 
   function setupListDnD(listEl: HTMLElement): void {
-    listEl.addEventListener('dragover', (e) => {
+    let dragging: HTMLElement | null = null;
+    let dragStarted = false;
+    let startY = 0;
+    const THRESHOLD = 6;
+
+    listEl.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      const target = e.target as HTMLElement;
+      if (target.closest('input, button, textarea, select')) return;
+      const row = target.closest('.live-news-manage-row') as HTMLElement | null;
+      if (!row || row.classList.contains('live-news-manage-row-editing')) return;
+      dragging = row;
+      dragStarted = false;
+      startY = e.clientY;
       e.preventDefault();
-      const dragging = listEl.querySelector('.live-news-manage-row-dragging');
+    });
+
+    document.addEventListener('mousemove', (e) => {
       if (!dragging) return;
-      const target = (e.target as HTMLElement).closest?.('.live-news-manage-row');
+      if (!dragStarted) {
+        if (Math.abs(e.clientY - startY) < THRESHOLD) return;
+        dragStarted = true;
+        dragging.classList.add('live-news-manage-row-dragging');
+      }
+      const target = document.elementFromPoint(e.clientX, e.clientY)?.closest('.live-news-manage-row') as HTMLElement | null;
       if (!target || target === dragging) return;
       const all = Array.from(listEl.querySelectorAll('.live-news-manage-row'));
-      const idx = all.indexOf(dragging as HTMLElement);
+      const idx = all.indexOf(dragging);
       const targetIdx = all.indexOf(target);
       if (idx === -1 || targetIdx === -1) return;
       if (idx < targetIdx) {
@@ -72,6 +92,16 @@ export function initLiveChannelsWindow(containerEl?: HTMLElement): void {
       } else {
         target.parentElement?.insertBefore(dragging, target);
       }
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (!dragging) return;
+      if (dragStarted) {
+        dragging.classList.remove('live-news-manage-row-dragging');
+        applyOrderFromDom(listEl);
+      }
+      dragging = null;
+      dragStarted = false;
     });
   }
 
@@ -81,8 +111,6 @@ export function initLiveChannelsWindow(containerEl?: HTMLElement): void {
       const row = document.createElement('div');
       row.className = 'live-news-manage-row';
       row.dataset.channelId = ch.id;
-      row.draggable = true;
-      const didDrag = { value: false };
 
       const nameSpan = document.createElement('span');
       nameSpan.className = 'live-news-manage-row-name';
@@ -90,26 +118,11 @@ export function initLiveChannelsWindow(containerEl?: HTMLElement): void {
       row.appendChild(nameSpan);
 
       row.addEventListener('click', (e) => {
-        if (didDrag.value) return;
-        // Do not open edit when clicking inside form controls (input, button, etc.)
+        // Don't open edit if row was just dragged
+        if (row.classList.contains('live-news-manage-row-dragging')) return;
         if ((e.target as HTMLElement).closest('input, button, textarea, select')) return;
         e.preventDefault();
         showEditForm(row, ch, listEl);
-      });
-      row.addEventListener('dragstart', (e) => {
-        didDrag.value = true;
-        row.classList.add('live-news-manage-row-dragging');
-        if (e.dataTransfer) {
-          e.dataTransfer.setData('text/plain', ch.id);
-          e.dataTransfer.effectAllowed = 'move';
-        }
-      });
-      row.addEventListener('dragend', () => {
-        row.classList.remove('live-news-manage-row-dragging');
-        applyOrderFromDom(listEl);
-        setTimeout(() => {
-          didDrag.value = false;
-        }, 0);
       });
 
       listEl.appendChild(row);
@@ -163,7 +176,6 @@ export function initLiveChannelsWindow(containerEl?: HTMLElement): void {
 
   function showEditForm(row: HTMLElement, ch: LiveChannel, listEl: HTMLElement): void {
     const isCustom = !BUILTIN_IDS.has(ch.id);
-    row.draggable = false;
     row.innerHTML = '';
     row.className = 'live-news-manage-row live-news-manage-row-editing';
 

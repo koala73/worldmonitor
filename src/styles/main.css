@@ -1253,7 +1253,7 @@ canvas,
   border-style: dashed;
 }
 
-.live-channel-btn[draggable="true"] {
+.live-channel-btn {
   cursor: grab;
 }
 
