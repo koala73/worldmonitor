@@ -347,7 +347,10 @@ function pausePolling(): void {
 
 function resumePolling(): void {
   if (!isPolling || pollInterval) return;
-  void pollSnapshot(true);
+  // Avoid overlapping relay requests if a poll is already in flight.
+  if (!inFlight) {
+    void pollSnapshot(false);
+  }
   pollInterval = setInterval(() => {
     void pollSnapshot(false);
   }, SNAPSHOT_POLL_INTERVAL_MS);

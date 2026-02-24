@@ -77,8 +77,6 @@ export async function fetchAcledCached(opts: FetchAcledOptions): Promise<AcledRa
   if (data.message || data.error) throw new Error(data.message || data.error || 'ACLED API error');
 
   const events = data.data || [];
-  if (events.length > 0) {
-    setCachedJson(cacheKey, events, ACLED_CACHE_TTL).catch(() => {});
-  }
+  setCachedJson(cacheKey, events, ACLED_CACHE_TTL).catch(() => {});
   return events;
 }

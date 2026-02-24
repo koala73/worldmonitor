@@ -75,6 +75,11 @@ describe('ACLED shared cache layer', () => {
     assert.match(src, /setCachedJson\(cacheKey, events, ACLED_CACHE_TTL\)/,
       'Should cache successful results');
   });
+
+  it('caches empty successful responses to avoid repeated cache misses', () => {
+    assert.doesNotMatch(src, /if\s*\(events\.length\s*>\s*0\)\s*\{[\s\S]*setCachedJson\(cacheKey, events, ACLED_CACHE_TTL\)/,
+      'Should cache empty arrays too (negative caching)');
+  });
 });
 
 describe('ACLED consumers use shared cache layer', () => {
@@ -132,13 +137,15 @@ describe('maritime AIS visibility guard', () => {
       'pausePolling should clear the poll interval');
   });
 
-  it('has resumePolling function that restarts polling', () => {
+  it('has resumePolling function that restarts polling without overlap', () => {
     assert.match(src, /function resumePolling\(\)/,
       'Should define resumePolling');
     const resumeIdx = src.indexOf('function resumePolling');
-    const resumeFn = src.slice(resumeIdx, resumeIdx + 300);
-    assert.match(resumeFn, /pollSnapshot\(true\)/,
-      'resumePolling should trigger an immediate forced poll');
+    const resumeFn = src.slice(resumeIdx, resumeIdx + 400);
+    assert.match(resumeFn, /if \(!inFlight\)/,
+      'resumePolling should guard against overlapping polls');
+    assert.match(resumeFn, /pollSnapshot\(false\)/,
+      'resumePolling should trigger a non-forced poll');
   });
 
   it('registers visibilitychange listener', () => {
