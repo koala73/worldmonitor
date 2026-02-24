@@ -197,7 +197,7 @@ async function isSafeUrl(urlString) {
     return { safe: false, reason: 'DNS resolution failed' };
   }
 
-  return { safe: true };
+  return { safe: true, resolvedAddresses: addresses };
 }
 
 function json(data, status = 200, extraHeaders = {}) {
@@ -555,6 +555,11 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
         headers: options.headers || {},
         family: 4,
       };
+      // Pin to a pre-resolved IP to prevent TOCTOU DNS rebinding.
+      // The hostname is kept for SNI / TLS certificate validation.
+      if (options.resolvedAddress) {
+        reqOpts.lookup = (_hostname, _opts, cb) => cb(null, options.resolvedAddress, 4);
+      }
       const req = https.request(reqOpts, (res) => {
         const chunks = [];
         res.on('data', (c) => chunks.push(c));
@@ -579,10 +584,20 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
     });
   }
   // HTTP fallback (localhost sidecar, etc.)
+  // For pinned addresses on plain HTTP, rewrite the URL to connect to the
+  // validated IP and set the Host header so virtual-host routing still works.
+  let fetchUrl = url;
+  const fetchHeaders = { ...(options.headers || {}) };
+  if (options.resolvedAddress && u.protocol === 'http:') {
+    const pinned = new URL(url);
+    fetchHeaders['Host'] = pinned.host;
+    pinned.hostname = options.resolvedAddress;
+    fetchUrl = pinned.toString();
+  }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(url, { ...options, signal: controller.signal });
+    return await fetch(fetchUrl, { ...options, headers: fetchHeaders, signal: controller.signal });
   } finally {
     clearTimeout(timer);
   }
@@ -1002,12 +1017,17 @@ async function dispatch(requestUrl, req, routes, context) {
 
     try {
       const parsed = new URL(feedUrl);
+      // Pin to the first IPv4 address validated by isSafeUrl() so the
+      // actual TCP connection goes to the same IP we checked, closing
+      // the TOCTOU DNS-rebinding window.
+      const pinnedV4 = safety.resolvedAddresses?.find(a => a.includes('.'));
       const response = await fetchWithTimeout(feedUrl, {
         headers: {
           'User-Agent': CHROME_UA,
           'Accept': 'application/rss+xml, application/xml, text/xml, */*',
           'Accept-Language': 'en-US,en;q=0.9',
         },
+        ...(pinnedV4 ? { resolvedAddress: pinnedV4 } : {}),
       }, parsed.hostname.includes('news.google.com') ? 20000 : 12000);
       const contentType = response.headers?.get?.('content-type') || 'application/xml';
       const rssBody = await response.text();
