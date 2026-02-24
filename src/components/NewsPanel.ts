@@ -343,8 +343,8 @@ export class NewsPanel extends Panel {
     this.setCount(totalItems);
     this.relatedAssetContext.clear();
 
-    // Store headlines for summarization
-    this.currentHeadlines = sorted.slice(0, 10).map(c => c.primaryTitle);
+    // Store headlines for summarization (cap at 5 to reduce entity conflation in small models)
+    this.currentHeadlines = sorted.slice(0, 5).map(c => c.primaryTitle);
 
     const clusterIds = sorted.map(c => c.id);
     let newItemIds: Set<string>;

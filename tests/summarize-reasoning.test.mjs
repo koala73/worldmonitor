@@ -201,8 +201,8 @@ describe('Fix 3: hasReasoningPreamble', () => {
 describe('Fix 4: cache version bump', () => {
   const src = readSrc('server/worldmonitor/news/v1/_shared.ts');
 
-  it('CACHE_VERSION is v4', () => {
-    assert.match(src, /CACHE_VERSION\s*=\s*'v4'/,
-      'CACHE_VERSION must be v4 to invalidate polluted entries');
+  it('CACHE_VERSION is v5', () => {
+    assert.match(src, /CACHE_VERSION\s*=\s*'v5'/,
+      'CACHE_VERSION must be v5 to invalidate entries from old conflating prompts');
   });
 });

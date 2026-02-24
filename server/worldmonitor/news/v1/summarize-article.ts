@@ -108,8 +108,8 @@ export async function summarizeArticle(
       };
     }
 
-    // Deduplicate similar headlines
-    const uniqueHeadlines = deduplicateHeadlines(headlines.slice(0, 8));
+    // Deduplicate similar headlines (cap at 5 to reduce entity conflation in small models)
+    const uniqueHeadlines = deduplicateHeadlines(headlines.slice(0, 5));
     const { systemPrompt, userPrompt } = buildArticlePrompts(headlines, uniqueHeadlines, {
       mode,
       geoContext: sanitizedGeoContext,

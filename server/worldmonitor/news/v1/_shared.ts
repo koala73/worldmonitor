@@ -5,7 +5,7 @@ declare const process: { env: Record<string, string | undefined> };
 // ========================================================================
 
 export const CACHE_TTL_SECONDS = 86400; // 24 hours
-export const CACHE_VERSION = 'v4';
+export const CACHE_VERSION = 'v5';
 
 // ========================================================================
 // Hash utility (unified FNV-1a 52-bit -- H-7 fix)
@@ -25,7 +25,7 @@ export function getCacheKey(
   variant: string = 'full',
   lang: string = 'en',
 ): string {
-  const sorted = headlines.slice(0, 8).sort().join('|');
+  const sorted = headlines.slice(0, 5).sort().join('|');
   const geoHash = geoContext ? ':g' + hashString(geoContext).slice(0, 6) : '';
   const hash = hashString(`${mode}:${sorted}`);
   const normalizedVariant = typeof variant === 'string' && variant ? variant.toLowerCase() : 'full';
@@ -68,32 +68,39 @@ export function buildArticlePrompts(
     if (isTechVariant) {
       systemPrompt = `${dateContext}
 
-Summarize the key tech/startup development in 2-3 sentences.
+Summarize the single most important tech/startup headline in 2-3 sentences.
 Rules:
+- Each numbered headline below is a SEPARATE, UNRELATED story
+- Pick the ONE most significant headline and summarize ONLY that story
+- NEVER combine or merge facts, names, or details from different headlines
 - Focus ONLY on technology, startups, AI, funding, product launches, or developer news
 - IGNORE political news, trade policy, tariffs, government actions unless directly about tech regulation
 - Lead with the company/product/technology name
-- Start directly: "OpenAI announced...", "A new $50M Series B...", "GitHub released..."
 - No bullet points, no meta-commentary${langInstruction}`;
     } else {
       systemPrompt = `${dateContext}
 
-Summarize the key development in 2-3 sentences.
+Summarize the single most important headline in 2-3 sentences.
 Rules:
+- Each numbered headline below is a SEPARATE, UNRELATED story
+- Pick the ONE most significant headline and summarize ONLY that story
+- NEVER combine or merge people, places, or facts from different headlines into one sentence
 - Lead with WHAT happened and WHERE - be specific
 - NEVER start with "Breaking news", "Good evening", "Tonight", or TV-style openings
-- Start directly with the subject: "Iran's regime...", "The US Treasury...", "Protests in..."
-- CRITICAL FOCAL POINTS are the main actors - mention them by name
-- If focal points show news + signals convergence, that's the lead
+- Start directly with the subject of the chosen headline
+- If intelligence context is provided, use it only if it relates to your chosen headline
 - No bullet points, no meta-commentary${langInstruction}`;
     }
-    userPrompt = `Summarize the top story:\n${headlineText}${intelSection}`;
+    userPrompt = `Each headline below is a separate story. Pick the most important ONE and summarize only that story:\n${headlineText}${intelSection}`;
   } else if (opts.mode === 'analysis') {
     if (isTechVariant) {
       systemPrompt = `${dateContext}
 
-Analyze the tech/startup trend in 2-3 sentences.
+Analyze the most significant tech/startup development in 2-3 sentences.
 Rules:
+- Each numbered headline below is a SEPARATE, UNRELATED story
+- Pick the ONE most significant story and analyze ONLY that
+- NEVER combine facts from different headlines
 - Focus ONLY on technology implications: funding trends, AI developments, market shifts, product strategy
 - IGNORE political implications, trade wars, government unless directly about tech policy
 - Lead with the insight for tech industry
@@ -101,18 +108,20 @@ Rules:
     } else {
       systemPrompt = `${dateContext}
 
-Provide analysis in 2-3 sentences. Be direct and specific.
+Provide analysis of the most significant development in 2-3 sentences. Be direct and specific.
 Rules:
+- Each numbered headline below is a SEPARATE, UNRELATED story
+- Pick the ONE most significant story and analyze ONLY that
+- NEVER combine or merge people, places, or facts from different headlines
 - Lead with the insight - what's significant and why
 - NEVER start with "Breaking news", "Tonight", "The key/dominant narrative is"
-- Start with substance: "Iran faces...", "The escalation in...", "Multiple signals suggest..."
-- CRITICAL FOCAL POINTS are your main actors - explain WHY they matter
-- If focal points show news-signal correlation, flag as escalation
+- Start with substance about your chosen headline
+- If intelligence context is provided, use it only if it relates to your chosen headline
 - Connect dots, be specific about implications`;
     }
     userPrompt = isTechVariant
-      ? `What's the key tech trend or development?\n${headlineText}${intelSection}`
-      : `What's the key pattern or risk?\n${headlineText}${intelSection}`;
+      ? `Each headline is a separate story. What's the key tech trend?\n${headlineText}${intelSection}`
+      : `Each headline is a separate story. What's the key pattern or risk?\n${headlineText}${intelSection}`;
   } else if (opts.mode === 'translate') {
     const targetLang = opts.variant;
     systemPrompt = `You are a professional news translator. Translate the following news headlines/summaries into ${targetLang}.
@@ -124,9 +133,9 @@ Rules:
     userPrompt = `Translate to ${targetLang}:\n${headlines[0]}`;
   } else {
     systemPrompt = isTechVariant
-      ? `${dateContext}\n\nSynthesize tech news in 2 sentences. Focus on startups, AI, funding, products. Ignore politics unless directly about tech regulation.${langInstruction}`
-      : `${dateContext}\n\nSynthesize in 2 sentences max. Lead with substance. NEVER start with "Breaking news" or "Tonight" - just state the insight directly. CRITICAL focal points with news-signal convergence are significant.${langInstruction}`;
-    userPrompt = `Key takeaway:\n${headlineText}${intelSection}`;
+      ? `${dateContext}\n\nPick the most important tech headline and summarize it in 2 sentences. Each headline is a separate story - NEVER merge facts from different headlines. Focus on startups, AI, funding, products. Ignore politics unless directly about tech regulation.${langInstruction}`
+      : `${dateContext}\n\nPick the most important headline and summarize it in 2 sentences. Each headline is a separate, unrelated story - NEVER merge people or facts from different headlines. Lead with substance. NEVER start with "Breaking news" or "Tonight".${langInstruction}`;
+    userPrompt = `Each headline is a separate story. Key takeaway from the most important one:\n${headlineText}${intelSection}`;
   }
 
   return { systemPrompt, userPrompt };

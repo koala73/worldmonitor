@@ -351,7 +351,8 @@ export class InsightsPanel extends Panel {
         return;
       }
 
-      const titles = importantClusters.map(c => c.primaryTitle);
+      // Cap titles sent to AI at 5 to reduce entity conflation in small models
+      const titles = importantClusters.slice(0, 5).map(c => c.primaryTitle);
 
       // Step 2: Analyze sentiment (browser-based, fast)
       this.setProgress(2, totalSteps, t('components.insights.analyzingSentiment'));
