@@ -648,13 +648,26 @@ export class LiveNewsPanel extends Panel {
     this.content.appendChild(this.playerContainer);
   }
 
-  private buildDesktopEmbedPath(videoId: string, origin?: string): string {
+  private get parentPostMessageOrigin(): string | null {
+    try {
+      const { origin, protocol } = window.location;
+      if (origin && origin !== 'null') return origin;
+      if (protocol === 'tauri:' || protocol === 'asset:') return '*';
+    } catch {
+      // Ignore invalid location values.
+    }
+    return null;
+  }
+
+  private buildDesktopEmbedPath(videoId: string): string {
     const params = new URLSearchParams({
       videoId,
       autoplay: this.isPlaying ? '1' : '0',
       mute: this.isMuted ? '1' : '0',
     });
-    if (origin) params.set('origin', origin);
+    if (this.youtubeOrigin) params.set('origin', this.youtubeOrigin);
+    const parentOrigin = this.parentPostMessageOrigin;
+    if (parentOrigin) params.set('parentOrigin', parentOrigin);
     return `/api/youtube/embed?${params.toString()}`;
   }
 

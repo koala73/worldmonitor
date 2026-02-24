@@ -181,6 +181,7 @@ export class App {
   private boundFullscreenHandler: (() => void) | null = null;
   private boundResizeHandler: (() => void) | null = null;
   private boundVisibilityHandler: (() => void) | null = null;
+  private boundDesktopExternalLinkHandler: ((e: MouseEvent) => void) | null = null;
   private idleTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private boundIdleResetHandler: (() => void) | null = null;
   private isIdle = false;
@@ -2071,6 +2072,10 @@ export class App {
       document.removeEventListener('visibilitychange', this.boundVisibilityHandler);
       this.boundVisibilityHandler = null;
     }
+    if (this.boundDesktopExternalLinkHandler) {
+      document.removeEventListener('click', this.boundDesktopExternalLinkHandler, true);
+      this.boundDesktopExternalLinkHandler = null;
+    }
 
     // Clean up idle detection
     if (this.idleTimeoutId) {
@@ -2766,8 +2771,12 @@ export class App {
     // Desktop: intercept external link clicks and open in system browser.
     // Tauri WKWebView/WebView2 traps target="_blank" — links don't open otherwise.
     if (this.isDesktopApp) {
-      document.addEventListener('click', (e) => {
-        const anchor = (e.target as HTMLElement).closest?.('a[href]') as HTMLAnchorElement | null;
+      if (this.boundDesktopExternalLinkHandler) {
+        document.removeEventListener('click', this.boundDesktopExternalLinkHandler, true);
+      }
+      this.boundDesktopExternalLinkHandler = (e: MouseEvent) => {
+        if (!(e.target instanceof Element)) return;
+        const anchor = e.target.closest('a[href]') as HTMLAnchorElement | null;
         if (!anchor) return;
         const href = anchor.href;
         if (!href || href.startsWith('javascript:') || href === '#' || href.startsWith('#')) return;
@@ -2780,7 +2789,8 @@ export class App {
             window.open(url.toString(), '_blank');
           });
         } catch { /* malformed URL — let browser handle */ }
-      }, true);
+      };
+      document.addEventListener('click', this.boundDesktopExternalLinkHandler, true);
     }
 
     // Idle detection - pause animations after 2 minutes of inactivity

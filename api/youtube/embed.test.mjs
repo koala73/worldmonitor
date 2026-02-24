@@ -33,3 +33,10 @@ test('accepts custom origin parameter', async () => {
   const html = await response.text();
   assert.equal(html.includes('origin:"http://127.0.0.1:46123"'), true);
 });
+
+test('uses dedicated parentOrigin for iframe postMessage target', async () => {
+  const response = await handler(makeRequest('?videoId=iEpJwprxDdk&origin=https://worldmonitor.app&parentOrigin=https://tauri.localhost'));
+  const html = await response.text();
+  assert.equal(html.includes('origin:"https://worldmonitor.app"'), true);
+  assert.equal(html.includes('parentOrigin="https://tauri.localhost"'), true);
+});

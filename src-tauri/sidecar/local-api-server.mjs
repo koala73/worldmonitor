@@ -509,8 +509,19 @@ function isAuthFailure(status, text = '') {
   return /unauthori[sz]ed|forbidden|invalid api key|invalid token|bad credentials/i.test(text);
 }
 
-function isCloudflare403(response) {
-  return response.status === 403 && response.headers.get('cf-ray');
+function isCloudflareChallenge403(response, text = '') {
+  if (response.status !== 403 || !response.headers.get('cf-ray')) return false;
+  const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+  const body = String(text || '').toLowerCase();
+  const looksLikeHtml = contentType.includes('text/html') || body.includes('<html');
+  if (!looksLikeHtml) return false;
+  return [
+    'attention required',
+    'cloudflare',
+    'cf-browser-verification',
+    '__cf_chl',
+    'ray id',
+  ].some((marker) => body.includes(marker));
 }
 
 async function validateSecretAgainstProvider(key, rawValue, context = {}) {
@@ -527,7 +538,7 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
         headers: { Authorization: `Bearer ${value}`, 'User-Agent': CHROME_UA },
       });
       const text = await response.text();
-      if (isCloudflare403(response)) return ok('Groq key stored (Cloudflare blocked verification)');
+      if (isCloudflareChallenge403(response, text)) return ok('Groq key stored (Cloudflare blocked verification)');
       if (isAuthFailure(response.status, text)) return fail('Groq rejected this key');
       if (!response.ok) return fail(`Groq probe failed (${response.status})`);
       return ok('Groq key verified');
@@ -538,7 +549,7 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
         headers: { Authorization: `Bearer ${value}`, 'User-Agent': CHROME_UA },
       });
       const text = await response.text();
-      if (isCloudflare403(response)) return ok('OpenRouter key stored (Cloudflare blocked verification)');
+      if (isCloudflareChallenge403(response, text)) return ok('OpenRouter key stored (Cloudflare blocked verification)');
       if (isAuthFailure(response.status, text)) return fail('OpenRouter rejected this key');
       if (!response.ok) return fail(`OpenRouter probe failed (${response.status})`);
       return ok('OpenRouter key verified');
@@ -564,7 +575,7 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
         { headers: { Accept: 'application/json', 'User-Agent': CHROME_UA } }
       );
       const text = await response.text();
-      if (isCloudflare403(response)) return ok('EIA key stored (Cloudflare blocked verification)');
+      if (isCloudflareChallenge403(response, text)) return ok('EIA key stored (Cloudflare blocked verification)');
       if (isAuthFailure(response.status, text)) return fail('EIA rejected this key');
       if (!response.ok) return fail(`EIA probe failed (${response.status})`);
       let payload = null;
@@ -579,7 +590,7 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
         { headers: { Authorization: `Bearer ${value}`, 'User-Agent': CHROME_UA } }
       );
       const text = await response.text();
-      if (isCloudflare403(response)) return ok('Cloudflare token stored (Cloudflare blocked verification)');
+      if (isCloudflareChallenge403(response, text)) return ok('Cloudflare token stored (Cloudflare blocked verification)');
       if (isAuthFailure(response.status, text)) return fail('Cloudflare rejected this token');
       if (!response.ok) return fail(`Cloudflare probe failed (${response.status})`);
       let payload = null;
@@ -597,7 +608,7 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
         },
       });
       const text = await response.text();
-      if (isCloudflare403(response)) return ok('ACLED token stored (Cloudflare blocked verification)');
+      if (isCloudflareChallenge403(response, text)) return ok('ACLED token stored (Cloudflare blocked verification)');
       if (isAuthFailure(response.status, text)) return fail('ACLED rejected this token');
       if (!response.ok) return fail(`ACLED probe failed (${response.status})`);
       return ok('ACLED token verified');
@@ -612,7 +623,7 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
         },
       });
       const text = await response.text();
-      if (isCloudflare403(response)) return ok('URLhaus key stored (Cloudflare blocked verification)');
+      if (isCloudflareChallenge403(response, text)) return ok('URLhaus key stored (Cloudflare blocked verification)');
       if (isAuthFailure(response.status, text)) return fail('URLhaus rejected this key');
       if (!response.ok) return fail(`URLhaus probe failed (${response.status})`);
       return ok('URLhaus key verified');
@@ -627,7 +638,7 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
         },
       });
       const text = await response.text();
-      if (isCloudflare403(response)) return ok('OTX key stored (Cloudflare blocked verification)');
+      if (isCloudflareChallenge403(response, text)) return ok('OTX key stored (Cloudflare blocked verification)');
       if (isAuthFailure(response.status, text)) return fail('OTX rejected this key');
       if (!response.ok) return fail(`OTX probe failed (${response.status})`);
       return ok('OTX key verified');
@@ -642,7 +653,7 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
         },
       });
       const text = await response.text();
-      if (isCloudflare403(response)) return ok('AbuseIPDB key stored (Cloudflare blocked verification)');
+      if (isCloudflareChallenge403(response, text)) return ok('AbuseIPDB key stored (Cloudflare blocked verification)');
       if (isAuthFailure(response.status, text)) return fail('AbuseIPDB rejected this key');
       if (!response.ok) return fail(`AbuseIPDB probe failed (${response.status})`);
       return ok('AbuseIPDB key verified');
@@ -657,7 +668,7 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
         },
       });
       const text = await response.text();
-      if (isCloudflare403(response)) return ok('Wingbits key stored (Cloudflare blocked verification)');
+      if (isCloudflareChallenge403(response, text)) return ok('Wingbits key stored (Cloudflare blocked verification)');
       if (isAuthFailure(response.status, text)) return fail('Wingbits rejected this key');
       if (response.status >= 500) return fail(`Wingbits probe failed (${response.status})`);
       return ok('Wingbits key accepted');
@@ -668,7 +679,7 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
         headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
       });
       const text = await response.text();
-      if (isCloudflare403(response)) return ok('Finnhub key stored (Cloudflare blocked verification)');
+      if (isCloudflareChallenge403(response, text)) return ok('Finnhub key stored (Cloudflare blocked verification)');
       if (isAuthFailure(response.status, text)) return fail('Finnhub rejected this key');
       if (response.status === 429) return ok('Finnhub key accepted (rate limited)');
       if (!response.ok) return fail(`Finnhub probe failed (${response.status})`);
@@ -687,7 +698,7 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
         { headers: { Accept: 'text/csv', 'User-Agent': CHROME_UA } }
       );
       const text = await response.text();
-      if (isCloudflare403(response)) return ok('NASA FIRMS key stored (Cloudflare blocked verification)');
+      if (isCloudflareChallenge403(response, text)) return ok('NASA FIRMS key stored (Cloudflare blocked verification)');
       if (isAuthFailure(response.status, text)) return fail('NASA FIRMS rejected this key');
       if (!response.ok) return fail(`NASA FIRMS probe failed (${response.status})`);
       if (/invalid api key|not authorized|forbidden/i.test(text)) return fail('NASA FIRMS rejected this key');
@@ -759,7 +770,7 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
         }
       );
       const text = await response.text();
-      if (isCloudflare403(response)) return ok('OpenSky credentials stored (Cloudflare blocked verification)');
+      if (isCloudflareChallenge403(response, text)) return ok('OpenSky credentials stored (Cloudflare blocked verification)');
       if (isAuthFailure(response.status, text)) return fail('OpenSky rejected these credentials');
       if (!response.ok) return fail(`OpenSky auth probe failed (${response.status})`);
       let payload = null;
