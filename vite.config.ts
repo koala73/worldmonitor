@@ -140,6 +140,19 @@ export default defineConfig({
     // Raise warning threshold to reduce noisy false alarms in CI.
     chunkSizeWarningLimit: 1200,
     rollupOptions: {
+      onwarn(warning, warn) {
+        // onnxruntime-web ships a minified browser bundle that intentionally uses eval.
+        // Keep build logs focused by filtering this known third-party warning only.
+        if (
+          warning.code === 'EVAL'
+          && typeof warning.id === 'string'
+          && warning.id.includes('/onnxruntime-web/dist/ort-web.min.js')
+        ) {
+          return;
+        }
+
+        warn(warning);
+      },
       input: {
         main: resolve(__dirname, 'index.html'),
         settings: resolve(__dirname, 'settings.html'),
