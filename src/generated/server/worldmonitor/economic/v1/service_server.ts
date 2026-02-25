@@ -155,6 +155,53 @@ export interface GetEnergyCapacityResponse {
   series: EnergyCapacitySeries[];
 }
 
+export interface BisPolicyRate {
+  countryCode: string;
+  countryName: string;
+  rate: number;
+  previousRate: number;
+  date: string;
+  centralBank: string;
+}
+
+export interface BisExchangeRate {
+  countryCode: string;
+  countryName: string;
+  realEer: number;
+  nominalEer: number;
+  realChange: number;
+  date: string;
+}
+
+export interface BisCreditToGdp {
+  countryCode: string;
+  countryName: string;
+  creditGdpRatio: number;
+  previousRatio: number;
+  date: string;
+}
+
+export interface GetBisPolicyRatesRequest {
+}
+
+export interface GetBisPolicyRatesResponse {
+  rates: BisPolicyRate[];
+}
+
+export interface GetBisExchangeRatesRequest {
+}
+
+export interface GetBisExchangeRatesResponse {
+  rates: BisExchangeRate[];
+}
+
+export interface GetBisCreditRequest {
+}
+
+export interface GetBisCreditResponse {
+  entries: BisCreditToGdp[];
+}
+
 export interface EnergyCapacitySeries {
   energySource: string;
   name: string;
@@ -216,6 +263,9 @@ export interface EconomicServiceHandler {
   getEnergyPrices(ctx: ServerContext, req: GetEnergyPricesRequest): Promise<GetEnergyPricesResponse>;
   getMacroSignals(ctx: ServerContext, req: GetMacroSignalsRequest): Promise<GetMacroSignalsResponse>;
   getEnergyCapacity(ctx: ServerContext, req: GetEnergyCapacityRequest): Promise<GetEnergyCapacityResponse>;
+  getBisPolicyRates(ctx: ServerContext, req: GetBisPolicyRatesRequest): Promise<GetBisPolicyRatesResponse>;
+  getBisExchangeRates(ctx: ServerContext, req: GetBisExchangeRatesRequest): Promise<GetBisExchangeRatesResponse>;
+  getBisCredit(ctx: ServerContext, req: GetBisCreditRequest): Promise<GetBisCreditResponse>;
 }
 
 export function createEconomicServiceRoutes(
@@ -417,6 +467,135 @@ export function createEconomicServiceRoutes(
 
           const result = await handler.getEnergyCapacity(ctx, body);
           return new Response(JSON.stringify(result as GetEnergyCapacityResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/economic/v1/get-bis-policy-rates",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = await req.json() as GetBisPolicyRatesRequest;
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getBisPolicyRates", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getBisPolicyRates(ctx, body);
+          return new Response(JSON.stringify(result as GetBisPolicyRatesResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/economic/v1/get-bis-exchange-rates",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = await req.json() as GetBisExchangeRatesRequest;
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getBisExchangeRates", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getBisExchangeRates(ctx, body);
+          return new Response(JSON.stringify(result as GetBisExchangeRatesResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/economic/v1/get-bis-credit",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = await req.json() as GetBisCreditRequest;
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getBisCredit", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getBisCredit(ctx, body);
+          return new Response(JSON.stringify(result as GetBisCreditResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

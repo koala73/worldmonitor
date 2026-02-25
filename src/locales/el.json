@@ -551,7 +551,17 @@
       "fredKeyMissing": "Απαιτείται FRED API key — προσθέστε το στις Ρυθμίσεις για ενεργοποίηση οικονομικών δεικτών",
       "noOilDataRetry": "Δεδομένα πετρελαίου προσωρινά μη διαθέσιμα - θα γίνει επανάληψη",
       "vsPreviousWeek": "σε σχέση με την προηγούμενη εβδομάδα",
-      "in": "σε"
+      "in": "σε",
+      "centralBanks": "Central Banks",
+      "noBisData": "BIS data loading...",
+      "policyRate": "Policy Rate",
+      "exchangeRate": "Exchange Rate",
+      "creditToGdp": "Credit / GDP",
+      "realEer": "Real EER",
+      "change": "Change",
+      "cut": "cut",
+      "hike": "hike",
+      "hold": "hold"
     },
     "gdelt": {
       "empty": "Δεν υπάρχουν πρόσφατα άρθρα για αυτό το θέμα"

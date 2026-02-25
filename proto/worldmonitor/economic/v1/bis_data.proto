@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package worldmonitor.economic.v1;
+
+// BisPolicyRate represents a central bank policy rate from BIS.
+message BisPolicyRate {
+  // ISO 2-letter country code (US, GB, JP, etc.)
+  string country_code = 1;
+  // Country or region name.
+  string country_name = 2;
+  // Current policy rate percentage.
+  double rate = 3;
+  // Previous period rate percentage.
+  double previous_rate = 4;
+  // Date as YYYY-MM.
+  string date = 5;
+  // Central bank name (e.g. "Federal Reserve").
+  string central_bank = 6;
+}
+
+// BisExchangeRate represents effective exchange rate indices from BIS.
+message BisExchangeRate {
+  // ISO 2-letter country code.
+  string country_code = 1;
+  // Country or region name.
+  string country_name = 2;
+  // Real effective exchange rate index.
+  double real_eer = 3;
+  // Nominal effective exchange rate index.
+  double nominal_eer = 4;
+  // Percentage change from previous period (real).
+  double real_change = 5;
+  // Date as YYYY-MM.
+  string date = 6;
+}
+
+// BisCreditToGdp represents total credit as percentage of GDP from BIS.
+message BisCreditToGdp {
+  // ISO 2-letter country code.
+  string country_code = 1;
+  // Country or region name.
+  string country_name = 2;
+  // Total credit as percentage of GDP.
+  double credit_gdp_ratio = 3;
+  // Previous quarter ratio.
+  double previous_ratio = 4;
+  // Date as YYYY-QN.
+  string date = 5;
+}

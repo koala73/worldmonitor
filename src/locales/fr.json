@@ -523,7 +523,17 @@
       "noIndicatorData": "Aucune donnée d'indicateur pour l'instant - FRED est peut-être en cours de chargement",
       "noOilDataRetry": "Données pétrolières temporairement indisponibles - je vais réessayer",
       "vsPreviousWeek": "par rapport à la semaine précédente",
-      "in": "dans"
+      "in": "dans",
+      "centralBanks": "Central Banks",
+      "noBisData": "BIS data loading...",
+      "policyRate": "Policy Rate",
+      "exchangeRate": "Exchange Rate",
+      "creditToGdp": "Credit / GDP",
+      "realEer": "Real EER",
+      "change": "Change",
+      "cut": "cut",
+      "hike": "hike",
+      "hold": "hold"
     },
     "gdelt": {
       "empty": "Aucun article récent pour ce sujet"

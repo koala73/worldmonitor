@@ -523,7 +523,17 @@
       "noIndicatorData": "尚无指标数据 - FRED可能正在加载",
       "noOilDataRetry": "石油数据暂时不可用 - 将自动重试",
       "vsPreviousWeek": "与上周相比",
-      "in": "于"
+      "in": "于",
+      "centralBanks": "Central Banks",
+      "noBisData": "BIS data loading...",
+      "policyRate": "Policy Rate",
+      "exchangeRate": "Exchange Rate",
+      "creditToGdp": "Credit / GDP",
+      "realEer": "Real EER",
+      "change": "Change",
+      "cut": "cut",
+      "hike": "hike",
+      "hold": "hold"
     },
     "gdelt": {
       "empty": "该主题暂无近期文章"

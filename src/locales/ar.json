@@ -523,7 +523,17 @@
       "noIndicatorData": "لا تتوفر بيانات مؤشرات بعد - قد يكون FRED قيد التحميل",
       "noOilDataRetry": "بيانات النفط غير متاحة مؤقتاً - ستتم إعادة المحاولة",
       "vsPreviousWeek": "مقارنة بالأسبوع السابق",
-      "in": "في"
+      "in": "في",
+      "centralBanks": "Central Banks",
+      "noBisData": "BIS data loading...",
+      "policyRate": "Policy Rate",
+      "exchangeRate": "Exchange Rate",
+      "creditToGdp": "Credit / GDP",
+      "realEer": "Real EER",
+      "change": "Change",
+      "cut": "cut",
+      "hike": "hike",
+      "hold": "hold"
     },
     "gdelt": {
       "empty": "لا توجد مقالات حديثة لهذا الموضوع"

@@ -768,7 +768,17 @@
       "noSpending": "Nenhum prêmio governamental recente",
       "awards": "prêmios",
       "noData": "Nenhum dado econômico disponível",
-      "noOilData": "Dados de petróleo não disponíveis"
+      "noOilData": "Dados de petróleo não disponíveis",
+      "centralBanks": "Central Banks",
+      "noBisData": "BIS data loading...",
+      "policyRate": "Policy Rate",
+      "exchangeRate": "Exchange Rate",
+      "creditToGdp": "Credit / GDP",
+      "realEer": "Real EER",
+      "change": "Change",
+      "cut": "cut",
+      "hike": "hike",
+      "hold": "hold"
     },
     "satelliteFires": {
       "region": "Região",
