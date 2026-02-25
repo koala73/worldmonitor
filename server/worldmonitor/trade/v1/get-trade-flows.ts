@@ -1,6 +1,9 @@
 /**
  * RPC: getTradeFlows -- WTO merchandise trade flow data
  * Fetches bilateral export/import values and computes YoY changes.
+ *
+ * NOTE: The WTO API does NOT support comma-separated indicator codes.
+ * Exports and imports must be fetched in separate requests.
  */
 
 declare const process: { env: Record<string, string | undefined> };
@@ -33,15 +36,14 @@ interface RawFlowRow {
 /**
  * Parse raw WTO rows into a flat list of { year, indicator, value }.
  */
-function parseRows(data: any): RawFlowRow[] {
+function parseRows(data: any, indicator: string): RawFlowRow[] {
   const dataset: any[] = Array.isArray(data) ? data : data?.Dataset ?? data?.dataset ?? [];
   const rows: RawFlowRow[] = [];
 
   for (const row of dataset) {
     const year = parseInt(row.Year ?? row.year ?? row.Period ?? '', 10);
     const value = parseFloat(row.Value ?? row.value ?? '');
-    const indicator = String(row.IndicatorCode ?? row.indicatorCode ?? '');
-    if (!isNaN(year) && !isNaN(value) && indicator) {
+    if (!isNaN(year) && !isNaN(value)) {
       rows.push({ year, indicator, value });
     }
   }
@@ -114,20 +116,29 @@ async function fetchTradeFlows(
   const currentYear = new Date().getFullYear();
   const startYear = currentYear - years;
 
-  const params: Record<string, string> = {
-    i: `${ITS_MTV_AX},${ITS_MTV_AM}`,
+  const baseParams: Record<string, string> = {
     r: reporter,
     p: partner || '000',
     ps: `${startYear}-${currentYear}`,
+    pc: 'TO',
     fmt: 'json',
     mode: 'full',
     max: '500',
   };
 
-  const data = await wtoFetch('/data', params);
-  if (!data) return { flows: [], ok: false };
+  // Fetch exports and imports in parallel (separate requests — WTO API doesn't support comma-separated indicators)
+  const [exportsData, importsData] = await Promise.all([
+    wtoFetch('/data', { ...baseParams, i: ITS_MTV_AX }),
+    wtoFetch('/data', { ...baseParams, i: ITS_MTV_AM }),
+  ]);
 
-  const rows = parseRows(data);
+  if (!exportsData && !importsData) return { flows: [], ok: false };
+
+  const rows: RawFlowRow[] = [
+    ...(exportsData ? parseRows(exportsData, ITS_MTV_AX) : []),
+    ...(importsData ? parseRows(importsData, ITS_MTV_AM) : []),
+  ];
+
   const flows = buildFlowRecords(rows, reporter, partner || '000');
 
   return { flows, ok: true };

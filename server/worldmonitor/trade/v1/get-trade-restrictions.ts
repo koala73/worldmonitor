@@ -1,6 +1,11 @@
 /**
- * RPC: getTradeRestrictions -- WTO trade restriction/QR notifications
- * Fetches quantitative restriction and related trade measure data.
+ * RPC: getTradeRestrictions -- WTO tariff-based trade restriction overview
+ *
+ * Shows countries with highest applied tariff rates as a proxy for trade restrictiveness.
+ * Uses MFN simple average tariffs across all products, agricultural, and non-agricultural sectors.
+ *
+ * NOTE: The WTO Quantitative Restrictions (QR) API is a separate subscription product.
+ * This handler uses the Timeseries API tariff data as an available proxy for trade barriers.
  */
 
 declare const process: { env: Record<string, string | undefined> };
@@ -18,55 +23,77 @@ import { wtoFetch, WTO_MEMBER_CODES } from './_shared';
 const REDIS_CACHE_KEY = 'trade:restrictions:v1';
 const REDIS_CACHE_TTL = 21600; // 6h
 
-/**
- * Validate a country code string — alphanumeric, max 10 chars.
- */
-function isValidCountry(c: string): boolean {
-  return /^[a-zA-Z0-9]{1,10}$/.test(c);
-}
+/** Major economies to query for tariff data. */
+const MAJOR_REPORTERS = ['840', '156', '276', '392', '826', '356', '076', '643', '410', '036', '124', '484', '250', '380', '528'];
 
 /**
- * Transform a raw WTO data row into a TradeRestriction.
+ * Transform a raw WTO tariff row into a TradeRestriction (tariff-as-barrier view).
  */
 function toRestriction(row: any): TradeRestriction | null {
   if (!row) return null;
+  const value = parseFloat(row.Value ?? row.value ?? '');
+  if (isNaN(value)) return null;
+
+  const reporterCode = String(row.ReportingEconomyCode ?? row.reportingEconomyCode ?? '');
+  const year = String(row.Year ?? row.year ?? row.Period ?? '');
+  const indicator = String(row.Indicator ?? row.indicator ?? row.IndicatorCode ?? '');
+
   return {
-    id: String(row.id ?? row.Id ?? ''),
-    reportingCountry:
-      WTO_MEMBER_CODES[String(row.ReportingEconomyCode ?? row.reportingEconomyCode ?? '')] ??
-      String(row.ReportingEconomy ?? row.reportingEconomy ?? ''),
-    affectedCountry:
-      WTO_MEMBER_CODES[String(row.PartnerEconomyCode ?? row.partnerEconomyCode ?? '')] ??
-      String(row.PartnerEconomy ?? row.partnerEconomy ?? ''),
-    productSector: String(row.ProductOrSector ?? row.productOrSector ?? ''),
-    measureType: String(row.IndicatorCategory ?? row.indicatorCategory ?? row.Indicator ?? ''),
-    description: String(row.Value ?? row.value ?? ''),
-    status: String(row.ValueFlag ?? row.valueFlag ?? 'active'),
-    notifiedAt: String(row.Year ?? row.year ?? row.Period ?? ''),
-    sourceUrl: 'https://www.wto.org',
+    id: `${reporterCode}-${year}-${row.IndicatorCode ?? ''}`,
+    reportingCountry: WTO_MEMBER_CODES[reporterCode] ?? String(row.ReportingEconomy ?? row.reportingEconomy ?? ''),
+    affectedCountry: 'All trading partners',
+    productSector: indicator.includes('agricultural')
+      ? (indicator.includes('non-') ? 'Non-agricultural products' : 'Agricultural products')
+      : 'All products',
+    measureType: 'MFN Applied Tariff',
+    description: `Average tariff rate: ${value.toFixed(1)}%`,
+    status: value > 10 ? 'high' : value > 5 ? 'moderate' : 'low',
+    notifiedAt: year,
+    sourceUrl: 'https://stats.wto.org',
   };
 }
 
 async function fetchRestrictions(
-  countries: string[],
+  _countries: string[],
   limit: number,
 ): Promise<{ restrictions: TradeRestriction[]; ok: boolean }> {
+  const currentYear = new Date().getFullYear();
+
+  // Fetch all-products tariff for major economies (most recent years)
   const params: Record<string, string> = {
-    i: 'QR', // Quantitative restrictions indicator group
-    r: countries.length > 0 ? countries.join(',') : '000',
-    ps: 'all',
-    max: String(limit),
+    i: 'TP_A_0010',
+    r: MAJOR_REPORTERS.join(','),
+    ps: `${currentYear - 3}-${currentYear}`,
     fmt: 'json',
     mode: 'full',
+    max: String(limit * 3),
   };
 
   const data = await wtoFetch('/data', params);
   if (!data) return { restrictions: [], ok: false };
 
   const dataset: any[] = Array.isArray(data) ? data : data?.Dataset ?? data?.dataset ?? [];
-  const restrictions = dataset
+
+  // Keep only the most recent year per country
+  const latestByCountry = new Map<string, any>();
+  for (const row of dataset) {
+    const code = String(row.ReportingEconomyCode ?? '');
+    const year = parseInt(row.Year ?? row.year ?? '0', 10);
+    const existing = latestByCountry.get(code);
+    if (!existing || year > parseInt(existing.Year ?? existing.year ?? '0', 10)) {
+      latestByCountry.set(code, row);
+    }
+  }
+
+  const restrictions = Array.from(latestByCountry.values())
     .map(toRestriction)
     .filter((r): r is TradeRestriction => r !== null)
+    .sort((a, b) => {
+      // Sort by tariff rate descending (extract from description)
+      const rateA = parseFloat(a.description.match(/[\d.]+/)?.[0] ?? '0');
+      const rateB = parseFloat(b.description.match(/[\d.]+/)?.[0] ?? '0');
+      return rateB - rateA;
+    })
     .slice(0, limit);
 
   return { restrictions, ok: true };
@@ -77,18 +104,15 @@ export async function getTradeRestrictions(
   req: GetTradeRestrictionsRequest,
 ): Promise<GetTradeRestrictionsResponse> {
   try {
-    // Input validation
-    const countries = (req.countries ?? []).filter(isValidCountry);
     const limit = Math.max(1, Math.min(req.limit > 0 ? req.limit : 50, 100));
 
-    const cacheKey = `${REDIS_CACHE_KEY}:${countries.sort().join(',') || 'all'}:${limit}`;
+    const cacheKey = `${REDIS_CACHE_KEY}:tariff-overview:${limit}`;
     const cached = (await getCachedJson(cacheKey)) as GetTradeRestrictionsResponse | null;
     if (cached?.restrictions?.length) return cached;
 
-    const { restrictions, ok } = await fetchRestrictions(countries, limit);
+    const { restrictions, ok } = await fetchRestrictions([], limit);
 
     if (!ok) {
-      // Upstream unavailable — return stale cache or empty
       return {
         restrictions: cached?.restrictions ?? [],
         fetchedAt: new Date().toISOString(),

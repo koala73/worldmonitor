@@ -10,12 +10,12 @@ import { CHROME_UA } from '../../../_shared/constants';
 /** WTO Timeseries API base URL. */
 export const WTO_API_BASE = 'https://api.wto.org/timeseries/v1';
 
-/** Merchandise exports (total). */
+/** Merchandise exports (total) — annual. */
 export const ITS_MTV_AX = 'ITS_MTV_AX';
-/** Merchandise imports (total). */
+/** Merchandise imports (total) — annual. */
 export const ITS_MTV_AM = 'ITS_MTV_AM';
-/** Applied tariff — HS simple average. */
-export const HS_M_0010 = 'HS_M_0010';
+/** Simple average MFN applied tariff — all products. */
+export const TP_A_0010 = 'TP_A_0010';
 
 /**
  * WTO member numeric codes → human-readable names.
@@ -42,6 +42,9 @@ export const WTO_MEMBER_CODES: Record<string, string> = {
 /**
  * Fetch JSON from the WTO Timeseries API.
  * Returns parsed JSON on success, or null if the API key is missing or the request fails.
+ *
+ * IMPORTANT: The WTO API does NOT support comma-separated indicator codes in the `i` param.
+ * Each indicator must be queried separately.
  */
 export async function wtoFetch(
   path: string,
@@ -66,6 +69,8 @@ export async function wtoFetch(
       signal: AbortSignal.timeout(15000),
     });
 
+    // 204 = No Content (valid query, no matching data)
+    if (res.status === 204) return { Dataset: [] };
     if (!res.ok) return null;
     return await res.json();
   } catch {

@@ -1,6 +1,9 @@
 /**
  * RPC: getTariffTrends -- WTO applied tariff trend data
- * Fetches HS simple average applied tariff rates over time.
+ * Fetches MFN simple average applied tariff rates over time.
+ *
+ * NOTE: Tariff indicators (TP_A_*) do NOT have a partner dimension.
+ * The `partnerCountry` request field is accepted but not sent to the API.
  */
 
 declare const process: { env: Record<string, string | undefined> };
@@ -13,7 +16,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/trade/v1/service_server';
 
 import { getCachedJson, setCachedJson } from '../../../_shared/redis';
-import { wtoFetch, WTO_MEMBER_CODES, HS_M_0010 } from './_shared';
+import { wtoFetch, WTO_MEMBER_CODES, TP_A_0010 } from './_shared';
 
 const REDIS_CACHE_TTL = 21600; // 6h
 
@@ -37,37 +40,33 @@ function toDataPoint(row: any, reporter: string, partner: string): TariffDataPoi
     reportingCountry:
       WTO_MEMBER_CODES[reporter] ?? String(row.ReportingEconomy ?? row.reportingEconomy ?? reporter),
     partnerCountry:
-      WTO_MEMBER_CODES[partner] ?? String(row.PartnerEconomy ?? row.partnerEconomy ?? partner),
-    productSector: String(row.ProductOrSector ?? row.productOrSector ?? 'Total'),
+      WTO_MEMBER_CODES[partner] ?? String(row.PartnerEconomy ?? row.partnerEconomy ?? partner || 'World'),
+    productSector: String(row.ProductOrSector ?? row.productOrSector ?? 'All products'),
     year,
     tariffRate: Math.round(tariffRate * 100) / 100,
     boundRate: parseFloat(row.BoundRate ?? row.boundRate ?? '0') || 0,
-    indicatorCode: String(row.IndicatorCode ?? row.indicatorCode ?? HS_M_0010),
+    indicatorCode: String(row.IndicatorCode ?? row.indicatorCode ?? TP_A_0010),
   };
 }
 
 async function fetchTariffTrends(
   reporter: string,
   partner: string,
-  productSector: string,
+  _productSector: string,
   years: number,
 ): Promise<{ datapoints: TariffDataPoint[]; ok: boolean }> {
   const currentYear = new Date().getFullYear();
   const startYear = currentYear - years;
 
+  // Tariff indicators do NOT support the partner (p) parameter.
   const params: Record<string, string> = {
-    i: HS_M_0010,
+    i: TP_A_0010,
     r: reporter,
-    p: partner || '000',
     ps: `${startYear}-${currentYear}`,
     fmt: 'json',
     mode: 'full',
     max: '500',
   };
-
-  if (productSector) {
-    params.pc = productSector;
-  }
 
   const data = await wtoFetch('/data', params);
   if (!data) return { datapoints: [], ok: false };
@@ -92,7 +91,7 @@ export async function getTariffTrends(
     const productSector = isValidCode(req.productSector) ? req.productSector : '';
     const years = Math.max(1, Math.min(req.years > 0 ? req.years : 10, 30));
 
-    const cacheKey = `trade:tariffs:v1:${reporter}:${partner}:${productSector || 'all'}:${years}`;
+    const cacheKey = `trade:tariffs:v1:${reporter}:${productSector || 'all'}:${years}`;
     const cached = (await getCachedJson(cacheKey)) as GetTariffTrendsResponse | null;
     if (cached?.datapoints?.length) return cached;
 
