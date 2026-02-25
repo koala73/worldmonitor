@@ -1,9 +1,12 @@
 import type { AppContext, AppModule } from '@/app/app-context';
 import type { SearchResult } from '@/components/SearchModal';
-import type { NewsItem } from '@/types';
+import type { NewsItem, MapLayers } from '@/types';
+import type { MapView } from '@/components';
+import type { Command } from '@/config/commands';
 import { SearchModal } from '@/components';
 import { CIIPanel } from '@/components';
-import { SITE_VARIANT } from '@/config';
+import { SITE_VARIANT, STORAGE_KEYS } from '@/config';
+import { LAYER_PRESETS, LAYER_KEY_MAP } from '@/config/commands';
 import { calculateCII, TIER1_COUNTRIES } from '@/services/country-instability';
 import { INTEL_HOTSPOTS, CONFLICT_ZONES, MILITARY_BASES, UNDERSEA_CABLES, NUCLEAR_FACILITIES } from '@/config/geo';
 import { PIPELINES } from '@/config/pipelines';
@@ -16,6 +19,7 @@ import { TECH_HQS, ACCELERATORS } from '@/config/tech-geo';
 import { STOCK_EXCHANGES, FINANCIAL_CENTERS, CENTRAL_BANKS, COMMODITY_HUBS } from '@/config/finance-geo';
 import { trackSearchResultSelected, trackCountrySelected } from '@/services/analytics';
 import { t } from '@/services/i18n';
+import { saveToStorage, setTheme } from '@/utils';
 import { CountryIntelManager } from '@/app/country-intel';
 
 export interface SearchManagerCallbacks {
@@ -207,6 +211,7 @@ export class SearchManager implements AppModule {
     this.ctx.searchModal.registerSource('country', this.buildCountrySearchItems());
 
     this.ctx.searchModal.setOnSelect((result) => this.handleSearchResult(result));
+    this.ctx.searchModal.setOnCommand((cmd) => this.handleCommand(cmd));
 
     this.boundKeydownHandler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -380,6 +385,91 @@ export class SearchManager implements AppModule {
         const { code, name } = result.data as { code: string; name: string };
         trackCountrySelected(code, name, 'search');
         this.callbacks.openCountryBriefByCode(code, name);
+        break;
+      }
+    }
+  }
+
+  private handleCommand(cmd: Command): void {
+    const colonIdx = cmd.id.indexOf(':');
+    if (colonIdx === -1) return;
+    const category = cmd.id.slice(0, colonIdx);
+    const action = cmd.id.slice(colonIdx + 1);
+
+    switch (category) {
+      case 'nav':
+        this.ctx.map?.setView(action as MapView);
+        {
+          const sel = document.getElementById('regionSelect') as HTMLSelectElement;
+          if (sel) sel.value = action;
+        }
+        break;
+
+      case 'layers': {
+        if (action === 'all') {
+          for (const key of Object.keys(this.ctx.mapLayers))
+            this.ctx.mapLayers[key as keyof MapLayers] = true;
+        } else if (action === 'none') {
+          for (const key of Object.keys(this.ctx.mapLayers))
+            this.ctx.mapLayers[key as keyof MapLayers] = false;
+        } else {
+          const preset = LAYER_PRESETS[action];
+          if (preset) {
+            for (const key of Object.keys(this.ctx.mapLayers))
+              this.ctx.mapLayers[key as keyof MapLayers] = false;
+            for (const layer of preset)
+              this.ctx.mapLayers[layer] = true;
+          }
+        }
+        saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
+        this.ctx.map?.setLayers(this.ctx.mapLayers);
+        break;
+      }
+
+      case 'layer': {
+        const layerKey = (LAYER_KEY_MAP[action] || action) as keyof MapLayers;
+        if (!(layerKey in this.ctx.mapLayers)) return;
+        this.ctx.mapLayers[layerKey] = !this.ctx.mapLayers[layerKey];
+        saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
+        if (this.ctx.mapLayers[layerKey]) {
+          this.ctx.map?.enableLayer(layerKey);
+        } else {
+          this.ctx.map?.setLayers(this.ctx.mapLayers);
+        }
+        break;
+      }
+
+      case 'panel':
+        this.scrollToPanel(action);
+        break;
+
+      case 'view':
+        if (action === 'dark' || action === 'light') {
+          setTheme(action);
+        } else if (action === 'fullscreen') {
+          if (document.fullscreenElement) {
+            try { void document.exitFullscreen()?.catch(() => {}); } catch {}
+          } else {
+            const el = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => void };
+            if (el.requestFullscreen) {
+              try { void el.requestFullscreen()?.catch(() => {}); } catch {}
+            } else if (el.webkitRequestFullscreen) {
+              try { el.webkitRequestFullscreen(); } catch {}
+            }
+          }
+        } else if (action === 'settings') {
+          this.ctx.unifiedSettings?.open();
+        } else if (action === 'refresh') {
+          window.location.reload();
+        }
+        break;
+
+      case 'time': {
+        const timeSelect = document.getElementById('timeRangeSelect') as HTMLSelectElement;
+        if (timeSelect) {
+          timeSelect.value = action;
+          timeSelect.dispatchEvent(new Event('change'));
+        }
         break;
       }
     }

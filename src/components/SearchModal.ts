@@ -1,6 +1,12 @@
 import { escapeHtml } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
 import { trackSearchUsed } from '@/services/analytics';
+import { COMMANDS, type Command } from '@/config/commands';
+
+interface CommandResult {
+  command: Command;
+  score: number;
+}
 
 export type SearchResultType = 'country' | 'news' | 'hotspot' | 'market' | 'prediction' | 'conflict' | 'base' | 'pipeline' | 'cable' | 'datacenter' | 'earthquake' | 'outage' | 'nuclear' | 'irradiator' | 'techcompany' | 'ailab' | 'startup' | 'techevent' | 'techhq' | 'accelerator' | 'exchange' | 'financialcenter' | 'centralbank' | 'commodityhub';
 
@@ -20,6 +26,7 @@ interface SearchableSource {
 const RECENT_SEARCHES_KEY = 'worldmonitor_recent_searches';
 const MAX_RECENT = 8;
 const MAX_RESULTS = 24;
+const MAX_COMMANDS = 5;
 
 interface SearchModalOptions {
   placeholder?: string;
@@ -33,9 +40,11 @@ export class SearchModal {
   private resultsList: HTMLElement | null = null;
   private sources: SearchableSource[] = [];
   private results: SearchResult[] = [];
+  private commandResults: CommandResult[] = [];
   private selectedIndex = 0;
   private recentSearches: string[] = [];
   private onSelect?: (result: SearchResult) => void;
+  private onCommand?: (command: Command) => void;
   private placeholder: string;
   private hint: string;
 
@@ -59,6 +68,10 @@ export class SearchModal {
     this.onSelect = callback;
   }
 
+  public setOnCommand(callback: (command: Command) => void): void {
+    this.onCommand = callback;
+  }
+
   public open(): void {
     if (this.overlay) return;
     this.createModal();
@@ -73,6 +86,7 @@ export class SearchModal {
       this.input = null;
       this.resultsList = null;
       this.results = [];
+      this.commandResults = [];
       this.selectedIndex = 0;
     }
   }
@@ -113,15 +127,33 @@ export class SearchModal {
     this.container.appendChild(this.overlay);
   }
 
+  private matchCommands(query: string): CommandResult[] {
+    if (query.length < 2) return [];
+    const matched: CommandResult[] = [];
+    for (const cmd of COMMANDS) {
+      for (const keyword of cmd.keywords) {
+        if (keyword.includes(query) || (keyword.length >= 3 && query.includes(keyword))) {
+          const isExact = keyword === query;
+          const isPrefix = keyword.startsWith(query);
+          matched.push({ command: cmd, score: isExact ? 3 : isPrefix ? 2 : 1 });
+          break;
+        }
+      }
+    }
+    return matched.sort((a, b) => b.score - a.score).slice(0, MAX_COMMANDS);
+  }
+
   private handleSearch(): void {
     const query = this.input?.value.trim().toLowerCase() || '';
 
     if (!query) {
+      this.commandResults = [];
       this.showRecentOrEmpty();
       return;
     }
 
-    // Collect matches grouped by type
+    this.commandResults = this.matchCommands(query);
+
     const byType = new Map<SearchResultType, (SearchResult & { _score: number })[]>();
 
     for (const source of this.sources) {
@@ -146,15 +178,13 @@ export class SearchModal {
       }
     }
 
-    // Prioritize: news first, then other dynamic data, then static infrastructure
     const priority: SearchResultType[] = [
-      'news', 'prediction', 'market', 'earthquake', 'outage',  // Dynamic/timely
-      'conflict', 'hotspot', 'country',  // Current events + countries
-      'base', 'pipeline', 'cable', 'datacenter', 'nuclear', 'irradiator',  // Infrastructure
-      'techcompany', 'ailab', 'startup', 'techevent', 'techhq', 'accelerator'  // Tech
+      'news', 'prediction', 'market', 'earthquake', 'outage',
+      'conflict', 'hotspot', 'country',
+      'base', 'pipeline', 'cable', 'datacenter', 'nuclear', 'irradiator',
+      'techcompany', 'ailab', 'startup', 'techevent', 'techhq', 'accelerator'
     ];
 
-    // Take top matches from each type, news gets more slots
     this.results = [];
     for (const type of priority) {
       const matches = byType.get(type) || [];
@@ -165,7 +195,7 @@ export class SearchModal {
     }
     this.results = this.results.slice(0, MAX_RESULTS);
 
-    trackSearchUsed(query.length, this.results.length);
+    trackSearchUsed(query.length, this.results.length + this.commandResults.length);
     this.selectedIndex = 0;
     this.renderResults();
   }
@@ -222,13 +252,17 @@ export class SearchModal {
     `;
   }
 
+  private get totalResultCount(): number {
+    return this.commandResults.length + this.results.length;
+  }
+
   private renderResults(): void {
     if (!this.resultsList) return;
 
-    if (this.results.length === 0) {
+    if (this.commandResults.length === 0 && this.results.length === 0) {
       this.resultsList.innerHTML = `
         <div class="search-empty">
-          <div class="search-empty-icon">∅</div>
+          <div class="search-empty-icon">\u2205</div>
           <div>${t('modals.search.noResults')}</div>
         </div>
       `;
@@ -236,42 +270,67 @@ export class SearchModal {
     }
 
     const icons: Record<SearchResultType, string> = {
-      country: '🏳️',
-      news: '📰',
-      hotspot: '📍',
-      market: '📈',
-      prediction: '🎯',
-      conflict: '⚔️',
-      base: '🏛️',
-      pipeline: '🛢',
-      cable: '🌐',
-      datacenter: '🖥️',
-      earthquake: '🌍',
-      outage: '📡',
-      nuclear: '☢️',
-      irradiator: '⚛️',
-      techcompany: '🏢',
-      ailab: '🧠',
-      startup: '🚀',
-      techevent: '📅',
-      techhq: '🦄',
-      accelerator: '🚀',
-      exchange: '🏛️',
-      financialcenter: '💰',
-      centralbank: '🏦',
-      commodityhub: '📦',
+      country: '\u{1F3F3}\uFE0F',
+      news: '\u{1F4F0}',
+      hotspot: '\u{1F4CD}',
+      market: '\u{1F4C8}',
+      prediction: '\u{1F3AF}',
+      conflict: '\u2694\uFE0F',
+      base: '\u{1F3DB}\uFE0F',
+      pipeline: '\u{1F6E2}',
+      cable: '\u{1F310}',
+      datacenter: '\u{1F5A5}\uFE0F',
+      earthquake: '\u{1F30D}',
+      outage: '\u{1F4E1}',
+      nuclear: '\u2622\uFE0F',
+      irradiator: '\u269B\uFE0F',
+      techcompany: '\u{1F3E2}',
+      ailab: '\u{1F9E0}',
+      startup: '\u{1F680}',
+      techevent: '\u{1F4C5}',
+      techhq: '\u{1F984}',
+      accelerator: '\u{1F680}',
+      exchange: '\u{1F3DB}\uFE0F',
+      financialcenter: '\u{1F4B0}',
+      centralbank: '\u{1F3E6}',
+      commodityhub: '\u{1F4E6}',
     };
 
-    this.resultsList.innerHTML = this.results.map((result, i) => `
-      <div class="search-result-item ${i === this.selectedIndex ? 'selected' : ''}" data-index="${i}">
-        <span class="search-result-icon">${icons[result.type]}</span>
-        <div class="search-result-content">
-          <div class="search-result-title">${this.highlightMatch(result.title)}</div>
-          ${result.subtitle ? `<div class="search-result-subtitle">${escapeHtml(result.subtitle)}</div>` : ''}
-        </div>
-        <span class="search-result-type">${escapeHtml(t(`modals.search.types.${result.type}`) || result.type)}</span>
-      </div>
-    `).join('');
+    let html = '';
+    let globalIndex = 0;
+
+    if (this.commandResults.length > 0) {
+      html += '<div class="search-section-header">Commands</div>';
+      for (const { command } of this.commandResults) {
+        html += `
+          <div class="search-result-item command-item ${globalIndex === this.selectedIndex ? 'selected' : ''}" data-index="${globalIndex}" data-command="${command.id}">
+            <span class="search-result-icon">${command.icon}</span>
+            <div class="search-result-content">
+              <div class="search-result-title">${escapeHtml(command.label)}</div>
+            </div>
+            <span class="search-result-type">${escapeHtml(command.category)}</span>
+          </div>`;
+        globalIndex++;
+      }
+      if (this.results.length > 0) {
+        html += '<div class="search-section-header">Results</div>';
+      }
+    }
+
+    for (const result of this.results) {
+      html += `
+        <div class="search-result-item ${globalIndex === this.selectedIndex ? 'selected' : ''}" data-index="${globalIndex}">
+          <span class="search-result-icon">${icons[result.type]}</span>
+          <div class="search-result-content">
+            <div class="search-result-title">${this.highlightMatch(result.title)}</div>
+            ${result.subtitle ? `<div class="search-result-subtitle">${escapeHtml(result.subtitle)}</div>` : ''}
+          </div>
+          <span class="search-result-type">${escapeHtml(t(`modals.search.types.${result.type}`) || result.type)}</span>
+        </div>`;
+      globalIndex++;
+    }
+
+    this.resultsList.innerHTML = html;
 
     this.resultsList.querySelectorAll('.search-result-item').forEach((el) => {
       el.addEventListener('click', () => {
@@ -313,7 +372,7 @@ export class SearchModal {
   }
 
   private moveSelection(delta: number): void {
-    const max = this.results.length || this.recentSearches.length;
+    const max = this.totalResultCount || this.recentSearches.length;
     if (max === 0) return;
 
     this.selectedIndex = (this.selectedIndex + delta + max) % max;
@@ -332,8 +391,7 @@ export class SearchModal {
   }
 
   private selectResult(index: number): void {
-    // If showing recent searches
-    if (this.results.length === 0 && this.recentSearches.length > 0) {
+    if (this.totalResultCount === 0 && this.recentSearches.length > 0) {
       const term = this.recentSearches[index];
       if (term && this.input) {
         this.input.value = term;
@@ -342,12 +400,20 @@ export class SearchModal {
       return;
     }
 
-    const result = this.results[index];
+    if (index < this.commandResults.length) {
+      const cmd = this.commandResults[index]?.command;
+      if (cmd) {
+        this.close();
+        this.onCommand?.(cmd);
+        return;
+      }
+    }
+
+    const entityIndex = index - this.commandResults.length;
+    const result = this.results[entityIndex];
     if (!result) return;
 
-    // Save to recent searches
     this.saveRecentSearch(this.input?.value.trim() || '');
-
     this.close();
     this.onSelect?.(result);
   }

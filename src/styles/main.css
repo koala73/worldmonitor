@@ -7237,6 +7237,15 @@ a.prediction-link:hover {
   border-radius: 2px;
 }
 
+.search-result-item.command-item {
+  border-left: 2px solid var(--semantic-normal, #4488ff);
+}
+.search-result-item.command-item .search-result-type {
+  font-size: 9px;
+  text-transform: uppercase;
+  opacity: 0.5;
+}
+
 .search-result-subtitle {
   font-size: 10px;
   color: var(--text-dim);
