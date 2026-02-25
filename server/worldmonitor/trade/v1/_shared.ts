@@ -51,7 +51,10 @@ export async function wtoFetch(
   params?: Record<string, string>,
 ): Promise<any | null> {
   const apiKey = process.env.WTO_API_KEY;
-  if (!apiKey) return null;
+  if (!apiKey) {
+    console.warn('[WTO] WTO_API_KEY not set in process.env');
+    return null;
+  }
 
   try {
     const url = new URL(`${WTO_API_BASE}${path}`);
@@ -71,9 +74,13 @@ export async function wtoFetch(
 
     // 204 = No Content (valid query, no matching data)
     if (res.status === 204) return { Dataset: [] };
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.warn(`[WTO] HTTP ${res.status} for ${path}`);
+      return null;
+    }
     return await res.json();
-  } catch {
+  } catch (e) {
+    console.error('[WTO] Fetch error:', e instanceof Error ? e.message : e);
     return null;
   }
 }
