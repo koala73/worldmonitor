@@ -21,7 +21,7 @@ import type {
   InstitutionalGiving,
 } from '../../../../src/generated/server/worldmonitor/giving/v1/service_server';
 
-import { getCachedJson, setCachedJson } from '../../../_shared/redis';
+import { cachedFetchJson } from '../../../_shared/redis';
 
 const REDIS_CACHE_KEY = 'giving:summary:v1';
 const REDIS_CACHE_TTL = 3600; // 1 hour
@@ -175,48 +175,43 @@ export async function getGivingSummary(
   _ctx: ServerContext,
   req: GetGivingSummaryRequest,
 ): Promise<GetGivingSummaryResponse> {
-  // Check Redis cache first
-  const cached = await getCachedJson(REDIS_CACHE_KEY) as GetGivingSummaryResponse | null;
-  if (cached?.summary) return cached;
+  const result = await cachedFetchJson<GetGivingSummaryResponse>(REDIS_CACHE_KEY, REDIS_CACHE_TTL, async () => {
+    // Gather estimates from all sources
+    const cryptoEstimate = getCryptoGivingEstimate();
+    const gofundme = getGoFundMeEstimate();
+    const globalGiving = getGlobalGivingEstimate();
+    const justGiving = getJustGivingEstimate();
+    const institutional = getInstitutionalBaseline();
 
-  // Gather estimates from all sources
-  const cryptoEstimate = getCryptoGivingEstimate();
-  const gofundme = getGoFundMeEstimate();
-  const globalGiving = getGlobalGivingEstimate();
-  const justGiving = getJustGivingEstimate();
-  const institutional = getInstitutionalBaseline();
+    let platforms = [gofundme, globalGiving, justGiving];
+    if (req.platformLimit > 0) {
+      platforms = platforms.slice(0, req.platformLimit);
+    }
 
-  let platforms = [gofundme, globalGiving, justGiving];
-  if (req.platformLimit > 0) {
-    platforms = platforms.slice(0, req.platformLimit);
-  }
+    // Use default category breakdown (from published reports)
+    let categories = getDefaultCategories();
+    if (req.categoryLimit > 0) {
+      categories = categories.slice(0, req.categoryLimit);
+    }
 
-  // Use default category breakdown (from published reports)
-  let categories = getDefaultCategories();
-  if (req.categoryLimit > 0) {
-    categories = categories.slice(0, req.categoryLimit);
-  }
+    // Composite index
+    const activityIndex = computeActivityIndex(platforms, cryptoEstimate);
+    const trend = computeTrend(activityIndex);
+    const estimatedDailyFlowUsd = platforms.reduce((s, p) => s + p.dailyVolumeUsd, 0) + cryptoEstimate.dailyInflowUsd;
 
-  // Composite index
-  const activityIndex = computeActivityIndex(platforms, cryptoEstimate);
-  const trend = computeTrend(activityIndex);
-  const estimatedDailyFlowUsd = platforms.reduce((s, p) => s + p.dailyVolumeUsd, 0) + cryptoEstimate.dailyInflowUsd;
+    const summary: GivingSummary = {
+      generatedAt: new Date().toISOString(),
+      activityIndex,
+      trend,
+      estimatedDailyFlowUsd,
+      platforms,
+      categories,
+      crypto: cryptoEstimate,
+      institutional,
+    };
 
-  const summary: GivingSummary = {
-    generatedAt: new Date().toISOString(),
-    activityIndex,
-    trend,
-    estimatedDailyFlowUsd,
-    platforms,
-    categories,
-    crypto: cryptoEstimate,
-    institutional,
-  };
+    return { summary };
+  });
 
-  const response: GetGivingSummaryResponse = { summary };
-
-  // Cache result
-  await setCachedJson(REDIS_CACHE_KEY, response, REDIS_CACHE_TTL);
-
-  return response;
+  return result || { summary: undefined as unknown as GivingSummary };
 }

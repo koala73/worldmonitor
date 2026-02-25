@@ -13,7 +13,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/economic/v1/service_server';
 
 import { CHROME_UA } from '../../../_shared/constants';
-import { getCachedJson, setCachedJson } from '../../../_shared/redis';
+import { cachedFetchJson } from '../../../_shared/redis';
 
 const REDIS_CACHE_KEY = 'economic:energy:v1';
 const REDIS_CACHE_TTL = 3600; // 1 hr — weekly EIA data
@@ -111,15 +111,11 @@ export async function getEnergyPrices(
 ): Promise<GetEnergyPricesResponse> {
   try {
     const cacheKey = `${REDIS_CACHE_KEY}:${[...req.commodities].sort().join(',') || 'all'}`;
-    const cached = (await getCachedJson(cacheKey)) as GetEnergyPricesResponse | null;
-    if (cached?.prices?.length) return cached;
-
-    const prices = await fetchEnergyPrices(req.commodities);
-    const result: GetEnergyPricesResponse = { prices };
-    if (prices.length > 0) {
-      setCachedJson(cacheKey, result, REDIS_CACHE_TTL).catch(() => {});
-    }
-    return result;
+    const result = await cachedFetchJson<GetEnergyPricesResponse>(cacheKey, REDIS_CACHE_TTL, async () => {
+      const prices = await fetchEnergyPrices(req.commodities);
+      return prices.length > 0 ? { prices } : null;
+    });
+    return result || { prices: [] };
   } catch {
     return { prices: [] };
   }

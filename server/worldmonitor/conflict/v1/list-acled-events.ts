@@ -13,7 +13,7 @@ import type {
   AcledConflictEvent,
 } from '../../../../src/generated/server/worldmonitor/conflict/v1/service_server';
 
-import { getCachedJson, setCachedJson } from '../../../_shared/redis';
+import { cachedFetchJson } from '../../../_shared/redis';
 import { fetchAcledCached } from '../../../_shared/acled';
 
 const REDIS_CACHE_KEY = 'conflict:acled:v1';
@@ -65,15 +65,15 @@ export async function listAcledEvents(
 ): Promise<ListAcledEventsResponse> {
   try {
     const cacheKey = `${REDIS_CACHE_KEY}:${req.country || 'all'}:${req.timeRange?.start || 0}:${req.timeRange?.end || 0}`;
-    const cached = (await getCachedJson(cacheKey)) as ListAcledEventsResponse | null;
-    if (cached?.events?.length) return cached;
-
-    const events = await fetchAcledConflicts(req);
-    const result: ListAcledEventsResponse = { events, pagination: undefined };
-    if (events.length > 0) {
-      setCachedJson(cacheKey, result, REDIS_CACHE_TTL).catch(() => {});
-    }
-    return result;
+    const result = await cachedFetchJson<ListAcledEventsResponse>(
+      cacheKey,
+      REDIS_CACHE_TTL,
+      async () => {
+        const events = await fetchAcledConflicts(req);
+        return events.length > 0 ? { events, pagination: undefined } : null;
+      },
+    );
+    return result || { events: [], pagination: undefined };
   } catch {
     return { events: [], pagination: undefined };
   }

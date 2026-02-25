@@ -12,7 +12,7 @@ import type {
   MarketQuote,
 } from '../../../../src/generated/server/worldmonitor/market/v1/service_server';
 import { YAHOO_ONLY_SYMBOLS, fetchFinnhubQuote, fetchYahooQuotesBatch } from './_shared';
-import { getCachedJson, setCachedJson } from '../../../_shared/redis';
+import { cachedFetchJson } from '../../../_shared/redis';
 
 const REDIS_CACHE_KEY = 'market:quotes:v1';
 const REDIS_CACHE_TTL = 120; // 2 min — shared across all Vercel instances
@@ -41,15 +41,10 @@ export async function listMarketQuotes(
     return memCached.data;
   }
 
-  // Layer 2: Redis shared cache (cross-instance)
   const redisKey = redisCacheKey(req.symbols);
-  const redisCached = (await getCachedJson(redisKey)) as ListMarketQuotesResponse | null;
-  if (redisCached?.quotes?.length) {
-    quotesCache.set(key, { data: redisCached, timestamp: now });
-    return redisCached;
-  }
 
   try {
+  const result = await cachedFetchJson<ListMarketQuotesResponse>(redisKey, REDIS_CACHE_TTL, async () => {
     const apiKey = process.env.FINNHUB_API_KEY;
     const symbols = req.symbols;
     if (!symbols.length) return { quotes: [], finnhubSkipped: !apiKey, skipReason: !apiKey ? 'FINNHUB_API_KEY not configured' : '' };
@@ -101,14 +96,17 @@ export async function listMarketQuotes(
       return memCached.data;
     }
 
-    const result: ListMarketQuotesResponse = { quotes, finnhubSkipped: !apiKey, skipReason: !apiKey ? 'FINNHUB_API_KEY not configured' : '' };
-    if (quotes.length > 0) {
-      quotesCache.set(key, { data: result, timestamp: now });
-      setCachedJson(redisKey, result, REDIS_CACHE_TTL).catch(() => {});
-    }
-    return result;
+    if (quotes.length === 0) return null;
+
+    return { quotes, finnhubSkipped: !apiKey, skipReason: !apiKey ? 'FINNHUB_API_KEY not configured' : '' };
+  });
+
+  if (result?.quotes?.length) {
+    quotesCache.set(key, { data: result, timestamp: now });
+  }
+
+  return result || memCached?.data || { quotes: [], finnhubSkipped: false, skipReason: '' };
   } catch {
-    if (memCached) return memCached.data;
-    return { quotes: [], finnhubSkipped: false, skipReason: '' };
+    return memCached?.data || { quotes: [], finnhubSkipped: false, skipReason: '' };
   }
 }

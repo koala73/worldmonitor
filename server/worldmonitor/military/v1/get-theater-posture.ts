@@ -184,7 +184,6 @@ function calculatePostures(flights: RawFlight[]): TheaterPosture[] {
 // ========================================================================
 
 async function fetchTheaterPostureFresh(): Promise<GetTheaterPostureResponse> {
-  // Race both sources in parallel instead of sequential fallback (H-6 fix)
   let flights: RawFlight[];
   const [openskyResult, wingbitsResult] = await Promise.allSettled([
     fetchMilitaryFlightsFromOpenSky(),
@@ -202,8 +201,7 @@ async function fetchTheaterPostureFresh(): Promise<GetTheaterPostureResponse> {
   const theaters = calculatePostures(flights);
   const result: GetTheaterPostureResponse = { theaters };
 
-  // Write stale/backup tiers in background
-  Promise.all([
+  await Promise.all([
     setCachedJson(STALE_CACHE_KEY, result, STALE_TTL),
     setCachedJson(BACKUP_CACHE_KEY, result, BACKUP_TTL),
   ]).catch(() => {});
@@ -215,16 +213,15 @@ export async function getTheaterPosture(
   _ctx: ServerContext,
   _req: GetTheaterPostureRequest,
 ): Promise<GetTheaterPostureResponse> {
-  // cachedFetchJson coalesces concurrent requests — only one upstream fetch
-  // runs at a time, eliminating the stampede that was hammering Wingbits.
-  const result = await cachedFetchJson<GetTheaterPostureResponse>(
-    CACHE_KEY,
-    CACHE_TTL,
-    fetchTheaterPostureFresh,
-  );
-  if (result) return result;
+  try {
+    const result = await cachedFetchJson<GetTheaterPostureResponse>(
+      CACHE_KEY,
+      CACHE_TTL,
+      fetchTheaterPostureFresh,
+    );
+    if (result) return result;
+  } catch { /* upstream failed — fall through to stale/backup */ }
 
-  // Upstream failed and nothing was cached — fall back to stale/backup tiers
   const stale = (await getCachedJson(STALE_CACHE_KEY)) as GetTheaterPostureResponse | null;
   if (stale) return stale;
   const backup = (await getCachedJson(BACKUP_CACHE_KEY)) as GetTheaterPostureResponse | null;

@@ -9,7 +9,7 @@ import type {
 
 import { mapWingbitsDetails } from './_shared';
 import { CHROME_UA } from '../../../_shared/constants';
-import { getCachedJsonBatch, setCachedJson } from '../../../_shared/redis';
+import { getCachedJsonBatch, cachedFetchJson } from '../../../_shared/redis';
 
 export async function getAircraftDetailsBatch(
   _ctx: ServerContext,
@@ -40,18 +40,25 @@ export async function getAircraftDetailsBatch(
   }
 
   const fetches = toFetch.map(async (icao24) => {
-    try {
-      const resp = await fetch(`https://customer-api.wingbits.com/v1/flights/details/${icao24}`, {
-        headers: { 'x-api-key': apiKey, Accept: 'application/json', 'User-Agent': CHROME_UA },
-        signal: AbortSignal.timeout(10_000),
-      });
-      if (resp.ok) {
-        const data = (await resp.json()) as Record<string, unknown>;
-        const details = mapWingbitsDetails(icao24, data);
-        setCachedJson(`${SINGLE_KEY}:${icao24}`, { details, configured: true }, SINGLE_TTL).catch(() => {});
-        return { icao24, details };
-      }
-    } catch { /* skip failed lookups */ }
+    const cacheResult = await cachedFetchJson<{ details: AircraftDetails; configured: boolean }>(
+      `${SINGLE_KEY}:${icao24}`,
+      SINGLE_TTL,
+      async () => {
+        try {
+          const resp = await fetch(`https://customer-api.wingbits.com/v1/flights/details/${icao24}`, {
+            headers: { 'x-api-key': apiKey, Accept: 'application/json', 'User-Agent': CHROME_UA },
+            signal: AbortSignal.timeout(10_000),
+          });
+          if (resp.ok) {
+            const data = (await resp.json()) as Record<string, unknown>;
+            const details = mapWingbitsDetails(icao24, data);
+            return { details, configured: true };
+          }
+        } catch { /* skip failed lookups */ }
+        return null;
+      },
+    );
+    if (cacheResult?.details) return { icao24, details: cacheResult.details };
     return null;
   });
 

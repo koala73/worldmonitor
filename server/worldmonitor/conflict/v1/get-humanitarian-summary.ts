@@ -14,7 +14,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/conflict/v1/service_server';
 
 import { CHROME_UA } from '../../../_shared/constants';
-import { getCachedJson, setCachedJson } from '../../../_shared/redis';
+import { cachedFetchJson } from '../../../_shared/redis';
 
 const REDIS_CACHE_KEY = 'conflict:humanitarian:v1';
 const REDIS_CACHE_TTL = 21600; // 6 hr — monthly humanitarian data
@@ -150,15 +150,13 @@ export async function getHumanitarianSummary(
 ): Promise<GetHumanitarianSummaryResponse> {
   try {
     const cacheKey = `${REDIS_CACHE_KEY}:${req.countryCode || 'all'}`;
-    const cached = (await getCachedJson(cacheKey)) as GetHumanitarianSummaryResponse | null;
-    if (cached?.summary) return cached;
 
-    const summary = await fetchHapiSummary(req.countryCode);
-    const result: GetHumanitarianSummaryResponse = { summary };
-    if (summary) {
-      setCachedJson(cacheKey, result, REDIS_CACHE_TTL).catch(() => {});
-    }
-    return result;
+    const result = await cachedFetchJson<GetHumanitarianSummaryResponse>(cacheKey, REDIS_CACHE_TTL, async () => {
+      const summary = await fetchHapiSummary(req.countryCode);
+      return summary ? { summary } : null;
+    });
+
+    return result || { summary: undefined };
   } catch {
     return { summary: undefined };
   }

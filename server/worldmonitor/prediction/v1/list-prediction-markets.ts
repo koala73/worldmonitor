@@ -16,7 +16,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/prediction/v1/service_server';
 
 import { CHROME_UA } from '../../../_shared/constants';
-import { getCachedJson, setCachedJson } from '../../../_shared/redis';
+import { cachedFetchJson } from '../../../_shared/redis';
 
 const REDIS_CACHE_KEY = 'prediction:markets:v1';
 const REDIS_CACHE_TTL = 300; // 5 min
@@ -100,77 +100,51 @@ export const listPredictionMarkets: PredictionServiceHandler['listPredictionMark
   req: ListPredictionMarketsRequest,
 ): Promise<ListPredictionMarketsResponse> => {
   try {
-    // Redis shared cache (cross-instance)
     const cacheKey = `${REDIS_CACHE_KEY}:${req.category || 'all'}:${req.query || ''}:${req.pagination?.pageSize || 50}`;
-    const cached = (await getCachedJson(cacheKey)) as ListPredictionMarketsResponse | null;
-    if (cached?.markets?.length) return cached;
+    const result = await cachedFetchJson<ListPredictionMarketsResponse>(
+      cacheKey,
+      REDIS_CACHE_TTL,
+      async () => {
+        const useEvents = !!req.category;
+        const endpoint = useEvents ? 'events' : 'markets';
+        const limit = Math.max(1, Math.min(100, req.pagination?.pageSize || 50));
+        const params = new URLSearchParams({
+          closed: 'false',
+          order: 'volume',
+          ascending: 'false',
+          limit: String(limit),
+        });
+        if (useEvents) {
+          params.set('tag_slug', req.category);
+        }
 
-    // Determine endpoint: events (with tag_slug) or markets
-    const useEvents = !!req.category;
-    const endpoint = useEvents ? 'events' : 'markets';
+        const response = await fetch(
+          `${GAMMA_BASE}/${endpoint}?${params}`,
+          {
+            headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
+            signal: AbortSignal.timeout(FETCH_TIMEOUT),
+          },
+        );
+        if (!response.ok) return null;
 
-    // Build query params
-    const limit = Math.max(1, Math.min(100, req.pagination?.pageSize || 50));
-    const params = new URLSearchParams({
-      closed: 'false',
-      order: 'volume',
-      ascending: 'false',
-      limit: String(limit),
-    });
+        const data: unknown = await response.json();
+        let markets: PredictionMarket[];
+        if (useEvents) {
+          markets = (data as GammaEvent[]).map((e) => mapEvent(e, req.category));
+        } else {
+          markets = (data as GammaMarket[]).map(mapMarket);
+        }
 
-    if (useEvents) {
-      params.set('tag_slug', req.category);
-    }
+        if (req.query) {
+          const q = req.query.toLowerCase();
+          markets = markets.filter((m) => m.title.toLowerCase().includes(q));
+        }
 
-    // Fetch with timeout
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
-
-    let markets: PredictionMarket[];
-    try {
-      const response = await fetch(
-        `${GAMMA_BASE}/${endpoint}?${params}`,
-        {
-          headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-          signal: controller.signal,
-        },
-      );
-      clearTimeout(timer);
-
-      if (!response.ok) {
-        return { markets: [], pagination: undefined };
-      }
-
-      const data: unknown = await response.json();
-
-      if (useEvents) {
-        const events = data as GammaEvent[];
-        markets = events.map((e) => mapEvent(e, req.category));
-      } else {
-        const rawMarkets = data as GammaMarket[];
-        markets = rawMarkets.map(mapMarket);
-      }
-    } catch {
-      clearTimeout(timer);
-      // Expected: Cloudflare blocks server-side TLS connections
-      return { markets: [], pagination: undefined };
-    }
-
-    // Optional query filter (case-insensitive title match)
-    if (req.query) {
-      const q = req.query.toLowerCase();
-      markets = markets.filter((m) =>
-        m.title.toLowerCase().includes(q),
-      );
-    }
-
-    const result: ListPredictionMarketsResponse = { markets, pagination: undefined };
-    if (markets.length > 0) {
-      setCachedJson(cacheKey, result, REDIS_CACHE_TTL).catch(() => {});
-    }
-    return result;
+        return markets.length > 0 ? { markets, pagination: undefined } : null;
+      },
+    );
+    return result || { markets: [], pagination: undefined };
   } catch {
-    // Catch-all: return empty on ANY failure
     return { markets: [], pagination: undefined };
   }
 };

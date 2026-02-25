@@ -13,7 +13,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/displacement/v1/service_server';
 
 import { CHROME_UA } from '../../../_shared/constants';
-import { getCachedJson, setCachedJson } from '../../../_shared/redis';
+import { cachedFetchJson } from '../../../_shared/redis';
 
 const REDIS_CACHE_KEY = 'displacement:summary:v1';
 const REDIS_CACHE_TTL = 43200; // 12 hr — annual UNHCR data, very slow-moving
@@ -129,215 +129,212 @@ export async function getDisplacementSummary(
   _ctx: ServerContext,
   req: GetDisplacementSummaryRequest,
 ): Promise<GetDisplacementSummaryResponse> {
+  const emptyResponse: GetDisplacementSummaryResponse = {
+    summary: {
+      year: req.year > 0 ? req.year : new Date().getFullYear(),
+      globalTotals: { refugees: 0, asylumSeekers: 0, idps: 0, stateless: 0, total: 0 },
+      countries: [],
+      topFlows: [],
+    },
+  };
+
   try {
     // Redis shared cache (keyed by year)
     const year = req.year > 0 ? req.year : new Date().getFullYear();
     const cacheKey = `${REDIS_CACHE_KEY}:${year}:${req.countryLimit || 0}:${req.flowLimit || 0}`;
-    const cached = (await getCachedJson(cacheKey)) as GetDisplacementSummaryResponse | null;
-    if (cached?.summary) return cached;
 
-    // 1. Determine year with fallback
-    const currentYear = new Date().getFullYear();
-    const requestYear = req.year > 0 ? req.year : 0;
-    let rawItems: UnhcrRawItem[] = [];
-    let dataYearUsed = currentYear;
+    const result = await cachedFetchJson<GetDisplacementSummaryResponse>(cacheKey, REDIS_CACHE_TTL, async () => {
+      // 1. Determine year with fallback
+      const currentYear = new Date().getFullYear();
+      const requestYear = req.year > 0 ? req.year : 0;
+      let rawItems: UnhcrRawItem[] = [];
+      let dataYearUsed = currentYear;
 
-    if (requestYear > 0) {
-      const items = await fetchUnhcrYearItems(requestYear);
-      if (items && items.length > 0) {
-        rawItems = items;
-        dataYearUsed = requestYear;
-      }
-    } else {
-      for (let year = currentYear; year >= currentYear - 2; year--) {
-        const items = await fetchUnhcrYearItems(year);
-        if (!items) continue;
-        if (items.length > 0) {
+      if (requestYear > 0) {
+        const items = await fetchUnhcrYearItems(requestYear);
+        if (items && items.length > 0) {
           rawItems = items;
-          dataYearUsed = year;
-          break;
+          dataYearUsed = requestYear;
+        }
+      } else {
+        for (let y = currentYear; y >= currentYear - 2; y--) {
+          const items = await fetchUnhcrYearItems(y);
+          if (!items) continue;
+          if (items.length > 0) {
+            rawItems = items;
+            dataYearUsed = y;
+            break;
+          }
         }
       }
-    }
 
-    // 2. Aggregate by origin and asylum
-    const byOrigin: Record<string, OriginAgg> = {};
-    const byAsylum: Record<string, AsylumAgg> = {};
-    const flowMap: Record<string, FlowAgg> = {};
-    let totalRefugees = 0;
-    let totalAsylumSeekers = 0;
-    let totalIdps = 0;
-    let totalStateless = 0;
+      if (rawItems.length === 0) return null;
 
-    for (const item of rawItems) {
-      const originCode = item.coo_iso || '';
-      const asylumCode = item.coa_iso || '';
-      const refugees = Number(item.refugees) || 0;
-      const asylumSeekers = Number(item.asylum_seekers) || 0;
-      const idps = Number(item.idps) || 0;
-      const stateless = Number(item.stateless) || 0;
+      // 2. Aggregate by origin and asylum
+      const byOrigin: Record<string, OriginAgg> = {};
+      const byAsylum: Record<string, AsylumAgg> = {};
+      const flowMap: Record<string, FlowAgg> = {};
+      let totalRefugees = 0;
+      let totalAsylumSeekers = 0;
+      let totalIdps = 0;
+      let totalStateless = 0;
 
-      totalRefugees += refugees;
-      totalAsylumSeekers += asylumSeekers;
-      totalIdps += idps;
-      totalStateless += stateless;
+      for (const item of rawItems) {
+        const originCode = item.coo_iso || '';
+        const asylumCode = item.coa_iso || '';
+        const refugees = Number(item.refugees) || 0;
+        const asylumSeekers = Number(item.asylum_seekers) || 0;
+        const idps = Number(item.idps) || 0;
+        const stateless = Number(item.stateless) || 0;
 
-      if (originCode) {
-        if (!byOrigin[originCode]) {
-          byOrigin[originCode] = {
-            name: item.coo_name || originCode,
-            refugees: 0, asylumSeekers: 0, idps: 0, stateless: 0,
-          };
+        totalRefugees += refugees;
+        totalAsylumSeekers += asylumSeekers;
+        totalIdps += idps;
+        totalStateless += stateless;
+
+        if (originCode) {
+          if (!byOrigin[originCode]) {
+            byOrigin[originCode] = {
+              name: item.coo_name || originCode,
+              refugees: 0, asylumSeekers: 0, idps: 0, stateless: 0,
+            };
+          }
+          byOrigin[originCode].refugees += refugees;
+          byOrigin[originCode].asylumSeekers += asylumSeekers;
+          byOrigin[originCode].idps += idps;
+          byOrigin[originCode].stateless += stateless;
         }
-        byOrigin[originCode].refugees += refugees;
-        byOrigin[originCode].asylumSeekers += asylumSeekers;
-        byOrigin[originCode].idps += idps;
-        byOrigin[originCode].stateless += stateless;
+
+        if (asylumCode) {
+          if (!byAsylum[asylumCode]) {
+            byAsylum[asylumCode] = {
+              name: item.coa_name || asylumCode,
+              refugees: 0, asylumSeekers: 0,
+            };
+          }
+          byAsylum[asylumCode].refugees += refugees;
+          byAsylum[asylumCode].asylumSeekers += asylumSeekers;
+        }
+
+        if (originCode && asylumCode && refugees > 0) {
+          const flowKey = `${originCode}->${asylumCode}`;
+          if (!flowMap[flowKey]) {
+            flowMap[flowKey] = {
+              originCode,
+              originName: item.coo_name || originCode,
+              asylumCode,
+              asylumName: item.coa_name || asylumCode,
+              refugees: 0,
+            };
+          }
+          flowMap[flowKey].refugees += refugees;
+        }
       }
 
-      if (asylumCode) {
-        if (!byAsylum[asylumCode]) {
-          byAsylum[asylumCode] = {
-            name: item.coa_name || asylumCode,
-            refugees: 0, asylumSeekers: 0,
-          };
-        }
-        byAsylum[asylumCode].refugees += refugees;
-        byAsylum[asylumCode].asylumSeekers += asylumSeekers;
-      }
+      // 3. Merge into unified country records
+      const countries: Record<string, MergedCountry> = {};
 
-      if (originCode && asylumCode && refugees > 0) {
-        const flowKey = `${originCode}->${asylumCode}`;
-        if (!flowMap[flowKey]) {
-          flowMap[flowKey] = {
-            originCode,
-            originName: item.coo_name || originCode,
-            asylumCode,
-            asylumName: item.coa_name || asylumCode,
-            refugees: 0,
-          };
-        }
-        flowMap[flowKey].refugees += refugees;
-      }
-    }
-
-    // 3. Merge into unified country records
-    const countries: Record<string, MergedCountry> = {};
-
-    for (const [code, data] of Object.entries(byOrigin)) {
-      countries[code] = {
-        code,
-        name: data.name,
-        refugees: data.refugees,
-        asylumSeekers: data.asylumSeekers,
-        idps: data.idps,
-        stateless: data.stateless,
-        totalDisplaced: data.refugees + data.asylumSeekers + data.idps + data.stateless,
-        hostRefugees: 0,
-        hostAsylumSeekers: 0,
-        hostTotal: 0,
-      };
-    }
-
-    for (const [code, data] of Object.entries(byAsylum)) {
-      const hostRefugees = data.refugees;
-      const hostAsylumSeekers = data.asylumSeekers;
-      const hostTotal = hostRefugees + hostAsylumSeekers;
-
-      if (!countries[code]) {
+      for (const [code, data] of Object.entries(byOrigin)) {
         countries[code] = {
           code,
           name: data.name,
-          refugees: 0,
-          asylumSeekers: 0,
-          idps: 0,
-          stateless: 0,
-          totalDisplaced: 0,
-          hostRefugees,
-          hostAsylumSeekers,
-          hostTotal,
+          refugees: data.refugees,
+          asylumSeekers: data.asylumSeekers,
+          idps: data.idps,
+          stateless: data.stateless,
+          totalDisplaced: data.refugees + data.asylumSeekers + data.idps + data.stateless,
+          hostRefugees: 0,
+          hostAsylumSeekers: 0,
+          hostTotal: 0,
         };
-      } else {
-        countries[code].hostRefugees = hostRefugees;
-        countries[code].hostAsylumSeekers = hostAsylumSeekers;
-        countries[code].hostTotal = hostTotal;
       }
-    }
 
-    // 4. Sort countries by max(totalDisplaced, hostTotal) descending
-    const sortedCountries = Object.values(countries).sort((a, b) => {
-      const aSize = Math.max(a.totalDisplaced, a.hostTotal);
-      const bSize = Math.max(b.totalDisplaced, b.hostTotal);
-      return bSize - aSize;
-    });
+      for (const [code, data] of Object.entries(byAsylum)) {
+        const hostRefugees = data.refugees;
+        const hostAsylumSeekers = data.asylumSeekers;
+        const hostTotal = hostRefugees + hostAsylumSeekers;
 
-    // 5. Apply countryLimit
-    const limitedCountries = req.countryLimit > 0
-      ? sortedCountries.slice(0, req.countryLimit)
-      : sortedCountries;
+        if (!countries[code]) {
+          countries[code] = {
+            code,
+            name: data.name,
+            refugees: 0,
+            asylumSeekers: 0,
+            idps: 0,
+            stateless: 0,
+            totalDisplaced: 0,
+            hostRefugees,
+            hostAsylumSeekers,
+            hostTotal,
+          };
+        } else {
+          countries[code].hostRefugees = hostRefugees;
+          countries[code].hostAsylumSeekers = hostAsylumSeekers;
+          countries[code].hostTotal = hostTotal;
+        }
+      }
 
-    // 6. Build proto-shaped countries with GeoCoordinates
-    const protoCountries = limitedCountries.map((d) => ({
-      code: d.code,
-      name: d.name,
-      refugees: d.refugees,
-      asylumSeekers: d.asylumSeekers,
-      idps: d.idps,
-      stateless: d.stateless,
-      totalDisplaced: d.totalDisplaced,
-      hostRefugees: d.hostRefugees,
-      hostAsylumSeekers: d.hostAsylumSeekers,
-      hostTotal: d.hostTotal,
-      location: getCoordinates(d.code),
-    }));
+      // 4. Sort countries by max(totalDisplaced, hostTotal) descending
+      const sortedCountries = Object.values(countries).sort((a, b) => {
+        const aSize = Math.max(a.totalDisplaced, a.hostTotal);
+        const bSize = Math.max(b.totalDisplaced, b.hostTotal);
+        return bSize - aSize;
+      });
 
-    // 7. Build flows sorted by refugees descending, capped by flowLimit
-    const flowLimit = req.flowLimit > 0 ? req.flowLimit : 50;
-    const protoFlows = Object.values(flowMap)
-      .sort((a, b) => b.refugees - a.refugees)
-      .slice(0, flowLimit)
-      .map((f) => ({
-        originCode: f.originCode,
-        originName: f.originName,
-        asylumCode: f.asylumCode,
-        asylumName: f.asylumName,
-        refugees: f.refugees,
-        originLocation: getCoordinates(f.originCode),
-        asylumLocation: getCoordinates(f.asylumCode),
+      // 5. Apply countryLimit
+      const limitedCountries = req.countryLimit > 0
+        ? sortedCountries.slice(0, req.countryLimit)
+        : sortedCountries;
+
+      // 6. Build proto-shaped countries with GeoCoordinates
+      const protoCountries = limitedCountries.map((d) => ({
+        code: d.code,
+        name: d.name,
+        refugees: d.refugees,
+        asylumSeekers: d.asylumSeekers,
+        idps: d.idps,
+        stateless: d.stateless,
+        totalDisplaced: d.totalDisplaced,
+        hostRefugees: d.hostRefugees,
+        hostAsylumSeekers: d.hostAsylumSeekers,
+        hostTotal: d.hostTotal,
+        location: getCoordinates(d.code),
       }));
 
-    // 8. Return proto-shaped response
-    const result: GetDisplacementSummaryResponse = {
-      summary: {
-        year: dataYearUsed,
-        globalTotals: {
-          refugees: totalRefugees,
-          asylumSeekers: totalAsylumSeekers,
-          idps: totalIdps,
-          stateless: totalStateless,
-          total: totalRefugees + totalAsylumSeekers + totalIdps + totalStateless,
+      // 7. Build flows sorted by refugees descending, capped by flowLimit
+      const flowLimit = req.flowLimit > 0 ? req.flowLimit : 50;
+      const protoFlows = Object.values(flowMap)
+        .sort((a, b) => b.refugees - a.refugees)
+        .slice(0, flowLimit)
+        .map((f) => ({
+          originCode: f.originCode,
+          originName: f.originName,
+          asylumCode: f.asylumCode,
+          asylumName: f.asylumName,
+          refugees: f.refugees,
+          originLocation: getCoordinates(f.originCode),
+          asylumLocation: getCoordinates(f.asylumCode),
+        }));
+
+      return {
+        summary: {
+          year: dataYearUsed,
+          globalTotals: {
+            refugees: totalRefugees,
+            asylumSeekers: totalAsylumSeekers,
+            idps: totalIdps,
+            stateless: totalStateless,
+            total: totalRefugees + totalAsylumSeekers + totalIdps + totalStateless,
+          },
+          countries: protoCountries,
+          topFlows: protoFlows,
         },
-        countries: protoCountries,
-        topFlows: protoFlows,
-      },
-    };
-    setCachedJson(cacheKey, result, REDIS_CACHE_TTL).catch(() => {});
-    return result;
+      };
+    });
+
+    return result || emptyResponse;
   } catch {
     // Graceful degradation: return empty summary on ANY failure
-    return {
-      summary: {
-        year: req.year > 0 ? req.year : new Date().getFullYear(),
-        globalTotals: {
-          refugees: 0,
-          asylumSeekers: 0,
-          idps: 0,
-          stateless: 0,
-          total: 0,
-        },
-        countries: [],
-        topFlows: [],
-      },
-    };
+    return emptyResponse;
   }
 }

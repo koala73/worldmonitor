@@ -10,7 +10,7 @@ import type {
   CommodityQuote,
 } from '../../../../src/generated/server/worldmonitor/market/v1/service_server';
 import { fetchYahooQuote } from './_shared';
-import { getCachedJson, setCachedJson } from '../../../_shared/redis';
+import { cachedFetchJson } from '../../../_shared/redis';
 
 const REDIS_CACHE_KEY = 'market:commodities:v1';
 const REDIS_CACHE_TTL = 180; // 3 min — commodities move slower than indices
@@ -23,15 +23,13 @@ export async function listCommodityQuotes(
   _ctx: ServerContext,
   req: ListCommodityQuotesRequest,
 ): Promise<ListCommodityQuotesResponse> {
+  const symbols = req.symbols;
+  if (!symbols.length) return { quotes: [] };
+
+  const redisKey = redisCacheKey(symbols);
+
   try {
-    const symbols = req.symbols;
-    if (!symbols.length) return { quotes: [] };
-
-    // Redis shared cache
-    const redisKey = redisCacheKey(symbols);
-    const cached = (await getCachedJson(redisKey)) as ListCommodityQuotesResponse | null;
-    if (cached?.quotes?.length) return cached;
-
+  const result = await cachedFetchJson<ListCommodityQuotesResponse>(redisKey, REDIS_CACHE_TTL, async () => {
     const results = await Promise.all(
       symbols.map(async (s) => {
         const yahoo = await fetchYahooQuote(s);
@@ -47,11 +45,11 @@ export async function listCommodityQuotes(
       }),
     );
 
-    const response: ListCommodityQuotesResponse = { quotes: results.filter((r): r is CommodityQuote => r !== null) };
-    if (response.quotes.length > 0) {
-      setCachedJson(redisKey, response, REDIS_CACHE_TTL).catch(() => {});
-    }
-    return response;
+    const quotes = results.filter((r): r is CommodityQuote => r !== null);
+    return quotes.length > 0 ? { quotes } : null;
+  });
+
+  return result || { quotes: [] };
   } catch {
     return { quotes: [] };
   }

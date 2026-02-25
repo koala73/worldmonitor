@@ -19,7 +19,7 @@ import {
   extractClosePrices,
   extractAlignedPriceVolume,
 } from './_shared';
-import { getCachedJson, setCachedJson } from '../../../_shared/redis';
+import { cachedFetchJson } from '../../../_shared/redis';
 
 const REDIS_CACHE_KEY = 'economic:macro-signals:v1';
 const REDIS_CACHE_TTL = 300; // 5 min — matches in-memory TTL
@@ -245,22 +245,24 @@ export async function getMacroSignals(
     return macroSignalsCached;
   }
 
-  // Redis shared cache (cross-instance)
-  const redisCached = (await getCachedJson(REDIS_CACHE_KEY)) as GetMacroSignalsResponse | null;
-  if (redisCached && !redisCached.unavailable && redisCached.totalCount > 0) {
-    macroSignalsCached = redisCached;
-    macroSignalsCacheTimestamp = now;
-    return redisCached;
-  }
-
   try {
-    const result = await computeMacroSignals();
-    macroSignalsCached = result;
-    macroSignalsCacheTimestamp = now;
-    if (!result.unavailable) {
-      setCachedJson(REDIS_CACHE_KEY, result, REDIS_CACHE_TTL).catch(() => {});
+    // Redis shared cache (cross-instance) with in-flight dedup via cachedFetchJson
+    const result = await cachedFetchJson<GetMacroSignalsResponse>(REDIS_CACHE_KEY, REDIS_CACHE_TTL, async () => {
+      const computed = await computeMacroSignals();
+      return (!computed.unavailable && computed.totalCount > 0) ? computed : null;
+    });
+
+    if (result && !result.unavailable && result.totalCount > 0) {
+      macroSignalsCached = result;
+      macroSignalsCacheTimestamp = now;
+      return result;
     }
-    return result;
+
+    // cachedFetchJson returned null: all data unavailable, serve stale or fallback
+    const fallback = macroSignalsCached || buildFallbackResult();
+    macroSignalsCached = fallback;
+    macroSignalsCacheTimestamp = now;
+    return fallback;
   } catch {
     const fallback = macroSignalsCached || buildFallbackResult();
     macroSignalsCached = fallback;

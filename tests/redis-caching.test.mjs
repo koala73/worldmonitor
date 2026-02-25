@@ -153,6 +153,354 @@ describe('redis caching behavior', { concurrency: 1 }, () => {
   });
 });
 
+describe('cachedFetchJsonWithMeta source labeling', { concurrency: 1 }, () => {
+  it('reports source=cache on Redis hit', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+
+    globalThis.fetch = async (url) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) {
+        return jsonResponse({ result: JSON.stringify({ value: 'cached-data' }) });
+      }
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      let fetcherCalled = false;
+      const { data, source } = await redis.cachedFetchJsonWithMeta('meta:test:hit', 60, async () => {
+        fetcherCalled = true;
+        return { value: 'fresh-data' };
+      });
+
+      assert.equal(source, 'cache', 'should report source=cache on Redis hit');
+      assert.deepEqual(data, { value: 'cached-data' });
+      assert.equal(fetcherCalled, false, 'fetcher should not run on cache hit');
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('reports source=fresh on cache miss', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+
+    globalThis.fetch = async (url) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) return jsonResponse({ result: undefined });
+      if (raw.includes('/set/')) return jsonResponse({ result: 'OK' });
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      const { data, source } = await redis.cachedFetchJsonWithMeta('meta:test:miss', 60, async () => {
+        return { value: 'fresh-data' };
+      });
+
+      assert.equal(source, 'fresh', 'should report source=fresh on cache miss');
+      assert.deepEqual(data, { value: 'fresh-data' });
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('reports source=fresh for ALL coalesced concurrent callers', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+
+    globalThis.fetch = async (url) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) return jsonResponse({ result: undefined });
+      if (raw.includes('/set/')) return jsonResponse({ result: 'OK' });
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      let fetcherCalls = 0;
+      const fetcher = async () => {
+        fetcherCalls += 1;
+        await new Promise((r) => setTimeout(r, 10));
+        return { value: 'coalesced' };
+      };
+
+      const [a, b, c] = await Promise.all([
+        redis.cachedFetchJsonWithMeta('meta:test:coalesce', 60, fetcher),
+        redis.cachedFetchJsonWithMeta('meta:test:coalesce', 60, fetcher),
+        redis.cachedFetchJsonWithMeta('meta:test:coalesce', 60, fetcher),
+      ]);
+
+      assert.equal(fetcherCalls, 1, 'only one fetcher should run');
+      assert.equal(a.source, 'fresh', 'leader should report fresh');
+      assert.equal(b.source, 'fresh', 'follower 1 should report fresh (not cache)');
+      assert.equal(c.source, 'fresh', 'follower 2 should report fresh (not cache)');
+      assert.deepEqual(a.data, { value: 'coalesced' });
+      assert.deepEqual(b.data, { value: 'coalesced' });
+      assert.deepEqual(c.data, { value: 'coalesced' });
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('TOCTOU: reports cache when Redis is populated between concurrent reads', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+
+    // First call: cache miss. Second call (from a "different instance"): cache hit.
+    let getCalls = 0;
+    globalThis.fetch = async (url) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) {
+        getCalls += 1;
+        if (getCalls === 1) return jsonResponse({ result: undefined });
+        // Simulate another instance populating cache between calls
+        return jsonResponse({ result: JSON.stringify({ value: 'from-other-instance' }) });
+      }
+      if (raw.includes('/set/')) return jsonResponse({ result: 'OK' });
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      // First call: miss → fetcher runs → fresh
+      const first = await redis.cachedFetchJsonWithMeta('meta:test:toctou', 60, async () => {
+        return { value: 'fetched' };
+      });
+      assert.equal(first.source, 'fresh');
+      assert.deepEqual(first.data, { value: 'fetched' });
+
+      // Second call (fresh module import to clear inflight map): cache hit from other instance
+      const redis2 = await importRedisFresh();
+      const second = await redis2.cachedFetchJsonWithMeta('meta:test:toctou', 60, async () => {
+        throw new Error('fetcher should not run on cache hit');
+      });
+      assert.equal(second.source, 'cache', 'should report cache when Redis has data');
+      assert.deepEqual(second.data, { value: 'from-other-instance' });
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+});
+
+describe('theater posture caching behavior', { concurrency: 1 }, () => {
+  async function importTheaterPosture() {
+    return importPatchedTsModule('server/worldmonitor/military/v1/get-theater-posture.ts', {
+      './_shared': resolve(root, 'server/worldmonitor/military/v1/_shared.ts'),
+      '../../../_shared/constants': resolve(root, 'server/_shared/constants.ts'),
+      '../../../_shared/redis': resolve(root, 'server/_shared/redis.ts'),
+    });
+  }
+
+  function mockOpenSkyResponse() {
+    return jsonResponse({
+      states: [
+        ['ae1234', 'RCH001', null, null, null, 50.0, 36.0, 30000, false, 400, 90],
+        ['ae5678', 'DUKE02', null, null, null, 51.0, 35.0, 25000, false, 350, 180],
+      ],
+    });
+  }
+
+  it('coalesces concurrent calls into a single upstream fetch', async () => {
+    const { module, cleanup } = await importTheaterPosture();
+    const restoreEnv = withEnv({
+      LOCAL_API_MODE: 'sidecar',
+      WS_RELAY_URL: undefined,
+      WINGBITS_API_KEY: undefined,
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+
+    let openskyFetchCount = 0;
+    globalThis.fetch = async (url) => {
+      const raw = String(url);
+      if (raw.includes('/get/') || raw.includes('/pipeline')) {
+        return jsonResponse({ result: undefined });
+      }
+      if (raw.includes('/set/')) {
+        return jsonResponse({ result: 'OK' });
+      }
+      if (raw.includes('opensky-network.org')) {
+        openskyFetchCount += 1;
+        await new Promise((r) => setTimeout(r, 10));
+        return mockOpenSkyResponse();
+      }
+      return jsonResponse({}, false);
+    };
+
+    try {
+      const [a, b, c] = await Promise.all([
+        module.getTheaterPosture({}, {}),
+        module.getTheaterPosture({}, {}),
+        module.getTheaterPosture({}, {}),
+      ]);
+
+      assert.equal(openskyFetchCount, 1, 'concurrent calls should trigger only one upstream fetch');
+      assert.ok(a.theaters.length > 0, 'should return theater posture data');
+      assert.deepEqual(a, b, 'all callers should receive the same result');
+      assert.deepEqual(b, c, 'all callers should receive the same result');
+    } finally {
+      cleanup();
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('falls back to stale/backup when both upstreams are down', async () => {
+    const { module, cleanup } = await importTheaterPosture();
+    const restoreEnv = withEnv({
+      LOCAL_API_MODE: 'sidecar',
+      WS_RELAY_URL: undefined,
+      WINGBITS_API_KEY: undefined,
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+
+    const staleData = { theaters: [{ theater: 'stale-test', postureLevel: 'normal', activeFlights: 1, trackedVessels: 0, activeOperations: [], assessedAt: 1 }] };
+
+    globalThis.fetch = async (url) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) {
+        const key = decodeURIComponent(raw.split('/get/').pop() || '');
+        if (key === 'theater-posture:sebuf:v1') {
+          return jsonResponse({ result: undefined });
+        }
+        if (key === 'theater-posture:sebuf:stale:v1') {
+          return jsonResponse({ result: JSON.stringify(staleData) });
+        }
+        return jsonResponse({ result: undefined });
+      }
+      if (raw.includes('/set/')) {
+        return jsonResponse({ result: 'OK' });
+      }
+      if (raw.includes('opensky-network.org')) {
+        throw new Error('OpenSky down');
+      }
+      return jsonResponse({}, false);
+    };
+
+    try {
+      const result = await module.getTheaterPosture({}, {});
+      assert.deepEqual(result, staleData, 'should return stale cache when upstreams fail');
+    } finally {
+      cleanup();
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('returns empty theaters when all tiers exhausted', async () => {
+    const { module, cleanup } = await importTheaterPosture();
+    const restoreEnv = withEnv({
+      LOCAL_API_MODE: 'sidecar',
+      WS_RELAY_URL: undefined,
+      WINGBITS_API_KEY: undefined,
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+
+    globalThis.fetch = async (url) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) {
+        return jsonResponse({ result: undefined });
+      }
+      if (raw.includes('/set/')) {
+        return jsonResponse({ result: 'OK' });
+      }
+      if (raw.includes('opensky-network.org')) {
+        throw new Error('OpenSky down');
+      }
+      return jsonResponse({}, false);
+    };
+
+    try {
+      const result = await module.getTheaterPosture({}, {});
+      assert.deepEqual(result, { theaters: [] }, 'should return empty when all tiers exhausted');
+    } finally {
+      cleanup();
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('awaits stale/backup writes before returning', async () => {
+    const { module, cleanup } = await importTheaterPosture();
+    const restoreEnv = withEnv({
+      LOCAL_API_MODE: 'sidecar',
+      WS_RELAY_URL: undefined,
+      WINGBITS_API_KEY: undefined,
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+
+    const cacheWrites = [];
+    globalThis.fetch = async (url) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) {
+        return jsonResponse({ result: undefined });
+      }
+      if (raw.includes('/set/')) {
+        const key = decodeURIComponent(raw.split('/set/').pop()?.split('/').shift() || '');
+        cacheWrites.push(key);
+        return jsonResponse({ result: 'OK' });
+      }
+      if (raw.includes('opensky-network.org')) {
+        return mockOpenSkyResponse();
+      }
+      return jsonResponse({}, false);
+    };
+
+    try {
+      await module.getTheaterPosture({}, {});
+      const staleWritten = cacheWrites.some((k) => k.includes('stale'));
+      const backupWritten = cacheWrites.some((k) => k.includes('backup'));
+      assert.ok(staleWritten, 'stale tier should be written before response returns');
+      assert.ok(backupWritten, 'backup tier should be written before response returns');
+    } finally {
+      cleanup();
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+});
+
 describe('military flights bbox behavior', { concurrency: 1 }, () => {
   async function importListMilitaryFlights() {
     return importPatchedTsModule('server/worldmonitor/military/v1/list-military-flights.ts', {

@@ -9,7 +9,7 @@
 declare const process: { env: Record<string, string | undefined> };
 
 import { CHROME_UA } from './constants';
-import { getCachedJson, setCachedJson } from './redis';
+import { cachedFetchJson } from './redis';
 
 const ACLED_API_URL = 'https://acleddata.com/api/acled/read';
 const ACLED_CACHE_TTL = 900; // 15 min — matches ACLED rate-limit window
@@ -51,32 +51,31 @@ export async function fetchAcledCached(opts: FetchAcledOptions): Promise<AcledRa
   if (!token) return [];
 
   const cacheKey = `acled:shared:${opts.eventTypes}:${opts.startDate}:${opts.endDate}:${opts.country || 'all'}:${opts.limit || 500}`;
-  const cached = (await getCachedJson(cacheKey)) as AcledRawEvent[] | null;
-  if (cached) return cached;
+  const result = await cachedFetchJson<AcledRawEvent[]>(cacheKey, ACLED_CACHE_TTL, async () => {
+    const params = new URLSearchParams({
+      event_type: opts.eventTypes,
+      event_date: `${opts.startDate}|${opts.endDate}`,
+      event_date_where: 'BETWEEN',
+      limit: String(opts.limit || 500),
+      _format: 'json',
+    });
+    if (opts.country) params.set('country', opts.country);
 
-  const params = new URLSearchParams({
-    event_type: opts.eventTypes,
-    event_date: `${opts.startDate}|${opts.endDate}`,
-    event_date_where: 'BETWEEN',
-    limit: String(opts.limit || 500),
-    _format: 'json',
+    const resp = await fetch(`${ACLED_API_URL}?${params}`, {
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+        'User-Agent': CHROME_UA,
+      },
+      signal: AbortSignal.timeout(ACLED_TIMEOUT_MS),
+    });
+
+    if (!resp.ok) throw new Error(`ACLED API error: ${resp.status}`);
+    const data = (await resp.json()) as { data?: AcledRawEvent[]; message?: string; error?: string };
+    if (data.message || data.error) throw new Error(data.message || data.error || 'ACLED API error');
+
+    const events = data.data || [];
+    return events.length > 0 ? events : null;
   });
-  if (opts.country) params.set('country', opts.country);
-
-  const resp = await fetch(`${ACLED_API_URL}?${params}`, {
-    headers: {
-      Accept: 'application/json',
-      Authorization: `Bearer ${token}`,
-      'User-Agent': CHROME_UA,
-    },
-    signal: AbortSignal.timeout(ACLED_TIMEOUT_MS),
-  });
-
-  if (!resp.ok) throw new Error(`ACLED API error: ${resp.status}`);
-  const data = (await resp.json()) as { data?: AcledRawEvent[]; message?: string; error?: string };
-  if (data.message || data.error) throw new Error(data.message || data.error || 'ACLED API error');
-
-  const events = data.data || [];
-  setCachedJson(cacheKey, events, ACLED_CACHE_TTL).catch(() => {});
-  return events;
+  return result || [];
 }

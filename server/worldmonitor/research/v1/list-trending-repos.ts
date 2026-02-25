@@ -13,7 +13,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/research/v1/service_server';
 
 import { CHROME_UA } from '../../../_shared/constants';
-import { getCachedJson, setCachedJson } from '../../../_shared/redis';
+import { cachedFetchJson } from '../../../_shared/redis';
 
 const REDIS_CACHE_KEY = 'research:trending:v1';
 const REDIS_CACHE_TTL = 3600; // 1 hr — daily trending data
@@ -74,15 +74,11 @@ export async function listTrendingRepos(
 ): Promise<ListTrendingReposResponse> {
   try {
     const cacheKey = `${REDIS_CACHE_KEY}:${req.language || 'python'}:${req.period || 'daily'}:${req.pagination?.pageSize || 50}`;
-    const cached = (await getCachedJson(cacheKey)) as ListTrendingReposResponse | null;
-    if (cached?.repos?.length) return cached;
-
-    const repos = await fetchTrendingRepos(req);
-    const result: ListTrendingReposResponse = { repos, pagination: undefined };
-    if (repos.length > 0) {
-      setCachedJson(cacheKey, result, REDIS_CACHE_TTL).catch(() => {});
-    }
-    return result;
+    const result = await cachedFetchJson<ListTrendingReposResponse>(cacheKey, REDIS_CACHE_TTL, async () => {
+      const repos = await fetchTrendingRepos(req);
+      return repos.length > 0 ? { repos, pagination: undefined } : null;
+    });
+    return result || { repos: [], pagination: undefined };
   } catch {
     return { repos: [], pagination: undefined };
   }

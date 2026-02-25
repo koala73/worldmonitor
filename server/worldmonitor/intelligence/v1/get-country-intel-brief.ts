@@ -6,7 +6,7 @@ import type {
   GetCountryIntelBriefResponse,
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
-import { getCachedJson, setCachedJson } from '../../../_shared/redis';
+import { cachedFetchJson } from '../../../_shared/redis';
 import { UPSTREAM_TIMEOUT_MS, GROQ_API_URL, GROQ_MODEL, TIER1_COUNTRIES } from './_shared';
 import { CHROME_UA } from '../../../_shared/constants';
 
@@ -36,9 +36,6 @@ export async function getCountryIntelBrief(
   if (!apiKey) return empty;
 
   const cacheKey = `ci-sebuf:v1:${req.countryCode}`;
-  const cached = (await getCachedJson(cacheKey)) as GetCountryIntelBriefResponse | null;
-  if (cached?.brief) return cached;
-
   const countryName = TIER1_COUNTRIES[req.countryCode] || req.countryCode;
   const dateStr = new Date().toISOString().split('T')[0];
 
@@ -57,37 +54,39 @@ Rules:
 - No speculation beyond what data supports
 - Use plain language, not jargon`;
 
-  try {
-    const resp = await fetch(GROQ_API_URL, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
-      body: JSON.stringify({
+  const result = await cachedFetchJson<GetCountryIntelBriefResponse>(cacheKey, INTEL_CACHE_TTL, async () => {
+    try {
+      const resp = await fetch(GROQ_API_URL, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
+        body: JSON.stringify({
+          model: GROQ_MODEL,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: `Country: ${countryName} (${req.countryCode})` },
+          ],
+          temperature: 0.4,
+          max_tokens: 900,
+        }),
+        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+      });
+
+      if (!resp.ok) return null;
+      const data = (await resp.json()) as { choices?: Array<{ message?: { content?: string } }> };
+      const brief = data.choices?.[0]?.message?.content?.trim() || '';
+      if (!brief) return null;
+
+      return {
+        countryCode: req.countryCode,
+        countryName,
+        brief,
         model: GROQ_MODEL,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: `Country: ${countryName} (${req.countryCode})` },
-        ],
-        temperature: 0.4,
-        max_tokens: 900,
-      }),
-      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-    });
+        generatedAt: Date.now(),
+      };
+    } catch {
+      return null;
+    }
+  });
 
-    if (!resp.ok) return empty;
-    const data = (await resp.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    const brief = data.choices?.[0]?.message?.content?.trim() || '';
-
-    const result: GetCountryIntelBriefResponse = {
-      countryCode: req.countryCode,
-      countryName,
-      brief,
-      model: GROQ_MODEL,
-      generatedAt: Date.now(),
-    };
-
-    if (brief) await setCachedJson(cacheKey, result, INTEL_CACHE_TTL);
-    return result;
-  } catch {
-    return empty;
-  }
+  return result || empty;
 }

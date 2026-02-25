@@ -7,7 +7,7 @@ import type {
   SeverityLevel,
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
-import { getCachedJson, setCachedJson } from '../../../_shared/redis';
+import { cachedFetchJson } from '../../../_shared/redis';
 import { UPSTREAM_TIMEOUT_MS, GROQ_API_URL, GROQ_MODEL, hashString } from './_shared';
 import { CHROME_UA } from '../../../_shared/constants';
 
@@ -50,22 +50,13 @@ export async function classifyEvent(
   if (!title) return { classification: undefined };
 
   const cacheKey = `classify:sebuf:v1:${hashString(title.toLowerCase())}`;
-  const cached = (await getCachedJson(cacheKey)) as { level: string; category: string } | null;
-  if (cached?.level && cached?.category) {
-    return {
-      classification: {
-        category: cached.category,
-        subcategory: cached.level,
-        severity: mapLevelToSeverity(cached.level),
-        confidence: 0.9,
-        analysis: '',
-        entities: [],
-      },
-    };
-  }
 
-  try {
-    const systemPrompt = `You classify news headlines into threat level and category. Return ONLY valid JSON, no other text.
+  const cached = await cachedFetchJson<{ level: string; category: string; timestamp: number }>(
+    cacheKey,
+    CLASSIFY_CACHE_TTL,
+    async () => {
+      try {
+        const systemPrompt = `You classify news headlines into threat level and category. Return ONLY valid JSON, no other text.
 
 Levels: critical, high, medium, low, info
 Categories: conflict, protest, disaster, diplomatic, economic, terrorism, cyber, health, environmental, military, crime, infrastructure, tech, general
@@ -74,50 +65,54 @@ Focus: geopolitical events, conflicts, disasters, diplomacy. Classify by real-wo
 
 Return: {"level":"...","category":"..."}`;
 
-    const resp = await fetch(GROQ_API_URL, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
-      body: JSON.stringify({
-        model: GROQ_MODEL,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: title },
-        ],
-        temperature: 0,
-        max_tokens: 50,
-      }),
-      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-    });
+        const resp = await fetch(GROQ_API_URL, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
+          body: JSON.stringify({
+            model: GROQ_MODEL,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: title },
+            ],
+            temperature: 0,
+            max_tokens: 50,
+          }),
+          signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+        });
 
-    if (!resp.ok) return { classification: undefined };
-    const data = (await resp.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    const raw = data.choices?.[0]?.message?.content?.trim();
-    if (!raw) return { classification: undefined };
+        if (!resp.ok) return null;
+        const data = (await resp.json()) as { choices?: Array<{ message?: { content?: string } }> };
+        const raw = data.choices?.[0]?.message?.content?.trim();
+        if (!raw) return null;
 
-    let parsed: { level?: string; category?: string };
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      return { classification: undefined };
-    }
+        let parsed: { level?: string; category?: string };
+        try {
+          parsed = JSON.parse(raw);
+        } catch {
+          return null;
+        }
 
-    const level = VALID_LEVELS.includes(parsed.level ?? '') ? parsed.level! : null;
-    const category = VALID_CATEGORIES.includes(parsed.category ?? '') ? parsed.category! : null;
-    if (!level || !category) return { classification: undefined };
+        const level = VALID_LEVELS.includes(parsed.level ?? '') ? parsed.level! : null;
+        const category = VALID_CATEGORIES.includes(parsed.category ?? '') ? parsed.category! : null;
+        if (!level || !category) return null;
 
-    await setCachedJson(cacheKey, { level, category, timestamp: Date.now() }, CLASSIFY_CACHE_TTL);
+        return { level, category, timestamp: Date.now() };
+      } catch {
+        return null;
+      }
+    },
+  );
 
-    return {
-      classification: {
-        category,
-        subcategory: level,
-        severity: mapLevelToSeverity(level),
-        confidence: 0.9,
-        analysis: '',
-        entities: [],
-      },
-    };
-  } catch {
-    return { classification: undefined };
-  }
+  if (!cached?.level || !cached?.category) return { classification: undefined };
+
+  return {
+    classification: {
+      category: cached.category,
+      subcategory: cached.level,
+      severity: mapLevelToSeverity(cached.level),
+      confidence: 0.9,
+      analysis: '',
+      entities: [],
+    },
+  };
 }

@@ -11,7 +11,7 @@ import type {
 
 import { UPSTREAM_TIMEOUT_MS } from './_shared';
 import { CHROME_UA } from '../../../_shared/constants';
-import { getCachedJson, setCachedJson } from '../../../_shared/redis';
+import { cachedFetchJson } from '../../../_shared/redis';
 
 const REDIS_CACHE_KEY = 'intel:pizzint:v1';
 const REDIS_CACHE_TTL = 600; // 10 min
@@ -32,38 +32,36 @@ export async function getPizzintStatus(
   _ctx: ServerContext,
   req: GetPizzintStatusRequest,
 ): Promise<GetPizzintStatusResponse> {
-  // Redis shared cache
   const cacheKey = `${REDIS_CACHE_KEY}:${req.includeGdelt ? 'gdelt' : 'base'}`;
-  const cached = (await getCachedJson(cacheKey)) as GetPizzintStatusResponse | null;
-  if (cached?.pizzint) return cached;
 
-  let pizzint: PizzintStatus | undefined;
-  try {
-    const resp = await fetch(PIZZINT_API, {
-      headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-    });
-    if (!resp.ok) throw new Error(`PizzINT API returned ${resp.status}`);
+  const result = await cachedFetchJson<GetPizzintStatusResponse>(cacheKey, REDIS_CACHE_TTL, async () => {
+    let pizzint: PizzintStatus | undefined;
+    try {
+      const resp = await fetch(PIZZINT_API, {
+        headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
+        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+      });
+      if (!resp.ok) throw new Error(`PizzINT API returned ${resp.status}`);
 
-    const raw = (await resp.json()) as {
-      success?: boolean;
-      data?: Array<{
-        place_id: string;
-        name: string;
-        address: string;
-        current_popularity: number;
-        percentage_of_usual: number | null;
-        is_spike: boolean;
-        spike_magnitude: number | null;
-        data_source: string;
-        recorded_at: string;
-        data_freshness: string;
-        is_closed_now?: boolean;
-        lat?: number;
-        lng?: number;
-      }>;
-    };
-    if (raw.success && raw.data) {
+      const raw = (await resp.json()) as {
+        success?: boolean;
+        data?: Array<{
+          place_id: string;
+          name: string;
+          address: string;
+          current_popularity: number;
+          percentage_of_usual: number | null;
+          is_spike: boolean;
+          spike_magnitude: number | null;
+          data_source: string;
+          recorded_at: string;
+          data_freshness: string;
+          is_closed_now?: boolean;
+          lat?: number;
+          lng?: number;
+        }>;
+      };
+      if (raw.success && raw.data) {
         const locations: PizzintLocation[] = raw.data.map((d) => ({
           placeId: d.place_id,
           name: d.name,
@@ -113,45 +111,46 @@ export async function getPizzintStatus(
       }
     } catch (_) { /* PizzINT unavailable — continue to GDELT */ }
 
-  // Fetch GDELT tension pairs
-  let tensionPairs: GdeltTensionPair[] = [];
-  if (req.includeGdelt) {
-    try {
-      const url = `${GDELT_BATCH_API}?pairs=${encodeURIComponent(DEFAULT_GDELT_PAIRS)}&method=gpr`;
-      const resp = await fetch(url, {
-        headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-      });
-      if (resp.ok) {
-        const raw = (await resp.json()) as Record<string, Array<{ t: number; v: number }>>;
-        tensionPairs = Object.entries(raw).map(([pairKey, dataPoints]) => {
-          const countries = pairKey.split('_');
-          const latest = dataPoints[dataPoints.length - 1]!;
-          const prev = dataPoints.length > 1 ? dataPoints[dataPoints.length - 2]! : latest;
-          const change = prev.v > 0 ? ((latest.v - prev.v) / prev.v) * 100 : 0;
-          const trend: TrendDirection = change > 5
-            ? 'TREND_DIRECTION_RISING'
-            : change < -5
-              ? 'TREND_DIRECTION_FALLING'
-              : 'TREND_DIRECTION_STABLE';
-
-          return {
-            id: pairKey,
-            countries,
-            label: countries.map((c) => c.toUpperCase()).join(' - '),
-            score: latest?.v ?? 0,
-            trend,
-            changePercent: Math.round(change * 10) / 10,
-            region: 'global',
-          };
+    // Fetch GDELT tension pairs
+    let tensionPairs: GdeltTensionPair[] = [];
+    if (req.includeGdelt) {
+      try {
+        const url = `${GDELT_BATCH_API}?pairs=${encodeURIComponent(DEFAULT_GDELT_PAIRS)}&method=gpr`;
+        const resp = await fetch(url, {
+          headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
+          signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
         });
-      }
-    } catch { /* gdelt unavailable */ }
-  }
+        if (resp.ok) {
+          const raw = (await resp.json()) as Record<string, Array<{ t: number; v: number }>>;
+          tensionPairs = Object.entries(raw).map(([pairKey, dataPoints]) => {
+            const countries = pairKey.split('_');
+            const latest = dataPoints[dataPoints.length - 1]!;
+            const prev = dataPoints.length > 1 ? dataPoints[dataPoints.length - 2]! : latest;
+            const change = prev.v > 0 ? ((latest.v - prev.v) / prev.v) * 100 : 0;
+            const trend: TrendDirection = change > 5
+              ? 'TREND_DIRECTION_RISING'
+              : change < -5
+                ? 'TREND_DIRECTION_FALLING'
+                : 'TREND_DIRECTION_STABLE';
 
-  const result: GetPizzintStatusResponse = { pizzint, tensionPairs };
-  if (pizzint) {
-    setCachedJson(cacheKey, result, REDIS_CACHE_TTL).catch(() => {});
-  }
-  return result;
+            return {
+              id: pairKey,
+              countries,
+              label: countries.map((c) => c.toUpperCase()).join(' - '),
+              score: latest?.v ?? 0,
+              trend,
+              changePercent: Math.round(change * 10) / 10,
+              region: 'global',
+            };
+          });
+        }
+      } catch { /* gdelt unavailable */ }
+    }
+
+    // Only cache if PizzINT data was retrieved
+    if (!pizzint) return null;
+    return { pizzint, tensionPairs };
+  });
+
+  return result || { pizzint: undefined, tensionPairs: [] };
 }

@@ -13,7 +13,7 @@ import type {
   UcdpViolenceEvent,
   UcdpViolenceType,
 } from '../../../../src/generated/server/worldmonitor/conflict/v1/service_server';
-import { getCachedJson, setCachedJson } from '../../../_shared/redis';
+import { cachedFetchJson, setCachedJson } from '../../../_shared/redis';
 import { CHROME_UA } from '../../../_shared/constants';
 
 const UCDP_PAGE_SIZE = 1000;
@@ -214,31 +214,31 @@ export async function listUcdpEvents(
   _ctx: ServerContext,
   req: ListUcdpEventsRequest,
 ): Promise<ListUcdpEventsResponse> {
-  // Check Redis cache first
-  const cached = await getCachedJson(CACHE_KEY) as UcdpViolenceEvent[] | null;
-  if (cached && Array.isArray(cached) && cached.length > 0) {
-    let events = cached;
-    if (req.country) events = events.filter((e) => e.country === req.country);
-    return { events, pagination: undefined };
-  }
-
-  // Check in-memory fallback cache
+  // Check in-memory fallback cache before any async ops
   if (fallbackCache.data && (Date.now() - fallbackCache.timestamp) < fallbackCache.ttlMs) {
     let events = fallbackCache.data;
     if (req.country) events = events.filter((e) => e.country === req.country);
     return { events, pagination: undefined };
   }
 
-  try {
+  // Primary Redis cache + fetch with in-flight dedup
+  const cached = await cachedFetchJson<UcdpViolenceEvent[]>(CACHE_KEY, CACHE_TTL_FULL, async () => {
     const events = await fetchUcdpGedEvents(req);
+    return events.length > 0 ? events : null;
+  });
+
+  if (cached && Array.isArray(cached) && cached.length > 0) {
+    let events = cached;
+    if (req.country) events = events.filter((e) => e.country === req.country);
     return { events, pagination: undefined };
-  } catch {
-    // Last resort: stale fallback data
-    if (fallbackCache.data) {
-      let events = fallbackCache.data;
-      if (req.country) events = events.filter((e) => e.country === req.country);
-      return { events, pagination: undefined };
-    }
-    return { events: [], pagination: undefined };
   }
+
+  // Last resort: stale fallback data
+  if (fallbackCache.data) {
+    let events = fallbackCache.data;
+    if (req.country) events = events.filter((e) => e.country === req.country);
+    return { events, pagination: undefined };
+  }
+
+  return { events: [], pagination: undefined };
 }

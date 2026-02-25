@@ -18,7 +18,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/climate/v1/service_server';
 
 import { CHROME_UA } from '../../../_shared/constants';
-import { getCachedJson, setCachedJson } from '../../../_shared/redis';
+import { cachedFetchJson } from '../../../_shared/redis';
 
 const REDIS_CACHE_KEY = 'climate:anomalies:v1';
 const REDIS_CACHE_TTL = 10800; // 3h — Open-Meteo Archive uses ERA5 reanalysis with 2-7 day lag
@@ -139,36 +139,30 @@ export const listClimateAnomalies: ClimateServiceHandler['listClimateAnomalies']
   _ctx: ServerContext,
   _req: ListClimateAnomaliesRequest,
 ): Promise<ListClimateAnomaliesResponse> => {
-  // Redis shared cache
-  const cached = (await getCachedJson(REDIS_CACHE_KEY)) as ListClimateAnomaliesResponse | null;
-  if (cached?.anomalies?.length) return cached;
+  const result = await cachedFetchJson<ListClimateAnomaliesResponse>(
+    REDIS_CACHE_KEY,
+    REDIS_CACHE_TTL,
+    async () => {
+      const endDate = new Date().toISOString().slice(0, 10);
+      const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+        .toISOString()
+        .slice(0, 10);
 
-  // Compute 30-day date range
-  const endDate = new Date().toISOString().slice(0, 10);
-  const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-    .toISOString()
-    .slice(0, 10);
+      const results = await Promise.allSettled(
+        ZONES.map((zone) => fetchZone(zone, startDate, endDate)),
+      );
 
-  // Fetch all 15 zones in parallel
-  const results = await Promise.allSettled(
-    ZONES.map((zone) => fetchZone(zone, startDate, endDate)),
-  );
-
-  // Collect fulfilled non-null results, log errors
-  const anomalies: ClimateAnomaly[] = [];
-  for (const result of results) {
-    if (result.status === 'fulfilled') {
-      if (result.value != null) {
-        anomalies.push(result.value);
+      const anomalies: ClimateAnomaly[] = [];
+      for (const r of results) {
+        if (r.status === 'fulfilled') {
+          if (r.value != null) anomalies.push(r.value);
+        } else {
+          console.error('[CLIMATE]', r.reason?.message ?? r.reason);
+        }
       }
-    } else {
-      console.error('[CLIMATE]', result.reason?.message ?? result.reason);
-    }
-  }
 
-  const result: ListClimateAnomaliesResponse = { anomalies, pagination: undefined };
-  if (anomalies.length > 0) {
-    setCachedJson(REDIS_CACHE_KEY, result, REDIS_CACHE_TTL).catch(() => {});
-  }
-  return result;
+      return anomalies.length > 0 ? { anomalies, pagination: undefined } : null;
+    },
+  );
+  return result || { anomalies: [], pagination: undefined };
 };

@@ -7,7 +7,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/infrastructure/v1/service_server';
 
 import { UPSTREAM_TIMEOUT_MS } from './_shared';
-import { getCachedJson, setCachedJson } from '../../../_shared/redis';
+import { cachedFetchJson } from '../../../_shared/redis';
 import { CHROME_UA } from '../../../_shared/constants';
 
 // ========================================================================
@@ -292,15 +292,10 @@ export async function listServiceStatuses(
   req: ListServiceStatusesRequest,
 ): Promise<ListServiceStatusesResponse> {
   try {
-    // Check Redis cache first to avoid hammering 30+ external status pages (H-8 fix)
-    const cached = (await getCachedJson(INFRA_CACHE_KEY)) as ServiceStatus[] | null;
-    const results = cached && Array.isArray(cached)
-      ? cached
-      : await (async () => {
-          const fresh = await Promise.all(SERVICES.map(checkServiceStatus));
-          await setCachedJson(INFRA_CACHE_KEY, fresh, INFRA_CACHE_TTL);
-          return fresh;
-        })();
+    const results = await cachedFetchJson<ServiceStatus[]>(INFRA_CACHE_KEY, INFRA_CACHE_TTL, async () => {
+      const fresh = await Promise.all(SERVICES.map(checkServiceStatus));
+      return fresh.length > 0 ? fresh : null;
+    }) || [];
 
     // Apply optional status filter
     let filtered = results;

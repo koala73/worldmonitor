@@ -14,7 +14,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/economic/v1/service_server';
 
 import { CHROME_UA } from '../../../_shared/constants';
-import { getCachedJson, setCachedJson } from '../../../_shared/redis';
+import { cachedFetchJson } from '../../../_shared/redis';
 
 const REDIS_CACHE_KEY = 'economic:capacity:v1';
 const REDIS_CACHE_TTL = 86400; // 24h — annual data barely changes
@@ -140,48 +140,41 @@ export async function getEnergyCapacity(
     const sourceKey = requestedSources.map(s => s.code).sort().join(',');
     const cacheKey = `${REDIS_CACHE_KEY}:${sourceKey}:${years}`;
 
-    // Check Redis cache
-    const cached = (await getCachedJson(cacheKey)) as GetEnergyCapacityResponse | null;
-    if (cached?.series?.length) return cached;
+    const result = await cachedFetchJson<GetEnergyCapacityResponse>(cacheKey, REDIS_CACHE_TTL, async () => {
+      // Fetch capacity for each source
+      const seriesResults: EnergyCapacitySeries[] = [];
 
-    // Fetch capacity for each source
-    const seriesResults: EnergyCapacitySeries[] = [];
+      for (const source of requestedSources) {
+        try {
+          const yearTotals = source.code === 'COL'
+            ? await fetchCoalCapacity(apiKey, startYear)
+            : await fetchCapacityForSource(source.code, apiKey, startYear);
 
-    for (const source of requestedSources) {
-      try {
-        const yearTotals = source.code === 'COL'
-          ? await fetchCoalCapacity(apiKey, startYear)
-          : await fetchCapacityForSource(source.code, apiKey, startYear);
+          // Convert to sorted array (oldest first)
+          const dataPoints: EnergyCapacityYear[] = Array.from(yearTotals.entries())
+            .sort(([a], [b]) => a - b)
+            .map(([year, mw]) => ({ year, capacityMw: mw }));
 
-        // Convert to sorted array (oldest first)
-        const dataPoints: EnergyCapacityYear[] = Array.from(yearTotals.entries())
-          .sort(([a], [b]) => a - b)
-          .map(([year, mw]) => ({ year, capacityMw: mw }));
-
-        seriesResults.push({
-          energySource: source.code,
-          name: source.name,
-          data: dataPoints,
-        });
-      } catch {
-        // Individual source failure: include empty series
-        seriesResults.push({
-          energySource: source.code,
-          name: source.name,
-          data: [],
-        });
+          seriesResults.push({
+            energySource: source.code,
+            name: source.name,
+            data: dataPoints,
+          });
+        } catch {
+          // Individual source failure: include empty series
+          seriesResults.push({
+            energySource: source.code,
+            name: source.name,
+            data: [],
+          });
+        }
       }
-    }
 
-    const result: GetEnergyCapacityResponse = { series: seriesResults };
+      const hasData = seriesResults.some(s => s.data.length > 0);
+      return hasData ? { series: seriesResults } : null;
+    });
 
-    // Cache if we got data
-    const hasData = seriesResults.some(s => s.data.length > 0);
-    if (hasData) {
-      setCachedJson(cacheKey, result, REDIS_CACHE_TTL).catch(() => {});
-    }
-
-    return result;
+    return result || { series: [] };
   } catch {
     return { series: [] };
   }

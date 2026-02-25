@@ -8,7 +8,7 @@ import type {
   SeverityLevel,
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
-import { getCachedJson, setCachedJson } from '../../../_shared/redis';
+import { getCachedJson, setCachedJson, cachedFetchJson } from '../../../_shared/redis';
 import { TIER1_COUNTRIES } from './_shared';
 import { fetchAcledCached } from '../../../_shared/acled';
 
@@ -160,26 +160,24 @@ export async function getRiskScores(
   _ctx: ServerContext,
   _req: GetRiskScoresRequest,
 ): Promise<GetRiskScoresResponse> {
-  // Check cache
-  const cached = (await getCachedJson(RISK_CACHE_KEY)) as GetRiskScoresResponse | null;
-  if (cached) return cached;
-
   try {
-    const protests = await fetchACLEDProtests();
-    const ciiScores = computeCIIScores(protests);
-    const strategicRisks = computeStrategicRisks(ciiScores);
-    const result: GetRiskScoresResponse = { ciiScores, strategicRisks };
+    const result = await cachedFetchJson<GetRiskScoresResponse>(
+      RISK_CACHE_KEY,
+      RISK_CACHE_TTL,
+      async () => {
+        const protests = await fetchACLEDProtests();
+        const ciiScores = computeCIIScores(protests);
+        const strategicRisks = computeStrategicRisks(ciiScores);
+        const r: GetRiskScoresResponse = { ciiScores, strategicRisks };
+        await setCachedJson(RISK_STALE_CACHE_KEY, r, RISK_STALE_TTL).catch(() => {});
+        return r;
+      },
+    );
+    if (result) return result;
+  } catch { /* upstream failed — fall through to stale */ }
 
-    await Promise.all([
-      setCachedJson(RISK_CACHE_KEY, result, RISK_CACHE_TTL),
-      setCachedJson(RISK_STALE_CACHE_KEY, result, RISK_STALE_TTL),
-    ]);
-    return result;
-  } catch {
-    const stale = (await getCachedJson(RISK_STALE_CACHE_KEY)) as GetRiskScoresResponse | null;
-    if (stale) return stale;
-    // Baseline fallback
-    const ciiScores = computeCIIScores([]);
-    return { ciiScores, strategicRisks: computeStrategicRisks(ciiScores) };
-  }
+  const stale = (await getCachedJson(RISK_STALE_CACHE_KEY)) as GetRiskScoresResponse | null;
+  if (stale) return stale;
+  const ciiScores = computeCIIScores([]);
+  return { ciiScores, strategicRisks: computeStrategicRisks(ciiScores) };
 }

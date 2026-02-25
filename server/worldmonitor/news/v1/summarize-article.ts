@@ -4,7 +4,7 @@ import type {
   SummarizeArticleResponse,
 } from '../../../../src/generated/server/worldmonitor/news/v1/service_server';
 
-import { getCachedJson, setCachedJson } from '../../../_shared/redis';
+import { cachedFetchJsonWithMeta } from '../../../_shared/redis';
 import {
   CACHE_TTL_SECONDS,
   deduplicateHeadlines,
@@ -88,18 +88,80 @@ export async function summarizeArticle(
   }
 
   try {
-    // Check cache first (shared across all providers)
     const cacheKey = getCacheKey(headlines, mode, sanitizedGeoContext, variant, lang);
-    const cached = await getCachedJson(cacheKey);
-    if (cached && typeof cached === 'object' && (cached as any).summary) {
-      const c = cached as { summary: string; model?: string };
-      console.log(`[SummarizeArticle:${provider}] Cache hit:`, cacheKey);
+
+    // Single atomic call — source tracking happens inside cachedFetchJsonWithMeta,
+    // eliminating the TOCTOU race between a separate getCachedJson and cachedFetchJson.
+    const { data: result, source } = await cachedFetchJsonWithMeta<{ summary: string; model: string; tokens: number }>(
+      cacheKey,
+      CACHE_TTL_SECONDS,
+      async () => {
+        const uniqueHeadlines = deduplicateHeadlines(headlines.slice(0, 5));
+        const { systemPrompt, userPrompt } = buildArticlePrompts(headlines, uniqueHeadlines, {
+          mode,
+          geoContext: sanitizedGeoContext,
+          variant,
+          lang,
+        });
+
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: { ...providerHeaders, 'User-Agent': CHROME_UA },
+          body: JSON.stringify({
+            model,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userPrompt },
+            ],
+            temperature: 0.3,
+            max_tokens: 150,
+            top_p: 0.9,
+            ...extraBody,
+          }),
+          signal: AbortSignal.timeout(30_000),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`[SummarizeArticle:${provider}] API error:`, response.status, errorText);
+          throw new Error(response.status === 429 ? 'Rate limited' : `${provider} API error`);
+        }
+
+        const data = await response.json() as any;
+        const tokens = (data.usage?.total_tokens as number) || 0;
+        const message = data.choices?.[0]?.message;
+        let rawContent = typeof message?.content === 'string' ? message.content.trim() : '';
+
+        rawContent = rawContent
+          .replace(/<think>[\s\S]*?<\/think>/gi, '')
+          .replace(/<\|thinking\|>[\s\S]*?<\|\/thinking\|>/gi, '')
+          .replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '')
+          .replace(/<reflection>[\s\S]*?<\/reflection>/gi, '')
+          .trim();
+
+        rawContent = rawContent
+          .replace(/<think>[\s\S]*/gi, '')
+          .replace(/<\|thinking\|>[\s\S]*/gi, '')
+          .replace(/<reasoning>[\s\S]*/gi, '')
+          .replace(/<reflection>[\s\S]*/gi, '')
+          .trim();
+
+        if (['brief', 'analysis'].includes(mode) && hasReasoningPreamble(rawContent)) {
+          console.warn(`[SummarizeArticle:${provider}] Reasoning preamble detected, rejecting`);
+          return null;
+        }
+
+        return rawContent ? { summary: rawContent, model, tokens } : null;
+      },
+    );
+
+    if (result?.summary) {
       return {
-        summary: c.summary,
-        model: c.model || model,
-        provider: 'cache',
-        cached: true,
-        tokens: 0,
+        summary: result.summary,
+        model: result.model || model,
+        provider: source === 'cache' ? 'cache' : provider,
+        cached: source === 'cache',
+        tokens: source === 'cache' ? 0 : (result.tokens || 0),
         fallback: false,
         skipped: false,
         reason: '',
@@ -108,126 +170,16 @@ export async function summarizeArticle(
       };
     }
 
-    // Deduplicate similar headlines (cap at 5 to reduce entity conflation in small models)
-    const uniqueHeadlines = deduplicateHeadlines(headlines.slice(0, 5));
-    const { systemPrompt, userPrompt } = buildArticlePrompts(headlines, uniqueHeadlines, {
-      mode,
-      geoContext: sanitizedGeoContext,
-      variant,
-      lang,
-    });
-
-    // LLM call
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: { ...providerHeaders, 'User-Agent': CHROME_UA },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature: 0.3,
-        max_tokens: 150,
-        top_p: 0.9,
-        ...extraBody,
-      }),
-      signal: AbortSignal.timeout(30_000),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[SummarizeArticle:${provider}] API error:`, response.status, errorText);
-
-      if (response.status === 429) {
-        return {
-          summary: '',
-          model: '',
-          provider: provider,
-          cached: false,
-          tokens: 0,
-          fallback: true,
-          skipped: false,
-          reason: '',
-          error: 'Rate limited',
-          errorType: '',
-        };
-      }
-
-      return {
-        summary: '',
-        model: '',
-        provider: provider,
-        cached: false,
-        tokens: 0,
-        fallback: true,
-        skipped: false,
-        reason: '',
-        error: `${provider} API error`,
-        errorType: '',
-      };
-    }
-
-    const data = await response.json() as any;
-    const message = data.choices?.[0]?.message;
-    let rawContent = typeof message?.content === 'string' ? message.content.trim() : '';
-
-    // Strip thinking/reasoning tags from various model formats
-    rawContent = rawContent
-      .replace(/<think>[\s\S]*?<\/think>/gi, '')
-      .replace(/<\|thinking\|>[\s\S]*?<\|\/thinking\|>/gi, '')
-      .replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '')
-      .replace(/<reflection>[\s\S]*?<\/reflection>/gi, '')
-      .trim();
-
-    // Strip unterminated thinking blocks (no closing tag)
-    rawContent = rawContent
-      .replace(/<think>[\s\S]*/gi, '')
-      .replace(/<\|thinking\|>[\s\S]*/gi, '')
-      .replace(/<reasoning>[\s\S]*/gi, '')
-      .replace(/<reflection>[\s\S]*/gi, '')
-      .trim();
-
-    // Reject plain-text reasoning for summarization modes only
-    if (['brief', 'analysis'].includes(mode) && hasReasoningPreamble(rawContent)) {
-      console.warn(`[SummarizeArticle:${provider}] Reasoning preamble detected, rejecting`);
-      rawContent = '';
-    }
-
-    const summary = rawContent;
-
-    if (!summary) {
-      return {
-        summary: '',
-        model: '',
-        provider: provider,
-        cached: false,
-        tokens: 0,
-        fallback: true,
-        skipped: false,
-        reason: '',
-        error: 'Empty response',
-        errorType: '',
-      };
-    }
-
-    // Store in cache (shared across all providers)
-    await setCachedJson(cacheKey, {
-      summary,
-      model,
-      timestamp: Date.now(),
-    }, CACHE_TTL_SECONDS);
-
     return {
-      summary,
-      model,
+      summary: '',
+      model: '',
       provider: provider,
       cached: false,
-      tokens: data.usage?.total_tokens || 0,
-      fallback: false,
+      tokens: 0,
+      fallback: true,
       skipped: false,
       reason: '',
-      error: '',
+      error: 'Empty response',
       errorType: '',
     };
 

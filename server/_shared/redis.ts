@@ -119,3 +119,42 @@ export async function cachedFetchJson<T>(
   inflight.set(key, promise);
   return promise;
 }
+
+/**
+ * Like cachedFetchJson but reports the data source.
+ * Use when callers need to distinguish cache hits from fresh fetches
+ * (e.g. to set provider/cached metadata on responses).
+ *
+ * Returns { data, source } where source is:
+ *   'cache'  — served from Redis
+ *   'fresh'  — fetcher ran (leader) or joined an in-flight fetch (follower)
+ */
+export async function cachedFetchJsonWithMeta<T>(
+  key: string,
+  ttlSeconds: number,
+  fetcher: () => Promise<T>,
+): Promise<{ data: T | null; source: 'cache' | 'fresh' }> {
+  const cached = await getCachedJson(key);
+  if (cached !== null) return { data: cached as T, source: 'cache' };
+
+  const existing = inflight.get(key);
+  if (existing) {
+    const data = (await existing) as T;
+    return { data, source: 'fresh' };
+  }
+
+  const promise = fetcher()
+    .then(async (result) => {
+      if (result != null) {
+        await setCachedJson(key, result, ttlSeconds);
+      }
+      return result;
+    })
+    .finally(() => {
+      inflight.delete(key);
+    });
+
+  inflight.set(key, promise);
+  const data = await promise;
+  return { data, source: 'fresh' };
+}
