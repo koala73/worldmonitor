@@ -1,0 +1,150 @@
+{
+  "version": 1,
+  "skills": {
+    "ab-test-setup": {
+      "source": "coreyhaines31/marketingskills",
+      "sourceType": "github",
+      "computedHash": "ba045a5195bb6b2a084b0daa10fa364f942f6121ffc568e4ab5ca01da6a09c30"
+    },
+    "ad-creative": {
+      "source": "coreyhaines31/marketingskills",
+      "sourceType": "github",
+      "computedHash": "1df12a926edaaf35751828d43f36e036d8519c4af0cc06221baebf1aebee0228"
+    },
+    "ai-seo": {
+      "source": "coreyhaines31/marketingskills",
+      "sourceType": "github",
+      "computedHash": "33af140df6f3040b5f89e352c9f49a623f5049abb80ae3195cd47d578616e139"
+    },
+    "analytics-tracking": {
+      "source": "coreyhaines31/marketingskills",
+      "sourceType": "github",
+      "computedHash": "96c10fd21185cf403b34f9a3af87c9e778708c25db8c6e006ed896afdf2cc8d5"
+    },
+    "churn-prevention": {
+      "source": "coreyhaines31/marketingskills",
+      "sourceType": "github",
+      "computedHash": "b3d61eac3dcb6553c5fdb1f379c7d6864f37d4c0217f9dd4aea478eb172bf329"
+    },
+    "cold-email": {
+      "source": "coreyhaines31/marketingskills",
+      "sourceType": "github",
+      "computedHash": "f406fe65455983eb6446c6dd5572a2235d1099f92a5cac38293e71267c84141f"
+    },
+    "competitor-alternatives": {
+      "source": "coreyhaines31/marketingskills",
+      "sourceType": "github",
+      "computedHash": "f29cc163c4ac65d4b412529d82459ea5128278043aacd4881e5339ddbe902a99"
+    },
+    "content-strategy": {
+      "source": "coreyhaines31/marketingskills",
+      "sourceType": "github",
+      "computedHash": "256d326fbdfbb234c2e61bb9fbbed923c474a7e08b666747e590e3cf84f8742a"
+    },
+    "copy-editing": {
+      "source": "coreyhaines31/marketingskills",
+      "sourceType": "github",
+      "computedHash": "1027f9ec618a1f02ddb41c89fa08512e1979985f8914c6237732654cbf238737"
+    },
+    "copywriting": {
+      "source": "coreyhaines31/marketingskills",
+      "sourceType": "github",
+      "computedHash": "39b7a636c7e254a2f08dee43db6b9f6faf6723de999a6bbce2eb5ac95a130207"
+    },
+    "email-sequence": {
+      "source": "coreyhaines31/marketingskills",
+      "sourceType": "github",
+      "computedHash": "8a5a64f0f64c14e026d59e74aeb06722ea49ef48b3a70679163ed2e660d1ac25"
+    },
+    "form-cro": {
+      "source": "coreyhaines31/marketingskills",
+      "sourceType": "github",
+      "computedHash": "7f412794d281f26faae0d79161f8287e7be97fb6c88b74e118165903936fb77a"
+    },
+    "free-tool-strategy": {
+      "source": "coreyhaines31/marketingskills",
+      "sourceType": "github",
+      "computedHash": "371e1b44d0060bd1780246dd3e8d18811a8d6fcb23d48aa8437017a7bcba614a"
+    },
+    "launch-strategy": {
+      "source": "coreyhaines31/marketingskills",
+      "sourceType": "github",
+      "computedHash": "c7254a1e9288c1adb6897c0c8ef0b0f82759894fe21c7971f9d5b62362f416d5"
+    },
+    "marketing-ideas": {
+      "source": "coreyhaines31/marketingskills",
+      "sourceType": "github",
+      "computedHash": "06ad6731a3bb329218ad88ee364551db6cce8835d0646b60def8432c5f45e804"
+    },
+    "marketing-psychology": {
+      "source": "coreyhaines31/marketingskills",
+      "sourceType": "github",
+      "computedHash": "1f9527f4b69799e8acd05966ea1f57798890948a1c8446016593c9b485e3e86d"
+    },
+    "onboarding-cro": {
+      "source": "coreyhaines31/marketingskills",
+      "sourceType": "github",
+      "computedHash": "ac591b22280ebc4bf893eddb4655355337b15cf0d38c8940c6449faf55b78602"
+    },
+    "page-cro": {
+      "source": "coreyhaines31/marketingskills",
+      "sourceType": "github",
+      "computedHash": "ac4bc45f538c8804ddf5ffe9757ef746197f33d9fde198bbb49885a98e03100a"
+    },
+    "paid-ads": {
+      "source": "coreyhaines31/marketingskills",
+      "sourceType": "github",
+      "computedHash": "e212dd0b3aa01fd5d42092767cf818938c3ed78d12bd5023cd7ec6a1719d9c03"
+    },
+    "paywall-upgrade-cro": {
+      "source": "coreyhaines31/marketingskills",
+      "sourceType": "github",
+      "computedHash": "fe2dee2b0d171f93c3c574130de1b699530911b8397e0982881bc95bd0bd90d0"
+    },
+    "popup-cro": {
+      "source": "coreyhaines31/marketingskills",
+      "sourceType": "github",
+      "computedHash": "8047da67ca79acbb8767167428fe8caa8f00922b514c9fa20ac3a5d70eda1bcd"
+    },
+    "pricing-strategy": {
+      "source": "coreyhaines31/marketingskills",
+      "sourceType": "github",
+      "computedHash": "9316806c2d2479b0006189432b32cf749cab0879d04237e8b72164431ce648d9"
+    },
+    "product-marketing-context": {
+      "source": "coreyhaines31/marketingskills",
+      "sourceType": "github",
+      "computedHash": "dc38de01e0af8422124cebe45ec1043ff83d2ce7f61d9a99575a415526861652"
+    },
+    "programmatic-seo": {
+      "source": "coreyhaines31/marketingskills",
+      "sourceType": "github",
+      "computedHash": "aae6ed1dda8bacf4980860e3ee2cc3c181f31e31d6b524cfd452015930d16a1f"
+    },
+    "referral-program": {
+      "source": "coreyhaines31/marketingskills",
+      "sourceType": "github",
+      "computedHash": "82b3aa762c7cee814eb864978e7ef67911b078abfaeb690cbe3fc034754d6f2b"
+    },
+    "schema-markup": {
+      "source": "coreyhaines31/marketingskills",
+      "sourceType": "github",
+      "computedHash": "691aca0ac4d419c806a1d13a3ce8ca565a7e6ed791bd14cd4d79e91d713e82de"
+    },
+    "seo-audit": {
+      "source": "coreyhaines31/marketingskills",
+      "sourceType": "github",
+      "computedHash": "6bd4cde58bb701b5dc90a0fae2f0ea3efc7c3e6fd2ae754083fa659930e7d39f"
+    },
+    "signup-flow-cro": {
+      "source": "coreyhaines31/marketingskills",
+      "sourceType": "github",
+      "computedHash": "6439d733383da6307724ac5fc49311449ffbe18e4891ad874cdd5be0fd2e1cfa"
+    },
+    "social-content": {
+      "source": "coreyhaines31/marketingskills",
+      "sourceType": "github",
+      "computedHash": "aaffbb6e301984ac94feb67f4eae29ad1936ecd1992e97db59dd03528ef20fd8"
+    }
+  }
+}

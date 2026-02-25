@@ -137,7 +137,8 @@
     "panelCatCryptoDigital": "คริปโต & ดิจิทัล",
     "panelCatCentralBanks": "ธนาคารกลาง & เศรษฐกิจ",
     "panelCatDeals": "ดีล & สถาบัน",
-    "panelCatGulfMena": "อ่าวเปอร์เซีย & MENA"
+    "panelCatGulfMena": "อ่าวเปอร์เซีย & MENA",
+    "panelCatTradePolicy": "นโยบายการค้า"
   },
   "panels": {
     "liveNews": "ข่าวสด",
@@ -166,6 +167,7 @@
     "polymarket": "การพยากรณ์",
     "commodities": "สินค้าโภคภัณฑ์",
     "economic": "ตัวชี้วัดเศรษฐกิจ",
+    "tradePolicy": "นโยบายการค้า",
     "finance": "การเงิน",
     "tech": "เทคโนโลยี",
     "crypto": "คริปโต",
@@ -534,6 +536,26 @@
       "cut": "cut",
       "hike": "hike",
       "hold": "hold"
+    },
+    "tradePolicy": {
+      "restrictions": "ข้อจำกัด",
+      "tariffs": "ภาษีศุลกากร",
+      "flows": "กระแสการค้า",
+      "barriers": "อุปสรรคทางการค้า",
+      "noRestrictions": "ไม่มีข้อจำกัดทางการค้าที่ใช้งานอยู่",
+      "noTariffData": "ไม่มีข้อมูลภาษีศุลกากร",
+      "noFlowData": "ไม่มีข้อมูลกระแสการค้า",
+      "noBarriers": "ไม่มีรายงานอุปสรรคทางการค้า",
+      "apiKeyMissing": "ต้องใช้คีย์ API ของ WTO — เพิ่มในการตั้งค่า",
+      "upstreamUnavailable": "ข้อมูล WTO ไม่พร้อมใช้งานชั่วคราว — แสดงข้อมูลแคช",
+      "appliedRate": "อัตราที่ใช้",
+      "boundRate": "อัตราผูกพัน",
+      "exports": "การส่งออก",
+      "imports": "การนำเข้า",
+      "yoyChange": "เปลี่ยนแปลงรายปี",
+      "inForce": "มีผลบังคับใช้",
+      "notified": "แจ้งแล้ว",
+      "terminated": "สิ้นสุด"
     },
     "gdelt": {
       "empty": "ไม่มีบทความล่าสุดสำหรับหัวข้อนี้"

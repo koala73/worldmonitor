@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Analysis Flow Settings — Playground</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #0a0a0a;
+    --bg-secondary: #111;
+    --surface: #141414;
+    --surface-hover: #1e1e1e;
+    --border: #2a2a2a;
+    --border-strong: #444;
+    --border-subtle: #1a1a1a;
+    --text: #e8e8e8;
+    --text-secondary: #ccc;
+    --text-dim: #888;
+    --text-muted: #666;
+    --text-faint: #555;
+    --accent: #fff;
+    --overlay-subtle: rgba(255,255,255,0.03);
+    --overlay-light: rgba(255,255,255,0.05);
+    --overlay-medium: rgba(255,255,255,0.1);
+    --shadow-color: rgba(0,0,0,0.5);
+    --panel-bg: #141414;
+    --panel-border: #2a2a2a;
+    --semantic-warning: #f59e0b;
+    --semantic-success: #22c55e;
+    --semantic-critical: #ef4444;
+    --link-color: #60a5fa;
+  }
+
+  body {
+    background: #050505;
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    min-height: 100vh;
+  }
+
+  /* ---- Top bar ---- */
+  .top-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 24px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+  }
+  .top-bar h1 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: 0;
+  }
+  .top-bar-sub {
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+
+  /* ---- Layout: 3 columns ---- */
+  .playground-layout {
+    display: flex;
+    min-height: calc(100vh - 45px);
+  }
+
+  /* Left: controls */
+  .controls-panel {
+    width: 280px;
+    flex-shrink: 0;
+    background: var(--bg);
+    border-right: 1px solid var(--border);
+    padding: 16px;
+    overflow-y: auto;
+  }
+
+  /* Center: preview scenes */
+  .preview-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    background: var(--bg-secondary);
+  }
+  .scenes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 32px;
+    padding: 32px;
+    justify-content: center;
+    align-items: flex-start;
+  }
+
+  /* Each scene: a labeled preview */
+  .scene {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+  .scene-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-dim);
+    padding: 4px 10px;
+    background: var(--overlay-light);
+    border-radius: 3px;
+  }
+
+  /* Prompt output at bottom */
+  .prompt-output {
+    border-top: 1px solid var(--border);
+    padding: 16px 24px;
+    background: var(--bg);
+  }
+  .prompt-output h4 {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+  }
+  .prompt-text {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 12px;
+    min-height: 48px;
+    white-space: pre-wrap;
+  }
+  .copy-btn {
+    margin-top: 8px;
+    padding: 6px 14px;
+    background: var(--overlay-light);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-size: 11px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .copy-btn:hover { background: var(--overlay-medium); border-color: var(--border-strong); }
+
+  /* ---- Controls ---- */
+  .ctrl-section { margin-bottom: 16px; }
+  .ctrl-section h3 {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    margin-bottom: 10px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid var(--border);
+  }
+  .ctrl-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .ctrl-label { font-size: 11px; color: var(--text-secondary); }
+  .ctrl-row input[type="range"] { width: 80px; accent-color: var(--link-color); }
+  .ctrl-row input[type="color"] {
+    width: 28px; height: 22px; border: 1px solid var(--border);
+    background: transparent; cursor: pointer; border-radius: 3px;
+  }
+  .ctrl-row select {
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--text); padding: 3px 6px; font-size: 11px; border-radius: 3px;
+  }
+  .ctrl-val { font-family: monospace; font-size: 10px; color: var(--text-dim); min-width: 32px; text-align: right; }
+
+  /* Presets */
+  .presets { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 14px; }
+  .preset-btn {
+    padding: 4px 8px; font-size: 10px;
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--text-secondary); border-radius: 3px; cursor: pointer; transition: all 0.15s;
+  }
+  .preset-btn:hover { background: var(--surface-hover); border-color: var(--border-strong); }
+  .preset-btn.active { background: var(--overlay-medium); border-color: var(--link-color); color: var(--accent); }
+
+  /* ============================================================
+     MOCK PANEL — exact WorldMonitor styling
+     ============================================================ */
+  .mock-panel {
+    width: 380px;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 4px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+  }
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 10px;
+    background: var(--overlay-subtle);
+    border-bottom: 1px solid var(--border);
+    border-radius: 4px 4px 0 0;
+  }
+  .panel-header-left { display: flex; align-items: center; gap: 8px; }
+  .panel-title {
+    font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 1px; color: var(--text);
+  }
+
+  /* Info button */
+  .panel-info-wrapper { position: relative; display: inline-flex; }
+  .panel-info-btn {
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 1px solid var(--text-dim); background: transparent;
+    color: var(--text-dim); font-size: 9px; font-weight: 600;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    padding: 0; transition: all 0.15s ease;
+  }
+  .panel-info-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(0,200,255,0.1); }
+
+  /* Data badge */
+  .panel-data-badge {
+    font-size: 9px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.5px; padding: 2px 6px; border-radius: 3px;
+    background: rgba(34,197,94,0.15); color: var(--semantic-success);
+  }
+  .panel-data-badge.unavailable {
+    background: rgba(239,68,68,0.15); color: var(--semantic-critical);
+  }
+
+  /* Panel content */
+  .panel-content-mock {
+    padding: 12px; min-height: 140px;
+    color: var(--text-secondary); font-size: 12px; line-height: 1.6;
+    border-radius: 0 0 4px 4px;
+  }
+
+  /* ============================================================
+     GEAR BUTTON
+     ============================================================ */
+  .ai-flow-gear-btn {
+    width: 14px; height: 14px; border: none;
+    background: transparent; color: var(--text-dim);
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    padding: 0; transition: all 0.3s ease;
+  }
+  .ai-flow-gear-btn:hover { color: var(--accent); transform: rotate(45deg); }
+  .ai-flow-gear-btn svg { width: 12px; height: 12px; }
+
+  /* ============================================================
+     POPUP — shown as standalone card (not overlapping panel)
+     ============================================================ */
+  .ai-flow-popup {
+    width: 280px;
+    background: var(--border-subtle);
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+  }
+
+  /* Arrow pointing up */
+  .ai-flow-popup-arrow {
+    width: 12px; height: 12px;
+    background: var(--border-subtle);
+    border-top: 1px solid var(--border-strong);
+    border-left: 1px solid var(--border-strong);
+    transform: rotate(45deg);
+    margin: -7px auto 0;
+    position: relative;
+    z-index: 1;
+  }
+
+  .ai-flow-popup-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 12px 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .ai-flow-popup-title {
+    font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.5px; color: var(--text);
+  }
+  .ai-flow-popup-close {
+    width: 18px; height: 18px; border: none; background: transparent;
+    color: var(--text-dim); cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; border-radius: 3px; transition: all 0.15s;
+  }
+  .ai-flow-popup-close:hover { color: var(--text); background: var(--overlay-medium); }
+
+  .ai-flow-popup-body { padding: 10px 12px; }
+
+  /* Toggle row */
+  .ai-flow-toggle-row {
+    display: flex; align-items: flex-start;
+    justify-content: space-between; gap: 10px; padding: 8px 0;
+  }
+  .ai-flow-toggle-row + .ai-flow-toggle-row { border-top: 1px solid var(--border); }
+  .ai-flow-toggle-info { flex: 1; min-width: 0; }
+  .ai-flow-toggle-label { font-size: 12px; font-weight: 500; color: var(--text); margin-bottom: 2px; }
+  .ai-flow-toggle-desc { font-size: 10px; color: var(--text-dim); line-height: 1.4; }
+  .ai-flow-toggle-warn { font-size: 10px; color: var(--semantic-warning); margin-top: 3px; line-height: 1.3; }
+
+  /* iOS toggle switch */
+  .ai-flow-switch {
+    position: relative; width: 32px; height: 18px;
+    flex-shrink: 0; margin-top: 2px;
+  }
+  .ai-flow-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+  .ai-flow-switch-track {
+    position: absolute; inset: 0;
+    background: var(--border-strong); border-radius: 18px;
+    cursor: pointer; transition: background 0.2s ease;
+  }
+  .ai-flow-switch-track::after {
+    content: ''; position: absolute; top: 2px; left: 2px;
+    width: 14px; height: 14px;
+    background: var(--text-dim); border-radius: 50%;
+    transition: transform 0.2s ease, background 0.2s ease;
+  }
+  .ai-flow-switch input:checked + .ai-flow-switch-track { background: var(--semantic-success); }
+  .ai-flow-switch input:checked + .ai-flow-switch-track::after { transform: translateX(14px); background: #fff; }
+
+  /* CTA */
+  .ai-flow-cta {
+    margin-top: 8px; padding-top: 10px;
+    border-top: 1px solid var(--border);
+  }
+  .ai-flow-cta-title { font-size: 11px; font-weight: 500; color: var(--text-secondary); margin-bottom: 3px; }
+  .ai-flow-cta-desc { font-size: 10px; color: var(--text-dim); margin-bottom: 6px; line-height: 1.4; }
+  .ai-flow-cta-link {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 11px; color: var(--link-color); text-decoration: none; transition: color 0.15s;
+  }
+  .ai-flow-cta-link:hover { color: #93c5fd; text-decoration: underline; }
+
+  /* Footer */
+  .ai-flow-popup-footer {
+    padding: 8px 12px; border-top: 1px solid var(--border);
+    font-size: 10px; color: var(--text-dim);
+    display: flex; align-items: center; gap: 6px;
+    border-radius: 0 0 6px 6px;
+  }
+  .ai-flow-status-dot {
+    width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+  }
+  .ai-flow-status-dot.active { background: var(--semantic-success); }
+  .ai-flow-status-dot.browser-only { background: var(--semantic-warning); }
+  .ai-flow-status-dot.disabled { background: var(--semantic-critical); }
+
+  /* ============================================================
+     DISABLED STATE
+     ============================================================ */
+  .insights-disabled {
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 32px 20px; text-align: center; min-height: 140px;
+  }
+  .insights-disabled-icon { font-size: 28px; margin-bottom: 10px; opacity: 0.4; }
+  .insights-disabled-title { font-size: 13px; font-weight: 500; color: var(--text-dim); margin-bottom: 6px; }
+  .insights-disabled-hint { font-size: 11px; color: var(--text-muted); line-height: 1.4; }
+
+  /* Brief content */
+  .insights-brief-title {
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 1px; color: var(--text-dim); margin-bottom: 8px;
+  }
+  .insights-brief-text { font-size: 12px; color: var(--text-secondary); line-height: 1.6; }
+  .insights-brief-text em { color: var(--semantic-warning); font-style: normal; }
+
+  /* Connector line from panel to popup */
+  .connector {
+    width: 1px; height: 24px;
+    background: var(--border-strong);
+    margin: 0 auto;
+  }
+</style>
+</head>
+<body>
+
+<!-- Top bar -->
+<div class="top-bar">
+  <h1>AI Analysis Flow Settings — Playground</h1>
+  <span class="top-bar-sub">Interactive preview of all states</span>
+</div>
+
+<div class="playground-layout">
+  <!-- Controls -->
+  <div class="controls-panel">
+    <div class="presets">
+      <button class="preset-btn active" onclick="applyPreset('default')">Default</button>
+      <button class="preset-btn" onclick="applyPreset('cloud-only')">Cloud Only</button>
+      <button class="preset-btn" onclick="applyPreset('browser-only')">Browser Only</button>
+      <button class="preset-btn" onclick="applyPreset('all-on')">All On</button>
+      <button class="preset-btn" onclick="applyPreset('all-off')">All Off</button>
+    </div>
+
+    <div class="ctrl-section">
+      <h3>Popup Dimensions</h3>
+      <div class="ctrl-row">
+        <span class="ctrl-label">Width</span>
+        <input type="range" min="240" max="340" value="280" id="ctrl-width" oninput="state.popupWidth=+this.value; updateAll()">
+        <span class="ctrl-val" id="val-width">280</span>
+      </div>
+      <div class="ctrl-row">
+        <span class="ctrl-label">Border radius</span>
+        <input type="range" min="2" max="12" value="6" id="ctrl-radius" oninput="state.popupRadius=+this.value; updateAll()">
+        <span class="ctrl-val" id="val-radius">6</span>
+      </div>
+    </div>
+
+    <div class="ctrl-section">
+      <h3>Toggle Switch</h3>
+      <div class="ctrl-row">
+        <span class="ctrl-label">Width</span>
+        <input type="range" min="28" max="44" value="32" id="ctrl-track-w" oninput="state.trackW=+this.value; updateAll()">
+        <span class="ctrl-val" id="val-track-w">32</span>
+      </div>
+      <div class="ctrl-row">
+        <span class="ctrl-label">Height</span>
+        <input type="range" min="14" max="24" value="18" id="ctrl-track-h" oninput="state.trackH=+this.value; updateAll()">
+        <span class="ctrl-val" id="val-track-h">18</span>
+      </div>
+    </div>
+
+    <div class="ctrl-section">
+      <h3>Gear Icon</h3>
+      <div class="ctrl-row">
+        <span class="ctrl-label">Size</span>
+        <input type="range" min="10" max="18" value="12" id="ctrl-gear-size" oninput="state.gearSize=+this.value; updateAll()">
+        <span class="ctrl-val" id="val-gear-size">12</span>
+      </div>
+      <div class="ctrl-row">
+        <span class="ctrl-label">Hover rotation</span>
+        <input type="range" min="0" max="180" value="45" id="ctrl-gear-rot" oninput="state.gearRotation=+this.value; updateAll()">
+        <span class="ctrl-val" id="val-gear-rot">45</span>
+      </div>
+    </div>
+
+    <div class="ctrl-section">
+      <h3>Colors</h3>
+      <div class="ctrl-row">
+        <span class="ctrl-label">Active toggle</span>
+        <input type="color" value="#22c55e" id="ctrl-active-color" oninput="state.activeColor=this.value; updateAll()">
+      </div>
+      <div class="ctrl-row">
+        <span class="ctrl-label">Warning text</span>
+        <input type="color" value="#f59e0b" id="ctrl-warn-color" oninput="state.warnColor=this.value; updateAll()">
+      </div>
+      <div class="ctrl-row">
+        <span class="ctrl-label">CTA link</span>
+        <input type="color" value="#60a5fa" id="ctrl-link-color" oninput="state.linkColor=this.value; updateAll()">
+      </div>
+    </div>
+  </div>
+
+  <!-- Preview area: shows all states side-by-side -->
+  <div class="preview-area">
+    <div class="scenes" id="scenes">
+      <!-- Populated by JS -->
+    </div>
+
+    <!-- Prompt output -->
+    <div class="prompt-output">
+      <h4>Implementation Prompt</h4>
+      <div class="prompt-text" id="prompt-text"></div>
+      <button class="copy-btn" onclick="copyPrompt()">Copy Prompt</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const GEAR_SVG = `<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd"/></svg>`;
+
+const DEFAULTS = {
+  popupWidth: 280, popupRadius: 6,
+  trackW: 32, trackH: 18,
+  gearSize: 12, gearRotation: 45,
+  activeColor: '#22c55e', warnColor: '#f59e0b', linkColor: '#60a5fa',
+};
+
+const state = { ...DEFAULTS };
+
+const SCENES = [
+  { id: 'cloud-on',      label: 'Default (Cloud ON)',        cloud: true,  browser: false },
+  { id: 'all-on',        label: 'Cloud + Browser ON',        cloud: true,  browser: true },
+  { id: 'browser-only',  label: 'Browser Only',              cloud: false, browser: true },
+  { id: 'all-off',       label: 'All OFF (Disabled State)',  cloud: false, browser: false },
+];
+
+const PRESETS = {
+  'default':      { ...DEFAULTS },
+  'cloud-only':   { ...DEFAULTS },
+  'browser-only': { ...DEFAULTS },
+  'all-on':       { ...DEFAULTS },
+  'all-off':      { ...DEFAULTS },
+};
+
+function applyPreset(name) {
+  Object.assign(state, PRESETS[name]);
+  syncControls();
+  updateAll();
+  document.querySelectorAll('.preset-btn').forEach(b =>
+    b.classList.toggle('active', b.textContent.toLowerCase().replace(/\s+/g, '-') === name)
+  );
+}
+
+function syncControls() {
+  document.getElementById('ctrl-width').value = state.popupWidth;
+  document.getElementById('ctrl-radius').value = state.popupRadius;
+  document.getElementById('ctrl-track-w').value = state.trackW;
+  document.getElementById('ctrl-track-h').value = state.trackH;
+  document.getElementById('ctrl-gear-size').value = state.gearSize;
+  document.getElementById('ctrl-gear-rot').value = state.gearRotation;
+  document.getElementById('ctrl-active-color').value = state.activeColor;
+  document.getElementById('ctrl-warn-color').value = state.warnColor;
+  document.getElementById('ctrl-link-color').value = state.linkColor;
+}
+
+function buildPanelHTML(scene) {
+  const cloud = scene.cloud;
+  const browser = scene.browser;
+  const badgeClass = (!cloud && !browser) ? 'panel-data-badge unavailable' : 'panel-data-badge';
+  const badgeText = (!cloud && !browser) ? 'UNAVAILABLE' : 'LIVE';
+
+  let contentHTML;
+  if (!cloud && !browser) {
+    contentHTML = `
+      <div class="insights-disabled">
+        <div class="insights-disabled-icon">&#x1F50C;</div>
+        <div class="insights-disabled-title">AI analysis is disabled</div>
+        <div class="insights-disabled-hint">Enable providers using the &#x2699; button above</div>
+      </div>`;
+  } else {
+    contentHTML = `
+      <div class="insights-brief-title">WORLD BRIEF</div>
+      <div class="insights-brief-text">
+        Rising tensions across <em>Eastern Europe</em> dominate global attention.
+        Markets react cautiously with mixed signals.
+        Humanitarian concerns mount in <em>Sub-Saharan Africa</em>.
+      </div>`;
+  }
+
+  return `
+    <div class="mock-panel">
+      <div class="panel-header">
+        <div class="panel-header-left">
+          <span class="panel-title">AI Insights</span>
+          <div class="panel-info-wrapper">
+            <button class="panel-info-btn" aria-label="Info">?</button>
+          </div>
+          <button class="ai-flow-gear-btn" aria-label="AI Settings">${GEAR_SVG}</button>
+        </div>
+        <span class="${badgeClass}">${badgeText}</span>
+      </div>
+      <div class="panel-content-mock">${contentHTML}</div>
+    </div>`;
+}
+
+function buildPopupHTML(scene) {
+  const cloud = scene.cloud;
+  const browser = scene.browser;
+
+  let statusClass, statusText;
+  if (cloud && browser) { statusClass = 'active'; statusText = 'Cloud AI + Browser model active'; }
+  else if (cloud) { statusClass = 'active'; statusText = 'Cloud AI active'; }
+  else if (browser) { statusClass = 'browser-only'; statusText = 'Browser model only'; }
+  else { statusClass = 'disabled'; statusText = 'No AI providers enabled'; }
+
+  const warnHTML = browser
+    ? `<div class="ai-flow-toggle-warn">&#9888; ~250MB will be downloaded to your computer</div>`
+    : '';
+
+  return `
+    <div class="ai-flow-popup">
+      <div class="ai-flow-popup-header">
+        <span class="ai-flow-popup-title">AI Analysis Settings</span>
+        <button class="ai-flow-popup-close" aria-label="Close">&times;</button>
+      </div>
+      <div class="ai-flow-popup-body">
+        <div class="ai-flow-toggle-row">
+          <div class="ai-flow-toggle-info">
+            <div class="ai-flow-toggle-label">Cloud AI (Groq &amp; OpenRouter)</div>
+            <div class="ai-flow-toggle-desc">Send headlines to cloud for AI summarization (recommended)</div>
+          </div>
+          <label class="ai-flow-switch">
+            <input type="checkbox" ${cloud ? 'checked' : ''} disabled>
+            <span class="ai-flow-switch-track"></span>
+          </label>
+        </div>
+        <div class="ai-flow-toggle-row">
+          <div class="ai-flow-toggle-info">
+            <div class="ai-flow-toggle-label">Browser Local Model</div>
+            <div class="ai-flow-toggle-desc">Run AI locally in your browser</div>
+            ${warnHTML}
+          </div>
+          <label class="ai-flow-switch">
+            <input type="checkbox" ${browser ? 'checked' : ''} disabled>
+            <span class="ai-flow-switch-track"></span>
+          </label>
+        </div>
+        <div class="ai-flow-cta">
+          <div class="ai-flow-cta-title">Want fully local AI?</div>
+          <div class="ai-flow-cta-desc">Download the desktop app for Ollama support</div>
+          <a href="#" class="ai-flow-cta-link" onclick="event.preventDefault()">
+            Download Desktop App <span style="font-size:13px">&rarr;</span>
+          </a>
+        </div>
+      </div>
+      <div class="ai-flow-popup-footer">
+        <span class="ai-flow-status-dot ${statusClass}"></span>
+        <span>${statusText}</span>
+      </div>
+    </div>`;
+}
+
+function renderScenes() {
+  const container = document.getElementById('scenes');
+  container.innerHTML = SCENES.map(scene => `
+    <div class="scene" data-scene="${scene.id}">
+      <span class="scene-label">${scene.label}</span>
+      ${buildPanelHTML(scene)}
+      <div class="connector"></div>
+      ${buildPopupHTML(scene)}
+    </div>
+  `).join('');
+}
+
+function applyDynamicStyles() {
+  const knobSize = state.trackH - 4;
+  const travel = state.trackW - knobSize - 4;
+
+  const styleId = 'dynamic-styles';
+  let el = document.getElementById(styleId);
+  if (!el) { el = document.createElement('style'); el.id = styleId; document.head.appendChild(el); }
+
+  el.textContent = `
+    .ai-flow-popup { width: ${state.popupWidth}px !important; border-radius: ${state.popupRadius}px !important; }
+    .ai-flow-popup-footer { border-radius: 0 0 ${state.popupRadius}px ${state.popupRadius}px !important; }
+    .ai-flow-gear-btn svg { width: ${state.gearSize}px !important; height: ${state.gearSize}px !important; }
+    .ai-flow-gear-btn:hover { transform: rotate(${state.gearRotation}deg) !important; }
+    .ai-flow-switch { width: ${state.trackW}px !important; height: ${state.trackH}px !important; }
+    .ai-flow-switch-track { border-radius: ${state.trackH}px !important; }
+    .ai-flow-switch-track::after { width: ${knobSize}px !important; height: ${knobSize}px !important; }
+    .ai-flow-switch input:checked + .ai-flow-switch-track::after { transform: translateX(${travel}px) !important; }
+    .ai-flow-switch input:checked + .ai-flow-switch-track { background: ${state.activeColor} !important; }
+    .ai-flow-toggle-warn { color: ${state.warnColor} !important; }
+    .ai-flow-cta-link { color: ${state.linkColor} !important; }
+  `;
+}
+
+function updateAll() {
+  renderScenes();
+  applyDynamicStyles();
+  updatePrompt();
+  document.getElementById('val-width').textContent = state.popupWidth;
+  document.getElementById('val-radius').textContent = state.popupRadius;
+  document.getElementById('val-track-w').textContent = state.trackW;
+  document.getElementById('val-track-h').textContent = state.trackH;
+  document.getElementById('val-gear-size').textContent = state.gearSize;
+  document.getElementById('val-gear-rot').textContent = state.gearRotation;
+}
+
+function updatePrompt() {
+  const parts = [];
+  if (state.popupWidth !== DEFAULTS.popupWidth) parts.push(`popup width: ${state.popupWidth}px`);
+  if (state.popupRadius !== DEFAULTS.popupRadius) parts.push(`popup border-radius: ${state.popupRadius}px`);
+  if (state.gearSize !== DEFAULTS.gearSize) parts.push(`gear icon: ${state.gearSize}px`);
+  if (state.gearRotation !== DEFAULTS.gearRotation) parts.push(`gear hover rotation: ${state.gearRotation}deg`);
+  if (state.trackW !== DEFAULTS.trackW || state.trackH !== DEFAULTS.trackH) parts.push(`toggle: ${state.trackW}x${state.trackH}px`);
+  if (state.activeColor !== DEFAULTS.activeColor) parts.push(`active color: ${state.activeColor}`);
+  if (state.warnColor !== DEFAULTS.warnColor) parts.push(`warning color: ${state.warnColor}`);
+  if (state.linkColor !== DEFAULTS.linkColor) parts.push(`link color: ${state.linkColor}`);
+
+  const el = document.getElementById('prompt-text');
+  if (parts.length === 0) {
+    el.textContent = 'Build the AI Flow Settings popup with defaults: 280px wide, 6px border-radius, 12px gear icon (45deg hover rotation), 32x18px iOS toggle switches. Green (#22c55e) for active, orange (#f59e0b) for 250MB warning, blue (#60a5fa) for CTA link. Dark theme with WorldMonitor design tokens.';
+  } else {
+    el.textContent = `Build the AI Flow Settings popup with: ${parts.join(', ')}. All other values at defaults.`;
+  }
+}
+
+function copyPrompt() {
+  navigator.clipboard.writeText(document.getElementById('prompt-text').textContent).then(() => {
+    const btn = event.target;
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy Prompt', 1500);
+  });
+}
+
+// Init
+updateAll();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package worldmonitor.trade.v1;
+
+import "worldmonitor/trade/v1/trade_data.proto";
+
+// Request for tariff timeseries data.
+message GetTariffTrendsRequest {
+  // WTO member code of reporting country (e.g. "840" = US).
+  string reporting_country = 1;
+  // WTO member code of partner country (e.g. "156" = China).
+  string partner_country = 2;
+  // Product sector filter (HS chapter). Empty = aggregate.
+  string product_sector = 3;
+  // Number of years to look back (default 10, max 30).
+  int32 years = 4;
+}
+
+// Response containing tariff trend datapoints.
+message GetTariffTrendsResponse {
+  // Tariff data points ordered by year ascending.
+  repeated TariffDataPoint datapoints = 1;
+  // ISO 8601 timestamp when data was fetched from WTO.
+  string fetched_at = 2;
+  // True if upstream fetch failed and results may be stale/empty.
+  bool upstream_unavailable = 3;
+}

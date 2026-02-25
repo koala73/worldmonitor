@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package worldmonitor.trade.v1;
+
+import "worldmonitor/trade/v1/trade_data.proto";
+
+// Request for quantitative restriction data.
+message GetTradeRestrictionsRequest {
+  // WTO member codes to filter by. Empty = all.
+  repeated string countries = 1;
+  // Max results to return (server caps at 100).
+  int32 limit = 2;
+}
+
+// Response containing trade restrictions and fetch metadata.
+message GetTradeRestrictionsResponse {
+  // List of trade restrictions.
+  repeated TradeRestriction restrictions = 1;
+  // ISO 8601 timestamp when data was fetched from WTO.
+  string fetched_at = 2;
+  // True if upstream fetch failed and results may be stale/empty.
+  bool upstream_unavailable = 3;
+}

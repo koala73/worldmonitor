@@ -39,3 +39,4 @@ export * from './ClimateAnomalyPanel';
 export * from './PopulationExposurePanel';
 export * from './InvestmentsPanel';
 export * from './UnifiedSettings';
+export * from './TradePolicyPanel';

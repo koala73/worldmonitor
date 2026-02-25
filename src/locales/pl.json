@@ -137,7 +137,8 @@
     "panelCatCryptoDigital": "Krypto & Cyfrowe",
     "panelCatCentralBanks": "Banki Centralne & Gospodarka",
     "panelCatDeals": "Transakcje & Instytucjonalne",
-    "panelCatGulfMena": "Zatoka & MENA"
+    "panelCatGulfMena": "Zatoka & MENA",
+    "panelCatTradePolicy": "Polityka Handlowa"
   },
   "panels": {
     "liveNews": "Wiadomości na żywo",
@@ -165,6 +166,7 @@
     "polymarket": "Prognozy",
     "commodities": "Towary",
     "economic": "Wskaźniki ekonomiczne",
+    "tradePolicy": "Polityka Handlowa",
     "finance": "Finanse",
     "tech": "Technologia",
     "crypto": "Krypto",
@@ -534,6 +536,26 @@
       "cut": "cut",
       "hike": "hike",
       "hold": "hold"
+    },
+    "tradePolicy": {
+      "restrictions": "Ograniczenia",
+      "tariffs": "Cła",
+      "flows": "Przepływy Handlowe",
+      "barriers": "Bariery",
+      "noRestrictions": "Brak aktywnych ograniczeń handlowych",
+      "noTariffData": "Brak dostępnych danych celnych",
+      "noFlowData": "Brak dostępnych danych o przepływach handlowych",
+      "noBarriers": "Nie zgłoszono barier handlowych",
+      "apiKeyMissing": "Wymagany klucz API WTO — dodaj go w Ustawieniach",
+      "upstreamUnavailable": "Dane WTO tymczasowo niedostępne — wyświetlanie danych z pamięci podręcznej",
+      "appliedRate": "Stawka Stosowana",
+      "boundRate": "Stawka Związana",
+      "exports": "Eksport",
+      "imports": "Import",
+      "yoyChange": "Zmiana Roczna",
+      "inForce": "Obowiązuje",
+      "notified": "Zgłoszone",
+      "terminated": "Zakończone"
     },
     "gdelt": {
       "empty": "Brak najnowszych artykułów na ten temat"

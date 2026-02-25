@@ -48,6 +48,10 @@ import {
   fetchBisData,
   fetchCyberThreats,
   drainTrendingSignals,
+  fetchTradeRestrictions,
+  fetchTariffTrends,
+  fetchTradeFlows,
+  fetchTradeBarriers,
 } from '@/services';
 import { mlWorker } from '@/services/ml-worker';
 import { clusterNewsHybrid } from '@/services/clustering';
@@ -86,6 +90,7 @@ import {
   DisplacementPanel,
   ClimateAnomalyPanel,
   PopulationExposurePanel,
+  TradePolicyPanel,
 } from '@/components';
 import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
 import { classifyNewsItem } from '@/services/positive-classifier';
@@ -160,6 +165,11 @@ export class DataLoaderManager implements AppModule {
       tasks.push({ name: 'oil', task: runGuarded('oil', () => this.loadOilAnalytics()) });
       tasks.push({ name: 'spending', task: runGuarded('spending', () => this.loadGovernmentSpending()) });
       tasks.push({ name: 'bis', task: runGuarded('bis', () => this.loadBisData()) });
+
+      // Trade policy data (FULL and FINANCE only)
+      if (SITE_VARIANT === 'full' || SITE_VARIANT === 'finance') {
+        tasks.push({ name: 'tradePolicy', task: runGuarded('tradePolicy', () => this.loadTradePolicy()) });
+      }
     }
 
     // Progress charts data (happy variant only)
@@ -1497,6 +1507,40 @@ export class DataLoaderManager implements AppModule {
       console.error('[App] BIS data failed:', e);
       this.ctx.statusPanel?.updateApi('BIS', { status: 'error' });
       dataFreshness.recordError('bis', String(e));
+    }
+  }
+
+  async loadTradePolicy(): Promise<void> {
+    const tradePanel = this.ctx.panels['trade-policy'] as TradePolicyPanel | undefined;
+    if (!tradePanel) return;
+
+    try {
+      const [restrictions, tariffs, flows, barriers] = await Promise.all([
+        fetchTradeRestrictions([], 50),
+        fetchTariffTrends('840', '156', '', 10),
+        fetchTradeFlows('840', '156', 10),
+        fetchTradeBarriers([], '', 50),
+      ]);
+
+      tradePanel.updateRestrictions(restrictions);
+      tradePanel.updateTariffs(tariffs);
+      tradePanel.updateFlows(flows);
+      tradePanel.updateBarriers(barriers);
+
+      const totalItems = restrictions.restrictions.length + tariffs.datapoints.length + flows.flows.length + barriers.barriers.length;
+      const anyUnavailable = restrictions.upstreamUnavailable || tariffs.upstreamUnavailable || flows.upstreamUnavailable || barriers.upstreamUnavailable;
+
+      this.ctx.statusPanel?.updateApi('WTO', { status: anyUnavailable ? 'warning' : totalItems > 0 ? 'ok' : 'error' });
+
+      if (totalItems > 0) {
+        dataFreshness.recordUpdate('wto_trade', totalItems);
+      } else if (anyUnavailable) {
+        dataFreshness.recordError('wto_trade', 'WTO upstream temporarily unavailable');
+      }
+    } catch (e) {
+      console.error('[App] Trade policy failed:', e);
+      this.ctx.statusPanel?.updateApi('WTO', { status: 'error' });
+      dataFreshness.recordError('wto_trade', String(e));
     }
   }
 

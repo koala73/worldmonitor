@@ -137,7 +137,8 @@
     "panelCatCryptoDigital": "Cripto y Digital",
     "panelCatCentralBanks": "Bancos Centrales y Economía",
     "panelCatDeals": "Operaciones e Institucional",
-    "panelCatGulfMena": "Golfo y MENA"
+    "panelCatGulfMena": "Golfo y MENA",
+    "panelCatTradePolicy": "Política Comercial"
   },
   "panels": {
     "liveNews": "Noticias en vivo",
@@ -165,6 +166,7 @@
     "polymarket": "Predicciones",
     "commodities": "Materias primas",
     "economic": "Indicadores económicos",
+    "tradePolicy": "Política Comercial",
     "finance": "Finanzas",
     "tech": "Tecnología",
     "crypto": "Cripto",
@@ -534,6 +536,26 @@
       "cut": "cut",
       "hike": "hike",
       "hold": "hold"
+    },
+    "tradePolicy": {
+      "restrictions": "Restricciones",
+      "tariffs": "Aranceles",
+      "flows": "Flujos Comerciales",
+      "barriers": "Barreras",
+      "noRestrictions": "No hay restricciones comerciales activas",
+      "noTariffData": "No hay datos arancelarios disponibles",
+      "noFlowData": "No hay datos de flujos comerciales disponibles",
+      "noBarriers": "No se han reportado barreras comerciales",
+      "apiKeyMissing": "Se requiere clave API de la OMC — agréguela en Configuración",
+      "upstreamUnavailable": "Datos de la OMC temporalmente no disponibles — mostrando datos en caché",
+      "appliedRate": "Tasa Aplicada",
+      "boundRate": "Tasa Consolidada",
+      "exports": "Exportaciones",
+      "imports": "Importaciones",
+      "yoyChange": "Cambio Interanual",
+      "inForce": "En Vigor",
+      "notified": "Notificado",
+      "terminated": "Terminado"
     },
     "gdelt": {
       "empty": "No hay artículos recientes para este tema."

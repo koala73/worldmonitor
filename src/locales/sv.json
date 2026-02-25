@@ -41,6 +41,7 @@
     "energy": "Energi & resurser",
     "etfFlows": "BTC ETF-spårare",
     "economic": "Ekonomiska indikatorer",
+    "tradePolicy": "Handelspolitik",
     "macroSignals": "Marknadsradar",
     "commodities": "Handelsvaror",
     "monitors": "Mina monitorer",
@@ -779,6 +780,26 @@
       "cut": "cut",
       "hike": "hike",
       "hold": "hold"
+    },
+    "tradePolicy": {
+      "restrictions": "Restriktioner",
+      "tariffs": "Tullar",
+      "flows": "Handelsflöden",
+      "barriers": "Handelsbarriärer",
+      "noRestrictions": "Inga aktiva handelsrestriktioner",
+      "noTariffData": "Inga tulldata tillgängliga",
+      "noFlowData": "Inga handelsflödesdata tillgängliga",
+      "noBarriers": "Inga handelsbarriärer rapporterade",
+      "apiKeyMissing": "WTO API-nyckel krävs — lägg till den i Inställningar",
+      "upstreamUnavailable": "WTO-data tillfälligt otillgänglig — visar cachad data",
+      "appliedRate": "Tillämpad Tullsats",
+      "boundRate": "Bunden Tullsats",
+      "exports": "Export",
+      "imports": "Import",
+      "yoyChange": "Förändring på Årsbasis",
+      "inForce": "I Kraft",
+      "notified": "Anmäld",
+      "terminated": "Avslutad"
     },
     "satelliteFires": {
       "region": "Område",
@@ -1822,7 +1843,8 @@
     "panelCatCryptoDigital": "Krypto & Digitalt",
     "panelCatCentralBanks": "Centralbanker & Ekonomi",
     "panelCatDeals": "Affärer & Institutionellt",
-    "panelCatGulfMena": "Gulfen & MENA"
+    "panelCatGulfMena": "Gulfen & MENA",
+    "panelCatTradePolicy": "Handelspolitik"
   },
   "app": {
     "title": "World Monitor",

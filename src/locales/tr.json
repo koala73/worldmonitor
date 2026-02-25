@@ -137,7 +137,8 @@
     "panelCatCryptoDigital": "Kripto & Dijital",
     "panelCatCentralBanks": "Merkez Bankaları & Ekonomi",
     "panelCatDeals": "Anlaşmalar & Kurumsal",
-    "panelCatGulfMena": "Körfez & MENA"
+    "panelCatGulfMena": "Körfez & MENA",
+    "panelCatTradePolicy": "Ticaret Politikası"
   },
   "panels": {
     "liveNews": "Canli Haberler",
@@ -166,6 +167,7 @@
     "polymarket": "Tahminler",
     "commodities": "Emtialar",
     "economic": "Ekonomik Gostergeler",
+    "tradePolicy": "Ticaret Politikası",
     "finance": "Finansal",
     "tech": "Teknoloji",
     "crypto": "Kripto",
@@ -534,6 +536,26 @@
       "cut": "cut",
       "hike": "hike",
       "hold": "hold"
+    },
+    "tradePolicy": {
+      "restrictions": "Kısıtlamalar",
+      "tariffs": "Gümrük Tarifeleri",
+      "flows": "Ticaret Akışları",
+      "barriers": "Engeller",
+      "noRestrictions": "Aktif ticaret kısıtlaması yok",
+      "noTariffData": "Tarife verisi mevcut değil",
+      "noFlowData": "Ticaret akışı verisi mevcut değil",
+      "noBarriers": "Ticaret engeli bildirilmedi",
+      "apiKeyMissing": "WTO API anahtarı gerekli — Ayarlar'dan ekleyin",
+      "upstreamUnavailable": "WTO verileri geçici olarak kullanılamıyor — önbellek verileri gösteriliyor",
+      "appliedRate": "Uygulanan Oran",
+      "boundRate": "Bağlı Oran",
+      "exports": "İhracat",
+      "imports": "İthalat",
+      "yoyChange": "Yıllık Değişim",
+      "inForce": "Yürürlükte",
+      "notified": "Bildirildi",
+      "terminated": "Sonlandırıldı"
     },
     "gdelt": {
       "empty": "Bu konu icin son makale yok"

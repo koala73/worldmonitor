@@ -137,7 +137,8 @@
     "panelCatCryptoDigital": "Crypto & Digital",
     "panelCatCentralBanks": "Central Banks & Econ",
     "panelCatDeals": "Deals & Institutional",
-    "panelCatGulfMena": "Gulf & MENA"
+    "panelCatGulfMena": "Gulf & MENA",
+    "panelCatTradePolicy": "Trade Policy"
   },
   "panels": {
     "liveNews": "Live News",
@@ -166,6 +167,7 @@
     "polymarket": "Predictions",
     "commodities": "Commodities",
     "economic": "Economic Indicators",
+    "tradePolicy": "Trade Policy",
     "finance": "Financial",
     "tech": "Technology",
     "crypto": "Crypto",
@@ -563,6 +565,26 @@
       "cut": "cut",
       "hike": "hike",
       "hold": "hold"
+    },
+    "tradePolicy": {
+      "restrictions": "Restrictions",
+      "tariffs": "Tariffs",
+      "flows": "Trade Flows",
+      "barriers": "Barriers",
+      "noRestrictions": "No active trade restrictions",
+      "noTariffData": "No tariff data available",
+      "noFlowData": "No trade flow data available",
+      "noBarriers": "No trade barriers reported",
+      "apiKeyMissing": "WTO API key required — add it in Settings",
+      "upstreamUnavailable": "WTO data temporarily unavailable — showing cached data",
+      "appliedRate": "Applied Rate",
+      "boundRate": "Bound Rate",
+      "exports": "Exports",
+      "imports": "Imports",
+      "yoyChange": "YoY Change",
+      "inForce": "In Force",
+      "notified": "Notified",
+      "terminated": "Terminated"
     },
     "gdelt": {
       "empty": "No recent articles for this topic"

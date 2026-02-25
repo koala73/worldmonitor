@@ -31,6 +31,7 @@ import {
   ClimateAnomalyPanel,
   PopulationExposurePanel,
   InvestmentsPanel,
+  TradePolicyPanel,
 } from '@/components';
 import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
 import { PositiveNewsFeedPanel } from '@/components/PositiveNewsFeedPanel';
@@ -446,6 +447,11 @@ export class PanelLayoutManager implements AppModule {
 
     const economicPanel = new EconomicPanel();
     this.ctx.panels['economic'] = economicPanel;
+
+    if (SITE_VARIANT === 'full' || SITE_VARIANT === 'finance') {
+      const tradePolicyPanel = new TradePolicyPanel();
+      this.ctx.panels['trade-policy'] = tradePolicyPanel;
+    }
 
     const africaPanel = new NewsPanel('africa', t('panels.africa'));
     this.attachRelatedAssetHandlers(africaPanel);

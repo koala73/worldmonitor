@@ -137,7 +137,8 @@
     "panelCatCryptoDigital": "Krypto & Digital",
     "panelCatCentralBanks": "Zentralbanken & Wirtschaft",
     "panelCatDeals": "Deals & Institutionell",
-    "panelCatGulfMena": "Golf & MENA"
+    "panelCatGulfMena": "Golf & MENA",
+    "panelCatTradePolicy": "Handelspolitik"
   },
   "panels": {
     "liveNews": "Live-Nachrichten",
@@ -165,6 +166,7 @@
     "polymarket": "Vorhersagen",
     "commodities": "Rohstoffe",
     "economic": "Wirtschaftsindikatoren",
+    "tradePolicy": "Handelspolitik",
     "finance": "Finanzen",
     "tech": "Technologie",
     "crypto": "Krypto",
@@ -534,6 +536,26 @@
       "cut": "cut",
       "hike": "hike",
       "hold": "hold"
+    },
+    "tradePolicy": {
+      "restrictions": "Beschränkungen",
+      "tariffs": "Zölle",
+      "flows": "Handelsströme",
+      "barriers": "Handelsbarrieren",
+      "noRestrictions": "Keine aktiven Handelsbeschränkungen",
+      "noTariffData": "Keine Zolldaten verfügbar",
+      "noFlowData": "Keine Handelsstromdaten verfügbar",
+      "noBarriers": "Keine Handelsbarrieren gemeldet",
+      "apiKeyMissing": "WTO-API-Schlüssel erforderlich — in den Einstellungen hinzufügen",
+      "upstreamUnavailable": "WTO-Daten vorübergehend nicht verfügbar — zwischengespeicherte Daten werden angezeigt",
+      "appliedRate": "Angewandter Zollsatz",
+      "boundRate": "Gebundener Zollsatz",
+      "exports": "Exporte",
+      "imports": "Importe",
+      "yoyChange": "Veränderung zum Vorjahr",
+      "inForce": "In Kraft",
+      "notified": "Notifiziert",
+      "terminated": "Beendet"
     },
     "gdelt": {
       "empty": "Keine aktuellen Artikel zu diesem Thema"

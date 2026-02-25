@@ -33,7 +33,8 @@ export type DataSourceId =
   | 'climate'        // Climate anomaly data (Open-Meteo)
   | 'worldpop'       // WorldPop population exposure
   | 'giving'         // Global giving activity data
-  | 'bis';           // BIS central bank data
+  | 'bis'            // BIS central bank data
+  | 'wto_trade';     // WTO trade policy data
 
 export type FreshnessStatus = 'fresh' | 'stale' | 'very_stale' | 'no_data' | 'disabled' | 'error';
 
@@ -97,6 +98,7 @@ const SOURCE_METADATA: Record<DataSourceId, { name: string; requiredForRisk: boo
   worldpop: { name: 'Population Exposure', requiredForRisk: false, panelId: 'population-exposure' },
   giving: { name: 'Global Giving Activity', requiredForRisk: false, panelId: 'giving' },
   bis: { name: 'BIS Central Banks', requiredForRisk: false, panelId: 'economic' },
+  wto_trade: { name: 'WTO Trade Policy', requiredForRisk: false, panelId: 'trade-policy' },
 };
 
 class DataFreshnessTracker {
@@ -353,6 +355,7 @@ const INTELLIGENCE_GAP_MESSAGES: Record<DataSourceId, string> = {
   worldpop: 'Population exposure data unavailable—affected population unknown',
   giving: 'Global giving activity data unavailable',
   bis: 'Central bank policy data may be stale—BIS feed unavailable',
+  wto_trade: 'Trade policy intelligence unavailable—WTO data not updating',
 };
 
 /**
