@@ -343,7 +343,7 @@
   border-color: var(--settings-red);
 }
 
-/* ── Signup link icon ── */
+/* ── Key name ── */
 .runtime-secret-key {
   display: flex;
   align-items: center;
@@ -351,18 +351,36 @@
   grid-area: key;
 }
 
+/* ── Input wrapper with optional "Get key" suffix ── */
+.settings-runtime-panel .runtime-input-wrapper {
+  grid-area: input;
+  position: relative;
+}
+
+.settings-runtime-panel .runtime-input-wrapper.has-suffix input {
+  padding-right: 80px;
+}
+
 .runtime-secret-link {
-  color: var(--settings-text-secondary);
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--settings-accent);
+  background: rgba(96, 165, 250, 0.1);
+  border: 1px solid rgba(96, 165, 250, 0.25);
+  border-radius: 4px;
+  padding: 4px 10px;
   text-decoration: none;
-  font-size: 13px;
-  line-height: 1;
-  opacity: 0.5;
-  transition: opacity 0.15s, color 0.15s;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
 }
 
 .runtime-secret-link:hover {
-  color: var(--settings-accent);
-  opacity: 1;
+  background: rgba(96, 165, 250, 0.2);
+  border-color: var(--settings-accent);
 }
 
 /* ── Footer ── */

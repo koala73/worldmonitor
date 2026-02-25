@@ -14568,9 +14568,17 @@ body.has-critical-banner .panels-grid {
   color: var(--text-secondary);
 }
 
+.runtime-input-wrapper {
+  grid-area: input;
+  position: relative;
+}
+
+.runtime-input-wrapper.has-suffix input {
+  padding-right: 72px;
+}
+
 .runtime-secret-row input,
 .runtime-secret-row select {
-  grid-area: input;
   width: 100%;
   background: var(--overlay-medium);
   border: 1px solid var(--overlay-medium);
@@ -14578,6 +14586,34 @@ body.has-critical-banner .panels-grid {
   color: var(--accent);
   padding: 6px 8px;
   font-size: 11px;
+}
+
+/* Direct-child inputs/selects (not inside wrapper) still need grid-area */
+.runtime-secret-row > input,
+.runtime-secret-row > select {
+  grid-area: input;
+}
+
+.runtime-secret-link {
+  position: absolute;
+  right: 3px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent);
+  background: rgba(96, 165, 250, 0.1);
+  border: 1px solid rgba(96, 165, 250, 0.25);
+  border-radius: 3px;
+  padding: 2px 8px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.runtime-secret-link:hover {
+  background: rgba(96, 165, 250, 0.2);
+  border-color: var(--accent);
 }
 
 .runtime-secret-row input.hidden-input {
