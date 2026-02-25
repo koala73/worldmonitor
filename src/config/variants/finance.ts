@@ -215,6 +215,7 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   happiness: false,
   speciesRecovery: false,
   renewableInstallations: false,
+  tradeRoutes: true,
 };
 
 // Mobile defaults for finance variant
@@ -262,6 +263,7 @@ export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   happiness: false,
   speciesRecovery: false,
   renewableInstallations: false,
+  tradeRoutes: false,
 };
 
 export const VARIANT_CONFIG: VariantConfig = {

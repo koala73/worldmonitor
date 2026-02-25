@@ -750,7 +750,8 @@
         "financialCenters": "ศูนย์กลางการเงิน",
         "centralBanks": "ธนาคารกลาง",
         "commodityHubs": "ศูนย์กลางสินค้าโภคภัณฑ์",
-        "gulfInvestments": "การลงทุน GCC"
+        "gulfInvestments": "การลงทุน GCC",
+        "tradeRoutes": "เส้นทางการค้า"
       },
       "tooltip": {
         "earthquake": "แผ่นดินไหว",
@@ -840,7 +841,8 @@
           "transportShipping": "เรือ, จุดคอขวด, ท่าเรือยุทธศาสตร์ 61 แห่ง",
           "transportDelays": "ความล่าช้าของสนามบินและการหยุดบินภาคพื้น (FAA)",
           "naturalEventsFull": "แผ่นดินไหว (USGS) + พายุ ไฟ ภูเขาไฟ น้ำท่วม (NASA EONET)",
-          "waterwaysLabels": "ป้ายกำกับจุดคอขวดยุทธศาสตร์"
+          "waterwaysLabels": "ป้ายกำกับจุดคอขวดยุทธศาสตร์",
+          "tradeRoutes": "เส้นทางเดินเรือหลักของโลกที่เชื่อมต่อท่าเรือผ่านจุดยุทธศาสตร์"
         },
         "notes": {
           "timeAffects": "ส่งผลต่อ: แผ่นดินไหว, สภาพอากาศ, การประท้วง, การหยุดชะงัก"

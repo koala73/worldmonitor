@@ -750,7 +750,8 @@
         "financialCenters": "金融センター",
         "centralBanks": "中央銀行",
         "commodityHubs": "コモディティハブ",
-        "gulfInvestments": "GCC投資"
+        "gulfInvestments": "GCC投資",
+        "tradeRoutes": "貿易ルート"
       },
       "tooltip": {
         "earthquake": "地震",
@@ -840,7 +841,8 @@
           "transportShipping": "船舶、チョークポイント、61の戦略港湾",
           "transportDelays": "空港の遅延とグラウンドストップ（FAA）",
           "naturalEventsFull": "地震（USGS）+ 暴風雨、火災、火山、洪水（NASA EONET）",
-          "waterwaysLabels": "戦略的チョークポイントのラベル"
+          "waterwaysLabels": "戦略的チョークポイントのラベル",
+          "tradeRoutes": "戦略的なチョークポイントを通じて港を結ぶ主要な世界の航路"
         },
         "notes": {
           "timeAffects": "影響: 地震、気象、抗議活動、障害"

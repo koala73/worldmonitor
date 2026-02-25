@@ -750,7 +750,8 @@
         "financialCenters": "Finans Merkezleri",
         "centralBanks": "Merkez Bankalari",
         "commodityHubs": "Emtia Merkezleri",
-        "gulfInvestments": "GCC Yatirimlari"
+        "gulfInvestments": "GCC Yatirimlari",
+        "tradeRoutes": "Ticaret Rotaları"
       },
       "tooltip": {
         "earthquake": "Deprem",
@@ -840,7 +841,8 @@
           "transportShipping": "Gemiler, darbogazlar, 61 stratejik liman",
           "transportDelays": "Havaalani gecikmeleri ve yer durdurmalari (FAA)",
           "naturalEventsFull": "Depremler (USGS) + firtinalar, yanginlar, yanardaglar, seller (NASA EONET)",
-          "waterwaysLabels": "Stratejik darbogaz etiketleri"
+          "waterwaysLabels": "Stratejik darbogaz etiketleri",
+          "tradeRoutes": "Limanları stratejik darboğazlar üzerinden bağlayan başlıca küresel deniz yolları"
         },
         "notes": {
           "timeAffects": "Etkiler: Depremler, Hava Durumu, Protestolar, Kesintiler"

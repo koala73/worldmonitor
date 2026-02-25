@@ -750,7 +750,8 @@
         "financialCenters": "مراكز مالية",
         "centralBanks": "بنوك مركزية",
         "commodityHubs": "مراكز سلعية",
-        "gulfInvestments": "استثمارات دول الخليج"
+        "gulfInvestments": "استثمارات دول الخليج",
+        "tradeRoutes": "طرق التجارة"
       },
       "tooltip": {
         "earthquake": "زلزال",
@@ -840,7 +841,8 @@
           "transportShipping": "سفن ونقاط اختناق و61 ميناءً استراتيجياً",
           "transportDelays": "تأخيرات المطارات والتوقفات الأرضية (FAA)",
           "naturalEventsFull": "زلازل (USGS) + عواصف وحرائق وبراكين وفيضانات (NASA EONET)",
-          "waterwaysLabels": "تسميات نقاط الاختناق الاستراتيجية"
+          "waterwaysLabels": "تسميات نقاط الاختناق الاستراتيجية",
+          "tradeRoutes": "خطوط الشحن العالمية الرئيسية التي تربط الموانئ عبر نقاط الاختناق الاستراتيجية"
         },
         "notes": {
           "timeAffects": "يؤثر على: الزلازل، الطقس، الاحتجاجات، الانقطاعات"

@@ -529,6 +529,8 @@ export interface MapLayers {
   happiness: boolean;
   speciesRecovery: boolean;
   renewableInstallations: boolean;
+  // Trade route layers
+  tradeRoutes: boolean;
 }
 
 export interface AIDataCenter {

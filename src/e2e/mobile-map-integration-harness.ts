@@ -125,6 +125,7 @@ const layers = {
   happiness: false,
   speciesRecovery: false,
   renewableInstallations: false,
+  tradeRoutes: false,
 };
 
 await initI18n();

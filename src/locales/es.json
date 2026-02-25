@@ -614,7 +614,8 @@
         "financialCenters": "Centros financieros",
         "centralBanks": "Bancos centrales",
         "commodityHubs": "Centros de productos básicos",
-        "gulfInvestments": "Inversiones del CCG"
+        "gulfInvestments": "Inversiones del CCG",
+        "tradeRoutes": "Rutas Comerciales"
       },
       "layersTitle": "capas",
       "layerGuide": "Guía de capas",
@@ -706,7 +707,8 @@
           "transportShipping": "Buques, cuellos de botella, 61 puertos estratégicos",
           "transportDelays": "Retrasos en el aeropuerto y paradas en tierra (FAA)",
           "naturalEventsFull": "Terremotos (USGS) + tormentas, incendios, volcanes, inundaciones (NASA EONET)",
-          "waterwaysLabels": "Etiquetas de cuellos de botella estratégicos"
+          "waterwaysLabels": "Etiquetas de cuellos de botella estratégicos",
+          "tradeRoutes": "Principales rutas marítimas globales que conectan puertos a través de puntos estratégicos"
         },
         "notes": {
           "timeAffects": "Afecta: terremotos, clima, protestas, apagones"
