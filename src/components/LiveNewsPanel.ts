@@ -1,6 +1,6 @@
 import { Panel } from './Panel';
 import { fetchLiveVideoId } from '@/services/live-news';
-import { isDesktopRuntime, getRemoteApiBaseUrl } from '@/services/runtime';
+import { isDesktopRuntime, getRemoteApiBaseUrl, getApiBaseUrl } from '@/services/runtime';
 import { t } from '../services/i18n';
 import { loadFromStorage, saveToStorage } from '@/utils';
 import { STORAGE_KEYS, SITE_VARIANT } from '@/config';
@@ -316,7 +316,8 @@ export class LiveNewsPanel extends Panel {
     this.boundMessageHandler = (e: MessageEvent) => {
       if (e.source !== this.desktopEmbedIframe?.contentWindow) return;
       const expected = this.embedOrigin;
-      if (e.origin !== expected && e.origin !== 'http://127.0.0.1:46123') return;
+      const localOrigin = getApiBaseUrl();
+      if (e.origin !== expected && (!localOrigin || e.origin !== localOrigin)) return;
       const msg = e.data;
       if (!msg || typeof msg !== 'object' || !msg.type) return;
       if (msg.type === 'yt-ready') {

@@ -4,8 +4,36 @@ const DEFAULT_REMOTE_HOSTS: Record<string, string> = {
   world: 'https://worldmonitor.app',
 };
 
-const DEFAULT_LOCAL_API_BASE = 'http://127.0.0.1:46123';
+const DEFAULT_LOCAL_API_PORT = 46123;
 const FORCE_DESKTOP_RUNTIME = import.meta.env.VITE_DESKTOP_RUNTIME === '1';
+
+let _resolvedPort: number | null = null;
+let _portPromise: Promise<number> | null = null;
+
+export async function resolveLocalApiPort(): Promise<number> {
+  if (_resolvedPort !== null) return _resolvedPort;
+  if (_portPromise) return _portPromise;
+  _portPromise = (async () => {
+    try {
+      const { tryInvokeTauri } = await import('@/services/tauri-bridge');
+      const port = await tryInvokeTauri<number>('get_local_api_port');
+      if (port && port > 0) {
+        _resolvedPort = port;
+        return port;
+      }
+    } catch {
+      // IPC failed — allow retry on next call
+    } finally {
+      _portPromise = null;
+    }
+    return DEFAULT_LOCAL_API_PORT;
+  })();
+  return _portPromise;
+}
+
+export function getLocalApiPort(): number {
+  return _resolvedPort ?? DEFAULT_LOCAL_API_PORT;
+}
 
 function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/$/, '');
@@ -72,7 +100,7 @@ export function getApiBaseUrl(): string {
     return normalizeBaseUrl(configuredBaseUrl);
   }
 
-  return DEFAULT_LOCAL_API_BASE;
+  return `http://127.0.0.1:${getLocalApiPort()}`;
 }
 
 export function getRemoteApiBaseUrl(): string {
@@ -213,7 +241,6 @@ export function installRuntimeFetchPatch(): void {
   }
 
   const nativeFetch = window.fetch.bind(window);
-  const localBase = getApiBaseUrl();
   let localApiToken: string | null = null;
   let tokenFetchedAt = 0;
 
@@ -227,6 +254,11 @@ export function installRuntimeFetchPatch(): void {
         console.log(`[fetch] passthrough → ${raw.slice(0, 120)}`);
       }
       return nativeFetch(input, init);
+    }
+
+    // Resolve dynamic sidecar port on first API call
+    if (_resolvedPort === null) {
+      try { await resolveLocalApiPort(); } catch { /* use default */ }
     }
 
     const tokenExpired = localApiToken && (Date.now() - tokenFetchedAt > TOKEN_TTL_MS);
@@ -247,7 +279,7 @@ export function installRuntimeFetchPatch(): void {
     }
     const localInit = { ...init, headers };
 
-    const localUrl = `${localBase}${target}`;
+    const localUrl = `${getApiBaseUrl()}${target}`;
     if (debug) console.log(`[fetch] intercept → ${target}`);
     let allowCloudFallback = !isLocalOnlyApiTarget(target);
 

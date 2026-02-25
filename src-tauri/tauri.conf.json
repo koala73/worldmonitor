@@ -29,7 +29,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' https: http://localhost:5173 http://127.0.0.1:46123 ws: wss: blob: data:; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval' https://www.youtube.com https://us-assets.i.posthog.com; worker-src 'self' blob:; font-src 'self' data: https:; media-src 'self' data: blob: https:; frame-src 'self' http://127.0.0.1:46123 https://worldmonitor.app https://tech.worldmonitor.app https://www.youtube.com https://www.youtube-nocookie.com;"
+      "csp": "default-src 'self'; connect-src 'self' https: http://localhost:5173 http://127.0.0.1:* ws: wss: blob: data:; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval' https://www.youtube.com https://us-assets.i.posthog.com; worker-src 'self' blob:; font-src 'self' data: https:; media-src 'self' data: blob: https:; frame-src 'self' http://127.0.0.1:46123 https://worldmonitor.app https://tech.worldmonitor.app https://www.youtube.com https://www.youtube-nocookie.com;"
     }
   },
   "bundle": {

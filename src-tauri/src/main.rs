@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::env;
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
+use std::net::TcpListener;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
@@ -18,7 +19,7 @@ use serde_json::{Map, Value};
 use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Manager, RunEvent, Webview, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 
-const LOCAL_API_PORT: &str = "46123";
+const DEFAULT_LOCAL_API_PORT: u16 = 46123;
 const KEYRING_SERVICE: &str = "world-monitor";
 const LOCAL_API_LOG_FILE: &str = "local-api.log";
 const DESKTOP_LOG_FILE: &str = "desktop.log";
@@ -56,6 +57,7 @@ const SUPPORTED_SECRET_KEYS: [&str; 22] = [
 struct LocalApiState {
     child: Mutex<Option<Child>>,
     token: Mutex<Option<String>>,
+    port: Mutex<Option<u16>>,
 }
 
 /// In-memory cache for keychain secrets. Populated once at startup to avoid
@@ -179,6 +181,7 @@ impl PersistentCache {
 struct DesktopRuntimeInfo {
     os: String,
     arch: String,
+    local_api_port: Option<u16>,
 }
 
 fn save_vault(cache: &HashMap<String, String>) -> Result<(), String> {
@@ -219,11 +222,21 @@ fn get_local_api_token(webview: Webview, state: tauri::State<'_, LocalApiState>)
 }
 
 #[tauri::command]
-fn get_desktop_runtime_info() -> DesktopRuntimeInfo {
+fn get_desktop_runtime_info(state: tauri::State<'_, LocalApiState>) -> DesktopRuntimeInfo {
+    let port = state.port.lock().ok().and_then(|g| *g);
     DesktopRuntimeInfo {
         os: env::consts::OS.to_string(),
         arch: env::consts::ARCH.to_string(),
+        local_api_port: port,
     }
+}
+
+#[tauri::command]
+fn get_local_api_port(webview: Webview, state: tauri::State<'_, LocalApiState>) -> Result<u16, String> {
+    require_trusted_window(webview.label())?;
+    state.port.lock()
+        .map_err(|_| "Failed to lock port state".to_string())?
+        .ok_or_else(|| "Port not yet assigned".to_string())
 }
 
 #[tauri::command]
@@ -867,6 +880,18 @@ fn resolve_node_binary(app: &AppHandle) -> Option<PathBuf> {
     common_locations.into_iter().find(|path| path.is_file())
 }
 
+fn probe_available_port(preferred: u16) -> u16 {
+    if let Ok(listener) = TcpListener::bind(("127.0.0.1", preferred)) {
+        drop(listener);
+        return preferred;
+    }
+    let listener = TcpListener::bind(("127.0.0.1", 0))
+        .expect("no ephemeral port available");
+    let port = listener.local_addr().unwrap().port();
+    drop(listener);
+    port
+}
+
 fn start_local_api(app: &AppHandle) -> Result<(), String> {
     let state = app.state::<LocalApiState>();
     let mut slot = state
@@ -875,6 +900,11 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
         .map_err(|_| "Failed to lock local API state".to_string())?;
     if slot.is_some() {
         return Ok(());
+    }
+
+    // Clear port state for fresh start
+    if let Ok(mut port_slot) = state.port.lock() {
+        *port_slot = None;
     }
 
     let (script, resource_root) = local_api_paths(app);
@@ -887,6 +917,9 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
     let node_binary = resolve_node_binary(app).ok_or_else(|| {
         "Node.js executable not found. Install Node 18+ or set LOCAL_API_NODE_BIN".to_string()
     })?;
+
+    // Probe for available port — fall back to OS-assigned if default is busy
+    let actual_port = probe_available_port(DEFAULT_LOCAL_API_PORT);
 
     let log_path = sidecar_log_path(app)?;
     let log_file = OpenOptions::new()
@@ -912,6 +945,11 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
         app,
         "INFO",
         &format!("resolved node binary={}", node_binary.display()),
+    );
+    append_desktop_log(
+        app,
+        "INFO",
+        &format!("local API sidecar using port {actual_port}"),
     );
 
     // Generate a unique token for local API auth (prevents other local processes from accessing sidecar)
@@ -939,7 +977,7 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
         &format!("node args: script={script_for_node} resource_dir={resource_for_node}"),
     );
     cmd.arg(&script_for_node)
-        .env("LOCAL_API_PORT", LOCAL_API_PORT)
+        .env("LOCAL_API_PORT", actual_port.to_string())
         .env("LOCAL_API_RESOURCE_DIR", &resource_for_node)
         .env("LOCAL_API_MODE", "tauri-sidecar")
         .env("LOCAL_API_TOKEN", &local_api_token)
@@ -980,6 +1018,12 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
         &format!("local API sidecar started pid={}", child.id()),
     );
     *slot = Some(child);
+
+    // Store the actual port after successful spawn
+    if let Ok(mut port_slot) = state.port.lock() {
+        *port_slot = Some(actual_port);
+    }
+
     Ok(())
 }
 
@@ -990,6 +1034,9 @@ fn stop_local_api(app: &AppHandle) {
                 let _ = child.kill();
                 append_desktop_log(app, "INFO", "local API sidecar stopped");
             }
+        }
+        if let Ok(mut port_slot) = state.port.lock() {
+            *port_slot = None;
         }
     }
 }
@@ -1087,6 +1134,7 @@ fn main() {
             set_secret,
             delete_secret,
             get_local_api_token,
+            get_local_api_port,
             get_desktop_runtime_info,
             read_cache_entry,
             write_cache_entry,
