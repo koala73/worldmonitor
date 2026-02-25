@@ -21,6 +21,13 @@ export class EconomicPanel extends Panel {
 
   constructor() {
     super({ id: 'economic', title: t('panels.economic') });
+    this.content.addEventListener('click', (e) => {
+      const tab = (e.target as HTMLElement).closest('.economic-tab') as HTMLElement | null;
+      if (tab?.dataset.tab) {
+        this.activeTab = tab.dataset.tab as TabId;
+        this.render();
+      }
+    });
   }
 
   public update(data: FredSeries[]): void {
@@ -110,16 +117,6 @@ export class EconomicPanel extends Panel {
       </div>
     `);
 
-    // Bind tab click events
-    this.content.querySelectorAll('.economic-tab').forEach(tab => {
-      tab.addEventListener('click', (e) => {
-        const tabId = (e.target as HTMLElement).dataset.tab as TabId;
-        if (tabId) {
-          this.activeTab = tabId;
-          this.render();
-        }
-      });
-    });
   }
 
   private getSourceLabel(): string {

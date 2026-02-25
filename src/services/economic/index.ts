@@ -30,7 +30,18 @@ import { dataFreshness } from '../data-freshness';
 // ---- Client + Circuit Breakers ----
 
 const client = new EconomicServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
-const fredBreaker = createCircuitBreaker<GetFredSeriesResponse>({ name: 'FRED Economic', cacheTtlMs: 15 * 60 * 1000, persistCache: true });
+const fredBreakers = new Map<string, ReturnType<typeof createCircuitBreaker<GetFredSeriesResponse>>>();
+
+function getFredBreaker(seriesId: string) {
+  if (!fredBreakers.has(seriesId)) {
+    fredBreakers.set(seriesId, createCircuitBreaker<GetFredSeriesResponse>({
+      name: `FRED:${seriesId}`,
+      cacheTtlMs: 15 * 60 * 1000,
+      persistCache: true,
+    }));
+  }
+  return fredBreakers.get(seriesId)!;
+}
 const wbBreaker = createCircuitBreaker<ListWorldBankIndicatorsResponse>({ name: 'World Bank', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
 const eiaBreaker = createCircuitBreaker<GetEnergyPricesResponse>({ name: 'EIA Energy', cacheTtlMs: 15 * 60 * 1000, persistCache: true });
 const capacityBreaker = createCircuitBreaker<GetEnergyCapacityResponse>({ name: 'EIA Capacity', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
@@ -80,7 +91,7 @@ const FRED_SERIES: FredConfig[] = [
 ];
 
 async function fetchSingleFredSeries(config: FredConfig): Promise<FredSeries | null> {
-  const resp = await fredBreaker.execute(async () => {
+  const resp = await getFredBreaker(config.id).execute(async () => {
     return client.getFredSeries({ seriesId: config.id, limit: 120 });
   }, emptyFredFallback);
 
@@ -132,7 +143,11 @@ export async function fetchFredData(): Promise<FredSeries[]> {
 }
 
 export function getFredStatus(): string {
-  return fredBreaker.getStatus();
+  for (const breaker of fredBreakers.values()) {
+    const status = breaker.getStatus();
+    if (status !== 'ok') return status;
+  }
+  return fredBreakers.size > 0 ? 'ok' : 'no data';
 }
 
 export function getChangeClass(change: number | null): string {
