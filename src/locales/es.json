@@ -205,10 +205,10 @@
   },
   "modals": {
     "search": {
-      "placeholder": "Busca noticias, pipelines, bases, mercados...",
-      "hint": "Noticias • Ductos • Bases • Cables • Datacenters • Mercados",
+      "placeholder": "Buscar o escribir un comando...",
+      "hint": "Búsqueda • Países • Capas • Paneles • Navegación • Ajustes",
       "recent": "Búsquedas recientes",
-      "empty": "Buscar en todas las fuentes de datos",
+      "empty": "Buscar datos o ejecutar comandos",
       "noResults": "No results found",
       "navigate": "navegar por",
       "select": "seleccionar",
@@ -235,10 +235,10 @@
         "techhq": "Sede tecnológica",
         "accelerator": "Aceleradora"
       },
-      "placeholderTech": "Busca empresas, laboratorios de IA, startups, eventos...",
-      "hintTech": "Sedes centrales • Empresas • Laboratorios de IA • Startups • Aceleradoras • Eventos",
-      "placeholderFinance": "Buscar bolsas, mercados, bancos centrales...",
-      "hintFinance": "Bolsas • Centros financieros • Bancos centrales • Materias primas"
+      "placeholderTech": "Buscar o escribir un comando...",
+      "hintTech": "Búsqueda • Empresas • Laboratorios IA • Capas • Navegación • Ajustes",
+      "placeholderFinance": "Buscar o escribir un comando...",
+      "hintFinance": "Búsqueda • Bolsas • Mercados • Capas • Navegación • Ajustes"
     },
     "signal": {
       "title": "ENCUENTRO DE INTELIGENCIA",

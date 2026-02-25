@@ -205,10 +205,10 @@
   },
   "modals": {
     "search": {
-      "placeholder": "Durchsuchen Sie Nachrichten, Pipelines, Stützpunkte, Märkte ...",
-      "hint": "Nachrichten • Pipelines • Stützpunkte • Kabel • Rechenzentren • Märkte",
+      "placeholder": "Suchen oder Befehl eingeben...",
+      "hint": "Suche • Länder • Ebenen • Panels • Navigation • Einstellungen",
       "recent": "Aktuelle Suchanfragen",
-      "empty": "Durchsuchen Sie alle Datenquellen",
+      "empty": "Daten durchsuchen oder Befehle ausführen",
       "noResults": "No results found",
       "navigate": "navigieren",
       "select": "wählen",
@@ -235,10 +235,10 @@
         "techhq": "Tech-Hauptquartier",
         "accelerator": "Beschleuniger"
       },
-      "placeholderTech": "Suchen Sie nach Unternehmen, KI-Laboren, Start-ups, Veranstaltungen ...",
-      "hintTech": "Hauptsitze • Unternehmen • KI-Labore • Startups • Beschleuniger • Veranstaltungen",
-      "placeholderFinance": "Suchen Sie nach Börsen, Märkten, Zentralbanken...",
-      "hintFinance": "Börsen • Finanzzentren • Zentralbanken • Rohstoffe"
+      "placeholderTech": "Suchen oder Befehl eingeben...",
+      "hintTech": "Suche • Unternehmen • KI-Labore • Ebenen • Navigation • Einstellungen",
+      "placeholderFinance": "Suchen oder Befehl eingeben...",
+      "hintFinance": "Suche • Börsen • Märkte • Ebenen • Navigation • Einstellungen"
     },
     "signal": {
       "title": "INTELLIGENZFINDEN",

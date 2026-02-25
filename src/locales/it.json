@@ -205,10 +205,10 @@
   },
   "modals": {
     "search": {
-      "placeholder": "Cerca notizie, oleodotti, basi, mercati...",
-      "hint": "Notizie • Oleodotti • Basi • Cavi • Datacenter • Mercati",
+      "placeholder": "Cerca o digita un comando...",
+      "hint": "Ricerca • Paesi • Livelli • Pannelli • Navigazione • Impostazioni",
       "recent": "Ricerche recenti",
-      "empty": "Cerca in tutte le fonti dati",
+      "empty": "Cerca dati o esegui comandi",
       "noResults": "Nessun risultato",
       "navigate": "naviga",
       "select": "seleziona",
@@ -235,10 +235,10 @@
         "techhq": "Sede tecnologica",
         "accelerator": "Acceleratore"
       },
-      "placeholderTech": "Cerca aziende, laboratori IA, startup, eventi...",
-      "hintTech": "Sedi • Aziende • Laboratori IA • Startup • Acceleratori • Eventi",
-      "placeholderFinance": "Cerca borse, mercati, banche centrali...",
-      "hintFinance": "Borse • Centri finanziari • Banche centrali • Materie prime"
+      "placeholderTech": "Cerca o digita un comando...",
+      "hintTech": "Ricerca • Aziende • Laboratori IA • Livelli • Navigazione • Impostazioni",
+      "placeholderFinance": "Cerca o digita un comando...",
+      "hintFinance": "Ricerca • Borse • Mercati • Livelli • Navigazione • Impostazioni"
     },
     "signal": {
       "title": "RICERCA DI INTELLIGENZA",

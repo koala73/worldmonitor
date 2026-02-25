@@ -205,10 +205,10 @@
   },
   "modals": {
     "search": {
-      "placeholder": "Rechercher actus, pipelines, bases, marchés...",
-      "hint": "Actus • Pipelines • Bases • Câbles • Datacenters • Marchés",
+      "placeholder": "Rechercher ou saisir une commande...",
+      "hint": "Recherche • Pays • Couches • Panneaux • Navigation • Paramètres",
       "recent": "Recherches récentes",
-      "empty": "Rechercher dans toutes les sources",
+      "empty": "Rechercher des données ou exécuter des commandes",
       "noResults": "Aucun résultat trouvé",
       "navigate": "naviguer",
       "select": "sélectionner",
@@ -235,10 +235,10 @@
         "techhq": "Siège Tech",
         "accelerator": "Accélérateur"
       },
-      "placeholderTech": "Rechercher des entreprises, des laboratoires d'IA, des startups, des événements...",
-      "hintTech": "Sièges • Entreprises • AI Labs • Startups • Accélérateurs • Événements",
-      "placeholderFinance": "Rechercher des bourses, des marchés, des banques centrales...",
-      "hintFinance": "Bourses • Centres financiers • Banques centrales • Matières premières"
+      "placeholderTech": "Rechercher ou saisir une commande...",
+      "hintTech": "Recherche • Entreprises • Labos IA • Couches • Navigation • Paramètres",
+      "placeholderFinance": "Rechercher ou saisir une commande...",
+      "hintFinance": "Recherche • Bourses • Marchés • Couches • Navigation • Paramètres"
     },
     "signal": {
       "title": "DÉCOUVERTE RENSEIGNEMENT",

@@ -65,10 +65,10 @@
   },
   "modals": {
     "search": {
-      "placeholder": "Sök efter nyheter, pipelines, baser, marknader...",
-      "hint": "Nyheter • Rörledningar • Baser • Kablar • Datacenter • Marknader",
+      "placeholder": "Sök eller skriv ett kommando...",
+      "hint": "Sök • Länder • Lager • Paneler • Navigering • Inställningar",
       "recent": "Senaste sökningar",
-      "empty": "Sök i alla datakällor",
+      "empty": "Sök data eller kör kommandon",
       "noResults": "No results found",
       "navigate": "navigera",
       "select": "välja",
@@ -95,10 +95,10 @@
         "techhq": "Teknikhuvudkontor",
         "accelerator": "Accelerator"
       },
-      "placeholderTech": "Sök företag, AI-labb, startups, evenemang...",
-      "hintTech": "HQs • Företag • AI Labs • Startups • Acceleratorer • Events",
-      "placeholderFinance": "Sök börser, marknader, centralbanker...",
-      "hintFinance": "Börser • Finansiella centra • Centralbanker • Råvaror"
+      "placeholderTech": "Sök eller skriv ett kommando...",
+      "hintTech": "Sök • Företag • AI-labb • Lager • Navigering • Inställningar",
+      "placeholderFinance": "Sök eller skriv ett kommando...",
+      "hintFinance": "Sök • Börser • Marknader • Lager • Navigering • Inställningar"
     },
     "signal": {
       "source": "Source",

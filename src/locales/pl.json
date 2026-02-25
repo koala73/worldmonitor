@@ -205,10 +205,10 @@
   },
   "modals": {
     "search": {
-      "placeholder": "Szukaj aktualności, rurociągów, baz, rynków...",
-      "hint": "Aktualności • Rurociągi • Bazy • Kable • Centra danych • Rynki",
+      "placeholder": "Szukaj lub wpisz polecenie...",
+      "hint": "Szukaj • Kraje • Warstwy • Panele • Nawigacja • Ustawienia",
       "recent": "Ostatnie wyszukiwania",
-      "empty": "Przeszukuj wszystkie źródła danych",
+      "empty": "Szukaj danych lub uruchom polecenia",
       "noResults": "No results found",
       "navigate": "nawigować",
       "select": "wybierać",
@@ -235,10 +235,10 @@
         "techhq": "Siedziba technologiczna",
         "accelerator": "Akcelerator"
       },
-      "placeholderTech": "Wyszukaj firmy, laboratoria AI, startupy, wydarzenia...",
-      "hintTech": "Siedziby główne • Firmy • Laboratoria AI • Startupy • Akceleratory • Wydarzenia",
-      "placeholderFinance": "Przeszukaj giełdy, rynki, banki centralne...",
-      "hintFinance": "Giełdy • Centra finansowe • Banki centralne • Towary"
+      "placeholderTech": "Szukaj lub wpisz polecenie...",
+      "hintTech": "Szukaj • Firmy • Laboratoria AI • Warstwy • Nawigacja • Ustawienia",
+      "placeholderFinance": "Szukaj lub wpisz polecenie...",
+      "hintFinance": "Szukaj • Giełdy • Rynki • Warstwy • Nawigacja • Ustawienia"
     },
     "signal": {
       "title": "WYKONANIE INTELIGENCJI",

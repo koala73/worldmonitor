@@ -7341,6 +7341,21 @@ a.prediction-link:hover {
   opacity: 0.7;
 }
 
+.search-empty-examples {
+  font-size: 11px;
+  margin-top: 12px;
+  opacity: 0.5;
+}
+
+.search-empty-examples kbd {
+  background: var(--bg-tertiary, rgba(255,255,255,0.08));
+  border-radius: 3px;
+  padding: 2px 6px;
+  font-size: 10px;
+  font-family: inherit;
+  margin: 0 2px;
+}
+
 .search-footer {
   display: flex;
   gap: 16px;

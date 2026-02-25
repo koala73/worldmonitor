@@ -65,10 +65,10 @@
   },
   "modals": {
     "search": {
-      "placeholder": "Pesquise notícias, pipelines, bases, mercados...",
-      "hint": "Notícias • Pipelines • Bases • Cabos • Datacenters • Mercados",
+      "placeholder": "Pesquisar ou digitar um comando...",
+      "hint": "Pesquisa • Países • Camadas • Painéis • Navegação • Configurações",
       "recent": "Pesquisas recentes",
-      "empty": "Pesquise em todas as fontes de dados",
+      "empty": "Pesquisar dados ou executar comandos",
       "noResults": "No results found",
       "navigate": "navegar",
       "select": "selecione",
@@ -95,10 +95,10 @@
         "techhq": "Sede de tecnologia",
         "accelerator": "Aceleradora"
       },
-      "placeholderTech": "Pesquise empresas, laboratórios de IA, startups, eventos...",
-      "hintTech": "Sedes • Empresas • Laboratórios de IA • Startups • Aceleradoras • Eventos",
-      "placeholderFinance": "Pesquise bolsas, mercados, bancos centrais...",
-      "hintFinance": "Bolsas • Centros Financeiros • Bancos Centrais • Mercadorias"
+      "placeholderTech": "Pesquisar ou digitar um comando...",
+      "hintTech": "Pesquisa • Empresas • Laboratórios IA • Camadas • Navegação • Configurações",
+      "placeholderFinance": "Pesquisar ou digitar um comando...",
+      "hintFinance": "Pesquisa • Bolsas • Mercados • Camadas • Navegação • Configurações"
     },
     "signal": {
       "source": "Source",

@@ -254,9 +254,12 @@ export class SearchModal {
 
     this.resultsList.innerHTML = `
       <div class="search-empty">
-        <div class="search-empty-icon">🔍</div>
+        <div class="search-empty-icon">\u2318</div>
         <div>${t('modals.search.empty')}</div>
         <div class="search-empty-hint">${this.hint}</div>
+        <div class="search-empty-examples">
+          <span>Try: <kbd>dark mode</kbd> <kbd>iran</kbd> <kbd>military layers</kbd> <kbd>crypto</kbd></span>
+        </div>
       </div>
     `;
   }

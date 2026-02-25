@@ -65,10 +65,10 @@
   },
   "modals": {
     "search": {
-      "placeholder": "Zoek naar nieuws, pijpleidingen, bases, markten...",
-      "hint": "Nieuws • Pijpleidingen • Basissen • Kabels • Datacentra • Markten",
+      "placeholder": "Zoeken of commando typen...",
+      "hint": "Zoeken • Landen • Lagen • Panelen • Navigatie • Instellingen",
       "recent": "Recente zoekopdrachten",
-      "empty": "Zoek in alle gegevensbronnen",
+      "empty": "Zoek gegevens of voer opdrachten uit",
       "noResults": "No results found",
       "navigate": "navigeren",
       "select": "selecteren",
@@ -95,10 +95,10 @@
         "techhq": "Tech-hoofdkantoor",
         "accelerator": "Gaspedaal"
       },
-      "placeholderTech": "Zoek bedrijven, AI-labs, startups, evenementen...",
-      "hintTech": "Hoofdkantoren • Bedrijven • AI Labs • Startups • Accelerators • Evenementen",
-      "placeholderFinance": "Zoek beurzen, markten, centrale banken...",
-      "hintFinance": "Beurzen • Financiële centra • Centrale banken • Grondstoffen"
+      "placeholderTech": "Zoeken of commando typen...",
+      "hintTech": "Zoeken • Bedrijven • AI Labs • Lagen • Navigatie • Instellingen",
+      "placeholderFinance": "Zoeken of commando typen...",
+      "hintFinance": "Zoeken • Beurzen • Markten • Lagen • Navigatie • Instellingen"
     },
     "signal": {
       "source": "Source",
