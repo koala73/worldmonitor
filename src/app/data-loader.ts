@@ -135,12 +135,12 @@ export class DataLoaderManager implements AppModule {
 
   async loadAllData(): Promise<void> {
     const runGuarded = async (name: string, fn: () => Promise<void>): Promise<void> => {
-      if (this.ctx.inFlight.has(name)) return;
+      if (this.ctx.isDestroyed || this.ctx.inFlight.has(name)) return;
       this.ctx.inFlight.add(name);
       try {
         await fn();
       } catch (e) {
-        console.error(`[App] ${name} failed:`, e);
+        if (!this.ctx.isDestroyed) console.error(`[App] ${name} failed:`, e);
       } finally {
         this.ctx.inFlight.delete(name);
       }
@@ -235,7 +235,7 @@ export class DataLoaderManager implements AppModule {
   }
 
   async loadDataForLayer(layer: keyof MapLayers): Promise<void> {
-    if (this.ctx.inFlight.has(layer)) return;
+    if (this.ctx.isDestroyed || this.ctx.inFlight.has(layer)) return;
     this.ctx.inFlight.add(layer);
     this.ctx.map?.setLayerLoading(layer, true);
     try {
@@ -1154,6 +1154,7 @@ export class DataLoaderManager implements AppModule {
     let attempts = 0;
 
     const checkData = () => {
+      if (this.ctx.isDestroyed) return;
       attempts++;
       const status = getAisStatus();
 
