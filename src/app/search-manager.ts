@@ -8,6 +8,7 @@ import { CIIPanel } from '@/components';
 import { SITE_VARIANT, STORAGE_KEYS } from '@/config';
 import { LAYER_PRESETS, LAYER_KEY_MAP } from '@/config/commands';
 import { calculateCII, TIER1_COUNTRIES } from '@/services/country-instability';
+import { CURATED_COUNTRIES } from '@/config/countries';
 import { INTEL_HOTSPOTS, CONFLICT_ZONES, MILITARY_BASES, UNDERSEA_CABLES, NUCLEAR_FACILITIES } from '@/config/geo';
 import { PIPELINES } from '@/config/pipelines';
 import { AI_DATA_CENTERS } from '@/config/ai-datacenters';
@@ -468,6 +469,16 @@ export class SearchManager implements AppModule {
       case 'time':
         this.ctx.map?.setTimeRange(action as import('@/components').TimeRange);
         break;
+
+      case 'country': {
+        const name = TIER1_COUNTRIES[action]
+          || CURATED_COUNTRIES[action]?.name
+          || new Intl.DisplayNames(['en'], { type: 'region' }).of(action)
+          || action;
+        trackCountrySelected(action, name, 'command');
+        this.callbacks.openCountryBriefByCode(action, name);
+        break;
+      }
     }
   }
 
