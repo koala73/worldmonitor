@@ -553,9 +553,9 @@
       "exports": "İhracat",
       "imports": "İthalat",
       "yoyChange": "Yıllık Değişim",
-      "inForce": "Yürürlükte",
-      "notified": "Bildirildi",
-      "terminated": "Sonlandırıldı"
+      "highTariff": "Yüksek",
+      "moderateTariff": "Orta",
+      "lowTariff": "Düşük"
     },
     "gdelt": {
       "empty": "Bu konu icin son makale yok"

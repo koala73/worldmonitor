@@ -553,9 +553,9 @@
       "exports": "輸出",
       "imports": "輸入",
       "yoyChange": "前年比",
-      "inForce": "発効中",
-      "notified": "通報済み",
-      "terminated": "終了"
+      "highTariff": "高い",
+      "moderateTariff": "中程度",
+      "lowTariff": "低い"
     },
     "gdelt": {
       "empty": "このトピックの最新記事なし"

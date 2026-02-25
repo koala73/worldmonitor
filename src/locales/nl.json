@@ -797,9 +797,9 @@
       "exports": "Export",
       "imports": "Import",
       "yoyChange": "Verandering op Jaarbasis",
-      "inForce": "Van Kracht",
-      "notified": "Gemeld",
-      "terminated": "Beëindigd"
+      "highTariff": "Hoog",
+      "moderateTariff": "Gemiddeld",
+      "lowTariff": "Laag"
     },
     "satelliteFires": {
       "region": "Regio",

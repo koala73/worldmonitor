@@ -553,9 +553,9 @@
       "exports": "الصادرات",
       "imports": "الواردات",
       "yoyChange": "التغير السنوي",
-      "inForce": "ساري المفعول",
-      "notified": "تم الإخطار",
-      "terminated": "منتهي"
+      "highTariff": "مرتفع",
+      "moderateTariff": "متوسط",
+      "lowTariff": "منخفض"
     },
     "gdelt": {
       "empty": "لا توجد مقالات حديثة لهذا الموضوع"

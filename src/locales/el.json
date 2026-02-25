@@ -581,9 +581,9 @@
       "exports": "Εξαγωγές",
       "imports": "Εισαγωγές",
       "yoyChange": "Ετήσια Μεταβολή",
-      "inForce": "Σε Ισχύ",
-      "notified": "Κοινοποιημένο",
-      "terminated": "Τερματισμένο"
+      "highTariff": "Υψηλό",
+      "moderateTariff": "Μέτριο",
+      "lowTariff": "Χαμηλό"
     },
     "gdelt": {
       "empty": "Δεν υπάρχουν πρόσφατα άρθρα για αυτό το θέμα"

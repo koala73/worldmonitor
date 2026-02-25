@@ -582,9 +582,9 @@
       "exports": "Exports",
       "imports": "Imports",
       "yoyChange": "YoY Change",
-      "inForce": "In Force",
-      "notified": "Notified",
-      "terminated": "Terminated"
+      "highTariff": "High",
+      "moderateTariff": "Moderate",
+      "lowTariff": "Low"
     },
     "gdelt": {
       "empty": "No recent articles for this topic"

@@ -553,9 +553,9 @@
       "exports": "Xuất khẩu",
       "imports": "Nhập khẩu",
       "yoyChange": "Thay đổi theo Năm",
-      "inForce": "Có hiệu lực",
-      "notified": "Đã thông báo",
-      "terminated": "Đã chấm dứt"
+      "highTariff": "Cao",
+      "moderateTariff": "Trung bình",
+      "lowTariff": "Thấp"
     },
     "gdelt": {
       "empty": "Không có bài viết gần đây cho chủ đề này"

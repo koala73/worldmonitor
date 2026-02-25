@@ -553,9 +553,9 @@
       "exports": "Eksport",
       "imports": "Import",
       "yoyChange": "Zmiana Roczna",
-      "inForce": "Obowiązuje",
-      "notified": "Zgłoszone",
-      "terminated": "Zakończone"
+      "highTariff": "Wysokie",
+      "moderateTariff": "Umiarkowane",
+      "lowTariff": "Niskie"
     },
     "gdelt": {
       "empty": "Brak najnowszych artykułów na ten temat"

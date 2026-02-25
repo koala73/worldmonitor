@@ -113,8 +113,8 @@ export class TradePolicyPanel extends Panel {
 
     return `<div class="trade-restrictions-list">
       ${this.restrictionsData.restrictions.map(r => {
-        const statusClass = r.status === 'IN_FORCE' ? 'status-active' : r.status === 'TERMINATED' ? 'status-terminated' : 'status-notified';
-        const statusLabel = r.status === 'IN_FORCE' ? t('components.tradePolicy.inForce') : r.status === 'TERMINATED' ? t('components.tradePolicy.terminated') : t('components.tradePolicy.notified');
+        const statusClass = r.status === 'high' ? 'status-active' : r.status === 'moderate' ? 'status-notified' : 'status-terminated';
+        const statusLabel = r.status === 'high' ? t('components.tradePolicy.highTariff') : r.status === 'moderate' ? t('components.tradePolicy.moderateTariff') : t('components.tradePolicy.lowTariff');
         const sourceLink = this.renderSourceUrl(r.sourceUrl);
         return `<div class="trade-restriction-card">
           <div class="trade-restriction-header">
@@ -145,7 +145,6 @@ export class TradePolicyPanel extends Panel {
       `<tr>
         <td>${d.year}</td>
         <td>${d.tariffRate.toFixed(1)}%</td>
-        <td>${d.boundRate.toFixed(1)}%</td>
         <td>${escapeHtml(d.productSector || '—')}</td>
       </tr>`
     ).join('');
@@ -156,7 +155,6 @@ export class TradePolicyPanel extends Panel {
           <tr>
             <th>Year</th>
             <th>${t('components.tradePolicy.appliedRate')}</th>
-            <th>${t('components.tradePolicy.boundRate')}</th>
             <th>Sector</th>
           </tr>
         </thead>

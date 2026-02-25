@@ -553,9 +553,9 @@
       "exports": "การส่งออก",
       "imports": "การนำเข้า",
       "yoyChange": "เปลี่ยนแปลงรายปี",
-      "inForce": "มีผลบังคับใช้",
-      "notified": "แจ้งแล้ว",
-      "terminated": "สิ้นสุด"
+      "highTariff": "สูง",
+      "moderateTariff": "ปานกลาง",
+      "lowTariff": "ต่ำ"
     },
     "gdelt": {
       "empty": "ไม่มีบทความล่าสุดสำหรับหัวข้อนี้"

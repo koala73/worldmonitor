@@ -797,9 +797,9 @@
       "exports": "Exportações",
       "imports": "Importações",
       "yoyChange": "Variação Anual",
-      "inForce": "Em Vigor",
-      "notified": "Notificado",
-      "terminated": "Encerrado"
+      "highTariff": "Alto",
+      "moderateTariff": "Moderado",
+      "lowTariff": "Baixo"
     },
     "satelliteFires": {
       "region": "Região",

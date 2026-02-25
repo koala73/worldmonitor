@@ -553,9 +553,9 @@
       "exports": "出口",
       "imports": "进口",
       "yoyChange": "同比变化",
-      "inForce": "生效中",
-      "notified": "已通报",
-      "terminated": "已终止"
+      "highTariff": "高",
+      "moderateTariff": "中等",
+      "lowTariff": "低"
     },
     "gdelt": {
       "empty": "该主题暂无近期文章"

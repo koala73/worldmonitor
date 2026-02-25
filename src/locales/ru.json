@@ -553,9 +553,9 @@
       "exports": "Экспорт",
       "imports": "Импорт",
       "yoyChange": "Изменение за год",
-      "inForce": "Действует",
-      "notified": "Уведомлено",
-      "terminated": "Прекращено"
+      "highTariff": "Высокий",
+      "moderateTariff": "Умеренный",
+      "lowTariff": "Низкий"
     },
     "gdelt": {
       "empty": "Нет свежих статей по этой теме"
