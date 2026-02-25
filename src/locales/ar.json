@@ -137,7 +137,8 @@
     "panelCatCryptoDigital": "العملات الرقمية",
     "panelCatCentralBanks": "البنوك المركزية والاقتصاد",
     "panelCatDeals": "الصفقات والمؤسسات",
-    "panelCatGulfMena": "الخليج والشرق الأوسط"
+    "panelCatGulfMena": "الخليج والشرق الأوسط",
+    "panelCatTradePolicy": "السياسة التجارية"
   },
   "panels": {
     "liveNews": "أخبار مباشرة",
@@ -166,6 +167,7 @@
     "polymarket": "التنبؤات",
     "commodities": "السلع",
     "economic": "المؤشرات الاقتصادية",
+    "tradePolicy": "السياسة التجارية",
     "finance": "المالية",
     "tech": "التقنية",
     "crypto": "العملات الرقمية",
@@ -524,6 +526,26 @@
       "noOilDataRetry": "بيانات النفط غير متاحة مؤقتاً - ستتم إعادة المحاولة",
       "vsPreviousWeek": "مقارنة بالأسبوع السابق",
       "in": "في"
+    },
+    "tradePolicy": {
+      "restrictions": "القيود",
+      "tariffs": "التعريفات الجمركية",
+      "flows": "التدفقات التجارية",
+      "barriers": "الحواجز",
+      "noRestrictions": "لا توجد قيود تجارية نشطة",
+      "noTariffData": "لا تتوفر بيانات التعريفات الجمركية",
+      "noFlowData": "لا تتوفر بيانات التدفقات التجارية",
+      "noBarriers": "لم يتم الإبلاغ عن حواجز تجارية",
+      "apiKeyMissing": "مفتاح WTO API مطلوب — أضفه في الإعدادات",
+      "upstreamUnavailable": "بيانات WTO غير متاحة مؤقتاً — عرض البيانات المخزنة",
+      "appliedRate": "المعدل المطبق",
+      "boundRate": "المعدل الملزم",
+      "exports": "الصادرات",
+      "imports": "الواردات",
+      "yoyChange": "التغير السنوي",
+      "inForce": "ساري المفعول",
+      "notified": "تم الإخطار",
+      "terminated": "منتهي"
     },
     "gdelt": {
       "empty": "لا توجد مقالات حديثة لهذا الموضوع"

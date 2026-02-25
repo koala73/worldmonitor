@@ -22,7 +22,8 @@ export type RuntimeSecretKey =
   | 'UC_DP_KEY'
   | 'OLLAMA_API_URL'
   | 'OLLAMA_MODEL'
-  | 'WORLDMONITOR_API_KEY';
+  | 'WORLDMONITOR_API_KEY'
+  | 'WTO_API_KEY';
 
 export type RuntimeFeatureId =
   | 'aiGroq'
@@ -39,7 +40,8 @@ export type RuntimeFeatureId =
   | 'openskyRelay'
   | 'finnhubMarkets'
   | 'nasaFirms'
-  | 'aiOllama';
+  | 'aiOllama'
+  | 'wtoTrade';
 
 export interface RuntimeFeatureDefinition {
   id: RuntimeFeatureId;
@@ -80,6 +82,7 @@ const defaultToggles: Record<RuntimeFeatureId, boolean> = {
   finnhubMarkets: true,
   nasaFirms: true,
   aiOllama: true,
+  wtoTrade: true,
 };
 
 export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
@@ -189,6 +192,13 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
     description: 'Fire Information for Resource Management System satellite data.',
     requiredSecrets: ['NASA_FIRMS_API_KEY'],
     fallback: 'FIRMS fire layer uses public VIIRS feed.',
+  },
+  {
+    id: 'wtoTrade',
+    name: 'WTO trade policy data',
+    description: 'Trade restrictions, tariff trends, barriers, and flows from WTO.',
+    requiredSecrets: ['WTO_API_KEY'],
+    fallback: 'Trade policy panel shows disabled state.',
   },
 ];
 

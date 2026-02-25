@@ -137,7 +137,8 @@
     "panelCatCryptoDigital": "暗号通貨・デジタル",
     "panelCatCentralBanks": "中央銀行・経済",
     "panelCatDeals": "ディール・機関投資",
-    "panelCatGulfMena": "湾岸・中東"
+    "panelCatGulfMena": "湾岸・中東",
+    "panelCatTradePolicy": "通商政策"
   },
   "panels": {
     "liveNews": "ライブニュース",
@@ -166,6 +167,7 @@
     "polymarket": "予測",
     "commodities": "コモディティ",
     "economic": "経済指標",
+    "tradePolicy": "通商政策",
     "finance": "金融",
     "tech": "テクノロジー",
     "crypto": "暗号資産",
@@ -524,6 +526,26 @@
       "noOilDataRetry": "石油データ一時利用不可 — 自動リトライ予定",
       "vsPreviousWeek": "前週比",
       "in": "内"
+    },
+    "tradePolicy": {
+      "restrictions": "規制",
+      "tariffs": "関税",
+      "flows": "貿易フロー",
+      "barriers": "貿易障壁",
+      "noRestrictions": "有効な貿易規制なし",
+      "noTariffData": "関税データなし",
+      "noFlowData": "貿易フローデータなし",
+      "noBarriers": "貿易障壁の報告なし",
+      "apiKeyMissing": "WTO APIキーが必要です — 設定で追加してください",
+      "upstreamUnavailable": "WTOデータ一時利用不可 — キャッシュデータを表示中",
+      "appliedRate": "実行関税率",
+      "boundRate": "譲許税率",
+      "exports": "輸出",
+      "imports": "輸入",
+      "yoyChange": "前年比",
+      "inForce": "発効中",
+      "notified": "通報済み",
+      "terminated": "終了"
     },
     "gdelt": {
       "empty": "このトピックの最新記事なし"

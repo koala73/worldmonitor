@@ -137,7 +137,8 @@
     "panelCatCryptoDigital": "Crypto & Digitale",
     "panelCatCentralBanks": "Banche Centrali & Economia",
     "panelCatDeals": "Operazioni & Istituzionale",
-    "panelCatGulfMena": "Golfo & MENA"
+    "panelCatGulfMena": "Golfo & MENA",
+    "panelCatTradePolicy": "Politica Commerciale"
   },
   "panels": {
     "liveNews": "Notizie in diretta",
@@ -165,6 +166,7 @@
     "polymarket": "Previsioni",
     "commodities": "Materie prime",
     "economic": "Indicatori economici",
+    "tradePolicy": "Politica Commerciale",
     "finance": "Finanza",
     "tech": "Tecnologia",
     "crypto": "Cripto",
@@ -524,6 +526,26 @@
       "noOilDataRetry": "Dati petrolio temporaneamente non disponibili - nuovo tentativo in corso",
       "vsPreviousWeek": "rispetto alla settimana precedente",
       "in": "In"
+    },
+    "tradePolicy": {
+      "restrictions": "Restrizioni",
+      "tariffs": "Dazi",
+      "flows": "Flussi Commerciali",
+      "barriers": "Barriere",
+      "noRestrictions": "Nessuna restrizione commerciale attiva",
+      "noTariffData": "Nessun dato tariffario disponibile",
+      "noFlowData": "Nessun dato sui flussi commerciali disponibile",
+      "noBarriers": "Nessuna barriera commerciale segnalata",
+      "apiKeyMissing": "Chiave API WTO necessaria — aggiungila nelle Impostazioni",
+      "upstreamUnavailable": "Dati WTO temporaneamente non disponibili — visualizzazione dati memorizzati",
+      "appliedRate": "Tasso Applicato",
+      "boundRate": "Tasso Consolidato",
+      "exports": "Esportazioni",
+      "imports": "Importazioni",
+      "yoyChange": "Variazione Annua",
+      "inForce": "In Vigore",
+      "notified": "Notificato",
+      "terminated": "Terminato"
     },
     "gdelt": {
       "empty": "Nessun articolo recente per questo argomento"

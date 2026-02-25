@@ -82,6 +82,7 @@ export const COMMANDS: Command[] = [
   { id: 'panel:commodities', keywords: ['commodities', 'gold', 'silver'], label: 'Jump to Commodities', icon: '\u{1F4E6}', category: 'panels' },
   { id: 'panel:markets', keywords: ['markets', 'stocks', 'indices'], label: 'Jump to Markets', icon: '\u{1F4C8}', category: 'panels' },
   { id: 'panel:economic', keywords: ['economic', 'economy', 'fred'], label: 'Jump to Economic Indicators', icon: '\u{1F4CA}', category: 'panels' },
+  { id: 'panel:trade-policy', keywords: ['trade', 'tariffs', 'wto', 'trade policy', 'sanctions', 'restrictions'], label: 'Jump to Trade Policy', icon: '\u{1F4CA}', category: 'panels' },
   { id: 'panel:finance', keywords: ['financial', 'finance news'], label: 'Jump to Financial', icon: '\u{1F4B5}', category: 'panels' },
   { id: 'panel:tech', keywords: ['technology', 'tech news'], label: 'Jump to Technology', icon: '\u{1F4BB}', category: 'panels' },
   { id: 'panel:crypto', keywords: ['crypto', 'bitcoin', 'ethereum'], label: 'Jump to Crypto', icon: '\u20BF', category: 'panels' },

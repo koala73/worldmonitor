@@ -137,7 +137,8 @@
     "panelCatCryptoDigital": "Tiền mã hóa & Kỹ thuật số",
     "panelCatCentralBanks": "Ngân hàng Trung ương & Kinh tế",
     "panelCatDeals": "Giao dịch & Tổ chức",
-    "panelCatGulfMena": "Vùng Vịnh & MENA"
+    "panelCatGulfMena": "Vùng Vịnh & MENA",
+    "panelCatTradePolicy": "Chính sách Thương mại"
   },
   "panels": {
     "liveNews": "Tin tức Trực tiếp",
@@ -166,6 +167,7 @@
     "polymarket": "Dự đoán",
     "commodities": "Hàng hóa",
     "economic": "Chỉ số Kinh tế",
+    "tradePolicy": "Chính sách Thương mại",
     "finance": "Tài chính",
     "tech": "Công nghệ",
     "crypto": "Tiền mã hóa",
@@ -524,6 +526,26 @@
       "noOilDataRetry": "Dữ liệu dầu mỏ tạm thời không khả dụng - sẽ thử lại",
       "vsPreviousWeek": "so với tuần trước",
       "in": "trong"
+    },
+    "tradePolicy": {
+      "restrictions": "Hạn chế",
+      "tariffs": "Thuế quan",
+      "flows": "Dòng chảy Thương mại",
+      "barriers": "Rào cản",
+      "noRestrictions": "Không có hạn chế thương mại đang hoạt động",
+      "noTariffData": "Không có dữ liệu thuế quan",
+      "noFlowData": "Không có dữ liệu dòng chảy thương mại",
+      "noBarriers": "Không có rào cản thương mại được báo cáo",
+      "apiKeyMissing": "Cần khóa API WTO — thêm trong Cài đặt",
+      "upstreamUnavailable": "Dữ liệu WTO tạm thời không khả dụng — hiển thị dữ liệu đã lưu",
+      "appliedRate": "Thuế suất Áp dụng",
+      "boundRate": "Thuế suất Ràng buộc",
+      "exports": "Xuất khẩu",
+      "imports": "Nhập khẩu",
+      "yoyChange": "Thay đổi theo Năm",
+      "inForce": "Có hiệu lực",
+      "notified": "Đã thông báo",
+      "terminated": "Đã chấm dứt"
     },
     "gdelt": {
       "empty": "Không có bài viết gần đây cho chủ đề này"

@@ -37,3 +37,4 @@ export * from './data-freshness';
 export * from './usa-spending';
 export { generateSummary, translateText } from './summarization';
 export * from './cached-theater-posture';
+export * from './trade';

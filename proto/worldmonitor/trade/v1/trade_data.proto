@@ -1,0 +1,85 @@
+syntax = "proto3";
+
+package worldmonitor.trade.v1;
+
+// Quantitative restriction or export control measure notified to WTO.
+message TradeRestriction {
+  // Unique restriction identifier from WTO.
+  string id = 1;
+  // ISO 3166-1 alpha-3 or WTO member code of reporting country.
+  string reporting_country = 2;
+  // Country affected by the restriction.
+  string affected_country = 3;
+  // Product sector or HS chapter description.
+  string product_sector = 4;
+  // Measure classification: "QR", "EXPORT_BAN", "IMPORT_BAN", "LICENSING".
+  string measure_type = 5;
+  // Human-readable description of the measure.
+  string description = 6;
+  // Current status: "IN_FORCE", "TERMINATED", "NOTIFIED".
+  string status = 7;
+  // ISO 8601 date when measure was notified.
+  string notified_at = 8;
+  // WTO source document URL (must be http/https protocol).
+  string source_url = 9;
+}
+
+// Single tariff data point for a reporter-partner-product combination.
+message TariffDataPoint {
+  // WTO member code of reporting country.
+  string reporting_country = 1;
+  // WTO member code of partner country.
+  string partner_country = 2;
+  // Product sector or HS chapter.
+  string product_sector = 3;
+  // Year of observation.
+  int32 year = 4;
+  // Applied MFN tariff rate (percentage).
+  double tariff_rate = 5;
+  // WTO bound tariff rate (percentage).
+  double bound_rate = 6;
+  // WTO indicator code used for this datapoint.
+  string indicator_code = 7;
+}
+
+// Bilateral trade flow record for a reporting-partner pair.
+message TradeFlowRecord {
+  // WTO member code of reporting country.
+  string reporting_country = 1;
+  // WTO member code of partner country.
+  string partner_country = 2;
+  // Year of observation.
+  int32 year = 3;
+  // Merchandise export value in millions USD.
+  double export_value_usd = 4;
+  // Merchandise import value in millions USD.
+  double import_value_usd = 5;
+  // Year-over-year export change (percentage).
+  double yoy_export_change = 6;
+  // Year-over-year import change (percentage).
+  double yoy_import_change = 7;
+  // Product sector or HS chapter.
+  string product_sector = 8;
+}
+
+// SPS or TBT trade barrier notification.
+message TradeBarrier {
+  // Unique barrier notification identifier.
+  string id = 1;
+  // Country that notified the measure.
+  string notifying_country = 2;
+  // Title of the notification.
+  string title = 3;
+  // Measure classification: "SPS" or "TBT".
+  string measure_type = 4;
+  // Product description or affected goods.
+  string product_description = 5;
+  // Stated objective of the measure.
+  string objective = 6;
+  // Status of the notification.
+  string status = 7;
+  // ISO 8601 date when notification was distributed.
+  string date_distributed = 8;
+  // WTO source document URL (must be http/https protocol).
+  string source_url = 9;
+}

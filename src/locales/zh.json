@@ -137,7 +137,8 @@
     "panelCatCryptoDigital": "加密与数字资产",
     "panelCatCentralBanks": "央行与经济",
     "panelCatDeals": "交易与机构",
-    "panelCatGulfMena": "海湾与中东"
+    "panelCatGulfMena": "海湾与中东",
+    "panelCatTradePolicy": "贸易政策"
   },
   "panels": {
     "liveNews": "实时新闻",
@@ -166,6 +167,7 @@
     "polymarket": "预测",
     "commodities": "大宗商品",
     "economic": "经济指标",
+    "tradePolicy": "贸易政策",
     "finance": "金融",
     "tech": "科技",
     "crypto": "加密货币",
@@ -524,6 +526,26 @@
       "noOilDataRetry": "石油数据暂时不可用 - 将自动重试",
       "vsPreviousWeek": "与上周相比",
       "in": "于"
+    },
+    "tradePolicy": {
+      "restrictions": "限制措施",
+      "tariffs": "关税",
+      "flows": "贸易流量",
+      "barriers": "贸易壁垒",
+      "noRestrictions": "无有效贸易限制",
+      "noTariffData": "无可用关税数据",
+      "noFlowData": "无可用贸易流量数据",
+      "noBarriers": "未报告贸易壁垒",
+      "apiKeyMissing": "需要WTO API密钥 — 请在设置中添加",
+      "upstreamUnavailable": "WTO数据暂时不可用 — 显示缓存数据",
+      "appliedRate": "适用税率",
+      "boundRate": "约束税率",
+      "exports": "出口",
+      "imports": "进口",
+      "yoyChange": "同比变化",
+      "inForce": "生效中",
+      "notified": "已通报",
+      "terminated": "已终止"
     },
     "gdelt": {
       "empty": "该主题暂无近期文章"

@@ -137,7 +137,8 @@
     "panelCatCryptoDigital": "Крипто и цифровые активы",
     "panelCatCentralBanks": "Центробанки и экономика",
     "panelCatDeals": "Сделки и институционалы",
-    "panelCatGulfMena": "Залив и БВСА"
+    "panelCatGulfMena": "Залив и БВСА",
+    "panelCatTradePolicy": "Торговая политика"
   },
   "panels": {
     "liveNews": "Новости в реальном времени",
@@ -166,6 +167,7 @@
     "polymarket": "Прогнозы",
     "commodities": "Сырьевые товары",
     "economic": "Экономические индикаторы",
+    "tradePolicy": "Торговая политика",
     "finance": "Финансы",
     "tech": "Технологии",
     "crypto": "Криптовалюты",
@@ -524,6 +526,26 @@
       "noOilDataRetry": "Данные по нефти временно недоступны — повторная попытка",
       "vsPreviousWeek": "к предыдущей неделе",
       "in": "в"
+    },
+    "tradePolicy": {
+      "restrictions": "Ограничения",
+      "tariffs": "Тарифы",
+      "flows": "Торговые потоки",
+      "barriers": "Барьеры",
+      "noRestrictions": "Нет активных торговых ограничений",
+      "noTariffData": "Данные о тарифах недоступны",
+      "noFlowData": "Данные о торговых потоках недоступны",
+      "noBarriers": "Торговые барьеры не зарегистрированы",
+      "apiKeyMissing": "Требуется ключ API ВТО — добавьте его в Настройках",
+      "upstreamUnavailable": "Данные ВТО временно недоступны — отображаются кэшированные данные",
+      "appliedRate": "Применяемая ставка",
+      "boundRate": "Связанная ставка",
+      "exports": "Экспорт",
+      "imports": "Импорт",
+      "yoyChange": "Изменение за год",
+      "inForce": "Действует",
+      "notified": "Уведомлено",
+      "terminated": "Прекращено"
     },
     "gdelt": {
       "empty": "Нет свежих статей по этой теме"

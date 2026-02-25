@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package worldmonitor.trade.v1;
+
+import "worldmonitor/trade/v1/trade_data.proto";
+
+// Request for bilateral trade flow data.
+message GetTradeFlowsRequest {
+  // WTO member code of reporting country.
+  string reporting_country = 1;
+  // WTO member code of partner country.
+  string partner_country = 2;
+  // Number of years to look back (default 10, max 30).
+  int32 years = 3;
+}
+
+// Response containing trade flow records.
+message GetTradeFlowsResponse {
+  // Trade flow records ordered by year ascending.
+  repeated TradeFlowRecord flows = 1;
+  // ISO 8601 timestamp when data was fetched from WTO.
+  string fetched_at = 2;
+  // True if upstream fetch failed and results may be stale/empty.
+  bool upstream_unavailable = 3;
+}

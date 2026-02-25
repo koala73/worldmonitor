@@ -41,6 +41,7 @@
     "energy": "Energie en hulpbronnen",
     "etfFlows": "BTC ETF-tracker",
     "economic": "Economische indicatoren",
+    "tradePolicy": "Handelsbeleid",
     "macroSignals": "Marktradar",
     "commodities": "Grondstoffen",
     "monitors": "Mijn monitoren",
@@ -769,6 +770,26 @@
       "awards": "onderscheidingen",
       "noData": "Geen economische gegevens beschikbaar",
       "noOilData": "Oliegegevens niet beschikbaar"
+    },
+    "tradePolicy": {
+      "restrictions": "Beperkingen",
+      "tariffs": "Tarieven",
+      "flows": "Handelsstromen",
+      "barriers": "Handelsbarrières",
+      "noRestrictions": "Geen actieve handelsbeperkingen",
+      "noTariffData": "Geen tariefgegevens beschikbaar",
+      "noFlowData": "Geen handelsstroomgegevens beschikbaar",
+      "noBarriers": "Geen handelsbarrières gemeld",
+      "apiKeyMissing": "WTO API-sleutel vereist — voeg deze toe in Instellingen",
+      "upstreamUnavailable": "WTO-gegevens tijdelijk niet beschikbaar — gecachete gegevens worden weergegeven",
+      "appliedRate": "Toegepast Tarief",
+      "boundRate": "Gebonden Tarief",
+      "exports": "Export",
+      "imports": "Import",
+      "yoyChange": "Verandering op Jaarbasis",
+      "inForce": "Van Kracht",
+      "notified": "Gemeld",
+      "terminated": "Beëindigd"
     },
     "satelliteFires": {
       "region": "Regio",
@@ -1812,7 +1833,8 @@
     "panelCatCryptoDigital": "Crypto & Digitaal",
     "panelCatCentralBanks": "Centrale Banken & Economie",
     "panelCatDeals": "Deals & Institutioneel",
-    "panelCatGulfMena": "Golf & MENA"
+    "panelCatGulfMena": "Golf & MENA",
+    "panelCatTradePolicy": "Handelsbeleid"
   },
   "app": {
     "title": "World Monitor",

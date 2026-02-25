@@ -50,6 +50,8 @@ import { createPositiveEventsServiceRoutes } from '../../../src/generated/server
 import { positiveEventsHandler } from '../../../server/worldmonitor/positive-events/v1/handler';
 import { createGivingServiceRoutes } from '../../../src/generated/server/worldmonitor/giving/v1/service_server';
 import { givingHandler } from '../../../server/worldmonitor/giving/v1/handler';
+import { createTradeServiceRoutes } from '../../../src/generated/server/worldmonitor/trade/v1/service_server';
+import { tradeHandler } from '../../../server/worldmonitor/trade/v1/handler';
 
 import type { ServerOptions } from '../../../src/generated/server/worldmonitor/seismology/v1/service_server';
 
@@ -75,6 +77,7 @@ const allRoutes = [
   ...createMilitaryServiceRoutes(militaryHandler, serverOptions),
   ...createPositiveEventsServiceRoutes(positiveEventsHandler, serverOptions),
   ...createGivingServiceRoutes(givingHandler, serverOptions),
+  ...createTradeServiceRoutes(tradeHandler, serverOptions),
 ];
 
 const router = createRouter(allRoutes);

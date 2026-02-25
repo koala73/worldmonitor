@@ -39,7 +39,7 @@ const WORLD_FEEDS = new Set([
 const WORLD_APIS = new Set([
   'RSS2JSON', 'Finnhub', 'CoinGecko', 'Polymarket', 'USGS', 'FRED',
   'AISStream', 'GDELT Doc', 'EIA', 'USASpending', 'PizzINT', 'FIRMS',
-  'Cyber Threats API'
+  'Cyber Threats API', 'WTO'
 ]);
 
 import { t } from '../services/i18n';

@@ -40,6 +40,7 @@ const SIGNUP_URLS: Partial<Record<RuntimeSecretKey, string>> = {
   UC_DP_KEY: 'https://ucdp.uu.se/downloads/',
   OLLAMA_API_URL: 'https://ollama.com/download',
   OLLAMA_MODEL: 'https://ollama.com/library',
+  WTO_API_KEY: 'https://apiportal.wto.org/',
 };
 
 const PLAINTEXT_KEYS = new Set<RuntimeSecretKey>([
