@@ -300,13 +300,17 @@ export class NewsPanel extends Panel {
       this.renderClusters(enriched);
     } catch (error) {
       if (requestId !== this.renderRequestId) return;
-      console.error('[NewsPanel] Failed to cluster news:', error);
-      this.showError(t('common.failedClusterNews'));
+      // Keep already-rendered flat list visible when clustering fails.
+      console.warn('[NewsPanel] Failed to cluster news, keeping flat list:', error);
     }
   }
 
   private renderFlat(items: NewsItem[]): void {
     this.setCount(items.length);
+    this.currentHeadlines = items
+      .slice(0, 5)
+      .map(item => item.title)
+      .filter((title): title is string => typeof title === 'string' && title.trim().length > 0);
 
     const html = items
       .map(
