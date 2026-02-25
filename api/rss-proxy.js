@@ -249,8 +249,10 @@ const ALLOWED_DOMAINS = [
   'www.optimistdaily.com',
   'www.sunnyskyz.com',
   'www.huffpost.com',
+  'chaski.huffpost.com',
   'www.sciencedaily.com',
   'feeds.nature.com',
+  'www.nature.com',
   'www.livescience.com',
   'www.newscientist.com',
 ];
