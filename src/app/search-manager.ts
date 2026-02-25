@@ -210,6 +210,7 @@ export class SearchManager implements AppModule {
 
     this.ctx.searchModal.registerSource('country', this.buildCountrySearchItems());
 
+    this.ctx.searchModal.setActivePanels(Object.keys(this.ctx.panels));
     this.ctx.searchModal.setOnSelect((result) => this.handleSearchResult(result));
     this.ctx.searchModal.setOnCommand((cmd) => this.handleCommand(cmd));
 
@@ -464,14 +465,9 @@ export class SearchManager implements AppModule {
         }
         break;
 
-      case 'time': {
-        const timeSelect = document.getElementById('timeRangeSelect') as HTMLSelectElement;
-        if (timeSelect) {
-          timeSelect.value = action;
-          timeSelect.dispatchEvent(new Event('change'));
-        }
+      case 'time':
+        this.ctx.map?.setTimeRange(action as import('@/components').TimeRange);
         break;
-      }
     }
   }
 

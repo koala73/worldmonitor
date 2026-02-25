@@ -47,6 +47,7 @@ export class SearchModal {
   private onCommand?: (command: Command) => void;
   private placeholder: string;
   private hint: string;
+  private activePanelIds: Set<string> = new Set();
 
   constructor(container: HTMLElement, options?: SearchModalOptions) {
     this.container = container;
@@ -70,6 +71,10 @@ export class SearchModal {
 
   public setOnCommand(callback: (command: Command) => void): void {
     this.onCommand = callback;
+  }
+
+  public setActivePanels(panelIds: string[]): void {
+    this.activePanelIds = new Set(panelIds);
   }
 
   public open(): void {
@@ -131,6 +136,10 @@ export class SearchModal {
     if (query.length < 2) return [];
     const matched: CommandResult[] = [];
     for (const cmd of COMMANDS) {
+      if (cmd.id.startsWith('panel:') && this.activePanelIds.size > 0) {
+        const panelId = cmd.id.slice(6);
+        if (!this.activePanelIds.has(panelId)) continue;
+      }
       for (const keyword of cmd.keywords) {
         if (keyword.includes(query) || (keyword.length >= 3 && query.includes(keyword))) {
           const isExact = keyword === query;
