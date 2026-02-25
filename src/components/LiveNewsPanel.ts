@@ -221,6 +221,15 @@ export class LiveNewsPanel extends Panel {
   private muteSyncInterval: ReturnType<typeof setInterval> | null = null;
   private static readonly MUTE_SYNC_POLL_MS = 500;
 
+  // Bot-check detection: if player doesn't become ready within this timeout,
+  // YouTube is likely showing "Sign in to confirm you're not a bot".
+  private botCheckTimeout: ReturnType<typeof setTimeout> | null = null;
+  private static readonly BOT_CHECK_TIMEOUT_MS = 15_000;
+
+  private deferredInit = false;
+  private lazyObserver: IntersectionObserver | null = null;
+  private idleCallbackId: number | ReturnType<typeof setTimeout> | null = null;
+
   constructor() {
     super({ id: 'live-news', title: t('panels.liveNews') });
     this.youtubeOrigin = LiveNewsPanel.resolveYouTubeOrigin();
@@ -233,8 +242,66 @@ export class LiveNewsPanel extends Panel {
     this.createMuteButton();
     this.createChannelSwitcher();
     this.setupBridgeMessageListener();
-    this.renderPlayer();
+    this.renderPlaceholder();
+    this.setupLazyInit();
     this.setupIdleDetection();
+  }
+
+  private renderPlaceholder(): void {
+    this.content.innerHTML = '';
+    const container = document.createElement('div');
+    container.className = 'live-news-placeholder';
+    container.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;cursor:pointer;';
+
+    const label = document.createElement('div');
+    label.style.cssText = 'color:var(--text-secondary);font-size:13px;';
+    label.textContent = this.activeChannel.name;
+
+    const playBtn = document.createElement('button');
+    playBtn.className = 'offline-retry';
+    playBtn.textContent = 'Load Player';
+    playBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.triggerInit();
+    });
+
+    container.appendChild(label);
+    container.appendChild(playBtn);
+    container.addEventListener('click', () => this.triggerInit());
+    this.content.appendChild(container);
+  }
+
+  private setupLazyInit(): void {
+    this.lazyObserver = new IntersectionObserver(
+      (entries) => {
+        if (entries.some(e => e.isIntersecting)) {
+          this.lazyObserver?.disconnect();
+          this.lazyObserver = null;
+          if ('requestIdleCallback' in window) {
+            this.idleCallbackId = (window as any).requestIdleCallback(
+              () => { this.idleCallbackId = null; this.triggerInit(); },
+              { timeout: 1000 },
+            );
+          } else {
+            this.idleCallbackId = setTimeout(() => { this.idleCallbackId = null; this.triggerInit(); }, 1000);
+          }
+        }
+      },
+      { threshold: 0.1 },
+    );
+    this.lazyObserver.observe(this.element);
+  }
+
+  private triggerInit(): void {
+    if (this.deferredInit) return;
+    this.deferredInit = true;
+    if (this.lazyObserver) { this.lazyObserver.disconnect(); this.lazyObserver = null; }
+    if (this.idleCallbackId !== null) {
+      if ('cancelIdleCallback' in window) (window as any).cancelIdleCallback(this.idleCallbackId);
+      else clearTimeout(this.idleCallbackId as ReturnType<typeof setTimeout>);
+      this.idleCallbackId = null;
+    }
+    this.renderPlayer();
   }
 
   private saveChannels(): void {
@@ -253,9 +320,11 @@ export class LiveNewsPanel extends Panel {
       const msg = e.data;
       if (!msg || typeof msg !== 'object' || !msg.type) return;
       if (msg.type === 'yt-ready') {
+        this.clearBotCheckTimeout();
         this.isPlayerReady = true;
         this.syncDesktopEmbedState();
       } else if (msg.type === 'yt-error') {
+        this.clearBotCheckTimeout();
         const code = Number(msg.code ?? 0);
         if (code === 153 && this.activeChannel.fallbackVideoId &&
           this.activeChannel.videoId !== this.activeChannel.fallbackVideoId) {
@@ -361,6 +430,7 @@ export class LiveNewsPanel extends Panel {
   }
 
   private destroyPlayer(): void {
+    this.clearBotCheckTimeout();
     this.stopMuteSyncPolling();
     if (this.player) {
       this.player.destroy();
@@ -692,6 +762,7 @@ export class LiveNewsPanel extends Panel {
   }
 
   private ensurePlayerContainer(): void {
+    this.deferredInit = true;
     this.content.innerHTML = '';
     this.playerContainer = document.createElement('div');
     this.playerContainer.className = 'live-news-player';
@@ -799,6 +870,7 @@ export class LiveNewsPanel extends Panel {
 
     this.playerContainer.appendChild(iframe);
     this.desktopEmbedIframe = iframe;
+    this.startBotCheckTimeout();
   }
 
   private static loadYouTubeApi(): Promise<void> {
@@ -870,7 +942,7 @@ export class LiveNewsPanel extends Panel {
     if (this.player || !this.playerElement || !window.YT?.Player) return;
 
     this.player = new window.YT!.Player(this.playerElement, {
-      host: 'https://www.youtube-nocookie.com',
+      host: 'https://www.youtube.com',
       videoId: this.activeChannel.videoId,
       playerVars: {
         autoplay: this.isPlaying ? 1 : 0,
@@ -887,6 +959,7 @@ export class LiveNewsPanel extends Panel {
       },
       events: {
         onReady: () => {
+          this.clearBotCheckTimeout();
           this.isPlayerReady = true;
           this.currentVideoId = this.activeChannel.videoId || null;
           const iframe = this.player?.getIframe?.();
@@ -895,6 +968,7 @@ export class LiveNewsPanel extends Panel {
           this.startMuteSyncPolling();
         },
         onError: (event) => {
+          this.clearBotCheckTimeout();
           const errorCode = Number(event?.data ?? 0);
 
           // Retry once with known fallback stream.
@@ -924,6 +998,91 @@ export class LiveNewsPanel extends Panel {
         },
       },
     });
+
+    this.startBotCheckTimeout();
+  }
+
+  private startBotCheckTimeout(): void {
+    this.clearBotCheckTimeout();
+    this.botCheckTimeout = setTimeout(() => {
+      this.botCheckTimeout = null;
+      if (!this.isPlayerReady) {
+        this.showBotCheckPrompt();
+      }
+    }, LiveNewsPanel.BOT_CHECK_TIMEOUT_MS);
+  }
+
+  private clearBotCheckTimeout(): void {
+    if (this.botCheckTimeout) {
+      clearTimeout(this.botCheckTimeout);
+      this.botCheckTimeout = null;
+    }
+  }
+
+  private showBotCheckPrompt(): void {
+    const channel = this.activeChannel;
+    const watchUrl = channel.videoId
+      ? `https://www.youtube.com/watch?v=${encodeURIComponent(channel.videoId)}`
+      : `https://www.youtube.com/${encodeURIComponent(channel.handle)}`;
+
+    this.destroyPlayer();
+    this.content.innerHTML = '';
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'live-offline';
+
+    const icon = document.createElement('div');
+    icon.className = 'offline-icon';
+    icon.textContent = '\u26A0\uFE0F';
+
+    const text = document.createElement('div');
+    text.className = 'offline-text';
+    text.textContent = t('components.liveNews.botCheck', { name: channel.name }) || 'YouTube is requesting sign-in verification';
+
+    const actions = document.createElement('div');
+    actions.className = 'bot-check-actions';
+
+    const signinBtn = document.createElement('button');
+    signinBtn.className = 'offline-retry bot-check-signin';
+    signinBtn.textContent = t('components.liveNews.signInToYouTube') || 'Sign in to YouTube';
+    signinBtn.addEventListener('click', () => this.openYouTubeSignIn());
+
+    const retryBtn = document.createElement('button');
+    retryBtn.className = 'offline-retry bot-check-retry';
+    retryBtn.textContent = t('common.retry') || 'Retry';
+    retryBtn.addEventListener('click', () => {
+      this.ensurePlayerContainer();
+      if (this.useDesktopEmbedProxy) {
+        this.renderDesktopEmbed(true);
+      } else {
+        void this.initializePlayer();
+      }
+    });
+
+    const ytLink = document.createElement('a');
+    ytLink.className = 'offline-retry';
+    ytLink.href = watchUrl;
+    ytLink.target = '_blank';
+    ytLink.rel = 'noopener noreferrer';
+    ytLink.textContent = t('components.liveNews.openOnYouTube') || 'Open on YouTube';
+
+    actions.append(signinBtn, retryBtn, ytLink);
+    wrapper.append(icon, text, actions);
+    this.content.appendChild(wrapper);
+  }
+
+  private async openYouTubeSignIn(): Promise<void> {
+    const youtubeLoginUrl = 'https://accounts.google.com/ServiceLogin?service=youtube&continue=https://www.youtube.com/';
+    if (isDesktopRuntime()) {
+      try {
+        const { tryInvokeTauri } = await import('@/services/tauri-bridge');
+        await tryInvokeTauri('open_youtube_login');
+      } catch {
+        window.open(youtubeLoginUrl, '_blank');
+      }
+    } else {
+      window.open(youtubeLoginUrl, '_blank');
+    }
   }
 
   private syncPlayerState(): void {
@@ -1004,6 +1163,13 @@ export class LiveNewsPanel extends Panel {
 
   public destroy(): void {
     this.destroyPlayer();
+
+    if (this.lazyObserver) { this.lazyObserver.disconnect(); this.lazyObserver = null; }
+    if (this.idleCallbackId !== null) {
+      if ('cancelIdleCallback' in window) (window as any).cancelIdleCallback(this.idleCallbackId);
+      else clearTimeout(this.idleCallbackId as ReturnType<typeof setTimeout>);
+      this.idleCallbackId = null;
+    }
 
     if (this.idleTimeout) {
       clearTimeout(this.idleTimeout);

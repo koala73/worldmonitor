@@ -21,7 +21,7 @@ test('returns embeddable html for valid video id', async () => {
 
   const html = await response.text();
   assert.equal(html.includes("videoId:'iEpJwprxDdk'"), true);
-  assert.equal(html.includes("host:'https://www.youtube-nocookie.com'"), true);
+  assert.equal(html.includes("host:'https://www.youtube.com'"), true);
   assert.equal(html.includes('autoplay:0'), true);
   assert.equal(html.includes('mute:1'), true);
   assert.equal(html.includes('origin:"https://worldmonitor.app"'), true);

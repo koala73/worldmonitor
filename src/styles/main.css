@@ -1726,6 +1726,20 @@ canvas,
   border-color: var(--text-dim);
 }
 
+.bot-check-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.bot-check-actions .bot-check-signin {
+  background: var(--accent, #4a9eff);
+  border-color: var(--accent, #4a9eff);
+  color: #fff;
+}
+
 @keyframes loadingDots {
 
   0%,

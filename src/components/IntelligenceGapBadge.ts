@@ -227,7 +227,7 @@ export class IntelligenceFindingsBadge {
     if (count > this.lastFindingCount && this.lastFindingCount > 0) {
       this.badge.classList.add('pulse');
       setTimeout(() => this.badge.classList.remove('pulse'), 1000);
-      this.playSound();
+      if (this.popupEnabled) this.playSound();
     }
     this.lastFindingCount = count;
 

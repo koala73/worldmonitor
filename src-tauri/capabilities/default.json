@@ -2,6 +2,6 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capabilities for World Monitor main and settings windows",
-  "windows": ["main", "settings", "live-channels"],
+  "windows": ["main", "settings", "live-channels", "youtube-login"],
   "permissions": ["core:default"]
 }

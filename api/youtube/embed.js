@@ -63,7 +63,7 @@ export default async function handler(request) {
   const origin = sanitizeOrigin(url.searchParams.get('origin'));
   const parentOrigin = sanitizeParentOrigin(url.searchParams.get('parentOrigin'), origin);
 
-  const embedSrc = new URL(`https://www.youtube-nocookie.com/embed/${videoId}`);
+  const embedSrc = new URL(`https://www.youtube.com/embed/${videoId}`);
   embedSrc.searchParams.set('autoplay', autoplay);
   embedSrc.searchParams.set('mute', mute);
   embedSrc.searchParams.set('playsinline', '1');
@@ -115,7 +115,7 @@ export default async function handler(request) {
     function onYouTubeIframeAPIReady(){
       player=new YT.Player('player',{
         videoId:'${videoId}',
-        host:'https://www.youtube-nocookie.com',
+        host:'https://www.youtube.com',
         playerVars:{autoplay:${autoplay},mute:${mute},playsinline:1,rel:0,controls:1,modestbranding:1,enablejsapi:1,origin:${JSON.stringify(origin)},widget_referrer:${JSON.stringify(origin)}},
         events:{
           onReady:function(){

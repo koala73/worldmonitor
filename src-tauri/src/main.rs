@@ -575,6 +575,38 @@ fn open_live_channels_window(app: &AppHandle, base_url: Option<String>) -> Resul
     Ok(())
 }
 
+fn open_youtube_login_window(app: &AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("youtube-login") {
+        let _ = window.show();
+        window
+            .set_focus()
+            .map_err(|e| format!("Failed to focus YouTube login window: {e}"))?;
+        return Ok(());
+    }
+
+    let url = WebviewUrl::External(
+        Url::parse("https://accounts.google.com/ServiceLogin?service=youtube&continue=https://www.youtube.com/")
+            .map_err(|e| format!("Invalid URL: {e}"))?
+    );
+
+    let _yt_window = WebviewWindowBuilder::new(app, "youtube-login", url)
+        .title("Sign in to YouTube")
+        .inner_size(500.0, 700.0)
+        .resizable(true)
+        .build()
+        .map_err(|e| format!("Failed to create YouTube login window: {e}"))?;
+
+    #[cfg(not(target_os = "macos"))]
+    let _ = _yt_window.remove_menu();
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn open_youtube_login(app: AppHandle) -> Result<(), String> {
+    open_youtube_login_window(&app)
+}
+
 fn build_app_menu(handle: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let settings_item = MenuItem::with_id(
         handle,
@@ -1031,6 +1063,7 @@ fn main() {
             open_live_channels_window_command,
             close_live_channels_window,
             open_url,
+            open_youtube_login,
             fetch_polymarket
         ])
         .setup(|app| {
