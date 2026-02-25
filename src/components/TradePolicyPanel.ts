@@ -21,6 +21,15 @@ export class TradePolicyPanel extends Panel {
 
   constructor() {
     super({ id: 'trade-policy', title: t('panels.tradePolicy') });
+    this.content.addEventListener('click', (e) => {
+      const target = (e.target as HTMLElement).closest('.economic-tab') as HTMLElement | null;
+      if (!target) return;
+      const tabId = target.dataset.tab as TabId;
+      if (tabId && tabId !== this.activeTab) {
+        this.activeTab = tabId;
+        this.render();
+      }
+    });
   }
 
   public updateRestrictions(data: GetTradeRestrictionsResponse): void {
@@ -95,16 +104,6 @@ export class TradePolicyPanel extends Panel {
       </div>
     `);
 
-    // Event delegation on this.content for tab switching (survives setContent debounce)
-    this.content.addEventListener('click', (e) => {
-      const target = (e.target as HTMLElement).closest('.economic-tab') as HTMLElement | null;
-      if (!target) return;
-      const tabId = target.dataset.tab as TabId;
-      if (tabId && tabId !== this.activeTab) {
-        this.activeTab = tabId;
-        this.render();
-      }
-    });
   }
 
   private renderRestrictions(): string {
