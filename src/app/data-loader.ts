@@ -1627,7 +1627,7 @@ export class DataLoaderManager implements AppModule {
         pubDate: new Date(item.pubDate),
       }));
 
-      const scienceSources = ['GNN Science', 'ScienceDaily', 'Nature News', 'Live Science', 'New Scientist'];
+      const scienceSources = ['GNN Science', 'ScienceDaily', 'Nature News', 'Live Science', 'New Scientist', 'Singularity Hub', 'Human Progress', 'Greater Good (Berkeley)'];
       this.ctx.breakthroughsPanel?.setItems(
         items.filter(item => scienceSources.includes(item.source) || item.happyCategory === 'science-health')
       );
@@ -1676,7 +1676,7 @@ export class DataLoaderManager implements AppModule {
       this.ctx.positivePanel.renderPositiveNews(merged);
     }
 
-    const scienceSources = ['GNN Science', 'ScienceDaily', 'Nature News', 'Live Science', 'New Scientist'];
+    const scienceSources = ['GNN Science', 'ScienceDaily', 'Nature News', 'Live Science', 'New Scientist', 'Singularity Hub', 'Human Progress', 'Greater Good (Berkeley)'];
     const scienceItems = this.ctx.happyAllItems.filter(item =>
       scienceSources.includes(item.source) || item.happyCategory === 'science-health'
     );

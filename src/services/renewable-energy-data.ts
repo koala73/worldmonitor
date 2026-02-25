@@ -49,11 +49,26 @@ const REGIONS: Array<{ code: string; name: string }> = [
 
 // ---- Default / Empty ----
 
-const EMPTY_DATA: RenewableEnergyData = {
-  globalPercentage: 0,
-  globalYear: 0,
-  historicalData: [],
-  regions: [],
+// Static fallback when World Bank API is unavailable and no cache exists.
+// Source: https://data.worldbank.org/indicator/EG.ELC.RNEW.ZS — last verified Feb 2026
+const FALLBACK_DATA: RenewableEnergyData = {
+  globalPercentage: 29.6,
+  globalYear: 2022,
+  historicalData: [
+    { year: 1990, value: 19.8 }, { year: 1995, value: 19.2 }, { year: 2000, value: 18.6 },
+    { year: 2005, value: 18.0 }, { year: 2010, value: 20.3 }, { year: 2012, value: 21.6 },
+    { year: 2014, value: 22.6 }, { year: 2016, value: 24.0 }, { year: 2018, value: 25.7 },
+    { year: 2020, value: 28.2 }, { year: 2021, value: 28.7 }, { year: 2022, value: 29.6 },
+  ],
+  regions: [
+    { code: 'LCN', name: 'Latin America & Caribbean', percentage: 58.1, year: 2022 },
+    { code: 'SSF', name: 'Sub-Saharan Africa', percentage: 47.2, year: 2022 },
+    { code: 'ECS', name: 'Europe & Central Asia', percentage: 35.8, year: 2022 },
+    { code: 'SAS', name: 'South Asia', percentage: 22.1, year: 2022 },
+    { code: 'EAS', name: 'East Asia & Pacific', percentage: 21.9, year: 2022 },
+    { code: 'NAC', name: 'North America', percentage: 21.5, year: 2022 },
+    { code: 'MEA', name: 'Middle East & N. Africa', percentage: 5.3, year: 2022 },
+  ],
 };
 
 // ---- Circuit Breaker (persistent cache for instant reload) ----
@@ -83,7 +98,7 @@ async function fetchRenewableEnergyDataFresh(): Promise<RenewableEnergyData> {
     // World Bank API returns countryiso3code "WLD" for world aggregate (request code "1W").
     const worldData = response.byCountry['WLD'];
     if (!worldData || worldData.values.length === 0) {
-      return EMPTY_DATA;
+      return FALLBACK_DATA;
     }
 
     // Build historical time-series, filtering out null/NaN values
@@ -97,7 +112,7 @@ async function fetchRenewableEnergyDataFresh(): Promise<RenewableEnergyData> {
       .sort((a, b) => a.year - b.year);
 
     if (historicalData.length === 0) {
-      return EMPTY_DATA;
+      return FALLBACK_DATA;
     }
 
     const latest = historicalData[historicalData.length - 1]!;
@@ -150,7 +165,7 @@ async function fetchRenewableEnergyDataFresh(): Promise<RenewableEnergyData> {
       regions,
     };
   } catch {
-    return EMPTY_DATA;
+    return FALLBACK_DATA;
   }
 }
 
@@ -159,7 +174,7 @@ async function fetchRenewableEnergyDataFresh(): Promise<RenewableEnergyData> {
  * Returns instantly from IndexedDB cache on subsequent loads.
  */
 export async function fetchRenewableEnergyData(): Promise<RenewableEnergyData> {
-  return renewableBreaker.execute(() => fetchRenewableEnergyDataFresh(), EMPTY_DATA);
+  return renewableBreaker.execute(() => fetchRenewableEnergyDataFresh(), FALLBACK_DATA);
 }
 
 // ========================================================================
