@@ -7170,6 +7170,234 @@ a.prediction-link:hover {
   line-height: 1.3;
 }
 
+/* Trade Policy Panel */
+.economic-warning {
+  padding: 6px 10px;
+  font-size: 10px;
+  color: var(--semantic-elevated);
+  background: rgba(255, 170, 50, 0.08);
+  border-bottom: 1px solid rgba(255, 170, 50, 0.15);
+}
+
+.trade-restrictions-list,
+.trade-barriers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.trade-restriction-card,
+.trade-barrier-card {
+  padding: 8px 10px;
+  background: var(--overlay-subtle);
+  border-radius: 4px;
+  border-left: 2px solid var(--border);
+  transition: all 0.15s;
+}
+
+.trade-restriction-card:hover,
+.trade-barrier-card:hover {
+  background: var(--overlay-light);
+  border-left-color: var(--green);
+}
+
+.trade-restriction-header,
+.trade-barrier-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.trade-country {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.trade-badge {
+  font-size: 9px;
+  padding: 1px 5px;
+  background: rgba(68, 255, 136, 0.1);
+  color: var(--text-dim);
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.trade-status {
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-weight: 600;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.trade-status.status-active {
+  background: rgba(255, 80, 80, 0.15);
+  color: var(--red);
+}
+
+.trade-status.status-notified {
+  background: rgba(255, 170, 50, 0.15);
+  color: var(--semantic-elevated);
+}
+
+.trade-status.status-terminated {
+  background: rgba(68, 255, 136, 0.1);
+  color: var(--green);
+}
+
+.trade-sector {
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.trade-description {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-top: 2px;
+  line-height: 1.3;
+}
+
+.trade-affected {
+  font-size: 9px;
+  color: var(--text-faint);
+  margin-top: 2px;
+}
+
+.trade-barrier-title {
+  font-size: 10px;
+  color: var(--text-secondary);
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.trade-restriction-footer,
+.trade-barrier-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.trade-date {
+  font-size: 9px;
+  color: var(--text-faint);
+}
+
+.trade-source-link {
+  font-size: 9px;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.trade-source-link:hover {
+  text-decoration: underline;
+}
+
+/* Trade Tariffs Table */
+.trade-tariffs-table {
+  width: 100%;
+}
+
+.trade-tariffs-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.trade-tariffs-table thead th {
+  text-align: left;
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 4px 8px 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.trade-tariffs-table tbody td {
+  padding: 5px 8px;
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+}
+
+.trade-tariffs-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.trade-tariffs-table tbody tr:hover {
+  background: var(--overlay-subtle);
+}
+
+/* Trade Flows */
+.trade-flows-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.trade-flow-card {
+  padding: 8px 10px;
+  background: var(--overlay-subtle);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.trade-flow-card:hover {
+  background: var(--overlay-light);
+}
+
+.trade-flow-year {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  min-width: 36px;
+}
+
+.trade-flow-metrics {
+  flex: 1;
+  display: flex;
+  gap: 12px;
+}
+
+.trade-flow-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.trade-flow-label {
+  font-size: 9px;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.trade-flow-value {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.trade-flow-change {
+  font-size: 10px;
+}
+
+.trade-flow-change.change-positive {
+  color: var(--green);
+}
+
+.trade-flow-change.change-negative {
+  color: var(--red);
+}
+
 /* Search Modal (Cmd+K) */
 .search-overlay {
   position: fixed;
