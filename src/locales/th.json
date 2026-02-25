@@ -523,7 +523,17 @@
       "noIndicatorData": "ยังไม่มีข้อมูลตัวชี้วัด - FRED อาจกำลังโหลด",
       "noOilDataRetry": "ข้อมูลน้ำมันไม่พร้อมใช้งานชั่วคราว - จะลองใหม่อัตโนมัติ",
       "vsPreviousWeek": "เทียบกับสัปดาห์ก่อน",
-      "in": "ใน"
+      "in": "ใน",
+      "centralBanks": "Central Banks",
+      "noBisData": "BIS data temporarily unavailable - will retry",
+      "policyRate": "Policy Rate",
+      "exchangeRate": "Exchange Rate",
+      "creditToGdp": "Credit / GDP",
+      "realEer": "Real EER",
+      "change": "Change",
+      "cut": "cut",
+      "hike": "hike",
+      "hold": "hold"
     },
     "gdelt": {
       "empty": "ไม่มีบทความล่าสุดสำหรับหัวข้อนี้"

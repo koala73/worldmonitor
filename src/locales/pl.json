@@ -523,7 +523,17 @@
       "noIndicatorData": "Brak jeszcze danych wskaźników — FRED może się ładować",
       "noOilDataRetry": "Dane dotyczące oleju są chwilowo niedostępne — spróbujemy ponownie",
       "vsPreviousWeek": "w porównaniu z poprzednim tygodniem",
-      "in": "W"
+      "in": "W",
+      "centralBanks": "Central Banks",
+      "noBisData": "BIS data temporarily unavailable - will retry",
+      "policyRate": "Policy Rate",
+      "exchangeRate": "Exchange Rate",
+      "creditToGdp": "Credit / GDP",
+      "realEer": "Real EER",
+      "change": "Change",
+      "cut": "cut",
+      "hike": "hike",
+      "hold": "hold"
     },
     "gdelt": {
       "empty": "Brak najnowszych artykułów na ten temat"

@@ -523,7 +523,17 @@
       "noIndicatorData": "Данные индикаторов отсутствуют — FRED может загружаться",
       "noOilDataRetry": "Данные по нефти временно недоступны — повторная попытка",
       "vsPreviousWeek": "к предыдущей неделе",
-      "in": "в"
+      "in": "в",
+      "centralBanks": "Central Banks",
+      "noBisData": "BIS data temporarily unavailable - will retry",
+      "policyRate": "Policy Rate",
+      "exchangeRate": "Exchange Rate",
+      "creditToGdp": "Credit / GDP",
+      "realEer": "Real EER",
+      "change": "Change",
+      "cut": "cut",
+      "hike": "hike",
+      "hold": "hold"
     },
     "gdelt": {
       "empty": "Нет свежих статей по этой теме"

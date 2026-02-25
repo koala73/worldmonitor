@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package worldmonitor.economic.v1;
+
+import "worldmonitor/economic/v1/bis_data.proto";
+
+// GetBisPolicyRatesRequest requests central bank policy rates.
+message GetBisPolicyRatesRequest {}
+
+// GetBisPolicyRatesResponse contains BIS policy rate data.
+message GetBisPolicyRatesResponse {
+  // The list of policy rates by country.
+  repeated BisPolicyRate rates = 1;
+}

@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package worldmonitor.economic.v1;
+
+import "worldmonitor/economic/v1/bis_data.proto";
+
+// GetBisExchangeRatesRequest requests effective exchange rates.
+message GetBisExchangeRatesRequest {}
+
+// GetBisExchangeRatesResponse contains BIS effective exchange rate data.
+message GetBisExchangeRatesResponse {
+  // The list of exchange rates by country.
+  repeated BisExchangeRate rates = 1;
+}

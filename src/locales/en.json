@@ -552,7 +552,17 @@
       "fredKeyMissing": "FRED API key required — add it in Settings to enable economic indicators",
       "noOilDataRetry": "Oil data temporarily unavailable - will retry",
       "vsPreviousWeek": "vs previous week",
-      "in": "in"
+      "in": "in",
+      "centralBanks": "Central Banks",
+      "noBisData": "BIS data temporarily unavailable - will retry",
+      "policyRate": "Policy Rate",
+      "exchangeRate": "Exchange Rate",
+      "creditToGdp": "Credit / GDP",
+      "realEer": "Real EER",
+      "change": "Change",
+      "cut": "cut",
+      "hike": "hike",
+      "hold": "hold"
     },
     "gdelt": {
       "empty": "No recent articles for this topic"

@@ -155,6 +155,53 @@ export interface GetEnergyCapacityResponse {
   series: EnergyCapacitySeries[];
 }
 
+export interface BisPolicyRate {
+  countryCode: string;
+  countryName: string;
+  rate: number;
+  previousRate: number;
+  date: string;
+  centralBank: string;
+}
+
+export interface BisExchangeRate {
+  countryCode: string;
+  countryName: string;
+  realEer: number;
+  nominalEer: number;
+  realChange: number;
+  date: string;
+}
+
+export interface BisCreditToGdp {
+  countryCode: string;
+  countryName: string;
+  creditGdpRatio: number;
+  previousRatio: number;
+  date: string;
+}
+
+export interface GetBisPolicyRatesRequest {
+}
+
+export interface GetBisPolicyRatesResponse {
+  rates: BisPolicyRate[];
+}
+
+export interface GetBisExchangeRatesRequest {
+}
+
+export interface GetBisExchangeRatesResponse {
+  rates: BisExchangeRate[];
+}
+
+export interface GetBisCreditRequest {
+}
+
+export interface GetBisCreditResponse {
+  entries: BisCreditToGdp[];
+}
+
 export interface EnergyCapacitySeries {
   energySource: string;
   name: string;
@@ -332,6 +379,78 @@ export class EconomicServiceClient {
     }
 
     return await resp.json() as GetEnergyCapacityResponse;
+  }
+
+  async getBisPolicyRates(req: GetBisPolicyRatesRequest, options?: EconomicServiceCallOptions): Promise<GetBisPolicyRatesResponse> {
+    let path = "/api/economic/v1/get-bis-policy-rates";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetBisPolicyRatesResponse;
+  }
+
+  async getBisExchangeRates(req: GetBisExchangeRatesRequest, options?: EconomicServiceCallOptions): Promise<GetBisExchangeRatesResponse> {
+    let path = "/api/economic/v1/get-bis-exchange-rates";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetBisExchangeRatesResponse;
+  }
+
+  async getBisCredit(req: GetBisCreditRequest, options?: EconomicServiceCallOptions): Promise<GetBisCreditResponse> {
+    let path = "/api/economic/v1/get-bis-credit";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetBisCreditResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

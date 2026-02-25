@@ -8,6 +8,9 @@ import "worldmonitor/economic/v1/list_world_bank_indicators.proto";
 import "worldmonitor/economic/v1/get_energy_prices.proto";
 import "worldmonitor/economic/v1/get_macro_signals.proto";
 import "worldmonitor/economic/v1/get_energy_capacity.proto";
+import "worldmonitor/economic/v1/get_bis_policy_rates.proto";
+import "worldmonitor/economic/v1/get_bis_exchange_rates.proto";
+import "worldmonitor/economic/v1/get_bis_credit.proto";
 
 // EconomicService provides APIs for macroeconomic data from FRED, World Bank, and EIA.
 service EconomicService {
@@ -36,5 +39,20 @@ service EconomicService {
   // GetEnergyCapacity retrieves installed capacity data (solar, wind, coal) from EIA.
   rpc GetEnergyCapacity(GetEnergyCapacityRequest) returns (GetEnergyCapacityResponse) {
     option (sebuf.http.config) = {path: "/get-energy-capacity"};
+  }
+
+  // GetBisPolicyRates retrieves central bank policy rates from BIS.
+  rpc GetBisPolicyRates(GetBisPolicyRatesRequest) returns (GetBisPolicyRatesResponse) {
+    option (sebuf.http.config) = {path: "/get-bis-policy-rates"};
+  }
+
+  // GetBisExchangeRates retrieves effective exchange rates from BIS.
+  rpc GetBisExchangeRates(GetBisExchangeRatesRequest) returns (GetBisExchangeRatesResponse) {
+    option (sebuf.http.config) = {path: "/get-bis-exchange-rates"};
+  }
+
+  // GetBisCredit retrieves credit-to-GDP ratio data from BIS.
+  rpc GetBisCredit(GetBisCreditRequest) returns (GetBisCreditResponse) {
+    option (sebuf.http.config) = {path: "/get-bis-credit"};
   }
 }
