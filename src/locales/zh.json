@@ -525,7 +525,7 @@
       "vsPreviousWeek": "与上周相比",
       "in": "于",
       "centralBanks": "Central Banks",
-      "noBisData": "BIS data loading...",
+      "noBisData": "BIS data temporarily unavailable - will retry",
       "policyRate": "Policy Rate",
       "exchangeRate": "Exchange Rate",
       "creditToGdp": "Credit / GDP",

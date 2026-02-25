@@ -770,7 +770,7 @@
       "noData": "Nenhum dado econômico disponível",
       "noOilData": "Dados de petróleo não disponíveis",
       "centralBanks": "Central Banks",
-      "noBisData": "BIS data loading...",
+      "noBisData": "BIS data temporarily unavailable - will retry",
       "policyRate": "Policy Rate",
       "exchangeRate": "Exchange Rate",
       "creditToGdp": "Credit / GDP",

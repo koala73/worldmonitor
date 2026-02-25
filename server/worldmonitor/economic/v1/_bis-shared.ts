@@ -28,7 +28,8 @@ export const BIS_COUNTRIES: Record<string, { name: string; centralBank: string }
 export const BIS_COUNTRY_KEYS = Object.keys(BIS_COUNTRIES).join('+');
 
 export async function fetchBisCSV(dataset: string, key: string, timeout = 12000): Promise<string> {
-  const url = `${BIS_BASE}/${dataset}/${key}?format=csv`;
+  const separator = key.includes('?') ? '&' : '?';
+  const url = `${BIS_BASE}/${dataset}/${key}${separator}format=csv`;
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeout);
   try {

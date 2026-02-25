@@ -24,57 +24,46 @@ export async function getBisExchangeRates(
     const cached = (await getCachedJson(REDIS_CACHE_KEY)) as GetBisExchangeRatesResponse | null;
     if (cached?.rates?.length) return cached;
 
-    // Single batched request: R=Real, N=Nominal, B=Broad basket
+    // Single batched request: R=Real only (nominal is not displayed), B=Broad basket
     const threeMonthsAgo = new Date();
     threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
     const startPeriod = `${threeMonthsAgo.getFullYear()}-${String(threeMonthsAgo.getMonth() + 1).padStart(2, '0')}`;
 
-    const csv = await fetchBisCSV('WS_EER', `M.R+N.B.${BIS_COUNTRY_KEYS}?startPeriod=${startPeriod}&detail=dataonly`);
+    const csv = await fetchBisCSV('WS_EER', `M.R.B.${BIS_COUNTRY_KEYS}?startPeriod=${startPeriod}&detail=dataonly`);
     const rows = parseBisCSV(csv);
 
-    // Group by country + type (R/N), take latest per combination
-    const grouped = new Map<string, Map<string, Array<{ date: string; value: number }>>>();
+    // Group by country, take last 2 observations for change calculation
+    const byCountry = new Map<string, Array<{ date: string; value: number }>>();
     for (const row of rows) {
       const cc = row['REF_AREA'] || row['Reference area'] || '';
-      const type = row['EER_TYPE'] || row['EER type'] || '';
       const date = row['TIME_PERIOD'] || row['Time period'] || '';
       const val = parseBisNumber(row['OBS_VALUE'] || row['Observation value']);
-      if (!cc || !type || !date || val === null) continue;
-
-      if (!grouped.has(cc)) grouped.set(cc, new Map());
-      const countryMap = grouped.get(cc)!;
-      if (!countryMap.has(type)) countryMap.set(type, []);
-      countryMap.get(type)!.push({ date, value: val });
+      if (!cc || !date || val === null) continue;
+      if (!byCountry.has(cc)) byCountry.set(cc, []);
+      byCountry.get(cc)!.push({ date, value: val });
     }
 
     const rates: BisExchangeRate[] = [];
-    for (const [cc, typeMap] of grouped) {
+    for (const [cc, obs] of byCountry) {
       const info = BIS_COUNTRIES[cc];
       if (!info) continue;
 
-      // Get latest real and nominal values
-      const realObs = typeMap.get('R') || [];
-      const nomObs = typeMap.get('N') || [];
+      obs.sort((a, b) => a.date.localeCompare(b.date));
+      const latest = obs[obs.length - 1];
+      const prev = obs.length >= 2 ? obs[obs.length - 2] : undefined;
 
-      realObs.sort((a, b) => a.date.localeCompare(b.date));
-      nomObs.sort((a, b) => a.date.localeCompare(b.date));
-
-      const latestReal = realObs[realObs.length - 1];
-      const prevReal = realObs.length >= 2 ? realObs[realObs.length - 2] : undefined;
-      const latestNom = nomObs[nomObs.length - 1];
-
-      if (latestReal) {
-        const realChange = prevReal
-          ? Math.round(((latestReal.value - prevReal.value) / prevReal.value) * 1000) / 10
+      if (latest) {
+        const realChange = prev
+          ? Math.round(((latest.value - prev.value) / prev.value) * 1000) / 10
           : 0;
 
         rates.push({
           countryCode: cc,
           countryName: info.name,
-          realEer: Math.round(latestReal.value * 100) / 100,
-          nominalEer: latestNom ? Math.round(latestNom.value * 100) / 100 : 0,
+          realEer: Math.round(latest.value * 100) / 100,
+          nominalEer: 0,
           realChange,
-          date: latestReal.date,
+          date: latest.date,
         });
       }
     }
@@ -84,7 +73,8 @@ export async function getBisExchangeRates(
       setCachedJson(REDIS_CACHE_KEY, result, REDIS_CACHE_TTL).catch(() => {});
     }
     return result;
-  } catch {
+  } catch (e) {
+    console.error('[BIS] Exchange rates fetch failed:', e);
     return { rates: [] };
   }
 }

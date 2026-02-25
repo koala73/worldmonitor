@@ -58,7 +58,7 @@ export async function getBisCredit(
           countryCode: cc,
           countryName: info.name,
           creditGdpRatio: Math.round(latest.value * 10) / 10,
-          previousRatio: previous ? Math.round(previous.value * 10) / 10 : latest.value,
+          previousRatio: previous ? Math.round(previous.value * 10) / 10 : Math.round(latest.value * 10) / 10,
           date: latest.date,
         });
       }
@@ -69,7 +69,8 @@ export async function getBisCredit(
       setCachedJson(REDIS_CACHE_KEY, result, REDIS_CACHE_TTL).catch(() => {});
     }
     return result;
-  } catch {
+  } catch (e) {
+    console.error('[BIS] Credit-to-GDP fetch failed:', e);
     return { entries: [] };
   }
 }

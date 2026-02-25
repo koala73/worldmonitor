@@ -70,7 +70,8 @@ export async function getBisPolicyRates(
       setCachedJson(REDIS_CACHE_KEY, result, REDIS_CACHE_TTL).catch(() => {});
     }
     return result;
-  } catch {
+  } catch (e) {
+    console.error('[BIS] Policy rates fetch failed:', e);
     return { rates: [] };
   }
 }
