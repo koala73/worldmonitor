@@ -97,7 +97,7 @@ export async function getTariffTrends(
       REDIS_CACHE_TTL,
       async () => {
         const { datapoints, ok } = await fetchTariffTrends(reporter, partner, productSector, years);
-        if (!ok || datapoints.length === 0) return null;
+        if (!ok) return null;
         return { datapoints, fetchedAt: new Date().toISOString(), upstreamUnavailable: false };
       },
     );

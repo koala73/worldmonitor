@@ -163,7 +163,7 @@ export async function getTradeBarriers(
       REDIS_CACHE_TTL,
       async () => {
         const { barriers, ok } = await fetchBarriers(countries, limit);
-        if (!ok || barriers.length === 0) return null;
+        if (!ok) return null;
         return { barriers, fetchedAt: new Date().toISOString(), upstreamUnavailable: false };
       },
     );

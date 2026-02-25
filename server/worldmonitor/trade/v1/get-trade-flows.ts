@@ -160,7 +160,7 @@ export async function getTradeFlows(
       REDIS_CACHE_TTL,
       async () => {
         const { flows, ok } = await fetchTradeFlows(reporter, partner, years);
-        if (!ok || flows.length === 0) return null;
+        if (!ok) return null;
         return { flows, fetchedAt: new Date().toISOString(), upstreamUnavailable: false };
       },
     );

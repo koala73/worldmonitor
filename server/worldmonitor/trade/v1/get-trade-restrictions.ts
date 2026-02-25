@@ -112,7 +112,7 @@ export async function getTradeRestrictions(
       REDIS_CACHE_TTL,
       async () => {
         const { restrictions, ok } = await fetchRestrictions([], limit);
-        if (!ok || restrictions.length === 0) return null;
+        if (!ok) return null;
         return { restrictions, fetchedAt: new Date().toISOString(), upstreamUnavailable: false };
       },
     );
