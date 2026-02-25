@@ -40,7 +40,7 @@ function toDataPoint(row: any, reporter: string, partner: string): TariffDataPoi
     reportingCountry:
       WTO_MEMBER_CODES[reporter] ?? String(row.ReportingEconomy ?? row.reportingEconomy ?? reporter),
     partnerCountry:
-      WTO_MEMBER_CODES[partner] ?? String(row.PartnerEconomy ?? row.partnerEconomy ?? partner || 'World'),
+      WTO_MEMBER_CODES[partner] ?? String(row.PartnerEconomy ?? row.partnerEconomy ?? (partner || 'World')),
     productSector: String(row.ProductOrSector ?? row.productOrSector ?? 'All products'),
     year,
     tariffRate: Math.round(tariffRate * 100) / 100,
