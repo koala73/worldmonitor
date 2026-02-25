@@ -454,6 +454,29 @@ export const MILITARY_HOTSPOTS = [
   { name: 'ARCTIC', lat: 75.0, lon: 0.0, radius: 10, priority: 'low' },
 ] as const;
 
+export interface QueryRegion {
+  name: string;
+  lamin: number;
+  lamax: number;
+  lomin: number;
+  lomax: number;
+}
+
+export const MILITARY_QUERY_REGIONS: QueryRegion[] = [
+  { name: 'PACIFIC', lamin: 10, lamax: 46, lomin: 107, lomax: 143 },
+  { name: 'WESTERN', lamin: 13, lamax: 85, lomin: -10, lomax: 57 },
+];
+
+if (import.meta.env.DEV) {
+  for (const h of MILITARY_HOTSPOTS) {
+    const hbox = { lamin: h.lat - h.radius, lamax: h.lat + h.radius, lomin: h.lon - h.radius, lomax: h.lon + h.radius };
+    const covered = MILITARY_QUERY_REGIONS.some(r =>
+      r.lamin <= hbox.lamin && r.lamax >= hbox.lamax && r.lomin <= hbox.lomin && r.lomax >= hbox.lomax
+    );
+    if (!covered) console.error(`[Military] HOTSPOT ${h.name} bbox not covered by any QUERY_REGION`);
+  }
+}
+
 export const USNI_REGION_COORDINATES: Record<string, { lat: number; lon: number }> = {
   // Seas & Oceans
   'Philippine Sea': { lat: 18.0, lon: 130.0 },
