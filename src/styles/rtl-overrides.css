@@ -19,14 +19,9 @@
   margin-right: 6px;
 }
 
-[dir="rtl"] .update-badge {
-  margin-left: 0;
-  margin-right: 8px;
-}
-
-[dir="rtl"] .update-badge-dismiss {
-  margin-left: 0;
-  margin-right: 2px;
+[dir="rtl"] .update-toast {
+  right: auto;
+  left: 16px;
 }
 
 [dir="rtl"] .github-link {

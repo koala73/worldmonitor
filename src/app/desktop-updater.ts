@@ -95,7 +95,7 @@ export class DesktopUpdater implements AppModule {
         : 'https://github.com/koala73/worldmonitor/releases/latest';
       this.logUpdaterOutcome('update_available', { current, remote, dismissed: false });
       trackUpdateShown(current, remote);
-      await this.showUpdateBadge(remote, releaseUrl);
+      await this.showUpdateToast(remote, releaseUrl);
     } catch (error) {
       this.logUpdaterOutcome('fetch_failed', {
         error: error instanceof Error ? error.message : String(error),
@@ -149,50 +149,56 @@ export class DesktopUpdater implements AppModule {
     return releaseUrl;
   }
 
-  private async showUpdateBadge(version: string, releaseUrl: string): Promise<void> {
-    const versionSpan = this.ctx.container.querySelector('.version');
-    if (!versionSpan) return;
-    const existingBadge = this.ctx.container.querySelector<HTMLElement>('.update-badge');
-    if (existingBadge?.dataset.version === version) return;
-    existingBadge?.remove();
+  private async showUpdateToast(version: string, releaseUrl: string): Promise<void> {
+    const existing = document.querySelector<HTMLElement>('.update-toast');
+    if (existing?.dataset.version === version) return;
+    existing?.remove();
 
     const url = await this.resolveUpdateDownloadUrl(releaseUrl);
 
-    const badge = document.createElement('a');
-    badge.className = 'update-badge';
-    badge.dataset.version = version;
-    badge.href = url;
-    badge.target = this.ctx.isDesktopApp ? '_self' : '_blank';
-    badge.rel = 'noopener';
-    badge.textContent = `UPDATE v${version}`;
-    badge.addEventListener('click', (e) => {
-      e.preventDefault();
-      trackUpdateClicked(version);
-      if (this.ctx.isDesktopApp) {
-        void invokeTauri<void>('open_url', { url }).catch((error) => {
-          this.logUpdaterOutcome('open_failed', {
-            url,
-            error: error instanceof Error ? error.message : String(error),
+    const toast = document.createElement('div');
+    toast.className = 'update-toast';
+    toast.dataset.version = version;
+    toast.innerHTML = `
+      <div class="update-toast-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+      </div>
+      <div class="update-toast-body">
+        <div class="update-toast-title">Update Available</div>
+        <div class="update-toast-detail">v${__APP_VERSION__} → v${version}</div>
+      </div>
+      <button class="update-toast-action" data-action="download">Download</button>
+      <button class="update-toast-dismiss" data-action="dismiss" aria-label="Dismiss">\u00d7</button>
+    `;
+
+    toast.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      const action = target.closest<HTMLElement>('[data-action]')?.dataset.action;
+      if (action === 'download') {
+        trackUpdateClicked(version);
+        if (this.ctx.isDesktopApp) {
+          void invokeTauri<void>('open_url', { url }).catch((error) => {
+            this.logUpdaterOutcome('open_failed', { url, error: error instanceof Error ? error.message : String(error) });
+            window.open(url, '_blank', 'noopener');
           });
+        } else {
           window.open(url, '_blank', 'noopener');
-        });
-        return;
+        }
+      } else if (action === 'dismiss') {
+        trackUpdateDismissed(version);
+        localStorage.setItem(`wm-update-dismissed-${version}`, '1');
+        toast.classList.remove('visible');
+        setTimeout(() => toast.remove(), 300);
       }
-      window.open(url, '_blank', 'noopener');
     });
 
-    const dismiss = document.createElement('span');
-    dismiss.className = 'update-badge-dismiss';
-    dismiss.textContent = '\u00d7';
-    dismiss.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      trackUpdateDismissed(version);
-      localStorage.setItem(`wm-update-dismissed-${version}`, '1');
-      badge.remove();
+    document.body.appendChild(toast);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => toast.classList.add('visible'));
     });
-
-    badge.appendChild(dismiss);
-    versionSpan.insertAdjacentElement('afterend', badge);
   }
 }
