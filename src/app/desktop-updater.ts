@@ -1,6 +1,7 @@
 import type { AppContext, AppModule } from '@/app/app-context';
 import { invokeTauri } from '@/services/tauri-bridge';
 import { trackUpdateShown, trackUpdateClicked, trackUpdateDismissed } from '@/services/analytics';
+import { escapeHtml } from '@/utils/sanitize';
 
 interface DesktopRuntimeInfo {
   os: string;
@@ -169,7 +170,7 @@ export class DesktopUpdater implements AppModule {
       </div>
       <div class="update-toast-body">
         <div class="update-toast-title">Update Available</div>
-        <div class="update-toast-detail">v${__APP_VERSION__} → v${version}</div>
+        <div class="update-toast-detail">v${escapeHtml(__APP_VERSION__)} \u2192 v${escapeHtml(version)}</div>
       </div>
       <button class="update-toast-action" data-action="download">Download</button>
       <button class="update-toast-dismiss" data-action="dismiss" aria-label="Dismiss">\u00d7</button>
