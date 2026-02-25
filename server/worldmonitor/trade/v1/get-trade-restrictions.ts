@@ -17,11 +17,11 @@ import type {
   TradeRestriction,
 } from '../../../../src/generated/server/worldmonitor/trade/v1/service_server';
 
-import { getCachedJson, setCachedJson } from '../../../_shared/redis';
+import { cachedFetchJson } from '../../../_shared/redis';
 import { wtoFetch, WTO_MEMBER_CODES } from './_shared';
 
 const REDIS_CACHE_KEY = 'trade:restrictions:v1';
-const REDIS_CACHE_TTL = 21600; // 6h
+const REDIS_CACHE_TTL = 21600; // 6h — WTO data is annual, rarely changes
 
 /** Major economies to query for tariff data. */
 const MAJOR_REPORTERS = ['840', '156', '276', '392', '826', '356', '076', '643', '410', '036', '124', '484', '250', '380', '528'];
@@ -107,30 +107,17 @@ export async function getTradeRestrictions(
     const limit = Math.max(1, Math.min(req.limit > 0 ? req.limit : 50, 100));
 
     const cacheKey = `${REDIS_CACHE_KEY}:tariff-overview:${limit}`;
-    const cached = (await getCachedJson(cacheKey)) as GetTradeRestrictionsResponse | null;
-    if (cached?.restrictions?.length) return cached;
+    const result = await cachedFetchJson<GetTradeRestrictionsResponse>(
+      cacheKey,
+      REDIS_CACHE_TTL,
+      async () => {
+        const { restrictions, ok } = await fetchRestrictions([], limit);
+        if (!ok || restrictions.length === 0) return null;
+        return { restrictions, fetchedAt: new Date().toISOString(), upstreamUnavailable: false };
+      },
+    );
 
-    const { restrictions, ok } = await fetchRestrictions([], limit);
-
-    if (!ok) {
-      return {
-        restrictions: cached?.restrictions ?? [],
-        fetchedAt: new Date().toISOString(),
-        upstreamUnavailable: true,
-      };
-    }
-
-    const result: GetTradeRestrictionsResponse = {
-      restrictions,
-      fetchedAt: new Date().toISOString(),
-      upstreamUnavailable: false,
-    };
-
-    if (restrictions.length > 0) {
-      setCachedJson(cacheKey, result, REDIS_CACHE_TTL).catch(() => {});
-    }
-
-    return result;
+    return result ?? { restrictions: [], fetchedAt: new Date().toISOString(), upstreamUnavailable: true };
   } catch {
     return {
       restrictions: [],

@@ -17,10 +17,10 @@ import type {
   TradeBarrier,
 } from '../../../../src/generated/server/worldmonitor/trade/v1/service_server';
 
-import { getCachedJson, setCachedJson } from '../../../_shared/redis';
+import { cachedFetchJson } from '../../../_shared/redis';
 import { wtoFetch, WTO_MEMBER_CODES } from './_shared';
 
-const REDIS_CACHE_TTL = 21600; // 6h
+const REDIS_CACHE_TTL = 21600; // 6h — WTO data is annual, rarely changes
 
 /** Major economies to query. */
 const MAJOR_REPORTERS = ['840', '156', '276', '392', '826', '356', '076', '643', '410', '036', '124', '484', '250', '380', '528'];
@@ -158,30 +158,17 @@ export async function getTradeBarriers(
     const limit = Math.max(1, Math.min(req.limit > 0 ? req.limit : 50, 100));
 
     const cacheKey = `trade:barriers:v1:tariff-gap:${limit}`;
-    const cached = (await getCachedJson(cacheKey)) as GetTradeBarriersResponse | null;
-    if (cached?.barriers?.length) return cached;
+    const result = await cachedFetchJson<GetTradeBarriersResponse>(
+      cacheKey,
+      REDIS_CACHE_TTL,
+      async () => {
+        const { barriers, ok } = await fetchBarriers(countries, limit);
+        if (!ok || barriers.length === 0) return null;
+        return { barriers, fetchedAt: new Date().toISOString(), upstreamUnavailable: false };
+      },
+    );
 
-    const { barriers, ok } = await fetchBarriers(countries, limit);
-
-    if (!ok) {
-      return {
-        barriers: cached?.barriers ?? [],
-        fetchedAt: new Date().toISOString(),
-        upstreamUnavailable: true,
-      };
-    }
-
-    const result: GetTradeBarriersResponse = {
-      barriers,
-      fetchedAt: new Date().toISOString(),
-      upstreamUnavailable: false,
-    };
-
-    if (barriers.length > 0) {
-      setCachedJson(cacheKey, result, REDIS_CACHE_TTL).catch(() => {});
-    }
-
-    return result;
+    return result ?? { barriers: [], fetchedAt: new Date().toISOString(), upstreamUnavailable: true };
   } catch {
     return {
       barriers: [],

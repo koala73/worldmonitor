@@ -15,10 +15,10 @@ import type {
   TariffDataPoint,
 } from '../../../../src/generated/server/worldmonitor/trade/v1/service_server';
 
-import { getCachedJson, setCachedJson } from '../../../_shared/redis';
+import { cachedFetchJson } from '../../../_shared/redis';
 import { wtoFetch, WTO_MEMBER_CODES, TP_A_0010 } from './_shared';
 
-const REDIS_CACHE_TTL = 21600; // 6h
+const REDIS_CACHE_TTL = 21600; // 6h — WTO data is annual, rarely changes
 
 /**
  * Validate a country/sector code string — alphanumeric, max 10 chars.
@@ -92,30 +92,17 @@ export async function getTariffTrends(
     const years = Math.max(1, Math.min(req.years > 0 ? req.years : 10, 30));
 
     const cacheKey = `trade:tariffs:v1:${reporter}:${productSector || 'all'}:${years}`;
-    const cached = (await getCachedJson(cacheKey)) as GetTariffTrendsResponse | null;
-    if (cached?.datapoints?.length) return cached;
+    const result = await cachedFetchJson<GetTariffTrendsResponse>(
+      cacheKey,
+      REDIS_CACHE_TTL,
+      async () => {
+        const { datapoints, ok } = await fetchTariffTrends(reporter, partner, productSector, years);
+        if (!ok || datapoints.length === 0) return null;
+        return { datapoints, fetchedAt: new Date().toISOString(), upstreamUnavailable: false };
+      },
+    );
 
-    const { datapoints, ok } = await fetchTariffTrends(reporter, partner, productSector, years);
-
-    if (!ok) {
-      return {
-        datapoints: cached?.datapoints ?? [],
-        fetchedAt: new Date().toISOString(),
-        upstreamUnavailable: true,
-      };
-    }
-
-    const result: GetTariffTrendsResponse = {
-      datapoints,
-      fetchedAt: new Date().toISOString(),
-      upstreamUnavailable: false,
-    };
-
-    if (datapoints.length > 0) {
-      setCachedJson(cacheKey, result, REDIS_CACHE_TTL).catch(() => {});
-    }
-
-    return result;
+    return result ?? { datapoints: [], fetchedAt: new Date().toISOString(), upstreamUnavailable: true };
   } catch {
     return {
       datapoints: [],

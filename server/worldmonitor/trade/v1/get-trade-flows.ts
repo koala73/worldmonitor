@@ -15,10 +15,10 @@ import type {
   TradeFlowRecord,
 } from '../../../../src/generated/server/worldmonitor/trade/v1/service_server';
 
-import { getCachedJson, setCachedJson } from '../../../_shared/redis';
+import { cachedFetchJson } from '../../../_shared/redis';
 import { wtoFetch, WTO_MEMBER_CODES, ITS_MTV_AX, ITS_MTV_AM } from './_shared';
 
-const REDIS_CACHE_TTL = 21600; // 6h
+const REDIS_CACHE_TTL = 21600; // 6h — WTO data is annual, rarely changes
 
 /**
  * Validate a country code string — alphanumeric, max 10 chars.
@@ -155,30 +155,17 @@ export async function getTradeFlows(
     const years = Math.max(1, Math.min(req.years > 0 ? req.years : 10, 30));
 
     const cacheKey = `trade:flows:v1:${reporter}:${partner}:${years}`;
-    const cached = (await getCachedJson(cacheKey)) as GetTradeFlowsResponse | null;
-    if (cached?.flows?.length) return cached;
+    const result = await cachedFetchJson<GetTradeFlowsResponse>(
+      cacheKey,
+      REDIS_CACHE_TTL,
+      async () => {
+        const { flows, ok } = await fetchTradeFlows(reporter, partner, years);
+        if (!ok || flows.length === 0) return null;
+        return { flows, fetchedAt: new Date().toISOString(), upstreamUnavailable: false };
+      },
+    );
 
-    const { flows, ok } = await fetchTradeFlows(reporter, partner, years);
-
-    if (!ok) {
-      return {
-        flows: cached?.flows ?? [],
-        fetchedAt: new Date().toISOString(),
-        upstreamUnavailable: true,
-      };
-    }
-
-    const result: GetTradeFlowsResponse = {
-      flows,
-      fetchedAt: new Date().toISOString(),
-      upstreamUnavailable: false,
-    };
-
-    if (flows.length > 0) {
-      setCachedJson(cacheKey, result, REDIS_CACHE_TTL).catch(() => {});
-    }
-
-    return result;
+    return result ?? { flows: [], fetchedAt: new Date().toISOString(), upstreamUnavailable: true };
   } catch {
     return {
       flows: [],
