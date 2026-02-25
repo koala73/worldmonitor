@@ -750,7 +750,8 @@
         "financialCenters": "Trung tâm Tài chính",
         "centralBanks": "Ngân hàng Trung ương",
         "commodityHubs": "Trung tâm Hàng hóa",
-        "gulfInvestments": "Đầu tư GCC"
+        "gulfInvestments": "Đầu tư GCC",
+        "tradeRoutes": "Tuyến Thương mại"
       },
       "tooltip": {
         "earthquake": "Động đất",
@@ -840,7 +841,8 @@
           "transportShipping": "Tàu, điểm nghẽn, 61 cảng chiến lược",
           "transportDelays": "Chậm trễ sân bay và dừng mặt đất (FAA)",
           "naturalEventsFull": "Động đất (USGS) + bão, cháy, núi lửa, lũ lụt (NASA EONET)",
-          "waterwaysLabels": "Nhãn điểm nghẽn chiến lược"
+          "waterwaysLabels": "Nhãn điểm nghẽn chiến lược",
+          "tradeRoutes": "Các tuyến vận tải biển chính toàn cầu kết nối các cảng qua các điểm chiến lược"
         },
         "notes": {
           "timeAffects": "Ảnh hưởng: Động đất, Thời tiết, Biểu tình, Gián đoạn"

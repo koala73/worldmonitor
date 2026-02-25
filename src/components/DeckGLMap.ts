@@ -72,6 +72,7 @@ import {
   GULF_INVESTMENTS,
 } from '@/config';
 import type { GulfInvestment } from '@/types';
+import { resolveTradeRouteSegments, TRADE_ROUTES as TRADE_ROUTES_LIST, type TradeRouteSegment } from '@/config/trade-routes';
 import { MapPopup, type PopupType } from './MapPopup';
 import {
   updateHotspotEscalation,
@@ -279,6 +280,7 @@ export class DeckGLMap {
   private ucdpEvents: UcdpGeoEvent[] = [];
   private displacementFlows: DisplacementFlow[] = [];
   private climateAnomalies: ClimateAnomaly[] = [];
+  private tradeRouteSegments: TradeRouteSegment[] = resolveTradeRouteSegments();
   private positiveEvents: PositiveGeoEvent[] = [];
   private kindnessPoints: KindnessPoint[] = [];
 
@@ -1140,6 +1142,15 @@ export class DeckGLMap {
     // Climate anomalies heatmap layer
     if (mapLayers.climate && this.climateAnomalies.length > 0) {
       layers.push(this.createClimateHeatmapLayer());
+    }
+
+    // Trade routes layer
+    if (mapLayers.tradeRoutes) {
+      layers.push(this.createTradeRoutesLayer());
+      layers.push(this.createTradeChokepointsLayer());
+    } else {
+      this.layerCache.delete('trade-routes-layer');
+      this.layerCache.delete('trade-chokepoints-layer');
     }
 
     // Tech variant layers (Supercluster-based deck.gl layers for HQs and events)
@@ -3014,6 +3025,7 @@ export class DeckGLMap {
           { key: 'centralBanks', label: t('components.deckgl.layers.centralBanks'), icon: '&#127974;' },
           { key: 'commodityHubs', label: t('components.deckgl.layers.commodityHubs'), icon: '&#128230;' },
           { key: 'gulfInvestments', label: t('components.deckgl.layers.gulfInvestments'), icon: '&#127760;' },
+          { key: 'tradeRoutes', label: t('components.deckgl.layers.tradeRoutes'), icon: '&#128674;' },
           { key: 'cables', label: t('components.deckgl.layers.underseaCables'), icon: '&#128268;' },
           { key: 'pipelines', label: t('components.deckgl.layers.pipelines'), icon: '&#128738;' },
           { key: 'outages', label: t('components.deckgl.layers.internetOutages'), icon: '&#128225;' },
@@ -3043,6 +3055,7 @@ export class DeckGLMap {
         { key: 'datacenters', label: t('components.deckgl.layers.aiDataCenters'), icon: '&#128421;' },
         { key: 'military', label: t('components.deckgl.layers.militaryActivity'), icon: '&#9992;' },
         { key: 'ais', label: t('components.deckgl.layers.shipTraffic'), icon: '&#128674;' },
+        { key: 'tradeRoutes', label: t('components.deckgl.layers.tradeRoutes'), icon: '&#9875;' },
         { key: 'flights', label: t('components.deckgl.layers.flightDelays'), icon: '&#9992;' },
         { key: 'protests', label: t('components.deckgl.layers.protests'), icon: '&#128226;' },
         { key: 'ucdpEvents', label: t('components.deckgl.layers.ucdpEvents'), icon: '&#9876;' },
@@ -3180,6 +3193,7 @@ export class DeckGLMap {
           helpItem(label('pipelines'), 'financePipelines'),
           helpItem(label('internetOutages'), 'financeOutages'),
           helpItem(label('cyberThreats'), 'financeCyberThreats'),
+          helpItem(label('tradeRoutes'), 'tradeRoutes'),
         ])}
         ${helpSection('macroContext', [
           helpItem(label('economicCenters'), 'economicCenters'),
@@ -3221,6 +3235,7 @@ export class DeckGLMap {
         ])}
         ${helpSection('transport', [
           helpItem(label('shipTraffic'), 'transportShipping'),
+          helpItem(label('tradeRoutes'), 'tradeRoutes'),
           helpItem(label('flightDelays'), 'transportDelays'),
         ])}
         ${helpSection('naturalEconomic', [
@@ -3508,6 +3523,52 @@ export class DeckGLMap {
         [255, 100, 50],
         [255, 50, 50],
       ],
+      pickable: false,
+    });
+  }
+
+  private createTradeRoutesLayer(): ArcLayer<TradeRouteSegment> {
+    const active: [number, number, number, number] = getCurrentTheme() === 'light' ? [30, 100, 180, 200] : [100, 200, 255, 160];
+    const disrupted: [number, number, number, number] = getCurrentTheme() === 'light' ? [200, 40, 40, 220] : [255, 80, 80, 200];
+    const highRisk: [number, number, number, number] = getCurrentTheme() === 'light' ? [200, 140, 20, 200] : [255, 180, 50, 180];
+    const colorFor = (status: string): [number, number, number, number] =>
+      status === 'disrupted' ? disrupted : status === 'high_risk' ? highRisk : active;
+
+    return new ArcLayer<TradeRouteSegment>({
+      id: 'trade-routes-layer',
+      data: this.tradeRouteSegments,
+      getSourcePosition: (d) => d.sourcePosition,
+      getTargetPosition: (d) => d.targetPosition,
+      getSourceColor: (d) => colorFor(d.status),
+      getTargetColor: (d) => colorFor(d.status),
+      getWidth: (d) => d.category === 'energy' ? 3 : 2,
+      widthMinPixels: 1,
+      widthMaxPixels: 6,
+      greatCircle: true,
+      pickable: false,
+    });
+  }
+
+  private createTradeChokepointsLayer(): ScatterplotLayer {
+    const routeWaypointIds = new Set<string>();
+    for (const seg of this.tradeRouteSegments) {
+      const route = TRADE_ROUTES_LIST.find(r => r.id === seg.routeId);
+      if (route) for (const wp of route.waypoints) routeWaypointIds.add(wp);
+    }
+    const chokepoints = STRATEGIC_WATERWAYS.filter(w => routeWaypointIds.has(w.id));
+    const isLight = getCurrentTheme() === 'light';
+
+    return new ScatterplotLayer({
+      id: 'trade-chokepoints-layer',
+      data: chokepoints,
+      getPosition: (d: { lon: number; lat: number }) => [d.lon, d.lat],
+      getFillColor: isLight ? [200, 140, 20, 200] : [255, 180, 50, 180],
+      getLineColor: isLight ? [100, 70, 10, 255] : [255, 220, 120, 255],
+      getRadius: 30000,
+      stroked: true,
+      lineWidthMinPixels: 1,
+      radiusMinPixels: 4,
+      radiusMaxPixels: 12,
       pickable: false,
     });
   }

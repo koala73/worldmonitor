@@ -779,7 +779,8 @@
         "financialCenters": "Financial Centers",
         "centralBanks": "Central Banks",
         "commodityHubs": "Commodity Hubs",
-        "gulfInvestments": "GCC Investments"
+        "gulfInvestments": "GCC Investments",
+        "tradeRoutes": "Trade Routes"
       },
       "tooltip": {
         "earthquake": "Earthquake",
@@ -880,7 +881,8 @@
           "techCyberThreats": "Cyber attacks and security events",
           "techEvents": "Major tech conferences and events",
           "techFires": "Active wildfires near tech infrastructure",
-          "financeGulfInvestments": "GCC sovereign wealth fund investments and FDI"
+          "financeGulfInvestments": "GCC sovereign wealth fund investments and FDI",
+          "tradeRoutes": "Major global shipping lanes connecting ports through strategic chokepoints"
         },
         "notes": {
           "timeAffects": "Affects: Earthquakes, Weather, Protests, Outages"

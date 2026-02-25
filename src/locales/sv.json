@@ -411,7 +411,8 @@
         "financialCenters": "Finansiella centra",
         "centralBanks": "centralbanker",
         "commodityHubs": "Råvaruhubbar",
-        "gulfInvestments": "GCC-investeringar"
+        "gulfInvestments": "GCC-investeringar",
+        "tradeRoutes": "Handelsrutter"
       },
       "layersTitle": "Lager",
       "layerGuide": "Lagerguide",
@@ -503,7 +504,8 @@
           "transportShipping": "Fartyg, chokepoints, 61 strategiska hamnar",
           "transportDelays": "Flygplatsförseningar och markstopp (FAA)",
           "naturalEventsFull": "Jordbävningar (USGS) + stormar, bränder, vulkaner, översvämningar (NASA EONET)",
-          "waterwaysLabels": "Strategiska chokepointetiketter"
+          "waterwaysLabels": "Strategiska chokepointetiketter",
+          "tradeRoutes": "Stora globala sjöfartsleder som förbinder hamnar via strategiska flaskhalsar"
         },
         "notes": {
           "timeAffects": "Påverkar: Jordbävningar, väder, protester, avbrott"

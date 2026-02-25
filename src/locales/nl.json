@@ -411,7 +411,8 @@
         "financialCenters": "Financiële centra",
         "centralBanks": "Centrale banken",
         "commodityHubs": "Grondstoffenhubs",
-        "gulfInvestments": "GCC-investeringen"
+        "gulfInvestments": "GCC-investeringen",
+        "tradeRoutes": "Handelsroutes"
       },
       "layersTitle": "Lagen",
       "layerGuide": "Lagengids",
@@ -503,7 +504,8 @@
           "transportShipping": "Schepen, knelpunten, 61 strategische havens",
           "transportDelays": "Luchthavenvertragingen en grondstops (FAA)",
           "naturalEventsFull": "Aardbevingen (USGS) + stormen, branden, vulkanen, overstromingen (NASA EONET)",
-          "waterwaysLabels": "Strategische chokepoint-labels"
+          "waterwaysLabels": "Strategische chokepoint-labels",
+          "tradeRoutes": "Belangrijke wereldwijde scheepvaartroutes die havens verbinden via strategische knelpunten"
         },
         "notes": {
           "timeAffects": "Beïnvloedt: aardbevingen, weer, protesten, stroomstoringen"

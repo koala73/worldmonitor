@@ -614,7 +614,8 @@
         "financialCenters": "Centra finansowe",
         "centralBanks": "Banki Centralne",
         "commodityHubs": "Centra towarowe",
-        "gulfInvestments": "Inwestycje GCC"
+        "gulfInvestments": "Inwestycje GCC",
+        "tradeRoutes": "Szlaki Handlowe"
       },
       "layersTitle": "Warstwy",
       "layerGuide": "Przewodnik po warstwach",
@@ -706,7 +707,8 @@
           "transportShipping": "Statki, wąskie gardła, 61 portów strategicznych",
           "transportDelays": "Opóźnienia na lotniskach i postoje naziemne (FAA)",
           "naturalEventsFull": "Trzęsienia ziemi (USGS) + burze, pożary, wulkany, powodzie (NASA EONET)",
-          "waterwaysLabels": "Strategiczne etykiety punktów kontrolnych"
+          "waterwaysLabels": "Strategiczne etykiety punktów kontrolnych",
+          "tradeRoutes": "Główne globalne szlaki żeglugowe łączące porty przez strategiczne wąskie gardła"
         },
         "notes": {
           "timeAffects": "Wpływ na: Trzęsienia ziemi, Pogoda, Protesty, Przestoje"

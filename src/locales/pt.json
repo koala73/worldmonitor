@@ -411,7 +411,8 @@
         "financialCenters": "Centros Financeiros",
         "centralBanks": "Bancos Centrais",
         "commodityHubs": "Centros de commodities",
-        "gulfInvestments": "Investimentos do CCG"
+        "gulfInvestments": "Investimentos do CCG",
+        "tradeRoutes": "Rotas Comerciais"
       },
       "layersTitle": "Camadas",
       "layerGuide": "Guia de camadas",
@@ -503,7 +504,8 @@
           "transportShipping": "Navios, gargalos, 61 portos estratégicos",
           "transportDelays": "Atrasos em aeroportos e paradas em terra (FAA)",
           "naturalEventsFull": "Terremotos (USGS) + tempestades, incêndios, vulcões, inundações (NASA EONET)",
-          "waterwaysLabels": "Rótulos de gargalos estratégicos"
+          "waterwaysLabels": "Rótulos de gargalos estratégicos",
+          "tradeRoutes": "Principais rotas marítimas globais conectando portos através de pontos estratégicos"
         },
         "notes": {
           "timeAffects": "Afeta: terremotos, clima, protestos, interrupções"

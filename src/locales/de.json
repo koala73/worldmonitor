@@ -614,7 +614,8 @@
         "financialCenters": "Finanzzentren",
         "centralBanks": "Zentralbanken",
         "commodityHubs": "Rohstoffzentren",
-        "gulfInvestments": "GCC-Investitionen"
+        "gulfInvestments": "GCC-Investitionen",
+        "tradeRoutes": "Handelsrouten"
       },
       "layersTitle": "Schichten",
       "layerGuide": "Ebenenführer",
@@ -706,7 +707,8 @@
           "transportShipping": "Schiffe, Engpässe, 61 strategische Häfen",
           "transportDelays": "Verspätungen am Flughafen und Bodenstopps (FAA)",
           "naturalEventsFull": "Erdbeben (USGS) + Stürme, Brände, Vulkane, Überschwemmungen (NASA EONET)",
-          "waterwaysLabels": "Strategische Engpassmarkierungen"
+          "waterwaysLabels": "Strategische Engpassmarkierungen",
+          "tradeRoutes": "Wichtige globale Schifffahrtsrouten, die Häfen über strategische Engpässe verbinden"
         },
         "notes": {
           "timeAffects": "Betrifft: Erdbeben, Wetter, Proteste, Ausfälle"
