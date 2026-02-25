@@ -59,24 +59,20 @@ export class TradePolicyPanel extends Panel {
       return;
     }
 
-    const hasTariffs = this.tariffsData && this.tariffsData.datapoints.length > 0;
-    const hasFlows = this.flowsData && this.flowsData.flows.length > 0;
-    const hasBarriers = this.barriersData && this.barriersData.barriers.length > 0;
-
     const tabsHtml = `
       <div class="economic-tabs">
         <button class="economic-tab ${this.activeTab === 'restrictions' ? 'active' : ''}" data-tab="restrictions">
           ${t('components.tradePolicy.restrictions')}
         </button>
-        ${hasTariffs ? `<button class="economic-tab ${this.activeTab === 'tariffs' ? 'active' : ''}" data-tab="tariffs">
+        <button class="economic-tab ${this.activeTab === 'tariffs' ? 'active' : ''}" data-tab="tariffs">
           ${t('components.tradePolicy.tariffs')}
-        </button>` : ''}
-        ${hasFlows ? `<button class="economic-tab ${this.activeTab === 'flows' ? 'active' : ''}" data-tab="flows">
+        </button>
+        <button class="economic-tab ${this.activeTab === 'flows' ? 'active' : ''}" data-tab="flows">
           ${t('components.tradePolicy.flows')}
-        </button>` : ''}
-        ${hasBarriers ? `<button class="economic-tab ${this.activeTab === 'barriers' ? 'active' : ''}" data-tab="barriers">
+        </button>
+        <button class="economic-tab ${this.activeTab === 'barriers' ? 'active' : ''}" data-tab="barriers">
           ${t('components.tradePolicy.barriers')}
-        </button>` : ''}
+        </button>
       </div>
     `;
 
@@ -230,6 +226,6 @@ export class TradePolicyPanel extends Panel {
         return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="trade-source-link">Source</a>`;
       }
     } catch { /* invalid URL */ }
-    return '';
+    return `<span class="trade-source-link">${escapeHtml(url)}</span>`;
   }
 }
