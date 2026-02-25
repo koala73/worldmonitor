@@ -173,8 +173,8 @@ async function isSafeUrl(urlString) {
   // DNS resolution check — resolve the hostname and verify all resolved IPs
   // are public. This prevents DNS rebinding attacks where a public domain
   // resolves to a private IP.
+  let addresses = []; // Declared outside the try block to avoid ReferenceError
   try {
-    let addresses = [];
     try {
       const v4 = await dns.resolve4(hostname);
       addresses = addresses.concat(v4);
