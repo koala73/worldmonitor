@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package worldmonitor.supply_chain.v1;
+
+import "worldmonitor/supply_chain/v1/supply_chain_data.proto";
+
+message GetCriticalMineralsRequest {}
+
+message GetCriticalMineralsResponse {
+  repeated CriticalMineral minerals = 1;
+  string fetched_at = 2;
+  bool upstream_unavailable = 3;
+}

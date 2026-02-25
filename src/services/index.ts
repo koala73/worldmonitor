@@ -38,3 +38,4 @@ export * from './usa-spending';
 export { generateSummary, translateText } from './summarization';
 export * from './cached-theater-posture';
 export * from './trade';
+export * from './supply-chain';

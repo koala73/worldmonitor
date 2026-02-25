@@ -168,6 +168,7 @@
     "commodities": "Commodities",
     "economic": "Economic Indicators",
     "tradePolicy": "Trade Policy",
+    "supplyChain": "Supply Chain",
     "finance": "Financial",
     "tech": "Technology",
     "crypto": "Crypto",
@@ -565,6 +566,22 @@
       "cut": "cut",
       "hike": "hike",
       "hold": "hold"
+    },
+    "supplyChain": {
+      "chokepoints": "Chokepoints",
+      "shipping": "Shipping",
+      "minerals": "Minerals",
+      "noChokepoints": "Chokepoint data loading...",
+      "noShipping": "Shipping rate data not available",
+      "noMinerals": "Mineral data loading...",
+      "fredKeyMissing": "FRED API key required for shipping rates — add it in Settings. Chokepoints and minerals available without key.",
+      "upstreamUnavailable": "Supply chain data temporarily unavailable — showing cached data",
+      "spikeAlert": "Spike detected — rate significantly above 52-week average",
+      "warnings": "warning(s)",
+      "mineral": "Mineral",
+      "topProducers": "Top Producers",
+      "risk": "Risk",
+      "sources": "FRED / NGA / USGS"
     },
     "tradePolicy": {
       "restrictions": "Restrictions",

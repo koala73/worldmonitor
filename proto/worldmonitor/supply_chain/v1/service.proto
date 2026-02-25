@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package worldmonitor.supply_chain.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/supply_chain/v1/get_shipping_rates.proto";
+import "worldmonitor/supply_chain/v1/get_chokepoint_status.proto";
+import "worldmonitor/supply_chain/v1/get_critical_minerals.proto";
+
+service SupplyChainService {
+  option (sebuf.http.service_config) = {base_path: "/api/supply-chain/v1"};
+
+  rpc GetShippingRates(GetShippingRatesRequest) returns (GetShippingRatesResponse) {
+    option (sebuf.http.config) = {path: "/get-shipping-rates"};
+  }
+
+  rpc GetChokepointStatus(GetChokepointStatusRequest) returns (GetChokepointStatusResponse) {
+    option (sebuf.http.config) = {path: "/get-chokepoint-status"};
+  }
+
+  rpc GetCriticalMinerals(GetCriticalMineralsRequest) returns (GetCriticalMineralsResponse) {
+    option (sebuf.http.config) = {path: "/get-critical-minerals"};
+  }
+}

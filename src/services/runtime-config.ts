@@ -41,7 +41,8 @@ export type RuntimeFeatureId =
   | 'finnhubMarkets'
   | 'nasaFirms'
   | 'aiOllama'
-  | 'wtoTrade';
+  | 'wtoTrade'
+  | 'supplyChain';
 
 export interface RuntimeFeatureDefinition {
   id: RuntimeFeatureId;
@@ -83,6 +84,7 @@ const defaultToggles: Record<RuntimeFeatureId, boolean> = {
   nasaFirms: true,
   aiOllama: true,
   wtoTrade: true,
+  supplyChain: true,
 };
 
 export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
@@ -199,6 +201,13 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
     description: 'Trade restrictions, tariff trends, barriers, and flows from WTO.',
     requiredSecrets: ['WTO_API_KEY'],
     fallback: 'Trade policy panel shows disabled state.',
+  },
+  {
+    id: 'supplyChain',
+    name: 'Supply Chain Intelligence',
+    description: 'Shipping rates via FRED Baltic Dry Index. Chokepoints and minerals use public data.',
+    requiredSecrets: ['FRED_API_KEY'],
+    fallback: 'Chokepoints and minerals always available; shipping requires FRED key.',
   },
 ];
 

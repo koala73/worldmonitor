@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package worldmonitor.supply_chain.v1;
+
+message ShippingRatePoint {
+  string date = 1;
+  double value = 2;
+}
+
+message ShippingIndex {
+  string index_id = 1;
+  string name = 2;
+  double current_value = 3;
+  double previous_value = 4;
+  double change_pct = 5;
+  string unit = 6;
+  repeated ShippingRatePoint history = 7;
+  bool spike_alert = 8;
+}
+
+message ChokepointInfo {
+  string id = 1;
+  string name = 2;
+  double lat = 3;
+  double lon = 4;
+  int32 disruption_score = 5;
+  string status = 6;
+  int32 active_warnings = 7;
+  string congestion_level = 8;
+  repeated string affected_routes = 9;
+  string description = 10;
+}
+
+message MineralProducer {
+  string country = 1;
+  string country_code = 2;
+  double production_tonnes = 3;
+  double share_pct = 4;
+}
+
+message CriticalMineral {
+  string mineral = 1;
+  repeated MineralProducer top_producers = 2;
+  double hhi = 3;
+  string risk_rating = 4;
+  double global_production = 5;
+  string unit = 6;
+}

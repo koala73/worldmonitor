@@ -52,6 +52,9 @@ import {
   fetchTariffTrends,
   fetchTradeFlows,
   fetchTradeBarriers,
+  fetchShippingRates,
+  fetchChokepointStatus,
+  fetchCriticalMinerals,
 } from '@/services';
 import { mlWorker } from '@/services/ml-worker';
 import { clusterNewsHybrid } from '@/services/clustering';
@@ -91,6 +94,7 @@ import {
   ClimateAnomalyPanel,
   PopulationExposurePanel,
   TradePolicyPanel,
+  SupplyChainPanel,
 } from '@/components';
 import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
 import { classifyNewsItem } from '@/services/positive-classifier';
@@ -169,6 +173,7 @@ export class DataLoaderManager implements AppModule {
       // Trade policy data (FULL and FINANCE only)
       if (SITE_VARIANT === 'full' || SITE_VARIANT === 'finance') {
         tasks.push({ name: 'tradePolicy', task: runGuarded('tradePolicy', () => this.loadTradePolicy()) });
+        tasks.push({ name: 'supplyChain', task: runGuarded('supplyChain', () => this.loadSupplyChain()) });
       }
     }
 
@@ -1541,6 +1546,42 @@ export class DataLoaderManager implements AppModule {
       console.error('[App] Trade policy failed:', e);
       this.ctx.statusPanel?.updateApi('WTO', { status: 'error' });
       dataFreshness.recordError('wto_trade', String(e));
+    }
+  }
+
+  async loadSupplyChain(): Promise<void> {
+    const scPanel = this.ctx.panels['supply-chain'] as SupplyChainPanel | undefined;
+    if (!scPanel) return;
+
+    try {
+      const [shipping, chokepoints, minerals] = await Promise.allSettled([
+        fetchShippingRates(),
+        fetchChokepointStatus(),
+        fetchCriticalMinerals(),
+      ]);
+
+      const shippingData = shipping.status === 'fulfilled' ? shipping.value : null;
+      const chokepointData = chokepoints.status === 'fulfilled' ? chokepoints.value : null;
+      const mineralsData = minerals.status === 'fulfilled' ? minerals.value : null;
+
+      if (shippingData) scPanel.updateShippingRates(shippingData);
+      if (chokepointData) scPanel.updateChokepointStatus(chokepointData);
+      if (mineralsData) scPanel.updateCriticalMinerals(mineralsData);
+
+      const totalItems = (shippingData?.indices.length || 0) + (chokepointData?.chokepoints.length || 0) + (mineralsData?.minerals.length || 0);
+      const anyUnavailable = shippingData?.upstreamUnavailable || chokepointData?.upstreamUnavailable || mineralsData?.upstreamUnavailable;
+
+      this.ctx.statusPanel?.updateApi('SupplyChain', { status: anyUnavailable ? 'warning' : totalItems > 0 ? 'ok' : 'error' });
+
+      if (totalItems > 0) {
+        dataFreshness.recordUpdate('supply_chain', totalItems);
+      } else if (anyUnavailable) {
+        dataFreshness.recordError('supply_chain', 'Supply chain upstream temporarily unavailable');
+      }
+    } catch (e) {
+      console.error('[App] Supply chain failed:', e);
+      this.ctx.statusPanel?.updateApi('SupplyChain', { status: 'error' });
+      dataFreshness.recordError('supply_chain', String(e));
     }
   }
 
