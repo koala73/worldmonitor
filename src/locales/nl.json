@@ -769,7 +769,17 @@
       "noSpending": "Geen recente overheidsprijzen",
       "awards": "onderscheidingen",
       "noData": "Geen economische gegevens beschikbaar",
-      "noOilData": "Oliegegevens niet beschikbaar"
+      "noOilData": "Oliegegevens niet beschikbaar",
+      "centralBanks": "Central Banks",
+      "noBisData": "BIS data temporarily unavailable - will retry",
+      "policyRate": "Policy Rate",
+      "exchangeRate": "Exchange Rate",
+      "creditToGdp": "Credit / GDP",
+      "realEer": "Real EER",
+      "change": "Change",
+      "cut": "cut",
+      "hike": "hike",
+      "hold": "hold"
     },
     "tradePolicy": {
       "restrictions": "Beperkingen",

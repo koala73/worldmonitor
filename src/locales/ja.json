@@ -525,7 +525,17 @@
       "noIndicatorData": "指標データなし — FREDが読み込み中の可能性",
       "noOilDataRetry": "石油データ一時利用不可 — 自動リトライ予定",
       "vsPreviousWeek": "前週比",
-      "in": "内"
+      "in": "内",
+      "centralBanks": "Central Banks",
+      "noBisData": "BIS data temporarily unavailable - will retry",
+      "policyRate": "Policy Rate",
+      "exchangeRate": "Exchange Rate",
+      "creditToGdp": "Credit / GDP",
+      "realEer": "Real EER",
+      "change": "Change",
+      "cut": "cut",
+      "hike": "hike",
+      "hold": "hold"
     },
     "tradePolicy": {
       "restrictions": "規制",

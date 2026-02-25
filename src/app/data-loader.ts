@@ -45,6 +45,7 @@ import {
   fetchNaturalEvents,
   fetchRecentAwards,
   fetchOilAnalytics,
+  fetchBisData,
   fetchCyberThreats,
   drainTrendingSignals,
   fetchTradeRestrictions,
@@ -163,6 +164,7 @@ export class DataLoaderManager implements AppModule {
       tasks.push({ name: 'fred', task: runGuarded('fred', () => this.loadFredData()) });
       tasks.push({ name: 'oil', task: runGuarded('oil', () => this.loadOilAnalytics()) });
       tasks.push({ name: 'spending', task: runGuarded('spending', () => this.loadGovernmentSpending()) });
+      tasks.push({ name: 'bis', task: runGuarded('bis', () => this.loadBisData()) });
 
       // Trade policy data (FULL and FINANCE only)
       if (SITE_VARIANT === 'full' || SITE_VARIANT === 'finance') {
@@ -1488,6 +1490,23 @@ export class DataLoaderManager implements AppModule {
       console.error('[App] Government spending failed:', e);
       this.ctx.statusPanel?.updateApi('USASpending', { status: 'error' });
       dataFreshness.recordError('spending', String(e));
+    }
+  }
+
+  async loadBisData(): Promise<void> {
+    const economicPanel = this.ctx.panels['economic'] as EconomicPanel;
+    try {
+      const data = await fetchBisData();
+      economicPanel?.updateBis(data);
+      const hasData = data.policyRates.length > 0;
+      this.ctx.statusPanel?.updateApi('BIS', { status: hasData ? 'ok' : 'error' });
+      if (hasData) {
+        dataFreshness.recordUpdate('bis', data.policyRates.length);
+      }
+    } catch (e) {
+      console.error('[App] BIS data failed:', e);
+      this.ctx.statusPanel?.updateApi('BIS', { status: 'error' });
+      dataFreshness.recordError('bis', String(e));
     }
   }
 

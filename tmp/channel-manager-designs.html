@@ -1,0 +1,1035 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Channel Manager — Design Options</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #0a0a0a;
+    --bg-secondary: #111;
+    --surface: #141414;
+    --surface-hover: #1e1e1e;
+    --surface-active: #1a1a2e;
+    --border: #2a2a2a;
+    --border-strong: #444;
+    --text: #e8e8e8;
+    --text-secondary: #ccc;
+    --text-dim: #888;
+    --text-muted: #666;
+    --text-faint: #555;
+    --input-bg: #1a1a1a;
+    --red: #ff4444;
+    --green: #44ff88;
+    --status-live: #44ff88;
+    --font-mono: 'SF Mono', 'Monaco', 'Cascadia Code', 'Fira Code', 'DejaVu Sans Mono', monospace;
+  }
+
+  body {
+    font-family: var(--font-mono);
+    background: #050505;
+    color: var(--text);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  /* ── Top nav ── */
+  .top-nav {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    gap: 0;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    padding: 0 20px;
+  }
+  .top-nav-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-dim);
+    padding: 14px 16px 14px 0;
+    border-right: 1px solid var(--border);
+    margin-right: 0;
+    white-space: nowrap;
+  }
+  .top-nav button {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.75px;
+    padding: 14px 20px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .top-nav button:hover { color: var(--text); }
+  .top-nav button.active {
+    color: var(--text);
+    border-bottom-color: var(--text);
+  }
+
+  /* ── Shared mock window ── */
+  .option-container {
+    display: none;
+    max-width: 480px;
+    margin: 32px auto;
+    padding-bottom: 60px;
+  }
+  .option-container.active { display: block; }
+
+  .mock-window {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+  .mock-titlebar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    background: rgba(0,0,0,0.3);
+    border-bottom: 1px solid var(--border);
+  }
+  .mock-dot {
+    width: 12px; height: 12px; border-radius: 50%;
+    background: var(--text-faint);
+  }
+  .mock-dot:nth-child(1) { background: #ff5f57; }
+  .mock-dot:nth-child(2) { background: #ffbd2e; }
+  .mock-dot:nth-child(3) { background: #28c840; }
+  .mock-titlebar-text {
+    flex: 1;
+    text-align: center;
+    font-size: 12px;
+    color: var(--text-dim);
+    letter-spacing: 0.5px;
+  }
+  .mock-body {
+    padding: 16px;
+    max-height: 640px;
+    overflow-y: auto;
+  }
+  .mock-body::-webkit-scrollbar { width: 6px; }
+  .mock-body::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+  .mock-body::-webkit-scrollbar-track { background: transparent; }
+
+  /* ── Shared elements ── */
+  .section-title {
+    font-size: 14px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 14px;
+  }
+  .channel-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 12px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.75px;
+    white-space: nowrap;
+    cursor: grab;
+    transition: all 0.15s;
+  }
+  .channel-pill:hover {
+    border-color: var(--text-dim);
+    color: var(--text);
+  }
+  .pill-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 20px;
+  }
+  .add-section {
+    border-top: 1px solid var(--border);
+    padding-top: 16px;
+    margin-top: 4px;
+  }
+  .add-section-title {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    margin-bottom: 10px;
+    font-weight: 600;
+  }
+  .add-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .add-input {
+    flex: 1;
+    padding: 8px 10px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    outline: none;
+  }
+  .add-input::placeholder { color: var(--text-faint); }
+  .add-input:focus { border-color: var(--text-dim); }
+  .add-btn {
+    padding: 8px 14px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+  }
+  .add-btn:hover { color: var(--text); border-color: var(--text-dim); }
+
+  .input-label {
+    display: block;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.75px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+  }
+
+  /* ── Option label badge ── */
+  .option-badge {
+    display: inline-block;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+  }
+  .option-desc {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-bottom: 20px;
+    line-height: 1.6;
+  }
+
+  /* ══════════════════════════════════
+     OPTION A — Accordion + Toggles
+     ══════════════════════════════════ */
+  .acc-section {
+    border-top: 1px solid var(--border);
+    padding-top: 16px;
+    margin-top: 16px;
+  }
+  .acc-region-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+    font-weight: 600;
+  }
+  .acc-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 0;
+    cursor: pointer;
+    user-select: none;
+  }
+  .acc-header:hover .acc-region-title { color: var(--text); }
+  .acc-arrow {
+    font-size: 10px;
+    color: var(--text-faint);
+    transition: transform 0.2s;
+  }
+  .acc-header.open .acc-arrow { transform: rotate(90deg); }
+  .acc-body {
+    display: none;
+    padding-bottom: 8px;
+  }
+  .acc-body.open { display: block; }
+  .acc-channel-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 7px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+  }
+  .acc-channel-row:last-child { border-bottom: none; }
+  .acc-channel-info {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .acc-channel-name {
+    font-size: 12px;
+    color: var(--text-secondary);
+    letter-spacing: 0.3px;
+  }
+  .acc-channel-handle {
+    font-size: 10px;
+    color: var(--text-faint);
+  }
+  /* Toggle switch */
+  .toggle {
+    position: relative;
+    width: 36px;
+    height: 20px;
+    flex-shrink: 0;
+  }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .toggle-track {
+    position: absolute;
+    inset: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .toggle-track::after {
+    content: '';
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 14px; height: 14px;
+    background: var(--text-dim);
+    border-radius: 50%;
+    transition: all 0.2s;
+  }
+  .toggle input:checked + .toggle-track {
+    background: rgba(68, 255, 136, 0.15);
+    border-color: rgba(68, 255, 136, 0.4);
+  }
+  .toggle input:checked + .toggle-track::after {
+    transform: translateX(16px);
+    background: var(--green);
+  }
+  .acc-count {
+    font-size: 10px;
+    color: var(--text-faint);
+    margin-left: 6px;
+  }
+
+  /* ══════════════════════════════════
+     OPTION B — Tabs + Cards
+     ══════════════════════════════════ */
+  .tab-section {
+    border-top: 1px solid var(--border);
+    padding-top: 16px;
+    margin-top: 16px;
+  }
+  .tab-bar {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 12px;
+    overflow-x: auto;
+  }
+  .tab-bar::-webkit-scrollbar { display: none; }
+  .tab-btn {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.75px;
+    padding: 8px 12px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-faint);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+  }
+  .tab-btn:hover { color: var(--text-dim); }
+  .tab-btn.active {
+    color: var(--text);
+    border-bottom-color: var(--text);
+  }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+  .card-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .channel-card {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: all 0.15s;
+    position: relative;
+  }
+  .channel-card:hover {
+    border-color: var(--text-faint);
+    background: var(--surface-hover);
+  }
+  .channel-card.added {
+    border-color: rgba(68, 255, 136, 0.3);
+    background: rgba(68, 255, 136, 0.05);
+  }
+  .card-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 4px;
+    background: var(--surface-hover);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-dim);
+    flex-shrink: 0;
+    text-transform: uppercase;
+  }
+  .card-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .card-name {
+    font-size: 11px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .card-handle {
+    font-size: 9px;
+    color: var(--text-faint);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .card-add-icon {
+    font-size: 14px;
+    color: var(--text-faint);
+    flex-shrink: 0;
+    transition: color 0.15s;
+  }
+  .channel-card:hover .card-add-icon { color: var(--green); }
+  .channel-card.added .card-add-icon { color: var(--green); }
+  .tab-region-count {
+    font-size: 9px;
+    color: var(--text-faint);
+    margin-left: 4px;
+  }
+
+  /* ══════════════════════════════════
+     OPTION C — Two Panel
+     ══════════════════════════════════ */
+  .two-panel-body {
+    display: flex;
+    gap: 0;
+    max-height: 640px;
+  }
+  .panel-left, .panel-right {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+  }
+  .panel-left {
+    border-right: 1px solid var(--border);
+  }
+  .panel-left::-webkit-scrollbar, .panel-right::-webkit-scrollbar { width: 5px; }
+  .panel-left::-webkit-scrollbar-thumb, .panel-right::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+
+  .panel-section-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .panel-section-title .count-badge {
+    font-size: 10px;
+    color: var(--text-faint);
+    font-weight: 400;
+  }
+  .my-channel-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    margin-bottom: 2px;
+    cursor: grab;
+    transition: background 0.15s;
+    border-radius: 2px;
+  }
+  .my-channel-row:hover { background: var(--surface-hover); }
+  .drag-handle {
+    color: var(--text-faint);
+    font-size: 10px;
+    cursor: grab;
+    flex-shrink: 0;
+  }
+  .my-ch-name {
+    flex: 1;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+  }
+  .my-ch-remove {
+    font-size: 10px;
+    color: var(--text-faint);
+    cursor: pointer;
+    opacity: 0;
+    transition: all 0.15s;
+  }
+  .my-channel-row:hover .my-ch-remove { opacity: 1; }
+  .my-ch-remove:hover { color: var(--red); }
+
+  .search-box {
+    width: 100%;
+    padding: 8px 10px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    outline: none;
+    margin-bottom: 12px;
+  }
+  .search-box::placeholder { color: var(--text-faint); }
+  .search-box:focus { border-color: var(--text-dim); }
+
+  .browse-region-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-faint);
+    margin: 10px 0 4px;
+    font-weight: 600;
+  }
+  .browse-region-label:first-child { margin-top: 0; }
+  .browse-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    cursor: pointer;
+    transition: background 0.15s;
+    border-radius: 2px;
+  }
+  .browse-row:hover { background: var(--surface-hover); }
+  .browse-row.added { opacity: 0.4; pointer-events: none; }
+  .browse-name {
+    flex: 1;
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+  .browse-add {
+    font-size: 12px;
+    color: var(--text-faint);
+    flex-shrink: 0;
+  }
+  .browse-row:hover .browse-add { color: var(--green); }
+
+  /* Mock window variant C — wider */
+  .mock-window-wide {
+    max-width: 720px;
+  }
+  .mock-window-wide .mock-body {
+    padding: 0;
+  }
+
+  /* ── Prompt output ── */
+  .prompt-output {
+    max-width: 720px;
+    margin: 24px auto 40px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .prompt-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: rgba(0,0,0,0.3);
+    border-bottom: 1px solid var(--border);
+  }
+  .prompt-bar-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+  }
+  .copy-btn {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 4px 10px;
+    background: var(--surface-hover);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    cursor: pointer;
+    border-radius: 3px;
+    transition: all 0.15s;
+  }
+  .copy-btn:hover { color: var(--text); border-color: var(--text-dim); }
+  .prompt-text {
+    padding: 12px;
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.6;
+    white-space: pre-wrap;
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Navigation ── -->
+<nav class="top-nav">
+  <span class="top-nav-label">Design</span>
+  <button class="active" onclick="showOption('a')">A · Accordion</button>
+  <button onclick="showOption('b')">B · Tab Cards</button>
+  <button onclick="showOption('c')">C · Two-Panel</button>
+</nav>
+
+<!-- ══════════════════════════════════════════════
+     OPTION A — Accordion with Toggle Switches
+     ══════════════════════════════════════════════ -->
+<div class="option-container active" id="option-a">
+  <div class="option-badge">Option A — Accordion + Toggle Switches</div>
+  <p class="option-desc">Regions as collapsible sections below the active channels. Each channel has a toggle switch. Compact, scannable, progressive disclosure.</p>
+
+  <div class="mock-window">
+    <div class="mock-titlebar">
+      <div class="mock-dot"></div><div class="mock-dot"></div><div class="mock-dot"></div>
+      <span class="mock-titlebar-text">worldmonitor.app</span>
+    </div>
+    <div class="mock-body">
+      <div class="section-title">Manage Channels</div>
+
+      <!-- Active channels -->
+      <div class="pill-grid" id="a-active-pills"></div>
+
+      <!-- Add channel (manual) -->
+      <div class="add-section">
+        <div class="add-section-title">Add channel</div>
+        <div style="display:flex;gap:8px;margin-bottom:6px">
+          <div style="flex:1"><span class="input-label">YouTube handle</span><input class="add-input" placeholder="@Channel" /></div>
+          <div style="flex:1"><span class="input-label">Display name</span><input class="add-input" placeholder="(optional)" /></div>
+        </div>
+        <button class="add-btn">Add channel</button>
+      </div>
+
+      <!-- Available channels (accordions) -->
+      <div class="acc-section">
+        <div class="add-section-title">Available Channels</div>
+        <div id="a-accordions"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="prompt-output">
+    <div class="prompt-bar">
+      <span class="prompt-bar-label">Prompt output</span>
+      <button class="copy-btn" onclick="copyPrompt('a')">Copy</button>
+    </div>
+    <div class="prompt-text" id="prompt-a"></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     OPTION B — Tab-Based Region Browser
+     ══════════════════════════════════════════════ -->
+<div class="option-container" id="option-b">
+  <div class="option-badge">Option B — Tab-Based Region Cards</div>
+  <p class="option-desc">Horizontal region tabs with a 2-column grid of channel cards. Visual, compact, easy to browse. One-click add with checkmark state.</p>
+
+  <div class="mock-window">
+    <div class="mock-titlebar">
+      <div class="mock-dot"></div><div class="mock-dot"></div><div class="mock-dot"></div>
+      <span class="mock-titlebar-text">worldmonitor.app</span>
+    </div>
+    <div class="mock-body">
+      <div class="section-title">Manage Channels</div>
+
+      <!-- Active channels -->
+      <div class="pill-grid" id="b-active-pills"></div>
+
+      <!-- Available channels (tabs + cards) -->
+      <div class="tab-section">
+        <div class="add-section-title">Available Channels</div>
+        <div class="tab-bar" id="b-tabs"></div>
+        <div id="b-tab-contents"></div>
+      </div>
+
+      <!-- Add channel (manual) -->
+      <div class="add-section" style="margin-top:16px">
+        <div class="add-section-title">Custom Channel</div>
+        <div style="display:flex;gap:8px;margin-bottom:6px">
+          <div style="flex:1"><span class="input-label">YouTube handle</span><input class="add-input" placeholder="@Channel" /></div>
+          <div style="flex:1"><span class="input-label">Display name</span><input class="add-input" placeholder="(optional)" /></div>
+        </div>
+        <button class="add-btn">Add channel</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="prompt-output">
+    <div class="prompt-bar">
+      <span class="prompt-bar-label">Prompt output</span>
+      <button class="copy-btn" onclick="copyPrompt('b')">Copy</button>
+    </div>
+    <div class="prompt-text" id="prompt-b"></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     OPTION C — Two-Panel Layout
+     ══════════════════════════════════════════════ -->
+<div class="option-container" id="option-c">
+  <div class="option-badge">Option C — Two-Panel Split</div>
+  <p class="option-desc">Left panel shows your active channels (draggable). Right panel is a searchable catalog organized by region. Streaming-app feel — browse & add with one click.</p>
+
+  <div class="mock-window mock-window-wide">
+    <div class="mock-titlebar">
+      <div class="mock-dot"></div><div class="mock-dot"></div><div class="mock-dot"></div>
+      <span class="mock-titlebar-text">worldmonitor.app</span>
+    </div>
+    <div class="two-panel-body">
+      <!-- Left: Your channels -->
+      <div class="panel-left">
+        <div class="panel-section-title">Your Channels <span class="count-badge" id="c-count"></span></div>
+        <div id="c-my-channels"></div>
+        <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
+          <div class="input-label" style="margin-bottom:6px">Add custom</div>
+          <div style="display:flex;gap:6px">
+            <input class="search-box" placeholder="@Handle" style="margin-bottom:0" />
+            <button class="add-btn" style="padding:6px 10px;font-size:10px">+</button>
+          </div>
+        </div>
+      </div>
+      <!-- Right: Browse catalog -->
+      <div class="panel-right">
+        <div class="panel-section-title">Browse Channels</div>
+        <input class="search-box" placeholder="Search channels..." id="c-search" oninput="renderOptionC()" />
+        <div id="c-browse"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="prompt-output">
+    <div class="prompt-bar">
+      <span class="prompt-bar-label">Prompt output</span>
+      <button class="copy-btn" onclick="copyPrompt('c')">Copy</button>
+    </div>
+    <div class="prompt-text" id="prompt-c"></div>
+  </div>
+</div>
+
+<script>
+// ── Channel data ──
+const ACTIVE = [
+  { id: 'bloomberg', name: 'Bloomberg' },
+  { id: 'sky', name: 'SkyNews' },
+  { id: 'euronews', name: 'Euronews' },
+  { id: 'dw', name: 'DW' },
+  { id: 'cnbc', name: 'CNBC' },
+  { id: 'france24', name: 'France24' },
+  { id: 'alarabiya', name: 'AlArabiya' },
+  { id: 'aljazeera', name: 'AlJazeera' },
+];
+
+const REGIONS = [
+  { key: 'na', label: 'North America', channels: [
+    { id: 'livenow-fox', name: 'LiveNOW from FOX', handle: '@LiveNOWfromFOX' },
+    { id: 'fox-news', name: 'Fox News', handle: '@FoxNews' },
+    { id: 'newsmax', name: 'Newsmax', handle: '@NEWSMAX' },
+    { id: 'abc-news', name: 'ABC News', handle: '@ABCNews' },
+    { id: 'cbs-news', name: 'CBS News', handle: '@CBSNews' },
+    { id: 'nbc-news', name: 'NBC News', handle: '@NBCNews' },
+  ]},
+  { key: 'eu', label: 'Europe', channels: [
+    { id: 'welt', name: 'WELT', handle: '@WELTNachrichtensender' },
+    { id: 'rtve', name: 'RTVE 24H', handle: '@RTVENoticias' },
+    { id: 'trt-haber', name: 'TRT Haber', handle: '@trthaber' },
+    { id: 'ntv-turkey', name: 'NTV', handle: '@NTV' },
+    { id: 'cnn-turk', name: 'CNN TURK', handle: '@cnnturk' },
+    { id: 'tv-rain', name: 'TV Rain', handle: '@tvrain' },
+  ]},
+  { key: 'latam', label: 'Latin America', channels: [
+    { id: 'cnn-brasil', name: 'CNN Brasil', handle: '@CNNbrasil' },
+    { id: 'jovem-pan', name: 'Jovem Pan News', handle: '@jovempannews' },
+    { id: 'record-news', name: 'Record News', handle: '@recordnewsoficial' },
+    { id: 'band-jornalismo', name: 'Band Jornalismo', handle: '@BandJornalismo' },
+    { id: 'tn-argentina', name: 'TN', handle: '@todonoticias' },
+    { id: 'c5n', name: 'C5N', handle: '@c5n' },
+    { id: 'milenio', name: 'MILENIO', handle: '@MILENIO' },
+    { id: 'noticias-caracol', name: 'Noticias Caracol', handle: '@NoticiasCaracol' },
+    { id: 'ntn24', name: 'NTN24', handle: '@NTN24' },
+    { id: 't13', name: 'T13', handle: '@T13' },
+  ]},
+  { key: 'asia', label: 'Asia', channels: [
+    { id: 'tbs-news', name: 'TBS NEWS DIG', handle: '@tbsnewsdig' },
+    { id: 'ann-news', name: 'ANN News', handle: '@ANNnewsCH' },
+    { id: 'ntv-news', name: 'NTV News (JP)', handle: '@ntv_news' },
+    { id: 'cti-news', name: 'CTI News', handle: '@CtiTv' },
+    { id: 'wion', name: 'WION', handle: '@WIONews' },
+    { id: 'vtc-now', name: 'VTC NOW', handle: '@VTCNOW' },
+    { id: 'cna-asia', name: 'CNA', handle: '@channelnewsasia' },
+    { id: 'nhk-world', name: 'NHK World', handle: '@NHKWORLDJAPAN' },
+  ]},
+  { key: 'africa', label: 'Africa', channels: [
+    { id: 'africanews', name: 'Africanews', handle: '@africanews' },
+    { id: 'channels-tv', name: 'Channels TV', handle: '@channelstv' },
+    { id: 'ktn-news', name: 'KTN News', handle: '@KTNNewsKE' },
+    { id: 'enca', name: 'eNCA', handle: '@enaborewschannel' },
+    { id: 'sabc-news', name: 'SABC News', handle: '@SABCNews' },
+  ]},
+];
+
+// Shared state per option (tracks which optional channels are "added")
+const stateA = new Set();
+const stateB = new Set();
+const stateC = new Set();
+
+// ── Navigation ──
+let currentOption = 'a';
+function showOption(opt) {
+  currentOption = opt;
+  document.querySelectorAll('.option-container').forEach(el => el.classList.remove('active'));
+  document.getElementById('option-' + opt).classList.add('active');
+  document.querySelectorAll('.top-nav button').forEach(btn => btn.classList.remove('active'));
+  document.querySelectorAll('.top-nav button')[{a:0,b:1,c:2}[opt]].classList.add('active');
+}
+
+// ── Helper ──
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function initials(name) { return name.split(/[\s-]+/).map(w => w[0]).join('').slice(0,2).toUpperCase(); }
+
+// ══════════════════════════════
+// OPTION A — Accordion
+// ══════════════════════════════
+function renderOptionA() {
+  // Active pills
+  const pillsEl = document.getElementById('a-active-pills');
+  pillsEl.innerHTML = ACTIVE.map(ch =>
+    `<span class="channel-pill">${esc(ch.name)}</span>`
+  ).join('') + [...stateA].map(id => {
+    const ch = findChannel(id);
+    return ch ? `<span class="channel-pill" style="border-color:rgba(68,255,136,0.3);color:var(--green)">${esc(ch.name)}</span>` : '';
+  }).join('');
+
+  // Accordions
+  const accEl = document.getElementById('a-accordions');
+  accEl.innerHTML = REGIONS.map(region => {
+    const addedCount = region.channels.filter(c => stateA.has(c.id)).length;
+    return `
+      <div>
+        <div class="acc-header" onclick="toggleAcc(this)">
+          <div style="display:flex;align-items:center">
+            <span class="acc-region-title">${esc(region.label)}</span>
+            <span class="acc-count">${addedCount}/${region.channels.length}</span>
+          </div>
+          <span class="acc-arrow">▶</span>
+        </div>
+        <div class="acc-body">
+          ${region.channels.map(ch => `
+            <div class="acc-channel-row">
+              <div class="acc-channel-info">
+                <span class="acc-channel-name">${esc(ch.name)}</span>
+                <span class="acc-channel-handle">${esc(ch.handle)}</span>
+              </div>
+              <label class="toggle">
+                <input type="checkbox" ${stateA.has(ch.id)?'checked':''} onchange="toggleChannelA('${ch.id}')"/>
+                <span class="toggle-track"></span>
+              </label>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  updatePromptA();
+}
+function toggleAcc(header) {
+  header.classList.toggle('open');
+  header.nextElementSibling.classList.toggle('open');
+}
+function toggleChannelA(id) {
+  if (stateA.has(id)) stateA.delete(id); else stateA.add(id);
+  renderOptionA();
+}
+function updatePromptA() {
+  const added = [...stateA].map(findChannel).filter(Boolean);
+  let text = 'I chose Option A (Accordion with toggle switches) for the channel management UI.\n\n';
+  text += 'Layout: Active channel pills at top → manual "Add channel" form → "Available Channels" section with collapsible region accordions. Each channel row has a name, YouTube handle, and toggle switch.\n';
+  if (added.length) {
+    text += '\nCurrently toggled ON (' + added.length + '): ' + added.map(c => c.name).join(', ') + '.';
+  }
+  document.getElementById('prompt-a').textContent = text;
+}
+
+// ══════════════════════════════
+// OPTION B — Tabs + Cards
+// ══════════════════════════════
+let activeBTab = 'na';
+function renderOptionB() {
+  // Active pills
+  const pillsEl = document.getElementById('b-active-pills');
+  pillsEl.innerHTML = ACTIVE.map(ch =>
+    `<span class="channel-pill">${esc(ch.name)}</span>`
+  ).join('') + [...stateB].map(id => {
+    const ch = findChannel(id);
+    return ch ? `<span class="channel-pill" style="border-color:rgba(68,255,136,0.3);color:var(--green)">${esc(ch.name)}</span>` : '';
+  }).join('');
+
+  // Tabs
+  const tabsEl = document.getElementById('b-tabs');
+  tabsEl.innerHTML = REGIONS.map(r => {
+    const addedCount = r.channels.filter(c => stateB.has(c.id)).length;
+    return `<button class="tab-btn ${r.key===activeBTab?'active':''}" onclick="switchBTab('${r.key}')">${esc(r.label)}${addedCount?` <span class="tab-region-count">(${addedCount})</span>`:''}</button>`;
+  }).join('');
+
+  // Tab contents
+  const contentsEl = document.getElementById('b-tab-contents');
+  contentsEl.innerHTML = REGIONS.map(r => `
+    <div class="tab-content ${r.key===activeBTab?'active':''}" data-tab="${r.key}">
+      <div class="card-grid">
+        ${r.channels.map(ch => `
+          <div class="channel-card ${stateB.has(ch.id)?'added':''}" onclick="toggleChannelB('${ch.id}')">
+            <div class="card-icon">${initials(ch.name)}</div>
+            <div class="card-info">
+              <span class="card-name">${esc(ch.name)}</span>
+              <span class="card-handle">${esc(ch.handle)}</span>
+            </div>
+            <span class="card-add-icon">${stateB.has(ch.id)?'✓':'+'}</span>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `).join('');
+
+  updatePromptB();
+}
+function switchBTab(key) {
+  activeBTab = key;
+  renderOptionB();
+}
+function toggleChannelB(id) {
+  if (stateB.has(id)) stateB.delete(id); else stateB.add(id);
+  renderOptionB();
+}
+function updatePromptB() {
+  const added = [...stateB].map(findChannel).filter(Boolean);
+  let text = 'I chose Option B (Tab-based region cards) for the channel management UI.\n\n';
+  text += 'Layout: Active channel pills at top → "Available Channels" section with horizontal region tabs (NA, Europe, LatAm, Asia, Africa). Each tab shows a 2-column grid of channel cards with icon, name, handle, and +/✓ toggle. "Custom Channel" add form at bottom.\n';
+  if (added.length) {
+    text += '\nCurrently added (' + added.length + '): ' + added.map(c => c.name).join(', ') + '.';
+  }
+  document.getElementById('prompt-b').textContent = text;
+}
+
+// ══════════════════════════════
+// OPTION C — Two Panel
+// ══════════════════════════════
+function renderOptionC() {
+  const searchVal = (document.getElementById('c-search')?.value || '').toLowerCase();
+
+  // Left: My channels
+  const myEl = document.getElementById('c-my-channels');
+  const allMy = [...ACTIVE, ...[...stateC].map(findChannel).filter(Boolean)];
+  document.getElementById('c-count').textContent = allMy.length;
+  myEl.innerHTML = allMy.map(ch => `
+    <div class="my-channel-row">
+      <span class="drag-handle">⠿</span>
+      <span class="my-ch-name">${esc(ch.name)}</span>
+      ${stateC.has(ch.id) ? `<span class="my-ch-remove" onclick="toggleChannelC('${ch.id}')">✕</span>` : ''}
+    </div>
+  `).join('');
+
+  // Right: Browse
+  const browseEl = document.getElementById('c-browse');
+  let html = '';
+  for (const region of REGIONS) {
+    const filtered = region.channels.filter(ch => {
+      if (searchVal && !ch.name.toLowerCase().includes(searchVal) && !ch.handle.toLowerCase().includes(searchVal)) return false;
+      return true;
+    });
+    if (filtered.length === 0) continue;
+    html += `<div class="browse-region-label">${esc(region.label)}</div>`;
+    for (const ch of filtered) {
+      const added = stateC.has(ch.id);
+      html += `
+        <div class="browse-row ${added?'added':''}" onclick="toggleChannelC('${ch.id}')">
+          <span class="browse-name">${esc(ch.name)}<span style="color:var(--text-faint);margin-left:6px;font-size:10px">${esc(ch.handle)}</span></span>
+          <span class="browse-add">${added?'✓':'+'}</span>
+        </div>
+      `;
+    }
+  }
+  browseEl.innerHTML = html || '<div style="color:var(--text-faint);padding:12px 0;font-size:11px">No channels match your search.</div>';
+
+  updatePromptC();
+}
+function toggleChannelC(id) {
+  if (stateC.has(id)) stateC.delete(id); else stateC.add(id);
+  renderOptionC();
+}
+function updatePromptC() {
+  const added = [...stateC].map(findChannel).filter(Boolean);
+  let text = 'I chose Option C (Two-panel split) for the channel management UI.\n\n';
+  text += 'Layout: Side-by-side panels. Left panel shows "Your Channels" (draggable list with remove buttons) plus a "Add custom" mini-form at the bottom. Right panel shows "Browse Channels" with a search box at top and channels grouped under region labels (NA, Europe, LatAm, Asia, Africa). One-click add/remove.\n';
+  text += '\nNote: The window needs to be wider (~720px) for the two-panel layout vs the current 440px.\n';
+  if (added.length) {
+    text += '\nCurrently added (' + added.length + '): ' + added.map(c => c.name).join(', ') + '.';
+  }
+  document.getElementById('prompt-c').textContent = text;
+}
+
+// ── Utils ──
+function findChannel(id) {
+  for (const r of REGIONS) for (const c of r.channels) if (c.id === id) return c;
+  return null;
+}
+
+function copyPrompt(opt) {
+  const text = document.getElementById('prompt-' + opt).textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.querySelector('#option-' + opt + ' .copy-btn');
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy', 1500);
+  });
+}
+
+// ── Init ──
+renderOptionA();
+renderOptionB();
+renderOptionC();
+</script>
+</body>
+</html>

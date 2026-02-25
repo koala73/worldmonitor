@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package worldmonitor.economic.v1;
+
+import "worldmonitor/economic/v1/bis_data.proto";
+
+// GetBisCreditRequest requests credit-to-GDP ratio data.
+message GetBisCreditRequest {}
+
+// GetBisCreditResponse contains BIS credit-to-GDP data.
+message GetBisCreditResponse {
+  // The list of credit-to-GDP entries by country.
+  repeated BisCreditToGdp entries = 1;
+}

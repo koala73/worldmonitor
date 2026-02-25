@@ -98,6 +98,7 @@ Sentry.init({
     /Invalid or unexpected token/,
     /evaluating 'elemFound\.value'/,
     /Cannot access '\w+' before initialization/,
+    /^Uint8Array$/,
   ],
   beforeSend(event) {
     const msg = event.exception?.values?.[0]?.value ?? '';
