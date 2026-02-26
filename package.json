@@ -1,7 +1,7 @@
 {
   "name": "world-monitor",
   "private": true,
-  "version": "2.5.17",
+  "version": "2.5.18",
   "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
