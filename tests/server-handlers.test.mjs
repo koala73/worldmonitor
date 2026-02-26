@@ -184,7 +184,23 @@ describe('getCacheKey determinism', () => {
 });
 
 // ========================================================================
-// 6. Vessel snapshot caching (structural verification)
+// 6. Translate mode input fidelity (regression guard)
+// ========================================================================
+
+describe('translate mode headline handling', () => {
+  const src = readSrc('server/worldmonitor/news/v1/summarize-article.ts');
+
+  it('skips prompt-injection sanitizer for translate mode', () => {
+    assert.match(
+      src,
+      /const headlines = mode === 'translate'[\s\S]*\? boundedHeadlines[\s\S]*: sanitizeHeadlines\(\s*boundedHeadlines\s*,?\s*\)/,
+      'Translate mode should use bounded raw headlines to preserve translation fidelity',
+    );
+  });
+});
+
+// ========================================================================
+// 7. Vessel snapshot caching (structural verification)
 // ========================================================================
 
 describe('getVesselSnapshot caching (HIGH-1)', () => {

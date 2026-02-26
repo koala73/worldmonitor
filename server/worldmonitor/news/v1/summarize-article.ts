@@ -13,6 +13,7 @@ import {
   getCacheKey,
 } from './_shared';
 import { CHROME_UA } from '../../../_shared/constants';
+import { sanitizeHeadlines } from '../../../../api/_llm-sanitize.js';
 
 // ======================================================================
 // Reasoning preamble detection
@@ -41,9 +42,15 @@ export async function summarizeArticle(
   const MAX_HEADLINES = 10;
   const MAX_HEADLINE_LEN = 500;
   const MAX_GEO_CONTEXT_LEN = 2000;
-  const headlines = (req.headlines || [])
+  const boundedHeadlines = (req.headlines || [])
     .slice(0, MAX_HEADLINES)
     .map(h => typeof h === 'string' ? h.slice(0, MAX_HEADLINE_LEN) : '');
+  // Preserve exact source text for translation fidelity.
+  const headlines = mode === 'translate'
+    ? boundedHeadlines
+    : sanitizeHeadlines(
+      boundedHeadlines,
+    );
   const sanitizedGeoContext = typeof geoContext === 'string' ? geoContext.slice(0, MAX_GEO_CONTEXT_LEN) : '';
 
   // Provider credential check
