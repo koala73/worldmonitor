@@ -134,7 +134,9 @@ export class DesktopUpdater implements AppModule {
     }
 
     if (normalizedOs === 'linux') {
-      return normalizedArch === 'x86_64' ? 'linux-appimage' : null;
+      if (normalizedArch === 'x86_64') return 'linux-appimage';
+      if (normalizedArch === 'aarch64') return 'linux-appimage-arm64';
+      return null;
     }
 
     return null;

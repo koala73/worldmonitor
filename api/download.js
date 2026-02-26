@@ -10,6 +10,7 @@ const PLATFORM_PATTERNS = {
   'macos-arm64': (name) => name.endsWith('_aarch64.dmg'),
   'macos-x64': (name) => name.endsWith('_x64.dmg') && !name.includes('setup'),
   'linux-appimage': (name) => name.endsWith('_amd64.AppImage'),
+  'linux-appimage-arm64': (name) => name.endsWith('_aarch64.AppImage'),
 };
 
 const VARIANT_IDENTIFIERS = {
