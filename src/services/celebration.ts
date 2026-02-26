@@ -45,16 +45,30 @@ const celebrated = new Set<string>();
 export function celebrate(type: 'milestone' | 'record' = 'milestone'): void {
   if (REDUCED_MOTION) return;
 
-  const run = (opts: { particleCount: number; spread: number; origin: { y: number }; colors: string[] }) => {
-    confetti({ ...opts, disableForReducedMotion: true });
-  };
-
   if (type === 'milestone') {
-    run({ particleCount: 40, spread: 60, origin: { y: 0.7 }, colors: WARM_COLORS });
+    void confetti({
+      particleCount: 40,
+      spread: 60,
+      origin: { y: 0.7 },
+      colors: WARM_COLORS,
+      disableForReducedMotion: true,
+    });
   } else {
-    run({ particleCount: 80, spread: 90, origin: { y: 0.6 }, colors: WARM_COLORS });
+    void confetti({
+      particleCount: 80,
+      spread: 90,
+      origin: { y: 0.6 },
+      colors: WARM_COLORS,
+      disableForReducedMotion: true,
+    });
     setTimeout(() => {
-      run({ particleCount: 80, spread: 90, origin: { y: 0.6 }, colors: WARM_COLORS });
+      void confetti({
+        particleCount: 80,
+        spread: 90,
+        origin: { y: 0.6 },
+        colors: WARM_COLORS,
+        disableForReducedMotion: true,
+      });
     }, 300);
   }
 }
