@@ -1,0 +1,103 @@
+name: 'Test Linux App'
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: test-linux-app-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+
+jobs:
+  test-linux-app:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7
+        with:
+          toolchain: stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@ad397744b0d591a723ab90405b7247fac0e6b8db
+        with:
+          workspaces: './src-tauri -> target'
+          cache-on-failure: true
+
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            gstreamer1.0-plugins-base \
+            gstreamer1.0-plugins-good \
+            xvfb \
+            imagemagick
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Bundle Node.js runtime
+        shell: bash
+        env:
+          NODE_VERSION: '22.14.0'
+          NODE_TARGET: 'x86_64-unknown-linux-gnu'
+        run: bash scripts/download-node.sh --target "$NODE_TARGET"
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@79c624843491f12ae9d63592534ed49df3bc4adb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VITE_VARIANT: full
+          VITE_DESKTOP_RUNTIME: '1'
+          CONVEX_URL: ${{ secrets.CONVEX_URL }}
+        with:
+          args: ''
+          retryAttempts: 1
+
+      - name: Smoke-test AppImage
+        shell: bash
+        run: |
+          APPIMAGE=$(find src-tauri/target/release/bundle/appimage -name '*.AppImage' | head -1)
+          if [ -z "$APPIMAGE" ]; then
+            echo "::error::No AppImage found after build"
+            exit 1
+          fi
+          chmod +x "$APPIMAGE"
+          Xvfb :99 -screen 0 1440x900x24 &
+          export DISPLAY=:99
+          sleep 2
+          "$APPIMAGE" --no-sandbox &
+          APP_PID=$!
+          sleep 15
+          import -window root screenshot.png || true
+          if kill -0 $APP_PID 2>/dev/null; then
+            echo "✅ AppImage launched successfully"
+            kill $APP_PID || true
+          else
+            echo "❌ AppImage crashed during startup"
+            exit 1
+          fi
+
+      - name: Upload smoke test screenshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-smoke-test-screenshot
+          path: screenshot.png
+          if-no-files-found: warn
