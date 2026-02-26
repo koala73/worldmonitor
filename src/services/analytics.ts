@@ -152,6 +152,7 @@ export async function initAnalytics(): Promise<void> {
 
       posthog.init(POSTHOG_KEY, {
         api_host: POSTHOG_HOST,
+        ui_host: 'https://us.posthog.com',
         persistence: 'localStorage',
         autocapture: false,
         capture_pageview: false, // Manual capture below — auto-capture silently fails with bootstrap + SPA

@@ -1127,16 +1127,22 @@ fn main() {
             unsafe { env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1") };
         }
 
+        // On Wayland-only compositors (e.g. niri, river, sway without XWayland),
+        // GTK3 may fail to initialise if it defaults to X11 backend first and no
+        // DISPLAY is set.  Explicitly prefer the Wayland backend when a Wayland
+        // display is available.  Falls back to X11 if Wayland init fails.
+        if env::var_os("WAYLAND_DISPLAY").is_some() && env::var_os("GDK_BACKEND").is_none() {
+            unsafe { env::set_var("GDK_BACKEND", "wayland,x11") };
+        }
+
         // Work around GLib version mismatch when running as an AppImage on newer
-        // distros (e.g. Ubuntu 25.10+).  The AppImage bundles GLib from the build
-        // system (currently Ubuntu 24.04, GLib 2.80).  When host GIO modules such
-        // as GVFS's libgvfsdbus.so are compiled against a newer GLib they reference
-        // symbols that do not exist in the bundled copy, producing:
+        // distros.  The AppImage bundles GLib from the CI build system (Ubuntu
+        // 24.04, GLib 2.80).  Host GIO modules (e.g. GVFS's libgvfsdbus.so) may
+        // link against newer GLib symbols absent in the bundled copy, producing:
         //   "undefined symbol: g_task_set_static_name"
-        // Point GIO module scanning at the AppImage's bundled module directory
-        // instead of host directories. This keeps required modules (notably TLS)
-        // available while avoiding host GVFS modules that may depend on newer
-        // GLib symbols than the bundled runtime provides.
+        // Point GIO_MODULE_DIR at the AppImage's bundled modules to isolate from
+        // host libraries.  Also disable the WebKit bubblewrap sandbox which fails
+        // inside AppImage's FUSE mount (causes blank screen on many distros).
         if env::var_os("APPIMAGE").is_some() && env::var_os("GIO_MODULE_DIR").is_none() {
             if let Some(module_dir) = resolve_appimage_gio_module_dir() {
                 unsafe { env::set_var("GIO_MODULE_DIR", &module_dir) };
@@ -1147,6 +1153,20 @@ fn main() {
                 eprintln!(
                     "[tauri] APPIMAGE detected but bundled gio/modules not found; using GIO_USE_VFS=local fallback"
                 );
+            }
+        }
+
+        // WebKit2GTK's bubblewrap sandbox can fail inside an AppImage FUSE
+        // mount, causing blank white screens.  Disable it when running as
+        // AppImage — the AppImage itself already provides isolation.
+        if env::var_os("APPIMAGE").is_some() {
+            if env::var_os("WEBKIT_FORCE_SANDBOX").is_none() {
+                unsafe { env::set_var("WEBKIT_FORCE_SANDBOX", "0") };
+            }
+            // Prevent GTK from loading host input-method modules that may
+            // link against incompatible library versions.
+            if env::var_os("GTK_IM_MODULE").is_none() {
+                unsafe { env::set_var("GTK_IM_MODULE", "gtk-im-context-simple") };
             }
         }
     }

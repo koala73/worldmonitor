@@ -51,6 +51,7 @@ const ALLOWED_DOMAINS = [
   'feeds.npr.org',
   'news.google.com',
   'www.aljazeera.com',
+  'www.aljazeera.net',
   'rss.cnn.com',
   'hnrss.org',
   'feeds.arstechnica.com',
@@ -169,10 +170,17 @@ const ALLOWED_DOMAINS = [
   // International News Sources
   'www.france24.com',
   'www.euronews.com',
+  'de.euronews.com',
+  'es.euronews.com',
+  'fr.euronews.com',
+  'it.euronews.com',
+  'pt.euronews.com',
+  'ru.euronews.com',
   'www.lemonde.fr',
   'rss.dw.com',
   'www.bild.de',
   'www.africanews.com',
+  'fr.africanews.com',
   // Nigeria
   'www.premiumtimesng.com',
   'www.vanguardngr.com',
@@ -219,6 +227,30 @@ const ALLOWED_DOMAINS = [
   'www.fao.org',
   'worldbank.org',
   'www.imf.org',
+  // International news (various languages)
+  'www.bbc.com',
+  'www.spiegel.de',
+  'www.tagesschau.de',
+  'newsfeed.zeit.de',
+  'feeds.elpais.com',
+  'e00-elmundo.uecdn.es',
+  'www.repubblica.it',
+  'www.ansa.it',
+  'xml2.corriereobjects.it',
+  'feeds.nos.nl',
+  'www.nrc.nl',
+  'www.telegraaf.nl',
+  'www.dn.se',
+  'www.svd.se',
+  'www.svt.se',
+  'www.asahi.com',
+  'www.clarin.com',
+  'oglobo.globo.com',
+  'feeds.folha.uol.com.br',
+  'www.eltiempo.com',
+  'www.eluniversal.com.mx',
+  'www.jeuneafrique.com',
+  'www.lorientlejour.com',
   // Regional locale feeds (tr, pl, ru, th, vi, pt)
   'www.hurriyet.com.tr',
   'tvn24.pl',
@@ -286,8 +318,11 @@ export default async function handler(req) {
   try {
     const parsedUrl = new URL(feedUrl);
 
-    // Security: Check if domain is allowed
-    if (!ALLOWED_DOMAINS.includes(parsedUrl.hostname)) {
+    // Security: Check if domain is allowed (normalize www prefix)
+    const hostname = parsedUrl.hostname;
+    const bare = hostname.replace(/^www\./, '');
+    const withWww = hostname.startsWith('www.') ? hostname : `www.${hostname}`;
+    if (!ALLOWED_DOMAINS.includes(hostname) && !ALLOWED_DOMAINS.includes(bare) && !ALLOWED_DOMAINS.includes(withWww)) {
       return new Response(JSON.stringify({ error: 'Domain not allowed' }), {
         status: 403,
         headers: { 'Content-Type': 'application/json', ...corsHeaders },
