@@ -97,7 +97,7 @@ Sentry.init({
     /this\.St\.unref/,
     /Invalid or unexpected token/,
     /evaluating 'elemFound\.value'/,
-    /Cannot access '\w+' before initialization/,
+    /[Cc]an(?:'t|not) access (?:'\w+'|lexical declaration '\w+') before initialization/,
     /^Uint8Array$/,
     /createObjectStore/,
     /The database connection is closing/,
@@ -108,19 +108,22 @@ Sentry.init({
     /a2z\.onStatusUpdate/,
     /Attempting to run\(\), but is already running/,
     /this\.player\.destroy is not a function/,
+    /isReCreate is not defined/,
+    /reading 'style'.*HTMLImageElement/,
+    /can't access property "write", \w+ is undefined/,
   ],
   beforeSend(event) {
     const msg = event.exception?.values?.[0]?.value ?? '';
     if (msg.length <= 3 && /^[a-zA-Z_$]+$/.test(msg)) return null;
     const frames = event.exception?.values?.[0]?.stacktrace?.frames ?? [];
     // Suppress maplibre internal null-access crashes (light, placement) only when stack is in map chunk
-    if (/this\.style\._layers|reading '_layers'|this\.light is null|can't access property "(id|type|setFilter)", \w+ is (null|undefined)|Cannot read properties of null \(reading '(id|type|setFilter|_layers)'\)|null is not an object \(evaluating '(E\.|this\.style)|^\w{1,2} is null$/.test(msg)) {
+    if (/this\.style\._layers|reading '_layers'|this\.light is null|can't access property "(id|type|setFilter)", \w+ is (null|undefined)|Cannot read properties of null \(reading '(id|type|setFilter|_layers)'\)|null is not an object \(evaluating '\w{1,3}\.(id|style)|^\w{1,2} is null$/.test(msg)) {
       if (frames.some(f => /\/(map|maplibre|deck-stack)-[A-Za-z0-9-]+\.js/.test(f.filename ?? ''))) return null;
     }
     // Suppress any TypeError that happens entirely within maplibre or deck.gl internals
     if (/^TypeError:/.test(msg) && frames.length > 0) {
-      const appFrames = frames.filter(f => f.in_app && !/\/sentry-[A-Za-z0-9-]+\.js/.test(f.filename ?? ''));
-      if (appFrames.length > 0 && appFrames.every(f => /\/(map|maplibre|deck-stack)-[A-Za-z0-9-]+\.js/.test(f.filename ?? ''))) return null;
+      const nonSentryFrames = frames.filter(f => !/\/sentry-[A-Za-z0-9-]+\.js/.test(f.filename ?? ''));
+      if (nonSentryFrames.length > 0 && nonSentryFrames.every(f => /\/(map|maplibre|deck-stack)-[A-Za-z0-9-]+\.js/.test(f.filename ?? ''))) return null;
     }
     // Suppress errors originating entirely from blob: URLs (browser extensions)
     if (frames.length > 0 && frames.every(f => /^blob:/.test(f.filename ?? ''))) return null;
