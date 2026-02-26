@@ -1347,3 +1347,37 @@ test('traffic log strips query strings from entries to protect privacy', async (
     await localApi.cleanup();
   }
 });
+
+test('service-status reports bound fallback port after EADDRINUSE recovery', async () => {
+  const blocker = createServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'text/plain' });
+    res.end('occupied');
+  });
+  await listen(blocker, '127.0.0.1', 46123);
+
+  const localApi = await setupApiDir({});
+  const app = await createLocalApiServer({
+    port: 46123,
+    apiDir: localApi.apiDir,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+
+  try {
+    assert.notEqual(port, 46123);
+
+    const response = await fetch(`http://127.0.0.1:${port}/api/service-status`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+
+    assert.equal(body.local.port, port);
+    const localService = body.services.find((service) => service.id === 'local-api');
+    assert.equal(localService.description, `Running on 127.0.0.1:${port}`);
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+    await new Promise((resolve, reject) => {
+      blocker.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+});

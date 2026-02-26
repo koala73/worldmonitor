@@ -1245,6 +1245,7 @@ export async function createLocalApiServer(options = {}) {
 
       const address = server.address();
       const boundPort = typeof address === 'object' && address?.port ? address.port : context.port;
+      context.port = boundPort;
 
       const portFile = process.env.LOCAL_API_PORT_FILE;
       if (portFile) {
