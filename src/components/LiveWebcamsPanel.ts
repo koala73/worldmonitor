@@ -3,6 +3,7 @@ import { isDesktopRuntime, getRemoteApiBaseUrl } from '@/services/runtime';
 import { escapeHtml } from '@/utils/sanitize';
 import { t } from '../services/i18n';
 import { trackWebcamSelected, trackWebcamRegionFiltered } from '@/services/analytics';
+import { getStreamQuality, subscribeStreamQualityChange } from '@/services/ai-flow-settings';
 
 type WebcamRegion = 'middle-east' | 'europe' | 'asia' | 'americas';
 
@@ -67,6 +68,7 @@ export class LiveWebcamsPanel extends Panel {
     this.createToolbar();
     this.setupIntersectionObserver();
     this.setupIdleDetection();
+    subscribeStreamQualityChange(() => this.render());
     this.render();
   }
 
@@ -159,6 +161,7 @@ export class LiveWebcamsPanel extends Panel {
   }
 
   private buildEmbedUrl(videoId: string): string {
+    const quality = getStreamQuality();
     if (isDesktopRuntime()) {
       const remoteBase = getRemoteApiBaseUrl();
       const params = new URLSearchParams({
@@ -166,9 +169,11 @@ export class LiveWebcamsPanel extends Panel {
         autoplay: '1',
         mute: '1',
       });
+      if (quality !== 'auto') params.set('vq', quality);
       return `${remoteBase}/api/youtube/embed?${params.toString()}`;
     }
-    return `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&mute=1&controls=0&modestbranding=1&playsinline=1&rel=0`;
+    const vq = quality !== 'auto' ? `&vq=${quality}` : '';
+    return `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&mute=1&controls=0&modestbranding=1&playsinline=1&rel=0${vq}`;
   }
 
   private createIframe(feed: WebcamFeed): HTMLIFrameElement {

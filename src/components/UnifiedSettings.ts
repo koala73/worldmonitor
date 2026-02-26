@@ -2,7 +2,8 @@ import { FEEDS, INTEL_SOURCES, SOURCE_REGION_MAP } from '@/config/feeds';
 import { PANEL_CATEGORY_MAP } from '@/config/panels';
 import { SITE_VARIANT } from '@/config/variant';
 import { LANGUAGES, changeLanguage, getCurrentLanguage, t } from '@/services/i18n';
-import { getAiFlowSettings, setAiFlowSetting } from '@/services/ai-flow-settings';
+import { getAiFlowSettings, setAiFlowSetting, getStreamQuality, setStreamQuality, STREAM_QUALITY_OPTIONS } from '@/services/ai-flow-settings';
+import type { StreamQuality } from '@/services/ai-flow-settings';
 import { escapeHtml } from '@/utils/sanitize';
 import { trackLanguageChange } from '@/services/analytics';
 import type { PanelConfig } from '@/types';
@@ -147,6 +148,12 @@ export class UnifiedSettings {
     // Handle change events for toggles and language select
     this.overlay.addEventListener('change', (e) => {
       const target = e.target as HTMLInputElement;
+
+      // Stream quality select
+      if (target.id === 'us-stream-quality') {
+        setStreamQuality(target.value as StreamQuality);
+        return;
+      }
 
       // Language select
       if (target.closest('.unified-settings-lang-select')) {
@@ -298,6 +305,22 @@ export class UnifiedSettings {
         </div>
       `;
     }
+
+    // Streaming quality section
+    const currentQuality = getStreamQuality();
+    html += `<div class="ai-flow-section-label">${t('components.insights.sectionStreaming')}</div>`;
+    html += `<div class="ai-flow-toggle-row">
+      <div class="ai-flow-toggle-label-wrap">
+        <div class="ai-flow-toggle-label">${t('components.insights.streamQualityLabel')}</div>
+        <div class="ai-flow-toggle-desc">${t('components.insights.streamQualityDesc')}</div>
+      </div>
+    </div>`;
+    html += `<select class="unified-settings-lang-select" id="us-stream-quality">`;
+    for (const opt of STREAM_QUALITY_OPTIONS) {
+      const selected = opt.value === currentQuality ? ' selected' : '';
+      html += `<option value="${opt.value}"${selected}>${opt.label}</option>`;
+    }
+    html += `</select>`;
 
     // Language section
     html += `<div class="ai-flow-section-label">${t('header.languageLabel')}</div>`;

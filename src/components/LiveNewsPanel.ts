@@ -4,6 +4,7 @@ import { isDesktopRuntime, getRemoteApiBaseUrl, getApiBaseUrl } from '@/services
 import { t } from '../services/i18n';
 import { loadFromStorage, saveToStorage } from '@/utils';
 import { STORAGE_KEYS, SITE_VARIANT } from '@/config';
+import { getStreamQuality } from '@/services/ai-flow-settings';
 
 // YouTube IFrame Player API types
 type YouTubePlayer = {
@@ -13,6 +14,7 @@ type YouTubePlayer = {
   pauseVideo(): void;
   loadVideoById(videoId: string): void;
   cueVideoById(videoId: string): void;
+  setPlaybackQuality?(quality: string): void;
   getIframe?(): HTMLIFrameElement;
   getVolume?(): number;
   destroy(): void;
@@ -799,6 +801,8 @@ export class LiveNewsPanel extends Panel {
     if (this.youtubeOrigin) params.set('origin', this.youtubeOrigin);
     const parentOrigin = this.parentPostMessageOrigin;
     if (parentOrigin) params.set('parentOrigin', parentOrigin);
+    const quality = getStreamQuality();
+    if (quality !== 'auto') params.set('vq', quality);
     return `/api/youtube/embed?${params.toString()}`;
   }
 
@@ -965,6 +969,8 @@ export class LiveNewsPanel extends Panel {
           this.currentVideoId = this.activeChannel.videoId || null;
           const iframe = this.player?.getIframe?.();
           if (iframe) iframe.referrerPolicy = 'strict-origin-when-cross-origin';
+          const quality = getStreamQuality();
+          if (quality !== 'auto') this.player?.setPlaybackQuality?.(quality);
           this.syncPlayerState();
           this.startMuteSyncPolling();
         },
