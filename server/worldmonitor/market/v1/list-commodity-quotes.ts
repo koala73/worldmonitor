@@ -9,7 +9,7 @@ import type {
   ListCommodityQuotesResponse,
   CommodityQuote,
 } from '../../../../src/generated/server/worldmonitor/market/v1/service_server';
-import { fetchYahooQuote } from './_shared';
+import { fetchYahooQuotesBatch } from './_shared';
 import { cachedFetchJson } from '../../../_shared/redis';
 
 const REDIS_CACHE_KEY = 'market:commodities:v1';
@@ -30,22 +30,14 @@ export async function listCommodityQuotes(
 
   try {
   const result = await cachedFetchJson<ListCommodityQuotesResponse>(redisKey, REDIS_CACHE_TTL, async () => {
-    const results = await Promise.all(
-      symbols.map(async (s) => {
-        const yahoo = await fetchYahooQuote(s);
-        if (!yahoo) return null;
-        return {
-          symbol: s,
-          name: s,
-          display: s,
-          price: yahoo.price,
-          change: yahoo.change,
-          sparkline: yahoo.sparkline,
-        } satisfies CommodityQuote;
-      }),
-    );
-
-    const quotes = results.filter((r): r is CommodityQuote => r !== null);
+    const batch = await fetchYahooQuotesBatch(symbols);
+    const quotes: CommodityQuote[] = [];
+    for (const s of symbols) {
+      const yahoo = batch.get(s);
+      if (yahoo) {
+        quotes.push({ symbol: s, name: s, display: s, price: yahoo.price, change: yahoo.change, sparkline: yahoo.sparkline });
+      }
+    }
     return quotes.length > 0 ? { quotes } : null;
   });
 

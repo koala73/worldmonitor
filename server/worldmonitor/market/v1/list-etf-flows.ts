@@ -114,17 +114,13 @@ export async function listEtfFlows(
     return etfCache;
   }
 
+  try {
   const result = await cachedFetchJson<ListEtfFlowsResponse>(REDIS_CACHE_KEY, REDIS_CACHE_TTL, async () => {
-    const charts = await Promise.allSettled(
-      ETF_LIST.map((etf) => fetchEtfChart(etf.ticker)),
-    );
-
     const etfs: EtfFlow[] = [];
-    for (let i = 0; i < ETF_LIST.length; i++) {
-      const settled = charts[i]!;
-      const chart = settled.status === 'fulfilled' ? settled.value : null;
+    for (const etf of ETF_LIST) {
+      const chart = await fetchEtfChart(etf.ticker);
       if (chart) {
-        const parsed = parseEtfChartData(chart, ETF_LIST[i]!.ticker, ETF_LIST[i]!.issuer);
+        const parsed = parseEtfChartData(chart, etf.ticker, etf.issuer);
         if (parsed) etfs.push(parsed);
       }
     }
@@ -174,4 +170,18 @@ export async function listEtfFlows(
     },
     etfs: [],
   };
+  } catch {
+    return etfCache || {
+      timestamp: new Date().toISOString(),
+      summary: {
+        etfCount: 0,
+        totalVolume: 0,
+        totalEstFlow: 0,
+        netDirection: 'UNAVAILABLE',
+        inflowCount: 0,
+        outflowCount: 0,
+      },
+      etfs: [],
+    };
+  }
 }
