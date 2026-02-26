@@ -27,7 +27,7 @@ export async function getAircraftDetailsBatch(
     .map((id) => id.trim().toLowerCase())
     .filter((id) => id.length > 0);
   const uniqueSorted = Array.from(new Set(normalized)).sort();
-  const limitedList = uniqueSorted.slice(0, 20);
+  const limitedList = uniqueSorted.slice(0, 10);
 
   // Redis shared cache — batch GET all keys in a single pipeline round-trip
   const SINGLE_KEY = 'military:aircraft:v1';
@@ -52,7 +52,10 @@ export async function getAircraftDetailsBatch(
     }
   }
 
-  const fetches = toFetch.map(async (icao24) => {
+  const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+  for (let i = 0; i < toFetch.length; i++) {
+    const icao24 = toFetch[i]!;
     const cacheResult = await cachedFetchJson<CachedAircraftDetails>(
       `${SINGLE_KEY}:${icao24}`,
       SINGLE_TTL,
@@ -74,13 +77,8 @@ export async function getAircraftDetailsBatch(
         return null;
       },
     );
-    if (cacheResult?.details) return { icao24, details: cacheResult.details };
-    return null;
-  });
-
-  const fetchResults = await Promise.all(fetches);
-  for (const r of fetchResults) {
-    if (r) results[r.icao24] = r.details;
+    if (cacheResult?.details) results[icao24] = cacheResult.details;
+    if (i < toFetch.length - 1) await delay(100);
   }
 
   return {

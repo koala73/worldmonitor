@@ -508,9 +508,11 @@ export class App {
     // Refresh intelligence signals for CII (geopolitical variant only)
     if (SITE_VARIANT === 'full') {
       this.refreshScheduler.scheduleRefresh('intelligence', () => {
+        const { military } = this.state.intelligenceCache;
         this.state.intelligenceCache = {};
+        if (military) this.state.intelligenceCache.military = military;
         return this.dataLoader.loadIntelligenceSignals();
-      }, 5 * 60 * 1000);
+      }, 15 * 60 * 1000);
     }
   }
 }

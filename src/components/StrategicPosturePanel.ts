@@ -42,7 +42,7 @@ export class StrategicPosturePanel extends Panel {
     this.refreshInterval = setInterval(() => {
       if (!this.isPanelVisible()) return;
       void this.fetchAndRender();
-    }, 5 * 60 * 1000);
+    }, 15 * 60 * 1000);
   }
 
   private isPanelVisible(): boolean {

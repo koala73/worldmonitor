@@ -158,7 +158,7 @@ export default async function handler(request) {
     status: 200,
     headers: {
       'content-type': 'text/html; charset=utf-8',
-      'cache-control': 'public, s-maxage=60, stale-while-revalidate=300',
+      'cache-control': 'public, s-maxage=900, stale-while-revalidate=300',
     },
   });
 }

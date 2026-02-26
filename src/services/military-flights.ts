@@ -25,7 +25,7 @@ const DIRECT_OPENSKY_BASE_URL = wsRelayUrl
 const isLocalhostRuntime = typeof window !== 'undefined' && ['localhost', '127.0.0.1'].includes(window.location.hostname);
 
 // Cache configuration
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes - match refresh interval
+const CACHE_TTL = 15 * 60 * 1000; // 15 minutes - reduce upstream API pressure
 let flightCache: { data: MilitaryFlight[]; timestamp: number } | null = null;
 
 // Track flight history for trails

@@ -13,7 +13,7 @@ import { CRYPTO_META, fetchCoinGeckoMarkets } from './_shared';
 import { cachedFetchJson } from '../../../_shared/redis';
 
 const REDIS_CACHE_KEY = 'market:crypto:v1';
-const REDIS_CACHE_TTL = 180; // 3 min — CoinGecko rate-limited
+const REDIS_CACHE_TTL = 300; // 5 min — CoinGecko rate-limited
 
 export async function listCryptoQuotes(
   _ctx: ServerContext,

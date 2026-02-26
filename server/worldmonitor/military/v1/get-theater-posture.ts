@@ -21,7 +21,7 @@ import { CHROME_UA } from '../../../_shared/constants';
 const CACHE_KEY = 'theater-posture:sebuf:v1';
 const STALE_CACHE_KEY = 'theater-posture:sebuf:stale:v1';
 const BACKUP_CACHE_KEY = 'theater-posture:sebuf:backup:v1';
-const CACHE_TTL = 300;
+const CACHE_TTL = 900; // 15 minutes
 const STALE_TTL = 86400;
 const BACKUP_TTL = 604800;
 
@@ -43,23 +43,17 @@ function getRelayRequestHeaders(): Record<string, string> {
   return headers;
 }
 
-async function fetchMilitaryFlightsFromOpenSky(): Promise<RawFlight[]> {
-  const isSidecar = (process.env.LOCAL_API_MODE || '').includes('sidecar');
-  const baseUrl = isSidecar
-    ? 'https://opensky-network.org/api/states/all'
-    : process.env.WS_RELAY_URL ? process.env.WS_RELAY_URL + '/opensky' : null;
+// Two bounding boxes covering all 9 POSTURE_THEATERS instead of fetching every
+// aircraft globally.  Returns ~hundreds of relevant states instead of ~10,000+.
+const THEATER_QUERY_REGIONS = [
+  { name: 'WESTERN', lamin: 10, lamax: 66, lomin: 9, lomax: 66 },   // Baltic→Yemen, Baltic→Iran
+  { name: 'PACIFIC', lamin: 4, lamax: 44, lomin: 104, lomax: 133 }, // SCS→Korea
+];
 
-  if (!baseUrl) return [];
-
-  const resp = await fetch(baseUrl, {
-    headers: getRelayRequestHeaders(),
-    signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-  });
-  if (!resp.ok) throw new Error(`OpenSky API error: ${resp.status}`);
-
-  const data = (await resp.json()) as { states?: Array<[string, string, ...unknown[]]> };
+function parseOpenSkyStates(
+  data: { states?: Array<[string, string, ...unknown[]]> },
+): RawFlight[] {
   if (!data.states) return [];
-
   const flights: RawFlight[] = [];
   for (const state of data.states) {
     const [icao24, callsign, , , , lon, lat, altitude, onGround, velocity, heading] = state as [
@@ -67,7 +61,6 @@ async function fetchMilitaryFlightsFromOpenSky(): Promise<RawFlight[]> {
     ];
     if (lat == null || lon == null || onGround) continue;
     if (!isMilitaryCallsign(callsign) && !isMilitaryHex(icao24)) continue;
-
     flights.push({
       id: icao24,
       callsign: callsign?.trim() || '',
@@ -79,6 +72,37 @@ async function fetchMilitaryFlightsFromOpenSky(): Promise<RawFlight[]> {
     });
   }
   return flights;
+}
+
+async function fetchMilitaryFlightsFromOpenSky(): Promise<RawFlight[]> {
+  const isSidecar = (process.env.LOCAL_API_MODE || '').includes('sidecar');
+  const baseUrl = isSidecar
+    ? 'https://opensky-network.org/api/states/all'
+    : process.env.WS_RELAY_URL ? process.env.WS_RELAY_URL + '/opensky' : null;
+
+  if (!baseUrl) return [];
+
+  const seenIds = new Set<string>();
+  const allFlights: RawFlight[] = [];
+
+  for (const region of THEATER_QUERY_REGIONS) {
+    const params = `lamin=${region.lamin}&lamax=${region.lamax}&lomin=${region.lomin}&lomax=${region.lomax}`;
+    const resp = await fetch(`${baseUrl}?${params}`, {
+      headers: getRelayRequestHeaders(),
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    });
+    if (!resp.ok) throw new Error(`OpenSky API error: ${resp.status} for ${region.name}`);
+
+    const data = (await resp.json()) as { states?: Array<[string, string, ...unknown[]]> };
+    for (const flight of parseOpenSkyStates(data)) {
+      if (!seenIds.has(flight.id)) {
+        seenIds.add(flight.id);
+        allFlights.push(flight);
+      }
+    }
+  }
+
+  return allFlights;
 }
 
 async function fetchMilitaryFlightsFromWingbits(): Promise<RawFlight[] | null> {
