@@ -9,14 +9,11 @@
  * so celebrations feel special, not repetitive.
  *
  * Respects prefers-reduced-motion: no animations when that media query matches.
- *
- * Loads confetti at runtime via CDN script so the app builds and runs without
- * requiring the canvas-confetti package in node_modules (no Vite resolve error).
  */
 
-// ---- Types ----
+import confetti from 'canvas-confetti';
 
-type ConfettiFn = (opts: { particleCount: number; spread: number; origin: { y: number }; colors: string[]; disableForReducedMotion: boolean }) => void;
+// ---- Types ----
 
 export interface MilestoneData {
   speciesRecoveries?: Array<{ name: string; status: string }>;
@@ -37,21 +34,6 @@ const WARM_COLORS = ['#6B8F5E', '#C4A35A', '#7BA5C4', '#8BAF7A', '#E8B96E', '#7F
 /** Session-level dedup set. Stores milestone keys that have already been celebrated this session. */
 const celebrated = new Set<string>();
 
-/** Load confetti from CDN at runtime so Vite never has to resolve the package. */
-function loadConfetti(): Promise<ConfettiFn | null> {
-  if (typeof window === 'undefined') return Promise.resolve(null);
-  const w = window as Window & { confetti?: ConfettiFn };
-  if (typeof w.confetti === 'function') return Promise.resolve(w.confetti);
-  return new Promise((resolve) => {
-    const script = document.createElement('script');
-    script.src = 'https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.4/dist/canvas-confetti.min.js';
-    script.async = true;
-    script.onload = () => (typeof w.confetti === 'function' ? resolve(w.confetti!) : resolve(null));
-    script.onerror = () => resolve(null);
-    document.head.appendChild(script);
-  });
-}
-
 // ---- Public API ----
 
 /**
@@ -64,9 +46,7 @@ export function celebrate(type: 'milestone' | 'record' = 'milestone'): void {
   if (REDUCED_MOTION) return;
 
   const run = (opts: { particleCount: number; spread: number; origin: { y: number }; colors: string[] }) => {
-    void loadConfetti().then((confetti) => {
-      if (confetti) confetti({ ...opts, disableForReducedMotion: true });
-    });
+    confetti({ ...opts, disableForReducedMotion: true });
   };
 
   if (type === 'milestone') {
