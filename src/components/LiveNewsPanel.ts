@@ -733,6 +733,7 @@ export class LiveNewsPanel extends Panel {
   }
 
   private showOfflineMessage(channel: LiveChannel): void {
+    this.destroyPlayer();
     this.content.innerHTML = `
       <div class="live-offline">
         <div class="offline-icon">📺</div>
@@ -743,6 +744,7 @@ export class LiveNewsPanel extends Panel {
   }
 
   private showEmbedError(channel: LiveChannel, errorCode: number): void {
+    this.destroyPlayer();
     const watchUrl = channel.videoId
       ? `https://www.youtube.com/watch?v=${encodeURIComponent(channel.videoId)}`
       : `https://www.youtube.com/${channel.handle}`;
