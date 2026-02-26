@@ -28,7 +28,7 @@ export class StrategicPosturePanel extends Panel {
 
   private init(): void {
     this.showLoading();
-    this.fetchAndRender();
+    void this.fetchAndRender();
     this.startAutoRefresh();
     // Re-augment with vessels after stream has had time to populate
     // AIS data accumulates gradually - check at 30s, 60s, 90s, 120s
@@ -39,11 +39,18 @@ export class StrategicPosturePanel extends Panel {
   }
 
   private startAutoRefresh(): void {
-    this.refreshInterval = setInterval(() => this.fetchAndRender(), 5 * 60 * 1000);
+    this.refreshInterval = setInterval(() => {
+      if (!this.isPanelVisible()) return;
+      void this.fetchAndRender();
+    }, 5 * 60 * 1000);
+  }
+
+  private isPanelVisible(): boolean {
+    return !this.element.classList.contains('hidden');
   }
 
   private async reaugmentVessels(): Promise<void> {
-    if (this.postures.length === 0) return;
+    if (!this.isPanelVisible() || this.postures.length === 0) return;
     console.log('[StrategicPosturePanel] Re-augmenting with vessels...');
     await this.augmentWithVessels();
     this.render();
@@ -118,6 +125,8 @@ export class StrategicPosturePanel extends Panel {
   }
 
   private async fetchAndRender(): Promise<void> {
+    if (!this.isPanelVisible()) return;
+
     try {
       // Fetch aircraft data from server
       this.showLoadingStage('aircraft');
@@ -145,7 +154,9 @@ export class StrategicPosturePanel extends Panel {
 
       // If we rendered stale localStorage data, re-fetch fresh after a short delay
       if (this.isStale) {
-        setTimeout(() => this.fetchAndRender(), 3000);
+        setTimeout(() => {
+          void this.fetchAndRender();
+        }, 3000);
       }
     } catch (error) {
       if (this.isAbortError(error)) return;
@@ -507,6 +518,14 @@ export class StrategicPosturePanel extends Panel {
 
   public getPostures(): TheaterPostureSummary[] {
     return this.postures;
+  }
+
+  public override show(): void {
+    const wasHidden = this.element.classList.contains('hidden');
+    super.show();
+    if (wasHidden) {
+      void this.fetchAndRender();
+    }
   }
 
   public destroy(): void {

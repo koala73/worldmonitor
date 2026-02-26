@@ -162,6 +162,26 @@ function toWingbitsDetails(d: AircraftDetails): WingbitsAircraftDetails {
   };
 }
 
+function createNegativeDetailsEntry(icao24: string): WingbitsAircraftDetails {
+  return {
+    icao24,
+    registration: null,
+    manufacturerIcao: null,
+    manufacturerName: null,
+    model: null,
+    typecode: null,
+    serialNumber: null,
+    icaoAircraftType: null,
+    operator: null,
+    operatorCallsign: null,
+    operatorIcao: null,
+    owner: null,
+    built: null,
+    engines: null,
+    categoryDescription: null,
+  };
+}
+
 /**
  * Check if Wingbits API is configured
  */
@@ -206,7 +226,7 @@ export async function getAircraftDetails(icao24: string): Promise<WingbitsAircra
 
     if (!resp.details) {
       // Cache negative result
-      setLocalCache(key, { icao24: key } as WingbitsAircraftDetails);
+      setLocalCache(key, createNegativeDetailsEntry(key));
       return null;
     }
 
@@ -223,10 +243,10 @@ export async function getAircraftDetailsBatch(icao24List: string[]): Promise<Map
   if (!isFeatureAvailable('wingbitsEnrichment')) return new Map();
   const results = new Map<string, WingbitsAircraftDetails>();
   const toFetch: string[] = [];
+  const requestedKeys = Array.from(new Set(icao24List.map((icao24) => icao24.toLowerCase()))).sort();
 
   // Check local cache first
-  for (const icao24 of icao24List) {
-    const key = icao24.toLowerCase();
+  for (const key of requestedKeys) {
     const cached = getFromLocalCache(key);
     if (cached) {
       if (cached.registration) { // Only include valid results
@@ -250,11 +270,24 @@ export async function getAircraftDetailsBatch(icao24List: string[]): Promise<Map
     }
 
     // Process results
+    const returnedKeys = new Set<string>();
     for (const [icao24, protoDetails] of Object.entries(resp.results)) {
+      const key = icao24.toLowerCase();
+      returnedKeys.add(key);
       const details = toWingbitsDetails(protoDetails);
-      setLocalCache(icao24, details);
+      setLocalCache(key, details);
       if (details.registration) {
-        results.set(icao24, details);
+        results.set(key, details);
+      }
+    }
+
+    // Cache missing lookups as negative entries to avoid repeated retries.
+    const requestedCount = Number.isFinite(resp.requested)
+      ? Math.max(0, Math.min(toFetch.length, resp.requested))
+      : toFetch.length;
+    for (const key of toFetch.slice(0, requestedCount)) {
+      if (!returnedKeys.has(key)) {
+        setLocalCache(key, createNegativeDetailsEntry(key));
       }
     }
 

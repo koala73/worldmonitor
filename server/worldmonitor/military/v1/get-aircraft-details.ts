@@ -2,6 +2,7 @@ declare const process: { env: Record<string, string | undefined> };
 
 import type {
   ServerContext,
+  AircraftDetails,
   GetAircraftDetailsRequest,
   GetAircraftDetailsResponse,
 } from '../../../../src/generated/server/worldmonitor/military/v1/service_server';
@@ -11,7 +12,12 @@ import { CHROME_UA } from '../../../_shared/constants';
 import { cachedFetchJson } from '../../../_shared/redis';
 
 const REDIS_CACHE_KEY = 'military:aircraft:v1';
-const REDIS_CACHE_TTL = 300; // 5 min — aircraft details rarely change
+const REDIS_CACHE_TTL = 24 * 60 * 60; // 24 hours — aircraft metadata is mostly static
+
+interface CachedAircraftDetails {
+  details: AircraftDetails | null;
+  configured: boolean;
+}
 
 export async function getAircraftDetails(
   _ctx: ServerContext,
@@ -24,12 +30,16 @@ export async function getAircraftDetails(
   const cacheKey = `${REDIS_CACHE_KEY}:${icao24}`;
 
   try {
-    const result = await cachedFetchJson<GetAircraftDetailsResponse>(cacheKey, REDIS_CACHE_TTL, async () => {
+    const result = await cachedFetchJson<CachedAircraftDetails>(cacheKey, REDIS_CACHE_TTL, async () => {
       const resp = await fetch(`https://customer-api.wingbits.com/v1/flights/details/${icao24}`, {
         headers: { 'x-api-key': apiKey, Accept: 'application/json', 'User-Agent': CHROME_UA },
         signal: AbortSignal.timeout(10_000),
       });
 
+      // Cache not-found responses to avoid repeated misses for the same aircraft.
+      if (resp.status === 404) {
+        return { details: null, configured: true };
+      }
       if (!resp.ok) return null;
 
       const data = (await resp.json()) as Record<string, unknown>;
@@ -38,7 +48,15 @@ export async function getAircraftDetails(
         configured: true,
       };
     });
-    return result || { details: undefined, configured: true };
+
+    if (!result || !result.details) {
+      return { details: undefined, configured: true };
+    }
+
+    return {
+      details: result.details,
+      configured: true,
+    };
   } catch {
     return { details: undefined, configured: true };
   }

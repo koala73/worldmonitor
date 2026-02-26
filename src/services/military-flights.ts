@@ -348,8 +348,8 @@ async function enrichFlightsWithWingbits(flights: MilitaryFlight[]): Promise<Mil
     return flights;
   }
 
-  // Get hex codes for all flights
-  const hexCodes = flights.map(f => f.hexCode.toLowerCase());
+  // Use deterministic ordering to improve cache locality across refreshes.
+  const hexCodes = Array.from(new Set(flights.map((f) => f.hexCode.toLowerCase()))).sort();
 
   // Batch fetch aircraft details
   const detailsMap = await getAircraftDetailsBatch(hexCodes);
