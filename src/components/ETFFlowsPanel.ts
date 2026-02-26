@@ -53,7 +53,7 @@ export class ETFFlowsPanel extends Panel {
         this.data = await client.listEtfFlows({});
         this.error = null;
 
-        if (this.data && this.data.etfs.length === 0 && attempt < 2) {
+        if (this.data && this.data.etfs.length === 0 && !this.data.rateLimited && attempt < 2) {
           this.showRetrying();
           await new Promise(r => setTimeout(r, 20_000));
           continue;
@@ -86,7 +86,8 @@ export class ETFFlowsPanel extends Panel {
 
     const d = this.data;
     if (!d.etfs.length) {
-      this.setContent(`<div class="panel-loading-text">${t('components.etfFlows.unavailable')}</div>`);
+      const msg = d.rateLimited ? t('components.etfFlows.rateLimited') : t('components.etfFlows.unavailable');
+      this.setContent(`<div class="panel-loading-text">${msg}</div>`);
       return;
     }
 

@@ -117,12 +117,16 @@ export async function listEtfFlows(
   try {
   const result = await cachedFetchJson<ListEtfFlowsResponse>(REDIS_CACHE_KEY, REDIS_CACHE_TTL, async () => {
     const etfs: EtfFlow[] = [];
+    let misses = 0;
     for (const etf of ETF_LIST) {
       const chart = await fetchEtfChart(etf.ticker);
       if (chart) {
         const parsed = parseEtfChartData(chart, etf.ticker, etf.issuer);
-        if (parsed) etfs.push(parsed);
+        if (parsed) etfs.push(parsed); else misses++;
+      } else {
+        misses++;
       }
+      if (misses >= 3 && etfs.length === 0) break;
     }
 
     // Stale-while-revalidate: if Yahoo rate-limited all calls, serve cached data
@@ -130,7 +134,12 @@ export async function listEtfFlows(
       return etfCache;
     }
 
-    if (etfs.length === 0) return null;
+    if (etfs.length === 0) {
+      const rateLimited = misses >= 3;
+      return rateLimited
+        ? { timestamp: new Date().toISOString(), etfs: [], rateLimited: true }
+        : null;
+    }
 
     const totalVolume = etfs.reduce((sum, e) => sum + e.volume, 0);
     const totalEstFlow = etfs.reduce((sum, e) => sum + e.estFlow, 0);

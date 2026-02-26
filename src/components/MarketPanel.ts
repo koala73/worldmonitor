@@ -25,9 +25,9 @@ export class MarketPanel extends Panel {
     super({ id: 'markets', title: t('panels.markets') });
   }
 
-  public renderMarkets(data: MarketData[]): void {
+  public renderMarkets(data: MarketData[], rateLimited?: boolean): void {
     if (data.length === 0) {
-      this.showError(t('common.failedMarketData'));
+      this.showError(rateLimited ? t('common.rateLimitedMarket') : t('common.failedMarketData'));
       return;
     }
 

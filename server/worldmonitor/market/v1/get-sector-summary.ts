@@ -41,7 +41,7 @@ export async function getSectorSummary(
     if (sectors.length === 0) {
       const batch = await fetchYahooQuotesBatch(sectorSymbols);
       for (const s of sectorSymbols) {
-        const yahoo = batch.get(s);
+        const yahoo = batch.results.get(s);
         if (yahoo) sectors.push({ symbol: s, name: s, change: yahoo.change });
       }
     }

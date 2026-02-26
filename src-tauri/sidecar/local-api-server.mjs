@@ -396,8 +396,8 @@ const trafficLog = [];
 let verboseMode = false;
 let _verboseStatePath = null;
 
-function loadVerboseState(resourceDir) {
-  _verboseStatePath = path.join(resourceDir, 'verbose-mode.json');
+function loadVerboseState(dataDir) {
+  _verboseStatePath = path.join(dataDir, 'verbose-mode.json');
   try {
     const data = JSON.parse(readFileSync(_verboseStatePath, 'utf-8'));
     verboseMode = !!data.verboseMode;
@@ -459,6 +459,7 @@ function resolveConfig(options = {}) {
       path.join(resourceDir, 'api'),
       path.join(resourceDir, '_up_', 'api'),
     ].find((candidate) => existsSync(candidate)) ?? path.join(resourceDir, 'api');
+  const dataDir = String(options.dataDir ?? process.env.LOCAL_API_DATA_DIR ?? resourceDir);
   const mode = String(options.mode ?? process.env.LOCAL_API_MODE ?? 'desktop-sidecar');
   const cloudFallback = String(options.cloudFallback ?? process.env.LOCAL_API_CLOUD_FALLBACK ?? '') === 'true';
   const logger = options.logger ?? console;
@@ -467,6 +468,7 @@ function resolveConfig(options = {}) {
     port,
     remoteBase,
     resourceDir,
+    dataDir,
     apiDir,
     mode,
     cloudFallback,
@@ -1152,7 +1154,7 @@ async function dispatch(requestUrl, req, routes, context) {
 
 export async function createLocalApiServer(options = {}) {
   const context = resolveConfig(options);
-  loadVerboseState(context.resourceDir);
+  loadVerboseState(context.dataDir);
   const routes = await buildRouteTable(context.apiDir);
 
   const server = createServer(async (req, res) => {

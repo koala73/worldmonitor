@@ -649,9 +649,13 @@ export class DataLoaderManager implements AppModule {
 
       const finnhubConfigMsg = 'FINNHUB_API_KEY not configured — add in Settings';
       this.ctx.latestMarkets = stocksResult.data;
-      (this.ctx.panels['markets'] as MarketPanel).renderMarkets(stocksResult.data);
+      (this.ctx.panels['markets'] as MarketPanel).renderMarkets(stocksResult.data, stocksResult.rateLimited);
 
-      if (stocksResult.skipped) {
+      if (stocksResult.rateLimited && stocksResult.data.length === 0) {
+        const rlMsg = 'Market data temporarily unavailable (rate limited) — retrying shortly';
+        this.ctx.panels['heatmap']?.showError(rlMsg);
+        this.ctx.panels['commodities']?.showError(rlMsg);
+      } else if (stocksResult.skipped) {
         this.ctx.statusPanel?.updateApi('Finnhub', { status: 'error' });
         if (stocksResult.data.length === 0) {
           this.ctx.panels['markets']?.showConfigError(finnhubConfigMsg);
@@ -678,7 +682,7 @@ export class DataLoaderManager implements AppModule {
       const commoditiesPanel = this.ctx.panels['commodities'] as CommoditiesPanel;
       const mapCommodity = (c: MarketData) => ({ display: c.display, price: c.price, change: c.change, sparkline: c.sparkline });
 
-      let commoditiesLoaded = false;
+      let commoditiesLoaded = stocksResult.rateLimited && stocksResult.data.length === 0;
       for (let attempt = 0; attempt < 3 && !commoditiesLoaded; attempt++) {
         if (attempt > 0) {
           commoditiesPanel.showRetrying();

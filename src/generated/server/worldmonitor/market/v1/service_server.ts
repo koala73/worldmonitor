@@ -9,6 +9,7 @@ export interface ListMarketQuotesResponse {
   quotes: MarketQuote[];
   finnhubSkipped: boolean;
   skipReason: string;
+  rateLimited?: boolean;
 }
 
 export interface MarketQuote {
@@ -106,6 +107,7 @@ export interface ListEtfFlowsResponse {
   timestamp: string;
   summary?: EtfFlowsSummary;
   etfs: EtfFlow[];
+  rateLimited?: boolean;
 }
 
 export interface EtfFlowsSummary {

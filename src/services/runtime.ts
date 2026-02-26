@@ -315,8 +315,28 @@ export function installRuntimeFetchPatch(): void {
 
     try {
       const t0 = performance.now();
-      const response = await fetchLocalWithStartupRetry(nativeFetch, localUrl, localInit);
+      let response = await fetchLocalWithStartupRetry(nativeFetch, localUrl, localInit);
       if (debug) console.log(`[fetch] ${target} → ${response.status} (${Math.round(performance.now() - t0)}ms)`);
+
+      // Token may be stale after a sidecar restart — refresh and retry once.
+      if (response.status === 401 && localApiToken) {
+        if (debug) console.log(`[fetch] 401 from sidecar, refreshing token and retrying`);
+        try {
+          const { tryInvokeTauri } = await import('@/services/tauri-bridge');
+          localApiToken = await tryInvokeTauri<string>('get_local_api_token');
+          tokenFetchedAt = Date.now();
+        } catch {
+          localApiToken = null;
+          tokenFetchedAt = 0;
+        }
+        if (localApiToken) {
+          const retryHeaders = new Headers(init?.headers);
+          retryHeaders.set('Authorization', `Bearer ${localApiToken}`);
+          response = await fetchLocalWithStartupRetry(nativeFetch, localUrl, { ...init, headers: retryHeaders });
+          if (debug) console.log(`[fetch] retry ${target} → ${response.status}`);
+        }
+      }
+
       if (!response.ok) {
         if (!allowCloudFallback) {
           if (debug) console.log(`[fetch] local-only endpoint ${target} returned ${response.status}; skipping cloud fallback`);

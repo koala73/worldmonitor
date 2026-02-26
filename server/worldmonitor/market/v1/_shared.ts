@@ -16,13 +16,19 @@ const delay = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
 export async function fetchYahooQuotesBatch(
   symbols: string[],
-): Promise<Map<string, { price: number; change: number; sparkline: number[] }>> {
+): Promise<{ results: Map<string, { price: number; change: number; sparkline: number[] }>; rateLimited: boolean }> {
   const results = new Map<string, { price: number; change: number; sparkline: number[] }>();
+  let rateLimitHits = 0;
   for (let i = 0; i < symbols.length; i++) {
     const q = await fetchYahooQuote(symbols[i]!);
-    if (q) results.set(symbols[i]!, q);
+    if (q) {
+      results.set(symbols[i]!, q);
+    } else {
+      rateLimitHits++;
+    }
+    if (rateLimitHits >= 3 && results.size === 0) break;
   }
-  return results;
+  return { results, rateLimited: rateLimitHits >= 3 && results.size === 0 };
 }
 
 // Yahoo-only symbols: indices and futures not on Finnhub free tier

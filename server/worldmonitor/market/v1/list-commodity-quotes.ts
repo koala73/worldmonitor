@@ -33,7 +33,7 @@ export async function listCommodityQuotes(
     const batch = await fetchYahooQuotesBatch(symbols);
     const quotes: CommodityQuote[] = [];
     for (const s of symbols) {
-      const yahoo = batch.get(s);
+      const yahoo = batch.results.get(s);
       if (yahoo) {
         quotes.push({ symbol: s, name: s, display: s, price: yahoo.price, change: yahoo.change, sparkline: yahoo.sparkline });
       }

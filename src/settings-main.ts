@@ -177,6 +177,19 @@ function getSidecarBase(): string {
   return getApiBaseUrl() || 'http://127.0.0.1:46123';
 }
 
+let _diagToken: string | null = null;
+
+async function diagFetch(path: string, init?: RequestInit): Promise<Response> {
+  if (!_diagToken) {
+    try {
+      _diagToken = await tryInvokeTauri<string>('get_local_api_token');
+    } catch { /* token unavailable */ }
+  }
+  const headers = new Headers(init?.headers);
+  if (_diagToken) headers.set('Authorization', `Bearer ${_diagToken}`);
+  return fetch(`${getSidecarBase()}${path}`, { ...init, headers });
+}
+
 function initDiagnostics(): void {
   const verboseToggle = document.getElementById('verboseApiLog') as HTMLInputElement | null;
   const fetchDebugToggle = document.getElementById('fetchDebugLog') as HTMLInputElement | null;
@@ -196,7 +209,7 @@ function initDiagnostics(): void {
   async function syncVerboseState(): Promise<void> {
     if (!verboseToggle) return;
     try {
-      const res = await fetch(`${getSidecarBase()}/api/local-debug-toggle`);
+      const res = await diagFetch('/api/local-debug-toggle');
       const data = await res.json();
       verboseToggle.checked = data.verboseMode;
     } catch { /* sidecar not running */ }
@@ -204,7 +217,7 @@ function initDiagnostics(): void {
 
   verboseToggle?.addEventListener('change', async () => {
     try {
-      const res = await fetch(`${getSidecarBase()}/api/local-debug-toggle`, { method: 'POST' });
+      const res = await diagFetch('/api/local-debug-toggle', { method: 'POST' });
       const data = await res.json();
       if (verboseToggle) verboseToggle.checked = data.verboseMode;
       setActionStatus(data.verboseMode ? t('modals.settingsWindow.verboseOn') : t('modals.settingsWindow.verboseOff'), 'ok');
@@ -218,7 +231,7 @@ function initDiagnostics(): void {
   async function refreshTrafficLog(): Promise<void> {
     if (!trafficLogEl) return;
     try {
-      const res = await fetch(`${getSidecarBase()}/api/local-traffic-log`);
+      const res = await diagFetch('/api/local-traffic-log');
       const data = await res.json();
       const entries: Array<{ timestamp: string; method: string; path: string; status: number; durationMs: number }> = data.entries || [];
       if (trafficCount) trafficCount.textContent = `(${entries.length})`;
@@ -244,7 +257,7 @@ function initDiagnostics(): void {
 
   clearBtn?.addEventListener('click', async () => {
     try {
-      await fetch(`${getSidecarBase()}/api/local-traffic-log`, { method: 'DELETE' });
+      await diagFetch('/api/local-traffic-log', { method: 'DELETE' });
     } catch { /* ignore */ }
     if (trafficLogEl) trafficLogEl.innerHTML = `<p class="diag-empty">${t('modals.settingsWindow.logCleared')}</p>`;
     if (trafficCount) trafficCount.textContent = '(0)';

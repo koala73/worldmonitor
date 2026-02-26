@@ -55,6 +55,7 @@ export interface MarketFetchResult {
   data: MarketData[];
   skipped?: boolean;
   reason?: string;
+  rateLimited?: boolean;
 }
 
 // ========================================================================
@@ -99,6 +100,7 @@ export async function fetchMultipleStocks(
     data,
     skipped: resp.finnhubSkipped || undefined,
     reason: resp.skipReason || undefined,
+    rateLimited: resp.rateLimited || undefined,
   };
 }
 

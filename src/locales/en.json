@@ -1265,6 +1265,7 @@
     },
     "etfFlows": {
       "unavailable": "ETF data temporarily unavailable",
+      "rateLimited": "ETF data temporarily unavailable (rate limited) — retrying shortly",
       "netFlow": "Net Flow",
       "estFlow": "Est. Flow",
       "totalVol": "Total Vol",
@@ -1989,6 +1990,7 @@
     "failedSectorData": "Failed to load sector data",
     "failedCommodities": "Failed to load commodities",
     "failedCryptoData": "Failed to load crypto data",
+    "rateLimitedMarket": "Market data temporarily unavailable (rate limited) — retrying shortly",
     "failedClusterNews": "Failed to cluster news",
     "noNewsAvailable": "No news available",
     "noActiveTechHubs": "No active tech hubs",

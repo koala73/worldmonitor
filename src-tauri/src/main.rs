@@ -984,10 +984,14 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
         "INFO",
         &format!("node args: script={script_for_node} resource_dir={resource_for_node}"),
     );
+    let data_dir = logs_dir_path(app)
+        .map(|p| sanitize_path_for_node(&p))
+        .unwrap_or_else(|_| resource_for_node.clone());
     cmd.arg(&script_for_node)
         .env("LOCAL_API_PORT", DEFAULT_LOCAL_API_PORT.to_string())
         .env("LOCAL_API_PORT_FILE", &port_file)
         .env("LOCAL_API_RESOURCE_DIR", &resource_for_node)
+        .env("LOCAL_API_DATA_DIR", &data_dir)
         .env("LOCAL_API_MODE", "tauri-sidecar")
         .env("LOCAL_API_TOKEN", &local_api_token)
         .stdout(Stdio::from(log_file))
