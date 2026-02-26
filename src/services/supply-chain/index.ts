@@ -10,7 +10,6 @@ import {
   type ShippingRatePoint,
 } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
-import { isFeatureAvailable } from '../runtime-config';
 
 export type {
   GetShippingRatesResponse,
@@ -34,7 +33,6 @@ const emptyChokepoints: GetChokepointStatusResponse = { chokepoints: [], fetched
 const emptyMinerals: GetCriticalMineralsResponse = { minerals: [], fetchedAt: '', upstreamUnavailable: false };
 
 export async function fetchShippingRates(): Promise<GetShippingRatesResponse> {
-  if (!isFeatureAvailable('supplyChain')) return emptyShipping;
   try {
     return await shippingBreaker.execute(async () => {
       return client.getShippingRates({});

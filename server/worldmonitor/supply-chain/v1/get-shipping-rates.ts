@@ -14,21 +14,33 @@ import { CHROME_UA } from '../../../_shared/constants';
 import { detectSpike } from './_scoring.mjs';
 
 const FRED_API_BASE = 'https://api.stlouisfed.org/fred';
-const REDIS_CACHE_KEY = 'supply_chain:shipping:v1';
+const REDIS_CACHE_KEY = 'supply_chain:shipping:v2';
 const REDIS_CACHE_TTL = 3600;
 
-async function fetchBDI(): Promise<ShippingIndex | null> {
+interface FredSeriesConfig {
+  seriesId: string;
+  name: string;
+  unit: string;
+  frequency: string;
+}
+
+const SHIPPING_SERIES: FredSeriesConfig[] = [
+  { seriesId: 'PCU483111483111', name: 'Deep Sea Freight PPI', unit: 'index', frequency: 'm' },
+  { seriesId: 'TSIFRGHT', name: 'Freight Transportation Index', unit: 'index', frequency: 'm' },
+];
+
+async function fetchFredSeries(cfg: FredSeriesConfig): Promise<ShippingIndex | null> {
   const apiKey = process.env.FRED_API_KEY;
   if (!apiKey) return null;
 
   try {
     const params = new URLSearchParams({
-      series_id: 'BDIY',
+      series_id: cfg.seriesId,
       api_key: apiKey,
       file_type: 'json',
-      frequency: 'w',
+      frequency: cfg.frequency,
       sort_order: 'desc',
-      limit: '52',
+      limit: '24',
     });
 
     const response = await fetch(`${FRED_API_BASE}/series/observations?${params}`, {
@@ -57,12 +69,12 @@ async function fetchBDI(): Promise<ShippingIndex | null> {
     const spikeAlert = detectSpike(observations);
 
     return {
-      indexId: 'BDIY',
-      name: 'Baltic Dry Index',
+      indexId: cfg.seriesId,
+      name: cfg.name,
       currentValue,
       previousValue,
       changePct,
-      unit: 'index points',
+      unit: cfg.unit,
       history: observations,
       spikeAlert,
     };
@@ -80,9 +92,10 @@ export async function getShippingRates(
       REDIS_CACHE_KEY,
       REDIS_CACHE_TTL,
       async () => {
-        const bdi = await fetchBDI();
-        if (!bdi) return null;
-        return { indices: [bdi], fetchedAt: new Date().toISOString(), upstreamUnavailable: false };
+        const results = await Promise.all(SHIPPING_SERIES.map(fetchFredSeries));
+        const indices = results.filter((r): r is ShippingIndex => r !== null);
+        if (indices.length === 0) return null;
+        return { indices, fetchedAt: new Date().toISOString(), upstreamUnavailable: false };
       },
     );
 
