@@ -4,7 +4,6 @@ use std::collections::HashMap;
 use std::env;
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
-use std::net::TcpListener;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
@@ -880,16 +879,21 @@ fn resolve_node_binary(app: &AppHandle) -> Option<PathBuf> {
     common_locations.into_iter().find(|path| path.is_file())
 }
 
-fn probe_available_port(preferred: u16) -> u16 {
-    if let Ok(listener) = TcpListener::bind(("127.0.0.1", preferred)) {
-        drop(listener);
-        return preferred;
+fn read_port_file(path: &Path, timeout_ms: u64) -> Option<u16> {
+    let start = std::time::Instant::now();
+    let interval = std::time::Duration::from_millis(100);
+    let timeout = std::time::Duration::from_millis(timeout_ms);
+    while start.elapsed() < timeout {
+        if let Ok(contents) = fs::read_to_string(path) {
+            if let Ok(port) = contents.trim().parse::<u16>() {
+                if port > 0 {
+                    return Some(port);
+                }
+            }
+        }
+        std::thread::sleep(interval);
     }
-    let listener = TcpListener::bind(("127.0.0.1", 0))
-        .expect("no ephemeral port available");
-    let port = listener.local_addr().unwrap().port();
-    drop(listener);
-    port
+    None
 }
 
 fn start_local_api(app: &AppHandle) -> Result<(), String> {
@@ -918,8 +922,8 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
         "Node.js executable not found. Install Node 18+ or set LOCAL_API_NODE_BIN".to_string()
     })?;
 
-    // Probe for available port — fall back to OS-assigned if default is busy
-    let actual_port = probe_available_port(DEFAULT_LOCAL_API_PORT);
+    let port_file = logs_dir_path(app)?.join("sidecar.port");
+    let _ = fs::remove_file(&port_file);
 
     let log_path = sidecar_log_path(app)?;
     let log_file = OpenOptions::new()
@@ -949,7 +953,11 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
     append_desktop_log(
         app,
         "INFO",
-        &format!("local API sidecar using port {actual_port}"),
+        &format!(
+            "local API sidecar preferred port={} port_file={}",
+            DEFAULT_LOCAL_API_PORT,
+            port_file.display()
+        ),
     );
 
     // Generate a unique token for local API auth (prevents other local processes from accessing sidecar)
@@ -977,7 +985,8 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
         &format!("node args: script={script_for_node} resource_dir={resource_for_node}"),
     );
     cmd.arg(&script_for_node)
-        .env("LOCAL_API_PORT", actual_port.to_string())
+        .env("LOCAL_API_PORT", DEFAULT_LOCAL_API_PORT.to_string())
+        .env("LOCAL_API_PORT_FILE", &port_file)
         .env("LOCAL_API_RESOURCE_DIR", &resource_for_node)
         .env("LOCAL_API_MODE", "tauri-sidecar")
         .env("LOCAL_API_TOKEN", &local_api_token)
@@ -1018,10 +1027,27 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
         &format!("local API sidecar started pid={}", child.id()),
     );
     *slot = Some(child);
+    drop(slot);
 
-    // Store the actual port after successful spawn
-    if let Ok(mut port_slot) = state.port.lock() {
-        *port_slot = Some(actual_port);
+    // Wait for sidecar to write confirmed port (up to 5s)
+    if let Some(confirmed_port) = read_port_file(&port_file, 5000) {
+        append_desktop_log(
+            app,
+            "INFO",
+            &format!("sidecar confirmed port={confirmed_port}"),
+        );
+        if let Ok(mut port_slot) = state.port.lock() {
+            *port_slot = Some(confirmed_port);
+        }
+    } else {
+        append_desktop_log(
+            app,
+            "WARN",
+            "sidecar port file not found within timeout, using default",
+        );
+        if let Ok(mut port_slot) = state.port.lock() {
+            *port_slot = Some(DEFAULT_LOCAL_API_PORT);
+        }
     }
 
     Ok(())
@@ -1037,6 +1063,9 @@ fn stop_local_api(app: &AppHandle) {
         }
         if let Ok(mut port_slot) = state.port.lock() {
             *port_slot = None;
+        }
+        if let Ok(log_dir) = logs_dir_path(app) {
+            let _ = fs::remove_file(log_dir.join("sidecar.port"));
         }
     }
 }

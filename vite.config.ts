@@ -7,7 +7,7 @@ import { promisify } from 'util';
 import pkg from './package.json';
 
 const isE2E = process.env.VITE_E2E === '1';
-
+const isDesktopBuild = process.env.VITE_DESKTOP_RUNTIME === '1';
 
 const brotliCompressAsync = promisify(brotliCompress);
 const BROTLI_EXTENSIONS = new Set(['.js', '.mjs', '.css', '.html', '.svg', '.json', '.txt', '.xml', '.wasm']);
@@ -187,6 +187,20 @@ function htmlVariantPlugin(): Plugin {
           /if\(v\)document\.documentElement\.dataset\.variant=v;/,
           `v='${activeVariant}';document.documentElement.dataset.variant=v;`
         );
+      }
+
+      // Desktop CSP: inject localhost wildcard for dynamic sidecar port.
+      // Web builds intentionally exclude localhost to avoid exposing attack surface.
+      if (isDesktopBuild) {
+        result = result
+          .replace(
+            /connect-src 'self' https: http:\/\/localhost:5173/,
+            "connect-src 'self' https: http://localhost:5173 http://127.0.0.1:*"
+          )
+          .replace(
+            /frame-src 'self'/,
+            "frame-src 'self' http://127.0.0.1:*"
+          );
       }
 
       // Favicon variant paths — replace /favico/ paths with variant-specific subdirectory

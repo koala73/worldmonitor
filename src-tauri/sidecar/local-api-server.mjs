@@ -1224,23 +1224,33 @@ export async function createLocalApiServer(options = {}) {
     routes,
     server,
     async start() {
-      await new Promise((resolve, reject) => {
-        const onListening = () => {
-          server.off('error', onError);
-          resolve();
-        };
-        const onError = (error) => {
-          server.off('listening', onListening);
-          reject(error);
-        };
-
+      const tryListen = (port) => new Promise((resolve, reject) => {
+        const onListening = () => { server.off('error', onError); resolve(); };
+        const onError = (error) => { server.off('listening', onListening); reject(error); };
         server.once('listening', onListening);
         server.once('error', onError);
-        server.listen(context.port, '127.0.0.1');
+        server.listen(port, '127.0.0.1');
       });
+
+      try {
+        await tryListen(context.port);
+      } catch (err) {
+        if (err?.code === 'EADDRINUSE') {
+          context.logger.log(`[local-api] port ${context.port} busy, falling back to OS-assigned port`);
+          await tryListen(0);
+        } else {
+          throw err;
+        }
+      }
 
       const address = server.address();
       const boundPort = typeof address === 'object' && address?.port ? address.port : context.port;
+
+      const portFile = process.env.LOCAL_API_PORT_FILE;
+      if (portFile) {
+        try { writeFileSync(portFile, String(boundPort)); } catch {}
+      }
+
       context.logger.log(`[local-api] listening on http://127.0.0.1:${boundPort} (apiDir=${context.apiDir}, routes=${routes.length}, cloudFallback=${context.cloudFallback})`);
       return { port: boundPort };
     },
