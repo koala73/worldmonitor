@@ -60,8 +60,7 @@ async function fetchChokepointData(): Promise<ChokepointFetchResult> {
 
   const warnings = navResult.warnings || [];
   const disruptions: AisDisruption[] = vesselResult.snapshot?.disruptions || [];
-  const bothSourcesEmpty = warnings.length === 0 && disruptions.length === 0;
-  const upstreamUnavailable = navFailed || vesselFailed || bothSourcesEmpty;
+  const upstreamUnavailable = (navFailed && vesselFailed) || (navFailed && disruptions.length === 0) || (vesselFailed && warnings.length === 0);
 
   const chokepoints = CHOKEPOINTS.map((cp): ChokepointInfo => {
     const matchedWarnings = warnings.filter(w =>
