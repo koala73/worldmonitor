@@ -8,7 +8,7 @@
     "beforeDevCommand": "npm run build:sidecar-sebuf && npm run dev",
     "beforeBuildCommand": "npm run build:desktop",
     "frontendDist": "../dist",
-    "devUrl": "http://localhost:5173"
+    "devUrl": "http://localhost:3000"
   },
   "app": {
     "windows": [

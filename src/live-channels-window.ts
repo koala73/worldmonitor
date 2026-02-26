@@ -403,16 +403,19 @@ export function initLiveChannelsWindow(containerEl?: HTMLElement): void {
     try {
       const baseUrl = isDesktopRuntime() ? getRemoteApiBaseUrl() : '';
       const res = await fetch(`${baseUrl}/api/youtube/live?channel=${encodeURIComponent(handle)}`);
-      const data = await res.json();
-      if (!data.channelExists) {
-        if (handleInput) {
-          handleInput.classList.add('invalid');
-          handleInput.setAttribute('title', t('components.liveNews.channelNotFound') ?? 'YouTube channel not found');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.channelExists === false && !data.error) {
+          if (handleInput) {
+            handleInput.classList.add('invalid');
+            handleInput.setAttribute('title', t('components.liveNews.channelNotFound') ?? 'YouTube channel not found');
+          }
+          return;
         }
-        return;
       }
+      // Non-OK status (429, 5xx) or ambiguous response — allow adding anyway
     } catch (e) {
-      // Network error — allow adding anyway (offline tolerance)
+      // Network/parse error — allow adding anyway (offline tolerance)
       console.warn('[LiveChannels] YouTube validation failed, allowing add:', e);
     } finally {
       if (addBtn) {
