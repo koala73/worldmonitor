@@ -1,0 +1,135 @@
+# ============================================================
+# World Monitor — Kubernetes Manifests (example / template)
+#
+# Fill in all <PLACEHOLDER> values for your cluster before applying.
+#
+# Deploy:
+#   kubectl apply -f deploy/k8s/worldmonitor.yaml
+#
+# Build & push image first:
+#   docker buildx build --provenance=false --sbom=false \
+#     -t <your-registry>/worldmonitor:latest --load .
+#   skopeo copy \
+#     'docker-daemon:<your-registry>/worldmonitor:latest' \
+#     'docker://<your-registry>/worldmonitor:latest'
+# ============================================================
+---
+# Secret — API keys injected at runtime.
+# Populate values before applying, or replace with an ExternalSecret/SealedSecret.
+# All keys are optional; missing ones degrade specific panels gracefully.
+# See .env.example for full descriptions and registration links.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: worldmonitor-env
+  namespace: <your-namespace>
+type: Opaque
+stringData:
+  GROQ_API_KEY: ""
+  OPENROUTER_API_KEY: ""
+  UPSTASH_REDIS_REST_URL: ""
+  UPSTASH_REDIS_REST_TOKEN: ""
+  FINNHUB_API_KEY: ""
+  EIA_API_KEY: ""
+  FRED_API_KEY: ""
+  WINGBITS_API_KEY: ""
+  ACLED_ACCESS_TOKEN: ""
+  CLOUDFLARE_API_TOKEN: ""
+  NASA_FIRMS_API_KEY: ""
+  AISSTREAM_API_KEY: ""
+  OPENSKY_CLIENT_ID: ""
+  OPENSKY_CLIENT_SECRET: ""
+  WS_RELAY_URL: ""
+  RELAY_SHARED_SECRET: ""
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worldmonitor
+  namespace: <your-namespace>
+  labels:
+    app: worldmonitor
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: worldmonitor
+  template:
+    metadata:
+      labels:
+        app: worldmonitor
+    spec:
+      containers:
+        - name: worldmonitor
+          image: <your-registry>/worldmonitor:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: LOCAL_API_PORT
+              value: "3001"
+            # Site variant: world | tech | finance | happy
+            - name: VITE_VARIANT
+              value: "world"
+          envFrom:
+            - secretRef:
+                name: worldmonitor-env
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      # Remove if your registry is public or credentials are handled differently
+      imagePullSecrets:
+        - name: <your-registry-pull-secret>
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: worldmonitor
+  namespace: <your-namespace>
+spec:
+  selector:
+    app: worldmonitor
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+---
+# HTTPRoute — requires Gateway API CRDs and a compatible gateway controller.
+# Remove or replace with an Ingress resource if not using Gateway API.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: worldmonitor
+  namespace: <your-namespace>
+spec:
+  parentRefs:
+    - name: <your-gateway-name>
+      namespace: <your-gateway-namespace>
+      sectionName: https
+  hostnames:
+    - "<your-hostname>"
+  rules:
+    - backendRefs:
+        - name: worldmonitor
+          port: 80
