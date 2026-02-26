@@ -47,8 +47,11 @@ jobs:
             patchelf \
             gstreamer1.0-plugins-base \
             gstreamer1.0-plugins-good \
+            weston \
+            xwayland \
             xvfb \
-            imagemagick
+            imagemagick \
+            xdotool
 
       - name: Install frontend dependencies
         run: npm ci
@@ -80,24 +83,103 @@ jobs:
             exit 1
           fi
           chmod +x "$APPIMAGE"
-          Xvfb :99 -screen 0 1440x900x24 &
-          export DISPLAY=:99
-          sleep 2
-          "$APPIMAGE" --no-sandbox &
+
+          # --- Try 1: Weston + XWayland ---
+          # Weston provides a real compositor; XWayland gives GTK the X11 it needs.
+          # This avoids the blank-screen problem of bare Xvfb.
+          echo "=== Starting weston (headless + XWayland) ==="
+          mkdir -p /tmp/weston-run
+          export XDG_RUNTIME_DIR=/tmp/weston-run
+
+          # Write a minimal weston.ini enabling XWayland
+          cat > /tmp/weston-run/weston.ini <<'WINI'
+          [core]
+          xwayland=true
+          WINI
+          # Strip leading whitespace from heredoc
+          sed -i 's/^[[:space:]]*//' /tmp/weston-run/weston.ini
+
+          weston --backend=headless --config=/tmp/weston-run/weston.ini \
+            --width=1440 --height=900 2>&1 | tee /tmp/weston.log &
+          WESTON_PID=$!
+          sleep 3
+
+          WESTON_OK=false
+          if kill -0 $WESTON_PID 2>/dev/null; then
+            # Find the XWayland DISPLAY
+            XWDISPLAY=$(grep -oP 'DISPLAY=:\K[0-9]+' /tmp/weston.log 2>/dev/null || echo "")
+            if [ -n "$XWDISPLAY" ]; then
+              export DISPLAY=":$XWDISPLAY"
+              echo "XWayland running on DISPLAY=$DISPLAY"
+              WESTON_OK=true
+            else
+              echo "Weston started but XWayland DISPLAY not found in logs"
+              cat /tmp/weston.log || true
+            fi
+          else
+            echo "Weston failed to start"
+            cat /tmp/weston.log || true
+          fi
+
+          # --- Fallback: plain Xvfb ---
+          if [ "$WESTON_OK" = "false" ]; then
+            echo "=== Falling back to Xvfb ==="
+            kill $WESTON_PID 2>/dev/null || true
+            Xvfb :99 -screen 0 1440x900x24 &
+            export DISPLAY=:99
+            sleep 2
+          fi
+
+          # --- Launch AppImage ---
+          echo "=== Launching AppImage on DISPLAY=$DISPLAY ==="
+          GDK_BACKEND=x11 "$APPIMAGE" --no-sandbox 2>&1 | tee /tmp/app.log &
           APP_PID=$!
-          sleep 15
-          import -window root screenshot.png || true
+          sleep 20
+
+          # --- Screenshot ---
+          import -window root screenshot.png 2>/dev/null || true
+
+          # --- Verify app is still running ---
           if kill -0 $APP_PID 2>/dev/null; then
-            echo "✅ AppImage launched successfully"
-            kill $APP_PID || true
+            echo "✅ AppImage launched successfully (PID $APP_PID)"
           else
             echo "❌ AppImage crashed during startup"
+            echo "--- App log ---"
+            tail -50 /tmp/app.log || true
             exit 1
           fi
 
+          # --- Check screenshot has non-black content ---
+          if [ -f screenshot.png ]; then
+            COLORS=$(identify -verbose screenshot.png 2>/dev/null | grep "Colors:" | awk '{print $2}')
+            echo "Screenshot unique colors: ${COLORS:-unknown}"
+            if [ "${COLORS:-0}" -le 5 ]; then
+              echo "⚠️ Screenshot appears blank (only $COLORS colors). App may not have rendered."
+            else
+              echo "✅ Screenshot has content ($COLORS unique colors)"
+            fi
+          fi
+
+          # --- Print app window info ---
+          xdotool search --name "" getwindowname 2>/dev/null | head -5 || true
+
+          kill $APP_PID 2>/dev/null || true
+          kill $WESTON_PID 2>/dev/null || true
+
       - name: Upload smoke test screenshot
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: linux-smoke-test-screenshot
           path: screenshot.png
+          if-no-files-found: warn
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-smoke-test-logs
+          path: |
+            /tmp/weston.log
+            /tmp/app.log
           if-no-files-found: warn
