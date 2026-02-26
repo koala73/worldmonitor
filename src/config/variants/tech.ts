@@ -104,6 +104,7 @@ export const FEEDS: Record<string, Feed[]> = {
     { name: 'Schneier', url: rss('https://www.schneier.com/feed/') },
     { name: 'CISA Advisories', url: 'https://rss.worldmonitor.app/api/rss-proxy?url=' + encodeURIComponent('https://www.cisa.gov/cybersecurity-advisories/all.xml') },
     { name: 'Cyber Incidents', url: rss('https://news.google.com/rss/search?q=cyber+attack+OR+data+breach+OR+ransomware+OR+hacking+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Ransomware.live', url: rss('https://www.ransomware.live/rss.xml') },
   ],
 
   // Policy & Regulation

@@ -105,6 +105,7 @@ const ALLOWED_DOMAINS = [
   'www.techmeme.com',
   'www.darkreading.com',
   'www.schneier.com',
+  'www.ransomware.live',
   'rss.politico.com',
   'www.anandtech.com',
   'www.tomshardware.com',

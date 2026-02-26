@@ -89,6 +89,7 @@ export const SOURCE_TIERS: Record<string, number> = {
   'The Diplomat': 3,
   'Bellingcat': 3,
   'Krebs Security': 3,
+  'Ransomware.live': 3,
   'Federal Reserve': 3,
   'SEC': 3,
   'MIT Tech Review': 3,
@@ -1100,6 +1101,7 @@ export const INTEL_SOURCES: Feed[] = [
   // OSINT & Monitoring (Tier 2)
   { name: 'Bellingcat', url: rss('https://www.bellingcat.com/feed/'), type: 'osint' },
   { name: 'Krebs Security', url: rss('https://krebsonsecurity.com/feed/'), type: 'cyber' },
+  { name: 'Ransomware.live', url: rss('https://www.ransomware.live/rss.xml'), type: 'cyber' },
 
   // Economic & Food Security (Tier 2)
   { name: 'FAO News', url: rss('https://www.fao.org/feeds/fao-newsroom-rss'), type: 'economic' },
