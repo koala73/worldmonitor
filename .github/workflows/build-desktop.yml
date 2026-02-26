@@ -293,6 +293,45 @@ jobs:
           fi
           echo "Verified signed app bundle and embedded Node runtime: $NODE_PATH"
 
+      - name: Smoke-test AppImage (Linux)
+        if: contains(matrix.platform, 'ubuntu')
+        shell: bash
+        run: |
+          sudo apt-get install -y xvfb imagemagick
+          APPIMAGE=$(find src-tauri/target/release/bundle/appimage -name '*.AppImage' | head -1)
+          if [ -z "$APPIMAGE" ]; then
+            echo "::error::No AppImage found after build"
+            exit 1
+          fi
+          chmod +x "$APPIMAGE"
+          # Start Xvfb with known display number
+          Xvfb :99 -screen 0 1440x900x24 &
+          export DISPLAY=:99
+          sleep 2
+          # Launch AppImage under virtual framebuffer
+          "$APPIMAGE" --no-sandbox &
+          APP_PID=$!
+          # Wait for app to render
+          sleep 15
+          # Screenshot the virtual display
+          import -window root screenshot.png || true
+          # Verify app is still running (didn't crash)
+          if kill -0 $APP_PID 2>/dev/null; then
+            echo "✅ AppImage launched successfully"
+            kill $APP_PID || true
+          else
+            echo "❌ AppImage crashed during startup"
+            exit 1
+          fi
+
+      - name: Upload smoke test screenshot
+        if: contains(matrix.platform, 'ubuntu')
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-smoke-test-screenshot
+          path: screenshot.png
+          if-no-files-found: warn
+
       - name: Cleanup Apple signing materials
         if: always() && contains(matrix.platform, 'macos')
         shell: bash
