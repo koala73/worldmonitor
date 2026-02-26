@@ -13,7 +13,7 @@ import {
   getCacheKey,
 } from './_shared';
 import { CHROME_UA } from '../../../_shared/constants';
-import { sanitizeHeadlines } from '../../../../api/_llm-sanitize.js';
+import { preparePromptInputs } from './prompt-inputs.mjs';
 
 // ======================================================================
 // Reasoning preamble detection
@@ -42,16 +42,20 @@ export async function summarizeArticle(
   const MAX_HEADLINES = 10;
   const MAX_HEADLINE_LEN = 500;
   const MAX_GEO_CONTEXT_LEN = 2000;
-  const boundedHeadlines = (req.headlines || [])
-    .slice(0, MAX_HEADLINES)
-    .map(h => typeof h === 'string' ? h.slice(0, MAX_HEADLINE_LEN) : '');
-  // Preserve exact source text for translation fidelity.
-  const headlines = mode === 'translate'
-    ? boundedHeadlines
-    : sanitizeHeadlines(
-      boundedHeadlines,
-    );
-  const sanitizedGeoContext = typeof geoContext === 'string' ? geoContext.slice(0, MAX_GEO_CONTEXT_LEN) : '';
+  const {
+    headlines,
+    geoContext: sanitizedGeoContext,
+    variant: safeVariant,
+  } = preparePromptInputs({
+    headlines: req.headlines || [],
+    mode,
+    geoContext,
+    variant,
+    lang,
+    maxHeadlines: MAX_HEADLINES,
+    maxHeadlineLen: MAX_HEADLINE_LEN,
+    maxGeoContextLen: MAX_GEO_CONTEXT_LEN,
+  });
 
   // Provider credential check
   const skipReasons: Record<string, string> = {
@@ -96,7 +100,7 @@ export async function summarizeArticle(
 
   try {
     // Check cache first (shared across all providers)
-    const cacheKey = getCacheKey(headlines, mode, sanitizedGeoContext, variant, lang);
+    const cacheKey = getCacheKey(headlines, mode, sanitizedGeoContext, safeVariant, lang);
     const cached = await getCachedJson(cacheKey);
     if (cached && typeof cached === 'object' && (cached as any).summary) {
       const c = cached as { summary: string; model?: string };
@@ -120,7 +124,7 @@ export async function summarizeArticle(
     const { systemPrompt, userPrompt } = buildArticlePrompts(headlines, uniqueHeadlines, {
       mode,
       geoContext: sanitizedGeoContext,
-      variant,
+      variant: safeVariant,
       lang,
     });
 

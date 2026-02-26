@@ -12,6 +12,7 @@ export const CACHE_VERSION = 'v5';
 // ========================================================================
 
 import { hashString } from '../../../_shared/hash';
+import { normalizeTranslateTargetLang } from './prompt-inputs.mjs';
 export { hashString };
 
 // ========================================================================
@@ -32,7 +33,7 @@ export function getCacheKey(
   const normalizedLang = typeof lang === 'string' && lang ? lang.toLowerCase() : 'en';
 
   if (mode === 'translate') {
-    const targetLang = normalizedVariant || normalizedLang;
+    const targetLang = normalizeTranslateTargetLang(normalizedVariant, normalizedLang);
     return `summary:${CACHE_VERSION}:${mode}:${targetLang}:${hash}${geoHash}`;
   }
 
@@ -123,7 +124,7 @@ Rules:
       ? `Each headline is a separate story. What's the key tech trend?\n${headlineText}${intelSection}`
       : `Each headline is a separate story. What's the key pattern or risk?\n${headlineText}${intelSection}`;
   } else if (opts.mode === 'translate') {
-    const targetLang = opts.variant;
+    const targetLang = normalizeTranslateTargetLang(opts.variant, opts.lang);
     systemPrompt = `You are a professional news translator. Translate the following news headlines/summaries into ${targetLang}.
 Rules:
 - Maintain the original tone and journalistic style.
