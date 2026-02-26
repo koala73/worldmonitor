@@ -847,7 +847,14 @@
     "cii": {
       "infoTooltip": "<strong>Metodologia</strong><ul><li><strong>U</strong>descanso: desordem civil e protestos</li><li><strong>C</strong>conflito: intensidade do conflito armado</li><li><strong>S</strong>segurança: voos militares/navios sobrevoados território</li><li><strong>I</strong>nformação: velocidade das notícias e correlação do ponto focal</li><li>Aumento de proximidade do ponto de acesso (locais estratégicos)</li></ul><em>U:C:S:I valores mostram pontuações de componentes.</em> A detecção de ponto focal correlaciona entidades de notícias com sinais de mapa para pontuação precisa.",
       "shareStory": "Compartilhar história",
-      "noSignals": "Nenhum sinal de instabilidade detectado"
+      "noSignals": "Nenhum sinal de instabilidade detectado",
+      "election": {
+        "today": "HOJE",
+        "postElection": "PÓS",
+        "daysUntil": "{{days}}d",
+        "tooltip": "Eleição em {{days}} dias",
+        "postElectionTooltip": "A eleição foi há {{days}} dias"
+      }
     },
     "gdeltIntel": {
       "infoTooltip": "<strong>GDELT Intelligence</strong> Monitoramento de notícias globais em tempo real:<ul><li>Categorias de tópicos selecionadas (conflitos, cibernética, etc.)</li><li>Artigos de mais de 100 idiomas traduzidos</li><li>Atualizações a cada 15 minutos</li></ul>Fonte: Projeto GDELT (gdeltproject.org)"

@@ -847,7 +847,14 @@
     "cii": {
       "infoTooltip": "<strong>Methodologie</strong><ul><li><strong>U</strong>nrest: burgerlijke onrust en protesten</li><li><strong>C</strong>aanval: intensiteit van gewapende conflicten</li><li><strong>S</strong>veiligheid: militaire vluchten/schepen voorbij territorium</li><li><strong>I</strong>nformatie: nieuwssnelheid en correlatie van focuspunten</li><li>Hotspot-nabijheidsboost (strategische locaties)</li></ul><em>U:C:S:I-waarden tonen componentscores.</em> Focal Point Detection correleert nieuwsentiteiten met kaartsignalen voor nauwkeurige scores.",
       "shareStory": "Verhaal delen",
-      "noSignals": "Geen instabiliteitssignalen gedetecteerd"
+      "noSignals": "Geen instabiliteitssignalen gedetecteerd",
+      "election": {
+        "today": "VANDAAG",
+        "postElection": "NA",
+        "daysUntil": "{{days}}d",
+        "tooltip": "Verkiezingen over {{days}} dagen",
+        "postElectionTooltip": "De verkiezing was {{days}} dagen geleden"
+      }
     },
     "gdeltIntel": {
       "infoTooltip": "<strong>GDELT Intelligence</strong> Realtime monitoring van mondiaal nieuws:<ul><li>Samengestelde onderwerpcategorieën (conflicten, cyber, etc.)</li><li>Artikelen uit meer dan 100 talen vertaald</li><li>Updates elke 15 minuten</li></ul>Bron: GDELT Project (gdeltproject.org)"

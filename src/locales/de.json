@@ -1042,7 +1042,14 @@
     "cii": {
       "shareStory": "Geschichte teilen",
       "noSignals": "Keine Instabilitätssignale erkannt",
-      "infoTooltip": "<strong>Methodik</strong><ul><li><strong>U</strong>nrest: zivile Unruhen und Proteste</li><li><strong>C</strong>Konflikt: bewaffnete Konfliktintensität</li><li><strong>S</strong>Sicherheit: Militärflüge/-schiffe über Gebiet</li><li><strong>I</strong>Informationen: Nachrichtengeschwindigkeit und Fokuspunktkorrelation</li><li>Hotspot-Näherungsschub (strategische Standorte)</li></ul><em>U:C:S:I-Werte zeigen Komponentenbewertungen.</em> Die Fokuspunkterkennung korreliert Nachrichtenentitäten mit Kartensignalen für eine genaue Bewertung."
+      "infoTooltip": "<strong>Methodik</strong><ul><li><strong>U</strong>nrest: zivile Unruhen und Proteste</li><li><strong>C</strong>Konflikt: bewaffnete Konfliktintensität</li><li><strong>S</strong>Sicherheit: Militärflüge/-schiffe über Gebiet</li><li><strong>I</strong>Informationen: Nachrichtengeschwindigkeit und Fokuspunktkorrelation</li><li>Hotspot-Näherungsschub (strategische Standorte)</li></ul><em>U:C:S:I-Werte zeigen Komponentenbewertungen.</em> Die Fokuspunkterkennung korreliert Nachrichtenentitäten mit Kartensignalen für eine genaue Bewertung.",
+      "election": {
+        "today": "HEUTE",
+        "postElection": "NACH",
+        "daysUntil": "{{days}}T",
+        "tooltip": "Wahl in {{days}} Tagen",
+        "postElectionTooltip": "Wahl war vor {{days}} Tagen"
+      }
     },
     "gdeltIntel": {
       "infoTooltip": "<strong>GDELT Intelligence</strong> Globale Nachrichtenüberwachung in Echtzeit:<ul><li>Kuratierte Themenkategorien (Konflikte, Cyber ​​usw.)</li><li>Artikel aus über 100 Sprachen übersetzt</li><li>Aktualisierungen alle 15 Minuten</li></ul>Quelle: GDELT-Projekt (gdeltproject.org)"

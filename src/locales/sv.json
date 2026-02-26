@@ -847,7 +847,14 @@
     "cii": {
       "infoTooltip": "<strong>Metodik</strong><ul><li><strong>U</strong>nrest: civila störningar och protester</li><li><strong>C</strong>konflikt: väpnad konfliktintensitet</li><li><strong>S</strong>kurv: militärflyg territorium</li><li><strong>I</strong>information: nyhetshastighet och brännpunktskorrelation</li><li>Hotspot-närhetsförstärkning (strategiska platser)</li></ul><em>U:C:S:I-värden visar komponentpoäng för komponentavkänningar för 7__punkter.__PH korrekt poängsättning.",
       "shareStory": "Dela historia",
-      "noSignals": "Inga instabilitetssignaler upptäckta"
+      "noSignals": "Inga instabilitetssignaler upptäckta",
+      "election": {
+        "today": "IDAG",
+        "postElection": "EFTER",
+        "daysUntil": "{{days}}d",
+        "tooltip": "Val om {{days}} dagar",
+        "postElectionTooltip": "Valet var för {{days}} dagar sedan"
+      }
     },
     "gdeltIntel": {
       "infoTooltip": "<strong>GDELT Intelligence</strong> Global nyhetsövervakning i realtid:<ul><li>Utvalda ämneskategorier (konflikter, cyber, etc.)</li><li>Artiklar från 100+ språk översatta</li><li>__Uppdateringar var 4____DEL: Projekt varje 4__5 minuter (gdeltproject.org)"

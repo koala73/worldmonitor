@@ -9334,6 +9334,17 @@ a.prediction-link:hover {
   cursor: help;
 }
 
+/* Election Badge */
+.cii-election-badge {
+  font-size: 9px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  color: #000;
+  font-weight: 600;
+  white-space: nowrap;
+  margin-left: 4px;
+}
+
 /* CII Learning Mode */
 .cii-learning-banner {
   display: flex;

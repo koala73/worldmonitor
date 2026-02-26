@@ -884,7 +884,14 @@
     "cii": {
       "shareStory": "Partager l'article",
       "noSignals": "Aucun signal d'instabilité détecté",
-      "infoTooltip": "<strong>Méthodologie</strong><ul><li><strong>U</strong>nrepos : troubles civils et manifestations</li><li><strong>C</strong>conflit : intensité du conflit armé</li><li><strong>S</strong>sécurité : vols/navires militaires au-dessus territoire</li><li><strong>I</strong>informations : vitesse des informations et corrélation des points focaux</li><li>Augmentation de la proximité des points d'accès (emplacements stratégiques)</li></ul><em>Les valeurs U:C:S:I affichent les scores des composants.</em> La détection du point focal corrèle les entités d'information avec les signaux cartographiques pour une notation précise."
+      "infoTooltip": "<strong>Méthodologie</strong><ul><li><strong>U</strong>nrepos : troubles civils et manifestations</li><li><strong>C</strong>conflit : intensité du conflit armé</li><li><strong>S</strong>sécurité : vols/navires militaires au-dessus territoire</li><li><strong>I</strong>informations : vitesse des informations et corrélation des points focaux</li><li>Augmentation de la proximité des points d'accès (emplacements stratégiques)</li></ul><em>Les valeurs U:C:S:I affichent les scores des composants.</em> La détection du point focal corrèle les entités d'information avec les signaux cartographiques pour une notation précise.",
+      "election": {
+        "today": "AUJOURD'HUI",
+        "postElection": "POST",
+        "daysUntil": "{{days}}j",
+        "tooltip": "Élection dans {{days}} jours",
+        "postElectionTooltip": "L'élection a eu lieu il y a {{days}} jours"
+      }
     },
     "insights": {
       "noStories": "Aucune info de dernière minute pour l'instant",

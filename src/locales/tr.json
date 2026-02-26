@@ -884,7 +884,14 @@
     "cii": {
       "shareStory": "Hikayeyi paylas",
       "noSignals": "Istikrarsizlik sinyali tespit edilmedi",
-      "infoTooltip": "<strong>Metodoloji</strong><ul><li><strong>H</strong>uzursuzluk: sivil duzensizlik ve protestolar</li><li><strong>C</strong>atisma: silahli catisma yogunlugu</li><li><strong>G</strong>uvenlik: toprak uzerindeki askeri ucuslar/gemiler</li><li><strong>B</strong>ilgi: haber hizi ve odak noktasi korelasyonu</li><li>Sicak nokta yakinligi artisi (stratejik konumlar)</li></ul><em>H:C:G:B degerleri bilesen puanlarini gosterir.</em> Odak Noktasi Tespiti, dogru puanlama icin haber varliklarini harita sinyalleriyle iliskilendirir."
+      "infoTooltip": "<strong>Metodoloji</strong><ul><li><strong>H</strong>uzursuzluk: sivil duzensizlik ve protestolar</li><li><strong>C</strong>atisma: silahli catisma yogunlugu</li><li><strong>G</strong>uvenlik: toprak uzerindeki askeri ucuslar/gemiler</li><li><strong>B</strong>ilgi: haber hizi ve odak noktasi korelasyonu</li><li>Sicak nokta yakinligi artisi (stratejik konumlar)</li></ul><em>H:C:G:B degerleri bilesen puanlarini gosterir.</em> Odak Noktasi Tespiti, dogru puanlama icin haber varliklarini harita sinyalleriyle iliskilendirir.",
+      "election": {
+        "today": "BUGÜN",
+        "postElection": "SONRA",
+        "daysUntil": "{{days}}g",
+        "tooltip": "{{days}} gün içinde seçim",
+        "postElectionTooltip": "Seçim {{days}} gün önce yapıldı"
+      }
     },
     "insights": {
       "noStories": "Henuz son dakika veya coklu kaynak haberi yok",
