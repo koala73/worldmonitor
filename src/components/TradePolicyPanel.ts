@@ -150,7 +150,7 @@ export class TradePolicyPanel extends Panel {
       return `<div class="economic-empty">${t('components.tradePolicy.noTariffData')}</div>`;
     }
 
-    const rows = this.tariffsData.datapoints.map(d =>
+    const rows = [...this.tariffsData.datapoints].sort((a, b) => b.year - a.year).map(d =>
       `<tr>
         <td>${d.year}</td>
         <td>${d.tariffRate.toFixed(1)}%</td>
