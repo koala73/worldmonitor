@@ -1,6 +1,6 @@
 [package]
 name = "world-monitor"
-version = "2.5.16"
+version = "2.5.17"
 description = "World Monitor desktop application"
 authors = ["World Monitor"]
 edition = "2021"
