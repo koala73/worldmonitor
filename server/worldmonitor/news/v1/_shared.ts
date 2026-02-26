@@ -68,7 +68,7 @@ export function buildArticlePrompts(
     if (isTechVariant) {
       systemPrompt = `${dateContext}
 
-Summarize the single most important tech/startup headline in 2-3 sentences.
+Summarize the single most important tech/startup headline in 2 concise sentences MAX (under 60 words total).
 Rules:
 - Each numbered headline below is a SEPARATE, UNRELATED story
 - Pick the ONE most significant headline and summarize ONLY that story
@@ -76,11 +76,11 @@ Rules:
 - Focus ONLY on technology, startups, AI, funding, product launches, or developer news
 - IGNORE political news, trade policy, tariffs, government actions unless directly about tech regulation
 - Lead with the company/product/technology name
-- No bullet points, no meta-commentary${langInstruction}`;
+- No bullet points, no meta-commentary, no elaboration beyond the core facts${langInstruction}`;
     } else {
       systemPrompt = `${dateContext}
 
-Summarize the single most important headline in 2-3 sentences.
+Summarize the single most important headline in 2 concise sentences MAX (under 60 words total).
 Rules:
 - Each numbered headline below is a SEPARATE, UNRELATED story
 - Pick the ONE most significant headline and summarize ONLY that story
@@ -89,35 +89,33 @@ Rules:
 - NEVER start with "Breaking news", "Good evening", "Tonight", or TV-style openings
 - Start directly with the subject of the chosen headline
 - If intelligence context is provided, use it only if it relates to your chosen headline
-- No bullet points, no meta-commentary${langInstruction}`;
+- No bullet points, no meta-commentary, no elaboration beyond the core facts${langInstruction}`;
     }
     userPrompt = `Each headline below is a separate story. Pick the most important ONE and summarize only that story:\n${headlineText}${intelSection}`;
   } else if (opts.mode === 'analysis') {
     if (isTechVariant) {
       systemPrompt = `${dateContext}
 
-Analyze the most significant tech/startup development in 2-3 sentences.
+Analyze the most significant tech/startup development in 2 concise sentences MAX (under 60 words total).
 Rules:
 - Each numbered headline below is a SEPARATE, UNRELATED story
 - Pick the ONE most significant story and analyze ONLY that
 - NEVER combine facts from different headlines
 - Focus ONLY on technology implications: funding trends, AI developments, market shifts, product strategy
 - IGNORE political implications, trade wars, government unless directly about tech policy
-- Lead with the insight for tech industry
-- Connect to startup ecosystem, VC trends, or technical implications`;
+- Lead with the insight, no filler or elaboration`;
     } else {
       systemPrompt = `${dateContext}
 
-Provide analysis of the most significant development in 2-3 sentences. Be direct and specific.
+Analyze the most significant development in 2 concise sentences MAX (under 60 words total). Be direct and specific.
 Rules:
 - Each numbered headline below is a SEPARATE, UNRELATED story
 - Pick the ONE most significant story and analyze ONLY that
 - NEVER combine or merge people, places, or facts from different headlines
 - Lead with the insight - what's significant and why
 - NEVER start with "Breaking news", "Tonight", "The key/dominant narrative is"
-- Start with substance about your chosen headline
-- If intelligence context is provided, use it only if it relates to your chosen headline
-- Connect dots, be specific about implications`;
+- Start with substance, no filler or elaboration
+- If intelligence context is provided, use it only if it relates to your chosen headline`;
     }
     userPrompt = isTechVariant
       ? `Each headline is a separate story. What's the key tech trend?\n${headlineText}${intelSection}`
@@ -133,8 +131,8 @@ Rules:
     userPrompt = `Translate to ${targetLang}:\n${headlines[0]}`;
   } else {
     systemPrompt = isTechVariant
-      ? `${dateContext}\n\nPick the most important tech headline and summarize it in 2 sentences. Each headline is a separate story - NEVER merge facts from different headlines. Focus on startups, AI, funding, products. Ignore politics unless directly about tech regulation.${langInstruction}`
-      : `${dateContext}\n\nPick the most important headline and summarize it in 2 sentences. Each headline is a separate, unrelated story - NEVER merge people or facts from different headlines. Lead with substance. NEVER start with "Breaking news" or "Tonight".${langInstruction}`;
+      ? `${dateContext}\n\nPick the most important tech headline and summarize it in 2 concise sentences (under 60 words). Each headline is a separate story - NEVER merge facts from different headlines. Focus on startups, AI, funding, products. Ignore politics unless directly about tech regulation.${langInstruction}`
+      : `${dateContext}\n\nPick the most important headline and summarize it in 2 concise sentences (under 60 words). Each headline is a separate, unrelated story - NEVER merge people or facts from different headlines. Lead with substance. NEVER start with "Breaking news" or "Tonight".${langInstruction}`;
     userPrompt = `Each headline is a separate story. Key takeaway from the most important one:\n${headlineText}${intelSection}`;
   }
 
