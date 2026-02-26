@@ -65,9 +65,9 @@ export const ELECTIONS_2026_2027: Election[] = [
     country: 'Australia',
     countryCode: 'AU',
     type: 'parliamentary',
-    date: new Date('2026-05-21'),
+    date: new Date('2028-05-01'),
     significance: 'medium',
-    notes: 'Federal election; AUKUS and China policy implications',
+    notes: 'Tentative — APH Library places next federal election in 2027–2028 window; AUKUS and China policy implications',
   },
 
   // Q3-Q4 2026
@@ -79,14 +79,7 @@ export const ELECTIONS_2026_2027: Election[] = [
     significance: 'high',
     notes: 'Midterm elections; House and Senate races; political polarization',
   },
-  {
-    country: 'Japan',
-    countryCode: 'JP',
-    type: 'parliamentary',
-    date: new Date('2026-07-25'),
-    significance: 'medium',
-    notes: 'Upper House election; defense policy and Taiwan stance',
-  },
+  // NOTE: Japan 2026-07-25 removed — IFES shows 2026 was House of Representatives (snap); HC was 2025, next HC ~2028
   {
     country: 'South Korea',
     countryCode: 'KR',
@@ -98,26 +91,19 @@ export const ELECTIONS_2026_2027: Election[] = [
   {
     country: 'Czech Republic',
     countryCode: 'CZ',
-    type: 'parliamentary',
+    type: 'local',
     date: new Date('2026-10-15'),
-    significance: 'medium',
-    notes: 'Legislative elections; EU and NATO alignment',
+    significance: 'low',
+    notes: 'Senate 1/3 renewal (not full parliamentary); EU and NATO alignment',
   },
-  {
-    country: 'Georgia',
-    countryCode: 'GE',
-    type: 'presidential',
-    date: new Date('2026-10-26'),
-    significance: 'high',
-    notes: 'Presidential election; Russia tensions; EU aspirations',
-  },
+  // NOTE: Georgia 2026-10-26 removed — president is indirectly elected by electoral college since 2024; next ~2029
   {
     country: 'Kazakhstan',
     countryCode: 'KZ',
-    type: 'parliamentary',
-    date: new Date('2026-03-19'),
+    type: 'referendum',
+    date: new Date('2026-03-15'),
     significance: 'medium',
-    notes: 'Parliamentary elections; Russia-China balancing act',
+    notes: 'Constitutional referendum (IFES March 15); parliamentary elections may follow ~Aug 2026 if passed; Russia-China balancing act',
   },
 
   // ============== 2027 ==============
@@ -169,9 +155,9 @@ export const ELECTIONS_2026_2027: Election[] = [
     country: 'United Kingdom',
     countryCode: 'GB',
     type: 'parliamentary',
-    date: new Date('2027-12-17'),
+    date: new Date('2029-08-15'),
     significance: 'high',
-    notes: 'Expected by December 2027; NATO, Ukraine support, trade policy',
+    notes: 'Tentative — UK Electoral Commission states "no later than 15 August 2029"; NATO, Ukraine support, trade policy',
   },
   {
     country: 'Kenya',
@@ -209,9 +195,9 @@ export const ELECTIONS_2026_2027: Election[] = [
     country: 'Rwanda',
     countryCode: 'RW',
     type: 'presidential',
-    date: new Date('2027-07-15'),
+    date: new Date('2029-07-15'),
     significance: 'medium',
-    notes: 'Presidential election; DRC tensions; regional stability',
+    notes: 'Tentative — 5-year term from 2024 IFES election; DRC tensions; regional stability',
   },
   {
     country: 'Liberia',
@@ -233,9 +219,9 @@ export const ELECTIONS_2026_2027: Election[] = [
     country: 'Iran',
     countryCode: 'IR',
     type: 'legislative',
-    date: new Date('2027-03-01'),
+    date: new Date('2028-03-01'),
     significance: 'medium',
-    notes: 'Parliamentary elections; reformist vs hardliner dynamics',
+    notes: 'Tentative — Majlis election; 4-year term from 2024 per Art. 63; reformist vs hardliner dynamics',
   },
 ];
 
