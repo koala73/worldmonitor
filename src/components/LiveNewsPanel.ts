@@ -436,7 +436,7 @@ export class LiveNewsPanel extends Panel {
     this.clearBotCheckTimeout();
     this.stopMuteSyncPolling();
     if (this.player) {
-      this.player.destroy();
+      if (typeof this.player.destroy === 'function') this.player.destroy();
       this.player = null;
     }
 

@@ -493,7 +493,7 @@ export class SearchManager implements AppModule {
 
   private highlightNewsItem(itemId: string): void {
     setTimeout(() => {
-      const item = document.querySelector(`[data-news-id="${itemId}"]`);
+      const item = document.querySelector(`[data-news-id="${CSS.escape(itemId)}"]`);
       if (item) {
         item.scrollIntoView({ behavior: 'smooth', block: 'center' });
         item.classList.add('flash-highlight');

@@ -99,6 +99,15 @@ Sentry.init({
     /evaluating 'elemFound\.value'/,
     /Cannot access '\w+' before initialization/,
     /^Uint8Array$/,
+    /createObjectStore/,
+    /The database connection is closing/,
+    /shortcut icon/,
+    /Attempting to change value of a readonly property/,
+    /reading 'nodeType'/,
+    /feature named .pageContext. was not found/,
+    /a2z\.onStatusUpdate/,
+    /Attempting to run\(\), but is already running/,
+    /this\.player\.destroy is not a function/,
   ],
   beforeSend(event) {
     const msg = event.exception?.values?.[0]?.value ?? '';
@@ -113,6 +122,8 @@ Sentry.init({
       const appFrames = frames.filter(f => f.in_app && !/\/sentry-[A-Za-z0-9-]+\.js/.test(f.filename ?? ''));
       if (appFrames.length > 0 && appFrames.every(f => /\/(map|maplibre|deck-stack)-[A-Za-z0-9-]+\.js/.test(f.filename ?? ''))) return null;
     }
+    // Suppress errors originating entirely from blob: URLs (browser extensions)
+    if (frames.length > 0 && frames.every(f => /^blob:/.test(f.filename ?? ''))) return null;
     // Suppress YouTube IFrame widget API internal errors
     if (frames.some(f => /www-widgetapi\.js/.test(f.filename ?? ''))) return null;
     // Suppress Sentry SDK internal crashes (logs.js)
