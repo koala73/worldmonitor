@@ -90,7 +90,7 @@ export class SupplyChainPanel extends Panel {
     }
 
     return `<div class="trade-restrictions-list">
-      ${this.chokepointData.chokepoints.map(cp => {
+      ${[...this.chokepointData.chokepoints].sort((a, b) => b.disruptionScore - a.disruptionScore).map(cp => {
         const statusClass = cp.status === 'red' ? 'status-active' : cp.status === 'yellow' ? 'status-notified' : 'status-terminated';
         const statusDot = cp.status === 'red' ? 'sc-dot-red' : cp.status === 'yellow' ? 'sc-dot-yellow' : 'sc-dot-green';
         return `<div class="trade-restriction-card">
