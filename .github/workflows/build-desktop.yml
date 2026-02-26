@@ -333,7 +333,7 @@ jobs:
         if: contains(matrix.platform, 'ubuntu')
         uses: actions/upload-artifact@v4
         with:
-          name: linux-smoke-test-screenshot
+          name: linux-smoke-test-screenshot-${{ matrix.label }}
           path: screenshot.png
           if-no-files-found: warn
 
