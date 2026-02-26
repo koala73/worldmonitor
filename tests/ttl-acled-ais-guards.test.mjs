@@ -52,13 +52,11 @@ describe('ACLED shared cache layer', () => {
       'Cache key should include event types, start date, end date');
   });
 
-  it('checks Redis cache before upstream API call', () => {
-    const cacheCheckIdx = src.indexOf('getCachedJson(cacheKey)');
-    const fetchIdx = src.indexOf('fetch(`${ACLED_API_URL}');
-    assert.ok(cacheCheckIdx > -1, 'Should check Redis cache');
-    assert.ok(fetchIdx > -1, 'Should call ACLED API');
-    assert.ok(cacheCheckIdx < fetchIdx,
-      'Cache check should come before upstream fetch');
+  it('uses cachedFetchJson to check Redis cache before upstream API call', () => {
+    assert.match(src, /cachedFetchJson\s*<.*>\s*\(cacheKey/,
+      'Should use cachedFetchJson which handles cache check + coalescing');
+    assert.ok(src.includes('fetch(`${ACLED_API_URL}'),
+      'Should call ACLED API inside the fetcher');
   });
 
   it('uses 15-minute cache TTL', () => {
@@ -71,9 +69,9 @@ describe('ACLED shared cache layer', () => {
       'Should gracefully degrade when ACLED_ACCESS_TOKEN is not set');
   });
 
-  it('writes to cache on successful fetch', () => {
-    assert.match(src, /setCachedJson\(cacheKey, events, ACLED_CACHE_TTL\)/,
-      'Should cache successful results');
+  it('caches successful results via cachedFetchJson', () => {
+    assert.match(src, /cachedFetchJson/,
+      'Should use cachedFetchJson which writes to cache automatically on successful fetch');
   });
 
   it('caches empty successful responses to avoid repeated cache misses', () => {

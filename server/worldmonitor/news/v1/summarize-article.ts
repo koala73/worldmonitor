@@ -139,6 +139,7 @@ export async function summarizeArticle(
           .replace(/<reflection>[\s\S]*?<\/reflection>/gi, '')
           .trim();
 
+        // Strip unterminated thinking blocks (no closing tag)
         rawContent = rawContent
           .replace(/<think>[\s\S]*/gi, '')
           .replace(/<\|thinking\|>[\s\S]*/gi, '')
