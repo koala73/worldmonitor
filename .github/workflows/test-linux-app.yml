@@ -47,8 +47,7 @@ jobs:
             patchelf \
             gstreamer1.0-plugins-base \
             gstreamer1.0-plugins-good \
-            weston \
-            xwayland \
+            xwayland-run \
             xvfb \
             imagemagick \
             xdotool
@@ -83,70 +82,73 @@ jobs:
             exit 1
           fi
           chmod +x "$APPIMAGE"
+          APPIMAGE_ABS=$(realpath "$APPIMAGE")
 
-          # --- Try 1: Weston + XWayland ---
-          # Weston provides a real compositor; XWayland gives GTK the X11 it needs.
-          # This avoids the blank-screen problem of bare Xvfb.
-          echo "=== Starting weston (headless + XWayland) ==="
-          mkdir -p /tmp/weston-run
-          export XDG_RUNTIME_DIR=/tmp/weston-run
+          # Write the inner test script (runs inside the display server)
+          cat > /tmp/smoke-test.sh <<'SCRIPT'
+          #!/bin/bash
+          set -x
+          echo "DISPLAY=$DISPLAY WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-unset}"
 
-          # Write a minimal weston.ini enabling XWayland
-          cat > /tmp/weston-run/weston.ini <<'WINI'
-          [core]
-          xwayland=true
-          WINI
-          # Strip leading whitespace from heredoc
-          sed -i 's/^[[:space:]]*//' /tmp/weston-run/weston.ini
-
-          weston --backend=headless --config=/tmp/weston-run/weston.ini \
-            --width=1440 --height=900 2>&1 | tee /tmp/weston.log &
-          WESTON_PID=$!
-          sleep 3
-
-          WESTON_OK=false
-          if kill -0 $WESTON_PID 2>/dev/null; then
-            # Find the XWayland DISPLAY
-            XWDISPLAY=$(grep -oP 'DISPLAY=:\K[0-9]+' /tmp/weston.log 2>/dev/null || echo "")
-            if [ -n "$XWDISPLAY" ]; then
-              export DISPLAY=":$XWDISPLAY"
-              echo "XWayland running on DISPLAY=$DISPLAY"
-              WESTON_OK=true
-            else
-              echo "Weston started but XWayland DISPLAY not found in logs"
-              cat /tmp/weston.log || true
-            fi
-          else
-            echo "Weston failed to start"
-            cat /tmp/weston.log || true
-          fi
-
-          # --- Fallback: plain Xvfb ---
-          if [ "$WESTON_OK" = "false" ]; then
-            echo "=== Falling back to Xvfb ==="
-            kill $WESTON_PID 2>/dev/null || true
-            Xvfb :99 -screen 0 1440x900x24 &
-            export DISPLAY=:99
-            sleep 2
-          fi
-
-          # --- Launch AppImage ---
-          echo "=== Launching AppImage on DISPLAY=$DISPLAY ==="
-          GDK_BACKEND=x11 "$APPIMAGE" --no-sandbox 2>&1 | tee /tmp/app.log &
+          GDK_BACKEND=x11 "$APPIMAGE_ABS" --no-sandbox 2>&1 | tee /tmp/app.log &
           APP_PID=$!
           sleep 20
 
-          # --- Screenshot ---
-          import -window root screenshot.png 2>/dev/null || true
+          # Screenshot via X11
+          import -window root /tmp/screenshot.png 2>/dev/null || true
 
-          # --- Verify app is still running ---
+          # Verify app is still running
           if kill -0 $APP_PID 2>/dev/null; then
-            echo "✅ AppImage launched successfully (PID $APP_PID)"
+            echo "APP_STATUS=running"
           else
-            echo "❌ AppImage crashed during startup"
+            echo "APP_STATUS=crashed"
             echo "--- App log ---"
             tail -50 /tmp/app.log || true
+          fi
+
+          # Window info
+          xdotool search --name "" getwindowname 2>/dev/null | head -5 || true
+
+          kill $APP_PID 2>/dev/null || true
+          SCRIPT
+          chmod +x /tmp/smoke-test.sh
+
+          export APPIMAGE_ABS
+          RESULT=0
+
+          # --- Try 1: xwfb-run (Xwayland on headless Wayland compositor) ---
+          if command -v xwfb-run &>/dev/null; then
+            echo "=== Using xwfb-run (Xwayland + headless compositor) ==="
+            timeout 90 xwfb-run -- bash /tmp/smoke-test.sh 2>&1 | tee /tmp/display-server.log || RESULT=$?
+          else
+            echo "xwfb-run not found, skipping"
+            RESULT=1
+          fi
+
+          # --- Fallback: plain Xvfb ---
+          if [ $RESULT -ne 0 ] || [ ! -f /tmp/screenshot.png ]; then
+            echo "=== Falling back to Xvfb ==="
+            Xvfb :99 -screen 0 1440x900x24 &
+            XVFB_PID=$!
+            export DISPLAY=:99
+            sleep 2
+            bash /tmp/smoke-test.sh 2>&1 | tee /tmp/display-server.log
+            kill $XVFB_PID 2>/dev/null || true
+          fi
+
+          # --- Copy screenshot to workspace ---
+          cp /tmp/screenshot.png screenshot.png 2>/dev/null || true
+
+          # --- Check results ---
+          if grep -q "APP_STATUS=crashed" /tmp/display-server.log 2>/dev/null; then
+            echo "❌ AppImage crashed during startup"
             exit 1
+          fi
+
+          if grep -q "APP_STATUS=running" /tmp/display-server.log 2>/dev/null; then
+            echo "✅ AppImage launched successfully"
+          else
+            echo "⚠️ Could not determine app status"
           fi
 
           # --- Check screenshot has non-black content ---
@@ -159,12 +161,6 @@ jobs:
               echo "✅ Screenshot has content ($COLORS unique colors)"
             fi
           fi
-
-          # --- Print app window info ---
-          xdotool search --name "" getwindowname 2>/dev/null | head -5 || true
-
-          kill $APP_PID 2>/dev/null || true
-          kill $WESTON_PID 2>/dev/null || true
 
       - name: Upload smoke test screenshot
         if: always()
@@ -180,6 +176,6 @@ jobs:
         with:
           name: linux-smoke-test-logs
           path: |
-            /tmp/weston.log
+            /tmp/display-server.log
             /tmp/app.log
           if-no-files-found: warn
