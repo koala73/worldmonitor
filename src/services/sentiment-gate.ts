@@ -36,14 +36,8 @@ export async function filterBySentiment(
   } catch { /* ignore localStorage errors */ }
 
   // Graceful degradation: if ML not available, pass all items through
-  try {
-    const ready = await mlWorker.init();
-    if (!ready) {
-      console.log('[SentimentGate] ML worker not available, passing all items through');
-      return items;
-    }
-  } catch {
-    console.log('[SentimentGate] ML worker init failed, passing all items through');
+  if (!mlWorker.isAvailable) {
+    console.log('[SentimentGate] ML worker not available, passing all items through');
     return items;
   }
 

@@ -10,6 +10,7 @@ import {
 } from '@/config';
 import { initDB, cleanOldSnapshots, isAisConfigured, initAisStream, isOutagesConfigured, disconnectAisStream } from '@/services';
 import { mlWorker } from '@/services/ml-worker';
+import { getAiFlowSettings, subscribeAiFlowChange } from '@/services/ai-flow-settings';
 import { startLearning } from '@/services/country-instability';
 import { dataFreshness } from '@/services/data-freshness';
 import { loadFromStorage, parseMapUrlState, saveToStorage, isMobileDevice } from '@/utils';
@@ -45,6 +46,7 @@ export class App {
   private desktopUpdater: DesktopUpdater;
 
   private modules: { destroy(): void }[] = [];
+  private unsubAiFlow: (() => void) | null = null;
 
   constructor(containerId: string) {
     const el = document.getElementById(containerId);
@@ -291,7 +293,21 @@ export class App {
     const initStart = performance.now();
     await initDB();
     await initI18n();
-    await mlWorker.init();
+    const aiFlow = getAiFlowSettings();
+    if (aiFlow.browserModel || isDesktopRuntime()) {
+      await mlWorker.init();
+    }
+
+    this.unsubAiFlow = subscribeAiFlowChange((key) => {
+      if (key === 'browserModel') {
+        const s = getAiFlowSettings();
+        if (s.browserModel) {
+          mlWorker.init();
+        } else {
+          mlWorker.terminate();
+        }
+      }
+    });
 
     // Check AIS configuration before init
     if (!isAisConfigured()) {
@@ -391,7 +407,8 @@ export class App {
       this.modules[i]!.destroy();
     }
 
-    // Clean up map and AIS
+    // Clean up subscriptions, map, and AIS
+    this.unsubAiFlow?.();
     this.state.map?.destroy();
     disconnectAisStream();
   }
