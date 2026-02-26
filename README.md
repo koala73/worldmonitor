@@ -45,7 +45,7 @@
 | Web-only dashboards                | **Native desktop app** (Tauri) for macOS, Windows, and Linux + installable PWA with offline map support    |
 | Flat 2D maps                       | **3D WebGL globe** with deck.gl rendering and 36+ toggleable data layers                                   |
 | Siloed financial data              | **Finance variant** with 92 stock exchanges, 19 financial centers, 13 central banks, BIS data, WTO trade policy, and Gulf FDI tracking |
-| Undocumented, fragile APIs         | **Proto-first API contracts** — 19 typed services with auto-generated clients, servers, and OpenAPI docs   |
+| Undocumented, fragile APIs         | **Proto-first API contracts** — 20 typed services with auto-generated clients, servers, and OpenAPI docs   |
 
 ---
 
@@ -89,7 +89,7 @@ All four variants run from a single codebase — switch between them with one cl
 - **Local LLM Support** — Ollama and LM Studio (any OpenAI-compatible endpoint) run AI summarization entirely on local hardware. No API keys required, no data leaves the machine. The desktop app auto-discovers available models from the local instance and populates a selection dropdown, filtering out embedding-only models. Default fallback model: `llama3.1:8b`
 - **Hybrid Threat Classification** — instant keyword classifier with async LLM override for higher-confidence results
 - **Focal Point Detection** — correlates entities across news, military activity, protests, outages, and markets to identify convergence
-- **Country Instability Index** — real-time stability scores for 22 monitored nations using weighted multi-signal blend
+- **Country Instability Index** — real-time stability scores for every country with incoming data using weighted multi-signal blend. 23 curated tier-1 nations have tuned baseline risk profiles; all other countries receive universal scoring with sensible defaults when any event data (protests, conflicts, outages, displacement, climate anomalies) is detected
 - **Trending Keyword Spike Detection** — 2-hour rolling window vs 7-day baseline flags surging terms across RSS feeds, with CVE/APT entity extraction and auto-summarization
 - **Strategic Posture Assessment** — composite risk score combining all intelligence modules with trend detection
 - **Country Brief Pages** — click any country for a full-page intelligence dossier with CII score ring, AI-generated analysis, top news with citation anchoring, prediction markets, 7-day event timeline, active signal chips, infrastructure exposure, and stock market index — exportable as JSON, CSV, or image
@@ -179,6 +179,7 @@ All four variants run from a single codebase — switch between them with one cl
 - **8 live video streams** — Bloomberg, Sky News, Al Jazeera, Euronews, DW, France24, CNBC, Al Arabiya — with automatic live detection that scrapes YouTube channel pages every 5 minutes to find active streams
 - **Desktop embed bridge** — YouTube's IFrame API restricts playback in native webviews (error 153). The dashboard detects this and transparently routes through a cloud-hosted embed proxy with bidirectional message passing (play/pause/mute/unmute/loadVideo)
 - **Idle-aware playback** — video players pause and are removed from the DOM after 5 minutes of inactivity, resuming when the user returns. Tab visibility changes also suspend/resume streams
+- **Global streaming quality control** — a user-selectable quality setting (auto, 360p, 480p, 720p) that applies to all live video streams across the dashboard. The preference persists in localStorage and propagates to active players via a `stream-quality-changed` CustomEvent — no reload required when switching quality
 - **19 live webcams** — real-time YouTube streams from geopolitical hotspots across 4 regions (Middle East, Europe, Americas, Asia-Pacific). Grid view shows 4 strategic feeds simultaneously; single-feed view available. Region filtering (ALL/MIDEAST/EUROPE/AMERICAS/ASIA), idle-aware playback that pauses after 5 minutes, and Intersection Observer-based lazy loading
 - **Custom keyword monitors** — user-defined keyword alerts with word-boundary matching (prevents "ai" from matching "train"), automatic color-coding from a 10-color palette, and multi-keyword support (comma-separated). Monitors search across both headline titles and descriptions and show real-time match counts
 - **Entity extraction** — Auto-links countries, leaders, organizations
@@ -231,8 +232,8 @@ All four variants run from a single codebase — switch between them with one cl
 - Shareable map state via URL parameters (view, zoom, coordinates, time range, active layers)
 - Data freshness monitoring across 16 data sources with explicit intelligence gap reporting
 - Per-feed circuit breakers with 5-minute cooldowns to prevent cascading failures
-- Browser-side ML worker (Transformers.js) for NER and sentiment analysis without server dependency
-- **Cmd+K command palette** — fuzzy search across 20+ result types (news, countries, hotspots, markets, bases, cables, datacenters, nuclear facilities, and more), plus layer toggle commands, layer presets (e.g., `layers:finance`), and instant country brief navigation for all ISO countries
+- **Browser-side ML worker** (Transformers.js) for NER and sentiment analysis without server dependency — controllable via a "Browser Local Model" toggle in AI Flow settings. When disabled, the ML worker is never initialized, eliminating ONNX model downloads and WebGL memory allocation. The toggle propagates dynamically — enabling it mid-session initializes the worker immediately, disabling it terminates it
+- **Cmd+K command palette** — fuzzy search across 20+ result types (news, countries, hotspots, markets, bases, cables, datacenters, nuclear facilities, and more), plus layer toggle commands, layer presets (e.g., `layers:military`, `layers:finance`), and instant country brief navigation for all ~250 ISO countries with flag emoji icons. Curated countries include search aliases (e.g., typing "kremlin" or "putin" finds Russia). Scoring ranks exact matches (3pts) above prefix matches (2pts) above substring matches (1pt). Recent searches are stored in localStorage (max 8 entries)
 - **Historical playback** — dashboard snapshots are stored in IndexedDB. A time slider allows rewinding to any saved state, with live updates paused during playback
 - **Mobile detection** — screens below 768px receive a warning modal since the dashboard is designed for multi-panel desktop use
 - **UCDP conflict classification** — countries with active wars (1,000+ battle deaths/year) receive automatic CII floor scores, preventing optimistic drift. The UCDP GED API integration uses automatic version discovery (probing multiple year-based API versions in parallel), negative caching (5-minute backoff after upstream failures), discovered-version caching (1-hour TTL), and stale-on-error fallback to ensure conflict data is always available even when the upstream API is intermittently down
@@ -247,7 +248,7 @@ All four variants run from a single codebase — switch between them with one cl
 - **Trending keywords panel** — real-time display of surging terms across all RSS feeds with spike severity, source count, and AI-generated context summaries
 - **Download banner** — persistent notification for web users linking to native desktop installers for their detected platform
 - **Download API** — `/api/download?platform={windows-exe|windows-msi|macos-arm64|macos-x64|linux-appimage}[&variant={full|tech|finance}]` redirects to the matching GitHub Release asset, with fallback to the releases page
-- **Non-tier country support** — clicking countries outside the 22 tier-1 list opens a brief with available data (news, markets, infrastructure) and a "Limited coverage" badge; country names for non-tier countries resolve via `Intl.DisplayNames`
+- **Universal country coverage** — every country with incoming event data receives a live CII score automatically, not just the 23 curated tier-1 nations. Clicking any country opens a full brief with available data (news, markets, infrastructure), and non-curated countries use sensible default baselines (`DEFAULT_BASELINE_RISK = 15`) with display names resolved via `Intl.DisplayNames`
 - **Feature toggles** — 15 runtime toggles (AI/Ollama, AI/Groq, AI/OpenRouter, FRED economic, EIA energy, internet outages, ACLED conflicts, threat intel feeds, AIS relay, OpenSky, Finnhub, NASA FIRMS) stored in `localStorage`, allowing administrators to enable/disable data sources without rebuilding
 - **AIS chokepoint detection** — the relay server monitors 8 strategic maritime chokepoints (Strait of Hormuz, Suez Canal, Malacca Strait, Bab el-Mandeb, Panama Canal, Taiwan Strait, South China Sea, Turkish Straits) and classifies transiting vessels by naval candidacy using MMSI prefixes, ship type codes, and name patterns
 - **AIS density grid** — vessel positions are aggregated into 2°×2° geographic cells over 30-minute windows, producing a heatmap of maritime traffic density that feeds into convergence detection
@@ -365,7 +366,7 @@ This hybrid approach means the UI is never blocked waiting for AI — users see 
 
 ### Country Instability Index (CII)
 
-22 tier-1 countries receive continuous monitoring: US, Russia, China, Ukraine, Iran, Israel, Taiwan, North Korea, Saudi Arabia, Turkey, Poland, Germany, France, UK, India, Pakistan, Syria, Yemen, Myanmar, Venezuela, Brazil, and UAE. Each receives a real-time instability score (0–100) computed from:
+Every country with incoming event data receives a live instability score (0–100). 23 curated tier-1 nations (US, Russia, China, Ukraine, Iran, Israel, Taiwan, North Korea, Saudi Arabia, Turkey, Poland, Germany, France, UK, India, Pakistan, Syria, Yemen, Myanmar, Venezuela, Brazil, UAE, and Japan) have individually tuned baseline risk profiles and keyword lists. All other countries that generate any signal (protests, conflicts, outages, displacement flows, climate anomalies) are scored automatically using a universal default baseline (`DEFAULT_BASELINE_RISK = 15`, `DEFAULT_EVENT_MULTIPLIER = 1.0`). The score is computed from:
 
 | Component                | Weight | Details                                                                                                                                                                                         |
 | ------------------------ | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -544,7 +545,7 @@ Detected spikes are auto-summarized via Groq (rate-limited to 5 summaries/hour) 
 
 The entire API surface is defined in Protocol Buffer (`.proto`) files using [sebuf](https://github.com/SebastienMelki/sebuf) HTTP annotations. Code generation produces TypeScript clients, server handler stubs, and OpenAPI 3.1.0 documentation from a single source of truth — eliminating request/response schema drift between frontend and backend.
 
-**19 service domains** cover every data vertical:
+**20 service domains** cover every data vertical:
 
 | Domain           | RPCs                                             |
 | ---------------- | ------------------------------------------------ |
@@ -563,6 +564,7 @@ The entire API surface is defined in Protocol Buffer (`.proto`) files using [seb
 | `prediction`     | Prediction markets                               |
 | `research`       | arXiv papers, HackerNews, tech events            |
 | `seismology`     | Earthquakes                                      |
+| `supply-chain`   | Chokepoint disruption scores, shipping rates, critical mineral concentration |
 | `trade`          | WTO trade restrictions, tariff trends, trade flows, trade barriers |
 | `unrest`         | Protest/unrest events                            |
 | `wildfire`       | Fire detections                                  |
@@ -575,11 +577,11 @@ The entire API surface is defined in Protocol Buffer (`.proto`) files using [seb
 
 Proto definitions include `buf.validate` field constraints (e.g., latitude ∈ [−90, 90]), so request validation is generated automatically — handlers receive pre-validated data. Breaking changes are caught at CI time via `buf breaking` against the main branch.
 
-**Edge gateway** — a single Vercel Edge Function (`api/[domain]/v1/[rpc].ts`) imports all 17 `createServiceRoutes()` functions into a flat `Map<string, handler>` router. Every RPC is a POST endpoint at a static path (e.g., `POST /api/aviation/v1/list-airport-delays`), with CORS enforcement, a top-level error boundary that hides internal details on 5xx responses, and rate-limit support (`retryAfter` on 429). The same router runs locally via a Vite dev-server plugin (`sebufApiPlugin` in `vite.config.ts`) with HMR invalidation on handler changes.
+**Edge gateway** — a single Vercel Edge Function (`api/[domain]/v1/[rpc].ts`) imports all 20 `createServiceRoutes()` functions into a flat `Map<string, handler>` router. Every RPC is a POST endpoint at a static path (e.g., `POST /api/aviation/v1/list-airport-delays`), with CORS enforcement, a top-level error boundary that hides internal details on 5xx responses, and rate-limit support (`retryAfter` on 429). The same router runs locally via a Vite dev-server plugin (`sebufApiPlugin` in `vite.config.ts`) with HMR invalidation on handler changes.
 
 ### Cyber Threat Intelligence Layer
 
-Five threat intelligence feeds provide indicators of compromise (IOCs) for active command-and-control servers, malware distribution hosts, phishing campaigns, and malicious URLs:
+Six threat intelligence feeds provide indicators of compromise (IOCs) for active command-and-control servers, malware distribution hosts, phishing campaigns, malicious URLs, and ransomware operations:
 
 | Feed                         | IOC Type      | Coverage                        |
 | ---------------------------- | ------------- | ------------------------------- |
@@ -588,6 +590,7 @@ Five threat intelligence feeds provide indicators of compromise (IOCs) for activ
 | **C2IntelFeeds**             | C2 servers    | Community-sourced C2 indicators |
 | **AlienVault OTX**           | Mixed         | Open threat exchange pulse IOCs |
 | **AbuseIPDB**                | Malicious IPs | Crowd-sourced abuse reports     |
+| **Ransomware.live**          | Ransomware    | Active ransomware group feeds   |
 
 Each IP-based IOC is geo-enriched using ipinfo.io with freeipapi.com as fallback. Geolocation results are Redis-cached for 24 hours. Enrichment runs concurrently — 16 parallel lookups with a 12-second timeout, processing up to 250 IPs per collection run.
 
@@ -918,6 +921,18 @@ The Trade Policy panel provides real-time visibility into global trade restricti
 
 The `trade/v1` proto service defines four RPCs, each with its own circuit breaker (30-minute cache TTL) and `upstreamUnavailable` signaling for graceful degradation when WTO endpoints are temporarily unreachable. The panel is available on FULL and FINANCE variants. Trade policy data feeds into the data freshness tracker as `wto_trade`, with intelligence gap warnings when the WTO feed goes stale.
 
+### Supply Chain Disruption Intelligence
+
+The Supply Chain panel provides real-time visibility into global logistics risk across three complementary dimensions — strategic chokepoint health, shipping cost trends, and critical mineral concentration — enabling early detection of disruptions that cascade into economic and geopolitical consequences.
+
+**Chokepoints tab** — monitors 6 strategic maritime bottlenecks (Suez Canal, Strait of Malacca, Strait of Hormuz, Bab el-Mandeb, Panama Canal, Taiwan Strait) by cross-referencing live navigational warnings with AIS vessel disruption data. Each chokepoint receives a disruption score (0–100) computed from warning severity and count, mapped to color-coded status indicators (green/yellow/red). Data is cached with a 5-minute TTL for near-real-time awareness.
+
+**Shipping Rates tab** — tracks two Federal Reserve Economic Data (FRED) series: the Deep Sea Freight Producer Price Index (`PCU483111483111`) and the Freight Transportation Services Index (`TSIFRGHT`). Statistical spike detection flags abnormal price movements against recent history. Inline SVG sparklines render 24 months of rate history at a glance. Cached for 1 hour to reflect the weekly release cadence of underlying data.
+
+**Critical Minerals tab** — applies the **Herfindahl-Hirschman Index (HHI)** to 2024 global production data for minerals critical to technology and defense manufacturing — lithium, cobalt, rare earths, gallium, germanium, and others. The HHI quantifies supply concentration risk: a market dominated by a single producer scores near 10,000, while a perfectly distributed market scores near 0. Each mineral displays the top 3 producing countries with market share percentages, flagging single-country dependencies that represent strategic vulnerability (e.g., China's dominance in rare earth processing). This tab uses static production data, cached for 24 hours with no external API dependency.
+
+The panel is available on the FULL (World Monitor) variant and integrates with the infrastructure cascade model — when a chokepoint disruption coincides with high mineral concentration risk for affected trade routes, the combined signal feeds into convergence detection.
+
 ### BTC ETF Flow Estimation
 
 Ten spot Bitcoin ETFs are tracked via Yahoo Finance's 5-day chart API (IBIT, FBTC, ARKB, BITB, GBTC, HODL, BRRR, EZBC, BTCO, BTCW). Since ETF flow data requires expensive terminal subscriptions, the system estimates flow direction from publicly available signals:
@@ -932,20 +947,22 @@ This is an approximation, not a substitute for official flow data, but it captur
 
 ## Tri-Variant Architecture
 
-A single codebase produces three specialized dashboards, each with distinct feeds, panels, map layers, and branding:
+A single codebase produces four specialized dashboards, each with distinct feeds, panels, map layers, and branding:
 
-| Aspect                | World Monitor                                        | Tech Monitor                                    | Finance Monitor                                  |
-| --------------------- | ---------------------------------------------------- | ----------------------------------------------- | ------------------------------------------------ |
-| **Domain**            | worldmonitor.app                                     | tech.worldmonitor.app                           | finance.worldmonitor.app                         |
-| **Focus**             | Geopolitics, military, conflicts                     | AI/ML, startups, cybersecurity                  | Markets, trading, central banks                  |
-| **RSS Feeds**         | ~25 categories (politics, MENA, Africa, think tanks) | ~20 categories (AI, VC blogs, startups, GitHub) | ~18 categories (forex, bonds, commodities, IPOs) |
-| **Panels**            | 45 (strategic posture, CII, cascade, trade policy)   | 31 (AI labs, unicorns, accelerators)            | 31 (forex, bonds, derivatives, trade policy)     |
-| **Unique Map Layers** | Military bases, nuclear facilities, hotspots         | Tech HQs, cloud regions, startup hubs           | Stock exchanges, central banks, Gulf investments |
-| **Desktop App**       | World Monitor.app / .exe / .AppImage                 | Tech Monitor.app / .exe / .AppImage             | Finance Monitor.app / .exe / .AppImage           |
+| Aspect                | World Monitor                                        | Tech Monitor                                    | Finance Monitor                                  | Happy Monitor                                         |
+| --------------------- | ---------------------------------------------------- | ----------------------------------------------- | ------------------------------------------------ | ----------------------------------------------------- |
+| **Domain**            | worldmonitor.app                                     | tech.worldmonitor.app                           | finance.worldmonitor.app                         | happy.worldmonitor.app                                |
+| **Focus**             | Geopolitics, military, conflicts                     | AI/ML, startups, cybersecurity                  | Markets, trading, central banks                  | Good news, conservation, human progress               |
+| **RSS Feeds**         | ~25 categories (politics, MENA, Africa, think tanks) | ~20 categories (AI, VC blogs, startups, GitHub) | ~18 categories (forex, bonds, commodities, IPOs) | 10+ positive-news sources (GNN, Positive.News, Upworthy) |
+| **Panels**            | 45 (strategic posture, CII, cascade, trade policy)   | 31 (AI labs, unicorns, accelerators)            | 31 (forex, bonds, derivatives, trade policy)     | 8 (good news, breakthroughs, conservation, renewables) |
+| **Unique Map Layers** | Military bases, nuclear facilities, hotspots         | Tech HQs, cloud regions, startup hubs           | Stock exchanges, central banks, Gulf investments | Positive events, kindness, species recovery, renewables |
+| **Desktop App**       | World Monitor.app / .exe / .AppImage                 | Tech Monitor.app / .exe / .AppImage             | Finance Monitor.app / .exe / .AppImage           | (web-only)                                            |
+
+**Happy Monitor** is a deliberately uplifting counterpart to the geopolitical dashboard. All conflict, military, and threat overlays are disabled. The variant uses a warm nature-inspired color palette (`happy-theme.css`) and sources content from 10 dedicated positive-news RSS feeds (Good News Network, Positive.News, Reasons to be Cheerful, Optimist Daily, Upworthy, DailyGood, Good Good Good, GOOD Magazine, Sunny Skyz, The Better India). A two-pass positive classifier sorts articles into 6 categories — `science-health`, `nature-wildlife`, `humanity-kindness`, `innovation-tech`, `climate-wins`, `culture-community` — using source-name shortcuts (GNN sub-feeds are pre-classified) followed by priority-ordered keyword matching. Panels include Good News Feed with category filtering, Human Progress metrics, Live Counters, Today's Hero, Breakthroughs, 5 Good Things digest, Conservation Wins (species recovery stories), and Renewable Energy installations.
 
 **Build-time selection** — the `VITE_VARIANT` environment variable controls which configuration is bundled. A Vite HTML plugin transforms meta tags, Open Graph data, PWA manifest, and JSON-LD structured data at build time. Each variant tree-shakes unused data files — the finance build excludes military base coordinates and APT group data, while the geopolitical build excludes stock exchange listings.
 
-**Runtime switching** — a variant selector in the header bar (🌍 WORLD | 💻 TECH | 📈 FINANCE) navigates between deployed domains on the web, or sets `localStorage['worldmonitor-variant']` in the desktop app to switch without rebuilding.
+**Runtime switching** — a variant selector in the header bar (🌍 WORLD | 💻 TECH | 📈 FINANCE | 😊 HAPPY) navigates between deployed domains on the web, or sets `localStorage['worldmonitor-variant']` in the desktop app to switch without rebuilding.
 
 ---
 
@@ -954,7 +971,7 @@ A single codebase produces three specialized dashboards, each with distinct feed
 | Principle                           | Implementation                                                                                                                                                                                                                                                                                                                            |
 | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Speed over perfection**           | Keyword classifier is instant; LLM refines asynchronously. Users never wait.                                                                                                                                                                                                                                                              |
-| **Assume failure**                  | Per-feed circuit breakers with 5-minute cooldowns. AI fallback chain: Ollama (local) → Groq → OpenRouter → browser-side T5. Redis cache failures degrade to in-memory fallback with stale-on-error. Negative caching (5-minute backoff after upstream failures) prevents hammering downed APIs. Every edge function returns stale cached data when upstream APIs are down. In-flight request deduplication prevents concurrent clients from stampeding the same upstream endpoint. Rate-sensitive APIs (Yahoo Finance) use staggered sequential requests with 150ms inter-request delays to avoid 429 throttling. UCDP conflict data uses automatic version discovery (probing multiple API versions in parallel), discovered-version caching (1-hour TTL), and stale-on-error fallback. |
+| **Assume failure**                  | Per-feed circuit breakers with 5-minute cooldowns. AI fallback chain: Ollama (local) → Groq → OpenRouter → browser-side T5. Redis cache failures degrade to in-memory fallback with stale-on-error. Negative caching (5-minute backoff after upstream failures) prevents hammering downed APIs. Every edge function returns stale cached data when upstream APIs are down. **Cache stampede prevention** — `cachedFetchJson` uses an in-flight promise map to coalesce concurrent cache misses into a single upstream fetch: the first request creates and registers a Promise, all concurrent requests for the same key await that same Promise rather than independently hitting the upstream. Rate-sensitive APIs (Yahoo Finance) use staggered sequential requests with 150ms inter-request delays to avoid 429 throttling. UCDP conflict data uses automatic version discovery (probing multiple API versions in parallel), discovered-version caching (1-hour TTL), and stale-on-error fallback. |
 | **Show what you can't see**         | Intelligence gap tracker explicitly reports data source outages rather than silently hiding them.                                                                                                                                                                                                                                         |
 | **Browser-first compute**           | Analysis (clustering, instability scoring, surge detection) runs client-side — no backend compute dependency for core intelligence.                                                                                                                                                                                                       |
 | **Local-first geolocation**         | Country detection uses browser-side ray-casting against GeoJSON polygons rather than network reverse-geocoding. Sub-millisecond response, zero API dependency, works offline. Network geocoding is a fallback, not the primary path.                                                                                                      |
@@ -997,6 +1014,7 @@ World Monitor uses 60+ Vercel Edge Functions as a lightweight API layer, split i
 - **Finance Geo Data** — stock exchanges (92), financial centers (19), central banks (13), and commodity hubs (10) are served as static typed datasets with market caps, GFCI rankings, trading hours, and commodity specializations
 - **BIS Integration** — policy rates, real effective exchange rates, and credit-to-GDP ratios from the Bank for International Settlements, cached with 30-minute TTL
 - **WTO Trade Policy** — trade restrictions, tariff trends, bilateral trade flows, and SPS/TBT barriers from the World Trade Organization
+- **Supply Chain Intelligence** — maritime chokepoint disruption scores (cross-referencing NGA warnings + AIS data), FRED shipping freight indices with spike detection, and critical mineral supply concentration via Herfindahl-Hirschman Index analysis
 
 All edge functions include circuit breaker logic and return cached stale data when upstream APIs are unavailable, ensuring the dashboard never shows blank panels.
 
@@ -1010,7 +1028,7 @@ All three variants run on three platforms that work together:
 ┌─────────────────────────────────────┐
 │          Vercel (Edge)              │
 │  60+ edge functions · static SPA    │
-│  Proto gateway (19 typed services)  │
+│  Proto gateway (20 typed services)  │
 │  CORS allowlist · Redis cache       │
 │  AI pipeline · market analytics     │
 │  CDN caching (s-maxage) · PWA host  │
@@ -1061,7 +1079,7 @@ The Tauri desktop app wraps the dashboard in a native window (macOS, Windows, Li
                       │ spawn + env vars
                       ▼
 ┌─────────────────────────────────────────────────┐
-│         Node.js Sidecar (port 46123)            │
+│      Node.js Sidecar (dynamic port)             │
 │  60+ API handlers · Local RSS proxy             │
 │  Brotli/Gzip compression · Cloud fallback       │
 │  Traffic logging · Verbose debug mode           │
@@ -1095,6 +1113,10 @@ A unique 32-character hex token is generated per app launch using randomized has
 3. Attached as `Authorization: Bearer <token>` to every local request
 
 The `/api/service-status` health check endpoint is exempt from token validation to support monitoring tools.
+
+### Dynamic Port Allocation
+
+The sidecar defaults to port 46123 but handles `EADDRINUSE` gracefully — if the port is occupied (another World Monitor instance, or any other process), the sidecar binds to port 0 and lets the OS assign an available ephemeral port. The actual bound port is written to a port file (`sidecar.port` in the logs directory) that the Rust host polls on startup (100ms intervals, 5-second timeout). The frontend discovers the port at runtime via the `get_local_api_port` IPC command, and `getApiBaseUrl()` in `runtime.ts` is the canonical accessor — hardcoding port 46123 in frontend code is prohibited. The CSP `connect-src` directive uses `http://127.0.0.1:*` to accommodate any port.
 
 ### Local RSS Proxy
 
@@ -1200,7 +1222,9 @@ Request → [1] In-Memory Cache → [2] Redis (Upstash) → [3] Upstream API
 
 Cache keys are versioned (`opensky:v2:lamin=...`, `macro-signals:v2:default`) so schema changes don't serve stale formats. Every response includes an `X-Cache` header (`HIT`, `REDIS-HIT`, `MISS`, `REDIS-STALE`, `REDIS-ERROR-FALLBACK`) for debugging.
 
-**Shared caching layer** — all 37 sebuf handler implementations share a unified Upstash Redis caching module (`_upstash-cache.js`) with a consistent API: `getCachedOrFetch(cacheKey, ttlSeconds, fetchFn)`. This eliminates per-handler caching boilerplate and ensures every RPC endpoint benefits from the three-tier strategy. Cache keys include request-varying parameters (e.g., requested symbols, country codes, bounding boxes) to prevent cache contamination across callers with different inputs. On desktop, the same module runs in the sidecar with an in-memory + persistent file backend when Redis is unavailable.
+**Shared caching layer** — all sebuf handler implementations share a unified Upstash Redis caching module (`_upstash-cache.js`) with a consistent API: `getCachedOrFetch(cacheKey, ttlSeconds, fetchFn)`. This eliminates per-handler caching boilerplate and ensures every RPC endpoint benefits from the three-tier strategy. Cache keys include request-varying parameters (e.g., requested symbols, country codes, bounding boxes) to prevent cache contamination across callers with different inputs. On desktop, the same module runs in the sidecar with an in-memory + persistent file backend when Redis is unavailable.
+
+**In-flight promise deduplication** — the `cachedFetchJson` function in `server/_shared/redis.ts` maintains an in-memory `Map<string, Promise>` of active upstream requests. When a cache miss occurs, the first caller's fetch creates and registers a Promise in the map. All concurrent callers for the same cache key await that single Promise rather than independently hitting the upstream API. This eliminates the "thundering herd" problem where multiple edge function instances simultaneously race to refill an expired cache entry — a scenario that previously caused 50+ concurrent upstream requests during the ~15-second refill window for popular endpoints.
 
 The AI summarization pipeline adds content-based deduplication: headlines are hashed and checked against Redis before calling Groq, so the same breaking news viewed by 1,000 concurrent users triggers exactly one LLM call.
 
@@ -1222,6 +1246,9 @@ The AI summarization pipeline adds content-based deduplication: headlines are ha
 | **Bot-aware social previews**  | The `/api/story` endpoint detects social crawlers (10+ signatures: Twitter, Facebook, LinkedIn, Telegram, Discord, Reddit, WhatsApp, Google) and serves OG-tagged HTML with dynamic preview images. Regular browsers receive a 302 redirect to the SPA. |
 | **Bot protection middleware**  | Edge Middleware blocks crawlers and scrapers from all `/api/*` routes — bot user-agents and requests with short or missing `User-Agent` headers receive 403. Social preview bots are selectively allowed on `/api/story` and `/api/og-story` for Open Graph image generation. Reinforced by `robots.txt` Disallow rules on API paths. |
 | **No debug endpoints**         | The `api/debug-env.js` endpoint returns 404 in production — it exists only as a disabled placeholder.                                                                                                                                              |
+| **SSRF protection**            | The desktop sidecar's RSS proxy runs two-phase URL validation: protocol allowlist (HTTP/HTTPS only), private IP rejection (all RFC-1918 ranges, link-local, multicast, IPv6-mapped v4), DNS resolution to detect rebinding attacks, and **TOCTOU-safe pinning** — the first resolved IPv4 address is locked for the actual TCP connection, preventing DNS rebinding between check and connect. |
+| **IPC window hardening**       | All sensitive Tauri IPC commands (keychain access, token retrieval, cache operations, Polymarket bridge) gate on `require_trusted_window()`. Only windows with labels in the `TRUSTED_WINDOWS` allowlist (`main`, `settings`, `live-channels`) can invoke these commands — injected iframes or rogue webviews receive an explicit rejection. |
+| **DevTools gating**            | The developer tools menu item and its `Cmd+Alt+I` keybinding only compile into the binary when the `devtools` Cargo feature is enabled. Production builds omit the feature entirely, so DevTools cannot be opened in shipped binaries regardless of UI manipulation. |
 
 ---
 
@@ -1361,7 +1388,7 @@ Set `WS_RELAY_URL` (server-side, HTTPS) and `VITE_WS_RELAY_URL` (client-side, WS
 | **Threat Intel APIs** | abuse.ch (Feodo Tracker, URLhaus), AlienVault OTX, AbuseIPDB, C2IntelFeeds                                                                     |
 | **Economic APIs**     | FRED (Federal Reserve), EIA (Energy), Finnhub (stock quotes)                                                                                   |
 | **Localization**      | i18next (16 languages: en, fr, de, es, it, pl, pt, nl, sv, ru, ar, zh, ja, tr, th, vi), RTL support, lazy-loaded bundles, native-language feeds for 7 locales |
-| **API Contracts**     | Protocol Buffers (92 proto files, 17 services), sebuf HTTP annotations, buf CLI (lint + breaking checks), auto-generated TypeScript clients/servers + OpenAPI 3.1.0 docs |
+| **API Contracts**     | Protocol Buffers (92 proto files, 20 services), sebuf HTTP annotations, buf CLI (lint + breaking checks), auto-generated TypeScript clients/servers + OpenAPI 3.1.0 docs |
 | **Analytics**         | PostHog (privacy-first, typed event schemas, pseudonymous identity, ad-blocker bypass via reverse proxy, offline queue for desktop)             |
 | **Deployment**        | Vercel Edge Functions (60+ endpoints) + Railway (WebSocket relay) + Tauri (macOS/Windows/Linux) + PWA (installable)                            |
 | **Finance Data**      | 92 stock exchanges, 19 financial centers, 13 central banks, 10 commodity hubs, 64 Gulf FDI investments                                         |
@@ -1380,14 +1407,16 @@ Contributions welcome! See [CONTRIBUTING.md](./CONTRIBUTING.md) for detailed gui
 npm run dev          # Full variant (worldmonitor.app)
 npm run dev:tech     # Tech variant (tech.worldmonitor.app)
 npm run dev:finance  # Finance variant (finance.worldmonitor.app)
+npm run dev:happy    # Happy variant (happy.worldmonitor.app)
 
 # Production builds
 npm run build:full      # Build full variant
 npm run build:tech      # Build tech variant
 npm run build:finance   # Build finance variant
+npm run build:happy     # Build happy variant
 
-# Quality
-npm run typecheck    # TypeScript type checking
+# Quality (also runs automatically on PRs via GitHub Actions)
+npm run typecheck    # TypeScript type checking (tsc --noEmit)
 
 # Desktop packaging
 npm run desktop:package:macos:full      # .app + .dmg (World Monitor)
@@ -1454,7 +1483,7 @@ Desktop release details, signing hooks, variant outputs, and clean-machine valid
 - [x] Consolidated keychain vault (single OS prompt on startup)
 - [x] Cross-window secret synchronization (main ↔ settings)
 - [x] API key verification pipeline with soft-pass on network errors
-- [x] Proto-first API contracts (92 proto files, 17 service domains, auto-generated TypeScript + OpenAPI docs)
+- [x] Proto-first API contracts (92 proto files, 20 service domains, auto-generated TypeScript + OpenAPI docs)
 - [x] USNI Fleet Intelligence (weekly deployment reports merged with live AIS tracking)
 - [x] Aircraft enrichment via Wingbits (military confidence classification)
 - [x] Undersea cable health monitoring (NGA navigational warnings + AIS cable ship tracking)
@@ -1480,6 +1509,22 @@ Desktop release details, signing hooks, variant outputs, and clean-machine valid
 - [x] Community guidelines (CONTRIBUTING.md, CODE_OF_CONDUCT.md, SECURITY.md)
 - [x] Yahoo Finance staggered request batching to prevent 429 rate limiting
 - [x] Panel base class retry indicator (`showRetrying`) for visual feedback during data refresh
+- [x] Happy Monitor variant (positive news dashboard with conservation wins, renewables, and human progress metrics)
+- [x] Supply Chain Disruption Intelligence (chokepoint monitoring, shipping rates, critical mineral HHI analysis)
+- [x] Cache stampede prevention via `cachedFetchJson` in-flight promise deduplication across all server handlers
+- [x] Dynamic sidecar port allocation with EADDRINUSE fallback and port file discovery
+- [x] Universal CII scoring for all countries with event data (expanded from 23 curated to all nations)
+- [x] Cmd+K command palette with ~250 country commands, layer presets, and fuzzy search scoring
+- [x] SSRF protection with DNS resolution, private IP rejection, and TOCTOU-safe address pinning
+- [x] IPC window hardening with trusted-window allowlist for all sensitive Tauri commands
+- [x] DevTools gating via Cargo feature flag (disabled in production builds)
+- [x] TypeScript CI check (GitHub Actions `tsc --noEmit` on every PR)
+- [x] Trade route visualization (13 global lanes as animated deck.gl arcs with chokepoint markers)
+- [x] OpenSky API optimization (4→2 merged query regions covering all military hotspots)
+- [x] Global streaming video quality control (auto/360p/480p/720p with live propagation)
+- [x] Ransomware.live feed added to cyber threat intelligence sources
+- [x] Browser Local Model toggle properly gated (ML worker only initializes when enabled)
+- [x] Linux AppImage crash fixes (WebKitGTK DMA-BUF rendering, console noise suppression)
 - [ ] Mobile-optimized views
 - [ ] Push notifications for critical alerts
 - [ ] Self-hosted Docker image
