@@ -1211,35 +1211,22 @@ fn main() {
                 unsafe { env::set_var("GTK_IM_MODULE", "gtk-im-context-simple") };
             }
 
-            // The linuxdeploy GStreamer hook force-overrides GST_PLUGIN_SYSTEM_PATH_1_0
-            // and GST_PLUGIN_PATH_1_0 to only contain bundled plugins.  The AppImage
-            // bundles GStreamer from the CI build system (Ubuntu 24.04, GStreamer 1.24)
-            // but does NOT bundle codec plugins (gst-libav, fakevideosink from
-            // gst-plugins-bad).  On hosts with newer GStreamer (e.g. Arch with 1.28),
-            // the bundled-only path means host plugins are invisible → WebKit can't
-            // play video.  Append host plugin directories as fallback so the system's
-            // codec plugins are discoverable.
-            let host_gst_dirs = [
-                "/usr/lib/x86_64-linux-gnu/gstreamer-1.0",
-                "/usr/lib/gstreamer-1.0",
-                "/usr/lib64/gstreamer-1.0",
-                "/usr/lib/aarch64-linux-gnu/gstreamer-1.0",
-            ];
-            let existing: Vec<String> = host_gst_dirs
-                .iter()
-                .filter(|d| std::path::Path::new(d).is_dir())
-                .map(|d| d.to_string())
-                .collect();
-            if !existing.is_empty() {
-                let suffix = existing.join(":");
-                for var in ["GST_PLUGIN_PATH_1_0", "GST_PLUGIN_SYSTEM_PATH_1_0"] {
-                    let current = env::var(var).unwrap_or_default();
-                    if !current.is_empty() {
-                        unsafe { env::set_var(var, format!("{current}:{suffix}")) };
-                    } else {
-                        unsafe { env::set_var(var, &suffix) };
-                    }
-                }
+            // The linuxdeploy GStreamer hook sets GST_PLUGIN_PATH_1_0 and
+            // GST_PLUGIN_SYSTEM_PATH_1_0 to only contain bundled plugins.
+            // CI installs the full GStreamer codec suite (base, good, bad,
+            // ugly, libav, gl) so bundleMediaFramework=true bundles everything.
+            //
+            // IMPORTANT: Do NOT append host plugin directories — mixing plugins
+            // compiled against a different GStreamer version causes ABI mismatches
+            // (undefined symbol errors like gst_util_floor_log2, mpg123_open_handle64)
+            // and leaves WebKit without usable codecs.  The AppImage must be fully
+            // self-contained for GStreamer.
+            //
+            // If the linuxdeploy hook didn't set the paths (shouldn't happen),
+            // explicitly block host plugin scanning to prevent ABI conflicts.
+            if env::var_os("GST_PLUGIN_SYSTEM_PATH_1_0").is_none() {
+                // Empty string prevents GStreamer from scanning /usr/lib/gstreamer-1.0
+                unsafe { env::set_var("GST_PLUGIN_SYSTEM_PATH_1_0", "") };
             }
         }
     }
