@@ -65,6 +65,11 @@
     },
     "macOS": {
       "hardenedRuntime": true
+    },
+    "linux": {
+      "appimage": {
+        "bundleMediaFramework": true
+      }
     }
   }
 }

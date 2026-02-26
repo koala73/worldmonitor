@@ -23,6 +23,11 @@
     "macOS": {
       "hardenedRuntime": true
     },
+    "linux": {
+      "appimage": {
+        "bundleMediaFramework": true
+      }
+    },
     "windows": {
       "digestAlgorithm": "sha256",
       "timestampUrl": "https://timestamp.digicert.com"
