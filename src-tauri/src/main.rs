@@ -1131,6 +1131,38 @@ fn main() {
             unsafe { env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1") };
         }
 
+        // WebKitGTK promotes iframes, <video>, and canvas to GPU-textured
+        // compositing layers.  In VMs (Apple Virtualization.framework,
+        // QEMU/KVM, VMware, etc.) the virtio-gpu driver often only supports
+        // 2D or limited GL — GBM buffer allocation for compositing layers
+        // fails silently, rendering iframe/video content as black while the
+        // main page (software-tiled) works fine.
+        //
+        // Detect VM environments via /proc/cpuinfo "hypervisor" flag or
+        // sys_vendor strings and disable accelerated compositing + force
+        // software GL so all content renders through the CPU path.
+        let in_vm = std::fs::read_to_string("/proc/cpuinfo")
+            .map(|c| c.contains("hypervisor"))
+            .unwrap_or(false)
+            || std::fs::read_to_string("/sys/class/dmi/id/sys_vendor")
+                .map(|v| {
+                    let v = v.trim().to_lowercase();
+                    v.contains("qemu") || v.contains("vmware") || v.contains("virtualbox")
+                        || v.contains("apple") || v.contains("parallels") || v.contains("xen")
+                        || v.contains("microsoft") || v.contains("innotek")
+                })
+                .unwrap_or(false);
+
+        if in_vm {
+            if env::var_os("WEBKIT_DISABLE_COMPOSITING_MODE").is_none() {
+                unsafe { env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1") };
+            }
+            if env::var_os("LIBGL_ALWAYS_SOFTWARE").is_none() {
+                unsafe { env::set_var("LIBGL_ALWAYS_SOFTWARE", "1") };
+            }
+            eprintln!("[tauri] VM detected; disabled WebKitGTK accelerated compositing for iframe/video compatibility");
+        }
+
         // On Wayland-only compositors (e.g. niri, river, sway without XWayland),
         // GTK3 may fail to initialise if it defaults to X11 backend first and no
         // DISPLAY is set.  Explicitly prefer the Wayland backend when a Wayland
