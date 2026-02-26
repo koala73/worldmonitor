@@ -576,7 +576,7 @@
       "noMinerals": "Mineral data loading...",
       "fredKeyMissing": "FRED API key required for shipping rates — add it in Settings. Chokepoints and minerals available without key.",
       "upstreamUnavailable": "Supply chain data temporarily unavailable — showing cached data",
-      "spikeAlert": "Spike detected — rate significantly above 52-week average",
+      "spikeAlert": "Spike detected — rate significantly above 52-week average (weekly)",
       "warnings": "warning(s)",
       "mineral": "Mineral",
       "topProducers": "Top Producers",

@@ -7248,6 +7248,23 @@ a.prediction-link:hover {
   color: var(--green);
 }
 
+.sc-status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin: 0 4px;
+  vertical-align: middle;
+}
+.sc-dot-red { background: var(--red, #ff5252); }
+.sc-dot-yellow { background: var(--yellow, #ffd740); }
+.sc-dot-green { background: var(--green, #69f0ae); }
+
+.sc-risk-critical { color: var(--red, #ff5252); font-weight: 600; }
+.sc-risk-high { color: var(--orange, #ffab40); font-weight: 600; }
+.sc-risk-moderate { color: var(--yellow, #ffd740); }
+.sc-risk-low { color: var(--green, #69f0ae); }
+
 .trade-sector {
   font-size: 10px;
   color: var(--text-dim);

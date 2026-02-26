@@ -42,18 +42,28 @@ function makeInternalCtx(): { request: Request; pathParams: Record<string, strin
   return { request: new Request('http://internal'), pathParams: {}, headers: {} };
 }
 
-async function fetchChokepointData(): Promise<ChokepointInfo[]> {
+interface ChokepointFetchResult {
+  chokepoints: ChokepointInfo[];
+  upstreamUnavailable: boolean;
+}
+
+async function fetchChokepointData(): Promise<ChokepointFetchResult> {
   const ctx = makeInternalCtx();
 
+  let navFailed = false;
+  let vesselFailed = false;
+
   const [navResult, vesselResult] = await Promise.all([
-    listNavigationalWarnings(ctx, { area: '' }).catch((): ListNavigationalWarningsResponse => ({ warnings: [], pagination: undefined })),
-    getVesselSnapshot(ctx, {}).catch((): GetVesselSnapshotResponse => ({ snapshot: undefined })),
+    listNavigationalWarnings(ctx, { area: '' }).catch((): ListNavigationalWarningsResponse => { navFailed = true; return { warnings: [], pagination: undefined }; }),
+    getVesselSnapshot(ctx, {}).catch((): GetVesselSnapshotResponse => { vesselFailed = true; return { snapshot: undefined }; }),
   ]);
 
   const warnings = navResult.warnings || [];
   const disruptions: AisDisruption[] = vesselResult.snapshot?.disruptions || [];
+  const bothSourcesEmpty = warnings.length === 0 && disruptions.length === 0;
+  const upstreamUnavailable = navFailed || vesselFailed || bothSourcesEmpty;
 
-  return CHOKEPOINTS.map((cp): ChokepointInfo => {
+  const chokepoints = CHOKEPOINTS.map((cp): ChokepointInfo => {
     const matchedWarnings = warnings.filter(w =>
       cp.areaKeywords.some(kw => w.text.toLowerCase().includes(kw) || w.area.toLowerCase().includes(kw))
     );
@@ -91,6 +101,8 @@ async function fetchChokepointData(): Promise<ChokepointInfo[]> {
       description: descriptions.join('; '),
     };
   });
+
+  return { chokepoints, upstreamUnavailable };
 }
 
 export async function getChokepointStatus(
@@ -102,8 +114,8 @@ export async function getChokepointStatus(
       REDIS_CACHE_KEY,
       REDIS_CACHE_TTL,
       async () => {
-        const chokepoints = await fetchChokepointData();
-        return { chokepoints, fetchedAt: new Date().toISOString(), upstreamUnavailable: false };
+        const { chokepoints, upstreamUnavailable } = await fetchChokepointData();
+        return { chokepoints, fetchedAt: new Date().toISOString(), upstreamUnavailable };
       },
     );
 

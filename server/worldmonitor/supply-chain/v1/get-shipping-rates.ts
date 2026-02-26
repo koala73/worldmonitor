@@ -26,6 +26,7 @@ async function fetchBDI(): Promise<ShippingIndex | null> {
       series_id: 'BDIY',
       api_key: apiKey,
       file_type: 'json',
+      frequency: 'w',
       sort_order: 'desc',
       limit: '52',
     });
