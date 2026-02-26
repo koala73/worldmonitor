@@ -108,7 +108,7 @@ async function tryBrowserT5(headlines: string[], modelId?: string): Promise<Summ
     lastAttemptedProvider = 'browser';
 
     const combinedText = headlines.slice(0, 5).map(h => h.slice(0, 80)).join('. ');
-    const prompt = `Summarize the main themes from these news headlines in 2 sentences: ${combinedText}`;
+    const prompt = `Summarize the most important headline in 2 concise sentences (under 60 words): ${combinedText}`;
 
     const [summary] = await mlWorker.summarize([prompt], modelId);
 

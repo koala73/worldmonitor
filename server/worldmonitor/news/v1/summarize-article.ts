@@ -114,7 +114,7 @@ export async function summarizeArticle(
               { role: 'user', content: userPrompt },
             ],
             temperature: 0.3,
-            max_tokens: 150,
+            max_tokens: 100,
             top_p: 0.9,
             ...extraBody,
           }),
