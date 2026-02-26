@@ -5,6 +5,7 @@ import { mkdir, readFile, writeFile } from 'fs/promises';
 import { brotliCompress } from 'zlib';
 import { promisify } from 'util';
 import { type VariantMeta } from './variants';
+import { ALLOWED_DOMAINS } from '../api/rss-allowed-domains.js';
 
 const brotliCompressAsync = promisify(brotliCompress);
 const BROTLI_EXTENSIONS = new Set(['.js', '.mjs', '.css', '.html', '.svg', '.json', '.txt', '.xml', '.wasm']);
@@ -151,7 +152,7 @@ export function polymarketPlugin(): Plugin {
   };
 }
 
-export function sebufApiPlugin(serverRoot: string): Plugin {
+export function sebufApiPlugin(): Plugin {
   let cachedRouter: any = null;
   let cachedCorsMod: any = null;
 
@@ -179,49 +180,49 @@ export function sebufApiPlugin(serverRoot: string): Plugin {
       givingServerMod, givingHandlerMod,
       tradeServerMod, tradeHandlerMod,
     ] = await Promise.all([
-      import(resolve(serverRoot, 'server/router')),
-      import(resolve(serverRoot, 'server/cors')),
-      import(resolve(serverRoot, 'server/error-mapper')),
-      import(resolve(serverRoot, 'src/generated/server/worldmonitor/seismology/v1/service_server')),
-      import(resolve(serverRoot, 'server/worldmonitor/seismology/v1/handler')),
-      import(resolve(serverRoot, 'src/generated/server/worldmonitor/wildfire/v1/service_server')),
-      import(resolve(serverRoot, 'server/worldmonitor/wildfire/v1/handler')),
-      import(resolve(serverRoot, 'src/generated/server/worldmonitor/climate/v1/service_server')),
-      import(resolve(serverRoot, 'server/worldmonitor/climate/v1/handler')),
-      import(resolve(serverRoot, 'src/generated/server/worldmonitor/prediction/v1/service_server')),
-      import(resolve(serverRoot, 'server/worldmonitor/prediction/v1/handler')),
-      import(resolve(serverRoot, 'src/generated/server/worldmonitor/displacement/v1/service_server')),
-      import(resolve(serverRoot, 'server/worldmonitor/displacement/v1/handler')),
-      import(resolve(serverRoot, 'src/generated/server/worldmonitor/aviation/v1/service_server')),
-      import(resolve(serverRoot, 'server/worldmonitor/aviation/v1/handler')),
-      import(resolve(serverRoot, 'src/generated/server/worldmonitor/research/v1/service_server')),
-      import(resolve(serverRoot, 'server/worldmonitor/research/v1/handler')),
-      import(resolve(serverRoot, 'src/generated/server/worldmonitor/unrest/v1/service_server')),
-      import(resolve(serverRoot, 'server/worldmonitor/unrest/v1/handler')),
-      import(resolve(serverRoot, 'src/generated/server/worldmonitor/conflict/v1/service_server')),
-      import(resolve(serverRoot, 'server/worldmonitor/conflict/v1/handler')),
-      import(resolve(serverRoot, 'src/generated/server/worldmonitor/maritime/v1/service_server')),
-      import(resolve(serverRoot, 'server/worldmonitor/maritime/v1/handler')),
-      import(resolve(serverRoot, 'src/generated/server/worldmonitor/cyber/v1/service_server')),
-      import(resolve(serverRoot, 'server/worldmonitor/cyber/v1/handler')),
-      import(resolve(serverRoot, 'src/generated/server/worldmonitor/economic/v1/service_server')),
-      import(resolve(serverRoot, 'server/worldmonitor/economic/v1/handler')),
-      import(resolve(serverRoot, 'src/generated/server/worldmonitor/infrastructure/v1/service_server')),
-      import(resolve(serverRoot, 'server/worldmonitor/infrastructure/v1/handler')),
-      import(resolve(serverRoot, 'src/generated/server/worldmonitor/market/v1/service_server')),
-      import(resolve(serverRoot, 'server/worldmonitor/market/v1/handler')),
-      import(resolve(serverRoot, 'src/generated/server/worldmonitor/news/v1/service_server')),
-      import(resolve(serverRoot, 'server/worldmonitor/news/v1/handler')),
-      import(resolve(serverRoot, 'src/generated/server/worldmonitor/intelligence/v1/service_server')),
-      import(resolve(serverRoot, 'server/worldmonitor/intelligence/v1/handler')),
-      import(resolve(serverRoot, 'src/generated/server/worldmonitor/military/v1/service_server')),
-      import(resolve(serverRoot, 'server/worldmonitor/military/v1/handler')),
-      import(resolve(serverRoot, 'src/generated/server/worldmonitor/positive_events/v1/service_server')),
-      import(resolve(serverRoot, 'server/worldmonitor/positive-events/v1/handler')),
-      import(resolve(serverRoot, 'src/generated/server/worldmonitor/giving/v1/service_server')),
-      import(resolve(serverRoot, 'server/worldmonitor/giving/v1/handler')),
-      import(resolve(serverRoot, 'src/generated/server/worldmonitor/trade/v1/service_server')),
-      import(resolve(serverRoot, 'server/worldmonitor/trade/v1/handler')),
+      import('./server/router'),
+      import('./server/cors'),
+      import('./server/error-mapper'),
+      import('./src/generated/server/worldmonitor/seismology/v1/service_server'),
+      import('./server/worldmonitor/seismology/v1/handler'),
+      import('./src/generated/server/worldmonitor/wildfire/v1/service_server'),
+      import('./server/worldmonitor/wildfire/v1/handler'),
+      import('./src/generated/server/worldmonitor/climate/v1/service_server'),
+      import('./server/worldmonitor/climate/v1/handler'),
+      import('./src/generated/server/worldmonitor/prediction/v1/service_server'),
+      import('./server/worldmonitor/prediction/v1/handler'),
+      import('./src/generated/server/worldmonitor/displacement/v1/service_server'),
+      import('./server/worldmonitor/displacement/v1/handler'),
+      import('./src/generated/server/worldmonitor/aviation/v1/service_server'),
+      import('./server/worldmonitor/aviation/v1/handler'),
+      import('./src/generated/server/worldmonitor/research/v1/service_server'),
+      import('./server/worldmonitor/research/v1/handler'),
+      import('./src/generated/server/worldmonitor/unrest/v1/service_server'),
+      import('./server/worldmonitor/unrest/v1/handler'),
+      import('./src/generated/server/worldmonitor/conflict/v1/service_server'),
+      import('./server/worldmonitor/conflict/v1/handler'),
+      import('./src/generated/server/worldmonitor/maritime/v1/service_server'),
+      import('./server/worldmonitor/maritime/v1/handler'),
+      import('./src/generated/server/worldmonitor/cyber/v1/service_server'),
+      import('./server/worldmonitor/cyber/v1/handler'),
+      import('./src/generated/server/worldmonitor/economic/v1/service_server'),
+      import('./server/worldmonitor/economic/v1/handler'),
+      import('./src/generated/server/worldmonitor/infrastructure/v1/service_server'),
+      import('./server/worldmonitor/infrastructure/v1/handler'),
+      import('./src/generated/server/worldmonitor/market/v1/service_server'),
+      import('./server/worldmonitor/market/v1/handler'),
+      import('./src/generated/server/worldmonitor/news/v1/service_server'),
+      import('./server/worldmonitor/news/v1/handler'),
+      import('./src/generated/server/worldmonitor/intelligence/v1/service_server'),
+      import('./server/worldmonitor/intelligence/v1/handler'),
+      import('./src/generated/server/worldmonitor/military/v1/service_server'),
+      import('./server/worldmonitor/military/v1/handler'),
+      import('./src/generated/server/worldmonitor/positive_events/v1/service_server'),
+      import('./server/worldmonitor/positive-events/v1/handler'),
+      import('./src/generated/server/worldmonitor/giving/v1/service_server'),
+      import('./server/worldmonitor/giving/v1/handler'),
+      import('./src/generated/server/worldmonitor/trade/v1/service_server'),
+      import('./server/worldmonitor/trade/v1/handler'),
     ]);
 
     const serverOptions = { onError: errorMod.mapErrorToResponse };
@@ -352,52 +353,9 @@ export function sebufApiPlugin(serverRoot: string): Plugin {
   };
 }
 
-const RSS_PROXY_ALLOWED_DOMAINS = new Set([
-  'feeds.bbci.co.uk', 'www.theguardian.com', 'feeds.npr.org', 'news.google.com',
-  'www.aljazeera.com', 'rss.cnn.com', 'hnrss.org', 'feeds.arstechnica.com',
-  'www.theverge.com', 'www.cnbc.com', 'feeds.marketwatch.com', 'www.defenseone.com',
-  'breakingdefense.com', 'www.bellingcat.com', 'techcrunch.com', 'huggingface.co',
-  'www.technologyreview.com', 'rss.arxiv.org', 'export.arxiv.org',
-  'www.federalreserve.gov', 'www.sec.gov', 'www.whitehouse.gov', 'www.state.gov',
-  'www.defense.gov', 'home.treasury.gov', 'www.justice.gov', 'tools.cdc.gov',
-  'www.fema.gov', 'www.dhs.gov', 'www.thedrive.com', 'krebsonsecurity.com',
-  'finance.yahoo.com', 'thediplomat.com', 'venturebeat.com', 'foreignpolicy.com',
-  'www.ft.com', 'openai.com', 'www.reutersagency.com', 'feeds.reuters.com',
-  'rsshub.app', 'asia.nikkei.com', 'www.cfr.org', 'www.csis.org', 'www.politico.com',
-  'www.brookings.edu', 'layoffs.fyi', 'www.defensenews.com', 'www.militarytimes.com',
-  'taskandpurpose.com', 'news.usni.org', 'www.oryxspioenkop.com', 'www.gov.uk',
-  'www.foreignaffairs.com', 'www.atlanticcouncil.org',
-  'www.zdnet.com', 'www.techmeme.com', 'www.darkreading.com', 'www.schneier.com',
-  'rss.politico.com', 'www.anandtech.com', 'www.tomshardware.com', 'www.semianalysis.com',
-  'feed.infoq.com', 'thenewstack.io', 'devops.com', 'dev.to', 'lobste.rs', 'changelog.com',
-  'seekingalpha.com', 'news.crunchbase.com', 'www.saastr.com', 'feeds.feedburner.com',
-  'www.producthunt.com', 'www.axios.com', 'github.blog', 'githubnext.com',
-  'mshibanami.github.io', 'www.engadget.com', 'news.mit.edu', 'dev.events',
-  'www.ycombinator.com', 'a16z.com', 'review.firstround.com', 'www.sequoiacap.com',
-  'www.nfx.com', 'www.aaronsw.com', 'bothsidesofthetable.com', 'www.lennysnewsletter.com',
-  'stratechery.com', 'www.eu-startups.com', 'tech.eu', 'sifted.eu', 'www.techinasia.com',
-  'kr-asia.com', 'techcabal.com', 'disrupt-africa.com', 'lavca.org', 'contxto.com',
-  'inc42.com', 'yourstory.com', 'pitchbook.com', 'www.cbinsights.com', 'www.techstars.com',
-  'english.alarabiya.net', 'www.arabnews.com', 'www.timesofisrael.com', 'www.haaretz.com',
-  'www.scmp.com', 'kyivindependent.com', 'www.themoscowtimes.com', 'feeds.24.com',
-  'feeds.capi24.com', 'www.france24.com', 'www.euronews.com', 'www.lemonde.fr',
-  'rss.dw.com', 'www.africanews.com', 'www.lasillavacia.com', 'www.channelnewsasia.com',
-  'www.thehindu.com', 'news.un.org', 'www.iaea.org', 'www.who.int', 'www.cisa.gov',
-  'www.crisisgroup.org',
-  'rusi.org', 'warontherocks.com', 'www.aei.org', 'responsiblestatecraft.org',
-  'www.fpri.org', 'jamestown.org', 'www.chathamhouse.org', 'ecfr.eu', 'www.gmfus.org',
-  'www.wilsoncenter.org', 'www.lowyinstitute.org', 'www.mei.edu', 'www.stimson.org',
-  'www.cnas.org', 'carnegieendowment.org', 'www.rand.org', 'fas.org',
-  'www.armscontrol.org', 'www.nti.org', 'thebulletin.org', 'www.iss.europa.eu',
-  'www.fao.org', 'worldbank.org', 'www.imf.org',
-  'www.hurriyet.com.tr', 'tvn24.pl', 'www.polsatnews.pl', 'www.rp.pl', 'meduza.io',
-  'novayagazeta.eu', 'www.bangkokpost.com', 'vnexpress.net', 'www.abc.net.au',
-  'news.ycombinator.com',
-  'www.coindesk.com', 'cointelegraph.com',
-  'www.goodnewsnetwork.org', 'www.positive.news', 'reasonstobecheerful.world',
-  'www.optimistdaily.com', 'www.sunnyskyz.com', 'www.huffpost.com',
-  'www.sciencedaily.com', 'feeds.nature.com', 'www.livescience.com', 'www.newscientist.com',
-]);
+// RSS proxy domain allowlist — imported from shared single source of truth
+// (api/rss-allowed-domains.js) to prevent dev/prod drift.
+const RSS_PROXY_ALLOWED_DOMAINS = new Set(ALLOWED_DOMAINS);
 
 export function rssProxyPlugin(): Plugin {
   return {

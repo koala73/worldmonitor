@@ -1,7 +1,6 @@
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import { resolve } from 'path';
-import { fileURLToPath } from 'url';
 import pkg from './package.json';
 
 // Modularized configurations
@@ -20,7 +19,6 @@ const isE2E = process.env.VITE_E2E === '1';
 const isDesktopBuild = process.env.VITE_DESKTOP_RUNTIME === '1';
 const activeVariant = process.env.VITE_VARIANT || 'full';
 const activeMeta = VARIANT_META[activeVariant] || VARIANT_META.full;
-const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
 export default defineConfig({
   define: {
@@ -31,7 +29,7 @@ export default defineConfig({
     polymarketPlugin(),
     rssProxyPlugin(),
     youtubeLivePlugin(),
-    sebufApiPlugin(__dirname),
+    sebufApiPlugin(),
     brotliPrecompressPlugin(),
     VitePWA({
       registerType: 'autoUpdate',
@@ -175,9 +173,11 @@ export default defineConfig({
     },
   },
   build: {
+    // Geospatial bundles (maplibre/deck) are expected to be large even when split.
     chunkSizeWarningLimit: 1200,
     rollupOptions: {
       onwarn(warning, warn) {
+        // onnxruntime-web ships a minified browser bundle that intentionally uses eval.
         if (
           warning.code === 'EVAL'
           && typeof warning.id === 'string'
@@ -211,6 +211,8 @@ export default defineConfig({
             if (id.includes('/@sentry/')) return 'sentry';
           }
           if (id.includes('/src/components/') && id.endsWith('Panel.ts')) return 'panels';
+          // Give lazy-loaded locale chunks a recognizable prefix so the
+          // service-worker can glob-ignore them (locale-*.js).
           const localeMatch = id.match(/\/locales\/(\w+)\.json$/);
           if (localeMatch && localeMatch[1] !== 'en') return `locale-${localeMatch[1]}`;
           return undefined;

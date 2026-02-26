@@ -31,6 +31,8 @@ export const proxyConfig = () => ({
   },
   // FRED Economic Data - handled by Vercel serverless function in prod
   // In dev, we proxy to the API directly with the key from .env
+  // NOTE: Reads FRED_API_KEY from process.env at proxy-creation time.
+  // The key must be set in .env before starting the dev server.
   '/api/fred-data': {
     target: 'https://api.stlouisfed.org',
     changeOrigin: true,
