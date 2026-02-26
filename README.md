@@ -1525,6 +1525,10 @@ Desktop release details, signing hooks, variant outputs, and clean-machine valid
 - [x] Ransomware.live feed added to cyber threat intelligence sources
 - [x] Browser Local Model toggle properly gated (ML worker only initializes when enabled)
 - [x] Linux AppImage crash fixes (WebKitGTK DMA-BUF rendering, console noise suppression)
+- [x] Yahoo Finance rate-limit UX (user-facing messages instead of silent failures across all market panels)
+- [x] Sidecar auth resilience (401-retry with token refresh, settings window `diagFetch` auth)
+- [x] Verbose toggle persistence to writable data directory (fixes read-only app bundle on macOS)
+- [x] Finnhub-to-Yahoo fallback routing when API key is missing
 - [ ] Mobile-optimized views
 - [ ] Push notifications for critical alerts
 - [ ] Self-hosted Docker image
