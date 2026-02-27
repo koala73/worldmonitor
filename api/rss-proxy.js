@@ -166,6 +166,7 @@ const ALLOWED_DOMAINS = [
   'kyivindependent.com',
   'www.themoscowtimes.com',
   'feeds.24.com',
+  'feeds.news24.com',  // News24 main feed domain
   'feeds.capi24.com',  // News24 redirect destination
   // International News Sources
   'www.france24.com',

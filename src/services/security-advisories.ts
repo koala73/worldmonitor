@@ -1,6 +1,12 @@
+import { isDesktopRuntime } from '@/services/runtime';
 import { proxyUrl } from '@/utils';
 import { getPersistentCache, setPersistentCache } from './persistent-cache';
 import { dataFreshness } from './data-freshness';
+
+function advisoryFeedUrl(feedUrl: string): string {
+  if (isDesktopRuntime()) return proxyUrl(feedUrl);
+  return `/api/rss-proxy?url=${encodeURIComponent(feedUrl)}`;
+}
 
 export interface SecurityAdvisory {
   title: string;
@@ -108,7 +114,7 @@ const ADVISORY_FEEDS: AdvisoryFeed[] = [
   { name: 'ECDC Epidemiological Updates', sourceCountry: 'EU', url: 'https://www.ecdc.europa.eu/en/taxonomy/term/1310/feed' },
   { name: 'ECDC Threats Report', sourceCountry: 'EU', url: 'https://www.ecdc.europa.eu/en/taxonomy/term/1505/feed' },
   { name: 'ECDC Risk Assessments', sourceCountry: 'EU', url: 'https://www.ecdc.europa.eu/en/taxonomy/term/1295/feed' },
-  { name: 'ECDC Avian Influenza', sourceCountry: 'EU', url: 'https://www.ecdc.europa.eu/en/taxonomy/term/323//feed' },
+  { name: 'ECDC Avian Influenza', sourceCountry: 'EU', url: 'https://www.ecdc.europa.eu/en/taxonomy/term/323/feed' },
   { name: 'ECDC Publications', sourceCountry: 'EU', url: 'https://www.ecdc.europa.eu/en/taxonomy/term/1244/feed' },
   { name: 'WHO News', sourceCountry: 'INT', url: 'https://www.who.int/rss-feeds/news-english.xml' },
   { name: 'WHO Africa Emergencies', sourceCountry: 'INT', url: 'https://www.afro.who.int/rss/emergencies.xml' },
@@ -185,7 +191,7 @@ export async function fetchSecurityAdvisories(
   const feedResults = await Promise.allSettled(
     ADVISORY_FEEDS.map(async (feed) => {
       try {
-        const response = await fetch(proxyUrl(feed.url), {
+        const response = await fetch(advisoryFeedUrl(feed.url), {
           headers: { Accept: 'application/rss+xml, application/xml, text/xml, */*' },
           ...(signal ? { signal } : {}),
         });
