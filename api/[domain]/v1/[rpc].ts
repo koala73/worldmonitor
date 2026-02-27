@@ -181,17 +181,22 @@ export default async function handler(originalRequest: Request): Promise<Respons
   // that still send POST to endpoints converted in PR #468.
   let matchedHandler = router.match(request);
   if (!matchedHandler && request.method === 'POST') {
-    const url = new URL(request.url);
-    try {
-      const body = await request.clone().json();
-      for (const [k, v] of Object.entries(body)) {
-        if (Array.isArray(v)) v.forEach((item) => url.searchParams.append(k, String(item)));
-        else if (v != null) url.searchParams.set(k, String(v));
-      }
-    } catch {}
-    const getReq = new Request(url.toString(), { method: 'GET', headers: request.headers });
-    matchedHandler = router.match(getReq);
-    if (matchedHandler) request = getReq;
+    const contentLen = parseInt(request.headers.get('Content-Length') ?? '0', 10);
+    if (contentLen < 1_048_576) {
+      const url = new URL(request.url);
+      try {
+        const body = await request.clone().json();
+        const isScalar = (x: unknown): x is string | number | boolean =>
+          typeof x === 'string' || typeof x === 'number' || typeof x === 'boolean';
+        for (const [k, v] of Object.entries(body as Record<string, unknown>)) {
+          if (Array.isArray(v)) v.forEach((item) => { if (isScalar(item)) url.searchParams.append(k, String(item)); });
+          else if (isScalar(v)) url.searchParams.set(k, String(v));
+        }
+      } catch {}
+      const getReq = new Request(url.toString(), { method: 'GET', headers: request.headers });
+      matchedHandler = router.match(getReq);
+      if (matchedHandler) request = getReq;
+    }
   }
   if (!matchedHandler) {
     return new Response(JSON.stringify({ error: 'Not found' }), {
