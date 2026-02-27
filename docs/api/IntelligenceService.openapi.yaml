@@ -101,7 +101,7 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
-    /api/intelligence/v1/get-country-intel-brief/{country_code}:
+    /api/intelligence/v1/get-country-intel-brief:
         get:
             tags:
                 - IntelligenceService
@@ -110,7 +110,7 @@ paths:
             operationId: GetCountryIntelBrief
             parameters:
                 - name: country_code
-                  in: path
+                  in: query
                   description: ISO 3166-1 alpha-2 country code.
                   required: true
                   schema:

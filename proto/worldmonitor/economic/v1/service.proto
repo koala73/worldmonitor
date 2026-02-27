@@ -18,7 +18,7 @@ service EconomicService {
 
   // GetFredSeries retrieves time series data from the Federal Reserve Economic Data.
   rpc GetFredSeries(GetFredSeriesRequest) returns (GetFredSeriesResponse) {
-    option (sebuf.http.config) = {path: "/get-fred-series/{series_id}", method: HTTP_METHOD_GET};
+    option (sebuf.http.config) = {path: "/get-fred-series", method: HTTP_METHOD_GET};
   }
 
   // ListWorldBankIndicators retrieves development indicator data from the World Bank.

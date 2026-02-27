@@ -11,7 +11,8 @@ message GetCountryIntelBriefRequest {
   string country_code = 1 [
     (buf.validate.field).required = true,
     (buf.validate.field).string.len = 2,
-    (buf.validate.field).string.pattern = "^[A-Z]{2}$"
+    (buf.validate.field).string.pattern = "^[A-Z]{2}$",
+    (sebuf.http.query) = {name: "country_code"}
   ];
 }
 

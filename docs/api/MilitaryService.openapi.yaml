@@ -116,7 +116,7 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
-    /api/military/v1/get-aircraft-details/{icao24}:
+    /api/military/v1/get-aircraft-details:
         get:
             tags:
                 - MilitaryService
@@ -125,7 +125,7 @@ paths:
             operationId: GetAircraftDetails
             parameters:
                 - name: icao24
-                  in: path
+                  in: query
                   description: ICAO 24-bit hex address (lowercase).
                   required: true
                   schema:

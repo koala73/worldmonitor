@@ -47,6 +47,6 @@ service MarketService {
 
   // GetCountryStockIndex retrieves the primary stock index for a country from Yahoo Finance.
   rpc GetCountryStockIndex(GetCountryStockIndexRequest) returns (GetCountryStockIndexResponse) {
-    option (sebuf.http.config) = {path: "/get-country-stock-index/{country_code}", method: HTTP_METHOD_GET};
+    option (sebuf.http.config) = {path: "/get-country-stock-index", method: HTTP_METHOD_GET};
   }
 }

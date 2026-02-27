@@ -258,9 +258,9 @@ export class EconomicServiceClient {
   }
 
   async getFredSeries(req: GetFredSeriesRequest, options?: EconomicServiceCallOptions): Promise<GetFredSeriesResponse> {
-    let path = "/api/economic/v1/get-fred-series/{series_id}";
-    path = path.replace("{series_id}", encodeURIComponent(String(req.seriesId)));
+    const path = "/api/economic/v1/get-fred-series";
     const params = new URLSearchParams();
+    if (req.seriesId != null && req.seriesId !== "") params.set("series_id", req.seriesId);
     if (req.limit != null && req.limit !== 0) params.set("limit", String(req.limit));
     const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 

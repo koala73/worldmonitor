@@ -3,16 +3,17 @@ syntax = "proto3";
 package worldmonitor.conflict.v1;
 
 import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
 import "worldmonitor/conflict/v1/humanitarian_summary.proto";
 
 // GetHumanitarianSummaryRequest specifies which country to retrieve the humanitarian summary for.
 message GetHumanitarianSummaryRequest {
   // ISO 3166-1 alpha-2 country code (e.g., "YE", "SD", "SO").
-  // This is a path parameter — no query annotation needed.
   string country_code = 1 [
     (buf.validate.field).required = true,
     (buf.validate.field).string.len = 2,
-    (buf.validate.field).string.pattern = "^[A-Z]{2}$"
+    (buf.validate.field).string.pattern = "^[A-Z]{2}$",
+    (sebuf.http.query) = {name: "country_code"}
   ];
 }
 

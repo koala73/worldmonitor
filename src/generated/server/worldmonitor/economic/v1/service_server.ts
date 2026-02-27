@@ -271,17 +271,15 @@ export function createEconomicServiceRoutes(
   return [
     {
       method: "GET",
-      path: "/api/economic/v1/get-fred-series/{series_id}",
+      path: "/api/economic/v1/get-fred-series",
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
           const url = new URL(req.url, "http://localhost");
-          const pathSegments = url.pathname.split("/");
-          pathParams["series_id"] = decodeURIComponent(pathSegments[5] ?? "");
 
           const params = url.searchParams;
           const body: GetFredSeriesRequest = {
-            seriesId: pathParams["series_id"],
+            seriesId: params.get("series_id") ?? "",
             limit: Number(params.get("limit") ?? "0"),
           };
           if (options?.validateRequest) {

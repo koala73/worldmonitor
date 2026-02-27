@@ -192,9 +192,10 @@ export class ConflictServiceClient {
   }
 
   async getHumanitarianSummary(req: GetHumanitarianSummaryRequest, options?: ConflictServiceCallOptions): Promise<GetHumanitarianSummaryResponse> {
-    let path = "/api/conflict/v1/get-humanitarian-summary/{country_code}";
-    path = path.replace("{country_code}", encodeURIComponent(String(req.countryCode)));
-    const url = this.baseURL + path;
+    const path = "/api/conflict/v1/get-humanitarian-summary";
+    const params = new URLSearchParams();
+    if (req.countryCode != null && req.countryCode !== "") params.set("country_code", req.countryCode);
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",

@@ -340,16 +340,15 @@ export function createIntelligenceServiceRoutes(
     },
     {
       method: "GET",
-      path: "/api/intelligence/v1/get-country-intel-brief/{country_code}",
+      path: "/api/intelligence/v1/get-country-intel-brief",
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
           const url = new URL(req.url, "http://localhost");
-          const pathSegments = url.pathname.split("/");
-          pathParams["country_code"] = decodeURIComponent(pathSegments[5] ?? "");
 
+          const params = url.searchParams;
           const body: GetCountryIntelBriefRequest = {
-            countryCode: pathParams["country_code"],
+            countryCode: params.get("country_code") ?? "",
           };
 
           const ctx: ServerContext = {

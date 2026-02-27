@@ -32,6 +32,8 @@ export async function getCountryIntelBrief(
     generatedAt: Date.now(),
   };
 
+  if (!req.countryCode) return empty;
+
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) return empty;
 

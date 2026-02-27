@@ -3,7 +3,7 @@ info:
     title: EconomicService API
     version: 1.0.0
 paths:
-    /api/economic/v1/get-fred-series/{series_id}:
+    /api/economic/v1/get-fred-series:
         get:
             tags:
                 - EconomicService
@@ -12,7 +12,7 @@ paths:
             operationId: GetFredSeries
             parameters:
                 - name: series_id
-                  in: path
+                  in: query
                   description: FRED series ID (e.g., "GDP", "UNRATE", "CPIAUCSL").
                   required: true
                   schema:
