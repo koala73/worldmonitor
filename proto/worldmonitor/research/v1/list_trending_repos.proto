@@ -2,17 +2,20 @@ syntax = "proto3";
 
 package worldmonitor.research.v1;
 
+import "sebuf/http/annotations.proto";
 import "worldmonitor/core/v1/pagination.proto";
 import "worldmonitor/research/v1/research_item.proto";
 
 // ListTrendingReposRequest specifies filters for retrieving trending GitHub repos.
 message ListTrendingReposRequest {
-  // Pagination parameters.
-  worldmonitor.core.v1.PaginationRequest pagination = 1;
+  // Maximum items per page (1-100).
+  int32 page_size = 1 [(sebuf.http.query) = { name: "page_size" }];
+  // Cursor for next page.
+  string cursor = 2 [(sebuf.http.query) = { name: "cursor" }];
   // Programming language filter (e.g., "python", "typescript").
-  string language = 2;
+  string language = 3 [(sebuf.http.query) = { name: "language" }];
   // Trending period (e.g., "daily", "weekly"). Defaults to "daily".
-  string period = 3;
+  string period = 4 [(sebuf.http.query) = { name: "period" }];
 }
 
 // ListTrendingReposResponse contains trending GitHub repositories.

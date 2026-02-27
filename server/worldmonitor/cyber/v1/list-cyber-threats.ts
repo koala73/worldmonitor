@@ -38,15 +38,15 @@ export async function listCyberThreats(
   try {
     const now = Date.now();
 
-    const cacheKey = `${REDIS_CACHE_KEY}:${req.pagination?.pageSize || 0}:${req.timeRange?.start || 0}:${req.type || ''}:${req.source || ''}:${req.minSeverity || ''}`;
-    const pageSize = clampInt(req.pagination?.pageSize, DEFAULT_LIMIT, 1, MAX_LIMIT);
+    const cacheKey = `${REDIS_CACHE_KEY}:${req.pageSize || 0}:${req.start || 0}:${req.type || ''}:${req.source || ''}:${req.minSeverity || ''}`;
+    const pageSize = clampInt(req.pageSize, DEFAULT_LIMIT, 1, MAX_LIMIT);
 
     const result = await cachedFetchJson<ListCyberThreatsResponse>(cacheKey, REDIS_CACHE_TTL, async () => {
       // Derive days from timeRange or use default
       let days = DEFAULT_DAYS;
-      if (req.timeRange?.start) {
+      if (req.start) {
         days = clampInt(
-          Math.ceil((now - req.timeRange.start) / (24 * 60 * 60 * 1000)),
+          Math.ceil((now - req.start) / (24 * 60 * 60 * 1000)),
           DEFAULT_DAYS, 1, MAX_DAYS,
         );
       }

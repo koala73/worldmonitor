@@ -2,19 +2,11 @@
 // source: worldmonitor/conflict/v1/service.proto
 
 export interface ListAcledEventsRequest {
-  timeRange?: TimeRange;
-  pagination?: PaginationRequest;
-  country: string;
-}
-
-export interface TimeRange {
   start: number;
   end: number;
-}
-
-export interface PaginationRequest {
   pageSize: number;
   cursor: string;
+  country: string;
 }
 
 export interface ListAcledEventsResponse {
@@ -45,8 +37,10 @@ export interface PaginationResponse {
 }
 
 export interface ListUcdpEventsRequest {
-  timeRange?: TimeRange;
-  pagination?: PaginationRequest;
+  start: number;
+  end: number;
+  pageSize: number;
+  cursor: string;
   country: string;
 }
 
@@ -141,7 +135,13 @@ export class ConflictServiceClient {
 
   async listAcledEvents(req: ListAcledEventsRequest, options?: ConflictServiceCallOptions): Promise<ListAcledEventsResponse> {
     let path = "/api/conflict/v1/list-acled-events";
-    const url = this.baseURL + path;
+    const params = new URLSearchParams();
+    if (req.start != null && req.start !== 0) params.set("start", String(req.start));
+    if (req.end != null && req.end !== 0) params.set("end", String(req.end));
+    if (req.pageSize != null && req.pageSize !== 0) params.set("page_size", String(req.pageSize));
+    if (req.cursor != null && req.cursor !== "") params.set("cursor", String(req.cursor));
+    if (req.country != null && req.country !== "") params.set("country", String(req.country));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -150,9 +150,8 @@ export class ConflictServiceClient {
     };
 
     const resp = await this.fetchFn(url, {
-      method: "POST",
+      method: "GET",
       headers,
-      body: JSON.stringify(req),
       signal: options?.signal,
     });
 
@@ -165,7 +164,13 @@ export class ConflictServiceClient {
 
   async listUcdpEvents(req: ListUcdpEventsRequest, options?: ConflictServiceCallOptions): Promise<ListUcdpEventsResponse> {
     let path = "/api/conflict/v1/list-ucdp-events";
-    const url = this.baseURL + path;
+    const params = new URLSearchParams();
+    if (req.start != null && req.start !== 0) params.set("start", String(req.start));
+    if (req.end != null && req.end !== 0) params.set("end", String(req.end));
+    if (req.pageSize != null && req.pageSize !== 0) params.set("page_size", String(req.pageSize));
+    if (req.cursor != null && req.cursor !== "") params.set("cursor", String(req.cursor));
+    if (req.country != null && req.country !== "") params.set("country", String(req.country));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -174,9 +179,8 @@ export class ConflictServiceClient {
     };
 
     const resp = await this.fetchFn(url, {
-      method: "POST",
+      method: "GET",
       headers,
-      body: JSON.stringify(req),
       signal: options?.signal,
     });
 
@@ -188,7 +192,8 @@ export class ConflictServiceClient {
   }
 
   async getHumanitarianSummary(req: GetHumanitarianSummaryRequest, options?: ConflictServiceCallOptions): Promise<GetHumanitarianSummaryResponse> {
-    let path = "/api/conflict/v1/get-humanitarian-summary";
+    let path = "/api/conflict/v1/get-humanitarian-summary/{country_code}";
+    path = path.replace("{country_code}", encodeURIComponent(String(req.countryCode)));
     const url = this.baseURL + path;
 
     const headers: Record<string, string> = {
@@ -198,9 +203,8 @@ export class ConflictServiceClient {
     };
 
     const resp = await this.fetchFn(url, {
-      method: "POST",
+      method: "GET",
       headers,
-      body: JSON.stringify(req),
       signal: options?.signal,
     });
 

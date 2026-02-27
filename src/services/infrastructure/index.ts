@@ -83,6 +83,10 @@ export async function fetchInternetOutages(): Promise<InternetOutage[]> {
   const resp = await outageBreaker.execute(async () => {
     return client.listInternetOutages({
       country: '',
+      start: 0,
+      end: 0,
+      pageSize: 0,
+      cursor: '',
     });
   }, emptyOutageFallback);
 

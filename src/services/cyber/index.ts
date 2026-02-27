@@ -88,11 +88,10 @@ export async function fetchCyberThreats(options: { limit?: number; days?: number
 
   const resp = await breaker.execute(async () => {
     return client.listCyberThreats({
-      timeRange: {
-        start: now - days * 24 * 60 * 60 * 1000,
-        end: now,
-      },
-      pagination: { pageSize: limit, cursor: '' },
+      start: now - days * 24 * 60 * 60 * 1000,
+      end: now,
+      pageSize: limit,
+      cursor: '',
       type: 'CYBER_THREAT_TYPE_UNSPECIFIED',
       source: 'CYBER_THREAT_SOURCE_UNSPECIFIED',
       minSeverity: 'CRITICALITY_LEVEL_UNSPECIFIED',

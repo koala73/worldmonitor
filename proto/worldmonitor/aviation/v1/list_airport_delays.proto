@@ -2,17 +2,20 @@ syntax = "proto3";
 
 package worldmonitor.aviation.v1;
 
+import "sebuf/http/annotations.proto";
 import "worldmonitor/core/v1/pagination.proto";
 import "worldmonitor/aviation/v1/airport_delay.proto";
 
 // ListAirportDelaysRequest specifies filters for retrieving airport delay alerts.
 message ListAirportDelaysRequest {
-  // Pagination parameters.
-  worldmonitor.core.v1.PaginationRequest pagination = 1;
+  // Maximum items per page (1-100).
+  int32 page_size = 1 [(sebuf.http.query) = { name: "page_size" }];
+  // Cursor for next page.
+  string cursor = 2 [(sebuf.http.query) = { name: "cursor" }];
   // Optional region filter.
-  AirportRegion region = 2;
+  AirportRegion region = 3 [(sebuf.http.query) = { name: "region" }];
   // Optional minimum severity filter.
-  FlightDelaySeverity min_severity = 3;
+  FlightDelaySeverity min_severity = 4 [(sebuf.http.query) = { name: "min_severity" }];
 }
 
 // ListAirportDelaysResponse contains airport delay alerts matching the request.

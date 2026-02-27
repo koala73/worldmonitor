@@ -16,17 +16,17 @@ service InfrastructureService {
 
   // ListInternetOutages retrieves detected internet outages from Cloudflare Radar.
   rpc ListInternetOutages(ListInternetOutagesRequest) returns (ListInternetOutagesResponse) {
-    option (sebuf.http.config) = {path: "/list-internet-outages"};
+    option (sebuf.http.config) = {path: "/list-internet-outages", method: HTTP_METHOD_GET};
   }
 
   // ListServiceStatuses retrieves operational status of monitored external services.
   rpc ListServiceStatuses(ListServiceStatusesRequest) returns (ListServiceStatusesResponse) {
-    option (sebuf.http.config) = {path: "/list-service-statuses"};
+    option (sebuf.http.config) = {path: "/list-service-statuses", method: HTTP_METHOD_GET};
   }
 
   // GetTemporalBaseline checks current activity count against stored baseline for anomaly detection.
   rpc GetTemporalBaseline(GetTemporalBaselineRequest) returns (GetTemporalBaselineResponse) {
-    option (sebuf.http.config) = {path: "/get-temporal-baseline"};
+    option (sebuf.http.config) = {path: "/get-temporal-baseline", method: HTTP_METHOD_GET};
   }
 
   // RecordBaselineSnapshot batch-updates baseline statistics using Welford's online algorithm.
@@ -36,6 +36,6 @@ service InfrastructureService {
 
   // GetCableHealth computes health status for submarine cables from NGA maritime warning signals.
   rpc GetCableHealth(GetCableHealthRequest) returns (GetCableHealthResponse) {
-    option (sebuf.http.config) = {path: "/get-cable-health"};
+    option (sebuf.http.config) = {path: "/get-cable-health", method: HTTP_METHOD_GET};
   }
 }

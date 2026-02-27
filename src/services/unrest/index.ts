@@ -102,6 +102,14 @@ export async function fetchProtestEvents(): Promise<ProtestData> {
     return client.listUnrestEvents({
       country: '',
       minSeverity: 'SEVERITY_LEVEL_UNSPECIFIED',
+      start: 0,
+      end: 0,
+      pageSize: 0,
+      cursor: '',
+      neLat: 0,
+      neLon: 0,
+      swLat: 0,
+      swLon: 0,
     });
   }, emptyFallback);
 

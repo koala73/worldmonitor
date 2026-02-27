@@ -100,14 +100,14 @@ export const listPredictionMarkets: PredictionServiceHandler['listPredictionMark
   req: ListPredictionMarketsRequest,
 ): Promise<ListPredictionMarketsResponse> => {
   try {
-    const cacheKey = `${REDIS_CACHE_KEY}:${req.category || 'all'}:${req.query || ''}:${req.pagination?.pageSize || 50}`;
+    const cacheKey = `${REDIS_CACHE_KEY}:${req.category || 'all'}:${req.query || ''}:${req.pageSize || 50}`;
     const result = await cachedFetchJson<ListPredictionMarketsResponse>(
       cacheKey,
       REDIS_CACHE_TTL,
       async () => {
         const useEvents = !!req.category;
         const endpoint = useEvents ? 'events' : 'markets';
-        const limit = Math.max(1, Math.min(100, req.pagination?.pageSize || 50));
+        const limit = Math.max(1, Math.min(100, req.pageSize || 50));
         const params = new URLSearchParams({
           closed: 'false',
           order: 'volume',

@@ -4,18 +4,46 @@ info:
     version: 1.0.0
 paths:
     /api/infrastructure/v1/list-internet-outages:
-        post:
+        get:
             tags:
                 - InfrastructureService
             summary: ListInternetOutages
             description: ListInternetOutages retrieves detected internet outages from Cloudflare Radar.
             operationId: ListInternetOutages
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/ListInternetOutagesRequest'
-                required: true
+            parameters:
+                - name: start
+                  in: query
+                  description: Start of time range (inclusive), Unix epoch milliseconds.
+                  required: false
+                  schema:
+                    type: string
+                    format: int64
+                - name: end
+                  in: query
+                  description: End of time range (inclusive), Unix epoch milliseconds.
+                  required: false
+                  schema:
+                    type: string
+                    format: int64
+                - name: page_size
+                  in: query
+                  description: Maximum items per page.
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+                - name: cursor
+                  in: query
+                  description: Cursor for next page.
+                  required: false
+                  schema:
+                    type: string
+                - name: country
+                  in: query
+                  description: Optional country filter (ISO 3166-1 alpha-2).
+                  required: false
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
@@ -36,18 +64,19 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/Error'
     /api/infrastructure/v1/list-service-statuses:
-        post:
+        get:
             tags:
                 - InfrastructureService
             summary: ListServiceStatuses
             description: ListServiceStatuses retrieves operational status of monitored external services.
             operationId: ListServiceStatuses
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/ListServiceStatusesRequest'
-                required: true
+            parameters:
+                - name: status
+                  in: query
+                  description: Optional status filter. Returns only services in this state.
+                  required: false
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
@@ -68,18 +97,32 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/Error'
     /api/infrastructure/v1/get-temporal-baseline:
-        post:
+        get:
             tags:
                 - InfrastructureService
             summary: GetTemporalBaseline
             description: GetTemporalBaseline checks current activity count against stored baseline for anomaly detection.
             operationId: GetTemporalBaseline
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/GetTemporalBaselineRequest'
-                required: true
+            parameters:
+                - name: type
+                  in: query
+                  description: 'Activity type: "military_flights", "vessels", "protests", "news", "ais_gaps", "satellite_fires".'
+                  required: false
+                  schema:
+                    type: string
+                - name: region
+                  in: query
+                  description: Geographic region key, defaults to "global".
+                  required: false
+                  schema:
+                    type: string
+                - name: count
+                  in: query
+                  description: Current observed count to compare against baseline.
+                  required: false
+                  schema:
+                    type: number
+                    format: double
             responses:
                 "200":
                     description: Successful response
@@ -132,18 +175,12 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/Error'
     /api/infrastructure/v1/get-cable-health:
-        post:
+        get:
             tags:
                 - InfrastructureService
             summary: GetCableHealth
             description: GetCableHealth computes health status for submarine cables from NGA maritime warning signals.
             operationId: GetCableHealth
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/GetCableHealthRequest'
-                required: true
             responses:
                 "200":
                     description: Successful response
@@ -199,41 +236,25 @@ components:
         ListInternetOutagesRequest:
             type: object
             properties:
-                timeRange:
-                    $ref: '#/components/schemas/TimeRange'
-                pagination:
-                    $ref: '#/components/schemas/PaginationRequest'
+                start:
+                    type: integer
+                    format: int64
+                    description: 'Start of time range (inclusive), Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                end:
+                    type: integer
+                    format: int64
+                    description: 'End of time range (inclusive), Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                pageSize:
+                    type: integer
+                    format: int32
+                    description: Maximum items per page.
+                cursor:
+                    type: string
+                    description: Cursor for next page.
                 country:
                     type: string
                     description: Optional country filter (ISO 3166-1 alpha-2).
             description: ListInternetOutagesRequest specifies filters for retrieving internet outages.
-        TimeRange:
-            type: object
-            properties:
-                start:
-                    type: integer
-                    format: int64
-                    description: 'Start of the time range (inclusive), as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
-                end:
-                    type: integer
-                    format: int64
-                    description: 'End of the time range (inclusive), as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
-            description: |-
-                TimeRange represents a time interval defined by a start and end timestamp.
-                 Used for filtering data within a specific time period.
-        PaginationRequest:
-            type: object
-            properties:
-                pageSize:
-                    type: integer
-                    maximum: 100
-                    minimum: 1
-                    format: int32
-                    description: Maximum number of items to return per page (1 to 100).
-                cursor:
-                    type: string
-                    description: Opaque cursor for fetching the next page. Empty string for the first page.
-            description: PaginationRequest specifies cursor-based pagination parameters for list endpoints.
         ListInternetOutagesResponse:
             type: object
             properties:

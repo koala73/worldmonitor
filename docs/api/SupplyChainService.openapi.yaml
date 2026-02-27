@@ -1,0 +1,245 @@
+openapi: 3.1.0
+info:
+    title: SupplyChainService API
+    version: 1.0.0
+paths:
+    /api/supply-chain/v1/get-shipping-rates:
+        get:
+            tags:
+                - SupplyChainService
+            summary: GetShippingRates
+            operationId: GetShippingRates
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetShippingRatesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/supply-chain/v1/get-chokepoint-status:
+        get:
+            tags:
+                - SupplyChainService
+            summary: GetChokepointStatus
+            operationId: GetChokepointStatus
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetChokepointStatusResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/supply-chain/v1/get-critical-minerals:
+        get:
+            tags:
+                - SupplyChainService
+            summary: GetCriticalMinerals
+            operationId: GetCriticalMinerals
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetCriticalMineralsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+components:
+    schemas:
+        Error:
+            type: object
+            properties:
+                message:
+                    type: string
+                    description: Error message (e.g., 'user not found', 'database connection failed')
+            description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        FieldViolation:
+            type: object
+            properties:
+                field:
+                    type: string
+                    description: The field path that failed validation (e.g., 'user.email' for nested fields). For header validation, this will be the header name (e.g., 'X-API-Key')
+                description:
+                    type: string
+                    description: Human-readable description of the validation violation (e.g., 'must be a valid email address', 'required field missing')
+            required:
+                - field
+                - description
+            description: FieldViolation describes a single validation error for a specific field.
+        ValidationError:
+            type: object
+            properties:
+                violations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FieldViolation'
+                    description: List of validation violations
+            required:
+                - violations
+            description: ValidationError is returned when request validation fails. It contains a list of field violations describing what went wrong.
+        GetShippingRatesRequest:
+            type: object
+        GetShippingRatesResponse:
+            type: object
+            properties:
+                indices:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ShippingIndex'
+                fetchedAt:
+                    type: string
+                upstreamUnavailable:
+                    type: boolean
+        ShippingIndex:
+            type: object
+            properties:
+                indexId:
+                    type: string
+                name:
+                    type: string
+                currentValue:
+                    type: number
+                    format: double
+                previousValue:
+                    type: number
+                    format: double
+                changePct:
+                    type: number
+                    format: double
+                unit:
+                    type: string
+                history:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ShippingRatePoint'
+                spikeAlert:
+                    type: boolean
+        ShippingRatePoint:
+            type: object
+            properties:
+                date:
+                    type: string
+                value:
+                    type: number
+                    format: double
+        GetChokepointStatusRequest:
+            type: object
+        GetChokepointStatusResponse:
+            type: object
+            properties:
+                chokepoints:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ChokepointInfo'
+                fetchedAt:
+                    type: string
+                upstreamUnavailable:
+                    type: boolean
+        ChokepointInfo:
+            type: object
+            properties:
+                id:
+                    type: string
+                name:
+                    type: string
+                lat:
+                    type: number
+                    format: double
+                lon:
+                    type: number
+                    format: double
+                disruptionScore:
+                    type: integer
+                    format: int32
+                status:
+                    type: string
+                activeWarnings:
+                    type: integer
+                    format: int32
+                congestionLevel:
+                    type: string
+                affectedRoutes:
+                    type: array
+                    items:
+                        type: string
+                description:
+                    type: string
+        GetCriticalMineralsRequest:
+            type: object
+        GetCriticalMineralsResponse:
+            type: object
+            properties:
+                minerals:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CriticalMineral'
+                fetchedAt:
+                    type: string
+                upstreamUnavailable:
+                    type: boolean
+        CriticalMineral:
+            type: object
+            properties:
+                mineral:
+                    type: string
+                topProducers:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/MineralProducer'
+                hhi:
+                    type: number
+                    format: double
+                riskRating:
+                    type: string
+                globalProduction:
+                    type: number
+                    format: double
+                unit:
+                    type: string
+        MineralProducer:
+            type: object
+            properties:
+                country:
+                    type: string
+                countryCode:
+                    type: string
+                productionTonnes:
+                    type: number
+                    format: double
+                sharePct:
+                    type: number
+                    format: double

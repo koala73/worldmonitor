@@ -2,24 +2,33 @@ syntax = "proto3";
 
 package worldmonitor.unrest.v1;
 
-import "worldmonitor/core/v1/geo.proto";
+import "sebuf/http/annotations.proto";
 import "worldmonitor/core/v1/pagination.proto";
 import "worldmonitor/core/v1/severity.proto";
-import "worldmonitor/core/v1/time.proto";
 import "worldmonitor/unrest/v1/unrest_event.proto";
 
 // ListUnrestEventsRequest specifies filters for retrieving social unrest events.
 message ListUnrestEventsRequest {
-  // Time range to filter events.
-  worldmonitor.core.v1.TimeRange time_range = 1;
-  // Pagination parameters.
-  worldmonitor.core.v1.PaginationRequest pagination = 2;
+  // Start of time range (inclusive), Unix epoch milliseconds.
+  int64 start = 1 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER, (sebuf.http.query) = { name: "start" }];
+  // End of time range (inclusive), Unix epoch milliseconds.
+  int64 end = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER, (sebuf.http.query) = { name: "end" }];
+  // Maximum items per page (1-100).
+  int32 page_size = 3 [(sebuf.http.query) = { name: "page_size" }];
+  // Cursor for next page.
+  string cursor = 4 [(sebuf.http.query) = { name: "cursor" }];
   // Optional country filter (ISO 3166-1 alpha-2).
-  string country = 3;
+  string country = 5 [(sebuf.http.query) = { name: "country" }];
   // Optional minimum severity filter.
-  worldmonitor.core.v1.SeverityLevel min_severity = 4;
-  // Optional bounding box for geographic filtering.
-  worldmonitor.core.v1.BoundingBox bounding_box = 5;
+  worldmonitor.core.v1.SeverityLevel min_severity = 6 [(sebuf.http.query) = { name: "min_severity" }];
+  // North-east corner latitude of bounding box.
+  double ne_lat = 7 [(sebuf.http.query) = { name: "ne_lat" }];
+  // North-east corner longitude of bounding box.
+  double ne_lon = 8 [(sebuf.http.query) = { name: "ne_lon" }];
+  // South-west corner latitude of bounding box.
+  double sw_lat = 9 [(sebuf.http.query) = { name: "sw_lat" }];
+  // South-west corner longitude of bounding box.
+  double sw_lon = 10 [(sebuf.http.query) = { name: "sw_lon" }];
 }
 
 // ListUnrestEventsResponse contains unrest events and clusters matching the request.

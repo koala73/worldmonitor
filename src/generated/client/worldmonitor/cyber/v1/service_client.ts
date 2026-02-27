@@ -2,21 +2,13 @@
 // source: worldmonitor/cyber/v1/service.proto
 
 export interface ListCyberThreatsRequest {
-  timeRange?: TimeRange;
-  pagination?: PaginationRequest;
+  start: number;
+  end: number;
+  pageSize: number;
+  cursor: string;
   type: CyberThreatType;
   source: CyberThreatSource;
   minSeverity: CriticalityLevel;
-}
-
-export interface TimeRange {
-  start: number;
-  end: number;
-}
-
-export interface PaginationRequest {
-  pageSize: number;
-  cursor: string;
 }
 
 export interface ListCyberThreatsResponse {
@@ -107,7 +99,15 @@ export class CyberServiceClient {
 
   async listCyberThreats(req: ListCyberThreatsRequest, options?: CyberServiceCallOptions): Promise<ListCyberThreatsResponse> {
     let path = "/api/cyber/v1/list-cyber-threats";
-    const url = this.baseURL + path;
+    const params = new URLSearchParams();
+    if (req.start != null && req.start !== 0) params.set("start", String(req.start));
+    if (req.end != null && req.end !== 0) params.set("end", String(req.end));
+    if (req.pageSize != null && req.pageSize !== 0) params.set("page_size", String(req.pageSize));
+    if (req.cursor != null && req.cursor !== "") params.set("cursor", String(req.cursor));
+    if (req.type != null && req.type !== "CYBER_THREAT_TYPE_UNSPECIFIED") params.set("type", String(req.type));
+    if (req.source != null && req.source !== "CYBER_THREAT_SOURCE_UNSPECIFIED") params.set("source", String(req.source));
+    if (req.minSeverity != null && req.minSeverity !== "CRITICALITY_LEVEL_UNSPECIFIED") params.set("min_severity", String(req.minSeverity));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -116,9 +116,8 @@ export class CyberServiceClient {
     };
 
     const resp = await this.fetchFn(url, {
-      method: "POST",
+      method: "GET",
       headers,
-      body: JSON.stringify(req),
       signal: options?.signal,
     });
 

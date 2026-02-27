@@ -39,12 +39,12 @@ function getRelayRequestHeaders(): Record<string, string> {
   return headers;
 }
 
-function normalizeBounds(bb: NonNullable<ListMilitaryFlightsRequest['boundingBox']>): RequestBounds {
+function normalizeBounds(req: ListMilitaryFlightsRequest): RequestBounds {
   return {
-    south: Math.min(bb.southWest!.latitude, bb.northEast!.latitude),
-    north: Math.max(bb.southWest!.latitude, bb.northEast!.latitude),
-    west: Math.min(bb.southWest!.longitude, bb.northEast!.longitude),
-    east: Math.max(bb.southWest!.longitude, bb.northEast!.longitude),
+    south: Math.min(req.swLat, req.neLat),
+    north: Math.max(req.swLat, req.neLat),
+    west: Math.min(req.swLon, req.neLon),
+    east: Math.max(req.swLon, req.neLon),
   };
 }
 
@@ -74,19 +74,18 @@ export async function listMilitaryFlights(
   req: ListMilitaryFlightsRequest,
 ): Promise<ListMilitaryFlightsResponse> {
   try {
-    const bb = req.boundingBox;
-    if (!bb?.southWest || !bb?.northEast) return { flights: [], clusters: [], pagination: undefined };
-    const requestBounds = normalizeBounds(bb);
+    if (!req.neLat && !req.neLon && !req.swLat && !req.swLon) return { flights: [], clusters: [], pagination: undefined };
+    const requestBounds = normalizeBounds(req);
 
     // Quantize bbox to a 1° grid so nearby map views share cache entries.
     // Precise coordinates caused near-zero hit rate since every pan/zoom created a unique key.
     const quantizedBB = [
-      quantize(bb.southWest.latitude, BBOX_GRID_STEP),
-      quantize(bb.southWest.longitude, BBOX_GRID_STEP),
-      quantize(bb.northEast.latitude, BBOX_GRID_STEP),
-      quantize(bb.northEast.longitude, BBOX_GRID_STEP),
+      quantize(req.swLat, BBOX_GRID_STEP),
+      quantize(req.swLon, BBOX_GRID_STEP),
+      quantize(req.neLat, BBOX_GRID_STEP),
+      quantize(req.neLon, BBOX_GRID_STEP),
     ].join(':');
-    const cacheKey = `${REDIS_CACHE_KEY}:${quantizedBB}:${req.operator || ''}:${req.aircraftType || ''}:${req.pagination?.pageSize || 0}`;
+    const cacheKey = `${REDIS_CACHE_KEY}:${quantizedBB}:${req.operator || ''}:${req.aircraftType || ''}:${req.pageSize || 0}`;
 
     const fullResult = await cachedFetchJson<ListMilitaryFlightsResponse>(
       cacheKey,
@@ -100,10 +99,10 @@ export async function listMilitaryFlights(
         if (!baseUrl) return null;
 
         const fetchBB = {
-          lamin: quantize(bb.southWest.latitude, BBOX_GRID_STEP) - BBOX_GRID_STEP / 2,
-          lamax: quantize(bb.northEast.latitude, BBOX_GRID_STEP) + BBOX_GRID_STEP / 2,
-          lomin: quantize(bb.southWest.longitude, BBOX_GRID_STEP) - BBOX_GRID_STEP / 2,
-          lomax: quantize(bb.northEast.longitude, BBOX_GRID_STEP) + BBOX_GRID_STEP / 2,
+          lamin: quantize(req.swLat, BBOX_GRID_STEP) - BBOX_GRID_STEP / 2,
+          lamax: quantize(req.neLat, BBOX_GRID_STEP) + BBOX_GRID_STEP / 2,
+          lomin: quantize(req.swLon, BBOX_GRID_STEP) - BBOX_GRID_STEP / 2,
+          lomax: quantize(req.neLon, BBOX_GRID_STEP) + BBOX_GRID_STEP / 2,
         };
         const params = new URLSearchParams();
         params.set('lamin', String(fetchBB.lamin));

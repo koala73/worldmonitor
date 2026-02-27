@@ -2,25 +2,14 @@
 // source: worldmonitor/military/v1/service.proto
 
 export interface ListMilitaryFlightsRequest {
-  pagination?: PaginationRequest;
-  boundingBox?: BoundingBox;
-  operator: MilitaryOperator;
-  aircraftType: MilitaryAircraftType;
-}
-
-export interface PaginationRequest {
   pageSize: number;
   cursor: string;
-}
-
-export interface BoundingBox {
-  northEast?: GeoCoordinates;
-  southWest?: GeoCoordinates;
-}
-
-export interface GeoCoordinates {
-  latitude: number;
-  longitude: number;
+  neLat: number;
+  neLon: number;
+  swLat: number;
+  swLon: number;
+  operator: MilitaryOperator;
+  aircraftType: MilitaryAircraftType;
 }
 
 export interface ListMilitaryFlightsResponse {
@@ -53,6 +42,11 @@ export interface MilitaryFlight {
   isInteresting: boolean;
   note: string;
   enrichment?: FlightEnrichment;
+}
+
+export interface GeoCoordinates {
+  latitude: number;
+  longitude: number;
 }
 
 export interface FlightEnrichment {
@@ -252,7 +246,16 @@ export class MilitaryServiceClient {
 
   async listMilitaryFlights(req: ListMilitaryFlightsRequest, options?: MilitaryServiceCallOptions): Promise<ListMilitaryFlightsResponse> {
     let path = "/api/military/v1/list-military-flights";
-    const url = this.baseURL + path;
+    const params = new URLSearchParams();
+    if (req.pageSize != null && req.pageSize !== 0) params.set("page_size", String(req.pageSize));
+    if (req.cursor != null && req.cursor !== "") params.set("cursor", String(req.cursor));
+    if (req.neLat != null && req.neLat !== 0) params.set("ne_lat", String(req.neLat));
+    if (req.neLon != null && req.neLon !== 0) params.set("ne_lon", String(req.neLon));
+    if (req.swLat != null && req.swLat !== 0) params.set("sw_lat", String(req.swLat));
+    if (req.swLon != null && req.swLon !== 0) params.set("sw_lon", String(req.swLon));
+    if (req.operator != null && req.operator !== "MILITARY_OPERATOR_UNSPECIFIED") params.set("operator", String(req.operator));
+    if (req.aircraftType != null && req.aircraftType !== "MILITARY_AIRCRAFT_TYPE_UNSPECIFIED") params.set("aircraft_type", String(req.aircraftType));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -261,9 +264,8 @@ export class MilitaryServiceClient {
     };
 
     const resp = await this.fetchFn(url, {
-      method: "POST",
+      method: "GET",
       headers,
-      body: JSON.stringify(req),
       signal: options?.signal,
     });
 
@@ -276,7 +278,9 @@ export class MilitaryServiceClient {
 
   async getTheaterPosture(req: GetTheaterPostureRequest, options?: MilitaryServiceCallOptions): Promise<GetTheaterPostureResponse> {
     let path = "/api/military/v1/get-theater-posture";
-    const url = this.baseURL + path;
+    const params = new URLSearchParams();
+    if (req.theater != null && req.theater !== "") params.set("theater", String(req.theater));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -285,9 +289,8 @@ export class MilitaryServiceClient {
     };
 
     const resp = await this.fetchFn(url, {
-      method: "POST",
+      method: "GET",
       headers,
-      body: JSON.stringify(req),
       signal: options?.signal,
     });
 
@@ -299,7 +302,8 @@ export class MilitaryServiceClient {
   }
 
   async getAircraftDetails(req: GetAircraftDetailsRequest, options?: MilitaryServiceCallOptions): Promise<GetAircraftDetailsResponse> {
-    let path = "/api/military/v1/get-aircraft-details";
+    let path = "/api/military/v1/get-aircraft-details/{icao24}";
+    path = path.replace("{icao24}", encodeURIComponent(String(req.icao24)));
     const url = this.baseURL + path;
 
     const headers: Record<string, string> = {
@@ -309,9 +313,8 @@ export class MilitaryServiceClient {
     };
 
     const resp = await this.fetchFn(url, {
-      method: "POST",
+      method: "GET",
       headers,
-      body: JSON.stringify(req),
       signal: options?.signal,
     });
 
@@ -346,7 +349,7 @@ export class MilitaryServiceClient {
     return await resp.json() as GetAircraftDetailsBatchResponse;
   }
 
-  async getWingbitsStatus(req: GetWingbitsStatusRequest, options?: MilitaryServiceCallOptions): Promise<GetWingbitsStatusResponse> {
+  async getWingbitsStatus(_req: GetWingbitsStatusRequest, options?: MilitaryServiceCallOptions): Promise<GetWingbitsStatusResponse> {
     let path = "/api/military/v1/get-wingbits-status";
     const url = this.baseURL + path;
 
@@ -357,9 +360,8 @@ export class MilitaryServiceClient {
     };
 
     const resp = await this.fetchFn(url, {
-      method: "POST",
+      method: "GET",
       headers,
-      body: JSON.stringify(req),
       signal: options?.signal,
     });
 
@@ -372,7 +374,9 @@ export class MilitaryServiceClient {
 
   async getUSNIFleetReport(req: GetUSNIFleetReportRequest, options?: MilitaryServiceCallOptions): Promise<GetUSNIFleetReportResponse> {
     let path = "/api/military/v1/get-usni-fleet-report";
-    const url = this.baseURL + path;
+    const params = new URLSearchParams();
+    if (req.forceRefresh) params.set("force_refresh", String(req.forceRefresh));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -381,9 +385,8 @@ export class MilitaryServiceClient {
     };
 
     const resp = await this.fetchFn(url, {
-      method: "POST",
+      method: "GET",
       headers,
-      body: JSON.stringify(req),
       signal: options?.signal,
     });
 

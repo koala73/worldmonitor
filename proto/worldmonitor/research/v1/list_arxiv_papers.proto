@@ -2,17 +2,20 @@ syntax = "proto3";
 
 package worldmonitor.research.v1;
 
+import "sebuf/http/annotations.proto";
 import "worldmonitor/core/v1/pagination.proto";
 import "worldmonitor/research/v1/research_item.proto";
 
 // ListArxivPapersRequest specifies filters for retrieving arXiv papers.
 message ListArxivPapersRequest {
-  // Pagination parameters.
-  worldmonitor.core.v1.PaginationRequest pagination = 1;
+  // Maximum items per page (1-100).
+  int32 page_size = 1 [(sebuf.http.query) = { name: "page_size" }];
+  // Cursor for next page.
+  string cursor = 2 [(sebuf.http.query) = { name: "cursor" }];
   // arXiv category filter (e.g., "cs.AI"). Empty returns all tracked categories.
-  string category = 2;
+  string category = 3 [(sebuf.http.query) = { name: "category" }];
   // Search query for paper titles and abstracts.
-  string query = 3;
+  string query = 4 [(sebuf.http.query) = { name: "query" }];
 }
 
 // ListArxivPapersResponse contains arXiv papers matching the request.

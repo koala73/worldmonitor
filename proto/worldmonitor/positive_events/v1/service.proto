@@ -11,6 +11,6 @@ service PositiveEventsService {
 
   // ListPositiveGeoEvents retrieves geocoded positive news events from GDELT GEO API.
   rpc ListPositiveGeoEvents(ListPositiveGeoEventsRequest) returns (ListPositiveGeoEventsResponse) {
-    option (sebuf.http.config) = {path: "/list-positive-geo-events"};
+    option (sebuf.http.config) = {path: "/list-positive-geo-events", method: HTTP_METHOD_GET};
   }
 }

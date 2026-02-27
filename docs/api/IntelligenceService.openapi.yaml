@@ -4,18 +4,19 @@ info:
     version: 1.0.0
 paths:
     /api/intelligence/v1/get-risk-scores:
-        post:
+        get:
             tags:
                 - IntelligenceService
             summary: GetRiskScores
             description: GetRiskScores retrieves composite instability and strategic risk assessments.
             operationId: GetRiskScores
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/GetRiskScoresRequest'
-                required: true
+            parameters:
+                - name: region
+                  in: query
+                  description: Optional region filter. Empty returns all tracked regions.
+                  required: false
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
@@ -36,18 +37,19 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/Error'
     /api/intelligence/v1/get-pizzint-status:
-        post:
+        get:
             tags:
                 - IntelligenceService
             summary: GetPizzintStatus
             description: GetPizzintStatus retrieves Pentagon Pizza Index and GDELT tension pair data.
             operationId: GetPizzintStatus
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/GetPizzintStatusRequest'
-                required: true
+            parameters:
+                - name: include_gdelt
+                  in: query
+                  description: Whether to include GDELT tension pairs in the response.
+                  required: false
+                  schema:
+                    type: boolean
             responses:
                 "200":
                     description: Successful response
@@ -99,19 +101,20 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
-    /api/intelligence/v1/get-country-intel-brief:
-        post:
+    /api/intelligence/v1/get-country-intel-brief/{country_code}:
+        get:
             tags:
                 - IntelligenceService
             summary: GetCountryIntelBrief
             description: GetCountryIntelBrief generates an AI intelligence brief for a country (OpenRouter).
             operationId: GetCountryIntelBrief
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/GetCountryIntelBriefRequest'
-                required: true
+            parameters:
+                - name: country_code
+                  in: path
+                  description: ISO 3166-1 alpha-2 country code.
+                  required: true
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
@@ -132,18 +135,46 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/Error'
     /api/intelligence/v1/search-gdelt-documents:
-        post:
+        get:
             tags:
                 - IntelligenceService
             summary: SearchGdeltDocuments
             description: SearchGdeltDocuments searches the GDELT 2.0 Doc API for news articles.
             operationId: SearchGdeltDocuments
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/SearchGdeltDocumentsRequest'
-                required: true
+            parameters:
+                - name: query
+                  in: query
+                  description: Search query string.
+                  required: false
+                  schema:
+                    type: string
+                - name: max_records
+                  in: query
+                  description: Maximum number of articles to return (1-250).
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+                - name: timespan
+                  in: query
+                  description: Time span filter (e.g., "15min", "1h", "24h").
+                  required: false
+                  schema:
+                    type: string
+                - name: tone_filter
+                  in: query
+                  description: |-
+                    Tone filter appended to query (e.g., "tone>5" for positive, "tone<-5" for negative).
+                     Left empty to skip tone filtering.
+                  required: false
+                  schema:
+                    type: string
+                - name: sort
+                  in: query
+                  description: 'Sort mode: "DateDesc" (default), "ToneDesc", "ToneAsc", "HybridRel".'
+                  required: false
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response

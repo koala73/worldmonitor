@@ -4,18 +4,38 @@ info:
     version: 1.0.0
 paths:
     /api/research/v1/list-arxiv-papers:
-        post:
+        get:
             tags:
                 - ResearchService
             summary: ListArxivPapers
             description: ListArxivPapers retrieves recent papers from arXiv.
             operationId: ListArxivPapers
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/ListArxivPapersRequest'
-                required: true
+            parameters:
+                - name: page_size
+                  in: query
+                  description: Maximum items per page (1-100).
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+                - name: cursor
+                  in: query
+                  description: Cursor for next page.
+                  required: false
+                  schema:
+                    type: string
+                - name: category
+                  in: query
+                  description: arXiv category filter (e.g., "cs.AI"). Empty returns all tracked categories.
+                  required: false
+                  schema:
+                    type: string
+                - name: query
+                  in: query
+                  description: Search query for paper titles and abstracts.
+                  required: false
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
@@ -36,18 +56,38 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/Error'
     /api/research/v1/list-trending-repos:
-        post:
+        get:
             tags:
                 - ResearchService
             summary: ListTrendingRepos
             description: ListTrendingRepos retrieves trending repositories from GitHub.
             operationId: ListTrendingRepos
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/ListTrendingReposRequest'
-                required: true
+            parameters:
+                - name: page_size
+                  in: query
+                  description: Maximum items per page (1-100).
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+                - name: cursor
+                  in: query
+                  description: Cursor for next page.
+                  required: false
+                  schema:
+                    type: string
+                - name: language
+                  in: query
+                  description: Programming language filter (e.g., "python", "typescript").
+                  required: false
+                  schema:
+                    type: string
+                - name: period
+                  in: query
+                  description: Trending period (e.g., "daily", "weekly"). Defaults to "daily".
+                  required: false
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
@@ -68,18 +108,32 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/Error'
     /api/research/v1/list-hackernews-items:
-        post:
+        get:
             tags:
                 - ResearchService
             summary: ListHackernewsItems
             description: ListHackernewsItems retrieves top stories from Hacker News.
             operationId: ListHackernewsItems
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/ListHackernewsItemsRequest'
-                required: true
+            parameters:
+                - name: page_size
+                  in: query
+                  description: Maximum items per page (1-100).
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+                - name: cursor
+                  in: query
+                  description: Cursor for next page.
+                  required: false
+                  schema:
+                    type: string
+                - name: feed_type
+                  in: query
+                  description: 'Feed type: "top", "new", "best", "ask", "show". Defaults to "top".'
+                  required: false
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
@@ -100,18 +154,39 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/Error'
     /api/research/v1/list-tech-events:
-        post:
+        get:
             tags:
                 - ResearchService
             summary: ListTechEvents
             description: ListTechEvents retrieves tech events from Techmeme ICS, dev.events RSS, and curated sources.
             operationId: ListTechEvents
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/ListTechEventsRequest'
-                required: true
+            parameters:
+                - name: type
+                  in: query
+                  description: 'Event type filter: "all", "conferences", "earnings", "ipo", "other". Empty = all.'
+                  required: false
+                  schema:
+                    type: string
+                - name: mappable
+                  in: query
+                  description: Only events with non-virtual coordinates.
+                  required: false
+                  schema:
+                    type: boolean
+                - name: limit
+                  in: query
+                  description: Max events to return (0 = unlimited).
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+                - name: days
+                  in: query
+                  description: Events within N days from now (0 = unlimited).
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
             responses:
                 "200":
                     description: Successful response
@@ -167,8 +242,13 @@ components:
         ListArxivPapersRequest:
             type: object
             properties:
-                pagination:
-                    $ref: '#/components/schemas/PaginationRequest'
+                pageSize:
+                    type: integer
+                    format: int32
+                    description: Maximum items per page (1-100).
+                cursor:
+                    type: string
+                    description: Cursor for next page.
                 category:
                     type: string
                     description: arXiv category filter (e.g., "cs.AI"). Empty returns all tracked categories.
@@ -176,19 +256,6 @@ components:
                     type: string
                     description: Search query for paper titles and abstracts.
             description: ListArxivPapersRequest specifies filters for retrieving arXiv papers.
-        PaginationRequest:
-            type: object
-            properties:
-                pageSize:
-                    type: integer
-                    maximum: 100
-                    minimum: 1
-                    format: int32
-                    description: Maximum number of items to return per page (1 to 100).
-                cursor:
-                    type: string
-                    description: Opaque cursor for fetching the next page. Empty string for the first page.
-            description: PaginationRequest specifies cursor-based pagination parameters for list endpoints.
         ListArxivPapersResponse:
             type: object
             properties:
@@ -248,8 +315,13 @@ components:
         ListTrendingReposRequest:
             type: object
             properties:
-                pagination:
-                    $ref: '#/components/schemas/PaginationRequest'
+                pageSize:
+                    type: integer
+                    format: int32
+                    description: Maximum items per page (1-100).
+                cursor:
+                    type: string
+                    description: Cursor for next page.
                 language:
                     type: string
                     description: Programming language filter (e.g., "python", "typescript").
@@ -302,8 +374,13 @@ components:
         ListHackernewsItemsRequest:
             type: object
             properties:
-                pagination:
-                    $ref: '#/components/schemas/PaginationRequest'
+                pageSize:
+                    type: integer
+                    format: int32
+                    description: Maximum items per page (1-100).
+                cursor:
+                    type: string
+                    description: Cursor for next page.
                 feedType:
                     type: string
                     description: 'Feed type: "top", "new", "best", "ask", "show". Defaults to "top".'

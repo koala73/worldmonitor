@@ -4,18 +4,46 @@ info:
     version: 1.0.0
 paths:
     /api/conflict/v1/list-acled-events:
-        post:
+        get:
             tags:
                 - ConflictService
             summary: ListAcledEvents
             description: ListAcledEvents retrieves armed conflict events from the ACLED dataset.
             operationId: ListAcledEvents
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/ListAcledEventsRequest'
-                required: true
+            parameters:
+                - name: start
+                  in: query
+                  description: Start of time range (inclusive), Unix epoch milliseconds.
+                  required: false
+                  schema:
+                    type: string
+                    format: int64
+                - name: end
+                  in: query
+                  description: End of time range (inclusive), Unix epoch milliseconds.
+                  required: false
+                  schema:
+                    type: string
+                    format: int64
+                - name: page_size
+                  in: query
+                  description: Maximum items per page (1-100).
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+                - name: cursor
+                  in: query
+                  description: Cursor for next page.
+                  required: false
+                  schema:
+                    type: string
+                - name: country
+                  in: query
+                  description: Optional country filter (ISO 3166-1 alpha-2).
+                  required: false
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
@@ -36,18 +64,46 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/Error'
     /api/conflict/v1/list-ucdp-events:
-        post:
+        get:
             tags:
                 - ConflictService
             summary: ListUcdpEvents
             description: ListUcdpEvents retrieves georeferenced violence events from the UCDP dataset.
             operationId: ListUcdpEvents
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/ListUcdpEventsRequest'
-                required: true
+            parameters:
+                - name: start
+                  in: query
+                  description: Start of time range (inclusive), Unix epoch milliseconds.
+                  required: false
+                  schema:
+                    type: string
+                    format: int64
+                - name: end
+                  in: query
+                  description: End of time range (inclusive), Unix epoch milliseconds.
+                  required: false
+                  schema:
+                    type: string
+                    format: int64
+                - name: page_size
+                  in: query
+                  description: Maximum items per page (1-100).
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+                - name: cursor
+                  in: query
+                  description: Cursor for next page.
+                  required: false
+                  schema:
+                    type: string
+                - name: country
+                  in: query
+                  description: Optional country filter (ISO 3166-1 alpha-2).
+                  required: false
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
@@ -67,19 +123,22 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
-    /api/conflict/v1/get-humanitarian-summary:
-        post:
+    /api/conflict/v1/get-humanitarian-summary/{country_code}:
+        get:
             tags:
                 - ConflictService
             summary: GetHumanitarianSummary
             description: GetHumanitarianSummary retrieves a humanitarian overview for a country from HAPI/HDX.
             operationId: GetHumanitarianSummary
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/GetHumanitarianSummaryRequest'
-                required: true
+            parameters:
+                - name: country_code
+                  in: path
+                  description: |-
+                    ISO 3166-1 alpha-2 country code (e.g., "YE", "SD", "SO").
+                     This is a path parameter — no query annotation needed.
+                  required: true
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
@@ -135,41 +194,25 @@ components:
         ListAcledEventsRequest:
             type: object
             properties:
-                timeRange:
-                    $ref: '#/components/schemas/TimeRange'
-                pagination:
-                    $ref: '#/components/schemas/PaginationRequest'
+                start:
+                    type: integer
+                    format: int64
+                    description: 'Start of time range (inclusive), Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                end:
+                    type: integer
+                    format: int64
+                    description: 'End of time range (inclusive), Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                pageSize:
+                    type: integer
+                    format: int32
+                    description: Maximum items per page (1-100).
+                cursor:
+                    type: string
+                    description: Cursor for next page.
                 country:
                     type: string
                     description: Optional country filter (ISO 3166-1 alpha-2).
             description: ListAcledEventsRequest specifies filters for retrieving ACLED conflict events.
-        TimeRange:
-            type: object
-            properties:
-                start:
-                    type: integer
-                    format: int64
-                    description: 'Start of the time range (inclusive), as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
-                end:
-                    type: integer
-                    format: int64
-                    description: 'End of the time range (inclusive), as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
-            description: |-
-                TimeRange represents a time interval defined by a start and end timestamp.
-                 Used for filtering data within a specific time period.
-        PaginationRequest:
-            type: object
-            properties:
-                pageSize:
-                    type: integer
-                    maximum: 100
-                    minimum: 1
-                    format: int32
-                    description: Maximum number of items to return per page (1 to 100).
-                cursor:
-                    type: string
-                    description: Opaque cursor for fetching the next page. Empty string for the first page.
-            description: PaginationRequest specifies cursor-based pagination parameters for list endpoints.
         ListAcledEventsResponse:
             type: object
             properties:
@@ -247,10 +290,21 @@ components:
         ListUcdpEventsRequest:
             type: object
             properties:
-                timeRange:
-                    $ref: '#/components/schemas/TimeRange'
-                pagination:
-                    $ref: '#/components/schemas/PaginationRequest'
+                start:
+                    type: integer
+                    format: int64
+                    description: 'Start of time range (inclusive), Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                end:
+                    type: integer
+                    format: int64
+                    description: 'End of time range (inclusive), Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                pageSize:
+                    type: integer
+                    format: int32
+                    description: Maximum items per page (1-100).
+                cursor:
+                    type: string
+                    description: Cursor for next page.
                 country:
                     type: string
                     description: Optional country filter (ISO 3166-1 alpha-2).
@@ -325,7 +379,9 @@ components:
                 countryCode:
                     type: string
                     pattern: ^[A-Z]{2}$
-                    description: ISO 3166-1 alpha-2 country code (e.g., "YE", "SD", "SO").
+                    description: |-
+                        ISO 3166-1 alpha-2 country code (e.g., "YE", "SD", "SO").
+                         This is a path parameter — no query annotation needed.
             required:
                 - countryCode
             description: GetHumanitarianSummaryRequest specifies which country to retrieve the humanitarian summary for.

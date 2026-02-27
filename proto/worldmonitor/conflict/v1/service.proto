@@ -13,16 +13,16 @@ service ConflictService {
 
   // ListAcledEvents retrieves armed conflict events from the ACLED dataset.
   rpc ListAcledEvents(ListAcledEventsRequest) returns (ListAcledEventsResponse) {
-    option (sebuf.http.config) = {path: "/list-acled-events"};
+    option (sebuf.http.config) = {path: "/list-acled-events", method: HTTP_METHOD_GET};
   }
 
   // ListUcdpEvents retrieves georeferenced violence events from the UCDP dataset.
   rpc ListUcdpEvents(ListUcdpEventsRequest) returns (ListUcdpEventsResponse) {
-    option (sebuf.http.config) = {path: "/list-ucdp-events"};
+    option (sebuf.http.config) = {path: "/list-ucdp-events", method: HTTP_METHOD_GET};
   }
 
   // GetHumanitarianSummary retrieves a humanitarian overview for a country from HAPI/HDX.
   rpc GetHumanitarianSummary(GetHumanitarianSummaryRequest) returns (GetHumanitarianSummaryResponse) {
-    option (sebuf.http.config) = {path: "/get-humanitarian-summary"};
+    option (sebuf.http.config) = {path: "/get-humanitarian-summary/{country_code}", method: HTTP_METHOD_GET};
   }
 }

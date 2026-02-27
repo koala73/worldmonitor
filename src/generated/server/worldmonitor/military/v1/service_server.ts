@@ -2,25 +2,14 @@
 // source: worldmonitor/military/v1/service.proto
 
 export interface ListMilitaryFlightsRequest {
-  pagination?: PaginationRequest;
-  boundingBox?: BoundingBox;
-  operator: MilitaryOperator;
-  aircraftType: MilitaryAircraftType;
-}
-
-export interface PaginationRequest {
   pageSize: number;
   cursor: string;
-}
-
-export interface BoundingBox {
-  northEast?: GeoCoordinates;
-  southWest?: GeoCoordinates;
-}
-
-export interface GeoCoordinates {
-  latitude: number;
-  longitude: number;
+  neLat: number;
+  neLon: number;
+  swLat: number;
+  swLon: number;
+  operator: MilitaryOperator;
+  aircraftType: MilitaryAircraftType;
 }
 
 export interface ListMilitaryFlightsResponse {
@@ -53,6 +42,11 @@ export interface MilitaryFlight {
   isInteresting: boolean;
   note: string;
   enrichment?: FlightEnrichment;
+}
+
+export interface GeoCoordinates {
+  latitude: number;
+  longitude: number;
 }
 
 export interface FlightEnrichment {
@@ -261,12 +255,23 @@ export function createMilitaryServiceRoutes(
 ): RouteDescriptor[] {
   return [
     {
-      method: "POST",
+      method: "GET",
       path: "/api/military/v1/list-military-flights",
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
-          const body = await req.json() as ListMilitaryFlightsRequest;
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListMilitaryFlightsRequest = {
+            pageSize: Number(params.get("page_size") ?? "0"),
+            cursor: params.get("cursor") ?? "",
+            neLat: Number(params.get("ne_lat") ?? "0"),
+            neLon: Number(params.get("ne_lon") ?? "0"),
+            swLat: Number(params.get("sw_lat") ?? "0"),
+            swLon: Number(params.get("sw_lon") ?? "0"),
+            operator: (params.get("operator") ?? "MILITARY_OPERATOR_UNSPECIFIED") as MilitaryOperator,
+            aircraftType: (params.get("aircraft_type") ?? "MILITARY_AIRCRAFT_TYPE_UNSPECIFIED") as MilitaryAircraftType,
+          };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("listMilitaryFlights", body);
             if (bodyViolations) {
@@ -304,12 +309,16 @@ export function createMilitaryServiceRoutes(
       },
     },
     {
-      method: "POST",
+      method: "GET",
       path: "/api/military/v1/get-theater-posture",
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
-          const body = await req.json() as GetTheaterPostureRequest;
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetTheaterPostureRequest = {
+            theater: params.get("theater") ?? "",
+          };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("getTheaterPosture", body);
             if (bodyViolations) {
@@ -347,18 +356,18 @@ export function createMilitaryServiceRoutes(
       },
     },
     {
-      method: "POST",
-      path: "/api/military/v1/get-aircraft-details",
+      method: "GET",
+      path: "/api/military/v1/get-aircraft-details/{icao24}",
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
-          const body = await req.json() as GetAircraftDetailsRequest;
-          if (options?.validateRequest) {
-            const bodyViolations = options.validateRequest("getAircraftDetails", body);
-            if (bodyViolations) {
-              throw new ValidationError(bodyViolations);
-            }
-          }
+          const url = new URL(req.url, "http://localhost");
+          const pathSegments = url.pathname.split("/");
+          pathParams["icao24"] = decodeURIComponent(pathSegments[5] ?? "");
+
+          const body: GetAircraftDetailsRequest = {
+            icao24: pathParams["icao24"],
+          };
 
           const ctx: ServerContext = {
             request: req,
@@ -433,18 +442,12 @@ export function createMilitaryServiceRoutes(
       },
     },
     {
-      method: "POST",
+      method: "GET",
       path: "/api/military/v1/get-wingbits-status",
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
-          const body = await req.json() as GetWingbitsStatusRequest;
-          if (options?.validateRequest) {
-            const bodyViolations = options.validateRequest("getWingbitsStatus", body);
-            if (bodyViolations) {
-              throw new ValidationError(bodyViolations);
-            }
-          }
+          const body = {} as GetWingbitsStatusRequest;
 
           const ctx: ServerContext = {
             request: req,
@@ -476,12 +479,16 @@ export function createMilitaryServiceRoutes(
       },
     },
     {
-      method: "POST",
+      method: "GET",
       path: "/api/military/v1/get-usni-fleet-report",
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
-          const body = await req.json() as GetUSNIFleetReportRequest;
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetUSNIFleetReportRequest = {
+            forceRefresh: params.get("force_refresh") === "true",
+          };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("getUSNIFleetReport", body);
             if (bodyViolations) {

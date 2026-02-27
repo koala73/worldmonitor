@@ -3,11 +3,12 @@ syntax = "proto3";
 package worldmonitor.market.v1;
 
 import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
 
 // ListStablecoinMarketsRequest specifies which stablecoins to retrieve.
 message ListStablecoinMarketsRequest {
   // CoinGecko IDs to retrieve (e.g. "tether,usd-coin"). Empty returns defaults.
-  repeated string coins = 1;
+  repeated string coins = 1 [(sebuf.http.query) = { name: "coins" }];
 }
 
 // Stablecoin represents a single stablecoin with peg health data.

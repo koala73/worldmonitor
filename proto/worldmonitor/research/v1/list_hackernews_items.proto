@@ -2,15 +2,18 @@ syntax = "proto3";
 
 package worldmonitor.research.v1;
 
+import "sebuf/http/annotations.proto";
 import "worldmonitor/core/v1/pagination.proto";
 import "worldmonitor/research/v1/research_item.proto";
 
 // ListHackernewsItemsRequest specifies filters for retrieving Hacker News items.
 message ListHackernewsItemsRequest {
-  // Pagination parameters.
-  worldmonitor.core.v1.PaginationRequest pagination = 1;
+  // Maximum items per page (1-100).
+  int32 page_size = 1 [(sebuf.http.query) = { name: "page_size" }];
+  // Cursor for next page.
+  string cursor = 2 [(sebuf.http.query) = { name: "cursor" }];
   // Feed type: "top", "new", "best", "ask", "show". Defaults to "top".
-  string feed_type = 2;
+  string feed_type = 3 [(sebuf.http.query) = { name: "feed_type" }];
 }
 
 // ListHackernewsItemsResponse contains Hacker News items.

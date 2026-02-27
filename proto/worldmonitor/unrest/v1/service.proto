@@ -11,6 +11,6 @@ service UnrestService {
 
   // ListUnrestEvents retrieves protest, riot, and civil unrest events.
   rpc ListUnrestEvents(ListUnrestEventsRequest) returns (ListUnrestEventsResponse) {
-    option (sebuf.http.config) = {path: "/list-unrest-events"};
+    option (sebuf.http.config) = {path: "/list-unrest-events", method: HTTP_METHOD_GET};
   }
 }

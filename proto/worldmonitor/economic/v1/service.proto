@@ -18,41 +18,41 @@ service EconomicService {
 
   // GetFredSeries retrieves time series data from the Federal Reserve Economic Data.
   rpc GetFredSeries(GetFredSeriesRequest) returns (GetFredSeriesResponse) {
-    option (sebuf.http.config) = {path: "/get-fred-series"};
+    option (sebuf.http.config) = {path: "/get-fred-series/{series_id}", method: HTTP_METHOD_GET};
   }
 
   // ListWorldBankIndicators retrieves development indicator data from the World Bank.
   rpc ListWorldBankIndicators(ListWorldBankIndicatorsRequest) returns (ListWorldBankIndicatorsResponse) {
-    option (sebuf.http.config) = {path: "/list-world-bank-indicators"};
+    option (sebuf.http.config) = {path: "/list-world-bank-indicators", method: HTTP_METHOD_GET};
   }
 
   // GetEnergyPrices retrieves current energy commodity prices from EIA.
   rpc GetEnergyPrices(GetEnergyPricesRequest) returns (GetEnergyPricesResponse) {
-    option (sebuf.http.config) = {path: "/get-energy-prices"};
+    option (sebuf.http.config) = {path: "/get-energy-prices", method: HTTP_METHOD_GET};
   }
 
   // GetMacroSignals computes 7 macro signals from 6 upstream sources with BUY/CASH verdict.
   rpc GetMacroSignals(GetMacroSignalsRequest) returns (GetMacroSignalsResponse) {
-    option (sebuf.http.config) = {path: "/get-macro-signals"};
+    option (sebuf.http.config) = {path: "/get-macro-signals", method: HTTP_METHOD_GET};
   }
 
   // GetEnergyCapacity retrieves installed capacity data (solar, wind, coal) from EIA.
   rpc GetEnergyCapacity(GetEnergyCapacityRequest) returns (GetEnergyCapacityResponse) {
-    option (sebuf.http.config) = {path: "/get-energy-capacity"};
+    option (sebuf.http.config) = {path: "/get-energy-capacity", method: HTTP_METHOD_GET};
   }
 
   // GetBisPolicyRates retrieves central bank policy rates from BIS.
   rpc GetBisPolicyRates(GetBisPolicyRatesRequest) returns (GetBisPolicyRatesResponse) {
-    option (sebuf.http.config) = {path: "/get-bis-policy-rates"};
+    option (sebuf.http.config) = {path: "/get-bis-policy-rates", method: HTTP_METHOD_GET};
   }
 
   // GetBisExchangeRates retrieves effective exchange rates from BIS.
   rpc GetBisExchangeRates(GetBisExchangeRatesRequest) returns (GetBisExchangeRatesResponse) {
-    option (sebuf.http.config) = {path: "/get-bis-exchange-rates"};
+    option (sebuf.http.config) = {path: "/get-bis-exchange-rates", method: HTTP_METHOD_GET};
   }
 
   // GetBisCredit retrieves credit-to-GDP ratio data from BIS.
   rpc GetBisCredit(GetBisCreditRequest) returns (GetBisCreditResponse) {
-    option (sebuf.http.config) = {path: "/get-bis-credit"};
+    option (sebuf.http.config) = {path: "/get-bis-credit", method: HTTP_METHOD_GET};
   }
 }

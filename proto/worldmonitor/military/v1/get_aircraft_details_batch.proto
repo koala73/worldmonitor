@@ -3,6 +3,7 @@ syntax = "proto3";
 package worldmonitor.military.v1;
 
 import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
 import "worldmonitor/military/v1/get_aircraft_details.proto";
 
 // GetAircraftDetailsBatchRequest looks up multiple aircraft by ICAO 24-bit hex.

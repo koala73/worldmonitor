@@ -2,19 +2,11 @@
 // source: worldmonitor/infrastructure/v1/service.proto
 
 export interface ListInternetOutagesRequest {
-  timeRange?: TimeRange;
-  pagination?: PaginationRequest;
-  country: string;
-}
-
-export interface TimeRange {
   start: number;
   end: number;
-}
-
-export interface PaginationRequest {
   pageSize: number;
   cursor: string;
+  country: string;
 }
 
 export interface ListInternetOutagesResponse {
@@ -186,7 +178,13 @@ export class InfrastructureServiceClient {
 
   async listInternetOutages(req: ListInternetOutagesRequest, options?: InfrastructureServiceCallOptions): Promise<ListInternetOutagesResponse> {
     let path = "/api/infrastructure/v1/list-internet-outages";
-    const url = this.baseURL + path;
+    const params = new URLSearchParams();
+    if (req.start != null && req.start !== 0) params.set("start", String(req.start));
+    if (req.end != null && req.end !== 0) params.set("end", String(req.end));
+    if (req.pageSize != null && req.pageSize !== 0) params.set("page_size", String(req.pageSize));
+    if (req.cursor != null && req.cursor !== "") params.set("cursor", String(req.cursor));
+    if (req.country != null && req.country !== "") params.set("country", String(req.country));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -195,9 +193,8 @@ export class InfrastructureServiceClient {
     };
 
     const resp = await this.fetchFn(url, {
-      method: "POST",
+      method: "GET",
       headers,
-      body: JSON.stringify(req),
       signal: options?.signal,
     });
 
@@ -210,7 +207,9 @@ export class InfrastructureServiceClient {
 
   async listServiceStatuses(req: ListServiceStatusesRequest, options?: InfrastructureServiceCallOptions): Promise<ListServiceStatusesResponse> {
     let path = "/api/infrastructure/v1/list-service-statuses";
-    const url = this.baseURL + path;
+    const params = new URLSearchParams();
+    if (req.status != null && req.status !== "SERVICE_OPERATIONAL_STATUS_UNSPECIFIED") params.set("status", String(req.status));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -219,9 +218,8 @@ export class InfrastructureServiceClient {
     };
 
     const resp = await this.fetchFn(url, {
-      method: "POST",
+      method: "GET",
       headers,
-      body: JSON.stringify(req),
       signal: options?.signal,
     });
 
@@ -234,7 +232,11 @@ export class InfrastructureServiceClient {
 
   async getTemporalBaseline(req: GetTemporalBaselineRequest, options?: InfrastructureServiceCallOptions): Promise<GetTemporalBaselineResponse> {
     let path = "/api/infrastructure/v1/get-temporal-baseline";
-    const url = this.baseURL + path;
+    const params = new URLSearchParams();
+    if (req.type != null && req.type !== "") params.set("type", String(req.type));
+    if (req.region != null && req.region !== "") params.set("region", String(req.region));
+    if (req.count != null && req.count !== 0) params.set("count", String(req.count));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -243,9 +245,8 @@ export class InfrastructureServiceClient {
     };
 
     const resp = await this.fetchFn(url, {
-      method: "POST",
+      method: "GET",
       headers,
-      body: JSON.stringify(req),
       signal: options?.signal,
     });
 
@@ -280,7 +281,7 @@ export class InfrastructureServiceClient {
     return await resp.json() as RecordBaselineSnapshotResponse;
   }
 
-  async getCableHealth(req: GetCableHealthRequest, options?: InfrastructureServiceCallOptions): Promise<GetCableHealthResponse> {
+  async getCableHealth(_req: GetCableHealthRequest, options?: InfrastructureServiceCallOptions): Promise<GetCableHealthResponse> {
     let path = "/api/infrastructure/v1/get-cable-health";
     const url = this.baseURL + path;
 
@@ -291,9 +292,8 @@ export class InfrastructureServiceClient {
     };
 
     const resp = await this.fetchFn(url, {
-      method: "POST",
+      method: "GET",
       headers,
-      body: JSON.stringify(req),
       signal: options?.signal,
     });
 

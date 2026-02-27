@@ -2,12 +2,14 @@ syntax = "proto3";
 
 package worldmonitor.economic.v1;
 
+import "sebuf/http/annotations.proto";
+
 message GetEnergyCapacityRequest {
   // Energy source codes to query (e.g., "SUN", "WND", "COL").
   // Empty returns all tracked sources (SUN, WND, COL).
-  repeated string energy_sources = 1;
+  repeated string energy_sources = 1 [(sebuf.http.query) = { name: "energy_sources" }];
   // Number of years of historical data. Default 20 if not set.
-  int32 years = 2;
+  int32 years = 2 [(sebuf.http.query) = { name: "years" }];
 }
 
 message EnergyCapacityYear {

@@ -4,18 +4,47 @@ info:
     version: 1.0.0
 paths:
     /api/seismology/v1/list-earthquakes:
-        post:
+        get:
             tags:
                 - SeismologyService
             summary: ListEarthquakes
             description: ListEarthquakes retrieves recent earthquakes from the USGS GeoJSON feed.
             operationId: ListEarthquakes
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/ListEarthquakesRequest'
-                required: true
+            parameters:
+                - name: start
+                  in: query
+                  description: Start of time range (inclusive), Unix epoch milliseconds.
+                  required: false
+                  schema:
+                    type: string
+                    format: int64
+                - name: end
+                  in: query
+                  description: End of time range (inclusive), Unix epoch milliseconds.
+                  required: false
+                  schema:
+                    type: string
+                    format: int64
+                - name: page_size
+                  in: query
+                  description: Maximum items per page (1-100).
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+                - name: cursor
+                  in: query
+                  description: Cursor for next page.
+                  required: false
+                  schema:
+                    type: string
+                - name: min_magnitude
+                  in: query
+                  description: Minimum magnitude filter (e.g., 4.0 for significant quakes).
+                  required: false
+                  schema:
+                    type: number
+                    format: double
             responses:
                 "200":
                     description: Successful response
@@ -71,43 +100,26 @@ components:
         ListEarthquakesRequest:
             type: object
             properties:
-                timeRange:
-                    $ref: '#/components/schemas/TimeRange'
-                pagination:
-                    $ref: '#/components/schemas/PaginationRequest'
-                minMagnitude:
-                    type: number
-                    minimum: 0
-                    format: double
-                    description: Minimum magnitude filter (e.g., 4.0 for significant quakes).
-            description: ListEarthquakesRequest specifies filters for retrieving earthquake data from USGS.
-        TimeRange:
-            type: object
-            properties:
                 start:
                     type: integer
                     format: int64
-                    description: 'Start of the time range (inclusive), as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: 'Start of time range (inclusive), Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
                 end:
                     type: integer
                     format: int64
-                    description: 'End of the time range (inclusive), as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
-            description: |-
-                TimeRange represents a time interval defined by a start and end timestamp.
-                 Used for filtering data within a specific time period.
-        PaginationRequest:
-            type: object
-            properties:
+                    description: 'End of time range (inclusive), Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
                 pageSize:
                     type: integer
-                    maximum: 100
-                    minimum: 1
                     format: int32
-                    description: Maximum number of items to return per page (1 to 100).
+                    description: Maximum items per page (1-100).
                 cursor:
                     type: string
-                    description: Opaque cursor for fetching the next page. Empty string for the first page.
-            description: PaginationRequest specifies cursor-based pagination parameters for list endpoints.
+                    description: Cursor for next page.
+                minMagnitude:
+                    type: number
+                    format: double
+                    description: Minimum magnitude filter (e.g., 4.0 for significant quakes).
+            description: ListEarthquakesRequest specifies filters for retrieving earthquake data from USGS.
         ListEarthquakesResponse:
             type: object
             properties:

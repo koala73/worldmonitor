@@ -2,29 +2,14 @@
 // source: worldmonitor/wildfire/v1/service.proto
 
 export interface ListFireDetectionsRequest {
-  timeRange?: TimeRange;
-  pagination?: PaginationRequest;
-  boundingBox?: BoundingBox;
-}
-
-export interface TimeRange {
   start: number;
   end: number;
-}
-
-export interface PaginationRequest {
   pageSize: number;
   cursor: string;
-}
-
-export interface BoundingBox {
-  northEast?: GeoCoordinates;
-  southWest?: GeoCoordinates;
-}
-
-export interface GeoCoordinates {
-  latitude: number;
-  longitude: number;
+  neLat: number;
+  neLon: number;
+  swLat: number;
+  swLon: number;
 }
 
 export interface ListFireDetectionsResponse {
@@ -42,6 +27,11 @@ export interface FireDetection {
   detectedAt: number;
   region: string;
   dayNight: string;
+}
+
+export interface GeoCoordinates {
+  latitude: number;
+  longitude: number;
 }
 
 export interface PaginationResponse {
@@ -105,12 +95,23 @@ export function createWildfireServiceRoutes(
 ): RouteDescriptor[] {
   return [
     {
-      method: "POST",
+      method: "GET",
       path: "/api/wildfire/v1/list-fire-detections",
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
-          const body = await req.json() as ListFireDetectionsRequest;
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListFireDetectionsRequest = {
+            start: Number(params.get("start") ?? "0"),
+            end: Number(params.get("end") ?? "0"),
+            pageSize: Number(params.get("page_size") ?? "0"),
+            cursor: params.get("cursor") ?? "",
+            neLat: Number(params.get("ne_lat") ?? "0"),
+            neLon: Number(params.get("ne_lon") ?? "0"),
+            swLat: Number(params.get("sw_lat") ?? "0"),
+            swLon: Number(params.get("sw_lon") ?? "0"),
+          };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("listFireDetections", body);
             if (bodyViolations) {

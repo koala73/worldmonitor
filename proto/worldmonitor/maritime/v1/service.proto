@@ -12,11 +12,11 @@ service MaritimeService {
 
   // GetVesselSnapshot retrieves a point-in-time view of AIS vessel traffic and disruptions.
   rpc GetVesselSnapshot(GetVesselSnapshotRequest) returns (GetVesselSnapshotResponse) {
-    option (sebuf.http.config) = {path: "/get-vessel-snapshot"};
+    option (sebuf.http.config) = {path: "/get-vessel-snapshot", method: HTTP_METHOD_GET};
   }
 
   // ListNavigationalWarnings retrieves active maritime safety warnings from NGA.
   rpc ListNavigationalWarnings(ListNavigationalWarningsRequest) returns (ListNavigationalWarningsResponse) {
-    option (sebuf.http.config) = {path: "/list-navigational-warnings"};
+    option (sebuf.http.config) = {path: "/list-navigational-warnings", method: HTTP_METHOD_GET};
   }
 }

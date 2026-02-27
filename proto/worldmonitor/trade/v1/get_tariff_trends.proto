@@ -2,18 +2,19 @@ syntax = "proto3";
 
 package worldmonitor.trade.v1;
 
+import "sebuf/http/annotations.proto";
 import "worldmonitor/trade/v1/trade_data.proto";
 
 // Request for tariff timeseries data.
 message GetTariffTrendsRequest {
   // WTO member code of reporting country (e.g. "840" = US).
-  string reporting_country = 1;
+  string reporting_country = 1 [(sebuf.http.query) = { name: "reporting_country" }];
   // WTO member code of partner country (e.g. "156" = China).
-  string partner_country = 2;
+  string partner_country = 2 [(sebuf.http.query) = { name: "partner_country" }];
   // Product sector filter (HS chapter). Empty = aggregate.
-  string product_sector = 3;
+  string product_sector = 3 [(sebuf.http.query) = { name: "product_sector" }];
   // Number of years to look back (default 10, max 30).
-  int32 years = 4;
+  int32 years = 4 [(sebuf.http.query) = { name: "years" }];
 }
 
 // Response containing tariff trend datapoints.

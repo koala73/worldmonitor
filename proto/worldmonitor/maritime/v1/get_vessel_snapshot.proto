@@ -2,13 +2,19 @@ syntax = "proto3";
 
 package worldmonitor.maritime.v1;
 
-import "worldmonitor/core/v1/geo.proto";
+import "sebuf/http/annotations.proto";
 import "worldmonitor/maritime/v1/vessel_snapshot.proto";
 
 // GetVesselSnapshotRequest specifies filters for the vessel snapshot.
 message GetVesselSnapshotRequest {
-  // Optional bounding box for geographic filtering.
-  worldmonitor.core.v1.BoundingBox bounding_box = 1;
+  // North-east corner latitude of bounding box.
+  double ne_lat = 1 [(sebuf.http.query) = { name: "ne_lat" }];
+  // North-east corner longitude of bounding box.
+  double ne_lon = 2 [(sebuf.http.query) = { name: "ne_lon" }];
+  // South-west corner latitude of bounding box.
+  double sw_lat = 3 [(sebuf.http.query) = { name: "sw_lat" }];
+  // South-west corner longitude of bounding box.
+  double sw_lon = 4 [(sebuf.http.query) = { name: "sw_lon" }];
 }
 
 // GetVesselSnapshotResponse contains the vessel traffic snapshot.

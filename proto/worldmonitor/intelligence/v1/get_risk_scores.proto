@@ -2,12 +2,13 @@ syntax = "proto3";
 
 package worldmonitor.intelligence.v1;
 
+import "sebuf/http/annotations.proto";
 import "worldmonitor/intelligence/v1/intelligence.proto";
 
 // GetRiskScoresRequest specifies parameters for retrieving risk scores.
 message GetRiskScoresRequest {
   // Optional region filter. Empty returns all tracked regions.
-  string region = 1;
+  string region = 1 [(sebuf.http.query) = { name: "region" }];
 }
 
 // GetRiskScoresResponse contains composite risk scores and strategic assessments.

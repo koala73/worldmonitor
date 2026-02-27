@@ -17,31 +17,31 @@ service MilitaryService {
 
   // ListMilitaryFlights retrieves tracked military aircraft from OpenSky and Wingbits.
   rpc ListMilitaryFlights(ListMilitaryFlightsRequest) returns (ListMilitaryFlightsResponse) {
-    option (sebuf.http.config) = {path: "/list-military-flights"};
+    option (sebuf.http.config) = {path: "/list-military-flights", method: HTTP_METHOD_GET};
   }
 
   // GetTheaterPosture retrieves military posture assessments for geographic theaters.
   rpc GetTheaterPosture(GetTheaterPostureRequest) returns (GetTheaterPostureResponse) {
-    option (sebuf.http.config) = {path: "/get-theater-posture"};
+    option (sebuf.http.config) = {path: "/get-theater-posture", method: HTTP_METHOD_GET};
   }
 
   // GetAircraftDetails retrieves Wingbits aircraft enrichment data for a single ICAO24 hex.
   rpc GetAircraftDetails(GetAircraftDetailsRequest) returns (GetAircraftDetailsResponse) {
-    option (sebuf.http.config) = {path: "/get-aircraft-details"};
+    option (sebuf.http.config) = {path: "/get-aircraft-details/{icao24}", method: HTTP_METHOD_GET};
   }
 
   // GetAircraftDetailsBatch retrieves Wingbits aircraft enrichment data for multiple ICAO24 hexes.
   rpc GetAircraftDetailsBatch(GetAircraftDetailsBatchRequest) returns (GetAircraftDetailsBatchResponse) {
-    option (sebuf.http.config) = {path: "/get-aircraft-details-batch"};
+    option (sebuf.http.config) = {path: "/get-aircraft-details-batch", method: HTTP_METHOD_POST};
   }
 
   // GetWingbitsStatus checks whether the Wingbits enrichment API is configured.
   rpc GetWingbitsStatus(GetWingbitsStatusRequest) returns (GetWingbitsStatusResponse) {
-    option (sebuf.http.config) = {path: "/get-wingbits-status"};
+    option (sebuf.http.config) = {path: "/get-wingbits-status", method: HTTP_METHOD_GET};
   }
 
   // GetUSNIFleetReport retrieves the latest parsed USNI Fleet Tracker report.
   rpc GetUSNIFleetReport(GetUSNIFleetReportRequest) returns (GetUSNIFleetReportResponse) {
-    option (sebuf.http.config) = {path: "/get-usni-fleet-report"};
+    option (sebuf.http.config) = {path: "/get-usni-fleet-report", method: HTTP_METHOD_GET};
   }
 }

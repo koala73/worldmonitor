@@ -2,12 +2,13 @@ syntax = "proto3";
 
 package worldmonitor.market.v1;
 
+import "sebuf/http/annotations.proto";
 import "worldmonitor/market/v1/market_quote.proto";
 
 // ListMarketQuotesRequest specifies which stock/index symbols to retrieve.
 message ListMarketQuotesRequest {
   // Ticker symbols to retrieve (e.g., ["AAPL", "^GSPC"]). Empty returns defaults.
-  repeated string symbols = 1;
+  repeated string symbols = 1 [(sebuf.http.query) = { name: "symbols" }];
 }
 
 // ListMarketQuotesResponse contains stock and index quotes.

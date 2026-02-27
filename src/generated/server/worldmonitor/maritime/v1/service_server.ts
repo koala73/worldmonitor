@@ -2,17 +2,10 @@
 // source: worldmonitor/maritime/v1/service.proto
 
 export interface GetVesselSnapshotRequest {
-  boundingBox?: BoundingBox;
-}
-
-export interface BoundingBox {
-  northEast?: GeoCoordinates;
-  southWest?: GeoCoordinates;
-}
-
-export interface GeoCoordinates {
-  latitude: number;
-  longitude: number;
+  neLat: number;
+  neLon: number;
+  swLat: number;
+  swLon: number;
 }
 
 export interface GetVesselSnapshotResponse {
@@ -35,6 +28,11 @@ export interface AisDensityZone {
   note: string;
 }
 
+export interface GeoCoordinates {
+  latitude: number;
+  longitude: number;
+}
+
 export interface AisDisruption {
   id: string;
   name: string;
@@ -50,13 +48,9 @@ export interface AisDisruption {
 }
 
 export interface ListNavigationalWarningsRequest {
-  pagination?: PaginationRequest;
-  area: string;
-}
-
-export interface PaginationRequest {
   pageSize: number;
   cursor: string;
+  area: string;
 }
 
 export interface ListNavigationalWarningsResponse {
@@ -139,12 +133,19 @@ export function createMaritimeServiceRoutes(
 ): RouteDescriptor[] {
   return [
     {
-      method: "POST",
+      method: "GET",
       path: "/api/maritime/v1/get-vessel-snapshot",
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
-          const body = await req.json() as GetVesselSnapshotRequest;
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetVesselSnapshotRequest = {
+            neLat: Number(params.get("ne_lat") ?? "0"),
+            neLon: Number(params.get("ne_lon") ?? "0"),
+            swLat: Number(params.get("sw_lat") ?? "0"),
+            swLon: Number(params.get("sw_lon") ?? "0"),
+          };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("getVesselSnapshot", body);
             if (bodyViolations) {
@@ -182,12 +183,18 @@ export function createMaritimeServiceRoutes(
       },
     },
     {
-      method: "POST",
+      method: "GET",
       path: "/api/maritime/v1/list-navigational-warnings",
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
-          const body = await req.json() as ListNavigationalWarningsRequest;
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListNavigationalWarningsRequest = {
+            pageSize: Number(params.get("page_size") ?? "0"),
+            cursor: params.get("cursor") ?? "",
+            area: params.get("area") ?? "",
+          };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("listNavigationalWarnings", body);
             if (bodyViolations) {

@@ -3,19 +3,27 @@ info:
     title: EconomicService API
     version: 1.0.0
 paths:
-    /api/economic/v1/get-fred-series:
-        post:
+    /api/economic/v1/get-fred-series/{series_id}:
+        get:
             tags:
                 - EconomicService
             summary: GetFredSeries
             description: GetFredSeries retrieves time series data from the Federal Reserve Economic Data.
             operationId: GetFredSeries
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/GetFredSeriesRequest'
-                required: true
+            parameters:
+                - name: series_id
+                  in: path
+                  description: FRED series ID (e.g., "GDP", "UNRATE", "CPIAUCSL").
+                  required: true
+                  schema:
+                    type: string
+                - name: limit
+                  in: query
+                  description: Maximum number of observations to return. Defaults to 120.
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
             responses:
                 "200":
                     description: Successful response
@@ -36,18 +44,45 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/Error'
     /api/economic/v1/list-world-bank-indicators:
-        post:
+        get:
             tags:
                 - EconomicService
             summary: ListWorldBankIndicators
             description: ListWorldBankIndicators retrieves development indicator data from the World Bank.
             operationId: ListWorldBankIndicators
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/ListWorldBankIndicatorsRequest'
-                required: true
+            parameters:
+                - name: indicator_code
+                  in: query
+                  description: World Bank indicator code (e.g., "NY.GDP.MKTP.CD").
+                  required: false
+                  schema:
+                    type: string
+                - name: country_code
+                  in: query
+                  description: Optional country filter (ISO 3166-1 alpha-2).
+                  required: false
+                  schema:
+                    type: string
+                - name: year
+                  in: query
+                  description: Optional year filter. Defaults to latest available.
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+                - name: page_size
+                  in: query
+                  description: Maximum items per page.
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+                - name: cursor
+                  in: query
+                  description: Cursor for next page.
+                  required: false
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
@@ -68,18 +103,19 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/Error'
     /api/economic/v1/get-energy-prices:
-        post:
+        get:
             tags:
                 - EconomicService
             summary: GetEnergyPrices
             description: GetEnergyPrices retrieves current energy commodity prices from EIA.
             operationId: GetEnergyPrices
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/GetEnergyPricesRequest'
-                required: true
+            parameters:
+                - name: commodities
+                  in: query
+                  description: Optional commodity filter. Empty returns all tracked commodities.
+                  required: false
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
@@ -100,18 +136,12 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/Error'
     /api/economic/v1/get-macro-signals:
-        post:
+        get:
             tags:
                 - EconomicService
             summary: GetMacroSignals
             description: GetMacroSignals computes 7 macro signals from 6 upstream sources with BUY/CASH verdict.
             operationId: GetMacroSignals
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/GetMacroSignalsRequest'
-                required: true
             responses:
                 "200":
                     description: Successful response
@@ -132,18 +162,28 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/Error'
     /api/economic/v1/get-energy-capacity:
-        post:
+        get:
             tags:
                 - EconomicService
             summary: GetEnergyCapacity
             description: GetEnergyCapacity retrieves installed capacity data (solar, wind, coal) from EIA.
             operationId: GetEnergyCapacity
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/GetEnergyCapacityRequest'
-                required: true
+            parameters:
+                - name: energy_sources
+                  in: query
+                  description: |-
+                    Energy source codes to query (e.g., "SUN", "WND", "COL").
+                     Empty returns all tracked sources (SUN, WND, COL).
+                  required: false
+                  schema:
+                    type: string
+                - name: years
+                  in: query
+                  description: Number of years of historical data. Default 20 if not set.
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
             responses:
                 "200":
                     description: Successful response
@@ -151,6 +191,84 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/GetEnergyCapacityResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/economic/v1/get-bis-policy-rates:
+        get:
+            tags:
+                - EconomicService
+            summary: GetBisPolicyRates
+            description: GetBisPolicyRates retrieves central bank policy rates from BIS.
+            operationId: GetBisPolicyRates
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetBisPolicyRatesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/economic/v1/get-bis-exchange-rates:
+        get:
+            tags:
+                - EconomicService
+            summary: GetBisExchangeRates
+            description: GetBisExchangeRates retrieves effective exchange rates from BIS.
+            operationId: GetBisExchangeRates
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetBisExchangeRatesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/economic/v1/get-bis-credit:
+        get:
+            tags:
+                - EconomicService
+            summary: GetBisCredit
+            description: GetBisCredit retrieves credit-to-GDP ratio data from BIS.
+            operationId: GetBisCredit
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetBisCreditResponse'
                 "400":
                     description: Validation error
                     content:
@@ -264,24 +382,16 @@ components:
                     type: integer
                     format: int32
                     description: Optional year filter. Defaults to latest available.
-                pagination:
-                    $ref: '#/components/schemas/PaginationRequest'
+                pageSize:
+                    type: integer
+                    format: int32
+                    description: Maximum items per page.
+                cursor:
+                    type: string
+                    description: Cursor for next page.
             required:
                 - indicatorCode
             description: ListWorldBankIndicatorsRequest specifies filters for retrieving World Bank data.
-        PaginationRequest:
-            type: object
-            properties:
-                pageSize:
-                    type: integer
-                    maximum: 100
-                    minimum: 1
-                    format: int32
-                    description: Maximum number of items to return per page (1 to 100).
-                cursor:
-                    type: string
-                    description: Opaque cursor for fetching the next page. Empty string for the first page.
-            description: PaginationRequest specifies cursor-based pagination parameters for list endpoints.
         ListWorldBankIndicatorsResponse:
             type: object
             properties:
@@ -600,3 +710,106 @@ components:
                 capacityMw:
                     type: number
                     format: double
+        GetBisPolicyRatesRequest:
+            type: object
+            description: GetBisPolicyRatesRequest requests central bank policy rates.
+        GetBisPolicyRatesResponse:
+            type: object
+            properties:
+                rates:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/BisPolicyRate'
+            description: GetBisPolicyRatesResponse contains BIS policy rate data.
+        BisPolicyRate:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                    description: ISO 2-letter country code (US, GB, JP, etc.)
+                countryName:
+                    type: string
+                    description: Country or region name.
+                rate:
+                    type: number
+                    format: double
+                    description: Current policy rate percentage.
+                previousRate:
+                    type: number
+                    format: double
+                    description: Previous period rate percentage.
+                date:
+                    type: string
+                    description: Date as YYYY-MM.
+                centralBank:
+                    type: string
+                    description: Central bank name (e.g. "Federal Reserve").
+            description: BisPolicyRate represents a central bank policy rate from BIS.
+        GetBisExchangeRatesRequest:
+            type: object
+            description: GetBisExchangeRatesRequest requests effective exchange rates.
+        GetBisExchangeRatesResponse:
+            type: object
+            properties:
+                rates:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/BisExchangeRate'
+            description: GetBisExchangeRatesResponse contains BIS effective exchange rate data.
+        BisExchangeRate:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                    description: ISO 2-letter country code.
+                countryName:
+                    type: string
+                    description: Country or region name.
+                realEer:
+                    type: number
+                    format: double
+                    description: Real effective exchange rate index.
+                nominalEer:
+                    type: number
+                    format: double
+                    description: Nominal effective exchange rate index.
+                realChange:
+                    type: number
+                    format: double
+                    description: Percentage change from previous period (real).
+                date:
+                    type: string
+                    description: Date as YYYY-MM.
+            description: BisExchangeRate represents effective exchange rate indices from BIS.
+        GetBisCreditRequest:
+            type: object
+            description: GetBisCreditRequest requests credit-to-GDP ratio data.
+        GetBisCreditResponse:
+            type: object
+            properties:
+                entries:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/BisCreditToGdp'
+            description: GetBisCreditResponse contains BIS credit-to-GDP data.
+        BisCreditToGdp:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                    description: ISO 2-letter country code.
+                countryName:
+                    type: string
+                    description: Country or region name.
+                creditGdpRatio:
+                    type: number
+                    format: double
+                    description: Total credit as percentage of GDP.
+                previousRatio:
+                    type: number
+                    format: double
+                    description: Previous quarter ratio.
+                date:
+                    type: string
+                    description: Date as YYYY-QN.
+            description: BisCreditToGdp represents total credit as percentage of GDP from BIS.

@@ -2,19 +2,11 @@
 // source: worldmonitor/seismology/v1/service.proto
 
 export interface ListEarthquakesRequest {
-  timeRange?: TimeRange;
-  pagination?: PaginationRequest;
-  minMagnitude: number;
-}
-
-export interface TimeRange {
   start: number;
   end: number;
-}
-
-export interface PaginationRequest {
   pageSize: number;
   cursor: string;
+  minMagnitude: number;
 }
 
 export interface ListEarthquakesResponse {
@@ -96,12 +88,20 @@ export function createSeismologyServiceRoutes(
 ): RouteDescriptor[] {
   return [
     {
-      method: "POST",
+      method: "GET",
       path: "/api/seismology/v1/list-earthquakes",
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
-          const body = await req.json() as ListEarthquakesRequest;
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListEarthquakesRequest = {
+            start: Number(params.get("start") ?? "0"),
+            end: Number(params.get("end") ?? "0"),
+            pageSize: Number(params.get("page_size") ?? "0"),
+            cursor: params.get("cursor") ?? "",
+            minMagnitude: Number(params.get("min_magnitude") ?? "0"),
+          };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("listEarthquakes", body);
             if (bodyViolations) {

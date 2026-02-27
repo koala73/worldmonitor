@@ -181,11 +181,11 @@ export async function listInternetOutages(
       const target = req.country.toLowerCase();
       filtered = outages.filter((o) => o.country.toLowerCase().includes(target));
     }
-    if (req.timeRange?.start) {
-      filtered = filtered.filter((o) => o.detectedAt >= req.timeRange!.start);
+    if (req.start) {
+      filtered = filtered.filter((o) => o.detectedAt >= req.start);
     }
-    if (req.timeRange?.end) {
-      filtered = filtered.filter((o) => o.detectedAt <= req.timeRange!.end);
+    if (req.end) {
+      filtered = filtered.filter((o) => o.detectedAt <= req.end);
     }
 
     return { outages: filtered, pagination: undefined };

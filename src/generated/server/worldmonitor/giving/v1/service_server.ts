@@ -110,12 +110,17 @@ export function createGivingServiceRoutes(
 ): RouteDescriptor[] {
   return [
     {
-      method: "POST",
+      method: "GET",
       path: "/api/giving/v1/get-giving-summary",
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
-          const body = await req.json() as GetGivingSummaryRequest;
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetGivingSummaryRequest = {
+            platformLimit: Number(params.get("platform_limit") ?? "0"),
+            categoryLimit: Number(params.get("category_limit") ?? "0"),
+          };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("getGivingSummary", body);
             if (bodyViolations) {
@@ -154,3 +159,4 @@ export function createGivingServiceRoutes(
     },
   ];
 }
+

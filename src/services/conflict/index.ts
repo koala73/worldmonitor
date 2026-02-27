@@ -231,7 +231,7 @@ const emptyHapiFallback: GetHumanitarianSummaryResponse = { summary: undefined }
 
 export async function fetchConflictEvents(): Promise<ConflictData> {
   const resp = await acledBreaker.execute(async () => {
-    return client.listAcledEvents({ country: '' });
+    return client.listAcledEvents({ country: '', start: 0, end: 0, pageSize: 0, cursor: '' });
   }, emptyAcledFallback);
 
   const events = resp.events.map(toConflictEvent);
@@ -256,7 +256,7 @@ export async function fetchConflictEvents(): Promise<ConflictData> {
 
 export async function fetchUcdpClassifications(): Promise<Map<string, UcdpConflictStatus>> {
   const resp = await ucdpBreaker.execute(async () => {
-    return client.listUcdpEvents({ country: '' });
+    return client.listUcdpEvents({ country: '', start: 0, end: 0, pageSize: 0, cursor: '' });
   }, emptyUcdpFallback);
 
   // Don't let the breaker cache empty responses — clear so next call retries
@@ -297,7 +297,7 @@ interface UcdpEventsResponse {
 
 export async function fetchUcdpEvents(): Promise<UcdpEventsResponse> {
   const resp = await ucdpBreaker.execute(async () => {
-    return client.listUcdpEvents({ country: '' });
+    return client.listUcdpEvents({ country: '', start: 0, end: 0, pageSize: 0, cursor: '' });
   }, emptyUcdpFallback);
 
   // Don't let the breaker cache empty responses — clear so next call retries

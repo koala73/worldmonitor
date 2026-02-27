@@ -4,18 +4,12 @@ info:
     version: 1.0.0
 paths:
     /api/positive-events/v1/list-positive-geo-events:
-        post:
+        get:
             tags:
                 - PositiveEventsService
             summary: ListPositiveGeoEvents
             description: ListPositiveGeoEvents retrieves geocoded positive news events from GDELT GEO API.
             operationId: ListPositiveGeoEvents
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/ListPositiveGeoEventsRequest'
-                required: true
             responses:
                 "200":
                     description: Successful response

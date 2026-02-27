@@ -2,14 +2,10 @@
 // source: worldmonitor/research/v1/service.proto
 
 export interface ListArxivPapersRequest {
-  pagination?: PaginationRequest;
-  category: string;
-  query: string;
-}
-
-export interface PaginationRequest {
   pageSize: number;
   cursor: string;
+  category: string;
+  query: string;
 }
 
 export interface ListArxivPapersResponse {
@@ -33,7 +29,8 @@ export interface PaginationResponse {
 }
 
 export interface ListTrendingReposRequest {
-  pagination?: PaginationRequest;
+  pageSize: number;
+  cursor: string;
   language: string;
   period: string;
 }
@@ -54,7 +51,8 @@ export interface GithubRepo {
 }
 
 export interface ListHackernewsItemsRequest {
-  pagination?: PaginationRequest;
+  pageSize: number;
+  cursor: string;
   feedType: string;
 }
 
@@ -168,12 +166,19 @@ export function createResearchServiceRoutes(
 ): RouteDescriptor[] {
   return [
     {
-      method: "POST",
+      method: "GET",
       path: "/api/research/v1/list-arxiv-papers",
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
-          const body = await req.json() as ListArxivPapersRequest;
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListArxivPapersRequest = {
+            pageSize: Number(params.get("page_size") ?? "0"),
+            cursor: params.get("cursor") ?? "",
+            category: params.get("category") ?? "",
+            query: params.get("query") ?? "",
+          };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("listArxivPapers", body);
             if (bodyViolations) {
@@ -211,12 +216,19 @@ export function createResearchServiceRoutes(
       },
     },
     {
-      method: "POST",
+      method: "GET",
       path: "/api/research/v1/list-trending-repos",
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
-          const body = await req.json() as ListTrendingReposRequest;
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListTrendingReposRequest = {
+            pageSize: Number(params.get("page_size") ?? "0"),
+            cursor: params.get("cursor") ?? "",
+            language: params.get("language") ?? "",
+            period: params.get("period") ?? "",
+          };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("listTrendingRepos", body);
             if (bodyViolations) {
@@ -254,12 +266,18 @@ export function createResearchServiceRoutes(
       },
     },
     {
-      method: "POST",
+      method: "GET",
       path: "/api/research/v1/list-hackernews-items",
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
-          const body = await req.json() as ListHackernewsItemsRequest;
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListHackernewsItemsRequest = {
+            pageSize: Number(params.get("page_size") ?? "0"),
+            cursor: params.get("cursor") ?? "",
+            feedType: params.get("feed_type") ?? "",
+          };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("listHackernewsItems", body);
             if (bodyViolations) {
@@ -297,12 +315,19 @@ export function createResearchServiceRoutes(
       },
     },
     {
-      method: "POST",
+      method: "GET",
       path: "/api/research/v1/list-tech-events",
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
-          const body = await req.json() as ListTechEventsRequest;
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListTechEventsRequest = {
+            type: params.get("type") ?? "",
+            mappable: params.get("mappable") === "true",
+            limit: Number(params.get("limit") ?? "0"),
+            days: Number(params.get("days") ?? "0"),
+          };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("listTechEvents", body);
             if (bodyViolations) {

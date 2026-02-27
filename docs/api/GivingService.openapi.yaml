@@ -1,0 +1,233 @@
+openapi: 3.1.0
+info:
+    title: GivingService API
+    version: 1.0.0
+paths:
+    /api/giving/v1/get-giving-summary:
+        get:
+            tags:
+                - GivingService
+            summary: GetGivingSummary
+            description: GetGivingSummary retrieves a composite global giving activity index and platform breakdowns.
+            operationId: GetGivingSummary
+            parameters:
+                - name: platform_limit
+                  in: query
+                  description: Number of platforms to include (0 = all).
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+                - name: category_limit
+                  in: query
+                  description: Number of category breakdowns to include (0 = all).
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetGivingSummaryResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+components:
+    schemas:
+        Error:
+            type: object
+            properties:
+                message:
+                    type: string
+                    description: Error message (e.g., 'user not found', 'database connection failed')
+            description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        FieldViolation:
+            type: object
+            properties:
+                field:
+                    type: string
+                    description: The field path that failed validation (e.g., 'user.email' for nested fields). For header validation, this will be the header name (e.g., 'X-API-Key')
+                description:
+                    type: string
+                    description: Human-readable description of the validation violation (e.g., 'must be a valid email address', 'required field missing')
+            required:
+                - field
+                - description
+            description: FieldViolation describes a single validation error for a specific field.
+        ValidationError:
+            type: object
+            properties:
+                violations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FieldViolation'
+                    description: List of validation violations
+            required:
+                - violations
+            description: ValidationError is returned when request validation fails. It contains a list of field violations describing what went wrong.
+        GetGivingSummaryRequest:
+            type: object
+            properties:
+                platformLimit:
+                    type: integer
+                    format: int32
+                    description: Number of platforms to include (0 = all).
+                categoryLimit:
+                    type: integer
+                    format: int32
+                    description: Number of category breakdowns to include (0 = all).
+            description: GetGivingSummaryRequest specifies parameters for retrieving the global giving summary.
+        GetGivingSummaryResponse:
+            type: object
+            properties:
+                summary:
+                    $ref: '#/components/schemas/GivingSummary'
+            description: GetGivingSummaryResponse contains the global giving activity summary.
+        GivingSummary:
+            type: object
+            properties:
+                generatedAt:
+                    type: string
+                    description: Timestamp of the summary generation (ISO 8601).
+                activityIndex:
+                    type: number
+                    format: double
+                    description: Global giving activity index (0-100 composite score).
+                trend:
+                    type: string
+                    description: Index trend direction.
+                estimatedDailyFlowUsd:
+                    type: number
+                    format: double
+                    description: 'Estimated daily global giving flow in USD (directional, not precise).. Warning: Values > 2^53 may lose precision in JavaScript'
+                platforms:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/PlatformGiving'
+                categories:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CategoryBreakdown'
+                crypto:
+                    $ref: '#/components/schemas/CryptoGivingSummary'
+                institutional:
+                    $ref: '#/components/schemas/InstitutionalGiving'
+            description: GivingSummary represents a global overview of personal giving activity across platforms.
+        PlatformGiving:
+            type: object
+            properties:
+                platform:
+                    type: string
+                    minLength: 1
+                    description: Platform name (e.g., "GoFundMe", "GlobalGiving", "JustGiving").
+                dailyVolumeUsd:
+                    type: number
+                    format: double
+                    description: Estimated daily donation volume in USD.
+                activeCampaignsSampled:
+                    type: integer
+                    format: int32
+                    description: Number of active campaigns being sampled.
+                newCampaigns24h:
+                    type: integer
+                    format: int32
+                    description: New campaigns created in the last 24 hours.
+                donationVelocity:
+                    type: number
+                    format: double
+                    description: Average donation velocity (donations per hour).
+                dataFreshness:
+                    type: string
+                    description: 'Data freshness: "live", "daily", "weekly", "annual".'
+                lastUpdated:
+                    type: string
+                    description: Last data update timestamp (ISO 8601).
+            required:
+                - platform
+            description: PlatformGiving represents aggregated giving data from a single crowdfunding platform.
+        CategoryBreakdown:
+            type: object
+            properties:
+                category:
+                    type: string
+                    description: Category name (e.g., "Medical", "Disaster Relief", "Education").
+                share:
+                    type: number
+                    format: double
+                    description: Share of total giving activity (0-1).
+                change24h:
+                    type: number
+                    format: double
+                    description: 24-hour change in share percentage points.
+                activeCampaigns:
+                    type: integer
+                    format: int32
+                    description: Number of active campaigns in this category.
+                trending:
+                    type: boolean
+                    description: Trending indicator.
+            description: CategoryBreakdown represents giving activity within a specific cause category.
+        CryptoGivingSummary:
+            type: object
+            properties:
+                dailyInflowUsd:
+                    type: number
+                    format: double
+                    description: Total 24h inflow to tracked charity wallets (USD equivalent).
+                trackedWallets:
+                    type: integer
+                    format: int32
+                    description: Number of tracked charity wallets.
+                transactions24h:
+                    type: integer
+                    format: int32
+                    description: Number of transactions in the last 24 hours.
+                topReceivers:
+                    type: array
+                    items:
+                        type: string
+                        description: Top receiving platforms / DAOs.
+                pctOfTotal:
+                    type: number
+                    format: double
+                    description: Percentage of total giving that is on-chain.
+            description: CryptoGivingSummary tracks transparent on-chain philanthropy.
+        InstitutionalGiving:
+            type: object
+            properties:
+                oecdOdaAnnualUsdBn:
+                    type: number
+                    format: double
+                    description: Latest OECD ODA total (annual, USD billions).
+                oecdDataYear:
+                    type: integer
+                    format: int32
+                    description: Year of latest OECD data.
+                cafWorldGivingIndex:
+                    type: number
+                    format: double
+                    description: CAF World Giving Index score (latest).
+                cafDataYear:
+                    type: integer
+                    format: int32
+                    description: Year of latest CAF data.
+                candidGrantsTracked:
+                    type: integer
+                    format: int32
+                    description: Number of foundation grants tracked (Candid).
+                dataLag:
+                    type: string
+                    description: Data lag description (e.g., "Quarterly", "Annual").
+            description: InstitutionalGiving tracks large-scale structured philanthropy and ODA.

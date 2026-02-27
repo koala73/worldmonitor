@@ -2,13 +2,9 @@
 // source: worldmonitor/climate/v1/service.proto
 
 export interface ListClimateAnomaliesRequest {
-  pagination?: PaginationRequest;
-  minSeverity: AnomalySeverity;
-}
-
-export interface PaginationRequest {
   pageSize: number;
   cursor: string;
+  minSeverity: AnomalySeverity;
 }
 
 export interface ListClimateAnomaliesResponse {
@@ -90,7 +86,11 @@ export class ClimateServiceClient {
 
   async listClimateAnomalies(req: ListClimateAnomaliesRequest, options?: ClimateServiceCallOptions): Promise<ListClimateAnomaliesResponse> {
     let path = "/api/climate/v1/list-climate-anomalies";
-    const url = this.baseURL + path;
+    const params = new URLSearchParams();
+    if (req.pageSize != null && req.pageSize !== 0) params.set("page_size", String(req.pageSize));
+    if (req.cursor != null && req.cursor !== "") params.set("cursor", String(req.cursor));
+    if (req.minSeverity != null && req.minSeverity !== "ANOMALY_SEVERITY_UNSPECIFIED") params.set("min_severity", String(req.minSeverity));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -99,9 +99,8 @@ export class ClimateServiceClient {
     };
 
     const resp = await this.fetchFn(url, {
-      method: "POST",
+      method: "GET",
       headers,
-      body: JSON.stringify(req),
       signal: options?.signal,
     });
 

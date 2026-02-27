@@ -2,14 +2,10 @@
 // source: worldmonitor/prediction/v1/service.proto
 
 export interface ListPredictionMarketsRequest {
-  pagination?: PaginationRequest;
-  category: string;
-  query: string;
-}
-
-export interface PaginationRequest {
   pageSize: number;
   cursor: string;
+  category: string;
+  query: string;
 }
 
 export interface ListPredictionMarketsResponse {
@@ -82,7 +78,12 @@ export class PredictionServiceClient {
 
   async listPredictionMarkets(req: ListPredictionMarketsRequest, options?: PredictionServiceCallOptions): Promise<ListPredictionMarketsResponse> {
     let path = "/api/prediction/v1/list-prediction-markets";
-    const url = this.baseURL + path;
+    const params = new URLSearchParams();
+    if (req.pageSize != null && req.pageSize !== 0) params.set("page_size", String(req.pageSize));
+    if (req.cursor != null && req.cursor !== "") params.set("cursor", String(req.cursor));
+    if (req.category != null && req.category !== "") params.set("category", String(req.category));
+    if (req.query != null && req.query !== "") params.set("query", String(req.query));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -91,9 +92,8 @@ export class PredictionServiceClient {
     };
 
     const resp = await this.fetchFn(url, {
-      method: "POST",
+      method: "GET",
       headers,
-      body: JSON.stringify(req),
       signal: options?.signal,
     });
 

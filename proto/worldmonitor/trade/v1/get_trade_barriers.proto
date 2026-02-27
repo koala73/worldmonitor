@@ -2,16 +2,17 @@ syntax = "proto3";
 
 package worldmonitor.trade.v1;
 
+import "sebuf/http/annotations.proto";
 import "worldmonitor/trade/v1/trade_data.proto";
 
 // Request for SPS/TBT trade barrier notifications.
 message GetTradeBarriersRequest {
   // WTO member codes to filter by. Empty = all.
-  repeated string countries = 1;
+  repeated string countries = 1 [(sebuf.http.query) = { name: "countries" }];
   // Filter by measure type: "SPS", "TBT", or empty for both.
-  string measure_type = 2;
+  string measure_type = 2 [(sebuf.http.query) = { name: "measure_type" }];
   // Max results to return (server caps at 100).
-  int32 limit = 3;
+  int32 limit = 3 [(sebuf.http.query) = { name: "limit" }];
 }
 
 // Response containing trade barrier notifications.

@@ -2,21 +2,13 @@
 // source: worldmonitor/cyber/v1/service.proto
 
 export interface ListCyberThreatsRequest {
-  timeRange?: TimeRange;
-  pagination?: PaginationRequest;
+  start: number;
+  end: number;
+  pageSize: number;
+  cursor: string;
   type: CyberThreatType;
   source: CyberThreatSource;
   minSeverity: CriticalityLevel;
-}
-
-export interface TimeRange {
-  start: number;
-  end: number;
-}
-
-export interface PaginationRequest {
-  pageSize: number;
-  cursor: string;
 }
 
 export interface ListCyberThreatsResponse {
@@ -111,12 +103,22 @@ export function createCyberServiceRoutes(
 ): RouteDescriptor[] {
   return [
     {
-      method: "POST",
+      method: "GET",
       path: "/api/cyber/v1/list-cyber-threats",
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
-          const body = await req.json() as ListCyberThreatsRequest;
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListCyberThreatsRequest = {
+            start: Number(params.get("start") ?? "0"),
+            end: Number(params.get("end") ?? "0"),
+            pageSize: Number(params.get("page_size") ?? "0"),
+            cursor: params.get("cursor") ?? "",
+            type: (params.get("type") ?? "CYBER_THREAT_TYPE_UNSPECIFIED") as CyberThreatType,
+            source: (params.get("source") ?? "CYBER_THREAT_SOURCE_UNSPECIFIED") as CyberThreatSource,
+            minSeverity: (params.get("min_severity") ?? "CRITICALITY_LEVEL_UNSPECIFIED") as CriticalityLevel,
+          };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("listCyberThreats", body);
             if (bodyViolations) {

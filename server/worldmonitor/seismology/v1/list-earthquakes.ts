@@ -24,7 +24,7 @@ export const listEarthquakes: SeismologyServiceHandler['listEarthquakes'] = asyn
   _ctx: ServerContext,
   req: ListEarthquakesRequest,
 ): Promise<ListEarthquakesResponse> => {
-  const pageSize = req.pagination?.pageSize || 500;
+  const pageSize = req.pageSize || 500;
 
   try {
   // Cache stores full set, slice on read — avoids polluting cache with partial results

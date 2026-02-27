@@ -10,19 +10,21 @@ import "sebuf/http/annotations.proto";
 // - exposure mode: estimates population within a radius of a point
 message GetPopulationExposureRequest {
   // Mode: "countries" (default) or "exposure".
-  string mode = 1;
+  string mode = 1 [(sebuf.http.query) = { name: "mode" }];
   // Latitude (required for exposure mode).
   double lat = 2 [
     (buf.validate.field).double.gte = -90,
-    (buf.validate.field).double.lte = 90
+    (buf.validate.field).double.lte = 90,
+    (sebuf.http.query) = { name: "lat" }
   ];
   // Longitude (required for exposure mode).
   double lon = 3 [
     (buf.validate.field).double.gte = -180,
-    (buf.validate.field).double.lte = 180
+    (buf.validate.field).double.lte = 180,
+    (sebuf.http.query) = { name: "lon" }
   ];
   // Radius in km (required for exposure mode, defaults to 50).
-  double radius = 4 [(buf.validate.field).double.gte = 0];
+  double radius = 4 [(buf.validate.field).double.gte = 0, (sebuf.http.query) = { name: "radius" }];
 }
 
 // CountryPopulationEntry represents a country with population data.

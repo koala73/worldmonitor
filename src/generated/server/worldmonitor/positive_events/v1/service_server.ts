@@ -71,18 +71,12 @@ export function createPositiveEventsServiceRoutes(
 ): RouteDescriptor[] {
   return [
     {
-      method: "POST",
+      method: "GET",
       path: "/api/positive-events/v1/list-positive-geo-events",
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
-          const body = await req.json() as ListPositiveGeoEventsRequest;
-          if (options?.validateRequest) {
-            const bodyViolations = options.validateRequest("listPositiveGeoEvents", body);
-            if (bodyViolations) {
-              throw new ValidationError(bodyViolations);
-            }
-          }
+          const body = {} as ListPositiveGeoEventsRequest;
 
           const ctx: ServerContext = {
             request: req,

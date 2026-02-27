@@ -11,6 +11,6 @@ service WildfireService {
 
   // ListFireDetections retrieves satellite-detected active fires from NASA FIRMS.
   rpc ListFireDetections(ListFireDetectionsRequest) returns (ListFireDetectionsResponse) {
-    option (sebuf.http.config) = {path: "/list-fire-detections"};
+    option (sebuf.http.config) = {path: "/list-fire-detections", method: HTTP_METHOD_GET};
   }
 }

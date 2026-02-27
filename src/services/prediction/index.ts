@@ -155,7 +155,8 @@ async function polyFetch(endpoint: 'events' | 'markets', params: Record<string, 
     const resp = await client.listPredictionMarkets({
       category: params.tag_slug ?? '',
       query: '',
-      pagination: { pageSize: parseInt(params.limit ?? '50', 10), cursor: '' },
+      pageSize: parseInt(params.limit ?? '50', 10),
+      cursor: '',
     });
     if (resp.markets && resp.markets.length > 0) {
       // Convert proto PredictionMarket[] to Gamma-compatible Response

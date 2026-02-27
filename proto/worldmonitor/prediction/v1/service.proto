@@ -11,6 +11,6 @@ service PredictionService {
 
   // ListPredictionMarkets retrieves active prediction markets from Polymarket.
   rpc ListPredictionMarkets(ListPredictionMarketsRequest) returns (ListPredictionMarketsResponse) {
-    option (sebuf.http.config) = {path: "/list-prediction-markets"};
+    option (sebuf.http.config) = {path: "/list-prediction-markets", method: HTTP_METHOD_GET};
   }
 }

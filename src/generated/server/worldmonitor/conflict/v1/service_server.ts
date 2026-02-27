@@ -2,19 +2,11 @@
 // source: worldmonitor/conflict/v1/service.proto
 
 export interface ListAcledEventsRequest {
-  timeRange?: TimeRange;
-  pagination?: PaginationRequest;
-  country: string;
-}
-
-export interface TimeRange {
   start: number;
   end: number;
-}
-
-export interface PaginationRequest {
   pageSize: number;
   cursor: string;
+  country: string;
 }
 
 export interface ListAcledEventsResponse {
@@ -45,8 +37,10 @@ export interface PaginationResponse {
 }
 
 export interface ListUcdpEventsRequest {
-  timeRange?: TimeRange;
-  pagination?: PaginationRequest;
+  start: number;
+  end: number;
+  pageSize: number;
+  cursor: string;
   country: string;
 }
 
@@ -147,12 +141,20 @@ export function createConflictServiceRoutes(
 ): RouteDescriptor[] {
   return [
     {
-      method: "POST",
+      method: "GET",
       path: "/api/conflict/v1/list-acled-events",
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
-          const body = await req.json() as ListAcledEventsRequest;
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListAcledEventsRequest = {
+            start: Number(params.get("start") ?? "0"),
+            end: Number(params.get("end") ?? "0"),
+            pageSize: Number(params.get("page_size") ?? "0"),
+            cursor: params.get("cursor") ?? "",
+            country: params.get("country") ?? "",
+          };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("listAcledEvents", body);
             if (bodyViolations) {
@@ -190,12 +192,20 @@ export function createConflictServiceRoutes(
       },
     },
     {
-      method: "POST",
+      method: "GET",
       path: "/api/conflict/v1/list-ucdp-events",
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
-          const body = await req.json() as ListUcdpEventsRequest;
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListUcdpEventsRequest = {
+            start: Number(params.get("start") ?? "0"),
+            end: Number(params.get("end") ?? "0"),
+            pageSize: Number(params.get("page_size") ?? "0"),
+            cursor: params.get("cursor") ?? "",
+            country: params.get("country") ?? "",
+          };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("listUcdpEvents", body);
             if (bodyViolations) {
@@ -233,18 +243,18 @@ export function createConflictServiceRoutes(
       },
     },
     {
-      method: "POST",
-      path: "/api/conflict/v1/get-humanitarian-summary",
+      method: "GET",
+      path: "/api/conflict/v1/get-humanitarian-summary/{country_code}",
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
-          const body = await req.json() as GetHumanitarianSummaryRequest;
-          if (options?.validateRequest) {
-            const bodyViolations = options.validateRequest("getHumanitarianSummary", body);
-            if (bodyViolations) {
-              throw new ValidationError(bodyViolations);
-            }
-          }
+          const url = new URL(req.url, "http://localhost");
+          const pathSegments = url.pathname.split("/");
+          pathParams["country_code"] = decodeURIComponent(pathSegments[5] ?? "");
+
+          const body: GetHumanitarianSummaryRequest = {
+            countryCode: pathParams["country_code"],
+          };
 
           const ctx: ServerContext = {
             request: req,

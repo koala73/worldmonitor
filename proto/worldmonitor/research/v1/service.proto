@@ -14,21 +14,21 @@ service ResearchService {
 
   // ListArxivPapers retrieves recent papers from arXiv.
   rpc ListArxivPapers(ListArxivPapersRequest) returns (ListArxivPapersResponse) {
-    option (sebuf.http.config) = {path: "/list-arxiv-papers"};
+    option (sebuf.http.config) = {path: "/list-arxiv-papers", method: HTTP_METHOD_GET};
   }
 
   // ListTrendingRepos retrieves trending repositories from GitHub.
   rpc ListTrendingRepos(ListTrendingReposRequest) returns (ListTrendingReposResponse) {
-    option (sebuf.http.config) = {path: "/list-trending-repos"};
+    option (sebuf.http.config) = {path: "/list-trending-repos", method: HTTP_METHOD_GET};
   }
 
   // ListHackernewsItems retrieves top stories from Hacker News.
   rpc ListHackernewsItems(ListHackernewsItemsRequest) returns (ListHackernewsItemsResponse) {
-    option (sebuf.http.config) = {path: "/list-hackernews-items"};
+    option (sebuf.http.config) = {path: "/list-hackernews-items", method: HTTP_METHOD_GET};
   }
 
   // ListTechEvents retrieves tech events from Techmeme ICS, dev.events RSS, and curated sources.
   rpc ListTechEvents(ListTechEventsRequest) returns (ListTechEventsResponse) {
-    option (sebuf.http.config) = {path: "/list-tech-events"};
+    option (sebuf.http.config) = {path: "/list-tech-events", method: HTTP_METHOD_GET};
   }
 }

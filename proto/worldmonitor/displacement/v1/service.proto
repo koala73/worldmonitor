@@ -12,11 +12,11 @@ service DisplacementService {
 
   // GetDisplacementSummary retrieves global refugee and IDP statistics from UNHCR.
   rpc GetDisplacementSummary(GetDisplacementSummaryRequest) returns (GetDisplacementSummaryResponse) {
-    option (sebuf.http.config) = {path: "/get-displacement-summary"};
+    option (sebuf.http.config) = {path: "/get-displacement-summary", method: HTTP_METHOD_GET};
   }
 
   // GetPopulationExposure returns country population data or estimates population within a radius.
   rpc GetPopulationExposure(GetPopulationExposureRequest) returns (GetPopulationExposureResponse) {
-    option (sebuf.http.config) = {path: "/get-population-exposure"};
+    option (sebuf.http.config) = {path: "/get-population-exposure", method: HTTP_METHOD_GET};
   }
 }

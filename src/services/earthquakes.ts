@@ -15,7 +15,7 @@ const emptyFallback: ListEarthquakesResponse = { earthquakes: [] };
 
 export async function fetchEarthquakes(): Promise<Earthquake[]> {
   const response = await breaker.execute(async () => {
-    return client.listEarthquakes({ minMagnitude: 0 });
+    return client.listEarthquakes({ minMagnitude: 0, start: 0, end: 0, pageSize: 0, cursor: '' });
   }, emptyFallback);
   return response.earthquakes;
 }

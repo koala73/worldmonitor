@@ -212,7 +212,7 @@ async function fetchSnapshotPayload(includeCandidates: boolean): Promise<unknown
   } catch (rawError) {
     // Desktop fallback: use proto route when relay URL/local relay is unavailable.
     const response = await snapshotBreaker.execute(async () => {
-      return client.getVesselSnapshot({});
+      return client.getVesselSnapshot({ neLat: 0, neLon: 0, swLat: 0, swLon: 0 });
     }, emptySnapshotFallback);
 
     if (response.snapshot) {

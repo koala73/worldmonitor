@@ -2,31 +2,16 @@
 // source: worldmonitor/unrest/v1/service.proto
 
 export interface ListUnrestEventsRequest {
-  timeRange?: TimeRange;
-  pagination?: PaginationRequest;
-  country: string;
-  minSeverity: SeverityLevel;
-  boundingBox?: BoundingBox;
-}
-
-export interface TimeRange {
   start: number;
   end: number;
-}
-
-export interface PaginationRequest {
   pageSize: number;
   cursor: string;
-}
-
-export interface BoundingBox {
-  northEast?: GeoCoordinates;
-  southWest?: GeoCoordinates;
-}
-
-export interface GeoCoordinates {
-  latitude: number;
-  longitude: number;
+  country: string;
+  minSeverity: SeverityLevel;
+  neLat: number;
+  neLon: number;
+  swLat: number;
+  swLon: number;
 }
 
 export interface ListUnrestEventsResponse {
@@ -52,6 +37,11 @@ export interface UnrestEvent {
   tags: string[];
   actors: string[];
   confidence: ConfidenceLevel;
+}
+
+export interface GeoCoordinates {
+  latitude: number;
+  longitude: number;
 }
 
 export interface UnrestCluster {
@@ -133,12 +123,25 @@ export function createUnrestServiceRoutes(
 ): RouteDescriptor[] {
   return [
     {
-      method: "POST",
+      method: "GET",
       path: "/api/unrest/v1/list-unrest-events",
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
-          const body = await req.json() as ListUnrestEventsRequest;
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListUnrestEventsRequest = {
+            start: Number(params.get("start") ?? "0"),
+            end: Number(params.get("end") ?? "0"),
+            pageSize: Number(params.get("page_size") ?? "0"),
+            cursor: params.get("cursor") ?? "",
+            country: params.get("country") ?? "",
+            minSeverity: (params.get("min_severity") ?? "SEVERITY_LEVEL_UNSPECIFIED") as SeverityLevel,
+            neLat: Number(params.get("ne_lat") ?? "0"),
+            neLon: Number(params.get("ne_lon") ?? "0"),
+            swLat: Number(params.get("sw_lat") ?? "0"),
+            swLon: Number(params.get("sw_lon") ?? "0"),
+          };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("listUnrestEvents", body);
             if (bodyViolations) {

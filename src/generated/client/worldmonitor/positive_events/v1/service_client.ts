@@ -65,7 +65,7 @@ export class PositiveEventsServiceClient {
     this.defaultHeaders = { ...options?.defaultHeaders };
   }
 
-  async listPositiveGeoEvents(req: ListPositiveGeoEventsRequest, options?: PositiveEventsServiceCallOptions): Promise<ListPositiveGeoEventsResponse> {
+  async listPositiveGeoEvents(_req: ListPositiveGeoEventsRequest, options?: PositiveEventsServiceCallOptions): Promise<ListPositiveGeoEventsResponse> {
     let path = "/api/positive-events/v1/list-positive-geo-events";
     const url = this.baseURL + path;
 
@@ -76,9 +76,8 @@ export class PositiveEventsServiceClient {
     };
 
     const resp = await this.fetchFn(url, {
-      method: "POST",
+      method: "GET",
       headers,
-      body: JSON.stringify(req),
       signal: options?.signal,
     });
 

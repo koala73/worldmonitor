@@ -2,15 +2,18 @@ syntax = "proto3";
 
 package worldmonitor.climate.v1;
 
+import "sebuf/http/annotations.proto";
 import "worldmonitor/core/v1/pagination.proto";
 import "worldmonitor/climate/v1/climate_anomaly.proto";
 
 // ListClimateAnomaliesRequest specifies filters for retrieving climate anomaly data.
 message ListClimateAnomaliesRequest {
-  // Pagination parameters.
-  worldmonitor.core.v1.PaginationRequest pagination = 1;
+  // Maximum items per page (1-100).
+  int32 page_size = 1 [(sebuf.http.query) = { name: "page_size" }];
+  // Cursor for next page.
+  string cursor = 2 [(sebuf.http.query) = { name: "cursor" }];
   // Optional filter by anomaly severity.
-  AnomalySeverity min_severity = 2;
+  AnomalySeverity min_severity = 3 [(sebuf.http.query) = { name: "min_severity" }];
 }
 
 // ListClimateAnomaliesResponse contains the list of climate anomalies.

@@ -2,14 +2,10 @@
 // source: worldmonitor/prediction/v1/service.proto
 
 export interface ListPredictionMarketsRequest {
-  pagination?: PaginationRequest;
-  category: string;
-  query: string;
-}
-
-export interface PaginationRequest {
   pageSize: number;
   cursor: string;
+  category: string;
+  query: string;
 }
 
 export interface ListPredictionMarketsResponse {
@@ -86,12 +82,19 @@ export function createPredictionServiceRoutes(
 ): RouteDescriptor[] {
   return [
     {
-      method: "POST",
+      method: "GET",
       path: "/api/prediction/v1/list-prediction-markets",
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
-          const body = await req.json() as ListPredictionMarketsRequest;
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListPredictionMarketsRequest = {
+            pageSize: Number(params.get("page_size") ?? "0"),
+            cursor: params.get("cursor") ?? "",
+            category: params.get("category") ?? "",
+            query: params.get("query") ?? "",
+          };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("listPredictionMarkets", body);
             if (bodyViolations) {

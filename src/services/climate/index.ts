@@ -34,7 +34,7 @@ const emptyClimateFallback: ListClimateAnomaliesResponse = { anomalies: [] };
 
 export async function fetchClimateAnomalies(): Promise<ClimateFetchResult> {
   const response = await breaker.execute(async () => {
-    return client.listClimateAnomalies({ minSeverity: 'ANOMALY_SEVERITY_UNSPECIFIED' });
+    return client.listClimateAnomalies({ minSeverity: 'ANOMALY_SEVERITY_UNSPECIFIED', pageSize: 0, cursor: '' });
   }, emptyClimateFallback);
   const anomalies = (response.anomalies ?? [])
     .map(toDisplayAnomaly)

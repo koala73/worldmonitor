@@ -11,6 +11,6 @@ service AviationService {
 
   // ListAirportDelays retrieves current airport delay alerts.
   rpc ListAirportDelays(ListAirportDelaysRequest) returns (ListAirportDelaysResponse) {
-    option (sebuf.http.config) = {path: "/list-airport-delays"};
+    option (sebuf.http.config) = {path: "/list-airport-delays", method: HTTP_METHOD_GET};
   }
 }

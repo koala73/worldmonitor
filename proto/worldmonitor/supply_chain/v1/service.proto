@@ -11,14 +11,14 @@ service SupplyChainService {
   option (sebuf.http.service_config) = {base_path: "/api/supply-chain/v1"};
 
   rpc GetShippingRates(GetShippingRatesRequest) returns (GetShippingRatesResponse) {
-    option (sebuf.http.config) = {path: "/get-shipping-rates"};
+    option (sebuf.http.config) = {path: "/get-shipping-rates", method: HTTP_METHOD_GET};
   }
 
   rpc GetChokepointStatus(GetChokepointStatusRequest) returns (GetChokepointStatusResponse) {
-    option (sebuf.http.config) = {path: "/get-chokepoint-status"};
+    option (sebuf.http.config) = {path: "/get-chokepoint-status", method: HTTP_METHOD_GET};
   }
 
   rpc GetCriticalMinerals(GetCriticalMineralsRequest) returns (GetCriticalMineralsResponse) {
-    option (sebuf.http.config) = {path: "/get-critical-minerals"};
+    option (sebuf.http.config) = {path: "/get-critical-minerals", method: HTTP_METHOD_GET};
   }
 }

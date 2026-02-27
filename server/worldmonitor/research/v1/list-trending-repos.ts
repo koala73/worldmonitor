@@ -23,7 +23,7 @@ const REDIS_CACHE_TTL = 3600; // 1 hr — daily trending data
 async function fetchTrendingRepos(req: ListTrendingReposRequest): Promise<GithubRepo[]> {
   const language = req.language || 'python';
   const period = req.period || 'daily';
-  const pageSize = req.pagination?.pageSize || 50;
+  const pageSize = req.pageSize || 50;
 
   // Primary API
   const primaryUrl = `https://api.gitterapp.com/repositories?language=${language}&since=${period}`;
@@ -73,7 +73,7 @@ export async function listTrendingRepos(
   req: ListTrendingReposRequest,
 ): Promise<ListTrendingReposResponse> {
   try {
-    const cacheKey = `${REDIS_CACHE_KEY}:${req.language || 'python'}:${req.period || 'daily'}:${req.pagination?.pageSize || 50}`;
+    const cacheKey = `${REDIS_CACHE_KEY}:${req.language || 'python'}:${req.period || 'daily'}:${req.pageSize || 50}`;
     const result = await cachedFetchJson<ListTrendingReposResponse>(cacheKey, REDIS_CACHE_TTL, async () => {
       const repos = await fetchTrendingRepos(req);
       return repos.length > 0 ? { repos, pagination: undefined } : null;

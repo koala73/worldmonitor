@@ -2,16 +2,17 @@ syntax = "proto3";
 
 package worldmonitor.trade.v1;
 
+import "sebuf/http/annotations.proto";
 import "worldmonitor/trade/v1/trade_data.proto";
 
 // Request for bilateral trade flow data.
 message GetTradeFlowsRequest {
   // WTO member code of reporting country.
-  string reporting_country = 1;
+  string reporting_country = 1 [(sebuf.http.query) = { name: "reporting_country" }];
   // WTO member code of partner country.
-  string partner_country = 2;
+  string partner_country = 2 [(sebuf.http.query) = { name: "partner_country" }];
   // Number of years to look back (default 10, max 30).
-  int32 years = 3;
+  int32 years = 3 [(sebuf.http.query) = { name: "years" }];
 }
 
 // Response containing trade flow records.

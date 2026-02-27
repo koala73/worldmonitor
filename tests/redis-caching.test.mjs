@@ -648,10 +648,10 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
   }
 
   const request = {
-    boundingBox: {
-      southWest: { latitude: 10, longitude: 10 },
-      northEast: { latitude: 11, longitude: 11 },
-    },
+    swLat: 10,
+    swLon: 10,
+    neLat: 11,
+    neLon: 11,
   };
 
   it('fetches expanded quantized bbox but returns only flights inside the requested bbox', async () => {

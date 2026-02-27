@@ -2,19 +2,22 @@ syntax = "proto3";
 
 package worldmonitor.seismology.v1;
 
-import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
 import "worldmonitor/core/v1/pagination.proto";
-import "worldmonitor/core/v1/time.proto";
 import "worldmonitor/seismology/v1/earthquake.proto";
 
 // ListEarthquakesRequest specifies filters for retrieving earthquake data from USGS.
 message ListEarthquakesRequest {
-  // Time range to filter earthquakes.
-  worldmonitor.core.v1.TimeRange time_range = 1;
-  // Pagination parameters.
-  worldmonitor.core.v1.PaginationRequest pagination = 2;
+  // Start of time range (inclusive), Unix epoch milliseconds.
+  int64 start = 1 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER, (sebuf.http.query) = { name: "start" }];
+  // End of time range (inclusive), Unix epoch milliseconds.
+  int64 end = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER, (sebuf.http.query) = { name: "end" }];
+  // Maximum items per page (1-100).
+  int32 page_size = 3 [(sebuf.http.query) = { name: "page_size" }];
+  // Cursor for next page.
+  string cursor = 4 [(sebuf.http.query) = { name: "cursor" }];
   // Minimum magnitude filter (e.g., 4.0 for significant quakes).
-  double min_magnitude = 3 [(buf.validate.field).double.gte = 0];
+  double min_magnitude = 5 [(sebuf.http.query) = { name: "min_magnitude" }];
 }
 
 // ListEarthquakesResponse contains the list of earthquakes matching the request filters.

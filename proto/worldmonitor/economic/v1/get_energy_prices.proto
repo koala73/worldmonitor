@@ -2,12 +2,13 @@ syntax = "proto3";
 
 package worldmonitor.economic.v1;
 
+import "sebuf/http/annotations.proto";
 import "worldmonitor/economic/v1/economic_data.proto";
 
 // GetEnergyPricesRequest specifies which energy commodities to retrieve.
 message GetEnergyPricesRequest {
   // Optional commodity filter. Empty returns all tracked commodities.
-  repeated string commodities = 1;
+  repeated string commodities = 1 [(sebuf.http.query) = { name: "commodities" }];
 }
 
 // GetEnergyPricesResponse contains energy price data.

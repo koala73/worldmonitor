@@ -24,7 +24,8 @@ export async function fetchArxivPapers(
     const resp = await client.listArxivPapers({
       category,
       query,
-      pagination: { pageSize, cursor: '' },
+      pageSize,
+      cursor: '',
     });
     return resp.papers;
   }, []);
@@ -39,7 +40,8 @@ export async function fetchTrendingRepos(
     const resp = await client.listTrendingRepos({
       language,
       period,
-      pagination: { pageSize, cursor: '' },
+      pageSize,
+      cursor: '',
     });
     return resp.repos;
   }, []);
@@ -52,7 +54,8 @@ export async function fetchHackernewsItems(
   return hnBreaker.execute(async () => {
     const resp = await client.listHackernewsItems({
       feedType,
-      pagination: { pageSize, cursor: '' },
+      pageSize,
+      cursor: '',
     });
     return resp.items;
   }, []);

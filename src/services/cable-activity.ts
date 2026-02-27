@@ -282,7 +282,7 @@ function formatNgaDate(epochMs: number): string {
 
 export async function fetchCableActivity(): Promise<CableActivity> {
   try {
-    const response = await maritimeClient.listNavigationalWarnings({ area: '' });
+    const response = await maritimeClient.listNavigationalWarnings({ area: '', pageSize: 0, cursor: '' });
     const warnings: NgaWarning[] = response.warnings.map(protoToNgaWarning);
     console.log(`[CableActivity] Fetched ${warnings.length} NGA warnings`);
 

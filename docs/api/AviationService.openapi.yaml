@@ -4,18 +4,38 @@ info:
     version: 1.0.0
 paths:
     /api/aviation/v1/list-airport-delays:
-        post:
+        get:
             tags:
                 - AviationService
             summary: ListAirportDelays
             description: ListAirportDelays retrieves current airport delay alerts.
             operationId: ListAirportDelays
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/ListAirportDelaysRequest'
-                required: true
+            parameters:
+                - name: page_size
+                  in: query
+                  description: Maximum items per page (1-100).
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+                - name: cursor
+                  in: query
+                  description: Cursor for next page.
+                  required: false
+                  schema:
+                    type: string
+                - name: region
+                  in: query
+                  description: Optional region filter.
+                  required: false
+                  schema:
+                    type: string
+                - name: min_severity
+                  in: query
+                  description: Optional minimum severity filter.
+                  required: false
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
@@ -71,8 +91,13 @@ components:
         ListAirportDelaysRequest:
             type: object
             properties:
-                pagination:
-                    $ref: '#/components/schemas/PaginationRequest'
+                pageSize:
+                    type: integer
+                    format: int32
+                    description: Maximum items per page (1-100).
+                cursor:
+                    type: string
+                    description: Cursor for next page.
                 region:
                     type: string
                     enum:
@@ -96,19 +121,6 @@ components:
                         FlightDelaySeverity represents the severity of flight delays at an airport.
                          Maps to TS union: 'normal' | 'minor' | 'moderate' | 'major' | 'severe'.
             description: ListAirportDelaysRequest specifies filters for retrieving airport delay alerts.
-        PaginationRequest:
-            type: object
-            properties:
-                pageSize:
-                    type: integer
-                    maximum: 100
-                    minimum: 1
-                    format: int32
-                    description: Maximum number of items to return per page (1 to 100).
-                cursor:
-                    type: string
-                    description: Opaque cursor for fetching the next page. Empty string for the first page.
-            description: PaginationRequest specifies cursor-based pagination parameters for list endpoints.
         ListAirportDelaysResponse:
             type: object
             properties:

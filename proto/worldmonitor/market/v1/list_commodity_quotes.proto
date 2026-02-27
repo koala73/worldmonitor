@@ -2,12 +2,13 @@ syntax = "proto3";
 
 package worldmonitor.market.v1;
 
+import "sebuf/http/annotations.proto";
 import "worldmonitor/market/v1/market_quote.proto";
 
 // ListCommodityQuotesRequest specifies which commodities to retrieve.
 message ListCommodityQuotesRequest {
   // Commodity symbols to retrieve (Yahoo symbols). Empty returns defaults.
-  repeated string symbols = 1;
+  repeated string symbols = 1 [(sebuf.http.query) = { name: "symbols" }];
 }
 
 // ListCommodityQuotesResponse contains commodity quotes.

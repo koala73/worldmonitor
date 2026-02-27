@@ -433,7 +433,8 @@ export async function getIndicatorData(
       indicatorCode: indicator,
       countryCode: countries?.join(';') || '',
       year: years,
-      pagination: undefined,
+      pageSize: 0,
+      cursor: '',
     });
   }, emptyWbFallback);
 

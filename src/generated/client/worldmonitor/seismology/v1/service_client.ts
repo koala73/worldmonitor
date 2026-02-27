@@ -2,19 +2,11 @@
 // source: worldmonitor/seismology/v1/service.proto
 
 export interface ListEarthquakesRequest {
-  timeRange?: TimeRange;
-  pagination?: PaginationRequest;
-  minMagnitude: number;
-}
-
-export interface TimeRange {
   start: number;
   end: number;
-}
-
-export interface PaginationRequest {
   pageSize: number;
   cursor: string;
+  minMagnitude: number;
 }
 
 export interface ListEarthquakesResponse {
@@ -92,7 +84,13 @@ export class SeismologyServiceClient {
 
   async listEarthquakes(req: ListEarthquakesRequest, options?: SeismologyServiceCallOptions): Promise<ListEarthquakesResponse> {
     let path = "/api/seismology/v1/list-earthquakes";
-    const url = this.baseURL + path;
+    const params = new URLSearchParams();
+    if (req.start != null && req.start !== 0) params.set("start", String(req.start));
+    if (req.end != null && req.end !== 0) params.set("end", String(req.end));
+    if (req.pageSize != null && req.pageSize !== 0) params.set("page_size", String(req.pageSize));
+    if (req.cursor != null && req.cursor !== "") params.set("cursor", String(req.cursor));
+    if (req.minMagnitude != null && req.minMagnitude !== 0) params.set("min_magnitude", String(req.minMagnitude));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -101,9 +99,8 @@ export class SeismologyServiceClient {
     };
 
     const resp = await this.fetchFn(url, {
-      method: "POST",
+      method: "GET",
       headers,
-      body: JSON.stringify(req),
       signal: options?.signal,
     });
 

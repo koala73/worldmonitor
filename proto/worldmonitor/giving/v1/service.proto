@@ -11,6 +11,6 @@ service GivingService {
 
   // GetGivingSummary retrieves a composite global giving activity index and platform breakdowns.
   rpc GetGivingSummary(GetGivingSummaryRequest) returns (GetGivingSummaryResponse) {
-    option (sebuf.http.config) = {path: "/get-giving-summary"};
+    option (sebuf.http.config) = {path: "/get-giving-summary", method: HTTP_METHOD_GET};
   }
 }

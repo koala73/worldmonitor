@@ -2,14 +2,15 @@ syntax = "proto3";
 
 package worldmonitor.giving.v1;
 
+import "sebuf/http/annotations.proto";
 import "worldmonitor/giving/v1/giving.proto";
 
 // GetGivingSummaryRequest specifies parameters for retrieving the global giving summary.
 message GetGivingSummaryRequest {
   // Number of platforms to include (0 = all).
-  int32 platform_limit = 1;
+  int32 platform_limit = 1 [(sebuf.http.query) = { name: "platform_limit" }];
   // Number of category breakdowns to include (0 = all).
-  int32 category_limit = 2;
+  int32 category_limit = 2 [(sebuf.http.query) = { name: "category_limit" }];
 }
 
 // GetGivingSummaryResponse contains the global giving activity summary.

@@ -11,6 +11,6 @@ service ClimateService {
 
   // ListClimateAnomalies retrieves temperature and precipitation anomalies from ERA5 data.
   rpc ListClimateAnomalies(ListClimateAnomaliesRequest) returns (ListClimateAnomaliesResponse) {
-    option (sebuf.http.config) = {path: "/list-climate-anomalies"};
+    option (sebuf.http.config) = {path: "/list-climate-anomalies", method: HTTP_METHOD_GET};
   }
 }

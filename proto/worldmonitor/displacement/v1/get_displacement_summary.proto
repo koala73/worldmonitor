@@ -3,16 +3,17 @@ syntax = "proto3";
 package worldmonitor.displacement.v1;
 
 import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
 import "worldmonitor/displacement/v1/displacement.proto";
 
 // GetDisplacementSummaryRequest specifies parameters for retrieving displacement data.
 message GetDisplacementSummaryRequest {
   // Data year to retrieve (e.g., 2023). Uses latest available if zero.
-  int32 year = 1 [(buf.validate.field).int32.gte = 0];
+  int32 year = 1 [(buf.validate.field).int32.gte = 0, (sebuf.http.query) = { name: "year" }];
   // Maximum number of country entries to return.
-  int32 country_limit = 2 [(buf.validate.field).int32.gte = 0];
+  int32 country_limit = 2 [(buf.validate.field).int32.gte = 0, (sebuf.http.query) = { name: "country_limit" }];
   // Maximum number of displacement flows to return.
-  int32 flow_limit = 3 [(buf.validate.field).int32.gte = 0];
+  int32 flow_limit = 3 [(buf.validate.field).int32.gte = 0, (sebuf.http.query) = { name: "flow_limit" }];
 }
 
 // GetDisplacementSummaryResponse contains the global displacement summary.

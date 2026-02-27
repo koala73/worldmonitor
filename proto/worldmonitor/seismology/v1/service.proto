@@ -11,6 +11,6 @@ service SeismologyService {
 
   // ListEarthquakes retrieves recent earthquakes from the USGS GeoJSON feed.
   rpc ListEarthquakes(ListEarthquakesRequest) returns (ListEarthquakesResponse) {
-    option (sebuf.http.config) = {path: "/list-earthquakes"};
+    option (sebuf.http.config) = {path: "/list-earthquakes", method: HTTP_METHOD_GET};
   }
 }

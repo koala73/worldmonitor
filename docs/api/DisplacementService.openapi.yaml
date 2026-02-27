@@ -4,18 +4,34 @@ info:
     version: 1.0.0
 paths:
     /api/displacement/v1/get-displacement-summary:
-        post:
+        get:
             tags:
                 - DisplacementService
             summary: GetDisplacementSummary
             description: GetDisplacementSummary retrieves global refugee and IDP statistics from UNHCR.
             operationId: GetDisplacementSummary
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/GetDisplacementSummaryRequest'
-                required: true
+            parameters:
+                - name: year
+                  in: query
+                  description: Data year to retrieve (e.g., 2023). Uses latest available if zero.
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+                - name: country_limit
+                  in: query
+                  description: Maximum number of country entries to return.
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+                - name: flow_limit
+                  in: query
+                  description: Maximum number of displacement flows to return.
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
             responses:
                 "200":
                     description: Successful response
@@ -36,18 +52,40 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/Error'
     /api/displacement/v1/get-population-exposure:
-        post:
+        get:
             tags:
                 - DisplacementService
             summary: GetPopulationExposure
             description: GetPopulationExposure returns country population data or estimates population within a radius.
             operationId: GetPopulationExposure
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/GetPopulationExposureRequest'
-                required: true
+            parameters:
+                - name: mode
+                  in: query
+                  description: 'Mode: "countries" (default) or "exposure".'
+                  required: false
+                  schema:
+                    type: string
+                - name: lat
+                  in: query
+                  description: Latitude (required for exposure mode).
+                  required: false
+                  schema:
+                    type: number
+                    format: double
+                - name: lon
+                  in: query
+                  description: Longitude (required for exposure mode).
+                  required: false
+                  schema:
+                    type: number
+                    format: double
+                - name: radius
+                  in: query
+                  description: Radius in km (required for exposure mode, defaults to 50).
+                  required: false
+                  schema:
+                    type: number
+                    format: double
             responses:
                 "200":
                     description: Successful response

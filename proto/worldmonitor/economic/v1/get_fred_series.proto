@@ -3,6 +3,7 @@ syntax = "proto3";
 package worldmonitor.economic.v1;
 
 import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
 import "worldmonitor/economic/v1/economic_data.proto";
 
 // GetFredSeriesRequest specifies which FRED series to retrieve.
@@ -13,7 +14,7 @@ message GetFredSeriesRequest {
     (buf.validate.field).string.min_len = 1
   ];
   // Maximum number of observations to return. Defaults to 120.
-  int32 limit = 2;
+  int32 limit = 2 [(sebuf.http.query) = { name: "limit" }];
 }
 
 // GetFredSeriesResponse contains the requested FRED series data.

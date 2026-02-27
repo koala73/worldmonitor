@@ -1,0 +1,461 @@
+openapi: 3.1.0
+info:
+    title: TradeService API
+    version: 1.0.0
+paths:
+    /api/trade/v1/get-trade-restrictions:
+        get:
+            tags:
+                - TradeService
+            summary: GetTradeRestrictions
+            description: Get quantitative restrictions and export controls.
+            operationId: GetTradeRestrictions
+            parameters:
+                - name: countries
+                  in: query
+                  description: WTO member codes to filter by. Empty = all.
+                  required: false
+                  schema:
+                    type: string
+                - name: limit
+                  in: query
+                  description: Max results to return (server caps at 100).
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetTradeRestrictionsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/trade/v1/get-tariff-trends:
+        get:
+            tags:
+                - TradeService
+            summary: GetTariffTrends
+            description: Get tariff rate timeseries for a country pair.
+            operationId: GetTariffTrends
+            parameters:
+                - name: reporting_country
+                  in: query
+                  description: WTO member code of reporting country (e.g. "840" = US).
+                  required: false
+                  schema:
+                    type: string
+                - name: partner_country
+                  in: query
+                  description: WTO member code of partner country (e.g. "156" = China).
+                  required: false
+                  schema:
+                    type: string
+                - name: product_sector
+                  in: query
+                  description: Product sector filter (HS chapter). Empty = aggregate.
+                  required: false
+                  schema:
+                    type: string
+                - name: years
+                  in: query
+                  description: Number of years to look back (default 10, max 30).
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetTariffTrendsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/trade/v1/get-trade-flows:
+        get:
+            tags:
+                - TradeService
+            summary: GetTradeFlows
+            description: Get bilateral merchandise trade flows.
+            operationId: GetTradeFlows
+            parameters:
+                - name: reporting_country
+                  in: query
+                  description: WTO member code of reporting country.
+                  required: false
+                  schema:
+                    type: string
+                - name: partner_country
+                  in: query
+                  description: WTO member code of partner country.
+                  required: false
+                  schema:
+                    type: string
+                - name: years
+                  in: query
+                  description: Number of years to look back (default 10, max 30).
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetTradeFlowsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/trade/v1/get-trade-barriers:
+        get:
+            tags:
+                - TradeService
+            summary: GetTradeBarriers
+            description: Get SPS/TBT barrier notifications.
+            operationId: GetTradeBarriers
+            parameters:
+                - name: countries
+                  in: query
+                  description: WTO member codes to filter by. Empty = all.
+                  required: false
+                  schema:
+                    type: string
+                - name: measure_type
+                  in: query
+                  description: 'Filter by measure type: "SPS", "TBT", or empty for both.'
+                  required: false
+                  schema:
+                    type: string
+                - name: limit
+                  in: query
+                  description: Max results to return (server caps at 100).
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetTradeBarriersResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+components:
+    schemas:
+        Error:
+            type: object
+            properties:
+                message:
+                    type: string
+                    description: Error message (e.g., 'user not found', 'database connection failed')
+            description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        FieldViolation:
+            type: object
+            properties:
+                field:
+                    type: string
+                    description: The field path that failed validation (e.g., 'user.email' for nested fields). For header validation, this will be the header name (e.g., 'X-API-Key')
+                description:
+                    type: string
+                    description: Human-readable description of the validation violation (e.g., 'must be a valid email address', 'required field missing')
+            required:
+                - field
+                - description
+            description: FieldViolation describes a single validation error for a specific field.
+        ValidationError:
+            type: object
+            properties:
+                violations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FieldViolation'
+                    description: List of validation violations
+            required:
+                - violations
+            description: ValidationError is returned when request validation fails. It contains a list of field violations describing what went wrong.
+        GetTradeRestrictionsRequest:
+            type: object
+            properties:
+                countries:
+                    type: array
+                    items:
+                        type: string
+                        description: WTO member codes to filter by. Empty = all.
+                limit:
+                    type: integer
+                    format: int32
+                    description: Max results to return (server caps at 100).
+            description: Request for quantitative restriction data.
+        GetTradeRestrictionsResponse:
+            type: object
+            properties:
+                restrictions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/TradeRestriction'
+                fetchedAt:
+                    type: string
+                    description: ISO 8601 timestamp when data was fetched from WTO.
+                upstreamUnavailable:
+                    type: boolean
+                    description: True if upstream fetch failed and results may be stale/empty.
+            description: Response containing trade restrictions and fetch metadata.
+        TradeRestriction:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: Unique restriction identifier from WTO.
+                reportingCountry:
+                    type: string
+                    description: ISO 3166-1 alpha-3 or WTO member code of reporting country.
+                affectedCountry:
+                    type: string
+                    description: Country affected by the restriction.
+                productSector:
+                    type: string
+                    description: Product sector or HS chapter description.
+                measureType:
+                    type: string
+                    description: 'Measure classification: "QR", "EXPORT_BAN", "IMPORT_BAN", "LICENSING".'
+                description:
+                    type: string
+                    description: Human-readable description of the measure.
+                status:
+                    type: string
+                    description: 'Current status: "IN_FORCE", "TERMINATED", "NOTIFIED".'
+                notifiedAt:
+                    type: string
+                    description: ISO 8601 date when measure was notified.
+                sourceUrl:
+                    type: string
+                    description: WTO source document URL (must be http/https protocol).
+            description: Quantitative restriction or export control measure notified to WTO.
+        GetTariffTrendsRequest:
+            type: object
+            properties:
+                reportingCountry:
+                    type: string
+                    description: WTO member code of reporting country (e.g. "840" = US).
+                partnerCountry:
+                    type: string
+                    description: WTO member code of partner country (e.g. "156" = China).
+                productSector:
+                    type: string
+                    description: Product sector filter (HS chapter). Empty = aggregate.
+                years:
+                    type: integer
+                    format: int32
+                    description: Number of years to look back (default 10, max 30).
+            description: Request for tariff timeseries data.
+        GetTariffTrendsResponse:
+            type: object
+            properties:
+                datapoints:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/TariffDataPoint'
+                fetchedAt:
+                    type: string
+                    description: ISO 8601 timestamp when data was fetched from WTO.
+                upstreamUnavailable:
+                    type: boolean
+                    description: True if upstream fetch failed and results may be stale/empty.
+            description: Response containing tariff trend datapoints.
+        TariffDataPoint:
+            type: object
+            properties:
+                reportingCountry:
+                    type: string
+                    description: WTO member code of reporting country.
+                partnerCountry:
+                    type: string
+                    description: WTO member code of partner country.
+                productSector:
+                    type: string
+                    description: Product sector or HS chapter.
+                year:
+                    type: integer
+                    format: int32
+                    description: Year of observation.
+                tariffRate:
+                    type: number
+                    format: double
+                    description: Applied MFN tariff rate (percentage).
+                boundRate:
+                    type: number
+                    format: double
+                    description: WTO bound tariff rate (percentage).
+                indicatorCode:
+                    type: string
+                    description: WTO indicator code used for this datapoint.
+            description: Single tariff data point for a reporter-partner-product combination.
+        GetTradeFlowsRequest:
+            type: object
+            properties:
+                reportingCountry:
+                    type: string
+                    description: WTO member code of reporting country.
+                partnerCountry:
+                    type: string
+                    description: WTO member code of partner country.
+                years:
+                    type: integer
+                    format: int32
+                    description: Number of years to look back (default 10, max 30).
+            description: Request for bilateral trade flow data.
+        GetTradeFlowsResponse:
+            type: object
+            properties:
+                flows:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/TradeFlowRecord'
+                fetchedAt:
+                    type: string
+                    description: ISO 8601 timestamp when data was fetched from WTO.
+                upstreamUnavailable:
+                    type: boolean
+                    description: True if upstream fetch failed and results may be stale/empty.
+            description: Response containing trade flow records.
+        TradeFlowRecord:
+            type: object
+            properties:
+                reportingCountry:
+                    type: string
+                    description: WTO member code of reporting country.
+                partnerCountry:
+                    type: string
+                    description: WTO member code of partner country.
+                year:
+                    type: integer
+                    format: int32
+                    description: Year of observation.
+                exportValueUsd:
+                    type: number
+                    format: double
+                    description: Merchandise export value in millions USD.
+                importValueUsd:
+                    type: number
+                    format: double
+                    description: Merchandise import value in millions USD.
+                yoyExportChange:
+                    type: number
+                    format: double
+                    description: Year-over-year export change (percentage).
+                yoyImportChange:
+                    type: number
+                    format: double
+                    description: Year-over-year import change (percentage).
+                productSector:
+                    type: string
+                    description: Product sector or HS chapter.
+            description: Bilateral trade flow record for a reporting-partner pair.
+        GetTradeBarriersRequest:
+            type: object
+            properties:
+                countries:
+                    type: array
+                    items:
+                        type: string
+                        description: WTO member codes to filter by. Empty = all.
+                measureType:
+                    type: string
+                    description: 'Filter by measure type: "SPS", "TBT", or empty for both.'
+                limit:
+                    type: integer
+                    format: int32
+                    description: Max results to return (server caps at 100).
+            description: Request for SPS/TBT trade barrier notifications.
+        GetTradeBarriersResponse:
+            type: object
+            properties:
+                barriers:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/TradeBarrier'
+                fetchedAt:
+                    type: string
+                    description: ISO 8601 timestamp when data was fetched from WTO.
+                upstreamUnavailable:
+                    type: boolean
+                    description: True if upstream fetch failed and results may be stale/empty.
+            description: Response containing trade barrier notifications.
+        TradeBarrier:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: Unique barrier notification identifier.
+                notifyingCountry:
+                    type: string
+                    description: Country that notified the measure.
+                title:
+                    type: string
+                    description: Title of the notification.
+                measureType:
+                    type: string
+                    description: 'Measure classification: "SPS" or "TBT".'
+                productDescription:
+                    type: string
+                    description: Product description or affected goods.
+                objective:
+                    type: string
+                    description: Stated objective of the measure.
+                status:
+                    type: string
+                    description: Status of the notification.
+                dateDistributed:
+                    type: string
+                    description: ISO 8601 date when notification was distributed.
+                sourceUrl:
+                    type: string
+                    description: WTO source document URL (must be http/https protocol).
+            description: SPS or TBT trade barrier notification.

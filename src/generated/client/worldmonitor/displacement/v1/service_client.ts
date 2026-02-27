@@ -132,7 +132,11 @@ export class DisplacementServiceClient {
 
   async getDisplacementSummary(req: GetDisplacementSummaryRequest, options?: DisplacementServiceCallOptions): Promise<GetDisplacementSummaryResponse> {
     let path = "/api/displacement/v1/get-displacement-summary";
-    const url = this.baseURL + path;
+    const params = new URLSearchParams();
+    if (req.year != null && req.year !== 0) params.set("year", String(req.year));
+    if (req.countryLimit != null && req.countryLimit !== 0) params.set("country_limit", String(req.countryLimit));
+    if (req.flowLimit != null && req.flowLimit !== 0) params.set("flow_limit", String(req.flowLimit));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -141,9 +145,8 @@ export class DisplacementServiceClient {
     };
 
     const resp = await this.fetchFn(url, {
-      method: "POST",
+      method: "GET",
       headers,
-      body: JSON.stringify(req),
       signal: options?.signal,
     });
 
@@ -156,7 +159,12 @@ export class DisplacementServiceClient {
 
   async getPopulationExposure(req: GetPopulationExposureRequest, options?: DisplacementServiceCallOptions): Promise<GetPopulationExposureResponse> {
     let path = "/api/displacement/v1/get-population-exposure";
-    const url = this.baseURL + path;
+    const params = new URLSearchParams();
+    if (req.mode != null && req.mode !== "") params.set("mode", String(req.mode));
+    if (req.lat != null && req.lat !== 0) params.set("lat", String(req.lat));
+    if (req.lon != null && req.lon !== 0) params.set("lon", String(req.lon));
+    if (req.radius != null && req.radius !== 0) params.set("radius", String(req.radius));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -165,9 +173,8 @@ export class DisplacementServiceClient {
     };
 
     const resp = await this.fetchFn(url, {
-      method: "POST",
+      method: "GET",
       headers,
-      body: JSON.stringify(req),
       signal: options?.signal,
     });
 

@@ -27,7 +27,7 @@ const HN_MAX_CONCURRENCY = 10;
 
 async function fetchHackernewsItems(req: ListHackernewsItemsRequest): Promise<HackernewsItem[]> {
   const feedType = ALLOWED_HN_FEEDS.has(req.feedType) ? req.feedType : 'top';
-  const pageSize = req.pagination?.pageSize || 30;
+  const pageSize = req.pageSize || 30;
 
   // Step 1: Fetch story IDs
   const idsUrl = `https://hacker-news.firebaseio.com/v0/${feedType}stories.json`;
@@ -87,7 +87,7 @@ export async function listHackernewsItems(
 ): Promise<ListHackernewsItemsResponse> {
   try {
     const feedType = ALLOWED_HN_FEEDS.has(req.feedType) ? req.feedType : 'top';
-    const cacheKey = `${REDIS_CACHE_KEY}:${feedType}:${req.pagination?.pageSize || 30}`;
+    const cacheKey = `${REDIS_CACHE_KEY}:${feedType}:${req.pageSize || 30}`;
     const result = await cachedFetchJson<ListHackernewsItemsResponse>(cacheKey, REDIS_CACHE_TTL, async () => {
       const items = await fetchHackernewsItems(req);
       return items.length > 0 ? { items, pagination: undefined } : null;

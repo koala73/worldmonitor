@@ -47,7 +47,7 @@ const emptyFallback: ListFireDetectionsResponse = { fireDetections: [] };
 
 export async function fetchAllFires(_days?: number): Promise<FetchResult> {
   const response = await breaker.execute(async () => {
-    return client.listFireDetections({});
+    return client.listFireDetections({ start: 0, end: 0, pageSize: 0, cursor: '', neLat: 0, neLon: 0, swLat: 0, swLon: 0 });
   }, emptyFallback);
   const detections = response.fireDetections;
 

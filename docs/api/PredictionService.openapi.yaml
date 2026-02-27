@@ -4,18 +4,38 @@ info:
     version: 1.0.0
 paths:
     /api/prediction/v1/list-prediction-markets:
-        post:
+        get:
             tags:
                 - PredictionService
             summary: ListPredictionMarkets
             description: ListPredictionMarkets retrieves active prediction markets from Polymarket.
             operationId: ListPredictionMarkets
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/ListPredictionMarketsRequest'
-                required: true
+            parameters:
+                - name: page_size
+                  in: query
+                  description: Maximum items per page (1-100).
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+                - name: cursor
+                  in: query
+                  description: Cursor for next page.
+                  required: false
+                  schema:
+                    type: string
+                - name: category
+                  in: query
+                  description: Optional category filter (e.g., "Politics").
+                  required: false
+                  schema:
+                    type: string
+                - name: query
+                  in: query
+                  description: Optional search query for market titles.
+                  required: false
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
@@ -71,8 +91,13 @@ components:
         ListPredictionMarketsRequest:
             type: object
             properties:
-                pagination:
-                    $ref: '#/components/schemas/PaginationRequest'
+                pageSize:
+                    type: integer
+                    format: int32
+                    description: Maximum items per page (1-100).
+                cursor:
+                    type: string
+                    description: Cursor for next page.
                 category:
                     type: string
                     description: Optional category filter (e.g., "Politics").
@@ -80,19 +105,6 @@ components:
                     type: string
                     description: Optional search query for market titles.
             description: ListPredictionMarketsRequest specifies filters for retrieving prediction markets.
-        PaginationRequest:
-            type: object
-            properties:
-                pageSize:
-                    type: integer
-                    maximum: 100
-                    minimum: 1
-                    format: int32
-                    description: Maximum number of items to return per page (1 to 100).
-                cursor:
-                    type: string
-                    description: Opaque cursor for fetching the next page. Empty string for the first page.
-            description: PaginationRequest specifies cursor-based pagination parameters for list endpoints.
         ListPredictionMarketsResponse:
             type: object
             properties:

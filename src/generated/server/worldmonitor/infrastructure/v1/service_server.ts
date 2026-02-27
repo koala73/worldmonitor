@@ -2,19 +2,11 @@
 // source: worldmonitor/infrastructure/v1/service.proto
 
 export interface ListInternetOutagesRequest {
-  timeRange?: TimeRange;
-  pagination?: PaginationRequest;
-  country: string;
-}
-
-export interface TimeRange {
   start: number;
   end: number;
-}
-
-export interface PaginationRequest {
   pageSize: number;
   cursor: string;
+  country: string;
 }
 
 export interface ListInternetOutagesResponse {
@@ -194,12 +186,20 @@ export function createInfrastructureServiceRoutes(
 ): RouteDescriptor[] {
   return [
     {
-      method: "POST",
+      method: "GET",
       path: "/api/infrastructure/v1/list-internet-outages",
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
-          const body = await req.json() as ListInternetOutagesRequest;
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListInternetOutagesRequest = {
+            start: Number(params.get("start") ?? "0"),
+            end: Number(params.get("end") ?? "0"),
+            pageSize: Number(params.get("page_size") ?? "0"),
+            cursor: params.get("cursor") ?? "",
+            country: params.get("country") ?? "",
+          };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("listInternetOutages", body);
             if (bodyViolations) {
@@ -237,12 +237,16 @@ export function createInfrastructureServiceRoutes(
       },
     },
     {
-      method: "POST",
+      method: "GET",
       path: "/api/infrastructure/v1/list-service-statuses",
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
-          const body = await req.json() as ListServiceStatusesRequest;
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListServiceStatusesRequest = {
+            status: (params.get("status") ?? "SERVICE_OPERATIONAL_STATUS_UNSPECIFIED") as ServiceOperationalStatus,
+          };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("listServiceStatuses", body);
             if (bodyViolations) {
@@ -280,12 +284,18 @@ export function createInfrastructureServiceRoutes(
       },
     },
     {
-      method: "POST",
+      method: "GET",
       path: "/api/infrastructure/v1/get-temporal-baseline",
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
-          const body = await req.json() as GetTemporalBaselineRequest;
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetTemporalBaselineRequest = {
+            type: params.get("type") ?? "",
+            region: params.get("region") ?? "",
+            count: Number(params.get("count") ?? "0"),
+          };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("getTemporalBaseline", body);
             if (bodyViolations) {
@@ -366,18 +376,12 @@ export function createInfrastructureServiceRoutes(
       },
     },
     {
-      method: "POST",
+      method: "GET",
       path: "/api/infrastructure/v1/get-cable-health",
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
-          const body = await req.json() as GetCableHealthRequest;
-          if (options?.validateRequest) {
-            const bodyViolations = options.validateRequest("getCableHealth", body);
-            if (bodyViolations) {
-              throw new ValidationError(bodyViolations);
-            }
-          }
+          const body = {} as GetCableHealthRequest;
 
           const ctx: ServerContext = {
             request: req,
