@@ -20,37 +20,7 @@ import { escapeHtml } from '@/utils/sanitize';
 import { isDesktopRuntime } from '@/services/runtime';
 import { t } from '@/services/i18n';
 import { trackFeatureToggle } from '@/services/analytics';
-
-const SIGNUP_URLS: Partial<Record<RuntimeSecretKey, string>> = {
-  GROQ_API_KEY: 'https://console.groq.com/keys',
-  OPENROUTER_API_KEY: 'https://openrouter.ai/settings/keys',
-  FRED_API_KEY: 'https://fred.stlouisfed.org/docs/api/api_key.html',
-  EIA_API_KEY: 'https://www.eia.gov/opendata/register.php',
-  CLOUDFLARE_API_TOKEN: 'https://dash.cloudflare.com/profile/api-tokens',
-  ACLED_ACCESS_TOKEN: 'https://developer.acleddata.com/',
-  URLHAUS_AUTH_KEY: 'https://auth.abuse.ch/',
-  OTX_API_KEY: 'https://otx.alienvault.com/',
-  ABUSEIPDB_API_KEY: 'https://www.abuseipdb.com/login',
-  WINGBITS_API_KEY: 'https://wingbits.com/register',
-  AISSTREAM_API_KEY: 'https://aisstream.io/authenticate',
-  OPENSKY_CLIENT_ID: 'https://opensky-network.org/login?view=registration',
-  OPENSKY_CLIENT_SECRET: 'https://opensky-network.org/login?view=registration',
-  FINNHUB_API_KEY: 'https://finnhub.io/register',
-  NASA_FIRMS_API_KEY: 'https://firms.modaps.eosdis.nasa.gov/api/area/',
-  UC_DP_KEY: 'https://ucdp.uu.se/downloads/',
-  OLLAMA_API_URL: 'https://ollama.com/download',
-  OLLAMA_MODEL: 'https://ollama.com/library',
-  WTO_API_KEY: 'https://apiportal.wto.org/',
-};
-
-const PLAINTEXT_KEYS = new Set<RuntimeSecretKey>([
-  'OLLAMA_API_URL',
-  'OLLAMA_MODEL',
-  'WS_RELAY_URL',
-  'VITE_OPENSKY_RELAY_URL',
-]);
-
-const MASKED_SENTINEL = '__WM_MASKED__';
+import { SIGNUP_URLS, PLAINTEXT_KEYS, MASKED_SENTINEL } from '@/services/settings-constants';
 
 interface RuntimeConfigPanelOptions {
   mode?: 'full' | 'alert';
