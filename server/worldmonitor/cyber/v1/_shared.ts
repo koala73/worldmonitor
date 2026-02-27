@@ -197,8 +197,12 @@ function getCountryCentroid(countryCode: string): { lat: number; lon: number } |
   if (!countryCode) return null;
   const coords = COUNTRY_CENTROIDS[countryCode.toUpperCase()];
   if (!coords) return null;
-  const jitter = () => (Math.random() - 0.5) * 2;
-  return { lat: coords[0] + jitter(), lon: coords[1] + jitter() };
+  // Deterministic jitter based on country code hash - same country always produces same offset
+  const hash = countryCode.toUpperCase().split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  const jitterScale = 2; // degrees of jitter
+  const latOffset = ((hash % 1000) / 1000 - 0.5) * jitterScale;
+  const lonOffset = (((hash * 7) % 1000) / 1000 - 0.5) * jitterScale;
+  return { lat: coords[0] + latOffset, lon: coords[1] + lonOffset };
 }
 
 // ========================================================================
