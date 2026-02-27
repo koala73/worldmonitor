@@ -69,6 +69,7 @@ import { dataFreshness, type DataSourceId } from '@/services/data-freshness';
 import { fetchConflictEvents, fetchUcdpClassifications, fetchHapiSummary, fetchUcdpEvents, deduplicateAgainstAcled } from '@/services/conflict';
 import { fetchUnhcrPopulation } from '@/services/displacement';
 import { fetchClimateAnomalies } from '@/services/climate';
+import { fetchSecurityAdvisories } from '@/services/security-advisories';
 import { enrichEventsWithExposure } from '@/services/population-exposure';
 import { debounce, getCircuitBreakerCooldownInfo } from '@/utils';
 import { isFeatureAvailable } from '@/services/runtime-config';
@@ -95,6 +96,7 @@ import {
   PopulationExposurePanel,
   TradePolicyPanel,
   SupplyChainPanel,
+  SecurityAdvisoriesPanel,
 } from '@/components';
 import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
 import { classifyNewsItem } from '@/services/positive-classifier';
@@ -1051,6 +1053,18 @@ export class DataLoaderManager implements AppModule {
       }
     })());
 
+    // Security advisories
+    tasks.push((async () => {
+      try {
+        const result = await fetchSecurityAdvisories();
+        if (result.ok) {
+          (this.ctx.panels['security-advisories'] as SecurityAdvisoriesPanel)?.setData(result.advisories);
+        }
+      } catch (error) {
+        console.error('[Intelligence] Security advisories fetch failed:', error);
+      }
+    })());
+
     await Promise.allSettled(tasks);
 
     try {
@@ -1863,6 +1877,17 @@ export class DataLoaderManager implements AppModule {
       this.ctx.renewablePanel?.setCapacityData(capacity);
     } catch {
       // EIA failure does not break the existing World Bank gauge
+    }
+  }
+
+  async loadSecurityAdvisories(): Promise<void> {
+    try {
+      const result = await fetchSecurityAdvisories();
+      if (result.ok) {
+        (this.ctx.panels['security-advisories'] as SecurityAdvisoriesPanel)?.setData(result.advisories);
+      }
+    } catch (error) {
+      console.error('[App] Security advisories fetch failed:', error);
     }
   }
 }

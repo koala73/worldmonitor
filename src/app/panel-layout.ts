@@ -33,6 +33,7 @@ import {
   InvestmentsPanel,
   TradePolicyPanel,
   SupplyChainPanel,
+  SecurityAdvisoriesPanel,
 } from '@/components';
 import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
 import { PositiveNewsFeedPanel } from '@/components/PositiveNewsFeedPanel';
@@ -63,6 +64,7 @@ export interface PanelLayoutCallbacks {
   openCountryStory: (code: string, name: string) => void;
   loadAllData: () => Promise<void>;
   updateMonitorResults: () => void;
+  loadSecurityAdvisories?: () => Promise<void>;
 }
 
 export class PanelLayoutManager implements AppModule {
@@ -539,6 +541,12 @@ export class PanelLayoutManager implements AppModule {
 
       const populationExposurePanel = new PopulationExposurePanel();
       this.ctx.panels['population-exposure'] = populationExposurePanel;
+
+      const securityAdvisoriesPanel = new SecurityAdvisoriesPanel();
+      securityAdvisoriesPanel.setRefreshHandler(() => {
+        void this.callbacks.loadSecurityAdvisories?.();
+      });
+      this.ctx.panels['security-advisories'] = securityAdvisoriesPanel;
     }
 
     if (SITE_VARIANT === 'finance') {
