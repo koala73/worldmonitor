@@ -308,6 +308,143 @@ describe('cachedFetchJsonWithMeta source labeling', { concurrency: 1 }, () => {
   });
 });
 
+describe('negative-result caching', { concurrency: 1 }, () => {
+  it('caches sentinel on null fetcher result and suppresses subsequent upstream calls', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+
+    const store = new Map();
+    globalThis.fetch = async (url) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) {
+        const key = decodeURIComponent(raw.split('/get/').pop() || '');
+        const val = store.get(key);
+        return jsonResponse({ result: val ?? undefined });
+      }
+      if (raw.includes('/set/')) {
+        const parts = raw.split('/set/').pop().split('/');
+        const key = decodeURIComponent(parts[0]);
+        const value = decodeURIComponent(parts[1]);
+        store.set(key, value);
+        return jsonResponse({ result: 'OK' });
+      }
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      let fetcherCalls = 0;
+      const fetcher = async () => {
+        fetcherCalls += 1;
+        return null;
+      };
+
+      const first = await redis.cachedFetchJson('neg:test:suppress', 300, fetcher);
+      assert.equal(first, null, 'first call should return null');
+      assert.equal(fetcherCalls, 1, 'fetcher should run on first call');
+
+      const redis2 = await importRedisFresh();
+      const second = await redis2.cachedFetchJson('neg:test:suppress', 300, fetcher);
+      assert.equal(second, null, 'second call should return null from sentinel');
+      assert.equal(fetcherCalls, 1, 'fetcher should NOT run again — sentinel suppresses');
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('cachedFetchJsonWithMeta returns data:null source:cache on sentinel hit', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+
+    const store = new Map();
+    globalThis.fetch = async (url) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) {
+        const key = decodeURIComponent(raw.split('/get/').pop() || '');
+        const val = store.get(key);
+        return jsonResponse({ result: val ?? undefined });
+      }
+      if (raw.includes('/set/')) {
+        const parts = raw.split('/set/').pop().split('/');
+        const key = decodeURIComponent(parts[0]);
+        const value = decodeURIComponent(parts[1]);
+        store.set(key, value);
+        return jsonResponse({ result: 'OK' });
+      }
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      const first = await redis.cachedFetchJsonWithMeta('neg:meta:sentinel', 300, async () => null);
+      assert.equal(first.data, null);
+      assert.equal(first.source, 'fresh', 'first null result is fresh');
+
+      const redis2 = await importRedisFresh();
+      const second = await redis2.cachedFetchJsonWithMeta('neg:meta:sentinel', 300, async () => {
+        throw new Error('fetcher should not run on sentinel hit');
+      });
+      assert.equal(second.data, null, 'sentinel should resolve to null data, not the sentinel string');
+      assert.equal(second.source, 'cache', 'sentinel hit should report source=cache');
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('does not cache sentinel when fetcher throws', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+
+    let setCalls = 0;
+    globalThis.fetch = async (url) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) return jsonResponse({ result: undefined });
+      if (raw.includes('/set/')) {
+        setCalls += 1;
+        return jsonResponse({ result: 'OK' });
+      }
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      let fetcherCalls = 0;
+      const throwingFetcher = async () => {
+        fetcherCalls += 1;
+        throw new Error('upstream ETIMEDOUT');
+      };
+
+      await assert.rejects(() => redis.cachedFetchJson('neg:test:throw', 300, throwingFetcher));
+      assert.equal(fetcherCalls, 1);
+      assert.equal(setCalls, 0, 'no sentinel should be cached when fetcher throws');
+
+      const redis2 = await importRedisFresh();
+      await assert.rejects(() => redis2.cachedFetchJson('neg:test:throw', 300, throwingFetcher));
+      assert.equal(fetcherCalls, 2, 'fetcher should run again after a thrown error (no sentinel)');
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+});
+
 describe('theater posture caching behavior', { concurrency: 1 }, () => {
   async function importTheaterPosture() {
     return importPatchedTsModule('server/worldmonitor/military/v1/get-theater-posture.ts', {
@@ -363,7 +500,7 @@ describe('theater posture caching behavior', { concurrency: 1 }, () => {
         module.getTheaterPosture({}, {}),
       ]);
 
-      assert.equal(openskyFetchCount, 1, 'concurrent calls should trigger only one upstream fetch');
+      assert.equal(openskyFetchCount, 2, 'coalesced into one fetcher invocation × 2 theater query regions');
       assert.ok(a.theaters.length > 0, 'should return theater posture data');
       assert.deepEqual(a, b, 'all callers should receive the same result');
       assert.deepEqual(b, c, 'all callers should receive the same result');
