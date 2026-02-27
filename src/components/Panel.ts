@@ -30,16 +30,55 @@ function savePanelSpan(panelId: string, span: number): void {
   localStorage.setItem(PANEL_SPANS_KEY, JSON.stringify(spans));
 }
 
-function heightToSpan(height: number): number {
-  // Much lower thresholds for responsive resizing
-  // Start at 200px, so:
-  // - 50px drag → span 2 (250px)
-  // - 150px drag → span 3 (350px)
-  // - 300px drag → span 4 (500px)
-  if (height >= 500) return 4;
-  if (height >= 350) return 3;
-  if (height >= 250) return 2;
+const PANEL_COL_SPANS_KEY = 'worldmonitor-panel-col-spans';
+const ROW_RESIZE_STEP_PX = 80;
+const COL_RESIZE_STEP_PX = 80;
+
+function loadPanelColSpans(): Record<string, number> {
+  try {
+    const stored = localStorage.getItem(PANEL_COL_SPANS_KEY);
+    return stored ? JSON.parse(stored) : {};
+  } catch {
+    return {};
+  }
+}
+
+function savePanelColSpan(panelId: string, span: number): void {
+  const spans = loadPanelColSpans();
+  spans[panelId] = span;
+  localStorage.setItem(PANEL_COL_SPANS_KEY, JSON.stringify(spans));
+}
+
+function getColSpan(element: HTMLElement): number {
+  if (element.classList.contains('col-span-3')) return 3;
+  if (element.classList.contains('col-span-2')) return 2;
   return 1;
+}
+
+function deltaToColSpan(startSpan: number, deltaX: number): number {
+  const spanDelta = deltaX > 0
+    ? Math.floor(deltaX / COL_RESIZE_STEP_PX)
+    : Math.ceil(deltaX / COL_RESIZE_STEP_PX);
+  return Math.max(1, Math.min(3, startSpan + spanDelta));
+}
+
+function setColSpanClass(element: HTMLElement, span: number): void {
+  element.classList.remove('col-span-1', 'col-span-2', 'col-span-3');
+  element.classList.add(`col-span-${span}`);
+}
+
+function getRowSpan(element: HTMLElement): number {
+  if (element.classList.contains('span-4')) return 4;
+  if (element.classList.contains('span-3')) return 3;
+  if (element.classList.contains('span-2')) return 2;
+  return 1;
+}
+
+function deltaToRowSpan(startSpan: number, deltaY: number): number {
+  const spanDelta = deltaY > 0
+    ? Math.floor(deltaY / ROW_RESIZE_STEP_PX)
+    : Math.ceil(deltaY / ROW_RESIZE_STEP_PX);
+  return Math.max(1, Math.min(4, startSpan + spanDelta));
 }
 
 function setSpanClass(element: HTMLElement, span: number): void {
@@ -61,10 +100,18 @@ export class Panel {
   private resizeHandle: HTMLElement | null = null;
   private isResizing = false;
   private startY = 0;
-  private startHeight = 0;
+  private startRowSpan = 1;
   private onTouchMove: ((e: TouchEvent) => void) | null = null;
   private onTouchEnd: (() => void) | null = null;
+  private onTouchCancel: (() => void) | null = null;
   private onDocMouseUp: (() => void) | null = null;
+  private colResizeHandle: HTMLElement | null = null;
+  private isColResizing = false;
+  private startX = 0;
+  private startColSpan = 1;
+  private onColTouchMove: ((e: TouchEvent) => void) | null = null;
+  private onColTouchEnd: (() => void) | null = null;
+  private onColTouchCancel: (() => void) | null = null;
   private readonly contentDebounceMs = 150;
   private pendingContentHtml: string | null = null;
   private contentDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -143,11 +190,25 @@ export class Panel {
     this.element.appendChild(this.resizeHandle);
     this.setupResizeHandlers();
 
+    // Right-edge handle for width resizing
+    this.colResizeHandle = document.createElement('div');
+    this.colResizeHandle.className = 'panel-col-resize-handle';
+    this.colResizeHandle.title = t('components.panel.dragToResize');
+    this.element.appendChild(this.colResizeHandle);
+    this.setupColResizeHandlers();
+
     // Restore saved span
     const savedSpans = loadPanelSpans();
     const savedSpan = savedSpans[this.panelId];
     if (savedSpan && savedSpan > 1) {
       setSpanClass(this.element, savedSpan);
+    }
+
+    // Restore saved col-span
+    const savedColSpans = loadPanelColSpans();
+    const savedColSpan = savedColSpans[this.panelId];
+    if (savedColSpan && savedColSpan >= 1) {
+      setColSpanClass(this.element, savedColSpan);
     }
 
     this.showLoading();
@@ -161,28 +222,32 @@ export class Panel {
       e.stopPropagation();
       this.isResizing = true;
       this.startY = e.clientY;
-      this.startHeight = this.element.getBoundingClientRect().height;
+      this.startRowSpan = getRowSpan(this.element);
+      this.element.dataset.resizing = 'true';
       this.element.classList.add('resizing');
+      document.body.classList.add('panel-resize-active');
       this.resizeHandle?.classList.add('active');
       document.addEventListener('mousemove', onMouseMove);
       document.addEventListener('mouseup', onMouseUp);
+      window.addEventListener('blur', onWindowBlur);
     };
 
     const onMouseMove = (e: MouseEvent) => {
       if (!this.isResizing) return;
       const deltaY = e.clientY - this.startY;
-      const newHeight = Math.max(200, this.startHeight + deltaY);
-      const span = heightToSpan(newHeight);
-      setSpanClass(this.element, span);
+      setSpanClass(this.element, deltaToRowSpan(this.startRowSpan, deltaY));
     };
 
     const onMouseUp = () => {
       if (!this.isResizing) return;
       this.isResizing = false;
       this.element.classList.remove('resizing');
+      delete this.element.dataset.resizing;
+      document.body.classList.remove('panel-resize-active');
       this.resizeHandle?.classList.remove('active');
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
+      window.removeEventListener('blur', onWindowBlur);
 
       const currentSpan = this.element.classList.contains('span-4') ? 4 :
         this.element.classList.contains('span-3') ? 3 :
@@ -191,12 +256,9 @@ export class Panel {
       trackPanelResized(this.panelId, currentSpan);
     };
 
-    this.resizeHandle.addEventListener('mousedown', onMouseDown);
+    const onWindowBlur = () => onMouseUp();
 
-    // Mark element as resizing for external listeners
-    this.resizeHandle.addEventListener('mousedown', () => {
-      this.element.dataset.resizing = 'true';
-    });
+    this.resizeHandle.addEventListener('mousedown', onMouseDown);
 
     // Double-click to reset
     this.resizeHandle.addEventListener('dblclick', () => {
@@ -211,9 +273,10 @@ export class Panel {
       if (!touch) return;
       this.isResizing = true;
       this.startY = touch.clientY;
-      this.startHeight = this.element.getBoundingClientRect().height;
+      this.startRowSpan = getRowSpan(this.element);
       this.element.classList.add('resizing');
       this.element.dataset.resizing = 'true';
+      document.body.classList.add('panel-resize-active');
       this.resizeHandle?.classList.add('active');
     }, { passive: false });
 
@@ -223,9 +286,7 @@ export class Panel {
       const touch = e.touches[0];
       if (!touch) return;
       const deltaY = touch.clientY - this.startY;
-      const newHeight = Math.max(200, this.startHeight + deltaY);
-      const span = heightToSpan(newHeight);
-      setSpanClass(this.element, span);
+      setSpanClass(this.element, deltaToRowSpan(this.startRowSpan, deltaY));
     };
 
     this.onTouchEnd = () => {
@@ -233,6 +294,7 @@ export class Panel {
       this.isResizing = false;
       this.element.classList.remove('resizing');
       delete this.element.dataset.resizing;
+      document.body.classList.remove('panel-resize-active');
       this.resizeHandle?.classList.remove('active');
       const currentSpan = this.element.classList.contains('span-4') ? 4 :
         this.element.classList.contains('span-3') ? 3 :
@@ -240,16 +302,110 @@ export class Panel {
       savePanelSpan(this.panelId, currentSpan);
       trackPanelResized(this.panelId, currentSpan);
     };
+    this.onTouchCancel = this.onTouchEnd;
 
     this.onDocMouseUp = () => {
       if (this.element.dataset.resizing) {
         delete this.element.dataset.resizing;
       }
+      if (!this.isResizing && !this.isColResizing) {
+        document.body.classList.remove('panel-resize-active');
+      }
     };
 
     document.addEventListener('touchmove', this.onTouchMove, { passive: false });
     document.addEventListener('touchend', this.onTouchEnd);
+    document.addEventListener('touchcancel', this.onTouchCancel);
     document.addEventListener('mouseup', this.onDocMouseUp);
+  }
+
+  private setupColResizeHandlers(): void {
+    if (!this.colResizeHandle) return;
+
+    const onMouseDown = (e: MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.isColResizing = true;
+      this.startX = e.clientX;
+      this.startColSpan = getColSpan(this.element);
+      this.element.dataset.resizing = 'true';
+      this.element.classList.add('col-resizing');
+      document.body.classList.add('panel-resize-active');
+      this.colResizeHandle?.classList.add('active');
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+      window.addEventListener('blur', onWindowBlur);
+    };
+
+    const onMouseMove = (e: MouseEvent) => {
+      if (!this.isColResizing) return;
+      const deltaX = e.clientX - this.startX;
+      setColSpanClass(this.element, deltaToColSpan(this.startColSpan, deltaX));
+    };
+
+    const onMouseUp = () => {
+      if (!this.isColResizing) return;
+      this.isColResizing = false;
+      this.element.classList.remove('col-resizing');
+      delete this.element.dataset.resizing;
+      document.body.classList.remove('panel-resize-active');
+      this.colResizeHandle?.classList.remove('active');
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      window.removeEventListener('blur', onWindowBlur);
+
+      const span = this.element.classList.contains('col-span-3') ? 3
+        : this.element.classList.contains('col-span-2') ? 2 : 1;
+      savePanelColSpan(this.panelId, span);
+    };
+
+    const onWindowBlur = () => onMouseUp();
+
+    this.colResizeHandle.addEventListener('mousedown', onMouseDown);
+
+    // Double-click resets width
+    this.colResizeHandle.addEventListener('dblclick', () => this.resetWidth());
+
+    // Touch
+    this.colResizeHandle.addEventListener('touchstart', (e: TouchEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const touch = e.touches[0];
+      if (!touch) return;
+      this.isColResizing = true;
+      this.startX = touch.clientX;
+      this.startColSpan = getColSpan(this.element);
+      this.element.dataset.resizing = 'true';
+      this.element.classList.add('col-resizing');
+      document.body.classList.add('panel-resize-active');
+      this.colResizeHandle?.classList.add('active');
+    }, { passive: false });
+
+    this.onColTouchMove = (e: TouchEvent) => {
+      if (!this.isColResizing) return;
+      const touch = e.touches[0];
+      if (!touch) return;
+      const deltaX = touch.clientX - this.startX;
+      setColSpanClass(this.element, deltaToColSpan(this.startColSpan, deltaX));
+    };
+
+    this.onColTouchEnd = () => {
+      if (!this.isColResizing) return;
+      this.isColResizing = false;
+      this.element.classList.remove('col-resizing');
+      delete this.element.dataset.resizing;
+      document.body.classList.remove('panel-resize-active');
+      this.colResizeHandle?.classList.remove('active');
+
+      const span = this.element.classList.contains('col-span-3') ? 3
+        : this.element.classList.contains('col-span-2') ? 2 : 1;
+      savePanelColSpan(this.panelId, span);
+    };
+    this.onColTouchCancel = this.onColTouchEnd;
+
+    document.addEventListener('touchmove', this.onColTouchMove, { passive: false });
+    document.addEventListener('touchend', this.onColTouchEnd);
+    document.addEventListener('touchcancel', this.onColTouchCancel);
   }
 
 
@@ -422,6 +578,11 @@ export class Panel {
     localStorage.setItem(PANEL_SPANS_KEY, JSON.stringify(spans));
   }
 
+  public resetWidth(): void {
+    setColSpanClass(this.element, 1);
+    savePanelColSpan(this.panelId, 1);
+  }
+
   protected get signal(): AbortSignal {
     return this.abortController.signal;
   }
@@ -450,9 +611,26 @@ export class Panel {
       document.removeEventListener('touchend', this.onTouchEnd);
       this.onTouchEnd = null;
     }
+    if (this.onTouchCancel) {
+      document.removeEventListener('touchcancel', this.onTouchCancel);
+      this.onTouchCancel = null;
+    }
     if (this.onDocMouseUp) {
       document.removeEventListener('mouseup', this.onDocMouseUp);
       this.onDocMouseUp = null;
     }
+    if (this.onColTouchMove) {
+      document.removeEventListener('touchmove', this.onColTouchMove);
+      this.onColTouchMove = null;
+    }
+    if (this.onColTouchEnd) {
+      document.removeEventListener('touchend', this.onColTouchEnd);
+      this.onColTouchEnd = null;
+    }
+    if (this.onColTouchCancel) {
+      document.removeEventListener('touchcancel', this.onColTouchCancel);
+      this.onColTouchCancel = null;
+    }
+    document.body.classList.remove('panel-resize-active');
   }
 }
