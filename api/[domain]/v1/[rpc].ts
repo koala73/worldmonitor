@@ -57,6 +57,67 @@ import { supplyChainHandler } from '../../../server/worldmonitor/supply-chain/v1
 
 import type { ServerOptions } from '../../../src/generated/server/worldmonitor/seismology/v1/service_server';
 
+// --- Edge cache tier definitions ---
+type CacheTier = 'fast' | 'medium' | 'slow' | 'static' | 'no-store';
+
+const TIER_HEADERS: Record<CacheTier, string> = {
+  fast: 'public, s-maxage=120, stale-while-revalidate=30, stale-if-error=300',
+  medium: 'public, s-maxage=300, stale-while-revalidate=60, stale-if-error=600',
+  slow: 'public, s-maxage=900, stale-while-revalidate=120, stale-if-error=1800',
+  static: 'public, s-maxage=3600, stale-while-revalidate=300, stale-if-error=7200',
+  'no-store': 'no-store',
+};
+
+const RPC_CACHE_TIER: Record<string, CacheTier> = {
+  '/api/maritime/v1/get-vessel-snapshot': 'no-store',
+
+  '/api/market/v1/list-market-quotes': 'fast',
+  '/api/market/v1/list-crypto-quotes': 'fast',
+  '/api/market/v1/list-commodity-quotes': 'fast',
+  '/api/market/v1/list-stablecoin-markets': 'fast',
+  '/api/market/v1/get-sector-summary': 'fast',
+  '/api/infrastructure/v1/list-service-statuses': 'fast',
+  '/api/seismology/v1/list-earthquakes': 'fast',
+  '/api/infrastructure/v1/list-internet-outages': 'fast',
+
+  '/api/unrest/v1/list-unrest-events': 'slow',
+  '/api/cyber/v1/list-cyber-threats': 'slow',
+  '/api/conflict/v1/list-acled-events': 'slow',
+  '/api/military/v1/get-theater-posture': 'slow',
+  '/api/infrastructure/v1/get-temporal-baseline': 'slow',
+  '/api/aviation/v1/list-airport-delays': 'slow',
+  '/api/market/v1/get-country-stock-index': 'slow',
+
+  '/api/wildfire/v1/list-fire-detections': 'static',
+  '/api/maritime/v1/list-navigational-warnings': 'static',
+  '/api/supply-chain/v1/get-shipping-rates': 'static',
+  '/api/economic/v1/get-fred-series': 'static',
+  '/api/economic/v1/get-energy-prices': 'static',
+  '/api/research/v1/list-arxiv-papers': 'static',
+  '/api/research/v1/list-trending-repos': 'static',
+  '/api/giving/v1/get-giving-summary': 'static',
+  '/api/intelligence/v1/get-country-intel-brief': 'static',
+  '/api/climate/v1/list-climate-anomalies': 'static',
+  '/api/research/v1/list-tech-events': 'static',
+  '/api/military/v1/get-usni-fleet-report': 'static',
+  '/api/conflict/v1/list-ucdp-events': 'static',
+  '/api/conflict/v1/get-humanitarian-summary': 'static',
+  '/api/displacement/v1/get-displacement-summary': 'static',
+  '/api/displacement/v1/get-population-exposure': 'static',
+  '/api/economic/v1/get-bis-policy-rates': 'static',
+  '/api/economic/v1/get-bis-exchange-rates': 'static',
+  '/api/economic/v1/get-bis-credit': 'static',
+  '/api/trade/v1/get-tariff-trends': 'static',
+  '/api/trade/v1/get-trade-flows': 'static',
+  '/api/trade/v1/get-trade-barriers': 'static',
+  '/api/trade/v1/get-trade-restrictions': 'static',
+  '/api/economic/v1/list-world-bank-indicators': 'static',
+  '/api/economic/v1/get-energy-capacity': 'static',
+  '/api/supply-chain/v1/get-critical-minerals': 'static',
+  '/api/military/v1/get-aircraft-details': 'static',
+  '/api/military/v1/get-wingbits-status': 'static',
+};
+
 const serverOptions: ServerOptions = { onError: mapErrorToResponse };
 
 const allRoutes = [
@@ -143,15 +204,19 @@ export default async function handler(request: Request): Promise<Response> {
   }
 
   if (response.status === 200 && request.method === 'GET' && !mergedHeaders.has('Cache-Control')) {
-    const url = new URL(request.url);
-    const noStoreEndpoints = new Set([
-      '/api/maritime/v1/get-vessel-snapshot',
-    ]);
-    if (noStoreEndpoints.has(url.pathname)) {
+    if (mergedHeaders.get('X-No-Cache')) {
       mergedHeaders.set('Cache-Control', 'no-store');
+      mergedHeaders.set('X-Cache-Tier', 'no-store');
     } else {
-      mergedHeaders.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=60');
+      const pathname = new URL(request.url).pathname;
+      const tier = RPC_CACHE_TIER[pathname] ?? 'medium';
+      mergedHeaders.set('Cache-Control', TIER_HEADERS[tier]);
+      mergedHeaders.set('X-Cache-Tier', tier);
     }
+  }
+  mergedHeaders.delete('X-No-Cache');
+  if (!new URL(request.url).searchParams.has('_debug')) {
+    mergedHeaders.delete('X-Cache-Tier');
   }
 
   return new Response(response.body, {
