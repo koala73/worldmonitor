@@ -18,7 +18,7 @@ import { CHROME_UA } from '../../../_shared/constants';
 // Reasoning preamble detection
 // ======================================================================
 
-export const TASK_NARRATION = /^(we need to|i need to|let me|i'll |i should|i will |the task is|the instructions|according to the rules|so we need to|okay[,.]\s*(i'll|let me|so|we need|the task|i should|i will)|sure[,.]\s*(i'll|let me|so|we need|the task|i should|i will|here))/i;
+export const TASK_NARRATION = /^(we need to|i need to|let me|i'll |i should|i will |the task is|the instructions|according to the rules|so we need to|okay[,.]\s*(i'll|let me|so|we need|the task|i should|i will)|sure[,.]\s*(i'll|let me|so|we need|the task|i should|i will|here)|first[, ]+(i|we|let)|to summarize (the headlines|the task|this)|my task (is|was|:)|step \d)/i;
 export const PROMPT_ECHO = /^(summarize the top story|summarize the key|rules:|here are the rules|the top story is likely)/i;
 
 export function hasReasoningPreamble(text: string): boolean {
@@ -137,6 +137,7 @@ export async function summarizeArticle(
           .replace(/<\|thinking\|>[\s\S]*?<\|\/thinking\|>/gi, '')
           .replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '')
           .replace(/<reflection>[\s\S]*?<\/reflection>/gi, '')
+          .replace(/<\|begin_of_thought\|>[\s\S]*?<\|end_of_thought\|>/gi, '')
           .trim();
 
         // Strip unterminated thinking blocks (no closing tag)
@@ -145,7 +146,13 @@ export async function summarizeArticle(
           .replace(/<\|thinking\|>[\s\S]*/gi, '')
           .replace(/<reasoning>[\s\S]*/gi, '')
           .replace(/<reflection>[\s\S]*/gi, '')
+          .replace(/<\|begin_of_thought\|>[\s\S]*/gi, '')
           .trim();
+
+        if (['brief', 'analysis'].includes(mode) && rawContent.length < 20) {
+          console.warn(`[SummarizeArticle:${provider}] Output too short after stripping (${rawContent.length} chars), rejecting`);
+          return null;
+        }
 
         if (['brief', 'analysis'].includes(mode) && hasReasoningPreamble(rawContent)) {
           console.warn(`[SummarizeArticle:${provider}] Reasoning preamble detected, rejecting`);

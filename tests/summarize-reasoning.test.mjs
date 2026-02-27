@@ -90,6 +90,17 @@ describe('Fix 2: thinking tag stripping formats', () => {
     const sectionSlice = lines.slice(unterminatedSection, unterminatedSection + 8).join('\n');
     assert.ok(sectionSlice.includes('<reflection>'), 'Should strip unterminated <reflection>');
   });
+
+  it('strips <|begin_of_thought|> tags (terminated)', () => {
+    assert.ok(src.includes('begin_of_thought'), 'Should handle <|begin_of_thought|> tags');
+  });
+
+  it('strips <|begin_of_thought|> tags (unterminated)', () => {
+    const lines = src.split('\n');
+    const unterminatedSection = lines.findIndex(l => l.includes('Strip unterminated'));
+    const sectionSlice = lines.slice(unterminatedSection, unterminatedSection + 10).join('\n');
+    assert.ok(sectionSlice.includes('begin_of_thought'), 'Should strip unterminated <|begin_of_thought|>');
+  });
 });
 
 // ========================================================================
@@ -182,6 +193,40 @@ describe('Fix 3: hasReasoningPreamble', () => {
     assert.ok(!hasReasoningPreamble('Russia has escalated its nuclear rhetoric.'));
   });
 
+  // New patterns: first/to summarize/my task/step
+  it('detects "First, I need to..."', () => {
+    assert.ok(hasReasoningPreamble('First, I need to identify the most important headline.'));
+  });
+
+  it('detects "First, let me..."', () => {
+    assert.ok(hasReasoningPreamble('First, let me analyze these headlines.'));
+  });
+
+  it('detects "To summarize the headlines..."', () => {
+    assert.ok(hasReasoningPreamble('To summarize the headlines, we look at the key events.'));
+  });
+
+  it('detects "My task is to..."', () => {
+    assert.ok(hasReasoningPreamble('My task is to summarize the top story.'));
+  });
+
+  it('detects "Step 1: analyze..."', () => {
+    assert.ok(hasReasoningPreamble('Step 1: analyze the most important headline.'));
+  });
+
+  // Negative cases — legitimate summaries that start similarly
+  it('passes "First responders arrived..."', () => {
+    assert.ok(!hasReasoningPreamble('First responders arrived at the scene of the earthquake.'));
+  });
+
+  it('passes "To summarize, the summit concluded..."', () => {
+    assert.ok(!hasReasoningPreamble('To summarize, the summit concluded with a joint statement.'));
+  });
+
+  it('passes "My task force deployed..."', () => {
+    assert.ok(!hasReasoningPreamble('My task force deployed to the border region.'));
+  });
+
   // Mode guard
   it('is gated to brief and analysis modes in source', () => {
     assert.match(src, /\['brief',\s*'analysis'\]\.includes\(mode\)/,
@@ -191,6 +236,12 @@ describe('Fix 3: hasReasoningPreamble', () => {
   it('does not apply to translate mode', () => {
     assert.doesNotMatch(src, /mode\s*!==\s*'translate'.*hasReasoningPreamble/,
       'Should NOT use negation-based mode guard');
+  });
+
+  // Min-length gate
+  it('has mode-scoped min-length gate for brief/analysis', () => {
+    assert.match(src, /\['brief',\s*'analysis'\]\.includes\(mode\)\s*&&\s*rawContent\.length\s*<\s*20/,
+      'Should reject outputs shorter than 20 chars in brief/analysis modes');
   });
 });
 

@@ -159,11 +159,13 @@ export function getProviderCredentials(provider: string): ProviderCredentials | 
     if (apiKey) {
       headers['Authorization'] = `Bearer ${apiKey}`;
     }
+    const rawMax = parseInt(process.env.OLLAMA_MAX_TOKENS || '300', 10);
+    const ollamaMaxTokens = Number.isFinite(rawMax) ? Math.min(Math.max(rawMax, 50), 2000) : 300;
     return {
       apiUrl: new URL('/v1/chat/completions', baseUrl).toString(),
       model: process.env.OLLAMA_MODEL || 'llama3.1:8b',
       headers,
-      extraBody: { think: false },
+      extraBody: { think: false, max_tokens: ollamaMaxTokens },
     };
   }
 
