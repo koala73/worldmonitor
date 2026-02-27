@@ -29,6 +29,11 @@ const BACKUP_TTL = 604800;
 // Flight fetching (OpenSky + Wingbits fallback)
 // ========================================================================
 
+// Backoff tracker: skip Wingbits calls for WINGBITS_BACKOFF_MS after a failure
+// to avoid hammering the API with repeated 429s when OpenSky is down.
+const WINGBITS_BACKOFF_MS = 5 * 60 * 1000; // 5 minutes
+let wingbitsBackoffUntil = 0;
+
 function getRelayRequestHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
     Accept: 'application/json',
@@ -109,6 +114,10 @@ async function fetchMilitaryFlightsFromWingbits(): Promise<RawFlight[] | null> {
   const apiKey = process.env.WINGBITS_API_KEY;
   if (!apiKey) return null;
 
+  if (Date.now() < wingbitsBackoffUntil) {
+    return null;
+  }
+
   const areas = POSTURE_THEATERS.map((t) => ({
     alias: t.id,
     by: 'box',
@@ -126,7 +135,13 @@ async function fetchMilitaryFlightsFromWingbits(): Promise<RawFlight[] | null> {
       body: JSON.stringify(areas),
       signal: AbortSignal.timeout(15_000),
     });
-    if (!resp.ok) return null;
+    if (!resp.ok) {
+      console.warn(`[TheaterPosture] Wingbits ${resp.status} — backing off 5 min`);
+      wingbitsBackoffUntil = Date.now() + WINGBITS_BACKOFF_MS;
+      return null;
+    }
+
+    wingbitsBackoffUntil = 0;
 
     const data = (await resp.json()) as Array<{ flights?: Array<Record<string, unknown>> }>;
     const flights: RawFlight[] = [];
@@ -154,6 +169,7 @@ async function fetchMilitaryFlightsFromWingbits(): Promise<RawFlight[] | null> {
     }
     return flights;
   } catch {
+    wingbitsBackoffUntil = Date.now() + WINGBITS_BACKOFF_MS;
     return null;
   }
 }
