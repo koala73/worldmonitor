@@ -20,6 +20,20 @@ export class SecurityAdvisoriesPanel extends Panel {
       infoTooltip: t('components.securityAdvisories.infoTooltip'),
     });
     this.showLoading(t('components.securityAdvisories.loading'));
+
+    this.content.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      const filterBtn = target.closest<HTMLElement>('.sa-filter');
+      if (filterBtn) {
+        this.activeFilter = (filterBtn.dataset.filter || 'all') as AdvisoryFilter;
+        this.render();
+        return;
+      }
+      if (target.closest('.sa-refresh-btn')) {
+        this.showLoading(t('components.securityAdvisories.loading'));
+        this.onRefreshRequest?.();
+      }
+    });
   }
 
   public setData(advisories: SecurityAdvisory[]): void {
@@ -100,7 +114,6 @@ export class SecurityAdvisoriesPanel extends Panel {
 
     const filtered = this.getFiltered();
 
-    // Summary counts
     const dntCount = this.advisories.filter(a => a.level === 'do-not-travel').length;
     const reconsiderCount = this.advisories.filter(a => a.level === 'reconsider').length;
     const cautionCount = this.advisories.filter(a => a.level === 'caution').length;
@@ -162,36 +175,14 @@ export class SecurityAdvisoriesPanel extends Panel {
       </div>
     `;
 
-    this.content.innerHTML = `
+    this.setContent(`
       <div class="sa-panel-content">
         ${summaryHtml}
         ${filtersHtml}
         <div class="sa-list">${itemsHtml}</div>
         ${footerHtml}
       </div>
-    `;
-
-    this.attachEventListeners();
-  }
-
-  private attachEventListeners(): void {
-    // Filter buttons
-    const filters = this.content.querySelectorAll('.sa-filter');
-    filters.forEach(btn => {
-      btn.addEventListener('click', () => {
-        this.activeFilter = (btn as HTMLElement).dataset.filter as AdvisoryFilter;
-        this.render();
-      });
-    });
-
-    // Refresh button
-    const refreshBtn = this.content.querySelector('.sa-refresh-btn');
-    if (refreshBtn) {
-      refreshBtn.addEventListener('click', () => {
-        this.showLoading(t('components.securityAdvisories.loading'));
-        this.onRefreshRequest?.();
-      });
-    }
+    `);
   }
 
   public setRefreshHandler(handler: () => void): void {

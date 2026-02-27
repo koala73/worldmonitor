@@ -62,7 +62,8 @@
     "geoHubs": "Geopolitical Hotspots",
     "polymarket": "Förutsägelser",
     "climate": "Klimatanomalier",
-    "liveWebcams": "Webbkameror"
+    "liveWebcams": "Webbkameror",
+    "securityAdvisories": "Säkerhetsvarningar"
   },
   "modals": {
     "search": {
@@ -1144,6 +1145,27 @@
       "regionAsia": "Asien",
       "regionMiddleEast": "Mellanöstern",
       "regionAfrica": "Afrika"
+    },
+    "securityAdvisories": {
+      "loading": "Hämtar resevarningar...",
+      "noMatching": "Inga varningar för detta filter",
+      "critical": "Kritisk",
+      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT",
+      "refresh": "Uppdatera",
+      "levels": {
+        "doNotTravel": "Res inte",
+        "reconsider": "Överväg resa",
+        "caution": "Försiktighet",
+        "normal": "Normal",
+        "info": "Info"
+      },
+      "time": {
+        "justNow": "just nu",
+        "minutesAgo": "{{count}} min sedan",
+        "hoursAgo": "{{count}} tim sedan",
+        "daysAgo": "{{count}} dagar sedan"
+      },
+      "infoTooltip": "<strong>Säkerhetsvarningar</strong><br>Resevarningar och säkerhetsmeddelanden från myndigheters utrikesdepartement."
     }
   },
   "popups": {
@@ -1781,7 +1803,8 @@
     "close": "Stäng",
     "currentVariant": "(aktuell)",
     "retry": "Retry",
-    "refresh": "Refresh"
+    "refresh": "Refresh",
+    "all": "Alla"
   },
   "header": {
     "world": "VÄRLD",

@@ -203,7 +203,8 @@
     "techReadiness": "科技就绪指数",
     "gccInvestments": "GCC投资",
     "geoHubs": "地缘政治枢纽",
-    "liveWebcams": "实时摄像头"
+    "liveWebcams": "实时摄像头",
+    "securityAdvisories": "安全警告"
   },
   "modals": {
     "search": {
@@ -1285,6 +1286,27 @@
       "regionAsia": "亚洲",
       "regionMiddleEast": "中东",
       "regionAfrica": "非洲"
+    },
+    "securityAdvisories": {
+      "loading": "正在加载旅行警告...",
+      "noMatching": "没有匹配的警告",
+      "critical": "严重",
+      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT",
+      "refresh": "刷新",
+      "levels": {
+        "doNotTravel": "禁止出行",
+        "reconsider": "重新考虑出行",
+        "caution": "谨慎",
+        "normal": "正常",
+        "info": "信息"
+      },
+      "time": {
+        "justNow": "刚刚",
+        "minutesAgo": "{{count}}分钟前",
+        "hoursAgo": "{{count}}小时前",
+        "daysAgo": "{{count}}天前"
+      },
+      "infoTooltip": "<strong>安全警告</strong><br>来自各国政府的旅行警告和安全提示。"
     }
   },
   "popups": {
@@ -1922,6 +1944,7 @@
     "close": "关闭",
     "currentVariant": "(当前)",
     "retry": "Retry",
-    "refresh": "Refresh"
+    "refresh": "Refresh",
+    "all": "全部"
   }
 }

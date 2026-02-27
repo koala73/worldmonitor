@@ -203,7 +203,8 @@
     "techReadiness": "مؤشر الجاهزية التقنية",
     "gccInvestments": "استثمارات دول الخليج",
     "geoHubs": "مراكز جيوسياسية",
-    "liveWebcams": "كاميرات مباشرة"
+    "liveWebcams": "كاميرات مباشرة",
+    "securityAdvisories": "تنبيهات أمنية"
   },
   "modals": {
     "search": {
@@ -1285,6 +1286,27 @@
       "regionAsia": "آسيا",
       "regionMiddleEast": "الشرق الأوسط",
       "regionAfrica": "أفريقيا"
+    },
+    "securityAdvisories": {
+      "loading": "جاري جلب التحذيرات الأمنية...",
+      "noMatching": "لا توجد تحذيرات مطابقة لهذا الفلتر",
+      "critical": "حرج",
+      "sources": "وزارة الخارجية الأمريكية، DFAT الأسترالية، FCDO البريطانية، MFAT النيوزيلندية",
+      "refresh": "تحديث",
+      "levels": {
+        "doNotTravel": "لا تسافر",
+        "reconsider": "أعد التفكير في السفر",
+        "caution": "توخي الحذر",
+        "normal": "عادي",
+        "info": "معلومات"
+      },
+      "time": {
+        "justNow": "الآن",
+        "minutesAgo": "منذ {{count}} دقيقة",
+        "hoursAgo": "منذ {{count}} ساعة",
+        "daysAgo": "منذ {{count}} يوم"
+      },
+      "infoTooltip": "<strong>تنبيهات أمنية</strong><br>تحذيرات السفر والتنبيهات الأمنية من الوكالات الحكومية."
     }
   },
   "popups": {
@@ -1922,6 +1944,7 @@
     "close": "إغلاق",
     "currentVariant": "(الحالي)",
     "retry": "Retry",
-    "refresh": "Refresh"
+    "refresh": "Refresh",
+    "all": "الكل"
   }
 }

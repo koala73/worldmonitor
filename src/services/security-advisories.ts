@@ -162,7 +162,10 @@ export async function fetchSecurityAdvisories(
   const feedResults = await Promise.allSettled(
     ADVISORY_FEEDS.map(async (feed) => {
       try {
-        const response = await fetch(proxyUrl(feed.url), signal ? { signal } : undefined);
+        const response = await fetch(proxyUrl(feed.url), {
+          headers: { Accept: 'application/rss+xml, application/xml, text/xml, */*' },
+          ...(signal ? { signal } : {}),
+        });
         if (!response.ok) {
           console.warn(`[SecurityAdvisories] ${feed.name} HTTP ${response.status}`);
           return [];

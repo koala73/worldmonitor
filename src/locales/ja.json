@@ -203,7 +203,8 @@
     "techReadiness": "テック準備度指数",
     "gccInvestments": "GCC投資",
     "geoHubs": "地政学ハブ",
-    "liveWebcams": "ライブカメラ"
+    "liveWebcams": "ライブカメラ",
+    "securityAdvisories": "セキュリティアドバイザリー"
   },
   "modals": {
     "search": {
@@ -1285,6 +1286,27 @@
       "regionAsia": "アジア",
       "regionMiddleEast": "中東",
       "regionAfrica": "アフリカ"
+    },
+    "securityAdvisories": {
+      "loading": "渡航情報を取得中...",
+      "noMatching": "該当する情報なし",
+      "critical": "重大",
+      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT",
+      "refresh": "更新",
+      "levels": {
+        "doNotTravel": "渡航中止",
+        "reconsider": "渡航再検討",
+        "caution": "注意",
+        "normal": "通常",
+        "info": "情報"
+      },
+      "time": {
+        "justNow": "たった今",
+        "minutesAgo": "{{count}}分前",
+        "hoursAgo": "{{count}}時間前",
+        "daysAgo": "{{count}}日前"
+      },
+      "infoTooltip": "<strong>セキュリティアドバイザリー</strong><br>各国政府の渡航情報と安全警告。"
     }
   },
   "popups": {
@@ -1922,6 +1944,7 @@
     "close": "閉じる",
     "currentVariant": "（現在）",
     "retry": "Retry",
-    "refresh": "Refresh"
+    "refresh": "Refresh",
+    "all": "すべて"
   }
 }

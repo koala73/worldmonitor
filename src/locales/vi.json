@@ -203,7 +203,8 @@
     "techReadiness": "Chỉ số Sẵn sàng Công nghệ",
     "gccInvestments": "Đầu tư GCC",
     "geoHubs": "Trung tâm Địa chính trị",
-    "liveWebcams": "Webcam Trực tiếp"
+    "liveWebcams": "Webcam Trực tiếp",
+    "securityAdvisories": "Cảnh báo An ninh"
   },
   "modals": {
     "search": {
@@ -1285,6 +1286,27 @@
       "regionAsia": "Châu Á",
       "regionMiddleEast": "Trung Đông",
       "regionAfrica": "Châu Phi"
+    },
+    "securityAdvisories": {
+      "loading": "Đang tải cảnh báo du lịch...",
+      "noMatching": "Không có cảnh báo cho bộ lọc này",
+      "critical": "Nghiêm trọng",
+      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT",
+      "refresh": "Làm mới",
+      "levels": {
+        "doNotTravel": "Không du lịch",
+        "reconsider": "Cân nhắc lại",
+        "caution": "Thận trọng",
+        "normal": "Bình thường",
+        "info": "Thông tin"
+      },
+      "time": {
+        "justNow": "vừa xong",
+        "minutesAgo": "{{count}} phút trước",
+        "hoursAgo": "{{count}} giờ trước",
+        "daysAgo": "{{count}} ngày trước"
+      },
+      "infoTooltip": "<strong>Cảnh báo An ninh</strong><br>Cảnh báo du lịch và an ninh từ các cơ quan chính phủ."
     }
   },
   "popups": {
@@ -1922,6 +1944,7 @@
     "close": "Đóng",
     "currentVariant": "(hiện tại)",
     "retry": "Thử lại",
-    "refresh": "Làm mới"
+    "refresh": "Làm mới",
+    "all": "Tất cả"
   }
 }

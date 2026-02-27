@@ -1054,16 +1054,7 @@ export class DataLoaderManager implements AppModule {
     })());
 
     // Security advisories
-    tasks.push((async () => {
-      try {
-        const result = await fetchSecurityAdvisories();
-        if (result.ok) {
-          (this.ctx.panels['security-advisories'] as SecurityAdvisoriesPanel)?.setData(result.advisories);
-        }
-      } catch (error) {
-        console.error('[Intelligence] Security advisories fetch failed:', error);
-      }
-    })());
+    tasks.push(this.loadSecurityAdvisories());
 
     await Promise.allSettled(tasks);
 

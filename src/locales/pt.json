@@ -62,7 +62,8 @@
     "geoHubs": "Geopolitical Hotspots",
     "polymarket": "Previsões",
     "climate": "Anomalias Climáticas",
-    "liveWebcams": "Câmeras ao Vivo"
+    "liveWebcams": "Câmeras ao Vivo",
+    "securityAdvisories": "Alertas de Segurança"
   },
   "modals": {
     "search": {
@@ -1144,6 +1145,27 @@
       "regionAsia": "Ásia",
       "regionMiddleEast": "Oriente Médio",
       "regionAfrica": "África"
+    },
+    "securityAdvisories": {
+      "loading": "Carregando alertas de viagem...",
+      "noMatching": "Nenhum alerta para este filtro",
+      "critical": "Crítico",
+      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT",
+      "refresh": "Atualizar",
+      "levels": {
+        "doNotTravel": "Não viajar",
+        "reconsider": "Reconsiderar viagem",
+        "caution": "Cautela",
+        "normal": "Normal",
+        "info": "Info"
+      },
+      "time": {
+        "justNow": "agora",
+        "minutesAgo": "há {{count}} min",
+        "hoursAgo": "há {{count}} h",
+        "daysAgo": "há {{count}} d"
+      },
+      "infoTooltip": "<strong>Alertas de Segurança</strong><br>Avisos de viagem e alertas de segurança de agências governamentais."
     }
   },
   "popups": {
@@ -1781,7 +1803,8 @@
     "close": "Fechar",
     "currentVariant": "(atual)",
     "retry": "Retry",
-    "refresh": "Refresh"
+    "refresh": "Refresh",
+    "all": "Todos"
   },
   "header": {
     "world": "MUNDO",
