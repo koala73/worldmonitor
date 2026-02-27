@@ -377,7 +377,14 @@ export function rssProxyPlugin(): Plugin {
 
         try {
           const parsed = new URL(feedUrl);
-          if (!RSS_PROXY_ALLOWED_DOMAINS.has(parsed.hostname)) {
+          // Normalize hostname the same way production does (api/rss-proxy.js):
+          // check the raw hostname, the bare (no-www) form, and the www-prefixed form.
+          const hostname = parsed.hostname;
+          const bare = hostname.replace(/^www\./, '');
+          const withWww = hostname.startsWith('www.') ? hostname : `www.${hostname}`;
+          if (!RSS_PROXY_ALLOWED_DOMAINS.has(hostname)
+            && !RSS_PROXY_ALLOWED_DOMAINS.has(bare)
+            && !RSS_PROXY_ALLOWED_DOMAINS.has(withWww)) {
             res.statusCode = 403;
             res.setHeader('Content-Type', 'application/json');
             res.end(JSON.stringify({ error: `Domain not allowed: ${parsed.hostname}` }));
@@ -388,14 +395,45 @@ export function rssProxyPlugin(): Plugin {
           const timeout = feedUrl.includes('news.google.com') ? 20000 : 12000;
           const timer = setTimeout(() => controller.abort(), timeout);
 
-          const response = await fetch(feedUrl, {
+          // Use redirect:'manual' and validate redirect targets against the
+          // allowlist, matching the security behaviour of the production proxy.
+          let response = await fetch(feedUrl, {
             signal: controller.signal,
             headers: {
               'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
               'Accept': 'application/rss+xml, application/xml, text/xml, */*',
             },
-            redirect: 'follow',
+            redirect: 'manual',
           });
+
+          // Follow up to 5 redirects, validating each target
+          let redirects = 0;
+          while (response.status >= 300 && response.status < 400 && redirects < 5) {
+            const location = response.headers.get('location');
+            if (!location) break;
+            const redirectUrl = new URL(location, feedUrl);
+            const rHost = redirectUrl.hostname;
+            const rBare = rHost.replace(/^www\./, '');
+            const rWww = rHost.startsWith('www.') ? rHost : `www.${rHost}`;
+            if (!RSS_PROXY_ALLOWED_DOMAINS.has(rHost)
+              && !RSS_PROXY_ALLOWED_DOMAINS.has(rBare)
+              && !RSS_PROXY_ALLOWED_DOMAINS.has(rWww)) {
+              res.statusCode = 403;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: `Redirect to disallowed domain: ${rHost}` }));
+              clearTimeout(timer);
+              return;
+            }
+            response = await fetch(redirectUrl.href, {
+              signal: controller.signal,
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'application/rss+xml, application/xml, text/xml, */*',
+              },
+              redirect: 'manual',
+            });
+            redirects++;
+          }
           clearTimeout(timer);
 
           const data = await response.text();
