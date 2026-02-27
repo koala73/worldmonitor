@@ -10,6 +10,7 @@ import type {
 import { isMilitaryCallsign, isMilitaryHex, detectAircraftType, UPSTREAM_TIMEOUT_MS } from './_shared';
 import { CHROME_UA } from '../../../_shared/constants';
 import { cachedFetchJson } from '../../../_shared/redis';
+import { markNoCacheResponse } from '../../../_shared/response-headers';
 
 const REDIS_CACHE_KEY = 'military:flights:v1';
 const REDIS_CACHE_TTL = 600; // 10 min — reduce upstream API pressure
@@ -70,7 +71,7 @@ const AIRCRAFT_TYPE_MAP: Record<string, string> = {
 };
 
 export async function listMilitaryFlights(
-  _ctx: ServerContext,
+  ctx: ServerContext,
   req: ListMilitaryFlightsRequest,
 ): Promise<ListMilitaryFlightsResponse> {
   try {
@@ -162,9 +163,13 @@ export async function listMilitaryFlights(
       },
     );
 
-    if (!fullResult) return { flights: [], clusters: [], pagination: undefined };
+    if (!fullResult) {
+      markNoCacheResponse(ctx.request);
+      return { flights: [], clusters: [], pagination: undefined };
+    }
     return { ...fullResult, flights: filterFlightsToBounds(fullResult.flights, requestBounds) };
   } catch {
+    markNoCacheResponse(ctx.request);
     return { flights: [], clusters: [], pagination: undefined };
   }
 }

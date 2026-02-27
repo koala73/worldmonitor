@@ -19,7 +19,7 @@ export interface PositiveGeoEvent {
 }
 
 const client = new PositiveEventsServiceClient('', {
-  fetch: fetch.bind(globalThis),
+  fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args),
 });
 
 const breaker = createCircuitBreaker<PositiveGeoEvent[]>({
