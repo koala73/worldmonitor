@@ -1,8 +1,10 @@
+const WS_API_URL = import.meta.env.VITE_WS_API_URL || '';
+
 const DEFAULT_REMOTE_HOSTS: Record<string, string> = {
-  tech: 'https://api.worldmonitor.app',
-  full: 'https://api.worldmonitor.app',
-  world: 'https://api.worldmonitor.app',
-  happy: 'https://api.worldmonitor.app',
+  tech: WS_API_URL,
+  full: WS_API_URL,
+  world: WS_API_URL,
+  happy: WS_API_URL,
 };
 
 const DEFAULT_LOCAL_API_PORT = 46123;
@@ -111,7 +113,7 @@ export function getRemoteApiBaseUrl(): string {
   }
 
   const variant = import.meta.env.VITE_VARIANT || 'full';
-  return DEFAULT_REMOTE_HOSTS[variant] ?? DEFAULT_REMOTE_HOSTS.full ?? 'https://worldmonitor.app';
+  return DEFAULT_REMOTE_HOSTS[variant] ?? DEFAULT_REMOTE_HOSTS.full ?? '';
 }
 
 export function toRuntimeUrl(path: string): string {
@@ -127,6 +129,15 @@ export function toRuntimeUrl(path: string): string {
   return `${baseUrl}${path}`;
 }
 
+function extractHostnames(...urls: (string | undefined)[]): string[] {
+  const hosts: string[] = [];
+  for (const u of urls) {
+    if (!u) continue;
+    try { hosts.push(new URL(u).hostname); } catch {}
+  }
+  return hosts;
+}
+
 const APP_HOSTS = new Set([
   'worldmonitor.app',
   'www.worldmonitor.app',
@@ -134,6 +145,7 @@ const APP_HOSTS = new Set([
   'api.worldmonitor.app',
   'localhost',
   '127.0.0.1',
+  ...extractHostnames(WS_API_URL, import.meta.env.VITE_WS_RELAY_URL),
 ]);
 
 function isAppOriginUrl(urlStr: string): boolean {
@@ -364,14 +376,11 @@ const WEB_RPC_PATTERN = /^\/api\/[^/]+\/v1\//;
 
 export function installWebApiRedirect(): void {
   if (isDesktopRuntime() || typeof window === 'undefined') return;
+  if (!WS_API_URL) return;
   if ((window as unknown as Record<string, unknown>).__wmWebRedirectPatched) return;
 
-  const host = window.location?.hostname ?? '';
-  const isProduction = host === 'worldmonitor.app' || host === 'www.worldmonitor.app' || host === 'tech.worldmonitor.app' || host === 'happy.worldmonitor.app';
-  if (!isProduction) return;
-
   const nativeFetch = window.fetch.bind(window);
-  const API_BASE = 'https://api.worldmonitor.app';
+  const API_BASE = WS_API_URL;
 
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     if (typeof input === 'string' && WEB_RPC_PATTERN.test(input)) {
