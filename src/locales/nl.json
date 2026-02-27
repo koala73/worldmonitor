@@ -62,7 +62,8 @@
     "geoHubs": "Geopolitical Hotspots",
     "polymarket": "Voorspellingen",
     "climate": "Klimaatafwijkingen",
-    "liveWebcams": "Live Webcams"
+    "liveWebcams": "Live Webcams",
+    "securityAdvisories": "Veiligheidsadviezen"
   },
   "modals": {
     "search": {
@@ -1144,6 +1145,28 @@
       "regionAsia": "Azië",
       "regionMiddleEast": "Midden-Oosten",
       "regionAfrica": "Afrika"
+    },
+    "securityAdvisories": {
+      "loading": "Reisadviezen laden...",
+      "noMatching": "Geen adviezen voor dit filter",
+      "critical": "Kritiek",
+      "health": "Gezondheid",
+      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT, CDC, ECDC, WHO, US Embassies",
+      "refresh": "Vernieuwen",
+      "levels": {
+        "doNotTravel": "Niet reizen",
+        "reconsider": "Reis heroverwegen",
+        "caution": "Voorzichtigheid",
+        "normal": "Normaal",
+        "info": "Info"
+      },
+      "time": {
+        "justNow": "zojuist",
+        "minutesAgo": "{{count}} min geleden",
+        "hoursAgo": "{{count}} uur geleden",
+        "daysAgo": "{{count}} dagen geleden"
+      },
+      "infoTooltip": "<strong>Veiligheidsadviezen</strong><br>Reisadviezen en veiligheidswaarschuwingen van overheidsinstanties."
     }
   },
   "popups": {
@@ -1781,7 +1804,8 @@
     "close": "Sluiten",
     "currentVariant": "(huidig)",
     "retry": "Retry",
-    "refresh": "Refresh"
+    "refresh": "Refresh",
+    "all": "Alle"
   },
   "header": {
     "world": "WERELD",

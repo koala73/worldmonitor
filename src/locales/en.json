@@ -185,6 +185,7 @@
     "displacement": "UNHCR Displacement",
     "climate": "Climate Anomalies",
     "populationExposure": "Population Exposure",
+    "securityAdvisories": "Security Advisories",
     "startups": "Startups & VC",
     "vcblogs": "VC Insights & Essays",
     "regionalStartups": "Global Startup News",
@@ -1081,6 +1082,28 @@
       "affectedCount": "{{count}} affected",
       "radiusKm": "{{km}}km radius",
       "infoTooltip": "<strong>Population Exposure Estimates</strong> Estimated population within event impact radius. Based on WorldPop country density data.<ul><li>Conflict: 50km radius</li><li>Earthquake: 100km radius</li><li>Flood: 100km radius</li><li>Wildfire: 30km radius</li></ul>"
+    },
+    "securityAdvisories": {
+      "loading": "Fetching travel advisories...",
+      "noMatching": "No advisories match this filter",
+      "critical": "Critical",
+      "health": "Health",
+      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT, CDC, ECDC, WHO, US Embassies",
+      "refresh": "Refresh",
+      "levels": {
+        "doNotTravel": "Do Not Travel",
+        "reconsider": "Reconsider Travel",
+        "caution": "Exercise Caution",
+        "normal": "Normal",
+        "info": "Info"
+      },
+      "time": {
+        "justNow": "just now",
+        "minutesAgo": "{{count}}m ago",
+        "hoursAgo": "{{count}}h ago",
+        "daysAgo": "{{count}}d ago"
+      },
+      "infoTooltip": "<strong>Security Advisories</strong><br>Travel advisories and security alerts from government foreign affairs agencies:<br><br><strong>Sources:</strong><br>\uD83C\uDDFA\uD83C\uDDF8 US State Dept Travel Advisories<br>\uD83C\uDDE6\uD83C\uDDFA AU DFAT Smartraveller<br>\uD83C\uDDEC\uD83C\uDDE7 UK FCDO Travel Advice<br>\uD83C\uDDF3\uD83C\uDDFF NZ MFAT SafeTravel<br><br><strong>Levels:</strong><br>\uD83D\uDFE5 Do Not Travel<br>\uD83D\uDFE7 Reconsider Travel<br>\uD83D\uDFE8 Exercise Caution<br>\uD83D\uDFE9 Normal Precautions"
     },
     "satelliteFires": {
       "noData": "No fire data available",
@@ -2020,6 +2043,7 @@
     "currentVariant": "(current)",
     "retry": "Retry",
     "retrying": "Retrying...",
-    "refresh": "Refresh"
+    "refresh": "Refresh",
+    "all": "All"
   }
 }

@@ -203,7 +203,8 @@
     "techReadiness": "Индекс технологической готовности",
     "gccInvestments": "Инвестиции стран Залива",
     "geoHubs": "Геополитические хабы",
-    "liveWebcams": "Веб-камеры"
+    "liveWebcams": "Веб-камеры",
+    "securityAdvisories": "Предупреждения безопасности"
   },
   "modals": {
     "search": {
@@ -1285,6 +1286,28 @@
       "regionAsia": "Азия",
       "regionMiddleEast": "Ближний Восток",
       "regionAfrica": "Африка"
+    },
+    "securityAdvisories": {
+      "loading": "Загрузка предупреждений...",
+      "noMatching": "Нет предупреждений для этого фильтра",
+      "critical": "Критический",
+      "health": "Здоровье",
+      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT, CDC, ECDC, WHO, US Embassies",
+      "refresh": "Обновить",
+      "levels": {
+        "doNotTravel": "Не путешествовать",
+        "reconsider": "Пересмотреть поездку",
+        "caution": "Осторожность",
+        "normal": "Нормально",
+        "info": "Инфо"
+      },
+      "time": {
+        "justNow": "только что",
+        "minutesAgo": "{{count}} мин. назад",
+        "hoursAgo": "{{count}} ч. назад",
+        "daysAgo": "{{count}} дн. назад"
+      },
+      "infoTooltip": "<strong>Предупреждения безопасности</strong><br>Рекомендации по поездкам и предупреждения от государственных ведомств."
     }
   },
   "popups": {
@@ -1922,6 +1945,7 @@
     "close": "Закрыть",
     "currentVariant": "(текущий)",
     "retry": "Retry",
-    "refresh": "Refresh"
+    "refresh": "Refresh",
+    "all": "Все"
   }
 }

@@ -262,6 +262,7 @@ export class App {
       openCountryStory: (code, name) => this.countryIntel.openCountryStory(code, name),
       loadAllData: () => this.dataLoader.loadAllData(),
       updateMonitorResults: () => this.dataLoader.updateMonitorResults(),
+      loadSecurityAdvisories: () => this.dataLoader.loadSecurityAdvisories(),
     });
 
     this.eventHandlers = new EventHandlerManager(this.state, {

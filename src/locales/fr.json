@@ -203,7 +203,8 @@
     "techHubs": "Pôles Technologiques",
     "gccInvestments": "Investissements du CCG",
     "geoHubs": "Centres géopolitiques",
-    "liveWebcams": "Webcams en Direct"
+    "liveWebcams": "Webcams en Direct",
+    "securityAdvisories": "Avis de Sécurité"
   },
   "modals": {
     "search": {
@@ -1285,6 +1286,28 @@
       "regionAsia": "Asie",
       "regionMiddleEast": "Moyen-Orient",
       "regionAfrica": "Afrique"
+    },
+    "securityAdvisories": {
+      "loading": "Chargement des avis de voyage...",
+      "noMatching": "Aucun avis pour ce filtre",
+      "critical": "Critique",
+      "health": "Santé",
+      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT, CDC, ECDC, WHO, US Embassies",
+      "refresh": "Actualiser",
+      "levels": {
+        "doNotTravel": "Ne pas voyager",
+        "reconsider": "Reconsidérer le voyage",
+        "caution": "Prudence",
+        "normal": "Normal",
+        "info": "Info"
+      },
+      "time": {
+        "justNow": "à l'instant",
+        "minutesAgo": "il y a {{count}} min",
+        "hoursAgo": "il y a {{count}} h",
+        "daysAgo": "il y a {{count}} j"
+      },
+      "infoTooltip": "<strong>Avis de Sécurité</strong><br>Avis aux voyageurs et alertes de sécurité des agences gouvernementales."
     }
   },
   "popups": {
@@ -1922,6 +1945,7 @@
     "close": "Fermer",
     "currentVariant": "(actuel)",
     "retry": "Retry",
-    "refresh": "Refresh"
+    "refresh": "Refresh",
+    "all": "Tous"
   }
 }
