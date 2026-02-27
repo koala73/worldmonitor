@@ -1,7 +1,7 @@
 const DEFAULT_REMOTE_HOSTS: Record<string, string> = {
-  tech: 'https://tech.worldmonitor.app',
-  full: 'https://worldmonitor.app',
-  world: 'https://worldmonitor.app',
+  tech: 'https://api.worldmonitor.app',
+  full: 'https://api.worldmonitor.app',
+  world: 'https://api.worldmonitor.app',
 };
 
 const DEFAULT_LOCAL_API_PORT = 46123;
@@ -130,6 +130,7 @@ const APP_HOSTS = new Set([
   'worldmonitor.app',
   'www.worldmonitor.app',
   'tech.worldmonitor.app',
+  'api.worldmonitor.app',
   'localhost',
   '127.0.0.1',
 ]);
@@ -356,4 +357,36 @@ export function installRuntimeFetchPatch(): void {
   };
 
   (window as unknown as Record<string, unknown>).__wmFetchPatched = true;
+}
+
+const WEB_RPC_PATTERN = /^\/api\/[^/]+\/v1\//;
+
+export function installWebApiRedirect(): void {
+  if (isDesktopRuntime() || typeof window === 'undefined') return;
+  if ((window as unknown as Record<string, unknown>).__wmWebRedirectPatched) return;
+
+  const host = window.location?.hostname ?? '';
+  const isProduction = host === 'worldmonitor.app' || host === 'www.worldmonitor.app' || host === 'tech.worldmonitor.app';
+  if (!isProduction) return;
+
+  const nativeFetch = window.fetch.bind(window);
+  const API_BASE = 'https://api.worldmonitor.app';
+
+  window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    if (typeof input === 'string' && WEB_RPC_PATTERN.test(input)) {
+      return nativeFetch(`${API_BASE}${input}`, init);
+    }
+    if (input instanceof URL && input.origin === window.location.origin && WEB_RPC_PATTERN.test(input.pathname)) {
+      return nativeFetch(new URL(`${API_BASE}${input.pathname}${input.search}`), init);
+    }
+    if (input instanceof Request) {
+      const u = new URL(input.url);
+      if (u.origin === window.location.origin && WEB_RPC_PATTERN.test(u.pathname)) {
+        return nativeFetch(new Request(`${API_BASE}${u.pathname}${u.search}`, input), init);
+      }
+    }
+    return nativeFetch(input, init);
+  };
+
+  (window as unknown as Record<string, unknown>).__wmWebRedirectPatched = true;
 }
