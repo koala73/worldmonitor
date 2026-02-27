@@ -9,11 +9,22 @@
  * so celebrations feel special, not repetitive.
  *
  * Respects prefers-reduced-motion: no animations when that media query matches.
+ *
+ * Loads confetti at runtime via CDN when the canvas-confetti package is not
+ * in node_modules (e.g. after clone without npm install). Uses a single cached
+ * promise so only one script tag is ever appended even when celebrate() is
+ * called multiple times in quick succession (e.g. record type calls run() twice).
  */
 
-import confetti from 'canvas-confetti';
-
 // ---- Types ----
+
+type ConfettiFn = (opts: {
+  particleCount: number;
+  spread: number;
+  origin: { y: number };
+  colors: string[];
+  disableForReducedMotion: boolean;
+}) => void;
 
 export interface MilestoneData {
   speciesRecoveries?: Array<{ name: string; status: string }>;
@@ -34,6 +45,30 @@ const WARM_COLORS = ['#6B8F5E', '#C4A35A', '#7BA5C4', '#8BAF7A', '#E8B96E', '#7F
 /** Session-level dedup set. Stores milestone keys that have already been celebrated this session. */
 const celebrated = new Set<string>();
 
+/** Cached promise for loading confetti from CDN so we never append more than one script tag. */
+let confettiLoadPromise: Promise<ConfettiFn | null> | null = null;
+
+/**
+ * Load confetti from CDN at runtime. Returns the same promise for every call so
+ * multiple celebrate() calls (e.g. record type with two bursts 300ms apart) share
+ * one script load and only one script tag is appended.
+ */
+function loadConfetti(): Promise<ConfettiFn | null> {
+  if (typeof window === 'undefined') return Promise.resolve(null);
+  const w = window as Window & { confetti?: ConfettiFn };
+  if (typeof w.confetti === 'function') return Promise.resolve(w.confetti);
+  if (confettiLoadPromise !== null) return confettiLoadPromise;
+  confettiLoadPromise = new Promise<ConfettiFn | null>((resolve) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.4/dist/canvas-confetti.min.js';
+    script.async = true;
+    script.onload = () => (typeof w.confetti === 'function' ? resolve(w.confetti!) : resolve(null));
+    script.onerror = () => resolve(null);
+    document.head.appendChild(script);
+  });
+  return confettiLoadPromise;
+}
+
 // ---- Public API ----
 
 /**
@@ -45,31 +80,18 @@ const celebrated = new Set<string>();
 export function celebrate(type: 'milestone' | 'record' = 'milestone'): void {
   if (REDUCED_MOTION) return;
 
+  const run = (opts: { particleCount: number; spread: number; origin: { y: number }; colors: string[] }) => {
+    void loadConfetti().then((confetti) => {
+      if (confetti) confetti({ ...opts, disableForReducedMotion: true });
+    });
+  };
+
   if (type === 'milestone') {
-    void confetti({
-      particleCount: 40,
-      spread: 60,
-      origin: { y: 0.7 },
-      colors: WARM_COLORS,
-      disableForReducedMotion: true,
-    });
+    run({ particleCount: 40, spread: 60, origin: { y: 0.7 }, colors: WARM_COLORS });
   } else {
-    // 'record' -- double burst for extra emphasis
-    void confetti({
-      particleCount: 80,
-      spread: 90,
-      origin: { y: 0.6 },
-      colors: WARM_COLORS,
-      disableForReducedMotion: true,
-    });
+    run({ particleCount: 80, spread: 90, origin: { y: 0.6 }, colors: WARM_COLORS });
     setTimeout(() => {
-      void confetti({
-        particleCount: 80,
-        spread: 90,
-        origin: { y: 0.6 },
-        colors: WARM_COLORS,
-        disableForReducedMotion: true,
-      });
+      run({ particleCount: 80, spread: 90, origin: { y: 0.6 }, colors: WARM_COLORS });
     }, 300);
   }
 }
