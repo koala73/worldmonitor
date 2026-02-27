@@ -161,7 +161,7 @@ const DIRECT_HLS_MAP: Readonly<Record<string, string>> = {
   'dw': 'https://dwamdstream103.akamaized.net/hls/live/2015526/dwstream103/master.m3u8',
   'france24': 'https://amg00106-france24-france24-samsunguk-qvpp8.amagi.tv/playlist/amg00106-france24-france24-samsunguk/playlist.m3u8',
   'alarabiya': 'https://live.alarabiya.net/alarabiapublish/alarabiya.smil/playlist.m3u8',
-  'aljazeera': 'https://live-hls-web-aje.getaj.net/AJE/index.m3u8',
+  // aljazeera: geo-blocked in many regions, use YouTube fallback
   'cbs-news': 'https://cbsn-us.cbsnstream.cbsnews.com/out/v1/55a8648e8f134e82a470f83d562deeca/master.m3u8',
   'trt-world': 'https://tv-trtworld.medya.trt.com.tr/master.m3u8',
   'sky-news-arabia': 'https://live-stream.skynewsarabia.com/c-horizontal-channel/horizontal-stream/index.m3u8',
@@ -245,9 +245,9 @@ export class LiveNewsPanel extends Panel {
   private readonly youtubeOrigin: string | null;
   private forceFallbackVideoForNextInit = false;
 
-  // Desktop fallback: embed via cloud bridge page to avoid YouTube 153.
-  // Starts false — try native HLS first; switches to true on Error 153.
-  private useDesktopEmbedProxy = false;
+  // Desktop: always use sidecar embed for YouTube (tauri:// origin gets 153).
+  // DIRECT_HLS_MAP channels use native <video> instead.
+  private useDesktopEmbedProxy = isDesktopRuntime();
   private desktopEmbedIframe: HTMLIFrameElement | null = null;
   private desktopEmbedRenderToken = 0;
   private suppressChannelClick = false;
@@ -792,12 +792,6 @@ export class LiveNewsPanel extends Panel {
       return;
     }
 
-    // Desktop + HLS from YouTube API → native <video>
-    if (isDesktopRuntime() && channel.hlsUrl) {
-      this.renderNativeHlsPlayer();
-      return;
-    }
-
     if (this.useDesktopEmbedProxy) {
       this.renderDesktopEmbed(true);
       return;
@@ -937,7 +931,7 @@ export class LiveNewsPanel extends Panel {
   }
 
   private renderNativeHlsPlayer(): void {
-    const hlsUrl = this.getDirectHlsUrl(this.activeChannel.id) || this.activeChannel.hlsUrl;
+    const hlsUrl = this.getDirectHlsUrl(this.activeChannel.id);
     if (!hlsUrl || !hlsUrl.startsWith('https://')) return;
 
     this.destroyPlayer();
@@ -1000,6 +994,17 @@ export class LiveNewsPanel extends Panel {
     this.playerContainer.appendChild(video);
     this.isPlayerReady = true;
     this.currentVideoId = this.activeChannel.videoId || null;
+
+    // WKWebView blocks autoplay without user gesture. Force muted play, then restore.
+    if (this.isPlaying) {
+      const wantUnmute = !this.isMuted;
+      video.muted = true;
+      video.play().then(() => {
+        if (wantUnmute && this.nativeVideoElement === video) {
+          video.muted = false;
+        }
+      }).catch(() => {});
+    }
   }
 
   private syncNativeVideoState(): void {
@@ -1074,12 +1079,6 @@ export class LiveNewsPanel extends Panel {
 
     if (!this.activeChannel.videoId || !/^[\w-]{10,12}$/.test(this.activeChannel.videoId)) {
       this.showOfflineMessage(this.activeChannel);
-      return;
-    }
-
-    // Desktop + live HLS stream from YouTube API → native <video>
-    if (isDesktopRuntime() && this.activeChannel.hlsUrl) {
-      this.renderNativeHlsPlayer();
       return;
     }
 

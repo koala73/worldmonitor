@@ -179,9 +179,9 @@ export class LiveWebcamsPanel extends Panel {
     iframe.src = this.buildEmbedUrl(feed.fallbackVideoId);
     iframe.title = `${feed.city} live webcam`;
     iframe.allow = 'autoplay; encrypted-media; picture-in-picture';
-    iframe.allowFullscreen = true;
     iframe.referrerPolicy = 'strict-origin-when-cross-origin';
     if (!isDesktopRuntime()) {
+      iframe.allowFullscreen = true;
       iframe.setAttribute('loading', 'lazy');
       iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-presentation');
     }
