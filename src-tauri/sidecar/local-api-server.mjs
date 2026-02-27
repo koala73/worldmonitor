@@ -527,9 +527,25 @@ const SIDECAR_ALLOWED_ORIGINS = [
   /^https:\/\/([a-z0-9-]+\.)?worldmonitor\.app$/,
 ];
 
+// Container/K8s mode: allow additional CORS origins from environment.
+// Comma-separated list of origin patterns (supports * wildcard for subdomains).
+// Example: LOCAL_API_CORS_ORIGINS="https://*.garuda.example.com,https://admin.example.com"
+const EXTRA_CORS_ORIGINS = (process.env.LOCAL_API_CORS_ORIGINS || '')
+  .split(',')
+  .filter(Boolean)
+  .map((pattern) => {
+    const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[a-z0-9-]+');
+    return new RegExp(`^${escaped}$`);
+  });
+
+const ALL_ALLOWED_ORIGINS = [...SIDECAR_ALLOWED_ORIGINS, ...EXTRA_CORS_ORIGINS];
+
 function getSidecarCorsOrigin(req) {
   const origin = req.headers?.origin || req.headers?.get?.('origin') || '';
-  if (origin && SIDECAR_ALLOWED_ORIGINS.some(p => p.test(origin))) return origin;
+  if (origin && ALL_ALLOWED_ORIGINS.some(p => p.test(origin))) return origin;
+  // In container mode (nginx proxy), requests arrive without an Origin header.
+  // Return '*' to allow same-pod proxied requests.
+  if (!origin && process.env.LOCAL_API_MODE === 'container') return '*';
   return 'tauri://localhost';
 }
 
@@ -1243,12 +1259,16 @@ export async function createLocalApiServer(options = {}) {
     routes,
     server,
     async start() {
+      // In container/K8s mode, bind to 0.0.0.0 so nginx sidecar can reach us.
+      // Desktop sidecar defaults to 127.0.0.1 for security.
+      const bindHost = process.env.LOCAL_API_BIND_HOST || '127.0.0.1';
+
       const tryListen = (port) => new Promise((resolve, reject) => {
         const onListening = () => { server.off('error', onError); resolve(); };
         const onError = (error) => { server.off('listening', onListening); reject(error); };
         server.once('listening', onListening);
         server.once('error', onError);
-        server.listen(port, '127.0.0.1');
+        server.listen(port, bindHost);
       });
 
       try {
@@ -1271,7 +1291,7 @@ export async function createLocalApiServer(options = {}) {
         try { writeFileSync(portFile, String(boundPort)); } catch {}
       }
 
-      context.logger.log(`[local-api] listening on http://127.0.0.1:${boundPort} (apiDir=${context.apiDir}, routes=${routes.length}, cloudFallback=${context.cloudFallback})`);
+      context.logger.log(`[local-api] listening on http://${bindHost}:${boundPort} (apiDir=${context.apiDir}, routes=${routes.length}, cloudFallback=${context.cloudFallback})`);
       return { port: boundPort };
     },
     async close() {

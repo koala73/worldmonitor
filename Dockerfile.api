@@ -1,0 +1,32 @@
+# Lightweight Node.js API server for container/K8s deployment.
+# Runs local-api-server.mjs with the api/*.js handler modules.
+# Zero npm dependencies — only Node.js built-ins required.
+FROM public.ecr.aws/docker/library/node:20-alpine
+
+WORKDIR /app
+
+# Copy the API server entry point and ESM package descriptor
+COPY src-tauri/sidecar/local-api-server.mjs ./local-api-server.mjs
+COPY src-tauri/sidecar/package.json ./package.json
+
+# Copy Vercel-compatible API handler modules (rss-proxy, ais-snapshot, etc.)
+COPY api/ ./api/
+
+# Environment defaults for container mode
+ENV LOCAL_API_PORT=8787
+ENV LOCAL_API_MODE=container
+ENV LOCAL_API_BIND_HOST=0.0.0.0
+ENV LOCAL_API_CLOUD_FALLBACK=true
+ENV LOCAL_API_REMOTE_BASE=https://worldmonitor.app
+ENV LOCAL_API_RESOURCE_DIR=/app
+ENV NODE_ENV=production
+
+EXPOSE 8787
+
+# Health check via the auth-exempt service-status endpoint
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s \
+  CMD node -e "fetch('http://127.0.0.1:8787/api/service-status').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+
+USER node
+
+CMD ["node", "local-api-server.mjs"]

@@ -1,0 +1,57 @@
+# Cloud Build config for ctem-worldmonitor
+# Builds two images: nginx static server + Node.js API sidecar
+#
+# Manual trigger: gcloud builds submit --config=cloudbuild.yaml \
+#   --substitutions=SHORT_SHA=$(git rev-parse --short HEAD) .
+
+substitutions:
+  _REGION: 'asia-south1'
+  _REPO: 'ctem-images'
+  _SERVICE_NAME: 'ctem-worldmonitor'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+steps:
+  # Build the main nginx image (static files + API proxy)
+  - id: 'build-nginx'
+    name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE_NAME}:$SHORT_SHA'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE_NAME}:latest'
+      - '.'
+
+  # Build the API sidecar image (Node.js handler server)
+  - id: 'build-api'
+    name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-f'
+      - 'Dockerfile.api'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE_NAME}-api:$SHORT_SHA'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE_NAME}-api:latest'
+      - '.'
+
+  - id: 'deploy'
+    name: 'gcr.io/cloud-builders/gcloud'
+    waitFor: ['build-nginx', 'build-api']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud compute ssh ctem@ctem-node-0 \
+          --zone=asia-south1-a \
+          --project=$PROJECT_ID \
+          --command="sudo kubectl rollout restart deployment/${_SERVICE_NAME} -n ctem" \
+          --quiet || echo "Auto-deploy skipped (VM not reachable or deployment not found)"
+
+images:
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE_NAME}:$SHORT_SHA'
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE_NAME}:latest'
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE_NAME}-api:$SHORT_SHA'
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE_NAME}-api:latest'
