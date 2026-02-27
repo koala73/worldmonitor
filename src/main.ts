@@ -77,7 +77,7 @@ Sentry.init({
     /setting 'luma'/,
     /ML request .* timed out/,
     /^Element not found$/,
-    /^The operation was aborted\.?\s*$/,
+    /(?:AbortError: )?The operation was aborted\.?\s*$/,
     /Unexpected end of script/,
     /error loading dynamically imported module/,
     /Style is not done loading/,
@@ -111,6 +111,9 @@ Sentry.init({
     /isReCreate is not defined/,
     /reading 'style'.*HTMLImageElement/,
     /can't access property "write", \w+ is undefined/,
+    /AbortError: The user aborted a request/,
+    /\w+ is not a function.*\/uv\/service\//,
+    /__isInQueue__/,
   ],
   beforeSend(event) {
     const msg = event.exception?.values?.[0]?.value ?? '';
