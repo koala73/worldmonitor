@@ -1219,13 +1219,11 @@ fn main() {
         // AppImage — the AppImage itself already provides isolation.
         if env::var_os("APPIMAGE").is_some() {
             // WebKitGTK 2.39.3+ deprecated WEBKIT_FORCE_SANDBOX and now expects
-            // WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1 instead.
+            // WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1 instead.  Setting the
+            // old variable on newer WebKitGTK triggers a noisy deprecation
+            // warning in the system journal, so only set the new one.
             if env::var_os("WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS").is_none() {
                 unsafe { env::set_var("WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS", "1") };
-            }
-            // Keep the legacy var for older WebKitGTK releases that still use it.
-            if env::var_os("WEBKIT_FORCE_SANDBOX").is_none() {
-                unsafe { env::set_var("WEBKIT_FORCE_SANDBOX", "0") };
             }
             // Prevent GTK from loading host input-method modules that may
             // link against incompatible library versions.

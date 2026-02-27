@@ -922,6 +922,23 @@ async function dispatch(requestUrl, req, routes, context) {
     return handleLocalServiceStatus(context);
   }
 
+  // YouTube embed bridge — exempt from auth because iframe src cannot carry
+  // Authorization headers.  Serves a minimal HTML page that loads the YouTube
+  // IFrame Player API from a localhost origin (which YouTube accepts, unlike
+  // tauri://localhost).  No sensitive data is exposed.
+  if (requestUrl.pathname === '/api/youtube-embed') {
+    const videoId = requestUrl.searchParams.get('videoId');
+    if (!videoId || !/^[A-Za-z0-9_-]{11}$/.test(videoId)) {
+      return new Response('Invalid videoId', { status: 400, headers: { 'content-type': 'text/plain' } });
+    }
+    const autoplay = requestUrl.searchParams.get('autoplay') === '0' ? '0' : '1';
+    const mute = requestUrl.searchParams.get('mute') === '0' ? '0' : '1';
+    const vq = ['small','medium','large','hd720','hd1080'].includes(requestUrl.searchParams.get('vq') || '') ? requestUrl.searchParams.get('vq') : '';
+    const origin = `http://127.0.0.1:${context.port}`;
+    const html = `<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;padding:0;width:100%;height:100%;background:#000;overflow:hidden}#player{width:100%;height:100%}</style></head><body><div id="player"></div><script>var tag=document.createElement('script');tag.src='https://www.youtube.com/iframe_api';document.head.appendChild(tag);function onYouTubeIframeAPIReady(){new YT.Player('player',{videoId:'${videoId}',host:'https://www.youtube.com',playerVars:{autoplay:${autoplay},mute:1,playsinline:1,rel:0,controls:1,modestbranding:1,enablejsapi:1,origin:'${origin}',widget_referrer:'${origin}'},events:{onReady:function(e){e.target.mute();${vq ? `e.target.setPlaybackQuality('${vq}');` : ''}e.target.playVideo();${mute === '0' ? 'setTimeout(function(){e.target.unMute()},1500);' : ''}},onError:function(e){}}})}<\/script></body></html>`;
+    return new Response(html, { status: 200, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', ...makeCorsHeaders(req) } });
+  }
+
   // ── Global auth gate ────────────────────────────────────────────────────
   // Every endpoint below requires a valid LOCAL_API_TOKEN.  This prevents
   // other local processes, malicious browser scripts, and rogue extensions
