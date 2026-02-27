@@ -1,8 +1,8 @@
 /**
  * CORS header generation -- TypeScript port of api/_cors.js.
  *
- * Identical ALLOWED_ORIGIN_PATTERNS and logic, with methods hardcoded
- * to 'POST, OPTIONS' (all sebuf routes are POST).
+ * Identical ALLOWED_ORIGIN_PATTERNS and logic, with methods set
+ * to 'GET, POST, OPTIONS' (sebuf routes support GET and POST).
  */
 
 declare const process: { env: Record<string, string | undefined> };
@@ -35,7 +35,7 @@ export function getCorsHeaders(req: Request): Record<string, string> {
   const allowOrigin = isAllowedOrigin(origin) ? origin : 'https://worldmonitor.app';
   return {
     'Access-Control-Allow-Origin': allowOrigin,
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-WorldMonitor-Key',
     'Access-Control-Max-Age': '86400',
     'Vary': 'Origin',

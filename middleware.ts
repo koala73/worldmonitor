@@ -20,8 +20,13 @@ const SOCIAL_IMAGE_UA =
   /Slack-ImgProxy|Slackbot|twitterbot|facebookexternalhit|linkedinbot|telegrambot|whatsapp|discordbot|redditbot/i;
 
 export default function middleware(request: Request) {
-  const ua = request.headers.get('user-agent') ?? '';
   const url = new URL(request.url);
+
+  if (url.hostname === 'api.worldmonitor.app') {
+    return;
+  }
+
+  const ua = request.headers.get('user-agent') ?? '';
   const path = url.pathname;
 
   // Allow social preview/image bots on OG image assets (bypasses Vercel Attack Challenge)

@@ -142,6 +142,18 @@ export default async function handler(request: Request): Promise<Response> {
     mergedHeaders.set(key, value);
   }
 
+  if (response.status === 200 && request.method === 'GET' && !mergedHeaders.has('Cache-Control')) {
+    const url = new URL(request.url);
+    const noStoreEndpoints = new Set([
+      '/api/maritime/v1/get-vessel-snapshot',
+    ]);
+    if (noStoreEndpoints.has(url.pathname)) {
+      mergedHeaders.set('Cache-Control', 'no-store');
+    } else {
+      mergedHeaders.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=60');
+    }
+  }
+
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
