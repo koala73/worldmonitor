@@ -2005,6 +2005,29 @@ canvas,
   pointer-events: none;
 }
 
+.webcam-expand-btn {
+  pointer-events: auto;
+  margin-left: auto;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+  color: #fff;
+  padding: 2px 4px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s;
+  line-height: 1;
+}
+
+.webcam-cell:hover .webcam-expand-btn {
+  opacity: 0.7;
+}
+
+.webcam-expand-btn:hover {
+  opacity: 1 !important;
+  background: rgba(255, 255, 255, 0.15);
+}
+
 .webcam-city {
   font-family: var(--font-mono);
   font-size: 10px;
@@ -2028,17 +2051,13 @@ canvas,
   height: 100%;
   border: 0;
   display: block;
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 .webcam-single {
   flex: 1;
   background: #000;
   aspect-ratio: 16 / 9;
-}
-
-.webcam-single .webcam-iframe {
-  pointer-events: auto;
 }
 
 .webcam-switcher {
