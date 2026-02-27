@@ -20,8 +20,8 @@ function extractFeeds() {
 
   // Match rss('url') or railwayRss('url') — capture raw URL
   const rssUrlRe = /(?:rss|railwayRss)\(\s*'([^']+)'\s*\)/g;
-  // Match name: 'X' or name: "X" (Tom's Hardware uses double quotes)
-  const nameRe = /name:\s*(?:'([^']+)'+|"([^"]+)")/;
+  // Match name: 'X' or name: "X" — handles escaped apostrophes (L\'Orient-Le Jour)
+  const nameRe = /name:\s*(?:'((?:[^'\\]|\\.)*)'|"([^"]+)")/;
   // Match lang key like `en: rss(`, `fr: rss(` — find all on a line with positions
   const langKeyAllRe = /(?:^|[\s{,])([a-z]{2}):\s*(?:rss|railwayRss)\(/g;
 
