@@ -2078,7 +2078,7 @@ const server = http.createServer(async (req, res) => {
       sendPreGzipped(req, res, 200, {
         'Content-Type': 'application/json',
         'Cache-Control': 'public, max-age=2',
-        'CDN-Cache-Control': 'public, max-age=2',
+        'CDN-Cache-Control': 'public, max-age=10',
       }, json, gz);
     } else {
       // Cold start fallback
@@ -2086,7 +2086,7 @@ const server = http.createServer(async (req, res) => {
       sendCompressed(req, res, 200, {
         'Content-Type': 'application/json',
         'Cache-Control': 'public, max-age=2',
-        'CDN-Cache-Control': 'public, max-age=2',
+        'CDN-Cache-Control': 'public, max-age=10',
       }, JSON.stringify(payload));
     }
   } else if (pathname === '/opensky-reset') {
