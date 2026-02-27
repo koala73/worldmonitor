@@ -10,6 +10,23 @@ import { pathToFileURL } from 'node:url';
 
 const brotliCompressAsync = promisify(brotliCompress);
 
+// RSS allowed domains — loaded once from shared JSON (data/rss-allowed-domains.json)
+let _rssAllowedDomains = null;
+function loadRssAllowedDomains(resourceDir) {
+  const candidates = [
+    path.join(resourceDir, 'data', 'rss-allowed-domains.json'),
+    path.join(resourceDir, '..', 'data', 'rss-allowed-domains.json'),
+  ];
+  for (const p of candidates) {
+    try {
+      const json = JSON.parse(readFileSync(p, 'utf8'));
+      return new Set(json);
+    } catch { /* try next */ }
+  }
+  console.warn('[sidecar] rss-allowed-domains.json not found, RSS proxy will reject all domains');
+  return new Set();
+}
+
 // Monkey-patch globalThis.fetch to force IPv4 for HTTPS requests.
 // Node.js built-in fetch (undici) tries IPv6 first via Happy Eyeballs.
 // Government APIs (EIA, NASA FIRMS, FRED) publish AAAA records but their
@@ -841,51 +858,12 @@ async function dispatch(requestUrl, req, routes, context) {
     if (!feedUrl) return json({ error: 'Missing url parameter' }, 400);
     try {
       const parsed = new URL(feedUrl);
-      // Security: only allow known RSS feed domains (mirrors api/rss-proxy.js allowlist)
-      const RSS_ALLOWED_DOMAINS = new Set([
-        'feeds.bbci.co.uk','www.theguardian.com','feeds.npr.org','news.google.com',
-        'www.aljazeera.com','rss.cnn.com','hnrss.org','feeds.arstechnica.com',
-        'www.theverge.com','www.cnbc.com','feeds.marketwatch.com','www.defenseone.com',
-        'breakingdefense.com','www.bellingcat.com','techcrunch.com','huggingface.co',
-        'www.technologyreview.com','rss.arxiv.org','export.arxiv.org',
-        'www.federalreserve.gov','www.sec.gov','www.whitehouse.gov','www.state.gov',
-        'www.defense.gov','home.treasury.gov','www.justice.gov','tools.cdc.gov',
-        'www.fema.gov','www.dhs.gov','www.thedrive.com','krebsonsecurity.com',
-        'finance.yahoo.com','thediplomat.com','venturebeat.com','foreignpolicy.com',
-        'www.ft.com','openai.com','www.reutersagency.com','feeds.reuters.com',
-        'rsshub.app','asia.nikkei.com','www.cfr.org','www.csis.org','www.politico.com',
-        'www.brookings.edu','layoffs.fyi','www.defensenews.com','www.militarytimes.com',
-        'taskandpurpose.com','news.usni.org','www.oryxspioenkop.com','www.gov.uk',
-        'www.foreignaffairs.com','www.atlanticcouncil.org','www.zdnet.com',
-        'www.techmeme.com','www.darkreading.com','www.schneier.com','rss.politico.com',
-        'www.anandtech.com','www.tomshardware.com','www.semianalysis.com',
-        'feed.infoq.com','thenewstack.io','devops.com','dev.to','lobste.rs',
-        'changelog.com','seekingalpha.com','news.crunchbase.com','www.saastr.com',
-        'feeds.feedburner.com','www.producthunt.com','www.axios.com','github.blog',
-        'githubnext.com','mshibanami.github.io','www.engadget.com','news.mit.edu',
-        'dev.events','www.ycombinator.com','a16z.com','review.firstround.com',
-        'www.sequoiacap.com','www.nfx.com','www.aaronsw.com','bothsidesofthetable.com',
-        'www.lennysnewsletter.com','stratechery.com','www.eu-startups.com','tech.eu',
-        'sifted.eu','www.techinasia.com','kr-asia.com','techcabal.com',
-        'disrupt-africa.com','lavca.org','contxto.com','inc42.com','yourstory.com',
-        'pitchbook.com','www.cbinsights.com','www.techstars.com',
-        'english.alarabiya.net','www.arabnews.com','www.timesofisrael.com',
-        'www.haaretz.com','www.scmp.com','kyivindependent.com','www.themoscowtimes.com',
-        'feeds.24.com','feeds.capi24.com','www.france24.com','www.euronews.com',
-        'www.lemonde.fr','rss.dw.com','www.africanews.com','www.lasillavacia.com',
-        'www.channelnewsasia.com','www.thehindu.com','news.un.org','www.iaea.org',
-        'www.who.int','www.cisa.gov','www.crisisgroup.org','rusi.org',
-        'warontherocks.com','www.aei.org','responsiblestatecraft.org','www.fpri.org',
-        'jamestown.org','www.chathamhouse.org','ecfr.eu','www.gmfus.org',
-        'www.wilsoncenter.org','www.lowyinstitute.org','www.mei.edu','www.stimson.org',
-        'www.cnas.org','carnegieendowment.org','www.rand.org','fas.org',
-        'www.armscontrol.org','www.nti.org','thebulletin.org','www.iss.europa.eu',
-        'www.fao.org','worldbank.org','www.imf.org','www.hurriyet.com.tr','tvn24.pl',
-        'www.polsatnews.pl','www.rp.pl','meduza.io','novayagazeta.eu',
-        'www.bangkokpost.com','vnexpress.net','www.abc.net.au','news.ycombinator.com',
-        'www.coindesk.com','cointelegraph.com',
-      ]);
-      if (!RSS_ALLOWED_DOMAINS.has(parsed.hostname)) {
+      // Security: only allow known RSS feed domains
+      // Source of truth: data/rss-allowed-domains.json (KEEP IN SYNC with api/rss-proxy.js)
+      if (!_rssAllowedDomains) {
+        _rssAllowedDomains = loadRssAllowedDomains(context.resourceDir);
+      }
+      if (!_rssAllowedDomains.has(parsed.hostname)) {
         return json({ error: 'Domain not allowed' }, 403);
       }
       const response = await fetchWithTimeout(feedUrl, {

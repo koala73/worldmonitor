@@ -12,14 +12,6 @@ const SOCIAL_PREVIEW_UA =
 
 const SOCIAL_PREVIEW_PATHS = new Set(['/api/story', '/api/og-story']);
 
-const SECURITY_HEADERS: Record<string, string> = {
-  'X-Content-Type-Options': 'nosniff',
-  'X-Frame-Options': 'DENY',
-  'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
-  'Referrer-Policy': 'strict-origin-when-cross-origin',
-  'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
-};
-
 export default function middleware(request: Request) {
   const ua = request.headers.get('user-agent') ?? '';
   const url = new URL(request.url);
@@ -34,7 +26,7 @@ export default function middleware(request: Request) {
   if (BOT_UA.test(ua)) {
     return new Response('{"error":"Forbidden"}', {
       status: 403,
-      headers: { 'Content-Type': 'application/json', ...SECURITY_HEADERS },
+      headers: { 'Content-Type': 'application/json' },
     });
   }
 
@@ -42,7 +34,7 @@ export default function middleware(request: Request) {
   if (!ua || ua.length < 10) {
     return new Response('{"error":"Forbidden"}', {
       status: 403,
-      headers: { 'Content-Type': 'application/json', ...SECURITY_HEADERS },
+      headers: { 'Content-Type': 'application/json' },
     });
   }
 }

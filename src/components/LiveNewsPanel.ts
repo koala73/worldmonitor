@@ -390,9 +390,11 @@ export class LiveNewsPanel extends Panel {
       <div class="live-offline">
         <div class="offline-icon">!</div>
         <div class="offline-text">${t('components.liveNews.cannotEmbed', { name: channel.name, code: String(errorCode) })}</div>
-        <a class="offline-retry" href="${watchUrl}" target="_blank" rel="noopener noreferrer">${t('components.liveNews.openOnYouTube')}</a>
+        <a class="offline-retry" target="_blank" rel="noopener noreferrer">${t('components.liveNews.openOnYouTube')}</a>
       </div>
     `;
+    const link = this.content.querySelector('.offline-retry') as HTMLAnchorElement | null;
+    if (link) link.href = watchUrl;
   }
 
   private renderPlayer(): void {

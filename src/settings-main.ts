@@ -219,7 +219,7 @@ function initDiagnostics(): void {
       const rows = entries.slice().reverse().map((e) => {
         const ts = e.timestamp.split('T')[1]?.replace('Z', '') || e.timestamp;
         const cls = e.status < 300 ? 'ok' : e.status < 500 ? 'warn' : 'err';
-        return `<tr class="diag-${cls}"><td>${escapeHtml(ts)}</td><td>${escapeHtml(e.method)}</td><td title="${escapeHtml(e.path)}">${escapeHtml(e.path)}</td><td>${e.status}</td><td>${e.durationMs}ms</td></tr>`;
+        return `<tr class="diag-${cls}"><td>${escapeHtml(ts)}</td><td>${escapeHtml(e.method)}</td><td title="${escapeHtml(e.path)}">${escapeHtml(e.path)}</td><td>${Number(e.status)}</td><td>${Number(e.durationMs)}ms</td></tr>`;
       }).join('');
 
       trafficLogEl.innerHTML = `<table class="diag-table"><thead><tr><th>${t('modals.settingsWindow.table.time')}</th><th>${t('modals.settingsWindow.table.method')}</th><th>${t('modals.settingsWindow.table.path')}</th><th>${t('modals.settingsWindow.table.status')}</th><th>${t('modals.settingsWindow.table.duration')}</th></tr></thead><tbody>${rows}</tbody></table>`;

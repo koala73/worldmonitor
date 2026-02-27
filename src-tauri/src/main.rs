@@ -129,27 +129,9 @@ fn save_vault(cache: &HashMap<String, String>) -> Result<(), String> {
 }
 
 fn generate_local_token() -> String {
-    // Use OS CSPRNG for cryptographically secure token generation
+    // Use OS CSPRNG for cryptographically secure token generation (cross-platform)
     let mut buf = [0u8; 32];
-    let f = File::open("/dev/urandom").or_else(|_| File::open("/dev/random"));
-    if let Ok(mut rng) = f {
-        use std::io::Read;
-        let _ = rng.read_exact(&mut buf);
-    } else {
-        // Fallback for platforms without /dev/urandom (e.g., some Windows configs)
-        use std::collections::hash_map::RandomState;
-        use std::hash::{BuildHasher, Hasher};
-        for chunk in buf.chunks_mut(8) {
-            let state = RandomState::new();
-            let mut h = state.build_hasher();
-            h.write_u128(SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map(|d| d.as_nanos())
-                .unwrap_or(0));
-            let bytes = h.finish().to_le_bytes();
-            chunk.copy_from_slice(&bytes[..chunk.len()]);
-        }
-    }
+    getrandom::getrandom(&mut buf).expect("OS CSPRNG failed");
     buf.iter().map(|b| format!("{b:02x}")).collect()
 }
 
