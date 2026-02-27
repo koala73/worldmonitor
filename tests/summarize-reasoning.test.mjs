@@ -6,7 +6,7 @@
  * - Multiple thinking tag formats are stripped (Fix 2)
  * - Plain-text reasoning preambles are detected (Fix 3)
  * - Mode guard only applies to brief/analysis (Fix 3)
- * - Cache version bumped to v4 (Fix 4)
+ * - Cache version bumped to v5 (Fix 4)
  */
 
 import { describe, it } from 'node:test';

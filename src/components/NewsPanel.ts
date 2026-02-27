@@ -159,6 +159,7 @@ export class NewsPanel extends Panel {
     try {
       const result = await generateSummary(this.currentHeadlines.slice(0, 8), undefined, this.panelId, currentLang);
       if (this.lastHeadlineSignature !== sigAtStart) {
+        this.hideSummary();
         return;
       }
       if (result?.summary) {
