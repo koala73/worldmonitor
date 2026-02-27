@@ -194,7 +194,7 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
-    /api/market/v1/get-country-stock-index/{country_code}:
+    /api/market/v1/get-country-stock-index:
         get:
             tags:
                 - MarketService
@@ -203,7 +203,7 @@ paths:
             operationId: GetCountryStockIndex
             parameters:
                 - name: country_code
-                  in: path
+                  in: query
                   description: ISO 3166-1 alpha-2 country code (e.g., "US", "GB", "JP").
                   required: true
                   schema:

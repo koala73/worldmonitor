@@ -343,9 +343,10 @@ export class MarketServiceClient {
   }
 
   async getCountryStockIndex(req: GetCountryStockIndexRequest, options?: MarketServiceCallOptions): Promise<GetCountryStockIndexResponse> {
-    let path = "/api/market/v1/get-country-stock-index/{country_code}";
-    path = path.replace("{country_code}", encodeURIComponent(String(req.countryCode)));
-    const url = this.baseURL + path;
+    const path = "/api/market/v1/get-country-stock-index";
+    const params = new URLSearchParams();
+    if (req.countryCode != null && req.countryCode !== "") params.set("country_code", req.countryCode);
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",

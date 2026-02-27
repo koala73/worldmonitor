@@ -244,16 +244,15 @@ export function createConflictServiceRoutes(
     },
     {
       method: "GET",
-      path: "/api/conflict/v1/get-humanitarian-summary/{country_code}",
+      path: "/api/conflict/v1/get-humanitarian-summary",
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
           const url = new URL(req.url, "http://localhost");
-          const pathSegments = url.pathname.split("/");
-          pathParams["country_code"] = decodeURIComponent(pathSegments[5] ?? "");
 
+          const params = url.searchParams;
           const body: GetHumanitarianSummaryRequest = {
-            countryCode: pathParams["country_code"],
+            countryCode: params.get("country_code") ?? "",
           };
 
           const ctx: ServerContext = {

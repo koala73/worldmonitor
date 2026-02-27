@@ -479,16 +479,15 @@ export function createMarketServiceRoutes(
     },
     {
       method: "GET",
-      path: "/api/market/v1/get-country-stock-index/{country_code}",
+      path: "/api/market/v1/get-country-stock-index",
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
           const url = new URL(req.url, "http://localhost");
-          const pathSegments = url.pathname.split("/");
-          pathParams["country_code"] = decodeURIComponent(pathSegments[5] ?? "");
 
+          const params = url.searchParams;
           const body: GetCountryStockIndexRequest = {
-            countryCode: pathParams["country_code"],
+            countryCode: params.get("country_code") ?? "",
           };
 
           const ctx: ServerContext = {

@@ -302,9 +302,10 @@ export class MilitaryServiceClient {
   }
 
   async getAircraftDetails(req: GetAircraftDetailsRequest, options?: MilitaryServiceCallOptions): Promise<GetAircraftDetailsResponse> {
-    let path = "/api/military/v1/get-aircraft-details/{icao24}";
-    path = path.replace("{icao24}", encodeURIComponent(String(req.icao24)));
-    const url = this.baseURL + path;
+    const path = "/api/military/v1/get-aircraft-details";
+    const params = new URLSearchParams();
+    if (req.icao24 != null && req.icao24 !== "") params.set("icao24", req.icao24);
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",

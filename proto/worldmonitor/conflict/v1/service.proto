@@ -23,6 +23,6 @@ service ConflictService {
 
   // GetHumanitarianSummary retrieves a humanitarian overview for a country from HAPI/HDX.
   rpc GetHumanitarianSummary(GetHumanitarianSummaryRequest) returns (GetHumanitarianSummaryResponse) {
-    option (sebuf.http.config) = {path: "/get-humanitarian-summary/{country_code}", method: HTTP_METHOD_GET};
+    option (sebuf.http.config) = {path: "/get-humanitarian-summary", method: HTTP_METHOD_GET};
   }
 }

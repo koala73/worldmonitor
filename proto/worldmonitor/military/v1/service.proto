@@ -27,7 +27,7 @@ service MilitaryService {
 
   // GetAircraftDetails retrieves Wingbits aircraft enrichment data for a single ICAO24 hex.
   rpc GetAircraftDetails(GetAircraftDetailsRequest) returns (GetAircraftDetailsResponse) {
-    option (sebuf.http.config) = {path: "/get-aircraft-details/{icao24}", method: HTTP_METHOD_GET};
+    option (sebuf.http.config) = {path: "/get-aircraft-details", method: HTTP_METHOD_GET};
   }
 
   // GetAircraftDetailsBatch retrieves Wingbits aircraft enrichment data for multiple ICAO24 hexes.

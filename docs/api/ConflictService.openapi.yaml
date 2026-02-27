@@ -123,7 +123,7 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
-    /api/conflict/v1/get-humanitarian-summary/{country_code}:
+    /api/conflict/v1/get-humanitarian-summary:
         get:
             tags:
                 - ConflictService
@@ -132,10 +132,8 @@ paths:
             operationId: GetHumanitarianSummary
             parameters:
                 - name: country_code
-                  in: path
-                  description: |-
-                    ISO 3166-1 alpha-2 country code (e.g., "YE", "SD", "SO").
-                     This is a path parameter — no query annotation needed.
+                  in: query
+                  description: ISO 3166-1 alpha-2 country code (e.g., "YE", "SD", "SO").
                   required: true
                   schema:
                     type: string

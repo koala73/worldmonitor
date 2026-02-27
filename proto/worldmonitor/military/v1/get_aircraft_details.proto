@@ -3,6 +3,7 @@ syntax = "proto3";
 package worldmonitor.military.v1;
 
 import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
 
 // AircraftDetails contains Wingbits aircraft enrichment data.
 message AircraftDetails {
@@ -43,7 +44,8 @@ message GetAircraftDetailsRequest {
   // ICAO 24-bit hex address (lowercase).
   string icao24 = 1 [
     (buf.validate.field).required = true,
-    (buf.validate.field).string.min_len = 1
+    (buf.validate.field).string.min_len = 1,
+    (sebuf.http.query) = {name: "icao24"}
   ];
 }
 

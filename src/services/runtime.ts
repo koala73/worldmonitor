@@ -2,6 +2,7 @@ const DEFAULT_REMOTE_HOSTS: Record<string, string> = {
   tech: 'https://api.worldmonitor.app',
   full: 'https://api.worldmonitor.app',
   world: 'https://api.worldmonitor.app',
+  happy: 'https://api.worldmonitor.app',
 };
 
 const DEFAULT_LOCAL_API_PORT = 46123;
@@ -366,7 +367,7 @@ export function installWebApiRedirect(): void {
   if ((window as unknown as Record<string, unknown>).__wmWebRedirectPatched) return;
 
   const host = window.location?.hostname ?? '';
-  const isProduction = host === 'worldmonitor.app' || host === 'www.worldmonitor.app' || host === 'tech.worldmonitor.app';
+  const isProduction = host === 'worldmonitor.app' || host === 'www.worldmonitor.app' || host === 'tech.worldmonitor.app' || host === 'happy.worldmonitor.app';
   if (!isProduction) return;
 
   const nativeFetch = window.fetch.bind(window);

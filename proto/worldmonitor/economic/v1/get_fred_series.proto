@@ -11,7 +11,8 @@ message GetFredSeriesRequest {
   // FRED series ID (e.g., "GDP", "UNRATE", "CPIAUCSL").
   string series_id = 1 [
     (buf.validate.field).required = true,
-    (buf.validate.field).string.min_len = 1
+    (buf.validate.field).string.min_len = 1,
+    (sebuf.http.query) = {name: "series_id"}
   ];
   // Maximum number of observations to return. Defaults to 120.
   int32 limit = 2 [(sebuf.http.query) = { name: "limit" }];

@@ -357,16 +357,15 @@ export function createMilitaryServiceRoutes(
     },
     {
       method: "GET",
-      path: "/api/military/v1/get-aircraft-details/{icao24}",
+      path: "/api/military/v1/get-aircraft-details",
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
           const url = new URL(req.url, "http://localhost");
-          const pathSegments = url.pathname.split("/");
-          pathParams["icao24"] = decodeURIComponent(pathSegments[5] ?? "");
 
+          const params = url.searchParams;
           const body: GetAircraftDetailsRequest = {
-            icao24: pathParams["icao24"],
+            icao24: params.get("icao24") ?? "",
           };
 
           const ctx: ServerContext = {

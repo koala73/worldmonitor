@@ -31,7 +31,7 @@ service IntelligenceService {
 
   // GetCountryIntelBrief generates an AI intelligence brief for a country (OpenRouter).
   rpc GetCountryIntelBrief(GetCountryIntelBriefRequest) returns (GetCountryIntelBriefResponse) {
-    option (sebuf.http.config) = {path: "/get-country-intel-brief/{country_code}", method: HTTP_METHOD_GET};
+    option (sebuf.http.config) = {path: "/get-country-intel-brief", method: HTTP_METHOD_GET};
   }
 
   // SearchGdeltDocuments searches the GDELT 2.0 Doc API for news articles.
