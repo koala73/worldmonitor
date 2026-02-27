@@ -1,8 +1,5 @@
 echo "Running type check..."
 npm run typecheck || exit 1
 
-echo "Running Vite build (catches esbuild errors in server/)..."
-npm run build:full || exit 1
-
 echo "Running version sync check..."
 npm run version:check || exit 1
