@@ -11,6 +11,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/positive_events/v1/service_server';
 
 import { classifyNewsItem } from '../../../../src/services/positive-classifier';
+import { markNoCacheResponse } from '../../../_shared/response-headers';
 
 const GDELT_GEO_URL = 'https://api.gdeltproject.org/api/v2/geo/geo';
 
@@ -81,21 +82,22 @@ async function fetchGdeltGeoPositive(query: string): Promise<PositiveGeoEvent[]>
 }
 
 export async function listPositiveGeoEvents(
-  _ctx: ServerContext,
+  ctx: ServerContext,
   _req: ListPositiveGeoEventsRequest,
 ): Promise<ListPositiveGeoEventsResponse> {
   try {
     const allEvents: PositiveGeoEvent[] = [];
     const seenNames = new Set<string>();
+    let anyQuerySucceeded = false;
 
     for (let i = 0; i < POSITIVE_QUERIES.length; i++) {
       if (i > 0) {
-        // Rate-limit delay between queries
         await new Promise(r => setTimeout(r, 500));
       }
 
       try {
         const events = await fetchGdeltGeoPositive(POSITIVE_QUERIES[i]);
+        anyQuerySucceeded = true;
         for (const event of events) {
           if (!seenNames.has(event.name)) {
             seenNames.add(event.name);
@@ -107,8 +109,10 @@ export async function listPositiveGeoEvents(
       }
     }
 
+    if (!anyQuerySucceeded) markNoCacheResponse(ctx.request);
     return { events: allEvents };
   } catch {
+    markNoCacheResponse(ctx.request);
     return { events: [] };
   }
 }

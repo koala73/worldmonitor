@@ -12,6 +12,7 @@ import { getCorsHeaders, isDisallowedOrigin } from '../../../server/cors';
 // @ts-expect-error — JS module, no declaration file
 import { validateApiKey } from '../../_api-key.js';
 import { mapErrorToResponse } from '../../../server/error-mapper';
+import { drainResponseHeaders } from '../../../server/_shared/response-headers';
 import { createSeismologyServiceRoutes } from '../../../src/generated/server/worldmonitor/seismology/v1/service_server';
 import { seismologyHandler } from '../../../server/worldmonitor/seismology/v1/handler';
 import { createWildfireServiceRoutes } from '../../../src/generated/server/worldmonitor/wildfire/v1/service_server';
@@ -116,6 +117,19 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/supply-chain/v1/get-critical-minerals': 'static',
   '/api/military/v1/get-aircraft-details': 'static',
   '/api/military/v1/get-wingbits-status': 'static',
+
+  '/api/military/v1/list-military-flights': 'slow',
+  '/api/market/v1/list-etf-flows': 'slow',
+  '/api/research/v1/list-hackernews-items': 'slow',
+  '/api/intelligence/v1/get-risk-scores': 'slow',
+  '/api/intelligence/v1/get-pizzint-status': 'slow',
+  '/api/intelligence/v1/search-gdelt-documents': 'slow',
+  '/api/infrastructure/v1/get-cable-health': 'slow',
+  '/api/positive-events/v1/list-positive-geo-events': 'slow',
+
+  '/api/economic/v1/get-macro-signals': 'medium',
+  '/api/prediction/v1/list-prediction-markets': 'medium',
+  '/api/supply-chain/v1/get-chokepoint-status': 'medium',
 };
 
 const serverOptions: ServerOptions = { onError: mapErrorToResponse };
@@ -217,10 +231,16 @@ export default async function handler(originalRequest: Request): Promise<Respons
     });
   }
 
-  // Merge CORS headers into response
+  // Merge CORS + handler side-channel headers into response
   const mergedHeaders = new Headers(response.headers);
   for (const [key, value] of Object.entries(corsHeaders)) {
     mergedHeaders.set(key, value);
+  }
+  const extraHeaders = drainResponseHeaders(request);
+  if (extraHeaders) {
+    for (const [key, value] of Object.entries(extraHeaders)) {
+      mergedHeaders.set(key, value);
+    }
   }
 
   if (response.status === 200 && request.method === 'GET' && !mergedHeaders.has('Cache-Control')) {
@@ -229,7 +249,9 @@ export default async function handler(originalRequest: Request): Promise<Respons
       mergedHeaders.set('X-Cache-Tier', 'no-store');
     } else {
       const pathname = new URL(request.url).pathname;
-      const tier = RPC_CACHE_TIER[pathname] ?? 'medium';
+      const rpcName = pathname.split('/').pop() ?? '';
+      const envOverride = process.env[`CACHE_TIER_OVERRIDE_${rpcName.replace(/-/g, '_').toUpperCase()}`] as CacheTier | undefined;
+      const tier = (envOverride && envOverride in TIER_HEADERS ? envOverride : null) ?? RPC_CACHE_TIER[pathname] ?? 'medium';
       mergedHeaders.set('Cache-Control', TIER_HEADERS[tier]);
       mergedHeaders.set('X-Cache-Tier', tier);
     }
