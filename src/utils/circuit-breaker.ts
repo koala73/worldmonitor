@@ -215,7 +215,10 @@ export class CircuitBreaker<T> {
     // within the 24h persistent ceiling), return it instantly and refresh in
     // the background. This prevents "Loading..." on every page reload when
     // the persistent cache is older than the TTL.
-    if (this.cache !== null) {
+    // Skip SWR when cacheTtlMs === 0 (caching disabled) — the breaker may be
+    // shared across calls with different request params (e.g. stocks vs commodities),
+    // so returning stale data from a different call is wrong.
+    if (this.cache !== null && this.cacheTtlMs > 0) {
       this.lastDataState = { mode: 'cached', timestamp: this.cache.timestamp, offline };
       // Fire-and-forget background refresh
       fn().then(result => this.recordSuccess(result)).catch(e => {
