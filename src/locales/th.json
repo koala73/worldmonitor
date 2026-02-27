@@ -1291,7 +1291,8 @@
       "loading": "กำลังโหลดคำเตือนการเดินทาง...",
       "noMatching": "ไม่พบคำเตือนสำหรับตัวกรองนี้",
       "critical": "วิกฤต",
-      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT",
+      "health": "สุขภาพ",
+      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT, CDC, ECDC, WHO, US Embassies",
       "refresh": "รีเฟรช",
       "levels": {
         "doNotTravel": "ห้ามเดินทาง",

@@ -1150,7 +1150,8 @@
       "loading": "Reisadviezen laden...",
       "noMatching": "Geen adviezen voor dit filter",
       "critical": "Kritiek",
-      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT",
+      "health": "Gezondheid",
+      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT, CDC, ECDC, WHO, US Embassies",
       "refresh": "Vernieuwen",
       "levels": {
         "doNotTravel": "Niet reizen",

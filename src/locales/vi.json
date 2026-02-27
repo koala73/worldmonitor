@@ -1291,7 +1291,8 @@
       "loading": "Đang tải cảnh báo du lịch...",
       "noMatching": "Không có cảnh báo cho bộ lọc này",
       "critical": "Nghiêm trọng",
-      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT",
+      "health": "Sức khỏe",
+      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT, CDC, ECDC, WHO, US Embassies",
       "refresh": "Làm mới",
       "levels": {
         "doNotTravel": "Không du lịch",

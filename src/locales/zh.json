@@ -1291,7 +1291,8 @@
       "loading": "正在加载旅行警告...",
       "noMatching": "没有匹配的警告",
       "critical": "严重",
-      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT",
+      "health": "健康",
+      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT, CDC, ECDC, WHO, US Embassies",
       "refresh": "刷新",
       "levels": {
         "doNotTravel": "禁止出行",

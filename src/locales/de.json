@@ -1291,7 +1291,8 @@
       "loading": "Reisehinweise werden geladen...",
       "noMatching": "Keine Hinweise für diesen Filter",
       "critical": "Kritisch",
-      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT",
+      "health": "Gesundheit",
+      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT, CDC, ECDC, WHO, US Embassies",
       "refresh": "Aktualisieren",
       "levels": {
         "doNotTravel": "Nicht reisen",

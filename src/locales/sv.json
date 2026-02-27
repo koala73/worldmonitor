@@ -1150,7 +1150,8 @@
       "loading": "Hämtar resevarningar...",
       "noMatching": "Inga varningar för detta filter",
       "critical": "Kritisk",
-      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT",
+      "health": "Hälsa",
+      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT, CDC, ECDC, WHO, US Embassies",
       "refresh": "Uppdatera",
       "levels": {
         "doNotTravel": "Res inte",

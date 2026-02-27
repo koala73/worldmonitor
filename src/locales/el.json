@@ -1318,7 +1318,8 @@
       "loading": "Φόρτωση ταξιδιωτικών οδηγιών...",
       "noMatching": "Δεν βρέθηκαν οδηγίες για αυτό το φίλτρο",
       "critical": "Κρίσιμο",
-      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT",
+      "health": "Υγεία",
+      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT, CDC, ECDC, WHO, US Embassies",
       "refresh": "Ανανέωση",
       "levels": {
         "doNotTravel": "Μην ταξιδεύετε",

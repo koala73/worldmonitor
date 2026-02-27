@@ -89,6 +89,29 @@ const ADVISORY_FEEDS: AdvisoryFeed[] = [
     sourceCountry: 'UK',
     url: 'https://www.gov.uk/foreign-travel-advice.atom',
   },
+  // US Embassy security alerts (per-country)
+  { name: 'US Embassy Thailand', sourceCountry: 'US', url: 'https://th.usembassy.gov/category/alert/feed/' },
+  { name: 'US Embassy UAE', sourceCountry: 'US', url: 'https://ae.usembassy.gov/category/alert/feed/' },
+  { name: 'US Embassy Germany', sourceCountry: 'US', url: 'https://de.usembassy.gov/category/alert/feed/' },
+  { name: 'US Embassy Ukraine', sourceCountry: 'US', url: 'https://ua.usembassy.gov/category/alert/feed/' },
+  { name: 'US Embassy Mexico', sourceCountry: 'US', url: 'https://mx.usembassy.gov/category/alert/feed/' },
+  { name: 'US Embassy India', sourceCountry: 'US', url: 'https://in.usembassy.gov/category/alert/feed/' },
+  { name: 'US Embassy Pakistan', sourceCountry: 'US', url: 'https://pk.usembassy.gov/category/alert/feed/' },
+  { name: 'US Embassy Colombia', sourceCountry: 'US', url: 'https://co.usembassy.gov/category/alert/feed/' },
+  { name: 'US Embassy Poland', sourceCountry: 'US', url: 'https://pl.usembassy.gov/category/alert/feed/' },
+  { name: 'US Embassy Bangladesh', sourceCountry: 'US', url: 'https://bd.usembassy.gov/category/alert/feed/' },
+  { name: 'US Embassy Italy', sourceCountry: 'US', url: 'https://it.usembassy.gov/category/alert/feed/' },
+  { name: 'US Embassy Dominican Republic', sourceCountry: 'US', url: 'https://do.usembassy.gov/category/alert/feed/' },
+  { name: 'US Embassy Myanmar', sourceCountry: 'US', url: 'https://mm.usembassy.gov/category/alert/feed/' },
+  // Health advisories
+  { name: 'CDC Travel Notices', sourceCountry: 'US', url: 'https://wwwnc.cdc.gov/travel/rss/notices.xml' },
+  { name: 'ECDC Epidemiological Updates', sourceCountry: 'EU', url: 'https://www.ecdc.europa.eu/en/taxonomy/term/1310/feed' },
+  { name: 'ECDC Threats Report', sourceCountry: 'EU', url: 'https://www.ecdc.europa.eu/en/taxonomy/term/1505/feed' },
+  { name: 'ECDC Risk Assessments', sourceCountry: 'EU', url: 'https://www.ecdc.europa.eu/en/taxonomy/term/1295/feed' },
+  { name: 'ECDC Avian Influenza', sourceCountry: 'EU', url: 'https://www.ecdc.europa.eu/en/taxonomy/term/323//feed' },
+  { name: 'ECDC Publications', sourceCountry: 'EU', url: 'https://www.ecdc.europa.eu/en/taxonomy/term/1244/feed' },
+  { name: 'WHO News', sourceCountry: 'INT', url: 'https://www.who.int/rss-feeds/news-english.xml' },
+  { name: 'WHO Africa Emergencies', sourceCountry: 'INT', url: 'https://www.afro.who.int/rss/emergencies.xml' },
 ];
 
 const CACHE_KEY = 'security-advisories';

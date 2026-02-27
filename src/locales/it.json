@@ -1291,7 +1291,8 @@
       "loading": "Caricamento avvisi di viaggio...",
       "noMatching": "Nessun avviso per questo filtro",
       "critical": "Critico",
-      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT",
+      "health": "Salute",
+      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT, CDC, ECDC, WHO, US Embassies",
       "refresh": "Aggiorna",
       "levels": {
         "doNotTravel": "Non viaggiare",

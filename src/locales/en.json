@@ -1087,7 +1087,8 @@
       "loading": "Fetching travel advisories...",
       "noMatching": "No advisories match this filter",
       "critical": "Critical",
-      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT",
+      "health": "Health",
+      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT, CDC, ECDC, WHO, US Embassies",
       "refresh": "Refresh",
       "levels": {
         "doNotTravel": "Do Not Travel",

@@ -1291,7 +1291,8 @@
       "loading": "Seyahat uyarıları yükleniyor...",
       "noMatching": "Bu filtre için uyarı yok",
       "critical": "Kritik",
-      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT",
+      "health": "Sağlık",
+      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT, CDC, ECDC, WHO, US Embassies",
       "refresh": "Yenile",
       "levels": {
         "doNotTravel": "Seyahat etmeyin",

@@ -1291,7 +1291,8 @@
       "loading": "Загрузка предупреждений...",
       "noMatching": "Нет предупреждений для этого фильтра",
       "critical": "Критический",
-      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT",
+      "health": "Здоровье",
+      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT, CDC, ECDC, WHO, US Embassies",
       "refresh": "Обновить",
       "levels": {
         "doNotTravel": "Не путешествовать",

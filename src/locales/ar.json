@@ -1291,7 +1291,8 @@
       "loading": "جاري جلب التحذيرات الأمنية...",
       "noMatching": "لا توجد تحذيرات مطابقة لهذا الفلتر",
       "critical": "حرج",
-      "sources": "وزارة الخارجية الأمريكية، DFAT الأسترالية، FCDO البريطانية، MFAT النيوزيلندية",
+      "health": "صحة",
+      "sources": "وزارة الخارجية الأمريكية، DFAT الأسترالية، FCDO البريطانية، MFAT النيوزيلندية, CDC, ECDC, WHO, US Embassies",
       "refresh": "تحديث",
       "levels": {
         "doNotTravel": "لا تسافر",
