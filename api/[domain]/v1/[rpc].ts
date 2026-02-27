@@ -146,7 +146,8 @@ const allRoutes = [
 
 const router = createRouter(allRoutes);
 
-export default async function handler(request: Request): Promise<Response> {
+export default async function handler(originalRequest: Request): Promise<Response> {
+  let request = originalRequest;
   // Origin check first — skip CORS headers for disallowed origins (M-2 fix)
   if (isDisallowedOrigin(request)) {
     return new Response(JSON.stringify({ error: 'Origin not allowed' }), {
@@ -176,8 +177,22 @@ export default async function handler(request: Request): Promise<Response> {
     });
   }
 
-  // Route matching
-  const matchedHandler = router.match(request);
+  // Route matching — if POST doesn't match, convert to GET for stale clients
+  // that still send POST to endpoints converted in PR #468.
+  let matchedHandler = router.match(request);
+  if (!matchedHandler && request.method === 'POST') {
+    const url = new URL(request.url);
+    try {
+      const body = await request.clone().json();
+      for (const [k, v] of Object.entries(body)) {
+        if (Array.isArray(v)) v.forEach((item) => url.searchParams.append(k, String(item)));
+        else if (v != null) url.searchParams.set(k, String(v));
+      }
+    } catch {}
+    const getReq = new Request(url.toString(), { method: 'GET', headers: request.headers });
+    matchedHandler = router.match(getReq);
+    if (matchedHandler) request = getReq;
+  }
   if (!matchedHandler) {
     return new Response(JSON.stringify({ error: 'Not found' }), {
       status: 404,
