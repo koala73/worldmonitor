@@ -1,5 +1,5 @@
 import { Panel } from './Panel';
-import { isDesktopRuntime, getRemoteApiBaseUrl } from '@/services/runtime';
+import { isDesktopRuntime, getApiBaseUrl } from '@/services/runtime';
 import { escapeHtml } from '@/utils/sanitize';
 import { t } from '../services/i18n';
 import { trackWebcamSelected, trackWebcamRegionFiltered } from '@/services/analytics';
@@ -163,14 +163,11 @@ export class LiveWebcamsPanel extends Panel {
   private buildEmbedUrl(videoId: string): string {
     const quality = getStreamQuality();
     if (isDesktopRuntime()) {
-      const remoteBase = getRemoteApiBaseUrl();
-      const params = new URLSearchParams({
-        videoId,
-        autoplay: '1',
-        mute: '1',
-      });
+      // Use local sidecar embed — YouTube rejects tauri:// parent origin with error 153.
+      // The sidecar serves the embed from http://127.0.0.1:PORT which YouTube accepts.
+      const params = new URLSearchParams({ videoId, autoplay: '1', mute: '1' });
       if (quality !== 'auto') params.set('vq', quality);
-      return `${remoteBase}/api/youtube/embed?${params.toString()}`;
+      return `${getApiBaseUrl()}/api/youtube-embed?${params.toString()}`;
     }
     const vq = quality !== 'auto' ? `&vq=${quality}` : '';
     return `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&mute=1&controls=0&modestbranding=1&playsinline=1&rel=0${vq}`;
@@ -182,10 +179,12 @@ export class LiveWebcamsPanel extends Panel {
     iframe.src = this.buildEmbedUrl(feed.fallbackVideoId);
     iframe.title = `${feed.city} live webcam`;
     iframe.allow = 'autoplay; encrypted-media; picture-in-picture';
-    iframe.allowFullscreen = true;
     iframe.referrerPolicy = 'strict-origin-when-cross-origin';
-    iframe.setAttribute('loading', 'lazy');
-    iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-presentation');
+    if (!isDesktopRuntime()) {
+      iframe.allowFullscreen = true;
+      iframe.setAttribute('loading', 'lazy');
+      iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-presentation');
+    }
     return iframe;
   }
 
@@ -211,7 +210,10 @@ export class LiveWebcamsPanel extends Panel {
     const grid = document.createElement('div');
     grid.className = 'webcam-grid';
 
-    this.gridFeeds.forEach(feed => {
+    const feeds = this.gridFeeds;
+    const desktop = isDesktopRuntime();
+
+    feeds.forEach((feed, i) => {
       const cell = document.createElement('div');
       cell.className = 'webcam-cell';
       cell.addEventListener('click', () => {
@@ -224,11 +226,22 @@ export class LiveWebcamsPanel extends Panel {
       label.className = 'webcam-cell-label';
       label.innerHTML = `<span class="webcam-live-dot"></span><span class="webcam-city">${escapeHtml(feed.city.toUpperCase())}</span>`;
 
-      const iframe = this.createIframe(feed);
-      cell.appendChild(iframe);
       cell.appendChild(label);
       grid.appendChild(cell);
-      this.iframes.push(iframe);
+
+      if (desktop && i > 0) {
+        // Stagger iframe creation on desktop — WKWebView throttles concurrent autoplay.
+        setTimeout(() => {
+          if (!this.isVisible || this.isIdle) return;
+          const iframe = this.createIframe(feed);
+          cell.insertBefore(iframe, label);
+          this.iframes.push(iframe);
+        }, i * 800);
+      } else {
+        const iframe = this.createIframe(feed);
+        cell.insertBefore(iframe, label);
+        this.iframes.push(iframe);
+      }
     });
 
     this.content.appendChild(grid);

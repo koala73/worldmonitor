@@ -154,7 +154,7 @@ export class NewsPanel extends Panel {
     this.summaryContainer.innerHTML = `<div class="panel-summary-loading">${t('components.newsPanel.generatingSummary')}</div>`;
 
     try {
-      const result = await generateSummary(this.currentHeadlines.slice(0, 8), undefined, undefined, currentLang);
+      const result = await generateSummary(this.currentHeadlines.slice(0, 8), undefined, this.panelId, currentLang);
       if (result?.summary) {
         this.setCachedSummary(cacheKey, result.summary);
         this.showSummary(result.summary);

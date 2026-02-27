@@ -922,6 +922,23 @@ async function dispatch(requestUrl, req, routes, context) {
     return handleLocalServiceStatus(context);
   }
 
+  // YouTube embed bridge — exempt from auth because iframe src cannot carry
+  // Authorization headers.  Serves a minimal HTML page that loads the YouTube
+  // IFrame Player API from a localhost origin (which YouTube accepts, unlike
+  // tauri://localhost).  No sensitive data is exposed.
+  if (requestUrl.pathname === '/api/youtube-embed') {
+    const videoId = requestUrl.searchParams.get('videoId');
+    if (!videoId || !/^[A-Za-z0-9_-]{11}$/.test(videoId)) {
+      return new Response('Invalid videoId', { status: 400, headers: { 'content-type': 'text/plain' } });
+    }
+    const autoplay = requestUrl.searchParams.get('autoplay') === '0' ? '0' : '1';
+    const mute = requestUrl.searchParams.get('mute') === '0' ? '0' : '1';
+    const vq = ['small','medium','large','hd720','hd1080'].includes(requestUrl.searchParams.get('vq') || '') ? requestUrl.searchParams.get('vq') : '';
+    const origin = `http://127.0.0.1:${context.port}`;
+    const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;padding:0;width:100%;height:100%;background:#000;overflow:hidden}#player{width:100%;height:100%}#play-overlay{position:absolute;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;cursor:pointer;background:rgba(0,0,0,0.4)}#play-overlay svg{width:72px;height:72px;opacity:0.9;filter:drop-shadow(0 2px 8px rgba(0,0,0,0.5))}#play-overlay.hidden{display:none}</style></head><body><div id="player"></div><div id="play-overlay"><svg viewBox="0 0 68 48"><path d="M66.52 7.74c-.78-2.93-2.49-5.41-5.42-6.19C55.79.13 34 0 34 0S12.21.13 6.9 1.55C3.97 2.33 2.27 4.81 1.48 7.74.06 13.05 0 24 0 24s.06 10.95 1.48 16.26c.78 2.93 2.49 5.41 5.42 6.19C12.21 47.87 34 48 34 48s21.79-.13 27.1-1.55c2.93-.78 4.64-3.26 5.42-6.19C67.94 34.95 68 24 68 24s-.06-10.95-1.48-16.26z" fill="red"/><path d="M45 24L27 14v20" fill="#fff"/></svg></div><script>var tag=document.createElement('script');tag.src='https://www.youtube.com/iframe_api';document.head.appendChild(tag);var player,overlay=document.getElementById('play-overlay'),started=false,parentOrigin='${origin}';function hideOverlay(){overlay.classList.add('hidden')}function onYouTubeIframeAPIReady(){player=new YT.Player('player',{videoId:'${videoId}',host:'https://www.youtube.com',playerVars:{autoplay:${autoplay},mute:${mute},playsinline:1,rel:0,controls:1,modestbranding:1,enablejsapi:1,origin:'${origin}',widget_referrer:'${origin}'},events:{onReady:function(){window.parent.postMessage({type:'yt-ready'},parentOrigin);${vq ? `if(player.setPlaybackQuality)player.setPlaybackQuality('${vq}');` : ''}if(${autoplay}===1){player.playVideo()}},onError:function(e){window.parent.postMessage({type:'yt-error',code:e.data},parentOrigin)},onStateChange:function(e){window.parent.postMessage({type:'yt-state',state:e.data},parentOrigin);if(e.data===1||e.data===3){hideOverlay();started=true}}}})}overlay.addEventListener('click',function(){if(player&&player.playVideo){player.playVideo();player.unMute();hideOverlay()}});setTimeout(function(){if(!started)overlay.classList.remove('hidden')},3000);window.addEventListener('message',function(e){if(e.origin!==parentOrigin)return;if(!player||!player.getPlayerState)return;var m=e.data;if(!m||!m.type)return;switch(m.type){case'play':player.playVideo();break;case'pause':player.pauseVideo();break;case'mute':player.mute();break;case'unmute':player.unMute();break;case'loadVideo':if(m.videoId)player.loadVideoById(m.videoId);break;case'setQuality':if(m.quality&&player.setPlaybackQuality)player.setPlaybackQuality(m.quality);break}})<\/script></body></html>`;
+    return new Response(html, { status: 200, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', ...makeCorsHeaders(req) } });
+  }
+
   // ── Global auth gate ────────────────────────────────────────────────────
   // Every endpoint below requires a valid LOCAL_API_TOKEN.  This prevents
   // other local processes, malicious browser scripts, and rogue extensions
