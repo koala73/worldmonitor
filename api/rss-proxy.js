@@ -197,7 +197,6 @@ const ALLOWED_DOMAINS = [
   'japantoday.com',
   'www.thehindu.com',
   'indianexpress.com',
-  'www.indianewsnetwork.com',
   'www.twz.com',
   'gcaptain.com',
   // International Organizations
