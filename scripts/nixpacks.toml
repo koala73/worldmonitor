@@ -1,0 +1,2 @@
+[phases.setup]
+aptPkgs = ["curl"]
