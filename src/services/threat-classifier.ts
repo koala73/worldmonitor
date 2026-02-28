@@ -356,44 +356,93 @@ function toThreat(resp: ClassifyEventResponse): ThreatClassification | null {
   };
 }
 
+type BatchJob = {
+  title: string;
+  variant: string;
+  resolve: (v: ThreatClassification | null) => void;
+  attempts?: number;
+};
+
 const BATCH_SIZE = 20;
 const BATCH_DELAY_MS = 500;
+const STAGGER_BASE_MS = 2100;
+const STAGGER_JITTER_MS = 200;
+const MIN_GAP_MS = 2000;
+const MAX_RETRIES = 2;
+const MAX_QUEUE_LENGTH = 100;
 let batchPaused = false;
+let batchInFlight = false;
 let batchTimer: ReturnType<typeof setTimeout> | null = null;
-const batchQueue: Array<{ title: string; variant: string; resolve: (v: ThreatClassification | null) => void }> = [];
+let lastRequestAt = 0;
+const batchQueue: BatchJob[] = [];
+
+async function waitForGap(): Promise<void> {
+  const elapsed = Date.now() - lastRequestAt;
+  if (elapsed < MIN_GAP_MS) {
+    await new Promise<void>(r => setTimeout(r, MIN_GAP_MS - elapsed));
+  }
+  const jitter = Math.floor(Math.random() * STAGGER_JITTER_MS * 2) - STAGGER_JITTER_MS;
+  const extra = Math.max(0, STAGGER_BASE_MS - MIN_GAP_MS + jitter);
+  if (extra > 0) await new Promise<void>(r => setTimeout(r, extra));
+  lastRequestAt = Date.now();
+}
 
 function flushBatch(): void {
-  if (batchPaused || batchQueue.length === 0) return;
   batchTimer = null;
+  if (batchPaused || batchInFlight || batchQueue.length === 0) return;
+  batchInFlight = true;
 
   const batch = batchQueue.splice(0, BATCH_SIZE);
-  if (batch.length === 0) return;
+  if (batch.length === 0) { batchInFlight = false; return; }
 
-  // Fire parallel classifyEvent RPCs for each headline
-  const promises = batch.map((job) =>
-    classifyClient
-      .classifyEvent({ title: job.title, description: '', source: '', country: '' })
-      .then((resp) => {
-        job.resolve(toThreat(resp));
-      })
-      .catch((err) => {
-        if (err instanceof ApiError && (err.statusCode === 429 || err.statusCode >= 500)) {
-          batchPaused = true;
-          const delay = err.statusCode === 429 ? 60_000 : 30_000;
-          console.warn(`[Classify] ${err.statusCode} — pausing AI classification for ${delay / 1000}s`);
-          // Drain remaining queue
-          while (batchQueue.length > 0) batchQueue.shift()!.resolve(null);
-          setTimeout(() => { batchPaused = false; scheduleBatch(); }, delay);
+  (async () => {
+    try {
+      for (let i = 0; i < batch.length; i++) {
+        const job = batch[i]!;
+        if (batchPaused) { job.resolve(null); continue; }
+
+        await waitForGap();
+
+        try {
+          const resp = await classifyClient.classifyEvent({
+            title: job.title, description: '', source: '', country: '',
+          });
+          job.resolve(toThreat(resp));
+        } catch (err) {
+          if (err instanceof ApiError && (err.statusCode === 429 || err.statusCode >= 500)) {
+            batchPaused = true;
+            const delay = err.statusCode === 429 ? 60_000 : 30_000;
+            console.warn(`[Classify] ${err.statusCode} — pausing AI classification for ${delay / 1000}s`);
+            const remaining = batch.slice(i + 1);
+            // Failed job: increment attempts, requeue if under limit
+            if ((job.attempts ?? 0) < MAX_RETRIES) {
+              job.attempts = (job.attempts ?? 0) + 1;
+              batchQueue.unshift(job);
+            } else {
+              job.resolve(null);
+            }
+            // Remaining jobs never hit the API — requeue without burning attempts
+            for (let j = remaining.length - 1; j >= 0; j--) {
+              batchQueue.unshift(remaining[j]!);
+            }
+            batchInFlight = false;
+            setTimeout(() => { batchPaused = false; scheduleBatch(); }, delay);
+            return;
+          }
+          job.resolve(null);
         }
-        job.resolve(null);
-      }),
-  );
-
-  Promise.allSettled(promises).then(() => scheduleBatch());
+      }
+    } finally {
+      if (batchInFlight) {
+        batchInFlight = false;
+        scheduleBatch();
+      }
+    }
+  })();
 }
 
 function scheduleBatch(): void {
-  if (batchTimer || batchPaused || batchQueue.length === 0) return;
+  if (batchTimer || batchPaused || batchInFlight || batchQueue.length === 0) return;
   if (batchQueue.length >= BATCH_SIZE) {
     flushBatch();
   } else {
@@ -406,6 +455,11 @@ export function classifyWithAI(
   variant: string
 ): Promise<ThreatClassification | null> {
   return new Promise((resolve) => {
+    if (batchQueue.length >= MAX_QUEUE_LENGTH) {
+      console.warn(`[Classify] Queue full (${MAX_QUEUE_LENGTH}), dropping classification for: ${title.slice(0, 60)}`);
+      resolve(null);
+      return;
+    }
     batchQueue.push({ title, variant, resolve });
     scheduleBatch();
   });
