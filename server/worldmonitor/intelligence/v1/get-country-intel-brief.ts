@@ -7,7 +7,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
 import { cachedFetchJson } from '../../../_shared/redis';
-import { UPSTREAM_TIMEOUT_MS, GROQ_API_URL, GROQ_MODEL, TIER1_COUNTRIES } from './_shared';
+import { UPSTREAM_TIMEOUT_MS, GROQ_API_URL, GROQ_MODEL, TIER1_COUNTRIES, hashString } from './_shared';
 import { CHROME_UA } from '../../../_shared/constants';
 
 // ========================================================================
@@ -21,7 +21,7 @@ const INTEL_CACHE_TTL = 7200;
 // ========================================================================
 
 export async function getCountryIntelBrief(
-  _ctx: ServerContext,
+  ctx: ServerContext,
   req: GetCountryIntelBriefRequest,
 ): Promise<GetCountryIntelBriefResponse> {
   const empty: GetCountryIntelBriefResponse = {
@@ -37,7 +37,16 @@ export async function getCountryIntelBrief(
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) return empty;
 
-  const cacheKey = `ci-sebuf:v1:${req.countryCode}`;
+  let contextSnapshot = '';
+  try {
+    const url = new URL(ctx.request.url);
+    contextSnapshot = (url.searchParams.get('context') || '').trim().slice(0, 4000);
+  } catch {
+    contextSnapshot = '';
+  }
+
+  const contextHash = contextSnapshot ? hashString(contextSnapshot) : 'base';
+  const cacheKey = `ci-sebuf:v2:${req.countryCode}:${contextHash}`;
   const countryName = TIER1_COUNTRIES[req.countryCode] || req.countryCode;
   const dateStr = new Date().toISOString().split('T')[0];
 
@@ -54,10 +63,18 @@ Rules:
 - Be specific and analytical
 - 4-5 paragraphs, 250-350 words
 - No speculation beyond what data supports
-- Use plain language, not jargon`;
+- Use plain language, not jargon
+- If a context snapshot is provided, explicitly reflect each non-zero signal category in the brief`;
 
   const result = await cachedFetchJson<GetCountryIntelBriefResponse>(cacheKey, INTEL_CACHE_TTL, async () => {
     try {
+      const userPromptParts = [
+        `Country: ${countryName} (${req.countryCode})`,
+      ];
+      if (contextSnapshot) {
+        userPromptParts.push(`Context snapshot:\n${contextSnapshot}`);
+      }
+
       const resp = await fetch(GROQ_API_URL, {
         method: 'POST',
         headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
@@ -65,7 +82,7 @@ Rules:
           model: GROQ_MODEL,
           messages: [
             { role: 'system', content: systemPrompt },
-            { role: 'user', content: `Country: ${countryName} (${req.countryCode})` },
+            { role: 'user', content: userPromptParts.join('\n\n') },
           ],
           temperature: 0.4,
           max_tokens: 900,

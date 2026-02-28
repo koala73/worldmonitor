@@ -638,12 +638,151 @@ describe('theater posture caching behavior', { concurrency: 1 }, () => {
   });
 });
 
+describe('country intel brief caching behavior', { concurrency: 1 }, () => {
+  async function importCountryIntelBrief() {
+    return importPatchedTsModule('server/worldmonitor/intelligence/v1/get-country-intel-brief.ts', {
+      './_shared': resolve(root, 'server/worldmonitor/intelligence/v1/_shared.ts'),
+      '../../../_shared/constants': resolve(root, 'server/_shared/constants.ts'),
+      '../../../_shared/redis': resolve(root, 'server/_shared/redis.ts'),
+    });
+  }
+
+  function parseRedisKey(rawUrl, op) {
+    const marker = `/${op}/`;
+    const idx = rawUrl.indexOf(marker);
+    if (idx === -1) return '';
+    return decodeURIComponent(rawUrl.slice(idx + marker.length).split('/')[0] || '');
+  }
+
+  function makeCtx(url) {
+    return { request: new Request(url) };
+  }
+
+  it('uses distinct cache keys for distinct context snapshots', async () => {
+    const { module, cleanup } = await importCountryIntelBrief();
+    const restoreEnv = withEnv({
+      GROQ_API_KEY: 'test-key',
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+
+    const store = new Map();
+    const setKeys = [];
+    const userPrompts = [];
+    let groqCalls = 0;
+
+    globalThis.fetch = async (url, init = {}) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) {
+        const key = parseRedisKey(raw, 'get');
+        return jsonResponse({ result: store.get(key) });
+      }
+      if (raw.includes('/set/')) {
+        const key = parseRedisKey(raw, 'set');
+        const encodedValue = raw.slice(raw.indexOf('/set/') + 5).split('/')[1] || '';
+        store.set(key, decodeURIComponent(encodedValue));
+        setKeys.push(key);
+        return jsonResponse({ result: 'OK' });
+      }
+      if (raw.includes('api.groq.com/openai/v1/chat/completions')) {
+        groqCalls += 1;
+        const body = JSON.parse(String(init.body || '{}'));
+        userPrompts.push(body.messages?.[1]?.content || '');
+        return jsonResponse({ choices: [{ message: { content: `brief-${groqCalls}` } }] });
+      }
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      const req = { countryCode: 'IL' };
+      const alpha = await module.getCountryIntelBrief(makeCtx('https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=IL&context=alpha'), req);
+      const beta = await module.getCountryIntelBrief(makeCtx('https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=IL&context=beta'), req);
+      const alphaCached = await module.getCountryIntelBrief(makeCtx('https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=IL&context=alpha'), req);
+
+      assert.equal(groqCalls, 2, 'different contexts should not share one cache entry');
+      assert.equal(setKeys.length, 2, 'one cache write per unique context');
+      assert.notEqual(setKeys[0], setKeys[1], 'context hash should differentiate cache keys');
+      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v2:IL:'), 'cache key should use v2 country-intel namespace');
+      assert.ok(setKeys[1]?.startsWith('ci-sebuf:v2:IL:'), 'cache key should use v2 country-intel namespace');
+      assert.equal(alpha.brief, 'brief-1');
+      assert.equal(beta.brief, 'brief-2');
+      assert.equal(alphaCached.brief, 'brief-1', 'same context should hit cache');
+      assert.match(userPrompts[0], /Context snapshot:\s*alpha/);
+      assert.match(userPrompts[1], /Context snapshot:\s*beta/);
+    } finally {
+      cleanup();
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('uses base cache key and prompt when context is missing or blank', async () => {
+    const { module, cleanup } = await importCountryIntelBrief();
+    const restoreEnv = withEnv({
+      GROQ_API_KEY: 'test-key',
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+
+    const store = new Map();
+    const setKeys = [];
+    const userPrompts = [];
+    let groqCalls = 0;
+
+    globalThis.fetch = async (url, init = {}) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) {
+        const key = parseRedisKey(raw, 'get');
+        return jsonResponse({ result: store.get(key) });
+      }
+      if (raw.includes('/set/')) {
+        const key = parseRedisKey(raw, 'set');
+        const encodedValue = raw.slice(raw.indexOf('/set/') + 5).split('/')[1] || '';
+        store.set(key, decodeURIComponent(encodedValue));
+        setKeys.push(key);
+        return jsonResponse({ result: 'OK' });
+      }
+      if (raw.includes('api.groq.com/openai/v1/chat/completions')) {
+        groqCalls += 1;
+        const body = JSON.parse(String(init.body || '{}'));
+        userPrompts.push(body.messages?.[1]?.content || '');
+        return jsonResponse({ choices: [{ message: { content: 'base-brief' } }] });
+      }
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      const req = { countryCode: 'US' };
+      const first = await module.getCountryIntelBrief(makeCtx('https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=US'), req);
+      const second = await module.getCountryIntelBrief(makeCtx('https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=US&context=%20%20%20'), req);
+
+      assert.equal(groqCalls, 1, 'blank context should reuse base cache entry');
+      assert.equal(setKeys.length, 1);
+      assert.ok(setKeys[0]?.endsWith(':base'), 'missing context should use :base cache suffix');
+      assert.ok(!userPrompts[0]?.includes('Context snapshot:'), 'prompt should omit context block when absent');
+      assert.equal(first.brief, 'base-brief');
+      assert.equal(second.brief, 'base-brief');
+    } finally {
+      cleanup();
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+});
+
 describe('military flights bbox behavior', { concurrency: 1 }, () => {
   async function importListMilitaryFlights() {
     return importPatchedTsModule('server/worldmonitor/military/v1/list-military-flights.ts', {
       './_shared': resolve(root, 'server/worldmonitor/military/v1/_shared.ts'),
       '../../../_shared/constants': resolve(root, 'server/_shared/constants.ts'),
       '../../../_shared/redis': resolve(root, 'server/_shared/redis.ts'),
+      '../../../_shared/response-headers': resolve(root, 'server/_shared/response-headers.ts'),
     });
   }
 
