@@ -315,7 +315,9 @@ async function pollTelegramOnce() {
       telegramState.lastError = `poll ${handle} failed: ${em}`;
       console.warn('[Relay] Telegram poll error:', telegramState.lastError);
       if (/AUTH_KEY_DUPLICATED/.test(em)) {
-        console.warn('[Relay] Telegram session conflict — destroying client, will reconnect next cycle');
+        telegramPermanentlyDisabled = true;
+        telegramState.lastError = 'session invalidated (AUTH_KEY_DUPLICATED) — generate a new TELEGRAM_SESSION';
+        console.error('[Relay] Telegram session permanently invalidated (AUTH_KEY_DUPLICATED). Generate a new session with: node scripts/telegram/session-auth.mjs');
         try { telegramState.client?.disconnect(); } catch {}
         telegramState.client = null;
         break;
@@ -338,15 +340,20 @@ async function pollTelegramOnce() {
   telegramState.lastPollAt = Date.now();
 }
 
+let telegramPollInFlight = false;
+
 function startTelegramPollLoop() {
   if (!TELEGRAM_ENABLED) return;
   loadTelegramChannels();
-  // Don’t block server startup.
-  pollTelegramOnce().catch(e => console.warn('[Relay] Telegram poll error:', e?.message || e));
+  pollTelegramOnce().catch(e => console.warn(‘[Relay] Telegram poll error:’, e?.message || e));
   setInterval(() => {
-    pollTelegramOnce().catch(e => console.warn('[Relay] Telegram poll error:', e?.message || e));
+    if (telegramPollInFlight) return;
+    telegramPollInFlight = true;
+    pollTelegramOnce()
+      .catch(e => console.warn(‘[Relay] Telegram poll error:’, e?.message || e))
+      .finally(() => { telegramPollInFlight = false; });
   }, TELEGRAM_POLL_INTERVAL_MS).unref?.();
-  console.log('[Relay] Telegram poll loop started');
+  console.log(‘[Relay] Telegram poll loop started’);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -2995,3 +3002,22 @@ setInterval(() => {
     if (global.gc) global.gc();
   }
 }, 60 * 1000);
+
+// Graceful shutdown — disconnect Telegram BEFORE container dies.
+// Railway sends SIGTERM during deploys; without this, the old container keeps
+// the Telegram session alive while the new container connects → AUTH_KEY_DUPLICATED.
+function gracefulShutdown(signal) {
+  console.log(`[Relay] ${signal} received — shutting down`);
+  if (telegramState.client) {
+    console.log('[Relay] Disconnecting Telegram client...');
+    try { telegramState.client.disconnect(); } catch {}
+    telegramState.client = null;
+  }
+  if (upstreamWs) {
+    try { upstreamWs.close(); } catch {}
+  }
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(0), 5000);
+}
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
