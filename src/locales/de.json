@@ -649,7 +649,8 @@
         "centralBanks": "Zentralbanken",
         "commodityHubs": "Rohstoffzentren",
         "gulfInvestments": "GCC-Investitionen",
-        "tradeRoutes": "Handelsrouten"
+"tradeRoutes": "Handelsrouten",
+"dayNight": "Tag/Nacht"
       },
       "layersTitle": "Schichten",
       "layerGuide": "Ebenenführer",
@@ -700,7 +701,8 @@
           "geopolitical": "Geopolitisch",
           "militaryStrategic": "Militärisch und strategisch",
           "transport": "Transport",
-          "labels": "Etiketten"
+          "labels": "Etiketten",
+          "overlays": "Overlays & Etiketten"
         },
         "descriptions": {
           "techStartupHubs": "Wichtige Startup-Ökosysteme (SF, NYC, London usw.)",
@@ -742,7 +744,8 @@
           "transportDelays": "Verspätungen am Flughafen und Bodenstopps (FAA)",
           "naturalEventsFull": "Erdbeben (USGS) + Stürme, Brände, Vulkane, Überschwemmungen (NASA EONET)",
           "waterwaysLabels": "Strategische Engpassmarkierungen",
-          "tradeRoutes": "Wichtige globale Schifffahrtsrouten, die Häfen über strategische Engpässe verbinden"
+"tradeRoutes": "Wichtige globale Schifffahrtsrouten, die Häfen über strategische Engpässe verbinden",
+"dayNight": "Echtzeit-Sonnenterminator zeigt Tag- und Nachtzonen"
         },
         "notes": {
           "timeAffects": "Betrifft: Erdbeben, Wetter, Proteste, Ausfälle"

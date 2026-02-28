@@ -649,7 +649,8 @@
         "centralBanks": "Banki Centralne",
         "commodityHubs": "Centra towarowe",
         "gulfInvestments": "Inwestycje GCC",
-        "tradeRoutes": "Szlaki Handlowe"
+"tradeRoutes": "Szlaki Handlowe",
+"dayNight": "Dzień/Noc"
       },
       "layersTitle": "Warstwy",
       "layerGuide": "Przewodnik po warstwach",
@@ -700,7 +701,8 @@
           "geopolitical": "Geopolityczne",
           "militaryStrategic": "Wojskowe i strategiczne",
           "transport": "Transport",
-          "labels": "Etykiety"
+          "labels": "Etykiety",
+          "overlays": "Nakładki i etykiety"
         },
         "descriptions": {
           "techStartupHubs": "Główne ekosystemy startupowe (SF, NYC, Londyn itp.)",
@@ -742,7 +744,8 @@
           "transportDelays": "Opóźnienia na lotniskach i postoje naziemne (FAA)",
           "naturalEventsFull": "Trzęsienia ziemi (USGS) + burze, pożary, wulkany, powodzie (NASA EONET)",
           "waterwaysLabels": "Strategiczne etykiety punktów kontrolnych",
-          "tradeRoutes": "Główne globalne szlaki żeglugowe łączące porty przez strategiczne wąskie gardła"
+"tradeRoutes": "Główne globalne szlaki żeglugowe łączące porty przez strategiczne wąskie gardła",
+"dayNight": "Terminator słoneczny w czasie rzeczywistym pokazujący strefy dnia i nocy"
         },
         "notes": {
           "timeAffects": "Wpływ na: Trzęsienia ziemi, Pogoda, Protesty, Przestoje"

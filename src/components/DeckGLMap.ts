@@ -5,7 +5,7 @@
  */
 import { MapboxOverlay } from '@deck.gl/mapbox';
 import type { Layer, LayersList, PickingInfo } from '@deck.gl/core';
-import { GeoJsonLayer, ScatterplotLayer, PathLayer, IconLayer, TextLayer } from '@deck.gl/layers';
+import { GeoJsonLayer, ScatterplotLayer, PathLayer, IconLayer, TextLayer, PolygonLayer } from '@deck.gl/layers';
 import maplibregl from 'maplibre-gl';
 import Supercluster from 'supercluster';
 import type {
@@ -342,6 +342,8 @@ export class DeckGLMap {
   private lastSCMask = '';
   private protestSuperclusterSource: SocialUnrestEvent[] = [];
   private newsPulseIntervalId: ReturnType<typeof setInterval> | null = null;
+  private dayNightIntervalId: ReturnType<typeof setInterval> | null = null;
+  private cachedNightPolygon: [number, number][] | null = null;
   private readonly startupTime = Date.now();
   private lastCableHighlightSignature = '';
   private lastCableHealthSignature = '';
@@ -395,6 +397,28 @@ export class DeckGLMap {
     this.createTimeSlider();
     this.createLayerToggles();
     this.createLegend();
+
+    // Start day/night timer only if layer is initially enabled
+    if (this.state.layers.dayNight) {
+      this.startDayNightTimer();
+    }
+  }
+
+  private startDayNightTimer(): void {
+    if (this.dayNightIntervalId) return;
+    this.cachedNightPolygon = this.computeNightPolygon();
+    this.dayNightIntervalId = setInterval(() => {
+      this.cachedNightPolygon = this.computeNightPolygon();
+      this.render();
+    }, 5 * 60 * 1000);
+  }
+
+  private stopDayNightTimer(): void {
+    if (this.dayNightIntervalId) {
+      clearInterval(this.dayNightIntervalId);
+      this.dayNightIntervalId = null;
+    }
+    this.cachedNightPolygon = null;
   }
 
   private setupDOM(): void {
@@ -962,6 +986,15 @@ export class DeckGLMap {
     const filteredMilitaryFlightClusters = this.filterMilitaryFlightClustersByTime(this.militaryFlightClusters);
     const filteredMilitaryVesselClusters = this.filterMilitaryVesselClustersByTime(this.militaryVesselClusters);
     const filteredUcdpEvents = this.filterByTime(this.ucdpEvents, (event) => event.date_start);
+
+    // Day/night overlay (rendered first as background)
+    if (mapLayers.dayNight) {
+      if (!this.dayNightIntervalId) this.startDayNightTimer();
+      layers.push(this.createDayNightLayer());
+    } else {
+      if (this.dayNightIntervalId) this.stopDayNightTimer();
+      this.layerCache.delete('day-night-layer');
+    }
 
     // Undersea cables layer
     if (mapLayers.cables) {
@@ -3092,6 +3125,7 @@ export class DeckGLMap {
         { key: 'techEvents', label: t('components.deckgl.layers.techEvents'), icon: '&#128197;' },
         { key: 'natural', label: t('components.deckgl.layers.naturalEvents'), icon: '&#127755;' },
         { key: 'fires', label: t('components.deckgl.layers.fires'), icon: '&#128293;' },
+        { key: 'dayNight', label: t('components.deckgl.layers.dayNight'), icon: '&#127763;' },
       ]
       : SITE_VARIANT === 'finance'
       ? [
@@ -3109,6 +3143,7 @@ export class DeckGLMap {
           { key: 'waterways', label: t('components.deckgl.layers.strategicWaterways'), icon: '&#9875;' },
           { key: 'natural', label: t('components.deckgl.layers.naturalEvents'), icon: '&#127755;' },
           { key: 'cyberThreats', label: t('components.deckgl.layers.cyberThreats'), icon: '&#128737;' },
+          { key: 'dayNight', label: t('components.deckgl.layers.dayNight'), icon: '&#127763;' },
         ]
       : SITE_VARIANT === 'happy'
       ? [
@@ -3145,6 +3180,7 @@ export class DeckGLMap {
         { key: 'waterways', label: t('components.deckgl.layers.strategicWaterways'), icon: '&#9875;' },
         { key: 'economic', label: t('components.deckgl.layers.economicCenters'), icon: '&#128176;' },
         { key: 'minerals', label: t('components.deckgl.layers.criticalMinerals'), icon: '&#128142;' },
+        { key: 'dayNight', label: t('components.deckgl.layers.dayNight'), icon: '&#127763;' },
       ];
 
     toggles.innerHTML = `
@@ -3250,6 +3286,7 @@ export class DeckGLMap {
           helpItem(label('naturalEvents'), 'naturalEventsTech'),
           helpItem(label('fires'), 'techFires'),
           helpItem(staticLabel('countries'), 'countriesOverlay'),
+          helpItem(label('dayNight'), 'dayNight'),
         ])}
       </div>
     `;
@@ -3276,6 +3313,7 @@ export class DeckGLMap {
           helpItem(label('strategicWaterways'), 'macroWaterways'),
           helpItem(label('weatherAlerts'), 'weatherAlertsMarket'),
           helpItem(label('naturalEvents'), 'naturalEventsMacro'),
+          helpItem(label('dayNight'), 'dayNight'),
         ])}
       </div>
     `;
@@ -3322,7 +3360,8 @@ export class DeckGLMap {
           helpItem(label('economicCenters'), 'economicCenters'),
           helpItem(label('criticalMinerals'), 'mineralsFull'),
         ])}
-        ${helpSection('labels', [
+        ${helpSection('overlays', [
+          helpItem(label('dayNight'), 'dayNight'),
           helpItem(staticLabel('countries'), 'countriesOverlay'),
           helpItem(label('strategicWaterways'), 'waterwaysLabels'),
         ])}
@@ -3434,10 +3473,12 @@ export class DeckGLMap {
     this.renderPaused = paused;
     if (paused) {
       this.stopPulseAnimation();
+      this.stopDayNightTimer();
       return;
     }
 
     this.syncPulseAnimation();
+    if (this.state.layers.dayNight) this.startDayNightTimer();
     if (!paused && this.renderPending) {
       this.renderPending = false;
       this.render();
@@ -3645,6 +3686,78 @@ export class DeckGLMap {
       lineWidthMinPixels: 1,
       radiusMinPixels: 4,
       radiusMaxPixels: 12,
+      pickable: false,
+    });
+  }
+
+  /**
+   * Compute the solar terminator polygon (night side of the Earth).
+   * Uses standard astronomical formulas to find the subsolar point,
+   * then traces the terminator line and closes around the dark pole.
+   */
+  private computeNightPolygon(): [number, number][] {
+    const now = new Date();
+    const JD = now.getTime() / 86400000 + 2440587.5;
+    const D = JD - 2451545.0; // Days since J2000.0
+
+    // Solar mean anomaly (radians)
+    const g = ((357.529 + 0.98560028 * D) % 360) * Math.PI / 180;
+
+    // Solar ecliptic longitude (degrees)
+    const q = (280.459 + 0.98564736 * D) % 360;
+    const L = q + 1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g);
+    const LRad = L * Math.PI / 180;
+
+    // Obliquity of ecliptic (radians)
+    const eRad = (23.439 - 0.00000036 * D) * Math.PI / 180;
+
+    // Solar declination (radians)
+    const decl = Math.asin(Math.sin(eRad) * Math.sin(LRad));
+
+    // Solar right ascension (radians)
+    const RA = Math.atan2(Math.cos(eRad) * Math.sin(LRad), Math.cos(LRad));
+
+    // Greenwich Mean Sidereal Time (degrees)
+    const GMST = ((18.697374558 + 24.06570982441908 * D) % 24) * 15;
+
+    // Sub-solar longitude (degrees, normalized to [-180, 180])
+    let sunLng = RA * 180 / Math.PI - GMST;
+    sunLng = ((sunLng % 360) + 540) % 360 - 180;
+
+    // Guard against equinox (declination ≈ 0) with practical epsilon
+    const tanDecl = Math.tan(decl);
+    const safeTanDecl = Math.abs(tanDecl) < 1e-3 ? (tanDecl >= 0 ? 1e-3 : -1e-3) : tanDecl;
+
+    // Trace terminator line (1° steps for smooth curve at high zoom)
+    const points: [number, number][] = [];
+    for (let lng = -180; lng <= 180; lng += 1) {
+      const ha = (lng - sunLng) * Math.PI / 180;
+      const lat = Math.atan(-Math.cos(ha) / safeTanDecl) * 180 / Math.PI;
+      points.push([lng, lat]);
+    }
+
+    // Close polygon around the dark pole
+    const darkPoleLat = decl > 0 ? -90 : 90;
+    points.push([180, darkPoleLat]);
+    points.push([-180, darkPoleLat]);
+
+    return points;
+  }
+
+  private createDayNightLayer(): PolygonLayer {
+    const nightPolygon = this.cachedNightPolygon ?? (this.cachedNightPolygon = this.computeNightPolygon());
+    const isLight = getCurrentTheme() === 'light';
+
+    return new PolygonLayer({
+      id: 'day-night-layer',
+      data: [{ polygon: nightPolygon }],
+      getPolygon: (d: { polygon: [number, number][] }) => d.polygon,
+      getFillColor: isLight ? [0, 0, 40, 35] : [0, 0, 20, 55],
+      filled: true,
+      stroked: true,
+      getLineColor: isLight ? [100, 100, 100, 40] : [200, 200, 255, 25],
+      getLineWidth: 1,
+      lineWidthUnits: 'pixels' as const,
       pickable: false,
     });
   }
@@ -4330,6 +4443,7 @@ export class DeckGLMap {
     }
 
     this.stopPulseAnimation();
+    this.stopDayNightTimer();
 
     if (this.resizeObserver) {
       this.resizeObserver.disconnect();

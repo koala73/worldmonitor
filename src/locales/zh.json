@@ -785,7 +785,8 @@
         "centralBanks": "央行",
         "commodityHubs": "大宗商品枢纽",
         "gulfInvestments": "GCC投资",
-        "tradeRoutes": "贸易航线"
+"tradeRoutes": "贸易航线",
+"dayNight": "昼/夜"
       },
       "tooltip": {
         "earthquake": "地震",
@@ -834,7 +835,8 @@
           "geopolitical": "地缘政治",
           "militaryStrategic": "军事与战略",
           "transport": "交通运输",
-          "labels": "标签"
+          "labels": "标签",
+          "overlays": "叠加层和标签"
         },
         "descriptions": {
           "techStartupHubs": "主要创业生态系统（旧金山、纽约、伦敦等）",
@@ -876,7 +878,8 @@
           "transportDelays": "机场延误和地面停航（FAA）",
           "naturalEventsFull": "地震（USGS）+ 风暴、火灾、火山、洪水（NASA EONET）",
           "waterwaysLabels": "战略咽喉要道标签",
-          "tradeRoutes": "连接港口并经过战略咽喉要道的全球主要航运通道"
+"tradeRoutes": "连接港口并经过战略咽喉要道的全球主要航运通道",
+"dayNight": "实时太阳终结线显示昼夜区域"
         },
         "notes": {
           "timeAffects": "影响范围：地震、天气、抗议、中断"

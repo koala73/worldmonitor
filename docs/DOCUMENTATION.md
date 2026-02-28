@@ -176,9 +176,10 @@ Layers are organized into logical groups for efficient monitoring:
 | **Natural** | USGS earthquakes (M4.5+) + NASA EONET events (storms, wildfires, volcanoes, floods) |
 | **Weather** | NWS severe weather warnings |
 
-**Economic & Labels**
+**Overlays & Labels**
 | Layer | Description |
 |-------|-------------|
+| **Day/Night** | Real-time solar terminator overlay showing day and night zones (updates every 5 minutes) |
 | **Economic** | Tabbed economic panel with FRED indicators, EIA oil analytics, and USASpending.gov government contracts |
 | **Countries** | Country boundary labels |
 | **Waterways** | Strategic waterways and chokepoints |
