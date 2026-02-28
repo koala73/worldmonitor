@@ -49,9 +49,17 @@ export default async function handler(req) {
   if (topic) relayUrl.searchParams.set('topic', topic);
   if (channel) relayUrl.searchParams.set('channel', channel);
 
+  const fetchHeaders = { 'Accept': 'application/json' };
+  const relaySecret = process.env.RELAY_SHARED_SECRET || '';
+  if (relaySecret) {
+    const relayHeader = (process.env.RELAY_AUTH_HEADER || 'x-relay-key').toLowerCase();
+    fetchHeaders[relayHeader] = relaySecret;
+    fetchHeaders.Authorization = `Bearer ${relaySecret}`;
+  }
+
   try {
     const res = await fetchWithTimeout(relayUrl.toString(), {
-      headers: { 'Accept': 'application/json' },
+      headers: fetchHeaders,
     }, 25000);
 
     const text = await res.text();
