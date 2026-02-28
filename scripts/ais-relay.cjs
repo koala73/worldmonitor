@@ -621,6 +621,7 @@ function getRouteGroup(pathname) {
   if (pathname.startsWith('/polymarket')) return 'polymarket';
   if (pathname.startsWith('/ucdp-events')) return 'ucdp-events';
   if (pathname.startsWith('/oref')) return 'oref';
+  if (pathname === '/notam') return 'notam';
   return 'other';
 }
 
@@ -2531,6 +2532,94 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000);
 
+// ─────────────────────────────────────────────────────────────
+// NOTAM proxy — ICAO API times out from Vercel edge, relay proxies
+// ─────────────────────────────────────────────────────────────
+const ICAO_API_KEY = process.env.ICAO_API_KEY;
+const notamCache = { data: null, ts: 0 };
+const NOTAM_CACHE_TTL = 30 * 60 * 1000; // 30 min
+
+function handleNotamProxyRequest(req, res) {
+  const url = new URL(req.url, `http://localhost:${PORT}`);
+  const locations = url.searchParams.get('locations');
+  if (!locations) {
+    return sendCompressed(req, res, 400, { 'Content-Type': 'application/json' },
+      JSON.stringify({ error: 'Missing locations parameter' }));
+  }
+  if (!ICAO_API_KEY) {
+    return sendCompressed(req, res, 200, { 'Content-Type': 'application/json' },
+      JSON.stringify([]));
+  }
+
+  const cacheKey = locations.split(',').sort().join(',');
+  if (notamCache.data && notamCache.key === cacheKey && Date.now() - notamCache.ts < NOTAM_CACHE_TTL) {
+    return sendCompressed(req, res, 200, {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'public, max-age=1800, s-maxage=1800',
+      'X-Cache': 'HIT',
+    }, notamCache.data);
+  }
+
+  const apiUrl = `https://dataservices.icao.int/api/notams-realtime-list?api_key=${ICAO_API_KEY}&format=json&locations=${encodeURIComponent(locations)}`;
+
+  const request = https.get(apiUrl, {
+    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' },
+    timeout: 25000,
+  }, (upstream) => {
+    if (upstream.statusCode !== 200) {
+      console.warn(`[Relay] NOTAM upstream HTTP ${upstream.statusCode}`);
+      upstream.resume();
+      return sendCompressed(req, res, 200, { 'Content-Type': 'application/json' },
+        JSON.stringify([]));
+    }
+    const ct = upstream.headers['content-type'] || '';
+    if (ct.includes('text/html')) {
+      console.warn('[Relay] NOTAM upstream returned HTML (challenge page)');
+      upstream.resume();
+      return sendCompressed(req, res, 200, { 'Content-Type': 'application/json' },
+        JSON.stringify([]));
+    }
+    const chunks = [];
+    upstream.on('data', c => chunks.push(c));
+    upstream.on('end', () => {
+      const body = Buffer.concat(chunks).toString();
+      try {
+        JSON.parse(body); // validate JSON
+        notamCache.data = body;
+        notamCache.key = cacheKey;
+        notamCache.ts = Date.now();
+        console.log(`[Relay] NOTAM: ${body.length} bytes for ${locations}`);
+        sendCompressed(req, res, 200, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'public, max-age=1800, s-maxage=1800',
+          'X-Cache': 'MISS',
+        }, body);
+      } catch {
+        console.warn('[Relay] NOTAM: invalid JSON response');
+        sendCompressed(req, res, 200, { 'Content-Type': 'application/json' },
+          JSON.stringify([]));
+      }
+    });
+  });
+
+  request.on('error', (err) => {
+    console.warn(`[Relay] NOTAM error: ${err.message}`);
+    if (!res.headersSent) {
+      sendCompressed(req, res, 200, { 'Content-Type': 'application/json' },
+        JSON.stringify([]));
+    }
+  });
+
+  request.on('timeout', () => {
+    request.destroy();
+    console.warn('[Relay] NOTAM timeout (25s)');
+    if (!res.headersSent) {
+      sendCompressed(req, res, 200, { 'Content-Type': 'application/json' },
+        JSON.stringify([]));
+    }
+  });
+}
+
 // CORS origin allowlist — only our domains can use this relay
 const ALLOWED_ORIGINS = [
   'https://worldmonitor.app',
@@ -3015,6 +3104,8 @@ const server = http.createServer(async (req, res) => {
     handlePolymarketRequest(req, res);
   } else if (pathname === '/youtube-live') {
     handleYouTubeLiveRequest(req, res);
+  } else if (pathname === '/notam') {
+    handleNotamProxyRequest(req, res);
   } else {
     res.writeHead(404);
     res.end();

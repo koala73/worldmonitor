@@ -94,6 +94,9 @@ export async function listAirportDelays(
     const cached = await getCachedJson(INTL_CACHE_KEY);
     if (cached && typeof cached === 'object' && 'alerts' in (cached as Record<string, unknown>)) {
       intlAlerts = (cached as { alerts: AirportDelayAlert[] }).alerts;
+      const simCount = intlAlerts.filter(a => a.id.startsWith('sim-')).length;
+      const realCount = intlAlerts.length - simCount;
+      console.log(`[Aviation] Intl cache HIT: ${intlAlerts.length} alerts (${realCount} real, ${simCount} simulated)`);
     } else {
       const nonUs = MONITORED_AIRPORTS.filter(a => a.country !== 'USA');
       const apiKey = process.env.AVIATIONSTACK_API;

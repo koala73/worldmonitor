@@ -350,62 +350,108 @@ export interface NotamClosureResult {
   notamsByIcao: Map<string, string>;
 }
 
+function getRelayBaseUrl(): string | null {
+  const relayUrl = process.env.WS_RELAY_URL;
+  if (!relayUrl) return null;
+  return relayUrl
+    .replace('wss://', 'https://')
+    .replace('ws://', 'http://')
+    .replace(/\/$/, '');
+}
+
+function getRelayHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { 'User-Agent': CHROME_UA };
+  const relaySecret = process.env.RELAY_SHARED_SECRET;
+  if (relaySecret) {
+    const relayHeader = (process.env.RELAY_AUTH_HEADER || 'x-relay-key').toLowerCase();
+    headers[relayHeader] = relaySecret;
+    headers.Authorization = `Bearer ${relaySecret}`;
+  }
+  return headers;
+}
+
 export async function fetchNotamClosures(
   airports: MonitoredAirport[]
 ): Promise<NotamClosureResult> {
   const apiKey = process.env.ICAO_API_KEY;
   const result: NotamClosureResult = { closedIcaoCodes: new Set(), notamsByIcao: new Map() };
-  if (!apiKey) return result;
+  if (!apiKey) {
+    console.log('[Aviation] NOTAM: no ICAO_API_KEY — skipping');
+    return result;
+  }
 
+  const relayBase = getRelayBaseUrl();
   const icaoCodes = airports.map(a => a.icao);
-  const batchSize = 20;
   const now = Math.floor(Date.now() / 1000);
 
-  for (let i = 0; i < icaoCodes.length; i += batchSize) {
-    const batch = icaoCodes.slice(i, i + batchSize);
-    const locations = batch.join(',');
-    try {
+  // Send all locations in one request (relay or direct)
+  const locations = icaoCodes.join(',');
+  let notams: IcaoNotam[] = [];
+
+  try {
+    if (relayBase) {
+      // Route through Railway relay — avoids Vercel edge timeout / CloudFront blocking
+      const relayUrl = `${relayBase}/notam?locations=${encodeURIComponent(locations)}`;
+      console.log(`[Aviation] NOTAM: fetching via relay for ${icaoCodes.length} airports`);
+      const resp = await fetch(relayUrl, {
+        headers: getRelayHeaders(),
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!resp.ok) {
+        console.warn(`[Aviation] NOTAM relay: HTTP ${resp.status}`);
+        return result;
+      }
+      const data = await resp.json();
+      if (Array.isArray(data)) notams = data;
+    } else {
+      // Direct ICAO call (slower from Vercel, may timeout)
+      console.log(`[Aviation] NOTAM: fetching direct for ${icaoCodes.length} airports`);
       const url = `${ICAO_NOTAM_URL}?api_key=${apiKey}&format=json&locations=${locations}`;
       const resp = await fetch(url, {
         headers: { 'User-Agent': CHROME_UA },
-        signal: AbortSignal.timeout(10_000),
+        signal: AbortSignal.timeout(20_000),
       });
       if (!resp.ok) {
-        console.warn(`[Aviation] NOTAM batch ${i / batchSize + 1}: HTTP ${resp.status}`);
-        continue;
+        console.warn(`[Aviation] NOTAM direct: HTTP ${resp.status}`);
+        return result;
       }
       const contentType = resp.headers.get('content-type') || '';
       if (contentType.includes('text/html')) {
-        console.warn(`[Aviation] NOTAM batch ${i / batchSize + 1}: got HTML instead of JSON (API may be down or key invalid)`);
-        continue;
+        console.warn('[Aviation] NOTAM direct: got HTML instead of JSON');
+        return result;
       }
-      const notams = await resp.json() as IcaoNotam[];
-      if (!Array.isArray(notams)) continue;
+      const data = await resp.json();
+      if (Array.isArray(data)) notams = data;
+    }
+  } catch (err) {
+    console.warn(`[Aviation] NOTAM fetch: ${err instanceof Error ? err.message : 'unknown'}`);
+    return result;
+  }
 
-      for (const n of notams) {
-        const icao = n.itema || n.location || '';
-        if (!icao || !batch.includes(icao)) continue;
-        if (n.endvalidity && n.endvalidity < now) continue;
+  console.log(`[Aviation] NOTAM: ${notams.length} raw NOTAMs received`);
 
-        const code23 = (n.code23 || '').toUpperCase();
-        const code45 = (n.code45 || '').toUpperCase();
-        const text = (n.iteme || '').toUpperCase();
-        const isClosureCode = NOTAM_CLOSURE_QCODES.has(code23) &&
-          (code45 === 'LC' || code45 === 'AS' || code45 === 'AU' || code45 === 'XX' || code45 === 'AW');
-        const isClosureText = /\b(AD CLSD|AIRPORT CLOSED|AIRSPACE CLOSED|AD NOT AVBL|CLSD TO ALL)\b/.test(text);
+  for (const n of notams) {
+    const icao = n.itema || n.location || '';
+    if (!icao || !icaoCodes.includes(icao)) continue;
+    if (n.endvalidity && n.endvalidity < now) continue;
 
-        if (isClosureCode || isClosureText) {
-          result.closedIcaoCodes.add(icao);
-          result.notamsByIcao.set(icao, n.iteme || 'Airport closure (NOTAM)');
-        }
-      }
-    } catch (err) {
-      console.warn(`[Aviation] NOTAM batch ${i / batchSize + 1}: ${err instanceof Error ? err.message : 'unknown'}`);
+    const code23 = (n.code23 || '').toUpperCase();
+    const code45 = (n.code45 || '').toUpperCase();
+    const text = (n.iteme || '').toUpperCase();
+    const isClosureCode = NOTAM_CLOSURE_QCODES.has(code23) &&
+      (code45 === 'LC' || code45 === 'AS' || code45 === 'AU' || code45 === 'XX' || code45 === 'AW');
+    const isClosureText = /\b(AD CLSD|AIRPORT CLOSED|AIRSPACE CLOSED|AD NOT AVBL|CLSD TO ALL)\b/.test(text);
+
+    if (isClosureCode || isClosureText) {
+      result.closedIcaoCodes.add(icao);
+      result.notamsByIcao.set(icao, n.iteme || 'Airport closure (NOTAM)');
     }
   }
 
   if (result.closedIcaoCodes.size > 0) {
     console.log(`[Aviation] NOTAM closures: ${[...result.closedIcaoCodes].join(', ')}`);
+  } else {
+    console.log('[Aviation] NOTAM: no closures found');
   }
   return result;
 }
