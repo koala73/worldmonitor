@@ -39,12 +39,13 @@ import {
   trackMapViewChange,
   trackMapLayerToggle,
   trackPanelToggled,
+  trackLanguageChange,
 } from '@/services/analytics';
 import { invokeTauri } from '@/services/tauri-bridge';
 import { dataFreshness } from '@/services/data-freshness';
 import { mlWorker } from '@/services/ml-worker';
 import { UnifiedSettings } from '@/components/UnifiedSettings';
-import { t } from '@/services/i18n';
+import { t, changeLanguage } from '@/services/i18n';
 import { TvModeController } from '@/services/tv-mode';
 
 export interface EventHandlerCallbacks {
@@ -183,13 +184,19 @@ export class EventHandlerManager implements AppModule {
       }
     });
 
+    const languageSelect = document.getElementById('headerLanguageSelect') as HTMLSelectElement;
+    languageSelect?.addEventListener('change', () => {
+      trackLanguageChange(languageSelect.value);
+      void changeLanguage(languageSelect.value);
+    });
+
     window.addEventListener('storage', (e) => {
       if (e.key === STORAGE_KEYS.panels && e.newValue) {
         try {
           this.ctx.panelSettings = JSON.parse(e.newValue) as Record<string, PanelConfig>;
           this.applyPanelSettings();
           this.ctx.unifiedSettings?.refreshPanelToggles();
-        } catch (_) {}
+        } catch (_) { }
       }
       if (e.key === STORAGE_KEYS.liveChannels && e.newValue) {
         const panel = this.ctx.panels['live-news'];
@@ -383,13 +390,13 @@ export class EventHandlerManager implements AppModule {
 
   toggleFullscreen(): void {
     if (document.fullscreenElement) {
-      try { void document.exitFullscreen()?.catch(() => {}); } catch {}
+      try { void document.exitFullscreen()?.catch(() => { }); } catch { }
     } else {
       const el = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => void };
       if (el.requestFullscreen) {
-        try { void el.requestFullscreen()?.catch(() => {}); } catch {}
+        try { void el.requestFullscreen()?.catch(() => { }); } catch { }
       } else if (el.webkitRequestFullscreen) {
-        try { el.webkitRequestFullscreen(); } catch {}
+        try { el.webkitRequestFullscreen(); } catch { }
       }
     }
   }

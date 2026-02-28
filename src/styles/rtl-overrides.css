@@ -8,7 +8,8 @@ body.dir-rtl {
 }
 
 /* Language selector: flip arrow and margins */
-[dir="rtl"] .lang-select {
+[dir="rtl"] .lang-select,
+[dir="rtl"] .header-lang-select {
   padding: 4px 6px 4px 24px;
   background-position: left 8px center;
   margin-right: 0;
