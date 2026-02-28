@@ -290,6 +290,12 @@ async function pollTelegramOnce() {
       const em = e?.message || String(e);
       telegramState.lastError = `poll ${handle} failed: ${em}`;
       console.warn('[Relay] Telegram poll error:', telegramState.lastError);
+      if (/AUTH_KEY_DUPLICATED/.test(em)) {
+        console.warn('[Relay] Telegram session conflict — destroying client, will reconnect next cycle');
+        try { telegramState.client?.disconnect(); } catch {}
+        telegramState.client = null;
+        break;
+      }
     }
   }
 
