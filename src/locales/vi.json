@@ -205,7 +205,7 @@
     "geoHubs": "Trung tâm Địa chính trị",
     "liveWebcams": "Webcam Trực tiếp",
     "securityAdvisories": "Cảnh báo An ninh",
-    "orefSirens": "OREF Sirens",
+    "orefSirens": "Israel Sirens",
     "telegramIntel": "Tình báo Telegram"
   },
   "modals": {
@@ -1329,15 +1329,15 @@
       "infoTooltip": "<strong>Cảnh báo An ninh</strong><br>Cảnh báo du lịch và an ninh từ các cơ quan chính phủ."
     },
     "orefSirens": {
-      "checking": "Checking OREF alerts...",
+      "checking": "Checking siren alerts...",
       "noAlerts": "No active sirens — all clear",
-      "notConfigured": "OREF proxy not configured",
+      "notConfigured": "Sirens service not configured",
       "activeSirens": "{{count}} active siren(s)",
       "area": "Area",
       "time": "Time",
       "justNow": "just now",
       "historyCount": "{{count}} alerts in last 24h",
-      "infoTooltip": "<strong>OREF Sirens</strong><br>Real-time rocket and missile siren alerts from Israel Home Front Command (oref.org.il).<br><br>Data is polled every 10 seconds via a proxy relay. A pulsing red indicator means active sirens are sounding."
+      "infoTooltip": "<strong>Israel Sirens</strong><br>Real-time rocket and missile siren alerts from Israel Home Front Command.<br><br>Data is polled every 10 seconds. A pulsing red indicator means active sirens are sounding."
     }
   },
   "popups": {

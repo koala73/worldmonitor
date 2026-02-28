@@ -186,7 +186,7 @@
     "climate": "기후 이상",
     "populationExposure": "인구 노출",
     "securityAdvisories": "보안 권고",
-    "orefSirens": "OREF Sirens",
+    "orefSirens": "Israel Sirens",
     "telegramIntel": "Telegram 인텔리전스",
     "startups": "스타트업 & VC",
     "vcblogs": "VC 인사이트 & 에세이",
@@ -1109,15 +1109,15 @@
       "infoTooltip": "<strong>보안 주의보</strong><br>각국 외교부의 여행 주의보 및 보안 경보:<br><br><strong>출처:</strong><br>🇺🇸 미 국무부 여행 주의보<br>🇦🇺 호주 DFAT Smartraveller<br>🇬🇧 영국 FCDO 여행 안내<br>🇳🇿 뉴질랜드 MFAT SafeTravel<br><br><strong>수준:</strong><br>🟥 여행 금지<br>🟧 여행 재고<br>🟨 주의 필요<br>🟩 일반 주의"
     },
     "orefSirens": {
-      "checking": "Checking OREF alerts...",
+      "checking": "Checking siren alerts...",
       "noAlerts": "No active sirens — all clear",
-      "notConfigured": "OREF proxy not configured",
+      "notConfigured": "Sirens service not configured",
       "activeSirens": "{{count}} active siren(s)",
       "area": "Area",
       "time": "Time",
       "justNow": "just now",
       "historyCount": "{{count}} alerts in last 24h",
-      "infoTooltip": "<strong>OREF Sirens</strong><br>Real-time rocket and missile siren alerts from Israel Home Front Command (oref.org.il).<br><br>Data is polled every 10 seconds via a proxy relay. A pulsing red indicator means active sirens are sounding."
+      "infoTooltip": "<strong>Israel Sirens</strong><br>Real-time rocket and missile siren alerts from Israel Home Front Command.<br><br>Data is polled every 10 seconds. A pulsing red indicator means active sirens are sounding."
     },
     "satelliteFires": {
       "noData": "화재 데이터 없음",
