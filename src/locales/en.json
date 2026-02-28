@@ -503,6 +503,7 @@
   "components": {
     "webcams": {
       "regions": {
+        "iran": "IRAN",
         "all": "ALL",
         "mideast": "MIDEAST",
         "europe": "EUROPE",
