@@ -649,8 +649,8 @@
         "centralBanks": "Banche Centrali",
         "commodityHubs": "Hub delle materie prime",
         "gulfInvestments": "Investimenti del GCC",
-"tradeRoutes": "Rotte Commerciali",
-"dayNight": "Giorno/Notte"
+        "tradeRoutes": "Rotte Commerciali",
+        "dayNight": "Giorno/Notte"
       },
       "layersTitle": "Livelli",
       "layerGuide": "Guida ai livelli",
@@ -744,8 +744,8 @@
           "transportDelays": "Ritardi aeroportuali e fermi a terra (FAA)",
           "naturalEventsFull": "Terremoti (USGS) + tempeste, incendi, vulcani, inondazioni (NASA EONET)",
           "waterwaysLabels": "Etichette di colli di bottiglia strategici",
-"tradeRoutes": "Principali rotte marittime globali che collegano i porti attraverso punti strategici",
-"dayNight": "Terminatore solare in tempo reale che mostra le zone di giorno e notte"
+        "tradeRoutes": "Principali rotte marittime globali che collegano i porti attraverso punti strategici",
+        "dayNight": "Terminatore solare in tempo reale che mostra le zone di giorno e notte"
         },
         "notes": {
           "timeAffects": "Effetti: terremoti, condizioni meteorologiche, proteste, interruzioni"

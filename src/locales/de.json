@@ -649,8 +649,8 @@
         "centralBanks": "Zentralbanken",
         "commodityHubs": "Rohstoffzentren",
         "gulfInvestments": "GCC-Investitionen",
-"tradeRoutes": "Handelsrouten",
-"dayNight": "Tag/Nacht"
+        "tradeRoutes": "Handelsrouten",
+        "dayNight": "Tag/Nacht"
       },
       "layersTitle": "Schichten",
       "layerGuide": "Ebenenführer",
@@ -744,8 +744,8 @@
           "transportDelays": "Verspätungen am Flughafen und Bodenstopps (FAA)",
           "naturalEventsFull": "Erdbeben (USGS) + Stürme, Brände, Vulkane, Überschwemmungen (NASA EONET)",
           "waterwaysLabels": "Strategische Engpassmarkierungen",
-"tradeRoutes": "Wichtige globale Schifffahrtsrouten, die Häfen über strategische Engpässe verbinden",
-"dayNight": "Echtzeit-Sonnenterminator zeigt Tag- und Nachtzonen"
+        "tradeRoutes": "Wichtige globale Schifffahrtsrouten, die Häfen über strategische Engpässe verbinden",
+        "dayNight": "Echtzeit-Sonnenterminator zeigt Tag- und Nachtzonen"
         },
         "notes": {
           "timeAffects": "Betrifft: Erdbeben, Wetter, Proteste, Ausfälle"

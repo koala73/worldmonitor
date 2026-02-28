@@ -414,8 +414,8 @@
         "centralBanks": "centralbanker",
         "commodityHubs": "Råvaruhubbar",
         "gulfInvestments": "GCC-investeringar",
-"tradeRoutes": "Handelsrutter",
-"dayNight": "Dag/Natt"
+        "tradeRoutes": "Handelsrutter",
+        "dayNight": "Dag/Natt"
       },
       "layersTitle": "Lager",
       "layerGuide": "Lagerguide",
@@ -509,8 +509,8 @@
           "transportDelays": "Flygplatsförseningar och markstopp (FAA)",
           "naturalEventsFull": "Jordbävningar (USGS) + stormar, bränder, vulkaner, översvämningar (NASA EONET)",
           "waterwaysLabels": "Strategiska chokepointetiketter",
-"tradeRoutes": "Stora globala sjöfartsleder som förbinder hamnar via strategiska flaskhalsar",
-"dayNight": "Solterminatorvisning i realtid med dag- och nattzoner"
+        "tradeRoutes": "Stora globala sjöfartsleder som förbinder hamnar via strategiska flaskhalsar",
+        "dayNight": "Solterminatorvisning i realtid med dag- och nattzoner"
         },
         "notes": {
           "timeAffects": "Påverkar: Jordbävningar, väder, protester, avbrott"

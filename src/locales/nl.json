@@ -414,8 +414,8 @@
         "centralBanks": "Centrale banken",
         "commodityHubs": "Grondstoffenhubs",
         "gulfInvestments": "GCC-investeringen",
-"tradeRoutes": "Handelsroutes",
-"dayNight": "Dag/Nacht"
+        "tradeRoutes": "Handelsroutes",
+        "dayNight": "Dag/Nacht"
       },
       "layersTitle": "Lagen",
       "layerGuide": "Lagengids",
@@ -509,8 +509,8 @@
           "transportDelays": "Luchthavenvertragingen en grondstops (FAA)",
           "naturalEventsFull": "Aardbevingen (USGS) + stormen, branden, vulkanen, overstromingen (NASA EONET)",
           "waterwaysLabels": "Strategische chokepoint-labels",
-"tradeRoutes": "Belangrijke wereldwijde scheepvaartroutes die havens verbinden via strategische knelpunten",
-"dayNight": "Realtime zonneterminator met dag- en nachtzones"
+        "tradeRoutes": "Belangrijke wereldwijde scheepvaartroutes die havens verbinden via strategische knelpunten",
+        "dayNight": "Realtime zonneterminator met dag- en nachtzones"
         },
         "notes": {
           "timeAffects": "Beïnvloedt: aardbevingen, weer, protesten, stroomstoringen"

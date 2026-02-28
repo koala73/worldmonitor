@@ -785,8 +785,8 @@
         "centralBanks": "Banques centrales",
         "commodityHubs": "Centres de matières premières",
         "gulfInvestments": "Investissements du CCG",
-"tradeRoutes": "Routes Commerciales",
-"dayNight": "Jour/Nuit"
+        "tradeRoutes": "Routes Commerciales",
+        "dayNight": "Jour/Nuit"
       },
       "tooltip": {
         "earthquake": "Tremblement de terre",
@@ -878,8 +878,8 @@
           "transportDelays": "Retards à l'aéroport et arrêts au sol (FAA)",
           "naturalEventsFull": "Tremblements de terre (USGS) + tempêtes, incendies, volcans, inondations (NASA EONET)",
           "waterwaysLabels": "Étiquettes de points d'étranglement stratégiques",
-"tradeRoutes": "Principales routes maritimes mondiales reliant les ports via des points de passage stratégiques",
-"dayNight": "Terminateur solaire en temps réel montrant les zones de jour et de nuit"
+        "tradeRoutes": "Principales routes maritimes mondiales reliant les ports via des points de passage stratégiques",
+        "dayNight": "Terminateur solaire en temps réel montrant les zones de jour et de nuit"
         },
         "notes": {
           "timeAffects": "Affecte : tremblements de terre, conditions météorologiques, manifestations, pannes"

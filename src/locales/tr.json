@@ -785,8 +785,8 @@
         "centralBanks": "Merkez Bankalari",
         "commodityHubs": "Emtia Merkezleri",
         "gulfInvestments": "GCC Yatirimlari",
-"tradeRoutes": "Ticaret Rotaları",
-"dayNight": "Gündüz/Gece"
+        "tradeRoutes": "Ticaret Rotaları",
+        "dayNight": "Gündüz/Gece"
       },
       "tooltip": {
         "earthquake": "Deprem",
@@ -878,8 +878,8 @@
           "transportDelays": "Havaalani gecikmeleri ve yer durdurmalari (FAA)",
           "naturalEventsFull": "Depremler (USGS) + firtinalar, yanginlar, yanardaglar, seller (NASA EONET)",
           "waterwaysLabels": "Stratejik darbogaz etiketleri",
-"tradeRoutes": "Limanları stratejik darboğazlar üzerinden bağlayan başlıca küresel deniz yolları",
-"dayNight": "Gündüz ve gece bölgelerini gösteren gerçek zamanlı güneş terminatörü"
+        "tradeRoutes": "Limanları stratejik darboğazlar üzerinden bağlayan başlıca küresel deniz yolları",
+        "dayNight": "Gündüz ve gece bölgelerini gösteren gerçek zamanlı güneş terminatörü"
         },
         "notes": {
           "timeAffects": "Etkiler: Depremler, Hava Durumu, Protestolar, Kesintiler"

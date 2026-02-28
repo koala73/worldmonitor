@@ -785,8 +785,8 @@
         "centralBanks": "央行",
         "commodityHubs": "大宗商品枢纽",
         "gulfInvestments": "GCC投资",
-"tradeRoutes": "贸易航线",
-"dayNight": "昼/夜"
+        "tradeRoutes": "贸易航线",
+        "dayNight": "昼/夜"
       },
       "tooltip": {
         "earthquake": "地震",
@@ -878,8 +878,8 @@
           "transportDelays": "机场延误和地面停航（FAA）",
           "naturalEventsFull": "地震（USGS）+ 风暴、火灾、火山、洪水（NASA EONET）",
           "waterwaysLabels": "战略咽喉要道标签",
-"tradeRoutes": "连接港口并经过战略咽喉要道的全球主要航运通道",
-"dayNight": "实时太阳终结线显示昼夜区域"
+        "tradeRoutes": "连接港口并经过战略咽喉要道的全球主要航运通道",
+        "dayNight": "实时太阳终结线显示昼夜区域"
         },
         "notes": {
           "timeAffects": "影响范围：地震、天气、抗议、中断"

@@ -785,8 +785,8 @@
         "centralBanks": "Ngân hàng Trung ương",
         "commodityHubs": "Trung tâm Hàng hóa",
         "gulfInvestments": "Đầu tư GCC",
-"tradeRoutes": "Tuyến Thương mại",
-"dayNight": "Ngày/Đêm"
+        "tradeRoutes": "Tuyến Thương mại",
+        "dayNight": "Ngày/Đêm"
       },
       "tooltip": {
         "earthquake": "Động đất",
@@ -878,8 +878,8 @@
           "transportDelays": "Chậm trễ sân bay và dừng mặt đất (FAA)",
           "naturalEventsFull": "Động đất (USGS) + bão, cháy, núi lửa, lũ lụt (NASA EONET)",
           "waterwaysLabels": "Nhãn điểm nghẽn chiến lược",
-"tradeRoutes": "Các tuyến vận tải biển chính toàn cầu kết nối các cảng qua các điểm chiến lược",
-"dayNight": "Đường phân chia mặt trời thời gian thực hiển thị vùng ngày và đêm"
+        "tradeRoutes": "Các tuyến vận tải biển chính toàn cầu kết nối các cảng qua các điểm chiến lược",
+        "dayNight": "Đường phân chia mặt trời thời gian thực hiển thị vùng ngày và đêm"
         },
         "notes": {
           "timeAffects": "Ảnh hưởng: Động đất, Thời tiết, Biểu tình, Gián đoạn"

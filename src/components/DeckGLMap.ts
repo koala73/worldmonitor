@@ -3724,15 +3724,25 @@ export class DeckGLMap {
     let sunLng = RA * 180 / Math.PI - GMST;
     sunLng = ((sunLng % 360) + 540) % 360 - 180;
 
-    // Guard against equinox (declination ≈ 0) with practical epsilon
-    const tanDecl = Math.tan(decl);
-    const safeTanDecl = Math.abs(tanDecl) < 1e-3 ? (tanDecl >= 0 ? 1e-3 : -1e-3) : tanDecl;
-
     // Trace terminator line (1° steps for smooth curve at high zoom)
+    const tanDecl = Math.tan(decl);
     const points: [number, number][] = [];
+
+    // Near equinox (|tanDecl| ≈ 0), the terminator is nearly a great circle
+    // through the poles — use a vertical line at the subsolar meridian ±90°
+    if (Math.abs(tanDecl) < 1e-6) {
+      for (let lat = -90; lat <= 90; lat += 1) {
+        points.push([sunLng + 90, lat]);
+      }
+      for (let lat = 90; lat >= -90; lat -= 1) {
+        points.push([sunLng - 90, lat]);
+      }
+      return points;
+    }
+
     for (let lng = -180; lng <= 180; lng += 1) {
       const ha = (lng - sunLng) * Math.PI / 180;
-      const lat = Math.atan(-Math.cos(ha) / safeTanDecl) * 180 / Math.PI;
+      const lat = Math.atan(-Math.cos(ha) / tanDecl) * 180 / Math.PI;
       points.push([lng, lat]);
     }
 
