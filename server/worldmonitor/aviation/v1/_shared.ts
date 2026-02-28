@@ -298,6 +298,12 @@ function aggregateFlights(
   } else if (cancelledPct >= 50 && total >= MIN_FLIGHTS_FOR_CLOSURE) {
     severity = 'major'; delayType = 'ground_stop';
     reason = `${Math.round(cancelledPct)}% flights cancelled`;
+  } else if (cancelledPct >= 20 && total >= MIN_FLIGHTS_FOR_CLOSURE) {
+    severity = 'moderate'; delayType = 'ground_delay';
+    reason = `${Math.round(cancelledPct)}% flights cancelled`;
+  } else if (cancelledPct >= 10 && total >= MIN_FLIGHTS_FOR_CLOSURE) {
+    severity = 'minor'; delayType = 'general';
+    reason = `${Math.round(cancelledPct)}% flights cancelled`;
   } else if (avgDelay > 0) {
     severity = determineSeverity(avgDelay, delayedPct);
     delayType = avgDelay >= 60 ? 'ground_delay' : 'general';
@@ -366,6 +372,11 @@ export async function fetchNotamClosures(
       });
       if (!resp.ok) {
         console.warn(`[Aviation] NOTAM batch ${i / batchSize + 1}: HTTP ${resp.status}`);
+        continue;
+      }
+      const contentType = resp.headers.get('content-type') || '';
+      if (contentType.includes('text/html')) {
+        console.warn(`[Aviation] NOTAM batch ${i / batchSize + 1}: got HTML instead of JSON (API may be down or key invalid)`);
         continue;
       }
       const notams = await resp.json() as IcaoNotam[];

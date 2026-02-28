@@ -25,11 +25,10 @@ import { CHROME_UA } from '../../../_shared/constants';
 import { cachedFetchJson, getCachedJson, setCachedJson } from '../../../_shared/redis';
 
 const FAA_CACHE_KEY = 'aviation:delays:faa:v1';
-const INTL_CACHE_KEY = 'aviation:delays:intl:v1';
-const INTL_LOCK_KEY = 'aviation:delays:intl:lock';
+const INTL_CACHE_KEY = 'aviation:delays:intl:v2';
 const NOTAM_CACHE_KEY = 'aviation:notam:closures:v1';
-const CACHE_TTL = 1800;   // 30 min for FAA, intl, and NOTAM
-const LOCK_TTL = 30;      // 30s lock — enough for AviationStack batch (~8-10s)
+const CACHE_TTL = 1800;      // 30 min for FAA, intl (real), and NOTAM
+const SIM_CACHE_TTL = 300;   // 5 min for simulation fallback — retry sooner
 
 export async function listAirportDelays(
   _ctx: ServerContext,
@@ -89,10 +88,33 @@ export async function listAirportDelays(
     console.warn(`[Aviation] FAA fetch failed: ${err instanceof Error ? err.message : 'unknown'}`);
   }
 
-  // 2. International — with cross-isolate stampede protection
+  // 2. International — check cache first, then fetch with conditional TTL
   let intlAlerts: AirportDelayAlert[] = [];
   try {
-    intlAlerts = await fetchIntlWithLock();
+    const cached = await getCachedJson(INTL_CACHE_KEY);
+    if (cached && typeof cached === 'object' && 'alerts' in (cached as Record<string, unknown>)) {
+      intlAlerts = (cached as { alerts: AirportDelayAlert[] }).alerts;
+    } else {
+      const nonUs = MONITORED_AIRPORTS.filter(a => a.country !== 'USA');
+      const apiKey = process.env.AVIATIONSTACK_API;
+
+      if (!apiKey) {
+        console.log('[Aviation] No AVIATIONSTACK_API key — using simulation');
+        intlAlerts = nonUs.map(a => generateSimulatedDelay(a)).filter(Boolean) as AirportDelayAlert[];
+        await setCachedJson(INTL_CACHE_KEY, { alerts: intlAlerts }, SIM_CACHE_TTL);
+      } else {
+        const avResult = await fetchAviationStackDelays(nonUs);
+        if (!avResult.healthy) {
+          console.warn('[Aviation] AviationStack unhealthy — falling back to simulation');
+          intlAlerts = nonUs.map(a => generateSimulatedDelay(a)).filter(Boolean) as AirportDelayAlert[];
+          await setCachedJson(INTL_CACHE_KEY, { alerts: intlAlerts }, SIM_CACHE_TTL);
+        } else {
+          console.log(`[Aviation] AviationStack OK: ${avResult.alerts.length} real alerts`);
+          intlAlerts = avResult.alerts;
+          await setCachedJson(INTL_CACHE_KEY, { alerts: intlAlerts }, CACHE_TTL);
+        }
+      }
+    }
     console.log(`[Aviation] Intl: ${intlAlerts.length} alerts`);
   } catch (err) {
     console.warn(`[Aviation] Intl fetch failed: ${err instanceof Error ? err.message : 'unknown'}`);
@@ -138,77 +160,3 @@ export async function listAirportDelays(
   return { alerts: allAlerts };
 }
 
-async function fetchIntlWithLock(): Promise<AirportDelayAlert[]> {
-  const cached = await getCachedJson(INTL_CACHE_KEY);
-  if (cached && typeof cached === 'object' && 'alerts' in (cached as Record<string, unknown>)) {
-    const alerts = (cached as { alerts: AirportDelayAlert[] }).alerts;
-    console.log(`[Aviation] Intl cache HIT: ${alerts.length} alerts`);
-    return alerts;
-  }
-
-  console.log('[Aviation] Intl cache MISS — acquiring lock');
-  const gotLock = await tryAcquireLock(INTL_LOCK_KEY, LOCK_TTL);
-
-  if (!gotLock) {
-    console.log('[Aviation] Lock held by another isolate — waiting 3s');
-    await new Promise(r => setTimeout(r, 3_000));
-    const retry = await getCachedJson(INTL_CACHE_KEY);
-    if (retry && typeof retry === 'object' && 'alerts' in (retry as Record<string, unknown>)) {
-      const alerts = (retry as { alerts: AirportDelayAlert[] }).alerts;
-      console.log(`[Aviation] Intl cache HIT after wait: ${alerts.length} alerts`);
-      return alerts;
-    }
-    console.log('[Aviation] Still no cache after wait — falling back to simulation');
-    const nonUs = MONITORED_AIRPORTS.filter(a => a.country !== 'USA');
-    return nonUs.map(a => generateSimulatedDelay(a)).filter(Boolean) as AirportDelayAlert[];
-  }
-
-  console.log('[Aviation] Lock acquired — fetching AviationStack');
-  try {
-    const nonUs = MONITORED_AIRPORTS.filter(a => a.country !== 'USA');
-    const apiKey = process.env.AVIATIONSTACK_API;
-
-    let alerts: AirportDelayAlert[];
-    if (!apiKey) {
-      console.log('[Aviation] No API key — using simulation');
-      alerts = nonUs.map(a => generateSimulatedDelay(a)).filter(Boolean) as AirportDelayAlert[];
-    } else {
-      const avResult = await fetchAviationStackDelays(nonUs);
-      if (!avResult.healthy) {
-        console.warn('[Aviation] AviationStack unhealthy — falling back to simulation');
-        alerts = nonUs.map(a => generateSimulatedDelay(a)).filter(Boolean) as AirportDelayAlert[];
-      } else {
-        alerts = avResult.alerts;
-      }
-    }
-
-    await setCachedJson(INTL_CACHE_KEY, { alerts }, CACHE_TTL);
-    return alerts;
-  } catch (err) {
-    console.warn(`[Aviation] Intl fetch failed: ${err instanceof Error ? err.message : 'unknown'}`);
-    await setCachedJson(INTL_CACHE_KEY, { alerts: [] }, 120);
-    return [];
-  }
-}
-
-async function tryAcquireLock(lockKey: string, ttlSeconds: number): Promise<boolean> {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return true; // No Redis → just proceed (single instance)
-
-  try {
-    const resp = await fetch(
-      `${url}/set/${encodeURIComponent(lockKey)}/1/EX/${ttlSeconds}/NX`,
-      {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        signal: AbortSignal.timeout(2_000),
-      }
-    );
-    if (!resp.ok) return true; // Redis error → proceed rather than block
-    const data = await resp.json() as { result?: string | null };
-    return data.result === 'OK'; // NX returns OK if set, null if already exists
-  } catch {
-    return true; // Network error → proceed
-  }
-}
