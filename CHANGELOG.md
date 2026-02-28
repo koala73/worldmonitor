@@ -5,6 +5,7 @@ All notable changes to World Monitor are documented here.
 ## [2.5.20] - 2026-02-27
 
 ### Added
+
 - **Edge caching**: Complete Cloudflare edge cache tier coverage with degraded-response policy (#484)
 - **Edge caching**: Cloudflare edge caching for proxy.worldmonitor.app (#478) and api.worldmonitor.app (#471)
 - **Edge caching**: Tiered edge Cache-Control aligned to upstream TTLs (#474)
@@ -15,6 +16,7 @@ All notable changes to World Monitor are documented here.
 - **Settings**: Redesign settings window with VS Code-style sidebar layout (#461)
 
 ### Fixed
+
 - **Commodities panel**: Was showing stocks instead of commodities — circuit breaker SWR returned stale data from a different call when cacheTtlMs=0 (#483)
 - **Analytics**: Use greedy regex in PostHog ingest rewrites (#481)
 - **Sentry**: Add noise filters for 4 unresolved issues (#479)
@@ -30,6 +32,7 @@ All notable changes to World Monitor are documented here.
 - **RSS/HLS**: RSS feed repairs, HLS native playback, summarization cache fix (#452)
 
 ### Performance
+
 - **AIS proxy**: Increase AIS snapshot edge TTL from 2s to 10s (#482)
 
 ---
