@@ -2,6 +2,62 @@
 
 All notable changes to World Monitor are documented here.
 
+## [Unreleased]
+
+### Added
+- **Telegram OSINT intelligence feed**: 27 curated Telegram channels polled via GramJS MTProto client on Railway relay. 60-second poll cycle with per-channel 15s timeouts, FLOOD_WAIT early-stop, 3-minute cycle timeout, and stuck-poll mutex guard. Messages deduplicated by ID, topic-classified (breaking/conflict/alerts/osint/politics), served via Vercel edge proxy (#550)
+- **OREF rocket alert integration**: Israel Home Front Command siren data polled via `curl` through residential proxy on Railway (Akamai WAF blocks datacenter TLS). 24-hour history bootstrap on startup, wave detection, Hebrew-to-English translation. CII boost up to +50 for Israel (#545, #559, #582)
+- **GPS/GNSS jamming map layer**: ADS-B transponder data from gpsjam.org rendered as H3 hex grid cells. Medium (2–10% interference, amber) and high (>10%, red) classification across 12 conflict regions. CII security scoring up to +35 points per country (#570)
+- **NOTAM closure detection**: ICAO NOTAM API queries for 46 MENA airports detect airport/airspace closures via Q-code matching and free-text regex. Closures override existing delay alerts with `severe/closure` classification (#583, #599)
+- **AviationStack integration**: International airport delay monitoring for 114 airports via AviationStack API, computing cancellation rates and average delays from flight records (#552)
+- **Iran Attacks map layer**: Dedicated conflict layer for Iran-Israel escalation events with severity badges, related event correlation, and CII integration (#511, #547, #549)
+- **Iran/Attacks webcam tab**: Dedicated 2×2 grid with Tehran, Tel Aviv, and Jerusalem feeds for real-time visual monitoring during escalation events (#569, #572, #601)
+- **Strategic Risk Score**: Composite 0–100 geopolitical risk metric blending convergence (30%), CII top-5 (50%), infrastructure cascades (20%), theater boost (0–25), and breaking news boost (0–15). Alert fusion merges events within 2h/200km windows (#584)
+- **Security advisories → CII integration**: Government travel advisory levels (DNT/Reconsider/Caution) feed into CII as score boosts (+5 to +15) and floors (DNT forces CII ≥ 60). Multi-source consensus bonuses (#579)
+- **RT (Russia Today)**: HLS native streaming channel + RSS feeds added. RT streams exclusively via HLS since it is banned from YouTube (#585, #586)
+- **HLS streaming on web**: HLS native `<video>` playback enabled for web platform (previously desktop-only), covering 10 channels (#586)
+- **Day/night solar terminator**: Map overlay showing real-time day/night boundary across the globe (#529)
+- **Breaking news audio alerts**: Active alert banner with audio notification for critical/high-severity RSS items (#508)
+- **CBC News channel**: Added to optional North America live news channels (#502)
+- **Axios RSS feed**: Added api.axios.com/feed as US news source (#494)
+- **Polish TV livestreams**: Added Polish-language live streams (#488)
+- **Korean localization**: Full Korean (한국어) translation (#487)
+- **Server-side military bases**: 125K military base dataset with server-side caching and rate limiting (#496)
+- **AVIATIONSTACK_API**: Added to desktop settings page for non-US airport delay configuration (#553)
+- **Iran events seed script**: Script and data for bootstrapping Iran conflict event cache (#575)
+- **Panel resize freedom**: User-adjustable panel heights with drag handles (#489)
+
+### Fixed
+- **Polymarket cache stampede**: In-flight request deduplication, concurrent upstream limiter (max 3), queue backpressure (max 20 queued), response limit slicing, 10-minute cache TTL, and CDN bypass for fresh data (#519, #513, #568, #592, #593)
+- **Telegram reliability**: 60s startup delay prevents AUTH_KEY_DUPLICATED on container restarts. Latched AUTH_KEY_DUPLICATED stops retry spam. Graceful shutdown with poll concurrency guard. Per-channel timeouts prevent hangs. Relay auth headers on edge function (#531, #539, #543, #562, #578, #587, #590)
+- **CII Gulf misattribution**: Multi-match bounding box disambiguation resolves strikes incorrectly attributed to Gulf countries (#564)
+- **Aviation pipeline**: Query all airports instead of rotating batch; replace broken lock mechanism with direct cache; add cancellation severity tiers; always show all monitored airports on map (#557, #591, #603)
+- **OREF security**: Use `execFileSync` instead of shell interpolation for curl calls to prevent injection (#546)
+- **Webcam channel fixes**: Fix broken Europe channel handles, replace 7+ stale fallback video IDs, fix eNCA handle, remove VTC NOW, fix CTI News (#535, #538, #541, #604)
+- **Geo hub index**: Expand with 60+ missing world locations for better headline geolocation (#528)
+- **Focal point attribution**: Theater military activity attributed to target nations, not just operator nations (#525)
+- **Breaking news alerts**: Remove SESSION_START gate that blocked pre-existing breaking news; compound escalation for military action + geopolitical targets (#533, #548)
+- **Threat classifier**: Stagger AI classification requests to avoid Groq 429; fill keyword gaps for Iran attack headlines; add military/conflict bridge keywords (#514, #517, #520, #521)
+- **Rate limiting**: Increase sliding window to 300 req/min; resolve bootstrap 401 and 429 on page init (#512, #515)
+- **Download banner**: Moved to bottom-right to reduce visual interference (#536)
+- **Sentry noise**: Guard YT player methods, filter GM/InvalidState noise, guard setView against invalid presets, filter translateNotifyError, null-filename leak fix, Android OEM WebView bridge injection errors (#510, #561, #580, #602)
+- **Relay stability**: Replace smart quotes crashing relay on startup; block rsshub.app with 410 Gone; railpack.json replaces nixpacks.toml for curl; upstreamWs→upstreamSocket in graceful shutdown (#526, #563, #565, #571)
+- **CDN cache busting**: Multiple cache-bust param increments for fresh Iran event data after Redis updates (#524, #532, #544)
+- **i18n**: Rename OREF Sirens panel to Israel Sirens (#556)
+- **YouTube proxy**: Move scraping to Railway relay; lazy-load node modules; correct relay auth headers (#554, #555)
+- **Geo matching**: Tokenization-based keyword matching prevents false positives (e.g., "Iran" matching "Ukraine") (#503)
+- **Bootstrap hydration**: Harden hydration cache + polling review fixes (#504)
+
+### Performance
+- **Military bases**: Debounce base fetches + upgrade edge cache to static tier (#497)
+- **Bootstrap optimization**: Consolidated bootstrap endpoint + polling optimization reduces initial load waterfall (#495)
+
+### Changed
+- **Telegram channel list**: Remove nexta_live, air_alert_ua; add wfwitness (#600)
+- **Debug cleanup**: Strip 61 debug console.log calls from 20 service files (#501)
+
+---
+
 ## [2.5.20] - 2026-02-27
 
 ### Added
