@@ -41,7 +41,7 @@ export async function checkRateLimit(
   const ip = getClientIp(request);
 
   try {
-    const { success, limit, remaining, reset } = await rl.limit(ip);
+    const { success, limit, reset } = await rl.limit(ip);
 
     if (!success) {
       return new Response(JSON.stringify({ error: 'Too many requests' }), {
