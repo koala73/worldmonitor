@@ -377,7 +377,32 @@
         "status": "الحالة",
         "duration": "المدة"
       },
-      "worldMonitor": "مراقب العالم"
+      "worldMonitor": {
+        "tabLabel": "مراقب العالم",
+        "heroTitle": "مفتاح واحد. كل شيء مُتضمَّن.",
+        "heroDescription": "ترخيص واحد من مراقب العالم يُغني عن كل مفتاح API ومزوّد ذكاء اصطناعي كنت ستحتاج لتهيئته بنفسك. ملخصات ذكية، استخبارات آنية، بيانات أسواق، تتبع نزاعات، كشف حرائق، صور أقمار صناعية — كل شيء مُدار، بدون أي إعداد.",
+        "apiKey": {
+          "title": "مفتاح الترخيص",
+          "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
+          "description": "ألصق مفتاح الترخيص لفتح جميع مصادر البيانات وميزات الذكاء الاصطناعي فوراً.",
+          "statusValid": "مُرخَّص",
+          "statusMissing": "بدون ترخيص"
+        },
+        "dividerOr": "أو",
+        "register": {
+          "title": "احجز مكانك",
+          "description": "نحن نستعد لإطلاق تراخيص مراقب العالم. سجّل الآن وكن أول من يحصل عليها — المشتركون الأوائل يحصلون على أولوية الوصول وأسعار المؤسسين.",
+          "emailPlaceholder": "بريدك@الإلكتروني.com",
+          "submitBtn": "انضم لقائمة الانتظار",
+          "submitting": "جارٍ الإرسال...",
+          "success": "أنت في القائمة! سنُخطرك أولاً.",
+          "alreadyRegistered": "أنت مسجّل بالفعل في قائمة الانتظار.",
+          "error": "فشل التسجيل. يُرجى المحاولة مرة أخرى.",
+          "invalidEmail": "يُرجى إدخال عنوان بريد إلكتروني صالح."
+        },
+        "byokTitle": "أو استخدم مفاتيحك الخاصة",
+        "byokDescription": "تفضّل التحكم الكامل؟ انتقل إلى تبويبتَي مفاتيح API ومزوّدي الذكاء الاصطناعي لتهيئة كل مصدر بيانات على حدة."
+      }
     },
     "countryIntel": {
       "identifying": "جارٍ تحديد الدولة...",
@@ -1358,12 +1383,57 @@
       "infoTooltip": "<strong>OREF Sirens</strong><br>Real-time rocket and missile siren alerts from Israel Home Front Command (oref.org.il).<br><br>Data is polled every 10 seconds via a proxy relay. A pulsing red indicator means active sirens are sounding."
     },
     "supplyChain": {
-      "title": "سلسلة التوريد"
+      "title": "سلسلة التوريد",
+      "chokepoints": "نقاط الاختناق",
+      "shipping": "الشحن",
+      "minerals": "المعادن",
+      "noChokepoints": "جارٍ تحميل بيانات نقاط الاختناق...",
+      "noShipping": "بيانات أسعار الشحن غير متوفرة",
+      "noMinerals": "جارٍ تحميل بيانات المعادن...",
+      "fredKeyMissing": "مفتاح FRED API مطلوب لأسعار الشحن — أضفه في الإعدادات. نقاط الاختناق والمعادن متاحة بدون مفتاح.",
+      "upstreamUnavailable": "بيانات سلسلة التوريد غير متاحة مؤقتاً — عرض البيانات المخزّنة مؤقتاً",
+      "spikeAlert": "تم رصد ارتفاع حاد — المعدل أعلى بكثير من متوسط 52 أسبوعاً (أسبوعي)",
+      "warnings": "تحذير(ات)",
+      "mineral": "المعدن",
+      "topProducers": "أكبر المنتجين",
+      "risk": "المخاطر",
+      "sources": "FRED / NGA / USGS"
     },
     "giving": {
-      "title": "العطاء الخيري"
+      "title": "العطاء الخيري",
+      "activityIndex": "مؤشر النشاط",
+      "trend": "الاتجاه",
+      "estDailyFlow": "التدفق اليومي التقديري",
+      "cryptoDaily": "العملات الرقمية اليومية",
+      "tabs": {
+        "platforms": "المنصات",
+        "categories": "الفئات",
+        "crypto": "العملات الرقمية",
+        "institutional": "المؤسسي"
+      },
+      "platform": "المنصة",
+      "dailyVol": "الحجم اليومي",
+      "velocity": "السرعة",
+      "freshness": "البيانات",
+      "category": "الفئة",
+      "share": "الحصة",
+      "trending": "الاتجاه",
+      "dailyInflow": "التدفق خلال 24 ساعة",
+      "wallets": "المحافظ",
+      "ofTotal": "% من الإجمالي",
+      "topReceivers": "أكبر المستقبلين",
+      "oecdOda": "المساعدات الإنمائية OECD",
+      "cafIndex": "مؤشر CAF",
+      "candidGrants": "منح Candid",
+      "dataLag": "تأخر البيانات",
+      "infoTooltip": "<strong>مؤشر العطاء العالمي</strong> مؤشر مركّب يتتبع العطاء الشخصي عبر منصات التمويل الجماعي ومحافظ العملات الرقمية.<ul><li><strong>المنصات</strong>: عينات من حملات GoFundMe وGlobalGiving وJustGiving</li><li><strong>العملات الرقمية</strong>: تدفقات محافظ خيرية على البلوكتشين (Endaoment, Giving Block)</li><li><strong>المؤسسي</strong>: المساعدات الإنمائية OECD، مؤشر CAF للعطاء العالمي، منح Candid</li></ul>المؤشر اتجاهي (ليس مبالغ دقيقة). يجمع بين عينات حية وتقارير سنوية منشورة."
     },
-    "breakingNews": "أخبار عاجلة"
+    "breakingNews": {
+      "critical": "حرج",
+      "high": "عالٍ",
+      "dismiss": "إغلاق",
+      "enableNotifications": "تفعيل إشعارات سطح المكتب"
+    }
   },
   "popups": {
     "startDate": "تاريخ البدء",
