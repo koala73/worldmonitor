@@ -63,8 +63,7 @@ export class LiveWebcamsPanel extends Panel {
   private isIdle = false;
 
   constructor() {
-    super({ id: 'live-webcams', title: t('panels.liveWebcams') });
-    this.element.classList.add('panel-wide');
+    super({ id: 'live-webcams', title: t('panels.liveWebcams'), className: 'panel-wide' });
     this.createToolbar();
     this.setupIntersectionObserver();
     this.setupIdleDetection();

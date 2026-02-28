@@ -33,6 +33,7 @@ function savePanelSpan(panelId: string, span: number): void {
 const PANEL_COL_SPANS_KEY = 'worldmonitor-panel-col-spans';
 const ROW_RESIZE_STEP_PX = 80;
 const COL_RESIZE_STEP_PX = 80;
+const PANELS_GRID_MIN_TRACK_PX = 280;
 
 function loadPanelColSpans(): Record<string, number> {
   try {
@@ -49,21 +50,91 @@ function savePanelColSpan(panelId: string, span: number): void {
   localStorage.setItem(PANEL_COL_SPANS_KEY, JSON.stringify(spans));
 }
 
+function clearPanelColSpan(panelId: string): void {
+  const spans = loadPanelColSpans();
+  if (!(panelId in spans)) return;
+  delete spans[panelId];
+  if (Object.keys(spans).length === 0) {
+    localStorage.removeItem(PANEL_COL_SPANS_KEY);
+    return;
+  }
+  localStorage.setItem(PANEL_COL_SPANS_KEY, JSON.stringify(spans));
+}
+
+function getDefaultColSpan(element: HTMLElement): number {
+  return element.classList.contains('panel-wide') ? 2 : 1;
+}
+
 function getColSpan(element: HTMLElement): number {
   if (element.classList.contains('col-span-3')) return 3;
   if (element.classList.contains('col-span-2')) return 2;
-  return 1;
+  if (element.classList.contains('col-span-1')) return 1;
+  return getDefaultColSpan(element);
 }
 
-function deltaToColSpan(startSpan: number, deltaX: number): number {
+function getGridColumnCount(element: HTMLElement): number {
+  const grid = element.closest('.panels-grid') as HTMLElement | null;
+  if (!grid) return 3;
+  const style = window.getComputedStyle(grid);
+  const template = style.gridTemplateColumns;
+  if (!template || template === 'none') return 3;
+
+  if (template.includes('repeat(')) {
+    const repeatCountMatch = template.match(/repeat\(\s*(\d+)\s*,/i);
+    if (repeatCountMatch) {
+      const parsed = Number.parseInt(repeatCountMatch[1] ?? '0', 10);
+      if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    }
+
+    // For repeat(auto-fill/auto-fit, minmax(...)), infer count from rendered width.
+    const autoRepeatMatch = template.match(/repeat\(\s*auto-(fill|fit)\s*,/i);
+    if (autoRepeatMatch) {
+      const gap = Number.parseFloat(style.columnGap || '0') || 0;
+      const width = grid.getBoundingClientRect().width;
+      if (width > 0) {
+        return Math.max(1, Math.floor((width + gap) / (PANELS_GRID_MIN_TRACK_PX + gap)));
+      }
+    }
+  }
+
+  const columns = template.trim().split(/\s+/).filter(Boolean);
+  return columns.length > 0 ? columns.length : 3;
+}
+
+function getMaxColSpan(element: HTMLElement): number {
+  return Math.max(1, Math.min(3, getGridColumnCount(element)));
+}
+
+function clampColSpan(span: number, maxSpan: number): number {
+  return Math.max(1, Math.min(maxSpan, span));
+}
+
+function persistPanelColSpan(panelId: string, element: HTMLElement): void {
+  const maxSpan = getMaxColSpan(element);
+  const naturalSpan = clampColSpan(getDefaultColSpan(element), maxSpan);
+  const currentSpan = clampColSpan(getColSpan(element), maxSpan);
+  if (currentSpan === naturalSpan) {
+    element.classList.remove('col-span-1', 'col-span-2', 'col-span-3');
+    clearPanelColSpan(panelId);
+    return;
+  }
+  setColSpanClass(element, currentSpan);
+  savePanelColSpan(panelId, currentSpan);
+}
+
+function deltaToColSpan(startSpan: number, deltaX: number, maxSpan = 3): number {
   const spanDelta = deltaX > 0
     ? Math.floor(deltaX / COL_RESIZE_STEP_PX)
     : Math.ceil(deltaX / COL_RESIZE_STEP_PX);
-  return Math.max(1, Math.min(3, startSpan + spanDelta));
+  return clampColSpan(startSpan + spanDelta, maxSpan);
+}
+
+function clearColSpanClass(element: HTMLElement): void {
+  element.classList.remove('col-span-1', 'col-span-2', 'col-span-3');
 }
 
 function setColSpanClass(element: HTMLElement, span: number): void {
-  element.classList.remove('col-span-1', 'col-span-2', 'col-span-3');
+  clearColSpanClass(element);
   element.classList.add(`col-span-${span}`);
 }
 
@@ -105,13 +176,20 @@ export class Panel {
   private onTouchEnd: (() => void) | null = null;
   private onTouchCancel: (() => void) | null = null;
   private onDocMouseUp: (() => void) | null = null;
+  private onRowMouseMove: ((e: MouseEvent) => void) | null = null;
+  private onRowMouseUp: (() => void) | null = null;
+  private onRowWindowBlur: (() => void) | null = null;
   private colResizeHandle: HTMLElement | null = null;
   private isColResizing = false;
   private startX = 0;
   private startColSpan = 1;
+  private onColMouseMove: ((e: MouseEvent) => void) | null = null;
+  private onColMouseUp: (() => void) | null = null;
+  private onColWindowBlur: (() => void) | null = null;
   private onColTouchMove: ((e: TouchEvent) => void) | null = null;
   private onColTouchEnd: (() => void) | null = null;
   private onColTouchCancel: (() => void) | null = null;
+  private colSpanReconcileRaf: number | null = null;
   private readonly contentDebounceMs = 150;
   private pendingContentHtml: string | null = null;
   private contentDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -205,17 +283,106 @@ export class Panel {
     }
 
     // Restore saved col-span
-    const savedColSpans = loadPanelColSpans();
-    const savedColSpan = savedColSpans[this.panelId];
-    if (savedColSpan && savedColSpan >= 1) {
-      setColSpanClass(this.element, savedColSpan);
-    }
+    this.restoreSavedColSpan();
+    this.reconcileColSpanAfterAttach();
 
     this.showLoading();
   }
 
+  private restoreSavedColSpan(): void {
+    const savedColSpans = loadPanelColSpans();
+    const savedColSpan = savedColSpans[this.panelId];
+    if (typeof savedColSpan === 'number' && Number.isInteger(savedColSpan) && savedColSpan >= 1) {
+      const naturalSpan = getDefaultColSpan(this.element);
+      if (savedColSpan === naturalSpan) {
+        clearColSpanClass(this.element);
+        clearPanelColSpan(this.panelId);
+        return;
+      }
+
+      const maxSpan = getMaxColSpan(this.element);
+      const clampedSavedSpan = clampColSpan(savedColSpan, maxSpan);
+      setColSpanClass(this.element, clampedSavedSpan);
+    } else if (savedColSpan !== undefined) {
+      clearPanelColSpan(this.panelId);
+    }
+  }
+
+  private reconcileColSpanAfterAttach(attempts = 3): void {
+    if (this.colSpanReconcileRaf !== null) {
+      cancelAnimationFrame(this.colSpanReconcileRaf);
+      this.colSpanReconcileRaf = null;
+    }
+
+    const tryReconcile = (remaining: number) => {
+      if (!this.element.isConnected || !this.element.parentElement) {
+        if (remaining <= 0) return;
+        this.colSpanReconcileRaf = requestAnimationFrame(() => tryReconcile(remaining - 1));
+        return;
+      }
+      this.colSpanReconcileRaf = null;
+      this.restoreSavedColSpan();
+    };
+
+    tryReconcile(attempts);
+  }
+
+  private addRowTouchDocumentListeners(): void {
+    if (this.onTouchMove) {
+      document.addEventListener('touchmove', this.onTouchMove, { passive: false });
+    }
+    if (this.onTouchEnd) {
+      document.addEventListener('touchend', this.onTouchEnd);
+    }
+    if (this.onTouchCancel) {
+      document.addEventListener('touchcancel', this.onTouchCancel);
+    }
+  }
+
+  private removeRowTouchDocumentListeners(): void {
+    if (this.onTouchMove) {
+      document.removeEventListener('touchmove', this.onTouchMove);
+    }
+    if (this.onTouchEnd) {
+      document.removeEventListener('touchend', this.onTouchEnd);
+    }
+    if (this.onTouchCancel) {
+      document.removeEventListener('touchcancel', this.onTouchCancel);
+    }
+  }
+
   private setupResizeHandlers(): void {
     if (!this.resizeHandle) return;
+
+    this.onRowMouseMove = (e: MouseEvent) => {
+      if (!this.isResizing) return;
+      const deltaY = e.clientY - this.startY;
+      setSpanClass(this.element, deltaToRowSpan(this.startRowSpan, deltaY));
+    };
+
+    this.onRowMouseUp = () => {
+      if (!this.isResizing) return;
+      this.isResizing = false;
+      this.element.classList.remove('resizing');
+      delete this.element.dataset.resizing;
+      document.body.classList.remove('panel-resize-active');
+      this.resizeHandle?.classList.remove('active');
+      if (this.onRowMouseMove) {
+        document.removeEventListener('mousemove', this.onRowMouseMove);
+      }
+      if (this.onRowMouseUp) {
+        document.removeEventListener('mouseup', this.onRowMouseUp);
+      }
+      if (this.onRowWindowBlur) {
+        window.removeEventListener('blur', this.onRowWindowBlur);
+      }
+
+      const currentSpan = getRowSpan(this.element);
+      savePanelSpan(this.panelId, currentSpan);
+      trackPanelResized(this.panelId, currentSpan);
+    };
+
+    this.onRowWindowBlur = () => this.onRowMouseUp?.();
 
     const onMouseDown = (e: MouseEvent) => {
       e.preventDefault();
@@ -227,36 +394,16 @@ export class Panel {
       this.element.classList.add('resizing');
       document.body.classList.add('panel-resize-active');
       this.resizeHandle?.classList.add('active');
-      document.addEventListener('mousemove', onMouseMove);
-      document.addEventListener('mouseup', onMouseUp);
-      window.addEventListener('blur', onWindowBlur);
+      if (this.onRowMouseMove) {
+        document.addEventListener('mousemove', this.onRowMouseMove);
+      }
+      if (this.onRowMouseUp) {
+        document.addEventListener('mouseup', this.onRowMouseUp);
+      }
+      if (this.onRowWindowBlur) {
+        window.addEventListener('blur', this.onRowWindowBlur);
+      }
     };
-
-    const onMouseMove = (e: MouseEvent) => {
-      if (!this.isResizing) return;
-      const deltaY = e.clientY - this.startY;
-      setSpanClass(this.element, deltaToRowSpan(this.startRowSpan, deltaY));
-    };
-
-    const onMouseUp = () => {
-      if (!this.isResizing) return;
-      this.isResizing = false;
-      this.element.classList.remove('resizing');
-      delete this.element.dataset.resizing;
-      document.body.classList.remove('panel-resize-active');
-      this.resizeHandle?.classList.remove('active');
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
-      window.removeEventListener('blur', onWindowBlur);
-
-      const currentSpan = this.element.classList.contains('span-4') ? 4 :
-        this.element.classList.contains('span-3') ? 3 :
-          this.element.classList.contains('span-2') ? 2 : 1;
-      savePanelSpan(this.panelId, currentSpan);
-      trackPanelResized(this.panelId, currentSpan);
-    };
-
-    const onWindowBlur = () => onMouseUp();
 
     this.resizeHandle.addEventListener('mousedown', onMouseDown);
 
@@ -278,6 +425,8 @@ export class Panel {
       this.element.dataset.resizing = 'true';
       document.body.classList.add('panel-resize-active');
       this.resizeHandle?.classList.add('active');
+      this.removeRowTouchDocumentListeners();
+      this.addRowTouchDocumentListeners();
     }, { passive: false });
 
     // Use bound handlers so they can be removed in destroy()
@@ -290,15 +439,17 @@ export class Panel {
     };
 
     this.onTouchEnd = () => {
-      if (!this.isResizing) return;
+      if (!this.isResizing) {
+        this.removeRowTouchDocumentListeners();
+        return;
+      }
       this.isResizing = false;
       this.element.classList.remove('resizing');
       delete this.element.dataset.resizing;
       document.body.classList.remove('panel-resize-active');
       this.resizeHandle?.classList.remove('active');
-      const currentSpan = this.element.classList.contains('span-4') ? 4 :
-        this.element.classList.contains('span-3') ? 3 :
-          this.element.classList.contains('span-2') ? 2 : 1;
+      this.removeRowTouchDocumentListeners();
+      const currentSpan = getRowSpan(this.element);
       savePanelSpan(this.panelId, currentSpan);
       trackPanelResized(this.panelId, currentSpan);
     };
@@ -313,53 +464,87 @@ export class Panel {
       }
     };
 
-    document.addEventListener('touchmove', this.onTouchMove, { passive: false });
-    document.addEventListener('touchend', this.onTouchEnd);
-    document.addEventListener('touchcancel', this.onTouchCancel);
     document.addEventListener('mouseup', this.onDocMouseUp);
+  }
+
+  private addColTouchDocumentListeners(): void {
+    if (this.onColTouchMove) {
+      document.addEventListener('touchmove', this.onColTouchMove, { passive: false });
+    }
+    if (this.onColTouchEnd) {
+      document.addEventListener('touchend', this.onColTouchEnd);
+    }
+    if (this.onColTouchCancel) {
+      document.addEventListener('touchcancel', this.onColTouchCancel);
+    }
+  }
+
+  private removeColTouchDocumentListeners(): void {
+    if (this.onColTouchMove) {
+      document.removeEventListener('touchmove', this.onColTouchMove);
+    }
+    if (this.onColTouchEnd) {
+      document.removeEventListener('touchend', this.onColTouchEnd);
+    }
+    if (this.onColTouchCancel) {
+      document.removeEventListener('touchcancel', this.onColTouchCancel);
+    }
   }
 
   private setupColResizeHandlers(): void {
     if (!this.colResizeHandle) return;
 
-    const onMouseDown = (e: MouseEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      this.isColResizing = true;
-      this.startX = e.clientX;
-      this.startColSpan = getColSpan(this.element);
-      this.element.dataset.resizing = 'true';
-      this.element.classList.add('col-resizing');
-      document.body.classList.add('panel-resize-active');
-      this.colResizeHandle?.classList.add('active');
-      document.addEventListener('mousemove', onMouseMove);
-      document.addEventListener('mouseup', onMouseUp);
-      window.addEventListener('blur', onWindowBlur);
-    };
-
-    const onMouseMove = (e: MouseEvent) => {
+    this.onColMouseMove = (e: MouseEvent) => {
       if (!this.isColResizing) return;
       const deltaX = e.clientX - this.startX;
-      setColSpanClass(this.element, deltaToColSpan(this.startColSpan, deltaX));
+      const maxSpan = getMaxColSpan(this.element);
+      setColSpanClass(this.element, deltaToColSpan(this.startColSpan, deltaX, maxSpan));
     };
 
-    const onMouseUp = () => {
+    this.onColMouseUp = () => {
       if (!this.isColResizing) return;
       this.isColResizing = false;
       this.element.classList.remove('col-resizing');
       delete this.element.dataset.resizing;
       document.body.classList.remove('panel-resize-active');
       this.colResizeHandle?.classList.remove('active');
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
-      window.removeEventListener('blur', onWindowBlur);
-
-      const span = this.element.classList.contains('col-span-3') ? 3
-        : this.element.classList.contains('col-span-2') ? 2 : 1;
-      savePanelColSpan(this.panelId, span);
+      if (this.onColMouseMove) {
+        document.removeEventListener('mousemove', this.onColMouseMove);
+      }
+      if (this.onColMouseUp) {
+        document.removeEventListener('mouseup', this.onColMouseUp);
+      }
+      if (this.onColWindowBlur) {
+        window.removeEventListener('blur', this.onColWindowBlur);
+      }
+      const finalSpan = clampColSpan(getColSpan(this.element), getMaxColSpan(this.element));
+      if (finalSpan !== this.startColSpan) {
+        persistPanelColSpan(this.panelId, this.element);
+      }
     };
 
-    const onWindowBlur = () => onMouseUp();
+    this.onColWindowBlur = () => this.onColMouseUp?.();
+
+    const onMouseDown = (e: MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.isColResizing = true;
+      this.startX = e.clientX;
+      this.startColSpan = clampColSpan(getColSpan(this.element), getMaxColSpan(this.element));
+      this.element.dataset.resizing = 'true';
+      this.element.classList.add('col-resizing');
+      document.body.classList.add('panel-resize-active');
+      this.colResizeHandle?.classList.add('active');
+      if (this.onColMouseMove) {
+        document.addEventListener('mousemove', this.onColMouseMove);
+      }
+      if (this.onColMouseUp) {
+        document.addEventListener('mouseup', this.onColMouseUp);
+      }
+      if (this.onColWindowBlur) {
+        window.addEventListener('blur', this.onColWindowBlur);
+      }
+    };
 
     this.colResizeHandle.addEventListener('mousedown', onMouseDown);
 
@@ -374,11 +559,13 @@ export class Panel {
       if (!touch) return;
       this.isColResizing = true;
       this.startX = touch.clientX;
-      this.startColSpan = getColSpan(this.element);
+      this.startColSpan = clampColSpan(getColSpan(this.element), getMaxColSpan(this.element));
       this.element.dataset.resizing = 'true';
       this.element.classList.add('col-resizing');
       document.body.classList.add('panel-resize-active');
       this.colResizeHandle?.classList.add('active');
+      this.removeColTouchDocumentListeners();
+      this.addColTouchDocumentListeners();
     }, { passive: false });
 
     this.onColTouchMove = (e: TouchEvent) => {
@@ -386,26 +573,27 @@ export class Panel {
       const touch = e.touches[0];
       if (!touch) return;
       const deltaX = touch.clientX - this.startX;
-      setColSpanClass(this.element, deltaToColSpan(this.startColSpan, deltaX));
+      const maxSpan = getMaxColSpan(this.element);
+      setColSpanClass(this.element, deltaToColSpan(this.startColSpan, deltaX, maxSpan));
     };
 
     this.onColTouchEnd = () => {
-      if (!this.isColResizing) return;
+      if (!this.isColResizing) {
+        this.removeColTouchDocumentListeners();
+        return;
+      }
       this.isColResizing = false;
       this.element.classList.remove('col-resizing');
       delete this.element.dataset.resizing;
       document.body.classList.remove('panel-resize-active');
       this.colResizeHandle?.classList.remove('active');
-
-      const span = this.element.classList.contains('col-span-3') ? 3
-        : this.element.classList.contains('col-span-2') ? 2 : 1;
-      savePanelColSpan(this.panelId, span);
+      this.removeColTouchDocumentListeners();
+      const finalSpan = clampColSpan(getColSpan(this.element), getMaxColSpan(this.element));
+      if (finalSpan !== this.startColSpan) {
+        persistPanelColSpan(this.panelId, this.element);
+      }
     };
     this.onColTouchCancel = this.onColTouchEnd;
-
-    document.addEventListener('touchmove', this.onColTouchMove, { passive: false });
-    document.addEventListener('touchend', this.onColTouchEnd);
-    document.addEventListener('touchcancel', this.onColTouchCancel);
   }
 
 
@@ -579,8 +767,8 @@ export class Panel {
   }
 
   public resetWidth(): void {
-    setColSpanClass(this.element, 1);
-    savePanelColSpan(this.panelId, 1);
+    clearColSpanClass(this.element);
+    clearPanelColSpan(this.panelId);
   }
 
   protected get signal(): AbortSignal {
@@ -593,6 +781,10 @@ export class Panel {
 
   public destroy(): void {
     this.abortController.abort();
+    if (this.colSpanReconcileRaf !== null) {
+      cancelAnimationFrame(this.colSpanReconcileRaf);
+      this.colSpanReconcileRaf = null;
+    }
     if (this.contentDebounceTimer) {
       clearTimeout(this.contentDebounceTimer);
       this.contentDebounceTimer = null;
@@ -603,34 +795,56 @@ export class Panel {
       document.removeEventListener('click', this.tooltipCloseHandler);
       this.tooltipCloseHandler = null;
     }
+    this.removeRowTouchDocumentListeners();
     if (this.onTouchMove) {
-      document.removeEventListener('touchmove', this.onTouchMove);
       this.onTouchMove = null;
     }
     if (this.onTouchEnd) {
-      document.removeEventListener('touchend', this.onTouchEnd);
       this.onTouchEnd = null;
     }
     if (this.onTouchCancel) {
-      document.removeEventListener('touchcancel', this.onTouchCancel);
       this.onTouchCancel = null;
     }
     if (this.onDocMouseUp) {
       document.removeEventListener('mouseup', this.onDocMouseUp);
       this.onDocMouseUp = null;
     }
+    if (this.onRowMouseMove) {
+      document.removeEventListener('mousemove', this.onRowMouseMove);
+      this.onRowMouseMove = null;
+    }
+    if (this.onRowMouseUp) {
+      document.removeEventListener('mouseup', this.onRowMouseUp);
+      this.onRowMouseUp = null;
+    }
+    if (this.onRowWindowBlur) {
+      window.removeEventListener('blur', this.onRowWindowBlur);
+      this.onRowWindowBlur = null;
+    }
+    if (this.onColMouseMove) {
+      document.removeEventListener('mousemove', this.onColMouseMove);
+      this.onColMouseMove = null;
+    }
+    if (this.onColMouseUp) {
+      document.removeEventListener('mouseup', this.onColMouseUp);
+      this.onColMouseUp = null;
+    }
+    if (this.onColWindowBlur) {
+      window.removeEventListener('blur', this.onColWindowBlur);
+      this.onColWindowBlur = null;
+    }
+    this.removeColTouchDocumentListeners();
     if (this.onColTouchMove) {
-      document.removeEventListener('touchmove', this.onColTouchMove);
       this.onColTouchMove = null;
     }
     if (this.onColTouchEnd) {
-      document.removeEventListener('touchend', this.onColTouchEnd);
       this.onColTouchEnd = null;
     }
     if (this.onColTouchCancel) {
-      document.removeEventListener('touchcancel', this.onColTouchCancel);
       this.onColTouchCancel = null;
     }
+    this.element.classList.remove('resizing', 'col-resizing');
+    delete this.element.dataset.resizing;
     document.body.classList.remove('panel-resize-active');
   }
 }
