@@ -31,6 +31,15 @@
 
 ---
 
+## Tech Stack
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Vite-646CFF?style=flat-square&logo=vite&logoColor=white" alt="Vite">
+  <img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript">
+  <img src="https://img.shields.io/badge/React-61DAFB?style=flat-square&logo=react&logoColor=black" alt="React">
+  <img src="https://img.shields.io/badge/Tauri-FFC131?style=flat-square&logo=tauri&logoColor=black" alt="Tauri">
+  <img src="https://img.shields.io/badge/Playwright-2EAD33?style=flat-square&logo=playwright&logoColor=white" alt="Playwright">
+</p>
 ## Why World Monitor?
 
 | Problem                            | Solution                                                                                                   |
@@ -1607,3 +1616,47 @@ If you discover a vulnerability, please see our [Security Policy](./SECURITY.md)
    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=koala73/worldmonitor&type=Date&type=Date" />
  </picture>
 </a>
+
+## Development
+
+### Prerequisites
+- Node.js 18+
+- npm or yarn
+
+### Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/koala73/worldmonitor.git
+cd worldmonitor
+
+# Install dependencies
+npm install
+
+# Copy environment variables
+cp .env.example .env
+# Edit .env with your configuration
+
+# Start development server
+npm run dev
+```
+
+### Build
+
+```bash
+# Production build
+npm run build
+
+# Desktop app (Tauri)
+npm run tauri build
+```
+
+### Testing
+
+```bash
+# Run unit tests
+npm test
+
+# Run e2e tests
+npm run test:e2e
+```

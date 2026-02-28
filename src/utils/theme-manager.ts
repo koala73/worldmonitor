@@ -1,13 +1,28 @@
+/**
+ * Theme management utilities for World Monitor
+ * Handles dark/light mode switching with persistence and DOM synchronization
+ * @module utils/theme-manager
+ */
+
 import { invalidateColorCache } from './theme-colors';
 
+/** Valid theme values */
 export type Theme = 'dark' | 'light';
 
+/** localStorage key for theme preference */
 const STORAGE_KEY = 'worldmonitor-theme';
+
+/** Default theme when no preference is stored */
 const DEFAULT_THEME: Theme = 'dark';
 
 /**
- * Read the stored theme preference from localStorage.
- * Returns 'dark' or 'light' if valid, otherwise DEFAULT_THEME.
+ * Retrieves the user's stored theme preference from localStorage.
+ * Falls back to DEFAULT_THEME if no valid preference exists or if localStorage is unavailable.
+ * 
+ * @returns {Theme} The stored theme ('dark' | 'light') or default
+ * @example
+ * const theme = getStoredTheme();
+ * // Returns: 'dark' or 'light' based on user preference
  */
 export function getStoredTheme(): Theme {
   try {
@@ -20,7 +35,13 @@ export function getStoredTheme(): Theme {
 }
 
 /**
- * Read the current theme from the document root's data-theme attribute.
+ * Gets the currently active theme from the DOM.
+ * Reads the data-theme attribute from the document root element.
+ * 
+ * @returns {Theme} The current active theme
+ * @example
+ * const currentTheme = getCurrentTheme();
+ * console.log(currentTheme); // 'dark' or 'light'
  */
 export function getCurrentTheme(): Theme {
   const value = document.documentElement.dataset.theme;
@@ -29,57 +50,40 @@ export function getCurrentTheme(): Theme {
 }
 
 /**
- * Set the active theme: update DOM attribute, invalidate color cache,
- * persist to localStorage, update meta theme-color, and dispatch event.
+ * Applies a theme to the application with full synchronization.
+ * 
+ * This function:
+ * - Updates the DOM data-theme attribute
+ * - Invalidates the color cache for theme-aware components
+ * - Persists the preference to localStorage
+ * - Updates the meta theme-color for mobile browsers
+ * - Dispatches a 'theme-changed' event for reactive components
+ * 
+ * @param {Theme} theme - The theme to apply ('dark' | 'light')
+ * @returns {void}
+ * @example
+ * setTheme('light');
+ * // Applies light theme, updates localStorage, fires theme-changed event
  */
 export function setTheme(theme: Theme): void {
   document.documentElement.dataset.theme = theme;
   invalidateColorCache();
+  
   try {
     localStorage.setItem(STORAGE_KEY, theme);
   } catch {
-    // localStorage unavailable
+    // localStorage unavailable (e.g., private browsing)
   }
+  
+  // Update meta theme-color for mobile browser theming
   const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
   if (meta) {
     const variant = document.documentElement.dataset.variant;
-    meta.content = theme === 'dark' ? (variant === 'happy' ? '#1A2332' : '#0a0f0a') : (variant === 'happy' ? '#FAFAF5' : '#f8f9fa');
+    const darkColor = variant === 'happy' ? '#1A2332' : '#0a0f0a';
+    const lightColor = variant === 'happy' ? '#FAFAF5' : '#f8f9fa';
+    meta.content = theme === 'dark' ? darkColor : lightColor;
   }
+  
+  // Notify components that theme has changed
   window.dispatchEvent(new CustomEvent('theme-changed', { detail: { theme } }));
-}
-
-/**
- * Apply the stored theme preference to the document before components mount.
- * Only sets the data-theme attribute and meta theme-color — does NOT dispatch
- * events or invalidate the color cache (components aren't mounted yet).
- *
- * The inline script in index.html already handles the fast FOUC-free path.
- * This is a safety net for cases where the inline script didn't run.
- */
-export function applyStoredTheme(): void {
-  const variant = document.documentElement.dataset.variant;
-
-  // Check raw localStorage to distinguish "no preference" from "explicitly chose dark"
-  let raw: string | null = null;
-  try { raw = localStorage.getItem(STORAGE_KEY); } catch { /* noop */ }
-  const hasExplicitPreference = raw === 'dark' || raw === 'light';
-
-  let effective: Theme;
-  if (hasExplicitPreference) {
-    // User made an explicit choice — respect it regardless of variant
-    effective = raw as Theme;
-  } else {
-    // No stored preference: happy defaults to light, others to dark
-    effective = variant === 'happy' ? 'light' : DEFAULT_THEME;
-  }
-
-  document.documentElement.dataset.theme = effective;
-  const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
-  if (meta) {
-    if (effective === 'dark') {
-      meta.content = variant === 'happy' ? '#1A2332' : '#0a0f0a';
-    } else {
-      meta.content = variant === 'happy' ? '#FAFAF5' : '#f8f9fa';
-    }
-  }
 }
