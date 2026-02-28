@@ -63,6 +63,7 @@
     "@types/topojson-specification": "^1.0.5",
     "cross-env": "^10.1.0",
     "esbuild": "^0.27.3",
+    "h3-js": "^4.4.0",
     "markdownlint-cli2": "^0.20.0",
     "tsx": "^4.21.0",
     "typescript": "^5.7.2",
@@ -70,8 +71,6 @@
     "vite-plugin-pwa": "^1.2.0"
   },
   "dependencies": {
-    "telegram": "^2.26.22",
-    "ws": "^8.19.0",
     "@deck.gl/aggregation-layers": "^9.2.6",
     "@deck.gl/core": "^9.2.6",
     "@deck.gl/geo-layers": "^9.2.6",
@@ -93,7 +92,9 @@
     "onnxruntime-web": "^1.23.2",
     "papaparse": "^5.5.3",
     "posthog-js": "^1.352.0",
+    "telegram": "^2.26.22",
     "topojson-client": "^3.1.0",
+    "ws": "^8.19.0",
     "youtubei.js": "^16.0.1"
   },
   "overrides": {
