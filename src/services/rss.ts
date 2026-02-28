@@ -285,7 +285,7 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
     if (isAtom) items = doc.querySelectorAll('entry');
 
     const parsed = Array.from(items)
-      .slice(0, 5)
+      .slice(0, 10)
       .map((item) => {
         const title = item.querySelector('title')?.textContent || '';
         let link = '';
