@@ -46,7 +46,7 @@ import { HeatmapLayer } from '@deck.gl/aggregation-layers';
 import type { WeatherAlert } from '@/services/weather';
 import { escapeHtml } from '@/utils/sanitize';
 import { tokenizeForMatch, matchKeyword, matchesAnyKeyword, findMatchingKeywords } from '@/utils/keyword-match';
-import { t } from '@/services/i18n';
+import { t, getCurrentLanguage } from '@/services/i18n';
 import { debounce, rafSchedule, getCurrentTheme } from '@/utils/index';
 import {
   INTEL_HOTSPOTS,
@@ -500,6 +500,10 @@ export class DeckGLMap {
 
     this.maplibreMap.addControl(this.deckOverlay as unknown as maplibregl.IControl);
 
+    this.maplibreMap.on('styledata', () => {
+      this.applyMapLanguage();
+    });
+
     this.maplibreMap.on('movestart', () => {
       if (this.moveTimeoutId) {
         clearTimeout(this.moveTimeoutId);
@@ -535,6 +539,40 @@ export class DeckGLMap {
       if (thresholdCrossed) {
         this.lastZoomThreshold = currentZoom;
         this.debouncedRebuildLayers();
+      }
+    });
+  }
+
+  
+  private applyMapLanguage(): void {
+    if (!this.maplibreMap) return;
+    const style = this.maplibreMap.getStyle();
+    if (!style || !style.layers) return;
+
+    const lang = getCurrentLanguage();
+    if (lang === 'en') return; // Default or fallback English
+
+    const localizedNameExpr = [
+      'coalesce',
+      ['get', `name:${lang}`],
+      ['get', `name_${lang}`],
+      ['get', 'name_en'],
+      ['get', 'name']
+    ];
+
+    style.layers.forEach((layer) => {
+      if (layer.type === 'symbol' && layer.layout && layer.layout['text-field']) {
+        const textField = layer.layout['text-field'];
+        const strField = JSON.stringify(textField);
+        
+        // Target CARTO or typical OSM text fields showing names
+        if (strField.includes('{name}') || strField.includes('{name_en}') || strField.includes('name_en') || strField.includes('name:')) {
+           try {
+             this.maplibreMap?.setLayoutProperty(layer.id, 'text-field', localizedNameExpr);
+           } catch(e) {
+             console.warn(`[DeckGLMap] Failed to update layout property for layer ${layer.id}`, e);
+           }
+        }
       }
     });
   }

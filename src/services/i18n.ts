@@ -133,3 +133,42 @@ export function getLocale(): string {
 }
 
 export const LANGUAGES = [...I18N_CONFIG.SUPPORTED_LOCALES];
+
+/**
+ * Resolves a country code (e.g., "US", "USA") or fallback name to a localized country name.
+ * Uses native Intl.DisplayNames to avoid shipping a massive territory dictionary.
+ */
+export function getLocalizedCountryName(codeOrName: string): string {
+  if (!codeOrName) return '';
+  const lang = getCurrentLanguage();
+
+  // Clean up input
+  let code = codeOrName.trim().toUpperCase();
+
+  // If we receive a 3-letter code and know its 2-letter equivalent, we can convert.
+  // Standard Intl.DisplayNames expects region subtags (ISO-3166-1 alpha-2).
+  // E.g., USA -> US, GBR -> GB. Here is a tiny map for common ones we use:
+  const alpha3To2: Record<string, string> = {
+    'USA': 'US', 'GBR': 'GB', 'CHN': 'CN', 'RUS': 'RU', 'FRA': 'FR',
+    'DEU': 'DE', 'JPN': 'JP', 'IND': 'IN', 'BRA': 'BR', 'CAN': 'CA',
+    'IRN': 'IR', 'IRQ': 'IQ', 'ISR': 'IL', 'SYR': 'SY', 'SAU': 'SA'
+  };
+
+  if (code.length === 3 && alpha3To2[code]) {
+    code = alpha3To2[code];
+  }
+
+  // If it's strictly a 2-letter code, try to natively translate it
+  if (code.length === 2) {
+    try {
+      const displayNames = new Intl.DisplayNames([lang], { type: 'region' });
+      const localized = displayNames.of(code);
+      if (localized) return localized;
+    } catch {
+      // Ignore if unsupported or invalid
+    }
+  }
+
+  // If it's a known english name or unmatched code, fall back to the raw string
+  return codeOrName;
+}
