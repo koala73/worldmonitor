@@ -205,7 +205,8 @@
     "geoHubs": "Геополитические хабы",
     "liveWebcams": "Веб-камеры",
     "securityAdvisories": "Предупреждения безопасности",
-    "orefSirens": "OREF Sirens"
+    "orefSirens": "OREF Sirens",
+    "telegramIntel": "Разведка Telegram"
   },
   "modals": {
     "search": {
@@ -1172,6 +1173,19 @@
     },
     "gdeltIntel": {
       "infoTooltip": "<strong>Разведка GDELT</strong> Мониторинг мировых новостей в реальном времени:<ul><li>Курированные тематические категории (конфликты, кибер и др.)</li><li>Статьи на 100+ языках с переводом</li><li>Обновление каждые 15 минут</li></ul>Источник: GDELT Project (gdeltproject.org)"
+    },
+    "telegramIntel": {
+      "infoTooltip": "Сигналы в реальном времени из отслеживаемых Telegram-каналов OSINT",
+      "loading": "Подключение к ретранслятору Telegram...",
+      "empty": "Сообщения отсутствуют",
+      "disabled": "Ретранслятор Telegram неактивен",
+      "filterAll": "Все",
+      "filterBreaking": "Срочное",
+      "filterConflict": "Конфликты",
+      "filterAlerts": "Оповещения",
+      "filterOsint": "OSINT",
+      "filterPolitics": "Политика",
+      "filterMiddleeast": "Ближний Восток"
     },
     "investments": {
       "infoTooltip": "База данных прямых иностранных инвестиций Саудовской Аравии и ОАЭ в мировую критическую инфраструктуру. Нажмите на строку для перехода к инвестиции на карте.",

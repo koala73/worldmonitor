@@ -15849,3 +15849,114 @@ body.has-breaking-alert .panels-grid {
     overflow-y: auto;
   }
 }
+
+/* ==========================================================================
+   Telegram Intel Panel
+   ========================================================================== */
+
+.telegram-intel-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 8px 10px 0;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.telegram-intel-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.telegram-intel-tab {
+  padding: 6px 10px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.telegram-intel-tab:hover {
+  color: var(--text);
+  background: var(--overlay-subtle);
+}
+
+.telegram-intel-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: 500;
+}
+
+.telegram-intel-items {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.telegram-intel-item {
+  display: block;
+  padding: 10px 12px;
+  background: var(--surface);
+  text-decoration: none;
+  transition: background 0.15s ease;
+  border-left: 2px solid transparent;
+}
+
+.telegram-intel-item:hover {
+  background: var(--overlay-light);
+  border-left-color: var(--accent);
+}
+
+.telegram-intel-item-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 4px;
+  gap: 8px;
+}
+
+.telegram-intel-channel {
+  font-size: 10px;
+  color: var(--accent);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 50%;
+}
+
+.telegram-intel-topic {
+  font-size: 9px;
+  color: var(--text-dim);
+  background: var(--overlay-subtle);
+  padding: 1px 5px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.telegram-intel-time {
+  font-size: 10px;
+  color: var(--text-dim);
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.telegram-intel-text {
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.4;
+  display: -webkit-box;
+  line-clamp: 3;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

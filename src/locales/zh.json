@@ -205,7 +205,8 @@
     "geoHubs": "地缘政治枢纽",
     "liveWebcams": "实时摄像头",
     "securityAdvisories": "安全警告",
-    "orefSirens": "OREF Sirens"
+    "orefSirens": "OREF Sirens",
+    "telegramIntel": "Telegram 情报"
   },
   "modals": {
     "search": {

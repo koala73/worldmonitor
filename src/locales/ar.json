@@ -205,7 +205,8 @@
     "geoHubs": "مراكز جيوسياسية",
     "liveWebcams": "كاميرات مباشرة",
     "securityAdvisories": "تنبيهات أمنية",
-    "orefSirens": "OREF Sirens"
+    "orefSirens": "OREF Sirens",
+    "telegramIntel": "استخبارات Telegram"
   },
   "modals": {
     "search": {
@@ -1139,6 +1140,19 @@
     },
     "gdeltIntel": {
       "infoTooltip": "<strong>استخبارات GDELT</strong> مراقبة أخبار عالمية فورية:<ul><li>فئات مواضيع منتقاة (نزاعات، سيبرانية، إلخ.)</li><li>مقالات من 100+ لغة مترجمة</li><li>تُحدّث كل 15 دقيقة</li></ul>المصدر: مشروع GDELT (gdeltproject.org)"
+    },
+    "telegramIntel": {
+      "infoTooltip": "إشارات فورية من قنوات OSINT المراقبة على Telegram",
+      "loading": "جارٍ الاتصال بمرحّل Telegram...",
+      "empty": "لا توجد رسائل متاحة",
+      "disabled": "مرحّل Telegram غير نشط",
+      "filterAll": "الكل",
+      "filterBreaking": "عاجل",
+      "filterConflict": "نزاعات",
+      "filterAlerts": "تنبيهات",
+      "filterOsint": "OSINT",
+      "filterPolitics": "سياسة",
+      "filterMiddleeast": "الشرق الأوسط"
     },
     "investments": {
       "infoTooltip": "قاعدة بيانات الاستثمارات الأجنبية المباشرة للمملكة العربية السعودية والإمارات في البنية التحتية الحيوية العالمية. انقر على صف للانتقال إلى موقع الاستثمار على الخريطة.",

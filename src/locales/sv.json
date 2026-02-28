@@ -64,7 +64,8 @@
     "climate": "Klimatanomalier",
     "liveWebcams": "Webbkameror",
     "securityAdvisories": "Säkerhetsvarningar",
-    "orefSirens": "OREF Sirens"
+    "orefSirens": "OREF Sirens",
+    "telegramIntel": "Telegram Underrättelser"
   },
   "modals": {
     "search": {
@@ -856,6 +857,19 @@
     },
     "gdeltIntel": {
       "infoTooltip": "<strong>GDELT Intelligence</strong> Global nyhetsövervakning i realtid:<ul><li>Utvalda ämneskategorier (konflikter, cyber, etc.)</li><li>Artiklar från 100+ språk översatta</li><li>__Uppdateringar var 4____DEL: Projekt varje 4__5 minuter (gdeltproject.org)"
+    },
+    "telegramIntel": {
+      "infoTooltip": "Realtidssignaler från övervakade Telegram OSINT-kanaler",
+      "loading": "Ansluter till Telegram-relä...",
+      "empty": "Inga meddelanden tillgängliga",
+      "disabled": "Telegram-relä inte aktivt",
+      "filterAll": "Alla",
+      "filterBreaking": "Brådskande",
+      "filterConflict": "Konflikter",
+      "filterAlerts": "Varningar",
+      "filterOsint": "OSINT",
+      "filterPolitics": "Politik",
+      "filterMiddleeast": "Mellanöstern"
     },
     "investments": {
       "infoTooltip": "Databas över Saudiarabien och Förenade Arabemiratens utländska direktinvesteringar i global kritisk infrastruktur. Klicka på en rad för att flyga till investeringen på kartan.",

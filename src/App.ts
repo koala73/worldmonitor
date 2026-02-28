@@ -565,6 +565,14 @@ export class App {
       this.refreshScheduler.scheduleRefresh('supplyChain', () => this.dataLoader.loadSupplyChain(), 10 * 60 * 1000);
     }
 
+    // Telegram Intel (near real-time, 60s refresh)
+    this.refreshScheduler.scheduleRefresh(
+      'telegram-intel',
+      () => this.dataLoader.loadTelegramIntel(),
+      60_000,
+      () => !!this.state.panels['telegram-intel']
+    );
+
     // Refresh intelligence signals for CII (geopolitical variant only)
     if (SITE_VARIANT === 'full') {
       this.refreshScheduler.scheduleRefresh('intelligence', () => {

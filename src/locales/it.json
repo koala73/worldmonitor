@@ -205,7 +205,8 @@
     "geoHubs": "Hotspot geopolitici",
     "liveWebcams": "Webcam in Diretta",
     "securityAdvisories": "Avvisi di Sicurezza",
-    "orefSirens": "OREF Sirens"
+    "orefSirens": "OREF Sirens",
+    "telegramIntel": "Intelligence Telegram"
   },
   "modals": {
     "search": {

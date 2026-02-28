@@ -205,7 +205,8 @@
     "geoHubs": "Trung tâm Địa chính trị",
     "liveWebcams": "Webcam Trực tiếp",
     "securityAdvisories": "Cảnh báo An ninh",
-    "orefSirens": "OREF Sirens"
+    "orefSirens": "OREF Sirens",
+    "telegramIntel": "Tình báo Telegram"
   },
   "modals": {
     "search": {

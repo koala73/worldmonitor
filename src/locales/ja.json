@@ -205,7 +205,8 @@
     "geoHubs": "地政学ハブ",
     "liveWebcams": "ライブカメラ",
     "securityAdvisories": "セキュリティアドバイザリー",
-    "orefSirens": "OREF Sirens"
+    "orefSirens": "OREF Sirens",
+    "telegramIntel": "Telegram インテリジェンス"
   },
   "modals": {
     "search": {

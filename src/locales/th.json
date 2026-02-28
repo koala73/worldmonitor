@@ -205,7 +205,8 @@
     "geoHubs": "ศูนย์กลางภูมิรัฐศาสตร์",
     "liveWebcams": "เว็บแคมสด",
     "securityAdvisories": "คำเตือนด้านความปลอดภัย",
-    "orefSirens": "OREF Sirens"
+    "orefSirens": "OREF Sirens",
+    "telegramIntel": "ข่าวกรอง Telegram"
   },
   "modals": {
     "search": {

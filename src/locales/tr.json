@@ -205,7 +205,8 @@
     "geoHubs": "Jeopolitik Merkezler",
     "liveWebcams": "Canli Web Kameralari",
     "securityAdvisories": "Güvenlik Uyarıları",
-    "orefSirens": "OREF Sirens"
+    "orefSirens": "OREF Sirens",
+    "telegramIntel": "Telegram İstihbarat"
   },
   "modals": {
     "search": {
