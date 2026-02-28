@@ -55,6 +55,7 @@ const SECRET_ANALYTICS_NAMES: Record<RuntimeSecretKey, string> = {
   WORLDMONITOR_API_KEY: 'worldmonitor',
   WTO_API_KEY: 'wto',
   AVIATIONSTACK_API: 'aviationstack',
+  ICAO_API_KEY: 'icao',
 };
 
 // ── Typed event schemas (allowlisted properties per event) ──

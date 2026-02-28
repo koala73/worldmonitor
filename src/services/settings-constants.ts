@@ -21,6 +21,7 @@ export const SIGNUP_URLS: Partial<Record<RuntimeSecretKey, string>> = {
   OLLAMA_MODEL: 'https://ollama.com/library',
   WTO_API_KEY: 'https://apiportal.wto.org/',
   AVIATIONSTACK_API: 'https://aviationstack.com/signup/free',
+  ICAO_API_KEY: 'https://dataservices.icao.int/',
 };
 
 export const PLAINTEXT_KEYS = new Set<RuntimeSecretKey>([
@@ -56,6 +57,7 @@ export const HUMAN_LABELS: Record<RuntimeSecretKey, string> = {
   WORLDMONITOR_API_KEY: 'World Monitor License Key',
   WTO_API_KEY: 'WTO API Key',
   AVIATIONSTACK_API: 'AviationStack API Key',
+  ICAO_API_KEY: 'ICAO NOTAM API Key',
 };
 
 export interface SettingsCategory {
@@ -88,6 +90,6 @@ export const SETTINGS_CATEGORIES: SettingsCategory[] = [
   {
     id: 'tracking',
     label: 'Tracking & Sensing',
-    features: ['aisRelay', 'openskyRelay', 'wingbitsEnrichment', 'nasaFirms', 'aviationStack'],
+    features: ['aisRelay', 'openskyRelay', 'wingbitsEnrichment', 'nasaFirms', 'aviationStack', 'icaoNotams'],
   },
 ];
