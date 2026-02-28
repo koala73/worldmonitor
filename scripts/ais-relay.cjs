@@ -374,11 +374,11 @@ function orefCurlFetch(proxyAuth, url) {
   const { execFileSync } = require('child_process');
   const proxyUrl = `http://${proxyAuth}`;
   const result = execFileSync('curl', [
-    '-s', '-x', proxyUrl, '--max-time', '15',
+    '-sS', '-x', proxyUrl, '--max-time', '15',
     '-H', 'Accept: application/json',
     '-H', 'Referer: https://www.oref.org.il/',
     url,
-  ], { encoding: 'utf8', timeout: 20000 });
+  ], { encoding: 'utf8', timeout: 20000, stdio: ['pipe', 'pipe', 'pipe'] });
   return result;
 }
 
@@ -417,7 +417,8 @@ async function orefFetchAlerts() {
     );
     orefState.historyCount24h = orefState.history.length;
   } catch (err) {
-    orefState.lastError = err.message || String(err);
+    const stderr = err.stderr ? err.stderr.toString().trim() : '';
+    orefState.lastError = stderr || err.message || String(err);
     console.warn('[Relay] OREF poll error:', orefState.lastError);
   }
 }
