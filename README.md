@@ -1616,3 +1616,47 @@ If you discover a vulnerability, please see our [Security Policy](./SECURITY.md)
    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=koala73/worldmonitor&type=Date&type=Date" />
  </picture>
 </a>
+
+## Development
+
+### Prerequisites
+- Node.js 18+
+- npm or yarn
+
+### Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/koala73/worldmonitor.git
+cd worldmonitor
+
+# Install dependencies
+npm install
+
+# Copy environment variables
+cp .env.example .env
+# Edit .env with your configuration
+
+# Start development server
+npm run dev
+```
+
+### Build
+
+```bash
+# Production build
+npm run build
+
+# Desktop app (Tauri)
+npm run tauri build
+```
+
+### Testing
+
+```bash
+# Run unit tests
+npm test
+
+# Run e2e tests
+npm run test:e2e
+```
