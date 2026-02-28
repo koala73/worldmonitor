@@ -165,6 +165,7 @@ const ALLOWED_DOMAINS = [
   'www.scmp.com',
   'kyivindependent.com',
   'www.themoscowtimes.com',
+  'www.rt.com',
   'feeds.24.com',
   'feeds.news24.com',  // News24 main feed domain
   'feeds.capi24.com',  // News24 redirect destination
