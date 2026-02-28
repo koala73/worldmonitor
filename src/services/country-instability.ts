@@ -121,9 +121,12 @@ function initCountryData(): CountryData {
   return { protests: [], conflicts: [], ucdpStatus: null, hapiSummary: null, militaryFlights: [], militaryVessels: [], newsEvents: [], outages: [], displacementOutflow: 0, climateStress: 0 };
 }
 
+const newsEventIndexMap = new Map<string, Map<string, number>>();
+
 export function clearCountryData(): void {
   countryDataMap.clear();
   hotspotActivityMap.clear();
+  newsEventIndexMap.clear();
 }
 
 export function getCountryData(code: string): CountryData | undefined {
@@ -363,7 +366,16 @@ export function ingestNewsForCII(events: ClusteredEvent[]): void {
 
     for (const code of matched) {
       if (!countryDataMap.has(code)) countryDataMap.set(code, initCountryData());
-      countryDataMap.get(code)!.newsEvents.push(e);
+      const cd = countryDataMap.get(code)!;
+      if (!newsEventIndexMap.has(code)) newsEventIndexMap.set(code, new Map());
+      const idx = newsEventIndexMap.get(code)!;
+      const existingIdx = idx.get(e.id);
+      if (existingIdx !== undefined) {
+        cd.newsEvents[existingIdx] = e;
+      } else {
+        idx.set(e.id, cd.newsEvents.length);
+        cd.newsEvents.push(e);
+      }
     }
   }
 }
@@ -413,20 +425,51 @@ function calcUnrestScore(data: CountryData, countryCode: string): number {
   return Math.min(100, baseScore + fatalityBoost + severityBoost + outageBoost);
 }
 
+function calcNewsConflictFloor(data: CountryData, multiplier: number, now = Date.now()): number {
+  const SIX_HOURS = 6 * 60 * 60 * 1000;
+  const cutoff = now - SIX_HOURS;
+
+  const recentConflictNews = data.newsEvents.filter(e =>
+    e.isAlert &&
+    e.threat &&
+    (e.threat.category === 'conflict' || e.threat.category === 'military') &&
+    e.firstSeen.getTime() >= cutoff
+  );
+
+  if (recentConflictNews.length < 2) return 0;
+
+  const domains = new Set<string>();
+  let hasTrustedSource = false;
+  for (const e of recentConflictNews) {
+    if (e.topSources) {
+      for (const s of e.topSources) {
+        domains.add(s.name);
+        if (s.tier <= 2) hasTrustedSource = true;
+      }
+    }
+  }
+
+  if (domains.size < 2 || !hasTrustedSource) return 0;
+
+  return Math.min(70, 60 * multiplier);
+}
+
 function calcConflictScore(data: CountryData, countryCode: string): number {
   const events = data.conflicts;
   const multiplier = CURATED_COUNTRIES[countryCode]?.eventMultiplier ?? DEFAULT_EVENT_MULTIPLIER;
 
-  if (events.length === 0 && !data.hapiSummary) return 0;
+  let acledScore = 0;
+  if (events.length > 0) {
+    const battleCount = events.filter(e => e.eventType === 'battle').length;
+    const explosionCount = events.filter(e => e.eventType === 'explosion' || e.eventType === 'remote_violence').length;
+    const civilianCount = events.filter(e => e.eventType === 'violence_against_civilians').length;
+    const totalFatalities = events.reduce((sum, e) => sum + e.fatalities, 0);
 
-  const battleCount = events.filter(e => e.eventType === 'battle').length;
-  const explosionCount = events.filter(e => e.eventType === 'explosion' || e.eventType === 'remote_violence').length;
-  const civilianCount = events.filter(e => e.eventType === 'violence_against_civilians').length;
-  const totalFatalities = events.reduce((sum, e) => sum + e.fatalities, 0);
-
-  const eventScore = Math.min(50, (battleCount * 3 + explosionCount * 4 + civilianCount * 5) * multiplier);
-  const fatalityScore = Math.min(40, Math.sqrt(totalFatalities) * 5 * multiplier);
-  const civilianBoost = civilianCount > 0 ? Math.min(10, civilianCount * 3) : 0;
+    const eventScore = Math.min(50, (battleCount * 3 + explosionCount * 4 + civilianCount * 5) * multiplier);
+    const fatalityScore = Math.min(40, Math.sqrt(totalFatalities) * 5 * multiplier);
+    const civilianBoost = civilianCount > 0 ? Math.min(10, civilianCount * 3) : 0;
+    acledScore = eventScore + fatalityScore + civilianBoost;
+  }
 
   let hapiFallback = 0;
   if (events.length === 0 && data.hapiSummary) {
@@ -434,7 +477,12 @@ function calcConflictScore(data: CountryData, countryCode: string): number {
     hapiFallback = Math.min(60, h.eventsPoliticalViolence * 3 * multiplier);
   }
 
-  return Math.min(100, Math.max(eventScore + fatalityScore + civilianBoost, hapiFallback));
+  let newsFloor = 0;
+  if (events.length === 0 && hapiFallback === 0) {
+    newsFloor = calcNewsConflictFloor(data, multiplier);
+  }
+
+  return Math.min(100, Math.max(acledScore, hapiFallback, newsFloor));
 }
 
 function getUcdpFloor(data: CountryData): number {

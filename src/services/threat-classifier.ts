@@ -80,6 +80,9 @@ const CRITICAL_KEYWORDS: KeywordMap = {
   'evacuation order': 'disaster',
   'meltdown': 'disaster',
   'nuclear meltdown': 'disaster',
+  'major combat operations': 'military',
+  'full-scale war': 'conflict',
+  'declared war': 'conflict',
 };
 
 const HIGH_KEYWORDS: KeywordMap = {
@@ -107,6 +110,26 @@ const HIGH_KEYWORDS: KeywordMap = {
   'tsunami': 'disaster',
   'hurricane': 'disaster',
   'typhoon': 'disaster',
+  'strike on': 'conflict',
+  'strikes on': 'conflict',
+  'attack on': 'conflict',
+  'attack against': 'conflict',
+  'attacks on': 'conflict',
+  'launched attack': 'conflict',
+  'military operation': 'military',
+  'military operations': 'military',
+  'combat operations': 'military',
+  'bombardment': 'conflict',
+  'shelling': 'conflict',
+  'air strikes': 'conflict',
+  'retaliatory strike': 'military',
+  'preemptive strike': 'military',
+  'ground offensive': 'military',
+  'military offensive': 'military',
+  'ballistic missile': 'military',
+  'cruise missile': 'military',
+  'air defense intercepted': 'military',
+  'forces struck': 'conflict',
 };
 
 const MEDIUM_KEYWORDS: KeywordMap = {
