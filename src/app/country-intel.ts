@@ -198,6 +198,13 @@ export class CountryIntelManager implements AppModule {
         context.regionalConvergence = convergences.map((r) => r.description);
       }
 
+      if (this.ctx.intelligenceCache.advisories) {
+        const countryAdvisories = this.ctx.intelligenceCache.advisories.filter(a => a.country === code);
+        if (countryAdvisories.length > 0) {
+          context.travelAdvisories = countryAdvisories.map(a => ({ source: a.source, level: a.level, title: a.title }));
+        }
+      }
+
       const headlines = filteredNews.slice(0, 15).map((n) => n.title);
       if (headlines.length) context.headlines = headlines;
 
@@ -237,6 +244,8 @@ export class CountryIntelManager implements AppModule {
           if (signals.militaryFlights > 0) lines.push(t('countryBrief.fallback.aircraftTracked', { count: String(signals.militaryFlights) }));
           if (signals.militaryVessels > 0) lines.push(t('countryBrief.fallback.vesselsTracked', { count: String(signals.militaryVessels) }));
           if (signals.activeStrikes > 0) lines.push(t('countryBrief.fallback.activeStrikes', { count: String(signals.activeStrikes) }));
+          if (signals.travelAdvisoryMaxLevel === 'do-not-travel') lines.push(`⚠️ Travel advisory: Do Not Travel (${signals.travelAdvisories} source${signals.travelAdvisories > 1 ? 's' : ''})`);
+          else if (signals.travelAdvisoryMaxLevel === 'reconsider') lines.push(`⚠️ Travel advisory: Reconsider Travel (${signals.travelAdvisories} source${signals.travelAdvisories > 1 ? 's' : ''})`);
           if (signals.outages > 0) lines.push(t('countryBrief.fallback.internetOutages', { count: String(signals.outages) }));
           if (signals.earthquakes > 0) lines.push(t('countryBrief.fallback.recentEarthquakes', { count: String(signals.earthquakes) }));
           if (context.stockIndex) lines.push(t('countryBrief.fallback.stockIndex', { value: context.stockIndex }));
@@ -402,6 +411,19 @@ export class CountryIntelManager implements AppModule {
       orefHistory24h = this.ctx.intelligenceCache.orefAlerts.historyCount24h;
     }
 
+    let travelAdvisories = 0;
+    let travelAdvisoryMaxLevel: string | null = null;
+    const advisoryLevelRank: Record<string, number> = { 'do-not-travel': 4, 'reconsider': 3, 'caution': 2, 'normal': 1, 'info': 0 };
+    if (this.ctx.intelligenceCache.advisories) {
+      const countryAdvisories = this.ctx.intelligenceCache.advisories.filter(a => a.country === code);
+      travelAdvisories = countryAdvisories.length;
+      for (const a of countryAdvisories) {
+        if (a.level && (advisoryLevelRank[a.level] || 0) > (advisoryLevelRank[travelAdvisoryMaxLevel || ''] || 0)) {
+          travelAdvisoryMaxLevel = a.level;
+        }
+      }
+    }
+
     return {
       protests,
       militaryFlights,
@@ -415,6 +437,8 @@ export class CountryIntelManager implements AppModule {
       orefSirens,
       orefHistory24h,
       aviationDisruptions,
+      travelAdvisories,
+      travelAdvisoryMaxLevel,
       isTier1,
     };
   }

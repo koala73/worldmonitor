@@ -2,6 +2,7 @@ import { isDesktopRuntime } from '@/services/runtime';
 import { proxyUrl } from '@/utils';
 import { getPersistentCache, setPersistentCache } from './persistent-cache';
 import { dataFreshness } from './data-freshness';
+import { nameToCountryCode, matchCountryNamesInText } from './country-geometry';
 
 function advisoryFeedUrl(feedUrl: string): string {
   if (isDesktopRuntime()) return proxyUrl(feedUrl);
@@ -29,6 +30,7 @@ interface AdvisoryFeed {
   sourceCountry: string;
   url: string;
   parseLevel?: (title: string) => SecurityAdvisory['level'];
+  targetCountry?: string;
 }
 
 const US_LEVEL_RE = /Level (\d)/i;
@@ -96,19 +98,19 @@ const ADVISORY_FEEDS: AdvisoryFeed[] = [
     url: 'https://www.gov.uk/foreign-travel-advice.atom',
   },
   // US Embassy security alerts (per-country)
-  { name: 'US Embassy Thailand', sourceCountry: 'US', url: 'https://th.usembassy.gov/category/alert/feed/' },
-  { name: 'US Embassy UAE', sourceCountry: 'US', url: 'https://ae.usembassy.gov/category/alert/feed/' },
-  { name: 'US Embassy Germany', sourceCountry: 'US', url: 'https://de.usembassy.gov/category/alert/feed/' },
-  { name: 'US Embassy Ukraine', sourceCountry: 'US', url: 'https://ua.usembassy.gov/category/alert/feed/' },
-  { name: 'US Embassy Mexico', sourceCountry: 'US', url: 'https://mx.usembassy.gov/category/alert/feed/' },
-  { name: 'US Embassy India', sourceCountry: 'US', url: 'https://in.usembassy.gov/category/alert/feed/' },
-  { name: 'US Embassy Pakistan', sourceCountry: 'US', url: 'https://pk.usembassy.gov/category/alert/feed/' },
-  { name: 'US Embassy Colombia', sourceCountry: 'US', url: 'https://co.usembassy.gov/category/alert/feed/' },
-  { name: 'US Embassy Poland', sourceCountry: 'US', url: 'https://pl.usembassy.gov/category/alert/feed/' },
-  { name: 'US Embassy Bangladesh', sourceCountry: 'US', url: 'https://bd.usembassy.gov/category/alert/feed/' },
-  { name: 'US Embassy Italy', sourceCountry: 'US', url: 'https://it.usembassy.gov/category/alert/feed/' },
-  { name: 'US Embassy Dominican Republic', sourceCountry: 'US', url: 'https://do.usembassy.gov/category/alert/feed/' },
-  { name: 'US Embassy Myanmar', sourceCountry: 'US', url: 'https://mm.usembassy.gov/category/alert/feed/' },
+  { name: 'US Embassy Thailand', sourceCountry: 'US', url: 'https://th.usembassy.gov/category/alert/feed/', targetCountry: 'TH' },
+  { name: 'US Embassy UAE', sourceCountry: 'US', url: 'https://ae.usembassy.gov/category/alert/feed/', targetCountry: 'AE' },
+  { name: 'US Embassy Germany', sourceCountry: 'US', url: 'https://de.usembassy.gov/category/alert/feed/', targetCountry: 'DE' },
+  { name: 'US Embassy Ukraine', sourceCountry: 'US', url: 'https://ua.usembassy.gov/category/alert/feed/', targetCountry: 'UA' },
+  { name: 'US Embassy Mexico', sourceCountry: 'US', url: 'https://mx.usembassy.gov/category/alert/feed/', targetCountry: 'MX' },
+  { name: 'US Embassy India', sourceCountry: 'US', url: 'https://in.usembassy.gov/category/alert/feed/', targetCountry: 'IN' },
+  { name: 'US Embassy Pakistan', sourceCountry: 'US', url: 'https://pk.usembassy.gov/category/alert/feed/', targetCountry: 'PK' },
+  { name: 'US Embassy Colombia', sourceCountry: 'US', url: 'https://co.usembassy.gov/category/alert/feed/', targetCountry: 'CO' },
+  { name: 'US Embassy Poland', sourceCountry: 'US', url: 'https://pl.usembassy.gov/category/alert/feed/', targetCountry: 'PL' },
+  { name: 'US Embassy Bangladesh', sourceCountry: 'US', url: 'https://bd.usembassy.gov/category/alert/feed/', targetCountry: 'BD' },
+  { name: 'US Embassy Italy', sourceCountry: 'US', url: 'https://it.usembassy.gov/category/alert/feed/', targetCountry: 'IT' },
+  { name: 'US Embassy Dominican Republic', sourceCountry: 'US', url: 'https://do.usembassy.gov/category/alert/feed/', targetCountry: 'DO' },
+  { name: 'US Embassy Myanmar', sourceCountry: 'US', url: 'https://mm.usembassy.gov/category/alert/feed/', targetCountry: 'MM' },
   // Health advisories
   { name: 'CDC Travel Notices', sourceCountry: 'US', url: 'https://wwwnc.cdc.gov/travel/rss/notices.xml' },
   { name: 'ECDC Epidemiological Updates', sourceCountry: 'EU', url: 'https://www.ecdc.europa.eu/en/taxonomy/term/1310/feed' },
@@ -119,6 +121,19 @@ const ADVISORY_FEEDS: AdvisoryFeed[] = [
   { name: 'WHO News', sourceCountry: 'INT', url: 'https://www.who.int/rss-feeds/news-english.xml' },
   { name: 'WHO Africa Emergencies', sourceCountry: 'INT', url: 'https://www.afro.who.int/rss/emergencies.xml' },
 ];
+
+function extractTargetCountry(title: string, feed: AdvisoryFeed): string | undefined {
+  if (feed.targetCountry) return feed.targetCountry;
+  if (feed.sourceCountry === 'EU' || feed.sourceCountry === 'INT') return undefined;
+  const parts = title.split(/\s*[–—-]\s*/);
+  const firstPart = parts[0];
+  if (parts.length >= 2 && firstPart) {
+    const code = nameToCountryCode(firstPart.trim().toLowerCase());
+    if (code) return code;
+  }
+  const matches = matchCountryNamesInText(title.toLowerCase());
+  return matches[0] || undefined;
+}
 
 const CACHE_KEY = 'security-advisories';
 const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
@@ -157,6 +172,7 @@ function parseFeedXml(
     const pubDate = Number.isNaN(parsed.getTime()) ? new Date() : parsed;
 
     const level = feed.parseLevel ? feed.parseLevel(title) : 'info';
+    const country = extractTargetCountry(title, feed);
 
     return {
       title,
@@ -165,6 +181,7 @@ function parseFeedXml(
       source: feed.name,
       sourceCountry: feed.sourceCountry,
       level,
+      ...(country ? { country } : {}),
     };
   });
 }

@@ -1,6 +1,7 @@
 import type { NewsItem, Monitor, PanelConfig, MapLayers, InternetOutage, SocialUnrestEvent, MilitaryFlight, MilitaryFlightCluster, MilitaryVessel, MilitaryVesselCluster, CyberThreat, USNIFleetReport } from '@/types';
 import type { AirportDelayAlert } from '@/services/aviation';
 import type { IranEvent } from '@/generated/client/worldmonitor/conflict/v1/service_client';
+import type { SecurityAdvisory } from '@/services/security-advisories';
 import type { MapContainer, Panel, NewsPanel, SignalModal, StatusPanel, SearchModal } from '@/components';
 import type { IntelligenceGapBadge } from '@/components';
 import type { MarketData, ClusteredEvent } from '@/types';
@@ -38,6 +39,8 @@ export interface CountryBriefSignals {
   orefSirens: number;
   orefHistory24h: number;
   aviationDisruptions: number;
+  travelAdvisories: number;
+  travelAdvisoryMaxLevel: string | null;
   isTier1: boolean;
 }
 
@@ -50,6 +53,7 @@ export interface IntelligenceCache {
   usniFleet?: USNIFleetReport;
   iranEvents?: IranEvent[];
   orefAlerts?: { alertCount: number; historyCount24h: number };
+  advisories?: SecurityAdvisory[];
 }
 
 export interface AppModule {

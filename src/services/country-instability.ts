@@ -1,5 +1,6 @@
 import type { SocialUnrestEvent, MilitaryFlight, MilitaryVessel, ClusteredEvent, InternetOutage } from '@/types';
 import type { AirportDelayAlert } from '@/services/aviation';
+import type { SecurityAdvisory } from '@/services/security-advisories';
 import { tokenizeForMatch, matchKeyword } from '@/utils/keyword-match';
 import { INTEL_HOTSPOTS, CONFLICT_ZONES, STRATEGIC_WATERWAYS } from '@/config/geo';
 import { CURATED_COUNTRIES, DEFAULT_BASELINE_RISK, DEFAULT_EVENT_MULTIPLIER, getHotspotCountries } from '@/config/countries';
@@ -42,6 +43,9 @@ interface CountryData {
   climateStress: number;
   orefAlertCount: number;
   orefHistoryCount24h: number;
+  advisoryMaxLevel: SecurityAdvisory['level'] | null;
+  advisoryCount: number;
+  advisorySources: Set<string>;
 }
 
 export { TIER1_COUNTRIES } from '@/config/countries';
@@ -123,7 +127,7 @@ const countryDataMap = new Map<string, CountryData>();
 const previousScores = new Map<string, number>();
 
 function initCountryData(): CountryData {
-  return { protests: [], conflicts: [], ucdpStatus: null, hapiSummary: null, militaryFlights: [], militaryVessels: [], newsEvents: [], outages: [], strikes: [], aviationDisruptions: [], displacementOutflow: 0, climateStress: 0, orefAlertCount: 0, orefHistoryCount24h: 0 };
+  return { protests: [], conflicts: [], ucdpStatus: null, hapiSummary: null, militaryFlights: [], militaryVessels: [], newsEvents: [], outages: [], strikes: [], aviationDisruptions: [], displacementOutflow: 0, climateStress: 0, orefAlertCount: 0, orefHistoryCount24h: 0, advisoryMaxLevel: null, advisoryCount: 0, advisorySources: new Set() };
 }
 
 const newsEventIndexMap = new Map<string, Map<string, number>>();
@@ -445,6 +449,52 @@ export function ingestAviationForCII(alerts: AirportDelayAlert[]): void {
   }
 }
 
+const TRAVEL_ADVISORY_SOURCES = new Set(['US', 'AU', 'UK', 'NZ']);
+const ADVISORY_LEVEL_RANK: Record<string, number> = { 'do-not-travel': 4, 'reconsider': 3, 'caution': 2, 'normal': 1, 'info': 0 };
+
+export function ingestAdvisoriesForCII(advisories: SecurityAdvisory[]): void {
+  for (const data of countryDataMap.values()) {
+    data.advisoryMaxLevel = null;
+    data.advisoryCount = 0;
+    data.advisorySources = new Set();
+  }
+
+  const travelAdvisories = advisories.filter(a =>
+    a.country && TRAVEL_ADVISORY_SOURCES.has(a.sourceCountry) && a.level && a.level !== 'info'
+  );
+
+  for (const a of travelAdvisories) {
+    const code = a.country!;
+    if (!countryDataMap.has(code)) countryDataMap.set(code, initCountryData());
+    const data = countryDataMap.get(code)!;
+    data.advisoryCount++;
+    data.advisorySources.add(a.sourceCountry);
+    const currentRank = ADVISORY_LEVEL_RANK[data.advisoryMaxLevel || ''] || 0;
+    const newRank = ADVISORY_LEVEL_RANK[a.level!] || 0;
+    if (newRank > currentRank) data.advisoryMaxLevel = a.level!;
+  }
+}
+
+function getAdvisoryBoost(data: CountryData): number {
+  if (!data.advisoryMaxLevel) return 0;
+  let boost = 0;
+  switch (data.advisoryMaxLevel) {
+    case 'do-not-travel': boost = 15; break;
+    case 'reconsider': boost = 10; break;
+    case 'caution': boost = 5; break;
+    default: return 0;
+  }
+  if (data.advisorySources.size >= 3) boost += 5;
+  else if (data.advisorySources.size >= 2) boost += 3;
+  return boost;
+}
+
+function getAdvisoryFloor(data: CountryData): number {
+  if (data.advisoryMaxLevel === 'do-not-travel') return 60;
+  if (data.advisoryMaxLevel === 'reconsider') return 50;
+  return 0;
+}
+
 function calcUnrestScore(data: CountryData, countryCode: string): number {
   const protestCount = data.protests.length;
   const multiplier = CURATED_COUNTRIES[countryCode]?.eventMultiplier ?? DEFAULT_EVENT_MULTIPLIER;
@@ -662,9 +712,10 @@ export function calculateCII(): CountryScore[] {
       : 0;
     const climateBoost = data.climateStress;
 
-    const blendedScore = baselineRisk * 0.4 + eventScore * 0.6 + hotspotBoost + newsUrgencyBoost + focalBoost + displacementBoost + climateBoost + getOrefBlendBoost(code, data);
+    const advisoryBoost = getAdvisoryBoost(data);
+    const blendedScore = baselineRisk * 0.4 + eventScore * 0.6 + hotspotBoost + newsUrgencyBoost + focalBoost + displacementBoost + climateBoost + getOrefBlendBoost(code, data) + advisoryBoost;
 
-    const floor = getUcdpFloor(data);
+    const floor = Math.max(getUcdpFloor(data), getAdvisoryFloor(data));
     const score = Math.round(Math.min(100, Math.max(floor, blendedScore)));
 
     const prev = previousScores.get(code) ?? score;
@@ -715,8 +766,9 @@ export function getCountryScore(code: string): number | null {
     : data.displacementOutflow >= 100_000 ? 4
     : 0;
   const climateBoost = data.climateStress;
-  const blendedScore = baselineRisk * 0.4 + eventScore * 0.6 + hotspotBoost + newsUrgencyBoost + focalBoost + displacementBoost + climateBoost + getOrefBlendBoost(code, data);
+  const advisoryBoost = getAdvisoryBoost(data);
+  const blendedScore = baselineRisk * 0.4 + eventScore * 0.6 + hotspotBoost + newsUrgencyBoost + focalBoost + displacementBoost + climateBoost + getOrefBlendBoost(code, data) + advisoryBoost;
 
-  const floor = getUcdpFloor(data);
+  const floor = Math.max(getUcdpFloor(data), getAdvisoryFloor(data));
   return Math.round(Math.min(100, Math.max(floor, blendedScore)));
 }

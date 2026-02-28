@@ -182,6 +182,15 @@ export class CountryBriefPage {
     if (signals.climateStress > 0) chips.push(`<span class="signal-chip climate">🌡️ ${t('modals.countryBrief.signals.climate')}</span>`);
     if (signals.conflictEvents > 0) chips.push(`<span class="signal-chip conflict">⚔️ ${signals.conflictEvents} ${t('modals.countryBrief.signals.conflictEvents')}</span>`);
     if (signals.activeStrikes > 0) chips.push(`<span class="signal-chip conflict">\u{1F4A5} ${signals.activeStrikes} ${t('modals.countryBrief.signals.activeStrikes')}</span>`);
+    if (signals.travelAdvisories > 0 && signals.travelAdvisoryMaxLevel) {
+      const advisoryClass = signals.travelAdvisoryMaxLevel === 'do-not-travel' ? 'conflict'
+        : signals.travelAdvisoryMaxLevel === 'reconsider' ? 'outage'
+        : 'military';
+      const advisoryLabel = signals.travelAdvisoryMaxLevel === 'do-not-travel' ? 'Do Not Travel'
+        : signals.travelAdvisoryMaxLevel === 'reconsider' ? 'Reconsider Travel'
+        : 'Exercise Caution';
+      chips.push(`<span class="signal-chip ${advisoryClass}">\u26A0\uFE0F ${signals.travelAdvisories} Advisory: ${advisoryLabel}</span>`);
+    }
     if (signals.orefSirens > 0) chips.push(`<span class="signal-chip conflict">\u{1F6A8} ${signals.orefSirens} Active Sirens</span>`);
     if (signals.aviationDisruptions > 0) chips.push(`<span class="signal-chip outage">\u{1F6AB} ${signals.aviationDisruptions} ${t('modals.countryBrief.signals.aviationDisruptions')}</span>`);
     chips.push(`<span class="signal-chip stock-loading">📈 ${t('modals.countryBrief.loadingIndex')}</span>`);
@@ -613,6 +622,8 @@ export class CountryBriefPage {
         orefSirens: this.currentSignals.orefSirens,
         orefHistory24h: this.currentSignals.orefHistory24h,
         aviationDisruptions: this.currentSignals.aviationDisruptions,
+        travelAdvisories: this.currentSignals.travelAdvisories,
+        travelAdvisoryMaxLevel: this.currentSignals.travelAdvisoryMaxLevel,
       };
     }
     if (this.currentBrief) data.brief = this.currentBrief;
