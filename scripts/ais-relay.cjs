@@ -76,6 +76,7 @@ const ALLOW_VERCEL_PREVIEW_ORIGINS = process.env.ALLOW_VERCEL_PREVIEW_ORIGINS ==
 // OREF (Israel Home Front Command) siren alerts — fetched via HTTP proxy (Israel exit)
 const OREF_PROXY_AUTH = process.env.OREF_PROXY_AUTH || ''; // format: user:pass@host:port
 const OREF_ALERTS_URL = 'https://www.oref.org.il/WarningMessages/alert/alerts.json';
+const OREF_HISTORY_URL = 'https://www.oref.org.il/WarningMessages/alert/History/AlertsHistory.json';
 const OREF_POLL_INTERVAL_MS = Math.max(30_000, Number(process.env.OREF_POLL_INTERVAL_MS || 300_000));
 const OREF_ENABLED = !!OREF_PROXY_AUTH;
 const RELAY_OREF_RATE_LIMIT_MAX = Number.isFinite(Number(process.env.RELAY_OREF_RATE_LIMIT_MAX))
@@ -367,6 +368,33 @@ function stripBom(text) {
   return text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text;
 }
 
+function redactOrefError(msg) {
+  return String(msg || '').replace(/\/\/[^@]+@/g, '//<redacted>@');
+}
+
+function orefDateToUTC(dateStr) {
+  if (!dateStr || !dateStr.includes(' ')) return new Date().toISOString();
+  const [datePart, timePart] = dateStr.split(' ');
+  const [y, m, d] = datePart.split('-').map(Number);
+  const [hh, mm, ss] = timePart.split(':').map(Number);
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Jerusalem',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  });
+  function partsAt(ms) {
+    const p = Object.fromEntries(fmt.formatToParts(new Date(ms)).map(x => [x.type, x.value]));
+    return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}:${p.second}`;
+  }
+  const base2 = Date.UTC(y, m - 1, d, hh - 2, mm, ss);
+  const base3 = Date.UTC(y, m - 1, d, hh - 3, mm, ss);
+  const candidates = [];
+  if (partsAt(base2) === dateStr) candidates.push(base2);
+  if (partsAt(base3) === dateStr) candidates.push(base3);
+  const ms = candidates.length ? Math.min(...candidates) : base2;
+  return new Date(ms).toISOString();
+}
+
 function orefCurlFetch(proxyAuth, url) {
   // Use curl via child_process — Node.js TLS fingerprint (JA3) gets blocked by Akamai,
   // but curl's fingerprint passes. curl is available on Railway (Linux) and macOS.
@@ -377,6 +405,7 @@ function orefCurlFetch(proxyAuth, url) {
     '-sS', '-x', proxyUrl, '--max-time', '15',
     '-H', 'Accept: application/json',
     '-H', 'Referer: https://www.oref.org.il/',
+    '-H', 'X-Requested-With: XMLHttpRequest',
     url,
   ], { encoding: 'utf8', timeout: 20000, stdio: ['pipe', 'pipe', 'pipe'] });
   return result;
@@ -415,19 +444,65 @@ async function orefFetchAlerts() {
     orefState.history = orefState.history.filter(
       h => new Date(h.timestamp).getTime() > cutoff
     );
-    orefState.historyCount24h = orefState.history.length;
+    orefState.historyCount24h = orefState.history.reduce((sum, h) => {
+      return sum + h.alerts.reduce((s, a) => s + (Array.isArray(a.data) ? a.data.length : 1), 0);
+    }, 0);
   } catch (err) {
     const stderr = err.stderr ? err.stderr.toString().trim() : '';
-    orefState.lastError = stderr || err.message || String(err);
+    orefState.lastError = redactOrefError(stderr || err.message);
     console.warn('[Relay] OREF poll error:', orefState.lastError);
   }
 }
 
-function startOrefPollLoop() {
+async function orefBootstrapHistory() {
+  const raw = orefCurlFetch(OREF_PROXY_AUTH, OREF_HISTORY_URL);
+  const cleaned = stripBom(raw).trim();
+  if (!cleaned || cleaned === '[]') return;
+
+  const records = JSON.parse(cleaned);
+  const waves = new Map();
+  for (const r of records) {
+    const key = r.alertDate;
+    if (!waves.has(key)) waves.set(key, []);
+    waves.get(key).push(r);
+  }
+  const history = [];
+  let totalAlertRecords = 0;
+  for (const [dateStr, recs] of waves) {
+    const iso = orefDateToUTC(dateStr);
+    const byType = new Map();
+    let typeIdx = 0;
+    for (const r of recs) {
+      const k = `${r.category}|${r.title}`;
+      if (!byType.has(k)) {
+        byType.set(k, {
+          id: `${r.category}-${typeIdx++}-${dateStr.replace(/[^0-9]/g, '')}`,
+          cat: String(r.category),
+          title: r.title,
+          data: [],
+          desc: '',
+          alertDate: dateStr,
+        });
+      }
+      byType.get(k).data.push(r.data);
+      totalAlertRecords++;
+    }
+    history.push({ alerts: [...byType.values()], timestamp: new Date(iso).toISOString() });
+  }
+  history.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+  orefState.history = history;
+  orefState.historyCount24h = totalAlertRecords;
+  console.log(`[Relay] OREF history bootstrap: ${totalAlertRecords} records across ${history.length} waves`);
+}
+
+async function startOrefPollLoop() {
   if (!OREF_ENABLED) {
     console.log('[Relay] OREF disabled (no OREF_PROXY_AUTH)');
     return;
   }
+  await orefBootstrapHistory().catch(err =>
+    console.warn('[Relay] OREF history bootstrap failed:', redactOrefError(err.message))
+  );
   orefFetchAlerts().catch(e => console.warn('[Relay] OREF initial poll error:', e?.message || e));
   setInterval(() => {
     orefFetchAlerts().catch(e => console.warn('[Relay] OREF poll error:', e?.message || e));
