@@ -2129,6 +2129,7 @@ const POLYMARKET_CB_COOLDOWN_MS = 60 * 1000;
 
 // Concurrent upstream limiter — queues excess requests instead of rejecting them
 const POLYMARKET_MAX_CONCURRENT = 3;
+const POLYMARKET_MAX_QUEUED = 20;
 let polymarketActiveUpstream = 0;
 const polymarketQueue = []; // Array of () => void (resolve-waiters)
 
@@ -2154,11 +2155,18 @@ function acquirePolymarketSlot() {
     polymarketActiveUpstream++;
     return Promise.resolve();
   }
+  if (polymarketQueue.length >= POLYMARKET_MAX_QUEUED) {
+    return Promise.reject(new Error('queue full'));
+  }
   return new Promise((resolve) => { polymarketQueue.push(resolve); });
 }
 
 function fetchPolymarketUpstream(cacheKey, endpoint, params, tag) {
-  return acquirePolymarketSlot().then(() => {
+  return acquirePolymarketSlot().catch(() => 'REJECTED').then((slotResult) => {
+    if (slotResult === 'REJECTED') {
+      polymarketCache.set(cacheKey, { data: '[]', timestamp: Date.now() - POLYMARKET_CACHE_TTL_MS + POLYMARKET_NEG_TTL_MS });
+      return null;
+    }
     const gammaUrl = `https://gamma-api.polymarket.com/${endpoint}?${params}`;
     console.log('[Relay] Polymarket request (MISS):', endpoint, tag || '');
 
@@ -2235,6 +2243,15 @@ function handlePolymarketRequest(req, res) {
 
   const cacheKey = endpoint + ':' + params.toString();
 
+  function sliceToLimit(jsonStr) {
+    if (requestedLimit >= upstreamLimit) return jsonStr;
+    try {
+      const arr = JSON.parse(jsonStr);
+      if (!Array.isArray(arr)) return jsonStr;
+      return JSON.stringify(arr.slice(0, requestedLimit));
+    } catch { return jsonStr; }
+  }
+
   const cached = polymarketCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < POLYMARKET_CACHE_TTL_MS) {
     return sendCompressed(req, res, 200, {
@@ -2243,7 +2260,7 @@ function handlePolymarketRequest(req, res) {
       'CDN-Cache-Control': 'public, max-age=600',
       'X-Cache': 'HIT',
       'X-Polymarket-Source': 'railway-cache',
-    }, cached.data);
+    }, sliceToLimit(cached.data));
   }
 
   // Circuit breaker open — serve stale cache or empty, skip upstream
@@ -2276,7 +2293,7 @@ function handlePolymarketRequest(req, res) {
         'CDN-Cache-Control': 'public, max-age=600',
         'X-Cache': 'MISS',
         'X-Polymarket-Source': 'railway',
-      }, data);
+      }, sliceToLimit(data));
     } else if (cached) {
       sendCompressed(req, res, 200, {
         'Content-Type': 'application/json',
@@ -2284,7 +2301,7 @@ function handlePolymarketRequest(req, res) {
         'CDN-Cache-Control': 'no-store',
         'X-Cache': 'STALE',
         'X-Polymarket-Source': 'railway-stale',
-      }, cached.data);
+      }, sliceToLimit(cached.data));
     } else {
       safeEnd(res, 200, { 'Content-Type': 'application/json' }, JSON.stringify([]));
     }
