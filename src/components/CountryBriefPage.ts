@@ -246,7 +246,7 @@ export class CountryBriefPage {
         <div class="cb-header">
           <div class="cb-header-left">
             <span class="cb-flag">${flag}</span>
-            <span class="cb-country-name">${escapeHtml(getLocalizedGeoName(country))}</span>
+            <span class="cb-country-name">${escapeHtml(getLocalizedGeoName(code) || getLocalizedGeoName(country))}</span>
             ${score ? this.levelBadge(score.level) : ''}
             ${score ? this.trendIndicator(score.trend) : ''}
             ${tierBadge}
