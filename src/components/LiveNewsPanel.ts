@@ -85,6 +85,7 @@ export const OPTIONAL_LIVE_CHANNELS: LiveChannel[] = [
   { id: 'abc-news', name: 'ABC News', handle: '@ABCNews' },
   { id: 'cbs-news', name: 'CBS News', handle: '@CBSNews', fallbackVideoId: 'pBk4NYhWNMM' },
   { id: 'nbc-news', name: 'NBC News', handle: '@NBCNews' },
+  { id: 'cbc-news', name: 'CBC News', handle: '@CBCNews', fallbackVideoId: '5vfaDsMhCF4' },
   // Europe
   { id: 'bbc-news', name: 'BBC News', handle: '@BBCNews' },
   { id: 'france24-en', name: 'France 24 English', handle: '@FRANCE24English' },
@@ -131,7 +132,7 @@ export const OPTIONAL_LIVE_CHANNELS: LiveChannel[] = [
 ];
 
 export const OPTIONAL_CHANNEL_REGIONS: { key: string; labelKey: string; channelIds: string[] }[] = [
-  { key: 'na', labelKey: 'components.liveNews.regionNorthAmerica', channelIds: ['livenow-fox', 'fox-news', 'newsmax', 'abc-news', 'cbs-news', 'nbc-news'] },
+  { key: 'na', labelKey: 'components.liveNews.regionNorthAmerica', channelIds: ['livenow-fox', 'fox-news', 'newsmax', 'abc-news', 'cbs-news', 'nbc-news', 'cbc-news'] },
   { key: 'eu', labelKey: 'components.liveNews.regionEurope', channelIds: ['bbc-news', 'france24-en', 'welt', 'rtve', 'trt-haber', 'ntv-turkey', 'cnn-turk', 'tv-rain', 'tvp-info', 'telewizja-republika'] },
   { key: 'latam', labelKey: 'components.liveNews.regionLatinAmerica', channelIds: ['cnn-brasil', 'jovem-pan', 'record-news', 'band-jornalismo', 'tn-argentina', 'c5n', 'milenio', 'noticias-caracol', 'ntn24', 't13'] },
   { key: 'asia', labelKey: 'components.liveNews.regionAsia', channelIds: ['tbs-news', 'ann-news', 'ntv-news', 'cti-news', 'wion', 'vtc-now', 'cna-asia', 'nhk-world'] },
