@@ -1,5 +1,6 @@
 import { getRecentSignals, type CorrelationSignal } from '@/services/correlation';
 import { getRecentAlerts, type UnifiedAlert } from '@/services/cross-module-integration';
+import { getAlertSettings, updateAlertSettings } from '@/services/breaking-news-alerts';
 import { t } from '@/services/i18n';
 import { getSignalContext } from '@/utils/analysis-constants';
 import { escapeHtml } from '@/utils/sanitize';
@@ -78,8 +79,8 @@ export class IntelligenceFindingsBadge {
     this.dropdown.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
 
-      // Handle popup toggle click
-      if (target.closest('.popup-toggle-row')) {
+      const toggleAttr = target.closest('[data-toggle]')?.getAttribute('data-toggle');
+      if (toggleAttr === 'popup') {
         e.stopPropagation();
         this.popupEnabled = !this.popupEnabled;
         if (this.popupEnabled) {
@@ -87,6 +88,13 @@ export class IntelligenceFindingsBadge {
         } else {
           localStorage.removeItem(POPUP_STORAGE_KEY);
         }
+        this.renderDropdown();
+        return;
+      }
+      if (toggleAttr === 'breaking-alerts') {
+        e.stopPropagation();
+        const settings = getAlertSettings();
+        updateAlertSettings({ enabled: !settings.enabled });
         this.renderDropdown();
         return;
       }
@@ -314,9 +322,15 @@ export class IntelligenceFindingsBadge {
   private renderPopupToggle(): string {
     const label = t('components.intelligenceFindings.popupAlerts');
     const checked = this.popupEnabled;
-    return `<div class="popup-toggle-row">
+    const breakingSettings = getAlertSettings();
+    const breakingLabel = t('components.intelligenceFindings.breakingAlerts');
+    return `<div class="popup-toggle-row" data-toggle="popup">
         <span class="popup-toggle-label">🔔 ${escapeHtml(label)}</span>
         <span class="popup-toggle-switch${checked ? ' on' : ''}"><span class="popup-toggle-knob"></span></span>
+      </div>
+      <div class="popup-toggle-row" data-toggle="breaking-alerts">
+        <span class="popup-toggle-label">🚨 ${escapeHtml(breakingLabel)}</span>
+        <span class="popup-toggle-switch${breakingSettings.enabled ? ' on' : ''}"><span class="popup-toggle-knob"></span></span>
       </div>`;
   }
 
