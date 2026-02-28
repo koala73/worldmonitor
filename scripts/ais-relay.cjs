@@ -1754,8 +1754,8 @@ function handleWorldBankRequest(req, res) {
     timeout: 15000,
   }, (response) => {
     if (response.statusCode !== 200) {
-      res.writeHead(response.statusCode, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ error: `World Bank API ${response.statusCode}` }));
+      safeEnd(res, response.statusCode, { 'Content-Type': 'application/json' }, JSON.stringify({ error: `World Bank API ${response.statusCode}` }));
+      return;
     }
     let rawData = '';
     response.on('data', chunk => rawData += chunk);
@@ -1813,8 +1813,7 @@ function handleWorldBankRequest(req, res) {
         }, body);
       } catch (e) {
         console.error('[Relay] World Bank parse error:', e.message);
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Parse error' }));
+        safeEnd(res, 500, { 'Content-Type': 'application/json' }, JSON.stringify({ error: 'Parse error' }));
       }
     });
   });
@@ -1828,8 +1827,7 @@ function handleWorldBankRequest(req, res) {
         'X-Cache': 'STALE',
       }, cached.data);
     }
-    res.writeHead(502, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: err.message }));
+    safeEnd(res, 502, { 'Content-Type': 'application/json' }, JSON.stringify({ error: err.message }));
   });
   request.on('timeout', () => {
     request.destroy();
@@ -1841,8 +1839,7 @@ function handleWorldBankRequest(req, res) {
         'X-Cache': 'STALE',
       }, cached.data);
     }
-    res.writeHead(504, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'World Bank request timeout' }));
+    safeEnd(res, 504, { 'Content-Type': 'application/json' }, JSON.stringify({ error: 'World Bank request timeout' }));
   });
 }
 
@@ -1884,8 +1881,8 @@ function handlePolymarketRequest(req, res) {
   }, (response) => {
     if (response.statusCode !== 200) {
       console.error(`[Relay] Polymarket upstream ${response.statusCode}`);
-      res.writeHead(response.statusCode, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify([]));
+      safeEnd(res, response.statusCode, { 'Content-Type': 'application/json' }, JSON.stringify([]));
+      return;
     }
     let data = '';
     response.on('data', chunk => data += chunk);
@@ -1911,8 +1908,7 @@ function handlePolymarketRequest(req, res) {
         'X-Polymarket-Source': 'railway-stale',
       }, cached.data);
     }
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify([]));
+    safeEnd(res, 200, { 'Content-Type': 'application/json' }, JSON.stringify([]));
   });
   request.on('timeout', () => {
     request.destroy();
@@ -1925,8 +1921,7 @@ function handlePolymarketRequest(req, res) {
         'X-Polymarket-Source': 'railway-stale',
       }, cached.data);
     }
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify([]));
+    safeEnd(res, 200, { 'Content-Type': 'application/json' }, JSON.stringify([]));
   });
 }
 
