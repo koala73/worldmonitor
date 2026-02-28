@@ -80,7 +80,7 @@ const TECH_LIVE_CHANNELS: LiveChannel[] = [
 export const OPTIONAL_LIVE_CHANNELS: LiveChannel[] = [
   // North America
   { id: 'livenow-fox', name: 'LiveNOW from FOX', handle: '@LiveNOWfromFOX' },
-  { id: 'fox-news', name: 'Fox News', handle: '@FoxNews', fallbackVideoId: 'QaftgYkG-ek', useFallbackOnly: true },
+  { id: 'fox-news', name: 'Fox News', handle: '@FoxNews', fallbackVideoId: 'ZvdiJUYGBis', useFallbackOnly: true },
   { id: 'newsmax', name: 'Newsmax', handle: '@NEWSMAX', fallbackVideoId: 'cZikyozILOY', useFallbackOnly: true },
   { id: 'abc-news', name: 'ABC News', handle: '@ABCNews' },
   { id: 'cbs-news', name: 'CBS News', handle: '@CBSNews', fallbackVideoId: 'pBk4NYhWNMM' },
@@ -119,7 +119,7 @@ export const OPTIONAL_LIVE_CHANNELS: LiveChannel[] = [
   { id: 'nhk-world', name: 'NHK World Japan', handle: '@NHKWORLDJAPAN' },
   // Middle East
   { id: 'al-hadath', name: 'Al Hadath', handle: '@AlHadath', fallbackVideoId: 'xWXpl7azI8k', useFallbackOnly: true },
-  { id: 'sky-news-arabia', name: 'Sky News Arabia', handle: '@skynewsarabia', fallbackVideoId: 'MN50dHFHMKE' },
+  { id: 'sky-news-arabia', name: 'Sky News Arabia', handle: '@skynewsarabia', fallbackVideoId: 'U--OjmpjF5o' },
   { id: 'trt-world', name: 'TRT World', handle: '@TRTWorld', fallbackVideoId: 'CV5Fooi8WDI' },
   { id: 'iran-intl', name: 'Iran International', handle: '@IranIntl' },
   { id: 'cgtn-arabic', name: 'CGTN Arabic', handle: '@CGTNArabic' },
