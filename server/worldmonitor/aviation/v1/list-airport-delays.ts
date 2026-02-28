@@ -105,8 +105,8 @@ export async function listAirportDelays(
     try {
       const notamResult = await cachedFetchJson<{ closedIcaos: string[]; reasons: Record<string, string> }>(
         NOTAM_CACHE_KEY, NOTAM_CACHE_TTL, async () => {
-          const nonUs = MONITORED_AIRPORTS.filter(a => a.country !== 'USA');
-          const result = await fetchNotamClosures(nonUs);
+          const mena = MONITORED_AIRPORTS.filter(a => a.region === 'mena');
+          const result = await fetchNotamClosures(mena);
           const closedIcaos = [...result.closedIcaoCodes];
           const reasons: Record<string, string> = {};
           for (const [icao, reason] of result.notamsByIcao) reasons[icao] = reason;

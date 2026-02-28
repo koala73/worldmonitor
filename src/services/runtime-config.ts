@@ -228,8 +228,8 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
   },
   {
     id: 'icaoNotams',
-    name: 'ICAO NOTAM closures',
-    description: 'Airport closure detection from ICAO NOTAM data service.',
+    name: 'ICAO NOTAM closures (Middle East)',
+    description: 'Airport closure detection for MENA airports from ICAO NOTAM data service.',
     requiredSecrets: ['ICAO_API_KEY'],
     fallback: 'Closures detected only via AviationStack flight cancellation data.',
   },
