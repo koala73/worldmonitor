@@ -3020,8 +3020,8 @@ async function gracefulShutdown(signal) {
     } catch {}
     telegramState.client = null;
   }
-  if (upstreamWs) {
-    try { upstreamWs.close(); } catch {}
+  if (upstreamSocket) {
+    try { upstreamSocket.close(); } catch {}
   }
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 5000);
