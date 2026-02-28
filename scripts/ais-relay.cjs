@@ -451,19 +451,27 @@ function orefDateToUTC(dateStr) {
   return new Date(ms).toISOString();
 }
 
-function orefCurlFetch(proxyAuth, url) {
+function orefCurlFetch(proxyAuth, url, { toFile } = {}) {
   // Use curl via child_process — Node.js TLS fingerprint (JA3) gets blocked by Akamai,
   // but curl's fingerprint passes. curl is available on Railway (Linux) and macOS.
   // execFileSync avoids shell interpolation — safe with special chars in proxy credentials.
   const { execFileSync } = require('child_process');
   const proxyUrl = `http://${proxyAuth}`;
-  const result = execFileSync('curl', [
+  const args = [
     '-sS', '-x', proxyUrl, '--max-time', '15',
     '-H', 'Accept: application/json',
     '-H', 'Referer: https://www.oref.org.il/',
     '-H', 'X-Requested-With: XMLHttpRequest',
-    url,
-  ], { encoding: 'utf8', timeout: 20000, maxBuffer: 10 * 1024 * 1024, stdio: ['pipe', 'pipe', 'pipe'] });
+  ];
+  if (toFile) {
+    // Write directly to disk — avoids stdout buffer overflow (ENOBUFS) for large responses
+    args.push('-o', toFile);
+    args.push(url);
+    execFileSync('curl', args, { timeout: 20000, stdio: ['pipe', 'pipe', 'pipe'] });
+    return require('fs').readFileSync(toFile, 'utf8');
+  }
+  args.push(url);
+  const result = execFileSync('curl', args, { encoding: 'utf8', timeout: 20000, stdio: ['pipe', 'pipe', 'pipe'] });
   return result;
 }
 
@@ -511,7 +519,13 @@ async function orefFetchAlerts() {
 }
 
 async function orefBootstrapHistory() {
-  const raw = orefCurlFetch(OREF_PROXY_AUTH, OREF_HISTORY_URL);
+  const tmpFile = require('path').join(require('os').tmpdir(), `oref-history-${Date.now()}.json`);
+  let raw;
+  try {
+    raw = orefCurlFetch(OREF_PROXY_AUTH, OREF_HISTORY_URL, { toFile: tmpFile });
+  } finally {
+    try { require('fs').unlinkSync(tmpFile); } catch {}
+  }
   const cleaned = stripBom(raw).trim();
   if (!cleaned || cleaned === '[]') return;
 
