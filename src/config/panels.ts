@@ -54,6 +54,7 @@ const FULL_PANELS: Record<string, PanelConfig> = {
 };
 
 const FULL_MAP_LAYERS: MapLayers = {
+  iranAttacks: true,
   conflicts: true,
   bases: true,
   cables: false,
@@ -99,10 +100,10 @@ const FULL_MAP_LAYERS: MapLayers = {
   speciesRecovery: false,
   renewableInstallations: false,
   tradeRoutes: false,
-  iranAttacks: false,
 };
 
 const FULL_MOBILE_MAP_LAYERS: MapLayers = {
+  iranAttacks: true,
   conflicts: true,
   bases: false,
   cables: false,
@@ -148,7 +149,6 @@ const FULL_MOBILE_MAP_LAYERS: MapLayers = {
   speciesRecovery: false,
   renewableInstallations: false,
   tradeRoutes: false,
-  iranAttacks: false,
 };
 
 // ============================================
