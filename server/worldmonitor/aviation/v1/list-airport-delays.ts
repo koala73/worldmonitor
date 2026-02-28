@@ -159,12 +159,13 @@ export async function listAirportDelays(
     }
   }
 
-  // 4. Fill in MENA airports with no alerts as "normal operations"
+  // 4. Fill in ALL monitored airports with no alerts as "normal operations"
   //    so they always appear on the map (gray dots)
   const alertedIatas = new Set(allAlerts.map(a => a.iata));
-  const menaAirports = MONITORED_AIRPORTS.filter(a => a.region === 'mena');
-  for (const airport of menaAirports) {
+  let normalCount = 0;
+  for (const airport of MONITORED_AIRPORTS) {
     if (!alertedIatas.has(airport.iata)) {
+      normalCount++;
       allAlerts.push({
         id: `status-${airport.iata}`,
         iata: airport.iata,
@@ -187,8 +188,7 @@ export async function listAirportDelays(
     }
   }
 
-  const menaNormal = menaAirports.filter(a => !alertedIatas.has(a.iata)).length;
-  console.log(`[Aviation] Total: ${allAlerts.length} alerts (${menaNormal} MENA normal) in ${Date.now() - t0}ms`);
+  console.log(`[Aviation] Total: ${allAlerts.length} alerts (${normalCount} normal) in ${Date.now() - t0}ms`);
   return { alerts: allAlerts };
 }
 
