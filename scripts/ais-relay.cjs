@@ -1877,6 +1877,18 @@ function fetchPolymarketUpstream(cacheKey, endpoint, params, tag) {
   polymarketActiveUpstream++;
 
   return new Promise((resolve) => {
+    let finalized = false;
+    function finalize(ok) {
+      if (finalized) return;
+      finalized = true;
+      polymarketActiveUpstream--;
+      if (ok) {
+        polymarketCircuitBreaker.failures = 0;
+      } else {
+        tripPolymarketCircuitBreaker();
+        polymarketCache.set(cacheKey, { data: '[]', timestamp: Date.now() - POLYMARKET_CACHE_TTL_MS + POLYMARKET_NEG_TTL_MS });
+      }
+    }
     const request = https.get(gammaUrl, {
       headers: { 'Accept': 'application/json' },
       timeout: 10000,
@@ -1884,36 +1896,27 @@ function fetchPolymarketUpstream(cacheKey, endpoint, params, tag) {
       if (response.statusCode !== 200) {
         console.error(`[Relay] Polymarket upstream ${response.statusCode} (failures: ${polymarketCircuitBreaker.failures + 1})`);
         response.resume();
-        polymarketActiveUpstream--;
-        tripPolymarketCircuitBreaker();
-        polymarketCache.set(cacheKey, { data: '[]', timestamp: Date.now() - POLYMARKET_CACHE_TTL_MS + POLYMARKET_NEG_TTL_MS });
+        finalize(false);
         resolve(null);
         return;
       }
-      polymarketCircuitBreaker.failures = 0;
       let data = '';
       response.on('data', chunk => data += chunk);
       response.on('end', () => {
-        polymarketActiveUpstream--;
+        finalize(true);
         polymarketCache.set(cacheKey, { data, timestamp: Date.now() });
         resolve(data);
       });
-      response.on('error', () => {
-        polymarketActiveUpstream--;
-        tripPolymarketCircuitBreaker();
-      });
+      response.on('error', () => { finalize(false); });
     });
     request.on('error', (err) => {
       console.error('[Relay] Polymarket error:', err.message);
-      polymarketActiveUpstream--;
-      tripPolymarketCircuitBreaker();
-      polymarketCache.set(cacheKey, { data: '[]', timestamp: Date.now() - POLYMARKET_CACHE_TTL_MS + POLYMARKET_NEG_TTL_MS });
+      finalize(false);
       resolve(null);
     });
     request.on('timeout', () => {
       request.destroy();
-      polymarketActiveUpstream--;
-      tripPolymarketCircuitBreaker();
+      finalize(false);
       resolve(null);
     });
   });
