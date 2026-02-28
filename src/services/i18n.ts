@@ -1,15 +1,16 @@
 import i18next from 'i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
+import { I18N_CONFIG } from '../config/i18n-config';
 
 // English is always needed as fallback — bundle it eagerly.
 import enTranslation from '../locales/en.json';
 
-const SUPPORTED_LANGUAGES = ['en', 'fr', 'de', 'el', 'es', 'it', 'pl', 'pt', 'nl', 'sv', 'ru', 'ar', 'zh', 'ja', 'ko', 'tr', 'th', 'vi'] as const;
+const SUPPORTED_LANGUAGES = I18N_CONFIG.SUPPORTED_LOCALES.map(loc => loc.code);
 type SupportedLanguage = typeof SUPPORTED_LANGUAGES[number];
 type TranslationDictionary = Record<string, unknown>;
 
-const SUPPORTED_LANGUAGE_SET = new Set<SupportedLanguage>(SUPPORTED_LANGUAGES);
-const loadedLanguages = new Set<SupportedLanguage>();
+const SUPPORTED_LANGUAGE_SET = new Set<string>(SUPPORTED_LANGUAGES);
+const loadedLanguages = new Set<string>();
 
 // Lazy-load only the locale that's actually needed — all others stay out of the bundle.
 const localeModules = import.meta.glob<TranslationDictionary>(
@@ -17,11 +18,11 @@ const localeModules = import.meta.glob<TranslationDictionary>(
   { import: 'default' },
 );
 
-const RTL_LANGUAGES = new Set(['ar']);
+const RTL_LANGUAGES = new Set<string>(I18N_CONFIG.SUPPORTED_LOCALES.filter(loc => loc.dir === 'rtl').map(loc => loc.code));
 
 function normalizeLanguage(lng: string): SupportedLanguage {
-  const base = (lng || 'en').split('-')[0]?.toLowerCase() || 'en';
-  if (SUPPORTED_LANGUAGE_SET.has(base as SupportedLanguage)) {
+  const base = (lng || I18N_CONFIG.DEFAULT_LANGUAGE).split('-')[0]?.toLowerCase() || I18N_CONFIG.DEFAULT_LANGUAGE;
+  if (SUPPORTED_LANGUAGE_SET.has(base)) {
     return base as SupportedLanguage;
   }
   return 'en';
@@ -32,8 +33,10 @@ function applyDocumentDirection(lang: string): void {
   document.documentElement.setAttribute('lang', base === 'zh' ? 'zh-CN' : base);
   if (RTL_LANGUAGES.has(base)) {
     document.documentElement.setAttribute('dir', 'rtl');
+    document.body.classList.add('dir-rtl');
   } else {
     document.documentElement.removeAttribute('dir');
+    document.body.classList.remove('dir-rtl');
   }
 }
 
@@ -64,7 +67,7 @@ async function ensureLanguageLoaded(lng: string): Promise<SupportedLanguage> {
 // Initialize i18n
 export async function initI18n(): Promise<void> {
   if (i18next.isInitialized) {
-    const currentLanguage = normalizeLanguage(i18next.language || 'en');
+    const currentLanguage = normalizeLanguage(i18next.language || I18N_CONFIG.DEFAULT_LANGUAGE);
     await ensureLanguageLoaded(currentLanguage);
     applyDocumentDirection(i18next.language || currentLanguage);
     return;
@@ -80,7 +83,7 @@ export async function initI18n(): Promise<void> {
       },
       supportedLngs: [...SUPPORTED_LANGUAGES],
       nonExplicitSupportedLngs: true,
-      fallbackLng: 'en',
+      fallbackLng: I18N_CONFIG.FALLBACK_LANGUAGE,
       debug: import.meta.env.DEV,
       interpolation: {
         escapeValue: false, // not needed for these simple strings
@@ -91,7 +94,7 @@ export async function initI18n(): Promise<void> {
       },
     });
 
-  const detectedLanguage = await ensureLanguageLoaded(i18next.language || 'en');
+  const detectedLanguage = await ensureLanguageLoaded(i18next.language || I18N_CONFIG.DEFAULT_LANGUAGE);
   if (detectedLanguage !== 'en') {
     // Re-trigger translation resolution now that the detected bundle is loaded.
     await i18next.changeLanguage(detectedLanguage);
@@ -129,23 +132,4 @@ export function getLocale(): string {
   return map[lang] || lang;
 }
 
-export const LANGUAGES = [
-  { code: 'en', label: 'English', flag: '🇬🇧' },
-  { code: 'ar', label: 'العربية', flag: '🇸🇦' },
-  { code: 'zh', label: '中文', flag: '🇨🇳' },
-  { code: 'fr', label: 'Français', flag: '🇫🇷' },
-  { code: 'de', label: 'Deutsch', flag: '🇩🇪' },
-  { code: 'el', label: 'Ελληνικά', flag: '🇬🇷' },
-  { code: 'es', label: 'Español', flag: '🇪🇸' },
-  { code: 'it', label: 'Italiano', flag: '🇮🇹' },
-  { code: 'pl', label: 'Polski', flag: '🇵🇱' },
-  { code: 'pt', label: 'Português', flag: '🇵🇹' },
-  { code: 'nl', label: 'Nederlands', flag: '🇳🇱' },
-  { code: 'sv', label: 'Svenska', flag: '🇸🇪' },
-  { code: 'ru', label: 'Русский', flag: '🇷🇺' },
-  { code: 'ja', label: '日本語', flag: '🇯🇵' },
-  { code: 'ko', label: '한국어', flag: '🇰🇷' },
-  { code: 'th', label: 'ไทย', flag: '🇹🇭' },
-  { code: 'tr', label: 'Türkçe', flag: '🇹🇷' },
-  { code: 'vi', label: 'Tiếng Việt', flag: '🇻🇳' },
-];
+export const LANGUAGES = [...I18N_CONFIG.SUPPORTED_LOCALES];
