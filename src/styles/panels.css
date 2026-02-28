@@ -121,14 +121,14 @@
    ---------------------------------------------------------- */
 .wm-dl-panel {
   position: fixed;
-  top: 48px;
+  bottom: 0;
   right: 0;
   z-index: 900;
   width: 230px;
   background: var(--surface);
   border-left: 3px solid var(--green);
-  border-bottom: 1px solid var(--border);
-  border-bottom-left-radius: 8px;
+  border-top: 1px solid var(--border);
+  border-top-left-radius: 8px;
   padding: 14px;
   transform: translateX(110%);
   transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
