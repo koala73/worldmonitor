@@ -15,7 +15,12 @@ const zlib = require('zlib');
 const path = require('path');
 const { readFileSync } = require('fs');
 const crypto = require('crypto');
+const v8 = require('v8');
 const { WebSocketServer, WebSocket } = require('ws');
+
+// Log effective heap limit at startup (verifies NODE_OPTIONS=--max-old-space-size is active)
+const _heapStats = v8.getHeapStatistics();
+console.log(`[Relay] Heap limit: ${(_heapStats.heap_size_limit / 1024 / 1024).toFixed(0)}MB`);
 
 const AISSTREAM_URL = 'wss://stream.aisstream.io/v0/stream';
 const API_KEY = process.env.AISSTREAM_API_KEY || process.env.VITE_AISSTREAM_API_KEY;
@@ -39,9 +44,17 @@ const UPSTREAM_QUEUE_HARD_CAP = Math.max(
 );
 const UPSTREAM_DRAIN_BATCH = Math.max(1, Number(process.env.AIS_UPSTREAM_DRAIN_BATCH || 250));
 const UPSTREAM_DRAIN_BUDGET_MS = Math.max(2, Number(process.env.AIS_UPSTREAM_DRAIN_BUDGET_MS || 20));
-const MAX_VESSELS = 50000; // hard cap on vessels Map
-const MAX_VESSEL_HISTORY = 50000;
+function safeInt(envVal, fallback, min) {
+  const n = Number(envVal);
+  return Number.isFinite(n) ? Math.max(min, Math.floor(n)) : fallback;
+}
+const MAX_VESSELS = safeInt(process.env.AIS_MAX_VESSELS, 20000, 1000);
+const MAX_VESSEL_HISTORY = safeInt(process.env.AIS_MAX_VESSEL_HISTORY, 20000, 1000);
 const MAX_DENSITY_CELLS = 5000;
+const MEMORY_CLEANUP_THRESHOLD_GB = (() => {
+  const n = Number(process.env.RELAY_MEMORY_CLEANUP_GB);
+  return Number.isFinite(n) && n > 0 ? n : 2.0;
+})();
 const RELAY_SHARED_SECRET = process.env.RELAY_SHARED_SECRET || '';
 const RELAY_AUTH_HEADER = (process.env.RELAY_AUTH_HEADER || 'x-relay-key').toLowerCase();
 const ALLOW_UNAUTHENTICATED_RELAY = process.env.ALLOW_UNAUTHENTICATED_RELAY === 'true';
@@ -201,9 +214,12 @@ function normalizeTelegramMessage(msg, channel) {
   };
 }
 
+let telegramImportFailed = false;
+
 async function initTelegramClientIfNeeded() {
   if (!TELEGRAM_ENABLED) return false;
   if (telegramState.client) return true;
+  if (telegramImportFailed) return false;
 
   const apiId = parseInt(String(process.env.TELEGRAM_API_ID || ''), 10);
   const apiHash = String(process.env.TELEGRAM_API_HASH || '');
@@ -225,6 +241,12 @@ async function initTelegramClientIfNeeded() {
     console.log('[Relay] Telegram client connected');
     return true;
   } catch (e) {
+    if (e?.code === 'ERR_MODULE_NOT_FOUND' || /Cannot find package/.test(e?.message)) {
+      telegramImportFailed = true;
+      telegramState.lastError = 'telegram package not installed';
+      console.warn('[Relay] Telegram package not installed — disabling permanently for this session');
+      return false;
+    }
     telegramState.lastError = `telegram init failed: ${e?.message || String(e)}`;
     console.warn('[Relay] Telegram init failed:', telegramState.lastError);
     return false;
@@ -2627,13 +2649,14 @@ setInterval(() => {
   const mem = process.memoryUsage();
   const rssGB = mem.rss / 1024 / 1024 / 1024;
   console.log(`[Monitor] rss=${(mem.rss / 1024 / 1024).toFixed(0)}MB heap=${(mem.heapUsed / 1024 / 1024).toFixed(0)}MB/${(mem.heapTotal / 1024 / 1024).toFixed(0)}MB external=${(mem.external / 1024 / 1024).toFixed(0)}MB vessels=${vessels.size} density=${densityGrid.size} candidates=${candidateReports.size} msgs=${messageCount} dropped=${droppedMessages}`);
-  // Emergency cleanup if memory exceeds 450MB RSS
-  if (rssGB > 0.45) {
-    console.warn('[Monitor] High memory — forcing aggressive cleanup');
+  if (rssGB > MEMORY_CLEANUP_THRESHOLD_GB) {
+    console.warn(`[Monitor] High memory (${rssGB.toFixed(2)}GB > ${MEMORY_CLEANUP_THRESHOLD_GB}GB) — forcing aggressive cleanup`);
     cleanupAggregates();
-    // Clear heavy caches only (RSS/polymarket/worldbank are tiny, keep them)
     openskyResponseCache.clear();
     openskyNegativeCache.clear();
+    rssResponseCache.clear();
+    polymarketCache.clear();
+    worldbankCache.clear();
     if (global.gc) global.gc();
   }
 }, 60 * 1000);

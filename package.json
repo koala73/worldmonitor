@@ -67,10 +67,11 @@
     "tsx": "^4.21.0",
     "typescript": "^5.7.2",
     "vite": "^6.0.7",
-    "vite-plugin-pwa": "^1.2.0",
-    "ws": "^8.19.0"
+    "vite-plugin-pwa": "^1.2.0"
   },
   "dependencies": {
+    "telegram": "^2.26.22",
+    "ws": "^8.19.0",
     "@deck.gl/aggregation-layers": "^9.2.6",
     "@deck.gl/core": "^9.2.6",
     "@deck.gl/geo-layers": "^9.2.6",
