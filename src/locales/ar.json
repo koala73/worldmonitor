@@ -36,7 +36,8 @@
       "earthquakes": "زلازل",
       "displaced": "نازحون",
       "climate": "إجهاد مناخي",
-      "conflictEvents": "أحداث نزاع"
+      "conflictEvents": "أحداث نزاع",
+      "activeStrikes": "ضربات نشطة"
     },
     "timeAgo": {
       "m": "{{count}}د مضت",
@@ -72,7 +73,8 @@
       "internetOutages": "{{count}} انقطاع إنترنت",
       "recentEarthquakes": "{{count}} زلزال حديث",
       "stockIndex": "مؤشر الأسهم: {{value}}",
-      "recentHeadlines": "**أحدث العناوين:**"
+      "recentHeadlines": "**أحدث العناوين:**",
+      "activeStrikes": "{{count}} ضربة نشطة مُكتشفة"
     }
   },
   "header": {
@@ -205,7 +207,9 @@
     "geoHubs": "مراكز جيوسياسية",
     "liveWebcams": "كاميرات مباشرة",
     "securityAdvisories": "تنبيهات أمنية",
-    "orefSirens": "OREF Sirens"
+    "orefSirens": "OREF Sirens",
+    "supplyChain": "سلسلة التوريد",
+    "giving": "العطاء العالمي"
   },
   "modals": {
     "search": {
@@ -349,7 +353,8 @@
         "NASA_FIRMS_API_KEY": "نظام معلومات الحرائق لإدارة الموارد.",
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
-      }
+      },
+      "skipSetup": "تخطي الإعداد"
     },
     "settingsWindow": {
       "validating": "جارٍ التحقق من مفاتيح API...",
@@ -371,7 +376,8 @@
         "path": "المسار",
         "status": "الحالة",
         "duration": "المدة"
-      }
+      },
+      "worldMonitor": "مراقب العالم"
     },
     "countryIntel": {
       "identifying": "جارٍ تحديد الدولة...",
@@ -424,7 +430,8 @@
         "earthquakes": "زلازل",
         "displaced": "نازحون",
         "climate": "إجهاد مناخي",
-        "conflictEvents": "أحداث نزاع"
+        "conflictEvents": "أحداث نزاع",
+        "activeStrikes": "ضربات نشطة"
       },
       "timeAgo": {
         "m": "{{count}}د مضت",
@@ -460,7 +467,8 @@
         "internetOutages": "{{count}} internet outages",
         "recentEarthquakes": "{{count}} recent earthquakes",
         "stockIndex": "Stock index: {{value}}",
-        "recentHeadlines": "**Recent headlines:**"
+        "recentHeadlines": "**Recent headlines:**",
+        "activeStrikes": "{{count}} ضربة نشطة مُكتشفة"
       }
     }
   },
@@ -537,7 +545,8 @@
       "change": "Change",
       "cut": "cut",
       "hike": "hike",
-      "hold": "hold"
+      "hold": "hold",
+      "fredKeyMissing": "مفتاح FRED مفقود لعرض المؤشرات."
     },
     "tradePolicy": {
       "restrictions": "القيود",
@@ -787,6 +796,7 @@
         "commodityHubs": "مراكز سلعية",
         "gulfInvestments": "استثمارات دول الخليج",
         "tradeRoutes": "طرق التجارة",
+        "iranAttacks": "هجمات إيران",
         "dayNight": "نهار/ليل"
       },
       "tooltip": {
@@ -879,8 +889,19 @@
           "transportDelays": "تأخيرات المطارات والتوقفات الأرضية (FAA)",
           "naturalEventsFull": "زلازل (USGS) + عواصف وحرائق وبراكين وفيضانات (NASA EONET)",
           "waterwaysLabels": "تسميات نقاط الاختناق الاستراتيجية",
-        "tradeRoutes": "خطوط الشحن العالمية الرئيسية التي تربط الموانئ عبر نقاط الاختناق الاستراتيجية",
-        "dayNight": "خط الفاصل الشمسي في الوقت الفعلي يُظهر مناطق النهار والليل"
+          "tradeRoutes": "خطوط الشحن العالمية الرئيسية التي تربط الموانئ عبر نقاط الاختناق الاستراتيجية",
+          "dayNight": "خط الفاصل الشمسي في الوقت الفعلي يُظهر مناطق النهار والليل",
+          "firesFull": "حرائق الغابات والتناقضات الحرارية عبر الأقمار الصناعية",
+          "climateAnomalies": "شذوذ مناخي وأحداث قاسية مرتبطة بالطقس",
+          "geoUcdpEvents": "أحداث نزاعات مسلحة موثقة",
+          "geoDisplacement": "حركات النزوح والهجرة الكبرى",
+          "militarySpaceports": "قواعد الإطلاق الفضائي",
+          "infraCyberThreats": "تهديدات سيبرانية وهجمات متقدمة",
+          "mineralsFull": "مواقع استخراج المعادن الحيوية لبطاريات EV والتقنية",
+          "techCyberThreats": "تجمع للتهديدات السيبرانية التقنية",
+          "techEvents": "تجمع للفعاليات والمؤتمرات التقنية",
+          "techFires": "تأثير حرائق وتقلبات مناخية على التقنية",
+          "financeGulfInvestments": "تتبع استثمارات دول الخليج السيادية"
         },
         "notes": {
           "timeAffects": "يؤثر على: الزلازل، الطقس، الاحتجاجات، الانقطاعات"
@@ -919,7 +940,10 @@
       "aiFlowStatusBrowserOnly": "نموذج المتصفح فقط",
       "aiFlowStatusDisabled": "لا يوجد مزود ذكاء اصطناعي مفعّل",
       "insightsDisabledTitle": "تحليل الذكاء الاصطناعي معطّل",
-      "insightsDisabledHint": "Enable providers via the settings gear in the map header"
+      "insightsDisabledHint": "Enable providers via the settings gear in the map header",
+      "sectionStreaming": "جودة البث",
+      "streamQualityLabel": "الجودة:",
+      "streamQualityDesc": "يفضل 720p فما فوق للمشاهدة المثلى"
     },
     "cascade": {
       "noImpacts": "لم يتم رصد تأثيرات على الدول",
@@ -1131,7 +1155,9 @@
         "minutesAgo": "{{count}}د مضت",
         "hoursAgo": "{{count}}س مضت",
         "daysAgo": "{{count}}ي مضت"
-      }
+      },
+      "breakingAlerts": "إظهار شريط الأخبار العاجلة",
+      "popupAlerts": "تمكين التنبيهات المنبثقة"
     },
     "countryTimeline": {
       "now": "الآن",
@@ -1194,7 +1220,8 @@
         "estFlow": "التدفق المقدّر",
         "volume": "الحجم",
         "change": "التغيّر"
-      }
+      },
+      "rateLimited": "تم تقييد المعدل، يرجى المحاولة لاحقا."
     },
     "macroSignals": {
       "overall": "الإجمالي",
@@ -1290,7 +1317,12 @@
       "regionLatinAmerica": "أمريكا اللاتينية",
       "regionAsia": "آسيا",
       "regionMiddleEast": "الشرق الأوسط",
-      "regionAfrica": "أفريقيا"
+      "regionAfrica": "أفريقيا",
+      "botCheck": "فشل التحقق من عدم وجود روبوت (CAPTCHA مطلوب)",
+      "signInToYouTube": "يتطلب تسجيل الدخول إلى YouTube",
+      "invalidHandle": "حساب YouTube غير صالح",
+      "channelNotFound": "لم يتم العثور على القناة",
+      "verifying": "جارِ التحقق من القناة..."
     },
     "securityAdvisories": {
       "loading": "جاري جلب التحذيرات الأمنية...",
@@ -1324,7 +1356,14 @@
       "justNow": "just now",
       "historyCount": "{{count}} alerts in last 24h",
       "infoTooltip": "<strong>OREF Sirens</strong><br>Real-time rocket and missile siren alerts from Israel Home Front Command (oref.org.il).<br><br>Data is polled every 10 seconds via a proxy relay. A pulsing red indicator means active sirens are sounding."
-    }
+    },
+    "supplyChain": {
+      "title": "سلسلة التوريد"
+    },
+    "giving": {
+      "title": "العطاء الخيري"
+    },
+    "breakingNews": "أخبار عاجلة"
   },
   "popups": {
     "startDate": "تاريخ البدء",
@@ -1965,6 +2004,8 @@
     "currentVariant": "(الحالي)",
     "retry": "Retry",
     "refresh": "Refresh",
-    "all": "الكل"
+    "all": "الكل",
+    "loadingGiving": "جارٍ تحميل بيانات العطاء...",
+    "rateLimitedMarket": "تم تجاوز حد الطلبات للأسواق."
   }
 }
