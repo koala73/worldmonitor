@@ -18,8 +18,7 @@ import { CHROME_UA } from '../../../_shared/constants';
 
 export const FAA_URL = 'https://nasstatus.faa.gov/api/airport-status-information';
 export const AVIATIONSTACK_URL = 'https://api.aviationstack.com/v1/flights';
-const BATCH_CONCURRENCY = 5;
-const BATCH_SIZE = 20;
+const BATCH_CONCURRENCY = 10;
 const MIN_FLIGHTS_FOR_CLOSURE = 10;
 
 // ---------- XML Parser ----------
@@ -196,29 +195,19 @@ export interface AviationStackResult {
   healthy: boolean;
 }
 
-let batchOffset = Math.floor(Math.random() * 100);
-
 export async function fetchAviationStackDelays(
   allAirports: MonitoredAirport[]
 ): Promise<AviationStackResult> {
   const apiKey = process.env.AVIATIONSTACK_API;
   if (!apiKey) return { alerts: [], healthy: false };
 
-  const start = batchOffset % allAirports.length;
-  const batch: MonitoredAirport[] = [];
-  for (let i = 0; i < BATCH_SIZE && i < allAirports.length; i++) {
-    const airport = allAirports[(start + i) % allAirports.length];
-    if (airport) batch.push(airport);
-  }
-  batchOffset = (start + BATCH_SIZE) % allAirports.length;
-
   const alerts: AirportDelayAlert[] = [];
   let succeeded = 0, failed = 0;
-  const deadline = Date.now() + 20_000;
+  const deadline = Date.now() + 50_000;
 
-  for (let i = 0; i < batch.length; i += BATCH_CONCURRENCY) {
+  for (let i = 0; i < allAirports.length; i += BATCH_CONCURRENCY) {
     if (Date.now() >= deadline) break;
-    const chunk = batch.slice(i, i + BATCH_CONCURRENCY);
+    const chunk = allAirports.slice(i, i + BATCH_CONCURRENCY);
     const results = await Promise.allSettled(
       chunk.map(airport => fetchSingleAirport(apiKey, airport))
     );
@@ -232,7 +221,7 @@ export async function fetchAviationStackDelays(
     }
   }
 
-  const healthy = batch.length < 5 || failed <= succeeded;
+  const healthy = allAirports.length < 5 || failed <= succeeded;
   if (!healthy) {
     console.warn(`[Aviation] Systemic failure: ${failed}/${failed + succeeded} airports failed`);
   }
