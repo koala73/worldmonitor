@@ -426,7 +426,7 @@ export function buildNotamAlert(airport: MonitoredAirport, reason: string): Airp
 export function generateSimulatedDelay(airport: typeof MONITORED_AIRPORTS[number]): AirportDelayAlert | null {
   const hour = new Date().getUTCHours();
   const isRushHour = (hour >= 6 && hour <= 10) || (hour >= 16 && hour <= 20);
-  const busyAirports = ['LHR', 'CDG', 'FRA', 'JFK', 'LAX', 'ORD', 'PEK', 'HND', 'DXB', 'SIN'];
+  const busyAirports = ['LHR', 'CDG', 'FRA', 'JFK', 'LAX', 'ORD', 'PEK', 'HND', 'DXB', 'SIN', 'AUH', 'DOH', 'IST', 'ICN'];
   const isBusy = busyAirports.includes(airport.iata);
   const random = Math.random();
   const delayChance = isRushHour ? 0.35 : 0.15;
