@@ -205,7 +205,8 @@
     "geoHubs": "Γεωπολιτικά Κέντρα",
     "liveWebcams": "Ζωντανές Κάμερες",
     "securityAdvisories": "Προειδοποιήσεις Ασφαλείας",
-    "orefSirens": "OREF Sirens"
+    "orefSirens": "OREF Sirens",
+    "telegramIntel": "Πληροφορίες Telegram"
   },
   "modals": {
     "search": {
@@ -1179,6 +1180,19 @@
     },
     "gdeltIntel": {
       "infoTooltip": "<strong>Πληροφορίες GDELT</strong> Παρακολούθηση παγκόσμιων ειδήσεων σε πραγματικό χρόνο:<ul><li>Επιμελημένες κατηγορίες θεμάτων (συγκρούσεις, κυβερνοαπειλές, κ.λπ.)</li><li>Άρθρα από 100+ γλώσσες μεταφρασμένα</li><li>Ενημερώσεις κάθε 15 λεπτά</li></ul>Πηγή: GDELT Project (gdeltproject.org)"
+    },
+    "telegramIntel": {
+      "infoTooltip": "Σήματα σε πραγματικό χρόνο από παρακολουθούμενα κανάλια OSINT στο Telegram",
+      "loading": "Σύνδεση στο αναμεταδότη Telegram...",
+      "empty": "Δεν υπάρχουν μηνύματα",
+      "disabled": "Ο αναμεταδότης Telegram δεν είναι ενεργός",
+      "filterAll": "Όλα",
+      "filterBreaking": "Έκτακτο",
+      "filterConflict": "Συγκρούσεις",
+      "filterAlerts": "Ειδοποιήσεις",
+      "filterOsint": "OSINT",
+      "filterPolitics": "Πολιτική",
+      "filterMiddleeast": "Μέση Ανατολή"
     },
     "investments": {
       "infoTooltip": "Βάση δεδομένων άμεσων ξένων επενδύσεων Σαουδικής Αραβίας και ΗΑΕ σε παγκόσμιες κρίσιμες υποδομές. Κάντε κλικ σε μια γραμμή για μετάβαση στην επένδυση στον χάρτη.",

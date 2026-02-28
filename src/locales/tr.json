@@ -205,7 +205,8 @@
     "geoHubs": "Jeopolitik Merkezler",
     "liveWebcams": "Canli Web Kameralari",
     "securityAdvisories": "Güvenlik Uyarıları",
-    "orefSirens": "OREF Sirens"
+    "orefSirens": "OREF Sirens",
+    "telegramIntel": "Telegram İstihbarat"
   },
   "modals": {
     "search": {
@@ -1139,6 +1140,19 @@
     },
     "gdeltIntel": {
       "infoTooltip": "<strong>GDELT Istihbarati</strong> Gercek zamanli kuresel haber izleme:<ul><li>Secilmis konu kategorileri (catismalar, siber vb.)</li><li>100+ dilden cevrilen makaleler</li><li>Her 15 dakikada guncelleme</li></ul>Kaynak: GDELT Project (gdeltproject.org)"
+    },
+    "telegramIntel": {
+      "infoTooltip": "İzlenen Telegram OSINT kanallarından gerçek zamanlı sinyaller",
+      "loading": "Telegram aktarıcısına bağlanılıyor...",
+      "empty": "Mevcut mesaj yok",
+      "disabled": "Telegram aktarıcısı etkin değil",
+      "filterAll": "Tümü",
+      "filterBreaking": "Son Dakika",
+      "filterConflict": "Çatışma",
+      "filterAlerts": "Uyarılar",
+      "filterOsint": "OSINT",
+      "filterPolitics": "Siyaset",
+      "filterMiddleeast": "Orta Doğu"
     },
     "investments": {
       "infoTooltip": "Suudi Arabistan ve BAE'nin kuresel kritik altyapilara dogrudan yabanci yatirimlari veritabani. Yatirimi haritada gormek icin bir satira tiklayin.",

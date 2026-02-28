@@ -205,7 +205,8 @@
     "geoHubs": "Hotspot geopolitici",
     "liveWebcams": "Webcam in Diretta",
     "securityAdvisories": "Avvisi di Sicurezza",
-    "orefSirens": "OREF Sirens"
+    "orefSirens": "OREF Sirens",
+    "telegramIntel": "Intelligence Telegram"
   },
   "modals": {
     "search": {
@@ -1052,6 +1053,19 @@
     },
     "gdeltIntel": {
       "infoTooltip": "<strong>GDELT Intelligence</strong> Monitoraggio delle notizie globali in tempo reale:<ul><li>Categorie di argomenti selezionate (conflitti, cyber, ecc.)</li><li>Articoli da oltre 100 lingue tradotte</li><li>Aggiornamenti ogni 15 minuti</li></ul>Fonte: Progetto GDELT (gdeltproject.org)"
+    },
+    "telegramIntel": {
+      "infoTooltip": "Segnali in tempo reale dai canali OSINT Telegram monitorati",
+      "loading": "Connessione al relay Telegram...",
+      "empty": "Nessun messaggio disponibile",
+      "disabled": "Relay Telegram non attivo",
+      "filterAll": "Tutti",
+      "filterBreaking": "Ultima ora",
+      "filterConflict": "Conflitti",
+      "filterAlerts": "Avvisi",
+      "filterOsint": "OSINT",
+      "filterPolitics": "Politica",
+      "filterMiddleeast": "Medio Oriente"
     },
     "investments": {
       "infoTooltip": "Database degli investimenti diretti esteri dell'Arabia Saudita e degli Emirati Arabi Uniti nelle infrastrutture critiche globali. Fai clic su una riga per raggiungere l'investimento sulla mappa.",

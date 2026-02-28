@@ -205,7 +205,8 @@
     "geoHubs": "ศูนย์กลางภูมิรัฐศาสตร์",
     "liveWebcams": "เว็บแคมสด",
     "securityAdvisories": "คำเตือนด้านความปลอดภัย",
-    "orefSirens": "OREF Sirens"
+    "orefSirens": "OREF Sirens",
+    "telegramIntel": "ข่าวกรอง Telegram"
   },
   "modals": {
     "search": {
@@ -1139,6 +1140,19 @@
     },
     "gdeltIntel": {
       "infoTooltip": "<strong>ข่าวกรอง GDELT</strong> การเฝ้าระวังข่าวทั่วโลกเรียลไทม์:<ul><li>หมวดหมู่หัวข้อที่คัดสรร (ความขัดแย้ง, ไซเบอร์ ฯลฯ)</li><li>บทความจาก 100+ ภาษาที่แปลแล้ว</li><li>อัปเดตทุก 15 นาที</li></ul>แหล่งที่มา: GDELT Project (gdeltproject.org)"
+    },
+    "telegramIntel": {
+      "infoTooltip": "สัญญาณเรียลไทม์จากช่อง OSINT บน Telegram ที่ถูกติดตาม",
+      "loading": "กำลังเชื่อมต่อรีเลย์ Telegram...",
+      "empty": "ไม่มีข้อความ",
+      "disabled": "รีเลย์ Telegram ไม่ทำงาน",
+      "filterAll": "ทั้งหมด",
+      "filterBreaking": "ด่วน",
+      "filterConflict": "ความขัดแย้ง",
+      "filterAlerts": "แจ้งเตือน",
+      "filterOsint": "OSINT",
+      "filterPolitics": "การเมือง",
+      "filterMiddleeast": "ตะวันออกกลาง"
     },
     "investments": {
       "infoTooltip": "ฐานข้อมูลการลงทุนโดยตรงจากต่างประเทศของซาอุดีอาระเบียและ UAE ในโครงสร้างพื้นฐานสำคัญระดับโลก คลิกแถวเพื่อบินไปยังการลงทุนบนแผนที่",

@@ -205,7 +205,8 @@
     "geoHubs": "地政学ハブ",
     "liveWebcams": "ライブカメラ",
     "securityAdvisories": "セキュリティアドバイザリー",
-    "orefSirens": "OREF Sirens"
+    "orefSirens": "OREF Sirens",
+    "telegramIntel": "Telegram インテリジェンス"
   },
   "modals": {
     "search": {
@@ -1139,6 +1140,19 @@
     },
     "gdeltIntel": {
       "infoTooltip": "<strong>GDELTインテリジェンス</strong> リアルタイムグローバルニュース監視:<ul><li>厳選されたトピックカテゴリ（紛争、サイバー等）</li><li>100以上の言語から翻訳された記事</li><li>15分ごとに更新</li></ul>ソース: GDELT Project (gdeltproject.org)"
+    },
+    "telegramIntel": {
+      "infoTooltip": "監視対象のTelegram OSINTチャンネルからのリアルタイムシグナル",
+      "loading": "Telegramリレーに接続中...",
+      "empty": "メッセージはありません",
+      "disabled": "Telegramリレーが無効です",
+      "filterAll": "すべて",
+      "filterBreaking": "速報",
+      "filterConflict": "紛争",
+      "filterAlerts": "警報",
+      "filterOsint": "OSINT",
+      "filterPolitics": "政治",
+      "filterMiddleeast": "中東"
     },
     "investments": {
       "infoTooltip": "サウジアラビアとUAEによるグローバル重要インフラへの外国直接投資データベース。行をクリックするとマップ上の投資先にズーム。",

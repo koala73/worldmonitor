@@ -205,7 +205,8 @@
     "geoHubs": "地缘政治枢纽",
     "liveWebcams": "实时摄像头",
     "securityAdvisories": "安全警告",
-    "orefSirens": "OREF Sirens"
+    "orefSirens": "OREF Sirens",
+    "telegramIntel": "Telegram 情报"
   },
   "modals": {
     "search": {
@@ -1139,6 +1140,19 @@
     },
     "gdeltIntel": {
       "infoTooltip": "<strong>GDELT情报</strong>实时全球新闻监测：<ul><li>精选主题分类（冲突、网络安全等）</li><li>100+语言的文章已翻译</li><li>每15分钟更新</li></ul>来源：GDELT Project (gdeltproject.org)"
+    },
+    "telegramIntel": {
+      "infoTooltip": "来自监控的Telegram OSINT频道的实时信号",
+      "loading": "正在连接Telegram中继...",
+      "empty": "暂无消息",
+      "disabled": "Telegram中继未激活",
+      "filterAll": "全部",
+      "filterBreaking": "突发",
+      "filterConflict": "冲突",
+      "filterAlerts": "警报",
+      "filterOsint": "OSINT",
+      "filterPolitics": "政治",
+      "filterMiddleeast": "中东"
     },
     "investments": {
       "infoTooltip": "沙特阿拉伯和阿联酋在全球关键基础设施领域的对外直接投资数据库。点击某行可在地图上飞到该投资所在位置。",

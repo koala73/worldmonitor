@@ -205,7 +205,8 @@
     "geoHubs": "Geopolitical Hotspots",
     "liveWebcams": "Live-Webcams",
     "securityAdvisories": "Sicherheitshinweise",
-    "orefSirens": "OREF Sirens"
+    "orefSirens": "OREF Sirens",
+    "telegramIntel": "Telegram-Nachrichten"
   },
   "modals": {
     "search": {
@@ -1052,6 +1053,19 @@
     },
     "gdeltIntel": {
       "infoTooltip": "<strong>GDELT Intelligence</strong> Globale Nachrichtenüberwachung in Echtzeit:<ul><li>Kuratierte Themenkategorien (Konflikte, Cyber ​​usw.)</li><li>Artikel aus über 100 Sprachen übersetzt</li><li>Aktualisierungen alle 15 Minuten</li></ul>Quelle: GDELT-Projekt (gdeltproject.org)"
+    },
+    "telegramIntel": {
+      "infoTooltip": "Echtzeit-Signale aus überwachten Telegram-OSINT-Kanälen",
+      "loading": "Verbindung zum Telegram-Relay wird hergestellt...",
+      "empty": "Keine Nachrichten verfügbar",
+      "disabled": "Telegram-Relay nicht aktiv",
+      "filterAll": "Alle",
+      "filterBreaking": "Eilmeldung",
+      "filterConflict": "Konflikte",
+      "filterAlerts": "Warnungen",
+      "filterOsint": "OSINT",
+      "filterPolitics": "Politik",
+      "filterMiddleeast": "Naher Osten"
     },
     "investments": {
       "infoTooltip": "Datenbank über ausländische Direktinvestitionen Saudi-Arabiens und der VAE in globale kritische Infrastruktur. Klicken Sie auf eine Zeile, um zur Investition auf der Karte zu fliegen.",

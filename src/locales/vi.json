@@ -205,7 +205,8 @@
     "geoHubs": "Trung tâm Địa chính trị",
     "liveWebcams": "Webcam Trực tiếp",
     "securityAdvisories": "Cảnh báo An ninh",
-    "orefSirens": "OREF Sirens"
+    "orefSirens": "OREF Sirens",
+    "telegramIntel": "Tình báo Telegram"
   },
   "modals": {
     "search": {
@@ -1139,6 +1140,19 @@
     },
     "gdeltIntel": {
       "infoTooltip": "<strong>Tình báo GDELT</strong> Giám sát tin tức toàn cầu thời gian thực:<ul><li>Danh mục chủ đề được chọn lọc (xung đột, mạng, v.v.)</li><li>Bài viết từ hơn 100 ngôn ngữ được dịch</li><li>Cập nhật mỗi 15 phút</li></ul>Nguồn: GDELT Project (gdeltproject.org)"
+    },
+    "telegramIntel": {
+      "infoTooltip": "Tín hiệu thời gian thực từ các kênh OSINT Telegram được giám sát",
+      "loading": "Đang kết nối đến relay Telegram...",
+      "empty": "Không có tin nhắn",
+      "disabled": "Relay Telegram không hoạt động",
+      "filterAll": "Tất cả",
+      "filterBreaking": "Nóng",
+      "filterConflict": "Xung đột",
+      "filterAlerts": "Cảnh báo",
+      "filterOsint": "OSINT",
+      "filterPolitics": "Chính trị",
+      "filterMiddleeast": "Trung Đông"
     },
     "investments": {
       "infoTooltip": "Cơ sở dữ liệu đầu tư trực tiếp nước ngoài của Ả Rập Saudi và UAE vào hạ tầng quan trọng toàn cầu. Nhấp vào hàng để bay đến vị trí đầu tư trên bản đồ.",

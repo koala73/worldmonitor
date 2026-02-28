@@ -187,6 +187,7 @@
     "populationExposure": "인구 노출",
     "securityAdvisories": "보안 권고",
     "orefSirens": "OREF Sirens",
+    "telegramIntel": "Telegram 인텔리전스",
     "startups": "스타트업 & VC",
     "vcblogs": "VC 인사이트 & 에세이",
     "regionalStartups": "글로벌 스타트업 뉴스",
@@ -1258,6 +1259,19 @@
     },
     "gdeltIntel": {
       "infoTooltip": "<strong>GDELT 인텔리전스</strong> 실시간 글로벌 뉴스 모니터링:<ul><li>선별된 주제 카테고리 (분쟁, 사이버 등)</li><li>100개 이상 언어의 기사를 번역</li><li>15분마다 업데이트</li></ul>출처: GDELT Project (gdeltproject.org)"
+    },
+    "telegramIntel": {
+      "infoTooltip": "모니터링 중인 Telegram OSINT 채널의 실시간 신호",
+      "loading": "Telegram 릴레이에 연결 중...",
+      "empty": "사용 가능한 메시지 없음",
+      "disabled": "Telegram 릴레이가 비활성 상태입니다",
+      "filterAll": "전체",
+      "filterBreaking": "속보",
+      "filterConflict": "분쟁",
+      "filterAlerts": "경보",
+      "filterOsint": "OSINT",
+      "filterPolitics": "정치",
+      "filterMiddleeast": "중동"
     },
     "investments": {
       "infoTooltip": "사우디아라비아와 UAE의 글로벌 핵심 인프라 해외직접투자 데이터베이스. 행을 클릭하면 지도에서 해당 투자를 확인할 수 있습니다.",

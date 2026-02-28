@@ -64,7 +64,8 @@
     "climate": "Klimaatafwijkingen",
     "liveWebcams": "Live Webcams",
     "securityAdvisories": "Veiligheidsadviezen",
-    "orefSirens": "OREF Sirens"
+    "orefSirens": "OREF Sirens",
+    "telegramIntel": "Telegram Inlichtingen"
   },
   "modals": {
     "search": {
@@ -856,6 +857,19 @@
     },
     "gdeltIntel": {
       "infoTooltip": "<strong>GDELT Intelligence</strong> Realtime monitoring van mondiaal nieuws:<ul><li>Samengestelde onderwerpcategorieën (conflicten, cyber, etc.)</li><li>Artikelen uit meer dan 100 talen vertaald</li><li>Updates elke 15 minuten</li></ul>Bron: GDELT Project (gdeltproject.org)"
+    },
+    "telegramIntel": {
+      "infoTooltip": "Realtime signalen van gemonitorde Telegram OSINT-kanalen",
+      "loading": "Verbinding maken met Telegram-relay...",
+      "empty": "Geen berichten beschikbaar",
+      "disabled": "Telegram-relay niet actief",
+      "filterAll": "Alles",
+      "filterBreaking": "Belangrijk",
+      "filterConflict": "Conflicten",
+      "filterAlerts": "Waarschuwingen",
+      "filterOsint": "OSINT",
+      "filterPolitics": "Politiek",
+      "filterMiddleeast": "Midden-Oosten"
     },
     "investments": {
       "infoTooltip": "Database van directe buitenlandse investeringen van Saoedi-Arabië en de VAE in mondiale kritieke infrastructuur. Klik op een rij om naar de investering op de kaart te vliegen.",

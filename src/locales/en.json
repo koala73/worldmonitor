@@ -189,6 +189,7 @@
     "populationExposure": "Population Exposure",
     "securityAdvisories": "Security Advisories",
     "orefSirens": "OREF Sirens",
+    "telegramIntel": "Telegram Intel",
     "startups": "Startups & VC",
     "vcblogs": "VC Insights & Essays",
     "regionalStartups": "Global Startup News",
@@ -1273,6 +1274,19 @@
     },
     "gdeltIntel": {
       "infoTooltip": "<strong>GDELT Intelligence</strong> Real-time global news monitoring:<ul><li>Curated topic categories (conflicts, cyber, etc.)</li><li>Articles from 100+ languages translated</li><li>Updates every 15 minutes</li></ul>Source: GDELT Project (gdeltproject.org)"
+    },
+    "telegramIntel": {
+      "infoTooltip": "Real-time signals from monitored Telegram OSINT channels",
+      "loading": "Connecting to Telegram relay...",
+      "empty": "No messages available",
+      "disabled": "Telegram relay not active",
+      "filterAll": "All",
+      "filterBreaking": "Breaking",
+      "filterConflict": "Conflict",
+      "filterAlerts": "Alerts",
+      "filterOsint": "OSINT",
+      "filterPolitics": "Politics",
+      "filterMiddleeast": "Middle East"
     },
     "investments": {
       "infoTooltip": "Database of Saudi Arabia and UAE foreign direct investments in global critical infrastructure. Click a row to fly to the investment on the map.",

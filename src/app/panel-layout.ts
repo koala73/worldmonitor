@@ -35,6 +35,7 @@ import {
   SupplyChainPanel,
   SecurityAdvisoriesPanel,
   OrefSirensPanel,
+  TelegramIntelPanel,
 } from '@/components';
 import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
 import { PositiveNewsFeedPanel } from '@/components/PositiveNewsFeedPanel';
@@ -552,6 +553,9 @@ export class PanelLayoutManager implements AppModule {
 
       const orefSirensPanel = new OrefSirensPanel();
       this.ctx.panels['oref-sirens'] = orefSirensPanel;
+
+      const telegramIntelPanel = new TelegramIntelPanel();
+      this.ctx.panels['telegram-intel'] = telegramIntelPanel;
     }
 
     if (SITE_VARIANT === 'finance') {

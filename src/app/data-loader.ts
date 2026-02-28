@@ -72,6 +72,7 @@ import { fetchConflictEvents, fetchUcdpClassifications, fetchHapiSummary, fetchU
 import { fetchUnhcrPopulation } from '@/services/displacement';
 import { fetchClimateAnomalies } from '@/services/climate';
 import { fetchSecurityAdvisories } from '@/services/security-advisories';
+import { fetchTelegramFeed } from '@/services/telegram-intel';
 import { fetchOrefAlerts, startOrefPolling, stopOrefPolling, onOrefAlertsUpdate } from '@/services/oref-alerts';
 import { enrichEventsWithExposure } from '@/services/population-exposure';
 import { debounce, getCircuitBreakerCooldownInfo } from '@/utils';
@@ -103,6 +104,7 @@ import {
   SupplyChainPanel,
   SecurityAdvisoriesPanel,
   OrefSirensPanel,
+  TelegramIntelPanel,
 } from '@/components';
 import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
 import { classifyNewsItem } from '@/services/positive-classifier';
@@ -1076,6 +1078,9 @@ export class DataLoaderManager implements AppModule {
     // Security advisories
     tasks.push(this.loadSecurityAdvisories());
 
+    // Telegram Intel
+    tasks.push(this.loadTelegramIntel());
+
     // OREF sirens
     tasks.push((async () => {
       try {
@@ -1927,6 +1932,15 @@ export class DataLoaderManager implements AppModule {
       }
     } catch (error) {
       console.error('[App] Security advisories fetch failed:', error);
+    }
+  }
+
+  async loadTelegramIntel(): Promise<void> {
+    try {
+      const result = await fetchTelegramFeed();
+      (this.ctx.panels['telegram-intel'] as TelegramIntelPanel)?.setData(result);
+    } catch (error) {
+      console.error('[App] Telegram intel fetch failed:', error);
     }
   }
 }
