@@ -114,6 +114,7 @@ Sentry.init({
     /AbortError: The user aborted a request/,
     /\w+ is not a function.*\/uv\/service\//,
     /__isInQueue__/,
+    /^(?:LIDNotifyId|onWebViewAppeared|onGetWiFiBSSID) is not defined$/,
   ],
   beforeSend(event) {
     const msg = event.exception?.values?.[0]?.value ?? '';
