@@ -59,6 +59,7 @@ const DIRECT_RAILWAY_POLY_URL = wsRelayUrl
   ? wsRelayUrl.replace('wss://', 'https://').replace('ws://', 'http://').replace(/\/$/, '') + '/polymarket'
   : '';
 const isLocalhostRuntime = typeof window !== 'undefined' && ['localhost', '127.0.0.1'].includes(window.location.hostname);
+const PROXY_STRIP_KEYS = new Set(['end_date_min', 'active', 'archived']);
 
 const breaker = createCircuitBreaker<PredictionMarket[]>({ name: 'Polymarket', cacheTtlMs: 5 * 60 * 1000, persistCache: true });
 
@@ -122,9 +123,6 @@ async function polyFetch(endpoint: 'events' | 'markets', params: Record<string, 
     } catch { /* Tauri command failed, fall through to proxy */ }
   }
 
-  // Proxy params — strip fields the relay ignores (end_date_min, active, archived)
-  // to keep the URL deterministic for CDN caching.
-  const PROXY_STRIP_KEYS = new Set(['end_date_min', 'active', 'archived']);
   const proxyParams: Record<string, string> = { endpoint };
   for (const [k, v] of Object.entries(params)) {
     if (PROXY_STRIP_KEYS.has(k)) continue;
