@@ -202,6 +202,7 @@ export const DEFAULT_PANELS: Record<string, PanelConfig> = {
 // Tech-focused map layers (subset)
 export const DEFAULT_MAP_LAYERS: MapLayers = {
   // Keep only relevant layers, set others to false
+  gpsJamming: false,
   conflicts: false,
   bases: false,
   cables: true,
@@ -252,6 +253,7 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
 
 // Mobile defaults for tech variant
 export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
+  gpsJamming: false,
   conflicts: false,
   bases: false,
   cables: false,

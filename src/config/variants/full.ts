@@ -52,6 +52,7 @@ export const DEFAULT_PANELS: Record<string, PanelConfig> = {
 
 // Map layers for geopolitical view
 export const DEFAULT_MAP_LAYERS: MapLayers = {
+  gpsJamming: false,
   conflicts: true,
   bases: true,
   cables: false,
@@ -102,6 +103,7 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
 
 // Mobile-specific defaults for geopolitical
 export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
+  gpsJamming: false,
   conflicts: true,
   bases: false,
   cables: false,

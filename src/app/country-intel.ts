@@ -439,6 +439,7 @@ export class CountryIntelManager implements AppModule {
       aviationDisruptions,
       travelAdvisories,
       travelAdvisoryMaxLevel,
+      gpsJammingHexes: (ciiData?.gpsJammingHighCount ?? 0) + (ciiData?.gpsJammingMediumCount ?? 0),
       isTier1,
     };
   }

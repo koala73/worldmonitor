@@ -36,7 +36,8 @@
       "earthquakes": "землетрясения",
       "displaced": "перемещённые",
       "climate": "Климатическая нагрузка",
-      "conflictEvents": "конфликтные события"
+      "conflictEvents": "конфликтные события",
+      "gpsJammingZones": "GPS Jamming Zones"
     },
     "timeAgo": {
       "m": "{{count}}м назад",
@@ -425,7 +426,8 @@
         "earthquakes": "землетрясения",
         "displaced": "перемещённые",
         "climate": "Климатическая нагрузка",
-        "conflictEvents": "конфликтные события"
+        "conflictEvents": "конфликтные события",
+        "gpsJammingZones": "GPS Jamming Zones"
       },
       "timeAgo": {
         "m": "{{count}}м назад",
@@ -789,6 +791,7 @@
         "commodityHubs": "Сырьевые хабы",
         "gulfInvestments": "Инвестиции стран Залива",
         "tradeRoutes": "Торговые маршруты",
+        "gpsJamming": "GPS JAMMING",
         "dayNight": "День/Ночь"
       },
       "tooltip": {
@@ -1391,6 +1394,13 @@
       "gdelt": "GDELT",
       "riots": "Беспорядки",
       "highSeverity": "Высокая степень тяжести"
+    },
+    "gpsJamming": {
+      "title": "Помехи GPS/GNSS",
+      "interference": "Помехи",
+      "aircraftAffected": "Затронутые воздушные суда",
+      "aircraftNormal": "Нормальные воздушные суда",
+      "h3Hex": "H3 Hex"
     },
     "flight": {
       "groundStop": "НАЗЕМНАЯ ОСТАНОВКА",

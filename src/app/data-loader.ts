@@ -66,7 +66,8 @@ import { updateAndCheck } from '@/services/temporal-baseline';
 import { fetchAllFires, flattenFires, computeRegionStats, toMapFires } from '@/services/wildfires';
 import { analyzeFlightsForSurge, surgeAlertToSignal, detectForeignMilitaryPresence, foreignPresenceToSignal, type TheaterPostureSummary } from '@/services/military-surge';
 import { fetchCachedTheaterPosture } from '@/services/cached-theater-posture';
-import { ingestProtestsForCII, ingestMilitaryForCII, ingestNewsForCII, ingestOutagesForCII, ingestConflictsForCII, ingestUcdpForCII, ingestHapiForCII, ingestDisplacementForCII, ingestClimateForCII, ingestStrikesForCII, ingestOrefForCII, ingestAviationForCII, ingestAdvisoriesForCII, isInLearningMode } from '@/services/country-instability';
+import { ingestProtestsForCII, ingestMilitaryForCII, ingestNewsForCII, ingestOutagesForCII, ingestConflictsForCII, ingestUcdpForCII, ingestHapiForCII, ingestDisplacementForCII, ingestClimateForCII, ingestStrikesForCII, ingestOrefForCII, ingestAviationForCII, ingestAdvisoriesForCII, ingestGpsJammingForCII, isInLearningMode } from '@/services/country-instability';
+import { fetchGpsInterference } from '@/services/gps-interference';
 import { dataFreshness, type DataSourceId } from '@/services/data-freshness';
 import { fetchConflictEvents, fetchUcdpClassifications, fetchHapiSummary, fetchUcdpEvents, deduplicateAgainstAcled, fetchIranEvents } from '@/services/conflict';
 import { fetchUnhcrPopulation } from '@/services/displacement';
@@ -317,6 +318,7 @@ export class DataLoaderManager implements AppModule {
         case 'ucdpEvents':
         case 'displacement':
         case 'climate':
+        case 'gpsJamming':
           await this.loadIntelligenceSignals();
           break;
       }
@@ -1100,6 +1102,29 @@ export class DataLoaderManager implements AppModule {
         startOrefPolling();
       } catch (error) {
         console.error('[Intelligence] OREF alerts fetch failed:', error);
+      }
+    })());
+
+    // GPS/GNSS jamming
+    tasks.push((async () => {
+      try {
+        const data = await fetchGpsInterference();
+        if (!data) {
+          ingestGpsJammingForCII([]);
+          this.ctx.map?.setLayerReady('gpsJamming', false);
+          return;
+        }
+        ingestGpsJammingForCII(data.hexes);
+        if (this.ctx.mapLayers.gpsJamming) {
+          this.ctx.map?.setGpsJamming(data.hexes);
+          this.ctx.map?.setLayerReady('gpsJamming', data.hexes.length > 0);
+        }
+        this.ctx.statusPanel?.updateFeed('GPS Jam', { status: 'ok', itemCount: data.hexes.length });
+        dataFreshness.recordUpdate('gpsjam', data.hexes.length);
+      } catch (error) {
+        this.ctx.map?.setLayerReady('gpsJamming', false);
+        this.ctx.statusPanel?.updateFeed('GPS Jam', { status: 'error' });
+        dataFreshness.recordError('gpsjam', String(error));
       }
     })());
 

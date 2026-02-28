@@ -8,6 +8,7 @@ import { focalPointDetector } from './focal-point-detector';
 import type { ConflictEvent, UcdpConflictStatus, HapiConflictSummary } from './conflict';
 import type { CountryDisplacement } from '@/services/displacement';
 import type { ClimateAnomaly } from '@/services/climate';
+import type { GpsJamHex } from '@/services/gps-interference';
 import { getCountryAtCoordinates, iso3ToIso2Code, nameToCountryCode, getCountryNameByCode, matchCountryNamesInText, ME_STRIKE_BOUNDS, resolveCountryFromBounds } from './country-geometry';
 
 export interface CountryScore {
@@ -46,6 +47,8 @@ interface CountryData {
   advisoryMaxLevel: SecurityAdvisory['level'] | null;
   advisoryCount: number;
   advisorySources: Set<string>;
+  gpsJammingHighCount: number;
+  gpsJammingMediumCount: number;
 }
 
 export { TIER1_COUNTRIES } from '@/config/countries';
@@ -127,7 +130,7 @@ const countryDataMap = new Map<string, CountryData>();
 const previousScores = new Map<string, number>();
 
 function initCountryData(): CountryData {
-  return { protests: [], conflicts: [], ucdpStatus: null, hapiSummary: null, militaryFlights: [], militaryVessels: [], newsEvents: [], outages: [], strikes: [], aviationDisruptions: [], displacementOutflow: 0, climateStress: 0, orefAlertCount: 0, orefHistoryCount24h: 0, advisoryMaxLevel: null, advisoryCount: 0, advisorySources: new Set() };
+  return { protests: [], conflicts: [], ucdpStatus: null, hapiSummary: null, militaryFlights: [], militaryVessels: [], newsEvents: [], outages: [], strikes: [], aviationDisruptions: [], displacementOutflow: 0, climateStress: 0, orefAlertCount: 0, orefHistoryCount24h: 0, advisoryMaxLevel: null, advisoryCount: 0, advisorySources: new Set(), gpsJammingHighCount: 0, gpsJammingMediumCount: 0 };
 }
 
 const newsEventIndexMap = new Map<string, Map<string, number>>();
@@ -495,6 +498,33 @@ function getAdvisoryFloor(data: CountryData): number {
   return 0;
 }
 
+const h3CountryCache = new Map<string, string>();
+
+export function ingestGpsJammingForCII(hexes: GpsJamHex[]): void {
+  for (const [, data] of countryDataMap) {
+    data.gpsJammingHighCount = 0;
+    data.gpsJammingMediumCount = 0;
+  }
+
+  for (const hex of hexes) {
+    let code = h3CountryCache.get(hex.h3);
+    if (!code) {
+      const hit = getCountryAtCoordinates(hex.lat, hex.lon);
+      if (hit) {
+        code = hit.code;
+        h3CountryCache.set(hex.h3, code);
+      } else {
+        continue;
+      }
+    }
+
+    if (!countryDataMap.has(code)) countryDataMap.set(code, initCountryData());
+    const data = countryDataMap.get(code)!;
+    if (hex.level === 'high') data.gpsJammingHighCount++;
+    else data.gpsJammingMediumCount++;
+  }
+}
+
 function calcUnrestScore(data: CountryData, countryCode: string): number {
   const protestCount = data.protests.length;
   const multiplier = CURATED_COUNTRIES[countryCode]?.eventMultiplier ?? DEFAULT_EVENT_MULTIPLIER;
@@ -630,7 +660,9 @@ function calcSecurityScore(data: CountryData): number {
   }
   aviationScore = Math.min(40, aviationScore);
 
-  return Math.min(100, flightScore + vesselScore + aviationScore);
+  const gpsJammingScore = Math.min(35, data.gpsJammingHighCount * 5 + data.gpsJammingMediumCount * 2);
+
+  return Math.min(100, flightScore + vesselScore + aviationScore + gpsJammingScore);
 }
 
 function calcInformationScore(data: CountryData, countryCode: string): number {

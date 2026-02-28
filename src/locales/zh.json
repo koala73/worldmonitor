@@ -36,7 +36,8 @@
       "earthquakes": "地震",
       "displaced": "流离失所",
       "climate": "气候压力",
-      "conflictEvents": "冲突事件"
+      "conflictEvents": "冲突事件",
+      "gpsJammingZones": "GPS Jamming Zones"
     },
     "timeAgo": {
       "m": "{{count}}分钟前",
@@ -425,7 +426,8 @@
         "earthquakes": "地震",
         "displaced": "流离失所",
         "climate": "气候压力",
-        "conflictEvents": "冲突事件"
+        "conflictEvents": "冲突事件",
+        "gpsJammingZones": "GPS Jamming Zones"
       },
       "timeAgo": {
         "m": "{{count}}分钟前",
@@ -789,6 +791,7 @@
         "commodityHubs": "大宗商品枢纽",
         "gulfInvestments": "GCC投资",
         "tradeRoutes": "贸易航线",
+        "gpsJamming": "GPS JAMMING",
         "dayNight": "昼/夜"
       },
       "tooltip": {
@@ -1391,6 +1394,13 @@
       "gdelt": "GDELT",
       "riots": "骚乱",
       "highSeverity": "高严重性"
+    },
+    "gpsJamming": {
+      "title": "GPS/GNSS干扰",
+      "interference": "干扰",
+      "aircraftAffected": "受影响航空器",
+      "aircraftNormal": "正常航空器",
+      "h3Hex": "H3 Hex"
     },
     "flight": {
       "groundStop": "地面停航",

@@ -36,7 +36,8 @@
       "earthquakes": "지진",
       "displaced": "실향민",
       "climate": "기후 스트레스",
-      "conflictEvents": "분쟁 사건"
+      "conflictEvents": "분쟁 사건",
+      "gpsJammingZones": "GPS Jamming Zones"
     },
     "timeAgo": {
       "m": "{{count}}분 전",
@@ -454,7 +455,8 @@
         "earthquakes": "지진",
         "displaced": "실향민",
         "climate": "기후 스트레스",
-        "conflictEvents": "분쟁 사건"
+        "conflictEvents": "분쟁 사건",
+        "gpsJammingZones": "GPS Jamming Zones"
       },
       "timeAgo": {
         "m": "{{count}}분 전",
@@ -834,7 +836,8 @@
         "centralBanks": "중앙은행",
         "commodityHubs": "원자재 허브",
         "gulfInvestments": "GCC 투자",
-        "tradeRoutes": "무역 항로"
+        "tradeRoutes": "무역 항로",
+        "gpsJamming": "GPS JAMMING"
       },
       "tooltip": {
         "earthquake": "지진",
@@ -1483,6 +1486,13 @@
       "gdelt": "GDELT",
       "riots": "폭동",
       "highSeverity": "고위험"
+    },
+    "gpsJamming": {
+      "title": "GPS/GNSS 간섭",
+      "interference": "간섭",
+      "aircraftAffected": "영향받은 항공기",
+      "aircraftNormal": "정상 항공기",
+      "h3Hex": "H3 Hex"
     },
     "flight": {
       "groundStop": "지상 정지",

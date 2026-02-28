@@ -193,6 +193,7 @@ export class CountryBriefPage {
     }
     if (signals.orefSirens > 0) chips.push(`<span class="signal-chip conflict">\u{1F6A8} ${signals.orefSirens} Active Sirens</span>`);
     if (signals.aviationDisruptions > 0) chips.push(`<span class="signal-chip outage">\u{1F6AB} ${signals.aviationDisruptions} ${t('modals.countryBrief.signals.aviationDisruptions')}</span>`);
+    if (signals.gpsJammingHexes > 0) chips.push(`<span class="signal-chip outage">\u{1F4E1} ${signals.gpsJammingHexes} ${t('modals.countryBrief.signals.gpsJammingZones')}</span>`);
     chips.push(`<span class="signal-chip stock-loading">📈 ${t('modals.countryBrief.loadingIndex')}</span>`);
     return chips.join('');
   }
@@ -624,6 +625,7 @@ export class CountryBriefPage {
         aviationDisruptions: this.currentSignals.aviationDisruptions,
         travelAdvisories: this.currentSignals.travelAdvisories,
         travelAdvisoryMaxLevel: this.currentSignals.travelAdvisoryMaxLevel,
+        gpsJammingHexes: this.currentSignals.gpsJammingHexes,
       };
     }
     if (this.currentBrief) data.brief = this.currentBrief;

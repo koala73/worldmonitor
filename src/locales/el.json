@@ -36,7 +36,8 @@
       "earthquakes": "σεισμοί",
       "displaced": "εκτοπισμένοι",
       "climate": "Κλιματική πίεση",
-      "conflictEvents": "συγκρούσεις"
+      "conflictEvents": "συγκρούσεις",
+      "gpsJammingZones": "GPS Jamming Zones"
     },
     "timeAgo": {
       "m": "{{count}}λ πριν",
@@ -452,7 +453,8 @@
         "earthquakes": "σεισμοί",
         "displaced": "εκτοπισμένοι",
         "climate": "Κλιματική πίεση",
-        "conflictEvents": "συγκρούσεις"
+        "conflictEvents": "συγκρούσεις",
+        "gpsJammingZones": "GPS Jamming Zones"
       },
       "timeAgo": {
         "m": "{{count}}λ πριν",
@@ -817,6 +819,7 @@
         "commodityHubs": "Κέντρα Εμπορευμάτων",
         "gulfInvestments": "Επενδύσεις GCC",
         "tradeRoutes": "Εμπορικές Διαδρομές",
+        "gpsJamming": "GPS JAMMING",
         "dayNight": "Ημέρα/Νύχτα"
       },
       "tooltip": {
@@ -1418,6 +1421,13 @@
       "gdelt": "GDELT",
       "riots": "Ταραχές",
       "highSeverity": "Υψηλή Σοβαρότητα"
+    },
+    "gpsJamming": {
+      "title": "Παρεμβολή GPS/GNSS",
+      "interference": "Παρεμβολή",
+      "aircraftAffected": "Επηρεασμένα αεροσκάφη",
+      "aircraftNormal": "Κανονικά αεροσκάφη",
+      "h3Hex": "H3 Hex"
     },
     "flight": {
       "groundStop": "ΑΝΑΣΤΟΛΗ ΕΔΑΦΟΥΣ",

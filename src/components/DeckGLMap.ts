@@ -38,6 +38,7 @@ import type {
 import { fetchMilitaryBases, type MilitaryBaseCluster as ServerBaseCluster } from '@/services/military-bases';
 import type { AirportDelayAlert } from '@/services/aviation';
 import type { IranEvent } from '@/services/conflict';
+import type { GpsJamHex } from '@/services/gps-interference';
 import type { DisplacementFlow } from '@/services/displacement';
 import type { Earthquake } from '@/services/earthquakes';
 import type { ClimateAnomaly } from '@/services/climate';
@@ -287,6 +288,7 @@ export class DeckGLMap {
   private newsLocationFirstSeen = new Map<string, number>();
   private ucdpEvents: UcdpGeoEvent[] = [];
   private displacementFlows: DisplacementFlow[] = [];
+  private gpsJammingHexes: GpsJamHex[] = [];
   private climateAnomalies: ClimateAnomaly[] = [];
   private tradeRouteSegments: TradeRouteSegment[] = resolveTradeRouteSegments();
   private positiveEvents: PositiveGeoEvent[] = [];
@@ -1103,6 +1105,11 @@ export class DeckGLMap {
       layers.push(this.createAisDisruptionsLayer());
     }
 
+    // GPS/GNSS jamming layer
+    if (mapLayers.gpsJamming && this.gpsJammingHexes.length > 0) {
+      layers.push(this.createGpsJammingLayer());
+    }
+
     // Strategic ports layer (shown with AIS)
     if (mapLayers.ais) {
       layers.push(this.createPortsLayer());
@@ -1742,6 +1749,25 @@ export class DeckGLMap {
       radiusMinPixels: 4,
       radiusMaxPixels: 12,
       pickable: true,
+    });
+  }
+
+  private createGpsJammingLayer(): ScatterplotLayer {
+    return new ScatterplotLayer({
+      id: 'gps-jamming-layer',
+      data: this.gpsJammingHexes,
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: (d) => d.level === 'high' ? 15000 : 10000,
+      getFillColor: (d) => {
+        if (d.level === 'high') return [255, 80, 80, 200] as [number, number, number, number];
+        return [255, 180, 50, 180] as [number, number, number, number];
+      },
+      radiusMinPixels: 4,
+      radiusMaxPixels: 14,
+      pickable: true,
+      stroked: true,
+      getLineColor: [255, 255, 255, 100] as [number, number, number, number],
+      lineWidthMinPixels: 1,
     });
   }
 
@@ -2768,6 +2794,8 @@ export class DeckGLMap {
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.mineral)} - ${text(obj.country)}<br/>${text(obj.operator)}</div>` };
       case 'ais-disruptions-layer':
         return { html: `<div class="deckgl-tooltip"><strong>AIS ${text(obj.type || t('components.deckgl.tooltip.disruption'))}</strong><br/>${text(obj.severity)} ${t('popups.severity')}<br/>${text(obj.description)}</div>` };
+      case 'gps-jamming-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>GPS Jamming</strong><br/>${text(obj.level)} interference (${obj.pct}%)<br/>H3: ${text(obj.h3)}</div>` };
       case 'cable-advisories-layer': {
         const cableName = UNDERSEA_CABLES.find(c => c.id === obj.cableId)?.name || obj.cableId;
         return { html: `<div class="deckgl-tooltip"><strong>${text(cableName)}</strong><br/>${text(obj.severity || t('components.deckgl.tooltip.advisory'))}<br/>${text(obj.description)}</div>` };
@@ -2994,6 +3022,7 @@ export class DeckGLMap {
       'apt-groups-layer': 'apt',
       'minerals-layer': 'mineral',
       'ais-disruptions-layer': 'ais',
+      'gps-jamming-layer': 'gpsJamming',
       'cable-advisories-layer': 'cable-advisory',
       'repair-ships-layer': 'repair-ship',
     };
@@ -3193,6 +3222,7 @@ export class DeckGLMap {
         { key: 'waterways', label: t('components.deckgl.layers.strategicWaterways'), icon: '&#9875;' },
         { key: 'economic', label: t('components.deckgl.layers.economicCenters'), icon: '&#128176;' },
         { key: 'minerals', label: t('components.deckgl.layers.criticalMinerals'), icon: '&#128142;' },
+        { key: 'gpsJamming', label: t('components.deckgl.layers.gpsJamming'), icon: '&#128225;' },
         { key: 'dayNight', label: t('components.deckgl.layers.dayNight'), icon: '&#127763;' },
       ];
 
@@ -3902,6 +3932,11 @@ export class DeckGLMap {
 
   public setClimateAnomalies(anomalies: ClimateAnomaly[]): void {
     this.climateAnomalies = anomalies;
+    this.render();
+  }
+
+  public setGpsJamming(hexes: GpsJamHex[]): void {
+    this.gpsJammingHexes = hexes;
     this.render();
   }
 

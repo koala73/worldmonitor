@@ -38,7 +38,8 @@
       "climate": "Climate stress",
       "conflictEvents": "conflict events",
       "activeStrikes": "active strikes",
-      "aviationDisruptions": "airport disruptions"
+      "aviationDisruptions": "airport disruptions",
+      "gpsJammingZones": "GPS Jamming Zones"
     },
     "timeAgo": {
       "m": "{{count}}m ago",
@@ -459,7 +460,8 @@
         "climate": "Climate stress",
         "conflictEvents": "conflict events",
         "activeStrikes": "active strikes",
-        "aviationDisruptions": "airport disruptions"
+        "aviationDisruptions": "airport disruptions",
+        "gpsJammingZones": "GPS Jamming Zones"
       },
       "timeAgo": {
         "m": "{{count}}m ago",
@@ -842,6 +844,7 @@
         "gulfInvestments": "GCC Investments",
         "tradeRoutes": "Trade Routes",
         "iranAttacks": "Iran Attacks",
+        "gpsJamming": "GPS JAMMING",
         "dayNight": "Day/Night"
       },
       "tooltip": {
@@ -1500,6 +1503,13 @@
       "gdelt": "GDELT",
       "riots": "Riots",
       "highSeverity": "High Severity"
+    },
+    "gpsJamming": {
+      "title": "GPS/GNSS Interference",
+      "interference": "Interference",
+      "aircraftAffected": "Aircraft Affected",
+      "aircraftNormal": "Aircraft Normal",
+      "h3Hex": "H3 Hex"
     },
     "flight": {
       "groundStop": "GROUND STOP",

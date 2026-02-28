@@ -230,7 +230,8 @@
         "earthquakes": "jordbävningar",
         "displaced": "förskjuten",
         "climate": "Klimatstress",
-        "conflictEvents": "konflikthändelser"
+        "conflictEvents": "konflikthändelser",
+        "gpsJammingZones": "GPS Jamming Zones"
       },
       "loadingIndex": "Laddar index...",
       "identifying": "Identifierar land...",
@@ -418,6 +419,7 @@
         "commodityHubs": "Råvaruhubbar",
         "gulfInvestments": "GCC-investeringar",
         "tradeRoutes": "Handelsrutter",
+        "gpsJamming": "GPS JAMMING",
         "dayNight": "Dag/Natt"
       },
       "layersTitle": "Lager",
@@ -1250,6 +1252,13 @@
       "riots": "Upplopp",
       "highSeverity": "Hög allvarlighet"
     },
+    "gpsJamming": {
+      "title": "GPS/GNSS-störning",
+      "interference": "Störning",
+      "aircraftAffected": "Drabbade flygplan",
+      "aircraftNormal": "Normala flygplan",
+      "h3Hex": "H3 Hex"
+    },
     "flight": {
       "groundStop": "MARKSTOPP",
       "groundDelay": "MARKFÖRDRÖJNING",
@@ -1941,7 +1950,8 @@
       "earthquakes": "jordbävningar",
       "displaced": "fördrivna",
       "climate": "Klimatstress",
-      "conflictEvents": "konflikthändelser"
+      "conflictEvents": "konflikthändelser",
+      "gpsJammingZones": "GPS Jamming Zones"
     },
     "timeAgo": {
       "m": "{{count}}m sedan",

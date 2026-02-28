@@ -230,7 +230,8 @@
         "earthquakes": "aardbevingen",
         "displaced": "ontheemd",
         "climate": "Klimaatstress",
-        "conflictEvents": "conflictgebeurtenissen"
+        "conflictEvents": "conflictgebeurtenissen",
+        "gpsJammingZones": "GPS Jamming Zones"
       },
       "loadingIndex": "Index laden...",
       "identifying": "Land identificeren...",
@@ -418,6 +419,7 @@
         "commodityHubs": "Grondstoffenhubs",
         "gulfInvestments": "GCC-investeringen",
         "tradeRoutes": "Handelsroutes",
+        "gpsJamming": "GPS JAMMING",
         "dayNight": "Dag/Nacht"
       },
       "layersTitle": "Lagen",
@@ -1250,6 +1252,13 @@
       "riots": "Rellen",
       "highSeverity": "Hoge ernst"
     },
+    "gpsJamming": {
+      "title": "GPS/GNSS-storing",
+      "interference": "Storing",
+      "aircraftAffected": "Getroffen vliegtuigen",
+      "aircraftNormal": "Normale vliegtuigen",
+      "h3Hex": "H3 Hex"
+    },
     "flight": {
       "groundStop": "GRONDSTOP",
       "groundDelay": "GRONDVERTRAGING",
@@ -1941,7 +1950,8 @@
       "earthquakes": "aardbevingen",
       "displaced": "ontheemden",
       "climate": "Klimaatstress",
-      "conflictEvents": "conflictgebeurtenissen"
+      "conflictEvents": "conflictgebeurtenissen",
+      "gpsJammingZones": "GPS Jamming Zones"
     },
     "timeAgo": {
       "m": "{{count}}m geleden",

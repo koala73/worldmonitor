@@ -339,7 +339,7 @@ export class MapComponent {
       'military',                                         // military tracking (flights + vessels)
       'cables', 'pipelines', 'outages', 'datacenters',   // infrastructure
       // cyberThreats is intentionally hidden on SVG/mobile fallback (DeckGL desktop only)
-      'ais', 'flights',                                   // transport
+      'ais', 'flights', 'gpsJamming',                      // transport/interference
       'natural', 'weather',                               // natural
       'economic',                                         // economic
       'waterways',                                        // labels
@@ -388,6 +388,7 @@ export class MapComponent {
       commodityHubs: 'components.deckgl.layers.commodityHubs',
       gulfInvestments: 'components.deckgl.layers.gulfInvestments',
       iranAttacks: 'components.deckgl.layers.iranAttacks',
+      gpsJamming: 'components.deckgl.layers.gpsJamming',
     };
     const getLayerLabel = (layer: keyof MapLayers): string => {
       if (layer === 'sanctions') return t('components.deckgl.layerHelp.labels.sanctions');

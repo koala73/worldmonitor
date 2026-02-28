@@ -14,7 +14,7 @@ import { getNaturalEventIcon } from '@/services/eonet';
 import { getHotspotEscalation, getEscalationChange24h } from '@/services/hotspot-escalation';
 import { getCableHealthRecord } from '@/services/cable-health';
 
-export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'cyberThreat' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'cable-advisory' | 'repair-ship' | 'outage' | 'datacenter' | 'datacenterCluster' | 'ais' | 'protest' | 'protestCluster' | 'flight' | 'militaryFlight' | 'militaryVessel' | 'militaryFlightCluster' | 'militaryVesselCluster' | 'natEvent' | 'port' | 'spaceport' | 'mineral' | 'startupHub' | 'cloudRegion' | 'techHQ' | 'accelerator' | 'techEvent' | 'techHQCluster' | 'techEventCluster' | 'techActivity' | 'geoActivity' | 'stockExchange' | 'financialCenter' | 'centralBank' | 'commodityHub' | 'iranEvent';
+export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'cyberThreat' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'cable-advisory' | 'repair-ship' | 'outage' | 'datacenter' | 'datacenterCluster' | 'ais' | 'protest' | 'protestCluster' | 'flight' | 'militaryFlight' | 'militaryVessel' | 'militaryFlightCluster' | 'militaryVesselCluster' | 'natEvent' | 'port' | 'spaceport' | 'mineral' | 'startupHub' | 'cloudRegion' | 'techHQ' | 'accelerator' | 'techEvent' | 'techHQCluster' | 'techEventCluster' | 'techActivity' | 'geoActivity' | 'stockExchange' | 'financialCenter' | 'centralBank' | 'commodityHub' | 'iranEvent' | 'gpsJamming';
 
 interface TechEventPopupData {
   id: string;
@@ -47,6 +47,17 @@ interface TechEventClusterData {
   count?: number;
   soonCount?: number;
   sampled?: boolean;
+}
+
+interface GpsJammingPopupData {
+  h3: string;
+  lat: number;
+  lon: number;
+  level: 'medium' | 'high';
+  pct: number;
+  good: number;
+  bad: number;
+  total: number;
 }
 
 interface IranEventPopupData {
@@ -133,7 +144,7 @@ interface DatacenterClusterData {
 
 interface PopupData {
   type: PopupType;
-  data: ConflictZone | Hotspot | Earthquake | WeatherAlert | MilitaryBase | StrategicWaterway | APTGroup | CyberThreat | NuclearFacility | EconomicCenter | GammaIrradiator | Pipeline | UnderseaCable | CableAdvisory | RepairShip | InternetOutage | AIDataCenter | AisDisruptionEvent | SocialUnrestEvent | AirportDelayAlert | MilitaryFlight | MilitaryVessel | MilitaryFlightCluster | MilitaryVesselCluster | NaturalEvent | Port | Spaceport | CriticalMineralProject | StartupHub | CloudRegion | TechHQ | Accelerator | TechEventPopupData | TechHQClusterData | TechEventClusterData | ProtestClusterData | DatacenterClusterData | TechHubActivity | GeoHubActivity | StockExchangePopupData | FinancialCenterPopupData | CentralBankPopupData | CommodityHubPopupData | IranEventPopupData;
+  data: ConflictZone | Hotspot | Earthquake | WeatherAlert | MilitaryBase | StrategicWaterway | APTGroup | CyberThreat | NuclearFacility | EconomicCenter | GammaIrradiator | Pipeline | UnderseaCable | CableAdvisory | RepairShip | InternetOutage | AIDataCenter | AisDisruptionEvent | SocialUnrestEvent | AirportDelayAlert | MilitaryFlight | MilitaryVessel | MilitaryFlightCluster | MilitaryVesselCluster | NaturalEvent | Port | Spaceport | CriticalMineralProject | StartupHub | CloudRegion | TechHQ | Accelerator | TechEventPopupData | TechHQClusterData | TechEventClusterData | ProtestClusterData | DatacenterClusterData | TechHubActivity | GeoHubActivity | StockExchangePopupData | FinancialCenterPopupData | CentralBankPopupData | CommodityHubPopupData | IranEventPopupData | GpsJammingPopupData;
   relatedNews?: NewsItem[];
   x: number;
   y: number;
@@ -443,6 +454,8 @@ export class MapPopup {
         return this.renderCommodityHubPopup(data.data as CommodityHubPopupData);
       case 'iranEvent':
         return this.renderIranEventPopup(data.data as IranEventPopupData);
+      case 'gpsJamming':
+        return this.renderGpsJammingPopup(data.data as GpsJammingPopupData);
       default:
         return '';
     }
@@ -2623,6 +2636,39 @@ export class MapPopup {
         </div>
         ${relatedHtml}
         ${safeUrl ? `<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer nofollow" class="popup-link">${t('popups.source')} →</a>` : ''}
+      </div>
+    `;
+  }
+
+  private renderGpsJammingPopup(data: GpsJammingPopupData): string {
+    const isHigh = data.level === 'high';
+    const badgeClass = isHigh ? 'critical' : 'medium';
+    const headerColor = isHigh ? '#ff5050' : '#ffb432';
+    return `
+      <div class="popup-header" style="background:${headerColor}">
+        <span class="popup-title">${t('popups.gpsJamming.title')}</span>
+        <span class="popup-badge ${badgeClass}">${escapeHtml(data.level.toUpperCase())}</span>
+        <button class="popup-close">×</button>
+      </div>
+      <div class="popup-body">
+        <div class="popup-stats">
+          <div class="popup-stat">
+            <span class="stat-label">${t('popups.gpsJamming.interference')}</span>
+            <span class="stat-value">${data.pct}%</span>
+          </div>
+          <div class="popup-stat">
+            <span class="stat-label">${t('popups.gpsJamming.aircraftAffected')}</span>
+            <span class="stat-value">${data.bad} / ${data.total}</span>
+          </div>
+          <div class="popup-stat">
+            <span class="stat-label">${t('popups.gpsJamming.aircraftNormal')}</span>
+            <span class="stat-value">${data.good}</span>
+          </div>
+          <div class="popup-stat">
+            <span class="stat-label">${t('popups.gpsJamming.h3Hex')}</span>
+            <span class="stat-value" style="font-size:10px">${escapeHtml(data.h3)}</span>
+          </div>
+        </div>
       </div>
     `;
   }

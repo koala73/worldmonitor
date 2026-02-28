@@ -36,7 +36,8 @@
       "earthquakes": "terremotos",
       "displaced": "desplazados",
       "climate": "Estrés climático",
-      "conflictEvents": "eventos de conflicto"
+      "conflictEvents": "eventos de conflicto",
+      "gpsJammingZones": "GPS Jamming Zones"
     },
     "timeAgo": {
       "m": "{{count}}hace m",
@@ -385,7 +386,8 @@
         "earthquakes": "terremotos",
         "displaced": "desplazado",
         "climate": "Estrés climático",
-        "conflictEvents": "eventos de conflicto"
+        "conflictEvents": "eventos de conflicto",
+        "gpsJammingZones": "GPS Jamming Zones"
       },
       "loadingIndex": "Cargando índice...",
       "identifying": "Identificando el país...",
@@ -653,6 +655,7 @@
         "commodityHubs": "Centros de productos básicos",
         "gulfInvestments": "Inversiones del CCG",
         "tradeRoutes": "Rutas Comerciales",
+        "gpsJamming": "GPS JAMMING",
         "dayNight": "Día/Noche"
       },
       "layersTitle": "capas",
@@ -1390,6 +1393,13 @@
       "gdelt": "GDELT",
       "riots": "Disturbios",
       "highSeverity": "Alta Gravedad"
+    },
+    "gpsJamming": {
+      "title": "Interferencia GPS/GNSS",
+      "interference": "Interferencia",
+      "aircraftAffected": "Aeronaves afectadas",
+      "aircraftNormal": "Aeronaves normales",
+      "h3Hex": "H3 Hex"
     },
     "flight": {
       "groundStop": "PARADA EN TIERRA",

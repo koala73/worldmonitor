@@ -36,7 +36,8 @@
       "earthquakes": "động đất",
       "displaced": "di dời",
       "climate": "Căng thẳng khí hậu",
-      "conflictEvents": "sự kiện xung đột"
+      "conflictEvents": "sự kiện xung đột",
+      "gpsJammingZones": "GPS Jamming Zones"
     },
     "timeAgo": {
       "m": "{{count}}ph trước",
@@ -425,7 +426,8 @@
         "earthquakes": "động đất",
         "displaced": "di dời",
         "climate": "Căng thẳng khí hậu",
-        "conflictEvents": "sự kiện xung đột"
+        "conflictEvents": "sự kiện xung đột",
+        "gpsJammingZones": "GPS Jamming Zones"
       },
       "timeAgo": {
         "m": "{{count}}ph trước",
@@ -789,6 +791,7 @@
         "commodityHubs": "Trung tâm Hàng hóa",
         "gulfInvestments": "Đầu tư GCC",
         "tradeRoutes": "Tuyến Thương mại",
+        "gpsJamming": "GPS JAMMING",
         "dayNight": "Ngày/Đêm"
       },
       "tooltip": {
@@ -1391,6 +1394,13 @@
       "gdelt": "GDELT",
       "riots": "Bạo loạn",
       "highSeverity": "Mức nghiêm trọng Cao"
+    },
+    "gpsJamming": {
+      "title": "Nhiễu GPS/GNSS",
+      "interference": "Nhiễu",
+      "aircraftAffected": "Máy bay bị ảnh hưởng",
+      "aircraftNormal": "Máy bay bình thường",
+      "h3Hex": "H3 Hex"
     },
     "flight": {
       "groundStop": "DỪNG MẶT ĐẤT",

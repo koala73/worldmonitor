@@ -44,6 +44,7 @@ export interface StoryData {
     militaryFlights: number;
     militaryVessels: number;
     outages: number;
+    gpsJammingHexes: number;
   };
   convergence: {
     score: number;
@@ -58,7 +59,7 @@ export function collectStoryData(
   allNews: ClusteredEvent[],
   theaterPostures: Array<{ theaterId: string; theaterName: string; shortName: string; targetNation: string | null; postureLevel: string; totalAircraft: number; totalVessels: number; fighters: number; tankers: number; awacs: number; strikeCapable: boolean }>,
   predictionMarkets: Array<{ title: string; yesPrice: number }>,
-  signals?: { protests: number; militaryFlights: number; militaryVessels: number; outages: number },
+  signals?: { protests: number; militaryFlights: number; militaryVessels: number; outages: number; gpsJammingHexes: number },
   convergence?: { score: number; signalTypes: string[]; regionalDescriptions: string[] } | null,
 ): StoryData {
   const scores = calculateCII();
@@ -133,7 +134,7 @@ export function collectStoryData(
       medium: threatCounts.medium,
       categories: [...threatCounts.categories],
     },
-    signals: signals || { protests: 0, militaryFlights: 0, militaryVessels: 0, outages: 0 },
+    signals: signals || { protests: 0, militaryFlights: 0, militaryVessels: 0, outages: 0, gpsJammingHexes: 0 },
     convergence: convergence || null,
   };
 }

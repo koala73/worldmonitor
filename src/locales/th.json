@@ -36,7 +36,8 @@
       "earthquakes": "แผ่นดินไหว",
       "displaced": "ผู้พลัดถิ่น",
       "climate": "ความเครียดด้านภูมิอากาศ",
-      "conflictEvents": "เหตุการณ์ความขัดแย้ง"
+      "conflictEvents": "เหตุการณ์ความขัดแย้ง",
+      "gpsJammingZones": "GPS Jamming Zones"
     },
     "timeAgo": {
       "m": "{{count}}น. ที่แล้ว",
@@ -425,7 +426,8 @@
         "earthquakes": "แผ่นดินไหว",
         "displaced": "ผู้พลัดถิ่น",
         "climate": "ความเครียดด้านภูมิอากาศ",
-        "conflictEvents": "เหตุการณ์ความขัดแย้ง"
+        "conflictEvents": "เหตุการณ์ความขัดแย้ง",
+        "gpsJammingZones": "GPS Jamming Zones"
       },
       "timeAgo": {
         "m": "{{count}}น. ที่แล้ว",
@@ -789,6 +791,7 @@
         "commodityHubs": "ศูนย์กลางสินค้าโภคภัณฑ์",
         "gulfInvestments": "การลงทุน GCC",
         "tradeRoutes": "เส้นทางการค้า",
+        "gpsJamming": "GPS JAMMING",
         "dayNight": "กลางวัน/กลางคืน"
       },
       "tooltip": {
@@ -1391,6 +1394,13 @@
       "gdelt": "GDELT",
       "riots": "จลาจล",
       "highSeverity": "ความรุนแรงสูง"
+    },
+    "gpsJamming": {
+      "title": "การรบกวน GPS/GNSS",
+      "interference": "การรบกวน",
+      "aircraftAffected": "เครื่องบินที่ได้รับผลกระทบ",
+      "aircraftNormal": "เครื่องบินปกติ",
+      "h3Hex": "H3 Hex"
     },
     "flight": {
       "groundStop": "หยุดภาคพื้น",

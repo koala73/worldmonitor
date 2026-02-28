@@ -36,6 +36,7 @@ import type { KindnessPoint } from '@/services/kindness-data';
 import type { HappinessData } from '@/services/happiness-data';
 import type { SpeciesRecovery } from '@/services/conservation-data';
 import type { RenewableInstallation } from '@/services/renewable-installations';
+import type { GpsJamHex } from '@/services/gps-interference';
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
 export type MapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
@@ -319,6 +320,12 @@ export class MapContainer {
   public setClimateAnomalies(anomalies: ClimateAnomaly[]): void {
     if (this.useDeckGL) {
       this.deckGLMap?.setClimateAnomalies(anomalies);
+    }
+  }
+
+  public setGpsJamming(hexes: GpsJamHex[]): void {
+    if (this.useDeckGL) {
+      this.deckGLMap?.setGpsJamming(hexes);
     }
   }
 

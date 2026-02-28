@@ -41,6 +41,7 @@ export interface CountryBriefSignals {
   aviationDisruptions: number;
   travelAdvisories: number;
   travelAdvisoryMaxLevel: string | null;
+  gpsJammingHexes: number;
   isTier1: boolean;
 }
 

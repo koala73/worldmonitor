@@ -36,7 +36,8 @@
       "earthquakes": "depremler",
       "displaced": "yerinden edilen",
       "climate": "Iklim stresi",
-      "conflictEvents": "catisma olaylari"
+      "conflictEvents": "catisma olaylari",
+      "gpsJammingZones": "GPS Jamming Zones"
     },
     "timeAgo": {
       "m": "{{count}}dk once",
@@ -425,7 +426,8 @@
         "earthquakes": "depremler",
         "displaced": "yerinden edilen",
         "climate": "Iklim stresi",
-        "conflictEvents": "catisma olaylari"
+        "conflictEvents": "catisma olaylari",
+        "gpsJammingZones": "GPS Jamming Zones"
       },
       "timeAgo": {
         "m": "{{count}}dk once",
@@ -789,6 +791,7 @@
         "commodityHubs": "Emtia Merkezleri",
         "gulfInvestments": "GCC Yatirimlari",
         "tradeRoutes": "Ticaret Rotaları",
+        "gpsJamming": "GPS JAMMING",
         "dayNight": "Gündüz/Gece"
       },
       "tooltip": {
@@ -1391,6 +1394,13 @@
       "gdelt": "GDELT",
       "riots": "Isyanlar",
       "highSeverity": "Yuksek Siddet"
+    },
+    "gpsJamming": {
+      "title": "GPS/GNSS Paraziti",
+      "interference": "Parazit",
+      "aircraftAffected": "Etkilenen Uçaklar",
+      "aircraftNormal": "Normal Uçaklar",
+      "h3Hex": "H3 Hex"
     },
     "flight": {
       "groundStop": "YER DURDURMA",

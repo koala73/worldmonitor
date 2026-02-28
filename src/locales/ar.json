@@ -36,7 +36,8 @@
       "earthquakes": "زلازل",
       "displaced": "نازحون",
       "climate": "إجهاد مناخي",
-      "conflictEvents": "أحداث نزاع"
+      "conflictEvents": "أحداث نزاع",
+      "gpsJammingZones": "GPS Jamming Zones"
     },
     "timeAgo": {
       "m": "{{count}}د مضت",
@@ -425,7 +426,8 @@
         "earthquakes": "زلازل",
         "displaced": "نازحون",
         "climate": "إجهاد مناخي",
-        "conflictEvents": "أحداث نزاع"
+        "conflictEvents": "أحداث نزاع",
+        "gpsJammingZones": "GPS Jamming Zones"
       },
       "timeAgo": {
         "m": "{{count}}د مضت",
@@ -789,6 +791,7 @@
         "commodityHubs": "مراكز سلعية",
         "gulfInvestments": "استثمارات دول الخليج",
         "tradeRoutes": "طرق التجارة",
+        "gpsJamming": "GPS JAMMING",
         "dayNight": "نهار/ليل"
       },
       "tooltip": {
@@ -1391,6 +1394,13 @@
       "gdelt": "GDELT",
       "riots": "أعمال شغب",
       "highSeverity": "شدة عالية"
+    },
+    "gpsJamming": {
+      "title": "تداخل GPS/GNSS",
+      "interference": "التداخل",
+      "aircraftAffected": "الطائرات المتأثرة",
+      "aircraftNormal": "الطائرات السليمة",
+      "h3Hex": "H3 Hex"
     },
     "flight": {
       "groundStop": "توقف أرضي",

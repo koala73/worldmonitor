@@ -20,6 +20,7 @@ export const DEFAULT_PANELS: Record<string, PanelConfig> = {
 
 // Map layers — all geopolitical overlays disabled; natural events only
 export const DEFAULT_MAP_LAYERS: MapLayers = {
+  gpsJamming: false,
   conflicts: false,
   bases: false,
   cables: false,
@@ -71,6 +72,7 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
 
 // Mobile defaults — same as desktop for happy variant
 export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
+  gpsJamming: false,
   conflicts: false,
   bases: false,
   cables: false,

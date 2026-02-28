@@ -36,7 +36,8 @@
       "earthquakes": "地震",
       "displaced": "避難民",
       "climate": "気候ストレス",
-      "conflictEvents": "紛争イベント"
+      "conflictEvents": "紛争イベント",
+      "gpsJammingZones": "GPS Jamming Zones"
     },
     "timeAgo": {
       "m": "{{count}}分前",
@@ -425,7 +426,8 @@
         "earthquakes": "地震",
         "displaced": "避難民",
         "climate": "気候ストレス",
-        "conflictEvents": "紛争イベント"
+        "conflictEvents": "紛争イベント",
+        "gpsJammingZones": "GPS Jamming Zones"
       },
       "timeAgo": {
         "m": "{{count}}分前",
@@ -789,6 +791,7 @@
         "commodityHubs": "コモディティハブ",
         "gulfInvestments": "GCC投資",
         "tradeRoutes": "貿易ルート",
+        "gpsJamming": "GPS JAMMING",
         "dayNight": "昼/夜"
       },
       "tooltip": {
@@ -1391,6 +1394,13 @@
       "gdelt": "GDELT",
       "riots": "暴動",
       "highSeverity": "高深刻度"
+    },
+    "gpsJamming": {
+      "title": "GPS/GNSS干渉",
+      "interference": "干渉",
+      "aircraftAffected": "影響を受けた航空機",
+      "aircraftNormal": "正常な航空機",
+      "h3Hex": "H3 Hex"
     },
     "flight": {
       "groundStop": "グラウンドストップ",
