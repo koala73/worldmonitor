@@ -304,6 +304,13 @@ export class InsightsPanel extends Panel {
       let focalSummary: ReturnType<typeof focalPointDetector.analyze>;
 
       if (SITE_VARIANT === 'full') {
+        // Feed theater-level posture into signal aggregator so target nations
+        // (Iran, Taiwan, etc.) get credited for military activity in their theater,
+        // even when aircraft/vessels are physically over neighboring airspace/waters.
+        if (this.lastMilitaryFlights.length > 0) {
+          const postures = getTheaterPostureSummaries(this.lastMilitaryFlights);
+          signalAggregator.ingestTheaterPostures(postures);
+        }
         signalSummary = signalAggregator.getSummary();
         this.lastConvergenceZones = signalSummary.convergenceZones;
         // Run focal point detection (correlates news entities with map signals)

@@ -357,7 +357,7 @@ export function classifyByKeyword(title: string, variant = 'full'): ThreatClassi
   return { level: 'info', category: 'general', confidence: 0.3, source: 'keyword' };
 }
 
-// Batched AI classification — collects headlines then fires parallel sebuf RPCs
+// Batched AI classification — collects headlines then fires parallel classifyEvent RPCs
 import {
   IntelligenceServiceClient,
   ApiError,
