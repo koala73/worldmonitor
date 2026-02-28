@@ -624,7 +624,8 @@
       "error": "Failed to load predictions",
       "yes": "Yes",
       "no": "No",
-      "vol": "Vol"
+      "vol": "Vol",
+      "closes": "Closes"
     },
     "stablecoins": {
       "pegHealth": "Peg Health",

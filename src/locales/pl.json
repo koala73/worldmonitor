@@ -578,7 +578,8 @@
       "error": "Nie udało się wczytać prognoz",
       "yes": "Tak",
       "no": "NIE",
-      "vol": "Tom"
+      "vol": "Tom",
+      "closes": "Zamyka się"
     },
     "deckgl": {
       "views": {

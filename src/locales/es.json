@@ -578,7 +578,8 @@
       "error": "No se pudieron cargar las predicciones",
       "yes": "Sí",
       "no": "No",
-      "vol": "volumen"
+      "vol": "volumen",
+      "closes": "Cierra"
     },
     "deckgl": {
       "views": {

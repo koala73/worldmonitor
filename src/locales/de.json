@@ -578,7 +578,8 @@
       "error": "Vorhersagen konnten nicht geladen werden",
       "yes": "Ja",
       "no": "NEIN",
-      "vol": "Bd"
+      "vol": "Bd",
+      "closes": "Schließt"
     },
     "deckgl": {
       "views": {

@@ -4853,10 +4853,17 @@ a.prediction-link:hover {
   text-decoration: underline;
 }
 
-.prediction-volume {
+.prediction-meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 2px 0;
+}
+
+.prediction-volume,
+.prediction-expiry {
   font-size: 9px;
   color: var(--muted);
-  margin-bottom: 6px;
 }
 
 .prediction-bar {

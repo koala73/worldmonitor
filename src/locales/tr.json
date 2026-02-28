@@ -578,7 +578,8 @@
       "error": "Tahminler yuklenemedi",
       "yes": "Evet",
       "no": "Hayir",
-      "vol": "Hacim"
+      "vol": "Hacim",
+      "closes": "Kapanış"
     },
     "stablecoins": {
       "pegHealth": "Parite Sagligi",
