@@ -3119,6 +3119,7 @@ export class DeckGLMap {
           { key: 'renewableInstallations', label: 'Clean Energy', icon: '&#9889;' },
         ]
       : [
+        { key: 'iranAttacks', label: t('components.deckgl.layers.iranAttacks'), icon: '&#127919;' },
         { key: 'hotspots', label: t('components.deckgl.layers.intelHotspots'), icon: '&#127919;' },
         { key: 'conflicts', label: t('components.deckgl.layers.conflictZones'), icon: '&#9876;' },
         { key: 'bases', label: t('components.deckgl.layers.militaryBases'), icon: '&#127963;' },
@@ -3144,7 +3145,6 @@ export class DeckGLMap {
         { key: 'waterways', label: t('components.deckgl.layers.strategicWaterways'), icon: '&#9875;' },
         { key: 'economic', label: t('components.deckgl.layers.economicCenters'), icon: '&#128176;' },
         { key: 'minerals', label: t('components.deckgl.layers.criticalMinerals'), icon: '&#128142;' },
-        { key: 'iranAttacks', label: t('components.deckgl.layers.iranAttacks'), icon: '&#127919;' },
       ];
 
     toggles.innerHTML = `

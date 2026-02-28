@@ -333,6 +333,8 @@ export class MapContainer {
   public setIranEvents(events: import('@/services/conflict').IranEvent[]): void {
     if (this.useDeckGL) {
       this.deckGLMap?.setIranEvents(events);
+    } else {
+      this.svgMap?.setIranEvents(events);
     }
   }
 

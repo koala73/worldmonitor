@@ -4288,6 +4288,25 @@ body.playback-mode .status-dot {
   color: var(--text-dim);
 }
 
+/* Iran event markers */
+.iran-event-marker {
+  position: absolute;
+  transform: translate(-50%, -50%) scale(var(--marker-scale, 1));
+  transform-origin: center;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 80, 80, 0.9);
+  box-shadow: 0 0 8px rgba(255, 50, 50, 0.6);
+  animation: quake-pulse 2s ease-in-out infinite;
+  cursor: pointer;
+  z-index: 54;
+  transition: opacity 0.2s ease;
+}
+
+.iran-event-marker:hover {
+  box-shadow: 0 0 14px rgba(255, 50, 50, 0.9);
+  transform: translate(-50%, -50%) scale(calc(var(--marker-scale, 1) * 1.3));
+}
+
 /* Earthquake markers */
 .earthquake-marker {
   position: absolute;
@@ -6281,6 +6300,7 @@ a.prediction-link:hover {
 }
 
 .map-wrapper[data-layer-hidden-bases="true"] .base-marker,
+.map-wrapper[data-layer-hidden-iranAttacks="true"] .iran-event-marker,
 .map-wrapper[data-layer-hidden-nuclear="true"] .nuclear-marker,
 .map-wrapper[data-layer-hidden-natural="true"] .earthquake-marker,
 .map-wrapper[data-layer-hidden-natural="true"] .nat-event-marker,
