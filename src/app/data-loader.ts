@@ -12,6 +12,7 @@ import {
   LAYER_TO_SOURCE,
 } from '@/config';
 import { INTEL_HOTSPOTS, CONFLICT_ZONES } from '@/config/geo';
+import { tokenizeForMatch, matchKeyword } from '@/utils/keyword-match';
 import {
   fetchCategoryFeeds,
   getFeedFailures,
@@ -315,7 +316,7 @@ export class DataLoaderManager implements AppModule {
   }
 
   private findFlashLocation(title: string): { lat: number; lon: number } | null {
-    const titleLower = title.toLowerCase();
+    const tokens = tokenizeForMatch(title);
     let bestMatch: { lat: number; lon: number; matches: number } | null = null;
 
     const countKeywordMatches = (keywords: string[] | undefined): number => {
@@ -323,7 +324,7 @@ export class DataLoaderManager implements AppModule {
       let matches = 0;
       for (const keyword of keywords) {
         const cleaned = keyword.trim().toLowerCase();
-        if (cleaned.length >= 3 && titleLower.includes(cleaned)) {
+        if (cleaned.length >= 3 && matchKeyword(tokens, cleaned)) {
           matches++;
         }
       }

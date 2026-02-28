@@ -42,6 +42,7 @@ import {
   CENTRAL_BANKS,
   COMMODITY_HUBS,
 } from '@/config';
+import { tokenizeForMatch, matchKeyword, findMatchingKeywords } from '@/utils/keyword-match';
 import { MapPopup } from './MapPopup';
 import {
   updateHotspotEscalation,
@@ -2740,32 +2741,27 @@ export class MapComponent {
   }
 
   private getRelatedNews(hotspot: Hotspot): NewsItem[] {
-    // High-priority conflict keywords that indicate the news is really about another topic
     const conflictTopics = ['gaza', 'ukraine', 'russia', 'israel', 'iran', 'china', 'taiwan', 'korea', 'syria'];
 
     return this.news
       .map((item) => {
-        const titleLower = item.title.toLowerCase();
-        const matchedKeywords = hotspot.keywords.filter((kw) => titleLower.includes(kw.toLowerCase()));
+        const tokens = tokenizeForMatch(item.title);
+        const matchedKeywords = findMatchingKeywords(tokens, hotspot.keywords);
 
         if (matchedKeywords.length === 0) return null;
 
-        // Check if this news mentions other hotspot conflict topics
         const conflictMatches = conflictTopics.filter(t =>
-          titleLower.includes(t) && !hotspot.keywords.some(k => k.toLowerCase().includes(t))
+          matchKeyword(tokens, t) && !hotspot.keywords.some(k => k.toLowerCase().includes(t))
         );
 
-        // If article mentions a major conflict topic that isn't this hotspot, deprioritize heavily
         if (conflictMatches.length > 0) {
-          // Only include if it ALSO has a strong local keyword (city name, agency)
           const strongLocalMatch = matchedKeywords.some(kw =>
             kw.toLowerCase() === hotspot.name.toLowerCase() ||
-            hotspot.agencies?.some(a => titleLower.includes(a.toLowerCase()))
+            hotspot.agencies?.some(a => matchKeyword(tokens, a))
           );
           if (!strongLocalMatch) return null;
         }
 
-        // Score: more keyword matches = more relevant
         const score = matchedKeywords.length;
         return { item, score };
       })
@@ -2784,8 +2780,8 @@ export class MapComponent {
       let matchedCount = 0;
 
       news.forEach((item) => {
-        const titleLower = item.title.toLowerCase();
-        const matches = spot.keywords.filter((kw) => titleLower.includes(kw.toLowerCase()));
+        const tokens = tokenizeForMatch(item.title);
+        const matches = spot.keywords.filter((kw) => matchKeyword(tokens, kw));
 
         if (matches.length > 0) {
           matchedCount++;

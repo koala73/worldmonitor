@@ -81,7 +81,7 @@ export const INTEL_HOTSPOTS: Hotspot[] = [
     lat: 38.9,
     lon: -77.0,
     location: 'Washington D.C., USA',
-    keywords: ['pentagon', 'white house', 'congress', 'cia', 'nsa', 'washington', 'biden', 'trump', 'house', 'senate', 'supreme court', 'vance', 'elon', 'us '],
+    keywords: ['pentagon', 'white house', 'congress', 'cia', 'nsa', 'washington', 'biden', 'trump', 'senate', 'supreme court', 'vance', 'elon'],
     agencies: ['Pentagon', 'CIA', 'NSA', 'State Dept'],
     description: 'US government and military headquarters. Intelligence community center.',
     status: 'Monitoring',
