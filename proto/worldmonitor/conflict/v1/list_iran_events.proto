@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package worldmonitor.conflict.v1;
+
+message ListIranEventsRequest {}
+
+message IranEvent {
+  string id = 1;
+  string title = 2;
+  string category = 3;
+  string source_url = 4;
+  double latitude = 5;
+  double longitude = 6;
+  string location_name = 7;
+  int64 timestamp = 8;
+  string severity = 9;
+}
+
+message ListIranEventsResponse {
+  repeated IranEvent events = 1;
+  int64 scraped_at = 2;
+}

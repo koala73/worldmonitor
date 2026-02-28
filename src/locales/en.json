@@ -830,7 +830,8 @@
         "centralBanks": "Central Banks",
         "commodityHubs": "Commodity Hubs",
         "gulfInvestments": "GCC Investments",
-        "tradeRoutes": "Trade Routes"
+        "tradeRoutes": "Trade Routes",
+        "iranAttacks": "Iran Attacks"
       },
       "tooltip": {
         "earthquake": "Earthquake",

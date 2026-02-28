@@ -541,6 +541,8 @@ export interface MapLayers {
   renewableInstallations: boolean;
   // Trade route layers
   tradeRoutes: boolean;
+  // Iran attacks layer
+  iranAttacks: boolean;
 }
 
 export interface AIDataCenter {

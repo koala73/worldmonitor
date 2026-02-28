@@ -83,6 +83,25 @@ export interface HumanitarianCountrySummary {
   updatedAt: number;
 }
 
+export interface ListIranEventsRequest {}
+
+export interface IranEvent {
+  id: string;
+  title: string;
+  category: string;
+  sourceUrl: string;
+  latitude: number;
+  longitude: number;
+  locationName: string;
+  timestamp: number;
+  severity: string;
+}
+
+export interface ListIranEventsResponse {
+  events: IranEvent[];
+  scrapedAt: number;
+}
+
 export type UcdpViolenceType = "UCDP_VIOLENCE_TYPE_UNSPECIFIED" | "UCDP_VIOLENCE_TYPE_STATE_BASED" | "UCDP_VIOLENCE_TYPE_NON_STATE" | "UCDP_VIOLENCE_TYPE_ONE_SIDED";
 
 export interface FieldViolation {
@@ -133,6 +152,7 @@ export interface ConflictServiceHandler {
   listAcledEvents(ctx: ServerContext, req: ListAcledEventsRequest): Promise<ListAcledEventsResponse>;
   listUcdpEvents(ctx: ServerContext, req: ListUcdpEventsRequest): Promise<ListUcdpEventsResponse>;
   getHumanitarianSummary(ctx: ServerContext, req: GetHumanitarianSummaryRequest): Promise<GetHumanitarianSummaryResponse>;
+  listIranEvents(ctx: ServerContext, req: ListIranEventsRequest): Promise<ListIranEventsResponse>;
 }
 
 export function createConflictServiceRoutes(
@@ -263,6 +283,43 @@ export function createConflictServiceRoutes(
 
           const result = await handler.getHumanitarianSummary(ctx, body);
           return new Response(JSON.stringify(result as GetHumanitarianSummaryResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/conflict/v1/list-iran-events",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body: ListIranEventsRequest = {};
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listIranEvents(ctx, body);
+          return new Response(JSON.stringify(result as ListIranEventsResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

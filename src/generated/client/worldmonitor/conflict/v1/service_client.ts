@@ -83,6 +83,25 @@ export interface HumanitarianCountrySummary {
   updatedAt: number;
 }
 
+export interface ListIranEventsRequest {}
+
+export interface IranEvent {
+  id: string;
+  title: string;
+  category: string;
+  sourceUrl: string;
+  latitude: number;
+  longitude: number;
+  locationName: string;
+  timestamp: number;
+  severity: string;
+}
+
+export interface ListIranEventsResponse {
+  events: IranEvent[];
+  scrapedAt: number;
+}
+
 export type UcdpViolenceType = "UCDP_VIOLENCE_TYPE_UNSPECIFIED" | "UCDP_VIOLENCE_TYPE_STATE_BASED" | "UCDP_VIOLENCE_TYPE_NON_STATE" | "UCDP_VIOLENCE_TYPE_ONE_SIDED";
 
 export interface FieldViolation {
@@ -214,6 +233,29 @@ export class ConflictServiceClient {
     }
 
     return await resp.json() as GetHumanitarianSummaryResponse;
+  }
+
+  async listIranEvents(_req: ListIranEventsRequest, options?: ConflictServiceCallOptions): Promise<ListIranEventsResponse> {
+    const path = "/api/conflict/v1/list-iran-events";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListIranEventsResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {
