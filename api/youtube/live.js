@@ -7,6 +7,7 @@ import https from 'node:https';
 import zlib from 'node:zlib';
 
 export const config = {
+  runtime: 'nodejs',
   maxDuration: 15,
 };
 
@@ -91,16 +92,6 @@ export default async function handler(request) {
     return new Response(JSON.stringify({ error: 'Origin not allowed' }), { status: 403, headers: cors });
   }
   const url = new URL(request.url);
-  if (url.searchParams.get('debug') === '1') {
-    const proxyRaw = process.env.YOUTUBE_PROXY_URL || '';
-    const proxy = parseProxy(proxyRaw);
-    return new Response(JSON.stringify({
-      hasProxyEnv: !!proxyRaw,
-      proxyHost: proxy?.host || null,
-      proxyPort: proxy?.port || null,
-      runtime: 'nodejs',
-    }), { status: 200, headers: { ...cors, 'Content-Type': 'application/json' } });
-  }
   const channel = url.searchParams.get('channel');
   const videoIdParam = url.searchParams.get('videoId');
 
