@@ -7,7 +7,6 @@ import { t } from '../services/i18n';
 
 export class StrategicPosturePanel extends Panel {
   private postures: TheaterPostureSummary[] = [];
-  private refreshInterval: ReturnType<typeof setInterval> | null = null;
   private vesselTimeouts: ReturnType<typeof setTimeout>[] = [];
   private loadingElapsedInterval: ReturnType<typeof setInterval> | null = null;
   private loadingStartTime: number = 0;
@@ -29,20 +28,12 @@ export class StrategicPosturePanel extends Panel {
   private init(): void {
     this.showLoading();
     void this.fetchAndRender();
-    this.startAutoRefresh();
     // Re-augment with vessels after stream has had time to populate
     // AIS data accumulates gradually - check at 30s, 60s, 90s, 120s
     this.vesselTimeouts.push(setTimeout(() => this.reaugmentVessels(), 30 * 1000));
     this.vesselTimeouts.push(setTimeout(() => this.reaugmentVessels(), 60 * 1000));
     this.vesselTimeouts.push(setTimeout(() => this.reaugmentVessels(), 90 * 1000));
     this.vesselTimeouts.push(setTimeout(() => this.reaugmentVessels(), 120 * 1000));
-  }
-
-  private startAutoRefresh(): void {
-    this.refreshInterval = setInterval(() => {
-      if (!this.isPanelVisible()) return;
-      void this.fetchAndRender();
-    }, 15 * 60 * 1000);
   }
 
   private isPanelVisible(): boolean {
@@ -298,8 +289,8 @@ export class StrategicPosturePanel extends Panel {
     }
   }
 
-  public refresh(): void {
-    this.fetchAndRender();
+  public async refresh(): Promise<void> {
+    return this.fetchAndRender();
   }
 
   private showNoData(): void {
@@ -529,7 +520,6 @@ export class StrategicPosturePanel extends Panel {
   }
 
   public destroy(): void {
-    if (this.refreshInterval) clearInterval(this.refreshInterval);
     this.stopLoadingTimer();
     this.vesselTimeouts.forEach(t => clearTimeout(t));
     this.vesselTimeouts = [];

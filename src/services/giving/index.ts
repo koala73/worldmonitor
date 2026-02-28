@@ -7,6 +7,7 @@ import {
   type InstitutionalGiving as ProtoInstitutional,
 } from '@/generated/client/worldmonitor/giving/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
+import { getHydratedData } from '@/services/bootstrap';
 
 // ─── Consumer-friendly types ───
 
@@ -151,6 +152,15 @@ const REFETCH_INTERVAL_MS = 30 * 60 * 1000; // 30 min
 // ─── Main fetch (public API) ───
 
 export async function fetchGivingSummary(): Promise<GivingFetchResult> {
+  // Check bootstrap hydration first
+  const hydrated = getHydratedData('giving') as ProtoResponse | undefined;
+  if (hydrated) {
+    const data = toDisplaySummary(hydrated);
+    cachedData = data;
+    cachedAt = Date.now();
+    return { ok: true, data };
+  }
+
   // Return in-memory cache if fresh
   const now = Date.now();
   if (cachedData && now - cachedAt < REFETCH_INTERVAL_MS) {

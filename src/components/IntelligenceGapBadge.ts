@@ -8,7 +8,7 @@ import { trackFindingClicked } from '@/services/analytics';
 const LOW_COUNT_THRESHOLD = 3;
 const MAX_VISIBLE_FINDINGS = 10;
 const SORT_TIME_TOLERANCE_MS = 60000;
-const REFRESH_INTERVAL_MS = 10000;
+const REFRESH_INTERVAL_MS = 60000;
 const ALERT_HOURS = 6;
 const STORAGE_KEY = 'worldmonitor-intel-findings';
 const POPUP_STORAGE_KEY = 'wm-alert-popup-enabled';
@@ -37,6 +37,7 @@ export class IntelligenceFindingsBadge {
   private onAlertClick: ((alert: UnifiedAlert) => void) | null = null;
   private findings: UnifiedFinding[] = [];
   private boundCloseDropdown = () => this.closeDropdown();
+  private boundUpdate = () => this.update();
   private audio: HTMLAudioElement | null = null;
   private audioEnabled = true;
   private enabled: boolean;
@@ -163,6 +164,7 @@ export class IntelligenceFindingsBadge {
     } else {
       localStorage.setItem(STORAGE_KEY, 'hidden');
       document.removeEventListener('click', this.boundCloseDropdown);
+      document.removeEventListener('wm:intelligence-updated', this.boundUpdate);
       if (this.refreshInterval) {
         clearInterval(this.refreshInterval);
         this.refreshInterval = null;
@@ -211,7 +213,8 @@ export class IntelligenceFindingsBadge {
   }
 
   private startRefresh(): void {
-    this.refreshInterval = setInterval(() => this.update(), REFRESH_INTERVAL_MS);
+    document.addEventListener('wm:intelligence-updated', this.boundUpdate);
+    this.refreshInterval = setInterval(this.boundUpdate, REFRESH_INTERVAL_MS);
   }
 
   public update(): void {
@@ -516,6 +519,7 @@ export class IntelligenceFindingsBadge {
     if (this.refreshInterval) {
       clearInterval(this.refreshInterval);
     }
+    document.removeEventListener('wm:intelligence-updated', this.boundUpdate);
     document.removeEventListener('click', this.boundCloseDropdown);
     this.badge.remove();
   }
