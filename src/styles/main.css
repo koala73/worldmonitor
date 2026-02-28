@@ -860,6 +860,7 @@ canvas,
   overflow: hidden;
   height: 100%;
   min-height: 200px;
+  min-width: 0;
   cursor: grab;
   transition: transform 0.15s, box-shadow 0.15s;
   position: relative;
@@ -888,6 +889,10 @@ canvas,
   grid-row: span 4 !important;
   min-height: 800px !important;
 }
+
+.panel.col-span-1 { grid-column: span 1 !important; }
+.panel.col-span-2 { grid-column: span 2 !important; }
+.panel.col-span-3 { grid-column: span 3 !important; }
 
 .panel-resize-handle {
   position: absolute;
@@ -925,9 +930,62 @@ canvas,
   color: var(--accent);
 }
 
+/* Right-edge handle - mirrors the bottom handle exactly */
+.panel-col-resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 20px;
+  cursor: ew-resize;
+  background: linear-gradient(to left, rgba(68, 136, 255, 0.15), transparent);
+  z-index: 100;
+  transition: background 0.2s;
+  touch-action: none;
+  pointer-events: auto !important;
+  user-select: none;
+}
+
+.panel-col-resize-handle:hover,
+.panel-col-resize-handle.active {
+  background: linear-gradient(to left, rgba(68, 136, 255, 0.5), transparent);
+}
+
+.panel-col-resize-handle::after {
+  content: '⋮';
+  position: absolute;
+  right: 3px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 16px;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+  transition: color 0.2s;
+}
+
+.panel-col-resize-handle:hover::after {
+  color: var(--accent);
+}
+
+body.panel-resize-active iframe {
+  pointer-events: none !important;
+}
+
 .panel.resizing {
   cursor: ns-resize;
   user-select: none;
+}
+
+/* Horizontal drag cursor */
+.panel.col-resizing {
+  cursor: ew-resize;
+  user-select: none;
+}
+
+@media (max-width: 768px) {
+  .panel-col-resize-handle {
+    display: none;
+  }
 }
 
 .panel:active {
@@ -1211,6 +1269,7 @@ canvas,
   flex: 1;
   overflow-y: auto;
   padding: 8px;
+  min-width: 0;
 }
 
 .panel-content::-webkit-scrollbar {
