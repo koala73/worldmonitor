@@ -21,6 +21,10 @@ open http://localhost:3737
 
 ## How It Works
 
+### Architecture Comparison
+
+![Architecture: Original Cloud-Native vs Docker OPSEC](docs/docker-architecture.png)
+
 The Dockerfile builds the Vite frontend (`tsc && vite build`) and pairs it
 with nginx + the Tauri sidecar's `local-api-server.mjs` to serve the dashboard:
 
