@@ -155,7 +155,7 @@ export function getLocalizedCountryName(codeOrName: string): string {
   };
 
   if (code.length === 3 && alpha3To2[code]) {
-    code = alpha3To2[code];
+    code = alpha3To2[code]!;
   }
 
   // If it's strictly a 2-letter code, try to natively translate it
