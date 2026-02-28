@@ -1,5 +1,5 @@
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
-import { t } from '@/services/i18n';
+import { t, getLocalizedGeoName } from '@/services/i18n';
 import { getCSSColor } from '@/utils';
 import type { CountryScore } from '@/services/country-instability';
 import type { NewsItem } from '@/types';
@@ -246,7 +246,7 @@ export class CountryBriefPage {
         <div class="cb-header">
           <div class="cb-header-left">
             <span class="cb-flag">${flag}</span>
-            <span class="cb-country-name">${escapeHtml(country)}</span>
+            <span class="cb-country-name">${escapeHtml(getLocalizedGeoName(country))}</span>
             ${score ? this.levelBadge(score.level) : ''}
             ${score ? this.trendIndicator(score.trend) : ''}
             ${tierBadge}
@@ -477,8 +477,8 @@ export class CountryBriefPage {
       const safeUrl = sanitizeUrl(item.link);
       const threatColor = item.threat?.level === 'critical' ? getCSSColor('--threat-critical')
         : item.threat?.level === 'high' ? getCSSColor('--threat-high')
-        : item.threat?.level === 'medium' ? getCSSColor('--threat-medium')
-        : getCSSColor('--threat-info');
+          : item.threat?.level === 'medium' ? getCSSColor('--threat-medium')
+            : getCSSColor('--threat-info');
       const timeAgo = this.timeAgo(item.pubDate);
       const cardBody = `
         <span class="cb-news-threat" style="background:${threatColor}"></span>

@@ -172,3 +172,38 @@ export function getLocalizedCountryName(codeOrName: string): string {
   // If it's a known english name or unmatched code, fall back to the raw string
   return codeOrName;
 }
+
+/**
+ * Geographic dictionaries keyed by language code.
+ * Used by getLocalizedGeoName() to translate non-ISO geographic names
+ * (water bodies, mountains, deserts, cities, etc.)
+ */
+import arGeoFallbacks from '@/locales/geo/ar';
+const _geoDicts: Record<string, Record<string, string>> = {
+  ar: arGeoFallbacks,
+};
+
+/**
+ * Resolves any geographic name (country, sea, continent, city, etc.)
+ * to its localized equivalent for the current language.
+ *
+ * Resolution order:
+ * 1. Exact match in the language-specific geographic dictionary
+ * 2. ISO-3166 region code via Intl.DisplayNames (delegated to getLocalizedCountryName)
+ * 3. Raw input string (unchanged)
+ */
+export function getLocalizedGeoName(nameOrCode: string): string {
+  if (!nameOrCode) return '';
+  const lang = getCurrentLanguage();
+  if (lang === 'en') return nameOrCode;
+
+  // 1. Check shared geographic dictionary
+  const dict = _geoDicts[lang];
+  if (dict) {
+    const localized = dict[nameOrCode] || dict[nameOrCode.trim()];
+    if (localized) return localized;
+  }
+
+  // 2. Delegate to ISO country code resolver
+  return getLocalizedCountryName(nameOrCode);
+}

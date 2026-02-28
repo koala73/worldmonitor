@@ -8,7 +8,7 @@ import type { TechHubActivity } from '@/services/tech-activity';
 import type { GeoHubActivity } from '@/services/geo-activity';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { isMobileDevice, getCSSColor } from '@/utils';
-import { t, getLocalizedCountryName } from '@/services/i18n';
+import { t, getLocalizedGeoName } from '@/services/i18n';
 import { fetchHotspotContext, formatArticleDate, extractDomain, type GdeltArticle } from '@/services/gdelt-intel';
 import { getNaturalEventIcon } from '@/services/eonet';
 import { getHotspotEscalation, getEscalationChange24h } from '@/services/hotspot-escalation';
@@ -860,7 +860,7 @@ export class MapPopup {
             <span class="stat-value">${escapeHtml(typeLabels[base.type] || base.type)}</span>
           </div>
           ${base.arm ? `<div class="popup-stat"><span class="stat-label">Branch</span><span class="stat-value">${escapeHtml(base.arm)}</span></div>` : ''}
-          ${base.country ? `<div class="popup-stat"><span class="stat-label">Country</span><span class="stat-value">${escapeHtml(getLocalizedCountryName(base.country))}</span></div>` : ''}
+          ${base.country ? `<div class="popup-stat"><span class="stat-label">Country</span><span class="stat-value">${escapeHtml(getLocalizedGeoName(base.country))}</span></div>` : ''}
           ${categories.length > 0 ? `<div class="popup-stat"><span class="stat-label">Categories</span><span class="stat-value">${escapeHtml(categories.join(', '))}</span></div>` : ''}
           <div class="popup-stat">
             <span class="stat-label">${t('popups.coordinates')}</span>
@@ -960,7 +960,7 @@ export class MapPopup {
         <button class="popup-close">×</button>
       </div>
       <div class="popup-body">
-        <div class="popup-subtitle">${event.city ? `${escapeHtml(event.city)}, ` : ''}${escapeHtml(getLocalizedCountryName(event.country))}</div>
+        <div class="popup-subtitle">${event.city ? `${escapeHtml(event.city)}, ` : ''}${escapeHtml(getLocalizedGeoName(event.country))}</div>
         <div class="popup-stats">
           <div class="popup-stat">
             <span class="stat-label">${t('popups.time')}</span>
@@ -1011,7 +1011,7 @@ export class MapPopup {
 
     return `
       <div class="popup-header protest ${headerClass} cluster">
-        <span class="popup-title">📢 ${escapeHtml(getLocalizedCountryName(data.country))}</span>
+        <span class="popup-title">📢 ${escapeHtml(getLocalizedGeoName(data.country))}</span>
         <span class="popup-badge">${totalCount} ${t('popups.events').toUpperCase()}</span>
         <button class="popup-close">×</button>
       </div>
@@ -1074,7 +1074,7 @@ export class MapPopup {
       </div>
       <div class="popup-body">
         <div class="popup-subtitle">${escapeHtml(delay.name)}</div>
-        <div class="popup-location">${escapeHtml(delay.city)}, ${escapeHtml(getLocalizedCountryName(delay.country))}</div>
+        <div class="popup-location">${escapeHtml(delay.city)}, ${escapeHtml(getLocalizedGeoName(delay.country))}</div>
         <div class="popup-stats">
           ${avgDelaySection}
           ${reasonSection}
@@ -1228,8 +1228,8 @@ export class MapPopup {
       ? marketStatus === 'open'
         ? t('popups.open')
         : marketStatus === 'closed'
-        ? t('popups.economic.closed')
-        : t('popups.unknown')
+          ? t('popups.economic.closed')
+          : t('popups.unknown')
       : '';
 
     return `
@@ -1247,7 +1247,7 @@ export class MapPopup {
           </div>
           <div class="popup-stat">
             <span class="stat-label">${t('popups.country')}</span>
-            <span class="stat-value">${escapeHtml(getLocalizedCountryName(center.country))}</span>
+            <span class="stat-value">${escapeHtml(getLocalizedGeoName(center.country))}</span>
           </div>
           ${center.marketHours ? `
           <div class="popup-stat">
@@ -1277,7 +1277,7 @@ export class MapPopup {
         <div class="popup-stats">
           <div class="popup-stat">
             <span class="stat-label">${t('popups.country')}</span>
-            <span class="stat-value">${escapeHtml(getLocalizedCountryName(irradiator.country))}</span>
+            <span class="stat-value">${escapeHtml(getLocalizedGeoName(irradiator.country))}</span>
           </div>
           <div class="popup-stat">
             <span class="stat-label">${t('popups.city')}</span>
@@ -1556,7 +1556,7 @@ export class MapPopup {
 
     return `
       <div class="popup-header outage ${severityClass}">
-        <span class="popup-title">📡 ${escapeHtml(getLocalizedCountryName(outage.country).toUpperCase())}</span>
+        <span class="popup-title">📡 ${escapeHtml(getLocalizedGeoName(outage.country).toUpperCase())}</span>
         <span class="popup-badge ${severityColors[outage.severity] || 'low'}">${severityLabels[outage.severity] || t('popups.outage.levels.disruption')}</span>
         <button class="popup-close">×</button>
       </div>
@@ -1615,7 +1615,7 @@ export class MapPopup {
         <button class="popup-close">×</button>
       </div>
       <div class="popup-body">
-        <div class="popup-subtitle">${escapeHtml(dc.owner)} • ${escapeHtml(getLocalizedCountryName(dc.country))}</div>
+        <div class="popup-subtitle">${escapeHtml(dc.owner)} • ${escapeHtml(getLocalizedGeoName(dc.country))}</div>
         <div class="popup-stats">
           <div class="popup-stat">
             <span class="stat-label">${t('popups.datacenter.gpuChipCount')}</span>
@@ -1674,7 +1674,7 @@ export class MapPopup {
         <button class="popup-close">×</button>
       </div>
       <div class="popup-body">
-        <div class="popup-subtitle">${escapeHtml(getLocalizedCountryName(data.country))}</div>
+        <div class="popup-subtitle">${escapeHtml(getLocalizedGeoName(data.country))}</div>
         <div class="popup-stats">
           <div class="popup-stat">
             <span class="stat-label">${t('popups.datacenter.cluster.totalChips')}</span>
@@ -1719,7 +1719,7 @@ export class MapPopup {
         <button class="popup-close">×</button>
       </div>
       <div class="popup-body">
-        <div class="popup-subtitle">${escapeHtml(hub.city)}, ${escapeHtml(getLocalizedCountryName(hub.country))}</div>
+        <div class="popup-subtitle">${escapeHtml(hub.city)}, ${escapeHtml(getLocalizedGeoName(hub.country))}</div>
         ${hub.unicorns ? `
         <div class="popup-stats">
           <div class="popup-stat">
@@ -1743,7 +1743,7 @@ export class MapPopup {
         <button class="popup-close">×</button>
       </div>
       <div class="popup-body">
-        <div class="popup-subtitle">${escapeHtml(region.city)}, ${escapeHtml(getLocalizedCountryName(region.country))}</div>
+        <div class="popup-subtitle">${escapeHtml(region.city)}, ${escapeHtml(getLocalizedGeoName(region.country))}</div>
         <div class="popup-stats">
           <div class="popup-stat">
             <span class="stat-label">${t('popups.cloudRegion.provider')}</span>
@@ -1774,7 +1774,7 @@ export class MapPopup {
         <button class="popup-close">×</button>
       </div>
       <div class="popup-body">
-        <div class="popup-subtitle">${escapeHtml(hq.city)}, ${escapeHtml(getLocalizedCountryName(hq.country))}</div>
+        <div class="popup-subtitle">${escapeHtml(hq.city)}, ${escapeHtml(getLocalizedGeoName(hq.country))}</div>
         <div class="popup-stats">
           ${hq.marketCap ? `
           <div class="popup-stat">
@@ -1807,7 +1807,7 @@ export class MapPopup {
         <button class="popup-close">×</button>
       </div>
       <div class="popup-body">
-        <div class="popup-subtitle">${escapeHtml(acc.city)}, ${escapeHtml(getLocalizedCountryName(acc.country))}</div>
+        <div class="popup-subtitle">${escapeHtml(acc.city)}, ${escapeHtml(getLocalizedGeoName(acc.country))}</div>
         <div class="popup-stats">
           ${acc.founded ? `
           <div class="popup-stat">
@@ -1838,8 +1838,8 @@ export class MapPopup {
     const daysLabel = event.daysUntil === 0
       ? t('popups.techEvent.days.today')
       : event.daysUntil === 1
-      ? t('popups.techEvent.days.tomorrow')
-      : t('popups.techEvent.days.inDays', { count: String(event.daysUntil) });
+        ? t('popups.techEvent.days.tomorrow')
+        : t('popups.techEvent.days.inDays', { count: String(event.daysUntil) });
 
     return `
       <div class="popup-header tech-event ${urgencyClass}">
@@ -1848,7 +1848,7 @@ export class MapPopup {
         <button class="popup-close">×</button>
       </div>
       <div class="popup-body">
-        <div class="popup-subtitle">📍 ${escapeHtml(event.location)}, ${escapeHtml(getLocalizedCountryName(event.country))}</div>
+        <div class="popup-subtitle">📍 ${escapeHtml(event.location)}, ${escapeHtml(getLocalizedGeoName(event.country))}</div>
         <div class="popup-stats">
           <div class="popup-stat">
             <span class="stat-label">${t('popups.techEvent.date')}</span>
@@ -1892,7 +1892,7 @@ export class MapPopup {
         <button class="popup-close">×</button>
       </div>
       <div class="popup-body cluster-popup">
-        <div class="popup-subtitle">📍 ${escapeHtml(data.city)}, ${escapeHtml(getLocalizedCountryName(data.country))}</div>
+        <div class="popup-subtitle">📍 ${escapeHtml(data.city)}, ${escapeHtml(getLocalizedGeoName(data.country))}</div>
         <div class="cluster-summary">
           ${faangCount ? `<span class="summary-item faang">🏛️ ${t('popups.techHQCluster.bigTechCount', { count: String(faangCount) })}</span>` : ''}
           ${unicornCount ? `<span class="summary-item unicorn">🦄 ${t('popups.techHQCluster.unicornsCount', { count: String(unicornCount) })}</span>` : ''}
@@ -1923,7 +1923,7 @@ export class MapPopup {
         <button class="popup-close">×</button>
       </div>
       <div class="popup-body cluster-popup">
-        <div class="popup-subtitle">📍 ${escapeHtml(data.location)}, ${escapeHtml(getLocalizedCountryName(data.country))}</div>
+        <div class="popup-subtitle">📍 ${escapeHtml(data.location)}, ${escapeHtml(getLocalizedGeoName(data.country))}</div>
         ${upcomingSoon ? `<div class="cluster-summary"><span class="summary-item soon">⚡ ${t('popups.techEventCluster.upcomingWithin2Weeks', { count: String(upcomingSoon) })}</span></div>` : ''}
         <ul class="cluster-list">${listItems}</ul>
         ${data.sampled ? `<p class="popup-more">${t('popups.techEventCluster.sampled', { count: String(data.items.length) })}</p>` : ''}
@@ -2371,7 +2371,7 @@ export class MapPopup {
         <button class="popup-close">×</button>
       </div>
       <div class="popup-body">
-        <div class="popup-subtitle">${escapeHtml(getLocalizedCountryName(port.country))}</div>
+        <div class="popup-subtitle">${escapeHtml(getLocalizedGeoName(port.country))}</div>
         <div class="popup-stats">
           ${rankSection}
           <div class="popup-stat">
@@ -2408,7 +2408,7 @@ export class MapPopup {
         <button class="popup-close">×</button>
       </div>
       <div class="popup-body">
-        <div class="popup-subtitle">${escapeHtml(port.operator)} • ${escapeHtml(getLocalizedCountryName(port.country))}</div>
+        <div class="popup-subtitle">${escapeHtml(port.operator)} • ${escapeHtml(getLocalizedGeoName(port.country))}</div>
         <div class="popup-stats">
           <div class="popup-stat">
             <span class="stat-label">${t('popups.spaceport.launchActivity')}</span>
@@ -2455,7 +2455,7 @@ export class MapPopup {
           </div>
           <div class="popup-stat">
             <span class="stat-label">${t('popups.country')}</span>
-            <span class="stat-value">${escapeHtml(getLocalizedCountryName(mine.country))}</span>
+            <span class="stat-value">${escapeHtml(getLocalizedGeoName(mine.country))}</span>
           </div>
           <div class="popup-stat">
             <span class="stat-label">${t('popups.coordinates')}</span>
@@ -2482,7 +2482,7 @@ export class MapPopup {
         <div class="popup-stats">
           <div class="popup-stat">
             <span class="stat-label">${t('popups.location')}</span>
-            <span class="stat-value">${escapeHtml(exchange.city)}, ${escapeHtml(getLocalizedCountryName(exchange.country))}</span>
+            <span class="stat-value">${escapeHtml(exchange.city)}, ${escapeHtml(getLocalizedGeoName(exchange.country))}</span>
           </div>
           ${exchange.marketCap ? `<div class="popup-stat"><span class="stat-label">${t('popups.stockExchange.marketCap')}</span><span class="stat-value">$${exchange.marketCap}T</span></div>` : ''}
           ${exchange.tradingHours ? `<div class="popup-stat"><span class="stat-label">${t('popups.tradingHours')}</span><span class="stat-value">${escapeHtml(exchange.tradingHours)}</span></div>` : ''}
@@ -2505,7 +2505,7 @@ export class MapPopup {
         <div class="popup-stats">
           <div class="popup-stat">
             <span class="stat-label">${t('popups.location')}</span>
-            <span class="stat-value">${escapeHtml(center.city)}, ${escapeHtml(getLocalizedCountryName(center.country))}</span>
+            <span class="stat-value">${escapeHtml(center.city)}, ${escapeHtml(getLocalizedGeoName(center.country))}</span>
           </div>
           ${center.gfciRank ? `<div class="popup-stat"><span class="stat-label">${t('popups.financialCenter.gfciRank')}</span><span class="stat-value">#${center.gfciRank}</span></div>` : ''}
         </div>
@@ -2536,7 +2536,7 @@ export class MapPopup {
         <div class="popup-stats">
           <div class="popup-stat">
             <span class="stat-label">${t('popups.location')}</span>
-            <span class="stat-value">${escapeHtml(bank.city)}, ${escapeHtml(getLocalizedCountryName(bank.country))}</span>
+            <span class="stat-value">${escapeHtml(bank.city)}, ${escapeHtml(getLocalizedGeoName(bank.country))}</span>
           </div>
           ${bank.currency ? `<div class="popup-stat"><span class="stat-label">${t('popups.centralBank.currency')}</span><span class="stat-value">${escapeHtml(bank.currency)}</span></div>` : ''}
         </div>
@@ -2558,7 +2558,7 @@ export class MapPopup {
         <div class="popup-stats">
           <div class="popup-stat">
             <span class="stat-label">${t('popups.location')}</span>
-            <span class="stat-value">${escapeHtml(hub.city)}, ${escapeHtml(getLocalizedCountryName(hub.country))}</span>
+            <span class="stat-value">${escapeHtml(hub.city)}, ${escapeHtml(getLocalizedGeoName(hub.country))}</span>
           </div>
         </div>
         ${hub.commodities && hub.commodities.length > 0 ? `
@@ -2591,11 +2591,11 @@ export class MapPopup {
           <span class="section-label">${t('popups.iranEvent.relatedEvents')}</span>
           <ul class="cluster-list">
             ${event.relatedEvents.map(r => {
-              const rSev = this.normalizeSeverity(r.severity);
-              const rTime = r.timestamp ? this.getTimeAgo(new Date(r.timestamp)) : '';
-              const rTitle = r.title.length > 60 ? r.title.slice(0, 60) + '…' : r.title;
-              return `<li class="cluster-item"><span class="popup-badge ${rSev}" style="font-size:9px;padding:1px 4px;">${escapeHtml(rSev.toUpperCase())}</span> ${escapeHtml(rTitle)}${rTime ? ` <span style="color:var(--text-muted);font-size:10px;">${escapeHtml(rTime)}</span>` : ''}</li>`;
-            }).join('')}
+      const rSev = this.normalizeSeverity(r.severity);
+      const rTime = r.timestamp ? this.getTimeAgo(new Date(r.timestamp)) : '';
+      const rTitle = r.title.length > 60 ? r.title.slice(0, 60) + '…' : r.title;
+      return `<li class="cluster-item"><span class="popup-badge ${rSev}" style="font-size:9px;padding:1px 4px;">${escapeHtml(rSev.toUpperCase())}</span> ${escapeHtml(rTitle)}${rTime ? ` <span style="color:var(--text-muted);font-size:10px;">${escapeHtml(rTime)}</span>` : ''}</li>`;
+    }).join('')}
           </ul>
         </div>` : '';
 
