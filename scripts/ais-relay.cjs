@@ -2308,10 +2308,14 @@ const server = http.createServer(async (req, res) => {
         'feeds.capi24.com',  // News24 redirect destination
         'islandtimes.org',
         'www.atlanticcouncil.org',
-        // RSSHub (NHK, MIIT, MOFCOM)
-        'rsshub.app',
       ];
       const parsed = new URL(feedUrl);
+      // Block deprecated/stale feed domains — stale clients still request these
+      const blockedDomains = ['rsshub.app'];
+      if (blockedDomains.includes(parsed.hostname)) {
+        res.writeHead(410, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: 'Feed deprecated' }));
+      }
       if (!allowedDomains.includes(parsed.hostname)) {
         res.writeHead(403, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ error: 'Domain not allowed on Railway proxy' }));
