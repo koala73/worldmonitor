@@ -159,7 +159,36 @@ export async function listAirportDelays(
     }
   }
 
-  console.log(`[Aviation] Total: ${allAlerts.length} alerts in ${Date.now() - t0}ms`);
+  // 4. Fill in MENA airports with no alerts as "normal operations"
+  //    so they always appear on the map (gray dots)
+  const alertedIatas = new Set(allAlerts.map(a => a.iata));
+  const menaAirports = MONITORED_AIRPORTS.filter(a => a.region === 'mena');
+  for (const airport of menaAirports) {
+    if (!alertedIatas.has(airport.iata)) {
+      allAlerts.push({
+        id: `status-${airport.iata}`,
+        iata: airport.iata,
+        icao: airport.icao,
+        name: airport.name,
+        city: airport.city,
+        country: airport.country,
+        location: { latitude: airport.lat, longitude: airport.lon },
+        region: toProtoRegion(airport.region),
+        delayType: toProtoDelayType('general'),
+        severity: toProtoSeverity('normal'),
+        avgDelayMinutes: 0,
+        delayedFlightsPct: 0,
+        cancelledFlights: 0,
+        totalFlights: 0,
+        reason: 'Normal operations',
+        source: toProtoSource('computed'),
+        updatedAt: Date.now(),
+      });
+    }
+  }
+
+  const menaNormal = menaAirports.filter(a => !alertedIatas.has(a.iata)).length;
+  console.log(`[Aviation] Total: ${allAlerts.length} alerts (${menaNormal} MENA normal) in ${Date.now() - t0}ms`);
   return { alerts: allAlerts };
 }
 
