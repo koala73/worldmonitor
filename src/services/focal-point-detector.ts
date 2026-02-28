@@ -455,37 +455,6 @@ class FocalPointDetector {
     return lines.length > 0 ? lines.join('\n') : null;
   }
 
-  /**
-   * Log focal point summary to console for debugging
-   */
-  logSummary(): void {
-    if (!this.lastSummary) {
-      console.log('[FocalPointDetector] No summary available');
-      return;
-    }
-
-    console.group('%c[FocalPointDetector]', 'color: #8b5cf6; font-weight: bold');
-    console.log(`Total focal points: ${this.lastSummary.focalPoints.length}`);
-
-    const critical = this.lastSummary.focalPoints.filter(fp => fp.urgency === 'critical');
-    const elevated = this.lastSummary.focalPoints.filter(fp => fp.urgency === 'elevated');
-
-    if (critical.length > 0) {
-      console.log('%cCritical:', 'color: #ef4444; font-weight: bold');
-      for (const fp of critical) {
-        console.log(`  ${fp.displayName}: score ${fp.focalScore.toFixed(0)}, ${fp.newsMentions} news, ${fp.signalCount} signals`);
-      }
-    }
-
-    if (elevated.length > 0) {
-      console.log('%cElevated:', 'color: #f59e0b; font-weight: bold');
-      for (const fp of elevated.slice(0, 5)) {
-        console.log(`  ${fp.displayName}: score ${fp.focalScore.toFixed(0)}`);
-      }
-    }
-
-    console.groupEnd();
-  }
 }
 
 export const focalPointDetector = new FocalPointDetector();

@@ -91,7 +91,6 @@ export async function fetchNaturalEvents(days = 30): Promise<NaturalEvent[]> {
     fetchGDACSEvents(),
   ]);
 
-  console.log(`[NaturalEvents] EONET: ${eonetEvents.length}, GDACS: ${gdacsEvents.length}`);
   const gdacsConverted = gdacsEvents.map(convertGDACSToNaturalEvent);
   const seenLocations = new Set<string>();
   const merged: NaturalEvent[] = [];

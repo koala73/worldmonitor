@@ -319,7 +319,6 @@ export class InsightsPanel extends Panel {
         focalSummary = focalPointDetector.analyze(clusters, signalSummary);
         this.lastFocalPoints = focalSummary.focalPoints;
         if (focalSummary.focalPoints.length > 0) {
-          focalPointDetector.logSummary();
           // Ingest news for CII BEFORE signaling (so CII has data when it calculates)
           ingestNewsForCII(clusters);
           // Signal CII to refresh now that focal points AND news data are available

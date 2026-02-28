@@ -169,7 +169,6 @@ function saveToStorage(data: CachedTheaterPosture): void {
 const stored = loadFromStorage();
 if (stored) {
   cachedPosture = stored;
-  console.log('[CachedTheaterPosture] Restored from localStorage (stale)');
 }
 
 export async function fetchCachedTheaterPosture(signal?: AbortSignal): Promise<CachedTheaterPosture | null> {
@@ -196,10 +195,6 @@ export async function fetchCachedTheaterPosture(signal?: AbortSignal): Promise<C
       cachedPosture = data;
       lastFetchTime = Date.now();
       saveToStorage(data);
-      console.log(
-        '[CachedTheaterPosture] Loaded via sebuf RPC',
-        `${data.postures.length} theaters, ${data.totalFlights} flights`
-      );
       return cachedPosture;
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') throw error;

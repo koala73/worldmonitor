@@ -213,17 +213,6 @@ export function getCellCount(): number {
   return cells.size;
 }
 
-export function debugInjectTestEvents(): void {
-  const now = new Date();
-  const testLat = 25.5;
-  const testLon = 121.5;
-  ingestGeoEvent(testLat, testLon, 'protest', now);
-  ingestGeoEvent(testLat, testLon, 'military_flight', now);
-  ingestGeoEvent(testLat, testLon, 'military_vessel', now);
-  ingestGeoEvent(testLat + 0.3, testLon + 0.2, 'earthquake', now);
-  console.log('[GeoConvergence] Injected 4 test events at Taiwan Strait region');
-}
-
 export function debugGetCells(): Map<string, unknown> {
   return new Map(cells);
 }

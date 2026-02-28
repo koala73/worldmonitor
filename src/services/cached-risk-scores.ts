@@ -190,7 +190,6 @@ export async function fetchCachedRiskScores(signal?: AbortSignal): Promise<Cache
       lastFetchTime = now;
       setHasCachedScores(true);
       void setPersistentCache(RISK_CACHE_KEY, data);
-      console.log('[CachedRiskScores] Loaded via sebuf RPC');
       return cachedScores;
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') throw error;

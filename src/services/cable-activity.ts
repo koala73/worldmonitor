@@ -284,10 +284,8 @@ export async function fetchCableActivity(): Promise<CableActivity> {
   try {
     const response = await maritimeClient.listNavigationalWarnings({ area: '', pageSize: 0, cursor: '' });
     const warnings: NgaWarning[] = response.warnings.map(protoToNgaWarning);
-    console.log(`[CableActivity] Fetched ${warnings.length} NGA warnings`);
 
     const activity = processWarnings(warnings);
-    console.log(`[CableActivity] Found ${activity.advisories.length} advisories, ${activity.repairShips.length} repair ships`);
 
     return activity;
   } catch (error) {

@@ -59,7 +59,6 @@ let loggedDirectFetchBlocked = false;
 function logDirectFetchBlockedOnce(): void {
   if (loggedDirectFetchBlocked) return;
   loggedDirectFetchBlocked = true;
-  console.log('[Polymarket] Direct fetch blocked by Cloudflare, using proxy');
 }
 
 async function probeDirectFetchCapability(): Promise<boolean> {
@@ -70,9 +69,7 @@ async function probeDirectFetchCapability(): Promise<boolean> {
     })
       .then(resp => {
         directFetchWorks = resp.ok;
-        if (directFetchWorks) {
-          console.log('[Polymarket] Direct browser fetch working');
-        } else {
+        if (!directFetchWorks) {
           logDirectFetchBlockedOnce();
         }
         return directFetchWorks;
@@ -100,7 +97,6 @@ async function polyFetch(endpoint: 'events' | 'markets', params: Record<string, 
         headers: { 'Accept': 'application/json' },
       });
       if (resp.ok) {
-        if (directFetchWorks !== true) console.log('[Polymarket] Direct browser fetch working');
         directFetchWorks = true;
         return resp;
       }

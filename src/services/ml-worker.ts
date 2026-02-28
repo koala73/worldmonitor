@@ -65,7 +65,6 @@ class MLWorkerManager {
     this.capabilities = await detectMLCapabilities();
 
     if (!this.capabilities.isSupported) {
-      console.log('[MLWorker] ML features disabled (device not supported)');
       return false;
     }
 

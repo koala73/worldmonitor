@@ -452,25 +452,4 @@ class SignalAggregator {
 export const signalAggregator = new SignalAggregator();
 
 export function logSignalSummary(): void {
-  const summary = signalAggregator.getSummary();
-
-  console.group('%c[Signal Aggregator]', 'color: #6b8afd; font-weight: bold');
-  console.log(`Total signals: ${summary.totalSignals}`);
-  console.log('By type:', summary.byType);
-
-  if (summary.convergenceZones.length > 0) {
-    console.log('%cConvergence Zones:', 'color: #f59e0b; font-weight: bold');
-    for (const z of summary.convergenceZones) {
-      console.log(`  ${z.description}`);
-    }
-  }
-
-  if (summary.topCountries.length > 0) {
-    console.log('%cTop Countries:', 'color: #4ade80; font-weight: bold');
-    for (const c of summary.topCountries.slice(0, 5)) {
-      console.log(`  ${c.countryName}: ${c.totalCount} signals, score ${c.convergenceScore}`);
-    }
-  }
-
-  console.groupEnd();
 }

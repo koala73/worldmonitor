@@ -44,7 +44,6 @@ export function updateMetaTagsForStory(meta: StoryMeta): void {
   // Store in session for og-image API
   sessionStorage.setItem('storyMeta', JSON.stringify(meta));
   
-  console.log('[MetaTags] Updated for story:', countryName);
 }
 
 export function resetMetaTags(): void {
@@ -64,7 +63,6 @@ export function resetMetaTags(): void {
   setMetaTag('twitter:image', DEFAULT_IMAGE);
   
   sessionStorage.removeItem('storyMeta');
-  console.log('[MetaTags] Reset to defaults');
 }
 
 function generateDescription(

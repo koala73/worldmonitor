@@ -3627,8 +3627,6 @@ export class DeckGLMap {
 
   public setWeatherAlerts(alerts: WeatherAlert[]): void {
     this.weatherAlerts = alerts;
-    const withCentroid = alerts.filter(a => a.centroid && a.centroid.length === 2).length;
-    console.log(`[DeckGLMap] Weather alerts: ${alerts.length} total, ${withCentroid} with coordinates`);
     this.render();
   }
 
@@ -3972,7 +3970,6 @@ export class DeckGLMap {
 
   // Toggle layer on/off programmatically
   public toggleLayer(layer: keyof MapLayers): void {
-    console.log(`[DeckGLMap.toggleLayer] ${layer}: ${this.state.layers[layer]} -> ${!this.state.layers[layer]}`);
     this.state.layers[layer] = !this.state.layers[layer];
     const toggle = this.container.querySelector(`.layer-toggle[data-layer="${layer}"] input`) as HTMLInputElement;
     if (toggle) toggle.checked = this.state.layers[layer];
@@ -4214,7 +4211,6 @@ export class DeckGLMap {
         if (!this.countryHoverSetup) this.setupCountryHover();
         this.updateCountryLayerPaint(getCurrentTheme());
         if (this.highlightedCountryCode) this.highlightCountry(this.highlightedCountryCode);
-        console.log('[DeckGLMap] Country boundaries loaded');
       })
       .catch((err) => console.warn('[DeckGLMap] Failed to load country boundaries:', err));
   }

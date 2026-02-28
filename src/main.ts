@@ -143,7 +143,7 @@ window.addEventListener('unhandledrejection', (e) => {
   if (e.reason?.name === 'NotAllowedError') e.preventDefault();
 });
 
-import { debugInjectTestEvents, debugGetCells, getCellCount } from '@/services/geo-convergence';
+import { debugGetCells, getCellCount } from '@/services/geo-convergence';
 import { initMetaTags } from '@/services/meta-tags';
 import { installRuntimeFetchPatch, installWebApiRedirect } from '@/services/runtime';
 import { loadDesktopSecrets } from '@/services/runtime-config';
@@ -219,7 +219,6 @@ if (urlParams.get('settings') === '1') {
 
 // Debug helpers for geo-convergence testing (remove in production)
 (window as unknown as Record<string, unknown>).geoDebug = {
-  inject: debugInjectTestEvents,
   cells: debugGetCells,
   count: getCellCount,
 };

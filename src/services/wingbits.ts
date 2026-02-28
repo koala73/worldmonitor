@@ -193,7 +193,6 @@ export async function checkWingbitsStatus(): Promise<boolean> {
     const resp = await client.getWingbitsStatus({});
     wingbitsConfigured = resp.configured;
     dataFreshness.setEnabled('wingbits', wingbitsConfigured);
-    console.log(`[Wingbits] Status: ${wingbitsConfigured ? 'configured' : 'not configured'}`);
     return wingbitsConfigured;
   } catch {
     wingbitsConfigured = false;
@@ -291,7 +290,6 @@ export async function getAircraftDetailsBatch(icao24List: string[]): Promise<Map
       }
     }
 
-    console.log(`[Wingbits] Batch: ${results.size} enriched, ${resp.fetched || 0} fetched`);
     if (results.size > 0) {
       dataFreshness.recordUpdate('wingbits', results.size);
     }

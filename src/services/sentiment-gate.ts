@@ -30,14 +30,12 @@ export async function filterBySentiment(
       const parsed = parseFloat(override);
       if (!isNaN(parsed) && parsed >= 0 && parsed <= 1) {
         threshold = parsed;
-        console.log(`[SentimentGate] Using override threshold: ${threshold}`);
       }
     }
   } catch { /* ignore localStorage errors */ }
 
   // Graceful degradation: if ML not available, pass all items through
   if (!mlWorker.isAvailable) {
-    console.log('[SentimentGate] ML worker not available, passing all items through');
     return items;
   }
 
@@ -57,7 +55,6 @@ export async function filterBySentiment(
       return result && result.label === 'positive' && result.score >= threshold;
     });
 
-    console.log(`[SentimentGate] ${passed.length}/${items.length} items passed (threshold=${threshold})`);
     return passed;
   } catch (err) {
     console.warn('[SentimentGate] Sentiment classification failed, passing all items through:', err);
