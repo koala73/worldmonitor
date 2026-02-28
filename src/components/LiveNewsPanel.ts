@@ -79,7 +79,7 @@ const TECH_LIVE_CHANNELS: LiveChannel[] = [
 // Optional channels users can add from the "Available Channels" tab UI
 export const OPTIONAL_LIVE_CHANNELS: LiveChannel[] = [
   // North America
-  { id: 'livenow-fox', name: 'LiveNOW from FOX', handle: '@LiveNOWfromFOX' },
+  { id: 'livenow-fox', name: 'LiveNOW from FOX', handle: '@LiveNOWfromFOX', fallbackVideoId: 'ZvdiJUYGBis' },
   { id: 'fox-news', name: 'Fox News', handle: '@FoxNews', fallbackVideoId: 'ZvdiJUYGBis', useFallbackOnly: true },
   { id: 'newsmax', name: 'Newsmax', handle: '@NEWSMAX', fallbackVideoId: 'cZikyozILOY', useFallbackOnly: true },
   { id: 'abc-news', name: 'ABC News', handle: '@ABCNews' },
