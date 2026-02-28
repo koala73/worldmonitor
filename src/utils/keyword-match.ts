@@ -3,7 +3,7 @@ export interface TokenizedTitle {
   ordered: string[];
 }
 
-const INFLECTION_SUFFIXES = ['s', 'es', 'ian', 'ean', 'an', 'n', 'i', 'ish', 'ese'];
+const INFLECTION_SUFFIXES = ['s', 'es', 'ian', 'ians', 'ean', 'eans', 'an', 'ans', 'n', 'ns', 'i', 'is', 'ish', 'ese'];
 const MIN_SUFFIX_KEYWORD_LEN = 4;
 
 export function tokenizeForMatch(title: string): TokenizedTitle {

@@ -194,9 +194,25 @@ describe('inflection suffix matching', () => {
   });
 
   it('suffix matching does NOT cause false positives for unrelated words', () => {
-    const t = tokenizeForMatch('The crisis escalates quickly');
-    assert.ok(!matchKeyword(t, 'cris'));
-    assert.ok(!matchKeyword(t, 'esca'));
+    const t = tokenizeForMatch('The situation worsens dramatically');
+    assert.ok(!matchKeyword(t, 'situ'));
+    assert.ok(!matchKeyword(t, 'drama'));
+  });
+
+  it('"Iranians" matches keyword "iran" (plural demonym -ians)', () => {
+    assert.ok(matchKeyword(tokenizeForMatch('Iranians protest in Tehran'), 'iran'));
+  });
+
+  it('"Ukrainians" matches keyword "ukraine" (plural demonym -ians with e-drop)', () => {
+    assert.ok(matchKeyword(tokenizeForMatch('Ukrainians seek aid'), 'ukraine'));
+  });
+
+  it('"Russians" matches keyword "russia" (plural demonym -ns)', () => {
+    assert.ok(matchKeyword(tokenizeForMatch('Russians advance on front'), 'russia'));
+  });
+
+  it('"Israelis" matches keyword "israel" (plural demonym -is)', () => {
+    assert.ok(matchKeyword(tokenizeForMatch('Israelis evacuate border towns'), 'israel'));
   });
 
   it('short keywords (<4 chars) do NOT suffix-match', () => {
@@ -243,6 +259,11 @@ describe('multi-word phrase matching', () => {
   it('"North Korean" matches "north korea" (multi-word demonym)', () => {
     const t = tokenizeForMatch('North Korean missile launch detected');
     assert.ok(matchKeyword(t, 'north korea'));
+  });
+
+  it('"South Koreans" matches "south korea" (multi-word plural demonym)', () => {
+    const t = tokenizeForMatch('South Koreans vote in election');
+    assert.ok(matchKeyword(t, 'south korea'));
   });
 
   it('"tech layoffs" matches multi-word', () => {
