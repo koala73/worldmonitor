@@ -67,7 +67,7 @@ export default async function handler(req) {
     const body = await response.text();
     const headers = {
       'Content-Type': response.headers.get('content-type') || 'application/json',
-      'Cache-Control': response.headers.get('cache-control') || 'no-cache',
+      'Cache-Control': 'public, s-maxage=120, stale-while-revalidate=60',
       ...corsHeaders,
     };
 
