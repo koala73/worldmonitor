@@ -1862,6 +1862,9 @@
     "commodityHub": {
       "commodities": "COMMODITIES"
     },
+    "iranEvent": {
+      "relatedEvents": "Related Events"
+    },
     "hotspotSubtexts": {
       "conflict_zone": "Conflict Zone",
       "dprk_watch": "DPRK Watch",

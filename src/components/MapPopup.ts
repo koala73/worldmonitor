@@ -59,6 +59,7 @@ interface IranEventPopupData {
   locationName: string;
   timestamp: number;
   severity: string;
+  relatedEvents?: IranEventPopupData[];
 }
 
 // Finance popup data types
@@ -441,7 +442,7 @@ export class MapPopup {
       case 'commodityHub':
         return this.renderCommodityHubPopup(data.data as CommodityHubPopupData);
       case 'iranEvent':
-        return this.renderIranEventPopup(data.data as unknown as IranEventPopupData);
+        return this.renderIranEventPopup(data.data as IranEventPopupData);
       default:
         return '';
     }
@@ -2573,30 +2574,54 @@ export class MapPopup {
     `;
   }
 
+  private normalizeSeverity(s: string): 'high' | 'medium' | 'low' {
+    const v = (s || '').trim().toLowerCase();
+    if (v === 'high') return 'high';
+    if (v === 'medium') return 'medium';
+    return 'low';
+  }
+
   private renderIranEventPopup(event: IranEventPopupData): string {
-    const catColors: Record<string, string> = {
-      military: '#ff3232',
-      politics: '#ff8c00',
-      diplomacy: '#ffa500',
-      human_rights: '#e06666',
-      transport: '#cccc00',
-      regional: '#cccc00',
-    };
-    const catColor = catColors[event.category] || '#ccc';
-    const time = event.timestamp ? new Date(event.timestamp).toLocaleString() : '';
+    const severity = this.normalizeSeverity(event.severity);
+    const timeAgo = event.timestamp ? this.getTimeAgo(new Date(event.timestamp)) : '';
     const safeUrl = sanitizeUrl(event.sourceUrl);
+
+    const relatedHtml = event.relatedEvents && event.relatedEvents.length > 0 ? `
+        <div class="popup-section">
+          <span class="section-label">${t('popups.iranEvent.relatedEvents')}</span>
+          <ul class="cluster-list">
+            ${event.relatedEvents.map(r => {
+              const rSev = this.normalizeSeverity(r.severity);
+              const rTime = r.timestamp ? this.getTimeAgo(new Date(r.timestamp)) : '';
+              const rTitle = r.title.length > 60 ? r.title.slice(0, 60) + '…' : r.title;
+              return `<li class="cluster-item"><span class="popup-badge ${rSev}" style="font-size:9px;padding:1px 4px;">${escapeHtml(rSev.toUpperCase())}</span> ${escapeHtml(rTitle)}${rTime ? ` <span style="color:var(--text-muted);font-size:10px;">${escapeHtml(rTime)}</span>` : ''}</li>`;
+            }).join('')}
+          </ul>
+        </div>` : '';
+
     return `
-      <div class="popup-content">
-        <div class="popup-header">
-          <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${catColor};margin-right:6px;"></span>
-          <strong>${escapeHtml(event.title)}</strong>
+      <div class="popup-header iranEvent ${severity}">
+        <span class="popup-title">${escapeHtml(event.title)}</span>
+        <span class="popup-badge ${severity}">${escapeHtml(severity.toUpperCase())}</span>
+        <button class="popup-close">×</button>
+      </div>
+      <div class="popup-body">
+        <div class="popup-stats">
+          <div class="popup-stat">
+            <span class="stat-label">${t('popups.type')}</span>
+            <span class="stat-value">${escapeHtml(event.category)}</span>
+          </div>
+          ${event.locationName ? `<div class="popup-stat">
+            <span class="stat-label">${t('popups.location')}</span>
+            <span class="stat-value">${escapeHtml(event.locationName)}</span>
+          </div>` : ''}
+          ${timeAgo ? `<div class="popup-stat">
+            <span class="stat-label">${t('popups.time')}</span>
+            <span class="stat-value">${escapeHtml(timeAgo)}</span>
+          </div>` : ''}
         </div>
-        <div class="popup-details">
-          <span class="popup-badge" style="background:${catColor};color:#fff;padding:2px 6px;border-radius:3px;font-size:11px;">${escapeHtml(event.category)}</span>
-          ${event.locationName ? ` <span style="color:#aaa;font-size:11px;">${escapeHtml(event.locationName)}</span>` : ''}
-        </div>
-        ${time ? `<div class="popup-time" style="color:#888;font-size:11px;margin-top:4px;">${escapeHtml(time)}</div>` : ''}
-        ${safeUrl ? `<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer nofollow" style="font-size:11px;color:#4a9eff;">Source</a>` : ''}
+        ${relatedHtml}
+        ${safeUrl ? `<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer nofollow" class="popup-link">${t('popups.source')} →</a>` : ''}
       </div>
     `;
   }

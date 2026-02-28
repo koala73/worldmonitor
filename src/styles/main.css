@@ -5514,6 +5514,22 @@ a.prediction-link:hover {
   z-index: -1;
 }
 
+.popup-header.iranEvent {
+  background: rgba(255, 68, 68, 0.1);
+}
+
+.popup-header.iranEvent.high {
+  border-left: 3px solid #ff3232;
+}
+
+.popup-header.iranEvent.medium {
+  border-left: 3px solid #ffa500;
+}
+
+.popup-header.iranEvent.low {
+  border-left: 3px solid #cccc00;
+}
+
 .popup-header.conflict {
   background: rgba(255, 68, 68, 0.1);
 }

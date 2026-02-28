@@ -1755,6 +1755,9 @@
     "commodityHub": {
       "commodities": "PRODUITS"
     },
+    "iranEvent": {
+      "relatedEvents": "Événements liés"
+    },
     "hotspotSubtexts": {
       "conflict_zone": "Zone de conflit",
       "dprk_watch": "Montre RPDC",

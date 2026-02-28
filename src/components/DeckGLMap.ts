@@ -3008,6 +3008,17 @@ export class DeckGLMap {
       if (fullConflict) data = fullConflict;
     }
 
+    // Enrich iran events with related events from same location
+    if (popupType === 'iranEvent' && data.locationName) {
+      const clickedId = data.id;
+      const normalizedLoc = data.locationName.trim().toLowerCase();
+      const related = this.iranEvents
+        .filter(e => e.id !== clickedId && e.locationName && e.locationName.trim().toLowerCase() === normalizedLoc)
+        .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+        .slice(0, 5);
+      data = { ...data, relatedEvents: related };
+    }
+
     // Get click coordinates relative to container
     const x = info.x ?? 0;
     const y = info.y ?? 0;

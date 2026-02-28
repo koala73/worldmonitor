@@ -1755,6 +1755,9 @@
     "commodityHub": {
       "commodities": "السلع"
     },
+    "iranEvent": {
+      "relatedEvents": "أحداث ذات صلة"
+    },
     "hotspotSubtexts": {
       "conflict_zone": "منطقة نزاع",
       "dprk_watch": "مراقبة كوريا الشمالية",
