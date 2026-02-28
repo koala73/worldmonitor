@@ -553,13 +553,61 @@ export class DeckGLMap {
     // Even if 'en', we want to coalesce because 'name:en' might be better than missing fields
     // but the original config mostly expects 'name_en' to work.
 
+    // If tile engine lacks native name:{lang} fields, dynamically fall back to a client-generated match expression
+    // converting English labels to native labels mapping all global ISO-3166 territory codes
+    const FALLBACK_CODES = [
+      "AD", "AE", "AF", "AG", "AI", "AL", "AM", "AO", "AQ", "AR", "AS", "AT", "AU", "AW", "AX", "AZ", "BA", "BB", "BD", "BE",
+      "BF", "BG", "BH", "BI", "BJ", "BL", "BM", "BN", "BO", "BQ", "BR", "BS", "BT", "BV", "BW", "BY", "BZ", "CA", "CC", "CD",
+      "CF", "CG", "CH", "CI", "CK", "CL", "CM", "CN", "CO", "CR", "CU", "CV", "CW", "CX", "CY", "CZ", "DE", "DJ", "DK", "DM",
+      "DO", "DZ", "EC", "EE", "EG", "EH", "ER", "ES", "ET", "FI", "FJ", "FK", "FM", "FO", "FR", "GA", "GB", "GD", "GE", "GF",
+      "GG", "GH", "GI", "GL", "GM", "GN", "GP", "GQ", "GR", "GS", "GT", "GU", "GW", "GY", "HK", "HM", "HN", "HR", "HT", "HU",
+      "ID", "IE", "IL", "IM", "IN", "IO", "IQ", "IR", "IS", "IT", "JE", "JM", "JO", "JP", "KE", "KG", "KH", "KI", "KM", "KN",
+      "KP", "KR", "KW", "KY", "KZ", "LA", "LB", "LC", "LI", "LK", "LR", "LS", "LT", "LU", "LV", "LY", "MA", "MC", "MD", "ME",
+      "MF", "MG", "MH", "MK", "ML", "MM", "MN", "MO", "MP", "MQ", "MR", "MS", "MT", "MU", "MV", "MW", "MX", "MY", "MZ", "NA",
+      "NC", "NE", "NF", "NG", "NI", "NL", "NO", "NP", "NR", "NU", "NZ", "OM", "PA", "PE", "PF", "PG", "PH", "PK", "PL", "PM",
+      "PN", "PR", "PS", "PT", "PW", "PY", "QA", "RE", "RO", "RS", "RU", "RW", "SA", "SB", "SC", "SD", "SE", "SG", "SH", "SI",
+      "SJ", "SK", "SL", "SM", "SN", "SO", "SR", "SS", "ST", "SV", "SX", "SY", "SZ", "TC", "TD", "TF", "TG", "TH", "TJ", "TK",
+      "TL", "TM", "TN", "TO", "TR", "TT", "TV", "TW", "TZ", "UA", "UG", "UM", "US", "UY", "UZ", "VA", "VC", "VE", "VG", "VI",
+      "VN", "VU", "WF", "WS", "YE", "YT", "ZA", "ZM", "ZW", "002", "019", "142", "150", "009"
+    ];
+
+    const matchExpr: any[] = ['match', ['get', 'name_en']];
+    try {
+      const enNames = new Intl.DisplayNames(['en'], { type: 'region' });
+      const localNames = new Intl.DisplayNames([lang], { type: 'region' });
+      for (const c of FALLBACK_CODES) {
+        try {
+          const en = enNames.of(c);
+          const local = localNames.of(c);
+          if (en && local && en !== local) {
+            matchExpr.push(en, local);
+          }
+        } catch (e) { }
+      }
+      try {
+        matchExpr.push(
+          "United States of America", localNames.of("US"),
+          "Russia", localNames.of("RU"),
+          "Russian Federation", localNames.of("RU"),
+          "South Korea", localNames.of("KR"),
+          "North Korea", localNames.of("KP"),
+          "Iran", localNames.of("IR"),
+          "Syria", localNames.of("SY"),
+          "Czech Republic", localNames.of("CZ")
+        );
+      } catch (e) { }
+    } catch (e) { }
+
+    matchExpr.push(['get', 'name_en']); // Final fallback clause for mapLibre match
+    const fallbackField = matchExpr.length > 3 ? matchExpr : ['get', 'name_en'];
+
     const localizedNameExpr = [
       'to-string',
       [
         'coalesce',
         ['get', `name:${lang}`],
         ['get', `name_${lang}`],
-        ['get', 'name_en'],
+        fallbackField,
         ['get', 'name'],
         ''
       ]
