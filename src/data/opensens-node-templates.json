@@ -1,0 +1,85 @@
+[
+  {
+    "id": "standard-mac-mini-m4",
+    "name": "Standard — Mac mini M4 Cluster",
+    "tier": "standard",
+    "nodeCount": { "min": 5, "max": 10, "default": 5 },
+    "idle_w": 75,
+    "typical_w": 225,
+    "peak_w": 400,
+    "pue": 1.25,
+    "compute": {
+      "cpuCores": 60,
+      "ramGb": 96,
+      "gpuTflops": 0,
+      "storageTb": 2.5,
+      "tokensPerSec7b": 280
+    },
+    "capex": { "low": 7500, "high": 12000, "currency": "USD" },
+    "notes": [
+      "5 × Mac mini M4 (base: 16 GB RAM, 256 GB SSD) at USD 599–799 each; scales to 10 nodes.",
+      "Idle power measured at <15 W/node; typical under AI inference load ~45 W/node.",
+      "Peak includes simultaneous model load + storage I/O.",
+      "PUE 1.25 applies for small enclosure with passive cooling in moderate climate.",
+      "Tokens/sec estimate for llama3.1:8b (4-bit GGUF) via Ollama — varies ±30%.",
+      "CAPEX excludes networking switch (~$150), UPS, and enclosure."
+    ],
+    "updatedAt": "2026-02-28T00:00:00Z"
+  },
+  {
+    "id": "pro-mac-studio-m4-ultra",
+    "name": "Pro — Mac Studio M4 Ultra Cluster",
+    "tier": "pro",
+    "nodeCount": { "min": 2, "max": 5, "default": 3 },
+    "idle_w": 90,
+    "typical_w": 450,
+    "peak_w": 720,
+    "pue": 1.25,
+    "compute": {
+      "cpuCores": 120,
+      "ramGb": 576,
+      "gpuTflops": 220,
+      "storageTb": 6,
+      "tokensPerSec7b": 1200
+    },
+    "capex": { "low": 18000, "high": 30000, "currency": "USD" },
+    "notes": [
+      "3 × Mac Studio M4 Ultra (192 GB unified RAM, 2 TB SSD) at ~$5 999–$7 999 each.",
+      "M4 Ultra GPU rated at ~110 TFLOPS FP16; 3-node cluster yields ~220 TFLOPS effective.",
+      "Suitable for 70B-class models at Q4 quantization in production.",
+      "Idle power ~30 W/node; inference load ~150 W/node.",
+      "PUE 1.25 may drop to 1.15 with optimized rack cooling.",
+      "CAPEX excludes 10 GbE switch (~$300), UPS, and rack hardware."
+    ],
+    "updatedAt": "2026-02-28T00:00:00Z"
+  },
+  {
+    "id": "premium-nvidia-h100-pcie",
+    "name": "Premium — NVIDIA H100 PCIe Server",
+    "tier": "premium",
+    "nodeCount": { "min": 1, "max": 2, "default": 1 },
+    "idle_w": 400,
+    "typical_w": 900,
+    "peak_w": 1200,
+    "pue": 1.3,
+    "compute": {
+      "cpuCores": 64,
+      "ramGb": 512,
+      "gpuTflops": 3958,
+      "storageTb": 10,
+      "tokensPerSec7b": 8000
+    },
+    "capex": { "low": 35000, "high": 60000, "currency": "USD" },
+    "notes": [
+      "1 × server with 2× H100 PCIe 80 GB + dual Xeon Platinum; total ~$35 000–$60 000.",
+      "H100 PCIe TDP 350 W each; server idles at ~400 W (CPU + storage).",
+      "H100 FP16 dense: 1 979 TFLOPS; 2× = 3 958 TFLOPS. Actual throughput ~60% utilization.",
+      "Suitable for sub-50ms inference SLAs on 70B models at FP8.",
+      "Higher PUE (1.3) due to active forced-air cooling required.",
+      "CAPEX includes PCIe riser, NVMe drives; excludes rack, PDU, UPS.",
+      "Power overhead is significant — size BESS and PV accordingly.",
+      "Requires 200–240 V single-phase or 3-phase power inlet."
+    ],
+    "updatedAt": "2026-02-28T00:00:00Z"
+  }
+]
