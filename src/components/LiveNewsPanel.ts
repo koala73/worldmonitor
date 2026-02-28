@@ -1279,9 +1279,13 @@ export class LiveNewsPanel extends Panel {
         return;
       }
       if (this.isPlaying) {
-        this.player.loadVideoById(videoId);
+        if (typeof this.player.loadVideoById === 'function') {
+          this.player.loadVideoById(videoId);
+        }
       } else {
-        this.player.cueVideoById(videoId);
+        if (typeof this.player.cueVideoById === 'function') {
+          this.player.cueVideoById(videoId);
+        }
       }
     }
 

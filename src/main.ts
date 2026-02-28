@@ -124,6 +124,8 @@ Sentry.init({
     /\bmag is not defined\b/,
     /evaluating '[^']*\.luma/,
     /translateNotifyError/,
+    /GM_getValue/,
+    /^InvalidStateError:|The object is in an invalid state/,
   ],
   beforeSend(event) {
     const msg = event.exception?.values?.[0]?.value ?? '';
