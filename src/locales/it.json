@@ -477,6 +477,7 @@
     },
     "webcams": {
       "regions": {
+        "iran": "IRAN",
         "all": "TUTTE",
         "mideast": "MEDIORIENTE",
         "europe": "EUROPA",
@@ -746,8 +747,8 @@
           "transportDelays": "Ritardi aeroportuali e fermi a terra (FAA)",
           "naturalEventsFull": "Terremoti (USGS) + tempeste, incendi, vulcani, inondazioni (NASA EONET)",
           "waterwaysLabels": "Etichette di colli di bottiglia strategici",
-        "tradeRoutes": "Principali rotte marittime globali che collegano i porti attraverso punti strategici",
-        "dayNight": "Terminatore solare in tempo reale che mostra le zone di giorno e notte"
+          "tradeRoutes": "Principali rotte marittime globali che collegano i porti attraverso punti strategici",
+          "dayNight": "Terminatore solare in tempo reale che mostra le zone di giorno e notte"
         },
         "notes": {
           "timeAffects": "Effetti: terremoti, condizioni meteorologiche, proteste, interruzioni"

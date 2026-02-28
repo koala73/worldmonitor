@@ -477,6 +477,7 @@
     },
     "webcams": {
       "regions": {
+        "iran": "IRAN",
         "all": "WSZYSTKIE",
         "mideast": "BLISKI WSCHÓD",
         "europe": "EUROPA",
@@ -746,8 +747,8 @@
           "transportDelays": "Opóźnienia na lotniskach i postoje naziemne (FAA)",
           "naturalEventsFull": "Trzęsienia ziemi (USGS) + burze, pożary, wulkany, powodzie (NASA EONET)",
           "waterwaysLabels": "Strategiczne etykiety punktów kontrolnych",
-        "tradeRoutes": "Główne globalne szlaki żeglugowe łączące porty przez strategiczne wąskie gardła",
-        "dayNight": "Terminator słoneczny w czasie rzeczywistym pokazujący strefy dnia i nocy"
+          "tradeRoutes": "Główne globalne szlaki żeglugowe łączące porty przez strategiczne wąskie gardła",
+          "dayNight": "Terminator słoneczny w czasie rzeczywistym pokazujący strefy dnia i nocy"
         },
         "notes": {
           "timeAffects": "Wpływ na: Trzęsienia ziemi, Pogoda, Protesty, Przestoje"

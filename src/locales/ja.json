@@ -468,6 +468,7 @@
   "components": {
     "webcams": {
       "regions": {
+        "iran": "IRAN",
         "all": "すべて",
         "mideast": "中東",
         "europe": "ヨーロッパ",
@@ -880,8 +881,8 @@
           "transportDelays": "空港の遅延とグラウンドストップ（FAA）",
           "naturalEventsFull": "地震（USGS）+ 暴風雨、火災、火山、洪水（NASA EONET）",
           "waterwaysLabels": "戦略的チョークポイントのラベル",
-        "tradeRoutes": "戦略的なチョークポイントを通じて港を結ぶ主要な世界の航路",
-        "dayNight": "リアルタイムの太陽ターミネーターで昼夜のゾーンを表示"
+          "tradeRoutes": "戦略的なチョークポイントを通じて港を結ぶ主要な世界の航路",
+          "dayNight": "リアルタイムの太陽ターミネーターで昼夜のゾーンを表示"
         },
         "notes": {
           "timeAffects": "影響: 地震、気象、抗議活動、障害"
