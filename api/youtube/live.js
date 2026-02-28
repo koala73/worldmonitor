@@ -62,7 +62,7 @@ export default async function handler(request) {
           },
         });
       }
-    } catch {}
+    } catch { /* relay unavailable — fall through to direct fetch */ }
   }
 
   // Fallback: direct fetch (works for oembed, limited for live detection from datacenter IPs)
@@ -79,7 +79,7 @@ export default async function handler(request) {
           headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=3600, s-maxage=3600' },
         });
       }
-    } catch {}
+    } catch { /* oembed failed — return minimal response */ }
     return new Response(JSON.stringify({ channelName: null, title: null, videoId: videoIdParam }), {
       status: 200,
       headers: { ...cors, 'Content-Type': 'application/json' },
@@ -129,8 +129,8 @@ export default async function handler(request) {
       status: 200,
       headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=300, s-maxage=300, stale-while-revalidate=60' },
     });
-  } catch (error) {
-    return new Response(JSON.stringify({ videoId: null, error: error.message }), {
+  } catch {
+    return new Response(JSON.stringify({ videoId: null, error: 'Failed to fetch channel data' }), {
       status: 200, headers: { ...cors, 'Content-Type': 'application/json' },
     });
   }
