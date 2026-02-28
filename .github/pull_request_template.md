@@ -1,36 +1,32 @@
-## Summary
+# Pull Request
 
-<!-- Brief description of what this PR does -->
+## Description
+<!-- Provide a brief description of the changes -->
 
-## Type of change
+## Type of Change
+- [ ] Bug fix (non-breaking change which fixes an issue)
+- [ ] New feature (non-breaking change which adds functionality)
+- [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
+- [ ] Documentation update
+- [ ] Performance improvement
+- [ ] Code refactoring
 
-- [ ] Bug fix
-- [ ] New feature
-- [ ] New data source / feed
-- [ ] New map layer
-- [ ] Refactor / code cleanup
-- [ ] Documentation
-- [ ] CI / Build / Infrastructure
-
-## Affected areas
-
-- [ ] Map / Globe
-- [ ] News panels / RSS feeds
-- [ ] AI Insights / World Brief
-- [ ] Market Radar / Crypto
-- [ ] Desktop app (Tauri)
-- [ ] API endpoints (`/api/*`)
-- [ ] Config / Settings
-- [ ] Other: <!-- specify -->
+## Testing
+<!-- Describe the tests you ran and how to reproduce them -->
+- [ ] Tested locally
+- [ ] All existing tests pass
+- [ ] Added new tests (if applicable)
 
 ## Checklist
+- [ ] My code follows the project's style guidelines
+- [ ] I have performed a self-review of my code
+- [ ] I have commented my code, particularly in hard-to-understand areas
+- [ ] I have made corresponding changes to the documentation
+- [ ] My changes generate no new warnings
+- [ ] Any dependent changes have been merged and published
 
-- [ ] Tested on [worldmonitor.app](https://worldmonitor.app) variant
-- [ ] Tested on [tech.worldmonitor.app](https://tech.worldmonitor.app) variant (if applicable)
-- [ ] New RSS feed domains added to `api/rss-proxy.js` allowlist (if adding feeds)
-- [ ] No API keys or secrets committed
-- [ ] TypeScript compiles without errors (`npm run typecheck`)
+## Screenshots (if applicable)
+<!-- Add screenshots to help explain your changes -->
 
-## Screenshots
-
-<!-- If applicable, add screenshots or screen recordings -->
+## Related Issues
+<!-- Link any related issues: Fixes #123, Relates to #456 -->
