@@ -45,6 +45,7 @@ const UPSTREAM_QUEUE_HARD_CAP = Math.max(
 const UPSTREAM_DRAIN_BATCH = Math.max(1, Number(process.env.AIS_UPSTREAM_DRAIN_BATCH || 250));
 const UPSTREAM_DRAIN_BUDGET_MS = Math.max(2, Number(process.env.AIS_UPSTREAM_DRAIN_BUDGET_MS || 20));
 function safeInt(envVal, fallback, min) {
+  if (envVal == null || envVal === '') return fallback;
   const n = Number(envVal);
   return Number.isFinite(n) ? Math.max(min, Math.floor(n)) : fallback;
 }
