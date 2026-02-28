@@ -85,8 +85,15 @@ const CRITICAL_KEYWORDS: KeywordMap = {
   'strikes iran': 'military',
   'bombs iran': 'military',
   'attacks iran': 'military',
+  'attack on iran': 'military',
+  'attack iran': 'military',
+  'attacked iran': 'military',
+  'attack against iran': 'military',
+  'bombing iran': 'military',
+  'bombed iran': 'military',
   'war with iran': 'conflict',
   'war on iran': 'conflict',
+  'war against iran': 'conflict',
   'pandemic declared': 'health',
   'health emergency': 'health',
   'nato article 5': 'military',
@@ -138,10 +145,19 @@ const HIGH_KEYWORDS: KeywordMap = {
   'attack against': 'conflict',
   'attacks on': 'conflict',
   'launched attack': 'conflict',
+  'launched attacks': 'conflict',
+  'launches attack': 'conflict',
+  'launches attacks': 'conflict',
+  'explosions': 'conflict',
   'military operations': 'military',
   'combat operations': 'military',
   'retaliatory strike': 'military',
+  'retaliatory attack': 'military',
+  'retaliatory attacks': 'military',
   'preemptive strike': 'military',
+  'preemptive attack': 'military',
+  'preventive attack': 'military',
+  'preventative attack': 'military',
   'military offensive': 'military',
   'ballistic missile': 'military',
   'cruise missile': 'military',
@@ -257,6 +273,7 @@ const EXCLUSIONS = [
   'recipe', 'cooking', 'shopping', 'fashion', 'celebrity', 'movie',
   'tv show', 'sports', 'game', 'concert', 'festival', 'wedding',
   'vacation', 'travel tips', 'life hack', 'self-care', 'wellness',
+  'strikes deal', 'strikes agreement', 'strikes partnership',
 ];
 
 const SHORT_KEYWORDS = new Set([
@@ -264,14 +281,25 @@ const SHORT_KEYWORDS = new Set([
   'virus', 'disease', 'flood', 'strikes',
 ]);
 
+const TRAILING_BOUNDARY_KEYWORDS = new Set([
+  'attack iran', 'attacked iran', 'attack on iran', 'attack against iran',
+  'bombing iran', 'bombed iran', 'strikes iran', 'attacks iran',
+  'bombs iran', 'war on iran', 'war with iran', 'war against iran',
+]);
+
 const keywordRegexCache = new Map<string, RegExp>();
 
 function getKeywordRegex(kw: string): RegExp {
   let re = keywordRegexCache.get(kw);
   if (!re) {
-    re = SHORT_KEYWORDS.has(kw)
-      ? new RegExp(`\\b${kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`)
-      : new RegExp(kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (SHORT_KEYWORDS.has(kw)) {
+      re = new RegExp(`\\b${escaped}\\b`);
+    } else if (TRAILING_BOUNDARY_KEYWORDS.has(kw)) {
+      re = new RegExp(`${escaped}(?![\\w-])`);
+    } else {
+      re = new RegExp(escaped);
+    }
     keywordRegexCache.set(kw, re);
   }
   return re;
