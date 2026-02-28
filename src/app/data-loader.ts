@@ -66,7 +66,7 @@ import { updateAndCheck } from '@/services/temporal-baseline';
 import { fetchAllFires, flattenFires, computeRegionStats, toMapFires } from '@/services/wildfires';
 import { analyzeFlightsForSurge, surgeAlertToSignal, detectForeignMilitaryPresence, foreignPresenceToSignal, type TheaterPostureSummary } from '@/services/military-surge';
 import { fetchCachedTheaterPosture } from '@/services/cached-theater-posture';
-import { ingestProtestsForCII, ingestMilitaryForCII, ingestNewsForCII, ingestOutagesForCII, ingestConflictsForCII, ingestUcdpForCII, ingestHapiForCII, ingestDisplacementForCII, ingestClimateForCII, ingestStrikesForCII, ingestOrefForCII, ingestAviationForCII, ingestAdvisoriesForCII, ingestGpsJammingForCII, isInLearningMode } from '@/services/country-instability';
+import { ingestProtestsForCII, ingestMilitaryForCII, ingestNewsForCII, ingestOutagesForCII, ingestConflictsForCII, ingestUcdpForCII, ingestHapiForCII, ingestDisplacementForCII, ingestClimateForCII, ingestStrikesForCII, ingestOrefForCII, ingestAviationForCII, ingestAdvisoriesForCII, ingestGpsJammingForCII, ingestAisDisruptionsForCII, ingestSatelliteFiresForCII, ingestCyberThreatsForCII, ingestTemporalAnomaliesForCII, isInLearningMode } from '@/services/country-instability';
 import { fetchGpsInterference } from '@/services/gps-interference';
 import { dataFreshness, type DataSourceId } from '@/services/data-freshness';
 import { fetchConflictEvents, fetchUcdpClassifications, fetchHapiSummary, fetchUcdpEvents, deduplicateAgainstAcled, fetchIranEvents } from '@/services/conflict';
@@ -615,7 +615,8 @@ export class DataLoaderManager implements AppModule {
     updateAndCheck([
       { type: 'news', region: 'global', count: collectedNews.length },
     ]).then(anomalies => {
-      if (anomalies.length > 0) signalAggregator.ingestTemporalAnomalies(anomalies);
+      signalAggregator.ingestTemporalAnomalies(anomalies);
+      ingestTemporalAnomaliesForCII(anomalies, ['news']);
     }).catch(() => { });
 
     this.ctx.map?.updateHotspotActivity(this.ctx.allNews);
@@ -978,7 +979,8 @@ export class DataLoaderManager implements AppModule {
           { type: 'military_flights', region: 'global', count: flightData.flights.length },
           { type: 'vessels', region: 'global', count: vesselData.vessels.length },
         ]).then(anomalies => {
-          if (anomalies.length > 0) signalAggregator.ingestTemporalAnomalies(anomalies);
+          signalAggregator.ingestTemporalAnomalies(anomalies);
+          ingestTemporalAnomaliesForCII(anomalies, ['military_flights', 'vessels']);
         }).catch(() => { });
         if (this.ctx.mapLayers.military) {
           this.ctx.map?.setMilitaryFlights(flightData.flights, flightData.clusters);
@@ -1191,12 +1193,14 @@ export class DataLoaderManager implements AppModule {
       this.ctx.map?.setCyberThreats(this.ctx.cyberThreatsCache);
       this.ctx.map?.setLayerReady('cyberThreats', this.ctx.cyberThreatsCache.length > 0);
       this.ctx.statusPanel?.updateFeed('Cyber Threats', { status: 'ok', itemCount: this.ctx.cyberThreatsCache.length });
+      ingestCyberThreatsForCII(this.ctx.cyberThreatsCache);
       return;
     }
 
     try {
       const threats = await fetchCyberThreats({ limit: 500, days: 14 });
       this.ctx.cyberThreatsCache = threats;
+      ingestCyberThreatsForCII(threats);
       this.ctx.map?.setCyberThreats(threats);
       this.ctx.map?.setLayerReady('cyberThreats', threats.length > 0);
       this.ctx.statusPanel?.updateFeed('Cyber Threats', { status: 'ok', itemCount: threats.length });
@@ -1231,10 +1235,12 @@ export class DataLoaderManager implements AppModule {
       console.log('[Ships] Events:', { disruptions: disruptions.length, density: density.length, vessels: aisStatus.vessels });
       this.ctx.map?.setAisData(disruptions, density);
       signalAggregator.ingestAisDisruptions(disruptions);
+      ingestAisDisruptionsForCII(disruptions);
       updateAndCheck([
         { type: 'ais_gaps', region: 'global', count: disruptions.length },
       ]).then(anomalies => {
-        if (anomalies.length > 0) signalAggregator.ingestTemporalAnomalies(anomalies);
+        signalAggregator.ingestTemporalAnomalies(anomalies);
+        ingestTemporalAnomaliesForCII(anomalies, ['ais_gaps']);
       }).catch(() => { });
 
       const hasData = disruptions.length > 0 || density.length > 0;
@@ -1438,7 +1444,8 @@ export class DataLoaderManager implements AppModule {
         { type: 'military_flights', region: 'global', count: flightData.flights.length },
         { type: 'vessels', region: 'global', count: vesselData.vessels.length },
       ]).then(anomalies => {
-        if (anomalies.length > 0) signalAggregator.ingestTemporalAnomalies(anomalies);
+        signalAggregator.ingestTemporalAnomalies(anomalies);
+        ingestTemporalAnomaliesForCII(anomalies, ['military_flights', 'vessels']);
       }).catch(() => { });
       this.ctx.map?.updateMilitaryForEscalation(flightData.flights, vesselData.vessels);
       (this.ctx.panels['cii'] as CIIPanel)?.refresh();
@@ -1738,6 +1745,13 @@ export class DataLoaderManager implements AppModule {
         const flat = flattenFires(regions);
         const stats = computeRegionStats(regions);
 
+        const ciiFireSignals = flat.map(f => ({
+          lat: f.location?.latitude ?? 0,
+          lon: f.location?.longitude ?? 0,
+          brightness: f.brightness,
+          region: f.region,
+        }));
+
         signalAggregator.ingestSatelliteFires(flat.map(f => ({
           lat: f.location?.latitude ?? 0,
           lon: f.location?.longitude ?? 0,
@@ -1746,6 +1760,7 @@ export class DataLoaderManager implements AppModule {
           region: f.region,
           acq_date: new Date(f.detectedAt).toISOString().slice(0, 10),
         })));
+        ingestSatelliteFiresForCII(ciiFireSignals);
 
         this.ctx.map?.setFires(toMapFires(flat));
 
@@ -1756,9 +1771,8 @@ export class DataLoaderManager implements AppModule {
         updateAndCheck([
           { type: 'satellite_fires', region: 'global', count: totalCount },
         ]).then(anomalies => {
-          if (anomalies.length > 0) {
-            signalAggregator.ingestTemporalAnomalies(anomalies);
-          }
+          signalAggregator.ingestTemporalAnomalies(anomalies);
+          ingestTemporalAnomaliesForCII(anomalies, ['satellite_fires']);
         }).catch(() => { });
       } else {
         (this.ctx.panels['satellite-fires'] as SatelliteFiresPanel)?.update([], 0);

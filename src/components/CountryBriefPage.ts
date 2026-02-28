@@ -172,6 +172,14 @@ export class CountryBriefPage {
     if (signals.militaryFlights > 0) chips.push(`<span class="signal-chip military">✈️ ${signals.militaryFlights} ${t('modals.countryBrief.signals.militaryAir')}</span>`);
     if (signals.militaryVessels > 0) chips.push(`<span class="signal-chip military">⚓ ${signals.militaryVessels} ${t('modals.countryBrief.signals.militarySea')}</span>`);
     if (signals.outages > 0) chips.push(`<span class="signal-chip outage">🌐 ${signals.outages} ${t('modals.countryBrief.signals.outages')}</span>`);
+    if (signals.criticalNews > 0) chips.push(`<span class="signal-chip conflict">🚨 ${signals.criticalNews} critical news</span>`);
+    if (signals.highNews > 0) chips.push(`<span class="signal-chip conflict">⚠️ ${signals.highNews} high-risk news</span>`);
+    if (signals.economicStressSignals > 0) chips.push(`<span class="signal-chip displacement">💹 ${signals.economicStressSignals} economic stress</span>`);
+    if (signals.electionSignals > 0) chips.push(`<span class="signal-chip protest">🗳️ ${signals.electionSignals} election/governance</span>`);
+    if (signals.cyberThreats > 0) chips.push(`<span class="signal-chip military">🛡️ ${signals.cyberThreats} cyber threats</span>`);
+    if (signals.aisDisruptions > 0) chips.push(`<span class="signal-chip outage">🚢 ${signals.aisDisruptions} AIS disruptions</span>`);
+    if (signals.satelliteFires > 0) chips.push(`<span class="signal-chip climate">🔥 ${signals.satelliteFires} satellite fires</span>`);
+    if (signals.temporalAnomalies > 0) chips.push(`<span class="signal-chip protest">📈 ${signals.temporalAnomalies} temporal anomalies</span>`);
     if (signals.earthquakes > 0) chips.push(`<span class="signal-chip quake">🌍 ${signals.earthquakes} ${t('modals.countryBrief.signals.earthquakes')}</span>`);
     if (signals.displacementOutflow > 0) {
       const fmt = signals.displacementOutflow >= 1_000_000
@@ -192,6 +200,7 @@ export class CountryBriefPage {
       chips.push(`<span class="signal-chip ${advisoryClass}">\u26A0\uFE0F ${signals.travelAdvisories} Advisory: ${advisoryLabel}</span>`);
     }
     if (signals.orefSirens > 0) chips.push(`<span class="signal-chip conflict">\u{1F6A8} ${signals.orefSirens} Active Sirens</span>`);
+    if (signals.orefHistory24h > 0) chips.push(`<span class="signal-chip conflict">\u{1F6A8} ${signals.orefHistory24h} OREF alerts (24h)</span>`);
     if (signals.aviationDisruptions > 0) chips.push(`<span class="signal-chip outage">\u{1F6AB} ${signals.aviationDisruptions} ${t('modals.countryBrief.signals.aviationDisruptions')}</span>`);
     if (signals.gpsJammingHexes > 0) chips.push(`<span class="signal-chip outage">\u{1F4E1} ${signals.gpsJammingHexes} ${t('modals.countryBrief.signals.gpsJammingZones')}</span>`);
     chips.push(`<span class="signal-chip stock-loading">📈 ${t('modals.countryBrief.loadingIndex')}</span>`);
@@ -615,6 +624,14 @@ export class CountryBriefPage {
         militaryFlights: this.currentSignals.militaryFlights,
         militaryVessels: this.currentSignals.militaryVessels,
         outages: this.currentSignals.outages,
+        criticalNews: this.currentSignals.criticalNews,
+        highNews: this.currentSignals.highNews,
+        economicStressSignals: this.currentSignals.economicStressSignals,
+        electionSignals: this.currentSignals.electionSignals,
+        cyberThreats: this.currentSignals.cyberThreats,
+        aisDisruptions: this.currentSignals.aisDisruptions,
+        satelliteFires: this.currentSignals.satelliteFires,
+        temporalAnomalies: this.currentSignals.temporalAnomalies,
         earthquakes: this.currentSignals.earthquakes,
         displacementOutflow: this.currentSignals.displacementOutflow,
         climateStress: this.currentSignals.climateStress,

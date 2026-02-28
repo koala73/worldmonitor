@@ -5,6 +5,7 @@ import { calculateCII, isInLearningMode } from './country-instability';
 import { getCountryNameByCode } from './country-geometry';
 import { t } from '@/services/i18n';
 import type { TheaterPostureSummary } from '@/services/military-surge';
+import { CURATED_COUNTRIES, DEFAULT_BASELINE_RISK } from '@/config/countries';
 
 export type AlertPriority = 'critical' | 'high' | 'medium' | 'low';
 export type AlertType = 'convergence' | 'cii_spike' | 'cascade' | 'composite';
@@ -53,6 +54,17 @@ export interface StrategicRiskOverview {
   topConvergenceZones: { cellId: string; lat: number; lon: number; score: number }[];
   unstableCountries: CountryScore[];
   timestamp: Date;
+}
+
+interface GlobalComponentPressure {
+  component: keyof CountryScore['components'];
+  score: number;
+}
+
+interface CIIRiskConsolidation {
+  score: number;
+  avgDeviation: number;
+  componentPressure: GlobalComponentPressure;
 }
 
 const alerts: UnifiedAlert[] = [];
@@ -385,7 +397,8 @@ export function checkCIIChanges(): UnifiedAlert[] {
 }
 
 function getHighestComponent(score: CountryScore): string {
-  const { unrest, security, information } = score.components;
+  const { unrest, conflict, security, information } = score.components;
+  if (conflict >= unrest && conflict >= security && conflict >= information) return 'Conflict Activity';
   if (unrest >= security && unrest >= information) return 'Civil Unrest';
   if (security >= information) return 'Security Activity';
   return 'Information Velocity';
@@ -395,8 +408,11 @@ function getHighestComponent(score: CountryScore): string {
 function updateAlerts(convergenceAlerts: GeoConvergenceAlert[]): void {
   // Prune old alerts (older than 24 hours)
   const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-  while (alerts.length > 0 && alerts[0]!.timestamp.getTime() < cutoff) {
-    alerts.shift();
+  for (let i = alerts.length - 1; i >= 0; i--) {
+    const alert = alerts[i];
+    if (alert && alert.timestamp.getTime() < cutoff) {
+      alerts.splice(i, 1);
+    }
   }
 
   // Add convergence alerts (addAndMergeAlert handles deduplication by stable ID)
@@ -425,7 +441,8 @@ export function calculateStrategicRiskOverview(
   // Update the alerts array with current data
   updateAlerts(convergenceAlerts);
 
-  const ciiRiskScore = calculateCIIRiskScore(ciiScores);
+  const ciiConsolidation = calculateCIIRiskScore(ciiScores);
+  const ciiRiskScore = ciiConsolidation.score;
 
   // Weights for composite score
   const convergenceWeight = 0.3;  // Geo convergence of multiple event types
@@ -460,17 +477,13 @@ export function calculateStrategicRiskOverview(
 
   const trend = determineTrend(composite);
 
-  // Top country score for display
-  const topCountry = ciiScores[0];
-  const topCIIScore = topCountry ? topCountry.score : 0;
-
   return {
     convergenceAlerts: convergenceAlerts.length,
-    avgCIIDeviation: topCIIScore,  // Now shows top country score
+    avgCIIDeviation: ciiConsolidation.avgDeviation,
     infrastructureIncidents: countInfrastructureIncidents(),
     compositeScore: composite,
     trend,
-    topRisks: identifyTopRisks(convergenceAlerts, ciiScores),
+    topRisks: identifyTopRisks(convergenceAlerts, ciiScores, ciiConsolidation.componentPressure),
     topConvergenceZones: convergenceAlerts
       .slice(0, 3)
       .map(a => ({ cellId: a.cellId, lat: a.lat, lon: a.lon, score: a.score })),
@@ -479,32 +492,85 @@ export function calculateStrategicRiskOverview(
   };
 }
 
-function calculateCIIRiskScore(scores: CountryScore[]): number {
-  if (scores.length === 0) return 0;
+function getCountryBaseline(code: string): number {
+  return CURATED_COUNTRIES[code]?.baselineRisk ?? DEFAULT_BASELINE_RISK;
+}
 
-  // Use top 5 highest-scoring countries to determine risk
-  // Don't dilute with stable countries
+function calculateGlobalComponentPressure(scores: CountryScore[]): GlobalComponentPressure {
+  if (scores.length === 0) return { component: 'conflict', score: 0 };
+
+  const totals: Record<keyof CountryScore['components'], number> = {
+    unrest: 0,
+    conflict: 0,
+    security: 0,
+    information: 0,
+  };
+
+  for (const score of scores) {
+    totals.unrest += score.components.unrest;
+    totals.conflict += score.components.conflict;
+    totals.security += score.components.security;
+    totals.information += score.components.information;
+  }
+
+  const entries = Object.entries(totals) as Array<[keyof CountryScore['components'], number]>;
+  entries.sort((a, b) => b[1] - a[1]);
+  const [component, total] = entries[0] ?? ['conflict', 0];
+  return { component, score: total / scores.length };
+}
+
+function calculateCIIRiskScore(scores: CountryScore[]): CIIRiskConsolidation {
+  if (scores.length === 0) {
+    return {
+      score: 0,
+      avgDeviation: 0,
+      componentPressure: { component: 'conflict', score: 0 },
+    };
+  }
+
   const sorted = [...scores].sort((a, b) => b.score - a.score);
   const top5 = sorted.slice(0, 5);
-
-  // Weighted: highest country contributes most
-  // Top country: 40%, 2nd: 25%, 3rd: 20%, 4th: 10%, 5th: 5%
   const weights = [0.4, 0.25, 0.2, 0.1, 0.05];
-  let weightedScore = 0;
+  let top5Score = 0;
 
   for (let i = 0; i < top5.length; i++) {
     const country = top5[i];
     const weight = weights[i];
     if (country && weight !== undefined) {
-      weightedScore += country.score * weight;
+      top5Score += country.score * weight;
     }
   }
 
-  // Count of elevated countries (score >= 50) adds bonus
-  const elevatedCount = scores.filter(s => s.score >= 50).length;
-  const elevatedBonus = Math.min(20, elevatedCount * 5);
+  const avgScore = scores.reduce((sum, s) => sum + s.score, 0) / scores.length;
+  const elevatedCount = scores.filter(s => s.score >= 51).length;
+  const highCount = scores.filter(s => s.score >= 66).length;
+  const criticalCount = scores.filter(s => s.score >= 81).length;
 
-  return Math.min(100, weightedScore + elevatedBonus);
+  const elevatedRatio = elevatedCount / scores.length;
+  const highRatio = highCount / scores.length;
+  const criticalRatio = criticalCount / scores.length;
+  const breadthScore = Math.min(100, avgScore * 0.6 + elevatedRatio * 30 + highRatio * 35 + criticalRatio * 25);
+
+  const avgDeviationRaw = scores.reduce((sum, s) => {
+    return sum + Math.max(0, s.score - getCountryBaseline(s.code));
+  }, 0) / scores.length;
+  const avgDeviation = Math.round(avgDeviationRaw * 10) / 10;
+
+  const componentPressure = calculateGlobalComponentPressure(scores);
+  const componentBoost = Math.min(8, componentPressure.score * 0.08);
+
+  const score = Math.min(100, Math.round(
+    top5Score * 0.55 +
+    breadthScore * 0.35 +
+    avgDeviation * 0.1 +
+    componentBoost
+  ));
+
+  return {
+    score,
+    avgDeviation,
+    componentPressure,
+  };
 }
 
 let previousCompositeScore: number | null = null;
@@ -526,7 +592,8 @@ function countInfrastructureIncidents(): number {
 
 function identifyTopRisks(
   convergence: GeoConvergenceAlert[],
-  cii: CountryScore[]
+  cii: CountryScore[],
+  componentPressure: GlobalComponentPressure,
 ): string[] {
   const risks: string[] = [];
 
@@ -534,6 +601,16 @@ function identifyTopRisks(
   if (top) {
     const location = getLocationName(top.lat, top.lon);
     risks.push(`Convergence: ${location} (score: ${top.score})`);
+  }
+
+  const componentLabel: Record<keyof CountryScore['components'], string> = {
+    unrest: 'Civil unrest pressure',
+    conflict: 'Conflict and attack pressure',
+    security: 'Security disruption pressure',
+    information: 'Critical news pressure',
+  };
+  if (componentPressure.score >= 25) {
+    risks.push(`${componentLabel[componentPressure.component]} (global avg: ${Math.round(componentPressure.score)})`);
   }
 
   const critical = cii.filter(s => s.level === 'critical' || s.level === 'high');

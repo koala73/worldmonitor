@@ -1,4 +1,4 @@
-import type { SocialUnrestEvent, MilitaryFlight, MilitaryVessel, ClusteredEvent, InternetOutage } from '@/types';
+import type { SocialUnrestEvent, MilitaryFlight, MilitaryVessel, ClusteredEvent, InternetOutage, AisDisruptionEvent, CyberThreat } from '@/types';
 import type { AirportDelayAlert } from '@/services/aviation';
 import type { SecurityAdvisory } from '@/services/security-advisories';
 import { tokenizeForMatch, matchKeyword } from '@/utils/keyword-match';
@@ -29,6 +29,16 @@ export interface ComponentScores {
   information: number;
 }
 
+export interface CountryNewsSignalSummary {
+  totalEvents: number;
+  criticalSignals: number;
+  highSignals: number;
+  conflictSignals: number;
+  infrastructureSignals: number;
+  economicStressSignals: number;
+  electionSignals: number;
+}
+
 interface CountryData {
   protests: SocialUnrestEvent[];
   conflicts: ConflictEvent[];
@@ -49,6 +59,56 @@ interface CountryData {
   advisorySources: Set<string>;
   gpsJammingHighCount: number;
   gpsJammingMediumCount: number;
+  aisDisruptionHighCount: number;
+  aisDisruptionMediumCount: number;
+  satelliteFireHighCount: number;
+  satelliteFireMediumCount: number;
+  cyberThreatCriticalCount: number;
+  cyberThreatHighCount: number;
+  cyberThreatMediumCount: number;
+  temporalAnomalyHighCount: number;
+  temporalAnomalyMediumCount: number;
+}
+
+export interface TemporalAnomalySignal {
+  type: string;
+  region: string;
+  severity: 'medium' | 'high' | 'critical';
+}
+
+interface NewsRiskSummary {
+  totalEvents: number;
+  criticalSignals: number;
+  highSignals: number;
+  conflictSignals: number;
+  infrastructureSignals: number;
+  economicStressSignals: number;
+  electionSignals: number;
+  weightedSeverity: number;
+  weightedConflict: number;
+  weightedInfrastructure: number;
+  weightedEconomicStress: number;
+  weightedElection: number;
+}
+
+const THREAT_WEIGHT: Record<'critical' | 'high' | 'medium' | 'low' | 'info', number> = {
+  critical: 3.5,
+  high: 2.5,
+  medium: 1.6,
+  low: 0.9,
+  info: 0.5,
+};
+
+const CONFLICT_NEWS_RE = /\b(war|attack|attacks|strike|strikes|missile|airstrike|bombing|shelling|invasion|troops|retaliat|drone|hostage|terror)\b/i;
+const INFRA_NEWS_RE = /\b(internet outage|blackout|airport closure|airport closed|flight cancellations?|airspace closed|navigation outage|gps jam|jamming|port closure|rail disruption)\b/i;
+const ECONOMIC_STRESS_RE = /\b(recession|inflation|devaluation|currency crisis|bank run|debt default|austerity|capital controls|sanctions|energy shortage|fuel shortage|market crash|bond selloff|sovereign downgrade)\b/i;
+const ELECTION_RE = /\b(election|runoff|ballot|polls|vote|referendum|snap election|parliament dissolved|constitutional crisis|government collapse|state of emergency)\b/i;
+
+function getThreatWeight(level: string): number {
+  if (level === 'critical' || level === 'high' || level === 'medium' || level === 'low' || level === 'info') {
+    return THREAT_WEIGHT[level];
+  }
+  return THREAT_WEIGHT.info;
 }
 
 export { TIER1_COUNTRIES } from '@/config/countries';
@@ -130,7 +190,36 @@ const countryDataMap = new Map<string, CountryData>();
 const previousScores = new Map<string, number>();
 
 function initCountryData(): CountryData {
-  return { protests: [], conflicts: [], ucdpStatus: null, hapiSummary: null, militaryFlights: [], militaryVessels: [], newsEvents: [], outages: [], strikes: [], aviationDisruptions: [], displacementOutflow: 0, climateStress: 0, orefAlertCount: 0, orefHistoryCount24h: 0, advisoryMaxLevel: null, advisoryCount: 0, advisorySources: new Set(), gpsJammingHighCount: 0, gpsJammingMediumCount: 0 };
+  return {
+    protests: [],
+    conflicts: [],
+    ucdpStatus: null,
+    hapiSummary: null,
+    militaryFlights: [],
+    militaryVessels: [],
+    newsEvents: [],
+    outages: [],
+    strikes: [],
+    aviationDisruptions: [],
+    displacementOutflow: 0,
+    climateStress: 0,
+    orefAlertCount: 0,
+    orefHistoryCount24h: 0,
+    advisoryMaxLevel: null,
+    advisoryCount: 0,
+    advisorySources: new Set(),
+    gpsJammingHighCount: 0,
+    gpsJammingMediumCount: 0,
+    aisDisruptionHighCount: 0,
+    aisDisruptionMediumCount: 0,
+    satelliteFireHighCount: 0,
+    satelliteFireMediumCount: 0,
+    cyberThreatCriticalCount: 0,
+    cyberThreatHighCount: 0,
+    cyberThreatMediumCount: 0,
+    temporalAnomalyHighCount: 0,
+    temporalAnomalyMediumCount: 0,
+  };
 }
 
 const newsEventIndexMap = new Map<string, Map<string, number>>();
@@ -139,6 +228,9 @@ export function clearCountryData(): void {
   countryDataMap.clear();
   hotspotActivityMap.clear();
   newsEventIndexMap.clear();
+  temporalAnomaliesByType.clear();
+  globalTemporalAnomalyHighCount = 0;
+  globalTemporalAnomalyMediumCount = 0;
 }
 
 export function getCountryData(code: string): CountryData | undefined {
@@ -150,6 +242,91 @@ export function getPreviousScores(): Map<string, number> {
 }
 
 export type { CountryData };
+
+function buildEmptyNewsRiskSummary(): NewsRiskSummary {
+  return {
+    totalEvents: 0,
+    criticalSignals: 0,
+    highSignals: 0,
+    conflictSignals: 0,
+    infrastructureSignals: 0,
+    economicStressSignals: 0,
+    electionSignals: 0,
+    weightedSeverity: 0,
+    weightedConflict: 0,
+    weightedInfrastructure: 0,
+    weightedEconomicStress: 0,
+    weightedElection: 0,
+  };
+}
+
+function getNewsRecencyWeight(firstSeen: Date, now = Date.now()): number {
+  const ageMs = now - firstSeen.getTime();
+  if (!Number.isFinite(ageMs) || ageMs < 0) return 1;
+  if (ageMs <= 6 * 60 * 60 * 1000) return 1.25;
+  if (ageMs <= 24 * 60 * 60 * 1000) return 1.05;
+  if (ageMs <= 72 * 60 * 60 * 1000) return 0.9;
+  if (ageMs <= 7 * 24 * 60 * 60 * 1000) return 0.75;
+  return 0.5;
+}
+
+function summarizeNewsRisk(events: ClusteredEvent[], now = Date.now()): NewsRiskSummary {
+  if (events.length === 0) return buildEmptyNewsRiskSummary();
+
+  const summary = buildEmptyNewsRiskSummary();
+  for (const event of events) {
+    summary.totalEvents++;
+
+    const title = event.primaryTitle.toLowerCase();
+    const category = event.threat?.category;
+    const level = event.threat?.level || (event.isAlert ? 'medium' : 'low');
+
+    if (level === 'critical') summary.criticalSignals++;
+    if (level === 'high') summary.highSignals++;
+
+    const isConflict = category === 'conflict' || category === 'military' || category === 'terrorism' || CONFLICT_NEWS_RE.test(title);
+    const isInfrastructure = category === 'infrastructure' || INFRA_NEWS_RE.test(title);
+    const isEconomic = category === 'economic' || ECONOMIC_STRESS_RE.test(title);
+    const isElection = ELECTION_RE.test(title);
+
+    if (isConflict) summary.conflictSignals++;
+    if (isInfrastructure) summary.infrastructureSignals++;
+    if (isEconomic) summary.economicStressSignals++;
+    if (isElection) summary.electionSignals++;
+
+    const levelWeight = getThreatWeight(level);
+    const alertWeight = event.isAlert ? 1.2 : 1;
+    const recencyWeight = getNewsRecencyWeight(event.firstSeen, now);
+    const eventWeight = levelWeight * alertWeight * recencyWeight;
+
+    summary.weightedSeverity += eventWeight;
+    if (isConflict) summary.weightedConflict += eventWeight;
+    if (isInfrastructure) summary.weightedInfrastructure += eventWeight;
+    if (isEconomic) summary.weightedEconomicStress += eventWeight;
+    if (isElection) summary.weightedElection += eventWeight;
+  }
+
+  return summary;
+}
+
+function toPublicNewsSummary(summary: NewsRiskSummary): CountryNewsSignalSummary {
+  return {
+    totalEvents: summary.totalEvents,
+    criticalSignals: summary.criticalSignals,
+    highSignals: summary.highSignals,
+    conflictSignals: summary.conflictSignals,
+    infrastructureSignals: summary.infrastructureSignals,
+    economicStressSignals: summary.economicStressSignals,
+    electionSignals: summary.electionSignals,
+  };
+}
+
+export function getCountryNewsSignalSummary(code: string): CountryNewsSignalSummary {
+  const normalized = ensureISO2(code) ?? code.trim().toUpperCase();
+  const data = countryDataMap.get(normalized);
+  if (!data) return toPublicNewsSummary(buildEmptyNewsRiskSummary());
+  return toPublicNewsSummary(summarizeNewsRisk(data.newsEvents));
+}
 
 function normalizeCountryName(name: string): string | null {
   const tokens = tokenizeForMatch(name);
@@ -525,7 +702,130 @@ export function ingestGpsJammingForCII(hexes: GpsJamHex[]): void {
   }
 }
 
-function calcUnrestScore(data: CountryData, countryCode: string): number {
+const temporalAnomaliesByType = new Map<string, TemporalAnomalySignal[]>();
+let globalTemporalAnomalyHighCount = 0;
+let globalTemporalAnomalyMediumCount = 0;
+
+function resolveCountryCodeFromRegion(region: string): string | null {
+  const trimmed = region.trim();
+  if (!trimmed) return null;
+  const iso = ensureISO2(trimmed);
+  if (iso) return iso;
+  return normalizeCountryName(trimmed);
+}
+
+export function ingestAisDisruptionsForCII(events: AisDisruptionEvent[]): void {
+  for (const data of countryDataMap.values()) {
+    data.aisDisruptionHighCount = 0;
+    data.aisDisruptionMediumCount = 0;
+  }
+
+  for (const event of events) {
+    const code = getCountryAtCoordinates(event.lat, event.lon)?.code
+      ?? resolveCountryCodeFromRegion(event.region || '')
+      ?? resolveCountryCodeFromRegion(event.name || '');
+    if (!code || code === 'XX') continue;
+
+    if (!countryDataMap.has(code)) countryDataMap.set(code, initCountryData());
+    const data = countryDataMap.get(code)!;
+    if (event.severity === 'high') data.aisDisruptionHighCount++;
+    else if (event.severity === 'elevated') data.aisDisruptionMediumCount++;
+  }
+}
+
+export function ingestSatelliteFiresForCII(fires: Array<{ lat: number; lon: number; brightness: number; region?: string }>): void {
+  for (const data of countryDataMap.values()) {
+    data.satelliteFireHighCount = 0;
+    data.satelliteFireMediumCount = 0;
+  }
+
+  for (const fire of fires) {
+    const code = getCountryAtCoordinates(fire.lat, fire.lon)?.code
+      ?? resolveCountryCodeFromRegion(fire.region || '');
+    if (!code || code === 'XX') continue;
+
+    if (!countryDataMap.has(code)) countryDataMap.set(code, initCountryData());
+    const data = countryDataMap.get(code)!;
+    if (fire.brightness >= 360) data.satelliteFireHighCount++;
+    else if (fire.brightness >= 320) data.satelliteFireMediumCount++;
+  }
+}
+
+export function ingestCyberThreatsForCII(threats: CyberThreat[]): void {
+  for (const data of countryDataMap.values()) {
+    data.cyberThreatCriticalCount = 0;
+    data.cyberThreatHighCount = 0;
+    data.cyberThreatMediumCount = 0;
+  }
+
+  for (const threat of threats) {
+    const code = resolveCountryCodeFromRegion(threat.country || '')
+      ?? getCountryAtCoordinates(threat.lat, threat.lon)?.code;
+    if (!code || code === 'XX') continue;
+
+    if (!countryDataMap.has(code)) countryDataMap.set(code, initCountryData());
+    const data = countryDataMap.get(code)!;
+    if (threat.severity === 'critical') data.cyberThreatCriticalCount++;
+    else if (threat.severity === 'high') data.cyberThreatHighCount++;
+    else if (threat.severity === 'medium') data.cyberThreatMediumCount++;
+  }
+}
+
+function rebuildTemporalAnomalyCounts(): void {
+  globalTemporalAnomalyHighCount = 0;
+  globalTemporalAnomalyMediumCount = 0;
+  for (const data of countryDataMap.values()) {
+    data.temporalAnomalyHighCount = 0;
+    data.temporalAnomalyMediumCount = 0;
+  }
+
+  for (const anomalies of temporalAnomaliesByType.values()) {
+    for (const anomaly of anomalies) {
+      const mappedCode = resolveCountryCodeFromRegion(anomaly.region);
+      if (!mappedCode || mappedCode === 'XX' || mappedCode === 'GLOBAL') {
+        if (anomaly.severity === 'critical' || anomaly.severity === 'high') globalTemporalAnomalyHighCount++;
+        else globalTemporalAnomalyMediumCount++;
+        continue;
+      }
+
+      if (!countryDataMap.has(mappedCode)) countryDataMap.set(mappedCode, initCountryData());
+      const data = countryDataMap.get(mappedCode)!;
+      if (anomaly.severity === 'critical' || anomaly.severity === 'high') data.temporalAnomalyHighCount++;
+      else data.temporalAnomalyMediumCount++;
+    }
+  }
+}
+
+export function ingestTemporalAnomaliesForCII(
+  anomalies: TemporalAnomalySignal[],
+  replaceTypes: string[] = [],
+): void {
+  for (const type of replaceTypes) {
+    temporalAnomaliesByType.delete(type);
+  }
+
+  const grouped = new Map<string, TemporalAnomalySignal[]>();
+  for (const anomaly of anomalies) {
+    const list = grouped.get(anomaly.type) || [];
+    list.push(anomaly);
+    grouped.set(anomaly.type, list);
+  }
+  for (const [type, list] of grouped) {
+    temporalAnomaliesByType.set(type, list);
+  }
+
+  rebuildTemporalAnomalyCounts();
+}
+
+export function getGlobalTemporalAnomalySummary(): { high: number; medium: number; total: number } {
+  return {
+    high: globalTemporalAnomalyHighCount,
+    medium: globalTemporalAnomalyMediumCount,
+    total: globalTemporalAnomalyHighCount + globalTemporalAnomalyMediumCount,
+  };
+}
+
+function calcUnrestScore(data: CountryData, countryCode: string, newsRisk: NewsRiskSummary): number {
   const protestCount = data.protests.length;
   const multiplier = CURATED_COUNTRIES[countryCode]?.eventMultiplier ?? DEFAULT_EVENT_MULTIPLIER;
 
@@ -557,7 +857,10 @@ function calcUnrestScore(data: CountryData, countryCode: string): number {
     outageBoost = Math.min(50, totalOutages * 30 + majorOutages * 15 + partialOutages * 5);
   }
 
-  return Math.min(100, baseScore + fatalityBoost + severityBoost + outageBoost);
+  const economicStressBoost = Math.min(20, newsRisk.economicStressSignals * 3 + newsRisk.weightedEconomicStress * 1.4 * multiplier);
+  const electionUnrestBoost = Math.min(15, newsRisk.electionSignals * 2 + newsRisk.weightedElection * 1.2 * multiplier);
+
+  return Math.min(100, baseScore + fatalityBoost + severityBoost + outageBoost + economicStressBoost + electionUnrestBoost);
 }
 
 function calcNewsConflictFloor(data: CountryData, multiplier: number, now = Date.now()): number {
@@ -589,7 +892,7 @@ function calcNewsConflictFloor(data: CountryData, multiplier: number, now = Date
   return Math.min(70, 60 * multiplier);
 }
 
-function calcConflictScore(data: CountryData, countryCode: string): number {
+function calcConflictScore(data: CountryData, countryCode: string, newsRisk: NewsRiskSummary): number {
   const events = data.conflicts;
   const multiplier = CURATED_COUNTRIES[countryCode]?.eventMultiplier ?? DEFAULT_EVENT_MULTIPLIER;
 
@@ -632,7 +935,12 @@ function calcConflictScore(data: CountryData, countryCode: string): number {
     orefBoost = 25 + Math.min(25, data.orefAlertCount * 5);
   }
 
-  return Math.min(100, Math.max(acledScore, hapiFallback, newsFloor) + strikeBoost + orefBoost);
+  const conflictNewsBoost = Math.min(
+    30,
+    newsRisk.conflictSignals * 2.5 + newsRisk.weightedConflict * 2 * multiplier + newsRisk.criticalSignals * 2,
+  );
+
+  return Math.min(100, Math.max(acledScore, hapiFallback, newsFloor) + strikeBoost + orefBoost + conflictNewsBoost);
 }
 
 function getUcdpFloor(data: CountryData): number {
@@ -645,7 +953,7 @@ function getUcdpFloor(data: CountryData): number {
   }
 }
 
-function calcSecurityScore(data: CountryData): number {
+function calcSecurityScore(data: CountryData, newsRisk: NewsRiskSummary): number {
   const flights = data.militaryFlights.length;
   const vessels = data.militaryVessels.length;
   const flightScore = Math.min(50, flights * 3);
@@ -661,11 +969,19 @@ function calcSecurityScore(data: CountryData): number {
   aviationScore = Math.min(40, aviationScore);
 
   const gpsJammingScore = Math.min(35, data.gpsJammingHighCount * 5 + data.gpsJammingMediumCount * 2);
+  const aisScore = Math.min(25, data.aisDisruptionHighCount * 8 + data.aisDisruptionMediumCount * 4);
+  const cyberScore = Math.min(30, data.cyberThreatCriticalCount * 10 + data.cyberThreatHighCount * 6 + data.cyberThreatMediumCount * 3);
+  const satelliteFireScore = Math.min(20, data.satelliteFireHighCount * 4 + data.satelliteFireMediumCount * 2);
+  const temporalScore = Math.min(20, data.temporalAnomalyHighCount * 6 + data.temporalAnomalyMediumCount * 3);
+  const infraNewsBoost = Math.min(20, newsRisk.infrastructureSignals * 2 + newsRisk.weightedInfrastructure * 1.2);
 
-  return Math.min(100, flightScore + vesselScore + aviationScore + gpsJammingScore);
+  return Math.min(
+    100,
+    flightScore + vesselScore + aviationScore + gpsJammingScore + aisScore + cyberScore + satelliteFireScore + temporalScore + infraNewsBoost,
+  );
 }
 
-function calcInformationScore(data: CountryData, countryCode: string): number {
+function calcInformationScore(data: CountryData, countryCode: string, newsRisk: NewsRiskSummary): number {
   const count = data.newsEvents.length;
   if (count === 0) return 0;
 
@@ -685,9 +1001,17 @@ function calcInformationScore(data: CountryData, countryCode: string): number {
     ? Math.min(40, (avgVelocity - velocityThreshold) * 10 * multiplier)
     : 0;
 
-  const alertBoost = data.newsEvents.some(e => e.isAlert) ? 20 * multiplier : 0;
+  const alertBoost = data.newsEvents.some(e => e.isAlert) ? 18 * multiplier : 0;
+  const severityBoost = Math.min(35, newsRisk.weightedSeverity * 1.1 * multiplier);
+  const thematicBoost = Math.min(
+    30,
+    newsRisk.weightedConflict * 0.8 +
+      newsRisk.weightedInfrastructure * 0.6 +
+      newsRisk.weightedEconomicStress * 0.7 +
+      newsRisk.weightedElection * 0.5,
+  );
 
-  return Math.min(100, baseScore + velocityBoost + alertBoost);
+  return Math.min(100, baseScore + velocityBoost + alertBoost + severityBoost + thematicBoost);
 }
 
 function getLevel(score: number): CountryScore['level'] {
@@ -720,12 +1044,13 @@ export function calculateCII(): CountryScore[] {
     const name = CURATED_COUNTRIES[code]?.name || getCountryNameByCode(code) || code;
     const data = countryDataMap.get(code) || initCountryData();
     const baselineRisk = CURATED_COUNTRIES[code]?.baselineRisk ?? DEFAULT_BASELINE_RISK;
+    const newsRisk = summarizeNewsRisk(data.newsEvents);
 
     const components: ComponentScores = {
-      unrest: Math.round(calcUnrestScore(data, code)),
-      conflict: Math.round(calcConflictScore(data, code)),
-      security: Math.round(calcSecurityScore(data)),
-      information: Math.round(calcInformationScore(data, code)),
+      unrest: Math.round(calcUnrestScore(data, code, newsRisk)),
+      conflict: Math.round(calcConflictScore(data, code, newsRisk)),
+      security: Math.round(calcSecurityScore(data, newsRisk)),
+      information: Math.round(calcInformationScore(data, code, newsRisk)),
     };
 
     const eventScore = components.unrest * 0.25 + components.conflict * 0.30 + components.security * 0.20 + components.information * 0.25;
@@ -778,11 +1103,12 @@ export function getCountryScore(code: string): number | null {
   if (!data) return null;
 
   const baselineRisk = CURATED_COUNTRIES[code]?.baselineRisk ?? DEFAULT_BASELINE_RISK;
+  const newsRisk = summarizeNewsRisk(data.newsEvents);
   const components: ComponentScores = {
-    unrest: calcUnrestScore(data, code),
-    conflict: calcConflictScore(data, code),
-    security: calcSecurityScore(data),
-    information: calcInformationScore(data, code),
+    unrest: calcUnrestScore(data, code, newsRisk),
+    conflict: calcConflictScore(data, code, newsRisk),
+    security: calcSecurityScore(data, newsRisk),
+    information: calcInformationScore(data, code, newsRisk),
   };
 
   const eventScore = components.unrest * 0.25 + components.conflict * 0.30 + components.security * 0.20 + components.information * 0.25;

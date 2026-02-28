@@ -31,6 +31,14 @@ export interface CountryBriefSignals {
   militaryFlights: number;
   militaryVessels: number;
   outages: number;
+  criticalNews: number;
+  highNews: number;
+  economicStressSignals: number;
+  electionSignals: number;
+  cyberThreats: number;
+  aisDisruptions: number;
+  satelliteFires: number;
+  temporalAnomalies: number;
   earthquakes: number;
   displacementOutflow: number;
   climateStress: number;

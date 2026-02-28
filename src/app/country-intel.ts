@@ -4,7 +4,7 @@ import { CountryTimeline } from '@/components/CountryTimeline';
 import { CountryBriefPage } from '@/components/CountryBriefPage';
 import { reverseGeocode } from '@/utils/reverse-geocode';
 import { getCountryAtCoordinates, hasCountryGeometry, isCoordinateInCountry, ME_STRIKE_BOUNDS } from '@/services/country-geometry';
-import { calculateCII, getCountryData, TIER1_COUNTRIES } from '@/services/country-instability';
+import { calculateCII, getCountryData, getCountryNewsSignalSummary, getGlobalTemporalAnomalySummary, TIER1_COUNTRIES } from '@/services/country-instability';
 import { signalAggregator } from '@/services/signal-aggregator';
 import { dataFreshness } from '@/services/data-freshness';
 import { fetchCountryMarkets } from '@/services/prediction';
@@ -244,8 +244,17 @@ export class CountryIntelManager implements AppModule {
           if (signals.militaryFlights > 0) lines.push(t('countryBrief.fallback.aircraftTracked', { count: String(signals.militaryFlights) }));
           if (signals.militaryVessels > 0) lines.push(t('countryBrief.fallback.vesselsTracked', { count: String(signals.militaryVessels) }));
           if (signals.activeStrikes > 0) lines.push(t('countryBrief.fallback.activeStrikes', { count: String(signals.activeStrikes) }));
+          if (signals.criticalNews > 0) lines.push(`🚨 Critical news signals: ${signals.criticalNews}`);
+          if (signals.highNews > 0) lines.push(`⚠️ High-severity news signals: ${signals.highNews}`);
+          if (signals.cyberThreats > 0) lines.push(`🛡️ Cyber threat signals: ${signals.cyberThreats}`);
+          if (signals.aisDisruptions > 0) lines.push(`🚢 AIS disruption signals: ${signals.aisDisruptions}`);
+          if (signals.satelliteFires > 0) lines.push(`🔥 Satellite fire signals: ${signals.satelliteFires}`);
+          if (signals.temporalAnomalies > 0) lines.push(`📈 Temporal anomaly signals: ${signals.temporalAnomalies}`);
+          if (signals.economicStressSignals > 0) lines.push(`💹 Economic stress signals: ${signals.economicStressSignals}`);
+          if (signals.electionSignals > 0) lines.push(`🗳️ Election/governance signals: ${signals.electionSignals}`);
           if (signals.travelAdvisoryMaxLevel === 'do-not-travel') lines.push(`⚠️ Travel advisory: Do Not Travel (${signals.travelAdvisories} source${signals.travelAdvisories > 1 ? 's' : ''})`);
           else if (signals.travelAdvisoryMaxLevel === 'reconsider') lines.push(`⚠️ Travel advisory: Reconsider Travel (${signals.travelAdvisories} source${signals.travelAdvisories > 1 ? 's' : ''})`);
+          if (signals.orefHistory24h > 0) lines.push(`🚨 OREF alerts (24h): ${signals.orefHistory24h}`);
           if (signals.outages > 0) lines.push(t('countryBrief.fallback.internetOutages', { count: String(signals.outages) }));
           if (signals.earthquakes > 0) lines.push(t('countryBrief.fallback.recentEarthquakes', { count: String(signals.earthquakes) }));
           if (context.stockIndex) lines.push(t('countryBrief.fallback.stockIndex', { value: context.stockIndex }));
@@ -403,6 +412,10 @@ export class CountryIntelManager implements AppModule {
 
     const ciiData = getCountryData(code);
     const isTier1 = !!TIER1_COUNTRIES[code];
+    const newsSignals = getCountryNewsSignalSummary(code);
+    const localTemporalAnomalies = (ciiData?.temporalAnomalyHighCount ?? 0) + (ciiData?.temporalAnomalyMediumCount ?? 0);
+    const globalTemporalAnomalies = getGlobalTemporalAnomalySummary().total;
+    const temporalAnomalies = localTemporalAnomalies > 0 ? localTemporalAnomalies : globalTemporalAnomalies;
 
     let orefSirens = 0;
     let orefHistory24h = 0;
@@ -429,6 +442,14 @@ export class CountryIntelManager implements AppModule {
       militaryFlights,
       militaryVessels,
       outages,
+      criticalNews: newsSignals.criticalSignals,
+      highNews: newsSignals.highSignals,
+      economicStressSignals: newsSignals.economicStressSignals,
+      electionSignals: newsSignals.electionSignals,
+      cyberThreats: (ciiData?.cyberThreatCriticalCount ?? 0) + (ciiData?.cyberThreatHighCount ?? 0) + (ciiData?.cyberThreatMediumCount ?? 0),
+      aisDisruptions: (ciiData?.aisDisruptionHighCount ?? 0) + (ciiData?.aisDisruptionMediumCount ?? 0),
+      satelliteFires: (ciiData?.satelliteFireHighCount ?? 0) + (ciiData?.satelliteFireMediumCount ?? 0),
+      temporalAnomalies,
       earthquakes,
       displacementOutflow: ciiData?.displacementOutflow ?? 0,
       climateStress: ciiData?.climateStress ?? 0,

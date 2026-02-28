@@ -5,7 +5,6 @@
  */
 
 import type { CountryScore, ComponentScores } from './country-instability';
-import { setHasCachedScores } from './country-instability';
 import { getPersistentCache, setPersistentCache } from './persistent-cache';
 import {
   IntelligenceServiceClient,
@@ -188,7 +187,6 @@ export async function fetchCachedRiskScores(signal?: AbortSignal): Promise<Cache
       const data = toRiskScores(resp);
       cachedScores = data;
       lastFetchTime = now;
-      setHasCachedScores(true);
       void setPersistentCache(RISK_CACHE_KEY, data);
       return cachedScores;
     } catch (error) {
