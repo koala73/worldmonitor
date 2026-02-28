@@ -32,6 +32,7 @@ const DEFAULT_SETTINGS: AlertSettings = {
 
 const dedupeMap = new Map<string, number>();
 let lastGlobalAlertMs = 0;
+let lastGlobalAlertLevel: 'critical' | 'high' | null = null;
 let storageListener: ((e: StorageEvent) => void) | null = null;
 let cachedSettings: AlertSettings | null = null;
 
@@ -103,21 +104,23 @@ function isDuplicate(key: string): boolean {
   return (Date.now() - lastFired) < PER_EVENT_COOLDOWN_MS;
 }
 
-function isGlobalCooldown(): boolean {
-  return (Date.now() - lastGlobalAlertMs) < GLOBAL_COOLDOWN_MS;
+function isGlobalCooldown(candidateLevel: 'critical' | 'high'): boolean {
+  if ((Date.now() - lastGlobalAlertMs) >= GLOBAL_COOLDOWN_MS) return false;
+  if (candidateLevel === 'critical' && lastGlobalAlertLevel !== 'critical') return false;
+  return true;
 }
 
 function dispatchAlert(alert: BreakingAlert): void {
   pruneDedupeMap();
   dedupeMap.set(alert.id, Date.now());
   lastGlobalAlertMs = Date.now();
+  lastGlobalAlertLevel = alert.threatLevel;
   document.dispatchEvent(new CustomEvent('wm:breaking-news', { detail: alert }));
 }
 
 export function checkBatchForBreakingAlerts(items: NewsItem[]): void {
   const settings = getAlertSettings();
   if (!settings.enabled) return;
-  if (isGlobalCooldown()) return;
 
   let best: BreakingAlert | null = null;
 
@@ -133,7 +136,11 @@ export function checkBatchForBreakingAlerts(items: NewsItem[]): void {
     const key = makeAlertKey(item.title, item.source, item.link);
     if (isDuplicate(key)) continue;
 
-    if (!best || (level === 'critical' && best.threatLevel !== 'critical')) {
+    const isBetter = !best
+      || (level === 'critical' && best.threatLevel !== 'critical')
+      || (level === best.threatLevel && item.pubDate.getTime() > best.timestamp.getTime());
+
+    if (isBetter) {
       best = {
         id: key,
         headline: item.title,
@@ -146,7 +153,7 @@ export function checkBatchForBreakingAlerts(items: NewsItem[]): void {
     }
   }
 
-  if (best) dispatchAlert(best);
+  if (best && !isGlobalCooldown(best.threatLevel)) dispatchAlert(best);
 }
 
 export function initBreakingNewsAlerts(): void {
@@ -166,4 +173,5 @@ export function destroyBreakingNewsAlerts(): void {
   dedupeMap.clear();
   cachedSettings = null;
   lastGlobalAlertMs = 0;
+  lastGlobalAlertLevel = null;
 }
