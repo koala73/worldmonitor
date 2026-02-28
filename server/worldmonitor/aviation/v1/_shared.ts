@@ -199,14 +199,21 @@ export async function fetchAviationStackDelays(
   allAirports: MonitoredAirport[]
 ): Promise<AviationStackResult> {
   const apiKey = process.env.AVIATIONSTACK_API;
-  if (!apiKey) return { alerts: [], healthy: false };
+  if (!apiKey) {
+    console.log('[Aviation] No AVIATIONSTACK_API key — skipping');
+    return { alerts: [], healthy: false };
+  }
 
+  console.log(`[Aviation] Querying ${allAirports.length} airports (concurrency=${BATCH_CONCURRENCY})`);
   const alerts: AirportDelayAlert[] = [];
   let succeeded = 0, failed = 0;
   const deadline = Date.now() + 50_000;
 
   for (let i = 0; i < allAirports.length; i += BATCH_CONCURRENCY) {
-    if (Date.now() >= deadline) break;
+    if (Date.now() >= deadline) {
+      console.warn(`[Aviation] Deadline hit after ${succeeded + failed}/${allAirports.length} airports`);
+      break;
+    }
     const chunk = allAirports.slice(i, i + BATCH_CONCURRENCY);
     const results = await Promise.allSettled(
       chunk.map(airport => fetchSingleAirport(apiKey, airport))
@@ -222,6 +229,7 @@ export async function fetchAviationStackDelays(
   }
 
   const healthy = allAirports.length < 5 || failed <= succeeded;
+  console.log(`[Aviation] Done: ${succeeded} ok, ${failed} failed, ${alerts.length} alerts, healthy=${healthy}`);
   if (!healthy) {
     console.warn(`[Aviation] Systemic failure: ${failed}/${failed + succeeded} airports failed`);
   }
@@ -243,9 +251,21 @@ async function fetchSingleAirport(
       console.warn(`[Aviation] ${airport.iata}: HTTP ${resp.status}`);
       return { ok: false, alert: null };
     }
-    const json = await resp.json() as { data?: AviationStackFlight[] };
-    return { ok: true, alert: aggregateFlights(airport, json?.data ?? []) };
-  } catch {
+    const json = await resp.json() as { data?: AviationStackFlight[]; error?: { message?: string } };
+    if (json.error) {
+      console.warn(`[Aviation] ${airport.iata}: API error: ${json.error.message}`);
+      return { ok: false, alert: null };
+    }
+    const flights = json?.data ?? [];
+    const alert = aggregateFlights(airport, flights);
+    if (flights.length > 0) {
+      const cancelled = flights.filter(f => f.flight_status === 'cancelled').length;
+      const delayed = flights.filter(f => f.departure?.delay && f.departure.delay > 0).length;
+      console.log(`[Aviation] ${airport.iata}: ${flights.length} flights, ${cancelled} cancelled, ${delayed} delayed → ${alert ? alert.severity.replace('FLIGHT_DELAY_SEVERITY_', '') : 'normal'}`);
+    }
+    return { ok: true, alert };
+  } catch (err) {
+    console.warn(`[Aviation] ${airport.iata}: fetch error: ${err instanceof Error ? err.message : 'unknown'}`);
     return { ok: false, alert: null };
   }
 }

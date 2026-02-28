@@ -32,6 +32,7 @@ export async function listAirportDelays(
   _ctx: ServerContext,
   _req: ListAirportDelaysRequest,
 ): Promise<ListAirportDelaysResponse> {
+  const t0 = Date.now();
   // 1. FAA (US) — independent try-catch
   let faaAlerts: AirportDelayAlert[] = [];
   try {
@@ -80,61 +81,72 @@ export async function listAirportDelays(
       }
     );
     faaAlerts = result?.alerts ?? [];
-  } catch { /* FAA down doesn't blank intl */ }
+    console.log(`[Aviation] FAA: ${faaAlerts.length} alerts`);
+  } catch (err) {
+    console.warn(`[Aviation] FAA fetch failed: ${err instanceof Error ? err.message : 'unknown'}`);
+  }
 
   // 2. International — with cross-isolate stampede protection
   let intlAlerts: AirportDelayAlert[] = [];
   try {
     intlAlerts = await fetchIntlWithLock();
-  } catch { /* AviationStack + simulation both failed → empty intl */ }
+    console.log(`[Aviation] Intl: ${intlAlerts.length} alerts`);
+  } catch (err) {
+    console.warn(`[Aviation] Intl fetch failed: ${err instanceof Error ? err.message : 'unknown'}`);
+  }
 
+  console.log(`[Aviation] Total: ${faaAlerts.length + intlAlerts.length} alerts in ${Date.now() - t0}ms`);
   return { alerts: [...faaAlerts, ...intlAlerts] };
 }
 
 async function fetchIntlWithLock(): Promise<AirportDelayAlert[]> {
-  // Fast path: cache hit
   const cached = await getCachedJson(INTL_CACHE_KEY);
   if (cached && typeof cached === 'object' && 'alerts' in (cached as Record<string, unknown>)) {
-    return (cached as { alerts: AirportDelayAlert[] }).alerts;
+    const alerts = (cached as { alerts: AirportDelayAlert[] }).alerts;
+    console.log(`[Aviation] Intl cache HIT: ${alerts.length} alerts`);
+    return alerts;
   }
 
-  // Cache miss — try to acquire Redis lock (SETNX)
+  console.log('[Aviation] Intl cache MISS — acquiring lock');
   const gotLock = await tryAcquireLock(INTL_LOCK_KEY, LOCK_TTL);
 
   if (!gotLock) {
-    // Another isolate is refreshing — wait briefly, then check cache again
+    console.log('[Aviation] Lock held by another isolate — waiting 3s');
     await new Promise(r => setTimeout(r, 3_000));
     const retry = await getCachedJson(INTL_CACHE_KEY);
     if (retry && typeof retry === 'object' && 'alerts' in (retry as Record<string, unknown>)) {
-      return (retry as { alerts: AirportDelayAlert[] }).alerts;
+      const alerts = (retry as { alerts: AirportDelayAlert[] }).alerts;
+      console.log(`[Aviation] Intl cache HIT after wait: ${alerts.length} alerts`);
+      return alerts;
     }
-    // Still nothing after 3s — fall back to simulation (don't pile on AviationStack)
+    console.log('[Aviation] Still no cache after wait — falling back to simulation');
     const nonUs = MONITORED_AIRPORTS.filter(a => a.country !== 'USA');
     return nonUs.map(a => generateSimulatedDelay(a)).filter(Boolean) as AirportDelayAlert[];
   }
 
-  // We won the lock — do the actual fetch
+  console.log('[Aviation] Lock acquired — fetching AviationStack');
   try {
     const nonUs = MONITORED_AIRPORTS.filter(a => a.country !== 'USA');
     const apiKey = process.env.AVIATIONSTACK_API;
 
     let alerts: AirportDelayAlert[];
     if (!apiKey) {
+      console.log('[Aviation] No API key — using simulation');
       alerts = nonUs.map(a => generateSimulatedDelay(a)).filter(Boolean) as AirportDelayAlert[];
     } else {
       const avResult = await fetchAviationStackDelays(nonUs);
       if (!avResult.healthy) {
+        console.warn('[Aviation] AviationStack unhealthy — falling back to simulation');
         alerts = nonUs.map(a => generateSimulatedDelay(a)).filter(Boolean) as AirportDelayAlert[];
       } else {
         alerts = avResult.alerts;
       }
     }
 
-    // Write to cache — all other isolates will pick this up
     await setCachedJson(INTL_CACHE_KEY, { alerts }, CACHE_TTL);
     return alerts;
-  } catch {
-    // Fetch failed — still write empty so other isolates don't also try
+  } catch (err) {
+    console.warn(`[Aviation] Intl fetch failed: ${err instanceof Error ? err.message : 'unknown'}`);
     await setCachedJson(INTL_CACHE_KEY, { alerts: [] }, 120);
     return [];
   }
