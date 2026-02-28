@@ -123,6 +123,7 @@ Sentry.init({
     /appendChild.*Unexpected token/,
     /\bmag is not defined\b/,
     /evaluating '[^']*\.luma/,
+    /translateNotifyError/,
   ],
   beforeSend(event) {
     const msg = event.exception?.values?.[0]?.value ?? '';

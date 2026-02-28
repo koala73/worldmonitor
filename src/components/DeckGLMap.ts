@@ -3511,8 +3511,9 @@ export class DeckGLMap {
   }
 
   public setView(view: DeckMapView): void {
-    this.state.view = view;
     const preset = VIEW_PRESETS[view];
+    if (!preset) return;
+    this.state.view = view;
 
     if (this.maplibreMap) {
       this.maplibreMap.flyTo({
