@@ -179,6 +179,7 @@ describe('Panel hydration consumers', () => {
     { name: 'ETFFlowsPanel', path: 'src/components/ETFFlowsPanel.ts', key: 'etfFlows' },
     { name: 'MacroSignalsPanel', path: 'src/components/MacroSignalsPanel.ts', key: 'macroSignals' },
     { name: 'ServiceStatusPanel (via infrastructure)', path: 'src/services/infrastructure/index.ts', key: 'serviceStatuses' },
+    { name: 'Sectors (via data-loader)', path: 'src/app/data-loader.ts', key: 'sectors' },
   ];
 
   for (const panel of panels) {
@@ -188,6 +189,35 @@ describe('Panel hydration consumers', () => {
       assert.ok(src.includes(`'${panel.key}'`), `${panel.name} missing hydration key '${panel.key}'`);
     });
   }
+});
+
+describe('Bootstrap key hydration coverage', () => {
+  it('every bootstrap key has a getHydratedData consumer in src/', () => {
+    const bootstrapSrc = readFileSync(join(root, 'api', 'bootstrap.js'), 'utf-8');
+    const keyRe = /(\w+):\s+'[a-z_]+(?::[a-z_-]+)+:v\d+'/g;
+    const keys = [];
+    let m;
+    while ((m = keyRe.exec(bootstrapSrc)) !== null) keys.push(m[1]);
+
+    // Gather all src/ .ts files
+    const srcFiles = [];
+    function walk(dir) {
+      for (const entry of readdirSync(dir)) {
+        const full = join(dir, entry);
+        if (statSync(full).isDirectory()) walk(full);
+        else if (entry.endsWith('.ts') && !full.includes('/generated/')) srcFiles.push(full);
+      }
+    }
+    walk(join(root, 'src'));
+    const allSrc = srcFiles.map(f => readFileSync(f, 'utf-8')).join('\n');
+
+    for (const key of keys) {
+      assert.ok(
+        allSrc.includes(`getHydratedData('${key}')`),
+        `Bootstrap key '${key}' has no getHydratedData('${key}') consumer in src/ — data is fetched but never used`,
+      );
+    }
+  });
 });
 
 describe('Adaptive backoff adopters', () => {
