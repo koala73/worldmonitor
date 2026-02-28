@@ -2127,9 +2127,10 @@ const polymarketCircuitBreaker = { failures: 0, openUntil: 0 };
 const POLYMARKET_CB_THRESHOLD = 5;
 const POLYMARKET_CB_COOLDOWN_MS = 60 * 1000;
 
-// Concurrent upstream limiter — caps in-flight upstream requests
+// Concurrent upstream limiter — queues excess requests instead of rejecting them
 const POLYMARKET_MAX_CONCURRENT = 3;
 let polymarketActiveUpstream = 0;
+const polymarketQueue = []; // Array of () => void (resolve-waiters)
 
 function tripPolymarketCircuitBreaker() {
   polymarketCircuitBreaker.failures++;
@@ -2139,58 +2140,71 @@ function tripPolymarketCircuitBreaker() {
   }
 }
 
-function fetchPolymarketUpstream(cacheKey, endpoint, params, tag) {
-  if (polymarketActiveUpstream >= POLYMARKET_MAX_CONCURRENT) {
-    polymarketCache.set(cacheKey, { data: '[]', timestamp: Date.now() - POLYMARKET_CACHE_TTL_MS + POLYMARKET_NEG_TTL_MS });
-    return Promise.resolve(null);
+function releasePolymarketSlot() {
+  polymarketActiveUpstream--;
+  if (polymarketQueue.length > 0) {
+    const next = polymarketQueue.shift();
+    polymarketActiveUpstream++;
+    next();
   }
+}
 
-  const gammaUrl = `https://gamma-api.polymarket.com/${endpoint}?${params}`;
-  console.log('[Relay] Polymarket request (MISS):', endpoint, tag || '');
-  polymarketActiveUpstream++;
+function acquirePolymarketSlot() {
+  if (polymarketActiveUpstream < POLYMARKET_MAX_CONCURRENT) {
+    polymarketActiveUpstream++;
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => { polymarketQueue.push(resolve); });
+}
 
-  return new Promise((resolve) => {
-    let finalized = false;
-    function finalize(ok) {
-      if (finalized) return;
-      finalized = true;
-      polymarketActiveUpstream--;
-      if (ok) {
-        polymarketCircuitBreaker.failures = 0;
-      } else {
-        tripPolymarketCircuitBreaker();
-        polymarketCache.set(cacheKey, { data: '[]', timestamp: Date.now() - POLYMARKET_CACHE_TTL_MS + POLYMARKET_NEG_TTL_MS });
+function fetchPolymarketUpstream(cacheKey, endpoint, params, tag) {
+  return acquirePolymarketSlot().then(() => {
+    const gammaUrl = `https://gamma-api.polymarket.com/${endpoint}?${params}`;
+    console.log('[Relay] Polymarket request (MISS):', endpoint, tag || '');
+
+    return new Promise((resolve) => {
+      let finalized = false;
+      function finalize(ok) {
+        if (finalized) return;
+        finalized = true;
+        releasePolymarketSlot();
+        if (ok) {
+          polymarketCircuitBreaker.failures = 0;
+        } else {
+          tripPolymarketCircuitBreaker();
+          polymarketCache.set(cacheKey, { data: '[]', timestamp: Date.now() - POLYMARKET_CACHE_TTL_MS + POLYMARKET_NEG_TTL_MS });
+        }
       }
-    }
-    const request = https.get(gammaUrl, {
-      headers: { 'Accept': 'application/json' },
-      timeout: 10000,
-    }, (response) => {
-      if (response.statusCode !== 200) {
-        console.error(`[Relay] Polymarket upstream ${response.statusCode} (failures: ${polymarketCircuitBreaker.failures + 1})`);
-        response.resume();
+      const request = https.get(gammaUrl, {
+        headers: { 'Accept': 'application/json' },
+        timeout: 10000,
+      }, (response) => {
+        if (response.statusCode !== 200) {
+          console.error(`[Relay] Polymarket upstream ${response.statusCode} (failures: ${polymarketCircuitBreaker.failures + 1})`);
+          response.resume();
+          finalize(false);
+          resolve(null);
+          return;
+        }
+        let data = '';
+        response.on('data', chunk => data += chunk);
+        response.on('end', () => {
+          finalize(true);
+          polymarketCache.set(cacheKey, { data, timestamp: Date.now() });
+          resolve(data);
+        });
+        response.on('error', () => { finalize(false); resolve(null); });
+      });
+      request.on('error', (err) => {
+        console.error('[Relay] Polymarket error:', err.message);
         finalize(false);
         resolve(null);
-        return;
-      }
-      let data = '';
-      response.on('data', chunk => data += chunk);
-      response.on('end', () => {
-        finalize(true);
-        polymarketCache.set(cacheKey, { data, timestamp: Date.now() });
-        resolve(data);
       });
-      response.on('error', () => { finalize(false); });
-    });
-    request.on('error', (err) => {
-      console.error('[Relay] Polymarket error:', err.message);
-      finalize(false);
-      resolve(null);
-    });
-    request.on('timeout', () => {
-      request.destroy();
-      finalize(false);
-      resolve(null);
+      request.on('timeout', () => {
+        request.destroy();
+        finalize(false);
+        resolve(null);
+      });
     });
   });
 }
@@ -2205,14 +2219,17 @@ function handlePolymarketRequest(req, res) {
   const url = new URL(req.url, `http://localhost:${PORT}`);
 
   // Build canonical params FIRST so cache key is deterministic regardless of
-  // query-string ordering or tag vs tag_slug alias
+  // query-string ordering, tag vs tag_slug alias, or varying limit values.
+  // Cache key excludes limit — always fetch upstream with limit=50, slice on serve.
+  // This prevents cache fragmentation from different callers (limit=20 vs limit=30).
   const endpoint = url.searchParams.get('endpoint') || 'markets';
+  const requestedLimit = Math.max(1, Math.min(100, parseInt(url.searchParams.get('limit') || '50', 10) || 50));
+  const upstreamLimit = 50; // canonical upstream limit for cache sharing
   const params = new URLSearchParams();
   params.set('closed', url.searchParams.get('closed') || 'false');
   params.set('order', url.searchParams.get('order') || 'volume');
   params.set('ascending', url.searchParams.get('ascending') || 'false');
-  const limit = Math.max(1, Math.min(100, parseInt(url.searchParams.get('limit') || '50', 10) || 50));
-  params.set('limit', String(limit));
+  params.set('limit', String(upstreamLimit));
   const tag = url.searchParams.get('tag') || url.searchParams.get('tag_slug');
   if (tag && endpoint === 'events') params.set('tag_slug', tag.replace(/[^a-z0-9-]/gi, '').slice(0, 100));
 

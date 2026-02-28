@@ -122,9 +122,12 @@ async function polyFetch(endpoint: 'events' | 'markets', params: Record<string, 
     } catch { /* Tauri command failed, fall through to proxy */ }
   }
 
-  // Proxy params (expects 'tag' not 'tag_slug' for Vercel handler)
+  // Proxy params — strip fields the relay ignores (end_date_min, active, archived)
+  // to keep the URL deterministic for CDN caching.
+  const PROXY_STRIP_KEYS = new Set(['end_date_min', 'active', 'archived']);
   const proxyParams: Record<string, string> = { endpoint };
   for (const [k, v] of Object.entries(params)) {
+    if (PROXY_STRIP_KEYS.has(k)) continue;
     proxyParams[k === 'tag_slug' ? 'tag' : k] = v;
   }
   const proxyQs = new URLSearchParams(proxyParams).toString();
