@@ -72,9 +72,6 @@ const TIER_HEADERS: Record<CacheTier, string> = {
 
 const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/maritime/v1/get-vessel-snapshot': 'no-store',
-  '/api/infrastructure/v1/record-baseline-snapshot': 'no-store',
-  '/api/intelligence/v1/classify-event': 'no-store',
-  '/api/news/v1/summarize-article': 'no-store',
 
   '/api/market/v1/list-market-quotes': 'fast',
   '/api/market/v1/list-crypto-quotes': 'fast',
@@ -120,7 +117,6 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/economic/v1/get-energy-capacity': 'static',
   '/api/supply-chain/v1/get-critical-minerals': 'static',
   '/api/military/v1/get-aircraft-details': 'static',
-  '/api/military/v1/get-aircraft-details-batch': 'static',
   '/api/military/v1/get-wingbits-status': 'static',
 
   '/api/military/v1/list-military-flights': 'slow',
