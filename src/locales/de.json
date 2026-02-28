@@ -1396,6 +1396,7 @@
       "departureDelay": "ABFLUGVERZÖGERUNGEN",
       "arrivalDelay": "ANKUNFTSVERZÖGERUNGEN",
       "delaysReported": "VERSPÄTUNGEN GEMELDET",
+      "closure": "FLUGHAFEN GESPERRT",
       "delays": "VERSPÄTUNGEN",
       "avgDelay": "Ø VERSPÄTUNG",
       "cancelled": "STORNIERT",

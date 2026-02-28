@@ -1397,6 +1397,7 @@
       "departureDelay": "离港延误",
       "arrivalDelay": "到港延误",
       "delaysReported": "已报告延误",
+      "closure": "机场关闭",
       "delays": "延误",
       "avgDelay": "平均延误",
       "cancelled": "已取消",

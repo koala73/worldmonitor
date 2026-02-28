@@ -1397,6 +1397,7 @@
       "departureDelay": "ดีเลย์ขาออก",
       "arrivalDelay": "ดีเลย์ขาเข้า",
       "delaysReported": "รายงานดีเลย์",
+      "closure": "ปิดสนามบิน",
       "delays": "ดีเลย์",
       "avgDelay": "ดีเลย์เฉลี่ย",
       "cancelled": "ยกเลิก",

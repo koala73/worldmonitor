@@ -1255,6 +1255,7 @@
       "departureDelay": "ATRASOS DE PARTIDA",
       "arrivalDelay": "ATRASOS DE CHEGADA",
       "delaysReported": "ATRASOS REPORTADOS",
+      "closure": "FECHAMENTO DE AEROPORTO",
       "delays": "ATRASOS",
       "avgDelay": "ATRASO MÉDIO",
       "cancelled": "CANCELADO",

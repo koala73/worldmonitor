@@ -1397,6 +1397,7 @@
       "departureDelay": "出発遅延",
       "arrivalDelay": "到着遅延",
       "delaysReported": "遅延報告あり",
+      "closure": "空港閉鎖",
       "delays": "遅延",
       "avgDelay": "平均遅延",
       "cancelled": "欠航",

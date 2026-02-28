@@ -1531,14 +1531,16 @@ export class DeckGLMap {
       data: delays,
       getPosition: (d) => [d.lon, d.lat],
       getRadius: (d) => {
-        if (d.severity === 'GDP') return 15000; // Ground Delay Program
-        if (d.severity === 'GS') return 12000; // Ground Stop
+        if (d.severity === 'severe') return 15000;
+        if (d.severity === 'major') return 12000;
+        if (d.severity === 'moderate') return 10000;
         return 8000;
       },
       getFillColor: (d) => {
-        if (d.severity === 'GS') return [255, 50, 50, 200] as [number, number, number, number]; // Red for ground stops
-        if (d.severity === 'GDP') return [255, 150, 0, 200] as [number, number, number, number]; // Orange for delays
-        return [255, 200, 100, 180] as [number, number, number, number]; // Yellow
+        if (d.severity === 'severe') return [255, 50, 50, 200] as [number, number, number, number];
+        if (d.severity === 'major') return [255, 150, 0, 200] as [number, number, number, number];
+        if (d.severity === 'moderate') return [255, 200, 100, 180] as [number, number, number, number];
+        return [180, 180, 180, 150] as [number, number, number, number];
       },
       radiusMinPixels: 4,
       radiusMaxPixels: 15,
@@ -2759,7 +2761,7 @@ export class DeckGLMap {
         return { html: `<div class="deckgl-tooltip"><strong>${typeIcon} ${text(obj.name)}</strong><br/>${text(obj.type || t('components.deckgl.tooltip.port'))} - ${text(obj.country)}</div>` };
       }
       case 'flight-delays-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.airport)}</strong><br/>${text(obj.severity)}: ${text(obj.reason)}</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)} (${text(obj.iata)})</strong><br/>${text(obj.severity)}: ${text(obj.reason)}</div>` };
       case 'apt-groups-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.aka)}<br/>${t('popups.sponsor')}: ${text(obj.sponsor)}</div>` };
       case 'minerals-layer':
