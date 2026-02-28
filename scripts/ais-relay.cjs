@@ -361,12 +361,15 @@ function stripBom(text) {
 function orefCurlFetch(proxyAuth, url) {
   // Use curl via child_process — Node.js TLS fingerprint (JA3) gets blocked by Akamai,
   // but curl's fingerprint passes. curl is available on Railway (Linux) and macOS.
-  const { execSync } = require('child_process');
+  // execFileSync avoids shell interpolation — safe with special chars in proxy credentials.
+  const { execFileSync } = require('child_process');
   const proxyUrl = `http://${proxyAuth}`;
-  const result = execSync(
-    `curl -s -x "${proxyUrl}" --max-time 15 -H "Accept: application/json" -H "Referer: https://www.oref.org.il/" "${url}"`,
-    { encoding: 'utf8', timeout: 20000 }
-  );
+  const result = execFileSync('curl', [
+    '-s', '-x', proxyUrl, '--max-time', '15',
+    '-H', 'Accept: application/json',
+    '-H', 'Referer: https://www.oref.org.il/',
+    url,
+  ], { encoding: 'utf8', timeout: 20000 });
   return result;
 }
 
