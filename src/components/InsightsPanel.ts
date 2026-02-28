@@ -619,9 +619,10 @@ export class InsightsPanel extends Panel {
   }
 
   private renderFocalPoints(): string {
-    // Only show focal points that have both news AND signals (true correlations)
+    // Show focal points with news+signals correlations, or those with active strikes
     const correlatedFPs = this.lastFocalPoints.filter(
-      fp => fp.newsMentions > 0 && fp.signalCount > 0
+      fp => (fp.newsMentions > 0 && fp.signalCount > 0) ||
+            fp.signalTypes.includes('active_strike')
     ).slice(0, 5);
 
     if (correlatedFPs.length === 0) {
@@ -634,6 +635,7 @@ export class InsightsPanel extends Panel {
       military_vessel: '⚓',
       protest: '📢',
       ais_disruption: '🚢',
+      active_strike: '💥',
     };
 
     const focalPointsHtml = correlatedFPs.map(fp => {

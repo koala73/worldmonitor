@@ -21,6 +21,7 @@ export type SignalType =
   | 'ais_disruption'
   | 'satellite_fire'        // NASA FIRMS thermal anomalies
   | 'temporal_anomaly'      // Baseline deviation alerts
+  | 'active_strike'         // Iran attack / military conflict events
 
 export interface GeoSignal {
   type: SignalType;
@@ -31,6 +32,8 @@ export interface GeoSignal {
   severity: 'low' | 'medium' | 'high';
   title: string;
   timestamp: Date;
+  strikeCount?: number;
+  highSeverityStrikeCount?: number;
 }
 
 export interface CountrySignalCluster {
@@ -300,6 +303,59 @@ class SignalAggregator {
     this.pruneOld();
   }
 
+  ingestConflictEvents(events: Array<{
+    id: string;
+    category: string;
+    severity: string;
+    latitude: number;
+    longitude: number;
+    timestamp: number;
+  }>): void {
+    this.clearSignalType('active_strike');
+
+    const seen = new Set<string>();
+    const deduped = events.filter(e => {
+      if (seen.has(e.id)) return false;
+      seen.add(e.id);
+      return true;
+    });
+
+    const byCountry = new Map<string, typeof deduped>();
+    for (const e of deduped) {
+      const code = this.coordsToCountryWithFallback(e.latitude, e.longitude);
+      if (code === 'XX') continue;
+      const arr = byCountry.get(code) || [];
+      arr.push(e);
+      byCountry.set(code, arr);
+    }
+
+    const MAX_PER_COUNTRY = 50;
+    for (const [code, countryEvents] of byCountry) {
+      const capped = countryEvents.slice(0, MAX_PER_COUNTRY);
+      const highCount = capped.filter(e => {
+        const sev = e.severity.toLowerCase();
+        return sev === 'high' || sev === 'critical';
+      }).length;
+      const timestamps = capped.map(e => e.timestamp < 1e12 ? e.timestamp * 1000 : e.timestamp);
+      const maxTs = timestamps.length > 0 ? Math.max(...timestamps) : 0;
+      const safeTs = maxTs > 0 ? maxTs : Date.now();
+
+      this.signals.push({
+        type: 'active_strike',
+        country: code,
+        countryName: getCountryName(code),
+        lat: capped[0]!.latitude,
+        lon: capped[0]!.longitude,
+        severity: highCount >= 5 ? 'high' : highCount >= 2 ? 'medium' : 'low',
+        title: `${capped.length} strikes (${highCount} high severity)`,
+        timestamp: new Date(safeTs),
+        strikeCount: capped.length,
+        highSeverityStrikeCount: highCount,
+      });
+    }
+    this.pruneOld();
+  }
+
   ingestTheaterPostures(postures: Array<{
     targetNation: string | null;
     totalAircraft: number;
@@ -347,9 +403,25 @@ class SignalAggregator {
     }
   }
 
+  private static readonly STRIKE_BOUNDS: Record<string, { n: number; s: number; e: number; w: number }> = {
+    IR: { n: 40, s: 25, e: 63, w: 44 }, IL: { n: 33.3, s: 29.5, e: 35.9, w: 34.3 },
+    SA: { n: 32, s: 16, e: 55, w: 35 }, IQ: { n: 37.4, s: 29.1, e: 48.6, w: 38.8 },
+    SY: { n: 37.3, s: 32.3, e: 42.4, w: 35.7 }, YE: { n: 19, s: 12, e: 54.5, w: 42 },
+    LB: { n: 34.7, s: 33.1, e: 36.6, w: 35.1 }, AE: { n: 26.1, s: 22.6, e: 56.4, w: 51.6 },
+  };
+
   private coordsToCountry(lat: number, lon: number): string {
     const hit = getCountryAtCoordinates(lat, lon);
     return hit?.code ?? 'XX';
+  }
+
+  private coordsToCountryWithFallback(lat: number, lon: number): string {
+    const hit = getCountryAtCoordinates(lat, lon);
+    if (hit?.code) return hit.code;
+    for (const [code, b] of Object.entries(SignalAggregator.STRIKE_BOUNDS)) {
+      if (lat >= b.s && lat <= b.n && lon >= b.w && lon <= b.e) return code;
+    }
+    return 'XX';
   }
 
   private pruneOld(): void {
@@ -416,6 +488,7 @@ class SignalAggregator {
           ais_disruption: 'shipping anomalies',
           satellite_fire: 'thermal anomalies',
           temporal_anomaly: 'baseline anomalies',
+          active_strike: 'active strikes',
         };
 
         const typeDescriptions = [...allTypes].map(t => typeLabels[t]).join(', ');
@@ -471,6 +544,7 @@ class SignalAggregator {
       ais_disruption: 0,
       satellite_fire: 0,
       temporal_anomaly: 0,
+      active_strike: 0,
     };
 
     for (const s of this.signals) {

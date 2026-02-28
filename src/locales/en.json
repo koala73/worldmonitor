@@ -36,7 +36,8 @@
       "earthquakes": "earthquakes",
       "displaced": "displaced",
       "climate": "Climate stress",
-      "conflictEvents": "conflict events"
+      "conflictEvents": "conflict events",
+      "activeStrikes": "active strikes"
     },
     "timeAgo": {
       "m": "{{count}}m ago",
@@ -72,7 +73,8 @@
       "internetOutages": "{{count}} internet outages",
       "recentEarthquakes": "{{count}} recent earthquakes",
       "stockIndex": "Stock index: {{value}}",
-      "recentHeadlines": "**Recent headlines:**"
+      "recentHeadlines": "**Recent headlines:**",
+      "activeStrikes": "{{count}} active strikes detected"
     }
   },
   "header": {
@@ -453,7 +455,8 @@
         "earthquakes": "earthquakes",
         "displaced": "displaced",
         "climate": "Climate stress",
-        "conflictEvents": "conflict events"
+        "conflictEvents": "conflict events",
+        "activeStrikes": "active strikes"
       },
       "timeAgo": {
         "m": "{{count}}m ago",
@@ -486,6 +489,7 @@
         "protestsDetected": "{{count}} active protests detected",
         "aircraftTracked": "{{count}} military aircraft tracked",
         "vesselsTracked": "{{count}} military vessels tracked",
+        "activeStrikes": "{{count}} active strikes detected",
         "internetOutages": "{{count}} internet outages",
         "recentEarthquakes": "{{count}} recent earthquakes",
         "stockIndex": "Stock index: {{value}}",

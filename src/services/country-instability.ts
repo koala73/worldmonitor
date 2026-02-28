@@ -35,6 +35,7 @@ interface CountryData {
   militaryVessels: MilitaryVessel[];
   newsEvents: ClusteredEvent[];
   outages: InternetOutage[];
+  strikes: Array<{ severity: string; timestamp: number; lat: number; lon: number; title: string; id: string }>;
   displacementOutflow: number;
   climateStress: number;
 }
@@ -118,7 +119,7 @@ const countryDataMap = new Map<string, CountryData>();
 const previousScores = new Map<string, number>();
 
 function initCountryData(): CountryData {
-  return { protests: [], conflicts: [], ucdpStatus: null, hapiSummary: null, militaryFlights: [], militaryVessels: [], newsEvents: [], outages: [], displacementOutflow: 0, climateStress: 0 };
+  return { protests: [], conflicts: [], ucdpStatus: null, hapiSummary: null, militaryFlights: [], militaryVessels: [], newsEvents: [], outages: [], strikes: [], displacementOutflow: 0, climateStress: 0 };
 }
 
 const newsEventIndexMap = new Map<string, Map<string, number>>();
@@ -380,6 +381,44 @@ export function ingestNewsForCII(events: ClusteredEvent[]): void {
   }
 }
 
+const STRIKE_COUNTRY_BOUNDS: Record<string, { n: number; s: number; e: number; w: number }> = {
+  IR: { n: 40, s: 25, e: 63, w: 44 }, IL: { n: 33.3, s: 29.5, e: 35.9, w: 34.3 },
+  SA: { n: 32, s: 16, e: 55, w: 35 }, IQ: { n: 37.4, s: 29.1, e: 48.6, w: 38.8 },
+  SY: { n: 37.3, s: 32.3, e: 42.4, w: 35.7 }, YE: { n: 19, s: 12, e: 54.5, w: 42 },
+  LB: { n: 34.7, s: 33.1, e: 36.6, w: 35.1 }, AE: { n: 26.1, s: 22.6, e: 56.4, w: 51.6 },
+};
+
+function coordsToBoundsCountry(lat: number, lon: number): string | null {
+  for (const [code, b] of Object.entries(STRIKE_COUNTRY_BOUNDS)) {
+    if (lat >= b.s && lat <= b.n && lon >= b.w && lon <= b.e) return code;
+  }
+  return null;
+}
+
+export function ingestStrikesForCII(events: Array<{
+  id: string; category: string; severity: string;
+  latitude: number; longitude: number; timestamp: number;
+  title: string; locationName: string;
+}>): void {
+  for (const [, data] of countryDataMap) data.strikes = [];
+
+  const seen = new Set<string>();
+  for (const e of events) {
+    if (seen.has(e.id)) continue;
+    seen.add(e.id);
+    const code = getCountryAtCoordinates(e.latitude, e.longitude)?.code
+      ?? coordsToBoundsCountry(e.latitude, e.longitude);
+    if (!code || code === 'XX') continue;
+    if (!countryDataMap.has(code)) countryDataMap.set(code, initCountryData());
+    countryDataMap.get(code)!.strikes.push({
+      severity: e.severity,
+      timestamp: e.timestamp < 1e12 ? e.timestamp * 1000 : e.timestamp,
+      lat: e.latitude, lon: e.longitude,
+      title: e.title || e.locationName, id: e.id,
+    });
+  }
+}
+
 export function ingestOutagesForCII(outages: InternetOutage[]): void {
   for (const o of outages) {
     processedCount++;
@@ -482,7 +521,17 @@ function calcConflictScore(data: CountryData, countryCode: string): number {
     newsFloor = calcNewsConflictFloor(data, multiplier);
   }
 
-  return Math.min(100, Math.max(acledScore, hapiFallback, newsFloor));
+  let strikeBoost = 0;
+  const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const recentStrikes = data.strikes.filter(s => s.timestamp >= sevenDaysAgo);
+  if (recentStrikes.length > 0) {
+    const highCount = recentStrikes.filter(s =>
+      s.severity.toLowerCase() === 'high' || s.severity.toLowerCase() === 'critical'
+    ).length;
+    strikeBoost = Math.min(50, recentStrikes.length * 3 + highCount * 5);
+  }
+
+  return Math.min(100, Math.max(acledScore, hapiFallback, newsFloor) + strikeBoost);
 }
 
 function getUcdpFloor(data: CountryData): number {

@@ -1,4 +1,5 @@
 import type { NewsItem, Monitor, PanelConfig, MapLayers, InternetOutage, SocialUnrestEvent, MilitaryFlight, MilitaryFlightCluster, MilitaryVessel, MilitaryVesselCluster, CyberThreat, USNIFleetReport } from '@/types';
+import type { IranEvent } from '@/generated/client/worldmonitor/conflict/v1/service_client';
 import type { MapContainer, Panel, NewsPanel, SignalModal, StatusPanel, SearchModal } from '@/components';
 import type { IntelligenceGapBadge } from '@/components';
 import type { MarketData, ClusteredEvent } from '@/types';
@@ -32,6 +33,7 @@ export interface CountryBriefSignals {
   displacementOutflow: number;
   climateStress: number;
   conflictEvents: number;
+  activeStrikes: number;
   isTier1: boolean;
 }
 
@@ -41,6 +43,7 @@ export interface IntelligenceCache {
   military?: { flights: MilitaryFlight[]; flightClusters: MilitaryFlightCluster[]; vessels: MilitaryVessel[]; vesselClusters: MilitaryVesselCluster[] };
   earthquakes?: Earthquake[];
   usniFleet?: USNIFleetReport;
+  iranEvents?: IranEvent[];
 }
 
 export interface AppModule {
