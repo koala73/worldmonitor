@@ -29,7 +29,7 @@
     "test:e2e:finance": "cross-env VITE_VARIANT=finance playwright test",
     "test:e2e:runtime": "cross-env VITE_VARIANT=full playwright test e2e/runtime-fetch.spec.ts",
     "test:e2e": "npm run test:e2e:runtime && npm run test:e2e:full && npm run test:e2e:tech && npm run test:e2e:finance",
-    "test:data": "node --test tests/*.test.mjs",
+    "test:data": "node --test tests/*.test.mjs; npx tsx --test tests/*.test.mts",
     "test:feeds": "node scripts/validate-rss-feeds.mjs",
     "test:sidecar": "node --test src-tauri/sidecar/local-api-server.test.mjs api/_cors.test.mjs api/youtube/embed.test.mjs api/cyber-threats.test.mjs api/usni-fleet.test.mjs scripts/ais-relay-rss.test.cjs api/loaders-xml-wms-regression.test.mjs",
     "test:e2e:visual:full": "cross-env VITE_VARIANT=full playwright test -g \"matches golden screenshots per layer and zoom\"",
