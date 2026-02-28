@@ -463,7 +463,7 @@ function orefCurlFetch(proxyAuth, url) {
     '-H', 'Referer: https://www.oref.org.il/',
     '-H', 'X-Requested-With: XMLHttpRequest',
     url,
-  ], { encoding: 'utf8', timeout: 20000, stdio: ['pipe', 'pipe', 'pipe'] });
+  ], { encoding: 'utf8', timeout: 20000, maxBuffer: 10 * 1024 * 1024, stdio: ['pipe', 'pipe', 'pipe'] });
   return result;
 }
 
