@@ -342,18 +342,20 @@ async function pollTelegramOnce() {
 
 let telegramPollInFlight = false;
 
+function guardedTelegramPoll() {
+  if (telegramPollInFlight) return;
+  telegramPollInFlight = true;
+  pollTelegramOnce()
+    .catch(e => console.warn('[Relay] Telegram poll error:', e?.message || e))
+    .finally(() => { telegramPollInFlight = false; });
+}
+
 function startTelegramPollLoop() {
   if (!TELEGRAM_ENABLED) return;
   loadTelegramChannels();
-  pollTelegramOnce().catch(e => console.warn(‘[Relay] Telegram poll error:’, e?.message || e));
-  setInterval(() => {
-    if (telegramPollInFlight) return;
-    telegramPollInFlight = true;
-    pollTelegramOnce()
-      .catch(e => console.warn(‘[Relay] Telegram poll error:’, e?.message || e))
-      .finally(() => { telegramPollInFlight = false; });
-  }, TELEGRAM_POLL_INTERVAL_MS).unref?.();
-  console.log(‘[Relay] Telegram poll loop started’);
+  guardedTelegramPoll();
+  setInterval(guardedTelegramPoll, TELEGRAM_POLL_INTERVAL_MS).unref?.();
+  console.log('[Relay] Telegram poll loop started');
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -3006,11 +3008,16 @@ setInterval(() => {
 // Graceful shutdown — disconnect Telegram BEFORE container dies.
 // Railway sends SIGTERM during deploys; without this, the old container keeps
 // the Telegram session alive while the new container connects → AUTH_KEY_DUPLICATED.
-function gracefulShutdown(signal) {
+async function gracefulShutdown(signal) {
   console.log(`[Relay] ${signal} received — shutting down`);
   if (telegramState.client) {
     console.log('[Relay] Disconnecting Telegram client...');
-    try { telegramState.client.disconnect(); } catch {}
+    try {
+      await Promise.race([
+        telegramState.client.disconnect(),
+        new Promise(r => setTimeout(r, 3000)),
+      ]);
+    } catch {}
     telegramState.client = null;
   }
   if (upstreamWs) {
