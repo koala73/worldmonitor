@@ -281,14 +281,25 @@ const SHORT_KEYWORDS = new Set([
   'virus', 'disease', 'flood', 'strikes',
 ]);
 
+const TRAILING_BOUNDARY_KEYWORDS = new Set([
+  'attack iran', 'attacked iran', 'attack on iran', 'attack against iran',
+  'bombing iran', 'bombed iran', 'strikes iran', 'attacks iran',
+  'bombs iran', 'war on iran', 'war with iran', 'war against iran',
+]);
+
 const keywordRegexCache = new Map<string, RegExp>();
 
 function getKeywordRegex(kw: string): RegExp {
   let re = keywordRegexCache.get(kw);
   if (!re) {
-    re = SHORT_KEYWORDS.has(kw)
-      ? new RegExp(`\\b${kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`)
-      : new RegExp(kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (SHORT_KEYWORDS.has(kw)) {
+      re = new RegExp(`\\b${escaped}\\b`);
+    } else if (TRAILING_BOUNDARY_KEYWORDS.has(kw)) {
+      re = new RegExp(`${escaped}(?![\\w-])`);
+    } else {
+      re = new RegExp(escaped);
+    }
     keywordRegexCache.set(kw, re);
   }
   return re;
