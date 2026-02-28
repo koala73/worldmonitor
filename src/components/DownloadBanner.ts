@@ -8,6 +8,9 @@ const SHOW_DELAY_MS = 12_000;
 let bannerScheduled = false;
 
 export function maybeShowDownloadBanner(): void {
+  // Disabled
+  return;
+
   if (bannerScheduled) return;
   if (isDesktopRuntime()) return;
   if (isMobileDevice()) return;
