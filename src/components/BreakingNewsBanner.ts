@@ -129,6 +129,15 @@ export class BreakingNewsBanner {
     const existing = this.activeAlerts.find(a => a.alert.id === alert.id);
     if (existing) return;
 
+    if (alert.threatLevel === 'critical') {
+      const highAlerts = this.activeAlerts.filter(a => a.alert.threatLevel === 'high');
+      for (const h of highAlerts) {
+        this.removeAlert(h);
+        const idx = this.activeAlerts.indexOf(h);
+        if (idx !== -1) this.activeAlerts.splice(idx, 1);
+      }
+    }
+
     while (this.activeAlerts.length >= MAX_ALERTS) {
       const oldest = this.activeAlerts.shift();
       if (oldest) this.removeAlert(oldest);

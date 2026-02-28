@@ -230,6 +230,18 @@ function extractImageUrl(item: Element): string | undefined {
   return undefined;
 }
 
+function parsePubDate(raw: string): Date {
+  if (!raw) return new Date(0);
+  const d = new Date(raw);
+  if (!Number.isNaN(d.getTime())) return d;
+  // CrisisWatch format: "Friday, February 27, 2026 - 12:38"
+  const cleaned = raw.replace(/^\w+,\s*/, '').replace(/\s*-\s*/, ' ');
+  const d2 = new Date(cleaned);
+  if (!Number.isNaN(d2.getTime())) return d2;
+  // epoch 0 = 1970 — old enough to never trigger alerts
+  return new Date(0);
+}
+
 export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
   if (feedCache.size > MAX_CACHE_ENTRIES / 2) cleanupCaches();
   const currentLang = getCurrentLanguage();
@@ -287,8 +299,7 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
         const pubDateStr = isAtom
           ? (item.querySelector('published')?.textContent || item.querySelector('updated')?.textContent || '')
           : (item.querySelector('pubDate')?.textContent || '');
-        const parsedDate = pubDateStr ? new Date(pubDateStr) : new Date();
-        const pubDate = Number.isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
+        const pubDate = parsePubDate(pubDateStr);
         const threat = classifyByKeyword(title, SITE_VARIANT);
         const isAlert = threat.level === 'critical' || threat.level === 'high';
         const geoMatches = inferGeoHubsFromTitle(title);
