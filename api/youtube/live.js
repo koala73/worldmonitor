@@ -4,6 +4,7 @@
 import { getCorsHeaders, isDisallowedOrigin } from '../_cors.js';
 import http from 'node:http';
 import https from 'node:https';
+import zlib from 'node:zlib';
 
 export const config = {
   maxDuration: 15,
@@ -44,13 +45,18 @@ function fetchViaProxy(targetUrl, proxy) {
         hostname: target.hostname,
         path: target.pathname + target.search,
         method: 'GET',
-        headers: { 'User-Agent': CHROME_UA },
+        headers: { 'User-Agent': CHROME_UA, 'Accept-Encoding': 'gzip, deflate' },
         socket,
         agent: false,
       }, (res) => {
+        let stream = res;
+        const encoding = (res.headers['content-encoding'] || '').trim().toLowerCase();
+        if (encoding === 'gzip') stream = res.pipe(zlib.createGunzip());
+        else if (encoding === 'deflate') stream = res.pipe(zlib.createInflate());
+
         const chunks = [];
-        res.on('data', (c) => chunks.push(c));
-        res.on('end', () => {
+        stream.on('data', (c) => chunks.push(c));
+        stream.on('end', () => {
           resolve({
             ok: res.statusCode >= 200 && res.statusCode < 300,
             status: res.statusCode,
@@ -58,6 +64,7 @@ function fetchViaProxy(targetUrl, proxy) {
             json: () => Promise.resolve(JSON.parse(Buffer.concat(chunks).toString())),
           });
         });
+        stream.on('error', reject);
       });
       req.on('error', reject);
       req.end();
@@ -74,7 +81,7 @@ async function ytFetch(url) {
   if (proxy) {
     return fetchViaProxy(url, proxy);
   }
-  return globalThis.fetch(url, { headers: { 'User-Agent': CHROME_UA }, redirect: 'follow' });
+  return globalThis.fetch(url, { headers: { 'User-Agent': CHROME_UA, 'Accept-Encoding': 'gzip, deflate, br' }, redirect: 'follow' });
 }
 
 export default async function handler(request) {
