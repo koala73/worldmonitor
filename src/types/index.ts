@@ -541,6 +541,13 @@ export interface MapLayers {
   renewableInstallations: boolean;
   // Trade route layers
   tradeRoutes: boolean;
+  // OpenSens DAMD layers
+  pvPotential: boolean;
+  windViability: boolean;
+  aqiHeatmap: boolean;
+  candidateNodes: boolean;
+  starlinkHubs: boolean;
+  fiberRoutes: boolean;
 }
 
 export interface AIDataCenter {
