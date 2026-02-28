@@ -1,0 +1,76 @@
+# World Monitor — Docker Compose (Full OSINT Stack)
+# ================================================
+# nginx (static + API proxy) + local-api-server + Ollama + Gluetun VPN
+#
+# Usage:
+#   docker compose up -d --build     # Build and start everything
+#   docker compose logs -f           # Watch all logs
+#   docker compose down              # Stop everything
+#
+# VPN: To enable VPN routing, set VPN_USER/VPN_PASS in .env.local
+#      and uncomment network_mode lines below.
+
+services:
+  # ── Gluetun VPN Gateway ──────────────────────────────────────────
+  # All outbound traffic from worldmonitor goes through this tunnel.
+  # Kill switch: if VPN drops, worldmonitor loses internet entirely.
+  gluetun:
+    image: qmcgaw/gluetun
+    container_name: vpn_gateway
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      - VPN_SERVICE_PROVIDER=${VPN_PROVIDER:-protonvpn}
+      - VPN_TYPE=${VPN_TYPE:-openvpn}
+      - OPENVPN_USER=${VPN_USER:-}
+      - OPENVPN_PASSWORD=${VPN_PASS:-}
+      - SERVER_COUNTRIES=${VPN_COUNTRY:-Netherlands}
+      - FREE_ONLY=${VPN_FREE_ONLY:-on}
+    ports:
+      - "3737:3737" # Dashboard UI (nginx)
+      - "11434:11434" # Ollama API (optional external access)
+    volumes:
+      - gluetun_data:/gluetun
+    restart: unless-stopped
+
+  # ── World Monitor Dashboard ──────────────────────────────────────
+  # nginx serves static files on :3737, proxies /api/* to local-api-server
+  worldmonitor:
+    build: .
+    container_name: world_monitor
+    network_mode: "service:gluetun"
+    depends_on:
+      - gluetun
+    env_file: .env.local
+    environment:
+      - LOCAL_API_PORT=46123
+      - LOCAL_API_CLOUD_FALLBACK=true
+      - LOCAL_API_MODE=docker
+    restart: unless-stopped
+
+  # ── Ollama Local AI ──────────────────────────────────────────────
+  # Runs LLM inference locally — no data leaves your machine.
+  # Models are stored in a persistent volume.
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama_ai
+    network_mode: "service:gluetun"
+    depends_on:
+      - gluetun
+    volumes:
+      - ollama_data:/root/.ollama
+    # UNCOMMENT BELOW FOR NVIDIA GPU SUPPORT
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    restart: unless-stopped
+
+volumes:
+  ollama_data:
+  gluetun_data:
