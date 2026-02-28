@@ -6,15 +6,21 @@ import type {
   FlightDelaySource,
   AirportRegion,
 } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
+import type { MonitoredAirport } from '../../../../src/types';
 import {
   MONITORED_AIRPORTS,
   FAA_AIRPORTS,
   DELAY_SEVERITY_THRESHOLDS,
 } from '../../../../src/config/airports';
+import { CHROME_UA } from '../../../_shared/constants';
 
 // ---------- Constants ----------
 
 export const FAA_URL = 'https://nasstatus.faa.gov/api/airport-status-information';
+export const AVIATIONSTACK_URL = 'https://api.aviationstack.com/v1/flights';
+const BATCH_CONCURRENCY = 5;
+const BATCH_SIZE = 20;
+const MIN_FLIGHTS_FOR_CLOSURE = 10;
 
 // ---------- XML Parser ----------
 
@@ -131,6 +137,7 @@ export function toProtoDelayType(t: string): FlightDelayType {
     departure_delay: 'FLIGHT_DELAY_TYPE_DEPARTURE_DELAY',
     arrival_delay: 'FLIGHT_DELAY_TYPE_ARRIVAL_DELAY',
     general: 'FLIGHT_DELAY_TYPE_GENERAL',
+    closure: 'FLIGHT_DELAY_TYPE_CLOSURE',
   };
   return map[t] || 'FLIGHT_DELAY_TYPE_GENERAL';
 }
@@ -175,6 +182,136 @@ export function determineSeverity(avgDelayMinutes: number, delayedPct?: number):
   if (avgDelayMinutes >= t.moderate.avgDelayMinutes || (delayedPct && delayedPct >= t.moderate.delayedPct)) return 'moderate';
   if (avgDelayMinutes >= t.minor.avgDelayMinutes || (delayedPct && delayedPct >= t.minor.delayedPct)) return 'minor';
   return 'normal';
+}
+
+// ---------- AviationStack integration ----------
+
+interface AviationStackFlight {
+  flight_status?: string;
+  departure?: { delay?: number };
+}
+
+export interface AviationStackResult {
+  alerts: AirportDelayAlert[];
+  healthy: boolean;
+}
+
+let batchOffset = Math.floor(Math.random() * 100);
+
+export async function fetchAviationStackDelays(
+  allAirports: MonitoredAirport[]
+): Promise<AviationStackResult> {
+  const apiKey = process.env.AVIATIONSTACK_API;
+  if (!apiKey) return { alerts: [], healthy: false };
+
+  const start = batchOffset % allAirports.length;
+  const batch: MonitoredAirport[] = [];
+  for (let i = 0; i < BATCH_SIZE && i < allAirports.length; i++) {
+    const airport = allAirports[(start + i) % allAirports.length];
+    if (airport) batch.push(airport);
+  }
+  batchOffset = (start + BATCH_SIZE) % allAirports.length;
+
+  const alerts: AirportDelayAlert[] = [];
+  let succeeded = 0, failed = 0;
+  const deadline = Date.now() + 20_000;
+
+  for (let i = 0; i < batch.length; i += BATCH_CONCURRENCY) {
+    if (Date.now() >= deadline) break;
+    const chunk = batch.slice(i, i + BATCH_CONCURRENCY);
+    const results = await Promise.allSettled(
+      chunk.map(airport => fetchSingleAirport(apiKey, airport))
+    );
+    for (const r of results) {
+      if (r.status === 'fulfilled') {
+        if (r.value.ok) { succeeded++; if (r.value.alert) alerts.push(r.value.alert); }
+        else failed++;
+      } else {
+        failed++;
+      }
+    }
+  }
+
+  const healthy = batch.length < 5 || failed <= succeeded;
+  if (!healthy) {
+    console.warn(`[Aviation] Systemic failure: ${failed}/${failed + succeeded} airports failed`);
+  }
+  return { alerts, healthy };
+}
+
+interface FetchResult { ok: boolean; alert: AirportDelayAlert | null; }
+
+async function fetchSingleAirport(
+  apiKey: string, airport: MonitoredAirport
+): Promise<FetchResult> {
+  try {
+    const url = `${AVIATIONSTACK_URL}?access_key=${apiKey}&dep_iata=${airport.iata}&limit=100`;
+    const resp = await fetch(url, {
+      headers: { 'User-Agent': CHROME_UA },
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!resp.ok) {
+      console.warn(`[Aviation] ${airport.iata}: HTTP ${resp.status}`);
+      return { ok: false, alert: null };
+    }
+    const json = await resp.json() as { data?: AviationStackFlight[] };
+    return { ok: true, alert: aggregateFlights(airport, json?.data ?? []) };
+  } catch {
+    return { ok: false, alert: null };
+  }
+}
+
+function aggregateFlights(
+  airport: MonitoredAirport, flights: AviationStackFlight[]
+): AirportDelayAlert | null {
+  if (flights.length === 0) return null;
+
+  let delayed = 0, cancelled = 0, totalDelay = 0;
+  for (const f of flights) {
+    if (f.flight_status === 'cancelled') cancelled++;
+    if (f.departure?.delay && f.departure.delay > 0) {
+      delayed++;
+      totalDelay += f.departure.delay;
+    }
+  }
+
+  const total = flights.length;
+  const cancelledPct = (cancelled / total) * 100;
+  const delayedPct = (delayed / total) * 100;
+  const avgDelay = delayed > 0 ? Math.round(totalDelay / delayed) : 0;
+
+  let severity: string, delayType: string, reason: string;
+  if (cancelledPct >= 80 && total >= MIN_FLIGHTS_FOR_CLOSURE) {
+    severity = 'severe'; delayType = 'closure';
+    reason = 'Airport closure / airspace restrictions';
+  } else if (cancelledPct >= 50 && total >= MIN_FLIGHTS_FOR_CLOSURE) {
+    severity = 'major'; delayType = 'ground_stop';
+    reason = `${Math.round(cancelledPct)}% flights cancelled`;
+  } else if (avgDelay > 0) {
+    severity = determineSeverity(avgDelay, delayedPct);
+    delayType = avgDelay >= 60 ? 'ground_delay' : 'general';
+    reason = `Avg ${avgDelay}min delay, ${Math.round(delayedPct)}% delayed`;
+  } else {
+    return null;
+  }
+  if (severity === 'normal') return null;
+
+  return {
+    id: `avstack-${airport.iata}`,
+    iata: airport.iata, icao: airport.icao,
+    name: airport.name, city: airport.city, country: airport.country,
+    location: { latitude: airport.lat, longitude: airport.lon },
+    region: toProtoRegion(airport.region),
+    delayType: toProtoDelayType(delayType),
+    severity: toProtoSeverity(severity),
+    avgDelayMinutes: avgDelay,
+    delayedFlightsPct: Math.round(delayedPct),
+    cancelledFlights: cancelled,
+    totalFlights: total,
+    reason,
+    source: toProtoSource('computed'),
+    updatedAt: Date.now(),
+  };
 }
 
 // ---------- Simulated delay generation ----------

@@ -1397,6 +1397,7 @@
       "departureDelay": "ЗАДЕРЖКИ ВЫЛЕТОВ",
       "arrivalDelay": "ЗАДЕРЖКИ ПРИЛЁТОВ",
       "delaysReported": "ЗАФИКСИРОВАНЫ ЗАДЕРЖКИ",
+      "closure": "АЭРОПОРТ ЗАКРЫТ",
       "delays": "ЗАДЕРЖКИ",
       "avgDelay": "СРЕДНЯЯ ЗАДЕРЖКА",
       "cancelled": "ОТМЕНЕНО",

@@ -64,6 +64,10 @@ export const MONITORED_AIRPORTS: MonitoredAirport[] = [
   { iata: 'MNL', icao: 'RPLL', name: 'Ninoy Aquino International', city: 'Manila', country: 'Philippines', lat: 14.5086, lon: 121.0197, region: 'apac' },
   { iata: 'TPE', icao: 'RCTP', name: 'Taiwan Taoyuan International', city: 'Taipei', country: 'Taiwan', lat: 25.0797, lon: 121.2342, region: 'apac' },
   { iata: 'AKL', icao: 'NZAA', name: 'Auckland Airport', city: 'Auckland', country: 'New Zealand', lat: -37.0082, lon: 174.7850, region: 'apac' },
+  // Pakistan
+  { iata: 'KHI', icao: 'OPKC', name: 'Jinnah International', city: 'Karachi', country: 'Pakistan', lat: 24.9065, lon: 67.1610, region: 'apac' },
+  { iata: 'ISB', icao: 'OPIS', name: 'Islamabad International', city: 'Islamabad', country: 'Pakistan', lat: 33.5605, lon: 72.8526, region: 'apac' },
+  { iata: 'LHE', icao: 'OPLA', name: 'Allama Iqbal International', city: 'Lahore', country: 'Pakistan', lat: 31.5216, lon: 74.4036, region: 'apac' },
 
   // Middle East & North Africa
   { iata: 'DXB', icao: 'OMDB', name: 'Dubai International', city: 'Dubai', country: 'UAE', lat: 25.2532, lon: 55.3657, region: 'mena' },
@@ -80,6 +84,33 @@ export const MONITORED_AIRPORTS: MonitoredAirport[] = [
   { iata: 'CMN', icao: 'GMMN', name: 'Mohammed V International', city: 'Casablanca', country: 'Morocco', lat: 33.3675, lon: -7.5898, region: 'mena' },
   { iata: 'ALG', icao: 'DAAG', name: 'Houari Boumediene Airport', city: 'Algiers', country: 'Algeria', lat: 36.6910, lon: 3.2154, region: 'mena' },
   { iata: 'TUN', icao: 'DTTA', name: 'Tunis–Carthage International', city: 'Tunis', country: 'Tunisia', lat: 36.8510, lon: 10.2272, region: 'mena' },
+  // Iran
+  { iata: 'IKA', icao: 'OIIE', name: 'Imam Khomeini International', city: 'Tehran', country: 'Iran', lat: 35.4161, lon: 51.1522, region: 'mena' },
+  { iata: 'THR', icao: 'OIII', name: 'Mehrabad International', city: 'Tehran', country: 'Iran', lat: 35.6892, lon: 51.3134, region: 'mena' },
+  { iata: 'MHD', icao: 'OIMM', name: 'Shahid Hashemi Nejad', city: 'Mashhad', country: 'Iran', lat: 36.2352, lon: 59.6410, region: 'mena' },
+  { iata: 'SYZ', icao: 'OISS', name: 'Shiraz International', city: 'Shiraz', country: 'Iran', lat: 29.5392, lon: 52.5899, region: 'mena' },
+  { iata: 'IFN', icao: 'OIFM', name: 'Isfahan International', city: 'Isfahan', country: 'Iran', lat: 32.7508, lon: 51.8613, region: 'mena' },
+  // Iraq
+  { iata: 'BGW', icao: 'ORBI', name: 'Baghdad International', city: 'Baghdad', country: 'Iraq', lat: 33.2625, lon: 44.2346, region: 'mena' },
+  { iata: 'BSR', icao: 'ORMM', name: 'Basra International', city: 'Basra', country: 'Iraq', lat: 30.5491, lon: 47.6622, region: 'mena' },
+  { iata: 'EBL', icao: 'ORER', name: 'Erbil International', city: 'Erbil', country: 'Iraq', lat: 36.2376, lon: 43.9632, region: 'mena' },
+  { iata: 'NJF', icao: 'ORNI', name: 'Al Najaf International', city: 'Najaf', country: 'Iraq', lat: 31.9900, lon: 44.4040, region: 'mena' },
+  // Lebanon / Syria / Yemen
+  { iata: 'BEY', icao: 'OLBA', name: 'Rafic Hariri International', city: 'Beirut', country: 'Lebanon', lat: 33.8209, lon: 35.4884, region: 'mena' },
+  { iata: 'DAM', icao: 'OSDI', name: 'Damascus International', city: 'Damascus', country: 'Syria', lat: 33.4115, lon: 36.5156, region: 'mena' },
+  { iata: 'ALP', icao: 'OSAP', name: 'Aleppo International', city: 'Aleppo', country: 'Syria', lat: 36.1807, lon: 37.2244, region: 'mena' },
+  { iata: 'SAH', icao: 'OYSN', name: "Sana'a International", city: "Sana'a", country: 'Yemen', lat: 15.4763, lon: 44.2197, region: 'mena' },
+  { iata: 'ADE', icao: 'OYAA', name: 'Aden International', city: 'Aden', country: 'Yemen', lat: 12.8295, lon: 45.0288, region: 'mena' },
+  // UAE / Saudi extras
+  { iata: 'SHJ', icao: 'OMSJ', name: 'Sharjah International', city: 'Sharjah', country: 'UAE', lat: 25.3286, lon: 55.5172, region: 'mena' },
+  { iata: 'DWC', icao: 'OMDW', name: 'Al Maktoum International', city: 'Dubai', country: 'UAE', lat: 24.8960, lon: 55.1614, region: 'mena' },
+  { iata: 'DMM', icao: 'OEDF', name: 'King Fahd International', city: 'Dammam', country: 'Saudi Arabia', lat: 26.4712, lon: 49.7979, region: 'mena' },
+  { iata: 'MED', icao: 'OEMA', name: 'Prince Mohammad bin Abdulaziz', city: 'Medina', country: 'Saudi Arabia', lat: 24.5534, lon: 39.7051, region: 'mena' },
+  // Turkey extras
+  { iata: 'SAW', icao: 'LTFJ', name: 'Sabiha Gökçen International', city: 'Istanbul', country: 'Turkey', lat: 40.8986, lon: 29.3092, region: 'mena' },
+  { iata: 'ESB', icao: 'LTAC', name: 'Esenboğa International', city: 'Ankara', country: 'Turkey', lat: 40.1281, lon: 32.9951, region: 'mena' },
+  { iata: 'ADB', icao: 'LTBJ', name: 'Adnan Menderes Airport', city: 'Izmir', country: 'Turkey', lat: 38.2924, lon: 27.1570, region: 'mena' },
+  { iata: 'AYT', icao: 'LTAI', name: 'Antalya Airport', city: 'Antalya', country: 'Turkey', lat: 36.8987, lon: 30.8005, region: 'mena' },
 
   // Africa
   { iata: 'JNB', icao: 'FAOR', name: 'O.R. Tambo International', city: 'Johannesburg', country: 'South Africa', lat: -26.1392, lon: 28.2460, region: 'africa' },
@@ -90,6 +121,10 @@ export const MONITORED_AIRPORTS: MonitoredAirport[] = [
   { iata: 'ACC', icao: 'DGAA', name: 'Kotoka International', city: 'Accra', country: 'Ghana', lat: 5.6052, lon: -0.1668, region: 'africa' },
   { iata: 'DAR', icao: 'HTDA', name: 'Julius Nyerere International', city: 'Dar es Salaam', country: 'Tanzania', lat: -6.8781, lon: 39.2026, region: 'africa' },
   { iata: 'MRU', icao: 'FIMP', name: 'Sir Seewoosagur Ramgoolam', city: 'Mauritius', country: 'Mauritius', lat: -20.4302, lon: 57.6836, region: 'africa' },
+  // Libya / Sudan
+  { iata: 'TIP', icao: 'HLLT', name: 'Mitiga International', city: 'Tripoli', country: 'Libya', lat: 32.8951, lon: 13.2760, region: 'africa' },
+  { iata: 'BEN', icao: 'HLLB', name: 'Benina International', city: 'Benghazi', country: 'Libya', lat: 32.0968, lon: 20.2695, region: 'africa' },
+  { iata: 'KRT', icao: 'HSSS', name: 'Khartoum International', city: 'Khartoum', country: 'Sudan', lat: 15.5895, lon: 32.5532, region: 'africa' },
 ];
 
 // FAA-monitored airports (subset that works with FAA ASWS API)

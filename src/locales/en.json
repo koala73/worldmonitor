@@ -1504,6 +1504,7 @@
       "departureDelay": "DEPARTURE DELAYS",
       "arrivalDelay": "ARRIVAL DELAYS",
       "delaysReported": "DELAYS REPORTED",
+      "closure": "AIRPORT CLOSURE",
       "delays": "DELAYS",
       "avgDelay": "AVG DELAY",
       "cancelled": "CANCELLED",

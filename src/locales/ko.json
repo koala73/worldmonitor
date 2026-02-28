@@ -1489,6 +1489,7 @@
       "departureDelay": "출발 지연",
       "arrivalDelay": "도착 지연",
       "delaysReported": "지연 보고됨",
+      "closure": "공항 폐쇄",
       "delays": "지연",
       "avgDelay": "평균 지연",
       "cancelled": "결항",

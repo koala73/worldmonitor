@@ -1397,6 +1397,7 @@
       "departureDelay": "KALKIS GECIKMELERI",
       "arrivalDelay": "VARIS GECIKMELERI",
       "delaysReported": "BILDIRILEN GECIKMELER",
+      "closure": "HAVAALANI KAPALI",
       "delays": "GECIKMELER",
       "avgDelay": "ORT. GECIKME",
       "cancelled": "IPTAL EDILEN",

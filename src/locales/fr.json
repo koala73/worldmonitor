@@ -1396,6 +1396,7 @@
       "departureDelay": "RETARDS DÉPART",
       "arrivalDelay": "RETARDS ARRIVÉE",
       "delaysReported": "RETARDS SIGNALÉS",
+      "closure": "FERMETURE D'AÉROPORT",
       "delays": "RETARDS",
       "avgDelay": "RETARD MOYEN",
       "cancelled": "ANNULÉ",

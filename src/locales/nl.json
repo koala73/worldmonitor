@@ -1255,6 +1255,7 @@
       "departureDelay": "VERTREKVERTRAGINGEN",
       "arrivalDelay": "AANKOMSTVERTRAGINGEN",
       "delaysReported": "VERTRAGINGEN GEMELD",
+      "closure": "LUCHTHAVEN GESLOTEN",
       "delays": "VERTRAGINGEN",
       "avgDelay": "GEM. VERTRAGING",
       "cancelled": "GEANNULEERD",

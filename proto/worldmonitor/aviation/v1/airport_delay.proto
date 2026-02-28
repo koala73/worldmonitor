@@ -78,6 +78,8 @@ enum FlightDelayType {
   FLIGHT_DELAY_TYPE_ARRIVAL_DELAY = 4;
   // General delay.
   FLIGHT_DELAY_TYPE_GENERAL = 5;
+  // Airport/airspace closure.
+  FLIGHT_DELAY_TYPE_CLOSURE = 6;
 }
 
 // FlightDelaySeverity represents the severity of flight delays at an airport.

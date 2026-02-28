@@ -1255,6 +1255,7 @@
       "departureDelay": "AVGÅNGSFÖRDRÖJNINGAR",
       "arrivalDelay": "ANKOMSTFÖRDRÖJNINGAR",
       "delaysReported": "FÖRSENINGAR RAPPORTERADE",
+      "closure": "FLYGPLATS STÄNGD",
       "delays": "FÖRSENINGAR",
       "avgDelay": "SNITT FÖRSENING",
       "cancelled": "INSTÄLLD",
