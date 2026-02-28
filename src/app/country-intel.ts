@@ -236,6 +236,7 @@ export class CountryIntelManager implements AppModule {
           if (signals.protests > 0) lines.push(t('countryBrief.fallback.protestsDetected', { count: String(signals.protests) }));
           if (signals.militaryFlights > 0) lines.push(t('countryBrief.fallback.aircraftTracked', { count: String(signals.militaryFlights) }));
           if (signals.militaryVessels > 0) lines.push(t('countryBrief.fallback.vesselsTracked', { count: String(signals.militaryVessels) }));
+          if (signals.activeStrikes > 0) lines.push(t('countryBrief.fallback.activeStrikes', { count: String(signals.activeStrikes) }));
           if (signals.outages > 0) lines.push(t('countryBrief.fallback.internetOutages', { count: String(signals.outages) }));
           if (signals.earthquakes > 0) lines.push(t('countryBrief.fallback.recentEarthquakes', { count: String(signals.earthquakes) }));
           if (context.stockIndex) lines.push(t('countryBrief.fallback.stockIndex', { value: context.stockIndex }));
@@ -330,6 +331,16 @@ export class CountryIntelManager implements AppModule {
       }
     }
 
+    for (const e of this.getCountryStrikes(code, hasGeoShape)) {
+      const ts = e.timestamp < 1e12 ? e.timestamp * 1000 : e.timestamp;
+      events.push({
+        timestamp: ts,
+        lane: 'conflict',
+        label: e.title || `Strike: ${e.locationName}`,
+        severity: (e.severity.toLowerCase() === 'high' || e.severity.toLowerCase() === 'critical') ? 'critical' : 'high',
+      });
+    }
+
     this.ctx.countryTimeline = new CountryTimeline(mount);
     this.ctx.countryTimeline.render(events.filter(e => e.timestamp >= sevenDaysAgo));
   }
@@ -371,6 +382,8 @@ export class CountryIntelManager implements AppModule {
       }).length;
     }
 
+    const activeStrikes = this.getCountryStrikes(code, hasGeoShape).length;
+
     const ciiData = getCountryData(code);
     const isTier1 = !!TIER1_COUNTRIES[code];
 
@@ -383,6 +396,7 @@ export class CountryIntelManager implements AppModule {
       displacementOutflow: ciiData?.displacementOutflow ?? 0,
       climateStress: ciiData?.climateStress ?? 0,
       conflictEvents: ciiData?.conflicts?.length ?? 0,
+      activeStrikes,
       isTier1,
     };
   }
@@ -414,6 +428,16 @@ export class CountryIntelManager implements AppModule {
     document.body.appendChild(el);
     requestAnimationFrame(() => el.classList.add('visible'));
     setTimeout(() => { el.classList.remove('visible'); setTimeout(() => el.remove(), 300); }, 3000);
+  }
+
+  private getCountryStrikes(code: string, hasGeoShape: boolean): typeof this.ctx.intelligenceCache.iranEvents & object {
+    if (!this.ctx.intelligenceCache.iranEvents) return [];
+    const seen = new Set<string>();
+    return this.ctx.intelligenceCache.iranEvents.filter(e => {
+      if (seen.has(e.id)) return false;
+      seen.add(e.id);
+      return hasGeoShape && this.isInCountry(e.latitude, e.longitude, code);
+    });
   }
 
   private isInCountry(lat: number, lon: number, code: string): boolean {
