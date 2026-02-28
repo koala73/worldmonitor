@@ -396,12 +396,23 @@ function guardedTelegramPoll() {
     .finally(() => { telegramPollInFlight = false; });
 }
 
+const TELEGRAM_STARTUP_DELAY_MS = Math.max(0, Number(process.env.TELEGRAM_STARTUP_DELAY_MS || 60_000));
+
 function startTelegramPollLoop() {
   if (!TELEGRAM_ENABLED) return;
   loadTelegramChannels();
-  guardedTelegramPoll();
-  setInterval(guardedTelegramPoll, TELEGRAM_POLL_INTERVAL_MS).unref?.();
-  console.log('[Relay] Telegram poll loop started');
+  if (TELEGRAM_STARTUP_DELAY_MS > 0) {
+    console.log(`[Relay] Telegram connect delayed ${TELEGRAM_STARTUP_DELAY_MS}ms (waiting for old container to disconnect)`);
+    setTimeout(() => {
+      guardedTelegramPoll();
+      setInterval(guardedTelegramPoll, TELEGRAM_POLL_INTERVAL_MS).unref?.();
+      console.log('[Relay] Telegram poll loop started');
+    }, TELEGRAM_STARTUP_DELAY_MS);
+  } else {
+    guardedTelegramPoll();
+    setInterval(guardedTelegramPoll, TELEGRAM_POLL_INTERVAL_MS).unref?.();
+    console.log('[Relay] Telegram poll loop started');
+  }
 }
 
 // ─────────────────────────────────────────────────────────────
