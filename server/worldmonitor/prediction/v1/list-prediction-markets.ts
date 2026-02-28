@@ -34,6 +34,7 @@ interface GammaMarket {
   volumeNum?: number;
   closed?: boolean;
   slug?: string;
+  endDate?: string;
 }
 
 interface GammaEvent {
@@ -43,6 +44,7 @@ interface GammaEvent {
   volume?: number;
   markets?: GammaMarket[];
   closed?: boolean;
+  endDate?: string;
 }
 
 // ---------- Helpers ----------
@@ -66,8 +68,9 @@ function parseYesPrice(market: GammaMarket): number {
 
 /** Map a GammaEvent to a proto PredictionMarket (picks top market by volume). */
 function mapEvent(event: GammaEvent, category: string): PredictionMarket {
-  // Pick the top market from the event (first one is typically highest volume)
   const topMarket = event.markets?.[0];
+  const endDateStr = topMarket?.endDate ?? event.endDate;
+  const closesAtMs = endDateStr ? Date.parse(endDateStr) : 0;
 
   return {
     id: event.id || '',
@@ -75,20 +78,21 @@ function mapEvent(event: GammaEvent, category: string): PredictionMarket {
     yesPrice: topMarket ? parseYesPrice(topMarket) : 0.5,
     volume: event.volume ?? 0,
     url: `https://polymarket.com/event/${event.slug}`,
-    closesAt: 0,
+    closesAt: Number.isFinite(closesAtMs) ? closesAtMs : 0,
     category: category || '',
   };
 }
 
 /** Map a GammaMarket to a proto PredictionMarket. */
 function mapMarket(market: GammaMarket): PredictionMarket {
+  const closesAtMs = market.endDate ? Date.parse(market.endDate) : 0;
   return {
     id: market.slug || '',
     title: market.question,
     yesPrice: parseYesPrice(market),
     volume: (market.volumeNum ?? (market.volume ? parseFloat(market.volume) : 0)) || 0,
     url: `https://polymarket.com/market/${market.slug}`,
-    closesAt: 0,
+    closesAt: Number.isFinite(closesAtMs) ? closesAtMs : 0,
     category: '',
   };
 }
@@ -110,6 +114,9 @@ export const listPredictionMarkets: PredictionServiceHandler['listPredictionMark
         const limit = Math.max(1, Math.min(100, req.pageSize || 50));
         const params = new URLSearchParams({
           closed: 'false',
+          active: 'true',
+          archived: 'false',
+          end_date_min: new Date().toISOString(),
           order: 'volume',
           ascending: 'false',
           limit: String(limit),

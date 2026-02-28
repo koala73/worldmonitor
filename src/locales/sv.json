@@ -988,6 +988,7 @@
     },
     "predictions": {
       "vol": "Vol",
+      "closes": "Stänger",
       "yes": "Ja",
       "no": "Nej",
       "tooltip": "<strong>Förutsägelsemarknader</strong><br>Marknader med riktiga pengar:<br><ul><li>Priserna speglar sannolikhetsuppskattningar</li><li>Högre volym = mer tillförlitlig signal</li><li>Fokus på geopolitiska och aktuella händelser</li></ul>Källa: Polymarket (polymarket.com)",

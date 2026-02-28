@@ -36,10 +36,23 @@ export class PredictionPanel extends Panel {
           ? `<a href="${safeUrl}" target="_blank" rel="noopener" class="prediction-question prediction-link">${escapeHtml(p.title)}</a>`
           : `<div class="prediction-question">${escapeHtml(p.title)}</div>`;
 
+        let expiryHtml = '';
+        if (p.endDate) {
+          const d = new Date(p.endDate);
+          if (Number.isFinite(d.getTime())) {
+            const formatted = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+            expiryHtml = `<span class="prediction-expiry">${t('components.predictions.closes')}: ${formatted}</span>`;
+          }
+        }
+
+        const metaHtml = (volumeStr || expiryHtml)
+          ? `<div class="prediction-meta">${volumeStr ? `<span class="prediction-volume">${t('components.predictions.vol')}: ${volumeStr}</span>` : ''}${expiryHtml}</div>`
+          : '';
+
         return `
       <div class="prediction-item">
         ${titleHtml}
-        ${volumeStr ? `<div class="prediction-volume">${t('components.predictions.vol')}: ${volumeStr}</div>` : ''}
+        ${metaHtml}
         <div class="prediction-bar">
           <div class="prediction-yes" style="width: ${yesPercent}%">
             <span class="prediction-label">${t('components.predictions.yes')} ${yesPercent}%</span>

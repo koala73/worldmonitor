@@ -578,7 +578,8 @@
       "error": "Không thể tải dự đoán",
       "yes": "Có",
       "no": "Không",
-      "vol": "KL"
+      "vol": "KL",
+      "closes": "Đóng"
     },
     "stablecoins": {
       "pegHealth": "Sức khỏe Neo giá",

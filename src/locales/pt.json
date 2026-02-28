@@ -988,6 +988,7 @@
     },
     "predictions": {
       "vol": "Vol",
+      "closes": "Fecha",
       "yes": "Sim",
       "no": "Nao",
       "tooltip": "<strong>Mercados de Previsão</strong><br>Mercados de previsão com dinheiro real:<br><ul><li>Os preços refletem estimativas de probabilidade coletivas</li><li>Maior volume = sinal mais confiável</li><li>Foco em eventos geopolíticos e atuais</li></ul>Fonte: Polymarket (polymarket.com)",

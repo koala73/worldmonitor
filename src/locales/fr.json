@@ -578,7 +578,8 @@
       "error": "Échec du chargement",
       "yes": "Oui",
       "no": "Non",
-      "vol": "Vol"
+      "vol": "Vol",
+      "closes": "Ferme"
     },
     "stablecoins": {
       "pegHealth": "Santé de l'ancrage",

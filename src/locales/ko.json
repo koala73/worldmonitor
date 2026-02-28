@@ -624,7 +624,8 @@
       "error": "예측 데이터 로딩 실패",
       "yes": "예",
       "no": "아니오",
-      "vol": "거래량"
+      "vol": "거래량",
+      "closes": "마감"
     },
     "stablecoins": {
       "pegHealth": "페그 건전성",

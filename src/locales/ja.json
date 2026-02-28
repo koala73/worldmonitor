@@ -578,7 +578,8 @@
       "error": "予測の読み込みに失敗",
       "yes": "はい",
       "no": "いいえ",
-      "vol": "出来高"
+      "vol": "出来高",
+      "closes": "締切"
     },
     "stablecoins": {
       "pegHealth": "ペグ健全性",

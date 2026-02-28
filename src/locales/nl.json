@@ -988,6 +988,7 @@
     },
     "predictions": {
       "vol": "Vol",
+      "closes": "Sluit",
       "yes": "Ja",
       "no": "Nee",
       "tooltip": "<strong>Voorspellingsmarkten</strong><br>Markten met echt geld:<br><ul><li>Prijzen weerspiegelen waarschijnlijkheidsschattingen</li><li>Hoger volume = betrouwbaarder signaal</li><li>Geopolitieke en actuele evenementen</li></ul>Bron: Polymarket (polymarket.com)",

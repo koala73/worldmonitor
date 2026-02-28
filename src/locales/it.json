@@ -578,7 +578,8 @@
       "error": "Impossibile caricare le previsioni",
       "yes": "SÌ",
       "no": "NO",
-      "vol": "vol"
+      "vol": "vol",
+      "closes": "Chiude"
     },
     "deckgl": {
       "views": {

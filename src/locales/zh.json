@@ -578,7 +578,8 @@
       "error": "加载预测失败",
       "yes": "是",
       "no": "否",
-      "vol": "交易量"
+      "vol": "交易量",
+      "closes": "截止"
     },
     "stablecoins": {
       "pegHealth": "锚定健康度",
