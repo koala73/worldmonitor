@@ -81,6 +81,9 @@ const CRITICAL_KEYWORDS: KeywordMap = {
   'military strikes': 'military',
   'retaliatory strikes': 'military',
   'launches strikes': 'military',
+  'launch attacks on iran': 'military',
+  'launch attack on iran': 'military',
+  'attacks on iran': 'military',
   'strikes on iran': 'military',
   'strikes iran': 'military',
   'bombs iran': 'military',
@@ -94,6 +97,10 @@ const CRITICAL_KEYWORDS: KeywordMap = {
   'war with iran': 'conflict',
   'war on iran': 'conflict',
   'war against iran': 'conflict',
+  'iran retaliates': 'military',
+  'iran strikes': 'military',
+  'iran launches': 'military',
+  'iran attacks': 'military',
   'pandemic declared': 'health',
   'health emergency': 'health',
   'nato article 5': 'military',
@@ -283,8 +290,10 @@ const SHORT_KEYWORDS = new Set([
 
 const TRAILING_BOUNDARY_KEYWORDS = new Set([
   'attack iran', 'attacked iran', 'attack on iran', 'attack against iran',
+  'attacks on iran', 'launch attacks on iran', 'launch attack on iran',
   'bombing iran', 'bombed iran', 'strikes iran', 'attacks iran',
   'bombs iran', 'war on iran', 'war with iran', 'war against iran',
+  'iran retaliates', 'iran strikes', 'iran launches', 'iran attacks',
 ]);
 
 const keywordRegexCache = new Map<string, RegExp>();
@@ -317,6 +326,16 @@ function matchKeywords(
   return null;
 }
 
+// Compound escalation: HIGH military/conflict + critical geopolitical target → CRITICAL
+// Handles headlines like "strikes by US and Israel on Iran" where words aren't adjacent
+const ESCALATION_ACTIONS = /\b(attack|attacks|attacked|strike|strikes|struck|bomb|bombs|bombed|bombing|shell|shelled|shelling|missile|missiles|intercept|intercepted|retaliates|retaliating|retaliation|killed|casualties|offensive|invaded|invades)\b/;
+const ESCALATION_TARGETS = /\b(iran|tehran|isfahan|tabriz|russia|moscow|china|beijing|taiwan|taipei|north korea|pyongyang|nato|us base|us forces|american forces|us military)\b/;
+
+function shouldEscalateToCritical(lower: string, matchCat: EventCategory): boolean {
+  if (matchCat !== 'conflict' && matchCat !== 'military') return false;
+  return ESCALATION_ACTIONS.test(lower) && ESCALATION_TARGETS.test(lower);
+}
+
 export function classifyByKeyword(title: string, variant = 'full'): ThreatClassification {
   const lower = title.toLowerCase();
 
@@ -331,7 +350,13 @@ export function classifyByKeyword(title: string, variant = 'full'): ThreatClassi
   if (match) return { level: 'critical', category: match.category, confidence: 0.9, source: 'keyword' };
 
   match = matchKeywords(lower, HIGH_KEYWORDS);
-  if (match) return { level: 'high', category: match.category, confidence: 0.8, source: 'keyword' };
+  if (match) {
+    // Compound escalation: military action + critical geopolitical target → CRITICAL
+    if (shouldEscalateToCritical(lower, match.category)) {
+      return { level: 'critical', category: match.category, confidence: 0.85, source: 'keyword' };
+    }
+    return { level: 'high', category: match.category, confidence: 0.8, source: 'keyword' };
+  }
 
   if (isTech) {
     match = matchKeywords(lower, TECH_HIGH_KEYWORDS);
