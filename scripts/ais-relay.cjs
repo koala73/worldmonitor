@@ -345,15 +345,15 @@ let telegramPollInFlight = false;
 function startTelegramPollLoop() {
   if (!TELEGRAM_ENABLED) return;
   loadTelegramChannels();
-  pollTelegramOnce().catch(e => console.warn(‘[Relay] Telegram poll error:’, e?.message || e));
+  pollTelegramOnce().catch(e => console.warn('[Relay] Telegram poll error:', e?.message || e));
   setInterval(() => {
     if (telegramPollInFlight) return;
     telegramPollInFlight = true;
     pollTelegramOnce()
-      .catch(e => console.warn(‘[Relay] Telegram poll error:’, e?.message || e))
+      .catch(e => console.warn('[Relay] Telegram poll error:', e?.message || e))
       .finally(() => { telegramPollInFlight = false; });
   }, TELEGRAM_POLL_INTERVAL_MS).unref?.();
-  console.log(‘[Relay] Telegram poll loop started’);
+  console.log('[Relay] Telegram poll loop started');
 }
 
 // ─────────────────────────────────────────────────────────────
