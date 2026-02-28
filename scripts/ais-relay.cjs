@@ -2071,7 +2071,20 @@ function handlePolymarketRequest(req, res) {
     }, JSON.stringify({ error: 'polymarket disabled', reason: 'POLYMARKET_ENABLED=false' }));
   }
   const url = new URL(req.url, `http://localhost:${PORT}`);
-  const cacheKey = url.search || '';
+
+  // Build canonical params FIRST so cache key is deterministic regardless of
+  // query-string ordering or tag vs tag_slug alias
+  const endpoint = url.searchParams.get('endpoint') || 'markets';
+  const params = new URLSearchParams();
+  params.set('closed', url.searchParams.get('closed') || 'false');
+  params.set('order', url.searchParams.get('order') || 'volume');
+  params.set('ascending', url.searchParams.get('ascending') || 'false');
+  const limit = Math.max(1, Math.min(100, parseInt(url.searchParams.get('limit') || '50', 10) || 50));
+  params.set('limit', String(limit));
+  const tag = url.searchParams.get('tag') || url.searchParams.get('tag_slug');
+  if (tag && endpoint === 'events') params.set('tag_slug', tag.replace(/[^a-z0-9-]/gi, '').slice(0, 100));
+
+  const cacheKey = endpoint + ':' + params.toString();
 
   const cached = polymarketCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < POLYMARKET_CACHE_TTL_MS) {
@@ -2097,16 +2110,6 @@ function handlePolymarketRequest(req, res) {
     }
     return safeEnd(res, 200, { 'Content-Type': 'application/json', 'X-Circuit': 'OPEN' }, JSON.stringify([]));
   }
-
-  const endpoint = url.searchParams.get('endpoint') || 'markets';
-  const params = new URLSearchParams();
-  params.set('closed', url.searchParams.get('closed') || 'false');
-  params.set('order', url.searchParams.get('order') || 'volume');
-  params.set('ascending', url.searchParams.get('ascending') || 'false');
-  const limit = Math.max(1, Math.min(100, parseInt(url.searchParams.get('limit') || '50', 10) || 50));
-  params.set('limit', String(limit));
-  const tag = url.searchParams.get('tag') || url.searchParams.get('tag_slug');
-  if (tag && endpoint === 'events') params.set('tag_slug', tag.replace(/[^a-z0-9-]/gi, '').slice(0, 100));
 
   let inflight = polymarketInflight.get(cacheKey);
   if (!inflight) {
