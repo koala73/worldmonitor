@@ -15,7 +15,8 @@ import { startLearning } from '@/services/country-instability';
 import { dataFreshness } from '@/services/data-freshness';
 import { loadFromStorage, parseMapUrlState, saveToStorage, isMobileDevice } from '@/utils';
 import type { ParsedMapUrlState } from '@/utils';
-import { SignalModal, IntelligenceGapBadge } from '@/components';
+import { SignalModal, IntelligenceGapBadge, BreakingNewsBanner } from '@/components';
+import { initBreakingNewsAlerts, destroyBreakingNewsAlerts } from '@/services/breaking-news-alerts';
 import type { ServiceStatusPanel } from '@/components/ServiceStatusPanel';
 import type { StablecoinPanel } from '@/components/StablecoinPanel';
 import type { ETFFlowsPanel } from '@/components/ETFFlowsPanel';
@@ -227,6 +228,7 @@ export class App {
       statusPanel: null,
       searchModal: null,
       findingsBadge: null,
+      breakingBanner: null,
       playbackControl: null,
       exportPanel: null,
       unifiedSettings: null,
@@ -356,6 +358,11 @@ export class App {
       });
     }
 
+    if (!this.state.isMobile) {
+      initBreakingNewsAlerts();
+      this.state.breakingBanner = new BreakingNewsBanner();
+    }
+
     // Phase 3: UI setup methods
     this.eventHandlers.startHeaderClock();
     this.eventHandlers.setupMobileWarning();
@@ -420,8 +427,10 @@ export class App {
       this.modules[i]!.destroy();
     }
 
-    // Clean up subscriptions, map, and AIS
+    // Clean up subscriptions, map, AIS, and breaking news
     this.unsubAiFlow?.();
+    this.state.breakingBanner?.destroy();
+    destroyBreakingNewsAlerts();
     this.state.map?.destroy();
     disconnectAisStream();
   }

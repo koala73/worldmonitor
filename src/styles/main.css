@@ -13374,6 +13374,113 @@ body.has-critical-banner .panels-grid {
   padding-top: 50px;
 }
 
+/* ============ Breaking News Alert Banner ============ */
+
+.breaking-news-container {
+  position: fixed;
+  top: 50px;
+  left: 0;
+  right: 0;
+  z-index: 1001;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  pointer-events: none;
+}
+
+.breaking-alert {
+  pointer-events: auto;
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  animation: banner-slide-in 0.3s ease-out;
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.breaking-alert.severity-critical {
+  background: linear-gradient(90deg, #8B0000, #DC143C);
+  border-bottom: 2px solid var(--semantic-critical);
+}
+
+.breaking-alert.severity-high {
+  background: linear-gradient(90deg, var(--semantic-high, #c2410c), #b45309);
+  border-bottom: 2px solid var(--semantic-high, #c2410c);
+}
+
+.breaking-alert-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.breaking-alert-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.breaking-alert-level {
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  padding: 1px 6px;
+  background: var(--overlay-heavy);
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.breaking-alert.severity-critical .breaking-alert-level {
+  animation: pulse-breaking 0.8s ease-in-out infinite;
+}
+
+.breaking-alert-headline {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.breaking-alert-meta {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.7);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.breaking-alert-dismiss {
+  background: var(--overlay-heavy);
+  border: none;
+  color: white;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.breaking-alert-dismiss:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+body.has-breaking-alert .panels-grid {
+  margin-top: var(--breaking-alert-offset, 0px);
+  transition: margin-top 0.3s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .breaking-alert {
+    animation: none;
+  }
+  .breaking-alert.severity-critical .breaking-alert-level {
+    animation: none;
+  }
+}
+
 /* ============ Strategic Posture Panel ============ */
 
 .posture-panel {

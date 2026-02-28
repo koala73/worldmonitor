@@ -1205,7 +1205,14 @@
     "runtimeConfig": {
       "getApiKey": "Get API key"
     },
+    "breakingNews": {
+      "critical": "CRITICAL",
+      "high": "HIGH",
+      "dismiss": "Dismiss",
+      "enableNotifications": "Enable desktop notifications"
+    },
     "intelligenceFindings": {
+      "breakingAlerts": "Breaking Alerts",
       "popupAlerts": "Pop up new alerts",
       "badgeTitle": "Intelligence findings",
       "title": "Intelligence Findings",

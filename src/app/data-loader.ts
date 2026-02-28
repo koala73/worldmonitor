@@ -57,6 +57,7 @@ import {
   fetchChokepointStatus,
   fetchCriticalMinerals,
 } from '@/services';
+import { checkBatchForBreakingAlerts } from '@/services/breaking-news-alerts';
 import { mlWorker } from '@/services/ml-worker';
 import { clusterNewsHybrid } from '@/services/clustering';
 import { ingestProtests, ingestFlights, ingestVessels, ingestEarthquakes, detectGeoConvergence, geoConvergenceToSignal } from '@/services/geo-convergence';
@@ -480,6 +481,7 @@ export class DataLoaderManager implements AppModule {
         onBatch: (partialItems) => {
           scheduleRender(partialItems);
           this.flashMapForNews(partialItems);
+          checkBatchForBreakingAlerts(partialItems);
         },
       });
 
@@ -575,6 +577,7 @@ export class DataLoaderManager implements AppModule {
         const intelResult = await Promise.allSettled([fetchCategoryFeeds(enabledIntelSources)]);
         if (intelResult[0]?.status === 'fulfilled') {
           const intel = intelResult[0].value;
+          checkBatchForBreakingAlerts(intel);
           this.renderNewsForCategory('intel', intel);
           if (intelPanel) {
             try {
