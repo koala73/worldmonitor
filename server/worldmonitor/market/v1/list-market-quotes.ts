@@ -47,7 +47,7 @@ export async function listMarketQuotes(
   const result = await cachedFetchJson<ListMarketQuotesResponse>(redisKey, REDIS_CACHE_TTL, async () => {
     const apiKey = process.env.FINNHUB_API_KEY;
     const symbols = req.symbols;
-    if (!symbols.length) return { quotes: [], finnhubSkipped: !apiKey, skipReason: !apiKey ? 'FINNHUB_API_KEY not configured' : '' };
+    if (!symbols.length) return { quotes: [], finnhubSkipped: !apiKey, skipReason: !apiKey ? 'FINNHUB_API_KEY not configured' : '', rateLimited: false };
 
     const finnhubSymbols = symbols.filter((s) => !YAHOO_ONLY_SYMBOLS.has(s));
     const yahooSymbols = symbols.filter((s) => YAHOO_ONLY_SYMBOLS.has(s));
@@ -114,15 +114,15 @@ export async function listMarketQuotes(
     // Only report skipped if Finnhub key missing AND Yahoo fallback didn't cover the gap
     const coveredByYahoo = finnhubSymbols.every((s) => quotes.some((q) => q.symbol === s));
     const skipped = !apiKey && !coveredByYahoo;
-    return { quotes, finnhubSkipped: skipped, skipReason: skipped ? 'FINNHUB_API_KEY not configured' : '' };
+    return { quotes, finnhubSkipped: skipped, skipReason: skipped ? 'FINNHUB_API_KEY not configured' : '', rateLimited: false };
   });
 
   if (result?.quotes?.length) {
     quotesCache.set(key, { data: result, timestamp: now });
   }
 
-  return result || memCached?.data || { quotes: [], finnhubSkipped: false, skipReason: '' };
+  return result || memCached?.data || { quotes: [], finnhubSkipped: false, skipReason: '', rateLimited: false };
   } catch {
-    return memCached?.data || { quotes: [], finnhubSkipped: false, skipReason: '' };
+    return memCached?.data || { quotes: [], finnhubSkipped: false, skipReason: '', rateLimited: false };
   }
 }

@@ -30,3 +30,9 @@ src-tauri/sidecar/node/*
 # Compiled sebuf gateway bundle (built by scripts/build-sidecar-sebuf.mjs)
 api/[[][[].*.js
 .claudedocs/
+
+# Large generated data files (reproduced by scripts/)
+scripts/data/pizzint-processed.json
+scripts/data/osm-military-processed.json
+scripts/data/military-bases-final.json
+scripts/data/dedup-dropped-pairs.json

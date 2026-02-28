@@ -9,6 +9,7 @@ import "worldmonitor/military/v1/get_aircraft_details.proto";
 import "worldmonitor/military/v1/get_aircraft_details_batch.proto";
 import "worldmonitor/military/v1/get_wingbits_status.proto";
 import "worldmonitor/military/v1/get_usni_fleet_report.proto";
+import "worldmonitor/military/v1/list_military_bases.proto";
 
 // MilitaryService provides APIs for military flight and vessel tracking
 // sourced from OpenSky, Wingbits, and AIS data.
@@ -43,5 +44,10 @@ service MilitaryService {
   // GetUSNIFleetReport retrieves the latest parsed USNI Fleet Tracker report.
   rpc GetUSNIFleetReport(GetUSNIFleetReportRequest) returns (GetUSNIFleetReportResponse) {
     option (sebuf.http.config) = {path: "/get-usni-fleet-report", method: HTTP_METHOD_GET};
+  }
+
+  // ListMilitaryBases retrieves military bases within a bounding box, with server-side clustering.
+  rpc ListMilitaryBases(ListMilitaryBasesRequest) returns (ListMilitaryBasesResponse) {
+    option (sebuf.http.config) = {path: "/list-military-bases", method: HTTP_METHOD_GET};
   }
 }

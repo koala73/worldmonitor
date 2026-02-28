@@ -75,6 +75,8 @@ import { debounce, getCircuitBreakerCooldownInfo } from '@/utils';
 import { isFeatureAvailable } from '@/services/runtime-config';
 import { getAiFlowSettings } from '@/services/ai-flow-settings';
 import { t } from '@/services/i18n';
+import { getHydratedData } from '@/services/bootstrap';
+import type { GetSectorSummaryResponse } from '@/generated/client/worldmonitor/market/v1/service_client';
 import { maybeShowDownloadBanner } from '@/components/DownloadBanner';
 import { mountCommunityWidget } from '@/components/CommunityWidget';
 import { ResearchServiceClient } from '@/generated/client/worldmonitor/research/v1/service_client';
@@ -666,19 +668,25 @@ export class DataLoaderManager implements AppModule {
       } else {
         this.ctx.statusPanel?.updateApi('Finnhub', { status: 'ok' });
 
-        const sectorsResult = await fetchMultipleStocks(
-          SECTORS.map((s) => ({ ...s, display: s.name })),
-          {
-            onBatch: (partialSectors) => {
-              (this.ctx.panels['heatmap'] as HeatmapPanel).renderHeatmap(
-                partialSectors.map((s) => ({ name: s.name, change: s.change }))
-              );
-            },
-          }
-        );
-        (this.ctx.panels['heatmap'] as HeatmapPanel).renderHeatmap(
-          sectorsResult.data.map((s) => ({ name: s.name, change: s.change }))
-        );
+        const hydratedSectors = getHydratedData('sectors') as GetSectorSummaryResponse | undefined;
+        if (hydratedSectors?.sectors?.length) {
+          const mapped = hydratedSectors.sectors.map((s) => ({ name: s.name, change: s.change }));
+          (this.ctx.panels['heatmap'] as HeatmapPanel).renderHeatmap(mapped);
+        } else {
+          const sectorsResult = await fetchMultipleStocks(
+            SECTORS.map((s) => ({ ...s, display: s.name })),
+            {
+              onBatch: (partialSectors) => {
+                (this.ctx.panels['heatmap'] as HeatmapPanel).renderHeatmap(
+                  partialSectors.map((s) => ({ name: s.name, change: s.change }))
+                );
+              },
+            }
+          );
+          (this.ctx.panels['heatmap'] as HeatmapPanel).renderHeatmap(
+            sectorsResult.data.map((s) => ({ name: s.name, change: s.change }))
+          );
+        }
       }
 
       const commoditiesPanel = this.ctx.panels['commodities'] as CommoditiesPanel;

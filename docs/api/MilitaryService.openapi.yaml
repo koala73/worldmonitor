@@ -127,7 +127,7 @@ paths:
                 - name: icao24
                   in: query
                   description: ICAO 24-bit hex address (lowercase).
-                  required: true
+                  required: false
                   schema:
                     type: string
             responses:
@@ -228,6 +228,78 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/GetUSNIFleetReportResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/military/v1/list-military-bases:
+        get:
+            tags:
+                - MilitaryService
+            summary: ListMilitaryBases
+            description: ListMilitaryBases retrieves military bases within a bounding box, with server-side clustering.
+            operationId: ListMilitaryBases
+            parameters:
+                - name: ne_lat
+                  in: query
+                  required: false
+                  schema:
+                    type: number
+                    format: double
+                - name: ne_lon
+                  in: query
+                  required: false
+                  schema:
+                    type: number
+                    format: double
+                - name: sw_lat
+                  in: query
+                  required: false
+                  schema:
+                    type: number
+                    format: double
+                - name: sw_lon
+                  in: query
+                  required: false
+                  schema:
+                    type: number
+                    format: double
+                - name: zoom
+                  in: query
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+                - name: type
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+                - name: kind
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+                - name: country
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListMilitaryBasesResponse'
                 "400":
                     description: Validation error
                     content:
@@ -873,3 +945,96 @@ components:
                         type: string
                         description: Escort vessels in the strike group.
             description: USNIStrikeGroup represents a carrier strike group parsed from the article.
+        ListMilitaryBasesRequest:
+            type: object
+            properties:
+                neLat:
+                    type: number
+                    format: double
+                neLon:
+                    type: number
+                    format: double
+                swLat:
+                    type: number
+                    format: double
+                swLon:
+                    type: number
+                    format: double
+                zoom:
+                    type: integer
+                    format: int32
+                type:
+                    type: string
+                kind:
+                    type: string
+                country:
+                    type: string
+        ListMilitaryBasesResponse:
+            type: object
+            properties:
+                bases:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/MilitaryBaseEntry'
+                clusters:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/MilitaryBaseCluster'
+                totalInView:
+                    type: integer
+                    format: int32
+                truncated:
+                    type: boolean
+        MilitaryBaseEntry:
+            type: object
+            properties:
+                id:
+                    type: string
+                name:
+                    type: string
+                latitude:
+                    type: number
+                    format: double
+                longitude:
+                    type: number
+                    format: double
+                kind:
+                    type: string
+                countryIso2:
+                    type: string
+                type:
+                    type: string
+                tier:
+                    type: integer
+                    format: int32
+                catAirforce:
+                    type: boolean
+                catNaval:
+                    type: boolean
+                catNuclear:
+                    type: boolean
+                catSpace:
+                    type: boolean
+                catTraining:
+                    type: boolean
+                branch:
+                    type: string
+                status:
+                    type: string
+        MilitaryBaseCluster:
+            type: object
+            properties:
+                latitude:
+                    type: number
+                    format: double
+                longitude:
+                    type: number
+                    format: double
+                count:
+                    type: integer
+                    format: int32
+                dominantType:
+                    type: string
+                expansionZoom:
+                    type: integer
+                    format: int32

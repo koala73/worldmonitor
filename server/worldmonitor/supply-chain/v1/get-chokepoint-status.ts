@@ -54,8 +54,8 @@ async function fetchChokepointData(): Promise<ChokepointFetchResult> {
   let vesselFailed = false;
 
   const [navResult, vesselResult] = await Promise.all([
-    listNavigationalWarnings(ctx, { area: '' }).catch((): ListNavigationalWarningsResponse => { navFailed = true; return { warnings: [], pagination: undefined }; }),
-    getVesselSnapshot(ctx, {}).catch((): GetVesselSnapshotResponse => { vesselFailed = true; return { snapshot: undefined }; }),
+    listNavigationalWarnings(ctx, { area: '', pageSize: 0, cursor: '' }).catch((): ListNavigationalWarningsResponse => { navFailed = true; return { warnings: [], pagination: undefined }; }),
+    getVesselSnapshot(ctx, { neLat: 90, neLon: 180, swLat: -90, swLon: -180 }).catch((): GetVesselSnapshotResponse => { vesselFailed = true; return { snapshot: undefined }; }),
   ]);
 
   const warnings = navResult.warnings || [];

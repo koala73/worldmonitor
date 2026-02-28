@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package worldmonitor.military.v1;
+
+import "sebuf/http/annotations.proto";
+
+message ListMilitaryBasesRequest {
+  double ne_lat = 1 [(sebuf.http.query) = { name: "ne_lat" }];
+  double ne_lon = 2 [(sebuf.http.query) = { name: "ne_lon" }];
+  double sw_lat = 3 [(sebuf.http.query) = { name: "sw_lat" }];
+  double sw_lon = 4 [(sebuf.http.query) = { name: "sw_lon" }];
+  int32 zoom = 5 [(sebuf.http.query) = { name: "zoom" }];
+  string type = 6 [(sebuf.http.query) = { name: "type" }];
+  string kind = 7 [(sebuf.http.query) = { name: "kind" }];
+  string country = 8 [(sebuf.http.query) = { name: "country" }];
+}
+
+message MilitaryBaseEntry {
+  string id = 1;
+  string name = 2;
+  double latitude = 3;
+  double longitude = 4;
+  string kind = 5;
+  string country_iso2 = 6;
+  string type = 7;
+  int32 tier = 8;
+  bool cat_airforce = 9;
+  bool cat_naval = 10;
+  bool cat_nuclear = 11;
+  bool cat_space = 12;
+  bool cat_training = 13;
+  string branch = 14;
+  string status = 15;
+}
+
+message MilitaryBaseCluster {
+  double latitude = 1;
+  double longitude = 2;
+  int32 count = 3;
+  string dominant_type = 4;
+  int32 expansion_zoom = 5;
+}
+
+message ListMilitaryBasesResponse {
+  repeated MilitaryBaseEntry bases = 1;
+  repeated MilitaryBaseCluster clusters = 2;
+  int32 total_in_view = 3;
+  bool truncated = 4;
+}

@@ -26,7 +26,6 @@ export class StrategicRiskPanel extends Panel {
   private alerts: UnifiedAlert[] = [];
   private convergenceAlerts: GeoConvergenceAlert[] = [];
   private freshnessSummary: DataFreshnessSummary | null = null;
-  private refreshInterval: ReturnType<typeof setInterval> | null = null;
   private unsubscribeFreshness: (() => void) | null = null;
   private onLocationClick?: (lat: number, lon: number) => void;
   private usedCachedScores = false;
@@ -55,18 +54,15 @@ export class StrategicRiskPanel extends Panel {
         }, 500);
       });
       await this.refresh();
-      this.startAutoRefresh();
     } catch (error) {
       console.error('[StrategicRiskPanel] Init error:', error);
       this.showError(t('common.failedRiskOverview'));
     }
   }
 
-  private startAutoRefresh(): void {
-    this.refreshInterval = setInterval(() => this.refresh(), 5 * 60 * 1000);
-  }
+  private lastRiskFingerprint = '';
 
-  public async refresh(): Promise<void> {
+  public async refresh(): Promise<boolean> {
     this.freshnessSummary = dataFreshness.getSummary();
     this.convergenceAlerts = detectConvergence();
     this.overview = calculateStrategicRiskOverview(this.convergenceAlerts);
@@ -92,6 +88,12 @@ export class StrategicRiskPanel extends Panel {
     }
 
     this.render();
+
+    const alertIds = this.alerts.map(a => a.id).sort().join(',');
+    const fp = `${this.overview?.compositeScore}|${this.overview?.trend}|${alertIds}`;
+    const changed = fp !== this.lastRiskFingerprint;
+    this.lastRiskFingerprint = fp;
+    return changed;
   }
 
   private getScoreColor(score: number): string {
@@ -473,9 +475,6 @@ export class StrategicRiskPanel extends Panel {
   }
 
   public destroy(): void {
-    if (this.refreshInterval) {
-      clearInterval(this.refreshInterval);
-    }
     if (this.unsubscribeFreshness) {
       this.unsubscribeFreshness();
     }

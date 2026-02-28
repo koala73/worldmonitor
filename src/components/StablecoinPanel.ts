@@ -29,22 +29,12 @@ export class StablecoinPanel extends Panel {
   private data: StablecoinResult | null = null;
   private loading = true;
   private error: string | null = null;
-  private refreshInterval: ReturnType<typeof setInterval> | null = null;
-
   constructor() {
     super({ id: 'stablecoins', title: t('panels.stablecoins'), showCount: false });
     void this.fetchData();
-    this.refreshInterval = setInterval(() => this.fetchData(), 3 * 60000);
   }
 
-  public destroy(): void {
-    if (this.refreshInterval) {
-      clearInterval(this.refreshInterval);
-      this.refreshInterval = null;
-    }
-  }
-
-  private async fetchData(): Promise<void> {
+  public async fetchData(): Promise<void> {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const client = new MarketServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });

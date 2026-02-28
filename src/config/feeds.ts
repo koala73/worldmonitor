@@ -32,6 +32,7 @@ export const SOURCE_TIERS: Record<string, number> = {
   'Al Jazeera': 2,
   'Financial Times': 2,
   'Politico': 2,
+  'Axios': 2,
   'EuroNews': 2,
   'France 24': 2,
   'Le Monde': 2,
@@ -320,7 +321,7 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   'BBC World': 'mainstream', 'BBC Middle East': 'mainstream',
   'Guardian World': 'mainstream', 'Guardian ME': 'mainstream',
   'NPR News': 'mainstream', 'Al Jazeera': 'mainstream',
-  'CNN World': 'mainstream', 'Politico': 'mainstream',
+  'CNN World': 'mainstream', 'Politico': 'mainstream', 'Axios': 'mainstream',
   'EuroNews': 'mainstream', 'France 24': 'mainstream', 'Le Monde': 'mainstream',
   // European Addition
   'El País': 'mainstream', 'El Mundo': 'mainstream', 'BBC Mundo': 'mainstream',
@@ -443,6 +444,7 @@ const FULL_FEEDS: Record<string, Feed[]> = {
   us: [
     { name: 'NPR News', url: rss('https://feeds.npr.org/1001/rss.xml') },
     { name: 'Politico', url: rss('https://news.google.com/rss/search?q=site:politico.com+when:1d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Axios', url: rss('https://api.axios.com/feed/') },
   ],
   europe: [
     {

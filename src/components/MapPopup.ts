@@ -822,6 +822,14 @@ export class MapPopup {
       'russia': 'high',
     };
 
+    const enriched = base as MilitaryBase & { kind?: string; catAirforce?: boolean; catNaval?: boolean; catNuclear?: boolean; catSpace?: boolean; catTraining?: boolean };
+    const categories: string[] = [];
+    if (enriched.catAirforce) categories.push('Air Force');
+    if (enriched.catNaval) categories.push('Naval');
+    if (enriched.catNuclear) categories.push('Nuclear');
+    if (enriched.catSpace) categories.push('Space');
+    if (enriched.catTraining) categories.push('Training');
+
     return `
       <div class="popup-header base">
         <span class="popup-title">${escapeHtml(base.name.toUpperCase())}</span>
@@ -830,11 +838,15 @@ export class MapPopup {
       </div>
       <div class="popup-body">
         ${base.description ? `<p class="popup-description">${escapeHtml(base.description)}</p>` : ''}
+        ${enriched.kind ? `<p class="popup-description" style="opacity:0.7;margin-top:2px">${escapeHtml(enriched.kind.replace(/_/g, ' '))}</p>` : ''}
         <div class="popup-stats">
           <div class="popup-stat">
             <span class="stat-label">${t('popups.type')}</span>
             <span class="stat-value">${escapeHtml(typeLabels[base.type] || base.type)}</span>
           </div>
+          ${base.arm ? `<div class="popup-stat"><span class="stat-label">Branch</span><span class="stat-value">${escapeHtml(base.arm)}</span></div>` : ''}
+          ${base.country ? `<div class="popup-stat"><span class="stat-label">Country</span><span class="stat-value">${escapeHtml(base.country)}</span></div>` : ''}
+          ${categories.length > 0 ? `<div class="popup-stat"><span class="stat-label">Categories</span><span class="stat-value">${escapeHtml(categories.join(', '))}</span></div>` : ''}
           <div class="popup-stat">
             <span class="stat-label">${t('popups.coordinates')}</span>
             <span class="stat-value">${base.lat.toFixed(2)}°, ${base.lon.toFixed(2)}°</span>

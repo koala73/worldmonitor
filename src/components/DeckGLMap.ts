@@ -33,7 +33,9 @@ import type {
   MapDatacenterCluster,
   CyberThreat,
   CableHealthRecord,
+  MilitaryBaseEnriched,
 } from '@/types';
+import { fetchMilitaryBases, type MilitaryBaseCluster as ServerBaseCluster } from '@/services/military-bases';
 import type { AirportDelayAlert } from '@/services/aviation';
 import type { DisplacementFlow } from '@/services/displacement';
 import type { Earthquake } from '@/services/earthquakes';
@@ -270,6 +272,9 @@ export class DeckGLMap {
   private militaryFlightClusters: MilitaryFlightCluster[] = [];
   private militaryVessels: MilitaryVessel[] = [];
   private militaryVesselClusters: MilitaryVesselCluster[] = [];
+  private serverBases: MilitaryBaseEnriched[] = [];
+  private serverBaseClusters: ServerBaseCluster[] = [];
+  private serverBasesLoaded = false;
   private naturalEvents: NaturalEvent[] = [];
   private firmsFireData: Array<{ lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string }> = [];
   private techEvents: TechEventMarker[] = [];
@@ -339,6 +344,7 @@ export class DeckGLMap {
   private lastCableHealthSignature = '';
   private lastPipelineHighlightSignature = '';
   private debouncedRebuildLayers: () => void;
+  private debouncedFetchBases: () => void;
   private rafUpdateLayers: () => void;
   private moveTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
@@ -352,6 +358,7 @@ export class DeckGLMap {
       this.maplibreMap.resize();
       try { this.deckOverlay?.setProps({ layers: this.buildLayers() }); } catch { /* map mid-teardown */ }
     }, 150);
+    this.debouncedFetchBases = debounce(() => this.fetchServerBases(), 300);
     this.rafUpdateLayers = rafSchedule(() => {
       if (this.renderPaused || this.webglLost || !this.maplibreMap) return;
       try { this.deckOverlay?.setProps({ layers: this.buildLayers() }); } catch { /* map mid-teardown */ }
@@ -375,6 +382,7 @@ export class DeckGLMap {
       this.rebuildDatacenterSupercluster();
       this.initDeck();
       this.loadCountryBoundaries();
+      this.fetchServerBases();
       this.render();
     });
 
@@ -467,6 +475,7 @@ export class DeckGLMap {
     this.maplibreMap.on('moveend', () => {
       this.lastSCZoom = -1;
       this.rafUpdateLayers();
+      this.debouncedFetchBases();
     });
 
     this.maplibreMap.on('move', () => {
@@ -970,10 +979,12 @@ export class DeckGLMap {
       layers.push(this.createConflictZonesLayer());
     }
 
-    // Military bases layer — hidden at low zoom (E: progressive disclosure) + ghost
+    // Military bases layer — hidden at low zoom (E: progressive disclosure) + ghost + clusters
     if (mapLayers.bases && this.isLayerVisible('bases')) {
       layers.push(this.createBasesLayer());
-      layers.push(this.createGhostLayer('bases-layer', MILITARY_BASES, d => [d.lon, d.lat], { radiusMinPixels: 12 }));
+      layers.push(...this.createBasesClusterLayer());
+      const basesData = this.getBasesData();
+      layers.push(this.createGhostLayer('bases-layer', basesData, d => [d.lon, d.lat], { radiusMinPixels: 12 }));
     }
 
     // Nuclear facilities layer — hidden at low zoom + ghost
@@ -1316,32 +1327,33 @@ export class DeckGLMap {
     return layer;
   }
 
+  private getBasesData(): MilitaryBaseEnriched[] {
+    return this.serverBasesLoaded ? this.serverBases : MILITARY_BASES as MilitaryBaseEnriched[];
+  }
+
+  private getBaseColor(type: string, a: number): [number, number, number, number] {
+    switch (type) {
+      case 'us-nato': return [68, 136, 255, a];
+      case 'russia': return [255, 68, 68, a];
+      case 'china': return [255, 136, 68, a];
+      case 'uk': return [68, 170, 255, a];
+      case 'france': return [0, 85, 164, a];
+      case 'india': return [255, 153, 51, a];
+      case 'japan': return [188, 0, 45, a];
+      default: return [136, 136, 136, a];
+    }
+  }
+
   private createBasesLayer(): IconLayer {
     const highlightedBases = this.highlightedAssets.base;
-
-    // Base colors by operator type - semi-transparent for layering
-    // F: Fade in bases as you zoom — subtle at zoom 3, full at zoom 5+
     const zoom = this.maplibreMap?.getZoom() || 3;
-    const alphaScale = Math.min(1, (zoom - 2.5) / 2.5); // 0.2 at zoom 3, 1.0 at zoom 5
+    const alphaScale = Math.min(1, (zoom - 2.5) / 2.5);
     const a = Math.round(160 * Math.max(0.3, alphaScale));
+    const data = this.getBasesData();
 
-    const getBaseColor = (type: string): [number, number, number, number] => {
-      switch (type) {
-        case 'us-nato': return [68, 136, 255, a];
-        case 'russia': return [255, 68, 68, a];
-        case 'china': return [255, 136, 68, a];
-        case 'uk': return [68, 170, 255, a];
-        case 'france': return [0, 85, 164, a];
-        case 'india': return [255, 153, 51, a];
-        case 'japan': return [188, 0, 45, a];
-        default: return [136, 136, 136, a];
-      }
-    };
-
-    // Military bases: TRIANGLE icons - color by operator, semi-transparent
     return new IconLayer({
       id: 'bases-layer',
-      data: MILITARY_BASES,
+      data,
       getPosition: (d) => [d.lon, d.lat],
       getIcon: () => 'triangleUp',
       iconAtlas: MARKER_ICONS.triangleUp,
@@ -1351,13 +1363,45 @@ export class DeckGLMap {
         if (highlightedBases.has(d.id)) {
           return [255, 100, 100, 220] as [number, number, number, number];
         }
-        return getBaseColor(d.type);
+        return this.getBaseColor(d.type, a);
       },
       sizeScale: 1,
       sizeMinPixels: 6,
       sizeMaxPixels: 16,
       pickable: true,
     });
+  }
+
+  private createBasesClusterLayer(): Layer[] {
+    if (this.serverBaseClusters.length === 0) return [];
+    const zoom = this.maplibreMap?.getZoom() || 3;
+    const alphaScale = Math.min(1, (zoom - 2.5) / 2.5);
+    const a = Math.round(180 * Math.max(0.3, alphaScale));
+
+    const scatterLayer = new ScatterplotLayer<ServerBaseCluster>({
+      id: 'bases-cluster-layer',
+      data: this.serverBaseClusters,
+      getPosition: (d) => [d.longitude, d.latitude],
+      getRadius: (d) => Math.max(8000, Math.log2(d.count) * 6000),
+      getFillColor: (d) => this.getBaseColor(d.dominantType, a),
+      radiusMinPixels: 10,
+      radiusMaxPixels: 40,
+      pickable: true,
+    });
+
+    const textLayer = new TextLayer<ServerBaseCluster>({
+      id: 'bases-cluster-text',
+      data: this.serverBaseClusters,
+      getPosition: (d) => [d.longitude, d.latitude],
+      getText: (d) => String(d.count),
+      getSize: 12,
+      getColor: [255, 255, 255, 220],
+      fontWeight: 'bold',
+      getTextAnchor: 'middle',
+      getAlignmentBaseline: 'center',
+    });
+
+    return [scatterLayer, textLayer];
   }
 
   private createNuclearLayer(): IconLayer {
@@ -2597,7 +2641,9 @@ export class DeckGLMap {
         }
         return { html: `<div class="deckgl-tooltip"><strong>${t('components.deckgl.tooltip.dataCentersCount', { count: String(obj.count) })}</strong><br/>${text(obj.country)}</div>` };
       case 'bases-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.country)}</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.country)}${obj.kind ? ` · ${text(obj.kind)}` : ''}</div>` };
+      case 'bases-cluster-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${obj.count} bases</strong></div>` };
       case 'nuclear-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.type)}</div>` };
       case 'datacenters-layer':
@@ -3638,6 +3684,26 @@ export class DeckGLMap {
     this.render();
   }
 
+  private fetchServerBases(): void {
+    if (!this.maplibreMap) return;
+    const mapLayers = this.state.layers;
+    if (!mapLayers.bases) return;
+    const zoom = this.maplibreMap.getZoom();
+    if (zoom < 3) return;
+    const bounds = this.maplibreMap.getBounds();
+    const sw = bounds.getSouthWest();
+    const ne = bounds.getNorthEast();
+    fetchMilitaryBases(sw.lat, sw.lng, ne.lat, ne.lng, zoom).then((result) => {
+      if (!result) return;
+      this.serverBases = result.bases;
+      this.serverBaseClusters = result.clusters;
+      this.serverBasesLoaded = true;
+      this.render();
+    }).catch((err) => {
+      console.error('[bases] fetch error', err);
+    });
+  }
+
   public setNaturalEvents(events: NaturalEvent[]): void {
     this.naturalEvents = events;
     this.render();
@@ -3960,9 +4026,8 @@ export class DeckGLMap {
   }
 
   public triggerBaseClick(id: string): void {
-    const base = MILITARY_BASES.find(b => b.id === id);
+    const base = this.serverBases.find(b => b.id === id) || MILITARY_BASES.find(b => b.id === id);
     if (base) {
-      // Don't pan - show popup at projected screen position or center
       const screenPos = this.projectToScreen(base.lat, base.lon);
       const { x, y } = screenPos || this.getContainerCenter();
       this.popup.show({ type: 'base', data: base, x, y });

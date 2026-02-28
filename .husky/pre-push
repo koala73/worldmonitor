@@ -1,5 +1,8 @@
 echo "Running type check..."
 npm run typecheck || exit 1
 
+echo "Running API type check..."
+npm run typecheck:api || exit 1
+
 echo "Running version sync check..."
 npm run version:check || exit 1

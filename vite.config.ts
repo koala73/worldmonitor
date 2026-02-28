@@ -506,7 +506,7 @@ const RSS_PROXY_ALLOWED_DOMAINS = new Set([
   'rss.politico.com', 'www.anandtech.com', 'www.tomshardware.com', 'www.semianalysis.com',
   'feed.infoq.com', 'thenewstack.io', 'devops.com', 'dev.to', 'lobste.rs', 'changelog.com',
   'seekingalpha.com', 'news.crunchbase.com', 'www.saastr.com', 'feeds.feedburner.com',
-  'www.producthunt.com', 'www.axios.com', 'github.blog', 'githubnext.com',
+  'www.producthunt.com', 'www.axios.com', 'api.axios.com', 'github.blog', 'githubnext.com',
   'mshibanami.github.io', 'www.engadget.com', 'news.mit.edu', 'dev.events',
   'www.ycombinator.com', 'a16z.com', 'review.firstround.com', 'www.sequoiacap.com',
   'www.nfx.com', 'www.aaronsw.com', 'bothsidesofthetable.com', 'www.lennysnewsletter.com',

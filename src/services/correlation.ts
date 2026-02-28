@@ -84,4 +84,7 @@ export function addToSignalHistory(signals: CorrelationSignal[]): void {
   while (signalHistory.length > 100) {
     signalHistory.shift();
   }
+  if (signals.length > 0) {
+    document.dispatchEvent(new CustomEvent('wm:intelligence-updated'));
+  }
 }

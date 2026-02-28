@@ -188,6 +188,50 @@ export interface USNIStrikeGroup {
   escorts: string[];
 }
 
+export interface ListMilitaryBasesRequest {
+  neLat: number;
+  neLon: number;
+  swLat: number;
+  swLon: number;
+  zoom: number;
+  type: string;
+  kind: string;
+  country: string;
+}
+
+export interface ListMilitaryBasesResponse {
+  bases: MilitaryBaseEntry[];
+  clusters: MilitaryBaseCluster[];
+  totalInView: number;
+  truncated: boolean;
+}
+
+export interface MilitaryBaseEntry {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  kind: string;
+  countryIso2: string;
+  type: string;
+  tier: number;
+  catAirforce: boolean;
+  catNaval: boolean;
+  catNuclear: boolean;
+  catSpace: boolean;
+  catTraining: boolean;
+  branch: string;
+  status: string;
+}
+
+export interface MilitaryBaseCluster {
+  latitude: number;
+  longitude: number;
+  count: number;
+  dominantType: string;
+  expansionZoom: number;
+}
+
 export type MilitaryActivityType = "MILITARY_ACTIVITY_TYPE_UNSPECIFIED" | "MILITARY_ACTIVITY_TYPE_EXERCISE" | "MILITARY_ACTIVITY_TYPE_PATROL" | "MILITARY_ACTIVITY_TYPE_TRANSPORT" | "MILITARY_ACTIVITY_TYPE_DEPLOYMENT" | "MILITARY_ACTIVITY_TYPE_TRANSIT" | "MILITARY_ACTIVITY_TYPE_UNKNOWN";
 
 export type MilitaryAircraftType = "MILITARY_AIRCRAFT_TYPE_UNSPECIFIED" | "MILITARY_AIRCRAFT_TYPE_FIGHTER" | "MILITARY_AIRCRAFT_TYPE_BOMBER" | "MILITARY_AIRCRAFT_TYPE_TRANSPORT" | "MILITARY_AIRCRAFT_TYPE_TANKER" | "MILITARY_AIRCRAFT_TYPE_AWACS" | "MILITARY_AIRCRAFT_TYPE_RECONNAISSANCE" | "MILITARY_AIRCRAFT_TYPE_HELICOPTER" | "MILITARY_AIRCRAFT_TYPE_DRONE" | "MILITARY_AIRCRAFT_TYPE_PATROL" | "MILITARY_AIRCRAFT_TYPE_SPECIAL_OPS" | "MILITARY_AIRCRAFT_TYPE_VIP" | "MILITARY_AIRCRAFT_TYPE_UNKNOWN";
@@ -247,6 +291,7 @@ export interface MilitaryServiceHandler {
   getAircraftDetailsBatch(ctx: ServerContext, req: GetAircraftDetailsBatchRequest): Promise<GetAircraftDetailsBatchResponse>;
   getWingbitsStatus(ctx: ServerContext, req: GetWingbitsStatusRequest): Promise<GetWingbitsStatusResponse>;
   getUSNIFleetReport(ctx: ServerContext, req: GetUSNIFleetReportRequest): Promise<GetUSNIFleetReportResponse>;
+  listMilitaryBases(ctx: ServerContext, req: ListMilitaryBasesRequest): Promise<ListMilitaryBasesResponse>;
 }
 
 export function createMilitaryServiceRoutes(
@@ -269,8 +314,8 @@ export function createMilitaryServiceRoutes(
             neLon: Number(params.get("ne_lon") ?? "0"),
             swLat: Number(params.get("sw_lat") ?? "0"),
             swLon: Number(params.get("sw_lon") ?? "0"),
-            operator: (params.get("operator") ?? "MILITARY_OPERATOR_UNSPECIFIED") as MilitaryOperator,
-            aircraftType: (params.get("aircraft_type") ?? "MILITARY_AIRCRAFT_TYPE_UNSPECIFIED") as MilitaryAircraftType,
+            operator: (params.get("operator") ?? "") as MilitaryOperator,
+            aircraftType: (params.get("aircraft_type") ?? "") as MilitaryAircraftType,
           };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("listMilitaryFlights", body);
@@ -362,11 +407,16 @@ export function createMilitaryServiceRoutes(
         try {
           const pathParams: Record<string, string> = {};
           const url = new URL(req.url, "http://localhost");
-
           const params = url.searchParams;
           const body: GetAircraftDetailsRequest = {
             icao24: params.get("icao24") ?? "",
           };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getAircraftDetails", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
 
           const ctx: ServerContext = {
             request: req,
@@ -503,6 +553,60 @@ export function createMilitaryServiceRoutes(
 
           const result = await handler.getUSNIFleetReport(ctx, body);
           return new Response(JSON.stringify(result as GetUSNIFleetReportResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/military/v1/list-military-bases",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListMilitaryBasesRequest = {
+            neLat: Number(params.get("ne_lat") ?? "0"),
+            neLon: Number(params.get("ne_lon") ?? "0"),
+            swLat: Number(params.get("sw_lat") ?? "0"),
+            swLon: Number(params.get("sw_lon") ?? "0"),
+            zoom: Number(params.get("zoom") ?? "0"),
+            type: params.get("type") ?? "",
+            kind: params.get("kind") ?? "",
+            country: params.get("country") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listMilitaryBases", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listMilitaryBases(ctx, body);
+          return new Response(JSON.stringify(result as ListMilitaryBasesResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

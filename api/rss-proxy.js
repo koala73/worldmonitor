@@ -124,6 +124,7 @@ const ALLOWED_DOMAINS = [
   // Additional tech variant domains
   'www.producthunt.com',
   'www.axios.com',
+  'api.axios.com',
   'github.blog',
   'githubnext.com',
   'mshibanami.github.io',

@@ -12,8 +12,6 @@ import { CHROME_UA, yahooGate } from '../../../_shared/constants';
 
 export const UPSTREAM_TIMEOUT_MS = 10_000;
 
-const delay = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
-
 export async function fetchYahooQuotesBatch(
   symbols: string[],
 ): Promise<{ results: Map<string, { price: number; change: number; sparkline: number[] }>; rateLimited: boolean }> {

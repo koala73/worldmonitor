@@ -12,6 +12,7 @@ import { getCorsHeaders, isDisallowedOrigin } from '../../../server/cors';
 // @ts-expect-error — JS module, no declaration file
 import { validateApiKey } from '../../_api-key.js';
 import { mapErrorToResponse } from '../../../server/error-mapper';
+import { checkRateLimit } from '../../../server/_shared/rate-limit';
 import { drainResponseHeaders } from '../../../server/_shared/response-headers';
 import { createSeismologyServiceRoutes } from '../../../src/generated/server/worldmonitor/seismology/v1/service_server';
 import { seismologyHandler } from '../../../server/worldmonitor/seismology/v1/handler';
@@ -127,6 +128,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/infrastructure/v1/get-cable-health': 'slow',
   '/api/positive-events/v1/list-positive-geo-events': 'slow',
 
+  '/api/military/v1/list-military-bases': 'static',
   '/api/economic/v1/get-macro-signals': 'medium',
   '/api/prediction/v1/list-prediction-markets': 'medium',
   '/api/supply-chain/v1/get-chokepoint-status': 'medium',
@@ -190,6 +192,10 @@ export default async function handler(originalRequest: Request): Promise<Respons
       headers: { 'Content-Type': 'application/json', ...corsHeaders },
     });
   }
+
+  // IP-based rate limiting (60 req/min sliding window)
+  const rateLimitResponse = await checkRateLimit(request, corsHeaders);
+  if (rateLimitResponse) return rateLimitResponse;
 
   // Route matching — if POST doesn't match, convert to GET for stale clients
   // that still send POST to endpoints converted in PR #468.
