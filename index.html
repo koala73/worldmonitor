@@ -1,51 +1,57 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https: http://localhost:5173 ws: wss: blob: data:; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://www.youtube.com https://static.cloudflareinsights.com https://vercel.live https://us-assets.i.posthog.com; worker-src 'self' blob:; font-src 'self' data: https:; media-src 'self' data: blob: https:; frame-src 'self' http://127.0.0.1:* http://localhost:* https://worldmonitor.app https://tech.worldmonitor.app https://happy.worldmonitor.app https://www.youtube.com https://www.youtube-nocookie.com;" />
-    <meta name="referrer" content="strict-origin-when-cross-origin" />
 
-    <!-- Primary Meta Tags -->
-    <title>World Monitor - Global Situation with AI Insights</title>
-    <meta name="title" content="World Monitor - Global Situation with AI Insights" />
-    <meta name="description" content="AI-powered real-time global intelligence dashboard with live news, markets, military tracking, infrastructure monitoring, and geopolitical data. OSINT in one view." />
-    <meta name="keywords" content="AI intelligence, AI-powered dashboard, global intelligence, geopolitical dashboard, world news, market data, military bases, nuclear facilities, undersea cables, conflict zones, real-time monitoring, situation awareness, OSINT, flight tracking, AIS ships, earthquake monitor, protest tracker, power outages, oil prices, government spending, polymarket predictions" />
-    <meta name="author" content="Elie Habib" />
-    <meta name="theme-color" content="#0a0f0a" />
-    <meta name="robots" content="index, follow" />
-    <link rel="canonical" href="https://worldmonitor.app/" />
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; connect-src 'self' https: http://localhost:5173 ws: wss: blob: data:; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://www.youtube.com https://static.cloudflareinsights.com https://vercel.live https://us-assets.i.posthog.com; worker-src 'self' blob:; font-src 'self' data: https:; media-src 'self' data: blob: https:; frame-src 'self' http://127.0.0.1:* http://localhost:* https://worldmonitor.app https://tech.worldmonitor.app https://happy.worldmonitor.app https://www.youtube.com https://www.youtube-nocookie.com;" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
 
-    <!-- Additional Search Discovery -->
-    <meta name="application-name" content="World Monitor" />
-    <meta name="subject" content="AI-Powered Global Intelligence and Situation Awareness" />
-    <meta name="classification" content="AI Intelligence Dashboard, OSINT Tool, News Aggregator" />
-    <meta name="coverage" content="Worldwide" />
-    <meta name="distribution" content="Global" />
-    <meta name="rating" content="General" />
+  <!-- Primary Meta Tags -->
+  <title>World Monitor - Global Situation with AI Insights</title>
+  <meta name="title" content="World Monitor - Global Situation with AI Insights" />
+  <meta name="description"
+    content="AI-powered real-time global intelligence dashboard with live news, markets, military tracking, infrastructure monitoring, and geopolitical data. OSINT in one view." />
+  <meta name="keywords"
+    content="AI intelligence, AI-powered dashboard, global intelligence, geopolitical dashboard, world news, market data, military bases, nuclear facilities, undersea cables, conflict zones, real-time monitoring, situation awareness, OSINT, flight tracking, AIS ships, earthquake monitor, protest tracker, power outages, oil prices, government spending, polymarket predictions" />
+  <meta name="author" content="Elie Habib" />
+  <meta name="theme-color" content="#0a0f0a" />
+  <meta name="robots" content="index, follow" />
+  <link rel="canonical" href="https://worldmonitor.app/" />
 
-    <!-- Open Graph / Facebook -->
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://worldmonitor.app/" />
-    <meta property="og:title" content="World Monitor - Global Situation with AI Insights" />
-    <meta property="og:description" content="AI-powered real-time global intelligence dashboard with live news, markets, military tracking, infrastructure monitoring, and geopolitical data." />
-    <meta property="og:image" content="https://worldmonitor.app/favico/og-image.png" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
-    <meta property="og:site_name" content="World Monitor" />
-    <meta property="og:locale" content="en_US" />
+  <!-- Additional Search Discovery -->
+  <meta name="application-name" content="World Monitor" />
+  <meta name="subject" content="AI-Powered Global Intelligence and Situation Awareness" />
+  <meta name="classification" content="AI Intelligence Dashboard, OSINT Tool, News Aggregator" />
+  <meta name="coverage" content="Worldwide" />
+  <meta name="distribution" content="Global" />
+  <meta name="rating" content="General" />
 
-    <!-- Twitter -->
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:url" content="https://worldmonitor.app/" />
-    <meta name="twitter:title" content="World Monitor - Global Situation with AI Insights" />
-    <meta name="twitter:description" content="AI-powered real-time global intelligence dashboard with live news, markets, military tracking, infrastructure monitoring, and geopolitical data." />
-    <meta name="twitter:image" content="https://worldmonitor.app/favico/og-image.png" />
-    <meta name="twitter:site" content="@worldmonitorapp" />
-    <meta name="twitter:creator" content="@eliehabib" />
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://worldmonitor.app/" />
+  <meta property="og:title" content="World Monitor - Global Situation with AI Insights" />
+  <meta property="og:description"
+    content="AI-powered real-time global intelligence dashboard with live news, markets, military tracking, infrastructure monitoring, and geopolitical data." />
+  <meta property="og:image" content="https://worldmonitor.app/favico/og-image.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:site_name" content="World Monitor" />
+  <meta property="og:locale" content="en_US" />
 
-    <!-- JSON-LD Structured Data -->
-    <script type="application/ld+json">
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:url" content="https://worldmonitor.app/" />
+  <meta name="twitter:title" content="World Monitor - Global Situation with AI Insights" />
+  <meta name="twitter:description"
+    content="AI-powered real-time global intelligence dashboard with live news, markets, military tracking, infrastructure monitoring, and geopolitical data." />
+  <meta name="twitter:image" content="https://worldmonitor.app/favico/og-image.png" />
+  <meta name="twitter:site" content="@worldmonitorapp" />
+  <meta name="twitter:creator" content="@eliehabib" />
+
+  <!-- JSON-LD Structured Data -->
+  <script type="application/ld+json">
     {
       "@context": "https://schema.org",
       "@type": "WebApplication",
@@ -84,118 +90,453 @@
     }
     </script>
 
-    <!-- Favicons -->
-    <link rel="icon" type="image/x-icon" href="/favico/favicon.ico" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/favico/favicon-32x32.png" />
-    <link rel="icon" type="image/png" sizes="16x16" href="/favico/favicon-16x16.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/favico/apple-touch-icon.png" />
+  <!-- Favicons -->
+  <link rel="icon" type="image/x-icon" href="/favico/favicon.ico" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/favico/favicon-32x32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="/favico/favicon-16x16.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/favico/apple-touch-icon.png" />
 
 
-    <!-- Theme: apply stored preference before first paint to prevent FOUC -->
-    <script>(function(){try{var t=localStorage.getItem('worldmonitor-theme');var v=localStorage.getItem('worldmonitor-variant');if(!v){var h=location.hostname;if(h.startsWith('happy.'))v='happy';else if(h.startsWith('tech.'))v='tech';else if(h.startsWith('finance.'))v='finance';}if(v)document.documentElement.dataset.variant=v;if(t==='dark'||t==='light'){document.documentElement.dataset.theme=t;}else if(v==='happy'){document.documentElement.dataset.theme='light';}}catch(e){}document.documentElement.classList.add('no-transition');})()</script>
+  <!-- Theme: apply stored preference before first paint to prevent FOUC -->
+  <script>(function () { try { var t = localStorage.getItem('worldmonitor-theme'); var v = localStorage.getItem('worldmonitor-variant'); if (!v) { var h = location.hostname; if (h.startsWith('happy.')) v = 'happy'; else if (h.startsWith('tech.')) v = 'tech'; else if (h.startsWith('finance.')) v = 'finance'; } if (v) document.documentElement.dataset.variant = v; if (t === 'dark' || t === 'light') { document.documentElement.dataset.theme = t; } else if (v === 'happy') { document.documentElement.dataset.theme = 'light'; } } catch (e) { } document.documentElement.classList.add('no-transition'); })()</script>
 
-    <!-- Critical CSS: inline skeleton visible before JS boots -->
-    <style>
-      /* ---------- skeleton shell (dark default) ---------- */
-      .skeleton-shell{display:flex;flex-direction:column;height:100vh;background:#0a0a0a;font-family:'SF Mono','Monaco','Cascadia Code','Fira Code','DejaVu Sans Mono','Liberation Mono',monospace;overflow:hidden}
-      .skeleton-header{display:flex;align-items:center;justify-content:space-between;height:40px;padding:8px 16px;background:#141414;border-bottom:1px solid #2a2a2a;flex-shrink:0}
-      .skeleton-header-left{display:flex;align-items:center;gap:12px}
-      .skeleton-header-right{display:flex;align-items:center;gap:12px}
-      .skeleton-pill{height:24px;border-radius:4px;background:#1e1e1e}
-      .skeleton-dot{width:8px;height:8px;border-radius:50%;background:#0f5040}
-      .skeleton-main{flex:1;display:flex;flex-direction:column;overflow:hidden;background:#0a0a0a}
-      .skeleton-map{height:50vh;min-height:200px;border:1px solid #2a2a2a;background:#020a08;display:flex;flex-direction:column;flex-shrink:0}
-      .skeleton-map-bar{height:32px;display:flex;align-items:center;padding:0 12px;background:#141414;border-bottom:1px solid #2a2a2a}
-      .skeleton-map-body{flex:1;position:relative;overflow:hidden}
-      .skeleton-map-body::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 60% 50% at 50% 50%,#0a2a20 0%,#020a08 100%);opacity:.5}
-      .skeleton-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:4px;padding:4px;align-content:start}
-      .skeleton-panel{height:320px;background:#141414;border:1px solid #2a2a2a;border-radius:0;display:flex;flex-direction:column}
-      .skeleton-panel-header{height:36px;display:flex;align-items:center;padding:0 12px;border-bottom:1px solid #1a1a1a}
-      .skeleton-panel-body{flex:1;padding:12px;display:flex;flex-direction:column;gap:10px}
-      .skeleton-line{height:14px;border-radius:4px;background:linear-gradient(90deg,rgba(255,255,255,.05) 25%,rgba(255,255,255,.1) 50%,rgba(255,255,255,.05) 75%);background-size:200% 100%;animation:skel-shimmer 1.5s infinite}
-      .skeleton-line.w75{width:75%}.skeleton-line.w60{width:60%}.skeleton-line.w50{width:50%}.skeleton-line.w85{width:85%}.skeleton-line.w40{width:40%}
+  <!-- Critical CSS: inline skeleton visible before JS boots -->
+  <style>
+    /* ---------- skeleton shell (dark default) ---------- */
+    .skeleton-shell {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      background: #0a0a0a;
+      font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Fira Code', 'DejaVu Sans Mono', 'Liberation Mono', monospace;
+      overflow: hidden
+    }
 
-      @keyframes skel-shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+    .skeleton-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 40px;
+      padding: 8px 16px;
+      background: #141414;
+      border-bottom: 1px solid #2a2a2a;
+      flex-shrink: 0
+    }
 
-      /* ---------- skeleton shell (light theme) ---------- */
-      [data-theme="light"] .skeleton-shell{background:#f8f9fa}
-      [data-theme="light"] .skeleton-header{background:#fff;border-bottom-color:#d4d4d4}
-      [data-theme="light"] .skeleton-pill{background:#f0f0f0}
-      [data-theme="light"] .skeleton-dot{background:#16a34a}
-      [data-theme="light"] .skeleton-main{background:#f8f9fa}
-      [data-theme="light"] .skeleton-map{border-color:#d4d4d4;background:#e8f0f8}
-      [data-theme="light"] .skeleton-map-bar{background:#fff;border-bottom-color:#d4d4d4}
-      [data-theme="light"] .skeleton-map-body::after{background:radial-gradient(ellipse 60% 50% at 50% 50%,#b0c8d8 0%,#e8f0f8 100%)}
-      [data-theme="light"] .skeleton-panel{background:#fff;border-color:#d4d4d4}
-      [data-theme="light"] .skeleton-panel-header{border-bottom-color:#e8e8e8}
-      [data-theme="light"] .skeleton-line{background:linear-gradient(90deg,rgba(0,0,0,.04) 25%,rgba(0,0,0,.08) 50%,rgba(0,0,0,.04) 75%);background-size:200% 100%;animation:skel-shimmer 1.5s infinite}
+    .skeleton-header-left {
+      display: flex;
+      align-items: center;
+      gap: 12px
+    }
 
-      /* ---------- skeleton shell (happy variant — light) ---------- */
-      [data-variant="happy"] .skeleton-shell{background:#FAFAF5;font-family:'Nunito',system-ui,sans-serif}
-      [data-variant="happy"] .skeleton-header{background:#FFFFFF;border-bottom-color:#DDD9CF}
-      [data-variant="happy"] .skeleton-pill{background:#F2EFE8;border-radius:8px}
-      [data-variant="happy"] .skeleton-dot{background:#6B8F5E}
-      [data-variant="happy"] .skeleton-main{background:#FAFAF5}
-      [data-variant="happy"] .skeleton-map{border-color:#DDD9CF;background:#D4E6EC;border-radius:14px}
-      [data-variant="happy"] .skeleton-map-bar{background:#FFFFFF;border-bottom-color:#DDD9CF}
-      [data-variant="happy"] .skeleton-map-body::after{background:radial-gradient(ellipse 60% 50% at 50% 50%,#B9CDA8 0%,#D4E6EC 100%);opacity:.3}
-      [data-variant="happy"] .skeleton-panel{background:#FFFFFF;border-color:#DDD9CF;border-radius:14px}
-      [data-variant="happy"] .skeleton-panel-header{border-bottom-color:#EBE8E0}
-      [data-variant="happy"] .skeleton-line{background:linear-gradient(90deg,rgba(107,143,94,.06) 25%,rgba(107,143,94,.12) 50%,rgba(107,143,94,.06) 75%);background-size:200% 100%;animation:skel-shimmer 1.5s infinite}
+    .skeleton-header-right {
+      display: flex;
+      align-items: center;
+      gap: 12px
+    }
 
-      /* ---------- skeleton shell (happy variant — dark) ---------- */
-      [data-variant="happy"][data-theme="dark"] .skeleton-shell{background:#1A2332}
-      [data-variant="happy"][data-theme="dark"] .skeleton-header{background:#222E3E;border-bottom-color:#344050}
-      [data-variant="happy"][data-theme="dark"] .skeleton-pill{background:#2A3848}
-      [data-variant="happy"][data-theme="dark"] .skeleton-dot{background:#8BAF7A}
-      [data-variant="happy"][data-theme="dark"] .skeleton-main{background:#1A2332}
-      [data-variant="happy"][data-theme="dark"] .skeleton-map{border-color:#344050;background:#16202E}
-      [data-variant="happy"][data-theme="dark"] .skeleton-map-bar{background:#222E3E;border-bottom-color:#344050}
-      [data-variant="happy"][data-theme="dark"] .skeleton-map-body::after{background:radial-gradient(ellipse 60% 50% at 50% 50%,#2D4035 0%,#16202E 100%);opacity:.3}
-      [data-variant="happy"][data-theme="dark"] .skeleton-panel{background:#222E3E;border-color:#344050}
-      [data-variant="happy"][data-theme="dark"] .skeleton-panel-header{border-bottom-color:#283545}
-      [data-variant="happy"][data-theme="dark"] .skeleton-line{background:linear-gradient(90deg,rgba(139,175,122,.05) 25%,rgba(139,175,122,.10) 50%,rgba(139,175,122,.05) 75%);background-size:200% 100%;animation:skel-shimmer 1.5s infinite}
-    </style>
+    .skeleton-pill {
+      height: 24px;
+      border-radius: 4px;
+      background: #1e1e1e
+    }
 
-    <!-- Google Fonts (Nunito for happy variant) -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,300;0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
-  </head>
-  <body>
-    <div id="app">
-      <!-- Pre-render skeleton: visible instantly, replaced when JS calls renderLayout() -->
-      <div class="skeleton-shell" aria-hidden="true">
-        <div class="skeleton-header">
-          <div class="skeleton-header-left">
-            <div class="skeleton-pill" style="width:120px"></div>
-            <div class="skeleton-pill" style="width:72px"></div>
-            <div class="skeleton-dot"></div>
-          </div>
-          <div class="skeleton-header-right">
-            <div class="skeleton-pill" style="width:80px"></div>
-            <div class="skeleton-pill" style="width:28px;height:28px"></div>
-            <div class="skeleton-pill" style="width:64px"></div>
-          </div>
+    .skeleton-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #0f5040
+    }
+
+    .skeleton-main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: #0a0a0a
+    }
+
+    .skeleton-map {
+      height: 50vh;
+      min-height: 200px;
+      border: 1px solid #2a2a2a;
+      background: #020a08;
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0
+    }
+
+    .skeleton-map-bar {
+      height: 32px;
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      background: #141414;
+      border-bottom: 1px solid #2a2a2a
+    }
+
+    .skeleton-map-body {
+      flex: 1;
+      position: relative;
+      overflow: hidden
+    }
+
+    .skeleton-map-body::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse 60% 50% at 50% 50%, #0a2a20 0%, #020a08 100%);
+      opacity: .5
+    }
+
+    .skeleton-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 4px;
+      padding: 4px;
+      align-content: start
+    }
+
+    .skeleton-panel {
+      height: 320px;
+      background: #141414;
+      border: 1px solid #2a2a2a;
+      border-radius: 0;
+      display: flex;
+      flex-direction: column
+    }
+
+    .skeleton-panel-header {
+      height: 36px;
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      border-bottom: 1px solid #1a1a1a
+    }
+
+    .skeleton-panel-body {
+      flex: 1;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px
+    }
+
+    .skeleton-line {
+      height: 14px;
+      border-radius: 4px;
+      background: linear-gradient(90deg, rgba(255, 255, 255, .05) 25%, rgba(255, 255, 255, .1) 50%, rgba(255, 255, 255, .05) 75%);
+      background-size: 200% 100%;
+      animation: skel-shimmer 1.5s infinite
+    }
+
+    .skeleton-line.w75 {
+      width: 75%
+    }
+
+    .skeleton-line.w60 {
+      width: 60%
+    }
+
+    .skeleton-line.w50 {
+      width: 50%
+    }
+
+    .skeleton-line.w85 {
+      width: 85%
+    }
+
+    .skeleton-line.w40 {
+      width: 40%
+    }
+
+    @keyframes skel-shimmer {
+      0% {
+        background-position: 200% 0
+      }
+
+      100% {
+        background-position: -200% 0
+      }
+    }
+
+    /* ---------- skeleton shell (light theme) ---------- */
+    [data-theme="light"] .skeleton-shell {
+      background: #f8f9fa
+    }
+
+    [data-theme="light"] .skeleton-header {
+      background: #fff;
+      border-bottom-color: #d4d4d4
+    }
+
+    [data-theme="light"] .skeleton-pill {
+      background: #f0f0f0
+    }
+
+    [data-theme="light"] .skeleton-dot {
+      background: #16a34a
+    }
+
+    [data-theme="light"] .skeleton-main {
+      background: #f8f9fa
+    }
+
+    [data-theme="light"] .skeleton-map {
+      border-color: #d4d4d4;
+      background: #e8f0f8
+    }
+
+    [data-theme="light"] .skeleton-map-bar {
+      background: #fff;
+      border-bottom-color: #d4d4d4
+    }
+
+    [data-theme="light"] .skeleton-map-body::after {
+      background: radial-gradient(ellipse 60% 50% at 50% 50%, #b0c8d8 0%, #e8f0f8 100%)
+    }
+
+    [data-theme="light"] .skeleton-panel {
+      background: #fff;
+      border-color: #d4d4d4
+    }
+
+    [data-theme="light"] .skeleton-panel-header {
+      border-bottom-color: #e8e8e8
+    }
+
+    [data-theme="light"] .skeleton-line {
+      background: linear-gradient(90deg, rgba(0, 0, 0, .04) 25%, rgba(0, 0, 0, .08) 50%, rgba(0, 0, 0, .04) 75%);
+      background-size: 200% 100%;
+      animation: skel-shimmer 1.5s infinite
+    }
+
+    /* ---------- skeleton shell (happy variant — light) ---------- */
+    [data-variant="happy"] .skeleton-shell {
+      background: #FAFAF5;
+      font-family: 'Nunito', system-ui, sans-serif
+    }
+
+    [data-variant="happy"] .skeleton-header {
+      background: #FFFFFF;
+      border-bottom-color: #DDD9CF
+    }
+
+    [data-variant="happy"] .skeleton-pill {
+      background: #F2EFE8;
+      border-radius: 8px
+    }
+
+    [data-variant="happy"] .skeleton-dot {
+      background: #6B8F5E
+    }
+
+    [data-variant="happy"] .skeleton-main {
+      background: #FAFAF5
+    }
+
+    [data-variant="happy"] .skeleton-map {
+      border-color: #DDD9CF;
+      background: #D4E6EC;
+      border-radius: 14px
+    }
+
+    [data-variant="happy"] .skeleton-map-bar {
+      background: #FFFFFF;
+      border-bottom-color: #DDD9CF
+    }
+
+    [data-variant="happy"] .skeleton-map-body::after {
+      background: radial-gradient(ellipse 60% 50% at 50% 50%, #B9CDA8 0%, #D4E6EC 100%);
+      opacity: .3
+    }
+
+    [data-variant="happy"] .skeleton-panel {
+      background: #FFFFFF;
+      border-color: #DDD9CF;
+      border-radius: 14px
+    }
+
+    [data-variant="happy"] .skeleton-panel-header {
+      border-bottom-color: #EBE8E0
+    }
+
+    [data-variant="happy"] .skeleton-line {
+      background: linear-gradient(90deg, rgba(107, 143, 94, .06) 25%, rgba(107, 143, 94, .12) 50%, rgba(107, 143, 94, .06) 75%);
+      background-size: 200% 100%;
+      animation: skel-shimmer 1.5s infinite
+    }
+
+    /* ---------- skeleton shell (happy variant — dark) ---------- */
+    [data-variant="happy"][data-theme="dark"] .skeleton-shell {
+      background: #1A2332
+    }
+
+    [data-variant="happy"][data-theme="dark"] .skeleton-header {
+      background: #222E3E;
+      border-bottom-color: #344050
+    }
+
+    [data-variant="happy"][data-theme="dark"] .skeleton-pill {
+      background: #2A3848
+    }
+
+    [data-variant="happy"][data-theme="dark"] .skeleton-dot {
+      background: #8BAF7A
+    }
+
+    [data-variant="happy"][data-theme="dark"] .skeleton-main {
+      background: #1A2332
+    }
+
+    [data-variant="happy"][data-theme="dark"] .skeleton-map {
+      border-color: #344050;
+      background: #16202E
+    }
+
+    [data-variant="happy"][data-theme="dark"] .skeleton-map-bar {
+      background: #222E3E;
+      border-bottom-color: #344050
+    }
+
+    [data-variant="happy"][data-theme="dark"] .skeleton-map-body::after {
+      background: radial-gradient(ellipse 60% 50% at 50% 50%, #2D4035 0%, #16202E 100%);
+      opacity: .3
+    }
+
+    [data-variant="happy"][data-theme="dark"] .skeleton-panel {
+      background: #222E3E;
+      border-color: #344050
+    }
+
+    [data-variant="happy"][data-theme="dark"] .skeleton-panel-header {
+      border-bottom-color: #283545
+    }
+
+    [data-variant="happy"][data-theme="dark"] .skeleton-line {
+      background: linear-gradient(90deg, rgba(139, 175, 122, .05) 25%, rgba(139, 175, 122, .10) 50%, rgba(139, 175, 122, .05) 75%);
+      background-size: 200% 100%;
+      animation: skel-shimmer 1.5s infinite
+    }
+  </style>
+
+  <!-- Google Fonts (Nunito for happy variant, Cairo/Tajawal for Arabic RTL) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,300;0,400;0,600;0,700;1,400&display=swap"
+    rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&family=Tajawal:wght@400;500;700&display=swap"
+    rel="stylesheet">
+</head>
+
+<body>
+  <div id="app">
+    <!-- Pre-render skeleton: visible instantly, replaced when JS calls renderLayout() -->
+    <div class="skeleton-shell" aria-hidden="true">
+      <div class="skeleton-header">
+        <div class="skeleton-header-left">
+          <div class="skeleton-pill" style="width:120px"></div>
+          <div class="skeleton-pill" style="width:72px"></div>
+          <div class="skeleton-dot"></div>
         </div>
-        <div class="skeleton-main">
-          <div class="skeleton-map">
-            <div class="skeleton-map-bar">
-              <div class="skeleton-pill" style="width:48px;height:16px"></div>
-            </div>
-            <div class="skeleton-map-body"></div>
+        <div class="skeleton-header-right">
+          <div class="skeleton-pill" style="width:80px"></div>
+          <div class="skeleton-pill" style="width:28px;height:28px"></div>
+          <div class="skeleton-pill" style="width:64px"></div>
+        </div>
+      </div>
+      <div class="skeleton-main">
+        <div class="skeleton-map">
+          <div class="skeleton-map-bar">
+            <div class="skeleton-pill" style="width:48px;height:16px"></div>
           </div>
-          <div class="skeleton-grid">
-            <div class="skeleton-panel"><div class="skeleton-panel-header"><div class="skeleton-pill" style="width:80px;height:14px"></div></div><div class="skeleton-panel-body"><div class="skeleton-line w85"></div><div class="skeleton-line w75"></div><div class="skeleton-line w60"></div><div class="skeleton-line"></div><div class="skeleton-line w50"></div><div class="skeleton-line w75"></div></div></div>
-            <div class="skeleton-panel"><div class="skeleton-panel-header"><div class="skeleton-pill" style="width:64px;height:14px"></div></div><div class="skeleton-panel-body"><div class="skeleton-line w75"></div><div class="skeleton-line"></div><div class="skeleton-line w60"></div><div class="skeleton-line w85"></div><div class="skeleton-line w40"></div><div class="skeleton-line w75"></div></div></div>
-            <div class="skeleton-panel"><div class="skeleton-panel-header"><div class="skeleton-pill" style="width:96px;height:14px"></div></div><div class="skeleton-panel-body"><div class="skeleton-line"></div><div class="skeleton-line w60"></div><div class="skeleton-line w85"></div><div class="skeleton-line w50"></div><div class="skeleton-line w75"></div><div class="skeleton-line w40"></div></div></div>
-            <div class="skeleton-panel"><div class="skeleton-panel-header"><div class="skeleton-pill" style="width:72px;height:14px"></div></div><div class="skeleton-panel-body"><div class="skeleton-line w60"></div><div class="skeleton-line w85"></div><div class="skeleton-line w75"></div><div class="skeleton-line"></div><div class="skeleton-line w50"></div><div class="skeleton-line w60"></div></div></div>
-            <div class="skeleton-panel"><div class="skeleton-panel-header"><div class="skeleton-pill" style="width:88px;height:14px"></div></div><div class="skeleton-panel-body"><div class="skeleton-line w85"></div><div class="skeleton-line w50"></div><div class="skeleton-line w75"></div><div class="skeleton-line w60"></div><div class="skeleton-line"></div><div class="skeleton-line w40"></div></div></div>
-            <div class="skeleton-panel"><div class="skeleton-panel-header"><div class="skeleton-pill" style="width:56px;height:14px"></div></div><div class="skeleton-panel-body"><div class="skeleton-line w75"></div><div class="skeleton-line w60"></div><div class="skeleton-line"></div><div class="skeleton-line w85"></div><div class="skeleton-line w50"></div><div class="skeleton-line w75"></div></div></div>
+          <div class="skeleton-map-body"></div>
+        </div>
+        <div class="skeleton-grid">
+          <div class="skeleton-panel">
+            <div class="skeleton-panel-header">
+              <div class="skeleton-pill" style="width:80px;height:14px"></div>
+            </div>
+            <div class="skeleton-panel-body">
+              <div class="skeleton-line w85"></div>
+              <div class="skeleton-line w75"></div>
+              <div class="skeleton-line w60"></div>
+              <div class="skeleton-line"></div>
+              <div class="skeleton-line w50"></div>
+              <div class="skeleton-line w75"></div>
+            </div>
+          </div>
+          <div class="skeleton-panel">
+            <div class="skeleton-panel-header">
+              <div class="skeleton-pill" style="width:64px;height:14px"></div>
+            </div>
+            <div class="skeleton-panel-body">
+              <div class="skeleton-line w75"></div>
+              <div class="skeleton-line"></div>
+              <div class="skeleton-line w60"></div>
+              <div class="skeleton-line w85"></div>
+              <div class="skeleton-line w40"></div>
+              <div class="skeleton-line w75"></div>
+            </div>
+          </div>
+          <div class="skeleton-panel">
+            <div class="skeleton-panel-header">
+              <div class="skeleton-pill" style="width:96px;height:14px"></div>
+            </div>
+            <div class="skeleton-panel-body">
+              <div class="skeleton-line"></div>
+              <div class="skeleton-line w60"></div>
+              <div class="skeleton-line w85"></div>
+              <div class="skeleton-line w50"></div>
+              <div class="skeleton-line w75"></div>
+              <div class="skeleton-line w40"></div>
+            </div>
+          </div>
+          <div class="skeleton-panel">
+            <div class="skeleton-panel-header">
+              <div class="skeleton-pill" style="width:72px;height:14px"></div>
+            </div>
+            <div class="skeleton-panel-body">
+              <div class="skeleton-line w60"></div>
+              <div class="skeleton-line w85"></div>
+              <div class="skeleton-line w75"></div>
+              <div class="skeleton-line"></div>
+              <div class="skeleton-line w50"></div>
+              <div class="skeleton-line w60"></div>
+            </div>
+          </div>
+          <div class="skeleton-panel">
+            <div class="skeleton-panel-header">
+              <div class="skeleton-pill" style="width:88px;height:14px"></div>
+            </div>
+            <div class="skeleton-panel-body">
+              <div class="skeleton-line w85"></div>
+              <div class="skeleton-line w50"></div>
+              <div class="skeleton-line w75"></div>
+              <div class="skeleton-line w60"></div>
+              <div class="skeleton-line"></div>
+              <div class="skeleton-line w40"></div>
+            </div>
+          </div>
+          <div class="skeleton-panel">
+            <div class="skeleton-panel-header">
+              <div class="skeleton-pill" style="width:56px;height:14px"></div>
+            </div>
+            <div class="skeleton-panel-body">
+              <div class="skeleton-line w75"></div>
+              <div class="skeleton-line w60"></div>
+              <div class="skeleton-line"></div>
+              <div class="skeleton-line w85"></div>
+              <div class="skeleton-line w50"></div>
+              <div class="skeleton-line w75"></div>
+            </div>
           </div>
         </div>
       </div>
     </div>
-    <script type="module" src="/src/main.ts"></script>
-  </body>
+  </div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+
 </html>

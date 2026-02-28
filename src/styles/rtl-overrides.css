@@ -3,7 +3,8 @@
 /* Font and Typography Overrides */
 body.dir-rtl {
   font-family: 'Cairo', 'Tajawal', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  font-size: 1.05rem; /* Slight scale up for Arabic characters legibility */
+  font-size: 1.05rem;
+  /* Slight scale up for Arabic characters legibility */
 }
 
 /* Language selector: flip arrow and margins */
