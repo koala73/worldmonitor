@@ -23,13 +23,6 @@ const BOOTSTRAP_CACHE_KEYS = {
 
 const NEG_SENTINEL = '__WM_NEG__';
 
-function getKeyPrefix() {
-  const env = process.env.VERCEL_ENV;
-  if (!env || env === 'production') return '';
-  const sha = (process.env.VERCEL_GIT_COMMIT_SHA || 'dev').slice(0, 8);
-  return `${env}:${sha}:`;
-}
-
 async function getCachedJsonBatch(keys) {
   const result = new Map();
   if (keys.length === 0) return result;
@@ -38,10 +31,10 @@ async function getCachedJsonBatch(keys) {
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return result;
 
-  const prefix = getKeyPrefix();
-  const prefixKey = (k) => prefix ? `${prefix}${k}` : k;
-
-  const pipeline = keys.map((k) => ['GET', prefixKey(k)]);
+  // Always read unprefixed keys — bootstrap is a read-only consumer of
+  // production cache data. Preview/branch deploys don't run handlers that
+  // populate prefixed keys, so prefixing would always miss.
+  const pipeline = keys.map((k) => ['GET', k]);
   const resp = await fetch(`${url}/pipeline`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
