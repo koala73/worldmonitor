@@ -172,6 +172,8 @@ export class UnifiedSettings {
         this.updateAiStatus();
       } else if (target.id === 'us-map-flash') {
         setAiFlowSetting('mapNewsFlash', target.checked);
+      } else if (target.id === 'us-badge-anim') {
+        setAiFlowSetting('badgeAnimation', target.checked);
       }
     });
 
@@ -287,6 +289,10 @@ export class UnifiedSettings {
     // Map section
     html += `<div class="ai-flow-section-label">${t('components.insights.sectionMap')}</div>`;
     html += this.toggleRowHtml('us-map-flash', t('components.insights.mapFlashLabel'), t('components.insights.mapFlashDesc'), settings.mapNewsFlash);
+
+    // Panels section
+    html += `<div class="ai-flow-section-label">${t('components.insights.sectionPanels')}</div>`;
+    html += this.toggleRowHtml('us-badge-anim', t('components.insights.badgeAnimLabel'), t('components.insights.badgeAnimDesc'), settings.badgeAnimation);
 
     // AI Analysis section (web-only)
     if (!this.config.isDesktopApp) {

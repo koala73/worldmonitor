@@ -3,6 +3,7 @@ import { invokeTauri } from '../services/tauri-bridge';
 import { t } from '../services/i18n';
 import { h, replaceChildren, safeHtml } from '../utils/dom-utils';
 import { trackPanelResized } from '@/services/analytics';
+import { getAiFlowSettings } from '@/services/ai-flow-settings';
 
 export interface PanelOptions {
   id: string;
@@ -663,9 +664,9 @@ export class Panel {
     if (this.countEl) {
       const prev = parseInt(this.countEl.textContent ?? '0', 10);
       this.countEl.textContent = count.toString();
-      if (count > prev) {
+      if (count > prev && getAiFlowSettings().badgeAnimation) {
         this.countEl.classList.remove('bump');
-        void this.countEl.offsetWidth; // force reflow to restart animation
+        void this.countEl.offsetWidth;
         this.countEl.classList.add('bump');
       }
     }
