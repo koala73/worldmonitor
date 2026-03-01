@@ -59,6 +59,7 @@ export const SOURCE_TIERS: Record<string, number> = {
   'Svenska Dagbladet': 2,
   'Reuters World': 1,
   'Reuters Business': 1,
+  'Reuters UK': 1,
   'OpenAI News': 3,
   // Portuguese
   'Brasil Paralelo': 2,
@@ -297,7 +298,7 @@ export type SourceType = 'wire' | 'gov' | 'intel' | 'mainstream' | 'market' | 't
 
 export const SOURCE_TYPES: Record<string, SourceType> = {
   // Wire services - fastest, most authoritative
-  'Reuters': 'wire', 'Reuters World': 'wire', 'Reuters Business': 'wire',
+  'Reuters': 'wire', 'Reuters World': 'wire', 'Reuters Business': 'wire', 'Reuters UK': 'wire',
   'AP News': 'wire', 'AFP': 'wire', 'Bloomberg': 'wire',
 
   // Government & International Org sources
@@ -462,6 +463,7 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'Axios', url: rss('https://api.axios.com/feed/') },
   ],
   europe: [
+    { name: 'Reuters UK', url: rss('https://www.reuters.com/world/uk/rss.xml') },
     {
       name: 'France 24',
       url: {

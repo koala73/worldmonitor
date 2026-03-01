@@ -10,6 +10,7 @@ import {
   PizzIntIndicator,
   CIIPanel,
   PredictionPanel,
+  KeyboardShortcutsModal,
 } from '@/components';
 import {
   buildMapUrl,
@@ -60,6 +61,7 @@ export interface EventHandlerCallbacks {
 export class EventHandlerManager implements AppModule {
   private ctx: AppContext;
   private callbacks: EventHandlerCallbacks;
+  private shortcutsModal: KeyboardShortcutsModal | null = null;
 
   private boundFullscreenHandler: (() => void) | null = null;
   private boundResizeHandler: (() => void) | null = null;
@@ -108,6 +110,24 @@ export class EventHandlerManager implements AppModule {
         }
       }
     });
+
+    // Keyboard shortcut: ? for shortcuts help
+    document.addEventListener('keydown', (e) => {
+      if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const active = document.activeElement;
+        if (active?.tagName !== 'INPUT' && active?.tagName !== 'TEXTAREA') {
+          e.preventDefault();
+          this.showShortcutsModal();
+        }
+      }
+    });
+  }
+
+  private showShortcutsModal(): void {
+    if (!this.shortcutsModal) {
+      this.shortcutsModal = new KeyboardShortcutsModal();
+    }
+    this.shortcutsModal.show();
   }
 
   private toggleTvMode(): void {
