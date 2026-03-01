@@ -232,7 +232,7 @@ ${lang !== 'en' ? `- Write entirely in ${lang} language` : ''}
             return await callLlm(
                 'https://api.groq.com/openai/v1/chat/completions',
                 groqKey,
-                'llama-3.1-70b-versatile',
+                'llama-3.3-70b-versatile',
                 systemPrompt,
                 userPrompt,
             );
@@ -277,7 +277,10 @@ async function callLlm(url, apiKey, model, systemPrompt, userPrompt) {
         }),
     });
 
-    if (!resp.ok) throw new Error(`LLM API error: ${resp.status}`);
+    if (!resp.ok) {
+        const errBody = await resp.text().catch(() => '');
+        throw new Error(`LLM API error: ${resp.status} ${errBody}`);
+    }
 
     const data = await resp.json();
     return data.choices?.[0]?.message?.content?.trim() || null;
