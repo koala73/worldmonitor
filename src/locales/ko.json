@@ -967,6 +967,9 @@
       "streamQualityDesc": "모든 라이브 스트림의 품질 설정 (낮추면 대역폭 절약)",
       "mapFlashLabel": "실시간 이벤트 펄스",
       "mapFlashDesc": "속보 수신 시 지도에서 해당 위치를 깜박임",
+      "sectionPanels": "패널",
+      "badgeAnimLabel": "카운트 배지 펄스",
+      "badgeAnimDesc": "새 항목이 도착하면 패널 카운트 배지에 애니메이션 적용",
       "aiFlowTitle": "설정",
       "aiFlowCloudLabel": "클라우드 AI (Groq 및 OpenRouter)",
       "aiFlowCloudDesc": "헤드라인을 클라우드로 전송하여 AI 요약 (권장)",
@@ -980,6 +983,9 @@
       "aiFlowStatusCloudAndBrowser": "클라우드 AI + 브라우저 모델 활성",
       "aiFlowStatusBrowserOnly": "브라우저 모델만 사용",
       "aiFlowStatusDisabled": "AI 제공자 비활성화됨",
+      "sectionIntelligence": "인텔리전스",
+      "headlineMemoryLabel": "헤드라인 메모리",
+      "headlineMemoryDesc": "과거 헤드라인을 기억하여 국가 브리핑에 역사적 맥락을 추가합니다",
       "insightsDisabledTitle": "AI 분석이 비활성화되었습니다",
       "insightsDisabledHint": "지도 헤더의 설정 기어를 통해 제공자를 활성화하세요"
     },
@@ -1431,7 +1437,7 @@
       "regionAsia": "아시아",
       "regionMiddleEast": "중동",
       "regionAfrica": "아프리카",
-      "invalidHandle": "유효한 YouTube 핸들을 입력하세요 (예: @ChannelName)",
+      "regionOceania": "오세아니아",      "invalidHandle": "유효한 YouTube 핸들을 입력하세요 (예: @ChannelName)",
       "channelNotFound": "YouTube 채널을 찾을 수 없습니다",
       "verifying": "확인 중…"
     }

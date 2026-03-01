@@ -211,6 +211,10 @@
     "serviceStatus": "Service Status",
     "techReadiness": "Tech Readiness Index",
     "gccInvestments": "GCC Investments",
+    "gulfEconomies": "Gulf Economies",
+    "gulfIndices": "GCC Stock Indices",
+    "gulfCurrencies": "Gulf Currencies",
+    "gulfOil": "Oil Benchmarks",
     "geoHubs": "Geopolitical Hubs",
     "liveWebcams": "Live Webcams"
   },
@@ -977,6 +981,9 @@
       "streamQualityDesc": "Set quality for all live streams (lower saves bandwidth)",
       "mapFlashLabel": "Live Event Pulse",
       "mapFlashDesc": "Flash locations on the map when breaking news arrives",
+      "sectionPanels": "Panels",
+      "badgeAnimLabel": "Count Badge Pulse",
+      "badgeAnimDesc": "Animate panel count badges when new items arrive",
       "aiFlowTitle": "Settings",
       "aiFlowCloudLabel": "Cloud AI (Groq & OpenRouter)",
       "aiFlowCloudDesc": "Send headlines to cloud for AI summarization (recommended)",
@@ -990,6 +997,9 @@
       "aiFlowStatusCloudAndBrowser": "Cloud AI + Browser model active",
       "aiFlowStatusBrowserOnly": "Browser model only",
       "aiFlowStatusDisabled": "No AI providers enabled",
+      "sectionIntelligence": "Intelligence",
+      "headlineMemoryLabel": "Headline Memory",
+      "headlineMemoryDesc": "Remember past headlines to enrich country briefs with historical context",
       "insightsDisabledTitle": "AI analysis is disabled",
       "insightsDisabledHint": "Enable providers via the settings gear in the map header"
     },
@@ -1132,6 +1142,7 @@
       "justNow": "just now",
       "historyCount": "{{count}} alerts in last 24h",
       "historySummary": "{{count}} alerts in 24h — {{waves}} waves",
+      "loadingHistory": "Loading history...",
       "infoTooltip": "<strong>Israel Sirens</strong><br>Real-time rocket and missile siren alerts from Israel Home Front Command.<br><br>Data is polled every 10 seconds. A pulsing red indicator means active sirens are sounding."
     },
     "satelliteFires": {
@@ -1449,6 +1460,7 @@
       "regionAsia": "Asia",
       "regionMiddleEast": "Middle East",
       "regionAfrica": "Africa",
+      "regionOceania": "Oceania",
       "invalidHandle": "Enter a valid YouTube handle (e.g. @ChannelName)",
       "channelNotFound": "YouTube channel not found",
       "verifying": "Verifying…"

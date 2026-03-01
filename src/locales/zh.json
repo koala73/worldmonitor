@@ -910,6 +910,9 @@
       "sectionAi": "AI Analysis",
       "mapFlashLabel": "Live Event Pulse",
       "mapFlashDesc": "Flash locations on the map when breaking news arrives",
+      "sectionPanels": "Panels",
+      "badgeAnimLabel": "Count Badge Pulse",
+      "badgeAnimDesc": "Animate panel count badges when new items arrive",
       "aiFlowTitle": "Settings",
       "aiFlowCloudLabel": "云端AI（Groq & OpenRouter）",
       "aiFlowCloudDesc": "将标题发送到云端进行AI摘要（推荐）",
@@ -923,6 +926,9 @@
       "aiFlowStatusCloudAndBrowser": "云端AI + 浏览器模型已激活",
       "aiFlowStatusBrowserOnly": "仅浏览器模型",
       "aiFlowStatusDisabled": "没有启用的AI提供商",
+      "sectionIntelligence": "情报",
+      "headlineMemoryLabel": "标题记忆",
+      "headlineMemoryDesc": "记住过去的标题，为国家简报提供历史背景",
       "insightsDisabledTitle": "AI分析已禁用",
       "insightsDisabledHint": "Enable providers via the settings gear in the map header"
     },
@@ -1308,7 +1314,8 @@
       "regionLatinAmerica": "拉丁美洲",
       "regionAsia": "亚洲",
       "regionMiddleEast": "中东",
-      "regionAfrica": "非洲"
+      "regionAfrica": "非洲",
+      "regionOceania": "大洋洲"
     },
     "securityAdvisories": {
       "loading": "正在加载旅行警告...",

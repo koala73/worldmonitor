@@ -400,7 +400,7 @@ async function fetchUSNIReport(): Promise<USNIFleetReport | null> {
   }
 
   // Also write to stale backup cache
-  setCachedJson(USNI_STALE_CACHE_KEY, report, USNI_STALE_TTL).catch(() => {});
+  await setCachedJson(USNI_STALE_CACHE_KEY, report, USNI_STALE_TTL);
 
   return report;
 }

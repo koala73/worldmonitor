@@ -93,7 +93,7 @@ export class BreakingNewsBanner {
 
   private updatePosition(): void {
     let top = 50;
-    if (document.body.classList.contains('has-critical-banner')) {
+    if (document.body?.classList.contains('has-critical-banner')) {
       this.attachResizeObserverIfNeeded();
       const postureBanner = document.querySelector('.critical-posture-banner');
       if (postureBanner) {
@@ -110,7 +110,7 @@ export class BreakingNewsBanner {
       '--breaking-alert-offset',
       height > 0 ? `${height}px` : '0px'
     );
-    document.body.classList.toggle('has-breaking-alert', this.activeAlerts.length > 0);
+    document.body?.classList.toggle('has-breaking-alert', this.activeAlerts.length > 0);
   }
 
   private isDismissedRecently(id: string): boolean {

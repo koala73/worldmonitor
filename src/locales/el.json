@@ -949,6 +949,9 @@
       "sectionAi": "AI Analysis",
       "mapFlashLabel": "Live Event Pulse",
       "mapFlashDesc": "Flash locations on the map when breaking news arrives",
+      "sectionPanels": "Panels",
+      "badgeAnimLabel": "Count Badge Pulse",
+      "badgeAnimDesc": "Animate panel count badges when new items arrive",
       "aiFlowTitle": "Settings",
       "aiFlowCloudLabel": "Cloud AI (Groq & OpenRouter)",
       "aiFlowCloudDesc": "Αποστολή τίτλων στο cloud για σύνοψη AI (συνιστάται)",
@@ -962,6 +965,9 @@
       "aiFlowStatusCloudAndBrowser": "Cloud AI + Τοπικό μοντέλο ενεργά",
       "aiFlowStatusBrowserOnly": "Μόνο τοπικό μοντέλο",
       "aiFlowStatusDisabled": "Κανένας πάροχος AI ενεργοποιημένος",
+      "sectionIntelligence": "Πληροφορίες",
+      "headlineMemoryLabel": "Μνήμη τίτλων",
+      "headlineMemoryDesc": "Αποθήκευση παλαιότερων τίτλων για εμπλουτισμό εκθέσεων χωρών με ιστορικό πλαίσιο",
       "insightsDisabledTitle": "Η ανάλυση AI είναι απενεργοποιημένη",
       "insightsDisabledHint": "Enable providers via the settings gear in the map header"
     },
@@ -1335,7 +1341,8 @@
       "regionLatinAmerica": "Λατινική Αμερική",
       "regionAsia": "Ασία",
       "regionMiddleEast": "Μέση Ανατολή",
-      "regionAfrica": "Αφρική"
+      "regionAfrica": "Αφρική",
+      "regionOceania": "Ωκεανία"
     },
     "securityAdvisories": {
       "loading": "Φόρτωση ταξιδιωτικών οδηγιών...",

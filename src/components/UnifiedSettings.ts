@@ -172,6 +172,10 @@ export class UnifiedSettings {
         this.updateAiStatus();
       } else if (target.id === 'us-map-flash') {
         setAiFlowSetting('mapNewsFlash', target.checked);
+      } else if (target.id === 'us-headline-memory') {
+        setAiFlowSetting('headlineMemory', target.checked);
+      } else if (target.id === 'us-badge-anim') {
+        setAiFlowSetting('badgeAnimation', target.checked);
       }
     });
 
@@ -288,6 +292,10 @@ export class UnifiedSettings {
     html += `<div class="ai-flow-section-label">${t('components.insights.sectionMap')}</div>`;
     html += this.toggleRowHtml('us-map-flash', t('components.insights.mapFlashLabel'), t('components.insights.mapFlashDesc'), settings.mapNewsFlash);
 
+    // Panels section
+    html += `<div class="ai-flow-section-label">${t('components.insights.sectionPanels')}</div>`;
+    html += this.toggleRowHtml('us-badge-anim', t('components.insights.badgeAnimLabel'), t('components.insights.badgeAnimDesc'), settings.badgeAnimation);
+
     // AI Analysis section (web-only)
     if (!this.config.isDesktopApp) {
       html += `<div class="ai-flow-section-label">${t('components.insights.sectionAi')}</div>`;
@@ -305,6 +313,10 @@ export class UnifiedSettings {
         </div>
       `;
     }
+
+    // Intelligence section
+    html += `<div class="ai-flow-section-label">${t('components.insights.sectionIntelligence')}</div>`;
+    html += this.toggleRowHtml('us-headline-memory', t('components.insights.headlineMemoryLabel'), t('components.insights.headlineMemoryDesc'), settings.headlineMemory);
 
     // Streaming quality section
     const currentQuality = getStreamQuality();

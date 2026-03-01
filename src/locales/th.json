@@ -910,6 +910,9 @@
       "sectionAi": "AI Analysis",
       "mapFlashLabel": "Live Event Pulse",
       "mapFlashDesc": "Flash locations on the map when breaking news arrives",
+      "sectionPanels": "Panels",
+      "badgeAnimLabel": "Count Badge Pulse",
+      "badgeAnimDesc": "Animate panel count badges when new items arrive",
       "aiFlowTitle": "Settings",
       "aiFlowCloudLabel": "Cloud AI (Groq & OpenRouter)",
       "aiFlowCloudDesc": "ส่งพาดหัวข่าวไปยังคลาวด์เพื่อสรุปด้วย AI (แนะนำ)",
@@ -923,6 +926,9 @@
       "aiFlowStatusCloudAndBrowser": "Cloud AI + โมเดลเบราว์เซอร์ทำงานอยู่",
       "aiFlowStatusBrowserOnly": "โมเดลเบราว์เซอร์เท่านั้น",
       "aiFlowStatusDisabled": "ไม่มีผู้ให้บริการ AI ที่เปิดใช้งาน",
+      "sectionIntelligence": "ข่าวกรอง",
+      "headlineMemoryLabel": "หน่วยความจำพาดหัว",
+      "headlineMemoryDesc": "จดจำพาดหัวข่าวก่อนหน้าเพื่อเพิ่มบริบททางประวัติศาสตร์ในรายงานประเทศ",
       "insightsDisabledTitle": "การวิเคราะห์ AI ถูกปิดใช้งาน",
       "insightsDisabledHint": "Enable providers via the settings gear in the map header"
     },
@@ -1308,7 +1314,8 @@
       "regionLatinAmerica": "ละตินอเมริกา",
       "regionAsia": "เอเชีย",
       "regionMiddleEast": "ตะวันออกกลาง",
-      "regionAfrica": "แอฟริกา"
+      "regionAfrica": "แอฟริกา",
+      "regionOceania": "โอเชียเนีย"
     },
     "securityAdvisories": {
       "loading": "กำลังโหลดคำเตือนการเดินทาง...",

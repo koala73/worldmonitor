@@ -979,6 +979,9 @@
       "sectionAi": "AI Analysis",
       "mapFlashLabel": "Live Event Pulse",
       "mapFlashDesc": "Flash locations on the map when breaking news arrives",
+      "sectionPanels": "Panels",
+      "badgeAnimLabel": "Count Badge Pulse",
+      "badgeAnimDesc": "Animate panel count badges when new items arrive",
       "aiFlowTitle": "Settings",
       "aiFlowCloudLabel": "Cloud AI (Groq & OpenRouter)",
       "aiFlowCloudDesc": "Koppen naar de cloud sturen voor AI-samenvatting (aanbevolen)",
@@ -992,6 +995,9 @@
       "aiFlowStatusCloudAndBrowser": "Cloud AI + Browsermodel actief",
       "aiFlowStatusBrowserOnly": "Alleen browsermodel",
       "aiFlowStatusDisabled": "Geen AI-aanbieders ingeschakeld",
+      "sectionIntelligence": "Inlichtingen",
+      "headlineMemoryLabel": "Koppengeheugen",
+      "headlineMemoryDesc": "Onthoud eerdere koppen om landenrapporten te verrijken met historische context",
       "insightsDisabledTitle": "AI-analyse is uitgeschakeld",
       "insightsDisabledHint": "Enable providers via the settings gear in the map header"
     },
@@ -1166,7 +1172,8 @@
       "regionLatinAmerica": "Latijns-Amerika",
       "regionAsia": "Azië",
       "regionMiddleEast": "Midden-Oosten",
-      "regionAfrica": "Afrika"
+      "regionAfrica": "Afrika",
+      "regionOceania": "Oceanië"
     },
     "securityAdvisories": {
       "loading": "Reisadviezen laden...",

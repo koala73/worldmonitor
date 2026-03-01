@@ -36,13 +36,14 @@ import {
   SecurityAdvisoriesPanel,
   OrefSirensPanel,
   TelegramIntelPanel,
-  DeductionPanel,
+  GulfEconomiesPanel,
 } from '@/components';
 import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
 import { PositiveNewsFeedPanel } from '@/components/PositiveNewsFeedPanel';
 import { CountersPanel } from '@/components/CountersPanel';
 import { ProgressChartsPanel } from '@/components/ProgressChartsPanel';
 import { BreakthroughsTickerPanel } from '@/components/BreakthroughsTickerPanel';
+import { DeductionPanel } from '@/components/DeductionPanel';
 import { HeroSpotlightPanel } from '@/components/HeroSpotlightPanel';
 import { GoodThingsDigestPanel } from '@/components/GoodThingsDigestPanel';
 import { SpeciesComebackPanel } from '@/components/SpeciesComebackPanel';
@@ -569,9 +570,17 @@ export class PanelLayoutManager implements AppModule {
         focusInvestmentOnMap(this.ctx.map, this.ctx.mapLayers, inv.lat, inv.lon);
       });
       this.ctx.panels['gcc-investments'] = investmentsPanel;
+
+      const gulfEconomiesPanel = new GulfEconomiesPanel();
+      this.ctx.panels['gulf-economies'] = gulfEconomiesPanel;
     }
 
     if (SITE_VARIANT !== 'happy') {
+      if (!this.ctx.panels['gulf-economies']) {
+        const gulfEconomiesPanel = new GulfEconomiesPanel();
+        this.ctx.panels['gulf-economies'] = gulfEconomiesPanel;
+      }
+
       const liveNewsPanel = new LiveNewsPanel();
       this.ctx.panels['live-news'] = liveNewsPanel;
 

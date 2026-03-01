@@ -910,6 +910,9 @@
       "sectionAi": "AI Analysis",
       "mapFlashLabel": "Live Event Pulse",
       "mapFlashDesc": "Flash locations on the map when breaking news arrives",
+      "sectionPanels": "Panels",
+      "badgeAnimLabel": "Count Badge Pulse",
+      "badgeAnimDesc": "Animate panel count badges when new items arrive",
       "aiFlowTitle": "Settings",
       "aiFlowCloudLabel": "Cloud AI (Groq & OpenRouter)",
       "aiFlowCloudDesc": "إرسال العناوين إلى السحابة لتلخيص الذكاء الاصطناعي (موصى به)",
@@ -923,6 +926,9 @@
       "aiFlowStatusCloudAndBrowser": "Cloud AI + نموذج المتصفح نشط",
       "aiFlowStatusBrowserOnly": "نموذج المتصفح فقط",
       "aiFlowStatusDisabled": "لا يوجد مزود ذكاء اصطناعي مفعّل",
+      "sectionIntelligence": "الاستخبارات",
+      "headlineMemoryLabel": "ذاكرة العناوين",
+      "headlineMemoryDesc": "تذكّر العناوين السابقة لإثراء ملخصات الدول بالسياق التاريخي",
       "insightsDisabledTitle": "تحليل الذكاء الاصطناعي معطّل",
       "insightsDisabledHint": "Enable providers via the settings gear in the map header"
     },
@@ -1308,7 +1314,8 @@
       "regionLatinAmerica": "أمريكا اللاتينية",
       "regionAsia": "آسيا",
       "regionMiddleEast": "الشرق الأوسط",
-      "regionAfrica": "أفريقيا"
+      "regionAfrica": "أفريقيا",
+      "regionOceania": "أوقيانوسيا"
     },
     "securityAdvisories": {
       "loading": "جاري جلب التحذيرات الأمنية...",

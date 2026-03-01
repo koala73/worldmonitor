@@ -8,7 +8,7 @@ export { AI_DATA_CENTERS } from '../ai-datacenters';
 
 // Refresh intervals - shared across all variants
 export const REFRESH_INTERVALS = {
-  feeds: 7 * 60 * 1000,
+  feeds: 15 * 60 * 1000,
   markets: 8 * 60 * 1000,
   crypto: 8 * 60 * 1000,
   predictions: 10 * 60 * 1000,

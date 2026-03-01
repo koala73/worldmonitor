@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Settings Option A — Sidebar + Content Panel</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#1a1c1e;--surface:#2a2d31;--surface-hover:#32363b;
+  --text:#e8eaed;--text-sec:#9aa0a6;--accent:#60a5fa;
+  --green:#34d399;--yellow:#fbbf24;--red:#ef4444;--blue:#60a5fa;
+  --border:rgba(255,255,255,0.08);--border-strong:rgba(255,255,255,0.14);
+  --font:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+  --mono:'SF Mono',Monaco,'Cascadia Code',monospace;
+  --sidebar-w:220px;
+}
+html,body{height:100%;overflow:hidden}
+body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;-webkit-font-smoothing:antialiased}
+
+/* Shell */
+.shell{display:flex;flex-direction:column;height:100vh;max-width:980px;max-height:760px;margin:auto;border:1px solid var(--border-strong);border-radius:10px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.5)}
+
+/* Header */
+.header{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;background:var(--surface);border-bottom:1px solid var(--border)}
+.header-title{font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px}
+.header-title svg{opacity:0.7}
+.header-badge{font-size:11px;color:var(--text-sec);background:rgba(255,255,255,0.06);padding:3px 10px;border-radius:12px}
+
+/* Main layout */
+.main{display:flex;flex:1;min-height:0}
+
+/* Sidebar */
+.sidebar{width:var(--sidebar-w);background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0}
+.sidebar-search{padding:12px 14px 8px}
+.sidebar-search input{width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--border-strong);border-radius:6px;color:var(--text);padding:7px 10px 7px 30px;font:inherit;font-size:12px;outline:none;transition:border-color .15s;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' fill='%239aa0a6' viewBox='0 0 24 24'%3E%3Cpath d='M15.5 14h-.79l-.28-.27A6.47 6.47 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:8px center}
+.sidebar-search input:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(96,165,250,0.15)}
+.sidebar-search input::placeholder{color:rgba(255,255,255,0.2)}
+
+.sidebar-nav{flex:1;overflow-y:auto;padding:4px 8px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.1) transparent}
+.sidebar-sep{height:1px;background:var(--border);margin:6px 8px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:6px;cursor:pointer;transition:background .12s;font-size:13px;color:var(--text-sec);position:relative;user-select:none}
+.nav-item:hover{background:rgba(255,255,255,0.04);color:var(--text)}
+.nav-item.active{background:rgba(96,165,250,0.1);color:var(--text);font-weight:600}
+.nav-item.active::before{content:'';position:absolute;left:0;top:8px;bottom:8px;width:3px;background:var(--accent);border-radius:0 2px 2px 0}
+.nav-icon{width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:15px;opacity:0.8;flex-shrink:0}
+.nav-label{flex:1}
+.nav-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.nav-dot.green{background:var(--green)}
+.nav-dot.yellow{background:var(--yellow)}
+.nav-dot.blue{background:var(--blue)}
+.nav-count{font-size:11px;color:var(--text-sec);opacity:0.6}
+
+/* Content */
+.content{flex:1;overflow-y:auto;padding:24px 28px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.1) transparent}
+.content::-webkit-scrollbar{width:6px}
+.content::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:3px}
+
+/* Overview */
+.overview{display:flex;flex-direction:column;gap:20px}
+.ov-top{display:flex;gap:24px;align-items:flex-start}
+.ov-ring-wrap{display:flex;flex-direction:column;align-items:center;gap:8px}
+.ov-ring{position:relative;width:120px;height:120px}
+.ov-ring svg{transform:rotate(-90deg)}
+.ov-ring-bg{fill:none;stroke:rgba(255,255,255,0.06);stroke-width:8}
+.ov-ring-fg{fill:none;stroke:var(--green);stroke-width:8;stroke-linecap:round;transition:stroke-dashoffset .6s ease}
+.ov-ring-text{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.ov-ring-num{font-size:28px;font-weight:700;color:var(--text)}
+.ov-ring-label{font-size:11px;color:var(--text-sec)}
+.ov-info{flex:1}
+.ov-info h2{font-size:18px;font-weight:700;margin-bottom:6px}
+.ov-info p{font-size:13px;color:var(--text-sec);line-height:1.5;margin-bottom:12px}
+.ov-cats{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ov-cat{display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;cursor:pointer;transition:border-color .15s}
+.ov-cat:hover{border-color:var(--border-strong)}
+.ov-cat-icon{font-size:16px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.04);border-radius:6px}
+.ov-cat-info{flex:1}
+.ov-cat-name{font-size:12px;font-weight:600}
+.ov-cat-stat{font-size:11px;color:var(--text-sec)}
+.ov-cat-dot{width:6px;height:6px;border-radius:50%}
+
+/* License section in overview */
+.ov-license{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 20px}
+.ov-license h3{font-size:14px;font-weight:600;margin-bottom:4px}
+.ov-license p{font-size:12px;color:var(--text-sec);margin-bottom:10px}
+.ov-license-row{display:flex;gap:10px}
+.ov-license-row input{flex:1;background:rgba(0,0,0,0.25);border:1px solid var(--border-strong);border-radius:6px;color:var(--text);padding:8px 12px;font:inherit;font-size:13px;font-family:var(--mono);outline:none}
+.ov-license-row input:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(96,165,250,0.15)}
+.ov-license-row input::placeholder{color:rgba(255,255,255,0.2)}
+
+/* Section header */
+.section-head{margin-bottom:16px}
+.section-head h2{font-size:17px;font-weight:700;margin-bottom:2px}
+.section-head p{font-size:12px;color:var(--text-sec)}
+
+/* Feature cards */
+.features{display:flex;flex-direction:column;gap:8px}
+.feat{background:var(--surface);border:1px solid var(--border);border-radius:8px;border-left:3px solid var(--border-strong);transition:border-color .2s,box-shadow .2s;overflow:hidden}
+.feat.ready{border-left-color:var(--green)}
+.feat.needs{border-left-color:var(--yellow)}
+.feat.staged{border-left-color:var(--blue)}
+.feat-header{display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer;user-select:none}
+.feat-toggle{position:relative;width:36px;height:20px;background:rgba(255,255,255,0.1);border-radius:10px;flex-shrink:0;cursor:pointer;transition:background .2s}
+.feat-toggle.on{background:var(--accent)}
+.feat-toggle::after{content:'';position:absolute;top:2px;left:2px;width:16px;height:16px;background:#fff;border-radius:50%;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,0.3)}
+.feat-toggle.on::after{transform:translateX(16px)}
+.feat-info{flex:1;min-width:0}
+.feat-name{font-size:13px;font-weight:600}
+.feat-desc{font-size:11px;color:var(--text-sec);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.feat-pill{font-size:10px;font-weight:600;padding:3px 10px;border-radius:10px;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap}
+.feat-pill.ok{color:var(--green);background:rgba(52,211,153,0.12)}
+.feat-pill.warn{color:var(--yellow);background:rgba(251,191,36,0.12)}
+.feat-pill.staged{color:var(--blue);background:rgba(96,165,250,0.12)}
+.feat-chevron{color:var(--text-sec);font-size:12px;transition:transform .2s;flex-shrink:0}
+.feat.expanded .feat-chevron{transform:rotate(180deg)}
+
+.feat-body{max-height:0;overflow:hidden;transition:max-height .25s ease}
+.feat.expanded .feat-body{max-height:300px}
+.feat-body-inner{padding:0 16px 14px;border-top:1px solid var(--border)}
+.feat-body-inner{padding-top:12px}
+.key-row{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
+.key-label{display:flex;align-items:center;justify-content:space-between}
+.key-label code{font-size:11px;color:var(--text-sec);font-family:var(--mono)}
+.key-label a{font-size:11px;color:var(--accent);text-decoration:none;font-weight:600}
+.key-label a:hover{text-decoration:underline}
+.key-input{width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--border-strong);border-radius:6px;color:var(--text);padding:8px 12px;font:inherit;font-size:12px;font-family:var(--mono);outline:none;transition:border-color .15s}
+.key-input:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(96,165,250,0.15)}
+.key-input::placeholder{color:rgba(255,255,255,0.2)}
+.feat-fallback{font-size:11px;color:var(--yellow);margin-top:6px;font-style:italic}
+
+/* Debug section */
+.debug-btns{display:flex;gap:10px;margin-bottom:16px}
+.debug-btns button{background:var(--surface);border:1px solid var(--border-strong);color:var(--text);font:inherit;font-size:13px;padding:8px 16px;border-radius:6px;cursor:pointer;transition:background .15s}
+.debug-btns button:hover{background:var(--surface-hover)}
+.debug-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px 16px}
+.debug-card h3{font-size:14px;font-weight:600;margin-bottom:10px}
+.diag-row{display:flex;align-items:center;gap:12px;margin-bottom:8px}
+.diag-row label{font-size:13px;color:var(--text-sec);display:flex;align-items:center;gap:6px;cursor:pointer}
+.diag-row input[type=checkbox]{accent-color:var(--accent)}
+.traffic-placeholder{font-size:12px;color:var(--text-sec);font-style:italic;padding:16px 0}
+
+/* Footer */
+.footer{display:flex;justify-content:flex-end;gap:10px;padding:14px 24px;border-top:1px solid var(--border);background:var(--surface);flex-shrink:0}
+.btn{font:inherit;font-size:13px;font-weight:600;padding:8px 24px;border-radius:6px;cursor:pointer;min-width:80px;text-align:center;transition:background .15s,border-color .15s,transform .1s;letter-spacing:.01em}
+.btn:active{transform:scale(0.98)}
+.btn-secondary{background:transparent;border:1px solid var(--border-strong);color:var(--text-sec)}
+.btn-secondary:hover{background:rgba(255,255,255,0.04);color:var(--text)}
+.btn-primary{background:var(--accent);border:1px solid var(--accent);color:#fff}
+.btn-primary:hover{background:#5294e8}
+
+/* Label tag */
+.option-label{position:fixed;top:12px;right:12px;background:var(--accent);color:#fff;font-size:11px;font-weight:700;padding:4px 12px;border-radius:6px;letter-spacing:.05em;z-index:999;text-transform:uppercase}
+</style>
+</head>
+<body>
+
+<div class="option-label">Option A — Sidebar</div>
+
+<div class="shell">
+  <div class="header">
+    <div class="header-title">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
+      World Monitor Settings
+    </div>
+    <span class="header-badge">v2.5.19</span>
+  </div>
+
+  <div class="main">
+    <div class="sidebar">
+      <div class="sidebar-search">
+        <input type="text" placeholder="Search settings..." id="searchInput">
+      </div>
+      <div class="sidebar-nav" id="sidebarNav"></div>
+    </div>
+    <div class="content" id="contentArea"></div>
+  </div>
+
+  <div class="footer">
+    <button class="btn btn-secondary">Cancel</button>
+    <button class="btn btn-primary">Save &amp; Close</button>
+  </div>
+</div>
+
+<script>
+const CATEGORIES = [
+  { id:'overview', icon:'📊', label:'Overview', dot:null },
+  { id:'sep1', sep:true },
+  { id:'ai', icon:'🤖', label:'AI Models', dot:'green', count:'3/3',
+    features:[
+      { name:'Ollama Local LLM', desc:'Local summarization via OpenAI-compatible endpoint', keys:['OLLAMA_API_URL','OLLAMA_MODEL'], status:'ready', on:true, fallback:'Falls back to Groq, then OpenRouter, then local browser model.', signup:'https://ollama.com/download' },
+      { name:'Groq Summarization', desc:'Primary fast LLM provider for AI summaries', keys:['GROQ_API_KEY'], status:'ready', on:true, fallback:'Falls back to OpenRouter, then local browser model.', signup:'https://console.groq.com/keys' },
+      { name:'OpenRouter LLM', desc:'Secondary LLM provider for AI summary fallback', keys:['OPENROUTER_API_KEY'], status:'ready', on:true, fallback:'Falls back to local browser model only.', signup:'https://openrouter.ai/settings/keys' },
+    ]},
+  { id:'data', icon:'📈', label:'Data Sources', dot:'green', count:'3/3',
+    features:[
+      { name:'FRED Economic Data', desc:'Macro indicators from Federal Reserve Economic Data', keys:['FRED_API_KEY'], status:'ready', on:true, fallback:'Economic panel remains available with non-FRED metrics.', signup:'https://fred.stlouisfed.org/docs/api/api_key.html' },
+      { name:'EIA Oil Analytics', desc:'US Energy Information Administration oil metrics', keys:['EIA_API_KEY'], status:'ready', on:true, fallback:'Oil analytics cards show disabled state.', signup:'https://www.eia.gov/opendata/register.php' },
+      { name:'WTO Trade Policy', desc:'Trade restrictions, tariff trends, barriers and flows', keys:['WTO_API_KEY'], status:'ready', on:true, fallback:'Trade policy panel shows disabled state.', signup:'https://apiportal.wto.org/' },
+    ]},
+  { id:'security', icon:'🛡️', label:'Security Intel', dot:'yellow', count:'2/4',
+    features:[
+      { name:'Cloudflare Outage Radar', desc:'Internet outages from Cloudflare Radar annotations', keys:['CLOUDFLARE_API_TOKEN'], status:'ready', on:true, fallback:'Outage layer is disabled.', signup:'https://dash.cloudflare.com/profile/api-tokens' },
+      { name:'abuse.ch Cyber IOC', desc:'URLhaus and ThreatFox IOC ingestion for cyber layer', keys:['URLHAUS_AUTH_KEY'], status:'needs', on:true, fallback:'URLhaus/ThreatFox IOC ingestion is disabled.', signup:'https://auth.abuse.ch/' },
+      { name:'AlienVault OTX Intel', desc:'OTX IOC ingestion for cyber threat enrichment', keys:['OTX_API_KEY'], status:'ready', on:true, fallback:'OTX IOC enrichment is disabled.', signup:'https://otx.alienvault.com/' },
+      { name:'AbuseIPDB Threat Intel', desc:'AbuseIPDB reputation enrichment for cyber layer', keys:['ABUSEIPDB_API_KEY'], status:'needs', on:false, fallback:'AbuseIPDB enrichment is disabled.', signup:'https://www.abuseipdb.com/login' },
+    ]},
+  { id:'tracking', icon:'✈️', label:'Tracking', dot:'yellow', count:'2/4',
+    features:[
+      { name:'AIS Vessel Tracking', desc:'Live vessel ingestion via AISStream WebSocket', keys:['AISSTREAM_API_KEY'], status:'ready', on:true, fallback:'AIS layer is disabled.', signup:'https://aisstream.io/authenticate' },
+      { name:'OpenSky Military Flights', desc:'OAuth credentials for military flight data', keys:['OPENSKY_CLIENT_ID','OPENSKY_CLIENT_SECRET'], status:'needs', on:true, fallback:'Military flights fall back to limited data.', signup:'https://opensky-network.org/login?view=registration' },
+      { name:'Wingbits Aircraft Data', desc:'Military flight operator/aircraft enrichment', keys:['WINGBITS_API_KEY'], status:'needs', on:false, fallback:'Flight map uses heuristic-only classification.', signup:'https://wingbits.com/register' },
+      { name:'NASA FIRMS Fire Data', desc:'Fire satellite data from FIRMS', keys:['NASA_FIRMS_API_KEY'], status:'ready', on:true, fallback:'FIRMS fire layer uses public VIIRS feed.', signup:'https://firms.modaps.eosdis.nasa.gov/api/area/' },
+    ]},
+  { id:'markets', icon:'💹', label:'Markets', dot:'green', count:'2/2',
+    features:[
+      { name:'Finnhub Market Data', desc:'Real-time stock quotes and market data', keys:['FINNHUB_API_KEY'], status:'ready', on:true, fallback:'Stock ticker uses limited free data.', signup:'https://finnhub.io/register' },
+      { name:'ACLED Conflicts', desc:'Conflict and protest event feeds', keys:['ACLED_ACCESS_TOKEN'], status:'ready', on:true, fallback:'Conflict/protest overlays are hidden.', signup:'https://developer.acleddata.com/' },
+    ]},
+  { id:'sep2', sep:true },
+  { id:'debug', icon:'🔧', label:'Debug & Logs', dot:null },
+];
+
+function getReadyCount() {
+  let ready=0, total=0;
+  CATEGORIES.forEach(c => {
+    if (!c.features) return;
+    c.features.forEach(f => { total++; if (f.status==='ready') ready++; });
+  });
+  return { ready, total };
+}
+
+function renderSidebar(activeId) {
+  const nav = document.getElementById('sidebarNav');
+  nav.innerHTML = CATEGORIES.map(c => {
+    if (c.sep) return '<div class="sidebar-sep"></div>';
+    const active = c.id===activeId ? ' active' : '';
+    const dot = c.dot ? `<span class="nav-dot ${c.dot}"></span>` : '';
+    const count = c.count ? `<span class="nav-count">${c.count}</span>` : '';
+    return `<div class="nav-item${active}" data-nav="${c.id}">
+      <span class="nav-icon">${c.icon}</span>
+      <span class="nav-label">${c.label}</span>
+      ${count}${dot}
+    </div>`;
+  }).join('');
+
+  nav.querySelectorAll('.nav-item').forEach(el => {
+    el.addEventListener('click', () => renderSection(el.dataset.nav));
+  });
+}
+
+function renderOverview() {
+  const { ready, total } = getReadyCount();
+  const pct = ready/total;
+  const circ = 2*Math.PI*46;
+  const offset = circ*(1-pct);
+
+  let catCards = CATEGORIES.filter(c=>c.features).map(c => {
+    const r = c.features.filter(f=>f.status==='ready').length;
+    const t = c.features.length;
+    const dot = r===t?'green':'yellow';
+    return `<div class="ov-cat" data-nav="${c.id}">
+      <span class="ov-cat-icon">${c.icon}</span>
+      <div class="ov-cat-info">
+        <div class="ov-cat-name">${c.label}</div>
+        <div class="ov-cat-stat">${r}/${t} ready</div>
+      </div>
+      <span class="ov-cat-dot nav-dot ${dot}"></span>
+    </div>`;
+  }).join('');
+
+  return `<div class="overview">
+    <div class="ov-top">
+      <div class="ov-ring-wrap">
+        <div class="ov-ring">
+          <svg width="120" height="120" viewBox="0 0 120 120">
+            <circle class="ov-ring-bg" cx="60" cy="60" r="46" />
+            <circle class="ov-ring-fg" cx="60" cy="60" r="46"
+              stroke-dasharray="${circ}" stroke-dashoffset="${offset}" />
+          </svg>
+          <div class="ov-ring-text">
+            <span class="ov-ring-num">${ready}/${total}</span>
+            <span class="ov-ring-label">features ready</span>
+          </div>
+        </div>
+      </div>
+      <div class="ov-info">
+        <h2>Welcome to World Monitor</h2>
+        <p>Configure API keys to unlock real-time data feeds, AI summaries, and intelligence layers. Features without keys gracefully degrade to public data.</p>
+        <div class="ov-cats">${catCards}</div>
+      </div>
+    </div>
+    <div class="ov-license">
+      <h3>World Monitor API Key</h3>
+      <p>Enter your license key for full access, or use BYOK (Bring Your Own Keys) below.</p>
+      <div class="ov-license-row">
+        <input type="password" placeholder="wm_live_..." autocomplete="off">
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderFeatureSection(cat) {
+  const features = cat.features.map((f,i) => {
+    const pillCls = f.status==='ready'?'ok':f.status==='staged'?'staged':'warn';
+    const pillText = f.status==='ready'?'Ready':f.status==='staged'?'Staged':'Needs Keys';
+    const toggleCls = f.on?'on':'';
+    const statCls = f.status==='ready'?'ready':f.status==='staged'?'staged':'needs';
+    const keys = f.keys.map(k => `
+      <div class="key-row">
+        <div class="key-label">
+          <code>${k}</code>
+          <a href="#" onclick="return false">Get key →</a>
+        </div>
+        <input type="password" class="key-input" placeholder="${f.status==='ready'?'••••••••••••':'Enter API key...'}" ${f.status==='ready'?'value="••••••••••••"':''}>
+      </div>
+    `).join('');
+
+    return `<div class="feat ${statCls}" data-feat="${i}">
+      <div class="feat-header">
+        <div class="feat-toggle ${toggleCls}" data-toggle="${i}"></div>
+        <div class="feat-info">
+          <div class="feat-name">${f.name}</div>
+          <div class="feat-desc">${f.desc}</div>
+        </div>
+        <span class="feat-pill ${pillCls}">${pillText}</span>
+        <span class="feat-chevron">▼</span>
+      </div>
+      <div class="feat-body">
+        <div class="feat-body-inner">
+          ${keys}
+          ${f.status!=='ready'?`<div class="feat-fallback">${f.fallback}</div>`:''}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  return `<div class="section-head">
+    <h2>${cat.icon} ${cat.label}</h2>
+    <p>${cat.features.length} features · ${cat.features.filter(f=>f.status==='ready').length} configured</p>
+  </div>
+  <div class="features">${features}</div>`;
+}
+
+function renderDebug() {
+  return `<div class="section-head">
+    <h2>🔧 Debug & Logs</h2>
+    <p>Diagnostics and API traffic monitoring</p>
+  </div>
+  <div class="debug-btns">
+    <button>Open Logs Folder</button>
+    <button>Open API Log</button>
+  </div>
+  <div class="debug-card">
+    <h3>Diagnostics</h3>
+    <div class="diag-row"><label><input type="checkbox"> Verbose Sidecar Log</label></div>
+    <div class="diag-row"><label><input type="checkbox"> Frontend Fetch Debug</label></div>
+    <div style="margin-top:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span style="font-size:13px;font-weight:600;color:var(--text-sec)">API Traffic</span>
+        <div style="display:flex;gap:8px">
+          <label style="font-size:12px;color:var(--text-sec);display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" checked style="accent-color:var(--accent)"> Auto</label>
+          <button style="background:var(--surface);border:1px solid var(--border-strong);color:var(--text-sec);font-size:11px;padding:3px 10px;border-radius:4px;cursor:pointer">Refresh</button>
+          <button style="background:var(--surface);border:1px solid var(--border-strong);color:var(--text-sec);font-size:11px;padding:3px 10px;border-radius:4px;cursor:pointer">Clear</button>
+        </div>
+      </div>
+      <div class="traffic-placeholder">No traffic recorded yet.</div>
+    </div>
+  </div>`;
+}
+
+function renderSection(id) {
+  renderSidebar(id);
+  const area = document.getElementById('contentArea');
+
+  if (id==='overview') {
+    area.innerHTML = renderOverview();
+    area.querySelectorAll('[data-nav]').forEach(el => {
+      el.addEventListener('click', () => renderSection(el.dataset.nav));
+    });
+    return;
+  }
+  if (id==='debug') {
+    area.innerHTML = renderDebug();
+    return;
+  }
+
+  const cat = CATEGORIES.find(c=>c.id===id);
+  if (!cat || !cat.features) return;
+  area.innerHTML = renderFeatureSection(cat);
+
+  // Toggle expand
+  area.querySelectorAll('.feat-header').forEach(hdr => {
+    hdr.addEventListener('click', (e) => {
+      if (e.target.closest('.feat-toggle')) return;
+      const feat = hdr.closest('.feat');
+      feat.classList.toggle('expanded');
+    });
+  });
+
+  // Toggle on/off
+  area.querySelectorAll('.feat-toggle').forEach(tog => {
+    tog.addEventListener('click', () => tog.classList.toggle('on'));
+  });
+}
+
+// Search
+document.getElementById('searchInput').addEventListener('input', (e) => {
+  const q = e.target.value.toLowerCase().trim();
+  if (!q) { renderSection('overview'); return; }
+  // Find matching features
+  const matches = [];
+  CATEGORIES.forEach(c => {
+    if (!c.features) return;
+    c.features.forEach(f => {
+      if (f.name.toLowerCase().includes(q) || f.desc.toLowerCase().includes(q) || f.keys.some(k=>k.toLowerCase().includes(q))) {
+        matches.push({...f, category: c.label, catIcon: c.icon});
+      }
+    });
+  });
+  const area = document.getElementById('contentArea');
+  if (matches.length===0) {
+    area.innerHTML = `<div style="text-align:center;padding:60px 0;color:var(--text-sec)">No features matching "${e.target.value}"</div>`;
+    return;
+  }
+  area.innerHTML = `<div class="section-head"><h2>Search Results</h2><p>${matches.length} feature${matches.length>1?'s':''} found</p></div>
+    <div class="features">${matches.map((f,i) => {
+      const pillCls = f.status==='ready'?'ok':'warn';
+      const pillText = f.status==='ready'?'Ready':'Needs Keys';
+      return `<div class="feat ${f.status==='ready'?'ready':'needs'}" data-feat="${i}">
+        <div class="feat-header">
+          <div class="feat-toggle ${f.on?'on':''}"></div>
+          <div class="feat-info">
+            <div class="feat-name">${f.catIcon} ${f.name}</div>
+            <div class="feat-desc">${f.desc}</div>
+          </div>
+          <span class="feat-pill ${pillCls}">${pillText}</span>
+          <span class="feat-chevron">▼</span>
+        </div>
+        <div class="feat-body"><div class="feat-body-inner">
+          ${f.keys.map(k=>`<div class="key-row"><div class="key-label"><code>${k}</code><a href="#" onclick="return false">Get key →</a></div><input type="password" class="key-input" placeholder="Enter API key..."></div>`).join('')}
+        </div></div>
+      </div>`;
+    }).join('')}</div>`;
+
+  area.querySelectorAll('.feat-header').forEach(hdr => {
+    hdr.addEventListener('click', (e) => {
+      if (e.target.closest('.feat-toggle')) return;
+      hdr.closest('.feat').classList.toggle('expanded');
+    });
+  });
+  area.querySelectorAll('.feat-toggle').forEach(t=>t.addEventListener('click',()=>t.classList.toggle('on')));
+});
+
+renderSection('overview');
+</script>
+</body>
+</html>

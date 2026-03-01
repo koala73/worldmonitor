@@ -14,6 +14,7 @@ import { openStoryModal } from '@/components/StoryModal';
 import { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
 import { BETA_MODE } from '@/config/beta';
 import { mlWorker } from '@/services/ml-worker';
+import { isHeadlineMemoryEnabled } from '@/services/ai-flow-settings';
 import { t } from '@/services/i18n';
 import { trackCountrySelected, trackCountryBriefOpened } from '@/services/analytics';
 import type { StrategicPosturePanel } from '@/components/StrategicPosturePanel';
@@ -216,7 +217,21 @@ export class CountryIntelManager implements AppModule {
 
       let briefText = '';
       try {
-        const contextSnapshot = this.buildBriefContextSnapshot(country, code, score, signals, context);
+        let contextSnapshot = this.buildBriefContextSnapshot(country, code, score, signals, context);
+
+        if (isHeadlineMemoryEnabled() && mlWorker.isAvailable && mlWorker.isModelLoaded('embeddings') && briefHeadlines.length > 0) {
+          try {
+            const results = await mlWorker.vectorStoreSearch(briefHeadlines.slice(0, 3), 5, 0.3);
+            if (results.length > 0) {
+              const historical = results.map(r =>
+                `- ${r.text} (${new Date(r.pubDate).toISOString().slice(0, 10)})`
+              ).join('\n').slice(0, 350);
+              contextSnapshot = contextSnapshot.slice(0, 1800)
+                + `\n[BEGIN HISTORICAL DATA]\n${historical}\n[END HISTORICAL DATA]`;
+            }
+          } catch { /* RAG unavailable */ }
+        }
+
         briefText = await this.fetchCountryIntelBrief(code, contextSnapshot);
       } catch { /* server unreachable */ }
 
@@ -493,7 +508,7 @@ export class CountryIntelManager implements AppModule {
     if (this.ctx.intelligenceCache.flightDelays) {
       aviationDisruptions = this.ctx.intelligenceCache.flightDelays.filter(d =>
         (d.severity === 'major' || d.severity === 'severe' || d.delayType === 'closure') &&
-        d.country?.toLowerCase() === countryLower
+        (hasGeoShape ? this.isInCountry(d.lat, d.lon, code) : d.country?.toLowerCase() === countryLower)
       ).length;
     }
 
@@ -594,7 +609,9 @@ export class CountryIntelManager implements AppModule {
 
   private isInCountry(lat: number, lon: number, code: string): boolean {
     const precise = isCoordinateInCountry(lat, lon, code);
-    if (precise != null) return precise;
+    if (precise === true) return true;
+    // When precise geometry returns false (coastal/polygon precision) or null (not loaded),
+    // fall through to bounding box — matches CII's coordsToBoundsCountry fallback
     const b = CountryIntelManager.COUNTRY_BOUNDS[code];
     if (!b) return false;
     return lat >= b.s && lat <= b.n && lon >= b.w && lon <= b.e;

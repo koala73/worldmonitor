@@ -251,7 +251,7 @@ export class EventHandlerManager implements AppModule {
     this.setupMapPin();
 
     this.boundVisibilityHandler = () => {
-      document.body.classList.toggle('animations-paused', document.hidden);
+      document.body?.classList.toggle('animations-paused', document.hidden);
       if (document.hidden) {
         this.callbacks.setHiddenSince(Date.now());
         mlWorker.unloadOptionalModels();
@@ -299,7 +299,7 @@ export class EventHandlerManager implements AppModule {
     this.boundIdleResetHandler = () => {
       if (this.ctx.isIdle) {
         this.ctx.isIdle = false;
-        document.body.classList.remove('animations-paused');
+        document.body?.classList.remove('animations-paused');
       }
       this.resetIdleTimer();
     };
@@ -318,7 +318,7 @@ export class EventHandlerManager implements AppModule {
     this.idleTimeoutId = setTimeout(() => {
       if (!document.hidden) {
         this.ctx.isIdle = true;
-        document.body.classList.add('animations-paused');
+        document.body?.classList.add('animations-paused');
         console.log('[App] User idle - pausing animations to save resources');
       }
     }, this.IDLE_PAUSE_MS);

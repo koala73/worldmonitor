@@ -67,6 +67,7 @@ export class InvestmentsPanel extends Panel {
   };
   private sortKey: keyof GulfInvestment = 'assetName';
   private sortAsc = true;
+  private filtersExpanded = false;
   private onInvestmentClick?: (inv: GulfInvestment) => void;
 
   constructor(onInvestmentClick?: (inv: GulfInvestment) => void) {
@@ -109,76 +110,83 @@ export class InvestmentsPanel extends Panel {
   private render(): void {
     const filtered = this.getFiltered();
 
-    // Build unique entity list for dropdown
     const entities = Array.from(new Set(GULF_INVESTMENTS.map(i => i.investingEntity))).sort();
     const sectors = Array.from(new Set(GULF_INVESTMENTS.map(i => i.sector))).sort();
 
-    const sortArrow = (key: keyof GulfInvestment) =>
-      this.sortKey === key ? (this.sortAsc ? ' ↑' : ' ↓') : '';
+    const sortCls = (key: keyof GulfInvestment) =>
+      this.sortKey === key ? 'fdi-sort fdi-sort-active' : 'fdi-sort';
+    const sortLabel = (key: keyof GulfInvestment, label: string) =>
+      this.sortKey === key ? `${label} ${this.sortAsc ? '↑' : '↓'}` : label;
+
+    const hasActiveFilter = this.filters.investingCountry !== 'ALL'
+      || this.filters.sector !== 'ALL'
+      || this.filters.entity !== 'ALL'
+      || this.filters.status !== 'ALL';
 
     const rows = filtered.map(inv => {
       const statusColor = STATUS_COLORS[inv.status] || '#6b7280';
       const flag = FLAG[inv.investingCountry] || '';
-      const sector = getSectorLabel(inv.sector);
+      const sectorLabel = getSectorLabel(inv.sector);
+      const year = inv.yearAnnounced ?? inv.yearOperational ?? '—';
       return `
-        <tr class="fdi-row" data-id="${escapeHtml(inv.id)}" style="cursor:pointer">
-          <td class="fdi-asset">
+        <div class="fdi-row" data-id="${escapeHtml(inv.id)}">
+          <div class="fdi-row-line1">
             <span class="fdi-flag">${flag}</span>
-            <strong>${escapeHtml(inv.assetName)}</strong>
-            <div class="fdi-entity-sub">${escapeHtml(inv.investingEntity)}</div>
-          </td>
-          <td>${escapeHtml(inv.targetCountry)}</td>
-          <td><span class="fdi-sector-badge">${escapeHtml(sector)}</span></td>
-          <td><span class="fdi-status-dot" style="background:${statusColor}"></span>${escapeHtml(inv.status)}</td>
-          <td class="fdi-usd">${escapeHtml(formatUSD(inv.investmentUSD))}</td>
-          <td>${inv.yearAnnounced ?? inv.yearOperational ?? '—'}</td>
-        </tr>`;
+            <span class="fdi-asset-name">${escapeHtml(inv.assetName)}</span>
+            <span class="fdi-entity-sub">${escapeHtml(inv.investingEntity)}</span>
+            <span class="fdi-usd">${escapeHtml(formatUSD(inv.investmentUSD))}</span>
+          </div>
+          <div class="fdi-row-line2">
+            <span class="fdi-country">${escapeHtml(inv.targetCountry)}</span>
+            <span class="fdi-sector-badge">${escapeHtml(sectorLabel)}</span>
+            <span class="fdi-status-label"><span class="fdi-status-dot" style="background:${statusColor}"></span>${escapeHtml(inv.status)}</span>
+            <span class="fdi-year">${year}</span>
+          </div>
+        </div>`;
     }).join('');
 
+    const toggleCls = this.filtersExpanded || hasActiveFilter ? 'fdi-filter-toggle fdi-filters-active' : 'fdi-filter-toggle';
+    const filtersCls = this.filtersExpanded ? 'fdi-filters fdi-filters-open' : 'fdi-filters';
+
+    const sel = (f: string) => this.filters.status === f ? ' selected' : '';
     const html = `
-      <div class="fdi-toolbar">
-        <input
-          class="fdi-search"
-          type="text"
+      <div class="fdi-search-row">
+        <input class="fdi-search" type="text"
           placeholder="${t('components.investments.searchPlaceholder')}"
-          value="${escapeHtml(this.filters.search)}"
-        />
+          value="${escapeHtml(this.filters.search)}"/>
+        <button class="${toggleCls}" data-action="toggle-filters" title="Filters">⚙</button>
+      </div>
+      <div class="${filtersCls}">
         <select class="fdi-filter" data-filter="investingCountry">
           <option value="ALL">🌐 ${t('components.investments.allCountries')}</option>
-          <option value="SA" ${this.filters.investingCountry === 'SA' ? 'selected' : ''}>🇸🇦 ${t('components.investments.saudiArabia')}</option>
-          <option value="UAE" ${this.filters.investingCountry === 'UAE' ? 'selected' : ''}>🇦🇪 ${t('components.investments.uae')}</option>
+          <option value="SA"${this.filters.investingCountry === 'SA' ? ' selected' : ''}>🇸🇦 ${t('components.investments.saudiArabia')}</option>
+          <option value="UAE"${this.filters.investingCountry === 'UAE' ? ' selected' : ''}>🇦🇪 ${t('components.investments.uae')}</option>
         </select>
         <select class="fdi-filter" data-filter="sector">
           <option value="ALL">${t('components.investments.allSectors')}</option>
-          ${sectors.map(s => `<option value="${s}" ${this.filters.sector === s ? 'selected' : ''}>${escapeHtml(getSectorLabel(s as GulfInvestmentSector))}</option>`).join('')}
+          ${sectors.map(s => `<option value="${s}"${this.filters.sector === s ? ' selected' : ''}>${escapeHtml(getSectorLabel(s as GulfInvestmentSector))}</option>`).join('')}
         </select>
         <select class="fdi-filter" data-filter="entity">
           <option value="ALL">${t('components.investments.allEntities')}</option>
-          ${entities.map(e => `<option value="${escapeHtml(e)}" ${this.filters.entity === e ? 'selected' : ''}>${escapeHtml(e)}</option>`).join('')}
+          ${entities.map(e => `<option value="${escapeHtml(e)}"${this.filters.entity === e ? ' selected' : ''}>${escapeHtml(e)}</option>`).join('')}
         </select>
         <select class="fdi-filter" data-filter="status">
           <option value="ALL">${t('components.investments.allStatuses')}</option>
-          <option value="operational" ${this.filters.status === 'operational' ? 'selected' : ''}>${t('components.investments.operational')}</option>
-          <option value="under-construction" ${this.filters.status === 'under-construction' ? 'selected' : ''}>${t('components.investments.underConstruction')}</option>
-          <option value="announced" ${this.filters.status === 'announced' ? 'selected' : ''}>${t('components.investments.announced')}</option>
-          <option value="rumoured" ${this.filters.status === 'rumoured' ? 'selected' : ''}>${t('components.investments.rumoured')}</option>
-          <option value="divested" ${this.filters.status === 'divested' ? 'selected' : ''}>${t('components.investments.divested')}</option>
+          <option value="operational"${sel('operational')}>${t('components.investments.operational')}</option>
+          <option value="under-construction"${sel('under-construction')}>${t('components.investments.underConstruction')}</option>
+          <option value="announced"${sel('announced')}>${t('components.investments.announced')}</option>
+          <option value="rumoured"${sel('rumoured')}>${t('components.investments.rumoured')}</option>
+          <option value="divested"${sel('divested')}>${t('components.investments.divested')}</option>
         </select>
+        <div class="fdi-sort-pills">
+          <button class="${sortCls('assetName')}" data-sort="assetName">${sortLabel('assetName', t('components.investments.asset'))}</button>
+          <button class="${sortCls('investmentUSD')}" data-sort="investmentUSD">${sortLabel('investmentUSD', t('components.investments.investment'))}</button>
+          <button class="${sortCls('targetCountry')}" data-sort="targetCountry">${sortLabel('targetCountry', t('components.investments.country'))}</button>
+          <button class="${sortCls('yearAnnounced')}" data-sort="yearAnnounced">${sortLabel('yearAnnounced', t('components.investments.year'))}</button>
+        </div>
       </div>
-      <div class="fdi-table-wrap">
-        <table class="fdi-table">
-          <thead>
-            <tr>
-              <th class="fdi-sort" data-sort="assetName">${t('components.investments.asset')}${sortArrow('assetName')}</th>
-              <th class="fdi-sort" data-sort="targetCountry">${t('components.investments.country')}${sortArrow('targetCountry')}</th>
-              <th class="fdi-sort" data-sort="sector">${t('components.investments.sector')}${sortArrow('sector')}</th>
-              <th class="fdi-sort" data-sort="status">${t('components.investments.status')}${sortArrow('status')}</th>
-              <th class="fdi-sort" data-sort="investmentUSD">${t('components.investments.investment')}${sortArrow('investmentUSD')}</th>
-              <th class="fdi-sort" data-sort="yearAnnounced">${t('components.investments.year')}${sortArrow('yearAnnounced')}</th>
-            </tr>
-          </thead>
-          <tbody>${rows || `<tr><td colspan="6" class="fdi-empty">${t('components.investments.noMatch')}</td></tr>`}</tbody>
-        </table>
+      <div class="fdi-list">
+        ${rows || `<div class="fdi-empty">${t('components.investments.noMatch')}</div>`}
       </div>`;
 
     this.setContent(html);
@@ -205,9 +213,17 @@ export class InvestmentsPanel extends Panel {
 
     this.content.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
-      const th = target.closest('.fdi-sort') as HTMLElement | null;
-      if (th) {
-        const key = th.dataset.sort as keyof GulfInvestment;
+
+      const toggleBtn = target.closest('[data-action="toggle-filters"]') as HTMLElement | null;
+      if (toggleBtn) {
+        this.filtersExpanded = !this.filtersExpanded;
+        this.render();
+        return;
+      }
+
+      const sortBtn = target.closest('.fdi-sort') as HTMLElement | null;
+      if (sortBtn) {
+        const key = sortBtn.dataset.sort as keyof GulfInvestment;
         if (this.sortKey === key) {
           this.sortAsc = !this.sortAsc;
         } else {
@@ -217,6 +233,7 @@ export class InvestmentsPanel extends Panel {
         this.render();
         return;
       }
+
       const row = target.closest('.fdi-row') as HTMLElement | null;
       if (row) {
         const inv = GULF_INVESTMENTS.find(i => i.id === row.dataset.id);

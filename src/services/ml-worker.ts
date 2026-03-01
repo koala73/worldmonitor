@@ -28,6 +28,13 @@ interface SentimentResult {
   score: number;
 }
 
+export interface VectorSearchResult {
+  text: string;
+  pubDate: number;
+  source: string;
+  score: number;
+}
+
 type WorkerResult =
   | { type: 'worker-ready' }
   | { type: 'ready'; id: string }
@@ -39,6 +46,10 @@ type WorkerResult =
   | { type: 'sentiment-result'; id: string; results: SentimentResult[] }
   | { type: 'entities-result'; id: string; entities: NEREntity[][] }
   | { type: 'cluster-semantic-result'; id: string; clusters: number[][] }
+  | { type: 'vector-store-ingest-result'; id: string; stored: number }
+  | { type: 'vector-store-search-result'; id: string; results: VectorSearchResult[] }
+  | { type: 'vector-store-count-result'; id: string; count: number }
+  | { type: 'vector-store-reset-result'; id: string }
   | { type: 'status-result'; id: string; loadedModels: string[] }
   | { type: 'reset-complete' }
   | { type: 'error'; id?: string; error: string };
@@ -149,6 +160,14 @@ class MLWorkerManager {
               pending.resolve(data.entities);
             } else if (data.type === 'cluster-semantic-result') {
               pending.resolve(data.clusters);
+            } else if (data.type === 'vector-store-ingest-result') {
+              pending.resolve(data.stored);
+            } else if (data.type === 'vector-store-search-result') {
+              pending.resolve(data.results);
+            } else if (data.type === 'vector-store-count-result') {
+              pending.resolve(data.count);
+            } else if (data.type === 'vector-store-reset-result') {
+              pending.resolve(true);
             } else if (data.type === 'status-result') {
               pending.resolve(data.loadedModels);
             }
@@ -323,9 +342,32 @@ class MLWorkerManager {
     );
   }
 
-  /**
-   * Get status of loaded models
-   */
+  async vectorStoreIngest(
+    items: Array<{ text: string; pubDate: number; source: string; url: string; tags?: string[] }>
+  ): Promise<number> {
+    if (!this.isReady) return 0;
+    return this.request<number>('vector-store-ingest', { items });
+  }
+
+  async vectorStoreSearch(
+    queries: string[],
+    topK = 5,
+    minScore = 0.3,
+  ): Promise<VectorSearchResult[]> {
+    if (!this.isReady || !this.loadedModels.has('embeddings')) return [];
+    return this.request<VectorSearchResult[]>('vector-store-search', { queries, topK, minScore });
+  }
+
+  async vectorStoreCount(): Promise<number> {
+    if (!this.isReady) return 0;
+    return this.request<number>('vector-store-count', {});
+  }
+
+  async vectorStoreReset(): Promise<boolean> {
+    if (!this.isReady) return false;
+    return this.request<boolean>('vector-store-reset', {});
+  }
+
   async getStatus(): Promise<string[]> {
     if (!this.isReady) return [];
     return this.request<string[]>('status', {});

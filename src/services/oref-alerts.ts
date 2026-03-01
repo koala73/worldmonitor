@@ -14,6 +14,7 @@ export interface OrefAlertsResponse {
   configured: boolean;
   alerts: OrefAlert[];
   historyCount24h: number;
+  totalHistoryCount?: number;
   timestamp: string;
   error?: string;
 }
@@ -37,11 +38,59 @@ const CACHE_TTL = 8_000;
 let pollingInterval: ReturnType<typeof setInterval> | null = null;
 let updateCallbacks: Array<(data: OrefAlertsResponse) => void> = [];
 
+let locationTranslator: ((s: string) => string) | null = null;
+let locationMapPromise: Promise<void> | null = null;
+
+async function ensureLocationMapLoaded(): Promise<void> {
+  if (locationTranslator) return;
+  if (locationMapPromise) { await locationMapPromise; return; }
+  locationMapPromise = import('./oref-locations').then(m => {
+    locationTranslator = m.translateLocation;
+  }).catch(() => { locationMapPromise = null; console.warn('[OREF] Failed to load location translations, will retry'); });
+  await locationMapPromise;
+}
+
 const MAX_TRANSLATION_CACHE = 200;
 const translationCache = new Map<string, { title: string; data: string[]; desc: string }>();
 let translationPromise: Promise<boolean> | null = null;
 
 const HEBREW_RE = /[\u0590-\u05FF]/;
+
+const STATIC_TRANSLATIONS: Record<string, string> = {
+  'ירי רקטות וטילים': 'Rocket and missile fire',
+  'חדירת כלי טיס עוין': 'Hostile aircraft intrusion',
+  'רעידת אדמה': 'Earthquake',
+  'צונאמי': 'Tsunami',
+  'חומרים מסוכנים': 'Hazardous materials',
+  'פריצת מחסום': 'Security breach',
+  'חשש לחדירה עוינת': 'Suspected hostile infiltration',
+  'אירוע רדיולוגי': 'Radiological event',
+  'אירוע חומרים מסוכנים': 'Hazardous materials event',
+  'היכנסו למרחב המוגן': 'Enter the protected space',
+  'ניתן לצאת מהמרחב המוגן אך יש להישאר בקרבתו': 'You may leave the protected space but stay nearby',
+  'ניתן לצאת מהמרחב המוגן': 'You may leave the protected space',
+  'בדקות הקרובות צפויות להתקבל התרעות באזורך': 'Alerts expected in your area soon',
+  'התרעה לא קונבנציונלית': 'Non-conventional threat alert',
+  'ירי שיגור רקטות': 'Rocket launch fire',
+  'התקפה כימית': 'Chemical attack',
+  'חדירת מחבלים': 'Terrorist infiltration',
+  'שריפה גדולה': 'Large fire',
+  'אזעקה': 'Siren alert',
+  'ירי רקטות': 'Rocket fire',
+  'ירי טילים': 'Missile fire',
+  'התגוננו': 'Take shelter',
+};
+
+function staticTranslate(text: string): string {
+  if (!text || !HEBREW_RE.test(text)) return text;
+  const direct = STATIC_TRANSLATIONS[text.trim()];
+  if (direct) return direct;
+  let result = text;
+  for (const [heb, eng] of Object.entries(STATIC_TRANSLATIONS)) {
+    if (result.includes(heb)) result = result.replace(heb, eng);
+  }
+  return result;
+}
 
 function hasHebrew(text: string): boolean {
   return HEBREW_RE.test(text);
@@ -99,6 +148,14 @@ function applyTranslations(alerts: OrefAlert[]): OrefAlert[] {
   return alerts.map(a => {
     const cached = translationCache.get(a.id);
     if (cached) return { ...a, ...cached };
+    if (alertNeedsTranslation(a)) {
+      return {
+        ...a,
+        title: staticTranslate(a.title),
+        data: a.data.map(d => locationTranslator ? locationTranslator(staticTranslate(d)) : staticTranslate(d)),
+        desc: staticTranslate(a.desc),
+      };
+    }
     return a;
   });
 }
@@ -143,6 +200,7 @@ function getOrefApiUrl(endpoint?: string): string {
 }
 
 export async function fetchOrefAlerts(): Promise<OrefAlertsResponse> {
+  await ensureLocationMapLoaded();
   const now = Date.now();
   if (cachedResponse && now - lastFetchAt < CACHE_TTL) {
     return { ...cachedResponse, alerts: applyTranslations(cachedResponse.alerts) };
@@ -174,11 +232,13 @@ export async function fetchOrefAlerts(): Promise<OrefAlertsResponse> {
 }
 
 export async function fetchOrefHistory(): Promise<OrefHistoryResponse> {
+  await ensureLocationMapLoaded();
   try {
     const res = await fetch(getOrefApiUrl('history'), {
       headers: { Accept: 'application/json' },
     });
     if (!res.ok) {
+      console.warn('[OREF History] HTTP', res.status);
       return { configured: false, history: [], historyCount24h: 0, timestamp: new Date().toISOString(), error: `HTTP ${res.status}` };
     }
     const data: OrefHistoryResponse = await res.json();

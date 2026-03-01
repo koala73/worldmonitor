@@ -1249,6 +1249,7 @@ export interface GulfInvestment {
 
 export interface MapProtestCluster {
   id: string;
+  _clusterId?: number;
   lat: number;
   lon: number;
   count: number;
@@ -1266,6 +1267,7 @@ export interface MapProtestCluster {
 
 export interface MapTechHQCluster {
   id: string;
+  _clusterId?: number;
   lat: number;
   lon: number;
   count: number;
@@ -1281,6 +1283,7 @@ export interface MapTechHQCluster {
 
 export interface MapTechEventCluster {
   id: string;
+  _clusterId?: number;
   lat: number;
   lon: number;
   count: number;
@@ -1294,6 +1297,7 @@ export interface MapTechEventCluster {
 
 export interface MapDatacenterCluster {
   id: string;
+  _clusterId?: number;
   lat: number;
   lon: number;
   count: number;

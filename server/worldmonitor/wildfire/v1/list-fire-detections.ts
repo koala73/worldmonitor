@@ -96,56 +96,61 @@ export const listFireDetections: WildfireServiceHandler['listFireDetections'] = 
     return { fireDetections: [], pagination: undefined };
   }
 
-  const result = await cachedFetchJson<ListFireDetectionsResponse>(
-    REDIS_CACHE_KEY,
-    REDIS_CACHE_TTL,
-    async () => {
-      const entries = Object.entries(MONITORED_REGIONS);
-      const results = await Promise.allSettled(
-        entries.map(async ([regionName, bbox]) => {
-          const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${apiKey}/${FIRMS_SOURCE}/${bbox}/1`;
-          const res = await fetch(url, {
-            headers: { Accept: 'text/csv', 'User-Agent': CHROME_UA },
-            signal: AbortSignal.timeout(15_000),
-          });
-          if (!res.ok) {
-            throw new Error(`FIRMS ${res.status} for ${regionName}`);
-          }
-          const csv = await res.text();
-          const rows = parseCSV(csv);
-          return { regionName, rows };
-        }),
-      );
-
-      const fireDetections: ListFireDetectionsResponse['fireDetections'] = [];
-
-      for (const r of results) {
-        if (r.status === 'fulfilled') {
-          const { regionName, rows } = r.value;
-          for (const row of rows) {
-            const detectedAt = parseDetectedAt(row.acq_date || '', row.acq_time || '');
-            fireDetections.push({
-              id: `${row.latitude ?? ''}-${row.longitude ?? ''}-${row.acq_date ?? ''}-${row.acq_time ?? ''}`,
-              location: {
-                latitude: parseFloat(row.latitude ?? '0') || 0,
-                longitude: parseFloat(row.longitude ?? '0') || 0,
-              },
-              brightness: parseFloat(row.bright_ti4 ?? '0') || 0,
-              frp: parseFloat(row.frp ?? '0') || 0,
-              confidence: mapConfidence(row.confidence || ''),
-              satellite: row.satellite || '',
-              detectedAt,
-              region: regionName,
-              dayNight: row.daynight || '',
+  let result: ListFireDetectionsResponse | null = null;
+  try {
+    result = await cachedFetchJson<ListFireDetectionsResponse>(
+      REDIS_CACHE_KEY,
+      REDIS_CACHE_TTL,
+      async () => {
+        const entries = Object.entries(MONITORED_REGIONS);
+        const results = await Promise.allSettled(
+          entries.map(async ([regionName, bbox]) => {
+            const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${apiKey}/${FIRMS_SOURCE}/${bbox}/1`;
+            const res = await fetch(url, {
+              headers: { Accept: 'text/csv', 'User-Agent': CHROME_UA },
+              signal: AbortSignal.timeout(15_000),
             });
-          }
-        } else {
-          console.error('[FIRMS]', r.reason?.message);
-        }
-      }
+            if (!res.ok) {
+              throw new Error(`FIRMS ${res.status} for ${regionName}`);
+            }
+            const csv = await res.text();
+            const rows = parseCSV(csv);
+            return { regionName, rows };
+          }),
+        );
 
-      return fireDetections.length > 0 ? { fireDetections, pagination: undefined } : null;
-    },
-  );
+        const fireDetections: ListFireDetectionsResponse['fireDetections'] = [];
+
+        for (const r of results) {
+          if (r.status === 'fulfilled') {
+            const { regionName, rows } = r.value;
+            for (const row of rows) {
+              const detectedAt = parseDetectedAt(row.acq_date || '', row.acq_time || '');
+              fireDetections.push({
+                id: `${row.latitude ?? ''}-${row.longitude ?? ''}-${row.acq_date ?? ''}-${row.acq_time ?? ''}`,
+                location: {
+                  latitude: parseFloat(row.latitude ?? '0') || 0,
+                  longitude: parseFloat(row.longitude ?? '0') || 0,
+                },
+                brightness: parseFloat(row.bright_ti4 ?? '0') || 0,
+                frp: parseFloat(row.frp ?? '0') || 0,
+                confidence: mapConfidence(row.confidence || ''),
+                satellite: row.satellite || '',
+                detectedAt,
+                region: regionName,
+                dayNight: row.daynight || '',
+              });
+            }
+          } else {
+            console.error('[FIRMS]', r.reason?.message);
+          }
+        }
+
+        return fireDetections.length > 0 ? { fireDetections, pagination: undefined } : null;
+      },
+    );
+  } catch {
+    return { fireDetections: [], pagination: undefined };
+  }
   return result || { fireDetections: [], pagination: undefined };
 };

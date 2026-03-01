@@ -9,6 +9,8 @@
 const STORAGE_KEY_BROWSER_MODEL = 'wm-ai-flow-browser-model';
 const STORAGE_KEY_CLOUD_LLM = 'wm-ai-flow-cloud-llm';
 const STORAGE_KEY_MAP_NEWS_FLASH = 'wm-map-news-flash';
+const STORAGE_KEY_HEADLINE_MEMORY = 'wm-headline-memory';
+const STORAGE_KEY_BADGE_ANIMATION = 'wm-badge-animation';
 const STORAGE_KEY_STREAM_QUALITY = 'wm-stream-quality';
 const EVENT_NAME = 'ai-flow-changed';
 const STREAM_QUALITY_EVENT = 'stream-quality-changed';
@@ -17,6 +19,8 @@ export interface AiFlowSettings {
   browserModel: boolean;
   cloudLlm: boolean;
   mapNewsFlash: boolean;
+  headlineMemory: boolean;
+  badgeAnimation: boolean;
 }
 
 function readBool(key: string, defaultValue: boolean): boolean {
@@ -41,12 +45,16 @@ const STORAGE_KEY_MAP: Record<keyof AiFlowSettings, string> = {
   browserModel: STORAGE_KEY_BROWSER_MODEL,
   cloudLlm: STORAGE_KEY_CLOUD_LLM,
   mapNewsFlash: STORAGE_KEY_MAP_NEWS_FLASH,
+  headlineMemory: STORAGE_KEY_HEADLINE_MEMORY,
+  badgeAnimation: STORAGE_KEY_BADGE_ANIMATION,
 };
 
 const DEFAULTS: AiFlowSettings = {
   browserModel: false,
   cloudLlm: true,
   mapNewsFlash: true,
+  headlineMemory: false,
+  badgeAnimation: false,
 };
 
 export function getAiFlowSettings(): AiFlowSettings {
@@ -54,7 +62,13 @@ export function getAiFlowSettings(): AiFlowSettings {
     browserModel: readBool(STORAGE_KEY_BROWSER_MODEL, DEFAULTS.browserModel),
     cloudLlm: readBool(STORAGE_KEY_CLOUD_LLM, DEFAULTS.cloudLlm),
     mapNewsFlash: readBool(STORAGE_KEY_MAP_NEWS_FLASH, DEFAULTS.mapNewsFlash),
+    headlineMemory: readBool(STORAGE_KEY_HEADLINE_MEMORY, DEFAULTS.headlineMemory),
+    badgeAnimation: readBool(STORAGE_KEY_BADGE_ANIMATION, DEFAULTS.badgeAnimation),
   };
+}
+
+export function isHeadlineMemoryEnabled(): boolean {
+  return readBool(STORAGE_KEY_HEADLINE_MEMORY, DEFAULTS.headlineMemory);
 }
 
 export function setAiFlowSetting(key: keyof AiFlowSettings, value: boolean): void {

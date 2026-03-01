@@ -14,7 +14,7 @@ paths:
                 - name: series_id
                   in: query
                   description: FRED series ID (e.g., "GDP", "UNRATE", "CPIAUCSL").
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: limit

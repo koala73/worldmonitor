@@ -39,9 +39,4 @@ service IntelligenceService {
   rpc SearchGdeltDocuments(SearchGdeltDocumentsRequest) returns (SearchGdeltDocumentsResponse) {
     option (sebuf.http.config) = {path: "/search-gdelt-documents", method: HTTP_METHOD_GET};
   }
-
-  // DeductSituation deducts the future situation based on query and context using an LLM.
-  rpc DeductSituation(DeductSituationRequest) returns (DeductSituationResponse) {
-    option (sebuf.http.config) = {path: "/deduct-situation", method: HTTP_METHOD_POST};
-  }
 }

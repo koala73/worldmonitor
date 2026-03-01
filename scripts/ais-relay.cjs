@@ -89,6 +89,83 @@ if (IS_PRODUCTION_RELAY && !RELAY_SHARED_SECRET && !ALLOW_UNAUTHENTICATED_RELAY)
   process.exit(1);
 }
 
+// ─────────────────────────────────────────────────────────────
+// Upstash Redis REST helpers — persist OREF history across restarts
+// ─────────────────────────────────────────────────────────────
+const UPSTASH_REDIS_REST_URL = process.env.UPSTASH_REDIS_REST_URL || '';
+const UPSTASH_REDIS_REST_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || '';
+const UPSTASH_ENABLED = !!(
+  UPSTASH_REDIS_REST_URL &&
+  UPSTASH_REDIS_REST_TOKEN &&
+  UPSTASH_REDIS_REST_URL.startsWith('https://')
+);
+const RELAY_ENV_PREFIX = process.env.RELAY_ENV ? `${process.env.RELAY_ENV}:` : '';
+const OREF_REDIS_KEY = `${RELAY_ENV_PREFIX}relay:oref:history:v1`;
+
+if (UPSTASH_REDIS_REST_URL && !UPSTASH_REDIS_REST_URL.startsWith('https://')) {
+  console.warn('[Relay] UPSTASH_REDIS_REST_URL must start with https:// — Redis disabled');
+}
+if (UPSTASH_ENABLED) {
+  console.log(`[Relay] Upstash Redis enabled (key: ${OREF_REDIS_KEY})`);
+}
+
+function upstashGet(key) {
+  return new Promise((resolve) => {
+    if (!UPSTASH_ENABLED) return resolve(null);
+    const url = new URL(`/get/${encodeURIComponent(key)}`, UPSTASH_REDIS_REST_URL);
+    const req = https.request(url, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}` },
+      timeout: 5000,
+    }, (resp) => {
+      if (resp.statusCode < 200 || resp.statusCode >= 300) {
+        resp.resume();
+        return resolve(null);
+      }
+      let data = '';
+      resp.on('data', (chunk) => { data += chunk; });
+      resp.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed?.result) return resolve(JSON.parse(parsed.result));
+          resolve(null);
+        } catch { resolve(null); }
+      });
+    });
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => { req.destroy(); resolve(null); });
+    req.end();
+  });
+}
+
+function upstashSet(key, value, ttlSeconds) {
+  return new Promise((resolve) => {
+    if (!UPSTASH_ENABLED) return resolve(false);
+    const url = new URL('/', UPSTASH_REDIS_REST_URL);
+    const body = JSON.stringify(['SET', key, JSON.stringify(value), 'EX', String(ttlSeconds)]);
+    const req = https.request(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      timeout: 5000,
+    }, (resp) => {
+      let data = '';
+      resp.on('data', (chunk) => { data += chunk; });
+      resp.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          resolve(parsed?.result === 'OK');
+        } catch { resolve(false); }
+      });
+    });
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => { req.destroy(); resolve(false); });
+    req.end(body);
+  });
+}
+
 let upstreamSocket = null;
 let upstreamPaused = false;
 let upstreamQueue = [];
@@ -177,7 +254,12 @@ const orefState = {
   lastPollAt: 0,
   lastError: null,
   historyCount24h: 0,
+  totalHistoryCount: 0,
   history: [],
+  bootstrapSource: null,
+  _persistVersion: 0,
+  _lastPersistedVersion: 0,
+  _persistInFlight: false,
 };
 
 function loadTelegramChannels() {
@@ -502,15 +584,24 @@ async function orefFetchAlerts() {
         alerts,
         timestamp: new Date().toISOString(),
       });
+      orefState._persistVersion++;
     }
 
     const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    orefState.historyCount24h = orefState.history
+      .filter(h => new Date(h.timestamp).getTime() > cutoff)
+      .reduce((sum, h) => sum + h.alerts.reduce((s, a) => s + (Array.isArray(a.data) ? a.data.length : 1), 0), 0);
+    const purgeCutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const beforeLen = orefState.history.length;
     orefState.history = orefState.history.filter(
-      h => new Date(h.timestamp).getTime() > cutoff
+      h => new Date(h.timestamp).getTime() > purgeCutoff
     );
-    orefState.historyCount24h = orefState.history.reduce((sum, h) => {
+    if (orefState.history.length !== beforeLen) orefState._persistVersion++;
+    orefState.totalHistoryCount = orefState.history.reduce((sum, h) => {
       return sum + h.alerts.reduce((s, a) => s + (Array.isArray(a.data) ? a.data.length : 1), 0);
     }, 0);
+
+    orefPersistHistory().catch(() => {});
   } catch (err) {
     const stderr = err.stderr ? err.stderr.toString().trim() : '';
     orefState.lastError = redactOrefError(stderr || err.message);
@@ -518,7 +609,7 @@ async function orefFetchAlerts() {
   }
 }
 
-async function orefBootstrapHistory() {
+async function orefBootstrapHistoryFromUpstream() {
   const tmpFile = require('path').join(require('os').tmpdir(), `oref-history-${Date.now()}.json`);
   let raw;
   try {
@@ -530,7 +621,7 @@ async function orefBootstrapHistory() {
   if (!cleaned || cleaned === '[]') return;
 
   const allRecords = JSON.parse(cleaned);
-  const records = allRecords.slice(-500);
+  const records = allRecords.slice(0, 500);
   const waves = new Map();
   for (const r of records) {
     const key = r.alertDate;
@@ -562,8 +653,103 @@ async function orefBootstrapHistory() {
   }
   history.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
   orefState.history = history;
-  orefState.historyCount24h = totalAlertRecords;
+  orefState.totalHistoryCount = totalAlertRecords;
+  const cutoff24h = Date.now() - 24 * 60 * 60 * 1000;
+  orefState.historyCount24h = history
+    .filter(h => new Date(h.timestamp).getTime() > cutoff24h)
+    .reduce((sum, h) => sum + h.alerts.reduce((s, a) => s + (Array.isArray(a.data) ? a.data.length : 1), 0), 0);
+  orefState.bootstrapSource = 'upstream';
+  if (history.length > 0) orefState._persistVersion++;
   console.log(`[Relay] OREF history bootstrap: ${totalAlertRecords} records across ${history.length} waves`);
+}
+
+const OREF_PERSIST_MAX_WAVES = 200;
+const OREF_PERSIST_TTL_SECONDS = 7 * 24 * 60 * 60;
+
+async function orefPersistHistory() {
+  if (!UPSTASH_ENABLED) return;
+  if (orefState._persistVersion === orefState._lastPersistedVersion) return;
+  if (orefState._persistInFlight) return;
+  orefState._persistInFlight = true;
+  const versionAtStart = orefState._persistVersion;
+  try {
+    let waves = orefState.history;
+    if (waves.length > OREF_PERSIST_MAX_WAVES) {
+      console.warn(`[Relay] OREF persist: truncating ${waves.length} waves to ${OREF_PERSIST_MAX_WAVES}`);
+      waves = waves.slice(-OREF_PERSIST_MAX_WAVES);
+    }
+    const payload = {
+      history: waves,
+      historyCount24h: orefState.historyCount24h,
+      totalHistoryCount: orefState.totalHistoryCount,
+      persistedAt: new Date().toISOString(),
+    };
+    const ok = await upstashSet(OREF_REDIS_KEY, payload, OREF_PERSIST_TTL_SECONDS);
+    if (ok) {
+      orefState._lastPersistedVersion = versionAtStart;
+    }
+  } finally {
+    orefState._persistInFlight = false;
+  }
+}
+
+async function orefBootstrapHistoryWithRetry() {
+  // Phase 1: try Redis first
+  try {
+    const cached = await upstashGet(OREF_REDIS_KEY);
+    if (cached && Array.isArray(cached.history) && cached.history.length > 0) {
+      const valid = cached.history.every(
+        h => Array.isArray(h.alerts) && typeof h.timestamp === 'string'
+      );
+      if (valid) {
+        const cutoff24h = Date.now() - 24 * 60 * 60 * 1000;
+        const purgeCutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+        const filtered = cached.history.filter(
+          h => new Date(h.timestamp).getTime() > purgeCutoff
+        );
+        if (filtered.length > 0) {
+          orefState.history = filtered;
+          orefState.totalHistoryCount = filtered.reduce((sum, h) => {
+            return sum + h.alerts.reduce((s, a) => s + (Array.isArray(a.data) ? a.data.length : 1), 0);
+          }, 0);
+          orefState.historyCount24h = filtered
+            .filter(h => new Date(h.timestamp).getTime() > cutoff24h)
+            .reduce((sum, h) => sum + h.alerts.reduce((s, a) => s + (Array.isArray(a.data) ? a.data.length : 1), 0), 0);
+          const newest = filtered[filtered.length - 1];
+          orefState.lastAlertsJson = JSON.stringify(newest.alerts);
+          orefState.bootstrapSource = 'redis';
+          console.log(`[Relay] OREF history loaded from Redis: ${orefState.totalHistoryCount} records across ${filtered.length} waves (persisted ${cached.persistedAt || 'unknown'})`);
+          return;
+        }
+        console.log('[Relay] OREF Redis data all stale (>7d) — falling through to upstream');
+      }
+    }
+  } catch (err) {
+    console.warn('[Relay] OREF Redis bootstrap failed:', err?.message || err);
+  }
+
+  // Phase 2: upstream with retry + exponential backoff
+  const MAX_ATTEMPTS = 3;
+  const BASE_DELAY_MS = 3000;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      await orefBootstrapHistoryFromUpstream();
+      if (UPSTASH_ENABLED) {
+        await orefPersistHistory().catch(() => {});
+      }
+      console.log(`[Relay] OREF upstream bootstrap succeeded on attempt ${attempt}`);
+      return;
+    } catch (err) {
+      const msg = redactOrefError(err?.message || String(err));
+      console.warn(`[Relay] OREF upstream bootstrap attempt ${attempt}/${MAX_ATTEMPTS} failed: ${msg}`);
+      if (attempt < MAX_ATTEMPTS) {
+        const delay = BASE_DELAY_MS * Math.pow(2, attempt - 1) + Math.random() * 1000;
+        await new Promise(r => setTimeout(r, delay));
+      }
+    }
+  }
+  orefState.bootstrapSource = null;
+  console.warn('[Relay] OREF bootstrap exhausted all attempts — starting with empty history');
 }
 
 async function startOrefPollLoop() {
@@ -571,9 +757,8 @@ async function startOrefPollLoop() {
     console.log('[Relay] OREF disabled (no OREF_PROXY_AUTH)');
     return;
   }
-  await orefBootstrapHistory().catch(err =>
-    console.warn('[Relay] OREF history bootstrap failed:', redactOrefError(err.message))
-  );
+  await orefBootstrapHistoryWithRetry();
+  console.log(`[Relay] OREF bootstrap complete (source: ${orefState.bootstrapSource || 'none'}, redis: ${UPSTASH_ENABLED})`);
   orefFetchAlerts().catch(e => console.warn('[Relay] OREF initial poll error:', e?.message || e));
   setInterval(() => {
     orefFetchAlerts().catch(e => console.warn('[Relay] OREF poll error:', e?.message || e));
@@ -2719,8 +2904,12 @@ const server = http.createServer(async (req, res) => {
         enabled: OREF_ENABLED,
         alertCount: orefState.lastAlerts?.length || 0,
         historyCount24h: orefState.historyCount24h,
+        totalHistoryCount: orefState.totalHistoryCount,
+        historyWaves: orefState.history?.length || 0,
         lastPollAt: orefState.lastPollAt ? new Date(orefState.lastPollAt).toISOString() : null,
         hasError: !!orefState.lastError,
+        redisEnabled: UPSTASH_ENABLED,
+        bootstrapSource: orefState.bootstrapSource,
       },
       memory: {
         rss: `${(mem.rss / 1024 / 1024).toFixed(0)}MB`,
@@ -3119,6 +3308,7 @@ const server = http.createServer(async (req, res) => {
       configured: OREF_ENABLED,
       alerts: orefState.lastAlerts || [],
       historyCount24h: orefState.historyCount24h,
+      totalHistoryCount: orefState.totalHistoryCount,
       timestamp: orefState.lastPollAt ? new Date(orefState.lastPollAt).toISOString() : new Date().toISOString(),
       ...(orefState.lastError ? { error: orefState.lastError } : {}),
     }));
@@ -3130,6 +3320,7 @@ const server = http.createServer(async (req, res) => {
       configured: OREF_ENABLED,
       history: orefState.history || [],
       historyCount24h: orefState.historyCount24h,
+      totalHistoryCount: orefState.totalHistoryCount,
       timestamp: orefState.lastPollAt ? new Date(orefState.lastPollAt).toISOString() : new Date().toISOString(),
     }));
   } else if (pathname.startsWith('/ucdp-events')) {

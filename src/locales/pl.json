@@ -1176,6 +1176,9 @@
       "sectionAi": "AI Analysis",
       "mapFlashLabel": "Live Event Pulse",
       "mapFlashDesc": "Flash locations on the map when breaking news arrives",
+      "sectionPanels": "Panels",
+      "badgeAnimLabel": "Count Badge Pulse",
+      "badgeAnimDesc": "Animate panel count badges when new items arrive",
       "aiFlowTitle": "Settings",
       "aiFlowCloudLabel": "Cloud AI (Groq & OpenRouter)",
       "aiFlowCloudDesc": "Wyślij nagłówki do chmury w celu podsumowania AI (zalecane)",
@@ -1189,6 +1192,9 @@
       "aiFlowStatusCloudAndBrowser": "Cloud AI + Model przeglądarki aktywne",
       "aiFlowStatusBrowserOnly": "Tylko model przeglądarki",
       "aiFlowStatusDisabled": "Brak włączonych dostawców AI",
+      "sectionIntelligence": "Wywiad",
+      "headlineMemoryLabel": "Pamięć nagłówków",
+      "headlineMemoryDesc": "Zapamiętuj wcześniejsze nagłówki, aby wzbogacić raporty krajowe kontekstem historycznym",
       "insightsDisabledTitle": "Analiza AI jest wyłączona",
       "insightsDisabledHint": "Enable providers via the settings gear in the map header"
     },
@@ -1308,7 +1314,8 @@
       "regionLatinAmerica": "Ameryka Łacińska",
       "regionAsia": "Azja",
       "regionMiddleEast": "Bliski Wschód",
-      "regionAfrica": "Afryka"
+      "regionAfrica": "Afryka",
+      "regionOceania": "Oceania"
     },
     "securityAdvisories": {
       "loading": "Ładowanie ostrzeżeń podróżnych...",

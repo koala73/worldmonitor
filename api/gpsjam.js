@@ -2,20 +2,37 @@ import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 
 export const config = { runtime: 'edge' };
 
+const REDIS_KEY = 'intelligence:gpsjam:v1';
 const BASE_URL = 'https://gpsjam.org/data';
 const UA = 'Mozilla/5.0 (compatible; WorldMonitor/1.0)';
 const MIN_AIRCRAFT = 3;
 
-// In-memory cache (per-isolate, Vercel Edge)
 let cached = null;
 let cachedAt = 0;
-const CACHE_TTL = 3600_000; // 1 hour
+const CACHE_TTL = 3600_000;
 
-async function fetchGpsJamData() {
-  const now = Date.now();
-  if (cached && now - cachedAt < CACHE_TTL) return cached;
+let inflight = null;
+let negUntil = 0;
+const NEG_TTL = 300_000;
 
-  // 1. Get latest date from manifest
+async function readFromRedis() {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+
+  const resp = await fetch(`${url}/get/${encodeURIComponent(REDIS_KEY)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(3_000),
+  });
+  if (!resp.ok) return null;
+
+  const data = await resp.json();
+  if (!data.result) return null;
+
+  try { return JSON.parse(data.result); } catch { return null; }
+}
+
+async function fetchDirectFromGpsJam() {
   const manifestResp = await fetch(`${BASE_URL}/manifest.csv`, {
     headers: { 'User-Agent': UA },
     signal: AbortSignal.timeout(10_000),
@@ -25,7 +42,6 @@ async function fetchGpsJamData() {
   const lines = manifest.trim().split('\n');
   const latestDate = lines[lines.length - 1].split(',')[0];
 
-  // 2. Fetch hex data
   const hexResp = await fetch(`${BASE_URL}/${latestDate}-h3_4.csv`, {
     headers: { 'User-Agent': UA },
     signal: AbortSignal.timeout(15_000),
@@ -34,7 +50,6 @@ async function fetchGpsJamData() {
   const csv = await hexResp.text();
   const rows = csv.trim().split('\n');
 
-  // 3. Filter medium/high only
   const hexes = [];
   for (let i = 1; i < rows.length; i++) {
     const parts = rows[i].split(',');
@@ -52,13 +67,12 @@ async function fetchGpsJamData() {
     hexes.push({ h3: hex, pct: Math.round(pct * 10) / 10, good, bad, total, level });
   }
 
-  // Sort: high first, then by pct desc
   hexes.sort((a, b) => {
     if (a.level !== b.level) return a.level === 'high' ? -1 : 1;
     return b.pct - a.pct;
   });
 
-  const result = {
+  return {
     date: latestDate,
     fetchedAt: new Date().toISOString(),
     source: 'gpsjam.org',
@@ -69,10 +83,37 @@ async function fetchGpsJamData() {
     },
     hexes,
   };
+}
 
-  cached = result;
-  cachedAt = now;
-  return result;
+async function fetchGpsJamData() {
+  const now = Date.now();
+  if (cached && now - cachedAt < CACHE_TTL) return cached;
+
+  const redisData = await readFromRedis();
+  if (redisData && redisData.hexes?.length > 0) {
+    cached = redisData;
+    cachedAt = now;
+    return redisData;
+  }
+
+  if (now < negUntil) throw new Error('GPS interference data temporarily unavailable');
+
+  if (inflight) return inflight;
+
+  inflight = fetchDirectFromGpsJam()
+    .then((result) => {
+      cached = result;
+      cachedAt = Date.now();
+      inflight = null;
+      return result;
+    })
+    .catch((err) => {
+      inflight = null;
+      negUntil = Date.now() + NEG_TTL;
+      throw err;
+    });
+
+  return inflight;
 }
 
 export default async function handler(req) {
@@ -99,8 +140,8 @@ export default async function handler(req) {
         ...corsHeaders,
       },
     });
-  } catch (err) {
-    return new Response(JSON.stringify({ error: err.message }), {
+  } catch {
+    return new Response(JSON.stringify({ error: 'GPS interference data temporarily unavailable' }), {
       status: 502,
       headers: { 'Content-Type': 'application/json', ...corsHeaders },
     });

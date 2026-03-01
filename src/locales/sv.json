@@ -979,6 +979,9 @@
       "sectionAi": "AI Analysis",
       "mapFlashLabel": "Live Event Pulse",
       "mapFlashDesc": "Flash locations on the map when breaking news arrives",
+      "sectionPanels": "Panels",
+      "badgeAnimLabel": "Count Badge Pulse",
+      "badgeAnimDesc": "Animate panel count badges when new items arrive",
       "aiFlowTitle": "Settings",
       "aiFlowCloudLabel": "Moln-AI (Groq & OpenRouter)",
       "aiFlowCloudDesc": "Skicka rubriker till molnet för AI-sammanfattning (rekommenderat)",
@@ -992,6 +995,9 @@
       "aiFlowStatusCloudAndBrowser": "Moln-AI + Webbläsarmodell aktiva",
       "aiFlowStatusBrowserOnly": "Endast webbläsarmodell",
       "aiFlowStatusDisabled": "Inga AI-leverantörer aktiverade",
+      "sectionIntelligence": "Underrättelse",
+      "headlineMemoryLabel": "Rubrikminne",
+      "headlineMemoryDesc": "Kom ihåg tidigare rubriker för att berika landsrapporter med historisk kontext",
       "insightsDisabledTitle": "AI-analys är inaktiverad",
       "insightsDisabledHint": "Enable providers via the settings gear in the map header"
     },
@@ -1166,7 +1172,8 @@
       "regionLatinAmerica": "Latinamerika",
       "regionAsia": "Asien",
       "regionMiddleEast": "Mellanöstern",
-      "regionAfrica": "Afrika"
+      "regionAfrica": "Afrika",
+      "regionOceania": "Oceanien"
     },
     "securityAdvisories": {
       "loading": "Hämtar resevarningar...",

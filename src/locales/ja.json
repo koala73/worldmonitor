@@ -910,6 +910,9 @@
       "sectionAi": "AI Analysis",
       "mapFlashLabel": "Live Event Pulse",
       "mapFlashDesc": "Flash locations on the map when breaking news arrives",
+      "sectionPanels": "Panels",
+      "badgeAnimLabel": "Count Badge Pulse",
+      "badgeAnimDesc": "Animate panel count badges when new items arrive",
       "aiFlowTitle": "Settings",
       "aiFlowCloudLabel": "クラウドAI（Groq & OpenRouter）",
       "aiFlowCloudDesc": "見出しをクラウドに送信してAI要約（推奨）",
@@ -923,6 +926,9 @@
       "aiFlowStatusCloudAndBrowser": "クラウドAI + ブラウザモデル有効",
       "aiFlowStatusBrowserOnly": "ブラウザモデルのみ",
       "aiFlowStatusDisabled": "AIプロバイダーが有効になっていません",
+      "sectionIntelligence": "インテリジェンス",
+      "headlineMemoryLabel": "ヘッドラインメモリー",
+      "headlineMemoryDesc": "過去のヘッドラインを記憶し、国別レポートに歴史的文脈を追加します",
       "insightsDisabledTitle": "AI分析が無効です",
       "insightsDisabledHint": "Enable providers via the settings gear in the map header"
     },
@@ -1308,7 +1314,8 @@
       "regionLatinAmerica": "中南米",
       "regionAsia": "アジア",
       "regionMiddleEast": "中東",
-      "regionAfrica": "アフリカ"
+      "regionAfrica": "アフリカ",
+      "regionOceania": "オセアニア"
     },
     "securityAdvisories": {
       "loading": "渡航情報を取得中...",

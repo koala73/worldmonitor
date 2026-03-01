@@ -45,6 +45,7 @@ export type RuntimeFeatureId =
   | 'aiOllama'
   | 'wtoTrade'
   | 'supplyChain'
+  | 'newsPerFeedFallback'
   | 'aviationStack'
   | 'icaoNotams';
 
@@ -93,6 +94,7 @@ const defaultToggles: Record<RuntimeFeatureId, boolean> = {
   aiOllama: true,
   wtoTrade: true,
   supplyChain: true,
+  newsPerFeedFallback: false,
   aviationStack: true,
   icaoNotams: true,
 };
@@ -218,6 +220,13 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
     description: 'Shipping rates via FRED Baltic Dry Index. Chokepoints and minerals use public data.',
     requiredSecrets: ['FRED_API_KEY'],
     fallback: 'Chokepoints and minerals always available; shipping requires FRED key.',
+  },
+  {
+    id: 'newsPerFeedFallback',
+    name: 'News per-feed fallback',
+    description: 'If digest aggregation is unavailable, use stale headlines first and optionally fetch a limited feed subset.',
+    requiredSecrets: [],
+    fallback: 'Stale headlines remain available; limited per-feed fallback is disabled.',
   },
   {
     id: 'aviationStack',

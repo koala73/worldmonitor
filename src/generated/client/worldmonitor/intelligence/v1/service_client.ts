@@ -278,9 +278,9 @@ export class IntelligenceServiceClient {
   }
 
   async getCountryIntelBrief(req: GetCountryIntelBriefRequest, options?: IntelligenceServiceCallOptions): Promise<GetCountryIntelBriefResponse> {
-    let path = "/api/intelligence/v1/get-country-intel-brief";
+    const path = "/api/intelligence/v1/get-country-intel-brief";
     const params = new URLSearchParams();
-    if (req.countryCode != null && req.countryCode !== "") params.set("country_code", String(req.countryCode));
+    if (req.countryCode != null && req.countryCode !== "") params.set("country_code", req.countryCode);
     const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {

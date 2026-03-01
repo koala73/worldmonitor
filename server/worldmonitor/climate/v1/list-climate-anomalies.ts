@@ -139,30 +139,35 @@ export const listClimateAnomalies: ClimateServiceHandler['listClimateAnomalies']
   _ctx: ServerContext,
   _req: ListClimateAnomaliesRequest,
 ): Promise<ListClimateAnomaliesResponse> => {
-  const result = await cachedFetchJson<ListClimateAnomaliesResponse>(
-    REDIS_CACHE_KEY,
-    REDIS_CACHE_TTL,
-    async () => {
-      const endDate = new Date().toISOString().slice(0, 10);
-      const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-        .toISOString()
-        .slice(0, 10);
+  let result: ListClimateAnomaliesResponse | null = null;
+  try {
+    result = await cachedFetchJson<ListClimateAnomaliesResponse>(
+      REDIS_CACHE_KEY,
+      REDIS_CACHE_TTL,
+      async () => {
+        const endDate = new Date().toISOString().slice(0, 10);
+        const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+          .toISOString()
+          .slice(0, 10);
 
-      const results = await Promise.allSettled(
-        ZONES.map((zone) => fetchZone(zone, startDate, endDate)),
-      );
+        const results = await Promise.allSettled(
+          ZONES.map((zone) => fetchZone(zone, startDate, endDate)),
+        );
 
-      const anomalies: ClimateAnomaly[] = [];
-      for (const r of results) {
-        if (r.status === 'fulfilled') {
-          if (r.value != null) anomalies.push(r.value);
-        } else {
-          console.error('[CLIMATE]', r.reason?.message ?? r.reason);
+        const anomalies: ClimateAnomaly[] = [];
+        for (const r of results) {
+          if (r.status === 'fulfilled') {
+            if (r.value != null) anomalies.push(r.value);
+          } else {
+            console.error('[CLIMATE]', r.reason?.message ?? r.reason);
+          }
         }
-      }
 
-      return anomalies.length > 0 ? { anomalies, pagination: undefined } : null;
-    },
-  );
+        return anomalies.length > 0 ? { anomalies, pagination: undefined } : null;
+      },
+    );
+  } catch {
+    return { anomalies: [], pagination: undefined };
+  }
   return result || { anomalies: [], pagination: undefined };
 };

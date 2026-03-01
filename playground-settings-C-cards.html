@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Settings Option C — Dashboard Card Grid</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#1a1c1e;--surface:#2a2d31;--surface-hover:#32363b;
+  --text:#e8eaed;--text-sec:#9aa0a6;--accent:#60a5fa;
+  --green:#34d399;--yellow:#fbbf24;--red:#ef4444;--blue:#60a5fa;
+  --border:rgba(255,255,255,0.08);--border-strong:rgba(255,255,255,0.14);
+  --font:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+  --mono:'SF Mono',Monaco,'Cascadia Code',monospace;
+}
+html,body{height:100%;overflow:hidden}
+body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;-webkit-font-smoothing:antialiased}
+
+.shell{display:flex;flex-direction:column;height:100vh;max-width:980px;max-height:760px;margin:auto;border:1px solid var(--border-strong);border-radius:10px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.5)}
+
+/* Top bar */
+.top-bar{display:flex;align-items:center;gap:16px;padding:14px 24px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0}
+.top-title{font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px;white-space:nowrap}
+.top-title svg{opacity:0.7}
+
+/* Big progress bar */
+.top-progress{flex:1;display:flex;align-items:center;gap:12px}
+.tp-bar{flex:1;height:8px;background:rgba(255,255,255,0.06);border-radius:4px;overflow:hidden;max-width:400px}
+.tp-fill{height:100%;border-radius:4px;transition:width .5s ease}
+.tp-label{font-size:13px;font-weight:700;white-space:nowrap}
+.tp-sub{font-size:11px;color:var(--text-sec);white-space:nowrap}
+
+/* Tab row for switching between Features / Debug */
+.tab-row{display:flex;gap:0;padding:0 24px;background:var(--surface);border-bottom:1px solid var(--border)}
+.tab-btn{background:none;border:none;border-bottom:2px solid transparent;color:var(--text-sec);font:inherit;font-size:13px;font-weight:500;padding:10px 18px;cursor:pointer;transition:color .15s,border-color .15s}
+.tab-btn:hover{color:var(--text)}
+.tab-btn.active{color:var(--text);font-weight:600;border-bottom-color:var(--accent)}
+
+/* Scroll area */
+.scroll-area{flex:1;overflow-y:auto;padding:20px 24px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.1) transparent}
+.scroll-area::-webkit-scrollbar{width:6px}
+.scroll-area::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:3px}
+
+/* Category header */
+.cat-head{display:flex;align-items:center;gap:8px;margin-top:16px;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+.cat-head:first-child{margin-top:0}
+.cat-icon{font-size:16px}
+.cat-title{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-sec)}
+.cat-count{font-size:11px;color:var(--text-sec);margin-left:auto;opacity:0.6}
+
+/* Card grid */
+.card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;margin-bottom:8px}
+
+/* Cards */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;cursor:pointer;transition:border-color .15s,box-shadow .15s,transform .1s;position:relative;overflow:hidden}
+.card:hover{border-color:var(--border-strong);box-shadow:0 2px 12px rgba(0,0,0,0.2)}
+.card.expanded{grid-column:1/-1;cursor:default}
+.card.expanded:hover{transform:none}
+
+.card-top{display:flex;align-items:flex-start;gap:10px}
+.card-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-top:4px}
+.card-dot.green{background:var(--green);box-shadow:0 0 6px rgba(52,211,153,0.3)}
+.card-dot.yellow{background:var(--yellow);box-shadow:0 0 6px rgba(251,191,36,0.3)}
+.card-dot.blue{background:var(--blue);box-shadow:0 0 6px rgba(96,165,250,0.3)}
+.card-info{flex:1;min-width:0}
+.card-name{font-size:13px;font-weight:600;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card-desc-mini{font-size:11px;color:var(--text-sec);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.card-toggle{position:relative;width:32px;height:18px;background:rgba(255,255,255,0.1);border-radius:9px;flex-shrink:0;cursor:pointer;transition:background .2s}
+.card-toggle.on{background:var(--accent)}
+.card-toggle::after{content:'';position:absolute;top:2px;left:2px;width:14px;height:14px;background:#fff;border-radius:50%;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,0.3)}
+.card-toggle.on::after{transform:translateX(14px)}
+
+/* Expanded card */
+.card-expanded-body{display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--border)}
+.card.expanded .card-expanded-body{display:block}
+.card.expanded .card-desc-mini{display:none}
+
+.exp-desc{font-size:12px;color:var(--text-sec);line-height:1.5;margin-bottom:12px}
+.exp-keys{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:600px){.exp-keys{grid-template-columns:1fr}}
+.exp-key{display:flex;flex-direction:column;gap:4px}
+.exp-key-header{display:flex;align-items:center;justify-content:space-between}
+.exp-key-header code{font-size:11px;color:var(--text-sec);font-family:var(--mono)}
+.exp-key-header a{font-size:11px;color:var(--accent);text-decoration:none;font-weight:600}
+.exp-key-header a:hover{text-decoration:underline}
+.exp-input{width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--border-strong);border-radius:6px;color:var(--text);padding:7px 10px;font:inherit;font-size:12px;font-family:var(--mono);outline:none;transition:border-color .15s}
+.exp-input:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(96,165,250,0.15)}
+.exp-input::placeholder{color:rgba(255,255,255,0.2)}
+.exp-pill{display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;border-radius:8px;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px}
+.exp-pill.ok{color:var(--green);background:rgba(52,211,153,0.12)}
+.exp-pill.warn{color:var(--yellow);background:rgba(251,191,36,0.12)}
+.exp-fallback{font-size:11px;color:var(--yellow);margin-top:10px;font-style:italic}
+.exp-close{position:absolute;top:10px;right:12px;background:none;border:none;color:var(--text-sec);cursor:pointer;font-size:18px;line-height:1;padding:4px;transition:color .1s}
+.exp-close:hover{color:var(--text)}
+
+/* License card */
+.license-card{background:linear-gradient(135deg,rgba(52,211,153,0.06),rgba(96,165,250,0.06));border:1px solid rgba(52,211,153,0.15);border-radius:10px;padding:16px 20px;margin-bottom:16px}
+.license-card h3{font-size:14px;font-weight:700;margin-bottom:4px}
+.license-card p{font-size:12px;color:var(--text-sec);margin-bottom:10px;line-height:1.4}
+.license-row{display:flex;gap:10px}
+.license-row input{flex:1;background:rgba(0,0,0,0.25);border:1px solid var(--border-strong);border-radius:6px;color:var(--text);padding:7px 10px;font:inherit;font-size:12px;font-family:var(--mono);outline:none}
+.license-row input:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(96,165,250,0.15)}
+.license-row input::placeholder{color:rgba(255,255,255,0.2)}
+.license-badge{font-size:10px;font-weight:600;padding:3px 10px;border-radius:10px;text-transform:uppercase;color:var(--yellow);background:rgba(251,191,36,0.12);align-self:center;white-space:nowrap}
+
+/* Debug panel */
+.debug-panel{padding:4px 0}
+.debug-btns{display:flex;gap:10px;margin-bottom:12px}
+.debug-btns button{background:var(--surface-hover);border:1px solid var(--border-strong);color:var(--text);font:inherit;font-size:12px;padding:7px 14px;border-radius:6px;cursor:pointer;transition:background .15s}
+.debug-btns button:hover{background:rgba(255,255,255,0.08)}
+.debug-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px 16px}
+.debug-card h3{font-size:13px;font-weight:600;margin-bottom:8px}
+.diag-check{display:flex;align-items:center;gap:6px;margin-bottom:6px;font-size:12px;color:var(--text-sec);cursor:pointer}
+.diag-check input{accent-color:var(--accent)}
+.traffic-empty{font-size:12px;color:var(--text-sec);font-style:italic;margin-top:10px}
+
+/* Footer */
+.footer{display:flex;justify-content:flex-end;gap:10px;padding:12px 24px;border-top:1px solid var(--border);background:var(--surface);flex-shrink:0}
+.btn{font:inherit;font-size:13px;font-weight:600;padding:8px 24px;border-radius:6px;cursor:pointer;min-width:80px;text-align:center;transition:background .15s,transform .1s;letter-spacing:.01em}
+.btn:active{transform:scale(0.98)}
+.btn-sec{background:transparent;border:1px solid var(--border-strong);color:var(--text-sec)}
+.btn-sec:hover{background:rgba(255,255,255,0.04);color:var(--text)}
+.btn-pri{background:var(--accent);border:1px solid var(--accent);color:#fff}
+.btn-pri:hover{background:#5294e8}
+
+/* Label */
+.option-label{position:fixed;top:12px;right:12px;background:var(--accent);color:#fff;font-size:11px;font-weight:700;padding:4px 12px;border-radius:6px;letter-spacing:.05em;z-index:999;text-transform:uppercase}
+</style>
+</head>
+<body>
+
+<div class="option-label">Option C — Card Grid</div>
+
+<div class="shell">
+  <div class="top-bar">
+    <div class="top-title">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
+      World Monitor
+    </div>
+    <div class="top-progress">
+      <div class="tp-bar"><div class="tp-fill" id="tpFill" style="width:71%;background:linear-gradient(90deg,var(--green),var(--blue))"></div></div>
+      <span class="tp-label" id="tpLabel" style="color:var(--green)">12/17</span>
+      <span class="tp-sub">features configured</span>
+    </div>
+  </div>
+  <div class="tab-row">
+    <button class="tab-btn active" data-tab="features">Features</button>
+    <button class="tab-btn" data-tab="debug">Debug & Logs</button>
+  </div>
+
+  <div class="scroll-area" id="scrollArea"></div>
+
+  <div class="footer">
+    <button class="btn btn-sec">Cancel</button>
+    <button class="btn btn-pri">Save &amp; Close</button>
+  </div>
+</div>
+
+<script>
+const CATEGORIES = [
+  { id:'ai', icon:'🤖', title:'AI Models',
+    features:[
+      { name:'Ollama Local LLM', desc:'Local summarization via OpenAI-compatible endpoint (Ollama or LM Studio, desktop-first).', keys:['OLLAMA_API_URL','OLLAMA_MODEL'], status:'ready', on:true, fallback:'Falls back to Groq → OpenRouter → browser model.', signup:'https://ollama.com/download' },
+      { name:'Groq Summarization', desc:'Primary fast LLM provider used for AI summary generation.', keys:['GROQ_API_KEY'], status:'ready', on:true, fallback:'Falls back to OpenRouter → browser model.', signup:'https://console.groq.com/keys' },
+      { name:'OpenRouter LLM', desc:'Secondary LLM provider for AI summary fallback.', keys:['OPENROUTER_API_KEY'], status:'ready', on:true, fallback:'Falls back to local browser model only.', signup:'https://openrouter.ai/settings/keys' },
+    ]},
+  { id:'data', icon:'📈', title:'Economic Data',
+    features:[
+      { name:'FRED Economic', desc:'Macro indicators from Federal Reserve Economic Data.', keys:['FRED_API_KEY'], status:'ready', on:true, fallback:'Economic panel uses non-FRED metrics.', signup:'https://fred.stlouisfed.org/docs/api/api_key.html' },
+      { name:'EIA Oil Analytics', desc:'US Energy Information Administration oil metrics.', keys:['EIA_API_KEY'], status:'ready', on:true, fallback:'Oil analytics cards disabled.', signup:'https://www.eia.gov/opendata/register.php' },
+      { name:'WTO Trade Policy', desc:'Trade restrictions, tariff trends, barriers and flows.', keys:['WTO_API_KEY'], status:'ready', on:true, fallback:'Trade policy panel disabled.', signup:'https://apiportal.wto.org/' },
+    ]},
+  { id:'security', icon:'🛡️', title:'Security Intel',
+    features:[
+      { name:'Cloudflare Radar', desc:'Internet outages from Cloudflare Radar annotations API.', keys:['CLOUDFLARE_API_TOKEN'], status:'ready', on:true, fallback:'Outage layer disabled.', signup:'https://dash.cloudflare.com/profile/api-tokens' },
+      { name:'abuse.ch IOC Feeds', desc:'URLhaus and ThreatFox IOC ingestion for cyber threat layer.', keys:['URLHAUS_AUTH_KEY'], status:'needs', on:true, fallback:'URLhaus/ThreatFox ingestion disabled.', signup:'https://auth.abuse.ch/' },
+      { name:'AlienVault OTX', desc:'OTX IOC ingestion for cyber threat enrichment.', keys:['OTX_API_KEY'], status:'ready', on:true, fallback:'OTX enrichment disabled.', signup:'https://otx.alienvault.com/' },
+      { name:'AbuseIPDB', desc:'IP reputation enrichment for cyber threat layer.', keys:['ABUSEIPDB_API_KEY'], status:'needs', on:false, fallback:'AbuseIPDB enrichment disabled.', signup:'https://www.abuseipdb.com/login' },
+    ]},
+  { id:'tracking', icon:'✈️', title:'Tracking & Flights',
+    features:[
+      { name:'AIS Vessels', desc:'Live vessel ingestion via AISStream WebSocket.', keys:['AISSTREAM_API_KEY'], status:'ready', on:true, fallback:'AIS layer disabled.', signup:'https://aisstream.io/authenticate' },
+      { name:'OpenSky Military', desc:'OpenSky OAuth for military flight data.', keys:['OPENSKY_CLIENT_ID','OPENSKY_CLIENT_SECRET'], status:'needs', on:true, fallback:'Military flights limited data.', signup:'https://opensky-network.org' },
+      { name:'Wingbits Aircraft', desc:'Operator/aircraft enrichment metadata.', keys:['WINGBITS_API_KEY'], status:'needs', on:false, fallback:'Heuristic-only classification.', signup:'https://wingbits.com/register' },
+      { name:'NASA FIRMS Fire', desc:'FIRMS satellite fire detection data.', keys:['NASA_FIRMS_API_KEY'], status:'ready', on:true, fallback:'Uses public VIIRS feed.', signup:'https://firms.modaps.eosdis.nasa.gov/api/area/' },
+    ]},
+  { id:'markets', icon:'💹', title:'Markets & Conflicts',
+    features:[
+      { name:'Finnhub Markets', desc:'Real-time stock quotes and market data.', keys:['FINNHUB_API_KEY'], status:'ready', on:true, fallback:'Limited free data.', signup:'https://finnhub.io/register' },
+      { name:'ACLED Conflicts', desc:'Armed conflict and protest event feeds.', keys:['ACLED_ACCESS_TOKEN'], status:'ready', on:true, fallback:'Overlays hidden.', signup:'https://developer.acleddata.com/' },
+    ]},
+  { id:'supply', icon:'🚢', title:'Supply Chain',
+    features:[
+      { name:'Supply Chain Intel', desc:'Baltic Dry Index, chokepoints, and critical minerals.', keys:['FRED_API_KEY'], status:'ready', on:true, fallback:'Chokepoints/minerals always available.', signup:'https://fred.stlouisfed.org/docs/api/api_key.html' },
+    ]},
+];
+
+let expandedCard = null;
+
+function renderFeatures() {
+  const area = document.getElementById('scrollArea');
+  let html = `<div class="license-card">
+    <h3>License Key</h3>
+    <p>Enter your World Monitor key for full cloud access, or use BYOK below.</p>
+    <div class="license-row">
+      <input type="password" placeholder="wm_live_..." autocomplete="off">
+      <span class="license-badge">Not Set</span>
+    </div>
+  </div>`;
+
+  for (const cat of CATEGORIES) {
+    const ready = cat.features.filter(f=>f.status==='ready').length;
+    html += `<div class="cat-head">
+      <span class="cat-icon">${cat.icon}</span>
+      <span class="cat-title">${cat.title}</span>
+      <span class="cat-count">${ready}/${cat.features.length} ready</span>
+    </div>`;
+
+    html += `<div class="card-grid" data-cat="${cat.id}">`;
+    for (let i=0; i<cat.features.length; i++) {
+      const f = cat.features[i];
+      const fid = `${cat.id}-${i}`;
+      const isExpanded = expandedCard===fid;
+      const dotColor = f.status==='ready'?'green':f.status==='staged'?'blue':'yellow';
+      const pillCls = f.status==='ready'?'ok':f.status==='staged'?'staged':'warn';
+      const pillText = f.status==='ready'?'Ready':f.status==='staged'?'Staged':'Needs Keys';
+
+      html += `<div class="card${isExpanded?' expanded':''}" data-card="${fid}">
+        ${isExpanded?'<button class="exp-close" data-close>&times;</button>':''}
+        <div class="card-top">
+          <span class="card-dot ${dotColor}"></span>
+          <div class="card-info">
+            <div class="card-name">${f.name}</div>
+            <span class="card-desc-mini">${f.desc}</span>
+          </div>
+          <div class="card-toggle ${f.on?'on':''}" data-tog="${fid}"></div>
+        </div>
+        <div class="card-expanded-body">
+          <span class="exp-pill ${pillCls}">${pillText}</span>
+          <div class="exp-desc">${f.desc}</div>
+          <div class="exp-keys">
+            ${f.keys.map(k=>`<div class="exp-key">
+              <div class="exp-key-header"><code>${k}</code><a href="#" onclick="return false">Get key →</a></div>
+              <input type="password" class="exp-input" placeholder="${f.status==='ready'?'••••••••••••':'Enter API key...'}" ${f.status==='ready'?'value="••••••••••••"':''} onclick="event.stopPropagation()">
+            </div>`).join('')}
+          </div>
+          ${f.status!=='ready'?`<div class="exp-fallback">${f.fallback}</div>`:''}
+        </div>
+      </div>`;
+    }
+    html += '</div>';
+  }
+
+  area.innerHTML = html;
+  attachCardListeners();
+}
+
+function renderDebug() {
+  const area = document.getElementById('scrollArea');
+  area.innerHTML = `<div class="debug-panel">
+    <div class="debug-btns"><button>Open Logs Folder</button><button>Open API Log</button></div>
+    <div class="debug-card">
+      <h3>Diagnostics</h3>
+      <label class="diag-check"><input type="checkbox"> Verbose Sidecar Log</label>
+      <label class="diag-check"><input type="checkbox"> Frontend Fetch Debug</label>
+      <div style="margin-top:14px;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:13px;font-weight:600;color:var(--text-sec)">API Traffic</span>
+        <div style="display:flex;gap:8px">
+          <label style="font-size:12px;color:var(--text-sec);display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" checked style="accent-color:var(--accent)"> Auto</label>
+          <button style="background:var(--surface-hover);border:1px solid var(--border-strong);color:var(--text-sec);font-size:11px;padding:3px 10px;border-radius:4px;cursor:pointer">Refresh</button>
+          <button style="background:var(--surface-hover);border:1px solid var(--border-strong);color:var(--text-sec);font-size:11px;padding:3px 10px;border-radius:4px;cursor:pointer">Clear</button>
+        </div>
+      </div>
+      <div class="traffic-empty">No API traffic recorded yet.</div>
+    </div>
+  </div>`;
+}
+
+function attachCardListeners() {
+  document.querySelectorAll('.card').forEach(card => {
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('[data-tog]') || e.target.closest('.exp-input') || e.target.closest('.exp-key-header')) return;
+      if (e.target.closest('[data-close]')) {
+        expandedCard = null;
+        renderFeatures();
+        return;
+      }
+      const fid = card.dataset.card;
+      if (expandedCard===fid) return; // already expanded, don't collapse on body click
+      expandedCard = fid;
+      renderFeatures();
+      // Scroll expanded card into view
+      setTimeout(() => {
+        document.querySelector('.card.expanded')?.scrollIntoView({ behavior:'smooth', block:'nearest' });
+      }, 50);
+    });
+  });
+
+  document.querySelectorAll('[data-tog]').forEach(t => {
+    t.addEventListener('click', (e) => {
+      e.stopPropagation();
+      t.classList.toggle('on');
+    });
+  });
+}
+
+// Tab switching
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    if (btn.dataset.tab==='features') renderFeatures();
+    else renderDebug();
+  });
+});
+
+renderFeatures();
+</script>
+</body>
+</html>

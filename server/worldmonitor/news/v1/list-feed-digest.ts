@@ -14,6 +14,7 @@ import { classifyByKeyword, type ThreatLevel } from './_classifier';
 declare const process: { env: Record<string, string | undefined> };
 
 const VALID_VARIANTS = new Set(['full', 'tech', 'finance', 'happy']);
+const fallbackDigestCache = new Map<string, { data: ListFeedDigestResponse; ts: number }>();
 const ITEMS_PER_FEED = 5;
 const MAX_ITEMS_PER_CATEGORY = 20;
 const FEED_TIMEOUT_MS = 8_000;
@@ -187,13 +188,18 @@ export async function listFeedDigest(
 
   const digestCacheKey = `news:digest:v1:${variant}:${lang}`;
 
+  const fallbackKey = `${variant}:${lang}`;
   try {
-    const cached = await cachedFetchJson<ListFeedDigestResponse>(digestCacheKey, 300, async () => {
+    const cached = await cachedFetchJson<ListFeedDigestResponse>(digestCacheKey, 900, async () => {
       return buildDigest(variant, lang);
     });
-    return cached ?? { categories: {}, feedStatuses: {}, generatedAt: new Date().toISOString() };
+    if (cached) {
+      if (fallbackDigestCache.size > 50) fallbackDigestCache.clear();
+      fallbackDigestCache.set(fallbackKey, { data: cached, ts: Date.now() });
+    }
+    return cached ?? fallbackDigestCache.get(fallbackKey)?.data ?? { categories: {}, feedStatuses: {}, generatedAt: new Date().toISOString() };
   } catch {
-    return { categories: {}, feedStatuses: {}, generatedAt: new Date().toISOString() };
+    return fallbackDigestCache.get(fallbackKey)?.data ?? { categories: {}, feedStatuses: {}, generatedAt: new Date().toISOString() };
   }
 }
 

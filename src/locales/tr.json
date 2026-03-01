@@ -910,6 +910,9 @@
       "sectionAi": "AI Analysis",
       "mapFlashLabel": "Live Event Pulse",
       "mapFlashDesc": "Flash locations on the map when breaking news arrives",
+      "sectionPanels": "Panels",
+      "badgeAnimLabel": "Count Badge Pulse",
+      "badgeAnimDesc": "Animate panel count badges when new items arrive",
       "aiFlowTitle": "Settings",
       "aiFlowCloudLabel": "Bulut AI (Groq & OpenRouter)",
       "aiFlowCloudDesc": "Basliklari AI ozetleme icin buluta gonder (onerilen)",
@@ -923,6 +926,9 @@
       "aiFlowStatusCloudAndBrowser": "Bulut AI + Tarayici modeli aktif",
       "aiFlowStatusBrowserOnly": "Yalnizca tarayici modeli",
       "aiFlowStatusDisabled": "Etkinlestirilmis AI saglayici yok",
+      "sectionIntelligence": "İstihbarat",
+      "headlineMemoryLabel": "Başlık hafızası",
+      "headlineMemoryDesc": "Ülke raporlarını tarihsel bağlamla zenginleştirmek için geçmiş başlıkları hatırla",
       "insightsDisabledTitle": "AI analizi devre disi",
       "insightsDisabledHint": "Enable providers via the settings gear in the map header"
     },
@@ -1308,7 +1314,8 @@
       "regionLatinAmerica": "Latin Amerika",
       "regionAsia": "Asya",
       "regionMiddleEast": "Orta Doğu",
-      "regionAfrica": "Afrika"
+      "regionAfrica": "Afrika",
+      "regionOceania": "Okyanusya"
     },
     "securityAdvisories": {
       "loading": "Seyahat uyarıları yükleniyor...",

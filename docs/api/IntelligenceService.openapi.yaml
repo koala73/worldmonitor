@@ -112,7 +112,7 @@ paths:
                 - name: country_code
                   in: query
                   description: ISO 3166-1 alpha-2 country code.
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:

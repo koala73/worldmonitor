@@ -910,6 +910,9 @@
       "sectionAi": "AI Analysis",
       "mapFlashLabel": "Live Event Pulse",
       "mapFlashDesc": "Flash locations on the map when breaking news arrives",
+      "sectionPanels": "Panels",
+      "badgeAnimLabel": "Count Badge Pulse",
+      "badgeAnimDesc": "Animate panel count badges when new items arrive",
       "aiFlowTitle": "Settings",
       "aiFlowCloudLabel": "Cloud AI (Groq & OpenRouter)",
       "aiFlowCloudDesc": "Gửi tiêu đề tới cloud để AI tóm tắt (khuyến nghị)",
@@ -923,6 +926,9 @@
       "aiFlowStatusCloudAndBrowser": "Cloud AI + Mô hình trình duyệt đang hoạt động",
       "aiFlowStatusBrowserOnly": "Chỉ mô hình trình duyệt",
       "aiFlowStatusDisabled": "Không có nhà cung cấp AI nào được bật",
+      "sectionIntelligence": "Tình báo",
+      "headlineMemoryLabel": "Bộ nhớ tiêu đề",
+      "headlineMemoryDesc": "Ghi nhớ các tiêu đề trước đó để làm giàu báo cáo quốc gia với bối cảnh lịch sử",
       "insightsDisabledTitle": "Phân tích AI đã bị tắt",
       "insightsDisabledHint": "Enable providers via the settings gear in the map header"
     },
@@ -1308,7 +1314,8 @@
       "regionLatinAmerica": "Mỹ Latinh",
       "regionAsia": "Châu Á",
       "regionMiddleEast": "Trung Đông",
-      "regionAfrica": "Châu Phi"
+      "regionAfrica": "Châu Phi",
+      "regionOceania": "Châu Đại Dương"
     },
     "securityAdvisories": {
       "loading": "Đang tải cảnh báo du lịch...",

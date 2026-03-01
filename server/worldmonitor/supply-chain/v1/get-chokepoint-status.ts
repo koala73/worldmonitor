@@ -114,6 +114,7 @@ export async function getChokepointStatus(
       REDIS_CACHE_TTL,
       async () => {
         const { chokepoints, upstreamUnavailable } = await fetchChokepointData();
+        if (upstreamUnavailable) return null;
         return { chokepoints, fetchedAt: new Date().toISOString(), upstreamUnavailable };
       },
     );
