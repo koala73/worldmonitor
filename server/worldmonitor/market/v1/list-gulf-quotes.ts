@@ -84,6 +84,8 @@ export async function listGulfQuotes(
         }
       }
 
+      // Safe: read-only snapshot — cachedFetchJson coalesces concurrent calls but
+      // memCache is only written after the fetcher resolves, never inside it.
       if (quotes.length === 0 && memCache) return null;
       if (quotes.length === 0) {
         return batch.rateLimited

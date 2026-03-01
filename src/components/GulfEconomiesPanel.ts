@@ -5,6 +5,8 @@ import { formatPrice, formatChange, getChangeClass } from '@/utils';
 import { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
 import type { ListGulfQuotesResponse, GulfQuote } from '@/generated/client/worldmonitor/market/v1/service_client';
 
+const client = new MarketServiceClient('', { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) });
+
 function miniSparkline(data: number[] | undefined, change: number | null, w = 50, h = 16): string {
   if (!data || data.length < 2) return '';
   const min = Math.min(...data);
@@ -52,7 +54,6 @@ export class GulfEconomiesPanel extends Panel {
 
   public async fetchData(): Promise<void> {
     try {
-      const client = new MarketServiceClient('', { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) });
       const data = await client.listGulfQuotes({});
       this.renderGulf(data);
     } catch (err) {
