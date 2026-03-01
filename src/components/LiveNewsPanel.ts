@@ -1298,7 +1298,7 @@ export class LiveNewsPanel extends Panel {
       if (isNewVideo) {
         // WKWebView loses user gesture context after await.
         // Pause then play after a delay — mimics the manual workaround.
-        this.player.pauseVideo();
+        this.player.pauseVideo?.();
         setTimeout(() => {
           if (this.player && this.isPlaying) {
             this.player.mute?.();
