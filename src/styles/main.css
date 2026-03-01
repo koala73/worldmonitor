@@ -13671,6 +13671,33 @@ body.has-breaking-alert .panels-grid {
   transition: margin-top 0.3s ease;
 }
 
+.breaking-alert-sources {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.breaking-alert-sources-label {
+  font-weight: 500;
+  margin-right: 4px;
+}
+
+.breaking-alert-source-link {
+  color: #4dabf7;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.breaking-alert-source-link:hover {
+  color: #74c0fc;
+}
+
+.breaking-alert-source-name {
+  color: rgba(255, 255, 255, 0.7);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .breaking-alert {
     animation: none;

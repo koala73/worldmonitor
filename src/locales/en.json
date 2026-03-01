@@ -972,6 +972,11 @@
       "settingsTitle": "Settings",
       "sectionMap": "Map",
       "sectionAi": "AI Analysis",
+      "sectionPanels": "Panels",
+      "sectionIntelligence": "Intelligence",
+      "sectionNotifications": "Notifications",
+      "notificationPopupsLabel": "Alert Popups",
+      "notificationPopupsDesc": "Show popup notifications for breaking news and critical alerts",
       "sectionStreaming": "Streaming",
       "streamQualityLabel": "Video Quality",
       "streamQualityDesc": "Set quality for all live streams (lower saves bandwidth)",
@@ -982,6 +987,10 @@
       "aiFlowCloudDesc": "Send headlines to cloud for AI summarization (recommended)",
       "aiFlowBrowserLabel": "Browser Local Model",
       "aiFlowBrowserDesc": "Run AI locally in your browser",
+      "badgeAnimLabel": "Badge Animation",
+      "badgeAnimDesc": "Animate notification badges on the map",
+      "headlineMemoryLabel": "Headline Memory",
+      "headlineMemoryDesc": "Remember which headlines you've already seen across sessions",
       "aiFlowBrowserWarn": "Downloads ~250 MB of model data to your browser",
       "aiFlowOllamaCta": "Want fully local AI?",
       "aiFlowOllamaCtaDesc": "Download the desktop app for Ollama support",
@@ -1238,7 +1247,9 @@
       "critical": "CRITICAL",
       "high": "HIGH",
       "dismiss": "Dismiss",
-      "enableNotifications": "Enable desktop notifications"
+      "enableNotifications": "Enable desktop notifications",
+      "alsoReportedBy": "Also reported by: ",
+      "sourcesCount": "{{count}} sources"
     },
     "intelligenceFindings": {
       "breakingAlerts": "Breaking Alerts",
