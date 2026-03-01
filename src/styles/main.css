@@ -9060,7 +9060,7 @@ a.prediction-link:hover {
   .panel {
     width: 100% !important;
     min-height: 250px;
-    max-height: 70vh;
+    max-height: min(70vh, 500px);
   }
 
   .panel-content {
@@ -9075,19 +9075,19 @@ a.prediction-link:hover {
     max-height: 50vh !important;
   }
 
-  /* Collapsed map on mobile — keeps header visible with toggle */
-  .map-section.collapsed {
+  /* Collapsed map on mobile — higher specificity overrides .map-section above */
+  .main-content .map-section.collapsed {
     height: auto !important;
     min-height: 0 !important;
     max-height: none !important;
   }
 
-  .map-section.collapsed .map-container,
-  .map-section.collapsed .map-resize-handle,
-  .map-section.collapsed .map-controls,
-  .map-section.collapsed .time-slider,
-  .map-section.collapsed .tv-exit-btn {
-    display: none !important;
+  .main-content .map-section.collapsed .map-container,
+  .main-content .map-section.collapsed .map-resize-handle,
+  .main-content .map-section.collapsed .map-controls,
+  .main-content .map-section.collapsed .time-slider,
+  .main-content .map-section.collapsed .tv-exit-btn {
+    display: none;
   }
 
   /* Map collapse toggle button — mobile only */

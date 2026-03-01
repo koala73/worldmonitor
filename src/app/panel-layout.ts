@@ -230,17 +230,22 @@ export class PanelLayoutManager implements AppModule {
     const headerLeft = mapSection?.querySelector('.panel-header-left');
     if (!mapSection || !headerLeft) return;
 
-    const collapsed = localStorage.getItem('mobile-map-collapsed') !== 'false';
+    const stored = localStorage.getItem('mobile-map-collapsed');
+    const collapsed = stored === null || stored === 'true';
     if (collapsed) mapSection.classList.add('collapsed');
+
+    const updateBtn = (btn: HTMLButtonElement, isCollapsed: boolean) => {
+      btn.textContent = isCollapsed ? `▶ ${t('components.map.showMap')}` : `▼ ${t('components.map.hideMap')}`;
+    };
 
     const btn = document.createElement('button');
     btn.className = 'map-collapse-btn';
-    btn.textContent = collapsed ? 'Show Map' : 'Hide Map';
+    updateBtn(btn, collapsed);
     headerLeft.after(btn);
 
     btn.addEventListener('click', () => {
       const isCollapsed = mapSection.classList.toggle('collapsed');
-      btn.textContent = isCollapsed ? 'Show Map' : 'Hide Map';
+      updateBtn(btn, isCollapsed);
       localStorage.setItem('mobile-map-collapsed', String(isCollapsed));
       if (!isCollapsed) window.dispatchEvent(new Event('resize'));
     });

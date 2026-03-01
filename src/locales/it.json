@@ -1464,6 +1464,43 @@
       "invalidHandle": "Inserisci un handle YouTube valido (es. @NomeCanale)",
       "channelNotFound": "Canale YouTube non trovato",
       "verifying": "Verifica in corso…"
+    },
+    "securityAdvisories": {
+      "loading": "Caricamento avvisi di viaggio...",
+      "noMatching": "Nessun avviso per questo filtro",
+      "critical": "Critico",
+      "health": "Salute",
+      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT, CDC, ECDC, WHO, US Embassies",
+      "refresh": "Aggiorna",
+      "levels": {
+        "doNotTravel": "Non viaggiare",
+        "reconsider": "Riconsiderare il viaggio",
+        "caution": "Cautela",
+        "normal": "Normale",
+        "info": "Info"
+      },
+      "time": {
+        "justNow": "adesso",
+        "minutesAgo": "{{count}} min fa",
+        "hoursAgo": "{{count}} ore fa",
+        "daysAgo": "{{count}} giorni fa"
+      },
+      "infoTooltip": "<strong>Avvisi di Sicurezza</strong><br>Avvisi di viaggio e allerte di sicurezza dalle agenzie governative."
+    },
+    "orefSirens": {
+      "checking": "Checking siren alerts...",
+      "noAlerts": "No active sirens — all clear",
+      "notConfigured": "Sirens service not configured",
+      "activeSirens": "{{count}} active siren(s)",
+      "area": "Area",
+      "time": "Time",
+      "justNow": "just now",
+      "historyCount": "{{count}} alerts in last 24h",
+      "infoTooltip": "<strong>Israel Sirens</strong><br>Real-time rocket and missile siren alerts from Israel Home Front Command.<br><br>Data is polled every 10 seconds. A pulsing red indicator means active sirens are sounding."
+    },
+    "map": {
+      "showMap": "Mostra mappa",
+      "hideMap": "Nascondi mappa"
     }
   },
   "popups": {
