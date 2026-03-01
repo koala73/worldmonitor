@@ -62,7 +62,7 @@ export function isMilitaryCallsign(callsign: string | null | undefined): boolean
     if (cs.startsWith(prefix)) return true;
   }
   for (const prefix of SHORT_MILITARY_PREFIXES) {
-    if (cs.startsWith(prefix) && cs.length > prefix.length && /\d/.test(cs[prefix.length])) return true;
+    if (cs.startsWith(prefix) && cs.length > prefix.length && /\d/.test(cs.charAt(prefix.length))) return true;
   }
   if (/^[A-Z]{3}\d{1,2}$/.test(cs)) {
     const prefix = cs.slice(0, 3);
