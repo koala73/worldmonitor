@@ -146,6 +146,25 @@ export interface GetCountryStockIndexResponse {
   fetchedAt: string;
 }
 
+export interface ListGulfQuotesRequest {
+}
+
+export interface ListGulfQuotesResponse {
+  quotes: GulfQuote[];
+  rateLimited: boolean;
+}
+
+export interface GulfQuote {
+  symbol: string;
+  name: string;
+  country: string;
+  flag: string;
+  type: 'index' | 'currency' | 'oil';
+  price: number;
+  change: number;
+  sparkline: number[];
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -365,6 +384,29 @@ export class MarketServiceClient {
     }
 
     return await resp.json() as GetCountryStockIndexResponse;
+  }
+
+  async listGulfQuotes(_req: ListGulfQuotesRequest, options?: MarketServiceCallOptions): Promise<ListGulfQuotesResponse> {
+    const path = "/api/market/v1/list-gulf-quotes";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListGulfQuotesResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

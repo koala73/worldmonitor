@@ -36,6 +36,7 @@ import {
   SecurityAdvisoriesPanel,
   OrefSirensPanel,
   TelegramIntelPanel,
+  GulfEconomiesPanel,
 } from '@/components';
 import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
 import { PositiveNewsFeedPanel } from '@/components/PositiveNewsFeedPanel';
@@ -563,9 +564,17 @@ export class PanelLayoutManager implements AppModule {
         focusInvestmentOnMap(this.ctx.map, this.ctx.mapLayers, inv.lat, inv.lon);
       });
       this.ctx.panels['gcc-investments'] = investmentsPanel;
+
+      const gulfEconomiesPanel = new GulfEconomiesPanel();
+      this.ctx.panels['gulf-economies'] = gulfEconomiesPanel;
     }
 
     if (SITE_VARIANT !== 'happy') {
+      if (!this.ctx.panels['gulf-economies']) {
+        const gulfEconomiesPanel = new GulfEconomiesPanel();
+        this.ctx.panels['gulf-economies'] = gulfEconomiesPanel;
+      }
+
       const liveNewsPanel = new LiveNewsPanel();
       this.ctx.panels['live-news'] = liveNewsPanel;
 

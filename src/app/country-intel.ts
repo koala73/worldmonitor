@@ -507,7 +507,7 @@ export class CountryIntelManager implements AppModule {
     if (this.ctx.intelligenceCache.flightDelays) {
       aviationDisruptions = this.ctx.intelligenceCache.flightDelays.filter(d =>
         (d.severity === 'major' || d.severity === 'severe' || d.delayType === 'closure') &&
-        d.country?.toLowerCase() === countryLower
+        (hasGeoShape ? this.isInCountry(d.lat, d.lon, code) : d.country?.toLowerCase() === countryLower)
       ).length;
     }
 
@@ -608,7 +608,9 @@ export class CountryIntelManager implements AppModule {
 
   private isInCountry(lat: number, lon: number, code: string): boolean {
     const precise = isCoordinateInCountry(lat, lon, code);
-    if (precise != null) return precise;
+    if (precise === true) return true;
+    // When precise geometry returns false (coastal/polygon precision) or null (not loaded),
+    // fall through to bounding box — matches CII's coordsToBoundsCountry fallback
     const b = CountryIntelManager.COUNTRY_BOUNDS[code];
     if (!b) return false;
     return lat >= b.s && lat <= b.n && lon >= b.w && lon <= b.e;
