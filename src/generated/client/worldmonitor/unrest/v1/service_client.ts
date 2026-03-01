@@ -125,7 +125,7 @@ export class UnrestServiceClient {
     if (req.pageSize != null && req.pageSize !== 0) params.set("page_size", String(req.pageSize));
     if (req.cursor != null && req.cursor !== "") params.set("cursor", String(req.cursor));
     if (req.country != null && req.country !== "") params.set("country", String(req.country));
-    if (req.minSeverity != null && req.minSeverity !== "") params.set("min_severity", String(req.minSeverity));
+    if (req.minSeverity != null && req.minSeverity !== "SEVERITY_LEVEL_UNSPECIFIED") params.set("min_severity", String(req.minSeverity));
     if (req.neLat != null && req.neLat !== 0) params.set("ne_lat", String(req.neLat));
     if (req.neLon != null && req.neLon !== 0) params.set("ne_lon", String(req.neLon));
     if (req.swLat != null && req.swLat !== 0) params.set("sw_lat", String(req.swLat));

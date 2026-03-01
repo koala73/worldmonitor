@@ -89,7 +89,7 @@ export class ClimateServiceClient {
     const params = new URLSearchParams();
     if (req.pageSize != null && req.pageSize !== 0) params.set("page_size", String(req.pageSize));
     if (req.cursor != null && req.cursor !== "") params.set("cursor", String(req.cursor));
-    if (req.minSeverity != null && req.minSeverity !== "") params.set("min_severity", String(req.minSeverity));
+    if (req.minSeverity != null && req.minSeverity !== "ANOMALY_SEVERITY_UNSPECIFIED") params.set("min_severity", String(req.minSeverity));
     const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {

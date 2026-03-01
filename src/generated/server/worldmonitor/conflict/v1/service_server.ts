@@ -83,13 +83,7 @@ export interface HumanitarianCountrySummary {
   updatedAt: number;
 }
 
-export interface ListIranEventsRequest {
-}
-
-export interface ListIranEventsResponse {
-  events: IranEvent[];
-  scrapedAt: string;
-}
+export interface ListIranEventsRequest {}
 
 export interface IranEvent {
   id: string;
@@ -99,8 +93,13 @@ export interface IranEvent {
   latitude: number;
   longitude: number;
   locationName: string;
-  timestamp: string;
+  timestamp: number;
   severity: string;
+}
+
+export interface ListIranEventsResponse {
+  events: IranEvent[];
+  scrapedAt: number;
 }
 
 export type UcdpViolenceType = "UCDP_VIOLENCE_TYPE_UNSPECIFIED" | "UCDP_VIOLENCE_TYPE_STATE_BASED" | "UCDP_VIOLENCE_TYPE_NON_STATE" | "UCDP_VIOLENCE_TYPE_ONE_SIDED";
@@ -270,16 +269,11 @@ export function createConflictServiceRoutes(
         try {
           const pathParams: Record<string, string> = {};
           const url = new URL(req.url, "http://localhost");
+
           const params = url.searchParams;
           const body: GetHumanitarianSummaryRequest = {
             countryCode: params.get("country_code") ?? "",
           };
-          if (options?.validateRequest) {
-            const bodyViolations = options.validateRequest("getHumanitarianSummary", body);
-            if (bodyViolations) {
-              throw new ValidationError(bodyViolations);
-            }
-          }
 
           const ctx: ServerContext = {
             request: req,
@@ -316,7 +310,7 @@ export function createConflictServiceRoutes(
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
-          const body = {} as ListIranEventsRequest;
+          const body: ListIranEventsRequest = {};
 
           const ctx: ServerContext = {
             request: req,

@@ -115,8 +115,8 @@ export function createAviationServiceRoutes(
           const body: ListAirportDelaysRequest = {
             pageSize: Number(params.get("page_size") ?? "0"),
             cursor: params.get("cursor") ?? "",
-            region: params.get("region") ?? "",
-            minSeverity: params.get("min_severity") ?? "",
+            region: (params.get("region") ?? "AIRPORT_REGION_UNSPECIFIED") as AirportRegion,
+            minSeverity: (params.get("min_severity") ?? "FLIGHT_DELAY_SEVERITY_UNSPECIFIED") as FlightDelaySeverity,
           };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("listAirportDelays", body);

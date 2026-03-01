@@ -145,7 +145,7 @@ export class TradeServiceClient {
   async getTradeRestrictions(req: GetTradeRestrictionsRequest, options?: TradeServiceCallOptions): Promise<GetTradeRestrictionsResponse> {
     let path = "/api/trade/v1/get-trade-restrictions";
     const params = new URLSearchParams();
-    if (req.countries != null && req.countries !== "") params.set("countries", String(req.countries));
+    if (req.countries && req.countries.length > 0) req.countries.forEach(v => params.append("countries", v));
     if (req.limit != null && req.limit !== 0) params.set("limit", String(req.limit));
     const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
@@ -226,7 +226,7 @@ export class TradeServiceClient {
   async getTradeBarriers(req: GetTradeBarriersRequest, options?: TradeServiceCallOptions): Promise<GetTradeBarriersResponse> {
     let path = "/api/trade/v1/get-trade-barriers";
     const params = new URLSearchParams();
-    if (req.countries != null && req.countries !== "") params.set("countries", String(req.countries));
+    if (req.countries && req.countries.length > 0) req.countries.forEach(v => params.append("countries", v));
     if (req.measureType != null && req.measureType !== "") params.set("measure_type", String(req.measureType));
     if (req.limit != null && req.limit !== 0) params.set("limit", String(req.limit));
     const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");

@@ -146,6 +146,25 @@ export interface GetCountryStockIndexResponse {
   fetchedAt: string;
 }
 
+export interface ListGulfQuotesRequest {
+}
+
+export interface ListGulfQuotesResponse {
+  quotes: GulfQuote[];
+  rateLimited: boolean;
+}
+
+export interface GulfQuote {
+  symbol: string;
+  name: string;
+  country: string;
+  flag: string;
+  type: 'index' | 'currency' | 'oil';
+  price: number;
+  change: number;
+  sparkline: number[];
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -198,6 +217,7 @@ export interface MarketServiceHandler {
   listStablecoinMarkets(ctx: ServerContext, req: ListStablecoinMarketsRequest): Promise<ListStablecoinMarketsResponse>;
   listEtfFlows(ctx: ServerContext, req: ListEtfFlowsRequest): Promise<ListEtfFlowsResponse>;
   getCountryStockIndex(ctx: ServerContext, req: GetCountryStockIndexRequest): Promise<GetCountryStockIndexResponse>;
+  listGulfQuotes(ctx: ServerContext, req: ListGulfQuotesRequest): Promise<ListGulfQuotesResponse>;
 }
 
 export function createMarketServiceRoutes(
@@ -214,7 +234,7 @@ export function createMarketServiceRoutes(
           const url = new URL(req.url, "http://localhost");
           const params = url.searchParams;
           const body: ListMarketQuotesRequest = {
-            symbols: params.get("symbols") ?? "",
+            symbols: params.getAll("symbols"),
           };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("listMarketQuotes", body);
@@ -261,7 +281,7 @@ export function createMarketServiceRoutes(
           const url = new URL(req.url, "http://localhost");
           const params = url.searchParams;
           const body: ListCryptoQuotesRequest = {
-            ids: params.get("ids") ?? "",
+            ids: params.getAll("ids"),
           };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("listCryptoQuotes", body);
@@ -308,7 +328,7 @@ export function createMarketServiceRoutes(
           const url = new URL(req.url, "http://localhost");
           const params = url.searchParams;
           const body: ListCommodityQuotesRequest = {
-            symbols: params.get("symbols") ?? "",
+            symbols: params.getAll("symbols"),
           };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("listCommodityQuotes", body);
@@ -402,7 +422,7 @@ export function createMarketServiceRoutes(
           const url = new URL(req.url, "http://localhost");
           const params = url.searchParams;
           const body: ListStablecoinMarketsRequest = {
-            coins: params.get("coins") ?? "",
+            coins: params.getAll("coins"),
           };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("listStablecoinMarkets", body);
@@ -484,16 +504,11 @@ export function createMarketServiceRoutes(
         try {
           const pathParams: Record<string, string> = {};
           const url = new URL(req.url, "http://localhost");
+
           const params = url.searchParams;
           const body: GetCountryStockIndexRequest = {
             countryCode: params.get("country_code") ?? "",
           };
-          if (options?.validateRequest) {
-            const bodyViolations = options.validateRequest("getCountryStockIndex", body);
-            if (bodyViolations) {
-              throw new ValidationError(bodyViolations);
-            }
-          }
 
           const ctx: ServerContext = {
             request: req,
@@ -503,6 +518,43 @@ export function createMarketServiceRoutes(
 
           const result = await handler.getCountryStockIndex(ctx, body);
           return new Response(JSON.stringify(result as GetCountryStockIndexResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/market/v1/list-gulf-quotes",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as ListGulfQuotesRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listGulfQuotes(ctx, body);
+          return new Response(JSON.stringify(result as ListGulfQuotesResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });
