@@ -1,4 +1,4 @@
-import { FEEDS, INTEL_SOURCES, SOURCE_REGION_MAP } from '@/config/feeds';
+import { INTEL_SOURCES, SOURCE_REGION_MAP } from '@/config/feeds';
 import { PANEL_CATEGORY_MAP } from '@/config/panels';
 import { SITE_VARIANT } from '@/config/variant';
 import { LANGUAGES, changeLanguage, getCurrentLanguage, t } from '@/services/i18n';
@@ -7,6 +7,7 @@ import type { StreamQuality } from '@/services/ai-flow-settings';
 import { escapeHtml } from '@/utils/sanitize';
 import { trackLanguageChange } from '@/services/analytics';
 import type { PanelConfig } from '@/types';
+import { getMergedFeeds, getCustomFeedNames, loadCustomFeeds, addCustomFeed, removeCustomFeed, validateRssUrl } from '@/services/custom-feeds';
 
 const GEAR_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`;
 
@@ -130,6 +131,35 @@ export class UnifiedSettings {
         this.updateSourcesCounter();
         return;
       }
+
+      // Custom feed: toggle add form
+      if (target.closest('.custom-feed-add-btn')) {
+        const form = this.overlay.querySelector('.custom-feed-form');
+        if (form) form.classList.toggle('hidden');
+        return;
+      }
+
+      // Custom feed: validate
+      if (target.closest('.custom-feed-validate-btn')) {
+        this.handleCustomFeedValidate();
+        return;
+      }
+
+      // Custom feed: submit
+      if (target.closest('.custom-feed-submit-btn')) {
+        this.handleCustomFeedSubmit();
+        return;
+      }
+
+      // Custom feed: remove
+      const removeBtn = target.closest<HTMLElement>('.custom-feed-remove');
+      if (removeBtn?.dataset.id) {
+        removeCustomFeed(removeBtn.dataset.id);
+        this.renderCustomFeeds();
+        this.renderSourcesGrid();
+        this.updateSourcesCounter();
+        return;
+      }
     });
 
     // Handle input events for search
@@ -243,6 +273,7 @@ export class UnifiedSettings {
           <div class="panel-toggle-grid" id="usPanelToggles"></div>
         </div>
         <div class="unified-settings-tab-panel${this.activeTab === 'sources' ? ' active' : ''}" data-panel-id="sources">
+          <div class="custom-feeds-section" id="usCustomFeeds"></div>
           <div class="unified-settings-region-wrapper">
             <div class="unified-settings-region-bar" id="usRegionBar"></div>
           </div>
@@ -262,6 +293,7 @@ export class UnifiedSettings {
     // Populate dynamic sections after innerHTML is set
     this.renderPanelCategoryPills();
     this.renderPanelsTab();
+    this.renderCustomFeeds();
     this.renderRegionPills();
     this.renderSourcesGrid();
     this.updateSourcesCounter();
@@ -456,7 +488,7 @@ export class UnifiedSettings {
   }
 
   private getAvailableRegions(): Array<{ key: string; label: string }> {
-    const feedKeys = new Set(Object.keys(FEEDS));
+    const feedKeys = new Set(Object.keys(getMergedFeeds()));
     const regions: Array<{ key: string; label: string }> = [
       { key: 'all', label: t('header.sourceRegionAll') }
     ];
@@ -479,7 +511,8 @@ export class UnifiedSettings {
 
   private getSourcesByRegion(): Map<string, string[]> {
     const map = new Map<string, string[]>();
-    const feedKeys = new Set(Object.keys(FEEDS));
+    const allFeeds = getMergedFeeds();
+    const feedKeys = new Set(Object.keys(allFeeds));
 
     for (const [regionKey, regionDef] of Object.entries(SOURCE_REGION_MAP)) {
       const sources: string[] = [];
@@ -488,7 +521,7 @@ export class UnifiedSettings {
       } else {
         for (const fk of regionDef.feedKeys) {
           if (feedKeys.has(fk)) {
-            FEEDS[fk]!.forEach(f => sources.push(f.name));
+            allFeeds[fk]!.forEach(f => sources.push(f.name));
           }
         }
       }
@@ -533,14 +566,16 @@ export class UnifiedSettings {
 
     const sources = this.getVisibleSourceNames();
     const disabled = this.config.getDisabledSources();
+    const customNames = getCustomFeedNames();
 
     container.innerHTML = sources.map(source => {
       const isEnabled = !disabled.has(source);
       const escaped = escapeHtml(source);
+      const badge = customNames.has(source) ? '<span class="custom-feed-badge">Custom</span>' : '';
       return `
         <div class="source-toggle-item ${isEnabled ? 'active' : ''}" data-source="${escaped}">
           <div class="source-toggle-checkbox">${isEnabled ? '✓' : ''}</div>
-          <span class="source-toggle-label">${escaped}</span>
+          <span class="source-toggle-label">${escaped}</span>${badge}
         </div>
       `;
     }).join('');
@@ -555,5 +590,98 @@ export class UnifiedSettings {
     const enabledTotal = allSources.length - disabled.size;
 
     counter.textContent = t('header.sourcesEnabled', { enabled: String(enabledTotal), total: String(allSources.length) });
+  }
+
+  private renderCustomFeeds(): void {
+    const container = this.overlay.querySelector('#usCustomFeeds');
+    if (!container) return;
+
+    const customFeeds = loadCustomFeeds();
+    const categories = Object.keys(getMergedFeeds());
+    const categoryOptions = categories.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+
+    const feedListHtml = customFeeds.length > 0 ? `
+      <div class="custom-feed-list">
+        ${customFeeds.map(f => `
+          <div class="custom-feed-list-item">
+            <span class="custom-feed-list-name">${escapeHtml(f.name)}</span>
+            <span class="custom-feed-badge">${escapeHtml(f.category)}</span>
+            <button class="custom-feed-remove" data-id="${escapeHtml(f.id)}">✕</button>
+          </div>
+        `).join('')}
+      </div>
+    ` : '';
+
+    container.innerHTML = `
+      <div class="custom-feeds-header">
+        <span class="custom-feeds-title">Custom Feeds${customFeeds.length > 0 ? ` (${customFeeds.length}/20)` : ''}</span>
+        <button class="custom-feed-add-btn">+ Add Feed</button>
+      </div>
+      <div class="custom-feed-form hidden">
+        <input type="text" class="custom-feed-url" placeholder="https://example.com/feed.xml" />
+        <button class="custom-feed-validate-btn">Validate</button>
+        <div class="custom-feed-status"></div>
+        <input type="text" class="custom-feed-name" placeholder="Feed name" />
+        <select class="custom-feed-category">${categoryOptions}</select>
+        <button class="custom-feed-submit-btn" disabled>Add</button>
+      </div>
+      ${feedListHtml}
+    `;
+  }
+
+  private async handleCustomFeedValidate(): Promise<void> {
+    const urlInput = this.overlay.querySelector<HTMLInputElement>('.custom-feed-url');
+    const nameInput = this.overlay.querySelector<HTMLInputElement>('.custom-feed-name');
+    const statusEl = this.overlay.querySelector('.custom-feed-status');
+    const submitBtn = this.overlay.querySelector<HTMLButtonElement>('.custom-feed-submit-btn');
+    if (!urlInput || !statusEl || !submitBtn || !nameInput) return;
+
+    const url = urlInput.value.trim();
+    if (!url) {
+      statusEl.innerHTML = '<span class="custom-feed-error">Enter a URL</span>';
+      return;
+    }
+
+    statusEl.innerHTML = '<span class="custom-feed-loading">Validating...</span>';
+    submitBtn.disabled = true;
+
+    const result = await validateRssUrl(url);
+    if (result.valid) {
+      statusEl.innerHTML = '<span class="custom-feed-ok">Valid feed</span>';
+      if (result.title && !nameInput.value.trim()) {
+        nameInput.value = result.title;
+      }
+      submitBtn.disabled = false;
+    } else {
+      statusEl.innerHTML = `<span class="custom-feed-error">${escapeHtml(result.error ?? 'Invalid feed')}</span>`;
+      submitBtn.disabled = true;
+    }
+  }
+
+  private handleCustomFeedSubmit(): void {
+    const urlInput = this.overlay.querySelector<HTMLInputElement>('.custom-feed-url');
+    const nameInput = this.overlay.querySelector<HTMLInputElement>('.custom-feed-name');
+    const categorySelect = this.overlay.querySelector<HTMLSelectElement>('.custom-feed-category');
+    const statusEl = this.overlay.querySelector('.custom-feed-status');
+    if (!urlInput || !nameInput || !categorySelect || !statusEl) return;
+
+    const url = urlInput.value.trim();
+    const name = nameInput.value.trim();
+    const category = categorySelect.value;
+
+    if (!url || !name) {
+      statusEl.innerHTML = '<span class="custom-feed-error">URL and name are required</span>';
+      return;
+    }
+
+    try {
+      addCustomFeed({ name, url, category });
+      this.renderCustomFeeds();
+      this.renderSourcesGrid();
+      this.updateSourcesCounter();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to add feed';
+      statusEl.innerHTML = `<span class="custom-feed-error">${escapeHtml(msg)}</span>`;
+    }
   }
 }
