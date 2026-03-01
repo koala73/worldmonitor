@@ -28,16 +28,19 @@ export const MILITARY_PREFIXES = [
   'COBRA', 'PYTHON', 'RAPTOR', 'EAGLE', 'HAWK', 'TALON',
   'BOXER', 'OMNI', 'TOPCAT', 'SKULL', 'REAPER', 'HUNTER',
   'ARMY', 'NAVY', 'USAF', 'USMC', 'USCG',
-  'AE', 'CNV', 'PAT', 'SAM', 'EXEC',
-  'OPS', 'CTF', 'TF',
+  'CNV', 'EXEC',
   'NATO', 'GAF', 'RRF', 'RAF', 'FAF', 'IAF', 'RNLAF', 'BAF', 'DAF', 'HAF', 'PAF',
   'SWORD', 'LANCE', 'ARROW', 'SPARTAN',
   'RSAF', 'EMIRI', 'UAEAF', 'KAF', 'QAF', 'BAHAF', 'OMAAF',
-  'IRIAF', 'IRG', 'IRGC',
-  'TAF', 'TUAF',
-  'RSD', 'RF', 'RFF', 'VKS',
+  'IRIAF', 'IRGC',
+  'TUAF',
+  'RSD', 'RFF', 'VKS',
   'CHN', 'PLAAF', 'PLA',
 ];
+
+// Short prefixes that only match when followed by digits (not letters)
+// e.g. AE1234 = military, AEE123 = Aegean Airlines
+const SHORT_MILITARY_PREFIXES = ['AE', 'RF', 'TF', 'PAT', 'SAM', 'OPS', 'CTF', 'IRG', 'TAF'];
 
 export const AIRLINE_CODES = new Set([
   'SVA', 'QTR', 'THY', 'UAE', 'ETD', 'GFA', 'MEA', 'RJA', 'KAC', 'ELY',
@@ -57,6 +60,9 @@ export function isMilitaryCallsign(callsign: string | null | undefined): boolean
   const cs = callsign.toUpperCase().trim();
   for (const prefix of MILITARY_PREFIXES) {
     if (cs.startsWith(prefix)) return true;
+  }
+  for (const prefix of SHORT_MILITARY_PREFIXES) {
+    if (cs.startsWith(prefix) && cs.length > prefix.length && /\d/.test(cs[prefix.length])) return true;
   }
   if (/^[A-Z]{3}\d{1,2}$/.test(cs)) {
     const prefix = cs.slice(0, 3);
