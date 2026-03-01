@@ -43,6 +43,8 @@ message ThreatClassification {
     (buf.validate.field).double.gte = 0,
     (buf.validate.field).double.lte = 1
   ];
+  // Classification source — "keyword", "ml", or "llm".
+  string source = 4;
 }
 
 // HeadlineSummary represents an AI-generated summary of recent headlines.

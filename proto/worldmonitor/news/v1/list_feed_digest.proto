@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package worldmonitor.news.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/news/v1/news_item.proto";
+
+message ListFeedDigestRequest {
+  // Site variant: full, tech, finance, happy
+  string variant = 1 [(sebuf.http.query) = { name: "variant" }];
+  // ISO 639-1 language code (en, fr, ar, etc.)
+  string lang = 2 [(sebuf.http.query) = { name: "lang" }];
+}
+
+message ListFeedDigestResponse {
+  // Per-category buckets — keys match category names from feed config
+  map<string, CategoryBucket> categories = 1;
+  // Per-feed status (ok/error/timeout)
+  map<string, string> feed_statuses = 2;
+  // ISO 8601 timestamp of when this digest was generated
+  string generated_at = 3;
+}
+
+message CategoryBucket {
+  repeated NewsItem items = 1;
+}

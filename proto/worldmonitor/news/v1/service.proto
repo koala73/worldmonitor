@@ -4,13 +4,19 @@ package worldmonitor.news.v1;
 
 import "sebuf/http/annotations.proto";
 import "worldmonitor/news/v1/summarize_article.proto";
+import "worldmonitor/news/v1/list_feed_digest.proto";
 
-// NewsService provides AI-powered article summarization.
+// NewsService provides AI-powered article summarization and feed aggregation.
 service NewsService {
   option (sebuf.http.service_config) = {base_path: "/api/news/v1"};
 
   // SummarizeArticle generates an LLM summary with provider selection and fallback support.
   rpc SummarizeArticle(SummarizeArticleRequest) returns (SummarizeArticleResponse) {
     option (sebuf.http.config) = {path: "/summarize-article"};
+  }
+
+  // ListFeedDigest returns a pre-aggregated digest of all RSS feeds for a site variant.
+  rpc ListFeedDigest(ListFeedDigestRequest) returns (ListFeedDigestResponse) {
+    option (sebuf.http.config) = {path: "/list-feed-digest", method: HTTP_METHOD_GET};
   }
 }
