@@ -28,9 +28,9 @@ services:
       - OPENVPN_PASSWORD=${VPN_PASS:-}
       - SERVER_COUNTRIES=${VPN_COUNTRY:-Netherlands}
       - FREE_ONLY=${VPN_FREE_ONLY:-on}
-    ports:
-      - "3737:3737" # Dashboard UI (nginx)
-      - "11434:11434" # Ollama API (optional external access)
+    # ports:
+    #   - "3740:3737" # Dashboard UI (nginx)
+    #   - "11435:11434" # Ollama API (optional external access)
     volumes:
       - gluetun_data:/gluetun
     restart: unless-stopped
@@ -40,9 +40,11 @@ services:
   worldmonitor:
     build: .
     container_name: world_monitor
-    network_mode: "service:gluetun"
-    depends_on:
-      - gluetun
+    # network_mode: "service:gluetun"
+    # depends_on:
+    #   - gluetun
+    ports:
+      - "3740:3737"
     env_file: .env.local
     environment:
       - LOCAL_API_PORT=46123
@@ -56,9 +58,11 @@ services:
   ollama:
     image: ollama/ollama:latest
     container_name: ollama_ai
-    network_mode: "service:gluetun"
-    depends_on:
-      - gluetun
+    # network_mode: "service:gluetun"
+    # depends_on:
+    #   - gluetun
+    ports:
+      - "11435:11434"
     volumes:
       - ollama_data:/root/.ollama
     # UNCOMMENT BELOW FOR NVIDIA GPU SUPPORT

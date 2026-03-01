@@ -16,7 +16,7 @@ cp .env.example .env.local
 docker compose -f docker-compose.test.yml up -d --build
 
 # Open the dashboard
-open http://localhost:3737
+open http://localhost:3740
 ```
 
 ## How It Works
@@ -29,7 +29,7 @@ The Dockerfile builds the Vite frontend (`tsc && vite build`) and pairs it
 with nginx + the Tauri sidecar's `local-api-server.mjs` to serve the dashboard:
 
 ```
-Browser :3737
+Browser :3740
     │
     └─ nginx
         ├── /        → static files (Vite build)
@@ -100,7 +100,7 @@ docker compose build && docker compose up -d
 
 | Port | Service |
 |------|---------|
-| 3737 | Dashboard (nginx) |
+| 3740 | Dashboard (nginx) |
 | 46123 | API server (internal, proxied by nginx) |
 | 11434 | Ollama API (optional) |
 

@@ -1287,7 +1287,7 @@ vercel dev       # Runs frontend + all 60+ API edge functions
 
 Open [http://localhost:3000](http://localhost:3000)
 
-> **Note**: `vercel dev` requires the [Vercel CLI](https://vercel.com/docs/cli) (`npm i -g vercel`). If you use `npm run dev` instead, only the frontend starts — news feeds and API-dependent panels won't load. See [Self-Hosting](#self-hosting) for details.
+> **Note**: For local development, running the project via Docker is the recommended approach to ensure both the Vite frontend and API edge functions run simultaneously. See [Self-Hosting](#self-hosting) for details.
 
 ### Environment Variables (Optional)
 
@@ -1317,7 +1317,7 @@ See [`.env.example`](./.env.example) for the complete list with registration lin
 
 ## Self-Hosting
 
-World Monitor relies on **60+ Vercel Edge Functions** in the `api/` directory for RSS proxying, data caching, and API key isolation. Running `npm run dev` alone starts only the Vite frontend — the edge functions won't execute, and most panels (news feeds, markets, AI summaries) will be empty.
+World Monitor relies on **60+ Vercel Edge Functions** in the `api/` directory for RSS proxying, data caching, and API key isolation. Running the project via Docker Compose spins up an environment that handles both the frontend and an emulator for the API edge functions without needing Vercel CLI locally.
 
 ### Option 1: Deploy to Vercel (Recommended)
 
@@ -1335,19 +1335,7 @@ Add your API keys in the Vercel dashboard under **Settings → Environment Varia
 To run everything locally (frontend + edge functions):
 
 ```bash
-npm install -g vercel
-cp .env.example .env.local   # Add your API keys
-vercel dev                   # Starts on http://localhost:3000
-```
-
-> **Important**: Use `vercel dev` instead of `npm run dev`. The Vercel CLI emulates the edge runtime locally so all `api/` endpoints work. Plain `npm run dev` only starts Vite and the API layer won't be available.
-
-### Option 3: Static Frontend Only
-
-If you only want the map and client-side features (no news feeds, no AI, no market data):
-
-```bash
-npm run dev    # Vite dev server on http://localhost:5173
+docker compose up -d --build
 ```
 
 This runs the frontend without the API layer. Panels that require server-side proxying will show "No data available". The interactive map, static data layers (bases, cables, pipelines), and browser-side ML models still work.
@@ -1404,11 +1392,10 @@ Contributions welcome! See [CONTRIBUTING.md](./CONTRIBUTING.md) for detailed gui
 
 ```bash
 # Development
-npm run dev          # Full variant (worldmonitor.app)
-npm run dev:tech     # Tech variant (tech.worldmonitor.app)
-npm run dev:finance  # Finance variant (finance.worldmonitor.app)
-npm run dev:happy    # Happy variant (happy.worldmonitor.app)
-
+# Run the stack via Docker instead:
+```bash
+docker compose up -d --build
+```
 # Production builds
 npm run build:full      # Build full variant
 npm run build:tech      # Build tech variant

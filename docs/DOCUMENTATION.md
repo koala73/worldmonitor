@@ -3310,7 +3310,7 @@ cd worldmonitor
 make install
 
 # Start development server
-npm run dev
+docker compose up -d --build
 
 # Build for production
 npm run build
@@ -3885,7 +3885,7 @@ Contributions are welcome! Whether you're fixing bugs, adding features, improvin
    ```
 5. **Start the development server**:
    ```bash
-   npm run dev
+   docker compose up -d --build
    ```
 
 ### Code Style & Conventions

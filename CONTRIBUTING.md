@@ -44,9 +44,9 @@ The codebase produces three app variants from the same source, each targeting a 
 
 | Variant | Command | Focus |
 |---|---|---|
-| `full` | `npm run dev` | Geopolitics, military, conflicts, infrastructure |
-| `tech` | `npm run dev:tech` | Startups, AI/ML, cloud, cybersecurity |
-| `finance` | `npm run dev:finance` | Markets, trading, central banks, commodities |
+| `full` | `docker compose up -d` | Geopolitics, military, conflicts, infrastructure |
+| `tech` | `docker compose up -d` (with tech build arg) | Startups, AI/ML, cloud, cybersecurity |
+| `finance` | `docker compose up -d` (with finance build arg) | Markets, trading, central banks, commodities |
 
 Variants share all code but differ in default panels, map layers, and RSS feeds. Variant configs live in `src/config/variants/`.
 
@@ -86,15 +86,8 @@ Variants share all code but differ in default panels, map layers, and RSS feeds.
 ## Development Setup
 
 ```bash
-# Install everything (buf CLI, sebuf plugins, npm deps, Playwright browsers)
-make install
-
-# Start the development server (full variant, default)
-npm run dev
-
-# Start other variants
-npm run dev:tech
-npm run dev:finance
+# Start the development server via Docker (full variant, default)
+docker compose up -d --build
 
 # Run type checking
 npm run typecheck

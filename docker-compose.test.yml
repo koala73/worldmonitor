@@ -10,7 +10,7 @@ services:
     build: .
     container_name: world_monitor
     ports:
-      - "3737:3737"
+      - "3740:3737"
     env_file: .env.local
     environment:
       - LOCAL_API_PORT=46123
