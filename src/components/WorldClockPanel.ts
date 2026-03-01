@@ -163,9 +163,9 @@ const STYLE = `<style>
 .wc-opt-name{font-weight:600;color:var(--text,#e8e8e8);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .wc-opt-label{font-size:9px;color:var(--text-muted,#666);margin-left:auto;flex-shrink:0}
 .wc-empty{padding:20px 10px;text-align:center;color:var(--text-dim,#888);font-size:11px}
-.wc-drag-handle{cursor:grab;color:var(--text-muted,#555);font-size:11px;padding:0 6px 0 2px;user-select:none;opacity:0;transition:opacity .15s;display:flex;align-items:center}
+.wc-drag-handle{cursor:grab;color:var(--text-muted,#555);font-size:11px;padding:0 6px 0 2px;user-select:none;opacity:.35;transition:opacity .15s;display:flex;align-items:center}
 .wc-row:hover .wc-drag-handle{opacity:.6}
-.wc-drag-handle:hover{opacity:1!important;color:var(--text,#e8e8e8)}
+.wc-drag-handle:hover{opacity:1!important;color:var(--text,#e8e8e8);cursor:grab}
 .wc-row.wc-dragging{opacity:.3}
 .wc-row.wc-drag-over-above{box-shadow:inset 0 2px 0 #44ff88}
 .wc-row.wc-drag-over-below{box-shadow:inset 0 -2px 0 #44ff88}
