@@ -211,6 +211,10 @@
     "serviceStatus": "Service Status",
     "techReadiness": "Tech Readiness Index",
     "gccInvestments": "GCC Investments",
+    "gulfEconomies": "Gulf Economies",
+    "gulfIndices": "GCC Stock Indices",
+    "gulfCurrencies": "Gulf Currencies",
+    "gulfOil": "Oil Benchmarks",
     "geoHubs": "Geopolitical Hubs",
     "liveWebcams": "Live Webcams"
   },
