@@ -4860,6 +4860,20 @@ body.playback-mode .status-dot {
   color: var(--red);
 }
 
+/* Gulf Economies */
+.gulf-section { margin-bottom: 8px; }
+.gulf-section:last-child { margin-bottom: 0; }
+.gulf-section-title {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+  padding: 6px 0 2px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 2px;
+}
+
 /* Commodities */
 .commodities-grid {
   display: grid;
