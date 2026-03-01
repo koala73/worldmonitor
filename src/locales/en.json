@@ -212,7 +212,11 @@
     "techReadiness": "Tech Readiness Index",
     "gccInvestments": "GCC Investments",
     "geoHubs": "Geopolitical Hubs",
-    "liveWebcams": "Live Webcams"
+    "liveWebcams": "Live Webcams",
+    "gulfEconomies": "Gulf Economies",
+    "gulfIndices": "Gulf Indices",
+    "gulfCurrencies": "Gulf Currencies",
+    "gulfOil": "Gulf Oil"
   },
   "modals": {
     "search": {
@@ -507,6 +511,7 @@
   },
   "components": {
     "webcams": {
+      "expand": "Expand",
       "regions": {
         "iran": "IRAN ATTACKS",
         "all": "ALL",
@@ -1006,7 +1011,13 @@
       "aiFlowStatusBrowserOnly": "Browser model only",
       "aiFlowStatusDisabled": "No AI providers enabled",
       "insightsDisabledTitle": "AI analysis is disabled",
-      "insightsDisabledHint": "Enable providers via the settings gear in the map header"
+      "insightsDisabledHint": "Enable providers via the settings gear in the map header",
+    "sectionPanels": "Panels",
+    "badgeAnimLabel": "Badge Animations",
+    "badgeAnimDesc": "Animate update badges on panel headers",
+    "sectionIntelligence": "Intelligence",
+    "headlineMemoryLabel": "Headline Memory",
+    "headlineMemoryDesc": "Remember seen headlines to highlight new stories"
     },
     "cascade": {
       "noImpacts": "No country impacts detected",
@@ -1270,6 +1281,7 @@
       "detected": "{{count}} DETECTED",
       "critical": "{{count}} CRITICAL",
       "highPriority": "{{count}} HIGH PRIORITY",
+      "hideFindings": "Hide Findings",
       "more": "+{{count}} more findings",
       "all": "All Intelligence Findings ({{count}})",
       "priority": {

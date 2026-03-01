@@ -212,7 +212,11 @@
     "orefSirens": "Israel Sirens",
     "telegramIntel": "استخبارات Telegram",
     "giving": "العطاء العالمي",
-    "supplyChain": "سلسلة الإمداد"
+    "supplyChain": "سلسلة الإمداد",
+    "gulfEconomies": "اقتصادات الخليج",
+    "gulfIndices": "مؤشرات الخليج",
+    "gulfCurrencies": "عملات الخليج",
+    "gulfOil": "نفط الخليج"
   },
   "modals": {
     "search": {
@@ -511,7 +515,8 @@
         "europe": "أوروبا",
         "americas": "الأمريكتان",
         "asia": "آسيا"
-      }
+      },
+      "expand": "توسيع"
     },
     "monitor": {
       "placeholder": "كلمات مفتاحية (مفصولة بفواصل)",
@@ -975,7 +980,13 @@
       "insightsDisabledHint": "Enable providers via the settings gear in the map header",
       "sectionStreaming": "البث المباشر",
       "streamQualityDesc": "تعيين جودة البث لجميع القنوات المباشرة (الجودة المنخفضة توفر عرض النطاق)",
-      "streamQualityLabel": "جودة الفيديو"
+      "streamQualityLabel": "جودة الفيديو",
+      "sectionPanels": "اللوحات",
+      "badgeAnimLabel": "حركة الشارات",
+      "badgeAnimDesc": "تحريك شارات التحديث في رؤوس اللوحات",
+      "sectionIntelligence": "الاستخبارات",
+      "headlineMemoryLabel": "ذاكرة العناوين",
+      "headlineMemoryDesc": "تذكر العناوين المشاهدة لتمييز الجديدة"
     },
     "cascade": {
       "noImpacts": "لم يتم رصد تأثيرات على الدول",
@@ -1189,7 +1200,8 @@
         "daysAgo": "{{count}}ي مضت"
       },
       "breakingAlerts": "تنبيهات عاجلة",
-      "popupAlerts": "إظهار التنبيهات الجديدة"
+      "popupAlerts": "إظهار التنبيهات الجديدة",
+      "hideFindings": "إخفاء النتائج"
     },
     "countryTimeline": {
       "now": "الآن",

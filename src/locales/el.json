@@ -212,7 +212,11 @@
     "orefSirens": "Israel Sirens",
     "telegramIntel": "Πληροφορίες Telegram",
     "supplyChain": "Εφοδιαστική Αλυσίδα",
-    "giving": "Παγκόσμιες Δωρεές"
+    "giving": "Παγκόσμιες Δωρεές",
+    "gulfEconomies": "Οικονομίες Κόλπου",
+    "gulfIndices": "Δείκτες Κόλπου",
+    "gulfCurrencies": "Νομίσματα Κόλπου",
+    "gulfOil": "Πετρέλαιο Κόλπου"
   },
   "modals": {
     "search": {
@@ -511,7 +515,8 @@
         "europe": "ΕΥΡΩΠΗ",
         "americas": "ΑΜΕΡΙΚΗ",
         "asia": "ΑΣΙΑ"
-      }
+      },
+      "expand": "Ανάπτυξη"
     },
     "monitor": {
       "placeholder": "Λέξεις-κλειδιά (διαχωρισμένες με κόμμα)",
@@ -975,7 +980,13 @@
       "insightsDisabledHint": "Ενεργοποιήστε παρόχους μέσω του γραναζιού ρυθμίσεων στην κεφαλίδα του χάρτη",
       "sectionStreaming": "Streaming",
       "streamQualityLabel": "Ποιότητα Βίντεο",
-      "streamQualityDesc": "Ρύθμιση ποιότητας για όλες τις ζωντανές ροές (χαμηλότερη εξοικονομεί εύρος ζώνης)"
+      "streamQualityDesc": "Ρύθμιση ποιότητας για όλες τις ζωντανές ροές (χαμηλότερη εξοικονομεί εύρος ζώνης)",
+      "sectionPanels": "Πάνελ",
+      "badgeAnimLabel": "Κινούμενα σήματα",
+      "badgeAnimDesc": "Κίνηση σημάτων ενημέρωσης στις κεφαλίδες πάνελ",
+      "sectionIntelligence": "Πληροφορίες",
+      "headlineMemoryLabel": "Μνήμη τίτλων",
+      "headlineMemoryDesc": "Αποθήκευση τίτλων που είδατε για επισήμανση νέων"
     },
     "cascade": {
       "noImpacts": "Δεν ανιχνεύθηκαν επιπτώσεις σε χώρες",
@@ -1189,7 +1200,8 @@
         "hoursAgo": "{{count}}ω πριν",
         "daysAgo": "{{count}}μ πριν"
       },
-      "breakingAlerts": "Έκτακτες Ειδοποιήσεις"
+      "breakingAlerts": "Έκτακτες Ειδοποιήσεις",
+      "hideFindings": "Απόκρυψη ευρημάτων"
     },
     "countryTimeline": {
       "now": "τώρα",

@@ -212,7 +212,11 @@
     "liveWebcams": "Webcam in Diretta",
     "securityAdvisories": "Avvisi di Sicurezza",
     "orefSirens": "Israel Sirens",
-    "telegramIntel": "Intelligence Telegram"
+    "telegramIntel": "Intelligence Telegram",
+    "gulfEconomies": "Economie del Golfo",
+    "gulfIndices": "Indici del Golfo",
+    "gulfCurrencies": "Valute del Golfo",
+    "gulfOil": "Petrolio del Golfo"
   },
   "modals": {
     "search": {
@@ -520,7 +524,8 @@
         "europe": "EUROPA",
         "americas": "AMERICHE",
         "asia": "ASIA"
-      }
+      },
+      "expand": "Espandi"
     },
     "regulation": {
       "timeline": "Cronologia",
@@ -1077,7 +1082,8 @@
         "minutesAgo": "{{count}} min fa",
         "hoursAgo": "{{count}} h fa",
         "daysAgo": "{{count}} g fa"
-      }
+      },
+      "hideFindings": "Nascondi risultati"
     },
     "satelliteFires": {
       "noData": "Nessun dato sugli incendi disponibile",
@@ -1293,7 +1299,13 @@
       "aiFlowStatusBrowserOnly": "Solo modello browser",
       "aiFlowStatusDisabled": "Nessun fornitore IA abilitato",
       "insightsDisabledTitle": "L'analisi IA è disattivata",
-      "insightsDisabledHint": "Enable providers via the settings gear in the map header"
+      "insightsDisabledHint": "Enable providers via the settings gear in the map header",
+      "sectionPanels": "Pannelli",
+      "badgeAnimLabel": "Animazioni badge",
+      "badgeAnimDesc": "Animare i badge di aggiornamento nelle intestazioni dei pannelli",
+      "sectionIntelligence": "Intelligence",
+      "headlineMemoryLabel": "Memoria titoli",
+      "headlineMemoryDesc": "Ricordare i titoli visti per evidenziare quelli nuovi"
     },
     "etfFlows": {
       "unavailable": "Dati ETF temporaneamente non disponibili",

@@ -212,7 +212,11 @@
     "orefSirens": "Israel Sirens",
     "telegramIntel": "Telegram İstihbarat",
     "giving": "Küresel Bağış",
-    "supplyChain": "Tedarik Zinciri"
+    "supplyChain": "Tedarik Zinciri",
+    "gulfEconomies": "Körfez Ekonomileri",
+    "gulfIndices": "Körfez Endeksleri",
+    "gulfCurrencies": "Körfez Para Birimleri",
+    "gulfOil": "Körfez Petrolü"
   },
   "modals": {
     "search": {
@@ -511,7 +515,8 @@
         "europe": "AVRUPA",
         "americas": "AMERIKA",
         "asia": "ASYA"
-      }
+      },
+      "expand": "Genişlet"
     },
     "monitor": {
       "placeholder": "Anahtar kelimeler (virgul ile ayirin)",
@@ -975,7 +980,13 @@
       "insightsDisabledHint": "Enable providers via the settings gear in the map header",
       "sectionStreaming": "Canlı Yayın",
       "streamQualityDesc": "Tüm canlı yayınlar için kaliteyi ayarlayın (düşük kalite bant genişliği tasarrufu sağlar)",
-      "streamQualityLabel": "Video Kalitesi"
+      "streamQualityLabel": "Video Kalitesi",
+      "sectionPanels": "Paneller",
+      "badgeAnimLabel": "Rozet animasyonları",
+      "badgeAnimDesc": "Panel başlıklarındaki güncelleme rozetlerini canlandır",
+      "sectionIntelligence": "İstihbarat",
+      "headlineMemoryLabel": "Başlık hafızası",
+      "headlineMemoryDesc": "Yenileri vurgulamak için görülen başlıkları hatırla"
     },
     "cascade": {
       "noImpacts": "Ulke etkisi tespit edilmedi",
@@ -1189,7 +1200,8 @@
         "daysAgo": "{{count}}g once"
       },
       "breakingAlerts": "Son Dakika Uyarıları",
-      "popupAlerts": "Yeni uyarıları açılır pencerede göster"
+      "popupAlerts": "Yeni uyarıları açılır pencerede göster",
+      "hideFindings": "Bulguları gizle"
     },
     "countryTimeline": {
       "now": "simdi",

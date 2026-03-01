@@ -212,7 +212,11 @@
     "orefSirens": "Israel Sirens",
     "telegramIntel": "Tình báo Telegram",
     "giving": "Từ thiện Toàn cầu",
-    "supplyChain": "Chuỗi Cung ứng"
+    "supplyChain": "Chuỗi Cung ứng",
+    "gulfEconomies": "Kinh tế vùng Vịnh",
+    "gulfIndices": "Chỉ số vùng Vịnh",
+    "gulfCurrencies": "Tiền tệ vùng Vịnh",
+    "gulfOil": "Dầu vùng Vịnh"
   },
   "modals": {
     "search": {
@@ -511,7 +515,8 @@
         "europe": "CHÂU ÂU",
         "americas": "CHÂU MỸ",
         "asia": "CHÂU Á"
-      }
+      },
+      "expand": "Mở rộng"
     },
     "monitor": {
       "placeholder": "Từ khóa (phân cách bằng dấu phẩy)",
@@ -975,7 +980,13 @@
       "insightsDisabledHint": "Enable providers via the settings gear in the map header",
       "sectionStreaming": "Phát trực tiếp",
       "streamQualityDesc": "Đặt chất lượng cho tất cả luồng phát trực tiếp (thấp hơn tiết kiệm băng thông)",
-      "streamQualityLabel": "Chất lượng Video"
+      "streamQualityLabel": "Chất lượng Video",
+      "sectionPanels": "Bảng điều khiển",
+      "badgeAnimLabel": "Hoạt ảnh huy hiệu",
+      "badgeAnimDesc": "Hoạt ảnh huy hiệu cập nhật trên tiêu đề bảng",
+      "sectionIntelligence": "Tình báo",
+      "headlineMemoryLabel": "Bộ nhớ tiêu đề",
+      "headlineMemoryDesc": "Ghi nhớ tiêu đề đã xem để làm nổi bật tin mới"
     },
     "cascade": {
       "noImpacts": "Không phát hiện tác động quốc gia",
@@ -1189,7 +1200,8 @@
         "daysAgo": "{{count}}ng trước"
       },
       "breakingAlerts": "Cảnh báo Khẩn cấp",
-      "popupAlerts": "Hiển thị cảnh báo mới dạng popup"
+      "popupAlerts": "Hiển thị cảnh báo mới dạng popup",
+      "hideFindings": "Ẩn phát hiện"
     },
     "countryTimeline": {
       "now": "hiện tại",

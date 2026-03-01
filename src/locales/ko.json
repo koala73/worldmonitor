@@ -212,7 +212,11 @@
     "techReadiness": "기술 준비 지수",
     "gccInvestments": "GCC 투자",
     "geoHubs": "지정학 허브",
-    "liveWebcams": "실시간 웹캠"
+    "liveWebcams": "실시간 웹캠",
+    "gulfEconomies": "걸프 경제",
+    "gulfIndices": "걸프 지수",
+    "gulfCurrencies": "걸프 통화",
+    "gulfOil": "걸프 석유"
   },
   "modals": {
     "search": {
@@ -511,7 +515,8 @@
         "europe": "유럽",
         "americas": "미주",
         "asia": "아시아"
-      }
+      },
+      "expand": "확장"
     },
     "monitor": {
       "placeholder": "키워드 (쉼표로 구분)",
@@ -991,7 +996,13 @@
       "aiFlowStatusBrowserOnly": "브라우저 모델만 사용",
       "aiFlowStatusDisabled": "AI 제공자 비활성화됨",
       "insightsDisabledTitle": "AI 분석이 비활성화되었습니다",
-      "insightsDisabledHint": "지도 헤더의 설정 기어를 통해 제공자를 활성화하세요"
+      "insightsDisabledHint": "지도 헤더의 설정 기어를 통해 제공자를 활성화하세요",
+      "sectionPanels": "패널",
+      "badgeAnimLabel": "배지 애니메이션",
+      "badgeAnimDesc": "패널 헤더의 업데이트 배지 애니메이션",
+      "sectionIntelligence": "인텔리전스",
+      "headlineMemoryLabel": "헤드라인 메모리",
+      "headlineMemoryDesc": "본 헤드라인을 기억하여 새 기사 강조"
     },
     "cascade": {
       "noImpacts": "국가 영향 감지되지 않음",
@@ -1274,7 +1285,8 @@
         "minutesAgo": "{{count}}m 전",
         "hoursAgo": "{{count}}h 전",
         "daysAgo": "{{count}}d 전"
-      }
+      },
+      "hideFindings": "결과 숨기기"
     },
     "countryTimeline": {
       "now": "현재",
