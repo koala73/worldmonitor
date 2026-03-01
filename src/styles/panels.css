@@ -288,3 +288,63 @@
 .oref-wave-time { font-size: 9px; color: var(--text-muted); }
 .oref-wave-summary { font-size: 10px; color: var(--text-secondary); line-height: 1.3; }
 .oref-recent-badge { font-size: 8px; font-weight: 700; color: var(--semantic-warning, #f59e0b); background: color-mix(in srgb, var(--semantic-warning, #f59e0b) 12%, transparent); padding: 1px 4px; border-radius: 3px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+/* ----------------------------------------------------------
+   GCC Investments Panel (FDI)
+   ---------------------------------------------------------- */
+.fdi-search-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.fdi-search {
+  flex: 1; min-width: 0;
+  background: var(--overlay-subtle); border: 1px solid var(--border); border-radius: 4px;
+  color: var(--text); font-size: 11px; padding: 6px 8px;
+  outline: none; transition: border-color 0.15s;
+}
+.fdi-search::placeholder { color: var(--text-faint); }
+.fdi-search:focus { border-color: var(--accent); }
+.fdi-filter-toggle {
+  flex-shrink: 0; width: 28px; height: 28px;
+  background: var(--overlay-subtle); border: 1px solid var(--border); border-radius: 4px;
+  color: var(--text-dim); font-size: 13px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s;
+}
+.fdi-filter-toggle:hover { border-color: var(--accent); color: var(--accent); }
+.fdi-filter-toggle.fdi-filters-active { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.fdi-filters { display: none; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+.fdi-filters.fdi-filters-open { display: flex; }
+.fdi-filter {
+  background: var(--overlay-subtle); border: 1px solid var(--border); border-radius: 3px;
+  color: var(--text-secondary); font-size: 10px; padding: 3px 6px;
+  outline: none; cursor: pointer; max-width: 140px;
+}
+.fdi-filter:focus { border-color: var(--accent); }
+.fdi-sort-pills { display: flex; gap: 2px; flex-wrap: wrap; margin-top: 4px; width: 100%; }
+.fdi-sort {
+  background: transparent; border: 1px solid var(--border-strong); border-radius: 3px;
+  color: var(--text-dim); font-size: 9px; padding: 2px 7px; cursor: pointer;
+  transition: all 0.15s; white-space: nowrap;
+}
+.fdi-sort:hover { border-color: var(--text-faint); color: var(--text-secondary); }
+.fdi-sort.fdi-sort-active { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.fdi-list { display: flex; flex-direction: column; }
+.fdi-row {
+  display: flex; flex-wrap: wrap; align-items: baseline;
+  padding: 7px 8px; border-bottom: 1px solid var(--border-subtle);
+  cursor: pointer; transition: background 0.1s; gap: 0 6px;
+}
+.fdi-row:hover { background: var(--surface-hover); }
+.fdi-row-line1 { display: flex; align-items: baseline; width: 100%; min-width: 0; gap: 6px; }
+.fdi-flag { flex-shrink: 0; }
+.fdi-asset-name { font-size: 12px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
+.fdi-entity-sub { font-size: 10px; color: var(--text-muted); flex-shrink: 0; }
+.fdi-usd { font-size: 12px; font-weight: 600; color: var(--accent); font-variant-numeric: tabular-nums; flex-shrink: 0; margin-left: auto; }
+.fdi-row-line2 { display: flex; align-items: center; width: 100%; gap: 6px; padding-left: 22px; margin-top: 1px; }
+.fdi-country { font-size: 10px; color: var(--text-dim); white-space: nowrap; }
+.fdi-sector-badge {
+  font-size: 9px; font-weight: 600; padding: 1px 5px; border-radius: 3px; letter-spacing: 0.3px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent);
+}
+.fdi-status-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 3px; vertical-align: middle; flex-shrink: 0; }
+.fdi-status-label { font-size: 10px; color: var(--text-dim); white-space: nowrap; }
+.fdi-year { font-size: 10px; color: var(--text-muted); font-variant-numeric: tabular-nums; margin-left: auto; }
+.fdi-empty { padding: 20px 8px; text-align: center; color: var(--text-faint); font-size: 11px; }
