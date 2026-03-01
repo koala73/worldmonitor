@@ -133,6 +133,14 @@ export class BreakingNewsBanner {
     const existing = this.activeAlerts.find(a => a.alert.id === alert.id);
     if (existing) return;
 
+    const settings = getAlertSettings();
+
+    // If popups are disabled, only play sound (if enabled) and skip visual alert
+    if (!settings.popupEnabled) {
+      this.playSound();
+      return;
+    }
+
     if (alert.threatLevel === 'critical') {
       const highAlerts = this.activeAlerts.filter(a => a.alert.threatLevel === 'high');
       for (const h of highAlerts) {
