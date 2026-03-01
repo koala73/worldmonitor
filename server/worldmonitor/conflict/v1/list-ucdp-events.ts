@@ -213,11 +213,12 @@ export async function listUcdpEvents(
     // cachedFetchJson rejected — fall through to fallback
   }
 
-  if (fallbackCache.data) {
+  if (fallbackCache.data && (Date.now() - fallbackCache.timestamp) < fallbackCache.ttlMs) {
     let events = fallbackCache.data;
     if (req.country) events = events.filter((e) => e.country === req.country);
     return { events, pagination: undefined };
   }
+  fallbackCache = { data: null, timestamp: 0, ttlMs: CACHE_TTL_FULL * 1000 };
 
   return { events: [], pagination: undefined };
 }
