@@ -1214,9 +1214,11 @@ async function dispatch(requestUrl, req, routes, context) {
     }
 
     const body = ['GET', 'HEAD'].includes(req.method) ? undefined : await readBody(req);
+    const hdrs = toHeaders(req.headers, { stripOrigin: true });
+    hdrs.set('Origin', `http://127.0.0.1:${context.port}`);
     const request = new Request(requestUrl.toString(), {
       method: req.method,
-      headers: toHeaders(req.headers, { stripOrigin: true }),
+      headers: hdrs,
       body,
     });
 
