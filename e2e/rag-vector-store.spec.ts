@@ -32,7 +32,12 @@ test.describe('RAG vector store (worker-side)', () => {
         const req = indexedDB.deleteDatabase('worldmonitor_vector_store');
         req.onsuccess = () => resolve();
         req.onerror = () => reject(req.error);
-        req.onblocked = () => resolve();
+        const timeout = setTimeout(() => resolve(), 2000);
+        req.onblocked = () => {
+          // DB still has open connections despite reset; wait for onsuccess
+          clearTimeout(timeout);
+          setTimeout(() => resolve(), 2000);
+        };
       });
     });
   }
