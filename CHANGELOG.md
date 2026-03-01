@@ -2,6 +2,80 @@
 
 All notable changes to World Monitor are documented here.
 
+## [2.5.22] - 2026-03-02
+
+### Highlights
+
+- **AI Deduction & Forecasting** — interactive LLM-powered geopolitical analysis with live headline context injection and cross-panel deep-linking (#636, #642)
+- **Headline Memory (RAG)** — opt-in browser-local vector store that embeds every RSS headline via ONNX, enabling semantic search across 5,000 headlines in IndexedDB (#675)
+- **Server-side feed aggregation** — single `listFeedDigest` RPC replaces per-client feed fan-out, reducing Vercel Edge invocations by ~95% (#622)
+- **Gulf Economies panel** — live GCC indices, currencies, and oil prices with sparklines (#667)
+- **18+ HLS native channels** — Fox News, ABC News AU, NHK World, TV5Monde, Tagesschau24, India Today, KAN 11, and more bypass YouTube iframes entirely (#660, #682, #689)
+- **Mobile-native map** — touch pan with inertial animation, pinch-to-zoom, bottom-sheet popups, and timezone-based region detection (#619)
+- **Locale-aware feed boost** — new installations start with ~101 curated sources; non-English users automatically get native-language feeds enabled (#699)
+
+### Added
+
+- AI Deduction panel — free-text geopolitical queries answered by LLM with auto-populated headline context, Redis-cached results (1h TTL), and `wm:deduct-context` event for cross-panel triggering (#636, #642)
+- Headline Memory (RAG) — opt-in ONNX embedding pipeline (`all-MiniLM-L6-v2`, 384-dim) in Web Worker, IndexedDB vector store with 5K cap and LRU eviction, cosine-similarity search (#675)
+- Server-side feed aggregation via `listFeedDigest` RPC — batched 20-concurrent fetches, 15-min digest cache, per-feed 10-min cache, keyword classification at aggregation time (#622)
+- Gulf Economies panel with GCC indices (Tadawul, DFM, Abu Dhabi, Qatar, Muscat MSM 30), currencies (SAR/AED/QAR/KWD/BHD/OMR vs USD), and oil (WTI/Brent) (#667)
+- Native mobile map experience — single-finger pan with 8px threshold and inertial velocity (0.92 decay), two-finger pinch-to-zoom, bottom-sheet popup with drag-to-dismiss, timezone-based region detection (#619)
+- Smart default source reduction (~101 from 150+) with one-time locale-aware boost for 17 languages (#699)
+- Fox News HLS stream + fullscreen toggle for Live News panel (#689)
+- CNN & CNBC HLS streams via sidecar proxy (#682)
+- Expanded live channels with HLS support, Oceania region tab (ABC News AU), and YouTube fallbacks — 18+ total HLS channels (#660)
+- Cache-purge admin edge function — targeted Redis key deletion with HMAC auth, glob patterns, dry-run mode, and protected prefix safeguards (#657)
+- Badge pulse animation with settings toggle (opt-in, default off) (#676)
+- Breaking news click-through — banner click scrolls to source panel with 1.5s flash highlight (#690)
+- OREF history persistence to Redis with two-phase bootstrap (Redis-first → upstream retry with exponential backoff) (#674)
+- 1,478 Hebrew→English OREF location translations from pikud-haoref-api cities.json (#661)
+- OREF sirens wired into breaking news banner (#661)
+- Conditional GET (ETag/If-Modified-Since) on Railway relay RSS feeds (#625)
+- Asharq News & Business feeds added to Middle East category (#683)
+- Oman Observer and NDTV feeds + NDTV live TV (#650)
+- Redis caching for GPS jamming data (#646)
+- 104 missing Italian and Spanish translation keys (#687)
+- Missing translations backfilled for 17 locales (#692)
+
+### Fixed
+
+- **OREF**: sanitize Hebrew Unicode control chars (bidirectional marks, zero-width spaces) for reliable translation (#694), grab newest history records and preserve bootstrap data (#653), show history count in badge and stop swallowing fetch errors (#648)
+- **Live news**: remove LiveNOW from FOX channel (YouTube error 150) (#693)
+- **Mobile**: improve responsiveness — collapsible map, panel sizing, font bump (#688)
+- **PWA**: stop auto-reload on service worker update (#686)
+- **Sentry**: triage 10 unresolved issues — 2 code fixes + 8 noise filters (#681), add noise filters for 7 more unresolved issues (#698)
+- **Country intel**: align strike/aviation matching with CII bounds fallback (#677)
+- **Market**: replace dead Yahoo Finance Gulf index tickers (#672)
+- **CI**: strip bundled GPU/Wayland libs from AppImage to fix black screen on non-Ubuntu distros (#666)
+- **Map**: stabilize deck.gl layer IDs to prevent interleaved-mode null crash (#664), sync layer toggles to URL for shareable links (#621)
+- **Finance**: restore 6 missing news categories + add finance favicons (#654)
+- **Server**: cache hardening across 27 RPC handlers (#651)
+- **Aviation**: prevent AviationStack API quota blowout (#623), increase cache TTL from 30min to 2h (#617)
+- **Desktop**: route register-interest to cloud when sidecar lacks CONVEX_URL (#639), backoff on errors to stop CPU abuse + shrink settings window (#633)
+- **Linux**: sanitize env for xdg-open in AppImage (#631)
+- **Sidecar**: add AVIATIONSTACK_API and ICAO_API_KEY to env allowlist (#632)
+- **Military**: narrow ICAO hex ranges to stop civilian false positives (#627)
+- **Sentry**: null guards for classList teardown crashes + noise filters + regex fix (#637), guard pauseVideo optional chaining + 4 noise filters (#624)
+- Remove accidental intelhq submodule entry (#640)
+
+### Performance
+
+- Lazy-load DeductionPanel to exclude DOMPurify from web bundle (#685)
+- Optimize DeckGLMap pan/zoom by deferring work off hot path (#620)
+- Raise news refresh interval to 10min and cache TTL to 20min (#612)
+- Bump all sub-5min cache TTLs and polling intervals (#626)
+
+### Changed
+
+- Cost/traffic hardening, runtime fallback controls, and PostHog removal — replaced with Vercel Analytics (#638)
+- Investments panel redesigned with card layout and collapsible filters (#663)
+- Harden cache-control headers for polymarket and rss-proxy (#613)
+- Bumped version to 2.5.22
+- Comprehensive README update documenting 15+ unmentioned features with 21 new roadmap items
+
+---
+
 ## [2.5.21] - 2026-03-01
 
 ### Highlights
