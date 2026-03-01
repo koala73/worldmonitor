@@ -78,6 +78,9 @@
   --semantic-normal: #44aa44;
   --semantic-low: #3388ff;
   --semantic-info: #3b82f6;
+  
+  /* User preferences */
+  --user-font-scale: 1;
   --semantic-positive: #44ff88;
 
   /* Threat levels */
@@ -1286,6 +1289,7 @@ body.panel-resize-active iframe {
   overflow-y: auto;
   padding: 8px;
   min-width: 0;
+  font-size: calc(12px * var(--user-font-scale, 1));
 }
 
 .panel-content::-webkit-scrollbar {
@@ -8451,6 +8455,26 @@ a.prediction-link:hover {
   color: var(--green, var(--status-live));
 }
 
+.popup-source-link-container {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.popup-source-link {
+  display: inline-block;
+  color: #4dabf7;
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+
+.popup-source-link:hover {
+  color: #74c0fc;
+  text-decoration: underline;
+}
+
 /* Attribution text - brighter */
 .popup-attribution {
   color: var(--text-muted);
@@ -13669,6 +13693,33 @@ body.has-critical-banner .panels-grid {
 body.has-breaking-alert .panels-grid {
   margin-top: var(--breaking-alert-offset, 0px);
   transition: margin-top 0.3s ease;
+}
+
+.breaking-alert-sources {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.breaking-alert-sources-label {
+  font-weight: 500;
+  margin-right: 4px;
+}
+
+.breaking-alert-source-link {
+  color: #4dabf7;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.breaking-alert-source-link:hover {
+  color: #74c0fc;
+}
+
+.breaking-alert-source-name {
+  color: rgba(255, 255, 255, 0.7);
 }
 
 @media (prefers-reduced-motion: reduce) {

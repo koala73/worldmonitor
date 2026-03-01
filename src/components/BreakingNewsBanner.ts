@@ -133,6 +133,14 @@ export class BreakingNewsBanner {
     const existing = this.activeAlerts.find(a => a.alert.id === alert.id);
     if (existing) return;
 
+    const settings = getAlertSettings();
+
+    // If popups are disabled, only play sound (if enabled) and skip visual alert
+    if (!settings.popupEnabled) {
+      this.playSound();
+      return;
+    }
+
     if (alert.threatLevel === 'critical') {
       const highAlerts = this.activeAlerts.filter(a => a.alert.threatLevel === 'high');
       for (const h of highAlerts) {
@@ -211,13 +219,56 @@ export class BreakingNewsBanner {
     headlineSpan.className = 'breaking-alert-headline';
     headlineSpan.textContent = alert.headline;
 
+    // Build meta text with source count
+    let metaText = `${alert.source} · ${timeAgo}`;
+    if (alert.relatedSources && alert.relatedSources.length > 0) {
+      const totalSources = 1 + alert.relatedSources.length;
+      metaText += ` · ${totalSources} sources`;
+    }
+    
     const metaSpan = document.createElement('span');
     metaSpan.className = 'breaking-alert-meta';
-    metaSpan.textContent = `${alert.source} · ${timeAgo}`;
+    metaSpan.textContent = metaText;
 
     content.appendChild(levelSpan);
     content.appendChild(headlineSpan);
     content.appendChild(metaSpan);
+
+    // Add related sources links if available
+    if (alert.relatedSources && alert.relatedSources.length > 0) {
+      const sourcesDiv = document.createElement('div');
+      sourcesDiv.className = 'breaking-alert-sources';
+      
+      const sourcesLabel = document.createElement('span');
+      sourcesLabel.className = 'breaking-alert-sources-label';
+      sourcesLabel.textContent = t('components.breakingNews.alsoReportedBy');
+      sourcesDiv.appendChild(sourcesLabel);
+      
+      alert.relatedSources.forEach((source, index) => {
+        if (index > 0) {
+          const separator = document.createTextNode(', ');
+          sourcesDiv.appendChild(separator);
+        }
+        
+        if (source.link) {
+          const link = document.createElement('a');
+          link.href = source.link;
+          link.textContent = source.name;
+          link.className = 'breaking-alert-source-link';
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          link.onclick = (e) => e.stopPropagation(); // Prevent alert click
+          sourcesDiv.appendChild(link);
+        } else {
+          const span = document.createElement('span');
+          span.textContent = source.name;
+          span.className = 'breaking-alert-source-name';
+          sourcesDiv.appendChild(span);
+        }
+      });
+      
+      content.appendChild(sourcesDiv);
+    }
 
     const dismissBtn = document.createElement('button');
     dismissBtn.className = 'breaking-alert-dismiss';
