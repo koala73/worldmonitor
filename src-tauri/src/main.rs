@@ -561,8 +561,8 @@ fn open_settings_window(app: &AppHandle) -> Result<(), String> {
 
     let _settings_window = WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("settings.html".into()))
         .title("World Monitor Settings")
-        .inner_size(980.0, 760.0)
-        .min_inner_size(820.0, 620.0)
+        .inner_size(980.0, 600.0)
+        .min_inner_size(820.0, 480.0)
         .resizable(true)
         .background_color(tauri::webview::Color(26, 28, 30, 255))
         .build()

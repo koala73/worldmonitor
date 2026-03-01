@@ -462,9 +462,9 @@ function flushBatch(): void {
           });
           job.resolve(toThreat(resp));
         } catch (err) {
-          if (err instanceof ApiError && (err.statusCode === 429 || err.statusCode >= 500)) {
+          if (err instanceof ApiError && (err.statusCode === 401 || err.statusCode === 429 || err.statusCode >= 500)) {
             batchPaused = true;
-            const delay = err.statusCode === 429 ? 60_000 : 30_000;
+            const delay = err.statusCode === 401 ? 120_000 : err.statusCode === 429 ? 60_000 : 30_000;
             console.warn(`[Classify] ${err.statusCode} — pausing AI classification for ${delay / 1000}s`);
             const remaining = batch.slice(i + 1);
             // Failed job: increment attempts, requeue if under limit
