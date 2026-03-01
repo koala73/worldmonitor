@@ -126,7 +126,7 @@ function pad2(n: number): string {
 
 const STYLE = `<style>
 .wc-container{display:flex;flex-direction:column}
-.wc-row{display:flex;justify-content:space-between;align-items:center;padding:7px 10px;border-bottom:1px solid var(--border-subtle,#1a1a1a);transition:background .15s}
+.wc-row{display:grid;grid-template-columns:auto 1fr auto;align-items:center;padding:7px 10px;border-bottom:1px solid var(--border-subtle,#1a1a1a);transition:background .15s;gap:0}
 .wc-row:last-child{border-bottom:none}
 .wc-row:hover{background:var(--surface-hover,#1e1e1e)}
 .wc-row.wc-home{border-left:2px solid #44ff88;padding-left:8px;background:rgba(68,255,136,.03)}
@@ -163,7 +163,6 @@ const STYLE = `<style>
 .wc-opt-name{font-weight:600;color:var(--text,#e8e8e8);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .wc-opt-label{font-size:9px;color:var(--text-muted,#666);margin-left:auto;flex-shrink:0}
 .wc-empty{padding:20px 10px;text-align:center;color:var(--text-dim,#888);font-size:11px}
-.wc-row{display:grid;grid-template-columns:auto 1fr auto;gap:0}
 .wc-drag-handle{cursor:grab;color:var(--text-muted,#555);font-size:11px;padding:0 6px 0 2px;user-select:none;opacity:0;transition:opacity .15s;display:flex;align-items:center}
 .wc-row:hover .wc-drag-handle{opacity:.6}
 .wc-drag-handle:hover{opacity:1!important;color:var(--text,#e8e8e8)}
