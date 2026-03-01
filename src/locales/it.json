@@ -1190,8 +1190,8 @@
       "aiFlowStatusBrowserOnly": "Solo modello browser",
       "aiFlowStatusDisabled": "Nessun fornitore IA abilitato",
       "sectionIntelligence": "Intelligence",
-      "headlineMemoryLabel": "Headline Memory",
-      "headlineMemoryDesc": "Remember past headlines to enrich country briefs with historical context",
+      "headlineMemoryLabel": "Memoria dei titoli",
+      "headlineMemoryDesc": "Ricorda i titoli passati per arricchire i rapporti paese con contesto storico",
       "insightsDisabledTitle": "L'analisi IA è disattivata",
       "insightsDisabledHint": "Enable providers via the settings gear in the map header"
     },

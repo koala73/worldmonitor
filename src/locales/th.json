@@ -923,9 +923,9 @@
       "aiFlowStatusCloudAndBrowser": "Cloud AI + โมเดลเบราว์เซอร์ทำงานอยู่",
       "aiFlowStatusBrowserOnly": "โมเดลเบราว์เซอร์เท่านั้น",
       "aiFlowStatusDisabled": "ไม่มีผู้ให้บริการ AI ที่เปิดใช้งาน",
-      "sectionIntelligence": "Intelligence",
-      "headlineMemoryLabel": "Headline Memory",
-      "headlineMemoryDesc": "Remember past headlines to enrich country briefs with historical context",
+      "sectionIntelligence": "ข่าวกรอง",
+      "headlineMemoryLabel": "หน่วยความจำพาดหัว",
+      "headlineMemoryDesc": "จดจำพาดหัวข่าวก่อนหน้าเพื่อเพิ่มบริบททางประวัติศาสตร์ในรายงานประเทศ",
       "insightsDisabledTitle": "การวิเคราะห์ AI ถูกปิดใช้งาน",
       "insightsDisabledHint": "Enable providers via the settings gear in the map header"
     },

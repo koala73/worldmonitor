@@ -923,9 +923,9 @@
       "aiFlowStatusCloudAndBrowser": "Cloud AI + Mô hình trình duyệt đang hoạt động",
       "aiFlowStatusBrowserOnly": "Chỉ mô hình trình duyệt",
       "aiFlowStatusDisabled": "Không có nhà cung cấp AI nào được bật",
-      "sectionIntelligence": "Intelligence",
-      "headlineMemoryLabel": "Headline Memory",
-      "headlineMemoryDesc": "Remember past headlines to enrich country briefs with historical context",
+      "sectionIntelligence": "Tình báo",
+      "headlineMemoryLabel": "Bộ nhớ tiêu đề",
+      "headlineMemoryDesc": "Ghi nhớ các tiêu đề trước đó để làm giàu báo cáo quốc gia với bối cảnh lịch sử",
       "insightsDisabledTitle": "Phân tích AI đã bị tắt",
       "insightsDisabledHint": "Enable providers via the settings gear in the map header"
     },

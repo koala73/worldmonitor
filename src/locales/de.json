@@ -1189,9 +1189,9 @@
       "aiFlowStatusCloudAndBrowser": "Cloud-KI + Browser-Modell aktiv",
       "aiFlowStatusBrowserOnly": "Nur Browser-Modell",
       "aiFlowStatusDisabled": "Keine KI-Anbieter aktiviert",
-      "sectionIntelligence": "Intelligence",
-      "headlineMemoryLabel": "Headline Memory",
-      "headlineMemoryDesc": "Remember past headlines to enrich country briefs with historical context",
+      "sectionIntelligence": "Aufklärung",
+      "headlineMemoryLabel": "Schlagzeilen-Gedächtnis",
+      "headlineMemoryDesc": "Vergangene Schlagzeilen speichern, um Länderberichte mit historischem Kontext anzureichern",
       "insightsDisabledTitle": "KI-Analyse ist deaktiviert",
       "insightsDisabledHint": "Enable providers via the settings gear in the map header"
     },

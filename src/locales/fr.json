@@ -923,9 +923,9 @@
       "aiFlowStatusCloudAndBrowser": "IA Cloud + Modèle navigateur actifs",
       "aiFlowStatusBrowserOnly": "Modèle navigateur uniquement",
       "aiFlowStatusDisabled": "Aucun fournisseur IA activé",
-      "sectionIntelligence": "Intelligence",
-      "headlineMemoryLabel": "Headline Memory",
-      "headlineMemoryDesc": "Remember past headlines to enrich country briefs with historical context",
+      "sectionIntelligence": "Renseignement",
+      "headlineMemoryLabel": "Mémoire des titres",
+      "headlineMemoryDesc": "Mémoriser les titres passés pour enrichir les synthèses pays avec un contexte historique",
       "insightsDisabledTitle": "L'analyse IA est désactivée",
       "insightsDisabledHint": "Enable providers via the settings gear in the map header"
     },

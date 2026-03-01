@@ -980,9 +980,9 @@
       "aiFlowStatusCloudAndBrowser": "클라우드 AI + 브라우저 모델 활성",
       "aiFlowStatusBrowserOnly": "브라우저 모델만 사용",
       "aiFlowStatusDisabled": "AI 제공자 비활성화됨",
-      "sectionIntelligence": "Intelligence",
-      "headlineMemoryLabel": "Headline Memory",
-      "headlineMemoryDesc": "Remember past headlines to enrich country briefs with historical context",
+      "sectionIntelligence": "인텔리전스",
+      "headlineMemoryLabel": "헤드라인 메모리",
+      "headlineMemoryDesc": "과거 헤드라인을 기억하여 국가 브리핑에 역사적 맥락을 추가합니다",
       "insightsDisabledTitle": "AI 분석이 비활성화되었습니다",
       "insightsDisabledHint": "지도 헤더의 설정 기어를 통해 제공자를 활성화하세요"
     },

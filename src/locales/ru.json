@@ -923,9 +923,9 @@
       "aiFlowStatusCloudAndBrowser": "Облачный ИИ + Модель браузера активны",
       "aiFlowStatusBrowserOnly": "Только модель браузера",
       "aiFlowStatusDisabled": "Нет включённых провайдеров ИИ",
-      "sectionIntelligence": "Intelligence",
-      "headlineMemoryLabel": "Headline Memory",
-      "headlineMemoryDesc": "Remember past headlines to enrich country briefs with historical context",
+      "sectionIntelligence": "Разведка",
+      "headlineMemoryLabel": "Память заголовков",
+      "headlineMemoryDesc": "Запоминать прошлые заголовки для обогащения страновых сводок историческим контекстом",
       "insightsDisabledTitle": "Анализ ИИ отключён",
       "insightsDisabledHint": "Enable providers via the settings gear in the map header"
     },

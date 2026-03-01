@@ -10,7 +10,7 @@ import {
 } from '@/config';
 import { initDB, cleanOldSnapshots, isAisConfigured, initAisStream, isOutagesConfigured, disconnectAisStream } from '@/services';
 import { mlWorker } from '@/services/ml-worker';
-import { getAiFlowSettings, subscribeAiFlowChange } from '@/services/ai-flow-settings';
+import { getAiFlowSettings, subscribeAiFlowChange, isHeadlineMemoryEnabled } from '@/services/ai-flow-settings';
 import { startLearning } from '@/services/country-instability';
 import { dataFreshness } from '@/services/data-freshness';
 import { loadFromStorage, parseMapUrlState, saveToStorage, isMobileDevice } from '@/utils';
@@ -312,13 +312,26 @@ export class App {
       if (BETA_MODE) mlWorker.loadModel('summarization-beta').catch(() => {});
     }
 
+    if (aiFlow.headlineMemory) {
+      mlWorker.init().then(ok => {
+        if (ok) mlWorker.loadModel('embeddings').catch(() => {});
+      }).catch(() => {});
+    }
+
     this.unsubAiFlow = subscribeAiFlowChange((key) => {
       if (key === 'browserModel') {
         const s = getAiFlowSettings();
         if (s.browserModel) {
           mlWorker.init();
-        } else {
+        } else if (!isHeadlineMemoryEnabled()) {
           mlWorker.terminate();
+        }
+      }
+      if (key === 'headlineMemory') {
+        if (isHeadlineMemoryEnabled()) {
+          mlWorker.init().then(ok => {
+            if (ok) mlWorker.loadModel('embeddings').catch(() => {});
+          }).catch(() => {});
         }
       }
     });

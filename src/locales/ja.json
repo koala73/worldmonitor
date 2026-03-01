@@ -923,9 +923,9 @@
       "aiFlowStatusCloudAndBrowser": "クラウドAI + ブラウザモデル有効",
       "aiFlowStatusBrowserOnly": "ブラウザモデルのみ",
       "aiFlowStatusDisabled": "AIプロバイダーが有効になっていません",
-      "sectionIntelligence": "Intelligence",
-      "headlineMemoryLabel": "Headline Memory",
-      "headlineMemoryDesc": "Remember past headlines to enrich country briefs with historical context",
+      "sectionIntelligence": "インテリジェンス",
+      "headlineMemoryLabel": "ヘッドラインメモリー",
+      "headlineMemoryDesc": "過去のヘッドラインを記憶し、国別レポートに歴史的文脈を追加します",
       "insightsDisabledTitle": "AI分析が無効です",
       "insightsDisabledHint": "Enable providers via the settings gear in the map header"
     },

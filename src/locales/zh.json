@@ -923,9 +923,9 @@
       "aiFlowStatusCloudAndBrowser": "云端AI + 浏览器模型已激活",
       "aiFlowStatusBrowserOnly": "仅浏览器模型",
       "aiFlowStatusDisabled": "没有启用的AI提供商",
-      "sectionIntelligence": "Intelligence",
-      "headlineMemoryLabel": "Headline Memory",
-      "headlineMemoryDesc": "Remember past headlines to enrich country briefs with historical context",
+      "sectionIntelligence": "情报",
+      "headlineMemoryLabel": "标题记忆",
+      "headlineMemoryDesc": "记住过去的标题，为国家简报提供历史背景",
       "insightsDisabledTitle": "AI分析已禁用",
       "insightsDisabledHint": "Enable providers via the settings gear in the map header"
     },

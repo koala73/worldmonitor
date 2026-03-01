@@ -992,9 +992,9 @@
       "aiFlowStatusCloudAndBrowser": "Cloud AI + Browsermodel actief",
       "aiFlowStatusBrowserOnly": "Alleen browsermodel",
       "aiFlowStatusDisabled": "Geen AI-aanbieders ingeschakeld",
-      "sectionIntelligence": "Intelligence",
-      "headlineMemoryLabel": "Headline Memory",
-      "headlineMemoryDesc": "Remember past headlines to enrich country briefs with historical context",
+      "sectionIntelligence": "Inlichtingen",
+      "headlineMemoryLabel": "Koppengeheugen",
+      "headlineMemoryDesc": "Onthoud eerdere koppen om landenrapporten te verrijken met historische context",
       "insightsDisabledTitle": "AI-analyse is uitgeschakeld",
       "insightsDisabledHint": "Enable providers via the settings gear in the map header"
     },

@@ -1,6 +1,24 @@
 import { expect, test } from '@playwright/test';
 
 test.describe('RAG vector store (worker-side)', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  test.beforeAll(async ({ browser }) => {
+    const page = await browser.newPage();
+    await page.goto('/tests/runtime-harness.html');
+    const supported = await page.evaluate(async () => {
+      const { initI18n } = await import('/src/services/i18n.ts');
+      await initI18n();
+      const { mlWorker } = await import('/src/services/ml-worker.ts');
+      const ok = await mlWorker.init();
+      if (!ok) return false;
+      await mlWorker.loadModel('embeddings');
+      return true;
+    });
+    await page.close();
+    if (!supported) test.skip(true, 'ML worker not supported');
+  });
+
   test.beforeEach(async ({ page }) => {
     await page.goto('/tests/runtime-harness.html');
     await page.evaluate(async () => {
@@ -16,10 +34,8 @@ test.describe('RAG vector store (worker-side)', () => {
   test('ingest → count → search round-trip', async ({ page }) => {
     const result = await page.evaluate(async () => {
       const { mlWorker } = await import('/src/services/ml-worker.ts');
-      const ok = await mlWorker.init();
-      if (!ok) return { skip: true, reason: 'ML worker not supported' };
-
-      await mlWorker.loadModel('embeddings');
+      await mlWorker.init();
+      if (!mlWorker.isModelLoaded('embeddings')) await mlWorker.loadModel('embeddings');
 
       const items = [
         { text: 'Iran sanctions debate intensifies in Washington', pubDate: Date.now() - 86400000, source: 'Reuters', url: 'https://example.com/1' },
@@ -31,13 +47,8 @@ test.describe('RAG vector store (worker-side)', () => {
       const count = await mlWorker.vectorStoreCount();
       const results = await mlWorker.vectorStoreSearch(['Iran sanctions policy'], 5, 0.3);
 
-      return { skip: false, stored, count, results, topText: results[0]?.text ?? '' };
+      return { stored, count, results, topText: results[0]?.text ?? '' };
     });
-
-    if (result.skip) {
-      test.skip(true, result.reason);
-      return;
-    }
 
     expect(result.stored).toBe(3);
     expect(result.count).toBe(3);
@@ -49,23 +60,16 @@ test.describe('RAG vector store (worker-side)', () => {
   test('minScore filtering excludes dissimilar results', async ({ page }) => {
     const result = await page.evaluate(async () => {
       const { mlWorker } = await import('/src/services/ml-worker.ts');
-      const ok = await mlWorker.init();
-      if (!ok) return { skip: true };
-
-      await mlWorker.loadModel('embeddings');
+      await mlWorker.init();
+      if (!mlWorker.isModelLoaded('embeddings')) await mlWorker.loadModel('embeddings');
 
       await mlWorker.vectorStoreIngest([
         { text: 'Weather forecast sunny skies tomorrow morning', pubDate: Date.now(), source: 'Weather', url: '' },
       ]);
 
       const results = await mlWorker.vectorStoreSearch(['Iran nuclear weapons program sanctions'], 5, 0.8);
-      return { skip: false, count: results.length };
+      return { count: results.length };
     });
-
-    if (result.skip) {
-      test.skip(true, 'ML worker not supported');
-      return;
-    }
 
     expect(result.count).toBe(0);
   });
@@ -73,17 +77,16 @@ test.describe('RAG vector store (worker-side)', () => {
   test('search returns empty when embeddings model not loaded', async ({ page }) => {
     const result = await page.evaluate(async () => {
       const { mlWorker } = await import('/src/services/ml-worker.ts');
+      // Init but do NOT load embeddings — test the guard
       const ok = await mlWorker.init();
-      if (!ok) return { skip: true };
+      if (!ok) return { count: 0 };
+
+      // Unload embeddings if loaded from prior context
+      if (mlWorker.isModelLoaded('embeddings')) await mlWorker.unloadModel('embeddings');
 
       const results = await mlWorker.vectorStoreSearch(['test query'], 5, 0.3);
-      return { skip: false, count: results.length };
+      return { count: results.length };
     });
-
-    if (result.skip) {
-      test.skip(true, 'ML worker not supported');
-      return;
-    }
 
     expect(result.count).toBe(0);
   });
@@ -91,10 +94,8 @@ test.describe('RAG vector store (worker-side)', () => {
   test('deduplicates across multi-query matches keeping max score', async ({ page }) => {
     const result = await page.evaluate(async () => {
       const { mlWorker } = await import('/src/services/ml-worker.ts');
-      const ok = await mlWorker.init();
-      if (!ok) return { skip: true };
-
-      await mlWorker.loadModel('embeddings');
+      await mlWorker.init();
+      if (!mlWorker.isModelLoaded('embeddings')) await mlWorker.loadModel('embeddings');
 
       await mlWorker.vectorStoreIngest([
         { text: 'Military operations expand in eastern regions', pubDate: Date.now(), source: 'Reuters', url: 'https://example.com/1' },
@@ -106,13 +107,8 @@ test.describe('RAG vector store (worker-side)', () => {
         0.2,
       );
 
-      return { skip: false, count: results.length };
+      return { count: results.length };
     });
-
-    if (result.skip) {
-      test.skip(true, 'ML worker not supported');
-      return;
-    }
 
     expect(result.count).toBe(1);
   });
@@ -120,10 +116,8 @@ test.describe('RAG vector store (worker-side)', () => {
   test('handles empty URL in items', async ({ page }) => {
     const result = await page.evaluate(async () => {
       const { mlWorker } = await import('/src/services/ml-worker.ts');
-      const ok = await mlWorker.init();
-      if (!ok) return { skip: true };
-
-      await mlWorker.loadModel('embeddings');
+      await mlWorker.init();
+      if (!mlWorker.isModelLoaded('embeddings')) await mlWorker.loadModel('embeddings');
 
       const stored = await mlWorker.vectorStoreIngest([
         { text: 'Headline without a URL', pubDate: Date.now(), source: 'Test', url: '' },
@@ -131,13 +125,8 @@ test.describe('RAG vector store (worker-side)', () => {
       ]);
 
       const count = await mlWorker.vectorStoreCount();
-      return { skip: false, stored, count };
+      return { stored, count };
     });
-
-    if (result.skip) {
-      test.skip(true, 'ML worker not supported');
-      return;
-    }
 
     expect(result.stored).toBe(2);
     expect(result.count).toBe(2);
@@ -146,30 +135,9 @@ test.describe('RAG vector store (worker-side)', () => {
   test('worker-unavailable path degrades gracefully', async ({ page }) => {
     const result = await page.evaluate(async () => {
       const mod = await import('/src/services/ml-worker.ts');
-      const MLWorkerManagerClass = (mod as unknown as { MLWorkerManager: new () => typeof mod.mlWorker }).MLWorkerManager;
-
-      if (!MLWorkerManagerClass) {
-        const { mlWorker } = mod;
-        if (!mlWorker.isAvailable) {
-          const ingestResult = await mlWorker.vectorStoreIngest([
-            { text: 'test', pubDate: Date.now(), source: 'Test', url: '' },
-          ]);
-          const searchResult = await mlWorker.vectorStoreSearch(['test'], 5, 0.3);
-          const countResult = await mlWorker.vectorStoreCount();
-          return { stored: ingestResult, searchCount: searchResult.length, count: countResult };
-        }
-      }
-
       const { mlWorker } = mod;
-      if (!mlWorker.isAvailable) {
-        const ingestResult = await mlWorker.vectorStoreIngest([
-          { text: 'test', pubDate: Date.now(), source: 'Test', url: '' },
-        ]);
-        const searchResult = await mlWorker.vectorStoreSearch(['test'], 5, 0.3);
-        const countResult = await mlWorker.vectorStoreCount();
-        return { stored: ingestResult, searchCount: searchResult.length, count: countResult };
-      }
 
+      // Create uninitialized instance via prototype clone
       const fresh = Object.create(Object.getPrototypeOf(mlWorker));
       Object.assign(fresh, { worker: null, isReady: false, pendingRequests: new Map(), loadedModels: new Set(), capabilities: null });
       const ingestResult = await fresh.vectorStoreIngest([
@@ -188,20 +156,16 @@ test.describe('RAG vector store (worker-side)', () => {
   test('queue resilience after IDB error', async ({ page }) => {
     const result = await page.evaluate(async () => {
       const { mlWorker } = await import('/src/services/ml-worker.ts');
-      const ok = await mlWorker.init();
-      if (!ok) return { skip: true };
-
-      await mlWorker.loadModel('embeddings');
+      await mlWorker.init();
+      if (!mlWorker.isModelLoaded('embeddings')) await mlWorker.loadModel('embeddings');
 
       await mlWorker.vectorStoreIngest([
         { text: 'Valid headline about economic policy', pubDate: Date.now(), source: 'Reuters', url: 'https://example.com/1' },
       ]);
       const countBefore = await mlWorker.vectorStoreCount();
 
-      // Delete the IDB while the worker holds a handle — next op should fail then recover
       indexedDB.deleteDatabase('worldmonitor_vector_store');
 
-      // This ingest may fail internally (stale IDB handle), but should not break the queue
       try {
         await mlWorker.vectorStoreIngest([
           { text: 'Headline during IDB disruption', pubDate: Date.now(), source: 'Test', url: '' },
@@ -210,19 +174,13 @@ test.describe('RAG vector store (worker-side)', () => {
         // Expected — IDB handle was invalidated
       }
 
-      // Queue should recover: subsequent ops work after IDB reconnect
       await mlWorker.vectorStoreIngest([
         { text: 'Recovery headline after IDB reset', pubDate: Date.now(), source: 'AP', url: 'https://example.com/3' },
       ]);
       const countAfter = await mlWorker.vectorStoreCount();
 
-      return { skip: false, countBefore, countAfter, recovered: countAfter > 0 };
+      return { countBefore, countAfter, recovered: countAfter > 0 };
     });
-
-    if (result.skip) {
-      test.skip(true, 'ML worker not supported');
-      return;
-    }
 
     expect(result.countBefore).toBe(1);
     expect(result.recovered).toBe(true);
