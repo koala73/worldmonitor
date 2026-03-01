@@ -29,14 +29,13 @@ interface GulfSymbolMeta {
 }
 
 const GULF_SYMBOLS: GulfSymbolMeta[] = [
-  // Indices (7)
-  { symbol: '^TASI', name: 'Tadawul All Share', country: 'Saudi Arabia', flag: '🇸🇦', type: 'index' },
-  { symbol: '^DFMGI', name: 'Dubai Financial Market', country: 'UAE', flag: '🇦🇪', type: 'index' },
-  { symbol: '^FTFADGI', name: 'Abu Dhabi ADX', country: 'UAE', flag: '🇦🇪', type: 'index' },
-  { symbol: '^QSI', name: 'Qatar Stock Exchange', country: 'Qatar', flag: '🇶🇦', type: 'index' },
-  { symbol: '^BKP.BH', name: 'Bahrain All Share', country: 'Bahrain', flag: '🇧🇭', type: 'index' },
-  { symbol: '^KWSE', name: 'Kuwait Boursa', country: 'Kuwait', flag: '🇰🇼', type: 'index' },
-  { symbol: '^MSM30', name: 'Muscat MSM 30', country: 'Oman', flag: '🇴🇲', type: 'index' },
+  // Indices — real Yahoo indices where available, iShares ETF proxies otherwise
+  { symbol: '^TASI.SR', name: 'Tadawul All Share', country: 'Saudi Arabia', flag: '🇸🇦', type: 'index' },
+  { symbol: 'DFMGI.AE', name: 'Dubai Financial Market', country: 'UAE', flag: '🇦🇪', type: 'index' },
+  { symbol: 'UAE', name: 'Abu Dhabi (iShares)', country: 'UAE', flag: '🇦🇪', type: 'index' },
+  { symbol: 'QAT', name: 'Qatar (iShares)', country: 'Qatar', flag: '🇶🇦', type: 'index' },
+  { symbol: 'GULF', name: 'Gulf Dividend (WisdomTree)', country: 'Kuwait', flag: '🇰🇼', type: 'index' },
+  { symbol: '^MSM', name: 'Muscat MSM 30', country: 'Oman', flag: '🇴🇲', type: 'index' },
   // Currencies (6)
   { symbol: 'SARUSD=X', name: 'Saudi Riyal', country: 'Saudi Arabia', flag: '🇸🇦', type: 'currency' },
   { symbol: 'AEDUSD=X', name: 'UAE Dirham', country: 'UAE', flag: '🇦🇪', type: 'currency' },
