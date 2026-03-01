@@ -2,8 +2,8 @@ import { FEEDS, INTEL_SOURCES, SOURCE_REGION_MAP } from '@/config/feeds';
 import { PANEL_CATEGORY_MAP } from '@/config/panels';
 import { SITE_VARIANT } from '@/config/variant';
 import { LANGUAGES, changeLanguage, getCurrentLanguage, t } from '@/services/i18n';
-import { getAiFlowSettings, setAiFlowSetting, getStreamQuality, setStreamQuality, STREAM_QUALITY_OPTIONS } from '@/services/ai-flow-settings';
-import type { StreamQuality } from '@/services/ai-flow-settings';
+import { getAiFlowSettings, setAiFlowSetting, getStreamQuality, setStreamQuality, STREAM_QUALITY_OPTIONS, getFontSize, setFontSize, FONT_SIZE_OPTIONS } from '@/services/ai-flow-settings';
+import type { StreamQuality, FontSize } from '@/services/ai-flow-settings';
 import { getAlertSettings, updateAlertSettings } from '@/services/breaking-news-alerts';
 import { escapeHtml } from '@/utils/sanitize';
 import { trackLanguageChange } from '@/services/analytics';
@@ -153,6 +153,12 @@ export class UnifiedSettings {
       // Stream quality select
       if (target.id === 'us-stream-quality') {
         setStreamQuality(target.value as StreamQuality);
+        return;
+      }
+
+      // Font size select
+      if (target.id === 'us-font-size') {
+        setFontSize(target.value as FontSize);
         return;
       }
 
@@ -338,6 +344,22 @@ export class UnifiedSettings {
     html += `<select class="unified-settings-lang-select" id="us-stream-quality">`;
     for (const opt of STREAM_QUALITY_OPTIONS) {
       const selected = opt.value === currentQuality ? ' selected' : '';
+      html += `<option value="${opt.value}"${selected}>${opt.label}</option>`;
+    }
+    html += `</select>`;
+
+    // Font size section
+    const currentFontSize = getFontSize();
+    html += `<div class="ai-flow-section-label">${t('components.insights.sectionFontSize')}</div>`;
+    html += `<div class="ai-flow-toggle-row">
+      <div class="ai-flow-toggle-label-wrap">
+        <div class="ai-flow-toggle-label">${t('components.insights.fontSizeLabel')}</div>
+        <div class="ai-flow-toggle-desc">${t('components.insights.fontSizeDesc')}</div>
+      </div>
+    </div>`;
+    html += `<select class="unified-settings-lang-select" id="us-font-size">`;
+    for (const opt of FONT_SIZE_OPTIONS) {
+      const selected = opt.value === currentFontSize ? ' selected' : '';
       html += `<option value="${opt.value}"${selected}>${opt.label}</option>`;
     }
     html += `</select>`;

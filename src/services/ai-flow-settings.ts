@@ -12,8 +12,10 @@ const STORAGE_KEY_MAP_NEWS_FLASH = 'wm-map-news-flash';
 const STORAGE_KEY_HEADLINE_MEMORY = 'wm-headline-memory';
 const STORAGE_KEY_BADGE_ANIMATION = 'wm-badge-animation';
 const STORAGE_KEY_STREAM_QUALITY = 'wm-stream-quality';
+const STORAGE_KEY_FONT_SIZE = 'wm-font-size';
 const EVENT_NAME = 'ai-flow-changed';
 const STREAM_QUALITY_EVENT = 'stream-quality-changed';
+const FONT_SIZE_EVENT = 'font-size-changed';
 
 export interface AiFlowSettings {
   browserModel: boolean;
@@ -88,6 +90,58 @@ export function subscribeAiFlowChange(cb: (changedKey?: keyof AiFlowSettings) =>
   };
   window.addEventListener(EVENT_NAME, handler);
   return () => window.removeEventListener(EVENT_NAME, handler);
+}
+
+// ── Font Size ──
+
+export type FontSize = 'small' | 'normal' | 'large' | 'xlarge';
+
+export const FONT_SIZE_OPTIONS: { value: FontSize; label: string; scale: number }[] = [
+  { value: 'small', label: 'Small', scale: 0.875 },
+  { value: 'normal', label: 'Normal', scale: 1 },
+  { value: 'large', label: 'Large', scale: 1.125 },
+  { value: 'xlarge', label: 'Extra Large', scale: 1.25 },
+];
+
+export function getFontSize(): FontSize {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_FONT_SIZE);
+    if (raw && ['small', 'normal', 'large', 'xlarge'].includes(raw)) return raw as FontSize;
+  } catch { /* ignore */ }
+  return 'normal';
+}
+
+export function getFontScale(): number {
+  const size = getFontSize();
+  return FONT_SIZE_OPTIONS.find(opt => opt.value === size)?.scale ?? 1;
+}
+
+export function setFontSize(size: FontSize): void {
+  try {
+    localStorage.setItem(STORAGE_KEY_FONT_SIZE, size);
+  } catch { /* ignore */ }
+  window.dispatchEvent(new CustomEvent(FONT_SIZE_EVENT, { detail: { size } }));
+  // Apply font size to document
+  applyFontSize(size);
+}
+
+export function applyFontSize(size: FontSize): void {
+  const scale = FONT_SIZE_OPTIONS.find(opt => opt.value === size)?.scale ?? 1;
+  document.documentElement.style.setProperty('--user-font-scale', String(scale));
+}
+
+export function subscribeFontSizeChange(cb: (size: FontSize) => void): () => void {
+  const handler = (e: Event) => {
+    const detail = (e as CustomEvent).detail as { size: FontSize };
+    cb(detail.size);
+  };
+  window.addEventListener(FONT_SIZE_EVENT, handler);
+  return () => window.removeEventListener(FONT_SIZE_EVENT, handler);
+}
+
+// Initialize font size on load
+if (typeof window !== 'undefined') {
+  applyFontSize(getFontSize());
 }
 
 // ── Stream Quality ──
