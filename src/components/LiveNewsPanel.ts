@@ -63,6 +63,7 @@ const FULL_LIVE_CHANNELS: LiveChannel[] = [
   { id: 'euronews', name: 'Euronews', handle: '@euronews', fallbackVideoId: 'pykpO5kQJ98' },
   { id: 'dw', name: 'DW', handle: '@DWNews', fallbackVideoId: 'LuKwFajn37U' },
   { id: 'cnbc', name: 'CNBC', handle: '@CNBC', fallbackVideoId: '9NyxcX3rhQs' },
+  { id: 'cnn', name: 'CNN', handle: '@CNN', fallbackVideoId: 'w_Ma8oQLmSM' },
   { id: 'france24', name: 'France24', handle: '@France24_en', fallbackVideoId: 'Ap-UM1O9RBU' },
   { id: 'alarabiya', name: 'AlArabiya', handle: '@AlArabiya', fallbackVideoId: 'n7eQejkXbnM', useFallbackOnly: true },
   { id: 'aljazeera', name: 'AlJazeera', handle: '@AlJazeeraEnglish', fallbackVideoId: 'gCNeDWCI0vo', useFallbackOnly: true },
@@ -79,6 +80,7 @@ const TECH_LIVE_CHANNELS: LiveChannel[] = [
 // Optional channels users can add from the "Available Channels" tab UI
 export const OPTIONAL_LIVE_CHANNELS: LiveChannel[] = [
   // North America
+  { id: 'cnn', name: 'CNN', handle: '@CNN', fallbackVideoId: 'w_Ma8oQLmSM' },
   { id: 'livenow-fox', name: 'LiveNOW from FOX', handle: '@LiveNOWfromFOX', fallbackVideoId: 'QaftgYkG-ek' },
   { id: 'fox-news', name: 'Fox News', handle: '@FoxNews', fallbackVideoId: 'QaftgYkG-ek', useFallbackOnly: true },
   { id: 'newsmax', name: 'Newsmax', handle: '@NEWSMAX', fallbackVideoId: 'S-lFBzloL2Y', useFallbackOnly: true },
@@ -145,7 +147,7 @@ export const OPTIONAL_LIVE_CHANNELS: LiveChannel[] = [
 ];
 
 export const OPTIONAL_CHANNEL_REGIONS: { key: string; labelKey: string; channelIds: string[] }[] = [
-  { key: 'na', labelKey: 'components.liveNews.regionNorthAmerica', channelIds: ['livenow-fox', 'fox-news', 'newsmax', 'abc-news', 'cbs-news', 'nbc-news', 'cbc-news'] },
+  { key: 'na', labelKey: 'components.liveNews.regionNorthAmerica', channelIds: ['cnn', 'livenow-fox', 'fox-news', 'newsmax', 'abc-news', 'cbs-news', 'nbc-news', 'cbc-news'] },
   { key: 'eu', labelKey: 'components.liveNews.regionEurope', channelIds: ['bbc-news', 'france24-en', 'welt', 'rtve', 'trt-haber', 'ntv-turkey', 'cnn-turk', 'tv-rain', 'rt', 'tvp-info', 'telewizja-republika', 'tagesschau24', 'tv5monde-info', 'nrk1', 'aljazeera-balkans'] },
   { key: 'latam', labelKey: 'components.liveNews.regionLatinAmerica', channelIds: ['cnn-brasil', 'jovem-pan', 'record-news', 'band-jornalismo', 'tn-argentina', 'c5n', 'milenio', 'noticias-caracol', 'ntn24', 't13'] },
   { key: 'asia', labelKey: 'components.liveNews.regionAsia', channelIds: ['tbs-news', 'ann-news', 'ntv-news', 'cti-news', 'wion', 'ndtv', 'cna-asia', 'nhk-world', 'arirang-news', 'india-today', 'abp-news'] },
@@ -199,6 +201,12 @@ const DIRECT_HLS_MAP: Readonly<Record<string, string>> = {
   'aljazeera-balkans': 'https://live-hls-web-ajb.getaj.net/AJB/index.m3u8',
   'sabc-news': 'https://sabconetanw.cdn.mangomolo.com/news/smil:news.stream.smil/chunklist_b250000_t64MjQwcA==.m3u8',
   'arirang-news': 'https://amdlive-ch01-ctnd-com.akamaized.net/arirang_1ch/smil:arirang_1ch.smil/playlist.m3u8',
+};
+
+interface ProxiedHlsEntry { url: string; referer: string; }
+const PROXIED_HLS_MAP: Readonly<Record<string, ProxiedHlsEntry>> = {
+  'cnbc': { url: 'https://cdn-ca2-na.lncnetworks.host/hls/cnbc_live/index.m3u8', referer: 'https://livenewschat.eu/' },
+  'cnn':  { url: 'https://cdn-ca2-na.lncnetworks.host/hls/cnn_live/index.m3u8',  referer: 'https://livenewschat.eu/' },
 };
 
 if (import.meta.env.DEV) {
@@ -385,6 +393,15 @@ export class LiveNewsPanel extends Panel {
     const failedAt = this.hlsFailureCooldown.get(channelId);
     if (failedAt && Date.now() - failedAt < this.HLS_COOLDOWN_MS) return undefined;
     return url;
+  }
+
+  private getProxiedHlsUrl(channelId: string): string | undefined {
+    if (!isDesktopRuntime()) return undefined;
+    const entry = PROXIED_HLS_MAP[channelId];
+    if (!entry) return undefined;
+    const failedAt = this.hlsFailureCooldown.get(channelId);
+    if (failedAt && Date.now() - failedAt < this.HLS_COOLDOWN_MS) return undefined;
+    return `http://127.0.0.1:${getLocalApiPort()}/api/hls-proxy?url=${encodeURIComponent(entry.url)}`;
   }
 
   private get embedOrigin(): string {
@@ -774,7 +791,7 @@ export class LiveNewsPanel extends Panel {
   private async resolveChannelVideo(channel: LiveChannel, forceFallback = false): Promise<void> {
     const useFallbackVideo = channel.useFallbackOnly || forceFallback;
 
-    if (isDesktopRuntime() && this.getDirectHlsUrl(channel.id)) {
+    if (isDesktopRuntime() && (this.getDirectHlsUrl(channel.id) || this.getProxiedHlsUrl(channel.id))) {
       channel.videoId = channel.fallbackVideoId;
       channel.isLive = true;
       return;
@@ -815,7 +832,7 @@ export class LiveNewsPanel extends Panel {
       }
     });
 
-    if (this.getDirectHlsUrl(channel.id)) {
+    if (this.getDirectHlsUrl(channel.id) || this.getProxiedHlsUrl(channel.id)) {
       this.renderNativeHlsPlayer();
       return;
     }
@@ -964,8 +981,8 @@ export class LiveNewsPanel extends Panel {
   }
 
   private renderNativeHlsPlayer(): void {
-    const hlsUrl = this.getDirectHlsUrl(this.activeChannel.id);
-    if (!hlsUrl || !hlsUrl.startsWith('https://')) return;
+    const hlsUrl = this.getDirectHlsUrl(this.activeChannel.id) || this.getProxiedHlsUrl(this.activeChannel.id);
+    if (!hlsUrl || !(hlsUrl.startsWith('https://') || hlsUrl.startsWith('http://127.0.0.1'))) return;
 
     this.destroyPlayer();
     this.ensurePlayerContainer();
@@ -1105,7 +1122,7 @@ export class LiveNewsPanel extends Panel {
     this.forceFallbackVideoForNextInit = false;
     await this.resolveChannelVideo(this.activeChannel, useFallbackVideo);
 
-    if (this.getDirectHlsUrl(this.activeChannel.id)) {
+    if (this.getDirectHlsUrl(this.activeChannel.id) || this.getProxiedHlsUrl(this.activeChannel.id)) {
       this.renderNativeHlsPlayer();
       return;
     }
