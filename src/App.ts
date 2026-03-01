@@ -38,6 +38,10 @@ import { PanelLayoutManager } from '@/app/panel-layout';
 import { DataLoaderManager } from '@/app/data-loader';
 import { EventHandlerManager } from '@/app/event-handlers';
 import { resolveUserRegion } from '@/utils/user-location';
+import { embedBridge } from '@/services/embed-bridge';
+import { RecencyFilter } from '@/components/RecencyFilter';
+import { rankBookWorthyEvents, type BookWorthinessContext } from '@/services/book-worthiness';
+import { parseRecencyParam, filterByRecency } from '@/utils/recency';
 
 const CYBER_LAYER_ENABLED = import.meta.env.VITE_ENABLE_CYBER_LAYER === 'true';
 
@@ -54,6 +58,8 @@ export class App {
   private countryIntel: CountryIntelManager;
   private refreshScheduler: RefreshScheduler;
   private desktopUpdater: DesktopUpdater;
+
+  private recencyFilter: RecencyFilter | null = null;
 
   private modules: { destroy(): void }[] = [];
   private unsubAiFlow: (() => void) | null = null;
@@ -368,6 +374,33 @@ export class App {
       this.state.breakingBanner = new BreakingNewsBanner();
     }
 
+    // Phase 2b: RecencyFilter + embed bridge (codexes variant or when embedded)
+    this.recencyFilter = new RecencyFilter();
+    const headerBar = el.querySelector('.header-bar') || el;
+    this.recencyFilter.mount(headerBar as HTMLElement);
+    this.recencyFilter.onRangeChange((_range) => {
+      // Re-filter news panels on recency change
+      void this.dataLoader.loadAllData();
+    });
+
+    embedBridge.init({
+      onSetRecency: (range) => {
+        this.recencyFilter?.setRange(range);
+      },
+      onSetMinScore: (_score) => {
+        // Trigger re-scoring with new threshold
+        void this.dataLoader.loadAllData();
+      },
+      onRequestState: () => {
+        embedBridge.sendStateUpdate({
+          recency: this.recencyFilter?.getRange() ?? 'all',
+          minScore: 60,
+          totalEvents: this.state.latestClusters.length,
+          bookWorthyCount: rankBookWorthyEvents(this.state.latestClusters).length,
+        });
+      },
+    });
+
     // Phase 3: UI setup methods
     this.eventHandlers.startHeaderClock();
     this.eventHandlers.setupMobileWarning();
@@ -432,8 +465,10 @@ export class App {
       this.modules[i]!.destroy();
     }
 
-    // Clean up subscriptions, map, AIS, and breaking news
+    // Clean up subscriptions, map, AIS, embed bridge, and breaking news
     this.unsubAiFlow?.();
+    embedBridge.destroy();
+    this.recencyFilter?.unmount();
     this.state.breakingBanner?.destroy();
     destroyBreakingNewsAlerts();
     this.state.map?.destroy();
@@ -565,7 +600,7 @@ export class App {
     );
 
     // WTO trade policy data — annual data, poll every 10 min to avoid hammering upstream
-    if (SITE_VARIANT === 'full' || SITE_VARIANT === 'finance') {
+    if (SITE_VARIANT === 'full' || SITE_VARIANT === 'finance' || SITE_VARIANT === 'codexes') {
       this.refreshScheduler.scheduleRefresh('tradePolicy', () => this.dataLoader.loadTradePolicy(), 10 * 60 * 1000);
       this.refreshScheduler.scheduleRefresh('supplyChain', () => this.dataLoader.loadSupplyChain(), 10 * 60 * 1000);
     }
@@ -579,7 +614,7 @@ export class App {
     );
 
     // Refresh intelligence signals for CII (geopolitical variant only)
-    if (SITE_VARIANT === 'full') {
+    if (SITE_VARIANT === 'full' || SITE_VARIANT === 'codexes') {
       this.refreshScheduler.scheduleRefresh('intelligence', () => {
         const { military, iranEvents } = this.state.intelligenceCache;
         this.state.intelligenceCache = {};
