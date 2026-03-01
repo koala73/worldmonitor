@@ -77,7 +77,7 @@ import { fetchTelegramFeed } from '@/services/telegram-intel';
 import { fetchOrefAlerts, startOrefPolling, stopOrefPolling, onOrefAlertsUpdate } from '@/services/oref-alerts';
 import { enrichEventsWithExposure } from '@/services/population-exposure';
 import { debounce, getCircuitBreakerCooldownInfo } from '@/utils';
-import { isFeatureAvailable } from '@/services/runtime-config';
+import { isFeatureAvailable, isFeatureEnabled } from '@/services/runtime-config';
 import { getAiFlowSettings } from '@/services/ai-flow-settings';
 import { t, getCurrentLanguage } from '@/services/i18n';
 import { getHydratedData } from '@/services/bootstrap';
@@ -175,6 +175,12 @@ export class DataLoaderManager implements AppModule {
   public updateSearchIndex: () => void = () => {};
 
   private digestBreaker = { state: 'closed' as 'closed' | 'open' | 'half-open', failures: 0, cooldownUntil: 0 };
+  private readonly digestRequestTimeoutMs = 8000;
+  private readonly digestBreakerCooldownMs = 5 * 60 * 1000;
+  private readonly persistedDigestMaxAgeMs = 6 * 60 * 60 * 1000;
+  private readonly perFeedFallbackCategoryFeedLimit = 3;
+  private readonly perFeedFallbackIntelFeedLimit = 6;
+  private readonly perFeedFallbackBatchSize = 2;
   private lastGoodDigest: ListFeedDigestResponse | null = null;
 
   constructor(ctx: AppContext, callbacks: DataLoaderCallbacks) {
@@ -201,7 +207,7 @@ export class DataLoaderManager implements AppModule {
     try {
       const resp = await fetch(
         `/api/news/v1/list-feed-digest?variant=${SITE_VARIANT}&lang=${getCurrentLanguage()}`,
-        { signal: AbortSignal.timeout(3000) },
+        { signal: AbortSignal.timeout(this.digestRequestTimeoutMs) },
       );
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = await resp.json() as ListFeedDigestResponse;
@@ -216,7 +222,7 @@ export class DataLoaderManager implements AppModule {
       this.digestBreaker.failures++;
       if (this.digestBreaker.failures >= 2) {
         this.digestBreaker.state = 'open';
-        this.digestBreaker.cooldownUntil = now + 60_000;
+        this.digestBreaker.cooldownUntil = now + this.digestBreakerCooldownMs;
       }
       return this.lastGoodDigest ?? await this.loadPersistedDigest();
     }
@@ -230,10 +236,25 @@ export class DataLoaderManager implements AppModule {
     try {
       const envelope = await getPersistentCache<ListFeedDigestResponse>('digest:last-good');
       if (!envelope) return null;
-      if (Date.now() - envelope.updatedAt > 30 * 60 * 1000) return null;
+      if (Date.now() - envelope.updatedAt > this.persistedDigestMaxAgeMs) return null;
       this.lastGoodDigest = envelope.data;
       return envelope.data;
     } catch { return null; }
+  }
+
+  private isPerFeedFallbackEnabled(): boolean {
+    return isFeatureEnabled('newsPerFeedFallback');
+  }
+
+  private getStaleNewsItems(category: string): NewsItem[] {
+    const staleItems = this.ctx.newsByCategory[category];
+    if (!Array.isArray(staleItems) || staleItems.length === 0) return [];
+    return [...staleItems].sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime());
+  }
+
+  private selectLimitedFeeds<T>(feeds: T[], maxFeeds: number): T[] {
+    if (feeds.length <= maxFeeds) return feeds;
+    return feeds.slice(0, maxFeeds);
   }
 
   private shouldShowIntelligenceNotifications(): boolean {
@@ -540,10 +561,10 @@ export class DataLoaderManager implements AppModule {
         });
         return [];
       }
+      const enabledNames = new Set(enabledFeeds.map(f => f.name));
 
       // Digest branch: server already aggregated feeds — map proto items to client types
       if (digest?.categories && category in digest.categories) {
-        const enabledNames = new Set(enabledFeeds.map(f => f.name));
         let items = (digest.categories[category]?.items ?? [])
           .map(protoItemToNewsItem)
           .filter(i => enabledNames.has(i.source));
@@ -584,7 +605,7 @@ export class DataLoaderManager implements AppModule {
         return items;
       }
 
-      // Per-feed fallback: fetch each feed individually (first load or digest unavailable)
+      // Fallback path when digest is unavailable: stale-first, then limited per-feed fan-out.
       const renderIntervalMs = 100;
       let lastRenderTime = 0;
       let renderTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -618,7 +639,36 @@ export class DataLoaderManager implements AppModule {
         }
       };
 
-      const items = await fetchCategoryFeeds(enabledFeeds, {
+      const staleItems = this.getStaleNewsItems(category).filter(i => enabledNames.has(i.source));
+      if (staleItems.length > 0) {
+        console.warn(`[News] Digest missing for "${category}", serving stale headlines (${staleItems.length})`);
+        this.renderNewsForCategory(category, staleItems);
+        this.ctx.statusPanel?.updateFeed(category.charAt(0).toUpperCase() + category.slice(1), {
+          status: 'ok',
+          itemCount: staleItems.length,
+        });
+        return staleItems;
+      }
+
+      if (!this.isPerFeedFallbackEnabled()) {
+        console.warn(`[News] Digest missing for "${category}", limited per-feed fallback disabled`);
+        this.renderNewsForCategory(category, []);
+        this.ctx.statusPanel?.updateFeed(category.charAt(0).toUpperCase() + category.slice(1), {
+          status: 'error',
+          errorMessage: 'Digest unavailable',
+        });
+        return [];
+      }
+
+      const fallbackFeeds = this.selectLimitedFeeds(enabledFeeds, this.perFeedFallbackCategoryFeedLimit);
+      if (fallbackFeeds.length < enabledFeeds.length) {
+        console.warn(`[News] Digest missing for "${category}", using limited per-feed fallback (${fallbackFeeds.length}/${enabledFeeds.length} feeds)`);
+      } else {
+        console.warn(`[News] Digest missing for "${category}", using per-feed fallback (${fallbackFeeds.length} feeds)`);
+      }
+
+      const items = await fetchCategoryFeeds(fallbackFeeds, {
+        batchSize: this.perFeedFallbackBatchSize,
         onBatch: (partialItems) => {
           scheduleRender(partialItems);
           this.flashMapForNews(partialItems);
@@ -636,7 +686,7 @@ export class DataLoaderManager implements AppModule {
 
         if (items.length === 0) {
           const failures = getFeedFailures();
-          const failedFeeds = enabledFeeds.filter(f => failures.has(f.name));
+          const failedFeeds = fallbackFeeds.filter(f => failures.has(f.name));
           if (failedFeeds.length > 0) {
             const names = failedFeeds.map(f => f.name).join(', ');
             panel.showError(`${t('common.noNewsAvailable')} (${names} failed)`);
@@ -714,6 +764,7 @@ export class DataLoaderManager implements AppModule {
 
     if (SITE_VARIANT === 'full') {
       const enabledIntelSources = INTEL_SOURCES.filter(f => !this.ctx.disabledSources.has(f.name));
+      const enabledIntelNames = new Set(enabledIntelSources.map(f => f.name));
       const intelPanel = this.ctx.newsPanels['intel'];
       if (enabledIntelSources.length === 0) {
         delete this.ctx.newsByCategory['intel'];
@@ -721,10 +772,9 @@ export class DataLoaderManager implements AppModule {
         this.ctx.statusPanel?.updateFeed('Intel', { status: 'ok', itemCount: 0 });
       } else if (digest?.categories && 'intel' in digest.categories) {
         // Digest branch for intel
-        const enabledNames = new Set(enabledIntelSources.map(f => f.name));
         const intel = (digest.categories['intel']?.items ?? [])
           .map(protoItemToNewsItem)
-          .filter(i => enabledNames.has(i.source));
+          .filter(i => enabledIntelNames.has(i.source));
         checkBatchForBreakingAlerts(intel);
         this.renderNewsForCategory('intel', intel);
         if (intelPanel) {
@@ -738,24 +788,50 @@ export class DataLoaderManager implements AppModule {
         collectedNews.push(...intel);
         this.flashMapForNews(intel);
       } else {
-        const intelResult = await Promise.allSettled([fetchCategoryFeeds(enabledIntelSources)]);
-        if (intelResult[0]?.status === 'fulfilled') {
-          const intel = intelResult[0].value;
-          checkBatchForBreakingAlerts(intel);
-          this.renderNewsForCategory('intel', intel);
+        const staleIntel = this.getStaleNewsItems('intel').filter(i => enabledIntelNames.has(i.source));
+        if (staleIntel.length > 0) {
+          console.warn(`[News] Intel digest missing, serving stale headlines (${staleIntel.length})`);
+          this.renderNewsForCategory('intel', staleIntel);
           if (intelPanel) {
             try {
-              const baseline = await updateBaseline('news:intel', intel.length);
-              const deviation = calculateDeviation(intel.length, baseline);
+              const baseline = await updateBaseline('news:intel', staleIntel.length);
+              const deviation = calculateDeviation(staleIntel.length, baseline);
               intelPanel.setDeviation(deviation.zScore, deviation.percentChange, deviation.level);
             } catch (e) { console.warn('[Baseline] news:intel write failed:', e); }
           }
-          this.ctx.statusPanel?.updateFeed('Intel', { status: 'ok', itemCount: intel.length });
-          collectedNews.push(...intel);
-          this.flashMapForNews(intel);
-        } else {
+          this.ctx.statusPanel?.updateFeed('Intel', { status: 'ok', itemCount: staleIntel.length });
+          collectedNews.push(...staleIntel);
+        } else if (!this.isPerFeedFallbackEnabled()) {
+          console.warn('[News] Intel digest missing, limited per-feed fallback disabled');
           delete this.ctx.newsByCategory['intel'];
-          console.error('[App] Intel feed failed:', intelResult[0]?.reason);
+          this.ctx.statusPanel?.updateFeed('Intel', { status: 'error', errorMessage: 'Digest unavailable' });
+        } else {
+          const fallbackIntelFeeds = this.selectLimitedFeeds(enabledIntelSources, this.perFeedFallbackIntelFeedLimit);
+          if (fallbackIntelFeeds.length < enabledIntelSources.length) {
+            console.warn(`[News] Intel digest missing, using limited per-feed fallback (${fallbackIntelFeeds.length}/${enabledIntelSources.length} feeds)`);
+          }
+
+          const intelResult = await Promise.allSettled([
+            fetchCategoryFeeds(fallbackIntelFeeds, { batchSize: this.perFeedFallbackBatchSize }),
+          ]);
+          if (intelResult[0]?.status === 'fulfilled') {
+            const intel = intelResult[0].value;
+            checkBatchForBreakingAlerts(intel);
+            this.renderNewsForCategory('intel', intel);
+            if (intelPanel) {
+              try {
+                const baseline = await updateBaseline('news:intel', intel.length);
+                const deviation = calculateDeviation(intel.length, baseline);
+                intelPanel.setDeviation(deviation.zScore, deviation.percentChange, deviation.level);
+              } catch (e) { console.warn('[Baseline] news:intel write failed:', e); }
+            }
+            this.ctx.statusPanel?.updateFeed('Intel', { status: 'ok', itemCount: intel.length });
+            collectedNews.push(...intel);
+            this.flashMapForNews(intel);
+          } else {
+            delete this.ctx.newsByCategory['intel'];
+            console.error('[App] Intel feed failed:', intelResult[0]?.reason);
+          }
         }
       }
     }

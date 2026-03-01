@@ -734,18 +734,6 @@ export default defineConfig({
           },
           {
             urlPattern: ({ url, sameOrigin }: { url: URL; sameOrigin: boolean }) =>
-              sameOrigin && /^\/ingest\//.test(url.pathname),
-            handler: 'NetworkOnly',
-            method: 'GET',
-          },
-          {
-            urlPattern: ({ url, sameOrigin }: { url: URL; sameOrigin: boolean }) =>
-              sameOrigin && /^\/ingest\//.test(url.pathname),
-            handler: 'NetworkOnly',
-            method: 'POST',
-          },
-          {
-            urlPattern: ({ url, sameOrigin }: { url: URL; sameOrigin: boolean }) =>
               sameOrigin && /^\/rss\//.test(url.pathname),
             handler: 'NetworkOnly',
             method: 'GET',

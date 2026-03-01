@@ -132,7 +132,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/economic/v1/get-macro-signals': 'medium',
   '/api/prediction/v1/list-prediction-markets': 'medium',
   '/api/supply-chain/v1/get-chokepoint-status': 'medium',
-  '/api/news/v1/list-feed-digest': 'medium',
+  '/api/news/v1/list-feed-digest': 'slow',
 };
 
 const serverOptions: ServerOptions = { onError: mapErrorToResponse };

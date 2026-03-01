@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Settings Option B — Accordion Sections</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#1a1c1e;--surface:#2a2d31;--surface-hover:#32363b;
+  --text:#e8eaed;--text-sec:#9aa0a6;--accent:#60a5fa;
+  --green:#34d399;--yellow:#fbbf24;--red:#ef4444;--blue:#60a5fa;
+  --border:rgba(255,255,255,0.08);--border-strong:rgba(255,255,255,0.14);
+  --font:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+  --mono:'SF Mono',Monaco,'Cascadia Code',monospace;
+}
+html,body{height:100%;overflow:hidden}
+body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;-webkit-font-smoothing:antialiased}
+
+.shell{display:flex;flex-direction:column;height:100vh;max-width:980px;max-height:760px;margin:auto;border:1px solid var(--border-strong);border-radius:10px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.5)}
+
+/* Sticky header */
+.top-bar{display:flex;align-items:center;gap:16px;padding:14px 24px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0}
+.top-bar-title{font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px;white-space:nowrap}
+.top-bar-title svg{opacity:0.7}
+.top-search{flex:1;max-width:320px;position:relative}
+.top-search input{width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--border-strong);border-radius:6px;color:var(--text);padding:7px 10px 7px 30px;font:inherit;font-size:12px;outline:none;transition:border-color .15s;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' fill='%239aa0a6' viewBox='0 0 24 24'%3E%3Cpath d='M15.5 14h-.79l-.28-.27A6.47 6.47 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:8px center}
+.top-search input:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(96,165,250,0.15)}
+.top-search input::placeholder{color:rgba(255,255,255,0.2)}
+
+/* Progress chip */
+.progress-chip{display:flex;align-items:center;gap:8px;margin-left:auto;white-space:nowrap}
+.progress-bar-bg{width:100px;height:6px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden}
+.progress-bar-fg{height:100%;background:var(--green);border-radius:3px;transition:width .4s ease}
+.progress-label{font-size:12px;font-weight:600;color:var(--green)}
+
+/* Scroll area */
+.scroll-area{flex:1;overflow-y:auto;padding:20px 24px 80px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.1) transparent}
+.scroll-area::-webkit-scrollbar{width:6px}
+.scroll-area::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:3px}
+
+/* License card */
+.license-card{background:linear-gradient(135deg,rgba(52,211,153,0.06),rgba(96,165,250,0.06));border:1px solid rgba(52,211,153,0.15);border-radius:12px;padding:20px 24px;margin-bottom:20px}
+.license-card h2{font-size:18px;font-weight:700;margin-bottom:4px}
+.license-card p{font-size:13px;color:var(--text-sec);margin-bottom:12px;line-height:1.5}
+.license-row{display:flex;gap:10px}
+.license-row input{flex:1;background:rgba(0,0,0,0.25);border:1px solid var(--border-strong);border-radius:6px;color:var(--text);padding:8px 12px;font:inherit;font-size:13px;font-family:var(--mono);outline:none}
+.license-row input:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(96,165,250,0.15)}
+.license-row input::placeholder{color:rgba(255,255,255,0.2)}
+.license-badge{font-size:10px;font-weight:600;padding:3px 10px;border-radius:10px;text-transform:uppercase;color:var(--yellow);background:rgba(251,191,36,0.12);align-self:center;white-space:nowrap}
+
+/* Accordion section */
+.accordion{margin-bottom:8px;border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--surface);transition:border-color .2s}
+.accordion.open{border-color:var(--border-strong)}
+.acc-header{display:flex;align-items:center;gap:12px;padding:16px 20px;cursor:pointer;user-select:none;transition:background .12s}
+.acc-header:hover{background:rgba(255,255,255,0.02)}
+.acc-icon{font-size:20px;width:36px;height:36px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.04);border-radius:8px;flex-shrink:0}
+.acc-info{flex:1}
+.acc-title{font-size:14px;font-weight:700}
+.acc-subtitle{font-size:12px;color:var(--text-sec);margin-top:1px}
+.acc-stat{display:flex;align-items:center;gap:8px}
+.acc-stat-bar{width:48px;height:4px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden}
+.acc-stat-fill{height:100%;border-radius:2px;transition:width .3s}
+.acc-stat-fill.full{background:var(--green)}
+.acc-stat-fill.partial{background:var(--yellow)}
+.acc-count{font-size:11px;font-weight:600;color:var(--text-sec);white-space:nowrap}
+.acc-chevron{font-size:12px;color:var(--text-sec);transition:transform .2s;margin-left:4px}
+.accordion.open .acc-chevron{transform:rotate(180deg)}
+
+.acc-body{max-height:0;overflow:hidden;transition:max-height .3s ease}
+.accordion.open .acc-body{max-height:2000px}
+.acc-body-inner{padding:0 20px 16px}
+
+/* Feature row inside accordion */
+.feat-row{display:flex;flex-direction:column;gap:0;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;overflow:hidden;transition:border-color .15s}
+.feat-row.ready{border-left:3px solid var(--green)}
+.feat-row.needs{border-left:3px solid var(--yellow)}
+.feat-row.staged{border-left:3px solid var(--blue)}
+
+.feat-top{display:flex;align-items:center;gap:12px;padding:12px 14px;cursor:pointer;transition:background .1s}
+.feat-top:hover{background:rgba(255,255,255,0.02)}
+.toggle{position:relative;width:34px;height:18px;background:rgba(255,255,255,0.1);border-radius:9px;flex-shrink:0;cursor:pointer;transition:background .2s}
+.toggle.on{background:var(--accent)}
+.toggle::after{content:'';position:absolute;top:2px;left:2px;width:14px;height:14px;background:#fff;border-radius:50%;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,0.3)}
+.toggle.on::after{transform:translateX(16px)}
+.feat-name{flex:1;font-size:13px;font-weight:600}
+.pill{font-size:10px;font-weight:600;padding:2px 8px;border-radius:8px;text-transform:uppercase;letter-spacing:.04em}
+.pill.ok{color:var(--green);background:rgba(52,211,153,0.12)}
+.pill.warn{color:var(--yellow);background:rgba(251,191,36,0.12)}
+.pill.staged{color:var(--blue);background:rgba(96,165,250,0.12)}
+.feat-expand-icon{font-size:10px;color:var(--text-sec);transition:transform .15s}
+.feat-row.expanded .feat-expand-icon{transform:rotate(180deg)}
+
+.feat-detail{max-height:0;overflow:hidden;transition:max-height .2s ease}
+.feat-row.expanded .feat-detail{max-height:300px}
+.feat-detail-inner{padding:8px 14px 14px;border-top:1px solid var(--border)}
+.feat-desc-text{font-size:12px;color:var(--text-sec);margin-bottom:10px;line-height:1.4}
+.key-group{margin-bottom:6px}
+.key-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
+.key-header code{font-size:11px;color:var(--text-sec);font-family:var(--mono)}
+.key-header a{font-size:11px;color:var(--accent);text-decoration:none;font-weight:600}
+.key-header a:hover{text-decoration:underline}
+.key-input{width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--border-strong);border-radius:6px;color:var(--text);padding:7px 10px;font:inherit;font-size:12px;font-family:var(--mono);outline:none;transition:border-color .15s}
+.key-input:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(96,165,250,0.15)}
+.key-input::placeholder{color:rgba(255,255,255,0.2)}
+.feat-fallback{font-size:11px;color:var(--yellow);margin-top:6px;font-style:italic}
+
+/* Debug section */
+.debug-section{margin-top:8px}
+.debug-btns{display:flex;gap:10px;margin-bottom:12px}
+.debug-btns button{background:var(--surface-hover);border:1px solid var(--border-strong);color:var(--text);font:inherit;font-size:12px;padding:7px 14px;border-radius:6px;cursor:pointer;transition:background .15s}
+.debug-btns button:hover{background:rgba(255,255,255,0.08)}
+.debug-card{background:rgba(0,0,0,0.15);border:1px solid var(--border);border-radius:8px;padding:14px 16px}
+.debug-card h3{font-size:13px;font-weight:600;margin-bottom:8px}
+.diag-check{display:flex;align-items:center;gap:6px;margin-bottom:6px;font-size:12px;color:var(--text-sec);cursor:pointer}
+.diag-check input{accent-color:var(--accent)}
+
+/* FAB save button */
+.fab{position:fixed;bottom:24px;right:24px;display:flex;align-items:center;gap:8px;background:var(--accent);color:#fff;font-family:var(--font);font-size:14px;font-weight:700;padding:12px 28px;border:none;border-radius:12px;cursor:pointer;box-shadow:0 4px 20px rgba(96,165,250,0.4);transition:transform .15s,box-shadow .15s;z-index:100}
+.fab:hover{transform:translateY(-2px);box-shadow:0 6px 28px rgba(96,165,250,0.5)}
+.fab:active{transform:scale(0.97)}
+.fab svg{width:18px;height:18px}
+
+/* Cancel link */
+.cancel-link{position:fixed;bottom:30px;right:160px;color:var(--text-sec);font-size:13px;cursor:pointer;z-index:100;text-decoration:underline;text-underline-offset:2px}
+.cancel-link:hover{color:var(--text)}
+
+/* Label */
+.option-label{position:fixed;top:12px;right:12px;background:var(--accent);color:#fff;font-size:11px;font-weight:700;padding:4px 12px;border-radius:6px;letter-spacing:.05em;z-index:999;text-transform:uppercase}
+</style>
+</head>
+<body>
+
+<div class="option-label">Option B — Accordion</div>
+
+<div class="shell">
+  <div class="top-bar">
+    <div class="top-bar-title">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
+      Settings
+    </div>
+    <div class="top-search">
+      <input type="text" placeholder="Search features..." id="searchInput">
+    </div>
+    <div class="progress-chip">
+      <div class="progress-bar-bg"><div class="progress-bar-fg" id="progressBar" style="width:71%"></div></div>
+      <span class="progress-label" id="progressLabel">12/17</span>
+    </div>
+  </div>
+
+  <div class="scroll-area" id="scrollArea">
+    <!-- Content rendered by JS -->
+  </div>
+</div>
+
+<span class="cancel-link">Cancel</span>
+<button class="fab">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 13l4 4L19 7"/></svg>
+  Save &amp; Close
+</button>
+
+<script>
+const SECTIONS = [
+  { id:'license', type:'license' },
+  { id:'ai', icon:'🤖', title:'AI Models', desc:'LLM providers for intelligent summaries',
+    features:[
+      { name:'Ollama Local LLM', desc:'Local summarization via OpenAI-compatible endpoint (Ollama or LM Studio)', keys:['OLLAMA_API_URL','OLLAMA_MODEL'], status:'ready', on:true, fallback:'Falls back to Groq → OpenRouter → browser model', signup:'https://ollama.com/download' },
+      { name:'Groq Summarization', desc:'Primary fast LLM provider for AI summary generation', keys:['GROQ_API_KEY'], status:'ready', on:true, fallback:'Falls back to OpenRouter → browser model', signup:'https://console.groq.com/keys' },
+      { name:'OpenRouter LLM', desc:'Secondary LLM provider for AI summary fallback', keys:['OPENROUTER_API_KEY'], status:'ready', on:true, fallback:'Falls back to local browser model only', signup:'https://openrouter.ai/settings/keys' },
+    ]},
+  { id:'data', icon:'📈', title:'Economic Data', desc:'Macro indicators and trade intelligence',
+    features:[
+      { name:'FRED Economic Data', desc:'Federal Reserve macro indicators (GDP, CPI, unemployment)', keys:['FRED_API_KEY'], status:'ready', on:true, fallback:'Economic panel uses non-FRED metrics', signup:'https://fred.stlouisfed.org/docs/api/api_key.html' },
+      { name:'EIA Oil Analytics', desc:'US Energy Information Administration oil production & pricing', keys:['EIA_API_KEY'], status:'ready', on:true, fallback:'Oil analytics cards show disabled state', signup:'https://www.eia.gov/opendata/register.php' },
+      { name:'WTO Trade Policy', desc:'Tariff trends, trade barriers, and global trade flows', keys:['WTO_API_KEY'], status:'ready', on:true, fallback:'Trade policy panel shows disabled state', signup:'https://apiportal.wto.org/' },
+    ]},
+  { id:'security', icon:'🛡️', title:'Security Intel', desc:'Cyber threat feeds and internet monitoring',
+    features:[
+      { name:'Cloudflare Outage Radar', desc:'Internet outages from Cloudflare Radar annotations API', keys:['CLOUDFLARE_API_TOKEN'], status:'ready', on:true, fallback:'Outage layer disabled', signup:'https://dash.cloudflare.com/profile/api-tokens' },
+      { name:'abuse.ch Cyber IOC', desc:'URLhaus and ThreatFox IOC ingestion for cyber threat layer', keys:['URLHAUS_AUTH_KEY'], status:'needs', on:true, fallback:'URLhaus/ThreatFox IOC ingestion disabled', signup:'https://auth.abuse.ch/' },
+      { name:'AlienVault OTX Intel', desc:'OTX IOC ingestion for cyber threat enrichment', keys:['OTX_API_KEY'], status:'ready', on:true, fallback:'OTX enrichment disabled', signup:'https://otx.alienvault.com/' },
+      { name:'AbuseIPDB Reputation', desc:'IP reputation enrichment for the cyber threat layer', keys:['ABUSEIPDB_API_KEY'], status:'needs', on:false, fallback:'AbuseIPDB enrichment disabled', signup:'https://www.abuseipdb.com/login' },
+    ]},
+  { id:'tracking', icon:'✈️', title:'Tracking & Flights', desc:'Real-time vessel, aircraft, and satellite monitoring',
+    features:[
+      { name:'AIS Vessel Tracking', desc:'Live vessel ingestion via AISStream WebSocket feed', keys:['AISSTREAM_API_KEY'], status:'ready', on:true, fallback:'AIS layer disabled', signup:'https://aisstream.io/authenticate' },
+      { name:'OpenSky Military Flights', desc:'OAuth credentials for military flight data', keys:['OPENSKY_CLIENT_ID','OPENSKY_CLIENT_SECRET'], status:'needs', on:true, fallback:'Military flights fall back to limited data', signup:'https://opensky-network.org' },
+      { name:'Wingbits Aircraft Data', desc:'Operator/aircraft type enrichment metadata', keys:['WINGBITS_API_KEY'], status:'needs', on:false, fallback:'Heuristic-only classification', signup:'https://wingbits.com/register' },
+      { name:'NASA FIRMS Fire Data', desc:'FIRMS satellite fire detection data', keys:['NASA_FIRMS_API_KEY'], status:'ready', on:true, fallback:'Uses public VIIRS feed', signup:'https://firms.modaps.eosdis.nasa.gov/api/area/' },
+    ]},
+  { id:'markets', icon:'💹', title:'Markets & Conflicts', desc:'Financial markets and geopolitical event data',
+    features:[
+      { name:'Finnhub Market Data', desc:'Real-time stock quotes, market data, and economic calendars', keys:['FINNHUB_API_KEY'], status:'ready', on:true, fallback:'Stock ticker uses limited free data', signup:'https://finnhub.io/register' },
+      { name:'ACLED Conflicts & Protests', desc:'Armed conflict and political violence event feeds', keys:['ACLED_ACCESS_TOKEN'], status:'ready', on:true, fallback:'Conflict/protest overlays hidden', signup:'https://developer.acleddata.com/' },
+    ]},
+  { id:'supply', icon:'🚢', title:'Supply Chain', desc:'Shipping, chokepoints, and critical minerals',
+    features:[
+      { name:'Supply Chain Intelligence', desc:'Baltic Dry Index via FRED, chokepoints and minerals from public data', keys:['FRED_API_KEY'], status:'ready', on:true, fallback:'Chokepoints and minerals always available', signup:'https://fred.stlouisfed.org/docs/api/api_key.html' },
+    ]},
+  { id:'debug', type:'debug' },
+];
+
+function render(filter='') {
+  const area = document.getElementById('scrollArea');
+  const q = filter.toLowerCase();
+  let html = '';
+
+  for (const sec of SECTIONS) {
+    if (sec.type==='license' && !q) {
+      html += `<div class="license-card">
+        <h2>World Monitor</h2>
+        <p>Enter your license key for full cloud API access, or configure individual keys below (BYOK).</p>
+        <div class="license-row">
+          <input type="password" placeholder="wm_live_..." autocomplete="off">
+          <span class="license-badge">Not Set</span>
+        </div>
+      </div>`;
+      continue;
+    }
+    if (sec.type==='debug' && !q) {
+      html += `<div class="accordion open debug-section" data-acc="debug">
+        <div class="acc-header" data-acc-toggle="debug">
+          <span class="acc-icon">🔧</span>
+          <div class="acc-info"><div class="acc-title">Debug & Logs</div><div class="acc-subtitle">Diagnostics and traffic monitoring</div></div>
+          <span class="acc-chevron">▼</span>
+        </div>
+        <div class="acc-body"><div class="acc-body-inner">
+          <div class="debug-btns"><button>Open Logs Folder</button><button>Open API Log</button></div>
+          <div class="debug-card">
+            <h3>Diagnostics</h3>
+            <label class="diag-check"><input type="checkbox"> Verbose Sidecar Log</label>
+            <label class="diag-check"><input type="checkbox"> Frontend Fetch Debug</label>
+            <div style="margin-top:10px;font-size:12px;color:var(--text-sec);font-style:italic">No API traffic recorded yet.</div>
+          </div>
+        </div></div>
+      </div>`;
+      continue;
+    }
+    if (sec.type) continue;
+
+    let features = sec.features;
+    if (q) {
+      features = features.filter(f =>
+        f.name.toLowerCase().includes(q) || f.desc.toLowerCase().includes(q) || f.keys.some(k=>k.toLowerCase().includes(q))
+      );
+      if (features.length===0) continue;
+    }
+
+    const ready = features.filter(f=>f.status==='ready').length;
+    const total = features.length;
+    const pct = (ready/total)*100;
+    const fillClass = ready===total?'full':'partial';
+
+    html += `<div class="accordion${!q?' open':' open'}" data-acc="${sec.id}">
+      <div class="acc-header" data-acc-toggle="${sec.id}">
+        <span class="acc-icon">${sec.icon}</span>
+        <div class="acc-info">
+          <div class="acc-title">${sec.title}</div>
+          <div class="acc-subtitle">${sec.desc}</div>
+        </div>
+        <div class="acc-stat">
+          <div class="acc-stat-bar"><div class="acc-stat-fill ${fillClass}" style="width:${pct}%"></div></div>
+          <span class="acc-count">${ready}/${total}</span>
+        </div>
+        <span class="acc-chevron">▼</span>
+      </div>
+      <div class="acc-body"><div class="acc-body-inner">
+        ${features.map(f => {
+          const cls = f.status==='ready'?'ready':f.status==='staged'?'staged':'needs';
+          const pillCls = f.status==='ready'?'ok':f.status==='staged'?'staged':'warn';
+          const pillText = f.status==='ready'?'Ready':f.status==='staged'?'Staged':'Needs Keys';
+          return `<div class="feat-row ${cls}">
+            <div class="feat-top">
+              <div class="toggle ${f.on?'on':''}" data-t></div>
+              <span class="feat-name">${f.name}</span>
+              <span class="pill ${pillCls}">${pillText}</span>
+              <span class="feat-expand-icon">▼</span>
+            </div>
+            <div class="feat-detail"><div class="feat-detail-inner">
+              <div class="feat-desc-text">${f.desc}</div>
+              ${f.keys.map(k=>`<div class="key-group">
+                <div class="key-header"><code>${k}</code><a href="#" onclick="return false">Get key →</a></div>
+                <input type="password" class="key-input" placeholder="${f.status==='ready'?'••••••••••••':'Enter API key...'}" ${f.status==='ready'?'value="••••••••••••"':''}>
+              </div>`).join('')}
+              ${f.status!=='ready'?`<div class="feat-fallback">${f.fallback}</div>`:''}
+            </div></div>
+          </div>`;
+        }).join('')}
+      </div></div>
+    </div>`;
+  }
+
+  if (q && html==='') {
+    html = `<div style="text-align:center;padding:60px 0;color:var(--text-sec)">No features matching "${filter}"</div>`;
+  }
+
+  area.innerHTML = html;
+  attachListeners();
+}
+
+function attachListeners() {
+  // Accordion toggle
+  document.querySelectorAll('.acc-header').forEach(hdr => {
+    hdr.addEventListener('click', () => {
+      hdr.closest('.accordion').classList.toggle('open');
+    });
+  });
+
+  // Feature expand
+  document.querySelectorAll('.feat-top').forEach(top => {
+    top.addEventListener('click', (e) => {
+      if (e.target.closest('[data-t]')) return;
+      top.closest('.feat-row').classList.toggle('expanded');
+    });
+  });
+
+  // Toggles
+  document.querySelectorAll('[data-t]').forEach(t => {
+    t.addEventListener('click', () => t.classList.toggle('on'));
+  });
+}
+
+document.getElementById('searchInput').addEventListener('input', (e) => {
+  render(e.target.value.trim());
+});
+
+render();
+</script>
+</body>
+</html>
