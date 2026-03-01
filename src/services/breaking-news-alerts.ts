@@ -2,6 +2,11 @@ import type { NewsItem } from '@/types';
 import type { OrefAlert } from '@/services/oref-alerts';
 import { getSourceTier } from '@/config/feeds';
 
+export interface RelatedSource {
+  name: string;
+  link?: string;
+}
+
 export interface BreakingAlert {
   id: string;
   headline: string;
@@ -10,6 +15,7 @@ export interface BreakingAlert {
   threatLevel: 'critical' | 'high';
   timestamp: Date;
   origin: 'rss_alert' | 'keyword_spike' | 'hotspot_escalation' | 'military_surge' | 'oref_siren';
+  relatedSources?: RelatedSource[];
 }
 
 export interface AlertSettings {
@@ -123,7 +129,8 @@ export function checkBatchForBreakingAlerts(items: NewsItem[]): void {
   const settings = getAlertSettings();
   if (!settings.enabled) return;
 
-  let best: BreakingAlert | null = null;
+  // Group alerts by normalized headline (similar topics)
+  const alertGroups = new Map<string, { level: 'critical' | 'high'; items: NewsItem[] }>();
 
   for (const item of items) {
     if (!item.isAlert) continue;
@@ -142,24 +149,69 @@ export function checkBatchForBreakingAlerts(items: NewsItem[]): void {
     const key = makeAlertKey(item.title, item.source, item.link);
     if (isDuplicate(key)) continue;
 
-    const isBetter = !best
-      || (level === 'critical' && best.threatLevel !== 'critical')
-      || (level === best.threatLevel && item.pubDate.getTime() > best.timestamp.getTime());
-
-    if (isBetter) {
-      best = {
-        id: key,
-        headline: item.title,
-        source: item.source,
-        link: item.link,
-        threatLevel: level as 'critical' | 'high',
-        timestamp: item.pubDate,
-        origin: 'rss_alert',
-      };
+    // Group by normalized topic (first 40 chars of lowercase title)
+    const topicKey = normalizeTitle(item.title).slice(0, 40);
+    
+    const existing = alertGroups.get(topicKey);
+    if (!existing) {
+      alertGroups.set(topicKey, { level: level as 'critical' | 'high', items: [item] });
+    } else if (level === 'critical' && existing.level !== 'critical') {
+      // Upgrade to critical if a critical item comes in
+      alertGroups.set(topicKey, { level: 'critical', items: [...existing.items, item] });
+    } else {
+      existing.items.push(item);
     }
   }
 
-  if (best && !isGlobalCooldown(best.threatLevel)) dispatchAlert(best);
+  // Find the best group (critical priority, then most sources, then newest)
+  let bestGroup: { level: 'critical' | 'high'; items: NewsItem[] } | null = null;
+  
+  for (const group of alertGroups.values()) {
+    if (!bestGroup) {
+      bestGroup = group;
+      continue;
+    }
+    
+    // Prioritize critical level
+    if (group.level === 'critical' && bestGroup.level !== 'critical') {
+      bestGroup = group;
+    } else if (group.level === bestGroup.level) {
+      // Then prioritize more sources
+      if (group.items.length > bestGroup.items.length) {
+        bestGroup = group;
+      } else if (group.items.length === bestGroup.items.length) {
+        // Then prioritize newest
+        const groupNewest = Math.max(...group.items.map(i => i.pubDate.getTime()));
+        const bestNewest = Math.max(...bestGroup.items.map(i => i.pubDate.getTime()));
+        if (groupNewest > bestNewest) {
+          bestGroup = group;
+        }
+      }
+    }
+  }
+
+  if (!bestGroup || bestGroup.items.length === 0) return;
+  if (isGlobalCooldown(bestGroup.level)) return;
+
+  // Build the main alert from the newest item
+  const mainItem = bestGroup.items.sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime())[0];
+  const relatedItems = bestGroup.items.filter(i => i.link !== mainItem.link).slice(0, 3);
+  
+  const alert: BreakingAlert = {
+    id: makeAlertKey(mainItem.title, mainItem.source, mainItem.link),
+    headline: mainItem.title,
+    source: mainItem.source,
+    link: mainItem.link,
+    threatLevel: bestGroup.level,
+    timestamp: mainItem.pubDate,
+    origin: 'rss_alert',
+    relatedSources: relatedItems.map(item => ({
+      name: item.source,
+      link: item.link,
+    })),
+  };
+
+  dispatchAlert(alert);
 }
 
 export function dispatchOrefBreakingAlert(alerts: OrefAlert[]): void {

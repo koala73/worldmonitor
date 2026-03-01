@@ -1247,7 +1247,9 @@
       "critical": "CRITICAL",
       "high": "HIGH",
       "dismiss": "Dismiss",
-      "enableNotifications": "Enable desktop notifications"
+      "enableNotifications": "Enable desktop notifications",
+      "alsoReportedBy": "Also reported by: ",
+      "sourcesCount": "{{count}} sources"
     },
     "intelligenceFindings": {
       "breakingAlerts": "Breaking Alerts",
