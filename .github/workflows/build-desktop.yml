@@ -306,6 +306,126 @@ jobs:
           fi
           echo "Verified signed app bundle and embedded Node runtime: $NODE_PATH"
 
+      - name: Strip GPU libraries from AppImage
+        if: contains(matrix.platform, 'ubuntu')
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPIMAGETOOL_VERSION: '1.9.1'
+          APPIMAGETOOL_SHA256_X86_64: 'ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0'
+          APPIMAGETOOL_SHA256_AARCH64: 'f0837e7448a0c1e4e650a93bb3e85802546e60654ef287576f46c71c126a9158'
+        run: |
+          # --- Deterministic artifact selection ---
+          mapfile -t IMAGES < <(find src-tauri/target -path '*/bundle/appimage/*.AppImage')
+          if [ ${#IMAGES[@]} -eq 0 ]; then
+            echo "No AppImage found, skipping GPU lib strip"
+            exit 0
+          fi
+          if [ ${#IMAGES[@]} -gt 1 ]; then
+            echo "::error::Found ${#IMAGES[@]} AppImage files — expected exactly 1"
+            printf '  %s\n' "${IMAGES[@]}"
+            exit 1
+          fi
+          APPIMAGE="${IMAGES[0]}"
+          echo "Stripping bundled GPU/Wayland libraries from: $APPIMAGE"
+          chmod +x "$APPIMAGE"
+
+          # --- Clean extraction ---
+          rm -rf squashfs-root
+          "$APPIMAGE" --appimage-extract
+
+          # --- Strip GPU/Wayland libs (14 named patterns + DRI drivers) ---
+          GPU_LIBS=(
+            'libEGL.so*'
+            'libEGL_mesa.so*'
+            'libGLX.so*'
+            'libGLX_mesa.so*'
+            'libGLdispatch.so*'
+            'libGLESv2.so*'
+            'libGL.so*'
+            'libOpenGL.so*'
+            'libglapi.so*'
+            'libgbm.so*'
+            'libwayland-client.so*'
+            'libwayland-server.so*'
+            'libwayland-cursor.so*'
+            'libwayland-egl.so*'
+          )
+          REMOVED=0
+          for pattern in "${GPU_LIBS[@]}"; do
+            while IFS= read -r -d '' f; do
+              rm -f "$f"
+              echo "  Removed: ${f#squashfs-root/}"
+              ((REMOVED++)) || true
+            done < <(find squashfs-root -name "$pattern" -print0)
+          done
+          # Mesa DRI drivers
+          while IFS= read -r -d '' f; do
+            rm -f "$f"
+            echo "  Removed DRI: ${f#squashfs-root/}"
+            ((REMOVED++)) || true
+          done < <(find squashfs-root -path '*/dri/*_dri.so' -print0)
+
+          echo "Stripped $REMOVED GPU/Wayland library files"
+          if [ "$REMOVED" -eq 0 ]; then
+            echo "::error::No GPU libraries found to strip — build may have changed"
+            exit 1
+          fi
+
+          # --- Download and verify appimagetool (pinned to 1.9.1) ---
+          TOOL_ARCH=${{ matrix.label == 'Linux-ARM64' && 'aarch64' || 'x86_64' }}
+          TOOL_URL="https://github.com/AppImage/appimagetool/releases/download/${APPIMAGETOOL_VERSION}/appimagetool-${TOOL_ARCH}.AppImage"
+          wget -q "$TOOL_URL" -O /tmp/appimagetool
+          EXPECTED_SHA=$([ "$TOOL_ARCH" = "x86_64" ] && echo "$APPIMAGETOOL_SHA256_X86_64" || echo "$APPIMAGETOOL_SHA256_AARCH64")
+          ACTUAL_SHA=$(sha256sum /tmp/appimagetool | awk '{print $1}')
+          if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+            echo "::error::appimagetool SHA256 mismatch! Expected: $EXPECTED_SHA Got: $ACTUAL_SHA"
+            exit 1
+          fi
+          echo "appimagetool SHA256 verified: $ACTUAL_SHA"
+          chmod +x /tmp/appimagetool
+
+          # --- Repackage to temp path, then atomic mv ---
+          APPIMAGE_TMP="${APPIMAGE}.stripped.tmp"
+          ARCH=$TOOL_ARCH /tmp/appimagetool --appimage-extract-and-run squashfs-root "$APPIMAGE_TMP"
+          mv -f "$APPIMAGE_TMP" "$APPIMAGE"
+
+          # --- Post-repack verification: ALL banned patterns ---
+          rm -rf squashfs-root
+          "$APPIMAGE" --appimage-extract
+          BANNED=""
+          for pattern in "${GPU_LIBS[@]}"; do
+            found=$(find squashfs-root -name "$pattern" -print 2>/dev/null)
+            if [ -n "$found" ]; then BANNED+="$found"$'\n'; fi
+          done
+          found=$(find squashfs-root -path '*/dri/*_dri.so' -print 2>/dev/null)
+          if [ -n "$found" ]; then BANNED+="$found"$'\n'; fi
+          rm -rf squashfs-root
+          if [ -n "$BANNED" ]; then
+            echo "::error::Banned GPU libs still present after repack:"
+            echo "$BANNED"
+            exit 1
+          fi
+          echo "Post-repack verification passed — no banned GPU libs"
+
+          # --- Re-upload stripped AppImage to GitHub Release ---
+          VERSION=$(node -p "require('./package.json').version")
+          if [ "$BUILD_VARIANT" = "tech" ]; then
+            TAG_NAME="v${VERSION}-tech"
+          else
+            TAG_NAME="v${VERSION}"
+          fi
+          echo "Computed release tag: $TAG_NAME"
+          if gh release view "$TAG_NAME" &>/dev/null; then
+            echo "Re-uploading stripped AppImage to release $TAG_NAME"
+            gh release upload "$TAG_NAME" "$APPIMAGE" --clobber
+            echo "Replaced release asset: $(basename "$APPIMAGE")"
+          else
+            echo "::warning::Release $TAG_NAME not found — skipping re-upload"
+          fi
+
+          rm -f /tmp/appimagetool
+
       - name: Smoke-test AppImage (Linux)
         if: contains(matrix.platform, 'ubuntu')
         shell: bash
