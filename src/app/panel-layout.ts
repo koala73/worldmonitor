@@ -37,6 +37,7 @@ import {
   OrefSirensPanel,
   TelegramIntelPanel,
   GulfEconomiesPanel,
+  WorldClockPanel,
 } from '@/components';
 import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
 import { PositiveNewsFeedPanel } from '@/components/PositiveNewsFeedPanel';
@@ -610,6 +611,8 @@ export class PanelLayoutManager implements AppModule {
       const gulfEconomiesPanel = new GulfEconomiesPanel();
       this.ctx.panels['gulf-economies'] = gulfEconomiesPanel;
     }
+
+    this.ctx.panels['world-clock'] = new WorldClockPanel();
 
     if (SITE_VARIANT !== 'happy') {
       if (!this.ctx.panels['gulf-economies']) {
