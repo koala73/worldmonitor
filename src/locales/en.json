@@ -98,6 +98,7 @@
     "tabGeneral": "General",
     "tabPanels": "Panels",
     "tabSources": "Sources",
+    "tabDigest": "Digest",
     "languageLabel": "Language",
     "sourceRegionAll": "All",
     "sourceRegionWorldwide": "Worldwide",
@@ -997,12 +998,12 @@
       "aiFlowStatusDisabled": "No AI providers enabled",
       "insightsDisabledTitle": "AI analysis is disabled",
       "insightsDisabledHint": "Enable providers via the settings gear in the map header",
-    "sectionPanels": "Panels",
-    "badgeAnimLabel": "Badge Animations",
-    "badgeAnimDesc": "Animate update badges on panel headers",
-    "sectionIntelligence": "Intelligence",
-    "headlineMemoryLabel": "Headline Memory",
-    "headlineMemoryDesc": "Remember seen headlines to highlight new stories"
+      "sectionPanels": "Panels",
+      "badgeAnimLabel": "Badge Animations",
+      "badgeAnimDesc": "Animate update badges on panel headers",
+      "sectionIntelligence": "Intelligence",
+      "headlineMemoryLabel": "Headline Memory",
+      "headlineMemoryDesc": "Remember seen headlines to highlight new stories"
     },
     "cascade": {
       "noImpacts": "No country impacts detected",
@@ -2122,5 +2123,29 @@
     "retry": "Retry",
     "refresh": "Refresh",
     "all": "All"
+  },
+  "digest": {
+    "title": "Email Digest",
+    "description": "Receive an AI-generated summary of the top news at your preferred interval.",
+    "emailLabel": "Email address",
+    "emailPlaceholder": "your@email.com",
+    "frequencyLabel": "Delivery frequency",
+    "frequencyHourly": "Every hour",
+    "frequency2h": "Every 2 hours",
+    "frequency6h": "Every 6 hours",
+    "frequencyDaily": "Daily",
+    "frequencyWeekly": "Weekly",
+    "frequencyMonthly": "Monthly",
+    "categoriesLabel": "Categories to include",
+    "allCategories": "All",
+    "subscribe": "Subscribe",
+    "update": "Update preferences",
+    "unsubscribe": "Unsubscribe",
+    "confirmPending": "Check your inbox to confirm your subscription.",
+    "subscribed": "You're subscribed! Receiving {{frequency}} digests.",
+    "unsubscribed": "You've been unsubscribed.",
+    "alreadySubscribed": "This email is already subscribed.",
+    "error": "Something went wrong. Please try again.",
+    "invalidEmail": "Please enter a valid email address."
   }
 }
