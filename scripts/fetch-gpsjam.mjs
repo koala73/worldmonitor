@@ -10,14 +10,15 @@
  * Cron:  Can be called daily; data updates once per day.
  */
 
-import { cellToLatLng, getResolution } from 'h3-js';
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { cellToLatLng } from 'h3-js';
+import { writeFileSync, mkdirSync, readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.resolve(__dirname, 'data');
 
+const REDIS_KEY = 'intelligence:gpsjam:v1';
 const BASE_URL = 'https://gpsjam.org/data';
 const UA = 'Mozilla/5.0 (compatible; WorldMonitor/1.0)';
 
@@ -148,6 +149,79 @@ function classifyRegion(lat, lon) {
 }
 
 // ---------------------------------------------------------------------------
+// Env + Redis helpers (pattern from seed-iran-events.mjs)
+// ---------------------------------------------------------------------------
+function loadEnvFile() {
+  const envPath = path.join(__dirname, '..', '.env.local');
+  if (!existsSync(envPath)) return;
+  const lines = readFileSync(envPath, 'utf8').split('\n');
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eqIdx = trimmed.indexOf('=');
+    if (eqIdx === -1) continue;
+    const key = trimmed.slice(0, eqIdx).trim();
+    let val = trimmed.slice(eqIdx + 1).trim();
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+      val = val.slice(1, -1);
+    }
+    if (!process.env[key]) process.env[key] = val;
+  }
+}
+
+function maskToken(token) {
+  if (!token || token.length < 8) return '***';
+  return token.slice(0, 4) + '***' + token.slice(-4);
+}
+
+async function seedRedis(output) {
+  loadEnvFile();
+  const redisUrl = process.env.UPSTASH_REDIS_REST_URL;
+  const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+
+  if (!redisUrl || !redisToken) {
+    console.error('[gpsjam] No UPSTASH_REDIS_REST_URL/TOKEN — skipping Redis seed');
+    return;
+  }
+
+  console.error(`[gpsjam] Seeding Redis key "${REDIS_KEY}"...`);
+  console.error(`[gpsjam]   URL:   ${redisUrl}`);
+  console.error(`[gpsjam]   Token: ${maskToken(redisToken)}`);
+
+  const body = JSON.stringify(['SET', REDIS_KEY, JSON.stringify(output)]);
+  const resp = await fetch(redisUrl, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${redisToken}`,
+      'Content-Type': 'application/json',
+    },
+    body,
+    signal: AbortSignal.timeout(15_000),
+  });
+
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '');
+    console.error(`[gpsjam] Redis SET failed: HTTP ${resp.status} — ${text.slice(0, 200)}`);
+    return;
+  }
+
+  const result = await resp.json();
+  console.error(`[gpsjam] Redis SET result:`, result);
+
+  const getResp = await fetch(`${redisUrl}/get/${encodeURIComponent(REDIS_KEY)}`, {
+    headers: { Authorization: `Bearer ${redisToken}` },
+    signal: AbortSignal.timeout(5_000),
+  });
+  if (getResp.ok) {
+    const getData = await getResp.json();
+    if (getData.result) {
+      const parsed = JSON.parse(getData.result);
+      console.error(`[gpsjam] Verified: ${parsed.hexes?.length} hexes in Redis (date: ${parsed.date})`);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 async function main() {
@@ -195,6 +269,8 @@ async function main() {
     // Also output to stdout for piping
     process.stdout.write(JSON.stringify(output));
   }
+
+  await seedRedis(output);
 }
 
 main().catch(err => {
