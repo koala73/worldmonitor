@@ -661,7 +661,13 @@ export class Panel {
 
   public setCount(count: number): void {
     if (this.countEl) {
+      const prev = parseInt(this.countEl.textContent ?? '0', 10);
       this.countEl.textContent = count.toString();
+      if (count > prev) {
+        this.countEl.classList.remove('bump');
+        void this.countEl.offsetWidth; // force reflow to restart animation
+        this.countEl.classList.add('bump');
+      }
     }
   }
 
