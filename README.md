@@ -1,13 +1,19 @@
-# World Monitor
+# World Monitor — macOS Native Edition
 
 **Real-time global intelligence dashboard** — AI-powered news aggregation, geopolitical monitoring, and infrastructure tracking in a unified situational awareness interface.
 
-[![GitHub stars](https://img.shields.io/github/stars/koala73/worldmonitor?style=social)](https://github.com/koala73/worldmonitor/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/koala73/worldmonitor?style=social)](https://github.com/koala73/worldmonitor/network/members)
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+> **This is the macOS-native fork** of [World Monitor](https://github.com/koala73/worldmonitor), rebuilt with SF Pro typography, sidebar navigation, native vibrancy effects, HIG-compliant layout, and macOS-specific intelligence features including a live cyber threat map, persistent alert center, and World Bank economic country profiles.
+
+[![GitHub stars](https://img.shields.io/github/stars/bradleybond512/worldmonitor-macos?style=social)](https://github.com/bradleybond512/worldmonitor-macos/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/bradleybond512/worldmonitor-macos?style=social)](https://github.com/bradleybond512/worldmonitor-macos/network/members)
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Last commit](https://img.shields.io/github/last-commit/koala73/worldmonitor)](https://github.com/koala73/worldmonitor/commits/main)
-[![Latest release](https://img.shields.io/github/v/release/koala73/worldmonitor?style=flat)](https://github.com/koala73/worldmonitor/releases/latest)
+[![Tauri](https://img.shields.io/badge/Tauri-2.x-FFC131?style=flat&logo=tauri&logoColor=white)](https://tauri.app/)
+[![Last commit](https://img.shields.io/github/last-commit/bradleybond512/worldmonitor-macos)](https://github.com/bradleybond512/worldmonitor-macos/commits/main)
+[![Latest release](https://img.shields.io/github/v/release/bradleybond512/worldmonitor-macos?style=flat)](https://github.com/bradleybond512/worldmonitor-macos/releases/latest)
+
+<p align="center">
+  <a href="https://github.com/bradleybond512/worldmonitor-macos/releases/latest"><img src="https://img.shields.io/badge/Download-macOS_Apple_Silicon_(DMG)-000000?style=for-the-badge&logo=apple&logoColor=white" alt="Download macOS Apple Silicon"></a>
+</p>
 
 <p align="center">
   <a href="https://worldmonitor.app"><img src="https://img.shields.io/badge/Web_App-worldmonitor.app-blue?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Web App"></a>&nbsp;
@@ -16,16 +22,25 @@
 </p>
 
 <p align="center">
-  <a href="https://worldmonitor.app/api/download?platform=windows-exe"><img src="https://img.shields.io/badge/Download-Windows_(.exe)-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Download Windows"></a>&nbsp;
-  <a href="https://worldmonitor.app/api/download?platform=macos-arm64"><img src="https://img.shields.io/badge/Download-macOS_Apple_Silicon-000000?style=for-the-badge&logo=apple&logoColor=white" alt="Download macOS ARM"></a>&nbsp;
-  <a href="https://worldmonitor.app/api/download?platform=macos-x64"><img src="https://img.shields.io/badge/Download-macOS_Intel-555555?style=for-the-badge&logo=apple&logoColor=white" alt="Download macOS Intel"></a>&nbsp;
-  <a href="https://worldmonitor.app/api/download?platform=linux-appimage"><img src="https://img.shields.io/badge/Download-Linux_(.AppImage)-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Download Linux"></a>
+  <a href="./docs/DOCUMENTATION.md"><strong>Full Documentation</strong></a> &nbsp;·&nbsp;
+  <a href="https://github.com/bradleybond512/worldmonitor-macos/releases"><strong>All Releases</strong></a> &nbsp;·&nbsp;
+  <a href="https://github.com/koala73/worldmonitor"><strong>Upstream Repo</strong></a>
 </p>
 
-<p align="center">
-  <a href="./docs/DOCUMENTATION.md"><strong>Full Documentation</strong></a> &nbsp;·&nbsp;
-  <a href="https://github.com/koala73/worldmonitor/releases/latest"><strong>All Releases</strong></a>
-</p>
+---
+
+## macOS Native Enhancements
+
+| Feature | Detail |
+|---|---|
+| **Native sidebar** | SF Pro, vibrancy-backed, collapsible, HIG-compliant panel navigation |
+| **Live cyber threat map** | 500 IOCs geo-plotted on the 3D globe (Feodo · URLhaus · C2Intel · OTX · AbuseIPDB) |
+| **Alert Center panel** | Persistent rolling history of intelligence signals and breaking alerts with unread badge |
+| **World Bank profiles** | GDP, military spend %, trade %, population injected into every country brief AI context |
+| **Claude AI provider** | Anthropic Claude Haiku in the summarization fallback chain alongside Groq/OpenRouter |
+| **Earthquakes panel** | USGS M4.5+ live seismic data with magnitude-color-coded table |
+| **MBP 14" optimized** | Window sizing and sidebar scaling tuned for the 1512×982 display |
+| **Built-in API key** | Zero-config desktop auth — no Keychain prompts or manual key entry |
 
 ![World Monitor Dashboard](new-world-monitor.png)
 
