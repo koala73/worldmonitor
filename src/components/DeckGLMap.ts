@@ -93,6 +93,7 @@ import type { KindnessPoint } from '@/services/kindness-data';
 import type { HappinessData } from '@/services/happiness-data';
 import type { RenewableInstallation } from '@/services/renewable-installations';
 import type { SpeciesRecovery } from '@/services/conservation-data';
+import type { CivilFlight, CivilVessel } from '@/services/transport';
 import { getCountriesGeoJson, getCountryAtCoordinates, getCountryBbox } from '@/services/country-geometry';
 import type { FeatureCollection, Geometry } from 'geojson';
 
@@ -248,11 +249,17 @@ const MARKER_ICONS = {
   circle: 'data:image/svg+xml;base64,' + btoa(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="16" r="14" fill="white"/></svg>`),
   // Star - for special markers
   star: 'data:image/svg+xml;base64,' + btoa(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><polygon points="16,2 20,12 30,12 22,19 25,30 16,23 7,30 10,19 2,12 12,12" fill="white"/></svg>`),
+  // Airliner silhouette (civil aviation) for ADS-B flight markers
+  plane: 'data:image/svg+xml;base64,' + btoa(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><path d="M16 2c.8 0 1.5.7 1.5 1.6v8.3l8.4-2.8c.9-.3 1.8.4 1.8 1.3 0 .6-.4 1.1-.9 1.3l-9.3 3.1v3.2l4.6 1.5c.5.2.9.7.9 1.3 0 .9-.9 1.6-1.8 1.3L17.5 21v7.4c0 .9-.7 1.6-1.5 1.6s-1.5-.7-1.5-1.6V21l-3.7 1.2c-.9.3-1.8-.4-1.8-1.3 0-.6.4-1.1.9-1.3l4.6-1.5v-3.2l-9.3-3.1c-.5-.2-.9-.7-.9-1.3 0-.9.9-1.6 1.8-1.3l8.4 2.8V3.6c0-.9.7-1.6 1.5-1.6Z" fill="white"/></svg>`),
+  // Simplified cargo/passenger ship silhouette for AIS vessel markers
+  ship: 'data:image/svg+xml;base64,' + btoa(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><path d="M7 12h9v-3h4v3h4v5l2 2v4l-10 4-10-4v-4l1-1v-6Zm2 2v3h15v-3H9Zm-1 10 8 3 8-3v-2H8v2Z" fill="white"/></svg>`),
 };
 
 const BASES_ICON_MAPPING = { triangleUp: { x: 0, y: 0, width: 32, height: 32, mask: true } };
 const NUCLEAR_ICON_MAPPING = { hexagon: { x: 0, y: 0, width: 32, height: 32, mask: true } };
 const DATACENTER_ICON_MAPPING = { square: { x: 0, y: 0, width: 32, height: 32, mask: true } };
+const TRANSPORT_FLIGHT_ICON_MAPPING = { plane: { x: 0, y: 0, width: 32, height: 32, mask: true } };
+const TRANSPORT_VESSEL_ICON_MAPPING = { ship: { x: 0, y: 0, width: 32, height: 32, mask: true } };
 
 const CONFLICT_ZONES_GEOJSON: GeoJSON.FeatureCollection = {
   type: 'FeatureCollection',
@@ -289,6 +296,8 @@ export class DeckGLMap {
   private militaryFlightClusters: MilitaryFlightCluster[] = [];
   private militaryVessels: MilitaryVessel[] = [];
   private militaryVesselClusters: MilitaryVesselCluster[] = [];
+  private transportFlights: CivilFlight[] = [];
+  private transportVessels: CivilVessel[] = [];
   private serverBases: MilitaryBaseEnriched[] = [];
   private serverBaseClusters: ServerBaseCluster[] = [];
   private serverBasesLoaded = false;
@@ -1004,6 +1013,8 @@ export class DeckGLMap {
     const filteredMilitaryVessels = mapLayers.military ? this.filterByTime(this.militaryVessels, (vessel) => vessel.lastAisUpdate) : [];
     const filteredMilitaryFlightClusters = mapLayers.military ? this.filterMilitaryFlightClustersByTime(this.militaryFlightClusters) : [];
     const filteredMilitaryVesselClusters = mapLayers.military ? this.filterMilitaryVesselClustersByTime(this.militaryVesselClusters) : [];
+    const filteredTransportFlights = mapLayers.transport ? this.filterByTime(this.transportFlights, (flight) => new Date(flight.observedAt)) : [];
+    const filteredTransportVessels = mapLayers.ais ? this.filterByTime(this.transportVessels, (vessel) => new Date(vessel.observedAt)) : [];
     const filteredUcdpEvents = mapLayers.ucdpEvents ? this.filterByTime(this.ucdpEvents, (event) => event.date_start) : [];
 
     // Day/night overlay (rendered first as background)
@@ -1139,6 +1150,16 @@ export class DeckGLMap {
     // Flight delays layer
     if (mapLayers.flights && filteredFlightDelays.length > 0) {
       layers.push(this.createFlightDelaysLayer(filteredFlightDelays));
+    }
+
+    // Civil transport sublayers:
+    // - Air Transport: ADS-B flights (transport)
+    // - Maritime Transport: AIS vessels (ais)
+    if (mapLayers.ais && filteredTransportVessels.length > 0) {
+      layers.push(this.createTransportVesselsLayer(filteredTransportVessels));
+    }
+    if (mapLayers.transport && filteredTransportFlights.length > 0) {
+      layers.push(this.createTransportFlightsLayer(filteredTransportFlights));
     }
 
     // Protests layer (Supercluster-based deck.gl layers)
@@ -1550,6 +1571,42 @@ export class DeckGLMap {
       },
       radiusMinPixels: 4,
       radiusMaxPixels: 15,
+      pickable: true,
+    });
+  }
+
+  private createTransportFlightsLayer(flights: CivilFlight[]): IconLayer<CivilFlight> {
+    return new IconLayer<CivilFlight>({
+      id: 'transport-flights-layer',
+      data: flights,
+      getPosition: (d) => [d.position.longitude, d.position.latitude],
+      getIcon: () => 'plane',
+      iconAtlas: MARKER_ICONS.plane,
+      iconMapping: TRANSPORT_FLIGHT_ICON_MAPPING,
+      getSize: 14,
+      getAngle: (d) => (typeof d.heading === 'number' ? d.heading : 0),
+      getColor: [255, 210, 130, 245] as [number, number, number, number],
+      sizeScale: 1,
+      sizeMinPixels: 9,
+      sizeMaxPixels: 20,
+      pickable: true,
+    });
+  }
+
+  private createTransportVesselsLayer(vessels: CivilVessel[]): IconLayer<CivilVessel> {
+    return new IconLayer<CivilVessel>({
+      id: 'transport-vessels-layer',
+      data: vessels,
+      getPosition: (d) => [d.position.longitude, d.position.latitude],
+      getIcon: () => 'ship',
+      iconAtlas: MARKER_ICONS.ship,
+      iconMapping: TRANSPORT_VESSEL_ICON_MAPPING,
+      getSize: 15,
+      getAngle: (d) => (typeof d.heading === 'number' ? d.heading : 0),
+      getColor: [102, 210, 255, 250] as [number, number, number, number],
+      sizeScale: 1,
+      sizeMinPixels: 10,
+      sizeMaxPixels: 22,
       pickable: true,
     });
   }
@@ -2777,6 +2834,10 @@ export class DeckGLMap {
       }
       case 'flight-delays-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)} (${text(obj.iata)})</strong><br/>${text(obj.severity)}: ${text(obj.reason)}</div>` };
+      case 'transport-flights-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>✈ ${text(obj.callsign || obj.id || 'Flight')}</strong><br/>ADS-B · ${text(obj.provider || 'unknown')}</div>` };
+      case 'transport-vessels-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>🚢 ${text(obj.name || obj.mmsi || obj.id || 'Vessel')}</strong><br/>AIS · ${text(obj.provider || 'unknown')}</div>` };
       case 'apt-groups-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.aka)}<br/>${t('popups.sponsor')}: ${text(obj.sponsor)}</div>` };
       case 'minerals-layer':
@@ -3236,7 +3297,7 @@ export class DeckGLMap {
         { key: 'pipelines', label: t('components.deckgl.layers.pipelines'), icon: '&#128738;' },
         { key: 'datacenters', label: t('components.deckgl.layers.aiDataCenters'), icon: '&#128421;' },
         { key: 'military', label: t('components.deckgl.layers.militaryActivity'), icon: '&#9992;' },
-        { key: 'ais', label: t('components.deckgl.layers.shipTraffic'), icon: '&#128674;' },
+        { key: '__globalTransport', label: 'Global Logistics', icon: '&#128666;' },
         { key: 'tradeRoutes', label: t('components.deckgl.layers.tradeRoutes'), icon: '&#9875;' },
         { key: 'flights', label: t('components.deckgl.layers.flightDelays'), icon: '&#9992;' },
         { key: 'protests', label: t('components.deckgl.layers.protests'), icon: '&#128226;' },
@@ -3255,6 +3316,41 @@ export class DeckGLMap {
         { key: 'dayNight', label: t('components.deckgl.layers.dayNight'), icon: '&#127763;' },
       ];
 
+    const transportChildren: (keyof MapLayers)[] = ['transport', 'ais'];
+    const transportAllOn = transportChildren.every((k) => this.state.layers[k]);
+    const transportAnyOn = transportChildren.some((k) => this.state.layers[k]);
+    const layerListHtml = layerConfig.map(({ key, label, icon }) => {
+      if (key === '__globalTransport') {
+        return `
+          <div class="layer-group transport-group" data-layer-group="global-transport">
+            <label class="layer-toggle layer-parent-toggle" data-layer-parent="global-transport">
+              <input type="checkbox" ${transportAllOn ? 'checked' : ''} ${!transportAllOn && transportAnyOn ? 'data-indeterminate="true"' : ''}>
+              <span class="toggle-icon">${icon}</span>
+              <span class="toggle-label">${label}</span>
+            </label>
+            <label class="layer-toggle layer-subtoggle" data-layer="transport">
+              <input type="checkbox" ${this.state.layers.transport ? 'checked' : ''}>
+              <span class="toggle-icon">&#9992;</span>
+              <span class="toggle-label">Air Transport</span>
+            </label>
+            <label class="layer-toggle layer-subtoggle" data-layer="ais">
+              <input type="checkbox" ${this.state.layers.ais ? 'checked' : ''}>
+              <span class="toggle-icon">&#128674;</span>
+              <span class="toggle-label">Maritime Transport</span>
+            </label>
+          </div>
+        `;
+      }
+
+      return `
+        <label class="layer-toggle" data-layer="${key}">
+          <input type="checkbox" ${this.state.layers[key as keyof MapLayers] ? 'checked' : ''}>
+          <span class="toggle-icon">${icon}</span>
+          <span class="toggle-label">${label}</span>
+        </label>
+      `;
+    }).join('');
+
     toggles.innerHTML = `
       <div class="toggle-header">
         <span>${t('components.deckgl.layersTitle')}</span>
@@ -3262,26 +3358,47 @@ export class DeckGLMap {
         <button class="toggle-collapse">&#9660;</button>
       </div>
       <div class="toggle-list" style="max-height: 32vh; overflow-y: auto; scrollbar-width: thin;">
-        ${layerConfig.map(({ key, label, icon }) => `
-          <label class="layer-toggle" data-layer="${key}">
-            <input type="checkbox" ${this.state.layers[key as keyof MapLayers] ? 'checked' : ''}>
-            <span class="toggle-icon">${icon}</span>
-            <span class="toggle-label">${label}</span>
-          </label>
-        `).join('')}
+        ${layerListHtml}
       </div>
     `;
 
     this.container.appendChild(toggles);
 
+    const setTransportParentState = () => {
+      const parentInput = toggles.querySelector('.layer-parent-toggle input') as HTMLInputElement | null;
+      if (!parentInput) return;
+      const allOn = transportChildren.every((k) => this.state.layers[k]);
+      const anyOn = transportChildren.some((k) => this.state.layers[k]);
+      parentInput.checked = allOn;
+      parentInput.indeterminate = !allOn && anyOn;
+    };
+    setTransportParentState();
+
     // Bind toggle events
     toggles.querySelectorAll('.layer-toggle input').forEach(input => {
       input.addEventListener('change', () => {
-        const layer = (input as HTMLInputElement).closest('.layer-toggle')?.getAttribute('data-layer') as keyof MapLayers;
-        if (layer) {
-          this.state.layers[layer] = (input as HTMLInputElement).checked;
+        const toggle = (input as HTMLInputElement).closest('.layer-toggle');
+        const parentGroup = toggle?.getAttribute('data-layer-parent');
+        if (parentGroup === 'global-transport') {
+          const next = (input as HTMLInputElement).checked;
+          for (const child of transportChildren) {
+            this.state.layers[child] = next;
+            this.onLayerChange?.(child, next, 'user');
+            const childInput = toggles.querySelector(`.layer-subtoggle[data-layer="${child}"] input`) as HTMLInputElement | null;
+            if (childInput) childInput.checked = next;
+          }
           this.render();
-          this.onLayerChange?.(layer, (input as HTMLInputElement).checked, 'user');
+          setTransportParentState();
+          return;
+        }
+
+        const layer = toggle?.getAttribute('data-layer') as keyof MapLayers | null;
+        if (layer) {
+          const next = (input as HTMLInputElement).checked;
+          this.state.layers[layer] = next;
+          this.render();
+          this.onLayerChange?.(layer, next, 'user');
+          if (layer === 'transport' || layer === 'ais') setTransportParentState();
         }
       });
     });
@@ -3921,6 +4038,12 @@ export class DeckGLMap {
   public setMilitaryVessels(vessels: MilitaryVessel[], clusters: MilitaryVesselCluster[] = []): void {
     this.militaryVessels = vessels;
     this.militaryVesselClusters = clusters;
+    this.render();
+  }
+
+  public setTransportData(flights: CivilFlight[], vessels: CivilVessel[]): void {
+    this.transportFlights = flights;
+    this.transportVessels = vessels;
     this.render();
   }
 

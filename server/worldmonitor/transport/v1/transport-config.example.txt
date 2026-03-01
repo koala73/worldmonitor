@@ -1,0 +1,26 @@
+# Local transport source config (do not commit your real file)
+# Copy to: server/worldmonitor/transport/private/transport.local.txt
+
+# ─────────────────────────────────────────────────────────────
+# ADS-B SOURCES
+# Use one or both: opensky, fr24
+# ─────────────────────────────────────────────────────────────
+adsb_source="opensky,fr24"
+
+# OpenSky (recommended primary source)
+opensky_client_id=""
+opensky_client_secret=""
+
+# FR24 (supplemental source)
+adsb_apikey=""
+adsb_base_url="https://fr24api.flightradar24.com/api/live/flight-positions/full"
+
+# ─────────────────────────────────────────────────────────────
+# AIS SOURCES
+# Use: aisstream
+# ─────────────────────────────────────────────────────────────
+ais_source="aisstream"
+ais_key=""
+
+# Local relay URL (default)
+relay_url="ws://localhost:3004"

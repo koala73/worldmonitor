@@ -2,6 +2,7 @@ import { defineConfig, type Plugin } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import { resolve, dirname, extname } from 'path';
 import { mkdir, readFile, writeFile } from 'fs/promises';
+import { existsSync, readFileSync } from 'fs';
 import { brotliCompress } from 'zlib';
 import { promisify } from 'util';
 import pkg from './package.json';
@@ -145,6 +146,76 @@ const VARIANT_META: Record<string, {
 
 const activeVariant = process.env.VITE_VARIANT || 'full';
 const activeMeta = VARIANT_META[activeVariant] || VARIANT_META.full;
+
+function parseTransportList(raw: string): Set<string> {
+  return new Set(
+    raw
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean)
+  );
+}
+
+function parseLocalTransportConfig(text: string): Record<string, string> {
+  const parsed: Record<string, string> = {};
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eq = trimmed.indexOf('=');
+    if (eq < 0) continue;
+    const key = trimmed.slice(0, eq).trim().toLowerCase();
+    let value = trimmed.slice(eq + 1).trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    parsed[key] = value.trim();
+  }
+  return parsed;
+}
+
+function applyTransportLocalConfig(): void {
+  const configPath = resolve(process.cwd(), 'server/worldmonitor/transport/private/transport.local.txt');
+  if (!existsSync(configPath)) return;
+
+  try {
+    const raw = readFileSync(configPath, 'utf8');
+    const cfg = parseLocalTransportConfig(raw);
+    const adsbSources = parseTransportList(cfg['adsb_source'] || 'opensky');
+    const aisSources = parseTransportList(cfg['ais_source'] || 'aisstream');
+
+    process.env.ENABLE_OPENSKY_ADSB = adsbSources.has('opensky') ? 'true' : 'false';
+    process.env.ENABLE_FR24 = adsbSources.has('fr24') ? 'true' : 'false';
+    if (typeof cfg['adsb_apikey'] === 'string') {
+      process.env.FR24_API_KEY = cfg['adsb_apikey'];
+    }
+    if (typeof cfg['adsb_base_url'] === 'string') {
+      process.env.FR24_API_BASE_URL = cfg['adsb_base_url'];
+    }
+    if (typeof cfg['opensky_client_id'] === 'string') {
+      process.env.OPENSKY_CLIENT_ID = cfg['opensky_client_id'];
+    }
+    if (typeof cfg['opensky_client_secret'] === 'string') {
+      process.env.OPENSKY_CLIENT_SECRET = cfg['opensky_client_secret'];
+    }
+
+    process.env.ENABLE_AISSTREAM_AIS = aisSources.has('aisstream') ? 'true' : 'false';
+    process.env.ENABLE_MARINETRAFFIC = aisSources.has('marinetraffic') ? 'true' : 'false';
+    process.env.ENABLE_VESSELFINDER_AIS = aisSources.has('vesselfinder') ? 'true' : 'false';
+    if (typeof cfg['ais_key'] === 'string') {
+      process.env.AISSTREAM_API_KEY = cfg['ais_key'];
+    }
+
+    const relayUrl = (cfg['relay_url'] || '').trim();
+    if (relayUrl) {
+      process.env.WS_RELAY_URL = relayUrl;
+      process.env.VITE_WS_RELAY_URL = relayUrl;
+    }
+  } catch (error) {
+    console.warn('[transport-local-config] Failed to parse transport.local.txt:', error);
+  }
+}
+
+applyTransportLocalConfig();
 
 function htmlVariantPlugin(): Plugin {
   return {
@@ -664,6 +735,46 @@ function youtubeLivePlugin(): Plugin {
   };
 }
 
+function transportApiPlugin(): Plugin {
+  return {
+    name: 'transport-api-dev',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        if (!req.url) return next();
+        const isFlights = req.url.startsWith('/api/transport/flights');
+        const isVessels = req.url.startsWith('/api/transport/vessels');
+        if (!isFlights && !isVessels) return next();
+
+        try {
+          const mod = isFlights
+            ? await import('./api/transport/flights.js')
+            : await import('./api/transport/vessels.js');
+          const handler = mod.default as (request: Request) => Promise<Response>;
+          const port = server.config.server.port || 3000;
+          const requestUrl = new URL(req.url, `http://localhost:${port}`);
+          const webReq = new Request(requestUrl.toString(), {
+            method: req.method || 'GET',
+            headers: Object.fromEntries(
+              Object.entries(req.headers).map(([k, v]) => [k, Array.isArray(v) ? v.join(', ') : String(v)])
+            ),
+          });
+
+          const response = await handler(webReq);
+          res.statusCode = response.status;
+          response.headers.forEach((value, key) => res.setHeader(key, value));
+          res.end(await response.text());
+        } catch (error) {
+          console.error('[transport-api-dev] Error:', error);
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: 'Transport dev route failed' }));
+        }
+      });
+    },
+  };
+}
+
 export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
@@ -671,6 +782,7 @@ export default defineConfig({
   plugins: [
     htmlVariantPlugin(),
     polymarketPlugin(),
+    transportApiPlugin(),
     rssProxyPlugin(),
     youtubeLivePlugin(),
     sebufApiPlugin(),

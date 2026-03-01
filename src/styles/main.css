@@ -12240,6 +12240,17 @@ a.prediction-link:hover {
   color: var(--green);
 }
 
+.deckgl-layer-toggles .layer-group.transport-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.deckgl-layer-toggles .layer-subtoggle {
+  margin-left: 18px;
+  opacity: 0.95;
+}
+
 .deckgl-layer-toggles .layer-toggle.has-data {
   border-color: rgba(68, 255, 136, 0.2);
 }

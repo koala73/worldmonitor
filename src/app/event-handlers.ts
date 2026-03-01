@@ -580,6 +580,8 @@ export class EventHandlerManager implements AppModule {
           this.ctx.map?.setLayerLoading('ais', true);
           initAisStream();
           this.callbacks.waitForAisData();
+          // Also refresh civil maritime transport data (AIS vessels) immediately.
+          void this.callbacks.loadDataForLayer('transport');
         } else {
           disconnectAisStream();
         }

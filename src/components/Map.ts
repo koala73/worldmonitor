@@ -10,6 +10,7 @@ import type { Earthquake } from '@/services/earthquakes';
 import type { IranEvent } from '@/services/conflict';
 import type { TechHubActivity } from '@/services/tech-activity';
 import type { GeoHubActivity } from '@/services/geo-activity';
+import type { CivilFlight, CivilVessel } from '@/services/transport';
 import { getNaturalEventIcon } from '@/services/eonet';
 import type { WeatherAlert } from '@/services/weather';
 import { getSeverityColor } from '@/services/weather';
@@ -132,6 +133,8 @@ export class MapComponent {
   private militaryFlightClusters: MilitaryFlightCluster[] = [];
   private militaryVessels: MilitaryVessel[] = [];
   private militaryVesselClusters: MilitaryVesselCluster[] = [];
+  private transportFlights: CivilFlight[] = [];
+  private transportVessels: CivilVessel[] = [];
   private naturalEvents: NaturalEvent[] = [];
   private firmsFireData: Array<{ lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string }> = [];
   private techEvents: TechEventMarker[] = [];
@@ -342,7 +345,7 @@ export class MapComponent {
       'military',                                         // military tracking (flights + vessels)
       'cables', 'pipelines', 'outages', 'datacenters',   // infrastructure
       // cyberThreats is intentionally hidden on SVG/mobile fallback (DeckGL desktop only)
-      'ais', 'flights', 'gpsJamming',                      // transport/interference
+      'ais', 'flights', 'transport', 'gpsJamming',        // transport/interference
       'natural', 'weather',                               // natural
       'economic',                                         // economic
       'waterways',                                        // labels
@@ -376,6 +379,7 @@ export class MapComponent {
       datacenters: 'components.deckgl.layers.aiDataCenters',
       ais: 'components.deckgl.layers.shipTraffic',
       flights: 'components.deckgl.layers.flightDelays',
+      transport: 'components.deckgl.layers.transport',
       natural: 'components.deckgl.layers.naturalEvents',
       weather: 'components.deckgl.layers.weatherAlerts',
       economic: 'components.deckgl.layers.economicCenters',
@@ -2423,6 +2427,70 @@ export class MapComponent {
       });
     }
 
+    // Civil transport (SVG/mobile fallback)
+    // Air sublayer
+    if (this.state.layers.transport) {
+      const maxFlights = this.state.zoom >= 4 ? 1500 : 900;
+      const flightStep = Math.max(1, Math.ceil(this.transportFlights.length / maxFlights));
+
+      for (let i = 0; i < this.transportFlights.length; i += flightStep) {
+        const flight = this.transportFlights[i];
+        if (!flight) continue;
+        const pos = projection([flight.position.longitude, flight.position.latitude]);
+        if (!pos) continue;
+
+        const div = document.createElement('div');
+        div.className = 'transport-flight-marker';
+        div.style.position = 'absolute';
+        div.style.left = `${pos[0]}px`;
+        div.style.top = `${pos[1]}px`;
+        div.style.transform = 'translate(-50%, -50%)';
+        div.style.pointerEvents = 'none';
+        div.title = `✈ ${flight.callsign} · ${flight.provider}`;
+
+        const icon = document.createElement('div');
+        icon.textContent = '✈';
+        icon.style.color = '#ffd078';
+        icon.style.fontSize = this.state.zoom >= 4 ? '13px' : '11px';
+        icon.style.textShadow = '0 0 3px rgba(0,0,0,.7)';
+        icon.style.transform = `rotate(${typeof flight.heading === 'number' ? flight.heading : 0}deg)`;
+        div.appendChild(icon);
+
+        this.overlays.appendChild(div);
+      }
+    }
+
+    // Maritime sublayer
+    if (this.state.layers.ais) {
+      const maxVessels = this.state.zoom >= 4 ? 1200 : 700;
+      const vesselStep = Math.max(1, Math.ceil(this.transportVessels.length / maxVessels));
+      for (let i = 0; i < this.transportVessels.length; i += vesselStep) {
+        const vessel = this.transportVessels[i];
+        if (!vessel) continue;
+        const pos = projection([vessel.position.longitude, vessel.position.latitude]);
+        if (!pos) continue;
+
+        const div = document.createElement('div');
+        div.className = 'transport-vessel-marker';
+        div.style.position = 'absolute';
+        div.style.left = `${pos[0]}px`;
+        div.style.top = `${pos[1]}px`;
+        div.style.transform = 'translate(-50%, -50%)';
+        div.style.pointerEvents = 'none';
+        div.title = `🚢 ${vessel.name} · ${vessel.provider}`;
+
+        const icon = document.createElement('div');
+        icon.textContent = '🚢';
+        icon.style.color = '#60c8ff';
+        icon.style.fontSize = this.state.zoom >= 4 ? '13px' : '11px';
+        icon.style.textShadow = '0 0 3px rgba(0,0,0,.7)';
+        icon.style.transform = `rotate(${typeof vessel.heading === 'number' ? vessel.heading : 0}deg)`;
+        div.appendChild(icon);
+
+        this.overlays.appendChild(div);
+      }
+    }
+
     // Military Tracking (flights and vessels)
     if (this.state.layers.military) {
       // Render individual flights
@@ -3003,7 +3071,7 @@ export class MapComponent {
   }
 
   private static readonly ASYNC_DATA_LAYERS: Set<keyof MapLayers> = new Set([
-    'natural', 'weather', 'outages', 'ais', 'protests', 'flights', 'military', 'techEvents',
+    'natural', 'weather', 'outages', 'ais', 'protests', 'flights', 'transport', 'military', 'techEvents',
   ]);
 
   public toggleLayer(layer: keyof MapLayers, source: 'user' | 'programmatic' = 'user'): void {
@@ -3583,6 +3651,12 @@ export class MapComponent {
   public setMilitaryVessels(vessels: MilitaryVessel[], clusters: MilitaryVesselCluster[] = []): void {
     this.militaryVessels = vessels;
     this.militaryVesselClusters = clusters;
+    this.render();
+  }
+
+  public setTransportData(flights: CivilFlight[], vessels: CivilVessel[]): void {
+    this.transportFlights = flights;
+    this.transportVessels = vessels;
     this.render();
   }
 

@@ -56,6 +56,8 @@ import {
   fetchShippingRates,
   fetchChokepointStatus,
   fetchCriticalMinerals,
+  fetchTransportFlights,
+  fetchTransportVessels,
 } from '@/services';
 import { checkBatchForBreakingAlerts, dispatchOrefBreakingAlert } from '@/services/breaking-news-alerts';
 import { mlWorker } from '@/services/ml-worker';
@@ -351,6 +353,9 @@ export class DataLoaderManager implements AppModule {
     if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.cables) tasks.push({ name: 'cables', task: runGuarded('cables', () => this.loadCableActivity()) });
     if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.cables) tasks.push({ name: 'cableHealth', task: runGuarded('cableHealth', () => this.loadCableHealth()) });
     if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.flights) tasks.push({ name: 'flights', task: runGuarded('flights', () => this.loadFlightDelays()) });
+    if (SITE_VARIANT !== 'happy' && (this.ctx.mapLayers.transport || this.ctx.mapLayers.ais)) {
+      tasks.push({ name: 'transport', task: runGuarded('transport', () => this.loadTransport()) });
+    }
     if (SITE_VARIANT !== 'happy' && CYBER_LAYER_ENABLED && this.ctx.mapLayers.cyberThreats) tasks.push({ name: 'cyberThreats', task: runGuarded('cyberThreats', () => this.loadCyberThreats()) });
     if (SITE_VARIANT !== 'happy') tasks.push({ name: 'iranAttacks', task: runGuarded('iranAttacks', () => this.loadIranEvents()) });
     if (SITE_VARIANT !== 'happy' && (this.ctx.mapLayers.techEvents || SITE_VARIANT === 'tech')) tasks.push({ name: 'techEvents', task: runGuarded('techEvents', () => this.loadTechEvents()) });
@@ -392,7 +397,7 @@ export class DataLoaderManager implements AppModule {
           await this.loadCyberThreats();
           break;
         case 'ais':
-          await this.loadAisSignals();
+          await Promise.all([this.loadAisSignals(), this.loadTransport()]);
           break;
         case 'cables':
           await Promise.all([this.loadCableActivity(), this.loadCableHealth()]);
@@ -402,6 +407,9 @@ export class DataLoaderManager implements AppModule {
           break;
         case 'flights':
           await this.loadFlightDelays();
+          break;
+        case 'transport':
+          await this.loadTransport();
           break;
         case 'military':
           await this.loadMilitary();
@@ -1635,6 +1643,57 @@ export class DataLoaderManager implements AppModule {
       this.ctx.map?.setLayerReady('flights', false);
       this.ctx.statusPanel?.updateFeed('Flights', { status: 'error', errorMessage: String(error) });
       this.ctx.statusPanel?.updateApi('FAA', { status: 'error' });
+    }
+  }
+
+  async loadTransport(): Promise<void> {
+    try {
+      // Default to near-global bounds to keep provider integration simple.
+      const bounds = { neLat: 85, neLon: 180, swLat: -85, swLon: -180 };
+      const [flightResult, vesselResult] = await Promise.all([
+        fetchTransportFlights(bounds),
+        fetchTransportVessels(),
+      ]);
+      const flights = flightResult.flights;
+      const vessels = vesselResult.vessels;
+
+      this.ctx.map?.setTransportData(flights, vessels);
+      const hasData = flights.length > 0 || vessels.length > 0;
+      this.ctx.map?.setLayerReady('transport', hasData);
+
+      const warnings: string[] = [];
+      const flightStatus = flightResult.providerStatus;
+      const vesselStatus = vesselResult.providerStatus;
+
+      const fr24Configured = flightStatus?.fr24?.configured === true;
+      const openskyEnabled = flightStatus?.opensky?.enabled === true;
+      const openskyAuthConfigured = flightStatus?.opensky?.authConfigured === true;
+      if (!fr24Configured && !openskyAuthConfigured && openskyEnabled) {
+        warnings.push('OpenSky auth or FR24 key not configured');
+      }
+
+      const aisEnabled = vesselStatus?.aisstream?.enabled === true;
+      const aisConfigured = vesselStatus?.aisstream?.configured === true;
+      const relayConfigured = vesselStatus?.aisstream?.relayConfigured === true;
+      const relayReachable = vesselStatus?.aisstream?.relayReachable !== false;
+      if (aisEnabled && !aisConfigured) {
+        warnings.push('AISStream API key missing');
+      } else if (aisEnabled && relayConfigured && !relayReachable) {
+        warnings.push('AIS relay unreachable (check ws://localhost:3004)');
+      }
+
+      const errorMessage = hasData
+        ? (warnings.length > 0 ? warnings.join(' | ') : undefined)
+        : (warnings.length > 0 ? warnings.join(' | ') : 'No transport positions available');
+
+      this.ctx.statusPanel?.updateFeed('Transport', {
+        status: hasData ? (warnings.length > 0 ? 'warning' : 'ok') : 'warning',
+        itemCount: flights.length + vessels.length,
+        errorMessage,
+      });
+    } catch (error) {
+      this.ctx.map?.setLayerReady('transport', false);
+      this.ctx.statusPanel?.updateFeed('Transport', { status: 'error', errorMessage: String(error) });
     }
   }
 

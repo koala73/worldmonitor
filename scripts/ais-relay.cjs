@@ -18,18 +18,85 @@ const crypto = require('crypto');
 const v8 = require('v8');
 const { WebSocketServer, WebSocket } = require('ws');
 
+function parseTransportList(raw) {
+  return new Set(
+    String(raw || '')
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean)
+  );
+}
+
+function parseLocalTransportConfig(content) {
+  const result = {};
+  for (const line of String(content || '').split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const idx = trimmed.indexOf('=');
+    if (idx < 0) continue;
+    const key = trimmed.slice(0, idx).trim().toLowerCase();
+    let value = trimmed.slice(idx + 1).trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    result[key] = value.trim();
+  }
+  return result;
+}
+
+function applyTransportLocalConfig() {
+  try {
+    const cfgPath = path.resolve(__dirname, '../server/worldmonitor/transport/private/transport.local.txt');
+    const fs = require('fs');
+    if (!fs.existsSync(cfgPath)) return;
+
+    const cfg = parseLocalTransportConfig(fs.readFileSync(cfgPath, 'utf8'));
+    const adsbSources = parseTransportList(cfg.adsb_source || 'opensky');
+    const aisSources = parseTransportList(cfg.ais_source || 'aisstream');
+
+    process.env.ENABLE_OPENSKY_ADSB = adsbSources.has('opensky') ? 'true' : 'false';
+    process.env.ENABLE_FR24 = adsbSources.has('fr24') ? 'true' : 'false';
+    if (typeof cfg.adsb_apikey === 'string') process.env.FR24_API_KEY = cfg.adsb_apikey;
+    if (typeof cfg.opensky_client_id === 'string') process.env.OPENSKY_CLIENT_ID = cfg.opensky_client_id;
+    if (typeof cfg.opensky_client_secret === 'string') process.env.OPENSKY_CLIENT_SECRET = cfg.opensky_client_secret;
+
+    process.env.ENABLE_AISSTREAM_AIS = aisSources.has('aisstream') ? 'true' : 'false';
+    process.env.ENABLE_MARINETRAFFIC = aisSources.has('marinetraffic') ? 'true' : 'false';
+    process.env.ENABLE_VESSELFINDER_AIS = aisSources.has('vesselfinder') ? 'true' : 'false';
+    if (typeof cfg.ais_key === 'string') process.env.AISSTREAM_API_KEY = cfg.ais_key;
+
+    const relayUrl = String(cfg.relay_url || '').trim();
+    if (relayUrl) {
+      process.env.WS_RELAY_URL = relayUrl;
+      process.env.VITE_WS_RELAY_URL = relayUrl;
+    }
+  } catch (error) {
+    console.warn('[Relay] transport.local.txt parse failed:', error?.message || error);
+  }
+}
+
+applyTransportLocalConfig();
+
 // Log effective heap limit at startup (verifies NODE_OPTIONS=--max-old-space-size is active)
 const _heapStats = v8.getHeapStatistics();
 console.log(`[Relay] Heap limit: ${(_heapStats.heap_size_limit / 1024 / 1024).toFixed(0)}MB`);
 
 const AISSTREAM_URL = 'wss://stream.aisstream.io/v0/stream';
-const API_KEY = process.env.AISSTREAM_API_KEY || process.env.VITE_AISSTREAM_API_KEY;
+const AISSTREAM_API_KEY = process.env.AISSTREAM_API_KEY || process.env.VITE_AISSTREAM_API_KEY;
+const MARINETRAFFIC_API_KEY = process.env.MARINETRAFFIC_API_KEY || '';
+const MARINETRAFFIC_API_BASE_URL = process.env.MARINETRAFFIC_API_BASE_URL || '';
+const MARINETRAFFIC_ENABLED = (process.env.ENABLE_MARINETRAFFIC || 'true').toLowerCase() !== 'false'
+  && !!MARINETRAFFIC_API_KEY
+  && !!MARINETRAFFIC_API_BASE_URL;
 const PORT = process.env.PORT || 3004;
 
-if (!API_KEY) {
-  console.error('[Relay] Error: AISSTREAM_API_KEY environment variable not set');
-  console.error('[Relay] Get a free key at https://aisstream.io');
+if (!AISSTREAM_API_KEY && !MARINETRAFFIC_ENABLED) {
+  console.error('[Relay] Error: no vessel data provider configured');
+  console.error('[Relay] Set AISSTREAM_API_KEY and/or MARINETRAFFIC_API_KEY + MARINETRAFFIC_API_BASE_URL');
   process.exit(1);
+}
+if (!AISSTREAM_API_KEY && MARINETRAFFIC_ENABLED) {
+  console.log('[Relay] AISStream disabled (no AISSTREAM_API_KEY), running MarineTraffic-only ingest');
 }
 
 const MAX_WS_CLIENTS = 10; // Cap WS clients — app uses HTTP snapshots, not WS
@@ -838,6 +905,7 @@ const GRID_SIZE = 2;
 const DENSITY_WINDOW = 30 * 60 * 1000; // 30 minutes
 const GAP_THRESHOLD = 60 * 60 * 1000; // 1 hour
 const SNAPSHOT_INTERVAL_MS = Math.max(2000, Number(process.env.AIS_SNAPSHOT_INTERVAL_MS || 5000));
+const MARINETRAFFIC_POLL_INTERVAL_MS = Math.max(30_000, Number(process.env.MARINETRAFFIC_POLL_INTERVAL_MS || 120_000));
 const CANDIDATE_RETENTION_MS = 2 * 60 * 60 * 1000; // 2 hours
 const MAX_DENSITY_ZONES = 200;
 const MAX_CANDIDATE_REPORTS = 1500;
@@ -850,6 +918,8 @@ const candidateReports = new Map();
 let snapshotSequence = 0;
 let lastSnapshot = null;
 let lastSnapshotAt = 0;
+let marineTrafficConnected = false;
+let marineTrafficLastPollAt = 0;
 // Pre-serialized cache: avoids JSON.stringify + gzip per request
 let lastSnapshotJson = null;       // cached JSON string (no candidates)
 let lastSnapshotGzip = null;       // cached gzip buffer (no candidates)
@@ -897,6 +967,161 @@ function isLikelyMilitaryCandidate(meta) {
   }
 
   return false;
+}
+
+function toFiniteNumber(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function parseObservedAtMs(value) {
+  const numeric = toFiniteNumber(value);
+  if (numeric && numeric > 0) {
+    return numeric > 1_000_000_000_000 ? numeric : numeric * 1000;
+  }
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return Date.now();
+}
+
+function upsertVesselForSnapshot(report) {
+  const mmsi = String(report?.mmsi || '');
+  if (!mmsi) return;
+
+  const lat = toFiniteNumber(report?.lat);
+  const lon = toFiniteNumber(report?.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+
+  const now = Number.isFinite(report?.timestamp) ? report.timestamp : Date.now();
+  const shipType = toFiniteNumber(report?.shipType);
+  const heading = toFiniteNumber(report?.heading);
+  const speed = toFiniteNumber(report?.speed);
+  const course = toFiniteNumber(report?.course);
+  const name = String(report?.name || '');
+
+  vessels.set(mmsi, {
+    mmsi,
+    name,
+    lat,
+    lon,
+    timestamp: now,
+    shipType: shipType ?? undefined,
+    heading: heading ?? undefined,
+    speed: speed ?? undefined,
+    course: course ?? undefined,
+  });
+
+  const history = vesselHistory.get(mmsi) || [];
+  history.push(now);
+  if (history.length > 10) history.shift();
+  vesselHistory.set(mmsi, history);
+
+  const gridKey = getGridKey(lat, lon);
+  let cell = densityGrid.get(gridKey);
+  if (!cell) {
+    cell = {
+      lat: Math.floor(lat / GRID_SIZE) * GRID_SIZE + GRID_SIZE / 2,
+      lon: Math.floor(lon / GRID_SIZE) * GRID_SIZE + GRID_SIZE / 2,
+      vessels: new Set(),
+      lastUpdate: now,
+      previousCount: 0,
+    };
+    densityGrid.set(gridKey, cell);
+  }
+  cell.vessels.add(mmsi);
+  cell.lastUpdate = now;
+
+  updateVesselChokepoints(mmsi, lat, lon);
+
+  if (isLikelyMilitaryCandidate({
+    MMSI: mmsi,
+    ShipType: shipType,
+    ShipName: name,
+  })) {
+    candidateReports.set(mmsi, {
+      mmsi,
+      name,
+      lat,
+      lon,
+      shipType: shipType ?? undefined,
+      heading: heading ?? undefined,
+      speed: speed ?? undefined,
+      course: course ?? undefined,
+      timestamp: now,
+    });
+  }
+}
+
+function normalizeMarineTrafficRows(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (!payload || typeof payload !== 'object') return [];
+  if (Array.isArray(payload.data)) return payload.data;
+  if (Array.isArray(payload.vessels)) return payload.vessels;
+  if (Array.isArray(payload.results)) return payload.results;
+  return [];
+}
+
+function mapMarineTrafficVessel(row) {
+  if (!row || typeof row !== 'object') return null;
+
+  const mmsi = String(row.MMSI ?? row.mmsi ?? '').trim();
+  const lat = toFiniteNumber(row.LAT ?? row.lat ?? row.latitude);
+  const lon = toFiniteNumber(row.LON ?? row.lon ?? row.longitude);
+  if (!mmsi || !Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+
+  return {
+    mmsi,
+    name: String(row.SHIPNAME ?? row.shipname ?? row.name ?? '').trim(),
+    lat,
+    lon,
+    shipType: toFiniteNumber(row.SHIPTYPE ?? row.shipType),
+    heading: toFiniteNumber(row.COURSE ?? row.heading),
+    speed: toFiniteNumber(row.SPEED ?? row.speed),
+    course: toFiniteNumber(row.COURSE ?? row.course),
+    timestamp: parseObservedAtMs(row.TIMESTAMP ?? row.timestamp ?? row.LAST_POS_TIME),
+  };
+}
+
+async function pollMarineTrafficSnapshot() {
+  if (!MARINETRAFFIC_ENABLED) return;
+
+  try {
+    const url = new URL(MARINETRAFFIC_API_BASE_URL);
+    if (!url.searchParams.has('api_key')) url.searchParams.set('api_key', MARINETRAFFIC_API_KEY);
+    if (!url.searchParams.has('protocol')) url.searchParams.set('protocol', 'jsono');
+
+    const resp = await fetch(url.toString(), {
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${MARINETRAFFIC_API_KEY}`,
+        'X-API-Key': MARINETRAFFIC_API_KEY,
+      },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!resp.ok) {
+      marineTrafficConnected = false;
+      return;
+    }
+
+    const payload = await resp.json();
+    const rows = normalizeMarineTrafficRows(payload);
+    for (const row of rows) {
+      const vessel = mapMarineTrafficVessel(row);
+      if (!vessel) continue;
+      upsertVesselForSnapshot(vessel);
+    }
+
+    marineTrafficConnected = true;
+    marineTrafficLastPollAt = Date.now();
+  } catch {
+    marineTrafficConnected = false;
+  }
 }
 
 function getUpstreamQueueSize() {
@@ -1028,56 +1253,17 @@ function processPositionReportForSnapshot(data) {
   const lon = Number.isFinite(pos.Longitude) ? pos.Longitude : meta.longitude;
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
 
-  const now = Date.now();
-
-  vessels.set(mmsi, {
+  upsertVesselForSnapshot({
     mmsi,
     name: meta.ShipName || '',
     lat,
     lon,
-    timestamp: now,
     shipType: meta.ShipType,
     heading: pos.TrueHeading,
     speed: pos.Sog,
     course: pos.Cog,
+    timestamp: Date.now(),
   });
-
-  const history = vesselHistory.get(mmsi) || [];
-  history.push(now);
-  if (history.length > 10) history.shift();
-  vesselHistory.set(mmsi, history);
-
-  const gridKey = getGridKey(lat, lon);
-  let cell = densityGrid.get(gridKey);
-  if (!cell) {
-    cell = {
-      lat: Math.floor(lat / GRID_SIZE) * GRID_SIZE + GRID_SIZE / 2,
-      lon: Math.floor(lon / GRID_SIZE) * GRID_SIZE + GRID_SIZE / 2,
-      vessels: new Set(),
-      lastUpdate: now,
-      previousCount: 0,
-    };
-    densityGrid.set(gridKey, cell);
-  }
-  cell.vessels.add(mmsi);
-  cell.lastUpdate = now;
-
-  // Maintain exact chokepoint membership so moving vessels don't get "stuck" in old buckets.
-  updateVesselChokepoints(mmsi, lat, lon);
-
-  if (isLikelyMilitaryCandidate(meta)) {
-    candidateReports.set(mmsi, {
-      mmsi,
-      name: meta.ShipName || '',
-      lat,
-      lon,
-      shipType: meta.ShipType,
-      heading: pos.TrueHeading,
-      speed: pos.Sog,
-      course: pos.Cog,
-      timestamp: now,
-    });
-  }
 }
 
 function cleanupAggregates() {
@@ -1260,6 +1446,23 @@ function getCandidateReportsSnapshot() {
     .slice(0, MAX_CANDIDATE_REPORTS);
 }
 
+function getVesselsSnapshot(limit = 6000) {
+  return Array.from(vessels.values())
+    .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+    .slice(0, limit)
+    .map((v) => ({
+      mmsi: v.mmsi,
+      name: v.name,
+      lat: v.lat,
+      lon: v.lon,
+      shipType: v.shipType,
+      heading: v.heading,
+      speed: v.speed,
+      course: v.course,
+      timestamp: v.timestamp,
+    }));
+}
+
 function buildSnapshot() {
   const now = Date.now();
   if (lastSnapshot && now - lastSnapshotAt < Math.floor(SNAPSHOT_INTERVAL_MS / 2)) {
@@ -1273,11 +1476,12 @@ function buildSnapshot() {
     sequence: snapshotSequence,
     timestamp: new Date(now).toISOString(),
     status: {
-      connected: upstreamSocket?.readyState === WebSocket.OPEN,
+      connected: upstreamSocket?.readyState === WebSocket.OPEN || marineTrafficConnected,
       vessels: vessels.size,
       messages: messageCount,
       clients: clients.size,
       droppedMessages,
+      marineTrafficLastPollAt,
     },
     disruptions: detectDisruptions(),
     density: calculateDensityZones(),
@@ -1307,6 +1511,13 @@ setInterval(() => {
     buildSnapshot();
   }
 }, SNAPSHOT_INTERVAL_MS);
+
+if (MARINETRAFFIC_ENABLED) {
+  pollMarineTrafficSnapshot().catch(() => {});
+  setInterval(() => {
+    pollMarineTrafficSnapshot().catch(() => {});
+  }, MARINETRAFFIC_POLL_INTERVAL_MS);
+}
 
 // UCDP GED Events cache (persistent in-memory — Railway advantage)
 const UCDP_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
@@ -2770,6 +2981,22 @@ const server = http.createServer(async (req, res) => {
     buildSnapshot(); // ensures cache is warm
     const url = new URL(req.url, `http://localhost:${PORT}`);
     const includeCandidates = url.searchParams.get('candidates') === 'true';
+    const includeVessels = url.searchParams.get('vessels') === 'true';
+
+    if (includeVessels) {
+      const payload = {
+        ...lastSnapshot,
+        candidateReports: includeCandidates ? getCandidateReportsSnapshot() : [],
+        vessels: getVesselsSnapshot(),
+      };
+      sendCompressed(req, res, 200, {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'public, max-age=2',
+        'CDN-Cache-Control': 'public, max-age=10',
+      }, JSON.stringify(payload));
+      return;
+    }
+
     const json = includeCandidates ? lastSnapshotWithCandJson : lastSnapshotJson;
     const gz = includeCandidates ? lastSnapshotWithCandGzip : lastSnapshotGzip;
 
@@ -3164,6 +3391,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 function connectUpstream() {
+  if (!AISSTREAM_API_KEY) return;
   // Skip if already connected or connecting
   if (upstreamSocket?.readyState === WebSocket.OPEN ||
       upstreamSocket?.readyState === WebSocket.CONNECTING) return;
@@ -3223,7 +3451,7 @@ function connectUpstream() {
     }
     console.log('[Relay] Connected to aisstream.io');
     socket.send(JSON.stringify({
-      APIKey: API_KEY,
+      APIKey: AISSTREAM_API_KEY,
       BoundingBoxes: [[[-90, -180], [90, 180]]],
       FilterMessageTypes: ['PositionReport'],
     }));
@@ -3269,6 +3497,8 @@ server.listen(PORT, () => {
   console.log(`[Relay] WebSocket relay on port ${PORT}`);
   startTelegramPollLoop();
   startOrefPollLoop();
+  // Keep HTTP snapshot consumers (transport API) populated even when no WS client is attached.
+  connectUpstream();
 });
 
 wss.on('connection', (ws, req) => {
