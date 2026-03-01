@@ -1,4 +1,6 @@
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
+import { validateApiKey } from './_api-key.js';
+import { checkRateLimit } from './_rate-limit.js';
 
 export const config = { runtime: 'edge' };
 
@@ -49,6 +51,17 @@ export default async function handler(req) {
     });
   }
 
+  const keyCheck = validateApiKey(req);
+  if (keyCheck.required && !keyCheck.valid) {
+    return new Response(JSON.stringify({ error: keyCheck.error }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders },
+    });
+  }
+
+  const rateLimitResponse = await checkRateLimit(req, corsHeaders);
+  if (rateLimitResponse) return rateLimitResponse;
+
   const relayBaseUrl = getRelayBaseUrl();
   if (!relayBaseUrl) {
     return new Response(JSON.stringify({ error: 'WS_RELAY_URL is not configured' }), {
@@ -65,9 +78,13 @@ export default async function handler(req) {
     }, 15000);
 
     const body = await response.text();
+    const isSuccess = response.status >= 200 && response.status < 300;
     const headers = {
       'Content-Type': response.headers.get('content-type') || 'application/json',
-      'Cache-Control': 'public, s-maxage=120, stale-while-revalidate=60',
+      'Cache-Control': isSuccess
+        ? 'public, max-age=120, s-maxage=300, stale-while-revalidate=900, stale-if-error=1800'
+        : 'public, max-age=10, s-maxage=30, stale-while-revalidate=120',
+      ...(isSuccess && { 'CDN-Cache-Control': 'public, s-maxage=300, stale-while-revalidate=900, stale-if-error=1800' }),
       ...corsHeaders,
     };
 

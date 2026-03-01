@@ -38,3 +38,5 @@ scripts/data/osm-military-processed.json
 scripts/data/military-bases-final.json
 scripts/data/dedup-dropped-pairs.json
 scripts/data/gpsjam-latest.json
+scripts/data/mirta-raw.geojson
+scripts/data/osm-military-raw.json

@@ -850,28 +850,6 @@ With Ollama or LM Studio configured, AI summarization runs entirely on local har
 
 The desktop readiness framework (`desktop-readiness.ts`) catalogs each feature's locality class — `fully-local` (no API required), `api-key` (degrades gracefully without keys), or `cloud-fallback` (proxy available) — enabling clear communication about what works offline.
 
-### Product Analytics
-
-World Monitor includes privacy-first product analytics via PostHog to understand usage patterns and improve the dashboard. The implementation enforces strict data safety at multiple levels:
-
-**Typed event allowlists** — every analytics event has a schema defining exactly which properties are permitted. Unlisted properties are silently dropped before transmission. This prevents accidental inclusion of sensitive data in analytics payloads, even if a developer passes extra fields.
-
-**API key stripping** — a `sanitize_properties` callback runs on every outgoing event. Any string value matching common API key prefixes (`sk-`, `gsk_`, `or-`, `Bearer `) is replaced with `[REDACTED]` before it leaves the browser. This is defense-in-depth: even if a key somehow ends up in an event payload, it never reaches the analytics backend.
-
-**No session recordings, no autocapture** — PostHog's session replay and automatic DOM event capture are explicitly disabled. Only explicitly instrumented events are tracked.
-
-**Pseudonymous identity** — each installation generates a random UUID stored in localStorage. There is no user login, no email collection, and no cross-device tracking. The UUID is purely pseudonymous — it enables session attribution without identifying individuals.
-
-**Ad-blocker bypass** — on the web, PostHog traffic is routed through a reverse proxy on the app's own domain (`/ingest`) rather than directly to PostHog's servers. This prevents ad blockers from silently dropping analytics requests, ensuring usage data is representative. Desktop builds use PostHog's direct endpoint since ad blockers aren't a factor in native apps.
-
-**Offline event queue** — the desktop app may launch without network connectivity. Events captured while offline are queued in localStorage (capped at 200 entries) and flushed to PostHog when connectivity is restored. A `window.online` listener triggers automatic flush on reconnection.
-
-**Super properties** — every event automatically carries platform context: variant (world/tech/finance), app version, platform (web/desktop), screen dimensions, viewport size, device pixel ratio, browser language, and desktop OS/arch. This enables segmentation without per-event instrumentation.
-
-30+ typed events cover core user interactions: app load timing, panel views, LLM summary generation (provider, model, cache status), API key configuration snapshots, map layer toggles, variant switches, country brief opens, theme changes, language changes, search usage, panel resizing, webcam selections, and auto-update interactions.
-
-Analytics is entirely opt-out by omitting the `VITE_POSTHOG_KEY` environment variable. When the key is absent, all analytics functions are no-ops with zero runtime overhead.
-
 ### Responsive Layout System
 
 The dashboard adapts to four screen categories without JavaScript layout computation — all breakpoints are CSS-only:

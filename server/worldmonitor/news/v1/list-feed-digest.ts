@@ -188,7 +188,7 @@ export async function listFeedDigest(
   const digestCacheKey = `news:digest:v1:${variant}:${lang}`;
 
   try {
-    const cached = await cachedFetchJson<ListFeedDigestResponse>(digestCacheKey, 300, async () => {
+    const cached = await cachedFetchJson<ListFeedDigestResponse>(digestCacheKey, 900, async () => {
       return buildDigest(variant, lang);
     });
     return cached ?? { categories: {}, feedStatuses: {}, generatedAt: new Date().toISOString() };

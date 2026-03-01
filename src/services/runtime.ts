@@ -1,4 +1,5 @@
 const WS_API_URL = import.meta.env.VITE_WS_API_URL || '';
+const KEYED_CLOUD_API_PATTERN = /^\/api\/(?:[^/]+\/v1\/|bootstrap(?:\?|$)|rss-proxy(?:\?|$)|polymarket(?:\?|$)|ais-snapshot(?:\?|$))/;
 
 const DEFAULT_REMOTE_HOSTS: Record<string, string> = {
   tech: WS_API_URL,
@@ -323,7 +324,7 @@ export function installRuntimeFetchPatch(): void {
       const cloudUrl = `${getRemoteApiBaseUrl()}${target}`;
       if (debug) console.log(`[fetch] cloud fallback → ${cloudUrl}`);
       const cloudHeaders = new Headers(init?.headers);
-      if (/^\/api\/[^/]+\/v1\//.test(target)) {
+      if (KEYED_CLOUD_API_PATTERN.test(target)) {
         const { getRuntimeConfigSnapshot } = await import('@/services/runtime-config');
         const wmKeyValue = getRuntimeConfigSnapshot().secrets['WORLDMONITOR_API_KEY']?.value;
         if (wmKeyValue) {
@@ -385,7 +386,12 @@ export function installRuntimeFetchPatch(): void {
   (window as unknown as Record<string, unknown>).__wmFetchPatched = true;
 }
 
-const WEB_RPC_PATTERN = /^\/api\/[^/]+\/v1\//;
+const WEB_REDIRECT_PATHS = [
+  /^\/api\/[^/]+\/v1\//,
+  /^\/api\/rss-proxy(?:\?|$)/,
+  /^\/api\/polymarket(?:\?|$)/,
+  /^\/api\/ais-snapshot(?:\?|$)/,
+];
 const ALLOWED_REDIRECT_HOSTS = /^https:\/\/([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)*worldmonitor\.app(:\d+)?$/;
 
 function isAllowedRedirectTarget(url: string): boolean {
@@ -408,18 +414,37 @@ export function installWebApiRedirect(): void {
 
   const nativeFetch = window.fetch.bind(window);
   const API_BASE = WS_API_URL;
+  const shouldRedirectPath = (pathWithQuery: string): boolean => WEB_REDIRECT_PATHS.some((pattern) => pattern.test(pathWithQuery));
+  const shouldFallbackToOrigin = (status: number): boolean => status === 404 || status === 405 || status === 501;
+  const fetchWithRedirectFallback = async (
+    redirectedInput: RequestInfo | URL,
+    originalInput: RequestInfo | URL,
+    originalInit?: RequestInit,
+  ): Promise<Response> => {
+    try {
+      const redirectedResponse = await nativeFetch(redirectedInput, originalInit);
+      if (!shouldFallbackToOrigin(redirectedResponse.status)) return redirectedResponse;
+      return nativeFetch(originalInput, originalInit);
+    } catch {
+      return nativeFetch(originalInput, originalInit);
+    }
+  };
 
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    if (typeof input === 'string' && WEB_RPC_PATTERN.test(input)) {
-      return nativeFetch(`${API_BASE}${input}`, init);
+    if (typeof input === 'string' && shouldRedirectPath(input)) {
+      return fetchWithRedirectFallback(`${API_BASE}${input}`, input, init);
     }
-    if (input instanceof URL && input.origin === window.location.origin && WEB_RPC_PATTERN.test(input.pathname)) {
-      return nativeFetch(new URL(`${API_BASE}${input.pathname}${input.search}`), init);
+    if (input instanceof URL && input.origin === window.location.origin && shouldRedirectPath(`${input.pathname}${input.search}`)) {
+      return fetchWithRedirectFallback(new URL(`${API_BASE}${input.pathname}${input.search}`), input, init);
     }
     if (input instanceof Request) {
       const u = new URL(input.url);
-      if (u.origin === window.location.origin && WEB_RPC_PATTERN.test(u.pathname)) {
-        return nativeFetch(new Request(`${API_BASE}${u.pathname}${u.search}`, input), init);
+      if (u.origin === window.location.origin && shouldRedirectPath(`${u.pathname}${u.search}`)) {
+        return fetchWithRedirectFallback(
+          new Request(`${API_BASE}${u.pathname}${u.search}`, input),
+          input.clone(),
+          init,
+        );
       }
     }
     return nativeFetch(input, init);
