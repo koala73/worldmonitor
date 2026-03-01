@@ -207,7 +207,6 @@ const DIRECT_HLS_MAP: Readonly<Record<string, string>> = {
 interface ProxiedHlsEntry { url: string; referer: string; }
 const PROXIED_HLS_MAP: Readonly<Record<string, ProxiedHlsEntry>> = {
   'cnbc': { url: 'https://cdn-ca2-na.lncnetworks.host/hls/cnbc_live/index.m3u8', referer: 'https://livenewschat.eu/' },
-  'cnn':  { url: 'https://cdn-ca2-na.lncnetworks.host/hls/cnn_live/index.m3u8',  referer: 'https://livenewschat.eu/' },
 };
 
 if (import.meta.env.DEV) {
