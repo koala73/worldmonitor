@@ -212,7 +212,11 @@
     "liveWebcams": "Live-Webcams",
     "securityAdvisories": "Sicherheitshinweise",
     "orefSirens": "Israel Sirens",
-    "telegramIntel": "Telegram-Nachrichten"
+    "telegramIntel": "Telegram-Nachrichten",
+    "gulfEconomies": "Golf-Ökonomien",
+    "gulfIndices": "Golf-Indizes",
+    "gulfCurrencies": "Golf-Währungen",
+    "gulfOil": "Golf-Öl"
   },
   "modals": {
     "search": {
@@ -520,7 +524,8 @@
         "europe": "EUROPA",
         "americas": "AMERIKA",
         "asia": "ASIEN"
-      }
+      },
+      "expand": "Erweitern"
     },
     "regulation": {
       "timeline": "Zeitleiste",
@@ -1077,7 +1082,8 @@
         "minutesAgo": "Vor {{count}}m",
         "hoursAgo": "Vor {{count}}h",
         "daysAgo": "Vor {{count}}d"
-      }
+      },
+      "hideFindings": "Erkenntnisse ausblenden"
     },
     "satelliteFires": {
       "noData": "Keine Branddaten verfügbar",
@@ -1293,7 +1299,13 @@
       "aiFlowStatusBrowserOnly": "Nur Browser-Modell",
       "aiFlowStatusDisabled": "Keine KI-Anbieter aktiviert",
       "insightsDisabledTitle": "KI-Analyse ist deaktiviert",
-      "insightsDisabledHint": "Enable providers via the settings gear in the map header"
+      "insightsDisabledHint": "Enable providers via the settings gear in the map header",
+      "sectionPanels": "Panels",
+      "badgeAnimLabel": "Badge-Animationen",
+      "badgeAnimDesc": "Update-Badges in Panel-Kopfzeilen animieren",
+      "sectionIntelligence": "Intelligence",
+      "headlineMemoryLabel": "Schlagzeilen-Speicher",
+      "headlineMemoryDesc": "Gesehene Schlagzeilen merken, um neue hervorzuheben"
     },
     "export": {
       "exportData": "Daten exportieren"

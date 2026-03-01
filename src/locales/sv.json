@@ -67,7 +67,11 @@
     "orefSirens": "Israel Sirens",
     "telegramIntel": "Telegram Underrättelser",
     "giving": "Global Givmildhet",
-    "supplyChain": "Försörjningskedja"
+    "supplyChain": "Försörjningskedja",
+    "gulfEconomies": "Gulfekonomierna",
+    "gulfIndices": "Gulfindex",
+    "gulfCurrencies": "Gulfvalutor",
+    "gulfOil": "Gulfolja"
   },
   "modals": {
     "search": {
@@ -375,7 +379,8 @@
         "europe": "EUROPA",
         "americas": "AMERIKA",
         "asia": "ASIEN"
-      }
+      },
+      "expand": "Expandera"
     },
     "playback": {
       "live": "LIVE",
@@ -810,7 +815,8 @@
         "daysAgo": "{{count}}d sedan"
       },
       "breakingAlerts": "Akuta larm",
-      "popupAlerts": "Visa nya larm i popup"
+      "popupAlerts": "Visa nya larm i popup",
+      "hideFindings": "Dölj fynd"
     },
     "economic": {
       "noIndicatorData": "Inga indikatordata ännu - FRED kanske laddar",
@@ -1043,7 +1049,13 @@
       "insightsDisabledHint": "Enable providers via the settings gear in the map header",
       "sectionStreaming": "Strömning",
       "streamQualityDesc": "Ställ in kvalitet för alla liveströmmar (lägre sparar bandbredd)",
-      "streamQualityLabel": "Videokvalitet"
+      "streamQualityLabel": "Videokvalitet",
+      "sectionPanels": "Paneler",
+      "badgeAnimLabel": "Emblemanimationer",
+      "badgeAnimDesc": "Animera uppdateringsemblem i panelrubriker",
+      "sectionIntelligence": "Underrättelser",
+      "headlineMemoryLabel": "Rubrikminne",
+      "headlineMemoryDesc": "Kom ihåg sedda rubriker för att markera nya"
     },
     "techHubs": {
       "infoTooltip": "<strong>Teknisk hubbaktivitet</strong><br>Visar tekniska nav med mest nyhetsaktivitet.<br><br><em>Aktivitetsnivåer:</em><br>• <span style=\"color: {{highColor}}\">Hög</span> — Nyheter från 50+ PH_• 50+ stil: {{elevatedColor}}\">Höjd</span> — Poäng 20-49<br>• <span style=\"color: {{lowColor}}\">Låg</span> — Poäng under 20<br><br>Klicka på ett nav för att zooma till dess plats.",

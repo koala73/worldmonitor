@@ -67,7 +67,11 @@
     "orefSirens": "Israel Sirens",
     "telegramIntel": "Inteligência Telegram",
     "giving": "Doações Globais",
-    "supplyChain": "Cadeia de Suprimentos"
+    "supplyChain": "Cadeia de Suprimentos",
+    "gulfEconomies": "Economias do Golfo",
+    "gulfIndices": "Índices do Golfo",
+    "gulfCurrencies": "Moedas do Golfo",
+    "gulfOil": "Petróleo do Golfo"
   },
   "modals": {
     "search": {
@@ -375,7 +379,8 @@
         "europe": "EUROPA",
         "americas": "AMÉRICAS",
         "asia": "ÁSIA"
-      }
+      },
+      "expand": "Expandir"
     },
     "playback": {
       "live": "Live",
@@ -810,7 +815,8 @@
         "daysAgo": "{{count}}d atrás"
       },
       "breakingAlerts": "Alertas urgentes",
-      "popupAlerts": "Exibir novos alertas"
+      "popupAlerts": "Exibir novos alertas",
+      "hideFindings": "Ocultar descobertas"
     },
     "economic": {
       "noIndicatorData": "Ainda não há dados do indicador - FRED pode estar carregando",
@@ -1043,7 +1049,13 @@
       "insightsDisabledHint": "Enable providers via the settings gear in the map header",
       "sectionStreaming": "Transmissão",
       "streamQualityDesc": "Definir qualidade para todas as transmissões ao vivo (menor economiza largura de banda)",
-      "streamQualityLabel": "Qualidade de vídeo"
+      "streamQualityLabel": "Qualidade de vídeo",
+      "sectionPanels": "Painéis",
+      "badgeAnimLabel": "Animações de emblemas",
+      "badgeAnimDesc": "Animar emblemas de atualização nos cabeçalhos dos painéis",
+      "sectionIntelligence": "Inteligência",
+      "headlineMemoryLabel": "Memória de manchetes",
+      "headlineMemoryDesc": "Lembrar manchetes vistas para destacar novas"
     },
     "techHubs": {
       "infoTooltip": "<strong>Atividade do Tech Hub</strong><br>Mostra os hubs de tecnologia com mais atividade de notícias.<br><br><em>Níveis de atividade:</em><br>• <span style=\"color: {{highColor}}\">Alto</span> — Notícias de última hora ou pontuação acima de 50<br>• <span style=\"color: {{elevatedColor}}\">Elevado</span> — Pontuação 20-49<br>• <span style=\"color: {{lowColor}}\">Baixo</span> — Pontuação abaixo de 20<br><br>Clique em um hub para ampliar sua localização.",

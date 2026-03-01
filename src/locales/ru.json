@@ -212,7 +212,11 @@
     "orefSirens": "Israel Sirens",
     "telegramIntel": "Разведка Telegram",
     "giving": "Глобальная благотворительность",
-    "supplyChain": "Цепочка поставок"
+    "supplyChain": "Цепочка поставок",
+    "gulfEconomies": "Экономика Залива",
+    "gulfIndices": "Индексы Залива",
+    "gulfCurrencies": "Валюты Залива",
+    "gulfOil": "Нефть Залива"
   },
   "modals": {
     "search": {
@@ -520,7 +524,8 @@
         "europe": "ЕВРОПА",
         "americas": "АМЕРИКА",
         "asia": "АЗИЯ"
-      }
+      },
+      "expand": "Развернуть"
     },
     "regulation": {
       "timeline": "Хронология",
@@ -975,7 +980,13 @@
       "insightsDisabledHint": "Enable providers via the settings gear in the map header",
       "sectionStreaming": "Трансляции",
       "streamQualityDesc": "Установить качество для всех прямых трансляций (низкое экономит трафик)",
-      "streamQualityLabel": "Качество видео"
+      "streamQualityLabel": "Качество видео",
+      "sectionPanels": "Панели",
+      "badgeAnimLabel": "Анимация значков",
+      "badgeAnimDesc": "Анимировать значки обновлений в заголовках панелей",
+      "sectionIntelligence": "Разведка",
+      "headlineMemoryLabel": "Память заголовков",
+      "headlineMemoryDesc": "Запоминать просмотренные заголовки для выделения новых"
     },
     "cascade": {
       "noImpacts": "Воздействие на страны не обнаружено",
@@ -1223,7 +1234,8 @@
         "daysAgo": "{{count}}д назад"
       },
       "breakingAlerts": "Срочные оповещения",
-      "popupAlerts": "Всплывающие новые оповещения"
+      "popupAlerts": "Всплывающие новые оповещения",
+      "hideFindings": "Скрыть результаты"
     },
     "countryTimeline": {
       "now": "сейчас",

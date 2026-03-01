@@ -212,7 +212,11 @@
     "orefSirens": "Israel Sirens",
     "telegramIntel": "ข่าวกรอง Telegram",
     "giving": "การบริจาคทั่วโลก",
-    "supplyChain": "ห่วงโซ่อุปทาน"
+    "supplyChain": "ห่วงโซ่อุปทาน",
+    "gulfEconomies": "เศรษฐกิจอ่าว",
+    "gulfIndices": "ดัชนีอ่าว",
+    "gulfCurrencies": "สกุลเงินอ่าว",
+    "gulfOil": "น้ำมันอ่าว"
   },
   "modals": {
     "search": {
@@ -511,7 +515,8 @@
         "europe": "ยุโรป",
         "americas": "อเมริกา",
         "asia": "เอเชีย"
-      }
+      },
+      "expand": "ขยาย"
     },
     "monitor": {
       "placeholder": "คำสำคัญ (คั่นด้วยจุลภาค)",
@@ -975,7 +980,13 @@
       "insightsDisabledHint": "Enable providers via the settings gear in the map header",
       "sectionStreaming": "การสตรีม",
       "streamQualityDesc": "ตั้งค่าคุณภาพสำหรับสตรีมสดทั้งหมด (ต่ำกว่าประหยัดแบนด์วิดท์)",
-      "streamQualityLabel": "คุณภาพวิดีโอ"
+      "streamQualityLabel": "คุณภาพวิดีโอ",
+      "sectionPanels": "แผงควบคุม",
+      "badgeAnimLabel": "แอนิเมชันป้าย",
+      "badgeAnimDesc": "แสดงแอนิเมชันป้ายอัปเดตบนส่วนหัวของแผง",
+      "sectionIntelligence": "ข่าวกรอง",
+      "headlineMemoryLabel": "หน่วยความจำพาดหัว",
+      "headlineMemoryDesc": "จดจำพาดหัวที่เคยดูเพื่อเน้นข่าวใหม่"
     },
     "cascade": {
       "noImpacts": "ไม่พบผลกระทบต่อประเทศ",
@@ -1189,7 +1200,8 @@
         "daysAgo": "{{count}}ว. ที่แล้ว"
       },
       "breakingAlerts": "การแจ้งเตือนด่วน",
-      "popupAlerts": "แสดงการแจ้งเตือนใหม่แบบป๊อปอัป"
+      "popupAlerts": "แสดงการแจ้งเตือนใหม่แบบป๊อปอัป",
+      "hideFindings": "ซ่อนผลการค้นหา"
     },
     "countryTimeline": {
       "now": "ตอนนี้",

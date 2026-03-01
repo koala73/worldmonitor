@@ -67,7 +67,11 @@
     "orefSirens": "Israel Sirens",
     "telegramIntel": "Telegram Inlichtingen",
     "giving": "Mondiale donaties",
-    "supplyChain": "Toeleveringsketen"
+    "supplyChain": "Toeleveringsketen",
+    "gulfEconomies": "Golfeconomieën",
+    "gulfIndices": "Golfindices",
+    "gulfCurrencies": "Golfvaluta",
+    "gulfOil": "Golfolie"
   },
   "modals": {
     "search": {
@@ -375,7 +379,8 @@
         "europe": "EUROPA",
         "americas": "AMERIKA",
         "asia": "AZIË"
-      }
+      },
+      "expand": "Uitvouwen"
     },
     "playback": {
       "live": "Live",
@@ -810,7 +815,8 @@
         "daysAgo": "{{count}}d geleden"
       },
       "breakingAlerts": "Urgente meldingen",
-      "popupAlerts": "Nieuwe meldingen weergeven"
+      "popupAlerts": "Nieuwe meldingen weergeven",
+      "hideFindings": "Bevindingen verbergen"
     },
     "economic": {
       "noIndicatorData": "Nog geen indicatorgegevens - FRED wordt mogelijk geladen",
@@ -1043,7 +1049,13 @@
       "insightsDisabledHint": "Enable providers via the settings gear in the map header",
       "sectionStreaming": "Streaming",
       "streamQualityDesc": "Kwaliteit instellen voor alle livestreams (lager bespaart bandbreedte)",
-      "streamQualityLabel": "Videokwaliteit"
+      "streamQualityLabel": "Videokwaliteit",
+      "sectionPanels": "Panelen",
+      "badgeAnimLabel": "Badge-animaties",
+      "badgeAnimDesc": "Update-badges in paneelkoppen animeren",
+      "sectionIntelligence": "Inlichtingen",
+      "headlineMemoryLabel": "Koptekstgeheugen",
+      "headlineMemoryDesc": "Gezien koppen onthouden om nieuwe te markeren"
     },
     "techHubs": {
       "infoTooltip": "<strong>Tech Hub-activiteit</strong><br>Toont tech-hubs met de meeste nieuwsactiviteit.<br><br><em>Activiteitsniveaus:</em><br>• <span style=\"color: {{highColor}}\">Hoog</span> — Breaking news of 50+ score<br>• <span style=\"color: {{elevatedColor}}\">Verhoogd</span> — Score 20-49<br>• <span style=\"color: {{lowColor}}\">Laag</span> — Score lager dan 20<br><br>Klik op een hub om naar de locatie ervan te zoomen.",

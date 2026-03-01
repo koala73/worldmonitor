@@ -212,7 +212,11 @@
     "orefSirens": "Israel Sirens",
     "telegramIntel": "Telegram 情报",
     "giving": "全球捐赠",
-    "supplyChain": "供应链"
+    "supplyChain": "供应链",
+    "gulfEconomies": "海湾经济",
+    "gulfIndices": "海湾指数",
+    "gulfCurrencies": "海湾货币",
+    "gulfOil": "海湾石油"
   },
   "modals": {
     "search": {
@@ -511,7 +515,8 @@
         "europe": "欧洲",
         "americas": "美洲",
         "asia": "亚洲"
-      }
+      },
+      "expand": "展开"
     },
     "monitor": {
       "placeholder": "关键词（逗号分隔）",
@@ -975,7 +980,13 @@
       "insightsDisabledHint": "Enable providers via the settings gear in the map header",
       "sectionStreaming": "直播",
       "streamQualityDesc": "设置所有直播流的画质（低画质可节省带宽）",
-      "streamQualityLabel": "视频画质"
+      "streamQualityLabel": "视频画质",
+      "sectionPanels": "面板",
+      "badgeAnimLabel": "徽章动画",
+      "badgeAnimDesc": "在面板标题中显示更新徽章动画",
+      "sectionIntelligence": "情报",
+      "headlineMemoryLabel": "标题记忆",
+      "headlineMemoryDesc": "记住已阅标题以突出显示新内容"
     },
     "cascade": {
       "noImpacts": "未检测到国家影响",
@@ -1189,7 +1200,8 @@
         "daysAgo": "{{count}}天前"
       },
       "breakingAlerts": "突发警报",
-      "popupAlerts": "弹出新警报"
+      "popupAlerts": "弹出新警报",
+      "hideFindings": "隐藏发现"
     },
     "countryTimeline": {
       "now": "现在",
