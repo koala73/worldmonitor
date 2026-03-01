@@ -520,6 +520,34 @@ fn close_live_channels_window(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Send a native macOS notification via osascript. No-op on non-macOS platforms.
+#[tauri::command]
+fn send_notification(title: String, body: String, sound: Option<String>) -> Result<(), String> {
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (title, body, sound);
+        return Ok(());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let sound_name = sound.unwrap_or_else(|| "Ping".to_string());
+        // Sanitize: strip quotes and backslashes to prevent osascript injection
+        let safe_title = title.replace('\\', "").replace('"', "'");
+        let safe_body = body.replace('\\', "").replace('"', "'");
+        let safe_sound = sound_name.replace('\\', "").replace('"', "'");
+        let script = format!(
+            r#"display notification "{safe_body}" with title "{safe_title}" sound name "{safe_sound}""#
+        );
+        Command::new("osascript")
+            .args(["-e", &script])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|e| format!("osascript spawn failed: {e}"))?;
+        Ok(())
+    }
+}
+
 /// Download a macOS DMG release, mount it, copy the app bundle to /Applications, and relaunch.
 /// On non-macOS platforms returns an error immediately (no-op — only called on macOS).
 #[tauri::command]
@@ -1368,6 +1396,7 @@ fn main() {
             open_url,
             open_youtube_login,
             fetch_polymarket,
+            send_notification,
             install_update
         ])
         .setup(|app| {

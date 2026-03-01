@@ -41,6 +41,9 @@ import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
 import { EarthquakesPanel } from '@/components/EarthquakesPanel';
 import { CyberThreatPanel } from '@/components/CyberThreatPanel';
 import { AlertCenterPanel } from '@/components/AlertCenterPanel';
+import { SpaceWeatherPanel } from '@/components/SpaceWeatherPanel';
+import { DiseaseOutbreakPanel } from '@/components/DiseaseOutbreakPanel';
+import { AirQualityPanel } from '@/components/AirQualityPanel';
 import { PositiveNewsFeedPanel } from '@/components/PositiveNewsFeedPanel';
 import { CountersPanel } from '@/components/CountersPanel';
 import { ProgressChartsPanel } from '@/components/ProgressChartsPanel';
@@ -659,6 +662,15 @@ export class PanelLayoutManager implements AppModule {
 
       const alertCenterPanel = new AlertCenterPanel();
       this.ctx.panels['alert-center'] = alertCenterPanel;
+
+      const spaceWeatherPanel = new SpaceWeatherPanel();
+      this.ctx.panels['space-weather'] = spaceWeatherPanel;
+
+      const diseaseOutbreakPanel = new DiseaseOutbreakPanel();
+      this.ctx.panels['disease-outbreaks'] = diseaseOutbreakPanel;
+
+      const airQualityPanel = new AirQualityPanel();
+      this.ctx.panels['air-quality'] = airQualityPanel;
 
       const strategicRiskPanel = new StrategicRiskPanel();
       strategicRiskPanel.setLocationClickHandler((lat, lon) => {

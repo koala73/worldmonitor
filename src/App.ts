@@ -31,6 +31,7 @@ import { initI18n } from '@/services/i18n';
 
 import { fetchBootstrapData } from '@/services/bootstrap';
 import { DesktopUpdater } from '@/app/desktop-updater';
+import { DesktopNotifications } from '@/app/desktop-notifications';
 import { CountryIntelManager } from '@/app/country-intel';
 import { SearchManager } from '@/app/search-manager';
 import { RefreshScheduler } from '@/app/refresh-scheduler';
@@ -54,6 +55,7 @@ export class App {
   private countryIntel: CountryIntelManager;
   private refreshScheduler: RefreshScheduler;
   private desktopUpdater: DesktopUpdater;
+  private desktopNotifications: DesktopNotifications;
 
   private modules: { destroy(): void }[] = [];
   private unsubAiFlow: (() => void) | null = null;
@@ -261,6 +263,7 @@ export class App {
     this.refreshScheduler = new RefreshScheduler(this.state);
     this.countryIntel = new CountryIntelManager(this.state);
     this.desktopUpdater = new DesktopUpdater(this.state);
+    this.desktopNotifications = new DesktopNotifications(this.state);
 
     this.dataLoader = new DataLoaderManager(this.state, {
       renderCriticalBanner: (postures) => this.panelLayout.renderCriticalBanner(postures),
@@ -415,6 +418,7 @@ export class App {
     // Phase 8: Deep links + update checks
     this.handleDeepLinks();
     this.desktopUpdater.init();
+    this.desktopNotifications.init();
 
     // Analytics
     trackEvent('wm_app_loaded', {
@@ -435,6 +439,8 @@ export class App {
     // Clean up subscriptions, map, AIS, and breaking news
     this.unsubAiFlow?.();
     this.state.breakingBanner?.destroy();
+    this.desktopNotifications.destroy();
+    this.desktopUpdater.destroy();
     destroyBreakingNewsAlerts();
     this.state.map?.destroy();
     disconnectAisStream();
@@ -523,6 +529,9 @@ export class App {
           this.state.cyberThreatsCache = null;
           return this.dataLoader.loadCyberThreats();
         }, intervalMs: 10 * 60 * 1000, condition: () => CYBER_LAYER_ENABLED && this.state.mapLayers.cyberThreats },
+        { name: 'spaceWeather', fn: () => this.dataLoader.loadSpaceWeather(), intervalMs: 5 * 60 * 1000, condition: () => SITE_VARIANT === 'full' },
+        { name: 'diseaseOutbreaks', fn: () => this.dataLoader.loadDiseaseOutbreaks(), intervalMs: 15 * 60 * 1000, condition: () => SITE_VARIANT === 'full' },
+        { name: 'airQuality', fn: () => this.dataLoader.loadAirQuality(), intervalMs: 30 * 60 * 1000, condition: () => SITE_VARIANT === 'full' },
       ]);
     }
 

@@ -34,8 +34,13 @@
 | Feature | Detail |
 |---|---|
 | **Native sidebar** | SF Pro, vibrancy-backed, collapsible, HIG-compliant panel navigation |
+| **Auto-update** | GitHub Releases API polling — "Update Now" downloads DMG, mounts, replaces app, relaunches |
+| **Native notifications** | macOS notification center alerts for critical/high breaking intelligence events |
 | **Live cyber threat map** | 500 IOCs geo-plotted on the 3D globe (Feodo · URLhaus · C2Intel · OTX · AbuseIPDB) |
 | **Alert Center panel** | Persistent rolling history of intelligence signals and breaking alerts with unread badge |
+| **Space Weather panel** | NOAA SWPC real-time Kp index, solar wind, Bz, X-ray flares, geomagnetic storm alerts |
+| **Disease Outbreaks panel** | WHO Disease Outbreak News + ReliefWeb health situation reports — 15-min refresh |
+| **Air Quality panel** | Open-Meteo global AQI for 18 major cities — PM2.5, ozone, NO₂, US AQI scale |
 | **World Bank profiles** | GDP, military spend %, trade %, population injected into every country brief AI context |
 | **Claude AI provider** | Anthropic Claude Haiku in the summarization fallback chain alongside Groq/OpenRouter |
 | **Earthquakes panel** | USGS M4.5+ live seismic data with magnitude-color-coded table |

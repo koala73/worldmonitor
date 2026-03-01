@@ -115,6 +115,12 @@ import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
 import { EarthquakesPanel } from '@/components/EarthquakesPanel';
 import { CyberThreatPanel } from '@/components/CyberThreatPanel';
 import { AlertCenterPanel } from '@/components/AlertCenterPanel';
+import { SpaceWeatherPanel } from '@/components/SpaceWeatherPanel';
+import { DiseaseOutbreakPanel } from '@/components/DiseaseOutbreakPanel';
+import { AirQualityPanel } from '@/components/AirQualityPanel';
+import { fetchSpaceWeather } from '@/services/space-weather';
+import { fetchDiseaseOutbreaks } from '@/services/disease-outbreak';
+import { fetchGlobalAirQuality } from '@/services/air-quality';
 import { classifyNewsItem } from '@/services/positive-classifier';
 import { fetchGivingSummary } from '@/services/giving';
 import { GivingPanel } from '@/components';
@@ -336,6 +342,9 @@ export class DataLoaderManager implements AppModule {
     if (SITE_VARIANT !== 'happy' && CYBER_LAYER_ENABLED && this.ctx.mapLayers.cyberThreats) tasks.push({ name: 'cyberThreats', task: runGuarded('cyberThreats', () => this.loadCyberThreats()) });
     if (SITE_VARIANT !== 'happy') tasks.push({ name: 'iranAttacks', task: runGuarded('iranAttacks', () => this.loadIranEvents()) });
     if (SITE_VARIANT !== 'happy' && (this.ctx.mapLayers.techEvents || SITE_VARIANT === 'tech')) tasks.push({ name: 'techEvents', task: runGuarded('techEvents', () => this.loadTechEvents()) });
+    if (SITE_VARIANT === 'full') tasks.push({ name: 'spaceWeather', task: runGuarded('spaceWeather', () => this.loadSpaceWeather()) });
+    if (SITE_VARIANT === 'full') tasks.push({ name: 'diseaseOutbreaks', task: runGuarded('diseaseOutbreaks', () => this.loadDiseaseOutbreaks()) });
+    if (SITE_VARIANT === 'full') tasks.push({ name: 'airQuality', task: runGuarded('airQuality', () => this.loadAirQuality()) });
 
     if (SITE_VARIANT === 'tech') {
       tasks.push({ name: 'techReadiness', task: runGuarded('techReadiness', () => (this.ctx.panels['tech-readiness'] as TechReadinessPanel)?.refresh()) });
@@ -1381,6 +1390,39 @@ export class DataLoaderManager implements AppModule {
       this.ctx.statusPanel?.updateFeed('Cyber Threats', { status: 'error', errorMessage: String(error) });
       this.ctx.statusPanel?.updateApi('Cyber Threats API', { status: 'error' });
       dataFreshness.recordError('cyber_threats', String(error));
+    }
+  }
+
+  async loadSpaceWeather(): Promise<void> {
+    try {
+      const data = await fetchSpaceWeather();
+      (this.ctx.panels['space-weather'] as SpaceWeatherPanel)?.update(data);
+    } catch (error) {
+      console.warn('[space-weather] fetch failed', error);
+      (this.ctx.panels['space-weather'] as SpaceWeatherPanel)?.update({
+        kpIndex: null, kpClass: 'quiet', solarWindSpeed: null, solarWindDensity: null,
+        bz: null, xrayClass: null, alertMessages: [], fetchedAt: new Date(),
+      });
+    }
+  }
+
+  async loadDiseaseOutbreaks(): Promise<void> {
+    try {
+      const outbreaks = await fetchDiseaseOutbreaks();
+      (this.ctx.panels['disease-outbreaks'] as DiseaseOutbreakPanel)?.update(outbreaks);
+    } catch (error) {
+      console.warn('[disease-outbreaks] fetch failed', error);
+      (this.ctx.panels['disease-outbreaks'] as DiseaseOutbreakPanel)?.update([]);
+    }
+  }
+
+  async loadAirQuality(): Promise<void> {
+    try {
+      const readings = await fetchGlobalAirQuality();
+      (this.ctx.panels['air-quality'] as AirQualityPanel)?.update(readings);
+    } catch (error) {
+      console.warn('[air-quality] fetch failed', error);
+      (this.ctx.panels['air-quality'] as AirQualityPanel)?.update([]);
     }
   }
 

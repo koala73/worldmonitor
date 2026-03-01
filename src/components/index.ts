@@ -48,3 +48,6 @@ export * from './SecurityAdvisoriesPanel';
 export * from './OrefSirensPanel';
 export * from './TelegramIntelPanel';
 export * from './BreakingNewsBanner';
+export * from './SpaceWeatherPanel';
+export * from './DiseaseOutbreakPanel';
+export * from './AirQualityPanel';
