@@ -7,19 +7,21 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
 import { cachedFetchJson } from '../../../_shared/redis';
-import { UPSTREAM_TIMEOUT_MS, GROQ_API_URL, GROQ_MODEL, hashString } from './_shared';
+import { hashString } from './_shared';
 import { CHROME_UA } from '../../../_shared/constants';
 
-const DEDUCT_CACHE_TTL = 3600; // 1 hour caching for deductions
+const DEDUCT_TIMEOUT_MS = 120_000;
+const DEDUCT_CACHE_TTL = 3600;
+const DEDUCT_API_URL = process.env.LLM_API_URL || 'https://api.groq.com/openai/v1/chat/completions';
+const DEDUCT_MODEL = process.env.LLM_MODEL || 'llama-3.1-8b-instant';
 
 export async function deductSituation(
     _ctx: ServerContext,
     req: DeductSituationRequest,
 ): Promise<DeductSituationResponse> {
-    const apiKey = process.env.LLM_API_KEY || process.env.GROQ_API_KEY || 'ollama-local';
+    const apiKey = process.env.LLM_API_KEY || process.env.GROQ_API_KEY;
 
-    // Require an API key unless testing against local ollama
-    if (!apiKey && !GROQ_API_URL.includes('localhost') && !GROQ_API_URL.includes('127.0.0.1')) {
+    if (!apiKey) {
         return { analysis: '', model: '', provider: 'skipped' };
     }
 
@@ -31,13 +33,12 @@ export async function deductSituation(
 
     if (!query) return { analysis: '', model: '', provider: 'skipped' };
 
-    const cacheKey = `deduct:sebuf:v1:${hashString(query.toLowerCase() + '|' + geoContext.toLowerCase())}`;
+    const cacheKey = `deduct:situation:v1:${hashString(query.toLowerCase() + '|' + geoContext.toLowerCase())}`;
 
     const cached = await cachedFetchJson<{ analysis: string; model: string; provider: string }>(
         cacheKey,
         DEDUCT_CACHE_TTL,
         async () => {
-            console.log('[DeductSituation] Cache MISS, entering fetcher');
             try {
                 const systemPrompt = `You are a senior geopolitical intelligence analyst and forecaster.
 Your task is to DEDUCT the situation in a near timeline (e.g. 24 hours to a few months) based on the user's query.
@@ -52,9 +53,7 @@ Your task is to DEDUCT the situation in a near timeline (e.g. 24 hours to a few 
                     userPrompt += `\n\n### Current Intelligence Context\n${geoContext}`;
                 }
 
-                console.log('[DeductSituation] Calling LLM API:', GROQ_API_URL, 'Model:', GROQ_MODEL);
-
-                const resp = await fetch(GROQ_API_URL, {
+                const resp = await fetch(DEDUCT_API_URL, {
                     method: 'POST',
                     headers: {
                         Authorization: `Bearer ${apiKey}`,
@@ -62,40 +61,30 @@ Your task is to DEDUCT the situation in a near timeline (e.g. 24 hours to a few 
                         'User-Agent': CHROME_UA
                     },
                     body: JSON.stringify({
-                        model: GROQ_MODEL,
+                        model: DEDUCT_MODEL,
                         messages: [
                             { role: 'system', content: systemPrompt },
                             { role: 'user', content: userPrompt },
                         ],
                         temperature: 0.3,
-                        max_tokens: 500,
+                        max_tokens: 1500,
                     }),
-                    signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+                    signal: AbortSignal.timeout(DEDUCT_TIMEOUT_MS),
                 });
 
-                console.log('[DeductSituation] API Response Status:', resp.status, resp.statusText);
                 if (!resp.ok) return null;
                 const data = (await resp.json()) as { choices?: Array<{ message?: { content?: string } }> };
-                console.log('[DeductSituation] Parsed JSON, choices count:', data.choices?.length);
                 const firstChoice = data.choices?.[0];
-                console.log('[DeductSituation] First choice message keys:', Object.keys(firstChoice?.message || {}));
 
-                // glm-5:cloud and other reasoning models may output exclusively to a 'reasoning' field 
-                // if they hit the token limit before generating the final 'content' block.
                 const content = firstChoice?.message?.content?.trim();
                 const reasoning = (firstChoice?.message as any)?.reasoning?.trim();
 
                 let raw = content || reasoning;
-                if (!raw) {
-                    console.log('[DeductSituation] No raw content or reasoning found. Full response data:', JSON.stringify(data).substring(0, 300));
-                    return null;
-                }
+                if (!raw) return null;
 
-                // Strip thinking blocks if the model returns them
                 raw = raw.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
 
-                console.log('[DeductSituation] Successfully processed LLM result of length:', raw.length);
-                return { analysis: raw, model: GROQ_MODEL, provider: 'groq' };
+                return { analysis: raw, model: DEDUCT_MODEL, provider: 'groq' };
             } catch (err) {
                 console.error('[DeductSituation] Error calling LLM:', err);
                 return null;
@@ -103,10 +92,7 @@ Your task is to DEDUCT the situation in a near timeline (e.g. 24 hours to a few 
         }
     );
 
-    console.log('[DeductSituation] cachedFetchJson returned:', JSON.stringify(cached).substring(0, 100));
-
     if (!cached?.analysis) {
-        console.log('[DeductSituation] Returning provider: error due to no analysis');
         return { analysis: '', model: '', provider: 'error' };
     }
 

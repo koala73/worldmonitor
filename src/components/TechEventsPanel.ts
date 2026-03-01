@@ -2,9 +2,11 @@ import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import { sanitizeUrl } from '@/utils/sanitize';
 import { h, replaceChildren } from '@/utils/dom-utils';
+import { isDesktopRuntime } from '@/services/runtime';
 import { ResearchServiceClient } from '@/generated/client/worldmonitor/research/v1/service_client';
 import type { TechEvent } from '@/generated/client/worldmonitor/research/v1/service_client';
-import type { NewsItem } from '@/types';
+import type { NewsItem, DeductContextDetail } from '@/types';
+import { buildNewsContext } from '@/utils/news-context';
 
 type ViewMode = 'upcoming' | 'conferences' | 'earnings' | 'all';
 
@@ -203,7 +205,7 @@ export class TechEventsPanel extends Panel {
           event.location
             ? h('span', { className: 'event-location' }, event.location)
             : false,
-          h('button', {
+          isDesktopRuntime() ? h('button', {
             className: 'event-deduce-link',
             title: 'Deduce Situation with AI',
             style: 'background: none; border: none; cursor: pointer; opacity: 0.7; font-size: 1.1em; transition: opacity 0.2s; margin-left: auto; padding-right: 4px;',
@@ -214,22 +216,18 @@ export class TechEventsPanel extends Panel {
               let geoContext = `Event details: ${event.title} (${event.type}) taking place from ${dateStr}${endDateStr}. Location: ${event.location || 'Unknown/Virtual'}.`;
 
               if (this.getLatestNews) {
-                const news = this.getLatestNews().slice(0, 15);
-                if (news.length > 0) {
-                  const newsContext = 'Recent News:\n' + news.map(n => `- ${n.title} (${n.source})`).join('\n');
-                  geoContext += `\n\n${newsContext}`;
-                }
+                const newsCtx = buildNewsContext(this.getLatestNews);
+                if (newsCtx) geoContext += `\n\n${newsCtx}`;
               }
 
-              document.dispatchEvent(new CustomEvent('wm:deduct-context', {
-                detail: {
-                  query: `What is the expected impact of the tech event: ${event.title}?`,
-                  geoContext,
-                  autoSubmit: true
-                }
-              }));
+              const detail: DeductContextDetail = {
+                query: `What is the expected impact of the tech event: ${event.title}?`,
+                geoContext,
+                autoSubmit: true,
+              };
+              document.dispatchEvent(new CustomEvent('wm:deduct-context', { detail }));
             },
-          }, '🧠'),
+          }, '\u{1F9E0}') : false,
           event.coords && !event.coords.virtual
             ? h('button', {
               className: 'event-map-link',

@@ -1,3 +1,9 @@
+export interface DeductContextDetail {
+  query?: string;
+  geoContext: string;
+  autoSubmit?: boolean;
+}
+
 export type PropagandaRisk = 'low' | 'medium' | 'high';
 
 export interface Feed {

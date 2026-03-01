@@ -44,7 +44,7 @@ test.describe('Deduct Situation Panel Options', () => {
         } else {
             // If testing against a real local LLM or cloud, just expect some markdown output block to appear
             // The API might take a while depending on local hardware / provider limits
-            await expect(panel.locator('.deduction-markdown-content')).not.toBeEmpty({ timeout: 30000 });
+            await expect(panel.locator('.deduction-result')).not.toBeEmpty({ timeout: 30000 });
         }
     });
 });

@@ -64,9 +64,9 @@ export const COMMANDS: Command[] = [
   // Panel navigation (matching actual DEFAULT_PANELS keys)
   { id: 'panel:live-news', keywords: ['news', 'live news', 'headlines'], label: 'Jump to Live News', icon: '\u{1F4F0}', category: 'panels' },
   { id: 'panel:intel', keywords: ['intel', 'intel feed'], label: 'Jump to Intel Feed', icon: '\u{1F50E}', category: 'panels' },
-  { id: 'panel:gdelt-intel', keywords: ['gdelt', 'intelligence feed'], label: 'Jump to Live Intelligence', icon: '🔍', category: 'panels' },
-  { id: 'panel:deduction', keywords: ['deduction', 'future', 'what if'], label: 'Jump to Deduct Situation', icon: '🧠', category: 'panels' },
-  { id: 'panel:cii', keywords: ['cii', 'instability', 'country risk'], label: 'Jump to Country Instability', icon: '🎯', category: 'panels' },
+  { id: 'panel:gdelt-intel', keywords: ['gdelt', 'intelligence feed'], label: 'Jump to Live Intelligence', icon: '\u{1F50D}', category: 'panels' },
+  { id: 'panel:deduction', keywords: ['deduction', 'future', 'what if'], label: 'Jump to Deduct Situation', icon: '\u{1F9E0}', category: 'panels' },
+  { id: 'panel:cii', keywords: ['cii', 'instability', 'country risk'], label: 'Jump to Country Instability', icon: '\u{1F3AF}', category: 'panels' },
   { id: 'panel:cascade', keywords: ['cascade', 'infrastructure cascade'], label: 'Jump to Infrastructure Cascade', icon: '\u{1F517}', category: 'panels' },
   { id: 'panel:strategic-risk', keywords: ['risk', 'strategic risk', 'threat level'], label: 'Jump to Strategic Risk', icon: '\u26A0\uFE0F', category: 'panels' },
   { id: 'panel:politics', keywords: ['world news', 'politics', 'geopolitics'], label: 'Jump to World News', icon: '\u{1F30D}', category: 'panels' },

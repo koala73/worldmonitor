@@ -3,8 +3,10 @@ import { escapeHtml } from '@/utils/sanitize';
 import { fetchCachedTheaterPosture, type CachedTheaterPosture } from '@/services/cached-theater-posture';
 import { fetchMilitaryVessels } from '@/services/military-vessels';
 import { recalcPostureWithVessels, type TheaterPostureSummary } from '@/services/military-surge';
+import { isDesktopRuntime } from '@/services/runtime';
 import { t } from '../services/i18n';
-import type { NewsItem } from '@/types';
+import type { NewsItem, DeductContextDetail } from '@/types';
+import { buildNewsContext } from '@/utils/news-context';
 
 export class StrategicPosturePanel extends Panel {
   private postures: TheaterPostureSummary[] = [];
@@ -433,7 +435,7 @@ export class StrategicPosturePanel extends Panel {
           ${p.strikeCapable ? `<span class="posture-strike">⚡ ${t('components.strategicPosture.strike')}</span>` : ''}
           ${this.getTrendIcon(p.trend, p.changePercent)}
           ${p.targetNation ? `<span class="posture-focus">→ ${escapeHtml(p.targetNation)}</span>` : ''}
-          <button class="posture-deduce-btn" title="Deduce Situation with AI" style="background: none; border: none; cursor: pointer; opacity: 0.7; font-size: 1.1em; transition: opacity 0.2s; margin-left: auto;" data-theater='${escapeHtml(JSON.stringify(p))}'>🧠</button>
+          ${isDesktopRuntime() ? `<button class="posture-deduce-btn" title="Deduce Situation with AI" style="background: none; border: none; cursor: pointer; opacity: 0.7; font-size: 1.1em; transition: opacity 0.2s; margin-left: auto;" data-theater='${escapeHtml(JSON.stringify(p))}'>🧠</button>` : ''}
         </div>
       </div>
     `;
@@ -519,16 +521,12 @@ export class StrategicPosturePanel extends Panel {
           let geoContext = `Theater: ${p.shortName} (${p.theaterName}). Military Assets: ${p.totalAircraft} aircraft, ${p.totalVessels} naval vessels. Readiness Level: ${p.postureLevel}. Assets breakdown: ${p.fighters} fighters, ${p.bombers} bombers, ${p.carriers} carriers, ${p.submarines} submarines. Focus/Target: ${p.targetNation || 'Unknown'}.`;
 
           if (this.getLatestNews) {
-            const news = this.getLatestNews().slice(0, 15);
-            if (news.length > 0) {
-              const newsContext = 'Recent News:\n' + news.map(n => `- ${n.title} (${n.source})`).join('\n');
-              geoContext += `\n\n${newsContext}`;
-            }
+            const newsCtx = buildNewsContext(this.getLatestNews);
+            if (newsCtx) geoContext += `\n\n${newsCtx}`;
           }
 
-          document.dispatchEvent(new CustomEvent('wm:deduct-context', {
-            detail: { query, geoContext, autoSubmit: true }
-          }));
+          const detail: DeductContextDetail = { query, geoContext, autoSubmit: true };
+          document.dispatchEvent(new CustomEvent('wm:deduct-context', { detail }));
         } catch (err) {
           console.error('[StrategicPosturePanel] Failed to dispatch deduction event', err);
         }
