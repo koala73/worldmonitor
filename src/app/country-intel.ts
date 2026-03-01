@@ -408,7 +408,8 @@ export class CountryIntelManager implements AppModule {
     }
 
     for (const e of this.getCountryStrikes(code, hasGeoShape)) {
-      const ts = e.timestamp < 1e12 ? e.timestamp * 1000 : e.timestamp;
+      const rawTs = Number(e.timestamp) || 0;
+      const ts = rawTs < 1e12 ? rawTs * 1000 : rawTs;
       events.push({
         timestamp: ts,
         lane: 'conflict',

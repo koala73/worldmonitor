@@ -20,7 +20,7 @@ const ucdpBreaker = createCircuitBreaker<ListUcdpEventsResponse>({ name: 'UCDP E
 const hapiBreaker = createCircuitBreaker<GetHumanitarianSummaryResponse>({ name: 'HDX HAPI', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
 const iranBreaker = createCircuitBreaker<ListIranEventsResponse>({ name: 'Iran Events', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
 
-const emptyIranFallback: ListIranEventsResponse = { events: [], scrapedAt: 0 };
+const emptyIranFallback: ListIranEventsResponse = { events: [], scrapedAt: '' };
 
 export type { IranEvent };
 

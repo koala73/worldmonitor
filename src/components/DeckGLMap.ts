@@ -3049,7 +3049,7 @@ export class DeckGLMap {
       const normalizedLoc = data.locationName.trim().toLowerCase();
       const related = this.iranEvents
         .filter(e => e.id !== clickedId && e.locationName && e.locationName.trim().toLowerCase() === normalizedLoc)
-        .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+        .sort((a, b) => (Number(b.timestamp) || 0) - (Number(a.timestamp) || 0))
         .slice(0, 5);
       data = { ...data, relatedEvents: related };
     }

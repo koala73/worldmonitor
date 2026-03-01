@@ -68,7 +68,7 @@ interface IranEventPopupData {
   latitude: number;
   longitude: number;
   locationName: string;
-  timestamp: number;
+  timestamp: string | number;
   severity: string;
   relatedEvents?: IranEventPopupData[];
 }
