@@ -160,6 +160,7 @@ export const getDueSubscriptions = query({
             lang: string;
             categories: string[];
             token: string;
+            lastSentAt: number;
         }> = [];
 
         for (const freq of VALID_FREQUENCIES) {
@@ -184,6 +185,7 @@ export const getDueSubscriptions = query({
                         lang: sub.lang,
                         categories: sub.categories,
                         token: sub.token,
+                        lastSentAt: lastSent,
                     });
                 }
             }

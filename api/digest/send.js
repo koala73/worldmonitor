@@ -89,18 +89,53 @@ export default async function handler(req) {
                 continue;
             }
 
-            // 4. Send to each subscriber, filtering by their categories
+            // 4. Send to each subscriber, filtering by their categories AND lastSentAt
             for (const sub of subs) {
                 try {
-                    // Filter articles to subscriber's categories
-                    const filteredArticles = (digest.articles || []).filter(
-                        (a) => sub.categories.length === 0 || sub.categories.includes(a.category),
-                    );
+                    // Filter articles to only those published since last digest
+                    let filteredArticles = (digest.articles || []).filter((a) => {
+                        // Only include articles newer than subscriber's last sent time
+                        if (sub.lastSentAt && a.publishedAt <= sub.lastSentAt) return false;
+                        // Filter by subscriber's categories (empty = all)
+                        if (sub.categories.length > 0 && !sub.categories.includes(a.category)) return false;
+                        return true;
+                    });
+
+                    // Skip if no new articles for this subscriber
+                    if (filteredArticles.length === 0) {
+                        console.log(`[digest/send] No new articles for ${sub.email} since ${new Date(sub.lastSentAt).toISOString()}, skipping`);
+                        // Still mark as sent to avoid repeated empty checks
+                        sentIds.push(sub._id);
+                        continue;
+                    }
+
+                    filteredArticles = filteredArticles.slice(0, 15);
+
+                    // Generate per-subscriber summary from their filtered articles
+                    let subscriberSummary = null;
+                    const groqKey = process.env.GROQ_API_KEY;
+                    const openrouterKey = process.env.OPENROUTER_API_KEY;
+                    if ((groqKey || openrouterKey) && filteredArticles.length > 0) {
+                        try {
+                            subscriberSummary = await generateSummary(
+                                filteredArticles, sub.variant, sub.lang, groqKey, openrouterKey,
+                            );
+                        } catch {
+                            // Fall through to fallback
+                        }
+                    }
+                    // Fallback: concatenate top titles
+                    if (!subscriberSummary) {
+                        subscriberSummary = filteredArticles
+                            .slice(0, 5)
+                            .map((a) => `${a.title} (${a.source})`)
+                            .join('. ');
+                    }
 
                     const base = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000';
                     const emailHtml = buildDigestEmail({
-                        digestText: digest.summary || 'No summary available for this period.',
-                        articles: filteredArticles.slice(0, 15),
+                        digestText: subscriberSummary || 'No summary available for this period.',
+                        articles: filteredArticles,
                         variant: sub.variant,
                         frequency: sub.frequency,
                         token: sub.token,
@@ -171,29 +206,12 @@ async function generateDigest(variant, lang) {
             }
         }
 
-        // Sort by recency and take top items
+        // Sort by recency — return all items, per-subscriber filtering happens later
         allItems.sort((a, b) => b.publishedAt - a.publishedAt);
-        const topItems = allItems.slice(0, 15);
-
-        // Generate AI summary
-        let summary = '';
-        const groqKey = process.env.GROQ_API_KEY;
-        const openrouterKey = process.env.OPENROUTER_API_KEY;
-
-        if (groqKey || openrouterKey) {
-            summary = await generateSummary(topItems, variant, lang, groqKey, openrouterKey);
-        }
-
-        if (!summary) {
-            summary = topItems
-                .slice(0, 5)
-                .map((item) => `${item.title} (${item.source})`)
-                .join('. ');
-        }
 
         return {
-            summary,
-            articles: topItems,
+            summary: null, // Per-subscriber summaries generated in send loop
+            articles: allItems,
             generatedAt: new Date().toISOString(),
         };
     } catch (err) {
