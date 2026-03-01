@@ -5485,6 +5485,163 @@ a.prediction-link:hover {
   }
 }
 
+/* Custom Feeds */
+.custom-feeds-section {
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+}
+
+.custom-feeds-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.custom-feeds-title {
+  font-size: 10px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.custom-feed-add-btn {
+  padding: 4px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.custom-feed-add-btn:hover {
+  border-color: var(--text-dim);
+}
+
+.custom-feed-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.custom-feed-form.hidden {
+  display: none;
+}
+
+.custom-feed-form input,
+.custom-feed-form select {
+  padding: 6px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 10px;
+}
+
+.custom-feed-url {
+  flex: 1 1 100%;
+}
+
+.custom-feed-name {
+  flex: 1 1 40%;
+}
+
+.custom-feed-category {
+  flex: 0 0 auto;
+}
+
+.custom-feed-form input:focus,
+.custom-feed-form select:focus {
+  outline: none;
+  border-color: var(--text-dim);
+}
+
+.custom-feed-validate-btn,
+.custom-feed-submit-btn {
+  padding: 6px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.custom-feed-validate-btn:hover,
+.custom-feed-submit-btn:hover:not(:disabled) {
+  border-color: var(--text-dim);
+}
+
+.custom-feed-submit-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.custom-feed-status {
+  flex: 1 1 100%;
+  font-size: 10px;
+}
+
+.custom-feed-ok {
+  color: var(--green);
+}
+
+.custom-feed-error {
+  color: var(--red, #ff4444);
+}
+
+.custom-feed-loading {
+  color: var(--text-dim);
+}
+
+.custom-feed-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.custom-feed-list-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  font-size: 10px;
+}
+
+.custom-feed-list-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.custom-feed-remove {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 2px 4px;
+  font-size: 10px;
+}
+
+.custom-feed-remove:hover {
+  color: var(--red, #ff4444);
+}
+
+.custom-feed-badge {
+  font-size: 9px;
+  padding: 1px 5px;
+  background: var(--accent, var(--text-dim));
+  color: var(--bg);
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
 /* Map Popups */
 .map-popup {
   position: fixed;

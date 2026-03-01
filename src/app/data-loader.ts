@@ -1,9 +1,8 @@
 import type { AppContext, AppModule } from '@/app/app-context';
-import type { NewsItem, MapLayers, SocialUnrestEvent } from '@/types';
+import type { NewsItem, MapLayers, SocialUnrestEvent, Feed } from '@/types';
 import type { MarketData } from '@/types';
 import type { TimeRange } from '@/components';
 import {
-  FEEDS,
   INTEL_SOURCES,
   SECTORS,
   COMMODITIES,
@@ -11,6 +10,7 @@ import {
   SITE_VARIANT,
   LAYER_TO_SOURCE,
 } from '@/config';
+import { getMergedFeeds } from '@/services/custom-feeds';
 import { INTEL_HOTSPOTS, CONFLICT_ZONES } from '@/config/geo';
 import { tokenizeForMatch, matchKeyword } from '@/utils/keyword-match';
 import {
@@ -547,7 +547,7 @@ export class DataLoaderManager implements AppModule {
     this.applyTimeRangeFilterToNewsPanelsDebounced();
   }
 
-  private async loadNewsCategory(category: string, feeds: typeof FEEDS.politics, digest?: ListFeedDigestResponse | null): Promise<NewsItem[]> {
+  private async loadNewsCategory(category: string, feeds: Feed[], digest?: ListFeedDigestResponse | null): Promise<NewsItem[]> {
     try {
       const panel = this.ctx.newsPanels[category];
 
@@ -770,8 +770,9 @@ export class DataLoaderManager implements AppModule {
     // Fire digest fetch early (non-blocking) — await before category loop
     const digestPromise = this.tryFetchDigest();
 
-    const categories = Object.entries(FEEDS)
-      .filter((entry): entry is [string, typeof FEEDS[keyof typeof FEEDS]] => Array.isArray(entry[1]) && entry[1].length > 0)
+    const allFeeds = getMergedFeeds();
+    const categories = Object.entries(allFeeds)
+      .filter((entry): entry is [string, Feed[]] => Array.isArray(entry[1]) && entry[1].length > 0)
       .map(([key, feeds]) => ({ key, feeds }));
 
     const digest = await digestPromise;

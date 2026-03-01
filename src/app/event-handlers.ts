@@ -23,10 +23,10 @@ import {
   STORAGE_KEYS,
   SITE_VARIANT,
   LAYER_TO_SOURCE,
-  FEEDS,
   INTEL_SOURCES,
   DEFAULT_PANELS,
 } from '@/config';
+import { getMergedFeeds } from '@/services/custom-feeds';
 import {
   saveSnapshot,
   initAisStream,
@@ -736,7 +736,7 @@ export class EventHandlerManager implements AppModule {
 
   getAllSourceNames(): string[] {
     const sources = new Set<string>();
-    Object.values(FEEDS).forEach(feeds => {
+    Object.values(getMergedFeeds()).forEach(feeds => {
       if (feeds) feeds.forEach(f => sources.add(f.name));
     });
     INTEL_SOURCES.forEach(f => sources.add(f.name));
