@@ -37,6 +37,8 @@
       "displaced": "실향민",
       "climate": "기후 스트레스",
       "conflictEvents": "분쟁 사건",
+      "activeStrikes": "활성 공습",
+      "aviationDisruptions": "공항 운항 장애",
       "gpsJammingZones": "GPS Jamming Zones"
     },
     "timeAgo": {
@@ -70,6 +72,7 @@
       "protestsDetected": "{{count}}건의 활성 시위 감지",
       "aircraftTracked": "{{count}}대의 군용 항공기 추적 중",
       "vesselsTracked": "{{count}}척의 군함 추적 중",
+      "activeStrikes": "{{count}}건의 활성 공습 감지",
       "internetOutages": "{{count}}건의 인터넷 장애",
       "recentEarthquakes": "{{count}}건의 최근 지진",
       "stockIndex": "주가 지수: {{value}}",
@@ -456,6 +459,8 @@
         "displaced": "실향민",
         "climate": "기후 스트레스",
         "conflictEvents": "분쟁 사건",
+        "activeStrikes": "활성 공습",
+        "aviationDisruptions": "공항 운항 장애",
         "gpsJammingZones": "GPS Jamming Zones"
       },
       "timeAgo": {
@@ -489,6 +494,7 @@
         "protestsDetected": "{{count}}건의 활성 시위 감지",
         "aircraftTracked": "{{count}}대의 군용 항공기 추적 중",
         "vesselsTracked": "{{count}}척의 군함 추적 중",
+        "activeStrikes": "{{count}}건의 활성 공습 감지",
         "internetOutages": "{{count}}건의 인터넷 장애",
         "recentEarthquakes": "{{count}}건의 최근 지진",
         "stockIndex": "주가 지수: {{value}}",
@@ -837,7 +843,9 @@
         "commodityHubs": "원자재 허브",
         "gulfInvestments": "GCC 투자",
         "tradeRoutes": "무역 항로",
-        "gpsJamming": "GPS JAMMING"
+        "iranAttacks": "이란 공격",
+        "gpsJamming": "GPS JAMMING",
+        "dayNight": "주/야간"
       },
       "tooltip": {
         "earthquake": "지진",
@@ -886,7 +894,8 @@
           "geopolitical": "지정학",
           "militaryStrategic": "군사 및 전략",
           "transport": "교통",
-          "labels": "라벨"
+          "labels": "라벨",
+          "overlays": "오버레이 및 라벨"
         },
         "descriptions": {
           "techStartupHubs": "주요 스타트업 생태계 (SF, NYC, 런던 등)",
@@ -939,7 +948,8 @@
           "techEvents": "주요 기술 컨퍼런스 및 이벤트",
           "techFires": "기술 인프라 인근 활성 산불",
           "financeGulfInvestments": "GCC 국부펀드 투자 및 해외직접투자",
-          "tradeRoutes": "전략적 병목 지점을 경유하여 항구를 연결하는 주요 글로벌 해운 항로"
+          "tradeRoutes": "전략적 병목 지점을 경유하여 항구를 연결하는 주요 글로벌 해운 항로",
+          "dayNight": "주간 및 야간 영역을 표시하는 실시간 태양 종단선"
         },
         "notes": {
           "timeAffects": "영향 대상: 지진, 기상, 시위, 장애"
@@ -967,9 +977,6 @@
       "streamQualityDesc": "모든 라이브 스트림의 품질 설정 (낮추면 대역폭 절약)",
       "mapFlashLabel": "실시간 이벤트 펄스",
       "mapFlashDesc": "속보 수신 시 지도에서 해당 위치를 깜박임",
-      "sectionPanels": "패널",
-      "badgeAnimLabel": "카운트 배지 펄스",
-      "badgeAnimDesc": "새 항목이 도착하면 패널 카운트 배지에 애니메이션 적용",
       "aiFlowTitle": "설정",
       "aiFlowCloudLabel": "클라우드 AI (Groq 및 OpenRouter)",
       "aiFlowCloudDesc": "헤드라인을 클라우드로 전송하여 AI 요약 (권장)",
@@ -983,9 +990,6 @@
       "aiFlowStatusCloudAndBrowser": "클라우드 AI + 브라우저 모델 활성",
       "aiFlowStatusBrowserOnly": "브라우저 모델만 사용",
       "aiFlowStatusDisabled": "AI 제공자 비활성화됨",
-      "sectionIntelligence": "인텔리전스",
-      "headlineMemoryLabel": "헤드라인 메모리",
-      "headlineMemoryDesc": "과거 헤드라인을 기억하여 국가 브리핑에 역사적 맥락을 추가합니다",
       "insightsDisabledTitle": "AI 분석이 비활성화되었습니다",
       "insightsDisabledHint": "지도 헤더의 설정 기어를 통해 제공자를 활성화하세요"
     },
@@ -1127,6 +1131,8 @@
       "time": "Time",
       "justNow": "just now",
       "historyCount": "{{count}} alerts in last 24h",
+      "historySummary": "24시간 내 {{count}}건의 경보 — {{waves}}회 파동",
+      "loadingHistory": "이력 로딩 중...",
       "infoTooltip": "<strong>Israel Sirens</strong><br>Real-time rocket and missile siren alerts from Israel Home Front Command.<br><br>Data is polled every 10 seconds. A pulsing red indicator means active sirens are sounding."
     },
     "satelliteFires": {
@@ -1228,7 +1234,14 @@
     "runtimeConfig": {
       "getApiKey": "API 키 발급"
     },
+    "breakingNews": {
+      "critical": "심각",
+      "high": "높음",
+      "dismiss": "닫기",
+      "enableNotifications": "데스크톱 알림 활성화"
+    },
     "intelligenceFindings": {
+      "breakingAlerts": "긴급 경보",
       "popupAlerts": "새 경보 팝업 표시",
       "badgeTitle": "정보 분석 결과",
       "title": "정보 분석 결과",
@@ -1883,6 +1896,9 @@
     },
     "commodityHub": {
       "commodities": "원자재"
+    },
+    "iranEvent": {
+      "relatedEvents": "관련 사건"
     },
     "hotspotSubtexts": {
       "conflict_zone": "분쟁 지역",

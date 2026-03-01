@@ -37,7 +37,9 @@
       "displaced": "перемещённые",
       "climate": "Климатическая нагрузка",
       "conflictEvents": "конфликтные события",
-      "gpsJammingZones": "GPS Jamming Zones"
+      "gpsJammingZones": "GPS Jamming Zones",
+      "activeStrikes": "активные забастовки",
+      "aviationDisruptions": "сбои в аэропортах"
     },
     "timeAgo": {
       "m": "{{count}}м назад",
@@ -73,7 +75,8 @@
       "internetOutages": "{{count}} сбоев интернета",
       "recentEarthquakes": "{{count}} недавних землетрясений",
       "stockIndex": "Фондовый индекс: {{value}}",
-      "recentHeadlines": "**Последние заголовки:**"
+      "recentHeadlines": "**Последние заголовки:**",
+      "activeStrikes": "{{count}} активных забастовок обнаружено"
     }
   },
   "header": {
@@ -207,7 +210,9 @@
     "liveWebcams": "Веб-камеры",
     "securityAdvisories": "Предупреждения безопасности",
     "orefSirens": "Israel Sirens",
-    "telegramIntel": "Разведка Telegram"
+    "telegramIntel": "Разведка Telegram",
+    "giving": "Глобальная благотворительность",
+    "supplyChain": "Цепочка поставок"
   },
   "modals": {
     "search": {
@@ -351,7 +356,8 @@
         "NASA_FIRMS_API_KEY": "Система управления информацией о пожарах.",
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
-      }
+      },
+      "skipSetup": "Пропустить настройку — одна лицензия World Monitor открывает всё. Запишитесь в лист ожидания для раннего доступа."
     },
     "settingsWindow": {
       "validating": "Проверка API-ключей...",
@@ -373,6 +379,32 @@
         "path": "Путь",
         "status": "Статус",
         "duration": "Длительность"
+      },
+      "worldMonitor": {
+        "tabLabel": "World Monitor",
+        "heroTitle": "Один ключ. Всё включено.",
+        "heroDescription": "Одна лицензия World Monitor заменяет все API-ключи и LLM-провайдеров, которые иначе пришлось бы настраивать самостоятельно. ИИ-сводки, разведка в реальном времени, рыночные данные, отслеживание конфликтов, обнаружение пожаров, спутниковые снимки — всё работает, всё под управлением, без настройки.",
+        "apiKey": {
+          "title": "Лицензионный ключ",
+          "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
+          "description": "Вставьте лицензию, чтобы мгновенно разблокировать все источники данных и ИИ-функции.",
+          "statusValid": "ЛИЦЕНЗИРОВАНО",
+          "statusMissing": "НЕТ ЛИЦЕНЗИИ"
+        },
+        "dividerOr": "ИЛИ",
+        "register": {
+          "title": "Забронируйте место",
+          "description": "Мы готовим запуск лицензий World Monitor. Зарегистрируйтесь сейчас — первые участники получат приоритетный доступ и цены для основателей.",
+          "emailPlaceholder": "your@email.com",
+          "submitBtn": "В лист ожидания",
+          "submitting": "Отправка...",
+          "success": "Вы в списке! Мы уведомим вас первыми.",
+          "alreadyRegistered": "Вы уже в листе ожидания.",
+          "error": "Регистрация не удалась. Попробуйте ещё раз.",
+          "invalidEmail": "Пожалуйста, введите действительный адрес электронной почты."
+        },
+        "byokTitle": "Или используйте свои ключи",
+        "byokDescription": "Предпочитаете полный контроль? Перейдите на вкладки API-ключей и LLM, чтобы настроить каждый источник данных и ИИ-провайдер отдельно."
       }
     },
     "countryIntel": {
@@ -427,7 +459,9 @@
         "displaced": "перемещённые",
         "climate": "Климатическая нагрузка",
         "conflictEvents": "конфликтные события",
-        "gpsJammingZones": "GPS Jamming Zones"
+        "gpsJammingZones": "GPS Jamming Zones",
+        "activeStrikes": "активные забастовки",
+        "aviationDisruptions": "сбои в аэропортах"
       },
       "timeAgo": {
         "m": "{{count}}м назад",
@@ -463,7 +497,8 @@
         "internetOutages": "{{count}} сбоев интернета",
         "recentEarthquakes": "{{count}} недавних землетрясений",
         "stockIndex": "Фондовый индекс: {{value}}",
-        "recentHeadlines": "**Последние заголовки:**"
+        "recentHeadlines": "**Последние заголовки:**",
+        "activeStrikes": "{{count}} активных забастовок обнаружено"
       }
     }
   },
@@ -541,7 +576,8 @@
       "change": "Change",
       "cut": "cut",
       "hike": "hike",
-      "hold": "hold"
+      "hold": "hold",
+      "fredKeyMissing": "Требуется API-ключ FRED — добавьте в Настройках для включения экономических индикаторов"
     },
     "tradePolicy": {
       "restrictions": "Ограничения",
@@ -792,7 +828,8 @@
         "gulfInvestments": "Инвестиции стран Залива",
         "tradeRoutes": "Торговые маршруты",
         "gpsJamming": "GPS JAMMING",
-        "dayNight": "День/Ночь"
+        "dayNight": "День/Ночь",
+        "iranAttacks": "Атаки Ирана"
       },
       "tooltip": {
         "earthquake": "Землетрясение",
@@ -885,7 +922,18 @@
           "naturalEventsFull": "Землетрясения (USGS) + штормы, пожары, вулканы, наводнения (NASA EONET)",
           "waterwaysLabels": "Обозначения стратегических узких мест",
           "tradeRoutes": "Основные мировые судоходные маршруты, соединяющие порты через стратегические узкие места",
-          "dayNight": "Солнечный терминатор в реальном времени, показывающий зоны дня и ночи"
+          "dayNight": "Солнечный терминатор в реальном времени, показывающий зоны дня и ночи",
+          "climateAnomalies": "Аномалии температуры и осадков",
+          "financeGulfInvestments": "Инвестиции суверенных фондов стран Залива и ПИИ",
+          "firesFull": "Активные лесные пожары и периметры возгораний (NASA FIRMS)",
+          "geoDisplacement": "Потоки беженцев и перемещённых лиц",
+          "geoUcdpEvents": "Вооружённые конфликты по данным Уппсальской программы",
+          "infraCyberThreats": "Кибератаки и события безопасности",
+          "militarySpaceports": "Стартовые площадки ракет и космические объекты",
+          "mineralsFull": "Месторождения стратегических минералов и горнодобывающие объекты",
+          "techCyberThreats": "Кибератаки и события безопасности",
+          "techEvents": "Крупные технологические конференции и мероприятия",
+          "techFires": "Активные пожары вблизи технологической инфраструктуры"
         },
         "notes": {
           "timeAffects": "Влияет на: Землетрясения, Погода, Протесты, Сбои"
@@ -910,9 +958,6 @@
       "sectionAi": "AI Analysis",
       "mapFlashLabel": "Live Event Pulse",
       "mapFlashDesc": "Flash locations on the map when breaking news arrives",
-      "sectionPanels": "Panels",
-      "badgeAnimLabel": "Count Badge Pulse",
-      "badgeAnimDesc": "Animate panel count badges when new items arrive",
       "aiFlowTitle": "Settings",
       "aiFlowCloudLabel": "Облачный ИИ (Groq & OpenRouter)",
       "aiFlowCloudDesc": "Отправлять заголовки в облако для ИИ-суммирования (рекомендуется)",
@@ -926,11 +971,11 @@
       "aiFlowStatusCloudAndBrowser": "Облачный ИИ + Модель браузера активны",
       "aiFlowStatusBrowserOnly": "Только модель браузера",
       "aiFlowStatusDisabled": "Нет включённых провайдеров ИИ",
-      "sectionIntelligence": "Разведка",
-      "headlineMemoryLabel": "Память заголовков",
-      "headlineMemoryDesc": "Запоминать прошлые заголовки для обогащения страновых сводок историческим контекстом",
       "insightsDisabledTitle": "Анализ ИИ отключён",
-      "insightsDisabledHint": "Enable providers via the settings gear in the map header"
+      "insightsDisabledHint": "Enable providers via the settings gear in the map header",
+      "sectionStreaming": "Трансляции",
+      "streamQualityDesc": "Установить качество для всех прямых трансляций (низкое экономит трафик)",
+      "streamQualityLabel": "Качество видео"
     },
     "cascade": {
       "noImpacts": "Воздействие на страны не обнаружено",
@@ -1118,7 +1163,8 @@
         "estFlow": "Расч. поток",
         "volume": "Объём",
         "change": "Изменение"
-      }
+      },
+      "rateLimited": "Данные ETF временно недоступны (ограничение запросов) — повторная попытка скоро"
     },
     "macroSignals": {
       "overall": "Общий",
@@ -1175,7 +1221,9 @@
         "minutesAgo": "{{count}}м назад",
         "hoursAgo": "{{count}}ч назад",
         "daysAgo": "{{count}}д назад"
-      }
+      },
+      "breakingAlerts": "Срочные оповещения",
+      "popupAlerts": "Всплывающие новые оповещения"
     },
     "countryTimeline": {
       "now": "сейчас",
@@ -1315,7 +1363,12 @@
       "regionAsia": "Азия",
       "regionMiddleEast": "Ближний Восток",
       "regionAfrica": "Африка",
-      "regionOceania": "Океания"
+      "regionOceania": "Океания",
+      "botCheck": "YouTube запрашивает вход для воспроизведения {{name}}",
+      "channelNotFound": "YouTube-канал не найден",
+      "invalidHandle": "Введите корректный YouTube-дескриптор (например, @ChannelName)",
+      "signInToYouTube": "Войти в YouTube",
+      "verifying": "Проверка…"
     },
     "securityAdvisories": {
       "loading": "Загрузка предупреждений...",
@@ -1348,11 +1401,59 @@
       "time": "Time",
       "justNow": "just now",
       "historyCount": "{{count}} alerts in last 24h",
-      "infoTooltip": "<strong>Israel Sirens</strong><br>Real-time rocket and missile siren alerts from Israel Home Front Command.<br><br>Data is polled every 10 seconds. A pulsing red indicator means active sirens are sounding."
+      "infoTooltip": "<strong>Israel Sirens</strong><br>Real-time rocket and missile siren alerts from Israel Home Front Command.<br><br>Data is polled every 10 seconds. A pulsing red indicator means active sirens are sounding.",
+      "historySummary": "{{count}} оповещений за 24ч — {{waves}} волн",
+      "loadingHistory": "Загрузка истории..."
     },
-    "map": {
-      "showMap": "Показать карту",
-      "hideMap": "Скрыть карту"
+    "breakingNews": {
+      "critical": "СРОЧНО",
+      "dismiss": "Скрыть",
+      "enableNotifications": "Включить уведомления на рабочем столе",
+      "high": "ВАЖНО"
+    },
+    "giving": {
+      "activityIndex": "Индекс активности",
+      "cafIndex": "Индекс CAF",
+      "candidGrants": "Гранты Candid",
+      "category": "Категория",
+      "cryptoDaily": "Крипто за день",
+      "dailyInflow": "Приток за 24ч",
+      "dailyVol": "Дневной объём",
+      "dataLag": "Задержка данных",
+      "estDailyFlow": "Расч. дневной поток",
+      "freshness": "Данные",
+      "infoTooltip": "<strong>Глобальный индекс благотворительной активности</strong> Композитный индекс отслеживания частных пожертвований через краудфандинговые платформы и крипто-кошельки.<ul><li><strong>Платформы</strong>: Выборка кампаний GoFundMe, GlobalGiving, JustGiving</li><li><strong>Крипто</strong>: Ончейн-поступления в благотворительные кошельки (Endaoment, Giving Block)</li><li><strong>Институциональные</strong>: OECD ODA, CAF World Giving Index, гранты Candid</li></ul>Индекс показывает направление, а не точные суммы. Сочетает живую выборку с опубликованными годовыми отчётами.",
+      "oecdOda": "OECD ODA",
+      "ofTotal": "% от общего",
+      "platform": "Платформа",
+      "share": "Доля",
+      "tabs": {
+        "categories": "Категории",
+        "crypto": "Крипто",
+        "institutional": "Институциональные",
+        "platforms": "Платформы"
+      },
+      "topReceivers": "Крупнейшие получатели",
+      "trend": "Тренд",
+      "trending": "ТРЕНД",
+      "velocity": "Скорость",
+      "wallets": "Кошельки"
+    },
+    "supplyChain": {
+      "chokepoints": "Узкие места",
+      "fredKeyMissing": "Для ставок морских перевозок нужен API-ключ FRED — добавьте в Настройках. Узкие места и минералы доступны без ключа.",
+      "mineral": "Минерал",
+      "minerals": "Минералы",
+      "noChokepoints": "Загрузка данных по узким местам...",
+      "noMinerals": "Загрузка данных по минералам...",
+      "noShipping": "Данные о ставках морских перевозок недоступны",
+      "risk": "Риск",
+      "shipping": "Судоходство",
+      "sources": "FRED / NGA / USGS",
+      "spikeAlert": "Обнаружен всплеск — ставка значительно выше средней за 52 недели (еженедельно)",
+      "topProducers": "Крупнейшие производители",
+      "upstreamUnavailable": "Данные о цепочке поставок временно недоступны — показаны кэшированные данные",
+      "warnings": "предупреждений"
     }
   },
   "popups": {
@@ -1820,6 +1921,9 @@
       "uae_ecsr": "ОАЭ/ЕЦБР",
       "venezuela_crisis": "Кризис в Венесуэле",
       "yemen_houthis": "Йемен/Хуситы"
+    },
+    "iranEvent": {
+      "relatedEvents": "Связанные события"
     }
   },
   "signals": {
@@ -1999,6 +2103,8 @@
     "currentVariant": "(текущий)",
     "retry": "Retry",
     "refresh": "Refresh",
-    "all": "Все"
+    "all": "Все",
+    "loadingGiving": "Загрузка данных о глобальной благотворительности",
+    "rateLimitedMarket": "Рыночные данные временно недоступны (ограничение запросов) — повторная попытка скоро"
   }
 }

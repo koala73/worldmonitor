@@ -37,7 +37,9 @@
       "displaced": "Vertriebene",
       "climate": "Klimastress",
       "conflictEvents": "Konfliktereignisse",
-      "gpsJammingZones": "GPS Jamming Zones"
+      "gpsJammingZones": "GPS Jamming Zones",
+      "activeStrikes": "aktive Streiks",
+      "aviationDisruptions": "Flughafenstörungen"
     },
     "timeAgo": {
       "m": "{{count}}vor m",
@@ -73,7 +75,8 @@
       "internetOutages": "{{count}} Internetausfälle",
       "recentEarthquakes": "{{count}} jüngste Erdbeben",
       "stockIndex": "Aktienindex: {{value}}",
-      "recentHeadlines": "**Aktuelle Schlagzeilen:**"
+      "recentHeadlines": "**Aktuelle Schlagzeilen:**",
+      "activeStrikes": "{{count}} aktive Streiks erkannt"
     }
   },
   "header": {
@@ -180,6 +183,8 @@
     "etfFlows": "BTC ETF-Tracker",
     "stablecoins": "Stablecoins",
     "ucdpEvents": "UCDP Konfliktereignisse",
+    "giving": "Globale Spenden",
+    "supplyChain": "Lieferkette",
     "displacement": "UNHCR Vertreibung",
     "climate": "Klima-Anomalien",
     "populationExposure": "Bevölkerungsexposition",
@@ -324,6 +329,7 @@
         "some": "Für einige Funktionen sind API-Schlüssel erforderlich"
       },
       "openSettings": "Öffnen Sie Einstellungen",
+      "skipSetup": "Überspringen Sie das Setup — eine einzige World Monitor-Lizenz schaltet alles frei. Tragen Sie sich in die Warteliste ein, um frühzeitigen Zugang zu erhalten.",
       "summary": {
         "desktop": "Desktop-Modus",
         "web": "Webmodus (schreibgeschützt, serververwaltete Anmeldeinformationen)",
@@ -387,7 +393,9 @@
         "displaced": "verdrängt",
         "climate": "Klimastress",
         "conflictEvents": "Konfliktereignisse",
-        "gpsJammingZones": "GPS Jamming Zones"
+        "gpsJammingZones": "GPS Jamming Zones",
+        "activeStrikes": "aktive Streiks",
+        "aviationDisruptions": "Flughafenstörungen"
       },
       "loadingIndex": "Index wird geladen...",
       "identifying": "Land wird identifiziert...",
@@ -441,7 +449,8 @@
         "internetOutages": "{{count}} Internetausfälle",
         "recentEarthquakes": "{{count}} jüngste Erdbeben",
         "stockIndex": "Aktienindex: {{value}}",
-        "recentHeadlines": "**Aktuelle Schlagzeilen:**"
+        "recentHeadlines": "**Aktuelle Schlagzeilen:**",
+        "activeStrikes": "{{count}} aktive Streiks erkannt"
       }
     },
     "settingsWindow": {
@@ -464,7 +473,33 @@
         "duration": "Dauer"
       },
       "sidecarUnreachable": "Beiwagen nicht erreichbar.",
-      "logCleared": "Protokoll gelöscht."
+      "logCleared": "Protokoll gelöscht.",
+      "worldMonitor": {
+        "tabLabel": "World Monitor",
+        "heroTitle": "Ein Schlüssel. Alles inklusive.",
+        "heroDescription": "Eine einzige World Monitor-Lizenz ersetzt jeden API-Schlüssel und LLM-Anbieter, den Sie sonst selbst konfigurieren müssten. KI-Zusammenfassungen, Echtzeit-Intelligence, Marktdaten, Konfliktverfolgung, Branderkennung, Satellitenbilder — alles betrieben, alles verwaltet, kein Setup.",
+        "apiKey": {
+          "title": "Lizenzschlüssel",
+          "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
+          "description": "Fügen Sie Ihre Lizenz ein, um alle Datenquellen und KI-Funktionen sofort freizuschalten.",
+          "statusValid": "LIZENZIERT",
+          "statusMissing": "KEINE LIZENZ"
+        },
+        "dividerOr": "ODER",
+        "register": {
+          "title": "Reservieren Sie Ihren Platz",
+          "description": "Wir bereiten den Start von World Monitor-Lizenzen vor. Melden Sie sich jetzt an und seien Sie der Erste — frühe Mitglieder erhalten bevorzugten Zugang und Gründermitglied-Preise.",
+          "emailPlaceholder": "ihre@email.com",
+          "submitBtn": "Auf die Warteliste setzen",
+          "submitting": "Wird übermittelt...",
+          "success": "Sie stehen auf der Liste! Wir benachrichtigen Sie zuerst.",
+          "alreadyRegistered": "Sie stehen bereits auf der Warteliste.",
+          "error": "Registrierung fehlgeschlagen. Bitte versuchen Sie es erneut.",
+          "invalidEmail": "Bitte geben Sie eine gültige E-Mail-Adresse ein."
+        },
+        "byokTitle": "Oder eigene Schlüssel verwenden",
+        "byokDescription": "Bevorzugen Sie volle Kontrolle? Gehen Sie zu den Tabs API-Schlüssel und LLMs, um jede Datenquelle und jeden KI-Anbieter individuell zu konfigurieren."
+      }
     }
   },
   "components": {
@@ -529,6 +564,7 @@
       "noSpending": "Keine aktuellen Regierungsauszeichnungen",
       "awards": "Auszeichnungen",
       "noIndicatorData": "Noch keine Indikatordaten – FRED wird möglicherweise geladen",
+      "fredKeyMissing": "FRED-API-Schlüssel erforderlich — in den Einstellungen hinzufügen, um Wirtschaftsindikatoren zu aktivieren",
       "noOilDataRetry": "Öldaten sind vorübergehend nicht verfügbar. Versuchen Sie es erneut",
       "vsPreviousWeek": "im Vergleich zur Vorwoche",
       "in": "In",
@@ -542,6 +578,22 @@
       "cut": "cut",
       "hike": "hike",
       "hold": "hold"
+    },
+    "supplyChain": {
+      "chokepoints": "Engpässe",
+      "shipping": "Schifffahrt",
+      "minerals": "Mineralien",
+      "noChokepoints": "Engpassdaten werden geladen...",
+      "noShipping": "Schifffahrtsratendaten nicht verfügbar",
+      "noMinerals": "Mineraldaten werden geladen...",
+      "fredKeyMissing": "FRED-API-Schlüssel für Schifffahrtsraten erforderlich — in den Einstellungen hinzufügen. Engpässe und Mineralien sind ohne Schlüssel verfügbar.",
+      "upstreamUnavailable": "Lieferkettendaten vorübergehend nicht verfügbar — zwischengespeicherte Daten werden angezeigt",
+      "spikeAlert": "Spitze erkannt — Rate deutlich über dem 52-Wochen-Durchschnitt (wöchentlich)",
+      "warnings": "Warnung(en)",
+      "mineral": "Mineral",
+      "topProducers": "Top-Produzenten",
+      "risk": "Risiko",
+      "sources": "FRED / NGA / USGS"
     },
     "tradePolicy": {
       "restrictions": "Beschränkungen",
@@ -655,6 +707,7 @@
         "commodityHubs": "Rohstoffzentren",
         "gulfInvestments": "GCC-Investitionen",
         "tradeRoutes": "Handelsrouten",
+        "iranAttacks": "Iran-Angriffe",
         "gpsJamming": "GPS JAMMING",
         "dayNight": "Tag/Nacht"
       },
@@ -751,7 +804,18 @@
           "naturalEventsFull": "Erdbeben (USGS) + Stürme, Brände, Vulkane, Überschwemmungen (NASA EONET)",
           "waterwaysLabels": "Strategische Engpassmarkierungen",
           "tradeRoutes": "Wichtige globale Schifffahrtsrouten, die Häfen über strategische Engpässe verbinden",
-          "dayNight": "Echtzeit-Sonnenterminator zeigt Tag- und Nachtzonen"
+          "dayNight": "Echtzeit-Sonnenterminator zeigt Tag- und Nachtzonen",
+          "firesFull": "Aktive Waldbrände und Brandperimeter (NASA FIRMS)",
+          "climateAnomalies": "Temperatur- und Niederschlagsanomalien",
+          "geoUcdpEvents": "Uppsala Conflict Data Program — Ereignisse bewaffneter Konflikte",
+          "geoDisplacement": "Flucht- und Vertreibungsbewegungen",
+          "militarySpaceports": "Raketenstartplätze und Weltraumanlagen",
+          "infraCyberThreats": "Cyberangriffe und Sicherheitsereignisse",
+          "mineralsFull": "Strategische Mineralvorkommen und Abbaustätten",
+          "techCyberThreats": "Cyberangriffe und Sicherheitsereignisse",
+          "techEvents": "Große Technologiekonferenzen und -veranstaltungen",
+          "techFires": "Aktive Waldbrände in der Nähe von Technologieinfrastruktur",
+          "financeGulfInvestments": "GCC-Staatsfonds-Investitionen und ausländische Direktinvestitionen"
         },
         "notes": {
           "timeAffects": "Betrifft: Erdbeben, Wetter, Proteste, Ausfälle"
@@ -973,7 +1037,15 @@
       "selectInfrastructureHint": "Wählen Sie die Infrastruktur aus, um die Kaskadenwirkung zu analysieren",
       "infoTooltip": "<strong>Kaskadenanalyse</strong> Modelliert Infrastrukturabhängigkeiten:<ul><li>Unterseekabel, Pipelines, Häfen, Engpässe</li><li>Wählen Sie die Infrastruktur aus, um einen Ausfall zu simulieren</li><li>Zeigt betroffene Länder und Kapazitätsverluste</li><li>Identifiziert redundante Routen</li></ul>Daten aus TeleGeography und Branchenquellen."
     },
+    "breakingNews": {
+      "critical": "KRITISCH",
+      "high": "HOCH",
+      "dismiss": "Schließen",
+      "enableNotifications": "Desktop-Benachrichtigungen aktivieren"
+    },
     "intelligenceFindings": {
+      "breakingAlerts": "Eilmeldungen",
+      "popupAlerts": "Neue Warnungen als Popup anzeigen",
       "badgeTitle": "Erkenntnisse des Geheimdienstes",
       "title": "Geheimdienstergebnisse",
       "none": "Keine aktuellen Geheimdienstergebnisse",
@@ -1020,6 +1092,34 @@
         "hoursAgo": "Vor {{count}}h"
       },
       "infoTooltip": "Die NASA FIRST die thermischen Erkennungen von VIIRS-Satelliten in überwachten Konfliktregionen. Hohe Intensität = Helligkeit >360K und Zuverlässigkeit >80 %."
+    },
+    "giving": {
+      "activityIndex": "Aktivitätsindex",
+      "trend": "Trend",
+      "estDailyFlow": "Gesch. täglicher Fluss",
+      "cryptoDaily": "Krypto täglich",
+      "tabs": {
+        "platforms": "Plattformen",
+        "categories": "Kategorien",
+        "crypto": "Krypto",
+        "institutional": "Institutionell"
+      },
+      "platform": "Plattform",
+      "dailyVol": "Tagesvolumen",
+      "velocity": "Geschwindigkeit",
+      "freshness": "Daten",
+      "category": "Kategorie",
+      "share": "Anteil",
+      "trending": "TREND",
+      "dailyInflow": "24h Zufluss",
+      "wallets": "Wallets",
+      "ofTotal": "% des Gesamtbetrags",
+      "topReceivers": "Top-Empfänger",
+      "oecdOda": "OECD ODA",
+      "cafIndex": "CAF-Index",
+      "candidGrants": "Candid-Zuschüsse",
+      "dataLag": "Datenverzögerung",
+      "infoTooltip": "<strong>Globaler Spendenaktivitätsindex</strong> Zusammengesetzter Index zur Verfolgung persönlicher Spenden über Crowdfunding-Plattformen und Krypto-Wallets.<ul><li><strong>Plattformen</strong>: GoFundMe, GlobalGiving, JustGiving Kampagnenstichproben</li><li><strong>Krypto</strong>: On-Chain-Spenden-Wallet-Zuflüsse (Endaoment, Giving Block)</li><li><strong>Institutionell</strong>: OECD ODA, CAF World Giving Index, Candid-Zuschüsse</li></ul>Der Index ist richtungsweisend (keine exakten Dollarbeträge). Kombiniert Live-Stichproben mit veröffentlichten Jahresberichten."
     },
     "displacement": {
       "noData": "Keine Daten",
@@ -1174,11 +1274,11 @@
       "settingsTitle": "Settings",
       "sectionMap": "Map",
       "sectionAi": "AI Analysis",
+      "sectionStreaming": "Streaming",
+      "streamQualityLabel": "Videoqualität",
+      "streamQualityDesc": "Qualität für alle Live-Streams festlegen (niedriger spart Bandbreite)",
       "mapFlashLabel": "Live Event Pulse",
       "mapFlashDesc": "Flash locations on the map when breaking news arrives",
-      "sectionPanels": "Panels",
-      "badgeAnimLabel": "Count Badge Pulse",
-      "badgeAnimDesc": "Animate panel count badges when new items arrive",
       "aiFlowTitle": "Settings",
       "aiFlowCloudLabel": "Cloud-KI (Groq & OpenRouter)",
       "aiFlowCloudDesc": "Schlagzeilen zur KI-Zusammenfassung an die Cloud senden (empfohlen)",
@@ -1192,9 +1292,6 @@
       "aiFlowStatusCloudAndBrowser": "Cloud-KI + Browser-Modell aktiv",
       "aiFlowStatusBrowserOnly": "Nur Browser-Modell",
       "aiFlowStatusDisabled": "Keine KI-Anbieter aktiviert",
-      "sectionIntelligence": "Aufklärung",
-      "headlineMemoryLabel": "Schlagzeilen-Gedächtnis",
-      "headlineMemoryDesc": "Vergangene Schlagzeilen speichern, um Länderberichte mit historischem Kontext anzureichern",
       "insightsDisabledTitle": "KI-Analyse ist deaktiviert",
       "insightsDisabledHint": "Enable providers via the settings gear in the map header"
     },
@@ -1203,6 +1300,7 @@
     },
     "etfFlows": {
       "unavailable": "ETF-Daten vorübergehend nicht verfügbar",
+      "rateLimited": "ETF-Daten vorübergehend nicht verfügbar (Ratenbegrenzung) — wird in Kürze erneut versucht",
       "netFlow": "Nettofluss",
       "estFlow": "Gesch. Fluss",
       "totalVol": "Ges. Vol.",
@@ -1293,7 +1391,9 @@
       "retry": "Retry",
       "notLive": "{{name}} is not currently live",
       "cannotEmbed": "{{name}} cannot be embedded in this app (YouTube {{code}})",
-      "openOnYouTube": "Open on YouTube",
+      "botCheck": "YouTube verlangt eine Anmeldung, um {{name}} abzuspielen",
+      "signInToYouTube": "Bei YouTube anmelden",
+      "openOnYouTube": "Auf YouTube öffnen",
       "manage": "Kanäle verwalten",
       "addChannel": "Kanal hinzufügen",
       "remove": "Entfernen",
@@ -1315,7 +1415,10 @@
       "regionAsia": "Asien",
       "regionMiddleEast": "Naher Osten",
       "regionAfrica": "Afrika",
-      "regionOceania": "Ozeanien"
+      "regionOceania": "Ozeanien",
+      "invalidHandle": "Geben Sie einen gültigen YouTube-Handle ein (z. B. @KanalName)",
+      "channelNotFound": "YouTube-Kanal nicht gefunden",
+      "verifying": "Wird überprüft…"
     },
     "securityAdvisories": {
       "loading": "Reisehinweise werden geladen...",
@@ -1348,6 +1451,8 @@
       "time": "Time",
       "justNow": "just now",
       "historyCount": "{{count}} alerts in last 24h",
+      "historySummary": "{{count}} Warnungen in 24h — {{waves}} Wellen",
+      "loadingHistory": "Verlauf wird geladen...",
       "infoTooltip": "<strong>Israel Sirens</strong><br>Real-time rocket and missile siren alerts from Israel Home Front Command.<br><br>Data is polled every 10 seconds. A pulsing red indicator means active sirens are sounding."
     },
     "map": {
@@ -1792,6 +1897,9 @@
     "commodityHub": {
       "commodities": "WAREN"
     },
+    "iranEvent": {
+      "relatedEvents": "Verwandte Ereignisse"
+    },
     "hotspotSubtexts": {
       "conflict_zone": "Konfliktzone",
       "dprk_watch": "DVRK-Uhr",
@@ -1960,6 +2068,7 @@
     "calculatingExposure": "Exposition berechnen",
     "computingSignals": "Signale berechnen...",
     "loadingEtfData": "ETF-Daten laden...",
+    "loadingGiving": "Globale Spendendaten werden geladen",
     "loadingDisplacement": "Vertreibungsdaten laden",
     "loadingClimateData": "Klimadaten laden",
     "failedTechReadiness": "Fehler beim Laden der Technologiebereitschaft",
@@ -1972,6 +2081,7 @@
     "failedSectorData": "Fehler beim Laden der Sektordaten",
     "failedCommodities": "Fehler beim Laden der Rohstoffe",
     "failedCryptoData": "Fehler beim Laden der Kryptodaten",
+    "rateLimitedMarket": "Marktdaten vorübergehend nicht verfügbar (Ratenbegrenzung) — wird in Kürze erneut versucht",
     "failedClusterNews": "Fehler beim Gruppieren der Nachrichten",
     "noNewsAvailable": "Keine Nachrichten verfügbar",
     "noActiveTechHubs": "Keine aktiven Technologie-Hubs",

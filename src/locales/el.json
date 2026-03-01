@@ -37,7 +37,9 @@
       "displaced": "εκτοπισμένοι",
       "climate": "Κλιματική πίεση",
       "conflictEvents": "συγκρούσεις",
-      "gpsJammingZones": "GPS Jamming Zones"
+      "gpsJammingZones": "GPS Jamming Zones",
+      "activeStrikes": "ενεργές απεργίες",
+      "aviationDisruptions": "διαταραχές αεροδρομίων"
     },
     "timeAgo": {
       "m": "{{count}}λ πριν",
@@ -73,7 +75,8 @@
       "internetOutages": "{{count}} διακοπές διαδικτύου",
       "recentEarthquakes": "{{count}} πρόσφατοι σεισμοί",
       "stockIndex": "Χρηματιστηριακός δείκτης: {{value}}",
-      "recentHeadlines": "**Πρόσφατοι τίτλοι:**"
+      "recentHeadlines": "**Πρόσφατοι τίτλοι:**",
+      "activeStrikes": "{{count}} ενεργές απεργίες ανιχνεύθηκαν"
     }
   },
   "header": {
@@ -207,7 +210,9 @@
     "liveWebcams": "Ζωντανές Κάμερες",
     "securityAdvisories": "Προειδοποιήσεις Ασφαλείας",
     "orefSirens": "Israel Sirens",
-    "telegramIntel": "Πληροφορίες Telegram"
+    "telegramIntel": "Πληροφορίες Telegram",
+    "supplyChain": "Εφοδιαστική Αλυσίδα",
+    "giving": "Παγκόσμιες Δωρεές"
   },
   "modals": {
     "search": {
@@ -454,7 +459,9 @@
         "displaced": "εκτοπισμένοι",
         "climate": "Κλιματική πίεση",
         "conflictEvents": "συγκρούσεις",
-        "gpsJammingZones": "GPS Jamming Zones"
+        "gpsJammingZones": "GPS Jamming Zones",
+        "activeStrikes": "ενεργές απεργίες",
+        "aviationDisruptions": "διαταραχές αεροδρομίων"
       },
       "timeAgo": {
         "m": "{{count}}λ πριν",
@@ -490,7 +497,8 @@
         "internetOutages": "{{count}} διακοπές διαδικτύου",
         "recentEarthquakes": "{{count}} πρόσφατοι σεισμοί",
         "stockIndex": "Χρηματιστηριακός δείκτης: {{value}}",
-        "recentHeadlines": "**Πρόσφατοι τίτλοι:**"
+        "recentHeadlines": "**Πρόσφατοι τίτλοι:**",
+        "activeStrikes": "{{count}} ενεργές απεργίες ανιχνεύθηκαν"
       }
     }
   },
@@ -560,16 +568,16 @@
       "noOilDataRetry": "Δεδομένα πετρελαίου προσωρινά μη διαθέσιμα - θα γίνει επανάληψη",
       "vsPreviousWeek": "σε σχέση με την προηγούμενη εβδομάδα",
       "in": "σε",
-      "centralBanks": "Central Banks",
-      "noBisData": "BIS data temporarily unavailable - will retry",
-      "policyRate": "Policy Rate",
-      "exchangeRate": "Exchange Rate",
-      "creditToGdp": "Credit / GDP",
-      "realEer": "Real EER",
-      "change": "Change",
-      "cut": "cut",
-      "hike": "hike",
-      "hold": "hold"
+      "centralBanks": "Κεντρικές Τράπεζες",
+      "noBisData": "Δεδομένα BIS προσωρινά μη διαθέσιμα - θα γίνει επανάληψη",
+      "policyRate": "Επιτόκιο Πολιτικής",
+      "exchangeRate": "Συναλλαγματική Ισοτιμία",
+      "creditToGdp": "Πίστωση / ΑΕΠ",
+      "realEer": "Πραγματική Σταθμισμένη Ισοτιμία",
+      "change": "Μεταβολή",
+      "cut": "μείωση",
+      "hike": "αύξηση",
+      "hold": "διατήρηση"
     },
     "tradePolicy": {
       "restrictions": "Περιορισμοί",
@@ -820,7 +828,8 @@
         "gulfInvestments": "Επενδύσεις GCC",
         "tradeRoutes": "Εμπορικές Διαδρομές",
         "gpsJamming": "GPS JAMMING",
-        "dayNight": "Ημέρα/Νύχτα"
+        "dayNight": "Ημέρα/Νύχτα",
+        "iranAttacks": "Επιθέσεις Ιράν"
       },
       "tooltip": {
         "earthquake": "Σεισμός",
@@ -944,15 +953,12 @@
       "analyzingSentiment": "Ανάλυση συναισθήματος...",
       "generatingBrief": "Δημιουργία παγκόσμιας ενημέρωσης...",
       "infoTooltip": "<strong>Ανάλυση με AI</strong><br>• <strong>Παγκόσμια Ενημέρωση</strong>: Περίληψη AI (Groq/OpenRouter)<br>• <strong>Συναίσθημα</strong>: Ανάλυση τόνου ειδήσεων<br>• <strong>Ταχύτητα</strong>: Ταχέως εξελισσόμενες ιστορίες<br>• <strong>Εστιακά Σημεία</strong>: Συσχετίζει οντότητες ειδήσεων με σήματα χάρτη (στρατιωτικά, διαμαρτυρίες, διακοπές)<br><em>Μόνο desktop • Τροφοδοτείται από Llama 3.3 + Ανίχνευση Εστιακών Σημείων</em>",
-      "settingsTitle": "Settings",
-      "sectionMap": "Map",
-      "sectionAi": "AI Analysis",
-      "mapFlashLabel": "Live Event Pulse",
-      "mapFlashDesc": "Flash locations on the map when breaking news arrives",
-      "sectionPanels": "Panels",
-      "badgeAnimLabel": "Count Badge Pulse",
-      "badgeAnimDesc": "Animate panel count badges when new items arrive",
-      "aiFlowTitle": "Settings",
+      "settingsTitle": "Ρυθμίσεις",
+      "sectionMap": "Χάρτης",
+      "sectionAi": "Ανάλυση AI",
+      "mapFlashLabel": "Παλμός Ζωντανών Γεγονότων",
+      "mapFlashDesc": "Φωτίζει τοποθεσίες στον χάρτη όταν φτάνουν έκτακτα νέα",
+      "aiFlowTitle": "Ρυθμίσεις",
       "aiFlowCloudLabel": "Cloud AI (Groq & OpenRouter)",
       "aiFlowCloudDesc": "Αποστολή τίτλων στο cloud για σύνοψη AI (συνιστάται)",
       "aiFlowBrowserLabel": "Τοπικό Μοντέλο Περιηγητή",
@@ -965,11 +971,11 @@
       "aiFlowStatusCloudAndBrowser": "Cloud AI + Τοπικό μοντέλο ενεργά",
       "aiFlowStatusBrowserOnly": "Μόνο τοπικό μοντέλο",
       "aiFlowStatusDisabled": "Κανένας πάροχος AI ενεργοποιημένος",
-      "sectionIntelligence": "Πληροφορίες",
-      "headlineMemoryLabel": "Μνήμη τίτλων",
-      "headlineMemoryDesc": "Αποθήκευση παλαιότερων τίτλων για εμπλουτισμό εκθέσεων χωρών με ιστορικό πλαίσιο",
       "insightsDisabledTitle": "Η ανάλυση AI είναι απενεργοποιημένη",
-      "insightsDisabledHint": "Enable providers via the settings gear in the map header"
+      "insightsDisabledHint": "Ενεργοποιήστε παρόχους μέσω του γραναζιού ρυθμίσεων στην κεφαλίδα του χάρτη",
+      "sectionStreaming": "Streaming",
+      "streamQualityLabel": "Ποιότητα Βίντεο",
+      "streamQualityDesc": "Ρύθμιση ποιότητας για όλες τις ζωντανές ροές (χαμηλότερη εξοικονομεί εύρος ζώνης)"
     },
     "cascade": {
       "noImpacts": "Δεν ανιχνεύθηκαν επιπτώσεις σε χώρες",
@@ -1182,7 +1188,8 @@
         "minutesAgo": "{{count}}λ πριν",
         "hoursAgo": "{{count}}ω πριν",
         "daysAgo": "{{count}}μ πριν"
-      }
+      },
+      "breakingAlerts": "Έκτακτες Ειδοποιήσεις"
     },
     "countryTimeline": {
       "now": "τώρα",
@@ -1258,7 +1265,8 @@
         "estFlow": "Εκτ. Ροή",
         "volume": "Όγκος",
         "change": "Μεταβολή"
-      }
+      },
+      "rateLimited": "Δεδομένα ETF προσωρινά μη διαθέσιμα (περιορισμός ρυθμού) — επανάληψη σύντομα"
     },
     "macroSignals": {
       "overall": "Συνολικά",
@@ -1342,7 +1350,25 @@
       "regionAsia": "Ασία",
       "regionMiddleEast": "Μέση Ανατολή",
       "regionAfrica": "Αφρική",
-      "regionOceania": "Ωκεανία"
+      "regionOceania": "Ωκεανία",
+      "botCheck": "Το YouTube ζητάει σύνδεση για αναπαραγωγή {{name}}",
+      "signInToYouTube": "Σύνδεση στο YouTube",
+      "manage": "Διαχείριση καναλιών",
+      "addChannel": "Προσθήκη καναλιού",
+      "remove": "Αφαίρεση",
+      "youtubeHandle": "YouTube handle (π.χ. @Channel)",
+      "youtubeHandleOrUrl": "YouTube handle ή URL",
+      "displayName": "Εμφανιζόμενο όνομα (προαιρετικό)",
+      "openPanelSettings": "Ρυθμίσεις εμφάνισης πάνελ",
+      "channelSettings": "Ρυθμίσεις Καναλιού",
+      "save": "Αποθήκευση",
+      "cancel": "Ακύρωση",
+      "confirmDelete": "Διαγραφή αυτού του καναλιού;",
+      "confirmTitle": "Επιβεβαίωση",
+      "restoreDefaults": "Επαναφορά προεπιλεγμένων καναλιών",
+      "invalidHandle": "Εισάγετε ένα έγκυρο YouTube handle (π.χ. @ChannelName)",
+      "channelNotFound": "Δεν βρέθηκε κανάλι YouTube",
+      "verifying": "Επαλήθευση…"
     },
     "securityAdvisories": {
       "loading": "Φόρτωση ταξιδιωτικών οδηγιών...",
@@ -1367,19 +1393,67 @@
       "infoTooltip": "<strong>Προειδοποιήσεις Ασφαλείας</strong><br>Ταξιδιωτικές οδηγίες και προειδοποιήσεις ασφαλείας."
     },
     "orefSirens": {
-      "checking": "Checking siren alerts...",
-      "noAlerts": "No active sirens — all clear",
-      "notConfigured": "Sirens service not configured",
-      "activeSirens": "{{count}} active siren(s)",
-      "area": "Area",
-      "time": "Time",
-      "justNow": "just now",
-      "historyCount": "{{count}} alerts in last 24h",
-      "infoTooltip": "<strong>Israel Sirens</strong><br>Real-time rocket and missile siren alerts from Israel Home Front Command.<br><br>Data is polled every 10 seconds. A pulsing red indicator means active sirens are sounding."
+      "checking": "Έλεγχος ειδοποιήσεων σειρήνων...",
+      "noAlerts": "Χωρίς ενεργές σειρήνες — ήσυχα",
+      "notConfigured": "Η υπηρεσία σειρήνων δεν έχει ρυθμιστεί",
+      "activeSirens": "{{count}} ενεργή(-ές) σειρήνα(-ες)",
+      "area": "Περιοχή",
+      "time": "Χρόνος",
+      "justNow": "μόλις τώρα",
+      "historyCount": "{{count}} ειδοποιήσεις τις τελευταίες 24ω",
+      "infoTooltip": "<strong>Σειρήνες Ισραήλ</strong><br>Ειδοποιήσεις σειρήνων πυραύλων σε πραγματικό χρόνο από τη Διοίκηση Εσωτερικού Μετώπου του Ισραήλ.<br><br>Τα δεδομένα ελέγχονται κάθε 10 δευτερόλεπτα. Ένας παλλόμενος κόκκινος δείκτης σημαίνει ενεργές σειρήνες.",
+      "historySummary": "{{count}} ειδοποιήσεις σε 24ω — {{waves}} κύματα",
+      "loadingHistory": "Φόρτωση ιστορικού..."
     },
-    "map": {
-      "showMap": "Εμφάνιση χάρτη",
-      "hideMap": "Απόκρυψη χάρτη"
+    "breakingNews": {
+      "critical": "ΚΡΙΣΙΜΟ",
+      "high": "ΥΨΗΛΟ",
+      "dismiss": "Απόρριψη",
+      "enableNotifications": "Ενεργοποίηση ειδοποιήσεων desktop"
+    },
+    "supplyChain": {
+      "chokepoints": "Σημεία Ελέγχου",
+      "shipping": "Ναυτιλία",
+      "minerals": "Ορυκτά",
+      "noChokepoints": "Φόρτωση δεδομένων σημείων ελέγχου...",
+      "noShipping": "Δεδομένα ναυτιλιακών τιμών μη διαθέσιμα",
+      "noMinerals": "Φόρτωση δεδομένων ορυκτών...",
+      "fredKeyMissing": "Απαιτείται FRED API key για ναυτιλιακές τιμές — προσθέστε το στις Ρυθμίσεις. Σημεία ελέγχου και ορυκτά διαθέσιμα χωρίς κλειδί.",
+      "upstreamUnavailable": "Δεδομένα εφοδιαστικής αλυσίδας προσωρινά μη διαθέσιμα — εμφάνιση αποθηκευμένων δεδομένων",
+      "spikeAlert": "Ανιχνεύθηκε κορύφωση — τιμή σημαντικά πάνω από τον μέσο όρο 52 εβδομάδων (εβδομαδιαία)",
+      "warnings": "προειδοποίηση(-εις)",
+      "mineral": "Ορυκτό",
+      "topProducers": "Κορυφαίοι Παραγωγοί",
+      "risk": "Κίνδυνος",
+      "sources": "FRED / NGA / USGS"
+    },
+    "giving": {
+      "activityIndex": "Δείκτης Δραστηριότητας",
+      "trend": "Τάση",
+      "estDailyFlow": "Εκτ. Ημερήσια Ροή",
+      "cryptoDaily": "Ημερήσια Crypto",
+      "tabs": {
+        "platforms": "Πλατφόρμες",
+        "categories": "Κατηγορίες",
+        "crypto": "Crypto",
+        "institutional": "Θεσμικά"
+      },
+      "platform": "Πλατφόρμα",
+      "dailyVol": "Ημερ. Όγκος",
+      "velocity": "Ταχύτητα",
+      "freshness": "Δεδομένα",
+      "category": "Κατηγορία",
+      "share": "Μερίδιο",
+      "trending": "ΤΑΣΗ",
+      "dailyInflow": "Εισροή 24ω",
+      "wallets": "Πορτοφόλια",
+      "ofTotal": "% του Συνόλου",
+      "topReceivers": "Κορυφαίοι Αποδέκτες",
+      "oecdOda": "OECD ODA",
+      "cafIndex": "Δείκτης CAF",
+      "candidGrants": "Επιχορηγήσεις Candid",
+      "dataLag": "Καθυστέρηση Δεδομένων",
+      "infoTooltip": "<strong>Δείκτης Παγκόσμιας Φιλανθρωπικής Δραστηριότητας</strong> Σύνθετος δείκτης που παρακολουθεί προσωπικές δωρεές μέσω πλατφορμών crowdfunding και crypto πορτοφολιών.<ul><li><strong>Πλατφόρμες</strong>: Δειγματοληψία καμπανιών GoFundMe, GlobalGiving, JustGiving</li><li><strong>Crypto</strong>: On-chain εισροές φιλανθρωπικών πορτοφολιών (Endaoment, Giving Block)</li><li><strong>Θεσμικά</strong>: OECD ODA, Δείκτης CAF World Giving, Επιχορηγήσεις Candid</li></ul>Ο δείκτης είναι κατευθυντικός (όχι ακριβή ποσά). Συνδυάζει ζωντανή δειγματοληψία με δημοσιευμένες ετήσιες εκθέσεις."
     }
   },
   "popups": {
@@ -1829,11 +1903,11 @@
       "greenland_intel": "Πληροφορίες Γροιλανδίας",
       "haiti_crisis": "Κρίση Αϊτής",
       "irgc_activity": "Δραστηριότητα IRGC",
-      "insurgency_coups": "Εξεγέρσεις/Πραξικοπήματα",
+      "insurgency_coups": "Ανταρσία/Πραξικοπήματα",
       "iraq_pmf": "Ιράκ/PMF",
       "kremlin_activity": "Δραστηριότητα Κρεμλίνου",
       "lebanon_hezbollah": "Λίβανος/Χεζμπολάχ",
-      "mossad_idf": "Mossad/IDF",
+      "mossad_idf": "Μοσάντ/IDF",
       "nato_hq": "Αρχηγείο NATO",
       "pla_mss_activity": "Δραστηριότητα PLA/MSS",
       "pentagon_pizza_index": "Pentagon Pizza Index",
@@ -1842,11 +1916,14 @@
       "saudi_gip_mbs": "Σαουδική GIP/MBS",
       "strait_watch": "Παρακολούθηση Στενών",
       "syria_crisis": "Κρίση Συρίας",
-      "tech_ai_hub": "Tech/AI Hub",
+      "tech_ai_hub": "Κέντρο Tech/AI",
       "turkey_mit": "Τουρκία/MIT",
       "uae_ecsr": "ΗΑΕ/ECSR",
       "venezuela_crisis": "Κρίση Βενεζουέλας",
       "yemen_houthis": "Υεμένη/Χούθι"
+    },
+    "iranEvent": {
+      "relatedEvents": "Σχετικά Συμβάντα"
     }
   },
   "signals": {
@@ -1973,7 +2050,7 @@
   "common": {
     "loading": "Φόρτωση...",
     "error": "Σφάλμα",
-    "noData": "Δεν υπάρχουν διαθέσιμα δεδομένα",
+    "noData": "Δεν υπάρχουν δεδομένα",
     "noDataAvailable": "Δεν υπάρχουν διαθέσιμα δεδομένα",
     "updated": "Ενημερώθηκε μόλις τώρα",
     "ago": "{{time}} πριν",
@@ -2026,6 +2103,9 @@
     "currentVariant": "(τρέχον)",
     "retry": "Επανάληψη",
     "refresh": "Ανανέωση",
-    "all": "Όλα"
+    "all": "Όλα",
+    "back": "Πίσω",
+    "viewAll": "Προβολή Όλων",
+    "collapse": "Σύμπτυξη"
   }
 }

@@ -65,7 +65,9 @@
     "liveWebcams": "Live Webcams",
     "securityAdvisories": "Veiligheidsadviezen",
     "orefSirens": "Israel Sirens",
-    "telegramIntel": "Telegram Inlichtingen"
+    "telegramIntel": "Telegram Inlichtingen",
+    "giving": "Mondiale donaties",
+    "supplyChain": "Toeleveringsketen"
   },
   "modals": {
     "search": {
@@ -195,7 +197,8 @@
         "NASA_FIRMS_API_KEY": "Brandinformatiesysteem voor Resourcebeheer.",
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
-      }
+      },
+      "skipSetup": "Sla de configuratie over — een enkele World Monitor-licentie ontgrendelt alles. Meld u aan voor de wachtlijst voor vroege toegang."
     },
     "countryIntel": {
       "identifying": "Land identificeren...",
@@ -231,7 +234,9 @@
         "displaced": "ontheemd",
         "climate": "Klimaatstress",
         "conflictEvents": "conflictgebeurtenissen",
-        "gpsJammingZones": "GPS Jamming Zones"
+        "gpsJammingZones": "GPS Jamming Zones",
+        "activeStrikes": "actieve stakingen",
+        "aviationDisruptions": "luchthavenstoringen"
       },
       "loadingIndex": "Index laden...",
       "identifying": "Land identificeren...",
@@ -285,7 +290,8 @@
         "internetOutages": "{{count}} internetstoringen",
         "recentEarthquakes": "{{count}} recente aardbevingen",
         "stockIndex": "Beursindex: {{value}}",
-        "recentHeadlines": "**Recente koppen:**"
+        "recentHeadlines": "**Recente koppen:**",
+        "activeStrikes": "{{count}} actieve stakingen gedetecteerd"
       }
     },
     "story": {
@@ -322,7 +328,33 @@
         "duration": "Duur"
       },
       "sidecarUnreachable": "Zijspan niet bereikbaar.",
-      "logCleared": "Logboek gewist."
+      "logCleared": "Logboek gewist.",
+      "worldMonitor": {
+        "tabLabel": "World Monitor",
+        "heroTitle": "Eén sleutel. Alles inbegrepen.",
+        "heroDescription": "Een enkele World Monitor-licentie vervangt elke API-sleutel en LLM-provider die u anders zelf zou moeten configureren. AI-samenvattingen, realtime inlichtingen, marktgegevens, conflictmonitoring, branddetectie, satellietbeelden — alles wordt gevoed, alles wordt beheerd, geen configuratie nodig.",
+        "apiKey": {
+          "title": "Licentiesleutel",
+          "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
+          "description": "Plak uw licentie om direct elke gegevensbron en AI-functie te ontgrendelen.",
+          "statusValid": "GELICENTIEERD",
+          "statusMissing": "GEEN LICENTIE"
+        },
+        "dividerOr": "OF",
+        "register": {
+          "title": "Reserveer uw plek",
+          "description": "We bereiden de lancering van World Monitor-licenties voor. Meld u nu aan en wees de eerste — vroege leden krijgen voorrang en een oprichterstarief.",
+          "emailPlaceholder": "uw@email.com",
+          "submitBtn": "Aanmelden voor wachtlijst",
+          "submitting": "Verzenden...",
+          "success": "U staat op de lijst! We laten het u als eerste weten.",
+          "alreadyRegistered": "U staat al op de wachtlijst.",
+          "error": "Registratie mislukt. Probeer het opnieuw.",
+          "invalidEmail": "Voer een geldig e-mailadres in."
+        },
+        "byokTitle": "Of breng uw eigen sleutels mee",
+        "byokDescription": "Liever volledige controle? Ga naar de tabbladen API-sleutels en LLM's om elke gegevensbron en AI-provider afzonderlijk te configureren."
+      }
     }
   },
   "components": {
@@ -420,7 +452,8 @@
         "gulfInvestments": "GCC-investeringen",
         "tradeRoutes": "Handelsroutes",
         "gpsJamming": "GPS JAMMING",
-        "dayNight": "Dag/Nacht"
+        "dayNight": "Dag/Nacht",
+        "iranAttacks": "Iraanse aanvallen"
       },
       "layersTitle": "Lagen",
       "layerGuide": "Lagengids",
@@ -515,7 +548,18 @@
           "naturalEventsFull": "Aardbevingen (USGS) + stormen, branden, vulkanen, overstromingen (NASA EONET)",
           "waterwaysLabels": "Strategische chokepoint-labels",
           "tradeRoutes": "Belangrijke wereldwijde scheepvaartroutes die havens verbinden via strategische knelpunten",
-          "dayNight": "Realtime zonneterminator met dag- en nachtzones"
+          "dayNight": "Realtime zonneterminator met dag- en nachtzones",
+          "climateAnomalies": "Temperatuur- en neerslagafwijkingen",
+          "financeGulfInvestments": "Investeringen van GCC-staatsfondsen en directe buitenlandse investeringen",
+          "firesFull": "Actieve bosbranden en brandperimeters (NASA FIRMS)",
+          "geoDisplacement": "Vluchtelingen- en ontheemdingspatronen",
+          "geoUcdpEvents": "Gewapende conflictgebeurtenissen van het UCDP-programma van Uppsala",
+          "infraCyberThreats": "Cyberaanvallen en beveiligingsincidenten",
+          "militarySpaceports": "Raketlanceerlocaties en ruimtevaartfaciliteiten",
+          "mineralsFull": "Strategische minerale afzettingen en mijnbouwlocaties",
+          "techCyberThreats": "Cyberaanvallen en beveiligingsincidenten",
+          "techEvents": "Grote techconferenties en evenementen",
+          "techFires": "Actieve bosbranden nabij technische infrastructuur"
         },
         "notes": {
           "timeAffects": "Beïnvloedt: aardbevingen, weer, protesten, stroomstoringen"
@@ -764,7 +808,9 @@
         "minutesAgo": "{{count}}m geleden",
         "hoursAgo": "{{count}}u geleden",
         "daysAgo": "{{count}}d geleden"
-      }
+      },
+      "breakingAlerts": "Urgente meldingen",
+      "popupAlerts": "Nieuwe meldingen weergeven"
     },
     "economic": {
       "noIndicatorData": "Nog geen indicatorgegevens - FRED wordt mogelijk geladen",
@@ -788,7 +834,8 @@
       "change": "Change",
       "cut": "cut",
       "hike": "hike",
-      "hold": "hold"
+      "hold": "hold",
+      "fredKeyMissing": "FRED API-sleutel vereist — voeg deze toe in Instellingen om economische indicatoren in te schakelen"
     },
     "tradePolicy": {
       "restrictions": "Beperkingen",
@@ -979,9 +1026,6 @@
       "sectionAi": "AI Analysis",
       "mapFlashLabel": "Live Event Pulse",
       "mapFlashDesc": "Flash locations on the map when breaking news arrives",
-      "sectionPanels": "Panels",
-      "badgeAnimLabel": "Count Badge Pulse",
-      "badgeAnimDesc": "Animate panel count badges when new items arrive",
       "aiFlowTitle": "Settings",
       "aiFlowCloudLabel": "Cloud AI (Groq & OpenRouter)",
       "aiFlowCloudDesc": "Koppen naar de cloud sturen voor AI-samenvatting (aanbevolen)",
@@ -995,11 +1039,11 @@
       "aiFlowStatusCloudAndBrowser": "Cloud AI + Browsermodel actief",
       "aiFlowStatusBrowserOnly": "Alleen browsermodel",
       "aiFlowStatusDisabled": "Geen AI-aanbieders ingeschakeld",
-      "sectionIntelligence": "Inlichtingen",
-      "headlineMemoryLabel": "Koppengeheugen",
-      "headlineMemoryDesc": "Onthoud eerdere koppen om landenrapporten te verrijken met historische context",
       "insightsDisabledTitle": "AI-analyse is uitgeschakeld",
-      "insightsDisabledHint": "Enable providers via the settings gear in the map header"
+      "insightsDisabledHint": "Enable providers via the settings gear in the map header",
+      "sectionStreaming": "Streaming",
+      "streamQualityDesc": "Kwaliteit instellen voor alle livestreams (lager bespaart bandbreedte)",
+      "streamQualityLabel": "Videokwaliteit"
     },
     "techHubs": {
       "infoTooltip": "<strong>Tech Hub-activiteit</strong><br>Toont tech-hubs met de meeste nieuwsactiviteit.<br><br><em>Activiteitsniveaus:</em><br>• <span style=\"color: {{highColor}}\">Hoog</span> — Breaking news of 50+ score<br>• <span style=\"color: {{elevatedColor}}\">Verhoogd</span> — Score 20-49<br>• <span style=\"color: {{lowColor}}\">Laag</span> — Score lager dan 20<br><br>Klik op een hub om naar de locatie ervan te zoomen.",
@@ -1070,7 +1114,8 @@
         "estFlow": "Gesch. stroom",
         "volume": "Volume",
         "change": "Wijziging"
-      }
+      },
+      "rateLimited": "ETF-gegevens tijdelijk niet beschikbaar (limiet bereikt) — wordt binnenkort opnieuw geprobeerd"
     },
     "macroSignals": {
       "overall": "Totaal",
@@ -1173,7 +1218,12 @@
       "regionAsia": "Azië",
       "regionMiddleEast": "Midden-Oosten",
       "regionAfrica": "Afrika",
-      "regionOceania": "Oceanië"
+      "regionOceania": "Oceanië",
+      "botCheck": "YouTube vraagt om in te loggen om {{name}} af te spelen",
+      "channelNotFound": "YouTube-kanaal niet gevonden",
+      "invalidHandle": "Voer een geldig YouTube-handle in (bijv. @Kanaalnaam)",
+      "signInToYouTube": "Inloggen bij YouTube",
+      "verifying": "Verifiëren…"
     },
     "securityAdvisories": {
       "loading": "Reisadviezen laden...",
@@ -1206,11 +1256,59 @@
       "time": "Time",
       "justNow": "just now",
       "historyCount": "{{count}} alerts in last 24h",
-      "infoTooltip": "<strong>Israel Sirens</strong><br>Real-time rocket and missile siren alerts from Israel Home Front Command.<br><br>Data is polled every 10 seconds. A pulsing red indicator means active sirens are sounding."
+      "infoTooltip": "<strong>Israel Sirens</strong><br>Real-time rocket and missile siren alerts from Israel Home Front Command.<br><br>Data is polled every 10 seconds. A pulsing red indicator means active sirens are sounding.",
+      "historySummary": "{{count}} meldingen in 24u — {{waves}} golven",
+      "loadingHistory": "Geschiedenis laden..."
     },
-    "map": {
-      "showMap": "Kaart tonen",
-      "hideMap": "Kaart verbergen"
+    "breakingNews": {
+      "critical": "KRITIEK",
+      "dismiss": "Sluiten",
+      "enableNotifications": "Bureaubladmeldingen inschakelen",
+      "high": "HOOG"
+    },
+    "giving": {
+      "activityIndex": "Activiteitsindex",
+      "cafIndex": "CAF-index",
+      "candidGrants": "Candid-subsidies",
+      "category": "Categorie",
+      "cryptoDaily": "Crypto dagelijks",
+      "dailyInflow": "24u instroom",
+      "dailyVol": "Dagelijks vol.",
+      "dataLag": "Gegevensvertraging",
+      "estDailyFlow": "Gesch. dagelijkse stroom",
+      "freshness": "Gegevens",
+      "infoTooltip": "<strong>Mondiale donatieactiviteitsindex</strong> Samengestelde index die persoonlijke donaties volgt via crowdfundingplatforms en crypto-wallets.<ul><li><strong>Platforms</strong>: steekproef van GoFundMe-, GlobalGiving-, JustGiving-campagnes</li><li><strong>Crypto</strong>: on-chain instroom naar liefdadigheidwallets (Endaoment, Giving Block)</li><li><strong>Institutioneel</strong>: OESO-ODA, CAF World Giving Index, Candid-subsidies</li></ul>Index is richtinggevend (geen exacte bedragen). Combineert live steekproeven met gepubliceerde jaarverslagen.",
+      "oecdOda": "OESO-ODA",
+      "ofTotal": "% van totaal",
+      "platform": "Platform",
+      "share": "Aandeel",
+      "tabs": {
+        "categories": "Categorieën",
+        "crypto": "Crypto",
+        "institutional": "Institutioneel",
+        "platforms": "Platforms"
+      },
+      "topReceivers": "Topontvangers",
+      "trend": "Trend",
+      "trending": "TREND",
+      "velocity": "Snelheid",
+      "wallets": "Wallets"
+    },
+    "supplyChain": {
+      "chokepoints": "Knelpunten",
+      "fredKeyMissing": "FRED API-sleutel vereist voor verzendtarieven — voeg deze toe in Instellingen. Knelpunten en mineralen beschikbaar zonder sleutel.",
+      "mineral": "Mineraal",
+      "minerals": "Mineralen",
+      "noChokepoints": "Knelpuntgegevens worden geladen...",
+      "noMinerals": "Mineraalgegevens worden geladen...",
+      "noShipping": "Verzendtariefgegevens niet beschikbaar",
+      "risk": "Risico",
+      "shipping": "Scheepvaart",
+      "sources": "FRED / NGA / USGS",
+      "spikeAlert": "Piek gedetecteerd — tarief aanzienlijk boven 52-weeks gemiddelde (wekelijks)",
+      "topProducers": "Topproducenten",
+      "upstreamUnavailable": "Toeleveringsketengegevens tijdelijk niet beschikbaar — gecachete gegevens worden weergegeven",
+      "warnings": "waarschuwing(en)"
     }
   },
   "popups": {
@@ -1678,6 +1776,9 @@
       "uae_ecsr": "VAE/ECSR",
       "venezuela_crisis": "Venezuela-crisis",
       "yemen_houthis": "Jemen/Houthi's"
+    },
+    "iranEvent": {
+      "relatedEvents": "Gerelateerde gebeurtenissen"
     }
   },
   "signals": {
@@ -1857,7 +1958,9 @@
     "currentVariant": "(huidig)",
     "retry": "Retry",
     "refresh": "Refresh",
-    "all": "Alle"
+    "all": "Alle",
+    "loadingGiving": "Donatiegegevens laden...",
+    "rateLimitedMarket": "Marktgegevens tijdelijk beperkt — automatisch opnieuw proberen"
   },
   "header": {
     "world": "WERELD",
@@ -1962,7 +2065,9 @@
       "displaced": "ontheemden",
       "climate": "Klimaatstress",
       "conflictEvents": "conflictgebeurtenissen",
-      "gpsJammingZones": "GPS Jamming Zones"
+      "gpsJammingZones": "GPS Jamming Zones",
+      "activeStrikes": "actieve stakingen",
+      "aviationDisruptions": "luchthavenstoringen"
     },
     "timeAgo": {
       "m": "{{count}}m geleden",
@@ -1998,7 +2103,8 @@
       "internetOutages": "{{count}} internetstoringen",
       "recentEarthquakes": "{{count}} recente aardbevingen",
       "stockIndex": "Beursindex: {{value}}",
-      "recentHeadlines": "**Recente koppen:**"
+      "recentHeadlines": "**Recente koppen:**",
+      "activeStrikes": "{{count}} actieve stakingen gedetecteerd"
     }
   }
 }

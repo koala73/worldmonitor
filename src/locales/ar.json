@@ -37,7 +37,9 @@
       "displaced": "نازحون",
       "climate": "إجهاد مناخي",
       "conflictEvents": "أحداث نزاع",
-      "gpsJammingZones": "GPS Jamming Zones"
+      "gpsJammingZones": "GPS Jamming Zones",
+      "activeStrikes": "ضربات نشطة",
+      "aviationDisruptions": "اضطرابات المطارات"
     },
     "timeAgo": {
       "m": "{{count}}د مضت",
@@ -73,7 +75,8 @@
       "internetOutages": "{{count}} انقطاع إنترنت",
       "recentEarthquakes": "{{count}} زلزال حديث",
       "stockIndex": "مؤشر الأسهم: {{value}}",
-      "recentHeadlines": "**أحدث العناوين:**"
+      "recentHeadlines": "**أحدث العناوين:**",
+      "activeStrikes": "{{count}} ضربة نشطة مُكتشفة"
     }
   },
   "header": {
@@ -207,7 +210,9 @@
     "liveWebcams": "كاميرات مباشرة",
     "securityAdvisories": "تنبيهات أمنية",
     "orefSirens": "Israel Sirens",
-    "telegramIntel": "استخبارات Telegram"
+    "telegramIntel": "استخبارات Telegram",
+    "giving": "العطاء العالمي",
+    "supplyChain": "سلسلة الإمداد"
   },
   "modals": {
     "search": {
@@ -351,7 +356,8 @@
         "NASA_FIRMS_API_KEY": "نظام معلومات الحرائق لإدارة الموارد.",
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
-      }
+      },
+      "skipSetup": "تخطَّ الإعداد — ترخيص واحد لـ World Monitor يفتح كل شيء. انضم إلى قائمة الانتظار للحصول على وصول مبكر."
     },
     "settingsWindow": {
       "validating": "جارٍ التحقق من مفاتيح API...",
@@ -373,6 +379,32 @@
         "path": "المسار",
         "status": "الحالة",
         "duration": "المدة"
+      },
+      "worldMonitor": {
+        "tabLabel": "World Monitor",
+        "heroTitle": "مفتاح واحد. كل شيء مشمول.",
+        "heroDescription": "ترخيص واحد لـ World Monitor يحل محل كل مفتاح API ومزود LLM كنت ستهيئه بنفسك. ملخصات AI، استخبارات فورية، بيانات سوقية، تتبع النزاعات، كشف الحرائق، صور الأقمار الصناعية — الكل مفعّل، الكل مُدار، بدون أي إعداد.",
+        "apiKey": {
+          "title": "مفتاح الترخيص",
+          "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
+          "description": "الصق ترخيصك لفتح جميع مصادر البيانات وميزات AI فوراً.",
+          "statusValid": "مُرخَّص",
+          "statusMissing": "بدون ترخيص"
+        },
+        "dividerOr": "أو",
+        "register": {
+          "title": "احجز مكانك",
+          "description": "نحن نستعد لإطلاق تراخيص World Monitor. سجّل الآن وكن أول من يحصل على الوصول — الأعضاء الأوائل يحصلون على أولوية الوصول وتسعير المؤسسين.",
+          "emailPlaceholder": "your@email.com",
+          "submitBtn": "انضم لقائمة الانتظار",
+          "submitting": "جارٍ الإرسال...",
+          "success": "أنت في القائمة! سنُخبرك أولاً.",
+          "alreadyRegistered": "أنت مسجّل بالفعل في قائمة الانتظار.",
+          "error": "فشل التسجيل. يرجى المحاولة مرة أخرى.",
+          "invalidEmail": "يرجى إدخال عنوان بريد إلكتروني صالح."
+        },
+        "byokTitle": "أو استخدم مفاتيحك الخاصة",
+        "byokDescription": "تفضّل التحكم الكامل؟ انتقل إلى تبويبتي مفاتيح API وLLMs لتهيئة كل مصدر بيانات ومزود AI على حدة."
       }
     },
     "countryIntel": {
@@ -427,7 +459,9 @@
         "displaced": "نازحون",
         "climate": "إجهاد مناخي",
         "conflictEvents": "أحداث نزاع",
-        "gpsJammingZones": "GPS Jamming Zones"
+        "gpsJammingZones": "GPS Jamming Zones",
+        "activeStrikes": "ضربات نشطة",
+        "aviationDisruptions": "اضطرابات المطارات"
       },
       "timeAgo": {
         "m": "{{count}}د مضت",
@@ -463,7 +497,8 @@
         "internetOutages": "{{count}} internet outages",
         "recentEarthquakes": "{{count}} recent earthquakes",
         "stockIndex": "Stock index: {{value}}",
-        "recentHeadlines": "**Recent headlines:**"
+        "recentHeadlines": "**Recent headlines:**",
+        "activeStrikes": "{{count}} ضربة نشطة مُكتشفة"
       }
     }
   },
@@ -541,7 +576,8 @@
       "change": "Change",
       "cut": "cut",
       "hike": "hike",
-      "hold": "hold"
+      "hold": "hold",
+      "fredKeyMissing": "مفتاح FRED API مطلوب — أضفه في الإعدادات لتفعيل المؤشرات الاقتصادية"
     },
     "tradePolicy": {
       "restrictions": "القيود",
@@ -792,7 +828,8 @@
         "gulfInvestments": "استثمارات دول الخليج",
         "tradeRoutes": "طرق التجارة",
         "gpsJamming": "GPS JAMMING",
-        "dayNight": "نهار/ليل"
+        "dayNight": "نهار/ليل",
+        "iranAttacks": "هجمات إيران"
       },
       "tooltip": {
         "earthquake": "زلزال",
@@ -885,7 +922,18 @@
           "naturalEventsFull": "زلازل (USGS) + عواصف وحرائق وبراكين وفيضانات (NASA EONET)",
           "waterwaysLabels": "تسميات نقاط الاختناق الاستراتيجية",
           "tradeRoutes": "خطوط الشحن العالمية الرئيسية التي تربط الموانئ عبر نقاط الاختناق الاستراتيجية",
-          "dayNight": "خط الفاصل الشمسي في الوقت الفعلي يُظهر مناطق النهار والليل"
+          "dayNight": "خط الفاصل الشمسي في الوقت الفعلي يُظهر مناطق النهار والليل",
+          "climateAnomalies": "شذوذات درجة الحرارة والأمطار",
+          "financeGulfInvestments": "استثمارات صناديق الثروة السيادية لدول مجلس التعاون الخليجي والاستثمار الأجنبي المباشر",
+          "firesFull": "حرائق الغابات النشطة ومحيطات الحرائق (NASA FIRMS)",
+          "geoDisplacement": "أنماط تدفق اللاجئين والنزوح",
+          "geoUcdpEvents": "أحداث النزاع المسلح من برنامج أوبسالا لبيانات النزاعات",
+          "infraCyberThreats": "هجمات سيبرانية وأحداث أمنية",
+          "militarySpaceports": "مواقع إطلاق الصواريخ والمنشآت الفضائية",
+          "mineralsFull": "رواسب المعادن الاستراتيجية ومواقع التعدين",
+          "techCyberThreats": "هجمات سيبرانية وأحداث أمنية",
+          "techEvents": "مؤتمرات وفعاليات تقنية كبرى",
+          "techFires": "حرائق غابات نشطة بالقرب من البنية التحتية التقنية"
         },
         "notes": {
           "timeAffects": "يؤثر على: الزلازل، الطقس، الاحتجاجات، الانقطاعات"
@@ -910,9 +958,6 @@
       "sectionAi": "AI Analysis",
       "mapFlashLabel": "Live Event Pulse",
       "mapFlashDesc": "Flash locations on the map when breaking news arrives",
-      "sectionPanels": "Panels",
-      "badgeAnimLabel": "Count Badge Pulse",
-      "badgeAnimDesc": "Animate panel count badges when new items arrive",
       "aiFlowTitle": "Settings",
       "aiFlowCloudLabel": "Cloud AI (Groq & OpenRouter)",
       "aiFlowCloudDesc": "إرسال العناوين إلى السحابة لتلخيص الذكاء الاصطناعي (موصى به)",
@@ -926,11 +971,11 @@
       "aiFlowStatusCloudAndBrowser": "Cloud AI + نموذج المتصفح نشط",
       "aiFlowStatusBrowserOnly": "نموذج المتصفح فقط",
       "aiFlowStatusDisabled": "لا يوجد مزود ذكاء اصطناعي مفعّل",
-      "sectionIntelligence": "الاستخبارات",
-      "headlineMemoryLabel": "ذاكرة العناوين",
-      "headlineMemoryDesc": "تذكّر العناوين السابقة لإثراء ملخصات الدول بالسياق التاريخي",
       "insightsDisabledTitle": "تحليل الذكاء الاصطناعي معطّل",
-      "insightsDisabledHint": "Enable providers via the settings gear in the map header"
+      "insightsDisabledHint": "Enable providers via the settings gear in the map header",
+      "sectionStreaming": "البث المباشر",
+      "streamQualityDesc": "تعيين جودة البث لجميع القنوات المباشرة (الجودة المنخفضة توفر عرض النطاق)",
+      "streamQualityLabel": "جودة الفيديو"
     },
     "cascade": {
       "noImpacts": "لم يتم رصد تأثيرات على الدول",
@@ -1142,7 +1187,9 @@
         "minutesAgo": "{{count}}د مضت",
         "hoursAgo": "{{count}}س مضت",
         "daysAgo": "{{count}}ي مضت"
-      }
+      },
+      "breakingAlerts": "تنبيهات عاجلة",
+      "popupAlerts": "إظهار التنبيهات الجديدة"
     },
     "countryTimeline": {
       "now": "الآن",
@@ -1218,7 +1265,8 @@
         "estFlow": "التدفق المقدّر",
         "volume": "الحجم",
         "change": "التغيّر"
-      }
+      },
+      "rateLimited": "بيانات ETF غير متاحة مؤقتاً (تقييد معدل الطلبات) — ستتم إعادة المحاولة قريباً"
     },
     "macroSignals": {
       "overall": "الإجمالي",
@@ -1315,7 +1363,12 @@
       "regionAsia": "آسيا",
       "regionMiddleEast": "الشرق الأوسط",
       "regionAfrica": "أفريقيا",
-      "regionOceania": "أوقيانوسيا"
+      "regionOceania": "أوقيانوسيا",
+      "botCheck": "يطلب YouTube تسجيل الدخول لتشغيل {{name}}",
+      "channelNotFound": "لم يتم العثور على قناة YouTube",
+      "invalidHandle": "أدخل معرّف YouTube صالح (مثال: @ChannelName)",
+      "signInToYouTube": "تسجيل الدخول إلى YouTube",
+      "verifying": "جارٍ التحقق…"
     },
     "securityAdvisories": {
       "loading": "جاري جلب التحذيرات الأمنية...",
@@ -1348,11 +1401,59 @@
       "time": "Time",
       "justNow": "just now",
       "historyCount": "{{count}} alerts in last 24h",
-      "infoTooltip": "<strong>Israel Sirens</strong><br>Real-time rocket and missile siren alerts from Israel Home Front Command.<br><br>Data is polled every 10 seconds. A pulsing red indicator means active sirens are sounding."
+      "infoTooltip": "<strong>Israel Sirens</strong><br>Real-time rocket and missile siren alerts from Israel Home Front Command.<br><br>Data is polled every 10 seconds. A pulsing red indicator means active sirens are sounding.",
+      "historySummary": "{{count}} تنبيه خلال 24 ساعة — {{waves}} موجات",
+      "loadingHistory": "جارٍ تحميل السجل..."
     },
-    "map": {
-      "showMap": "إظهار الخريطة",
-      "hideMap": "إخفاء الخريطة"
+    "breakingNews": {
+      "critical": "حرج",
+      "dismiss": "تجاهل",
+      "enableNotifications": "تفعيل إشعارات سطح المكتب",
+      "high": "مرتفع"
+    },
+    "giving": {
+      "activityIndex": "مؤشر النشاط",
+      "cafIndex": "مؤشر CAF",
+      "candidGrants": "منح Candid",
+      "category": "الفئة",
+      "cryptoDaily": "العملات الرقمية يومياً",
+      "dailyInflow": "التدفق خلال 24 ساعة",
+      "dailyVol": "الحجم اليومي",
+      "dataLag": "تأخر البيانات",
+      "estDailyFlow": "التدفق اليومي المقدّر",
+      "freshness": "البيانات",
+      "infoTooltip": "<strong>مؤشر نشاط العطاء العالمي</strong> مؤشر مركّب يتتبع العطاء الشخصي عبر منصات التمويل الجماعي ومحافظ العملات الرقمية.<ul><li><strong>المنصات</strong>: عيّنات من حملات GoFundMe وGlobalGiving وJustGiving</li><li><strong>العملات الرقمية</strong>: تدفقات محافظ خيرية على السلسلة (Endaoment وGiving Block)</li><li><strong>المؤسسات</strong>: OECD ODA ومؤشر CAF للعطاء العالمي ومنح Candid</li></ul>المؤشر توجيهي (ليس مبالغ دقيقة بالدولار). يجمع بين العيّنات الحية والتقارير السنوية المنشورة.",
+      "oecdOda": "OECD ODA",
+      "ofTotal": "% من الإجمالي",
+      "platform": "المنصة",
+      "share": "الحصة",
+      "tabs": {
+        "categories": "الفئات",
+        "crypto": "العملات الرقمية",
+        "institutional": "المؤسسي",
+        "platforms": "المنصات"
+      },
+      "topReceivers": "أكبر المتلقين",
+      "trend": "الاتجاه",
+      "trending": "رائج",
+      "velocity": "السرعة",
+      "wallets": "المحافظ"
+    },
+    "supplyChain": {
+      "chokepoints": "نقاط الاختناق",
+      "fredKeyMissing": "مفتاح FRED API مطلوب لأسعار الشحن — أضفه في الإعدادات. نقاط الاختناق والمعادن متاحة بدون مفتاح.",
+      "mineral": "المعدن",
+      "minerals": "المعادن",
+      "noChokepoints": "جارٍ تحميل بيانات نقاط الاختناق...",
+      "noMinerals": "جارٍ تحميل بيانات المعادن...",
+      "noShipping": "بيانات أسعار الشحن غير متاحة",
+      "risk": "المخاطر",
+      "shipping": "الشحن",
+      "sources": "FRED / NGA / USGS",
+      "spikeAlert": "تم رصد ارتفاع حاد — المعدل أعلى بكثير من متوسط 52 أسبوع (أسبوعي)",
+      "topProducers": "أكبر المنتجين",
+      "upstreamUnavailable": "بيانات سلسلة الإمداد غير متاحة مؤقتاً — عرض البيانات المخزنة",
+      "warnings": "تحذير(ات)"
     }
   },
   "popups": {
@@ -2002,6 +2103,8 @@
     "currentVariant": "(الحالي)",
     "retry": "Retry",
     "refresh": "Refresh",
-    "all": "الكل"
+    "all": "الكل",
+    "loadingGiving": "جارٍ تحميل بيانات العطاء العالمي",
+    "rateLimitedMarket": "بيانات السوق غير متاحة مؤقتاً (تقييد معدل الطلبات) — ستتم إعادة المحاولة قريباً"
   }
 }

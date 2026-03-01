@@ -37,7 +37,9 @@
       "displaced": "ผู้พลัดถิ่น",
       "climate": "ความเครียดด้านภูมิอากาศ",
       "conflictEvents": "เหตุการณ์ความขัดแย้ง",
-      "gpsJammingZones": "GPS Jamming Zones"
+      "gpsJammingZones": "GPS Jamming Zones",
+      "activeStrikes": "การนัดหยุดงาน",
+      "aviationDisruptions": "การหยุดชะงักสนามบิน"
     },
     "timeAgo": {
       "m": "{{count}}น. ที่แล้ว",
@@ -73,7 +75,8 @@
       "internetOutages": "การหยุดชะงักอินเทอร์เน็ต {{count}} รายการ",
       "recentEarthquakes": "แผ่นดินไหวล่าสุด {{count}} ครั้ง",
       "stockIndex": "ดัชนีหุ้น: {{value}}",
-      "recentHeadlines": "**พาดหัวข่าวล่าสุด:**"
+      "recentHeadlines": "**พาดหัวข่าวล่าสุด:**",
+      "activeStrikes": "ตรวจพบการนัดหยุดงาน {{count}} รายการ"
     }
   },
   "header": {
@@ -207,7 +210,9 @@
     "liveWebcams": "เว็บแคมสด",
     "securityAdvisories": "คำเตือนด้านความปลอดภัย",
     "orefSirens": "Israel Sirens",
-    "telegramIntel": "ข่าวกรอง Telegram"
+    "telegramIntel": "ข่าวกรอง Telegram",
+    "giving": "การบริจาคทั่วโลก",
+    "supplyChain": "ห่วงโซ่อุปทาน"
   },
   "modals": {
     "search": {
@@ -351,7 +356,8 @@
         "NASA_FIRMS_API_KEY": "ระบบข้อมูลไฟสำหรับการจัดการทรัพยากร",
         "OLLAMA_API_URL": "เช่น http://127.0.0.1:11434 (Ollama) หรือ http://127.0.0.1:1234/v1 (LM Studio) — จุดปลายทางที่เข้ากันได้กับ OpenAI",
         "OLLAMA_MODEL": "เช่น llama3.1:8b — แท็กโมเดลที่ใช้สำหรับการสรุป"
-      }
+      },
+      "skipSetup": "ข้ามการตั้งค่า — ใบอนุญาต World Monitor ใบเดียวปลดล็อกทุกอย่าง เข้าร่วมรายชื่อรอเพื่อรับการเข้าถึงก่อน"
     },
     "settingsWindow": {
       "validating": "กำลังตรวจสอบ API key...",
@@ -373,6 +379,32 @@
         "path": "เส้นทาง",
         "status": "สถานะ",
         "duration": "ระยะเวลา"
+      },
+      "worldMonitor": {
+        "apiKey": {
+          "description": "วางใบอนุญาตของคุณเพื่อปลดล็อกแหล่งข้อมูลและฟีเจอร์ AI ทั้งหมดทันที",
+          "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
+          "statusMissing": "ไม่มีใบอนุญาต",
+          "statusValid": "ได้รับอนุญาต",
+          "title": "คีย์ใบอนุญาต"
+        },
+        "byokDescription": "ต้องการควบคุมเต็มรูปแบบ? ไปที่แท็บคีย์ API และ LLM เพื่อกำหนดค่าแหล่งข้อมูลและผู้ให้บริการ AI แต่ละรายทีละรายการ",
+        "byokTitle": "หรือใช้คีย์ของคุณเอง",
+        "dividerOr": "หรือ",
+        "heroDescription": "ใบอนุญาต World Monitor ใบเดียวแทนที่คีย์ API และผู้ให้บริการ LLM ทุกรายที่คุณต้องกำหนดค่าเอง สรุป AI ข่าวกรองเรียลไทม์ ข้อมูลตลาด การติดตามความขัดแย้ง การตรวจจับไฟ ภาพดาวเทียม — ทุกอย่างพร้อม จัดการครบ ไม่ต้องตั้งค่า",
+        "heroTitle": "คีย์เดียว ครบทุกอย่าง",
+        "register": {
+          "alreadyRegistered": "คุณอยู่ในรายชื่อรอแล้ว",
+          "description": "เรากำลังเตรียมเปิดตัวใบอนุญาต World Monitor ลงทะเบียนตอนนี้เพื่อเป็นคนแรก — สมาชิกรุ่นแรกได้รับสิทธิ์เข้าถึงก่อนและราคาผู้ก่อตั้ง",
+          "emailPlaceholder": "อีเมลของคุณ@email.com",
+          "error": "การลงทะเบียนล้มเหลว กรุณาลองอีกครั้ง",
+          "invalidEmail": "กรุณากรอกอีเมลที่ถูกต้อง",
+          "submitBtn": "เข้าร่วมรายชื่อรอ",
+          "submitting": "กำลังส่ง...",
+          "success": "คุณอยู่ในรายชื่อแล้ว! เราจะแจ้งคุณเป็นคนแรก",
+          "title": "จองที่ของคุณ"
+        },
+        "tabLabel": "World Monitor"
       }
     },
     "countryIntel": {
@@ -427,7 +459,9 @@
         "displaced": "ผู้พลัดถิ่น",
         "climate": "ความเครียดด้านภูมิอากาศ",
         "conflictEvents": "เหตุการณ์ความขัดแย้ง",
-        "gpsJammingZones": "GPS Jamming Zones"
+        "gpsJammingZones": "GPS Jamming Zones",
+        "activeStrikes": "การนัดหยุดงาน",
+        "aviationDisruptions": "การหยุดชะงักสนามบิน"
       },
       "timeAgo": {
         "m": "{{count}}น. ที่แล้ว",
@@ -463,7 +497,8 @@
         "internetOutages": "การหยุดชะงักอินเทอร์เน็ต {{count}} รายการ",
         "recentEarthquakes": "แผ่นดินไหวล่าสุด {{count}} ครั้ง",
         "stockIndex": "ดัชนีหุ้น: {{value}}",
-        "recentHeadlines": "**พาดหัวข่าวล่าสุด:**"
+        "recentHeadlines": "**พาดหัวข่าวล่าสุด:**",
+        "activeStrikes": "ตรวจพบการนัดหยุดงาน {{count}} รายการ"
       }
     }
   },
@@ -541,7 +576,8 @@
       "change": "Change",
       "cut": "cut",
       "hike": "hike",
-      "hold": "hold"
+      "hold": "hold",
+      "fredKeyMissing": "ต้องการคีย์ API ของ FRED — เพิ่มในการตั้งค่าเพื่อเปิดใช้ตัวชี้วัดทางเศรษฐกิจ"
     },
     "tradePolicy": {
       "restrictions": "ข้อจำกัด",
@@ -792,7 +828,8 @@
         "gulfInvestments": "การลงทุน GCC",
         "tradeRoutes": "เส้นทางการค้า",
         "gpsJamming": "GPS JAMMING",
-        "dayNight": "กลางวัน/กลางคืน"
+        "dayNight": "กลางวัน/กลางคืน",
+        "iranAttacks": "การโจมตีอิหร่าน"
       },
       "tooltip": {
         "earthquake": "แผ่นดินไหว",
@@ -885,7 +922,18 @@
           "naturalEventsFull": "แผ่นดินไหว (USGS) + พายุ ไฟ ภูเขาไฟ น้ำท่วม (NASA EONET)",
           "waterwaysLabels": "ป้ายกำกับจุดคอขวดยุทธศาสตร์",
           "tradeRoutes": "เส้นทางเดินเรือหลักของโลกที่เชื่อมต่อท่าเรือผ่านจุดยุทธศาสตร์",
-          "dayNight": "เส้นแบ่งเขตแสงอาทิตย์แบบเรียลไทม์แสดงโซนกลางวันและกลางคืน"
+          "dayNight": "เส้นแบ่งเขตแสงอาทิตย์แบบเรียลไทม์แสดงโซนกลางวันและกลางคืน",
+          "climateAnomalies": "ความผิดปกติของอุณหภูมิและปริมาณน้ำฝน",
+          "financeGulfInvestments": "การลงทุนกองทุนความมั่งคั่งแห่งชาติ GCC และการลงทุนโดยตรงจากต่างประเทศ",
+          "firesFull": "ไฟป่าที่กำลังลุกไหม้และขอบเขตไฟ (NASA FIRMS)",
+          "geoDisplacement": "รูปแบบการอพยพของผู้ลี้ภัยและผู้พลัดถิ่น",
+          "geoUcdpEvents": "เหตุการณ์ความขัดแย้งติดอาวุธจากโครงการข้อมูลความขัดแย้งอุปซอลา",
+          "infraCyberThreats": "การโจมตีทางไซเบอร์และเหตุการณ์ด้านความปลอดภัย",
+          "militarySpaceports": "ฐานปล่อยจรวดและสิ่งอำนวยความสะดวกด้านอวกาศ",
+          "mineralsFull": "แหล่งแร่ยุทธศาสตร์และพื้นที่ทำเหมือง",
+          "techCyberThreats": "การโจมตีทางไซเบอร์และเหตุการณ์ด้านความปลอดภัย",
+          "techEvents": "การประชุมและงานเทคโนโลยีสำคัญ",
+          "techFires": "ไฟป่าที่กำลังลุกไหม้ใกล้โครงสร้างพื้นฐานเทคโนโลยี"
         },
         "notes": {
           "timeAffects": "ส่งผลต่อ: แผ่นดินไหว, สภาพอากาศ, การประท้วง, การหยุดชะงัก"
@@ -910,9 +958,6 @@
       "sectionAi": "AI Analysis",
       "mapFlashLabel": "Live Event Pulse",
       "mapFlashDesc": "Flash locations on the map when breaking news arrives",
-      "sectionPanels": "Panels",
-      "badgeAnimLabel": "Count Badge Pulse",
-      "badgeAnimDesc": "Animate panel count badges when new items arrive",
       "aiFlowTitle": "Settings",
       "aiFlowCloudLabel": "Cloud AI (Groq & OpenRouter)",
       "aiFlowCloudDesc": "ส่งพาดหัวข่าวไปยังคลาวด์เพื่อสรุปด้วย AI (แนะนำ)",
@@ -926,11 +971,11 @@
       "aiFlowStatusCloudAndBrowser": "Cloud AI + โมเดลเบราว์เซอร์ทำงานอยู่",
       "aiFlowStatusBrowserOnly": "โมเดลเบราว์เซอร์เท่านั้น",
       "aiFlowStatusDisabled": "ไม่มีผู้ให้บริการ AI ที่เปิดใช้งาน",
-      "sectionIntelligence": "ข่าวกรอง",
-      "headlineMemoryLabel": "หน่วยความจำพาดหัว",
-      "headlineMemoryDesc": "จดจำพาดหัวข่าวก่อนหน้าเพื่อเพิ่มบริบททางประวัติศาสตร์ในรายงานประเทศ",
       "insightsDisabledTitle": "การวิเคราะห์ AI ถูกปิดใช้งาน",
-      "insightsDisabledHint": "Enable providers via the settings gear in the map header"
+      "insightsDisabledHint": "Enable providers via the settings gear in the map header",
+      "sectionStreaming": "การสตรีม",
+      "streamQualityDesc": "ตั้งค่าคุณภาพสำหรับสตรีมสดทั้งหมด (ต่ำกว่าประหยัดแบนด์วิดท์)",
+      "streamQualityLabel": "คุณภาพวิดีโอ"
     },
     "cascade": {
       "noImpacts": "ไม่พบผลกระทบต่อประเทศ",
@@ -1142,7 +1187,9 @@
         "minutesAgo": "{{count}}น. ที่แล้ว",
         "hoursAgo": "{{count}}ชม. ที่แล้ว",
         "daysAgo": "{{count}}ว. ที่แล้ว"
-      }
+      },
+      "breakingAlerts": "การแจ้งเตือนด่วน",
+      "popupAlerts": "แสดงการแจ้งเตือนใหม่แบบป๊อปอัป"
     },
     "countryTimeline": {
       "now": "ตอนนี้",
@@ -1218,7 +1265,8 @@
         "estFlow": "กระแสประมาณการ",
         "volume": "ปริมาณ",
         "change": "เปลี่ยนแปลง"
-      }
+      },
+      "rateLimited": "ข้อมูล ETF ไม่พร้อมใช้งานชั่วคราว (ถูกจำกัดอัตรา) — กำลังลองใหม่ในไม่ช้า"
     },
     "macroSignals": {
       "overall": "ภาพรวม",
@@ -1315,7 +1363,12 @@
       "regionAsia": "เอเชีย",
       "regionMiddleEast": "ตะวันออกกลาง",
       "regionAfrica": "แอฟริกา",
-      "regionOceania": "โอเชียเนีย"
+      "regionOceania": "โอเชียเนีย",
+      "botCheck": "YouTube กำลังขอให้ลงชื่อเข้าใช้เพื่อเล่น {{name}}",
+      "channelNotFound": "ไม่พบช่อง YouTube",
+      "invalidHandle": "ป้อนแฮนเดิล YouTube ที่ถูกต้อง (เช่น @ชื่อช่อง)",
+      "signInToYouTube": "ลงชื่อเข้าใช้ YouTube",
+      "verifying": "กำลังตรวจสอบ…"
     },
     "securityAdvisories": {
       "loading": "กำลังโหลดคำเตือนการเดินทาง...",
@@ -1348,11 +1401,59 @@
       "time": "Time",
       "justNow": "just now",
       "historyCount": "{{count}} alerts in last 24h",
-      "infoTooltip": "<strong>Israel Sirens</strong><br>Real-time rocket and missile siren alerts from Israel Home Front Command.<br><br>Data is polled every 10 seconds. A pulsing red indicator means active sirens are sounding."
+      "infoTooltip": "<strong>Israel Sirens</strong><br>Real-time rocket and missile siren alerts from Israel Home Front Command.<br><br>Data is polled every 10 seconds. A pulsing red indicator means active sirens are sounding.",
+      "historySummary": "{{count}} การแจ้งเตือนใน 24 ชม. — {{waves}} ระลอก",
+      "loadingHistory": "กำลังโหลดประวัติ..."
     },
-    "map": {
-      "showMap": "แสดงแผนที่",
-      "hideMap": "ซ่อนแผนที่"
+    "breakingNews": {
+      "critical": "วิกฤต",
+      "dismiss": "ปิด",
+      "enableNotifications": "เปิดใช้งานการแจ้งเตือนบนเดสก์ท็อป",
+      "high": "สูง"
+    },
+    "giving": {
+      "activityIndex": "ดัชนีกิจกรรม",
+      "cafIndex": "ดัชนี CAF",
+      "candidGrants": "ทุน Candid",
+      "category": "หมวดหมู่",
+      "cryptoDaily": "คริปโตรายวัน",
+      "dailyInflow": "เงินเข้า 24 ชม.",
+      "dailyVol": "ปริมาณรายวัน",
+      "dataLag": "ความล่าช้าของข้อมูล",
+      "estDailyFlow": "กระแสรายวันโดยประมาณ",
+      "freshness": "ข้อมูล",
+      "infoTooltip": "<strong>ดัชนีกิจกรรมการบริจาคทั่วโลก</strong> ดัชนีรวมที่ติดตามการบริจาคส่วนบุคคลผ่านแพลตฟอร์มระดมทุนและกระเป๋าเงินคริปโต<ul><li><strong>แพลตฟอร์ม</strong>: GoFundMe, GlobalGiving, JustGiving สุ่มตัวอย่างแคมเปญ</li><li><strong>คริปโต</strong>: เงินเข้ากระเป๋าการกุศลบนเชน (Endaoment, Giving Block)</li><li><strong>สถาบัน</strong>: OECD ODA, CAF World Giving Index, ทุน Candid</li></ul>ดัชนีเป็นตัวชี้ทิศทาง (ไม่ใช่จำนวนเงินที่แน่นอน) รวมการสุ่มตัวอย่างแบบเรียลไทม์กับรายงานประจำปีที่เผยแพร่",
+      "oecdOda": "OECD ODA",
+      "ofTotal": "% ของทั้งหมด",
+      "platform": "แพลตฟอร์ม",
+      "share": "สัดส่วน",
+      "tabs": {
+        "categories": "หมวดหมู่",
+        "crypto": "คริปโต",
+        "institutional": "สถาบัน",
+        "platforms": "แพลตฟอร์ม"
+      },
+      "topReceivers": "ผู้รับสูงสุด",
+      "trend": "แนวโน้ม",
+      "trending": "เทรนด์",
+      "velocity": "ความเร็ว",
+      "wallets": "กระเป๋าเงิน"
+    },
+    "supplyChain": {
+      "chokepoints": "จุดคอขวด",
+      "fredKeyMissing": "ต้องการคีย์ API ของ FRED สำหรับอัตราค่าขนส่ง — เพิ่มในการตั้งค่า จุดคอขวดและแร่ธาตุใช้ได้โดยไม่ต้องมีคีย์",
+      "mineral": "แร่ธาตุ",
+      "minerals": "แร่ธาตุ",
+      "noChokepoints": "กำลังโหลดข้อมูลจุดคอขวด...",
+      "noMinerals": "กำลังโหลดข้อมูลแร่ธาตุ...",
+      "noShipping": "ข้อมูลอัตราค่าขนส่งไม่พร้อมใช้งาน",
+      "risk": "ความเสี่ยง",
+      "shipping": "การขนส่ง",
+      "sources": "FRED / NGA / USGS",
+      "spikeAlert": "ตรวจพบการพุ่งสูง — อัตราสูงกว่าค่าเฉลี่ย 52 สัปดาห์อย่างมีนัยสำคัญ (รายสัปดาห์)",
+      "topProducers": "ผู้ผลิตรายใหญ่",
+      "upstreamUnavailable": "ข้อมูลห่วงโซ่อุปทานไม่พร้อมใช้งานชั่วคราว — แสดงข้อมูลจากแคช",
+      "warnings": "คำเตือน"
     }
   },
   "popups": {
@@ -1820,6 +1921,9 @@
       "uae_ecsr": "สหรัฐอาหรับเอมิเรตส์/ECSR",
       "venezuela_crisis": "วิกฤตเวเนซุเอลา",
       "yemen_houthis": "เยเมน/ฮูตี"
+    },
+    "iranEvent": {
+      "relatedEvents": "เหตุการณ์ที่เกี่ยวข้อง"
     }
   },
   "signals": {
@@ -1999,6 +2103,8 @@
     "currentVariant": "(ปัจจุบัน)",
     "retry": "ลองใหม่",
     "refresh": "รีเฟรช",
-    "all": "ทั้งหมด"
+    "all": "ทั้งหมด",
+    "loadingGiving": "กำลังโหลดข้อมูลการบริจาคทั่วโลก",
+    "rateLimitedMarket": "ข้อมูลตลาดไม่พร้อมใช้งานชั่วคราว (ถูกจำกัดอัตรา) — กำลังลองใหม่ในไม่ช้า"
   }
 }

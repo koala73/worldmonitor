@@ -37,7 +37,9 @@
       "displaced": "di dời",
       "climate": "Căng thẳng khí hậu",
       "conflictEvents": "sự kiện xung đột",
-      "gpsJammingZones": "GPS Jamming Zones"
+      "gpsJammingZones": "GPS Jamming Zones",
+      "activeStrikes": "đình công đang diễn ra",
+      "aviationDisruptions": "gián đoạn sân bay"
     },
     "timeAgo": {
       "m": "{{count}}ph trước",
@@ -73,7 +75,8 @@
       "internetOutages": "{{count}} sự cố gián đoạn internet",
       "recentEarthquakes": "{{count}} trận động đất gần đây",
       "stockIndex": "Chỉ số chứng khoán: {{value}}",
-      "recentHeadlines": "**Tin tức gần đây:**"
+      "recentHeadlines": "**Tin tức gần đây:**",
+      "activeStrikes": "Phát hiện {{count}} cuộc đình công đang diễn ra"
     }
   },
   "header": {
@@ -207,7 +210,9 @@
     "liveWebcams": "Webcam Trực tiếp",
     "securityAdvisories": "Cảnh báo An ninh",
     "orefSirens": "Israel Sirens",
-    "telegramIntel": "Tình báo Telegram"
+    "telegramIntel": "Tình báo Telegram",
+    "giving": "Từ thiện Toàn cầu",
+    "supplyChain": "Chuỗi Cung ứng"
   },
   "modals": {
     "search": {
@@ -351,7 +356,8 @@
         "NASA_FIRMS_API_KEY": "Hệ thống Thông tin Cháy rừng để Quản lý Tài nguyên.",
         "OLLAMA_API_URL": "Ví dụ: http://127.0.0.1:11434 (Ollama) hoặc http://127.0.0.1:1234/v1 (LM Studio) — endpoint tương thích OpenAI.",
         "OLLAMA_MODEL": "Ví dụ: llama3.1:8b — thẻ mô hình dùng để tóm tắt."
-      }
+      },
+      "skipSetup": "Bỏ qua cài đặt — một giấy phép World Monitor mở khóa tất cả. Tham gia danh sách chờ để truy cập sớm."
     },
     "settingsWindow": {
       "validating": "Đang xác thực khóa API...",
@@ -373,6 +379,32 @@
         "path": "Đường dẫn",
         "status": "Trạng thái",
         "duration": "Thời lượng"
+      },
+      "worldMonitor": {
+        "apiKey": {
+          "description": "Dán giấy phép của bạn để mở khóa mọi nguồn dữ liệu và tính năng AI ngay lập tức.",
+          "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
+          "statusMissing": "CHƯA CÓ GIẤY PHÉP",
+          "statusValid": "ĐÃ CẤP PHÉP",
+          "title": "Khóa Giấy phép"
+        },
+        "byokDescription": "Muốn kiểm soát hoàn toàn? Đến tab Khóa API và LLM để cấu hình từng nguồn dữ liệu và nhà cung cấp AI riêng lẻ.",
+        "byokTitle": "Hoặc sử dụng khóa của riêng bạn",
+        "dividerOr": "HOẶC",
+        "heroDescription": "Một giấy phép World Monitor thay thế mọi khóa API và nhà cung cấp LLM mà bạn phải tự cấu hình. Tóm tắt AI, tình báo thời gian thực, dữ liệu thị trường, theo dõi xung đột, phát hiện cháy, ảnh vệ tinh — tất cả được vận hành, quản lý, không cần cài đặt.",
+        "heroTitle": "Một khóa. Bao gồm tất cả.",
+        "register": {
+          "alreadyRegistered": "Bạn đã có trong danh sách chờ.",
+          "description": "Chúng tôi đang chuẩn bị ra mắt giấy phép World Monitor. Đăng ký ngay để được ưu tiên — thành viên sớm được quyền truy cập trước và giá ưu đãi.",
+          "emailPlaceholder": "email@cuaban.com",
+          "error": "Đăng ký thất bại. Vui lòng thử lại.",
+          "invalidEmail": "Vui lòng nhập địa chỉ email hợp lệ.",
+          "submitBtn": "Tham gia Danh sách Chờ",
+          "submitting": "Đang gửi...",
+          "success": "Bạn đã vào danh sách! Chúng tôi sẽ thông báo cho bạn đầu tiên.",
+          "title": "Đặt chỗ của bạn"
+        },
+        "tabLabel": "World Monitor"
       }
     },
     "countryIntel": {
@@ -427,7 +459,9 @@
         "displaced": "di dời",
         "climate": "Căng thẳng khí hậu",
         "conflictEvents": "sự kiện xung đột",
-        "gpsJammingZones": "GPS Jamming Zones"
+        "gpsJammingZones": "GPS Jamming Zones",
+        "activeStrikes": "đình công đang diễn ra",
+        "aviationDisruptions": "gián đoạn sân bay"
       },
       "timeAgo": {
         "m": "{{count}}ph trước",
@@ -463,7 +497,8 @@
         "internetOutages": "{{count}} sự cố gián đoạn internet",
         "recentEarthquakes": "{{count}} trận động đất gần đây",
         "stockIndex": "Chỉ số chứng khoán: {{value}}",
-        "recentHeadlines": "**Tin tức gần đây:**"
+        "recentHeadlines": "**Tin tức gần đây:**",
+        "activeStrikes": "Phát hiện {{count}} cuộc đình công đang diễn ra"
       }
     }
   },
@@ -541,7 +576,8 @@
       "change": "Change",
       "cut": "cut",
       "hike": "hike",
-      "hold": "hold"
+      "hold": "hold",
+      "fredKeyMissing": "Cần khóa API FRED — thêm trong Cài đặt để bật chỉ số kinh tế"
     },
     "tradePolicy": {
       "restrictions": "Hạn chế",
@@ -792,7 +828,8 @@
         "gulfInvestments": "Đầu tư GCC",
         "tradeRoutes": "Tuyến Thương mại",
         "gpsJamming": "GPS JAMMING",
-        "dayNight": "Ngày/Đêm"
+        "dayNight": "Ngày/Đêm",
+        "iranAttacks": "Tấn công Iran"
       },
       "tooltip": {
         "earthquake": "Động đất",
@@ -885,7 +922,18 @@
           "naturalEventsFull": "Động đất (USGS) + bão, cháy, núi lửa, lũ lụt (NASA EONET)",
           "waterwaysLabels": "Nhãn điểm nghẽn chiến lược",
           "tradeRoutes": "Các tuyến vận tải biển chính toàn cầu kết nối các cảng qua các điểm chiến lược",
-          "dayNight": "Đường phân chia mặt trời thời gian thực hiển thị vùng ngày và đêm"
+          "dayNight": "Đường phân chia mặt trời thời gian thực hiển thị vùng ngày và đêm",
+          "climateAnomalies": "Bất thường nhiệt độ và lượng mưa",
+          "financeGulfInvestments": "Đầu tư quỹ tài sản quốc gia GCC và đầu tư trực tiếp nước ngoài",
+          "firesFull": "Cháy rừng đang hoạt động và phạm vi cháy (NASA FIRMS)",
+          "geoDisplacement": "Mô hình dòng chảy tị nạn và di dời",
+          "geoUcdpEvents": "Sự kiện xung đột vũ trang từ Chương trình Dữ liệu Xung đột Uppsala",
+          "infraCyberThreats": "Tấn công mạng và sự kiện an ninh",
+          "militarySpaceports": "Bãi phóng tên lửa và cơ sở không gian",
+          "mineralsFull": "Mỏ khoáng sản chiến lược và địa điểm khai thác",
+          "techCyberThreats": "Tấn công mạng và sự kiện an ninh",
+          "techEvents": "Hội nghị và sự kiện công nghệ lớn",
+          "techFires": "Cháy rừng đang hoạt động gần hạ tầng công nghệ"
         },
         "notes": {
           "timeAffects": "Ảnh hưởng: Động đất, Thời tiết, Biểu tình, Gián đoạn"
@@ -910,9 +958,6 @@
       "sectionAi": "AI Analysis",
       "mapFlashLabel": "Live Event Pulse",
       "mapFlashDesc": "Flash locations on the map when breaking news arrives",
-      "sectionPanels": "Panels",
-      "badgeAnimLabel": "Count Badge Pulse",
-      "badgeAnimDesc": "Animate panel count badges when new items arrive",
       "aiFlowTitle": "Settings",
       "aiFlowCloudLabel": "Cloud AI (Groq & OpenRouter)",
       "aiFlowCloudDesc": "Gửi tiêu đề tới cloud để AI tóm tắt (khuyến nghị)",
@@ -926,11 +971,11 @@
       "aiFlowStatusCloudAndBrowser": "Cloud AI + Mô hình trình duyệt đang hoạt động",
       "aiFlowStatusBrowserOnly": "Chỉ mô hình trình duyệt",
       "aiFlowStatusDisabled": "Không có nhà cung cấp AI nào được bật",
-      "sectionIntelligence": "Tình báo",
-      "headlineMemoryLabel": "Bộ nhớ tiêu đề",
-      "headlineMemoryDesc": "Ghi nhớ các tiêu đề trước đó để làm giàu báo cáo quốc gia với bối cảnh lịch sử",
       "insightsDisabledTitle": "Phân tích AI đã bị tắt",
-      "insightsDisabledHint": "Enable providers via the settings gear in the map header"
+      "insightsDisabledHint": "Enable providers via the settings gear in the map header",
+      "sectionStreaming": "Phát trực tiếp",
+      "streamQualityDesc": "Đặt chất lượng cho tất cả luồng phát trực tiếp (thấp hơn tiết kiệm băng thông)",
+      "streamQualityLabel": "Chất lượng Video"
     },
     "cascade": {
       "noImpacts": "Không phát hiện tác động quốc gia",
@@ -1142,7 +1187,9 @@
         "minutesAgo": "{{count}}ph trước",
         "hoursAgo": "{{count}}g trước",
         "daysAgo": "{{count}}ng trước"
-      }
+      },
+      "breakingAlerts": "Cảnh báo Khẩn cấp",
+      "popupAlerts": "Hiển thị cảnh báo mới dạng popup"
     },
     "countryTimeline": {
       "now": "hiện tại",
@@ -1218,7 +1265,8 @@
         "estFlow": "Dòng tiền ƯT",
         "volume": "Khối lượng",
         "change": "Thay đổi"
-      }
+      },
+      "rateLimited": "Dữ liệu ETF tạm thời không khả dụng (bị giới hạn tốc độ) — đang thử lại"
     },
     "macroSignals": {
       "overall": "Tổng thể",
@@ -1315,7 +1363,12 @@
       "regionAsia": "Châu Á",
       "regionMiddleEast": "Trung Đông",
       "regionAfrica": "Châu Phi",
-      "regionOceania": "Châu Đại Dương"
+      "regionOceania": "Châu Đại Dương",
+      "botCheck": "YouTube yêu cầu đăng nhập để phát {{name}}",
+      "channelNotFound": "Không tìm thấy kênh YouTube",
+      "invalidHandle": "Nhập handle YouTube hợp lệ (ví dụ: @TênKênh)",
+      "signInToYouTube": "Đăng nhập YouTube",
+      "verifying": "Đang xác minh…"
     },
     "securityAdvisories": {
       "loading": "Đang tải cảnh báo du lịch...",
@@ -1348,11 +1401,59 @@
       "time": "Time",
       "justNow": "just now",
       "historyCount": "{{count}} alerts in last 24h",
-      "infoTooltip": "<strong>Israel Sirens</strong><br>Real-time rocket and missile siren alerts from Israel Home Front Command.<br><br>Data is polled every 10 seconds. A pulsing red indicator means active sirens are sounding."
+      "infoTooltip": "<strong>Israel Sirens</strong><br>Real-time rocket and missile siren alerts from Israel Home Front Command.<br><br>Data is polled every 10 seconds. A pulsing red indicator means active sirens are sounding.",
+      "historySummary": "{{count}} cảnh báo trong 24h — {{waves}} đợt",
+      "loadingHistory": "Đang tải lịch sử..."
     },
-    "map": {
-      "showMap": "Hiển thị bản đồ",
-      "hideMap": "Ẩn bản đồ"
+    "breakingNews": {
+      "critical": "NGHIÊM TRỌNG",
+      "dismiss": "Bỏ qua",
+      "enableNotifications": "Bật thông báo trên máy tính",
+      "high": "CAO"
+    },
+    "giving": {
+      "activityIndex": "Chỉ số Hoạt động",
+      "cafIndex": "Chỉ số CAF",
+      "candidGrants": "Tài trợ Candid",
+      "category": "Danh mục",
+      "cryptoDaily": "Crypto hàng ngày",
+      "dailyInflow": "Dòng vào 24h",
+      "dailyVol": "KL hàng ngày",
+      "dataLag": "Độ trễ Dữ liệu",
+      "estDailyFlow": "Dòng tiền ước tính/ngày",
+      "freshness": "Dữ liệu",
+      "infoTooltip": "<strong>Chỉ số Hoạt động Từ thiện Toàn cầu</strong> Chỉ số tổng hợp theo dõi quyên góp cá nhân qua nền tảng gây quỹ cộng đồng và ví tiền mã hóa.<ul><li><strong>Nền tảng</strong>: GoFundMe, GlobalGiving, JustGiving lấy mẫu chiến dịch</li><li><strong>Crypto</strong>: Dòng tiền vào ví từ thiện on-chain (Endaoment, Giving Block)</li><li><strong>Tổ chức</strong>: OECD ODA, CAF World Giving Index, tài trợ Candid</li></ul>Chỉ số mang tính định hướng (không phải số tiền chính xác). Kết hợp lấy mẫu trực tiếp với báo cáo thường niên đã công bố.",
+      "oecdOda": "OECD ODA",
+      "ofTotal": "% tổng",
+      "platform": "Nền tảng",
+      "share": "Tỷ lệ",
+      "tabs": {
+        "categories": "Danh mục",
+        "crypto": "Crypto",
+        "institutional": "Tổ chức",
+        "platforms": "Nền tảng"
+      },
+      "topReceivers": "Người nhận hàng đầu",
+      "trend": "Xu hướng",
+      "trending": "XU HƯỚNG",
+      "velocity": "Tốc độ",
+      "wallets": "Ví"
+    },
+    "supplyChain": {
+      "chokepoints": "Điểm nghẽn",
+      "fredKeyMissing": "Cần khóa API FRED cho giá cước vận chuyển — thêm trong Cài đặt. Điểm nghẽn và khoáng sản khả dụng mà không cần khóa.",
+      "mineral": "Khoáng sản",
+      "minerals": "Khoáng sản",
+      "noChokepoints": "Đang tải dữ liệu điểm nghẽn...",
+      "noMinerals": "Đang tải dữ liệu khoáng sản...",
+      "noShipping": "Dữ liệu giá cước vận chuyển không khả dụng",
+      "risk": "Rủi ro",
+      "shipping": "Vận tải biển",
+      "sources": "FRED / NGA / USGS",
+      "spikeAlert": "Phát hiện đột biến — giá cao hơn đáng kể so với trung bình 52 tuần (hàng tuần)",
+      "topProducers": "Nhà sản xuất hàng đầu",
+      "upstreamUnavailable": "Dữ liệu chuỗi cung ứng tạm thời không khả dụng — hiển thị dữ liệu đã lưu cache",
+      "warnings": "cảnh báo"
     }
   },
   "popups": {
@@ -1820,6 +1921,9 @@
       "uae_ecsr": "UAE/ECSR",
       "venezuela_crisis": "Khủng hoảng Venezuela",
       "yemen_houthis": "Yemen/Houthis"
+    },
+    "iranEvent": {
+      "relatedEvents": "Sự kiện Liên quan"
     }
   },
   "signals": {
@@ -1999,6 +2103,8 @@
     "currentVariant": "(hiện tại)",
     "retry": "Thử lại",
     "refresh": "Làm mới",
-    "all": "Tất cả"
+    "all": "Tất cả",
+    "loadingGiving": "Đang tải dữ liệu từ thiện toàn cầu",
+    "rateLimitedMarket": "Dữ liệu thị trường tạm thời không khả dụng (bị giới hạn tốc độ) — đang thử lại"
   }
 }

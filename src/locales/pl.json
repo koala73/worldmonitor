@@ -37,7 +37,9 @@
       "displaced": "przesiedleni",
       "climate": "Stres klimatyczny",
       "conflictEvents": "wydarzenia konfliktowe",
-      "gpsJammingZones": "GPS Jamming Zones"
+      "gpsJammingZones": "GPS Jamming Zones",
+      "activeStrikes": "aktywne strajki",
+      "aviationDisruptions": "zakłócenia lotnicze"
     },
     "timeAgo": {
       "m": "{{count}}m temu",
@@ -73,7 +75,8 @@
       "internetOutages": "{{count}} awarii internetu",
       "recentEarthquakes": "{{count}} niedawnych trzęsień ziemi",
       "stockIndex": "Indeks giełdowy: {{value}}",
-      "recentHeadlines": "**Ostatnie nagłówki:**"
+      "recentHeadlines": "**Ostatnie nagłówki:**",
+      "activeStrikes": "Wykryto {{count}} aktywnych strajków"
     }
   },
   "header": {
@@ -207,7 +210,9 @@
     "liveWebcams": "Kamery na Żywo",
     "securityAdvisories": "Ostrzeżenia Bezpieczeństwa",
     "orefSirens": "Israel Sirens",
-    "telegramIntel": "Wywiad Telegram"
+    "telegramIntel": "Wywiad Telegram",
+    "giving": "Globalna Dobroczynność",
+    "supplyChain": "Łańcuch Dostaw"
   },
   "modals": {
     "search": {
@@ -351,7 +356,8 @@
         "NASA_FIRMS_API_KEY": "System informacji o pożarach do zarządzania zasobami.",
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
-      }
+      },
+      "skipSetup": "Pomiń konfigurację — jedna licencja World Monitor odblokowuje wszystko. Dołącz do listy oczekujących, aby uzyskać wczesny dostęp."
     },
     "countryIntel": {
       "identifying": "Identyfikacja kraju...",
@@ -387,7 +393,9 @@
         "displaced": "przesiedlony",
         "climate": "Stres klimatyczny",
         "conflictEvents": "wydarzenia konfliktowe",
-        "gpsJammingZones": "GPS Jamming Zones"
+        "gpsJammingZones": "GPS Jamming Zones",
+        "activeStrikes": "aktywne strajki",
+        "aviationDisruptions": "zakłócenia lotnicze"
       },
       "loadingIndex": "Ładowanie indeksu...",
       "identifying": "Identyfikacja kraju...",
@@ -441,7 +449,8 @@
         "internetOutages": "{{count}} awarii internetu",
         "recentEarthquakes": "{{count}} niedawnych trzęsień ziemi",
         "stockIndex": "Indeks giełdowy: {{value}}",
-        "recentHeadlines": "**Ostatnie nagłówki:**"
+        "recentHeadlines": "**Ostatnie nagłówki:**",
+        "activeStrikes": "Wykryto {{count}} aktywnych strajków"
       }
     },
     "settingsWindow": {
@@ -464,7 +473,33 @@
         "duration": "Czas trwania"
       },
       "sidecarUnreachable": "Wózek boczny nieosiągalny.",
-      "logCleared": "Log wyczyszczony."
+      "logCleared": "Log wyczyszczony.",
+      "worldMonitor": {
+        "apiKey": {
+          "description": "Wklej swoją licencję, aby natychmiast odblokować wszystkie źródła danych i funkcje AI.",
+          "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
+          "statusMissing": "BRAK LICENCJI",
+          "statusValid": "LICENCJONOWANE",
+          "title": "Klucz licencyjny"
+        },
+        "byokDescription": "Wolisz pełną kontrolę? Przejdź do zakładek Klucze API i LLM, aby skonfigurować każde źródło danych i dostawcę AI indywidualnie.",
+        "byokTitle": "Lub użyj własnych kluczy",
+        "dividerOr": "LUB",
+        "heroDescription": "Jedna licencja World Monitor zastępuje wszystkie klucze API i dostawców LLM, które musiałbyś skonfigurować samodzielnie. Podsumowania AI, wywiad w czasie rzeczywistym, dane rynkowe, śledzenie konfliktów, wykrywanie pożarów, obrazy satelitarne — wszystko zasilane, wszystko zarządzane, zero konfiguracji.",
+        "heroTitle": "Jeden klucz. Wszystko w cenie.",
+        "register": {
+          "alreadyRegistered": "Jesteś już na liście oczekujących.",
+          "description": "Przygotowujemy się do uruchomienia licencji World Monitor. Zarejestruj się teraz i bądź pierwszy w kolejce — pierwsi członkowie otrzymają priorytetowy dostęp i cenę założycielską.",
+          "emailPlaceholder": "twoj@email.pl",
+          "error": "Rejestracja nie powiodła się. Spróbuj ponownie.",
+          "invalidEmail": "Wprowadź prawidłowy adres e-mail.",
+          "submitBtn": "Dołącz do listy oczekujących",
+          "submitting": "Wysyłanie...",
+          "success": "Jesteś na liście! Powiadomimy Cię jako pierwszego.",
+          "title": "Zarezerwuj swoje miejsce"
+        },
+        "tabLabel": "World Monitor"
+      }
     }
   },
   "components": {
@@ -541,7 +576,8 @@
       "change": "Change",
       "cut": "cut",
       "hike": "hike",
-      "hold": "hold"
+      "hold": "hold",
+      "fredKeyMissing": "Wymagany klucz API FRED — dodaj go w Ustawieniach, aby włączyć wskaźniki ekonomiczne"
     },
     "tradePolicy": {
       "restrictions": "Ograniczenia",
@@ -656,7 +692,8 @@
         "gulfInvestments": "Inwestycje GCC",
         "tradeRoutes": "Szlaki Handlowe",
         "gpsJamming": "GPS JAMMING",
-        "dayNight": "Dzień/Noc"
+        "dayNight": "Dzień/Noc",
+        "iranAttacks": "Ataki Iranu"
       },
       "layersTitle": "Warstwy",
       "layerGuide": "Przewodnik po warstwach",
@@ -751,7 +788,18 @@
           "naturalEventsFull": "Trzęsienia ziemi (USGS) + burze, pożary, wulkany, powodzie (NASA EONET)",
           "waterwaysLabels": "Strategiczne etykiety punktów kontrolnych",
           "tradeRoutes": "Główne globalne szlaki żeglugowe łączące porty przez strategiczne wąskie gardła",
-          "dayNight": "Terminator słoneczny w czasie rzeczywistym pokazujący strefy dnia i nocy"
+          "dayNight": "Terminator słoneczny w czasie rzeczywistym pokazujący strefy dnia i nocy",
+          "climateAnomalies": "Anomalie temperaturowe i opadowe",
+          "financeGulfInvestments": "Inwestycje funduszy majątkowych GCC i bezpośrednie inwestycje zagraniczne",
+          "firesFull": "Aktywne pożary i granice pożarów (NASA FIRMS)",
+          "geoDisplacement": "Wzorce przepływów uchodźców i przesiedleń",
+          "geoUcdpEvents": "Zbrojne konflikty z programu danych o konfliktach w Uppsali",
+          "infraCyberThreats": "Cyberataki i zdarzenia bezpieczeństwa",
+          "militarySpaceports": "Stanowiska startowe rakiet i obiekty kosmiczne",
+          "mineralsFull": "Złoża minerałów strategicznych i kopalnie",
+          "techCyberThreats": "Cyberataki i zdarzenia bezpieczeństwa",
+          "techEvents": "Główne konferencje i wydarzenia technologiczne",
+          "techFires": "Aktywne pożary w pobliżu infrastruktury technologicznej"
         },
         "notes": {
           "timeAffects": "Wpływ na: Trzęsienia ziemi, Pogoda, Protesty, Przestoje"
@@ -1005,7 +1053,9 @@
         "minutesAgo": "{{count}}m temu",
         "hoursAgo": "{{count}}h temu",
         "daysAgo": "{{count}}d temu"
-      }
+      },
+      "breakingAlerts": "Pilne alerty",
+      "popupAlerts": "Wyświetlaj nowe alerty w okienku"
     },
     "satelliteFires": {
       "noData": "Brak danych o pożarach",
@@ -1176,9 +1226,6 @@
       "sectionAi": "AI Analysis",
       "mapFlashLabel": "Live Event Pulse",
       "mapFlashDesc": "Flash locations on the map when breaking news arrives",
-      "sectionPanels": "Panels",
-      "badgeAnimLabel": "Count Badge Pulse",
-      "badgeAnimDesc": "Animate panel count badges when new items arrive",
       "aiFlowTitle": "Settings",
       "aiFlowCloudLabel": "Cloud AI (Groq & OpenRouter)",
       "aiFlowCloudDesc": "Wyślij nagłówki do chmury w celu podsumowania AI (zalecane)",
@@ -1192,11 +1239,11 @@
       "aiFlowStatusCloudAndBrowser": "Cloud AI + Model przeglądarki aktywne",
       "aiFlowStatusBrowserOnly": "Tylko model przeglądarki",
       "aiFlowStatusDisabled": "Brak włączonych dostawców AI",
-      "sectionIntelligence": "Wywiad",
-      "headlineMemoryLabel": "Pamięć nagłówków",
-      "headlineMemoryDesc": "Zapamiętuj wcześniejsze nagłówki, aby wzbogacić raporty krajowe kontekstem historycznym",
       "insightsDisabledTitle": "Analiza AI jest wyłączona",
-      "insightsDisabledHint": "Enable providers via the settings gear in the map header"
+      "insightsDisabledHint": "Enable providers via the settings gear in the map header",
+      "sectionStreaming": "Streaming",
+      "streamQualityDesc": "Ustaw jakość dla wszystkich transmisji na żywo (niższa oszczędza przepustowość)",
+      "streamQualityLabel": "Jakość wideo"
     },
     "etfFlows": {
       "unavailable": "Dane ETF tymczasowo niedostępne",
@@ -1212,7 +1259,8 @@
         "estFlow": "Szac. przepływ",
         "volume": "Wolumen",
         "change": "Zmiana"
-      }
+      },
+      "rateLimited": "Dane ETF tymczasowo niedostępne (limit zapytań) — ponowna próba wkrótce"
     },
     "macroSignals": {
       "overall": "Ogółem",
@@ -1315,7 +1363,12 @@
       "regionAsia": "Azja",
       "regionMiddleEast": "Bliski Wschód",
       "regionAfrica": "Afryka",
-      "regionOceania": "Oceania"
+      "regionOceania": "Oceania",
+      "botCheck": "YouTube wymaga zalogowania, aby odtworzyć {{name}}",
+      "channelNotFound": "Nie znaleziono kanału YouTube",
+      "invalidHandle": "Wprowadź prawidłowy identyfikator YouTube (np. @NazwaKanału)",
+      "signInToYouTube": "Zaloguj się do YouTube",
+      "verifying": "Weryfikowanie…"
     },
     "securityAdvisories": {
       "loading": "Ładowanie ostrzeżeń podróżnych...",
@@ -1348,11 +1401,59 @@
       "time": "Time",
       "justNow": "just now",
       "historyCount": "{{count}} alerts in last 24h",
-      "infoTooltip": "<strong>Israel Sirens</strong><br>Real-time rocket and missile siren alerts from Israel Home Front Command.<br><br>Data is polled every 10 seconds. A pulsing red indicator means active sirens are sounding."
+      "infoTooltip": "<strong>Israel Sirens</strong><br>Real-time rocket and missile siren alerts from Israel Home Front Command.<br><br>Data is polled every 10 seconds. A pulsing red indicator means active sirens are sounding.",
+      "historySummary": "{{count}} alertów w 24h — {{waves}} fal",
+      "loadingHistory": "Ładowanie historii..."
     },
-    "map": {
-      "showMap": "Pokaż mapę",
-      "hideMap": "Ukryj mapę"
+    "breakingNews": {
+      "critical": "KRYTYCZNY",
+      "dismiss": "Odrzuć",
+      "enableNotifications": "Włącz powiadomienia na pulpicie",
+      "high": "WYSOKI"
+    },
+    "giving": {
+      "activityIndex": "Indeks aktywności",
+      "cafIndex": "Indeks CAF",
+      "candidGrants": "Granty Candid",
+      "category": "Kategoria",
+      "cryptoDaily": "Krypto dziennie",
+      "dailyInflow": "Wpływ 24h",
+      "dailyVol": "Dz. wolumen",
+      "dataLag": "Opóźnienie danych",
+      "estDailyFlow": "Szan. dzienny przepływ",
+      "freshness": "Dane",
+      "infoTooltip": "<strong>Globalny indeks aktywności dobroczynnej</strong> Złożony indeks śledzący darowizny osobiste na platformach crowdfundingowych i portfelach kryptowalut.<ul><li><strong>Platformy</strong>: GoFundMe, GlobalGiving, JustGiving — próbkowanie kampanii</li><li><strong>Krypto</strong>: Wpływy do portfeli charytatywnych on-chain (Endaoment, Giving Block)</li><li><strong>Instytucjonalny</strong>: OECD ODA, CAF World Giving Index, granty Candid</li></ul>Indeks jest kierunkowy (nie dokładne kwoty). Łączy próbkowanie na żywo z publikowanymi raportami rocznymi.",
+      "oecdOda": "OECD ODA",
+      "ofTotal": "% całości",
+      "platform": "Platforma",
+      "share": "Udział",
+      "tabs": {
+        "categories": "Kategorie",
+        "crypto": "Krypto",
+        "institutional": "Instytucjonalny",
+        "platforms": "Platformy"
+      },
+      "topReceivers": "Najwięksi odbiorcy",
+      "trend": "Trend",
+      "trending": "TREND",
+      "velocity": "Prędkość",
+      "wallets": "Portfele"
+    },
+    "supplyChain": {
+      "chokepoints": "Wąskie gardła",
+      "fredKeyMissing": "Klucz API FRED wymagany do stawek frachtowych — dodaj go w Ustawieniach. Wąskie gardła i minerały dostępne bez klucza.",
+      "mineral": "Minerał",
+      "minerals": "Minerały",
+      "noChokepoints": "Dane o wąskich gardłach ładują się...",
+      "noMinerals": "Dane o minerałach ładują się...",
+      "noShipping": "Dane o stawkach frachtowych niedostępne",
+      "risk": "Ryzyko",
+      "shipping": "Transport morski",
+      "sources": "FRED / NGA / USGS",
+      "spikeAlert": "Wykryto skok — stawka znacznie powyżej 52-tygodniowej średniej (tygodniowo)",
+      "topProducers": "Najwięksi producenci",
+      "upstreamUnavailable": "Dane łańcucha dostaw tymczasowo niedostępne — wyświetlanie danych z pamięci podręcznej",
+      "warnings": "ostrzeżenie(a)"
     }
   },
   "popups": {
@@ -1820,6 +1921,9 @@
       "uae_ecsr": "Zjednoczone Emiraty Arabskie/ECSR",
       "venezuela_crisis": "Kryzys w Wenezueli",
       "yemen_houthis": "Jemen/Huti"
+    },
+    "iranEvent": {
+      "relatedEvents": "Powiązane wydarzenia"
     }
   },
   "signals": {
@@ -1999,6 +2103,8 @@
     "currentVariant": "(bieżący)",
     "retry": "Retry",
     "refresh": "Refresh",
-    "all": "Wszystkie"
+    "all": "Wszystkie",
+    "loadingGiving": "Ładowanie danych o globalnej dobroczynności",
+    "rateLimitedMarket": "Dane rynkowe tymczasowo niedostępne (limit zapytań) — ponowna próba wkrótce"
   }
 }

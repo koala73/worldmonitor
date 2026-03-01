@@ -37,7 +37,9 @@
       "displaced": "避難民",
       "climate": "気候ストレス",
       "conflictEvents": "紛争イベント",
-      "gpsJammingZones": "GPS Jamming Zones"
+      "gpsJammingZones": "GPS Jamming Zones",
+      "activeStrikes": "活動中のストライキ",
+      "aviationDisruptions": "空港の混乱"
     },
     "timeAgo": {
       "m": "{{count}}分前",
@@ -73,7 +75,8 @@
       "internetOutages": "{{count}}件のインターネット障害",
       "recentEarthquakes": "{{count}}件の最近の地震",
       "stockIndex": "株価指数：{{value}}",
-      "recentHeadlines": "**最近のヘッドライン：**"
+      "recentHeadlines": "**最近のヘッドライン：**",
+      "activeStrikes": "{{count}}件の活発なストライキを検知"
     }
   },
   "header": {
@@ -207,7 +210,9 @@
     "liveWebcams": "ライブカメラ",
     "securityAdvisories": "セキュリティアドバイザリー",
     "orefSirens": "Israel Sirens",
-    "telegramIntel": "Telegram インテリジェンス"
+    "telegramIntel": "Telegram インテリジェンス",
+    "giving": "グローバル寄付",
+    "supplyChain": "サプライチェーン"
   },
   "modals": {
     "search": {
@@ -351,7 +356,8 @@
         "NASA_FIRMS_API_KEY": "Fire Information for Resource Management System。",
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
-      }
+      },
+      "skipSetup": "セットアップをスキップ — World Monitorライセンス1つですべてが利用可能になります。早期アクセスのウェイトリストにご参加ください。"
     },
     "settingsWindow": {
       "validating": "APIキーを検証中...",
@@ -373,6 +379,32 @@
         "path": "パス",
         "status": "ステータス",
         "duration": "所要時間"
+      },
+      "worldMonitor": {
+        "tabLabel": "World Monitor",
+        "heroTitle": "1つのキーですべてが揃います。",
+        "heroDescription": "World Monitorライセンス1つで、個別に設定が必要なすべてのAPIキーとLLMプロバイダーを代替できます。AI要約、リアルタイムインテリジェンス、市場データ、紛争追跡、火災検出、衛星画像 — すべて稼働、すべて管理、セットアップ不要。",
+        "apiKey": {
+          "title": "ライセンスキー",
+          "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
+          "description": "ライセンスを貼り付けると、すべてのデータソースとAI機能が即座に利用可能になります。",
+          "statusValid": "ライセンス済",
+          "statusMissing": "ライセンスなし"
+        },
+        "dividerOr": "または",
+        "register": {
+          "title": "あなたの席を確保",
+          "description": "World Monitorライセンスのローンチ準備中です。今すぐ登録して優先アクセスと創設メンバー価格を手に入れましょう。",
+          "emailPlaceholder": "your@email.com",
+          "submitBtn": "ウェイトリストに参加",
+          "submitting": "送信中...",
+          "success": "リストに登録されました！最優先でお知らせします。",
+          "alreadyRegistered": "すでにウェイトリストに登録済みです。",
+          "error": "登録に失敗しました。もう一度お試しください。",
+          "invalidEmail": "有効なメールアドレスを入力してください。"
+        },
+        "byokTitle": "または自分のキーを使用",
+        "byokDescription": "完全な制御をご希望ですか？APIキーとLLMタブから各データソースとAIプロバイダーを個別に設定してください。"
       }
     },
     "countryIntel": {
@@ -427,7 +459,9 @@
         "displaced": "避難民",
         "climate": "気候ストレス",
         "conflictEvents": "紛争イベント",
-        "gpsJammingZones": "GPS Jamming Zones"
+        "gpsJammingZones": "GPS Jamming Zones",
+        "activeStrikes": "活動中のストライキ",
+        "aviationDisruptions": "空港の混乱"
       },
       "timeAgo": {
         "m": "{{count}}分前",
@@ -463,7 +497,8 @@
         "internetOutages": "{{count}} internet outages",
         "recentEarthquakes": "{{count}} recent earthquakes",
         "stockIndex": "Stock index: {{value}}",
-        "recentHeadlines": "**Recent headlines:**"
+        "recentHeadlines": "**Recent headlines:**",
+        "activeStrikes": "{{count}}件の活発なストライキを検知"
       }
     }
   },
@@ -541,7 +576,8 @@
       "change": "Change",
       "cut": "cut",
       "hike": "hike",
-      "hold": "hold"
+      "hold": "hold",
+      "fredKeyMissing": "FRED APIキーが必要です — 設定で追加して経済指標を有効にしてください"
     },
     "tradePolicy": {
       "restrictions": "規制",
@@ -792,7 +828,8 @@
         "gulfInvestments": "GCC投資",
         "tradeRoutes": "貿易ルート",
         "gpsJamming": "GPS JAMMING",
-        "dayNight": "昼/夜"
+        "dayNight": "昼/夜",
+        "iranAttacks": "イラン攻撃"
       },
       "tooltip": {
         "earthquake": "地震",
@@ -885,7 +922,18 @@
           "naturalEventsFull": "地震（USGS）+ 暴風雨、火災、火山、洪水（NASA EONET）",
           "waterwaysLabels": "戦略的チョークポイントのラベル",
           "tradeRoutes": "戦略的なチョークポイントを通じて港を結ぶ主要な世界の航路",
-          "dayNight": "リアルタイムの太陽ターミネーターで昼夜のゾーンを表示"
+          "dayNight": "リアルタイムの太陽ターミネーターで昼夜のゾーンを表示",
+          "climateAnomalies": "気温・降水量の異常",
+          "financeGulfInvestments": "GCC主権基金の投資と対外直接投資",
+          "firesFull": "活動中の山火事と延焼域（NASA FIRMS）",
+          "geoDisplacement": "難民・避難民の移動パターン",
+          "geoUcdpEvents": "ウプサラ紛争データプログラムの武力紛争イベント",
+          "infraCyberThreats": "サイバー攻撃およびセキュリティイベント",
+          "militarySpaceports": "ロケット発射場と宇宙関連施設",
+          "mineralsFull": "戦略的鉱物資源の鉱床と採掘拠点",
+          "techCyberThreats": "サイバー攻撃およびセキュリティイベント",
+          "techEvents": "主要テックカンファレンスとイベント",
+          "techFires": "テックインフラ付近の活動中の山火事"
         },
         "notes": {
           "timeAffects": "影響: 地震、気象、抗議活動、障害"
@@ -910,9 +958,6 @@
       "sectionAi": "AI Analysis",
       "mapFlashLabel": "Live Event Pulse",
       "mapFlashDesc": "Flash locations on the map when breaking news arrives",
-      "sectionPanels": "Panels",
-      "badgeAnimLabel": "Count Badge Pulse",
-      "badgeAnimDesc": "Animate panel count badges when new items arrive",
       "aiFlowTitle": "Settings",
       "aiFlowCloudLabel": "クラウドAI（Groq & OpenRouter）",
       "aiFlowCloudDesc": "見出しをクラウドに送信してAI要約（推奨）",
@@ -926,11 +971,11 @@
       "aiFlowStatusCloudAndBrowser": "クラウドAI + ブラウザモデル有効",
       "aiFlowStatusBrowserOnly": "ブラウザモデルのみ",
       "aiFlowStatusDisabled": "AIプロバイダーが有効になっていません",
-      "sectionIntelligence": "インテリジェンス",
-      "headlineMemoryLabel": "ヘッドラインメモリー",
-      "headlineMemoryDesc": "過去のヘッドラインを記憶し、国別レポートに歴史的文脈を追加します",
       "insightsDisabledTitle": "AI分析が無効です",
-      "insightsDisabledHint": "Enable providers via the settings gear in the map header"
+      "insightsDisabledHint": "Enable providers via the settings gear in the map header",
+      "sectionStreaming": "ストリーミング",
+      "streamQualityDesc": "すべてのライブストリームの画質を設定（低画質は帯域幅を節約）",
+      "streamQualityLabel": "動画画質"
     },
     "cascade": {
       "noImpacts": "国への影響未検出",
@@ -1142,7 +1187,9 @@
         "minutesAgo": "{{count}}分前",
         "hoursAgo": "{{count}}時間前",
         "daysAgo": "{{count}}日前"
-      }
+      },
+      "breakingAlerts": "速報アラート",
+      "popupAlerts": "新しいアラートをポップアップ表示"
     },
     "countryTimeline": {
       "now": "現在",
@@ -1218,7 +1265,8 @@
         "estFlow": "推定フロー",
         "volume": "出来高",
         "change": "変動率"
-      }
+      },
+      "rateLimited": "ETFデータが一時的に利用不可（レート制限中）— まもなく再試行します"
     },
     "macroSignals": {
       "overall": "総合",
@@ -1315,7 +1363,12 @@
       "regionAsia": "アジア",
       "regionMiddleEast": "中東",
       "regionAfrica": "アフリカ",
-      "regionOceania": "オセアニア"
+      "regionOceania": "オセアニア",
+      "botCheck": "YouTubeが{{name}}の再生にサインインを要求しています",
+      "channelNotFound": "YouTubeチャンネルが見つかりません",
+      "invalidHandle": "有効なYouTubeハンドルを入力してください（例: @ChannelName）",
+      "signInToYouTube": "YouTubeにサインイン",
+      "verifying": "確認中…"
     },
     "securityAdvisories": {
       "loading": "渡航情報を取得中...",
@@ -1348,11 +1401,59 @@
       "time": "Time",
       "justNow": "just now",
       "historyCount": "{{count}} alerts in last 24h",
-      "infoTooltip": "<strong>Israel Sirens</strong><br>Real-time rocket and missile siren alerts from Israel Home Front Command.<br><br>Data is polled every 10 seconds. A pulsing red indicator means active sirens are sounding."
+      "infoTooltip": "<strong>Israel Sirens</strong><br>Real-time rocket and missile siren alerts from Israel Home Front Command.<br><br>Data is polled every 10 seconds. A pulsing red indicator means active sirens are sounding.",
+      "historySummary": "24時間で{{count}}件のアラート — {{waves}}回の波",
+      "loadingHistory": "履歴を読み込み中..."
     },
-    "map": {
-      "showMap": "地図を表示",
-      "hideMap": "地図を非表示"
+    "breakingNews": {
+      "critical": "緊急",
+      "dismiss": "閉じる",
+      "enableNotifications": "デスクトップ通知を有効にする",
+      "high": "重要"
+    },
+    "giving": {
+      "activityIndex": "アクティビティ指数",
+      "cafIndex": "CAF指数",
+      "candidGrants": "Candid助成金",
+      "category": "カテゴリ",
+      "cryptoDaily": "暗号資産日次",
+      "dailyInflow": "24時間流入額",
+      "dailyVol": "日次取引量",
+      "dataLag": "データ遅延",
+      "estDailyFlow": "推定日次フロー",
+      "freshness": "データ",
+      "infoTooltip": "<strong>グローバル寄付アクティビティ指数</strong> クラウドファンディングプラットフォームと暗号資産ウォレットを通じた個人寄付を追跡する複合指数。<ul><li><strong>プラットフォーム</strong>: GoFundMe、GlobalGiving、JustGivingのキャンペーンサンプリング</li><li><strong>暗号資産</strong>: オンチェーンの慈善ウォレット流入（Endaoment、Giving Block）</li><li><strong>機関</strong>: OECD ODA、CAF World Giving Index、Candid助成金</li></ul>指数は方向性を示すもので、正確な金額ではありません。ライブサンプリングと公表年次報告書を組み合わせています。",
+      "oecdOda": "OECD ODA",
+      "ofTotal": "総計比率",
+      "platform": "プラットフォーム",
+      "share": "シェア",
+      "tabs": {
+        "categories": "カテゴリ",
+        "crypto": "暗号資産",
+        "institutional": "機関",
+        "platforms": "プラットフォーム"
+      },
+      "topReceivers": "トップ受取者",
+      "trend": "トレンド",
+      "trending": "トレンド",
+      "velocity": "速度",
+      "wallets": "ウォレット"
+    },
+    "supplyChain": {
+      "chokepoints": "チョークポイント",
+      "fredKeyMissing": "海上輸送料金にはFRED APIキーが必要です — 設定で追加してください。チョークポイントと鉱物はキーなしで利用可能。",
+      "mineral": "鉱物",
+      "minerals": "鉱物",
+      "noChokepoints": "チョークポイントデータを読み込み中...",
+      "noMinerals": "鉱物データを読み込み中...",
+      "noShipping": "海上輸送料金データが利用できません",
+      "risk": "リスク",
+      "shipping": "海運",
+      "sources": "FRED / NGA / USGS",
+      "spikeAlert": "スパイク検出 — 料金が52週平均を大幅に上回っています（週次）",
+      "topProducers": "主要生産国",
+      "upstreamUnavailable": "サプライチェーンデータが一時的に利用不可 — キャッシュデータを表示中",
+      "warnings": "件の警告"
     }
   },
   "popups": {
@@ -1820,6 +1921,9 @@
       "uae_ecsr": "UAE/ECSR",
       "venezuela_crisis": "ベネズエラ危機",
       "yemen_houthis": "イエメン/フーシ"
+    },
+    "iranEvent": {
+      "relatedEvents": "関連イベント"
     }
   },
   "signals": {
@@ -1999,6 +2103,8 @@
     "currentVariant": "（現在）",
     "retry": "Retry",
     "refresh": "Refresh",
-    "all": "すべて"
+    "all": "すべて",
+    "loadingGiving": "世界の寄付データを読み込み中",
+    "rateLimitedMarket": "市場データが一時的に利用不可（レート制限中）— まもなく再試行します"
   }
 }
