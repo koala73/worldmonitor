@@ -97,12 +97,14 @@ export default async function handler(req) {
                         (a) => sub.categories.length === 0 || sub.categories.includes(a.category),
                     );
 
+                    const base = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000';
                     const emailHtml = buildDigestEmail({
                         digestText: digest.summary || 'No summary available for this period.',
                         articles: filteredArticles.slice(0, 15),
                         variant: sub.variant,
                         frequency: sub.frequency,
                         token: sub.token,
+                        baseUrl: base,
                     });
 
                     await sendEmail(resendKey, fromEmail, sub.email, emailHtml, variant);

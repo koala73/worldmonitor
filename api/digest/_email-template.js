@@ -11,52 +11,53 @@
  * @returns {string} HTML email
  */
 export function buildDigestEmail({
-    digestText,
-    articles = [],
-    variant = 'full',
-    frequency = 'daily',
-    token,
-    date,
+  digestText,
+  articles = [],
+  variant = 'full',
+  frequency = 'daily',
+  token,
+  date,
+  baseUrl = 'https://worldmonitor.app',
 }) {
-    const dateStr = date || new Date().toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-    });
+  const dateStr = date || new Date().toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
 
-    const FREQUENCY_LABELS = {
-        hourly: 'Hourly',
-        '2h': 'Bi-Hourly',
-        '6h': '6-Hour',
-        daily: 'Daily',
-        weekly: 'Weekly',
-        monthly: 'Monthly',
-    };
+  const FREQUENCY_LABELS = {
+    hourly: 'Hourly',
+    '2h': 'Bi-Hourly',
+    '6h': '6-Hour',
+    daily: 'Daily',
+    weekly: 'Weekly',
+    monthly: 'Monthly',
+  };
 
-    const VARIANT_LABELS = {
-        full: 'Intelligence Briefing',
-        tech: 'Tech Digest',
-        finance: 'Finance Digest',
-        happy: 'Good News Digest',
-    };
+  const VARIANT_LABELS = {
+    full: 'Intelligence Briefing',
+    tech: 'Tech Digest',
+    finance: 'Finance Digest',
+    happy: 'Good News Digest',
+  };
 
-    const briefingType = `${FREQUENCY_LABELS[frequency] || 'Daily'} ${VARIANT_LABELS[variant] || 'Briefing'}`;
-    const manageUrl = `https://worldmonitor.app/api/digest/manage?token=${token}`;
-    const unsubUrl = `https://worldmonitor.app/api/digest/unsubscribe?token=${token}`;
+  const briefingType = `${FREQUENCY_LABELS[frequency] || 'Daily'} ${VARIANT_LABELS[variant] || 'Briefing'}`;
+  const manageUrl = `${baseUrl}/api/digest/manage?token=${token}`;
+  const unsubUrl = `${baseUrl}/api/digest/unsubscribe?token=${token}`;
 
-    const articlesHtml = articles
-        .map(
-            (a) => `
+  const articlesHtml = articles
+    .map(
+      (a) => `
       <tr>
         <td style="padding:12px 0;border-bottom:1px solid #1a1a1a;">
           <a href="${escapeAttr(a.link)}" style="color:#e0e0e0;text-decoration:none;font-size:14px;line-height:1.4;display:block;" target="_blank">${escape(a.title)}</a>
           <span style="color:#666;font-size:11px;margin-top:4px;display:block;">${escape(a.source)}${a.timeAgo ? ` · ${escape(a.timeAgo)}` : ''}${a.category ? ` · ${escape(a.category)}` : ''}</span>
         </td>
       </tr>`,
-        )
-        .join('');
+    )
+    .join('');
 
-    return `<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -145,18 +146,18 @@ export function buildDigestEmail({
 }
 
 function escape(str) {
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 function escapeAttr(str) {
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
