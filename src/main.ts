@@ -47,7 +47,7 @@ Sentry.init({
     /Java bridge method invocation error/,
     /Could not compile fragment shader/,
     /can't redefine non-configurable property/,
-    /Can.t find variable: (CONFIG|currentInset|NP|webkit)/,
+    /Can.t find variable: (CONFIG|currentInset|NP|webkit|EmptyRanges)/,
     /invalid origin/,
     /\.data\.split is not a function/,
     /signal is aborted without reason/,
@@ -126,6 +126,10 @@ Sentry.init({
     /translateNotifyError/,
     /GM_getValue/,
     /^InvalidStateError:|The object is in an invalid state/,
+    /Could not establish connection\. Receiving end does not exist/,
+    /webkitCurrentPlaybackTargetIsWireless/,
+    /null is not an object \(evaluating '\w+\.theme'\)/,
+    /this\.player\.\w+ is not a function/,
   ],
   beforeSend(event) {
     const msg = event.exception?.values?.[0]?.value ?? '';
