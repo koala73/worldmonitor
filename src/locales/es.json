@@ -212,7 +212,11 @@
     "liveWebcams": "Cámaras en Vivo",
     "securityAdvisories": "Alertas de Seguridad",
     "orefSirens": "Israel Sirens",
-    "telegramIntel": "Inteligencia Telegram"
+    "telegramIntel": "Inteligencia Telegram",
+    "gulfEconomies": "Economías del Golfo",
+    "gulfIndices": "Índices del Golfo",
+    "gulfCurrencies": "Monedas del Golfo",
+    "gulfOil": "Petróleo del Golfo"
   },
   "modals": {
     "search": {
@@ -520,7 +524,8 @@
         "europe": "EUROPA",
         "americas": "AMÉRICAS",
         "asia": "ASIA"
-      }
+      },
+      "expand": "Expandir"
     },
     "regulation": {
       "timeline": "Línea de tiempo",
@@ -1077,7 +1082,8 @@
         "minutesAgo": "Hace {{count}}m",
         "hoursAgo": "Hace {{count}}h",
         "daysAgo": "Hace {{count}}d"
-      }
+      },
+      "hideFindings": "Ocultar hallazgos"
     },
     "satelliteFires": {
       "noData": "No hay datos de incendios disponibles",
@@ -1293,7 +1299,13 @@
       "aiFlowStatusBrowserOnly": "Solo modelo del navegador",
       "aiFlowStatusDisabled": "Ningún proveedor de IA habilitado",
       "insightsDisabledTitle": "El análisis de IA está desactivado",
-      "insightsDisabledHint": "Enable providers via the settings gear in the map header"
+      "insightsDisabledHint": "Enable providers via the settings gear in the map header",
+      "sectionPanels": "Paneles",
+      "badgeAnimLabel": "Animaciones de insignias",
+      "badgeAnimDesc": "Animar insignias de actualización en encabezados de paneles",
+      "sectionIntelligence": "Inteligencia",
+      "headlineMemoryLabel": "Memoria de titulares",
+      "headlineMemoryDesc": "Recordar titulares vistos para resaltar nuevos"
     },
     "export": {
       "exportData": "Exportar datos"

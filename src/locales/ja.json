@@ -212,7 +212,11 @@
     "orefSirens": "Israel Sirens",
     "telegramIntel": "Telegram インテリジェンス",
     "giving": "グローバル寄付",
-    "supplyChain": "サプライチェーン"
+    "supplyChain": "サプライチェーン",
+    "gulfEconomies": "湾岸経済",
+    "gulfIndices": "湾岸指数",
+    "gulfCurrencies": "湾岸通貨",
+    "gulfOil": "湾岸石油"
   },
   "modals": {
     "search": {
@@ -511,7 +515,8 @@
         "europe": "ヨーロッパ",
         "americas": "アメリカ",
         "asia": "アジア"
-      }
+      },
+      "expand": "拡大"
     },
     "monitor": {
       "placeholder": "キーワード（カンマ区切り）",
@@ -975,7 +980,13 @@
       "insightsDisabledHint": "Enable providers via the settings gear in the map header",
       "sectionStreaming": "ストリーミング",
       "streamQualityDesc": "すべてのライブストリームの画質を設定（低画質は帯域幅を節約）",
-      "streamQualityLabel": "動画画質"
+      "streamQualityLabel": "動画画質",
+      "sectionPanels": "パネル",
+      "badgeAnimLabel": "バッジアニメーション",
+      "badgeAnimDesc": "パネルヘッダーの更新バッジをアニメーション表示",
+      "sectionIntelligence": "インテリジェンス",
+      "headlineMemoryLabel": "ヘッドラインメモリ",
+      "headlineMemoryDesc": "閲覧済みの見出しを記憶して新着を強調"
     },
     "cascade": {
       "noImpacts": "国への影響未検出",
@@ -1189,7 +1200,8 @@
         "daysAgo": "{{count}}日前"
       },
       "breakingAlerts": "速報アラート",
-      "popupAlerts": "新しいアラートをポップアップ表示"
+      "popupAlerts": "新しいアラートをポップアップ表示",
+      "hideFindings": "検出結果を非表示"
     },
     "countryTimeline": {
       "now": "現在",

@@ -212,7 +212,11 @@
     "orefSirens": "Israel Sirens",
     "telegramIntel": "Wywiad Telegram",
     "giving": "Globalna Dobroczynność",
-    "supplyChain": "Łańcuch Dostaw"
+    "supplyChain": "Łańcuch Dostaw",
+    "gulfEconomies": "Gospodarka Zatoki",
+    "gulfIndices": "Indeksy Zatoki",
+    "gulfCurrencies": "Waluty Zatoki",
+    "gulfOil": "Ropa Zatoki"
   },
   "modals": {
     "search": {
@@ -520,7 +524,8 @@
         "europe": "EUROPA",
         "americas": "AMERYKI",
         "asia": "AZJA"
-      }
+      },
+      "expand": "Rozwiń"
     },
     "regulation": {
       "timeline": "Oś czasu",
@@ -1055,7 +1060,8 @@
         "daysAgo": "{{count}}d temu"
       },
       "breakingAlerts": "Pilne alerty",
-      "popupAlerts": "Wyświetlaj nowe alerty w okienku"
+      "popupAlerts": "Wyświetlaj nowe alerty w okienku",
+      "hideFindings": "Ukryj wyniki"
     },
     "satelliteFires": {
       "noData": "Brak danych o pożarach",
@@ -1243,7 +1249,13 @@
       "insightsDisabledHint": "Enable providers via the settings gear in the map header",
       "sectionStreaming": "Streaming",
       "streamQualityDesc": "Ustaw jakość dla wszystkich transmisji na żywo (niższa oszczędza przepustowość)",
-      "streamQualityLabel": "Jakość wideo"
+      "streamQualityLabel": "Jakość wideo",
+      "sectionPanels": "Panele",
+      "badgeAnimLabel": "Animacje odznak",
+      "badgeAnimDesc": "Animuj odznaki aktualizacji w nagłówkach paneli",
+      "sectionIntelligence": "Wywiad",
+      "headlineMemoryLabel": "Pamięć nagłówków",
+      "headlineMemoryDesc": "Zapamiętuj widziane nagłówki, aby wyróżnić nowe"
     },
     "etfFlows": {
       "unavailable": "Dane ETF tymczasowo niedostępne",

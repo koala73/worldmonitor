@@ -212,7 +212,11 @@
     "orefSirens": "Israel Sirens",
     "telegramIntel": "Renseignement Telegram",
     "giving": "Dons mondiaux",
-    "supplyChain": "Chaîne d'approvisionnement"
+    "supplyChain": "Chaîne d'approvisionnement",
+    "gulfEconomies": "Économies du Golfe",
+    "gulfIndices": "Indices du Golfe",
+    "gulfCurrencies": "Devises du Golfe",
+    "gulfOil": "Pétrole du Golfe"
   },
   "modals": {
     "search": {
@@ -520,7 +524,8 @@
         "europe": "EUROPE",
         "americas": "AMÉRIQUES",
         "asia": "ASIE"
-      }
+      },
+      "expand": "Agrandir"
     },
     "regulation": {
       "timeline": "Chronologie",
@@ -975,7 +980,13 @@
       "insightsDisabledHint": "Enable providers via the settings gear in the map header",
       "sectionStreaming": "Diffusion",
       "streamQualityDesc": "Définir la qualité de tous les flux en direct (une qualité moindre économise la bande passante)",
-      "streamQualityLabel": "Qualité vidéo"
+      "streamQualityLabel": "Qualité vidéo",
+      "sectionPanels": "Panneaux",
+      "badgeAnimLabel": "Animations des badges",
+      "badgeAnimDesc": "Animer les badges de mise à jour dans les en-têtes de panneau",
+      "sectionIntelligence": "Renseignement",
+      "headlineMemoryLabel": "Mémoire des titres",
+      "headlineMemoryDesc": "Mémoriser les titres vus pour mettre en évidence les nouveaux"
     },
     "cascade": {
       "noImpacts": "Aucun impact pays détecté",
@@ -1223,7 +1234,8 @@
         "daysAgo": "il y a {{count}} j"
       },
       "breakingAlerts": "Alertes urgentes",
-      "popupAlerts": "Afficher les nouvelles alertes"
+      "popupAlerts": "Afficher les nouvelles alertes",
+      "hideFindings": "Masquer les résultats"
     },
     "countryTimeline": {
       "now": "maintenant",
