@@ -43,11 +43,26 @@ function createMockUpstream() {
   let responseStatus = 200;
   let responseBody = '<rss><channel><title>Test</title></channel></rss>';
   let responseDelay = 0;
+  let etag = null;
+  let lastModified = null;
+  let lastRequestHeaders = {};
 
   const server = http.createServer((req, res) => {
     hitCount++;
+    lastRequestHeaders = req.headers;
     setTimeout(() => {
-      res.writeHead(responseStatus, { 'Content-Type': 'application/xml' });
+      if (etag && req.headers['if-none-match'] === etag) {
+        res.writeHead(304);
+        return res.end();
+      }
+      if (lastModified && req.headers['if-modified-since'] === lastModified) {
+        res.writeHead(304);
+        return res.end();
+      }
+      const headers = { 'Content-Type': 'application/xml' };
+      if (etag) headers['ETag'] = etag;
+      if (lastModified) headers['Last-Modified'] = lastModified;
+      res.writeHead(responseStatus, headers);
       res.end(responseBody);
     }, responseDelay);
   });
@@ -58,6 +73,9 @@ function createMockUpstream() {
     resetHitCount: () => { hitCount = 0; },
     setResponse: (status, body) => { responseStatus = status; responseBody = body || responseBody; },
     setDelay: (ms) => { responseDelay = ms; },
+    setETag: (v) => { etag = v; },
+    setLastModified: (v) => { lastModified = v; },
+    getLastRequestHeaders: () => lastRequestHeaders,
   };
 }
 
@@ -129,9 +147,25 @@ function createTestRssProxy(upstreamPort) {
 
     // MISS — fetch upstream
     const fetchPromise = new Promise((resolveInFlight, rejectInFlight) => {
+      const conditionalHeaders = {};
+      if (rssCached?.etag) conditionalHeaders['If-None-Match'] = rssCached.etag;
+      if (rssCached?.lastModified) conditionalHeaders['If-Modified-Since'] = rssCached.lastModified;
+
       const request = http.get(`http://127.0.0.1:${upstreamPort}${new URL(feedUrl).pathname}`, {
+        headers: { ...conditionalHeaders },
         timeout: 5000,
       }, (response) => {
+        if (response.statusCode === 304 && rssCached) {
+          rssCached.timestamp = Date.now();
+          resolveInFlight();
+          res.writeHead(200, {
+            'Content-Type': rssCached.contentType || 'application/xml',
+            'X-Cache': 'REVALIDATED',
+          });
+          res.end(rssCached.data);
+          return;
+        }
+
         const chunks = [];
         response.on('data', (c) => chunks.push(c));
         response.on('end', () => {
@@ -144,6 +178,8 @@ function createTestRssProxy(upstreamPort) {
           rssResponseCache.set(feedUrl, {
             data, contentType: 'application/xml',
             statusCode: response.statusCode, timestamp: Date.now(),
+            etag: response.headers['etag'] || null,
+            lastModified: response.headers['last-modified'] || null,
           });
           resolveInFlight();
           res.writeHead(response.statusCode, {
@@ -292,6 +328,79 @@ test('RSS proxy: FIFO eviction caps cache size', async (t) => {
   assert.equal(proxy.cache.size, 5, 'Cache should not exceed max entries');
   assert.ok(!proxy.cache.has('http://example.com/feed-0'), 'Oldest entry should be evicted');
   assert.ok(proxy.cache.has('http://example.com/feed-new'), 'New entry should be present');
+
+  upstream.server.close();
+  proxy.server.close();
+});
+
+test('RSS proxy: conditional GET returns REVALIDATED on 304', async (t) => {
+  const upstream = createMockUpstream();
+  upstream.setResponse(200, '<rss><channel><title>Conditional</title></channel></rss>');
+  upstream.setETag('"abc123"');
+  const upstreamPort = await listen(upstream.server);
+
+  const proxy = createTestRssProxy(upstreamPort);
+  const proxyPort = await listen(proxy.server);
+
+  const feedUrl = `http://example.com/conditional-feed`;
+
+  // First request — MISS, upstream returns 200 with ETag
+  const r1 = await fetch(`http://127.0.0.1:${proxyPort}/?url=${encodeURIComponent(feedUrl)}`);
+  assert.equal(r1.status, 200);
+  assert.equal(r1.headers['x-cache'], 'MISS');
+  assert.equal(upstream.getHitCount(), 1);
+
+  // Verify cache entry has etag stored
+  const cached = proxy.cache.get(feedUrl);
+  assert.equal(cached.etag, '"abc123"');
+
+  // Backdate cache to make it stale
+  cached.timestamp = Date.now() - 10 * 60 * 1000;
+
+  // Second request — stale cache, upstream returns 304
+  const r2 = await fetch(`http://127.0.0.1:${proxyPort}/?url=${encodeURIComponent(feedUrl)}`);
+  assert.equal(r2.status, 200);
+  assert.equal(r2.headers['x-cache'], 'REVALIDATED');
+  assert.equal(upstream.getHitCount(), 2);
+  assert.ok(r2.body.includes('Conditional'), 'Should serve cached body');
+
+  // Verify upstream received If-None-Match header
+  assert.equal(upstream.getLastRequestHeaders()['if-none-match'], '"abc123"');
+
+  // Third request — cache refreshed, should be HIT
+  const r3 = await fetch(`http://127.0.0.1:${proxyPort}/?url=${encodeURIComponent(feedUrl)}`);
+  assert.equal(r3.headers['x-cache'], 'HIT');
+  assert.equal(upstream.getHitCount(), 2, 'Should not hit upstream — cache refreshed by 304');
+
+  upstream.server.close();
+  proxy.server.close();
+});
+
+test('RSS proxy: conditional GET with If-Modified-Since', async (t) => {
+  const upstream = createMockUpstream();
+  upstream.setResponse(200, '<rss><channel><title>LM Test</title></channel></rss>');
+  upstream.setLastModified('Wed, 01 Jan 2025 00:00:00 GMT');
+  const upstreamPort = await listen(upstream.server);
+
+  const proxy = createTestRssProxy(upstreamPort);
+  const proxyPort = await listen(proxy.server);
+
+  const feedUrl = `http://example.com/lastmod-feed`;
+
+  // First request — MISS
+  const r1 = await fetch(`http://127.0.0.1:${proxyPort}/?url=${encodeURIComponent(feedUrl)}`);
+  assert.equal(r1.headers['x-cache'], 'MISS');
+
+  const cached = proxy.cache.get(feedUrl);
+  assert.equal(cached.lastModified, 'Wed, 01 Jan 2025 00:00:00 GMT');
+
+  // Backdate cache
+  cached.timestamp = Date.now() - 10 * 60 * 1000;
+
+  // Second request — 304 revalidation
+  const r2 = await fetch(`http://127.0.0.1:${proxyPort}/?url=${encodeURIComponent(feedUrl)}`);
+  assert.equal(r2.headers['x-cache'], 'REVALIDATED');
+  assert.equal(upstream.getLastRequestHeaders()['if-modified-since'], 'Wed, 01 Jan 2025 00:00:00 GMT');
 
   upstream.server.close();
   proxy.server.close();
