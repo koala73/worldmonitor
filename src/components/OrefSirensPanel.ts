@@ -8,6 +8,22 @@ const MAX_HISTORY_WAVES = 50;
 const ONE_HOUR_MS = 60 * 60 * 1000;
 const HISTORY_TTL = 3 * 60 * 1000;
 
+const OREF_CATEGORY_MAP: Record<string, string> = {
+  'ירי רקטות וטילים': 'Rocket and missile fire',
+  'חדירת כלי טיס עוין': 'Hostile aircraft intrusion',
+  'רעידת אדמה': 'Earthquake',
+  'צונאמי': 'Tsunami',
+  'חומרים מסוכנים': 'Hazardous materials',
+  'אירוע רדיולוגי': 'Radiological event',
+  'חדירת מחבלים': 'Terrorist infiltration',
+  'אירוע חומרי': 'Chemical event',
+  'התרעה לא קונבנציונלית': 'Unconventional threat',
+};
+
+function translateOrefCategory(text: string): string {
+  return OREF_CATEGORY_MAP[text] || text;
+}
+
 export class OrefSirensPanel extends Panel {
   private alerts: OrefAlert[] = [];
   private historyCount24h = 0;
@@ -101,7 +117,7 @@ export class OrefSirensPanel extends Panel {
       const isRecent = now - ts < ONE_HOUR_MS;
       const rowClass = isRecent ? 'oref-wave-row oref-wave-recent' : 'oref-wave-row';
       const badge = isRecent ? '<span class="oref-recent-badge">RECENT</span>' : '';
-      const types = wave.alerts.map(a => escapeHtml(a.title || a.cat));
+      const types = wave.alerts.map(a => escapeHtml(translateOrefCategory(a.title || a.cat)));
       const uniqueTypes = [...new Set(types)];
       const totalAreas = wave.alerts.reduce((sum, a) => sum + (a.data?.length || 0), 0);
       const summary = uniqueTypes.join(', ') + (totalAreas > 0 ? ` — ${totalAreas} areas` : '');
@@ -142,7 +158,7 @@ export class OrefSirensPanel extends Panel {
       const time = this.formatAlertTime(alert.alertDate);
       return `<div class="oref-alert-row">
         <div class="oref-alert-header">
-          <span class="oref-alert-title">${escapeHtml(alert.title || alert.cat)}</span>
+          <span class="oref-alert-title">${escapeHtml(translateOrefCategory(alert.title || alert.cat))}</span>
           <span class="oref-alert-time">${time}</span>
         </div>
         <div class="oref-alert-areas">${areas}</div>
