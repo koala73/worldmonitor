@@ -456,11 +456,11 @@ export class Panel {
     this.onTouchCancel = this.onTouchEnd;
 
     this.onDocMouseUp = () => {
-      if (this.element.dataset.resizing) {
+      if (this.element?.dataset.resizing) {
         delete this.element.dataset.resizing;
       }
       if (!this.isResizing && !this.isColResizing) {
-        document.body.classList.remove('panel-resize-active');
+        document.body?.classList.remove('panel-resize-active');
       }
     };
 
