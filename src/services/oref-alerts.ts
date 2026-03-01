@@ -14,6 +14,7 @@ export interface OrefAlertsResponse {
   configured: boolean;
   alerts: OrefAlert[];
   historyCount24h: number;
+  totalHistoryCount?: number;
   timestamp: string;
   error?: string;
 }

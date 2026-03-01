@@ -11,6 +11,7 @@ const HISTORY_TTL = 3 * 60 * 1000;
 export class OrefSirensPanel extends Panel {
   private alerts: OrefAlert[] = [];
   private historyCount24h = 0;
+  private totalHistoryCount = 0;
   private historyWaves: OrefHistoryEntry[] = [];
   private historyFetchInFlight = false;
   private historyLastFetchAt = 0;
@@ -36,7 +37,8 @@ export class OrefSirensPanel extends Panel {
     const prevCount = this.alerts.length;
     this.alerts = data.alerts || [];
     this.historyCount24h = data.historyCount24h || 0;
-    this.setCount(this.alerts.length || this.historyCount24h);
+    this.totalHistoryCount = data.totalHistoryCount || 0;
+    this.setCount(this.alerts.length || this.historyCount24h || this.totalHistoryCount);
 
     if (prevCount === 0 && this.alerts.length > 0) {
       this.setNewBadge(this.alerts.length);

@@ -177,6 +177,7 @@ const orefState = {
   lastPollAt: 0,
   lastError: null,
   historyCount24h: 0,
+  totalHistoryCount: 0,
   history: [],
 };
 
@@ -505,10 +506,14 @@ async function orefFetchAlerts() {
     }
 
     const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    orefState.historyCount24h = orefState.history
+      .filter(h => new Date(h.timestamp).getTime() > cutoff)
+      .reduce((sum, h) => sum + h.alerts.reduce((s, a) => s + (Array.isArray(a.data) ? a.data.length : 1), 0), 0);
+    const purgeCutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
     orefState.history = orefState.history.filter(
-      h => new Date(h.timestamp).getTime() > cutoff
+      h => new Date(h.timestamp).getTime() > purgeCutoff
     );
-    orefState.historyCount24h = orefState.history.reduce((sum, h) => {
+    orefState.totalHistoryCount = orefState.history.reduce((sum, h) => {
       return sum + h.alerts.reduce((s, a) => s + (Array.isArray(a.data) ? a.data.length : 1), 0);
     }, 0);
   } catch (err) {
@@ -530,7 +535,7 @@ async function orefBootstrapHistory() {
   if (!cleaned || cleaned === '[]') return;
 
   const allRecords = JSON.parse(cleaned);
-  const records = allRecords.slice(-500);
+  const records = allRecords.slice(0, 500);
   const waves = new Map();
   for (const r of records) {
     const key = r.alertDate;
@@ -562,7 +567,11 @@ async function orefBootstrapHistory() {
   }
   history.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
   orefState.history = history;
-  orefState.historyCount24h = totalAlertRecords;
+  orefState.totalHistoryCount = totalAlertRecords;
+  const cutoff24h = Date.now() - 24 * 60 * 60 * 1000;
+  orefState.historyCount24h = history
+    .filter(h => new Date(h.timestamp).getTime() > cutoff24h)
+    .reduce((sum, h) => sum + h.alerts.reduce((s, a) => s + (Array.isArray(a.data) ? a.data.length : 1), 0), 0);
   console.log(`[Relay] OREF history bootstrap: ${totalAlertRecords} records across ${history.length} waves`);
 }
 
@@ -2719,6 +2728,8 @@ const server = http.createServer(async (req, res) => {
         enabled: OREF_ENABLED,
         alertCount: orefState.lastAlerts?.length || 0,
         historyCount24h: orefState.historyCount24h,
+        totalHistoryCount: orefState.totalHistoryCount,
+        historyWaves: orefState.history?.length || 0,
         lastPollAt: orefState.lastPollAt ? new Date(orefState.lastPollAt).toISOString() : null,
         hasError: !!orefState.lastError,
       },
@@ -3119,6 +3130,7 @@ const server = http.createServer(async (req, res) => {
       configured: OREF_ENABLED,
       alerts: orefState.lastAlerts || [],
       historyCount24h: orefState.historyCount24h,
+      totalHistoryCount: orefState.totalHistoryCount,
       timestamp: orefState.lastPollAt ? new Date(orefState.lastPollAt).toISOString() : new Date().toISOString(),
       ...(orefState.lastError ? { error: orefState.lastError } : {}),
     }));
@@ -3130,6 +3142,7 @@ const server = http.createServer(async (req, res) => {
       configured: OREF_ENABLED,
       history: orefState.history || [],
       historyCount24h: orefState.historyCount24h,
+      totalHistoryCount: orefState.totalHistoryCount,
       timestamp: orefState.lastPollAt ? new Date(orefState.lastPollAt).toISOString() : new Date().toISOString(),
     }));
   } else if (pathname.startsWith('/ucdp-events')) {
