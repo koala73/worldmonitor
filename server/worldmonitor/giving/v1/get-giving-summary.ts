@@ -207,16 +207,19 @@ export async function getGivingSummary(
     if (!result) return { summary: undefined as unknown as GivingSummary };
 
     const summary = result.summary;
-    if (summary) {
-      if (req.platformLimit > 0 && summary.platforms) {
-        summary.platforms = summary.platforms.slice(0, req.platformLimit);
-      }
-      if (req.categoryLimit > 0 && summary.categories) {
-        summary.categories = summary.categories.slice(0, req.categoryLimit);
-      }
-    }
+    if (!summary) return { summary };
 
-    return { summary };
+    return {
+      summary: {
+        ...summary,
+        platforms: req.platformLimit > 0 && summary.platforms
+          ? summary.platforms.slice(0, req.platformLimit)
+          : summary.platforms,
+        categories: req.categoryLimit > 0 && summary.categories
+          ? summary.categories.slice(0, req.categoryLimit)
+          : summary.categories,
+      },
+    };
   } catch {
     return { summary: undefined as unknown as GivingSummary };
   }

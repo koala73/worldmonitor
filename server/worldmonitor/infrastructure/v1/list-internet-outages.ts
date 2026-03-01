@@ -112,6 +112,25 @@ function toEpochMs(value: string | null | undefined): number {
 }
 
 // ========================================================================
+// Filtering
+// ========================================================================
+
+function filterOutages(outages: InternetOutage[], req: ListInternetOutagesRequest): InternetOutage[] {
+  let filtered = outages;
+  if (req.country) {
+    const target = req.country.toLowerCase();
+    filtered = filtered.filter((o) => o.country.toLowerCase().includes(target));
+  }
+  if (req.start) {
+    filtered = filtered.filter((o) => o.detectedAt >= req.start);
+  }
+  if (req.end) {
+    filtered = filtered.filter((o) => o.detectedAt <= req.end);
+  }
+  return filtered;
+}
+
+// ========================================================================
 // RPC implementation
 // ========================================================================
 
@@ -177,23 +196,9 @@ export async function listInternetOutages(
 
     if (result) fallbackOutagesCache = { data: result, ts: Date.now() };
     const effective = result || fallbackOutagesCache?.data;
-    const outages = effective?.outages || [];
-
-    // Always apply filters (to both cached and fresh data)
-    let filtered = outages;
-    if (req.country) {
-      const target = req.country.toLowerCase();
-      filtered = outages.filter((o) => o.country.toLowerCase().includes(target));
-    }
-    if (req.start) {
-      filtered = filtered.filter((o) => o.detectedAt >= req.start);
-    }
-    if (req.end) {
-      filtered = filtered.filter((o) => o.detectedAt <= req.end);
-    }
-
-    return { outages: filtered, pagination: undefined };
+    return { outages: filterOutages(effective?.outages || [], req), pagination: undefined };
   } catch {
-    return fallbackOutagesCache?.data || { outages: [], pagination: undefined };
+    const stale = fallbackOutagesCache?.data?.outages || [];
+    return { outages: filterOutages(stale, req), pagination: undefined };
   }
 }
