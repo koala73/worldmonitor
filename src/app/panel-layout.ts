@@ -43,7 +43,6 @@ import { PositiveNewsFeedPanel } from '@/components/PositiveNewsFeedPanel';
 import { CountersPanel } from '@/components/CountersPanel';
 import { ProgressChartsPanel } from '@/components/ProgressChartsPanel';
 import { BreakthroughsTickerPanel } from '@/components/BreakthroughsTickerPanel';
-import { DeductionPanel } from '@/components/DeductionPanel';
 import { HeroSpotlightPanel } from '@/components/HeroSpotlightPanel';
 import { GoodThingsDigestPanel } from '@/components/GoodThingsDigestPanel';
 import { SpeciesComebackPanel } from '@/components/SpeciesComebackPanel';
@@ -502,8 +501,10 @@ export class PanelLayoutManager implements AppModule {
       this.ctx.panels['gdelt-intel'] = gdeltIntelPanel;
 
       if (this.ctx.isDesktopApp) {
-        const deductionPanel = new DeductionPanel(() => this.ctx.allNews);
-        this.ctx.panels['deduction'] = deductionPanel;
+        import('@/components/DeductionPanel').then(({ DeductionPanel }) => {
+          const deductionPanel = new DeductionPanel(() => this.ctx.allNews);
+          this.ctx.panels['deduction'] = deductionPanel;
+        });
       }
 
       const ciiPanel = new CIIPanel();
