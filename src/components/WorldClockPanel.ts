@@ -120,11 +120,16 @@ function pad2(n: number): string {
 const STYLE = `
 <style>
 .wc-rows { display:flex; flex-direction:column; gap:0; }
-.wc-row { display:grid; grid-template-columns:1fr auto; align-items:center; padding:6px 8px; border-bottom:1px solid var(--border); gap:4px; }
+.wc-row { display:grid; grid-template-columns:auto 1fr auto; align-items:center; padding:6px 8px; border-bottom:1px solid var(--border); gap:4px; }
 .wc-row:last-child { border-bottom:none; }
-.wc-row.wc-home { background:rgba(68,255,136,0.06); }
+.wc-row.wc-dragging { opacity:0.4; }
+.wc-row.wc-drag-over-above { border-top:2px solid #44ff88; }
+.wc-row.wc-drag-over-below { border-bottom:2px solid #44ff88; }
+.wc-drag-handle { cursor:grab; color:var(--text-dim); font-size:12px; padding:0 4px; user-select:none; opacity:0.4; display:flex; align-items:center; }
+.wc-drag-handle:hover { opacity:1; color:var(--text); }
 .wc-city { font-weight:600; font-size:13px; color:var(--text); line-height:1.3; }
 .wc-label { font-size:11px; color:var(--text-dim); }
+.wc-home-icon { color:#44ff88; font-size:11px; margin-left:4px; }
 .wc-right { display:flex; flex-direction:column; align-items:flex-end; gap:2px; }
 .wc-time { font-family:var(--font-mono); font-size:16px; font-weight:700; color:var(--text); letter-spacing:0.5px; }
 .wc-meta { font-size:10px; color:var(--text-dim); display:flex; gap:6px; align-items:center; }
@@ -150,6 +155,9 @@ export class WorldClockPanel extends Panel {
   private homeCityId: string | null = null;
   private popoverEl: HTMLElement;
   private outsideClickHandler: (e: MouseEvent) => void;
+  private dragging = false;
+  private dragCityId: string | null = null;
+  private dragStartY = 0;
 
   constructor() {
     super({ id: 'world-clock', title: 'World Clock', trackActivity: false });
@@ -185,6 +193,7 @@ export class WorldClockPanel extends Panel {
     document.addEventListener('click', this.outsideClickHandler);
 
     this.setupHeader();
+    this.setupDragHandlers();
     this.renderClocks();
     this.tickInterval = setInterval(() => this.renderClocks(), 1000);
   }
@@ -226,7 +235,81 @@ export class WorldClockPanel extends Panel {
     this.popoverEl.style.display = 'none';
   }
 
+  private setupDragHandlers(): void {
+    const content = this.content;
+
+    content.addEventListener('mousedown', (e: MouseEvent) => {
+      const handle = (e.target as HTMLElement).closest('.wc-drag-handle') as HTMLElement | null;
+      if (!handle) return;
+      const row = handle.closest('.wc-row') as HTMLElement | null;
+      if (!row) return;
+      e.preventDefault();
+      this.dragCityId = row.dataset.cityId ?? null;
+      this.dragStartY = e.clientY;
+      this.dragging = false;
+      row.classList.add('wc-dragging');
+      if (this.tickInterval) { clearInterval(this.tickInterval); this.tickInterval = null; }
+    });
+
+    document.addEventListener('mousemove', (e: MouseEvent) => {
+      if (!this.dragCityId) return;
+      if (!this.dragging && Math.abs(e.clientY - this.dragStartY) < 8) return;
+      this.dragging = true;
+      e.preventDefault();
+      const rows = content.querySelectorAll('.wc-row');
+      rows.forEach(r => { r.classList.remove('wc-drag-over-above', 'wc-drag-over-below'); });
+
+      for (const row of rows) {
+        if ((row as HTMLElement).dataset.cityId === this.dragCityId) continue;
+        const rect = row.getBoundingClientRect();
+        const midY = rect.top + rect.height / 2;
+        if (e.clientY >= rect.top && e.clientY <= rect.bottom) {
+          row.classList.add(e.clientY < midY ? 'wc-drag-over-above' : 'wc-drag-over-below');
+        }
+      }
+    });
+
+    document.addEventListener('mouseup', (e: MouseEvent) => {
+      if (!this.dragCityId) return;
+      const dragId = this.dragCityId;
+      this.dragCityId = null;
+
+      const rows = content.querySelectorAll('.wc-row');
+      rows.forEach(r => { r.classList.remove('wc-dragging', 'wc-drag-over-above', 'wc-drag-over-below'); });
+
+      if (this.dragging) {
+        let targetId: string | null = null;
+        let insertBefore = true;
+        for (const row of rows) {
+          const el = row as HTMLElement;
+          if (el.dataset.cityId === dragId) continue;
+          const rect = el.getBoundingClientRect();
+          if (e.clientY >= rect.top && e.clientY <= rect.bottom) {
+            targetId = el.dataset.cityId ?? null;
+            insertBefore = e.clientY < rect.top + rect.height / 2;
+            break;
+          }
+        }
+        if (targetId && targetId !== dragId) {
+          const fromIdx = this.selectedCities.indexOf(dragId);
+          if (fromIdx !== -1) {
+            this.selectedCities.splice(fromIdx, 1);
+            let toIdx = this.selectedCities.indexOf(targetId);
+            if (!insertBefore) toIdx++;
+            this.selectedCities.splice(toIdx, 0, dragId);
+            saveSelectedCities(this.selectedCities);
+          }
+        }
+      }
+
+      this.dragging = false;
+      this.renderClocks();
+      this.tickInterval = setInterval(() => this.renderClocks(), 1000);
+    });
+  }
+
   private renderClocks(): void {
+    if (this.dragging) return;
     const sorted = this.selectedCities
       .map(id => WORLD_CITIES.find(c => c.id === id))
       .filter((c): c is CityEntry => !!c);
@@ -243,17 +326,17 @@ export class WorldClockPanel extends Panel {
         const open = h >= city.marketOpen && h < city.marketClose;
         marketStatus = open
           ? '<span class="wc-market-open">OPEN</span>'
-          : '<span class="wc-market-closed">CLOSED</span>';
+          : '<span class="wc-market-closed">CLSD</span>';
       }
-      html += `<div class="wc-row${isHome ? ' wc-home' : ''}">
+      html += `<div class="wc-row" data-city-id="${city.id}">
+        <div class="wc-drag-handle" title="Drag to reorder">⋮⋮</div>
         <div>
-          <div class="wc-city">${city.city}${isHome ? ' \u2302' : ''}</div>
-          <div class="wc-label">${city.label}</div>
+          <div class="wc-city">${city.city}${isHome ? '<span class="wc-home-icon">\u2302</span>' : ''}</div>
+          <div class="wc-label">${city.label} \u2022 ${marketStatus}</div>
         </div>
         <div class="wc-right">
           <div class="wc-time">${pad2(h)}:${pad2(m)}:${pad2(s)}</div>
           <div class="wc-meta">
-            ${marketStatus}
             <div class="wc-bar-wrap"><div class="wc-bar ${isDay ? 'day' : 'night'}" style="width:${pct.toFixed(1)}%"></div></div>
             <span>${dayOfWeek} ${abbr}</span>
           </div>
