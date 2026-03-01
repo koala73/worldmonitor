@@ -82,7 +82,7 @@ export const OPTIONAL_LIVE_CHANNELS: LiveChannel[] = [
   // North America
   { id: 'cnn', name: 'CNN', handle: '@CNN', fallbackVideoId: 'w_Ma8oQLmSM' },
   { id: 'livenow-fox', name: 'LiveNOW from FOX', handle: '@LiveNOWfromFOX', fallbackVideoId: 'QaftgYkG-ek' },
-  { id: 'fox-news', name: 'Fox News', handle: '@FoxNews', fallbackVideoId: 'QaftgYkG-ek', useFallbackOnly: true },
+  { id: 'fox-news', name: 'Fox News', handle: '@FoxNews', fallbackVideoId: 'QaftgYkG-ek' },
   { id: 'newsmax', name: 'Newsmax', handle: '@NEWSMAX', fallbackVideoId: 'S-lFBzloL2Y', useFallbackOnly: true },
   { id: 'abc-news', name: 'ABC News', handle: '@ABCNews' },
   { id: 'cbs-news', name: 'CBS News', handle: '@CBSNews', fallbackVideoId: 'R9L8sDK8iEc' },
@@ -202,6 +202,7 @@ const DIRECT_HLS_MAP: Readonly<Record<string, string>> = {
   'aljazeera-balkans': 'https://live-hls-web-ajb.getaj.net/AJB/index.m3u8',
   'sabc-news': 'https://sabconetanw.cdn.mangomolo.com/news/smil:news.stream.smil/chunklist_b250000_t64MjQwcA==.m3u8',
   'arirang-news': 'https://amdlive-ch01-ctnd-com.akamaized.net/arirang_1ch/smil:arirang_1ch.smil/playlist.m3u8',
+  'fox-news': 'https://247preview.foxnews.com/hls/live/2020027/fncv3preview/primary.m3u8',
 };
 
 interface ProxiedHlsEntry { url: string; referer: string; }
@@ -271,6 +272,8 @@ export class LiveNewsPanel extends Panel {
   private isPlaying = true;
   private wasPlayingBeforeIdle = true;
   private muteBtn: HTMLButtonElement | null = null;
+  private fullscreenBtn: HTMLButtonElement | null = null;
+  private isFullscreen = false;
   private liveBtn: HTMLButtonElement | null = null;
   private idleTimeout: ReturnType<typeof setTimeout> | null = null;
   private readonly IDLE_PAUSE_MS = 5 * 60 * 1000; // 5 minutes
@@ -325,6 +328,7 @@ export class LiveNewsPanel extends Panel {
     this.renderPlaceholder();
     this.setupLazyInit();
     this.setupIdleDetection();
+    document.addEventListener('keydown', this.boundFullscreenEscHandler);
   }
 
   private renderPlaceholder(): void {
@@ -617,7 +621,38 @@ export class LiveNewsPanel extends Panel {
 
     const header = this.element.querySelector('.panel-header');
     header?.appendChild(this.muteBtn);
+
+    this.createFullscreenButton();
   }
+
+  private createFullscreenButton(): void {
+    this.fullscreenBtn = document.createElement('button');
+    this.fullscreenBtn.className = 'live-mute-btn';
+    this.fullscreenBtn.title = 'Fullscreen';
+    this.fullscreenBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>';
+    this.fullscreenBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.toggleFullscreen();
+    });
+    const header = this.element.querySelector('.panel-header');
+    header?.appendChild(this.fullscreenBtn);
+  }
+
+  private toggleFullscreen(): void {
+    this.isFullscreen = !this.isFullscreen;
+    this.element.classList.toggle('live-news-fullscreen', this.isFullscreen);
+    document.body.classList.toggle('live-news-fullscreen-active', this.isFullscreen);
+    if (this.fullscreenBtn) {
+      this.fullscreenBtn.title = this.isFullscreen ? 'Exit fullscreen' : 'Fullscreen';
+      this.fullscreenBtn.innerHTML = this.isFullscreen
+        ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 14h6v6"/><path d="M20 10h-6V4"/><path d="M14 10l7-7"/><path d="M3 21l7-7"/></svg>'
+        : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>';
+    }
+  }
+
+  private boundFullscreenEscHandler = (e: KeyboardEvent) => {
+    if (e.key === 'Escape' && this.isFullscreen) this.toggleFullscreen();
+  };
 
   private updateMuteIcon(): void {
     if (!this.muteBtn) return;
@@ -792,7 +827,7 @@ export class LiveNewsPanel extends Panel {
   private async resolveChannelVideo(channel: LiveChannel, forceFallback = false): Promise<void> {
     const useFallbackVideo = channel.useFallbackOnly || forceFallback;
 
-    if (isDesktopRuntime() && (this.getDirectHlsUrl(channel.id) || this.getProxiedHlsUrl(channel.id))) {
+    if (this.getDirectHlsUrl(channel.id) || this.getProxiedHlsUrl(channel.id)) {
       channel.videoId = channel.fallbackVideoId;
       channel.isLive = true;
       return;
@@ -1395,7 +1430,9 @@ export class LiveNewsPanel extends Panel {
     }
 
     document.removeEventListener('visibilitychange', this.boundVisibilityHandler);
+    document.removeEventListener('keydown', this.boundFullscreenEscHandler);
     window.removeEventListener('message', this.boundMessageHandler);
+    if (this.isFullscreen) this.toggleFullscreen();
     ['mousedown', 'keydown', 'scroll', 'touchstart', 'mousemove'].forEach(event => {
       document.removeEventListener(event, this.boundIdleResetHandler);
     });

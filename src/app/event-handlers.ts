@@ -699,6 +699,29 @@ export class EventHandlerManager implements AppModule {
       pinBtn.classList.toggle('active', nowPinned);
       localStorage.setItem('map-pinned', String(nowPinned));
     });
+
+    this.setupMapFullscreen(mapSection);
+  }
+
+  private setupMapFullscreen(mapSection: HTMLElement): void {
+    const btn = document.getElementById('mapFullscreenBtn');
+    if (!btn) return;
+    const expandSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>';
+    const shrinkSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 14h6v6"/><path d="M20 10h-6V4"/><path d="M14 10l7-7"/><path d="M3 21l7-7"/></svg>';
+    let isFullscreen = false;
+
+    const toggle = () => {
+      isFullscreen = !isFullscreen;
+      mapSection.classList.toggle('live-news-fullscreen', isFullscreen);
+      document.body.classList.toggle('live-news-fullscreen-active', isFullscreen);
+      btn.innerHTML = isFullscreen ? shrinkSvg : expandSvg;
+      btn.title = isFullscreen ? 'Exit fullscreen' : 'Fullscreen';
+    };
+
+    btn.addEventListener('click', toggle);
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && isFullscreen) toggle();
+    });
   }
 
   getLocalizedPanelName(panelKey: string, fallback: string): string {

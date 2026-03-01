@@ -1906,6 +1906,32 @@ body.panel-resize-active iframe {
   color: var(--green);
 }
 
+.live-news-fullscreen {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 9999 !important;
+  border-radius: 0 !important;
+  margin: 0 !important;
+}
+
+.live-news-fullscreen .panel-content,
+.live-news-fullscreen .map-container {
+  height: calc(100vh - 80px) !important;
+}
+
+.live-news-fullscreen .live-news-player,
+.live-news-fullscreen .live-news-native-video,
+.live-news-fullscreen .live-news-embed-frame {
+  height: 100% !important;
+}
+
+body.live-news-fullscreen-active {
+  overflow: hidden;
+}
+
 .live-indicator-btn {
   background: transparent;
   border: none;
