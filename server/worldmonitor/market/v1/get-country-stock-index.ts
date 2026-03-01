@@ -138,8 +138,8 @@ export async function getCountryStockIndex(
     stockIndexCache[code] = { data: result, ts: Date.now() };
   }
 
-  return result || notAvailable;
+  return result || stockIndexCache[code]?.data || notAvailable;
   } catch {
-    return notAvailable;
+    return stockIndexCache[code]?.data || notAvailable;
   }
 }

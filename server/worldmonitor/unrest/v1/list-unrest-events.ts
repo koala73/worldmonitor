@@ -162,7 +162,9 @@ export async function listUnrestEvents(
   req: ListUnrestEventsRequest,
 ): Promise<ListUnrestEventsResponse> {
   try {
-    const cacheKey = `${REDIS_CACHE_KEY}:${req.country || 'all'}:${req.start || 0}:${req.end || 0}`;
+    const startBucket = req.start > 0 ? new Date(req.start).toISOString().slice(0, 10) : 'default';
+    const endBucket = req.end > 0 ? new Date(req.end).toISOString().slice(0, 10) : 'default';
+    const cacheKey = `${REDIS_CACHE_KEY}:${req.country || 'all'}:${startBucket}:${endBucket}`;
     const result = await cachedFetchJson<ListUnrestEventsResponse>(
       cacheKey,
       REDIS_CACHE_TTL,

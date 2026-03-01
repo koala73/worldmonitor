@@ -69,7 +69,7 @@ export async function listStablecoinMarkets(
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
 
-    if (resp.status === 429 && stablecoinCache) return stablecoinCache;
+    if (resp.status === 429 && stablecoinCache) return null;
     if (!resp.ok) throw new Error(`CoinGecko HTTP ${resp.status}`);
 
     const data = (await resp.json()) as CoinGeckoStablecoinItem[];

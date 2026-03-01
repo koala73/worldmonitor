@@ -11,9 +11,12 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/positive_events/v1/service_server';
 
 import { classifyNewsItem } from '../../../../src/services/positive-classifier';
-import { markNoCacheResponse } from '../../../_shared/response-headers';
+import { cachedFetchJson } from '../../../_shared/redis';
 
 const GDELT_GEO_URL = 'https://api.gdeltproject.org/api/v2/geo/geo';
+
+const REDIS_CACHE_KEY = 'positive-events:geo:v1';
+const REDIS_CACHE_TTL = 900;
 
 // Compound positive queries combining topics from POSITIVE_GDELT_TOPICS pattern
 const POSITIVE_QUERIES = [
@@ -82,37 +85,38 @@ async function fetchGdeltGeoPositive(query: string): Promise<PositiveGeoEvent[]>
 }
 
 export async function listPositiveGeoEvents(
-  ctx: ServerContext,
+  _ctx: ServerContext,
   _req: ListPositiveGeoEventsRequest,
 ): Promise<ListPositiveGeoEventsResponse> {
   try {
-    const allEvents: PositiveGeoEvent[] = [];
-    const seenNames = new Set<string>();
-    let anyQuerySucceeded = false;
+    const result = await cachedFetchJson<ListPositiveGeoEventsResponse>(REDIS_CACHE_KEY, REDIS_CACHE_TTL, async () => {
+      const allEvents: PositiveGeoEvent[] = [];
+      const seenNames = new Set<string>();
+      let anyQuerySucceeded = false;
 
-    for (let i = 0; i < POSITIVE_QUERIES.length; i++) {
-      if (i > 0) {
-        await new Promise(r => setTimeout(r, 500));
-      }
-
-      try {
-        const events = await fetchGdeltGeoPositive(POSITIVE_QUERIES[i]!);
-        anyQuerySucceeded = true;
-        for (const event of events) {
-          if (!seenNames.has(event.name)) {
-            seenNames.add(event.name);
-            allEvents.push(event);
-          }
+      for (let i = 0; i < POSITIVE_QUERIES.length; i++) {
+        if (i > 0) {
+          await new Promise(r => setTimeout(r, 500));
         }
-      } catch {
-        // Individual query failure is non-fatal
-      }
-    }
 
-    if (!anyQuerySucceeded) markNoCacheResponse(ctx.request);
-    return { events: allEvents };
+        try {
+          const events = await fetchGdeltGeoPositive(POSITIVE_QUERIES[i]!);
+          anyQuerySucceeded = true;
+          for (const event of events) {
+            if (!seenNames.has(event.name)) {
+              seenNames.add(event.name);
+              allEvents.push(event);
+            }
+          }
+        } catch {
+          // Individual query failure is non-fatal
+        }
+      }
+
+      return anyQuerySucceeded ? { events: allEvents } : null;
+    });
+    return result || { events: [] };
   } catch {
-    markNoCacheResponse(ctx.request);
     return { events: [] };
   }
 }

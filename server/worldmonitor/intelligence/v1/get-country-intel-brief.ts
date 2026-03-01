@@ -66,46 +66,51 @@ Rules:
 - Use plain language, not jargon
 - If a context snapshot is provided, explicitly reflect each non-zero signal category in the brief`;
 
-  const result = await cachedFetchJson<GetCountryIntelBriefResponse>(cacheKey, INTEL_CACHE_TTL, async () => {
-    try {
-      const userPromptParts = [
-        `Country: ${countryName} (${req.countryCode})`,
-      ];
-      if (contextSnapshot) {
-        userPromptParts.push(`Context snapshot:\n${contextSnapshot}`);
-      }
+  let result: GetCountryIntelBriefResponse | null = null;
+  try {
+    result = await cachedFetchJson<GetCountryIntelBriefResponse>(cacheKey, INTEL_CACHE_TTL, async () => {
+      try {
+        const userPromptParts = [
+          `Country: ${countryName} (${req.countryCode})`,
+        ];
+        if (contextSnapshot) {
+          userPromptParts.push(`Context snapshot:\n${contextSnapshot}`);
+        }
 
-      const resp = await fetch(GROQ_API_URL, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
-        body: JSON.stringify({
+        const resp = await fetch(GROQ_API_URL, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
+          body: JSON.stringify({
+            model: GROQ_MODEL,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userPromptParts.join('\n\n') },
+            ],
+            temperature: 0.4,
+            max_tokens: 900,
+          }),
+          signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+        });
+
+        if (!resp.ok) return null;
+        const data = (await resp.json()) as { choices?: Array<{ message?: { content?: string } }> };
+        const brief = data.choices?.[0]?.message?.content?.trim() || '';
+        if (!brief) return null;
+
+        return {
+          countryCode: req.countryCode,
+          countryName,
+          brief,
           model: GROQ_MODEL,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPromptParts.join('\n\n') },
-          ],
-          temperature: 0.4,
-          max_tokens: 900,
-        }),
-        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-      });
-
-      if (!resp.ok) return null;
-      const data = (await resp.json()) as { choices?: Array<{ message?: { content?: string } }> };
-      const brief = data.choices?.[0]?.message?.content?.trim() || '';
-      if (!brief) return null;
-
-      return {
-        countryCode: req.countryCode,
-        countryName,
-        brief,
-        model: GROQ_MODEL,
-        generatedAt: Date.now(),
-      };
-    } catch {
-      return null;
-    }
-  });
+          generatedAt: Date.now(),
+        };
+      } catch {
+        return null;
+      }
+    });
+  } catch {
+    return empty;
+  }
 
   return result || empty;
 }

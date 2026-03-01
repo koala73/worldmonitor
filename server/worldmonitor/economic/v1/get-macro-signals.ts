@@ -185,11 +185,6 @@ async function computeMacroSignals(): Promise<GetMacroSignalsResponse> {
 
   const verdict = totalCount === 0 ? 'UNKNOWN' : (bullishCount / totalCount >= 0.57 ? 'BUY' : 'CASH');
 
-  // Stale-while-revalidate: if Yahoo rate-limited all calls, serve cached data
-  if (totalCount === 0 && macroSignalsCached && !macroSignalsCached.unavailable) {
-    return macroSignalsCached;
-  }
-
   return {
     timestamp: new Date().toISOString(),
     verdict,

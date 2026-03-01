@@ -19,6 +19,8 @@ import { fetchAcledCached } from '../../../_shared/acled';
 const REDIS_CACHE_KEY = 'conflict:acled:v1';
 const REDIS_CACHE_TTL = 900; // 15 min — ACLED rate-limited
 
+const fallbackAcledCache = new Map<string, { data: ListAcledEventsResponse; ts: number }>();
+
 async function fetchAcledConflicts(req: ListAcledEventsRequest): Promise<AcledConflictEvent[]> {
   try {
     const now = Date.now();
@@ -63,8 +65,8 @@ export async function listAcledEvents(
   _ctx: ServerContext,
   req: ListAcledEventsRequest,
 ): Promise<ListAcledEventsResponse> {
+  const cacheKey = `${REDIS_CACHE_KEY}:${req.country || 'all'}:${req.start || 0}:${req.end || 0}`;
   try {
-    const cacheKey = `${REDIS_CACHE_KEY}:${req.country || 'all'}:${req.start || 0}:${req.end || 0}`;
     const result = await cachedFetchJson<ListAcledEventsResponse>(
       cacheKey,
       REDIS_CACHE_TTL,
@@ -73,8 +75,12 @@ export async function listAcledEvents(
         return events.length > 0 ? { events, pagination: undefined } : null;
       },
     );
-    return result || { events: [], pagination: undefined };
+    if (result) {
+      if (fallbackAcledCache.size > 50) fallbackAcledCache.clear();
+      fallbackAcledCache.set(cacheKey, { data: result, ts: Date.now() });
+    }
+    return result || fallbackAcledCache.get(cacheKey)?.data || { events: [], pagination: undefined };
   } catch {
-    return { events: [], pagination: undefined };
+    return fallbackAcledCache.get(cacheKey)?.data || { events: [], pagination: undefined };
   }
 }

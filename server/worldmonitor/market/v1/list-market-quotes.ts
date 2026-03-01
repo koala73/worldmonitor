@@ -100,9 +100,9 @@ export async function listMarketQuotes(
       }
     }
 
-    // Stale-while-revalidate: if Yahoo rate-limited and no fresh data, serve cached
+    // If Yahoo rate-limited and no fresh data, return null — outer handler serves stale
     if (quotes.length === 0 && memCached) {
-      return memCached.data;
+      return null;
     }
 
     if (quotes.length === 0) {

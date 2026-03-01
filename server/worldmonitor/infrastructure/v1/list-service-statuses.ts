@@ -287,6 +287,25 @@ async function checkServiceStatus(service: ServiceDef): Promise<ServiceStatus> {
 const INFRA_CACHE_KEY = 'infra:service-statuses:v1';
 const INFRA_CACHE_TTL = 1800; // 30 minutes
 
+let fallbackStatusesCache: { data: ServiceStatus[]; ts: number } | null = null;
+
+const STATUS_ORDER: Record<string, number> = {
+  SERVICE_OPERATIONAL_STATUS_MAJOR_OUTAGE: 0,
+  SERVICE_OPERATIONAL_STATUS_PARTIAL_OUTAGE: 1,
+  SERVICE_OPERATIONAL_STATUS_DEGRADED: 2,
+  SERVICE_OPERATIONAL_STATUS_MAINTENANCE: 3,
+  SERVICE_OPERATIONAL_STATUS_UNSPECIFIED: 4,
+  SERVICE_OPERATIONAL_STATUS_OPERATIONAL: 5,
+};
+
+function filterAndSortStatuses(statuses: ServiceStatus[], req: ListServiceStatusesRequest): ServiceStatus[] {
+  let filtered = statuses;
+  if (req.status && req.status !== 'SERVICE_OPERATIONAL_STATUS_UNSPECIFIED') {
+    filtered = statuses.filter((s) => s.status === req.status);
+  }
+  return [...filtered].sort((a, b) => (STATUS_ORDER[a.status] ?? 4) - (STATUS_ORDER[b.status] ?? 4));
+}
+
 export async function listServiceStatuses(
   _ctx: ServerContext,
   req: ListServiceStatusesRequest,
@@ -295,27 +314,13 @@ export async function listServiceStatuses(
     const results = await cachedFetchJson<ServiceStatus[]>(INFRA_CACHE_KEY, INFRA_CACHE_TTL, async () => {
       const fresh = await Promise.all(SERVICES.map(checkServiceStatus));
       return fresh.length > 0 ? fresh : null;
-    }) || [];
+    });
 
-    // Apply optional status filter
-    let filtered = results;
-    if (req.status && req.status !== 'SERVICE_OPERATIONAL_STATUS_UNSPECIFIED') {
-      filtered = results.filter((s) => s.status === req.status);
-    }
+    const effective = results || fallbackStatusesCache?.data || [];
+    if (results) fallbackStatusesCache = { data: results, ts: Date.now() };
 
-    // Sort: outages first, then degraded, then operational
-    const statusOrder: Record<string, number> = {
-      SERVICE_OPERATIONAL_STATUS_MAJOR_OUTAGE: 0,
-      SERVICE_OPERATIONAL_STATUS_PARTIAL_OUTAGE: 1,
-      SERVICE_OPERATIONAL_STATUS_DEGRADED: 2,
-      SERVICE_OPERATIONAL_STATUS_MAINTENANCE: 3,
-      SERVICE_OPERATIONAL_STATUS_UNSPECIFIED: 4,
-      SERVICE_OPERATIONAL_STATUS_OPERATIONAL: 5,
-    };
-    filtered.sort((a, b) => (statusOrder[a.status] ?? 4) - (statusOrder[b.status] ?? 4));
-
-    return { statuses: filtered };
+    return { statuses: filterAndSortStatuses(effective, req) };
   } catch {
-    return { statuses: [] };
+    return { statuses: filterAndSortStatuses(fallbackStatusesCache?.data || [], req) };
   }
 }
