@@ -26,10 +26,14 @@ test.describe('RAG vector store (worker-side)', () => {
 
   async function clearVectorDB() {
     await sharedPage.evaluate(async () => {
-      const dbs = await indexedDB.databases?.() ?? [];
-      for (const db of dbs) {
-        if (db.name === 'worldmonitor_vector_store') indexedDB.deleteDatabase(db.name);
-      }
+      const { mlWorker } = await import('/src/services/ml-worker.ts');
+      await mlWorker.vectorStoreReset();
+      await new Promise<void>((resolve, reject) => {
+        const req = indexedDB.deleteDatabase('worldmonitor_vector_store');
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(req.error);
+        req.onblocked = () => resolve();
+      });
     });
   }
 

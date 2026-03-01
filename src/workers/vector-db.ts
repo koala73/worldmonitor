@@ -190,3 +190,12 @@ export function getCount(): Promise<number> {
     });
   });
 }
+
+export function closeDB(): Promise<void> {
+  return enqueue(async () => {
+    if (db) {
+      db.close();
+      db = null;
+    }
+  });
+}

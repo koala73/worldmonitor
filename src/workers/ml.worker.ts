@@ -5,7 +5,7 @@
 
 import { pipeline, env } from '@xenova/transformers';
 import { MODEL_CONFIGS, type ModelConfig } from '@/config/ml-config';
-import { storeVectors, searchVectors, getCount, sanitizeTitle, type VectorSearchResult } from './vector-db';
+import { storeVectors, searchVectors, getCount, closeDB, sanitizeTitle, type VectorSearchResult } from './vector-db';
 
 // Configure transformers.js
 env.allowLocalModels = false;
@@ -95,6 +95,11 @@ interface VectorStoreCountMessage {
   id: string;
 }
 
+interface VectorStoreResetMessage {
+  type: 'vector-store-reset';
+  id: string;
+}
+
 type MLWorkerMessage =
   | InitMessage
   | LoadModelMessage
@@ -108,7 +113,8 @@ type MLWorkerMessage =
   | ResetMessage
   | VectorStoreIngestMessage
   | VectorStoreSearchMessage
-  | VectorStoreCountMessage;
+  | VectorStoreCountMessage
+  | VectorStoreResetMessage;
 
 // Loaded pipelines (using unknown since pipeline types vary)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -460,6 +466,15 @@ self.onmessage = async (event: MessageEvent<MLWorkerMessage>) => {
           type: 'vector-store-count-result',
           id: message.id,
           count,
+        });
+        break;
+      }
+
+      case 'vector-store-reset': {
+        await closeDB();
+        self.postMessage({
+          type: 'vector-store-reset-result',
+          id: message.id,
         });
         break;
       }

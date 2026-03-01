@@ -49,6 +49,7 @@ type WorkerResult =
   | { type: 'vector-store-ingest-result'; id: string; stored: number }
   | { type: 'vector-store-search-result'; id: string; results: VectorSearchResult[] }
   | { type: 'vector-store-count-result'; id: string; count: number }
+  | { type: 'vector-store-reset-result'; id: string }
   | { type: 'status-result'; id: string; loadedModels: string[] }
   | { type: 'reset-complete' }
   | { type: 'error'; id?: string; error: string };
@@ -165,6 +166,8 @@ class MLWorkerManager {
               pending.resolve(data.results);
             } else if (data.type === 'vector-store-count-result') {
               pending.resolve(data.count);
+            } else if (data.type === 'vector-store-reset-result') {
+              pending.resolve(true);
             } else if (data.type === 'status-result') {
               pending.resolve(data.loadedModels);
             }
@@ -358,6 +361,11 @@ class MLWorkerManager {
   async vectorStoreCount(): Promise<number> {
     if (!this.isReady) return 0;
     return this.request<number>('vector-store-count', {});
+  }
+
+  async vectorStoreReset(): Promise<boolean> {
+    if (!this.isReady) return false;
+    return this.request<boolean>('vector-store-reset', {});
   }
 
   async getStatus(): Promise<string[]> {
