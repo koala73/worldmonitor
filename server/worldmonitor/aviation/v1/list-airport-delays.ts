@@ -27,7 +27,7 @@ import { cachedFetchJson, getCachedJson, setCachedJson } from '../../../_shared/
 const FAA_CACHE_KEY = 'aviation:delays:faa:v1';
 const INTL_CACHE_KEY = 'aviation:delays:intl:v2';
 const NOTAM_CACHE_KEY = 'aviation:notam:closures:v1';
-const CACHE_TTL = 1800;      // 30 min for FAA, intl (real), and NOTAM
+const CACHE_TTL = 7200;      // 2h for FAA, intl (real), and NOTAM
 const SIM_CACHE_TTL = 300;   // 5 min for simulation fallback — retry sooner
 
 export async function listAirportDelays(
