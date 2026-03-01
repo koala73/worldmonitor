@@ -722,6 +722,25 @@ canvas,
   border-color: var(--text);
 }
 
+.download-btn {
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.download-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .search-btn kbd {
   background: var(--bg-secondary);
   padding: 2px 5px;
@@ -9312,7 +9331,8 @@ a.prediction-link:hover {
   }
 
   /* Hide non-essential header items */
-  .copy-link-btn {
+  .copy-link-btn,
+  .download-btn {
     display: none;
   }
 }
