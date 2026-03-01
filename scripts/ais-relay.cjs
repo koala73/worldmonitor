@@ -529,7 +529,8 @@ async function orefBootstrapHistory() {
   const cleaned = stripBom(raw).trim();
   if (!cleaned || cleaned === '[]') return;
 
-  const records = JSON.parse(cleaned);
+  const allRecords = JSON.parse(cleaned);
+  const records = allRecords.slice(-500);
   const waves = new Map();
   for (const r of records) {
     const key = r.alertDate;

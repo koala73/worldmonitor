@@ -1131,6 +1131,7 @@
       "time": "Time",
       "justNow": "just now",
       "historyCount": "{{count}} alerts in last 24h",
+      "historySummary": "{{count}} alerts in 24h — {{waves}} waves",
       "infoTooltip": "<strong>Israel Sirens</strong><br>Real-time rocket and missile siren alerts from Israel Home Front Command.<br><br>Data is polled every 10 seconds. A pulsing red indicator means active sirens are sounding."
     },
     "satelliteFires": {

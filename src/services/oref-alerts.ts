@@ -181,7 +181,19 @@ export async function fetchOrefHistory(): Promise<OrefHistoryResponse> {
     if (!res.ok) {
       return { configured: false, history: [], historyCount24h: 0, timestamp: new Date().toISOString(), error: `HTTP ${res.status}` };
     }
-    return await res.json();
+    const data: OrefHistoryResponse = await res.json();
+
+    if (data.history?.length) {
+      const recentWaves = data.history.slice(-50);
+      const recentAlerts = recentWaves.flatMap(w => w.alerts);
+      await translateAlerts(recentAlerts);
+      data.history = data.history.map(w => ({
+        ...w,
+        alerts: applyTranslations(w.alerts),
+      }));
+    }
+
+    return data;
   } catch (err) {
     return { configured: false, history: [], historyCount24h: 0, timestamp: new Date().toISOString(), error: String(err) };
   }

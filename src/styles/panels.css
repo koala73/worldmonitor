@@ -279,5 +279,12 @@
 .oref-alert-title { font-size: 11px; font-weight: 600; color: var(--text-primary); }
 .oref-alert-time { font-size: 9px; color: var(--text-muted); }
 .oref-alert-areas { font-size: 10px; color: var(--text-secondary); line-height: 1.35; }
-.oref-footer { display: flex; align-items: center; justify-content: center; margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--border-subtle); }
-.oref-history { font-size: 9px; color: var(--text-muted); }
+.oref-history-section { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--border-subtle); }
+.oref-history-title { font-size: 9px; color: var(--text-muted); margin-bottom: 6px; text-align: center; }
+.oref-wave-list { display: flex; flex-direction: column; gap: 3px; max-height: 320px; overflow-y: auto; }
+.oref-wave-row { padding: 5px 8px; border-radius: 4px; border-left: 3px solid var(--border-subtle); background: var(--overlay-subtle); }
+.oref-wave-recent { border-left-color: var(--semantic-warning, #f59e0b); }
+.oref-wave-header { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
+.oref-wave-time { font-size: 9px; color: var(--text-muted); }
+.oref-wave-summary { font-size: 10px; color: var(--text-secondary); line-height: 1.3; }
+.oref-recent-badge { font-size: 8px; font-weight: 700; color: var(--semantic-warning, #f59e0b); background: color-mix(in srgb, var(--semantic-warning, #f59e0b) 12%, transparent); padding: 1px 4px; border-radius: 3px; text-transform: uppercase; letter-spacing: 0.5px; }

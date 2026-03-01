@@ -1,11 +1,19 @@
 import { Panel } from './Panel';
 import { escapeHtml } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
-import type { OrefAlertsResponse, OrefAlert } from '@/services/oref-alerts';
+import { fetchOrefHistory } from '@/services/oref-alerts';
+import type { OrefAlertsResponse, OrefAlert, OrefHistoryEntry } from '@/services/oref-alerts';
+
+const MAX_HISTORY_WAVES = 50;
+const ONE_HOUR_MS = 60 * 60 * 1000;
+const HISTORY_TTL = 3 * 60 * 1000;
 
 export class OrefSirensPanel extends Panel {
   private alerts: OrefAlert[] = [];
   private historyCount24h = 0;
+  private historyWaves: OrefHistoryEntry[] = [];
+  private historyFetchInFlight = false;
+  private historyLastFetchAt = 0;
 
   constructor() {
     super({
@@ -35,11 +43,30 @@ export class OrefSirensPanel extends Panel {
     }
 
     this.render();
+    this.loadHistory();
+  }
+
+  private loadHistory(): void {
+    if (this.historyFetchInFlight) return;
+    if (Date.now() - this.historyLastFetchAt < HISTORY_TTL) return;
+    this.historyFetchInFlight = true;
+    this.historyLastFetchAt = Date.now();
+    fetchOrefHistory()
+      .then(resp => {
+        if (resp.history?.length) {
+          this.historyWaves = resp.history;
+          this.render();
+        }
+      })
+      .catch(() => {})
+      .finally(() => { this.historyFetchInFlight = false; });
   }
 
   private formatAlertTime(dateStr: string): string {
     try {
-      const diff = Date.now() - new Date(dateStr).getTime();
+      const ts = new Date(dateStr).getTime();
+      if (!Number.isFinite(ts)) return '';
+      const diff = Date.now() - ts;
       if (diff < 60_000) return t('components.orefSirens.justNow');
       const mins = Math.floor(diff / 60_000);
       if (mins < 60) return `${mins}m`;
@@ -51,7 +78,52 @@ export class OrefSirensPanel extends Panel {
     }
   }
 
+  private formatWaveTime(dateStr: string): string {
+    try {
+      const d = new Date(dateStr);
+      if (!Number.isFinite(d.getTime())) return '';
+      return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+        + ' ' + d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    } catch {
+      return '';
+    }
+  }
+
+  private renderHistoryWaves(): string {
+    if (!this.historyWaves.length) return '';
+
+    const now = Date.now();
+    const withTs = this.historyWaves.map(w => ({ wave: w, ts: new Date(w.timestamp).getTime() }));
+    withTs.sort((a, b) => b.ts - a.ts);
+    const sorted = withTs.slice(0, MAX_HISTORY_WAVES);
+
+    const rows = sorted.map(({ wave, ts }) => {
+      const isRecent = now - ts < ONE_HOUR_MS;
+      const rowClass = isRecent ? 'oref-wave-row oref-wave-recent' : 'oref-wave-row';
+      const badge = isRecent ? '<span class="oref-recent-badge">RECENT</span>' : '';
+      const types = wave.alerts.map(a => escapeHtml(a.title || a.cat));
+      const uniqueTypes = [...new Set(types)];
+      const totalAreas = wave.alerts.reduce((sum, a) => sum + (a.data?.length || 0), 0);
+      const summary = uniqueTypes.join(', ') + (totalAreas > 0 ? ` — ${totalAreas} areas` : '');
+
+      return `<div class="${rowClass}">
+        <div class="oref-wave-header">
+          <span class="oref-wave-time">${this.formatWaveTime(wave.timestamp)}</span>
+          ${badge}
+        </div>
+        <div class="oref-wave-summary">${summary}</div>
+      </div>`;
+    }).join('');
+
+    return `<div class="oref-history-section">
+      <div class="oref-history-title">${t('components.orefSirens.historySummary', { count: String(this.historyCount24h), waves: String(sorted.length) })}</div>
+      <div class="oref-wave-list">${rows}</div>
+    </div>`;
+  }
+
   private render(): void {
+    const historyHtml = this.renderHistoryWaves();
+
     if (this.alerts.length === 0) {
       this.setContent(`
         <div class="oref-panel-content">
@@ -59,9 +131,7 @@ export class OrefSirensPanel extends Panel {
             <span class="oref-status-icon">&#x2705;</span>
             <span>${t('components.orefSirens.noAlerts')}</span>
           </div>
-          <div class="oref-footer">
-            <span class="oref-history">${t('components.orefSirens.historyCount', { count: String(this.historyCount24h) })}</span>
-          </div>
+          ${historyHtml}
         </div>
       `);
       return;
@@ -86,9 +156,7 @@ export class OrefSirensPanel extends Panel {
           <span>${t('components.orefSirens.activeSirens', { count: String(this.alerts.length) })}</span>
         </div>
         <div class="oref-list">${alertRows}</div>
-        <div class="oref-footer">
-          <span class="oref-history">${t('components.orefSirens.historyCount', { count: String(this.historyCount24h) })}</span>
-        </div>
+        ${historyHtml}
       </div>
     `);
   }
