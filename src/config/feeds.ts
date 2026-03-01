@@ -436,6 +436,18 @@ export function isStateAffiliatedSource(sourceName: string): boolean {
   return !!profile?.stateAffiliated;
 }
 
+let _sourcePanelMap: Map<string, string> | null = null;
+export function getSourcePanelId(sourceName: string): string {
+  if (!_sourcePanelMap) {
+    _sourcePanelMap = new Map();
+    for (const [category, feeds] of Object.entries(FEEDS)) {
+      for (const feed of feeds) _sourcePanelMap.set(feed.name, category);
+    }
+    for (const feed of INTEL_SOURCES) _sourcePanelMap.set(feed.name, 'intel');
+  }
+  return _sourcePanelMap.get(sourceName) ?? 'politics';
+}
+
 const FULL_FEEDS: Record<string, Feed[]> = {
   politics: [
     { name: 'BBC World', url: rss('https://feeds.bbci.co.uk/news/world/rss.xml') },
