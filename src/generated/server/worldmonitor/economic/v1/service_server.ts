@@ -276,7 +276,6 @@ export function createEconomicServiceRoutes(
         try {
           const pathParams: Record<string, string> = {};
           const url = new URL(req.url, "http://localhost");
-
           const params = url.searchParams;
           const body: GetFredSeriesRequest = {
             seriesId: params.get("series_id") ?? "",
@@ -378,7 +377,7 @@ export function createEconomicServiceRoutes(
           const url = new URL(req.url, "http://localhost");
           const params = url.searchParams;
           const body: GetEnergyPricesRequest = {
-            commodities: params.getAll("commodities"),
+            commodities: params.get("commodities") ?? "",
           };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("getEnergyPrices", body);
@@ -462,7 +461,7 @@ export function createEconomicServiceRoutes(
           const url = new URL(req.url, "http://localhost");
           const params = url.searchParams;
           const body: GetEnergyCapacityRequest = {
-            energySources: params.getAll("energy_sources"),
+            energySources: params.get("energy_sources") ?? "",
             years: Number(params.get("years") ?? "0"),
           };
           if (options?.validateRequest) {

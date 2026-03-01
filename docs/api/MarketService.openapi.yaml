@@ -205,7 +205,7 @@ paths:
                 - name: country_code
                   in: query
                   description: ISO 3166-1 alpha-2 country code (e.g., "US", "GB", "JP").
-                  required: true
+                  required: false
                   schema:
                     type: string
             responses:

@@ -112,7 +112,7 @@ paths:
                 - name: country_code
                   in: query
                   description: ISO 3166-1 alpha-2 country code.
-                  required: true
+                  required: false
                   schema:
                     type: string
             responses:
@@ -182,6 +182,38 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/SearchGdeltDocumentsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/deduct-situation:
+        post:
+            tags:
+                - IntelligenceService
+            summary: DeductSituation
+            description: DeductSituation deducts the future situation based on query and context using an LLM.
+            operationId: DeductSituation
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/DeductSituationRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/DeductSituationResponse'
                 "400":
                     description: Validation error
                     content:
@@ -660,3 +692,19 @@ components:
                     format: double
                     description: GDELT tone score (negative = negative tone, positive = positive tone).
             description: GdeltArticle represents a single article from the GDELT document API.
+        DeductSituationRequest:
+            type: object
+            properties:
+                query:
+                    type: string
+                geoContext:
+                    type: string
+        DeductSituationResponse:
+            type: object
+            properties:
+                analysis:
+                    type: string
+                model:
+                    type: string
+                provider:
+                    type: string

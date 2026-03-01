@@ -121,7 +121,7 @@ export class SupplyChainServiceClient {
     this.defaultHeaders = { ...options?.defaultHeaders };
   }
 
-  async getShippingRates(_req: GetShippingRatesRequest, options?: SupplyChainServiceCallOptions): Promise<GetShippingRatesResponse> {
+  async getShippingRates(req: GetShippingRatesRequest, options?: SupplyChainServiceCallOptions): Promise<GetShippingRatesResponse> {
     let path = "/api/supply-chain/v1/get-shipping-rates";
     const url = this.baseURL + path;
 
@@ -144,7 +144,7 @@ export class SupplyChainServiceClient {
     return await resp.json() as GetShippingRatesResponse;
   }
 
-  async getChokepointStatus(_req: GetChokepointStatusRequest, options?: SupplyChainServiceCallOptions): Promise<GetChokepointStatusResponse> {
+  async getChokepointStatus(req: GetChokepointStatusRequest, options?: SupplyChainServiceCallOptions): Promise<GetChokepointStatusResponse> {
     let path = "/api/supply-chain/v1/get-chokepoint-status";
     const url = this.baseURL + path;
 
@@ -167,7 +167,7 @@ export class SupplyChainServiceClient {
     return await resp.json() as GetChokepointStatusResponse;
   }
 
-  async getCriticalMinerals(_req: GetCriticalMineralsRequest, options?: SupplyChainServiceCallOptions): Promise<GetCriticalMineralsResponse> {
+  async getCriticalMinerals(req: GetCriticalMineralsRequest, options?: SupplyChainServiceCallOptions): Promise<GetCriticalMineralsResponse> {
     let path = "/api/supply-chain/v1/get-critical-minerals";
     const url = this.baseURL + path;
 

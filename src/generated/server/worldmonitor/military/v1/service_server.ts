@@ -314,8 +314,8 @@ export function createMilitaryServiceRoutes(
             neLon: Number(params.get("ne_lon") ?? "0"),
             swLat: Number(params.get("sw_lat") ?? "0"),
             swLon: Number(params.get("sw_lon") ?? "0"),
-            operator: (params.get("operator") ?? "") as MilitaryOperator,
-            aircraftType: (params.get("aircraft_type") ?? "") as MilitaryAircraftType,
+            operator: params.get("operator") ?? "",
+            aircraftType: params.get("aircraft_type") ?? "",
           };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("listMilitaryFlights", body);

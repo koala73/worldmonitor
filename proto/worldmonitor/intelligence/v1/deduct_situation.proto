@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package worldmonitor.intelligence.v1;
+
+message DeductSituationRequest {
+  string query = 1;
+  string geo_context = 2;
+}
+
+message DeductSituationResponse {
+  string analysis = 1;
+  string model = 2;
+  string provider = 3;
+}

@@ -208,7 +208,7 @@ export class InfrastructureServiceClient {
   async listServiceStatuses(req: ListServiceStatusesRequest, options?: InfrastructureServiceCallOptions): Promise<ListServiceStatusesResponse> {
     let path = "/api/infrastructure/v1/list-service-statuses";
     const params = new URLSearchParams();
-    if (req.status != null && req.status !== "SERVICE_OPERATIONAL_STATUS_UNSPECIFIED") params.set("status", String(req.status));
+    if (req.status != null && req.status !== "") params.set("status", String(req.status));
     const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {
@@ -281,7 +281,7 @@ export class InfrastructureServiceClient {
     return await resp.json() as RecordBaselineSnapshotResponse;
   }
 
-  async getCableHealth(_req: GetCableHealthRequest, options?: InfrastructureServiceCallOptions): Promise<GetCableHealthResponse> {
+  async getCableHealth(req: GetCableHealthRequest, options?: InfrastructureServiceCallOptions): Promise<GetCableHealthResponse> {
     let path = "/api/infrastructure/v1/get-cable-health";
     const url = this.baseURL + path;
 

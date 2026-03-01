@@ -297,8 +297,8 @@ export class MilitaryServiceClient {
     if (req.neLon != null && req.neLon !== 0) params.set("ne_lon", String(req.neLon));
     if (req.swLat != null && req.swLat !== 0) params.set("sw_lat", String(req.swLat));
     if (req.swLon != null && req.swLon !== 0) params.set("sw_lon", String(req.swLon));
-    if (req.operator != null && (req.operator as string) !== "") params.set("operator", String(req.operator));
-    if (req.aircraftType != null && (req.aircraftType as string) !== "") params.set("aircraft_type", String(req.aircraftType));
+    if (req.operator != null && req.operator !== "") params.set("operator", String(req.operator));
+    if (req.aircraftType != null && req.aircraftType !== "") params.set("aircraft_type", String(req.aircraftType));
     const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {
@@ -394,7 +394,7 @@ export class MilitaryServiceClient {
     return await resp.json() as GetAircraftDetailsBatchResponse;
   }
 
-  async getWingbitsStatus(_req: GetWingbitsStatusRequest, options?: MilitaryServiceCallOptions): Promise<GetWingbitsStatusResponse> {
+  async getWingbitsStatus(req: GetWingbitsStatusRequest, options?: MilitaryServiceCallOptions): Promise<GetWingbitsStatusResponse> {
     let path = "/api/military/v1/get-wingbits-status";
     const url = this.baseURL + path;
 

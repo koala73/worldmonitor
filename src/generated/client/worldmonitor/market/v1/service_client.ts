@@ -197,7 +197,7 @@ export class MarketServiceClient {
   async listMarketQuotes(req: ListMarketQuotesRequest, options?: MarketServiceCallOptions): Promise<ListMarketQuotesResponse> {
     let path = "/api/market/v1/list-market-quotes";
     const params = new URLSearchParams();
-    if (req.symbols && req.symbols.length > 0) req.symbols.forEach(v => params.append("symbols", v));
+    if (req.symbols != null && req.symbols !== "") params.set("symbols", String(req.symbols));
     const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {
@@ -222,7 +222,7 @@ export class MarketServiceClient {
   async listCryptoQuotes(req: ListCryptoQuotesRequest, options?: MarketServiceCallOptions): Promise<ListCryptoQuotesResponse> {
     let path = "/api/market/v1/list-crypto-quotes";
     const params = new URLSearchParams();
-    if (req.ids && req.ids.length > 0) req.ids.forEach(v => params.append("ids", v));
+    if (req.ids != null && req.ids !== "") params.set("ids", String(req.ids));
     const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {
@@ -247,7 +247,7 @@ export class MarketServiceClient {
   async listCommodityQuotes(req: ListCommodityQuotesRequest, options?: MarketServiceCallOptions): Promise<ListCommodityQuotesResponse> {
     let path = "/api/market/v1/list-commodity-quotes";
     const params = new URLSearchParams();
-    if (req.symbols && req.symbols.length > 0) req.symbols.forEach(v => params.append("symbols", v));
+    if (req.symbols != null && req.symbols !== "") params.set("symbols", String(req.symbols));
     const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {
@@ -297,7 +297,7 @@ export class MarketServiceClient {
   async listStablecoinMarkets(req: ListStablecoinMarketsRequest, options?: MarketServiceCallOptions): Promise<ListStablecoinMarketsResponse> {
     let path = "/api/market/v1/list-stablecoin-markets";
     const params = new URLSearchParams();
-    if (req.coins && req.coins.length > 0) req.coins.forEach(v => params.append("coins", v));
+    if (req.coins != null && req.coins !== "") params.set("coins", String(req.coins));
     const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {
@@ -319,7 +319,7 @@ export class MarketServiceClient {
     return await resp.json() as ListStablecoinMarketsResponse;
   }
 
-  async listEtfFlows(_req: ListEtfFlowsRequest, options?: MarketServiceCallOptions): Promise<ListEtfFlowsResponse> {
+  async listEtfFlows(req: ListEtfFlowsRequest, options?: MarketServiceCallOptions): Promise<ListEtfFlowsResponse> {
     let path = "/api/market/v1/list-etf-flows";
     const url = this.baseURL + path;
 
@@ -343,9 +343,9 @@ export class MarketServiceClient {
   }
 
   async getCountryStockIndex(req: GetCountryStockIndexRequest, options?: MarketServiceCallOptions): Promise<GetCountryStockIndexResponse> {
-    const path = "/api/market/v1/get-country-stock-index";
+    let path = "/api/market/v1/get-country-stock-index";
     const params = new URLSearchParams();
-    if (req.countryCode != null && req.countryCode !== "") params.set("country_code", req.countryCode);
+    if (req.countryCode != null && req.countryCode !== "") params.set("country_code", String(req.countryCode));
     const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {

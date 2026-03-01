@@ -159,7 +159,7 @@ export function createTradeServiceRoutes(
           const url = new URL(req.url, "http://localhost");
           const params = url.searchParams;
           const body: GetTradeRestrictionsRequest = {
-            countries: params.getAll("countries"),
+            countries: params.get("countries") ?? "",
             limit: Number(params.get("limit") ?? "0"),
           };
           if (options?.validateRequest) {
@@ -306,7 +306,7 @@ export function createTradeServiceRoutes(
           const url = new URL(req.url, "http://localhost");
           const params = url.searchParams;
           const body: GetTradeBarriersRequest = {
-            countries: params.getAll("countries"),
+            countries: params.get("countries") ?? "",
             measureType: params.get("measure_type") ?? "",
             limit: Number(params.get("limit") ?? "0"),
           };

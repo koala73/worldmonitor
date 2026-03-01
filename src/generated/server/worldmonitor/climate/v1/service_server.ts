@@ -100,7 +100,7 @@ export function createClimateServiceRoutes(
           const body: ListClimateAnomaliesRequest = {
             pageSize: Number(params.get("page_size") ?? "0"),
             cursor: params.get("cursor") ?? "",
-            minSeverity: (params.get("min_severity") ?? "ANOMALY_SEVERITY_UNSPECIFIED") as AnomalySeverity,
+            minSeverity: params.get("min_severity") ?? "",
           };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("listClimateAnomalies", body);

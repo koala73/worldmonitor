@@ -136,7 +136,7 @@ export function createUnrestServiceRoutes(
             pageSize: Number(params.get("page_size") ?? "0"),
             cursor: params.get("cursor") ?? "",
             country: params.get("country") ?? "",
-            minSeverity: (params.get("min_severity") ?? "SEVERITY_LEVEL_UNSPECIFIED") as SeverityLevel,
+            minSeverity: params.get("min_severity") ?? "",
             neLat: Number(params.get("ne_lat") ?? "0"),
             neLon: Number(params.get("ne_lon") ?? "0"),
             swLat: Number(params.get("sw_lat") ?? "0"),

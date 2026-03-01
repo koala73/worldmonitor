@@ -245,7 +245,7 @@ export function createInfrastructureServiceRoutes(
           const url = new URL(req.url, "http://localhost");
           const params = url.searchParams;
           const body: ListServiceStatusesRequest = {
-            status: (params.get("status") ?? "SERVICE_OPERATIONAL_STATUS_UNSPECIFIED") as ServiceOperationalStatus,
+            status: params.get("status") ?? "",
           };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("listServiceStatuses", body);

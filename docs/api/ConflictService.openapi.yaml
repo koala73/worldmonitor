@@ -134,7 +134,7 @@ paths:
                 - name: country_code
                   in: query
                   description: ISO 3166-1 alpha-2 country code (e.g., "YE", "SD", "SO").
-                  required: true
+                  required: false
                   schema:
                     type: string
             responses:
@@ -144,6 +144,32 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/GetHumanitarianSummaryResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/conflict/v1/list-iran-events:
+        get:
+            tags:
+                - ConflictService
+            summary: ListIranEvents
+            description: ListIranEvents retrieves scraped conflict events from LiveUAMap Iran.
+            operationId: ListIranEvents
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListIranEventsResponse'
                 "400":
                     description: Validation error
                     content:
@@ -377,9 +403,7 @@ components:
                 countryCode:
                     type: string
                     pattern: ^[A-Z]{2}$
-                    description: |-
-                        ISO 3166-1 alpha-2 country code (e.g., "YE", "SD", "SO").
-                         This is a path parameter — no query annotation needed.
+                    description: ISO 3166-1 alpha-2 country code (e.g., "YE", "SD", "SO").
             required:
                 - countryCode
             description: GetHumanitarianSummaryRequest specifies which country to retrieve the humanitarian summary for.
@@ -422,3 +446,39 @@ components:
                     format: int64
                     description: 'Last data update time, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
             description: HumanitarianCountrySummary represents HAPI conflict event counts for a country.
+        ListIranEventsRequest:
+            type: object
+        ListIranEventsResponse:
+            type: object
+            properties:
+                events:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/IranEvent'
+                scrapedAt:
+                    type: string
+                    format: int64
+        IranEvent:
+            type: object
+            properties:
+                id:
+                    type: string
+                title:
+                    type: string
+                category:
+                    type: string
+                sourceUrl:
+                    type: string
+                latitude:
+                    type: number
+                    format: double
+                longitude:
+                    type: number
+                    format: double
+                locationName:
+                    type: string
+                timestamp:
+                    type: string
+                    format: int64
+                severity:
+                    type: string
