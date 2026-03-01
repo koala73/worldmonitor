@@ -91,7 +91,7 @@
     "maplibre-gl": "^5.16.0",
     "onnxruntime-web": "^1.23.2",
     "papaparse": "^5.5.3",
-    "posthog-js": "^1.352.0",
+    "posthog-js": "^1.356.1",
     "telegram": "^2.26.22",
     "topojson-client": "^3.1.0",
     "ws": "^8.19.0",
