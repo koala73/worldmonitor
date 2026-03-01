@@ -70,6 +70,11 @@ export class EventHandlerManager implements AppModule {
   private snapshotIntervalId: ReturnType<typeof setInterval> | null = null;
   private clockIntervalId: ReturnType<typeof setInterval> | null = null;
   private readonly IDLE_PAUSE_MS = 2 * 60 * 1000;
+  private debouncedUrlSync = debounce(() => {
+    const shareUrl = this.getShareUrl();
+    if (!shareUrl) return;
+    history.replaceState(null, '', shareUrl);
+  }, 250);
 
   constructor(ctx: AppContext, callbacks: EventHandlerCallbacks) {
     this.ctx = ctx;
@@ -321,14 +326,9 @@ export class EventHandlerManager implements AppModule {
 
   setupUrlStateSync(): void {
     if (!this.ctx.map) return;
-    const update = debounce(() => {
-      const shareUrl = this.getShareUrl();
-      if (!shareUrl) return;
-      history.replaceState(null, '', shareUrl);
-    }, 250);
 
     this.ctx.map.onStateChanged(() => {
-      update();
+      this.debouncedUrlSync();
       const regionSelect = document.getElementById('regionSelect') as HTMLSelectElement;
       if (regionSelect && this.ctx.map) {
         const state = this.ctx.map.getState();
@@ -337,7 +337,11 @@ export class EventHandlerManager implements AppModule {
         }
       }
     });
-    update();
+    this.debouncedUrlSync();
+  }
+
+  syncUrlState(): void {
+    this.debouncedUrlSync();
   }
 
   getShareUrl(): string | null {
@@ -562,6 +566,7 @@ export class EventHandlerManager implements AppModule {
       trackMapLayerToggle(layer, enabled, source);
       this.ctx.mapLayers[layer] = enabled;
       saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
+      this.syncUrlState();
 
       const sourceIds = LAYER_TO_SOURCE[layer];
       if (sourceIds) {
