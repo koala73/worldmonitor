@@ -1308,7 +1308,8 @@
       "regionLatinAmerica": "Lateinamerika",
       "regionAsia": "Asien",
       "regionMiddleEast": "Naher Osten",
-      "regionAfrica": "Afrika"
+      "regionAfrica": "Afrika",
+      "regionOceania": "Ozeanien"
     },
     "securityAdvisories": {
       "loading": "Reisehinweise werden geladen...",

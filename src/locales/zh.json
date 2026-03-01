@@ -1308,7 +1308,8 @@
       "regionLatinAmerica": "拉丁美洲",
       "regionAsia": "亚洲",
       "regionMiddleEast": "中东",
-      "regionAfrica": "非洲"
+      "regionAfrica": "非洲",
+      "regionOceania": "大洋洲"
     },
     "securityAdvisories": {
       "loading": "正在加载旅行警告...",

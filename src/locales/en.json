@@ -1450,6 +1450,7 @@
       "regionAsia": "Asia",
       "regionMiddleEast": "Middle East",
       "regionAfrica": "Africa",
+      "regionOceania": "Oceania",
       "invalidHandle": "Enter a valid YouTube handle (e.g. @ChannelName)",
       "channelNotFound": "YouTube channel not found",
       "verifying": "Verifying…"

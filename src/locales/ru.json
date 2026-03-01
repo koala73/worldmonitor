@@ -1308,7 +1308,8 @@
       "regionLatinAmerica": "Латинская Америка",
       "regionAsia": "Азия",
       "regionMiddleEast": "Ближний Восток",
-      "regionAfrica": "Африка"
+      "regionAfrica": "Африка",
+      "regionOceania": "Океания"
     },
     "securityAdvisories": {
       "loading": "Загрузка предупреждений...",

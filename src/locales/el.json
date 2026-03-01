@@ -1335,7 +1335,8 @@
       "regionLatinAmerica": "Λατινική Αμερική",
       "regionAsia": "Ασία",
       "regionMiddleEast": "Μέση Ανατολή",
-      "regionAfrica": "Αφρική"
+      "regionAfrica": "Αφρική",
+      "regionOceania": "Ωκεανία"
     },
     "securityAdvisories": {
       "loading": "Φόρτωση ταξιδιωτικών οδηγιών...",

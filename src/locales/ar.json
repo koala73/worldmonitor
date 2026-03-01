@@ -1308,7 +1308,8 @@
       "regionLatinAmerica": "أمريكا اللاتينية",
       "regionAsia": "آسيا",
       "regionMiddleEast": "الشرق الأوسط",
-      "regionAfrica": "أفريقيا"
+      "regionAfrica": "أفريقيا",
+      "regionOceania": "أوقيانوسيا"
     },
     "securityAdvisories": {
       "loading": "جاري جلب التحذيرات الأمنية...",

@@ -1166,7 +1166,8 @@
       "regionLatinAmerica": "Latinamerika",
       "regionAsia": "Asien",
       "regionMiddleEast": "Mellanöstern",
-      "regionAfrica": "Afrika"
+      "regionAfrica": "Afrika",
+      "regionOceania": "Oceanien"
     },
     "securityAdvisories": {
       "loading": "Hämtar resevarningar...",
