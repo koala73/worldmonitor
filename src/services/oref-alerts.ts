@@ -38,6 +38,18 @@ const CACHE_TTL = 8_000;
 let pollingInterval: ReturnType<typeof setInterval> | null = null;
 let updateCallbacks: Array<(data: OrefAlertsResponse) => void> = [];
 
+let locationTranslator: ((s: string) => string) | null = null;
+let locationMapPromise: Promise<void> | null = null;
+
+async function ensureLocationMapLoaded(): Promise<void> {
+  if (locationTranslator) return;
+  if (locationMapPromise) { await locationMapPromise; return; }
+  locationMapPromise = import('./oref-locations').then(m => {
+    locationTranslator = m.translateLocation;
+  }).catch(() => { locationMapPromise = null; console.warn('[OREF] Failed to load location translations, will retry'); });
+  await locationMapPromise;
+}
+
 const MAX_TRANSLATION_CACHE = 200;
 const translationCache = new Map<string, { title: string; data: string[]; desc: string }>();
 let translationPromise: Promise<boolean> | null = null;
@@ -140,7 +152,7 @@ function applyTranslations(alerts: OrefAlert[]): OrefAlert[] {
       return {
         ...a,
         title: staticTranslate(a.title),
-        data: a.data.map(staticTranslate),
+        data: a.data.map(d => locationTranslator ? locationTranslator(staticTranslate(d)) : staticTranslate(d)),
         desc: staticTranslate(a.desc),
       };
     }
@@ -188,6 +200,7 @@ function getOrefApiUrl(endpoint?: string): string {
 }
 
 export async function fetchOrefAlerts(): Promise<OrefAlertsResponse> {
+  await ensureLocationMapLoaded();
   const now = Date.now();
   if (cachedResponse && now - lastFetchAt < CACHE_TTL) {
     return { ...cachedResponse, alerts: applyTranslations(cachedResponse.alerts) };
@@ -219,6 +232,7 @@ export async function fetchOrefAlerts(): Promise<OrefAlertsResponse> {
 }
 
 export async function fetchOrefHistory(): Promise<OrefHistoryResponse> {
+  await ensureLocationMapLoaded();
   try {
     const res = await fetch(getOrefApiUrl('history'), {
       headers: { Accept: 'application/json' },

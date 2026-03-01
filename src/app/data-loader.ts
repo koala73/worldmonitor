@@ -57,7 +57,7 @@ import {
   fetchChokepointStatus,
   fetchCriticalMinerals,
 } from '@/services';
-import { checkBatchForBreakingAlerts } from '@/services/breaking-news-alerts';
+import { checkBatchForBreakingAlerts, dispatchOrefBreakingAlert } from '@/services/breaking-news-alerts';
 import { mlWorker } from '@/services/ml-worker';
 import { clusterNewsHybrid } from '@/services/clustering';
 import { ingestProtests, ingestFlights, ingestVessels, ingestEarthquakes, detectGeoConvergence, geoConvergenceToSignal } from '@/services/geo-convergence';
@@ -1328,12 +1328,14 @@ export class DataLoaderManager implements AppModule {
         const historyCount24h = data.historyCount24h ?? 0;
         ingestOrefForCII(alertCount, historyCount24h);
         this.ctx.intelligenceCache.orefAlerts = { alertCount, historyCount24h };
+        if (data.alerts?.length) dispatchOrefBreakingAlert(data.alerts);
         onOrefAlertsUpdate((update) => {
           (this.ctx.panels['oref-sirens'] as OrefSirensPanel)?.setData(update);
           const updAlerts = update.alerts?.length ?? 0;
           const updHistory = update.historyCount24h ?? 0;
           ingestOrefForCII(updAlerts, updHistory);
           this.ctx.intelligenceCache.orefAlerts = { alertCount: updAlerts, historyCount24h: updHistory };
+          if (update.alerts?.length) dispatchOrefBreakingAlert(update.alerts);
         });
         startOrefPolling();
       } catch (error) {
