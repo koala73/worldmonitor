@@ -8451,6 +8451,26 @@ a.prediction-link:hover {
   color: var(--green, var(--status-live));
 }
 
+.popup-source-link-container {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.popup-source-link {
+  display: inline-block;
+  color: #4dabf7;
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+
+.popup-source-link:hover {
+  color: #74c0fc;
+  text-decoration: underline;
+}
+
 /* Attribution text - brighter */
 .popup-attribution {
   color: var(--text-muted);

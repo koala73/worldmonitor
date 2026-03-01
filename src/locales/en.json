@@ -1520,7 +1520,9 @@
       "acledVerified": "ACLED (verified)",
       "gdelt": "GDELT",
       "riots": "Riots",
-      "highSeverity": "High Severity"
+      "highSeverity": "High Severity",
+      "viewInGdelt": "View in GDELT →",
+      "viewInAcled": "View in ACLED →"
     },
     "gpsJamming": {
       "title": "GPS/GNSS Interference",
