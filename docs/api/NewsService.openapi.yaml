@@ -35,6 +35,45 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/news/v1/list-feed-digest:
+        get:
+            tags:
+                - NewsService
+            summary: ListFeedDigest
+            description: ListFeedDigest returns a pre-aggregated digest of all RSS feeds for a site variant.
+            operationId: ListFeedDigest
+            parameters:
+                - name: variant
+                  in: query
+                  description: 'Site variant: full, tech, finance, happy'
+                  required: false
+                  schema:
+                    type: string
+                - name: lang
+                  in: query
+                  description: ISO 639-1 language code (en, fr, ar, etc.)
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListFeedDigestResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -132,3 +171,122 @@ components:
                     type: string
                     description: Error type/name (e.g. "TypeError").
             description: SummarizeArticleResponse contains the LLM summarization result.
+        ListFeedDigestRequest:
+            type: object
+            properties:
+                variant:
+                    type: string
+                    description: 'Site variant: full, tech, finance, happy'
+                lang:
+                    type: string
+                    description: ISO 639-1 language code (en, fr, ar, etc.)
+        ListFeedDigestResponse:
+            type: object
+            properties:
+                categories:
+                    type: object
+                    additionalProperties:
+                        $ref: '#/components/schemas/CategoryBucket'
+                    description: Per-category buckets — keys match category names from feed config
+                feedStatuses:
+                    type: object
+                    additionalProperties:
+                        type: string
+                    description: Per-feed status (ok/error/timeout)
+                generatedAt:
+                    type: string
+                    description: ISO 8601 timestamp of when this digest was generated
+        CategoriesEntry:
+            type: object
+            properties:
+                key:
+                    type: string
+                value:
+                    $ref: '#/components/schemas/CategoryBucket'
+        FeedStatusesEntry:
+            type: object
+            properties:
+                key:
+                    type: string
+                value:
+                    type: string
+        CategoryBucket:
+            type: object
+            properties:
+                items:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/NewsItem'
+        NewsItem:
+            type: object
+            properties:
+                source:
+                    type: string
+                    minLength: 1
+                    description: Source feed name.
+                title:
+                    type: string
+                    minLength: 1
+                    description: Article headline.
+                link:
+                    type: string
+                    description: Article URL.
+                publishedAt:
+                    type: integer
+                    format: int64
+                    description: 'Publication time, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                isAlert:
+                    type: boolean
+                    description: Whether this article triggered an alert condition.
+                threat:
+                    $ref: '#/components/schemas/ThreatClassification'
+                location:
+                    $ref: '#/components/schemas/GeoCoordinates'
+                locationName:
+                    type: string
+                    description: Human-readable location name.
+            required:
+                - source
+                - title
+            description: NewsItem represents a single news article from RSS feed aggregation.
+        ThreatClassification:
+            type: object
+            properties:
+                level:
+                    type: string
+                    enum:
+                        - THREAT_LEVEL_UNSPECIFIED
+                        - THREAT_LEVEL_LOW
+                        - THREAT_LEVEL_MEDIUM
+                        - THREAT_LEVEL_HIGH
+                        - THREAT_LEVEL_CRITICAL
+                    description: ThreatLevel represents the assessed threat level of a news event.
+                category:
+                    type: string
+                    description: Event category.
+                confidence:
+                    type: number
+                    maximum: 1
+                    minimum: 0
+                    format: double
+                    description: Confidence score (0.0 to 1.0).
+                source:
+                    type: string
+                    description: Classification source — "keyword", "ml", or "llm".
+            description: ThreatClassification represents an AI-assessed threat level for a news item.
+        GeoCoordinates:
+            type: object
+            properties:
+                latitude:
+                    type: number
+                    maximum: 90
+                    minimum: -90
+                    format: double
+                    description: Latitude in decimal degrees (-90 to 90).
+                longitude:
+                    type: number
+                    maximum: 180
+                    minimum: -180
+                    format: double
+                    description: Longitude in decimal degrees (-180 to 180).
+            description: GeoCoordinates represents a geographic location using WGS84 coordinates.
