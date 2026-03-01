@@ -8,6 +8,22 @@ import { escapeHtml } from '@/utils/sanitize';
 import { trackLanguageChange } from '@/services/analytics';
 import type { PanelConfig } from '@/types';
 
+const DIGEST_VARIANT_CATEGORIES: Record<string, string[]> = {
+  full: ['politics', 'us', 'europe', 'middleeast', 'asia', 'africa', 'latam', 'tech', 'ai', 'finance', 'energy', 'gov', 'thinktanks', 'intel', 'crisis'],
+  tech: ['tech', 'ai', 'startups', 'security', 'github', 'funding', 'cloud', 'layoffs', 'finance'],
+  finance: ['markets', 'forex', 'bonds', 'commodities', 'crypto', 'centralbanks', 'economic', 'ipo', 'fintech', 'regulation', 'analysis'],
+  happy: ['positive', 'science'],
+};
+
+const DIGEST_FREQUENCIES = [
+  { value: 'hourly', labelKey: 'digest.frequencyHourly' },
+  { value: '2h', labelKey: 'digest.frequency2h' },
+  { value: '6h', labelKey: 'digest.frequency6h' },
+  { value: 'daily', labelKey: 'digest.frequencyDaily' },
+  { value: 'weekly', labelKey: 'digest.frequencyWeekly' },
+  { value: 'monthly', labelKey: 'digest.frequencyMonthly' },
+] as const;
+
 const GEAR_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`;
 
 const DESKTOP_RELEASES_URL = 'https://github.com/koala73/worldmonitor/releases';
@@ -23,7 +39,7 @@ export interface UnifiedSettingsConfig {
   isDesktopApp: boolean;
 }
 
-type TabId = 'general' | 'panels' | 'sources';
+type TabId = 'general' | 'panels' | 'sources' | 'digest';
 
 export class UnifiedSettings {
   private overlay: HTMLElement;
@@ -34,9 +50,26 @@ export class UnifiedSettings {
   private activePanelCategory = 'all';
   private panelFilter = '';
   private escapeHandler: (e: KeyboardEvent) => void;
+  private digestEmail = '';
+  private digestFrequency = 'daily';
+  private digestCategories: Set<string> = new Set();
+  private digestStatus: 'none' | 'pending' | 'confirmed' = 'none';
+  private digestToken = '';
+  private digestSubmitting = false;
 
   constructor(config: UnifiedSettingsConfig) {
     this.config = config;
+
+    // Restore digest state from localStorage
+    this.digestEmail = localStorage.getItem('wm-digest-email') || '';
+    this.digestToken = localStorage.getItem('wm-digest-token') || '';
+    const storedStatus = localStorage.getItem('wm-digest-status');
+    this.digestStatus = (storedStatus === 'pending' || storedStatus === 'confirmed') ? storedStatus : 'none';
+    this.digestFrequency = localStorage.getItem('wm-digest-frequency') || 'daily';
+    const storedCats = localStorage.getItem('wm-digest-categories');
+    const variant = SITE_VARIANT || 'full';
+    const allCats = DIGEST_VARIANT_CATEGORIES[variant] || DIGEST_VARIANT_CATEGORIES.full;
+    this.digestCategories = storedCats ? new Set(JSON.parse(storedCats)) : new Set(allCats);
 
     this.overlay = document.createElement('div');
     this.overlay.className = 'modal-overlay';
@@ -130,9 +163,40 @@ export class UnifiedSettings {
         this.updateSourcesCounter();
         return;
       }
+
+      // Digest category pill toggle
+      const digestPill = target.closest<HTMLElement>('.digest-category-pill');
+      if (digestPill?.dataset.category) {
+        const cat = digestPill.dataset.category;
+        if (this.digestCategories.has(cat)) {
+          this.digestCategories.delete(cat);
+        } else {
+          this.digestCategories.add(cat);
+        }
+        digestPill.classList.toggle('active');
+        return;
+      }
+
+      // Digest subscribe button
+      if (target.closest('.digest-subscribe-btn')) {
+        void this.handleDigestSubscribe();
+        return;
+      }
+
+      // Digest update button
+      if (target.closest('.digest-update-btn')) {
+        void this.handleDigestUpdate();
+        return;
+      }
+
+      // Digest unsubscribe button
+      if (target.closest('.digest-unsub-btn')) {
+        void this.handleDigestUnsubscribe();
+        return;
+      }
     });
 
-    // Handle input events for search
+    // Handle input events for search and digest email
     this.overlay.addEventListener('input', (e) => {
       const target = e.target as HTMLInputElement;
       if (target.closest('.panels-search')) {
@@ -142,6 +206,11 @@ export class UnifiedSettings {
         this.sourceFilter = target.value;
         this.renderSourcesGrid();
         this.updateSourcesCounter();
+      } else if (target.id === 'digestEmailInput') {
+        this.digestEmail = target.value;
+        // Simple email validation feedback
+        const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        target.classList.toggle('invalid', target.value.length > 0 && !emailRe.test(target.value));
       }
     });
 
@@ -152,6 +221,12 @@ export class UnifiedSettings {
       // Stream quality select
       if (target.id === 'us-stream-quality') {
         setStreamQuality(target.value as StreamQuality);
+        return;
+      }
+
+      // Digest frequency select
+      if (target.id === 'digestFrequencySelect') {
+        this.digestFrequency = target.value;
         return;
       }
 
@@ -229,6 +304,7 @@ export class UnifiedSettings {
           <button class="${tabClass('general')}" data-tab="general">${t('header.tabGeneral')}</button>
           <button class="${tabClass('panels')}" data-tab="panels">${t('header.tabPanels')}</button>
           <button class="${tabClass('sources')}" data-tab="sources">${t('header.tabSources')}</button>
+          <button class="${tabClass('digest')}" data-tab="digest">${t('header.tabDigest')}</button>
         </div>
         <div class="unified-settings-tab-panel${this.activeTab === 'general' ? ' active' : ''}" data-panel-id="general">
           ${this.renderGeneralContent()}
@@ -255,6 +331,9 @@ export class UnifiedSettings {
             <button class="sources-select-all">${t('common.selectAll')}</button>
             <button class="sources-select-none">${t('common.selectNone')}</button>
           </div>
+        </div>
+        <div class="unified-settings-tab-panel${this.activeTab === 'digest' ? ' active' : ''}" data-panel-id="digest">
+          ${this.renderDigestContent()}
         </div>
       </div>
     `;
@@ -555,5 +634,202 @@ export class UnifiedSettings {
     const enabledTotal = allSources.length - disabled.size;
 
     counter.textContent = t('header.sourcesEnabled', { enabled: String(enabledTotal), total: String(allSources.length) });
+  }
+
+  private renderDigestContent(): string {
+    const variant = SITE_VARIANT || 'full';
+    const categories = DIGEST_VARIANT_CATEGORIES[variant] ?? DIGEST_VARIANT_CATEGORIES.full!;
+
+    if (this.digestStatus === 'pending') {
+      return `
+        <div class="digest-form">
+          <div class="digest-status pending">${t('digest.confirmPending')}</div>
+          <div class="digest-description">${t('digest.description')}</div>
+          <div class="digest-current">
+            <div class="digest-current-row">
+              <span class="digest-current-label">${t('digest.emailLabel')}</span>
+              <span class="digest-current-value">${escapeHtml(this.digestEmail)}</span>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    if (this.digestStatus === 'confirmed') {
+      const freqLabel = DIGEST_FREQUENCIES.find(f => f.value === this.digestFrequency);
+      return `
+        <div class="digest-form">
+          <div class="digest-status success">${t('digest.subscribed', { frequency: freqLabel ? t(freqLabel.labelKey) : this.digestFrequency })}</div>
+          <div class="digest-current">
+            <div class="digest-current-row">
+              <span class="digest-current-label">${t('digest.emailLabel')}</span>
+              <span class="digest-current-value">${escapeHtml(this.digestEmail)}</span>
+            </div>
+          </div>
+
+          <div class="digest-field-label">${t('digest.frequencyLabel')}</div>
+          <select class="digest-frequency-select" id="digestFrequencySelect">
+            ${DIGEST_FREQUENCIES.map(f =>
+        `<option value="${f.value}"${this.digestFrequency === f.value ? ' selected' : ''}>${t(f.labelKey)}</option>`
+      ).join('')}
+          </select>
+
+          <div class="digest-field-label">${t('digest.categoriesLabel')}</div>
+          <div class="digest-category-pills">
+            ${categories.map(cat =>
+        `<button class="digest-category-pill${this.digestCategories.has(cat) ? ' active' : ''}" data-category="${escapeHtml(cat)}">${escapeHtml(cat)}</button>`
+      ).join('')}
+          </div>
+
+          <button class="digest-submit-btn digest-update-btn">${t('digest.update')}</button>
+          <button class="digest-submit-btn danger digest-unsub-btn">${t('digest.unsubscribe')}</button>
+        </div>
+      `;
+    }
+
+    // Default: unsubscribed state — show subscription form
+    return `
+      <div class="digest-form">
+        <div class="digest-description">${t('digest.description')}</div>
+
+        <div class="digest-field-label">${t('digest.emailLabel')}</div>
+        <input type="email" class="digest-input" id="digestEmailInput"
+          placeholder="${t('digest.emailPlaceholder')}" value="${escapeHtml(this.digestEmail)}" />
+
+        <div class="digest-field-label">${t('digest.frequencyLabel')}</div>
+        <select class="digest-frequency-select" id="digestFrequencySelect">
+          ${DIGEST_FREQUENCIES.map(f =>
+      `<option value="${f.value}"${this.digestFrequency === f.value ? ' selected' : ''}>${t(f.labelKey)}</option>`
+    ).join('')}
+        </select>
+
+        <div class="digest-field-label">${t('digest.categoriesLabel')}</div>
+        <div class="digest-category-pills">
+          ${categories.map(cat =>
+      `<button class="digest-category-pill${this.digestCategories.has(cat) ? ' active' : ''}" data-category="${escapeHtml(cat)}">${escapeHtml(cat)}</button>`
+    ).join('')}
+        </div>
+
+        <button class="digest-submit-btn digest-subscribe-btn"${this.digestSubmitting ? ' disabled' : ''}>${t('digest.subscribe')}</button>
+        <div class="digest-status-area" id="digestStatusArea"></div>
+      </div>
+    `;
+  }
+
+  private async handleDigestSubscribe(): Promise<void> {
+    const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!this.digestEmail || !emailRe.test(this.digestEmail)) {
+      this.showDigestStatus('error', t('digest.invalidEmail'));
+      return;
+    }
+
+    this.digestSubmitting = true;
+    const btn = this.overlay.querySelector<HTMLButtonElement>('.digest-subscribe-btn');
+    if (btn) btn.disabled = true;
+
+    try {
+      const variant = SITE_VARIANT || 'full';
+      const lang = getCurrentLanguage();
+      const resp = await fetch('/api/digest/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: this.digestEmail,
+          frequency: this.digestFrequency,
+          variant,
+          lang,
+          categories: [...this.digestCategories],
+        }),
+      });
+
+      const data = await resp.json();
+
+      if (!resp.ok) {
+        this.showDigestStatus('error', data.error || t('digest.error'));
+        return;
+      }
+
+      if (data.status === 'already_subscribed') {
+        this.digestStatus = 'confirmed';
+        this.digestToken = data.token;
+        this.persistDigestState();
+        this.render();
+        return;
+      }
+
+      // New subscription or pending — show confirmation message
+      this.digestStatus = 'pending';
+      this.digestToken = data.token;
+      this.persistDigestState();
+      this.render();
+    } catch {
+      this.showDigestStatus('error', t('digest.error'));
+    } finally {
+      this.digestSubmitting = false;
+    }
+  }
+
+  private async handleDigestUpdate(): Promise<void> {
+    if (!this.digestToken) return;
+
+    try {
+      const resp = await fetch('/api/digest/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: this.digestEmail,
+          frequency: this.digestFrequency,
+          variant: SITE_VARIANT || 'full',
+          lang: getCurrentLanguage(),
+          categories: [...this.digestCategories],
+        }),
+      });
+
+      if (resp.ok) {
+        localStorage.setItem('wm-digest-frequency', this.digestFrequency);
+        localStorage.setItem('wm-digest-categories', JSON.stringify([...this.digestCategories]));
+        this.showDigestStatus('success', t('digest.subscribed', { frequency: this.digestFrequency }));
+      } else {
+        this.showDigestStatus('error', t('digest.error'));
+      }
+    } catch {
+      this.showDigestStatus('error', t('digest.error'));
+    }
+  }
+
+  private async handleDigestUnsubscribe(): Promise<void> {
+    if (!this.digestToken) return;
+
+    try {
+      const resp = await fetch(`/api/digest/unsubscribe?token=${encodeURIComponent(this.digestToken)}`);
+      if (resp.ok || resp.status === 404) {
+        this.digestStatus = 'none';
+        this.digestToken = '';
+        this.digestEmail = '';
+        localStorage.removeItem('wm-digest-email');
+        localStorage.removeItem('wm-digest-token');
+        localStorage.removeItem('wm-digest-status');
+        localStorage.removeItem('wm-digest-frequency');
+        localStorage.removeItem('wm-digest-categories');
+        this.render();
+      }
+    } catch {
+      this.showDigestStatus('error', t('digest.error'));
+    }
+  }
+
+  private showDigestStatus(type: 'success' | 'error' | 'pending', message: string): void {
+    const area = this.overlay.querySelector('#digestStatusArea');
+    if (area) {
+      area.innerHTML = `<div class="digest-status ${type}">${escapeHtml(message)}</div>`;
+    }
+  }
+
+  private persistDigestState(): void {
+    localStorage.setItem('wm-digest-email', this.digestEmail);
+    localStorage.setItem('wm-digest-token', this.digestToken);
+    localStorage.setItem('wm-digest-status', this.digestStatus);
+    localStorage.setItem('wm-digest-frequency', this.digestFrequency);
+    localStorage.setItem('wm-digest-categories', JSON.stringify([...this.digestCategories]));
   }
 }

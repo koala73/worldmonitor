@@ -13273,6 +13273,7 @@ a.prediction-link:hover {
   border-color: var(--text-dim);
 }
 
+
 /* Responsive grids */
 @media (max-width: 500px) {
   .unified-settings-modal .panel-toggle-grid,
@@ -13280,6 +13281,190 @@ a.prediction-link:hover {
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+/* ============ Digest Tab Styles ============ */
+
+.digest-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 4px 0;
+}
+
+.digest-field-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-bottom: 4px;
+}
+
+.digest-input {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 10px 12px;
+  font-family: inherit;
+  font-size: 13px;
+  border-radius: 4px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.digest-input:focus {
+  border-color: var(--text-dim);
+}
+
+.digest-input.invalid {
+  border-color: var(--red);
+}
+
+.digest-frequency-select {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 10px 12px;
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 4px;
+  outline: none;
+}
+
+.digest-frequency-select:focus {
+  border-color: var(--text-dim);
+}
+
+.digest-category-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.digest-category-pill {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 5px 12px;
+  font-family: inherit;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--text-dim);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.digest-category-pill:hover {
+  border-color: var(--text-dim);
+  color: var(--text);
+}
+
+.digest-category-pill.active {
+  background: rgba(68, 255, 136, 0.08);
+  border-color: rgba(68, 255, 136, 0.4);
+  color: var(--green);
+}
+
+.digest-submit-btn {
+  width: 100%;
+  padding: 10px 20px;
+  background: var(--green, #44ff88);
+  color: #0a0a0a;
+  border: none;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.digest-submit-btn:hover {
+  opacity: 0.9;
+}
+
+.digest-submit-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.digest-submit-btn.danger {
+  background: transparent;
+  border: 1px solid var(--red, #ef4444);
+  color: var(--red, #ef4444);
+  margin-top: 4px;
+}
+
+.digest-submit-btn.danger:hover {
+  background: rgba(239, 68, 68, 0.1);
+  opacity: 1;
+}
+
+.digest-status {
+  font-size: 12px;
+  padding: 10px 14px;
+  border-radius: 4px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.digest-status.success {
+  background: rgba(68, 255, 136, 0.08);
+  border: 1px solid rgba(68, 255, 136, 0.2);
+  color: var(--green);
+}
+
+.digest-status.pending {
+  background: rgba(251, 191, 36, 0.08);
+  border: 1px solid rgba(251, 191, 36, 0.2);
+  color: var(--yellow, #fbbf24);
+}
+
+.digest-status.error {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: var(--red);
+}
+
+.digest-current {
+  padding: 12px;
+  background: var(--overlay-subtle, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
+.digest-current-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  font-size: 12px;
+}
+
+.digest-current-label {
+  color: var(--text-dim);
+}
+
+.digest-current-value {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.digest-description {
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.5;
+  margin-bottom: 4px;
+}
+
 
 /* ============ AI Flow Toggle Styles (shared) ============ */
 
