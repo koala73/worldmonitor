@@ -1034,16 +1034,18 @@ export class DeckGLMap {
       layers.push(this.createConflictZonesLayer());
     }
 
-    // Military bases layer — hidden at low zoom (E: progressive disclosure) + ghost + clusters
+    // Military bases layer — hidden at low zoom (E: progressive disclosure) + clusters
     if (mapLayers.bases && this.isLayerVisible('bases')) {
       layers.push(this.createBasesLayer());
       layers.push(...this.createBasesClusterLayer());
     }
+    layers.push(this.createEmptyGhost('bases-layer'));
 
-    // Nuclear facilities layer — hidden at low zoom + ghost
+    // Nuclear facilities layer — hidden at low zoom
     if (mapLayers.nuclear && this.isLayerVisible('nuclear')) {
       layers.push(this.createNuclearLayer());
     }
+    layers.push(this.createEmptyGhost('nuclear-layer'));
 
     // Gamma irradiators layer — hidden at low zoom
     if (mapLayers.irradiators && this.isLayerVisible('irradiators')) {
@@ -1070,10 +1072,11 @@ export class DeckGLMap {
       }
     }
 
-    // Earthquakes layer + ghost for easier picking
+    // Earthquakes layer
     if (mapLayers.natural && filteredEarthquakes.length > 0) {
       layers.push(this.createEarthquakesLayer(filteredEarthquakes));
     }
+    layers.push(this.createEmptyGhost('earthquakes-layer'));
 
     // Natural events layer
     if (mapLayers.natural && filteredNaturalEvents.length > 0) {
@@ -1096,15 +1099,17 @@ export class DeckGLMap {
       layers.push(this.createWeatherLayer(filteredWeatherAlerts));
     }
 
-    // Internet outages layer + ghost for easier picking
+    // Internet outages layer
     if (mapLayers.outages && filteredOutages.length > 0) {
       layers.push(this.createOutagesLayer(filteredOutages));
     }
+    layers.push(this.createEmptyGhost('outages-layer'));
 
     // Cyber threat IOC layer
     if (mapLayers.cyberThreats && this.cyberThreats.length > 0) {
       layers.push(this.createCyberThreatsLayer());
     }
+    layers.push(this.createEmptyGhost('cyber-threats-layer'));
 
     // AIS density layer
     if (mapLayers.ais && this.aisDensity.length > 0) {
@@ -1564,6 +1569,11 @@ export class DeckGLMap {
       getFillColor: [0, 0, 0, 0],
       pickable: true,
     });
+  }
+
+  /** Empty sentinel layer — keeps a stable layer ID for deck.gl interleaved mode without rendering anything. */
+  private createEmptyGhost(id: string): ScatterplotLayer {
+    return new ScatterplotLayer({ id: `${id}-ghost`, data: [], getPosition: () => [0, 0], visible: false });
   }
 
 
@@ -2137,6 +2147,7 @@ export class DeckGLMap {
       }));
     }
 
+    layers.push(this.createEmptyGhost('protest-clusters-layer'));
     return layers;
   }
 
@@ -2197,6 +2208,7 @@ export class DeckGLMap {
       }
     }
 
+    layers.push(this.createEmptyGhost('tech-hq-clusters-layer'));
     return layers;
   }
 
@@ -2238,6 +2250,7 @@ export class DeckGLMap {
       }));
     }
 
+    layers.push(this.createEmptyGhost('tech-event-clusters-layer'));
     return layers;
   }
 
@@ -2279,6 +2292,7 @@ export class DeckGLMap {
       }));
     }
 
+    layers.push(this.createEmptyGhost('datacenter-clusters-layer'));
     return layers;
   }
 
@@ -2340,6 +2354,7 @@ export class DeckGLMap {
 
     }
 
+    layers.push(this.createEmptyGhost('hotspots-layer'));
     return layers;
   }
 
