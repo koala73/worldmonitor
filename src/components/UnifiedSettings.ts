@@ -2,8 +2,9 @@ import { FEEDS, INTEL_SOURCES, SOURCE_REGION_MAP } from '@/config/feeds';
 import { PANEL_CATEGORY_MAP } from '@/config/panels';
 import { SITE_VARIANT } from '@/config/variant';
 import { LANGUAGES, changeLanguage, getCurrentLanguage, t } from '@/services/i18n';
-import { getAiFlowSettings, setAiFlowSetting, getStreamQuality, setStreamQuality, STREAM_QUALITY_OPTIONS } from '@/services/ai-flow-settings';
-import type { StreamQuality } from '@/services/ai-flow-settings';
+import { getAiFlowSettings, setAiFlowSetting, getStreamQuality, setStreamQuality, STREAM_QUALITY_OPTIONS, getFontSize, setFontSize, FONT_SIZE_OPTIONS } from '@/services/ai-flow-settings';
+import type { StreamQuality, FontSize } from '@/services/ai-flow-settings';
+import { getAlertSettings, updateAlertSettings } from '@/services/breaking-news-alerts';
 import { escapeHtml } from '@/utils/sanitize';
 import { trackLanguageChange } from '@/services/analytics';
 import type { PanelConfig } from '@/types';
@@ -155,6 +156,12 @@ export class UnifiedSettings {
         return;
       }
 
+      // Font size select
+      if (target.id === 'us-font-size') {
+        setFontSize(target.value as FontSize);
+        return;
+      }
+
       // Language select
       if (target.closest('.unified-settings-lang-select')) {
         trackLanguageChange(target.value);
@@ -176,6 +183,8 @@ export class UnifiedSettings {
         setAiFlowSetting('headlineMemory', target.checked);
       } else if (target.id === 'us-badge-anim') {
         setAiFlowSetting('badgeAnimation', target.checked);
+      } else if (target.id === 'us-notification-popups') {
+        updateAlertSettings({ popupEnabled: target.checked });
       }
     });
 
@@ -318,6 +327,11 @@ export class UnifiedSettings {
     html += `<div class="ai-flow-section-label">${t('components.insights.sectionIntelligence')}</div>`;
     html += this.toggleRowHtml('us-headline-memory', t('components.insights.headlineMemoryLabel'), t('components.insights.headlineMemoryDesc'), settings.headlineMemory);
 
+    // Notifications section
+    const alertSettings = getAlertSettings();
+    html += `<div class="ai-flow-section-label">${t('components.insights.sectionNotifications')}</div>`;
+    html += this.toggleRowHtml('us-notification-popups', t('components.insights.notificationPopupsLabel'), t('components.insights.notificationPopupsDesc'), alertSettings.popupEnabled);
+
     // Streaming quality section
     const currentQuality = getStreamQuality();
     html += `<div class="ai-flow-section-label">${t('components.insights.sectionStreaming')}</div>`;
@@ -330,6 +344,22 @@ export class UnifiedSettings {
     html += `<select class="unified-settings-lang-select" id="us-stream-quality">`;
     for (const opt of STREAM_QUALITY_OPTIONS) {
       const selected = opt.value === currentQuality ? ' selected' : '';
+      html += `<option value="${opt.value}"${selected}>${opt.label}</option>`;
+    }
+    html += `</select>`;
+
+    // Font size section
+    const currentFontSize = getFontSize();
+    html += `<div class="ai-flow-section-label">${t('components.insights.sectionFontSize')}</div>`;
+    html += `<div class="ai-flow-toggle-row">
+      <div class="ai-flow-toggle-label-wrap">
+        <div class="ai-flow-toggle-label">${t('components.insights.fontSizeLabel')}</div>
+        <div class="ai-flow-toggle-desc">${t('components.insights.fontSizeDesc')}</div>
+      </div>
+    </div>`;
+    html += `<select class="unified-settings-lang-select" id="us-font-size">`;
+    for (const opt of FONT_SIZE_OPTIONS) {
+      const selected = opt.value === currentFontSize ? ' selected' : '';
       html += `<option value="${opt.value}"${selected}>${opt.label}</option>`;
     }
     html += `</select>`;

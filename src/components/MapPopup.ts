@@ -964,6 +964,18 @@ export class MapPopup {
       ? `<div class="popup-related">${t('popups.near')}: ${event.relatedHotspots.map(h => escapeHtml(h)).join(', ')}</div>`
       : '';
 
+    // Build source database link
+    let sourceLink = '';
+    if (event.sourceType === 'gdelt' && event.sources?.length > 0) {
+      // Link to GDELT Knowledge Graph search for this event
+      const query = encodeURIComponent(`${event.country} ${event.eventType} ${event.title?.slice(0, 30) || ''}`);
+      sourceLink = `<a href="https://api.gdeltproject.org/api/v2/doc/doc?query=${query}&format=html" target="_blank" rel="noopener" class="popup-source-link">${t('popups.viewInGdelt')}</a>`;
+    } else if (event.sourceType === 'acled') {
+      // Link to ACLED website for this country
+      const countryQuery = encodeURIComponent(event.country);
+      sourceLink = `<a href="https://acleddata.com/etl-search/?country=${countryQuery}" target="_blank" rel="noopener" class="popup-source-link">${t('popups.viewInAcled')}</a>`;
+    }
+
     return `
       <div class="popup-header protest ${severityClass}">
         <span class="popup-icon">${icon}</span>
@@ -989,6 +1001,7 @@ export class MapPopup {
         ${event.title ? `<p class="popup-description">${escapeHtml(event.title)}</p>` : ''}
         ${tagsSection}
         ${relatedHotspots}
+        ${sourceLink ? `<div class="popup-source-link-container">${sourceLink}</div>` : ''}
       </div>
     `;
   }
