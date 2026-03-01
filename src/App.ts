@@ -332,6 +332,12 @@ export class App {
           mlWorker.init().then(ok => {
             if (ok) mlWorker.loadModel('embeddings').catch(() => {});
           }).catch(() => {});
+        } else {
+          mlWorker.unloadModel('embeddings').catch(() => {});
+          const s = getAiFlowSettings();
+          if (!s.browserModel && !isDesktopRuntime()) {
+            mlWorker.terminate();
+          }
         }
       }
     });
