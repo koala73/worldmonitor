@@ -1,0 +1,13 @@
+node_modules
+.git
+.github
+dist
+src-tauri/target
+*.png
+*.jpg
+*.md
+e2e
+tests
+docs
+tmp
+.husky

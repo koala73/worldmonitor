@@ -1,0 +1,19 @@
+# World Monitor — Test Compose (No VPN)
+# ======================================
+# Use this for local testing without VPN credentials:
+#   docker compose -f docker-compose.test.yml up -d --build
+#
+# For full OSINT stack with VPN, use the main docker-compose.yml
+
+services:
+  worldmonitor:
+    build: .
+    container_name: world_monitor
+    ports:
+      - "3740:3737"
+    env_file: .env.local
+    environment:
+      - LOCAL_API_PORT=46123
+      - LOCAL_API_CLOUD_FALLBACK=true
+      - LOCAL_API_MODE=docker
+    restart: unless-stopped
