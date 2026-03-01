@@ -163,6 +163,13 @@ const STYLE = `<style>
 .wc-opt-name{font-weight:600;color:var(--text,#e8e8e8);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .wc-opt-label{font-size:9px;color:var(--text-muted,#666);margin-left:auto;flex-shrink:0}
 .wc-empty{padding:20px 10px;text-align:center;color:var(--text-dim,#888);font-size:11px}
+.wc-row{display:grid;grid-template-columns:auto 1fr auto;gap:0}
+.wc-drag-handle{cursor:grab;color:var(--text-muted,#555);font-size:11px;padding:0 6px 0 2px;user-select:none;opacity:0;transition:opacity .15s;display:flex;align-items:center}
+.wc-row:hover .wc-drag-handle{opacity:.6}
+.wc-drag-handle:hover{opacity:1!important;color:var(--text,#e8e8e8)}
+.wc-row.wc-dragging{opacity:.3}
+.wc-row.wc-drag-over-above{box-shadow:inset 0 2px 0 #44ff88}
+.wc-row.wc-drag-over-below{box-shadow:inset 0 -2px 0 #44ff88}
 </style>`;
 
 export class WorldClockPanel extends Panel {
@@ -171,6 +178,9 @@ export class WorldClockPanel extends Panel {
   private homeCityId: string | null = null;
   private showingSettings = false;
   private settingsBtn: HTMLButtonElement;
+  private dragging = false;
+  private dragCityId: string | null = null;
+  private dragStartY = 0;
 
   constructor() {
     super({ id: 'world-clock', title: 'World Clock', trackActivity: false });
@@ -200,9 +210,10 @@ export class WorldClockPanel extends Panel {
       }
     });
 
+    this.setupDragHandlers();
     this.renderClocks();
     this.tickInterval = setInterval(() => {
-      if (!this.showingSettings) this.renderClocks();
+      if (!this.showingSettings && !this.dragging) this.renderClocks();
     }, 1000);
   }
 
@@ -237,6 +248,73 @@ export class WorldClockPanel extends Panel {
     this.setContent(html);
   }
 
+  private setupDragHandlers(): void {
+    const content = this.content;
+
+    content.addEventListener('mousedown', (e: MouseEvent) => {
+      const handle = (e.target as HTMLElement).closest('.wc-drag-handle') as HTMLElement | null;
+      if (!handle) return;
+      const row = handle.closest('.wc-row') as HTMLElement | null;
+      if (!row) return;
+      e.preventDefault();
+      this.dragCityId = row.dataset.cityId ?? null;
+      this.dragStartY = e.clientY;
+      this.dragging = false;
+      row.classList.add('wc-dragging');
+    });
+
+    document.addEventListener('mousemove', (e: MouseEvent) => {
+      if (!this.dragCityId) return;
+      if (!this.dragging && Math.abs(e.clientY - this.dragStartY) < 8) return;
+      this.dragging = true;
+      e.preventDefault();
+      const rows = content.querySelectorAll('.wc-row[data-city-id]');
+      rows.forEach(r => r.classList.remove('wc-drag-over-above', 'wc-drag-over-below'));
+      for (const row of rows) {
+        if ((row as HTMLElement).dataset.cityId === this.dragCityId) continue;
+        const rect = row.getBoundingClientRect();
+        if (e.clientY >= rect.top && e.clientY <= rect.bottom) {
+          row.classList.add(e.clientY < rect.top + rect.height / 2 ? 'wc-drag-over-above' : 'wc-drag-over-below');
+        }
+      }
+    });
+
+    document.addEventListener('mouseup', (e: MouseEvent) => {
+      if (!this.dragCityId) return;
+      const dragId = this.dragCityId;
+      this.dragCityId = null;
+      const rows = content.querySelectorAll('.wc-row[data-city-id]');
+      rows.forEach(r => r.classList.remove('wc-dragging', 'wc-drag-over-above', 'wc-drag-over-below'));
+
+      if (this.dragging) {
+        let targetId: string | null = null;
+        let insertBefore = true;
+        for (const row of rows) {
+          const el = row as HTMLElement;
+          if (el.dataset.cityId === dragId) continue;
+          const rect = el.getBoundingClientRect();
+          if (e.clientY >= rect.top && e.clientY <= rect.bottom) {
+            targetId = el.dataset.cityId ?? null;
+            insertBefore = e.clientY < rect.top + rect.height / 2;
+            break;
+          }
+        }
+        if (targetId && targetId !== dragId) {
+          const fromIdx = this.selectedCities.indexOf(dragId);
+          if (fromIdx !== -1) {
+            this.selectedCities.splice(fromIdx, 1);
+            let toIdx = this.selectedCities.indexOf(targetId);
+            if (!insertBefore) toIdx++;
+            this.selectedCities.splice(toIdx, 0, dragId);
+            saveSelectedCities(this.selectedCities);
+          }
+        }
+      }
+      this.dragging = false;
+      this.renderClocks();
+    });
+  }
+
   private renderClocks(): void {
     const sorted = this.selectedCities
       .map(id => WORLD_CITIES.find(c => c.id === id))
@@ -268,7 +346,7 @@ export class WorldClockPanel extends Panel {
       if (isHome) rowCls.push('wc-home');
       if (!isDay) rowCls.push('wc-night');
 
-      html += `<div class="${rowCls.join(' ')}"><div class="wc-info"><div class="wc-name">${city.city}${isHome ? '<span class="wc-home-tag">\u2302</span>' : ''}</div><div class="wc-detail"><span class="wc-exchange">${city.label}</span>${statusHtml}</div></div><div class="wc-clock"><div class="wc-time">${pad2(h)}:${pad2(m)}:${pad2(s)}</div><div class="wc-tz"><div class="wc-bar-wrap"><div class="wc-bar ${isDay ? 'day' : 'night'}" style="width:${pct.toFixed(1)}%"></div></div><span>${dayOfWeek} ${abbr}</span></div></div></div>`;
+      html += `<div class="${rowCls.join(' ')}" data-city-id="${city.id}"><div class="wc-drag-handle" title="Drag to reorder">\u22EE</div><div class="wc-info"><div class="wc-name">${city.city}${isHome ? '<span class="wc-home-tag">\u2302</span>' : ''}</div><div class="wc-detail"><span class="wc-exchange">${city.label}</span>${statusHtml}</div></div><div class="wc-clock"><div class="wc-time">${pad2(h)}:${pad2(m)}:${pad2(s)}</div><div class="wc-tz"><div class="wc-bar-wrap"><div class="wc-bar ${isDay ? 'day' : 'night'}" style="width:${pct.toFixed(1)}%"></div></div><span>${dayOfWeek} ${abbr}</span></div></div></div>`;
     }
     html += '</div>';
     this.setContent(html);
