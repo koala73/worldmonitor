@@ -2997,12 +2997,17 @@ const server = http.createServer(async (req, res) => {
           return sendError(502, 'Too many redirects');
         }
 
+        const conditionalHeaders = {};
+        if (rssCached?.etag) conditionalHeaders['If-None-Match'] = rssCached.etag;
+        if (rssCached?.lastModified) conditionalHeaders['If-Modified-Since'] = rssCached.lastModified;
+
         const protocol = url.startsWith('https') ? https : http;
         const request = protocol.get(url, {
           headers: {
             'Accept': 'application/rss+xml, application/xml, text/xml, */*',
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept-Language': 'en-US,en;q=0.9',
+            ...conditionalHeaders,
           },
           timeout: 15000
         }, (response) => {
@@ -3012,6 +3017,20 @@ const server = http.createServer(async (req, res) => {
               : new URL(response.headers.location, url).href;
             logThrottled('log', `rss-redirect:${feedUrl}:${redirectUrl}`, `[Relay] Following redirect to: ${redirectUrl}`);
             return fetchWithRedirects(redirectUrl, redirectCount + 1);
+          }
+
+          if (response.statusCode === 304 && rssCached) {
+            responseHandled = true;
+            rssCached.timestamp = Date.now();
+            resolveInFlight();
+            logThrottled('log', `rss-revalidated:${feedUrl}`, '[Relay] RSS 304 revalidated:', feedUrl);
+            sendCompressed(req, res, 200, {
+              'Content-Type': rssCached.contentType || 'application/xml',
+              'Cache-Control': 'public, max-age=300',
+              'CDN-Cache-Control': 'public, max-age=600, stale-while-revalidate=300',
+              'X-Cache': 'REVALIDATED',
+            }, rssCached.data);
+            return;
           }
 
           const encoding = response.headers['content-encoding'];
@@ -3032,7 +3051,11 @@ const server = http.createServer(async (req, res) => {
               const oldest = rssResponseCache.keys().next().value;
               if (oldest) rssResponseCache.delete(oldest);
             }
-            rssResponseCache.set(feedUrl, { data, contentType: 'application/xml', statusCode: response.statusCode, timestamp: Date.now() });
+            rssResponseCache.set(feedUrl, {
+              data, contentType: 'application/xml', statusCode: response.statusCode, timestamp: Date.now(),
+              etag: response.headers['etag'] || null,
+              lastModified: response.headers['last-modified'] || null,
+            });
             if (response.statusCode < 200 || response.statusCode >= 300) {
               logThrottled('warn', `rss-upstream:${feedUrl}:${response.statusCode}`, `[Relay] RSS upstream ${response.statusCode} for ${feedUrl}`);
             }
