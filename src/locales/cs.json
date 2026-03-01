@@ -212,7 +212,11 @@
     "techReadiness": "Index tech. připravenosti",
     "gccInvestments": "Investice GCC",
     "geoHubs": "Geopolitická centra",
-    "liveWebcams": "Živé webkamery"
+    "liveWebcams": "Živé webkamery",
+    "gulfEconomies": "Ekonomiky Perského zálivu",
+    "gulfIndices": "Indexy Perského zálivu",
+    "gulfCurrencies": "Měny Perského zálivu",
+    "gulfOil": "Ropa Perského zálivu"
   },
   "modals": {
     "search": {
@@ -511,7 +515,8 @@
         "europe": "EVROPA",
         "americas": "AMERIKA",
         "asia": "ASIE"
-      }
+      },
+      "expand": "Rozbalit"
     },
     "monitor": {
       "placeholder": "Klíčová slova (oddělená čárkou)",
@@ -991,7 +996,13 @@
       "aiFlowStatusBrowserOnly": "Pouze model v prohlížeči",
       "aiFlowStatusDisabled": "Nejsou povoleni žádní poskytovatelé AI",
       "insightsDisabledTitle": "AI analýza je zakázána",
-      "insightsDisabledHint": "Povolte poskytovatele prostřednictvím ozubeného kola nastavení v záhlaví mapy"
+      "insightsDisabledHint": "Povolte poskytovatele prostřednictvím ozubeného kola nastavení v záhlaví mapy",
+      "sectionPanels": "Panely",
+      "badgeAnimLabel": "Animace odznáčků",
+      "badgeAnimDesc": "Animovat odznáčky aktualizací v záhlaví panelů",
+      "sectionIntelligence": "Zpravodajství",
+      "headlineMemoryLabel": "Paměť titulků",
+      "headlineMemoryDesc": "Zapamatovat si zobrazené titulky pro zvýraznění nových"
     },
     "cascade": {
       "noImpacts": "Nezjištěny žádné dopady na země",
@@ -1274,7 +1285,8 @@
         "minutesAgo": "před {{count}} min",
         "hoursAgo": "před {{count}} h",
         "daysAgo": "před {{count}} d"
-      }
+      },
+      "hideFindings": "Skrýt nálezy"
     },
     "countryTimeline": {
       "now": "nyní",
