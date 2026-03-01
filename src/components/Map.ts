@@ -54,6 +54,8 @@ import {
 } from '@/services/hotspot-escalation';
 import { getCountryScore } from '@/services/country-instability';
 import { getAlertsNearLocation } from '@/services/geo-convergence';
+import { getCountryAtCoordinates, getCountryBbox } from '@/services/country-geometry';
+import type { CountryClickPayload } from './DeckGLMap';
 import { t } from '@/services/i18n';
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
@@ -145,6 +147,7 @@ export class MapComponent {
   private onLayerChange?: (layer: keyof MapLayers, enabled: boolean, source: 'user' | 'programmatic') => void;
   private layerZoomOverrides: Partial<Record<keyof MapLayers, boolean>> = {};
   private onStateChange?: (state: MapState) => void;
+  private onCountryClick?: (country: CountryClickPayload) => void;
   private highlightedAssets: Record<AssetType, Set<string>> = {
     pipeline: new Set(),
     cable: new Set(),
@@ -707,14 +710,22 @@ export class MapComponent {
       }
     });
 
-    // Touch events for mobile and trackpad
+    let touchStartPos = { x: 0, y: 0 };
+    let touchDragActive = false;
+    let lastDragEndTime = 0;
+    const TOUCH_DRAG_THRESHOLD = 8;
+    const touchHistory: Array<{ x: number; y: number; t: number }> = [];
+    let inertiaRaf = 0;
+
     this.container.addEventListener('touchstart', (e) => {
       if (shouldIgnoreInteractionStart(e.target)) return;
+      cancelAnimationFrame(inertiaRaf);
       const touch1 = e.touches[0];
       const touch2 = e.touches[1];
 
       if (e.touches.length === 2 && touch1 && touch2) {
         e.preventDefault();
+        touchDragActive = false;
         lastTouchDist = Math.hypot(
           touch2.clientX - touch1.clientX,
           touch2.clientY - touch1.clientY
@@ -725,7 +736,11 @@ export class MapComponent {
         };
       } else if (e.touches.length === 1 && touch1) {
         isDragging = true;
+        touchDragActive = false;
+        touchStartPos = { x: touch1.clientX, y: touch1.clientY };
         lastPos = { x: touch1.clientX, y: touch1.clientY };
+        touchHistory.length = 0;
+        touchHistory.push({ x: touch1.clientX, y: touch1.clientY, t: performance.now() });
       }
     }, { passive: false });
 
@@ -736,7 +751,6 @@ export class MapComponent {
       if (e.touches.length === 2 && touch1 && touch2) {
         e.preventDefault();
 
-        // Pinch zoom
         const dist = Math.hypot(
           touch2.clientX - touch1.clientX,
           touch2.clientY - touch1.clientY
@@ -745,7 +759,6 @@ export class MapComponent {
         this.state.zoom = Math.max(1, Math.min(10, this.state.zoom * scale));
         lastTouchDist = dist;
 
-        // Two-finger pan
         const center = {
           x: (touch1.clientX + touch2.clientX) / 2,
           y: (touch1.clientY + touch2.clientY) / 2,
@@ -757,6 +770,15 @@ export class MapComponent {
 
         this.applyTransform();
       } else if (e.touches.length === 1 && isDragging && touch1) {
+        if (!touchDragActive) {
+          const dx0 = touch1.clientX - touchStartPos.x;
+          const dy0 = touch1.clientY - touchStartPos.y;
+          if (Math.hypot(dx0, dy0) < TOUCH_DRAG_THRESHOLD) return;
+          touchDragActive = true;
+        }
+
+        e.preventDefault();
+
         const dx = touch1.clientX - lastPos.x;
         const dy = touch1.clientY - lastPos.y;
 
@@ -765,16 +787,67 @@ export class MapComponent {
         this.state.pan.y += dy * panSpeed;
 
         lastPos = { x: touch1.clientX, y: touch1.clientY };
+        const now = performance.now();
+        touchHistory.push({ x: touch1.clientX, y: touch1.clientY, t: now });
+        if (touchHistory.length > 4) touchHistory.shift();
+
         this.applyTransform();
       }
     }, { passive: false });
 
     this.container.addEventListener('touchend', () => {
+      if (touchDragActive && touchHistory.length >= 2) {
+        const last = touchHistory[touchHistory.length - 1]!;
+        const first = touchHistory[0]!;
+        const dt = (last.t - first.t) / 1000;
+        if (dt > 0 && dt < 0.3) {
+          let vx = (last.x - first.x) / dt;
+          let vy = (last.y - first.y) / dt;
+          const panSpeed = 1 / this.state.zoom;
+          const decay = 0.92;
+          const animate = () => {
+            vx *= decay;
+            vy *= decay;
+            if (Math.abs(vx) < 10 && Math.abs(vy) < 10) return;
+            this.state.pan.x += (vx / 60) * panSpeed;
+            this.state.pan.y += (vy / 60) * panSpeed;
+            this.applyTransform();
+            inertiaRaf = requestAnimationFrame(animate);
+          };
+          inertiaRaf = requestAnimationFrame(animate);
+        }
+      }
       isDragging = false;
+      if (touchDragActive) lastDragEndTime = performance.now();
+      touchDragActive = false;
       lastTouchDist = 0;
+      touchHistory.length = 0;
     });
 
-    // Set initial cursor
+    this.container.addEventListener('click', (e) => {
+      if (!this.onCountryClick) return;
+      if (performance.now() - lastDragEndTime < 300) return;
+      const containerRect = this.container.getBoundingClientRect();
+      const zoom = this.state.zoom;
+      const width = this.container.clientWidth;
+      const height = this.container.clientHeight;
+      const centerOffsetX = (width / 2) * (1 - zoom);
+      const centerOffsetY = (height / 2) * (1 - zoom);
+      const tx = centerOffsetX + this.state.pan.x * zoom;
+      const ty = centerOffsetY + this.state.pan.y * zoom;
+      const rawX = (e.clientX - containerRect.left - tx) / zoom;
+      const rawY = (e.clientY - containerRect.top - ty) / zoom;
+      const projection = this.getProjection(width, height);
+      if (!projection.invert) return;
+      const coords = projection.invert([rawX, rawY]);
+      if (!coords) return;
+      const [lon, lat] = coords;
+      const hit = getCountryAtCoordinates(lat, lon);
+      if (hit) {
+        this.onCountryClick({ lat, lon, code: hit.code, name: hit.name });
+      }
+    });
+
     this.container.style.cursor = 'grab';
   }
 
@@ -3343,6 +3416,35 @@ export class MapComponent {
 
   public onTimeRangeChanged(callback: (range: TimeRange) => void): void {
     this.onTimeRangeChange = callback;
+  }
+
+  public setOnCountryClick(cb: (country: CountryClickPayload) => void): void {
+    this.onCountryClick = cb;
+  }
+
+  public fitCountry(code: string): void {
+    const bbox = getCountryBbox(code);
+    if (!bbox) return;
+    const [minLon, minLat, maxLon, maxLat] = bbox;
+    const midLon = (minLon + maxLon) / 2;
+    const midLat = (minLat + maxLat) / 2;
+    const width = this.container.clientWidth;
+    const height = this.container.clientHeight;
+    const projection = this.getProjection(width, height);
+    const topLeft = projection([minLon, maxLat]);
+    const bottomRight = projection([maxLon, minLat]);
+    if (!topLeft || !bottomRight) {
+      this.state.zoom = 4;
+      this.setCenter(midLat, midLon);
+      return;
+    }
+    const pxWidth = Math.abs(bottomRight[0] - topLeft[0]);
+    const pxHeight = Math.abs(bottomRight[1] - topLeft[1]);
+    const padFactor = 0.8;
+    const zoomX = pxWidth > 0 ? (width * padFactor) / pxWidth : 4;
+    const zoomY = pxHeight > 0 ? (height * padFactor) / pxHeight : 4;
+    this.state.zoom = Math.max(1, Math.min(8, Math.min(zoomX, zoomY)));
+    this.setCenter(midLat, midLon);
   }
 
   public getState(): MapState {

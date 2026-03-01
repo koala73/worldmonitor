@@ -305,7 +305,7 @@ export class PanelLayoutManager implements AppModule {
     this.ctx.map = new MapContainer(mapContainer, {
       zoom: this.ctx.isMobile ? 2.5 : 1.0,
       pan: { x: 0, y: 0 },
-      view: this.ctx.isMobile ? 'mena' : 'global',
+      view: this.ctx.isMobile ? this.ctx.resolvedLocation : 'global',
       layers: this.ctx.mapLayers,
       timeRange: '7d',
     });
@@ -743,13 +743,11 @@ export class PanelLayoutManager implements AppModule {
       this.ctx.map.setLayers(layers);
     }
 
-    if (!view) {
-      if (zoom !== undefined) {
-        this.ctx.map.setZoom(zoom);
-      }
-      if (lat !== undefined && lon !== undefined && zoom !== undefined && zoom > 2) {
-        this.ctx.map.setCenter(lat, lon);
-      }
+    if (lat !== undefined && lon !== undefined) {
+      const effectiveZoom = zoom ?? this.ctx.map.getState().zoom;
+      if (effectiveZoom > 2) this.ctx.map.setCenter(lat, lon, zoom);
+    } else if (!view && zoom !== undefined) {
+      this.ctx.map.setZoom(zoom);
     }
 
     const regionSelect = document.getElementById('regionSelect') as HTMLSelectElement;

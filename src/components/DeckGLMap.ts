@@ -93,7 +93,7 @@ import type { KindnessPoint } from '@/services/kindness-data';
 import type { HappinessData } from '@/services/happiness-data';
 import type { RenewableInstallation } from '@/services/renewable-installations';
 import type { SpeciesRecovery } from '@/services/conservation-data';
-import { getCountriesGeoJson, getCountryAtCoordinates } from '@/services/country-geometry';
+import { getCountriesGeoJson, getCountryAtCoordinates, getCountryBbox } from '@/services/country-geometry';
 import type { FeatureCollection, Geometry } from 'geojson';
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
@@ -505,6 +505,8 @@ export class DeckGLMap {
       this.lastSCZoom = -1;
       this.rafUpdateLayers();
       this.debouncedFetchBases();
+      this.state.zoom = this.maplibreMap?.getZoom() ?? this.state.zoom;
+      this.onStateChange?.(this.state);
     });
 
     this.maplibreMap.on('move', () => {
@@ -530,6 +532,8 @@ export class DeckGLMap {
         this.lastZoomThreshold = currentZoom;
         this.debouncedRebuildLayers();
       }
+      this.state.zoom = this.maplibreMap?.getZoom() ?? this.state.zoom;
+      this.onStateChange?.(this.state);
     });
   }
 
@@ -3574,6 +3578,17 @@ export class DeckGLMap {
         duration: 500,
       });
     }
+  }
+
+  public fitCountry(code: string): void {
+    const bbox = getCountryBbox(code);
+    if (!bbox || !this.maplibreMap) return;
+    const [minLon, minLat, maxLon, maxLat] = bbox;
+    this.maplibreMap.fitBounds([[minLon, minLat], [maxLon, maxLat]], {
+      padding: 40,
+      duration: 800,
+      maxZoom: 8,
+    });
   }
 
   public getCenter(): { lat: number; lon: number } | null {

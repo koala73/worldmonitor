@@ -151,7 +151,7 @@ export const MOBILE_BREAKPOINT_PX = 768;
 
 /** True when viewport is below mobile breakpoint. Touch-capable notebooks keep desktop layout. */
 export function isMobileDevice(): boolean {
-  return window.innerWidth < MOBILE_BREAKPOINT_PX;
+  return window.innerWidth <= MOBILE_BREAKPOINT_PX;
 }
 
 export function chunkArray<T>(items: T[], size: number): T[][] {
