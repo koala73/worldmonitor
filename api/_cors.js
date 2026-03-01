@@ -7,6 +7,9 @@ const ALLOWED_ORIGIN_PATTERNS = [
   /^https?:\/\/[a-z0-9-]+\.tauri\.localhost(:\d+)?$/i,
   /^tauri:\/\/localhost$/,
   /^asset:\/\/localhost$/,
+  // xcu_my_apps / Codexes Streamlit embed origins
+  /^https:\/\/(.*\.)?xtuff\.ai$/,
+  /^https:\/\/(.*\.)?streamlit\.app$/,
 ];
 
 function isAllowedOrigin(origin) {

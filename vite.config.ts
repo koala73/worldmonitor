@@ -141,6 +141,25 @@ const VARIANT_META: Record<string, {
       'Market radar signals',
     ],
   },
+  codexes: {
+    title: 'World Monitor - Codexes Embed',
+    description: 'WorldMonitor embedded view with book-worthiness scoring and recency filtering for Codexes book generation.',
+    keywords: 'global intelligence, book generation, OSINT, world events, codexes, instant books',
+    url: 'https://worldmonitor.app/',
+    siteName: 'World Monitor',
+    shortName: 'WorldMonitor',
+    subject: 'Real-Time Global Intelligence for Book Generation',
+    classification: 'Intelligence Dashboard, Book Pipeline',
+    categories: ['news', 'productivity'],
+    features: [
+      'Real-time news aggregation',
+      'Book-worthiness scoring',
+      'Recency filtering',
+      'Embed bridge for Streamlit',
+      'Event selection for book generation',
+      'Geopolitical intelligence',
+    ],
+  },
 };
 
 const activeVariant = process.env.VITE_VARIANT || 'full';
