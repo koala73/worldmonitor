@@ -923,6 +923,9 @@
       "aiFlowStatusCloudAndBrowser": "Cloud AI + نموذج المتصفح نشط",
       "aiFlowStatusBrowserOnly": "نموذج المتصفح فقط",
       "aiFlowStatusDisabled": "لا يوجد مزود ذكاء اصطناعي مفعّل",
+      "sectionIntelligence": "Intelligence",
+      "headlineMemoryLabel": "Headline Memory",
+      "headlineMemoryDesc": "Remember past headlines to enrich country briefs with historical context",
       "insightsDisabledTitle": "تحليل الذكاء الاصطناعي معطّل",
       "insightsDisabledHint": "Enable providers via the settings gear in the map header"
     },

@@ -5,6 +5,7 @@
 
 import { pipeline, env } from '@xenova/transformers';
 import { MODEL_CONFIGS, type ModelConfig } from '@/config/ml-config';
+import { storeVectors, searchVectors, getCount, sanitizeTitle, type VectorSearchResult } from './vector-db';
 
 // Configure transformers.js
 env.allowLocalModels = false;
@@ -69,6 +70,31 @@ interface ResetMessage {
   type: 'reset';
 }
 
+interface VectorStoreIngestMessage {
+  type: 'vector-store-ingest';
+  id: string;
+  items: Array<{
+    text: string;
+    pubDate: number;
+    source: string;
+    url: string;
+    tags?: string[];
+  }>;
+}
+
+interface VectorStoreSearchMessage {
+  type: 'vector-store-search';
+  id: string;
+  queries: string[];
+  topK: number;
+  minScore: number;
+}
+
+interface VectorStoreCountMessage {
+  type: 'vector-store-count';
+  id: string;
+}
+
 type MLWorkerMessage =
   | InitMessage
   | LoadModelMessage
@@ -79,7 +105,10 @@ type MLWorkerMessage =
   | NERMessage
   | SemanticClusterMessage
   | StatusMessage
-  | ResetMessage;
+  | ResetMessage
+  | VectorStoreIngestMessage
+  | VectorStoreSearchMessage
+  | VectorStoreCountMessage;
 
 // Loaded pipelines (using unknown since pipeline types vary)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -241,6 +270,19 @@ function cosineSimilarity(a: number[], b: number[]): number {
   return denominator === 0 ? 0 : dotProduct / denominator;
 }
 
+function cosineSimilarityF32(a: Float32Array, b: Float32Array): number {
+  let dot = 0;
+  let nA = 0;
+  let nB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i]! * b[i]!;
+    nA += a[i]! * a[i]!;
+    nB += b[i]! * b[i]!;
+  }
+  const denom = Math.sqrt(nA) * Math.sqrt(nB);
+  return denom === 0 ? 0 : dot / denom;
+}
+
 function semanticCluster(
   embeddings: number[][],
   threshold: number
@@ -354,6 +396,70 @@ self.onmessage = async (event: MessageEvent<MLWorkerMessage>) => {
           type: 'cluster-semantic-result',
           id: message.id,
           clusters,
+        });
+        break;
+      }
+
+      case 'vector-store-ingest': {
+        const EMBED_DIM = 384;
+        const embeddings = await embedTexts(message.items.map(i => sanitizeTitle(i.text)));
+        const valid: Array<{
+          text: string;
+          embedding: Float32Array;
+          pubDate: number;
+          source: string;
+          url: string;
+          tags?: string[];
+        }> = [];
+        for (let i = 0; i < message.items.length; i++) {
+          const emb = embeddings[i];
+          if (!emb || emb.length !== EMBED_DIM) continue;
+          const item = message.items[i]!;
+          valid.push({
+            text: item.text,
+            embedding: new Float32Array(emb),
+            pubDate: item.pubDate,
+            source: item.source,
+            url: item.url,
+            ...(item.tags?.length ? { tags: item.tags } : {}),
+          });
+        }
+        const stored = valid.length > 0 ? await storeVectors(valid) : 0;
+        self.postMessage({
+          type: 'vector-store-ingest-result',
+          id: message.id,
+          stored,
+        });
+        break;
+      }
+
+      case 'vector-store-search': {
+        const clampedTopK = Math.max(1, Math.min(20, message.topK));
+        const clampedMinScore = Math.max(0, Math.min(1, message.minScore));
+        const queries = message.queries.slice(0, 5).map(q => sanitizeTitle(q));
+        const queryEmbeddings = await embedTexts(queries);
+        const queryF32: Float32Array[] = [];
+        for (const emb of queryEmbeddings) {
+          if (emb && emb.length > 0) queryF32.push(new Float32Array(emb));
+        }
+        let results: VectorSearchResult[] = [];
+        if (queryF32.length > 0) {
+          results = await searchVectors(queryF32, clampedTopK, clampedMinScore, cosineSimilarityF32);
+        }
+        self.postMessage({
+          type: 'vector-store-search-result',
+          id: message.id,
+          results,
+        });
+        break;
+      }
+
+      case 'vector-store-count': {
+        const count = await getCount();
+        self.postMessage({
+          type: 'vector-store-count-result',
+          id: message.id,
+          count,
         });
         break;
       }

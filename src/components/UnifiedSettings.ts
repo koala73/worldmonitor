@@ -172,6 +172,8 @@ export class UnifiedSettings {
         this.updateAiStatus();
       } else if (target.id === 'us-map-flash') {
         setAiFlowSetting('mapNewsFlash', target.checked);
+      } else if (target.id === 'us-headline-memory') {
+        setAiFlowSetting('headlineMemory', target.checked);
       }
     });
 
@@ -305,6 +307,10 @@ export class UnifiedSettings {
         </div>
       `;
     }
+
+    // Intelligence section
+    html += `<div class="ai-flow-section-label">${t('components.insights.sectionIntelligence')}</div>`;
+    html += this.toggleRowHtml('us-headline-memory', t('components.insights.headlineMemoryLabel'), t('components.insights.headlineMemoryDesc'), settings.headlineMemory);
 
     // Streaming quality section
     const currentQuality = getStreamQuality();

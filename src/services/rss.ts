@@ -8,6 +8,8 @@ import { dataFreshness } from './data-freshness';
 import { ingestHeadlines } from './trending-keywords';
 import { getCurrentLanguage } from './i18n';
 import { canQueueAiClassification, AI_CLASSIFY_MAX_PER_FEED } from './ai-classify-queue';
+import { mlWorker } from './ml-worker';
+import { isHeadlineMemoryEnabled } from './ai-flow-settings';
 
 const FEED_COOLDOWN_MS = 5 * 60 * 1000;
 const MAX_FAILURES = 2;
@@ -280,6 +282,16 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
       source: item.source,
       link: item.link,
     })));
+
+    if (isHeadlineMemoryEnabled() && mlWorker.isAvailable && mlWorker.isModelLoaded('embeddings') && parsed.length > 0) {
+      mlWorker.vectorStoreIngest(parsed.map(item => ({
+        text: item.title,
+        pubDate: item.pubDate.getTime(),
+        source: item.source,
+        url: item.link,
+        tags: item.locationName ? [item.locationName] : undefined,
+      }))).catch(() => {});
+    }
 
     const aiCandidates = parsed
       .filter(item => item.threat.source === 'keyword')

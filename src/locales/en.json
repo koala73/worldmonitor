@@ -990,6 +990,9 @@
       "aiFlowStatusCloudAndBrowser": "Cloud AI + Browser model active",
       "aiFlowStatusBrowserOnly": "Browser model only",
       "aiFlowStatusDisabled": "No AI providers enabled",
+      "sectionIntelligence": "Intelligence",
+      "headlineMemoryLabel": "Headline Memory",
+      "headlineMemoryDesc": "Remember past headlines to enrich country briefs with historical context",
       "insightsDisabledTitle": "AI analysis is disabled",
       "insightsDisabledHint": "Enable providers via the settings gear in the map header"
     },

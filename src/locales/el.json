@@ -962,6 +962,9 @@
       "aiFlowStatusCloudAndBrowser": "Cloud AI + Τοπικό μοντέλο ενεργά",
       "aiFlowStatusBrowserOnly": "Μόνο τοπικό μοντέλο",
       "aiFlowStatusDisabled": "Κανένας πάροχος AI ενεργοποιημένος",
+      "sectionIntelligence": "Intelligence",
+      "headlineMemoryLabel": "Headline Memory",
+      "headlineMemoryDesc": "Remember past headlines to enrich country briefs with historical context",
       "insightsDisabledTitle": "Η ανάλυση AI είναι απενεργοποιημένη",
       "insightsDisabledHint": "Enable providers via the settings gear in the map header"
     },

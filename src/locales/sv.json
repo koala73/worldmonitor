@@ -992,6 +992,9 @@
       "aiFlowStatusCloudAndBrowser": "Moln-AI + Webbläsarmodell aktiva",
       "aiFlowStatusBrowserOnly": "Endast webbläsarmodell",
       "aiFlowStatusDisabled": "Inga AI-leverantörer aktiverade",
+      "sectionIntelligence": "Intelligence",
+      "headlineMemoryLabel": "Headline Memory",
+      "headlineMemoryDesc": "Remember past headlines to enrich country briefs with historical context",
       "insightsDisabledTitle": "AI-analys är inaktiverad",
       "insightsDisabledHint": "Enable providers via the settings gear in the map header"
     },

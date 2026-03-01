@@ -923,6 +923,9 @@
       "aiFlowStatusCloudAndBrowser": "Bulut AI + Tarayici modeli aktif",
       "aiFlowStatusBrowserOnly": "Yalnizca tarayici modeli",
       "aiFlowStatusDisabled": "Etkinlestirilmis AI saglayici yok",
+      "sectionIntelligence": "Intelligence",
+      "headlineMemoryLabel": "Headline Memory",
+      "headlineMemoryDesc": "Remember past headlines to enrich country briefs with historical context",
       "insightsDisabledTitle": "AI analizi devre disi",
       "insightsDisabledHint": "Enable providers via the settings gear in the map header"
     },
