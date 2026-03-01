@@ -434,6 +434,8 @@ fn open_in_shell(arg: &str) -> Result<(), String> {
     let mut command = {
         let mut cmd = Command::new("xdg-open");
         cmd.arg(arg);
+        cmd.env_remove("LD_LIBRARY_PATH");
+        cmd.env_remove("LD_PRELOAD");
         cmd
     };
 
