@@ -2,6 +2,73 @@
 
 All notable changes to World Monitor are documented here.
 
+## [2.5.21] - 2026-03-01
+
+### Highlights
+
+- **Iran Attacks map layer** — conflict events with severity badges, related event popups, and CII integration (#511, #527, #547, #549)
+- **Telegram Intel panel** — 27 curated OSINT channels via MTProto relay (#550)
+- **OREF Israel Sirens** — real-time alerts with Hebrew→English translation and 24h history bootstrap (#545, #556, #582)
+- **GPS/GNSS jamming layer** — detection overlay with CII integration (#570)
+- **Day/night terminator** — solar terminator overlay on map (#529)
+- **Breaking news alert banner** — audio alerts for critical/high RSS items with cooldown bypass (#508, #516, #533)
+- **AviationStack integration** — global airport delays for 128 airports with NOTAM closure detection (#552, #581, #583)
+- **Strategic risk score** — theater posture + breaking news wired into scoring algorithm (#584)
+
+### Added
+
+- Iran Attacks map layer with conflict event popups, severity badges, and priority rendering (#511, #527, #549)
+- Telegram Intel panel with curated OSINT channel list (#550, #600)
+- OREF Israel Sirens panel with Hebrew-to-English translation (#545, #556)
+- OREF 24h history bootstrap on relay startup (#582)
+- GPS/GNSS jamming detection map layer + CII integration (#570)
+- Day/night solar terminator overlay (#529)
+- Breaking news active alert banner with audio for critical/high items (#508)
+- AviationStack integration for non-US airports + NOTAM closure detection (#552, #581, #583)
+- RT (Russia Today) HLS livestream + RSS feeds (#585, #586)
+- Iran webcams tab with 4 feeds (#569, #572, #601)
+- CBC News optional live channel (#502)
+- Strategic risk score wired to theater posture + breaking news (#584)
+- CII scoring: security advisories, Iran strikes, OREF sirens, GPS jamming (#547, #559, #570, #579)
+- Country brief + CII signal coverage expansion (#611)
+- Server-side military bases with 125K+ entries + rate limiting (#496)
+- AVIATIONSTACK_API key in desktop settings (#553)
+- Iran events seed script and latest data (#575)
+
+### Fixed
+
+- **Aviation**: stale IndexedDB cache invalidation + reduced CDN TTL (#607), broken lock replaced with direct cache + cancellation tiers (#591), query all airports instead of rotating batch (#557), NOTAM routing through Railway relay (#599), always show all monitored airports (#603)
+- **Telegram**: AUTH_KEY_DUPLICATED fixes — latch to stop retry spam (#543), 60s startup delay (#587), graceful shutdown + poll guard (#562), ESM import path fixes (#537, #542), missing relay auth headers (#590)
+- **Relay**: Polymarket OOM prevention — circuit breaker + concurrency limiter (#519), request deduplication (#513), queue backpressure + response slicing (#593), cache stampede fix (#592), kill switch (#523); smart quotes crash (#563); graceful shutdown (#562, #565); curl for OREF (#546, #567, #571); maxBuffer ENOBUFS (#609); rsshub.app blocked (#526); ERR_HTTP_HEADERS_SENT guard (#509); Telegram memory cleanup (#531)
+- **Live news**: 7 stale YouTube fallback IDs replaced (#535, #538), broken Europe channel handles (#541), eNCA handle + VTC NOW removal + CTI News (#604), RT HLS recovery (#610), YouTube proxy auth alignment (#554, #555), residential proxy + gzip for detection (#551)
+- **Breaking news**: critical alerts bypass cooldown (#516), keyword gaps filled (#517, #521), fake pubDate filter (#517), SESSION_START gate removed (#533)
+- **Threat classifier**: military/conflict keyword gaps + news-to-conflict bridge (#514), Groq 429 stagger (#520)
+- **Geo**: tokenization-based matching to prevent false positives (#503), 60+ missing locations in hub index (#528)
+- **Iran**: CDN cache-bust pipeline v4 (#524, #532, #544), read-only handler (#518), Gulf misattribution via bbox disambiguation (#532)
+- **CII**: Gulf country strike misattribution (#564), compound escalation for military action (#548)
+- **Bootstrap**: 401/429 rate limiting fix (#512), hydration cache + polling hardening (#504)
+- **Sentry**: guard YT player methods + GM/InvalidState noise (#602), Android OEM WebView bridge injection (#510), setView invalid preset (#580), beforeSend null-filename leak (#561)
+- Rate limiting raised to 300 req/min sliding window (#515)
+- Vercel preview origin regex generalized + bases cache key (#506)
+- Cross-env for Windows-compatible npm scripts (#499)
+- Download banner repositioned to bottom-right (#536)
+- Stale/expired Polymarket markets filtered (#507)
+- Cyber GeoIP centroid fallback jitter made deterministic (#498)
+- Cache-control headers hardened for polymarket and rss-proxy (#613)
+
+### Performance
+
+- Server-side military base fetches: debounce + static edge cache tier (#497)
+- RSS: refresh interval raised to 10min, cache TTL to 20min (#612)
+- Polymarket cache TTL raised to 10 minutes (#568)
+
+### Changed
+
+- Stripped 61 debug console.log calls from 20 service files (#501)
+- Bumped version to 2.5.21 (#605)
+
+---
+
 ## [2.5.20] - 2026-02-27
 
 ### Added
