@@ -22,13 +22,12 @@ import {
   buildNotamAlert,
 } from './_shared';
 import { CHROME_UA } from '../../../_shared/constants';
-import { cachedFetchJson, getCachedJson, setCachedJson } from '../../../_shared/redis';
+import { cachedFetchJson } from '../../../_shared/redis';
 
 const FAA_CACHE_KEY = 'aviation:delays:faa:v1';
-const INTL_CACHE_KEY = 'aviation:delays:intl:v2';
+const INTL_CACHE_KEY = 'aviation:delays:intl:v3';
 const NOTAM_CACHE_KEY = 'aviation:notam:closures:v1';
 const CACHE_TTL = 7200;      // 2h for FAA, intl (real), and NOTAM
-const SIM_CACHE_TTL = 300;   // 5 min for simulation fallback — retry sooner
 
 export async function listAirportDelays(
   _ctx: ServerContext,
@@ -88,36 +87,32 @@ export async function listAirportDelays(
     console.warn(`[Aviation] FAA fetch failed: ${err instanceof Error ? err.message : 'unknown'}`);
   }
 
-  // 2. International — check cache first, then fetch with conditional TTL
+  // 2. International — cachedFetchJson coalesces concurrent misses into one fetch
   let intlAlerts: AirportDelayAlert[] = [];
   try {
-    const cached = await getCachedJson(INTL_CACHE_KEY);
-    if (cached && typeof cached === 'object' && 'alerts' in (cached as Record<string, unknown>)) {
-      intlAlerts = (cached as { alerts: AirportDelayAlert[] }).alerts;
-      const simCount = intlAlerts.filter(a => a.id.startsWith('sim-')).length;
-      const realCount = intlAlerts.length - simCount;
-      console.log(`[Aviation] Intl cache HIT: ${intlAlerts.length} alerts (${realCount} real, ${simCount} simulated)`);
-    } else {
-      const nonUs = MONITORED_AIRPORTS.filter(a => a.country !== 'USA');
-      const apiKey = process.env.AVIATIONSTACK_API;
+    const result = await cachedFetchJson<{ alerts: AirportDelayAlert[] }>(
+      INTL_CACHE_KEY, CACHE_TTL, async () => {
+        const nonUs = MONITORED_AIRPORTS.filter(a => a.country !== 'USA');
+        const apiKey = process.env.AVIATIONSTACK_API;
 
-      if (!apiKey) {
-        console.log('[Aviation] No AVIATIONSTACK_API key — using simulation');
-        intlAlerts = nonUs.map(a => generateSimulatedDelay(a)).filter(Boolean) as AirportDelayAlert[];
-        await setCachedJson(INTL_CACHE_KEY, { alerts: intlAlerts }, SIM_CACHE_TTL);
-      } else {
+        if (!apiKey) {
+          console.log('[Aviation] No AVIATIONSTACK_API key — using simulation');
+          const sim = nonUs.map(a => generateSimulatedDelay(a)).filter(Boolean) as AirportDelayAlert[];
+          return { alerts: sim };
+        }
+
         const avResult = await fetchAviationStackDelays(nonUs);
         if (!avResult.healthy) {
           console.warn('[Aviation] AviationStack unhealthy — falling back to simulation');
-          intlAlerts = nonUs.map(a => generateSimulatedDelay(a)).filter(Boolean) as AirportDelayAlert[];
-          await setCachedJson(INTL_CACHE_KEY, { alerts: intlAlerts }, SIM_CACHE_TTL);
-        } else {
-          console.log(`[Aviation] AviationStack OK: ${avResult.alerts.length} real alerts`);
-          intlAlerts = avResult.alerts;
-          await setCachedJson(INTL_CACHE_KEY, { alerts: intlAlerts }, CACHE_TTL);
+          const sim = nonUs.map(a => generateSimulatedDelay(a)).filter(Boolean) as AirportDelayAlert[];
+          return { alerts: sim };
         }
+
+        console.log(`[Aviation] AviationStack OK: ${avResult.alerts.length} real alerts`);
+        return { alerts: avResult.alerts };
       }
-    }
+    );
+    intlAlerts = result?.alerts ?? [];
     console.log(`[Aviation] Intl: ${intlAlerts.length} alerts`);
   } catch (err) {
     console.warn(`[Aviation] Intl fetch failed: ${err instanceof Error ? err.message : 'unknown'}`);

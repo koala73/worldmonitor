@@ -518,7 +518,7 @@ export class App {
         { name: 'ais', fn: () => this.dataLoader.loadAisSignals(), intervalMs: REFRESH_INTERVALS.ais, condition: () => this.state.mapLayers.ais },
         { name: 'cables', fn: () => this.dataLoader.loadCableActivity(), intervalMs: 30 * 60 * 1000, condition: () => this.state.mapLayers.cables },
         { name: 'cableHealth', fn: () => this.dataLoader.loadCableHealth(), intervalMs: 5 * 60 * 1000, condition: () => this.state.mapLayers.cables },
-        { name: 'flights', fn: () => this.dataLoader.loadFlightDelays(), intervalMs: 10 * 60 * 1000, condition: () => this.state.mapLayers.flights },
+        { name: 'flights', fn: () => this.dataLoader.loadFlightDelays(), intervalMs: 2 * 60 * 60 * 1000, condition: () => this.state.mapLayers.flights },
         { name: 'cyberThreats', fn: () => {
           this.state.cyberThreatsCache = null;
           return this.dataLoader.loadCyberThreats();
