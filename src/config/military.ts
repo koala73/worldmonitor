@@ -281,41 +281,42 @@ export const MILITARY_AIRCRAFT_TYPES: Record<string, { type: MilitaryAircraftTyp
  * Reference: https://www.ads-b.nl/icao.php
  */
 export const MILITARY_HEX_RANGES: { start: string; end: string; operator: MilitaryOperator; country: string }[] = [
-  // United States Military (largest block)
-  { start: 'ADF7C7', end: 'ADF7CF', operator: 'usaf', country: 'USA' }, // Known USAF tankers
-  { start: 'AE0000', end: 'AFFFFF', operator: 'usaf', country: 'USA' }, // Main USAF block
-  { start: 'A00000', end: 'A3FFFF', operator: 'usaf', country: 'USA' }, // Additional US military
+  // United States DoD — civil N-numbers end at ADF7C7; everything above is military
+  { start: 'ADF7C8', end: 'AFFFFF', operator: 'usaf', country: 'USA' },
 
-  // UK Military
+  // UK Military (small block at start + main RAF block)
+  { start: '400000', end: '40003F', operator: 'raf', country: 'UK' },
   { start: '43C000', end: '43CFFF', operator: 'raf', country: 'UK' },
 
-  // France Military
-  { start: '3A0000', end: '3AFFFF', operator: 'faf', country: 'France' },
-  { start: '3B0000', end: '3BFFFF', operator: 'faf', country: 'France' },
+  // France Military (two sub-blocks within 380000-3BFFFF)
+  { start: '3AA000', end: '3AFFFF', operator: 'faf', country: 'France' },
+  { start: '3B7000', end: '3BFFFF', operator: 'faf', country: 'France' },
 
-  // Germany Military
-  { start: '3F0000', end: '3FFFFF', operator: 'gaf', country: 'Germany' },
+  // Germany Military (two sub-blocks within 3C0000-3FFFFF)
+  { start: '3EA000', end: '3EBFFF', operator: 'gaf', country: 'Germany' },
+  { start: '3F4000', end: '3FBFFF', operator: 'gaf', country: 'Germany' },
 
-  // Israel Military (critical for Middle East)
-  { start: '738000', end: '73FFFF', operator: 'iaf', country: 'Israel' },
+  // Israel Military (confirmed IAF sub-range within 738000-73FFFF)
+  { start: '738A00', end: '738BFF', operator: 'iaf', country: 'Israel' },
 
   // NATO AWACS (Luxembourg registration but NATO operated)
   { start: '4D0000', end: '4D03FF', operator: 'nato', country: 'NATO' },
 
-  // Italy Military
-  { start: '300000', end: '33FFFF', operator: 'other', country: 'Italy' },
+  // Italy Military (top of 300000-33FFFF block)
+  { start: '33FF00', end: '33FFFF', operator: 'other', country: 'Italy' },
 
-  // Spain Military
-  { start: '340000', end: '37FFFF', operator: 'other', country: 'Spain' },
+  // Spain Military (upper 3/4 of 340000-37FFFF; civilian in 340000-34FFFF)
+  { start: '350000', end: '37FFFF', operator: 'other', country: 'Spain' },
 
   // Netherlands Military
   { start: '480000', end: '480FFF', operator: 'other', country: 'Netherlands' },
 
-  // Turkey Military (important for Middle East)
-  { start: '4BA000', end: '4BCFFF', operator: 'other', country: 'Turkey' },
+  // Turkey Military (confirmed sub-range within 4B8000-4BFFFF)
+  { start: '4B8200', end: '4B82FF', operator: 'other', country: 'Turkey' },
 
-  // Saudi Arabia Military
-  { start: '710000', end: '717FFF', operator: 'other', country: 'Saudi Arabia' },
+  // Saudi Arabia Military (two small confirmed sub-blocks)
+  { start: '710258', end: '71028F', operator: 'other', country: 'Saudi Arabia' },
+  { start: '710380', end: '71039F', operator: 'other', country: 'Saudi Arabia' },
 
   // UAE Military
   { start: '896000', end: '896FFF', operator: 'other', country: 'UAE' },
@@ -326,41 +327,38 @@ export const MILITARY_HEX_RANGES: { start: string; end: string; operator: Milita
   // Kuwait Military
   { start: '706000', end: '706FFF', operator: 'other', country: 'Kuwait' },
 
-  // Japan Self-Defense Forces
-  { start: '840000', end: '87FFFF', operator: 'other', country: 'Japan' },
+  // Australia Military (confirmed RAAF sub-range)
+  { start: '7CF800', end: '7CFAFF', operator: 'other', country: 'Australia' },
 
-  // South Korea Military
-  { start: '718000', end: '71FFFF', operator: 'other', country: 'South Korea' },
+  // Canada Military (upper half of C00000-C3FFFF)
+  { start: 'C20000', end: 'C3FFFF', operator: 'other', country: 'Canada' },
 
-  // Australia Military
-  { start: '7CF800', end: '7CFFFF', operator: 'other', country: 'Australia' },
+  // India Military (confirmed IAF sub-range within 800000-83FFFF)
+  { start: '800200', end: '8002FF', operator: 'other', country: 'India' },
 
-  // Canada Military
-  { start: 'C00000', end: 'C0FFFF', operator: 'other', country: 'Canada' },
+  // Egypt Military (confirmed sub-range)
+  { start: '010070', end: '01008F', operator: 'other', country: 'Egypt' },
 
-  // India Military
-  { start: '800000', end: '83FFFF', operator: 'other', country: 'India' },
+  // Poland Military (confirmed sub-range within 488000-48FFFF)
+  { start: '48D800', end: '48D87F', operator: 'other', country: 'Poland' },
 
-  // Pakistan Military
-  { start: '760000', end: '767FFF', operator: 'other', country: 'Pakistan' },
+  // Greece Military (confirmed sub-range at start of 468000-46FFFF)
+  { start: '468000', end: '4683FF', operator: 'other', country: 'Greece' },
 
-  // Egypt Military
-  { start: '500000', end: '5003FF', operator: 'other', country: 'Egypt' },
+  // Norway Military (confirmed sub-range within 478000-47FFFF)
+  { start: '478100', end: '4781FF', operator: 'other', country: 'Norway' },
 
-  // Poland Military
-  { start: '488000', end: '48FFFF', operator: 'other', country: 'Poland' },
+  // Austria Military
+  { start: '444000', end: '446FFF', operator: 'other', country: 'Austria' },
 
-  // Greece Military
-  { start: '468000', end: '46FFFF', operator: 'other', country: 'Greece' },
+  // Belgium Military
+  { start: '44F000', end: '44FFFF', operator: 'other', country: 'Belgium' },
 
-  // Sweden Military
-  { start: '4A8000', end: '4AFFFF', operator: 'other', country: 'Sweden' },
+  // Switzerland Military
+  { start: '4B7000', end: '4B7FFF', operator: 'other', country: 'Switzerland' },
 
-  // Norway Military
-  { start: '478000', end: '47FFFF', operator: 'other', country: 'Norway' },
-
-  // Singapore Military
-  { start: '768000', end: '76FFFF', operator: 'other', country: 'Singapore' },
+  // Brazil Military
+  { start: 'E40000', end: 'E41FFF', operator: 'other', country: 'Brazil' },
 ];
 
 /**

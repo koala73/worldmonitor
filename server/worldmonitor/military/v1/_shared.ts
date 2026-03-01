@@ -58,7 +58,6 @@ export function isMilitaryCallsign(callsign: string | null | undefined): boolean
   for (const prefix of MILITARY_PREFIXES) {
     if (cs.startsWith(prefix)) return true;
   }
-  if (/^[A-Z]{4,}\d{1,3}$/.test(cs)) return true;
   if (/^[A-Z]{3}\d{1,2}$/.test(cs)) {
     const prefix = cs.slice(0, 3);
     if (!AIRLINE_CODES.has(prefix)) return true;
