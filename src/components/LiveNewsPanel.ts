@@ -911,7 +911,9 @@ export class LiveNewsPanel extends Panel {
       mute: this.isMuted ? '1' : '0',
     });
     if (quality !== 'auto') params.set('vq', quality);
-    const embedUrl = `http://localhost:${getLocalApiPort()}/api/youtube-embed?${params.toString()}`;
+    // Use 127.0.0.1 not localhost — Tauri CSP frame-src allows http://127.0.0.1:* and
+    // the sidecar also listens on 127.0.0.1. They are different origins for CSP purposes.
+    const embedUrl = `http://127.0.0.1:${getLocalApiPort()}/api/youtube-embed?${params.toString()}`;
 
     if (renderToken !== this.desktopEmbedRenderToken) {
       return;
