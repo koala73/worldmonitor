@@ -43,7 +43,7 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   monitors: { name: 'My Monitors', enabled: true, priority: 2 },
   'satellite-fires': { name: 'Fires', enabled: true, priority: 2 },
   'macro-signals': { name: 'Market Radar', enabled: true, priority: 2 },
-  'gulf-economies': { name: 'Gulf Economies', enabled: true, priority: 2 },
+  'gulf-economies': { name: 'Gulf Economies', enabled: false, priority: 2 },
   'etf-flows': { name: 'BTC ETF Tracker', enabled: true, priority: 2 },
   stablecoins: { name: 'Stablecoins', enabled: true, priority: 2 },
   'ucdp-events': { name: 'UCDP Conflict Events', enabled: true, priority: 2 },
