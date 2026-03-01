@@ -837,6 +837,11 @@ canvas,
   background: var(--green-dim);
 }
 
+/* Hidden by default — shown only inside 768px media query */
+.map-collapse-btn {
+  display: none;
+}
+
 .panels-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -9044,10 +9049,23 @@ a.prediction-link:hover {
     padding: 8px;
   }
 
+  body {
+    font-size: 14px;
+  }
+
+  .panel-title {
+    font-size: 13px;
+  }
+
   .panel {
     width: 100% !important;
-    min-height: 300px;
-    max-height: 400px;
+    min-height: 250px;
+    max-height: 70vh;
+  }
+
+  .panel-content {
+    font-size: 13px;
+    -webkit-overflow-scrolling: touch;
   }
 
   /* Make map section smaller on mobile to show panels */
@@ -9055,6 +9073,41 @@ a.prediction-link:hover {
     height: 40vh !important;
     min-height: 250px !important;
     max-height: 50vh !important;
+  }
+
+  /* Collapsed map on mobile — keeps header visible with toggle */
+  .map-section.collapsed {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+  }
+
+  .map-section.collapsed .map-container,
+  .map-section.collapsed .map-resize-handle,
+  .map-section.collapsed .map-controls,
+  .map-section.collapsed .time-slider,
+  .map-section.collapsed .tv-exit-btn {
+    display: none !important;
+  }
+
+  /* Map collapse toggle button — mobile only */
+  .map-collapse-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .map-collapse-btn:active {
+    background: var(--bg-tertiary, var(--border));
   }
 
   /* Hide pin button and resize handles on mobile */

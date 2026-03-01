@@ -219,6 +219,31 @@ export class PanelLayoutManager implements AppModule {
     `;
 
     this.createPanels();
+
+    if (this.ctx.isMobile) {
+      this.setupMobileMapToggle();
+    }
+  }
+
+  private setupMobileMapToggle(): void {
+    const mapSection = document.getElementById('mapSection');
+    const headerLeft = mapSection?.querySelector('.panel-header-left');
+    if (!mapSection || !headerLeft) return;
+
+    const collapsed = localStorage.getItem('mobile-map-collapsed') !== 'false';
+    if (collapsed) mapSection.classList.add('collapsed');
+
+    const btn = document.createElement('button');
+    btn.className = 'map-collapse-btn';
+    btn.textContent = collapsed ? 'Show Map' : 'Hide Map';
+    headerLeft.after(btn);
+
+    btn.addEventListener('click', () => {
+      const isCollapsed = mapSection.classList.toggle('collapsed');
+      btn.textContent = isCollapsed ? 'Show Map' : 'Hide Map';
+      localStorage.setItem('mobile-map-collapsed', String(isCollapsed));
+      if (!isCollapsed) window.dispatchEvent(new Event('resize'));
+    });
   }
 
   renderCriticalBanner(postures: TheaterPostureSummary[]): void {
