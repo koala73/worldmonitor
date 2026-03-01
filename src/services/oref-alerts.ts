@@ -179,6 +179,7 @@ export async function fetchOrefHistory(): Promise<OrefHistoryResponse> {
       headers: { Accept: 'application/json' },
     });
     if (!res.ok) {
+      console.warn('[OREF History] HTTP', res.status);
       return { configured: false, history: [], historyCount24h: 0, timestamp: new Date().toISOString(), error: `HTTP ${res.status}` };
     }
     const data: OrefHistoryResponse = await res.json();

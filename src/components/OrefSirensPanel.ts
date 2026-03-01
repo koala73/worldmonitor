@@ -36,7 +36,7 @@ export class OrefSirensPanel extends Panel {
     const prevCount = this.alerts.length;
     this.alerts = data.alerts || [];
     this.historyCount24h = data.historyCount24h || 0;
-    this.setCount(this.alerts.length);
+    this.setCount(this.alerts.length || this.historyCount24h);
 
     if (prevCount === 0 && this.alerts.length > 0) {
       this.setNewBadge(this.alerts.length);
@@ -58,7 +58,7 @@ export class OrefSirensPanel extends Panel {
           this.render();
         }
       })
-      .catch(() => {})
+      .catch((err) => { console.warn('[OrefSirensPanel] History fetch failed:', err); })
       .finally(() => { this.historyFetchInFlight = false; });
   }
 
@@ -90,7 +90,15 @@ export class OrefSirensPanel extends Panel {
   }
 
   private renderHistoryWaves(): string {
-    if (!this.historyWaves.length) return '';
+    if (!this.historyWaves.length) {
+      if (this.historyCount24h > 0) {
+        return `<div class="oref-history-section">
+          <div class="oref-history-title">${t('components.orefSirens.historySummary', { count: String(this.historyCount24h), waves: '...' })}</div>
+          <div class="oref-wave-list" style="opacity:0.5;text-align:center;padding:8px">${t('components.orefSirens.loadingHistory', { defaultValue: 'Loading history...' })}</div>
+        </div>`;
+      }
+      return '';
+    }
 
     const now = Date.now();
     const withTs = this.historyWaves.map(w => ({ wave: w, ts: new Date(w.timestamp).getTime() }));
