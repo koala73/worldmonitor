@@ -288,3 +288,18 @@
 .oref-wave-time { font-size: 9px; color: var(--text-muted); }
 .oref-wave-summary { font-size: 10px; color: var(--text-secondary); line-height: 1.3; }
 .oref-recent-badge { font-size: 8px; font-weight: 700; color: var(--semantic-warning, #f59e0b); background: color-mix(in srgb, var(--semantic-warning, #f59e0b) 12%, transparent); padding: 1px 4px; border-radius: 3px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+/* ----------------------------------------------------------
+   RecencyFilter chip bar
+   ---------------------------------------------------------- */
+.recency-filter { display: flex; gap: 4px; padding: 4px 8px; flex-wrap: wrap; }
+.recency-filter--embedded { padding: 2px 4px; }
+.recency-chip { font-size: 11px; padding: 3px 10px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface); color: var(--text-dim); cursor: pointer; transition: background 0.15s, color 0.15s, border-color 0.15s; white-space: nowrap; }
+.recency-chip:hover { background: var(--surface-hover); color: var(--text-secondary); }
+.recency-chip--active { background: var(--accent-muted, rgba(59, 130, 246, 0.2)); color: var(--accent, #fff); border-color: var(--accent, #3b82f6); font-weight: 600; }
+
+/* ----------------------------------------------------------
+   Codexes variant — embed-friendly adjustments
+   ---------------------------------------------------------- */
+.variant-codexes .header-bar .site-title { display: none; }
+.variant-codexes .header-bar { padding-top: 0; min-height: auto; }

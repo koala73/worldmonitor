@@ -559,6 +559,7 @@ const HAPPY_MOBILE_MAP_LAYERS: MapLayers = {
 // ============================================
 // VARIANT-AWARE EXPORTS
 // ============================================
+// codexes variant uses the same panels/layers as full (it's an embed wrapper)
 export const DEFAULT_PANELS = SITE_VARIANT === 'happy' ? HAPPY_PANELS : SITE_VARIANT === 'tech' ? TECH_PANELS : SITE_VARIANT === 'finance' ? FINANCE_PANELS : FULL_PANELS;
 export const DEFAULT_MAP_LAYERS = SITE_VARIANT === 'happy' ? HAPPY_MAP_LAYERS : SITE_VARIANT === 'tech' ? TECH_MAP_LAYERS : SITE_VARIANT === 'finance' ? FINANCE_MAP_LAYERS : FULL_MAP_LAYERS;
 export const MOBILE_DEFAULT_MAP_LAYERS = SITE_VARIANT === 'happy' ? HAPPY_MOBILE_MAP_LAYERS : SITE_VARIANT === 'tech' ? TECH_MOBILE_MAP_LAYERS : SITE_VARIANT === 'finance' ? FINANCE_MOBILE_MAP_LAYERS : FULL_MOBILE_MAP_LAYERS;
@@ -595,27 +596,27 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   intelligence: {
     labelKey: 'header.panelCatIntelligence',
     panelKeys: ['cii', 'strategic-risk', 'intel', 'gdelt-intel', 'cascade', 'telegram-intel'],
-    variants: ['full'],
+    variants: ['full', 'codexes'],
   },
   regionalNews: {
     labelKey: 'header.panelCatRegionalNews',
     panelKeys: ['politics', 'us', 'europe', 'middleeast', 'africa', 'latam', 'asia'],
-    variants: ['full'],
+    variants: ['full', 'codexes'],
   },
   marketsFinance: {
     labelKey: 'header.panelCatMarketsFinance',
     panelKeys: ['commodities', 'markets', 'economic', 'trade-policy', 'supply-chain', 'finance', 'polymarket', 'macro-signals', 'etf-flows', 'stablecoins', 'crypto', 'heatmap'],
-    variants: ['full'],
+    variants: ['full', 'codexes'],
   },
   topical: {
     labelKey: 'header.panelCatTopical',
     panelKeys: ['energy', 'gov', 'thinktanks', 'tech', 'ai', 'layoffs'],
-    variants: ['full'],
+    variants: ['full', 'codexes'],
   },
   dataTracking: {
     labelKey: 'header.panelCatDataTracking',
     panelKeys: ['monitors', 'satellite-fires', 'ucdp-events', 'displacement', 'climate', 'population-exposure', 'security-advisories', 'oref-sirens'],
-    variants: ['full'],
+    variants: ['full', 'codexes'],
   },
 
   // Tech variant
