@@ -40,3 +40,7 @@ scripts/data/dedup-dropped-pairs.json
 scripts/data/gpsjam-latest.json
 scripts/data/mirta-raw.geojson
 scripts/data/osm-military-raw.json
+
+# Iran events seed script + data (sensitive, not for public repo)
+scripts/seed-iran-events.mjs
+scripts/data/iran-events-latest.json
