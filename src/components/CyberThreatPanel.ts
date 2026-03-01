@@ -1,6 +1,7 @@
 import { Panel } from './Panel';
 import type { CyberThreat, CyberThreatSeverity } from '@/types';
 import { escapeHtml } from '@/utils/sanitize';
+import { t } from '@/services/i18n';
 
 export class CyberThreatPanel extends Panel {
   private threats: CyberThreat[] = [];
@@ -9,7 +10,7 @@ export class CyberThreatPanel extends Panel {
   constructor() {
     super({
       id: 'cyber-threats',
-      title: 'Cyber Threats',
+      title: t('panels.cyberThreats'),
       showCount: true,
       trackActivity: true,
       infoTooltip: 'Live IOC feed from Feodo, URLhaus, C2Intel, OTX, and AbuseIPDB — updated every 15 minutes.',

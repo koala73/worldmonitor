@@ -1,6 +1,7 @@
 import { Panel } from './Panel';
 import type { SpaceWeatherData } from '@/services/space-weather';
 import { escapeHtml } from '@/utils/sanitize';
+import { t } from '@/services/i18n';
 
 export class SpaceWeatherPanel extends Panel {
   private data: SpaceWeatherData | null = null;
@@ -9,7 +10,7 @@ export class SpaceWeatherPanel extends Panel {
   constructor() {
     super({
       id: 'space-weather',
-      title: 'Space Weather',
+      title: t('panels.spaceWeather'),
       showCount: false,
       trackActivity: true,
       infoTooltip: 'NOAA SWPC real-time data — Kp index, solar wind, X-ray flares, geomagnetic storm alerts.',

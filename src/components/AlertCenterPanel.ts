@@ -2,6 +2,7 @@ import { Panel } from './Panel';
 import type { CorrelationSignal } from '@/services/correlation';
 import { getRecentSignals } from '@/services/correlation';
 import type { BreakingAlert } from '@/services/breaking-news-alerts';
+import { t } from '@/services/i18n';
 
 interface AlertEntry {
   id: string;
@@ -21,7 +22,7 @@ export class AlertCenterPanel extends Panel {
   constructor() {
     super({
       id: 'alert-center',
-      title: 'Alert Center',
+      title: t('panels.alertCenter'),
       showCount: true,
       trackActivity: true,
       infoTooltip: 'Persistent history of intelligence signals and breaking alerts — last 100 events.',

@@ -1,6 +1,7 @@
 import { Panel } from './Panel';
 import type { AirQualityReading, AqiLevel } from '@/services/air-quality';
 import { escapeHtml } from '@/utils/sanitize';
+import { t } from '@/services/i18n';
 
 export class AirQualityPanel extends Panel {
   private readings: AirQualityReading[] = [];
@@ -9,7 +10,7 @@ export class AirQualityPanel extends Panel {
   constructor() {
     super({
       id: 'air-quality',
-      title: 'Air Quality',
+      title: t('panels.airQuality'),
       showCount: false,
       trackActivity: true,
       infoTooltip: 'Global air quality index (US AQI) for 18 major cities. Open-Meteo API — PM2.5, PM10, ozone, NO₂.',

@@ -1,0 +1,36 @@
+version: 2
+updates:
+  # npm — frontend and dev tooling
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    groups:
+      dev-tooling:
+        patterns:
+          - "typescript"
+          - "vite*"
+          - "@types/*"
+          - "esbuild"
+          - "tsx"
+      tauri-cli:
+        patterns:
+          - "@tauri-apps/*"
+
+  # Cargo — Rust / Tauri backend
+  - package-ecosystem: "cargo"
+    directory: "/src-tauri"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+
+  # GitHub Actions — pin to hashed commits for supply-chain safety
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3

@@ -1,6 +1,7 @@
 import { Panel } from './Panel';
 import type { DiseaseOutbreak } from '@/services/disease-outbreak';
 import { escapeHtml } from '@/utils/sanitize';
+import { t } from '@/services/i18n';
 
 export class DiseaseOutbreakPanel extends Panel {
   private outbreaks: DiseaseOutbreak[] = [];
@@ -9,7 +10,7 @@ export class DiseaseOutbreakPanel extends Panel {
   constructor() {
     super({
       id: 'disease-outbreaks',
-      title: 'Disease Outbreaks',
+      title: t('panels.diseaseOutbreaks'),
       showCount: true,
       trackActivity: true,
       infoTooltip: 'WHO Disease Outbreak News + ReliefWeb health situation reports. Updated every 15 minutes.',

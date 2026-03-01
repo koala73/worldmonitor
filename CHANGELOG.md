@@ -2,6 +2,62 @@
 
 All notable changes to World Monitor are documented here.
 
+## [2.5.23] - 2026-03-01
+
+### Highlights
+
+- **Space Weather Panel** — NOAA SWPC real-time Kp index, solar wind, Bz, X-ray flares, geomagnetic storm alerts
+- **Disease Outbreaks Panel** — WHO Disease Outbreak News + ReliefWeb health situation reports, no API key required
+- **Air Quality Panel** — Open-Meteo AQ API for 18 global cities, US EPA AQI scale, PM2.5/PM10/O3/NO2
+- **Native macOS notifications** — osascript-based desktop alerts for critical/high breaking news events
+- **Security hardening** — rate-limited notifications, HTTPS-only URL opening, bundle ID verification on updates, href injection fixes, tightened CSP
+
+### Added
+
+- Space Weather Panel with NOAA SWPC data: Kp index, solar wind speed/density, Bz IMF, X-ray flare class, active alerts
+- Disease Outbreak Panel aggregating WHO DON JSON + ReliefWeb, deduplicated, severity-ranked
+- Air Quality Panel with Open-Meteo AQ API, AQI color coding (Good → Hazardous), 18 global cities
+- DesktopNotifications module — native macOS alerts via osascript for breaking news events
+- CSS styles for all 5 new panels (Space Weather, Disease Outbreaks, Air Quality, Cyber Threats, Alert Center)
+- `send_notification` Tauri command with 30-second rate limit and input length caps
+
+### Security
+
+- `open_url`: HTTPS-only enforcement, blocks loopback/LAN/`.local` addresses, 4096-char URL limit
+- `install_update`: bundle identifier verification via `plutil` before overwriting `/Applications/World Monitor.app`
+- `send_notification`: 30-second global rate limit, 128/256-char length caps, control character stripping
+- `fetch_polymarket`: path traversal rejection, 2048-char params length limit
+- CSP: added `object-src 'none'; base-uri 'self'; form-action 'self';`
+- Fixed href injection in AlertCenterPanel, DiseaseOutbreakPanel, SecurityAdvisoriesPanel, MacroSignalsPanel, MapPopup
+
+---
+
+## [2.5.22] - 2026-03-01
+
+### Highlights
+
+- **Claude AI Intelligence Brief** — on-demand AI summarization of all active panels using Claude Haiku
+- **Earthquakes Panel** — USGS real-time earthquake feed, M4.5+ globally with depth/magnitude coloring
+- **ISW/GDACS feeds** — Institute for the Study of War daily situation reports + Global Disaster Alert feeds
+- **Live Cyber Threat Map** — IOC visualization layer from Feodo, URLhaus, C2Intel, OTX, AbuseIPDB (500 IOCs, 15-min refresh)
+- **Cyber Threats Panel** — sortable IOC table by severity, with type/country/source/age columns
+- **Alert Center Panel** — persistent scrollable history of correlation signals and breaking alerts with unread badge
+- **World Bank Country Profiles** — GDP, GDP/capita, military %, trade %, population injected into AI country intelligence context
+- **Auto-update** — GitHub Releases API polls every 4 hours, `install_update` Tauri command handles DMG extraction
+
+### Added
+
+- Claude AI panel with on-demand intelligence brief (Haiku model, 15-min cache)
+- Earthquakes Panel using USGS GeoJSON feed (M4.5+, 30-day window)
+- ISW daily situational analysis and GDACS disaster alert feeds
+- CyberThreatPanel: severity-coded IOC table (Feodo, URLhaus, C2Intel, OTX, AbuseIPDB)
+- AlertCenterPanel: aggregates CorrelationSignals + BreakingAlerts with unread badge counter
+- World Bank REST API service (`/v2/country/{iso}/indicator/{indicator}`) for country economic profiles
+- Desktop auto-updater checking GitHub Releases every 4h (`install_update` Tauri command)
+- Live cyber threat DeckGL ScatterplotLayer enabled by default (`VITE_ENABLE_CYBER_LAYER=true`)
+
+---
+
 ## [2.5.21] - 2026-03-01
 
 ### Highlights
