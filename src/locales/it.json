@@ -206,7 +206,7 @@
     "github": "Tendenze GitHub",
     "ipo": "IPO e SPAC",
     "funding": "Finanziamenti e VC",
-    "producthunt": "Caccia al prodotto",
+    "producthunt": "Product Hunt",
     "events": "Eventi tecnologici",
     "serviceStatus": "Stato del servizio",
     "techReadiness": "Indice di prontezza tecnologica",
@@ -249,7 +249,7 @@
         "irradiator": "Irradiatore",
         "techcompany": "Azienda tecnologica",
         "ailab": "Laboratorio IA",
-        "startup": "Avvio",
+        "startup": "Startup",
         "techevent": "Evento tecnologico",
         "techhq": "Sede tecnologica",
         "accelerator": "Acceleratore"
@@ -295,7 +295,7 @@
     },
     "story": {
       "generating": "Generazione della storia...",
-      "close": "Vicino",
+      "close": "Chiudi",
       "shareTitle": "Condividi la storia",
       "save": "Salva",
       "whatsapp": "Whatsapp",
@@ -315,7 +315,7 @@
       "gotIt": "Fatto"
     },
     "downloadBanner": {
-      "title": "Tavolo disponibile",
+      "title": "Desktop disponibile",
       "description": "Prestazioni native, archiviazione sicura delle chiavi locali, riquadri della mappa offline.",
       "macSilicon": "macOS (Apple Silicon)",
       "macIntel": "macOS (Intel)",
@@ -406,7 +406,7 @@
       "table": {
         "time": "Tempo",
         "method": "Metodo",
-        "path": "Sentiero",
+        "path": "Percorso",
         "status": "Stato",
         "duration": "Durata"
       }
@@ -460,7 +460,7 @@
         "militarySea": "mil. vasi",
         "outages": "interruzioni",
         "earthquakes": "terremoti",
-        "displaced": "spostato",
+        "displaced": "sfollati",
         "climate": "Stress climatico",
         "conflictEvents": "eventi di conflitto",
         "activeStrikes": "scioperi attivi",
@@ -544,24 +544,24 @@
       "active": "Attivo",
       "proposed": "Proposto",
       "updated": "Aggiornato",
-      "actionsCount": "{{count}} actions",
-      "deadlinesCount": "{{count}} deadlines",
-      "days": "days",
-      "activeCount": "Active Regulations ({{count}})",
-      "proposedCount": "Proposed Regulations ({{count}})",
-      "moreProvisions": "+{{count}} more...",
-      "source": "Source",
+      "actionsCount": "{{count}} azioni",
+      "deadlinesCount": "{{count}} scadenze",
+      "days": "giorni",
+      "activeCount": "Regolamenti Attivi ({{count}})",
+      "proposedCount": "Regolamenti Proposti ({{count}})",
+      "moreProvisions": "+{{count}} altri...",
+      "source": "Fonte",
       "stances": {
-        "strict": "Strict",
-        "moderate": "Moderate",
-        "permissive": "Permissive",
-        "undefined": "Undefined"
+        "strict": "Restrittiva",
+        "moderate": "Moderata",
+        "permissive": "Permissiva",
+        "undefined": "Non definita"
       }
     },
     "economic": {
       "indicators": "Indicatori",
-      "oil": "Olio",
-      "gov": "Governatore",
+      "oil": "Petrolio",
+      "gov": "Gov.",
       "noData": "Nessun dato economico disponibile",
       "noOilData": "Dati sul petrolio non disponibili",
       "noOilMetrics": "Nessuna metrica del petrolio disponibile. Aggiungi EIA_API_KEY per abilitare.",
@@ -572,16 +572,16 @@
       "noOilDataRetry": "Dati petrolio temporaneamente non disponibili - nuovo tentativo in corso",
       "vsPreviousWeek": "rispetto alla settimana precedente",
       "in": "In",
-      "centralBanks": "Central Banks",
-      "noBisData": "BIS data temporarily unavailable - will retry",
-      "policyRate": "Policy Rate",
-      "exchangeRate": "Exchange Rate",
+      "centralBanks": "Banche Centrali",
+      "noBisData": "Dati BIS temporaneamente non disponibili — nuovo tentativo",
+      "policyRate": "Tasso di Riferimento",
+      "exchangeRate": "Tasso di Cambio",
       "creditToGdp": "Credit / GDP",
       "realEer": "Real EER",
-      "change": "Change",
-      "cut": "cut",
-      "hike": "hike",
-      "hold": "hold"
+      "change": "Variazione",
+      "cut": "taglio",
+      "hike": "rialzo",
+      "hold": "invariato"
     },
     "supplyChain": {
       "chokepoints": "Punti di Strozzatura",
@@ -694,23 +694,23 @@
       "clickToViewMap": "Fare clic per visualizzare sulla mappa",
       "refresh": "Aggiorna",
       "units": {
-        "fighters": "Combattenti",
-        "tankers": "Cisterne",
+        "fighters": "Caccia",
+        "tankers": "Aerocisterne",
         "awacs": "AWACS",
         "recon": "Ricognizione",
         "transport": "Trasporto",
         "bombers": "Bombardieri",
         "drones": "Droni",
         "aircraft": "Aereo",
-        "carriers": "Portatori",
-        "destroyers": "Distruttori",
+        "carriers": "Portaerei",
+        "destroyers": "Cacciatorpediniere",
         "frigates": "Fregate",
         "submarines": "Sottomarini",
         "patrol": "Pattuglia",
         "auxiliary": "Ausiliario",
-        "navalVessels": "Navi navali"
+        "navalVessels": "Unità navali"
       },
-      "infoTooltip": "<strong>Metodologia</strong><p>Aggrega aerei militari e navi militari per teatro.</p><ul><li><strong>Normale:</strong> Attività di base</li><li><strong>Elevata:</strong> Sopra la soglia (50+ velivoli)__PH_6<li><strong>Critico:</strong> Alta concentrazione (oltre 100 velivoli)</li></ul><p><strong>Attacco:</strong> Petroliere + AWACS + Caccia presenti in numero sufficiente per operazioni prolungate.</p>",
+      "infoTooltip": "<strong>Metodologia</strong><p>Aggrega aerei militari e navi militari per teatro.</p><ul><li><strong>Normale:</strong> Attività di base</li><li><strong>Elevata:</strong> Sopra la soglia (50+ velivoli)</li><li><strong>Critico:</strong> Alta concentrazione (oltre 100 velivoli)</li></ul><p><strong>Attacco:</strong> Petroliere + AWACS + Caccia presenti in numero sufficiente per operazioni prolungate.</p>",
       "scanningTheaters": "Scansione teatri operativi",
       "positions": "Posizioni aeromobili",
       "navalVesselsLoading": "Navi militari",
@@ -1170,7 +1170,7 @@
       "deathsCount": "{{count}} morti",
       "moreNotShown": "{{count}} eventi aggiuntivi non mostrati",
       "noEvents": "Nessun evento in questa categoria",
-      "infoTooltip": "<strong>Eventi georeferenziati UCDP</strong> Dati sui conflitti a livello di evento provenienti dall'Università di Uppsala.<ul><li><strong>A livello statale</strong>: Governo vs gruppo ribelle</li><li><strong>Non statale</strong>: Gruppo armato vs gruppo armato gruppo__PH_4<li><strong>Unilaterale</strong>: violenza contro i civili</li></ul>Decessi indicati come migliore stima (intervallo basso-alto). I duplicati ACLED vengono filtrati automaticamente."
+      "infoTooltip": "<strong>Eventi georeferenziati UCDP</strong> Dati sui conflitti a livello di evento provenienti dall'Università di Uppsala.<ul><li><strong>A livello statale</strong>: Governo vs gruppo ribelle</li><li><strong>Non statale</strong>: Gruppo armato vs gruppo armato gruppo</li><li><strong>Unilaterale</strong>: violenza contro i civili</li></ul>Decessi indicati come migliore stima (intervallo basso-alto). I duplicati ACLED vengono filtrati automaticamente."
     },
     "giving": {
       "activityIndex": "Indice di Attività",
@@ -1232,7 +1232,7 @@
       "infoTooltip": "<strong>Monitor delle anomalie climatiche</strong> Deviazioni di temperatura e precipitazioni rispetto al riferimento di 30 giorni. Dati da Open-Meteo (rianalisi ERA5).<ul><li><strong>Estremo</strong>: deviazione >5°C o >80 mm/giorno</li><li><strong>Moderato</strong>: deviazione >3°C o >40 mm/giorno</li></ul>Monitor 15 zone soggette a conflitti/disastri."
     },
     "newsPanel": {
-      "close": "Vicino",
+      "close": "Chiudi",
       "summarize": "Riassumi questo pannello",
       "generatingSummary": "Generazione riassunto...",
       "sources": "{{count}} fonti",

@@ -42,9 +42,9 @@
       "gpsJammingZones": "GPS Jamming Zones"
     },
     "timeAgo": {
-      "m": "{{count}}hace m",
-      "h": "{{count}}hace h",
-      "d": "{{count}}hace d"
+      "m": "Hace {{count}}m",
+      "h": "Hace {{count}}h",
+      "d": "Hace {{count}}d"
     },
     "infra": {
       "pipeline": "Oleoductos",
@@ -206,7 +206,7 @@
     "github": "Tendencias de GitHub",
     "ipo": "IPO y SPAC",
     "funding": "Financiación y VC",
-    "producthunt": "Búsqueda de productos",
+    "producthunt": "Product Hunt",
     "events": "Eventos tecnológicos",
     "serviceStatus": "Estado del servicio",
     "techReadiness": "Índice de preparación tecnológica",
@@ -231,7 +231,7 @@
       "noResults": "No results found",
       "navigate": "navegar por",
       "select": "seleccionar",
-      "close": "cerca",
+      "close": "cerrar",
       "types": {
         "country": "País",
         "news": "Noticias",
@@ -249,7 +249,7 @@
         "irradiator": "Irradiador",
         "techcompany": "Empresa tecnológica",
         "ailab": "Laboratorio de IA",
-        "startup": "Puesta en marcha",
+        "startup": "Startup",
         "techevent": "Evento tecnológico",
         "techhq": "Sede tecnológica",
         "accelerator": "Aceleradora"
@@ -295,14 +295,14 @@
     },
     "story": {
       "generating": "Generando historia...",
-      "close": "Cerca",
+      "close": "Cerrar",
       "shareTitle": "Compartir historia",
-      "save": "Ahorrar",
+      "save": "Guardar",
       "whatsapp": "WhatsApp",
       "twitter": "X",
       "linkedin": "LinkedIn",
       "copyLink": "Enlace",
-      "saved": "¡Salvado!",
+      "saved": "¡Guardado!",
       "copied": "¡Copiado!",
       "opening": "Apertura...",
       "error": "No se pudo generar la historia."
@@ -406,7 +406,7 @@
       "table": {
         "time": "Tiempo",
         "method": "Método",
-        "path": "Camino",
+        "path": "Ruta",
         "status": "Estado",
         "duration": "Duración"
       }
@@ -523,8 +523,8 @@
       "addKeywords": "Agregue palabras clave para monitorear las noticias",
       "noMatches": "No hay coincidencias en {{count}} artículos",
       "showingMatches": "Mostrando {{count}} de {{total}} coincidencias",
-      "match": "fósforo",
-      "matches": "partidos"
+      "match": "coincidencia",
+      "matches": "coincidencias"
     },
     "regulation": {
       "dashboard": "AI Regulation Dashboard",
@@ -544,24 +544,24 @@
       "active": "Activo",
       "proposed": "Propuesto",
       "updated": "Actualizado",
-      "actionsCount": "{{count}} actions",
-      "deadlinesCount": "{{count}} deadlines",
-      "days": "days",
-      "activeCount": "Active Regulations ({{count}})",
-      "proposedCount": "Proposed Regulations ({{count}})",
-      "moreProvisions": "+{{count}} more...",
-      "source": "Source",
+      "actionsCount": "{{count}} acciones",
+      "deadlinesCount": "{{count}} plazos",
+      "days": "días",
+      "activeCount": "Regulaciones Activas ({{count}})",
+      "proposedCount": "Regulaciones Propuestas ({{count}})",
+      "moreProvisions": "+{{count}} más...",
+      "source": "Fuente",
       "stances": {
-        "strict": "Strict",
-        "moderate": "Moderate",
-        "permissive": "Permissive",
-        "undefined": "Undefined"
+        "strict": "Estricta",
+        "moderate": "Moderada",
+        "permissive": "Permisiva",
+        "undefined": "Indefinida"
       }
     },
     "economic": {
       "indicators": "Indicadores",
-      "oil": "Aceite",
-      "gov": "Gobernador",
+      "oil": "Petróleo",
+      "gov": "Gob.",
       "noData": "No hay datos económicos disponibles",
       "noOilData": "Datos de petróleo no disponibles",
       "noOilMetrics": "No hay métricas de petróleo disponibles. Agregue EIA_API_KEY para habilitar.",
@@ -572,16 +572,16 @@
       "noOilDataRetry": "Los datos sobre el petróleo no están disponibles temporalmente; lo volveremos a intentar",
       "vsPreviousWeek": "vs semana anterior",
       "in": "en",
-      "centralBanks": "Central Banks",
-      "noBisData": "BIS data temporarily unavailable - will retry",
-      "policyRate": "Policy Rate",
-      "exchangeRate": "Exchange Rate",
+      "centralBanks": "Bancos Centrales",
+      "noBisData": "Datos BIS temporalmente no disponibles — reintentando",
+      "policyRate": "Tasa de Referencia",
+      "exchangeRate": "Tipo de Cambio",
       "creditToGdp": "Credit / GDP",
       "realEer": "Real EER",
-      "change": "Change",
-      "cut": "cut",
-      "hike": "hike",
-      "hold": "hold"
+      "change": "Cambio",
+      "cut": "recorte",
+      "hike": "subida",
+      "hold": "sin cambios"
     },
     "supplyChain": {
       "chokepoints": "Cuellos de Botella",
@@ -694,15 +694,15 @@
       "clickToViewMap": "Haga clic para ver en el mapa",
       "refresh": "Refrescar",
       "units": {
-        "fighters": "luchadores",
-        "tankers": "petroleros",
+        "fighters": "Cazas",
+        "tankers": "Aviones cisterna",
         "awacs": "AWACS",
         "recon": "reconocimiento",
         "transport": "Transporte",
         "bombers": "Bombarderos",
         "drones": "Drones",
         "aircraft": "Aeronave",
-        "carriers": "Transportistas",
+        "carriers": "Portaaviones",
         "destroyers": "Destructores",
         "frigates": "Fragatas",
         "submarines": "submarinos",
@@ -777,7 +777,7 @@
       "info": "INFO"
     },
     "deckgl": {
-      "zoomIn": "Dar un golpe de zoom",
+      "zoomIn": "Acercar",
       "zoomOut": "Alejar",
       "resetView": "Restablecer vista",
       "legend": {
@@ -1030,7 +1030,7 @@
       "noCountryImpacts": "No se detectaron impactos en el país",
       "alternativeRoutes": "Rutas alternativas",
       "countriesAffected": "Países afectados ({{count}})",
-      "links": "campo de golf",
+      "links": "enlaces",
       "selectInfrastructureHint": "Seleccionar infraestructura para analizar el impacto en cascada",
       "infoTooltip": "<strong>Análisis en cascada</strong> Modela dependencias de infraestructura:<ul><li>Cables submarinos, ductos, puertos, puntos de estrangulamiento</li><li>Selecciona infraestructura para simular fallas</li><li>Muestra los países afectados y la pérdida de capacidad</li><li>Identifica rutas redundantes</li></ul>Datos de TeleGeografía y fuentes de la industria."
     },
@@ -1222,7 +1222,7 @@
       "noAnomalies": "No se detectaron anomalías significativas",
       "zone": "Zona",
       "temp": "Temperatura",
-      "precip": "Precipicio",
+      "precip": "Precip.",
       "severityLabel": "Gravedad",
       "severity": {
         "extreme": "EXTREMO",
@@ -1232,7 +1232,7 @@
       "infoTooltip": "<strong>Monitor de anomalías climáticas</strong> Desviaciones de temperatura y precipitación con respecto a la línea base de 30 días. Datos de Open-Meteo (reanálisis ERA5).<ul><li><strong>Extremo</strong>: >5°C o >80mm/día de desviación</li><li><strong>Moderado</strong>: >3°C o >40mm/día de desviación</li></ul>Monitorea 15 zonas propensas a conflictos/desastres."
     },
     "newsPanel": {
-      "close": "Cerca",
+      "close": "Cerrar",
       "summarize": "Resumir este panel",
       "generatingSummary": "Generando resumen...",
       "sources": "{{count}} fuentes",
