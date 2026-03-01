@@ -113,7 +113,12 @@ export function getRemoteApiBaseUrl(): string {
   }
 
   const variant = import.meta.env.VITE_VARIANT || 'full';
-  return DEFAULT_REMOTE_HOSTS[variant] ?? DEFAULT_REMOTE_HOSTS.full ?? '';
+  const fromHosts = DEFAULT_REMOTE_HOSTS[variant] ?? DEFAULT_REMOTE_HOSTS.full ?? '';
+  if (fromHosts) return fromHosts;
+
+  // Desktop builds may not set VITE_WS_API_URL; default to production.
+  if (isDesktopRuntime()) return 'https://worldmonitor.app';
+  return '';
 }
 
 export function toRuntimeUrl(path: string): string {

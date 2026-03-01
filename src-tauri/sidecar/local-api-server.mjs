@@ -1002,12 +1002,14 @@ async function dispatch(requestUrl, req, routes, context) {
     }
     return json({ verboseMode });
   }
-  // Registration — call Convex directly (desktop frontend bypasses sidecar for this endpoint;
-  // this handler only runs when CONVEX_URL is available, e.g. self-hosted deployments)
+  // Registration — call Convex directly when CONVEX_URL is available (self-hosted),
+  // otherwise proxy to cloud (desktop sidecar never has CONVEX_URL).
   if (requestUrl.pathname === '/api/register-interest' && req.method === 'POST') {
     const convexUrl = process.env.CONVEX_URL;
     if (!convexUrl) {
-      return json({ error: 'Registration service not configured — use cloud endpoint directly' }, 503);
+      const cloudResponse = await tryCloudFallback(requestUrl, req, context, 'no CONVEX_URL');
+      if (cloudResponse) return cloudResponse;
+      return json({ error: 'Registration service unavailable' }, 503);
     }
     try {
       const body = await new Promise((resolve, reject) => {
