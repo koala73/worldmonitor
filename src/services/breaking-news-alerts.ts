@@ -16,6 +16,7 @@ export interface AlertSettings {
   enabled: boolean;
   soundEnabled: boolean;
   desktopNotificationsEnabled: boolean;
+  popupEnabled: boolean;
   sensitivity: 'critical-only' | 'critical-and-high';
 }
 
@@ -28,6 +29,7 @@ const DEFAULT_SETTINGS: AlertSettings = {
   enabled: true,
   soundEnabled: true,
   desktopNotificationsEnabled: true,
+  popupEnabled: true,
   sensitivity: 'critical-and-high',
 };
 

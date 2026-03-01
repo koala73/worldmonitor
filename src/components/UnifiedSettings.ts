@@ -4,6 +4,7 @@ import { SITE_VARIANT } from '@/config/variant';
 import { LANGUAGES, changeLanguage, getCurrentLanguage, t } from '@/services/i18n';
 import { getAiFlowSettings, setAiFlowSetting, getStreamQuality, setStreamQuality, STREAM_QUALITY_OPTIONS } from '@/services/ai-flow-settings';
 import type { StreamQuality } from '@/services/ai-flow-settings';
+import { getAlertSettings, updateAlertSettings } from '@/services/breaking-news-alerts';
 import { escapeHtml } from '@/utils/sanitize';
 import { trackLanguageChange } from '@/services/analytics';
 import type { PanelConfig } from '@/types';
@@ -176,6 +177,8 @@ export class UnifiedSettings {
         setAiFlowSetting('headlineMemory', target.checked);
       } else if (target.id === 'us-badge-anim') {
         setAiFlowSetting('badgeAnimation', target.checked);
+      } else if (target.id === 'us-notification-popups') {
+        updateAlertSettings({ popupEnabled: target.checked });
       }
     });
 
@@ -317,6 +320,11 @@ export class UnifiedSettings {
     // Intelligence section
     html += `<div class="ai-flow-section-label">${t('components.insights.sectionIntelligence')}</div>`;
     html += this.toggleRowHtml('us-headline-memory', t('components.insights.headlineMemoryLabel'), t('components.insights.headlineMemoryDesc'), settings.headlineMemory);
+
+    // Notifications section
+    const alertSettings = getAlertSettings();
+    html += `<div class="ai-flow-section-label">${t('components.insights.sectionNotifications')}</div>`;
+    html += this.toggleRowHtml('us-notification-popups', t('components.insights.notificationPopupsLabel'), t('components.insights.notificationPopupsDesc'), alertSettings.popupEnabled);
 
     // Streaming quality section
     const currentQuality = getStreamQuality();
