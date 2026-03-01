@@ -43,6 +43,42 @@ let translationPromise: Promise<boolean> | null = null;
 
 const HEBREW_RE = /[\u0590-\u05FF]/;
 
+const STATIC_TRANSLATIONS: Record<string, string> = {
+  'ירי רקטות וטילים': 'Rocket and missile fire',
+  'חדירת כלי טיס עוין': 'Hostile aircraft intrusion',
+  'רעידת אדמה': 'Earthquake',
+  'צונאמי': 'Tsunami',
+  'חומרים מסוכנים': 'Hazardous materials',
+  'פריצת מחסום': 'Security breach',
+  'חשש לחדירה עוינת': 'Suspected hostile infiltration',
+  'אירוע רדיולוגי': 'Radiological event',
+  'אירוע חומרים מסוכנים': 'Hazardous materials event',
+  'היכנסו למרחב המוגן': 'Enter the protected space',
+  'ניתן לצאת מהמרחב המוגן אך יש להישאר בקרבתו': 'You may leave the protected space but stay nearby',
+  'ניתן לצאת מהמרחב המוגן': 'You may leave the protected space',
+  'בדקות הקרובות צפויות להתקבל התרעות באזורך': 'Alerts expected in your area soon',
+  'התרעה לא קונבנציונלית': 'Non-conventional threat alert',
+  'ירי שיגור רקטות': 'Rocket launch fire',
+  'התקפה כימית': 'Chemical attack',
+  'חדירת מחבלים': 'Terrorist infiltration',
+  'שריפה גדולה': 'Large fire',
+  'אזעקה': 'Siren alert',
+  'ירי רקטות': 'Rocket fire',
+  'ירי טילים': 'Missile fire',
+  'התגוננו': 'Take shelter',
+};
+
+function staticTranslate(text: string): string {
+  if (!text || !HEBREW_RE.test(text)) return text;
+  const direct = STATIC_TRANSLATIONS[text.trim()];
+  if (direct) return direct;
+  let result = text;
+  for (const [heb, eng] of Object.entries(STATIC_TRANSLATIONS)) {
+    if (result.includes(heb)) result = result.replace(heb, eng);
+  }
+  return result;
+}
+
 function hasHebrew(text: string): boolean {
   return HEBREW_RE.test(text);
 }
@@ -99,6 +135,14 @@ function applyTranslations(alerts: OrefAlert[]): OrefAlert[] {
   return alerts.map(a => {
     const cached = translationCache.get(a.id);
     if (cached) return { ...a, ...cached };
+    if (alertNeedsTranslation(a)) {
+      return {
+        ...a,
+        title: staticTranslate(a.title),
+        data: a.data.map(staticTranslate),
+        desc: staticTranslate(a.desc),
+      };
+    }
     return a;
   });
 }
