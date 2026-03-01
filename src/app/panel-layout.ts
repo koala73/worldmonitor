@@ -500,7 +500,7 @@ export class PanelLayoutManager implements AppModule {
       const gdeltIntelPanel = new GdeltIntelPanel();
       this.ctx.panels['gdelt-intel'] = gdeltIntelPanel;
 
-      const deductionPanel = new DeductionPanel();
+      const deductionPanel = new DeductionPanel(() => this.ctx.allNews);
       this.ctx.panels['deduction'] = deductionPanel;
 
       const ciiPanel = new CIIPanel();
@@ -576,7 +576,7 @@ export class PanelLayoutManager implements AppModule {
       const liveWebcamsPanel = new LiveWebcamsPanel();
       this.ctx.panels['live-webcams'] = liveWebcamsPanel;
 
-      this.ctx.panels['events'] = new TechEventsPanel('events');
+      this.ctx.panels['events'] = new TechEventsPanel('events', () => this.ctx.allNews);
 
       const serviceStatusPanel = new ServiceStatusPanel();
       this.ctx.panels['service-status'] = serviceStatusPanel;

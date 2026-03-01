@@ -2,6 +2,7 @@ import { Panel } from './Panel';
 import { IntelligenceServiceClient } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import { h, replaceChildren } from '@/utils/dom-utils';
 import { marked } from 'marked';
+import type { NewsItem } from '@/types';
 
 const client = new IntelligenceServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
 
@@ -11,13 +12,16 @@ export class DeductionPanel extends Panel {
     private geoInputEl: HTMLInputElement;
     private resultContainer: HTMLElement;
     private isSubmitting = false;
+    private getLatestNews?: () => NewsItem[];
 
-    constructor() {
+    constructor(getLatestNews?: () => NewsItem[]) {
         super({
             id: 'deduction',
             title: 'Deduct Situation',
             infoTooltip: 'Use AI intelligence to deduct the timeline and impact of a hypothetical or current event.',
         });
+
+        this.getLatestNews = getLatestNews;
 
         this.inputEl = h('textarea', {
             className: 'deduction-input',
@@ -71,9 +75,34 @@ export class DeductionPanel extends Panel {
         .deduction-result h3 { margin-top: 12px; margin-bottom: 4px; font-size: 1.1em; color: var(--text-bright, #fff); }
         .deduction-result ul { padding-left: 20px; margin-top: 4px; }
         .deduction-result li { margin-bottom: 4px; }
-      `;
+            `;
             document.head.appendChild(style);
         }
+
+        // Listen for global context deduction requests from other panels
+        document.addEventListener('wm:deduct-context', ((e: CustomEvent<{ query?: string; geoContext: string; autoSubmit?: boolean }>) => {
+            const { query, geoContext, autoSubmit } = e.detail;
+
+            if (query) {
+                this.inputEl.value = query;
+            }
+            if (geoContext) {
+                this.geoInputEl.value = geoContext;
+            }
+
+            // Bring panel into view if it was hidden
+            this.show();
+
+            // Flash the panel to indicate it received data
+            this.element.animate([
+                { backgroundColor: 'var(--accent-hover, #2563eb)' },
+                { backgroundColor: 'transparent' }
+            ], { duration: 800, easing: 'ease-out' });
+
+            if (autoSubmit && this.inputEl.value) {
+                this.formEl.requestSubmit();
+            }
+        }) as EventListener);
     }
 
     private async handleSubmit(e: Event) {
@@ -83,7 +112,15 @@ export class DeductionPanel extends Panel {
         const query = this.inputEl.value.trim();
         if (!query) return;
 
-        const geoContext = this.geoInputEl.value.trim();
+        let geoContext = this.geoInputEl.value.trim();
+
+        if (this.getLatestNews && !geoContext.includes('Recent News:')) {
+            const news = this.getLatestNews().slice(0, 15);
+            if (news.length > 0) {
+                const newsContext = 'Recent News:\n' + news.map(n => `- ${n.title} (${n.source})`).join('\n');
+                geoContext = geoContext ? `${geoContext}\n\n${newsContext}` : newsContext;
+            }
+        }
 
         this.isSubmitting = true;
         const submitBtn = this.formEl.querySelector('button');

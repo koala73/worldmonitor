@@ -4,6 +4,7 @@ import { sanitizeUrl } from '@/utils/sanitize';
 import { h, replaceChildren } from '@/utils/dom-utils';
 import { ResearchServiceClient } from '@/generated/client/worldmonitor/research/v1/service_client';
 import type { TechEvent } from '@/generated/client/worldmonitor/research/v1/service_client';
+import type { NewsItem } from '@/types';
 
 type ViewMode = 'upcoming' | 'conferences' | 'earnings' | 'all';
 
@@ -15,7 +16,7 @@ export class TechEventsPanel extends Panel {
   private loading = true;
   private error: string | null = null;
 
-  constructor(id: string) {
+  constructor(id: string, private getLatestNews?: () => NewsItem[]) {
     super({ id, title: t('panels.events'), showCount: true });
     this.element.classList.add('panel-tall');
     void this.fetchEvents();
@@ -202,6 +203,33 @@ export class TechEventsPanel extends Panel {
           event.location
             ? h('span', { className: 'event-location' }, event.location)
             : false,
+          h('button', {
+            className: 'event-deduce-link',
+            title: 'Deduce Situation with AI',
+            style: 'background: none; border: none; cursor: pointer; opacity: 0.7; font-size: 1.1em; transition: opacity 0.2s; margin-left: auto; padding-right: 4px;',
+            onClick: (e: Event) => {
+              e.preventDefault();
+              e.stopPropagation();
+
+              let geoContext = `Event details: ${event.title} (${event.type}) taking place from ${dateStr}${endDateStr}. Location: ${event.location || 'Unknown/Virtual'}.`;
+
+              if (this.getLatestNews) {
+                const news = this.getLatestNews().slice(0, 15);
+                if (news.length > 0) {
+                  const newsContext = 'Recent News:\n' + news.map(n => `- ${n.title} (${n.source})`).join('\n');
+                  geoContext += `\n\n${newsContext}`;
+                }
+              }
+
+              document.dispatchEvent(new CustomEvent('wm:deduct-context', {
+                detail: {
+                  query: `What is the expected impact of the tech event: ${event.title}?`,
+                  geoContext,
+                  autoSubmit: true
+                }
+              }));
+            },
+          }, '🧠'),
           event.coords && !event.coords.virtual
             ? h('button', {
               className: 'event-map-link',
