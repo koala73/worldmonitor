@@ -8,6 +8,9 @@ import { dataFreshness } from './data-freshness';
 import { ingestHeadlines } from './trending-keywords';
 import { getCurrentLanguage } from './i18n';
 import { canQueueAiClassification, AI_CLASSIFY_MAX_PER_FEED } from './ai-classify-queue';
+import { mlWorker } from './ml-worker';
+import { storeVectors } from './vector-store';
+import { hashString } from '@/utils/hash';
 
 const FEED_COOLDOWN_MS = 5 * 60 * 1000;
 const MAX_FAILURES = 2;
@@ -280,6 +283,24 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
       source: item.source,
       link: item.link,
     })));
+
+    // Vectorize & store locally in the background
+    if (mlWorker.isAvailable) {
+      mlWorker.embedTexts(parsed.map(item => item.title))
+        .then(embeddings => {
+          const vectors = parsed.map((item, idx) => ({
+            id: hashString(item.link || item.title),
+            text: item.title,
+            embedding: embeddings[idx]!,
+            pubDate: item.pubDate.getTime(),
+            source: item.source,
+            url: item.link,
+            tags: item.locationName ? [item.locationName] : undefined
+          }));
+          storeVectors(vectors).catch(e => console.warn('[RAG] Failed to store vectors', e));
+        })
+        .catch(e => console.warn('[RAG] Failed to embed headlines', e));
+    }
 
     const aiCandidates = parsed
       .filter(item => item.threat.source === 'keyword')

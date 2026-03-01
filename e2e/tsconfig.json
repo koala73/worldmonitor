@@ -1,0 +1,13 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": [
+      "node",
+      "vite/client"
+    ],
+    "allowJs": true
+  },
+  "include": [
+    "**/*.ts"
+  ]
+}

@@ -14,6 +14,7 @@ import { openStoryModal } from '@/components/StoryModal';
 import { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
 import { BETA_MODE } from '@/config/beta';
 import { mlWorker } from '@/services/ml-worker';
+import { searchSimilar } from '@/services/vector-store';
 import { t } from '@/services/i18n';
 import { trackCountrySelected, trackCountryBriefOpened } from '@/services/analytics';
 import type { StrategicPosturePanel } from '@/components/StrategicPosturePanel';
@@ -216,7 +217,26 @@ export class CountryIntelManager implements AppModule {
 
       let briefText = '';
       try {
-        const contextSnapshot = this.buildBriefContextSnapshot(country, code, score, signals, context);
+        let contextSnapshot = this.buildBriefContextSnapshot(country, code, score, signals, context);
+
+        // Enrich context with RAG-retrieved historical events when available
+        if (mlWorker.isAvailable && headlines.length > 0) {
+          try {
+            const [queryEmbedding] = await mlWorker.embedTexts([headlines.join(' ')]);
+            if (queryEmbedding) {
+              const similarVectors = await searchSimilar(queryEmbedding, 3);
+              if (similarVectors.length > 0) {
+                const historicalEvents = similarVectors.map(v =>
+                  `- ${v.text} (${new Date(v.pubDate).toLocaleDateString()})`
+                ).join('\n');
+                contextSnapshot += `\n[Historical Context from Local Vector Store]:\n${historicalEvents}`;
+              }
+            }
+          } catch (e) {
+            console.warn('[RAG] Failed to retrieve context', e);
+          }
+        }
+
         briefText = await this.fetchCountryIntelBrief(code, contextSnapshot);
       } catch { /* server unreachable */ }
 
