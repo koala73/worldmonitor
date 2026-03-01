@@ -1431,7 +1431,7 @@
       "regionAsia": "아시아",
       "regionMiddleEast": "중동",
       "regionAfrica": "아프리카",
-      "invalidHandle": "유효한 YouTube 핸들을 입력하세요 (예: @ChannelName)",
+      "regionOceania": "오세아니아",      "invalidHandle": "유효한 YouTube 핸들을 입력하세요 (예: @ChannelName)",
       "channelNotFound": "YouTube 채널을 찾을 수 없습니다",
       "verifying": "확인 중…"
     }

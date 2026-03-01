@@ -1308,7 +1308,8 @@
       "regionLatinAmerica": "中南米",
       "regionAsia": "アジア",
       "regionMiddleEast": "中東",
-      "regionAfrica": "アフリカ"
+      "regionAfrica": "アフリカ",
+      "regionOceania": "オセアニア"
     },
     "securityAdvisories": {
       "loading": "渡航情報を取得中...",
