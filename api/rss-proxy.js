@@ -161,6 +161,8 @@ const ALLOWED_DOMAINS = [
   // Accelerators
   'www.techstars.com',
   // Middle East & Regional News
+  'asharqbusiness.com',
+  'asharq.com',
   'www.omanobserver.om',
   'english.alarabiya.net',
   'www.arabnews.com',
