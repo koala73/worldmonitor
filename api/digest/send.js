@@ -134,13 +134,14 @@ export default async function handler(req) {
 async function generateDigest(variant, lang) {
     try {
         // Fetch feed data from our own API
-        const baseUrl = process.env.VERCEL_URL
-            ? `https://${process.env.VERCEL_URL}`
-            : 'https://worldmonitor.app';
+        const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000';
 
-        const feedUrl = `${baseUrl}/server/worldmonitor/news/v1/list-feed-digest?variant=${variant}&lang=${lang}`;
+        const feedUrl = `${baseUrl}/api/news/v1/list-feed-digest?variant=${variant}&lang=${lang}`;
         const resp = await fetch(feedUrl, {
-            headers: { 'User-Agent': 'WorldMonitor-Digest/1.0' },
+            headers: {
+                'User-Agent': 'Mozilla/5.0 WorldMonitor-Digest/1.0',
+                'Origin': baseUrl,
+            },
             signal: AbortSignal.timeout(20_000),
         });
 

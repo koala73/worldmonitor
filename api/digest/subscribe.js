@@ -122,8 +122,9 @@ async function sendConfirmationEmail(email, token) {
         return;
     }
 
-    const confirmUrl = `https://worldmonitor.app/api/digest/confirm?token=${token}`;
-    const manageUrl = `https://worldmonitor.app/api/digest/manage?token=${token}`;
+    const base = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000';
+    const confirmUrl = `${base}/api/digest/confirm?token=${token}`;
+    const manageUrl = `${base}/api/digest/manage?token=${token}`;
 
     const html = `
     <div style="background:#0a0a0a;color:#e0e0e0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,monospace;padding:40px 20px;text-align:center;">

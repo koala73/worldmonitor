@@ -359,6 +359,38 @@ export class UnifiedSettings {
     this.overlay.querySelectorAll('.unified-settings-tab-panel').forEach(el => {
       el.classList.toggle('active', (el as HTMLElement).dataset.panelId === tab);
     });
+
+    // When opening digest tab with pending status, check if confirmed
+    if (tab === 'digest' && this.digestStatus === 'pending' && this.digestEmail) {
+      void this.checkDigestConfirmation();
+    }
+  }
+
+  private async checkDigestConfirmation(): Promise<void> {
+    try {
+      const resp = await fetch('/api/digest/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: this.digestEmail,
+          frequency: this.digestFrequency,
+          variant: SITE_VARIANT || 'full',
+          lang: getCurrentLanguage(),
+          categories: [...this.digestCategories],
+        }),
+      });
+      const data = await resp.json();
+      if (data.status === 'already_subscribed') {
+        this.digestStatus = 'confirmed';
+        this.digestToken = data.token;
+        this.persistDigestState();
+        // Re-render the digest panel content
+        const panel = this.overlay.querySelector('[data-panel-id="digest"]');
+        if (panel) panel.innerHTML = this.renderDigestContent();
+      }
+    } catch {
+      // Silently ignore — will check again next time
+    }
   }
 
   private renderGeneralContent(): string {
