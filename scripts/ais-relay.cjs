@@ -659,6 +659,7 @@ async function orefBootstrapHistoryFromUpstream() {
     .filter(h => new Date(h.timestamp).getTime() > cutoff24h)
     .reduce((sum, h) => sum + h.alerts.reduce((s, a) => s + (Array.isArray(a.data) ? a.data.length : 1), 0), 0);
   orefState.bootstrapSource = 'upstream';
+  if (history.length > 0) orefState._persistVersion++;
   console.log(`[Relay] OREF history bootstrap: ${totalAlertRecords} records across ${history.length} waves`);
 }
 
