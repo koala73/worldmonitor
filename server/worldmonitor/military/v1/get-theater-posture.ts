@@ -248,7 +248,7 @@ async function fetchTheaterPostureFresh(): Promise<GetTheaterPostureResponse> {
   await Promise.all([
     setCachedJson(STALE_CACHE_KEY, result, STALE_TTL),
     setCachedJson(BACKUP_CACHE_KEY, result, BACKUP_TTL),
-  ]).catch(() => {});
+  ]);
 
   return result;
 }

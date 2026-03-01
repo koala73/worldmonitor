@@ -141,7 +141,7 @@ export async function getDisplacementSummary(
   try {
     // Redis shared cache (keyed by year)
     const year = req.year > 0 ? req.year : new Date().getFullYear();
-    const cacheKey = `${REDIS_CACHE_KEY}:${year}:${req.countryLimit || 0}:${req.flowLimit || 0}`;
+    const cacheKey = `${REDIS_CACHE_KEY}:${year}`;
 
     const result = await cachedFetchJson<GetDisplacementSummaryResponse>(cacheKey, REDIS_CACHE_TTL, async () => {
       // 1. Determine year with fallback
@@ -281,13 +281,8 @@ export async function getDisplacementSummary(
         return bSize - aSize;
       });
 
-      // 5. Apply countryLimit
-      const limitedCountries = req.countryLimit > 0
-        ? sortedCountries.slice(0, req.countryLimit)
-        : sortedCountries;
-
-      // 6. Build proto-shaped countries with GeoCoordinates
-      const protoCountries = limitedCountries.map((d) => ({
+      // 5. Build proto-shaped countries with GeoCoordinates (cache ALL — limits applied post-cache)
+      const protoCountries = sortedCountries.map((d) => ({
         code: d.code,
         name: d.name,
         refugees: d.refugees,
@@ -301,11 +296,9 @@ export async function getDisplacementSummary(
         location: getCoordinates(d.code),
       }));
 
-      // 7. Build flows sorted by refugees descending, capped by flowLimit
-      const flowLimit = req.flowLimit > 0 ? req.flowLimit : 50;
+      // 6. Build flows sorted by refugees descending (cache ALL — limits applied post-cache)
       const protoFlows = Object.values(flowMap)
         .sort((a, b) => b.refugees - a.refugees)
-        .slice(0, flowLimit)
         .map((f) => ({
           originCode: f.originCode,
           originName: f.originName,
@@ -332,6 +325,15 @@ export async function getDisplacementSummary(
       };
     });
 
+    if (result?.summary) {
+      const summary = { ...result.summary };
+      if (req.countryLimit > 0) {
+        summary.countries = summary.countries.slice(0, req.countryLimit);
+      }
+      const flowLimit = req.flowLimit > 0 ? req.flowLimit : 50;
+      summary.topFlows = summary.topFlows.slice(0, flowLimit);
+      return { summary };
+    }
     return result || emptyResponse;
   } catch {
     // Graceful degradation: return empty summary on ANY failure

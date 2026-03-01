@@ -287,6 +287,8 @@ async function checkServiceStatus(service: ServiceDef): Promise<ServiceStatus> {
 const INFRA_CACHE_KEY = 'infra:service-statuses:v1';
 const INFRA_CACHE_TTL = 1800; // 30 minutes
 
+let fallbackStatusesCache: { data: ServiceStatus[]; ts: number } | null = null;
+
 export async function listServiceStatuses(
   _ctx: ServerContext,
   req: ListServiceStatusesRequest,
@@ -295,12 +297,15 @@ export async function listServiceStatuses(
     const results = await cachedFetchJson<ServiceStatus[]>(INFRA_CACHE_KEY, INFRA_CACHE_TTL, async () => {
       const fresh = await Promise.all(SERVICES.map(checkServiceStatus));
       return fresh.length > 0 ? fresh : null;
-    }) || [];
+    });
+
+    const effective = results || fallbackStatusesCache?.data || [];
+    if (results) fallbackStatusesCache = { data: results, ts: Date.now() };
 
     // Apply optional status filter
-    let filtered = results;
+    let filtered = effective;
     if (req.status && req.status !== 'SERVICE_OPERATIONAL_STATUS_UNSPECIFIED') {
-      filtered = results.filter((s) => s.status === req.status);
+      filtered = effective.filter((s) => s.status === req.status);
     }
 
     // Sort: outages first, then degraded, then operational
@@ -316,6 +321,6 @@ export async function listServiceStatuses(
 
     return { statuses: filtered };
   } catch {
-    return { statuses: [] };
+    return { statuses: fallbackStatusesCache?.data || [] };
   }
 }

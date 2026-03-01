@@ -15,6 +15,8 @@ import { cachedFetchJson } from '../../../_shared/redis';
 const REDIS_CACHE_KEY = 'infra:outages:v1';
 const REDIS_CACHE_TTL = 1800; // 30 min — Cloudflare Radar rate-limited
 
+let fallbackOutagesCache: { data: ListInternetOutagesResponse; ts: number } | null = null;
+
 // ========================================================================
 // Constants
 // ========================================================================
@@ -173,7 +175,9 @@ export async function listInternetOutages(
       return outages.length > 0 ? { outages, pagination: undefined } : null;
     });
 
-    const outages = result?.outages || [];
+    if (result) fallbackOutagesCache = { data: result, ts: Date.now() };
+    const effective = result || fallbackOutagesCache?.data;
+    const outages = effective?.outages || [];
 
     // Always apply filters (to both cached and fresh data)
     let filtered = outages;
@@ -190,6 +194,6 @@ export async function listInternetOutages(
 
     return { outages: filtered, pagination: undefined };
   } catch {
-    return { outages: [], pagination: undefined };
+    return fallbackOutagesCache?.data || { outages: [], pagination: undefined };
   }
 }
