@@ -5,7 +5,7 @@
 
 import { pipeline, env } from '@xenova/transformers';
 import { MODEL_CONFIGS, type ModelConfig } from '@/config/ml-config';
-import { storeVectors, searchVectors, getCount, closeDB, sanitizeTitle, type VectorSearchResult } from './vector-db';
+import { storeVectors, searchVectors, getCount, resetStore, sanitizeTitle, type VectorSearchResult } from './vector-db';
 
 // Configure transformers.js
 env.allowLocalModels = false;
@@ -471,7 +471,7 @@ self.onmessage = async (event: MessageEvent<MLWorkerMessage>) => {
       }
 
       case 'vector-store-reset': {
-        await closeDB();
+        await resetStore();
         self.postMessage({
           type: 'vector-store-reset-result',
           id: message.id,

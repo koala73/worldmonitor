@@ -199,3 +199,17 @@ export function closeDB(): Promise<void> {
     }
   });
 }
+
+export function resetStore(): Promise<void> {
+  return enqueue(async () => {
+    const database = await openDB();
+    await new Promise<void>((resolve, reject) => {
+      const tx = database.transaction(STORE_NAME, 'readwrite');
+      tx.objectStore(STORE_NAME).clear();
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    database.close();
+    db = null;
+  });
+}

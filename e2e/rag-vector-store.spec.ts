@@ -28,17 +28,6 @@ test.describe('RAG vector store (worker-side)', () => {
     await sharedPage.evaluate(async () => {
       const { mlWorker } = await import('/src/services/ml-worker.ts');
       await mlWorker.vectorStoreReset();
-      await new Promise<void>((resolve, reject) => {
-        const req = indexedDB.deleteDatabase('worldmonitor_vector_store');
-        req.onsuccess = () => resolve();
-        req.onerror = () => reject(req.error);
-        const timeout = setTimeout(() => resolve(), 2000);
-        req.onblocked = () => {
-          // DB still has open connections despite reset; wait for onsuccess
-          clearTimeout(timeout);
-          setTimeout(() => resolve(), 2000);
-        };
-      });
     });
   }
 
