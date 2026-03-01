@@ -73,7 +73,7 @@ export class EventHandlerManager implements AppModule {
   private debouncedUrlSync = debounce(() => {
     const shareUrl = this.getShareUrl();
     if (!shareUrl) return;
-    history.replaceState(null, '', shareUrl);
+    try { history.replaceState(null, '', shareUrl); } catch {}
   }, 250);
 
   constructor(ctx: AppContext, callbacks: EventHandlerCallbacks) {

@@ -1032,7 +1032,7 @@ export class LiveNewsPanel extends Panel {
     if (this.isPlaying) {
       const wantUnmute = !this.isMuted;
       video.muted = true;
-      video.play().then(() => {
+      video.play()?.then(() => {
         if (wantUnmute && this.nativeVideoElement === video) {
           video.muted = false;
         }
@@ -1044,7 +1044,7 @@ export class LiveNewsPanel extends Panel {
     if (!this.nativeVideoElement) return;
     this.nativeVideoElement.muted = this.isMuted;
     if (this.isPlaying) {
-      this.nativeVideoElement.play().catch(() => {});
+      this.nativeVideoElement.play()?.catch(() => {});
     } else {
       this.nativeVideoElement.pause();
     }
