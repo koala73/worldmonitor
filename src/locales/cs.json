@@ -1,0 +1,2114 @@
+{
+  "app": {
+    "title": "World Monitor",
+    "description": "Globální situace s postřehy umělé inteligence"
+  },
+  "countryBrief": {
+    "identifying": "Identifikuji zemi...",
+    "locating": "Lokalizuji region...",
+    "limitedCoverage": "Omezené pokrytí",
+    "instabilityIndex": "Index nestability",
+    "notTracked": "Nesledováno — {{country}} není v seznamu CII tier-1",
+    "intelBrief": "Zpravodajská svodka",
+    "generatingBrief": "Generuji zpravodajskou svodku...",
+    "topNews": "Hlavní zprávy",
+    "activeSignals": "Aktivní signály",
+    "timeline": "7denní časová osa",
+    "predictionMarkets": "Predikční trhy",
+    "loadingMarkets": "Načítám predikční trhy...",
+    "infrastructure": "Ohrožení infrastruktury",
+    "briefUnavailable": "AI svodka není k dispozici — nastavte GROQ_API_KEY v Nastavení.",
+    "cached": "Z mezipaměti",
+    "fresh": "Aktuální",
+    "noMarkets": "Nenalezeny žádné predikční trhy",
+    "loadingIndex": "Načítám index...",
+    "components": {
+      "unrest": "Nepokoje",
+      "conflict": "Konflikt",
+      "security": "Bezpečnost",
+      "information": "Informace"
+    },
+    "signals": {
+      "protests": "protesty",
+      "militaryAir": "voj. letadla",
+      "militarySea": "voj. plavidla",
+      "outages": "výpadky",
+      "earthquakes": "zemětřesení",
+      "displaced": "vysídlení",
+      "climate": "klimatický stres",
+      "conflictEvents": "konflikty",
+      "activeStrikes": "aktivní stávky/útoky",
+      "aviationDisruptions": "narušení letišť",
+      "gpsJammingZones": "zóny rušení GPS"
+    },
+    "timeAgo": {
+      "m": "před {{count}} min",
+      "h": "před {{count}} h",
+      "d": "před {{count}} d"
+    },
+    "infra": {
+      "pipeline": "Ropovody/Plynovody",
+      "cable": "Podmořské kabely",
+      "datacenter": "Datová centra",
+      "base": "Vojenské základny",
+      "nuclear": "Jaderná zařízení",
+      "port": "Přístavy"
+    },
+    "levels": {
+      "critical": "Kritická",
+      "high": "Vysoká",
+      "elevated": "Zvýšená",
+      "moderate": "Střední",
+      "normal": "Normální",
+      "low": "Nízká"
+    },
+    "trends": {
+      "rising": "Rostoucí",
+      "falling": "Klesající",
+      "stable": "Stabilní"
+    },
+    "fallback": {
+      "instabilityIndex": "**Index nestability: {{score}}/100** ({{level}}, {{trend}})",
+      "protestsDetected": "Detekováno aktivních protestů: {{count}}",
+      "aircraftTracked": "Sledováno vojenských letadel: {{count}}",
+      "vesselsTracked": "Sledováno vojenských plavidel: {{count}}",
+      "internetOutages": "Výpadky internetu: {{count}}",
+      "recentEarthquakes": "Nedávná zemětřesení: {{count}}",
+      "stockIndex": "Akciový index: {{value}}",
+      "recentHeadlines": "**Nedávné titulky:**",
+      "activeStrikes": "Detekováno aktivních útoků/stávek: {{count}}"
+    }
+  },
+  "header": {
+    "world": "SVĚT",
+    "tech": "TECH",
+    "live": "ŽIVĚ",
+    "search": "Hledat",
+    "settings": "NASTAVENÍ",
+    "sources": "ZDROJE",
+    "copyLink": "Kopírovat odkaz",
+    "fullscreen": "Na celou obrazovku",
+    "pinMap": "Připnout mapu nahoru",
+    "viewOnGitHub": "Zobrazit na GitHubu",
+    "filterSources": "Filtrovat zdroje...",
+    "sourcesEnabled": "Zapnuto: {{enabled}}/{{total}}",
+    "finance": "FINANCE",
+    "toggleTheme": "Přepnout tmavý/světlý režim",
+    "panelDisplayCaption": "Vyberte, které panely se mají zobrazit na řídicím panelu",
+    "tabGeneral": "Obecné",
+    "tabPanels": "Panely",
+    "tabSources": "Zdroje",
+    "languageLabel": "Jazyk",
+    "sourceRegionAll": "Vše",
+    "sourceRegionWorldwide": "Celosvětově",
+    "sourceRegionUS": "Spojené státy",
+    "sourceRegionMiddleEast": "Blízký východ",
+    "sourceRegionAfrica": "Afrika",
+    "sourceRegionLatAm": "Latinská Amerika",
+    "sourceRegionAsiaPacific": "Asie a Pacifik",
+    "sourceRegionEurope": "Evropa",
+    "sourceRegionTopical": "Tématické",
+    "sourceRegionIntel": "Zpravodajství",
+    "sourceRegionTechNews": "Tech novinky",
+    "sourceRegionAiMl": "AI a ML",
+    "sourceRegionStartupsVc": "Startupy a VC",
+    "sourceRegionRegionalTech": "Regionální ekosystémy",
+    "sourceRegionDeveloper": "Vývojáři",
+    "sourceRegionCybersecurity": "Kybernetická bezpečnost",
+    "sourceRegionTechPolicy": "Politika a výzkum",
+    "sourceRegionTechMedia": "Média a podcasty",
+    "sourceRegionMarkets": "Trhy a analýzy",
+    "sourceRegionFixedIncomeFx": "Pevné výnosy a Forex",
+    "sourceRegionCommodities": "Komodity",
+    "sourceRegionCryptoDigital": "Krypto a digitál",
+    "sourceRegionCentralBanks": "Centrální banky a ekonomika",
+    "sourceRegionDeals": "Transakce a korporace",
+    "sourceRegionFinRegulation": "Finanční regulace",
+    "sourceRegionGulfMena": "Záliv a MENA",
+    "filterPanels": "Filtrovat panely...",
+    "panelCatCore": "Hlavní",
+    "panelCatIntelligence": "Zpravodajství",
+    "panelCatRegionalNews": "Regionální zprávy",
+    "panelCatMarketsFinance": "Trhy a finance",
+    "panelCatTopical": "Tématické",
+    "panelCatDataTracking": "Data a sledování",
+    "panelCatTechAi": "Technologie a AI",
+    "panelCatStartupsVc": "Startupy a VC",
+    "panelCatSecurityPolicy": "Bezpečnost a politika",
+    "panelCatMarkets": "Trhy",
+    "panelCatFixedIncomeFx": "Pevné výnosy a Forex",
+    "panelCatCommodities": "Komodity",
+    "panelCatCryptoDigital": "Krypto a digitál",
+    "panelCatCentralBanks": "Centrální banky a ekonomika",
+    "panelCatDeals": "Transakce a instituce",
+    "panelCatGulfMena": "Záliv a MENA",
+    "panelCatTradePolicy": "Obchodní politika"
+  },
+  "panels": {
+    "liveNews": "Živé zprávy",
+    "markets": "Trhy",
+    "map": "Globální situace",
+    "techMap": "Globální Tech",
+    "techHubs": "Horká Tech centra",
+    "status": "Stav systému",
+    "insights": "AI postřehy",
+    "strategicPosture": "AI strategický postoj",
+    "cii": "Nestabilita zemí",
+    "strategicRisk": "Přehled strategických rizik",
+    "intel": "Zpravodajský kanál",
+    "gdeltIntel": "Živé zpravodajství",
+    "cascade": "Kaskáda infrastruktury",
+    "politics": "Světové zprávy",
+    "us": "Spojené státy",
+    "europe": "Evropa",
+    "middleeast": "Blízký východ",
+    "africa": "Afrika",
+    "latam": "Latinská Amerika",
+    "asia": "Asie a Pacifik",
+    "energy": "Energie a zdroje",
+    "gov": "Vláda",
+    "thinktanks": "Think-tanky",
+    "polymarket": "Predikce",
+    "commodities": "Komodity",
+    "economic": "Ekonomické ukazatele",
+    "tradePolicy": "Obchodní politika",
+    "supplyChain": "Dodavatelský řetězec",
+    "finance": "Finance",
+    "tech": "Technologie",
+    "crypto": "Krypto",
+    "heatmap": "Teplotní mapa sektorů",
+    "ai": "AI/ML",
+    "layoffs": "Sledování propouštění",
+    "monitors": "Moje monitory",
+    "satelliteFires": "Požáry",
+    "macroSignals": "Tržní radar",
+    "etfFlows": "Sledování BTC ETF",
+    "stablecoins": "Stablecoiny",
+    "ucdpEvents": "UCDP Konflikty",
+    "giving": "Globální dárcovství",
+    "displacement": "UNHCR Vysídlení",
+    "climate": "Klimatické anomálie",
+    "populationExposure": "Expozice obyvatelstva",
+    "securityAdvisories": "Bezpečnostní varování",
+    "orefSirens": "Sirény v Izraeli",
+    "telegramIntel": "Telegram Intel",
+    "startups": "Startupy a VC",
+    "vcblogs": "Postřehy z VC a eseje",
+    "regionalStartups": "Globální startupové zprávy",
+    "unicorns": "Sledování jednorožců",
+    "accelerators": "Akcelerátory a Demo Days",
+    "security": "Kybernetická bezpečnost",
+    "policy": "AI politika a regulace",
+    "regulation": "Dashboard AI regulací",
+    "hardware": "Polovodiče a hardware",
+    "cloud": "Cloud a infrastruktura",
+    "dev": "Vývojářská komunita",
+    "github": "GitHub trendy",
+    "ipo": "IPO a SPAC",
+    "funding": "Financování a VC",
+    "producthunt": "Product Hunt",
+    "events": "Tech události",
+    "serviceStatus": "Stav služeb",
+    "techReadiness": "Index tech. připravenosti",
+    "gccInvestments": "Investice GCC",
+    "geoHubs": "Geopolitická centra",
+    "liveWebcams": "Živé webkamery"
+  },
+  "modals": {
+    "search": {
+      "placeholder": "Hledat nebo zadat příkaz...",
+      "hint": "Hledání • Země • Vrstvy • Panely • Navigace • Nastavení",
+      "placeholderTech": "Hledat nebo zadat příkaz...",
+      "hintTech": "Hledání • Společnosti • AI laboratoře • Vrstvy • Navigace • Nastavení",
+      "placeholderFinance": "Hledat nebo zadat příkaz...",
+      "hintFinance": "Hledání • Burzy • Trhy • Vrstvy • Navigace • Nastavení",
+      "recent": "Nedávná hledání",
+      "empty": "Hledejte data nebo spouštějte příkazy",
+      "noResults": "Žádné výsledky",
+      "navigate": "přejít",
+      "select": "vybrat",
+      "close": "zavřít",
+      "types": {
+        "country": "Země",
+        "news": "Zprávy",
+        "hotspot": "Hotspot",
+        "market": "Trh",
+        "prediction": "Predikce",
+        "conflict": "Konflikt",
+        "base": "Vojenská základna",
+        "pipeline": "Potrubí",
+        "cable": "Podmořský kabel",
+        "datacenter": "Datové centrum",
+        "earthquake": "Zemětřesení",
+        "outage": "Výpadek",
+        "nuclear": "Jaderné zařízení",
+        "irradiator": "Ozařovač",
+        "techcompany": "Tech společnost",
+        "ailab": "AI laboratoř",
+        "startup": "Startup",
+        "techevent": "Tech událost",
+        "techhq": "Tech centrála",
+        "accelerator": "Akcelerátor"
+      }
+    },
+    "signal": {
+      "title": "ZPRAVODAJSKÉ ZJIŠTĚNÍ",
+      "soundAlerts": "Zvuková upozornění",
+      "dismiss": "Zavřít",
+      "confidence": "Spolehlivost",
+      "country": "Země:",
+      "scoreChange": "Změna skóre:",
+      "instabilityLevel": "Úroveň nestability:",
+      "primaryDriver": "Hlavní faktor:",
+      "location": "Lokalita:",
+      "eventTypes": "Typy událostí:",
+      "eventCount": "Počet událostí:",
+      "eventCountValue": "{{count}} událostí za 24 h",
+      "source": "Zdroj:",
+      "countriesAffected": "Zasažené země:",
+      "impactLevel": "Úroveň dopadu:",
+      "focalPoints": "KORELOVANÉ OBLASTI ZÁJMU",
+      "newsCorrelation": "KORELACE ZPRÁV",
+      "viewOnMap": "Zobrazit na mapě",
+      "whyItMatters": "Proč je to důležité:",
+      "action": "Akce:",
+      "note": "Poznámka:",
+      "suppress": "Skrýt tento výraz",
+      "suppressed": "Skryto",
+      "predictionLeading": "Predikce s předstihem",
+      "newsLeading": "Zprávy s předstihem",
+      "silentDivergence": "Tichá divergence",
+      "velocitySpike": "Nárůst rychlosti",
+      "keywordSpike": "Nárůst klíčového slova",
+      "convergence": "Konvergence",
+      "triangulation": "Triangulace",
+      "flowDrop": "Pokles toku",
+      "flowPriceDivergence": "Divergence tok/cena",
+      "geoConvergence": "Geografická konvergence",
+      "marketMove": "Vysvětlení pohybu trhu",
+      "sectorCascade": "Sektorová kaskáda",
+      "militarySurge": "Vojenský nárůst"
+    },
+    "story": {
+      "generating": "Generuji příběh...",
+      "close": "Zavřít",
+      "shareTitle": "Sdílet příběh",
+      "save": "Uložit",
+      "whatsapp": "WhatsApp",
+      "twitter": "X",
+      "linkedin": "LinkedIn",
+      "copyLink": "Odkaz",
+      "saved": "Uloženo!",
+      "copied": "Zkopírováno!",
+      "opening": "Otevírám...",
+      "error": "Nepodařilo se vygenerovat příběh."
+    },
+    "mobileWarning": {
+      "title": "Mobilní zobrazení",
+      "description": "Prohlížíte si zjednodušenou mobilní verzi zaměřenou na region MENA se základními vrstvami.",
+      "tip": "Tip: K přepínání regionů použijte tlačítka zobrazení (GLOBÁLNÍ/USA/MENA). Klepnutím na značky zobrazíte podrobnosti.",
+      "dontShowAgain": "Příště nezobrazovat",
+      "gotIt": "Rozumím"
+    },
+    "downloadBanner": {
+      "title": "K dispozici pro desktop",
+      "description": "Nativní výkon, bezpečné lokální uložení klíčů, offline mapové podklady.",
+      "macSilicon": "macOS (Apple Silicon)",
+      "macIntel": "macOS (Intel)",
+      "windows": "Windows (.exe)",
+      "linux": "Linux (.AppImage)",
+      "showAllPlatforms": "Zobrazit všechny platformy",
+      "showLess": "Zobrazit méně",
+      "dismiss": "Zavřít"
+    },
+    "runtimeConfig": {
+      "title": "Konfigurace desktopu",
+      "alertTitle": {
+        "configured": "Nastavení desktopu nakonfigurováno",
+        "needsKeys": "Pro odemknutí funkcí nakonfigurujte klíče API",
+        "some": "Některé funkce vyžadují klíče API"
+      },
+      "openSettings": "Otevřít nastavení",
+      "skipSetup": "Přeskočit nastavení — jedna licence World Monitor odemkne vše. Zapište se na čekací listinu pro předběžný přístup.",
+      "summary": {
+        "desktop": "Desktopový režim",
+        "web": "Webový režim (pouze pro čtení, přihlašovací údaje spravuje server)",
+        "secrets": "nakonfigurovaná lokální tajemství",
+        "available": "dostupné funkce"
+      },
+      "status": {
+        "ready": "Připraveno",
+        "staged": "Připraveno k uložení",
+        "needsKeys": "Vyžaduje klíče",
+        "invalid": "Neplatné",
+        "missing": "Chybí",
+        "valid": "Platné",
+        "looksInvalid": "Vypadá neplatně"
+      },
+      "placeholder": {
+        "setSecret": "Nastavit tajemství (secret)",
+        "staged": "Připraveno (uložte pomocí OK)"
+      },
+      "help": {
+        "URLHAUS_AUTH_KEY": "Používá se pro API URLhaus a ThreatFox.",
+        "OTX_API_KEY": "Volitelný zdroj pro obohacení vrstvy kybernetických hrozeb.",
+        "ABUSEIPDB_API_KEY": "Volitelný zdroj pro obohacení reputace škodlivých IP adres.",
+        "FINNHUB_API_KEY": "Akciové kurzy a tržní data v reálném čase.",
+        "NASA_FIRMS_API_KEY": "Systém informací o požárech pro řízení zdrojů (FIRMS).",
+        "OLLAMA_API_URL": "např. http://127.0.0.1:11434 (Ollama) nebo http://127.0.0.1:1234/v1 (LM Studio) — koncový bod kompatibilní s OpenAI.",
+        "OLLAMA_MODEL": "např. llama3.1:8b — značka modelu k použití pro sumarizaci."
+      }
+    },
+    "settingsWindow": {
+      "validating": "Ověřování klíčů API...",
+      "saved": "Nastavení uloženo",
+      "failed": "Uložení selhalo: {{error}}",
+      "verifyFailed": "Uloženy ověřené klíče. Selhalo: {{errors}}",
+      "verboseOn": "Podrobné protokolování (verbose) ZAPNUTO (uloženo)",
+      "verboseOff": "Podrobné protokolování (verbose) VYPNUTO (uloženo)",
+      "invokeFail": "Nepodařilo se spustit {{command}}. Zkontrolujte protokol desktopu.",
+      "openLogs": "Otevřena složka protokolů",
+      "openApiLog": "Otevřen protokol API",
+      "sidecarError": "Nepodařilo se připojit k sidecar aplikaci pro přepnutí verbose režimu",
+      "noTraffic": "Zatím nebyl zaznamenán žádný provoz.",
+      "sidecarUnreachable": "Sidecar aplikace není dostupná.",
+      "logCleared": "Protokol vymazán.",
+      "worldMonitor": {
+        "tabLabel": "World Monitor",
+        "heroTitle": "Jeden klíč. Vše v ceně.",
+        "heroDescription": "Jediná licence World Monitor nahradí všechny API klíče a poskytovatele LLM, které byste jinak museli konfigurovat sami. AI souhrny, zpravodajství v reálném čase, tržní data, sledování konfliktů, detekce požárů, satelitní snímky — vše poháněno, vše spravováno, nulové nastavení.",
+        "apiKey": {
+          "title": "Licenční klíč",
+          "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
+          "description": "Vložte svou licenci a okamžitě odemkněte všechny datové zdroje a AI funkce.",
+          "statusValid": "LICENCOVÁNO",
+          "statusMissing": "BEZ LICENCE"
+        },
+        "dividerOr": "NEBO",
+        "register": {
+          "title": "Rezervujte si své místo",
+          "description": "Připravujeme spuštění licencí World Monitor. Zaregistrujte se nyní a buďte první v řadě — první členové získají prioritní přístup a zakladatelské ceny.",
+          "emailPlaceholder": "vas@email.cz",
+          "submitBtn": "Zapsat na čekací listinu",
+          "submitting": "Odesílám...",
+          "success": "Jste na seznamu! Dáme vám vědět jako prvním.",
+          "alreadyRegistered": "Již jste na čekací listině.",
+          "error": "Registrace selhala. Zkuste to prosím znovu.",
+          "invalidEmail": "Zadejte prosím platnou e-mailovou adresu."
+        },
+        "byokTitle": "Nebo použijte vlastní klíče (BYOK)",
+        "byokDescription": "Dáváte přednost plné kontrole? Přejděte na karty API Klíče a LLM a nakonfigurujte každý datový zdroj a poskytovatele AI jednotlivě."
+      },
+      "table": {
+        "time": "Čas",
+        "method": "Metoda",
+        "path": "Cesta",
+        "status": "Stav",
+        "duration": "Trvání"
+      }
+    },
+    "countryIntel": {
+      "identifying": "Identifikuji zemi...",
+      "locating": "Lokalizuji region...",
+      "instabilityIndex": "Index nestability",
+      "protests": "protesty",
+      "militaryAircraft": "voj. letadla",
+      "militaryVessels": "voj. plavidla",
+      "outages": "výpadky",
+      "earthquakes": "zemětřesení",
+      "loadingIndex": "Načítám index...",
+      "loadingMarkets": "Načítám predikční trhy...",
+      "generatingBrief": "Generuji zpravodajskou svodku...",
+      "cached": "Z mezipaměti",
+      "fresh": "Aktuální",
+      "noMarkets": "Nenalezeny žádné predikční trhy",
+      "predictionMarkets": "Predikční trhy",
+      "unavailable": "AI svodka není k dispozici — nastavte GROQ_API_KEY v Nastavení."
+    },
+    "countryBrief": {
+      "identifying": "Identifikuji zemi...",
+      "locating": "Lokalizuji region...",
+      "limitedCoverage": "Omezené pokrytí",
+      "instabilityIndex": "Index nestability",
+      "notTracked": "Nesledováno — {{country}} není v seznamu CII tier-1",
+      "intelBrief": "Zpravodajská svodka",
+      "generatingBrief": "Generuji zpravodajskou svodku...",
+      "topNews": "Hlavní zprávy",
+      "activeSignals": "Aktivní signály",
+      "timeline": "7denní časová osa",
+      "predictionMarkets": "Predikční trhy",
+      "loadingMarkets": "Načítám predikční trhy...",
+      "infrastructure": "Ohrožení infrastruktury",
+      "briefUnavailable": "AI svodka není k dispozici — nastavte GROQ_API_KEY v Nastavení.",
+      "cached": "Z mezipaměti",
+      "fresh": "Aktuální",
+      "noMarkets": "Nenalezeny žádné predikční trhy",
+      "loadingIndex": "Načítám index...",
+      "components": {
+        "unrest": "Nepokoje",
+        "conflict": "Konflikt",
+        "security": "Bezpečnost",
+        "information": "Informace"
+      },
+      "signals": {
+        "protests": "protesty",
+        "militaryAir": "voj. letadla",
+        "militarySea": "voj. plavidla",
+        "outages": "výpadky",
+        "earthquakes": "zemětřesení",
+        "displaced": "vysídlení",
+        "climate": "klimatický stres",
+        "conflictEvents": "konflikty",
+        "activeStrikes": "aktivní stávky/útoky",
+        "aviationDisruptions": "narušení letišť",
+        "gpsJammingZones": "zóny rušení GPS"
+      },
+      "timeAgo": {
+        "m": "před {{count}} min",
+        "h": "před {{count}} h",
+        "d": "před {{count}} d"
+      },
+      "infra": {
+        "pipeline": "Ropovody/Plynovody",
+        "cable": "Podmořské kabely",
+        "datacenter": "Datová centra",
+        "base": "Vojenské základny",
+        "nuclear": "Jaderná zařízení",
+        "port": "Přístavy"
+      },
+      "levels": {
+        "critical": "Kritická",
+        "high": "Vysoká",
+        "elevated": "Zvýšená",
+        "moderate": "Střední",
+        "normal": "Normální",
+        "low": "Nízká"
+      },
+      "trends": {
+        "rising": "Rostoucí",
+        "falling": "Klesající",
+        "stable": "Stabilní"
+      },
+      "fallback": {
+        "instabilityIndex": "**Index nestability: {{score}}/100** ({{level}}, {{trend}})",
+        "protestsDetected": "Detekováno aktivních protestů: {{count}}",
+        "aircraftTracked": "Sledováno vojenských letadel: {{count}}",
+        "vesselsTracked": "Sledováno vojenských plavidel: {{count}}",
+        "activeStrikes": "Detekováno aktivních útoků/stávek: {{count}}",
+        "internetOutages": "Výpadky internetu: {{count}}",
+        "recentEarthquakes": "Nedávná zemětřesení: {{count}}",
+        "stockIndex": "Akciový index: {{value}}",
+        "recentHeadlines": "**Nedávné titulky:**"
+      }
+    }
+  },
+  "components": {
+    "webcams": {
+      "regions": {
+        "iran": "ÚTOKY ÍRÁN",
+        "all": "VŠE",
+        "mideast": "BLÍZKÝ VÝCHOD",
+        "europe": "EVROPA",
+        "americas": "AMERIKA",
+        "asia": "ASIE"
+      }
+    },
+    "monitor": {
+      "placeholder": "Klíčová slova (oddělená čárkou)",
+      "add": "+ Přidat monitor",
+      "addKeywords": "Přidejte klíčová slova ke sledování zpráv",
+      "noMatches": "Žádné shody ve {{count}} článcích",
+      "showingMatches": "Zobrazeno {{count}} z {{total}} shod",
+      "match": "shoda",
+      "matches": "shod"
+    },
+    "regulation": {
+      "dashboard": "Dashboard AI regulací",
+      "timeline": "Časová osa",
+      "deadlines": "Termíny",
+      "regulations": "Regulace",
+      "countries": "Země",
+      "recentActions": "Nedávné regulační kroky (za posledních 12 měsíců)",
+      "upcomingDeadlines": "Nadcházející termíny shody",
+      "activeRegulations": "Aktivní regulace",
+      "proposedRegulations": "Navrhované regulace",
+      "globalLandscape": "Globální regulační prostředí",
+      "emptyActions": "Žádné nedávné regulační kroky",
+      "emptyDeadlines": "Žádné nadcházející termíny shody v příštích 12 měsících",
+      "keyProvisions": "Klíčová ustanovení",
+      "learnMore": "Zjistit více",
+      "active": "Aktivní",
+      "proposed": "Navrženo",
+      "updated": "Aktualizováno",
+      "actionsCount": "{{count}} kroků",
+      "deadlinesCount": "{{count}} termínů",
+      "days": "dní",
+      "activeCount": "Aktivní regulace ({{count}})",
+      "proposedCount": "Navrhované regulace ({{count}})",
+      "moreProvisions": "+{{count}} dalších...",
+      "source": "Zdroj",
+      "stances": {
+        "strict": "Přísný",
+        "moderate": "Mírný",
+        "permissive": "Povolný",
+        "undefined": "Nedefinováno"
+      }
+    },
+    "economic": {
+      "indicators": "Ukazatele",
+      "oil": "Ropa",
+      "gov": "Vláda",
+      "noData": "Ekonomická data nejsou k dispozici",
+      "noOilData": "Data o ropě nejsou k dispozici",
+      "noOilMetrics": "Nejsou k dispozici žádné metriky ropy. Pro povolení přidejte EIA_API_KEY.",
+      "noSpending": "Žádné nedávné vládní zakázky",
+      "awards": "zakázky",
+      "noIndicatorData": "Zatím žádná data ukazatelů - FRED se možná načítá",
+      "fredKeyMissing": "Vyžadován API klíč FRED — pro povolení ekonomických ukazatelů ho přidejte v Nastavení",
+      "noOilDataRetry": "Data o ropě jsou dočasně nedostupná - zkusím to znovu",
+      "vsPreviousWeek": "vs předchozí týden",
+      "in": "v",
+      "centralBanks": "Centrální banky",
+      "noBisData": "Data BIS jsou dočasně nedostupná - zkusím to znovu",
+      "policyRate": "Úroková sazba",
+      "exchangeRate": "Směnný kurz",
+      "creditToGdp": "Úvěry / HDP",
+      "realEer": "Reálný EER",
+      "change": "Změna",
+      "cut": "snížení",
+      "hike": "zvýšení",
+      "hold": "beze změny"
+    },
+    "supplyChain": {
+      "chokepoints": "Úzká hrdla",
+      "shipping": "Doprava",
+      "minerals": "Minerály",
+      "noChokepoints": "Načítání dat o úzkých hrdlech...",
+      "noShipping": "Data o sazbách za přepravu nejsou k dispozici",
+      "noMinerals": "Načítání dat o minerálech...",
+      "fredKeyMissing": "Pro sazby za přepravu je vyžadován API klíč FRED — přidejte jej v Nastavení. Úzká hrdla a minerály jsou k dispozici bez klíče.",
+      "upstreamUnavailable": "Data dodavatelského řetězce jsou dočasně nedostupná — zobrazuji data z mezipaměti",
+      "spikeAlert": "Detekován prudký nárůst — sazba výrazně nad 52týdenním průměrem (týdenní)",
+      "warnings": "varování",
+      "mineral": "Minerál",
+      "topProducers": "Největší producenti",
+      "risk": "Riziko",
+      "sources": "FRED / NGA / USGS"
+    },
+    "tradePolicy": {
+      "restrictions": "Omezení",
+      "tariffs": "Cla",
+      "flows": "Obchodní toky",
+      "barriers": "Bariéry",
+      "noRestrictions": "Žádná aktivní obchodní omezení",
+      "noTariffData": "Data o clech nejsou k dispozici",
+      "noFlowData": "Data o obchodních tocích nejsou k dispozici",
+      "noBarriers": "Hlášeny žádné obchodní bariéry",
+      "apiKeyMissing": "Vyžadován API klíč WTO — přidejte jej v Nastavení",
+      "upstreamUnavailable": "Data WTO jsou dočasně nedostupná — zobrazuji data z mezipaměti",
+      "appliedRate": "Aplikovaná sazba",
+      "boundRate": "Vázaná sazba",
+      "exports": "Export",
+      "imports": "Import",
+      "yoyChange": "Meziroční změna",
+      "highTariff": "Vysoké",
+      "moderateTariff": "Střední",
+      "lowTariff": "Nízké"
+    },
+    "gdelt": {
+      "empty": "K tomuto tématu nejsou žádné nedávné články"
+    },
+    "geoHubs": {
+      "tooltip": "<strong>Centra geopolitické aktivity</strong><br>Zobrazuje regiony s největší zpravodajskou aktivitou.<br><br><em>Typy center:</em><br>• 🏛️ Hlavní města — Světová hlavní města a vládní centra<br>• ⚔️ Zóny konfliktu — Aktivní oblasti konfliktu<br>• ⚓ Strategické — Úzká hrdla a klíčové regiony<br>• 🏢 Organizace — OSN, NATO, IAEA atd.<br><br><em>Úrovně aktivity:</em><br>• <span style=\"color: #ff4444\">Vysoká</span> — Bleskové zprávy nebo skóre 70+<br>• <span style=\"color: #ff8844\">Zvýšená</span> — Skóre 40-69<br>• <span style=\"color: #888\">Nízká</span> — Skóre pod 40<br><br>Kliknutím na centrum se přiblížíte na jeho polohu.",
+      "noActive": "Žádná aktivní geopolitická centra",
+      "story": "příběh",
+      "stories": "příběhy",
+      "infoTooltip": "<strong>Centra geopolitické aktivity</strong><br>Zobrazuje regiony s největší zpravodajskou aktivitou.<br><br><em>Typy center:</em><br>• 🏛️ Hlavní města — Světová hlavní města a vládní centra<br>• ⚔️ Zóny konfliktu — Aktivní oblasti konfliktu<br>• ⚓ Strategické — Úzká hrdla a klíčové regiony<br>• 🏢 Organizace — OSN, NATO, IAEA atd.<br><br><em>Úrovně aktivity:</em><br>• <span style=\"color: {{highColor}}\">Vysoká</span> — Bleskové zprávy nebo skóre 70+<br>• <span style=\"color: {{elevatedColor}}\">Zvýšená</span> — Skóre 40-69<br>• <span style=\"color: {{lowColor}}\">Nízká</span> — Skóre pod 40<br><br>Kliknutím na centrum se přiblížíte na jeho polohu."
+    },
+    "techHubs": {
+      "tooltip": "<strong>Aktivita Tech center</strong><br>Zobrazuje technologická centra s největší zpravodajskou aktivitou.<br><br><em>Úrovně aktivity:</em><br>• <span style=\"color: #00ff88\">Vysoká</span> — Bleskové zprávy nebo skóre 50+<br>• <span style=\"color: #ffc800\">Zvýšená</span> — Skóre 20-49<br>• <span style=\"color: #888\">Nízká</span> — Skóre pod 20<br><br>Kliknutím na centrum se přiblížíte na jeho polohu.",
+      "noActive": "Žádná aktivní technologická centra",
+      "infoTooltip": "<strong>Aktivita Tech center</strong><br>Zobrazuje technologická centra s největší zpravodajskou aktivitou.<br><br><em>Úrovně aktivity:</em><br>• <span style=\"color: {{highColor}}\">Vysoká</span> — Bleskové zprávy nebo skóre 50+<br>• <span style=\"color: {{elevatedColor}}\">Zvýšená</span> — Skóre 20-49<br>• <span style=\"color: {{lowColor}}\">Nízká</span> — Skóre pod 20<br><br>Kliknutím na centrum se přiblížíte na jeho polohu."
+    },
+    "predictions": {
+      "tooltip": "<strong>Predikční trhy</strong><br>Trhy s reálnými penězi pro prognózy:<br><ul><li>Ceny odrážejí odhady pravděpodobnosti davu</li><li>Vyšší objem = spolehlivější signál</li><li>Zaměření na geopolitiku a aktuální dění</li></ul>Zdroj: Polymarket (polymarket.com)",
+      "error": "Nepodařilo se načíst predikce",
+      "yes": "Ano",
+      "no": "Ne",
+      "vol": "Obj",
+      "closes": "Zavírá"
+    },
+    "stablecoins": {
+      "pegHealth": "Zdraví vazby (Peg)",
+      "supplyVolume": "Nabídka a objem",
+      "unavailable": "Data o stablecoinech jsou dočasně nedostupná",
+      "token": "Token",
+      "mcap": "Trž. kap.",
+      "vol24h": "Obj. 24h",
+      "chg24h": "Změna 24h"
+    },
+    "status": {
+      "dataFeeds": "Datové zdroje",
+      "apiStatus": "Stav API",
+      "storage": "Úložiště",
+      "systemStatus": "Stav systému",
+      "updatedJustNow": "Aktualizováno právě teď",
+      "updatedAt": "Aktualizováno {{time}}",
+      "storageUnavailable": "Informace o úložišti nejsou k dispozici"
+    },
+    "playback": {
+      "toggleMode": "Přepnout režim přehrávání",
+      "live": "ŽIVĚ",
+      "historicalPlayback": "Historické přehrávání"
+    },
+    "pizzint": {
+      "title": "Pentagon Pizza Index",
+      "defcon": "DEFCON {{level}}",
+      "updated": "Aktualizováno před {{timeAgo}}",
+      "tensionsTitle": "Geopolitické napětí",
+      "source": "Zdroj:",
+      "statusClosed": "ZAVŘENO",
+      "statusSpike": "NÁRŮST",
+      "statusHigh": "VYSOKÁ",
+      "statusElevated": "ZVÝŠENÁ",
+      "statusNominal": "NOMINÁLNÍ",
+      "statusQuiet": "KLID",
+      "justNow": "právě teď",
+      "minutesAgo": "před {{m}} min",
+      "hoursAgo": "před {{h}} h",
+      "defconLabels": {
+        "1": "COCKED PISTOL - MAXIMÁLNÍ PŘIPRAVENOST",
+        "2": "FAST PACE - OZBROJENÉ SÍLY PŘIPRAVENY",
+        "3": "ROUND HOUSE - ZVÝŠENÁ PŘIPRAVENOST SIL",
+        "4": "DOUBLE TAKE - ZVÝŠENÝ ZPRAVODAJSKÝ DOHLED",
+        "5": "FADE OUT - NEJNIŽŠÍ PŘIPRAVENOST"
+      }
+    },
+    "strategicPosture": {
+      "elapsed": "Uplynulo: {{elapsed}} s",
+      "clickToView": "Kliknutím zobrazíte {{name}} na mapě",
+      "clickToViewMap": "Kliknutím zobrazíte na mapě",
+      "refresh": "Obnovit",
+      "units": {
+        "fighters": "Stíhačky",
+        "tankers": "Tankery",
+        "awacs": "AWACS",
+        "recon": "Průzkumné",
+        "transport": "Transportní",
+        "bombers": "Bombardéry",
+        "drones": "Drony",
+        "aircraft": "Letadla",
+        "carriers": "Letadlové lodě",
+        "destroyers": "Torpédoborce",
+        "frigates": "Fregaty",
+        "submarines": "Ponorky",
+        "patrol": "Hlídkové lodě",
+        "auxiliary": "Pomocná plavidla",
+        "navalVessels": "Námořní plavidla"
+      },
+      "infoTooltip": "<strong>Metodika</strong><p>Agreguje vojenská letadla a námořní plavidla podle válčiště (theater).</p><ul><li><strong>Normální:</strong> Základní aktivita</li><li><strong>Zvýšená:</strong> Nad hranicí (50+ letadel)</li><li><strong>Kritická:</strong> Vysoká koncentrace (100+ letadel)</li></ul><p><strong>Úderná schopnost:</strong> Tankery + AWACS + Stíhačky přítomné v dostatečném počtu pro trvalé operace.</p>",
+      "scanningTheaters": "Skenování válčišť",
+      "positions": "Pozice letadel",
+      "navalVesselsLoading": "Námořní plavidla",
+      "theaterAnalysis": "Analýza válčiště",
+      "connectingStreams": "Připojování k živým streamům ADS-B a AIS...",
+      "initialLoadNote": "Úvodní načtení trvá 30-60 sekund, než se nahromadí sledovací data",
+      "acquiringData": "Získávání dat",
+      "acquiringDesc": "Připojování k síti ADS-B pro vojenská letová data. Při prvním načtení to může trvat 30-60 sekund.",
+      "openSkyAdsb": "OpenSky ADS-B",
+      "aisVesselStream": "AIS Stream Plavidel",
+      "retryNow": "Zkusit znovu",
+      "feedRateLimited": "Zdroj omezen rychlostí (Rate Limited)",
+      "rateLimitedDesc": "API OpenSky má limity požadavků. Panel to zkusí znovu za několik minut automaticky, nebo to můžete zkusit hned.",
+      "rateLimitedTip": "Tip: Špičkové hodiny (12:00-20:00 UTC) mají často vyšší limity.",
+      "tryAgain": "Zkusit znovu",
+      "badges": {
+        "critical": "KRIT",
+        "elevated": "ZVÝŠ",
+        "normal": "NORM"
+      },
+      "trendStable": "stabilní",
+      "domains": {
+        "air": "VZDUCH",
+        "sea": "MOŘE"
+      },
+      "strike": "ÚDER",
+      "staleWarning": "Použita data z mezipaměti - živý přenos dočasně nedostupný",
+      "updated": "Aktualizováno:",
+      "theaters": {
+        "iran-theater": "Íránské válčiště",
+        "taiwan-theater": "Tchajwanský průliv",
+        "baltic-theater": "Baltské válčiště",
+        "blacksea-theater": "Černé moře",
+        "korea-theater": "Korejský poloostrov",
+        "south-china-sea": "Jihočínské moře",
+        "east-med-theater": "Východní Středomoří",
+        "israel-gaza-theater": "Izrael/Gaza",
+        "yemen-redsea-theater": "Jemen/Rudé moře"
+      }
+    },
+    "countryBrief": {
+      "shareStory": "Sdílet příběh",
+      "printPdf": "Tisk / PDF",
+      "exportData": "Exportovat data",
+      "sourceRef": "Zdroj [{{n}}]"
+    },
+    "relatedAssets": {
+      "pipeline": "Potrubí",
+      "cable": "Kabel",
+      "datacenter": "Datové centrum",
+      "base": "Základna",
+      "nuclear": "Jaderné zařízení"
+    },
+    "community": {
+      "joinDiscussion": "Připojit se k diskusi",
+      "openDiscussion": "Otevřít diskusi",
+      "dontShowAgain": "Příště nezobrazovat"
+    },
+    "threatLabels": {
+      "critical": "KRIT",
+      "high": "VYS",
+      "medium": "STŘ",
+      "low": "NÍZ",
+      "info": "INFO"
+    },
+    "deckgl": {
+      "zoomIn": "Přiblížit",
+      "zoomOut": "Oddálit",
+      "resetView": "Obnovit pohled",
+      "legend": {
+        "title": "LEGENDA",
+        "startupHub": "Startup centrum",
+        "techHQ": "Tech centrála",
+        "accelerator": "Akcelerátor",
+        "cloudRegion": "Cloud region",
+        "datacenter": "Datové centrum",
+        "stockExchange": "Akciová burza",
+        "financialCenter": "Finanční centrum",
+        "centralBank": "Centrální banka",
+        "commodityHub": "Komoditní centrum",
+        "waterway": "Vodní cesta",
+        "highAlert": "Vysoká pohotovost",
+        "elevated": "Zvýšená",
+        "monitoring": "Monitorování",
+        "base": "Základna",
+        "nuclear": "Jaderné zařízení"
+      },
+      "layerGuide": "Průvodce vrstvami",
+      "layersTitle": "Vrstvy",
+      "timeAll": "Vše",
+      "views": {
+        "global": "Globální",
+        "americas": "Amerika",
+        "mena": "MENA",
+        "europe": "Evropa",
+        "asia": "Asie",
+        "latam": "Latinská Amerika",
+        "africa": "Afrika",
+        "oceania": "Oceánie"
+      },
+      "layers": {
+        "startupHubs": "Startup centra",
+        "techHQs": "Tech centrály",
+        "accelerators": "Akcelerátory",
+        "cloudRegions": "Cloud regiony",
+        "aiDataCenters": "AI datová centra",
+        "underseaCables": "Podmořské kabely",
+        "internetOutages": "Výpadky internetu",
+        "cyberThreats": "Kybernetické hrozby",
+        "techEvents": "Tech události",
+        "naturalEvents": "Přírodní události",
+        "fires": "Požáry",
+        "intelHotspots": "Zpravodajské hotspoty",
+        "conflictZones": "Zóny konfliktu",
+        "militaryBases": "Vojenské základny",
+        "nuclearSites": "Jaderná zařízení",
+        "gammaIrradiators": "Gamma ozařovače",
+        "spaceports": "Kosmodromy",
+        "pipelines": "Potrubí",
+        "militaryActivity": "Vojenská aktivita",
+        "shipTraffic": "Lodní doprava",
+        "flightDelays": "Zpoždění letů",
+        "protests": "Protesty",
+        "ucdpEvents": "UCDP události",
+        "displacementFlows": "Toky vysídlení",
+        "climateAnomalies": "Klimatické anomálie",
+        "weatherAlerts": "Upozornění na počasí",
+        "strategicWaterways": "Strategické vodní cesty",
+        "economicCenters": "Ekonomická centra",
+        "criticalMinerals": "Kritické minerály",
+        "stockExchanges": "Akciové burzy",
+        "financialCenters": "Finanční centra",
+        "centralBanks": "Centrální banky",
+        "commodityHubs": "Komoditní centra",
+        "gulfInvestments": "Investice GCC",
+        "tradeRoutes": "Obchodní cesty",
+        "iranAttacks": "Útoky Íránu",
+        "gpsJamming": "RUŠENÍ GPS",
+        "dayNight": "Den/Noc"
+      },
+      "tooltip": {
+        "earthquake": "Zemětřesení",
+        "militaryAircraft": "Vojenské letadlo",
+        "vesselCluster": "Shluk plavidel",
+        "vessels": "plavidla",
+        "flightCluster": "Shluk letů",
+        "aircraft": "letadla",
+        "protest": "Protest",
+        "protestsCount": "počet protestů: {{count}}",
+        "techHQsCount": "{{count}} tech centrál",
+        "techEventsCount": "{{count}} tech událostí",
+        "dataCentersCount": "{{count}} datových center",
+        "underseaCable": "Podmořský kabel",
+        "pipeline": "Potrubí",
+        "conflictZone": "Zóna konfliktu",
+        "naturalEvent": "Přírodní událost",
+        "financialCenter": "finanční centrum",
+        "port": "Přístav",
+        "disruption": "Narušení",
+        "advisory": "Varování",
+        "repairShip": "Opravárenská loď",
+        "internetOutage": "Výpadek internetu",
+        "medium": "střední",
+        "news": "Zprávy",
+        "undisclosed": "Nezveřejněno",
+        "stake": "podíl"
+      },
+      "layerHelp": {
+        "title": "Průvodce mapovými vrstvami",
+        "labels": {
+          "countries": "Země",
+          "timeRecent": "1H/6H/24H",
+          "timeExtended": "7D/30D/VŠE",
+          "sanctions": "Sankce",
+          "shipping": "Doprava"
+        },
+        "sections": {
+          "techEcosystem": "Tech ekosystém",
+          "infrastructure": "Infrastruktura",
+          "naturalEconomic": "Přírodní a ekonomické",
+          "financeCore": "Finanční jádro",
+          "infrastructureRisk": "Infrastruktura a rizika",
+          "macroContext": "Makro kontext",
+          "timeFilter": "Časový filtr (vpravo nahoře)",
+          "geopolitical": "Geopolitické",
+          "militaryStrategic": "Vojenské a strategické",
+          "transport": "Doprava",
+          "labels": "Štítky",
+          "overlays": "Překryvy a štítky"
+        },
+        "descriptions": {
+          "techStartupHubs": "Hlavní startupové ekosystémy (SF, NYC, Londýn atd.)",
+          "techCloudRegions": "Datová centra AWS, Azure, GCP",
+          "techHQs": "Centrály velkých tech společností",
+          "techAccelerators": "Lokace Y Combinator, Techstars, 500 Startups",
+          "infraCables": "Hlavní podmořské optické kabely (páteř internetu)",
+          "infraDatacenters": "Výpočetní clustery AI >=10 000 GPU",
+          "infraOutages": "Výpadky internetu a narušení služeb",
+          "naturalEventsTech": "Zemětřesení, bouře, požáry (mohou ovlivnit datová centra)",
+          "weatherAlerts": "Upozornění na extrémní počasí",
+          "economicCenters": "Burzy a centrální banky",
+          "countriesOverlay": "Překryv názvů zemí",
+          "financeExchanges": "Hlavní světové burzy podle úrovně trhu",
+          "financeCenters": "Globální a regionální finanční centra",
+          "financeCentralBanks": "Instituce měnové politiky po celém světě",
+          "financeCommodityHubs": "Klíčové burzy, přístavy a rafinérská centra",
+          "financeCables": "Hlavní trasy podmořských kabelů napojené na tržní infrastrukturu",
+          "financePipelines": "Trasy ropovodů/plynovodů ovlivňující energetické trhy",
+          "financeOutages": "Výpadky internetu, které mohou ovlivnit operace na trzích",
+          "financeCyberThreats": "Bezpečnostní události kolem finanční infrastruktury",
+          "macroWaterways": "Strategická úzká hrdla pro přepravu komodit",
+          "weatherAlertsMarket": "Události extrémního počasí s tržním významem",
+          "naturalEventsMacro": "Zemětřesení, požáry, záplavy a další přírodní narušení",
+          "timeRecent": "Filtrovat data na základě času za poslední hodiny",
+          "timeExtended": "Zobrazit data z minulého týdne, měsíce nebo za celou dobu",
+          "geoConflicts": "Aktivní válečné zóny (Ukrajina, Gaza atd.) s hranicemi",
+          "geoHotspots": "Oblasti napětí - barevně odlišené podle úrovně zpravodajské aktivity",
+          "geoSanctions": "Země pod ekonomickými sankcemi USA/EU/OSN",
+          "geoProtests": "Občanské nepokoje, demonstrace (filtrované podle času)",
+          "militaryBases": "Vojenské základny USA/NATO, Číny a Ruska (150+)",
+          "militaryNuclear": "Elektrárny, obohacování, zařízení pro zbraně",
+          "militaryIrradiators": "Průmyslová zařízení pro gama ozařování",
+          "militaryActivity": "Živé sledování vojenských letadel a plavidel",
+          "infraCablesFull": "Hlavní podmořské optické kabely (20 páteřních tras)",
+          "infraPipelinesFull": "Ropovody/plynovody (Nord Stream, TAPI atd.)",
+          "infraDatacentersFull": "Pouze výpočetní clustery AI >=10 000 GPU",
+          "transportShipping": "Živé sledování plavidel přes AIS (pozice lodí)",
+          "transportDelays": "Zpoždění na letištích a pozastavení provozu (FAA)",
+          "naturalEventsFull": "Zemětřesení (USGS) + bouře, požáry, sopky, povodně (NASA EONET)",
+          "firesFull": "Aktivní lesní požáry a obvody požárů (NASA FIRMS)",
+          "climateAnomalies": "Anomálie teploty a srážek",
+          "waterwaysLabels": "Štítky strategických úzkých hrdel",
+          "geoUcdpEvents": "Události ozbrojených konfliktů Uppsala Conflict Data Program",
+          "geoDisplacement": "Vzorce toků uprchlíků a vysídlení",
+          "militarySpaceports": "Místa startu raket a vesmírná zařízení",
+          "infraCyberThreats": "Kybernetické útoky a bezpečnostní události",
+          "mineralsFull": "Naleziště strategických minerálů a těžební místa",
+          "techCyberThreats": "Kybernetické útoky a bezpečnostní události",
+          "techEvents": "Významné tech konference a události",
+          "techFires": "Aktivní lesní požáry v blízkosti tech infrastruktury",
+          "financeGulfInvestments": "Investice státních fondů GCC a PZI",
+          "tradeRoutes": "Hlavní světové námořní trasy spojující přístavy přes strategická úzká hrdla",
+          "dayNight": "Sluneční terminátor v reálném čase ukazující denní a noční zóny"
+        },
+        "notes": {
+          "timeAffects": "Ovlivňuje: Zemětřesení, Počasí, Protesty, Výpadky"
+        }
+      }
+    },
+    "cii": {
+      "shareStory": "Sdílet příběh",
+      "noSignals": "Nebyly zjištěny žádné signály nestability",
+      "infoTooltip": "<strong>Metodika</strong><ul><li><strong>N</strong>epokoje (Unrest): občanské nepokoje a protesty</li><li><strong>K</strong>onflikt (Conflict): intenzita ozbrojeného konfliktu</li><li><strong>B</strong>ezpečnost (Security): vojenské lety/plavidla nad územím</li><li><strong>I</strong>nformace (Information): rychlost zpráv a korelace oblastí zájmu</li><li>Zvýšení díky blízkosti hotspotu (strategické lokace)</li></ul><em>Hodnoty U:C:S:I ukazují skóre komponent.</em> Detekce oblastí zájmu (Focal Point Detection) koreluje subjekty ze zpráv se signály na mapě pro přesné skórování."
+    },
+    "insights": {
+      "noStories": "Zatím žádné bleskové nebo vícezdrojové zprávy",
+      "step": "Krok {{step}}/{{total}}",
+      "waitingForData": "Čekání na data zpráv...",
+      "rankingStories": "Hodnocení důležitých zpráv...",
+      "analyzingSentiment": "Analýza sentimentu...",
+      "generatingBrief": "Generování světové svodky...",
+      "infoTooltip": "<strong>Analýza pomocí AI</strong><br>• <strong>Světová svodka</strong>: AI souhrn (Groq/OpenRouter)<br>• <strong>Sentiment</strong>: Analýza tónu zpráv<br>• <strong>Rychlost</strong>: Rychle se šířící příběhy<br>• <strong>Oblasti zájmu</strong>: Koreluje subjekty ve zprávách se signály na mapě (vojsko, protesty, výpadky)<br><em>Pouze pro desktop • Poháněno Llama 3.3 + Focal Point Detection</em>",
+      "settingsTitle": "Nastavení",
+      "sectionMap": "Mapa",
+      "sectionAi": "AI analýza",
+      "sectionStreaming": "Streamování",
+      "streamQualityLabel": "Kvalita videa",
+      "streamQualityDesc": "Nastavte kvalitu pro všechny živé streamy (nižší šetří data)",
+      "mapFlashLabel": "Puls živých událostí",
+      "mapFlashDesc": "Probliknutí lokalit na mapě při příchodu bleskových zpráv",
+      "aiFlowTitle": "Nastavení",
+      "aiFlowCloudLabel": "Cloud AI (Groq & OpenRouter)",
+      "aiFlowCloudDesc": "Odesílat titulky do cloudu pro sumarizaci AI (doporučeno)",
+      "aiFlowBrowserLabel": "Lokální model v prohlížeči",
+      "aiFlowBrowserDesc": "Spustit AI lokálně ve vašem prohlížeči",
+      "aiFlowBrowserWarn": "Stáhne se ~250 MB dat modelu do vašeho prohlížeče",
+      "aiFlowOllamaCta": "Chcete plně lokální AI?",
+      "aiFlowOllamaCtaDesc": "Stáhněte si aplikaci pro desktop pro podporu Ollama",
+      "aiFlowDownloadDesktop": "Stáhnout desktopovou aplikaci →",
+      "aiFlowStatusActive": "Cloud AI aktivní",
+      "aiFlowStatusCloudAndBrowser": "Cloud AI + model v prohlížeči aktivní",
+      "aiFlowStatusBrowserOnly": "Pouze model v prohlížeči",
+      "aiFlowStatusDisabled": "Nejsou povoleni žádní poskytovatelé AI",
+      "insightsDisabledTitle": "AI analýza je zakázána",
+      "insightsDisabledHint": "Povolte poskytovatele prostřednictvím ozubeného kola nastavení v záhlaví mapy"
+    },
+    "cascade": {
+      "noImpacts": "Nezjištěny žádné dopady na země",
+      "filters": {
+        "cables": "Kabely",
+        "pipelines": "Potrubí",
+        "ports": "Přístavy",
+        "chokepoints": "Úzká hrdla"
+      },
+      "filterType": {
+        "cable": "kabel",
+        "pipeline": "potrubí",
+        "port": "přístav",
+        "chokepoint": "úzké hrdlo",
+        "country": "země"
+      },
+      "selectPrompt": "Vyberte {{type}}...",
+      "analyzeImpact": "Analyzovat dopad",
+      "impactLevels": {
+        "critical": "kritický",
+        "high": "vysoký",
+        "medium": "střední",
+        "low": "nízký"
+      },
+      "capacityPercent": "Kapacita {{percent}} %",
+      "noCountryImpacts": "Nezjištěny žádné dopady na země",
+      "alternativeRoutes": "Alternativní trasy",
+      "countriesAffected": "Zasažené země ({{count}})",
+      "links": "spojení",
+      "selectInfrastructureHint": "Vyberte infrastrukturu pro analýzu kaskádového dopadu",
+      "infoTooltip": "<strong>Kaskádová analýza</strong> Modeluje závislosti infrastruktury:<ul><li>Podmořské kabely, potrubí, přístavy, úzká hrdla</li><li>Vyberte infrastrukturu pro simulaci výpadku</li><li>Zobrazí zasažené země a ztrátu kapacity</li><li>Identifikuje redundantní trasy</li></ul>Data od TeleGeography a z průmyslových zdrojů."
+    },
+    "strategicRisk": {
+      "noRisks": "Nezjištěna žádná významná rizika",
+      "levels": {
+        "critical": "Kritická",
+        "elevated": "Zvýšená",
+        "moderate": "Střední",
+        "low": "Nízká"
+      },
+      "trend": "Trend",
+      "trends": {
+        "escalating": "Eskalující",
+        "deEscalating": "Uklidňující se",
+        "stable": "Stabilní"
+      },
+      "insufficientData": "Nedostatek dat",
+      "unableToAssess": "Nelze posoudit úroveň rizika.",
+      "enableDataSources": "Povolte zdroje dat pro zahájení monitorování.",
+      "requiredDataSources": "Požadované zdroje dat",
+      "optionalSources": "Volitelné zdroje",
+      "enableCoreFeeds": "Povolit hlavní zdroje",
+      "waitingForData": "Čekání na data...",
+      "refresh": "Obnovit",
+      "learningMode": "Režim učení - {{minutes}} min do spolehlivosti",
+      "noData": "žádná data",
+      "enable": "Povolit",
+      "convergenceMetric": "Konvergence",
+      "ciiDeviation": "Odchylka CII",
+      "infraEvents": "Události infra",
+      "highAlerts": "Vysoké pohotovosti",
+      "topRisks": "Hlavní rizika",
+      "recentAlerts": "Nedávná upozornění ({{count}})",
+      "updated": "Aktualizováno: {{time}}",
+      "time": {
+        "justNow": "právě teď",
+        "minutesAgo": "před {{count}} min",
+        "hoursAgo": "před {{count}} h"
+      },
+      "infoTooltip": "<strong>Metodika</strong> Kompozitní skóre (0-100) slučující:<ul><li>50 % Nestabilita zemí (váženo top 5)</li><li>30 % Geografické konvergenční zóny</li><li>20 % Incidenty infrastruktury</li></ul>Automaticky se obnovuje každých 5 minut."
+    },
+    "techEvents": {
+      "loading": "Načítání tech událostí...",
+      "noEvents": "Žádné události k zobrazení",
+      "showOnMap": "Zobrazit na mapě",
+      "moreInfo": "Více informací",
+      "retry": "Zkusit znovu",
+      "upcoming": "Nadcházející",
+      "conferences": "Konference",
+      "earnings": "Výsledky hospodaření",
+      "all": "Vše",
+      "conferencesCount": "{{count}} konferencí",
+      "onMap": "{{count}} na mapě",
+      "techmemeEvents": "Události Techmeme ↗",
+      "today": "DNES",
+      "soon": "BRZY"
+    },
+    "techReadiness": {
+      "internetUsers": "Uživatelé internetu",
+      "mobileSubscriptions": "Mobilní předplatná",
+      "rdSpending": "Výdaje na výzkum a vývoj",
+      "fetchingData": "Načítání dat Světové banky",
+      "internetUsersIndicator": "Uživatelé internetu",
+      "mobileSubscriptionsIndicator": "Mobilní předplatná",
+      "broadbandAccess": "Přístup k širokopásmovému připojení",
+      "rdExpenditure": "Výdaje na výzkum a vývoj (V&V)",
+      "analyzingCountries": "Analýza 200+ zemí...",
+      "source": "Zdroj: Světová banka",
+      "updated": "Aktualizováno: {{date}}",
+      "infoTooltip": "<strong>Globální technologická připravenost</strong><br>Kompozitní skóre (0-100) na základě dat Světové banky:<br><br><strong>Zobrazené metriky:</strong><br>🌐 Uživatelé internetu (% populace)<br>📱 Mobilní předplatná (na 100 obyvatel)<br>🔬 Výdaje na V&V (% HDP)<br><br><strong>Váhy:</strong> V&V (35 %), Internet (30 %), Širokopásmové (20 %), Mobilní (15 %)<br><br><em>— = Žádná nedávná data nejsou k dispozici</em><br><em>Zdroj: World Bank Open Data (2019-2024)</em>"
+    },
+    "populationExposure": {
+      "noData": "Data o expozici nejsou k dispozici",
+      "totalAffected": "Celkem zasaženo",
+      "affectedCount": "Zasaženo: {{count}}",
+      "radiusKm": "Rádius {{km}} km",
+      "infoTooltip": "<strong>Odhady expozice obyvatelstva</strong> Odhadovaný počet obyvatel v okruhu dopadu události. Na základě dat hustoty zalidnění zemí z WorldPop.<ul><li>Konflikt: rádius 50 km</li><li>Zemětřesení: rádius 100 km</li><li>Záplavy: rádius 100 km</li><li>Požár: rádius 30 km</li></ul>"
+    },
+    "securityAdvisories": {
+      "loading": "Načítání cestovních varování...",
+      "noMatching": "Tomuto filtru neodpovídají žádná varování",
+      "critical": "Kritické",
+      "health": "Zdraví",
+      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT, CDC, ECDC, WHO, US Velvyslanectví",
+      "refresh": "Obnovit",
+      "levels": {
+        "doNotTravel": "Necestovat",
+        "reconsider": "Zvážit cestu",
+        "caution": "Zvýšená opatrnost",
+        "normal": "Normální",
+        "info": "Info"
+      },
+      "time": {
+        "justNow": "právě teď",
+        "minutesAgo": "před {{count}} min",
+        "hoursAgo": "před {{count}} h",
+        "daysAgo": "před {{count}} d"
+      },
+      "infoTooltip": "<strong>Bezpečnostní varování</strong><br>Cestovní doporučení a bezpečnostní upozornění od vládních úřadů pro zahraniční věci:<br><br><strong>Zdroje:</strong><br>🇺🇸 US State Dept Travel Advisories<br>🇦🇺 AU DFAT Smartraveller<br>🇬🇧 UK FCDO Travel Advice<br>🇳🇿 NZ MFAT SafeTravel<br><br><strong>Úrovně:</strong><br>🟥 Necestovat<br>🟧 Zvážit cestu<br>🟨 Zvýšená opatrnost<br>🟩 Běžná opatření"
+    },
+    "orefSirens": {
+      "checking": "Kontrola upozornění sirén...",
+      "noAlerts": "Žádné aktivní sirény — klid",
+      "notConfigured": "Služba sirén není nakonfigurována",
+      "activeSirens": "Aktivní sirény: {{count}}",
+      "area": "Oblast",
+      "time": "Čas",
+      "justNow": "právě teď",
+      "historyCount": "{{count}} upozornění za posledních 24 h",
+      "historySummary": "{{count}} upozornění za 24 h — vlny: {{waves}}",
+      "loadingHistory": "Načítání historie...",
+      "infoTooltip": "<strong>Sirény Izrael</strong><br>Upozornění na rakety a střely v reálném čase od Velitelství domácí fronty Izraele.<br><br>Data jsou dotazována každých 10 sekund. Pulzující červený indikátor znamená, že znějí aktivní sirény."
+    },
+    "satelliteFires": {
+      "noData": "Data o požárech nejsou k dispozici",
+      "region": "Region",
+      "fires": "Požáry",
+      "high": "Vysoké",
+      "total": "Celkem",
+      "never": "nikdy",
+      "time": {
+        "justNow": "právě teď",
+        "minutesAgo": "před {{count}} min",
+        "hoursAgo": "před {{count}} h"
+      },
+      "infoTooltip": "Satelitní tepelné detekce NASA FIRMS VIIRS napříč monitorovanými zónami konfliktů. Vysoká intenzita = jas >360K & spolehlivost >80 %."
+    },
+    "ucdpEvents": {
+      "stateBased": "Státní",
+      "nonState": "Nestátní",
+      "oneSided": "Jednostranné",
+      "country": "Země",
+      "deaths": "Úmrtí",
+      "date": "Datum",
+      "actors": "Aktéři",
+      "deathsCount": "{{count}} úmrtí",
+      "moreNotShown": "Nezobrazeno dalších událostí: {{count}}",
+      "noEvents": "Žádné události v této kategorii",
+      "infoTooltip": "<strong>Georeferencované události UCDP</strong> Údaje o konfliktech na úrovni událostí z Uppsalské univerzity.<ul><li><strong>Státní</strong>: Vláda vs povstalecká skupina</li><li><strong>Nestátní</strong>: Ozbrojená skupina vs ozbrojená skupina</li><li><strong>Jednostranné</strong>: Násilí vůči civilistům</li></ul>Úmrtí zobrazena jako nejlepší odhad (rozmezí minimum-maximum). Duplikáty ACLED jsou automaticky odfiltrovány."
+    },
+    "giving": {
+      "activityIndex": "Index aktivity",
+      "trend": "Trend",
+      "estDailyFlow": "Odhad. denní tok",
+      "cryptoDaily": "Krypto denně",
+      "tabs": {
+        "platforms": "Platformy",
+        "categories": "Kategorie",
+        "crypto": "Krypto",
+        "institutional": "Institucionální"
+      },
+      "platform": "Platforma",
+      "dailyVol": "Denní obj.",
+      "velocity": "Rychlost",
+      "freshness": "Data",
+      "category": "Kategorie",
+      "share": "Podíl",
+      "trending": "TREND",
+      "dailyInflow": "Příliv za 24h",
+      "wallets": "Peněženky",
+      "ofTotal": "% z celku",
+      "topReceivers": "Největší příjemci",
+      "oecdOda": "OECD ODA",
+      "cafIndex": "Index CAF",
+      "candidGrants": "Granty Candid",
+      "dataLag": "Zpoždění dat",
+      "infoTooltip": "<strong>Index globální dárcovské aktivity</strong> Kompozitní index sledující osobní dárcovství napříč crowdfundingovými platformami a krypto peněženkami.<ul><li><strong>Platformy</strong>: Vzorkování kampaní GoFundMe, GlobalGiving, JustGiving</li><li><strong>Krypto</strong>: Příliv do on-chain charitativních peněženek (Endaoment, Giving Block)</li><li><strong>Institucionální</strong>: OECD ODA, CAF World Giving Index, granty Candid</li></ul>Index je orientační (ne přesné částky v dolarech). Kombinuje živé vzorkování s publikovanými výročními zprávami."
+    },
+    "displacement": {
+      "noData": "Žádná data",
+      "refugees": "Uprchlíci",
+      "asylumSeekers": "Žadatelé o azyl",
+      "idps": "Vnitřně přesídlení",
+      "total": "Celkem",
+      "origins": "Původy",
+      "hosts": "Hostitelé",
+      "badges": {
+        "crisis": "KRIZE",
+        "high": "VYSOKÁ",
+        "elevated": "ZVÝŠENÁ"
+      },
+      "country": "Země",
+      "status": "Stav",
+      "count": "Počet",
+      "infoTooltip": "<strong>Data o vysídlení UNHCR</strong> Globální počty uprchlíků, žadatelů o azyl a IDP (vnitřně přesídlených) od UNHCR.<ul><li><strong>Původy</strong>: Země, ze kterých lidé utíkají</li><li><strong>Hostitelé</strong>: Země hostící uprchlíky</li><li>Odznaky krizí: >1M | Vysoká: >500K vysídlených</li></ul>Data se aktualizují ročně. Licence CC BY 4.0."
+    },
+    "climate": {
+      "noAnomalies": "Nebyly zjištěny žádné významné anomálie",
+      "zone": "Zóna",
+      "temp": "Teplota",
+      "precip": "Srážky",
+      "severityLabel": "Závažnost",
+      "severity": {
+        "extreme": "EXTRÉMNÍ",
+        "moderate": "MÍRNÁ",
+        "normal": "NORMÁLNÍ"
+      },
+      "infoTooltip": "<strong>Monitor klimatických anomálií</strong> Odchylky teploty a srážek od 30denního průměru. Data z Open-Meteo (reanlýza ERA5).<ul><li><strong>Extrémní</strong>: odchylka >5°C nebo >80mm/den</li><li><strong>Mírná</strong>: odchylka >3°C nebo >40mm/den</li></ul>Monitoruje 15 zón náchylných ke konfliktům/katastrofám."
+    },
+    "newsPanel": {
+      "close": "Zavřít",
+      "summarize": "Shrnout tento panel",
+      "generatingSummary": "Generuji souhrn...",
+      "sources": "Zdrojů: {{count}}",
+      "relatedAssetsNear": "Související aktiva blízko {{location}}"
+    },
+    "export": {
+      "exportData": "Exportovat data"
+    },
+    "runtimeConfig": {
+      "getApiKey": "Získat API klíč"
+    },
+    "breakingNews": {
+      "critical": "KRITICKÉ",
+      "high": "VYSOKÉ",
+      "dismiss": "Zavřít",
+      "enableNotifications": "Povolit oznámení na ploše"
+    },
+    "intelligenceFindings": {
+      "breakingAlerts": "Blesková upozornění",
+      "popupAlerts": "Otevírat nová upozornění",
+      "badgeTitle": "Zpravodajská zjištění",
+      "title": "Zpravodajská zjištění",
+      "none": "Žádná nedávná zpravodajská zjištění",
+      "monitoring": "MONITOROVÁNÍ",
+      "scanning": "Hledání korelací a anomálií...",
+      "reviewRecommended": "{{count}} zpravodajských zjištění - doporučuje se revize",
+      "count": "{{count}} zpravodajské zjištění",
+      "detected": "{{count}} DETEKOVÁNO",
+      "critical": "{{count}} KRITICKÝCH",
+      "highPriority": "{{count}} VYSOKÁ PRIORITA",
+      "more": "+{{count}} dalších zjištění",
+      "all": "Všechna zpravodajská zjištění ({{count}})",
+      "priority": {
+        "critical": "KRITICKÉ",
+        "high": "VYSOKÉ",
+        "medium": "STŘEDNÍ",
+        "low": "NÍZKÉ"
+      },
+      "insights": {
+        "criticalDestabilization": "Kritická destabilizace - okamžitá pozornost",
+        "significantShift": "Významný posun - pečlivě sledujte",
+        "developingSituation": "Vyvíjející se situace - sledujte eskalaci",
+        "convergence": "Vícenásobné události se shlukují v regionu",
+        "cascade": "Narušení infrastruktury se šíří",
+        "review": "Přezkoumat pro situační přehled"
+      },
+      "time": {
+        "justNow": "právě teď",
+        "minutesAgo": "před {{count}} min",
+        "hoursAgo": "před {{count}} h",
+        "daysAgo": "před {{count}} d"
+      }
+    },
+    "countryTimeline": {
+      "now": "nyní",
+      "noEventsIn7Days": "Žádné události za 7 dní"
+    },
+    "gdeltIntel": {
+      "infoTooltip": "<strong>GDELT Zpravodajství</strong> Globální sledování zpráv v reálném čase:<ul><li>Vybrané tematické kategorie (konflikty, kybernetika atd.)</li><li>Články ze 100+ jazyků přeloženy</li><li>Aktualizace každých 15 minut</li></ul>Zdroj: Projekt GDELT (gdeltproject.org)"
+    },
+    "telegramIntel": {
+      "infoTooltip": "Signály v reálném čase z monitorovaných OSINT kanálů Telegramu",
+      "loading": "Připojování k relé Telegramu...",
+      "empty": "Nejsou k dispozici žádné zprávy",
+      "disabled": "Relé Telegramu není aktivní",
+      "filterAll": "Vše",
+      "filterBreaking": "Bleskové zprávy",
+      "filterConflict": "Konflikt",
+      "filterAlerts": "Upozornění",
+      "filterOsint": "OSINT",
+      "filterPolitics": "Politika",
+      "filterMiddleeast": "Blízký východ"
+    },
+    "investments": {
+      "infoTooltip": "Databáze přímých zahraničních investic Saúdské Arábie a SAE do globální kritické infrastruktury. Kliknutím na řádek přejdete k investici na mapě.",
+      "searchPlaceholder": "Hledat aktiva, země, subjekty…",
+      "allCountries": "Všechny země",
+      "saudiArabia": "Saúdská Arábie",
+      "uae": "SAE",
+      "allSectors": "Všechny sektory",
+      "allEntities": "Všechny subjekty",
+      "allStatuses": "Všechny stavy",
+      "operational": "V provozu",
+      "underConstruction": "Ve výstavbě",
+      "announced": "Oznámeno",
+      "rumoured": "Hovoří se",
+      "divested": "Odprodáno",
+      "asset": "Aktivum",
+      "country": "Země",
+      "sector": "Sektor",
+      "status": "Stav",
+      "investment": "Investice",
+      "year": "Rok",
+      "noMatch": "Žádné investice neodpovídají filtrům",
+      "undisclosed": "Nezveřejněno",
+      "sectors": {
+        "ports": "Přístavy",
+        "pipelines": "Potrubí",
+        "energy": "Energie",
+        "datacenters": "Datová centra",
+        "airports": "Letiště",
+        "railways": "Železnice",
+        "telecoms": "Telekomunikace",
+        "water": "Voda",
+        "logistics": "Logistika",
+        "mining": "Těžba",
+        "realEstate": "Nemovitosti",
+        "manufacturing": "Výroba"
+      }
+    },
+    "prediction": {
+      "infoTooltip": "<strong>Predikční trhy</strong> Trhy s reálnými penězi pro prognózy:<ul><li>Ceny odrážejí odhady pravděpodobnosti davu</li><li>Vyšší objem = spolehlivější signál</li><li>Zaměření na geopolitiku a aktuální dění</li></ul>Zdroj: Polymarket (polymarket.com)"
+    },
+    "etfFlows": {
+      "unavailable": "Data ETF dočasně nedostupná",
+      "rateLimited": "Data ETF dočasně nedostupná (limit rychlosti) — zkusím to znovu krátce",
+      "netFlow": "Čistý tok",
+      "estFlow": "Odhad toku",
+      "totalVol": "Celk. objem",
+      "etfs": "ETF",
+      "netInflow": "ČISTÝ PŘÍLIV",
+      "netOutflow": "ČISTÝ ODLIV",
+      "table": {
+        "ticker": "Ticker",
+        "issuer": "Vydavatel",
+        "estFlow": "Odhad toku",
+        "volume": "Objem",
+        "change": "Změna"
+      }
+    },
+    "macroSignals": {
+      "overall": "Celkově",
+      "verdict": {
+        "buy": "KOUPIT",
+        "cash": "HOTOVOST"
+      },
+      "bullish": "{{count}}/{{total}} býčí",
+      "signals": {
+        "liquidity": "Likvidita",
+        "flow": "Tok",
+        "regime": "Režim",
+        "btcTrend": "Trend BTC",
+        "hashRate": "Hash Rate",
+        "mining": "Těžba",
+        "fearGreed": "Strach a chamtivost"
+      }
+    },
+    "panel": {
+      "showMethodologyInfo": "Zobrazit informace o metodice",
+      "dragToResize": "Tažením změňte velikost (dvojklik pro reset)",
+      "openSettings": "Otevřít Nastavení"
+    },
+    "languageSelector": {
+      "selectLanguage": "Vybrat jazyk"
+    },
+    "serviceStatus": {
+      "checkingServices": "Kontrola služeb...",
+      "allOperational": "Všechny služby jsou v provozu",
+      "ok": "OK",
+      "degraded": "Zhoršený chod",
+      "outage": "Výpadek",
+      "backendUnavailable": "Lokální backend pro desktop nedostupný. Přepínám na cloudové API.",
+      "desktopReadiness": "Připravenost desktopu",
+      "acceptanceChecks": "Testy přijetí: {{ready}}/{{total}} připraveno · funkce vyžadující klíče {{available}}/{{featureTotal}}",
+      "nonParityFallbacks": "Fallbackendy bez parity ({{count}})",
+      "categories": {
+        "all": "Vše",
+        "cloud": "Cloud",
+        "dev": "Nástroje Dev",
+        "comm": "Komunikace",
+        "ai": "AI",
+        "saas": "SaaS"
+      }
+    },
+    "verification": {
+      "title": "Kontrolní seznam pro ověření informací",
+      "hint": "Založeno na rámci Bellingcat OSH",
+      "verdicts": {
+        "verified": "OVĚŘENO",
+        "likely": "PRAVDĚPODOBNĚ AUTENTICKÉ",
+        "uncertain": "NEJISTÉ",
+        "unreliable": "NESPOLEHLIVÉ"
+      },
+      "notesTitle": "Poznámky k ověření",
+      "noNotes": "Žádné přidané poznámky",
+      "addNotePlaceholder": "Přidat poznámku k ověření...",
+      "add": "Přidat",
+      "resetChecklist": "Resetovat kontrolní seznam",
+      "checks": {
+        "recency": "Nedávné časové razítko potvrzeno",
+        "geolocation": "Poloha ověřena",
+        "source": "Primární zdroj identifikován",
+        "crossref": "Křížově ověřeno s jinými zdroji",
+        "noAi": "Žádné stopy po generování AI",
+        "noRecrop": "Nejedná se o recyklované/staré záběry",
+        "metadata": "Metadata ověřena",
+        "context": "Kontext ustaven"
+      }
+    },
+    "liveNews": {
+      "retry": "Zkusit znovu",
+      "notLive": "{{name}} právě nevysílá živě",
+      "cannotEmbed": "{{name}} nelze vložit do této aplikace (YouTube {{code}})",
+      "botCheck": "YouTube vyžaduje přihlášení k přehrání {{name}}",
+      "signInToYouTube": "Přihlaste se do YouTube",
+      "openOnYouTube": "Otevřít na YouTube",
+      "manage": "Spravovat kanály",
+      "addChannel": "Přidat kanál",
+      "remove": "Odstranit",
+      "youtubeHandle": "Úchyt (handle) YouTube (např. @Kanal)",
+      "youtubeHandleOrUrl": "Úchyt (handle) nebo URL YouTube",
+      "displayName": "Zobrazovaný název (volitelné)",
+      "openPanelSettings": "Nastavení zobrazení panelu",
+      "channelSettings": "Nastavení kanálu",
+      "save": "Uložit",
+      "cancel": "Zrušit",
+      "confirmDelete": "Smazat tento kanál?",
+      "confirmTitle": "Potvrdit",
+      "restoreDefaults": "Obnovit výchozí kanály",
+      "availableChannels": "Dostupné kanály",
+      "customChannel": "Vlastní kanál",
+      "regionNorthAmerica": "Severní Amerika",
+      "regionEurope": "Evropa",
+      "regionLatinAmerica": "Latinská Amerika",
+      "regionAsia": "Asie",
+      "regionMiddleEast": "Blízký východ",
+      "regionAfrica": "Afrika",
+      "regionOceania": "Oceánie",
+      "invalidHandle": "Zadejte platný úchyt YouTube (např. @NazevKanalu)",
+      "channelNotFound": "Kanál YouTube nenalezen",
+      "verifying": "Ověřování…"
+    },
+    "map": {
+      "showMap": "Zobrazit mapu",
+      "hideMap": "Skrýt mapu"
+    }
+  },
+  "popups": {
+    "startDate": "DATUM ZAČÁTKU",
+    "endDate": "DATUM KONCE",
+    "magnitude": "Magnitudo",
+    "depth": "Hloubka",
+    "intensity": "Intenzita",
+    "type": "Typ",
+    "status": "Stav",
+    "severity": "Závažnost",
+    "location": "LOKACE",
+    "coordinates": "Souřadnice",
+    "casualties": "OBĚTI/ZRANĚNÍ",
+    "displaced": "VYSÍDLENÍ",
+    "belligerents": "ZÚČASTNĚNÉ STRANY",
+    "keyDevelopments": "KLÍČOVÝ VÝVOJ",
+    "unknown": "Neznámé",
+    "source": "Zdroj",
+    "target": "Cíl",
+    "events": "Události",
+    "impact": "Dopad",
+    "capacity": "Kapacita",
+    "alerts": "Aktivní upozornění",
+    "updated": "Aktualizováno",
+    "common": {
+      "start": "ZAČÁTEK",
+      "end": "KONEC",
+      "updated": "AKTUALIZOVÁNO"
+    },
+    "conflict": {
+      "title": "ZÓNA KONFLIKTU"
+    },
+    "earthquake": {
+      "levels": {
+        "major": "SILNÉ",
+        "moderate": "MÍRNÉ",
+        "minor": "SLABÉ"
+      }
+    },
+    "base": {
+      "types": {
+        "us-nato": "USA/NATO",
+        "china": "ČÍNA",
+        "russia": "RUSKO"
+      }
+    },
+    "protest": {
+      "acledVerified": "ACLED (ověřeno)",
+      "gdelt": "GDELT",
+      "riots": "Výtržnosti",
+      "highSeverity": "Vysoká závažnost"
+    },
+    "gpsJamming": {
+      "title": "Interference GPS/GNSS",
+      "interference": "Interference",
+      "aircraftAffected": "Zasažená letadla",
+      "aircraftNormal": "Letadla v normálu",
+      "h3Hex": "H3 Hex"
+    },
+    "flight": {
+      "groundStop": "ZASTAVENÍ PROVOZU (GROUND STOP)",
+      "groundDelay": "PROGRAM ZPOŽDĚNÍ NA ZEMI",
+      "departureDelay": "ZPOŽDĚNÍ ODLETŮ",
+      "arrivalDelay": "ZPOŽDĚNÍ PŘÍLETŮ",
+      "delaysReported": "OHLÁŠENÁ ZPOŽDĚNÍ",
+      "closure": "UZAVŘENÍ LETIŠTĚ",
+      "delays": "ZPOŽDĚNÍ",
+      "avgDelay": "PRŮM ZPOŽDĚNÍ",
+      "cancelled": "ZRUŠENO",
+      "sources": {
+        "faa": "FAA ASWS",
+        "eurocontrol": "Eurocontrol",
+        "computed": "Vypočítáno"
+      },
+      "regions": {
+        "americas": "Amerika",
+        "europe": "Evropa",
+        "apac": "Asie a Pacifik",
+        "mena": "Blízký východ",
+        "africa": "Afrika"
+      }
+    },
+    "apt": {
+      "description": "Skupina pokročilých trvalých hrozeb (APT) se schopnostmi na státní úrovni. Známá sofistikovanými kybernetickými operacemi cílícími na kritickou infrastrukturu, vládu a obranný sektor."
+    },
+    "cyberThreat": {
+      "title": "KYBERNETICKÁ HROZBA"
+    },
+    "nuclear": {
+      "types": {
+        "plant": "ELEKTRÁRNA",
+        "enrichment": "OBOHACOVÁNÍ",
+        "weapons": "ZBRAŇOVÝ KOMPLEX",
+        "research": "VÝZKUM"
+      },
+      "description": "Jaderné zařízení pod dohledem. Strategický význam pro regionální bezpečnost a obavy z šíření."
+    },
+    "economic": {
+      "types": {
+        "exchange": "AKCIOVÁ BURZA",
+        "centralBank": "CENTRÁLNÍ BANKA",
+        "financialHub": "FINANČNÍ CENTRUM"
+      },
+      "closed": "ZAVŘENO"
+    },
+    "irradiator": {
+      "subtitle": "Zařízení pro průmyslové ozařování gama paprsky",
+      "description": "Průmyslové ozařovací zařízení využívající zdroje Kobalt-60 nebo Cesium-137 pro sterilizaci zdravotnických prostředků, konzervaci potravin nebo zpracování materiálů. Zdroj: Databáze IAEA DIIF."
+    },
+    "pipeline": {
+      "title": "POTRUBÍ",
+      "types": {
+        "oil": "ROPOVOD",
+        "gas": "PLYNOVOD",
+        "products": "PRODUKTOVOD"
+      },
+      "status": {
+        "operating": "V PROVOZU",
+        "construction": "VE VÝSTAVBĚ"
+      },
+      "description": "Hlavní {{type}} potrubní infrastruktura. {{status}}"
+    },
+    "pipelineStatusDesc": {
+      "operating": "V současné době v provozu a přepravuje suroviny.",
+      "construction": "V současné době ve výstavbě."
+    },
+    "cable": {
+      "fault": "PORUCHA",
+      "degraded": "ZHORŠENÝ STAV",
+      "active": "AKTIVNÍ",
+      "major": "HLAVNÍ",
+      "cable": "KABEL",
+      "subtitle": "Podmořský optický kabel",
+      "type": "PODMOŘSKÝ KABEL",
+      "advisory": "UPOZORNĚNÍ NA PORUCHU",
+      "repairDeployment": "NASAZENÍ OPRAVY",
+      "repairStatus": {
+        "onStation": "Na pozici",
+        "enRoute": "Na cestě"
+      },
+      "health": {
+        "evidence": "DŮKAZ O STAVU"
+      },
+      "description": "Podmořský telekomunikační kabel přenášející mezinárodní internetový provoz. Tyto optické kabely tvoří páteř globální internetové konektivity a přenášejí přes 95 % mezikontinentálních dat."
+    },
+    "repairShip": {
+      "note": "Sledování opravárenského plavidla ukazuje aktivní nasazení k místu poruchy.",
+      "badge": "OPRAVÁRENSKÁ LOĎ",
+      "description": "Sledování opravárenské lodi ukazuje aktivní nasazení na podporu obnovy podmořského kabelu.",
+      "status": {
+        "onStation": "NA POZICI",
+        "enRoute": "NA CESTĚ"
+      }
+    },
+    "strategic": "STRATEGICKÉ",
+    "verified": "OVĚŘENO",
+    "sampledList": "Zobrazen vzorkovaný seznam {{count}} událostí.",
+    "reason": "DŮVOD",
+    "threat": "HROZBA",
+    "aka": "Známo také jako",
+    "sponsor": "SPONZOR",
+    "origin": "PŮVOD",
+    "country": "ZEMĚ",
+    "malware": "MALWARE",
+    "lastSeen": "NAPOSLEDY SPATŘENO",
+    "open": "OTEVŘENO",
+    "tradingHours": "OBCHODNÍ HODINY",
+    "gamma": "GAMA",
+    "city": "MĚSTO",
+    "length": "DÉLKA",
+    "operator": "PROVOZOVATEL",
+    "countries": "ZEMĚ",
+    "waypoints": "TRASOVÉ BODY",
+    "repairEta": "ODHADOVANÝ ČAS OPRAVY",
+    "timeUnits": {
+      "m": "m",
+      "h": "h",
+      "d": "d"
+    },
+    "hotspot": {
+      "escalation": "HODNOCENÍ ESKALACE",
+      "baseline": "Základ",
+      "score": "Skóre",
+      "trend": "Trend",
+      "components": {
+        "news": "Zprávy",
+        "cii": "CII",
+        "geo": "Geo",
+        "military": "Vojsko"
+      },
+      "levels": {
+        "stable": "STABILNÍ",
+        "watch": "SLEDOVAT",
+        "elevated": "ZVÝŠENÁ",
+        "high": "VYSOKÁ",
+        "critical": "KRITICKÁ"
+      }
+    },
+    "buttons": {
+      "track": "Sledovat problém",
+      "details": "Zobrazit podrobnosti"
+    },
+    "historicalContext": "HISTORICKÝ KONTEXT",
+    "lastMajorEvent": "Poslední významná událost",
+    "precedents": "Precedenty",
+    "cyclicalPattern": "Cyklický vzorec",
+    "whyItMatters": "PROČ JE TO DŮLEŽITÉ",
+    "keyEntities": "KLÍČOVÉ SUBJEKTY",
+    "relatedHeadlines": "SOUVISEJÍCÍ TITULKY",
+    "liveIntel": "Živé zpravodajství",
+    "loadingNews": "Načítání globálních zpráv...",
+    "noCoverage": "Žádné nedávné globální pokrytí",
+    "time": "Čas",
+    "area": "Oblast",
+    "expires": "Vyprší",
+    "aisGapSpike": "NÁRŮST MEZER V AIS",
+    "chokepointCongestion": "ZÁCPA V ÚZKÉM HRDLE",
+    "darkening": "STMÍVÁNÍ (ZTRÁTA SIGNÁLU)",
+    "density": "HUSTOTA",
+    "darkShips": "TEMNÉ LODĚ",
+    "vesselCount": "POČET PLAVIDEL",
+    "window": "OKNO",
+    "region": "REGION",
+    "fatalities": "ÚMRTÍ",
+    "actors": "AKTÉŘI",
+    "near": "Blízko",
+    "moreEvents": "dalších událostí",
+    "monitoring": "Monitorování",
+    "viewUSGS": "Zobrazit na USGS",
+    "expired": "Vypršelo",
+    "timeAgo": {
+      "s": "před {{count}} s",
+      "m": "před {{count}} min",
+      "h": "před {{count}} h",
+      "d": "před {{count}} d"
+    },
+    "cableAdvisory": {
+      "reported": "OHLÁŠENO",
+      "impact": "DOPAD",
+      "eta": "ETA"
+    },
+    "outage": {
+      "levels": {
+        "total": "ÚPLNÝ VÝPADEK (BLACKOUT)",
+        "major": "ZÁSADNÍ VÝPADEK",
+        "partial": "ČÁSTEČNÉ NARUŠENÍ",
+        "disruption": "NARUŠENÍ"
+      },
+      "reported": "OHLÁŠENO",
+      "categories": "KATEGORIE",
+      "readReport": "Číst celou zprávu"
+    },
+    "datacenter": {
+      "status": {
+        "existing": "V PROVOZU",
+        "planned": "PLÁNOVANÉ",
+        "decommissioned": "VYŘAZENÉ",
+        "unknown": "NEZNÁMÝ"
+      },
+      "gpuChipCount": "POČET GPU/ČIPŮ",
+      "chipType": "TYP ČIPU",
+      "power": "VÝKON",
+      "sector": "SEKTOR",
+      "attribution": "Data: Epoch AI GPU Clusters",
+      "chips": "čipů",
+      "cluster": {
+        "title": "{{count}} Datových center",
+        "totalChips": "CELKEM ČIPŮ",
+        "totalPower": "CELKEM VÝKON",
+        "operational": "V PROVOZU",
+        "planned": "PLÁNOVANÉ",
+        "moreDataCenters": "+ {{count}} dalších datových center",
+        "sampledSites": "Zobrazen vzorkovaný seznam {{count}} lokalit."
+      }
+    },
+    "startupHub": {
+      "tiers": {
+        "mega": "MEGA CENTRUM",
+        "major": "HLAVNÍ CENTRUM",
+        "emerging": "ROZVÍJEJÍCÍ SE",
+        "hub": "CENTRUM"
+      },
+      "unicorns": "JEDNOROŽCI"
+    },
+    "cloudRegion": {
+      "provider": "POSKYTOVATEL",
+      "availabilityZones": "ZÓNY DOSTUPNOSTI"
+    },
+    "techHQ": {
+      "types": {
+        "faang": "BIG TECH",
+        "unicorn": "JEDNOROŽEC",
+        "public": "VEŘEJNÉ",
+        "tech": "TECH"
+      },
+      "marketCap": "TRŽNÍ KAPITALIZACE",
+      "employees": "ZAMĚSTNANCI"
+    },
+    "accelerator": {
+      "types": {
+        "accelerator": "AKCELERÁTOR",
+        "incubator": "INKUBÁTOR",
+        "studio": "STARTUP STUDIO"
+      },
+      "founded": "ZALOŽENO",
+      "notableAlumni": "VÝZNAMNÍ ABSOLVENTI"
+    },
+    "techEvent": {
+      "days": {
+        "today": "DNES",
+        "tomorrow": "ZÍTRA",
+        "inDays": "ZA {{count}} DNÍ"
+      },
+      "date": "DATUM",
+      "moreInformation": "Více informací"
+    },
+    "techHQCluster": {
+      "companiesCount": "{{count}} SPOLEČNOSTÍ",
+      "bigTechCount": "Big Tech: {{count}}",
+      "unicornsCount": "Jednorožců: {{count}}",
+      "publicCount": "Veřejných: {{count}}",
+      "sampled": "Zobrazen vzorkovaný seznam {{count}} společností."
+    },
+    "techEventCluster": {
+      "eventsCount": "{{count}} UDÁLOSTÍ",
+      "upcomingWithin2Weeks": "{{count}} nadcházejících během 2 týdnů",
+      "sampled": "Zobrazen vzorkovaný seznam {{count}} událostí."
+    },
+    "militaryFlight": {
+      "types": {
+        "fighter": "Stíhačka",
+        "bomber": "Bombardér",
+        "transport": "Transportní",
+        "tanker": "Tanker",
+        "awacs": "AWACS/AEW",
+        "reconnaissance": "Průzkumné",
+        "helicopter": "Vrtulník",
+        "drone": "UAV/Dron",
+        "patrol": "Hlídkové",
+        "specialOps": "Speciální operace",
+        "vip": "VIP Transport"
+      },
+      "altitude": "VÝŠKA",
+      "ground": "Na zemi",
+      "speed": "RYCHLOST",
+      "heading": "SMĚR",
+      "hexCode": "HEX KÓD",
+      "squawk": "SQUAWK",
+      "attribution": "Zdroj: Síť OpenSky"
+    },
+    "militaryVessel": {
+      "aisDark": "AIS VYP",
+      "vessel": "Plavidlo",
+      "speed": "RYCHLOST",
+      "heading": "SMĚR",
+      "mmsi": "MMSI",
+      "hull": "TRUP #",
+      "region": "REGION",
+      "strikeGroup": "ÚDERNÁ SKUPINA",
+      "deploymentStatus": "STAV",
+      "usniIntel": "Zpravodajství USNI",
+      "usniSource": "Zdroj: USNI News Fleet Tracker",
+      "approximatePosition": "Pozice je přibližná — na základě týdenní zprávy USNI, nikoli živého AIS.",
+      "darkDescription": "⚠ Plavidlo přešlo do temného režimu - signál AIS ztracen. Může to znamenat citlivé operace."
+    },
+    "militaryCluster": {
+      "flightActivity": {
+        "exercise": "Vojenské cvičení",
+        "patrol": "Hlídková aktivita",
+        "transport": "Transportní operace",
+        "unknown": "Vojenská aktivita"
+      },
+      "moreAircraft": "+{{count}} dalších letadel",
+      "aircraftCount": "{{count}} LETADEL",
+      "aircraft": "LETADLA",
+      "activity": "AKTIVITA",
+      "primary": "PRIMÁRNÍ",
+      "trackedAircraft": "SLEDOVANÁ LETADLA",
+      "vesselActivity": {
+        "exercise": "Námořní cvičení",
+        "deployment": "Námořní nasazení",
+        "patrol": "Hlídková aktivita",
+        "transit": "Tranzit flotily",
+        "unknown": "Námořní aktivita"
+      },
+      "moreVessels": "+{{count}} dalších plavidel",
+      "vesselsCount": "{{count}} PLAVIDEL",
+      "vessels": "PLAVIDLA",
+      "trackedVessels": "SLEDOVANÁ PLAVIDLA"
+    },
+    "naturalEvent": {
+      "closed": "ZAVŘENO",
+      "active": "AKTIVNÍ",
+      "reported": "OHLÁŠENO",
+      "viewOnSource": "Zobrazit na {{source}}",
+      "attribution": "Data: NASA EONET"
+    },
+    "port": {
+      "types": {
+        "container": "KONTEJNEROVÝ",
+        "oil": "ROPNÝ TERMINÁL",
+        "lng": "TERMINÁL LNG",
+        "naval": "NÁMOŘNÍ PŘÍSTAV (VOJENSKÝ)",
+        "mixed": "SMÍŠENÝ",
+        "bulk": "VOLNĚ LOŽENÉ ZBOŽÍ"
+      },
+      "worldRank": "SVĚTOVÉ POŘADÍ"
+    },
+    "spaceport": {
+      "status": {
+        "active": "AKTIVNÍ",
+        "construction": "VE VÝSTAVBĚ",
+        "inactive": "NEAKTIVNÍ"
+      },
+      "launchActivity": "STARTOVACÍ AKTIVITA",
+      "description": "Strategické kosmické startovací zařízení. Kadence startů a možnosti přístupu na oběžnou dráhu jsou klíčovými geopolitickými indikátory."
+    },
+    "mineral": {
+      "status": {
+        "producing": "PRODUKUJÍCÍ",
+        "development": "VE VÝVOJI",
+        "exploration": "PRŮZKUM"
+      },
+      "projectSubtitle": "PROJEKT {{mineral}}"
+    },
+    "stockExchange": {
+      "marketCap": "TRŽNÍ KAPITALIZACE"
+    },
+    "financialCenter": {
+      "gfciRank": "POŘADÍ GFCI",
+      "specialties": "SPECIALIZACE"
+    },
+    "centralBank": {
+      "currency": "MĚNA"
+    },
+    "commodityHub": {
+      "commodities": "KOMODITY"
+    },
+    "iranEvent": {
+      "relatedEvents": "Související události"
+    },
+    "hotspotSubtexts": {
+      "conflict_zone": "Zóna konfliktu",
+      "dprk_watch": "Sledování KLDR",
+      "egypt_gis": "Egypt/GIS",
+      "energy_space": "Energie/Vesmír",
+      "financial_hub": "Finanční centrum",
+      "gchq_mi6": "GCHQ/MI6",
+      "greenland_intel": "Grónsko Intel",
+      "haiti_crisis": "Krize na Haiti",
+      "irgc_activity": "Aktivita IRGC",
+      "insurgency_coups": "Povstání/Převraty",
+      "iraq_pmf": "Irák/PMF",
+      "kremlin_activity": "Aktivita Kremlu",
+      "lebanon_hezbollah": "Libanon/Hizballáh",
+      "mossad_idf": "Mossad/IDF",
+      "nato_hq": "Centrála NATO",
+      "pla_mss_activity": "Aktivita PLA/MSS",
+      "pentagon_pizza_index": "Pentagon Pizza Index",
+      "piracy_conflict": "Pirátsví/Konflikt",
+      "qatar_al_udeid": "Katar/Al Udeid",
+      "saudi_gip_mbs": "Saúdská Arábie GIP/MBS",
+      "strait_watch": "Sledování průlivů",
+      "syria_crisis": "Krize v Sýrii",
+      "tech_ai_hub": "Tech/AI centrum",
+      "turkey_mit": "Turecko/MIT",
+      "uae_ecsr": "SAE/ECSR",
+      "venezuela_crisis": "Krize ve Venezuele",
+      "yemen_houthis": "Jemen/Húsíové"
+    }
+  },
+  "signals": {
+    "context": {
+      "prediction_leads_news": {
+        "whyItMatters": "Predikční trhy často zohledňují informace v ceně dříve, než se stanou zprávami—obchodníci mohou mít brzký přístup k vývoji.",
+        "actionableInsight": "Sledujte bleskové zprávy v následujících 1-6 hodinách, které by mohly vysvětlit pohyb na trhu.",
+        "confidenceNote": "Vyšší spolehlivost, pokud se více predikčních trhů pohybuje stejným směrem."
+      },
+      "news_leads_markets": {
+        "whyItMatters": "Zprávy se šíří rychleji, než trhy reagují—možná příležitost k nesprávnému ocenění.",
+        "actionableInsight": "Sledujte, jak trhy dohánějí zpoždění, zatímco algoritmy a obchodníci zpracovávají zprávy.",
+        "confidenceNote": "Silnější signál, pokud zprávy pocházejí od prvotřídních (Tier 1) tiskových agentur."
+      },
+      "silent_divergence": {
+        "whyItMatters": "Trh se významně pohybuje bez identifikovatelného zpravodajského katalyzátoru—možné zasvěcené informace (insider), algoritmické obchodování nebo neohlášený vývoj.",
+        "actionableInsight": "Zkoumejte alternativní datové zdroje; zprávy vysvětlující pohyb se mohou objevit později.",
+        "confidenceNote": "Nižší spolehlivost, protože příčina je neznámá—považujte to za včasné varování, ne za potvrzenou zpravodajskou informaci."
+      },
+      "velocity_spike": {
+        "whyItMatters": "Příběh zrychluje napříč mnoha zpravodajskými zdroji—naznačuje rostoucí význam a potenciál dopadu na trhy/politiku.",
+        "actionableInsight": "Toto téma vyžaduje okamžitou pozornost; očekávejte oficiální prohlášení nebo reakce trhu.",
+        "confidenceNote": "Vyšší spolehlivost s větším počtem zdrojů; zkontrolujte, zda jsou mezi nimi prvotřídní zdroje."
+      },
+      "keyword_spike": {
+        "whyItMatters": "Výraz se objevuje s výrazně vyšší frekvencí než je jeho základní úroveň napříč mnoha zdroji, což naznačuje vyvíjející se příběh.",
+        "actionableInsight": "Přezkoumejte související titulky a AI shrnutí, pak dejte do souvislosti s nestabilitou zemí a pohyby na trhu.",
+        "confidenceNote": "Spolehlivost roste se silnějším násobkem základní úrovně a širší rozmanitostí zdrojů."
+      },
+      "convergence": {
+        "whyItMatters": "Více nezávislých typů zdrojů potvrzuje stejnou událost—křížové ověření zvyšuje pravděpodobnost přesnosti.",
+        "actionableInsight": "Považujte to za zpravodajskou informaci s vysokou spolehlivostí; triangulace snižuje riziko falešně pozitivních zpráv.",
+        "confidenceNote": "Velmi vysoká spolehlivost, když se shodují tiskové agentury + vláda + zpravodajské zdroje."
+      },
+      "triangulation": {
+        "whyItMatters": "„Trojúhelník autorit“ (tiskové agentury, vládní zdroje, zpravodajští specialisté) jsou ve shodě—toto je zlatý standard pro potvrzení bleskových zpráv.",
+        "actionableInsight": "Jedná se o využitelnou zpravodajskou informaci; v nejbližší době očekávejte reakce trhu/politiky.",
+        "confidenceNote": "Signál s nejvyšší spolehlivostí v systému—shoduje se více autoritativních zdrojů."
+      },
+      "flow_drop": {
+        "whyItMatters": "Zjištěno narušení toku fyzických komodit—omezení dodávek často předchází prudkému nárůstu cen.",
+        "actionableInsight": "Monitorujte ceny energetických komodit; posuďte ohrožení dodavatelského řetězce.",
+        "confidenceNote": "Spolehlivost závisí na délce narušení a dostupnosti alternativních dodávek."
+      },
+      "flow_price_divergence": {
+        "whyItMatters": "Zprávy o narušení dodávek se ještě neodrážejí v cenách komodit—potenciální informační výhoda.",
+        "actionableInsight": "Buď trhy reagují pomalu, nebo je narušení méně významné, než se uvádí.",
+        "confidenceNote": "Střední spolehlivost—trhy mohou mít lepší informace než zpravodajské zprávy."
+      },
+      "geo_convergence": {
+        "whyItMatters": "Shlukování mnoha zpravodajských událostí v jedné geografické lokaci—potenciální eskalace nebo koordinovaná činnost.",
+        "actionableInsight": "Zvyšte prioritu monitorování tohoto regionu; korelovat se satelitními/AIS daty, pokud jsou k dispozici.",
+        "confidenceNote": "Vyšší spolehlivost, pokud události zahrnují více typů zdrojů a časových období."
+      },
+      "explained_market_move": {
+        "whyItMatters": "Pohyb trhu má jasný zpravodajský katalyzátor—žádná záhada, cenová akce odráží známé informace.",
+        "actionableInsight": "Pochopte narativ, který pohání pohyb; posuďte, zda je reakce úměrná.",
+        "confidenceNote": "Vysoká spolehlivost—zprávy a cenová akce korelují."
+      },
+      "hotspot_escalation": {
+        "whyItMatters": "Geopolitický hotspot vykazuje významnou eskalaci na základě zpravodajské aktivity, nestability země, geografické konvergence a vojenské přítomnosti.",
+        "actionableInsight": "Zvyšte prioritu monitorování; posuďte navazující dopady na infrastrukturu, trhy a regionální stabilitu.",
+        "confidenceNote": "Spolehlivost vážená z více datových zdrojů—zprávy (35 %), nestabilita (25 %), geo-konvergence (25 %), vojenská aktivita (15 %)."
+      },
+      "sector_cascade": {
+        "whyItMatters": "Pohyb na trhu se kaskádově šíří napříč souvisejícími sektory—ukazuje systémovou reakci na katalytickou událost.",
+        "actionableInsight": "Identifikujte primární katalyzátor; posuďte expozici napříč korelovanými aktivy.",
+        "confidenceNote": "Vyšší spolehlivost, když se více sektorů pohybuje podobnou rychlostí a směrem."
+      },
+      "military_surge": {
+        "whyItMatters": "Aktivita vojenské dopravy je výrazně nad základní úrovní—ukazuje na potenciální nasazení, humanitární operaci nebo projekci síly.",
+        "actionableInsight": "Korelujte s regionálními zprávami; posuďte nedalekou aktivitu základen a pohyby námořnictva.",
+        "confidenceNote": "Vyšší spolehlivost s trvalou aktivitou po více hodin a různorodými typy letadel."
+      },
+      "fallback": {
+        "whyItMatters": "Signál detekován.",
+        "actionableInsight": "Sledujte vývoj.",
+        "confidenceNote": "Standardní spolehlivost."
+      }
+    }
+  },
+  "alerts": {
+    "instabilityRising": "Nestabilita v zemi {{country}} roste",
+    "instabilityFalling": "Nestabilita v zemi {{country}} klesá",
+    "indexRose": "Index nestability vzrostl z {{from}} na {{to}} ({{change}}). Hlavní faktor: {{driver}}",
+    "indexFell": "Index nestability klesl z {{from}} na {{to}} ({{change}}). Hlavní faktor: {{driver}}",
+    "geoAlert": "Geografické upozornění: {{location}}",
+    "cascadeAlert": "Upozornění na kaskádu v infrastruktuře",
+    "infraAlert": "Upozornění infrastruktury: {{name}}",
+    "countriesAffected": "Zasažených zemí: {{count}}, nejvyšší dopad: {{impact}}",
+    "alert": "Upozornění: {{location}}",
+    "multipleRegions": "Více regionů",
+    "trending": "„{{term}}“ je trendy - {{count}} zmínek za {{hours}} h",
+    "eventsDetected": "V regionu ({{lat}}°, {{lon}}°) bylo detekováno událostí: {{count}}"
+  },
+  "intel": {
+    "topics": {
+      "military": {
+        "name": "Vojenská aktivita",
+        "description": "Vojenská cvičení, nasazení a operace"
+      },
+      "cyber": {
+        "name": "Kybernetické hrozby",
+        "description": "Kybernetické útoky, ransomware a digitální hrozby"
+      },
+      "nuclear": {
+        "name": "Jaderné hrozby",
+        "description": "Jaderné programy, inspekce MAAE, šíření"
+      },
+      "sanctions": {
+        "name": "Sankce",
+        "description": "Ekonomické sankce a obchodní omezení"
+      },
+      "intelligence": {
+        "name": "Zpravodajství",
+        "description": "Špionáž, zpravodajské operace, sledování"
+      },
+      "maritime": {
+        "name": "Námořní bezpečnost",
+        "description": "Námořní operace, úzká hrdla na moři, námořní trasy"
+      }
+    }
+  },
+  "common": {
+    "loading": "Načítání...",
+    "error": "Chyba",
+    "noData": "Data nejsou k dispozici",
+    "noDataAvailable": "Nejsou k dispozici žádná data",
+    "updated": "Aktualizováno právě teď",
+    "ago": "před {{time}}",
+    "retrying": "Opakuji pokus...",
+    "failedToLoad": "Nepodařilo se načíst data",
+    "noDataShort": "Žádná data",
+    "upstreamUnavailable": "Zdrojové API nedostupné — zkusí to automaticky znovu",
+    "loadingUcdpEvents": "Načítání událostí UCDP",
+    "loadingStablecoins": "Načítání stablecoinů...",
+    "scanningThermalData": "Skenování tepelných dat",
+    "calculatingExposure": "Výpočet expozice",
+    "computingSignals": "Výpočet signálů...",
+    "loadingEtfData": "Načítání dat ETF...",
+    "loadingGiving": "Načítání dat o globálním dárcovství",
+    "loadingDisplacement": "Načítání dat o vysídlení",
+    "loadingClimateData": "Načítání dat o klimatu",
+    "failedTechReadiness": "Nepodařilo se načíst data o tech připravenosti",
+    "failedRiskOverview": "Nepodařilo se vypočítat přehled rizik",
+    "failedPredictions": "Nepodařilo se načíst predikce",
+    "failedCII": "Nepodařilo se vypočítat CII",
+    "failedDependencyGraph": "Nepodařilo se sestavit graf závislostí",
+    "failedIntelFeed": "Nepodařilo se načíst zpravodajský kanál",
+    "failedMarketData": "Nepodařilo se načíst tržní data",
+    "failedSectorData": "Nepodařilo se načíst sektorová data",
+    "failedCommodities": "Nepodařilo se načíst komodity",
+    "failedCryptoData": "Nepodařilo se načíst krypto data",
+    "rateLimitedMarket": "Tržní data dočasně nedostupná (limit rychlosti) — zkusím to znovu krátce",
+    "failedClusterNews": "Nepodařilo se seskupit zprávy",
+    "noNewsAvailable": "Nejsou k dispozici žádné zprávy",
+    "noActiveTechHubs": "Žádná aktivní technologická centra",
+    "noActiveGeoHubs": "Žádná aktivní geopolitická centra",
+    "allSourcesDisabled": "Všechny zdroje zakázány",
+    "allIntelSourcesDisabled": "Všechny zpravodajské zdroje zakázány",
+    "noEventsInCategory": "Žádné události v této kategorii",
+    "exportCsv": "Exportovat CSV",
+    "exportJson": "Exportovat JSON",
+    "exportData": "Exportovat data",
+    "selectAll": "Vybrat vše",
+    "selectNone": "Nevybrat nic",
+    "unrest": "Nepokoje",
+    "conflict": "Konflikt",
+    "security": "Bezpečnost",
+    "information": "Informace",
+    "shareStory": "Sdílet příběh",
+    "exportImage": "Exportovat obrázek",
+    "exportPdf": "Exportovat PDF",
+    "new": "NOVÉ",
+    "live": "ŽIVĚ",
+    "cached": "Z MEZIPAMĚTI",
+    "unavailable": "NEDOSTUPNÉ",
+    "close": "Zavřít",
+    "currentVariant": "(současná)",
+    "retry": "Zkusit znovu",
+    "refresh": "Obnovit",
+    "all": "Vše"
+  }
+}
