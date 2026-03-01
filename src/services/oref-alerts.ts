@@ -54,6 +54,15 @@ const MAX_TRANSLATION_CACHE = 200;
 const translationCache = new Map<string, { title: string; data: string[]; desc: string }>();
 let translationPromise: Promise<boolean> | null = null;
 
+function sanitizeHebrew(text: string): string {
+  return text
+    .normalize('NFKC')
+    .replace(/[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g, '')
+    .replace(/[\u2010-\u2015\u2212]/g, '-')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
 const HEBREW_RE = /[\u0590-\u05FF]/;
 
 const STATIC_TRANSLATIONS: Record<string, string> = {
@@ -83,9 +92,10 @@ const STATIC_TRANSLATIONS: Record<string, string> = {
 
 function staticTranslate(text: string): string {
   if (!text || !HEBREW_RE.test(text)) return text;
-  const direct = STATIC_TRANSLATIONS[text.trim()];
+  const sanitized = sanitizeHebrew(text);
+  const direct = STATIC_TRANSLATIONS[sanitized];
   if (direct) return direct;
-  let result = text;
+  let result = sanitized;
   for (const [heb, eng] of Object.entries(STATIC_TRANSLATIONS)) {
     if (result.includes(heb)) result = result.replace(heb, eng);
   }
