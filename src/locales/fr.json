@@ -255,6 +255,9 @@
       "placeholderFinance": "Rechercher ou saisir une commande...",
       "hintFinance": "Recherche • Bourses • Marchés • Couches • Navigation • Paramètres"
     },
+    "shortcuts": {
+      "title": "Raccourcis Clavier"
+    },
     "signal": {
       "title": "DÉCOUVERTE RENSEIGNEMENT",
       "soundAlerts": "Alertes sonores",

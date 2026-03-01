@@ -255,6 +255,9 @@
       "placeholderFinance": "Suchen oder Befehl eingeben...",
       "hintFinance": "Suche • Börsen • Märkte • Ebenen • Navigation • Einstellungen"
     },
+    "shortcuts": {
+      "title": "Tastaturkürzel"
+    },
     "signal": {
       "title": "INTELLIGENZFINDEN",
       "soundAlerts": "Akustische Warnungen",

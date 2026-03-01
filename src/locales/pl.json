@@ -255,6 +255,9 @@
       "placeholderFinance": "Szukaj lub wpisz polecenie...",
       "hintFinance": "Szukaj • Giełdy • Rynki • Warstwy • Nawigacja • Ustawienia"
     },
+    "shortcuts": {
+      "title": "Skróty Klawiszowe"
+    },
     "signal": {
       "title": "WYKONANIE INTELIGENCJI",
       "soundAlerts": "Alarmy dźwiękowe",

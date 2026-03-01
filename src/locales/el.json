@@ -255,6 +255,9 @@
         "accelerator": "Accelerator"
       }
     },
+    "shortcuts": {
+      "title": "Συντομεύσεις Πληκτρολογίου"
+    },
     "signal": {
       "title": "ΕΥΡΗΜΑ ΠΛΗΡΟΦΟΡΙΩΝ",
       "soundAlerts": "Ηχητικές ειδοποιήσεις",

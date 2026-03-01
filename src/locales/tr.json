@@ -255,6 +255,9 @@
         "accelerator": "Hizlandirici"
       }
     },
+    "shortcuts": {
+      "title": "Klavye Kısayolları"
+    },
     "signal": {
       "title": "ISTIHBARAT BULGULARI",
       "soundAlerts": "Sesli uyarilar",

@@ -188,6 +188,19 @@ export class EventHandlerManager implements AppModule {
       }
     });
 
+    document.getElementById('downloadBtn')?.addEventListener('click', () => {
+      const platform = navigator.platform.toLowerCase();
+      let downloadUrl = 'https://worldmonitor.app/api/download?platform=windows-exe';
+      if (platform.includes('mac')) {
+        downloadUrl = navigator.userAgent.includes('ARM') || navigator.userAgent.includes('Apple M')
+          ? 'https://worldmonitor.app/api/download?platform=macos-arm64'
+          : 'https://worldmonitor.app/api/download?platform=macos-x64';
+      } else if (platform.includes('linux')) {
+        downloadUrl = 'https://worldmonitor.app/api/download?platform=linux-appimage';
+      }
+      window.open(downloadUrl, '_blank');
+    });
+
     window.addEventListener('storage', (e) => {
       if (e.key === STORAGE_KEYS.panels && e.newValue) {
         try {

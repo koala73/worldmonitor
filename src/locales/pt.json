@@ -110,6 +110,9 @@
       "placeholderFinance": "Pesquisar ou digitar um comando...",
       "hintFinance": "Pesquisa • Bolsas • Mercados • Camadas • Navegação • Configurações"
     },
+    "shortcuts": {
+      "title": "Atalhos de Teclado"
+    },
     "signal": {
       "source": "Source",
       "confidence": "Confiança",

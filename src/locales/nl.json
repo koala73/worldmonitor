@@ -110,6 +110,9 @@
       "placeholderFinance": "Zoeken of commando typen...",
       "hintFinance": "Zoeken • Beurzen • Markten • Lagen • Navigatie • Instellingen"
     },
+    "shortcuts": {
+      "title": "Toetsenbordshortcuts"
+    },
     "signal": {
       "source": "Source",
       "confidence": "Vertrouwen",
