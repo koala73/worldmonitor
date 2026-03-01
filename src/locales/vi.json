@@ -255,6 +255,9 @@
         "accelerator": "Vườn ươm"
       }
     },
+    "shortcuts": {
+      "title": "Phím Tắt Bàn Phím"
+    },
     "signal": {
       "title": "PHÁT HIỆN TÌNH BÁO",
       "soundAlerts": "Cảnh báo âm thanh",

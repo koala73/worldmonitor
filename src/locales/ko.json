@@ -255,6 +255,9 @@
         "accelerator": "액셀러레이터"
       }
     },
+    "shortcuts": {
+      "title": "키보드 단축키"
+    },
     "signal": {
       "title": "정보 발견",
       "soundAlerts": "소리 알림",

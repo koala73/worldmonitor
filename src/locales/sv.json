@@ -110,6 +110,9 @@
       "placeholderFinance": "Sök eller skriv ett kommando...",
       "hintFinance": "Sök • Börser • Marknader • Lager • Navigering • Inställningar"
     },
+    "shortcuts": {
+      "title": "Tangentbordsgenvägar"
+    },
     "signal": {
       "source": "Source",
       "confidence": "Förtroende",

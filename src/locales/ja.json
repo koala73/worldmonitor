@@ -255,6 +255,9 @@
         "accelerator": "アクセラレーター"
       }
     },
+    "shortcuts": {
+      "title": "キーボードショートカット"
+    },
     "signal": {
       "title": "インテリジェンス所見",
       "soundAlerts": "サウンドアラート",

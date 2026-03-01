@@ -256,6 +256,9 @@
         "accelerator": "Accelerator"
       }
     },
+    "shortcuts": {
+      "title": "Keyboard Shortcuts"
+    },
     "signal": {
       "title": "INTELLIGENCE FINDING",
       "soundAlerts": "Sound alerts",

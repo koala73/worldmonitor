@@ -255,6 +255,9 @@
       "placeholderFinance": "Buscar o escribir un comando...",
       "hintFinance": "Búsqueda • Bolsas • Mercados • Capas • Navegación • Ajustes"
     },
+    "shortcuts": {
+      "title": "Atajos de Teclado"
+    },
     "signal": {
       "title": "ENCUENTRO DE INTELIGENCIA",
       "soundAlerts": "Alertas sonoras",

@@ -255,6 +255,9 @@
       "placeholderFinance": "Cerca o digita un comando...",
       "hintFinance": "Ricerca • Borse • Mercati • Livelli • Navigazione • Impostazioni"
     },
+    "shortcuts": {
+      "title": "Scorciatoie da Tastiera"
+    },
     "signal": {
       "title": "RICERCA DI INTELLIGENZA",
       "soundAlerts": "Avvisi sonori",

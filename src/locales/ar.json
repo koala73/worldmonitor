@@ -255,6 +255,9 @@
         "accelerator": "مسرّعة"
       }
     },
+    "shortcuts": {
+      "title": "اختصارات لوحة المفاتيح"
+    },
     "signal": {
       "title": "نتيجة استخباراتية",
       "soundAlerts": "تنبيهات صوتية",

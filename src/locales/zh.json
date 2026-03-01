@@ -255,6 +255,9 @@
         "accelerator": "加速器"
       }
     },
+    "shortcuts": {
+      "title": "键盘快捷键"
+    },
     "signal": {
       "title": "情报发现",
       "soundAlerts": "声音警报",
