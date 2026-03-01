@@ -31,6 +31,10 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'BBC Middle East', url: 'https://feeds.bbci.co.uk/news/world/middle_east/rss.xml' },
       { name: 'Al Jazeera', url: 'https://www.aljazeera.com/xml/rss/all.xml' },
       { name: 'Guardian ME', url: 'https://www.theguardian.com/world/middleeast/rss' },
+      { name: 'Oman Observer', url: 'https://www.omanobserver.om/rssFeed/1' },
+    ],
+    asia: [
+      { name: 'NDTV', url: 'https://feeds.feedburner.com/ndtvnews-top-stories' },
     ],
     tech: [
       { name: 'Hacker News', url: 'https://hnrss.org/frontpage' },

@@ -161,6 +161,7 @@ const ALLOWED_DOMAINS = [
   // Accelerators
   'www.techstars.com',
   // Middle East & Regional News
+  'www.omanobserver.om',
   'english.alarabiya.net',
   'www.arabnews.com',
   'www.timesofisrael.com',
