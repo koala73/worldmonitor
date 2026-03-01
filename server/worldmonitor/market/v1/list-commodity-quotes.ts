@@ -13,7 +13,7 @@ import { fetchYahooQuotesBatch } from './_shared';
 import { cachedFetchJson } from '../../../_shared/redis';
 
 const REDIS_CACHE_KEY = 'market:commodities:v1';
-const REDIS_CACHE_TTL = 300; // 5 min — commodities move slower than indices
+const REDIS_CACHE_TTL = 600; // 10 min — commodities move slower than indices
 
 function redisCacheKey(symbols: string[]): string {
   return `${REDIS_CACHE_KEY}:${[...symbols].sort().join(',')}`;

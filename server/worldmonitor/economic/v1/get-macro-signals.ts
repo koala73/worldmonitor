@@ -22,9 +22,9 @@ import {
 import { cachedFetchJson } from '../../../_shared/redis';
 
 const REDIS_CACHE_KEY = 'economic:macro-signals:v1';
-const REDIS_CACHE_TTL = 300; // 5 min — matches in-memory TTL
+const REDIS_CACHE_TTL = 900; // 15 min — matches in-memory TTL
 
-const MACRO_CACHE_TTL = 300; // 5 minutes in seconds
+const MACRO_CACHE_TTL = 900; // 15 minutes in seconds
 let macroSignalsCached: GetMacroSignalsResponse | null = null;
 let macroSignalsCacheTimestamp = 0;
 

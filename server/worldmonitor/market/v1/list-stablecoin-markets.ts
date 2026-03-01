@@ -14,7 +14,7 @@ import { CHROME_UA } from '../../../_shared/constants';
 import { cachedFetchJson } from '../../../_shared/redis';
 
 const REDIS_CACHE_KEY = 'market:stablecoins:v1';
-const REDIS_CACHE_TTL = 300; // 5 min — CoinGecko rate-limited
+const REDIS_CACHE_TTL = 600; // 10 min — CoinGecko rate-limited
 
 // ========================================================================
 // Constants and cache
@@ -24,7 +24,7 @@ const DEFAULT_STABLECOIN_IDS = 'tether,usd-coin,dai,first-digital-usd,ethena-usd
 
 let stablecoinCache: ListStablecoinMarketsResponse | null = null;
 let stablecoinCacheTimestamp = 0;
-const STABLECOIN_CACHE_TTL = 120_000; // 2 minutes
+const STABLECOIN_CACHE_TTL = 480_000; // 8 minutes
 
 // ========================================================================
 // Types

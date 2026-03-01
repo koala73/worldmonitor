@@ -15,10 +15,10 @@ import { YAHOO_ONLY_SYMBOLS, fetchFinnhubQuote, fetchYahooQuotesBatch } from './
 import { cachedFetchJson } from '../../../_shared/redis';
 
 const REDIS_CACHE_KEY = 'market:quotes:v1';
-const REDIS_CACHE_TTL = 120; // 2 min — shared across all Vercel instances
+const REDIS_CACHE_TTL = 480; // 8 min — shared across all Vercel instances
 
 const quotesCache = new Map<string, { data: ListMarketQuotesResponse; timestamp: number }>();
-const QUOTES_CACHE_TTL = 120_000; // 2 minutes (in-memory fallback)
+const QUOTES_CACHE_TTL = 480_000; // 8 minutes (in-memory fallback)
 
 function cacheKey(symbols: string[]): string {
   return [...symbols].sort().join(',');

@@ -18,7 +18,7 @@ import { CHROME_UA } from '../../../_shared/constants';
 const USGS_FEED_URL =
   'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_day.geojson';
 const CACHE_KEY = 'seismology:earthquakes:v1';
-const CACHE_TTL = 300; // 5 minutes
+const CACHE_TTL = 1800; // 30 minutes
 
 export const listEarthquakes: SeismologyServiceHandler['listEarthquakes'] = async (
   _ctx: ServerContext,

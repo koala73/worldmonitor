@@ -18,7 +18,7 @@ import { getVesselSnapshot } from '../../maritime/v1/get-vessel-snapshot';
 import { computeDisruptionScore, scoreToStatus, SEVERITY_SCORE } from './_scoring.mjs';
 
 const REDIS_CACHE_KEY = 'supply_chain:chokepoints:v1';
-const REDIS_CACHE_TTL = 300;
+const REDIS_CACHE_TTL = 900; // 15 min
 
 interface ChokepointConfig {
   id: string;

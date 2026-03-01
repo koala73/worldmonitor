@@ -208,7 +208,7 @@ export function startOrefPolling(): void {
   pollingInterval = setInterval(async () => {
     const data = await fetchOrefAlerts();
     for (const cb of updateCallbacks) cb(data);
-  }, 10_000);
+  }, 120_000);
 }
 
 export function stopOrefPolling(): void {

@@ -285,7 +285,7 @@ async function checkServiceStatus(service: ServiceDef): Promise<ServiceStatus> {
 // ========================================================================
 
 const INFRA_CACHE_KEY = 'infra:service-statuses:v1';
-const INFRA_CACHE_TTL = 300; // 5 minutes
+const INFRA_CACHE_TTL = 1800; // 30 minutes
 
 export async function listServiceStatuses(
   _ctx: ServerContext,

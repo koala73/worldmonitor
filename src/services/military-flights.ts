@@ -38,7 +38,7 @@ const breaker = createCircuitBreaker<{ flights: MilitaryFlight[]; clusters: Mili
   name: 'Military Flight Tracking',
   maxFailures: 3,
   cooldownMs: 5 * 60 * 1000, // 5 minute cooldown
-  cacheTtlMs: 5 * 60 * 1000, // 5 minute cache
+  cacheTtlMs: 10 * 60 * 1000,
 });
 
 // OpenSky API returns arrays in this order:

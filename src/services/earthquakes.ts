@@ -10,7 +10,7 @@ import { getHydratedData } from '@/services/bootstrap';
 export type { Earthquake };
 
 const client = new SeismologyServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
-const breaker = createCircuitBreaker<ListEarthquakesResponse>({ name: 'Seismology', cacheTtlMs: 5 * 60 * 1000, persistCache: true });
+const breaker = createCircuitBreaker<ListEarthquakesResponse>({ name: 'Seismology', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
 
 const emptyFallback: ListEarthquakesResponse = { earthquakes: [] };
 

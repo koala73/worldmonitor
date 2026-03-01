@@ -19,7 +19,7 @@ import { CHROME_UA } from '../../../_shared/constants';
 import { cachedFetchJson } from '../../../_shared/redis';
 
 const REDIS_CACHE_KEY = 'prediction:markets:v1';
-const REDIS_CACHE_TTL = 300; // 5 min
+const REDIS_CACHE_TTL = 600; // 10 min
 
 const GAMMA_BASE = 'https://gamma-api.polymarket.com';
 const FETCH_TIMEOUT = 8000;

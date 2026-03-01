@@ -34,7 +34,7 @@ const breaker = createCircuitBreaker<{ vessels: MilitaryVessel[]; clusters: Mili
   name: 'Military Vessel Tracking',
   maxFailures: 3,
   cooldownMs: 5 * 60 * 1000,
-  cacheTtlMs: 5 * 60 * 1000,
+  cacheTtlMs: 10 * 60 * 1000,
 });
 
 // Strategic chokepoints for naval monitoring

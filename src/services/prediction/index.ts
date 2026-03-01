@@ -61,7 +61,7 @@ const DIRECT_RAILWAY_POLY_URL = wsRelayUrl
 const isLocalhostRuntime = typeof window !== 'undefined' && ['localhost', '127.0.0.1'].includes(window.location.hostname);
 const PROXY_STRIP_KEYS = new Set(['end_date_min', 'active', 'archived']);
 
-const breaker = createCircuitBreaker<PredictionMarket[]>({ name: 'Polymarket', cacheTtlMs: 5 * 60 * 1000, persistCache: true });
+const breaker = createCircuitBreaker<PredictionMarket[]>({ name: 'Polymarket', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
 
 // Sebuf client for strategy 4
 const client = new PredictionServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });

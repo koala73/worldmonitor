@@ -42,7 +42,7 @@ interface GDACSResponse {
 }
 
 const GDACS_API = 'https://www.gdacs.org/gdacsapi/api/events/geteventlist/MAP';
-const breaker = createCircuitBreaker<GDACSEvent[]>({ name: 'GDACS', cacheTtlMs: 5 * 60 * 1000, persistCache: true });
+const breaker = createCircuitBreaker<GDACSEvent[]>({ name: 'GDACS', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
 
 const EVENT_TYPE_NAMES: Record<string, string> = {
   EQ: 'Earthquake',

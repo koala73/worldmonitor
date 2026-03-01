@@ -13,7 +13,7 @@ import { CHROME_UA } from '../../../_shared/constants';
 import { cachedFetchJson } from '../../../_shared/redis';
 
 const REDIS_CACHE_KEY = 'infra:outages:v1';
-const REDIS_CACHE_TTL = 300; // 5 min — Cloudflare Radar rate-limited
+const REDIS_CACHE_TTL = 1800; // 30 min — Cloudflare Radar rate-limited
 
 // ========================================================================
 // Constants
