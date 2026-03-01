@@ -87,3 +87,15 @@ export function setTheme(theme: Theme): void {
   // Notify components that theme has changed
   window.dispatchEvent(new CustomEvent('theme-changed', { detail: { theme } }));
 }
+
+/**
+ * Applies the stored theme on application startup.
+ * Reads from localStorage and sets the theme if valid.
+ * This function is called during app initialization.
+ * 
+ * @returns {void}
+ */
+export function applyStoredTheme(): void {
+  const theme = getStoredTheme();
+  setTheme(theme);
+}
