@@ -29,6 +29,7 @@ import { trackEvent, trackDeeplinkOpened } from '@/services/analytics';
 import { preloadCountryGeometry, getCountryNameByCode } from '@/services/country-geometry';
 import { initI18n } from '@/services/i18n';
 
+import { computeDefaultDisabledSources, getLocaleBoostedSources, getTotalFeedCount } from '@/config/feeds';
 import { fetchBootstrapData } from '@/services/bootstrap';
 import { DesktopUpdater } from '@/app/desktop-updater';
 import { CountryIntelManager } from '@/app/country-intel';
@@ -201,6 +202,31 @@ export class App {
     if (!CYBER_LAYER_ENABLED) {
       mapLayers.cyberThreats = false;
     }
+    // One-time migration: reduce default-enabled sources (full variant only)
+    if (currentVariant === 'full') {
+      const baseKey = 'worldmonitor-sources-reduction-v3';
+      if (!localStorage.getItem(baseKey)) {
+        const defaultDisabled = computeDefaultDisabledSources();
+        saveToStorage(STORAGE_KEYS.disabledFeeds, defaultDisabled);
+        localStorage.setItem(baseKey, 'done');
+        const total = getTotalFeedCount();
+        console.log(`[App] Sources reduction: ${defaultDisabled.length} disabled, ${total - defaultDisabled.length} enabled`);
+      }
+      // Locale boost: additively enable locale-matched sources (runs once per locale)
+      const userLang = ((navigator.language ?? 'en').split('-')[0] ?? 'en').toLowerCase();
+      const localeKey = `worldmonitor-locale-boost-${userLang}`;
+      if (userLang !== 'en' && !localStorage.getItem(localeKey)) {
+        const boosted = getLocaleBoostedSources(userLang);
+        if (boosted.size > 0) {
+          const current = loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []);
+          const updated = current.filter(name => !boosted.has(name));
+          saveToStorage(STORAGE_KEYS.disabledFeeds, updated);
+          console.log(`[App] Locale boost (${userLang}): enabled ${current.length - updated.length} sources`);
+        }
+        localStorage.setItem(localeKey, 'done');
+      }
+    }
+
     const disabledSources = new Set(loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
 
     // Build shared state object
