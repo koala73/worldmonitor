@@ -12,14 +12,16 @@ import { CHROME_UA } from '../../../_shared/constants';
 
 const DEDUCT_TIMEOUT_MS = 120_000;
 const DEDUCT_CACHE_TTL = 3600;
-const DEDUCT_API_URL = process.env.LLM_API_URL || 'https://api.groq.com/openai/v1/chat/completions';
-const DEDUCT_MODEL = process.env.LLM_MODEL || 'llama-3.1-8b-instant';
+const DEFAULT_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const DEFAULT_MODEL = 'llama-3.1-8b-instant';
 
 export async function deductSituation(
     _ctx: ServerContext,
     req: DeductSituationRequest,
 ): Promise<DeductSituationResponse> {
     const apiKey = process.env.LLM_API_KEY || process.env.GROQ_API_KEY;
+    const apiUrl = process.env.LLM_API_URL || DEFAULT_API_URL;
+    const model = process.env.LLM_MODEL || DEFAULT_MODEL;
 
     if (!apiKey) {
         return { analysis: '', model: '', provider: 'skipped' };
@@ -53,7 +55,7 @@ Your task is to DEDUCT the situation in a near timeline (e.g. 24 hours to a few 
                     userPrompt += `\n\n### Current Intelligence Context\n${geoContext}`;
                 }
 
-                const resp = await fetch(DEDUCT_API_URL, {
+                const resp = await fetch(apiUrl, {
                     method: 'POST',
                     headers: {
                         Authorization: `Bearer ${apiKey}`,
@@ -61,7 +63,7 @@ Your task is to DEDUCT the situation in a near timeline (e.g. 24 hours to a few 
                         'User-Agent': CHROME_UA
                     },
                     body: JSON.stringify({
-                        model: DEDUCT_MODEL,
+                        model,
                         messages: [
                             { role: 'system', content: systemPrompt },
                             { role: 'user', content: userPrompt },
@@ -84,7 +86,7 @@ Your task is to DEDUCT the situation in a near timeline (e.g. 24 hours to a few 
 
                 raw = raw.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
 
-                return { analysis: raw, model: DEDUCT_MODEL, provider: 'groq' };
+                return { analysis: raw, model, provider: 'groq' };
             } catch (err) {
                 console.error('[DeductSituation] Error calling LLM:', err);
                 return null;

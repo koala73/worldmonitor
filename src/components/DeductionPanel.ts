@@ -18,6 +18,7 @@ export class DeductionPanel extends Panel {
     private submitBtn: HTMLButtonElement;
     private isSubmitting = false;
     private getLatestNews?: () => NewsItem[];
+    private contextHandler: EventListener;
 
     constructor(getLatestNews?: () => NewsItem[]) {
         super({
@@ -83,7 +84,7 @@ export class DeductionPanel extends Panel {
             document.head.appendChild(style);
         }
 
-        document.addEventListener('wm:deduct-context', ((e: CustomEvent<DeductContextDetail>) => {
+        this.contextHandler = ((e: CustomEvent<DeductContextDetail>) => {
             const { query, geoContext, autoSubmit } = e.detail;
 
             if (query) {
@@ -100,10 +101,16 @@ export class DeductionPanel extends Panel {
                 { backgroundColor: 'transparent' }
             ], { duration: 800, easing: 'ease-out' });
 
-            if (autoSubmit && this.inputEl.value) {
+            if (autoSubmit && this.inputEl.value && !this.submitBtn.disabled) {
                 this.formEl.requestSubmit();
             }
-        }) as EventListener);
+        }) as EventListener;
+        document.addEventListener('wm:deduct-context', this.contextHandler);
+    }
+
+    public override destroy(): void {
+        document.removeEventListener('wm:deduct-context', this.contextHandler);
+        super.destroy();
     }
 
     private async handleSubmit(e: Event) {
