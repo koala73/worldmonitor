@@ -47,7 +47,7 @@ Sentry.init({
     /Java bridge method invocation error/,
     /Could not compile fragment shader/,
     /can't redefine non-configurable property/,
-    /Can.t find variable: (CONFIG|currentInset|NP|webkit|EmptyRanges|logMutedMessage)/,
+    /Can.t find variable: (CONFIG|currentInset|NP|webkit|EmptyRanges|logMutedMessage|UTItemActionController)/,
     /invalid origin/,
     /\.data\.split is not a function/,
     /signal is aborted without reason/,
@@ -128,6 +128,8 @@ Sentry.init({
     /^InvalidStateError:|The object is in an invalid state/,
     /Could not establish connection\. Receiving end does not exist/,
     /webkitCurrentPlaybackTargetIsWireless/,
+    /webkit(?:Supports)?PresentationMode/,
+    /Cannot redefine property: webdriver/,
     /null is not an object \(evaluating '\w+\.theme'\)/,
     /this\.player\.\w+ is not a function/,
     /videoTrack\.configuration/,
@@ -156,6 +158,10 @@ Sentry.init({
       const nonSentryFrames = frames.filter(f => f.filename && f.filename !== '<anonymous>' && !/\/sentry-[A-Za-z0-9_-]+\.js/.test(f.filename));
       if (nonSentryFrames.length > 0 && nonSentryFrames.every(f => /\/(map|maplibre|deck-stack)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
     }
+    // Suppress deck.gl/maplibre null-access crashes with no usable stack trace (requestAnimationFrame wrapping)
+    if (/null is not an object \(evaluating '\w{1,3}\.(id|type|style)'\)/.test(msg) && frames.length === 0) return null;
+    // Suppress TypeErrors from anonymous/injected scripts (no real source files)
+    if (/^TypeError:/.test(msg) && frames.length > 0 && frames.every(f => !f.filename || f.filename === '<anonymous>' || /^blob:/.test(f.filename))) return null;
     // Suppress errors originating entirely from blob: URLs (browser extensions)
     if (frames.length > 0 && frames.every(f => /^blob:/.test(f.filename ?? ''))) return null;
     // Suppress YouTube IFrame widget API internal errors
