@@ -14,6 +14,7 @@ import {
 } from '@/config';
 import { fetchCategoryFeeds, fetchMultipleStocks, fetchCrypto, fetchPredictions, fetchEarthquakes, fetchWeatherAlerts, fetchFredData, fetchInternetOutages, isOutagesConfigured, fetchAisSignals, initAisStream, getAisStatus, disconnectAisStream, isAisConfigured, fetchCableActivity, fetchProtestEvents, getProtestStatus, fetchFlightDelays, fetchMilitaryFlights, fetchMilitaryVessels, initMilitaryVesselStream, isMilitaryVesselTrackingConfigured, initDB, updateBaseline, calculateDeviation, addToSignalHistory, saveSnapshot, cleanOldSnapshots, analysisWorker, fetchPizzIntStatus, fetchGdeltTensions, fetchNaturalEvents, fetchRecentAwards, fetchOilAnalytics } from '@/services';
 import { fetchCountryMarkets } from '@/services/polymarket';
+import { fetchGulfMarkets } from '@/services/gulf-markets';
 import { mlWorker } from '@/services/ml-worker';
 import { clusterNewsHybrid } from '@/services/clustering';
 import { ingestProtests, ingestFlights, ingestVessels, ingestEarthquakes, detectGeoConvergence, geoConvergenceToSignal } from '@/services/geo-convergence';
@@ -65,6 +66,7 @@ import {
   MacroSignalsPanel,
   ETFFlowsPanel,
   StablecoinPanel,
+  GulfEconomyPanel,
 } from '@/components';
 import type { SearchResult } from '@/components/SearchModal';
 import { collectStoryData } from '@/services/story-data';
@@ -1535,6 +1537,9 @@ export class App {
     this.panels['etf-flows'] = new ETFFlowsPanel();
     this.panels['stablecoins'] = new StablecoinPanel();
 
+    // Gulf Economies Panel
+    this.panels['gulf-economy'] = new GulfEconomyPanel();
+
     // AI Insights Panel (desktop only - hides itself on mobile)
     const insightsPanel = new InsightsPanel();
     this.panels['insights'] = insightsPanel;
@@ -2376,6 +2381,7 @@ export class App {
       { key: 'finance', feeds: FEEDS.finance },
       { key: 'gov', feeds: FEEDS.gov },
       { key: 'middleeast', feeds: FEEDS.middleeast },
+      { key: 'gulf', feeds: FEEDS.gulf },
       { key: 'africa', feeds: FEEDS.africa },
       { key: 'latam', feeds: FEEDS.latam },
       { key: 'asia', feeds: FEEDS.asia },
@@ -2542,6 +2548,15 @@ export class App {
       this.statusPanel?.updateApi('CoinGecko', { status: 'ok' });
     } catch {
       this.statusPanel?.updateApi('CoinGecko', { status: 'error' });
+    }
+  }
+
+  private async loadGulfMarkets(): Promise<void> {
+    try {
+      const data = await fetchGulfMarkets();
+      (this.panels['gulf-economy'] as GulfEconomyPanel).update(data);
+    } catch (error) {
+      console.error('[App] Gulf markets fetch failed:', error);
     }
   }
 
@@ -3330,6 +3345,7 @@ export class App {
     this.scheduleRefresh('weather', () => this.loadWeatherAlerts(), 10 * 60 * 1000, () => this.mapLayers.weather);
     this.scheduleRefresh('fred', () => this.loadFredData(), 30 * 60 * 1000);
     this.scheduleRefresh('oil', () => this.loadOilAnalytics(), 30 * 60 * 1000);
+    this.scheduleRefresh('gulf-markets', () => this.loadGulfMarkets(), 60 * 1000);
     this.scheduleRefresh('spending', () => this.loadGovernmentSpending(), 60 * 60 * 1000);
 
     // Refresh intelligence signals for CII (geopolitical variant only)

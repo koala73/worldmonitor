@@ -130,6 +130,18 @@ export const SOURCE_TIERS: Record<string, number> = {
   'Wamda (MENA)': 3,
   'Magnitt': 3,
 
+  // Gulf Economy Sources
+  'Arab News': 2,
+  'Gulf News (UAE)': 2,
+  'The National (UAE)': 2,
+  'Saudi Gazette': 3,
+  'Qatar Economy': 3,
+  'Kuwait Economy': 3,
+  'Bahrain & Oman': 3,
+  'GCC Economy': 3,
+  'OPEC & Oil': 2,
+  'Gulf Vision Projects': 3,
+
   // Tier 3 - Think Tanks
   'Brookings Tech': 3,
   'CSIS Tech': 3,
@@ -330,6 +342,24 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     // Arab News and Times of Israel removed — 403 from cloud IPs
     { name: 'Guardian ME', url: rss('https://www.theguardian.com/world/middleeast/rss') },
     { name: 'CNN World', url: rss('http://rss.cnn.com/rss/cnn_world.rss') },
+  ],
+  gulf: [
+    // Saudi Arabia
+    { name: 'Arab News', url: rss('https://www.arabnews.com/rss.xml') },
+    { name: 'Saudi Gazette', url: rss('https://news.google.com/rss/search?q=(Saudi+economy+OR+Saudi+Vision+2030+OR+Saudi+Aramco+OR+TASI+market+OR+PIF+fund)+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    // UAE
+    { name: 'Gulf News (UAE)', url: rss('https://news.google.com/rss/search?q=(UAE+economy+OR+Dubai+market+OR+"Abu+Dhabi"+investment+OR+DFM+OR+ADX)+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'The National (UAE)', url: rss('https://news.google.com/rss/search?q=site:thenationalnews.com+economy+OR+markets+OR+business+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    // Qatar
+    { name: 'Qatar Economy', url: rss('https://news.google.com/rss/search?q=(Qatar+economy+OR+QIA+fund+OR+"Qatar+Investment+Authority"+OR+QSE+market+OR+LNG+Qatar)+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    // Kuwait
+    { name: 'Kuwait Economy', url: rss('https://news.google.com/rss/search?q=(Kuwait+economy+OR+"Kuwait+Investment+Authority"+OR+Kuwait+stock+market+OR+KFH)+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    // Bahrain & Oman
+    { name: 'Bahrain & Oman', url: rss('https://news.google.com/rss/search?q=(Bahrain+economy+OR+Oman+economy+OR+MSM+market+OR+Bapco+OR+"Oman+Vision+2040")+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    // Regional economic overview
+    { name: 'GCC Economy', url: rss('https://news.google.com/rss/search?q=(GCC+economy+OR+"Gulf+economy"+OR+"Gulf+investment"+OR+"sovereign+wealth+fund"+Gulf)+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'OPEC & Oil', url: rss('https://news.google.com/rss/search?q=(OPEC+oil+production+OR+"oil+price"+Gulf+OR+Saudi+Aramco+IPO+OR+"OPEC+cut")+when:2d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Gulf Vision Projects', url: rss('https://news.google.com/rss/search?q=(NEOM+OR+"Saudi+Vision+2030"+OR+"UAE+Vision"+OR+"Qatar+National+Vision"+OR+ADNOC+OR+"Abu+Dhabi+fund")+when:7d&hl=en-US&gl=US&ceid=US:en') },
   ],
   tech: [
     { name: 'Hacker News', url: rss('https://hnrss.org/frontpage') },

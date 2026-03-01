@@ -40,6 +40,7 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   'macro-signals': { name: 'Market Radar', enabled: true, priority: 2 },
   'etf-flows': { name: 'BTC ETF Tracker', enabled: true, priority: 2 },
   stablecoins: { name: 'Stablecoins', enabled: true, priority: 2 },
+  'gulf-economy': { name: 'Gulf Economies', enabled: true, priority: 1 },
 };
 
 const FULL_MAP_LAYERS: MapLayers = {
