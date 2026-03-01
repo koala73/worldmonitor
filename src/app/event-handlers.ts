@@ -73,7 +73,7 @@ export class EventHandlerManager implements AppModule {
   private debouncedUrlSync = debounce(() => {
     const shareUrl = this.getShareUrl();
     if (!shareUrl) return;
-    try { history.replaceState(null, '', shareUrl); } catch {}
+    try { history.replaceState(null, '', shareUrl); } catch { }
   }, 250);
 
   constructor(ctx: AppContext, callbacks: EventHandlerCallbacks) {
@@ -194,7 +194,7 @@ export class EventHandlerManager implements AppModule {
           this.ctx.panelSettings = JSON.parse(e.newValue) as Record<string, PanelConfig>;
           this.applyPanelSettings();
           this.ctx.unifiedSettings?.refreshPanelToggles();
-        } catch (_) {}
+        } catch (_) { }
       }
       if (e.key === STORAGE_KEYS.liveChannels && e.newValue) {
         const panel = this.ctx.panels['live-news'];
@@ -387,13 +387,13 @@ export class EventHandlerManager implements AppModule {
 
   toggleFullscreen(): void {
     if (document.fullscreenElement) {
-      try { void document.exitFullscreen()?.catch(() => {}); } catch {}
+      try { void document.exitFullscreen()?.catch(() => { }); } catch { }
     } else {
       const el = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => void };
       if (el.requestFullscreen) {
-        try { void el.requestFullscreen()?.catch(() => {}); } catch {}
+        try { void el.requestFullscreen()?.catch(() => { }); } catch { }
       } else if (el.webkitRequestFullscreen) {
-        try { el.webkitRequestFullscreen(); } catch {}
+        try { el.webkitRequestFullscreen(); } catch { }
       }
     }
   }
@@ -635,7 +635,7 @@ export class EventHandlerManager implements AppModule {
     const resizeHandle = document.getElementById('mapResizeHandle');
     if (!mapSection || !resizeHandle) return;
 
-    const getMinHeight = () => (window.innerWidth >= 2000 ? 320 : 400);
+    const getMinHeight = () => (window.innerWidth >= 2000 ? 320 : 350);
     const getMaxHeight = () => Math.max(getMinHeight(), window.innerHeight - 60);
 
     const savedHeight = localStorage.getItem('map-height');
@@ -660,6 +660,10 @@ export class EventHandlerManager implements AppModule {
       isResizing = true;
       startY = e.clientY;
       startHeight = mapSection.offsetHeight;
+
+      // Signal the map to ignore ResizeObserver updates during active drag
+      this.ctx.map?.setIsResizing(true);
+
       mapSection.classList.add('resizing');
       document.body.style.cursor = 'ns-resize';
       e.preventDefault();
@@ -670,16 +674,19 @@ export class EventHandlerManager implements AppModule {
       const deltaY = e.clientY - startY;
       const newHeight = Math.max(getMinHeight(), Math.min(startHeight + deltaY, getMaxHeight()));
       mapSection.style.height = `${newHeight}px`;
-      this.ctx.map?.render();
     });
 
     document.addEventListener('mouseup', () => {
       if (!isResizing) return;
       isResizing = false;
+
+      // Release suppression and trigger one final clean resize
+      this.ctx.map?.setIsResizing(false);
+      this.ctx.map?.render();
+
       mapSection.classList.remove('resizing');
       document.body.style.cursor = '';
       localStorage.setItem('map-height', mapSection.style.height);
-      this.ctx.map?.render();
     });
   }
 
