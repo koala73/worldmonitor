@@ -364,6 +364,9 @@ export class DeckGLMap {
   private protestSuperclusterSource: SocialUnrestEvent[] = [];
   private newsPulseIntervalId: ReturnType<typeof setInterval> | null = null;
   private dayNightIntervalId: ReturnType<typeof setInterval> | null = null;
+  private cablePulseIntervalId: ReturnType<typeof setInterval> | null = null;
+  /** Current cable pulse phase in radians (0 → 2π, cycles every CABLE_PULSE_PERIOD_MS). */
+  private cablePulsePhase = 0;
   private cachedNightPolygon: [number, number][] | null = null;
   private readonly startupTime = Date.now();
   private lastCableHighlightSignature = '';
@@ -1321,9 +1324,13 @@ export class DeckGLMap {
     const cached = this.layerCache.get(cacheKey) as PathLayer | undefined;
     const highlightSignature = this.getSetSignature(highlightedCables);
     const healthSignature = Object.keys(this.healthByCableId).sort().join(',');
+    // Cache is invalidated by pulse (cablePulsePhase changes every ~120ms via startCablePulse)
     if (cached && highlightSignature === this.lastCableHighlightSignature && healthSignature === this.lastCableHealthSignature) return cached;
 
     const health = this.healthByCableId;
+    // Pulse: gentle sine-wave opacity modulation 100–200 alpha over 10s cycle
+    const pulseAlpha = Math.round(150 + 50 * Math.sin(this.cablePulsePhase));
+
     const layer = new PathLayer({
       id: cacheKey,
       data: UNDERSEA_CABLES,
@@ -1333,7 +1340,7 @@ export class DeckGLMap {
         const h = health[d.id];
         if (h?.status === 'fault') return COLORS.cableFault;
         if (h?.status === 'degraded') return COLORS.cableDegraded;
-        return COLORS.cable;
+        return [0, 200, 255, pulseAlpha] as [number, number, number, number];
       },
       getWidth: (d) => {
         if (highlightedCables.has(d.id)) return 3;
@@ -1345,7 +1352,7 @@ export class DeckGLMap {
       widthMinPixels: 1,
       widthMaxPixels: 5,
       pickable: true,
-      updateTriggers: { highlighted: highlightSignature, health: healthSignature },
+      updateTriggers: { highlighted: highlightSignature, health: healthSignature, pulse: this.cablePulsePhase },
     });
 
     this.lastCableHighlightSignature = highlightSignature;
@@ -2481,6 +2488,34 @@ export class DeckGLMap {
     }
   }
 
+  // ──────────────────────────────────────────────────────────────────────────
+  // Cable pulse — gentle sine-wave opacity animation on undersea cable layer
+  // Period: 10s cycle; interval: 120ms (~8fps, imperceptible on slow motion)
+  // ──────────────────────────────────────────────────────────────────────────
+
+  private static readonly CABLE_PULSE_PERIOD_MS = 10_000;
+  private static readonly CABLE_PULSE_INTERVAL_MS = 120;
+
+  private startCablePulse(): void {
+    if (this.cablePulseIntervalId !== null) return;
+    const TWO_PI = 2 * Math.PI;
+    const period = DeckGLMap.CABLE_PULSE_PERIOD_MS;
+
+    this.cablePulseIntervalId = setInterval(() => {
+      if (this.renderPaused || this.webglLost) return;
+      this.cablePulsePhase = ((Date.now() % period) / period) * TWO_PI;
+      this.layerCache.delete('cables-layer');
+      this.rafUpdateLayers();
+    }, DeckGLMap.CABLE_PULSE_INTERVAL_MS);
+  }
+
+  private stopCablePulse(): void {
+    if (this.cablePulseIntervalId !== null) {
+      clearInterval(this.cablePulseIntervalId);
+      this.cablePulseIntervalId = null;
+    }
+  }
+
   private createNewsLocationsLayer(): ScatterplotLayer[] {
     const zoom = this.maplibreMap?.getZoom() || 2;
     const alphaScale = zoom < 2.5 ? 0.4 : zoom < 4 ? 0.7 : 1.0;
@@ -3585,6 +3620,7 @@ export class DeckGLMap {
 
     this.syncPulseAnimation();
     if (this.state.layers.dayNight) this.startDayNightTimer();
+    if (this.state.layers.cables) this.startCablePulse();
     if (!paused && this.renderPending) {
       this.renderPending = false;
       this.render();
@@ -3673,6 +3709,13 @@ export class DeckGLMap {
   public setLayers(layers: MapLayers): void {
     this.state.layers = layers;
     this.render(); // Debounced
+
+    // Start/stop cable pulse animation when cables layer is toggled
+    if (layers.cables) {
+      this.startCablePulse();
+    } else {
+      this.stopCablePulse();
+    }
 
     // Update toggle checkboxes
     Object.entries(layers).forEach(([key, value]) => {
@@ -4594,6 +4637,7 @@ export class DeckGLMap {
     }
 
     this.stopPulseAnimation();
+    this.stopCablePulse();
     this.stopDayNightTimer();
 
     if (this.resizeObserver) {
