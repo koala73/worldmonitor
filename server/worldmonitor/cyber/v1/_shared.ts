@@ -45,7 +45,7 @@ const UPSTREAM_TIMEOUT_MS = 8000;
 const GEO_MAX_UNRESOLVED = 250;
 const GEO_CONCURRENCY = 16;
 const GEO_OVERALL_TIMEOUT_MS = 15_000;
-const GEO_PER_IP_TIMEOUT_MS = 3000;
+const GEO_PER_IP_TIMEOUT_MS = 1500;
 const GEO_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 // ========================================================================
