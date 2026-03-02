@@ -112,6 +112,7 @@ export class MapComponent {
   private state: MapState;
   private worldData: WorldTopology | null = null;
   private countryFeatures: Feature<Geometry>[] | null = null;
+  private isResizing = false;
   private baseLayerGroup: d3.Selection<SVGGElement, unknown, null, undefined> | null = null;
   private dynamicLayerGroup: d3.Selection<SVGGElement, unknown, null, undefined> | null = null;
   private baseRendered = false;
@@ -212,6 +213,7 @@ export class MapComponent {
     let lastWidth = 0;
     let lastHeight = 0;
     const resizeObserver = new ResizeObserver((entries) => {
+      if (this.isResizing) return;
       for (const entry of entries) {
         const { width, height } = entry.contentRect;
         if (width > 0 && height > 0 && (width !== lastWidth || height !== lastHeight)) {
@@ -230,6 +232,14 @@ export class MapComponent {
       }
     };
     document.addEventListener('visibilitychange', this.boundVisibilityHandler);
+  }
+
+  public setIsResizing(value: boolean): void {
+    const wasResizing = this.isResizing;
+    this.isResizing = value;
+    if (wasResizing && !value) {
+      requestAnimationFrame(() => this.render());
+    }
   }
 
   public destroy(): void {

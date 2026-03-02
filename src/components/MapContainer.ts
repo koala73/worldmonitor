@@ -145,6 +145,14 @@ export class MapContainer {
     }
   }
 
+  public setIsResizing(isResizing: boolean): void {
+    if (this.useDeckGL) {
+      this.deckGLMap?.setIsResizing(isResizing);
+    } else {
+      this.svgMap?.setIsResizing(isResizing);
+    }
+  }
+
   public setView(view: MapView): void {
     if (this.useDeckGL) {
       this.deckGLMap?.setView(view as DeckMapView);
