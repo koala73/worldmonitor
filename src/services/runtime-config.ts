@@ -581,12 +581,6 @@ export async function loadDesktopSecrets(): Promise<void> {
   } catch (error) {
     console.warn('[runtime-config] Failed to load desktop secrets from vault', error);
   } finally {
-    // Seed WORLDMONITOR_API_KEY from build-time env var if not loaded from keychain.
-    // This allows baking the key into the app binary for zero-friction desktop auth.
-    const builtInKey = (import.meta.env.VITE_DESKTOP_API_KEY as string | undefined)?.trim() ?? '';
-    if (builtInKey && !runtimeConfig.secrets['WORLDMONITOR_API_KEY']) {
-      runtimeConfig.secrets['WORLDMONITOR_API_KEY'] = { value: builtInKey, source: 'env' };
-    }
     secretsReadyResolve();
   }
 }

@@ -28,6 +28,7 @@ const MAX_LOG_BACKUPS: u32 = 3; // keep .log.1 .log.2 .log.3
 const MENU_FILE_SETTINGS_ID: &str = "file.settings";
 const MENU_HELP_GITHUB_ID: &str = "help.github";
 const MENU_HELP_CHECK_UPDATES_ID: &str = "help.check_updates";
+const MENU_HELP_OPEN_LOGS_ID: &str = "help.open_logs";
 #[cfg(feature = "devtools")]
 const MENU_HELP_DEVTOOLS_ID: &str = "help.devtools";
 const TRUSTED_WINDOWS: [&str; 3] = ["main", "settings", "live-channels"];
@@ -918,9 +919,9 @@ fn build_app_menu(handle: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let about_metadata = AboutMetadata {
         name: Some("World Monitor".into()),
         version: Some(env!("CARGO_PKG_VERSION").into()),
-        copyright: Some("\u{00a9} 2025 Elie Habib".into()),
-        website: Some("https://worldmonitor.app".into()),
-        website_label: Some("worldmonitor.app".into()),
+        copyright: Some("\u{00a9} 2025 World Monitor Contributors".into()),
+        website: Some("https://github.com/bradleybond512/worldmonitor-macos".into()),
+        website_label: Some("GitHub Repository".into()),
         ..Default::default()
     };
     let about_item =
@@ -939,7 +940,15 @@ fn build_app_menu(handle: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         true,
         None::<&str>,
     )?;
+    let open_logs_item = MenuItem::with_id(
+        handle,
+        MENU_HELP_OPEN_LOGS_ID,
+        "Open Logs Folder",
+        true,
+        None::<&str>,
+    )?;
     let help_separator = PredefinedMenuItem::separator(handle)?;
+    let help_separator2 = PredefinedMenuItem::separator(handle)?;
 
     #[cfg(feature = "devtools")]
     let help_menu = {
@@ -954,7 +963,7 @@ fn build_app_menu(handle: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
             handle,
             "Help",
             true,
-            &[&about_item, &help_separator, &check_updates_item, &github_item, &devtools_item],
+            &[&about_item, &help_separator, &check_updates_item, &github_item, &help_separator2, &open_logs_item, &devtools_item],
         )?
     };
 
@@ -963,8 +972,15 @@ fn build_app_menu(handle: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         handle,
         "Help",
         true,
-        &[&about_item, &help_separator, &check_updates_item, &github_item],
+        &[&about_item, &help_separator, &check_updates_item, &github_item, &help_separator2, &open_logs_item],
     )?;
+
+    let window_menu = {
+        let minimize = PredefinedMenuItem::minimize(handle, None)?;
+        let maximize = PredefinedMenuItem::maximize(handle, None)?;
+        let close = PredefinedMenuItem::close_window(handle, None)?;
+        Submenu::with_items(handle, "Window", true, &[&minimize, &maximize, &close])?
+    };
 
     let edit_menu = {
         let undo = PredefinedMenuItem::undo(handle, None)?;
@@ -982,7 +998,7 @@ fn build_app_menu(handle: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         )?
     };
 
-    Menu::with_items(handle, &[&file_menu, &edit_menu, &help_menu])
+    Menu::with_items(handle, &[&file_menu, &edit_menu, &window_menu, &help_menu])
 }
 
 fn handle_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
@@ -1000,6 +1016,9 @@ fn handle_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
             if let Some(win) = app.get_webview_window("main") {
                 let _ = win.eval("document.dispatchEvent(new CustomEvent('wm:check-for-updates'))");
             }
+        }
+        MENU_HELP_OPEN_LOGS_ID => {
+            let _ = open_logs_folder_impl(app);
         }
         #[cfg(feature = "devtools")]
         MENU_HELP_DEVTOOLS_ID => {

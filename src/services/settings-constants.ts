@@ -59,7 +59,7 @@ export const HUMAN_LABELS: Record<RuntimeSecretKey, string> = {
   UC_DP_KEY: 'UCDP API Key',
   OLLAMA_API_URL: 'Ollama Server URL',
   OLLAMA_MODEL: 'Ollama Model',
-  WORLDMONITOR_API_KEY: 'World Monitor License Key',
+  WORLDMONITOR_API_KEY: 'World Monitor API Key',
   WTO_API_KEY: 'WTO API Key',
   AVIATIONSTACK_API: 'AviationStack API Key',
   ICAO_API_KEY: 'ICAO NOTAM API Key',
