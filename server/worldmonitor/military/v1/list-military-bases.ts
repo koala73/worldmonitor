@@ -186,7 +186,7 @@ export async function listMilitaryBases(
           const raw = metaMap.get(id);
           if (!raw) continue;
           let meta: Record<string, unknown>;
-          try { meta = JSON.parse(raw); } catch { continue; }
+          try { meta = JSON.parse(raw); } catch (error) { console.warn('[list-military-bases] JSON.parse failed', error); continue; }
 
           const tier = (meta.tier as number) || 2;
           if (zoom < 5 && tier > 1) continue;

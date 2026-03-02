@@ -39,7 +39,8 @@ export async function getCountryIntelBrief(
   try {
     const url = new URL(ctx.request.url);
     contextSnapshot = (url.searchParams.get('context') || '').trim().slice(0, 4000);
-  } catch {
+  } catch (error) {
+    console.warn('[get-country-intel-brief] context parse failed', error);
     contextSnapshot = '';
   }
 
@@ -102,11 +103,13 @@ Rules:
           model: GROQ_MODEL,
           generatedAt: Date.now(),
         };
-      } catch {
+      } catch (error) {
+        console.warn('[get-country-intel-brief] GROQ brief generation failed', error);
         return null;
       }
     });
-  } catch {
+  } catch (error) {
+    console.warn('[get-country-intel-brief] cached fetch failed', error);
     return empty;
   }
 

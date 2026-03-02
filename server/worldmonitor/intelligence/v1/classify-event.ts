@@ -89,7 +89,8 @@ Return: {"level":"...","category":"..."}`;
           let parsed: { level?: string; category?: string };
           try {
             parsed = JSON.parse(raw);
-          } catch {
+          } catch (error) {
+            console.warn('[classify-event] JSON.parse of LLM response failed', error);
             return null;
           }
 
@@ -98,12 +99,14 @@ Return: {"level":"...","category":"..."}`;
           if (!level || !category) return null;
 
           return { level, category, timestamp: Date.now() };
-        } catch {
+        } catch (error) {
+          console.warn('[classify-event] classification fetch failed', error);
           return null;
         }
       },
     );
-  } catch {
+  } catch (error) {
+    console.warn('[classify-event] cached fetch failed', error);
     markNoCacheResponse(ctx.request);
     return { classification: undefined };
   }

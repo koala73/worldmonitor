@@ -111,7 +111,7 @@ export async function getPizzintStatus(
             locations,
           };
         }
-      } catch (_) { /* PizzINT unavailable — continue to GDELT */ }
+      } catch (error) { console.warn('[get-pizzint-status] PizzINT API fetch failed', error); }
 
       // Fetch GDELT tension pairs
       let tensionPairs: GdeltTensionPair[] = [];
@@ -146,14 +146,15 @@ export async function getPizzintStatus(
               };
             });
           }
-        } catch { /* gdelt unavailable */ }
+        } catch (error) { console.warn('[get-pizzint-status] GDELT fetch failed', error); }
       }
 
       // Only cache if PizzINT data was retrieved
       if (!pizzint) return null;
       return { pizzint, tensionPairs };
     });
-  } catch {
+  } catch (error) {
+    console.warn('[get-pizzint-status] cached fetch failed', error);
     return { pizzint: undefined, tensionPairs: [] };
   }
 
