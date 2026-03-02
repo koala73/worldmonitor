@@ -9,6 +9,34 @@ export interface ExportedSettings {
   data: Record<string, string>;
 }
 
+// 5MB limit for imported settings JSON
+const MAX_IMPORT_SIZE_BYTES = 5 * 1024 * 1024;
+
+/**
+ * Validates if a localStorage key is safe to export/import.
+ * Excludes transient caches and sensitive secrets (API keys, tokens).
+ */
+function isKeySafeToExport(key: string): boolean {
+  // Ignore massive internal caches or transient states to avoid bloated JSON
+  if (
+    key.startsWith('wm-cache-') ||
+    key.includes('vesselPosture') ||
+    key.includes('wm-secrets-updated') ||
+    key.includes('wm-waitlist-registered') ||
+    key.includes('wm-debug-log') ||
+    key.includes('wm-settings-open')
+  ) {
+    return false;
+  }
+
+  // Strictly exclude potential secrets: API keys, tokens, passwords.
+  if (/secret|token|key|password|auth/i.test(key)) {
+    return false;
+  }
+
+  return true;
+}
+
 export function exportSettings(): void {
   try {
     const data: Record<string, string> = {};
@@ -17,15 +45,7 @@ export function exportSettings(): void {
       const key = localStorage.key(i);
       if (!key) continue;
 
-      // Ignore massive internal caches or transient states to avoid bloated JSON
-      if (
-        key.startsWith('wm-cache-') ||
-        key.includes('vesselPosture') ||
-        key.includes('wm-secrets-updated') ||
-        key.includes('wm-waitlist-registered') ||
-        key.includes('wm-debug-log') ||
-        key.includes('wm-settings-open')
-      ) {
+      if (!isKeySafeToExport(key)) {
         continue;
       }
 
@@ -58,7 +78,7 @@ export function exportSettings(): void {
     if (typeof window !== 'undefined' && typeof window.alert === 'function') {
       window.alert(
         'Failed to export settings because browser storage is unavailable. ' +
-          'Please check your browser privacy settings and try again.'
+        'Please check your browser privacy settings and try again.'
       );
     }
   }
@@ -66,6 +86,11 @@ export function exportSettings(): void {
 
 export function importSettings(file: File): Promise<void> {
   return new Promise((resolve, reject) => {
+    if (file.size > MAX_IMPORT_SIZE_BYTES) {
+      reject(new Error(`File is too large. Maximum size is 5MB.`));
+      return;
+    }
+
     const reader = new FileReader();
 
     reader.onload = (e) => {
@@ -74,20 +99,36 @@ export function importSettings(file: File): Promise<void> {
         const parsed = JSON.parse(result) as ExportedSettings;
 
         if (!parsed || !parsed.data || typeof parsed.data !== 'object') {
-          throw new Error('Invalid format');
+          throw new Error('Invalid format: parsed data is missing or not an object.');
+        }
+
+        // Ask for user confirmation before overwriting localStorage
+        const confirmMsg = parsed.variant
+          ? `Replace current settings with the imported ${parsed.variant} settings bundle?`
+          : 'Replace current settings with the imported configuration?';
+
+        if (!window.confirm(confirmMsg)) {
+          resolve(); // user cancelled
+          return;
         }
 
         // Apply settings
+        let keysImported = 0;
         for (const [key, value] of Object.entries(parsed.data)) {
-          if (typeof value === 'string') {
+          // Re-apply the EXACT same safety filter as export
+          if (isKeySafeToExport(key) && typeof value === 'string') {
             localStorage.setItem(key, value);
+            keysImported++;
           }
         }
 
-        // Reload to apply settings
-        window.location.reload();
+        if (window.confirm(`Successfully imported ${keysImported} settings. Reload now to apply changes?`)) {
+          window.location.reload();
+        }
+
         resolve();
       } catch (err) {
+        console.error('Failed to parse imported settings:', err);
         reject(err);
       }
     };

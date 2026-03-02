@@ -374,11 +374,11 @@ export class UnifiedSettings {
     html += `</select>`;
 
     // Data Management section
-    html += `<div class="ai-flow-section-label">${t('unifiedSettings.dataManagementLabel')}</div>`;
+    html += `<div class="ai-flow-section-label">${t('settings.dataManagementLabel')}</div>`;
     html += `
       <div style="display: flex; gap: 10px; padding: 0 16px 16px;">
-        <button type="button" id="usExportBtn" style="flex: 1; padding: 8px; border-radius: 6px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: inherit; cursor: pointer; transition: background 0.2s;">📥 ${t('unifiedSettings.exportSettings')}</button>
-        <button type="button" id="usImportBtn" style="flex: 1; padding: 8px; border-radius: 6px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: inherit; cursor: pointer; transition: background 0.2s;">📤 ${t('unifiedSettings.importSettings')}</button>
+        <button type="button" class="settings-btn settings-btn-secondary" id="usExportBtn" style="flex: 1;">📥 ${t('settings.exportSettings')}</button>
+        <button type="button" class="settings-btn settings-btn-secondary" id="usImportBtn" style="flex: 1;">📤 ${t('settings.importSettings')}</button>
         <input type="file" id="usImportInput" accept=".json" style="display: none;" />
       </div>
     `;

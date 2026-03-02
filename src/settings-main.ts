@@ -218,10 +218,10 @@ function renderOverview(area: HTMLElement): void {
       <div class="settings-ov-cats">${catCards}</div>
       <div class="settings-ov-actions">
         <button type="button" class="settings-btn settings-btn-secondary" id="exportSettingsBtn">
-          📥 Export Settings
+          📥 ${t('settings.exportSettings')}
         </button>
         <button type="button" class="settings-btn settings-btn-secondary" id="importSettingsBtn">
-          📤 Import Settings
+          📤 ${t('settings.importSettings')}
         </button>
         <input type="file" id="importSettingsInput" accept=".json" style="display: none;" />
       </div>

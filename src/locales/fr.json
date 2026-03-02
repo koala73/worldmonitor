@@ -2094,10 +2094,10 @@
       }
     }
   },
-  "unifiedSettings": {
+  "settings": {
     "dataManagementLabel": "Gestion des données",
-    "exportSettings": "Exporter les réglages",
-    "importSettings": "Importer les réglages"
+    "exportSettings": "Exporter les paramètres",
+    "importSettings": "Importer des paramètres"
   },
   "common": {
     "loading": "Chargement...",

@@ -81,17 +81,10 @@
     "assessmentUnavailable": "Assessment unavailable.",
     "noNews": "No recent country-specific coverage.",
     "noIndicators": "No country-specific indicators available.",
-    "noMarkets": "No active markets for this country.",
     "nearbyPorts": "Nearby Ports",
     "detected": "Detected",
     "notDetected": "No",
     "ciiUnavailable": "CII score unavailable for this country.",
-    "components": {
-      "unrest": "Unrest",
-      "conflict": "Conflict",
-      "security": "Security",
-      "information": "Information"
-    },
     "chips": {
       "criticalNews": "Critical News",
       "protests": "Protests",
@@ -1088,7 +1081,7 @@
       "headlineMemoryLabel": "Headline Memory",
       "headlineMemoryDesc": "Remember seen headlines to highlight new stories"
     },
-    "unifiedSettings": {
+    "settings": {
       "dataManagementLabel": "Data Management",
       "exportSettings": "Export Settings",
       "importSettings": "Import Settings"
