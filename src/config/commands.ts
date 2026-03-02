@@ -134,6 +134,7 @@ const ISO_CODES = [
 
 let _cachedLang = '';
 let _cachedCountryCommands: Command[] = [];
+let _cachedAllCommands: Command[] = [];
 
 function buildCountryCommands(): Command[] {
   const lang = getCurrentLanguage();
@@ -147,7 +148,7 @@ function buildCountryCommands(): Command[] {
     const curated = CURATED_COUNTRIES[code];
     const name = displayNames.of(code) || curated?.name || code;
     const keywords = curated
-      ? [name.toLowerCase(), ...curated.searchAliases]
+      ? [name.toLowerCase(), curated.name.toLowerCase(), ...curated.searchAliases].filter(Boolean)
       : [name.toLowerCase()];
     return [
       {
@@ -169,9 +170,11 @@ function buildCountryCommands(): Command[] {
 
   _cachedLang = lang;
   _cachedCountryCommands = result;
+  _cachedAllCommands = [...COMMANDS, ...result];
   return result;
 }
 
 export function getAllCommands(): Command[] {
-  return [...COMMANDS, ...buildCountryCommands()];
+  buildCountryCommands();
+  return _cachedAllCommands.length > 0 ? _cachedAllCommands : COMMANDS;
 }
