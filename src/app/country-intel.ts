@@ -1,9 +1,22 @@
 import type { AppContext, AppModule, CountryBriefSignals } from '@/app/app-context';
 import type { TimelineEvent } from '@/components/CountryTimeline';
 import { CountryTimeline } from '@/components/CountryTimeline';
-import { CountryBriefPage } from '@/components/CountryBriefPage';
+import {
+  CountryDeepDivePanel,
+  type CountryDeepDiveEconomicIndicator,
+  type CountryDeepDiveMilitarySummary,
+  type CountryDeepDiveSignalDetails,
+} from '@/components/CountryDeepDivePanel';
 import { reverseGeocode } from '@/utils/reverse-geocode';
-import { getCountryAtCoordinates, hasCountryGeometry, isCoordinateInCountry, ME_STRIKE_BOUNDS } from '@/services/country-geometry';
+import {
+  getCountryAtCoordinates,
+  hasCountryGeometry,
+  isCoordinateInCountry,
+  ME_STRIKE_BOUNDS,
+  getCountryBbox,
+  iso3ToIso2Code,
+  nameToCountryCode,
+} from '@/services/country-geometry';
 import { calculateCII, getCountryData, TIER1_COUNTRIES, type CountryScore } from '@/services/country-instability';
 import { signalAggregator } from '@/services/signal-aggregator';
 import { dataFreshness } from '@/services/data-freshness';
@@ -13,16 +26,29 @@ import { renderStoryToCanvas } from '@/services/story-renderer';
 import { openStoryModal } from '@/components/StoryModal';
 import { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
 import { BETA_MODE } from '@/config/beta';
+import { MILITARY_BASES } from '@/config';
 import { mlWorker } from '@/services/ml-worker';
 import { isHeadlineMemoryEnabled } from '@/services/ai-flow-settings';
 import { t } from '@/services/i18n';
 import { trackCountrySelected, trackCountryBriefOpened } from '@/services/analytics';
 import type { StrategicPosturePanel } from '@/components/StrategicPosturePanel';
+import type { NewsItem } from '@/types';
+import { getNearbyInfrastructure } from '@/services/related-assets';
 
 type IntlDisplayNamesCtor = new (
   locales: string | string[],
   options: { type: 'region' }
 ) => { of: (code: string) => string | undefined };
+
+type CountryStockSnapshot = {
+  available: boolean;
+  code: string;
+  symbol: string;
+  indexName: string;
+  price: string;
+  weekChangePercent: string;
+  currency: string;
+};
 
 export class CountryIntelManager implements AppModule {
   private ctx: AppContext;
@@ -44,7 +70,7 @@ export class CountryIntelManager implements AppModule {
 
   private setupCountryIntel(): void {
     if (!this.ctx.map) return;
-    this.ctx.countryBriefPage = new CountryBriefPage();
+    this.ctx.countryBriefPage = new CountryDeepDivePanel(this.ctx.map);
     this.ctx.countryBriefPage.setShareStoryHandler((code, name) => {
       this.ctx.countryBriefPage?.hide();
       this.openCountryStory(code, name);
@@ -126,9 +152,15 @@ export class CountryIntelManager implements AppModule {
     const scores = calculateCII();
     const score = scores.find((s) => s.code === code) ?? null;
     const signals = this.getCountrySignals(code, country);
+    const deepDivePanel = this.ctx.countryBriefPage instanceof CountryDeepDivePanel
+      ? this.ctx.countryBriefPage
+      : null;
 
     this.ctx.countryBriefPage.show(country, code, score, signals);
     this.ctx.map?.highlightCountry(code);
+    deepDivePanel?.updateSignalDetails(this.buildSignalDetails(code));
+    deepDivePanel?.updateMilitaryActivity(this.buildMilitarySummary(code, country));
+    deepDivePanel?.updateEconomicIndicators(this.buildEconomicIndicators(code, score, null));
 
     const marketClient = new MarketServiceClient('', { fetch: (...args: Parameters<typeof globalThis.fetch>) => globalThis.fetch(...args) });
     const stockPromise = marketClient.getCountryStockIndex({ countryCode: code })
@@ -144,7 +176,11 @@ export class CountryIntelManager implements AppModule {
       .catch(() => ({ available: false as const, code: '', symbol: '', indexName: '', price: '0', weekChangePercent: '0', currency: '' }));
 
     stockPromise.then((stock) => {
-      if (this.ctx.countryBriefPage?.getCode() === code) this.ctx.countryBriefPage.updateStock(stock);
+      if (this.ctx.countryBriefPage?.getCode() !== code) return;
+      this.ctx.countryBriefPage.updateStock(stock);
+      if (deepDivePanel) {
+        deepDivePanel.updateEconomicIndicators(this.buildEconomicIndicators(code, score, stock));
+      }
     });
 
     fetchCountryMarkets(country)
@@ -166,9 +202,13 @@ export class CountryIntelManager implements AppModule {
       const ourPos = CountryIntelManager.firstMentionPosition(t, searchTerms);
       const otherPos = CountryIntelManager.firstMentionPosition(t, otherCountryTerms);
       return ourPos !== Infinity && (otherPos === Infinity || ourPos <= otherPos);
+    }).sort((a, b) => {
+      const severityDelta = this.newsSeverityRank(b) - this.newsSeverityRank(a);
+      if (severityDelta !== 0) return severityDelta;
+      return new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime();
     });
     if (filteredNews.length > 0) {
-      this.ctx.countryBriefPage.updateNews(filteredNews.slice(0, 8));
+      this.ctx.countryBriefPage.updateNews(filteredNews.slice(0, 5));
     }
 
     this.ctx.countryBriefPage.updateInfrastructure(code);
@@ -566,6 +606,203 @@ export class CountryIntelManager implements AppModule {
       gpsJammingHexes: (ciiData?.gpsJammingHighCount ?? 0) + (ciiData?.gpsJammingMediumCount ?? 0),
       isTier1,
     };
+  }
+
+  private newsSeverityRank(item: NewsItem): number {
+    const level = item.threat?.level;
+    if (level === 'critical') return 5;
+    if (level === 'high') return 4;
+    if (level === 'medium') return 3;
+    if (level === 'low') return 2;
+    if (item.isAlert) return 4;
+    return 1;
+  }
+
+  private buildSignalDetails(code: string): CountryDeepDiveSignalDetails {
+    const cluster = signalAggregator.getCountryClusters().find((entry) => entry.country === code);
+    if (!cluster) {
+      return { critical: 0, high: 0, medium: 0, low: 0, recentHigh: [] };
+    }
+
+    const details: CountryDeepDiveSignalDetails = {
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 0,
+      recentHigh: [],
+    };
+
+    const rankedSignals = [...cluster.signals]
+      .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+
+    for (const signal of rankedSignals) {
+      const severity = this.normalizeSignalSeverity(signal.type, signal.severity);
+      if (severity === 'critical') details.critical += 1;
+      else if (severity === 'high') details.high += 1;
+      else if (severity === 'medium') details.medium += 1;
+      else details.low += 1;
+    }
+
+    details.recentHigh = rankedSignals
+      .map((signal) => ({
+        type: this.mapSignalType(signal.type),
+        severity: this.normalizeSignalSeverity(signal.type, signal.severity),
+        description: signal.title,
+        timestamp: signal.timestamp,
+      }))
+      .filter((signal) => signal.severity === 'critical' || signal.severity === 'high')
+      .slice(0, 3);
+
+    return details;
+  }
+
+  private buildMilitarySummary(code: string, country: string): CountryDeepDiveMilitarySummary {
+    const hasGeoShape = hasCountryGeometry(code) || !!CountryIntelManager.COUNTRY_BOUNDS[code];
+    const flights = this.ctx.intelligenceCache.military?.flights ?? [];
+    const vessels = this.ctx.intelligenceCache.military?.vessels ?? [];
+
+    const flightsInCountry = flights.filter((flight) =>
+      hasGeoShape ? this.isInCountry(flight.lat, flight.lon, code) : this.sameCountry(code, country, flight.operatorCountry)
+    );
+    const ownFlights = flightsInCountry.filter((flight) => this.sameCountry(code, country, flight.operatorCountry)).length;
+    const foreignFlights = Math.max(0, flightsInCountry.length - ownFlights);
+
+    const vesselsInCountry = vessels.filter((vessel) =>
+      hasGeoShape ? this.isInCountry(vessel.lat, vessel.lon, code) : this.sameCountry(code, country, vessel.operatorCountry)
+    );
+    const foreignVessels = vesselsInCountry.filter((vessel) => !this.sameCountry(code, country, vessel.operatorCountry)).length;
+
+    const centroid = this.countryCentroid(code);
+    const nearbyBases = centroid
+      ? getNearbyInfrastructure(centroid.lat, centroid.lon, ['base']).slice(0, 3).map((base) => ({
+        id: base.id,
+        name: base.name,
+        distanceKm: base.distanceKm,
+        country: MILITARY_BASES.find((entry) => entry.id === base.id)?.country,
+      }))
+      : [];
+
+    return {
+      ownFlights,
+      foreignFlights,
+      nearbyVessels: vesselsInCountry.length,
+      nearestBases: nearbyBases,
+      foreignPresence: foreignFlights > 0 || foreignVessels > 0,
+    };
+  }
+
+  private buildEconomicIndicators(
+    code: string,
+    score: CountryScore | null,
+    stock: CountryStockSnapshot | null,
+  ): CountryDeepDiveEconomicIndicator[] {
+    const indicators: CountryDeepDiveEconomicIndicator[] = [];
+
+    if (stock?.available) {
+      const weekly = Number.parseFloat(stock.weekChangePercent);
+      const weeklyTrend = Number.isFinite(weekly)
+        ? weekly > 0 ? 'up' : weekly < 0 ? 'down' : 'flat'
+        : 'flat';
+      indicators.push({
+        label: 'Stock Index',
+        value: `${stock.indexName}: ${stock.price} ${stock.currency}`,
+        trend: weeklyTrend,
+        source: 'Market Service',
+      });
+      indicators.push({
+        label: 'Weekly Momentum',
+        value: `${weekly >= 0 ? '+' : ''}${stock.weekChangePercent}%`,
+        trend: weeklyTrend,
+      });
+    }
+
+    if (score) {
+      const trend = score.trend === 'rising'
+        ? 'up'
+        : score.trend === 'falling'
+          ? 'down'
+          : 'flat';
+      indicators.push({
+        label: 'Instability Regime',
+        value: `${score.score}/100 (${score.level})`,
+        trend,
+        source: 'CII',
+      });
+    }
+
+    const countryData = getCountryData(code);
+    if (countryData?.displacementOutflow && countryData.displacementOutflow > 0) {
+      const displaced = countryData.displacementOutflow >= 1_000_000
+        ? `${(countryData.displacementOutflow / 1_000_000).toFixed(1)}M`
+        : `${Math.round(countryData.displacementOutflow / 1000)}K`;
+      indicators.push({
+        label: 'Displacement Outflow',
+        value: displaced,
+        trend: 'up',
+        source: 'UN-style displacement feed',
+      });
+    }
+
+    return indicators.slice(0, 3);
+  }
+
+  private countryCentroid(code: string): { lat: number; lon: number } | null {
+    const bbox = getCountryBbox(code);
+    if (bbox) {
+      const [minLon, minLat, maxLon, maxLat] = bbox;
+      return {
+        lat: (minLat + maxLat) / 2,
+        lon: (minLon + maxLon) / 2,
+      };
+    }
+
+    const fallback = CountryIntelManager.COUNTRY_BOUNDS[code];
+    if (!fallback) return null;
+    return {
+      lat: (fallback.n + fallback.s) / 2,
+      lon: (fallback.e + fallback.w) / 2,
+    };
+  }
+
+  private sameCountry(code: string, country: string, raw: string | undefined): boolean {
+    if (!raw) return false;
+    const normalized = raw.trim();
+    if (!normalized) return false;
+
+    const upper = normalized.toUpperCase();
+    if (upper === code) return true;
+    if (upper.length === 3) {
+      const iso2 = iso3ToIso2Code(upper);
+      if (iso2 === code) return true;
+    }
+
+    const fromName = nameToCountryCode(normalized.toLowerCase());
+    if (fromName === code) return true;
+
+    const countryLower = country.toLowerCase();
+    const rawLower = normalized.toLowerCase();
+    return rawLower === countryLower || rawLower.includes(countryLower);
+  }
+
+  private mapSignalType(type: string): CountryDeepDiveSignalDetails['recentHigh'][number]['type'] {
+    if (type === 'military_flight' || type === 'military_vessel') return 'MILITARY';
+    if (type === 'protest') return 'PROTEST';
+    if (type === 'internet_outage') return 'OUTAGE';
+    if (type === 'satellite_fire') return 'DISASTER';
+    if (type === 'ais_disruption') return 'OUTAGE';
+    if (type === 'active_strike') return 'MILITARY';
+    if (type === 'temporal_anomaly') return 'CYBER';
+    return 'OTHER';
+  }
+
+  private normalizeSignalSeverity(
+    type: string,
+    severity: 'low' | 'medium' | 'high',
+  ): CountryDeepDiveSignalDetails['recentHigh'][number]['severity'] {
+    if (type === 'active_strike' && severity === 'high') return 'critical';
+    if (severity === 'high') return 'high';
+    if (severity === 'medium') return 'medium';
+    return 'low';
   }
 
   openCountryStory(code: string, name: string): void {
