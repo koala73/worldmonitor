@@ -1436,7 +1436,7 @@
     "liveNews": {
       "retry": "Retry",
       "notLive": "{{name}} is not currently live",
-      "cannotEmbed": "{{name}} cannot be embedded in this app (YouTube {{code}})",
+      "cannotEmbed": "{{name}} non può essere riprodotto qui — potrebbe essere limitato nella tua regione (errore {{code}})",
       "botCheck": "YouTube richiede l'accesso per riprodurre {{name}}",
       "signInToYouTube": "Accedi a YouTube",
       "openOnYouTube": "Apri su YouTube",

@@ -1386,7 +1386,7 @@
     "liveNews": {
       "retry": "ลองใหม่",
       "notLive": "{{name}} ไม่ได้ถ่ายทอดสดอยู่ในขณะนี้",
-      "cannotEmbed": "ไม่สามารถฝัง {{name}} ในแอปนี้ได้ (YouTube {{code}})",
+      "cannotEmbed": "ไม่สามารถเล่น {{name}} ที่นี่ได้ — อาจถูกจำกัดในภูมิภาคของคุณ (ข้อผิดพลาด {{code}})",
       "openOnYouTube": "เปิดบน YouTube",
       "manage": "จัดการช่อง",
       "addChannel": "เพิ่มช่อง",

@@ -1386,7 +1386,7 @@
     "liveNews": {
       "retry": "Retry",
       "notLive": "{{name}} is not currently live",
-      "cannotEmbed": "{{name}} cannot be embedded in this app (YouTube {{code}})",
+      "cannotEmbed": "{{name}} をここで再生できません — お住まいの地域で制限されている可能性があります（エラー {{code}}）",
       "openOnYouTube": "Open on YouTube",
       "manage": "チャンネル管理",
       "addChannel": "チャンネルを追加",

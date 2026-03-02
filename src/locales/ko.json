@@ -1471,7 +1471,7 @@
     "liveNews": {
       "retry": "재시도",
       "notLive": "{{name}}은(는) 현재 라이브 중이 아닙니다",
-      "cannotEmbed": "{{name}}은(는) 이 앱에 임베드할 수 없습니다 (YouTube {{code}})",
+      "cannotEmbed": "{{name}}을(를) 여기서 재생할 수 없습니다 — 지역 제한일 수 있습니다 (오류 {{code}})",
       "botCheck": "YouTube에서 {{name}} 재생을 위해 로그인을 요청합니다",
       "signInToYouTube": "YouTube 로그인",
       "openOnYouTube": "YouTube에서 열기",

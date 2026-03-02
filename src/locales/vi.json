@@ -1386,7 +1386,7 @@
     "liveNews": {
       "retry": "Thử lại",
       "notLive": "{{name}} hiện không phát trực tiếp",
-      "cannotEmbed": "{{name}} không thể nhúng trong ứng dụng này (YouTube {{code}})",
+      "cannotEmbed": "Không thể phát {{name}} tại đây — có thể bị hạn chế ở khu vực của bạn (lỗi {{code}})",
       "openOnYouTube": "Mở trên YouTube",
       "manage": "Quản lý kênh",
       "addChannel": "Thêm kênh",

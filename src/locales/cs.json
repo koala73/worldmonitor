@@ -1471,7 +1471,7 @@
     "liveNews": {
       "retry": "Zkusit znovu",
       "notLive": "{{name}} právě nevysílá živě",
-      "cannotEmbed": "{{name}} nelze vložit do této aplikace (YouTube {{code}})",
+      "cannotEmbed": "{{name}} nelze přehrát — může být omezeno ve vašem regionu (chyba {{code}})",
       "botCheck": "YouTube vyžaduje přihlášení k přehrání {{name}}",
       "signInToYouTube": "Přihlaste se do YouTube",
       "openOnYouTube": "Otevřít na YouTube",
