@@ -31,9 +31,9 @@ function dismiss(panel: HTMLElement, fromDownload = false): void {
   panel.addEventListener('transitionend', () => panel.remove(), { once: true });
 }
 
-type Platform = 'macos-arm64' | 'macos-x64' | 'macos' | 'windows' | 'linux' | 'linux-x64' | 'linux-arm64' | 'unknown';
+export type Platform = 'macos-arm64' | 'macos-x64' | 'macos' | 'windows' | 'linux' | 'linux-x64' | 'linux-arm64' | 'unknown';
 
-function detectPlatform(): Platform {
+export function detectPlatform(): Platform {
   const ua = navigator.userAgent;
   if (/Windows/i.test(ua)) return 'windows';
   if (/Linux/i.test(ua) && !/Android/i.test(ua)) return 'linux';
@@ -57,9 +57,9 @@ function detectPlatform(): Platform {
   return 'unknown';
 }
 
-interface DlButton { cls: string; href: string; label: string }
+export interface DlButton { cls: string; href: string; label: string }
 
-function allButtons(): DlButton[] {
+export function allButtons(): DlButton[] {
   return [
     { cls: 'mac', href: '/api/download?platform=macos-arm64', label: `\uF8FF ${t('modals.downloadBanner.macSilicon')}` },
     { cls: 'mac', href: '/api/download?platform=macos-x64', label: `\uF8FF ${t('modals.downloadBanner.macIntel')}` },
@@ -69,7 +69,7 @@ function allButtons(): DlButton[] {
   ];
 }
 
-function buttonsForPlatform(p: Platform): DlButton[] {
+export function buttonsForPlatform(p: Platform): DlButton[] {
   const buttons = allButtons();
   switch (p) {
     case 'macos-arm64': return buttons.filter(b => b.href.includes('macos-arm64'));

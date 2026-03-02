@@ -7,6 +7,7 @@ import type { StreamQuality } from '@/services/ai-flow-settings';
 import { escapeHtml } from '@/utils/sanitize';
 import { trackLanguageChange } from '@/services/analytics';
 import type { PanelConfig } from '@/types';
+import type { StatusPanel } from './StatusPanel';
 
 const GEAR_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`;
 
@@ -21,9 +22,10 @@ export interface UnifiedSettingsConfig {
   getAllSourceNames: () => string[];
   getLocalizedPanelName: (key: string, fallback: string) => string;
   isDesktopApp: boolean;
+  statusPanel?: StatusPanel | null;
 }
 
-type TabId = 'general' | 'panels' | 'sources';
+type TabId = 'general' | 'panels' | 'sources' | 'status';
 
 export class UnifiedSettings {
   private overlay: HTMLElement;
@@ -229,6 +231,7 @@ export class UnifiedSettings {
           <button class="${tabClass('general')}" data-tab="general">${t('header.tabGeneral')}</button>
           <button class="${tabClass('panels')}" data-tab="panels">${t('header.tabPanels')}</button>
           <button class="${tabClass('sources')}" data-tab="sources">${t('header.tabSources')}</button>
+          <button class="${tabClass('status')}" data-tab="status">${t('panels.status')}</button>
         </div>
         <div class="unified-settings-tab-panel${this.activeTab === 'general' ? ' active' : ''}" data-panel-id="general">
           ${this.renderGeneralContent()}
@@ -256,6 +259,9 @@ export class UnifiedSettings {
             <button class="sources-select-none">${t('common.selectNone')}</button>
           </div>
         </div>
+        <div class="unified-settings-tab-panel${this.activeTab === 'status' ? ' active' : ''}" data-panel-id="status">
+          <div class="us-status-content" id="usStatusContent"></div>
+        </div>
       </div>
     `;
 
@@ -265,6 +271,7 @@ export class UnifiedSettings {
     this.renderRegionPills();
     this.renderSourcesGrid();
     this.updateSourcesCounter();
+    this.renderStatusTab();
     if (!this.config.isDesktopApp) this.updateAiStatus();
   }
 
@@ -385,6 +392,76 @@ export class UnifiedSettings {
     } else {
       dot.classList.add('disabled');
       text.textContent = t('components.insights.aiFlowStatusDisabled');
+    }
+  }
+
+  public refreshStatusTab(): void {
+    if (this.activeTab === 'status') this.renderStatusTab();
+  }
+
+  private renderStatusTab(): void {
+    const container = this.overlay.querySelector('#usStatusContent');
+    if (!container) return;
+    const sp = this.config.statusPanel;
+    if (!sp) {
+      container.innerHTML = `<div style="padding:16px;color:var(--text-dim)">${t('components.status.storageUnavailable')}</div>`;
+      return;
+    }
+
+    const feeds = sp.getFeeds();
+    const apis = sp.getApis();
+
+    let html = `<div class="us-status-section">
+      <div class="us-status-section-title">${t('components.status.dataFeeds')}</div>`;
+    for (const feed of feeds.values()) {
+      html += `<div class="status-row">
+        <span class="status-dot ${feed.status}"></span>
+        <span class="status-name">${escapeHtml(feed.name)}</span>
+        <span class="status-detail">${feed.itemCount} items</span>
+        <span class="status-time">${feed.lastUpdate ? sp.formatTime(feed.lastUpdate) : 'Never'}</span>
+      </div>`;
+    }
+    html += `</div>`;
+
+    html += `<div class="us-status-section">
+      <div class="us-status-section-title">${t('components.status.apiStatus')}</div>`;
+    for (const api of apis.values()) {
+      html += `<div class="status-row">
+        <span class="status-dot ${api.status}"></span>
+        <span class="status-name">${escapeHtml(api.name)}</span>
+        ${api.latency ? `<span class="status-detail">${api.latency}ms</span>` : ''}
+      </div>`;
+    }
+    html += `</div>`;
+
+    html += `<div class="us-status-section">
+      <div class="us-status-section-title">${t('components.status.storage')}</div>
+      <div id="usStorageInfo"></div>
+    </div>`;
+
+    html += `<div class="us-status-footer">${t('components.status.updatedAt', { time: sp.formatTime(new Date()) })}</div>`;
+
+    container.innerHTML = html;
+    this.updateStorageInfo();
+  }
+
+  private async updateStorageInfo(): Promise<void> {
+    const container = this.overlay.querySelector('#usStorageInfo');
+    if (!container) return;
+    try {
+      if ('storage' in navigator && 'estimate' in navigator.storage) {
+        const estimate = await navigator.storage.estimate();
+        const used = estimate.usage ? (estimate.usage / 1024 / 1024).toFixed(2) : '0';
+        const quota = estimate.quota ? (estimate.quota / 1024 / 1024).toFixed(0) : 'N/A';
+        container.innerHTML = `<div class="status-row">
+          <span class="status-name">IndexedDB</span>
+          <span class="status-detail">${used} MB / ${quota} MB</span>
+        </div>`;
+      } else {
+        container.innerHTML = `<div class="status-row">${t('components.status.storageUnavailable')}</div>`;
+      }
+    } catch {
+      container.innerHTML = `<div class="status-row">${t('components.status.storageUnavailable')}</div>`;
     }
   }
 

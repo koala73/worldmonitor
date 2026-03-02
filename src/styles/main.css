@@ -719,6 +719,10 @@ canvas,
   border-color: var(--text);
 }
 
+.download-wrapper {
+  position: relative;
+}
+
 .download-btn {
   padding: 4px 10px;
   background: transparent;
@@ -736,6 +740,102 @@ canvas,
 .download-btn:hover {
   border-color: var(--accent);
   color: var(--accent);
+}
+
+.download-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  width: 280px;
+  background: var(--border-subtle);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px var(--shadow-color);
+  z-index: 1000;
+  display: none;
+  margin-top: 4px;
+  padding: 10px;
+}
+
+.download-dropdown.open {
+  display: block;
+}
+
+.dl-dd-tagline {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+  line-height: 1.4;
+}
+
+.dl-dd-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dl-dd-btn {
+  display: block;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  text-decoration: none;
+  text-align: center;
+  transition: opacity 0.15s;
+  color: #e0e0e0;
+}
+
+.dl-dd-btn:hover {
+  opacity: 0.85;
+}
+
+.dl-dd-btn.mac {
+  background: #2d5a2d;
+  border: 1px solid #3a7a3a;
+}
+
+.dl-dd-btn.win {
+  background: #2d4a5a;
+  border: 1px solid #3a6a8a;
+}
+
+.dl-dd-btn.linux {
+  background: #5a4a2d;
+  border: 1px solid #8a7a3a;
+}
+
+.dl-dd-btn.primary {
+  font-weight: 600;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+.dl-dd-toggle {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 8px 0 4px;
+  font-family: inherit;
+  text-align: center;
+}
+
+.dl-dd-toggle:hover {
+  text-decoration: underline;
+}
+
+.dl-dd-others {
+  display: none;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.dl-dd-others.show {
+  display: flex;
 }
 
 .search-btn kbd {
@@ -6105,93 +6205,7 @@ a.prediction-link:hover {
 }
 
 /* Status Panel */
-.status-panel-container {
-  position: relative;
-}
-
-.status-panel-toggle {
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-dim);
-  padding: 2px 6px;
-  font-size: 10px;
-  cursor: pointer;
-  border-radius: 3px;
-}
-
-.status-panel-toggle:hover {
-  border-color: var(--text-dim);
-}
-
-.status-icon {
-  font-size: 8px;
-}
-
-.status-icon.ok {
-  color: var(--green);
-}
-
-.status-icon.warning {
-  color: var(--yellow);
-}
-
-.status-icon.error {
-  color: var(--red);
-}
-
-.status-panel {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  margin-top: 8px;
-  width: 280px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  z-index: 1000;
-  box-shadow: 0 4px 20px var(--shadow-color);
-}
-
-.status-panel.hidden {
-  display: none;
-}
-
-.status-panel-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
-  font-size: 11px;
-  font-weight: bold;
-  color: var(--text);
-}
-
-.status-panel-close {
-  background: none;
-  border: none;
-  color: var(--text-dim);
-  font-size: 14px;
-  cursor: pointer;
-}
-
-.status-panel-content {
-  padding: 8px 0;
-  max-height: 300px;
-  overflow-y: auto;
-}
-
-.status-section {
-  padding: 8px 12px;
-}
-
-.status-section-title {
-  font-size: 9px;
-  color: var(--text-dim);
-  text-transform: uppercase;
-  margin-bottom: 6px;
-}
-
+/* Status rows (used in settings status tab) */
 .status-row {
   display: flex;
   align-items: center;
@@ -6242,7 +6256,25 @@ a.prediction-link:hover {
   font-size: 10px;
 }
 
-.status-panel-footer {
+/* Status tab inside Unified Settings */
+.us-status-content {
+  padding: 4px 0;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.us-status-section {
+  padding: 8px 12px;
+}
+
+.us-status-section-title {
+  font-size: 9px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.us-status-footer {
   padding: 6px 12px;
   border-top: 1px solid var(--border);
   font-size: 9px;
@@ -9313,7 +9345,7 @@ a.prediction-link:hover {
 
   /* Hide non-essential header items */
   .copy-link-btn,
-  .download-btn {
+  .download-wrapper {
     display: none;
   }
 }
