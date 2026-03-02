@@ -16,6 +16,11 @@ export class DesktopUpdater implements AppModule {
 
   init(): void {
     this.setupUpdateChecks();
+
+    // Manual "Check for Updates…" from the macOS Help menu
+    document.addEventListener('wm:check-for-updates', () => {
+      void this.checkForUpdate(true);
+    });
   }
 
   destroy(): void {
@@ -49,7 +54,7 @@ export class DesktopUpdater implements AppModule {
     logger('[updater]', outcome, context);
   }
 
-  private async checkForUpdate(): Promise<void> {
+  private async checkForUpdate(manual = false): Promise<void> {
     try {
       const res = await fetch(
         'https://api.github.com/repos/bradleybond512/worldmonitor-macos/releases/latest',
@@ -57,6 +62,7 @@ export class DesktopUpdater implements AppModule {
       );
       if (!res.ok) {
         this.logUpdaterOutcome('fetch_failed', { status: res.status });
+        if (manual) this.showInfoToast('Could not reach update server. Check your connection.');
         return;
       }
       const data = await res.json();
@@ -71,11 +77,12 @@ export class DesktopUpdater implements AppModule {
       const current = __APP_VERSION__;
       if (!this.isNewerVersion(remote, current)) {
         this.logUpdaterOutcome('no_update', { current, remote });
+        if (manual) this.showInfoToast(`You're up to date — v${current} is the latest version.`);
         return;
       }
 
       const dismissKey = `wm-update-dismissed-${remote}`;
-      if (localStorage.getItem(dismissKey)) {
+      if (localStorage.getItem(dismissKey) && !manual) {
         this.logUpdaterOutcome('update_available', { current, remote, dismissed: true });
         return;
       }
@@ -182,5 +189,29 @@ export class DesktopUpdater implements AppModule {
     requestAnimationFrame(() => {
       requestAnimationFrame(() => toast.classList.add('visible'));
     });
+  }
+
+  private showInfoToast(message: string): void {
+    const existing = document.querySelector<HTMLElement>('.update-info-toast');
+    existing?.remove();
+    const toast = document.createElement('div');
+    toast.className = 'update-toast update-info-toast';
+    toast.innerHTML = `
+      <div class="update-toast-body">
+        <div class="update-toast-title">World Monitor</div>
+        <div class="update-toast-detail">${escapeHtml(message)}</div>
+      </div>
+      <button class="update-toast-dismiss" data-action="dismiss" aria-label="Dismiss">\u00d7</button>
+    `;
+    toast.addEventListener('click', () => {
+      toast.classList.remove('visible');
+      setTimeout(() => toast.remove(), 300);
+    });
+    document.body.appendChild(toast);
+    requestAnimationFrame(() => requestAnimationFrame(() => toast.classList.add('visible')));
+    setTimeout(() => {
+      toast.classList.remove('visible');
+      setTimeout(() => toast.remove(), 300);
+    }, 5000);
   }
 }
