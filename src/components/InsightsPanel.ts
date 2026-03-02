@@ -409,8 +409,22 @@ export class InsightsPanel extends Panel {
       this.renderInsights(importantClusters, sentiments, worldBrief);
     } catch (error) {
       console.error('[InsightsPanel] Error:', error);
-      this.setContent('<div class="insights-error">Analysis failed - retrying...</div>');
+      const reason = InsightsPanel.classifyError(error);
+      this.setContent(`<div class="insights-error">Analysis failed (${reason}) - retrying...</div>`);
     }
+  }
+
+  /** Classify an error into a short user-facing category string. */
+  private static classifyError(err: unknown): string {
+    if (err instanceof DOMException && err.name === 'AbortError') return 'request cancelled';
+    if (err instanceof TypeError && /fetch|network/i.test(err.message)) return 'network error';
+    if (err instanceof Error) {
+      const msg = err.message.toLowerCase();
+      if (msg.includes('timeout') || msg.includes('timed out')) return 'timeout';
+      if (msg.includes('rate') || msg.includes('429') || msg.includes('quota')) return 'rate limited';
+      if (msg.includes('5') && msg.includes('00')) return 'server error';
+    }
+    return 'unexpected error';
   }
 
   private renderInsights(

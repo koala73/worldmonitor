@@ -284,8 +284,12 @@ if (!('__TAURI_INTERNALS__' in window) && !('__TAURI__' in window) && 'serviceWo
       console.log('[PWA] Service worker registered');
       setInterval(async () => {
         if (!navigator.onLine) return;
-        try { await registration.update(); } catch {}
+        try { await registration.update(); } catch (updateErr) {
+          console.warn('[PWA] Service worker update check failed:', updateErr);
+        }
       }, 60 * 60 * 1000);
     })
-    .catch(() => {});
+    .catch((error) => {
+      console.warn('[PWA] Service worker registration failed:', error);
+    });
 }
