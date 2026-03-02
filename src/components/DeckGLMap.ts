@@ -95,6 +95,14 @@ import type { RenewableInstallation } from '@/services/renewable-installations';
 import type { SpeciesRecovery } from '@/services/conservation-data';
 import { getCountriesGeoJson, getCountryAtCoordinates, getCountryBbox } from '@/services/country-geometry';
 import type { FeatureCollection, Geometry } from 'geojson';
+import {
+  initArrivalChoreography,
+  setCurrentCenter,
+  setCoronaTargets,
+  triggerWavefront,
+  triggerGlobalFlare,
+  type ThreatType,
+} from '@/services/arrival-choreography';
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
 export type DeckMapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
@@ -416,6 +424,12 @@ export class DeckGLMap {
       this.loadCountryBoundaries();
       this.fetchServerBases();
       this.render();
+
+      // Arrival choreography canvas overlay
+      const wrapper = document.getElementById('deckglMapWrapper');
+      if (wrapper) {
+        initArrivalChoreography(wrapper, (lat, lon) => this.latlonToPixel(lat, lon));
+      }
     });
 
     this.setupResizeObserver();
@@ -534,6 +548,8 @@ export class DeckGLMap {
       this.debouncedFetchBases();
       this.state.zoom = this.maplibreMap?.getZoom() ?? this.state.zoom;
       this.onStateChange?.(this.state);
+      const c = this.maplibreMap?.getCenter();
+      if (c) setCurrentCenter(c.lat, c.lng);
     });
 
     this.maplibreMap.on('move', () => {
@@ -3694,6 +3710,13 @@ export class DeckGLMap {
     return null;
   }
 
+  /** Project a geographic coordinate to canvas pixel position (CSS pixels, unscaled). */
+  public latlonToPixel(lat: number, lon: number): { x: number; y: number } | null {
+    if (!this.maplibreMap) return null;
+    const pt = this.maplibreMap.project([lon, lat]);
+    return { x: pt.x, y: pt.y };
+  }
+
   public setTimeRange(range: TimeRange): void {
     this.state.timeRange = range;
     this.rebuildProtestSupercluster();
@@ -4232,7 +4255,18 @@ export class DeckGLMap {
         h.level = levels[h.name] as 'low' | 'elevated' | 'high';
       }
     });
+    setCoronaTargets(this.hotspots);
     this.render(); // Debounced
+  }
+
+  /** Trigger a wavefront ripple at a geographic point (e.g. from geo-convergence). */
+  public triggerArrivalEffect(lat: number, lon: number, type: ThreatType = 'generic'): void {
+    triggerWavefront(lat, lon, type);
+  }
+
+  /** Trigger a full-screen flare (e.g. on War Mode activation). */
+  public triggerFlare(type: ThreatType = 'generic'): void {
+    triggerGlobalFlare(type);
   }
 
   public initEscalationGetters(): void {
