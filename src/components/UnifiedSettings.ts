@@ -21,6 +21,7 @@ export interface UnifiedSettingsConfig {
   setSourcesEnabled: (names: string[], enabled: boolean) => void;
   getAllSourceNames: () => string[];
   getLocalizedPanelName: (key: string, fallback: string) => string;
+  resetLayout: () => void;
   isDesktopApp: boolean;
   statusPanel?: StatusPanel | null;
 }
@@ -82,6 +83,12 @@ export class UnifiedSettings {
         if (searchInput) searchInput.value = '';
         this.renderPanelCategoryPills();
         this.renderPanelsTab();
+        return;
+      }
+
+      // Reset layout
+      if (target.closest('.panels-reset-layout')) {
+        this.config.resetLayout();
         return;
       }
 
@@ -244,6 +251,9 @@ export class UnifiedSettings {
             <input type="text" placeholder="${t('header.filterPanels')}" value="${escapeHtml(this.panelFilter)}" />
           </div>
           <div class="panel-toggle-grid" id="usPanelToggles"></div>
+          <div class="panels-footer">
+            <button class="panels-reset-layout">${t('header.resetLayout')}</button>
+          </div>
         </div>
         <div class="unified-settings-tab-panel${this.activeTab === 'sources' ? ' active' : ''}" data-panel-id="sources">
           <div class="unified-settings-region-wrapper">
