@@ -281,15 +281,21 @@ export class EventHandlerManager implements AppModule {
         if (!anchor) return;
         const href = anchor.href;
         if (!href || href.startsWith('javascript:') || href === '#' || href.startsWith('#')) return;
+        // Only handle valid http(s) URLs
+        let url: URL;
         try {
-          const url = new URL(href, window.location.href);
-          if (url.origin === window.location.origin) return;
-          e.preventDefault();
-          e.stopPropagation();
-          void invokeTauri<void>('open_url', { url: url.toString() }).catch(() => {
-            window.open(url.toString(), '_blank');
-          });
-        } catch { /* malformed URL -- let browser handle */ }
+          url = new URL(href, window.location.href);
+        } catch {
+          // Malformed URL, let browser handle
+          return;
+        }
+        if (url.origin === window.location.origin) return;
+        if (!/^https?:$/.test(url.protocol)) return; // Only allow http(s) links
+        e.preventDefault();
+        e.stopPropagation();
+        void invokeTauri<void>('open_url', { url: url.toString() }).catch(() => {
+          window.open(url.toString(), '_blank');
+        });
       };
       document.addEventListener('click', this.boundDesktopExternalLinkHandler, true);
     }
