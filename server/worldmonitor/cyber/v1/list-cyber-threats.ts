@@ -123,8 +123,7 @@ export async function listCyberThreats(
       }
       const cutoffMs = now - days * 24 * 60 * 60 * 1000;
 
-      const sourceNames = ['feodo', 'urlhaus', 'c2intel', 'otx', 'abuseipdb'] as const;
-      const settled = await Promise.allSettled([
+      const [feodoResult, urlhausResult, c2intelResult, otxResult, abuseipdbResult] = await Promise.allSettled([
         fetchFeodoSource(MAX_LIMIT, cutoffMs),
         fetchUrlhausSource(MAX_LIMIT, cutoffMs),
         fetchC2IntelSource(MAX_LIMIT),
@@ -132,11 +131,16 @@ export async function listCyberThreats(
         fetchAbuseIpDbSource(MAX_LIMIT),
       ]);
       const fallback = { ok: false, threats: [] as any[] };
-      const [feodo, urlhaus, c2intel, otx, abuseipdb] = settled.map((r, i) => {
-        if (r.status === 'fulfilled') return r.value;
-        console.warn(`[cyber] ${sourceNames[i]} fetch failed, using partial results:`, r.reason);
-        return fallback;
-      });
+      if (feodoResult.status === 'rejected') console.warn('[cyber] feodo fetch failed, using partial results:', feodoResult.reason);
+      if (urlhausResult.status === 'rejected') console.warn('[cyber] urlhaus fetch failed, using partial results:', urlhausResult.reason);
+      if (c2intelResult.status === 'rejected') console.warn('[cyber] c2intel fetch failed, using partial results:', c2intelResult.reason);
+      if (otxResult.status === 'rejected') console.warn('[cyber] otx fetch failed, using partial results:', otxResult.reason);
+      if (abuseipdbResult.status === 'rejected') console.warn('[cyber] abuseipdb fetch failed, using partial results:', abuseipdbResult.reason);
+      const feodo = feodoResult.status === 'fulfilled' ? feodoResult.value : fallback;
+      const urlhaus = urlhausResult.status === 'fulfilled' ? urlhausResult.value : fallback;
+      const c2intel = c2intelResult.status === 'fulfilled' ? c2intelResult.value : fallback;
+      const otx = otxResult.status === 'fulfilled' ? otxResult.value : fallback;
+      const abuseipdb = abuseipdbResult.status === 'fulfilled' ? abuseipdbResult.value : fallback;
 
       const anySucceeded = feodo.ok || urlhaus.ok || c2intel.ok || otx.ok || abuseipdb.ok;
       if (!anySucceeded) return null;
