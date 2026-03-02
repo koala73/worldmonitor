@@ -66,7 +66,8 @@ async function fetchHackernewsItems(req: ListHackernewsItemsRequest): Promise<Ha
             by: raw.by || '',
             submittedAt: (raw.time || 0) * 1000, // HN uses Unix seconds, proto uses ms
           };
-        } catch {
+        } catch (error) {
+          console.warn('[list-hackernews-items] failed to fetch item', id, error);
           return null;
         }
       }),
@@ -93,7 +94,8 @@ export async function listHackernewsItems(
       return items.length > 0 ? { items, pagination: undefined } : null;
     });
     return result || { items: [], pagination: undefined };
-  } catch {
+  } catch (error) {
+    console.warn('[list-hackernews-items] failed to fetch HN items', error);
     return { items: [], pagination: undefined };
   }
 }
