@@ -59,6 +59,7 @@ export function mapErrorToResponse(error: unknown, _req: Request): Response {
 
   // Network/fetch errors: upstream is unreachable (M-5 fix: runtime-agnostic detection)
   if (isNetworkError(error)) {
+    console.error('[error-mapper] Network error (502):', (error as Error).message);
     return new Response(JSON.stringify({ message: 'Upstream unavailable' }), {
       status: 502,
       headers: { 'Content-Type': 'application/json' },
