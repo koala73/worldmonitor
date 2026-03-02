@@ -183,8 +183,10 @@ export class DesktopUpdater implements AppModule {
     `;
 
     toast.addEventListener('click', (e) => {
+      e.stopPropagation();
       const target = e.target as HTMLElement;
       const action = target.closest<HTMLElement>('[data-action]')?.dataset.action;
+      
       if (action === 'download') {
         trackUpdateClicked(version);
         if (this.ctx.isDesktopApp) {
@@ -195,6 +197,11 @@ export class DesktopUpdater implements AppModule {
         } else {
           window.open(url, '_blank', 'noopener');
         }
+        
+        localStorage.setItem(`wm-update-dismissed-${version}`, '1');
+        toast.classList.remove('visible')
+        setTimeout(() => toast.remove(), 300)
+        
       } else if (action === 'dismiss') {
         trackUpdateDismissed(version);
         localStorage.setItem(`wm-update-dismissed-${version}`, '1');
