@@ -1472,7 +1472,7 @@
     "liveNews": {
       "retry": "Retry",
       "notLive": "{{name}} is not currently live",
-      "cannotEmbed": "{{name}} cannot be embedded in this app (YouTube {{code}})",
+      "cannotEmbed": "This stream is not available in your country. Unfortunately, the {{name}} live stream cannot be played here due to regional restrictions set by YouTube. You can try accessing it directly on YouTube, but it may also be unavailable.",
       "botCheck": "YouTube is requesting sign-in to play {{name}}",
       "signInToYouTube": "Sign in to YouTube",
       "openOnYouTube": "Open on YouTube",
