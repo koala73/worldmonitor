@@ -102,14 +102,27 @@ export class PositiveNewsFeedPanel extends Panel {
    * Attaches a delegated click handler for share buttons.
    */
   private renderCards(items: NewsItem[]): void {
-    this.filteredItems = items;
+    // Sort by publication date descending (newest first).
+    // Items with missing or invalid dates are placed at the end.
+    const sorted = [...items].sort((a, b) => {
+      const ta = a.pubDate ? new Date(a.pubDate).getTime() : NaN;
+      const tb = b.pubDate ? new Date(b.pubDate).getTime() : NaN;
+      const aValid = !isNaN(ta);
+      const bValid = !isNaN(tb);
+      if (aValid && bValid) return tb - ta;
+      if (aValid) return -1;
+      if (bValid) return 1;
+      return 0;
+    });
 
-    if (items.length === 0) {
+    this.filteredItems = sorted;
+
+    if (sorted.length === 0) {
       this.content.innerHTML = '<div class="positive-feed-empty">No stories in this category yet</div>';
       return;
     }
 
-    this.content.innerHTML = items.map((item, idx) => this.renderCard(item, idx)).join('');
+    this.content.innerHTML = sorted.map((item, idx) => this.renderCard(item, idx)).join('');
 
     // Delegated click handler for share buttons (remove first to avoid stacking)
     this.content.removeEventListener('click', this.handleShareClick);
