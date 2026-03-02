@@ -12127,23 +12127,27 @@ a.prediction-link:hover {
 .deckgl-controls .map-btn {
   width: 32px;
   height: 32px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  color: var(--text);
+  background: rgba(22, 22, 24, 0.88);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.75);
   font-size: 16px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
   pointer-events: auto;
   position: relative;
   z-index: 1;
 }
 
 .deckgl-controls .map-btn:hover {
-  background: var(--bg);
-  border-color: var(--green);
+  background: rgba(30, 30, 32, 0.92);
+  border-color: rgba(10, 132, 255, 0.45);
+  color: #fff;
 }
 
 .deckgl-controls .view-selector {
@@ -12173,10 +12177,12 @@ a.prediction-link:hover {
   top: 10px;
   left: 10px;
   z-index: 100;
-  background: var(--bg);
+  background: rgba(22, 22, 24, 0.88);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
   padding: 8px 12px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
 }
 
 .deckgl-time-slider .time-options {
@@ -12187,24 +12193,25 @@ a.prediction-link:hover {
 .deckgl-time-slider .time-btn {
   padding: 4px 8px;
   background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-dim);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 5px;
+  color: rgba(255, 255, 255, 0.45);
   font-family: inherit;
   font-size: 10px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
 }
 
 .deckgl-time-slider .time-btn:hover {
-  border-color: var(--green);
-  color: var(--green);
+  border-color: rgba(10, 132, 255, 0.4);
+  color: rgba(255, 255, 255, 0.75);
 }
 
 .deckgl-time-slider .time-btn.active {
-  background: var(--green);
-  border-color: var(--green);
-  color: var(--bg);
-  font-weight: bold;
+  background: rgba(10, 132, 255, 0.18);
+  border-color: rgba(10, 132, 255, 0.55);
+  color: #5ac8ff;
+  font-weight: 600;
 }
 
 /* deck.gl Layer Toggles */
@@ -12213,9 +12220,11 @@ a.prediction-link:hover {
   bottom: 10px;
   left: 10px;
   z-index: 100;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 4px;
+  background: rgba(22, 22, 24, 0.92);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
   max-width: 260px;
   max-height: 50vh;
   display: flex;
@@ -12229,10 +12238,10 @@ a.prediction-link:hover {
   justify-content: space-between;
   align-items: center;
   padding: 6px 10px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
   font-size: 10px;
-  font-weight: bold;
-  color: var(--text-dim);
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.4);
   text-transform: uppercase;
   letter-spacing: 1px;
   flex-shrink: 0;
@@ -12268,18 +12277,18 @@ a.prediction-link:hover {
   gap: 6px;
   padding: 5px 8px;
   cursor: pointer;
-  border-radius: 3px;
+  border-radius: 6px;
   border: 1px solid transparent;
-  background: var(--bg);
-  transition: background 0.15s ease, border-color 0.15s ease;
+  background: transparent;
+  transition: background 0.12s ease, border-color 0.12s ease;
   position: relative;
   font-size: 10px;
   text-transform: uppercase;
-  color: var(--text);
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .deckgl-layer-toggles .layer-toggle:hover {
-  background: var(--bg);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .deckgl-layer-toggles .layer-toggle input[type="checkbox"] {
@@ -12288,8 +12297,8 @@ a.prediction-link:hover {
   width: 16px;
   height: 16px;
   min-width: 16px;
-  border: 2px solid var(--border);
-  border-radius: 3px;
+  border: 1.5px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
   background: transparent;
   cursor: pointer;
   margin: 0;
@@ -12298,8 +12307,8 @@ a.prediction-link:hover {
 }
 
 .deckgl-layer-toggles .layer-toggle input[type="checkbox"]:checked {
-  background: var(--green);
-  border-color: var(--green);
+  background: #0A84FF;
+  border-color: #0A84FF;
 }
 
 .deckgl-layer-toggles .layer-toggle input[type="checkbox"]:checked::after {
@@ -12329,7 +12338,7 @@ a.prediction-link:hover {
 .deckgl-layer-toggles .toggle-label {
   font-size: 10px;
   font-weight: 500;
-  color: var(--text);
+  color: rgba(255, 255, 255, 0.7);
   letter-spacing: 0.5px;
   white-space: nowrap;
   overflow: hidden;
@@ -12337,30 +12346,30 @@ a.prediction-link:hover {
 }
 
 .deckgl-layer-toggles .layer-toggle.loading .toggle-label {
-  color: var(--yellow);
+  color: rgba(255, 214, 10, 0.8);
   animation: layer-loading 0.8s ease-in-out infinite;
 }
 
 .deckgl-layer-toggles .layer-toggle.has-data .toggle-label {
-  color: var(--green);
+  color: #5ac8ff;
 }
 
 .deckgl-layer-toggles .layer-toggle.has-data {
-  border-color: rgba(68, 255, 136, 0.2);
+  border-color: rgba(10, 132, 255, 0.22);
 }
 
 /* Basemap selector — sits between toggle header and layer list */
 .basemap-selector {
   padding: 6px 8px 4px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
 }
 .basemap-label {
   display: block;
   font-size: 8px;
-  font-weight: 700;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.6px;
-  color: var(--text-muted, #666);
+  color: rgba(255, 255, 255, 0.3);
   margin-bottom: 4px;
 }
 .basemap-btns {
@@ -12370,28 +12379,28 @@ a.prediction-link:hover {
 }
 .basemap-btn {
   min-width: 0;
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  color: var(--text-dim, #888);
+  color: rgba(255, 255, 255, 0.45);
   font-size: 9px;
   font-weight: 600;
   padding: 3px 4px;
-  border-radius: 3px;
+  border-radius: 5px;
   cursor: pointer;
   white-space: nowrap;
   text-align: center;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
   letter-spacing: 0.3px;
 }
 .basemap-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--text, #e8e8e8);
-  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.8);
+  border-color: rgba(255, 255, 255, 0.18);
 }
 .basemap-btn.basemap-active {
-  background: rgba(79, 195, 247, 0.15);
-  border-color: rgba(79, 195, 247, 0.5);
-  color: #4fc3f7;
+  background: rgba(10, 132, 255, 0.18);
+  border-color: rgba(10, 132, 255, 0.45);
+  color: #5ac8ff;
 }
 
 /* deck.gl Legend - horizontal bar at bottom center */
