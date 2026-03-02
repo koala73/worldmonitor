@@ -875,16 +875,20 @@ export class PanelLayoutManager implements AppModule {
 
   private wasUltraWide = window.innerWidth >= 1600;
 
-  private ensureCorrectZones(): void {
+  public ensureCorrectZones(): void {
     const isUltraWide = window.innerWidth >= 1600;
-    if (isUltraWide === this.wasUltraWide) return;
-    this.wasUltraWide = isUltraWide;
+    const mapSection = document.getElementById('mapSection');
+    const mapEnabled = !mapSection?.classList.contains('hidden');
+    const effectiveUltraWide = isUltraWide && mapEnabled;
+
+    if (effectiveUltraWide === this.wasUltraWide) return;
+    this.wasUltraWide = effectiveUltraWide;
 
     const grid = document.getElementById('panelsGrid');
     const bottomGrid = document.getElementById('mapBottomGrid');
     if (!grid || !bottomGrid) return;
 
-    if (!isUltraWide) {
+    if (!effectiveUltraWide) {
       // Move everything from bottom grid back to panels grid in correct order
       const panelsInBottom = Array.from(bottomGrid.querySelectorAll('.panel')) as HTMLElement[];
       const savedOrder = this.getSavedPanelOrder();

@@ -58,6 +58,7 @@ export interface EventHandlerCallbacks {
   loadDataForLayer: (layer: string) => void;
   waitForAisData: () => void;
   syncDataFreshnessWithLayers: () => void;
+  ensureCorrectZones: () => void;
 }
 
 export class EventHandlerManager implements AppModule {
@@ -887,6 +888,11 @@ export class EventHandlerManager implements AppModule {
         const mapSection = document.getElementById('mapSection');
         if (mapSection) {
           mapSection.classList.toggle('hidden', !config.enabled);
+          const mainContent = document.querySelector('.main-content');
+          if (mainContent) {
+            mainContent.classList.toggle('map-hidden', !config.enabled);
+          }
+          this.callbacks.ensureCorrectZones();
         }
         return;
       }

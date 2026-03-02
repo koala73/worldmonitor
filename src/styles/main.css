@@ -16206,6 +16206,14 @@ body.has-breaking-alert .panels-grid {
     overflow: hidden;
   }
 
+  .main-content.map-hidden {
+    grid-template-columns: 1fr;
+  }
+
+  .main-content.map-hidden .panels-grid {
+    grid-column: 1;
+  }
+
   .map-section {
     grid-column: 1;
     grid-row: 1;

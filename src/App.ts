@@ -311,6 +311,7 @@ export class App {
       loadDataForLayer: (layer) => { void this.dataLoader.loadDataForLayer(layer as keyof MapLayers); },
       waitForAisData: () => this.dataLoader.waitForAisData(),
       syncDataFreshnessWithLayers: () => this.dataLoader.syncDataFreshnessWithLayers(),
+      ensureCorrectZones: () => this.panelLayout.ensureCorrectZones(),
     });
 
     // Wire cross-module callback: DataLoader → SearchManager
@@ -335,13 +336,13 @@ export class App {
     const aiFlow = getAiFlowSettings();
     if (aiFlow.browserModel || isDesktopRuntime()) {
       await mlWorker.init();
-      if (BETA_MODE) mlWorker.loadModel('summarization-beta').catch(() => {});
+      if (BETA_MODE) mlWorker.loadModel('summarization-beta').catch(() => { });
     }
 
     if (aiFlow.headlineMemory) {
       mlWorker.init().then(ok => {
-        if (ok) mlWorker.loadModel('embeddings').catch(() => {});
-      }).catch(() => {});
+        if (ok) mlWorker.loadModel('embeddings').catch(() => { });
+      }).catch(() => { });
     }
 
     this.unsubAiFlow = subscribeAiFlowChange((key) => {
@@ -356,10 +357,10 @@ export class App {
       if (key === 'headlineMemory') {
         if (isHeadlineMemoryEnabled()) {
           mlWorker.init().then(ok => {
-            if (ok) mlWorker.loadModel('embeddings').catch(() => {});
-          }).catch(() => {});
+            if (ok) mlWorker.loadModel('embeddings').catch(() => { });
+          }).catch(() => { });
         } else {
-          mlWorker.unloadModel('embeddings').catch(() => {});
+          mlWorker.unloadModel('embeddings').catch(() => { });
           const s = getAiFlowSettings();
           if (!s.browserModel && !isDesktopRuntime()) {
             mlWorker.terminate();
@@ -564,10 +565,12 @@ export class App {
         { name: 'cables', fn: () => this.dataLoader.loadCableActivity(), intervalMs: 30 * 60 * 1000, condition: () => this.state.mapLayers.cables },
         { name: 'cableHealth', fn: () => this.dataLoader.loadCableHealth(), intervalMs: 2 * 60 * 60 * 1000, condition: () => this.state.mapLayers.cables },
         { name: 'flights', fn: () => this.dataLoader.loadFlightDelays(), intervalMs: 2 * 60 * 60 * 1000, condition: () => this.state.mapLayers.flights },
-        { name: 'cyberThreats', fn: () => {
-          this.state.cyberThreatsCache = null;
-          return this.dataLoader.loadCyberThreats();
-        }, intervalMs: 10 * 60 * 1000, condition: () => CYBER_LAYER_ENABLED && this.state.mapLayers.cyberThreats },
+        {
+          name: 'cyberThreats', fn: () => {
+            this.state.cyberThreatsCache = null;
+            return this.dataLoader.loadCyberThreats();
+          }, intervalMs: 10 * 60 * 1000, condition: () => CYBER_LAYER_ENABLED && this.state.mapLayers.cyberThreats
+        },
       ]);
     }
 
