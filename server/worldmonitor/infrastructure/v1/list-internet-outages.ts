@@ -20,6 +20,10 @@ let fallbackOutagesCache: { data: ListInternetOutagesResponse; ts: number } | nu
 // ========================================================================
 
 const CLOUDFLARE_RADAR_URL = 'https://api.cloudflare.com/client/v4/radar/annotations/outages';
+/** Max outage annotations to request from Cloudflare Radar */
+const OUTAGE_QUERY_LIMIT = 50;
+/** Max ASN detail entries to include per outage */
+const MAX_ASN_DETAILS = 2;
 
 // ========================================================================
 // Cloudflare Radar types
@@ -142,7 +146,7 @@ export async function listInternetOutages(
       if (!token) return null;
 
       const response = await fetch(
-        `${CLOUDFLARE_RADAR_URL}?dateRange=7d&limit=50`,
+        `${CLOUDFLARE_RADAR_URL}?dateRange=7d&limit=${OUTAGE_QUERY_LIMIT}`,
         {
           headers: { Authorization: `Bearer ${token}`, 'User-Agent': CHROME_UA },
           signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
@@ -168,7 +172,7 @@ export async function listInternetOutages(
         const categories: string[] = ['Cloudflare Radar'];
         if (raw.outage?.outageCause) categories.push(raw.outage.outageCause.replace(/_/g, ' '));
         if (raw.outage?.outageType) categories.push(raw.outage.outageType);
-        for (const asn of raw.asnsDetails?.slice(0, 2) || []) {
+        for (const asn of raw.asnsDetails?.slice(0, MAX_ASN_DETAILS) || []) {
           if (asn.name) categories.push(asn.name);
         }
 

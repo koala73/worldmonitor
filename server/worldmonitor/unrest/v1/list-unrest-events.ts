@@ -25,6 +25,15 @@ import { CHROME_UA } from '../../../_shared/constants';
 import { cachedFetchJson } from '../../../_shared/redis';
 import { fetchAcledCached } from '../../../_shared/acled';
 
+/** Max records per GDELT GEO API request for unrest events */
+const GDELT_MAX_RECORDS = 250;
+/** Timeout for GDELT API requests */
+const GDELT_TIMEOUT_MS = 10_000;
+/** Minimum report count to include a GDELT event (noise filter) */
+const MIN_REPORT_COUNT = 5;
+/** Report count threshold above which GDELT confidence is HIGH */
+const HIGH_CONFIDENCE_THRESHOLD = 20;
+
 const REDIS_CACHE_KEY = 'unrest:events:v1';
 const REDIS_CACHE_TTL = 900; // 15 min — ACLED + GDELT merge
 
@@ -87,13 +96,13 @@ async function fetchGdeltEvents(): Promise<UnrestEvent[]> {
     const params = new URLSearchParams({
       query: 'protest',
       format: 'geojson',
-      maxrecords: '250',
+      maxrecords: String(GDELT_MAX_RECORDS),
       timespan: '7d',
     });
 
     const response = await fetch(`${GDELT_GEO_URL}?${params}`, {
       headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(GDELT_TIMEOUT_MS),
     });
 
     if (!response.ok) return [];
@@ -108,7 +117,7 @@ async function fetchGdeltEvents(): Promise<UnrestEvent[]> {
       if (!name || seenLocations.has(name)) continue;
 
       const count: number = feature.properties?.count || 1;
-      if (count < 5) continue; // Filter noise
+      if (count < MIN_REPORT_COUNT) continue; // Filter noise
 
       const coords = feature.geometry?.coordinates;
       if (!Array.isArray(coords) || coords.length < 2) continue;
@@ -143,7 +152,7 @@ async function fetchGdeltEvents(): Promise<UnrestEvent[]> {
         sourceType: 'UNREST_SOURCE_TYPE_GDELT' as UnrestSourceType,
         tags: [],
         actors: [],
-        confidence: (count > 20
+        confidence: (count > HIGH_CONFIDENCE_THRESHOLD
           ? 'CONFIDENCE_LEVEL_HIGH'
           : 'CONFIDENCE_LEVEL_MEDIUM') as ConfidenceLevel,
       });

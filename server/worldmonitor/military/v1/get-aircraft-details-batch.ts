@@ -9,6 +9,15 @@ import { mapWingbitsDetails } from './_shared';
 import { CHROME_UA } from '../../../_shared/constants';
 import { getCachedJsonBatch, cachedFetchJson } from '../../../_shared/redis';
 
+/** Max ICAO24 identifiers per batch request */
+const MAX_BATCH_SIZE = 10;
+/** Delay between sequential Wingbits API fetches to avoid rate-limiting */
+const FETCH_DELAY_MS = 100;
+/** Timeout for individual Wingbits API requests */
+const WINGBITS_TIMEOUT_MS = 10_000;
+/** Cache TTL for aircraft details (24 hours) */
+const AIRCRAFT_CACHE_TTL = 24 * 60 * 60;
+
 interface CachedAircraftDetails {
   details: AircraftDetails | null;
   configured: boolean;
@@ -26,11 +35,11 @@ export async function getAircraftDetailsBatch(
       .map((id) => id.trim().toLowerCase())
       .filter((id) => id.length > 0);
     const uniqueSorted = Array.from(new Set(normalized)).sort();
-    const limitedList = uniqueSorted.slice(0, 10);
+    const limitedList = uniqueSorted.slice(0, MAX_BATCH_SIZE);
 
     // Redis shared cache — batch GET all keys in a single pipeline round-trip
     const SINGLE_KEY = 'military:aircraft:v1';
-    const SINGLE_TTL = 24 * 60 * 60;
+    const SINGLE_TTL = AIRCRAFT_CACHE_TTL;
     const results: Record<string, AircraftDetails> = {};
     const toFetch: string[] = [];
 
@@ -62,7 +71,7 @@ export async function getAircraftDetailsBatch(
           try {
             const resp = await fetch(`https://customer-api.wingbits.com/v1/flights/details/${icao24}`, {
               headers: { 'x-api-key': apiKey, Accept: 'application/json', 'User-Agent': CHROME_UA },
-              signal: AbortSignal.timeout(10_000),
+              signal: AbortSignal.timeout(WINGBITS_TIMEOUT_MS),
             });
             if (resp.status === 404) {
               return { details: null, configured: true };
@@ -77,7 +86,7 @@ export async function getAircraftDetailsBatch(
         },
       );
       if (cacheResult?.details) results[icao24] = cacheResult.details;
-      if (i < toFetch.length - 1) await delay(100);
+      if (i < toFetch.length - 1) await delay(FETCH_DELAY_MS);
     }
 
     return {

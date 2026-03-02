@@ -12,6 +12,11 @@ import type {
 import { CHROME_UA } from '../../../_shared/constants';
 import { cachedFetchJson } from '../../../_shared/redis';
 
+/** Number of recent data points to fetch for price comparison (current + previous) */
+const EIA_PRICE_HISTORY_LENGTH = 2;
+/** Timeout for EIA API requests */
+const EIA_PRICE_TIMEOUT_MS = 10_000;
+
 const REDIS_CACHE_KEY = 'economic:energy:v1';
 const REDIS_CACHE_TTL = 3600; // 1 hr — weekly EIA data
 
@@ -52,12 +57,12 @@ async function fetchEiaSeries(
       'facets[series][]': config.seriesFacet,
       'sort[0][column]': 'period',
       'sort[0][direction]': 'desc',
-      length: '2',
+      length: String(EIA_PRICE_HISTORY_LENGTH),
     });
 
     const response = await fetch(`https://api.eia.gov${config.apiPath}?${params}`, {
       headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(EIA_PRICE_TIMEOUT_MS),
     });
 
     if (!response.ok) return null;

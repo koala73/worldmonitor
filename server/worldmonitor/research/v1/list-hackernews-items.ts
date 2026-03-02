@@ -22,18 +22,24 @@ const REDIS_CACHE_TTL = 600; // 10 min
 
 const ALLOWED_HN_FEEDS = new Set(['top', 'new', 'best', 'ask', 'show', 'job']);
 const HN_MAX_CONCURRENCY = 10;
+/** Default number of HN stories per page */
+const DEFAULT_PAGE_SIZE = 30;
+/** Timeout for fetching story IDs list */
+const HN_IDS_TIMEOUT_MS = 10_000;
+/** Timeout for fetching individual story items */
+const HN_ITEM_TIMEOUT_MS = 5_000;
 
 // ---------- Fetch ----------
 
 async function fetchHackernewsItems(req: ListHackernewsItemsRequest): Promise<HackernewsItem[]> {
   const feedType = ALLOWED_HN_FEEDS.has(req.feedType) ? req.feedType : 'top';
-  const pageSize = req.pageSize || 30;
+  const pageSize = req.pageSize || DEFAULT_PAGE_SIZE;
 
   // Step 1: Fetch story IDs
   const idsUrl = `https://hacker-news.firebaseio.com/v0/${feedType}stories.json`;
   const idsResponse = await fetch(idsUrl, {
     headers: { 'User-Agent': CHROME_UA },
-    signal: AbortSignal.timeout(10000),
+    signal: AbortSignal.timeout(HN_IDS_TIMEOUT_MS),
   });
 
   if (!idsResponse.ok) return [];
@@ -52,7 +58,7 @@ async function fetchHackernewsItems(req: ListHackernewsItemsRequest): Promise<Ha
         try {
           const res = await fetch(
             `https://hacker-news.firebaseio.com/v0/item/${id}.json`,
-            { headers: { 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(5000) },
+            { headers: { 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(HN_ITEM_TIMEOUT_MS) },
           );
           if (!res.ok) return null;
           const raw: any = await res.json();
@@ -87,7 +93,7 @@ export async function listHackernewsItems(
 ): Promise<ListHackernewsItemsResponse> {
   try {
     const feedType = ALLOWED_HN_FEEDS.has(req.feedType) ? req.feedType : 'top';
-    const cacheKey = `${REDIS_CACHE_KEY}:${feedType}:${req.pageSize || 30}`;
+    const cacheKey = `${REDIS_CACHE_KEY}:${feedType}:${req.pageSize || DEFAULT_PAGE_SIZE}`;
     const result = await cachedFetchJson<ListHackernewsItemsResponse>(cacheKey, REDIS_CACHE_TTL, async () => {
       const items = await fetchHackernewsItems(req);
       return items.length > 0 ? { items, pagination: undefined } : null;

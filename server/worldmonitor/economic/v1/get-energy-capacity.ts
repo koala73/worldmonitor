@@ -13,6 +13,11 @@ import type {
 import { CHROME_UA } from '../../../_shared/constants';
 import { cachedFetchJson } from '../../../_shared/redis';
 
+/** Max rows returned from EIA capability endpoint */
+const EIA_MAX_RESULTS = 5000;
+/** Timeout for EIA API requests */
+const EIA_TIMEOUT_MS = 15_000;
+
 const REDIS_CACHE_KEY = 'economic:capacity:v1';
 const REDIS_CACHE_TTL = 86400; // 24h — annual data barely changes
 const DEFAULT_YEARS = 20;
@@ -54,14 +59,14 @@ async function fetchCapacityForSource(
     'facets[energysourceid][]': sourceCode,
     'sort[0][column]': 'period',
     'sort[0][direction]': 'desc',
-    length: '5000',
+    length: String(EIA_MAX_RESULTS),
     start: String(startYear),
   });
 
   const url = `https://api.eia.gov/v2/electricity/state-electricity-profiles/capability/data/?${params}`;
   const response = await fetch(url, {
     headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-    signal: AbortSignal.timeout(15000),
+    signal: AbortSignal.timeout(EIA_TIMEOUT_MS),
   });
 
   if (!response.ok) return new Map();

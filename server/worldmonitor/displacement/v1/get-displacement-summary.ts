@@ -15,6 +15,13 @@ import type {
 import { CHROME_UA } from '../../../_shared/constants';
 import { cachedFetchJson } from '../../../_shared/redis';
 
+/** Max items per UNHCR Population API page */
+const UNHCR_PAGE_LIMIT = 10_000;
+/** Safety cap on the number of pages to paginate through */
+const MAX_PAGE_GUARD = 25;
+/** Default number of refugee flow corridors to return */
+const DEFAULT_FLOW_LIMIT = 50;
+
 const REDIS_CACHE_KEY = 'displacement:summary:v1';
 const REDIS_CACHE_TTL = 43200; // 12 hr — annual UNHCR data, very slow-moving
 
@@ -50,8 +57,8 @@ interface UnhcrRawItem {
 
 /** Paginate through all UNHCR Population API pages for a given year. */
 async function fetchUnhcrYearItems(year: number): Promise<UnhcrRawItem[] | null> {
-  const limit = 10000;
-  const maxPageGuard = 25;
+  const limit = UNHCR_PAGE_LIMIT;
+  const maxPageGuard = MAX_PAGE_GUARD;
   const items: UnhcrRawItem[] = [];
 
   for (let page = 1; page <= maxPageGuard; page++) {
@@ -330,7 +337,7 @@ export async function getDisplacementSummary(
       if (req.countryLimit > 0) {
         summary.countries = summary.countries.slice(0, req.countryLimit);
       }
-      const flowLimit = req.flowLimit > 0 ? req.flowLimit : 50;
+      const flowLimit = req.flowLimit > 0 ? req.flowLimit : DEFAULT_FLOW_LIMIT;
       summary.topFlows = summary.topFlows.slice(0, flowLimit);
       return { summary };
     }

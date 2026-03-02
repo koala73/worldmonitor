@@ -16,6 +16,11 @@ import type {
 import { CHROME_UA } from '../../../_shared/constants';
 import { cachedFetchJson } from '../../../_shared/redis';
 
+/** Max records per HAPI conflict-events query */
+const HAPI_QUERY_LIMIT = 1000;
+/** Timeout for HAPI API requests */
+const HAPI_TIMEOUT_MS = 15_000;
+
 const REDIS_CACHE_KEY = 'conflict:humanitarian:v1';
 const REDIS_CACHE_TTL = 21600; // 6 hr — monthly humanitarian data
 
@@ -44,7 +49,7 @@ interface HapiCountryAgg {
 async function fetchHapiSummary(countryCode: string): Promise<HumanitarianCountrySummary | undefined> {
   try {
     const appId = btoa('worldmonitor:monitor@worldmonitor.app');
-    let url = `https://hapi.humdata.org/api/v2/coordination-context/conflict-events?output_format=json&limit=1000&offset=0&app_identifier=${appId}`;
+    let url = `https://hapi.humdata.org/api/v2/coordination-context/conflict-events?output_format=json&limit=${HAPI_QUERY_LIMIT}&offset=0&app_identifier=${appId}`;
 
     // Filter by country — if a specific country was requested but has no ISO3 mapping,
     // return undefined immediately rather than silently returning unrelated data (BLOCKING-1 fix)
@@ -56,7 +61,7 @@ async function fetchHapiSummary(countryCode: string): Promise<HumanitarianCountr
 
     const response = await fetch(url, {
       headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(HAPI_TIMEOUT_MS),
     });
 
     if (!response.ok) return undefined;

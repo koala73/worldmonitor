@@ -16,6 +16,15 @@ import { markNoCacheResponse } from '../../../_shared/response-headers';
 
 const GDELT_GEO_URL = 'https://api.gdeltproject.org/api/v2/geo/geo';
 
+/** Delay between sequential GDELT queries to avoid rate-limiting */
+const GDELT_QUERY_DELAY_MS = 500;
+/** Max records per GDELT GEO API request */
+const GDELT_MAX_RECORDS = 75;
+/** Timeout for GDELT API requests */
+const GDELT_TIMEOUT_MS = 10_000;
+/** Minimum article count to include an event (noise filter) */
+const MIN_EVENT_COUNT = 3;
+
 const REDIS_CACHE_KEY = 'positive-events:geo:v1';
 const REDIS_CACHE_TTL = 900;
 
@@ -31,12 +40,12 @@ async function fetchGdeltGeoPositive(query: string): Promise<PositiveGeoEvent[]>
     query,
     format: 'geojson',
     timespan: '24h',
-    maxrecords: '75',
+    maxrecords: String(GDELT_MAX_RECORDS),
   });
 
   const response = await fetch(`${GDELT_GEO_URL}?${params}`, {
     headers: { Accept: 'application/json' },
-    signal: AbortSignal.timeout(10000),
+    signal: AbortSignal.timeout(GDELT_TIMEOUT_MS),
   });
 
   if (!response.ok) return [];
@@ -53,7 +62,7 @@ async function fetchGdeltGeoPositive(query: string): Promise<PositiveGeoEvent[]>
     if (name.startsWith('ERROR:') || name.includes('unknown error')) continue;
 
     const count: number = feature.properties?.count || 1;
-    if (count < 3) continue; // Noise filter
+    if (count < MIN_EVENT_COUNT) continue; // Noise filter
 
     const coords = feature.geometry?.coordinates;
     if (!Array.isArray(coords) || coords.length < 2) continue;
@@ -97,7 +106,7 @@ export async function listPositiveGeoEvents(
 
       for (let i = 0; i < POSITIVE_QUERIES.length; i++) {
         if (i > 0) {
-          await new Promise(r => setTimeout(r, 500));
+          await new Promise(r => setTimeout(r, GDELT_QUERY_DELAY_MS));
         }
 
         try {

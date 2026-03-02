@@ -13,6 +13,9 @@ import {
   type BaselineEntry,
 } from './_shared';
 
+/** Max baseline updates processed per request */
+const MAX_BATCH_UPDATES = 20;
+
 // ========================================================================
 // RPC implementation
 // ========================================================================
@@ -28,7 +31,7 @@ export async function recordBaselineSnapshot(
       return { updated: 0, error: 'Body must have updates array' };
     }
 
-    const batch = updates.slice(0, 20);
+    const batch = updates.slice(0, MAX_BATCH_UPDATES);
     const now = new Date();
     const weekday = now.getUTCDay();
     const month = now.getUTCMonth() + 1;
