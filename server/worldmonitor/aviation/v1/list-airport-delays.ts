@@ -82,7 +82,6 @@ export async function listAirportDelays(
       }
     );
     faaAlerts = result?.alerts ?? [];
-    console.log(`[Aviation] FAA: ${faaAlerts.length} alerts`);
   } catch (err) {
     console.warn(`[Aviation] FAA fetch failed: ${err instanceof Error ? err.message : 'unknown'}`);
   }
@@ -96,7 +95,7 @@ export async function listAirportDelays(
         const apiKey = process.env.AVIATIONSTACK_API;
 
         if (!apiKey) {
-          console.log('[Aviation] No AVIATIONSTACK_API key — using simulation');
+          console.warn('[Aviation] No AVIATIONSTACK_API key — using simulation');
           const sim = nonUs.map(a => generateSimulatedDelay(a)).filter(Boolean) as AirportDelayAlert[];
           return { alerts: sim };
         }
@@ -108,12 +107,10 @@ export async function listAirportDelays(
           return { alerts: sim };
         }
 
-        console.log(`[Aviation] AviationStack OK: ${avResult.alerts.length} real alerts`);
         return { alerts: avResult.alerts };
       }
     );
     intlAlerts = result?.alerts ?? [];
-    console.log(`[Aviation] Intl: ${intlAlerts.length} alerts`);
   } catch (err) {
     console.warn(`[Aviation] Intl fetch failed: ${err instanceof Error ? err.message : 'unknown'}`);
   }
@@ -147,7 +144,7 @@ export async function listAirportDelays(
             allAlerts.push(buildNotamAlert(airport, reason));
           }
         }
-        console.log(`[Aviation] NOTAM: ${notamResult.closedIcaos.length} closures applied`);
+        console.warn(`[Aviation] NOTAM: ${notamResult.closedIcaos.length} closures applied`);
       }
     } catch (err) {
       console.warn(`[Aviation] NOTAM fetch failed: ${err instanceof Error ? err.message : 'unknown'}`);
@@ -183,7 +180,6 @@ export async function listAirportDelays(
     }
   }
 
-  console.log(`[Aviation] Total: ${allAlerts.length} alerts (${normalCount} normal) in ${Date.now() - t0}ms`);
   return { alerts: allAlerts };
 }
 

@@ -357,7 +357,6 @@ function parseUSNIArticle(
 // ========================================================================
 
 async function fetchUSNIReport(): Promise<USNIFleetReport | null> {
-  console.log('[USNI Fleet] Fetching from WordPress API...');
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 15000);
 
@@ -387,7 +386,7 @@ async function fetchUSNIReport(): Promise<USNIFleetReport | null> {
   if (!htmlContent) return null;
 
   const report = parseUSNIArticle(htmlContent, articleUrl, articleDate, articleTitle);
-  console.log(`[USNI Fleet] Parsed: ${report.vessels.length} vessels, ${report.strikeGroups.length} CSGs, ${report.regions.length} regions`);
+  console.warn(`[USNI Fleet] Parsed: ${report.vessels.length} vessels, ${report.strikeGroups.length} CSGs, ${report.regions.length} regions`);
 
   if (report.parsingWarnings.length > 0) {
     console.warn('[USNI Fleet] Warnings:', report.parsingWarnings.join('; '));
@@ -417,7 +416,6 @@ export async function getUSNIFleetReport(
       USNI_CACHE_KEY, USNI_CACHE_TTL, fetchUSNIReport,
     );
     if (report) {
-      if (source === 'cache') console.log('[USNI Fleet] Cache hit');
       return { report, cached: source === 'cache', stale: false, error: '' };
     }
 
@@ -428,7 +426,7 @@ export async function getUSNIFleetReport(
 
     const stale = (await getCachedJson(USNI_STALE_CACHE_KEY)) as USNIFleetReport | null;
     if (stale) {
-      console.log('[USNI Fleet] Returning stale cached data');
+      console.warn('[USNI Fleet] Returning stale cached data');
       return { report: stale, cached: true, stale: true, error: 'Using cached data' };
     }
 
