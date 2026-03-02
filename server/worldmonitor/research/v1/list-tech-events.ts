@@ -261,9 +261,11 @@ async function fetchTechEvents(req: ListTechEventsRequest): Promise<ListTechEven
   const [icsResponse, rssResponse] = await Promise.allSettled([
     fetch(ICS_URL, {
       headers: { 'User-Agent': CHROME_UA },
+      signal: AbortSignal.timeout(15_000),
     }),
     fetch(DEV_EVENTS_RSS, {
       headers: { 'User-Agent': CHROME_UA },
+      signal: AbortSignal.timeout(15_000),
     }),
   ]);
 

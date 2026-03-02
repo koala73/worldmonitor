@@ -57,7 +57,7 @@ async function fetchUnhcrYearItems(year: number): Promise<UnhcrRawItem[] | null>
   for (let page = 1; page <= maxPageGuard; page++) {
     const response = await fetch(
       `https://api.unhcr.org/population/v1/population/?year=${year}&limit=${limit}&page=${page}`,
-      { headers: { Accept: 'application/json', 'User-Agent': CHROME_UA } },
+      { headers: { Accept: 'application/json', 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(15_000) },
     );
 
     if (!response.ok) return null;
