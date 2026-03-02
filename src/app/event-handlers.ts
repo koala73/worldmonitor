@@ -662,14 +662,21 @@ export class EventHandlerManager implements AppModule {
     let startY = 0;
     let startHeight = 0;
 
+    const endResize = () => {
+      if (!isResizing) return;
+      isResizing = false;
+      this.ctx.map?.setIsResizing(false);
+      this.ctx.map?.render();
+      mapSection.classList.remove('resizing');
+      document.body.style.cursor = '';
+      localStorage.setItem('map-height', mapSection.style.height);
+    };
+
     resizeHandle.addEventListener('mousedown', (e) => {
       isResizing = true;
       startY = e.clientY;
       startHeight = mapSection.offsetHeight;
-
-      // Signal the map to ignore ResizeObserver updates during active drag
       this.ctx.map?.setIsResizing(true);
-
       mapSection.classList.add('resizing');
       document.body.style.cursor = 'ns-resize';
       e.preventDefault();
@@ -682,17 +689,10 @@ export class EventHandlerManager implements AppModule {
       mapSection.style.height = `${newHeight}px`;
     });
 
-    document.addEventListener('mouseup', () => {
-      if (!isResizing) return;
-      isResizing = false;
-
-      // Release suppression and trigger one final clean resize
-      this.ctx.map?.setIsResizing(false);
-      this.ctx.map?.render();
-
-      mapSection.classList.remove('resizing');
-      document.body.style.cursor = '';
-      localStorage.setItem('map-height', mapSection.style.height);
+    document.addEventListener('mouseup', endResize);
+    window.addEventListener('blur', endResize);
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) endResize();
     });
   }
 
