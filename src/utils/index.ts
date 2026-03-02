@@ -163,6 +163,21 @@ export function chunkArray<T>(items: T[], size: number): T[][] {
   return chunks;
 }
 
+/**
+ * Return a new array with elements shuffled using the Fisher-Yates (Knuth) algorithm.
+ * Unlike `array.sort(() => Math.random() - 0.5)`, this produces a truly uniform distribution.
+ */
+export function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const tmp = a[i] as T;
+    a[i] = a[j] as T;
+    a[j] = tmp;
+  }
+  return a;
+}
+
 export { proxyUrl, fetchWithProxy } from './proxy';
 export { exportToJSON, exportToCSV, ExportPanel } from './export';
 export { buildMapUrl, parseMapUrlState } from './urlState';
