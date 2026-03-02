@@ -69,6 +69,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/military/v1/get-usni-fleet-report': 'static',
   '/api/conflict/v1/list-ucdp-events': 'static',
   '/api/conflict/v1/get-humanitarian-summary': 'static',
+  '/api/conflict/v1/list-iran-events': 'slow',
   '/api/displacement/v1/get-displacement-summary': 'static',
   '/api/displacement/v1/get-population-exposure': 'static',
   '/api/economic/v1/get-bis-policy-rates': 'static',
@@ -98,6 +99,8 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/prediction/v1/list-prediction-markets': 'medium',
   '/api/supply-chain/v1/get-chokepoint-status': 'medium',
   '/api/news/v1/list-feed-digest': 'slow',
+  '/api/intelligence/v1/classify-event': 'static',
+  '/api/news/v1/summarize-article-cache': 'slow',
 };
 
 /**

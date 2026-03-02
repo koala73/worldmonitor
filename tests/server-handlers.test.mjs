@@ -165,14 +165,16 @@ describe('headline deduplication', () => {
 // ========================================================================
 
 describe('getCacheKey determinism', () => {
-  const src = readSrc('server/worldmonitor/news/v1/_shared.ts');
+  const src = readSrc('src/utils/summary-cache-key.ts');
+  const sharedSrc = readSrc('server/worldmonitor/news/v1/_shared.ts');
 
   it('getCacheKey function exists and builds versioned keys', () => {
-    assert.match(src, /export function getCacheKey\(/,
-      'getCacheKey should be exported');
+    assert.match(src, /export function buildSummaryCacheKey\(/,
+      'buildSummaryCacheKey should be exported from shared module');
+    assert.match(sharedSrc, /getCacheKey/,
+      '_shared.ts should re-export getCacheKey');
     assert.match(src, /CACHE_VERSION/,
       'Should use CACHE_VERSION for cache key prefixing');
-    // Verify it includes mode in the key
     assert.match(src, /`summary:\$\{CACHE_VERSION\}:\$\{mode\}/,
       'Cache key should include mode');
   });

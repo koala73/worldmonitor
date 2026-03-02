@@ -4,6 +4,7 @@ import { generateSummary, type SummarizeOptions } from '@/services/summarization
 import { parallelAnalysis, type AnalyzedHeadline } from '@/services/parallel-analysis';
 import { signalAggregator, type RegionalConvergence } from '@/services/signal-aggregator';
 import { focalPointDetector } from '@/services/focal-point-detector';
+import { stripOrefLabels } from '@/services/oref-alerts';
 import { ingestNewsForCII } from '@/services/country-instability';
 import { getTheaterPostureSummaries } from '@/services/military-surge';
 import { isMobileDevice } from '@/utils';
@@ -349,7 +350,8 @@ export class InsightsPanel extends Panel {
       }
 
       // Cap titles sent to AI at 5 to reduce entity conflation in small models
-      const titles = importantClusters.slice(0, 5).map(c => c.primaryTitle);
+      // Strip OREF translation labels (ALERT[id]:, AREAS[id]:) that may leak into cluster titles
+      const titles = importantClusters.slice(0, 5).map(c => stripOrefLabels(c.primaryTitle));
 
       // Step 2: Analyze sentiment (browser-based, fast)
       this.setProgress(2, totalSteps, t('components.insights.analyzingSentiment'));

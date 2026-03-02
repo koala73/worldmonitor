@@ -766,6 +766,124 @@ async function startOrefPollLoop() {
   console.log(`[Relay] OREF poll loop started (interval ${OREF_POLL_INTERVAL_MS}ms)`);
 }
 
+// ─────────────────────────────────────────────────────────────
+// UCDP GED Events — fetch paginated conflict data, write to Redis
+// ─────────────────────────────────────────────────────────────
+const UCDP_ACCESS_TOKEN = (process.env.UCDP_ACCESS_TOKEN || process.env.UC_DP_KEY || '').trim();
+const UCDP_REDIS_KEY = 'conflict:ucdp-events:v1';
+const UCDP_PAGE_SIZE = 1000;
+const UCDP_MAX_PAGES = 6;
+const UCDP_MAX_EVENTS = 2000; // TODO: review cap after observing real map density & panel usage
+const UCDP_TRAILING_WINDOW_MS = 365 * 24 * 60 * 60 * 1000;
+const UCDP_POLL_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
+const UCDP_TTL_SECONDS = 86400; // 24h safety net
+const UCDP_VIOLENCE_TYPE_MAP = { 1: 'UCDP_VIOLENCE_TYPE_STATE_BASED', 2: 'UCDP_VIOLENCE_TYPE_NON_STATE', 3: 'UCDP_VIOLENCE_TYPE_ONE_SIDED' };
+
+function ucdpFetchPage(version, page) {
+  return new Promise((resolve, reject) => {
+    const pageUrl = new URL(`https://ucdpapi.pcr.uu.se/api/gedevents/${version}?pagesize=${UCDP_PAGE_SIZE}&page=${page}`);
+    const headers = { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' };
+    if (UCDP_ACCESS_TOKEN) headers['x-ucdp-access-token'] = UCDP_ACCESS_TOKEN;
+    const req = https.request(pageUrl, { method: 'GET', headers, timeout: 30000 }, (resp) => {
+      if (resp.statusCode < 200 || resp.statusCode >= 300) {
+        resp.resume();
+        return reject(new Error(`UCDP ${version} page ${page}: HTTP ${resp.statusCode}`));
+      }
+      let data = '';
+      resp.on('data', (chunk) => { data += chunk; });
+      resp.on('end', () => { try { resolve(JSON.parse(data)); } catch (e) { reject(e); } });
+    });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('UCDP timeout')); });
+    req.end();
+  });
+}
+
+async function ucdpDiscoverVersion() {
+  const year = new Date().getFullYear() - 2000;
+  const candidates = [...new Set([`${year}.1`, `${year - 1}.1`, '25.1', '24.1'])];
+  const results = await Promise.allSettled(
+    candidates.map(async (v) => {
+      const p0 = await ucdpFetchPage(v, 0);
+      if (!Array.isArray(p0?.Result)) throw new Error('No results');
+      return { version: v, page0: p0 };
+    }),
+  );
+  for (const r of results) {
+    if (r.status === 'fulfilled') return r.value;
+  }
+  throw new Error('No valid UCDP GED version found');
+}
+
+async function seedUcdpEvents() {
+  try {
+    const { version, page0 } = await ucdpDiscoverVersion();
+    const totalPages = Math.max(1, Number(page0?.TotalPages) || 1);
+    const newestPage = totalPages - 1;
+    console.log(`[UCDP] Version ${version}, ${totalPages} total pages`);
+
+    const FAILED = Symbol('failed');
+    const fetches = [];
+    for (let offset = 0; offset < UCDP_MAX_PAGES && (newestPage - offset) >= 0; offset++) {
+      const pg = newestPage - offset;
+      fetches.push(pg === 0 ? Promise.resolve(page0) : ucdpFetchPage(version, pg).catch(() => FAILED));
+    }
+    const pageResults = await Promise.all(fetches);
+
+    const allEvents = [];
+    let latestMs = NaN;
+    let failedPages = 0;
+    for (const raw of pageResults) {
+      if (raw === FAILED) { failedPages++; continue; }
+      const events = Array.isArray(raw?.Result) ? raw.Result : [];
+      allEvents.push(...events);
+      for (const e of events) {
+        const ms = e?.date_start ? Date.parse(String(e.date_start)) : NaN;
+        if (Number.isFinite(ms) && (!Number.isFinite(latestMs) || ms > latestMs)) latestMs = ms;
+      }
+    }
+
+    const filtered = allEvents.filter((e) => {
+      if (!Number.isFinite(latestMs)) return true;
+      const ms = e?.date_start ? Date.parse(String(e.date_start)) : NaN;
+      return Number.isFinite(ms) && ms >= (latestMs - UCDP_TRAILING_WINDOW_MS);
+    });
+
+    const mapped = filtered.map((e) => ({
+      id: String(e.id || ''),
+      dateStart: Date.parse(e.date_start) || 0,
+      dateEnd: Date.parse(e.date_end) || 0,
+      location: { latitude: Number(e.latitude) || 0, longitude: Number(e.longitude) || 0 },
+      country: e.country || '',
+      sideA: (e.side_a || '').substring(0, 200),
+      sideB: (e.side_b || '').substring(0, 200),
+      deathsBest: Number(e.best) || 0,
+      deathsLow: Number(e.low) || 0,
+      deathsHigh: Number(e.high) || 0,
+      violenceType: UCDP_VIOLENCE_TYPE_MAP[e.type_of_violence] || 'UCDP_VIOLENCE_TYPE_UNSPECIFIED',
+      sourceOriginal: (e.source_original || '').substring(0, 300),
+    })).sort((a, b) => b.dateStart - a.dateStart).slice(0, UCDP_MAX_EVENTS);
+
+    const payload = { events: mapped, fetchedAt: Date.now(), version, totalRaw: allEvents.length, filteredCount: mapped.length };
+    const ok = await upstashSet(UCDP_REDIS_KEY, payload, UCDP_TTL_SECONDS);
+    console.log(`[UCDP] Seeded ${mapped.length} events (raw: ${allEvents.length}, failed pages: ${failedPages}, redis: ${ok ? 'OK' : 'FAIL'})`);
+  } catch (e) {
+    console.warn('[UCDP] Seed error:', e?.message || e);
+  }
+}
+
+async function startUcdpSeedLoop() {
+  if (!UPSTASH_ENABLED) {
+    console.log('[UCDP] Disabled (no Upstash Redis)');
+    return;
+  }
+  console.log(`[UCDP] Seed loop starting (interval ${UCDP_POLL_INTERVAL_MS / 1000 / 60}min, token: ${UCDP_ACCESS_TOKEN ? 'yes' : 'no'})`);
+  seedUcdpEvents().catch(e => console.warn('[UCDP] Initial seed error:', e?.message || e));
+  setInterval(() => {
+    seedUcdpEvents().catch(e => console.warn('[UCDP] Seed error:', e?.message || e));
+  }, UCDP_POLL_INTERVAL_MS).unref?.();
+}
+
 function gzipSyncBuffer(body) {
   try {
     return zlib.gzipSync(typeof body === 'string' ? Buffer.from(body) : body);
@@ -1486,15 +1604,13 @@ setInterval(() => {
 
 // UCDP GED Events cache (persistent in-memory — Railway advantage)
 const UCDP_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
-const UCDP_PAGE_SIZE = 1000;
-const UCDP_MAX_PAGES = 12;
+const UCDP_RELAY_MAX_PAGES = 12;
 const UCDP_FETCH_TIMEOUT = 30000; // 30s per page (no Railway limit)
-const UCDP_TRAILING_WINDOW_MS = 365 * 24 * 60 * 60 * 1000;
 
 let ucdpCache = { data: null, timestamp: 0 };
 let ucdpFetchInProgress = false;
 
-const UCDP_VIOLENCE_TYPE_MAP = {
+const UCDP_RELAY_VIOLENCE_TYPE_MAP = {
   1: 'state-based',
   2: 'non-state',
   3: 'one-sided',
@@ -1520,7 +1636,7 @@ function ucdpBuildVersionCandidates() {
   return Array.from(new Set([`${year}.1`, `${year - 1}.1`, '25.1', '24.1']));
 }
 
-async function ucdpFetchPage(version, page) {
+async function ucdpRelayFetchPage(version, page) {
   const url = `https://ucdpapi.pcr.uu.se/api/gedevents/${version}?pagesize=${UCDP_PAGE_SIZE}&page=${page}`;
 
   return new Promise((resolve, reject) => {
@@ -1541,11 +1657,11 @@ async function ucdpFetchPage(version, page) {
   });
 }
 
-async function ucdpDiscoverVersion() {
+async function ucdpRelayDiscoverVersion() {
   const candidates = ucdpBuildVersionCandidates();
   for (const version of candidates) {
     try {
-      const page0 = await ucdpFetchPage(version, 0);
+      const page0 = await ucdpRelayFetchPage(version, 0);
       if (Array.isArray(page0?.Result)) return { version, page0 };
     } catch { /* next candidate */ }
   }
@@ -1553,16 +1669,16 @@ async function ucdpDiscoverVersion() {
 }
 
 async function ucdpFetchAllEvents() {
-  const { version, page0 } = await ucdpDiscoverVersion();
+  const { version, page0 } = await ucdpRelayDiscoverVersion();
   const totalPages = Math.max(1, Number(page0?.TotalPages) || 1);
   const newestPage = totalPages - 1;
 
   let allEvents = [];
   let latestDatasetMs = NaN;
 
-  for (let offset = 0; offset < UCDP_MAX_PAGES && (newestPage - offset) >= 0; offset++) {
+  for (let offset = 0; offset < UCDP_RELAY_MAX_PAGES && (newestPage - offset) >= 0; offset++) {
     const page = newestPage - offset;
-    const rawData = page === 0 ? page0 : await ucdpFetchPage(version, page);
+    const rawData = page === 0 ? page0 : await ucdpRelayFetchPage(version, page);
     const events = Array.isArray(rawData?.Result) ? rawData.Result : [];
     allEvents = allEvents.concat(events);
 
@@ -1594,7 +1710,7 @@ async function ucdpFetchAllEvents() {
       deaths_best: Number(e.best) || 0,
       deaths_low: Number(e.low) || 0,
       deaths_high: Number(e.high) || 0,
-      type_of_violence: UCDP_VIOLENCE_TYPE_MAP[e.type_of_violence] || 'state-based',
+      type_of_violence: UCDP_RELAY_VIOLENCE_TYPE_MAP[e.type_of_violence] || 'state-based',
       source_original: (e.source_original || '').substring(0, 300),
     }))
     .sort((a, b) => {
@@ -3447,6 +3563,7 @@ server.listen(PORT, () => {
   console.log(`[Relay] WebSocket relay on port ${PORT}`);
   startTelegramPollLoop();
   startOrefPollLoop();
+  startUcdpSeedLoop();
 });
 
 wss.on('connection', (ws, req) => {

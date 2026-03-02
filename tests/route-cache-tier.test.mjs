@@ -32,7 +32,7 @@ function extractGetRoutes() {
 }
 
 function extractCacheTierKeys() {
-  const gatewayPath = join(root, 'api', '[domain]', 'v1', '[rpc].ts');
+  const gatewayPath = join(root, 'server', 'gateway.ts');
   const src = readFileSync(gatewayPath, 'utf-8');
   const re = /'\/(api\/[^']+)':\s*'(fast|medium|slow|static|no-store)'/g;
   const entries = {};
@@ -57,7 +57,7 @@ describe('RPC_CACHE_TIER route parity', () => {
     assert.deepStrictEqual(
       missing,
       [],
-      `Missing RPC_CACHE_TIER entries for:\n  ${missing.join('\n  ')}\n\nAdd explicit tier entries in api/[domain]/v1/[rpc].ts`,
+      `Missing RPC_CACHE_TIER entries for:\n  ${missing.join('\n  ')}\n\nAdd explicit tier entries in server/gateway.ts`,
     );
   });
 
@@ -71,7 +71,7 @@ describe('RPC_CACHE_TIER route parity', () => {
   });
 
   it('no route uses the implicit default tier', () => {
-    const gatewaySrc = readFileSync(join(root, 'api', '[domain]', 'v1', '[rpc].ts'), 'utf-8');
+    const gatewaySrc = readFileSync(join(root, 'server', 'gateway.ts'), 'utf-8');
     assert.match(
       gatewaySrc,
       /RPC_CACHE_TIER\[pathname\]\s*\?\?\s*'medium'/,

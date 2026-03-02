@@ -23,6 +23,10 @@ export interface SummarizeArticleResponse {
   errorType: string;
 }
 
+export interface GetSummarizeArticleCacheRequest {
+  cacheKey: string;
+}
+
 export interface ListFeedDigestRequest {
   variant: string;
   lang: string;
@@ -125,6 +129,31 @@ export class NewsServiceClient {
       method: "POST",
       headers,
       body: JSON.stringify(req),
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as SummarizeArticleResponse;
+  }
+
+  async getSummarizeArticleCache(req: GetSummarizeArticleCacheRequest, options?: NewsServiceCallOptions): Promise<SummarizeArticleResponse> {
+    let path = "/api/news/v1/summarize-article-cache";
+    const params = new URLSearchParams();
+    if (req.cacheKey != null && req.cacheKey !== "") params.set("cache_key", String(req.cacheKey));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
       signal: options?.signal,
     });
 

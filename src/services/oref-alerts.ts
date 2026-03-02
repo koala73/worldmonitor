@@ -114,6 +114,14 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+const OREF_LABEL_RE = /(?:ALERT|AREAS|DESC)\[[^\]]*\]:\s*/g;
+
+function stripOrefLabels(text: string): string {
+  return text.replace(OREF_LABEL_RE, '').trim();
+}
+
+export { stripOrefLabels };
+
 function buildTranslationPrompt(alerts: OrefAlert[]): string {
   const lines: string[] = [];
   for (const a of alerts) {
@@ -144,9 +152,9 @@ function parseTranslationResponse(raw: string, alerts: OrefAlert[]): void {
     }
     if (title === null && areas === null && desc === null) continue;
     const entry = {
-      title: title && !hasHebrew(title) ? title : staticTranslate(alert.title),
-      data: areas && !areas.some(hasHebrew) ? areas : alert.data.map(d => locationTranslator ? locationTranslator(staticTranslate(d)) : staticTranslate(d)),
-      desc: desc && !hasHebrew(desc) ? desc : staticTranslate(alert.desc),
+      title: stripOrefLabels(title && !hasHebrew(title) ? title : staticTranslate(alert.title)),
+      data: (areas && !areas.some(hasHebrew) ? areas : alert.data.map(d => locationTranslator ? locationTranslator(staticTranslate(d)) : staticTranslate(d))).map(stripOrefLabels),
+      desc: stripOrefLabels(desc && !hasHebrew(desc) ? desc : staticTranslate(alert.desc)),
     };
     translationCache.set(alert.id, entry);
   }

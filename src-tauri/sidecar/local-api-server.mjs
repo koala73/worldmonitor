@@ -105,7 +105,7 @@ const ALLOWED_ENV_KEYS = new Set([
   'VITE_OPENSKY_RELAY_URL', 'OPENSKY_CLIENT_ID', 'OPENSKY_CLIENT_SECRET',
   'AISSTREAM_API_KEY', 'VITE_WS_RELAY_URL', 'FINNHUB_API_KEY', 'NASA_FIRMS_API_KEY',
   'OLLAMA_API_URL', 'OLLAMA_MODEL', 'WORLDMONITOR_API_KEY', 'WTO_API_KEY',
-  'AVIATIONSTACK_API', 'ICAO_API_KEY',
+  'AVIATIONSTACK_API', 'ICAO_API_KEY', 'UCDP_ACCESS_TOKEN',
 ]);
 
 const CHROME_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
@@ -819,6 +819,26 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
       if (!response.ok) return fail(`NASA FIRMS probe failed (${response.status})`);
       if (/invalid api key|not authorized|forbidden/i.test(text)) return fail('NASA FIRMS rejected this key');
       return ok('NASA FIRMS key verified');
+    }
+
+    case 'UCDP_ACCESS_TOKEN': {
+      const year = new Date().getFullYear() - 2000;
+      const candidates = [...new Set([`${year}.1`, `${year - 1}.1`, '25.1', '24.1'])];
+      for (const version of candidates) {
+        try {
+          const response = await fetchWithTimeout(
+            `https://ucdpapi.pcr.uu.se/api/gedevents/${version}?pagesize=1`,
+            { headers: { Accept: 'application/json', 'x-ucdp-access-token': value, 'User-Agent': CHROME_UA } }
+          );
+          if (isAuthFailure(response.status)) return fail('UCDP rejected this token');
+          if (!response.ok) continue;
+          const text = await response.text();
+          let payload = null;
+          try { payload = JSON.parse(text); } catch { /* ignore */ }
+          if (Array.isArray(payload?.Result)) return ok(`UCDP token verified (GED v${version})`);
+        } catch { continue; }
+      }
+      return fail('Could not verify UCDP token (all GED versions failed)');
     }
 
     case 'OLLAMA_API_URL': {

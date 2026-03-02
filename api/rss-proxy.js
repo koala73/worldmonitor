@@ -1,38 +1,9 @@
-// Non-sebuf: returns XML/HTML, stays as standalone Vercel function
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { validateApiKey } from './_api-key.js';
 import { checkRateLimit } from './_rate-limit.js';
+import { getRelayBaseUrl, getRelayHeaders, fetchWithTimeout } from './_relay.js';
 
 export const config = { runtime: 'edge' };
-
-// Fetch with timeout
-async function fetchWithTimeout(url, options, timeoutMs = 15000) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(url, { ...options, signal: controller.signal });
-    return response;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-function getRelayBaseUrl() {
-  const relayUrl = process.env.WS_RELAY_URL || '';
-  if (!relayUrl) return '';
-  return relayUrl.replace('wss://', 'https://').replace('ws://', 'http://').replace(/\/$/, '');
-}
-
-function getRelayHeaders(baseHeaders = {}) {
-  const headers = { ...baseHeaders };
-  const relaySecret = process.env.RELAY_SHARED_SECRET || '';
-  if (relaySecret) {
-    const relayHeader = (process.env.RELAY_AUTH_HEADER || 'x-relay-key').toLowerCase();
-    headers[relayHeader] = relaySecret;
-    headers.Authorization = `Bearer ${relaySecret}`;
-  }
-  return headers;
-}
 
 async function fetchViaRailway(feedUrl, timeoutMs) {
   const relayBaseUrl = getRelayBaseUrl();

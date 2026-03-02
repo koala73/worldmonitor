@@ -53,6 +53,7 @@ export interface LiveChannel {
   isLive?: boolean;
   hlsUrl?: string; // HLS manifest URL for native <video> playback (desktop)
   useFallbackOnly?: boolean; // Skip auto-detection, always use fallback
+  geoAvailability?: string[]; // ISO 3166-1 alpha-2 codes; undefined = available everywhere
 }
 
 
@@ -99,7 +100,6 @@ export const OPTIONAL_LIVE_CHANNELS: LiveChannel[] = [
   { id: 'france24', name: 'France 24', handle: '@FRANCE24', fallbackVideoId: 'u9foWyMSETk' },
   { id: 'bbc-news', name: 'BBC News', handle: '@BBCNews', fallbackVideoId: 'bjgQzJzCZKs' },
   { id: 'france24-en', name: 'France 24 English', handle: '@France24_en', fallbackVideoId: 'Ap-UM1O9RBU' },
-  { id: 'welt', name: 'WELT', handle: '@WELTVideoTV', fallbackVideoId: 'L-TNmYmaAKQ' },
   { id: 'rtve', name: 'RTVE 24H', handle: '@RTVENoticias', fallbackVideoId: '7_srED6k0bE' },
   { id: 'trt-haber', name: 'TRT Haber', handle: '@trthaber', fallbackVideoId: '3XHebGJG0bc' },
   { id: 'ntv-turkey', name: 'NTV', handle: '@NTV', fallbackVideoId: 'pqq5c6k70kk' },
@@ -149,6 +149,7 @@ export const OPTIONAL_LIVE_CHANNELS: LiveChannel[] = [
   { id: 'sabc-news', name: 'SABC News', handle: '@SABCDigitalNews' },
   { id: 'arise-news', name: 'Arise News', handle: '@AriseNewsChannel', fallbackVideoId: '4uHZdlX-DT4' },
   // Europe (additional)
+  { id: 'welt', name: 'WELT', handle: '@WELTVideoTV', fallbackVideoId: 'L-TNmYmaAKQ', geoAvailability: ['DE', 'AT', 'CH'] },
   { id: 'tagesschau24', name: 'Tagesschau24', handle: '@tagesschau', fallbackVideoId: 'fC_q9TkO1uU' },
   { id: 'tv5monde-info', name: 'TV5 Monde Info', handle: '@TV5MONDEInfo' },
   { id: 'nrk1', name: 'NRK1', handle: '@nrk' },
@@ -176,6 +177,24 @@ const DEFAULT_LIVE_CHANNELS = SITE_VARIANT === 'tech' ? TECH_LIVE_CHANNELS : SIT
 /** Default channel list for the current variant (for restore in channel management). */
 export function getDefaultLiveChannels(): LiveChannel[] {
   return [...DEFAULT_LIVE_CHANNELS];
+}
+
+/** Returns optional channels filtered by user country. Channels without geoAvailability pass through. */
+export function getFilteredOptionalChannels(userCountry: string | null): LiveChannel[] {
+  if (!userCountry) return OPTIONAL_LIVE_CHANNELS;
+  const uc = userCountry.toUpperCase();
+  return OPTIONAL_LIVE_CHANNELS.filter((c) => !c.geoAvailability || c.geoAvailability.includes(uc));
+}
+
+/** Returns region entries with geo-restricted channel IDs removed for the user's country. */
+export function getFilteredChannelRegions(userCountry: string | null): typeof OPTIONAL_CHANNEL_REGIONS {
+  if (!userCountry) return OPTIONAL_CHANNEL_REGIONS;
+  const filtered = getFilteredOptionalChannels(userCountry);
+  const allowedIds = new Set(filtered.map((c) => c.id));
+  return OPTIONAL_CHANNEL_REGIONS.map((r) => ({
+    ...r,
+    channelIds: r.channelIds.filter((id) => allowedIds.has(id)),
+  }));
 }
 
 export interface StoredLiveChannels {
@@ -819,9 +838,9 @@ export class LiveNewsPanel extends Panel {
 
     requestAnimationFrame(() => overlay.classList.add('active'));
 
-    import('@/live-channels-window').then(({ initLiveChannelsWindow }) => {
-      initLiveChannelsWindow(container);
-    });
+    import('@/live-channels-window').then(async ({ initLiveChannelsWindow }) => {
+      await initLiveChannelsWindow(container);
+    }).catch(console.error);
 
     const close = () => {
       overlay.remove();

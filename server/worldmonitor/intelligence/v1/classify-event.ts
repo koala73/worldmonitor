@@ -6,6 +6,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
 import { cachedFetchJson } from '../../../_shared/redis';
+import { markNoCacheResponse } from '../../../_shared/response-headers';
 import { UPSTREAM_TIMEOUT_MS, GROQ_API_URL, GROQ_MODEL, hashString } from './_shared';
 import { CHROME_UA } from '../../../_shared/constants';
 
@@ -36,16 +37,16 @@ function mapLevelToSeverity(level: string): SeverityLevel {
 // ========================================================================
 
 export async function classifyEvent(
-  _ctx: ServerContext,
+  ctx: ServerContext,
   req: ClassifyEventRequest,
 ): Promise<ClassifyEventResponse> {
   const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) return { classification: undefined };
+  if (!apiKey) { markNoCacheResponse(ctx.request); return { classification: undefined }; }
 
   // Input sanitization (M-14 fix): limit title length
   const MAX_TITLE_LEN = 500;
   const title = typeof req.title === 'string' ? req.title.slice(0, MAX_TITLE_LEN) : '';
-  if (!title) return { classification: undefined };
+  if (!title) { markNoCacheResponse(ctx.request); return { classification: undefined }; }
 
   const cacheKey = `classify:sebuf:v1:${hashString(title.toLowerCase())}`;
 
@@ -103,10 +104,11 @@ Return: {"level":"...","category":"..."}`;
       },
     );
   } catch {
+    markNoCacheResponse(ctx.request);
     return { classification: undefined };
   }
 
-  if (!cached?.level || !cached?.category) return { classification: undefined };
+  if (!cached?.level || !cached?.category) { markNoCacheResponse(ctx.request); return { classification: undefined }; }
 
   return {
     classification: {

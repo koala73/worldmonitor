@@ -8,12 +8,13 @@ import {
   saveChannelsToStorage,
   BUILTIN_IDS,
   getDefaultLiveChannels,
-  OPTIONAL_LIVE_CHANNELS,
-  OPTIONAL_CHANNEL_REGIONS,
+  getFilteredOptionalChannels,
+  getFilteredChannelRegions,
 } from '@/components/LiveNewsPanel';
 import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
 import { isDesktopRuntime, getRemoteApiBaseUrl } from '@/services/runtime';
+import { resolveUserCountryCode } from '@/utils/user-location';
 
 /** Builds a stable custom channel id from a YouTube handle (e.g. @Foo -> custom-foo). */
 function customChannelIdFromHandle(handle: string): string {
@@ -56,19 +57,21 @@ function parseYouTubeInput(raw: string): { handle: string } | { videoId: string 
 }
 
 // Persist active region tab across re-renders
-let activeRegionTab = OPTIONAL_CHANNEL_REGIONS[0]?.key ?? 'na';
-
-// Build a lookup map: channel id → LiveChannel for optional channels
-const optionalChannelMap = new Map<string, LiveChannel>();
-for (const c of OPTIONAL_LIVE_CHANNELS) optionalChannelMap.set(c.id, c);
+let activeRegionTab = 'all';
 
 function channelInitials(name: string): string {
   return name.split(/[\s-]+/).map((w) => w[0] ?? '').join('').slice(0, 2).toUpperCase();
 }
 
-export function initLiveChannelsWindow(containerEl?: HTMLElement): void {
+export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise<void> {
   const appEl = containerEl ?? document.getElementById('app');
   if (!appEl) return;
+
+  const userCountry = await resolveUserCountryCode();
+  const filteredChannels = getFilteredOptionalChannels(userCountry);
+  const filteredRegions = getFilteredChannelRegions(userCountry);
+  const optionalChannelMap = new Map<string, LiveChannel>();
+  for (const c of filteredChannels) optionalChannelMap.set(c.id, c);
 
   if (!containerEl) {
     document.title = `${t('components.liveNews.manage') ?? 'Channel management'} - World Monitor`;
@@ -289,7 +292,7 @@ export function initLiveChannelsWindow(containerEl?: HTMLElement): void {
 
     // Render tab buttons
     tabBar.innerHTML = '';
-    for (const region of OPTIONAL_CHANNEL_REGIONS) {
+    for (const region of filteredRegions) {
       const addedCount = region.channelIds.filter((id) => currentIds.has(id)).length;
       const btn = document.createElement('button');
       btn.type = 'button';
@@ -305,7 +308,7 @@ export function initLiveChannelsWindow(containerEl?: HTMLElement): void {
 
     // Render tab content panels
     tabContents.innerHTML = '';
-    for (const region of OPTIONAL_CHANNEL_REGIONS) {
+    for (const region of filteredRegions) {
       const panel = document.createElement('div');
       panel.className = 'live-news-manage-tab-content' + (region.key === activeRegionTab ? ' active' : '');
 

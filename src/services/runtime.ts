@@ -1,3 +1,5 @@
+import { SITE_VARIANT } from '@/config/variant';
+
 const WS_API_URL = import.meta.env.VITE_WS_API_URL || '';
 const KEYED_CLOUD_API_PATTERN = /^\/api\/(?:[^/]+\/v1\/|bootstrap(?:\?|$)|rss-proxy(?:\?|$)|polymarket(?:\?|$)|ais-snapshot(?:\?|$))/;
 
@@ -113,8 +115,7 @@ export function getRemoteApiBaseUrl(): string {
     return normalizeBaseUrl(configuredRemoteBase);
   }
 
-  const variant = import.meta.env.VITE_VARIANT || 'full';
-  const fromHosts = DEFAULT_REMOTE_HOSTS[variant] ?? DEFAULT_REMOTE_HOSTS.full ?? '';
+  const fromHosts = DEFAULT_REMOTE_HOSTS[SITE_VARIANT] ?? DEFAULT_REMOTE_HOSTS.full ?? '';
   if (fromHosts) return fromHosts;
 
   // Desktop builds may not set VITE_WS_API_URL; default to production.
@@ -386,12 +387,6 @@ export function installRuntimeFetchPatch(): void {
   (window as unknown as Record<string, unknown>).__wmFetchPatched = true;
 }
 
-const WEB_REDIRECT_PATHS = [
-  /^\/api\/[^/]+\/v1\//,
-  /^\/api\/rss-proxy(?:\?|$)/,
-  /^\/api\/polymarket(?:\?|$)/,
-  /^\/api\/ais-snapshot(?:\?|$)/,
-];
 const ALLOWED_REDIRECT_HOSTS = /^https:\/\/([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)*worldmonitor\.app(:\d+)?$/;
 
 function isAllowedRedirectTarget(url: string): boolean {
@@ -414,8 +409,8 @@ export function installWebApiRedirect(): void {
 
   const nativeFetch = window.fetch.bind(window);
   const API_BASE = WS_API_URL;
-  const shouldRedirectPath = (pathWithQuery: string): boolean => WEB_REDIRECT_PATHS.some((pattern) => pattern.test(pathWithQuery));
-  const shouldFallbackToOrigin = (status: number): boolean => status === 404 || status === 405 || status === 501;
+  const shouldRedirectPath = (pathWithQuery: string): boolean => pathWithQuery.startsWith('/api/');
+  const shouldFallbackToOrigin = (status: number): boolean => status === 404 || status === 405 || status === 501 || status === 502 || status === 503;
   const fetchWithRedirectFallback = async (
     redirectedInput: RequestInfo | URL,
     originalInput: RequestInfo | URL,

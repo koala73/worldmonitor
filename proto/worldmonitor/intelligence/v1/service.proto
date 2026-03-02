@@ -27,7 +27,7 @@ service IntelligenceService {
 
   // ClassifyEvent classifies a real-world event using AI (Groq).
   rpc ClassifyEvent(ClassifyEventRequest) returns (ClassifyEventResponse) {
-    option (sebuf.http.config) = {path: "/classify-event"};
+    option (sebuf.http.config) = {path: "/classify-event", method: HTTP_METHOD_GET};
   }
 
   // GetCountryIntelBrief generates an AI intelligence brief for a country (OpenRouter).
@@ -38,5 +38,10 @@ service IntelligenceService {
   // SearchGdeltDocuments searches the GDELT 2.0 Doc API for news articles.
   rpc SearchGdeltDocuments(SearchGdeltDocumentsRequest) returns (SearchGdeltDocumentsResponse) {
     option (sebuf.http.config) = {path: "/search-gdelt-documents", method: HTTP_METHOD_GET};
+  }
+
+  // DeductSituation performs AI-powered situational analysis and deduction.
+  rpc DeductSituation(DeductSituationRequest) returns (DeductSituationResponse) {
+    option (sebuf.http.config) = {path: "/deduct-situation"};
   }
 }

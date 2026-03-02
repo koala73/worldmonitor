@@ -23,6 +23,10 @@ export interface SummarizeArticleResponse {
   errorType: string;
 }
 
+export interface GetSummarizeArticleCacheRequest {
+  cacheKey: string;
+}
+
 export interface ListFeedDigestRequest {
   variant: string;
   lang: string;
@@ -109,6 +113,7 @@ export interface RouteDescriptor {
 
 export interface NewsServiceHandler {
   summarizeArticle(ctx: ServerContext, req: SummarizeArticleRequest): Promise<SummarizeArticleResponse>;
+  getSummarizeArticleCache(ctx: ServerContext, req: GetSummarizeArticleCacheRequest): Promise<SummarizeArticleResponse>;
   listFeedDigest(ctx: ServerContext, req: ListFeedDigestRequest): Promise<ListFeedDigestResponse>;
 }
 
@@ -138,6 +143,53 @@ export function createNewsServiceRoutes(
           };
 
           const result = await handler.summarizeArticle(ctx, body);
+          return new Response(JSON.stringify(result as SummarizeArticleResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/news/v1/summarize-article-cache",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetSummarizeArticleCacheRequest = {
+            cacheKey: params.get("cache_key") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getSummarizeArticleCache", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getSummarizeArticleCache(ctx, body);
           return new Response(JSON.stringify(result as SummarizeArticleResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },

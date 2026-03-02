@@ -235,7 +235,7 @@
     "etfFlows": "BTC ETF Tracker",
     "stablecoins": "Stablecoins",
     "deduction": "Deduct Situation",
-    "ucdpEvents": "UCDP Conflict Events",
+    "ucdpEvents": "Armed Conflict Events",
     "giving": "Global Giving",
     "displacement": "UNHCR Displacement",
     "climate": "Climate Anomalies",
@@ -919,7 +919,7 @@
         "shipTraffic": "Ship Traffic",
         "flightDelays": "Flight Delays",
         "protests": "Protests",
-        "ucdpEvents": "UCDP Events",
+        "ucdpEvents": "Armed Conflict Events",
         "displacementFlows": "Displacement Flows",
         "climateAnomalies": "Climate Anomalies",
         "weatherAlerts": "Weather Alerts",
@@ -1255,7 +1255,7 @@
       "deathsCount": "{{count}} deaths",
       "moreNotShown": "{{count}} more events not shown",
       "noEvents": "No events in this category",
-      "infoTooltip": "<strong>UCDP Georeferenced Events</strong> Event-level conflict data from Uppsala University.<ul><li><strong>State-Based</strong>: Government vs rebel group</li><li><strong>Non-State</strong>: Armed group vs armed group</li><li><strong>One-Sided</strong>: Violence against civilians</li></ul>Deaths shown as best estimate (low-high range). ACLED duplicates are filtered out automatically."
+      "infoTooltip": "<strong>Armed Conflict Events</strong> Event-level conflict data from Uppsala University (UCDP).<ul><li><strong>State-Based</strong>: Government vs rebel group</li><li><strong>Non-State</strong>: Armed group vs armed group</li><li><strong>One-Sided</strong>: Violence against civilians</li></ul>Deaths shown as best estimate (low-high range). ACLED duplicates are filtered out automatically."
     },
     "giving": {
       "activityIndex": "Activity Index",
@@ -2159,7 +2159,7 @@
     "failedToLoad": "Failed to load data",
     "noDataShort": "No data",
     "upstreamUnavailable": "Upstream API unavailable — will retry automatically",
-    "loadingUcdpEvents": "Loading UCDP events",
+    "loadingUcdpEvents": "Loading armed conflict events",
     "loadingStablecoins": "Loading stablecoins...",
     "scanningThermalData": "Scanning thermal data",
     "calculatingExposure": "Calculating exposure",

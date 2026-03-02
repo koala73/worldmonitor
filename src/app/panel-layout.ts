@@ -549,6 +549,17 @@ export class PanelLayoutManager implements AppModule {
         import('@/components/DeductionPanel').then(({ DeductionPanel }) => {
           const deductionPanel = new DeductionPanel(() => this.ctx.allNews);
           this.ctx.panels['deduction'] = deductionPanel;
+          const el = deductionPanel.getElement();
+          this.makeDraggable(el, 'deduction');
+          const grid = document.getElementById('panelsGrid');
+          if (grid) {
+            const gdeltEl = this.ctx.panels['gdelt-intel']?.getElement();
+            if (gdeltEl?.nextSibling) {
+              grid.insertBefore(el, gdeltEl.nextSibling);
+            } else {
+              grid.appendChild(el);
+            }
+          }
         });
       }
 

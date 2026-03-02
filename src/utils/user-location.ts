@@ -1,3 +1,5 @@
+import { isDesktopRuntime } from '@/services/runtime';
+
 type MapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
 
 const ASIA_EAST_TIMEZONES = new Set([
@@ -45,6 +47,61 @@ function getGeolocationPosition(timeout: number): Promise<GeolocationPosition> {
       maximumAge: 300_000,
     });
   });
+}
+
+const TIMEZONE_TO_COUNTRY: Record<string, string> = {
+  'Europe/Berlin': 'DE', 'Europe/Vienna': 'AT', 'Europe/Zurich': 'CH',
+  'Europe/London': 'GB', 'Europe/Paris': 'FR', 'Europe/Madrid': 'ES',
+  'Europe/Rome': 'IT', 'Europe/Amsterdam': 'NL', 'Europe/Brussels': 'BE',
+  'Europe/Lisbon': 'PT', 'Europe/Stockholm': 'SE', 'Europe/Oslo': 'NO',
+  'Europe/Copenhagen': 'DK', 'Europe/Helsinki': 'FI', 'Europe/Warsaw': 'PL',
+  'Europe/Prague': 'CZ', 'Europe/Budapest': 'HU', 'Europe/Bucharest': 'RO',
+  'Europe/Athens': 'GR', 'Europe/Dublin': 'IE',
+  'Europe/Istanbul': 'TR', 'Europe/Moscow': 'RU', 'Europe/Kiev': 'UA',
+  'Europe/Kyiv': 'UA', 'Europe/Belgrade': 'RS', 'Europe/Zagreb': 'HR',
+  'Europe/Sofia': 'BG', 'Europe/Bratislava': 'SK', 'Europe/Ljubljana': 'SI',
+  'Europe/Tallinn': 'EE', 'Europe/Riga': 'LV', 'Europe/Vilnius': 'LT',
+  'Europe/Luxembourg': 'LU',
+  'America/New_York': 'US', 'America/Chicago': 'US', 'America/Denver': 'US',
+  'America/Los_Angeles': 'US', 'America/Phoenix': 'US', 'America/Anchorage': 'US',
+  'Pacific/Honolulu': 'US', 'America/Toronto': 'CA', 'America/Vancouver': 'CA',
+  'America/Edmonton': 'CA', 'America/Winnipeg': 'CA', 'America/Halifax': 'CA',
+  'America/Mexico_City': 'MX', 'America/Sao_Paulo': 'BR', 'America/Argentina/Buenos_Aires': 'AR',
+  'America/Bogota': 'CO', 'America/Lima': 'PE', 'America/Santiago': 'CL',
+  'Asia/Tokyo': 'JP', 'Asia/Seoul': 'KR', 'Asia/Shanghai': 'CN',
+  'Asia/Hong_Kong': 'HK', 'Asia/Taipei': 'TW', 'Asia/Singapore': 'SG',
+  'Asia/Kolkata': 'IN', 'Asia/Dubai': 'AE', 'Asia/Riyadh': 'SA',
+  'Asia/Jerusalem': 'IL', 'Asia/Bangkok': 'TH', 'Asia/Jakarta': 'ID',
+  'Asia/Kuala_Lumpur': 'MY', 'Asia/Manila': 'PH', 'Asia/Karachi': 'PK',
+  'Australia/Sydney': 'AU', 'Australia/Melbourne': 'AU', 'Australia/Perth': 'AU',
+  'Pacific/Auckland': 'NZ', 'Africa/Cairo': 'EG', 'Africa/Lagos': 'NG',
+  'Africa/Johannesburg': 'ZA', 'Africa/Nairobi': 'KE', 'Africa/Casablanca': 'MA',
+};
+
+let _countryPromise: Promise<string | null> | undefined;
+
+async function resolveCountryCodeInternal(): Promise<string | null> {
+  if (!isDesktopRuntime()) {
+    try {
+      const res = await fetch('/api/geo', { signal: AbortSignal.timeout(3000) });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.country && data.country !== 'XX') return data.country;
+      }
+    } catch { /* fallback to timezone */ }
+  }
+
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return TIMEZONE_TO_COUNTRY[tz] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export function resolveUserCountryCode(): Promise<string | null> {
+  if (!_countryPromise) _countryPromise = resolveCountryCodeInternal();
+  return _countryPromise;
 }
 
 export async function resolveUserRegion(): Promise<MapView> {

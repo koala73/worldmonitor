@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https: http://localhost:5173 ws: wss: blob: data:; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://www.youtube.com https://static.cloudflareinsights.com https://vercel.live; worker-src 'self' blob:; font-src 'self' data: https:; media-src 'self' data: blob: https: http://127.0.0.1:* http://localhost:*; frame-src 'self' http://127.0.0.1:* http://localhost:* https://worldmonitor.app https://tech.worldmonitor.app https://happy.worldmonitor.app https://www.youtube.com https://www.youtube-nocookie.com;" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https: http://localhost:5173 ws: wss: blob: data:; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'sha256-LnMFPWZxTgVOr2VYwIh9mhQ3l/l3+a3SfNOLERnuHfY=' 'sha256-+SFBjfmi2XfnyAT3POBxf6JIKYDcNXtllPclOcaNBI0=' 'sha256-AhZAmdCW6h8iXMyBcvIrqN71FGNk4lwLD+lPxx43hxg=' 'wasm-unsafe-eval' https://www.youtube.com https://static.cloudflareinsights.com https://vercel.live; worker-src 'self' blob:; font-src 'self' data: https:; media-src 'self' data: blob: https: http://127.0.0.1:* http://localhost:*; frame-src 'self' http://127.0.0.1:* http://localhost:* https://worldmonitor.app https://tech.worldmonitor.app https://happy.worldmonitor.app https://www.youtube.com https://www.youtube-nocookie.com;" />
     <meta name="referrer" content="strict-origin-when-cross-origin" />
 
     <!-- Primary Meta Tags -->
@@ -92,7 +92,7 @@
 
 
     <!-- Theme: apply stored preference before first paint to prevent FOUC -->
-    <script>(function(){try{var t=localStorage.getItem('worldmonitor-theme');var v=localStorage.getItem('worldmonitor-variant');if(!v){var h=location.hostname;if(h.startsWith('happy.'))v='happy';else if(h.startsWith('tech.'))v='tech';else if(h.startsWith('finance.'))v='finance';}if(v)document.documentElement.dataset.variant=v;if(t==='dark'||t==='light'){document.documentElement.dataset.theme=t;}else if(v==='happy'){document.documentElement.dataset.theme='light';}}catch(e){}document.documentElement.classList.add('no-transition');})()</script>
+    <script>(function(){try{var h=location.hostname;var v;if(h.startsWith('happy.'))v='happy';else if(h.startsWith('tech.'))v='tech';else if(h.startsWith('finance.'))v='finance';if(!v&&(h==='localhost'||h==='127.0.0.1'||'__TAURI_INTERNALS__' in window))v=localStorage.getItem('worldmonitor-variant');if(v)document.documentElement.dataset.variant=v;else document.documentElement.removeAttribute('data-variant');var t=localStorage.getItem('worldmonitor-theme');if(t==='dark'||t==='light'){document.documentElement.dataset.theme=t;}else if(v==='happy'){document.documentElement.dataset.theme='light';}}catch(e){}document.documentElement.classList.add('no-transition');})()</script>
 
     <!-- Critical CSS: inline skeleton visible before JS boots -->
     <style>

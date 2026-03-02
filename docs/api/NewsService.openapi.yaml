@@ -35,6 +35,39 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/news/v1/summarize-article-cache:
+        get:
+            tags:
+                - NewsService
+            summary: GetSummarizeArticleCache
+            description: GetSummarizeArticleCache looks up a cached summary by deterministic key (CDN-cacheable GET).
+            operationId: GetSummarizeArticleCache
+            parameters:
+                - name: cache_key
+                  in: query
+                  description: Deterministic cache key computed by buildSummaryCacheKey().
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SummarizeArticleResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
     /api/news/v1/list-feed-digest:
         get:
             tags:
@@ -171,6 +204,13 @@ components:
                     type: string
                     description: Error type/name (e.g. "TypeError").
             description: SummarizeArticleResponse contains the LLM summarization result.
+        GetSummarizeArticleCacheRequest:
+            type: object
+            properties:
+                cacheKey:
+                    type: string
+                    description: Deterministic cache key computed by buildSummaryCacheKey().
+            description: GetSummarizeArticleCacheRequest looks up a pre-computed summary by cache key.
         ListFeedDigestRequest:
             type: object
             properties:

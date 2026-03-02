@@ -14,6 +14,7 @@ import { isFeatureAvailable, type RuntimeFeatureId } from './runtime-config';
 import { trackLLMUsage, trackLLMFailure } from './analytics';
 import { NewsServiceClient, type SummarizeArticleResponse } from '@/generated/client/worldmonitor/news/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
+import { buildSummaryCacheKey } from '@/utils/summary-cache-key';
 
 export type SummarizationProvider = 'ollama' | 'groq' | 'openrouter' | 'browser' | 'cache';
 
@@ -182,6 +183,16 @@ async function generateSummaryInternal(
   lang: string,
   options?: SummarizeOptions,
 ): Promise<SummarizationResult | null> {
+  if (!options?.skipCloudProviders) {
+    try {
+      const cacheKey = buildSummaryCacheKey(headlines, 'brief', geoContext, SITE_VARIANT, lang);
+      const cached = await newsClient.getSummarizeArticleCache({ cacheKey });
+      if (cached.summary) {
+        return { summary: cached.summary, provider: 'cache', model: cached.model || '', cached: true };
+      }
+    } catch { /* cache lookup failed — proceed to provider chain */ }
+  }
+
   if (BETA_MODE) {
     const modelReady = mlWorker.isAvailable && mlWorker.isModelLoaded('summarization-beta');
 
