@@ -27,7 +27,7 @@ export interface UnifiedSettingsConfig {
   statusPanel?: StatusPanel | null;
 }
 
-type TabId = 'general' | 'panels' | 'sources' | 'api-keys' | 'status';
+type TabId = 'general' | 'panels' | 'sources' | 'api-keys' | 'status' | 'help';
 
 export class UnifiedSettings {
   private overlay: HTMLElement;
@@ -254,6 +254,7 @@ export class UnifiedSettings {
           <button class="${tabClass('sources')}" data-tab="sources">${t('header.tabSources')}</button>
           ${this.config.isDesktopApp ? `<button class="${tabClass('api-keys')}" data-tab="api-keys">${t('header.tabApiKeys')}</button>` : ''}
           <button class="${tabClass('status')}" data-tab="status">${t('panels.status')}</button>
+          <button class="${tabClass('help')}" data-tab="help">Help</button>
         </div>
         <div class="unified-settings-tab-panel${this.activeTab === 'general' ? ' active' : ''}" data-panel-id="general">
           ${this.renderGeneralContent()}
@@ -286,6 +287,9 @@ export class UnifiedSettings {
         </div>` : ''}
         <div class="unified-settings-tab-panel${this.activeTab === 'status' ? ' active' : ''}" data-panel-id="status">
           <div class="us-status-content" id="usStatusContent"></div>
+        </div>
+        <div class="unified-settings-tab-panel${this.activeTab === 'help' ? ' active' : ''}" data-panel-id="help">
+          ${this.renderHelpContent()}
         </div>
       </div>
     `;
@@ -443,6 +447,76 @@ export class UnifiedSettings {
 
   public refreshStatusTab(): void {
     if (this.activeTab === 'status') this.renderStatusTab();
+  }
+
+  private renderHelpContent(): string {
+    return `<div class="us-help-content">
+      <div class="us-help-section">
+        <h3>Getting Started</h3>
+        <p>World Monitor is a free, open-source geopolitical intelligence dashboard. It pulls live data from dozens of public APIs and displays them on an interactive map and sidebar panels.</p>
+        <ul>
+          <li><strong>Sidebar panels</strong> — click any panel tab on the left to expand it. Panels with a badge show new unread items.</li>
+          <li><strong>Map</strong> — use the layer toggles in Settings → Sources to show/hide map overlays. Click any map marker for details.</li>
+          <li><strong>Gear icon</strong> — opens this Settings dialog where you configure panels, map layers, and API keys.</li>
+        </ul>
+      </div>
+
+      <div class="us-help-section">
+        <h3>Setting Up API Keys</h3>
+        <p>Many data sources require free API keys. Go to <strong>Settings → API Keys</strong> to configure them.</p>
+        <ul>
+          <li><strong>ACLED</strong> — Air strikes, drone events, conflict data. Register free at <a href="https://developer.acleddata.com/" target="_blank" rel="noopener">developer.acleddata.com</a>. You need both an Access Token and your registered email.</li>
+          <li><strong>NASA FIRMS</strong> — Satellite wildfire detection. Free key at <a href="https://firms.modaps.eosdis.nasa.gov/api/area/" target="_blank" rel="noopener">NASA FIRMS</a>.</li>
+          <li><strong>Finnhub</strong> — Stock market & sector heatmap. Free tier at <a href="https://finnhub.io/register" target="_blank" rel="noopener">finnhub.io</a>.</li>
+          <li><strong>AISStream</strong> — Live ship tracking. Free at <a href="https://aisstream.io/authenticate" target="_blank" rel="noopener">aisstream.io</a>.</li>
+          <li><strong>OpenSky</strong> — Military flight tracking. Free account at <a href="https://opensky-network.org/" target="_blank" rel="noopener">opensky-network.org</a>.</li>
+          <li><strong>Wingbits</strong> — Aircraft enrichment for ADS-B data. Free at <a href="https://wingbits.com/register" target="_blank" rel="noopener">wingbits.com</a>.</li>
+          <li><strong>AI Summarization</strong> — Every panel has an AI summary button (✦). Use Ollama (local/free), Groq (free tier), or Anthropic Claude.</li>
+        </ul>
+      </div>
+
+      <div class="us-help-section">
+        <h3>Monitoring Modes</h3>
+        <ul>
+          <li><strong>Peace Mode</strong> — Default balanced view. All panels visible.</li>
+          <li><strong>Finance Mode</strong> — Auto-triggers when S&amp;P 500 moves ≥2.5% or BTC ≥5% in a day. Prioritizes markets, economy, trade panels.</li>
+          <li><strong>War Mode</strong> — Auto-triggers on geopolitical escalation signals. Prioritizes military, conflict, threat intelligence panels.</li>
+          <li>Switch modes manually using the mode button in the bottom-left of the sidebar.</li>
+        </ul>
+      </div>
+
+      <div class="us-help-section">
+        <h3>Map Controls</h3>
+        <ul>
+          <li><strong>Scroll/pinch</strong> — zoom in/out.</li>
+          <li><strong>Click + drag</strong> — pan the map.</li>
+          <li><strong>Click a marker</strong> — opens a detail popup for that event.</li>
+          <li><strong>Basemap</strong> — switch between street, satellite, and terrain views via the map controls.</li>
+          <li><strong>Low Power Mode (⚡)</strong> — disables animations and spatial audio to reduce CPU/GPU load.</li>
+          <li><strong>Time range filter</strong> — filter map events to the last 1h, 6h, 24h, 48h, or 7 days.</li>
+        </ul>
+      </div>
+
+      <div class="us-help-section">
+        <h3>Panel Tips</h3>
+        <ul>
+          <li><strong>AI Summary (✦)</strong> — every panel (except live video) has an AI summary button. Click it to get a 2–3 sentence intelligence briefing from the panel's data.</li>
+          <li><strong>Click-to-fly</strong> — clicking an event row in most panels (ACLED, Airstrikes, UCDP, Earthquakes, etc.) flies the map to that location.</li>
+          <li><strong>Drag panels</strong> — drag panel tabs to reorder them in the sidebar.</li>
+          <li><strong>Panel counts</strong> — the badge on each tab shows the item count. A pulsing badge indicates new unread items.</li>
+        </ul>
+      </div>
+
+      <div class="us-help-section">
+        <h3>Open Source &amp; Contributing</h3>
+        <p>World Monitor for macOS is free and open source under the MIT License.</p>
+        <ul>
+          <li><a href="https://github.com/bradleybond512/worldmonitor-macos" target="_blank" rel="noopener">GitHub Repository</a></li>
+          <li><a href="https://github.com/bradleybond512/worldmonitor-macos/discussions" target="_blank" rel="noopener">Community Discussions</a></li>
+          <li><a href="https://github.com/bradleybond512/worldmonitor-macos/issues" target="_blank" rel="noopener">Report a Bug</a></li>
+        </ul>
+      </div>
+    </div>`;
   }
 
   private renderStatusTab(): void {

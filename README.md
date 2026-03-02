@@ -36,7 +36,7 @@
 | **AI Panel Summaries** | ✦ button on every data panel generates an on-demand AI summary of current panel content using your configured provider (Ollama · Groq · Claude · OpenRouter) |
 | **Native sidebar** | SF Pro, vibrancy-backed, collapsible, HIG-compliant panel navigation |
 | **API Keys in Settings** | All data-source API keys managed in the gear-icon Settings modal (API Keys tab) — no prominent config panel cluttering the sidebar |
-| **Auto-update** | GitHub Releases API polling — "Update Now" downloads DMG, mounts, replaces app, relaunches |
+| **Auto-update** | GitHub Releases API polling — "Update Now" downloads DMG, mounts, replaces app, relaunches. Manual check via Help → Check for Updates… |
 | **Native notifications** | macOS notification center alerts for critical/high breaking intelligence events |
 | **Live cyber threat map** | 500 IOCs geo-plotted on the 3D globe (Feodo · URLhaus · C2Intel · OTX · AbuseIPDB) |
 | **Alert Center panel** | Persistent rolling history of intelligence signals and breaking alerts with unread badge |
@@ -46,11 +46,74 @@
 | **World Bank profiles** | GDP, military spend %, trade %, population injected into every country brief AI context |
 | **Claude AI provider** | Anthropic Claude Haiku in the summarization fallback chain alongside Groq/OpenRouter |
 | **Earthquakes panel** | USGS M4.5+ live seismic data with magnitude-color-coded table |
+| **Air Strikes & Drones panel** | ACLED-sourced air/drone strikes and missile attacks — last 30 days, mapped to globe, click-to-fly |
+| **Monitoring Modes** | Peace / Finance / War modes — Finance auto-triggers on ≥2.5% S&P or ≥5% BTC move; War mode on geopolitical escalation signals |
+| **Low Power Mode (⚡)** | Sidebar button disables animations, trail layers, and spatial audio to reduce CPU/GPU load |
+| **Window menu** | Standard macOS Window menu — Minimize, Zoom, Close |
+| **Open Logs Folder** | Help → Open Logs Folder opens the app log directory in Finder for easy debugging |
 | **MBP 14" optimized** | Window sizing and sidebar scaling tuned for the 1512×982 display |
-| **Built-in API key** | Zero-config desktop auth — no Keychain prompts or manual key entry |
+| **Free & Open Source** | No license key, no paywalls, no paid tiers — fully MIT licensed |
 | **Security hardened** | Bundle ID verification on auto-update, CSP object-src/base-uri/form-action, href scheme validation, notification rate limiting |
 
 ![World Monitor Dashboard](new-world-monitor.png)
+
+---
+
+## Quick Start Guide
+
+### Installation
+
+1. Download the latest `.dmg` from [GitHub Releases](https://github.com/bradleybond512/worldmonitor-macos/releases/latest)
+2. Open the DMG, drag **World Monitor** to `/Applications`
+3. Launch the app — on first run macOS may prompt you to allow it (System Settings → Privacy & Security → Open Anyway)
+
+### First Steps
+
+| Step | Action |
+|---|---|
+| **Open Settings** | Click the gear icon ⚙ in the bottom-left sidebar, or press **Cmd+,** |
+| **Enable Panels** | Settings → Panels tab — toggle on the intelligence panels you want |
+| **Configure Map Layers** | Settings → Sources tab — enable/disable map overlays (military bases, conflicts, fires, etc.) |
+| **Add API Keys** | Settings → API Keys tab — add free keys for ACLED, NASA FIRMS, Finnhub, OpenSky, etc. |
+| **Set Up AI** | Settings → General tab → AI Provider — configure Ollama (local/free), Groq, or Anthropic Claude |
+| **Check Help** | Settings → Help tab — in-app guide with tips and API key sign-up links |
+
+### Key Shortcuts
+
+| Shortcut | Action |
+|---|---|
+| **Cmd+K** | Command palette — search news, countries, layers, bases, cables |
+| **Cmd+,** | Open Settings |
+| **⚡ button** | Toggle Low Power Mode (disables animations + spatial audio) |
+| Click panel tab | Expand/collapse sidebar panel |
+| Click map marker | Open event detail popup |
+
+### API Keys (All Free)
+
+| Service | What it enables | Sign up |
+|---|---|---|
+| **ACLED** (Access Token + Email) | Air strikes, drone events, conflict data | [developer.acleddata.com](https://developer.acleddata.com/) |
+| **NASA FIRMS** | Satellite wildfire detection | [firms.modaps.eosdis.nasa.gov](https://firms.modaps.eosdis.nasa.gov/api/area/) |
+| **Finnhub** | Stock market data, sector heatmap | [finnhub.io](https://finnhub.io/register) |
+| **AISStream** | Live ship tracking | [aisstream.io](https://aisstream.io/authenticate) |
+| **OpenSky** | Military flight tracking | [opensky-network.org](https://opensky-network.org/) |
+| **Wingbits** | ADS-B aircraft enrichment | [wingbits.com](https://wingbits.com/register) |
+| **AbuseIPDB** | Threat intelligence IOCs | [abuseipdb.com](https://www.abuseipdb.com/) |
+| **AlienVault OTX** | Threat intelligence IOCs | [otx.alienvault.com](https://otx.alienvault.com/) |
+| **Groq** | Fast cloud AI for panel summaries | [console.groq.com](https://console.groq.com/keys) |
+| **Anthropic** | Claude AI for panel summaries | [console.anthropic.com](https://console.anthropic.com/settings/keys) |
+| **FRED** | US economic data | [fred.stlouisfed.org](https://fred.stlouisfed.org/docs/api/api_key.html) |
+| **EIA** | Energy data | [eia.gov](https://www.eia.gov/opendata/register.php) |
+
+> **AI without keys**: Install [Ollama](https://ollama.com/download) locally → set the Server URL to `http://localhost:11434` in Settings → General → AI Provider. No API key required.
+
+### Monitoring Modes
+
+Switch modes with the mode button in the bottom-left sidebar:
+
+- **Peace Mode** — Default. All panels visible, balanced view.
+- **Finance Mode** — Auto-triggers when S&P 500 moves ≥2.5% or BTC ≥5% in a day. Prioritizes markets, economy, and trade panels.
+- **War Mode** — Auto-triggers on geopolitical escalation signals (conflict spikes, military surges, threat intelligence). Prioritizes security, military, and intelligence panels.
 
 ---
 
