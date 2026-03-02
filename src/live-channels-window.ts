@@ -142,6 +142,7 @@ export function initLiveChannelsWindow(containerEl?: HTMLElement): void {
   function renderList(listEl: HTMLElement): void {
     listEl.innerHTML = '';
     for (const ch of channels) {
+      const isCustom = !BUILTIN_IDS.has(ch.id);
       const row = document.createElement('div');
       row.className = 'live-news-manage-row';
       row.dataset.channelId = ch.id;
@@ -151,13 +152,25 @@ export function initLiveChannelsWindow(containerEl?: HTMLElement): void {
       nameSpan.textContent = ch.name ?? '';
       row.appendChild(nameSpan);
 
-      row.addEventListener('click', (e) => {
-        // Suppress click immediately after drag-drop to avoid accidental edit open.
-        if (suppressRowClick || row.classList.contains('live-news-manage-row-dragging')) return;
-        if ((e.target as HTMLElement).closest('input, button, textarea, select')) return;
-        e.preventDefault();
-        showEditForm(row, ch, listEl);
+      const removeX = document.createElement('span');
+      removeX.className = 'live-news-manage-row-remove-x';
+      removeX.textContent = '✕';
+      removeX.addEventListener('click', (e) => {
+        e.stopPropagation();
+        channels = channels.filter((c) => c.id !== ch.id);
+        saveChannelsToStorage(channels);
+        renderList(listEl);
       });
+      row.appendChild(removeX);
+
+      if (isCustom) {
+        row.addEventListener('click', (e) => {
+          if (suppressRowClick || row.classList.contains('live-news-manage-row-dragging')) return;
+          if ((e.target as HTMLElement).closest('input, button, textarea, select, .live-news-manage-row-remove-x')) return;
+          e.preventDefault();
+          showEditForm(row, ch, listEl);
+        });
+      }
 
       listEl.appendChild(row);
     }
@@ -338,14 +351,23 @@ export function initLiveChannelsWindow(containerEl?: HTMLElement): void {
     card.appendChild(info);
     card.appendChild(action);
 
-    if (!isAdded) {
-      card.addEventListener('click', () => {
+    card.addEventListener('mouseenter', () => {
+      if (card.classList.contains('added')) action.textContent = '✕';
+    });
+    card.addEventListener('mouseleave', () => {
+      if (card.classList.contains('added')) action.textContent = '✓';
+    });
+
+    card.addEventListener('click', () => {
+      if (isAdded) {
+        channels = channels.filter((c) => c.id !== ch.id);
+      } else {
         if (channels.some((c) => c.id === ch.id)) return;
         channels.push({ ...ch });
-        saveChannelsToStorage(channels);
-        renderList(listEl);
-      });
-    }
+      }
+      saveChannelsToStorage(channels);
+      renderList(listEl);
+    });
     return card;
   }
 

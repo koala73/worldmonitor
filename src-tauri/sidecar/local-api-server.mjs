@@ -791,8 +791,8 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
     }
 
     case 'FINNHUB_API_KEY': {
-      const response = await fetchWithTimeout(`https://finnhub.io/api/v1/quote?symbol=AAPL&token=${encodeURIComponent(value)}`, {
-        headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
+      const response = await fetchWithTimeout(`https://finnhub.io/api/v1/quote?symbol=AAPL`, {
+        headers: { Accept: 'application/json', 'User-Agent': CHROME_UA, 'X-Finnhub-Token': value },
       });
       const text = await response.text();
       if (isCloudflareChallenge403(response, text)) return ok('Finnhub key stored (Cloudflare blocked verification)');

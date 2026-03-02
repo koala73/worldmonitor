@@ -1490,6 +1490,7 @@
       "restoreDefaults": "기본 채널 복원",
       "availableChannels": "사용 가능한 채널",
       "customChannel": "사용자 지정 채널",
+      "regionAll": "전체",
       "regionNorthAmerica": "북미",
       "regionEurope": "유럽",
       "regionLatinAmerica": "중남미",

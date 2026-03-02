@@ -1491,6 +1491,7 @@
       "restoreDefaults": "Restore default channels",
       "availableChannels": "Available channels",
       "customChannel": "Custom channel",
+      "regionAll": "All",
       "regionNorthAmerica": "North America",
       "regionEurope": "Europe",
       "regionLatinAmerica": "Latin America",

@@ -725,9 +725,9 @@ canvas,
 
 .download-btn {
   padding: 4px 10px;
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text);
+  background: color-mix(in srgb, var(--green) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--green) 30%, transparent);
+  color: var(--green);
   font-family: inherit;
   font-size: 11px;
   cursor: pointer;
@@ -738,8 +738,9 @@ canvas,
 }
 
 .download-btn:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+  background: color-mix(in srgb, var(--green) 18%, transparent);
+  border-color: var(--green);
+  color: var(--green);
 }
 
 .download-dropdown {
@@ -1455,7 +1456,7 @@ body.panel-resize-active iframe {
 .live-news-toolbar {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   gap: 4px;
   padding: 6px 8px;
   background: var(--darken-heavy);
@@ -1541,6 +1542,7 @@ body.panel-resize-active iframe {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  align-self: flex-start;
 }
 
 .live-news-settings-btn:hover {
@@ -1623,6 +1625,21 @@ body.panel-resize-active iframe {
   text-overflow: ellipsis;
 }
 
+.live-news-manage-row-remove-x {
+  display: none;
+  font-size: 10px;
+  color: var(--text-faint);
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  transition: color 0.15s;
+}
+.live-news-manage-row:hover .live-news-manage-row-remove-x {
+  display: inline;
+}
+.live-news-manage-row-remove-x:hover {
+  color: var(--red);
+}
 .live-news-manage-edit {
   padding: 4px 8px;
   font-size: 10px;
@@ -1764,7 +1781,7 @@ body.panel-resize-active iframe {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
+  padding: 8px 14px;
   border-bottom: 1px solid var(--border);
   background: var(--darken-heavy);
   flex-shrink: 0;
@@ -1779,10 +1796,10 @@ body.panel-resize-active iframe {
 }
 
 .live-channels-window-toolbar {
-  margin-bottom: 12px;
+  margin-bottom: 4px;
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
   align-items: center;
 }
 
@@ -1803,19 +1820,19 @@ body.panel-resize-active iframe {
 }
 
 .live-channels-window-title {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: bold;
   text-transform: uppercase;
   letter-spacing: 1px;
 }
 
 .live-channels-window-content {
-  padding: 16px;
+  padding: 10px 14px;
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 8px;
 }
 
 .live-channels-window-shell .live-news-manage-list {
@@ -1884,8 +1901,8 @@ body.panel-resize-active iframe {
 /* Available channels section */
 .live-news-manage-available-section {
   border-top: 1px solid var(--border);
-  padding-top: 16px;
-  margin-top: 16px;
+  padding-top: 8px;
+  margin-top: 4px;
 }
 
 /* Tab bar */
@@ -1893,7 +1910,7 @@ body.panel-resize-active iframe {
   display: flex;
   gap: 0;
   border-bottom: 1px solid var(--border);
-  margin-bottom: 12px;
+  margin-bottom: 8px;
   overflow-x: auto;
 }
 
@@ -1906,7 +1923,7 @@ body.panel-resize-active iframe {
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.75px;
-  padding: 8px 12px;
+  padding: 6px 10px;
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
@@ -1961,7 +1978,14 @@ body.panel-resize-active iframe {
 .live-news-manage-card.added {
   border-color: rgba(68, 255, 136, 0.3);
   background: rgba(68, 255, 136, 0.05);
-  cursor: default;
+  cursor: pointer;
+}
+.live-news-manage-card.added:hover {
+  border-color: rgba(255, 80, 80, 0.5);
+  background: rgba(255, 80, 80, 0.08);
+}
+.live-news-manage-card:active {
+  transform: scale(0.97);
 }
 
 /* Card icon (initials) */
@@ -2021,6 +2045,9 @@ body.panel-resize-active iframe {
 .live-news-manage-card.added .live-news-manage-card-action {
   color: var(--green);
 }
+.live-news-manage-card:hover .live-news-manage-card-action { color: var(--green); }
+.live-news-manage-card.added .live-news-manage-card-action { color: var(--green); }
+.live-news-manage-card.added:hover .live-news-manage-card-action { color: var(--red); }
 
 /* Tab count badge */
 .live-news-manage-tab-count {

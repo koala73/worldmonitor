@@ -12,6 +12,7 @@ export class SignalModal {
   private audioEnabled = true;
   private audio: HTMLAudioElement | null = null;
   private onLocationClick?: (lat: number, lon: number) => void;
+  private escHandler = (e: KeyboardEvent) => { if (e.key === 'Escape') this.hide(); };
 
   constructor() {
     this.element = document.createElement('div');
@@ -99,6 +100,10 @@ export class SignalModal {
     this.onLocationClick = handler;
   }
 
+  private activateEsc(): void {
+    document.addEventListener('keydown', this.escHandler);
+  }
+
   public show(signals: CorrelationSignal[]): void {
     if (signals.length === 0) return;
     if (document.fullscreenElement) return;
@@ -106,6 +111,7 @@ export class SignalModal {
     this.currentSignals = [...signals, ...this.currentSignals].slice(0, 50);
     this.renderSignals();
     this.element.classList.add('active');
+    this.activateEsc();
     this.playSound();
   }
 
@@ -113,6 +119,7 @@ export class SignalModal {
     this.currentSignals = [signal];
     this.renderSignals();
     this.element.classList.add('active');
+    this.activateEsc();
   }
 
   public showAlert(alert: UnifiedAlert): void {
@@ -219,6 +226,7 @@ export class SignalModal {
     `;
 
     this.element.classList.add('active');
+    this.activateEsc();
   }
 
   public playSound(): void {
@@ -230,6 +238,7 @@ export class SignalModal {
 
   public hide(): void {
     this.element.classList.remove('active');
+    document.removeEventListener('keydown', this.escHandler);
   }
 
   private renderSignals(): void {

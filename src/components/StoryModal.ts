@@ -8,6 +8,10 @@ let currentDataUrl: string | null = null;
 let currentBlob: Blob | null = null;
 let currentData: StoryData | null = null;
 
+function storyEscHandler(e: KeyboardEvent): void {
+  if (e.key === 'Escape') closeStoryModal();
+}
+
 export function openStoryModal(data: StoryData): void {
   closeStoryModal();
   currentData = data;
@@ -53,6 +57,7 @@ export function openStoryModal(data: StoryData): void {
   modalEl.addEventListener('click', (e) => {
     if (e.target === modalEl) closeStoryModal();
   });
+  document.addEventListener('keydown', storyEscHandler);
   modalEl.querySelector('.story-close-x')?.addEventListener('click', closeStoryModal);
   modalEl.querySelector('.story-save')?.addEventListener('click', downloadStory);
   modalEl.querySelector('.story-whatsapp')?.addEventListener('click', () => currentData && shareWhatsApp(currentData));
@@ -104,6 +109,7 @@ export function closeStoryModal(): void {
     currentDataUrl = null;
     currentBlob = null;
     currentData = null;
+    document.removeEventListener('keydown', storyEscHandler);
   }
 }
 
