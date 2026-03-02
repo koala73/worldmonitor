@@ -8,6 +8,46 @@ interface CommandResult {
   score: number;
 }
 
+const CATEGORY_KEYS: Record<string, string> = {
+  navigate: 'commands.categories.navigate',
+  layers: 'commands.categories.layers',
+  panels: 'commands.categories.panels',
+  view: 'commands.categories.view',
+  actions: 'commands.categories.actions',
+  country: 'commands.categories.country',
+};
+
+function kebabToCamel(s: string): string {
+  return s.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
+}
+
+function resolveCommandLabel(cmd: Command): string {
+  const colonIdx = cmd.id.indexOf(':');
+  if (colonIdx === -1) return cmd.label;
+  const prefix = cmd.id.slice(0, colonIdx);
+  const action = cmd.id.slice(colonIdx + 1);
+
+  switch (prefix) {
+    case 'nav':
+      return `${t('commands.prefixes.map')}: ${t('commands.regions.' + action, { defaultValue: cmd.label })}`;
+    case 'country-map':
+      return `${t('commands.prefixes.map')}: ${cmd.label}`;
+    case 'panel': {
+      const panelName = t('panels.' + kebabToCamel(action), { defaultValue: cmd.label });
+      return `${t('commands.prefixes.panel')}: ${panelName}`;
+    }
+    case 'country':
+      return `${t('commands.prefixes.brief')}: ${cmd.label}`;
+    default:
+      return cmd.label;
+  }
+}
+
+function resolveCategoryLabel(cmd: Command): string {
+  const key = CATEGORY_KEYS[cmd.category];
+  return key ? t(key, { defaultValue: cmd.category }) : cmd.category;
+}
+
 export type SearchResultType = 'country' | 'news' | 'hotspot' | 'market' | 'prediction' | 'conflict' | 'base' | 'pipeline' | 'cable' | 'datacenter' | 'earthquake' | 'outage' | 'nuclear' | 'irradiator' | 'techcompany' | 'ailab' | 'startup' | 'techevent' | 'techhq' | 'accelerator' | 'exchange' | 'financialcenter' | 'centralbank' | 'commodityhub';
 
 export interface SearchResult {
@@ -318,9 +358,9 @@ export class SearchModal {
           <div class="search-result-item command-item ${globalIndex === this.selectedIndex ? 'selected' : ''}" data-index="${globalIndex}" data-command="${command.id}">
             <span class="search-result-icon">${command.icon}</span>
             <div class="search-result-content">
-              <div class="search-result-title">${escapeHtml(command.label)}</div>
+              <div class="search-result-title">${escapeHtml(resolveCommandLabel(command))}</div>
             </div>
-            <span class="search-result-type">${escapeHtml(command.category)}</span>
+            <span class="search-result-type">${escapeHtml(resolveCategoryLabel(command))}</span>
           </div>`;
         globalIndex++;
       }

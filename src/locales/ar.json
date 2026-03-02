@@ -183,6 +183,7 @@
     "macroSignals": "رادار السوق",
     "etfFlows": "متتبع BTC ETF",
     "stablecoins": "العملات المستقرة",
+    "deduction": "استنتاج الوضع",
     "ucdpEvents": "أحداث نزاع UCDP",
     "displacement": "نزوح UNHCR",
     "climate": "شذوذات مناخية",
@@ -217,6 +218,31 @@
     "gulfIndices": "مؤشرات الخليج",
     "gulfCurrencies": "عملات الخليج",
     "gulfOil": "نفط الخليج"
+  },
+  "commands": {
+    "prefixes": {
+      "map": "خريطة",
+      "panel": "لوحة",
+      "brief": "موجز"
+    },
+    "categories": {
+      "navigate": "تنقل",
+      "layers": "طبقات",
+      "panels": "لوحات",
+      "view": "عرض",
+      "actions": "إجراءات",
+      "country": "دولة"
+    },
+    "regions": {
+      "global": "عرض عالمي",
+      "mena": "الشرق الأوسط وشمال أفريقيا",
+      "eu": "أوروبا",
+      "asia": "آسيا والمحيط الهادئ",
+      "america": "الأمريكتان",
+      "africa": "أفريقيا",
+      "latam": "أمريكا اللاتينية",
+      "oceania": "أوقيانوسيا"
+    }
   },
   "modals": {
     "search": {

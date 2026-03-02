@@ -9,6 +9,7 @@ import { SITE_VARIANT, STORAGE_KEYS } from '@/config';
 import { LAYER_PRESETS, LAYER_KEY_MAP } from '@/config/commands';
 import { calculateCII, TIER1_COUNTRIES } from '@/services/country-instability';
 import { CURATED_COUNTRIES } from '@/config/countries';
+import { getCountryBbox } from '@/services/country-geometry';
 import { INTEL_HOTSPOTS, CONFLICT_ZONES, MILITARY_BASES, UNDERSEA_CABLES, NUCLEAR_FACILITIES } from '@/config/geo';
 import { PIPELINES } from '@/config/pipelines';
 import { AI_DATA_CENTERS } from '@/config/ai-datacenters';
@@ -477,6 +478,20 @@ export class SearchManager implements AppModule {
           || action;
         trackCountrySelected(action, name, 'command');
         this.callbacks.openCountryBriefByCode(action, name);
+        break;
+      }
+
+      case 'country-map': {
+        const bbox = getCountryBbox(action);
+        if (bbox) {
+          const [minLon, minLat, maxLon, maxLat] = bbox;
+          const lat = (minLat + maxLat) / 2;
+          const lon = (minLon + maxLon) / 2;
+          const span = Math.max(maxLat - minLat, maxLon - minLon);
+          const zoom = span > 40 ? 3 : span > 15 ? 4 : span > 5 ? 5 : 6;
+          this.ctx.map?.setView('global');
+          setTimeout(() => { this.ctx.map?.setCenter(lat, lon, zoom); }, 300);
+        }
         break;
       }
     }

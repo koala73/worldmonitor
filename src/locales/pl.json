@@ -182,6 +182,7 @@
     "macroSignals": "Radar rynkowy",
     "etfFlows": "Śledzenie ETF BTC",
     "stablecoins": "Stablecoiny",
+    "deduction": "Dedukcja sytuacji",
     "ucdpEvents": "Wydarzenia konfliktowe UCDP",
     "displacement": "Przesiedlenia UNHCR",
     "climate": "Anomalie klimatyczne",
@@ -217,6 +218,31 @@
     "gulfIndices": "Indeksy Zatoki",
     "gulfCurrencies": "Waluty Zatoki",
     "gulfOil": "Ropa Zatoki"
+  },
+  "commands": {
+    "prefixes": {
+      "map": "Mapa",
+      "panel": "Panel",
+      "brief": "Podsumowanie"
+    },
+    "categories": {
+      "navigate": "Nawigacja",
+      "layers": "Warstwy",
+      "panels": "Panele",
+      "view": "Widok",
+      "actions": "Akcje",
+      "country": "Kraj"
+    },
+    "regions": {
+      "global": "Widok globalny",
+      "mena": "Bliski Wschód i Afryka Północna",
+      "eu": "Europa",
+      "asia": "Azja i Pacyfik",
+      "america": "Ameryka",
+      "africa": "Afryka",
+      "latam": "Ameryka Łacińska",
+      "oceania": "Oceania"
+    }
   },
   "modals": {
     "search": {

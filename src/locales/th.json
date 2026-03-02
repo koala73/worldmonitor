@@ -183,6 +183,7 @@
     "macroSignals": "เรดาร์ตลาด",
     "etfFlows": "ตัวติดตาม BTC ETF",
     "stablecoins": "เหรียญ Stablecoin",
+    "deduction": "วิเคราะห์สถานการณ์",
     "ucdpEvents": "เหตุการณ์ความขัดแย้ง UCDP",
     "displacement": "การพลัดถิ่น UNHCR",
     "climate": "ความผิดปกติของสภาพภูมิอากาศ",
@@ -217,6 +218,31 @@
     "gulfIndices": "ดัชนีอ่าว",
     "gulfCurrencies": "สกุลเงินอ่าว",
     "gulfOil": "น้ำมันอ่าว"
+  },
+  "commands": {
+    "prefixes": {
+      "map": "แผนที่",
+      "panel": "แผง",
+      "brief": "สรุป"
+    },
+    "categories": {
+      "navigate": "นำทาง",
+      "layers": "เลเยอร์",
+      "panels": "แผง",
+      "view": "มุมมอง",
+      "actions": "การดำเนินการ",
+      "country": "ประเทศ"
+    },
+    "regions": {
+      "global": "มุมมองทั่วโลก",
+      "mena": "ตะวันออกกลางและแอฟริกาเหนือ",
+      "eu": "ยุโรป",
+      "asia": "เอเชียแปซิฟิก",
+      "america": "อเมริกา",
+      "africa": "แอฟริกา",
+      "latam": "ละตินอเมริกา",
+      "oceania": "โอเชียเนีย"
+    }
   },
   "modals": {
     "search": {
