@@ -641,7 +641,7 @@ export class EventHandlerManager implements AppModule {
     const resizeHandle = document.getElementById('mapResizeHandle');
     if (!mapSection || !resizeHandle) return;
 
-    const getMinHeight = () => (window.innerWidth >= 2000 ? 320 : 400);
+    const getMinHeight = () => (window.innerWidth >= 2000 ? 320 : 350);
     const getMaxHeight = () => Math.max(getMinHeight(), window.innerHeight - 60);
 
     const savedHeight = localStorage.getItem('map-height');
@@ -662,10 +662,21 @@ export class EventHandlerManager implements AppModule {
     let startY = 0;
     let startHeight = 0;
 
+    const endResize = () => {
+      if (!isResizing) return;
+      isResizing = false;
+      this.ctx.map?.setIsResizing(false);
+      this.ctx.map?.render();
+      mapSection.classList.remove('resizing');
+      document.body.style.cursor = '';
+      localStorage.setItem('map-height', mapSection.style.height);
+    };
+
     resizeHandle.addEventListener('mousedown', (e) => {
       isResizing = true;
       startY = e.clientY;
       startHeight = mapSection.offsetHeight;
+      this.ctx.map?.setIsResizing(true);
       mapSection.classList.add('resizing');
       document.body.style.cursor = 'ns-resize';
       e.preventDefault();
@@ -676,16 +687,12 @@ export class EventHandlerManager implements AppModule {
       const deltaY = e.clientY - startY;
       const newHeight = Math.max(getMinHeight(), Math.min(startHeight + deltaY, getMaxHeight()));
       mapSection.style.height = `${newHeight}px`;
-      this.ctx.map?.render();
     });
 
-    document.addEventListener('mouseup', () => {
-      if (!isResizing) return;
-      isResizing = false;
-      mapSection.classList.remove('resizing');
-      document.body.style.cursor = '';
-      localStorage.setItem('map-height', mapSection.style.height);
-      this.ctx.map?.render();
+    document.addEventListener('mouseup', endResize);
+    window.addEventListener('blur', endResize);
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) endResize();
     });
   }
 
