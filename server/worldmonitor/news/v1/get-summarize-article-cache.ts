@@ -14,13 +14,10 @@ const EMPTY_MISS: SummarizeArticleResponse = {
   summary: '',
   model: '',
   provider: '',
-  cached: false,
   tokens: 0,
   fallback: true,
-  skipped: false,
-  reason: '',
-  error: '',
-  errorType: '',
+  status: 'SUMMARIZE_STATUS_UNSPECIFIED',
+  statusDetail: '',
 };
 
 export async function getSummarizeArticleCache(
@@ -31,7 +28,7 @@ export async function getSummarizeArticleCache(
 
   if (!cacheKey || !CACHE_KEY_PATTERN.test(cacheKey)) {
     markNoCacheResponse(ctx.request);
-    return { ...EMPTY_MISS, error: 'Invalid cache key', errorType: 'ValidationError' };
+    return { ...EMPTY_MISS, status: 'SUMMARIZE_STATUS_ERROR', statusDetail: 'Invalid cache key' };
   }
 
   try {
@@ -52,13 +49,10 @@ export async function getSummarizeArticleCache(
       summary: data.summary,
       model: data.model || '',
       provider: 'cache',
-      cached: true,
       tokens: 0,
       fallback: false,
-      skipped: false,
-      reason: '',
-      error: '',
-      errorType: '',
+      status: 'SUMMARIZE_STATUS_CACHED',
+      statusDetail: '',
     };
   } catch {
     markNoCacheResponse(ctx.request);

@@ -37,7 +37,7 @@ export interface SummarizeOptions {
 const newsClient = new NewsServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
 const summaryBreaker = createCircuitBreaker<SummarizeArticleResponse>({ name: 'News Summarization', cacheTtlMs: 0 });
 
-const emptySummaryFallback: SummarizeArticleResponse = { summary: '', provider: '', model: '', cached: false, skipped: false, fallback: true, tokens: 0, reason: '', error: '', errorType: '' };
+const emptySummaryFallback: SummarizeArticleResponse = { summary: '', provider: '', model: '', fallback: true, tokens: 0, status: 'SUMMARIZE_STATUS_UNSPECIFIED', statusDetail: '' };
 
 // ── Provider definitions ──
 
@@ -78,12 +78,12 @@ async function tryApiProvider(
     }, emptySummaryFallback);
 
     // Provider skipped (credentials missing) or signaled fallback
-    if (resp.skipped || resp.fallback) return null;
+    if (resp.status === 'SUMMARIZE_STATUS_SKIPPED' || resp.fallback) return null;
 
     const summary = typeof resp.summary === 'string' ? resp.summary.trim() : '';
     if (!summary) return null;
 
-    const cached = Boolean(resp.cached);
+    const cached = resp.status === 'SUMMARIZE_STATUS_CACHED';
     const resultProvider = cached ? 'cache' : providerDef.provider;
     return {
       summary,
@@ -292,7 +292,7 @@ export async function translateText(
         });
       }, emptySummaryFallback);
 
-      if (resp.fallback || resp.skipped) continue;
+      if (resp.fallback || resp.status === 'SUMMARIZE_STATUS_SKIPPED') continue;
       const summary = typeof resp.summary === 'string' ? resp.summary.trim() : '';
       if (summary) return summary;
     } catch (e) {

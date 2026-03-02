@@ -10,17 +10,16 @@ export interface SummarizeArticleRequest {
   lang: string;
 }
 
+export type SummarizeStatus = "SUMMARIZE_STATUS_UNSPECIFIED" | "SUMMARIZE_STATUS_SUCCESS" | "SUMMARIZE_STATUS_CACHED" | "SUMMARIZE_STATUS_SKIPPED" | "SUMMARIZE_STATUS_ERROR";
+
 export interface SummarizeArticleResponse {
   summary: string;
   model: string;
   provider: string;
-  cached: boolean;
   tokens: number;
   fallback: boolean;
-  skipped: boolean;
-  reason: string;
-  error: string;
-  errorType: string;
+  status: SummarizeStatus;
+  statusDetail: string;
 }
 
 export interface GetSummarizeArticleCacheRequest {
