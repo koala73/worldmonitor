@@ -81,17 +81,10 @@
     "assessmentUnavailable": "Assessment unavailable.",
     "noNews": "No recent country-specific coverage.",
     "noIndicators": "No country-specific indicators available.",
-    "noMarkets": "No active markets for this country.",
     "nearbyPorts": "Nearby Ports",
     "detected": "Detected",
     "notDetected": "No",
     "ciiUnavailable": "CII score unavailable for this country.",
-    "components": {
-      "unrest": "Unrest",
-      "conflict": "Conflict",
-      "security": "Security",
-      "information": "Information"
-    },
     "chips": {
       "criticalNews": "Critical News",
       "protests": "Protests",
@@ -1081,12 +1074,12 @@
       "aiFlowStatusDisabled": "No AI providers enabled",
       "insightsDisabledTitle": "AI analysis is disabled",
       "insightsDisabledHint": "Enable providers via the settings gear in the map header",
-    "sectionPanels": "Panels",
-    "badgeAnimLabel": "Badge Animations",
-    "badgeAnimDesc": "Animate update badges on panel headers",
-    "sectionIntelligence": "Intelligence",
-    "headlineMemoryLabel": "Headline Memory",
-    "headlineMemoryDesc": "Remember seen headlines to highlight new stories"
+      "sectionPanels": "Panels",
+      "badgeAnimLabel": "Badge Animations",
+      "badgeAnimDesc": "Animate update badges on panel headers",
+      "sectionIntelligence": "Intelligence",
+      "headlineMemoryLabel": "Headline Memory",
+      "headlineMemoryDesc": "Remember seen headlines to highlight new stories"
     },
     "cascade": {
       "noImpacts": "No country impacts detected",
