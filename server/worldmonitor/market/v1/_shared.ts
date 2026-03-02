@@ -78,9 +78,9 @@ export async function fetchFinnhubQuote(
   apiKey: string,
 ): Promise<{ symbol: string; price: number; changePercent: number } | null> {
   try {
-    const url = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${apiKey}`;
+    const url = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}`;
     const resp = await fetch(url, {
-      headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
+      headers: { Accept: 'application/json', 'User-Agent': CHROME_UA, 'X-Finnhub-Token': apiKey },
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
     if (!resp.ok) return null;
