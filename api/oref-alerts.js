@@ -64,8 +64,8 @@ export default async function handler(req) {
 
       if (response.ok) {
         const cacheControl = isHistory
-          ? 'public, max-age=30, s-maxage=30, stale-while-revalidate=10'
-          : 'public, max-age=5, s-maxage=5, stale-while-revalidate=3';
+          ? 'public, max-age=60, s-maxage=180, stale-while-revalidate=60, stale-if-error=600'
+          : 'public, max-age=60, s-maxage=180, stale-while-revalidate=60, stale-if-error=600';
         return new Response(await response.text(), {
           status: 200,
           headers: {

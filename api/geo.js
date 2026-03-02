@@ -6,7 +6,7 @@ export default function handler(req) {
     status: 200,
     headers: {
       'Content-Type': 'application/json',
-      'Cache-Control': 'public, max-age=300',
+      'Cache-Control': 'public, max-age=300, s-maxage=3600, stale-if-error=3600',
       'Access-Control-Allow-Origin': '*',
     },
   });

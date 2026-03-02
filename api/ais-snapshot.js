@@ -82,9 +82,9 @@ export default async function handler(req) {
     const headers = {
       'Content-Type': response.headers.get('content-type') || 'application/json',
       'Cache-Control': isSuccess
-        ? 'public, max-age=60, s-maxage=180, stale-while-revalidate=300, stale-if-error=900'
+        ? 'public, max-age=60, s-maxage=300, stale-while-revalidate=600, stale-if-error=900'
         : 'public, max-age=10, s-maxage=30, stale-while-revalidate=120',
-      ...(isSuccess && { 'CDN-Cache-Control': 'public, s-maxage=180, stale-while-revalidate=300, stale-if-error=900' }),
+      ...(isSuccess && { 'CDN-Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600, stale-if-error=900' }),
       ...corsHeaders,
     };
 

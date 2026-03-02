@@ -103,7 +103,7 @@ export default async function handler(req) {
     headers: {
       ...cors,
       'Content-Type': 'application/json',
-      'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=30',
+      'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900',
     },
   });
 }

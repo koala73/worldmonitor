@@ -74,7 +74,7 @@ export default async function handler(req) {
       status: 302,
       headers: {
         'Location': asset.browser_download_url,
-        'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=60',
+        'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=60, stale-if-error=600',
       },
     });
   } catch {
