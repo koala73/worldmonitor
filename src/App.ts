@@ -434,7 +434,10 @@ export class App {
     // Mount notification bell to header
     const notificationMount = document.getElementById('notificationCenterMount');
     if (notificationMount && this.state.notificationCenter) {
+      // Mount bell button to header
       notificationMount.appendChild(this.state.notificationCenter.getBellButton());
+      // Mount panel to document body (it's fixed position)
+      document.body.appendChild(this.state.notificationCenter.getElement());
     }
 
     // Phase 3: UI setup methods
