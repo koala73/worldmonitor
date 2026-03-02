@@ -271,6 +271,7 @@ export class DeckGLMap {
   private maplibreMap: maplibregl.Map | null = null;
   private state: DeckMapState;
   private popup: MapPopup;
+  private isResizing = false;
 
   // Data stores
   private hotspots: HotspotWithBreaking[];
@@ -470,6 +471,7 @@ export class DeckGLMap {
       renderWorldCopies: false,
       attributionControl: false,
       interactive: true,
+      trackResize: false,
       ...(MAP_INTERACTION_MODE === 'flat'
         ? {
           maxPitch: 0,
@@ -553,6 +555,7 @@ export class DeckGLMap {
 
   private setupResizeObserver(): void {
     this.resizeObserver = new ResizeObserver(() => {
+      if (this.isResizing) return;
       if (this.maplibreMap) {
         this.maplibreMap.resize();
       }
@@ -560,6 +563,13 @@ export class DeckGLMap {
     this.resizeObserver.observe(this.container);
   }
 
+  public setIsResizing(value: boolean): void {
+    const wasResizing = this.isResizing;
+    this.isResizing = value;
+    if (wasResizing && !value && this.maplibreMap) {
+      this.maplibreMap.resize();
+    }
+  }
 
   private getSetSignature(set: Set<string>): string {
     return [...set].sort().join('|');

@@ -641,7 +641,7 @@ export class EventHandlerManager implements AppModule {
     const resizeHandle = document.getElementById('mapResizeHandle');
     if (!mapSection || !resizeHandle) return;
 
-    const getMinHeight = () => (window.innerWidth >= 2000 ? 320 : 400);
+    const getMinHeight = () => (window.innerWidth >= 2000 ? 320 : 350);
     const getMaxHeight = () => Math.max(getMinHeight(), window.innerHeight - 60);
 
     const savedHeight = localStorage.getItem('map-height');
@@ -666,6 +666,10 @@ export class EventHandlerManager implements AppModule {
       isResizing = true;
       startY = e.clientY;
       startHeight = mapSection.offsetHeight;
+
+      // Signal the map to ignore ResizeObserver updates during active drag
+      this.ctx.map?.setIsResizing(true);
+
       mapSection.classList.add('resizing');
       document.body.style.cursor = 'ns-resize';
       e.preventDefault();
@@ -676,16 +680,19 @@ export class EventHandlerManager implements AppModule {
       const deltaY = e.clientY - startY;
       const newHeight = Math.max(getMinHeight(), Math.min(startHeight + deltaY, getMaxHeight()));
       mapSection.style.height = `${newHeight}px`;
-      this.ctx.map?.render();
     });
 
     document.addEventListener('mouseup', () => {
       if (!isResizing) return;
       isResizing = false;
+
+      // Release suppression and trigger one final clean resize
+      this.ctx.map?.setIsResizing(false);
+      this.ctx.map?.render();
+
       mapSection.classList.remove('resizing');
       document.body.style.cursor = '';
       localStorage.setItem('map-height', mapSection.style.height);
-      this.ctx.map?.render();
     });
   }
 
