@@ -4,6 +4,14 @@ package worldmonitor.news.v1;
 
 import "buf/validate/validate.proto";
 
+// SummarizeMode specifies the summarization strategy.
+enum SummarizeMode {
+  SUMMARIZE_MODE_UNSPECIFIED = 0;
+  SUMMARIZE_MODE_BRIEF = 1;
+  SUMMARIZE_MODE_ANALYSIS = 2;
+  SUMMARIZE_MODE_TRANSLATE = 3;
+}
+
 // SummarizeArticleRequest specifies parameters for LLM article summarization.
 message SummarizeArticleRequest {
   // LLM provider: "ollama", "groq", "openrouter"
@@ -13,8 +21,8 @@ message SummarizeArticleRequest {
   ];
   // Headlines to summarize (max 8 used).
   repeated string headlines = 2 [(buf.validate.field).repeated.min_items = 1];
-  // Summarization mode: "brief", "analysis", "translate", "" (default).
-  string mode = 3;
+  // Summarization mode.
+  SummarizeMode mode = 3;
   // Geographic signal context to include in the prompt.
   string geo_context = 4;
   // Variant: "full", "tech", or target language for translate mode.

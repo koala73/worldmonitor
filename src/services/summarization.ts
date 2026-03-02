@@ -70,7 +70,7 @@ async function tryApiProvider(
       return newsClient.summarizeArticle({
         provider: providerDef.provider,
         headlines,
-        mode: 'brief',
+        mode: 'SUMMARIZE_MODE_BRIEF',
         geoContext: geoContext || '',
         variant: SITE_VARIANT,
         lang: lang || 'en',
@@ -185,7 +185,7 @@ async function generateSummaryInternal(
 ): Promise<SummarizationResult | null> {
   if (!options?.skipCloudProviders) {
     try {
-      const cacheKey = buildSummaryCacheKey(headlines, 'brief', geoContext, SITE_VARIANT, lang);
+      const cacheKey = buildSummaryCacheKey(headlines, 'SUMMARIZE_MODE_BRIEF', geoContext, SITE_VARIANT, lang);
       const cached = await newsClient.getSummarizeArticleCache({ cacheKey });
       if (cached.summary) {
         return { summary: cached.summary, provider: 'cache', model: cached.model || '', cached: true };
@@ -285,7 +285,7 @@ export async function translateText(
         return newsClient.summarizeArticle({
           provider: providerDef.provider,
           headlines: [text],
-          mode: 'translate',
+          mode: 'SUMMARIZE_MODE_TRANSLATE',
           geoContext: '',
           variant: targetLang,
           lang: '',

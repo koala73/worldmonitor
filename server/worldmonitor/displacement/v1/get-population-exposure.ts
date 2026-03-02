@@ -50,7 +50,7 @@ export async function getPopulationExposure(
   _ctx: ServerContext,
   req: GetPopulationExposureRequest,
 ): Promise<GetPopulationExposureResponse> {
-  if (req.mode === 'exposure') {
+  if (req.mode === 'POPULATION_EXPOSURE_MODE_EXPOSURE') {
     const { lat, lon } = req;
     const radius = req.radius || 50;
 

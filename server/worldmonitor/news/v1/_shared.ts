@@ -36,7 +36,7 @@ export { deduplicateHeadlines } from './dedup.mjs';
 export function buildArticlePrompts(
   headlines: string[],
   uniqueHeadlines: string[],
-  opts: { mode: string; geoContext: string; variant: string; lang: string },
+  opts: { mode: import('../../../../src/generated/server/worldmonitor/news/v1/service_server').SummarizeMode; geoContext: string; variant: string; lang: string },
 ): { systemPrompt: string; userPrompt: string } {
   const headlineText = uniqueHeadlines.map((h, i) => `${i + 1}. ${h}`).join('\n');
   const intelSection = opts.geoContext ? `\n\n${opts.geoContext}` : '';
@@ -47,7 +47,7 @@ export function buildArticlePrompts(
   let systemPrompt: string;
   let userPrompt: string;
 
-  if (opts.mode === 'brief') {
+  if (opts.mode === 'SUMMARIZE_MODE_BRIEF') {
     if (isTechVariant) {
       systemPrompt = `${dateContext}
 
@@ -75,7 +75,7 @@ Rules:
 - No bullet points, no meta-commentary, no elaboration beyond the core facts${langInstruction}`;
     }
     userPrompt = `Each headline below is a separate story. Pick the most important ONE and summarize only that story:\n${headlineText}${intelSection}`;
-  } else if (opts.mode === 'analysis') {
+  } else if (opts.mode === 'SUMMARIZE_MODE_ANALYSIS') {
     if (isTechVariant) {
       systemPrompt = `${dateContext}
 
@@ -103,7 +103,7 @@ Rules:
     userPrompt = isTechVariant
       ? `Each headline is a separate story. What's the key tech trend?\n${headlineText}${intelSection}`
       : `Each headline is a separate story. What's the key pattern or risk?\n${headlineText}${intelSection}`;
-  } else if (opts.mode === 'translate') {
+  } else if (opts.mode === 'SUMMARIZE_MODE_TRANSLATE') {
     const targetLang = opts.variant;
     systemPrompt = `You are a professional news translator. Translate the following news headlines/summaries into ${targetLang}.
 Rules:

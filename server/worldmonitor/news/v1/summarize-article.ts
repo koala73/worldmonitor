@@ -35,7 +35,7 @@ export async function summarizeArticle(
   _ctx: ServerContext,
   req: SummarizeArticleRequest,
 ): Promise<SummarizeArticleResponse> {
-  const { provider, mode = 'brief', geoContext = '', variant = 'full', lang = 'en' } = req;
+  const { provider, mode = 'SUMMARIZE_MODE_BRIEF', geoContext = '', variant = 'full', lang = 'en' } = req;
 
   // Input sanitization (M-14 fix): limit headline count and length
   const MAX_HEADLINES = 10;
@@ -149,12 +149,12 @@ export async function summarizeArticle(
           .replace(/<\|begin_of_thought\|>[\s\S]*/gi, '')
           .trim();
 
-        if (['brief', 'analysis'].includes(mode) && rawContent.length < 20) {
+        if (['SUMMARIZE_MODE_BRIEF', 'SUMMARIZE_MODE_ANALYSIS'].includes(mode) && rawContent.length < 20) {
           console.warn(`[SummarizeArticle:${provider}] Output too short after stripping (${rawContent.length} chars), rejecting`);
           return null;
         }
 
-        if (['brief', 'analysis'].includes(mode) && hasReasoningPreamble(rawContent)) {
+        if (['SUMMARIZE_MODE_BRIEF', 'SUMMARIZE_MODE_ANALYSIS'].includes(mode) && hasReasoningPreamble(rawContent)) {
           console.warn(`[SummarizeArticle:${provider}] Reasoning preamble detected, rejecting`);
           return null;
         }

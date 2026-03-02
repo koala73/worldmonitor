@@ -307,7 +307,11 @@ components:
             properties:
                 mode:
                     type: string
-                    description: 'Mode: "countries" (default) or "exposure".'
+                    enum:
+                        - POPULATION_EXPOSURE_MODE_UNSPECIFIED
+                        - POPULATION_EXPOSURE_MODE_COUNTRIES
+                        - POPULATION_EXPOSURE_MODE_EXPOSURE
+                    description: 'Mode: countries (default) or exposure.'
                 lat:
                     type: number
                     maximum: 90

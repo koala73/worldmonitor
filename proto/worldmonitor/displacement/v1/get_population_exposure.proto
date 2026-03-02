@@ -5,12 +5,19 @@ package worldmonitor.displacement.v1;
 import "buf/validate/validate.proto";
 import "sebuf/http/annotations.proto";
 
+// PopulationExposureMode specifies the query mode for population exposure requests.
+enum PopulationExposureMode {
+  POPULATION_EXPOSURE_MODE_UNSPECIFIED = 0;
+  POPULATION_EXPOSURE_MODE_COUNTRIES = 1;
+  POPULATION_EXPOSURE_MODE_EXPOSURE = 2;
+}
+
 // GetPopulationExposureRequest supports two modes:
 // - countries mode (default): returns the priority countries list
 // - exposure mode: estimates population within a radius of a point
 message GetPopulationExposureRequest {
-  // Mode: "countries" (default) or "exposure".
-  string mode = 1 [(sebuf.http.query) = { name: "mode" }];
+  // Mode: countries (default) or exposure.
+  PopulationExposureMode mode = 1 [(sebuf.http.query) = { name: "mode" }];
   // Latitude (required for exposure mode).
   double lat = 2 [
     (buf.validate.field).double.gte = -90,

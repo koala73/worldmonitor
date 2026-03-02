@@ -9,7 +9,7 @@ const countriesBreaker = createCircuitBreaker<GetPopulationExposureResponse>({ n
 
 export async function fetchCountryPopulations(): Promise<CountryPopulation[]> {
   const result = await countriesBreaker.execute(async () => {
-    return client.getPopulationExposure({ mode: 'countries', lat: 0, lon: 0, radius: 0 });
+    return client.getPopulationExposure({ mode: 'POPULATION_EXPOSURE_MODE_COUNTRIES', lat: 0, lon: 0, radius: 0 });
   }, { success: false, countries: [] });
 
   return result.countries;
@@ -24,7 +24,7 @@ interface ExposureResponse {
 
 export async function fetchExposure(lat: number, lon: number, radiusKm: number): Promise<ExposureResponse | null> {
   try {
-    const result = await client.getPopulationExposure({ mode: 'exposure', lat, lon, radius: radiusKm });
+    const result = await client.getPopulationExposure({ mode: 'POPULATION_EXPOSURE_MODE_EXPOSURE', lat, lon, radius: radiusKm });
     if (!result.exposure) return null;
     return result.exposure;
   } catch {

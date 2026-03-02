@@ -31,7 +31,7 @@ export function buildSummaryCacheKey(
   const normalizedVariant = typeof variant === 'string' && variant ? variant.toLowerCase() : 'full';
   const normalizedLang = typeof lang === 'string' && lang ? lang.toLowerCase() : 'en';
 
-  if (mode === 'translate') {
+  if (mode === 'SUMMARIZE_MODE_TRANSLATE') {
     const targetLang = normalizedVariant || normalizedLang;
     return `summary:${CACHE_VERSION}:${mode}:${targetLang}:${hash}${geoHash}`;
   }

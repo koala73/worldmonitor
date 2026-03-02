@@ -156,7 +156,12 @@ components:
                     minItems: 1
                 mode:
                     type: string
-                    description: 'Summarization mode: "brief", "analysis", "translate", "" (default).'
+                    enum:
+                        - SUMMARIZE_MODE_UNSPECIFIED
+                        - SUMMARIZE_MODE_BRIEF
+                        - SUMMARIZE_MODE_ANALYSIS
+                        - SUMMARIZE_MODE_TRANSLATE
+                    description: Summarization mode.
                 geoContext:
                     type: string
                     description: Geographic signal context to include in the prompt.
