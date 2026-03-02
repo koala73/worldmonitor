@@ -183,6 +183,7 @@
     "macroSignals": "Рыночный радар",
     "etfFlows": "Трекер BTC ETF",
     "stablecoins": "Стейблкоины",
+    "deduction": "Оценка ситуации",
     "ucdpEvents": "Конфликтные события UCDP",
     "displacement": "Перемещение населения UNHCR",
     "climate": "Климатические аномалии",
@@ -217,6 +218,31 @@
     "gulfIndices": "Индексы Залива",
     "gulfCurrencies": "Валюты Залива",
     "gulfOil": "Нефть Залива"
+  },
+  "commands": {
+    "prefixes": {
+      "map": "Карта",
+      "panel": "Панель",
+      "brief": "Сводка"
+    },
+    "categories": {
+      "navigate": "Навигация",
+      "layers": "Слои",
+      "panels": "Панели",
+      "view": "Вид",
+      "actions": "Действия",
+      "country": "Страна"
+    },
+    "regions": {
+      "global": "Глобальный обзор",
+      "mena": "Ближний Восток и Северная Африка",
+      "eu": "Европа",
+      "asia": "Азиатско-Тихоокеанский регион",
+      "america": "Америка",
+      "africa": "Африка",
+      "latam": "Латинская Америка",
+      "oceania": "Океания"
+    }
   },
   "modals": {
     "search": {

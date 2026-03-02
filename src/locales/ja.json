@@ -183,6 +183,7 @@
     "macroSignals": "マーケットレーダー",
     "etfFlows": "BTC ETFトラッカー",
     "stablecoins": "ステーブルコイン",
+    "deduction": "状況推定",
     "ucdpEvents": "UCDP紛争イベント",
     "displacement": "UNHCR避難民",
     "climate": "気候異常",
@@ -217,6 +218,31 @@
     "gulfIndices": "湾岸指数",
     "gulfCurrencies": "湾岸通貨",
     "gulfOil": "湾岸石油"
+  },
+  "commands": {
+    "prefixes": {
+      "map": "マップ",
+      "panel": "パネル",
+      "brief": "概要"
+    },
+    "categories": {
+      "navigate": "ナビゲート",
+      "layers": "レイヤー",
+      "panels": "パネル",
+      "view": "ビュー",
+      "actions": "アクション",
+      "country": "国"
+    },
+    "regions": {
+      "global": "グローバルビュー",
+      "mena": "中東・北アフリカ",
+      "eu": "ヨーロッパ",
+      "asia": "アジア太平洋",
+      "america": "アメリカ大陸",
+      "africa": "アフリカ",
+      "latam": "ラテンアメリカ",
+      "oceania": "オセアニア"
+    }
   },
   "modals": {
     "search": {

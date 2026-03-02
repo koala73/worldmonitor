@@ -25,14 +25,14 @@ export const LAYER_KEY_MAP: Record<string, keyof MapLayers> = {
 
 export const COMMANDS: Command[] = [
   // Navigation (region switching)
-  { id: 'nav:global', keywords: ['global', 'world', 'reset', 'home'], label: 'Go to Global view', icon: '\u{1F30D}', category: 'navigate' },
-  { id: 'nav:mena', keywords: ['mena', 'middle east', 'mideast'], label: 'Go to Middle East & North Africa', icon: '\u{1F54C}', category: 'navigate' },
-  { id: 'nav:eu', keywords: ['europe', 'eu'], label: 'Go to Europe', icon: '\u{1F3F0}', category: 'navigate' },
-  { id: 'nav:asia', keywords: ['asia', 'pacific'], label: 'Go to Asia-Pacific', icon: '\u{1F3EF}', category: 'navigate' },
-  { id: 'nav:america', keywords: ['america', 'americas', 'us', 'usa'], label: 'Go to Americas', icon: '\u{1F5FD}', category: 'navigate' },
-  { id: 'nav:africa', keywords: ['africa'], label: 'Go to Africa', icon: '\u{1F30D}', category: 'navigate' },
-  { id: 'nav:latam', keywords: ['latam', 'latin america', 'south america'], label: 'Go to Latin America', icon: '\u{1F30E}', category: 'navigate' },
-  { id: 'nav:oceania', keywords: ['oceania', 'australia', 'pacific islands'], label: 'Go to Oceania', icon: '\u{1F30F}', category: 'navigate' },
+  { id: 'nav:global', keywords: ['global', 'world', 'reset', 'home'], label: 'Map: Global view', icon: '\u{1F30D}', category: 'navigate' },
+  { id: 'nav:mena', keywords: ['mena', 'middle east', 'mideast'], label: 'Map: Middle East & North Africa', icon: '\u{1F54C}', category: 'navigate' },
+  { id: 'nav:eu', keywords: ['europe', 'eu'], label: 'Map: Europe', icon: '\u{1F3F0}', category: 'navigate' },
+  { id: 'nav:asia', keywords: ['asia', 'pacific'], label: 'Map: Asia-Pacific', icon: '\u{1F3EF}', category: 'navigate' },
+  { id: 'nav:america', keywords: ['america', 'americas', 'us', 'usa'], label: 'Map: Americas', icon: '\u{1F5FD}', category: 'navigate' },
+  { id: 'nav:africa', keywords: ['africa'], label: 'Map: Africa', icon: '\u{1F30D}', category: 'navigate' },
+  { id: 'nav:latam', keywords: ['latam', 'latin america', 'south america'], label: 'Map: Latin America', icon: '\u{1F30E}', category: 'navigate' },
+  { id: 'nav:oceania', keywords: ['oceania', 'australia', 'pacific islands'], label: 'Map: Oceania', icon: '\u{1F30F}', category: 'navigate' },
 
   // Layer presets (toggle groups)
   { id: 'layers:military', keywords: ['military', 'military layers', 'show military'], label: 'Show military layers', icon: '\u{1F396}\uFE0F', category: 'layers' },
@@ -62,38 +62,38 @@ export const COMMANDS: Command[] = [
   { id: 'layer:tradeRoutes', keywords: ['trade routes', 'shipping lanes', 'trade'], label: 'Toggle trade routes', icon: '\u{1F6A2}', category: 'layers' },
 
   // Panel navigation (matching actual DEFAULT_PANELS keys)
-  { id: 'panel:live-news', keywords: ['news', 'live news', 'headlines'], label: 'Jump to Live News', icon: '\u{1F4F0}', category: 'panels' },
-  { id: 'panel:intel', keywords: ['intel', 'intel feed'], label: 'Jump to Intel Feed', icon: '\u{1F50E}', category: 'panels' },
-  { id: 'panel:gdelt-intel', keywords: ['gdelt', 'intelligence feed'], label: 'Jump to Live Intelligence', icon: '\u{1F50D}', category: 'panels' },
-  { id: 'panel:deduction', keywords: ['deduction', 'future', 'what if'], label: 'Jump to Deduct Situation', icon: '\u{1F9E0}', category: 'panels' },
-  { id: 'panel:cii', keywords: ['cii', 'instability', 'country risk'], label: 'Jump to Country Instability', icon: '\u{1F3AF}', category: 'panels' },
-  { id: 'panel:cascade', keywords: ['cascade', 'infrastructure cascade'], label: 'Jump to Infrastructure Cascade', icon: '\u{1F517}', category: 'panels' },
-  { id: 'panel:strategic-risk', keywords: ['risk', 'strategic risk', 'threat level'], label: 'Jump to Strategic Risk', icon: '\u26A0\uFE0F', category: 'panels' },
-  { id: 'panel:politics', keywords: ['world news', 'politics', 'geopolitics'], label: 'Jump to World News', icon: '\u{1F30D}', category: 'panels' },
-  { id: 'panel:us', keywords: ['united states', 'us news', 'america news'], label: 'Jump to United States', icon: '\u{1F1FA}\u{1F1F8}', category: 'panels' },
-  { id: 'panel:europe', keywords: ['europe news', 'eu news'], label: 'Jump to Europe', icon: '\u{1F1EA}\u{1F1FA}', category: 'panels' },
-  { id: 'panel:middleeast', keywords: ['middle east news', 'mideast news'], label: 'Jump to Middle East', icon: '\u{1F54C}', category: 'panels' },
-  { id: 'panel:africa', keywords: ['africa news'], label: 'Jump to Africa', icon: '\u{1F30D}', category: 'panels' },
-  { id: 'panel:latam', keywords: ['latin america news', 'latam news'], label: 'Jump to Latin America', icon: '\u{1F30E}', category: 'panels' },
-  { id: 'panel:asia', keywords: ['asia news', 'asia-pacific news'], label: 'Jump to Asia-Pacific', icon: '\u{1F30F}', category: 'panels' },
-  { id: 'panel:energy', keywords: ['energy', 'resources', 'oil news'], label: 'Jump to Energy & Resources', icon: '\u26A1', category: 'panels' },
-  { id: 'panel:gov', keywords: ['government', 'gov'], label: 'Jump to Government', icon: '\u{1F3DB}\uFE0F', category: 'panels' },
-  { id: 'panel:thinktanks', keywords: ['think tanks', 'thinktanks', 'analysis'], label: 'Jump to Think Tanks', icon: '\u{1F9E0}', category: 'panels' },
-  { id: 'panel:polymarket', keywords: ['predictions', 'polymarket', 'forecasts'], label: 'Jump to Predictions', icon: '\u{1F52E}', category: 'panels' },
-  { id: 'panel:commodities', keywords: ['commodities', 'gold', 'silver'], label: 'Jump to Commodities', icon: '\u{1F4E6}', category: 'panels' },
-  { id: 'panel:markets', keywords: ['markets', 'stocks', 'indices'], label: 'Jump to Markets', icon: '\u{1F4C8}', category: 'panels' },
-  { id: 'panel:economic', keywords: ['economic', 'economy', 'fred'], label: 'Jump to Economic Indicators', icon: '\u{1F4CA}', category: 'panels' },
-  { id: 'panel:trade-policy', keywords: ['trade', 'tariffs', 'wto', 'trade policy', 'sanctions', 'restrictions'], label: 'Jump to Trade Policy', icon: '\u{1F4CA}', category: 'panels' },
-  { id: 'panel:supply-chain', keywords: ['supply chain', 'shipping', 'chokepoint', 'minerals', 'freight', 'logistics'], label: 'Jump to Supply Chain', icon: '\u{1F6A2}', category: 'panels' },
-  { id: 'panel:finance', keywords: ['financial', 'finance news'], label: 'Jump to Financial', icon: '\u{1F4B5}', category: 'panels' },
-  { id: 'panel:tech', keywords: ['technology', 'tech news'], label: 'Jump to Technology', icon: '\u{1F4BB}', category: 'panels' },
-  { id: 'panel:crypto', keywords: ['crypto', 'bitcoin', 'ethereum'], label: 'Jump to Crypto', icon: '\u20BF', category: 'panels' },
-  { id: 'panel:heatmap', keywords: ['heatmap', 'sector heatmap'], label: 'Jump to Sector Heatmap', icon: '\u{1F5FA}\uFE0F', category: 'panels' },
-  { id: 'panel:ai', keywords: ['ai', 'ml', 'artificial intelligence'], label: 'Jump to AI/ML', icon: '\u{1F916}', category: 'panels' },
-  { id: 'panel:macro-signals', keywords: ['macro', 'macro signals', 'liquidity'], label: 'Jump to Market Radar', icon: '\u{1F4C9}', category: 'panels' },
-  { id: 'panel:etf-flows', keywords: ['etf', 'etf flows', 'fund flows'], label: 'Jump to BTC ETF Tracker', icon: '\u{1F4B9}', category: 'panels' },
-  { id: 'panel:stablecoins', keywords: ['stablecoins', 'usdt', 'usdc'], label: 'Jump to Stablecoins', icon: '\u{1FA99}', category: 'panels' },
-  { id: 'panel:monitors', keywords: ['monitors', 'my monitors', 'watchlist'], label: 'Jump to My Monitors', icon: '\u{1F4CB}', category: 'panels' },
+  { id: 'panel:live-news', keywords: ['news', 'live news', 'headlines'], label: 'Panel: Live News', icon: '\u{1F4F0}', category: 'panels' },
+  { id: 'panel:intel', keywords: ['intel', 'intel feed'], label: 'Panel: Intel Feed', icon: '\u{1F50E}', category: 'panels' },
+  { id: 'panel:gdelt-intel', keywords: ['gdelt', 'intelligence feed'], label: 'Panel: Live Intelligence', icon: '\u{1F50D}', category: 'panels' },
+  { id: 'panel:deduction', keywords: ['deduction', 'future', 'what if'], label: 'Panel: Deduct Situation', icon: '\u{1F9E0}', category: 'panels' },
+  { id: 'panel:cii', keywords: ['cii', 'instability', 'country risk'], label: 'Panel: Country Instability', icon: '\u{1F3AF}', category: 'panels' },
+  { id: 'panel:cascade', keywords: ['cascade', 'infrastructure cascade'], label: 'Panel: Infrastructure Cascade', icon: '\u{1F517}', category: 'panels' },
+  { id: 'panel:strategic-risk', keywords: ['risk', 'strategic risk', 'threat level'], label: 'Panel: Strategic Risk', icon: '\u26A0\uFE0F', category: 'panels' },
+  { id: 'panel:politics', keywords: ['world news', 'politics', 'geopolitics'], label: 'Panel: World News', icon: '\u{1F30D}', category: 'panels' },
+  { id: 'panel:us', keywords: ['united states', 'us news', 'america news'], label: 'Panel: United States', icon: '\u{1F1FA}\u{1F1F8}', category: 'panels' },
+  { id: 'panel:europe', keywords: ['europe news', 'eu news'], label: 'Panel: Europe', icon: '\u{1F1EA}\u{1F1FA}', category: 'panels' },
+  { id: 'panel:middleeast', keywords: ['middle east news', 'mideast news'], label: 'Panel: Middle East', icon: '\u{1F54C}', category: 'panels' },
+  { id: 'panel:africa', keywords: ['africa news'], label: 'Panel: Africa', icon: '\u{1F30D}', category: 'panels' },
+  { id: 'panel:latam', keywords: ['latin america news', 'latam news'], label: 'Panel: Latin America', icon: '\u{1F30E}', category: 'panels' },
+  { id: 'panel:asia', keywords: ['asia news', 'asia-pacific news'], label: 'Panel: Asia-Pacific', icon: '\u{1F30F}', category: 'panels' },
+  { id: 'panel:energy', keywords: ['energy', 'resources', 'oil news'], label: 'Panel: Energy & Resources', icon: '\u26A1', category: 'panels' },
+  { id: 'panel:gov', keywords: ['government', 'gov'], label: 'Panel: Government', icon: '\u{1F3DB}\uFE0F', category: 'panels' },
+  { id: 'panel:thinktanks', keywords: ['think tanks', 'thinktanks', 'analysis'], label: 'Panel: Think Tanks', icon: '\u{1F9E0}', category: 'panels' },
+  { id: 'panel:polymarket', keywords: ['predictions', 'polymarket', 'forecasts'], label: 'Panel: Predictions', icon: '\u{1F52E}', category: 'panels' },
+  { id: 'panel:commodities', keywords: ['commodities', 'gold', 'silver'], label: 'Panel: Commodities', icon: '\u{1F4E6}', category: 'panels' },
+  { id: 'panel:markets', keywords: ['markets', 'stocks', 'indices'], label: 'Panel: Markets', icon: '\u{1F4C8}', category: 'panels' },
+  { id: 'panel:economic', keywords: ['economic', 'economy', 'fred'], label: 'Panel: Economic Indicators', icon: '\u{1F4CA}', category: 'panels' },
+  { id: 'panel:trade-policy', keywords: ['trade', 'tariffs', 'wto', 'trade policy', 'sanctions', 'restrictions'], label: 'Panel: Trade Policy', icon: '\u{1F4CA}', category: 'panels' },
+  { id: 'panel:supply-chain', keywords: ['supply chain', 'shipping', 'chokepoint', 'minerals', 'freight', 'logistics'], label: 'Panel: Supply Chain', icon: '\u{1F6A2}', category: 'panels' },
+  { id: 'panel:finance', keywords: ['financial', 'finance news'], label: 'Panel: Financial', icon: '\u{1F4B5}', category: 'panels' },
+  { id: 'panel:tech', keywords: ['technology', 'tech news'], label: 'Panel: Technology', icon: '\u{1F4BB}', category: 'panels' },
+  { id: 'panel:crypto', keywords: ['crypto', 'bitcoin', 'ethereum'], label: 'Panel: Crypto', icon: '\u20BF', category: 'panels' },
+  { id: 'panel:heatmap', keywords: ['heatmap', 'sector heatmap'], label: 'Panel: Sector Heatmap', icon: '\u{1F5FA}\uFE0F', category: 'panels' },
+  { id: 'panel:ai', keywords: ['ai', 'ml', 'artificial intelligence'], label: 'Panel: AI/ML', icon: '\u{1F916}', category: 'panels' },
+  { id: 'panel:macro-signals', keywords: ['macro', 'macro signals', 'liquidity'], label: 'Panel: Market Radar', icon: '\u{1F4C9}', category: 'panels' },
+  { id: 'panel:etf-flows', keywords: ['etf', 'etf flows', 'fund flows'], label: 'Panel: BTC ETF Tracker', icon: '\u{1F4B9}', category: 'panels' },
+  { id: 'panel:stablecoins', keywords: ['stablecoins', 'usdt', 'usdc'], label: 'Panel: Stablecoins', icon: '\u{1FA99}', category: 'panels' },
+  { id: 'panel:monitors', keywords: ['monitors', 'my monitors', 'watchlist'], label: 'Panel: My Monitors', icon: '\u{1F4CB}', category: 'panels' },
 
   // View / settings
   { id: 'view:dark', keywords: ['dark', 'dark mode', 'night'], label: 'Switch to dark mode', icon: '\u{1F319}', category: 'view' },
@@ -133,19 +133,28 @@ const ISO_CODES = [
 
 const displayNames = new Intl.DisplayNames(['en'], { type: 'region' });
 
-const COUNTRY_COMMANDS: Command[] = ISO_CODES.map(code => {
+const COUNTRY_COMMANDS: Command[] = ISO_CODES.flatMap(code => {
   const curated = CURATED_COUNTRIES[code];
   const name = curated?.name || displayNames.of(code) || code;
   const keywords = curated
     ? [name.toLowerCase(), ...curated.searchAliases]
     : [name.toLowerCase()];
-  return {
-    id: `country:${code}`,
-    keywords,
-    label: `Open ${name} brief`,
-    icon: toFlagEmoji(code),
-    category: 'country' as const,
-  };
+  return [
+    {
+      id: `country-map:${code}`,
+      keywords: [...keywords, 'map'],
+      label: name,
+      icon: toFlagEmoji(code),
+      category: 'navigate' as const,
+    },
+    {
+      id: `country:${code}`,
+      keywords: [...keywords, 'brief'],
+      label: name,
+      icon: toFlagEmoji(code),
+      category: 'country' as const,
+    },
+  ];
 });
 
 COMMANDS.push(...COUNTRY_COMMANDS);

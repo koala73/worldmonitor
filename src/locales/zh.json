@@ -183,6 +183,7 @@
     "macroSignals": "市场雷达",
     "etfFlows": "BTC ETF追踪",
     "stablecoins": "稳定币",
+    "deduction": "推断局势",
     "ucdpEvents": "UCDP冲突事件",
     "displacement": "UNHCR流离失所",
     "climate": "气候异常",
@@ -217,6 +218,31 @@
     "gulfIndices": "海湾指数",
     "gulfCurrencies": "海湾货币",
     "gulfOil": "海湾石油"
+  },
+  "commands": {
+    "prefixes": {
+      "map": "地图",
+      "panel": "面板",
+      "brief": "简报"
+    },
+    "categories": {
+      "navigate": "导航",
+      "layers": "图层",
+      "panels": "面板",
+      "view": "视图",
+      "actions": "操作",
+      "country": "国家"
+    },
+    "regions": {
+      "global": "全球视图",
+      "mena": "中东和北非",
+      "eu": "欧洲",
+      "asia": "亚太地区",
+      "america": "美洲",
+      "africa": "非洲",
+      "latam": "拉丁美洲",
+      "oceania": "大洋洲"
+    }
   },
   "modals": {
     "search": {

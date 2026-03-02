@@ -48,6 +48,7 @@
     "regulation": "Dashboard voor AI-regulering",
     "serviceStatus": "Servicestatus",
     "stablecoins": "Stabiele munten",
+    "deduction": "Situatie afleiden",
     "events": "Technische evenementen",
     "techHubs": "Hottech-hubs",
     "techReadiness": "Tech Readiness-index",
@@ -72,6 +73,31 @@
     "gulfIndices": "Golfindices",
     "gulfCurrencies": "Golfvaluta",
     "gulfOil": "Golfolie"
+  },
+  "commands": {
+    "prefixes": {
+      "map": "Kaart",
+      "panel": "Paneel",
+      "brief": "Samenvatting"
+    },
+    "categories": {
+      "navigate": "Navigeren",
+      "layers": "Lagen",
+      "panels": "Panelen",
+      "view": "Weergave",
+      "actions": "Acties",
+      "country": "Land"
+    },
+    "regions": {
+      "global": "Globaal overzicht",
+      "mena": "Midden-Oosten & Noord-Afrika",
+      "eu": "Europa",
+      "asia": "Azië-Pacific",
+      "america": "Amerika",
+      "africa": "Afrika",
+      "latam": "Latijns-Amerika",
+      "oceania": "Oceanië"
+    }
   },
   "modals": {
     "search": {

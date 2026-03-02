@@ -183,6 +183,7 @@
     "macroSignals": "Radar Thị trường",
     "etfFlows": "Theo dõi BTC ETF",
     "stablecoins": "Stablecoin",
+    "deduction": "Suy luận tình huống",
     "ucdpEvents": "Sự kiện Xung đột UCDP",
     "displacement": "Di dời UNHCR",
     "climate": "Bất thường Khí hậu",
@@ -217,6 +218,31 @@
     "gulfIndices": "Chỉ số vùng Vịnh",
     "gulfCurrencies": "Tiền tệ vùng Vịnh",
     "gulfOil": "Dầu vùng Vịnh"
+  },
+  "commands": {
+    "prefixes": {
+      "map": "Bản đồ",
+      "panel": "Bảng",
+      "brief": "Tóm tắt"
+    },
+    "categories": {
+      "navigate": "Điều hướng",
+      "layers": "Lớp",
+      "panels": "Bảng",
+      "view": "Xem",
+      "actions": "Hành động",
+      "country": "Quốc gia"
+    },
+    "regions": {
+      "global": "Toàn cầu",
+      "mena": "Trung Đông & Bắc Phi",
+      "eu": "Châu Âu",
+      "asia": "Châu Á - Thái Bình Dương",
+      "america": "Châu Mỹ",
+      "africa": "Châu Phi",
+      "latam": "Mỹ Latinh",
+      "oceania": "Châu Đại Dương"
+    }
   },
   "modals": {
     "search": {

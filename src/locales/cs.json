@@ -184,6 +184,7 @@
     "macroSignals": "Tržní radar",
     "etfFlows": "Sledování BTC ETF",
     "stablecoins": "Stablecoiny",
+    "deduction": "Dedukce situace",
     "ucdpEvents": "UCDP Konflikty",
     "giving": "Globální dárcovství",
     "displacement": "UNHCR Vysídlení",
@@ -217,6 +218,31 @@
     "gulfIndices": "Indexy Perského zálivu",
     "gulfCurrencies": "Měny Perského zálivu",
     "gulfOil": "Ropa Perského zálivu"
+  },
+  "commands": {
+    "prefixes": {
+      "map": "Mapa",
+      "panel": "Panel",
+      "brief": "Shrnutí"
+    },
+    "categories": {
+      "navigate": "Navigace",
+      "layers": "Vrstvy",
+      "panels": "Panely",
+      "view": "Zobrazení",
+      "actions": "Akce",
+      "country": "Země"
+    },
+    "regions": {
+      "global": "Globální pohled",
+      "mena": "Blízký východ a severní Afrika",
+      "eu": "Evropa",
+      "asia": "Asie a Tichomoří",
+      "america": "Amerika",
+      "africa": "Afrika",
+      "latam": "Latinská Amerika",
+      "oceania": "Oceánie"
+    }
   },
   "modals": {
     "search": {

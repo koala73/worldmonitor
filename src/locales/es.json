@@ -182,6 +182,7 @@
     "macroSignals": "Radar de mercado",
     "etfFlows": "Rastreador de ETF BTC",
     "stablecoins": "Monedas estables",
+    "deduction": "Deducir situación",
     "ucdpEvents": "Eventos de conflicto UCDP",
     "giving": "Donaciones Globales",
     "supplyChain": "Cadena de Suministro",
@@ -217,6 +218,31 @@
     "gulfIndices": "Índices del Golfo",
     "gulfCurrencies": "Monedas del Golfo",
     "gulfOil": "Petróleo del Golfo"
+  },
+  "commands": {
+    "prefixes": {
+      "map": "Mapa",
+      "panel": "Panel",
+      "brief": "Resumen"
+    },
+    "categories": {
+      "navigate": "Navegar",
+      "layers": "Capas",
+      "panels": "Paneles",
+      "view": "Vista",
+      "actions": "Acciones",
+      "country": "País"
+    },
+    "regions": {
+      "global": "Vista global",
+      "mena": "Oriente Medio y Norte de África",
+      "eu": "Europa",
+      "asia": "Asia-Pacífico",
+      "america": "Américas",
+      "africa": "África",
+      "latam": "América Latina",
+      "oceania": "Oceanía"
+    }
   },
   "modals": {
     "search": {

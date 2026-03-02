@@ -48,6 +48,7 @@
     "regulation": "AI-regleringspanel",
     "serviceStatus": "Servicestatus",
     "stablecoins": "Stablecoins",
+    "deduction": "Bedöm situation",
     "events": "Tekniska evenemang",
     "techHubs": "Teknikhubbar",
     "techReadiness": "Teknikberedskapsindex",
@@ -72,6 +73,31 @@
     "gulfIndices": "Gulfindex",
     "gulfCurrencies": "Gulfvalutor",
     "gulfOil": "Gulfolja"
+  },
+  "commands": {
+    "prefixes": {
+      "map": "Karta",
+      "panel": "Panel",
+      "brief": "Sammanfattning"
+    },
+    "categories": {
+      "navigate": "Navigera",
+      "layers": "Lager",
+      "panels": "Paneler",
+      "view": "Vy",
+      "actions": "Åtgärder",
+      "country": "Land"
+    },
+    "regions": {
+      "global": "Global vy",
+      "mena": "Mellanöstern & Nordafrika",
+      "eu": "Europa",
+      "asia": "Asien-Stillahavsområdet",
+      "america": "Amerika",
+      "africa": "Afrika",
+      "latam": "Latinamerika",
+      "oceania": "Oceanien"
+    }
   },
   "modals": {
     "search": {

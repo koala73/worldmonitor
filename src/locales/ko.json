@@ -184,6 +184,7 @@
     "macroSignals": "시장 레이더",
     "etfFlows": "BTC ETF 추적",
     "stablecoins": "스테이블코인",
+    "deduction": "상황 추론",
     "ucdpEvents": "UCDP 분쟁 사건",
     "giving": "글로벌 기부",
     "displacement": "UNHCR 실향민",
@@ -217,6 +218,31 @@
     "gulfIndices": "걸프 지수",
     "gulfCurrencies": "걸프 통화",
     "gulfOil": "걸프 석유"
+  },
+  "commands": {
+    "prefixes": {
+      "map": "지도",
+      "panel": "패널",
+      "brief": "요약"
+    },
+    "categories": {
+      "navigate": "탐색",
+      "layers": "레이어",
+      "panels": "패널",
+      "view": "보기",
+      "actions": "작업",
+      "country": "국가"
+    },
+    "regions": {
+      "global": "글로벌 보기",
+      "mena": "중동 및 북아프리카",
+      "eu": "유럽",
+      "asia": "아시아태평양",
+      "america": "아메리카",
+      "africa": "아프리카",
+      "latam": "라틴 아메리카",
+      "oceania": "오세아니아"
+    }
   },
   "modals": {
     "search": {
