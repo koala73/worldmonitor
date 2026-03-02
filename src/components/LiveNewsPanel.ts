@@ -1135,8 +1135,9 @@ export class LiveNewsPanel extends Panel {
           const errorCode = Number(event?.data ?? 0);
 
           // Retry once with known fallback stream.
+          // Error 150 = embed disabled by owner; 153 = not available in region — both warrant fallback.
           if (
-            errorCode === 153 &&
+            (errorCode === 150 || errorCode === 153) &&
             this.activeChannel.fallbackVideoId &&
             this.activeChannel.videoId !== this.activeChannel.fallbackVideoId
           ) {
@@ -1148,7 +1149,7 @@ export class LiveNewsPanel extends Panel {
           }
 
           // Desktop-specific last resort: switch to cloud bridge embed.
-          if (errorCode === 153 && isDesktopRuntime()) {
+          if ((errorCode === 150 || errorCode === 153) && isDesktopRuntime()) {
             this.useDesktopEmbedProxy = true;
             this.destroyPlayer();
             this.ensurePlayerContainer();
