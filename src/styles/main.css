@@ -1449,6 +1449,31 @@ body.panel-resize-active iframe {
 }
 @keyframes panel-ai-cursor { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 
+/* Shareable URL toast (Cmd+S on desktop) */
+.wm-share-toast {
+  position: fixed;
+  bottom: 32px;
+  left: 50%;
+  transform: translateX(-50%) translateY(8px);
+  background: rgba(30, 30, 40, 0.92);
+  color: rgba(220, 220, 240, 0.95);
+  border: 1px solid rgba(100, 100, 180, 0.3);
+  border-radius: 6px;
+  padding: 7px 16px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 9999;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  backdrop-filter: blur(8px);
+}
+.wm-share-toast.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
 .panel-info-tooltip {
   position: absolute;
   top: calc(100% + 8px);

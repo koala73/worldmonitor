@@ -297,7 +297,42 @@ export class EventHandlerManager implements AppModule {
         } catch { /* malformed URL -- let browser handle */ }
       };
       document.addEventListener('click', this.boundDesktopExternalLinkHandler, true);
+
+      // Cmd+S — copy shareable URL to clipboard (macOS desktop share shortcut)
+      document.addEventListener('keydown', async (e: KeyboardEvent) => {
+        if (e.metaKey && e.key === 's' && !e.shiftKey && !e.altKey) {
+          const active = document.activeElement;
+          if (active?.tagName === 'INPUT' || active?.tagName === 'TEXTAREA') return;
+          e.preventDefault();
+          const shareUrl = this.getShareUrl();
+          if (!shareUrl) return;
+          try {
+            await this.copyToClipboard(shareUrl);
+            this.showShareToast('Link copied');
+          } catch {
+            this.showShareToast('Copy failed');
+          }
+        }
+      });
     }
+  }
+
+  private showShareToast(message: string): void {
+    const existing = document.getElementById('wm-share-toast');
+    if (existing) existing.remove();
+    const toast = document.createElement('div');
+    toast.id = 'wm-share-toast';
+    toast.className = 'wm-share-toast';
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    // Trigger fade-in then fade-out
+    requestAnimationFrame(() => {
+      toast.classList.add('visible');
+      setTimeout(() => {
+        toast.classList.remove('visible');
+        setTimeout(() => toast.remove(), 300);
+      }, 1800);
+    });
   }
 
   private setupIdleDetection(): void {

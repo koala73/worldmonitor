@@ -1,3 +1,4 @@
+import LZString from 'lz-string';
 import type { MapLayers } from '@/types';
 import type { MapView, TimeRange } from '@/components/Map';
 
@@ -32,13 +33,27 @@ const LAYER_KEYS: (keyof MapLayers)[] = [
   'accelerators',
   'techHQs',
   'techEvents',
+  'stockExchanges',
+  'financialCenters',
+  'centralBanks',
+  'commodityHubs',
+  'gulfInvestments',
+  'positiveEvents',
+  'kindness',
+  'happiness',
+  'speciesRecovery',
+  'renewableInstallations',
   'tradeRoutes',
   'iranAttacks',
   'gpsJamming',
+  'dayNight',
 ];
 
 const TIME_RANGES: TimeRange[] = ['1h', '6h', '24h', '48h', '7d', 'all'];
 const VIEW_VALUES: MapView[] = ['global', 'america', 'mena', 'eu', 'asia', 'latam', 'africa', 'oceania'];
+
+// LZ-string compression threshold (bytes)
+const COMPRESS_THRESHOLD = 2000;
 
 export interface ParsedMapUrlState {
   view?: MapView;
@@ -53,11 +68,28 @@ export interface ParsedMapUrlState {
 const clamp = (value: number, min: number, max: number): number =>
   Math.min(max, Math.max(min, value));
 
+function expandParams(search: string): URLSearchParams {
+  const raw = new URLSearchParams(search);
+
+  // Detect compressed state: ?z=<lz-compressed>
+  const compressed = raw.get('z');
+  if (compressed) {
+    try {
+      const decompressed = LZString.decompressFromEncodedURIComponent(compressed);
+      if (decompressed) return new URLSearchParams(decompressed);
+    } catch {
+      // fall through to raw params
+    }
+  }
+
+  return raw;
+}
+
 export function parseMapUrlState(
   search: string,
   fallbackLayers: MapLayers
 ): ParsedMapUrlState {
-  const params = new URLSearchParams(search);
+  const params = expandParams(search);
 
   const viewParam = params.get('view');
   const view = VIEW_VALUES.includes(viewParam as MapView) ? (viewParam as MapView) : undefined;
@@ -144,6 +176,15 @@ export function buildMapUrl(
     params.set('country', state.country);
   }
 
-  url.search = params.toString();
+  const rawSearch = params.toString();
+
+  // Compress if the query string exceeds the threshold
+  if (rawSearch.length > COMPRESS_THRESHOLD) {
+    const compressed = LZString.compressToEncodedURIComponent(rawSearch);
+    url.search = `z=${compressed}`;
+  } else {
+    url.search = rawSearch;
+  }
+
   return url.toString();
 }
