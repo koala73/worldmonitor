@@ -131,9 +131,9 @@ function parseTranslationResponse(raw: string, alerts: OrefAlert[]): void {
     const reAlert = new RegExp(`ALERT\\[${eid}\\]:\\s*(.+)`);
     const reAreas = new RegExp(`AREAS\\[${eid}\\]:\\s*(.+)`);
     const reDesc = new RegExp(`DESC\\[${eid}\\]:\\s*(.+)`);
-    let title = alert.title;
-    let areas = alert.data;
-    let desc = alert.desc;
+    let title: string | null = null;
+    let areas: string[] | null = null;
+    let desc: string | null = null;
     for (const line of lines) {
       const alertMatch = line.match(reAlert);
       if (alertMatch?.[1]) title = alertMatch[1].trim();
@@ -142,7 +142,13 @@ function parseTranslationResponse(raw: string, alerts: OrefAlert[]): void {
       const descMatch = line.match(reDesc);
       if (descMatch?.[1]) desc = descMatch[1].trim();
     }
-    translationCache.set(alert.id, { title, data: areas, desc });
+    if (title === null && areas === null && desc === null) continue;
+    const entry = {
+      title: title && !hasHebrew(title) ? title : staticTranslate(alert.title),
+      data: areas && !areas.some(hasHebrew) ? areas : alert.data.map(d => locationTranslator ? locationTranslator(staticTranslate(d)) : staticTranslate(d)),
+      desc: desc && !hasHebrew(desc) ? desc : staticTranslate(alert.desc),
+    };
+    translationCache.set(alert.id, entry);
   }
   if (translationCache.size > MAX_TRANSLATION_CACHE) {
     const excess = translationCache.size - MAX_TRANSLATION_CACHE;
@@ -154,18 +160,23 @@ function parseTranslationResponse(raw: string, alerts: OrefAlert[]): void {
   }
 }
 
+function translateFields(alert: OrefAlert): OrefAlert {
+  return {
+    ...alert,
+    title: staticTranslate(alert.title),
+    data: alert.data.map(d => locationTranslator ? locationTranslator(staticTranslate(d)) : staticTranslate(d)),
+    desc: staticTranslate(alert.desc),
+  };
+}
+
 function applyTranslations(alerts: OrefAlert[]): OrefAlert[] {
   return alerts.map(a => {
     const cached = translationCache.get(a.id);
-    if (cached) return { ...a, ...cached };
-    if (alertNeedsTranslation(a)) {
-      return {
-        ...a,
-        title: staticTranslate(a.title),
-        data: a.data.map(d => locationTranslator ? locationTranslator(staticTranslate(d)) : staticTranslate(d)),
-        desc: staticTranslate(a.desc),
-      };
+    if (cached) {
+      const merged = { ...a, ...cached };
+      return alertNeedsTranslation(merged) ? translateFields(merged) : merged;
     }
+    if (alertNeedsTranslation(a)) return translateFields(a);
     return a;
   });
 }
