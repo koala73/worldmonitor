@@ -1412,8 +1412,8 @@
         "regime": "Režim",
         "btcTrend": "Trend BTC",
         "hashRate": "Hash Rate",
-        "mining": "Těžba",
-        "fearGreed": "Strach a chamtivost"
+        "fearGreed": "Strach a chamtivost",
+        "momentum": "Momentum"
       }
     },
     "panel": {

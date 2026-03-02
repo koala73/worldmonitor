@@ -1321,8 +1321,8 @@
         "regime": "Reżim",
         "btcTrend": "Trend BTC",
         "hashRate": "Hash Rate",
-        "mining": "Wydobycie",
-        "fearGreed": "Strach &amp; Chciwość"
+        "fearGreed": "Strach &amp; Chciwość",
+        "momentum": "Momentum"
       }
     },
     "export": {

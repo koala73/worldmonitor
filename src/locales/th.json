@@ -1327,8 +1327,8 @@
         "regime": "สภาพตลาด",
         "btcTrend": "แนวโน้ม BTC",
         "hashRate": "Hash Rate",
-        "mining": "การขุด",
-        "fearGreed": "ความกลัวและความโลภ"
+        "fearGreed": "ความกลัวและความโลภ",
+        "momentum": "Momentum"
       }
     },
     "panel": {

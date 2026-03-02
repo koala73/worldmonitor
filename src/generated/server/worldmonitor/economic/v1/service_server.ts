@@ -86,7 +86,7 @@ export interface MacroSignals {
   macroRegime?: MacroRegimeSignal;
   technicalTrend?: TechnicalTrendSignal;
   hashRate?: HashRateSignal;
-  miningCost?: MiningCostSignal;
+  priceMomentum?: PriceMomentumSignal;
   fearGreed?: FearGreedSignal;
 }
 
@@ -123,7 +123,7 @@ export interface HashRateSignal {
   change30d?: number;
 }
 
-export interface MiningCostSignal {
+export interface PriceMomentumSignal {
   status: string;
 }
 

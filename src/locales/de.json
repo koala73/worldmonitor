@@ -1374,8 +1374,8 @@
         "regime": "Regime",
         "btcTrend": "BTC-Trend",
         "hashRate": "Hash Rate",
-        "mining": "Mining",
-        "fearGreed": "Angst &amp; Gier"
+        "fearGreed": "Angst &amp; Gier",
+        "momentum": "Momentum"
       }
     },
     "runtimeConfig": {

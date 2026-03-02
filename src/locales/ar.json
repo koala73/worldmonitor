@@ -1327,8 +1327,8 @@
         "regime": "النظام",
         "btcTrend": "اتجاه BTC",
         "hashRate": "Hash Rate",
-        "mining": "التعدين",
-        "fearGreed": "الخوف &amp; الجشع"
+        "fearGreed": "الخوف &amp; الجشع",
+        "momentum": "Momentum"
       }
     },
     "panel": {

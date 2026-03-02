@@ -1176,8 +1176,8 @@
         "regime": "Regim",
         "btcTrend": "BTC-trend",
         "hashRate": "Hash Rate",
-        "mining": "Utvinning",
-        "fearGreed": "Rädsla &amp; Girighet"
+        "fearGreed": "Rädsla &amp; Girighet",
+        "momentum": "Momentum"
       }
     },
     "export": {

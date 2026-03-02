@@ -1327,8 +1327,8 @@
         "regime": "Chế độ",
         "btcTrend": "Xu hướng BTC",
         "hashRate": "Hash Rate",
-        "mining": "Khai thác",
-        "fearGreed": "Sợ hãi & Tham lam"
+        "fearGreed": "Sợ hãi & Tham lam",
+        "momentum": "Momentum"
       }
     },
     "panel": {

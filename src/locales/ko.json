@@ -1412,8 +1412,8 @@
         "regime": "체제",
         "btcTrend": "BTC 추세",
         "hashRate": "해시레이트",
-        "mining": "채굴",
-        "fearGreed": "공포 & 탐욕"
+        "fearGreed": "공포 & 탐욕",
+        "momentum": "Momentum"
       }
     },
     "panel": {

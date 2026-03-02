@@ -528,8 +528,8 @@ components:
                     $ref: '#/components/schemas/TechnicalTrendSignal'
                 hashRate:
                     $ref: '#/components/schemas/HashRateSignal'
-                miningCost:
-                    $ref: '#/components/schemas/MiningCostSignal'
+                priceMomentum:
+                    $ref: '#/components/schemas/PriceMomentumSignal'
                 fearGreed:
                     $ref: '#/components/schemas/FearGreedSignal'
             description: MacroSignals contains all 7 individual signal computations.
@@ -624,13 +624,13 @@ components:
                     format: double
                     description: Hash rate change over 30 days as percentage.
             description: HashRateSignal tracks Bitcoin hash rate momentum.
-        MiningCostSignal:
+        PriceMomentumSignal:
             type: object
             properties:
                 status:
                     type: string
-                    description: '"PROFITABLE", "TIGHT", "SQUEEZE", or "UNKNOWN".'
-            description: MiningCostSignal estimates mining profitability from BTC price thresholds.
+                    description: '"STRONG", "MODERATE", "WEAK", or "UNKNOWN".'
+            description: PriceMomentumSignal uses the Mayer Multiple (price/SMA200) as a market-adaptive signal.
         FearGreedSignal:
             type: object
             properties:

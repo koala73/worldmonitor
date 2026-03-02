@@ -1327,8 +1327,8 @@
         "regime": "市场环境",
         "btcTrend": "BTC趋势",
         "hashRate": "Hash Rate",
-        "mining": "挖矿",
-        "fearGreed": "恐惧 &amp; 贪婪"
+        "fearGreed": "恐惧 &amp; 贪婪",
+        "momentum": "Momentum"
       }
     },
     "panel": {

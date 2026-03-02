@@ -16,7 +16,7 @@ interface MacroSignalData {
     macroRegime: { status: string; qqqRoc20: number | null; xlpRoc20: number | null };
     technicalTrend: { status: string; btcPrice: number | null; sma50: number | null; sma200: number | null; vwap30d: number | null; mayerMultiple: number | null; sparkline: number[] };
     hashRate: { status: string; change30d: number | null };
-    miningCost: { status: string };
+    priceMomentum: { status: string };
     fearGreed: { status: string; value: number | null; history: Array<{ value: number; date: string }> };
   };
   meta: { qqqSparkline: number[] };
@@ -62,8 +62,8 @@ function mapProtoToData(r: GetMacroSignalsResponse): MacroSignalData {
         status: s?.hashRate?.status ?? 'UNKNOWN',
         change30d: s?.hashRate?.change30d ?? null,
       },
-      miningCost: {
-        status: s?.miningCost?.status ?? 'UNKNOWN',
+      priceMomentum: {
+        status: s?.priceMomentum?.status ?? 'UNKNOWN',
       },
       fearGreed: {
         status: s?.fearGreed?.status ?? 'UNKNOWN',
@@ -206,7 +206,7 @@ export class MacroSignalsPanel extends Panel {
           ${this.renderSignalCard(t('components.macroSignals.signals.regime'), s.macroRegime.status, `QQQ ${formatNum(s.macroRegime.qqqRoc20)} / XLP ${formatNum(s.macroRegime.xlpRoc20)}`, sparklineSvg(d.meta.qqqSparkline, 60, 20, '#ab47bc'), '20d ROC', 'https://www.tradingview.com/symbols/QQQ/')}
           ${this.renderSignalCard(t('components.macroSignals.signals.btcTrend'), s.technicalTrend.status, `$${s.technicalTrend.btcPrice?.toLocaleString() ?? 'N/A'}`, sparklineSvg(s.technicalTrend.sparkline, 60, 20, '#ff9800'), `SMA50: $${s.technicalTrend.sma50?.toLocaleString() ?? '-'} | VWAP: $${s.technicalTrend.vwap30d?.toLocaleString() ?? '-'} | Mayer: ${s.technicalTrend.mayerMultiple ?? '-'}`, 'https://www.tradingview.com/symbols/BTCUSD/')}
           ${this.renderSignalCard(t('components.macroSignals.signals.hashRate'), s.hashRate.status, formatNum(s.hashRate.change30d), '', '30d change', 'https://mempool.space/mining')}
-          ${this.renderSignalCard(t('components.macroSignals.signals.mining'), s.miningCost.status, '', '', 'Hashprice model', null)}
+          ${this.renderSignalCard(t('components.macroSignals.signals.momentum'), s.priceMomentum.status, '', '', 'Mayer Multiple', null)}
           ${this.renderFearGreedCard(s.fearGreed)}
         </div>
       </div>

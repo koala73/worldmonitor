@@ -1224,8 +1224,8 @@
         "regime": "Режим",
         "btcTrend": "Тренд BTC",
         "hashRate": "Hash Rate",
-        "mining": "Майнинг",
-        "fearGreed": "Страх &amp; Жадность"
+        "fearGreed": "Страх &amp; Жадность",
+        "momentum": "Momentum"
       }
     },
     "export": {
