@@ -180,7 +180,10 @@ export class PanelLayoutManager implements AppModule {
           </div>
         </div>
         <div class="header-right">
-          <!-- TODO: Add "Download App" link here for non-desktop users (this.ctx.isDesktopApp === false) -->
+          ${this.ctx.isDesktopApp ? '' : `<button class="download-btn" id="downloadBtn" title="${t('header.downloadApp')}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            ${t('header.downloadApp')}
+          </button>`}
           <button class="search-btn" id="searchBtn"><kbd>⌘K</kbd> ${t('header.search')}</button>
           ${this.ctx.isDesktopApp ? '' : `<button class="copy-link-btn" id="copyLinkBtn">${t('header.copyLink')}</button>`}
           <button class="theme-toggle-btn" id="headerThemeToggle" title="${t('header.toggleTheme')}">
