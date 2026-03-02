@@ -33,7 +33,6 @@
 
 | Feature | Detail |
 |---|---|
-| **Peace / Finance / War Modes** | Situational awareness lenses that adjust your entire view of the world based on what's actually happening. **Peace** is standard monitoring. **Finance** shifts focus to markets and economic signals — auto-activates when S&P 500 moves ≥2.5% or BTC moves ≥5% intraday. **War** surfaces conflict escalation data — auto-triggers when 3+ correlated threat signals are detected in a session. Visual accents (green/red sidebar) and a one-tap "Alert Family" message keep you oriented as events unfold in real time |
 | **AI Panel Summaries** | ✦ button on every data panel generates an on-demand AI summary of current panel content using your configured provider (Ollama · Groq · Claude · OpenRouter) |
 | **Native sidebar** | SF Pro, vibrancy-backed, collapsible, HIG-compliant panel navigation |
 | **API Keys in Settings** | All data-source API keys managed in the gear-icon Settings modal (API Keys tab) — no prominent config panel cluttering the sidebar |
