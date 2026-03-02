@@ -2,9 +2,6 @@
  * RPC: getEnergyPrices -- EIA Open Data API v2
  * Energy commodity price data (WTI, Brent, etc.)
  */
-
-declare const process: { env: Record<string, string | undefined> };
-
 import type {
   ServerContext,
   GetEnergyPricesRequest,

@@ -5,9 +5,6 @@
  * NOTE: The WTO API does NOT support comma-separated indicator codes.
  * Exports and imports must be fetched in separate requests.
  */
-
-declare const process: { env: Record<string, string | undefined> };
-
 import type {
   ServerContext,
   GetTradeFlowsRequest,

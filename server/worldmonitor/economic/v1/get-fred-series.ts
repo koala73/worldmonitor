@@ -2,9 +2,6 @@
  * RPC: getFredSeries -- Federal Reserve Economic Data (FRED) time series
  * Port from api/fred-data.js
  */
-
-declare const process: { env: Record<string, string | undefined> };
-
 import type {
   ServerContext,
   GetFredSeriesRequest,
