@@ -912,6 +912,170 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
   }
 }
 
+// ── Ollama Streaming SSE Handler ─────────────────────────────────────────────
+// Handles /api/ollama-stream — bypasses the arrayBuffer() buffering in the
+// main request loop so tokens can be streamed back to the frontend in real time.
+async function handleOllamaStream(requestUrl, req, res, context) {
+  const body = await readBody(req);
+  if (!body) {
+    res.writeHead(400, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ error: 'expected JSON body' }));
+    return;
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(body.toString());
+  } catch {
+    res.writeHead(400, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ error: 'invalid JSON' }));
+    return;
+  }
+
+  const ollamaBaseUrl = process.env.OLLAMA_API_URL;
+  if (!ollamaBaseUrl) {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ skipped: true, reason: 'OLLAMA_API_URL not configured' }));
+    return;
+  }
+
+  const model = process.env.OLLAMA_MODEL || 'llama3.1:8b';
+  const headlines = Array.isArray(parsed.headlines) ? parsed.headlines.slice(0, 10) : [];
+  const geoContext = typeof parsed.geoContext === 'string' ? parsed.geoContext.slice(0, 500) : '';
+  const lang = typeof parsed.lang === 'string' ? parsed.lang : 'en';
+
+  if (headlines.length === 0) {
+    res.writeHead(400, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ error: 'headlines required' }));
+    return;
+  }
+
+  const headlineText = headlines.slice(0, 5)
+    .map((h, i) => `${i + 1}. ${String(h).slice(0, 200)}`)
+    .join('\n');
+  const geoNote = geoContext ? `\nGeographic context: ${geoContext}` : '';
+  const systemPrompt = `You are a senior geopolitical analyst. Summarize the situation described in the headlines in exactly 2-3 concise sentences (under 80 words total). Be factual and direct. No preamble, no markdown formatting, no "Summary:" prefix — just the analysis text.`;
+  const userPrompt = `Headlines:${geoNote}\n${headlineText}`;
+
+  let apiUrl;
+  try {
+    apiUrl = new URL('/v1/chat/completions', ollamaBaseUrl).toString();
+  } catch {
+    res.writeHead(400, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Invalid OLLAMA_API_URL' }));
+    return;
+  }
+
+  const requestBody = JSON.stringify({
+    model,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt },
+    ],
+    temperature: 0.3,
+    max_tokens: 150,
+    stream: true,
+  });
+
+  const corsOrigin = getSidecarCorsOrigin(req);
+  res.writeHead(200, {
+    'content-type': 'text/event-stream',
+    'cache-control': 'no-cache',
+    'x-accel-buffering': 'no',
+    'access-control-allow-origin': corsOrigin,
+    'vary': 'Origin',
+  });
+
+  try {
+    const parsed2 = new URL(apiUrl);
+    const mod = parsed2.protocol === 'https:' ? https : http;
+    const reqOptions = {
+      hostname: parsed2.hostname,
+      port: parsed2.port || (parsed2.protocol === 'https:' ? 443 : 80),
+      path: parsed2.pathname + parsed2.search,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(requestBody),
+        'User-Agent': CHROME_UA,
+      },
+      family: 4,
+    };
+
+    await new Promise((resolve) => {
+      const ollamaReq = mod.request(reqOptions, (ollamaRes) => {
+        if (ollamaRes.statusCode !== 200) {
+          const chunks = [];
+          ollamaRes.on('data', c => chunks.push(c));
+          ollamaRes.on('end', () => {
+            const errText = Buffer.concat(chunks).toString().slice(0, 300);
+            res.write(`data: ${JSON.stringify({ error: `Ollama ${ollamaRes.statusCode}: ${errText}` })}\n\n`);
+            res.write('data: [DONE]\n\n');
+            res.end();
+            resolve();
+          });
+          return;
+        }
+
+        let sseBuffer = '';
+        ollamaRes.on('data', (chunk) => {
+          sseBuffer += chunk.toString();
+          const lines = sseBuffer.split('\n');
+          sseBuffer = lines.pop() ?? '';
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith('data: ')) continue;
+            const dataStr = trimmed.slice(6);
+            if (dataStr === '[DONE]') continue;
+            try {
+              const data = JSON.parse(dataStr);
+              const token = data.choices?.[0]?.delta?.content;
+              if (token) res.write(`data: ${JSON.stringify({ token })}\n\n`);
+            } catch { /* malformed SSE chunk */ }
+          }
+        });
+
+        ollamaRes.on('end', () => {
+          if (sseBuffer.trim().startsWith('data: ')) {
+            const dataStr = sseBuffer.trim().slice(6);
+            if (dataStr !== '[DONE]') {
+              try {
+                const data = JSON.parse(dataStr);
+                const token = data.choices?.[0]?.delta?.content;
+                if (token) res.write(`data: ${JSON.stringify({ token })}\n\n`);
+              } catch { /* ignore */ }
+            }
+          }
+          res.write('data: [DONE]\n\n');
+          res.end();
+          resolve();
+        });
+
+        ollamaRes.on('error', (err) => {
+          context.logger.error('[ollama-stream] response error:', err.message);
+          try { res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`); res.write('data: [DONE]\n\n'); res.end(); } catch { /* already ended */ }
+          resolve();
+        });
+      });
+
+      ollamaReq.on('error', (err) => {
+        context.logger.error('[ollama-stream] request error:', err.message);
+        try { res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`); res.write('data: [DONE]\n\n'); res.end(); } catch { /* already ended */ }
+        resolve();
+      });
+
+      // Destroy the Ollama request if the client disconnects
+      req.on('close', () => { try { ollamaReq.destroy(); } catch { /* ignore */ } resolve(); });
+
+      ollamaReq.write(requestBody);
+      ollamaReq.end();
+    });
+  } catch (err) {
+    context.logger.error('[ollama-stream] fatal:', err.message);
+    try { res.write(`data: ${JSON.stringify({ error: 'Streaming failed' })}\n\n`); res.write('data: [DONE]\n\n'); res.end(); } catch { /* already ended */ }
+  }
+}
+
 async function dispatch(requestUrl, req, routes, context) {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: makeCorsHeaders(req) });
@@ -1180,6 +1344,22 @@ export async function createLocalApiServer(options = {}) {
     if (!requestUrl.pathname.startsWith('/api/')) {
       res.writeHead(404, { 'content-type': 'application/json', ...makeCorsHeaders(req) });
       res.end(JSON.stringify({ error: 'Not found' }));
+      return;
+    }
+
+    // Ollama streaming — handled before dispatch() to bypass arrayBuffer() buffering
+    if (requestUrl.pathname === '/api/ollama-stream' && req.method === 'POST') {
+      const expectedToken = process.env.LOCAL_API_TOKEN;
+      if (expectedToken) {
+        const authHeader = req.headers['authorization'] || '';
+        if (authHeader !== `Bearer ${expectedToken}`) {
+          context.logger.warn(`[local-api] unauthorized request to ${requestUrl.pathname}`);
+          res.writeHead(401, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Unauthorized' }));
+          return;
+        }
+      }
+      await handleOllamaStream(requestUrl, req, res, context);
       return;
     }
 

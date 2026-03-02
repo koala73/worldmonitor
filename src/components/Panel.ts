@@ -841,7 +841,43 @@ export class Panel {
     triggerBtn.classList.add('panel-ai-btn--active');
     triggerBtn.setAttribute('disabled', '');
 
+    const resetOnFailure = () => {
+      overlay.remove();
+      this.aiSummaryOverlay = null;
+      triggerBtn.classList.remove('panel-ai-btn--active');
+    };
+
     try {
+      // ── Step 1: Try Ollama streaming ──────────────────────────────────────
+      let ollamaSkipped = false;
+      try {
+        const streamResp = await fetch('/api/ollama-stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ headlines: lines, mode: 'brief', geoContext: this.panelId, lang: 'en' }),
+          signal: this.abortController.signal,
+        });
+
+        const ct = streamResp.headers.get('content-type') ?? '';
+        if (ct.includes('text/event-stream')) {
+          // Streaming path — takes over the overlay; returns when complete/stopped
+          await this._runStreamingDisplay(streamResp, overlay, triggerBtn);
+          return;
+        }
+        // Non-SSE JSON response — check if Ollama is simply not configured
+        const data = await streamResp.json() as { skipped?: boolean };
+        ollamaSkipped = !!data.skipped;
+        if (!ollamaSkipped) {
+          resetOnFailure();
+          return;
+        }
+      } catch (e) {
+        if (this.isAbortError(e)) { resetOnFailure(); return; }
+        // Network error reaching sidecar → fall through to chain
+        ollamaSkipped = true;
+      }
+
+      // ── Step 2: Non-streaming fallback (full provider chain) ──────────────
       const { generateSummary } = await import('@/services/summarization');
       const result = await generateSummary(lines, undefined, this.panelId);
       overlay.classList.remove('panel-ai-overlay--loading');
@@ -867,16 +903,105 @@ export class Panel {
           ),
         );
       } else {
+        resetOnFailure();
+      }
+    } catch {
+      resetOnFailure();
+    } finally {
+      triggerBtn.removeAttribute('disabled');
+    }
+  }
+
+  /**
+   * Consume an Ollama SSE stream and render tokens progressively (typewriter effect).
+   * Replaces the loading overlay with a live text area + "Stop" button.
+   */
+  private async _runStreamingDisplay(
+    streamResp: Response,
+    overlay: HTMLElement,
+    triggerBtn: HTMLElement,
+  ): Promise<void> {
+    overlay.classList.remove('panel-ai-overlay--loading');
+
+    const textEl = document.createElement('p');
+    textEl.className = 'panel-ai-text panel-ai-text--streaming';
+
+    // Keep a ref so the stop button can cancel the reader
+    let readerRef: ReadableStreamDefaultReader<Uint8Array> | null = null;
+
+    const stopBtn = h('button', {
+      className: 'panel-ai-stop',
+      onClick: () => { try { readerRef?.cancel(); } catch { /* ignore */ } },
+    }, '■ Stop');
+
+    const providerSpan = h('span', { className: 'panel-ai-provider' }, 'AI · ollama ⋯');
+    const headerEl = h('div', { className: 'panel-ai-result-header' }, providerSpan, stopBtn);
+    overlay.innerHTML = '';
+    overlay.appendChild(h('div', { className: 'panel-ai-result' }, headerEl, textEl));
+
+    let accumulated = '';
+    const reader = (streamResp.body as ReadableStream<Uint8Array>).getReader();
+    readerRef = reader;
+    const decoder = new TextDecoder();
+    let sseBuffer = '';
+
+    try {
+      outer: while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        sseBuffer += decoder.decode(value, { stream: true });
+        const parts = sseBuffer.split('\n\n');
+        sseBuffer = parts.pop() ?? '';
+
+        for (const part of parts) {
+          for (const line of part.split('\n')) {
+            if (!line.startsWith('data: ')) continue;
+            const payload = line.slice(6).trim();
+            if (payload === '[DONE]') break outer;
+            try {
+              const chunk = JSON.parse(payload) as { token?: string; error?: string };
+              if (chunk.error) throw new Error(chunk.error);
+              if (chunk.token) {
+                accumulated += chunk.token;
+                textEl.textContent = accumulated;
+                // 20ms micro-pause every ~15 chars for natural typewriter pacing
+                if (accumulated.length % 15 === 0) {
+                  await new Promise<void>(r => setTimeout(r, 20));
+                }
+              }
+            } catch (e) {
+              if (e instanceof SyntaxError) continue;
+              throw e;
+            }
+          }
+        }
+      }
+    } catch {
+      // Stream error or reader cancelled by stop button — keep whatever was accumulated
+    } finally {
+      readerRef = null;
+      try { reader.cancel(); } catch { /* ignore */ }
+    }
+
+    // Replace stop button with close button once generation is done/stopped
+    providerSpan.textContent = 'AI · ollama';
+    textEl.classList.remove('panel-ai-text--streaming');
+    const closeBtn = h('button', {
+      className: 'panel-ai-close',
+      'aria-label': 'Close AI summary',
+      onClick: () => {
         overlay.remove();
         this.aiSummaryOverlay = null;
         triggerBtn.classList.remove('panel-ai-btn--active');
-      }
-    } catch {
+      },
+    }, '×');
+    if (stopBtn.parentElement) headerEl.replaceChild(closeBtn, stopBtn);
+
+    // If nothing was generated at all, remove the overlay
+    if (!accumulated.trim()) {
       overlay.remove();
       this.aiSummaryOverlay = null;
       triggerBtn.classList.remove('panel-ai-btn--active');
-    } finally {
-      triggerBtn.removeAttribute('disabled');
     }
   }
 

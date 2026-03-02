@@ -1421,12 +1421,33 @@ body.panel-resize-active iframe {
   padding: 0 2px;
 }
 .panel-ai-close:hover { color: rgba(255, 255, 255, 0.9); }
+.panel-ai-stop {
+  background: none;
+  border: 1px solid rgba(160, 100, 255, 0.35);
+  border-radius: 3px;
+  color: rgba(200, 160, 255, 0.75);
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  padding: 2px 5px;
+}
+.panel-ai-stop:hover { border-color: rgba(255, 80, 80, 0.5); color: rgba(255, 120, 120, 0.9); }
 .panel-ai-text {
   margin: 0;
   line-height: 1.5;
   font-size: 12px;
   color: rgba(220, 210, 255, 0.92);
 }
+.panel-ai-text--streaming::after {
+  content: '▋';
+  display: inline-block;
+  color: rgba(160, 100, 255, 0.8);
+  animation: panel-ai-cursor 0.9s step-end infinite;
+  margin-left: 1px;
+}
+@keyframes panel-ai-cursor { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 
 .panel-info-tooltip {
   position: absolute;
