@@ -1,8 +1,6 @@
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 
-declare const process: { env: Record<string, string | undefined> };
-
 let ratelimit: Ratelimit | null = null;
 
 function getRatelimit(): Ratelimit | null {

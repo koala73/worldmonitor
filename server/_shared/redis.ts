@@ -1,5 +1,3 @@
-declare const process: { env: Record<string, string | undefined> };
-
 const REDIS_OP_TIMEOUT_MS = 1_500;
 const REDIS_PIPELINE_TIMEOUT_MS = 5_000;
 

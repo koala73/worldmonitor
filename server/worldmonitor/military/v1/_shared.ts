@@ -1,10 +1,6 @@
-declare const process: { env: Record<string, string | undefined> };
-
 import type {
   AircraftDetails,
 } from '../../../../src/generated/server/worldmonitor/military/v1/service_server';
-
-
 
 // ========================================================================
 // Military identification
@@ -147,4 +143,3 @@ export function mapWingbitsDetails(icao24: string, data: Record<string, unknown>
     categoryDescription: String(data.categoryDescription ?? ''),
   };
 }
-

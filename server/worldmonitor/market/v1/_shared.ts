@@ -1,9 +1,6 @@
 /**
  * Shared helpers, types, and constants for the market service handler RPCs.
  */
-
-declare const process: { env: Record<string, string | undefined> };
-
 import { CHROME_UA, yahooGate } from '../../../_shared/constants';
 
 // ========================================================================

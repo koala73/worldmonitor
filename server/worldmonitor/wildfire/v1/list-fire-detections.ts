@@ -6,9 +6,6 @@
  *
  * Gracefully degrades to empty results when NASA_FIRMS_API_KEY is not set.
  */
-
-declare const process: { env: Record<string, string | undefined> };
-
 import type {
   WildfireServiceHandler,
   ServerContext,

@@ -13,9 +13,6 @@
  * No caching in handler (client-side polling manages refresh intervals).
  * GeoIP hydration uses in-memory cache for resolved IPs within a process lifetime.
  */
-
-declare const process: { env: Record<string, string | undefined> };
-
 import type {
   CyberThreat,
   CyberThreatType,
@@ -777,4 +774,3 @@ export function toProtoCyberThreat(raw: RawThreat): CyberThreat {
     lastSeenAt: raw.lastSeen,
   };
 }
-

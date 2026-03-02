@@ -2,9 +2,6 @@
  * RPC: ListMarketQuotes
  * Fetches stock/index quotes from Finnhub (stocks) and Yahoo Finance (indices/futures).
  */
-
-declare const process: { env: Record<string, string | undefined> };
-
 import type {
   ServerContext,
   ListMarketQuotesRequest,

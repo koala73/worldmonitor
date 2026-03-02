@@ -11,8 +11,6 @@ import { CHROME_UA } from '../../../_shared/constants';
 import { VARIANT_FEEDS, INTEL_SOURCES, type ServerFeed } from './_feeds';
 import { classifyByKeyword, type ThreatLevel } from './_classifier';
 
-declare const process: { env: Record<string, string | undefined> };
-
 const VALID_VARIANTS = new Set(['full', 'tech', 'finance', 'happy']);
 const fallbackDigestCache = new Map<string, { data: ListFeedDigestResponse; ts: number }>();
 const ITEMS_PER_FEED = 5;
