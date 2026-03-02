@@ -166,11 +166,14 @@ export class NewsPanel extends Panel {
         this.setCachedSummary(cacheKey, result.summary);
         this.showSummary(result.summary);
       } else {
-        this.summaryContainer.innerHTML = '<div class="panel-summary-error">Could not generate summary</div>';
+        this.summaryContainer.innerHTML = '<div class="panel-summary-error">Summary unavailable (no providers responded)</div>';
+        console.warn('[NewsPanel] generateSummary returned null — all providers exhausted');
         setTimeout(() => this.hideSummary(), 3000);
       }
-    } catch {
-      this.summaryContainer.innerHTML = '<div class="panel-summary-error">Summary failed</div>';
+    } catch (err) {
+      const reason = NewsPanel.classifyError(err);
+      this.summaryContainer.innerHTML = `<div class="panel-summary-error">Summary failed (${reason})</div>`;
+      console.warn('[NewsPanel] Summary error:', err);
       setTimeout(() => this.hideSummary(), 3000);
     } finally {
       this.isSummarizing = false;
@@ -228,6 +231,20 @@ export class NewsPanel extends Panel {
     if (!this.summaryContainer) return;
     this.summaryContainer.style.display = 'none';
     this.summaryContainer.innerHTML = '';
+  }
+
+  /** Classify an error into a short user-facing category string. */
+  private static classifyError(err: unknown): string {
+    if (err instanceof DOMException && err.name === 'AbortError') return 'request cancelled';
+    if (err instanceof TypeError && /fetch|network/i.test(err.message)) return 'network error';
+    if (err instanceof Error) {
+      const msg = err.message.toLowerCase();
+      if (msg.includes('timeout') || msg.includes('timed out')) return 'timeout';
+      if (msg.includes('rate') || msg.includes('429') || msg.includes('quota')) return 'rate limited';
+      if (msg.includes('401') || msg.includes('403') || msg.includes('unauthorized')) return 'auth error';
+      if (msg.includes('5') && msg.includes('00')) return 'server error';
+    }
+    return 'unexpected error';
   }
 
   private getHeadlineSignature(): string {
