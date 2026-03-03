@@ -874,7 +874,8 @@
         "tradeRoutes": "Tuyến Thương mại",
         "gpsJamming": "GPS JAMMING",
         "dayNight": "Ngày/Đêm",
-        "iranAttacks": "Tấn công Iran"
+        "iranAttacks": "Tấn công Iran",
+        "geopoliticalBoundaries": "Ranh Giới Địa Chính Trị"
       },
       "tooltip": {
         "earthquake": "Động đất",
@@ -978,11 +979,15 @@
           "mineralsFull": "Mỏ khoáng sản chiến lược và địa điểm khai thác",
           "techCyberThreats": "Tấn công mạng và sự kiện an ninh",
           "techEvents": "Hội nghị và sự kiện công nghệ lớn",
-          "techFires": "Cháy rừng đang hoạt động gần hạ tầng công nghệ"
+          "techFires": "Cháy rừng đang hoạt động gần hạ tầng công nghệ",
+          "geoBoundaries": "Khu phi quân sự, đường ngừng bắn và ranh giới tranh chấp"
         },
         "notes": {
           "timeAffects": "Ảnh hưởng: Động đất, Thời tiết, Biểu tình, Gián đoạn"
         }
+      },
+      "help": {
+        "geoBoundaries": "Khu phi quân sự, đường ngừng bắn và ranh giới tranh chấp"
       }
     },
     "cii": {
@@ -1977,6 +1982,19 @@
     },
     "iranEvent": {
       "relatedEvents": "Sự kiện Liên quan"
+    },
+    "geopoliticalBoundary": {
+      "title": "RANH GIỚI ĐỊA CHÍNH TRỊ",
+      "established": "THÀNH LẬP",
+      "dimensions": "KÍCH THƯỚC",
+      "legalBasis": "CƠ SỞ PHÁP LÝ",
+      "parties": "CÁC BÊN KÝ KẾT",
+      "types": {
+        "demilitarized": "KHU PHI QUÂN SỰ",
+        "ceasefire": "ĐƯỜNG NGỪNG BẮN",
+        "disputed": "RANH GIỚI TRANH CHẤP",
+        "armistice": "ĐƯỜNG ĐÌNH CHIẾN"
+      }
     }
   },
   "signals": {

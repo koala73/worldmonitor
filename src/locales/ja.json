@@ -874,7 +874,8 @@
         "tradeRoutes": "貿易ルート",
         "gpsJamming": "GPS JAMMING",
         "dayNight": "昼/夜",
-        "iranAttacks": "イラン攻撃"
+        "iranAttacks": "イラン攻撃",
+        "geopoliticalBoundaries": "地政学的境界"
       },
       "tooltip": {
         "earthquake": "地震",
@@ -978,11 +979,15 @@
           "mineralsFull": "戦略的鉱物資源の鉱床と採掘拠点",
           "techCyberThreats": "サイバー攻撃およびセキュリティイベント",
           "techEvents": "主要テックカンファレンスとイベント",
-          "techFires": "テックインフラ付近の活動中の山火事"
+          "techFires": "テックインフラ付近の活動中の山火事",
+          "geoBoundaries": "非武装地帯、停戦ライン、係争境界線"
         },
         "notes": {
           "timeAffects": "影響: 地震、気象、抗議活動、障害"
         }
+      },
+      "help": {
+        "geoBoundaries": "非武装地帯、停戦ライン、係争境界線"
       }
     },
     "cii": {
@@ -1977,6 +1982,19 @@
     },
     "iranEvent": {
       "relatedEvents": "関連イベント"
+    },
+    "geopoliticalBoundary": {
+      "title": "地政学的境界",
+      "established": "設定日",
+      "dimensions": "規模",
+      "legalBasis": "法的根拠",
+      "parties": "署名国",
+      "types": {
+        "demilitarized": "非武装地帯",
+        "ceasefire": "停戦ライン",
+        "disputed": "係争境界",
+        "armistice": "休戦ライン"
+      }
     }
   },
   "signals": {

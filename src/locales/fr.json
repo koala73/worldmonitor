@@ -874,7 +874,8 @@
         "tradeRoutes": "Routes Commerciales",
         "gpsJamming": "GPS JAMMING",
         "dayNight": "Jour/Nuit",
-        "iranAttacks": "Attaques iraniennes"
+        "iranAttacks": "Attaques iraniennes",
+        "geopoliticalBoundaries": "Frontières Géopolitiques"
       },
       "tooltip": {
         "earthquake": "Tremblement de terre",
@@ -978,11 +979,15 @@
           "mineralsFull": "Gisements de minéraux stratégiques et sites miniers",
           "techCyberThreats": "Cyberattaques et événements de sécurité",
           "techEvents": "Grandes conférences et événements technologiques",
-          "techFires": "Incendies actifs à proximité d'infrastructures technologiques"
+          "techFires": "Incendies actifs à proximité d'infrastructures technologiques",
+          "geoBoundaries": "Zones démilitarisées, lignes de cessez-le-feu et frontières contestées"
         },
         "notes": {
           "timeAffects": "Affecte : tremblements de terre, conditions météorologiques, manifestations, pannes"
         }
+      },
+      "help": {
+        "geoBoundaries": "Zones démilitarisées, lignes de cessez-le-feu et frontières contestées"
       }
     },
     "cii": {
@@ -1977,6 +1982,19 @@
       "uae_ecsr": "EAU/CEDS",
       "venezuela_crisis": "Crise au Venezuela",
       "yemen_houthis": "Yémen/Houtis"
+    },
+    "geopoliticalBoundary": {
+      "title": "FRONTIÈRE GÉOPOLITIQUE",
+      "established": "ÉTABLI",
+      "dimensions": "DIMENSIONS",
+      "legalBasis": "BASE LÉGALE",
+      "parties": "SIGNATAIRES",
+      "types": {
+        "demilitarized": "ZONE DÉMILITARISÉE",
+        "ceasefire": "LIGNE DE CESSEZ-LE-FEU",
+        "disputed": "FRONTIÈRE CONTESTÉE",
+        "armistice": "LIGNE D'ARMISTICE"
+      }
     }
   },
   "signals": {

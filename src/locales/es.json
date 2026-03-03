@@ -749,7 +749,8 @@
         "tradeRoutes": "Rutas Comerciales",
         "iranAttacks": "Ataques de Irán",
         "gpsJamming": "GPS JAMMING",
-        "dayNight": "Día/Noche"
+        "dayNight": "Día/Noche",
+        "geopoliticalBoundaries": "Fronteras Geopolíticas"
       },
       "layersTitle": "capas",
       "layerGuide": "Guía de capas",
@@ -855,11 +856,15 @@
           "techCyberThreats": "Ciberataques y eventos de seguridad",
           "techEvents": "Principales conferencias y eventos tecnológicos",
           "techFires": "Incendios forestales activos cerca de infraestructura tecnológica",
-          "financeGulfInvestments": "Inversiones de fondos soberanos del CCG e inversión extranjera directa"
+          "financeGulfInvestments": "Inversiones de fondos soberanos del CCG e inversión extranjera directa",
+          "geoBoundaries": "Zonas desmilitarizadas, líneas de alto el fuego y fronteras en disputa"
         },
         "notes": {
           "timeAffects": "Afecta: terremotos, clima, protestas, apagones"
         }
+      },
+      "help": {
+        "geoBoundaries": "Zonas desmilitarizadas, líneas de alto el fuego y fronteras en disputa"
       }
     },
     "climate": {
@@ -1977,6 +1982,19 @@
       "uae_ecsr": "EAU/ECSR",
       "venezuela_crisis": "crisis venezolana",
       "yemen_houthis": "Yemen/Hutíes"
+    },
+    "geopoliticalBoundary": {
+      "title": "FRONTERA GEOPOLÍTICA",
+      "established": "ESTABLECIDA",
+      "dimensions": "DIMENSIONES",
+      "legalBasis": "BASE LEGAL",
+      "parties": "SIGNATARIOS",
+      "types": {
+        "demilitarized": "ZONA DESMILITARIZADA",
+        "ceasefire": "LÍNEA DE ALTO EL FUEGO",
+        "disputed": "FRONTERA EN DISPUTA",
+        "armistice": "LÍNEA DE ARMISTICIO"
+      }
     }
   },
   "signals": {

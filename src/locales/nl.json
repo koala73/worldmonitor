@@ -497,7 +497,8 @@
         "tradeRoutes": "Handelsroutes",
         "gpsJamming": "GPS JAMMING",
         "dayNight": "Dag/Nacht",
-        "iranAttacks": "Iraanse aanvallen"
+        "iranAttacks": "Iraanse aanvallen",
+        "geopoliticalBoundaries": "Geopolitieke Grenzen"
       },
       "layersTitle": "Lagen",
       "layerGuide": "Lagengids",
@@ -603,11 +604,15 @@
           "mineralsFull": "Strategische minerale afzettingen en mijnbouwlocaties",
           "techCyberThreats": "Cyberaanvallen en beveiligingsincidenten",
           "techEvents": "Grote techconferenties en evenementen",
-          "techFires": "Actieve bosbranden nabij technische infrastructuur"
+          "techFires": "Actieve bosbranden nabij technische infrastructuur",
+          "geoBoundaries": "Gedemilitariseerde zones, staakt-het-vuren-lijnen en betwiste grenzen"
         },
         "notes": {
           "timeAffects": "Beïnvloedt: aardbevingen, weer, protesten, stroomstoringen"
         }
+      },
+      "help": {
+        "geoBoundaries": "Gedemilitariseerde zones, staakt-het-vuren-lijnen en betwiste grenzen"
       }
     },
     "climate": {
@@ -1831,6 +1836,19 @@
     },
     "iranEvent": {
       "relatedEvents": "Gerelateerde gebeurtenissen"
+    },
+    "geopoliticalBoundary": {
+      "title": "GEOPOLITIEKE GRENS",
+      "established": "OPGERICHT",
+      "dimensions": "AFMETINGEN",
+      "legalBasis": "JURIDISCHE BASIS",
+      "parties": "ONDERTEKENAARS",
+      "types": {
+        "demilitarized": "GEDEMILITARISEERDE ZONE",
+        "ceasefire": "STAAKT-HET-VUREN-LIJN",
+        "disputed": "BETWISTE GRENS",
+        "armistice": "WAPENSTILSTANDSLIJN"
+      }
     }
   },
   "signals": {

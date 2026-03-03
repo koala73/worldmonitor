@@ -497,7 +497,8 @@
         "tradeRoutes": "Handelsrutter",
         "gpsJamming": "GPS JAMMING",
         "dayNight": "Dag/Natt",
-        "iranAttacks": "Iran-attacker"
+        "iranAttacks": "Iran-attacker",
+        "geopoliticalBoundaries": "Geopolitiska Gränser"
       },
       "layersTitle": "Lager",
       "layerGuide": "Lagerguide",
@@ -603,11 +604,15 @@
           "mineralsFull": "Strategiska mineralfyndigheter och gruvplatser",
           "techCyberThreats": "Cyberattacker och säkerhetshändelser",
           "techEvents": "Stora teknikkonferenser och evenemang",
-          "techFires": "Aktiva skogsbränder nära teknikinfrastruktur"
+          "techFires": "Aktiva skogsbränder nära teknikinfrastruktur",
+          "geoBoundaries": "Demilitariserade zoner, eldupphörslinjer och omtvistade gränser"
         },
         "notes": {
           "timeAffects": "Påverkar: Jordbävningar, väder, protester, avbrott"
         }
+      },
+      "help": {
+        "geoBoundaries": "Demilitariserade zoner, eldupphörslinjer och omtvistade gränser"
       }
     },
     "climate": {
@@ -1831,6 +1836,19 @@
     },
     "iranEvent": {
       "relatedEvents": "Relaterade händelser"
+    },
+    "geopoliticalBoundary": {
+      "title": "GEOPOLITISK GRÄNS",
+      "established": "UPPRÄTTAD",
+      "dimensions": "DIMENSIONER",
+      "legalBasis": "RÄTTSLIG GRUND",
+      "parties": "UNDERTECKNARE",
+      "types": {
+        "demilitarized": "DEMILITARISERAD ZON",
+        "ceasefire": "ELDUPPHÖRSLINJE",
+        "disputed": "OMTVISTAD GRÄNS",
+        "armistice": "VAPENSTILLESTÅNDSLINJE"
+      }
     }
   },
   "signals": {

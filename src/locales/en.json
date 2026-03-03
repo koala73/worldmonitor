@@ -953,7 +953,8 @@
         "tradeRoutes": "Trade Routes",
         "iranAttacks": "Iran Attacks",
         "gpsJamming": "GPS JAMMING",
-        "dayNight": "Day/Night"
+        "dayNight": "Day/Night",
+        "geopoliticalBoundaries": "Geopolitical Boundaries"
       },
       "tooltip": {
         "earthquake": "Earthquake",
@@ -1057,11 +1058,15 @@
           "techFires": "Active wildfires near tech infrastructure",
           "financeGulfInvestments": "GCC sovereign wealth fund investments and FDI",
           "tradeRoutes": "Major global shipping lanes connecting ports through strategic chokepoints",
-          "dayNight": "Real-time solar terminator showing day and night zones"
+          "dayNight": "Real-time solar terminator showing day and night zones",
+          "geoBoundaries": "Demilitarized zones, ceasefire lines, and disputed boundaries"
         },
         "notes": {
           "timeAffects": "Affects: Earthquakes, Weather, Protests, Outages"
         }
+      },
+      "help": {
+        "geoBoundaries": "Demilitarized zones, ceasefire lines, and disputed boundaries"
       }
     },
     "cii": {
@@ -2044,6 +2049,19 @@
       "uae_ecsr": "UAE/ECSR",
       "venezuela_crisis": "Venezuela Crisis",
       "yemen_houthis": "Yemen/Houthis"
+    },
+    "geopoliticalBoundary": {
+      "title": "GEOPOLITICAL BOUNDARY",
+      "established": "ESTABLISHED",
+      "dimensions": "DIMENSIONS",
+      "legalBasis": "LEGAL BASIS",
+      "parties": "SIGNATORIES",
+      "types": {
+        "demilitarized": "DEMILITARIZED ZONE",
+        "ceasefire": "CEASEFIRE LINE",
+        "disputed": "DISPUTED BOUNDARY",
+        "armistice": "ARMISTICE LINE"
+      }
     }
   },
   "signals": {

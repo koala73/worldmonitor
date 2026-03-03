@@ -874,7 +874,8 @@
         "tradeRoutes": "Ticaret Rotaları",
         "gpsJamming": "GPS JAMMING",
         "dayNight": "Gündüz/Gece",
-        "iranAttacks": "İran Saldırıları"
+        "iranAttacks": "İran Saldırıları",
+        "geopoliticalBoundaries": "Jeopolitik Sınırlar"
       },
       "tooltip": {
         "earthquake": "Deprem",
@@ -978,11 +979,15 @@
           "mineralsFull": "Stratejik mineral yatakları ve madencilik alanları",
           "techCyberThreats": "Siber saldırılar ve güvenlik olayları",
           "techEvents": "Büyük teknoloji konferansları ve etkinlikleri",
-          "techFires": "Teknoloji altyapısına yakın aktif orman yangınları"
+          "techFires": "Teknoloji altyapısına yakın aktif orman yangınları",
+          "geoBoundaries": "Silahsızlandırılmış bölgeler, ateşkes hatları ve tartışmalı sınırlar"
         },
         "notes": {
           "timeAffects": "Etkiler: Depremler, Hava Durumu, Protestolar, Kesintiler"
         }
+      },
+      "help": {
+        "geoBoundaries": "Silahsızlandırılmış bölgeler, ateşkes hatları ve tartışmalı sınırlar"
       }
     },
     "cii": {
@@ -1977,6 +1982,19 @@
     },
     "iranEvent": {
       "relatedEvents": "İlgili Olaylar"
+    },
+    "geopoliticalBoundary": {
+      "title": "JEOPOLİTİK SINIR",
+      "established": "KURULDU",
+      "dimensions": "BOYUTLAR",
+      "legalBasis": "HUKUKİ DAYANAK",
+      "parties": "İMZACILAR",
+      "types": {
+        "demilitarized": "ASKERSİZ BÖLGE",
+        "ceasefire": "ATEŞKES HATTI",
+        "disputed": "TARTIŞMALI SINIR",
+        "armistice": "MÜTAREKEHATTİ"
+      }
     }
   },
   "signals": {
