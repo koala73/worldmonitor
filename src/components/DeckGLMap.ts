@@ -322,6 +322,16 @@ export class DeckGLMap {
   private rafUpdateLayers: () => void;
   private moveTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
+  // ── Drill-Down & 360° Orbit State ──────────────────────────
+  private orbitEnabled = false;
+  private orbitSpeed = 9; // degrees per second (MED default)
+  private orbitAnimationId: number | null = null;
+  private lastOrbitTimestamp = 0;
+  private drillDownActive = false;
+  private preDrillDownState: { zoom: number; pitch: number; bearing: number } | null = null;
+  private drillDownGeocodeTimeout: ReturnType<typeof setTimeout> | null = null;
+  private drillDownOverlayEl: HTMLElement | null = null;
+
   constructor(container: HTMLElement, initialState: DeckMapState) {
     this.container = container;
     this.state = initialState;
@@ -362,6 +372,8 @@ export class DeckGLMap {
     this.setupResizeObserver();
 
     this.createControls();
+    this.createDrillDownControls();
+    this.createDrillDownOverlay();
     this.createTimeSlider();
     this.createLayerToggles();
     this.createLegend();
@@ -3911,7 +3923,256 @@ export class DeckGLMap {
     } catch { /* layers may not be ready */ }
   }
 
+  // ── Drill-Down & 360° Orbit ───────────────────────────────────
+
+  private createDrillDownControls(): void {
+    const existingControls = this.container.querySelector('.deckgl-controls');
+    if (!existingControls) return;
+
+    const drillGroup = document.createElement('div');
+    drillGroup.className = 'drill-group';
+    drillGroup.innerHTML = `
+      <button class="drill-btn" title="${t('components.deckgl.drillDown')}">&#11015;</button>
+      <button class="orbit-btn" title="${t('components.deckgl.orbit')}">&#9678;</button>
+      <div class="orbit-speed-group">
+        <button class="orbit-speed-btn" data-orbit-speed="3">${t('components.deckgl.slow')}</button>
+        <button class="orbit-speed-btn active" data-orbit-speed="9">${t('components.deckgl.med')}</button>
+        <button class="orbit-speed-btn" data-orbit-speed="24">${t('components.deckgl.fast')}</button>
+      </div>
+    `;
+
+    existingControls.appendChild(drillGroup);
+
+    // Drill-down toggle
+    const drillBtn = drillGroup.querySelector('.drill-btn') as HTMLElement;
+    drillBtn.addEventListener('click', () => {
+      if (this.drillDownActive) {
+        this.exitDrillDown();
+        drillBtn.innerHTML = '&#11015;';
+        drillBtn.title = t('components.deckgl.drillDown');
+        drillBtn.classList.remove('active');
+      } else {
+        this.drillDown();
+        drillBtn.innerHTML = '&#11014;';
+        drillBtn.title = t('components.deckgl.exitDrill');
+        drillBtn.classList.add('active');
+      }
+    });
+
+    // Orbit toggle
+    const orbitBtn = drillGroup.querySelector('.orbit-btn') as HTMLElement;
+    orbitBtn.addEventListener('click', () => {
+      this.toggleOrbit();
+      orbitBtn.classList.toggle('active', this.orbitEnabled);
+      orbitBtn.title = this.orbitEnabled
+        ? t('components.deckgl.orbitOn')
+        : t('components.deckgl.orbit');
+    });
+
+    // Orbit speed buttons
+    drillGroup.querySelectorAll('.orbit-speed-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        this.orbitSpeed = parseFloat((btn as HTMLElement).dataset.orbitSpeed || '9');
+        drillGroup.querySelectorAll('.orbit-speed-btn').forEach(b => {
+          b.classList.toggle('active', b === btn);
+        });
+      });
+    });
+  }
+
+  private createDrillDownOverlay(): void {
+    const overlay = document.createElement('div');
+    overlay.className = 'drill-down-overlay';
+    overlay.innerHTML = `
+      <div class="drill-title">${t('components.deckgl.drillCaption')}</div>
+      <div class="drill-location">---</div>
+      <div class="drill-stats">
+        <span class="drill-stat"><span class="drill-stat-label">ZOOM</span><span class="drill-stat-value drill-zoom">--</span></span>
+        <span class="drill-stat"><span class="drill-stat-label">PITCH</span><span class="drill-stat-value drill-pitch">--</span></span>
+        <span class="drill-stat"><span class="drill-stat-label">BRG</span><span class="drill-stat-value drill-bearing">--</span></span>
+        <span class="drill-stat"><span class="drill-stat-label">LAT</span><span class="drill-stat-value drill-lat">--</span></span>
+        <span class="drill-stat"><span class="drill-stat-label">LON</span><span class="drill-stat-value drill-lon">--</span></span>
+      </div>
+    `;
+
+    this.container.appendChild(overlay);
+    this.drillDownOverlayEl = overlay;
+
+    // Listen for map move to update the overlay
+    this.maplibreMap?.on('move', () => this.updateDrillDownOverlay());
+    this.maplibreMap?.on('moveend', () => this.reverseGeocodeCenter());
+  }
+
+  private updateDrillDownOverlay(): void {
+    if (!this.maplibreMap || !this.drillDownOverlayEl) return;
+
+    const zoom = this.maplibreMap.getZoom();
+    const shouldShow = zoom >= 8 || this.drillDownActive || this.orbitEnabled;
+
+    this.drillDownOverlayEl.classList.toggle('visible', shouldShow);
+
+    if (!shouldShow) return;
+
+    const center = this.maplibreMap.getCenter();
+    const pitch = this.maplibreMap.getPitch();
+    const bearing = this.maplibreMap.getBearing();
+    const brgNorm = ((bearing % 360) + 360) % 360;
+
+    const zoomEl = this.drillDownOverlayEl.querySelector('.drill-zoom');
+    const pitchEl = this.drillDownOverlayEl.querySelector('.drill-pitch');
+    const bearingEl = this.drillDownOverlayEl.querySelector('.drill-bearing');
+    const latEl = this.drillDownOverlayEl.querySelector('.drill-lat');
+    const lonEl = this.drillDownOverlayEl.querySelector('.drill-lon');
+
+    if (zoomEl) zoomEl.textContent = zoom.toFixed(1);
+    if (pitchEl) pitchEl.textContent = `${pitch.toFixed(0)}°`;
+    if (bearingEl) bearingEl.textContent = `${brgNorm.toFixed(0)}°`;
+    if (latEl) latEl.textContent = center.lat.toFixed(4);
+    if (lonEl) lonEl.textContent = center.lng.toFixed(4);
+  }
+
+  private reverseGeocodeCenter(): void {
+    if (!this.maplibreMap || !this.drillDownOverlayEl) return;
+
+    const zoom = this.maplibreMap.getZoom();
+    if (zoom < 8 && !this.drillDownActive && !this.orbitEnabled) return;
+
+    // Debounce the geocode request
+    if (this.drillDownGeocodeTimeout) clearTimeout(this.drillDownGeocodeTimeout);
+    this.drillDownGeocodeTimeout = setTimeout(async () => {
+      if (!this.maplibreMap) return;
+      const center = this.maplibreMap.getCenter();
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?lat=${center.lat}&lon=${center.lng}&format=json&zoom=10`,
+          { headers: { 'User-Agent': 'WorldMonitor/1.0' } }
+        );
+        const data = await res.json();
+        const locationEl = this.drillDownOverlayEl?.querySelector('.drill-location');
+        if (locationEl && data.display_name) {
+          // Truncate to a reasonable length
+          const name = data.display_name.length > 50
+            ? data.display_name.substring(0, 47) + '...'
+            : data.display_name;
+          locationEl.textContent = name;
+        }
+      } catch {
+        // Silent fail for geocoding
+      }
+    }, 1000);
+  }
+
+  private drillDown(): void {
+    if (!this.maplibreMap || this.drillDownActive) return;
+
+    // Save current state for exit
+    this.preDrillDownState = {
+      zoom: this.maplibreMap.getZoom(),
+      pitch: this.maplibreMap.getPitch(),
+      bearing: this.maplibreMap.getBearing(),
+    };
+
+    this.drillDownActive = true;
+
+    // Fly to current center at deep zoom with 3D perspective
+    const center = this.maplibreMap.getCenter();
+    this.maplibreMap.flyTo({
+      center: [center.lng, center.lat],
+      zoom: 14,
+      pitch: 60,
+      bearing: 30,
+      duration: 2000,
+    });
+  }
+
+  private exitDrillDown(): void {
+    if (!this.maplibreMap || !this.drillDownActive) return;
+
+    this.drillDownActive = false;
+
+    // Stop orbit if running
+    if (this.orbitEnabled) {
+      this.toggleOrbit();
+      const orbitBtn = this.container.querySelector('.orbit-btn') as HTMLElement;
+      if (orbitBtn) orbitBtn.classList.remove('active');
+    }
+
+    // Restore pre-drill state
+    const saved = this.preDrillDownState;
+    if (saved) {
+      this.maplibreMap.flyTo({
+        center: this.maplibreMap.getCenter(),
+        zoom: saved.zoom,
+        pitch: saved.pitch,
+        bearing: saved.bearing,
+        duration: 1500,
+      });
+      this.preDrillDownState = null;
+    } else {
+      // Fallback: reset to flat view
+      this.maplibreMap.flyTo({
+        pitch: 0,
+        bearing: 0,
+        zoom: this.maplibreMap.getZoom(),
+        duration: 1000,
+      });
+    }
+  }
+
+  private toggleOrbit(): void {
+    this.orbitEnabled = !this.orbitEnabled;
+
+    if (this.orbitEnabled) {
+      // If not already tilted, tilt for 3D perspective
+      if (this.maplibreMap && this.maplibreMap.getPitch() < 30) {
+        this.maplibreMap.flyTo({
+          pitch: 50,
+          duration: 800,
+        });
+      }
+      this.lastOrbitTimestamp = performance.now();
+      this.orbitFrame(this.lastOrbitTimestamp);
+    } else {
+      if (this.orbitAnimationId !== null) {
+        cancelAnimationFrame(this.orbitAnimationId);
+        this.orbitAnimationId = null;
+      }
+    }
+  }
+
+  private orbitFrame = (timestamp: number): void => {
+    if (!this.orbitEnabled || !this.maplibreMap) {
+      this.orbitAnimationId = null;
+      return;
+    }
+
+    const dt = (timestamp - this.lastOrbitTimestamp) / 1000; // seconds
+    this.lastOrbitTimestamp = timestamp;
+
+    // Clamp dt to avoid huge jumps if tab was backgrounded
+    const clampedDt = Math.min(dt, 0.1);
+    const currentBearing = this.maplibreMap.getBearing();
+    this.maplibreMap.setBearing(currentBearing + this.orbitSpeed * clampedDt);
+
+    // Update overlay during orbit
+    this.updateDrillDownOverlay();
+
+    this.orbitAnimationId = requestAnimationFrame(this.orbitFrame);
+  };
+
   public destroy(): void {
+    // Cancel orbit animation
+    if (this.orbitAnimationId !== null) {
+      cancelAnimationFrame(this.orbitAnimationId);
+      this.orbitAnimationId = null;
+    }
+
+    // Clear geocode debounce
+    if (this.drillDownGeocodeTimeout) {
+      clearTimeout(this.drillDownGeocodeTimeout);
+      this.drillDownGeocodeTimeout = null;
+    }
+
     if (this.moveTimeoutId) {
       clearTimeout(this.moveTimeoutId);
       this.moveTimeoutId = null;

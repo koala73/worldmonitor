@@ -11465,6 +11465,175 @@ a.prediction-link:hover {
   border-color: var(--green);
 }
 
+/* ── Drill-Down & 360° Orbit Controls ──────────────────────────── */
+.deckgl-controls .drill-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+  border-top: 1px solid var(--border);
+  padding-top: 6px;
+}
+
+.deckgl-controls .drill-btn,
+.deckgl-controls .orbit-btn {
+  width: 32px;
+  height: 32px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  pointer-events: auto;
+  position: relative;
+  z-index: 1;
+}
+
+.deckgl-controls .drill-btn:hover,
+.deckgl-controls .orbit-btn:hover {
+  border-color: var(--green);
+  color: var(--text);
+}
+
+.deckgl-controls .drill-btn.active {
+  background: rgba(68, 255, 136, 0.1);
+  border-color: var(--green);
+  color: var(--green);
+  box-shadow: 0 0 6px rgba(68, 255, 136, 0.2);
+}
+
+.deckgl-controls .orbit-btn.active {
+  background: rgba(255, 170, 0, 0.1);
+  border-color: #ffaa00;
+  color: #ffaa00;
+  box-shadow: 0 0 6px rgba(255, 170, 0, 0.2);
+  animation: orbit-glow 2s ease-in-out infinite;
+}
+
+@keyframes orbit-glow {
+  0%, 100% { box-shadow: 0 0 6px rgba(255, 170, 0, 0.2); }
+  50%      { box-shadow: 0 0 14px rgba(255, 170, 0, 0.4); }
+}
+
+.deckgl-controls .orbit-speed-group {
+  display: flex;
+  gap: 1px;
+  overflow: hidden;
+}
+
+.deckgl-controls .orbit-speed-btn {
+  flex: 1;
+  padding: 2px 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 7px;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+.deckgl-controls .orbit-speed-btn:hover {
+  border-color: var(--green);
+  color: var(--text);
+}
+
+.deckgl-controls .orbit-speed-btn.active {
+  background: rgba(68, 255, 136, 0.08);
+  border-color: var(--green);
+  color: var(--green);
+}
+
+/* ── Drill-Down Caption Overlay ──────────────────────────────── */
+.drill-down-overlay {
+  position: absolute;
+  bottom: 42px;
+  left: 10px;
+  z-index: 500;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-family: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  max-width: 300px;
+}
+
+.drill-down-overlay.visible {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.drill-down-overlay .drill-title {
+  font-size: 8px;
+  font-weight: bold;
+  letter-spacing: 1.5px;
+  color: var(--green);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+
+.drill-down-overlay .drill-location {
+  font-size: 11px;
+  color: var(--text);
+  font-weight: 500;
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.drill-down-overlay .drill-stats {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.drill-down-overlay .drill-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+}
+
+.drill-down-overlay .drill-stat-label {
+  font-size: 8px;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.drill-down-overlay .drill-stat-value {
+  font-size: 10px;
+  color: var(--text);
+}
+
+/* Light theme overrides for drill-down */
+[data-theme="light"] .deckgl-controls .drill-btn.active {
+  background: rgba(22, 163, 74, 0.1);
+  border-color: var(--green);
+  color: var(--green);
+}
+
+[data-theme="light"] .deckgl-controls .orbit-btn.active {
+  background: rgba(217, 119, 6, 0.1);
+  border-color: #d97706;
+  color: #d97706;
+}
+
+[data-theme="light"] .drill-down-overlay .drill-title {
+  color: var(--green);
+}
+
 /* deck.gl Time Slider */
 .deckgl-time-slider {
   position: absolute;
