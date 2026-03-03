@@ -26,7 +26,8 @@ export type RuntimeSecretKey =
   | 'OLLAMA_MODEL'
   | 'WTO_API_KEY'
   | 'AVIATIONSTACK_API'
-  | 'ICAO_API_KEY';
+  | 'ICAO_API_KEY'
+  | 'THREATFOX_API_KEY';
 
 export type RuntimeFeatureId =
   | 'aiClaude'
@@ -49,7 +50,11 @@ export type RuntimeFeatureId =
   | 'wtoTrade'
   | 'supplyChain'
   | 'aviationStack'
-  | 'icaoNotams';
+  | 'icaoNotams'
+  | 'threatfoxThreatIntel'
+  | 'openPhishThreatIntel'
+  | 'spamhausDrop'
+  | 'cisaKev';
 
 export interface RuntimeFeatureDefinition {
   id: RuntimeFeatureId;
@@ -100,6 +105,10 @@ const defaultToggles: Record<RuntimeFeatureId, boolean> = {
   supplyChain: true,
   aviationStack: true,
   icaoNotams: true,
+  threatfoxThreatIntel: true,
+  openPhishThreatIntel: true,
+  spamhausDrop: true,
+  cisaKev: true,
 };
 
 export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
@@ -269,6 +278,38 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
     requiredSecrets: ['ICAO_API_KEY'],
     desktopRequiredSecrets: [],
     fallback: 'Closures detected only via AviationStack flight cancellation data.',
+  },
+  {
+    id: 'threatfoxThreatIntel',
+    name: 'ThreatFox malware IOC feed',
+    description: 'Abuse.ch ThreatFox C2/malware indicator feed — requires a free auth key from auth.abuse.ch.',
+    requiredSecrets: ['THREATFOX_API_KEY'],
+    desktopRequiredSecrets: [],
+    fallback: 'ThreatFox IOC ingestion is disabled.',
+  },
+  {
+    id: 'openPhishThreatIntel',
+    name: 'OpenPhish phishing feed',
+    description: 'OpenPhish community phishing URL feed — no key required, always on.',
+    requiredSecrets: [],
+    desktopRequiredSecrets: [],
+    fallback: 'OpenPhish feed is disabled.',
+  },
+  {
+    id: 'spamhausDrop',
+    name: 'Spamhaus DROP/EDROP blocklist',
+    description: 'Spamhaus Don\'t Route Or Peer (DROP) CIDR blocklist — no key required.',
+    requiredSecrets: [],
+    desktopRequiredSecrets: [],
+    fallback: 'Spamhaus CIDR blocklist is disabled.',
+  },
+  {
+    id: 'cisaKev',
+    name: 'CISA Known Exploited Vulnerabilities',
+    description: 'CISA KEV catalog of actively exploited CVEs — no key required.',
+    requiredSecrets: [],
+    desktopRequiredSecrets: [],
+    fallback: 'CISA KEV catalog is disabled.',
   },
 ];
 

@@ -57,6 +57,7 @@ const SECRET_ANALYTICS_NAMES: Record<RuntimeSecretKey, string> = {
   WTO_API_KEY: 'wto',
   AVIATIONSTACK_API: 'aviationstack',
   ICAO_API_KEY: 'icao',
+  THREATFOX_API_KEY: 'threatfox',
 };
 
 // ── Typed event schemas (allowlisted properties per event) ──

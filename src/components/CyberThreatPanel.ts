@@ -13,7 +13,7 @@ export class CyberThreatPanel extends Panel {
       title: t('panels.cyberThreats'),
       showCount: true,
       trackActivity: true,
-      infoTooltip: 'Live IOC feed from Feodo, URLhaus, C2Intel, OTX, and AbuseIPDB — updated every 15 minutes.',
+      infoTooltip: 'Live IOC feed from Feodo, URLhaus, C2Intel, OTX, AbuseIPDB, ThreatFox, OpenPhish, Spamhaus DROP, and CISA KEV — updated every 15 minutes.',
     });
     this.showLoading('Loading threat intelligence...');
   }
@@ -66,7 +66,7 @@ export class CyberThreatPanel extends Panel {
           <tbody>${rows}</tbody>
         </table>
         <div class="fires-footer">
-          <span class="fires-source">Feodo · URLhaus · C2Intel · OTX · AbuseIPDB</span>
+          <span class="fires-source">Feodo · URLhaus · C2Intel · OTX · AbuseIPDB · ThreatFox · OpenPhish · Spamhaus DROP · CISA KEV</span>
           <span class="fires-updated">Updated ${ago}</span>
         </div>
       </div>
@@ -83,11 +83,17 @@ function severityClass(s: CyberThreatSeverity): string {
 }
 
 function typeLabel(t: string): string {
-  return { c2_server: 'C2', malware_host: 'Malware', phishing: 'Phish', malicious_url: 'URL' }[t] ?? t;
+  return {
+    c2_server: 'C2', malware_host: 'Malware', phishing: 'Phish', malicious_url: 'URL',
+    malicious_ip_range: 'IP Range', exploited_vulnerability: 'CVE',
+  }[t] ?? t;
 }
 
 function sourceLabel(s: string): string {
-  return { feodo: 'Feodo', urlhaus: 'URLhaus', c2intel: 'C2Intel', otx: 'OTX', abuseipdb: 'AbuseIPDB' }[s] ?? s;
+  return {
+    feodo: 'Feodo', urlhaus: 'URLhaus', c2intel: 'C2Intel', otx: 'OTX', abuseipdb: 'AbuseIPDB',
+    threatfox: 'ThreatFox', openphish: 'OpenPhish', spamhaus: 'Spamhaus', cisa_kev: 'CISA KEV',
+  }[s] ?? s;
 }
 
 function timeAgo(isoOrDate: string): string {

@@ -122,6 +122,7 @@ import { DiseaseOutbreakPanel } from '@/components/DiseaseOutbreakPanel';
 import { AirQualityPanel } from '@/components/AirQualityPanel';
 import { AirstrikesPanel } from '@/components/AirstrikesPanel';
 import { fetchAirstrikes } from '@/services/airstrikes';
+import { fetchThreatFoxIOCs, fetchOpenPhishFeed, fetchSpamhausDrop, fetchCisaKev } from '@/services/cyber-extra';
 import { fetchSpaceWeather } from '@/services/space-weather';
 import { fetchDiseaseOutbreaks } from '@/services/disease-outbreak';
 import { fetchGlobalAirQuality } from '@/services/air-quality';
@@ -1405,16 +1406,23 @@ export class DataLoaderManager implements AppModule {
     }
 
     try {
-      const threats = await fetchCyberThreats({ limit: 500, days: 14 });
-      this.ctx.cyberThreatsCache = threats;
-      this.ctx.map?.setCyberThreats(threats);
-      this.ctx.map?.setLayerReady('cyberThreats', threats.length > 0);
-      ingestCyberThreatsForCII(threats);
+      const [threats, tfIocs, openPhish, spamhaus, cisaKev] = await Promise.all([
+        fetchCyberThreats({ limit: 500, days: 14 }),
+        fetchThreatFoxIOCs(),
+        fetchOpenPhishFeed(),
+        fetchSpamhausDrop(),
+        fetchCisaKev(),
+      ]);
+      const allThreats = [...threats, ...tfIocs, ...openPhish, ...spamhaus, ...cisaKev];
+      this.ctx.cyberThreatsCache = allThreats;
+      this.ctx.map?.setCyberThreats(allThreats);
+      this.ctx.map?.setLayerReady('cyberThreats', allThreats.length > 0);
+      ingestCyberThreatsForCII(allThreats);
       (this.ctx.panels['cii'] as CIIPanel)?.refresh();
-      (this.ctx.panels['cyber-threats'] as CyberThreatPanel)?.update(threats);
-      this.ctx.statusPanel?.updateFeed('Cyber Threats', { status: 'ok', itemCount: threats.length });
+      (this.ctx.panels['cyber-threats'] as CyberThreatPanel)?.update(allThreats);
+      this.ctx.statusPanel?.updateFeed('Cyber Threats', { status: 'ok', itemCount: allThreats.length });
       this.ctx.statusPanel?.updateApi('Cyber Threats API', { status: 'ok' });
-      dataFreshness.recordUpdate('cyber_threats', threats.length);
+      dataFreshness.recordUpdate('cyber_threats', allThreats.length);
     } catch (error) {
       (this.ctx.panels['cyber-threats'] as CyberThreatPanel)?.update([]);
       this.ctx.map?.setLayerReady('cyberThreats', false);

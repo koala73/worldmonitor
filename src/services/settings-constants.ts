@@ -24,6 +24,7 @@ export const SIGNUP_URLS: Partial<Record<RuntimeSecretKey, string>> = {
   WTO_API_KEY: 'https://apiportal.wto.org/',
   AVIATIONSTACK_API: 'https://aviationstack.com/signup/free',
   ICAO_API_KEY: 'https://dataservices.icao.int/',
+  THREATFOX_API_KEY: 'https://auth.abuse.ch/',
 };
 
 export const PLAINTEXT_KEYS = new Set<RuntimeSecretKey>([
@@ -62,6 +63,7 @@ export const HUMAN_LABELS: Record<RuntimeSecretKey, string> = {
   WTO_API_KEY: 'WTO API Key',
   AVIATIONSTACK_API: 'AviationStack API Key',
   ICAO_API_KEY: 'ICAO NOTAM API Key',
+  THREATFOX_API_KEY: 'ThreatFox API Key',
 };
 
 export interface SettingsCategory {
@@ -89,7 +91,7 @@ export const SETTINGS_CATEGORIES: SettingsCategory[] = [
   {
     id: 'security',
     label: 'Security & Threats',
-    features: ['internetOutages', 'acledConflicts', 'acledAirstrikes', 'abuseChThreatIntel', 'alienvaultOtxThreatIntel', 'abuseIpdbThreatIntel'],
+    features: ['internetOutages', 'acledConflicts', 'acledAirstrikes', 'abuseChThreatIntel', 'alienvaultOtxThreatIntel', 'abuseIpdbThreatIntel', 'threatfoxThreatIntel', 'openPhishThreatIntel', 'spamhausDrop', 'cisaKev'],
   },
   {
     id: 'tracking',

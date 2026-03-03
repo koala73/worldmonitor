@@ -57,6 +57,7 @@ const SUPPORTED_SECRET_KEYS: [&str; 25] = [
     "WTO_API_KEY",
     "AVIATIONSTACK_API",
     "ICAO_API_KEY",
+    "THREATFOX_API_KEY",
 ];
 
 // Rate-limit native notifications: no more than 1 per 30 seconds across all threads.

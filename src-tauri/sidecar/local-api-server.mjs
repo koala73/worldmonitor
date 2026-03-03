@@ -104,7 +104,7 @@ const ALLOWED_ENV_KEYS = new Set([
   'OTX_API_KEY', 'ABUSEIPDB_API_KEY', 'WINGBITS_API_KEY', 'WS_RELAY_URL',
   'VITE_OPENSKY_RELAY_URL', 'OPENSKY_CLIENT_ID', 'OPENSKY_CLIENT_SECRET',
   'AISSTREAM_API_KEY', 'VITE_WS_RELAY_URL', 'FINNHUB_API_KEY', 'NASA_FIRMS_API_KEY',
-  'OLLAMA_API_URL', 'OLLAMA_MODEL', 'WTO_API_KEY',
+  'OLLAMA_API_URL', 'OLLAMA_MODEL', 'WTO_API_KEY', 'THREATFOX_API_KEY',
 ]);
 
 const CHROME_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
@@ -744,6 +744,24 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
       return ok('URLhaus key verified');
     }
 
+    case 'THREATFOX_API_KEY': {
+      const tfResp = await fetchWithTimeout('https://threatfox-api.abuse.ch/api/v1/', {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Auth-Key': value,
+          'Content-Type': 'application/json',
+          'User-Agent': CHROME_UA,
+        },
+        body: JSON.stringify({ query: 'get_iocs', days: 1 }),
+      });
+      const tfText = await tfResp.text();
+      if (isCloudflareChallenge403(tfResp, tfText)) return ok('ThreatFox key stored (Cloudflare blocked verification)');
+      if (isAuthFailure(tfResp.status, tfText)) return fail('ThreatFox rejected this key');
+      if (!tfResp.ok) return fail(`ThreatFox probe failed (${tfResp.status})`);
+      return ok('ThreatFox key verified');
+    }
+
     case 'OTX_API_KEY': {
       const response = await fetchWithTimeout('https://otx.alienvault.com/api/v1/user/me', {
         headers: {
@@ -1212,6 +1230,145 @@ async function dispatch(requestUrl, req, routes, context) {
       return json({ events: data.data ?? [] });
     } catch (e) {
       return json({ events: [], error: String(e.message ?? e) });
+    }
+  }
+
+  // ── ThreatFox IOC feed ───────────────────────────────────────────────────
+  if (requestUrl.pathname === '/api/threatfox-iocs') {
+    const apiKey = process.env.THREATFOX_API_KEY;
+    if (!apiKey) return json({ error: 'THREATFOX_API_KEY not configured' }, 503);
+    try {
+      const resp = await fetchWithTimeout('https://threatfox-api.abuse.ch/api/v1/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Auth-Key': apiKey,
+          'User-Agent': CHROME_UA,
+        },
+        body: JSON.stringify({ query: 'get_iocs', days: 7 }),
+      }, 15000);
+      if (!resp.ok) return json([], 200);
+      const data = await resp.json();
+      const iocs = Array.isArray(data?.data) ? data.data : [];
+      const threats = iocs.slice(0, 200).map((ioc, i) => ({
+        id: `threatfox-${ioc.id ?? i}`,
+        type: ioc.ioc_type?.startsWith('ip') ? 'c2_server' : 'malware_host',
+        source: 'threatfox',
+        indicator: String(ioc.ioc ?? ''),
+        indicatorType: ioc.ioc_type?.startsWith('ip') ? 'ip' : ioc.ioc_type?.startsWith('url') ? 'url' : 'domain',
+        lat: 0,
+        lon: 0,
+        country: ioc.country ?? '',
+        severity: (ioc.confidence_level ?? 0) >= 90 ? 'critical' : (ioc.confidence_level ?? 0) >= 70 ? 'high' : 'medium',
+        malwareFamily: ioc.malware_printable ?? ioc.malware ?? '',
+        tags: Array.isArray(ioc.tags) ? ioc.tags : [],
+        firstSeen: ioc.first_seen ?? '',
+        lastSeen: ioc.last_seen ?? ioc.first_seen ?? '',
+      }));
+      return json(threats);
+    } catch (e) {
+      return json([], 200);
+    }
+  }
+
+  // ── OpenPhish phishing URL feed ──────────────────────────────────────────
+  if (requestUrl.pathname === '/api/openphish-feed') {
+    try {
+      const resp = await fetchWithTimeout('https://openphish.com/feed.txt', {
+        headers: { 'User-Agent': CHROME_UA },
+      }, 12000);
+      if (!resp.ok) return json([], 200);
+      const text = await resp.text();
+      const urls = text.split('\n').map(l => l.trim()).filter(l => l.startsWith('http'));
+      const threats = urls.slice(0, 150).map((url, i) => ({
+        id: `openphish-${i}`,
+        type: 'phishing',
+        source: 'openphish',
+        indicator: url,
+        indicatorType: 'url',
+        lat: 0,
+        lon: 0,
+        country: '',
+        severity: 'high',
+        malwareFamily: '',
+        tags: ['phishing'],
+        firstSeen: new Date().toISOString(),
+        lastSeen: new Date().toISOString(),
+      }));
+      return json(threats);
+    } catch (e) {
+      return json([], 200);
+    }
+  }
+
+  // ── Spamhaus DROP + EDROP blocklist ─────────────────────────────────────
+  if (requestUrl.pathname === '/api/spamhaus-drop') {
+    try {
+      const [dropResp, edropResp] = await Promise.all([
+        fetchWithTimeout('https://www.spamhaus.org/drop/drop.txt', { headers: { 'User-Agent': CHROME_UA } }, 12000),
+        fetchWithTimeout('https://www.spamhaus.org/drop/edrop.txt', { headers: { 'User-Agent': CHROME_UA } }, 12000),
+      ]);
+      const dropText = dropResp.ok ? await dropResp.text() : '';
+      const edropText = edropResp.ok ? await edropResp.text() : '';
+      const lines = [...dropText.split('\n'), ...edropText.split('\n')]
+        .map(l => l.trim())
+        .filter(l => l && !l.startsWith(';'));
+      const threats = lines.slice(0, 200).map((line, i) => {
+        const cidr = line.split(';')[0].trim();
+        return {
+          id: `spamhaus-${i}`,
+          type: 'malicious_ip_range',
+          source: 'spamhaus',
+          indicator: cidr,
+          indicatorType: 'ip',
+          lat: 0,
+          lon: 0,
+          country: '',
+          severity: 'high',
+          malwareFamily: '',
+          tags: ['spamhaus', 'drop'],
+          firstSeen: '',
+          lastSeen: '',
+        };
+      });
+      return json(threats);
+    } catch (e) {
+      return json([], 200);
+    }
+  }
+
+  // ── CISA Known Exploited Vulnerabilities ─────────────────────────────────
+  if (requestUrl.pathname === '/api/cisa-kev') {
+    try {
+      const resp = await fetchWithTimeout(
+        'https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json',
+        { headers: { 'User-Agent': CHROME_UA } },
+        15000,
+      );
+      if (!resp.ok) return json([], 200);
+      const data = await resp.json();
+      const vulns = Array.isArray(data?.vulnerabilities) ? data.vulnerabilities : [];
+      // Return only recent entries (last 90 days)
+      const cutoff = Date.now() - 90 * 24 * 60 * 60 * 1000;
+      const recent = vulns.filter(v => v.dateAdded && new Date(v.dateAdded).getTime() >= cutoff);
+      const threats = recent.slice(0, 200).map((v, i) => ({
+        id: `cisa-kev-${v.cveID ?? i}`,
+        type: 'exploited_vulnerability',
+        source: 'cisa_kev',
+        indicator: v.cveID ?? `CVE-${i}`,
+        indicatorType: 'domain',
+        lat: 0,
+        lon: 0,
+        country: '',
+        severity: 'critical',
+        malwareFamily: `${v.vendorProject ?? ''} ${v.product ?? ''}`.trim(),
+        tags: ['cisa', 'kev', 'actively-exploited'],
+        firstSeen: v.dateAdded ?? '',
+        lastSeen: v.dueDate ?? v.dateAdded ?? '',
+      }));
+      return json(threats);
+    } catch (e) {
+      return json([], 200);
     }
   }
 
