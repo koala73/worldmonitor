@@ -5,6 +5,7 @@ import { HAPPY_CATEGORY_ALL, HAPPY_CATEGORY_LABELS } from '@/services/positive-c
 import { shareHappyCard } from '@/services/happy-share-renderer';
 import { formatTime } from '@/utils';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
+import { t } from '@/services/i18n';
 
 /**
  * PositiveNewsFeedPanel -- scrolling positive news feed with category filter bar
@@ -105,7 +106,7 @@ export class PositiveNewsFeedPanel extends Panel {
     this.filteredItems = items;
 
     if (items.length === 0) {
-      this.content.innerHTML = '<div class="positive-feed-empty">No stories in this category yet</div>';
+      this.content.innerHTML = `<div class="positive-feed-empty">${escapeHtml(t('components.positiveNewsFeed.noStories'))}</div>`;
       return;
     }
 

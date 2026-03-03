@@ -39,6 +39,7 @@ export const STORAGE_KEYS = {
   mapLayers: 'worldmonitor-layers',
   disabledFeeds: 'worldmonitor-disabled-feeds',
   liveChannels: 'worldmonitor-live-channels',
+  mapMode: 'worldmonitor-map-mode',          // 'flat' | 'globe'
 } as const;
 
 // Type definitions for variant configs

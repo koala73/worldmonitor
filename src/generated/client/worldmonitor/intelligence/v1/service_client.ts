@@ -255,7 +255,12 @@ export class IntelligenceServiceClient {
 
   async classifyEvent(req: ClassifyEventRequest, options?: IntelligenceServiceCallOptions): Promise<ClassifyEventResponse> {
     let path = "/api/intelligence/v1/classify-event";
-    const url = this.baseURL + path;
+    const params = new URLSearchParams();
+    if (req.title != null && req.title !== "") params.set("title", String(req.title));
+    if (req.description != null && req.description !== "") params.set("description", String(req.description));
+    if (req.source != null && req.source !== "") params.set("source", String(req.source));
+    if (req.country != null && req.country !== "") params.set("country", String(req.country));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -264,9 +269,8 @@ export class IntelligenceServiceClient {
     };
 
     const resp = await this.fetchFn(url, {
-      method: "POST",
+      method: "GET",
       headers,
-      body: JSON.stringify(req),
       signal: options?.signal,
     });
 
@@ -278,9 +282,9 @@ export class IntelligenceServiceClient {
   }
 
   async getCountryIntelBrief(req: GetCountryIntelBriefRequest, options?: IntelligenceServiceCallOptions): Promise<GetCountryIntelBriefResponse> {
-    const path = "/api/intelligence/v1/get-country-intel-brief";
+    let path = "/api/intelligence/v1/get-country-intel-brief";
     const params = new URLSearchParams();
-    if (req.countryCode != null && req.countryCode !== "") params.set("country_code", req.countryCode);
+    if (req.countryCode != null && req.countryCode !== "") params.set("country_code", String(req.countryCode));
     const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {

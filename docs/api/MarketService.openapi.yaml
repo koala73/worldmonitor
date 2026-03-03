@@ -205,7 +205,7 @@ paths:
                 - name: country_code
                   in: query
                   description: ISO 3166-1 alpha-2 country code (e.g., "US", "GB", "JP").
-                  required: true
+                  required: false
                   schema:
                     type: string
             responses:
@@ -215,6 +215,32 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/GetCountryStockIndexResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/market/v1/list-gulf-quotes:
+        get:
+            tags:
+                - MarketService
+            summary: ListGulfQuotes
+            description: ListGulfQuotes retrieves Gulf region market quotes (indices, currencies, oil).
+            operationId: ListGulfQuotes
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListGulfQuotesResponse'
                 "400":
                     description: Validation error
                     content:
@@ -659,3 +685,39 @@ components:
                     type: string
                     description: When the data was fetched (ISO 8601).
             description: GetCountryStockIndexResponse contains the country's primary stock index data.
+        ListGulfQuotesRequest:
+            type: object
+        ListGulfQuotesResponse:
+            type: object
+            properties:
+                quotes:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/GulfQuote'
+                rateLimited:
+                    type: boolean
+        GulfQuote:
+            type: object
+            properties:
+                symbol:
+                    type: string
+                name:
+                    type: string
+                flag:
+                    type: string
+                country:
+                    type: string
+                type:
+                    type: string
+                price:
+                    type: number
+                    format: double
+                change:
+                    type: number
+                    format: double
+                sparkline:
+                    type: array
+                    items:
+                        type: number
+                        format: double
+            description: GulfQuote represents a Gulf region market quote (index, currency, or oil).

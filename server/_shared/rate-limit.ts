@@ -1,8 +1,6 @@
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 
-declare const process: { env: Record<string, string | undefined> };
-
 let ratelimit: Ratelimit | null = null;
 
 function getRatelimit(): Ratelimit | null {
@@ -13,7 +11,7 @@ function getRatelimit(): Ratelimit | null {
 
   ratelimit = new Ratelimit({
     redis: new Redis({ url, token }),
-    limiter: Ratelimit.slidingWindow(300, '60 s'),
+    limiter: Ratelimit.slidingWindow(600, '60 s'),
     prefix: 'rl',
     analytics: false,
   });

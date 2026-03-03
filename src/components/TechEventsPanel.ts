@@ -37,6 +37,7 @@ export class TechEventsPanel extends Panel {
           days: 180,
           limit: 100,
         });
+        if (!this.element?.isConnected) return;
         if (!data.success) throw new Error(data.error || 'Unknown error');
 
         this.events = data.events;
@@ -46,14 +47,17 @@ export class TechEventsPanel extends Panel {
         if (this.events.length === 0 && attempt < 2) {
           this.showRetrying();
           await new Promise(r => setTimeout(r, 15_000));
+          if (!this.element?.isConnected) return;
           continue;
         }
         break;
       } catch (err) {
         if (this.isAbortError(err)) return;
+        if (!this.element?.isConnected) return;
         if (attempt < 2) {
           this.showRetrying();
           await new Promise(r => setTimeout(r, 15_000));
+          if (!this.element?.isConnected) return;
           continue;
         }
         this.error = err instanceof Error ? err.message : 'Failed to fetch events';

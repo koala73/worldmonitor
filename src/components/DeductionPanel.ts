@@ -140,10 +140,12 @@ export class DeductionPanel extends Panel {
                 query,
                 geoContext,
             });
+            if (!this.element?.isConnected) return;
 
             this.resultContainer.className = 'deduction-result';
             if (resp.analysis) {
                 const parsed = await marked.parse(resp.analysis);
+                if (!this.element?.isConnected) return;
                 this.resultContainer.innerHTML = DOMPurify.sanitize(parsed);
 
                 const meta = h('div', { style: 'margin-top: 12px; font-size: 0.75em; color: #888;' },
@@ -154,12 +156,15 @@ export class DeductionPanel extends Panel {
                 this.resultContainer.textContent = 'No analysis available for this query.';
             }
         } catch (err) {
+            if (!this.element?.isConnected) return;
             console.error('[DeductionPanel] Error:', err);
             this.resultContainer.className = 'deduction-result error';
             this.resultContainer.textContent = 'An error occurred while analyzing the situation.';
         } finally {
             this.isSubmitting = false;
-            setTimeout(() => { this.submitBtn.disabled = false; }, COOLDOWN_MS);
+            if (this.element?.isConnected) {
+                setTimeout(() => { this.submitBtn.disabled = false; }, COOLDOWN_MS);
+            }
         }
     }
 }

@@ -72,7 +72,7 @@ export class BreakingNewsBanner {
     if (!settings.soundEnabled || !this.audio) return;
     if (Date.now() - this.lastSoundMs < SOUND_COOLDOWN_MS) return;
     this.audio.currentTime = 0;
-    this.audio.play().catch(() => {});
+    this.audio.play()?.catch(() => {});
     this.lastSoundMs = Date.now();
   }
 

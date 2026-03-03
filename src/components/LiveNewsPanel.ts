@@ -4,6 +4,9 @@ import { isDesktopRuntime, getRemoteApiBaseUrl, getApiBaseUrl, getLocalApiPort }
 import { t } from '../services/i18n';
 import { loadFromStorage, saveToStorage } from '@/utils';
 import { IDLE_PAUSE_MS, STORAGE_KEYS, SITE_VARIANT } from '@/config';
+import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
+import { STORAGE_KEYS, SITE_VARIANT } from '@/config';
+
 import { getStreamQuality } from '@/services/ai-flow-settings';
 
 // YouTube IFrame Player API types
@@ -53,6 +56,7 @@ export interface LiveChannel {
   isLive?: boolean;
   hlsUrl?: string; // HLS manifest URL for native <video> playback (desktop)
   useFallbackOnly?: boolean; // Skip auto-detection, always use fallback
+  geoAvailability?: string[]; // ISO 3166-1 alpha-2 codes; undefined = available everywhere
 }
 
 
@@ -64,7 +68,7 @@ const FULL_LIVE_CHANNELS: LiveChannel[] = [
   { id: 'dw', name: 'DW', handle: '@DWNews', fallbackVideoId: 'LuKwFajn37U' },
   { id: 'cnbc', name: 'CNBC', handle: '@CNBC', fallbackVideoId: '9NyxcX3rhQs' },
   { id: 'cnn', name: 'CNN', handle: '@CNN', fallbackVideoId: 'w_Ma8oQLmSM' },
-  { id: 'france24', name: 'France24', handle: '@France24_en', fallbackVideoId: 'Ap-UM1O9RBU' },
+  { id: 'france24', name: 'France 24', handle: '@FRANCE24', fallbackVideoId: 'u9foWyMSETk' },
   { id: 'alarabiya', name: 'AlArabiya', handle: '@AlArabiya', fallbackVideoId: 'n7eQejkXbnM', useFallbackOnly: true },
   { id: 'aljazeera', name: 'AlJazeera', handle: '@AlJazeeraEnglish', fallbackVideoId: 'gCNeDWCI0vo', useFallbackOnly: true },
 ];
@@ -78,20 +82,27 @@ const TECH_LIVE_CHANNELS: LiveChannel[] = [
 ];
 
 // Optional channels users can add from the "Available Channels" tab UI
+// Includes default channels so they appear in the grid for toggle on/off
 export const OPTIONAL_LIVE_CHANNELS: LiveChannel[] = [
-  // North America
+  // North America (defaults first)
+  { id: 'bloomberg', name: 'Bloomberg', handle: '@markets', fallbackVideoId: 'iEpJwprxDdk' },
+  { id: 'cnbc', name: 'CNBC', handle: '@CNBC', fallbackVideoId: '9NyxcX3rhQs' },
+  { id: 'yahoo', name: 'Yahoo Finance', handle: '@YahooFinance', fallbackVideoId: 'KQp-e_XQnDE' },
   { id: 'cnn', name: 'CNN', handle: '@CNN', fallbackVideoId: 'w_Ma8oQLmSM' },
-  { id: 'livenow-fox', name: 'LiveNOW from FOX', handle: '@LiveNOWfromFOX', fallbackVideoId: 'QaftgYkG-ek' },
   { id: 'fox-news', name: 'Fox News', handle: '@FoxNews', fallbackVideoId: 'QaftgYkG-ek' },
   { id: 'newsmax', name: 'Newsmax', handle: '@NEWSMAX', fallbackVideoId: 'S-lFBzloL2Y', useFallbackOnly: true },
   { id: 'abc-news', name: 'ABC News', handle: '@ABCNews' },
   { id: 'cbs-news', name: 'CBS News', handle: '@CBSNews', fallbackVideoId: 'R9L8sDK8iEc' },
   { id: 'nbc-news', name: 'NBC News', handle: '@NBCNews', fallbackVideoId: 'yMr0neQhu6c' },
   { id: 'cbc-news', name: 'CBC News', handle: '@CBCNews', fallbackVideoId: 'jxP_h3V-Dv8' },
-  // Europe
+  { id: 'nasa', name: 'Sen Space Live', handle: '@NASA', fallbackVideoId: 'aB1yRz0HhdY', useFallbackOnly: true },
+  // Europe (defaults first)
+  { id: 'sky', name: 'SkyNews', handle: '@SkyNews', fallbackVideoId: 'uvviIF4725I' },
+  { id: 'euronews', name: 'Euronews', handle: '@euronews', fallbackVideoId: 'pykpO5kQJ98' },
+  { id: 'dw', name: 'DW', handle: '@DWNews', fallbackVideoId: 'LuKwFajn37U' },
+  { id: 'france24', name: 'France 24', handle: '@FRANCE24', fallbackVideoId: 'u9foWyMSETk' },
   { id: 'bbc-news', name: 'BBC News', handle: '@BBCNews', fallbackVideoId: 'bjgQzJzCZKs' },
   { id: 'france24-en', name: 'France 24 English', handle: '@France24_en', fallbackVideoId: 'Ap-UM1O9RBU' },
-  { id: 'welt', name: 'WELT', handle: '@WELTVideoTV', fallbackVideoId: 'L-TNmYmaAKQ' },
   { id: 'rtve', name: 'RTVE 24H', handle: '@RTVENoticias', fallbackVideoId: '7_srED6k0bE' },
   { id: 'trt-haber', name: 'TRT Haber', handle: '@trthaber', fallbackVideoId: '3XHebGJG0bc' },
   { id: 'ntv-turkey', name: 'NTV', handle: '@NTV', fallbackVideoId: 'pqq5c6k70kk' },
@@ -123,7 +134,9 @@ export const OPTIONAL_LIVE_CHANNELS: LiveChannel[] = [
   { id: 'arirang-news', name: 'Arirang News', handle: '@ArirangCoKrArirangNEWS' },
   { id: 'india-today', name: 'India Today', handle: '@indiatoday', fallbackVideoId: 'sYZtOFzM78M' },
   { id: 'abp-news', name: 'ABP News', handle: '@ABPNews' },
-  // Middle East
+  // Middle East (defaults first)
+  { id: 'alarabiya', name: 'AlArabiya', handle: '@AlArabiya', fallbackVideoId: 'n7eQejkXbnM', useFallbackOnly: true },
+  { id: 'aljazeera', name: 'AlJazeera', handle: '@AlJazeeraEnglish', fallbackVideoId: 'gCNeDWCI0vo', useFallbackOnly: true },
   { id: 'al-hadath', name: 'Al Hadath', handle: '@AlHadath', fallbackVideoId: 'xWXpl7azI8k', useFallbackOnly: true },
   { id: 'sky-news-arabia', name: 'Sky News Arabia', handle: '@skynewsarabia', fallbackVideoId: 'U--OjmpjF5o' },
   { id: 'trt-world', name: 'TRT World', handle: '@TRTWorld', fallbackVideoId: 'ABfFhWzWs0s' },
@@ -139,7 +152,12 @@ export const OPTIONAL_LIVE_CHANNELS: LiveChannel[] = [
   { id: 'sabc-news', name: 'SABC News', handle: '@SABCDigitalNews' },
   { id: 'arise-news', name: 'Arise News', handle: '@AriseNewsChannel', fallbackVideoId: '4uHZdlX-DT4' },
   // Europe (additional)
+  { id: 'welt', name: 'WELT', handle: '@WELTVideoTV', fallbackVideoId: 'L-TNmYmaAKQ', geoAvailability: ['DE', 'AT', 'CH'] },
   { id: 'tagesschau24', name: 'Tagesschau24', handle: '@tagesschau', fallbackVideoId: 'fC_q9TkO1uU' },
+  { id: 'euronews-fr', name: 'Euronews FR', handle: '@euronewsfr', fallbackVideoId: 'NiRIbKwAejk' },
+  { id: 'france24-fr', name: 'France 24 FR', handle: '@France24_fr', fallbackVideoId: 'l8PMl7tUDIE' },
+  { id: 'france-info', name: 'France Info', handle: '@franceinfo', fallbackVideoId: 'Z-Nwo-ypKtM' },
+  { id: 'bfmtv', name: 'BFMTV', handle: '@BFMTV', fallbackVideoId: 'smB_F6DW7cI' },
   { id: 'tv5monde-info', name: 'TV5 Monde Info', handle: '@TV5MONDEInfo' },
   { id: 'nrk1', name: 'NRK1', handle: '@nrk' },
   { id: 'aljazeera-balkans', name: 'Al Jazeera Balkans', handle: '@AlJazeeraBalkans' },
@@ -147,14 +165,18 @@ export const OPTIONAL_LIVE_CHANNELS: LiveChannel[] = [
   { id: 'abc-news-au', name: 'ABC News Australia', handle: '@abcnewsaustralia', fallbackVideoId: 'vOTiJkg1voo' },
 ];
 
-export const OPTIONAL_CHANNEL_REGIONS: { key: string; labelKey: string; channelIds: string[] }[] = [
-  { key: 'na', labelKey: 'components.liveNews.regionNorthAmerica', channelIds: ['cnn', 'livenow-fox', 'fox-news', 'newsmax', 'abc-news', 'cbs-news', 'nbc-news', 'cbc-news'] },
-  { key: 'eu', labelKey: 'components.liveNews.regionEurope', channelIds: ['bbc-news', 'france24-en', 'welt', 'rtve', 'trt-haber', 'ntv-turkey', 'cnn-turk', 'tv-rain', 'rt', 'tvp-info', 'telewizja-republika', 'tagesschau24', 'tv5monde-info', 'nrk1', 'aljazeera-balkans'] },
+const _REGION_ENTRIES: { key: string; labelKey: string; channelIds: string[] }[] = [
+  { key: 'na', labelKey: 'components.liveNews.regionNorthAmerica', channelIds: ['bloomberg', 'cnbc', 'yahoo', 'cnn', 'fox-news', 'newsmax', 'abc-news', 'cbs-news', 'nbc-news', 'cbc-news', 'nasa'] },
+  { key: 'eu', labelKey: 'components.liveNews.regionEurope', channelIds: ['sky', 'euronews', 'dw', 'france24', 'bbc-news', 'france24-en', 'welt', 'rtve', 'trt-haber', 'ntv-turkey', 'cnn-turk', 'tv-rain', 'rt', 'tvp-info', 'telewizja-republika', 'tagesschau24', 'euronews-fr', 'france24-fr', 'france-info', 'bfmtv', 'tv5monde-info', 'nrk1', 'aljazeera-balkans'] },
   { key: 'latam', labelKey: 'components.liveNews.regionLatinAmerica', channelIds: ['cnn-brasil', 'jovem-pan', 'record-news', 'band-jornalismo', 'tn-argentina', 'c5n', 'milenio', 'noticias-caracol', 'ntn24', 't13'] },
   { key: 'asia', labelKey: 'components.liveNews.regionAsia', channelIds: ['tbs-news', 'ann-news', 'ntv-news', 'cti-news', 'wion', 'ndtv', 'cna-asia', 'nhk-world', 'arirang-news', 'india-today', 'abp-news'] },
-  { key: 'me', labelKey: 'components.liveNews.regionMiddleEast', channelIds: ['al-hadath', 'sky-news-arabia', 'trt-world', 'iran-intl', 'cgtn-arabic', 'kan-11', 'asharq-news'] },
+  { key: 'me', labelKey: 'components.liveNews.regionMiddleEast', channelIds: ['alarabiya', 'aljazeera', 'al-hadath', 'sky-news-arabia', 'trt-world', 'iran-intl', 'cgtn-arabic', 'kan-11', 'asharq-news'] },
   { key: 'africa', labelKey: 'components.liveNews.regionAfrica', channelIds: ['africanews', 'channels-tv', 'ktn-news', 'enca', 'sabc-news', 'arise-news'] },
   { key: 'oc', labelKey: 'components.liveNews.regionOceania', channelIds: ['abc-news-au'] },
+];
+export const OPTIONAL_CHANNEL_REGIONS: { key: string; labelKey: string; channelIds: string[] }[] = [
+  { key: 'all', labelKey: 'components.liveNews.regionAll', channelIds: _REGION_ENTRIES.flatMap((r) => r.channelIds) },
+  ..._REGION_ENTRIES,
 ];
 
 const DEFAULT_LIVE_CHANNELS = SITE_VARIANT === 'tech' ? TECH_LIVE_CHANNELS : SITE_VARIANT === 'happy' ? [] : FULL_LIVE_CHANNELS;
@@ -162,6 +184,24 @@ const DEFAULT_LIVE_CHANNELS = SITE_VARIANT === 'tech' ? TECH_LIVE_CHANNELS : SIT
 /** Default channel list for the current variant (for restore in channel management). */
 export function getDefaultLiveChannels(): LiveChannel[] {
   return [...DEFAULT_LIVE_CHANNELS];
+}
+
+/** Returns optional channels filtered by user country. Channels without geoAvailability pass through. */
+export function getFilteredOptionalChannels(userCountry: string | null): LiveChannel[] {
+  if (!userCountry) return OPTIONAL_LIVE_CHANNELS;
+  const uc = userCountry.toUpperCase();
+  return OPTIONAL_LIVE_CHANNELS.filter((c) => !c.geoAvailability || c.geoAvailability.includes(uc));
+}
+
+/** Returns region entries with geo-restricted channel IDs removed for the user's country. */
+export function getFilteredChannelRegions(userCountry: string | null): typeof OPTIONAL_CHANNEL_REGIONS {
+  if (!userCountry) return OPTIONAL_CHANNEL_REGIONS;
+  const filtered = getFilteredOptionalChannels(userCountry);
+  const allowedIds = new Set(filtered.map((c) => c.id));
+  return OPTIONAL_CHANNEL_REGIONS.map((r) => ({
+    ...r,
+    channelIds: r.channelIds.filter((id) => allowedIds.has(id)),
+  }));
 }
 
 export interface StoredLiveChannels {
@@ -208,7 +248,6 @@ const DIRECT_HLS_MAP: Readonly<Record<string, string>> = {
 interface ProxiedHlsEntry { url: string; referer: string; }
 const PROXIED_HLS_MAP: Readonly<Record<string, ProxiedHlsEntry>> = {
   'cnbc': { url: 'https://cdn-ca2-na.lncnetworks.host/hls/cnbc_live/index.m3u8', referer: 'https://livenewschat.eu/' },
-  'cnn':  { url: 'https://cdn-ca2-na.lncnetworks.host/hls/cnn_live/index.m3u8',  referer: 'https://livenewschat.eu/' },
 };
 
 if (import.meta.env.DEV) {
@@ -642,6 +681,7 @@ export class LiveNewsPanel extends Panel {
     this.isFullscreen = !this.isFullscreen;
     this.element.classList.toggle('live-news-fullscreen', this.isFullscreen);
     document.body.classList.toggle('live-news-fullscreen-active', this.isFullscreen);
+
     if (this.fullscreenBtn) {
       this.fullscreenBtn.title = this.isFullscreen ? 'Exit fullscreen' : 'Fullscreen';
       this.fullscreenBtn.innerHTML = this.isFullscreen
@@ -792,18 +832,23 @@ export class LiveNewsPanel extends Panel {
 
     requestAnimationFrame(() => overlay.classList.add('active'));
 
-    import('@/live-channels-window').then(({ initLiveChannelsWindow }) => {
-      initLiveChannelsWindow(container);
-    });
+    import('@/live-channels-window').then(async ({ initLiveChannelsWindow }) => {
+      await initLiveChannelsWindow(container);
+    }).catch(console.error);
 
     const close = () => {
       overlay.remove();
+      document.removeEventListener('keydown', onKey);
       this.refreshChannelsFromStorage();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') close();
     };
     closeBtn.addEventListener('click', close);
     overlay.addEventListener('click', (e) => {
       if (e.target === overlay) close();
     });
+    document.addEventListener('keydown', onKey);
   }
 
   private refreshChannelSwitcher(): void {
@@ -859,6 +904,7 @@ export class LiveNewsPanel extends Panel {
     });
 
     await this.resolveChannelVideo(channel);
+    if (!this.element?.isConnected) return;
 
     this.channelSwitcher?.querySelectorAll('.live-channel-btn').forEach(btn => {
       const btnEl = btn as HTMLElement;
@@ -894,10 +940,11 @@ export class LiveNewsPanel extends Panel {
 
   private showOfflineMessage(channel: LiveChannel): void {
     this.destroyPlayer();
+    const safeName = escapeHtml(channel.name);
     this.content.innerHTML = `
       <div class="live-offline">
         <div class="offline-icon">📺</div>
-        <div class="offline-text">${t('components.liveNews.notLive', { name: channel.name })}</div>
+        <div class="offline-text">${t('components.liveNews.notLive', { name: safeName })}</div>
         <button class="offline-retry" onclick="this.closest('.panel').querySelector('.live-channel-btn.active')?.click()">${t('common.retry')}</button>
       </div>
     `;
@@ -907,13 +954,14 @@ export class LiveNewsPanel extends Panel {
     this.destroyPlayer();
     const watchUrl = channel.videoId
       ? `https://www.youtube.com/watch?v=${encodeURIComponent(channel.videoId)}`
-      : `https://www.youtube.com/${channel.handle}`;
+      : `https://www.youtube.com/${encodeURIComponent(channel.handle)}`;
+    const safeName = escapeHtml(channel.name);
 
     this.content.innerHTML = `
       <div class="live-offline">
         <div class="offline-icon">!</div>
-        <div class="offline-text">${t('components.liveNews.cannotEmbed', { name: channel.name, code: String(errorCode) })}</div>
-        <a class="offline-retry" href="${watchUrl}" target="_blank" rel="noopener noreferrer">${t('components.liveNews.openOnYouTube')}</a>
+        <div class="offline-text">${t('components.liveNews.cannotEmbed', { name: safeName, code: String(errorCode) })}</div>
+        <a class="offline-retry" href="${sanitizeUrl(watchUrl)}" target="_blank" rel="noopener noreferrer">${t('components.liveNews.openOnYouTube')}</a>
       </div>
     `;
   }
@@ -1157,6 +1205,7 @@ export class LiveNewsPanel extends Panel {
     const useFallbackVideo = this.activeChannel.useFallbackOnly || this.forceFallbackVideoForNextInit;
     this.forceFallbackVideoForNextInit = false;
     await this.resolveChannelVideo(this.activeChannel, useFallbackVideo);
+    if (!this.element?.isConnected) return;
 
     if (this.getDirectHlsUrl(this.activeChannel.id) || this.getProxiedHlsUrl(this.activeChannel.id)) {
       this.renderNativeHlsPlayer();
@@ -1174,6 +1223,7 @@ export class LiveNewsPanel extends Panel {
     }
 
     await LiveNewsPanel.loadYouTubeApi();
+    if (!this.element?.isConnected) return;
     if (this.player || !this.playerElement || !window.YT?.Player) return;
 
     this.player = new window.YT!.Player(this.playerElement, {

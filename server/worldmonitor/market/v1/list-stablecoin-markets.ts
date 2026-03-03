@@ -9,7 +9,7 @@ import type {
   ListStablecoinMarketsResponse,
   Stablecoin,
 } from '../../../../src/generated/server/worldmonitor/market/v1/service_server';
-import { UPSTREAM_TIMEOUT_MS } from './_shared';
+import { UPSTREAM_TIMEOUT_MS, parseStringArray } from './_shared';
 import { CHROME_UA } from '../../../_shared/constants';
 import { cachedFetchJson } from '../../../_shared/redis';
 
@@ -55,8 +55,9 @@ export async function listStablecoinMarkets(
     return stablecoinCache;
   }
 
-  const coins = req.coins.length > 0
-    ? req.coins.filter(c => /^[a-z0-9-]+$/.test(c)).join(',')
+  const parsedCoins = parseStringArray(req.coins);
+  const coins = parsedCoins.length > 0
+    ? parsedCoins.filter(c => /^[a-z0-9-]+$/.test(c)).join(',')
     : DEFAULT_STABLECOIN_IDS;
 
   const redisKey = `${REDIS_CACHE_KEY}:${coins}`;

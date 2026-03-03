@@ -19,3 +19,12 @@ export const BOOTSTRAP_CACHE_KEYS: Record<string, string> = {
   climateAnomalies: 'climate:anomalies:v1',
   wildfires:        'wildfire:fires:v1',
 };
+
+export const BOOTSTRAP_TIERS: Record<string, 'slow' | 'fast'> = {
+  bisPolicy: 'slow', bisExchange: 'slow', bisCredit: 'slow',
+  minerals: 'slow', giving: 'slow', sectors: 'slow',
+  etfFlows: 'slow', shippingRates: 'slow', wildfires: 'slow',
+  climateAnomalies: 'slow',
+  earthquakes: 'fast', outages: 'fast', serviceStatuses: 'fast',
+  macroSignals: 'fast', chokepoints: 'fast',
+};

@@ -37,6 +37,7 @@ import {
   OrefSirensPanel,
   TelegramIntelPanel,
   GulfEconomiesPanel,
+  WorldClockPanel,
 } from '@/components';
 import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
 import { PositiveNewsFeedPanel } from '@/components/PositiveNewsFeedPanel';
@@ -49,7 +50,7 @@ import { SpeciesComebackPanel } from '@/components/SpeciesComebackPanel';
 import { RenewableEnergyPanel } from '@/components/RenewableEnergyPanel';
 import { GivingPanel } from '@/components';
 import { focusInvestmentOnMap } from '@/services/investments-focus';
-import { debounce, saveToStorage } from '@/utils';
+import { debounce, saveToStorage, loadFromStorage } from '@/utils';
 import { escapeHtml } from '@/utils/sanitize';
 import {
   FEEDS,
@@ -75,7 +76,7 @@ export class PanelLayoutManager implements AppModule {
   private callbacks: PanelLayoutCallbacks;
   private panelDragCleanupHandlers: Array<() => void> = [];
   private criticalBannerEl: HTMLElement | null = null;
-  private readonly applyTimeRangeFilterDebounced: () => void;
+  private readonly applyTimeRangeFilterDebounced: (() => void) & { cancel(): void };
 
   constructor(ctx: AppContext, callbacks: PanelLayoutCallbacks) {
     this.ctx = ctx;
@@ -90,6 +91,7 @@ export class PanelLayoutManager implements AppModule {
   }
 
   destroy(): void {
+    this.applyTimeRangeFilterDebounced.cancel();
     this.panelDragCleanupHandlers.forEach((cleanup) => cleanup());
     this.panelDragCleanupHandlers = [];
     if (this.criticalBannerEl) {
@@ -106,6 +108,8 @@ export class PanelLayoutManager implements AppModule {
     this.ctx.digestPanel?.destroy();
     this.ctx.speciesPanel?.destroy();
     this.ctx.renewablePanel?.destroy();
+
+    window.removeEventListener('resize', this.ensureCorrectZones);
   }
 
   renderLayout(): void {
@@ -113,10 +117,10 @@ export class PanelLayoutManager implements AppModule {
       <div class="header">
         <div class="header-left">
           <div class="variant-switcher">${(() => {
-            const local = this.ctx.isDesktopApp || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-            const vHref = (v: string, prod: string) => local || SITE_VARIANT === v ? '#' : prod;
-            const vTarget = (v: string) => !local && SITE_VARIANT !== v ? 'target="_blank" rel="noopener"' : '';
-            return `
+        const local = this.ctx.isDesktopApp || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+        const vHref = (v: string, prod: string) => local || SITE_VARIANT === v ? '#' : prod;
+        const vTarget = (_v: string) => '';
+        return `
             <a href="${vHref('full', 'https://worldmonitor.app')}"
                class="variant-option ${SITE_VARIANT === 'full' ? 'active' : ''}"
                data-variant="full"
@@ -152,7 +156,7 @@ export class PanelLayoutManager implements AppModule {
               <span class="variant-icon">☀️</span>
               <span class="variant-label">Good News</span>
             </a>` : ''}`;
-          })()}</div>
+      })()}</div>
           <span class="logo">MONITOR</span><span class="version">v${__APP_VERSION__}</span>${BETA_MODE ? '<span class="beta-badge">BETA</span>' : ''}
           <a href="https://x.com/eliehabib" target="_blank" rel="noopener" class="credit-link">
             <svg class="x-logo" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
@@ -161,6 +165,9 @@ export class PanelLayoutManager implements AppModule {
           <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noopener" class="github-link" title="${t('header.viewOnGitHub')}">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
           </a>
+          <button class="mobile-settings-btn" id="mobileSettingsBtn" title="${t('header.settings')}">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          </button>
           <div class="status-indicator">
             <span class="status-dot"></span>
             <span>${t('header.live')}</span>
@@ -179,7 +186,13 @@ export class PanelLayoutManager implements AppModule {
           </div>
         </div>
         <div class="header-right">
-          <!-- TODO: Add "Download App" link here for non-desktop users (this.ctx.isDesktopApp === false) -->
+          ${this.ctx.isDesktopApp ? '' : `<div class="download-wrapper" id="downloadWrapper">
+            <button class="download-btn" id="downloadBtn" title="${t('header.downloadApp')}">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              <span id="downloadBtnLabel">${t('header.downloadApp')}</span>
+            </button>
+            <div class="download-dropdown" id="downloadDropdown"></div>
+          </div>`}
           <button class="search-btn" id="searchBtn"><kbd>⌘K</kbd> ${t('header.search')}</button>
           ${this.ctx.isDesktopApp ? '' : `<button class="copy-link-btn" id="copyLinkBtn">${t('header.copyLink')}</button>`}
           <button class="theme-toggle-btn" id="headerThemeToggle" title="${t('header.toggleTheme')}">
@@ -213,6 +226,7 @@ export class PanelLayoutManager implements AppModule {
           <div class="map-container" id="mapContainer"></div>
           ${SITE_VARIANT === 'happy' ? '<button class="tv-exit-btn" id="tvExitBtn">Exit TV Mode</button>' : ''}
           <div class="map-resize-handle" id="mapResizeHandle"></div>
+          <div class="map-bottom-grid" id="mapBottomGrid"></div>
         </div>
         <div class="panels-grid" id="panelsGrid"></div>
       </div>
@@ -338,13 +352,14 @@ export class PanelLayoutManager implements AppModule {
     const panelsGrid = document.getElementById('panelsGrid')!;
 
     const mapContainer = document.getElementById('mapContainer') as HTMLElement;
+    const preferGlobe = loadFromStorage<string>(STORAGE_KEYS.mapMode, 'flat') === 'globe';
     this.ctx.map = new MapContainer(mapContainer, {
       zoom: this.ctx.isMobile ? 2.5 : 1.0,
       pan: { x: 0, y: 0 },
       view: this.ctx.isMobile ? this.ctx.resolvedLocation : 'global',
       layers: this.ctx.mapLayers,
       timeRange: '7d',
-    });
+    }, preferGlobe);
 
     this.ctx.map.initEscalationGetters();
     this.ctx.currentTimeRange = this.ctx.map.getTimeRange();
@@ -539,6 +554,17 @@ export class PanelLayoutManager implements AppModule {
         import('@/components/DeductionPanel').then(({ DeductionPanel }) => {
           const deductionPanel = new DeductionPanel(() => this.ctx.allNews);
           this.ctx.panels['deduction'] = deductionPanel;
+          const el = deductionPanel.getElement();
+          this.makeDraggable(el, 'deduction');
+          const grid = document.getElementById('panelsGrid');
+          if (grid) {
+            const gdeltEl = this.ctx.panels['gdelt-intel']?.getElement();
+            if (gdeltEl?.nextSibling) {
+              grid.insertBefore(el, gdeltEl.nextSibling);
+            } else {
+              grid.appendChild(el);
+            }
+          }
         });
       }
 
@@ -611,6 +637,8 @@ export class PanelLayoutManager implements AppModule {
       this.ctx.panels['gulf-economies'] = gulfEconomiesPanel;
     }
 
+    this.ctx.panels['world-clock'] = new WorldClockPanel();
+
     if (SITE_VARIANT !== 'happy') {
       if (!this.ctx.panels['gulf-economies']) {
         const gulfEconomiesPanel = new GulfEconomiesPanel();
@@ -681,10 +709,16 @@ export class PanelLayoutManager implements AppModule {
 
     const defaultOrder = Object.keys(DEFAULT_PANELS).filter(k => k !== 'map');
     const savedOrder = this.getSavedPanelOrder();
+    const savedBottomOrder = this.getSavedBottomPanelOrder();
+    const isUltraWide = window.innerWidth >= 1600;
+
     let panelOrder = defaultOrder;
-    if (savedOrder.length > 0) {
-      const missing = defaultOrder.filter(k => !savedOrder.includes(k));
+    if (savedOrder.length > 0 || savedBottomOrder.length > 0) {
+      const allSaved = [...savedOrder, ...savedBottomOrder];
+      const missing = defaultOrder.filter(k => !allSaved.includes(k));
       const valid = savedOrder.filter(k => defaultOrder.includes(k));
+      const validBottom = isUltraWide ? savedBottomOrder.filter(k => defaultOrder.includes(k)) : [];
+
       const monitorsIdx = valid.indexOf('monitors');
       if (monitorsIdx !== -1) valid.splice(monitorsIdx, 1);
       const insertIdx = valid.indexOf('politics') + 1 || 0;
@@ -694,6 +728,16 @@ export class PanelLayoutManager implements AppModule {
         valid.push('monitors');
       }
       panelOrder = valid;
+
+      // Handle bottom panels
+      validBottom.forEach(key => {
+        const panel = this.ctx.panels[key];
+        if (panel) {
+          const el = panel.getElement();
+          this.makeDraggable(el, key);
+          document.getElementById('mapBottomGrid')?.appendChild(el);
+        }
+      });
     }
 
     if (SITE_VARIANT !== 'happy') {
@@ -723,12 +767,14 @@ export class PanelLayoutManager implements AppModule {
 
     panelOrder.forEach((key: string) => {
       const panel = this.ctx.panels[key];
-      if (panel) {
+      if (panel && !panel.getElement().parentElement) {
         const el = panel.getElement();
         this.makeDraggable(el, key);
         panelsGrid.appendChild(el);
       }
     });
+
+    window.addEventListener('resize', () => this.ensureCorrectZones());
 
     this.ctx.map.onTimeRangeChanged((range) => {
       this.ctx.currentTimeRange = range;
@@ -819,11 +865,90 @@ export class PanelLayoutManager implements AppModule {
 
   savePanelOrder(): void {
     const grid = document.getElementById('panelsGrid');
-    if (!grid) return;
+    const bottomGrid = document.getElementById('mapBottomGrid');
+    if (!grid || !bottomGrid) return;
+
     const order = Array.from(grid.children)
       .map((el) => (el as HTMLElement).dataset.panel)
       .filter((key): key is string => !!key);
+
+    const bottomOrder = Array.from(bottomGrid.children)
+      .map((el) => (el as HTMLElement).dataset.panel)
+      .filter((key): key is string => !!key);
+
     localStorage.setItem(this.ctx.PANEL_ORDER_KEY, JSON.stringify(order));
+    localStorage.setItem(this.ctx.PANEL_ORDER_KEY + '-bottom', JSON.stringify(bottomOrder));
+  }
+
+  private getSavedBottomPanelOrder(): string[] {
+    try {
+      const saved = localStorage.getItem(this.ctx.PANEL_ORDER_KEY + '-bottom');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private wasUltraWide = window.innerWidth >= 1600;
+
+  public ensureCorrectZones(): void {
+    const isUltraWide = window.innerWidth >= 1600;
+    const mapSection = document.getElementById('mapSection');
+    const mapEnabled = !mapSection?.classList.contains('hidden');
+    const effectiveUltraWide = isUltraWide && mapEnabled;
+
+    if (effectiveUltraWide === this.wasUltraWide) return;
+    this.wasUltraWide = effectiveUltraWide;
+
+    const grid = document.getElementById('panelsGrid');
+    const bottomGrid = document.getElementById('mapBottomGrid');
+    if (!grid || !bottomGrid) return;
+
+    if (!effectiveUltraWide) {
+      // Move everything from bottom grid back to panels grid in correct order
+      const panelsInBottom = Array.from(bottomGrid.querySelectorAll('.panel')) as HTMLElement[];
+      const savedOrder = this.getSavedPanelOrder();
+      const defaultOrder = Object.keys(DEFAULT_PANELS).filter(k => k !== 'map');
+
+      panelsInBottom.forEach(panelEl => {
+        const id = panelEl.dataset.panel;
+        if (!id) return;
+
+        // Use saved sidebar order if present, otherwise default order
+        const searchOrder = savedOrder.includes(id) ? savedOrder : defaultOrder;
+        const pos = searchOrder.indexOf(id);
+
+        if (pos === -1) {
+          grid.appendChild(panelEl);
+          return;
+        }
+
+        // Find the first panel in searchOrder AFTER this one that is currently in the sidebar grid
+        let inserted = false;
+        for (let i = pos + 1; i < searchOrder.length; i++) {
+          const nextId = searchOrder[i];
+          const nextEl = grid.querySelector(`[data-panel="${nextId}"]`);
+          if (nextEl) {
+            grid.insertBefore(panelEl, nextEl);
+            inserted = true;
+            break;
+          }
+        }
+
+        if (!inserted) {
+          grid.appendChild(panelEl);
+        }
+      });
+    } else {
+      // Move panels that belong to bottom zone from sidebar to bottom grid
+      const savedBottomOrder = this.getSavedBottomPanelOrder();
+      savedBottomOrder.forEach(id => {
+        const el = grid.querySelector(`[data-panel="${id}"]`);
+        if (el) {
+          bottomGrid.appendChild(el);
+        }
+      });
+    }
   }
 
   private attachRelatedAssetHandlers(panel: NewsPanel): void {
@@ -948,39 +1073,60 @@ export class PanelLayoutManager implements AppModule {
 
   private handlePanelDragMove(dragging: HTMLElement, clientX: number, clientY: number): void {
     const grid = document.getElementById('panelsGrid');
-    if (!grid) return;
+    const bottomGrid = document.getElementById('mapBottomGrid');
+    if (!grid || !bottomGrid) return;
 
     dragging.style.pointerEvents = 'none';
     const target = document.elementFromPoint(clientX, clientY);
     dragging.style.pointerEvents = '';
 
     if (!target) return;
+
+    // Check if we are over a grid or a panel inside a grid
+    const targetGrid = (target.closest('.panels-grid') || target.closest('.map-bottom-grid')) as HTMLElement | null;
     const targetPanel = target.closest('.panel') as HTMLElement | null;
-    if (!targetPanel || targetPanel === dragging || targetPanel.classList.contains('hidden')) return;
-    if (targetPanel.parentElement !== grid) return;
 
-    const targetRect = targetPanel.getBoundingClientRect();
-    const draggingRect = dragging.getBoundingClientRect();
+    if (!targetGrid && !targetPanel) return;
 
-    const children = Array.from(grid.children);
-    const dragIdx = children.indexOf(dragging);
-    const targetIdx = children.indexOf(targetPanel);
-    if (dragIdx === -1 || targetIdx === -1) return;
+    const currentTargetGrid = targetGrid || (targetPanel ? targetPanel.parentElement as HTMLElement : null);
+    if (!currentTargetGrid || (currentTargetGrid !== grid && currentTargetGrid !== bottomGrid)) return;
 
-    const sameRow = Math.abs(draggingRect.top - targetRect.top) < 30;
-    const targetMid = sameRow
-      ? targetRect.left + targetRect.width / 2
-      : targetRect.top + targetRect.height / 2;
-    const cursorPos = sameRow ? clientX : clientY;
+    if (targetPanel && targetPanel !== dragging && !targetPanel.classList.contains('hidden')) {
+      const targetRect = targetPanel.getBoundingClientRect();
+      const draggingRect = dragging.getBoundingClientRect();
 
-    if (dragIdx < targetIdx) {
-      if (cursorPos > targetMid) {
-        grid.insertBefore(dragging, targetPanel.nextSibling);
+      const children = Array.from(currentTargetGrid.children);
+      const dragIdx = children.indexOf(dragging);
+      const targetIdx = children.indexOf(targetPanel);
+
+      const sameRow = Math.abs(draggingRect.top - targetRect.top) < 30;
+      const targetMid = sameRow
+        ? targetRect.left + targetRect.width / 2
+        : targetRect.top + targetRect.height / 2;
+      const cursorPos = sameRow ? clientX : clientY;
+
+      if (dragIdx === -1) {
+        // Moving from one grid to another
+        if (cursorPos < targetMid) {
+          currentTargetGrid.insertBefore(dragging, targetPanel);
+        } else {
+          currentTargetGrid.insertBefore(dragging, targetPanel.nextSibling);
+        }
+      } else {
+        // Reordering within same grid
+        if (dragIdx < targetIdx) {
+          if (cursorPos > targetMid) {
+            currentTargetGrid.insertBefore(dragging, targetPanel.nextSibling);
+          }
+        } else {
+          if (cursorPos < targetMid) {
+            currentTargetGrid.insertBefore(dragging, targetPanel);
+          }
+        }
       }
-    } else {
-      if (cursorPos < targetMid) {
-        grid.insertBefore(dragging, targetPanel);
-      }
+    } else if (currentTargetGrid !== dragging.parentElement) {
+      // Dragging over an empty or near-empty grid zone
+      currentTargetGrid.appendChild(dragging);
     }
   }
 

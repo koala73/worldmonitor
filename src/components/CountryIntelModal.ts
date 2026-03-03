@@ -52,7 +52,7 @@ export class CountryIntelModal {
       <div class="country-intel-modal">
         <div class="country-intel-header">
           <div class="country-intel-title"></div>
-          <button class="country-intel-close">×</button>
+          <button class="country-intel-close" aria-label="Close">×</button>
         </div>
         <div class="country-intel-content"></div>
       </div>

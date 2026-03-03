@@ -132,6 +132,21 @@ export const FAA_AIRPORTS = MONITORED_AIRPORTS.filter(
   (a) => a.country === 'USA'
 ).map((a) => a.iata);
 
+// Top 40 international hubs queried via AviationStack (non-US; US uses FAA)
+// All 128 airports remain in MONITORED_AIRPORTS for map display, NOTAMs, and gray dots
+export const AVIATIONSTACK_AIRPORTS: string[] = [
+  // Americas (5)
+  'YYZ', 'MEX', 'GRU', 'EZE', 'BOG',
+  // Europe (12)
+  'LHR', 'CDG', 'FRA', 'AMS', 'MAD', 'FCO', 'MUC', 'BCN', 'ZRH', 'IST', 'VIE', 'CPH',
+  // APAC (12)
+  'HND', 'NRT', 'PEK', 'PVG', 'HKG', 'SIN', 'ICN', 'BKK', 'SYD', 'DEL', 'BOM', 'KUL',
+  // MENA (6)
+  'DXB', 'DOH', 'AUH', 'RUH', 'CAI', 'TLV',
+  // Africa (5)
+  'JNB', 'NBO', 'LOS', 'ADD', 'CPT',
+];
+
 // Severity thresholds
 export const DELAY_SEVERITY_THRESHOLDS = {
   minor: { avgDelayMinutes: 15, delayedPct: 15 },

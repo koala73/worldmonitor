@@ -160,6 +160,17 @@ export const FEEDS: Record<string, Feed[]> = {
     { name: 'New Unicorns', url: rss('https://news.google.com/rss/search?q=("becomes+unicorn"+OR+"joins+unicorn"+OR+"reaches+unicorn"+OR+"achieved+unicorn")+when:14d&hl=en-US&gl=US&ceid=US:en') },
   ],
 
+  // IPO & SPAC
+  ipo: [
+    { name: 'IPO News', url: rss('https://news.google.com/rss/search?q=(IPO+OR+"initial+public+offering"+OR+SPAC)+tech+when:7d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Tech IPO News', url: rss('https://news.google.com/rss/search?q=tech+IPO+OR+"tech+company"+IPO+when:7d&hl=en-US&gl=US&ceid=US:en') },
+  ],
+
+  // Product Hunt
+  producthunt: [
+    { name: 'Product Hunt', url: rss('https://www.producthunt.com/feed') },
+  ],
+
   // Accelerators & Demo Days
   accelerators: [
     { name: 'YC News', url: rss('https://news.ycombinator.com/rss') },
@@ -203,6 +214,7 @@ export const DEFAULT_PANELS: Record<string, PanelConfig> = {
 export const DEFAULT_MAP_LAYERS: MapLayers = {
   // Keep only relevant layers, set others to false
   gpsJamming: false,
+  geopoliticalBoundaries: false,
   conflicts: false,
   bases: false,
   cables: true,
@@ -254,6 +266,7 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
 // Mobile defaults for tech variant
 export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
+  geopoliticalBoundaries: false,
   conflicts: false,
   bases: false,
   cables: false,

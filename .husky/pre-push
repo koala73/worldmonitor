@@ -4,5 +4,10 @@ npm run typecheck || exit 1
 echo "Running API type check..."
 npm run typecheck:api || exit 1
 
+echo "Running CJS syntax check..."
+for f in scripts/*.cjs; do
+  [ -f "$f" ] && node -c "$f" || exit 1
+done
+
 echo "Running version sync check..."
 npm run version:check || exit 1

@@ -194,7 +194,15 @@ export async function fetchCachedRiskScores(signal?: AbortSignal): Promise<Cache
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') throw error;
       console.error('[CachedRiskScores] Fetch error:', error);
-      return cachedScores ?? await loadPersistentRiskScores();
+      const fallback = cachedScores ?? await loadPersistentRiskScores();
+      if (fallback) {
+        if (!cachedScores) {
+          cachedScores = fallback;
+          setHasCachedScores(true);
+        }
+        lastFetchTime = now;
+      }
+      return fallback;
     } finally {
       fetchPromise = null;
     }

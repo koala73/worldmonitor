@@ -51,6 +51,7 @@ export class ServiceStatusPanel extends Panel {
   public async fetchStatus(): Promise<boolean> {
     try {
       const data = await fetchServiceStatuses();
+      if (!this.element?.isConnected) return false;
       if (!data.success) throw new Error('Failed to load status');
 
       const fingerprint = data.services.map(s => `${s.name}:${s.status}`).join(',');
@@ -61,12 +62,15 @@ export class ServiceStatusPanel extends Panel {
       return changed;
     } catch (err) {
       if (this.isAbortError(err)) return false;
+      if (!this.element?.isConnected) return false;
       this.error = err instanceof Error ? err.message : 'Failed to fetch';
       console.error('[ServiceStatus] Fetch error:', err);
       return true;
     } finally {
       this.loading = false;
-      this.render();
+      if (this.element?.isConnected) {
+        this.render();
+      }
     }
   }
 

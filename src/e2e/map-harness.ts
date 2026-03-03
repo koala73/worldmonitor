@@ -137,6 +137,7 @@ app.style.margin = '0 auto';
 
 const allLayersEnabled: MapLayers = {
   gpsJamming: true,
+  geopoliticalBoundaries: true,
   conflicts: true,
   bases: true,
   cables: true,
@@ -184,6 +185,7 @@ const allLayersEnabled: MapLayers = {
 
 const allLayersDisabled: MapLayers = {
   gpsJamming: false,
+  geopoliticalBoundaries: false,
   conflicts: false,
   bases: false,
   cables: false,

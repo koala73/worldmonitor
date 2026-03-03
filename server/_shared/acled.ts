@@ -5,9 +5,6 @@
  * acled-events) with overlapping queries. This shared layer ensures
  * identical queries hit Redis instead of making redundant upstream calls.
  */
-
-declare const process: { env: Record<string, string | undefined> };
-
 import { CHROME_UA } from './constants';
 import { cachedFetchJson } from './redis';
 

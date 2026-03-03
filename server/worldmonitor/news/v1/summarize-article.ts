@@ -59,13 +59,12 @@ export async function summarizeArticle(
       summary: '',
       model: '',
       provider: provider,
-      cached: false,
       tokens: 0,
       fallback: true,
-      skipped: true,
-      reason: skipReasons[provider] || `Unknown provider: ${provider}`,
       error: '',
       errorType: '',
+      status: 'SUMMARIZE_STATUS_SKIPPED',
+      statusDetail: skipReasons[provider] || `Unknown provider: ${provider}`,
     };
   }
 
@@ -77,13 +76,12 @@ export async function summarizeArticle(
       summary: '',
       model: '',
       provider: provider,
-      cached: false,
       tokens: 0,
       fallback: false,
-      skipped: false,
-      reason: '',
       error: 'Headlines array required',
       errorType: 'ValidationError',
+      status: 'SUMMARIZE_STATUS_ERROR',
+      statusDetail: 'Headlines array required',
     };
   }
 
@@ -118,7 +116,7 @@ export async function summarizeArticle(
             top_p: 0.9,
             ...extraBody,
           }),
-          signal: AbortSignal.timeout(30_000),
+          signal: AbortSignal.timeout(25_000),
         });
 
         if (!response.ok) {
@@ -164,17 +162,17 @@ export async function summarizeArticle(
     );
 
     if (result?.summary) {
+      const isCached = source === 'cache';
       return {
         summary: result.summary,
         model: result.model || model,
-        provider: source === 'cache' ? 'cache' : provider,
-        cached: source === 'cache',
-        tokens: source === 'cache' ? 0 : (result.tokens || 0),
+        provider: isCached ? 'cache' : provider,
+        tokens: isCached ? 0 : (result.tokens || 0),
         fallback: false,
-        skipped: false,
-        reason: '',
         error: '',
         errorType: '',
+        status: isCached ? 'SUMMARIZE_STATUS_CACHED' : 'SUMMARIZE_STATUS_SUCCESS',
+        statusDetail: '',
       };
     }
 
@@ -182,13 +180,12 @@ export async function summarizeArticle(
       summary: '',
       model: '',
       provider: provider,
-      cached: false,
       tokens: 0,
       fallback: true,
-      skipped: false,
-      reason: '',
       error: 'Empty response',
       errorType: '',
+      status: 'SUMMARIZE_STATUS_ERROR',
+      statusDetail: 'Empty response',
     };
 
   } catch (err: unknown) {
@@ -198,13 +195,12 @@ export async function summarizeArticle(
       summary: '',
       model: '',
       provider: provider,
-      cached: false,
       tokens: 0,
       fallback: true,
-      skipped: false,
-      reason: '',
       error: error.message,
       errorType: error.name,
+      status: 'SUMMARIZE_STATUS_ERROR',
+      statusDetail: `${error.name}: ${error.message}`,
     };
   }
 }

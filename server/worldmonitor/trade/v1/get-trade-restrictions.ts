@@ -7,9 +7,6 @@
  * NOTE: The WTO Quantitative Restrictions (QR) API is a separate subscription product.
  * This handler uses the Timeseries API tariff data as an available proxy for trade barriers.
  */
-
-declare const process: { env: Record<string, string | undefined> };
-
 import type {
   ServerContext,
   GetTradeRestrictionsRequest,

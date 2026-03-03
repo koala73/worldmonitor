@@ -2,25 +2,9 @@
 // Proxies to Railway relay which uses residential proxy for YouTube scraping
 
 import { getCorsHeaders, isDisallowedOrigin } from '../_cors.js';
+import { getRelayBaseUrl, getRelayHeaders } from '../_relay.js';
 
 export const config = { runtime: 'edge' };
-
-function getRelayBaseUrl() {
-  const relayUrl = process.env.WS_RELAY_URL;
-  if (!relayUrl) return null;
-  return relayUrl.replace('wss://', 'https://').replace('ws://', 'http://').replace(/\/$/, '');
-}
-
-function getRelayHeaders(baseHeaders = {}) {
-  const headers = { ...baseHeaders };
-  const relaySecret = process.env.RELAY_SHARED_SECRET || '';
-  if (relaySecret) {
-    const relayHeader = (process.env.RELAY_AUTH_HEADER || 'x-relay-key').toLowerCase();
-    headers[relayHeader] = relaySecret;
-    headers.Authorization = `Bearer ${relaySecret}`;
-  }
-  return headers;
-}
 
 export default async function handler(request) {
   const cors = getCorsHeaders(request);
@@ -52,7 +36,7 @@ export default async function handler(request) {
       const relayRes = await fetch(`${relayBase}/youtube-live?${qs}`, { headers: relayHeaders });
       if (relayRes.ok) {
         const data = await relayRes.json();
-        const cacheTime = videoIdParam ? 3600 : 300;
+        const cacheTime = videoIdParam ? 3600 : 600;
         return new Response(JSON.stringify(data), {
           status: 200,
           headers: {
@@ -127,7 +111,7 @@ export default async function handler(request) {
 
     return new Response(JSON.stringify({ videoId, isLive: videoId !== null, channelExists, channelName, hlsUrl }), {
       status: 200,
-      headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=300, s-maxage=300, stale-while-revalidate=60' },
+      headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=300, s-maxage=600, stale-while-revalidate=120' },
     });
   } catch {
     return new Response(JSON.stringify({ videoId: null, error: 'Failed to fetch channel data' }), {

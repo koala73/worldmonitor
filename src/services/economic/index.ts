@@ -43,7 +43,18 @@ function getFredBreaker(seriesId: string) {
   }
   return fredBreakers.get(seriesId)!;
 }
-const wbBreaker = createCircuitBreaker<ListWorldBankIndicatorsResponse>({ name: 'World Bank', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
+const wbBreakers = new Map<string, ReturnType<typeof createCircuitBreaker<ListWorldBankIndicatorsResponse>>>();
+
+function getWbBreaker(indicatorCode: string) {
+  if (!wbBreakers.has(indicatorCode)) {
+    wbBreakers.set(indicatorCode, createCircuitBreaker<ListWorldBankIndicatorsResponse>({
+      name: `WB:${indicatorCode}`,
+      cacheTtlMs: 30 * 60 * 1000,
+      persistCache: true,
+    }));
+  }
+  return wbBreakers.get(indicatorCode)!;
+}
 const eiaBreaker = createCircuitBreaker<GetEnergyPricesResponse>({ name: 'EIA Energy', cacheTtlMs: 15 * 60 * 1000, persistCache: true });
 const capacityBreaker = createCircuitBreaker<GetEnergyCapacityResponse>({ name: 'EIA Capacity', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
 
@@ -93,7 +104,7 @@ const FRED_SERIES: FredConfig[] = [
 
 async function fetchSingleFredSeries(config: FredConfig): Promise<FredSeries | null> {
   const resp = await getFredBreaker(config.id).execute(async () => {
-    return client.getFredSeries({ seriesId: config.id, limit: 120 });
+    return client.getFredSeries({ seriesId: config.id, limit: 120 }, { signal: AbortSignal.timeout(20_000) });
   }, emptyFredFallback);
 
   const obs = resp.series?.observations;
@@ -213,7 +224,7 @@ export async function checkEiaStatus(): Promise<boolean> {
   if (!isFeatureAvailable('energyEia')) return false;
   try {
     const resp = await eiaBreaker.execute(async () => {
-      return client.getEnergyPrices({ commodities: ['wti'] });
+      return client.getEnergyPrices({ commodities: ['wti'] }, { signal: AbortSignal.timeout(20_000) });
     }, emptyEiaFallback);
     return resp.prices.length > 0;
   } catch {
@@ -230,7 +241,7 @@ export async function fetchOilAnalytics(): Promise<OilAnalytics> {
 
   try {
     const resp = await eiaBreaker.execute(async () => {
-      return client.getEnergyPrices({ commodities: [] }); // all commodities
+      return client.getEnergyPrices({ commodities: [] }, { signal: AbortSignal.timeout(20_000) }); // all commodities
     }, emptyEiaFallback);
 
     const byId = new Map<string, ProtoEnergyPrice>();
@@ -297,7 +308,7 @@ export async function fetchEnergyCapacityRpc(
       return client.getEnergyCapacity({
         energySources: energySources ?? [],
         years: years ?? 0,
-      });
+      }, { signal: AbortSignal.timeout(20_000) });
     }, emptyCapacityFallback);
   } catch {
     return emptyCapacityFallback;
@@ -429,14 +440,14 @@ export async function getIndicatorData(
 ): Promise<WorldBankResponse> {
   const { countries, years = 5 } = options;
 
-  const resp = await wbBreaker.execute(async () => {
+  const resp = await getWbBreaker(indicator).execute(async () => {
     return client.listWorldBankIndicators({
       indicatorCode: indicator,
       countryCode: countries?.join(';') || '',
       year: years,
       pageSize: 0,
       cursor: '',
-    });
+    }, { signal: AbortSignal.timeout(20_000) });
   }, emptyWbFallback);
 
   return buildWorldBankResponse(indicator, resp.data);
@@ -480,6 +491,10 @@ export interface TechReadinessScore {
 export async function getTechReadinessRankings(
   countries?: string[],
 ): Promise<TechReadinessScore[]> {
+  // Fast path: bootstrap-hydrated data available on first page load
+  const hydrated = getHydratedData('techReadiness') as TechReadinessScore[] | undefined;
+  if (hydrated?.length && !countries) return hydrated;
+
   const [internet, mobile, broadband, rdSpend] = await Promise.all([
     getIndicatorData('IT.NET.USER.ZS', { countries, years: 5 }),
     getIndicatorData('IT.CEL.SETS.P2', { countries, years: 5 }),
@@ -569,9 +584,9 @@ export async function fetchBisData(): Promise<BisData> {
 
   try {
     const [policy, eer, credit] = await Promise.all([
-      hPolicy ? Promise.resolve(hPolicy) : bisPolicyBreaker.execute(() => client.getBisPolicyRates({}), emptyBisPolicyFallback),
-      hEer ? Promise.resolve(hEer) : bisEerBreaker.execute(() => client.getBisExchangeRates({}), emptyBisEerFallback),
-      hCredit ? Promise.resolve(hCredit) : bisCreditBreaker.execute(() => client.getBisCredit({}), emptyBisCreditFallback),
+      hPolicy ? Promise.resolve(hPolicy) : bisPolicyBreaker.execute(() => client.getBisPolicyRates({}, { signal: AbortSignal.timeout(20_000) }), emptyBisPolicyFallback),
+      hEer ? Promise.resolve(hEer) : bisEerBreaker.execute(() => client.getBisExchangeRates({}, { signal: AbortSignal.timeout(20_000) }), emptyBisEerFallback),
+      hCredit ? Promise.resolve(hCredit) : bisCreditBreaker.execute(() => client.getBisCredit({}, { signal: AbortSignal.timeout(20_000) }), emptyBisCreditFallback),
     ]);
     return {
       policyRates: policy.rates,

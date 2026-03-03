@@ -141,7 +141,7 @@ export class IntelligenceFindingsBadge {
   private playSound(): void {
     if (this.audioEnabled && this.audio) {
       this.audio.currentTime = 0;
-      this.audio.play().catch(() => {});
+      this.audio.play()?.catch(() => {});
     }
   }
 
@@ -499,7 +499,7 @@ export class IntelligenceFindingsBadge {
       <div class="findings-modal">
         <div class="findings-modal-header">
           <span class="findings-modal-title">🎯 ${t('components.intelligenceFindings.all', { count: String(this.findings.length) })}</span>
-          <button class="findings-modal-close">×</button>
+          <button class="findings-modal-close" aria-label="Close">×</button>
         </div>
         <div class="findings-modal-content">
           ${findingsHtml}
@@ -507,13 +507,20 @@ export class IntelligenceFindingsBadge {
       </div>
     `;
 
-    // Add click handlers
-    overlay.querySelector('.findings-modal-close')?.addEventListener('click', () => overlay.remove());
+    const closeOverlay = () => {
+      overlay.remove();
+      document.removeEventListener('keydown', onEsc);
+    };
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeOverlay();
+    };
+    overlay.querySelector('.findings-modal-close')?.addEventListener('click', closeOverlay);
     overlay.addEventListener('click', (e) => {
       if ((e.target as HTMLElement).classList.contains('findings-modal-overlay')) {
-        overlay.remove();
+        closeOverlay();
       }
     });
+    document.addEventListener('keydown', onEsc);
 
     // Handle clicking individual items
     overlay.querySelectorAll('.findings-modal-item').forEach(item => {
@@ -525,10 +532,10 @@ export class IntelligenceFindingsBadge {
         trackFindingClicked(finding.id, finding.source, finding.type, finding.priority);
         if (finding.source === 'signal' && this.onSignalClick) {
           this.onSignalClick(finding.original as CorrelationSignal);
-          overlay.remove();
+          closeOverlay();
         } else if (finding.source === 'alert' && this.onAlertClick) {
           this.onAlertClick(finding.original as UnifiedAlert);
-          overlay.remove();
+          closeOverlay();
         }
       });
     });

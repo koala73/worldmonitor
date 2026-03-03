@@ -3,6 +3,15 @@
 // Generated: 2026-03-01
 // Entries: 1478
 
+export function sanitizeHebrew(text: string): string {
+  return text
+    .normalize('NFKC')
+    .replace(/[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g, '')
+    .replace(/[\u2010-\u2015\u2212]/g, '-')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
 const OREF_LOCATIONS: Record<string, string> = {
   'אבו גוש': 'Abu Gosh',
   'אבו סנאן': 'Abu Snan',
@@ -164,6 +173,7 @@ const OREF_LOCATIONS: Record<string, string> = {
   'אש קודש': 'Esh Kodesh',
   'אשבול': 'Eshbol',
   'אשבל': 'Eshbal',
+  'אשדוד': 'Ashdod',
   'אשדוד - א,ב,ד,ה': 'Ashdod - Alef, Bet, Dalet, Heh',
   'אשדוד - איזור תעשייה צפוני': 'Ashdod - Northen Industrial Zone',
   'אשדוד - ג,ו,ז': 'Ashdod - Gimmel, Vav, Zain',
@@ -174,6 +184,7 @@ const OREF_LOCATIONS: Record<string, string> = {
   'אשכולות': 'Eshkolot',
   'אשל הנשיא': 'Eshel HaNassi',
   'אשלים': 'Ashalim',
+  'אשקלון': 'Ashkelon',
   'אשקלון - דרום': 'Ashkelon - South',
   'אשקלון - צפון': 'Ashkelon - North',
   'אשרת': 'Oshrat',
@@ -187,6 +198,7 @@ const OREF_LOCATIONS: Record<string, string> = {
   'באר טוביה': 'Be\'er Tuvia',
   'באר יעקב': 'Be\'er Yacov',
   'באר מילכה': 'Be\'er Milka',
+  'באר שבע': 'Beer Sheva',
   'באר שבע - דרום': 'Beer Sheva - South',
   'באר שבע - מזרח': 'Beer Sheva - East',
   'באר שבע - מערב': 'Beer Sheva - West',
@@ -1389,6 +1401,7 @@ const OREF_LOCATIONS: Record<string, string> = {
   'שדמה': 'Shdema',
   'שדמות דבורה': 'Shadmot Dvora',
   'שדמות מחולה': 'Shadmot Mechola',
+  'שדרות': 'Sderot',
   'שדרות, איבים': 'Sderot, Ibim',
   'שואבה': 'Shoeva',
   'שובל': 'Shoval',
@@ -1486,6 +1499,6 @@ const OREF_LOCATIONS: Record<string, string> = {
 
 export function translateLocation(hebrew: string): string {
   if (!hebrew) return hebrew;
-  const key = hebrew.normalize('NFKC').trim().replace(/\s+/g, ' ');
+  const key = sanitizeHebrew(hebrew);
   return OREF_LOCATIONS[key] ?? hebrew;
 }

@@ -8,12 +8,13 @@ import {
   saveChannelsToStorage,
   BUILTIN_IDS,
   getDefaultLiveChannels,
-  OPTIONAL_LIVE_CHANNELS,
-  OPTIONAL_CHANNEL_REGIONS,
+  getFilteredOptionalChannels,
+  getFilteredChannelRegions,
 } from '@/components/LiveNewsPanel';
 import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
 import { isDesktopRuntime, getRemoteApiBaseUrl } from '@/services/runtime';
+import { resolveUserCountryCode } from '@/utils/user-location';
 
 /** Builds a stable custom channel id from a YouTube handle (e.g. @Foo -> custom-foo). */
 function customChannelIdFromHandle(handle: string): string {
@@ -56,19 +57,21 @@ function parseYouTubeInput(raw: string): { handle: string } | { videoId: string 
 }
 
 // Persist active region tab across re-renders
-let activeRegionTab = OPTIONAL_CHANNEL_REGIONS[0]?.key ?? 'na';
-
-// Build a lookup map: channel id → LiveChannel for optional channels
-const optionalChannelMap = new Map<string, LiveChannel>();
-for (const c of OPTIONAL_LIVE_CHANNELS) optionalChannelMap.set(c.id, c);
+let activeRegionTab = 'all';
 
 function channelInitials(name: string): string {
   return name.split(/[\s-]+/).map((w) => w[0] ?? '').join('').slice(0, 2).toUpperCase();
 }
 
-export function initLiveChannelsWindow(containerEl?: HTMLElement): void {
+export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise<void> {
   const appEl = containerEl ?? document.getElementById('app');
   if (!appEl) return;
+
+  const userCountry = await resolveUserCountryCode();
+  const filteredChannels = getFilteredOptionalChannels(userCountry);
+  const filteredRegions = getFilteredChannelRegions(userCountry);
+  const optionalChannelMap = new Map<string, LiveChannel>();
+  for (const c of filteredChannels) optionalChannelMap.set(c.id, c);
 
   if (!containerEl) {
     document.title = `${t('components.liveNews.manage') ?? 'Channel management'} - World Monitor`;
@@ -142,6 +145,7 @@ export function initLiveChannelsWindow(containerEl?: HTMLElement): void {
   function renderList(listEl: HTMLElement): void {
     listEl.innerHTML = '';
     for (const ch of channels) {
+      const isCustom = !BUILTIN_IDS.has(ch.id);
       const row = document.createElement('div');
       row.className = 'live-news-manage-row';
       row.dataset.channelId = ch.id;
@@ -151,13 +155,25 @@ export function initLiveChannelsWindow(containerEl?: HTMLElement): void {
       nameSpan.textContent = ch.name ?? '';
       row.appendChild(nameSpan);
 
-      row.addEventListener('click', (e) => {
-        // Suppress click immediately after drag-drop to avoid accidental edit open.
-        if (suppressRowClick || row.classList.contains('live-news-manage-row-dragging')) return;
-        if ((e.target as HTMLElement).closest('input, button, textarea, select')) return;
-        e.preventDefault();
-        showEditForm(row, ch, listEl);
+      const removeX = document.createElement('span');
+      removeX.className = 'live-news-manage-row-remove-x';
+      removeX.textContent = '✕';
+      removeX.addEventListener('click', (e) => {
+        e.stopPropagation();
+        channels = channels.filter((c) => c.id !== ch.id);
+        saveChannelsToStorage(channels);
+        renderList(listEl);
       });
+      row.appendChild(removeX);
+
+      if (isCustom) {
+        row.addEventListener('click', (e) => {
+          if (suppressRowClick || row.classList.contains('live-news-manage-row-dragging')) return;
+          if ((e.target as HTMLElement).closest('input, button, textarea, select, .live-news-manage-row-remove-x')) return;
+          e.preventDefault();
+          showEditForm(row, ch, listEl);
+        });
+      }
 
       listEl.appendChild(row);
     }
@@ -276,7 +292,7 @@ export function initLiveChannelsWindow(containerEl?: HTMLElement): void {
 
     // Render tab buttons
     tabBar.innerHTML = '';
-    for (const region of OPTIONAL_CHANNEL_REGIONS) {
+    for (const region of filteredRegions) {
       const addedCount = region.channelIds.filter((id) => currentIds.has(id)).length;
       const btn = document.createElement('button');
       btn.type = 'button';
@@ -292,7 +308,7 @@ export function initLiveChannelsWindow(containerEl?: HTMLElement): void {
 
     // Render tab content panels
     tabContents.innerHTML = '';
-    for (const region of OPTIONAL_CHANNEL_REGIONS) {
+    for (const region of filteredRegions) {
       const panel = document.createElement('div');
       panel.className = 'live-news-manage-tab-content' + (region.key === activeRegionTab ? ' active' : '');
 
@@ -338,14 +354,23 @@ export function initLiveChannelsWindow(containerEl?: HTMLElement): void {
     card.appendChild(info);
     card.appendChild(action);
 
-    if (!isAdded) {
-      card.addEventListener('click', () => {
+    card.addEventListener('mouseenter', () => {
+      if (card.classList.contains('added')) action.textContent = '✕';
+    });
+    card.addEventListener('mouseleave', () => {
+      if (card.classList.contains('added')) action.textContent = '✓';
+    });
+
+    card.addEventListener('click', () => {
+      if (isAdded) {
+        channels = channels.filter((c) => c.id !== ch.id);
+      } else {
         if (channels.some((c) => c.id === ch.id)) return;
         channels.push({ ...ch });
-        saveChannelsToStorage(channels);
-        renderList(listEl);
-      });
-    }
+      }
+      saveChannelsToStorage(channels);
+      renderList(listEl);
+    });
     return card;
   }
 

@@ -2,6 +2,91 @@
 
 All notable changes to World Monitor are documented here.
 
+## [2.5.24] - 2026-03-03
+
+### Highlights
+
+- **UCDP conflict data** — integrated Uppsala Conflict Data Program for historical & ongoing armed conflict tracking (#760)
+- **Country brief sharing** — maximize mode, shareable URLs, native browser share button, expanded sections (#743, #854)
+- **Unified Vercel deployment** — consolidated 4 separate deployments into 1 via runtime variant detection (#756)
+- **CDN performance overhaul** — POST→GET conversion, per-domain edge functions, tiered bootstrap for ~46% egress reduction (#753, #795, #838)
+- **Security hardening** — CSP script hashes replace unsafe-inline, crypto.randomUUID() for IDs, XSS-safe i18n, Finnhub token header (#781, #844, #861, #744)
+- **i18n expansion** — French support with Live TV channels, hardcoded English strings replaced with translation keys (#794, #851, #839)
+
+### Added
+
+- UCDP (Uppsala Conflict Data Program) integration for armed conflict tracking (#760)
+- Iran & Strait of Hormuz conflict zones, upgraded Ukraine polygon (#731)
+- 100 Iran war events seeded with expanded geocoder (#792)
+- Country brief maximize mode, shareable URLs, expanded sections & i18n (#743)
+- Native browser share button for country briefs (#854)
+- French i18n support with French Live TV channels (#851)
+- Geo-restricted live channel support, restored WELT (#765)
+- Manage Channels UX — toggle from grid + show all channels (#745)
+- Command palette: disambiguate Map vs Panel commands, split country into map/brief (#736)
+- Command palette: rotating contextual tips replace static empty state (#737)
+- Download App button for web users with dropdown (#734, #735)
+- Reset layout button to restore default panel sizes and order (#801)
+- System status moved into settings (#735)
+- Vercel cron to pre-warm AviationStack cache (#776)
+- Runtime variant detection — consolidate 4 Vercel deployments into 1 (#756)
+- CJS syntax check in pre-push hook (#769)
+
+### Fixed
+
+- **Security**: XSS — wrap `t()` calls in `escapeHtml()` (#861), use `crypto.randomUUID()` instead of `Math.random()` for ID generation (#844), move Finnhub API key from query string to `X-Finnhub-Token` header (#744)
+- **i18n**: replace hardcoded English strings with translation keys (#839), i18n improvements (#794)
+- **Market**: parse comma-separated query params and align Railway cache keys (#856), Railway market data cron + complete missing tech feed categories (#850), Yahoo relay fallback + RSS digest relay for blocked feeds (#835), tech UNAVAILABLE feeds + Yahoo batch early-exit + sector heatmap gate (#810)
+- **Aviation**: move AviationStack fetching to Railway relay, reduce to 40 airports (#858)
+- **UI**: cancel pending debounced calls on component destroy (#848), guard async operations against stale DOM references (#843)
+- **Sentry**: guard stale DOM refs, audio.play() compat, add 16 noise filters (#855)
+- **Relay**: exponential backoff for failing RSS feeds (#853), deduplicate UCDP constants crashing Railway container (#766)
+- **API**: remove `[domain]` catch-all that intercepted all RPC routes (#753 regression) (#785), pageSize bounds validation on research handlers (#819), return 405 for wrong HTTP method (#757), pagination cursor for cyber threats (#754)
+- **Conflict**: bump Iran events cache-bust to v7 (#724)
+- **OREF**: prevent LLM translation cache from poisoning Hebrew→English pipeline (#733), strip translation labels from World Brief input (#768)
+- **Military**: harden USNI fleet report ship name regex (#805)
+- **Sidecar**: add required params to ACLED API key validation probe (#804)
+- **Macro**: replace hardcoded BTC mining thresholds with Mayer Multiple (#750)
+- **Cyber**: reduce GeoIP per-IP timeout from 3s to 1.5s (#748)
+- **CSP**: restore unsafe-inline for Vercel bot-challenge pages (#788), add missing script hash and finance variant (#798)
+- **Runtime**: route all /api/* calls through CDN edge instead of direct Vercel (#780)
+- **Desktop**: detect Linux node target from host arch (#742), harden Windows installer update path + map resize (#739), close update toast after clicking download (#738), only open valid http(s) links externally (#723)
+- **Webcams**: replace dead Tel Aviv live stream (#732), replace stale Jerusalem feed (#849)
+- Story header uses full domain WORLDMONITOR.APP (#799)
+- Open variant nav links in same window instead of new tab (#721)
+- Suppress map renders during resize drag (#728)
+- Append deduction panel to DOM after async import resolves (#764)
+- Deduplicate stale-while-revalidate background fetches in CircuitBreaker (#793)
+- CORS fallback, rate-limit bump, RSS proxy allowlist (#814)
+- Unavailable stream error messages updated (#759)
+
+### Performance
+
+- Tier slow/fast bootstrap data for ~46% CDN egress reduction (#838)
+- Convert POST RPCs to GET for CDN caching (#795)
+- Split monolithic edge function into per-domain functions (#753)
+- Increase CDN cache TTLs + add stale-if-error across edge functions (#777)
+- Bump CDN cache TTLs for oref-alerts and youtube/live (#791)
+- Skip wasted direct fetch for Vercel-blocked domains in RSS proxy (#815)
+
+### Security
+
+- Replace CSP unsafe-inline with script hashes and add trust signals (#781)
+- Expand Permissions-Policy and tighten CSP connect-src (#779)
+
+### Changed
+
+- Extend support for larger screens (#740)
+- Green download button + retire sliding popup (#747)
+- Extract shared relay helper into `_relay.js` (#782)
+- Consolidate `SummarizeArticleResponse` status fields (#813)
+- Consolidate `declare const process` into shared `env.d.ts` (#752)
+- Deduplicate `clampInt` into `server/_shared/constants`
+- Add error logging for network errors in error mapper (#746)
+- Redis error logging + reduced timeouts for edge functions (#749)
+
+---
+
 ## [2.5.21] - 2026-03-01
 
 ### Highlights

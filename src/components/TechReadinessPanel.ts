@@ -44,10 +44,12 @@ export class TechReadinessPanel extends Panel {
 
     try {
       this.rankings = await getTechReadinessRankings();
+      if (!this.element?.isConnected) return;
       this.lastFetch = Date.now();
       this.setCount(this.rankings.length);
       this.render();
     } catch (error) {
+      if (!this.element?.isConnected) return;
       console.error('[TechReadinessPanel] Error fetching data:', error);
       this.showError(t('common.failedTechReadiness'));
     } finally {

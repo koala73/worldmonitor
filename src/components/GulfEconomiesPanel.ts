@@ -5,6 +5,7 @@ import { formatPrice, formatChange, getChangeClass } from '@/utils';
 import { miniSparkline } from '@/utils/sparkline';
 import { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
 import type { ListGulfQuotesResponse, GulfQuote } from '@/generated/client/worldmonitor/market/v1/service_client';
+import { startSmartPollLoop, type SmartPollLoopHandle } from '@/services/runtime';
 
 const client = new MarketServiceClient('', { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) });
 
@@ -27,29 +28,33 @@ function renderSection(title: string, quotes: GulfQuote[]): string {
 }
 
 export class GulfEconomiesPanel extends Panel {
-  private pollTimer: ReturnType<typeof setInterval> | null = null;
+  private pollLoop: SmartPollLoopHandle;
 
   constructor() {
     super({ id: 'gulf-economies', title: t('panels.gulfEconomies') });
-    setTimeout(() => void this.fetchData(), 8_000);
+    this.pollLoop = startSmartPollLoop(() => this.fetchData(), {
+      intervalMs: 60_000,
+      hiddenMultiplier: 10,
+      refreshOnVisible: true,
+      runImmediately: false,
+    });
+    setTimeout(() => this.pollLoop.trigger(), 8_000);
   }
 
   destroy(): void {
-    if (this.pollTimer) clearInterval(this.pollTimer);
+    this.pollLoop.stop();
     super.destroy();
   }
 
   public async fetchData(): Promise<void> {
     try {
       const data = await client.listGulfQuotes({});
+      if (!this.element?.isConnected) return;
       this.renderGulf(data);
     } catch (err) {
       if (this.isAbortError(err)) return;
+      if (!this.element?.isConnected) return;
       this.showError(t('common.failedMarketData'));
-    }
-
-    if (!this.pollTimer) {
-      this.pollTimer = setInterval(() => void this.fetchData(), 60_000);
     }
   }
 

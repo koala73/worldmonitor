@@ -9,7 +9,7 @@ import type {
   ListCryptoQuotesResponse,
   CryptoQuote,
 } from '../../../../src/generated/server/worldmonitor/market/v1/service_server';
-import { CRYPTO_META, fetchCoinGeckoMarkets } from './_shared';
+import { CRYPTO_META, fetchCoinGeckoMarkets, parseStringArray } from './_shared';
 import { cachedFetchJson } from '../../../_shared/redis';
 
 const REDIS_CACHE_KEY = 'market:crypto:v1';
@@ -21,7 +21,8 @@ export async function listCryptoQuotes(
   _ctx: ServerContext,
   req: ListCryptoQuotesRequest,
 ): Promise<ListCryptoQuotesResponse> {
-  const ids = req.ids.length > 0 ? req.ids : Object.keys(CRYPTO_META);
+  const parsedIds = parseStringArray(req.ids);
+  const ids = parsedIds.length > 0 ? parsedIds : Object.keys(CRYPTO_META);
 
   const cacheKey = `${REDIS_CACHE_KEY}:${[...ids].sort().join(',')}`;
 

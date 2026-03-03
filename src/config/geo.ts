@@ -1,4 +1,4 @@
-import type { Hotspot, ConflictZone, MilitaryBase, UnderseaCable, NuclearFacility, StrategicWaterway, APTGroup, EconomicCenter, Spaceport, CriticalMineralProject } from '@/types';
+import type { Hotspot, ConflictZone, MilitaryBase, UnderseaCable, NuclearFacility, StrategicWaterway, APTGroup, EconomicCenter, Spaceport, CriticalMineralProject, GeopoliticalBoundary } from '@/types';
 import { MILITARY_BASES_EXPANDED } from './bases-expanded';
 
 // Hotspot levels are NOT hardcoded - they are dynamically calculated based on news activity
@@ -495,10 +495,40 @@ export const APT_GROUPS: APTGroup[] = [
 
 export const CONFLICT_ZONES: ConflictZone[] = [
   {
+    id: 'iran',
+    name: 'Iran War Theater',
+    coords: [[44, 39.7], [46, 39.5], [48.5, 38.5], [50.5, 37.5], [53.5, 37.5], [55.5, 38], [57, 37.5], [58.5, 37.5], [61, 36.5], [63.5, 35.5], [63.5, 31.5], [62.5, 29.5], [61, 28], [59, 26.5], [57.5, 25.5], [56.5, 25.5], [55, 26.5], [54, 27], [52.5, 27.5], [50.5, 28.5], [49, 29.5], [47.5, 30], [46, 31.5], [45.5, 33.5], [45.8, 35.5], [46.5, 37], [44, 38.5], [44, 39.7]],
+    center: [53, 32],
+    intensity: 'high',
+    parties: ['United States', 'Israel', 'Iran', 'IRGC'],
+    casualties: '200+ killed (first 72hrs)',
+    displaced: 'Millions fleeing major cities',
+    keywords: ['iran', 'tehran', 'khamenei', 'epic fury', 'roaring lion', 'irgc', 'centcom', 'isfahan', 'bushehr'],
+    startDate: 'Feb 28, 2026',
+    location: 'Iran (nationwide)',
+    description: 'Joint US-Israeli military operation (US: Operation Epic Fury / Israel: Operation Roaring Lion). 1000+ targets struck including military, nuclear, and leadership sites. Supreme Leader Khamenei killed in Tehran strikes. Iran retaliating with missiles and drones across the region.',
+    keyDevelopments: ['Khamenei killed in Tehran strikes', '1000+ Iranian targets struck', '3 US service members KIA', 'Iranian missile/drone retaliation on Gulf states'],
+  },
+  {
+    id: 'strait_hormuz',
+    name: 'Strait of Hormuz Crisis',
+    coords: [[54.5, 25.5], [55.5, 25], [57, 24.8], [58.5, 25], [58.5, 26.8], [57.5, 27.5], [56, 27.5], [54.5, 27], [54.5, 25.5]],
+    center: [56.5, 26.2],
+    intensity: 'high',
+    parties: ['Iran (IRGC Navy)', 'US Navy (5th Fleet)', 'Coalition forces'],
+    casualties: 'Maritime casualties reported',
+    displaced: 'Global shipping halted',
+    keywords: ['hormuz', 'strait', 'persian gulf', 'shipping', 'tanker', 'oil', 'blockade', 'navy'],
+    startDate: 'Feb 28, 2026',
+    location: 'Strait of Hormuz & Persian Gulf Approaches',
+    description: 'Iran attempting to close Strait of Hormuz. IRGC naval/air operations active. Three tankers damaged. US sank 9 Iranian warships. GPS spoofing/jamming reported. 20-30% of global oil/gas transits through this chokepoint. Brent crude spiking to $80+.',
+    keyDevelopments: ['Iran attempts Hormuz closure', '3 tankers damaged', 'US sinks 9 Iranian warships', 'Global shipping paused', 'Oil prices spike'],
+  },
+  {
     id: 'ukraine',
-    name: 'Ukraine Conflict',
-    coords: [[30, 52], [40, 52], [40, 44], [30, 44]],
-    center: [35, 48],
+    name: 'Ukraine War',
+    coords: [[22.137, 48.09], [22.558, 49.085], [22.66, 49.79], [23.2, 50.38], [23.82, 51.22], [24.09, 51.89], [25.6, 51.93], [27.85, 52.18], [30.17, 52.1], [32.76, 52.32], [34.4, 51.76], [36.28, 50.3], [38.25, 49.92], [40.18, 49.6], [40.08, 48.88], [39.68, 47.77], [38.21, 47.1], [36.65, 46.58], [35.19, 46.1], [36.47, 45.22], [36, 44.4], [33.55, 44.39], [32.48, 44.52], [31.78, 45.2], [31.44, 46.03], [30.76, 46.38], [29.6, 45.38], [28.21, 45.45], [28.68, 46.45], [28.24, 47.11], [26.62, 48.26], [24.58, 47.96], [22.87, 47.95], [22.137, 48.09]],
+    center: [31, 48.5],
     intensity: 'high',
     parties: ['Russia', 'Ukraine', 'NATO (support)'],
     casualties: '500,000+ (est.)',
@@ -523,6 +553,36 @@ export const CONFLICT_ZONES: ConflictZone[] = [
     location: 'Gaza Strip, Palestinian Territories',
     description: 'Israeli military operations in Gaza following October 7 attacks. Ground invasion, aerial bombardment. Humanitarian crisis. Regional escalation with Hezbollah.',
     keyDevelopments: ['Rafah ground operation', 'Humanitarian crisis', 'Hostage negotiations', 'Iran-backed attacks'],
+  },
+  {
+    id: 'south_lebanon',
+    name: 'Israel-Lebanon Border',
+    coords: [[35.1, 33.0], [35.1, 33.4], [35.8, 33.4], [35.8, 33.0]],
+    center: [35.4, 33.2],
+    intensity: 'high',
+    parties: ['Israel (IDF)', 'Hezbollah'],
+    casualties: '500+ killed',
+    displaced: '150k+ displaced',
+    keywords: ['hezbollah', 'lebanon', 'israel', 'border', 'rocket', 'airstrike'],
+    startDate: 'Oct 8, 2023',
+    location: 'Southern Lebanon / Northern Israel',
+    description: 'Cross-border artillery and rocket fire. Targeted assassinations. High risk of full-scale escalation.',
+    keyDevelopments: ['Daily rocket fire', 'IDF airstrikes', 'Buffer zone evacuation', 'Litani River tensions'],
+  },
+  {
+    id: 'yemen_redsea',
+    name: 'Red Sea Crisis',
+    coords: [[42, 12], [42, 16], [44, 16], [45, 13], [44, 12]],
+    center: [43, 14],
+    intensity: 'high',
+    parties: ['Houthis', 'US/UK Coalition', 'Yemen Govt'],
+    casualties: 'Unknown (Maritime)',
+    displaced: '4.5M+ (Yemen Civil War)',
+    keywords: ['houthi', 'red sea', 'yemen', 'missile', 'drone', 'ship'],
+    startDate: 'Nov 19, 2023',
+    location: 'Red Sea & Gulf of Aden, Yemen',
+    description: 'Houthi maritime campaign against commercial shipping. US/UK airstrikes on Houthi targets. Ongoing blockade attempts.',
+    keyDevelopments: ['Ship hijackings', 'US airstrikes', 'Cable cuts', 'Sinking of Rubymar'],
   },
   {
     id: 'sudan',
@@ -554,37 +614,76 @@ export const CONFLICT_ZONES: ConflictZone[] = [
     description: 'Civil war following military coup. Resistance forces gaining ground. Multiple ethnic armed organizations. Humanitarian crisis.',
     keyDevelopments: ['Operation 1027', 'Junta airstrikes', 'Border clashes', 'Resistance advances'],
   },
+];
+
+// Korean DMZ polygon based on the Military Demarcation Line (MDL)
+// established by the Korean Armistice Agreement, Article I (July 27, 1953)
+// Coordinates approximated from OSM Way 369265305 (CC BY-SA / ODbL)
+// Key waypoints: Imjin estuary (W) -> Panmunjom -> Cheorwon -> Punch Bowl -> Goseong (E)
+// Polygon: MDL centerline offset +2km north / -2km south with end caps (43 points, closed ring)
+export const GEOPOLITICAL_BOUNDARIES: GeopoliticalBoundary[] = [
   {
-    id: 'yemen_redsea',
-    name: 'Red Sea Crisis',
-    // Coords in [lon, lat] format for GeoJSON - Red Sea is around 42-45°E, 12-16°N
-    coords: [[42, 12], [42, 16], [44, 16], [45, 13], [44, 12]],
-    center: [43, 14],
-    intensity: 'high',
-    parties: ['Houthis', 'US/UK Coalition', 'Yemen Govt'],
-    casualties: 'Unknown (Maritime)',
-    displaced: '4.5M+ (Yemen Civil War)',
-    keywords: ['houthi', 'red sea', 'yemen', 'missile', 'drone', 'ship'],
-    startDate: 'Nov 19, 2023',
-    location: 'Red Sea & Gulf of Aden, Yemen',
-    description: 'Houthi maritime campaign against commercial shipping. US/UK airstrikes on Houthi targets. Ongoing blockade attempts.',
-    keyDevelopments: ['Ship hijackings', 'US airstrikes', 'Cable cuts', 'Sinking of Rubymar'],
-  },
-  {
-    id: 'south_lebanon',
-    name: 'Israel-Lebanon Border',
-    // Coords in [lon, lat] format for GeoJSON - Lebanon border is around 35-36°E, 33-34°N
-    coords: [[35.1, 33.0], [35.1, 33.4], [35.8, 33.4], [35.8, 33.0]],
-    center: [35.4, 33.2],
-    intensity: 'high',
-    parties: ['Israel (IDF)', 'Hezbollah'],
-    casualties: '500+ killed',
-    displaced: '150k+ displaced',
-    keywords: ['hezbollah', 'lebanon', 'israel', 'border', 'rocket', 'airstrike'],
-    startDate: 'Oct 8, 2023',
-    location: 'Southern Lebanon / Northern Israel',
-    description: 'Cross-border artillery and rocket fire. Targeted assassinations. High risk of full-scale escalation.',
-    keyDevelopments: ['Daily rocket fire', 'IDF airstrikes', 'Buffer zone evacuation', 'Litani River tensions'],
+    id: 'korean_dmz',
+    name: 'Korean Demilitarized Zone',
+    boundaryType: 'demilitarized',
+    established: '1953-07-27',
+    status: 'Active armistice',
+    legalBasis: 'Korean Armistice Agreement, Article I',
+    parties: ['Republic of Korea', "Democratic People's Republic of Korea", 'United Nations Command'],
+    location: 'Korean Peninsula (MDL)',
+    description: 'The Korean Demilitarized Zone (DMZ) is a 250km-long, 4km-wide buffer zone along the Military Demarcation Line established by the 1953 Korean Armistice Agreement. Despite its name, it is one of the most heavily militarized borders in the world.',
+    dimensions: '~250km x ~4km',
+    center: [127.27, 38.14],
+    coords: [
+      // North edge (west to east)
+      [126.0955, 37.7876], // Imjin estuary
+      [126.2448, 37.8175],
+      [126.3927, 37.857],
+      [126.5117, 37.9068],
+      [126.6219, 37.9468],
+      [126.6735, 37.9672], // North of Panmunjom
+      [126.775, 37.9875],
+      [126.8936, 38.0173],
+      [127.0409, 38.0665],
+      [127.1676, 38.1351],
+      [127.3004, 38.2363], // North of Cheorwon
+      [127.4476, 38.2679],
+      [127.5784, 38.2679],
+      [127.7175, 38.2879],
+      [127.8476, 38.2979],
+      [127.994, 38.3174],  // North of Punch Bowl
+      [128.1079, 38.3653],
+      [128.1834, 38.4324],
+      [128.262, 38.5312],
+      [128.342, 38.6312],  // North of Goseong
+      // East cap
+      [128.3744, 38.634],
+      // South edge (east to west)
+      [128.378, 38.6088],  // Goseong
+      [128.2979, 38.5088],
+      [128.2166, 38.4076],
+      [128.1321, 38.3347],
+      [128.006, 38.2826],
+      [127.8524, 38.2621], // South of Punch Bowl
+      [127.7225, 38.2521],
+      [127.5816, 38.2321],
+      [127.4524, 38.2321],
+      [127.3196, 38.2037],
+      [127.1924, 38.1049], // South of Cheorwon
+      [127.0591, 38.0335],
+      [126.9064, 37.9827],
+      [126.785, 37.9525],
+      [126.6865, 37.9328],
+      [126.6381, 37.9132], // South of Panmunjom
+      [126.5283, 37.8732],
+      [126.4073, 37.823],
+      [126.2552, 37.7825],
+      [126.1045, 37.7524],
+      // West cap
+      [126.0777, 37.7665],
+      // Close ring
+      [126.0955, 37.7876],
+    ],
   },
 ];
 

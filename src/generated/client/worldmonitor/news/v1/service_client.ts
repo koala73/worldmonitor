@@ -10,17 +10,22 @@ export interface SummarizeArticleRequest {
   lang: string;
 }
 
+export type SummarizeStatus = "SUMMARIZE_STATUS_UNSPECIFIED" | "SUMMARIZE_STATUS_SUCCESS" | "SUMMARIZE_STATUS_CACHED" | "SUMMARIZE_STATUS_SKIPPED" | "SUMMARIZE_STATUS_ERROR";
+
 export interface SummarizeArticleResponse {
   summary: string;
   model: string;
   provider: string;
-  cached: boolean;
   tokens: number;
   fallback: boolean;
-  skipped: boolean;
-  reason: string;
   error: string;
   errorType: string;
+  status: SummarizeStatus;
+  statusDetail: string;
+}
+
+export interface GetSummarizeArticleCacheRequest {
+  cacheKey: string;
 }
 
 export interface ListFeedDigestRequest {
@@ -125,6 +130,31 @@ export class NewsServiceClient {
       method: "POST",
       headers,
       body: JSON.stringify(req),
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as SummarizeArticleResponse;
+  }
+
+  async getSummarizeArticleCache(req: GetSummarizeArticleCacheRequest, options?: NewsServiceCallOptions): Promise<SummarizeArticleResponse> {
+    let path = "/api/news/v1/summarize-article-cache";
+    const params = new URLSearchParams();
+    if (req.cacheKey != null && req.cacheKey !== "") params.set("cache_key", String(req.cacheKey));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
       signal: options?.signal,
     });
 

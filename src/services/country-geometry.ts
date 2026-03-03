@@ -302,6 +302,22 @@ export function getCountryBbox(code: string): [number, number, number, number] |
   return entry?.bbox ?? null;
 }
 
+export function getCountryCentroid(
+  code: string,
+  fallbackBounds?: Record<string, { n: number; s: number; e: number; w: number }>,
+): { lat: number; lon: number } | null {
+  const bbox = getCountryBbox(code);
+  if (bbox) {
+    const [minLon, minLat, maxLon, maxLat] = bbox;
+    return { lat: (minLat + maxLat) / 2, lon: (minLon + maxLon) / 2 };
+  }
+  const fb = fallbackBounds?.[code];
+  if (fb) {
+    return { lat: (fb.n + fb.s) / 2, lon: (fb.e + fb.w) / 2 };
+  }
+  return null;
+}
+
 export const ME_STRIKE_BOUNDS: Record<string, { n: number; s: number; e: number; w: number }> = {
   BH: { n: 26.3, s: 25.8, e: 50.8, w: 50.3 }, QA: { n: 26.2, s: 24.5, e: 51.7, w: 50.7 },
   LB: { n: 34.7, s: 33.1, e: 36.6, w: 35.1 }, KW: { n: 30.1, s: 28.5, e: 48.5, w: 46.5 },

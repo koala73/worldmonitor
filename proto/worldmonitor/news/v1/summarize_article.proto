@@ -23,6 +23,15 @@ message SummarizeArticleRequest {
   string lang = 6;
 }
 
+// SummarizeStatus indicates the outcome of a summarization request.
+enum SummarizeStatus {
+  SUMMARIZE_STATUS_UNSPECIFIED = 0;
+  SUMMARIZE_STATUS_SUCCESS = 1;
+  SUMMARIZE_STATUS_CACHED = 2;
+  SUMMARIZE_STATUS_SKIPPED = 3;
+  SUMMARIZE_STATUS_ERROR = 4;
+}
+
 // SummarizeArticleResponse contains the LLM summarization result.
 message SummarizeArticleResponse {
   // The generated summary text.
@@ -31,18 +40,21 @@ message SummarizeArticleResponse {
   string model = 2;
   // Provider that produced the result (or "cache").
   string provider = 3;
-  // Whether the result came from Redis cache.
-  bool cached = 4;
   // Token count from the LLM response.
   int32 tokens = 5;
   // Whether the client should try the next provider in the fallback chain.
   bool fallback = 6;
-  // Whether this provider was skipped (credentials missing).
-  bool skipped = 7;
-  // Human-readable skip/error reason.
-  string reason = 8;
   // Error message if the request failed.
   string error = 9;
   // Error type/name (e.g. "TypeError").
   string error_type = 10;
+  // Consolidated status of the summarization request.
+  SummarizeStatus status = 11;
+  // Human-readable detail for non-success statuses (skip reason, etc.).
+  string status_detail = 12;
+
+  // Reserved field numbers from consolidated fields:
+  // 4 = cached (bool), 7 = skipped (bool), 8 = reason (string).
+  reserved 4, 7, 8;
+  reserved "cached", "skipped", "reason";
 }

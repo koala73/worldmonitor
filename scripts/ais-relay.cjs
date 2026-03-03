@@ -79,6 +79,16 @@ const OREF_ALERTS_URL = 'https://www.oref.org.il/WarningMessages/alert/alerts.js
 const OREF_HISTORY_URL = 'https://www.oref.org.il/WarningMessages/alert/History/AlertsHistory.json';
 const OREF_POLL_INTERVAL_MS = Math.max(30_000, Number(process.env.OREF_POLL_INTERVAL_MS || 300_000));
 const OREF_ENABLED = !!OREF_PROXY_AUTH;
+const OREF_DATA_DIR = process.env.OREF_DATA_DIR || '';
+const OREF_LOCAL_FILE = (() => {
+  if (!OREF_DATA_DIR) return '';
+  try {
+    const stat = require('fs').statSync(OREF_DATA_DIR);
+    if (!stat.isDirectory()) { console.warn(`[Relay] OREF_DATA_DIR is not a directory: ${OREF_DATA_DIR}`); return ''; }
+  } catch { console.warn(`[Relay] OREF_DATA_DIR does not exist: ${OREF_DATA_DIR}`); return ''; }
+  console.log(`[Relay] OREF local persistence: ${OREF_DATA_DIR}`);
+  return path.join(OREF_DATA_DIR, 'oref-history.json');
+})();
 const RELAY_OREF_RATE_LIMIT_MAX = Number.isFinite(Number(process.env.RELAY_OREF_RATE_LIMIT_MAX))
   ? Number(process.env.RELAY_OREF_RATE_LIMIT_MAX) : 600;
 
@@ -101,6 +111,7 @@ const UPSTASH_ENABLED = !!(
 );
 const RELAY_ENV_PREFIX = process.env.RELAY_ENV ? `${process.env.RELAY_ENV}:` : '';
 const OREF_REDIS_KEY = `${RELAY_ENV_PREFIX}relay:oref:history:v1`;
+const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
 
 if (UPSTASH_REDIS_REST_URL && !UPSTASH_REDIS_REST_URL.startsWith('https://')) {
   console.warn('[Relay] UPSTASH_REDIS_REST_URL must start with https:// — Redis disabled');
@@ -540,7 +551,7 @@ function orefCurlFetch(proxyAuth, url, { toFile } = {}) {
   const { execFileSync } = require('child_process');
   const proxyUrl = `http://${proxyAuth}`;
   const args = [
-    '-sS', '-x', proxyUrl, '--max-time', '15',
+    '-sS', '--compressed', '-x', proxyUrl, '--max-time', '15',
     '-H', 'Accept: application/json',
     '-H', 'Referer: https://www.oref.org.il/',
     '-H', 'X-Requested-With: XMLHttpRequest',
@@ -661,6 +672,7 @@ async function orefBootstrapHistoryFromUpstream() {
   orefState.bootstrapSource = 'upstream';
   if (history.length > 0) orefState._persistVersion++;
   console.log(`[Relay] OREF history bootstrap: ${totalAlertRecords} records across ${history.length} waves`);
+  orefSaveLocalHistory();
 }
 
 const OREF_PERSIST_MAX_WAVES = 200;
@@ -688,12 +700,81 @@ async function orefPersistHistory() {
     if (ok) {
       orefState._lastPersistedVersion = versionAtStart;
     }
+    orefSaveLocalHistory();
   } finally {
     orefState._persistInFlight = false;
   }
 }
 
+function orefLoadLocalHistory() {
+  if (!OREF_LOCAL_FILE) return null;
+  try {
+    const raw = require('fs').readFileSync(OREF_LOCAL_FILE, 'utf8');
+    const data = JSON.parse(raw);
+    if (!Array.isArray(data.history) || data.history.length === 0) return null;
+    const valid = data.history.every(
+      h => Array.isArray(h.alerts) && typeof h.timestamp === 'string'
+    );
+    if (!valid) return null;
+    const purgeCutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const filtered = data.history.filter(
+      h => new Date(h.timestamp).getTime() > purgeCutoff
+    );
+    if (filtered.length === 0) {
+      console.log('[Relay] OREF local file data all stale (>7d)');
+      return null;
+    }
+    console.log(`[Relay] OREF local file: ${filtered.length} waves (saved ${data.savedAt || 'unknown'})`);
+    return filtered;
+  } catch (err) {
+    if (err.code !== 'ENOENT') console.warn('[Relay] OREF local file read error:', err.message);
+    return null;
+  }
+}
+
+function orefSaveLocalHistory() {
+  if (!OREF_LOCAL_FILE) return;
+  try {
+    const fs = require('fs');
+    let waves = orefState.history;
+    if (waves.length > OREF_PERSIST_MAX_WAVES) {
+      waves = waves.slice(-OREF_PERSIST_MAX_WAVES);
+    }
+    const payload = JSON.stringify({
+      history: waves,
+      historyCount24h: orefState.historyCount24h,
+      totalHistoryCount: orefState.totalHistoryCount,
+      savedAt: new Date().toISOString(),
+    });
+    const tmpPath = OREF_LOCAL_FILE + '.tmp';
+    fs.writeFileSync(tmpPath, payload, 'utf8');
+    fs.renameSync(tmpPath, OREF_LOCAL_FILE);
+  } catch (err) {
+    console.warn('[Relay] OREF local file save error:', err.message);
+  }
+}
+
 async function orefBootstrapHistoryWithRetry() {
+  // Phase 0: local file (Railway volume — instant, no network)
+  if (OREF_LOCAL_FILE) {
+    const local = orefLoadLocalHistory();
+    if (local && local.length > 0) {
+      const cutoff24h = Date.now() - 24 * 60 * 60 * 1000;
+      orefState.history = local;
+      orefState.totalHistoryCount = local.reduce((sum, h) => {
+        return sum + h.alerts.reduce((s, a) => s + (Array.isArray(a.data) ? a.data.length : 1), 0);
+      }, 0);
+      orefState.historyCount24h = local
+        .filter(h => new Date(h.timestamp).getTime() > cutoff24h)
+        .reduce((sum, h) => sum + h.alerts.reduce((s, a) => s + (Array.isArray(a.data) ? a.data.length : 1), 0), 0);
+      const newest = local[local.length - 1];
+      orefState.lastAlertsJson = JSON.stringify(newest.alerts);
+      orefState.bootstrapSource = 'local-file';
+      console.log(`[Relay] OREF history loaded from local file: ${orefState.totalHistoryCount} records across ${local.length} waves`);
+      return;
+    }
+  }
+
   // Phase 1: try Redis first
   try {
     const cached = await upstashGet(OREF_REDIS_KEY);
@@ -766,6 +847,919 @@ async function startOrefPollLoop() {
   console.log(`[Relay] OREF poll loop started (interval ${OREF_POLL_INTERVAL_MS}ms)`);
 }
 
+// ─────────────────────────────────────────────────────────────
+// UCDP GED Events — fetch paginated conflict data, write to Redis
+// ─────────────────────────────────────────────────────────────
+const UCDP_ACCESS_TOKEN = (process.env.UCDP_ACCESS_TOKEN || process.env.UC_DP_KEY || '').trim();
+const UCDP_REDIS_KEY = 'conflict:ucdp-events:v1';
+const UCDP_PAGE_SIZE = 1000;
+const UCDP_MAX_PAGES = 6;
+const UCDP_MAX_EVENTS = 2000; // TODO: review cap after observing real map density & panel usage
+const UCDP_TRAILING_WINDOW_MS = 365 * 24 * 60 * 60 * 1000;
+const UCDP_POLL_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
+const UCDP_TTL_SECONDS = 86400; // 24h safety net
+const UCDP_VIOLENCE_TYPE_MAP = { 1: 'UCDP_VIOLENCE_TYPE_STATE_BASED', 2: 'UCDP_VIOLENCE_TYPE_NON_STATE', 3: 'UCDP_VIOLENCE_TYPE_ONE_SIDED' };
+
+function ucdpFetchPage(version, page) {
+  return new Promise((resolve, reject) => {
+    const pageUrl = new URL(`https://ucdpapi.pcr.uu.se/api/gedevents/${version}?pagesize=${UCDP_PAGE_SIZE}&page=${page}`);
+    const headers = { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' };
+    if (UCDP_ACCESS_TOKEN) headers['x-ucdp-access-token'] = UCDP_ACCESS_TOKEN;
+    const req = https.request(pageUrl, { method: 'GET', headers, timeout: 30000 }, (resp) => {
+      if (resp.statusCode < 200 || resp.statusCode >= 300) {
+        resp.resume();
+        return reject(new Error(`UCDP ${version} page ${page}: HTTP ${resp.statusCode}`));
+      }
+      let data = '';
+      resp.on('data', (chunk) => { data += chunk; });
+      resp.on('end', () => { try { resolve(JSON.parse(data)); } catch (e) { reject(e); } });
+    });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('UCDP timeout')); });
+    req.end();
+  });
+}
+
+async function ucdpDiscoverVersion() {
+  const year = new Date().getFullYear() - 2000;
+  const candidates = [...new Set([`${year}.1`, `${year - 1}.1`, '25.1', '24.1'])];
+  const results = await Promise.allSettled(
+    candidates.map(async (v) => {
+      const p0 = await ucdpFetchPage(v, 0);
+      if (!Array.isArray(p0?.Result)) throw new Error('No results');
+      return { version: v, page0: p0 };
+    }),
+  );
+  for (const r of results) {
+    if (r.status === 'fulfilled') return r.value;
+  }
+  throw new Error('No valid UCDP GED version found');
+}
+
+async function seedUcdpEvents() {
+  try {
+    const { version, page0 } = await ucdpDiscoverVersion();
+    const totalPages = Math.max(1, Number(page0?.TotalPages) || 1);
+    const newestPage = totalPages - 1;
+    console.log(`[UCDP] Version ${version}, ${totalPages} total pages`);
+
+    const FAILED = Symbol('failed');
+    const fetches = [];
+    for (let offset = 0; offset < UCDP_MAX_PAGES && (newestPage - offset) >= 0; offset++) {
+      const pg = newestPage - offset;
+      fetches.push(pg === 0 ? Promise.resolve(page0) : ucdpFetchPage(version, pg).catch(() => FAILED));
+    }
+    const pageResults = await Promise.all(fetches);
+
+    const allEvents = [];
+    let latestMs = NaN;
+    let failedPages = 0;
+    for (const raw of pageResults) {
+      if (raw === FAILED) { failedPages++; continue; }
+      const events = Array.isArray(raw?.Result) ? raw.Result : [];
+      allEvents.push(...events);
+      for (const e of events) {
+        const ms = e?.date_start ? Date.parse(String(e.date_start)) : NaN;
+        if (Number.isFinite(ms) && (!Number.isFinite(latestMs) || ms > latestMs)) latestMs = ms;
+      }
+    }
+
+    const filtered = allEvents.filter((e) => {
+      if (!Number.isFinite(latestMs)) return true;
+      const ms = e?.date_start ? Date.parse(String(e.date_start)) : NaN;
+      return Number.isFinite(ms) && ms >= (latestMs - UCDP_TRAILING_WINDOW_MS);
+    });
+
+    const mapped = filtered.map((e) => ({
+      id: String(e.id || ''),
+      dateStart: Date.parse(e.date_start) || 0,
+      dateEnd: Date.parse(e.date_end) || 0,
+      location: { latitude: Number(e.latitude) || 0, longitude: Number(e.longitude) || 0 },
+      country: e.country || '',
+      sideA: (e.side_a || '').substring(0, 200),
+      sideB: (e.side_b || '').substring(0, 200),
+      deathsBest: Number(e.best) || 0,
+      deathsLow: Number(e.low) || 0,
+      deathsHigh: Number(e.high) || 0,
+      violenceType: UCDP_VIOLENCE_TYPE_MAP[e.type_of_violence] || 'UCDP_VIOLENCE_TYPE_UNSPECIFIED',
+      sourceOriginal: (e.source_original || '').substring(0, 300),
+    })).sort((a, b) => b.dateStart - a.dateStart).slice(0, UCDP_MAX_EVENTS);
+
+    const payload = { events: mapped, fetchedAt: Date.now(), version, totalRaw: allEvents.length, filteredCount: mapped.length };
+    const ok = await upstashSet(UCDP_REDIS_KEY, payload, UCDP_TTL_SECONDS);
+    console.log(`[UCDP] Seeded ${mapped.length} events (raw: ${allEvents.length}, failed pages: ${failedPages}, redis: ${ok ? 'OK' : 'FAIL'})`);
+  } catch (e) {
+    console.warn('[UCDP] Seed error:', e?.message || e);
+  }
+}
+
+async function startUcdpSeedLoop() {
+  if (!UPSTASH_ENABLED) {
+    console.log('[UCDP] Disabled (no Upstash Redis)');
+    return;
+  }
+  console.log(`[UCDP] Seed loop starting (interval ${UCDP_POLL_INTERVAL_MS / 1000 / 60}min, token: ${UCDP_ACCESS_TOKEN ? 'yes' : 'no'})`);
+  seedUcdpEvents().catch(e => console.warn('[UCDP] Initial seed error:', e?.message || e));
+  setInterval(() => {
+    seedUcdpEvents().catch(e => console.warn('[UCDP] Seed error:', e?.message || e));
+  }, UCDP_POLL_INTERVAL_MS).unref?.();
+}
+
+// ─────────────────────────────────────────────────────────────
+// Market Data Seed — Railway fetches Yahoo/Finnhub → writes to Redis
+// so Vercel handlers serve from cache (avoids Yahoo 429 from Vercel IPs)
+// ─────────────────────────────────────────────────────────────
+const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY || '';
+const MARKET_SEED_INTERVAL_MS = 300_000; // 5 min
+const MARKET_SEED_TTL = 1800; // 30 min — survives 5 missed cycles
+
+// Must match src/config/markets.ts MARKET_SYMBOLS — update both when changing
+const MARKET_SYMBOLS = [
+  'AAPL', 'AMZN', 'AVGO', 'BAC', 'BRK-B', 'COST', 'GOOGL', 'HD',
+  'JNJ', 'JPM', 'LLY', 'MA', 'META', 'MSFT', 'NFLX', 'NVO', 'NVDA',
+  'ORCL', 'PG', 'TSLA', 'TSM', 'UNH', 'V', 'WMT', 'XOM',
+  '^DJI', '^GSPC', '^IXIC',
+];
+
+const COMMODITY_SYMBOLS = ['^VIX', 'GC=F', 'CL=F', 'NG=F', 'SI=F', 'HG=F'];
+
+const SECTOR_SYMBOLS = ['XLK', 'XLF', 'XLE', 'XLV', 'XLY', 'XLI', 'XLP', 'XLU', 'XLB', 'XLRE', 'XLC', 'SMH'];
+
+const YAHOO_ONLY = new Set(['^GSPC', '^DJI', '^IXIC', '^VIX', 'GC=F', 'CL=F', 'NG=F', 'SI=F', 'HG=F']);
+
+function fetchYahooChartDirect(symbol) {
+  return new Promise((resolve) => {
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`;
+    const req = https.get(url, {
+      headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
+      timeout: 10000,
+    }, (resp) => {
+      if (resp.statusCode !== 200) {
+        resp.resume();
+        logThrottled('warn', `market-yahoo-${resp.statusCode}:${symbol}`, `[Market] Yahoo ${symbol} HTTP ${resp.statusCode}`);
+        return resolve(null);
+      }
+      let body = '';
+      resp.on('data', (chunk) => { body += chunk; });
+      resp.on('end', () => {
+        try {
+          const data = JSON.parse(body);
+          const result = data?.chart?.result?.[0];
+          const meta = result?.meta;
+          if (!meta) return resolve(null);
+          const price = meta.regularMarketPrice;
+          const prevClose = meta.chartPreviousClose || meta.previousClose || price;
+          const change = prevClose ? ((price - prevClose) / prevClose) * 100 : 0;
+          const closes = result.indicators?.quote?.[0]?.close;
+          const sparkline = Array.isArray(closes) ? closes.filter((v) => v != null) : [];
+          resolve({ price, change, sparkline });
+        } catch { resolve(null); }
+      });
+    });
+    req.on('error', (err) => { logThrottled('warn', `market-yahoo-err:${symbol}`, `[Market] Yahoo ${symbol} error: ${err.message}`); resolve(null); });
+    req.on('timeout', () => { req.destroy(); logThrottled('warn', `market-yahoo-timeout:${symbol}`, `[Market] Yahoo ${symbol} timeout`); resolve(null); });
+  });
+}
+
+function fetchFinnhubQuoteDirect(symbol, apiKey) {
+  return new Promise((resolve) => {
+    const url = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}`;
+    const req = https.get(url, {
+      headers: { 'User-Agent': CHROME_UA, Accept: 'application/json', 'X-Finnhub-Token': apiKey },
+      timeout: 10000,
+    }, (resp) => {
+      if (resp.statusCode !== 200) {
+        resp.resume();
+        return resolve(null);
+      }
+      let body = '';
+      resp.on('data', (chunk) => { body += chunk; });
+      resp.on('end', () => {
+        try {
+          const data = JSON.parse(body);
+          if (data.c === 0 && data.h === 0 && data.l === 0) return resolve(null);
+          resolve({ price: data.c, changePercent: data.dp });
+        } catch { resolve(null); }
+      });
+    });
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => { req.destroy(); resolve(null); });
+  });
+}
+
+function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+
+async function seedMarketQuotes() {
+  const quotes = [];
+  const finnhubSymbols = MARKET_SYMBOLS.filter((s) => !YAHOO_ONLY.has(s));
+  const yahooSymbols = MARKET_SYMBOLS.filter((s) => YAHOO_ONLY.has(s));
+
+  if (FINNHUB_API_KEY && finnhubSymbols.length > 0) {
+    const results = await Promise.all(finnhubSymbols.map((s) => fetchFinnhubQuoteDirect(s, FINNHUB_API_KEY)));
+    for (let i = 0; i < finnhubSymbols.length; i++) {
+      const r = results[i];
+      if (r) quotes.push({ symbol: finnhubSymbols[i], name: finnhubSymbols[i], display: finnhubSymbols[i], price: r.price, change: r.changePercent, sparkline: [] });
+    }
+  }
+
+  const missedFinnhub = FINNHUB_API_KEY
+    ? finnhubSymbols.filter((s) => !quotes.some((q) => q.symbol === s))
+    : finnhubSymbols;
+  const allYahoo = [...yahooSymbols, ...missedFinnhub];
+
+  for (const s of allYahoo) {
+    if (quotes.some((q) => q.symbol === s)) continue;
+    const yahoo = await fetchYahooChartDirect(s);
+    if (yahoo) quotes.push({ symbol: s, name: s, display: s, price: yahoo.price, change: yahoo.change, sparkline: yahoo.sparkline });
+    await sleep(150);
+  }
+
+  if (quotes.length === 0) {
+    console.warn('[Market] No quotes fetched — skipping Redis write');
+    return 0;
+  }
+
+  const coveredByYahoo = finnhubSymbols.every((s) => quotes.some((q) => q.symbol === s));
+  const skipped = !FINNHUB_API_KEY && !coveredByYahoo;
+  const payload = { quotes, finnhubSkipped: skipped, skipReason: skipped ? 'FINNHUB_API_KEY not configured' : '', rateLimited: false };
+  const redisKey = `market:quotes:v1:${[...MARKET_SYMBOLS].sort().join(',')}`;
+  const ok = await upstashSet(redisKey, payload, MARKET_SEED_TTL);
+  // Bootstrap-friendly fixed key — frontend hydrates from /api/bootstrap without RPC
+  const ok2 = await upstashSet('market:stocks-bootstrap:v1', payload, MARKET_SEED_TTL);
+  console.log(`[Market] Seeded ${quotes.length}/${MARKET_SYMBOLS.length} quotes (redis: ${ok && ok2 ? 'OK' : 'PARTIAL'})`);
+  return quotes.length;
+}
+
+async function seedCommodityQuotes() {
+  const quotes = [];
+  for (const s of COMMODITY_SYMBOLS) {
+    const yahoo = await fetchYahooChartDirect(s);
+    if (yahoo) quotes.push({ symbol: s, name: s, display: s, price: yahoo.price, change: yahoo.change, sparkline: yahoo.sparkline });
+    await sleep(150);
+  }
+
+  if (quotes.length === 0) {
+    console.warn('[Market] No commodity quotes fetched — skipping Redis write');
+    return 0;
+  }
+
+  const payload = { quotes };
+  const redisKey = `market:commodities:v1:${[...COMMODITY_SYMBOLS].sort().join(',')}`;
+  const ok = await upstashSet(redisKey, payload, MARKET_SEED_TTL);
+  // Also write under market:quotes:v1: key — the frontend routes commodities through
+  // listMarketQuotes RPC, which constructs this key pattern (not market:commodities:v1:)
+  const quotesKey = `market:quotes:v1:${[...COMMODITY_SYMBOLS].sort().join(',')}`;
+  const quotesPayload = { quotes, finnhubSkipped: false, skipReason: '', rateLimited: false };
+  const ok2 = await upstashSet(quotesKey, quotesPayload, MARKET_SEED_TTL);
+  // Bootstrap-friendly fixed key — frontend hydrates from /api/bootstrap without RPC
+  const ok3 = await upstashSet('market:commodities-bootstrap:v1', quotesPayload, MARKET_SEED_TTL);
+  console.log(`[Market] Seeded ${quotes.length}/${COMMODITY_SYMBOLS.length} commodities (redis: ${ok && ok2 && ok3 ? 'OK' : 'PARTIAL'})`);
+  return quotes.length;
+}
+
+async function seedSectorSummary() {
+  const sectors = [];
+
+  if (FINNHUB_API_KEY) {
+    const results = await Promise.all(SECTOR_SYMBOLS.map((s) => fetchFinnhubQuoteDirect(s, FINNHUB_API_KEY)));
+    for (let i = 0; i < SECTOR_SYMBOLS.length; i++) {
+      const r = results[i];
+      if (r) sectors.push({ symbol: SECTOR_SYMBOLS[i], name: SECTOR_SYMBOLS[i], change: r.changePercent });
+    }
+  }
+
+  if (sectors.length === 0) {
+    for (const s of SECTOR_SYMBOLS) {
+      const yahoo = await fetchYahooChartDirect(s);
+      if (yahoo) sectors.push({ symbol: s, name: s, change: yahoo.change });
+      await sleep(150);
+    }
+  }
+
+  if (sectors.length === 0) {
+    console.warn('[Market] No sector data fetched — skipping Redis write');
+    return 0;
+  }
+
+  const payload = { sectors };
+  const ok = await upstashSet('market:sectors:v1', payload, MARKET_SEED_TTL);
+  // Also write under market:quotes:v1: key — the frontend routes sectors through
+  // fetchMultipleStocks → listMarketQuotes RPC, which constructs this key pattern
+  const quotesKey = `market:quotes:v1:${[...SECTOR_SYMBOLS].sort().join(',')}`;
+  const sectorQuotes = sectors.map((s) => ({
+    symbol: s.symbol, name: s.name, display: s.name,
+    price: 0, change: s.change, sparkline: [],
+  }));
+  const quotesPayload = { quotes: sectorQuotes, finnhubSkipped: false, skipReason: '', rateLimited: false };
+  const ok2 = await upstashSet(quotesKey, quotesPayload, MARKET_SEED_TTL);
+  console.log(`[Market] Seeded ${sectors.length}/${SECTOR_SYMBOLS.length} sectors (redis: ${ok && ok2 ? 'OK' : 'PARTIAL'})`);
+  return sectors.length;
+}
+
+async function seedAllMarketData() {
+  const t0 = Date.now();
+  const q = await seedMarketQuotes();
+  const c = await seedCommodityQuotes();
+  const s = await seedSectorSummary();
+  console.log(`[Market] Seed complete: ${q} quotes, ${c} commodities, ${s} sectors (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
+}
+
+async function startMarketDataSeedLoop() {
+  if (!UPSTASH_ENABLED) {
+    console.log('[Market] Disabled (no Upstash Redis)');
+    return;
+  }
+  console.log(`[Market] Seed loop starting (interval ${MARKET_SEED_INTERVAL_MS / 1000 / 60}min, finnhub: ${FINNHUB_API_KEY ? 'yes' : 'no'})`);
+  seedAllMarketData().catch((e) => console.warn('[Market] Initial seed error:', e?.message || e));
+  setInterval(() => {
+    seedAllMarketData().catch((e) => console.warn('[Market] Seed error:', e?.message || e));
+  }, MARKET_SEED_INTERVAL_MS).unref?.();
+}
+
+// ─────────────────────────────────────────────────────────────
+// Aviation Seed — Railway fetches AviationStack → writes to Redis
+// so Vercel handler serves from cache (avoids 114 API calls per miss)
+// ─────────────────────────────────────────────────────────────
+const AVIATIONSTACK_API_KEY = process.env.AVIATIONSTACK_API || '';
+const AVIATION_SEED_INTERVAL_MS = 2 * 60 * 60 * 1000; // 2h
+const AVIATION_SEED_TTL = 14400; // 4h — survives 1 missed cycle
+const AVIATION_REDIS_KEY = 'aviation:delays:intl:v3';
+const AVIATION_BATCH_CONCURRENCY = 10;
+const AVIATION_MIN_FLIGHTS_FOR_CLOSURE = 10;
+
+// Must match src/config/airports.ts AVIATIONSTACK_AIRPORTS — update both when changing
+const AVIATIONSTACK_AIRPORTS = [
+  'YYZ', 'MEX', 'GRU', 'EZE', 'BOG',
+  'LHR', 'CDG', 'FRA', 'AMS', 'MAD', 'FCO', 'MUC', 'BCN', 'ZRH', 'IST', 'VIE', 'CPH',
+  'HND', 'NRT', 'PEK', 'PVG', 'HKG', 'SIN', 'ICN', 'BKK', 'SYD', 'DEL', 'BOM', 'KUL',
+  'DXB', 'DOH', 'AUH', 'RUH', 'CAI', 'TLV',
+  'JNB', 'NBO', 'LOS', 'ADD', 'CPT',
+];
+
+// Airport metadata needed for alert construction (inlined from airports.ts)
+const AIRPORT_META = {
+  YYZ: { icao: 'CYYZ', name: 'Toronto Pearson', city: 'Toronto', country: 'Canada', lat: 43.6777, lon: -79.6248, region: 'americas' },
+  MEX: { icao: 'MMMX', name: 'Mexico City International', city: 'Mexico City', country: 'Mexico', lat: 19.4363, lon: -99.0721, region: 'americas' },
+  GRU: { icao: 'SBGR', name: 'São Paulo–Guarulhos', city: 'São Paulo', country: 'Brazil', lat: -23.4356, lon: -46.4731, region: 'americas' },
+  EZE: { icao: 'SAEZ', name: 'Ministro Pistarini', city: 'Buenos Aires', country: 'Argentina', lat: -34.8222, lon: -58.5358, region: 'americas' },
+  BOG: { icao: 'SKBO', name: 'El Dorado International', city: 'Bogotá', country: 'Colombia', lat: 4.7016, lon: -74.1469, region: 'americas' },
+  LHR: { icao: 'EGLL', name: 'London Heathrow', city: 'London', country: 'UK', lat: 51.4700, lon: -0.4543, region: 'europe' },
+  CDG: { icao: 'LFPG', name: 'Paris Charles de Gaulle', city: 'Paris', country: 'France', lat: 49.0097, lon: 2.5479, region: 'europe' },
+  FRA: { icao: 'EDDF', name: 'Frankfurt Airport', city: 'Frankfurt', country: 'Germany', lat: 50.0379, lon: 8.5622, region: 'europe' },
+  AMS: { icao: 'EHAM', name: 'Amsterdam Schiphol', city: 'Amsterdam', country: 'Netherlands', lat: 52.3105, lon: 4.7683, region: 'europe' },
+  MAD: { icao: 'LEMD', name: 'Adolfo Suárez Madrid–Barajas', city: 'Madrid', country: 'Spain', lat: 40.4983, lon: -3.5676, region: 'europe' },
+  FCO: { icao: 'LIRF', name: 'Leonardo da Vinci–Fiumicino', city: 'Rome', country: 'Italy', lat: 41.8003, lon: 12.2389, region: 'europe' },
+  MUC: { icao: 'EDDM', name: 'Munich Airport', city: 'Munich', country: 'Germany', lat: 48.3537, lon: 11.7750, region: 'europe' },
+  BCN: { icao: 'LEBL', name: 'Barcelona–El Prat', city: 'Barcelona', country: 'Spain', lat: 41.2974, lon: 2.0833, region: 'europe' },
+  ZRH: { icao: 'LSZH', name: 'Zurich Airport', city: 'Zurich', country: 'Switzerland', lat: 47.4647, lon: 8.5492, region: 'europe' },
+  IST: { icao: 'LTFM', name: 'Istanbul Airport', city: 'Istanbul', country: 'Turkey', lat: 41.2753, lon: 28.7519, region: 'europe' },
+  VIE: { icao: 'LOWW', name: 'Vienna International', city: 'Vienna', country: 'Austria', lat: 48.1103, lon: 16.5697, region: 'europe' },
+  CPH: { icao: 'EKCH', name: 'Copenhagen Airport', city: 'Copenhagen', country: 'Denmark', lat: 55.6180, lon: 12.6508, region: 'europe' },
+  HND: { icao: 'RJTT', name: 'Tokyo Haneda', city: 'Tokyo', country: 'Japan', lat: 35.5494, lon: 139.7798, region: 'apac' },
+  NRT: { icao: 'RJAA', name: 'Narita International', city: 'Tokyo', country: 'Japan', lat: 35.7720, lon: 140.3929, region: 'apac' },
+  PEK: { icao: 'ZBAA', name: 'Beijing Capital', city: 'Beijing', country: 'China', lat: 40.0799, lon: 116.6031, region: 'apac' },
+  PVG: { icao: 'ZSPD', name: 'Shanghai Pudong', city: 'Shanghai', country: 'China', lat: 31.1443, lon: 121.8083, region: 'apac' },
+  HKG: { icao: 'VHHH', name: 'Hong Kong International', city: 'Hong Kong', country: 'China', lat: 22.3080, lon: 113.9185, region: 'apac' },
+  SIN: { icao: 'WSSS', name: 'Singapore Changi', city: 'Singapore', country: 'Singapore', lat: 1.3644, lon: 103.9915, region: 'apac' },
+  ICN: { icao: 'RKSI', name: 'Incheon International', city: 'Seoul', country: 'South Korea', lat: 37.4602, lon: 126.4407, region: 'apac' },
+  BKK: { icao: 'VTBS', name: 'Suvarnabhumi Airport', city: 'Bangkok', country: 'Thailand', lat: 13.6900, lon: 100.7501, region: 'apac' },
+  SYD: { icao: 'YSSY', name: 'Sydney Kingsford Smith', city: 'Sydney', country: 'Australia', lat: -33.9461, lon: 151.1772, region: 'apac' },
+  DEL: { icao: 'VIDP', name: 'Indira Gandhi International', city: 'Delhi', country: 'India', lat: 28.5562, lon: 77.1000, region: 'apac' },
+  BOM: { icao: 'VABB', name: 'Chhatrapati Shivaji Maharaj', city: 'Mumbai', country: 'India', lat: 19.0896, lon: 72.8656, region: 'apac' },
+  KUL: { icao: 'WMKK', name: 'Kuala Lumpur International', city: 'Kuala Lumpur', country: 'Malaysia', lat: 2.7456, lon: 101.7099, region: 'apac' },
+  DXB: { icao: 'OMDB', name: 'Dubai International', city: 'Dubai', country: 'UAE', lat: 25.2532, lon: 55.3657, region: 'mena' },
+  DOH: { icao: 'OTHH', name: 'Hamad International', city: 'Doha', country: 'Qatar', lat: 25.2731, lon: 51.6081, region: 'mena' },
+  AUH: { icao: 'OMAA', name: 'Abu Dhabi International', city: 'Abu Dhabi', country: 'UAE', lat: 24.4330, lon: 54.6511, region: 'mena' },
+  RUH: { icao: 'OERK', name: 'King Khalid International', city: 'Riyadh', country: 'Saudi Arabia', lat: 24.9576, lon: 46.6988, region: 'mena' },
+  CAI: { icao: 'HECA', name: 'Cairo International', city: 'Cairo', country: 'Egypt', lat: 30.1219, lon: 31.4056, region: 'mena' },
+  TLV: { icao: 'LLBG', name: 'Ben Gurion Airport', city: 'Tel Aviv', country: 'Israel', lat: 32.0055, lon: 34.8854, region: 'mena' },
+  JNB: { icao: 'FAOR', name: 'O.R. Tambo International', city: 'Johannesburg', country: 'South Africa', lat: -26.1392, lon: 28.2460, region: 'africa' },
+  NBO: { icao: 'HKJK', name: 'Jomo Kenyatta International', city: 'Nairobi', country: 'Kenya', lat: -1.3192, lon: 36.9278, region: 'africa' },
+  LOS: { icao: 'DNMM', name: 'Murtala Muhammed International', city: 'Lagos', country: 'Nigeria', lat: 6.5774, lon: 3.3212, region: 'africa' },
+  ADD: { icao: 'HAAB', name: 'Bole International', city: 'Addis Ababa', country: 'Ethiopia', lat: 8.9779, lon: 38.7993, region: 'africa' },
+  CPT: { icao: 'FACT', name: 'Cape Town International', city: 'Cape Town', country: 'South Africa', lat: -33.9715, lon: 18.6021, region: 'africa' },
+};
+
+const REGION_MAP = {
+  americas: 'AIRPORT_REGION_AMERICAS',
+  europe: 'AIRPORT_REGION_EUROPE',
+  apac: 'AIRPORT_REGION_APAC',
+  mena: 'AIRPORT_REGION_MENA',
+  africa: 'AIRPORT_REGION_AFRICA',
+};
+
+const DELAY_TYPE_MAP = {
+  ground_stop: 'FLIGHT_DELAY_TYPE_GROUND_STOP',
+  ground_delay: 'FLIGHT_DELAY_TYPE_GROUND_DELAY',
+  departure_delay: 'FLIGHT_DELAY_TYPE_DEPARTURE_DELAY',
+  arrival_delay: 'FLIGHT_DELAY_TYPE_ARRIVAL_DELAY',
+  general: 'FLIGHT_DELAY_TYPE_GENERAL',
+  closure: 'FLIGHT_DELAY_TYPE_CLOSURE',
+};
+
+const SEVERITY_MAP = {
+  normal: 'FLIGHT_DELAY_SEVERITY_NORMAL',
+  minor: 'FLIGHT_DELAY_SEVERITY_MINOR',
+  moderate: 'FLIGHT_DELAY_SEVERITY_MODERATE',
+  major: 'FLIGHT_DELAY_SEVERITY_MAJOR',
+  severe: 'FLIGHT_DELAY_SEVERITY_SEVERE',
+};
+
+function aviationDetermineSeverity(avgDelay, delayedPct) {
+  if (avgDelay >= 60 || (delayedPct && delayedPct >= 60)) return 'severe';
+  if (avgDelay >= 45 || (delayedPct && delayedPct >= 45)) return 'major';
+  if (avgDelay >= 30 || (delayedPct && delayedPct >= 30)) return 'moderate';
+  if (avgDelay >= 15 || (delayedPct && delayedPct >= 15)) return 'minor';
+  return 'normal';
+}
+
+function fetchAviationStackSingle(apiKey, iata) {
+  return new Promise((resolve) => {
+    const url = `https://api.aviationstack.com/v1/flights?access_key=${apiKey}&dep_iata=${iata}&limit=100`;
+    const req = https.get(url, {
+      headers: { 'User-Agent': CHROME_UA },
+      timeout: 5000,
+      family: 4,
+    }, (resp) => {
+      if (resp.statusCode !== 200) {
+        resp.resume();
+        logThrottled('warn', `aviation-http-${resp.statusCode}:${iata}`, `[Aviation] ${iata}: HTTP ${resp.statusCode}`);
+        return resolve({ ok: false, alert: null });
+      }
+      let body = '';
+      resp.on('data', (chunk) => { body += chunk; });
+      resp.on('end', () => {
+        try {
+          const json = JSON.parse(body);
+          if (json.error) {
+            logThrottled('warn', `aviation-api-err:${iata}`, `[Aviation] ${iata}: API error: ${json.error.message}`);
+            return resolve({ ok: false, alert: null });
+          }
+          const flights = json?.data ?? [];
+          const alert = aviationAggregateFlights(iata, flights);
+          resolve({ ok: true, alert });
+        } catch { resolve({ ok: false, alert: null }); }
+      });
+    });
+    req.on('error', (err) => {
+      logThrottled('warn', `aviation-err:${iata}`, `[Aviation] ${iata}: fetch error: ${err.message}`);
+      resolve({ ok: false, alert: null });
+    });
+    req.on('timeout', () => { req.destroy(); resolve({ ok: false, alert: null }); });
+  });
+}
+
+function aviationAggregateFlights(iata, flights) {
+  if (flights.length === 0) return null;
+  const meta = AIRPORT_META[iata];
+  if (!meta) return null;
+
+  let delayed = 0, cancelled = 0, totalDelay = 0;
+  for (const f of flights) {
+    if (f.flight_status === 'cancelled') cancelled++;
+    if (f.departure?.delay && f.departure.delay > 0) {
+      delayed++;
+      totalDelay += f.departure.delay;
+    }
+  }
+
+  const total = flights.length;
+  const cancelledPct = (cancelled / total) * 100;
+  const delayedPct = (delayed / total) * 100;
+  const avgDelay = delayed > 0 ? Math.round(totalDelay / delayed) : 0;
+
+  let severity, delayType, reason;
+  if (cancelledPct >= 80 && total >= AVIATION_MIN_FLIGHTS_FOR_CLOSURE) {
+    severity = 'severe'; delayType = 'closure';
+    reason = 'Airport closure / airspace restrictions';
+  } else if (cancelledPct >= 50 && total >= AVIATION_MIN_FLIGHTS_FOR_CLOSURE) {
+    severity = 'major'; delayType = 'ground_stop';
+    reason = `${Math.round(cancelledPct)}% flights cancelled`;
+  } else if (cancelledPct >= 20 && total >= AVIATION_MIN_FLIGHTS_FOR_CLOSURE) {
+    severity = 'moderate'; delayType = 'ground_delay';
+    reason = `${Math.round(cancelledPct)}% flights cancelled`;
+  } else if (cancelledPct >= 10 && total >= AVIATION_MIN_FLIGHTS_FOR_CLOSURE) {
+    severity = 'minor'; delayType = 'general';
+    reason = `${Math.round(cancelledPct)}% flights cancelled`;
+  } else if (avgDelay > 0) {
+    severity = aviationDetermineSeverity(avgDelay, delayedPct);
+    delayType = avgDelay >= 60 ? 'ground_delay' : 'general';
+    reason = `Avg ${avgDelay}min delay, ${Math.round(delayedPct)}% delayed`;
+  } else {
+    return null;
+  }
+  if (severity === 'normal') return null;
+
+  return {
+    id: `avstack-${iata}`,
+    iata,
+    icao: meta.icao,
+    name: meta.name,
+    city: meta.city,
+    country: meta.country,
+    location: { latitude: meta.lat, longitude: meta.lon },
+    region: REGION_MAP[meta.region] || 'AIRPORT_REGION_UNSPECIFIED',
+    delayType: DELAY_TYPE_MAP[delayType] || 'FLIGHT_DELAY_TYPE_GENERAL',
+    severity: SEVERITY_MAP[severity] || 'FLIGHT_DELAY_SEVERITY_NORMAL',
+    avgDelayMinutes: avgDelay,
+    delayedFlightsPct: Math.round(delayedPct),
+    cancelledFlights: cancelled,
+    totalFlights: total,
+    reason,
+    source: 'FLIGHT_DELAY_SOURCE_COMPUTED',
+    updatedAt: Date.now(),
+  };
+}
+
+async function seedAviationDelays() {
+  if (!AVIATIONSTACK_API_KEY) {
+    console.log('[Aviation] No AVIATIONSTACK_API key — skipping seed');
+    return;
+  }
+
+  const t0 = Date.now();
+  const alerts = [];
+  let succeeded = 0, failed = 0;
+  const deadline = Date.now() + 50_000;
+
+  for (let i = 0; i < AVIATIONSTACK_AIRPORTS.length; i += AVIATION_BATCH_CONCURRENCY) {
+    if (Date.now() >= deadline) {
+      console.warn(`[Aviation] Deadline hit after ${succeeded + failed}/${AVIATIONSTACK_AIRPORTS.length} airports`);
+      break;
+    }
+    const chunk = AVIATIONSTACK_AIRPORTS.slice(i, i + AVIATION_BATCH_CONCURRENCY);
+    const results = await Promise.allSettled(
+      chunk.map((iata) => fetchAviationStackSingle(AVIATIONSTACK_API_KEY, iata))
+    );
+    for (const r of results) {
+      if (r.status === 'fulfilled') {
+        if (r.value.ok) { succeeded++; if (r.value.alert) alerts.push(r.value.alert); }
+        else failed++;
+      } else {
+        failed++;
+      }
+    }
+  }
+
+  const healthy = AVIATIONSTACK_AIRPORTS.length < 5 || failed <= succeeded;
+  if (!healthy) {
+    console.warn(`[Aviation] Systemic failure: ${failed}/${failed + succeeded} airports failed — preserving existing cache`);
+    return;
+  }
+
+  const ok = await upstashSet(AVIATION_REDIS_KEY, { alerts }, AVIATION_SEED_TTL);
+  console.log(`[Aviation] Seeded ${alerts.length} alerts (${succeeded} ok, ${failed} failed, redis: ${ok ? 'OK' : 'FAIL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+}
+
+async function startAviationSeedLoop() {
+  if (!UPSTASH_ENABLED) {
+    console.log('[Aviation] Disabled (no Upstash Redis)');
+    return;
+  }
+  if (!AVIATIONSTACK_API_KEY) {
+    console.log('[Aviation] Disabled (no AVIATIONSTACK_API key)');
+    return;
+  }
+  console.log(`[Aviation] Seed loop starting (interval ${AVIATION_SEED_INTERVAL_MS / 1000 / 60 / 60}h, airports: ${AVIATIONSTACK_AIRPORTS.length})`);
+  seedAviationDelays().catch((e) => console.warn('[Aviation] Initial seed error:', e?.message || e));
+  setInterval(() => {
+    seedAviationDelays().catch((e) => console.warn('[Aviation] Seed error:', e?.message || e));
+  }, AVIATION_SEED_INTERVAL_MS).unref?.();
+}
+
+// ─────────────────────────────────────────────────────────────
+// Cyber Threat Intelligence Seed — Railway fetches IOC feeds → writes to Redis
+// so Vercel handler (list-cyber-threats) serves from cache instead of live fetches
+// ─────────────────────────────────────────────────────────────
+const URLHAUS_AUTH_KEY = process.env.URLHAUS_AUTH_KEY || '';
+const OTX_API_KEY = process.env.OTX_API_KEY || '';
+const ABUSEIPDB_API_KEY = process.env.ABUSEIPDB_API_KEY || '';
+const CYBER_SEED_INTERVAL_MS = 2 * 60 * 60 * 1000; // 2h — matches IOC feed update cadence
+const CYBER_SEED_TTL = 10800; // 3h — survives 1 missed cycle
+const CYBER_RPC_KEY = 'cyber:threats:v2:0:::'; // matches handler default cache key
+const CYBER_BOOTSTRAP_KEY = 'cyber:threats-bootstrap:v2';
+const CYBER_MAX_CACHED = 2000;
+const CYBER_GEO_MAX = 200;
+const CYBER_GEO_CONCURRENCY = 12;
+const CYBER_GEO_TIMEOUT_MS = 20_000;
+const CYBER_SOURCE_TIMEOUT_MS = 15_000; // longer than Vercel edge budget — OK on Railway
+
+const CYBER_COUNTRY_CENTROIDS = {
+  US:[39.8,-98.6],CA:[56.1,-106.3],MX:[23.6,-102.6],BR:[-14.2,-51.9],AR:[-38.4,-63.6],
+  GB:[55.4,-3.4],DE:[51.2,10.5],FR:[46.2,2.2],IT:[41.9,12.6],ES:[40.5,-3.7],
+  NL:[52.1,5.3],BE:[50.5,4.5],SE:[60.1,18.6],NO:[60.5,8.5],FI:[61.9,25.7],
+  DK:[56.3,9.5],PL:[51.9,19.1],CZ:[49.8,15.5],AT:[47.5,14.6],CH:[46.8,8.2],
+  PT:[39.4,-8.2],IE:[53.1,-8.2],RO:[45.9,25.0],HU:[47.2,19.5],BG:[42.7,25.5],
+  HR:[45.1,15.2],SK:[48.7,19.7],UA:[48.4,31.2],RU:[61.5,105.3],BY:[53.7,28.0],
+  TR:[39.0,35.2],GR:[39.1,21.8],RS:[44.0,21.0],CN:[35.9,104.2],JP:[36.2,138.3],
+  KR:[35.9,127.8],IN:[20.6,79.0],PK:[30.4,69.3],BD:[23.7,90.4],ID:[-0.8,113.9],
+  TH:[15.9,101.0],VN:[14.1,108.3],PH:[12.9,121.8],MY:[4.2,101.9],SG:[1.4,103.8],
+  TW:[23.7,121.0],HK:[22.4,114.1],AU:[-25.3,133.8],NZ:[-40.9,174.9],
+  ZA:[-30.6,22.9],NG:[9.1,8.7],EG:[26.8,30.8],KE:[-0.02,37.9],ET:[9.1,40.5],
+  MA:[31.8,-7.1],DZ:[28.0,1.7],TN:[33.9,9.5],GH:[7.9,-1.0],
+  SA:[23.9,45.1],AE:[23.4,53.8],IL:[31.0,34.9],IR:[32.4,53.7],IQ:[33.2,43.7],
+  KW:[29.3,47.5],QA:[25.4,51.2],BH:[26.0,50.6],JO:[30.6,36.2],LB:[33.9,35.9],
+  CL:[-35.7,-71.5],CO:[4.6,-74.3],PE:[-9.2,-75.0],VE:[6.4,-66.6],
+  KZ:[48.0,68.0],UZ:[41.4,64.6],GE:[42.3,43.4],AZ:[40.1,47.6],AM:[40.1,45.0],
+  LT:[55.2,23.9],LV:[56.9,24.1],EE:[58.6,25.0],
+  HN:[15.2,-86.2],GT:[15.8,-90.2],PA:[8.5,-80.8],CR:[9.7,-84.0],
+  SN:[14.5,-14.5],CM:[7.4,12.4],CI:[7.5,-5.5],TZ:[-6.4,34.9],UG:[1.4,32.3],
+};
+
+const CYBER_THREAT_TYPE_MAP = { c2_server:'CYBER_THREAT_TYPE_C2_SERVER', malware_host:'CYBER_THREAT_TYPE_MALWARE_HOST', phishing:'CYBER_THREAT_TYPE_PHISHING', malicious_url:'CYBER_THREAT_TYPE_MALICIOUS_URL' };
+const CYBER_SOURCE_MAP = { feodo:'CYBER_THREAT_SOURCE_FEODO', urlhaus:'CYBER_THREAT_SOURCE_URLHAUS', c2intel:'CYBER_THREAT_SOURCE_C2INTEL', otx:'CYBER_THREAT_SOURCE_OTX', abuseipdb:'CYBER_THREAT_SOURCE_ABUSEIPDB' };
+const CYBER_INDICATOR_MAP = { ip:'CYBER_THREAT_INDICATOR_TYPE_IP', domain:'CYBER_THREAT_INDICATOR_TYPE_DOMAIN', url:'CYBER_THREAT_INDICATOR_TYPE_URL' };
+const CYBER_SEVERITY_MAP = { low:'CRITICALITY_LEVEL_LOW', medium:'CRITICALITY_LEVEL_MEDIUM', high:'CRITICALITY_LEVEL_HIGH', critical:'CRITICALITY_LEVEL_CRITICAL' };
+const CYBER_SEVERITY_RANK = { CRITICALITY_LEVEL_CRITICAL:4, CRITICALITY_LEVEL_HIGH:3, CRITICALITY_LEVEL_MEDIUM:2, CRITICALITY_LEVEL_LOW:1, CRITICALITY_LEVEL_UNSPECIFIED:0 };
+
+function cyberClean(v, max) { if (typeof v !== 'string') return ''; return v.trim().replace(/\s+/g, ' ').slice(0, max || 120); }
+function cyberToNum(v) { const n = typeof v === 'number' ? v : parseFloat(String(v ?? '')); return Number.isFinite(n) ? n : null; }
+function cyberValidCoords(lat, lon) { return lat !== null && lon !== null && lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180; }
+function cyberIsIPv4(v) { if (!/^(\d{1,3}\.){3}\d{1,3}$/.test(v)) return false; return v.split('.').map(Number).every((n) => Number.isInteger(n) && n >= 0 && n <= 255); }
+function cyberIsIPv6(v) { return /^[0-9a-f:]+$/i.test(v) && v.includes(':'); }
+function cyberIsIp(v) { return cyberIsIPv4(v) || cyberIsIPv6(v); }
+function cyberNormCountry(v) { const r = cyberClean(String(v ?? ''), 64); if (!r) return ''; if (/^[a-z]{2}$/i.test(r)) return r.toUpperCase(); return r; }
+function cyberToMs(v) {
+  if (!v) return 0;
+  const raw = cyberClean(String(v), 80); if (!raw) return 0;
+  const d1 = new Date(raw); if (!isNaN(d1.getTime())) return d1.getTime();
+  const d2 = new Date(raw.replace(' UTC', 'Z').replace(' GMT', 'Z').replace(' ', 'T'));
+  return isNaN(d2.getTime()) ? 0 : d2.getTime();
+}
+function cyberNormTags(input, max) {
+  const tags = Array.isArray(input) ? input : typeof input === 'string' ? input.split(/[;,|]/g) : [];
+  const out = []; const seen = new Set();
+  for (const t of tags) { const c = cyberClean(String(t ?? ''), 40).toLowerCase(); if (!c || seen.has(c)) continue; seen.add(c); out.push(c); if (out.length >= (max || 8)) break; }
+  return out;
+}
+function cyberDjb2(s) { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) & 0xffffffff; return h; }
+function cyberCentroid(cc, seed) {
+  const c = CYBER_COUNTRY_CENTROIDS[cc ? cc.toUpperCase() : '']; if (!c) return null;
+  const k = seed || cc;
+  return { lat: c[0] + (((cyberDjb2(k) & 0xffff) / 0xffff) - 0.5) * 2, lon: c[1] + (((cyberDjb2(k + ':lon') & 0xffff) / 0xffff) - 0.5) * 2 };
+}
+function cyberSanitize(t) {
+  const ind = cyberClean(t.indicator, 255); if (!ind) return null;
+  if ((t.indicatorType || 'ip') === 'ip' && !cyberIsIp(ind)) return null;
+  return { id: cyberClean(t.id, 255) || `${t.source||'feodo'}:${t.indicatorType||'ip'}:${ind}`, type: t.type||'malicious_url', source: t.source||'feodo', indicator: ind, indicatorType: t.indicatorType||'ip', lat: t.lat??null, lon: t.lon??null, country: t.country||'', severity: t.severity||'medium', malwareFamily: cyberClean(t.malwareFamily, 80), tags: t.tags||[], firstSeen: t.firstSeen||0, lastSeen: t.lastSeen||0 };
+}
+function cyberDedupe(threats) {
+  const map = new Map();
+  for (const t of threats) {
+    const key = `${t.source}:${t.indicatorType}:${t.indicator}`;
+    const ex = map.get(key);
+    if (!ex) { map.set(key, t); continue; }
+    if ((t.lastSeen || t.firstSeen) >= (ex.lastSeen || ex.firstSeen)) map.set(key, { ...ex, ...t, tags: cyberNormTags([...ex.tags, ...t.tags]) });
+  }
+  return Array.from(map.values());
+}
+function cyberToProto(t) {
+  return { id: t.id, type: CYBER_THREAT_TYPE_MAP[t.type]||'CYBER_THREAT_TYPE_UNSPECIFIED', source: CYBER_SOURCE_MAP[t.source]||'CYBER_THREAT_SOURCE_UNSPECIFIED', indicator: t.indicator, indicatorType: CYBER_INDICATOR_MAP[t.indicatorType]||'CYBER_THREAT_INDICATOR_TYPE_UNSPECIFIED', location: cyberValidCoords(t.lat, t.lon) ? { latitude: t.lat, longitude: t.lon } : undefined, country: t.country, severity: CYBER_SEVERITY_MAP[t.severity]||'CRITICALITY_LEVEL_UNSPECIFIED', malwareFamily: t.malwareFamily, tags: t.tags, firstSeenAt: t.firstSeen, lastSeenAt: t.lastSeen };
+}
+
+function cyberHttpGetJson(url, reqHeaders, timeoutMs) {
+  return new Promise((resolve) => {
+    const req = https.get(url, { headers: { 'User-Agent': CHROME_UA, ...reqHeaders }, timeout: timeoutMs || 10000 }, (resp) => {
+      if (resp.statusCode < 200 || resp.statusCode >= 300) { resp.resume(); return resolve(null); }
+      const chunks = [];
+      resp.on('data', (c) => chunks.push(c));
+      resp.on('end', () => { try { resolve(JSON.parse(Buffer.concat(chunks).toString())); } catch { resolve(null); } });
+    });
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => { req.destroy(); resolve(null); });
+  });
+}
+function cyberHttpGetText(url, reqHeaders, timeoutMs) {
+  return new Promise((resolve) => {
+    const req = https.get(url, { headers: { 'User-Agent': CHROME_UA, ...reqHeaders }, timeout: timeoutMs || 10000 }, (resp) => {
+      if (resp.statusCode < 200 || resp.statusCode >= 300) { resp.resume(); return resolve(null); }
+      const chunks = [];
+      resp.on('data', (c) => chunks.push(c));
+      resp.on('end', () => resolve(Buffer.concat(chunks).toString()));
+    });
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => { req.destroy(); resolve(null); });
+  });
+}
+
+const CYBER_GEO_CACHE_MAX = 2048;
+const cyberGeoCache = new Map();
+function cyberGeoCacheSet(ip, geo) {
+  if (cyberGeoCache.size >= CYBER_GEO_CACHE_MAX) {
+    cyberGeoCache.delete(cyberGeoCache.keys().next().value);
+  }
+  cyberGeoCache.set(ip, geo);
+}
+async function cyberGeoLookup(ip) {
+  if (cyberGeoCache.has(ip)) return cyberGeoCache.get(ip);
+  const d1 = await cyberHttpGetJson(`https://ipinfo.io/${encodeURIComponent(ip)}/json`, {}, 3000);
+  if (d1?.loc) {
+    const [latS, lonS] = d1.loc.split(',');
+    const lat = parseFloat(latS), lon = parseFloat(lonS);
+    if (cyberValidCoords(lat, lon)) { const r = { lat, lon, country: String(d1.country||'').slice(0,2).toUpperCase() }; cyberGeoCacheSet(ip, r); return r; }
+  }
+  const d2 = await cyberHttpGetJson(`https://freeipapi.com/api/json/${encodeURIComponent(ip)}`, {}, 3000);
+  if (d2) {
+    const lat = parseFloat(d2.latitude), lon = parseFloat(d2.longitude);
+    if (cyberValidCoords(lat, lon)) { const r = { lat, lon, country: String(d2.countryCode||d2.countryName||'').slice(0,2).toUpperCase() }; cyberGeoCacheSet(ip, r); return r; }
+  }
+  return null;
+}
+async function cyberHydrateGeo(threats) {
+  const needsGeo = []; const seen = new Set();
+  for (const t of threats) {
+    if (cyberValidCoords(t.lat, t.lon) || t.indicatorType !== 'ip') continue;
+    const ip = t.indicator.toLowerCase();
+    if (!cyberIsIp(ip) || seen.has(ip)) continue;
+    seen.add(ip); needsGeo.push(ip);
+  }
+  if (needsGeo.length === 0) return threats;
+  const queue = [...needsGeo.slice(0, CYBER_GEO_MAX)];
+  const resolved = new Map();
+  let timedOut = false;
+  // timedOut flag stops workers from dequeuing new IPs; in-flight requests may still
+  // complete up to ~3s after the flag fires (per-request timeout). Acceptable overshoot.
+  const timeoutId = setTimeout(() => { timedOut = true; }, CYBER_GEO_TIMEOUT_MS);
+  const workers = Array.from({ length: Math.min(CYBER_GEO_CONCURRENCY, queue.length) }, async () => {
+    while (queue.length > 0 && !timedOut) {
+      const ip = queue.shift(); if (!ip) break;
+      const geo = await cyberGeoLookup(ip);
+      if (geo) resolved.set(ip, geo);
+    }
+  });
+  try { await Promise.all(workers); } catch { /* ignore */ }
+  clearTimeout(timeoutId);
+  return threats.map((t) => {
+    if (cyberValidCoords(t.lat, t.lon)) return t;
+    if (t.indicatorType !== 'ip') return t;
+    const geo = resolved.get(t.indicator.toLowerCase());
+    if (geo) return { ...t, lat: geo.lat, lon: geo.lon, country: t.country || geo.country };
+    const cen = cyberCentroid(t.country, t.indicator);
+    return cen ? { ...t, lat: cen.lat, lon: cen.lon } : t;
+  });
+}
+
+async function cyberFetchFeodo(limit, cutoffMs) {
+  try {
+    const payload = await cyberHttpGetJson('https://feodotracker.abuse.ch/downloads/ipblocklist.json', { Accept: 'application/json' }, CYBER_SOURCE_TIMEOUT_MS);
+    if (!payload) return [];
+    const records = Array.isArray(payload) ? payload : (Array.isArray(payload?.data) ? payload.data : []);
+    const out = [];
+    for (const r of records) {
+      const ip = cyberClean(r?.ip_address || r?.dst_ip || r?.ip || r?.ioc || r?.host, 80).toLowerCase();
+      if (!cyberIsIp(ip)) continue;
+      const status = cyberClean(r?.status || r?.c2_status || '', 30).toLowerCase();
+      if (status && status !== 'online' && status !== 'offline') continue;
+      const firstSeen = cyberToMs(r?.first_seen || r?.first_seen_utc || r?.dateadded);
+      const lastSeen = cyberToMs(r?.last_online || r?.last_seen || r?.last_seen_utc || r?.first_seen || r?.first_seen_utc);
+      if ((lastSeen || firstSeen) && (lastSeen || firstSeen) < cutoffMs) continue;
+      const malwareFamily = cyberClean(r?.malware || r?.malware_family || r?.family, 80);
+      const sev = status === 'online' ? (/emotet|qakbot|trickbot|dridex|ransom/i.test(malwareFamily) ? 'critical' : 'high') : 'medium';
+      const t = cyberSanitize({ id: `feodo:${ip}`, type: 'c2_server', source: 'feodo', indicator: ip, indicatorType: 'ip', lat: cyberToNum(r?.latitude ?? r?.lat), lon: cyberToNum(r?.longitude ?? r?.lon), country: cyberNormCountry(r?.country || r?.country_code), severity: sev, malwareFamily, tags: cyberNormTags(['botnet', 'c2', ...(r?.tags||[])]), firstSeen, lastSeen });
+      if (t) { out.push(t); if (out.length >= limit) break; }
+    }
+    return out;
+  } catch { return []; }
+}
+async function cyberFetchUrlhaus(limit, cutoffMs) {
+  if (!URLHAUS_AUTH_KEY) return [];
+  try {
+    const payload = await cyberHttpGetJson(`https://urlhaus-api.abuse.ch/v1/urls/recent/limit/${limit}/`, { Accept: 'application/json', 'Auth-Key': URLHAUS_AUTH_KEY }, CYBER_SOURCE_TIMEOUT_MS);
+    if (!payload) return [];
+    const rows = Array.isArray(payload?.urls) ? payload.urls : (Array.isArray(payload?.data) ? payload.data : []);
+    const out = [];
+    for (const r of rows) {
+      const rawUrl = cyberClean(r?.url || r?.ioc || '', 1024);
+      const status = cyberClean(r?.url_status || r?.status || '', 30).toLowerCase();
+      if (status && status !== 'online') continue;
+      const tags = cyberNormTags(r?.tags);
+      let hostname = ''; try { hostname = new URL(rawUrl).hostname.toLowerCase(); } catch {}
+      const recordIp = cyberClean(r?.host || r?.ip_address || r?.ip, 80).toLowerCase();
+      const ipCandidate = cyberIsIp(recordIp) ? recordIp : (cyberIsIp(hostname) ? hostname : '');
+      const indType = ipCandidate ? 'ip' : (hostname ? 'domain' : 'url');
+      const indicator = ipCandidate || hostname || rawUrl; if (!indicator) continue;
+      const firstSeen = cyberToMs(r?.dateadded || r?.firstseen || r?.first_seen);
+      const lastSeen = cyberToMs(r?.last_online || r?.last_seen || r?.dateadded);
+      if ((lastSeen || firstSeen) && (lastSeen || firstSeen) < cutoffMs) continue;
+      const threat = cyberClean(r?.threat || r?.threat_type || '', 40).toLowerCase();
+      const allTags = tags.join(' ');
+      const type = (threat.includes('phish') || allTags.includes('phish')) ? 'phishing' : (threat.includes('malware') || threat.includes('payload') || allTags.includes('malware')) ? 'malware_host' : 'malicious_url';
+      const sev = type === 'phishing' ? 'medium' : (tags.includes('ransomware') || tags.includes('botnet')) ? 'critical' : 'high';
+      const t = cyberSanitize({ id: `urlhaus:${indType}:${indicator}`, type, source: 'urlhaus', indicator, indicatorType: indType, lat: cyberToNum(r?.latitude ?? r?.lat), lon: cyberToNum(r?.longitude ?? r?.lon), country: cyberNormCountry(r?.country || r?.country_code), severity: sev, malwareFamily: cyberClean(r?.threat, 80), tags, firstSeen, lastSeen });
+      if (t) { out.push(t); if (out.length >= limit) break; }
+    }
+    return out;
+  } catch { return []; }
+}
+async function cyberFetchC2Intel(limit) {
+  try {
+    const text = await cyberHttpGetText('https://raw.githubusercontent.com/drb-ra/C2IntelFeeds/master/feeds/IPC2s-30day.csv', { Accept: 'text/plain' }, CYBER_SOURCE_TIMEOUT_MS);
+    if (!text) return [];
+    const out = [];
+    for (const line of text.split('\n')) {
+      if (!line || line.startsWith('#')) continue;
+      const ci = line.indexOf(','); if (ci < 0) continue;
+      const ip = cyberClean(line.slice(0, ci), 80).toLowerCase(); if (!cyberIsIp(ip)) continue;
+      const desc = cyberClean(line.slice(ci + 1), 200);
+      const malwareFamily = desc.replace(/^Possible\s+/i, '').replace(/\s+C2\s+IP$/i, '').trim() || 'Unknown';
+      const tags = ['c2']; const descLow = desc.toLowerCase();
+      if (descLow.includes('cobaltstrike') || descLow.includes('cobalt strike')) tags.push('cobaltstrike');
+      if (descLow.includes('metasploit')) tags.push('metasploit');
+      if (descLow.includes('sliver')) tags.push('sliver');
+      if (descLow.includes('brute ratel') || descLow.includes('bruteratel')) tags.push('bruteratel');
+      const t = cyberSanitize({ id: `c2intel:${ip}`, type: 'c2_server', source: 'c2intel', indicator: ip, indicatorType: 'ip', lat: null, lon: null, country: '', severity: /cobaltstrike|cobalt.strike|brute.?ratel/i.test(desc) ? 'high' : 'medium', malwareFamily, tags: cyberNormTags(tags), firstSeen: 0, lastSeen: 0 });
+      if (t) { out.push(t); if (out.length >= limit) break; }
+    }
+    return out;
+  } catch { return []; }
+}
+async function cyberFetchOtx(limit, days) {
+  if (!OTX_API_KEY) return [];
+  try {
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const payload = await cyberHttpGetJson(`https://otx.alienvault.com/api/v1/indicators/export?type=IPv4&modified_since=${encodeURIComponent(since)}`, { Accept: 'application/json', 'X-OTX-API-KEY': OTX_API_KEY }, CYBER_SOURCE_TIMEOUT_MS);
+    if (!payload) return [];
+    const results = Array.isArray(payload?.results) ? payload.results : (Array.isArray(payload) ? payload : []);
+    const out = [];
+    for (const r of results) {
+      const ip = cyberClean(r?.indicator || r?.ip || '', 80).toLowerCase(); if (!cyberIsIp(ip)) continue;
+      const tags = cyberNormTags(r?.tags || []);
+      const t = cyberSanitize({ id: `otx:${ip}`, type: tags.some((tt) => /c2|botnet/.test(tt)) ? 'c2_server' : 'malware_host', source: 'otx', indicator: ip, indicatorType: 'ip', lat: null, lon: null, country: '', severity: tags.some((tt) => /ransomware|apt|c2|botnet/.test(tt)) ? 'high' : 'medium', malwareFamily: cyberClean(r?.title || r?.description || '', 200), tags, firstSeen: cyberToMs(r?.created), lastSeen: cyberToMs(r?.modified || r?.created) });
+      if (t) { out.push(t); if (out.length >= limit) break; }
+    }
+    return out;
+  } catch { return []; }
+}
+async function cyberFetchAbuseIpDb(limit) {
+  if (!ABUSEIPDB_API_KEY) return [];
+  try {
+    const payload = await cyberHttpGetJson(`https://api.abuseipdb.com/api/v2/blacklist?confidenceMinimum=90&limit=${Math.min(limit, 500)}`, { Accept: 'application/json', Key: ABUSEIPDB_API_KEY }, CYBER_SOURCE_TIMEOUT_MS);
+    if (!payload) return [];
+    const records = Array.isArray(payload?.data) ? payload.data : [];
+    const out = [];
+    for (const r of records) {
+      const ip = cyberClean(r?.ipAddress || r?.ip || '', 80).toLowerCase(); if (!cyberIsIp(ip)) continue;
+      const score = cyberToNum(r?.abuseConfidenceScore) ?? 0;
+      const t = cyberSanitize({ id: `abuseipdb:${ip}`, type: 'malware_host', source: 'abuseipdb', indicator: ip, indicatorType: 'ip', lat: cyberToNum(r?.latitude ?? r?.lat), lon: cyberToNum(r?.longitude ?? r?.lon), country: cyberNormCountry(r?.countryCode || r?.country), severity: score >= 95 ? 'critical' : (score >= 80 ? 'high' : 'medium'), malwareFamily: '', tags: cyberNormTags([`score:${score}`]), firstSeen: 0, lastSeen: cyberToMs(r?.lastReportedAt) });
+      if (t) { out.push(t); if (out.length >= limit) break; }
+    }
+    return out;
+  } catch { return []; }
+}
+
+async function seedCyberThreats() {
+  const t0 = Date.now();
+  const days = 14;
+  const cutoffMs = Date.now() - days * 24 * 60 * 60 * 1000;
+  const MAX_LIMIT = 1000;
+
+  const [feodo, urlhaus, c2intel, otx, abuseipdb] = await Promise.all([
+    cyberFetchFeodo(MAX_LIMIT, cutoffMs),
+    cyberFetchUrlhaus(MAX_LIMIT, cutoffMs),
+    cyberFetchC2Intel(MAX_LIMIT),
+    cyberFetchOtx(MAX_LIMIT, days),
+    cyberFetchAbuseIpDb(MAX_LIMIT),
+  ]);
+
+  if (feodo.length + urlhaus.length + c2intel.length + otx.length + abuseipdb.length === 0) {
+    console.warn('[Cyber] All sources returned 0 threats — skipping Redis write');
+    return 0;
+  }
+
+  const combined = cyberDedupe([...feodo, ...urlhaus, ...c2intel, ...otx, ...abuseipdb]);
+  const hydrated = await cyberHydrateGeo(combined);
+  const filtered = hydrated.filter((t) => cyberValidCoords(t.lat, t.lon));
+
+  filtered.sort((a, b) => {
+    const bySev = (CYBER_SEVERITY_RANK[CYBER_SEVERITY_MAP[b.severity]||'']||0) - (CYBER_SEVERITY_RANK[CYBER_SEVERITY_MAP[a.severity]||'']||0);
+    return bySev !== 0 ? bySev : (b.lastSeen || b.firstSeen) - (a.lastSeen || a.firstSeen);
+  });
+
+  const threats = filtered.slice(0, CYBER_MAX_CACHED).map(cyberToProto);
+  if (threats.length === 0) {
+    console.warn('[Cyber] No threats with valid coordinates — skipping Redis write');
+    return 0;
+  }
+
+  const payload = { threats };
+  const ok1 = await upstashSet(CYBER_RPC_KEY, payload, CYBER_SEED_TTL);
+  const ok2 = await upstashSet(CYBER_BOOTSTRAP_KEY, payload, CYBER_SEED_TTL);
+  console.log(`[Cyber] Seeded ${threats.length} threats (feodo:${feodo.length} urlhaus:${urlhaus.length} c2intel:${c2intel.length} otx:${otx.length} abuseipdb:${abuseipdb.length} redis:${ok1 && ok2 ? 'OK' : 'PARTIAL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  return threats.length;
+}
+
+async function startCyberThreatsSeedLoop() {
+  if (!UPSTASH_ENABLED) {
+    console.log('[Cyber] Disabled (no Upstash Redis)');
+    return;
+  }
+  console.log(`[Cyber] Seed loop starting (interval ${CYBER_SEED_INTERVAL_MS / 1000 / 60 / 60}h, urlhaus:${URLHAUS_AUTH_KEY ? 'yes' : 'no'} otx:${OTX_API_KEY ? 'yes' : 'no'} abuseipdb:${ABUSEIPDB_API_KEY ? 'yes' : 'no'})`);
+  seedCyberThreats().catch((e) => console.warn('[Cyber] Initial seed error:', e?.message || e));
+  setInterval(() => {
+    seedCyberThreats().catch((e) => console.warn('[Cyber] Seed error:', e?.message || e));
+  }, CYBER_SEED_INTERVAL_MS).unref?.();
+}
+
 function gzipSyncBuffer(body) {
   try {
     return zlib.gzipSync(typeof body === 'string' ? Buffer.from(body) : body);
@@ -822,6 +1816,7 @@ function getRouteGroup(pathname) {
   if (pathname.startsWith('/ucdp-events')) return 'ucdp-events';
   if (pathname.startsWith('/oref')) return 'oref';
   if (pathname === '/notam') return 'notam';
+  if (pathname === '/yahoo-chart') return 'yahoo-chart';
   return 'other';
 }
 
@@ -1165,7 +2160,7 @@ function processRawUpstreamMessage(raw) {
   messageCount++;
   if (messageCount % 5000 === 0) {
     const mem = process.memoryUsage();
-    console.log(`[Relay] ${messageCount} msgs, ${clients.size} ws-clients, ${vessels.size} vessels, queue=${getUpstreamQueueSize()}, dropped=${droppedMessages}, rss=${(mem.rss / 1024 / 1024).toFixed(0)}MB heap=${(mem.heapUsed / 1024 / 1024).toFixed(0)}MB, cache: opensky=${openskyResponseCache.size} opensky_neg=${openskyNegativeCache.size} rss_feed=${rssResponseCache.size}`);
+    console.log(`[Relay] ${messageCount} msgs, ${clients.size} ws-clients, ${vessels.size} vessels, queue=${getUpstreamQueueSize()}, dropped=${droppedMessages}, rss=${(mem.rss / 1024 / 1024).toFixed(0)}MB heap=${(mem.heapUsed / 1024 / 1024).toFixed(0)}MB, cache: opensky=${openskyResponseCache.size} opensky_neg=${openskyNegativeCache.size} rss_feed=${rssResponseCache.size} rss_backoff=${rssFailureCount.size}`);
   }
 
   try {
@@ -1486,15 +2481,13 @@ setInterval(() => {
 
 // UCDP GED Events cache (persistent in-memory — Railway advantage)
 const UCDP_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
-const UCDP_PAGE_SIZE = 1000;
-const UCDP_MAX_PAGES = 12;
+const UCDP_RELAY_MAX_PAGES = 12;
 const UCDP_FETCH_TIMEOUT = 30000; // 30s per page (no Railway limit)
-const UCDP_TRAILING_WINDOW_MS = 365 * 24 * 60 * 60 * 1000;
 
 let ucdpCache = { data: null, timestamp: 0 };
 let ucdpFetchInProgress = false;
 
-const UCDP_VIOLENCE_TYPE_MAP = {
+const UCDP_RELAY_VIOLENCE_TYPE_MAP = {
   1: 'state-based',
   2: 'non-state',
   3: 'one-sided',
@@ -1520,7 +2513,7 @@ function ucdpBuildVersionCandidates() {
   return Array.from(new Set([`${year}.1`, `${year - 1}.1`, '25.1', '24.1']));
 }
 
-async function ucdpFetchPage(version, page) {
+async function ucdpRelayFetchPage(version, page) {
   const url = `https://ucdpapi.pcr.uu.se/api/gedevents/${version}?pagesize=${UCDP_PAGE_SIZE}&page=${page}`;
 
   return new Promise((resolve, reject) => {
@@ -1541,11 +2534,11 @@ async function ucdpFetchPage(version, page) {
   });
 }
 
-async function ucdpDiscoverVersion() {
+async function ucdpRelayDiscoverVersion() {
   const candidates = ucdpBuildVersionCandidates();
   for (const version of candidates) {
     try {
-      const page0 = await ucdpFetchPage(version, 0);
+      const page0 = await ucdpRelayFetchPage(version, 0);
       if (Array.isArray(page0?.Result)) return { version, page0 };
     } catch { /* next candidate */ }
   }
@@ -1553,16 +2546,16 @@ async function ucdpDiscoverVersion() {
 }
 
 async function ucdpFetchAllEvents() {
-  const { version, page0 } = await ucdpDiscoverVersion();
+  const { version, page0 } = await ucdpRelayDiscoverVersion();
   const totalPages = Math.max(1, Number(page0?.TotalPages) || 1);
   const newestPage = totalPages - 1;
 
   let allEvents = [];
   let latestDatasetMs = NaN;
 
-  for (let offset = 0; offset < UCDP_MAX_PAGES && (newestPage - offset) >= 0; offset++) {
+  for (let offset = 0; offset < UCDP_RELAY_MAX_PAGES && (newestPage - offset) >= 0; offset++) {
     const page = newestPage - offset;
-    const rawData = page === 0 ? page0 : await ucdpFetchPage(version, page);
+    const rawData = page === 0 ? page0 : await ucdpRelayFetchPage(version, page);
     const events = Array.isArray(rawData?.Result) ? rawData.Result : [];
     allEvents = allEvents.concat(events);
 
@@ -1594,7 +2587,7 @@ async function ucdpFetchAllEvents() {
       deaths_best: Number(e.best) || 0,
       deaths_low: Number(e.low) || 0,
       deaths_high: Number(e.high) || 0,
-      type_of_violence: UCDP_VIOLENCE_TYPE_MAP[e.type_of_violence] || 'state-based',
+      type_of_violence: UCDP_RELAY_VIOLENCE_TYPE_MAP[e.type_of_violence] || 'state-based',
       source_original: (e.source_original || '').substring(0, 300),
     }))
     .sort((a, b) => {
@@ -1686,9 +2679,25 @@ const OPENSKY_DEDUP_EMPTY_RESPONSE_JSON = JSON.stringify({ states: [], time: 0 }
 const OPENSKY_DEDUP_EMPTY_RESPONSE_GZIP = gzipSyncBuffer(OPENSKY_DEDUP_EMPTY_RESPONSE_JSON);
 const rssResponseCache = new Map(); // key: feed URL → { data, contentType, timestamp, statusCode }
 const rssInFlight = new Map(); // key: feed URL → Promise (dedup concurrent requests)
+const rssFailureCount = new Map(); // key: feed URL → consecutive failure count (for exponential backoff)
+const rssBackoffUntil = new Map(); // key: feed URL → timestamp when backoff expires
 const RSS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min — RSS feeds rarely update faster
-const RSS_NEGATIVE_CACHE_TTL_MS = 60 * 1000; // 1 min — cache failures to prevent thundering herd
+const RSS_NEGATIVE_CACHE_TTL_MS = 60 * 1000; // 1 min base — scaled by 2^failures via backoff
+const RSS_MAX_NEGATIVE_CACHE_TTL_MS = 15 * 60 * 1000; // 15 min cap — stop hammering broken feeds
 const RSS_CACHE_MAX_ENTRIES = 200; // hard cap — ~20 allowed domains × ~5 paths max, with headroom
+
+function rssRecordFailure(feedUrl) {
+  const prev = rssFailureCount.get(feedUrl) || 0;
+  const ttl = Math.min(RSS_NEGATIVE_CACHE_TTL_MS * Math.pow(2, prev), RSS_MAX_NEGATIVE_CACHE_TTL_MS);
+  rssFailureCount.set(feedUrl, prev + 1);
+  rssBackoffUntil.set(feedUrl, Date.now() + ttl);
+  return { failures: prev + 1, backoffSec: Math.round(ttl / 1000) };
+}
+
+function rssResetFailure(feedUrl) {
+  rssFailureCount.delete(feedUrl);
+  rssBackoffUntil.delete(feedUrl);
+}
 
 function setBoundedCacheEntry(cache, key, value, maxEntries) {
   if (!cache.has(key) && cache.size >= maxEntries) {
@@ -2519,15 +3528,27 @@ setInterval(() => {
     if (now - entry.timestamp > OPENSKY_NEGATIVE_CACHE_TTL_MS * 2) openskyNegativeCache.delete(key);
   }
   for (const [key, entry] of rssResponseCache) {
-    const maxAge = (entry.statusCode && entry.statusCode >= 200 && entry.statusCode < 300)
-      ? RSS_CACHE_TTL_MS * 2 : RSS_NEGATIVE_CACHE_TTL_MS * 2;
-    if (now - entry.timestamp > maxAge) rssResponseCache.delete(key);
+    if (now - entry.timestamp > RSS_CACHE_TTL_MS * 2) rssResponseCache.delete(key);
+  }
+  for (const [key, expiry] of rssBackoffUntil) {
+    // Only clear backoff timer on expiry — preserve failureCount so
+    // the next failure re-escalates immediately instead of resetting to 1min
+    if (now > expiry) rssBackoffUntil.delete(key);
+  }
+  // Clean up failure counts when no backoff is active AND no cache entry exists.
+  // Edge case: if cache is evicted (FIFO/age) right when backoff expires, failureCount
+  // resets — next failure starts at 1min instead of re-escalating. Window is ~60s, acceptable.
+  for (const key of rssFailureCount.keys()) {
+    if (!rssBackoffUntil.has(key) && !rssResponseCache.has(key)) rssFailureCount.delete(key);
   }
   for (const [key, entry] of worldbankCache) {
     if (now - entry.timestamp > WORLDBANK_CACHE_TTL_MS * 2) worldbankCache.delete(key);
   }
   for (const [key, entry] of polymarketCache) {
     if (now - entry.timestamp > POLYMARKET_CACHE_TTL_MS * 2) polymarketCache.delete(key);
+  }
+  for (const [key, entry] of yahooChartCache) {
+    if (now - entry.ts > YAHOO_CHART_CACHE_TTL_MS * 2) yahooChartCache.delete(key);
   }
   for (const [key, bucket] of requestRateBuckets) {
     if (now >= bucket.resetAt + RELAY_RATE_LIMIT_WINDOW_MS * 2) requestRateBuckets.delete(key);
@@ -2537,9 +3558,85 @@ setInterval(() => {
   }
 }, 60 * 1000);
 
+// ── Yahoo Finance Chart Proxy ──────────────────────────────────────
+const YAHOO_CHART_CACHE_TTL_MS = 300_000; // 5 min
+const yahooChartCache = new Map(); // key: symbol:range:interval → { json, gzip, ts }
+const YAHOO_SYMBOL_RE = /^[A-Za-z0-9^=\-\.]{1,15}$/;
+
+function handleYahooChartRequest(req, res) {
+  const url = new URL(req.url, `http://localhost:${PORT}`);
+  const symbol = url.searchParams.get('symbol');
+  const range = url.searchParams.get('range') || '1d';
+  const interval = url.searchParams.get('interval') || '1d';
+
+  if (!symbol || !YAHOO_SYMBOL_RE.test(symbol)) {
+    return sendCompressed(req, res, 400, { 'Content-Type': 'application/json' },
+      JSON.stringify({ error: 'Invalid or missing symbol parameter' }));
+  }
+
+  const cacheKey = `${symbol}:${range}:${interval}`;
+  const cached = yahooChartCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < YAHOO_CHART_CACHE_TTL_MS) {
+    return sendCompressed(req, res, 200, {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'public, max-age=120, s-maxage=120, stale-while-revalidate=60',
+      'X-Yahoo-Source': 'relay-cache',
+    }, cached.json);
+  }
+
+  const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${encodeURIComponent(range)}&interval=${encodeURIComponent(interval)}`;
+  const yahooReq = https.get(yahooUrl, {
+    headers: {
+      'User-Agent': CHROME_UA,
+      Accept: 'application/json',
+    },
+    timeout: 10000,
+  }, (upstream) => {
+    let body = '';
+    upstream.on('data', (chunk) => { body += chunk; });
+    upstream.on('end', () => {
+      if (upstream.statusCode !== 200) {
+        logThrottled('warn', `yahoo-chart-upstream-${upstream.statusCode}:${symbol}`,
+          `[Relay] Yahoo chart upstream ${upstream.statusCode} for ${symbol}`);
+        return sendCompressed(req, res, upstream.statusCode || 502, {
+          'Content-Type': 'application/json',
+          'X-Yahoo-Source': 'relay-upstream-error',
+        }, JSON.stringify({ error: `Yahoo upstream ${upstream.statusCode}`, symbol }));
+      }
+      yahooChartCache.set(cacheKey, { json: body, ts: Date.now() });
+      sendCompressed(req, res, 200, {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'public, max-age=120, s-maxage=120, stale-while-revalidate=60',
+        'X-Yahoo-Source': 'relay-upstream',
+      }, body);
+    });
+  });
+  yahooReq.on('error', (err) => {
+    logThrottled('error', `yahoo-chart-error:${symbol}`, `[Relay] Yahoo chart error for ${symbol}: ${err.message}`);
+    if (cached) {
+      return sendCompressed(req, res, 200, {
+        'Content-Type': 'application/json',
+        'X-Yahoo-Source': 'relay-stale',
+      }, cached.json);
+    }
+    sendCompressed(req, res, 502, { 'Content-Type': 'application/json' },
+      JSON.stringify({ error: 'Yahoo upstream error', symbol }));
+  });
+  yahooReq.on('timeout', () => {
+    yahooReq.destroy();
+    if (cached) {
+      return sendCompressed(req, res, 200, {
+        'Content-Type': 'application/json',
+        'X-Yahoo-Source': 'relay-stale',
+      }, cached.json);
+    }
+    sendCompressed(req, res, 504, { 'Content-Type': 'application/json' },
+      JSON.stringify({ error: 'Yahoo upstream timeout', symbol }));
+  });
+}
+
 // ── YouTube Live Detection (residential proxy bypass) ──────────────
 const YOUTUBE_PROXY_URL = process.env.YOUTUBE_PROXY_URL || '';
-const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
 
 function parseProxyUrl(proxyUrl) {
   if (!proxyUrl) return null;
@@ -2923,6 +4020,7 @@ const server = http.createServer(async (req, res) => {
         ucdp: ucdpCache.data ? 'warm' : 'cold',
         worldbank: worldbankCache.size,
         polymarket: polymarketCache.size,
+        yahooChart: yahooChartCache.size,
         polymarketInflight: polymarketInflight.size,
       },
       auth: {
@@ -3115,6 +4213,8 @@ const server = http.createServer(async (req, res) => {
         'feeds.capi24.com',  // News24 redirect destination
         'islandtimes.org',
         'www.atlanticcouncil.org',
+        'smartraveller.gov.au',
+        'www.smartraveller.gov.au',
       ];
       const parsed = new URL(feedUrl);
       // Block deprecated/stale feed domains — stale clients still request these
@@ -3128,7 +4228,28 @@ const server = http.createServer(async (req, res) => {
         return res.end(JSON.stringify({ error: 'Domain not allowed on Railway proxy' }));
       }
 
-      // Serve from cache if fresh (5 min for success, 1 min for failures)
+      // Backoff guard: if feed is in exponential backoff, don't hit upstream
+      const backoffExpiry = rssBackoffUntil.get(feedUrl);
+      const backoffNow = Date.now();
+      if (backoffExpiry && backoffNow < backoffExpiry) {
+        const rssCachedForBackoff = rssResponseCache.get(feedUrl);
+        if (rssCachedForBackoff && rssCachedForBackoff.statusCode >= 200 && rssCachedForBackoff.statusCode < 300) {
+          return sendCompressed(req, res, 200, {
+            'Content-Type': rssCachedForBackoff.contentType || 'application/xml',
+            'Cache-Control': 'no-store', 'CDN-Cache-Control': 'no-store',
+            'X-Cache': 'BACKOFF-STALE',
+          }, rssCachedForBackoff.data);
+        }
+        const remainSec = Math.max(1, Math.round((backoffExpiry - backoffNow) / 1000));
+        res.writeHead(503, { 'Content-Type': 'application/json', 'Retry-After': String(remainSec) });
+        return res.end(JSON.stringify({ error: 'Feed in backoff', retryAfterSec: remainSec }));
+      }
+
+      // Two-layer negative caching:
+      // 1. Backoff guard above: exponential (1→15min) for network errors (socket hang up, timeout)
+      // 2. This cache check: flat 1min TTL for non-2xx upstream responses (429, 503, etc.)
+      // Both layers work correctly together — backoff handles persistent failures,
+      // negative cache prevents thundering herd on transient upstream errors.
       const rssCached = rssResponseCache.get(feedUrl);
       if (rssCached) {
         const ttl = (rssCached.statusCode && rssCached.statusCode >= 200 && rssCached.statusCode < 300)
@@ -3204,6 +4325,10 @@ const server = http.createServer(async (req, res) => {
             const redirectUrl = response.headers.location.startsWith('http')
               ? response.headers.location
               : new URL(response.headers.location, url).href;
+            const redirectHost = new URL(redirectUrl).hostname;
+            if (!allowedDomains.includes(redirectHost)) {
+              return sendError(403, 'Redirect to disallowed domain');
+            }
             logThrottled('log', `rss-redirect:${feedUrl}:${redirectUrl}`, `[Relay] Following redirect to: ${redirectUrl}`);
             return fetchWithRedirects(redirectUrl, redirectCount + 1);
           }
@@ -3211,6 +4336,7 @@ const server = http.createServer(async (req, res) => {
           if (response.statusCode === 304 && rssCached) {
             responseHandled = true;
             rssCached.timestamp = Date.now();
+            rssResetFailure(feedUrl);
             resolveInFlight();
             logThrottled('log', `rss-revalidated:${feedUrl}`, '[Relay] RSS 304 revalidated:', feedUrl);
             sendCompressed(req, res, 200, {
@@ -3245,8 +4371,11 @@ const server = http.createServer(async (req, res) => {
               etag: response.headers['etag'] || null,
               lastModified: response.headers['last-modified'] || null,
             });
-            if (response.statusCode < 200 || response.statusCode >= 300) {
-              logThrottled('warn', `rss-upstream:${feedUrl}:${response.statusCode}`, `[Relay] RSS upstream ${response.statusCode} for ${feedUrl}`);
+            if (response.statusCode >= 200 && response.statusCode < 300) {
+              rssResetFailure(feedUrl);
+            } else {
+              const { failures, backoffSec } = rssRecordFailure(feedUrl);
+              logThrottled('warn', `rss-upstream:${feedUrl}:${response.statusCode}`, `[Relay] RSS upstream ${response.statusCode} for ${feedUrl} (backoff ${backoffSec}s, failures=${failures})`);
             }
             resolveInFlight();
             sendCompressed(req, res, response.statusCode, {
@@ -3257,15 +4386,17 @@ const server = http.createServer(async (req, res) => {
             }, data);
           });
           stream.on('error', (err) => {
-            logThrottled('error', `rss-decompress:${feedUrl}:${err.code || err.message}`, '[Relay] Decompression error:', err.message);
+            const { failures, backoffSec } = rssRecordFailure(feedUrl);
+            logThrottled('error', `rss-decompress:${feedUrl}:${err.code || err.message}`, `[Relay] Decompression error: ${err.message} (backoff ${backoffSec}s, failures=${failures})`);
             sendError(502, 'Decompression failed: ' + err.message);
           });
         });
 
         request.on('error', (err) => {
-          logThrottled('error', `rss-error:${feedUrl}:${err.code || err.message}`, '[Relay] RSS error:', err.message);
-          // Serve stale on error
-          if (rssCached) {
+          const { failures, backoffSec } = rssRecordFailure(feedUrl);
+          logThrottled('error', `rss-error:${feedUrl}:${err.code || err.message}`, `[Relay] RSS error: ${err.message} (backoff ${backoffSec}s, failures=${failures})`);
+          // Serve stale on error (only if we have previous successful data)
+          if (rssCached && rssCached.statusCode >= 200 && rssCached.statusCode < 300) {
             if (!responseHandled && !res.headersSent) {
               responseHandled = true;
               sendCompressed(req, res, 200, { 'Content-Type': 'application/xml', 'Cache-Control': 'no-store', 'CDN-Cache-Control': 'no-store', 'X-Cache': 'STALE' }, rssCached.data);
@@ -3278,7 +4409,9 @@ const server = http.createServer(async (req, res) => {
 
         request.on('timeout', () => {
           request.destroy();
-          if (rssCached && !responseHandled && !res.headersSent) {
+          const { failures, backoffSec } = rssRecordFailure(feedUrl);
+          logThrottled('warn', `rss-timeout:${feedUrl}`, `[Relay] RSS timeout for ${feedUrl} (backoff ${backoffSec}s, failures=${failures})`);
+          if (rssCached && rssCached.statusCode >= 200 && rssCached.statusCode < 300 && !responseHandled && !res.headersSent) {
             responseHandled = true;
             sendCompressed(req, res, 200, { 'Content-Type': 'application/xml', 'Cache-Control': 'no-store', 'CDN-Cache-Control': 'no-store', 'X-Cache': 'STALE' }, rssCached.data);
             resolveInFlight();
@@ -3333,6 +4466,8 @@ const server = http.createServer(async (req, res) => {
     handlePolymarketRequest(req, res);
   } else if (pathname === '/youtube-live') {
     handleYouTubeLiveRequest(req, res);
+  } else if (pathname === '/yahoo-chart') {
+    handleYahooChartRequest(req, res);
   } else if (pathname === '/notam') {
     handleNotamProxyRequest(req, res);
   } else {
@@ -3447,6 +4582,10 @@ server.listen(PORT, () => {
   console.log(`[Relay] WebSocket relay on port ${PORT}`);
   startTelegramPollLoop();
   startOrefPollLoop();
+  startUcdpSeedLoop();
+  startMarketDataSeedLoop();
+  startAviationSeedLoop();
+  startCyberThreatsSeedLoop();
 });
 
 wss.on('connection', (ws, req) => {
@@ -3493,6 +4632,7 @@ setInterval(() => {
     rssResponseCache.clear();
     polymarketCache.clear();
     worldbankCache.clear();
+    yahooChartCache.clear();
     if (global.gc) global.gc();
   }
 }, 60 * 1000);

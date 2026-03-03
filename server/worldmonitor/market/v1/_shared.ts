@@ -1,10 +1,29 @@
 /**
  * Shared helpers, types, and constants for the market service handler RPCs.
  */
-
-declare const process: { env: Record<string, string | undefined> };
-
 import { CHROME_UA, yahooGate } from '../../../_shared/constants';
+
+// ========================================================================
+// Relay helpers (Railway proxy for Yahoo when Vercel IPs are rate-limited)
+// ========================================================================
+
+function getRelayBaseUrl(): string | null {
+  const relayUrl = process.env.WS_RELAY_URL;
+  if (!relayUrl) return null;
+  return relayUrl
+    .replace(/^ws(s?):\/\//, 'http$1://')
+    .replace(/\/$/, '');
+}
+
+function getRelayHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { 'User-Agent': CHROME_UA };
+  const relaySecret = process.env.RELAY_SHARED_SECRET;
+  if (relaySecret) {
+    const relayHeader = (process.env.RELAY_AUTH_HEADER || 'x-relay-key').toLowerCase();
+    headers[relayHeader] = relaySecret;
+  }
+  return headers;
+}
 
 // ========================================================================
 // Constants
@@ -12,21 +31,36 @@ import { CHROME_UA, yahooGate } from '../../../_shared/constants';
 
 export const UPSTREAM_TIMEOUT_MS = 10_000;
 
+/**
+ * Defensive parser for repeated-string query params.
+ * The sebuf codegen assigns `params.get("symbols")` (a string) to a field
+ * typed as `string[]`.  At runtime `req.symbols` may therefore be a
+ * comma-separated string rather than an actual array.
+ */
+export function parseStringArray(raw: unknown): string[] {
+  if (Array.isArray(raw)) return raw.filter(Boolean);
+  if (typeof raw === 'string' && raw.length > 0) return raw.split(',').filter(Boolean);
+  return [];
+}
+
 export async function fetchYahooQuotesBatch(
   symbols: string[],
 ): Promise<{ results: Map<string, { price: number; change: number; sparkline: number[] }>; rateLimited: boolean }> {
   const results = new Map<string, { price: number; change: number; sparkline: number[] }>();
   let rateLimitHits = 0;
+  let consecutiveFails = 0;
   for (let i = 0; i < symbols.length; i++) {
     const q = await fetchYahooQuote(symbols[i]!);
     if (q) {
       results.set(symbols[i]!, q);
+      consecutiveFails = 0;
     } else {
       rateLimitHits++;
+      consecutiveFails++;
     }
-    if (rateLimitHits >= 3 && results.size === 0) break;
+    if (consecutiveFails >= 5) break;
   }
-  return { results, rateLimited: rateLimitHits >= 3 && results.size === 0 };
+  return { results, rateLimited: rateLimitHits > symbols.length / 2 };
 }
 
 // Yahoo-only symbols: indices and futures not on Finnhub free tier
@@ -78,18 +112,25 @@ export async function fetchFinnhubQuote(
   apiKey: string,
 ): Promise<{ symbol: string; price: number; changePercent: number } | null> {
   try {
-    const url = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${apiKey}`;
+    const url = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}`;
     const resp = await fetch(url, {
-      headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
+      headers: { Accept: 'application/json', 'User-Agent': CHROME_UA, 'X-Finnhub-Token': apiKey },
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
-    if (!resp.ok) return null;
+    if (!resp.ok) {
+      console.warn(`[Finnhub] ${symbol} HTTP ${resp.status}`);
+      return null;
+    }
 
     const data = await resp.json() as { c: number; d: number; dp: number; h: number; l: number; o: number; pc: number; t: number };
-    if (data.c === 0 && data.h === 0 && data.l === 0) return null;
+    if (data.c === 0 && data.h === 0 && data.l === 0) {
+      console.warn(`[Finnhub] ${symbol} returned zeros (market closed or invalid)`);
+      return null;
+    }
 
     return { symbol, price: data.c, changePercent: data.dp };
-  } catch {
+  } catch (err) {
+    console.warn(`[Finnhub] ${symbol} error:`, (err as Error).message);
     return null;
   }
 }
@@ -126,34 +167,63 @@ export async function fetchFinnhubQuote(
 //   5. get-macro-signals.ts needs chart data (1y range) — use /stable/historical-price-eod/light
 // ========================================================================
 
+function parseYahooChartResponse(data: YahooChartResponse): { price: number; change: number; sparkline: number[] } | null {
+  const result = data.chart?.result?.[0];
+  const meta = result?.meta;
+  if (!meta) return null;
+
+  const price = meta.regularMarketPrice;
+  const prevClose = meta.chartPreviousClose || meta.previousClose || price;
+  const change = ((price - prevClose) / prevClose) * 100;
+
+  const closes = result.indicators?.quote?.[0]?.close;
+  const sparkline = closes?.filter((v): v is number => v != null) || [];
+
+  return { price, change, sparkline };
+}
+
 export async function fetchYahooQuote(
   symbol: string,
 ): Promise<{ price: number; change: number; sparkline: number[] } | null> {
+  // Try direct Yahoo first
   try {
     await yahooGate();
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`;
     const resp = await fetch(url, {
-      headers: {
-        'User-Agent': CHROME_UA,
-      },
+      headers: { 'User-Agent': CHROME_UA },
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
-    if (!resp.ok) return null;
+    if (resp.ok) {
+      const data: YahooChartResponse = await resp.json();
+      const parsed = parseYahooChartResponse(data);
+      if (parsed) return parsed;
+    } else {
+      console.warn(`[Yahoo] ${symbol} direct HTTP ${resp.status}`);
+    }
+  } catch (err) {
+    console.warn(`[Yahoo] ${symbol} direct error:`, (err as Error).message);
+  }
 
+  // Fallback: Railway relay (different IP, not rate-limited by Yahoo)
+  const relayBase = getRelayBaseUrl();
+  if (!relayBase) {
+    console.warn(`[Yahoo] ${symbol} relay skipped: WS_RELAY_URL not set`);
+    return null;
+  }
+  try {
+    const relayUrl = `${relayBase}/yahoo-chart?symbol=${encodeURIComponent(symbol)}`;
+    const resp = await fetch(relayUrl, {
+      headers: getRelayHeaders(),
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    });
+    if (!resp.ok) {
+      console.warn(`[Yahoo] ${symbol} relay HTTP ${resp.status}: ${await resp.text().catch(() => '')}`);
+      return null;
+    }
     const data: YahooChartResponse = await resp.json();
-    const result = data.chart.result[0];
-    const meta = result?.meta;
-    if (!meta) return null;
-
-    const price = meta.regularMarketPrice;
-    const prevClose = meta.chartPreviousClose || meta.previousClose || price;
-    const change = ((price - prevClose) / prevClose) * 100;
-
-    const closes = result.indicators?.quote?.[0]?.close;
-    const sparkline = closes?.filter((v): v is number => v != null) || [];
-
-    return { price, change, sparkline };
-  } catch {
+    return parseYahooChartResponse(data);
+  } catch (err) {
+    console.warn(`[Yahoo] ${symbol} relay error:`, (err as Error).message);
     return null;
   }
 }

@@ -25,7 +25,7 @@ import {
   type RuntimeFeatureId,
   type RuntimeSecretKey,
 } from '@/services/runtime-config';
-import { getApiBaseUrl, getRemoteApiBaseUrl, isDesktopRuntime, resolveLocalApiPort } from '@/services/runtime';
+import { getApiBaseUrl, getRemoteApiBaseUrl, isDesktopRuntime, resolveLocalApiPort, startSmartPollLoop, type SmartPollLoopHandle } from '@/services/runtime';
 import { tryInvokeTauri, invokeTauri } from '@/services/tauri-bridge';
 import { escapeHtml } from '@/utils/sanitize';
 import { initI18n, t } from '@/services/i18n';
@@ -189,7 +189,7 @@ function renderOverview(area: HTMLElement): void {
   const wmState = getSecretState('WORLDMONITOR_API_KEY');
   const wmStatusText = wmState.present ? 'Active' : 'Not set';
   const wmStatusClass = wmState.present ? 'ok' : 'warn';
-  const alreadyRegistered = localStorage.getItem('wm-waitlist-registered') === '1';
+  const alreadyRegistered = false; // Force-show form for email testing
 
   const catCards = SETTINGS_CATEGORIES.map(cat => {
     const { ready: catReady, total: catTotal } = getFeatureStatusCounts(cat);
@@ -732,22 +732,27 @@ function initDiagnostics(): void {
     if (trafficCount) trafficCount.textContent = '(0)';
   });
 
-  let refreshInterval: ReturnType<typeof setInterval> | null = null;
+  let refreshPollLoop: SmartPollLoopHandle | null = null;
 
   function startAutoRefresh(): void {
     stopAutoRefresh();
-    refreshInterval = setInterval(() => void refreshTrafficLog(), 3000);
+    refreshPollLoop = startSmartPollLoop(() => refreshTrafficLog(), {
+      intervalMs: 3000,
+      pauseWhenHidden: true,
+      refreshOnVisible: true,
+      runImmediately: true,
+      jitterFraction: 0,
+    });
   }
 
   function stopAutoRefresh(): void {
-    if (refreshInterval) { clearInterval(refreshInterval); refreshInterval = null; }
+    if (refreshPollLoop) { refreshPollLoop.stop(); refreshPollLoop = null; }
   }
 
   autoRefreshToggle?.addEventListener('change', () => {
     if (autoRefreshToggle.checked) startAutoRefresh(); else stopAutoRefresh();
   });
 
-  void refreshTrafficLog();
   startAutoRefresh();
 
   _diagCleanup = stopAutoRefresh;

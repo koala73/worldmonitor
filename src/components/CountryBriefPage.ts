@@ -6,7 +6,7 @@ import type { NewsItem } from '@/types';
 import type { PredictionMarket } from '@/services/prediction';
 import type { AssetType } from '@/types';
 import type { CountryBriefSignals } from '@/app/app-context';
-import type { StockIndexData } from '@/components/CountryIntelModal';
+import type { CountryBriefPanel, CountryIntelData, StockIndexData } from '@/components/CountryBriefPanel';
 import { getNearbyInfrastructure, haversineDistanceKm } from '@/services/related-assets';
 import { PORTS } from '@/config/ports';
 import type { Port } from '@/config/ports';
@@ -16,19 +16,7 @@ import { ME_STRIKE_BOUNDS } from '@/services/country-geometry';
 
 type BriefAssetType = AssetType | 'port';
 
-interface CountryIntelData {
-  brief: string;
-  country: string;
-  code: string;
-  cached?: boolean;
-  generatedAt?: string;
-  error?: string;
-  skipped?: boolean;
-  reason?: string;
-  fallback?: boolean;
-}
-
-export class CountryBriefPage {
+export class CountryBriefPage implements CountryBriefPanel {
   private static BRIEF_BOUNDS: Record<string, { n: number; s: number; e: number; w: number }> = {
     ...ME_STRIKE_BOUNDS,
     CN: { n: 53.6, s: 18.2, e: 134.8, w: 73.5 }, TW: { n: 25.3, s: 21.9, e: 122, w: 120 },
@@ -268,6 +256,9 @@ export class CountryBriefPage {
             ${tierBadge}
           </div>
           <div class="cb-header-right">
+            <button class="cb-link-share-btn" title="${t('components.countryBrief.shareLink')}">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
+            </button>
             <button class="cb-share-btn" title="${t('components.countryBrief.shareStory')}">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a2 2 0 002 2h12a2 2 0 002-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
             </button>
@@ -359,6 +350,16 @@ export class CountryBriefPage {
       </div>`;
 
     this.overlay.querySelector('.cb-close')?.addEventListener('click', () => this.hide());
+    const linkShareBtn = this.overlay.querySelector('.cb-link-share-btn') as HTMLButtonElement | null;
+    linkShareBtn?.addEventListener('click', () => {
+      if (!this.currentCode || !this.currentName) return;
+      const url = `${window.location.origin}/?c=${this.currentCode}`;
+      navigator.clipboard.writeText(url).then(() => {
+        const orig = linkShareBtn!.innerHTML;
+        linkShareBtn!.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+        setTimeout(() => { linkShareBtn!.innerHTML = orig; }, 1500);
+      }).catch(() => {});
+    });
     this.overlay.querySelector('.cb-share-btn')?.addEventListener('click', () => {
       if (this.onShareStory && this.currentCode && this.currentName) {
         this.onShareStory(this.currentCode, this.currentName);
@@ -681,9 +682,13 @@ export class CountryBriefPage {
     </head><body>${header ? header.outerHTML : ''}${content.outerHTML}</body></html>`);
     doc.close();
 
-    iframe.contentWindow!.onafterprint = () => document.body.removeChild(iframe);
+    if (iframe.contentWindow) {
+      iframe.contentWindow.onafterprint = () => document.body.removeChild(iframe);
+    }
     setTimeout(() => {
-      iframe.contentWindow!.print();
+      if (iframe.contentWindow) {
+        iframe.contentWindow.print();
+      }
       setTimeout(() => { if (iframe.parentNode) document.body.removeChild(iframe); }, 5000);
     }, 300);
   }

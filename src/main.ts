@@ -47,7 +47,7 @@ Sentry.init({
     /Java bridge method invocation error/,
     /Could not compile fragment shader/,
     /can't redefine non-configurable property/,
-    /Can.t find variable: (CONFIG|currentInset|NP|webkit|EmptyRanges|logMutedMessage)/,
+    /Can.t find variable: (CONFIG|currentInset|NP|webkit|EmptyRanges|logMutedMessage|UTItemActionController|DarkReader|Readability|onPageLoaded|Game|frappe|getPercent|ucConfig|\$a)/,
     /invalid origin/,
     /\.data\.split is not a function/,
     /signal is aborted without reason/,
@@ -104,7 +104,7 @@ Sentry.init({
     /shortcut icon/,
     /Attempting to change value of a readonly property/,
     /reading 'nodeType'/,
-    /feature named .pageContext. was not found/,
+    /feature named .\w+. was not found/,
     /a2z\.onStatusUpdate/,
     /Attempting to run\(\), but is already running/,
     /this\.player\.destroy is not a function/,
@@ -128,6 +128,8 @@ Sentry.init({
     /^InvalidStateError:|The object is in an invalid state/,
     /Could not establish connection\. Receiving end does not exist/,
     /webkitCurrentPlaybackTargetIsWireless/,
+    /webkit(?:Supports)?PresentationMode/,
+    /Cannot redefine property: webdriver/,
     /null is not an object \(evaluating '\w+\.theme'\)/,
     /this\.player\.\w+ is not a function/,
     /videoTrack\.configuration/,
@@ -142,13 +144,29 @@ Sentry.init({
     /browser\.storage\.local/,
     /The play\(\) request was interrupted/,
     /MutationEvent is not defined/,
+    /Cannot redefine property: userAgent/,
+    /st_framedeep|ucbrowser_script/,
+    /iabjs_unified_bridge/,
+    /DarkReader/,
+    /window\.receiveMessage/,
+    /Cross-origin script load denied/,
+    /orgSetInterval is not a function/,
+    /Blocked a frame with origin.*accessing a cross-origin frame/,
+    /SnapTube/,
+    /sortedTrackListForMenu/,
+    /isWhiteToBlack/,
+    /window\.videoSniffer/,
+    /closeTabMediaModal/,
+    /missing \) after argument list/,
+    /Error invoking postMessage: Java exception/,
+    /IndexSizeError/,
   ],
   beforeSend(event) {
     const msg = event.exception?.values?.[0]?.value ?? '';
     if (msg.length <= 3 && /^[a-zA-Z_$]+$/.test(msg)) return null;
     const frames = event.exception?.values?.[0]?.stacktrace?.frames ?? [];
     // Suppress maplibre internal null-access crashes (light, placement) only when stack is in map chunk
-    if (/this\.style\._layers|reading '_layers'|this\.light is null|can't access property "(id|type|setFilter)", \w+ is (null|undefined)|Cannot read properties of null \(reading '(id|type|setFilter|_layers)'\)|null is not an object \(evaluating '\w{1,3}\.(id|style)|^\w{1,2} is null$/.test(msg)) {
+    if (/this\.style\._layers|reading '_layers'|this\.(light|sky) is null|can't access property "(id|type|setFilter)", \w+ is (null|undefined)|Cannot read properties of null \(reading '(id|type|setFilter|_layers)'\)|null is not an object \(evaluating '\w{1,3}\.(id|style)|^\w{1,2} is null$/.test(msg)) {
       if (frames.some(f => /\/(map|maplibre|deck-stack)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
     }
     // Suppress any TypeError that happens entirely within maplibre or deck.gl internals
@@ -156,6 +174,10 @@ Sentry.init({
       const nonSentryFrames = frames.filter(f => f.filename && f.filename !== '<anonymous>' && !/\/sentry-[A-Za-z0-9_-]+\.js/.test(f.filename));
       if (nonSentryFrames.length > 0 && nonSentryFrames.every(f => /\/(map|maplibre|deck-stack)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
     }
+    // Suppress deck.gl/maplibre null-access crashes with no usable stack trace (requestAnimationFrame wrapping)
+    if (/null is not an object \(evaluating '\w{1,3}\.(id|type|style)'\)/.test(msg) && frames.length === 0) return null;
+    // Suppress TypeErrors from anonymous/injected scripts (no real source files)
+    if (/^TypeError:/.test(msg) && frames.length > 0 && frames.every(f => !f.filename || f.filename === '<anonymous>' || /^blob:/.test(f.filename))) return null;
     // Suppress errors originating entirely from blob: URLs (browser extensions)
     if (frames.length > 0 && frames.every(f => /^blob:/.test(f.filename ?? ''))) return null;
     // Suppress YouTube IFrame widget API internal errors
@@ -195,10 +217,16 @@ loadDesktopSecrets().catch(() => {});
 // Apply stored theme preference before app initialization (safety net for inline script)
 applyStoredTheme();
 
-// Set data-variant on <html> so CSS theme overrides activate (inline script handles hostname/localStorage,
-// this catches the VITE_VARIANT env var path used during local dev and Vercel deployments)
+// Set data-variant on <html> so CSS theme overrides activate
 if (SITE_VARIANT && SITE_VARIANT !== 'full') {
   document.documentElement.dataset.variant = SITE_VARIANT;
+
+  // Swap favicons to variant-specific versions before browser finishes fetching defaults
+  document.querySelectorAll<HTMLLinkElement>('link[rel="icon"], link[rel="apple-touch-icon"]').forEach(link => {
+    link.href = link.href
+      .replace(/\/favico\/favicon/g, `/favico/${SITE_VARIANT}/favicon`)
+      .replace(/\/favico\/apple-touch-icon/g, `/favico/${SITE_VARIANT}/apple-touch-icon`);
+  });
 }
 
 // Remove no-transition class after first paint to enable smooth theme transitions
@@ -270,10 +298,14 @@ if (!('__TAURI_INTERNALS__' in window) && !('__TAURI__' in window) && 'serviceWo
   navigator.serviceWorker.register('/sw.js', { scope: '/' })
     .then((registration) => {
       console.log('[PWA] Service worker registered');
-      setInterval(async () => {
+      const swUpdateInterval = setInterval(async () => {
         if (!navigator.onLine) return;
         try { await registration.update(); } catch {}
       }, 60 * 60 * 1000);
+      // Expose interval ID for cleanup/debugging
+      (window as unknown as Record<string, unknown>).__swUpdateInterval = swUpdateInterval;
     })
-    .catch(() => {});
+    .catch((err) => {
+      console.warn('[PWA] Service worker registration failed:', err);
+    });
 }

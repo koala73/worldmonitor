@@ -2,9 +2,6 @@
  * Shared helpers for the trade domain RPCs.
  * WTO Timeseries API integration.
  */
-
-declare const process: { env: Record<string, string | undefined> };
-
 import { CHROME_UA } from '../../../_shared/constants';
 
 /** WTO Timeseries API base URL. */

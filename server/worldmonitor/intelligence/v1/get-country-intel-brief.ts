@@ -1,5 +1,3 @@
-declare const process: { env: Record<string, string | undefined> };
-
 import type {
   ServerContext,
   GetCountryIntelBriefRequest,
@@ -38,15 +36,17 @@ export async function getCountryIntelBrief(
   if (!apiKey) return empty;
 
   let contextSnapshot = '';
+  let lang = 'en';
   try {
     const url = new URL(ctx.request.url);
     contextSnapshot = (url.searchParams.get('context') || '').trim().slice(0, 4000);
+    lang = url.searchParams.get('lang') || 'en';
   } catch {
     contextSnapshot = '';
   }
 
   const contextHash = contextSnapshot ? hashString(contextSnapshot) : 'base';
-  const cacheKey = `ci-sebuf:v2:${req.countryCode}:${contextHash}`;
+  const cacheKey = `ci-sebuf:v2:${req.countryCode}:${lang}:${contextHash}`;
   const countryName = TIER1_COUNTRIES[req.countryCode] || req.countryCode;
   const dateStr = new Date().toISOString().split('T')[0];
 
@@ -64,7 +64,7 @@ Rules:
 - 4-5 paragraphs, 250-350 words
 - No speculation beyond what data supports
 - Use plain language, not jargon
-- If a context snapshot is provided, explicitly reflect each non-zero signal category in the brief`;
+- If a context snapshot is provided, explicitly reflect each non-zero signal category in the brief${lang === 'fr' ? '\n- IMPORTANT: You MUST respond ENTIRELY in French language.' : ''}`;
 
   let result: GetCountryIntelBriefResponse | null = null;
   try {

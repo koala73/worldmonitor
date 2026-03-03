@@ -17,12 +17,11 @@ import {
   toProtoSource,
   determineSeverity,
   generateSimulatedDelay,
-  fetchAviationStackDelays,
   fetchNotamClosures,
   buildNotamAlert,
 } from './_shared';
 import { CHROME_UA } from '../../../_shared/constants';
-import { cachedFetchJson } from '../../../_shared/redis';
+import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
 
 const FAA_CACHE_KEY = 'aviation:delays:faa:v1';
 const INTL_CACHE_KEY = 'aviation:delays:intl:v3';
@@ -87,33 +86,18 @@ export async function listAirportDelays(
     console.warn(`[Aviation] FAA fetch failed: ${err instanceof Error ? err.message : 'unknown'}`);
   }
 
-  // 2. International — cachedFetchJson coalesces concurrent misses into one fetch
+  // 2. International — read-only from Redis (Railway relay seeds the cache)
   let intlAlerts: AirportDelayAlert[] = [];
   try {
-    const result = await cachedFetchJson<{ alerts: AirportDelayAlert[] }>(
-      INTL_CACHE_KEY, CACHE_TTL, async () => {
-        const nonUs = MONITORED_AIRPORTS.filter(a => a.country !== 'USA');
-        const apiKey = process.env.AVIATIONSTACK_API;
-
-        if (!apiKey) {
-          console.log('[Aviation] No AVIATIONSTACK_API key — using simulation');
-          const sim = nonUs.map(a => generateSimulatedDelay(a)).filter(Boolean) as AirportDelayAlert[];
-          return { alerts: sim };
-        }
-
-        const avResult = await fetchAviationStackDelays(nonUs);
-        if (!avResult.healthy) {
-          console.warn('[Aviation] AviationStack unhealthy — falling back to simulation');
-          const sim = nonUs.map(a => generateSimulatedDelay(a)).filter(Boolean) as AirportDelayAlert[];
-          return { alerts: sim };
-        }
-
-        console.log(`[Aviation] AviationStack OK: ${avResult.alerts.length} real alerts`);
-        return { alerts: avResult.alerts };
-      }
-    );
-    intlAlerts = result?.alerts ?? [];
-    console.log(`[Aviation] Intl: ${intlAlerts.length} alerts`);
+    const cached = await getCachedJson(INTL_CACHE_KEY) as { alerts: AirportDelayAlert[] } | null;
+    if (cached?.alerts) {
+      intlAlerts = cached.alerts;
+      console.log(`[Aviation] Intl: ${intlAlerts.length} alerts (from cache)`);
+    } else {
+      const nonUs = MONITORED_AIRPORTS.filter(a => a.country !== 'USA');
+      intlAlerts = nonUs.map(a => generateSimulatedDelay(a)).filter(Boolean) as AirportDelayAlert[];
+      console.log(`[Aviation] Intl: cache miss — ${intlAlerts.length} simulated alerts`);
+    }
   } catch (err) {
     console.warn(`[Aviation] Intl fetch failed: ${err instanceof Error ? err.message : 'unknown'}`);
   }

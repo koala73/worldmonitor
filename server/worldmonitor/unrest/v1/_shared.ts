@@ -1,5 +1,3 @@
-declare const process: { env: Record<string, string | undefined> };
-
 import type {
   UnrestEvent,
   UnrestEventType,
@@ -122,4 +120,3 @@ export function sortBySeverityAndRecency(events: UnrestEvent[]): UnrestEvent[] {
     return b.occurredAt - a.occurredAt;
   });
 }
-

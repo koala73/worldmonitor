@@ -12,6 +12,7 @@ export class SignalModal {
   private audioEnabled = true;
   private audio: HTMLAudioElement | null = null;
   private onLocationClick?: (lat: number, lon: number) => void;
+  private escHandler = (e: KeyboardEvent) => { if (e.key === 'Escape') this.hide(); };
 
   constructor() {
     this.element = document.createElement('div');
@@ -20,7 +21,7 @@ export class SignalModal {
       <div class="signal-modal">
         <div class="signal-modal-header">
           <span class="signal-modal-title">🎯 ${t('modals.signal.title')}</span>
-          <button class="signal-modal-close">×</button>
+          <button class="signal-modal-close" aria-label="Close">×</button>
         </div>
         <div class="signal-modal-content"></div>
         <div class="signal-modal-footer">
@@ -99,6 +100,10 @@ export class SignalModal {
     this.onLocationClick = handler;
   }
 
+  private activateEsc(): void {
+    document.addEventListener('keydown', this.escHandler);
+  }
+
   public show(signals: CorrelationSignal[]): void {
     if (signals.length === 0) return;
     if (document.fullscreenElement) return;
@@ -106,6 +111,7 @@ export class SignalModal {
     this.currentSignals = [...signals, ...this.currentSignals].slice(0, 50);
     this.renderSignals();
     this.element.classList.add('active');
+    this.activateEsc();
     this.playSound();
   }
 
@@ -113,6 +119,7 @@ export class SignalModal {
     this.currentSignals = [signal];
     this.renderSignals();
     this.element.classList.add('active');
+    this.activateEsc();
   }
 
   public showAlert(alert: UnifiedAlert): void {
@@ -185,7 +192,7 @@ export class SignalModal {
       detailsHtml += `
         <div class="signal-context-item">
           <span class="context-label">${t('modals.signal.source')}</span>
-          <span class="context-value">${escapeHtml(cascade.sourceName)} (${cascade.sourceType})</span>
+          <span class="context-value">${escapeHtml(cascade.sourceName)} (${escapeHtml(cascade.sourceType)})</span>
         </div>
         <div class="signal-context-item">
           <span class="context-label">${t('modals.signal.countriesAffected')}</span>
@@ -219,17 +226,19 @@ export class SignalModal {
     `;
 
     this.element.classList.add('active');
+    this.activateEsc();
   }
 
   public playSound(): void {
     if (this.audioEnabled && this.audio) {
       this.audio.currentTime = 0;
-      this.audio.play().catch(() => {});
+      this.audio.play()?.catch(() => {});
     }
   }
 
   public hide(): void {
     this.element.classList.remove('active');
+    document.removeEventListener('keydown', this.escHandler);
   }
 
   private renderSignals(): void {
@@ -286,7 +295,7 @@ export class SignalModal {
           ${locationData.lat && locationData.lon ? `
             <div class="signal-location">
               <button class="location-link" data-lat="${locationData.lat}" data-lon="${locationData.lon}">
-                📍 ${t('modals.signal.viewOnMap')}: ${locationData.regionName || `${locationData.lat.toFixed(2)}°, ${locationData.lon.toFixed(2)}°`}
+                📍 ${t('modals.signal.viewOnMap')}: ${locationData.regionName ? escapeHtml(locationData.regionName) : `${locationData.lat.toFixed(2)}°, ${locationData.lon.toFixed(2)}°`}
               </button>
             </div>
           ` : ''}

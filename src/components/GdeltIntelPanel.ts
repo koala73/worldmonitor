@@ -70,11 +70,13 @@ export class GdeltIntelPanel extends Panel {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const data = await fetchTopicIntelligence(this.activeTopic);
+        if (!this.element?.isConnected) return;
         this.topicData.set(this.activeTopic.id, data);
 
         if (data.articles.length === 0 && attempt < 2) {
           this.showRetrying();
           await new Promise(r => setTimeout(r, 15_000));
+          if (!this.element?.isConnected) return;
           continue;
         }
 
@@ -83,10 +85,12 @@ export class GdeltIntelPanel extends Panel {
         return;
       } catch (error) {
         if (this.isAbortError(error)) return;
+        if (!this.element?.isConnected) return;
         console.error(`[GdeltIntelPanel] Load error (attempt ${attempt + 1}):`, error);
         if (attempt < 2) {
           this.showRetrying();
           await new Promise(r => setTimeout(r, 15_000));
+          if (!this.element?.isConnected) return;
           continue;
         }
         this.showError(t('common.failedIntelFeed'));

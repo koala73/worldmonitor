@@ -7,6 +7,7 @@ import type { StreamQuality } from '@/services/ai-flow-settings';
 import { escapeHtml } from '@/utils/sanitize';
 import { trackLanguageChange } from '@/services/analytics';
 import type { PanelConfig } from '@/types';
+import type { StatusPanel } from './StatusPanel';
 
 const GEAR_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`;
 
@@ -20,10 +21,16 @@ export interface UnifiedSettingsConfig {
   setSourcesEnabled: (names: string[], enabled: boolean) => void;
   getAllSourceNames: () => string[];
   getLocalizedPanelName: (key: string, fallback: string) => string;
+  resetLayout: () => void;
   isDesktopApp: boolean;
+  statusPanel?: StatusPanel | null;
+  /** True when the 3D globe is currently active */
+  isGlobeMode?: () => boolean;
+  /** Switch between flat-map and 3D-globe */
+  onMapModeChange?: (useGlobe: boolean) => void;
 }
 
-type TabId = 'general' | 'panels' | 'sources';
+type TabId = 'general' | 'panels' | 'sources' | 'status';
 
 export class UnifiedSettings {
   private overlay: HTMLElement;
@@ -80,6 +87,12 @@ export class UnifiedSettings {
         if (searchInput) searchInput.value = '';
         this.renderPanelCategoryPills();
         this.renderPanelsTab();
+        return;
+      }
+
+      // Reset layout
+      if (target.closest('.panels-reset-layout')) {
+        this.config.resetLayout();
         return;
       }
 
@@ -162,7 +175,10 @@ export class UnifiedSettings {
         return;
       }
 
-      if (target.id === 'us-cloud') {
+      if (target.id === 'us-globe-mode') {
+        this.config.onMapModeChange?.(target.checked);
+        return;
+      } else if (target.id === 'us-cloud') {
         setAiFlowSetting('cloudLlm', target.checked);
         this.updateAiStatus();
       } else if (target.id === 'us-browser') {
@@ -223,17 +239,18 @@ export class UnifiedSettings {
       <div class="modal unified-settings-modal">
         <div class="modal-header">
           <span class="modal-title">${t('header.settings')}</span>
-          <button class="modal-close unified-settings-close">×</button>
+          <button class="modal-close unified-settings-close" aria-label="Close">×</button>
         </div>
-        <div class="unified-settings-tabs">
-          <button class="${tabClass('general')}" data-tab="general">${t('header.tabGeneral')}</button>
-          <button class="${tabClass('panels')}" data-tab="panels">${t('header.tabPanels')}</button>
-          <button class="${tabClass('sources')}" data-tab="sources">${t('header.tabSources')}</button>
+        <div class="unified-settings-tabs" role="tablist" aria-label="Settings">
+          <button class="${tabClass('general')}" data-tab="general" role="tab" aria-selected="${this.activeTab === 'general'}" id="us-tab-general" aria-controls="us-tab-panel-general">${t('header.tabGeneral')}</button>
+          <button class="${tabClass('panels')}" data-tab="panels" role="tab" aria-selected="${this.activeTab === 'panels'}" id="us-tab-panels" aria-controls="us-tab-panel-panels">${t('header.tabPanels')}</button>
+          <button class="${tabClass('sources')}" data-tab="sources" role="tab" aria-selected="${this.activeTab === 'sources'}" id="us-tab-sources" aria-controls="us-tab-panel-sources">${t('header.tabSources')}</button>
+          <button class="${tabClass('status')}" data-tab="status" role="tab" aria-selected="${this.activeTab === 'status'}" id="us-tab-status" aria-controls="us-tab-panel-status">${t('panels.status')}</button>
         </div>
-        <div class="unified-settings-tab-panel${this.activeTab === 'general' ? ' active' : ''}" data-panel-id="general">
+        <div class="unified-settings-tab-panel${this.activeTab === 'general' ? ' active' : ''}" data-panel-id="general" id="us-tab-panel-general" role="tabpanel" aria-labelledby="us-tab-general">
           ${this.renderGeneralContent()}
         </div>
-        <div class="unified-settings-tab-panel${this.activeTab === 'panels' ? ' active' : ''}" data-panel-id="panels">
+        <div class="unified-settings-tab-panel${this.activeTab === 'panels' ? ' active' : ''}" data-panel-id="panels" id="us-tab-panel-panels" role="tabpanel" aria-labelledby="us-tab-panels">
           <div class="unified-settings-region-wrapper">
             <div class="unified-settings-region-bar" id="usPanelCatBar"></div>
           </div>
@@ -241,8 +258,11 @@ export class UnifiedSettings {
             <input type="text" placeholder="${t('header.filterPanels')}" value="${escapeHtml(this.panelFilter)}" />
           </div>
           <div class="panel-toggle-grid" id="usPanelToggles"></div>
+          <div class="panels-footer">
+            <button class="panels-reset-layout">${t('header.resetLayout')}</button>
+          </div>
         </div>
-        <div class="unified-settings-tab-panel${this.activeTab === 'sources' ? ' active' : ''}" data-panel-id="sources">
+        <div class="unified-settings-tab-panel${this.activeTab === 'sources' ? ' active' : ''}" data-panel-id="sources" id="us-tab-panel-sources" role="tabpanel" aria-labelledby="us-tab-sources">
           <div class="unified-settings-region-wrapper">
             <div class="unified-settings-region-bar" id="usRegionBar"></div>
           </div>
@@ -256,6 +276,9 @@ export class UnifiedSettings {
             <button class="sources-select-none">${t('common.selectNone')}</button>
           </div>
         </div>
+        <div class="unified-settings-tab-panel${this.activeTab === 'status' ? ' active' : ''}" data-panel-id="status" id="us-tab-panel-status" role="tabpanel" aria-labelledby="us-tab-status">
+          <div class="us-status-content" id="usStatusContent"></div>
+        </div>
       </div>
     `;
 
@@ -265,6 +288,7 @@ export class UnifiedSettings {
     this.renderRegionPills();
     this.renderSourcesGrid();
     this.updateSourcesCounter();
+    this.renderStatusTab();
     if (!this.config.isDesktopApp) this.updateAiStatus();
   }
 
@@ -273,7 +297,9 @@ export class UnifiedSettings {
 
     // Update tab buttons
     this.overlay.querySelectorAll('.unified-settings-tab').forEach(el => {
-      el.classList.toggle('active', (el as HTMLElement).dataset.tab === tab);
+      const isActive = (el as HTMLElement).dataset.tab === tab;
+      el.classList.toggle('active', isActive);
+      el.setAttribute('aria-selected', String(isActive));
     });
 
     // Update tab panels
@@ -285,11 +311,26 @@ export class UnifiedSettings {
   private renderGeneralContent(): string {
     const settings = getAiFlowSettings();
     const currentLang = getCurrentLanguage();
+    const globeEnabled = this.config.isGlobeMode?.() ?? false;
 
     let html = '';
 
     // Map section
     html += `<div class="ai-flow-section-label">${t('components.insights.sectionMap')}</div>`;
+
+    // Globe / flat-map mode toggle
+    html += `
+      <div class="ai-flow-toggle-row">
+        <div class="ai-flow-toggle-label-wrap">
+          <div class="ai-flow-toggle-label">3D Globe View</div>
+          <div class="ai-flow-toggle-desc">Switch between flat map and interactive 3D globe (like Sentinel). Zoom, rotate, and explore in three dimensions.</div>
+        </div>
+        <label class="ai-flow-switch">
+          <input type="checkbox" id="us-globe-mode"${globeEnabled ? ' checked' : ''}>
+          <span class="ai-flow-slider"></span>
+        </label>
+      </div>`;
+
     html += this.toggleRowHtml('us-map-flash', t('components.insights.mapFlashLabel'), t('components.insights.mapFlashDesc'), settings.mapNewsFlash);
 
     // Panels section
@@ -385,6 +426,78 @@ export class UnifiedSettings {
     } else {
       dot.classList.add('disabled');
       text.textContent = t('components.insights.aiFlowStatusDisabled');
+    }
+  }
+
+  public refreshStatusTab(): void {
+    if (this.activeTab === 'status') this.renderStatusTab();
+  }
+
+  private renderStatusTab(): void {
+    const container = this.overlay.querySelector('#usStatusContent');
+    if (!container) return;
+    const sp = this.config.statusPanel;
+    if (!sp) {
+      container.innerHTML = `<div style="padding:16px;color:var(--text-dim)">${t('components.status.storageUnavailable')}</div>`;
+      return;
+    }
+
+    const feeds = sp.getFeeds();
+    const apis = sp.getApis();
+
+    let html = `<div class="us-status-section">
+      <div class="us-status-section-title">${t('components.status.dataFeeds')}</div>`;
+    for (const feed of feeds.values()) {
+      html += `<div class="status-row">
+        <span class="status-dot ${feed.status}"></span>
+        <span class="status-name">${escapeHtml(feed.name)}</span>
+        <span class="status-detail">${feed.itemCount} items</span>
+        <span class="status-time">${feed.lastUpdate ? sp.formatTime(feed.lastUpdate) : 'Never'}</span>
+      </div>`;
+    }
+    html += `</div>`;
+
+    html += `<div class="us-status-section">
+      <div class="us-status-section-title">${t('components.status.apiStatus')}</div>`;
+    for (const api of apis.values()) {
+      html += `<div class="status-row">
+        <span class="status-dot ${api.status}"></span>
+        <span class="status-name">${escapeHtml(api.name)}</span>
+        ${api.latency ? `<span class="status-detail">${api.latency}ms</span>` : ''}
+      </div>`;
+    }
+    html += `</div>`;
+
+    html += `<div class="us-status-section">
+      <div class="us-status-section-title">${t('components.status.storage')}</div>
+      <div id="usStorageInfo"></div>
+    </div>`;
+
+    html += `<div class="us-status-footer">${t('components.status.updatedAt', { time: sp.formatTime(new Date()) })}</div>`;
+
+    container.innerHTML = html;
+    this.updateStorageInfo();
+  }
+
+  private async updateStorageInfo(): Promise<void> {
+    const container = this.overlay.querySelector('#usStorageInfo');
+    if (!container) return;
+    try {
+      if ('storage' in navigator && 'estimate' in navigator.storage) {
+        const estimate = await navigator.storage.estimate();
+        if (!container.isConnected) return;
+        const used = estimate.usage ? (estimate.usage / 1024 / 1024).toFixed(2) : '0';
+        const quota = estimate.quota ? (estimate.quota / 1024 / 1024).toFixed(0) : 'N/A';
+        container.innerHTML = `<div class="status-row">
+          <span class="status-name">IndexedDB</span>
+          <span class="status-detail">${used} MB / ${quota} MB</span>
+        </div>`;
+      } else {
+        container.innerHTML = `<div class="status-row">${t('components.status.storageUnavailable')}</div>`;
+      }
+    } catch {
+      if (!container.isConnected) return;
+      container.innerHTML = `<div class="status-row">${t('components.status.storageUnavailable')}</div>`;
     }
   }
 

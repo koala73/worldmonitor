@@ -17,8 +17,15 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'CNN World', url: gn('site:cnn.com world news when:1d') },
     ],
     us: [
+      { name: 'Reuters US', url: gn('site:reuters.com US') },
       { name: 'NPR News', url: 'https://feeds.npr.org/1001/rss.xml' },
-      { name: 'Politico', url: gn('site:politico.com when:1d') },
+      { name: 'PBS NewsHour', url: 'https://www.pbs.org/newshour/feeds/rss/headlines' },
+      { name: 'ABC News', url: 'https://feeds.abcnews.com/abcnews/topstories' },
+      { name: 'CBS News', url: 'https://www.cbsnews.com/latest/rss/main' },
+      { name: 'NBC News', url: 'https://feeds.nbcnews.com/nbcnews/public/news' },
+      { name: 'Wall Street Journal', url: 'https://feeds.content.dowjones.io/public/rss/RSSUSnews' },
+      { name: 'Politico', url: 'https://rss.politico.com/politics-news.xml' },
+      { name: 'The Hill', url: 'https://thehill.com/news/feed' },
       { name: 'Axios', url: 'https://api.axios.com/feed/' },
     ],
     europe: [
@@ -69,6 +76,9 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
     latam: [
       { name: 'BBC Latin America', url: 'https://feeds.bbci.co.uk/news/world/latin_america/rss.xml' },
       { name: 'Guardian Americas', url: 'https://www.theguardian.com/world/americas/rss' },
+      { name: 'Primicias', url: 'https://www.primicias.ec/feed/', lang: 'es' },
+      { name: 'Infobae Americas', url: 'https://www.infobae.com/feeds/rss/', lang: 'es' },
+      { name: 'El Universo', url: 'https://www.eluniverso.com/arc/outboundfeeds/rss/category/noticias/?outputType=xml', lang: 'es' },
     ],
     asia: [
       { name: 'BBC Asia', url: 'https://feeds.bbci.co.uk/news/world/asia/rss.xml' },
@@ -113,9 +123,38 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'VentureBeat', url: 'https://venturebeat.com/feed/' },
       { name: 'Crunchbase News', url: 'https://news.crunchbase.com/feed/' },
     ],
+    vcblogs: [
+      { name: 'Y Combinator Blog', url: 'https://www.ycombinator.com/blog/rss/' },
+      { name: 'a16z Blog', url: 'https://a16z.com/feed/' },
+      { name: 'First Round Review', url: 'https://review.firstround.com/feed.xml' },
+      { name: 'Sequoia Blog', url: 'https://www.sequoiacap.com/feed/' },
+      { name: 'Stratechery', url: 'https://stratechery.com/feed/' },
+    ],
+    regionalStartups: [
+      { name: 'EU Startups', url: 'https://www.eu-startups.com/feed/' },
+      { name: 'Tech.eu', url: 'https://tech.eu/feed/' },
+      { name: 'Sifted (Europe)', url: 'https://sifted.eu/feed' },
+      { name: 'Tech in Asia', url: 'https://www.techinasia.com/feed' },
+      { name: 'TechCabal (Africa)', url: 'https://techcabal.com/feed/' },
+      { name: 'Inc42 (India)', url: 'https://inc42.com/feed/' },
+    ],
+    unicorns: [
+      { name: 'Unicorn News', url: gn('("unicorn startup" OR "unicorn valuation" OR "$1 billion valuation") when:7d') },
+      { name: 'Decacorn News', url: gn('("decacorn" OR "$10 billion valuation") startup when:14d') },
+    ],
+    accelerators: [
+      { name: 'YC News', url: 'https://news.ycombinator.com/rss' },
+      { name: 'YC Blog', url: 'https://www.ycombinator.com/blog/rss/' },
+      { name: 'Demo Day News', url: gn('("demo day" OR "YC batch" OR "accelerator batch") startup when:7d') },
+    ],
     security: [
       { name: 'Krebs Security', url: 'https://krebsonsecurity.com/feed/' },
       { name: 'Dark Reading', url: 'https://www.darkreading.com/rss.xml' },
+    ],
+    policy: [
+      { name: 'Politico Tech', url: 'https://rss.politico.com/technology.xml' },
+      { name: 'AI Regulation', url: gn('AI regulation OR "artificial intelligence" law OR policy when:7d') },
+      { name: 'Tech Antitrust', url: gn('tech antitrust OR FTC Google OR FTC Apple OR FTC Amazon when:7d') },
     ],
     github: [
       { name: 'GitHub Blog', url: 'https://github.blog/feed/' },
@@ -133,6 +172,28 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
     finance: [
       { name: 'CNBC Tech', url: 'https://www.cnbc.com/id/19854910/device/rss/rss.html' },
       { name: 'Yahoo Finance', url: 'https://finance.yahoo.com/rss/topstories' },
+    ],
+    dev: [
+      { name: 'Dev.to', url: 'https://dev.to/feed' },
+      { name: 'Lobsters', url: 'https://lobste.rs/rss' },
+      { name: 'Changelog', url: 'https://changelog.com/feed' },
+      { name: 'Show HN', url: 'https://hnrss.org/show' },
+    ],
+    ipo: [
+      { name: 'IPO News', url: gn('(IPO OR "initial public offering" OR SPAC) tech when:7d') },
+      { name: 'Tech IPO News', url: gn('tech IPO OR "tech company" IPO when:7d') },
+    ],
+    producthunt: [
+      { name: 'Product Hunt', url: 'https://www.producthunt.com/feed' },
+    ],
+    hardware: [
+      { name: "Tom's Hardware", url: 'https://www.tomshardware.com/feeds/all' },
+      { name: 'SemiAnalysis', url: 'https://www.semianalysis.com/feed' },
+      { name: 'Semiconductor News', url: gn('semiconductor OR chip OR TSMC OR NVIDIA OR Intel when:3d') },
+    ],
+    outages: [
+      { name: 'AWS Status', url: gn('AWS outage OR "Amazon Web Services" down when:1d') },
+      { name: 'Cloud Outages', url: gn('(Azure outage OR "Google Cloud" outage OR Cloudflare outage OR Slack down OR GitHub down) when:1d') },
     ],
   },
 

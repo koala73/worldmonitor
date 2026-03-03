@@ -1,0 +1,2205 @@
+{
+  "app": {
+    "title": "Монитор на война",
+    "description": "Глобална ситуация с AI прозрения"
+  },
+  "countryBrief": {
+    "identifying": "Идентифициране на държава...",
+    "locating": "Локализиране на регион...",
+    "limitedCoverage": "Ограничено покритие",
+    "instabilityIndex": "Индекс на нестабилност",
+    "notTracked": "Не се проследява — {{country}} не е в списъка на CII tier-1",
+    "intelBrief": "Разузнавателен преглед",
+    "generatingBrief": "Генериране на разузнавателен преглед...",
+    "topNews": "Топ новини",
+    "activeSignals": "Активни сигнали",
+    "timeline": "7-дневна времева линия",
+    "predictionMarkets": "Пазари на предвиждане",
+    "loadingMarkets": "Зареждане на пазарите на предвиждане...",
+    "infrastructure": "Експозиция на инфраструктура",
+    "briefUnavailable": "AI преглед недостъпен — конфигурирайте GROQ_API_KEY в Settings.",
+    "cached": "Кеширан",
+    "fresh": "Свеж",
+    "noMarkets": "Не са намерени пазари на предвиждане",
+    "loadingIndex": "Зареждане на индекса...",
+    "components": {
+      "unrest": "Неразбира",
+      "conflict": "Конфликт",
+      "security": "Сигурност",
+      "information": "Информация"
+    },
+    "signals": {
+      "protests": "протести",
+      "militaryAir": "военни летателни средства",
+      "militarySea": "военни кораби",
+      "outages": "прекъсвания",
+      "earthquakes": "землетресения",
+      "displaced": "преместени",
+      "climate": "Климатичен стрес",
+      "conflictEvents": "конфликтни събития",
+      "activeStrikes": "активни удари",
+      "aviationDisruptions": "нарушения на летищата",
+      "gpsJammingZones": "GPS закълчаване зони"
+    },
+    "timeAgo": {
+      "m": "{{count}}m преди",
+      "h": "{{count}}h преди",
+      "d": "{{count}}d преди"
+    },
+    "infra": {
+      "pipeline": "Тръбопроводи",
+      "cable": "Подводни кабели",
+      "datacenter": "Центрове за данни",
+      "base": "Военни бази",
+      "nuclear": "Ядрени съоръжения",
+      "port": "Пристанища"
+    },
+    "levels": {
+      "critical": "Критично",
+      "high": "Високо",
+      "elevated": "Повишено",
+      "moderate": "Умерено",
+      "normal": "Нормално",
+      "low": "Ниско"
+    },
+    "trends": {
+      "rising": "Растящо",
+      "falling": "Падащо",
+      "stable": "Стабилно"
+    },
+    "militaryActivity": "Военна активност",
+    "economicIndicators": "Икономически показатели",
+    "ownFlights": "Собствени полети",
+    "foreignFlights": "Чужди полети",
+    "navalVessels": "Военни кораби",
+    "foreignPresence": "Чужда присъствие",
+    "nearestBases": "Най-близки военни бази",
+    "noBasesNearby": "Няма близки бази в радиус 600 км.",
+    "noInfrastructure": "Не е намерена критична инфраструктура в радиус 600 км.",
+    "noGeometry": "Не е налична геометрия за корелация на инфраструктура.",
+    "noSignals": "Няма скорошни сигнали с висока степен на тежест.",
+    "assessmentUnavailable": "Оценката е недостъпна.",
+    "noNews": "Няма скорошно покритие по конкретни страни.",
+    "noIndicators": "Няма налични икономически показатели по конкретни страни.",
+    "noMarkets": "Няма активни пазари за тази страна.",
+    "nearbyPorts": "Близки пристанища",
+    "detected": "Открито",
+    "notDetected": "Не",
+    "ciiUnavailable": "CII резултатът е недостъпен за тази страна.",
+    "chips": {
+      "criticalNews": "Критични новини",
+      "protests": "Протести",
+      "militaryAir": "Военно въздухоплаване",
+      "navalVessels": "Военни кораби",
+      "outages": "Прекъсвания",
+      "aisDisruptions": "AIS нарушения",
+      "satelliteFires": "Пожари от спътници",
+      "temporalAnomalies": "Времеви аномалии",
+      "cyberThreats": "Киберугрози",
+      "earthquakes": "Землетресения",
+      "displaced": "Преместени",
+      "climateStress": "Климатичен стрес",
+      "conflictEvents": "Конфликтни събития",
+      "activeStrikes": "Активни удари",
+      "doNotTravel": "Не пътувайте",
+      "reconsiderTravel": "Преразгледайте пътуването",
+      "exerciseCaution": "Упражнявайте предпазливост",
+      "advisory": "Препоръка",
+      "activeSirens": "Активни сирени",
+      "sirens24h": "Сирени / 24h",
+      "aviationDisruptions": "Нарушения на авиацията",
+      "gpsJammingZones": "GPS закълчаване зони"
+    },
+    "fallback": {
+      "instabilityIndex": "**Индекс на нестабилност: {{score}}/100** ({{level}}, {{trend}})",
+      "protestsDetected": "{{count}} активни протести открити",
+      "aircraftTracked": "{{count}} военни летателни средства проследени",
+      "vesselsTracked": "{{count}} военни кораби проследени",
+      "internetOutages": "{{count}} прекъсвания в интернета",
+      "recentEarthquakes": "{{count}} скорошни землетресения",
+      "stockIndex": "Фондов индекс: {{value}}",
+      "recentHeadlines": "**Скорошни заглавия:**",
+      "activeStrikes": "{{count}} активни удари открити"
+    }
+  },
+  "header": {
+    "world": "СВЯТ",
+    "tech": "ТЕХНОЛОГИЯ",
+    "live": "ЖИВО",
+    "search": "Търсене",
+    "settings": "НАСТРОЙКИ",
+    "sources": "ИЗТОЧНИЦИ",
+    "copyLink": "Връзка",
+    "downloadApp": "Изтегли приложение",
+    "fullscreen": "Цял екран",
+    "pinMap": "Закрепи карта на върха",
+    "viewOnGitHub": "Преглед на GitHub",
+    "filterSources": "Филтриране на източници...",
+    "sourcesEnabled": "{{enabled}}/{{total}} активирани",
+    "finance": "ФИНАНСИ",
+    "toggleTheme": "Превключване на тъмен/светъл режим",
+    "panelDisplayCaption": "Изберете кои панели да се показват на табло",
+    "tabGeneral": "Основно",
+    "tabPanels": "Панели",
+    "tabSources": "Източници",
+    "languageLabel": "Език",
+    "sourceRegionAll": "Всички",
+    "sourceRegionWorldwide": "По целия свят",
+    "sourceRegionUS": "Съединени щати",
+    "sourceRegionMiddleEast": "Близкия изток",
+    "sourceRegionAfrica": "Африка",
+    "sourceRegionLatAm": "Латинска Америка",
+    "sourceRegionAsiaPacific": "Азия-Тихи океан",
+    "sourceRegionEurope": "Европа",
+    "sourceRegionTopical": "Тематична",
+    "sourceRegionIntel": "Разузнаване",
+    "sourceRegionTechNews": "Технологични новини",
+    "sourceRegionAiMl": "AI & ML",
+    "sourceRegionStartupsVc": "Стартъпи & VC",
+    "sourceRegionRegionalTech": "Регионални екосистеми",
+    "sourceRegionDeveloper": "Разработчик",
+    "sourceRegionCybersecurity": "Кибербезопасност",
+    "sourceRegionTechPolicy": "Политика & Изследвания",
+    "sourceRegionTechMedia": "Медии & Подкасти",
+    "sourceRegionMarkets": "Пазари & Анализ",
+    "sourceRegionFixedIncomeFx": "Фиксирани приходи & FX",
+    "sourceRegionCommodities": "Стоки",
+    "sourceRegionCryptoDigital": "Крипто & Дигитално",
+    "sourceRegionCentralBanks": "Централни банки & икономика",
+    "sourceRegionDeals": "Сделки & Корпоративни",
+    "sourceRegionFinRegulation": "Финансова регулация",
+    "sourceRegionGulfMena": "Залив & MENA",
+    "filterPanels": "Филтриране на панели...",
+    "panelCatCore": "Основно",
+    "panelCatIntelligence": "Разузнаване",
+    "panelCatRegionalNews": "Регионални новини",
+    "panelCatMarketsFinance": "Пазари & Финанси",
+    "panelCatTopical": "Тематична",
+    "panelCatDataTracking": "Данни & Проследяване",
+    "panelCatTechAi": "Технология & AI",
+    "panelCatStartupsVc": "Стартъпи & VC",
+    "panelCatSecurityPolicy": "Сигурност & Политика",
+    "panelCatMarkets": "Пазари",
+    "panelCatFixedIncomeFx": "Фиксирани приходи & FX",
+    "panelCatCommodities": "Стоки",
+    "panelCatCryptoDigital": "Крипто & Дигитално",
+    "panelCatCentralBanks": "Централни банки & икономика",
+    "panelCatDeals": "Сделки & Институционални",
+    "panelCatGulfMena": "Залив & MENA",
+    "panelCatTradePolicy": "Търговска политика"
+  },
+  "panels": {
+    "liveNews": "Живи новини",
+    "markets": "Пазари",
+    "map": "Глобална ситуация",
+    "techMap": "Глобална технология",
+    "techHubs": "Горещи технологични центрове",
+    "status": "Статус на системата",
+    "insights": "AI прозрения",
+    "strategicPosture": "AI стратегическа позиция",
+    "cii": "Нестабилност на държава",
+    "strategicRisk": "Преглед на стратегическия риск",
+    "intel": "Intel хранилка",
+    "gdeltIntel": "Живо разузнаване",
+    "cascade": "Каскада на инфраструктура",
+    "politics": "Световни новини",
+    "us": "Съединени щати",
+    "europe": "Европа",
+    "middleeast": "Близкия изток",
+    "africa": "Африка",
+    "latam": "Латинска Америка",
+    "asia": "Азия-Тихи океан",
+    "energy": "Енергия & Ресурси",
+    "gov": "Правителство",
+    "thinktanks": "Мозъчни тръстове",
+    "polymarket": "Предвиждания",
+    "commodities": "Стоки",
+    "economic": "Икономически показатели",
+    "tradePolicy": "Търговска политика",
+    "supplyChain": "Веригата на доставки",
+    "finance": "Финансови",
+    "tech": "Технология",
+    "crypto": "Крипто",
+    "heatmap": "Топлинна карта на сектора",
+    "ai": "AI/ML",
+    "layoffs": "Проследяване на съкращенията",
+    "monitors": "Мои монитори",
+    "satelliteFires": "Пожари",
+    "macroSignals": "Пазарен радар",
+    "etfFlows": "BTC ETF Проследяване",
+    "stablecoins": "Стабилни монети",
+    "deduction": "Ситуация на дедукция",
+    "ucdpEvents": "События от въоръжени конфликти",
+    "giving": "Глобално дарение",
+    "displacement": "UNHCR преместване",
+    "climate": "Климатични аномалии",
+    "populationExposure": "Експозиция на население",
+    "securityAdvisories": "Препоръки за сигурност",
+    "orefSirens": "Сирени на Израел",
+    "telegramIntel": "Telegram Intel",
+    "startups": "Стартъпи & VC",
+    "vcblogs": "VC прозрения & есета",
+    "regionalStartups": "Световни стартъп новини",
+    "unicorns": "Проследяване на еднорози",
+    "accelerators": "Ускорители & Demo Days",
+    "security": "Кибербезопасност",
+    "policy": "AI политика & регулация",
+    "regulation": "AI табло на регулация",
+    "hardware": "Полупроводници & хардуер",
+    "cloud": "Облак & инфраструктура",
+    "dev": "Разработчишка общност",
+    "github": "GitHub Trending",
+    "ipo": "IPO & SPAC",
+    "funding": "Финансиране & VC",
+    "producthunt": "Product Hunt",
+    "events": "Технологични събития",
+    "serviceStatus": "Статус на услугата",
+    "techReadiness": "Индекс на технологическа готовност",
+    "gccInvestments": "GCC инвестиции",
+    "geoHubs": "Геополитични центрове",
+    "liveWebcams": "Живи уеб камери",
+    "gulfEconomies": "Икономики на залива",
+    "gulfIndices": "Индекси на залива",
+    "gulfCurrencies": "Валути на залива",
+    "gulfOil": "Нефт на залива"
+  },
+  "commands": {
+    "prefixes": {
+      "map": "Карта",
+      "panel": "Панел",
+      "brief": "Преглед"
+    },
+    "categories": {
+      "navigate": "Навигиране",
+      "layers": "Слои",
+      "panels": "Панели",
+      "view": "Преглед",
+      "actions": "Действия",
+      "country": "Държава"
+    },
+    "regions": {
+      "global": "Глобален преглед",
+      "mena": "Близкия изток & Северна африка",
+      "eu": "Европа",
+      "asia": "Азия-Тихи океан",
+      "america": "Америки",
+      "africa": "Африка",
+      "latam": "Латинска Америка",
+      "oceania": "Океания"
+    },
+    "tips": {
+      "map": "Въведете име на държава, за да летите там на карта",
+      "panel": "Въведете име на панел, за да скролирате към него",
+      "brief": "Въведете име на държава за разузнавателен преглед",
+      "layers": "Въведете \"military\" или \"finance\" за предсетки на слои",
+      "time": "Въведете \"1h\", \"24h\" или \"7d\", за да филтрирате по време",
+      "settings": "Въведете \"dark mode\", \"settings\" или \"fullscreen\""
+    }
+  },
+  "modals": {
+    "search": {
+      "placeholder": "Търсене или въвеждане на команда...",
+      "hint": "Търсене • Държави • Слои • Панели • Навигиране • Настройки",
+      "placeholderTech": "Търсене или въвеждане на команда...",
+      "hintTech": "Търсене • Компании • AI лаборатории • Слои • Навигиране • Настройки",
+      "placeholderFinance": "Търсене или въвеждане на команда...",
+      "hintFinance": "Търсене • Борси • Пазари • Слои • Навигиране • Настройки",
+      "recent": "Скорошни търсения",
+      "empty": "Търсене на данни или изпълнение на команди",
+      "noResults": "Няма резултати",
+      "navigate": "навигиране",
+      "select": "избор",
+      "close": "затвори",
+      "types": {
+        "country": "Държава",
+        "news": "Новини",
+        "hotspot": "Гореща точка",
+        "market": "Пазар",
+        "prediction": "Предвиждане",
+        "conflict": "Конфликт",
+        "base": "Военна база",
+        "pipeline": "Тръбопровод",
+        "cable": "Подводен кабел",
+        "datacenter": "Центр за данни",
+        "earthquake": "Землетресение",
+        "outage": "Прекъсване",
+        "nuclear": "Ядрено място",
+        "irradiator": "Облъчвател",
+        "techcompany": "Технологична компания",
+        "ailab": "AI лаборатория",
+        "startup": "Стартъп",
+        "techevent": "Технологично събитие",
+        "techhq": "Tech HQ",
+        "accelerator": "Ускоритель"
+      }
+    },
+    "signal": {
+      "title": "РАЗУЗНАВАТЕЛНА НАХОДКА",
+      "soundAlerts": "Звукови алерти",
+      "dismiss": "Отхвърли",
+      "confidence": "Доверие",
+      "country": "Държава:",
+      "scoreChange": "Промяна на резултат:",
+      "instabilityLevel": "Ниво на нестабилност:",
+      "primaryDriver": "Основния драйвър:",
+      "location": "Местоположение:",
+      "eventTypes": "Типове събития:",
+      "eventCount": "Брой на събитията:",
+      "eventCountValue": "{{count}} събития в 24h",
+      "source": "Източник:",
+      "countriesAffected": "Засегнати държави:",
+      "impactLevel": "Ниво на влияние:",
+      "focalPoints": "КОРЕЛИРАНИ ФОКУСНИ ТОЧКИ",
+      "newsCorrelation": "КОРЕЛАЦИЯ НА НОВИНИ",
+      "viewOnMap": "Преглед на карта",
+      "whyItMatters": "Защо е важно:",
+      "action": "Действие:",
+      "note": "Забележка:",
+      "suppress": "Потискане на този термин",
+      "suppressed": "Потиснат",
+      "predictionLeading": "Предвиждане на водене",
+      "newsLeading": "Новини на водене",
+      "silentDivergence": "Тиха дивергенция",
+      "velocitySpike": "Скоростен скок",
+      "keywordSpike": "Скок на ключови думи",
+      "convergence": "Конвергенция",
+      "triangulation": "Триангулация",
+      "flowDrop": "Спад на потока",
+      "flowPriceDivergence": "Дивергенция поток/цена",
+      "geoConvergence": "Географска конвергенция",
+      "marketMove": "Движение на пазара обяснено",
+      "sectorCascade": "Каскада на сектора",
+      "militarySurge": "Военен скок"
+    },
+    "story": {
+      "generating": "Генериране на история...",
+      "close": "Затвори",
+      "shareTitle": "Дели история",
+      "save": "Запази",
+      "whatsapp": "WhatsApp",
+      "twitter": "X",
+      "linkedin": "LinkedIn",
+      "copyLink": "Връзка",
+      "saved": "Запазено!",
+      "copied": "Копирано!",
+      "opening": "Отваряне...",
+      "error": "Неуспешно генериране на история."
+    },
+    "mobileWarning": {
+      "title": "Преглед на мобилното",
+      "description": "Преглеждате опростена мобилна версия, фокусирана на региона MENA с активирани основни слои.",
+      "tip": "Съвет: Използвайте бутоните за преглед (ГЛОБАЛНО/САЩ/MENA), за да превключвате региони. Докоснете маркери, за да видите детайли.",
+      "dontShowAgain": "Не показвай отново",
+      "gotIt": "Разбра"
+    },
+    "downloadBanner": {
+      "title": "Десктоп е наличен",
+      "description": "Собствена производителност, безопасно локално съхранение на ключове, офлайн плочки на карта.",
+      "macSilicon": "macOS (Apple Silicon)",
+      "macIntel": "macOS (Intel)",
+      "windows": "Windows (.exe)",
+      "linux": "Linux (.AppImage)",
+      "showAllPlatforms": "Показване на всички платформи",
+      "showLess": "Показване на по-малко",
+      "dismiss": "Отхвърли"
+    },
+    "runtimeConfig": {
+      "title": "Конфигурация на десктоп",
+      "alertTitle": {
+        "configured": "Настройки на десктоп конфигурирани",
+        "needsKeys": "Конфигурирайте API ключове, за да отключите функции",
+        "some": "Някои функции се нуждаят от API ключове"
+      },
+      "openSettings": "Отворете настройки",
+      "skipSetup": "Прескочете настройката — един лиценз War Monitor отключва всичко. Присъединете се към списъка на очакване за ранен достъп.",
+      "summary": {
+        "desktop": "Режим на десктоп",
+        "web": "Режим на уеб (само за четене, управлявани от сървър идентификационни данни)",
+        "secrets": "локални тайни конфигурирани",
+        "available": "налични функции"
+      },
+      "status": {
+        "ready": "Готино",
+        "staged": "Подготвено",
+        "needsKeys": "Нуждае се от ключове",
+        "invalid": "Невалидно",
+        "missing": "Липсващо",
+        "valid": "Валидно",
+        "looksInvalid": "Изглежда невалидно"
+      },
+      "placeholder": {
+        "setSecret": "Задай тайна",
+        "staged": "Подготвено (запази с OK)"
+      },
+      "help": {
+        "URLHAUS_AUTH_KEY": "Използвано както за URLhaus, така и за ThreatFox API.",
+        "OTX_API_KEY": "Дополнителен източник на обогатяване за слоя на киберугрози.",
+        "ABUSEIPDB_API_KEY": "Дополнителен източник на обогатяване за репутация на зловредния IP.",
+        "FINNHUB_API_KEY": "Реални котировки на акции и данни на пазара.",
+        "NASA_FIRMS_API_KEY": "Информация за пожарите за система за управление на ресурсите.",
+        "OLLAMA_API_URL": "напр. http://127.0.0.1:11434 (Ollama) или http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-съместима крайна точка.",
+        "OLLAMA_MODEL": "напр. llama3.1:8b — етикет на модел за използване при обобщение."
+      }
+    },
+    "settingsWindow": {
+      "validating": "Валидиране на API ключове...",
+      "saved": "Настройки спестени",
+      "failed": "Запазване неуспешно: {{error}}",
+      "verifyFailed": "Спестени проверени ключове. Неуспешно: {{errors}}",
+      "verboseOn": "Подробно съседно регистрирането ВКЛ (спестено)",
+      "verboseOff": "Подробно съседно регистрирането ИЗКЛючено (спестено)",
+      "invokeFail": "Неуспешно изпълнение на {{command}}. Проверете дневника на десктоп.",
+      "openLogs": "Отворена папка с дневници",
+      "openApiLog": "Отворена API дневник",
+      "sidecarError": "Не можа да се свържа със съседно, за да превключите подробния режим",
+      "noTraffic": "Все още не е записан трафик.",
+      "sidecarUnreachable": "Съседно не е достъпно.",
+      "logCleared": "Дневник изчистен.",
+      "worldMonitor": {
+        "tabLabel": "Монитор на война",
+        "heroTitle": "Един ключ. Всичко е включено.",
+        "heroDescription": "Един лиценз War Monitor замества всеки API ключ и LLM доставчик, който в противен случай бихте конфигурирали себе си. AI обобщения, разузнаване в реално време, данни на пазара, проследяване на конфликти, открива на пожари, спътникови снимки — всички захранени, всички управлявани, нула настройка.",
+        "apiKey": {
+          "title": "Лицензионен ключ",
+          "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
+          "description": "Поставете лиценза си, за да отключите всеки източник на данни и AI функция веднага.",
+          "statusValid": "ЛИЦЕНЗИРАН",
+          "statusMissing": "БЕЗ ЛИЦЕНЗ"
+        },
+        "dividerOr": "ИЛИ",
+        "register": {
+          "title": "Резервирайте място",
+          "description": "Подготвяме се да стартираме лицензи на War Monitor. Регистрирайте се сега и бъдете първи в редицата — ранните членове получават приоритетен достъп и цена на основател.",
+          "emailPlaceholder": "your@email.com",
+          "submitBtn": "Присъедини се към списъка на очакване",
+          "submitting": "Изпращане...",
+          "success": "Вие сте в списъка! Ще ви уведомим първо.",
+          "alreadyRegistered": "Вече сте в списъка на очакване.",
+          "error": "Регистрацията е неуспешна. Моля, опитайте отново.",
+          "invalidEmail": "Моля, въведете валиден имейл адрес."
+        },
+        "byokTitle": "Или носете свои ключове",
+        "byokDescription": "Предпочитате ли пълен контрол? Отидете на картите API ключове и LLMs, за да конфигурирате всеки източник на данни и AI доставчик отделно."
+      },
+      "table": {
+        "time": "Време",
+        "method": "Метод",
+        "path": "Пътека",
+        "status": "Статус",
+        "duration": "Продължителност"
+      }
+    },
+    "countryIntel": {
+      "identifying": "Идентифициране на държава...",
+      "locating": "Локализиране на регион...",
+      "instabilityIndex": "Индекс на нестабилност",
+      "protests": "протести",
+      "militaryAircraft": "военни летателни средства",
+      "militaryVessels": "военни кораби",
+      "outages": "прекъсвания",
+      "earthquakes": "землетресения",
+      "loadingIndex": "Зареждане на индекса...",
+      "loadingMarkets": "Зареждане на пазарите на предвиждане...",
+      "generatingBrief": "Генериране на разузнавателен преглед...",
+      "cached": "Кеширан",
+      "fresh": "Свеж",
+      "noMarkets": "Не са намерени пазари на предвиждане",
+      "predictionMarkets": "Пазари на предвиждане",
+      "unavailable": "AI преглед недостъпен — конфигурирайте GROQ_API_KEY в Settings."
+    },
+    "countryBrief": {
+      "identifying": "Идентифициране на държава...",
+      "locating": "Локализиране на регион...",
+      "limitedCoverage": "Ограничено покритие",
+      "instabilityIndex": "Индекс на нестабилност",
+      "notTracked": "Не се проследява — {{country}} не е в списъка на CII tier-1",
+      "intelBrief": "Разузнавателен преглед",
+      "generatingBrief": "Генериране на разузнавателен преглед...",
+      "topNews": "Топ новини",
+      "activeSignals": "Активни сигнали",
+      "timeline": "7-дневна времева линия",
+      "predictionMarkets": "Пазари на предвиждане",
+      "loadingMarkets": "Зареждане на пазарите на предвиждане...",
+      "infrastructure": "Експозиция на инфраструктура",
+      "briefUnavailable": "AI преглед недостъпен — конфигурирайте GROQ_API_KEY в Settings.",
+      "cached": "Кеширан",
+      "fresh": "Свеж",
+      "noMarkets": "Не са намерени пазари на предвиждане",
+      "loadingIndex": "Зареждане на индекса...",
+      "components": {
+        "unrest": "Неразбира",
+        "conflict": "Конфликт",
+        "security": "Сигурност",
+        "information": "Информация"
+      },
+      "signals": {
+        "protests": "протести",
+        "militaryAir": "военни летателни средства",
+        "militarySea": "военни кораби",
+        "outages": "прекъсвания",
+        "earthquakes": "землетресения",
+        "displaced": "преместени",
+        "climate": "Климатичен стрес",
+        "conflictEvents": "конфликтни събития",
+        "activeStrikes": "активни удари",
+        "aviationDisruptions": "нарушения на летищата",
+        "gpsJammingZones": "GPS закълчаване зони"
+      },
+      "timeAgo": {
+        "m": "{{count}}m преди",
+        "h": "{{count}}h преди",
+        "d": "{{count}}d преди"
+      },
+      "infra": {
+        "pipeline": "Тръбопроводи",
+        "cable": "Подводни кабели",
+        "datacenter": "Центрове за данни",
+        "base": "Военни бази",
+        "nuclear": "Ядрени съоръжения",
+        "port": "Пристанища"
+      },
+      "levels": {
+        "critical": "Критично",
+        "high": "Високо",
+        "elevated": "Повишено",
+        "moderate": "Умерено",
+        "normal": "Нормално",
+        "low": "Ниско"
+      },
+      "trends": {
+        "rising": "Растящо",
+        "falling": "Падащо",
+        "stable": "Стабилно"
+      },
+      "fallback": {
+        "instabilityIndex": "**Индекс на нестабилност: {{score}}/100** ({{level}}, {{trend}})",
+        "protestsDetected": "{{count}} активни протести открити",
+        "aircraftTracked": "{{count}} военни летателни средства проследени",
+        "vesselsTracked": "{{count}} военни кораби проследени",
+        "activeStrikes": "{{count}} активни удари открити",
+        "internetOutages": "{{count}} прекъсвания в интернета",
+        "recentEarthquakes": "{{count}} скорошни землетресения",
+        "stockIndex": "Фондов индекс: {{value}}",
+        "recentHeadlines": "**Скорошни заглавия:**"
+      }
+    }
+  },
+  "components": {
+    "webcams": {
+      "expand": "Разширяване",
+      "regions": {
+        "iran": "ИРАН АТАКИ",
+        "all": "ВСИЧКИ",
+        "mideast": "БЛИЗКИЯ ИЗТОК",
+        "europe": "ЕВРОПА",
+        "americas": "АМЕРИКИ",
+        "asia": "АЗИЯ"
+      }
+    },
+    "monitor": {
+      "placeholder": "Ключови думи (разделени със запетая)",
+      "add": "+ Добави монитор",
+      "addKeywords": "Добавяне на ключови думи за следене на новини",
+      "noMatches": "Няма съвпадения в {{count}} статии",
+      "showingMatches": "Показване на {{count}} от {{total}} съвпадения",
+      "match": "съвпадение",
+      "matches": "съвпадения"
+    },
+    "regulation": {
+      "dashboard": "AI табло на регулация",
+      "timeline": "Времева линия",
+      "deadlines": "Крайни сроове",
+      "regulations": "Регулации",
+      "countries": "Държави",
+      "recentActions": "Последни нормативни действия (последни 12 месеца)",
+      "upcomingDeadlines": "Предстоящи крайни сроове за съответствие",
+      "activeRegulations": "Активни регулации",
+      "proposedRegulations": "Предложени регулации",
+      "globalLandscape": "Глобален нормативен ландшафт",
+      "emptyActions": "Няма скорошни нормативни действия",
+      "emptyDeadlines": "Няма предстоящи крайни сроове за съответствие през следващите 12 месеца",
+      "keyProvisions": "Ключови разпоредби",
+      "learnMore": "Научи повече",
+      "active": "Активен",
+      "proposed": "Предложен",
+      "updated": "Актуализиран",
+      "actionsCount": "{{count}} действия",
+      "deadlinesCount": "{{count}} крайни сроове",
+      "days": "дни",
+      "activeCount": "Активни регулации ({{count}})",
+      "proposedCount": "Предложени регулации ({{count}})",
+      "moreProvisions": "+{{count}} повече...",
+      "source": "Източник",
+      "stances": {
+        "strict": "Строга",
+        "moderate": "Умерена",
+        "permissive": "Позволителна",
+        "undefined": "Неопределена"
+      }
+    },
+    "economic": {
+      "indicators": "Показатели",
+      "oil": "Нефт",
+      "gov": "Правителство",
+      "noData": "Няма налични икономически данни",
+      "noOilData": "Данни за нефт не са налични",
+      "noOilMetrics": "Няма налични метрики на нефта. Добавьте EIA_API_KEY, за да активирате.",
+      "noSpending": "Няма скорошни държавни награди",
+      "awards": "награди",
+      "noIndicatorData": "Няма данни за показатели все още - FRED може да се зарежда",
+      "fredKeyMissing": "Необходим е FRED API ключ — добавьте го в Settings, за да активирате икономическите показатели",
+      "noOilDataRetry": "Данни за нефт временно недостъпни - ще опитам отново",
+      "vsPreviousWeek": "в сравнение с предходната седмица",
+      "in": "в",
+      "centralBanks": "Централни банки",
+      "noBisData": "BIS данни временно недостъпни - ще опитам отново",
+      "policyRate": "Политически курс",
+      "exchangeRate": "Валутен курс",
+      "creditToGdp": "Кредит / БВП",
+      "realEer": "Реален EER",
+      "change": "Промяна",
+      "cut": "разрез",
+      "hike": "повишение",
+      "hold": "задържане"
+    },
+    "supplyChain": {
+      "chokepoints": "Гърла на бутилката",
+      "shipping": "Доставка",
+      "minerals": "Минерали",
+      "noChokepoints": "Данни за гърла на бутилката се зареждат...",
+      "noShipping": "Данни за тарифи за доставка не са налични",
+      "noMinerals": "Данни за минерали се зареждат...",
+      "fredKeyMissing": "Необходим е FRED API ключ за тарифи за доставка — добавьте го в Settings. Гърла на бутилката и минерали са налични без ключ.",
+      "upstreamUnavailable": "Данни за веригата на доставки временно недостъпни — показване на кеширани данни",
+      "spikeAlert": "Открит скок — курс значително над 52-седмичната средна стойност (седмично)",
+      "warnings": "предупреждение(я)",
+      "mineral": "Минерал",
+      "topProducers": "Топ производители",
+      "risk": "Риск",
+      "sources": "FRED / NGA / USGS"
+    },
+    "tradePolicy": {
+      "restrictions": "Ограничения",
+      "tariffs": "Митнически такси",
+      "flows": "Търговски потоци",
+      "barriers": "Барикади",
+      "noRestrictions": "Няма активни търговски ограничения",
+      "noTariffData": "Няма налични данни за митнически такси",
+      "noFlowData": "Няма налични данни за търговските потоци",
+      "noBarriers": "Няма докладвани търговски барикади",
+      "apiKeyMissing": "Необходим е WTO API ключ — добавьте го в Settings",
+      "upstreamUnavailable": "WTO данни временно недостъпни — показване на кеширани данни",
+      "appliedRate": "Приложен курс",
+      "boundRate": "Связан курс",
+      "exports": "Експорт",
+      "imports": "Импорт",
+      "yoyChange": "YoY промяна",
+      "highTariff": "Висок",
+      "moderateTariff": "Умерен",
+      "lowTariff": "Нисък"
+    },
+    "gdelt": {
+      "empty": "Няма скорошни статии за тази тема"
+    },
+    "geoHubs": {
+      "tooltip": "<strong>Геополитични центрове на активност</strong><br>Показва региони с най-много новинска активност.<br><br><em>Типове центрове:</em><br>• 🏛️ Столици — Световни столици и правителствени центрове<br>• ⚔️ Конфликтни зони — Активни конфликтни области<br>• ⚓ Стратегически — Гърла на бутилката и ключови региони<br>• 🏢 Организации — ООН, НАТО, МААЕ и т.н.<br><br><em>Нива на активност:</em><br>• <span style=\"color: #ff4444\">Високо</span> — Последни новини или резултат 70+<br>• <span style=\"color: #ff8844\">Повишено</span> — Резултат 40-69<br>• <span style=\"color: #888\">Ниско</span> — Резултат под 40<br><br>Кликнете на центъра, за да увеличите до неговото местоположение.",
+      "noActive": "Няма активни геополитични центрове",
+      "story": "история",
+      "stories": "истории",
+      "infoTooltip": "<strong>Геополитични центрове на активност</strong><br>Показва региони с най-много новинска активност.<br><br><em>Типове центрове:</em><br>• 🏛️ Столици — Световни столици и правителствени центрове<br>• ⚔️ Конфликтни зони — Активни конфликтни области<br>• ⚓ Стратегически — Гърла на бутилката и ключови региони<br>• 🏢 Организации — ООН, НАТО, МААЕ и т.н.<br><br><em>Нива на активност:</em><br>• <span style=\"color: {{highColor}}\">Високо</span> — Последни новини или резултат 70+<br>• <span style=\"color: {{elevatedColor}}\">Повишено</span> — Резултат 40-69<br>• <span style=\"color: {{lowColor}}\">Ниско</span> — Резултат под 40<br><br>Кликнете на центъра, за да увеличите до неговото местоположение."
+    },
+    "techHubs": {
+      "tooltip": "<strong>Активност на технологични центрове</strong><br>Показва технологични центрове с най-много новинска активност.<br><br><em>Нива на активност:</em><br>• <span style=\"color: #00ff88\">Високо</span> — Последни новини или резултат 50+<br>• <span style=\"color: #ffc800\">Повишено</span> — Резултат 20-49<br>• <span style=\"color: #888\">Ниско</span> — Резултат под 20<br><br>Кликнете на центъра, за да увеличите до неговото местоположение.",
+      "noActive": "Няма активни технологични центрове",
+      "infoTooltip": "<strong>Активност на технологични центрове</strong><br>Показва технологични центрове с най-много новинска активност.<br><br><em>Нива на активност:</em><br>• <span style=\"color: {{highColor}}\">Високо</span> — Последни новини или резултат 50+<br>• <span style=\"color: {{elevatedColor}}\">Повишено</span> — Резултат 20-49<br>• <span style=\"color: {{lowColor}}\">Ниско</span> — Резултат под 20<br><br>Кликнете на центъра, за да увеличите до неговото местоположение."
+    },
+    "predictions": {
+      "tooltip": "<strong>Пазари на предвиждане</strong><br>Пазари за предвиждане с реални пари:<br><ul><li>Цените отразяват оценките на вероятността на публиката</li><li>По-висок обем = по-надежден сигнал</li><li>Фокус върху геополитични и текущи събития</li></ul>Източник: Polymarket (polymarket.com)",
+      "error": "Неуспешно зареждане на предвиждания",
+      "yes": "Да",
+      "no": "Не",
+      "vol": "Обем",
+      "closes": "Затвария"
+    },
+    "stablecoins": {
+      "pegHealth": "Здравина на пега",
+      "supplyVolume": "Предложение & обем",
+      "unavailable": "Данни на стабилни монети временно недостъпни",
+      "token": "Жетон",
+      "mcap": "MCap",
+      "vol24h": "24h обем",
+      "chg24h": "24h промяна"
+    },
+    "status": {
+      "dataFeeds": "Хранилки с данни",
+      "apiStatus": "Статус на API",
+      "storage": "Съхранение",
+      "systemStatus": "Статус на системата",
+      "updatedJustNow": "Актуализиран преди миг",
+      "updatedAt": "Актуализиран {{time}}",
+      "storageUnavailable": "Информация за съхранение недостъпна"
+    },
+    "playback": {
+      "toggleMode": "Превключване на режима на възпроизвеждане",
+      "live": "ЖИВО",
+      "historicalPlayback": "Историческо възпроизвеждане"
+    },
+    "pizzint": {
+      "title": "Индекс на пица на Пентагона",
+      "defcon": "DEFCON {{level}}",
+      "updated": "Актуализирано {{timeAgo}}",
+      "tensionsTitle": "Геополитични напрежения",
+      "source": "Източник:",
+      "statusClosed": "ЗАТВОРЕНО",
+      "statusSpike": "СКОК",
+      "statusHigh": "ВИСОКО",
+      "statusElevated": "ПОВИШЕНО",
+      "statusNominal": "НОМИНАЛНО",
+      "statusQuiet": "ТИХО",
+      "justNow": "преди миг",
+      "minutesAgo": "{{m}}m преди",
+      "hoursAgo": "{{h}}h преди",
+      "defconLabels": {
+        "1": "КОКИРАН ПИСТОЛЕТ - МАКСИМАЛНА ГОТОВНОСТ",
+        "2": "БЪРЗО ТЕМПО - ВЪОРЪЖЕНИ СИЛИ ГОТОВИ",
+        "3": "КРЪГЛА КЪЩА -増ВАНЕ НА ГОТОВНОСТ",
+        "4": "ДВОЙНА ГЛЕДКА - ПОВИШЕНА РАЗУЗНАВАТЕЛНА ВАХТА",
+        "5": "ИЗБЛЕДНЯВАМ - НАЙ-НИСКА ГОТОВНОСТ"
+      }
+    },
+    "strategicPosture": {
+      "elapsed": "Изтекло: {{elapsed}} s",
+      "clickToView": "Кликнете, за да видите {{name}} на карта",
+      "clickToViewMap": "Кликнете, за да видите на карта",
+      "refresh": "Обновяване",
+      "units": {
+        "fighters": "Бойни самолети",
+        "tankers": "Танкери",
+        "awacs": "AWACS",
+        "recon": "Разузнаване",
+        "transport": "Транспорт",
+        "bombers": "Бомбардировачи",
+        "drones": "Дронове",
+        "aircraft": "Летателни средства",
+        "carriers": "Носачи",
+        "destroyers": "Разрушители",
+        "frigates": "Фрегати",
+        "submarines": "Подводници",
+        "patrol": "Патрул",
+        "auxiliary": "Помощни",
+        "navalVessels": "Военни кораби"
+      },
+      "infoTooltip": "<strong>Методология</strong><p>Събира военни летателни средства и военни кораби по театър.</p><ul><li><strong>Нормално:</strong> Базова активност</li><li><strong>Повишено:</strong> По-горе на прага (50+ летателни средства)</li><li><strong>Критично:</strong> Висока концентрация (100+ летателни средства)</li></ul><p><strong>Способен за удар:</strong> Танкери + AWACS + Бойни самолети в достатъчни количества за устойчиви операции.</p>",
+      "scanningTheaters": "Сканиране на театри",
+      "positions": "Позиции на летателните средства",
+      "navalVesselsLoading": "Военни кораби",
+      "theaterAnalysis": "Анализ на театър",
+      "connectingStreams": "Свързване към живи ADS-B & AIS потоци...",
+      "initialLoadNote": "Първоначалното зареждане отнема 30-60 секунди, докато се събират данни за проследяване",
+      "acquiringData": "Придобиване на данни",
+      "acquiringDesc": "Свързване към ADS-B мрежата за данни на военни полети. Това може да отнеме 30-60 секунди при първоначално зареждане.",
+      "openSkyAdsb": "OpenSky ADS-B",
+      "aisVesselStream": "AIS Vessel Stream",
+      "retryNow": "Опитайте отново сега",
+      "feedRateLimited": "Хранилка с ограничена скорост",
+      "rateLimitedDesc": "OpenSky API има ограничения на заявките. Панелът ще се опита отново автоматично за няколко минути, или можете да опитате сега.",
+      "rateLimitedTip": "Съвет: Пиковите часове (UTC 12:00-20:00) често виждат по-високи ограничения.",
+      "tryAgain": "Опитайте отново",
+      "badges": {
+        "critical": "КРИТ",
+        "elevated": "ПОВ",
+        "normal": "НОРМ"
+      },
+      "trendStable": "стабилно",
+      "domains": {
+        "air": "ВЪЗДУХ",
+        "sea": "МОРЕ"
+      },
+      "strike": "УДАР",
+      "staleWarning": "Използване на кеширани данни - живото хранилка временно недостъпна",
+      "updated": "Актуализирано:",
+      "theaters": {
+        "iran-theater": "Иран театър",
+        "taiwan-theater": "Тайванския пролив",
+        "baltic-theater": "Балтийски театър",
+        "blacksea-theater": "Черно море",
+        "korea-theater": "Корейски полуостров",
+        "south-china-sea": "Южнокитайско море",
+        "east-med-theater": "Източно средиземноморски театър",
+        "israel-gaza-theater": "Израел/Газа",
+        "yemen-redsea-theater": "Йемен/Червено море"
+      }
+    },
+    "countryBrief": {
+      "shareStory": "Дели история",
+      "printPdf": "Печат / PDF",
+      "exportData": "Експортирай данни",
+      "sourceRef": "Източник [{{n}}]"
+    },
+    "relatedAssets": {
+      "pipeline": "Тръбопровод",
+      "cable": "Кабел",
+      "datacenter": "Центр за данни",
+      "base": "База",
+      "nuclear": "Ядрена"
+    },
+    "community": {
+      "joinDiscussion": "Присъединете се към дискусията",
+      "openDiscussion": "Отворена дискусия",
+      "dontShowAgain": "Не показвай отново"
+    },
+    "threatLabels": {
+      "critical": "КРИТ",
+      "high": "ВИСОКО",
+      "medium": "СР",
+      "low": "НИСКО",
+      "info": "ИНФО"
+    },
+    "deckgl": {
+      "zoomIn": "Приблизете",
+      "zoomOut": "Отдалечете",
+      "resetView": "Нулиране на преглед",
+      "legend": {
+        "title": "ЛЕГЕНДА",
+        "startupHub": "Стартъп център",
+        "techHQ": "Tech HQ",
+        "accelerator": "Ускоритель",
+        "cloudRegion": "Облачен регион",
+        "datacenter": "Центр за данни",
+        "stockExchange": "Фондова борса",
+        "financialCenter": "Финансов център",
+        "centralBank": "Централна банка",
+        "commodityHub": "Хъб за стоки",
+        "waterway": "Водния път",
+        "highAlert": "Висок алерт",
+        "elevated": "Повишен",
+        "monitoring": "Мониторинг",
+        "base": "База",
+        "nuclear": "Ядрена"
+      },
+      "layerGuide": "Ръководство на слои",
+      "layersTitle": "Слои",
+      "timeAll": "Всички",
+      "views": {
+        "global": "Глобално",
+        "americas": "Америки",
+        "mena": "MENA",
+        "europe": "Европа",
+        "asia": "Азия",
+        "latam": "Латинска Америка",
+        "africa": "Африка",
+        "oceania": "Океания"
+      },
+      "layers": {
+        "startupHubs": "Стартъп центрове",
+        "techHQs": "Tech HQs",
+        "accelerators": "Ускорители",
+        "cloudRegions": "Облачни региони",
+        "aiDataCenters": "AI центрове за данни",
+        "underseaCables": "Подводни кабели",
+        "internetOutages": "Прекъсвания в интернета",
+        "cyberThreats": "Киберугрози",
+        "techEvents": "Технологични събития",
+        "naturalEvents": "Природни събития",
+        "fires": "Пожари",
+        "intelHotspots": "Intel гореща точка",
+        "conflictZones": "Конфликтни зони",
+        "militaryBases": "Военни бази",
+        "nuclearSites": "Ядрени места",
+        "gammaIrradiators": "Гама облъчватели",
+        "spaceports": "Космически пристанища",
+        "pipelines": "Тръбопроводи",
+        "militaryActivity": "Военна активност",
+        "shipTraffic": "Трафик на кораби",
+        "flightDelays": "Закъснения на полетите",
+        "protests": "Протести",
+        "ucdpEvents": "События от въоръжени конфликти",
+        "displacementFlows": "Потоци на преместване",
+        "climateAnomalies": "Климатични аномалии",
+        "weatherAlerts": "Météo алерти",
+        "strategicWaterways": "Стратегически водни пътища",
+        "economicCenters": "Икономически центрове",
+        "criticalMinerals": "Критични минерали",
+        "stockExchanges": "Фондови борси",
+        "financialCenters": "Финансови центрове",
+        "centralBanks": "Централни банки",
+        "commodityHubs": "Хъбове за стоки",
+        "gulfInvestments": "GCC инвестиции",
+        "tradeRoutes": "Търговски маршрути",
+        "iranAttacks": "Атаки на Иран",
+        "gpsJamming": "GPS ЗАКЪЛЧАВАНЕ",
+        "dayNight": "Ден/Нощ"
+      }
+    },
+    "tooltip": {
+      "earthquake": "Землетресение",
+      "militaryAircraft": "Военен летателен апарат",
+      "vesselCluster": "Клъстер на кораби",
+      "vessels": "кораби",
+      "flightCluster": "Клъстер на полети",
+      "aircraft": "летателни средства",
+      "protest": "Протест",
+      "protestsCount": "{{count}} протести",
+      "techHQsCount": "{{count}} tech HQs",
+      "techEventsCount": "{{count}} технологични събития",
+      "dataCentersCount": "{{count}} центрове за данни",
+      "underseaCable": "Подводен кабел",
+      "pipeline": "Тръбопровод",
+      "conflictZone": "Конфликтна зона",
+      "naturalEvent": "Природно събитие",
+      "financialCenter": "финансов център",
+      "port": "Пристанище",
+      "disruption": "Нарушение",
+      "advisory": "Препоръка",
+      "repairShip": "Ремонтен кораб",
+      "internetOutage": "Прекъсване на интернета",
+      "medium": "среда",
+      "news": "Новини",
+      "undisclosed": "Неразкрито",
+      "stake": "залог"
+    },
+    "layerHelp": {
+      "title": "Ръководство на карта слои",
+      "labels": {
+        "countries": "Държави",
+        "timeRecent": "1H/6H/24H",
+        "timeExtended": "7D/30D/ALL",
+        "sanctions": "Санкции",
+        "shipping": "Доставка"
+      },
+      "sections": {
+        "techEcosystem": "Технологична екосистема",
+        "infrastructure": "Инфраструктура",
+        "naturalEconomic": "Природни & икономически",
+        "financeCore": "Ядро на финанси",
+        "infrastructureRisk": "Инфраструктура & риск",
+        "macroContext": "Макро контекст",
+        "timeFilter": "Филтър на време (горе-право)",
+        "geopolitical": "Геополитична",
+        "militaryStrategic": "Военна & стратегическа",
+        "transport": "Транспорт",
+        "labels": "Етикети",
+        "overlays": "Наслагване & етикети"
+      },
+      "descriptions": {
+        "techStartupHubs": "Основни стартъп екосистеми (SF, NYC, London и т.н.)",
+        "techCloudRegions": "AWS, Azure, GCP центрове за данни региони",
+        "techHQs": "Седалища на крупни технологични компании",
+        "techAccelerators": "Y Combinator, Techstars, 500 Startups местоположения",
+        "infraCables": "Основни подводни оптични кабели (интернет гръбнак)",
+        "infraDatacenters": "AI изчислителни клъстери >=10,000 GPUs",
+        "infraOutages": "Интернет блекаути и нарушения на услугите",
+        "naturalEventsTech": "Землетресения, бури, пожари (може да повлияят на центрове за данни)",
+        "weatherAlerts": "Алерти за тежко време",
+        "economicCenters": "Фондови борси & централни банки",
+        "countriesOverlay": "Наслагване на имена на държави",
+        "financeExchanges": "Основни глобални борси по пазарен тип",
+        "financeCenters": "Глобални и регионални финансови центрове",
+        "financeCentralBanks": "Институции за монетарна политика по целия свят",
+        "financeCommodityHubs": "Ключови борси, пристанища и хъбове за рафиниране",
+        "financeCables": "Основни подводни оптични маршрути, свързани с пазарната инфраструктура",
+        "financePipelines": "Маршрути на тръбопроводи нефт/газ, влияещи на енергийните пазари",
+        "financeOutages": "Прекъсвания в интернета, които могат да повлияят на пазарните операции",
+        "financeCyberThreats": "События на сигурност около финансовата инфраструктура",
+        "macroWaterways": "Стратегически гърла на бутилката за доставка на стоки",
+        "weatherAlertsMarket": "События на сложно време с пазарна релевантност",
+        "naturalEventsMacro": "Землетресения, пожари, наводнения и други природни нарушения",
+        "timeRecent": "Филтър на данни, базирани на време до скорошни часове",
+        "timeExtended": "Показване на данни от миналата седмица, месец или всичко",
+        "geoConflicts": "Активни зони на война (Украйна, Газа и т.н.) с граници",
+        "geoHotspots": "Регионе на напрежение - цветни кодирани по ниво на новинска активност",
+        "geoSanctions": "Държави под САЩ/ЕУ/ООН икономически санкции",
+        "geoProtests": "Граждански неразбирам, демонстрации (филтрирани по време)",
+        "militaryBases": "САЩ/НАТО, Китай, Русия военни инсталации (150+)",
+        "militaryNuclear": "Электроцентрали, обогатяване, оръжейни съоръжения",
+        "militaryIrradiators": "Промишлени гама облъчвателни съоръжения",
+        "militaryActivity": "Живо военно следене на летателни средства и кораби",
+        "infraCablesFull": "Основни подводни оптични кабели (20 гръбнак маршрути)",
+        "infraPipelinesFull": "Тръбопроводи нефт/газ (Nord Stream, TAPI и т.н.)",
+        "infraDatacentersFull": "AI изчислителни клъстери >=10,000 GPUs само",
+        "transportShipping": "Живо следене на кораби чрез AIS (позиции на кораби)",
+        "transportDelays": "Закъснения на летище и наземни спирки (FAA)",
+        "naturalEventsFull": "Землетресения (USGS) + бури, пожари, вулкани, наводнения (NASA EONET)",
+        "firesFull": "Активни пожари на гората и периметри на пожар (NASA FIRMS)",
+        "climateAnomalies": "Аномалии на температура и валежи",
+        "waterwaysLabels": "Етикети на стратегически гърла",
+        "geoUcdpEvents": "Uppsala Conflict Data Program събития от въоръжени конфликти",
+        "geoDisplacement": "Модели на потоци на бежанци и преместване",
+        "militarySpaceports": "Сайтове за стартиране на ракети и космически съоръжения",
+        "infraCyberThreats": "Киберполети и събития на сигурност",
+        "mineralsFull": "Стратегически минерални находища и сайтове за миниране",
+        "techCyberThreats": "Киберполети и събития на сигурност",
+        "techEvents": "Основни технологични конференции и събития",
+        "techFires": "Активни пожари на гората близо до технологичната инфраструктура",
+        "financeGulfInvestments": "GCC суверенни съоръжения инвестиции и ПЗИ",
+        "tradeRoutes": "Основни глобални морски маршрути, свързващи пристанища чрез стратегически гърла",
+        "dayNight": "Реално време на слънчевия терминатор показва зони на ден и нощ"
+      },
+      "notes": {
+        "timeAffects": "Повлияно на: Землетресения, време, протести, прекъсвания"
+      }
+    },
+    "cii": {
+      "shareStory": "Дели история",
+      "noSignals": "Няма открити сигнали на нестабилност",
+      "infoTooltip": "<strong>Методология</strong><ul><li><strong>U</strong>nrest: граждански безред & протести</li><li><strong>C</strong>onflict: интензивност на въоръжен конфликт</li><li><strong>S</strong>ecurity: военни полети/кораби над територия</li><li><strong>I</strong>nformation: скорост на новини и корелация на фокусни точки</li><li>Близост на гореща точка повишение (стратегически местоположения)</li></ul><em>U:C:S:I стойностите показват компонентни резултати.</em> Откритие на фокусни точки коерелира новинни субекти със сигнали на карта за точно оценяване."
+    },
+    "insights": {
+      "noStories": "Няма други или многоточни истории все още",
+      "step": "Стъпка {{step}}/{{total}}",
+      "waitingForData": "Очакване на новинските данни...",
+      "rankingStories": "Класиране на важни истории...",
+      "analyzingSentiment": "Анализиране на сентимент...",
+      "generatingBrief": "Генериране на световен преглед...",
+      "infoTooltip": "<strong>AI-управлява анализ</strong><br>• <strong>Световен преглед</strong>: AI обобщение (Groq/OpenRouter)<br>• <strong>Сентимент</strong>: Анализ на тона на новини<br>• <strong>Скорост</strong>: Бързо движещи се истории<br>• <strong>Фокусни точки</strong>: Коерелира новинни субекти със сигнали на карта (военни, протести, прекъсвания)<br><em>Десктоп само • Захранено от Llama 3.3 + Откритие на фокусни точки</em>",
+      "settingsTitle": "Настройки",
+      "sectionMap": "Карта",
+      "sectionAi": "AI анализ",
+      "sectionStreaming": "Потоци",
+      "streamQualityLabel": "Качество на видеото",
+      "streamQualityDesc": "Задайте качество за всички живи потоци (по-ниско спестява честотна лента)",
+      "mapFlashLabel": "Импулс на живо събитие",
+      "mapFlashDesc": "Светкавица местоположения на карта, когда прибиране на новини пристига",
+      "aiFlowTitle": "Настройки",
+      "aiFlowCloudLabel": "Облачна AI (Groq & OpenRouter)",
+      "aiFlowCloudDesc": "Изпратете заглавия към облак за AI обобщение (препоръчано)",
+      "aiFlowBrowserLabel": "Браузер локален модел",
+      "aiFlowBrowserDesc": "Изпълнете AI локално във вашия браузер",
+      "aiFlowBrowserWarn": "Изтегля ~250 MB модел данни във вашия браузер",
+      "aiFlowOllamaCta": "Искате ли напълно локална AI?",
+      "aiFlowOllamaCtaDesc": "Изтеглете десктоп приложението за поддръжка на Ollama",
+      "aiFlowDownloadDesktop": "Изтегли десктоп приложение →",
+      "aiFlowStatusActive": "Облачна AI активна",
+      "aiFlowStatusCloudAndBrowser": "Облачна AI + браузер модел активен",
+      "aiFlowStatusBrowserOnly": "Само браузер модел",
+      "aiFlowStatusDisabled": "Няма активирани AI доставчици",
+      "insightsDisabledTitle": "AI анализ е изключен",
+      "insightsDisabledHint": "Активирайте доставчици чрез зъбното колело на настройки в заглавката на карта",
+      "sectionPanels": "Панели",
+      "badgeAnimLabel": "Анимации на значка",
+      "badgeAnimDesc": "Анимирайте актуализирани значки на заглавките на панели",
+      "sectionIntelligence": "Разузнаване",
+      "headlineMemoryLabel": "Памет на заглавие",
+      "headlineMemoryDesc": "Помните видяни заглавия, за да изтеглите нови истории"
+    },
+    "cascade": {
+      "noImpacts": "Няма открити влияния на държави",
+      "filters": {
+        "cables": "Кабели",
+        "pipelines": "Тръбопроводи",
+        "ports": "Пристанища",
+        "chokepoints": "Гърла на бутилката"
+      },
+      "filterType": {
+        "cable": "кабел",
+        "pipeline": "тръбопровод",
+        "port": "пристанище",
+        "chokepoint": "гърло на бутилката",
+        "country": "държава"
+      },
+      "selectPrompt": "Изберете {{type}}...",
+      "analyzeImpact": "Анализирайте влияние",
+      "impactLevels": {
+        "critical": "критично",
+        "high": "високо",
+        "medium": "средно",
+        "low": "ниско"
+      },
+      "capacityPercent": "{{percent}}% капацитет",
+      "noCountryImpacts": "Няма открити влияния на държави",
+      "alternativeRoutes": "Алтернативни маршрути",
+      "countriesAffected": "Засегнати държави ({{count}})",
+      "links": "връзки",
+      "selectInfrastructureHint": "Изберете инфраструктура, за да анализирате каскадни влияния",
+      "infoTooltip": "<strong>Анализ на каскада</strong> Моделира зависимости на инфраструктура:<ul><li>Подводни кабели, тръбопроводи, пристанища, гърла на бутилката</li><li>Изберете инфраструктура, за да симулирате неуспех</li><li>Показва засегнати държави и загуба на капацитет</li><li>Идентифицира излишни маршрути</li></ul>Данни от TeleGeography и промишлени източници."
+    },
+    "strategicRisk": {
+      "noRisks": "Няма открити значими рискове",
+      "levels": {
+        "critical": "Критично",
+        "elevated": "Повишено",
+        "moderate": "Умерено",
+        "low": "Ниско"
+      },
+      "trend": "Тенденция",
+      "trends": {
+        "escalating": "Влизащо",
+        "deEscalating": "Деесколирано",
+        "stable": "Стабилно"
+      },
+      "insufficientData": "Недостатъчни данни",
+      "unableToAssess": "Невъзможно е да се оцени ниво на риск.",
+      "enableDataSources": "Активирайте источники на данни, за да започнете мониторинг.",
+      "requiredDataSources": "Необходими источники на данни",
+      "optionalSources": "Дополнителни источники",
+      "enableCoreFeeds": "Активирайте основни хранилки",
+      "waitingForData": "Очакване на данни...",
+      "refresh": "Обновяване",
+      "learningMode": "Режим на обучение - {{minutes}}m до надежден",
+      "noData": "няма данни",
+      "enable": "Активирайте",
+      "convergenceMetric": "Конвергенция",
+      "ciiDeviation": "CII отклонение",
+      "infraEvents": "Инфра събития",
+      "highAlerts": "Високи алерти",
+      "topRisks": "Топ рискове",
+      "recentAlerts": "Скорошни алерти ({{count}})",
+      "updated": "Актуализирано: {{time}}",
+      "time": {
+        "justNow": "преди миг",
+        "minutesAgo": "{{count}}m преди",
+        "hoursAgo": "{{count}}h преди"
+      },
+      "infoTooltip": "<strong>Методология</strong> Композитен резултат (0-100), смесване:<ul><li>50% нестабилност на държави (топ 5 претегляни)</li><li>30% географска конвергенция зони</li><li>20% инцидентите на инфраструктура</li></ul>Авто-обновлява всеки 5 минути."
+    },
+    "techEvents": {
+      "loading": "Зареждане на технологични събития...",
+      "noEvents": "Няма събития за показване",
+      "showOnMap": "Показване на карта",
+      "moreInfo": "Повече информация",
+      "retry": "Опитайте отново",
+      "upcoming": "Предстоящи",
+      "conferences": "Конференции",
+      "earnings": "Печаления",
+      "all": "Всички",
+      "conferencesCount": "{{count}} конференции",
+      "onMap": "{{count}} на карта",
+      "techmemeEvents": "Techmeme события ↗",
+      "today": "ДНЕС",
+      "soon": "СКОРО"
+    },
+    "techReadiness": {
+      "internetUsers": "Потребители на интернета",
+      "mobileSubscriptions": "Мобилни абонаменти",
+      "rdSpending": "Разходи на R&D",
+      "fetchingData": "Извличане на световни банкови данни",
+      "internetUsersIndicator": "Потребители на интернета",
+      "mobileSubscriptionsIndicator": "Мобилни абонаменти",
+      "broadbandAccess": "Достъп на широколент",
+      "rdExpenditure": "Разходи на R&D",
+      "analyzingCountries": "Анализиране на 200+ държави...",
+      "source": "Източник: световна банка",
+      "updated": "Актуализирано: {{date}}",
+      "infoTooltip": "<strong>Глобална технологична готовност</strong><br>Композитен резултат (0-100) на базата на световни банкови данни:<br><br><strong>Показани метрики:</strong><br>🌐 Потребители на интернета (% от население)<br>📱 Мобилни абонаменти (на 100 човека)<br>🔬 Разходи на R&D (% на БВП)<br><br><strong>Претегляния:</strong> R&D (35%), интернет (30%), широкополос (20%), мобилен (15%)<br><br><em>— = няма скорошни данни налични</em><br><em>Източник: световни банкови открити данни (2019-2024)</em>"
+    },
+    "populationExposure": {
+      "noData": "Няма налични данни за експозиция",
+      "totalAffected": "Общо засегнати",
+      "affectedCount": "{{count}} засегнати",
+      "radiusKm": "{{km}}km радиус",
+      "infoTooltip": "<strong>Оценки на експозиция на население</strong> Преценена население в рамките на радиус на влияние на събитието. На базата на плътност на данни на WorldPop.<ul><li>Конфликт: 50km радиус</li><li>Землетресение: 100km радиус</li><li>Наводнение: 100km радиус</li><li>Пожар: 30km радиус</li></ul>"
+    },
+    "securityAdvisories": {
+      "loading": "Извличане на препоръки за пътни съветници...",
+      "noMatching": "Няма препоръки, която отговарят на този филтър",
+      "critical": "Критично",
+      "health": "Здравие",
+      "sources": "САЩ държавен департамент, AU DFAT, UK FCDO, NZ MFAT, CDC, ECDC, WHO, САЩ посолства",
+      "refresh": "Обновяване",
+      "levels": {
+        "doNotTravel": "Не пътувайте",
+        "reconsider": "Преразгледайте пътуването",
+        "caution": "Упражнявайте предпазливост",
+        "normal": "Нормално",
+        "info": "Информация"
+      },
+      "time": {
+        "justNow": "преди миг",
+        "minutesAgo": "{{count}}m преди",
+        "hoursAgo": "{{count}}h преди",
+        "daysAgo": "{{count}}d преди"
+      },
+      "infoTooltip": "<strong>Препоръки за сигурност</strong><br>Препоръки за пътни съветници и алерти за сигурност от правителствени агенции по външните работи:<br><br><strong>Източници:</strong><br>🇺🇸 САЩ държавен департамент препоръки за пътни съветници<br>🇦🇺 AU DFAT Smartraveller<br>🇬🇧 UK FCDO препоръки за пътни съветници<br>🇳🇿 NZ MFAT SafeTravel<br><br><strong>Нива:</strong><br>🟥 Не пътувайте<br>🟧 Преразгледайте пътуването<br>🟨 Упражнявайте предпазливост<br>🟩 Нормални предпазни мерки"
+    },
+    "orefSirens": {
+      "checking": "Проверка на алерти сирени...",
+      "noAlerts": "Няма активни сирени — всички чисти",
+      "notConfigured": "Услуга сирени не е конфигурирана",
+      "activeSirens": "{{count}} активна сирена(и)",
+      "area": "Зона",
+      "time": "Време",
+      "justNow": "преди миг",
+      "historyCount": "{{count}} алерти в последните 24h",
+      "historySummary": "{{count}} алерти в 24h — {{waves}} вълни",
+      "loadingHistory": "Зареждане на история...",
+      "infoTooltip": "<strong>Сирени на Израел</strong><br>Алерти за сирени на ракета и ракета в реално време от израелски дом команда.<br><br>Данни се полетуват всеки 10 секунди. Пулсиращ червен показател означава активни сирени звучат."
+    },
+    "satelliteFires": {
+      "noData": "Няма налични данни за пожара",
+      "region": "Регион",
+      "fires": "Пожари",
+      "high": "Високо",
+      "total": "Общо",
+      "never": "никога",
+      "time": {
+        "justNow": "преди миг",
+        "minutesAgo": "{{count}}m преди",
+        "hoursAgo": "{{count}}h преди"
+      },
+      "infoTooltip": "NASA FIRMS VIIRS спътник топлинни открития в региони на мониторни конфликти. Висок интензивност = яркост >360K & доверие >80%."
+    },
+    "ucdpEvents": {
+      "stateBased": "Базиран на държава",
+      "nonState": "Не-държава",
+      "oneSided": "Едностранен",
+      "country": "Държава",
+      "deaths": "Смъртни случаи",
+      "date": "Дата",
+      "actors": "Актори",
+      "deathsCount": "{{count}} смъртни случаи",
+      "moreNotShown": "{{count}} повече събития не е показано",
+      "noEvents": "Няма събития в тази категория",
+      "infoTooltip": "<strong>События на въоръжени конфликти</strong> Дадени на ниво събитие от Uppsala университет (UCDP).<ul><li><strong>Базиран на държава</strong>: правителство срещу бунтовническа група</li><li><strong>Не-държава</strong>: въоръжена група срещу въоръжена група</li><li><strong>Едностранен</strong>: насилие срещу цивилни</li></ul>Смъртни случаи показани като най-добра оценка (низ-висок диапазон). ACLED дубликати се филтрират автоматично."
+    },
+    "giving": {
+      "activityIndex": "Индекс на активност",
+      "trend": "Тенденция",
+      "estDailyFlow": "Преценен дневен поток",
+      "cryptoDaily": "Крипто дневен",
+      "tabs": {
+        "platforms": "Платформи",
+        "categories": "Категории",
+        "crypto": "Крипто",
+        "institutional": "Институционален"
+      },
+      "platform": "Платформа",
+      "dailyVol": "Дневен обем",
+      "velocity": "Скорост",
+      "freshness": "Данни",
+      "category": "Категория",
+      "share": "Дял",
+      "trending": "ТРЕНД",
+      "dailyInflow": "24h Приливане",
+      "wallets": "Портфейли",
+      "ofTotal": "% от общо",
+      "topReceivers": "Топ получатели",
+      "oecdOda": "OECD ODA",
+      "cafIndex": "CAF индекс",
+      "candidGrants": "Candid дарения",
+      "dataLag": "Лаг на данни",
+      "infoTooltip": "<strong>Глобалнен индекс на дарения активност</strong> Композитен индекс на проследяване на личното дарение в платформи за краудфинансиране и крипто портфейли.<ul><li><strong>Платформи</strong>: GoFundMe, GlobalGiving, JustGiving кампания вземане на проба</li><li><strong>Крипто</strong>: На-верига благодателност портфейл приливане (Endaoment, дарение блок)</li><li><strong>Институционален</strong>: OECD ODA, CAF световен индекс дарения, Candid дарения</li></ul>Индекс е посока (не точни суми). Комбинира живо вземане на проба с публикувани годишни доклади."
+    },
+    "displacement": {
+      "noData": "Няма данни",
+      "refugees": "Бежанци",
+      "asylumSeekers": "Лица, ищещи убежище",
+      "idps": "BDP",
+      "total": "Общо",
+      "origins": "Произход",
+      "hosts": "Домакини",
+      "badges": {
+        "crisis": "КРИЗА",
+        "high": "ВИСОКО",
+        "elevated": "ПОВИШЕНО"
+      },
+      "country": "Държава",
+      "status": "Статус",
+      "count": "Брой",
+      "infoTooltip": "<strong>UNHCR данни на преместване</strong> Глобално бежанци, лица, ищещи убежище и BDP брой от UNHCR.<ul><li><strong>Произход</strong>: Държави хора бягат от</li><li><strong>Домакини</strong>: Държави домакин бежанци</li><li>Криза значки: >1M | Високо: >500K преместени</li></ul>Данни се актуализирани годишно. CC BY 4.0 лиценз."
+    },
+    "climate": {
+      "noAnomalies": "Няма открити значими аномалии",
+      "zone": "Зона",
+      "temp": "Темпераeтура",
+      "precip": "Валежи",
+      "severityLabel": "Тежест",
+      "severity": {
+        "extreme": "КРАЙНА",
+        "moderate": "УМЕРЕНА",
+        "normal": "НОРМАЛНА"
+      },
+      "infoTooltip": "<strong>Монитор на климатични аномалии</strong> Температура и валеж отклонения от 30-дневна базова линия. Данни от Open-Meteo (ERA5 преанализ).<ul><li><strong>Крайна</strong>: >5°C или >80mm/ден отклонение</li><li><strong>Умерена</strong>: >3°C или >40mm/ден отклонение</li></ul>Мониторинг на 15 конфликт/бедствие-склонни зони."
+    },
+    "newsPanel": {
+      "close": "Затвори",
+      "summarize": "Обобщете този панел",
+      "generatingSummary": "Генериране на обобщение...",
+      "sources": "{{count}} върши",
+      "relatedAssetsNear": "Свързани активи близо до {{location}}"
+    },
+    "export": {
+      "exportData": "Експортирай данни"
+    },
+    "runtimeConfig": {
+      "getApiKey": "Вземи API ключ"
+    },
+    "breakingNews": {
+      "critical": "КРИТИЧНО",
+      "high": "ВИСОКО",
+      "dismiss": "Отхвърли",
+      "enableNotifications": "Активирайте известувания на десктоп"
+    },
+    "intelligenceFindings": {
+      "breakingAlerts": "Последни алерти",
+      "popupAlerts": "Поп-нови алерти",
+      "badgeTitle": "Разузнавателни находки",
+      "title": "Разузнавателни находки",
+      "none": "Няма скорошни разузнавателни находки",
+      "monitoring": "МОНИТОРИНГ",
+      "scanning": "Сканиране за корелации и аномалии...",
+      "reviewRecommended": "{{count}} разузнавателни находки - препоръчан преглед",
+      "count": "{{count}} разузнавателна находка",
+      "detected": "{{count}} ОТКРИТА",
+      "critical": "{{count}} КРИТИЧНО",
+      "highPriority": "{{count}} ВИСОК ПРИОРИТЕТ",
+      "hideFindings": "Скриване на находки",
+      "more": "+{{count}} повече находки",
+      "all": "Всички разузнавателни находки ({{count}})",
+      "priority": {
+        "critical": "КРИТИЧНО",
+        "high": "ВИСОКО",
+        "medium": "СРЕДНО",
+        "low": "НИСКО"
+      },
+      "insights": {
+        "criticalDestabilization": "Критично дестабилизиране - незабавно внимание",
+        "significantShift": "Значимо изместване - затворено мониториране",
+        "developingSituation": "Развиваща се ситуация - проследяване на скалиране",
+        "convergence": "Множество събитие групиране в региона",
+        "cascade": "Разпространение на нарушението на инфраструктура",
+        "review": "Преглед за ситуационна осведоменост"
+      },
+      "time": {
+        "justNow": "преди миг",
+        "minutesAgo": "{{count}}m преди",
+        "hoursAgo": "{{count}}h преди",
+        "daysAgo": "{{count}}d преди"
+      }
+    },
+    "countryTimeline": {
+      "now": "сега",
+      "noEventsIn7Days": "Няма събития в 7 дни"
+    },
+    "gdeltIntel": {
+      "infoTooltip": "<strong>GDELT разузнаване</strong> Мониториране на новини в реално време:<ul><li>Кураторски тематични категории (конфликти, кибер и т.н.)</li><li>Статии от 100+ езици преведени</li><li>Актуализира всеки 15 минути</li></ul>Източник: GDELT Project (gdeltproject.org)"
+    },
+    "telegramIntel": {
+      "infoTooltip": "Сигнали в реално време от мониторни Telegram OSINT канали",
+      "loading": "Свързване към Telegram релея...",
+      "empty": "Няма налични съобщения",
+      "disabled": "Telegram релей не е активен",
+      "filterAll": "Всички",
+      "filterBreaking": "Последни",
+      "filterConflict": "Конфликт",
+      "filterAlerts": "Алерти",
+      "filterOsint": "OSINT",
+      "filterPolitics": "Политика",
+      "filterMiddleeast": "Близкия изток"
+    },
+    "investments": {
+      "infoTooltip": "База данни на Саудитска Арабия и UAE преки чужди инвестиции в глобална критична инфраструктура. Кликнете на ред, за да летите на инвестицията на карта.",
+      "searchPlaceholder": "Търсене активи, държави, субекти…",
+      "allCountries": "Всички държави",
+      "saudiArabia": "Саудитска Арабия",
+      "uae": "UAE",
+      "allSectors": "Всички сектори",
+      "allEntities": "Всички субекти",
+      "allStatuses": "Всички статуси",
+      "operational": "Оперативен",
+      "underConstruction": "В строителството",
+      "announced": "Обявено",
+      "rumoured": "Слухове",
+      "divested": "Отчуждено",
+      "asset": "Актив",
+      "country": "Държава",
+      "sector": "Сектор",
+      "status": "Статус",
+      "investment": "Инвестиция",
+      "year": "Година",
+      "noMatch": "Няма инвестиции съответстват на филтри",
+      "undisclosed": "Неразкрито",
+      "sectors": {
+        "ports": "Пристанища",
+        "pipelines": "Тръбопроводи",
+        "energy": "Енергия",
+        "datacenters": "Центрове за данни",
+        "airports": "Летища",
+        "railways": "Железопътни линии",
+        "telecoms": "Телекомуникации",
+        "water": "Вода",
+        "logistics": "Логистика",
+        "mining": "Миниране",
+        "realEstate": "Недвижимо имущество",
+        "manufacturing": "Производство"
+      }
+    },
+    "prediction": {
+      "infoTooltip": "<strong>Пазари на предвиждане</strong> Пазари за предвиждане с реални пари:<ul><li>Цените отразяват оценките на вероятността на публиката</li><li>По-висок обем = по-надежден сигнал</li><li>Фокус върху геополитични и текущи събития</li></ul>Източник: Polymarket (polymarket.com)"
+    },
+    "etfFlows": {
+      "unavailable": "ETF данни временно недостъпни",
+      "rateLimited": "ETF данни временно недостъпни (ограничена скорост) — опитване в скоро време",
+      "netFlow": "Нетен поток",
+      "estFlow": "Преценен поток",
+      "totalVol": "Общо обем",
+      "etfs": "ETFs",
+      "netInflow": "НЕТЕН ПРИЛИВАНЕ",
+      "netOutflow": "НЕТЕН ОТЛИВАНЕ",
+      "table": {
+        "ticker": "Тикер",
+        "issuer": "Издател",
+        "estFlow": "Преценен поток",
+        "volume": "Обем",
+        "change": "Промяна"
+      }
+    },
+    "macroSignals": {
+      "overall": "Целом",
+      "verdict": {
+        "buy": "КУПУВАЙ",
+        "cash": "ПАРИ"
+      },
+      "bullish": "{{count}}/{{total}} бичи",
+      "signals": {
+        "liquidity": "Ликвидност",
+        "flow": "Поток",
+        "regime": "Режим",
+        "btcTrend": "BTC тенденция",
+        "hashRate": "Хеш скорост",
+        "momentum": "Импулс",
+        "fearGreed": "Страх & хищност"
+      }
+    },
+    "panel": {
+      "showMethodologyInfo": "Показване на информация за методология",
+      "dragToResize": "Влачете, за да преоразмеря (двойно щракване, за да нулирате)",
+      "openSettings": "Отворете настройки"
+    },
+    "languageSelector": {
+      "selectLanguage": "Изберете език"
+    },
+    "serviceStatus": {
+      "checkingServices": "Проверка на услугите...",
+      "allOperational": "Всички услуги оперативни",
+      "ok": "ОК",
+      "degraded": "Деградиран",
+      "outage": "Прекъсване",
+      "backendUnavailable": "Десктоп локален бекенд недостъпен. Отпадане на облачен API.",
+      "desktopReadiness": "Готовност на десктоп",
+      "acceptanceChecks": "Проверки на приемане: {{ready}}/{{total}} готинки · ключ-подкрепени функции {{available}}/{{featureTotal}}",
+      "nonParityFallbacks": "Отпадане на неравнопстойност ({{count}})",
+      "categories": {
+        "all": "Всички",
+        "cloud": "Облак",
+        "dev": "Dev tools",
+        "comm": "Comms",
+        "ai": "AI",
+        "saas": "SaaS"
+      }
+    },
+    "verification": {
+      "title": "Списък за проверка на проверка на информация",
+      "hint": "На базата на Bellingcat OSH Framework",
+      "verdicts": {
+        "verified": "ПРОВЕРЕНО",
+        "likely": "ВЕРОЯТНО АВТЕНТИЧНО",
+        "uncertain": "НЕОПРЕДЕЛЕНО",
+        "unreliable": "НЕНАДЕЖНО"
+      },
+      "notesTitle": "Проверка на бележките",
+      "noNotes": "Няма добавени бележки",
+      "addNotePlaceholder": "Добавяне на проверка бележка...",
+      "add": "Добавяне",
+      "resetChecklist": "Нулиране на списък",
+      "checks": {
+        "recency": "Скорошна времева печат потвърдена",
+        "geolocation": "Местоположение проверено",
+        "source": "Идентифицирана първична източник",
+        "crossref": "Кръстосана референция с други източници",
+        "noAi": "Няма AI генерация артефакти",
+        "noRecrop": "Не преживяно/стари кадъра",
+        "metadata": "Метаданни проверени",
+        "context": "Контекст установен"
+      }
+    },
+    "liveNews": {
+      "retry": "Опитайте отново",
+      "notLive": "{{name}} не е в момента живо",
+      "cannotEmbed": "{{name}} не може да бъде възпроизведен тук — може да е ограничен в вашия регион (грешка {{code}})",
+      "botCheck": "YouTube е поискане на вход, за да възпроизведе {{name}}",
+      "signInToYouTube": "Влез в YouTube",
+      "openOnYouTube": "Отворени на YouTube",
+      "manage": "Управляване на канали",
+      "addChannel": "Добавяне на канал",
+      "remove": "Премахвам",
+      "youtubeHandle": "YouTube манипулатор (напр. @Channel)",
+      "youtubeHandleOrUrl": "YouTube манипулатор или URL",
+      "displayName": "Име на дисплей (дополнително)",
+      "openPanelSettings": "Панел показване настройки",
+      "channelSettings": "Канал настройки",
+      "save": "Запази",
+      "cancel": "Отмяна",
+      "confirmDelete": "Изтрий този канал?",
+      "confirmTitle": "Потвърди",
+      "restoreDefaults": "Възстановяване на подразбиращи се канали",
+      "availableChannels": "Налични канали",
+      "customChannel": "Персонализиран канал",
+      "regionAll": "Всички",
+      "regionNorthAmerica": "Северна Америка",
+      "regionEurope": "Европа",
+      "regionLatinAmerica": "Латинска Америка",
+      "regionAsia": "Азия",
+      "regionMiddleEast": "Близкия изток",
+      "regionAfrica": "Африка",
+      "regionOceania": "Океания",
+      "invalidHandle": "Въведете валидна YouTube манипулатор (напр. @ChannelName)",
+      "channelNotFound": "YouTube канал не намерен",
+      "verifying": "Проверка…"
+    },
+    "map": {
+      "showMap": "Показване на карта",
+      "hideMap": "Скриване на карта"
+    }
+  },
+  "popups": {
+    "startDate": "НАЧАЛНА ДАТА",
+    "endDate": "КРАЙНА ДАТА",
+    "magnitude": "Магнитуда",
+    "depth": "Дълбочина",
+    "intensity": "Интензивност",
+    "type": "Тип",
+    "status": "Статус",
+    "severity": "Тежест",
+    "location": "МЕСТОПОЛОЖЕНИЕ",
+    "coordinates": "Координати",
+    "casualties": "ЗАГИНАЛИ",
+    "displaced": "ПРЕМЕСТЕНИ",
+    "belligerents": "БЕЛИГЕРЕНТИ",
+    "keyDevelopments": "КЛЮЧОВИ РАЗВИТИЯ",
+    "unknown": "Неизвестно",
+    "source": "Източник",
+    "target": "Цел",
+    "events": "Събитие",
+    "impact": "Влияние",
+    "capacity": "Капацитет",
+    "alerts": "Активни алерти",
+    "updated": "Актуализирано",
+    "common": {
+      "start": "НАЧАЛО",
+      "end": "КРАЙ",
+      "updated": "АКТУАЛИЗИРАНО"
+    },
+    "conflict": {
+      "title": "КОНФЛИКТНА ЗОНА"
+    },
+    "earthquake": {
+      "levels": {
+        "major": "ОСНОВНА",
+        "moderate": "УМЕРЕНА",
+        "minor": "МАЛКА"
+      }
+    },
+    "base": {
+      "types": {
+        "us-nato": "САЩ/НАТО",
+        "china": "КИТАЙ",
+        "russia": "РУСИЯ"
+      }
+    },
+    "protest": {
+      "acledVerified": "ACLED (проверено)",
+      "gdelt": "GDELT",
+      "riots": "Разпри",
+      "highSeverity": "Висока тежест"
+    },
+    "gpsJamming": {
+      "title": "GPS/GNSS интерференция",
+      "interference": "Интерференция",
+      "aircraftAffected": "Летателни средства засегнати",
+      "aircraftNormal": "Летателни средства нормално",
+      "h3Hex": "H3 Hex"
+    },
+    "flight": {
+      "groundStop": "НАЗЕМНА СПИРКА",
+      "groundDelay": "НАЗЕМНА ПРОГРАМА НА ЗАБАВЯНЕ",
+      "departureDelay": "ЗАКЪСНИ НА ОТЛЕТАНЕ",
+      "arrivalDelay": "ЗАКЪСНИ НА ПРИСТИГАНЕ",
+      "delaysReported": "ДОКЛАДАНИ ЗАКЪСНЕНИЯ",
+      "closure": "ЗАТВАРЯНЕ НА ЛЕТИЩЕ",
+      "delays": "ЗАКЪСНЕНИЯ",
+      "avgDelay": "СРЕДНО ЗАБАВЯНЕ",
+      "cancelled": "ОТМЯНА",
+      "sources": {
+        "faa": "FAA ASWS",
+        "eurocontrol": "Eurocontrol",
+        "computed": "Изчислено"
+      },
+      "regions": {
+        "americas": "Америки",
+        "europe": "Европа",
+        "apac": "Азия-Тихи океан",
+        "mena": "Близкия изток",
+        "africa": "Африка"
+      }
+    },
+    "apt": {
+      "description": "Усъвършенствана устойчива група с възможности на държавно ниво. Известна със софистицирани киберопераций, насочени към критична инфраструктура, правителство и отбранна сектори."
+    },
+    "cyberThreat": {
+      "title": "КИБЕРУГРОЗА"
+    },
+    "nuclear": {
+      "types": {
+        "plant": "ЕНЕРГИЙНА РАСТЕНИЕ",
+        "enrichment": "ОБОГАТЯВАНЕ",
+        "weapons": "ОРЪЖЕЙНА КОМПЛЕКС",
+        "research": "ИЗСЛЕДВАНЕ"
+      },
+      "description": "Ядрено съоръжение под мониторинг. Стратегическа важност за регионална сигурност и проблеми на непролиферация."
+    },
+    "economic": {
+      "types": {
+        "exchange": "ФОНДОВА БОРСА",
+        "centralBank": "ЦЕНТРАЛНА БАНКА",
+        "financialHub": "ФИНАНСОВ ХЪБ"
+      },
+      "closed": "ЗАТВОРЕНО"
+    },
+    "irradiator": {
+      "subtitle": "Промишленост облъчвател",
+      "description": "Промишленост облъчвател използвам Cobalt-60 или Cesium-137 източници за стерилизация медицински устройства, консервация храна или материал преработка. Източник: IAEA DIIF база данни."
+    },
+    "pipeline": {
+      "title": "ТРЪБОПРОВОД",
+      "types": {
+        "oil": "ТРЪБОПРОВОД НА НЕФТ",
+        "gas": "ГАЗ ТРЪБОПРОВОД",
+        "products": "ПРОДУКТИ ТРЪБОПРОВОД"
+      },
+      "status": {
+        "operating": "ОПЕРАТИВНА",
+        "construction": "В СТРОИТЕЛСТВОТО"
+      },
+      "description": "Основна {{type}} тръбопровод инфраструктура. {{status}}"
+    },
+    "pipelineStatusDesc": {
+      "operating": "В момента оперативна и транспортиране на ресурси.",
+      "construction": "В момента в строителството."
+    },
+    "cable": {
+      "fault": "НЕПРАВНОСТ",
+      "degraded": "ДЕГРАДИРАНА",
+      "active": "АКТИВНА",
+      "major": "ОСНОВНА",
+      "cable": "КАБЕЛ",
+      "subtitle": "Подводен оптичен кабел",
+      "type": "ПОДВОДЕН КАБЕЛ",
+      "advisory": "ПРЕПОРЪКА НА НЕПРАВНОСТ",
+      "repairDeployment": "РАЗВРЪЩАНЕ НА РЕМОНТ",
+      "repairStatus": {
+        "onStation": "На станция",
+        "enRoute": "В маршрута"
+      },
+      "health": {
+        "evidence": "ДОКАЗАТЕЛСТВА НА ЗДРАВИЕ"
+      },
+      "description": "Подводна телекомуникационна кабел транспортиране на международен трафик в интернета. Тези оптични кабели образуват гръбнак на глобален интернет свързаност, предавам над 95% на интерконтинентални данни."
+    },
+    "repairShip": {
+      "note": "Ремонтен кораб проследяване указания активна развръщане към място на неправност.",
+      "badge": "РЕМОНТЕН КОРАБ",
+      "description": "Ремонтен кораб проследяване указания активна развръщане в поддръжка на подводен кабел възстановяване.",
+      "status": {
+        "onStation": "НА СТАНЦИЯ",
+        "enRoute": "В МАРШРУТА"
+      }
+    },
+    "strategic": "СТРАТЕГИЧЕСКА",
+    "verified": "ПРОВЕРЕНО",
+    "sampledList": "Показване на вземана проба списък на {{count}} събитие.",
+    "reason": "ПРИЧИНА",
+    "threat": "УГРОЗА",
+    "aka": "Също позната като",
+    "sponsor": "СПОНСОР",
+    "origin": "ПРОИЗХОД",
+    "country": "ДЪРЖАВА",
+    "malware": "МАЛУЕР",
+    "lastSeen": "ПОСЛЕДЕН ПЪТ ВИДЕНА",
+    "open": "ОТВОРЕНА",
+    "tradingHours": "ТЪРГОВСКИ ЧАСОВЕ",
+    "gamma": "ГАМА",
+    "city": "ГРАД",
+    "length": "ДЪЛЖИНА",
+    "operator": "ОПЕРАТОР",
+    "countries": "ДЪРЖАВИ",
+    "waypoints": "ПЪТНИ ТОЧКИ",
+    "repairEta": "РЕМОНТ ETA",
+    "timeUnits": {
+      "m": "m",
+      "h": "h",
+      "d": "d"
+    },
+    "hotspot": {
+      "escalation": "ОЦЕНКА НА СКАЛИРАНЕ",
+      "baseline": "Базова линия",
+      "score": "Резултат",
+      "trend": "Тенденция",
+      "components": {
+        "news": "Новини",
+        "cii": "CII",
+        "geo": "Гео",
+        "military": "Военна"
+      },
+      "levels": {
+        "stable": "СТАБИЛНА",
+        "watch": "ВАХТА",
+        "elevated": "ПОВИШЕНА",
+        "high": "ВИСОКО",
+        "critical": "КРИТИЧНО"
+      }
+    },
+    "buttons": {
+      "track": "Проследяване на проблем",
+      "details": "Преглед на детайли"
+    },
+    "historicalContext": "ИСТОРИЧЕСКИ КОНТЕКСТ",
+    "lastMajorEvent": "Последното основно събитие",
+    "precedents": "Преценти",
+    "cyclicalPattern": "Циклична модел",
+    "whyItMatters": "ЗАЩО ТОВА ВЪПРОСА",
+    "keyEntities": "КЛЮЧОВИ СУБЕКТИ",
+    "relatedHeadlines": "СВЪРЗАНИ ЗАГЛАВИЯ",
+    "liveIntel": "Живо разузнаване",
+    "loadingNews": "Зареждане на глобални новини...",
+    "noCoverage": "Няма скорошно глобално покритие",
+    "time": "Време",
+    "area": "Зона",
+    "expires": "Изтича",
+    "aisGapSpike": "AIS СКОК НА ПРОПУСК",
+    "chokepointCongestion": "ЗАДРЪСТВАНЕ НА ГЪРЛО",
+    "darkening": "ПОТЪМНЯВАНЕ",
+    "density": "ПЛЪТНОСТ",
+    "darkShips": "ТЪМНИ КОРАБИ",
+    "vesselCount": "БРОЙ НА КОРАБИ",
+    "window": "ПРОЗОРЕЦ",
+    "region": "РЕГИОН",
+    "fatalities": "СМЪРТНОСТ",
+    "actors": "АКТОРИ",
+    "near": "Близо",
+    "moreEvents": "още събитие",
+    "monitoring": "Мониторинг",
+    "viewUSGS": "Преглед на USGS",
+    "expired": "Изтекло",
+    "timeAgo": {
+      "s": "{{count}}s преди",
+      "m": "{{count}}m преди",
+      "h": "{{count}}h преди",
+      "d": "{{count}}d преди"
+    },
+    "cableAdvisory": {
+      "reported": "ДОКЛАДАНО",
+      "impact": "ВЛИЯНИЕ",
+      "eta": "ETA"
+    },
+    "outage": {
+      "levels": {
+        "total": "ПОЛНО ЗАТЪМНЕНИЕ",
+        "major": "ОСНОВЕН ПРЕРЯД",
+        "partial": "ЧАСТИЧНО НАРУШЕНИЕ",
+        "disruption": "НАРУШЕНИЕ"
+      },
+      "reported": "ДОКЛАДАНО",
+      "categories": "КАТЕГОРИИ",
+      "readReport": "Прочетете пълния доклад"
+    },
+    "datacenter": {
+      "status": {
+        "existing": "ОПЕРАТИВЕН",
+        "planned": "ПЛАНИРАНО",
+        "decommissioned": "ИЗВЪН ЕКСПЛОАТАЦИЯ",
+        "unknown": "НЕИЗВЕСТНО"
+      },
+      "gpuChipCount": "GPU/ЧИПУ БРОЙ",
+      "chipType": "ТИП НА ЧИП",
+      "power": "МОЩНОСТ",
+      "sector": "СЕКТОР",
+      "attribution": "Данни: Epoch AI GPU клъстери",
+      "chips": "чипове",
+      "cluster": {
+        "title": "{{count}} центрове за данни",
+        "totalChips": "ОБЩО ЧИПОВЕ",
+        "totalPower": "ОБЩА МОЩНОСТ",
+        "operational": "ОПЕРАТИВЕН",
+        "planned": "ПЛАНИРАНО",
+        "moreDataCenters": "+ {{count}} повече центрове за данни",
+        "sampledSites": "Показване на вземана проба списък на {{count}} сайтове."
+      }
+    },
+    "startupHub": {
+      "tiers": {
+        "mega": "МЕГА ХЪБ",
+        "major": "ОСНОВНА ХЪБ",
+        "emerging": "ПОЯВЯВАЩО СЕ",
+        "hub": "ХЪБ"
+      },
+      "unicorns": "ЕДНОРОЗИ"
+    },
+    "cloudRegion": {
+      "provider": "ДОСТАВЧИК",
+      "availabilityZones": "ЗОНИ НА НАЛИЧНОСТ"
+    },
+    "techHQ": {
+      "types": {
+        "faang": "ГОЛЯМО ТЕХНОЛОГИЯ",
+        "unicorn": "ЕДНОРОГ",
+        "public": "ПУБЛИЧНА",
+        "tech": "ТЕХНОЛОГИЯ"
+      },
+      "marketCap": "ПАЗАРНА КАПИТАЛИЗАЦИЯ",
+      "employees": "СЛУЖИТЕЛИ"
+    },
+    "accelerator": {
+      "types": {
+        "accelerator": "УСКОРИТЕЛЬ",
+        "incubator": "ИНКУБАТОР",
+        "studio": "СТАРТЪП СТУДИО"
+      },
+      "founded": "ОСНОВАНА",
+      "notableAlumni": "ЗАБЕЛЕЖИТЕЛНИ ALUMNI"
+    },
+    "techEvent": {
+      "days": {
+        "today": "ДНЕС",
+        "tomorrow": "УТРЕ",
+        "inDays": "В {{count}} ДНЕЙ"
+      },
+      "date": "ДАТА",
+      "moreInformation": "Повече информация"
+    },
+    "techHQCluster": {
+      "companiesCount": "{{count}} КОМПАНИИ",
+      "bigTechCount": "{{count}} голямо технология",
+      "unicornsCount": "{{count}} еднорози",
+      "publicCount": "{{count}} публична",
+      "sampled": "Показване на вземана проба списък на {{count}} компании."
+    },
+    "techEventCluster": {
+      "eventsCount": "{{count}} СЪБИТИЕ",
+      "upcomingWithin2Weeks": "{{count}} предстоящи в рамките на 2 седмици",
+      "sampled": "Показване на вземана проба списък на {{count}} събитие."
+    },
+    "militaryFlight": {
+      "types": {
+        "fighter": "Боец",
+        "bomber": "Бомбардировач",
+        "transport": "Транспорт",
+        "tanker": "Танкер",
+        "awacs": "AWACS/AEW",
+        "reconnaissance": "Разузнаване",
+        "helicopter": "Вертолет",
+        "drone": "UAV/дрон",
+        "patrol": "Патрул",
+        "specialOps": "Специални операции",
+        "vip": "VIP транспорт"
+      },
+      "altitude": "ВИСОЧИНА",
+      "ground": "Земя",
+      "speed": "СКОРОСТ",
+      "heading": "ПОСОКА",
+      "hexCode": "HEX КОД",
+      "squawk": "SQUAWK",
+      "attribution": "Източник: OpenSky Network"
+    },
+    "militaryVessel": {
+      "aisDark": "AIS ТЪМНО",
+      "vessel": "Кораб",
+      "speed": "СКОРОСТ",
+      "heading": "ПОСОКА",
+      "mmsi": "MMSI",
+      "hull": "КОРПУС #",
+      "region": "РЕГИОН",
+      "strikeGroup": "УДАР ГРУПА",
+      "deploymentStatus": "СТАТУС",
+      "usniIntel": "USNI Intel",
+      "usniSource": "Източник: USNI новини Fleet Tracker",
+      "approximatePosition": "Позиция приблизителна — на базата на USNI седмичен доклад, не реално време AIS.",
+      "darkDescription": "⚠ Кораб е отишло тъмно - AIS сигнал загубен. Може да указва на чувствителни операции."
+    },
+    "militaryCluster": {
+      "flightActivity": {
+        "exercise": "Военна практика",
+        "patrol": "Патрул активност",
+        "transport": "Транспорт операции",
+        "unknown": "Военна активност"
+      },
+      "moreAircraft": "+{{count}} още летателни средства",
+      "aircraftCount": "{{count}} ЛЕТАТЕЛНИ СРЕДСТВА",
+      "aircraft": "ЛЕТАТЕЛНИ СРЕДСТВА",
+      "activity": "АКТИВНОСТ",
+      "primary": "ПЪРВИЧНА",
+      "trackedAircraft": "ПРОСЛЕДЕНО ЛЕТАТЕЛНИ СРЕДСТВА",
+      "vesselActivity": {
+        "exercise": "Морска практика",
+        "deployment": "Морско развръщане",
+        "patrol": "Патрул активност",
+        "transit": "Флот транзит",
+        "unknown": "Морска активност"
+      },
+      "moreVessels": "+{{count}} още кораби",
+      "vesselsCount": "{{count}} КОРАБИ",
+      "vessels": "КОРАБИ",
+      "trackedVessels": "ПРОСЛЕДЕНИ КОРАБИ"
+    },
+    "naturalEvent": {
+      "closed": "ЗАТВОРЕНА",
+      "active": "АКТИВНА",
+      "reported": "ДОКЛАДАНО",
+      "viewOnSource": "Преглед на {{source}}",
+      "attribution": "Данни: NASA EONET"
+    },
+    "port": {
+      "types": {
+        "container": "КОНТЕЙНЕР",
+        "oil": "НЕФТЕН ТЕРМИНАЛ",
+        "lng": "LNG ТЕРМИНАЛ",
+        "naval": "МОРСКА БАЗА",
+        "mixed": "СМЕСЕНА",
+        "bulk": "НАСИПНА"
+      },
+      "worldRank": "СВЕТОВЕН РАНГ"
+    },
+    "spaceport": {
+      "status": {
+        "active": "АКТИВНА",
+        "construction": "СТРОИТЕЛСТВО",
+        "inactive": "НЕАКТИВНА"
+      },
+      "launchActivity": "АКТИВНОСТ НА СТАРТИРАНЕ",
+      "description": "Стратегическо място за стартиране на космос. Стартирам кадънция и достъп възможности орбита са ключови геополитични показатели."
+    },
+    "mineral": {
+      "status": {
+        "producing": "ПРОИЗВОДСТВО",
+        "development": "РАЗВИТИЕ",
+        "exploration": "РАЗВЕДКА"
+      },
+      "projectSubtitle": "{{mineral}} ПРОЕКТ"
+    },
+    "stockExchange": {
+      "marketCap": "ПАЗАРНА КАПИТАЛИЗАЦИЯ"
+    },
+    "financialCenter": {
+      "gfciRank": "GFCI РАНГ",
+      "specialties": "СПЕЦИАЛНОСТИ"
+    },
+    "centralBank": {
+      "currency": "ВАЛУТА"
+    },
+    "commodityHub": {
+      "commodities": "СТОКИ"
+    },
+    "iranEvent": {
+      "relatedEvents": "Свързани събитие"
+    },
+    "hotspotSubtexts": {
+      "conflict_zone": "Конфликтна зона",
+      "dprk_watch": "DPRK часовник",
+      "egypt_gis": "Египет/GIS",
+      "energy_space": "Енергия/космос",
+      "financial_hub": "Финансов хъб",
+      "gchq_mi6": "GCHQ/MI6",
+      "greenland_intel": "Гренландия Intel",
+      "haiti_crisis": "Хаити криза",
+      "irgc_activity": "IRGC активност",
+      "insurgency_coups": "Въстание/преврати",
+      "iraq_pmf": "Ирак/PMF",
+      "kremlin_activity": "Кремълски активност",
+      "lebanon_hezbollah": "Ливан/Hezbollah",
+      "mossad_idf": "Mossad/IDF",
+      "nato_hq": "НАТО щабква",
+      "pla_mss_activity": "PLA/MSS активност",
+      "pentagon_pizza_index": "Пентагон пица индекс",
+      "piracy_conflict": "Пиратство/конфликт",
+      "qatar_al_udeid": "Катар/Al Udeid",
+      "saudi_gip_mbs": "Саудитска GIP/MBS",
+      "strait_watch": "Пролив часовник",
+      "syria_crisis": "Сирия криза",
+      "tech_ai_hub": "Технология/AI хъб",
+      "turkey_mit": "Турция/MIT",
+      "uae_ecsr": "UAE/ECSR",
+      "venezuela_crisis": "Венецуела криза",
+      "yemen_houthis": "Йемен/Houthis"
+    }
+  },
+  "signals": {
+    "context": {
+      "prediction_leads_news": {
+        "whyItMatters": "Пазари на предвиждане често цена в информация преди того, което се превръща в новини — търговци могат да имат ранен достъп до развитие.",
+        "actionableInsight": "Монитор за последни новини в следващите 1-6 часа, което могат да обяснят пазара преместване.",
+        "confidenceNote": "По-висока доверие, ако множество пазари на предвиждане движат се в също направление."
+      },
+      "news_leads_markets": {
+        "whyItMatters": "Новини се прелива по-бързо отколкото пазари реагираме — потенциал грешки цена възможност.",
+        "actionableInsight": "Часовник за пазара уловяне, както алгоритми и търговци пото новини.",
+        "confidenceNote": "По-силна сигнал, ако новини са от tier 1 проводни услуги."
+      },
+      "silent_divergence": {
+        "whyItMatters": "Пазар движи значително без всеки идентифицирани новини катализатор — възможна вътрешна знание, алгоритмна търговия или необходенни развитие.",
+        "actionableInsight": "Разследване алтернативна данни източники; новини могат да излязат по-късно обяснявам движа.",
+        "confidenceNote": "По-ниска доверие като причина е неизвестна — третираме като ранно предупреждение, не потвърдено разузнаване."
+      },
+      "velocity_spike": {
+        "whyItMatters": "История е ускоряване на всички множество новина източници — указания растящо значение и потенциал за пазара/политика влияние.",
+        "actionableInsight": "Това тема оправдана незабавни внимание; очакват официални изявления или пазара реакции.",
+        "confidenceNote": "По-висока доверие със повече източници; проверете, ако tier 1 източници са сред тях."
+      },
+      "keyword_spike": {
+        "whyItMatters": "Термин се поява при значително по-висок честота отколкото базова линия на всички множество източници, указване развиваща се история.",
+        "actionableInsight": "Преглед свързани заглавия и AI обобщение, след това коерелира със държава нестабилност и пазара движи.",
+        "confidenceNote": "Доверие нараства със по-силна базова линия умножител и по-широко източник многообразие."
+      },
+      "convergence": {
+        "whyItMatters": "Множество независима източник типове потвърждава същото събитие — кръстосана проверка увеличава вероятност точност.",
+        "actionableInsight": "Третираме това като високо-доверие разузнаване; триангулация намалява неправилен позитивен риск.",
+        "confidenceNote": "Много висока доверие, когато жица + правителство + разузнаване источники подравна."
+      },
+      "triangulation": {
+        "whyItMatters": "\"Ауторитета триъгълник\" (жица услуги, правителство източници, разузнаване специалисти) са подравна — това е золотен стандарт за последни новини потвърждение.",
+        "actionableInsight": "Това е осъществяваща се разузнаване; очакват пазара/политика реакции веднага.",
+        "confidenceNote": "Най-висока доверие сигнал в система — множество аторитета източници съглас."
+      },
+      "flow_drop": {
+        "whyItMatters": "Физическо стока поток нарушение открита — предложение ограничения често предшествам цена скокове.",
+        "actionableInsight": "Монитор енергия стока цени; оценявам предложение верига експозиция.",
+        "confidenceNote": "Доверие зависи на нарушение продължителност и алтернативна предложение наличност."
+      },
+      "flow_price_divergence": {
+        "whyItMatters": "Предложение нарушение новини не е още отразена в стока цени — потенциал информация край.",
+        "actionableInsight": "Или пазари са бавна реагираме, или нарушение е по-малко значимо отколкото докладваност.",
+        "confidenceNote": "Средно доверие — пазари могат да имат по-добро информация отколкото новина доклади."
+      },
+      "geo_convergence": {
+        "whyItMatters": "Множество новина събитие групиране около същото географско местоположение — потенциал скалиране или координира активност.",
+        "actionableInsight": "Увеличение мониториране приоритета за този регион; коерелира със спътник/AIS данни ако наличност.",
+        "confidenceNote": "По-висока доверие, ако събитие обхват множество източник типове и време периоди."
+      },
+      "explained_market_move": {
+        "whyItMatters": "Пазара движа има чиста новина катализатор — не мистерия, цена действие отразява известни информация.",
+        "actionableInsight": "Разберете нараци управляни движа; оценявам, ако реакция е пропорционална.",
+        "confidenceNote": "Висока доверие — новини и цена действие са коерелирана."
+      },
+      "hotspot_escalation": {
+        "whyItMatters": "Геополитична гореща точка показване значимо скалиране на базата новини активност, държава нестабилност, географска конвергенция и военна присъствие.",
+        "actionableInsight": "Увеличение мониториране приоритета; оценявам подалечни влияния на инфраструктура, пазари и регионална стабилност.",
+        "confidenceNote": "Доверие претегляно от множество данни източници — новини (35%), държава нестабилност (25%), гео-конвергенция (25%), военна активност (15%)."
+      },
+      "sector_cascade": {
+        "whyItMatters": "Пазара движа е каскад на всички свързани сектори — указание систематична реакция към катализиращо събитие.",
+        "actionableInsight": "Идентифицирайте първична катализатор; оценявам експозиция на всички коерелирана активи.",
+        "confidenceNote": "По-висока доверие, когато множество сектори движат със подобно скорост и направление."
+      },
+      "military_surge": {
+        "whyItMatters": "Военна транспорт активност значително по-горе базова линия — указание потенциал развръщане, хуманитарна операция или сила проекция.",
+        "actionableInsight": "Коерелира със регионална новини; оценявам близо база активност и морски движи.",
+        "confidenceNote": "По-висока доверие със устойчиво активност над множество часове и разнообразни летателни средства типове."
+      },
+      "fallback": {
+        "whyItMatters": "Сигнал открита.",
+        "actionableInsight": "Монитор за развитие.",
+        "confidenceNote": "Стандартно доверие."
+      }
+    }
+  },
+  "alerts": {
+    "instabilityRising": "{{country}} нестабилност растящо",
+    "instabilityFalling": "{{country}} нестабилност падащо",
+    "indexRose": "Индекс на нестабилност роза от {{from}} до {{to}} ({{change}}). Драйвер: {{driver}}",
+    "indexFell": "Индекс на нестабилност падна от {{from}} до {{to}} ({{change}}). Драйвер: {{driver}}",
+    "geoAlert": "Географски алерт: {{location}}",
+    "cascadeAlert": "Каскада инфраструктура алерт",
+    "infraAlert": "Инфраструктура алерт: {{name}}",
+    "countriesAffected": "{{count}} държави засегнати, най-висок влияние: {{impact}}",
+    "alert": "Алерт: {{location}}",
+    "multipleRegions": "Множество региони",
+    "trending": "\"{{term}}\" Тренд - {{count}} споменава в {{hours}}h",
+    "eventsDetected": "{{count}} събитие открита в регион ({{lat}}°, {{lon}}°)"
+  },
+  "intel": {
+    "topics": {
+      "military": {
+        "name": "Военна активност",
+        "description": "Военни практика, развръщане и операции"
+      },
+      "cyber": {
+        "name": "Киберугрози",
+        "description": "Киберполети, криптовалутни атаки и цифрови загрози"
+      },
+      "nuclear": {
+        "name": "Ядрена",
+        "description": "Ядрени програма, МААЕ инспекции, разпространение"
+      },
+      "sanctions": {
+        "name": "Санкции",
+        "description": "Икономически санкции и търговска ограничения"
+      },
+      "intelligence": {
+        "name": "Разузнаване",
+        "description": "Шпионаж, разузнавателни операции, надзор"
+      },
+      "maritime": {
+        "name": "Морска сигурност",
+        "description": "Морски операции, морски гърла на бутилката, морски маршрути"
+      }
+    }
+  },
+  "common": {
+    "loading": "Зареждане...",
+    "error": "Грешка",
+    "noData": "Няма налични данни",
+    "noDataAvailable": "Няма налични данни",
+    "updated": "Актуализирано преди миг",
+    "ago": "{{time}} преди",
+    "retrying": "Опитване отново...",
+    "failedToLoad": "Неуспешно зареждане на данни",
+    "noDataShort": "Няма данни",
+    "upstreamUnavailable": "Upstream API недостъпен — ще опита отново автоматично",
+    "loadingUcdpEvents": "Зареждане на събития на въоръжени конфликти",
+    "loadingStablecoins": "Зареждане на стабилни монети...",
+    "scanningThermalData": "Сканиране на термични данни",
+    "calculatingExposure": "Изчисляване на експозиция",
+    "computingSignals": "Изчисляване на сигнали...",
+    "loadingEtfData": "Зареждане на ETF данни...",
+    "loadingGiving": "Зареждане на глобални дарения данни",
+    "loadingDisplacement": "Зареждане на преместване данни",
+    "loadingClimateData": "Зареждане на климат данни",
+    "failedTechReadiness": "Неуспешно зареждане на технологична готовност данни",
+    "failedRiskOverview": "Неуспешно изчисляване на преглед на риск",
+    "failedPredictions": "Неуспешно зареждане на предвиждания",
+    "failedCII": "Неуспешно изчисляване на CII",
+    "failedDependencyGraph": "Неуспешно построяване на график на зависимост",
+    "failedIntelFeed": "Неуспешно зареждане на разузнаване хранилка",
+    "failedMarketData": "Неуспешно зареждане на пазара данни",
+    "failedSectorData": "Неуспешно зареждане на сектор данни",
+    "failedCommodities": "Неуспешно зареждане на стоки",
+    "failedCryptoData": "Неуспешно зареждане на крипто данни",
+    "rateLimitedMarket": "Пазара данни временно недостъпни (ограничена скорост) — опитване в скоро време",
+    "failedClusterNews": "Неуспешно групиране на новини",
+    "noNewsAvailable": "Няма налични новини",
+    "noActiveTechHubs": "Няма активни технологични центрове",
+    "noActiveGeoHubs": "Няма активни геополитични центрове",
+    "allSourcesDisabled": "Всички източници изключени",
+    "allIntelSourcesDisabled": "Всички разузнаване източники изключени",
+    "noEventsInCategory": "Няма събитие в тази категория",
+    "exportCsv": "Експортирай CSV",
+    "exportJson": "Експортирай JSON",
+    "exportData": "Експортирай данни",
+    "selectAll": "Избери всички",
+    "selectNone": "Не избирайте",
+    "unrest": "Неразбира",
+    "conflict": "Конфликт",
+    "security": "Сигурност",
+    "information": "Информация",
+    "shareStory": "Дели история",
+    "exportImage": "Експортирай изображение",
+    "exportPdf": "Експортирай PDF",
+    "new": "НОВО",
+    "live": "ЖИВО",
+    "cached": "КЕШИРАН",
+    "unavailable": "НЕДОСТЪПЕН",
+    "close": "Затвори",
+    "currentVariant": "(текущи)",
+    "retry": "Опитайте отново",
+    "refresh": "Обновяване",
+    "all": "Всички"
+  }
+}

@@ -128,6 +128,7 @@ const layers = {
   renewableInstallations: false,
   tradeRoutes: false,
   iranAttacks: false,
+  geopoliticalBoundaries: false,
   dayNight: false,
 };
 

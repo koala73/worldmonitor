@@ -12,6 +12,8 @@ import * as d3 from 'd3';
 import { type ProgressDataSet, type ProgressDataPoint } from '@/services/progress-data';
 import { getCSSColor } from '@/utils';
 import { replaceChildren } from '@/utils/dom-utils';
+import { escapeHtml } from '@/utils/sanitize';
+import { t } from '@/services/i18n';
 
 const CHART_MARGIN = { top: 8, right: 12, bottom: 24, left: 40 };
 const CHART_HEIGHT = 90;
@@ -40,7 +42,7 @@ export class ProgressChartsPanel extends Panel {
     // Filter out empty datasets
     const valid = datasets.filter(ds => ds.data.length > 0);
     if (valid.length === 0) {
-      this.content.innerHTML = '<div class="progress-charts-empty" style="padding:16px;color:var(--text-dim);text-align:center;">No progress data available</div>';
+      this.content.innerHTML = `<div class="progress-charts-empty" style="padding:16px;color:var(--text-dim);text-align:center;">${escapeHtml(t('components.progressCharts.noData'))}</div>`;
       return;
     }
 

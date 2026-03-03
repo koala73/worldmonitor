@@ -1,4 +1,9 @@
-declare const process: { env: Record<string, string | undefined> };
+const REDIS_OP_TIMEOUT_MS = 1_500;
+const REDIS_PIPELINE_TIMEOUT_MS = 5_000;
+
+function errMsg(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
 
 /**
  * Environment-based key prefix to avoid collisions when multiple deployments
@@ -26,12 +31,13 @@ export async function getCachedJson(key: string, raw = false): Promise<unknown |
     const finalKey = raw ? key : prefixKey(key);
     const resp = await fetch(`${url}/get/${encodeURIComponent(finalKey)}`, {
       headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(3_000),
+      signal: AbortSignal.timeout(REDIS_OP_TIMEOUT_MS),
     });
     if (!resp.ok) return null;
     const data = (await resp.json()) as { result?: string };
     return data.result ? JSON.parse(data.result) : null;
-  } catch {
+  } catch (err) {
+    console.warn('[redis] getCachedJson failed:', errMsg(err));
     return null;
   }
 }
@@ -45,9 +51,11 @@ export async function setCachedJson(key: string, value: unknown, ttlSeconds: num
     await fetch(`${url}/set/${encodeURIComponent(prefixKey(key))}/${encodeURIComponent(JSON.stringify(value))}/EX/${ttlSeconds}`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(3_000),
+      signal: AbortSignal.timeout(REDIS_OP_TIMEOUT_MS),
     });
-  } catch { /* best-effort */ }
+  } catch (err) {
+    console.warn('[redis] setCachedJson failed:', errMsg(err));
+  }
 }
 
 const NEG_SENTINEL = '__WM_NEG__';
@@ -70,7 +78,7 @@ export async function getCachedJsonBatch(keys: string[]): Promise<Map<string, un
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(pipeline),
-      signal: AbortSignal.timeout(3_000),
+      signal: AbortSignal.timeout(REDIS_PIPELINE_TIMEOUT_MS),
     });
     if (!resp.ok) return result;
 
@@ -84,7 +92,9 @@ export async function getCachedJsonBatch(keys: string[]): Promise<Map<string, un
         } catch { /* skip malformed */ }
       }
     }
-  } catch { /* best-effort */ }
+  } catch (err) {
+    console.warn('[redis] getCachedJsonBatch failed:', errMsg(err));
+  }
   return result;
 }
 
@@ -122,6 +132,10 @@ export async function cachedFetchJson<T extends object>(
         await setCachedJson(key, NEG_SENTINEL, negativeTtlSeconds);
       }
       return result;
+    })
+    .catch((err: unknown) => {
+      console.warn(`[redis] cachedFetchJson fetcher failed for "${key}":`, errMsg(err));
+      throw err;
     })
     .finally(() => {
       inflight.delete(key);
@@ -165,6 +179,10 @@ export async function cachedFetchJsonWithMeta<T extends object>(
       }
       return result;
     })
+    .catch((err: unknown) => {
+      console.warn(`[redis] cachedFetchJsonWithMeta fetcher failed for "${key}":`, errMsg(err));
+      throw err;
+    })
     .finally(() => {
       inflight.delete(key);
     });
@@ -191,12 +209,13 @@ export async function geoSearchByBox(
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(pipeline),
-      signal: AbortSignal.timeout(5_000),
+      signal: AbortSignal.timeout(REDIS_PIPELINE_TIMEOUT_MS),
     });
     if (!resp.ok) return [];
     const data = (await resp.json()) as Array<{ result?: string[] }>;
     return data[0]?.result ?? [];
-  } catch {
+  } catch (err) {
+    console.warn('[redis] geoSearchByBox failed:', errMsg(err));
     return [];
   }
 }
@@ -216,7 +235,7 @@ export async function getHashFieldsBatch(
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(pipeline),
-      signal: AbortSignal.timeout(5_000),
+      signal: AbortSignal.timeout(REDIS_PIPELINE_TIMEOUT_MS),
     });
     if (!resp.ok) return result;
     const data = (await resp.json()) as Array<{ result?: (string | null)[] }>;
@@ -226,6 +245,8 @@ export async function getHashFieldsBatch(
         if (values[i]) result.set(fields[i]!, values[i]!);
       }
     }
-  } catch { /* best-effort */ }
+  } catch (err) {
+    console.warn('[redis] getHashFieldsBatch failed:', errMsg(err));
+  }
   return result;
 }

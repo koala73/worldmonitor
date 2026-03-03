@@ -5,9 +5,6 @@
  * NOTE: Tariff indicators (TP_A_*) do NOT have a partner dimension.
  * The `partnerCountry` request field is accepted but not sent to the API.
  */
-
-declare const process: { env: Record<string, string | undefined> };
-
 import type {
   ServerContext,
   GetTariffTrendsRequest,

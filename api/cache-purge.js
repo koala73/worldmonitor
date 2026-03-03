@@ -8,7 +8,7 @@ const MAX_DELETIONS = 200;
 const MAX_SCAN_ITERATIONS = 5;
 
 const BLOCKLIST_PREFIXES = ['rl:', '__'];
-const DURABLE_DATA_PREFIXES = ['military:bases:', 'conflict:iran-events:'];
+const DURABLE_DATA_PREFIXES = ['military:bases:', 'conflict:iran-events:', 'conflict:ucdp-events:'];
 
 function getKeyPrefix() {
   const env = process.env.VERCEL_ENV;

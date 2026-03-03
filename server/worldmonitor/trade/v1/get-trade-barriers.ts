@@ -7,9 +7,6 @@
  * NOTE: The WTO ePing API (SPS/TBT notifications) is a separate subscription product.
  * This handler uses Timeseries API tariff data to surface sector-level trade barriers.
  */
-
-declare const process: { env: Record<string, string | undefined> };
-
 import type {
   ServerContext,
   GetTradeBarriersRequest,

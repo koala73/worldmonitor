@@ -71,7 +71,11 @@ if (variant === 'tech') {
 const resolveNodeTarget = () => {
   if (env.NODE_TARGET) return env.NODE_TARGET;
   if (os === 'windows') return 'x86_64-pc-windows-msvc';
-  if (os === 'linux') return 'x86_64-unknown-linux-gnu';
+  if (os === 'linux') {
+    if (process.arch === 'arm64') return 'aarch64-unknown-linux-gnu';
+    if (process.arch === 'x64') return 'x86_64-unknown-linux-gnu';
+    return '';
+  }
   if (os === 'macos') {
     if (process.arch === 'arm64') return 'aarch64-apple-darwin';
     if (process.arch === 'x64') return 'x86_64-apple-darwin';

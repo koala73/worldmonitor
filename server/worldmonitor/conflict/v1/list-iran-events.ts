@@ -17,8 +17,8 @@ export async function listIranEvents(
     if (cached && typeof cached === 'object' && 'events' in (cached as Record<string, unknown>)) {
       return cached as ListIranEventsResponse;
     }
-    return { events: [], scrapedAt: 0 };
+    return { events: [], scrapedAt: '0' };
   } catch {
-    return { events: [], scrapedAt: 0 };
+    return { events: [], scrapedAt: '0' };
   }
 }

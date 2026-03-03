@@ -35,6 +35,39 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/news/v1/summarize-article-cache:
+        get:
+            tags:
+                - NewsService
+            summary: GetSummarizeArticleCache
+            description: GetSummarizeArticleCache looks up a cached summary by deterministic key (CDN-cacheable GET).
+            operationId: GetSummarizeArticleCache
+            parameters:
+                - name: cache_key
+                  in: query
+                  description: Deterministic cache key computed by buildSummaryCacheKey().
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SummarizeArticleResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
     /api/news/v1/list-feed-digest:
         get:
             tags:
@@ -136,6 +169,15 @@ components:
             required:
                 - provider
             description: SummarizeArticleRequest specifies parameters for LLM article summarization.
+        SummarizeStatus:
+            type: string
+            enum:
+                - SUMMARIZE_STATUS_UNSPECIFIED
+                - SUMMARIZE_STATUS_SUCCESS
+                - SUMMARIZE_STATUS_CACHED
+                - SUMMARIZE_STATUS_SKIPPED
+                - SUMMARIZE_STATUS_ERROR
+            description: SummarizeStatus indicates the outcome of a summarization request.
         SummarizeArticleResponse:
             type: object
             properties:
@@ -148,9 +190,6 @@ components:
                 provider:
                     type: string
                     description: Provider that produced the result (or "cache").
-                cached:
-                    type: boolean
-                    description: Whether the result came from Redis cache.
                 tokens:
                     type: integer
                     format: int32
@@ -158,19 +197,25 @@ components:
                 fallback:
                     type: boolean
                     description: Whether the client should try the next provider in the fallback chain.
-                skipped:
-                    type: boolean
-                    description: Whether this provider was skipped (credentials missing).
-                reason:
-                    type: string
-                    description: Human-readable skip/error reason.
                 error:
                     type: string
                     description: Error message if the request failed.
                 errorType:
                     type: string
                     description: Error type/name (e.g. "TypeError").
+                status:
+                    $ref: '#/components/schemas/SummarizeStatus'
+                statusDetail:
+                    type: string
+                    description: Human-readable detail for non-success statuses (error message, skip reason, etc.).
             description: SummarizeArticleResponse contains the LLM summarization result.
+        GetSummarizeArticleCacheRequest:
+            type: object
+            properties:
+                cacheKey:
+                    type: string
+                    description: Deterministic cache key computed by buildSummaryCacheKey().
+            description: GetSummarizeArticleCacheRequest looks up a pre-computed summary by cache key.
         ListFeedDigestRequest:
             type: object
             properties:

@@ -26,6 +26,7 @@ const keyBackedFeatures: RuntimeFeatureId[] = [
   'economicFred',
   'internetOutages',
   'acledConflicts',
+  'ucdpConflicts',
   'abuseChThreatIntel',
   'alienvaultOtxThreatIntel',
   'abuseIpdbThreatIntel',

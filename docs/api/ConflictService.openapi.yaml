@@ -134,7 +134,7 @@ paths:
                 - name: country_code
                   in: query
                   description: ISO 3166-1 alpha-2 country code (e.g., "YE", "SD", "SO").
-                  required: true
+                  required: false
                   schema:
                     type: string
             responses:
@@ -403,9 +403,7 @@ components:
                 countryCode:
                     type: string
                     pattern: ^[A-Z]{2}$
-                    description: |-
-                        ISO 3166-1 alpha-2 country code (e.g., "YE", "SD", "SO").
-                         This is a path parameter — no query annotation needed.
+                    description: ISO 3166-1 alpha-2 country code (e.g., "YE", "SD", "SO").
             required:
                 - countryCode
             description: GetHumanitarianSummaryRequest specifies which country to retrieve the humanitarian summary for.

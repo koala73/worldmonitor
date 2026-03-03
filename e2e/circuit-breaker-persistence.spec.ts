@@ -356,4 +356,55 @@ test.describe('circuit breaker persistent cache', () => {
     expect(result.result).toBe(777);
     expect(result.dataState).toBe('unavailable');
   });
+
+  test('concurrent execute() calls with stale cache spawn exactly one background refresh', async ({ page }) => {
+    await page.goto('/tests/runtime-harness.html');
+
+    const result = await page.evaluate(async () => {
+      const { CircuitBreaker } = await import('/src/utils/circuit-breaker.ts');
+      const { deletePersistentCache } = await import('/src/services/persistent-cache.ts');
+
+      const name = `test-swr-dedup-${Date.now()}`;
+      const cacheKey = `breaker:${name}`;
+
+      const breaker = new CircuitBreaker<{ value: number }>({
+        name,
+        cacheTtlMs: 100, // very short TTL so the cache goes stale quickly
+        persistCache: false,
+      });
+
+      // Seed in-memory cache with a "live" result
+      await breaker.execute(async () => ({ value: 1 }), { value: 0 });
+
+      // Wait for the TTL to expire, making the cached entry stale
+      await new Promise((r) => setTimeout(r, 200));
+
+      let fetchCount = 0;
+      // Slow fetch so all three concurrent calls definitely overlap
+      const slowFetch = async (): Promise<{ value: number }> => {
+        fetchCount++;
+        await new Promise((r) => setTimeout(r, 300));
+        return { value: fetchCount };
+      };
+
+      // Fire three concurrent execute() calls while cache is stale
+      await Promise.all([
+        breaker.execute(slowFetch, { value: 0 }),
+        breaker.execute(slowFetch, { value: 0 }),
+        breaker.execute(slowFetch, { value: 0 }),
+      ]);
+
+      // Allow the single background refresh to complete
+      await new Promise((r) => setTimeout(r, 500));
+
+      try {
+        return { fetchCount };
+      } finally {
+        await deletePersistentCache(cacheKey);
+      }
+    });
+
+    // Only one background fetch should have been initiated despite three concurrent callers
+    expect(result.fetchCount).toBe(1);
+  });
 });

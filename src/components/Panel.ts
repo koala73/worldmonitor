@@ -74,7 +74,7 @@ function getColSpan(element: HTMLElement): number {
 }
 
 function getGridColumnCount(element: HTMLElement): number {
-  const grid = element.closest('.panels-grid') as HTMLElement | null;
+  const grid = (element.closest('.panels-grid') || element.closest('.map-bottom-grid')) as HTMLElement | null;
   if (!grid) return 3;
   const style = window.getComputedStyle(grid);
   const template = style.gridTemplateColumns;

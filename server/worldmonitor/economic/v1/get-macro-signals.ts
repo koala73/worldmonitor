@@ -40,7 +40,7 @@ function buildFallbackResult(): GetMacroSignalsResponse {
       macroRegime: { status: 'UNKNOWN' },
       technicalTrend: { status: 'UNKNOWN', sparkline: [] },
       hashRate: { status: 'UNKNOWN' },
-      miningCost: { status: 'UNKNOWN' },
+      priceMomentum: { status: 'UNKNOWN' },
       fearGreed: { status: 'UNKNOWN', history: [] },
     },
     meta: { qqqSparkline: [] },
@@ -137,10 +137,10 @@ async function computeMacroSignals(): Promise<GetMacroSignalsResponse> {
     }
   }
 
-  // 6. Mining Cost (hashrate-based model)
-  let miningStatus = 'UNKNOWN';
-  if (btcCurrent && hashChange !== null) {
-    miningStatus = btcCurrent > 60000 ? 'PROFITABLE' : btcCurrent > 40000 ? 'TIGHT' : 'SQUEEZE';
+  // 6. Price Momentum (Mayer Multiple)
+  let momentumStatus = 'UNKNOWN';
+  if (mayerMultiple !== null) {
+    momentumStatus = mayerMultiple > 1.0 ? 'STRONG' : mayerMultiple > 0.8 ? 'MODERATE' : 'WEAK';
   }
 
   // 7. Fear & Greed
@@ -172,7 +172,7 @@ async function computeMacroSignals(): Promise<GetMacroSignalsResponse> {
     { name: 'Macro Regime', status: regimeStatus, bullish: regimeStatus === 'RISK-ON' },
     { name: 'Technical Trend', status: trendStatus, bullish: trendStatus === 'BULLISH' },
     { name: 'Hash Rate', status: hashStatus, bullish: hashStatus === 'GROWING' },
-    { name: 'Mining Cost', status: miningStatus, bullish: miningStatus === 'PROFITABLE' },
+    { name: 'Price Momentum', status: momentumStatus, bullish: momentumStatus === 'STRONG' },
     { name: 'Fear & Greed', status: fgLabel, bullish: fgValue !== undefined && fgValue > 50 },
   ];
 
@@ -219,7 +219,7 @@ async function computeMacroSignals(): Promise<GetMacroSignalsResponse> {
         status: hashStatus,
         change30d: hashChange ?? undefined,
       },
-      miningCost: { status: miningStatus },
+      priceMomentum: { status: momentumStatus },
       fearGreed: {
         status: fgLabel,
         value: fgValue,

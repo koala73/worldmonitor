@@ -28,6 +28,7 @@ const VESSEL_STALE_TIME = 60 * 60 * 1000; // 1 hour - consider vessel stale
 // Tracking state
 let isTracking = false;
 let messageCount = 0;
+let historyCleanupIntervalId: ReturnType<typeof setInterval> | null = null;
 
 // Circuit breaker
 const breaker = createCircuitBreaker<{ vessels: MilitaryVessel[]; clusters: MilitaryVesselCluster[] }>({
@@ -489,7 +490,15 @@ function clusterVessels(vessels: MilitaryVessel[]): MilitaryVesselCluster[] {
 
 // Initialize cleanup interval
 if (typeof window !== 'undefined') {
-  setInterval(cleanup, HISTORY_CLEANUP_INTERVAL);
+  historyCleanupIntervalId = setInterval(cleanup, HISTORY_CLEANUP_INTERVAL);
+}
+
+/** Stop the periodic history cleanup (for teardown / testing). */
+export function stopVesselHistoryCleanup(): void {
+  if (historyCleanupIntervalId) {
+    clearInterval(historyCleanupIntervalId);
+    historyCleanupIntervalId = null;
+  }
 }
 
 /**

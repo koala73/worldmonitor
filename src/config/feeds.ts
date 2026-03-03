@@ -59,6 +59,17 @@ export const SOURCE_TIERS: Record<string, number> = {
   'Svenska Dagbladet': 2,
   'Reuters World': 1,
   'Reuters Business': 1,
+  'Reuters US': 1,
+  'Fox News': 2,
+  'NBC News': 2,
+  'CBS News': 2,
+  'ABC News': 2,
+  'PBS NewsHour': 2,
+  'Wall Street Journal': 1,
+  'The Hill': 3,
+  'The National': 2,
+  'Yonhap News': 2,
+  'Chosun Ilbo': 2,
   'OpenAI News': 3,
   // Portuguese
   'Brasil Paralelo': 2,
@@ -457,9 +468,17 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'CNN World', url: rss('https://news.google.com/rss/search?q=site:cnn.com+world+news+when:1d&hl=en-US&gl=US&ceid=US:en') },
   ],
   us: [
+    { name: 'Reuters US', url: rss('https://news.google.com/rss/search?q=site:reuters.com+US&hl=en-US&gl=US&ceid=US:en') },
     { name: 'NPR News', url: rss('https://feeds.npr.org/1001/rss.xml') },
-    { name: 'Politico', url: rss('https://news.google.com/rss/search?q=site:politico.com+when:1d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'PBS NewsHour', url: rss('https://www.pbs.org/newshour/feeds/rss/headlines') },
+    { name: 'ABC News', url: rss('https://feeds.abcnews.com/abcnews/topstories') },
+    { name: 'CBS News', url: rss('https://www.cbsnews.com/latest/rss/main') },
+    { name: 'NBC News', url: rss('https://feeds.nbcnews.com/nbcnews/public/news') },
+    { name: 'Wall Street Journal', url: rss('https://feeds.content.dowjones.io/public/rss/RSSUSnews') },
+    { name: 'Politico', url: rss('https://rss.politico.com/politics-news.xml') },
+    { name: 'The Hill', url: rss('https://thehill.com/news/feed') },
     { name: 'Axios', url: rss('https://api.axios.com/feed/') },
+    { name: 'Fox News', url: rss('https://moxie.foxnews.com/google-publisher/us.xml') },
   ],
   europe: [
     {
@@ -539,16 +558,16 @@ const FULL_FEEDS: Record<string, Feed[]> = {
   middleeast: [
     { name: 'BBC Middle East', url: rss('https://feeds.bbci.co.uk/news/world/middle_east/rss.xml') },
     { name: 'Al Jazeera', url: { en: rss('https://www.aljazeera.com/xml/rss/all.xml'), ar: rss('https://www.aljazeera.net/aljazeerarss/a7c186be-1adb-4b11-a982-4783e765316e/4e17ecdc-8fb9-40de-a5d6-d00f72384a51') } },
-    // AlArabiya blocks cloud IPs (Cloudflare), use Google News fallback
-    { name: 'Al Arabiya', url: rss('https://news.google.com/rss/search?q=site:english.alarabiya.net+when:2d&hl=en-US&gl=US&ceid=US:en') },
+    // AlArabiya EN blocks cloud IPs — Google News fallback; AR RSS is direct
+    { name: 'Al Arabiya', url: { en: rss('https://news.google.com/rss/search?q=site:english.alarabiya.net+when:2d&hl=en-US&gl=US&ceid=US:en'), ar: rss('https://www.alarabiya.net/tools/mrss/?cat=main') } },
     // Arab News and Times of Israel removed — 403 from cloud IPs
     { name: 'Guardian ME', url: rss('https://www.theguardian.com/world/middleeast/rss') },
     { name: 'BBC Persian', url: rss('http://feeds.bbci.co.uk/persian/tv-and-radio-37434376/rss.xml') },
     { name: 'Iran International', url: rss('https://news.google.com/rss/search?q=site:iranintl.com+when:2d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Fars News', url: rss('https://news.google.com/rss/search?q=site:farsnews.ir+when:2d&hl=en-US&gl=US&ceid=US:en') },
-    { name: 'L\'Orient-Le Jour', url: rss('https://news.google.com/rss/search?q=site:lorientlejour.com+when:1d&hl=fr&gl=LB&ceid=LB:fr'), lang: 'fr' },
     { name: 'Haaretz', url: rss('https://news.google.com/rss/search?q=site:haaretz.com+when:7d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Arab News', url: rss('https://news.google.com/rss/search?q=site:arabnews.com+when:7d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'The National', url: rss('https://news.google.com/rss/search?q=site:thenationalnews.com+when:2d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Oman Observer', url: rss('https://www.omanobserver.om/rssFeed/1') },
     { name: 'Asharq Business', url: rss('https://asharqbusiness.com/rss.xml') },
     { name: 'Asharq News', url: rss('https://asharq.com/snapchat/rss.xml'), lang: 'ar' },
@@ -646,13 +665,12 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'Folha de S.Paulo', url: rss('https://feeds.folha.uol.com.br/emcimadahora/rss091.xml'), lang: 'pt' },
     { name: 'Brasil Paralelo', url: rss('https://www.brasilparalelo.com.br/noticias/rss.xml'), lang: 'pt' },
     { name: 'El Tiempo', url: rss('https://www.eltiempo.com/rss/mundo_latinoamerica.xml'), lang: 'es' },
-    { name: 'El Universal', url: rss('https://news.google.com/rss/search?q=site:eluniversal.com.mx+when:1d&hl=es-419&gl=MX&ceid=MX:es-419'), lang: 'es' },
     { name: 'La Silla Vacía', url: rss('https://www.lasillavacia.com/rss') },
+    { name: 'Primicias', url: rss('https://www.primicias.ec/feed/'), lang: 'es' },
+    { name: 'Infobae Americas', url: rss('https://www.infobae.com/feeds/rss/'), lang: 'es' },
+    { name: 'El Universo', url: rss('https://www.eluniverso.com/arc/outboundfeeds/rss/category/noticias/?outputType=xml'), lang: 'es' },
     // Mexico
     { name: 'Mexico News Daily', url: rss('https://mexiconewsdaily.com/feed/') },
-    { name: 'Animal Político', url: rss('https://news.google.com/rss/search?q=site:animalpolitico.com+when:1d&hl=es-419&gl=MX&ceid=MX:es-419'), lang: 'es' },
-    { name: 'Proceso', url: rss('https://news.google.com/rss/search?q=site:proceso.com.mx+when:1d&hl=es-419&gl=MX&ceid=MX:es-419'), lang: 'es' },
-    { name: 'Milenio', url: rss('https://news.google.com/rss/search?q=site:milenio.com+when:1d&hl=es-419&gl=MX&ceid=MX:es-419'), lang: 'es' },
     { name: 'Mexico Security', url: rss('https://news.google.com/rss/search?q=(Mexico+cartel+OR+Mexico+violence+OR+Mexico+troops+OR+narco+Mexico)+when:2d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'AP Mexico', url: rss('https://news.google.com/rss/search?q=site:apnews.com+Mexico+when:3d&hl=en-US&gl=US&ceid=US:en') },
     // LatAm Security
@@ -682,6 +700,9 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     // Vietnam
     { name: 'VnExpress', url: rss('https://vnexpress.net/rss/tin-moi-nhat.rss'), lang: 'vi' },
     { name: 'Tuoi Tre News', url: rss('https://tuoitrenews.vn/rss'), lang: 'vi' },
+    // Korea
+    { name: 'Yonhap News', url: rss('https://www.yonhapnewstv.co.kr/browse/feed/'), lang: 'ko' },
+    { name: 'Chosun Ilbo', url: rss('https://www.chosun.com/arc/outboundfeeds/rss/?outputType=xml'), lang: 'ko' },
     // Australia
     { name: 'ABC News Australia', url: rss('https://www.abc.net.au/news/feed/2942460/rss.xml') },
     { name: 'Guardian Australia', url: rss('https://www.theguardian.com/australia-news/rss') },
@@ -1133,6 +1154,79 @@ export const INTEL_SOURCES: Feed[] = [
   { name: 'FAO GIEWS', url: rss('https://news.google.com/rss/search?q=site:fao.org+GIEWS+food+security+when:30d&hl=en-US&gl=US&ceid=US:en'), type: 'economic' },
   { name: 'EU ISS', url: rss('https://news.google.com/rss/search?q=site:iss.europa.eu+when:7d&hl=en-US&gl=US&ceid=US:en'), type: 'intl' },
 ];
+
+// Default-enabled sources per panel (Tier 1+2 priority, ≥8 per panel)
+export const DEFAULT_ENABLED_SOURCES: Record<string, string[]> = {
+  politics: ['BBC World', 'Guardian World', 'AP News', 'Reuters World', 'CNN World'],
+  us: ['Reuters US', 'NPR News', 'PBS NewsHour', 'ABC News', 'CBS News', 'NBC News', 'Wall Street Journal', 'Politico', 'The Hill'],
+  europe: ['France 24', 'EuroNews', 'Le Monde', 'DW News', 'Tagesschau', 'ANSA', 'NOS Nieuws', 'SVT Nyheter'],
+  middleeast: ['BBC Middle East', 'Al Jazeera', 'Al Arabiya', 'Guardian ME', 'BBC Persian', 'Iran International', 'Haaretz', 'Asharq News', 'The National'],
+  africa: ['BBC Africa', 'News24', 'Africanews', 'Jeune Afrique', 'Africa News', 'Premium Times', 'Channels TV', 'Sahel Crisis'],
+  latam: ['BBC Latin America', 'Reuters LatAm', 'InSight Crime', 'Mexico News Daily', 'Clarín', 'Primicias', 'Infobae Americas', 'El Universo'],
+  asia: ['BBC Asia', 'The Diplomat', 'South China Morning Post', 'Reuters Asia', 'Nikkei Asia', 'CNA', 'Asia News', 'The Hindu'],
+  tech: ['Hacker News', 'Ars Technica', 'The Verge', 'MIT Tech Review'],
+  ai: ['AI News', 'VentureBeat AI', 'The Verge AI', 'MIT Tech Review', 'ArXiv AI'],
+  finance: ['CNBC', 'MarketWatch', 'Yahoo Finance', 'Financial Times', 'Reuters Business'],
+  gov: ['White House', 'State Dept', 'Pentagon', 'UN News', 'CISA', 'Treasury', 'DOJ', 'CDC'],
+  layoffs: ['Layoffs.fyi', 'TechCrunch Layoffs', 'Layoffs News'],
+  thinktanks: ['Foreign Policy', 'Atlantic Council', 'Foreign Affairs', 'CSIS', 'RAND', 'Brookings', 'Carnegie', 'War on the Rocks'],
+  crisis: ['CrisisWatch', 'IAEA', 'WHO', 'UNHCR'],
+  energy: ['Oil & Gas', 'Nuclear Energy', 'Reuters Energy', 'Mining & Resources'],
+};
+
+export const DEFAULT_ENABLED_INTEL: string[] = [
+  'Defense One', 'Breaking Defense', 'The War Zone', 'Defense News',
+  'Military Times', 'USNI News', 'Bellingcat', 'Krebs Security',
+];
+
+export function getAllDefaultEnabledSources(): Set<string> {
+  const s = new Set<string>();
+  for (const names of Object.values(DEFAULT_ENABLED_SOURCES)) names.forEach(n => s.add(n));
+  DEFAULT_ENABLED_INTEL.forEach(n => s.add(n));
+  return s;
+}
+
+/** Sources boosted by locale (feeds tagged with matching `lang` or multi-URL key). */
+export function getLocaleBoostedSources(locale: string): Set<string> {
+  const lang = (locale.split('-')[0] ?? 'en').toLowerCase();
+  const boosted = new Set<string>();
+  if (lang === 'en') return boosted;
+  const allFeeds = [...Object.values(FULL_FEEDS).flat(), ...INTEL_SOURCES];
+  for (const f of allFeeds) {
+    if (f.lang === lang) boosted.add(f.name);
+    if (typeof f.url === 'object' && lang in f.url) boosted.add(f.name);
+  }
+  return boosted;
+}
+
+export function computeDefaultDisabledSources(locale?: string): string[] {
+  const enabled = getAllDefaultEnabledSources();
+  if (locale) {
+    for (const name of getLocaleBoostedSources(locale)) enabled.add(name);
+  }
+  const all = new Set<string>();
+  for (const feeds of Object.values(FULL_FEEDS)) for (const f of feeds) all.add(f.name);
+  for (const f of INTEL_SOURCES) all.add(f.name);
+  return [...all].filter(name => !enabled.has(name));
+}
+
+export function getTotalFeedCount(): number {
+  const all = new Set<string>();
+  for (const feeds of Object.values(FULL_FEEDS)) for (const f of feeds) all.add(f.name);
+  for (const f of INTEL_SOURCES) all.add(f.name);
+  return all.size;
+}
+
+if (import.meta.env.DEV) {
+  const allFeedNames = new Set<string>();
+  for (const feeds of Object.values(FULL_FEEDS)) for (const f of feeds) allFeedNames.add(f.name);
+  for (const f of INTEL_SOURCES) allFeedNames.add(f.name);
+  const defaultEnabled = getAllDefaultEnabledSources();
+  for (const name of defaultEnabled) {
+    if (!allFeedNames.has(name)) console.error(`[feeds] DEFAULT_ENABLED name "${name}" not found in FULL_FEEDS!`);
+  }
+  console.log(`[feeds] ${defaultEnabled.size} unique default-enabled sources / ${allFeedNames.size} total`);
+}
 
 // Keywords that trigger alert status - must be specific to avoid false positives
 export const ALERT_KEYWORDS = [

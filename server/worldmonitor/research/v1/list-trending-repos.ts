@@ -12,7 +12,7 @@ import type {
   GithubRepo,
 } from '../../../../src/generated/server/worldmonitor/research/v1/service_server';
 
-import { CHROME_UA } from '../../../_shared/constants';
+import { CHROME_UA, clampInt } from '../../../_shared/constants';
 import { cachedFetchJson } from '../../../_shared/redis';
 
 const REDIS_CACHE_KEY = 'research:trending:v1';
@@ -23,7 +23,7 @@ const REDIS_CACHE_TTL = 3600; // 1 hr — daily trending data
 async function fetchTrendingRepos(req: ListTrendingReposRequest): Promise<GithubRepo[]> {
   const language = req.language || 'python';
   const period = req.period || 'daily';
-  const pageSize = req.pageSize || 50;
+  const pageSize = clampInt(req.pageSize, 50, 1, 100);
 
   // Primary API
   const primaryUrl = `https://api.gitterapp.com/repositories?language=${language}&since=${period}`;
@@ -73,7 +73,7 @@ export async function listTrendingRepos(
   req: ListTrendingReposRequest,
 ): Promise<ListTrendingReposResponse> {
   try {
-    const cacheKey = `${REDIS_CACHE_KEY}:${req.language || 'python'}:${req.period || 'daily'}:${req.pageSize || 50}`;
+    const cacheKey = `${REDIS_CACHE_KEY}:${req.language || 'python'}:${req.period || 'daily'}:${clampInt(req.pageSize, 50, 1, 100)}`;
     const result = await cachedFetchJson<ListTrendingReposResponse>(cacheKey, REDIS_CACHE_TTL, async () => {
       const repos = await fetchTrendingRepos(req);
       return repos.length > 0 ? { repos, pagination: undefined } : null;

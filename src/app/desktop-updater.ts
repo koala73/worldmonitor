@@ -124,7 +124,7 @@ export class DesktopUpdater implements AppModule {
       .replace('arm64', 'aarch64');
 
     if (normalizedOs === 'windows') {
-      return normalizedArch === 'x86_64' ? 'windows-exe' : null;
+      return normalizedArch === 'x86_64' ? 'windows-msi' : null;
     }
 
     if (normalizedOs === 'macos' || normalizedOs === 'darwin') {
@@ -182,6 +182,12 @@ export class DesktopUpdater implements AppModule {
       <button class="update-toast-dismiss" data-action="dismiss" aria-label="Dismiss">\u00d7</button>
     `;
 
+    const dismissToast = () => {
+      localStorage.setItem(`wm-update-dismissed-${version}`, '1');
+      toast.classList.remove('visible');
+      setTimeout(() => toast.remove(), 300);
+    };
+
     toast.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
       const action = target.closest<HTMLElement>('[data-action]')?.dataset.action;
@@ -195,11 +201,10 @@ export class DesktopUpdater implements AppModule {
         } else {
           window.open(url, '_blank', 'noopener');
         }
+        dismissToast();
       } else if (action === 'dismiss') {
         trackUpdateDismissed(version);
-        localStorage.setItem(`wm-update-dismissed-${version}`, '1');
-        toast.classList.remove('visible');
-        setTimeout(() => toast.remove(), 300);
+        dismissToast();
       }
     });
 

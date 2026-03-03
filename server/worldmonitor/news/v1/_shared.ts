@@ -1,11 +1,19 @@
-declare const process: { env: Record<string, string | undefined> };
-
 // ========================================================================
 // Constants
 // ========================================================================
 
 export const CACHE_TTL_SECONDS = 86400; // 24 hours
-export const CACHE_VERSION = 'v5';
+
+// ========================================================================
+// Shared cache-key logic (used by both server handler and client GET lookup)
+// ========================================================================
+
+export {
+  CACHE_VERSION,
+  canonicalizeSummaryInputs,
+  buildSummaryCacheKey,
+  buildSummaryCacheKey as getCacheKey,
+} from '../../../../src/utils/summary-cache-key';
 
 // ========================================================================
 // Hash utility (unified FNV-1a 52-bit -- H-7 fix)
@@ -13,31 +21,6 @@ export const CACHE_VERSION = 'v5';
 
 import { hashString } from '../../../_shared/hash';
 export { hashString };
-
-// ========================================================================
-// Cache key builder (ported from _summarize-handler.js)
-// ========================================================================
-
-export function getCacheKey(
-  headlines: string[],
-  mode: string,
-  geoContext: string = '',
-  variant: string = 'full',
-  lang: string = 'en',
-): string {
-  const sorted = headlines.slice(0, 5).sort().join('|');
-  const geoHash = geoContext ? ':g' + hashString(geoContext).slice(0, 6) : '';
-  const hash = hashString(`${mode}:${sorted}`);
-  const normalizedVariant = typeof variant === 'string' && variant ? variant.toLowerCase() : 'full';
-  const normalizedLang = typeof lang === 'string' && lang ? lang.toLowerCase() : 'en';
-
-  if (mode === 'translate') {
-    const targetLang = normalizedVariant || normalizedLang;
-    return `summary:${CACHE_VERSION}:${mode}:${targetLang}:${hash}${geoHash}`;
-  }
-
-  return `summary:${CACHE_VERSION}:${mode}:${normalizedVariant}:${normalizedLang}:${hash}${geoHash}`;
-}
 
 // ========================================================================
 // Headline deduplication (used by SummarizeArticle)

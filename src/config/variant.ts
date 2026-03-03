@@ -1,11 +1,23 @@
 export const SITE_VARIANT: string = (() => {
-  const env = import.meta.env.VITE_VARIANT || 'full';
-  // Build-time variant (non-full) takes priority — each deployment is variant-specific.
-  // Only fall back to localStorage when env is 'full' (allows desktop app variant switching).
-  if (env !== 'full') return env;
-  if (typeof window !== 'undefined') {
+  if (typeof window === 'undefined') return import.meta.env.VITE_VARIANT || 'full';
+
+  const isTauri = '__TAURI_INTERNALS__' in window || '__TAURI__' in window;
+  if (isTauri) {
     const stored = localStorage.getItem('worldmonitor-variant');
     if (stored === 'tech' || stored === 'full' || stored === 'finance' || stored === 'happy') return stored;
+    return import.meta.env.VITE_VARIANT || 'full';
   }
-  return env;
+
+  const h = location.hostname;
+  if (h.startsWith('tech.')) return 'tech';
+  if (h.startsWith('finance.')) return 'finance';
+  if (h.startsWith('happy.')) return 'happy';
+
+  if (h === 'localhost' || h === '127.0.0.1') {
+    const stored = localStorage.getItem('worldmonitor-variant');
+    if (stored === 'tech' || stored === 'full' || stored === 'finance' || stored === 'happy') return stored;
+    return import.meta.env.VITE_VARIANT || 'full';
+  }
+
+  return 'full';
 })();

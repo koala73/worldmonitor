@@ -74,7 +74,7 @@ export async function renderStoryToCanvas(data: StoryData): Promise<HTMLCanvasEl
   ctx.fillStyle = '#666';
   ctx.font = '700 30px Inter, system-ui, sans-serif';
   ctx.letterSpacing = '6px';
-  ctx.fillText('WORLDMONITOR', textX, y + 26);
+  ctx.fillText('WORLDMONITOR.APP', textX, y + 26);
   ctx.letterSpacing = '0px';
   const dateStr = new Date().toLocaleDateString(getLocale(), { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
   ctx.font = '400 24px Inter, system-ui, sans-serif';

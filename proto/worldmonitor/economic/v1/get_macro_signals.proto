@@ -37,8 +37,8 @@ message MacroSignals {
   TechnicalTrendSignal technical_trend = 4;
   // Bitcoin mining hash rate momentum.
   HashRateSignal hash_rate = 5;
-  // Mining profitability estimate.
-  MiningCostSignal mining_cost = 6;
+  // Price momentum via Mayer Multiple.
+  PriceMomentumSignal price_momentum = 6;
   // Crypto Fear & Greed index.
   FearGreedSignal fear_greed = 7;
 }
@@ -99,9 +99,9 @@ message HashRateSignal {
   optional double change_30d = 2;
 }
 
-// MiningCostSignal estimates mining profitability from BTC price thresholds.
-message MiningCostSignal {
-  // "PROFITABLE", "TIGHT", "SQUEEZE", or "UNKNOWN".
+// PriceMomentumSignal uses the Mayer Multiple (price/SMA200) as a market-adaptive signal.
+message PriceMomentumSignal {
+  // "STRONG", "MODERATE", "WEAK", or "UNKNOWN".
   string status = 1;
 }
 

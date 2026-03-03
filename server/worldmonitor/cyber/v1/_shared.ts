@@ -13,9 +13,6 @@
  * No caching in handler (client-side polling manages refresh intervals).
  * GeoIP hydration uses in-memory cache for resolved IPs within a process lifetime.
  */
-
-declare const process: { env: Record<string, string | undefined> };
-
 import type {
   CyberThreat,
   CyberThreatType,
@@ -41,21 +38,18 @@ const C2INTEL_URL = 'https://raw.githubusercontent.com/drb-ra/C2IntelFeeds/maste
 const OTX_INDICATORS_URL = 'https://otx.alienvault.com/api/v1/indicators/export?type=IPv4&modified_since=';
 const ABUSEIPDB_BLACKLIST_URL = 'https://api.abuseipdb.com/api/v2/blacklist';
 
-const UPSTREAM_TIMEOUT_MS = 8000;
-const GEO_MAX_UNRESOLVED = 250;
-const GEO_CONCURRENCY = 16;
-const GEO_OVERALL_TIMEOUT_MS = 15_000;
-const GEO_PER_IP_TIMEOUT_MS = 3000;
+const UPSTREAM_TIMEOUT_MS = 7000;
+const GEO_MAX_UNRESOLVED = 200;
+const GEO_CONCURRENCY = 12;
+const GEO_OVERALL_TIMEOUT_MS = 12_000;
+const GEO_PER_IP_TIMEOUT_MS = 1500;
 const GEO_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 // ========================================================================
 // Helper utilities
 // ========================================================================
 
-export function clampInt(value: number | undefined, fallback: number, min: number, max: number): number {
-  if (!Number.isFinite(value)) return fallback;
-  return Math.max(min, Math.min(max, Math.floor(value as number)));
-}
+export { clampInt } from '../../../_shared/constants';
 
 function cleanString(value: unknown, maxLen = 120): string {
   if (typeof value !== 'string') return '';
@@ -777,4 +771,3 @@ export function toProtoCyberThreat(raw: RawThreat): CyberThreat {
     lastSeenAt: raw.lastSeen,
   };
 }
-

@@ -308,12 +308,19 @@ export function createIntelligenceServiceRoutes(
       },
     },
     {
-      method: "POST",
+      method: "GET",
       path: "/api/intelligence/v1/classify-event",
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
-          const body = await req.json() as ClassifyEventRequest;
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ClassifyEventRequest = {
+            title: params.get("title") ?? "",
+            description: params.get("description") ?? "",
+            source: params.get("source") ?? "",
+            country: params.get("country") ?? "",
+          };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("classifyEvent", body);
             if (bodyViolations) {
@@ -357,11 +364,16 @@ export function createIntelligenceServiceRoutes(
         try {
           const pathParams: Record<string, string> = {};
           const url = new URL(req.url, "http://localhost");
-
           const params = url.searchParams;
           const body: GetCountryIntelBriefRequest = {
             countryCode: params.get("country_code") ?? "",
           };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getCountryIntelBrief", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
 
           const ctx: ServerContext = {
             request: req,

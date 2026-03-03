@@ -158,6 +158,7 @@ export class NewsPanel extends Panel {
 
     try {
       const result = await generateSummary(this.currentHeadlines.slice(0, 8), undefined, this.panelId, currentLang);
+      if (!this.element?.isConnected) return;
       if (this.lastHeadlineSignature !== sigAtStart) {
         this.hideSummary();
         return;
@@ -170,12 +171,16 @@ export class NewsPanel extends Panel {
         setTimeout(() => this.hideSummary(), 3000);
       }
     } catch {
+
       this.summaryContainer.innerHTML = `<div class="panel-summary-error">${t('components.newsPanel.summaryFailed')}</div>`;
+      if (!this.element?.isConnected) return;
       setTimeout(() => this.hideSummary(), 3000);
     } finally {
       this.isSummarizing = false;
-      this.summaryBtn.innerHTML = '✨';
-      this.summaryBtn.disabled = false;
+      if (this.summaryBtn) {
+        this.summaryBtn.innerHTML = '✨';
+        this.summaryBtn.disabled = false;
+      }
     }
   }
 
@@ -194,6 +199,7 @@ export class NewsPanel extends Panel {
 
     try {
       const translated = await translateText(text, currentLang);
+      if (!this.element?.isConnected) return;
       if (translated) {
         titleEl.textContent = translated;
         titleEl.dataset.original = originalText;
@@ -205,20 +211,23 @@ export class NewsPanel extends Panel {
         // Shake animation or error state could be added here
       }
     } catch (e) {
+      if (!this.element?.isConnected) return;
       console.error('Translation failed', e);
       element.innerHTML = '文';
     } finally {
-      element.style.pointerEvents = 'auto';
+      if (element.isConnected) {
+        element.style.pointerEvents = 'auto';
+      }
     }
   }
 
   private showSummary(summary: string): void {
-    if (!this.summaryContainer) return;
+    if (!this.summaryContainer || !this.element?.isConnected) return;
     this.summaryContainer.style.display = 'block';
     this.summaryContainer.innerHTML = `
       <div class="panel-summary-content">
         <span class="panel-summary-text">${escapeHtml(summary)}</span>
-        <button class="panel-summary-close" title="${t('components.newsPanel.close')}">×</button>
+        <button class="panel-summary-close" title="${t('components.newsPanel.close')}" aria-label="${t('components.newsPanel.close')}">×</button>
       </div>
     `;
     this.summaryContainer.querySelector('.panel-summary-close')?.addEventListener('click', () => this.hideSummary());

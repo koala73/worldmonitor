@@ -246,6 +246,21 @@ export interface ConflictZone {
   keyDevelopments?: string[];
 }
 
+export interface GeopoliticalBoundary {
+  id: string;
+  name: string;
+  coords: [number, number][];
+  center: [number, number];
+  boundaryType: 'demilitarized' | 'ceasefire' | 'disputed' | 'armistice';
+  established?: string;
+  parties?: string[];
+  status?: string;
+  legalBasis?: string;
+  location?: string;
+  description?: string;
+  dimensions?: string;
+}
+
 // UCDP Georeferenced Events
 export type UcdpEventType = 'state-based' | 'non-state' | 'one-sided';
 
@@ -551,6 +566,8 @@ export interface MapLayers {
   iranAttacks: boolean;
   // GPS/GNSS interference layer
   gpsJamming: boolean;
+  // Geopolitical boundary layers
+  geopoliticalBoundaries: boolean;
   // Overlay layers
   dayNight: boolean;
 }

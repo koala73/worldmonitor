@@ -70,18 +70,37 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/Error'
     /api/intelligence/v1/classify-event:
-        post:
+        get:
             tags:
                 - IntelligenceService
             summary: ClassifyEvent
             description: ClassifyEvent classifies a real-world event using AI (Groq).
             operationId: ClassifyEvent
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/ClassifyEventRequest'
-                required: true
+            parameters:
+                - name: title
+                  in: query
+                  description: Event title or headline.
+                  required: false
+                  schema:
+                    type: string
+                - name: description
+                  in: query
+                  description: Event description or body text.
+                  required: false
+                  schema:
+                    type: string
+                - name: source
+                  in: query
+                  description: Event source (e.g., "reuters", "acled").
+                  required: false
+                  schema:
+                    type: string
+                - name: country
+                  in: query
+                  description: Country context (ISO 3166-1 alpha-2).
+                  required: false
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
@@ -112,7 +131,7 @@ paths:
                 - name: country_code
                   in: query
                   description: ISO 3166-1 alpha-2 country code.
-                  required: true
+                  required: false
                   schema:
                     type: string
             responses:
@@ -199,7 +218,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: DeductSituation
-            description: DeductSituation deducts the future situation based on query and context using an LLM.
+            description: DeductSituation performs AI-powered situational analysis and deduction.
             operationId: DeductSituation
             requestBody:
                 content:

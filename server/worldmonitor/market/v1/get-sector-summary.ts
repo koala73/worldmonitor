@@ -2,9 +2,6 @@
  * RPC: GetSectorSummary
  * Fetches sector ETF performance from Finnhub.
  */
-
-declare const process: { env: Record<string, string | undefined> };
-
 import type {
   ServerContext,
   GetSectorSummaryRequest,

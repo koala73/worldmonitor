@@ -538,6 +538,8 @@ export class RuntimeConfigPanel extends Panel {
         }
       } catch { /* Ollama endpoint not available, try OpenAI format */ }
 
+      if (!select.isConnected) return;
+
       if (models.length === 0) {
         try {
           const res = await fetch(new URL('/v1/models', ollamaUrl).toString(), {
@@ -549,6 +551,8 @@ export class RuntimeConfigPanel extends Panel {
           }
         } catch { /* OpenAI endpoint also unavailable */ }
       }
+
+      if (!select.isConnected) return;
 
       if (models.length === 0) {
         // No models discovered — show manual text input as fallback

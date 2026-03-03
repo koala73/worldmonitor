@@ -250,7 +250,7 @@ describe('Fix 3: hasReasoningPreamble', () => {
 // ========================================================================
 
 describe('Fix 4: cache version bump', () => {
-  const src = readSrc('server/worldmonitor/news/v1/_shared.ts');
+  const src = readSrc('src/utils/summary-cache-key.ts');
 
   it('CACHE_VERSION is v5', () => {
     assert.match(src, /CACHE_VERSION\s*=\s*'v5'/,

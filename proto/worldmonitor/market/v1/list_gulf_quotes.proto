@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package worldmonitor.market.v1;
+
+// GulfQuote represents a Gulf region market quote (index, currency, or oil).
+message GulfQuote {
+  string symbol = 1;
+  string name = 2;
+  string flag = 3;
+  string country = 4;
+  string type = 5;
+  double price = 6;
+  double change = 7;
+  repeated double sparkline = 8;
+}
+
+message ListGulfQuotesRequest {}
+
+message ListGulfQuotesResponse {
+  repeated GulfQuote quotes = 1;
+  bool rate_limited = 2;
+}

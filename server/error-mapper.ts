@@ -57,8 +57,17 @@ export function mapErrorToResponse(error: unknown, _req: Request): Response {
     });
   }
 
+  // JSON parse errors from req.json() on malformed/empty POST body → 400 not 500
+  if (error instanceof SyntaxError) {
+    return new Response(JSON.stringify({ message: 'Invalid request body' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
   // Network/fetch errors: upstream is unreachable (M-5 fix: runtime-agnostic detection)
   if (isNetworkError(error)) {
+    console.error('[error-mapper] Network error (502):', (error as Error).message);
     return new Response(JSON.stringify({ message: 'Upstream unavailable' }), {
       status: 502,
       headers: { 'Content-Type': 'application/json' },

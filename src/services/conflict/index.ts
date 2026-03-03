@@ -12,15 +12,25 @@ import {
 import type { UcdpGeoEvent, UcdpEventType } from '@/types';
 import { createCircuitBreaker } from '@/utils';
 
-// ---- Client + Circuit Breakers (3 separate breakers for 3 RPCs) ----
+// ---- Client + Circuit Breakers (per-RPC; HAPI uses per-country map) ----
 
 const client = new ConflictServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
 const acledBreaker = createCircuitBreaker<ListAcledEventsResponse>({ name: 'ACLED Conflicts', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
 const ucdpBreaker = createCircuitBreaker<ListUcdpEventsResponse>({ name: 'UCDP Events', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
-const hapiBreaker = createCircuitBreaker<GetHumanitarianSummaryResponse>({ name: 'HDX HAPI', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
+const hapiBreakers = new Map<string, ReturnType<typeof createCircuitBreaker<GetHumanitarianSummaryResponse>>>();
+function getHapiBreaker(iso2: string) {
+  if (!hapiBreakers.has(iso2)) {
+    hapiBreakers.set(iso2, createCircuitBreaker<GetHumanitarianSummaryResponse>({
+      name: `HDX HAPI:${iso2}`,
+      cacheTtlMs: 10 * 60 * 1000,
+      persistCache: true,
+    }));
+  }
+  return hapiBreakers.get(iso2)!;
+}
 const iranBreaker = createCircuitBreaker<ListIranEventsResponse>({ name: 'Iran Events', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
 
-const emptyIranFallback: ListIranEventsResponse = { events: [], scrapedAt: 0 };
+const emptyIranFallback: ListIranEventsResponse = { events: [], scrapedAt: '0' };
 
 export type { IranEvent };
 
@@ -275,7 +285,7 @@ export async function fetchUcdpClassifications(): Promise<Map<string, UcdpConfli
 export async function fetchHapiSummary(): Promise<Map<string, HapiConflictSummary>> {
   const results = await Promise.allSettled(
     HAPI_COUNTRY_CODES.map(async (iso2) => {
-      const resp = await hapiBreaker.execute(async () => {
+      const resp = await getHapiBreaker(iso2).execute(async () => {
         return client.getHumanitarianSummary({ countryCode: iso2 });
       }, emptyHapiFallback);
       return { iso2, resp };
@@ -375,7 +385,7 @@ export function groupByType(events: UcdpGeoEvent[]): Record<string, UcdpGeoEvent
 export async function fetchIranEvents(): Promise<IranEvent[]> {
   const resp = await iranBreaker.execute(async () => {
     // Bypass stale CDN cache from pre-Redis deployment (remove once CDN is clean)
-    const r = await globalThis.fetch('/api/conflict/v1/list-iran-events?_v=6');
+    const r = await globalThis.fetch('/api/conflict/v1/list-iran-events?_v=9');
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return r.json() as Promise<ListIranEventsResponse>;
   }, emptyIranFallback);

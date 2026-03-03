@@ -254,12 +254,15 @@ function parseUSNIArticle(
         }
       }
 
-      const shipRegex = /USS\s+<(?:em|i)>([^<]+)<\/(?:em|i)>\s*\(([^)]+)\)/gi;
+      // Broadened regex: matches any inline HTML tag (or no tag) wrapping the ship name.
+      // Handles <em>, <i>, <strong>, <b>, <span>, or plain text.
+      const shipRegex = /(USS|USNS)\s+(?:<[^>]+>)?([^<(]+?)(?:<\/[^>]+>)?\s*\(([^)]+)\)/gi;
       let match: RegExpExecArray | null;
       const sectionText = stripHtml(section);
       const deploymentStatus = detectDeploymentStatus(sectionText);
       const homePort = extractHomePort(sectionText);
       const activityDesc = sectionText.length > 10 ? sectionText.substring(0, 200).trim() : '';
+      let sectionShipCount = 0;
 
       const upsertVessel = (entry: USNIVessel) => {
         const key = `${entry.region}|${entry.hullNumber.toUpperCase()}`;
@@ -280,19 +283,21 @@ function parseUSNIArticle(
       };
 
       while ((match = shipRegex.exec(section)) !== null) {
-        const shipName = match[1]!.trim();
-        const hullNumber = match[2]!.trim();
+        const prefix = match[1]!.toUpperCase() as 'USS' | 'USNS';
+        const shipName = match[2]!.trim();
+        const hullNumber = match[3]!.trim();
         const vesselType = hullToVesselType(hullNumber);
+        sectionShipCount++;
 
-        if (vesselType === 'carrier' && currentStrikeGroup) {
+        if (prefix === 'USS' && vesselType === 'carrier' && currentStrikeGroup) {
           currentStrikeGroup.carrier = `USS ${shipName} (${hullNumber})`;
         }
         if (currentStrikeGroup) {
-          currentStrikeGroup.escorts.push(`USS ${shipName} (${hullNumber})`);
+          currentStrikeGroup.escorts.push(`${prefix} ${shipName} (${hullNumber})`);
         }
 
         upsertVessel({
-          name: `USS ${shipName}`,
+          name: `${prefix} ${shipName}`,
           hullNumber,
           vesselType,
           region: regionName,
@@ -307,24 +312,13 @@ function parseUSNIArticle(
         });
       }
 
-      const usnsRegex = /USNS\s+<(?:em|i)>([^<]+)<\/(?:em|i)>\s*\(([^)]+)\)/gi;
-      while ((match = usnsRegex.exec(section)) !== null) {
-        const shipName = match[1]!.trim();
-        const hullNumber = match[2]!.trim();
-        upsertVessel({
-          name: `USNS ${shipName}`,
-          hullNumber,
-          vesselType: hullToVesselType(hullNumber),
-          region: regionName,
-          regionLat,
-          regionLon,
-          deploymentStatus,
-          homePort: homePort || '',
-          strikeGroup: currentStrikeGroup?.name || '',
-          activityDescription: activityDesc,
-          articleUrl,
-          articleDate,
-        });
+      // Warn when a strike group section contains text but yields zero ships —
+      // likely means the HTML format changed and the regex no longer matches.
+      if (currentStrikeGroup && sectionShipCount === 0 && sectionText.length > 20) {
+        console.warn(
+          `[USNI Fleet] Strike group section "${currentStrikeGroup.name}" in region "${regionName}" yielded 0 ships — HTML format may have changed`,
+        );
+        warnings.push(`Strike group "${currentStrikeGroup.name}" yielded 0 ships`);
       }
     }
   }
