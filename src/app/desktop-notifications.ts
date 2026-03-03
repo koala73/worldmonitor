@@ -2,6 +2,7 @@ import type { AppContext, AppModule } from '@/app/app-context';
 import type { BreakingAlert } from '@/services/breaking-news-alerts';
 import { tryInvokeTauri } from '@/services/tauri-bridge';
 import { getAlertSettings } from '@/services/breaking-news-alerts';
+import { isGhostMode } from '@/services/mode-manager';
 
 /**
  * Sends native macOS notifications for breaking alerts via osascript (Tauri command).
@@ -28,6 +29,7 @@ export class DesktopNotifications implements AppModule {
   }
 
   private async onBreakingNews(alert: BreakingAlert): Promise<void> {
+    if (isGhostMode()) return;  // Ghost Mode: notifications suppressed
     const settings = getAlertSettings();
     if (!settings.enabled || !settings.desktopNotificationsEnabled) return;
 

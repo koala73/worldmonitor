@@ -12,7 +12,7 @@ import type { MarketData, CryptoData } from '@/types';
 import type { GDACSEvent } from '@/services/gdacs';
 import type { Earthquake } from '@/services/earthquakes';
 
-export type AppMode = 'peace' | 'finance' | 'war' | 'disaster';
+export type AppMode = 'peace' | 'finance' | 'war' | 'disaster' | 'ghost';
 
 const MODE_STORAGE_KEY = 'wm-app-mode';
 
@@ -44,6 +44,92 @@ const WAR_SIGNAL_MIN_CONFIDENCE = 0.6;
 
 /** After this many ms with zero war signals, auto-triggered War Mode restores to Peace */
 const WAR_QUIET_RESTORE_MS = 20 * 60 * 1000; // 20 minutes
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Conflict Baselines — Normalization
+// ──────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Expected number of ongoing war-class signals per ISO country/region code.
+ * Regions with consistent conflict signals require 2× the base threshold to trigger.
+ * E.g. Ukraine normally generates 4 signals; we only escalate if it goes to 8+.
+ *
+ * User can override via `crystalball-conflict-baselines` localStorage key (JSON).
+ */
+const DEFAULT_CONFLICT_BASELINES: Record<string, number> = {
+  UKR: 4, // Russia-Ukraine ongoing conflict
+  SYR: 2, // Syrian civil war remnants
+  SDN: 2, // Sudan civil conflict
+  MMR: 2, // Myanmar military coup aftermath
+  PSE: 3, // Israel-Palestine conflict
+  IRQ: 1, // Iraq low-level insurgency
+  YEM: 2, // Yemen civil war
+  ETH: 1, // Tigray/Ethiopia conflict
+};
+
+const BASELINE_STORAGE_KEY = 'crystalball-conflict-baselines';
+
+function _loadConflictBaselines(): Record<string, number> {
+  try {
+    const raw = localStorage.getItem(BASELINE_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      const merged = { ...DEFAULT_CONFLICT_BASELINES };
+      for (const [k, v] of Object.entries(parsed)) {
+        if (typeof v === 'number' && v >= 0) merged[k] = v;
+      }
+      return merged;
+    }
+  } catch { /* malformed or unavailable */ }
+  return { ...DEFAULT_CONFLICT_BASELINES };
+}
+
+let _conflictBaselines = _loadConflictBaselines();
+
+/**
+ * Reload conflict baselines from localStorage.
+ * Call after the user edits baselines in settings.
+ */
+export function reloadConflictBaselines(): void {
+  _conflictBaselines = _loadConflictBaselines();
+}
+
+/**
+ * Compute an effective war-score adjusted for established-conflict baselines.
+ *
+ * For each signal that targets a region in the baseline map, it only counts
+ * if the region's signal count exceeds 2× its baseline.
+ * Signals with no region or regions not in the baseline are counted normally.
+ */
+function _computeNormalizedWarScore(signals: CorrelationSignal[]): number {
+  // Group signals by region (signals may carry region in their data payload)
+  const regionCounts = new Map<string, number>();
+  let untaggedScore = 0;
+
+  for (const s of signals) {
+    const region = (s as unknown as { region?: string }).region?.toUpperCase();
+    if (!region) {
+      untaggedScore++;
+      continue;
+    }
+    regionCounts.set(region, (regionCounts.get(region) ?? 0) + 1);
+  }
+
+  let normalizedScore = untaggedScore;
+
+  for (const [region, count] of regionCounts) {
+    const baseline = _conflictBaselines[region] ?? 0;
+    if (baseline > 0) {
+      // Only count excess above 2× baseline (conflict zone normalization)
+      const excess = Math.max(0, count - baseline * 2);
+      normalizedScore += excess > 0 ? Math.ceil(excess / baseline) : 0;
+    } else {
+      normalizedScore += count;
+    }
+  }
+
+  return normalizedScore;
+}
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Thresholds — Finance Mode
@@ -96,6 +182,9 @@ let _financeAutoTriggerTime = 0;
 /** Timestamp of when Disaster auto-trigger last fired, used for quiet-window detection. */
 let _disasterAutoTriggerTime = 0;
 
+/** Mode that was active before Ghost Mode was engaged. Restored on exit. */
+let _preGhostMode: AppMode = 'peace';
+
 // ──────────────────────────────────────────────────────────────────────────────
 // Public API
 // ──────────────────────────────────────────────────────────────────────────────
@@ -147,7 +236,7 @@ export function setMode(mode: AppMode, auto = false): void {
 export function initMode(): AppMode {
   try {
     const saved = localStorage.getItem(MODE_STORAGE_KEY) as AppMode | null;
-    if (saved === 'peace' || saved === 'finance' || saved === 'war' || saved === 'disaster') {
+    if (saved === 'peace' || saved === 'finance' || saved === 'war' || saved === 'disaster' || saved === 'ghost') {
       currentMode = saved;
     }
   } catch {
@@ -170,17 +259,19 @@ export function evaluateWarThreat(signals: CorrelationSignal[]): void {
   const warSignals = signals.filter(
     s => WAR_SIGNAL_TYPES.has(s.type) && (s.confidence ?? 0) >= WAR_SIGNAL_MIN_CONFIDENCE,
   );
-  const score = warSignals.length;
+  const rawScore = warSignals.length;
+  // Normalize score: high-baseline conflict zones require more signals to trigger
+  const score = _computeNormalizedWarScore(warSignals);
 
   document.dispatchEvent(
     new CustomEvent<WarScoreDetail>('wm:war-score', {
-      detail: { score, threshold: WAR_AUTO_TRIGGER_SCORE },
+      detail: { score: rawScore, threshold: WAR_AUTO_TRIGGER_SCORE },
     }),
   );
 
   const now = Date.now();
 
-  if (score > 0) {
+  if (rawScore > 0) {
     _lastWarSignalTime = now;
     // Auto-escalate from Peace → War; never override an explicit user choice
     if (score >= WAR_AUTO_TRIGGER_SCORE && currentMode === 'peace') {
@@ -334,6 +425,33 @@ export function alertFamily(): void {
   navigator.clipboard.writeText(msg).catch(() => {
     // Clipboard API unavailable — silently ignore
   });
+}
+
+/**
+ * Toggle Ghost Mode on/off (manual only — never auto-triggered).
+ * Ghost Mode: refresh intervals ×5, notifications suppressed, analytics suppressed.
+ * Entering saves the current mode; exiting restores it.
+ */
+export function toggleGhostMode(): void {
+  if (currentMode === 'ghost') {
+    setMode(_preGhostMode);
+  } else {
+    _preGhostMode = currentMode;
+    setMode('ghost');
+  }
+}
+
+/** True when Ghost Mode is currently active. */
+export function isGhostMode(): boolean {
+  return currentMode === 'ghost';
+}
+
+/**
+ * Refresh interval multiplier for Ghost Mode.
+ * Returns 5 in Ghost Mode (5× slower polling), 1 otherwise.
+ */
+export function getGhostRefreshMultiplier(): number {
+  return currentMode === 'ghost' ? 5 : 1;
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

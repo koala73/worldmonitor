@@ -47,6 +47,8 @@ import { AirstrikesPanel } from '@/components/AirstrikesPanel';
 import { GDACSAlertsPanel } from '@/components/GDACSAlertsPanel';
 import { VolcanoAlertsPanel } from '@/components/VolcanoAlertsPanel';
 import { NWSAlertsPanel } from '@/components/NWSAlertsPanel';
+import { RadiationDecayPanel } from '@/components/RadiationDecayPanel';
+import { ResourceInventoryPanel } from '@/components/ResourceInventoryPanel';
 import { PositiveNewsFeedPanel } from '@/components/PositiveNewsFeedPanel';
 import { CountersPanel } from '@/components/CountersPanel';
 import { ProgressChartsPanel } from '@/components/ProgressChartsPanel';
@@ -71,7 +73,7 @@ import { BETA_MODE } from '@/config/beta';
 import { t } from '@/services/i18n';
 import { getCurrentTheme } from '@/utils';
 import { trackCriticalBannerAction } from '@/services/analytics';
-import { initMode, setMode, alertFamily, getMode, type AppMode } from '@/services/mode-manager';
+import { initMode, setMode, alertFamily, getMode, toggleGhostMode, type AppMode } from '@/services/mode-manager';
 import { isLowPowerMode, setLowPowerMode } from '@/services/low-power';
 
 export interface PanelLayoutCallbacks {
@@ -291,6 +293,7 @@ export class PanelLayoutManager implements AppModule {
               <button class="mac-mode-btn${getMode() === 'disaster' ? ' mac-mode-active mac-mode-disaster-active' : ''}" data-mode="disaster" title="Disaster Mode — Natural disaster monitoring">🌋 Disaster</button>
             </div>
             ${getMode() === 'war' ? '<button class="mac-alert-family-btn" id="alertFamilyBtn">⚠ Alert Family</button>' : ''}
+            <button class="mac-ghost-mode-btn${getMode() === 'ghost' ? ' mac-ghost-mode-active' : ''}" id="ghostModeBtn" title="Ghost Mode — Reduce polling, suppress notifications (⌘⇧G)">👻 Ghost Mode</button>
           </div>` : ''}
 
           <!-- Footer: theme, low-power, settings, version -->
@@ -761,6 +764,9 @@ export class PanelLayoutManager implements AppModule {
       const nwsAlertsPanel = new NWSAlertsPanel();
       this.ctx.panels['nws-alerts'] = nwsAlertsPanel;
 
+      this.ctx.panels['radiation-decay'] = new RadiationDecayPanel();
+      this.ctx.panels['resource-inventory'] = new ResourceInventoryPanel();
+
       const displacementPanel = new DisplacementPanel();
       displacementPanel.setCountryClickHandler((lat, lon) => {
         this.ctx.map?.setCenter(lat, lon, 4);
@@ -956,6 +962,14 @@ export class PanelLayoutManager implements AppModule {
       }
     });
 
+    // Ghost Mode button + Tauri menu event
+    document.getElementById('ghostModeBtn')?.addEventListener('click', () => {
+      toggleGhostMode();
+    });
+    document.addEventListener('wm:toggle-ghost-mode', () => {
+      toggleGhostMode();
+    });
+
     // React to mode changes: update button states, body class, re-render family button
     document.addEventListener('wm:mode-changed', ((e: CustomEvent) => {
       const { mode } = e.detail as { mode: AppMode };
@@ -969,6 +983,10 @@ export class PanelLayoutManager implements AppModule {
         btn.classList.toggle('mac-mode-war-active', btnMode === 'war' && mode === 'war');
         btn.classList.toggle('mac-mode-disaster-active', btnMode === 'disaster' && mode === 'disaster');
       });
+
+      // Ghost Mode button active state
+      const ghostBtn = document.getElementById('ghostModeBtn');
+      if (ghostBtn) ghostBtn.classList.toggle('mac-ghost-mode-active', mode === 'ghost');
 
       // Show / hide Alert Family button
       const section = document.getElementById('modeSelectorSection');
@@ -985,7 +1003,10 @@ export class PanelLayoutManager implements AppModule {
           familyBtn!.textContent = '✓ Copied to clipboard';
           setTimeout(() => { if (familyBtn) familyBtn.textContent = orig; }, 2000);
         });
-        section.appendChild(familyBtn);
+        // Insert before ghost button if it exists
+        const ghostModeBtn = section.querySelector('#ghostModeBtn');
+        if (ghostModeBtn) section.insertBefore(familyBtn, ghostModeBtn);
+        else section.appendChild(familyBtn);
       } else if (mode !== 'war' && familyBtn) {
         familyBtn.remove();
       }

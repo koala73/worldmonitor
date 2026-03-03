@@ -12,6 +12,7 @@
  */
 
 import { isDesktopRuntime } from './runtime';
+import { isGhostMode } from './mode-manager';
 import { getRuntimeConfigSnapshot, type RuntimeSecretKey } from './runtime-config';
 import { SITE_VARIANT } from '@/config';
 import { isMobileDevice } from '@/utils';
@@ -247,6 +248,7 @@ function flushOfflineQueue(): void {
 }
 
 export function trackEvent(name: string, props?: Record<string, unknown>): void {
+  if (isGhostMode()) return;  // Ghost Mode: analytics suppressed
   const safeProps = props ? sanitizeProps(name, props) : {};
   if (!posthogInstance) {
     if (isDesktopRuntime() && POSTHOG_KEY) enqueueOffline(name, safeProps);

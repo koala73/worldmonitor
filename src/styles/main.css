@@ -16311,3 +16311,68 @@ body.has-breaking-alert .panels-grid {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+/* ── Radiation Decay Calculator ──────────────────────────────────────────── */
+.rdp-wrap { padding: 8px 10px; display: flex; flex-direction: column; gap: 10px; }
+.rdp-inputs { display: flex; flex-direction: column; gap: 6px; }
+.rdp-label { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--text-dim, #888); }
+.rdp-input {
+  background: var(--panel-bg, #1a1a1a);
+  border: 1px solid var(--border, #333);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 12px;
+  padding: 3px 6px;
+  width: 100px;
+}
+.rdp-range { width: 100%; accent-color: #ff6b6b; cursor: pointer; }
+.rdp-range-val { font-size: 10px; color: #ff6b6b; font-weight: 600; }
+.rdp-select {
+  background: var(--panel-bg, #1a1a1a);
+  border: 1px solid var(--border, #333);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 11px;
+  padding: 3px 6px;
+}
+.rdp-results { display: flex; flex-direction: column; gap: 6px; }
+.rdp-stat-row { display: flex; gap: 8px; }
+.rdp-stat { flex: 1; background: var(--row-hover, rgba(255,255,255,0.04)); border-radius: 6px; padding: 6px 8px; }
+.rdp-stat-val { font-size: 18px; font-weight: 700; color: #ff6b6b; font-variant-numeric: tabular-nums; }
+.rdp-stat-val.rdp-sheltered { color: #4ade80; }
+.rdp-stat-lbl { font-size: 9px; color: var(--text-dim, #888); margin-top: 2px; }
+.rdp-callout { font-size: 11px; border-radius: 6px; padding: 6px 10px; line-height: 1.4; }
+.rdp-callout-ok       { background: rgba(74,222,128,0.12); color: #4ade80; border: 1px solid rgba(74,222,128,0.3); }
+.rdp-callout-warn     { background: rgba(250,204,21,0.12); color: #facc15; border: 1px solid rgba(250,204,21,0.3); }
+.rdp-callout-high     { background: rgba(251,146,60,0.14); color: #fb923c; border: 1px solid rgba(251,146,60,0.35); }
+.rdp-callout-critical { background: rgba(255,69,58,0.16);  color: #ff453a; border: 1px solid rgba(255,69,58,0.4); }
+.rdp-curve-wrap { border-top: 1px solid var(--border, #333); padding-top: 6px; }
+.rdp-curve { width: 100%; height: 80px; display: block; }
+
+/* ── Resource Inventory Panel ───────────────────────────────────────────────── */
+.ri-wrap { padding: 8px 10px; display: flex; flex-direction: column; gap: 8px; }
+.ri-toolbar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.ri-btn {
+  padding: 4px 10px;
+  border-radius: 5px;
+  border: 1px solid var(--border, #333);
+  background: transparent;
+  color: var(--text-dim, #888);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.ri-btn:hover { background: var(--row-hover, rgba(255,255,255,0.06)); color: var(--text); }
+.ri-btn.ri-btn-add { border-color: rgba(74,222,128,0.4); color: #4ade80; }
+.ri-btn.ri-btn-export { border-color: rgba(96,165,250,0.4); color: #60a5fa; }
+.ri-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.ri-table th { color: var(--text-dim, #888); font-weight: 600; padding: 3px 6px; text-align: left; border-bottom: 1px solid var(--border, #333); font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; }
+.ri-table td { padding: 5px 6px; border-bottom: 1px solid var(--border-faint, rgba(255,255,255,0.05)); vertical-align: middle; }
+.ri-table tr:hover td { background: var(--row-hover, rgba(255,255,255,0.04)); }
+.ri-days-ok     { color: #4ade80; font-weight: 700; }
+.ri-days-warn   { color: #facc15; font-weight: 700; }
+.ri-days-crit   { color: #ff453a; font-weight: 700; }
+.ri-edit-btn, .ri-del-btn { background: none; border: none; cursor: pointer; padding: 2px 5px; font-size: 12px; opacity: 0.6; transition: opacity 0.12s; }
+.ri-edit-btn:hover, .ri-del-btn:hover { opacity: 1; }
+.ri-empty { text-align: center; color: var(--text-dim, #888); font-size: 12px; padding: 20px 0; }

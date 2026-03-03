@@ -26,6 +26,7 @@ const DESKTOP_LOG_FILE: &str = "desktop.log";
 const MAX_LOG_BYTES: u64 = 5 * 1024 * 1024; // 5 MB per log file before rotation
 const MAX_LOG_BACKUPS: u32 = 3; // keep .log.1 .log.2 .log.3
 const MENU_FILE_SETTINGS_ID: &str = "file.settings";
+const MENU_FILE_GHOST_MODE_ID: &str = "file.ghost_mode";
 const MENU_HELP_GITHUB_ID: &str = "help.github";
 const MENU_HELP_CHECK_UPDATES_ID: &str = "help.check_updates";
 const MENU_HELP_OPEN_LOGS_ID: &str = "help.open_logs";
@@ -907,13 +908,21 @@ fn build_app_menu(handle: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         true,
         Some("CmdOrCtrl+,"),
     )?;
+    let ghost_mode_item = MenuItem::with_id(
+        handle,
+        MENU_FILE_GHOST_MODE_ID,
+        "Toggle Ghost Mode",
+        true,
+        Some("CmdOrCtrl+Shift+G"),
+    )?;
     let separator = PredefinedMenuItem::separator(handle)?;
+    let ghost_separator = PredefinedMenuItem::separator(handle)?;
     let quit_item = PredefinedMenuItem::quit(handle, Some("Quit"))?;
     let file_menu = Submenu::with_items(
         handle,
         "File",
         true,
-        &[&settings_item, &separator, &quit_item],
+        &[&settings_item, &ghost_separator, &ghost_mode_item, &separator, &quit_item],
     )?;
 
     let about_metadata = AboutMetadata {
@@ -1007,6 +1016,11 @@ fn handle_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
             if let Err(err) = open_settings_window(app) {
                 append_desktop_log(app, "ERROR", &format!("settings menu failed: {err}"));
                 eprintln!("[tauri] settings menu failed: {err}");
+            }
+        }
+        MENU_FILE_GHOST_MODE_ID => {
+            if let Some(win) = app.get_webview_window("main") {
+                let _ = win.eval("document.dispatchEvent(new CustomEvent('wm:toggle-ghost-mode'))");
             }
         }
         MENU_HELP_GITHUB_ID => {

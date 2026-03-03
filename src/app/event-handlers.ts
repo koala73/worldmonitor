@@ -44,6 +44,7 @@ import {
 import { detectPlatform, allButtons, buttonsForPlatform } from '@/components/DownloadBanner';
 import type { Platform } from '@/components/DownloadBanner';
 import { invokeTauri } from '@/services/tauri-bridge';
+import { toggleGhostMode } from '@/services/mode-manager';
 import { dataFreshness } from '@/services/data-freshness';
 import { mlWorker } from '@/services/ml-worker';
 import { UnifiedSettings } from '@/components/UnifiedSettings';
@@ -312,6 +313,13 @@ export class EventHandlerManager implements AppModule {
           } catch {
             this.showShareToast('Copy failed');
           }
+        }
+        // Cmd+Shift+G — toggle Ghost Mode
+        if (e.metaKey && e.shiftKey && e.key === 'G' && !e.altKey) {
+          const active = document.activeElement;
+          if (active?.tagName === 'INPUT' || active?.tagName === 'TEXTAREA') return;
+          e.preventDefault();
+          toggleGhostMode();
         }
       });
     }

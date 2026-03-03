@@ -1,4 +1,5 @@
 import type { AppContext, AppModule } from '@/app/app-context';
+import { getGhostRefreshMultiplier } from '@/services/mode-manager';
 
 export interface RefreshRegistration {
   name: string;
@@ -50,7 +51,8 @@ export class RefreshScheduler implements AppModule {
     let currentMultiplier = 1;
 
     const computeDelay = (baseMs: number, isHidden: boolean) => {
-      const adjusted = baseMs * (isHidden ? HIDDEN_REFRESH_MULTIPLIER : 1);
+      const ghostMultiplier = getGhostRefreshMultiplier();
+      const adjusted = baseMs * ghostMultiplier * (isHidden ? HIDDEN_REFRESH_MULTIPLIER : 1);
       const jitterRange = adjusted * JITTER_FRACTION;
       const jittered = adjusted + (Math.random() * 2 - 1) * jitterRange;
       return Math.max(MIN_REFRESH_MS, Math.round(jittered));

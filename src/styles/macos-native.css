@@ -533,6 +533,85 @@ body.is-desktop-macos[data-app-mode="peace"] .mac-toolbar-title {
   color: var(--mac-label);
 }
 
+/* ── GHOST MODE button ──────────────────────────────────────────────────────── */
+.mac-ghost-mode-btn {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 3px 6px;
+  border: 1px solid rgba(160, 140, 180, 0.25);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--mac-secondary-label);
+  font-size: 10px;
+  font-weight: 600;
+  font-family: var(--mac-font);
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.mac-ghost-mode-btn:hover {
+  background: var(--mac-fill);
+  color: var(--mac-label);
+}
+
+.mac-ghost-mode-btn.mac-ghost-mode-active {
+  background: rgba(120, 80, 160, 0.18);
+  border-color: rgba(140, 100, 190, 0.5);
+  color: #b060e0;
+}
+
+/* ── GHOST MODE theme — dark crimson/violet stealth ────────────────────────── */
+body.is-desktop-macos[data-app-mode="ghost"] .mac-sidebar {
+  border-right-color: rgba(140, 50, 100, 0.4);
+  background: linear-gradient(
+    170deg,
+    rgba(80, 10, 40, 0.22) 0%,
+    var(--mac-sidebar-bg) 60%
+  );
+  box-shadow: inset -1px 0 0 rgba(140, 50, 100, 0.2),
+              2px 0 20px rgba(100, 10, 50, 0.08);
+}
+
+body.is-desktop-macos[data-app-mode="ghost"] .mac-sidebar::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(
+    to right,
+    transparent 0%,
+    rgba(140, 50, 100, 0.6) 50%,
+    transparent 100%
+  );
+  z-index: 10;
+  opacity: 0.5;
+}
+
+body.is-desktop-macos[data-app-mode="ghost"] .mac-content-toolbar {
+  border-bottom-color: rgba(140, 50, 100, 0.2);
+}
+
+body.is-desktop-macos[data-app-mode="ghost"] .mac-toolbar-title {
+  color: #b060e0;
+  letter-spacing: 0.04em;
+}
+
+body.is-desktop-macos[data-app-mode="ghost"] .mac-toolbar-title::after {
+  content: ' 👻';
+  font-size: 0.85em;
+}
+
+body.is-desktop-macos[data-app-mode="ghost"] .mac-toolbar-status .status-dot {
+  background: #8c3280;
+  box-shadow: 0 0 6px rgba(140, 50, 128, 0.5);
+}
+
+body.is-desktop-macos[data-app-mode="ghost"] .mac-mode-section {
+  border-top-color: rgba(140, 50, 100, 0.25);
+}
+
 /* Sidebar footer — settings / theme */
 .mac-sidebar-footer {
   display: flex;
