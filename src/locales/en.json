@@ -483,6 +483,9 @@
           "success": "You're on the list! We'll notify you first.",
           "alreadyRegistered": "You're already on the waitlist.",
           "error": "Registration failed. Please try again.",
+          "errorRateLimit": "Too many attempts. Please try again in an hour.",
+          "errorServiceUnavailable": "Registration service is temporarily unavailable.",
+          "errorNetwork": "Network error. Check your connection and try again.",
           "invalidEmail": "Please enter a valid email address."
         },
         "byokTitle": "Or bring your own keys",
