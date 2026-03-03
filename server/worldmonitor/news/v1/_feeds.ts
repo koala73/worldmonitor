@@ -76,6 +76,9 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
     latam: [
       { name: 'BBC Latin America', url: 'https://feeds.bbci.co.uk/news/world/latin_america/rss.xml' },
       { name: 'Guardian Americas', url: 'https://www.theguardian.com/world/americas/rss' },
+      { name: 'Primicias', url: 'https://www.primicias.ec/feed/', lang: 'es' },
+      { name: 'Infobae Americas', url: 'https://www.infobae.com/feeds/rss/', lang: 'es' },
+      { name: 'El Universo', url: 'https://www.eluniverso.com/arc/outboundfeeds/rss/category/noticias/?outputType=xml', lang: 'es' },
     ],
     asia: [
       { name: 'BBC Asia', url: 'https://feeds.bbci.co.uk/news/world/asia/rss.xml' },

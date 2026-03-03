@@ -260,6 +260,8 @@ export class App {
       playbackControl: null,
       exportPanel: null,
       unifiedSettings: null,
+      layoutTabs: null,
+      widgetPicker: null,
       mobileWarningModal: null,
       pizzintIndicator: null,
       countryBriefPage: null,
@@ -424,6 +426,7 @@ export class App {
     this.eventHandlers.setupStatusPanel();
     this.eventHandlers.setupPizzIntIndicator();
     this.eventHandlers.setupExportPanel();
+    this.eventHandlers.setupLayoutSystem();
     this.eventHandlers.setupUnifiedSettings();
 
     // Phase 4: SearchManager, MapLayerHandlers, CountryIntel

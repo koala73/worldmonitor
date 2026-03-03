@@ -25,6 +25,8 @@ import type { SpeciesComebackPanel } from '@/components/SpeciesComebackPanel';
 import type { RenewableEnergyPanel } from '@/components/RenewableEnergyPanel';
 import type { TvModeController } from '@/services/tv-mode';
 import type { BreakingNewsBanner } from '@/components/BreakingNewsBanner';
+import type { LayoutTabs } from '@/components/LayoutTabs';
+import type { WidgetPicker } from '@/components/WidgetPicker';
 
 export interface CountryBriefSignals {
   criticalNews: number;
@@ -102,6 +104,8 @@ export interface AppContext {
   playbackControl: PlaybackControl | null;
   exportPanel: ExportPanel | null;
   unifiedSettings: UnifiedSettings | null;
+  layoutTabs: LayoutTabs | null;
+  widgetPicker: WidgetPicker | null;
   mobileWarningModal: MobileWarningModal | null;
   pizzintIndicator: PizzIntIndicator | null;
   countryBriefPage: CountryBriefPanel | null;

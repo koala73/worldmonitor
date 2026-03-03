@@ -22,12 +22,13 @@ const BOOTSTRAP_CACHE_KEYS = {
   climateAnomalies: 'climate:anomalies:v1',
   wildfires:        'wildfire:fires:v1',
   cyberThreats:     'cyber:threats-bootstrap:v2',
+  techReadiness:    'economic:worldbank-techreadiness:v1',
 };
 
 const SLOW_KEYS = new Set([
   'bisPolicy', 'bisExchange', 'bisCredit', 'minerals', 'giving',
   'sectors', 'etfFlows', 'shippingRates', 'wildfires', 'climateAnomalies',
-  'cyberThreats',
+  'cyberThreats', 'techReadiness',
 ]);
 const FAST_KEYS = new Set([
   'earthquakes', 'outages', 'serviceStatuses', 'macroSignals', 'chokepoints',

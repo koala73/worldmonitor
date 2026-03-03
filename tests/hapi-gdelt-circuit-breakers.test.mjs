@@ -27,11 +27,6 @@ const root = resolve(__dirname, '..');
 
 const readSrc = (relPath) => readFileSync(resolve(root, relPath), 'utf-8');
 
-// Shared URL for dynamic imports in behavioral tests
-const CIRCUIT_BREAKER_URL = pathToFileURL(
-  resolve(root, 'src/utils/circuit-breaker.ts'),
-).href;
-
 // ============================================================
 // 1. Static analysis: conflict/index.ts — per-country HAPI breakers
 // ============================================================
@@ -39,9 +34,9 @@ const CIRCUIT_BREAKER_URL = pathToFileURL(
 describe('conflict/index.ts — per-country HAPI circuit breakers', () => {
   const src = readSrc('src/services/conflict/index.ts');
 
-  // Scoped function body slice — guard against rename/removal silently broadening scope
+  // Scoped slices to avoid false positives from comments or unrelated code
+  const breakerSection = src.slice(src.indexOf('hapiBreakers'), src.indexOf('hapiBreakers') + 400);
   const fnStart = src.indexOf('export async function fetchHapiSummary');
-  assert.ok(fnStart !== -1, 'fetchHapiSummary must exist in conflict/index.ts');
   const fnBody = src.slice(fnStart, src.indexOf('\nexport ', fnStart + 1));
 
   it('does NOT have a single shared hapiBreaker', () => {
@@ -53,10 +48,9 @@ describe('conflict/index.ts — per-country HAPI circuit breakers', () => {
   });
 
   it('has a hapiBreakers Map for per-country instances', () => {
-    // Check src directly — pattern is specific enough to avoid false positives
     assert.match(
-      src,
-      /\bhapiBreakers\s*=\s*new\s+Map/,
+      breakerSection,
+      /new\s+Map/,
       'hapiBreakers Map must exist to store per-country circuit breakers',
     );
   });
@@ -78,9 +72,8 @@ describe('conflict/index.ts — per-country HAPI circuit breakers', () => {
   });
 
   it('per-country breaker names embed iso2', () => {
-    // Check src directly — template literal is specific enough without window slicing
     assert.match(
-      src,
+      breakerSection,
       /name\s*:\s*`HDX HAPI:\$\{iso2\}`/,
       'Breaker name must embed iso2 (e.g. "HDX HAPI:US") for unique IndexedDB persistence per country',
     );
@@ -94,13 +87,10 @@ describe('conflict/index.ts — per-country HAPI circuit breakers', () => {
 describe('gdelt-intel.ts — dedicated circuit breakers per GDELT query type', () => {
   const src = readSrc('src/services/gdelt-intel.ts');
 
-  // Scoped function body slices — guard against rename/removal silently broadening scope
+  // Scoped function body slices
   const posStart = src.indexOf('export async function fetchPositiveGdeltArticles');
-  assert.ok(posStart !== -1, 'fetchPositiveGdeltArticles must exist in gdelt-intel.ts');
   const posBody = src.slice(posStart, src.indexOf('\nexport ', posStart + 1));
-
   const regStart = src.indexOf('export async function fetchGdeltArticles');
-  assert.ok(regStart !== -1, 'fetchGdeltArticles must exist in gdelt-intel.ts');
   const regBody = src.slice(regStart, src.indexOf('\nexport ', regStart + 1));
 
   it('has a dedicated positiveGdeltBreaker separate from gdeltBreaker', () => {
@@ -143,7 +133,7 @@ describe('gdelt-intel.ts — dedicated circuit breakers per GDELT query type', (
       /positiveGdeltBreaker\.execute/,
       'fetchPositiveGdeltArticles must use positiveGdeltBreaker.execute',
     );
-    // \b word-boundary ensures `positiveGdeltBreaker.execute` (uppercase G) is not matched
+    // word-boundary prevents matching `positiveGdeltBreaker.execute`
     assert.doesNotMatch(
       posBody,
       /\bgdeltBreaker\.execute/,
@@ -157,34 +147,37 @@ describe('gdelt-intel.ts — dedicated circuit breakers per GDELT query type', (
 // ============================================================
 
 describe('CircuitBreaker isolation — HAPI per-country independence', () => {
+  const CIRCUIT_BREAKER_URL = pathToFileURL(
+    resolve(root, 'src/utils/circuit-breaker.ts'),
+  ).href;
+
   it('HAPI: failure in one country does not trip another', async () => {
     const { createCircuitBreaker, clearAllCircuitBreakers } = await import(
       `${CIRCUIT_BREAKER_URL}?t=${Date.now()}`
     );
 
     clearAllCircuitBreakers();
-    try {
-      const breakerUS = createCircuitBreaker({ name: 'HDX HAPI:US', cacheTtlMs: 30 * 60 * 1000 });
-      const breakerRU = createCircuitBreaker({ name: 'HDX HAPI:RU', cacheTtlMs: 30 * 60 * 1000 });
 
-      const fallback = { summary: null };
-      const alwaysFail = () => { throw new Error('HDX HAPI unavailable'); };
+    const breakerUS = createCircuitBreaker({ name: 'HDX HAPI:US', cacheTtlMs: 30 * 60 * 1000 });
+    const breakerRU = createCircuitBreaker({ name: 'HDX HAPI:RU', cacheTtlMs: 30 * 60 * 1000 });
 
-      // Default maxFailures is 2 — force breakerUS into cooldown
-      await breakerUS.execute(alwaysFail, fallback); // failure 1
-      await breakerUS.execute(alwaysFail, fallback); // failure 2 → cooldown
-      assert.equal(breakerUS.isOnCooldown(), true, 'breakerUS should be on cooldown after 2 failures');
+    const fallback = { summary: null };
+    const alwaysFail = () => { throw new Error('HDX HAPI unavailable'); };
 
-      // breakerRU must NOT be affected
-      assert.equal(breakerRU.isOnCooldown(), false, 'breakerRU must not be on cooldown when breakerUS fails');
+    // Force breakerUS into cooldown (2 failures = maxFailures)
+    await breakerUS.execute(alwaysFail, fallback); // failure 1
+    await breakerUS.execute(alwaysFail, fallback); // failure 2 → cooldown
+    assert.equal(breakerUS.isOnCooldown(), true, 'breakerUS should be on cooldown after 2 failures');
 
-      // breakerRU should still call through successfully
-      const goodData = { summary: { countryCode: 'RU', conflictEvents: 12, displacedPersons: 5000 } };
-      const result = await breakerRU.execute(async () => goodData, fallback);
-      assert.deepEqual(result, goodData, 'breakerRU should return live data unaffected by breakerUS cooldown');
-    } finally {
-      clearAllCircuitBreakers();
-    }
+    // breakerRU must NOT be affected
+    assert.equal(breakerRU.isOnCooldown(), false, 'breakerRU must not be on cooldown when breakerUS fails');
+
+    // breakerRU should still call through successfully
+    const goodData = { summary: { countryCode: 'RU', conflictEvents: 12, displacedPersons: 5000 } };
+    const result = await breakerRU.execute(async () => goodData, fallback);
+    assert.deepEqual(result, goodData, 'breakerRU should return live data unaffected by breakerUS cooldown');
+
+    clearAllCircuitBreakers();
   });
 
   it('HAPI: different countries cache independently (no cross-country poisoning)', async () => {
@@ -193,63 +186,65 @@ describe('CircuitBreaker isolation — HAPI per-country independence', () => {
     );
 
     clearAllCircuitBreakers();
-    try {
-      const breakerUS = createCircuitBreaker({ name: 'HDX HAPI:US', cacheTtlMs: 30 * 60 * 1000 });
-      const breakerRU = createCircuitBreaker({ name: 'HDX HAPI:RU', cacheTtlMs: 30 * 60 * 1000 });
 
-      const fallback = { summary: null };
-      const usData = { summary: { countryCode: 'US', conflictEvents: 3, displacedPersons: 100 } };
-      const ruData = { summary: { countryCode: 'RU', conflictEvents: 47, displacedPersons: 120000 } };
+    const breakerUS = createCircuitBreaker({ name: 'HDX HAPI:US', cacheTtlMs: 30 * 60 * 1000 });
+    const breakerRU = createCircuitBreaker({ name: 'HDX HAPI:RU', cacheTtlMs: 30 * 60 * 1000 });
 
-      // Populate both caches with different data
-      await breakerUS.execute(async () => usData, fallback);
-      await breakerRU.execute(async () => ruData, fallback);
+    const fallback = { summary: null };
+    const usData = { summary: { countryCode: 'US', conflictEvents: 3, displacedPersons: 100 } };
+    const ruData = { summary: { countryCode: 'RU', conflictEvents: 47, displacedPersons: 120000 } };
 
-      // Each must return its own cached value; pass a fallback fn that would return wrong data
-      const cachedUS = await breakerUS.execute(async () => fallback, fallback);
-      const cachedRU = await breakerRU.execute(async () => fallback, fallback);
+    // Populate both caches with different data
+    await breakerUS.execute(async () => usData, fallback);
+    await breakerRU.execute(async () => ruData, fallback);
 
-      assert.equal(cachedUS.summary?.countryCode, 'US',
-        'breakerUS cache must return US data, not RU data');
-      assert.equal(cachedRU.summary?.countryCode, 'RU',
-        'breakerRU cache must return RU data, not US data');
-      assert.notEqual(cachedUS.summary?.conflictEvents, cachedRU.summary?.conflictEvents,
-        'Cached conflict event counts must be independent per country');
-    } finally {
-      clearAllCircuitBreakers();
-    }
+    // Each must return its own cached value; pass a fallback fn that would return wrong data
+    const cachedUS = await breakerUS.execute(async () => fallback, fallback);
+    const cachedRU = await breakerRU.execute(async () => fallback, fallback);
+
+    assert.equal(cachedUS.summary?.countryCode, 'US',
+      'breakerUS cache must return US data, not RU data');
+    assert.equal(cachedRU.summary?.countryCode, 'RU',
+      'breakerRU cache must return RU data, not US data');
+    assert.notEqual(cachedUS.summary?.conflictEvents, cachedRU.summary?.conflictEvents,
+      'Cached conflict event counts must be independent per country');
+
+    clearAllCircuitBreakers();
   });
 });
 
 describe('CircuitBreaker isolation — GDELT split breaker independence', () => {
+  const CIRCUIT_BREAKER_URL = pathToFileURL(
+    resolve(root, 'src/utils/circuit-breaker.ts'),
+  ).href;
+
   it('GDELT: positive breaker failure does not trip regular breaker', async () => {
     const { createCircuitBreaker, clearAllCircuitBreakers } = await import(
       `${CIRCUIT_BREAKER_URL}?t=${Date.now()}`
     );
 
     clearAllCircuitBreakers();
-    try {
-      const gdelt = createCircuitBreaker({ name: 'GDELT Intelligence', cacheTtlMs: 10 * 60 * 1000 });
-      const positive = createCircuitBreaker({ name: 'GDELT Positive', cacheTtlMs: 10 * 60 * 1000 });
 
-      const fallback = { articles: [], totalArticles: 0 };
-      const alwaysFail = () => { throw new Error('GDELT API unavailable'); };
+    const gdelt = createCircuitBreaker({ name: 'GDELT Intelligence', cacheTtlMs: 10 * 60 * 1000 });
+    const positive = createCircuitBreaker({ name: 'GDELT Positive', cacheTtlMs: 10 * 60 * 1000 });
 
-      // Default maxFailures is 2 — force positive breaker into cooldown
-      await positive.execute(alwaysFail, fallback); // failure 1
-      await positive.execute(alwaysFail, fallback); // failure 2 → cooldown
-      assert.equal(positive.isOnCooldown(), true, 'positive breaker should be on cooldown after 2 failures');
+    const fallback = { articles: [], totalArticles: 0 };
+    const alwaysFail = () => { throw new Error('GDELT API unavailable'); };
 
-      // gdelt breaker must NOT be affected
-      assert.equal(gdelt.isOnCooldown(), false, 'gdelt breaker must not be on cooldown when positive fails');
+    // Force positive breaker into cooldown (2 failures)
+    await positive.execute(alwaysFail, fallback); // failure 1
+    await positive.execute(alwaysFail, fallback); // failure 2 → cooldown
+    assert.equal(positive.isOnCooldown(), true, 'positive breaker should be on cooldown after 2 failures');
 
-      // gdelt should still call through successfully
-      const realArticles = { articles: [{ url: 'https://news.example/military', title: 'Conflict update' }], totalArticles: 1 };
-      const result = await gdelt.execute(async () => realArticles, fallback);
-      assert.deepEqual(result, realArticles, 'gdelt breaker should return live data unaffected by positive cooldown');
-    } finally {
-      clearAllCircuitBreakers();
-    }
+    // gdelt breaker must NOT be affected
+    assert.equal(gdelt.isOnCooldown(), false, 'gdelt breaker must not be on cooldown when positive fails');
+
+    // gdelt should still call through successfully
+    const realArticles = { articles: [{ url: 'https://news.example/military', title: 'Conflict update' }], totalArticles: 1 };
+    const result = await gdelt.execute(async () => realArticles, fallback);
+    assert.deepEqual(result, realArticles, 'gdelt breaker should return live data unaffected by positive cooldown');
+
+    clearAllCircuitBreakers();
   });
 
   it('GDELT: regular and positive breakers cache different data independently', async () => {
@@ -258,37 +253,36 @@ describe('CircuitBreaker isolation — GDELT split breaker independence', () => 
     );
 
     clearAllCircuitBreakers();
-    try {
-      const gdelt = createCircuitBreaker({ name: 'GDELT Intelligence', cacheTtlMs: 10 * 60 * 1000 });
-      const positive = createCircuitBreaker({ name: 'GDELT Positive', cacheTtlMs: 10 * 60 * 1000 });
 
-      const fallback = { articles: [], totalArticles: 0 };
-      const militaryData = { articles: [{ url: 'https://news.example/military', title: 'Military operations' }], totalArticles: 1 };
-      const peaceData    = { articles: [{ url: 'https://good.example/peace', title: 'Peace agreement' }], totalArticles: 1 };
+    const gdelt = createCircuitBreaker({ name: 'GDELT Intelligence', cacheTtlMs: 10 * 60 * 1000 });
+    const positive = createCircuitBreaker({ name: 'GDELT Positive', cacheTtlMs: 10 * 60 * 1000 });
 
-      // Populate both caches with different data
-      await gdelt.execute(async () => militaryData, fallback);
-      await positive.execute(async () => peaceData, fallback);
+    const fallback = { articles: [], totalArticles: 0 };
+    const militaryData = { articles: [{ url: 'https://news.example/military', title: 'Military operations' }], totalArticles: 1 };
+    const peaceData    = { articles: [{ url: 'https://good.example/peace', title: 'Peace agreement' }], totalArticles: 1 };
 
-      // Each must return its own cached value; pass fallback fn that would return wrong data
-      const cachedGdelt    = await gdelt.execute(async () => fallback, fallback);
-      const cachedPositive = await positive.execute(async () => fallback, fallback);
+    // Populate both caches with different data
+    await gdelt.execute(async () => militaryData, fallback);
+    await positive.execute(async () => peaceData, fallback);
 
-      assert.ok(
-        cachedGdelt.articles[0]?.url.includes('military'),
-        'gdelt cache must return military article URL, not peace article',
-      );
-      assert.ok(
-        cachedPositive.articles[0]?.url.includes('peace'),
-        'positive cache must return peace article URL, not military article',
-      );
-      assert.notEqual(
-        cachedGdelt.articles[0]?.url,
-        cachedPositive.articles[0]?.url,
-        'Cached article URLs must be distinct per breaker (no cross-contamination)',
-      );
-    } finally {
-      clearAllCircuitBreakers();
-    }
+    // Each must return its own cached value; pass fallback fn that would return wrong data
+    const cachedGdelt    = await gdelt.execute(async () => fallback, fallback);
+    const cachedPositive = await positive.execute(async () => fallback, fallback);
+
+    assert.ok(
+      cachedGdelt.articles[0]?.url.includes('military'),
+      'gdelt cache must return military article URL, not peace article',
+    );
+    assert.ok(
+      cachedPositive.articles[0]?.url.includes('peace'),
+      'positive cache must return peace article URL, not military article',
+    );
+    assert.notEqual(
+      cachedGdelt.articles[0]?.url,
+      cachedPositive.articles[0]?.url,
+      'Cached article URLs must be distinct per breaker (no cross-contamination)',
+    );
+
+    clearAllCircuitBreakers();
   });
 });

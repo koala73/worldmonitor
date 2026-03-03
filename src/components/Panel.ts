@@ -167,6 +167,8 @@ export class Panel {
   protected statusBadgeEl: HTMLElement | null = null;
   protected newBadgeEl: HTMLElement | null = null;
   protected panelId: string;
+  private closeBtn?: HTMLElement;
+  public onClose?: (panelId: string) => void;
   private abortController: AbortController = new AbortController();
   private tooltipCloseHandler: (() => void) | null = null;
   private resizeHandle: HTMLElement | null = null;
@@ -253,6 +255,19 @@ export class Panel {
       this.countEl.className = 'panel-count';
       this.countEl.textContent = '0';
       this.header.appendChild(this.countEl);
+    }
+
+    // Close button (skip for map panel)
+    if (options.id !== 'map') {
+      this.closeBtn = document.createElement('button');
+      this.closeBtn.className = 'panel-close-btn';
+      this.closeBtn.title = 'Remove';
+      this.closeBtn.innerHTML = '×';
+      this.closeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.onClose?.(this.panelId);
+      });
+      this.header.appendChild(this.closeBtn);
     }
 
     this.content = document.createElement('div');

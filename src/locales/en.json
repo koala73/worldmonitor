@@ -2224,6 +2224,21 @@
     "retry": "Retry",
     "refresh": "Refresh",
     "all": "All"
+  },
+  "layouts": {
+    "intelligenceAnalyst": "Intelligence",
+    "marketWatch": "Markets",
+    "breakingNews": "News",
+    "minimal": "Minimal",
+    "techOverview": "Tech Overview",
+    "startupInvestor": "Startups",
+    "fullMarkets": "Full Markets",
+    "cryptoFocus": "Crypto",
+    "allGoodNews": "All Good News",
+    "addWidget": "Add Widget",
+    "filterWidgets": "Filter...",
+    "modified": "modified",
+    "clickToReset": "Click to reset"
   }
 }
 

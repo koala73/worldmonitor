@@ -491,6 +491,10 @@ export interface TechReadinessScore {
 export async function getTechReadinessRankings(
   countries?: string[],
 ): Promise<TechReadinessScore[]> {
+  // Fast path: bootstrap-hydrated data available on first page load
+  const hydrated = getHydratedData('techReadiness') as TechReadinessScore[] | undefined;
+  if (hydrated?.length && !countries) return hydrated;
+
   const [internet, mobile, broadband, rdSpend] = await Promise.all([
     getIndicatorData('IT.NET.USER.ZS', { countries, years: 5 }),
     getIndicatorData('IT.CEL.SETS.P2', { countries, years: 5 }),

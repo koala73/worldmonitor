@@ -269,10 +269,10 @@ const ALLOWED_DOMAINS = [
   'www.brasilparalelo.com.br',
   // Mexico & LatAm Security
   'mexiconewsdaily.com',
-  'animalpolitico.com',
-  'www.proceso.com.mx',
-  'www.milenio.com',
   'insightcrime.org',
+  'www.primicias.ec',
+  'www.infobae.com',
+  'www.eluniverso.com',
   // Additional
   'news.ycombinator.com',
   // Finance variant
