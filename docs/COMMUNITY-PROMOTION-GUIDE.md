@@ -8,7 +8,7 @@ Thank you for helping spread the word about World Monitor! This guide provides t
 
 **One-line pitch**: A free, open-source, real-time global intelligence dashboard — like Bloomberg Terminal meets OSINT, for everyone.
 
-**Longer description**: World Monitor aggregates 150+ news feeds, military tracking, financial markets, conflict data, protest monitoring, satellite imagery, and AI-powered analysis into a single unified dashboard with an interactive globe. Available as a web app, desktop app (macOS/Windows/Linux), and installable PWA.
+**Longer description**: World Monitor aggregates 170+ news feeds, military tracking, financial markets, conflict data, protest monitoring, satellite imagery, and AI-powered analysis into a single unified dashboard with an interactive globe. Available as a web app, desktop app (macOS/Windows/Linux), and installable PWA.
 
 ---
 
@@ -25,7 +25,7 @@ Thank you for helping spread the word about World Monitor! This guide provides t
 
 ## Must-See Features (Top 10)
 
-### 1. Interactive Globe with 35+ Data Layers
+### 1. Interactive Globe with 40+ Data Layers
 
 The centerpiece. A WebGL-accelerated globe (deck.gl) with toggleable layers for conflicts, military bases, nuclear facilities, undersea cables, pipelines, satellite fires, protests, cyber threats, and more. Zoom in and the detail layers progressively reveal.
 
@@ -43,9 +43,9 @@ Click any country on the map for a full-page intelligence brief: instability sco
 
 **Show**: Click a country (e.g., Japan, Ukraine, or Iran) → full dossier page.
 
-### 4. 14 Languages Support 
+### 4. 19 Languages Support
 
-Full UI in 14 languages including Japanese. Regional news feeds auto-adapt — Japanese users see NHK World, Nikkei Asia, and Japan-relevant sources. Language bundles are lazy-loaded for fast performance.
+Full UI in 19 languages including Japanese. Regional news feeds auto-adapt — Japanese users see NHK World, Nikkei Asia, and Japan-relevant sources. Language bundles are lazy-loaded for fast performance.
 
 **Show**: Switch language to Japanese in the settings. Note how feeds change.
 
@@ -120,7 +120,7 @@ Run AI summarization entirely on your own hardware — no API keys, no cloud, no
 ### For General Audience
 
 - "An open-source Bloomberg Terminal for everyone — free, no login required"
-- "150+ news sources, military tracking, AI analysis — all in one dashboard"
+- "170+ news sources, military tracking, AI analysis — all in one dashboard"
 - "Run AI summaries locally with Ollama — your data never leaves your machine"
 - "Available in Japanese with NHK and Nikkei feeds built in"
 - "Native desktop app for macOS/Windows/Linux, completely free"
@@ -128,7 +128,7 @@ Run AI summarization entirely on your own hardware — no API keys, no cloud, no
 ### For Tech Audience
 
 - "Built with TypeScript, Vite, deck.gl, MapLibre GL, Tauri"
-- "35+ WebGL data layers running at 60fps"
+- "40+ WebGL data layers running at 60fps"
 - "ONNX Runtime Web for browser-based ML inference (sentiment, NER, summarization)"
 - "Local LLM support — plug in Ollama or LM Studio, zero cloud dependency"
 - "Open source under AGPL-3.0 — contribute on GitHub"
@@ -158,7 +158,7 @@ Run AI summarization entirely on your own hardware — no API keys, no cloud, no
 | v2.5.0 | Ollama/LM Studio local LLM support, settings split into LLMs + API Keys tabs, keychain vault consolidation |
 | v2.4.1 | Ultra-wide layout (panels wrap around map on 2000px+ screens) |
 | v2.4.0 | Live webcams from 19 geopolitical hotspots, 4 regions |
-| v2.3.9 | Full i18n: 14 languages including Japanese, Arabic (RTL), Chinese |
+| v2.3.9 | Full i18n: 19 languages including Japanese, Arabic (RTL), Chinese |
 | v2.3.8 | Finance variant with 92 exchanges, Gulf FDI investments |
 | v2.3.7 | Light/dark theme system, UCDP/UNHCR/Climate panels |
 | v2.3.6 | Desktop app with Tauri, OS keychain, auto-updates |
