@@ -367,6 +367,7 @@ export class MapComponent {
       'natural', 'weather',                               // natural
       'economic',                                         // economic
       'waterways',                                        // labels
+      'ciiChoropleth',                                    // CII heat-map (DeckGL only, shown as disabled toggle)
     ];
     const techLayers: (keyof MapLayers)[] = [
       'cables', 'datacenters', 'outages',                // tech infrastructure
@@ -413,6 +414,7 @@ export class MapComponent {
       gulfInvestments: 'components.deckgl.layers.gulfInvestments',
       iranAttacks: 'components.deckgl.layers.iranAttacks',
       gpsJamming: 'components.deckgl.layers.gpsJamming',
+      ciiChoropleth: 'components.deckgl.layers.ciiChoropleth',
     };
     const getLayerLabel = (layer: keyof MapLayers): string => {
       if (layer === 'sanctions') return t('components.deckgl.layerHelp.labels.sanctions');

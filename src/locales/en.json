@@ -963,7 +963,12 @@
         "elevated": "Elevated",
         "monitoring": "Monitoring",
         "base": "Base",
-        "nuclear": "Nuclear"
+        "nuclear": "Nuclear",
+        "ciiLow": "Low (0–24)",
+        "ciiNormal": "Normal (25–49)",
+        "ciiElevated": "Elevated (50–69)",
+        "ciiHigh": "High (70–84)",
+        "ciiCritical": "Critical (85–100)"
       },
       "layerGuide": "Layer Guide",
       "layersTitle": "Layers",
@@ -1016,6 +1021,7 @@
         "tradeRoutes": "Trade Routes",
         "iranAttacks": "Iran Attacks",
         "gpsJamming": "GPS JAMMING",
+        "ciiChoropleth": "CII Instability",
         "dayNight": "Day/Night",
         "geopoliticalBoundaries": "Geopolitical Boundaries",
         "positiveEvents": "Positive Events",
@@ -1127,7 +1133,8 @@
           "financeGulfInvestments": "GCC sovereign wealth fund investments and FDI",
           "tradeRoutes": "Major global shipping lanes connecting ports through strategic chokepoints",
           "dayNight": "Real-time solar terminator showing day and night zones",
-          "geoBoundaries": "Demilitarized zones, ceasefire lines, and disputed boundaries"
+          "geoBoundaries": "Demilitarized zones, ceasefire lines, and disputed boundaries",
+          "ciiChoropleth": "Country Instability Index heat-map — colors countries by CII score (green=stable, red=critical)"
         },
         "notes": {
           "timeAffects": "Affects: Earthquakes, Weather, Protests, Outages"
