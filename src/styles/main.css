@@ -625,6 +625,68 @@ canvas,
   gap: 12px;
 }
 
+/* Layout tabs */
+.layout-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin: 0 12px;
+  flex-shrink: 1;
+  overflow-x: auto;
+}
+
+.layout-tab {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+
+.layout-tab:hover {
+  background: var(--overlay-subtle);
+  color: var(--text);
+}
+
+.layout-tab.active {
+  background: var(--overlay-subtle);
+  border-color: var(--border);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.layout-tab.modified::after {
+  content: '•';
+  margin-left: 2px;
+  color: var(--accent, #4488ff);
+  font-size: 14px;
+  line-height: 1;
+}
+
+.layout-tab-icon {
+  font-size: 12px;
+}
+
+.layout-tab-label {
+  font-size: 10px;
+}
+
+@media (max-width: 900px) {
+  .layout-tabs {
+    display: none;
+  }
+}
+
 .theme-toggle-btn {
   display: flex;
   align-items: center;
