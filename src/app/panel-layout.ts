@@ -44,6 +44,9 @@ import { SpaceWeatherPanel } from '@/components/SpaceWeatherPanel';
 import { DiseaseOutbreakPanel } from '@/components/DiseaseOutbreakPanel';
 import { AirQualityPanel } from '@/components/AirQualityPanel';
 import { AirstrikesPanel } from '@/components/AirstrikesPanel';
+import { GDACSAlertsPanel } from '@/components/GDACSAlertsPanel';
+import { VolcanoAlertsPanel } from '@/components/VolcanoAlertsPanel';
+import { NWSAlertsPanel } from '@/components/NWSAlertsPanel';
 import { PositiveNewsFeedPanel } from '@/components/PositiveNewsFeedPanel';
 import { CountersPanel } from '@/components/CountersPanel';
 import { ProgressChartsPanel } from '@/components/ProgressChartsPanel';
@@ -742,6 +745,21 @@ export class PanelLayoutManager implements AppModule {
         this.ctx.map?.setCenter(lat, lon, 6);
       });
       this.ctx.panels['airstrikes'] = airstrikesPanel;
+
+      const gdacsAlertsPanel = new GDACSAlertsPanel();
+      gdacsAlertsPanel.setEventClickHandler((lat, lon) => {
+        this.ctx.map?.setCenter(lat, lon, 5);
+      });
+      this.ctx.panels['gdacs-alerts'] = gdacsAlertsPanel;
+
+      const volcanoAlertsPanel = new VolcanoAlertsPanel();
+      volcanoAlertsPanel.setEventClickHandler((lat, lon) => {
+        this.ctx.map?.setCenter(lat, lon, 7);
+      });
+      this.ctx.panels['volcano-alerts'] = volcanoAlertsPanel;
+
+      const nwsAlertsPanel = new NWSAlertsPanel();
+      this.ctx.panels['nws-alerts'] = nwsAlertsPanel;
 
       const displacementPanel = new DisplacementPanel();
       displacementPanel.setCountryClickHandler((lat, lon) => {

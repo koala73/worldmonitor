@@ -128,6 +128,11 @@ import { fetchDiseaseOutbreaks } from '@/services/disease-outbreak';
 import { fetchGlobalAirQuality } from '@/services/air-quality';
 import { classifyNewsItem } from '@/services/positive-classifier';
 import { fetchGivingSummary } from '@/services/giving';
+import { fetchVolcanoAlerts } from '@/services/volcano-alerts';
+import { fetchNWSAlerts } from '@/services/nws-alerts';
+import { GDACSAlertsPanel } from '@/components/GDACSAlertsPanel';
+import { VolcanoAlertsPanel } from '@/components/VolcanoAlertsPanel';
+import { NWSAlertsPanel } from '@/components/NWSAlertsPanel';
 import { GivingPanel } from '@/components';
 import { fetchProgressData } from '@/services/progress-data';
 import { fetchConservationWins } from '@/services/conservation-data';
@@ -350,6 +355,9 @@ export class DataLoaderManager implements AppModule {
     if (SITE_VARIANT === 'full') tasks.push({ name: 'spaceWeather', task: runGuarded('spaceWeather', () => this.loadSpaceWeather()) });
     if (SITE_VARIANT === 'full') tasks.push({ name: 'diseaseOutbreaks', task: runGuarded('diseaseOutbreaks', () => this.loadDiseaseOutbreaks()) });
     if (SITE_VARIANT === 'full') tasks.push({ name: 'airQuality', task: runGuarded('airQuality', () => this.loadAirQuality()) });
+    if (SITE_VARIANT === 'full') tasks.push({ name: 'gdacsAlerts', task: runGuarded('gdacsAlerts', () => this.loadGDACSAlerts()) });
+    if (SITE_VARIANT === 'full') tasks.push({ name: 'volcanoAlerts', task: runGuarded('volcanoAlerts', () => this.loadVolcanoAlerts()) });
+    if (SITE_VARIANT === 'full') tasks.push({ name: 'nwsAlerts', task: runGuarded('nwsAlerts', () => this.loadNWSAlerts()) });
 
     if (SITE_VARIANT === 'tech') {
       tasks.push({ name: 'techReadiness', task: runGuarded('techReadiness', () => (this.ctx.panels['tech-readiness'] as TechReadinessPanel)?.refresh()) });
@@ -1462,6 +1470,37 @@ export class DataLoaderManager implements AppModule {
     } catch (error) {
       console.warn('[air-quality] fetch failed', error);
       (this.ctx.panels['air-quality'] as AirQualityPanel)?.update([]);
+    }
+  }
+
+  async loadGDACSAlerts(): Promise<void> {
+    try {
+      const events = await fetchGDACSEvents();
+      (this.ctx.panels['gdacs-alerts'] as GDACSAlertsPanel)?.update(events);
+      void evaluateDisasterTrigger(events, this.ctx.intelligenceCache?.earthquakes ?? []);
+    } catch (error) {
+      console.warn('[gdacs-alerts] fetch failed', error);
+      (this.ctx.panels['gdacs-alerts'] as GDACSAlertsPanel)?.update([]);
+    }
+  }
+
+  async loadVolcanoAlerts(): Promise<void> {
+    try {
+      const alerts = await fetchVolcanoAlerts();
+      (this.ctx.panels['volcano-alerts'] as VolcanoAlertsPanel)?.update(alerts);
+    } catch (error) {
+      console.warn('[volcano-alerts] fetch failed', error);
+      (this.ctx.panels['volcano-alerts'] as VolcanoAlertsPanel)?.update([]);
+    }
+  }
+
+  async loadNWSAlerts(): Promise<void> {
+    try {
+      const alerts = await fetchNWSAlerts();
+      (this.ctx.panels['nws-alerts'] as NWSAlertsPanel)?.update(alerts);
+    } catch (error) {
+      console.warn('[nws-alerts] fetch failed', error);
+      (this.ctx.panels['nws-alerts'] as NWSAlertsPanel)?.update([]);
     }
   }
 

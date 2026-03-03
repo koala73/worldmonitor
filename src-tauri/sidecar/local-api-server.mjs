@@ -1372,6 +1372,73 @@ async function dispatch(requestUrl, req, routes, context) {
     }
   }
 
+  // ── USGS Volcano Hazards Program alerts ─────────────────────────────────
+  if (requestUrl.pathname === '/api/volcano-alerts') {
+    try {
+      const resp = await fetchWithTimeout(
+        'https://volcanoes.usgs.gov/vsc/api/volcanoApi/volcanoesGet',
+        { headers: { Accept: 'application/json', 'User-Agent': CHROME_UA } },
+        15000,
+      );
+      if (!resp.ok) return json([], 200);
+      const data = await resp.json();
+      const volcanoes = Array.isArray(data) ? data : (data?.features ?? data?.volcanoes ?? []);
+      const cap = (s) => s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : '';
+      const alerts = volcanoes
+        .filter(v => {
+          const level = (v.alertLevel ?? v.alert_level ?? v.currentAlertLevel ?? '').toLowerCase();
+          return level && level !== 'normal' && level !== 'unassigned';
+        })
+        .slice(0, 100)
+        .map((v, i) => ({
+          id: `usgs-volcano-${v.vnum ?? v.id ?? i}`,
+          name: v.volcanoName ?? v.name ?? `Volcano ${i}`,
+          location: [v.state ?? '', v.country ?? ''].filter(Boolean).join(', '),
+          alertLevel: cap(v.alertLevel ?? v.alert_level ?? v.currentAlertLevel ?? 'Advisory'),
+          color: v.colorCode ?? v.color_code ?? 'Yellow',
+          lat: parseFloat(v.latitude ?? v.lat ?? 0),
+          lon: parseFloat(v.longitude ?? v.lon ?? 0),
+          updatedAt: v.activityChangedDate ?? v.updatedAt ?? '',
+          observatory: v.observatoryName ?? v.observatory ?? '',
+        }));
+      return json(alerts);
+    } catch (e) {
+      return json([], 200);
+    }
+  }
+
+  // ── NOAA NWS All-Hazards alerts ──────────────────────────────────────────
+  if (requestUrl.pathname === '/api/nws-alerts') {
+    try {
+      const resp = await fetchWithTimeout(
+        'https://api.weather.gov/alerts/active?status=actual&message_type=alert&urgency=Immediate,Expected&severity=Extreme,Severe,Moderate',
+        { headers: { Accept: 'application/geo+json', 'User-Agent': 'CrystalBall-NWS/1.0 (https://github.com/bradleybond512/crystal-ball)' } },
+        12000,
+      );
+      if (!resp.ok) return json([], 200);
+      const data = await resp.json();
+      const features = Array.isArray(data?.features) ? data.features : [];
+      const alerts = features.slice(0, 100).map((f, i) => {
+        const p = f.properties ?? {};
+        return {
+          id: p.id ?? `nws-${i}`,
+          event: p.event ?? '',
+          headline: p.headline ?? '',
+          description: String(p.description ?? '').slice(0, 300),
+          severity: p.severity ?? 'Unknown',
+          urgency: p.urgency ?? 'Unknown',
+          areaDesc: p.areaDesc ?? '',
+          onset: p.onset ?? '',
+          expires: p.expires ?? '',
+          status: p.status ?? '',
+        };
+      });
+      return json(alerts);
+    } catch (e) {
+      return json([], 200);
+    }
+  }
+
   // RSS proxy — fetch public feeds with SSRF protection
   if (requestUrl.pathname === '/api/rss-proxy') {
     const feedUrl = requestUrl.searchParams.get('url');

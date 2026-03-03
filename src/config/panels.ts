@@ -60,6 +60,9 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   'space-weather': { name: 'Space Weather', enabled: true, priority: 2 },
   'disease-outbreaks': { name: 'Disease Outbreaks', enabled: true, priority: 2 },
   'air-quality': { name: 'Air Quality', enabled: true, priority: 2 },
+  'gdacs-alerts': { name: 'GDACS Disaster Alerts', enabled: true, priority: 2 },
+  'volcano-alerts': { name: 'Volcano Alerts', enabled: true, priority: 2 },
+  'nws-alerts': { name: 'NWS Hazard Alerts', enabled: true, priority: 2 },
 };
 
 const FULL_MAP_LAYERS: MapLayers = {
@@ -629,7 +632,7 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   },
   dataTracking: {
     labelKey: 'header.panelCatDataTracking',
-    panelKeys: ['monitors', 'satellite-fires', 'earthquakes', 'cyber-threats', 'ucdp-events', 'airstrikes', 'displacement', 'climate', 'population-exposure', 'security-advisories', 'oref-sirens', 'disease-outbreaks', 'space-weather', 'air-quality'],
+    panelKeys: ['monitors', 'satellite-fires', 'earthquakes', 'cyber-threats', 'ucdp-events', 'airstrikes', 'displacement', 'climate', 'population-exposure', 'security-advisories', 'oref-sirens', 'disease-outbreaks', 'space-weather', 'air-quality', 'gdacs-alerts', 'volcano-alerts', 'nws-alerts'],
     variants: ['full'],
   },
 
