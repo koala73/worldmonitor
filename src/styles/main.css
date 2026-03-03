@@ -5332,6 +5332,9 @@ a.prediction-link:hover {
 
 /* Monitors */
 .monitor-input-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   margin-bottom: 12px;
   padding-bottom: 12px;
   border-bottom: 1px solid var(--border);
@@ -5345,7 +5348,6 @@ a.prediction-link:hover {
   color: var(--text);
   font-family: inherit;
   font-size: 11px;
-  margin-bottom: 8px;
 }
 
 .monitor-input::placeholder {
