@@ -13,6 +13,7 @@ import type { GeoHubActivity } from '@/services/geo-activity';
 import { getNaturalEventIcon } from '@/services/eonet';
 import type { WeatherAlert } from '@/services/weather';
 import { getSeverityColor } from '@/services/weather';
+import { startSmartPollLoop, type SmartPollLoopHandle } from '@/services/runtime';
 import {
   MAP_URLS,
   INTEL_HOTSPOTS,
@@ -160,7 +161,7 @@ export class MapComponent {
   private renderScheduled = false;
   private lastRenderTime = 0;
   private readonly MIN_RENDER_INTERVAL_MS = 100;
-  private healthCheckIntervalId: ReturnType<typeof setInterval> | null = null;
+  private healthCheckLoop: SmartPollLoopHandle | null = null;
 
   constructor(container: HTMLElement, initialState: MapState) {
     this.container = container;
@@ -191,7 +192,13 @@ export class MapComponent {
     container.appendChild(this.createTimeSlider());
     container.appendChild(this.createLayerToggles());
     container.appendChild(this.createLegend());
-    this.healthCheckIntervalId = setInterval(() => this.runHealthCheck(), 30000);
+    this.healthCheckLoop = startSmartPollLoop(() => { this.runHealthCheck(); }, {
+      intervalMs: 30_000,
+      pauseWhenHidden: true,
+      refreshOnVisible: false,
+      runImmediately: false,
+      jitterFraction: 0,
+    });
 
     this.svg = d3.select(svgElement);
     this.baseLayerGroup = this.svg.append('g').attr('class', 'map-base');
@@ -244,9 +251,9 @@ export class MapComponent {
 
   public destroy(): void {
     document.removeEventListener('visibilitychange', this.boundVisibilityHandler);
-    if (this.healthCheckIntervalId) {
-      clearInterval(this.healthCheckIntervalId);
-      this.healthCheckIntervalId = null;
+    if (this.healthCheckLoop) {
+      this.healthCheckLoop.stop();
+      this.healthCheckLoop = null;
     }
   }
 
@@ -624,9 +631,6 @@ export class MapComponent {
   }
 
   private runHealthCheck(): void {
-    // Skip if page is hidden (no need to check while user isn't looking)
-    if (document.hidden) return;
-
     const svgNode = this.svg.node();
     if (!svgNode) return;
 

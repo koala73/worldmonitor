@@ -1,4 +1,4 @@
-import { getApiBaseUrl } from '@/services/runtime';
+import { getApiBaseUrl, startSmartPollLoop, type SmartPollLoopHandle } from '@/services/runtime';
 import { translateText } from '@/services/summarization';
 
 export interface OrefAlert {
@@ -35,7 +35,7 @@ export interface OrefHistoryResponse {
 let cachedResponse: OrefAlertsResponse | null = null;
 let lastFetchAt = 0;
 const CACHE_TTL = 8_000;
-let pollingInterval: ReturnType<typeof setInterval> | null = null;
+let pollingLoop: SmartPollLoopHandle | null = null;
 let updateCallbacks: Array<(data: OrefAlertsResponse) => void> = [];
 
 let locationTranslator: ((s: string) => string) | null = null;
@@ -228,7 +228,7 @@ function getOrefApiUrl(endpoint?: string): string {
   return `${base}/api/oref-alerts${suffix}`;
 }
 
-export async function fetchOrefAlerts(): Promise<OrefAlertsResponse> {
+export async function fetchOrefAlerts(options: { signal?: AbortSignal } = {}): Promise<OrefAlertsResponse> {
   await ensureLocationMapLoaded();
   const now = Date.now();
   if (cachedResponse && now - lastFetchAt < CACHE_TTL) {
@@ -238,6 +238,7 @@ export async function fetchOrefAlerts(): Promise<OrefAlertsResponse> {
   try {
     const res = await fetch(getOrefApiUrl(), {
       headers: { Accept: 'application/json' },
+      signal: options.signal,
     });
     if (!res.ok) {
       return { configured: false, alerts: [], historyCount24h: 0, timestamp: new Date().toISOString(), error: `HTTP ${res.status}` };
@@ -256,6 +257,9 @@ export async function fetchOrefAlerts(): Promise<OrefAlertsResponse> {
 
     return { ...data, alerts: applyTranslations(data.alerts) };
   } catch (err) {
+    if ((err as { name?: string })?.name === 'AbortError') {
+      throw err;
+    }
     return { configured: false, alerts: [], historyCount24h: 0, timestamp: new Date().toISOString(), error: String(err) };
   }
 }
@@ -293,17 +297,21 @@ export function onOrefAlertsUpdate(cb: (data: OrefAlertsResponse) => void): void
 }
 
 export function startOrefPolling(): void {
-  if (pollingInterval) return;
-  pollingInterval = setInterval(async () => {
-    const data = await fetchOrefAlerts();
+  if (pollingLoop?.isActive()) return;
+  pollingLoop = startSmartPollLoop(async ({ signal }) => {
+    const data = await fetchOrefAlerts({ signal });
     for (const cb of updateCallbacks) cb(data);
-  }, 120_000);
+  }, {
+    intervalMs: 120_000,
+    // 2m -> 20m while hidden; restore with immediate refresh when visible.
+    hiddenMultiplier: 10,
+    refreshOnVisible: true,
+    runImmediately: false,
+  });
 }
 
 export function stopOrefPolling(): void {
-  if (pollingInterval) {
-    clearInterval(pollingInterval);
-    pollingInterval = null;
-  }
+  pollingLoop?.stop();
+  pollingLoop = null;
   updateCallbacks = [];
 }

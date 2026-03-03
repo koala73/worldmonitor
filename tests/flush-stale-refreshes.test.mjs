@@ -126,7 +126,7 @@ function buildFlushStaleRefreshes(timers) {
 function createContext() {
   return {
     refreshRunners: new Map(),
-    refreshTimeoutIds: new Map(),
+    flushTimeoutIds: new Set(),
     hiddenSince: 0,
   };
 }
@@ -205,21 +205,17 @@ describe('flushStaleRefreshes behavior', () => {
     const flushed = [];
 
     ctx.refreshRunners.set('fast-service', {
-      run: () => { flushed.push('fast-service'); },
+      loop: { trigger: () => { flushed.push('fast-service'); } },
       intervalMs: 60_000,
     });
     ctx.refreshRunners.set('medium-service', {
-      run: () => { flushed.push('medium-service'); },
+      loop: { trigger: () => { flushed.push('medium-service'); } },
       intervalMs: 300_000,
     });
     ctx.refreshRunners.set('slow-service', {
-      run: () => { flushed.push('slow-service'); },
+      loop: { trigger: () => { flushed.push('slow-service'); } },
       intervalMs: 1_800_000,
     });
-
-    for (const name of ctx.refreshRunners.keys()) {
-      ctx.refreshTimeoutIds.set(name, timers.setTimeout(() => {}, 999_999));
-    }
 
     ctx.hiddenSince = timers.now - 600_000; // 10 min hidden
     flushStaleRefreshes.call(ctx);
@@ -234,7 +230,7 @@ describe('flushStaleRefreshes behavior', () => {
   it('does nothing when hiddenSince is 0', () => {
     let called = false;
     ctx.refreshRunners.set('service', {
-      run: () => { called = true; },
+      loop: { trigger: () => { called = true; } },
       intervalMs: 60_000,
     });
 
@@ -247,19 +243,15 @@ describe('flushStaleRefreshes behavior', () => {
   it('skips services hidden for less than their interval', () => {
     let called = false;
     ctx.refreshRunners.set('service', {
-      run: () => { called = true; },
+      loop: { trigger: () => { called = true; } },
       intervalMs: 300_000,
     });
-    const originalId = timers.setTimeout(() => {}, 999_999);
-    ctx.refreshTimeoutIds.set('service', originalId);
 
     ctx.hiddenSince = timers.now - 30_000; // 30s hidden, 5m interval
     flushStaleRefreshes.call(ctx);
     timers.runAll();
     assert.equal(called, false, '30s hidden < 5m interval — should NOT flush');
     assert.equal(ctx.hiddenSince, 0, 'hiddenSince must still be reset even if no services flushed');
-    assert.equal(ctx.refreshTimeoutIds.get('service'), originalId,
-      'Non-stale service timeout should be untouched');
   });
 
   it('staggers re-triggered services deterministically by 150ms', () => {
@@ -268,10 +260,9 @@ describe('flushStaleRefreshes behavior', () => {
 
     for (const name of ['svc-a', 'svc-b', 'svc-c']) {
       ctx.refreshRunners.set(name, {
-        run: () => { timestamps.push(timers.now - start); },
+        loop: { trigger: () => { timestamps.push(timers.now - start); } },
         intervalMs: 60_000,
       });
-      ctx.refreshTimeoutIds.set(name, timers.setTimeout(() => {}, 999_999));
     }
 
     ctx.hiddenSince = timers.now - 600_000;
@@ -282,35 +273,35 @@ describe('flushStaleRefreshes behavior', () => {
     assert.deepEqual(timestamps, [0, 150, 300], 'Services should fire in 150ms steps');
   });
 
-  it('replaces timeout IDs in refreshTimeoutIds after flush', () => {
+  it('cleans up stale flush timeout IDs after triggering', () => {
     ctx.refreshRunners.set('svc', {
-      run: () => {},
+      loop: { trigger: () => {} },
       intervalMs: 60_000,
     });
-    const originalId = timers.setTimeout(() => {}, 999_999);
-    ctx.refreshTimeoutIds.set('svc', originalId);
 
     ctx.hiddenSince = timers.now - 600_000;
     flushStaleRefreshes.call(ctx);
 
-    const newId = ctx.refreshTimeoutIds.get('svc');
-    assert.ok(newId !== undefined, 'refreshTimeoutIds should still have an entry for the service');
-    assert.notEqual(newId, originalId, 'Timeout ID should be replaced with a new one');
-    assert.equal(timers.has(originalId), false, 'Original timeout should be cleared');
+    // Before running timers, flushTimeoutIds should have pending entries
+    assert.ok(ctx.flushTimeoutIds.size > 0, 'Should have pending flush timeout IDs');
+
+    timers.runAll();
+
+    // After running, the callbacks should self-delete from the set
+    assert.equal(ctx.flushTimeoutIds.size, 0, 'Flush timeout IDs should be cleaned up after execution');
   });
 
-  it('does not touch timeout IDs for non-stale services', () => {
+  it('does not trigger non-stale services', () => {
+    let called = false;
     ctx.refreshRunners.set('fresh', {
-      run: () => {},
+      loop: { trigger: () => { called = true; } },
       intervalMs: 1_800_000,
     });
-    const originalId = timers.setTimeout(() => {}, 999_999);
-    ctx.refreshTimeoutIds.set('fresh', originalId);
 
     ctx.hiddenSince = timers.now - 60_000; // 1min hidden, 30min interval
     flushStaleRefreshes.call(ctx);
+    timers.runAll();
 
-    assert.equal(ctx.refreshTimeoutIds.get('fresh'), originalId,
-      'Non-stale service timeout should be untouched');
+    assert.equal(called, false, 'Non-stale service should not be triggered');
   });
 });
