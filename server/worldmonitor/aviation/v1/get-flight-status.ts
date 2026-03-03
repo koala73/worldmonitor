@@ -58,7 +58,7 @@ export async function getFlightStatus(
     const flightNumber = req.flightNumber?.toUpperCase().replace(/\s/g, '') || '';
     const date = req.date || new Date().toISOString().slice(0, 10);
     const origin = req.origin?.toUpperCase() || '';
-    const cacheKey = `aviation:status:${flightNumber}:${date}:v1`;
+    const cacheKey = `aviation:status:${flightNumber}:${date}:${origin}:v1`;
     const now = Date.now();
 
     if (!flightNumber) {
