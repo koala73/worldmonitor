@@ -1,5 +1,7 @@
 import type { Feed } from '@/types';
-import { SITE_VARIANT } from './variant';
+
+// SalesIntel variant constant (single product)
+const SITE_VARIANT = 'salesintel' as const;
 
 // Helper to create RSS proxy URL (Vercel)
 const rss = (url: string) => `/api/rss-proxy?url=${encodeURIComponent(url)}`;
@@ -86,23 +88,61 @@ export const SOURCE_TIERS: Record<string, number> = {
   'CDC': 2,
   'FEMA': 2,
 
+  // Tier 2 - Business & Tech
+  'TechCrunch': 2,
+  'TechCrunch Startups': 2,
+  'TechCrunch Funding': 2,
+  'VentureBeat': 2,
+  'The Verge': 2,
+  'Ars Technica': 2,
+  'Wired': 2,
+  'MIT Tech Review': 2,
+
+  // Tier 3 - Funding & VC
+  'Crunchbase News': 2,
+  'PitchBook News': 2,
+  'PitchBook': 2,
+  'SaaStr': 3,
+  'First Round Review': 3,
+  'a16z Blog': 3,
+  'Sequoia Blog': 3,
+  'AngelList': 3,
+  'CB Insights': 3,
+
+  // Tier 2 - Research & Analysis
+  'Gartner News': 2,
+  'Forrester': 2,
+  'G2 Research': 3,
+  'G2 News': 3,
+
+  // Tier 3 - Cloud & DevOps
+  'InfoQ': 3,
+  'The New Stack': 3,
+  'DevOps.com': 3,
+  'Container Journal': 3,
+
   // Tier 3 - Specialty
-  'Defense One': 3,
-  'Breaking Defense': 3,
-  'The War Zone': 3,
-  'Defense News': 3,
-  'Janes': 3,
-  'Military Times': 2,
-  'Task & Purpose': 3,
-  'USNI News': 2,
-  'gCaptain': 3,
-  'Oryx OSINT': 2,
-  'UK MOD': 1,
   'Foreign Policy': 3,
   'The Diplomat': 3,
-  'Bellingcat': 3,
-  'Krebs Security': 3,
-  'Ransomware.live': 3,
+  'Krebs on Security': 3,
+  'Dark Reading': 3,
+  'The Hacker News': 3,
+  'BleepingComputer': 3,
+  'SEC News': 2,
+  'SEC EDGAR 8-K': 2,
+  'SEC Filings': 2,
+  'Finextra': 3,
+  'Tearsheet': 3,
+  'Finovate': 3,
+  'Healthcare IT News': 3,
+  'MobiHealthNews': 3,
+  'Product Hunt': 4,
+  'Hacker News': 3,
+  'FedScoop': 3,
+  'GovTech': 3,
+  'SAM.gov': 2,
+  'Glassdoor Blog': 3,
+  'Seeking Alpha': 3,
   'Federal Reserve': 3,
   'SEC': 3,
   'MIT Tech Review': 3,
@@ -1062,14 +1102,98 @@ const HAPPY_FEEDS: Record<string, Feed[]> = {
   ],
 };
 
-// Variant-aware exports
-export const FEEDS = SITE_VARIANT === 'tech'
-  ? TECH_FEEDS
-  : SITE_VARIANT === 'finance'
-    ? FINANCE_FEEDS
-    : SITE_VARIANT === 'happy'
-      ? HAPPY_FEEDS
-      : FULL_FEEDS;
+// SalesIntel Business Intelligence Feeds
+const SALESINTEL_FEEDS: Record<string, Feed[]> = {
+  // Tier 1: Wire Services & Major Business
+  business: [
+    { name: 'Reuters Business', url: rss('https://news.google.com/rss/search?q=source:reuters+business&hl=en-US&gl=US&ceid=US:en'), type: 'wire' },
+    { name: 'Bloomberg', url: rss('https://news.google.com/rss/search?q=source:bloomberg+business&hl=en-US&gl=US&ceid=US:en'), type: 'wire' },
+    { name: 'Financial Times', url: rss('https://news.google.com/rss/search?q=source:"financial+times"&hl=en-US&gl=US&ceid=US:en'), type: 'wire' },
+    { name: 'Wall Street Journal', url: rss('https://feeds.a.dj.com/rss/WSJcomUSBusiness.xml'), type: 'wire' },
+    { name: 'CNBC', url: rss('https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10001147'), type: 'business' },
+    { name: 'Forbes', url: rss('https://www.forbes.com/innovation/feed2'), type: 'business' },
+    { name: 'Business Insider', url: rss('https://news.google.com/rss/search?q=source:"business+insider"&hl=en-US&gl=US&ceid=US:en'), type: 'business' },
+  ],
+
+  // Tier 2: Tech & Startup
+  tech: [
+    { name: 'TechCrunch', url: rss('https://techcrunch.com/feed/'), type: 'tech' },
+    { name: 'TechCrunch Startups', url: rss('https://techcrunch.com/category/startups/feed/'), type: 'tech' },
+    { name: 'The Verge', url: rss('https://www.theverge.com/rss/index.xml'), type: 'tech' },
+    { name: 'Ars Technica', url: rss('https://feeds.arstechnica.com/arstechnica/index'), type: 'tech' },
+    { name: 'Wired', url: rss('https://www.wired.com/feed/rss'), type: 'tech' },
+    { name: 'MIT Tech Review', url: rss('https://www.technologyreview.com/feed/'), type: 'tech' },
+    { name: 'VentureBeat', url: rss('https://venturebeat.com/feed/'), type: 'tech' },
+  ],
+
+  // Tier 3: Funding & Venture Capital
+  funding: [
+    { name: 'Crunchbase News', url: rss('https://news.crunchbase.com/feed/'), type: 'funding' },
+    { name: 'PitchBook News', url: rss('https://news.google.com/rss/search?q=site:pitchbook.com&hl=en-US&gl=US&ceid=US:en'), type: 'funding' },
+    { name: 'SaaStr', url: rss('https://www.saastr.com/feed/'), type: 'funding' },
+    { name: 'First Round Review', url: rss('https://review.firstround.com/feed.xml'), type: 'funding' },
+    { name: 'a16z Blog', url: rss('https://a16z.com/feed/'), type: 'funding' },
+    { name: 'Sequoia Blog', url: rss('https://news.google.com/rss/search?q=site:sequoiacap.com+blog&hl=en-US&gl=US&ceid=US:en'), type: 'funding' },
+  ],
+
+  // Tier 3: Cloud & Infrastructure
+  cloud: [
+    { name: 'InfoQ', url: rss('https://feed.infoq.com/'), type: 'cloud' },
+    { name: 'The New Stack', url: rss('https://thenewstack.io/feed/'), type: 'cloud' },
+    { name: 'DevOps.com', url: rss('https://devops.com/feed/'), type: 'cloud' },
+    { name: 'Container Journal', url: rss('https://containerjournal.com/feed/'), type: 'cloud' },
+  ],
+
+  // Tier 3: Cybersecurity
+  cybersecurity: [
+    { name: 'Dark Reading', url: rss('https://www.darkreading.com/rss.xml'), type: 'cyber' },
+    { name: 'Krebs on Security', url: rss('https://krebsonsecurity.com/feed/'), type: 'cyber' },
+    { name: 'The Hacker News', url: rss('https://feeds.feedburner.com/TheHackersNews'), type: 'cyber' },
+    { name: 'BleepingComputer', url: rss('https://www.bleepingcomputer.com/feed/'), type: 'cyber' },
+  ],
+
+  // Tier 3: Fintech
+  fintech: [
+    { name: 'Finextra', url: rss('https://www.finextra.com/rss/headlines.aspx'), type: 'fintech' },
+    { name: 'Tearsheet', url: rss('https://tearsheet.co/feed/'), type: 'fintech' },
+    { name: 'Finovate', url: rss('https://finovate.com/feed/'), type: 'fintech' },
+  ],
+
+  // Tier 3: Healthcare IT
+  healthtech: [
+    { name: 'Healthcare IT News', url: rss('https://www.healthcareitnews.com/feed'), type: 'healthtech' },
+    { name: 'MobiHealthNews', url: rss('https://www.mobihealthnews.com/feed'), type: 'healthtech' },
+  ],
+
+  // Tier 2: SEC & Financial Filings
+  filings: [
+    { name: 'SEC EDGAR 8-K', url: rss('https://efts.sec.gov/LATEST/search-index?q=%228-K%22&dateRange=custom&startdt=2024-01-01&forms=8-K'), type: 'filing' },
+    { name: 'SEC News', url: rss('https://www.sec.gov/news/pressreleases.rss'), type: 'filing' },
+  ],
+
+  // Tier 4: Product & Community
+  product: [
+    { name: 'Product Hunt', url: rss('https://www.producthunt.com/feed'), type: 'product' },
+    { name: 'Hacker News', url: rss('https://news.ycombinator.com/rss'), type: 'product' },
+    { name: 'G2 News', url: rss('https://news.google.com/rss/search?q=site:g2.com+research&hl=en-US&gl=US&ceid=US:en'), type: 'product' },
+  ],
+
+  // Tier 2: Government Procurement
+  procurement: [
+    { name: 'SAM.gov', url: rss('https://news.google.com/rss/search?q=site:sam.gov+contract+award&hl=en-US&gl=US&ceid=US:en'), type: 'procurement' },
+    { name: 'FedScoop', url: rss('https://fedscoop.com/feed/'), type: 'procurement' },
+    { name: 'GovTech', url: rss('https://www.govtech.com/rss'), type: 'procurement' },
+  ],
+
+  // Tier 2: Market Analysis
+  markets: [
+    { name: 'MarketWatch', url: rss('https://feeds.marketwatch.com/marketwatch/topstories/'), type: 'market' },
+    { name: 'Seeking Alpha', url: rss('https://news.google.com/rss/search?q=source:"seeking+alpha"&hl=en-US&gl=US&ceid=US:en'), type: 'market' },
+  ],
+};
+
+// SalesIntel exports (single variant)
+export const FEEDS = SALESINTEL_FEEDS;
 
 export const SOURCE_REGION_MAP: Record<string, { labelKey: string; feedKeys: string[] }> = {
   // Full (geopolitical) variant regions
@@ -1105,54 +1229,17 @@ export const SOURCE_REGION_MAP: Record<string, { labelKey: string; feedKeys: str
 };
 
 export const INTEL_SOURCES: Feed[] = [
-  // Defense & Security (Tier 1)
-  { name: 'Defense One', url: rss('https://www.defenseone.com/rss/all/'), type: 'defense' },
-  { name: 'Breaking Defense', url: rss('https://breakingdefense.com/feed/'), type: 'defense' },
-  { name: 'The War Zone', url: rss('https://www.twz.com/feed'), type: 'defense' },
-  { name: 'Defense News', url: rss('https://www.defensenews.com/arc/outboundfeeds/rss/?outputType=xml'), type: 'defense' },
-  { name: 'Janes', url: rss('https://news.google.com/rss/search?q=site:janes.com+when:3d&hl=en-US&gl=US&ceid=US:en'), type: 'defense' },
-  { name: 'Military Times', url: rss('https://www.militarytimes.com/arc/outboundfeeds/rss/?outputType=xml'), type: 'defense' },
-  { name: 'Task & Purpose', url: rss('https://taskandpurpose.com/feed/'), type: 'defense' },
-  { name: 'USNI News', url: rss('https://news.usni.org/feed'), type: 'defense' },
-  { name: 'gCaptain', url: rss('https://gcaptain.com/feed/'), type: 'defense' },
-  { name: 'Oryx OSINT', url: rss('https://www.oryxspioenkop.com/feeds/posts/default?alt=rss'), type: 'defense' },
-  { name: 'UK MOD', url: rss('https://www.gov.uk/government/organisations/ministry-of-defence.atom'), type: 'defense' },
-  { name: 'CSIS', url: rss('https://news.google.com/rss/search?q=site:csis.org&hl=en&gl=US&ceid=US:en'), type: 'defense' },
-
-  // International Relations (Tier 2)
-  { name: 'Chatham House', url: rss('https://news.google.com/rss/search?q=site:chathamhouse.org+when:7d&hl=en-US&gl=US&ceid=US:en'), type: 'intl' },
-  { name: 'ECFR', url: rss('https://news.google.com/rss/search?q=site:ecfr.eu+when:7d&hl=en-US&gl=US&ceid=US:en'), type: 'intl' },
-  { name: 'Foreign Policy', url: rss('https://foreignpolicy.com/feed/'), type: 'intl' },
-  { name: 'Foreign Affairs', url: rss('https://www.foreignaffairs.com/rss.xml'), type: 'intl' },
-  { name: 'Atlantic Council', url: railwayRss('https://www.atlanticcouncil.org/feed/'), type: 'intl' },
-  { name: 'Middle East Institute', url: rss('https://news.google.com/rss/search?q=site:mei.edu+when:7d&hl=en-US&gl=US&ceid=US:en'), type: 'intl' },
-
-  // Think Tanks & Research (Tier 3)
-  { name: 'RAND', url: rss('https://news.google.com/rss/search?q=site:rand.org+when:7d&hl=en-US&gl=US&ceid=US:en'), type: 'research' },
-  { name: 'Brookings', url: rss('https://news.google.com/rss/search?q=site:brookings.edu&hl=en&gl=US&ceid=US:en'), type: 'research' },
-  { name: 'Carnegie', url: rss('https://news.google.com/rss/search?q=site:carnegieendowment.org&hl=en&gl=US&ceid=US:en'), type: 'research' },
-  { name: 'FAS', url: rss('https://news.google.com/rss/search?q=site:fas.org+nuclear+weapons+security&hl=en&gl=US&ceid=US:en'), type: 'research' },
-  { name: 'NTI', url: rss('https://news.google.com/rss/search?q=site:nti.org+when:30d&hl=en-US&gl=US&ceid=US:en'), type: 'research' },
-  { name: 'RUSI', url: rss('https://news.google.com/rss/search?q=site:rusi.org+when:7d&hl=en-US&gl=US&ceid=US:en'), type: 'research' },
-  { name: 'Wilson Center', url: rss('https://news.google.com/rss/search?q=site:wilsoncenter.org+when:7d&hl=en-US&gl=US&ceid=US:en'), type: 'research' },
-  { name: 'GMF', url: rss('https://news.google.com/rss/search?q=site:gmfus.org+when:7d&hl=en-US&gl=US&ceid=US:en'), type: 'research' },
-  { name: 'Stimson Center', url: rss('https://www.stimson.org/feed/'), type: 'research' },
-  { name: 'CNAS', url: rss('https://news.google.com/rss/search?q=site:cnas.org+when:7d&hl=en-US&gl=US&ceid=US:en'), type: 'research' },
-  { name: 'Lowy Institute', url: rss('https://news.google.com/rss/search?q=site:lowyinstitute.org+when:7d&hl=en-US&gl=US&ceid=US:en'), type: 'research' },
-
-  // Nuclear & Arms Control (Tier 2)
-  { name: 'Arms Control Assn', url: rss('https://news.google.com/rss/search?q=site:armscontrol.org+when:7d&hl=en-US&gl=US&ceid=US:en'), type: 'nuclear' },
-  { name: 'Bulletin of Atomic Scientists', url: rss('https://news.google.com/rss/search?q=site:thebulletin.org+when:7d&hl=en-US&gl=US&ceid=US:en'), type: 'nuclear' },
-
-  // OSINT & Monitoring (Tier 2)
-  { name: 'Bellingcat', url: rss('https://news.google.com/rss/search?q=site:bellingcat.com+when:30d&hl=en-US&gl=US&ceid=US:en'), type: 'osint' },
-  { name: 'Krebs Security', url: rss('https://krebsonsecurity.com/feed/'), type: 'cyber' },
-  { name: 'Ransomware.live', url: rss('https://www.ransomware.live/rss.xml'), type: 'cyber' },
-
-  // Economic & Food Security (Tier 2)
-  { name: 'FAO News', url: rss('https://www.fao.org/feeds/fao-newsroom-rss'), type: 'economic' },
-  { name: 'FAO GIEWS', url: rss('https://news.google.com/rss/search?q=site:fao.org+GIEWS+food+security+when:30d&hl=en-US&gl=US&ceid=US:en'), type: 'economic' },
-  { name: 'EU ISS', url: rss('https://news.google.com/rss/search?q=site:iss.europa.eu+when:7d&hl=en-US&gl=US&ceid=US:en'), type: 'intl' },
+  // Sales Intelligence Sources (Tier 1-2)
+  { name: 'Crunchbase News', url: rss('https://news.crunchbase.com/feed/'), type: 'funding' },
+  { name: 'TechCrunch Funding', url: rss('https://techcrunch.com/category/venture/feed/'), type: 'funding' },
+  { name: 'PitchBook', url: rss('https://news.google.com/rss/search?q=site:pitchbook.com+when:7d&hl=en-US&gl=US&ceid=US:en'), type: 'funding' },
+  { name: 'SEC Filings', url: rss('https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=8-K&dateb=&owner=include&count=40&search_text=&action=getcurrent&output=atom'), type: 'filing' },
+  { name: 'AngelList', url: rss('https://news.google.com/rss/search?q=site:angel.co+OR+site:wellfound.com+hiring+startup&hl=en-US&gl=US&ceid=US:en'), type: 'hiring' },
+  { name: 'Glassdoor Blog', url: rss('https://news.google.com/rss/search?q=site:glassdoor.com+blog&hl=en-US&gl=US&ceid=US:en'), type: 'hiring' },
+  { name: 'G2 Research', url: rss('https://news.google.com/rss/search?q=site:g2.com+research&hl=en-US&gl=US&ceid=US:en'), type: 'technology' },
+  { name: 'Gartner News', url: rss('https://news.google.com/rss/search?q=source:gartner&hl=en-US&gl=US&ceid=US:en'), type: 'research' },
+  { name: 'Forrester', url: rss('https://news.google.com/rss/search?q=source:forrester&hl=en-US&gl=US&ceid=US:en'), type: 'research' },
+  { name: 'CB Insights', url: rss('https://news.google.com/rss/search?q=site:cbinsights.com&hl=en-US&gl=US&ceid=US:en'), type: 'research' },
 ];
 
 // Default-enabled sources per panel (Tier 1+2 priority, ≥8 per panel)
@@ -1228,15 +1315,17 @@ if (import.meta.env.DEV) {
   console.log(`[feeds] ${defaultEnabled.size} unique default-enabled sources / ${allFeedNames.size} total`);
 }
 
-// Keywords that trigger alert status - must be specific to avoid false positives
+// Keywords that trigger high-priority signal alerts
 export const ALERT_KEYWORDS = [
-  'war', 'invasion', 'military', 'nuclear', 'sanctions', 'missile',
-  'airstrike', 'drone strike', 'troops deployed', 'armed conflict', 'bombing', 'casualties',
-  'ceasefire', 'peace treaty', 'nato', 'coup', 'martial law',
-  'assassination', 'terrorist', 'terror attack', 'cyber attack', 'hostage', 'evacuation order',
+  'series a', 'series b', 'series c', 'series d', 'funding round',
+  'raised million', 'raised billion', 'ipo filing', 's-1 filing',
+  'acquisition', 'merger', 'appointed cto', 'appointed cio', 'new ceo',
+  'rfp issued', 'vendor evaluation', 'digital transformation',
+  'cloud migration', 'hiring surge', 'expansion into', 'new headquarters',
+  'layoffs', 'restructuring', 'earnings beat', 'revenue growth',
 ];
 
-// Patterns that indicate non-alert content (lifestyle, entertainment, etc.)
+// Patterns that indicate non-signal content
 export const ALERT_EXCLUSIONS = [
   'protein', 'couples', 'relationship', 'dating', 'diet', 'fitness',
   'recipe', 'cooking', 'shopping', 'fashion', 'celebrity', 'movie',

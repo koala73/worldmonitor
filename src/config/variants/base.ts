@@ -1,48 +1,33 @@
-// Base configuration shared across all variants
-import type { PanelConfig, MapLayers } from '@/types';
+// SalesIntel base configuration
 
-// Shared exports (re-exported by all variants)
-export { SECTORS, COMMODITIES, MARKET_SYMBOLS } from '../markets';
-export { UNDERSEA_CABLES } from '../geo';
-export { AI_DATA_CENTERS } from '../ai-datacenters';
-
-// Refresh intervals - shared across all variants
+// Refresh intervals for data sources
 export const REFRESH_INTERVALS = {
-  feeds: 15 * 60 * 1000,
-  markets: 8 * 60 * 1000,
-  crypto: 8 * 60 * 1000,
-  predictions: 10 * 60 * 1000,
-  ais: 10 * 60 * 1000,
+  feeds: 15 * 60 * 1000,       // 15 min — RSS feed refresh
+  signals: 10 * 60 * 1000,     // 10 min — Signal aggregation
+  enrichment: 60 * 60 * 1000,  // 1 hour — Company enrichment
+  health: 30 * 60 * 1000,      // 30 min — Account health recalc
 };
 
-// Monitor colors - shared
+// Signal category accent colors for UI
 export const MONITOR_COLORS = [
-  '#44ff88',
-  '#ff8844',
-  '#4488ff',
-  '#ff44ff',
-  '#ffff44',
-  '#ff4444',
-  '#44ffff',
-  '#88ff44',
-  '#ff88ff',
-  '#88ffff',
+  '#3b82f6', // blue - funding
+  '#10b981', // green - hiring
+  '#8b5cf6', // purple - expansion
+  '#f59e0b', // amber - leadership
+  '#06b6d4', // cyan - technology
+  '#ef4444', // red - financial risk
+  '#ec4899', // pink - competitive
+  '#a855f7', // violet - partnership
+  '#14b8a6', // teal - product
+  '#6366f1', // indigo - general
 ];
 
-// Storage keys - shared
+// Storage keys
 export const STORAGE_KEYS = {
-  panels: 'worldmonitor-panels',
-  monitors: 'worldmonitor-monitors',
-  mapLayers: 'worldmonitor-layers',
-  disabledFeeds: 'worldmonitor-disabled-feeds',
-  liveChannels: 'worldmonitor-live-channels',
+  panels: 'salesintel-panels',
+  monitors: 'salesintel-monitors',
+  mapLayers: 'salesintel-layers',
+  disabledFeeds: 'salesintel-disabled-feeds',
+  targets: 'salesintel-targets',
+  settings: 'salesintel-settings',
 } as const;
-
-// Type definitions for variant configs
-export interface VariantConfig {
-  name: string;
-  description: string;
-  panels: Record<string, PanelConfig>;
-  mapLayers: MapLayers;
-  mobileMapLayers: MapLayers;
-}

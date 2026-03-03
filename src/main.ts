@@ -1,311 +1,72 @@
 import './styles/base-layer.css';
-import './styles/happy-theme.css';
-import 'maplibre-gl/dist/maplibre-gl.css';
 import * as Sentry from '@sentry/browser';
 import { inject } from '@vercel/analytics';
 import { App } from './App';
 
 const sentryDsn = import.meta.env.VITE_SENTRY_DSN?.trim();
 
-// Initialize Sentry error tracking (early as possible)
+// Initialize Sentry error tracking
 Sentry.init({
   dsn: sentryDsn || undefined,
-  release: `worldmonitor@${__APP_VERSION__}`,
-  environment: location.hostname === 'worldmonitor.app' ? 'production'
+  release: `salesintel@${__APP_VERSION__}`,
+  environment: location.hostname === 'salesintel.app' ? 'production'
     : location.hostname.includes('vercel.app') ? 'preview'
     : 'development',
-  enabled: Boolean(sentryDsn) && !location.hostname.startsWith('localhost') && !('__TAURI_INTERNALS__' in window),
+  enabled: Boolean(sentryDsn) && !location.hostname.startsWith('localhost'),
   sendDefaultPii: true,
   tracesSampleRate: 0.1,
   ignoreErrors: [
-    'Invalid WebGL2RenderingContext',
-    'WebGL context lost',
-    /imageManager/,
     /ResizeObserver loop/,
     /NotAllowedError/,
-    /InvalidAccessError/,
-    /importScripts/,
-    /^TypeError: Load failed( \(.*\))?$/,
-    /^TypeError: Failed to fetch( \(.*\))?$/,
-    /^TypeError: cancelled$/,
+    /^TypeError: Load failed/,
+    /^TypeError: Failed to fetch/,
     /^TypeError: NetworkError/,
-    /runtime\.sendMessage\(\)/,
-    /Java object is gone/,
-    /^Object captured as promise rejection with keys:/,
-    /Unable to load image/,
-    /Non-Error promise rejection captured with value:/,
-    /Connection to Indexed Database server lost/,
-    /webkit\.messageHandlers/,
-    /(?:unsafe-eval.*Content Security Policy|Content Security Policy.*unsafe-eval)/,
-    /Fullscreen request denied/,
-    /requestFullscreen/,
-    /webkitEnterFullscreen/,
-    /vc_text_indicators_context/,
-    /Program failed to link/,
-    /too much recursion/,
-    /zaloJSV2/,
-    /Java bridge method invocation error/,
-    /Could not compile fragment shader/,
-    /can't redefine non-configurable property/,
-    /Can.t find variable: (CONFIG|currentInset|NP|webkit|EmptyRanges|logMutedMessage|UTItemActionController|DarkReader|Readability|onPageLoaded|Game|frappe|getPercent|ucConfig|\$a)/,
-    /invalid origin/,
-    /\.data\.split is not a function/,
-    /signal is aborted without reason/,
-    /Failed to fetch dynamically imported module/,
-    /Importing a module script failed/,
-    /contentWindow\.postMessage/,
-    /Could not compile vertex shader/,
-    /objectStoreNames/,
-    /Unexpected identifier 'https'/,
-    /Can't find variable: _0x/,
-    /WKWebView was deallocated/,
-    /Unexpected end of(?: JSON)? input/,
-    /window\.android\.\w+ is not a function/,
-    /Attempted to assign to readonly property/,
-    /Cannot assign to read only property/,
-    /FetchEvent\.respondWith/,
-    /e\.toLowerCase is not a function/,
-    /\.trim is not a function/,
-    /\.(indexOf|findIndex) is not a function/,
+    /Non-Error promise rejection/,
     /QuotaExceededError/,
-    /^TypeError: 已取消$/,
-    /Maximum call stack size exceeded/,
-    /^fetchError: Network request failed$/,
-    /window\.ethereum/,
-    /^SyntaxError: Unexpected token/,
-    /^Operation timed out\.?$/,
-    /setting 'luma'/,
-    /ML request .* timed out/,
-    /^Element not found$/,
-    /(?:AbortError: )?The operation was aborted\.?\s*$/,
-    /Unexpected end of script/,
-    /error loading dynamically imported module/,
-    /Style is not done loading/,
-    /Event `CustomEvent`.*captured as promise rejection/,
-    /getProgramInfoLog/,
-    /__firefox__/,
-    /ifameElement\.contentDocument/,
-    /Invalid video id/,
-    /Fetch is aborted/,
-    /Stylesheet append timeout/,
-    /Worker is not a constructor/,
-    /_pcmBridgeCallbackHandler/,
-    /UCShellJava/,
-    /Cannot define multiple custom elements/,
-    /maxTextureDimension2D/,
-    /Container app not found/,
-    /this\.St\.unref/,
-    /Invalid or unexpected token/,
-    /evaluating 'elemFound\.value'/,
-    /[Cc]an(?:'t|not) access (?:'\w+'|lexical declaration '\w+') before initialization/,
-    /^Uint8Array$/,
-    /createObjectStore/,
-    /The database connection is closing/,
-    /shortcut icon/,
-    /Attempting to change value of a readonly property/,
-    /reading 'nodeType'/,
-    /feature named .\w+. was not found/,
-    /a2z\.onStatusUpdate/,
-    /Attempting to run\(\), but is already running/,
-    /this\.player\.destroy is not a function/,
-    /isReCreate is not defined/,
-    /reading 'style'.*HTMLImageElement/,
-    /can't access property "write", \w+ is undefined/,
-    /AbortError: The user aborted a request/,
-    /\w+ is not a function.*\/uv\/service\//,
-    /__isInQueue__/,
-    /^(?:LIDNotify(?:Id)?|onWebViewAppeared|onGetWiFiBSSID) is not defined$/,
-    /signal timed out/,
-    /Se requiere plan premium/,
-    /hybridExecute is not defined/,
-    /reading 'postMessage'/,
-    /NotSupportedError/,
-    /appendChild.*Unexpected token/,
-    /\bmag is not defined\b/,
-    /evaluating '[^']*\.luma/,
-    /translateNotifyError/,
-    /GM_getValue/,
-    /^InvalidStateError:|The object is in an invalid state/,
-    /Could not establish connection\. Receiving end does not exist/,
-    /webkitCurrentPlaybackTargetIsWireless/,
-    /webkit(?:Supports)?PresentationMode/,
-    /Cannot redefine property: webdriver/,
-    /null is not an object \(evaluating '\w+\.theme'\)/,
-    /this\.player\.\w+ is not a function/,
-    /videoTrack\.configuration/,
-    /evaluating 'v\.setProps'/,
-    /button\[aria-label/,
-    /The fetching process for the media resource was aborted/,
-    /Invalid regular expression: missing/,
-    /WeixinJSBridge/,
-    /evaluating 'e\.type'/,
-    /Policy with name .* already exists/,
-    /[sx]wbrowser is not defined/,
-    /browser\.storage\.local/,
-    /The play\(\) request was interrupted/,
-    /MutationEvent is not defined/,
-    /Cannot redefine property: userAgent/,
-    /st_framedeep|ucbrowser_script/,
-    /iabjs_unified_bridge/,
-    /DarkReader/,
-    /window\.receiveMessage/,
-    /Cross-origin script load denied/,
-    /orgSetInterval is not a function/,
-    /Blocked a frame with origin.*accessing a cross-origin frame/,
-    /SnapTube/,
-    /sortedTrackListForMenu/,
-    /isWhiteToBlack/,
-    /window\.videoSniffer/,
-    /closeTabMediaModal/,
-    /missing \) after argument list/,
-    /Error invoking postMessage: Java exception/,
-    /IndexSizeError/,
+    /AbortError/,
+    /signal is aborted/,
+    /Failed to fetch dynamically imported module/,
   ],
-  beforeSend(event) {
-    const msg = event.exception?.values?.[0]?.value ?? '';
-    if (msg.length <= 3 && /^[a-zA-Z_$]+$/.test(msg)) return null;
-    const frames = event.exception?.values?.[0]?.stacktrace?.frames ?? [];
-    // Suppress maplibre internal null-access crashes (light, placement) only when stack is in map chunk
-    if (/this\.style\._layers|reading '_layers'|this\.(light|sky) is null|can't access property "(id|type|setFilter)", \w+ is (null|undefined)|Cannot read properties of null \(reading '(id|type|setFilter|_layers)'\)|null is not an object \(evaluating '\w{1,3}\.(id|style)|^\w{1,2} is null$/.test(msg)) {
-      if (frames.some(f => /\/(map|maplibre|deck-stack)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
-    }
-    // Suppress any TypeError that happens entirely within maplibre or deck.gl internals
-    if (/^TypeError:/.test(msg) && frames.length > 0) {
-      const nonSentryFrames = frames.filter(f => f.filename && f.filename !== '<anonymous>' && !/\/sentry-[A-Za-z0-9_-]+\.js/.test(f.filename));
-      if (nonSentryFrames.length > 0 && nonSentryFrames.every(f => /\/(map|maplibre|deck-stack)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
-    }
-    // Suppress deck.gl/maplibre null-access crashes with no usable stack trace (requestAnimationFrame wrapping)
-    if (/null is not an object \(evaluating '\w{1,3}\.(id|type|style)'\)/.test(msg) && frames.length === 0) return null;
-    // Suppress TypeErrors from anonymous/injected scripts (no real source files)
-    if (/^TypeError:/.test(msg) && frames.length > 0 && frames.every(f => !f.filename || f.filename === '<anonymous>' || /^blob:/.test(f.filename))) return null;
-    // Suppress errors originating entirely from blob: URLs (browser extensions)
-    if (frames.length > 0 && frames.every(f => /^blob:/.test(f.filename ?? ''))) return null;
-    // Suppress YouTube IFrame widget API internal errors
-    if (frames.some(f => /www-widgetapi\.js/.test(f.filename ?? ''))) return null;
-    return event;
-  },
 });
-// Suppress NotAllowedError from YouTube IFrame API's internal play() — browser autoplay policy,
-// not actionable. The YT IFrame API doesn't expose the play() promise so it leaks as unhandled.
+
+// Suppress unhandled promise rejections from browser autoplay policy
 window.addEventListener('unhandledrejection', (e) => {
   if (e.reason?.name === 'NotAllowedError') e.preventDefault();
 });
 
-import { debugGetCells, getCellCount } from '@/services/geo-convergence';
-import { initMetaTags } from '@/services/meta-tags';
 import { installRuntimeFetchPatch, installWebApiRedirect } from '@/services/runtime';
-import { loadDesktopSecrets } from '@/services/runtime-config';
-import { applyStoredTheme } from '@/utils/theme-manager';
-import { SITE_VARIANT } from '@/config/variant';
-import { clearChunkReloadGuard, installChunkReloadGuard } from '@/bootstrap/chunk-reload';
 
-// Auto-reload on stale chunk 404s after deployment (Vite fires this for modulepreload failures).
-const chunkReloadStorageKey = installChunkReloadGuard(__APP_VERSION__);
+// ————— Bootstrap —————
 
-// Initialize Vercel Analytics
-inject();
+async function boot(): Promise<void> {
+  // Install fetch patches for Vercel Edge Functions
+  installRuntimeFetchPatch();
+  installWebApiRedirect();
 
-// Initialize dynamic meta tags for sharing
-initMetaTags();
+  // Inject Vercel Analytics (non-blocking)
+  try { inject({ mode: 'auto' }); } catch { /* optional */ }
 
-// In desktop mode, route /api/* calls to the local Tauri sidecar backend.
-installRuntimeFetchPatch();
-// In web production, route RPC calls through api.worldmonitor.app (Cloudflare edge).
-installWebApiRedirect();
-loadDesktopSecrets().catch(() => {});
-
-// Apply stored theme preference before app initialization (safety net for inline script)
-applyStoredTheme();
-
-// Set data-variant on <html> so CSS theme overrides activate
-if (SITE_VARIANT && SITE_VARIANT !== 'full') {
-  document.documentElement.dataset.variant = SITE_VARIANT;
-
-  // Swap favicons to variant-specific versions before browser finishes fetching defaults
-  document.querySelectorAll<HTMLLinkElement>('link[rel="icon"], link[rel="apple-touch-icon"]').forEach(link => {
-    link.href = link.href
-      .replace(/\/favico\/favicon/g, `/favico/${SITE_VARIANT}/favicon`)
-      .replace(/\/favico\/apple-touch-icon/g, `/favico/${SITE_VARIANT}/apple-touch-icon`);
-  });
-}
-
-// Remove no-transition class after first paint to enable smooth theme transitions
-requestAnimationFrame(() => {
-  document.documentElement.classList.remove('no-transition');
-});
-
-// Clear stale settings-open flag (survives ungraceful shutdown)
-localStorage.removeItem('wm-settings-open');
-
-// Standalone windows: ?settings=1 = panel display settings, ?live-channels=1 = channel management
-// Both need i18n initialized so t() does not return undefined.
-const urlParams = new URL(location.href).searchParams;
-if (urlParams.get('settings') === '1') {
-  void Promise.all([import('./services/i18n'), import('./settings-window')]).then(
-    async ([i18n, m]) => {
-      await i18n.initI18n();
-      m.initSettingsWindow();
-    }
-  );
-} else if (urlParams.get('live-channels') === '1') {
-  void Promise.all([import('./services/i18n'), import('./live-channels-window')]).then(
-    async ([i18n, m]) => {
-      await i18n.initI18n();
-      m.initLiveChannelsWindow();
-    }
-  );
-} else {
+  // Mount the SalesIntel app
   const app = new App('app');
-  app
-    .init()
-    .then(() => {
-      clearChunkReloadGuard(chunkReloadStorageKey);
-    })
-    .catch(console.error);
+
+  // Expose for debugging
+  if (import.meta.env.DEV) {
+    (window as unknown as Record<string, unknown>).salesintel = app;
+  }
+
+  await app.init();
 }
 
-// Debug helpers for geo-convergence testing (remove in production)
-(window as unknown as Record<string, unknown>).geoDebug = {
-  cells: debugGetCells,
-  count: getCellCount,
-};
-
-// Beta mode toggle: type `beta=true` / `beta=false` in console
-Object.defineProperty(window, 'beta', {
-  get() {
-    const on = localStorage.getItem('worldmonitor-beta-mode') === 'true';
-    console.log(`[Beta] ${on ? 'ON' : 'OFF'}`);
-    return on;
-  },
-  set(v: boolean) {
-    if (v) localStorage.setItem('worldmonitor-beta-mode', 'true');
-    else localStorage.removeItem('worldmonitor-beta-mode');
-    location.reload();
-  },
-});
-
-// Suppress native WKWebView context menu in Tauri — allows custom JS context menus
-if ('__TAURI_INTERNALS__' in window || '__TAURI__' in window) {
-  document.addEventListener('contextmenu', (e) => {
-    const target = e.target as HTMLElement;
-    // Allow native menu on text inputs/textareas for copy/paste
-    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
-    e.preventDefault();
+// Handle settings window (if applicable)
+const params = new URLSearchParams(window.location.search);
+if (params.get('settings') === '1') {
+  import('./settings-window').then(m => m.initSettingsWindow());
+} else {
+  boot().catch(err => {
+    console.error('[SalesIntel] Boot failed:', err);
+    Sentry.captureException(err);
   });
 }
 
-if (!('__TAURI_INTERNALS__' in window) && !('__TAURI__' in window) && 'serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/sw.js', { scope: '/' })
-    .then((registration) => {
-      console.log('[PWA] Service worker registered');
-      const swUpdateInterval = setInterval(async () => {
-        if (!navigator.onLine) return;
-        try { await registration.update(); } catch {}
-      }, 60 * 60 * 1000);
-      // Expose interval ID for cleanup/debugging
-      (window as unknown as Record<string, unknown>).__swUpdateInterval = swUpdateInterval;
-    })
-    .catch((err) => {
-      console.warn('[PWA] Service worker registration failed:', err);
-    });
-}
+// Declare build-time constants
+declare const __APP_VERSION__: string;

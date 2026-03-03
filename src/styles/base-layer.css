@@ -1,9 +1,6 @@
 /*
- * Cascade layer wrapper — places ALL of main.css into @layer base.
- * Variant theme CSS (happy-theme.css etc.) stays unlayered and therefore
- * always wins the cascade, regardless of specificity or source order.
- *
- * See: https://developer.mozilla.org/en-US/docs/Web/CSS/@layer
+ * SalesIntel Base Layer
+ * Design System: Jony Ive / Steve Jobs Standard
+ * Dark theme, clean typography, purposeful density
  */
 @import url('./main.css') layer(base);
-@import url('./country-deep-dive.css') layer(base);

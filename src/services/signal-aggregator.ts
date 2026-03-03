@@ -1,451 +1,198 @@
 /**
- * Signal Aggregator Service
- * Collects all map signals and correlates them by country/region
- * Feeds geographic context to AI Insights
+ * Signal Aggregator Service — SalesIntel Edition
+ * Collects commercial intent signals and correlates them by company.
+ * Feeds opportunity context to downstream AI / LLM processing.
  */
 
-import type {
-  InternetOutage,
-  MilitaryFlight,
-  MilitaryVessel,
-  SocialUnrestEvent,
-  AisDisruptionEvent,
-} from '@/types';
-import { getCountryAtCoordinates, getCountryNameByCode, nameToCountryCode, ME_STRIKE_BOUNDS, resolveCountryFromBounds } from './country-geometry';
-
 export type SignalType =
-  | 'internet_outage'
-  | 'military_flight'
-  | 'military_vessel'
-  | 'protest'
-  | 'ais_disruption'
-  | 'satellite_fire'        // NASA FIRMS thermal anomalies
-  | 'temporal_anomaly'      // Baseline deviation alerts
-  | 'active_strike'         // Iran attack / military conflict events
+  | 'executive_movement'
+  | 'funding_event'
+  | 'expansion_signal'
+  | 'technology_adoption'
+  | 'hiring_surge'
+  | 'financial_trigger'
+  | 'leadership_activity'
+  | 'press_release'
+  | 'job_posting'
+  | 'tender_rfp';
 
-export interface GeoSignal {
+export interface CompanySignal {
   type: SignalType;
-  country: string;
-  countryName: string;
-  lat: number;
-  lon: number;
-  severity: 'low' | 'medium' | 'high';
+  company: string;
+  companyDomain?: string;
+  strength: 'critical' | 'high' | 'medium' | 'low';
   title: string;
+  summary?: string;
   timestamp: Date;
-  strikeCount?: number;
-  highSeverityStrikeCount?: number;
+  source: string;
+  sourceTier: number; // 1-4 (1 = highest quality)
+  signalScore: number; // 0-100
+  people?: string[];
+  fundingAmount?: string;
+  jobTitle?: string;
 }
 
-export interface CountrySignalCluster {
-  country: string;
-  countryName: string;
-  signals: GeoSignal[];
+export interface CompanySignalCluster {
+  company: string;
+  companyDomain?: string;
+  signals: CompanySignal[];
   signalTypes: Set<SignalType>;
   totalCount: number;
-  highSeverityCount: number;
-  convergenceScore: number;
+  highStrengthCount: number;
+  convergenceScore: number; // 0-100
+  accountHealthScore?: number;
 }
 
-export interface RegionalConvergence {
-  region: string;
-  countries: string[];
+export interface OpportunityConvergence {
+  company: string;
   signalTypes: SignalType[];
   totalSignals: number;
   description: string;
+  urgency: 'immediate' | 'this_week' | 'this_month' | 'monitor';
+  recommendedAction: string;
 }
 
 export interface SignalSummary {
   timestamp: Date;
   totalSignals: number;
   byType: Record<SignalType, number>;
-  convergenceZones: RegionalConvergence[];
-  topCountries: CountrySignalCluster[];
+  convergenceAlerts: OpportunityConvergence[];
+  topCompanies: CompanySignalCluster[];
   aiContext: string;
 }
 
-const REGION_DEFINITIONS: Record<string, { countries: string[]; name: string }> = {
-  middle_east: {
-    name: 'Middle East',
-    countries: ['IR', 'IL', 'SA', 'AE', 'IQ', 'SY', 'YE', 'JO', 'LB', 'KW', 'QA', 'OM', 'BH'],
-  },
-  east_asia: {
-    name: 'East Asia',
-    countries: ['CN', 'TW', 'JP', 'KR', 'KP', 'HK', 'MN'],
-  },
-  south_asia: {
-    name: 'South Asia',
-    countries: ['IN', 'PK', 'BD', 'AF', 'NP', 'LK', 'MM'],
-  },
-  europe_east: {
-    name: 'Eastern Europe',
-    countries: ['UA', 'RU', 'BY', 'PL', 'RO', 'MD', 'HU', 'CZ', 'SK', 'BG'],
-  },
-  africa_north: {
-    name: 'North Africa',
-    countries: ['EG', 'LY', 'DZ', 'TN', 'MA', 'SD', 'SS'],
-  },
-  africa_sahel: {
-    name: 'Sahel Region',
-    countries: ['ML', 'NE', 'BF', 'TD', 'NG', 'CM', 'CF'],
-  },
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+const SIGNAL_TYPE_LABELS: Record<SignalType, string> = {
+  executive_movement: 'executive movement',
+  funding_event: 'funding event',
+  expansion_signal: 'expansion signal',
+  technology_adoption: 'technology adoption',
+  hiring_surge: 'hiring surge',
+  financial_trigger: 'financial trigger',
+  leadership_activity: 'leadership activity',
+  press_release: 'press release',
+  job_posting: 'job posting',
+  tender_rfp: 'tender / RFP',
 };
 
-function normalizeCountryCode(country: string): string {
-  if (country.length === 2) return country.toUpperCase();
-  return nameToCountryCode(country) || country.slice(0, 2).toUpperCase();
+/** How many days old a signal can be before we discard it. */
+const WINDOW_DAYS = 30;
+const WINDOW_MS = WINDOW_DAYS * 24 * 60 * 60 * 1000;
+
+/** Minimum distinct signal types in the convergence window to fire an alert. */
+const CONVERGENCE_TYPE_THRESHOLD = 3;
+
+function normalizeCompanyName(name: string): string {
+  return name.trim().toLowerCase();
 }
 
-function getCountryName(code: string): string {
-  return getCountryNameByCode(code) || code;
+function deriveUrgency(
+  convergenceScore: number,
+  highCount: number,
+): OpportunityConvergence['urgency'] {
+  if (convergenceScore >= 80 || highCount >= 4) return 'immediate';
+  if (convergenceScore >= 60 || highCount >= 2) return 'this_week';
+  if (convergenceScore >= 40) return 'this_month';
+  return 'monitor';
 }
+
+function deriveRecommendedAction(
+  signalTypes: SignalType[],
+  urgency: OpportunityConvergence['urgency'],
+): string {
+  const types = new Set(signalTypes);
+
+  if (types.has('funding_event') && types.has('hiring_surge')) {
+    return 'High-growth account — initiate outbound immediately with expansion-focused messaging.';
+  }
+  if (types.has('tender_rfp')) {
+    return 'Active RFP detected — prepare proposal and engage procurement contacts.';
+  }
+  if (types.has('executive_movement') && types.has('technology_adoption')) {
+    return 'New leadership + tech evaluation — reach out to the incoming executive with a tailored value prop.';
+  }
+  if (types.has('funding_event')) {
+    return 'Recent funding — position around growth use-cases and ROI acceleration.';
+  }
+  if (types.has('hiring_surge')) {
+    return 'Hiring surge indicates scaling — highlight onboarding and productivity solutions.';
+  }
+  if (urgency === 'immediate') {
+    return 'Multiple strong buying signals — prioritise for immediate outreach.';
+  }
+  if (urgency === 'this_week') {
+    return 'Building momentum — schedule discovery call this week.';
+  }
+  return 'Monitor account for additional intent signals before outreach.';
+}
+
+// ── Core Aggregator ────────────────────────────────────────────────────────
 
 class SignalAggregator {
-  private signals: GeoSignal[] = [];
-  private readonly WINDOW_MS = 24 * 60 * 60 * 1000;
-  // Tracks which source event type each temporal anomaly signal came from
-  private temporalSourceMap = new WeakMap<GeoSignal, string>();
+  private signals: CompanySignal[] = [];
 
-  private clearSignalType(type: SignalType): void {
+  // ---- Ingestion ----------------------------------------------------------
+
+  /**
+   * Add an array of CompanySignal items.
+   * Duplicates are **not** deduplicated here — callers should pre-filter if
+   * the same raw event may be ingested more than once.
+   */
+  ingestSignals(incoming: CompanySignal[]): void {
+    this.signals.push(...incoming);
+    this.pruneOld();
+  }
+
+  /**
+   * Replace all signals of a given type with a fresh batch.
+   * Useful when a feed provides a complete snapshot on each poll.
+   */
+  replaceSignalType(type: SignalType, incoming: CompanySignal[]): void {
     this.signals = this.signals.filter(s => s.type !== type);
-  }
-
-  ingestOutages(outages: InternetOutage[]): void {
-    this.clearSignalType('internet_outage');
-    for (const o of outages) {
-      const code = normalizeCountryCode(o.country);
-      this.signals.push({
-        type: 'internet_outage',
-        country: code,
-        countryName: o.country,
-        lat: o.lat,
-        lon: o.lon,
-        severity: o.severity === 'total' ? 'high' : o.severity === 'major' ? 'medium' : 'low',
-        title: o.title,
-        timestamp: o.pubDate,
-      });
-    }
+    this.signals.push(...incoming);
     this.pruneOld();
   }
 
-  ingestFlights(flights: MilitaryFlight[]): void {
-    this.clearSignalType('military_flight');
-    const countryCounts = new Map<string, number>();
-    for (const f of flights) {
-      const code = this.coordsToCountry(f.lat, f.lon);
-      const count = countryCounts.get(code) || 0;
-      countryCounts.set(code, count + 1);
-    }
+  // ---- Clustering ---------------------------------------------------------
 
-    for (const [code, count] of countryCounts) {
-      this.signals.push({
-        type: 'military_flight',
-        country: code,
-        countryName: getCountryName(code),
-        lat: 0,
-        lon: 0,
-        severity: count >= 10 ? 'high' : count >= 5 ? 'medium' : 'low',
-        title: `${count} military aircraft detected`,
-        timestamp: new Date(),
-      });
-    }
-    this.pruneOld();
-  }
-
-  ingestVessels(vessels: MilitaryVessel[]): void {
-    this.clearSignalType('military_vessel');
-    const regionCounts = new Map<string, { count: number; lat: number; lon: number }>();
-
-    for (const v of vessels) {
-      const code = this.coordsToCountry(v.lat, v.lon);
-      const existing = regionCounts.get(code);
-      if (existing) {
-        existing.count++;
-      } else {
-        regionCounts.set(code, { count: 1, lat: v.lat, lon: v.lon });
-      }
-    }
-
-    for (const [code, data] of regionCounts) {
-      this.signals.push({
-        type: 'military_vessel',
-        country: code,
-        countryName: getCountryName(code),
-        lat: data.lat,
-        lon: data.lon,
-        severity: data.count >= 5 ? 'high' : data.count >= 2 ? 'medium' : 'low',
-        title: `${data.count} naval vessels near region`,
-        timestamp: new Date(),
-      });
-    }
-    this.pruneOld();
-  }
-
-  ingestProtests(events: SocialUnrestEvent[]): void {
-    this.clearSignalType('protest');
-    const countryCounts = new Map<string, { count: number; lat: number; lon: number }>();
-
-    for (const e of events) {
-      const code = normalizeCountryCode(e.country) || this.coordsToCountry(e.lat, e.lon);
-      const existing = countryCounts.get(code);
-      if (existing) {
-        existing.count++;
-      } else {
-        countryCounts.set(code, { count: 1, lat: e.lat, lon: e.lon });
-      }
-    }
-
-    for (const [code, data] of countryCounts) {
-      this.signals.push({
-        type: 'protest',
-        country: code,
-        countryName: getCountryName(code),
-        lat: data.lat,
-        lon: data.lon,
-        severity: data.count >= 10 ? 'high' : data.count >= 5 ? 'medium' : 'low',
-        title: `${data.count} protest events`,
-        timestamp: new Date(),
-      });
-    }
-    this.pruneOld();
-  }
-
-  ingestAisDisruptions(events: AisDisruptionEvent[]): void {
-    this.clearSignalType('ais_disruption');
-    for (const e of events) {
-      const code = this.coordsToCountry(e.lat, e.lon);
-      // Map 'elevated' to 'medium' for our type
-      const severity: 'low' | 'medium' | 'high' = e.severity === 'elevated' ? 'medium' : e.severity;
-      this.signals.push({
-        type: 'ais_disruption',
-        country: code,
-        countryName: e.name,
-        lat: e.lat,
-        lon: e.lon,
-        severity,
-        title: e.description,
-        timestamp: new Date(),
-      });
-    }
-    this.pruneOld();
-  }
-
-  // ============ NEW SIGNAL INGESTION METHODS ============
-
-  /**
-   * Ingest satellite fire detection from NASA FIRMS
-   * Source: src/services/wildfires
-   */
-  ingestSatelliteFires(fires: Array<{
-    lat: number;
-    lon: number;
-    brightness: number;
-    frp: number;
-    region: string;
-    acq_date: string;
-  }>): void {
-    this.clearSignalType('satellite_fire');
-    
-    for (const fire of fires) {
-      const code = this.coordsToCountry(fire.lat, fire.lon) || normalizeCountryCode(fire.region);
-      const severity = fire.brightness > 360 ? 'high' : fire.brightness > 320 ? 'medium' : 'low';
-      
-      this.signals.push({
-        type: 'satellite_fire',
-        country: code,
-        countryName: fire.region,
-        lat: fire.lat,
-        lon: fire.lon,
-        severity,
-        title: `Thermal anomaly detected (${Math.round(fire.brightness)}K, ${fire.frp.toFixed(1)}MW)`,
-        timestamp: new Date(fire.acq_date),
-      });
-    }
-    this.pruneOld();
-  }
-
-
-
-
-  /**
-   * Ingest temporal baseline anomalies.
-   * Deduplicates by message — safe to call from multiple async sources.
-   */
-  ingestTemporalAnomalies(anomalies: Array<{
-    type: string;
-    region: string;
-    currentCount: number;
-    expectedCount: number;
-    zScore: number;
-    message: string;
-    severity: 'medium' | 'high' | 'critical';
-  }>): void {
-    // Remove existing temporal signals that match incoming source types
-    const incomingSourceTypes = new Set(anomalies.map(a => a.type));
-    this.signals = this.signals.filter(s =>
-      s.type !== 'temporal_anomaly' ||
-      !incomingSourceTypes.has(this.temporalSourceMap.get(s) || '')
-    );
-
-    for (const a of anomalies) {
-      const signal: GeoSignal = {
-        type: 'temporal_anomaly',
-        country: 'XX',
-        countryName: a.region,
-        lat: 0,
-        lon: 0,
-        severity: a.severity === 'critical' ? 'high' : a.severity === 'high' ? 'high' : 'medium',
-        title: a.message,
-        timestamp: new Date(),
-      };
-      this.signals.push(signal);
-      this.temporalSourceMap.set(signal, a.type);
-    }
-    this.pruneOld();
-  }
-
-  ingestConflictEvents(events: Array<{
-    id: string;
-    category: string;
-    severity: string;
-    latitude: number;
-    longitude: number;
-    timestamp: number;
-  }>): void {
-    this.clearSignalType('active_strike');
-
-    const seen = new Set<string>();
-    const deduped = events.filter(e => {
-      if (seen.has(e.id)) return false;
-      seen.add(e.id);
-      return true;
-    });
-
-    const byCountry = new Map<string, typeof deduped>();
-    for (const e of deduped) {
-      const code = this.coordsToCountryWithFallback(e.latitude, e.longitude);
-      if (code === 'XX') continue;
-      const arr = byCountry.get(code) || [];
-      arr.push(e);
-      byCountry.set(code, arr);
-    }
-
-    const MAX_PER_COUNTRY = 50;
-    for (const [code, countryEvents] of byCountry) {
-      const capped = countryEvents.slice(0, MAX_PER_COUNTRY);
-      const highCount = capped.filter(e => {
-        const sev = e.severity.toLowerCase();
-        return sev === 'high' || sev === 'critical';
-      }).length;
-      const timestamps = capped.map(e => e.timestamp < 1e12 ? e.timestamp * 1000 : e.timestamp);
-      const maxTs = timestamps.length > 0 ? Math.max(...timestamps) : 0;
-      const safeTs = maxTs > 0 ? maxTs : Date.now();
-
-      this.signals.push({
-        type: 'active_strike',
-        country: code,
-        countryName: getCountryName(code),
-        lat: capped[0]!.latitude,
-        lon: capped[0]!.longitude,
-        severity: highCount >= 5 ? 'high' : highCount >= 2 ? 'medium' : 'low',
-        title: `${capped.length} strikes (${highCount} high severity)`,
-        timestamp: new Date(safeTs),
-        strikeCount: capped.length,
-        highSeverityStrikeCount: highCount,
-      });
-    }
-    this.pruneOld();
-  }
-
-  ingestTheaterPostures(postures: Array<{
-    targetNation: string | null;
-    totalAircraft: number;
-    totalVessels: number;
-    postureLevel: 'normal' | 'elevated' | 'critical';
-    theaterName: string;
-  }>): void {
-    const TARGET_CODES: Record<string, string> = {
-      'Iran': 'IR', 'Taiwan': 'TW', 'North Korea': 'KP',
-      'Gaza': 'PS', 'Yemen': 'YE',
-    };
-
-    for (const p of postures) {
-      if (!p.targetNation || p.postureLevel === 'normal') continue;
-      const code = TARGET_CODES[p.targetNation];
-      if (!code) continue;
-
-      const hasFlight = this.signals.some(s => s.country === code && s.type === 'military_flight');
-      if (!hasFlight && p.totalAircraft > 0) {
-        this.signals.push({
-          type: 'military_flight',
-          country: code,
-          countryName: getCountryName(code),
-          lat: 0,
-          lon: 0,
-          severity: p.postureLevel === 'critical' ? 'high' : 'medium',
-          title: `${p.totalAircraft} military aircraft in ${p.theaterName}`,
-          timestamp: new Date(),
-        });
-      }
-
-      const hasVessel = this.signals.some(s => s.country === code && s.type === 'military_vessel');
-      if (!hasVessel && p.totalVessels > 0) {
-        this.signals.push({
-          type: 'military_vessel',
-          country: code,
-          countryName: getCountryName(code),
-          lat: 0,
-          lon: 0,
-          severity: p.totalVessels >= 5 ? 'high' : 'medium',
-          title: `${p.totalVessels} naval vessels in ${p.theaterName}`,
-          timestamp: new Date(),
-        });
-      }
-    }
-  }
-
-  private coordsToCountry(lat: number, lon: number): string {
-    const hit = getCountryAtCoordinates(lat, lon);
-    return hit?.code ?? 'XX';
-  }
-
-  private coordsToCountryWithFallback(lat: number, lon: number): string {
-    const hit = getCountryAtCoordinates(lat, lon);
-    if (hit?.code) return hit.code;
-    return resolveCountryFromBounds(lat, lon, ME_STRIKE_BOUNDS) ?? 'XX';
-  }
-
-  private pruneOld(): void {
-    const cutoff = Date.now() - this.WINDOW_MS;
-    this.signals = this.signals.filter(s => s.timestamp.getTime() > cutoff);
-  }
-
-  getCountryClusters(): CountrySignalCluster[] {
-    const byCountry = new Map<string, GeoSignal[]>();
+  getCompanyClusters(): CompanySignalCluster[] {
+    const byCompany = new Map<string, CompanySignal[]>();
 
     for (const s of this.signals) {
-      const existing = byCountry.get(s.country) || [];
+      const key = normalizeCompanyName(s.company);
+      const existing = byCompany.get(key) || [];
       existing.push(s);
-      byCountry.set(s.country, existing);
+      byCompany.set(key, existing);
     }
 
-    const clusters: CountrySignalCluster[] = [];
+    const clusters: CompanySignalCluster[] = [];
 
-    for (const [country, signals] of byCountry) {
+    for (const [, signals] of byCompany) {
       const signalTypes = new Set(signals.map(s => s.type));
-      const highCount = signals.filter(s => s.severity === 'high').length;
+      const highCount = signals.filter(
+        s => s.strength === 'high' || s.strength === 'critical',
+      ).length;
 
-      const typeBonus = signalTypes.size * 20;
-      const countBonus = Math.min(30, signals.length * 5);
-      const severityBonus = highCount * 10;
-      const convergenceScore = Math.min(100, typeBonus + countBonus + severityBonus);
+      // Convergence formula:
+      //   - distinct signal types contribute up to 50 pts (5 types × 10)
+      //   - volume contributes up to 25 pts
+      //   - high-strength signals contribute up to 25 pts
+      const typeBonus = Math.min(50, signalTypes.size * 10);
+      const countBonus = Math.min(25, signals.length * 3);
+      const strengthBonus = Math.min(25, highCount * 5);
+      const convergenceScore = Math.min(100, typeBonus + countBonus + strengthBonus);
+
+      // Prefer the first non-undefined domain we find
+      const companyDomain = signals.find(s => s.companyDomain)?.companyDomain;
 
       clusters.push({
-        country,
-        countryName: getCountryName(country),
+        company: signals[0]!.company, // preserve original casing from first signal
+        companyDomain,
         signals,
         signalTypes,
         totalCount: signals.length,
-        highSeverityCount: highCount,
+        highStrengthCount: highCount,
         convergenceScore,
       });
     }
@@ -453,88 +200,89 @@ class SignalAggregator {
     return clusters.sort((a, b) => b.convergenceScore - a.convergenceScore);
   }
 
-  getRegionalConvergence(): RegionalConvergence[] {
-    const clusters = this.getCountryClusters();
-    const convergences: RegionalConvergence[] = [];
+  // ---- Convergence Alerts -------------------------------------------------
 
-    for (const [_regionId, def] of Object.entries(REGION_DEFINITIONS)) {
-      const regionClusters = clusters.filter(c => def.countries.includes(c.country));
-      if (regionClusters.length < 2) continue;
+  getConvergenceAlerts(): OpportunityConvergence[] {
+    const clusters = this.getCompanyClusters();
+    const alerts: OpportunityConvergence[] = [];
 
-      const allTypes = new Set<SignalType>();
-      let totalSignals = 0;
+    for (const cluster of clusters) {
+      if (cluster.signalTypes.size < CONVERGENCE_TYPE_THRESHOLD) continue;
 
-      for (const cluster of regionClusters) {
-        cluster.signalTypes.forEach(t => allTypes.add(t));
-        totalSignals += cluster.totalCount;
-      }
+      const signalTypes = [...cluster.signalTypes];
+      const urgency = deriveUrgency(cluster.convergenceScore, cluster.highStrengthCount);
+      const recommendedAction = deriveRecommendedAction(signalTypes, urgency);
 
-      if (allTypes.size >= 2) {
-        const typeLabels: Record<SignalType, string> = {
-          internet_outage: 'internet disruptions',
-          military_flight: 'military air activity',
-          military_vessel: 'naval presence',
-          protest: 'civil unrest',
-          ais_disruption: 'shipping anomalies',
-          satellite_fire: 'thermal anomalies',
-          temporal_anomaly: 'baseline anomalies',
-          active_strike: 'active strikes',
-        };
+      const typeDescriptions = signalTypes.map(t => SIGNAL_TYPE_LABELS[t]).join(', ');
 
-        const typeDescriptions = [...allTypes].map(t => typeLabels[t]).join(', ');
-        const countries = regionClusters.map(c => c.countryName).join(', ');
-
-        convergences.push({
-          region: def.name,
-          countries: regionClusters.map(c => c.country),
-          signalTypes: [...allTypes],
-          totalSignals,
-          description: `${def.name}: ${typeDescriptions} detected across ${countries}`,
-        });
-      }
+      alerts.push({
+        company: cluster.company,
+        signalTypes,
+        totalSignals: cluster.totalCount,
+        description: `${cluster.company}: convergence of ${typeDescriptions} (${cluster.totalCount} signals, score ${cluster.convergenceScore})`,
+        urgency,
+        recommendedAction,
+      });
     }
 
-    return convergences.sort((a, b) => b.signalTypes.length - a.signalTypes.length);
+    return alerts.sort((a, b) => {
+      const urgencyOrder: Record<OpportunityConvergence['urgency'], number> = {
+        immediate: 0,
+        this_week: 1,
+        this_month: 2,
+        monitor: 3,
+      };
+      return urgencyOrder[a.urgency] - urgencyOrder[b.urgency] || b.totalSignals - a.totalSignals;
+    });
   }
 
-  generateAIContext(): string {
-    const clusters = this.getCountryClusters().slice(0, 5);
-    const convergences = this.getRegionalConvergence().slice(0, 3);
+  // ---- AI Context ---------------------------------------------------------
 
-    if (clusters.length === 0 && convergences.length === 0) {
+  generateAIContext(): string {
+    const clusters = this.getCompanyClusters().slice(0, 10);
+    const alerts = this.getConvergenceAlerts().slice(0, 5);
+
+    if (clusters.length === 0 && alerts.length === 0) {
       return '';
     }
 
-    const lines: string[] = ['[GEOGRAPHIC SIGNALS]'];
+    const lines: string[] = ['[COMMERCIAL INTENT SIGNALS]'];
 
-    if (convergences.length > 0) {
-      lines.push('Regional convergence detected:');
-      for (const c of convergences) {
-        lines.push(`- ${c.description}`);
+    if (alerts.length > 0) {
+      lines.push('Opportunity convergence alerts:');
+      for (const a of alerts) {
+        lines.push(`- [${a.urgency.toUpperCase()}] ${a.description}`);
+        lines.push(`  Action: ${a.recommendedAction}`);
       }
     }
 
     if (clusters.length > 0) {
-      lines.push('Top countries by signal activity:');
+      lines.push('Top companies by signal convergence:');
       for (const c of clusters) {
-        const types = [...c.signalTypes].join(', ');
-        lines.push(`- ${c.countryName}: ${c.totalCount} signals (${types}), convergence score: ${c.convergenceScore}`);
+        const types = [...c.signalTypes].map(t => SIGNAL_TYPE_LABELS[t]).join(', ');
+        lines.push(
+          `- ${c.company}: ${c.totalCount} signals (${types}), convergence ${c.convergenceScore}`,
+        );
       }
     }
 
     return lines.join('\n');
   }
 
+  // ---- Summary ------------------------------------------------------------
+
   getSummary(): SignalSummary {
     const byType: Record<SignalType, number> = {
-      internet_outage: 0,
-      military_flight: 0,
-      military_vessel: 0,
-      protest: 0,
-      ais_disruption: 0,
-      satellite_fire: 0,
-      temporal_anomaly: 0,
-      active_strike: 0,
+      executive_movement: 0,
+      funding_event: 0,
+      expansion_signal: 0,
+      technology_adoption: 0,
+      hiring_surge: 0,
+      financial_trigger: 0,
+      leadership_activity: 0,
+      press_release: 0,
+      job_posting: 0,
+      tender_rfp: 0,
     };
 
     for (const s of this.signals) {
@@ -545,11 +293,13 @@ class SignalAggregator {
       timestamp: new Date(),
       totalSignals: this.signals.length,
       byType,
-      convergenceZones: this.getRegionalConvergence(),
-      topCountries: this.getCountryClusters().slice(0, 10),
+      convergenceAlerts: this.getConvergenceAlerts(),
+      topCompanies: this.getCompanyClusters().slice(0, 10),
       aiContext: this.generateAIContext(),
     };
   }
+
+  // ---- Utilities ----------------------------------------------------------
 
   clear(): void {
     this.signals = [];
@@ -558,7 +308,11 @@ class SignalAggregator {
   getSignalCount(): number {
     return this.signals.length;
   }
+
+  private pruneOld(): void {
+    const cutoff = Date.now() - WINDOW_MS;
+    this.signals = this.signals.filter(s => s.timestamp.getTime() > cutoff);
+  }
 }
 
 export const signalAggregator = new SignalAggregator();
-
