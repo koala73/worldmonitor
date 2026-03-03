@@ -49,6 +49,15 @@ export default async function handler(request) {
     } catch { /* relay unavailable — fall through to direct fetch */ }
   }
 
+  // If running in the desktop sidecar without a relay, return 502 so local-api-server falls back to the cloud API.
+  // Direct scraping from the sidecar fails because YouTube blocks the datacenter/Node.js fetch fingerprint.
+  if (process.env.LOCAL_API_MODE === 'desktop-sidecar') {
+    return new Response(JSON.stringify({ error: 'Relay unavailable, falling back' }), {
+      status: 502,
+      headers: { ...cors, 'Content-Type': 'application/json' },
+    });
+  }
+
   // Fallback: direct fetch (works for oembed, limited for live detection from datacenter IPs)
   if (videoIdParam && /^[A-Za-z0-9_-]{11}$/.test(videoIdParam)) {
     try {
