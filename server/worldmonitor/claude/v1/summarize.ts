@@ -1,4 +1,5 @@
 import { extractJson } from '../../../../src/utils/ai-response';
+import { trackUsage } from './spend-tracker';
 
 const HAIKU_MODEL = 'claude-haiku-4-5-20251001';
 const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages';
@@ -42,10 +43,14 @@ export async function handleSummarize(input: SummarizeInput): Promise<SummarizeO
     const text = data.content?.[0]?.text ?? '';
     const parsed = extractJson<{ summary: string; key_points: string[]; sentiment: string }>(text);
 
+    const inputTokens = data.usage?.input_tokens ?? 0;
+    const outputTokens = data.usage?.output_tokens ?? 0;
+    trackUsage(inputTokens, outputTokens, 'haiku');
+
     return {
       summary: parsed.summary ?? '', keyPoints: parsed.key_points ?? [], sentiment: parsed.sentiment ?? '',
       provider: 'claude', status: 'ok', errorMessage: '',
-      inputTokens: data.usage?.input_tokens ?? 0, outputTokens: data.usage?.output_tokens ?? 0,
+      inputTokens, outputTokens,
     };
   } catch (err) {
     return { ...ERROR_RESULT, errorMessage: err instanceof Error ? err.message : 'Unknown error' };

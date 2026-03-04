@@ -1,4 +1,5 @@
 import { extractJson, validateDimensionScores, type DimensionScore } from '../../../../src/utils/ai-response';
+import { trackUsage } from './spend-tracker';
 
 const SONNET_MODEL = 'claude-sonnet-4-20250514';
 const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages';
@@ -64,6 +65,10 @@ export async function handlePredict(input: PredictInput): Promise<PredictOutput>
 
     const validatedDimensions = validateDimensionScores(parsed.dimensions ?? []);
 
+    const inputTokens = data.usage?.input_tokens ?? 0;
+    const outputTokens = data.usage?.output_tokens ?? 0;
+    trackUsage(inputTokens, outputTokens, 'sonnet');
+
     return {
       dimensions: validatedDimensions,
       overallProbability: Math.max(0, Math.min(1, parsed.overall_probability ?? 0)),
@@ -71,7 +76,7 @@ export async function handlePredict(input: PredictInput): Promise<PredictOutput>
       timeframe: parsed.timeframe ?? '',
       narrative: parsed.narrative ?? '',
       status: 'ok', errorMessage: '',
-      inputTokens: data.usage?.input_tokens ?? 0, outputTokens: data.usage?.output_tokens ?? 0,
+      inputTokens, outputTokens,
     };
   } catch (err) {
     return { ...ERROR_RESULT, errorMessage: err instanceof Error ? err.message : 'Unknown error' };

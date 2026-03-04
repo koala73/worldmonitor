@@ -1,4 +1,5 @@
 import { extractJson } from '../../../../src/utils/ai-response';
+import { trackUsage } from './spend-tracker';
 
 const SONNET_MODEL = 'claude-sonnet-4-20250514';
 const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages';
@@ -46,10 +47,14 @@ export async function handleAnalyze(input: AnalyzeInput): Promise<AnalyzeOutput>
     const text = data.content?.[0]?.text ?? '';
     const parsed = extractJson<{ analysis: string; key_findings: string[]; risk_level: string }>(text);
 
+    const inputTokens = data.usage?.input_tokens ?? 0;
+    const outputTokens = data.usage?.output_tokens ?? 0;
+    trackUsage(inputTokens, outputTokens, 'sonnet');
+
     return {
       analysis: parsed.analysis ?? '', keyFindings: parsed.key_findings ?? [], riskLevel: parsed.risk_level ?? '',
       status: 'ok', errorMessage: '',
-      inputTokens: data.usage?.input_tokens ?? 0, outputTokens: data.usage?.output_tokens ?? 0,
+      inputTokens, outputTokens,
     };
   } catch (err) {
     return { ...ERROR_RESULT, errorMessage: err instanceof Error ? err.message : 'Unknown error' };
