@@ -1,4 +1,5 @@
 import type { NaturalEvent, NaturalEventCategory } from '@/types';
+import { NATURAL_EVENT_CATEGORIES } from '@/types';
 import {
   NaturalServiceClient,
   type ListNaturalEventsResponse,
@@ -25,22 +26,6 @@ const CATEGORY_ICONS: Record<NaturalEventCategory, string> = {
 export function getNaturalEventIcon(category: NaturalEventCategory): string {
   return CATEGORY_ICONS[category] || '⚠️';
 }
-
-const NATURAL_EVENT_CATEGORIES = new Set<NaturalEventCategory>([
-  'severeStorms',
-  'wildfires',
-  'volcanoes',
-  'earthquakes',
-  'floods',
-  'landslides',
-  'drought',
-  'dustHaze',
-  'snow',
-  'tempExtremes',
-  'seaLakeIce',
-  'waterColor',
-  'manmade',
-]);
 
 function normalizeNaturalCategory(category: string | undefined): NaturalEventCategory {
   if (!category) return 'manmade';

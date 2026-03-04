@@ -956,6 +956,11 @@ export type NaturalEventCategory =
   | 'waterColor'
   | 'manmade';
 
+export const NATURAL_EVENT_CATEGORIES: ReadonlySet<NaturalEventCategory> = new Set<NaturalEventCategory>([
+  'severeStorms', 'wildfires', 'volcanoes', 'earthquakes', 'floods', 'landslides',
+  'drought', 'dustHaze', 'snow', 'tempExtremes', 'seaLakeIce', 'waterColor', 'manmade',
+]);
+
 export interface NaturalEvent {
   id: string;
   title: string;

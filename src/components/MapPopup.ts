@@ -2341,7 +2341,7 @@ export class MapPopup {
   }
 
   private sanitizeClassToken(value: string | undefined, fallback = 'unknown'): string {
-    const token = String(value || '').trim().replace(/[^A-Za-z0-9_-]/g, '');
+    const token = String(value || '').trim().replace(/[^A-Za-z0-9_-]/g, '').replace(/^[^A-Za-z_]/, '');
     return token || fallback;
   }
 
