@@ -1,0 +1,20 @@
+syntax = "proto3";
+package worldmonitor.claude.v1;
+
+message SummarizeRequest {
+  repeated string headlines = 1;
+  string region = 2;
+  string language = 3;
+  string variant = 4;
+}
+
+message SummarizeResponse {
+  string summary = 1;
+  repeated string key_points = 2;
+  string sentiment = 3;
+  string provider = 4;     // "claude" | "openrouter"
+  string status = 5;       // "ok" | "error" | "cached"
+  string error_message = 6;
+  int32 input_tokens = 7;
+  int32 output_tokens = 8;
+}

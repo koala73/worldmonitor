@@ -1,0 +1,18 @@
+syntax = "proto3";
+package worldmonitor.claude.v1;
+
+message AnalyzeRequest {
+  string query = 1;
+  repeated string context_data = 2;
+  string region = 3;
+}
+
+message AnalyzeResponse {
+  string analysis = 1;
+  repeated string key_findings = 2;
+  string risk_level = 3;
+  string status = 4;
+  string error_message = 5;
+  int32 input_tokens = 6;
+  int32 output_tokens = 7;
+}

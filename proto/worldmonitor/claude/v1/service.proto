@@ -1,0 +1,23 @@
+syntax = "proto3";
+package worldmonitor.claude.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/claude/v1/summarize.proto";
+import "worldmonitor/claude/v1/analyze.proto";
+import "worldmonitor/claude/v1/predict.proto";
+
+service ClaudeService {
+  option (sebuf.http.service_config) = {base_path: "/api/claude/v1"};
+
+  rpc Summarize(SummarizeRequest) returns (SummarizeResponse) {
+    option (sebuf.http.config) = {path: "/summarize", method: HTTP_METHOD_POST};
+  }
+
+  rpc Analyze(AnalyzeRequest) returns (AnalyzeResponse) {
+    option (sebuf.http.config) = {path: "/analyze", method: HTTP_METHOD_POST};
+  }
+
+  rpc Predict(PredictRequest) returns (PredictResponse) {
+    option (sebuf.http.config) = {path: "/predict", method: HTTP_METHOD_POST};
+  }
+}

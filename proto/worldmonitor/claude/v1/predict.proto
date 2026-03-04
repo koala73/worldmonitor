@@ -1,0 +1,27 @@
+syntax = "proto3";
+package worldmonitor.claude.v1;
+
+message PredictRequest {
+  string scenario = 1;
+  repeated string evidence = 2;
+  string timeframe = 3;
+}
+
+message DimensionScore {
+  string name = 1;
+  double score = 2;
+  double weight = 3;
+  string reasoning = 4;
+}
+
+message PredictResponse {
+  repeated DimensionScore dimensions = 1;
+  double overall_probability = 2;
+  string confidence = 3;
+  string timeframe = 4;
+  string narrative = 5;
+  string status = 6;
+  string error_message = 7;
+  int32 input_tokens = 8;
+  int32 output_tokens = 9;
+}
