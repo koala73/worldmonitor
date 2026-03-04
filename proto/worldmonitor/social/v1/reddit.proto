@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package worldmonitor.social.v1;
+
+import "sebuf/http/annotations.proto";
+
+// ListRedditPostsRequest specifies filters for retrieving Reddit posts.
+message ListRedditPostsRequest {
+  // Subreddit names to fetch (empty uses defaults: OSINT, geopolitics, CombatFootage, worldnews).
+  repeated string subreddits = 1 [(sebuf.http.query) = { name: "subreddits" }];
+  // Maximum posts per subreddit (1-100, default 25).
+  int32 limit = 2 [(sebuf.http.query) = { name: "limit" }];
+  // Sort order: "hot", "new", "top" (default "hot").
+  string sort = 3 [(sebuf.http.query) = { name: "sort" }];
+}

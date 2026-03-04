@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package worldmonitor.social.v1;
+
+import "sebuf/http/annotations.proto";
+
+// ListBlueskyPostsRequest specifies filters for retrieving Bluesky posts.
+message ListBlueskyPostsRequest {
+  // Search query.
+  string query = 1 [(sebuf.http.query) = { name: "query" }];
+  // Maximum posts to return (1-25, AT Protocol max is 25).
+  int32 limit = 2 [(sebuf.http.query) = { name: "limit" }];
+}

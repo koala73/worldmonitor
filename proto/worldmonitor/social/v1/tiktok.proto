@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package worldmonitor.social.v1;
+
+import "sebuf/http/annotations.proto";
+
+// ListTikTokPostsRequest specifies filters for retrieving TikTok posts via Apify.
+message ListTikTokPostsRequest {
+  // Search query or hashtag.
+  string query = 1 [(sebuf.http.query) = { name: "query" }];
+  // Maximum posts to return (1-50, default 20).
+  int32 limit = 2 [(sebuf.http.query) = { name: "limit" }];
+}

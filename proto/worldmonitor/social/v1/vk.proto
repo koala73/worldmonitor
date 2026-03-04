@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package worldmonitor.social.v1;
+
+import "sebuf/http/annotations.proto";
+
+// ListVKPostsRequest specifies filters for retrieving VK wall posts.
+message ListVKPostsRequest {
+  // VK group/user owner IDs (negative for groups, e.g. "-123456").
+  repeated string owner_ids = 1 [(sebuf.http.query) = { name: "owner_ids" }];
+  // Maximum posts per group (1-100, default 25).
+  int32 limit = 2 [(sebuf.http.query) = { name: "limit" }];
+}

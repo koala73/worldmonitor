@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package worldmonitor.social.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/social/v1/common.proto";
+import "worldmonitor/social/v1/reddit.proto";
+import "worldmonitor/social/v1/twitter.proto";
+import "worldmonitor/social/v1/bluesky.proto";
+import "worldmonitor/social/v1/youtube.proto";
+import "worldmonitor/social/v1/tiktok.proto";
+import "worldmonitor/social/v1/vk.proto";
+
+// SocialService provides APIs for social media feeds across multiple platforms.
+service SocialService {
+  option (sebuf.http.service_config) = {base_path: "/api/social/v1"};
+
+  // ListRedditPosts retrieves posts from specified subreddits via OAuth2.
+  rpc ListRedditPosts(ListRedditPostsRequest) returns (SocialFeedResponse) {
+    option (sebuf.http.config) = {path: "/list-reddit-posts", method: HTTP_METHOD_GET};
+  }
+
+  // ListTweets retrieves tweets via the configured Twitter adapter.
+  rpc ListTweets(ListTweetsRequest) returns (SocialFeedResponse) {
+    option (sebuf.http.config) = {path: "/list-tweets", method: HTTP_METHOD_GET};
+  }
+
+  // ListBlueskyPosts retrieves posts from Bluesky via the AT Protocol public API.
+  rpc ListBlueskyPosts(ListBlueskyPostsRequest) returns (SocialFeedResponse) {
+    option (sebuf.http.config) = {path: "/list-bluesky-posts", method: HTTP_METHOD_GET};
+  }
+
+  // ListYouTubeVideos retrieves videos from YouTube Data API v3.
+  rpc ListYouTubeVideos(ListYouTubeVideosRequest) returns (SocialFeedResponse) {
+    option (sebuf.http.config) = {path: "/list-youtube-videos", method: HTTP_METHOD_GET};
+  }
+
+  // ListTikTokPosts retrieves posts from TikTok via Apify scraper.
+  rpc ListTikTokPosts(ListTikTokPostsRequest) returns (SocialFeedResponse) {
+    option (sebuf.http.config) = {path: "/list-tiktok-posts", method: HTTP_METHOD_GET};
+  }
+
+  // ListVKPosts retrieves wall posts from VK public groups.
+  rpc ListVKPosts(ListVKPostsRequest) returns (SocialFeedResponse) {
+    option (sebuf.http.config) = {path: "/list-vk-posts", method: HTTP_METHOD_GET};
+  }
+}

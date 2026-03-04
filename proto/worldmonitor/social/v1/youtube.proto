@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package worldmonitor.social.v1;
+
+import "sebuf/http/annotations.proto";
+
+// ListYouTubeVideosRequest specifies filters for retrieving YouTube videos.
+message ListYouTubeVideosRequest {
+  // Search query (default: "OSINT OR geopolitics OR military").
+  string query = 1 [(sebuf.http.query) = { name: "query" }];
+  // Specific channel ID to filter by.
+  string channel_id = 2 [(sebuf.http.query) = { name: "channel_id" }];
+  // Maximum videos to return (1-50, default 10).
+  int32 limit = 3 [(sebuf.http.query) = { name: "limit" }];
+}

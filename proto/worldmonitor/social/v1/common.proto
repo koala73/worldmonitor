@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+package worldmonitor.social.v1;
+
+import "sebuf/http/annotations.proto";
+
+// SocialPost represents a single post from any social media platform.
+message SocialPost {
+  // Unique identifier (platform-prefixed, e.g. "reddit-abc123").
+  string id = 1;
+  // Platform name (e.g. "reddit", "twitter", "bluesky", "youtube", "tiktok", "vk").
+  string platform = 2;
+  // Author display name or handle.
+  string author = 3;
+  // Sanitized text content (never raw HTML).
+  string content = 4;
+  // URL to the original post.
+  string url = 5;
+  // Timestamp as Unix epoch milliseconds.
+  int64 timestamp = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Media URL (thumbnail, image, video preview).
+  string media_url = 7;
+  // Latitude for geo-tagged posts.
+  double latitude = 8;
+  // Longitude for geo-tagged posts.
+  double longitude = 9;
+  // Engagement metric (likes, upvotes, views).
+  int32 engagement = 10;
+  // Subreddit name (Reddit-only).
+  string subreddit = 11;
+  // Comma-separated hashtags or tags.
+  string hashtags = 12;
+}
+
+// SocialFeedResponse is the unified response for all social feed RPCs.
+message SocialFeedResponse {
+  // List of social posts.
+  repeated SocialPost posts = 1;
+  // Total count of posts in this response.
+  int32 count = 2;
+  // Status: "ok", "error", or "disabled".
+  string status = 3;
+  // Error message (empty on success).
+  string error_message = 4;
+}

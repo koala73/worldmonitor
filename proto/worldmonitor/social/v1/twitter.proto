@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package worldmonitor.social.v1;
+
+import "sebuf/http/annotations.proto";
+
+// ListTweetsRequest specifies filters for retrieving tweets.
+message ListTweetsRequest {
+  // Search query (e.g. "OSINT OR geopolitics").
+  string query = 1 [(sebuf.http.query) = { name: "query" }];
+  // Specific username to fetch tweets from.
+  string username = 2 [(sebuf.http.query) = { name: "username" }];
+  // Maximum tweets to return (1-100, default 25).
+  int32 limit = 3 [(sebuf.http.query) = { name: "limit" }];
+}
