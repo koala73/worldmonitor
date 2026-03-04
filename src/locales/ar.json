@@ -1091,7 +1091,9 @@
       "badgeAnimDesc": "تحريك شارات التحديث في رؤوس اللوحات",
       "sectionIntelligence": "الاستخبارات",
       "headlineMemoryLabel": "ذاكرة العناوين",
-      "headlineMemoryDesc": "تذكر العناوين المشاهدة لتمييز الجديدة"
+      "headlineMemoryDesc": "تذكر العناوين المشاهدة لتمييز الجديدة",
+      "streamAlwaysOnLabel": "إبقاء البث المباشر قيد التشغيل",
+      "streamAlwaysOnDesc": "يمنع إيقاف Live Cams وLive News تلقائيًا عند الخمول. يُنصح به لاستخدام الشاشة الثانية / لوحة المراقبة. عطّله (Eco) لتوفير CPU/النطاق الترددي."
     },
     "cascade": {
       "noImpacts": "لم يتم رصد تأثيرات على الدول",

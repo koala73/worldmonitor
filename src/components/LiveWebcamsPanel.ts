@@ -1,4 +1,5 @@
 import { Panel } from './Panel';
+import { IDLE_PAUSE_MS } from '@/config';
 import { isDesktopRuntime, getLocalApiPort } from '@/services/runtime';
 import { escapeHtml } from '@/utils/sanitize';
 import { t } from '../services/i18n';
@@ -53,7 +54,7 @@ const WEBCAM_FEEDS: WebcamFeed[] = [
 const MAX_GRID_CELLS = 4;
 
 // Eco mode pauses streams after inactivity to save CPU/bandwidth.
-const ECO_IDLE_PAUSE_MS = 5 * 60 * 1000;
+const ECO_IDLE_PAUSE_MS = IDLE_PAUSE_MS;
 
 type ViewMode = 'grid' | 'single';
 type RegionFilter = 'all' | WebcamRegion;

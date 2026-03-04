@@ -1096,7 +1096,9 @@
       "badgeAnimDesc": "Animar emblemas de atualização nos cabeçalhos dos painéis",
       "sectionIntelligence": "Inteligência",
       "headlineMemoryLabel": "Memória de manchetes",
-      "headlineMemoryDesc": "Lembrar manchetes vistas para destacar novas"
+      "headlineMemoryDesc": "Lembrar manchetes vistas para destacar novas",
+      "streamAlwaysOnLabel": "Manter transmissões ao vivo ativas",
+      "streamAlwaysOnDesc": "Impede que Live Cams e Live News pausem automaticamente quando você está inativo. Recomendado para uso em segundo monitor / painel de parede. Desative (Eco) para economizar CPU/largura de banda."
     },
     "techHubs": {
       "infoTooltip": "<strong>Atividade do Tech Hub</strong><br>Mostra os hubs de tecnologia com mais atividade de notícias.<br><br><em>Níveis de atividade:</em><br>• <span style=\"color: {{highColor}}\">Alto</span> — Notícias de última hora ou pontuação acima de 50<br>• <span style=\"color: {{elevatedColor}}\">Elevado</span> — Pontuação 20-49<br>• <span style=\"color: {{lowColor}}\">Baixo</span> — Pontuação abaixo de 20<br><br>Clique em um hub para ampliar sua localização.",

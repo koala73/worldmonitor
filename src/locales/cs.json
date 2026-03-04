@@ -1044,7 +1044,9 @@
       "badgeAnimDesc": "Animovat odznáčky aktualizací v záhlaví panelů",
       "sectionIntelligence": "Zpravodajství",
       "headlineMemoryLabel": "Paměť titulků",
-      "headlineMemoryDesc": "Zapamatovat si zobrazené titulky pro zvýraznění nových"
+      "headlineMemoryDesc": "Zapamatovat si zobrazené titulky pro zvýraznění nových",
+      "streamAlwaysOnLabel": "Ponechat živé streamy spuštěné",
+      "streamAlwaysOnDesc": "Zabrání automatickému pozastavení Live Cams a Live News při nečinnosti. Doporučeno pro druhý monitor / nástěnný dashboard. Vypněte (Eco) pro úsporu CPU a přenosu dat."
     },
     "cascade": {
       "noImpacts": "Nezjištěny žádné dopady na země",

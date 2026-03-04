@@ -1028,7 +1028,9 @@
       "badgeAnimDesc": "Panel başlıklarındaki güncelleme rozetlerini canlandır",
       "sectionIntelligence": "İstihbarat",
       "headlineMemoryLabel": "Başlık hafızası",
-      "headlineMemoryDesc": "Yenileri vurgulamak için görülen başlıkları hatırla"
+      "headlineMemoryDesc": "Yenileri vurgulamak için görülen başlıkları hatırla",
+      "streamAlwaysOnLabel": "Canlı yayınları çalışır tut",
+      "streamAlwaysOnDesc": "Boştayken Live Cams ve Live News akışlarının otomatik duraklatılmasını engeller. İkinci monitör / wallboard kullanımı için önerilir. CPU/bant genişliği tasarrufu için (Eco) modunu kapatın."
     },
     "cascade": {
       "noImpacts": "Ulke etkisi tespit edilmedi",

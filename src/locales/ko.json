@@ -1048,7 +1048,9 @@
       "badgeAnimDesc": "패널 헤더의 업데이트 배지 애니메이션",
       "sectionIntelligence": "인텔리전스",
       "headlineMemoryLabel": "헤드라인 메모리",
-      "headlineMemoryDesc": "본 헤드라인을 기억하여 새 기사 강조"
+      "headlineMemoryDesc": "본 헤드라인을 기억하여 새 기사 강조",
+      "streamAlwaysOnLabel": "라이브 스트림 계속 실행",
+      "streamAlwaysOnDesc": "유휴 상태일 때 Live Cams와 Live News가 자동으로 일시중지되는 것을 방지합니다. 보조 모니터 / 월보드 용도에 권장됩니다. CPU/대역폭 절약을 위해 (Eco)를 끄세요."
     },
     "cascade": {
       "noImpacts": "국가 영향 감지되지 않음",

@@ -1028,7 +1028,9 @@
       "badgeAnimDesc": "Hoạt ảnh huy hiệu cập nhật trên tiêu đề bảng",
       "sectionIntelligence": "Tình báo",
       "headlineMemoryLabel": "Bộ nhớ tiêu đề",
-      "headlineMemoryDesc": "Ghi nhớ tiêu đề đã xem để làm nổi bật tin mới"
+      "headlineMemoryDesc": "Ghi nhớ tiêu đề đã xem để làm nổi bật tin mới",
+      "streamAlwaysOnLabel": "Giữ luồng trực tiếp luôn chạy",
+      "streamAlwaysOnDesc": "Ngăn Live Cams và Live News tự động tạm dừng khi bạn không hoạt động. Khuyến nghị cho màn hình phụ / bảng tường. Tắt (Eco) để tiết kiệm CPU/băng thông."
     },
     "cascade": {
       "noImpacts": "Không phát hiện tác động quốc gia",

@@ -1096,7 +1096,9 @@
       "badgeAnimDesc": "Animera uppdateringsemblem i panelrubriker",
       "sectionIntelligence": "Underrättelser",
       "headlineMemoryLabel": "Rubrikminne",
-      "headlineMemoryDesc": "Kom ihåg sedda rubriker för att markera nya"
+      "headlineMemoryDesc": "Kom ihåg sedda rubriker för att markera nya",
+      "streamAlwaysOnLabel": "Håll liveströmmar igång",
+      "streamAlwaysOnDesc": "Förhindrar att Live Cams och Live News pausas automatiskt när du är inaktiv. Rekommenderas för andra skärmen / wallboard-användning. Stäng av (Eco) för att spara CPU/bandbredd."
     },
     "techHubs": {
       "infoTooltip": "<strong>Teknisk hubbaktivitet</strong><br>Visar tekniska nav med mest nyhetsaktivitet.<br><br><em>Aktivitetsnivåer:</em><br>• <span style=\"color: {{highColor}}\">Hög</span> — Nyheter från 50+ PH_• 50+ stil: {{elevatedColor}}\">Höjd</span> — Poäng 20-49<br>• <span style=\"color: {{lowColor}}\">Låg</span> — Poäng under 20<br><br>Klicka på ett nav för att zooma till dess plats.",

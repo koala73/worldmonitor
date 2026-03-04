@@ -1028,7 +1028,9 @@
       "badgeAnimDesc": "แสดงแอนิเมชันป้ายอัปเดตบนส่วนหัวของแผง",
       "sectionIntelligence": "ข่าวกรอง",
       "headlineMemoryLabel": "หน่วยความจำพาดหัว",
-      "headlineMemoryDesc": "จดจำพาดหัวที่เคยดูเพื่อเน้นข่าวใหม่"
+      "headlineMemoryDesc": "จดจำพาดหัวที่เคยดูเพื่อเน้นข่าวใหม่",
+      "streamAlwaysOnLabel": "ให้สตรีมสดทำงานต่อ",
+      "streamAlwaysOnDesc": "ป้องกันไม่ให้ Live Cams และ Live News หยุดอัตโนมัติเมื่อคุณไม่ได้ใช้งาน เหมาะสำหรับจอที่สอง / บอร์ดแสดงผลบนผนัง ปิด (Eco) เพื่อประหยัด CPU/แบนด์วิดท์"
     },
     "cascade": {
       "noImpacts": "ไม่พบผลกระทบต่อประเทศ",

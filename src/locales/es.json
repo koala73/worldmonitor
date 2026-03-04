@@ -1347,7 +1347,9 @@
       "badgeAnimDesc": "Animar insignias de actualización en encabezados de paneles",
       "sectionIntelligence": "Inteligencia",
       "headlineMemoryLabel": "Memoria de titulares",
-      "headlineMemoryDesc": "Recordar titulares vistos para resaltar nuevos"
+      "headlineMemoryDesc": "Recordar titulares vistos para resaltar nuevos",
+      "streamAlwaysOnLabel": "Mantener transmisiones en vivo activas",
+      "streamAlwaysOnDesc": "Evita que Live Cams y Live News se pausen automáticamente cuando estás inactivo. Recomendado para uso en segundo monitor / panel mural. Desactívalo (Eco) para ahorrar CPU/ancho de banda."
     },
     "export": {
       "exportData": "Exportar datos"
