@@ -1761,6 +1761,297 @@ async function startCyberThreatsSeedLoop() {
 }
 
 // ─────────────────────────────────────────────────────────────
+// CII Risk Scores Seed — Railway computes 8-source Country Instability Index
+// Writes to risk:scores:sebuf:v1 (900s) + risk:scores:sebuf:stale:v1 (3600s)
+// ─────────────────────────────────────────────────────────────
+const CII_SEED_INTERVAL_MS = 600_000; // 10 min
+const CII_RPC_KEY = 'risk:scores:sebuf:v1';
+const CII_STALE_KEY = 'risk:scores:sebuf:stale:v1';
+const CII_RPC_TTL = 900;
+const CII_STALE_TTL = 3600;
+const ACLED_ACCESS_TOKEN = process.env.ACLED_ACCESS_TOKEN || '';
+const ACLED_API_URL = 'https://acleddata.com/api/acled/read';
+
+const CII_BASELINE_RISK = {
+  US: 5, RU: 35, CN: 25, UA: 50, IR: 40, IL: 45, TW: 30, KP: 45,
+  SA: 20, TR: 25, PL: 10, DE: 5, FR: 10, GB: 5, IN: 20, PK: 35,
+  SY: 50, YE: 50, MM: 45, VE: 40,
+};
+const CII_EVENT_MULTIPLIER = {
+  US: 0.3, RU: 2.0, CN: 2.5, UA: 0.8, IR: 2.0, IL: 0.7, TW: 1.5, KP: 3.0,
+  SA: 2.0, TR: 1.2, PL: 0.8, DE: 0.5, FR: 0.6, GB: 0.5, IN: 0.8, PK: 1.5,
+  SY: 0.7, YE: 0.7, MM: 1.8, VE: 1.8,
+};
+const CII_TIER1 = {
+  US: 'United States', RU: 'Russia', CN: 'China', UA: 'Ukraine', IR: 'Iran',
+  IL: 'Israel', TW: 'Taiwan', KP: 'North Korea', SA: 'Saudi Arabia', TR: 'Turkey',
+  PL: 'Poland', DE: 'Germany', FR: 'France', GB: 'United Kingdom', IN: 'India',
+  PK: 'Pakistan', SY: 'Syria', YE: 'Yemen', MM: 'Myanmar', VE: 'Venezuela',
+};
+const CII_COUNTRY_KEYWORDS = {
+  US: ['united states', 'usa', 'america'], RU: ['russia', 'moscow'], CN: ['china', 'beijing'],
+  UA: ['ukraine', 'kyiv'], IR: ['iran', 'tehran'], IL: ['israel', 'gaza'],
+  TW: ['taiwan', 'taipei'], KP: ['north korea', 'pyongyang'], SA: ['saudi arabia', 'riyadh'],
+  TR: ['turkey', 'ankara'], PL: ['poland', 'warsaw'], DE: ['germany', 'berlin'],
+  FR: ['france', 'paris'], GB: ['britain', 'uk', 'london'], IN: ['india', 'delhi'],
+  PK: ['pakistan', 'islamabad'], SY: ['syria', 'damascus'], YE: ['yemen', 'sanaa', 'houthi'],
+  MM: ['myanmar', 'burma'], VE: ['venezuela', 'caracas'],
+};
+
+const CII_COUNTRY_BBOX = {
+  US: { minLat: 24.5, maxLat: 49.4, minLon: -125.0, maxLon: -66.9 },
+  RU: { minLat: 41.2, maxLat: 81.9, minLon: 19.6, maxLon: 180.0 },
+  CN: { minLat: 18.2, maxLat: 53.6, minLon: 73.5, maxLon: 135.1 },
+  UA: { minLat: 44.4, maxLat: 52.4, minLon: 22.1, maxLon: 40.2 },
+  IR: { minLat: 25.1, maxLat: 39.8, minLon: 44.0, maxLon: 63.3 },
+  IL: { minLat: 29.5, maxLat: 33.3, minLon: 34.3, maxLon: 35.9 },
+  TW: { minLat: 21.9, maxLat: 25.3, minLon: 120.0, maxLon: 122.0 },
+  KP: { minLat: 37.7, maxLat: 43.0, minLon: 124.3, maxLon: 130.7 },
+  SA: { minLat: 16.4, maxLat: 32.2, minLon: 34.6, maxLon: 55.7 },
+  TR: { minLat: 36.0, maxLat: 42.1, minLon: 26.0, maxLon: 44.8 },
+  PL: { minLat: 49.0, maxLat: 54.8, minLon: 14.1, maxLon: 24.2 },
+  DE: { minLat: 47.3, maxLat: 55.1, minLon: 5.9, maxLon: 15.0 },
+  FR: { minLat: 41.4, maxLat: 51.1, minLon: -5.1, maxLon: 9.6 },
+  GB: { minLat: 49.9, maxLat: 60.9, minLon: -8.2, maxLon: 1.8 },
+  IN: { minLat: 6.7, maxLat: 35.5, minLon: 68.1, maxLon: 97.4 },
+  PK: { minLat: 23.7, maxLat: 37.1, minLon: 60.9, maxLon: 77.8 },
+  SY: { minLat: 32.3, maxLat: 37.3, minLon: 35.7, maxLon: 42.4 },
+  YE: { minLat: 12.1, maxLat: 19.0, minLon: 42.5, maxLon: 54.5 },
+  MM: { minLat: 9.8, maxLat: 28.5, minLon: 92.2, maxLon: 101.2 },
+  VE: { minLat: 0.6, maxLat: 12.2, minLon: -73.4, maxLon: -59.8 },
+};
+
+const CII_ZONE_COUNTRY_MAP = {
+  'North America': ['US'], 'Europe': ['DE', 'FR', 'GB', 'PL', 'TR', 'UA'],
+  'East Asia': ['CN', 'TW', 'KP'], 'South Asia': ['IN', 'PK', 'MM'],
+  'Middle East': ['IR', 'IL', 'SA', 'SY', 'YE'], 'Russia': ['RU'],
+  'Latin America': ['VE'],
+};
+
+function ciiPointInBbox(lat, lon, bbox) {
+  return lat >= bbox.minLat && lat <= bbox.maxLat && lon >= bbox.minLon && lon <= bbox.maxLon;
+}
+
+function ciiNormalizeCountry(text) {
+  const lower = (text || '').toLowerCase();
+  for (const [code, kws] of Object.entries(CII_COUNTRY_KEYWORDS)) {
+    if (kws.some((kw) => lower.includes(kw))) return code;
+  }
+  return null;
+}
+
+function ciiGeoToCountry(lat, lon) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  for (const [code, bbox] of Object.entries(CII_COUNTRY_BBOX)) {
+    if (ciiPointInBbox(lat, lon, bbox)) return code;
+  }
+  return null;
+}
+
+function ciiFetchAcled() {
+  return new Promise((resolve) => {
+    if (!ACLED_ACCESS_TOKEN) return resolve([]);
+    const endDate = new Date().toISOString().split('T')[0];
+    const startDate = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
+    const params = new URLSearchParams({
+      event_type: 'Protests|Riots|Battles|Explosions/Remote violence|Violence against civilians',
+      event_date: `${startDate}|${endDate}`, event_date_where: 'BETWEEN',
+      limit: '1000', _format: 'json',
+    });
+    const fullUrl = `${ACLED_API_URL}?${params}`;
+    const url = new URL(fullUrl);
+    const req = https.request(url, {
+      method: 'GET',
+      headers: { Accept: 'application/json', Authorization: `Bearer ${ACLED_ACCESS_TOKEN}`, 'User-Agent': CHROME_UA },
+      timeout: 15000,
+    }, (resp) => {
+      if (resp.statusCode < 200 || resp.statusCode >= 300) { resp.resume(); return resolve([]); }
+      let data = '';
+      resp.on('data', (chunk) => { data += chunk; });
+      resp.on('end', () => {
+        try { const parsed = JSON.parse(data); resolve(parsed?.data || []); }
+        catch { resolve([]); }
+      });
+    });
+    req.on('error', () => resolve([]));
+    req.on('timeout', () => { req.destroy(); resolve([]); });
+    req.end();
+  });
+}
+
+let ciiSeedInFlight = false;
+
+async function seedCiiScores() {
+  if (ciiSeedInFlight) return;
+  ciiSeedInFlight = true;
+  const t0 = Date.now();
+  try {
+    const [acledRaw, ucdpRaw, outagesRaw, climateRaw, cyberRaw, firesRaw, gpsRaw, iranRaw] = await Promise.all([
+      ciiFetchAcled(),
+      upstashGet('conflict:ucdp-events:v1').catch(() => null),
+      upstashGet('infra:outages:v1').catch(() => null),
+      upstashGet('climate:anomalies:v1').catch(() => null),
+      upstashGet('cyber:threats-bootstrap:v2').catch(() => null),
+      upstashGet('wildfire:fires:v1').catch(() => null),
+      upstashGet('intelligence:gpsjam:v1').catch(() => null),
+      upstashGet('conflict:iran-events:v1').catch(() => null),
+    ]);
+
+    const acledEvents = Array.isArray(acledRaw) ? acledRaw : [];
+    const ucdpEvents = Array.isArray(ucdpRaw?.events) ? ucdpRaw.events : (Array.isArray(ucdpRaw) ? ucdpRaw : []);
+    const outagesList = Array.isArray(outagesRaw?.outages) ? outagesRaw.outages : (Array.isArray(outagesRaw) ? outagesRaw : []);
+    const climateList = Array.isArray(climateRaw?.anomalies) ? climateRaw.anomalies : (Array.isArray(climateRaw) ? climateRaw : []);
+    const cyberThreats = Array.isArray(cyberRaw?.threats) ? cyberRaw.threats : (Array.isArray(cyberRaw) ? cyberRaw : []);
+    const firesList = Array.isArray(firesRaw?.fires) ? firesRaw.fires : (Array.isArray(firesRaw) ? firesRaw : []);
+    const gpsHexes = Array.isArray(gpsRaw?.hexes) ? gpsRaw.hexes : (Array.isArray(gpsRaw) ? gpsRaw : []);
+    const iranEvents = Array.isArray(iranRaw?.events) ? iranRaw.events : (Array.isArray(iranRaw) ? iranRaw : []);
+
+    const countryData = {};
+    for (const code of Object.keys(CII_TIER1)) {
+      countryData[code] = { protests: 0, riots: 0, battles: 0, explosions: 0, civilianViolence: 0, fatalities: 0, iranStrikes: 0, ucdpWar: false, ucdpMinor: false, outageBoost: 0, climateSeverity: 0, cyberCount: 0, fireCount: 0, gpsHexCount: 0 };
+    }
+
+    for (const ev of acledEvents) {
+      const code = ciiNormalizeCountry(ev.country || '');
+      if (!code || !countryData[code]) continue;
+      const type = (ev.event_type || '').toLowerCase();
+      if (type.includes('protest')) countryData[code].protests++;
+      else if (type.includes('riot')) countryData[code].riots++;
+      else if (type.includes('battle')) countryData[code].battles++;
+      else if (type.includes('explosion') || type.includes('remote')) countryData[code].explosions++;
+      else if (type.includes('violence')) countryData[code].civilianViolence++;
+      countryData[code].fatalities += parseInt(ev.fatalities || '0', 10) || 0;
+    }
+
+    for (const ev of ucdpEvents) {
+      const code = ciiNormalizeCountry(ev.country || ev.location || '');
+      if (!code || !countryData[code]) continue;
+      const intensity = parseInt(ev.intensity_level || ev.type_of_violence || '0', 10);
+      if (intensity >= 2) countryData[code].ucdpWar = true;
+      else if (intensity >= 1) countryData[code].ucdpMinor = true;
+    }
+
+    for (const o of outagesList) {
+      const code = (o.countryCode || o.country_code || '').toUpperCase();
+      if (countryData[code]) {
+        const severity = Number(o.severity || o.score || 0);
+        countryData[code].outageBoost = Math.max(countryData[code].outageBoost, Math.min(10, severity * 2));
+      }
+    }
+
+    for (const a of climateList) {
+      const zone = a.zone || a.region || '';
+      const countries = CII_ZONE_COUNTRY_MAP[zone] || [];
+      const severity = Number(a.severity || a.score || 0);
+      for (const code of countries) {
+        if (countryData[code]) countryData[code].climateSeverity = Math.max(countryData[code].climateSeverity, severity);
+      }
+    }
+
+    for (const t of cyberThreats) {
+      const code = (t.country || '').toUpperCase();
+      if (countryData[code]) countryData[code].cyberCount++;
+    }
+
+    for (const f of firesList) {
+      const lat = Number(f.lat || f.latitude);
+      const lon = Number(f.lon || f.longitude);
+      const code = ciiGeoToCountry(lat, lon);
+      if (code && countryData[code]) countryData[code].fireCount++;
+    }
+
+    for (const h of gpsHexes) {
+      const lat = Number(h.lat || h.latitude);
+      const lon = Number(h.lon || h.longitude);
+      const code = ciiGeoToCountry(lat, lon);
+      if (code && countryData[code]) countryData[code].gpsHexCount++;
+    }
+
+    for (const s of iranEvents) {
+      const lat = Number(s.lat || s.latitude);
+      const lon = Number(s.lon || s.longitude);
+      const code = ciiGeoToCountry(lat, lon) || ciiNormalizeCountry(s.title || s.location || '');
+      if (code && countryData[code]) countryData[code].iranStrikes++;
+    }
+
+    const ciiScores = [];
+    for (const [code, _name] of Object.entries(CII_TIER1)) {
+      const d = countryData[code];
+      const baseline = CII_BASELINE_RISK[code] || 20;
+      const multiplier = CII_EVENT_MULTIPLIER[code] || 1.0;
+
+      const unrest = Math.min(100, Math.round((d.protests * multiplier + d.riots * multiplier * 2 + d.outageBoost) * 2));
+      const conflict = Math.min(100, Math.round((d.battles + d.explosions + d.civilianViolence + d.fatalities * 0.5 + d.iranStrikes * 3) * multiplier));
+      const security = Math.min(100, Math.round(d.gpsHexCount * 3 * multiplier));
+      const information = 0;
+
+      const eventScore = unrest * 0.25 + conflict * 0.30 + security * 0.20 + information * 0.25;
+
+      const climateBoost = Math.min(15, d.climateSeverity * 3);
+      const cyberBoost = Math.min(10, Math.floor(d.cyberCount / 5));
+      const fireBoost = Math.min(8, Math.floor(d.fireCount / 10));
+
+      let blended = baseline * 0.4 + eventScore * 0.6 + climateBoost + cyberBoost + fireBoost;
+
+      const floor = d.ucdpWar ? 70 : (d.ucdpMinor ? 50 : 0);
+      const composite = Math.min(100, Math.max(floor, Math.round(blended)));
+
+      ciiScores.push({
+        region: code,
+        staticBaseline: baseline,
+        dynamicScore: composite - baseline,
+        combinedScore: composite,
+        trend: 'TREND_DIRECTION_STABLE',
+        components: { newsActivity: information, ciiContribution: unrest, geoConvergence: conflict, militaryActivity: security },
+        computedAt: Date.now(),
+      });
+    }
+
+    ciiScores.sort((a, b) => b.combinedScore - a.combinedScore);
+
+    const top5 = ciiScores.slice(0, 5);
+    const weights = top5.map((_, i) => 1 - i * 0.15);
+    const totalWeight = weights.reduce((s, w) => s + w, 0);
+    const weightedSum = top5.reduce((s, sc, i) => s + sc.combinedScore * weights[i], 0);
+    const overallScore = Math.min(100, Math.round((weightedSum / totalWeight) * 0.7 + 15));
+    const strategicRisks = [{
+      region: 'global',
+      level: overallScore >= 70 ? 'SEVERITY_LEVEL_HIGH' : (overallScore >= 40 ? 'SEVERITY_LEVEL_MEDIUM' : 'SEVERITY_LEVEL_LOW'),
+      score: overallScore,
+      factors: top5.map((s) => s.region),
+      trend: 'TREND_DIRECTION_STABLE',
+    }];
+
+    const payload = { ciiScores, strategicRisks };
+    const ok1 = await upstashSet(CII_RPC_KEY, payload, CII_RPC_TTL);
+    const ok2 = await upstashSet(CII_STALE_KEY, payload, CII_STALE_TTL);
+
+    const topEntry = ciiScores[0];
+    const srcCount = (acledEvents.length > 0 ? 1 : 0) + (ucdpEvents.length > 0 ? 1 : 0)
+      + (outagesList.length > 0 ? 1 : 0) + (climateList.length > 0 ? 1 : 0)
+      + (cyberThreats.length > 0 ? 1 : 0) + (firesList.length > 0 ? 1 : 0)
+      + (gpsHexes.length > 0 ? 1 : 0) + (iranEvents.length > 0 ? 1 : 0);
+    console.log(`[CII] Seeded ${ciiScores.length} scores (top: ${topEntry?.region}=${topEntry?.combinedScore}, sources: ${srcCount}/8, acled: ${acledEvents.length}, redis: ${ok1 && ok2 ? 'OK' : 'PARTIAL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  } catch (e) {
+    console.error('[CII] Seed error:', e?.message || e);
+  } finally {
+    ciiSeedInFlight = false;
+  }
+}
+
+async function startCiiSeedLoop() {
+  if (!UPSTASH_ENABLED) {
+    console.log('[CII] Disabled (no Upstash Redis)');
+    return;
+  }
+  console.log(`[CII] Seed loop starting (interval ${CII_SEED_INTERVAL_MS / 1000 / 60}min, acled: ${ACLED_ACCESS_TOKEN ? 'yes' : 'no'})`);
+  seedCiiScores().catch((e) => console.warn('[CII] Initial seed error:', e?.message || e));
+  setInterval(() => {
+    seedCiiScores().catch((e) => console.warn('[CII] Seed error:', e?.message || e));
+  }, CII_SEED_INTERVAL_MS).unref?.();
+}
+
+// ─────────────────────────────────────────────────────────────
 // Positive Events Seed — Railway fetches GDELT GEO API → writes to Redis
 // so Vercel handler serves from cache (avoids 25s edge timeout on slow GDELT)
 // ─────────────────────────────────────────────────────────────
@@ -4724,6 +5015,7 @@ server.listen(PORT, () => {
   startMarketDataSeedLoop();
   startAviationSeedLoop();
   startCyberThreatsSeedLoop();
+  startCiiSeedLoop();
   startPositiveEventsSeedLoop();
 });
 

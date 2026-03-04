@@ -126,6 +126,7 @@ import { fetchPositiveGeoEvents, geocodePositiveNewsItems, type PositiveGeoEvent
 import type { HappyContentCategory } from '@/services/positive-classifier';
 import { fetchKindnessData } from '@/services/kindness-data';
 import { getPersistentCache, setPersistentCache } from '@/services/persistent-cache';
+import { fetchCachedRiskScores } from '@/services/cached-risk-scores';
 import type { ThreatLevel as ClientThreatLevel } from '@/services/threat-classifier';
 import type { NewsItem as ProtoNewsItem, ThreatLevel as ProtoThreatLevel } from '@/generated/client/worldmonitor/news/v1/service_client';
 
@@ -196,8 +197,8 @@ export class DataLoaderManager implements AppModule {
     stopOrefPolling();
   }
 
-  private refreshCiiAndBrief(): void {
-    (this.ctx.panels['cii'] as CIIPanel)?.refresh();
+  private refreshCiiAndBrief(forceLocal = false): void {
+    (this.ctx.panels['cii'] as CIIPanel)?.refresh(forceLocal);
     this.callbacks.refreshOpenCountryBrief();
     const scores = calculateCII();
     this.ctx.map?.setCIIScores(scores.map(s => ({ code: s.code, score: s.score, level: s.level })));
@@ -351,6 +352,14 @@ export class DataLoaderManager implements AppModule {
     });
 
     if (SITE_VARIANT === 'full') {
+      try {
+        const cached = await fetchCachedRiskScores().catch(() => null);
+        if (cached && cached.cii.length > 0) {
+          (this.ctx.panels['cii'] as CIIPanel)?.renderFromCached(cached);
+          this.ctx.map?.setCIIScores(cached.cii.map(s => ({ code: s.code, score: s.score, level: s.level })));
+          this.ctx.map?.setLayerReady('ciiChoropleth', true);
+        }
+      } catch { /* non-fatal */ }
       tasks.push({ name: 'intelligence', task: runGuarded('intelligence', () => this.loadIntelligenceSignals()) });
     }
 
@@ -1487,7 +1496,7 @@ export class DataLoaderManager implements AppModule {
     if (hasAnyIntelligenceData()) {
       setIntelligenceSignalsLoaded();
     }
-    this.refreshCiiAndBrief();
+    this.refreshCiiAndBrief(true);
     console.log('[Intelligence] All signals loaded for CII calculation');
   }
 

@@ -3,10 +3,13 @@ import { getCSSColor } from '@/utils';
 import { calculateCII, type CountryScore } from '@/services/country-instability';
 import { t } from '../services/i18n';
 import { h, replaceChildren, rawHtml } from '@/utils/dom-utils';
+import type { CachedRiskScores } from '@/services/cached-risk-scores';
+import { toCountryScore } from '@/services/cached-risk-scores';
 
 export class CIIPanel extends Panel {
   private scores: CountryScore[] = [];
   private focalPointsReady = false;
+  private hasCachedRender = false;
   private onShareStory?: (code: string, name: string) => void;
   private onCountryClick?: (code: string) => void;
 
@@ -120,7 +123,7 @@ export class CIIPanel extends Panel {
       console.log('[CIIPanel] Focal points ready, calculating scores...');
     }
 
-    this.showLoading();
+    if (!this.hasCachedRender) this.showLoading();
 
     try {
       const localScores = calculateCII();
@@ -143,6 +146,18 @@ export class CIIPanel extends Panel {
       console.error('[CIIPanel] Refresh error:', error);
       this.showError(t('common.failedCII'));
     }
+  }
+
+  public renderFromCached(cached: CachedRiskScores): void {
+    const scores = cached.cii.map(toCountryScore).filter(s => s.score > 0);
+    if (scores.length === 0) return;
+    this.scores = scores;
+    this.hasCachedRender = true;
+    this.setCount(scores.length);
+    const listEl = h('div', { className: 'cii-list' }, ...scores.map(s => this.buildCountry(s)));
+    replaceChildren(this.content, listEl);
+    this.bindShareButtons();
+    console.log(`[CIIPanel] Rendered ${scores.length} countries from cached/bootstrap data`);
   }
 
   public getScores(): CountryScore[] {
