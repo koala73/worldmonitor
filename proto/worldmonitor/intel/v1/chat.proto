@@ -1,0 +1,21 @@
+syntax = "proto3";
+package worldmonitor.intel.v1;
+
+message ChatMessage {
+  string role = 1;
+  string content = 2;
+}
+
+message ChatRequest {
+  repeated ChatMessage messages = 1;
+  string region = 2;
+}
+
+message ChatResponse {
+  string status = 1;
+  string reply = 2;
+  repeated string tools_used = 3;
+  int32 tokens_used = 4;
+  string disclaimer = 5;
+  string error_message = 6;
+}

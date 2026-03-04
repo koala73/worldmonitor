@@ -1,0 +1,22 @@
+syntax = "proto3";
+package worldmonitor.intel.v1;
+
+message BriefingSection {
+  string title = 1;
+  string content = 2;
+  repeated string sources = 3;
+}
+
+message BriefingRequest {
+  repeated string focus_regions = 1;
+  string language = 2;
+}
+
+message BriefingResponse {
+  string status = 1;
+  repeated BriefingSection sections = 2;
+  int64 generated_at = 3;
+  int32 tokens_used = 4;
+  string disclaimer = 5;
+  string error_message = 6;
+}

@@ -1,0 +1,18 @@
+syntax = "proto3";
+package worldmonitor.intel.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/intel/v1/chat.proto";
+import "worldmonitor/intel/v1/briefing.proto";
+
+service IntelService {
+  option (sebuf.http.service_config) = {base_path: "/api/intel/v1"};
+
+  rpc Chat(ChatRequest) returns (ChatResponse) {
+    option (sebuf.http.config) = {path: "/chat", method: HTTP_METHOD_POST};
+  }
+
+  rpc Briefing(BriefingRequest) returns (BriefingResponse) {
+    option (sebuf.http.config) = {path: "/briefing", method: HTTP_METHOD_POST};
+  }
+}
