@@ -319,7 +319,7 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
         .filter((ch): ch is LiveChannel => !!ch);
 
       const matchingChannels = term
-        ? regionChannels.filter(ch => ch.name.toLowerCase().includes(term) || ch.handle.toLowerCase().includes(term))
+        ? regionChannels.filter(ch => ch.name.toLowerCase().includes(term) || ch.handle?.toLowerCase().includes(term))
         : regionChannels;
 
       const addedCount = matchingChannels.filter(ch => currentIds.has(ch.id)).length;
@@ -351,7 +351,7 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
       for (const chId of region.channelIds) {
         const ch = optionalChannelMap.get(chId);
         if (!ch) continue;
-        if (term && !ch.name.toLowerCase().includes(term) && !ch.handle.toLowerCase().includes(term)) continue;
+        if (term && !ch.name.toLowerCase().includes(term) && !ch.handle?.toLowerCase().includes(term)) continue;
         const isAdded = currentIds.has(chId);
         grid.appendChild(createCard(ch, isAdded, listEl));
         matchCount++;
