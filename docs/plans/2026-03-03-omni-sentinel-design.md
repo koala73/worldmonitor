@@ -13,7 +13,7 @@ Omni Sentinel extends World Monitor with deeper AI analysis (Claude API), expand
 **Core decisions:**
 - **Architecture:** Plugin mode — all new features follow World Monitor's proto-first service pattern
 - **Deployment:** Vercel + Railway (inherit upstream infrastructure)
-- **AI strategy:** Claude as primary provider, OpenRouter as fallback. Remove Ollama/Groq/Browser T5
+- **AI strategy:** Claude as primary provider, OpenRouter as fallback. Remove Ollama/Groq. Browser T5 kept as last-resort offline fallback for desktop
 - **Scope:** All features developed in parallel, no phased rollout
 
 ---
@@ -23,10 +23,10 @@ Omni Sentinel extends World Monitor with deeper AI analysis (Claude API), expand
 ### Fallback Chain
 
 ```
-Claude API → OpenRouter → (end)
+Claude API → OpenRouter → (existing chain preserved for desktop offline)
 ```
 
-Replaces the existing chain (Ollama → Groq → OpenRouter → Browser T5).
+Replaces the existing primary chain (Ollama → Groq → OpenRouter). Browser T5 is kept as a last-resort offline fallback for desktop environments, not removed.
 
 ### New Service
 
@@ -49,7 +49,7 @@ src/services/claude/     — Frontend client wrapper
 
 ### Configuration
 
-- API Key: `localStorage: wm-config-CLAUDE_API_KEY`
+- API Key: `process.env.CLAUDE_API_KEY` (server-side only, never exposed to client)
 - Feature flag: `aiClaude` in runtime-config
 - Default model: `claude-sonnet-4-20250514`
 - Settings UI: Add Claude section to existing AI settings panel
@@ -73,12 +73,13 @@ Frontend: Unified `SocialFeedPanel` with platform filter tabs.
 
 ```
 proto/worldmonitor/social/v1/
-  service.proto          — SocialService { ListRedditPosts, ListTweets, ListBlueskyPosts, ListTikTokPosts, ListVKPosts }
+  service.proto          — SocialService { ListRedditPosts, ListTweets, ListBlueskyPosts, ListTikTokPosts, ListVKPosts, ListYouTubeVideos }
   reddit.proto
   twitter.proto
   bluesky.proto
   tiktok.proto
   vk.proto
+  youtube.proto
   common.proto           — Unified SocialPost type
 ```
 
@@ -87,10 +88,13 @@ proto/worldmonitor/social/v1/
 | Platform | API | Auth | Cache | Edge/Worker |
 |----------|-----|------|-------|-------------|
 | Reddit | OAuth2 `oauth.reddit.com` | Client credentials | 5min | Edge Function |
-| X/Twitter | X API v2 | Bearer token | 1min | Edge Function |
-| Bluesky | AT Protocol (public) | None needed | 2min | Edge Function |
+| X/Twitter | TwitterAPI.io adapter | API key | 1min | Edge Function |
+| Bluesky | AT Protocol (public, limit 25/request) | None needed | 2min | Edge Function |
 | TikTok | Apify scraper | Apify token | 10min | Railway worker |
 | VK | VK API v5 | Service token | 5min | Edge Function |
+| YouTube | YouTube Data API v3 | API key (free tier) | 5min | Edge Function |
+
+> **Twitter API note:** Twitter integration uses a third-party API adapter pattern (TwitterAPI.io as default, ~$0.15/1K tweets) rather than the official X API ($200/mo). See `docs/research/twitter-telegram-osint-guide.md` for detailed research.
 
 ### Monitored Sources
 
@@ -99,11 +103,12 @@ proto/worldmonitor/social/v1/
 - **Bluesky:** OSINT community feeds + keyword search
 - **TikTok:** Conflict zone geotagged videos
 - **VK:** Military-related public groups
+- **YouTube:** OSINT news channels, citizen journalism, conflict zone coverage
 
 ### Frontend
 
 - New `SocialFeedPanel` component (similar to existing `TelegramIntelPanel`)
-- Platform filter tabs: All | Reddit | X | Bluesky | TikTok | VK
+- Platform filter tabs: All | Reddit | X | Bluesky | TikTok | VK | YouTube
 - Geotagged posts appear on map as a new layer
 - Feed into existing AI Threat Classification pipeline
 
@@ -180,6 +185,8 @@ proto/worldmonitor/govdata/v1/
 | NOTAM (flight restrictions) | FAA NOTAM API + AviationStack | 15min | TFR polygon overlays on map |
 | NAVTEX (maritime warnings) | NGA MSI API | 30min | Warning zone overlays on map |
 | Sanctions | OpenSanctions API | 24h | Entity search panel |
+
+> **NAVTEX note:** NAVTEX should NOT be implemented as a new standalone service — it should enhance the existing maritime navigational warnings service already in the codebase.
 
 ### OSINT Value
 
@@ -280,3 +287,16 @@ Each new panel added to `src/config/panels.ts` in all variant configurations.
 ### i18n
 
 All new UI strings added to `src/locales/en.json` (other languages can follow later via AI translation).
+
+---
+
+## Revisions
+
+### 2026-03-03 — Post-review fixes
+
+1. **P0-3 FIX (API Key security):** Changed API key storage from `localStorage` to `process.env.CLAUDE_API_KEY` (server-side only, never exposed to client).
+2. **AI fallback chain update:** Clarified that Browser T5 is kept as a last-resort offline fallback for desktop environments, not removed. Chain is now `Claude API → OpenRouter → (existing chain preserved for desktop offline)`.
+3. **Twitter API update:** Switched from official X API v2 ($200/mo) to third-party API adapter pattern (TwitterAPI.io as default, ~$0.15/1K tweets). See `docs/research/twitter-telegram-osint-guide.md`.
+4. **YouTube addition:** Added YouTube as a new social media platform (YouTube Data API v3, API key free tier, 5min cache, Edge Function).
+5. **NAVTEX note:** Clarified that NAVTEX should enhance the existing maritime navigational warnings service, not be a new standalone service.
+6. **Bluesky correction:** Noted that the AT Protocol API limit is 25 per request, not 100.
