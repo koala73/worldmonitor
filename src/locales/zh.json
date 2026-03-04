@@ -874,7 +874,8 @@
         "tradeRoutes": "贸易航线",
         "gpsJamming": "GPS JAMMING",
         "dayNight": "昼/夜",
-        "iranAttacks": "伊朗袭击"
+        "iranAttacks": "伊朗袭击",
+        "geopoliticalBoundaries": "地缘政治边界"
       },
       "tooltip": {
         "earthquake": "地震",
@@ -978,7 +979,8 @@
           "mineralsFull": "战略矿产资源矿床和采矿点",
           "techCyberThreats": "网络攻击和安全事件",
           "techEvents": "主要科技会议和活动",
-          "techFires": "科技基础设施附近的活跃野火"
+          "techFires": "科技基础设施附近的活跃野火",
+          "geoBoundaries": "非军事区、停火线和争议边界"
         },
         "notes": {
           "timeAffects": "影响范围：地震、天气、抗议、中断"
@@ -1026,7 +1028,9 @@
       "badgeAnimDesc": "在面板标题中显示更新徽章动画",
       "sectionIntelligence": "情报",
       "headlineMemoryLabel": "标题记忆",
-      "headlineMemoryDesc": "记住已阅标题以突出显示新内容"
+      "headlineMemoryDesc": "记住已阅标题以突出显示新内容",
+      "streamAlwaysOnLabel": "保持实时流持续播放",
+      "streamAlwaysOnDesc": "防止 Live Cams 和 Live News 在你空闲时自动暂停。建议用于副屏 / 墙面看板场景。关闭（Eco）可节省 CPU/带宽。"
     },
     "cascade": {
       "noImpacts": "未检测到国家影响",
@@ -1977,6 +1981,19 @@
     },
     "iranEvent": {
       "relatedEvents": "相关事件"
+    },
+    "geopoliticalBoundary": {
+      "title": "地缘政治边界",
+      "established": "建立时间",
+      "dimensions": "规模",
+      "legalBasis": "法律依据",
+      "parties": "签署方",
+      "types": {
+        "demilitarized": "非军事区",
+        "ceasefire": "停火线",
+        "disputed": "争议边界",
+        "armistice": "停战线"
+      }
     }
   },
   "signals": {

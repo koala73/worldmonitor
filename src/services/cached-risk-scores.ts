@@ -1,18 +1,13 @@
-/**
- * Cached Risk Scores Service
- * Fetches pre-computed CII and Strategic Risk scores from backend via sebuf RPC.
- * Eliminates 15-minute learning mode for users.
- */
-
 import type { CountryScore, ComponentScores } from './country-instability';
 import { setHasCachedScores } from './country-instability';
-import { getPersistentCache, setPersistentCache } from './persistent-cache';
 import {
   IntelligenceServiceClient,
   type GetRiskScoresResponse,
   type CiiScore,
   type StrategicRisk,
 } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
+import { createCircuitBreaker } from '@/utils';
+import { getHydratedData } from '@/services/bootstrap';
 
 // ---- Sebuf client ----
 
@@ -119,7 +114,7 @@ function toCachedStrategicRisk(risks: StrategicRisk[], ciiScores: CiiScore[]): C
   };
 }
 
-function toRiskScores(resp: GetRiskScoresResponse): CachedRiskScores {
+export function toRiskScores(resp: GetRiskScoresResponse): CachedRiskScores {
   return {
     cii: resp.ciiScores.map(toCachedCII),
     strategicRisk: toCachedStrategicRisk(resp.strategicRisks, resp.ciiScores),
@@ -129,13 +124,74 @@ function toRiskScores(resp: GetRiskScoresResponse): CachedRiskScores {
   };
 }
 
-// ---- Caching / dedup logic (unchanged) ----
+// ---- Shape validator (localStorage is attacker-controlled) ----
 
-const RISK_CACHE_KEY = 'risk-scores:latest';
-let cachedScores: CachedRiskScores | null = null;
-let fetchPromise: Promise<CachedRiskScores | null> | null = null;
-let lastFetchTime = 0;
-const REFETCH_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+const VALID_LEVELS = new Set(['low', 'normal', 'elevated', 'high', 'critical']);
+
+function isValidCiiEntry(e: unknown): e is CachedCIIScore {
+  if (!e || typeof e !== 'object') return false;
+  const o = e as Record<string, unknown>;
+  return typeof o.code === 'string' && Number.isFinite(o.score) && VALID_LEVELS.has(o.level as string);
+}
+
+// ---- localStorage persistence (sync prime for getCachedScores) ----
+
+const LS_KEY = 'wm:risk-scores';
+const LS_MAX_STALENESS_MS = 24 * 60 * 60 * 1000;
+
+function loadFromStorage(): CachedRiskScores | null {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return null;
+    const { data, savedAt } = JSON.parse(raw);
+    if (!Number.isFinite(savedAt) || !Array.isArray(data?.cii)) {
+      localStorage.removeItem(LS_KEY);
+      return null;
+    }
+    if (Date.now() - savedAt > LS_MAX_STALENESS_MS) {
+      localStorage.removeItem(LS_KEY);
+      return null;
+    }
+    if (!data.cii.every(isValidCiiEntry)) {
+      localStorage.removeItem(LS_KEY);
+      return null;
+    }
+    return data;
+  } catch { return null; }
+}
+
+function saveToStorage(data: CachedRiskScores): void {
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify({ data, savedAt: Date.now() }));
+  } catch { /* quota exceeded */ }
+}
+
+// ---- Circuit breaker ----
+
+const breaker = createCircuitBreaker<CachedRiskScores>({
+  name: 'Risk Scores',
+  cacheTtlMs: 5 * 60 * 1000, // 5 min
+  persistCache: true,
+});
+
+// Sync prime from localStorage (before async IndexedDB hydration)
+const stored = loadFromStorage();
+if (stored && stored.cii.length > 0) {
+  breaker.recordSuccess(stored);
+  setHasCachedScores(true);
+}
+
+function emptyFallback(): CachedRiskScores {
+  return {
+    cii: [],
+    strategicRisk: { score: 0, level: 'low', trend: 'stable', lastUpdated: new Date().toISOString(), contributors: [] },
+    protestCount: 0,
+    computedAt: new Date().toISOString(),
+    cached: true,
+  };
+}
+
+// ---- Abort helpers ----
 
 function createAbortError(): DOMException {
   return new DOMException('The operation was aborted.', 'AbortError');
@@ -165,58 +221,47 @@ function withCallerAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<
   });
 }
 
-async function loadPersistentRiskScores(): Promise<CachedRiskScores | null> {
-  const entry = await getPersistentCache<CachedRiskScores>(RISK_CACHE_KEY);
-  return entry?.data ?? null;
-}
-
 export async function fetchCachedRiskScores(signal?: AbortSignal): Promise<CachedRiskScores | null> {
   if (signal?.aborted) throw createAbortError();
-  const now = Date.now();
 
-  if (cachedScores && now - lastFetchTime < REFETCH_INTERVAL_MS) {
-    return cachedScores;
+  // Layer 1: Bootstrap hydration (one-time, only when breaker has no cached data)
+  if (breaker.getCached() === null) {
+    const hydrated = getHydratedData('riskScores') as GetRiskScoresResponse | undefined;
+    if (hydrated?.ciiScores?.length) {
+      const data = toRiskScores(hydrated);
+      breaker.recordSuccess(data);
+      saveToStorage(data);
+      setHasCachedScores(true);
+      return data;
+    }
   }
 
-  if (fetchPromise) {
-    return withCallerAbort(fetchPromise, signal);
-  }
-
-  fetchPromise = (async () => {
-    try {
+  // Layer 2: Circuit breaker (in-memory cache → SWR → IndexedDB → RPC → fallback)
+  const result = await withCallerAbort(
+    breaker.execute(async () => {
       const resp = await client.getRiskScores({ region: '' });
       const data = toRiskScores(resp);
-      cachedScores = data;
-      lastFetchTime = now;
+      saveToStorage(data);
       setHasCachedScores(true);
-      void setPersistentCache(RISK_CACHE_KEY, data);
-      return cachedScores;
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') throw error;
-      console.error('[CachedRiskScores] Fetch error:', error);
-      const fallback = cachedScores ?? await loadPersistentRiskScores();
-      if (fallback) {
-        if (!cachedScores) {
-          cachedScores = fallback;
-          setHasCachedScores(true);
-        }
-        lastFetchTime = now;
-      }
-      return fallback;
-    } finally {
-      fetchPromise = null;
-    }
-  })();
+      return data;
+    }, emptyFallback()),
+    signal,
+  );
 
-  return withCallerAbort(fetchPromise, signal);
+  if (!result || !Array.isArray(result.cii) || result.cii.length === 0) {
+    return null;
+  }
+
+  setHasCachedScores(true);
+  return result;
 }
 
 export function getCachedScores(): CachedRiskScores | null {
-  return cachedScores;
+  return breaker.getCached();
 }
 
 export function hasCachedScores(): boolean {
-  return cachedScores !== null;
+  return breaker.getCached() !== null;
 }
 
 export function toCountryScore(cached: CachedCIIScore): CountryScore {

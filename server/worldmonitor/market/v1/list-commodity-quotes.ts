@@ -10,7 +10,7 @@ import type {
   CommodityQuote,
 } from '../../../../src/generated/server/worldmonitor/market/v1/service_server';
 import { fetchYahooQuotesBatch, parseStringArray } from './_shared';
-import { cachedFetchJson } from '../../../_shared/redis';
+import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
 
 const REDIS_CACHE_KEY = 'market:commodities:v1';
 const REDIS_CACHE_TTL = 600; // 10 min — commodities move slower than indices
@@ -27,6 +27,18 @@ export async function listCommodityQuotes(
 ): Promise<ListCommodityQuotesResponse> {
   const symbols = parseStringArray(req.symbols);
   if (!symbols.length) return { quotes: [] };
+
+  // Layer 0: bootstrap/seed data (written by Railway ais-relay)
+  try {
+    const bootstrap = await getCachedJson('market:commodities-bootstrap:v1', true) as ListCommodityQuotesResponse | null;
+    if (bootstrap?.quotes?.length) {
+      const symbolSet = new Set(symbols);
+      const filtered = bootstrap.quotes.filter((q: CommodityQuote) => symbolSet.has(q.symbol));
+      if (filtered.length > 0) {
+        return { quotes: filtered };
+      }
+    }
+  } catch {}
 
   const redisKey = redisCacheKey(symbols);
 

@@ -9,7 +9,7 @@ import type {
   MarketQuote,
 } from '../../../../src/generated/server/worldmonitor/market/v1/service_server';
 import { YAHOO_ONLY_SYMBOLS, fetchFinnhubQuote, fetchYahooQuotesBatch, parseStringArray } from './_shared';
-import { cachedFetchJson } from '../../../_shared/redis';
+import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
 
 const REDIS_CACHE_KEY = 'market:quotes:v1';
 const REDIS_CACHE_TTL = 480; // 8 min — shared across all Vercel instances
@@ -32,6 +32,20 @@ export async function listMarketQuotes(
   const now = Date.now();
   const parsedSymbols = parseStringArray(req.symbols);
   const key = cacheKey(parsedSymbols);
+
+  // Layer 0: bootstrap/seed data (written by Railway ais-relay)
+  try {
+    const bootstrap = await getCachedJson('market:stocks-bootstrap:v1', true) as ListMarketQuotesResponse | null;
+    if (bootstrap?.quotes?.length) {
+      const symbolSet = new Set(parsedSymbols);
+      const filtered = bootstrap.quotes.filter((q: MarketQuote) => symbolSet.has(q.symbol));
+      if (filtered.length > 0) {
+        const resp: ListMarketQuotesResponse = { quotes: filtered, finnhubSkipped: false, skipReason: '', rateLimited: false };
+        quotesCache.set(key, { data: resp, timestamp: now });
+        return resp;
+      }
+    }
+  } catch {}
 
   // Layer 1: in-memory cache (same instance)
   const memCached = quotesCache.get(key);

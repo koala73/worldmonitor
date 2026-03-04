@@ -6,7 +6,6 @@ import type { DashboardSnapshot } from '@/services/storage';
 import {
   PlaybackControl,
   StatusPanel,
-  MobileWarningModal,
   PizzIntIndicator,
   CIIPanel,
   PredictionPanel,
@@ -20,6 +19,7 @@ import {
   setTheme,
 } from '@/utils';
 import {
+  IDLE_PAUSE_MS,
   STORAGE_KEYS,
   SITE_VARIANT,
   LAYER_TO_SOURCE,
@@ -47,9 +47,6 @@ import { invokeTauri } from '@/services/tauri-bridge';
 import { dataFreshness } from '@/services/data-freshness';
 import { mlWorker } from '@/services/ml-worker';
 import { UnifiedSettings } from '@/components/UnifiedSettings';
-import { LayoutTabs } from '@/components/LayoutTabs';
-import { WidgetPicker } from '@/components/WidgetPicker';
-import { LAYOUT_OVERRIDES_PREFIX } from '@/config/layouts';
 import { t } from '@/services/i18n';
 import { TvModeController } from '@/services/tv-mode';
 
@@ -74,10 +71,22 @@ export class EventHandlerManager implements AppModule {
   private boundVisibilityHandler: (() => void) | null = null;
   private boundDesktopExternalLinkHandler: ((e: MouseEvent) => void) | null = null;
   private boundIdleResetHandler: (() => void) | null = null;
+  private boundStorageHandler: ((e: StorageEvent) => void) | null = null;
+  private boundTvKeydownHandler: ((e: KeyboardEvent) => void) | null = null;
+  private boundFocalPointsReadyHandler: (() => void) | null = null;
+  private boundThemeChangedHandler: (() => void) | null = null;
+  private boundDropdownClickHandler: ((e: MouseEvent) => void) | null = null;
+  private boundDropdownKeydownHandler: ((e: KeyboardEvent) => void) | null = null;
+  private boundMapResizeMoveHandler: ((e: MouseEvent) => void) | null = null;
+  private boundMapEndResizeHandler: (() => void) | null = null;
+  private boundMapResizeVisChangeHandler: (() => void) | null = null;
+  private boundMapFullscreenEscHandler: ((e: KeyboardEvent) => void) | null = null;
+  private boundMobileMenuKeyHandler: ((e: KeyboardEvent) => void) | null = null;
   private idleTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private snapshotIntervalId: ReturnType<typeof setInterval> | null = null;
   private clockIntervalId: ReturnType<typeof setInterval> | null = null;
-  private readonly IDLE_PAUSE_MS = 2 * 60 * 1000;
+
+  private readonly idlePauseMs = IDLE_PAUSE_MS;
   private readonly debouncedUrlSync = debounce(() => {
     const shareUrl = this.getShareUrl();
     if (!shareUrl) return;
@@ -107,7 +116,7 @@ export class EventHandlerManager implements AppModule {
       tvExitBtn.addEventListener('click', () => this.toggleTvMode());
     }
     // Keyboard shortcut: Shift+T
-    document.addEventListener('keydown', (e) => {
+    this.boundTvKeydownHandler = (e: KeyboardEvent) => {
       if (e.shiftKey && e.key === 'T' && !e.ctrlKey && !e.metaKey && !e.altKey) {
         const active = document.activeElement;
         if (active?.tagName !== 'INPUT' && active?.tagName !== 'TEXTAREA') {
@@ -115,7 +124,8 @@ export class EventHandlerManager implements AppModule {
           this.toggleTvMode();
         }
       }
-    });
+    };
+    document.addEventListener('keydown', this.boundTvKeydownHandler);
   }
 
   private toggleTvMode(): void {
@@ -172,6 +182,51 @@ export class EventHandlerManager implements AppModule {
       clearInterval(this.clockIntervalId);
       this.clockIntervalId = null;
     }
+    if (this.boundStorageHandler) {
+      window.removeEventListener('storage', this.boundStorageHandler);
+      this.boundStorageHandler = null;
+    }
+    if (this.boundTvKeydownHandler) {
+      document.removeEventListener('keydown', this.boundTvKeydownHandler);
+      this.boundTvKeydownHandler = null;
+    }
+    if (this.boundFocalPointsReadyHandler) {
+      window.removeEventListener('focal-points-ready', this.boundFocalPointsReadyHandler);
+      this.boundFocalPointsReadyHandler = null;
+    }
+    if (this.boundThemeChangedHandler) {
+      window.removeEventListener('theme-changed', this.boundThemeChangedHandler);
+      this.boundThemeChangedHandler = null;
+    }
+    if (this.boundDropdownClickHandler) {
+      document.removeEventListener('click', this.boundDropdownClickHandler);
+      this.boundDropdownClickHandler = null;
+    }
+    if (this.boundDropdownKeydownHandler) {
+      document.removeEventListener('keydown', this.boundDropdownKeydownHandler);
+      this.boundDropdownKeydownHandler = null;
+    }
+    if (this.boundMapResizeMoveHandler) {
+      document.removeEventListener('mousemove', this.boundMapResizeMoveHandler);
+      this.boundMapResizeMoveHandler = null;
+    }
+    if (this.boundMapEndResizeHandler) {
+      document.removeEventListener('mouseup', this.boundMapEndResizeHandler);
+      window.removeEventListener('blur', this.boundMapEndResizeHandler);
+      this.boundMapEndResizeHandler = null;
+    }
+    if (this.boundMapResizeVisChangeHandler) {
+      document.removeEventListener('visibilitychange', this.boundMapResizeVisChangeHandler);
+      this.boundMapResizeVisChangeHandler = null;
+    }
+    if (this.boundMapFullscreenEscHandler) {
+      document.removeEventListener('keydown', this.boundMapFullscreenEscHandler);
+      this.boundMapFullscreenEscHandler = null;
+    }
+    if (this.boundMobileMenuKeyHandler) {
+      document.removeEventListener('keydown', this.boundMobileMenuKeyHandler);
+      this.boundMobileMenuKeyHandler = null;
+    }
     this.ctx.tvMode?.destroy();
     this.ctx.tvMode = null;
     this.ctx.unifiedSettings?.destroy();
@@ -179,10 +234,12 @@ export class EventHandlerManager implements AppModule {
   }
 
   private setupEventListeners(): void {
-    document.getElementById('searchBtn')?.addEventListener('click', () => {
+    const openSearch = () => {
       this.callbacks.updateSearchIndex();
       this.ctx.searchModal?.open();
-    });
+    };
+    document.getElementById('searchBtn')?.addEventListener('click', openSearch);
+    document.getElementById('mobileSearchBtn')?.addEventListener('click', openSearch);
 
     document.getElementById('copyLinkBtn')?.addEventListener('click', async () => {
       const shareUrl = this.getShareUrl();
@@ -199,11 +256,12 @@ export class EventHandlerManager implements AppModule {
 
     this.initDownloadDropdown();
 
-    window.addEventListener('storage', (e) => {
+    this.boundStorageHandler = (e: StorageEvent) => {
       if (e.key === STORAGE_KEYS.panels && e.newValue) {
         try {
           this.ctx.panelSettings = JSON.parse(e.newValue) as Record<string, PanelConfig>;
           this.applyPanelSettings();
+          this.ctx.unifiedSettings?.refreshPanelToggles();
         } catch (_) { }
       }
       if (e.key === STORAGE_KEYS.liveChannels && e.newValue) {
@@ -212,7 +270,8 @@ export class EventHandlerManager implements AppModule {
           (panel as unknown as { refreshChannelsFromStorage: () => void }).refreshChannelsFromStorage();
         }
       }
-    });
+    };
+    window.addEventListener('storage', this.boundStorageHandler);
 
     document.getElementById('headerThemeToggle')?.addEventListener('click', () => {
       const next = getCurrentTheme() === 'dark' ? 'light' : 'dark';
@@ -253,6 +312,7 @@ export class EventHandlerManager implements AppModule {
     });
 
     this.boundResizeHandler = () => {
+      this.ctx.map?.setIsResizing(false);
       this.ctx.map?.render();
     };
     window.addEventListener('resize', this.boundResizeHandler);
@@ -262,6 +322,9 @@ export class EventHandlerManager implements AppModule {
 
     this.boundVisibilityHandler = () => {
       document.body?.classList.toggle('animations-paused', document.hidden);
+      if (this.ctx.isDesktopApp) {
+        this.ctx.map?.setRenderPaused(document.hidden);
+      }
       if (document.hidden) {
         this.callbacks.setHiddenSince(Date.now());
         mlWorker.unloadOptionalModels();
@@ -272,15 +335,20 @@ export class EventHandlerManager implements AppModule {
     };
     document.addEventListener('visibilitychange', this.boundVisibilityHandler);
 
-    window.addEventListener('focal-points-ready', () => {
+    this.boundFocalPointsReadyHandler = () => {
       (this.ctx.panels['cii'] as CIIPanel)?.refresh(true);
       this.callbacks.refreshOpenCountryBrief?.();
-    });
+    };
+    window.addEventListener('focal-points-ready', this.boundFocalPointsReadyHandler);
 
-    window.addEventListener('theme-changed', () => {
+    this.boundThemeChangedHandler = () => {
       this.ctx.map?.render();
       this.updateHeaderThemeIcon();
-    });
+      this.updateMobileMenuThemeItem();
+    };
+    window.addEventListener('theme-changed', this.boundThemeChangedHandler);
+
+    this.setupMobileMenu();
 
     if (this.ctx.isDesktopApp) {
       if (this.boundDesktopExternalLinkHandler) {
@@ -312,6 +380,129 @@ export class EventHandlerManager implements AppModule {
     }
   }
 
+  private setupMobileMenu(): void {
+    const hamburger = document.getElementById('hamburgerBtn');
+    const overlay = document.getElementById('mobileMenuOverlay');
+    const menu = document.getElementById('mobileMenu');
+    const closeBtn = document.getElementById('mobileMenuClose');
+    if (!hamburger || !overlay || !menu || !closeBtn) return;
+
+    hamburger.addEventListener('click', () => this.openMobileMenu());
+    overlay.addEventListener('click', () => this.closeMobileMenu());
+    closeBtn.addEventListener('click', () => this.closeMobileMenu());
+
+    const isLocalDev = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+    menu.querySelectorAll<HTMLButtonElement>('.mobile-menu-variant').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const variant = btn.dataset.variant;
+        if (variant && variant !== SITE_VARIANT) {
+          if (this.ctx.isDesktopApp || isLocalDev) {
+            trackVariantSwitch(SITE_VARIANT, variant);
+            localStorage.setItem('worldmonitor-variant', variant);
+            window.location.reload();
+          } else {
+            const hosts: Record<string, string> = {
+              full: 'https://worldmonitor.app',
+              tech: 'https://tech.worldmonitor.app',
+              finance: 'https://finance.worldmonitor.app',
+              happy: 'https://happy.worldmonitor.app',
+            };
+            if (hosts[variant]) window.location.href = hosts[variant];
+          }
+        }
+      });
+    });
+
+    document.getElementById('mobileMenuRegion')?.addEventListener('click', () => {
+      this.closeMobileMenu();
+      this.openRegionSheet();
+    });
+
+    document.getElementById('mobileMenuSettings')?.addEventListener('click', () => {
+      this.closeMobileMenu();
+      this.ctx.unifiedSettings?.open();
+    });
+
+    document.getElementById('mobileMenuTheme')?.addEventListener('click', () => {
+      this.closeMobileMenu();
+      const next = getCurrentTheme() === 'dark' ? 'light' : 'dark';
+      setTheme(next);
+      this.updateHeaderThemeIcon();
+      trackThemeChanged(next);
+    });
+
+    const sheetBackdrop = document.getElementById('regionSheetBackdrop');
+    sheetBackdrop?.addEventListener('click', () => this.closeRegionSheet());
+
+    const sheet = document.getElementById('regionBottomSheet');
+    sheet?.querySelectorAll<HTMLButtonElement>('.region-sheet-option').forEach(opt => {
+      opt.addEventListener('click', () => {
+        const region = opt.dataset.region;
+        if (!region) return;
+        this.ctx.map?.setView(region as MapView);
+        trackMapViewChange(region);
+        const regionSelect = document.getElementById('regionSelect') as HTMLSelectElement;
+        if (regionSelect) regionSelect.value = region;
+        sheet.querySelectorAll('.region-sheet-option').forEach(o => {
+          o.classList.toggle('active', o === opt);
+          const check = o.querySelector('.region-sheet-check');
+          if (check) check.textContent = o === opt ? '✓' : '';
+        });
+        const menuRegionLabel = document.getElementById('mobileMenuRegion')?.querySelector('.mobile-menu-item-label');
+        if (menuRegionLabel) menuRegionLabel.textContent = opt.querySelector('span')?.textContent ?? '';
+        this.closeRegionSheet();
+      });
+    });
+
+    this.boundMobileMenuKeyHandler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (sheet?.classList.contains('open')) {
+          this.closeRegionSheet();
+        } else if (menu.classList.contains('open')) {
+          this.closeMobileMenu();
+        }
+      }
+    };
+    document.addEventListener('keydown', this.boundMobileMenuKeyHandler);
+  }
+
+  private openMobileMenu(): void {
+    const overlay = document.getElementById('mobileMenuOverlay');
+    const menu = document.getElementById('mobileMenu');
+    if (!overlay || !menu) return;
+    overlay.classList.add('open');
+    requestAnimationFrame(() => menu.classList.add('open'));
+    document.body.style.overflow = 'hidden';
+  }
+
+  private closeMobileMenu(): void {
+    const overlay = document.getElementById('mobileMenuOverlay');
+    const menu = document.getElementById('mobileMenu');
+    if (!overlay || !menu) return;
+    menu.classList.remove('open');
+    overlay.classList.remove('open');
+    const sheetOpen = document.getElementById('regionBottomSheet')?.classList.contains('open');
+    if (!sheetOpen) document.body.style.overflow = '';
+  }
+
+  private openRegionSheet(): void {
+    const backdrop = document.getElementById('regionSheetBackdrop');
+    const sheet = document.getElementById('regionBottomSheet');
+    if (!backdrop || !sheet) return;
+    backdrop.classList.add('open');
+    requestAnimationFrame(() => sheet.classList.add('open'));
+    document.body.style.overflow = 'hidden';
+  }
+
+  private closeRegionSheet(): void {
+    const backdrop = document.getElementById('regionSheetBackdrop');
+    const sheet = document.getElementById('regionBottomSheet');
+    if (!backdrop || !sheet) return;
+    sheet.classList.remove('open');
+    backdrop.classList.remove('open');
+    document.body.style.overflow = '';
+  }
+
   private setupIdleDetection(): void {
     this.boundIdleResetHandler = () => {
       if (this.ctx.isIdle) {
@@ -338,7 +529,7 @@ export class EventHandlerManager implements AppModule {
         document.body?.classList.add('animations-paused');
         console.log('[App] User idle - pausing animations to save resources');
       }
-    }, this.IDLE_PAUSE_MS);
+    }, this.idlePauseMs);
   }
 
   setupUrlStateSync(): void {
@@ -462,15 +653,17 @@ export class EventHandlerManager implements AppModule {
       dropdown.classList.toggle('open');
     });
 
-    document.addEventListener('click', (e) => {
+    this.boundDropdownClickHandler = (e: MouseEvent) => {
       if (!dropdown.contains(e.target as Node) && !btn.contains(e.target as Node)) {
         dropdown.classList.remove('open');
       }
-    });
+    };
+    document.addEventListener('click', this.boundDropdownClickHandler);
 
-    document.addEventListener('keydown', (e) => {
+    this.boundDropdownKeydownHandler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') dropdown.classList.remove('open');
-    });
+    };
+    document.addEventListener('keydown', this.boundDropdownKeydownHandler);
   }
 
   private setCopyLinkFeedback(button: HTMLElement | null, message: string): void {
@@ -506,6 +699,16 @@ export class EventHandlerManager implements AppModule {
       : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>';
   }
 
+  private updateMobileMenuThemeItem(): void {
+    const btn = document.getElementById('mobileMenuTheme');
+    if (!btn) return;
+    const isDark = getCurrentTheme() === 'dark';
+    const icon = btn.querySelector('.mobile-menu-item-icon');
+    const label = btn.querySelector('.mobile-menu-item-label');
+    if (icon) icon.textContent = isDark ? '☀️' : '🌙';
+    if (label) label.textContent = isDark ? 'Light Mode' : 'Dark Mode';
+  }
+
   startHeaderClock(): void {
     const el = document.getElementById('headerClock');
     if (!el) return;
@@ -514,13 +717,6 @@ export class EventHandlerManager implements AppModule {
     };
     tick();
     this.clockIntervalId = setInterval(tick, 1000);
-  }
-
-  setupMobileWarning(): void {
-    if (MobileWarningModal.shouldShow()) {
-      this.ctx.mobileWarningModal = new MobileWarningModal();
-      this.ctx.mobileWarningModal.show();
-    }
   }
 
   setupStatusPanel(): void {
@@ -551,26 +747,8 @@ export class EventHandlerManager implements AppModule {
     }
   }
 
-  setupLayoutSystem(): void {
-    // Layout tabs
-    this.ctx.layoutTabs = new LayoutTabs({
-      getPanelSettings: () => this.ctx.panelSettings,
-      applyLayout: (panelKeys: string[]) => {
-        const keySet = new Set(panelKeys);
-        for (const [key, config] of Object.entries(this.ctx.panelSettings)) {
-          config.enabled = keySet.has(key);
-        }
-        saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
-        this.applyPanelSettings();
-        this.ctx.widgetPicker?.refresh();
-      },
-    });
-
-    const tabsMount = document.getElementById('layoutTabsMount');
-    if (tabsMount) tabsMount.appendChild(this.ctx.layoutTabs.getElement());
-
-    // Widget picker
-    this.ctx.widgetPicker = new WidgetPicker({
+  setupUnifiedSettings(): void {
+    this.ctx.unifiedSettings = new UnifiedSettings({
       getPanelSettings: () => this.ctx.panelSettings,
       togglePanel: (key: string) => {
         const config = this.ctx.panelSettings[key];
@@ -579,29 +757,8 @@ export class EventHandlerManager implements AppModule {
           trackPanelToggled(key, config.enabled);
           saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
           this.applyPanelSettings();
-          // Save overrides and update layout tab modified state
-          this.saveLayoutOverrides();
-          this.ctx.layoutTabs?.checkModified();
         }
       },
-      getLocalizedPanelName: (key: string, fallback: string) => this.getLocalizedPanelName(key, fallback),
-    });
-
-    const pickerMount = document.getElementById('widgetPickerMount');
-    if (pickerMount) pickerMount.appendChild(this.ctx.widgetPicker.getElement());
-  }
-
-  private saveLayoutOverrides(): void {
-    const activeId = this.ctx.layoutTabs?.getActiveLayoutId();
-    if (!activeId) return;
-    const enabledKeys = Object.entries(this.ctx.panelSettings)
-      .filter(([, c]) => c.enabled)
-      .map(([k]) => k);
-    localStorage.setItem(LAYOUT_OVERRIDES_PREFIX + activeId, JSON.stringify(enabledKeys));
-  }
-
-  setupUnifiedSettings(): void {
-    this.ctx.unifiedSettings = new UnifiedSettings({
       getDisabledSources: () => this.ctx.disabledSources,
       toggleSource: (name: string) => {
         if (this.ctx.disabledSources.has(name)) {
@@ -619,8 +776,26 @@ export class EventHandlerManager implements AppModule {
         saveToStorage(STORAGE_KEYS.disabledFeeds, Array.from(this.ctx.disabledSources));
       },
       getAllSourceNames: () => this.getAllSourceNames(),
+      getLocalizedPanelName: (key: string, fallback: string) => this.getLocalizedPanelName(key, fallback),
+      resetLayout: () => {
+        localStorage.removeItem(this.ctx.PANEL_SPANS_KEY);
+        localStorage.removeItem('worldmonitor-panel-col-spans');
+        localStorage.removeItem(this.ctx.PANEL_ORDER_KEY);
+        localStorage.removeItem(this.ctx.PANEL_ORDER_KEY + '-bottom');
+        localStorage.removeItem('map-height');
+        window.location.reload();
+      },
       isDesktopApp: this.ctx.isDesktopApp,
       statusPanel: this.ctx.statusPanel,
+      isGlobeMode: () => this.ctx.map?.isGlobeMode() ?? false,
+      onMapModeChange: (useGlobe: boolean) => {
+        saveToStorage(STORAGE_KEYS.mapMode, useGlobe ? 'globe' : 'flat');
+        if (useGlobe) {
+          this.ctx.map?.switchToGlobe();
+        } else {
+          this.ctx.map?.switchToFlat();
+        }
+      },
     });
 
     if (this.ctx.statusPanel) {
@@ -630,6 +805,11 @@ export class EventHandlerManager implements AppModule {
     const mount = document.getElementById('unifiedSettingsMount');
     if (mount) {
       mount.appendChild(this.ctx.unifiedSettings.getButton());
+    }
+
+    const mobileBtn = document.getElementById('mobileSettingsBtn');
+    if (mobileBtn) {
+      mobileBtn.addEventListener('click', () => this.ctx.unifiedSettings?.open());
     }
   }
 
@@ -815,15 +995,16 @@ export class EventHandlerManager implements AppModule {
 
     const getTarget = () => (window.innerWidth >= 1600 ? mapContainer : mapSection);
 
-    const endResize = () => {
+    this.boundMapEndResizeHandler = () => {
       if (!isResizing) return;
       isResizing = false;
       this.ctx.map?.setIsResizing(false);
-      this.ctx.map?.resize(); // Final pass to sync canvas size post-drag
+      this.ctx.map?.resize();
       mapSection.classList.remove('resizing');
       document.body.style.cursor = '';
       localStorage.setItem('map-height', getTarget().style.height);
     };
+    const endResize = this.boundMapEndResizeHandler;
 
     resizeHandle.addEventListener('mousedown', (e) => {
       isResizing = true;
@@ -866,7 +1047,7 @@ export class EventHandlerManager implements AppModule {
       setTimeout(onEnd, 500);
     });
 
-    document.addEventListener('mousemove', (e) => {
+    this.boundMapResizeMoveHandler = (e: MouseEvent) => {
       if (!isResizing) return;
       const isWide = window.innerWidth >= 1600;
       const target = isWide ? mapContainer : mapSection;
@@ -877,15 +1058,16 @@ export class EventHandlerManager implements AppModule {
       if (isWide) target.style.flex = 'none';
       target.style.height = `${newHeight}px`;
 
-      // Trigger dynamic map update
       this.ctx.map?.resize();
-    });
+    };
+    document.addEventListener('mousemove', this.boundMapResizeMoveHandler);
 
     document.addEventListener('mouseup', endResize);
     window.addEventListener('blur', endResize);
-    document.addEventListener('visibilitychange', () => {
+    this.boundMapResizeVisChangeHandler = () => {
       if (document.hidden) endResize();
-    });
+    };
+    document.addEventListener('visibilitychange', this.boundMapResizeVisChangeHandler);
   }
 
   setupMapPin(): void {
@@ -921,12 +1103,15 @@ export class EventHandlerManager implements AppModule {
       document.body.classList.toggle('live-news-fullscreen-active', isFullscreen);
       btn.innerHTML = isFullscreen ? shrinkSvg : expandSvg;
       btn.title = isFullscreen ? 'Exit fullscreen' : 'Fullscreen';
+      // Notify map so globe (and deck.gl) can resize after CSS transition completes
+      setTimeout(() => this.ctx.map?.setIsResizing(false), 320);
     };
 
     btn.addEventListener('click', toggle);
-    document.addEventListener('keydown', (e) => {
+    this.boundMapFullscreenEscHandler = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isFullscreen) toggle();
-    });
+    };
+    document.addEventListener('keydown', this.boundMapFullscreenEscHandler);
   }
 
   getLocalizedPanelName(panelKey: string, fallback: string): string {
@@ -964,20 +1149,6 @@ export class EventHandlerManager implements AppModule {
       }
       const panel = this.ctx.panels[key];
       panel?.toggle(config.enabled);
-      if (panel && !panel.onClose) {
-        panel.onClose = (panelId: string) => {
-          const cfg = this.ctx.panelSettings[panelId];
-          if (cfg) {
-            cfg.enabled = false;
-            trackPanelToggled(panelId, false);
-            saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
-            this.applyPanelSettings();
-            this.saveLayoutOverrides();
-            this.ctx.layoutTabs?.checkModified();
-            this.ctx.widgetPicker?.refresh();
-          }
-        };
-      }
     });
   }
 }

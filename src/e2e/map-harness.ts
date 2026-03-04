@@ -137,6 +137,7 @@ app.style.margin = '0 auto';
 
 const allLayersEnabled: MapLayers = {
   gpsJamming: true,
+  geopoliticalBoundaries: true,
   conflicts: true,
   bases: true,
   cables: true,
@@ -179,11 +180,13 @@ const allLayersEnabled: MapLayers = {
   renewableInstallations: false,
   tradeRoutes: true,
   iranAttacks: false,
+  ciiChoropleth: false,
   dayNight: true,
 };
 
 const allLayersDisabled: MapLayers = {
   gpsJamming: false,
+  geopoliticalBoundaries: false,
   conflicts: false,
   bases: false,
   cables: false,
@@ -226,6 +229,7 @@ const allLayersDisabled: MapLayers = {
   renewableInstallations: false,
   tradeRoutes: false,
   iranAttacks: false,
+  ciiChoropleth: false,
   dayNight: false,
 };
 

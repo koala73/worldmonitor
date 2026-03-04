@@ -1,9 +1,14 @@
 import { FEEDS, INTEL_SOURCES, SOURCE_REGION_MAP } from '@/config/feeds';
+import { PANEL_CATEGORY_MAP } from '@/config/panels';
+import { SITE_VARIANT } from '@/config/variant';
 import { LANGUAGES, changeLanguage, getCurrentLanguage, t } from '@/services/i18n';
 import { getAiFlowSettings, setAiFlowSetting, getStreamQuality, setStreamQuality, STREAM_QUALITY_OPTIONS } from '@/services/ai-flow-settings';
+import { getGlobeRenderScale, setGlobeRenderScale, GLOBE_RENDER_SCALE_OPTIONS, type GlobeRenderScale } from '@/services/globe-render-settings';
+import { getLiveStreamsAlwaysOn, setLiveStreamsAlwaysOn } from '@/services/live-stream-settings';
 import type { StreamQuality } from '@/services/ai-flow-settings';
 import { escapeHtml } from '@/utils/sanitize';
 import { trackLanguageChange } from '@/services/analytics';
+import type { PanelConfig } from '@/types';
 import type { StatusPanel } from './StatusPanel';
 import { exportSettings, importSettings } from '@/utils/settings-persistence';
 
@@ -12,15 +17,23 @@ const GEAR_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
 const DESKTOP_RELEASES_URL = 'https://github.com/koala73/worldmonitor/releases';
 
 export interface UnifiedSettingsConfig {
+  getPanelSettings: () => Record<string, PanelConfig>;
+  togglePanel: (key: string) => void;
   getDisabledSources: () => Set<string>;
   toggleSource: (name: string) => void;
   setSourcesEnabled: (names: string[], enabled: boolean) => void;
   getAllSourceNames: () => string[];
+  getLocalizedPanelName: (key: string, fallback: string) => string;
+  resetLayout: () => void;
   isDesktopApp: boolean;
   statusPanel?: StatusPanel | null;
+  /** True when the 3D globe is currently active */
+  isGlobeMode?: () => boolean;
+  /** Switch between flat-map and 3D-globe */
+  onMapModeChange?: (useGlobe: boolean) => void;
 }
 
-type TabId = 'general' | 'sources' | 'status';
+type TabId = 'general' | 'panels' | 'sources' | 'status';
 
 export class UnifiedSettings {
   private overlay: HTMLElement;
@@ -28,6 +41,8 @@ export class UnifiedSettings {
   private activeTab: TabId = 'general';
   private activeSourceRegion = 'all';
   private sourceFilter = '';
+  private activePanelCategory = 'all';
+  private panelFilter = '';
   private escapeHandler: (e: KeyboardEvent) => void;
 
   constructor(config: UnifiedSettingsConfig) {
@@ -63,6 +78,32 @@ export class UnifiedSettings {
       const tab = target.closest<HTMLElement>('.unified-settings-tab');
       if (tab?.dataset.tab) {
         this.switchTab(tab.dataset.tab as TabId);
+        return;
+      }
+
+      // Panel category pill
+      const panelCatPill = target.closest<HTMLElement>('[data-panel-cat]');
+      if (panelCatPill?.dataset.panelCat) {
+        this.activePanelCategory = panelCatPill.dataset.panelCat;
+        this.panelFilter = '';
+        const searchInput = this.overlay.querySelector<HTMLInputElement>('.panels-search input');
+        if (searchInput) searchInput.value = '';
+        this.renderPanelCategoryPills();
+        this.renderPanelsTab();
+        return;
+      }
+
+      // Reset layout
+      if (target.closest('.panels-reset-layout')) {
+        this.config.resetLayout();
+        return;
+      }
+
+      // Panel toggle
+      const panelItem = target.closest<HTMLElement>('.panel-toggle-item');
+      if (panelItem?.dataset.panel) {
+        this.config.togglePanel(panelItem.dataset.panel);
+        this.renderPanelsTab();
         return;
       }
 
@@ -121,7 +162,10 @@ export class UnifiedSettings {
     // Handle input events for search
     this.overlay.addEventListener('input', (e) => {
       const target = e.target as HTMLInputElement;
-      if (target.closest('.sources-search')) {
+      if (target.closest('.panels-search')) {
+        this.panelFilter = target.value;
+        this.renderPanelsTab();
+      } else if (target.closest('.sources-search')) {
         this.sourceFilter = target.value;
         this.renderSourcesGrid();
         this.updateSourcesCounter();
@@ -149,14 +193,27 @@ export class UnifiedSettings {
         return;
       }
 
+      if (target.id === 'us-globe-render-scale') {
+        setGlobeRenderScale(target.value as GlobeRenderScale);
+        return;
+      }
+
+      if (target.id === 'us-live-streams-always-on') {
+        setLiveStreamsAlwaysOn(target.checked);
+        return;
+      }
+
       // Language select
-      if (target.closest('.unified-settings-lang-select')) {
+      if (target.id === 'us-language') {
         trackLanguageChange(target.value);
         void changeLanguage(target.value);
         return;
       }
 
-      if (target.id === 'us-cloud') {
+      if (target.id === 'us-globe-mode') {
+        this.config.onMapModeChange?.(target.checked);
+        return;
+      } else if (target.id === 'us-cloud') {
         setAiFlowSetting('cloudLlm', target.checked);
         this.updateAiStatus();
       } else if (target.id === 'us-browser') {
@@ -191,6 +248,10 @@ export class UnifiedSettings {
     document.removeEventListener('keydown', this.escapeHandler);
   }
 
+  public refreshPanelToggles(): void {
+    if (this.activeTab === 'panels') this.renderPanelsTab();
+  }
+
   public getButton(): HTMLButtonElement {
     const btn = document.createElement('button');
     btn.className = 'unified-settings-btn';
@@ -217,11 +278,24 @@ export class UnifiedSettings {
         </div>
         <div class="unified-settings-tabs" role="tablist" aria-label="Settings">
           <button class="${tabClass('general')}" data-tab="general" role="tab" aria-selected="${this.activeTab === 'general'}" id="us-tab-general" aria-controls="us-tab-panel-general">${t('header.tabGeneral')}</button>
+          <button class="${tabClass('panels')}" data-tab="panels" role="tab" aria-selected="${this.activeTab === 'panels'}" id="us-tab-panels" aria-controls="us-tab-panel-panels">${t('header.tabPanels')}</button>
           <button class="${tabClass('sources')}" data-tab="sources" role="tab" aria-selected="${this.activeTab === 'sources'}" id="us-tab-sources" aria-controls="us-tab-panel-sources">${t('header.tabSources')}</button>
           <button class="${tabClass('status')}" data-tab="status" role="tab" aria-selected="${this.activeTab === 'status'}" id="us-tab-status" aria-controls="us-tab-panel-status">${t('panels.status')}</button>
         </div>
         <div class="unified-settings-tab-panel${this.activeTab === 'general' ? ' active' : ''}" data-panel-id="general" id="us-tab-panel-general" role="tabpanel" aria-labelledby="us-tab-general">
           ${this.renderGeneralContent()}
+        </div>
+        <div class="unified-settings-tab-panel${this.activeTab === 'panels' ? ' active' : ''}" data-panel-id="panels" id="us-tab-panel-panels" role="tabpanel" aria-labelledby="us-tab-panels">
+          <div class="unified-settings-region-wrapper">
+            <div class="unified-settings-region-bar" id="usPanelCatBar"></div>
+          </div>
+          <div class="panels-search">
+            <input type="text" placeholder="${t('header.filterPanels')}" value="${escapeHtml(this.panelFilter)}" />
+          </div>
+          <div class="panel-toggle-grid" id="usPanelToggles"></div>
+          <div class="panels-footer">
+            <button class="panels-reset-layout">${t('header.resetLayout')}</button>
+          </div>
         </div>
         <div class="unified-settings-tab-panel${this.activeTab === 'sources' ? ' active' : ''}" data-panel-id="sources" id="us-tab-panel-sources" role="tabpanel" aria-labelledby="us-tab-sources">
           <div class="unified-settings-region-wrapper">
@@ -244,6 +318,8 @@ export class UnifiedSettings {
     `;
 
     // Populate dynamic sections after innerHTML is set
+    this.renderPanelCategoryPills();
+    this.renderPanelsTab();
     this.renderRegionPills();
     this.renderSourcesGrid();
     this.updateSourcesCounter();
@@ -270,11 +346,47 @@ export class UnifiedSettings {
   private renderGeneralContent(): string {
     const settings = getAiFlowSettings();
     const currentLang = getCurrentLanguage();
+    const globeEnabled = this.config.isGlobeMode?.() ?? false;
 
     let html = '';
 
     // Map section
     html += `<div class="ai-flow-section-label">${t('components.insights.sectionMap')}</div>`;
+
+    // Globe / flat-map mode toggle
+    html += `
+      <div class="ai-flow-toggle-row">
+        <div class="ai-flow-toggle-label-wrap">
+          <div class="ai-flow-toggle-label">3D Globe View</div>
+          <div class="ai-flow-toggle-desc">Switch between flat map and interactive 3D globe (like Sentinel). Zoom, rotate, and explore in three dimensions.</div>
+        </div>
+        <label class="ai-flow-switch">
+          <input type="checkbox" id="us-globe-mode"${globeEnabled ? ' checked' : ''}>
+          <span class="ai-flow-slider"></span>
+        </label>
+      </div>`;
+
+    // Globe render quality (pixel ratio)
+    const globeScale = getGlobeRenderScale();
+    const globeRenderLabelKey = 'components.insights.globeRenderQualityLabel';
+    const globeRenderDescKey = 'components.insights.globeRenderQualityDesc';
+    const globeRenderLabel = t(globeRenderLabelKey);
+    const globeRenderDesc = t(globeRenderDescKey);
+    html += `<div class="ai-flow-toggle-row">
+      <div class="ai-flow-toggle-label-wrap">
+        <div class="ai-flow-toggle-label">${globeRenderLabel === globeRenderLabelKey ? 'Globe render quality' : globeRenderLabel}</div>
+        <div class="ai-flow-toggle-desc">${globeRenderDesc === globeRenderDescKey ? 'Controls the globe canvas resolution. Higher values look sharper on 4K displays but can melt GPUs.' : globeRenderDesc}</div>
+      </div>
+    </div>`;
+    html += `<select class="unified-settings-select" id="us-globe-render-scale">`;
+    for (const opt of GLOBE_RENDER_SCALE_OPTIONS) {
+      const selected = opt.value === globeScale ? ' selected' : '';
+      const translatedLabel = t(opt.labelKey);
+      const label = translatedLabel === opt.labelKey ? opt.fallbackLabel : translatedLabel;
+      html += `<option value="${opt.value}"${selected}>${label}</option>`;
+    }
+    html += `</select>`;
+
     html += this.toggleRowHtml('us-map-flash', t('components.insights.mapFlashLabel'), t('components.insights.mapFlashDesc'), settings.mapNewsFlash);
 
     // Panels section
@@ -312,16 +424,24 @@ export class UnifiedSettings {
         <div class="ai-flow-toggle-desc">${t('components.insights.streamQualityDesc')}</div>
       </div>
     </div>`;
-    html += `<select class="unified-settings-lang-select" id="us-stream-quality">`;
+    html += `<select class="unified-settings-select" id="us-stream-quality">`;
     for (const opt of STREAM_QUALITY_OPTIONS) {
       const selected = opt.value === currentQuality ? ' selected' : '';
       html += `<option value="${opt.value}"${selected}>${opt.label}</option>`;
     }
     html += `</select>`;
 
+    // Live streams idle behavior
+    html += this.toggleRowHtml(
+      'us-live-streams-always-on',
+      t('components.insights.streamAlwaysOnLabel'),
+      t('components.insights.streamAlwaysOnDesc'),
+      getLiveStreamsAlwaysOn(),
+    );
+
     // Language section
     html += `<div class="ai-flow-section-label">${t('header.languageLabel')}</div>`;
-    html += `<select class="unified-settings-lang-select">`;
+    html += `<select class="unified-settings-lang-select" id="us-language">`;
     for (const lang of LANGUAGES) {
       const selected = lang.code === currentLang ? ' selected' : '';
       html += `<option value="${lang.code}"${selected}>${lang.flag} ${lang.label}</option>`;
@@ -337,6 +457,12 @@ export class UnifiedSettings {
         <input type="file" id="usImportInput" accept=".json" style="display: none;" />
       </div>
     `;
+    // Community section
+    html += `<div class="ai-flow-section-label">${t('components.community.sectionLabel')}</div>`;
+    html += `<a href="https://github.com/koala73/worldmonitor/discussions/94" target="_blank" rel="noopener" class="us-discussion-link">
+      <span class="us-discussion-dot"></span>
+      <span>${t('components.community.joinDiscussion')}</span>
+    </a>`;
 
     // AI status footer (web-only)
     if (!this.config.isDesktopApp) {
@@ -453,6 +579,73 @@ export class UnifiedSettings {
       if (!container.isConnected) return;
       container.innerHTML = `<div class="status-row">${t('components.status.storageUnavailable')}</div>`;
     }
+  }
+
+  private getAvailablePanelCategories(): Array<{ key: string; label: string }> {
+    const panelKeys = new Set(Object.keys(this.config.getPanelSettings()));
+    const variant = SITE_VARIANT || 'full';
+    const categories: Array<{ key: string; label: string }> = [
+      { key: 'all', label: t('header.sourceRegionAll') }
+    ];
+
+    for (const [catKey, catDef] of Object.entries(PANEL_CATEGORY_MAP)) {
+      if (catDef.variants && !catDef.variants.includes(variant)) continue;
+      const hasPanel = catDef.panelKeys.some(pk => panelKeys.has(pk));
+      if (hasPanel) {
+        categories.push({ key: catKey, label: t(catDef.labelKey) });
+      }
+    }
+
+    return categories;
+  }
+
+  private getVisiblePanelEntries(): Array<[string, PanelConfig]> {
+    const panelSettings = this.config.getPanelSettings();
+    const variant = SITE_VARIANT || 'full';
+    let entries = Object.entries(panelSettings)
+      .filter(([key]) => key !== 'runtime-config' || this.config.isDesktopApp);
+
+    if (this.activePanelCategory !== 'all') {
+      const catDef = PANEL_CATEGORY_MAP[this.activePanelCategory];
+      if (catDef && (!catDef.variants || catDef.variants.includes(variant))) {
+        const allowed = new Set(catDef.panelKeys);
+        entries = entries.filter(([key]) => allowed.has(key));
+      }
+    }
+
+    if (this.panelFilter) {
+      const lower = this.panelFilter.toLowerCase();
+      entries = entries.filter(([key, panel]) =>
+        key.toLowerCase().includes(lower) ||
+        panel.name.toLowerCase().includes(lower) ||
+        this.config.getLocalizedPanelName(key, panel.name).toLowerCase().includes(lower)
+      );
+    }
+
+    return entries;
+  }
+
+  private renderPanelCategoryPills(): void {
+    const bar = this.overlay.querySelector('#usPanelCatBar');
+    if (!bar) return;
+
+    const categories = this.getAvailablePanelCategories();
+    bar.innerHTML = categories.map(c =>
+      `<button class="unified-settings-region-pill${this.activePanelCategory === c.key ? ' active' : ''}" data-panel-cat="${c.key}">${escapeHtml(c.label)}</button>`
+    ).join('');
+  }
+
+  private renderPanelsTab(): void {
+    const container = this.overlay.querySelector('#usPanelToggles');
+    if (!container) return;
+
+    const entries = this.getVisiblePanelEntries();
+    container.innerHTML = entries.map(([key, panel]) => `
+      <div class="panel-toggle-item ${panel.enabled ? 'active' : ''}" data-panel="${escapeHtml(key)}">
+        <div class="panel-toggle-checkbox">${panel.enabled ? '✓' : ''}</div>
+        <span class="panel-toggle-label">${escapeHtml(this.config.getLocalizedPanelName(key, panel.name))}</span>
+      </div>
+    `).join('');
   }
 
   private getAvailableRegions(): Array<{ key: string; label: string }> {

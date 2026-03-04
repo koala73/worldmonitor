@@ -3,7 +3,7 @@ export interface TokenizedTitle {
   ordered: string[];
 }
 
-const INFLECTION_SUFFIXES = ['s', 'es', 'ian', 'ians', 'ean', 'eans', 'an', 'ans', 'n', 'ns', 'i', 'is', 'ish', 'ese'];
+const INFLECTION_SUFFIXES = new Set(['s', 'es', 'ian', 'ians', 'ean', 'eans', 'an', 'ans', 'n', 'ns', 'i', 'is', 'ish', 'ese']);
 const MIN_SUFFIX_KEYWORD_LEN = 4;
 
 export function tokenizeForMatch(title: string): TokenizedTitle {
@@ -26,13 +26,13 @@ function hasSuffix(word: string, keyword: string): boolean {
   if (word.length <= keyword.length) return false;
   if (word.startsWith(keyword)) {
     const suffix = word.slice(keyword.length);
-    if (INFLECTION_SUFFIXES.includes(suffix)) return true;
+    if (INFLECTION_SUFFIXES.has(suffix)) return true;
   }
   if (keyword.endsWith('e')) {
     const stem = keyword.slice(0, -1);
     if (word.length > stem.length && word.startsWith(stem)) {
       const suffix = word.slice(stem.length);
-      if (INFLECTION_SUFFIXES.includes(suffix)) return true;
+      if (INFLECTION_SUFFIXES.has(suffix)) return true;
     }
   }
   return false;

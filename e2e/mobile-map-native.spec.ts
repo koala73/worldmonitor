@@ -124,6 +124,47 @@ test.describe('Mobile map native experience', () => {
     });
   });
 
+  test.describe('geolocation startup centering', () => {
+    test('centers map on granted geolocation coords', async ({ browser }) => {
+      const context = await browser.newContext({
+        ...mobileContext,
+        geolocation: { latitude: 48.8566, longitude: 2.3522 },
+        permissions: ['geolocation'],
+      });
+      const page = await context.newPage();
+      await page.goto('/');
+      await page.waitForFunction(
+        () => {
+          const select = document.getElementById('regionSelect') as HTMLSelectElement | null;
+          return select?.value === 'eu';
+        },
+        { timeout: 10000 },
+      );
+      await context.close();
+    });
+  });
+
+  test.describe('mobile map viewport', () => {
+    test('map starts expanded and occupies most of viewport', async ({ browser }) => {
+      const context = await browser.newContext({
+        ...mobileContext,
+        locale: 'en-US',
+      });
+      const page = await context.newPage();
+      await page.goto('/');
+      const mapSection = page.locator('#mapSection');
+      await expect(mapSection).toBeVisible({ timeout: 10000 });
+      await expect(mapSection).not.toHaveClass(/collapsed/);
+
+      const ratio = await page.evaluate(() => {
+        const el = document.getElementById('mapSection');
+        return (el?.getBoundingClientRect().height ?? 0) / window.innerHeight;
+      });
+      expect(ratio).toBeGreaterThanOrEqual(0.7);
+      await context.close();
+    });
+  });
+
   test.describe('breakpoint consistency at 768px', () => {
     test('JS and CSS agree at exactly 768px', async ({ browser }) => {
       const context = await browser.newContext({

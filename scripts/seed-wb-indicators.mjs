@@ -185,7 +185,7 @@ async function fetchWbIndicator(indicatorId, dateRange) {
   for (const entry of allEntries) {
     if (entry.value === null || entry.value === undefined) continue;
     const iso3 = entry.countryiso3code;
-    if (!iso3 || iso3.length !== 3) continue; // skip aggregates (WLD, EAS, etc.)
+    if (!iso3 || iso3.length !== 3) continue; // skip entries with missing or malformed country codes
 
     const year = parseInt(entry.date, 10);
     if (!latestByCountry[iso3] || year > latestByCountry[iso3].year) {

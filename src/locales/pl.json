@@ -733,7 +733,8 @@
         "tradeRoutes": "Szlaki Handlowe",
         "gpsJamming": "GPS JAMMING",
         "dayNight": "Dzień/Noc",
-        "iranAttacks": "Ataki Iranu"
+        "iranAttacks": "Ataki Iranu",
+        "geopoliticalBoundaries": "Granice Geopolityczne"
       },
       "layersTitle": "Warstwy",
       "layerGuide": "Przewodnik po warstwach",
@@ -839,7 +840,8 @@
           "mineralsFull": "Złoża minerałów strategicznych i kopalnie",
           "techCyberThreats": "Cyberataki i zdarzenia bezpieczeństwa",
           "techEvents": "Główne konferencje i wydarzenia technologiczne",
-          "techFires": "Aktywne pożary w pobliżu infrastruktury technologicznej"
+          "techFires": "Aktywne pożary w pobliżu infrastruktury technologicznej",
+          "geoBoundaries": "Strefy zdemilitaryzowane, linie zawieszenia broni i sporne granice"
         },
         "notes": {
           "timeAffects": "Wpływ na: Trzęsienia ziemi, Pogoda, Protesty, Przestoje"
@@ -1295,7 +1297,9 @@
       "badgeAnimDesc": "Animuj odznaki aktualizacji w nagłówkach paneli",
       "sectionIntelligence": "Wywiad",
       "headlineMemoryLabel": "Pamięć nagłówków",
-      "headlineMemoryDesc": "Zapamiętuj widziane nagłówki, aby wyróżnić nowe"
+      "headlineMemoryDesc": "Zapamiętuj widziane nagłówki, aby wyróżnić nowe",
+      "streamAlwaysOnLabel": "Utrzymuj transmisje na żywo",
+      "streamAlwaysOnDesc": "Zapobiega automatycznemu wstrzymywaniu Live Cams i Live News podczas bezczynności. Zalecane do użycia na drugim monitorze / wallboardzie. Wyłącz (Eco), aby oszczędzać CPU/pasmo."
     },
     "etfFlows": {
       "unavailable": "Dane ETF tymczasowo niedostępne",
@@ -1977,6 +1981,19 @@
     },
     "iranEvent": {
       "relatedEvents": "Powiązane wydarzenia"
+    },
+    "geopoliticalBoundary": {
+      "title": "GRANICA GEOPOLITYCZNA",
+      "established": "USTANOWIONO",
+      "dimensions": "WYMIARY",
+      "legalBasis": "PODSTAWA PRAWNA",
+      "parties": "SYGNATARIUSZE",
+      "types": {
+        "demilitarized": "STREFA ZDEMILITARYZOWANA",
+        "ceasefire": "LINIA ZAWIESZENIA BRONI",
+        "disputed": "SPORNA GRANICA",
+        "armistice": "LINIA ROZEJMU"
+      }
     }
   },
   "signals": {

@@ -18,10 +18,11 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/climate/v1/service_server';
 
 import { CHROME_UA } from '../../../_shared/constants';
-import { cachedFetchJson } from '../../../_shared/redis';
+import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
 
 const REDIS_CACHE_KEY = 'climate:anomalies:v1';
 const REDIS_CACHE_TTL = 10800; // 3h — Open-Meteo Archive uses ERA5 reanalysis with 2-7 day lag
+const SEED_FRESHNESS_MS = 150 * 60 * 1000; // 2.5 hours
 
 /** The 15 monitored zones matching the legacy api/climate-anomalies.js list. */
 const ZONES: { name: string; lat: number; lon: number }[] = [
@@ -135,10 +136,37 @@ async function fetchZone(
   };
 }
 
+type AnomalyCache = { anomalies: ClimateAnomaly[]; pagination: undefined };
+
+async function trySeededData(): Promise<AnomalyCache | null> {
+  try {
+    const [seedData, seedMeta] = await Promise.all([
+      getCachedJson(REDIS_CACHE_KEY, true) as Promise<AnomalyCache | null>,
+      getCachedJson('seed-meta:climate:anomalies', true) as Promise<{ fetchedAt?: number } | null>,
+    ]);
+
+    if (!seedData?.anomalies?.length) return null;
+
+    const fetchedAt = seedMeta?.fetchedAt ?? 0;
+    const isFresh = Date.now() - fetchedAt < SEED_FRESHNESS_MS;
+
+    if (isFresh) return seedData;
+
+    if (!process.env.SEED_FALLBACK_CLIMATE) return seedData;
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export const listClimateAnomalies: ClimateServiceHandler['listClimateAnomalies'] = async (
   _ctx: ServerContext,
   _req: ListClimateAnomaliesRequest,
 ): Promise<ListClimateAnomaliesResponse> => {
+  const seeded = await trySeededData();
+  if (seeded) return { anomalies: seeded.anomalies, pagination: undefined };
+
   let result: ListClimateAnomaliesResponse | null = null;
   try {
     result = await cachedFetchJson<ListClimateAnomaliesResponse>(

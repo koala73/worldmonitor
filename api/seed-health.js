@@ -1,0 +1,115 @@
+import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
+import { validateApiKey } from './_api-key.js';
+
+export const config = { runtime: 'edge' };
+
+const SEED_DOMAINS = {
+  // Phase 1 — Snapshot endpoints
+  'seismology:earthquakes':   { key: 'seed-meta:seismology:earthquakes',   intervalMin: 15 },
+  'wildfire:fires':           { key: 'seed-meta:wildfire:fires',           intervalMin: 30 },
+  'infra:outages':            { key: 'seed-meta:infra:outages',            intervalMin: 15 },
+  'climate:anomalies':        { key: 'seed-meta:climate:anomalies',        intervalMin: 60 },
+  // Phase 2 — Parameterized endpoints
+  'unrest:events':            { key: 'seed-meta:unrest:events',            intervalMin: 15 },
+  'cyber:threats':            { key: 'seed-meta:cyber:threats',            intervalMin: 120 },
+  // market:quotes and market:commodities seeded by ais-relay (separate monitoring)
+  'market:crypto':            { key: 'seed-meta:market:crypto',            intervalMin: 10 },
+  'market:etf-flows':         { key: 'seed-meta:market:etf-flows',         intervalMin: 30 },
+  'market:gulf-quotes':       { key: 'seed-meta:market:gulf-quotes',       intervalMin: 15 },
+  'market:stablecoins':       { key: 'seed-meta:market:stablecoins',       intervalMin: 30 },
+  // Phase 3 — Hybrid endpoints
+  'natural:events':           { key: 'seed-meta:natural:events',           intervalMin: 30 },
+  'displacement:summary':     { key: 'seed-meta:displacement:summary',     intervalMin: 360 },
+};
+
+async function getMetaBatch(keys) {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return new Map();
+
+  const pipeline = keys.map((k) => ['GET', k]);
+  const resp = await fetch(`${url}/pipeline`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(pipeline),
+    signal: AbortSignal.timeout(3000),
+  });
+  if (!resp.ok) return new Map();
+
+  const data = await resp.json();
+  const result = new Map();
+  for (let i = 0; i < keys.length; i++) {
+    const raw = data[i]?.result;
+    if (raw) {
+      try { result.set(keys[i], JSON.parse(raw)); } catch { /* skip */ }
+    }
+  }
+  return result;
+}
+
+export default async function handler(req) {
+  if (isDisallowedOrigin(req))
+    return new Response('Forbidden', { status: 403 });
+
+  const cors = getCorsHeaders(req);
+  if (req.method === 'OPTIONS')
+    return new Response(null, { status: 204, headers: cors });
+
+  const apiKeyResult = validateApiKey(req);
+  if (apiKeyResult.required && !apiKeyResult.valid)
+    return new Response(JSON.stringify({ error: apiKeyResult.error }), {
+      status: 401, headers: { ...cors, 'Content-Type': 'application/json' },
+    });
+
+  const now = Date.now();
+  const entries = Object.entries(SEED_DOMAINS);
+  const metaKeys = entries.map(([, v]) => v.key);
+
+  let metaMap;
+  try {
+    metaMap = await getMetaBatch(metaKeys);
+  } catch {
+    return new Response(JSON.stringify({ error: 'Redis unavailable' }), {
+      status: 503, headers: { ...cors, 'Content-Type': 'application/json' },
+    });
+  }
+
+  const seeds = {};
+  let staleCount = 0;
+  let missingCount = 0;
+
+  for (const [domain, cfg] of entries) {
+    const meta = metaMap.get(cfg.key);
+    const maxStalenessMs = cfg.intervalMin * 2 * 60 * 1000;
+
+    if (!meta) {
+      seeds[domain] = { status: 'missing', fetchedAt: null, recordCount: null, stale: true };
+      missingCount++;
+      continue;
+    }
+
+    const ageMs = now - (meta.fetchedAt || 0);
+    const stale = ageMs > maxStalenessMs;
+    if (stale) staleCount++;
+
+    seeds[domain] = {
+      status: stale ? 'stale' : 'ok',
+      fetchedAt: meta.fetchedAt,
+      recordCount: meta.recordCount ?? null,
+      sourceVersion: meta.sourceVersion || null,
+      ageMinutes: Math.round(ageMs / 60000),
+      stale,
+    };
+  }
+
+  const overall = missingCount > 0 ? 'degraded' : staleCount > 0 ? 'warning' : 'healthy';
+
+  return new Response(JSON.stringify({ overall, seeds, checkedAt: now }), {
+    status: 200,
+    headers: {
+      ...cors,
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-cache',
+    },
+  });
+}

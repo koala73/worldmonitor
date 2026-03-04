@@ -4,7 +4,7 @@ import type {
   ListCyberThreatsResponse,
 } from '../../../../src/generated/server/worldmonitor/cyber/v1/service_server';
 
-import { cachedFetchJson } from '../../../_shared/redis';
+import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
 
 import {
   DEFAULT_LIMIT,
@@ -30,9 +30,9 @@ type CachedThreats = Pick<ListCyberThreatsResponse, 'threats'>;
 
 const REDIS_CACHE_KEY = 'cyber:threats:v2';
 const REDIS_CACHE_TTL = 7200; // 2 hr — IOC feeds update at most daily
-const MAX_CACHED_THREATS = 2000; // cap cached set to avoid oversized Redis values
+const MAX_CACHED_THREATS = 2000;
+const SEED_FRESHNESS_MS = 150 * 60 * 1000; // 2.5 hours
 
-/** Parse a cursor string into a numeric offset. Invalid/negative values reset to page 1. */
 function parseCursor(cursor: string | undefined): number {
   if (!cursor) return 0;
   const n = parseInt(cursor, 10);
@@ -41,6 +41,50 @@ function parseCursor(cursor: string | undefined): number {
     return 0;
   }
   return n;
+}
+
+function filterSeededThreats(
+  threats: ListCyberThreatsResponse['threats'],
+  req: ListCyberThreatsRequest,
+): ListCyberThreatsResponse['threats'] {
+  let results = threats;
+  if (req.type && req.type !== 'CYBER_THREAT_TYPE_UNSPECIFIED') {
+    results = results.filter((t) => t.type === req.type);
+  }
+  if (req.source && req.source !== 'CYBER_THREAT_SOURCE_UNSPECIFIED') {
+    results = results.filter((t) => t.source === req.source);
+  }
+  if (req.minSeverity && req.minSeverity !== 'CRITICALITY_LEVEL_UNSPECIFIED') {
+    const minRank = SEVERITY_RANK[req.minSeverity] || 0;
+    results = results.filter((t) => (SEVERITY_RANK[t.severity || ''] || 0) >= minRank);
+  }
+  return results;
+}
+
+async function trySeededData(req: ListCyberThreatsRequest): Promise<CachedThreats | null> {
+  try {
+    const [seedData, seedMeta] = await Promise.all([
+      getCachedJson(REDIS_CACHE_KEY, true) as Promise<CachedThreats | null>,
+      getCachedJson('seed-meta:cyber:threats', true) as Promise<{ fetchedAt?: number } | null>,
+    ]);
+
+    if (!seedData?.threats?.length) return null;
+
+    const fetchedAt = seedMeta?.fetchedAt ?? 0;
+    const isFresh = Date.now() - fetchedAt < SEED_FRESHNESS_MS;
+
+    if (isFresh) {
+      return { threats: filterSeededThreats(seedData.threats, req) };
+    }
+
+    if (!process.env.SEED_FALLBACK_CYBER) {
+      return { threats: filterSeededThreats(seedData.threats, req) };
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 export async function listCyberThreats(
@@ -55,13 +99,21 @@ export async function listCyberThreats(
     const pageSize = clampInt(req.pageSize, DEFAULT_LIMIT, 1, MAX_LIMIT);
     const offset = parseCursor(req.cursor);
 
-    // Cache key excludes pageSize and cursor — cache holds the full filtered result set.
-    // Changing filter params (start, type, source, minSeverity) between pages resets pagination
-    // because the underlying result set changes. Clients must keep filters stable across pages.
+    const seeded = await trySeededData(req);
+    if (seeded) {
+      const allThreats = seeded.threats;
+      if (offset >= allThreats.length) return empty;
+      const page = allThreats.slice(offset, offset + pageSize);
+      const hasMore = offset + pageSize < allThreats.length;
+      return {
+        threats: page,
+        pagination: { totalCount: allThreats.length, nextCursor: hasMore ? String(offset + pageSize) : '' },
+      };
+    }
+
     const cacheKey = `${REDIS_CACHE_KEY}:${req.start || 0}:${req.type || ''}:${req.source || ''}:${req.minSeverity || ''}`;
 
     const cached = await cachedFetchJson<CachedThreats>(cacheKey, REDIS_CACHE_TTL, async () => {
-      // Derive days from timeRange or use default
       let days = DEFAULT_DAYS;
       if (req.start) {
         days = clampInt(
@@ -71,7 +123,6 @@ export async function listCyberThreats(
       }
       const cutoffMs = now - days * 24 * 60 * 60 * 1000;
 
-      // Fetch all sources in parallel — use MAX_LIMIT so the cache covers all pages.
       const [feodo, urlhaus, c2intel, otx, abuseipdb] = await Promise.all([
         fetchFeodoSource(MAX_LIMIT, cutoffMs),
         fetchUrlhausSource(MAX_LIMIT, cutoffMs),
@@ -83,7 +134,6 @@ export async function listCyberThreats(
       const anySucceeded = feodo.ok || urlhaus.ok || c2intel.ok || otx.ok || abuseipdb.ok;
       if (!anySucceeded) return null;
 
-      // Merge, deduplicate, hydrate coordinates
       const combined = dedupeThreats([
         ...feodo.threats,
         ...urlhaus.threats,
@@ -94,11 +144,9 @@ export async function listCyberThreats(
 
       const hydrated = await hydrateThreatCoordinates(combined);
 
-      // Filter to only threats with valid coordinates
       let results = hydrated
         .filter((t) => t.lat !== null && t.lon !== null && t.lat >= -90 && t.lat <= 90 && t.lon >= -180 && t.lon <= 180);
 
-      // Apply optional filters BEFORE sorting (C-2 fix)
       if (req.type && req.type !== 'CYBER_THREAT_TYPE_UNSPECIFIED') {
         const filterType = req.type;
         results = results.filter((t) => THREAT_TYPE_MAP[t.type] === filterType);
@@ -112,7 +160,6 @@ export async function listCyberThreats(
         results = results.filter((t) => (SEVERITY_RANK[SEVERITY_MAP[t.severity] || ''] || 0) >= minRank);
       }
 
-      // Sort by severity then recency — store the full sorted set (no slice).
       results.sort((a, b) => {
         const bySeverity = (SEVERITY_RANK[SEVERITY_MAP[b.severity] || ''] || 0)
           - (SEVERITY_RANK[SEVERITY_MAP[a.severity] || ''] || 0);
@@ -126,7 +173,6 @@ export async function listCyberThreats(
 
     if (!cached) return empty;
 
-    // Apply cursor-based pagination over the cached full result set.
     const allThreats = cached.threats;
     if (offset >= allThreats.length) return empty;
     const page = allThreats.slice(offset, offset + pageSize);

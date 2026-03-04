@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package worldmonitor.natural.v1;
+
+import "sebuf/http/annotations.proto";
+
+message NaturalEvent {
+  string id = 1;
+  string title = 2;
+  string description = 3;
+  string category = 4;
+  string category_title = 5;
+  double lat = 6;
+  double lon = 7;
+  int64 date = 8 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  double magnitude = 9;
+  string magnitude_unit = 10;
+  string source_url = 11;
+  string source_name = 12;
+  bool closed = 13;
+}
+
+message ListNaturalEventsRequest {
+  int32 days = 1 [(sebuf.http.query) = { name: "days" }];
+}
+
+message ListNaturalEventsResponse {
+  repeated NaturalEvent events = 1;
+}

@@ -8,6 +8,7 @@ export { SITE_VARIANT } from './variant';
 
 // Shared base configuration (always included)
 export {
+  IDLE_PAUSE_MS,
   REFRESH_INTERVALS,
   MONITOR_COLORS,
   STORAGE_KEYS,
@@ -58,6 +59,7 @@ export {
 export {
   INTEL_HOTSPOTS,
   CONFLICT_ZONES,
+  GEOPOLITICAL_BOUNDARIES,
   MILITARY_BASES,
   NUCLEAR_FACILITIES,
   APT_GROUPS,

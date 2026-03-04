@@ -13,7 +13,7 @@ import type { CountryTimeline } from '@/components/CountryTimeline';
 import type { PlaybackControl } from '@/components';
 import type { ExportPanel } from '@/utils';
 import type { UnifiedSettings } from '@/components/UnifiedSettings';
-import type { MobileWarningModal, PizzIntIndicator } from '@/components';
+import type { PizzIntIndicator } from '@/components';
 import type { ParsedMapUrlState } from '@/utils';
 import type { PositiveNewsFeedPanel } from '@/components/PositiveNewsFeedPanel';
 import type { CountersPanel } from '@/components/CountersPanel';
@@ -25,8 +25,6 @@ import type { SpeciesComebackPanel } from '@/components/SpeciesComebackPanel';
 import type { RenewableEnergyPanel } from '@/components/RenewableEnergyPanel';
 import type { TvModeController } from '@/services/tv-mode';
 import type { BreakingNewsBanner } from '@/components/BreakingNewsBanner';
-import type { LayoutTabs } from '@/components/LayoutTabs';
-import type { WidgetPicker } from '@/components/WidgetPicker';
 
 export interface CountryBriefSignals {
   criticalNews: number;
@@ -104,9 +102,6 @@ export interface AppContext {
   playbackControl: PlaybackControl | null;
   exportPanel: ExportPanel | null;
   unifiedSettings: UnifiedSettings | null;
-  layoutTabs: LayoutTabs | null;
-  widgetPicker: WidgetPicker | null;
-  mobileWarningModal: MobileWarningModal | null;
   pizzintIndicator: PizzIntIndicator | null;
   countryBriefPage: CountryBriefPanel | null;
   countryTimeline: CountryTimeline | null;

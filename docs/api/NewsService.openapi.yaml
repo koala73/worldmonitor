@@ -169,15 +169,6 @@ components:
             required:
                 - provider
             description: SummarizeArticleRequest specifies parameters for LLM article summarization.
-        SummarizeStatus:
-            type: string
-            enum:
-                - SUMMARIZE_STATUS_UNSPECIFIED
-                - SUMMARIZE_STATUS_SUCCESS
-                - SUMMARIZE_STATUS_CACHED
-                - SUMMARIZE_STATUS_SKIPPED
-                - SUMMARIZE_STATUS_ERROR
-            description: SummarizeStatus indicates the outcome of a summarization request.
         SummarizeArticleResponse:
             type: object
             properties:
@@ -204,10 +195,17 @@ components:
                     type: string
                     description: Error type/name (e.g. "TypeError").
                 status:
-                    $ref: '#/components/schemas/SummarizeStatus'
+                    type: string
+                    enum:
+                        - SUMMARIZE_STATUS_UNSPECIFIED
+                        - SUMMARIZE_STATUS_SUCCESS
+                        - SUMMARIZE_STATUS_CACHED
+                        - SUMMARIZE_STATUS_SKIPPED
+                        - SUMMARIZE_STATUS_ERROR
+                    description: SummarizeStatus indicates the outcome of a summarization request.
                 statusDetail:
                     type: string
-                    description: Human-readable detail for non-success statuses (error message, skip reason, etc.).
+                    description: Human-readable detail for non-success statuses (skip reason, etc.).
             description: SummarizeArticleResponse contains the LLM summarization result.
         GetSummarizeArticleCacheRequest:
             type: object

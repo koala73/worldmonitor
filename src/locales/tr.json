@@ -874,7 +874,8 @@
         "tradeRoutes": "Ticaret Rotaları",
         "gpsJamming": "GPS JAMMING",
         "dayNight": "Gündüz/Gece",
-        "iranAttacks": "İran Saldırıları"
+        "iranAttacks": "İran Saldırıları",
+        "geopoliticalBoundaries": "Jeopolitik Sınırlar"
       },
       "tooltip": {
         "earthquake": "Deprem",
@@ -978,7 +979,8 @@
           "mineralsFull": "Stratejik mineral yatakları ve madencilik alanları",
           "techCyberThreats": "Siber saldırılar ve güvenlik olayları",
           "techEvents": "Büyük teknoloji konferansları ve etkinlikleri",
-          "techFires": "Teknoloji altyapısına yakın aktif orman yangınları"
+          "techFires": "Teknoloji altyapısına yakın aktif orman yangınları",
+          "geoBoundaries": "Silahsızlandırılmış bölgeler, ateşkes hatları ve tartışmalı sınırlar"
         },
         "notes": {
           "timeAffects": "Etkiler: Depremler, Hava Durumu, Protestolar, Kesintiler"
@@ -1026,7 +1028,9 @@
       "badgeAnimDesc": "Panel başlıklarındaki güncelleme rozetlerini canlandır",
       "sectionIntelligence": "İstihbarat",
       "headlineMemoryLabel": "Başlık hafızası",
-      "headlineMemoryDesc": "Yenileri vurgulamak için görülen başlıkları hatırla"
+      "headlineMemoryDesc": "Yenileri vurgulamak için görülen başlıkları hatırla",
+      "streamAlwaysOnLabel": "Canlı yayınları çalışır tut",
+      "streamAlwaysOnDesc": "Boştayken Live Cams ve Live News akışlarının otomatik duraklatılmasını engeller. İkinci monitör / wallboard kullanımı için önerilir. CPU/bant genişliği tasarrufu için (Eco) modunu kapatın."
     },
     "cascade": {
       "noImpacts": "Ulke etkisi tespit edilmedi",
@@ -1977,6 +1981,19 @@
     },
     "iranEvent": {
       "relatedEvents": "İlgili Olaylar"
+    },
+    "geopoliticalBoundary": {
+      "title": "JEOPOLİTİK SINIR",
+      "established": "KURULDU",
+      "dimensions": "BOYUTLAR",
+      "legalBasis": "HUKUKİ DAYANAK",
+      "parties": "İMZACILAR",
+      "types": {
+        "demilitarized": "ASKERSİZ BÖLGE",
+        "ceasefire": "ATEŞKES HATTI",
+        "disputed": "TARTIŞMALI SINIR",
+        "armistice": "MÜTAREKEHATTİ"
+      }
     }
   },
   "signals": {

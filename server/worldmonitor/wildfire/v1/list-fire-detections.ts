@@ -15,10 +15,11 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/wildfire/v1/service_server';
 
 import { CHROME_UA } from '../../../_shared/constants';
-import { cachedFetchJson } from '../../../_shared/redis';
+import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
 
 const REDIS_CACHE_KEY = 'wildfire:fires:v1';
 const REDIS_CACHE_TTL = 3600; // 1h — NASA FIRMS VIIRS NRT updates every ~3 hours
+const SEED_FRESHNESS_MS = 90 * 60 * 1000; // 90 minutes
 
 const FIRMS_SOURCE = 'VIIRS_SNPP_NRT';
 
@@ -86,6 +87,19 @@ export const listFireDetections: WildfireServiceHandler['listFireDetections'] = 
   _ctx: ServerContext,
   _req: ListFireDetectionsRequest,
 ): Promise<ListFireDetectionsResponse> => {
+  try {
+    const [seedData, seedMeta] = await Promise.all([
+      getCachedJson(REDIS_CACHE_KEY, true) as Promise<ListFireDetectionsResponse | null>,
+      getCachedJson('seed-meta:wildfire:fires', true) as Promise<{ fetchedAt?: number } | null>,
+    ]);
+    if (seedData?.fireDetections?.length) {
+      const isFresh = (seedMeta?.fetchedAt ?? 0) > 0 && (Date.now() - seedMeta!.fetchedAt!) < SEED_FRESHNESS_MS;
+      if (isFresh || !process.env.SEED_FALLBACK_WILDFIRES) {
+        return seedData;
+      }
+    }
+  } catch { /* fall through to live fetch */ }
+
   const apiKey =
     process.env.NASA_FIRMS_API_KEY || process.env.FIRMS_API_KEY || '';
 

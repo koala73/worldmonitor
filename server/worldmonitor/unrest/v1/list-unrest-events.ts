@@ -22,11 +22,14 @@ import {
   sortBySeverityAndRecency,
 } from './_shared';
 import { CHROME_UA } from '../../../_shared/constants';
-import { cachedFetchJson } from '../../../_shared/redis';
+import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
 import { fetchAcledCached } from '../../../_shared/acled';
 
 const REDIS_CACHE_KEY = 'unrest:events:v1';
 const REDIS_CACHE_TTL = 900; // 15 min — ACLED + GDELT merge
+const SEED_KEY = 'unrest:events:v1';
+const SEED_META_KEY = 'seed-meta:unrest:events';
+const SEED_FRESHNESS_MS = 45 * 60 * 1000; // 45 min
 
 // ---------- ACLED Fetch (ported from api/acled.js + src/services/protests.ts) ----------
 
@@ -157,11 +160,48 @@ async function fetchGdeltEvents(): Promise<UnrestEvent[]> {
 
 // ---------- RPC Implementation ----------
 
+function filterSeedEvents(
+  events: UnrestEvent[],
+  req: ListUnrestEventsRequest,
+): UnrestEvent[] {
+  let filtered = events;
+  if (req.country) {
+    const country = req.country.toLowerCase();
+    filtered = filtered.filter(
+      (e) => e.country.toLowerCase() === country || e.country.toLowerCase().includes(country),
+    );
+  }
+  if (req.start > 0) {
+    filtered = filtered.filter((e) => e.occurredAt >= req.start);
+  }
+  if (req.end > 0) {
+    filtered = filtered.filter((e) => e.occurredAt <= req.end);
+  }
+  return filtered;
+}
+
 export async function listUnrestEvents(
   _ctx: ServerContext,
   req: ListUnrestEventsRequest,
 ): Promise<ListUnrestEventsResponse> {
   try {
+    // Try seed data first
+    try {
+      const [seedData, seedMeta] = await Promise.all([
+        getCachedJson(SEED_KEY, true) as Promise<ListUnrestEventsResponse | null>,
+        getCachedJson(SEED_META_KEY, true) as Promise<{ fetchedAt?: number } | null>,
+      ]);
+      if (seedData?.events?.length) {
+        const isFresh = (seedMeta?.fetchedAt ?? 0) > 0 && (Date.now() - seedMeta!.fetchedAt!) < SEED_FRESHNESS_MS;
+        if (isFresh || !process.env.SEED_FALLBACK_UNREST) {
+          const filtered = filterSeedEvents(seedData.events, req);
+          const sorted = sortBySeverityAndRecency(filtered);
+          return { events: sorted, clusters: [], pagination: undefined };
+        }
+      }
+    } catch {}
+
+    // Fallback: live fetch with caching
     const startBucket = req.start > 0 ? new Date(req.start).toISOString().slice(0, 10) : 'default';
     const endBucket = req.end > 0 ? new Date(req.end).toISOString().slice(0, 10) : 'default';
     const cacheKey = `${REDIS_CACHE_KEY}:${req.country || 'all'}:${startBucket}:${endBucket}`;

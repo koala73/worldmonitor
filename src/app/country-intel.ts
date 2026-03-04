@@ -162,6 +162,7 @@ export class CountryIntelManager implements AppModule {
 
     this.ctx.countryBriefPage.show(country, code, score, signals);
     this.ctx.map?.highlightCountry(code);
+    this.ctx.map?.fitCountry(code);
 
     if (opts?.maximize) {
       requestAnimationFrame(() => {

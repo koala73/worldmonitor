@@ -1,6 +1,6 @@
 import type { MapLayers } from '@/types';
 import { CURATED_COUNTRIES } from '@/config/countries';
-import { getCurrentLanguage } from '@/services/i18n';
+import { getCurrentLanguage, t } from '@/services/i18n';
 
 export interface Command {
   id: string;
@@ -136,6 +136,40 @@ let _cachedLang = '';
 let _cachedCountryCommands: Command[] = [];
 let _cachedAllCommands: Command[] = [];
 
+const KEYWORD_I18N_MAP: Record<string, string> = {
+  military: 'commands.keywords.military',
+  finance: 'commands.keywords.finance',
+  financial: 'commands.keywords.finance',
+  infrastructure: 'commands.keywords.infrastructure',
+  intelligence: 'commands.keywords.intelligence',
+  news: 'commands.keywords.news',
+  dark: 'commands.keywords.dark',
+  light: 'commands.keywords.light',
+  settings: 'commands.keywords.settings',
+  fullscreen: 'commands.keywords.fullscreen',
+  refresh: 'commands.keywords.refresh',
+};
+
+function injectLocalizedKeywords(commands: Command[]): Command[] {
+  const lang = getCurrentLanguage();
+  if (lang === 'en') return commands;
+
+  return commands.map(cmd => {
+    const extra: string[] = [];
+    for (const kw of cmd.keywords) {
+      const i18nKey = KEYWORD_I18N_MAP[kw];
+      if (i18nKey) {
+        const localized = t(i18nKey).toLowerCase();
+        if (localized !== kw && !cmd.keywords.includes(localized)) {
+          extra.push(localized);
+        }
+      }
+    }
+    if (extra.length === 0) return cmd;
+    return { ...cmd, keywords: [...cmd.keywords, ...extra] };
+  });
+}
+
 function buildCountryCommands(): Command[] {
   const lang = getCurrentLanguage();
   if (lang === _cachedLang && _cachedCountryCommands.length > 0) {
@@ -170,7 +204,7 @@ function buildCountryCommands(): Command[] {
 
   _cachedLang = lang;
   _cachedCountryCommands = result;
-  _cachedAllCommands = [...COMMANDS, ...result];
+  _cachedAllCommands = [...injectLocalizedKeywords(COMMANDS), ...result];
   return result;
 }
 

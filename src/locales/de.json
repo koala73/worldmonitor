@@ -749,7 +749,8 @@
         "tradeRoutes": "Handelsrouten",
         "iranAttacks": "Iran-Angriffe",
         "gpsJamming": "GPS JAMMING",
-        "dayNight": "Tag/Nacht"
+        "dayNight": "Tag/Nacht",
+        "geopoliticalBoundaries": "Geopolitische Grenzen"
       },
       "layersTitle": "Schichten",
       "layerGuide": "Ebenenführer",
@@ -855,7 +856,8 @@
           "techCyberThreats": "Cyberangriffe und Sicherheitsereignisse",
           "techEvents": "Große Technologiekonferenzen und -veranstaltungen",
           "techFires": "Aktive Waldbrände in der Nähe von Technologieinfrastruktur",
-          "financeGulfInvestments": "GCC-Staatsfonds-Investitionen und ausländische Direktinvestitionen"
+          "financeGulfInvestments": "GCC-Staatsfonds-Investitionen und ausländische Direktinvestitionen",
+          "geoBoundaries": "Entmilitarisierte Zonen, Waffenstillstandslinien und umstrittene Grenzen"
         },
         "notes": {
           "timeAffects": "Betrifft: Erdbeben, Wetter, Proteste, Ausfälle"
@@ -1345,7 +1347,9 @@
       "badgeAnimDesc": "Update-Badges in Panel-Kopfzeilen animieren",
       "sectionIntelligence": "Intelligence",
       "headlineMemoryLabel": "Schlagzeilen-Speicher",
-      "headlineMemoryDesc": "Gesehene Schlagzeilen merken, um neue hervorzuheben"
+      "headlineMemoryDesc": "Gesehene Schlagzeilen merken, um neue hervorzuheben",
+      "streamAlwaysOnLabel": "Live-Streams weiterlaufen lassen",
+      "streamAlwaysOnDesc": "Verhindert, dass Live Cams und Live News bei Inaktivität automatisch pausieren. Empfohlen für Zweitmonitor-/Wallboard-Nutzung. Zum Sparen von CPU/Bandbreite deaktivieren (Eco)."
     },
     "export": {
       "exportData": "Daten exportieren"
@@ -1981,6 +1985,19 @@
       "uae_ecsr": "VAE/ECSR",
       "venezuela_crisis": "Venezuela-Krise",
       "yemen_houthis": "Jemen/Houthis"
+    },
+    "geopoliticalBoundary": {
+      "title": "GEOPOLITISCHE GRENZE",
+      "established": "ERRICHTET",
+      "dimensions": "ABMESSUNGEN",
+      "legalBasis": "RECHTSGRUNDLAGE",
+      "parties": "UNTERZEICHNER",
+      "types": {
+        "demilitarized": "ENTMILITARISIERTE ZONE",
+        "ceasefire": "WAFFENSTILLSTANDSLINIE",
+        "disputed": "UMSTRITTENE GRENZE",
+        "armistice": "WAFFENSTILLSTANDSLINIE"
+      }
     }
   },
   "signals": {

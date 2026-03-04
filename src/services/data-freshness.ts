@@ -234,8 +234,8 @@ class DataFreshnessTracker {
       errorSources: errorSources.length,
       overallStatus,
       coveragePercent,
-      oldestUpdate: updates.length > 0 ? new Date(Math.min(...updates)) : null,
-      newestUpdate: updates.length > 0 ? new Date(Math.max(...updates)) : null,
+      oldestUpdate: updates.length > 0 ? new Date(updates.reduce((min, d) => d < min ? d : min, updates[0]!)) : null,
+      newestUpdate: updates.length > 0 ? new Date(updates.reduce((max, d) => d > max ? d : max, updates[0]!)) : null,
     };
   }
 

@@ -2,6 +2,13 @@
 
 All notable changes to World Monitor are documented here.
 
+## [2.5.25] - 2026-03-04
+
+### Changed
+
+- **Supply Chain v2** — bump chokepoints & minerals cache keys to v2; add `aisDisruptions` field to `ChokepointInfo` (proto, OpenAPI, generated types, handler, UI panel); rename Malacca Strait → Strait of Malacca; reduce chokepoint Redis TTL from 15 min to 5 min; expand description to always show warning + AIS disruption counts; remove Nickel & Copper from critical minerals data (focus on export-controlled minerals); slice top producers to 3; use full FRED series names for shipping indices; add `daily` cache tier (86400s) and move minerals route to it; align client-side circuit breaker TTLs with server TTLs; fix upstream-unavailable banner to only show when no data is present; register supply-chain routes in Vite dev server plugin
+- **Cache migration**: old `supply_chain:chokepoints:v1` and `supply_chain:minerals:v1` Redis keys are no longer read by any consumer — they will expire via TTL with no action required
+
 ## [2.5.24] - 2026-03-03
 
 ### Highlights

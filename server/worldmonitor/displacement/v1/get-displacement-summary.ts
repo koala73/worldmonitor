@@ -13,10 +13,11 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/displacement/v1/service_server';
 
 import { CHROME_UA } from '../../../_shared/constants';
-import { cachedFetchJson } from '../../../_shared/redis';
+import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
 
 const REDIS_CACHE_KEY = 'displacement:summary:v1';
 const REDIS_CACHE_TTL = 43200; // 12 hr — annual UNHCR data, very slow-moving
+const SEED_FRESHNESS_MS = 7 * 60 * 60 * 1000; // 7 hours — seed runs every 6hr
 
 // ---------- Country centroids (ISO3 -> [lat, lon]) ----------
 
@@ -56,8 +57,8 @@ async function fetchUnhcrYearItems(year: number): Promise<UnhcrRawItem[] | null>
 
   for (let page = 1; page <= maxPageGuard; page++) {
     const response = await fetch(
-      `https://api.unhcr.org/population/v1/population/?year=${year}&limit=${limit}&page=${page}`,
-      { headers: { Accept: 'application/json', 'User-Agent': CHROME_UA } },
+      `https://api.unhcr.org/population/v1/population/?year=${year}&limit=${limit}&page=${page}&coo_all=true&coa_all=true`,
+      { headers: { Accept: 'application/json', 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(10_000) },
     );
 
     if (!response.ok) return null;
@@ -123,6 +124,36 @@ interface MergedCountry {
   hostTotal: number;
 }
 
+// ---------- Seed-first helpers ----------
+
+async function trySeededData(req: GetDisplacementSummaryRequest): Promise<GetDisplacementSummaryResponse | null> {
+  try {
+    const year = req.year > 0 ? req.year : new Date().getFullYear();
+    const seedKey = `${REDIS_CACHE_KEY}:${year}`;
+    const [seedData, seedMeta] = await Promise.all([
+      getCachedJson(seedKey, true) as Promise<GetDisplacementSummaryResponse | null>,
+      getCachedJson('seed-meta:displacement:summary', true) as Promise<{ fetchedAt?: number } | null>,
+    ]);
+
+    if (!seedData?.summary) return null;
+
+    const fetchedAt = seedMeta?.fetchedAt ?? 0;
+    const isFresh = Date.now() - fetchedAt < SEED_FRESHNESS_MS;
+
+    if (isFresh || !process.env.SEED_FALLBACK_DISPLACEMENT) {
+      const summary = { ...seedData.summary };
+      if (req.countryLimit > 0) summary.countries = summary.countries.slice(0, req.countryLimit);
+      const flowLimit = req.flowLimit > 0 ? req.flowLimit : 50;
+      summary.topFlows = summary.topFlows.slice(0, flowLimit);
+      return { summary };
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 // ---------- RPC handler ----------
 
 export async function getDisplacementSummary(
@@ -139,6 +170,9 @@ export async function getDisplacementSummary(
   };
 
   try {
+    const seeded = await trySeededData(req);
+    if (seeded) return seeded;
+
     // Redis shared cache (keyed by year)
     const year = req.year > 0 ? req.year : new Date().getFullYear();
     const cacheKey = `${REDIS_CACHE_KEY}:${year}`;

@@ -426,8 +426,8 @@ fn open_in_shell(arg: &str) -> Result<(), String> {
 
     #[cfg(target_os = "windows")]
     let mut command = {
-        let mut cmd = Command::new("explorer");
-        cmd.arg(arg);
+        let mut cmd = Command::new("cmd");
+        cmd.args(["/c", "start", "", arg]);
         cmd
     };
 

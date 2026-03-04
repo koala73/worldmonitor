@@ -25,18 +25,6 @@ export const MINERAL_PRODUCTION_2024: MineralProductionEntry[] = [
   { mineral: 'Rare Earths', country: 'USA', countryCode: 'US', productionTonnes: 43000, unit: 'tonnes REO' },
   { mineral: 'Rare Earths', country: 'Australia', countryCode: 'AU', productionTonnes: 18000, unit: 'tonnes REO' },
 
-  // Nickel (tonnes)
-  { mineral: 'Nickel', country: 'Indonesia', countryCode: 'ID', productionTonnes: 1800000, unit: 'tonnes' },
-  { mineral: 'Nickel', country: 'Philippines', countryCode: 'PH', productionTonnes: 330000, unit: 'tonnes' },
-  { mineral: 'Nickel', country: 'Russia', countryCode: 'RU', productionTonnes: 220000, unit: 'tonnes' },
-  { mineral: 'Nickel', country: 'New Caledonia', countryCode: 'NC', productionTonnes: 190000, unit: 'tonnes' },
-
-  // Copper (tonnes)
-  { mineral: 'Copper', country: 'Chile', countryCode: 'CL', productionTonnes: 5300000, unit: 'tonnes' },
-  { mineral: 'Copper', country: 'DRC', countryCode: 'CD', productionTonnes: 2500000, unit: 'tonnes' },
-  { mineral: 'Copper', country: 'Peru', countryCode: 'PE', productionTonnes: 2200000, unit: 'tonnes' },
-  { mineral: 'Copper', country: 'China', countryCode: 'CN', productionTonnes: 1900000, unit: 'tonnes' },
-
   // Gallium (tonnes)
   { mineral: 'Gallium', country: 'China', countryCode: 'CN', productionTonnes: 600, unit: 'tonnes' },
   { mineral: 'Gallium', country: 'Japan', countryCode: 'JP', productionTonnes: 10, unit: 'tonnes' },

@@ -79,6 +79,7 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
 
   let channels = loadChannelsFromStorage();
   let suppressRowClick = false;
+  let searchQuery = '';
 
   /** Reads current row order from DOM and persists to storage. */
   function applyOrderFromDom(listEl: HTMLElement): void {
@@ -289,16 +290,28 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
     if (!tabBar || !tabContents) return;
 
     const currentIds = new Set(channels.map((c) => c.id));
+    const term = searchQuery.toLowerCase().trim();
 
     // Render tab buttons
     tabBar.innerHTML = '';
     for (const region of filteredRegions) {
-      const addedCount = region.channelIds.filter((id) => currentIds.has(id)).length;
+      const regionChannels = region.channelIds
+        .map(id => optionalChannelMap.get(id))
+        .filter((ch): ch is LiveChannel => !!ch);
+
+      const matchingChannels = term
+        ? regionChannels.filter(ch => ch.name.toLowerCase().includes(term) || ch.handle.toLowerCase().includes(term))
+        : regionChannels;
+
+      const addedCount = matchingChannels.filter(ch => currentIds.has(ch.id)).length;
+
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'live-news-manage-tab-btn' + (region.key === activeRegionTab ? ' active' : '');
       const label = t(region.labelKey) ?? region.key.toUpperCase();
-      btn.textContent = addedCount > 0 ? `${label} (${addedCount})` : label;
+      btn.textContent = term
+        ? `${label} (${matchingChannels.length})`
+        : addedCount > 0 ? `${label} (${addedCount})` : label;
       btn.addEventListener('click', () => {
         activeRegionTab = region.key;
         renderAvailableChannels(listEl);
@@ -315,14 +328,24 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
       const grid = document.createElement('div');
       grid.className = 'live-news-manage-card-grid';
 
+      let matchCount = 0;
       for (const chId of region.channelIds) {
         const ch = optionalChannelMap.get(chId);
         if (!ch) continue;
+        if (term && !ch.name.toLowerCase().includes(term) && !ch.handle.toLowerCase().includes(term)) continue;
         const isAdded = currentIds.has(chId);
         grid.appendChild(createCard(ch, isAdded, listEl));
+        matchCount++;
       }
 
-      panel.appendChild(grid);
+      if (matchCount === 0 && term) {
+        const empty = document.createElement('div');
+        empty.className = 'live-news-manage-empty';
+        empty.textContent = (t('components.liveNews.noResults') ?? 'No channels found matching "{{term}}"').replace('{{term}}', term);
+        panel.appendChild(empty);
+      } else {
+        panel.appendChild(grid);
+      }
       tabContents.appendChild(panel);
     }
   }
@@ -387,7 +410,15 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
         </div>
         <div class="live-news-manage-list" id="liveChannelsList"></div>
         <div class="live-news-manage-available-section">
-          <span class="live-news-manage-add-title">${escapeHtml(t('components.liveNews.availableChannels') ?? 'Available channels')}</span>
+          <div class="live-news-manage-available-header">
+            <span class="live-news-manage-add-title">${escapeHtml(t('components.liveNews.availableChannels') ?? 'Available channels')}</span>
+            <div class="live-news-manage-search-wrap">
+              <span class="live-news-manage-search-icon">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              </span>
+              <input type="text" id="liveChannelsSearch" class="live-news-manage-search-input" placeholder="${escapeHtml(t('header.search') ?? 'Search')}..." autocomplete="off" />
+            </div>
+          </div>
           <div class="live-news-manage-tab-bar" id="liveChannelsTabBar"></div>
           <div class="live-news-manage-tab-contents" id="liveChannelsTabContents"></div>
         </div>
@@ -531,5 +562,13 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
     renderList(listEl);
     if (handleInput) handleInput.value = '';
     if (nameInput) nameInput.value = '';
+  });
+
+  let searchDebounce: ReturnType<typeof setTimeout> | null = null;
+  const searchInput = document.getElementById('liveChannelsSearch') as HTMLInputElement | null;
+  searchInput?.addEventListener('input', (e) => {
+    searchQuery = (e.target as HTMLInputElement).value;
+    if (searchDebounce) clearTimeout(searchDebounce);
+    searchDebounce = setTimeout(() => renderAvailableChannels(listEl), 150);
   });
 }

@@ -8,12 +8,12 @@ import type {
 
 import { UPSTREAM_TIMEOUT_MS } from './_shared';
 import { CHROME_UA } from '../../../_shared/constants';
-import { cachedFetchJson } from '../../../_shared/redis';
+import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
 
 const REDIS_CACHE_KEY = 'infra:outages:v1';
 const REDIS_CACHE_TTL = 1800; // 30 min — Cloudflare Radar rate-limited
-
-let fallbackOutagesCache: { data: ListInternetOutagesResponse; ts: number } | null = null;
+const SEED_FRESHNESS_KEY = 'seed-meta:infra:outages';
+const SEED_MAX_AGE_MS = 45 * 60 * 1000; // 45 min
 
 // ========================================================================
 // Constants
@@ -137,6 +137,21 @@ export async function listInternetOutages(
   req: ListInternetOutagesRequest,
 ): Promise<ListInternetOutagesResponse> {
   try {
+    const [seedData, seedMeta] = await Promise.all([
+      getCachedJson(REDIS_CACHE_KEY, true) as Promise<ListInternetOutagesResponse | null>,
+      getCachedJson(SEED_FRESHNESS_KEY, true) as Promise<{ fetchedAt?: number } | null>,
+    ]);
+    if (seedData?.outages) {
+      const isFresh = (seedMeta?.fetchedAt ?? 0) > 0 && (Date.now() - seedMeta!.fetchedAt!) < SEED_MAX_AGE_MS;
+      if (isFresh || !process.env.SEED_FALLBACK_OUTAGES) {
+        return { outages: filterOutages(seedData.outages, req), pagination: undefined };
+      }
+    }
+  } catch {
+    // Fall through to live fetch
+  }
+
+  try {
     const result = await cachedFetchJson<ListInternetOutagesResponse>(REDIS_CACHE_KEY, REDIS_CACHE_TTL, async () => {
       const token = process.env.CLOUDFLARE_API_TOKEN;
       if (!token) return null;
@@ -192,11 +207,8 @@ export async function listInternetOutages(
       return outages.length > 0 ? { outages, pagination: undefined } : null;
     });
 
-    if (result) fallbackOutagesCache = { data: result, ts: Date.now() };
-    const effective = result || fallbackOutagesCache?.data;
-    return { outages: filterOutages(effective?.outages || [], req), pagination: undefined };
+    return { outages: filterOutages(result?.outages || [], req), pagination: undefined };
   } catch {
-    const stale = fallbackOutagesCache?.data?.outages || [];
-    return { outages: filterOutages(stale, req), pagination: undefined };
+    return { outages: [], pagination: undefined };
   }
 }

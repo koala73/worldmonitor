@@ -11,7 +11,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/market/v1/service_server';
 import { UPSTREAM_TIMEOUT_MS, parseStringArray } from './_shared';
 import { CHROME_UA } from '../../../_shared/constants';
-import { cachedFetchJson } from '../../../_shared/redis';
+import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
 
 const REDIS_CACHE_KEY = 'market:stablecoins:v1';
 const REDIS_CACHE_TTL = 600; // 10 min — CoinGecko rate-limited
@@ -25,6 +25,7 @@ const DEFAULT_STABLECOIN_IDS = 'tether,usd-coin,dai,first-digital-usd,ethena-usd
 let stablecoinCache: ListStablecoinMarketsResponse | null = null;
 let stablecoinCacheTimestamp = 0;
 const STABLECOIN_CACHE_TTL = 480_000; // 8 minutes
+const SEED_FRESHNESS_MS = 45 * 60 * 1000; // 45 minutes
 
 // ========================================================================
 // Types
@@ -46,6 +47,26 @@ interface CoinGeckoStablecoinItem {
 // Handler
 // ========================================================================
 
+async function trySeededStablecoins(): Promise<ListStablecoinMarketsResponse | null> {
+  try {
+    const [seedData, seedMeta] = await Promise.all([
+      getCachedJson(REDIS_CACHE_KEY, true) as Promise<ListStablecoinMarketsResponse | null>,
+      getCachedJson('seed-meta:market:stablecoins', true) as Promise<{ fetchedAt?: number } | null>,
+    ]);
+
+    if (!seedData?.stablecoins?.length) return null;
+
+    const fetchedAt = seedMeta?.fetchedAt ?? 0;
+    const isFresh = Date.now() - fetchedAt < SEED_FRESHNESS_MS;
+
+    if (isFresh) return seedData;
+    if (!process.env.SEED_FALLBACK_STABLECOINS) return seedData;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export async function listStablecoinMarkets(
   _ctx: ServerContext,
   req: ListStablecoinMarketsRequest,
@@ -53,6 +74,14 @@ export async function listStablecoinMarkets(
   const now = Date.now();
   if (stablecoinCache && now - stablecoinCacheTimestamp < STABLECOIN_CACHE_TTL) {
     return stablecoinCache;
+  }
+
+  // Try Railway-seeded data first
+  const seeded = await trySeededStablecoins();
+  if (seeded) {
+    stablecoinCache = seeded;
+    stablecoinCacheTimestamp = now;
+    return seeded;
   }
 
   const parsedCoins = parseStringArray(req.coins);

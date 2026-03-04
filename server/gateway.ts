@@ -24,13 +24,14 @@ export const serverOptions: ServerOptions = { onError: mapErrorToResponse };
 // NOTE: This map is shared across all domain bundles (~3KB). Kept centralised for
 // single-source-of-truth maintainability; the size is negligible vs handler code.
 
-type CacheTier = 'fast' | 'medium' | 'slow' | 'static' | 'no-store';
+type CacheTier = 'fast' | 'medium' | 'slow' | 'static' | 'daily' | 'no-store';
 
 const TIER_HEADERS: Record<CacheTier, string> = {
   fast: 'public, s-maxage=120, stale-while-revalidate=30, stale-if-error=300',
   medium: 'public, s-maxage=300, stale-while-revalidate=60, stale-if-error=600',
   slow: 'public, s-maxage=900, stale-while-revalidate=120, stale-if-error=1800',
   static: 'public, s-maxage=3600, stale-while-revalidate=300, stale-if-error=7200',
+  daily: 'public, s-maxage=86400, stale-while-revalidate=3600, stale-if-error=172800',
   'no-store': 'no-store',
 };
 
@@ -55,6 +56,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/aviation/v1/list-airport-delays': 'static',
   '/api/market/v1/get-country-stock-index': 'slow',
 
+  '/api/natural/v1/list-natural-events': 'slow',
   '/api/wildfire/v1/list-fire-detections': 'static',
   '/api/maritime/v1/list-navigational-warnings': 'static',
   '/api/supply-chain/v1/get-shipping-rates': 'static',
@@ -81,7 +83,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/trade/v1/get-trade-restrictions': 'static',
   '/api/economic/v1/list-world-bank-indicators': 'static',
   '/api/economic/v1/get-energy-capacity': 'static',
-  '/api/supply-chain/v1/get-critical-minerals': 'static',
+  '/api/supply-chain/v1/get-critical-minerals': 'daily',
   '/api/military/v1/get-aircraft-details': 'static',
   '/api/military/v1/get-wingbits-status': 'static',
 

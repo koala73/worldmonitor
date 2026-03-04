@@ -214,6 +214,7 @@ export const DEFAULT_PANELS: Record<string, PanelConfig> = {
 export const DEFAULT_MAP_LAYERS: MapLayers = {
   // Keep only relevant layers, set others to false
   gpsJamming: false,
+  geopoliticalBoundaries: false,
   conflicts: false,
   bases: false,
   cables: true,
@@ -259,12 +260,14 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   renewableInstallations: false,
   tradeRoutes: false,
   iranAttacks: false,
+  ciiChoropleth: false,
   dayNight: false,
 };
 
 // Mobile defaults for tech variant
 export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
+  geopoliticalBoundaries: false,
   conflicts: false,
   bases: false,
   cables: false,
@@ -310,6 +313,7 @@ export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   renewableInstallations: false,
   tradeRoutes: false,
   iranAttacks: false,
+  ciiChoropleth: false,
   dayNight: false,
 };
 

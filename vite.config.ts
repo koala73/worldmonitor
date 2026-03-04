@@ -195,6 +195,8 @@ function sebufApiPlugin(): Plugin {
       positiveEventsServerMod, positiveEventsHandlerMod,
       givingServerMod, givingHandlerMod,
       tradeServerMod, tradeHandlerMod,
+      supplyChainServerMod, supplyChainHandlerMod,
+      naturalServerMod, naturalHandlerMod,
     ] = await Promise.all([
         import('./server/router'),
         import('./server/cors'),
@@ -239,6 +241,10 @@ function sebufApiPlugin(): Plugin {
         import('./server/worldmonitor/giving/v1/handler'),
         import('./src/generated/server/worldmonitor/trade/v1/service_server'),
         import('./server/worldmonitor/trade/v1/handler'),
+        import('./src/generated/server/worldmonitor/supply_chain/v1/service_server'),
+        import('./server/worldmonitor/supply-chain/v1/handler'),
+        import('./src/generated/server/worldmonitor/natural/v1/service_server'),
+        import('./server/worldmonitor/natural/v1/handler'),
       ]);
 
     const serverOptions = { onError: errorMod.mapErrorToResponse };
@@ -263,6 +269,8 @@ function sebufApiPlugin(): Plugin {
       ...positiveEventsServerMod.createPositiveEventsServiceRoutes(positiveEventsHandlerMod.positiveEventsHandler, serverOptions),
       ...givingServerMod.createGivingServiceRoutes(givingHandlerMod.givingHandler, serverOptions),
       ...tradeServerMod.createTradeServiceRoutes(tradeHandlerMod.tradeHandler, serverOptions),
+      ...supplyChainServerMod.createSupplyChainServiceRoutes(supplyChainHandlerMod.supplyChainHandler, serverOptions),
+      ...naturalServerMod.createNaturalServiceRoutes(naturalHandlerMod.naturalHandler, serverOptions),
     ];
     cachedCorsMod = corsMod;
     return routerMod.createRouter(allRoutes);
@@ -609,6 +617,8 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,ico,png,svg,woff2}'],
         globIgnores: ['**/ml*.js', '**/onnx*.wasm', '**/locale-*.js'],
+        // globe.gl + three.js grows main bundle past the 2 MiB default limit
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         navigateFallback: null,
         skipWaiting: true,
         clientsClaim: true,

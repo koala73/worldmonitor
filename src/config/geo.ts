@@ -1,4 +1,4 @@
-import type { Hotspot, ConflictZone, MilitaryBase, UnderseaCable, NuclearFacility, StrategicWaterway, APTGroup, EconomicCenter, Spaceport, CriticalMineralProject } from '@/types';
+import type { Hotspot, ConflictZone, MilitaryBase, UnderseaCable, NuclearFacility, StrategicWaterway, APTGroup, EconomicCenter, Spaceport, CriticalMineralProject, GeopoliticalBoundary } from '@/types';
 import { MILITARY_BASES_EXPANDED } from './bases-expanded';
 
 // Hotspot levels are NOT hardcoded - they are dynamically calculated based on news activity
@@ -613,6 +613,77 @@ export const CONFLICT_ZONES: ConflictZone[] = [
     location: 'Myanmar (Burma)',
     description: 'Civil war following military coup. Resistance forces gaining ground. Multiple ethnic armed organizations. Humanitarian crisis.',
     keyDevelopments: ['Operation 1027', 'Junta airstrikes', 'Border clashes', 'Resistance advances'],
+  },
+];
+
+// Korean DMZ polygon based on the Military Demarcation Line (MDL)
+// established by the Korean Armistice Agreement, Article I (July 27, 1953)
+// Coordinates approximated from OSM Way 369265305 (CC BY-SA / ODbL)
+// Key waypoints: Imjin estuary (W) -> Panmunjom -> Cheorwon -> Punch Bowl -> Goseong (E)
+// Polygon: MDL centerline offset +2km north / -2km south with end caps (43 points, closed ring)
+export const GEOPOLITICAL_BOUNDARIES: GeopoliticalBoundary[] = [
+  {
+    id: 'korean_dmz',
+    name: 'Korean Demilitarized Zone',
+    boundaryType: 'demilitarized',
+    established: '1953-07-27',
+    status: 'Active armistice',
+    legalBasis: 'Korean Armistice Agreement, Article I',
+    parties: ['Republic of Korea', "Democratic People's Republic of Korea", 'United Nations Command'],
+    location: 'Korean Peninsula (MDL)',
+    description: 'The Korean Demilitarized Zone (DMZ) is a 250km-long, 4km-wide buffer zone along the Military Demarcation Line established by the 1953 Korean Armistice Agreement. Despite its name, it is one of the most heavily militarized borders in the world.',
+    dimensions: '~250km x ~4km',
+    center: [127.27, 38.14],
+    coords: [
+      // North edge (west to east)
+      [126.0955, 37.7876], // Imjin estuary
+      [126.2448, 37.8175],
+      [126.3927, 37.857],
+      [126.5117, 37.9068],
+      [126.6219, 37.9468],
+      [126.6735, 37.9672], // North of Panmunjom
+      [126.775, 37.9875],
+      [126.8936, 38.0173],
+      [127.0409, 38.0665],
+      [127.1676, 38.1351],
+      [127.3004, 38.2363], // North of Cheorwon
+      [127.4476, 38.2679],
+      [127.5784, 38.2679],
+      [127.7175, 38.2879],
+      [127.8476, 38.2979],
+      [127.994, 38.3174],  // North of Punch Bowl
+      [128.1079, 38.3653],
+      [128.1834, 38.4324],
+      [128.262, 38.5312],
+      [128.342, 38.6312],  // North of Goseong
+      // East cap
+      [128.3744, 38.634],
+      // South edge (east to west)
+      [128.378, 38.6088],  // Goseong
+      [128.2979, 38.5088],
+      [128.2166, 38.4076],
+      [128.1321, 38.3347],
+      [128.006, 38.2826],
+      [127.8524, 38.2621], // South of Punch Bowl
+      [127.7225, 38.2521],
+      [127.5816, 38.2321],
+      [127.4524, 38.2321],
+      [127.3196, 38.2037],
+      [127.1924, 38.1049], // South of Cheorwon
+      [127.0591, 38.0335],
+      [126.9064, 37.9827],
+      [126.785, 37.9525],
+      [126.6865, 37.9328],
+      [126.6381, 37.9132], // South of Panmunjom
+      [126.5283, 37.8732],
+      [126.4073, 37.823],
+      [126.2552, 37.7825],
+      [126.1045, 37.7524],
+      // West cap
+      [126.0777, 37.7665],
+      // Close ring
+      [126.0955, 37.7876],
+    ],
   },
 ];
 

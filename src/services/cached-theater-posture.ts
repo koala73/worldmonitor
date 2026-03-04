@@ -1,16 +1,11 @@
-/**
- * Cached Theater Posture Service
- * Fetches pre-computed theater posture summaries from backend via sebuf RPC.
- * Shares calculation across all users via Redis cache.
- * Persists to localStorage so data shows instantly on reload.
- */
-
 import type { TheaterPostureSummary } from './military-surge';
 import {
   MilitaryServiceClient,
   type GetTheaterPostureResponse,
   type TheaterPosture,
 } from '@/generated/client/worldmonitor/military/v1/service_client';
+import { createCircuitBreaker } from '@/utils';
+import { getHydratedData } from '@/services/bootstrap';
 
 // ---- Sebuf client ----
 
@@ -62,7 +57,6 @@ function toPostureSummary(proto: TheaterPosture): TheaterPostureSummary {
     theaterName: meta?.name ?? proto.theater,
     shortName: meta?.shortName ?? proto.theater,
     targetNation: meta?.targetNation ?? null,
-    // Per-type breakdowns unavailable from server; UI falls back to totalAircraft/totalVessels
     fighters: 0,
     tankers: 0,
     awacs: 0,
@@ -95,7 +89,7 @@ function toPostureSummary(proto: TheaterPosture): TheaterPostureSummary {
   };
 }
 
-function toPostureData(resp: GetTheaterPostureResponse): CachedTheaterPosture {
+export function toPostureData(resp: GetTheaterPostureResponse): CachedTheaterPosture {
   const postures = resp.theaters.map(toPostureSummary);
   const totalFlights = postures.reduce((sum, p) => sum + p.totalAircraft, 0);
   return {
@@ -106,15 +100,27 @@ function toPostureData(resp: GetTheaterPostureResponse): CachedTheaterPosture {
   };
 }
 
+// ---- Circuit breaker ----
+
+const breaker = createCircuitBreaker<CachedTheaterPosture>({
+  name: 'Theater Posture',
+  cacheTtlMs: 15 * 60 * 1000,
+  persistCache: true,
+});
+
+function emptyFallback(): CachedTheaterPosture {
+  return {
+    postures: [],
+    totalFlights: 0,
+    timestamp: new Date().toISOString(),
+    cached: true,
+  };
+}
+
 // ---- Local storage persistence ----
 
 const LS_KEY = 'wm:theater-posture';
-const LS_MAX_AGE_MS = 30 * 60 * 1000; // 30 min max staleness for localStorage
-
-let cachedPosture: CachedTheaterPosture | null = null;
-let fetchPromise: Promise<CachedTheaterPosture | null> | null = null;
-let lastFetchTime = 0;
-const REFETCH_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes - reduce upstream API pressure
+const LS_MAX_STALENESS_MS = 24 * 60 * 60 * 1000; // 24h — match IndexedDB ceiling
 
 function createAbortError(): DOMException {
   return new DOMException('The operation was aborted.', 'AbortError');
@@ -149,14 +155,16 @@ function loadFromStorage(): CachedTheaterPosture | null {
     const raw = localStorage.getItem(LS_KEY);
     if (!raw) return null;
     const { data, savedAt } = JSON.parse(raw);
-    if (Date.now() - savedAt > LS_MAX_AGE_MS) {
+    if (!Number.isFinite(savedAt) || !Array.isArray(data?.postures)) {
       localStorage.removeItem(LS_KEY);
       return null;
     }
-    return { ...data, stale: true };
-  } catch {
-    return null;
-  }
+    if (Date.now() - savedAt > LS_MAX_STALENESS_MS) {
+      localStorage.removeItem(LS_KEY);
+      return null;
+    }
+    return data;
+  } catch { return null; }
 }
 
 function saveToStorage(data: CachedTheaterPosture): void {
@@ -165,58 +173,46 @@ function saveToStorage(data: CachedTheaterPosture): void {
   } catch { /* quota exceeded - ignore */ }
 }
 
-// Hydrate in-memory cache from localStorage on module load
+// Prime breaker from localStorage on module load
 const stored = loadFromStorage();
-if (stored) {
-  cachedPosture = stored;
-}
+if (stored) breaker.recordSuccess(stored);
 
 export async function fetchCachedTheaterPosture(signal?: AbortSignal): Promise<CachedTheaterPosture | null> {
   if (signal?.aborted) throw createAbortError();
-  const now = Date.now();
 
-  // Return cached if fresh
-  if (cachedPosture && !cachedPosture.stale && now - lastFetchTime < REFETCH_INTERVAL_MS) {
-    return cachedPosture;
+  // Layer 1: Bootstrap hydration (one-time, only when breaker has no cached data)
+  if (breaker.getCached() === null) {
+    const hydrated = getHydratedData('theaterPosture') as GetTheaterPostureResponse | undefined;
+    if (hydrated?.theaters?.length) {
+      const data = toPostureData(hydrated);
+      breaker.recordSuccess(data);
+      saveToStorage(data);
+      return data;
+    }
   }
 
-  // Deduplicate concurrent fetches
-  if (fetchPromise) {
-    return withCallerAbort(fetchPromise, signal);
-  }
-
-  // If we have stale localStorage data, return it immediately but fetch in background
-  const hasStaleData = cachedPosture?.stale;
-
-  fetchPromise = (async () => {
-    try {
+  // Layer 2: Circuit breaker (in-memory cache → SWR → IndexedDB → RPC → fallback)
+  const result = await withCallerAbort(
+    breaker.execute(async () => {
       const resp = await client.getTheaterPosture({ theater: '' });
       const data = toPostureData(resp);
-      cachedPosture = data;
-      lastFetchTime = Date.now();
       saveToStorage(data);
-      return cachedPosture;
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') throw error;
-      console.error('[CachedTheaterPosture] Fetch error:', error);
-      return cachedPosture; // Return stale cache on error
-    } finally {
-      fetchPromise = null;
-    }
-  })();
+      return data;
+    }, emptyFallback()),
+    signal,
+  );
 
-  // If we have stale data, return it now — the fetch updates in background
-  if (hasStaleData) {
-    return cachedPosture;
+  if (!result || !Array.isArray(result.postures) || result.postures.length === 0) {
+    return null;
   }
 
-  return withCallerAbort(fetchPromise, signal);
+  return result;
 }
 
 export function getCachedPosture(): CachedTheaterPosture | null {
-  return cachedPosture;
+  return breaker.getCached();
 }
 
 export function hasCachedPosture(): boolean {
-  return cachedPosture !== null;
+  return breaker.getCached() !== null;
 }
