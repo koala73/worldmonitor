@@ -14450,6 +14450,45 @@ a.prediction-link:hover {
   flex-shrink: 0;
 }
 
+/* Data management buttons in settings */
+.us-data-mgmt {
+  display: flex;
+  gap: 10px;
+  padding: 0 16px 12px;
+}
+
+.us-data-mgmt .settings-btn {
+  flex: 1;
+}
+
+.us-hidden-input {
+  display: none;
+}
+
+.us-data-mgmt-toast {
+  padding: 0 16px;
+  font-size: 12px;
+  min-height: 0;
+  transition: opacity 0.2s;
+}
+
+.us-data-mgmt-toast:empty {
+  display: none;
+}
+
+.us-data-mgmt-toast.ok {
+  color: #34d399;
+}
+
+.us-data-mgmt-toast.error {
+  color: #f87171;
+}
+
+.us-toast-reload {
+  color: #60a5fa;
+  margin-left: 6px;
+}
+
 /* Footer status */
 .ai-flow-popup-footer {
   display: flex;

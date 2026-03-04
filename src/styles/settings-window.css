@@ -1094,3 +1094,14 @@ tr.diag-err td { color: var(--settings-red); }
     flex-wrap: wrap;
   }
 }
+
+/* Data management in overview */
+.settings-ov-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.settings-ov-actions .settings-btn {
+  flex: 1;
+}

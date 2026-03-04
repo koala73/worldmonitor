@@ -1,7 +1,3 @@
-/**
- * Utility for exporting and importing World Monitor dashboard settings.
- */
-
 export interface ExportedSettings {
   version: number;
   timestamp: string;
@@ -9,85 +5,72 @@ export interface ExportedSettings {
   data: Record<string, string>;
 }
 
-// 5MB limit for imported settings JSON
+export interface ImportResult {
+  success: boolean;
+  keysImported: number;
+  error?: string;
+}
+
 const MAX_IMPORT_SIZE_BYTES = 5 * 1024 * 1024;
 
-/**
- * Validates if a localStorage key is safe to export/import.
- * Excludes transient caches and sensitive secrets (API keys, tokens).
- */
-function isKeySafeToExport(key: string): boolean {
-  // Ignore massive internal caches or transient states to avoid bloated JSON
-  if (
-    key.startsWith('wm-cache-') ||
-    key.includes('vesselPosture') ||
-    key.includes('wm-secrets-updated') ||
-    key.includes('wm-waitlist-registered') ||
-    key.includes('wm-debug-log') ||
-    key.includes('wm-settings-open')
-  ) {
-    return false;
-  }
+const SETTINGS_KEY_PREFIXES = [
+  'worldmonitor-panels',
+  'worldmonitor-monitors',
+  'worldmonitor-layers',
+  'worldmonitor-disabled-feeds',
+  'worldmonitor-live-channels',
+  'worldmonitor-map-mode',
+  'worldmonitor-variant',
+  'worldmonitor-theme',
+  'worldmonitor-panel-spans',
+  'worldmonitor-panel-order',
+  'worldmonitor-runtime-feature-toggles',
+  'wm-breaking-alerts-v1',
+  'wm-globe-render-scale',
+  'wm-live-streams-always-on',
+  'map-height',
+  'map-pinned',
+  'mobile-map-collapsed',
+  'positive-threshold',
+];
 
-  // Strictly exclude potential secrets: API keys, tokens, passwords.
-  if (/secret|token|key|password|auth/i.test(key)) {
-    return false;
-  }
-
-  return true;
+function isSettingsKey(key: string): boolean {
+  return SETTINGS_KEY_PREFIXES.some(prefix => key.startsWith(prefix));
 }
 
 export function exportSettings(): void {
-  try {
-    const data: Record<string, string> = {};
+  const data: Record<string, string> = {};
 
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (!key) continue;
-
-      if (!isKeySafeToExport(key)) {
-        continue;
-      }
-
-      const value = localStorage.getItem(key);
-      if (value !== null) {
-        data[key] = value;
-      }
-    }
-
-    const exportData: ExportedSettings = {
-      version: 1,
-      timestamp: new Date().toISOString(),
-      variant: localStorage.getItem('worldmonitor-variant') || 'full',
-      data,
-    };
-
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    const timestampStr = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    a.download = `worldmonitor-settings-${timestampStr}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  } catch (err) {
-    // Surface a meaningful error when localStorage (or related browser APIs) are unavailable
-    console.error('Failed to export World Monitor settings: localStorage may be unavailable or blocked.', err);
-    if (typeof window !== 'undefined' && typeof window.alert === 'function') {
-      window.alert(
-        'Failed to export settings because browser storage is unavailable. ' +
-        'Please check your browser privacy settings and try again.'
-      );
-    }
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (!key || !isSettingsKey(key)) continue;
+    const value = localStorage.getItem(key);
+    if (value !== null) data[key] = value;
   }
+
+  const exportData: ExportedSettings = {
+    version: 1,
+    timestamp: new Date().toISOString(),
+    variant: localStorage.getItem('worldmonitor-variant') || 'full',
+    data,
+  };
+
+  const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  a.download = `worldmonitor-settings-${ts}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
-export function importSettings(file: File): Promise<void> {
+export function importSettings(file: File): Promise<ImportResult> {
   return new Promise((resolve, reject) => {
     if (file.size > MAX_IMPORT_SIZE_BYTES) {
-      reject(new Error(`File is too large. Maximum size is 5MB.`));
+      reject(new Error('File is too large. Maximum size is 5MB.'));
       return;
     }
 
@@ -98,37 +81,24 @@ export function importSettings(file: File): Promise<void> {
         const result = e.target?.result as string;
         const parsed = JSON.parse(result) as ExportedSettings;
 
-        if (!parsed || !parsed.data || typeof parsed.data !== 'object') {
-          throw new Error('Invalid format: parsed data is missing or not an object.');
+        if (!parsed || typeof parsed.data !== 'object' || Array.isArray(parsed.data)) {
+          throw new Error('Invalid format: expected an object with a data property.');
         }
 
-        // Ask for user confirmation before overwriting localStorage
-        const confirmMsg = parsed.variant
-          ? `Replace current settings with the imported ${parsed.variant} settings bundle?`
-          : 'Replace current settings with the imported configuration?';
-
-        if (!window.confirm(confirmMsg)) {
-          resolve(); // user cancelled
-          return;
+        if (parsed.version !== 1) {
+          throw new Error(`Unsupported settings version: ${parsed.version}`);
         }
 
-        // Apply settings
         let keysImported = 0;
         for (const [key, value] of Object.entries(parsed.data)) {
-          // Re-apply the EXACT same safety filter as export
-          if (isKeySafeToExport(key) && typeof value === 'string') {
+          if (isSettingsKey(key) && typeof value === 'string') {
             localStorage.setItem(key, value);
             keysImported++;
           }
         }
 
-        if (window.confirm(`Successfully imported ${keysImported} settings. Reload now to apply changes?`)) {
-          window.location.reload();
-        }
-
-        resolve();
+        resolve({ success: true, keysImported });
       } catch (err) {
-        console.error('Failed to parse imported settings:', err);
         reject(err);
       }
     };

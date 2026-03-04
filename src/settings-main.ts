@@ -1,7 +1,7 @@
 import './styles/main.css';
 import './styles/settings-window.css';
 import { SettingsManager } from '@/services/settings-manager';
-import { exportSettings, importSettings } from '@/utils/settings-persistence';
+import { exportSettings, importSettings, type ImportResult } from '@/utils/settings-persistence';
 import {
   SETTINGS_CATEGORIES,
   HUMAN_LABELS,
@@ -218,10 +218,10 @@ function renderOverview(area: HTMLElement): void {
       <div class="settings-ov-cats">${catCards}</div>
       <div class="settings-ov-actions">
         <button type="button" class="settings-btn settings-btn-secondary" id="exportSettingsBtn">
-          📥 ${t('settings.exportSettings')}
+          ${t('components.settings.exportSettings')}
         </button>
         <button type="button" class="settings-btn settings-btn-secondary" id="importSettingsBtn">
-          📤 ${t('settings.importSettings')}
+          ${t('components.settings.importSettings')}
         </button>
         <input type="file" id="importSettingsInput" accept=".json" style="display: none;" />
       </div>
@@ -281,28 +281,23 @@ function initOverviewListeners(area: HTMLElement): void {
     const file = (e.target as HTMLInputElement).files?.[0];
     if (!file) return;
     try {
-      await importSettings(file);
+      const result: ImportResult = await importSettings(file);
+      setActionStatus(t('components.settings.importSuccess', { count: String(result.keysImported) }), 'ok');
     } catch (err: unknown) {
-      let statusMessage = 'Failed to import settings.';
-
-      // Handle common browser storage / quota / security issues explicitly
       if (err instanceof DOMException) {
         if (err.name === 'QuotaExceededError' || err.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
-          statusMessage = 'Failed to import settings: Browser storage limit has been reached.';
+          setActionStatus(t('components.settings.importFailed') + ': storage limit reached', 'error');
         } else if (err.name === 'SecurityError') {
-          statusMessage = 'Failed to import settings: Access to browser storage is blocked by your settings or extensions.';
+          setActionStatus(t('components.settings.importFailed') + ': storage blocked', 'error');
         } else {
-          statusMessage = `Failed to import settings: ${err.message || err.name}.`;
+          setActionStatus(`${t('components.settings.importFailed')}: ${err.message || err.name}`, 'error');
         }
       } else if (err instanceof Error && err.message) {
-        statusMessage = `Failed to import settings: ${err.message}`;
+        setActionStatus(`${t('components.settings.importFailed')}: ${err.message}`, 'error');
       } else {
-        statusMessage = 'Failed to import settings due to an unknown error.';
+        setActionStatus(t('components.settings.importFailed'), 'error');
       }
-
-      setActionStatus(statusMessage, 'error');
     }
-    // reset input
     importInput.value = '';
   });
 

@@ -1032,6 +1032,16 @@
       "streamAlwaysOnLabel": "Garder les flux en direct actifs",
       "streamAlwaysOnDesc": "Empêche la mise en pause automatique de Live Cams et Live News lorsque vous êtes inactif. Recommandé pour un second écran / usage wallboard. Désactivez (Éco) pour économiser CPU/bande passante."
     },
+    "settings": {
+      "dataManagementLabel": "Gestion des données",
+      "exportSettings": "Exporter les paramètres",
+      "importSettings": "Importer les paramètres",
+      "exportSuccess": "Paramètres exportés avec succès",
+      "exportFailed": "Échec de l'exportation des paramètres",
+      "importSuccess": "{{count}} paramètres importés",
+      "importFailed": "Échec de l'importation des paramètres",
+      "reloadNow": "Recharger maintenant"
+    },
     "cascade": {
       "noImpacts": "Aucun impact pays détecté",
       "filters": {
@@ -2116,11 +2126,6 @@
         "description": "Opérations navales, points d'étranglement maritimes, voies maritimes"
       }
     }
-  },
-  "settings": {
-    "dataManagementLabel": "Gestion des données",
-    "exportSettings": "Exporter les paramètres",
-    "importSettings": "Importer des paramètres"
   },
   "common": {
     "loading": "Chargement...",

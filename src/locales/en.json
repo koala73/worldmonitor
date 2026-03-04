@@ -80,7 +80,14 @@
     "noSignals": "No recent high-severity signals.",
     "assessmentUnavailable": "Assessment unavailable.",
     "noNews": "No recent country-specific coverage.",
+    "noMarkets": "No active markets for this country.",
     "noIndicators": "No country-specific indicators available.",
+    "components": {
+      "unrest": "Unrest",
+      "conflict": "Conflict",
+      "security": "Security",
+      "information": "Information"
+    },
     "nearbyPorts": "Nearby Ports",
     "detected": "Detected",
     "notDetected": "No",
@@ -1194,7 +1201,12 @@
     "settings": {
       "dataManagementLabel": "Data Management",
       "exportSettings": "Export Settings",
-      "importSettings": "Import Settings"
+      "importSettings": "Import Settings",
+      "exportSuccess": "Settings exported successfully",
+      "exportFailed": "Failed to export settings",
+      "importSuccess": "Imported {{count}} settings",
+      "importFailed": "Failed to import settings",
+      "reloadNow": "Reload now"
     },
     "cascade": {
       "noImpacts": "No country impacts detected",
