@@ -76,6 +76,9 @@ import {
   CENTRAL_BANKS,
   COMMODITY_HUBS,
   GULF_INVESTMENTS,
+  MINING_SITES,
+  PROCESSING_PLANTS,
+  COMMODITY_PORTS as COMMODITY_GEO_PORTS,
 } from '@/config';
 import type { GulfInvestment } from '@/types';
 import { resolveTradeRouteSegments, TRADE_ROUTES as TRADE_ROUTES_LIST, type TradeRouteSegment } from '@/config/trade-routes';
@@ -1249,6 +1252,17 @@ export class DeckGLMap {
       layers.push(this.createMineralsLayer());
     }
 
+    // Commodity variant layers — mine sites, processing plants, export ports
+    if (mapLayers.miningSites) {
+      layers.push(this.createMiningSitesLayer());
+    }
+    if (mapLayers.processingPlants) {
+      layers.push(this.createProcessingPlantsLayer());
+    }
+    if (mapLayers.commodityPorts) {
+      layers.push(this.createCommodityPortsLayer());
+    }
+
     // APT Groups layer (geopolitical variant only - always shown, no toggle)
     if (SITE_VARIANT !== 'tech' && SITE_VARIANT !== 'happy') {
       layers.push(this.createAPTGroupsLayer());
@@ -2119,6 +2133,90 @@ export class DeckGLMap {
     });
   }
 
+  // Commodity variant layers
+  private createMiningSitesLayer(): ScatterplotLayer {
+    return new ScatterplotLayer({
+      id: 'mining-sites-layer',
+      data: MINING_SITES,
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: (d) => d.status === 'producing' ? 10000 : d.status === 'development' ? 8000 : 6000,
+      getFillColor: (d) => {
+        switch (d.mineral) {
+          case 'Gold':        return [255, 215, 0, 210] as [number, number, number, number];
+          case 'Silver':      return [192, 192, 192, 200] as [number, number, number, number];
+          case 'Copper':      return [184, 115, 51, 210] as [number, number, number, number];
+          case 'Lithium':     return [0, 200, 255, 200] as [number, number, number, number];
+          case 'Cobalt':      return [100, 100, 255, 200] as [number, number, number, number];
+          case 'Rare Earths': return [255, 100, 200, 200] as [number, number, number, number];
+          case 'Nickel':      return [100, 220, 100, 200] as [number, number, number, number];
+          case 'Platinum':    return [210, 210, 255, 200] as [number, number, number, number];
+          case 'Palladium':   return [180, 220, 180, 200] as [number, number, number, number];
+          case 'Iron Ore':    return [139, 69, 19, 210] as [number, number, number, number];
+          case 'Uranium':     return [50, 255, 80, 200] as [number, number, number, number];
+          case 'Coal':        return [80, 80, 80, 200] as [number, number, number, number];
+          default:            return [200, 200, 200, 200] as [number, number, number, number];
+        }
+      },
+      radiusMinPixels: 5,
+      radiusMaxPixels: 14,
+      pickable: true,
+      stroked: true,
+      getLineColor: [255, 255, 255, 60] as [number, number, number, number],
+      lineWidthMinPixels: 1,
+    });
+  }
+
+  private createProcessingPlantsLayer(): ScatterplotLayer {
+    return new ScatterplotLayer({
+      id: 'processing-plants-layer',
+      data: PROCESSING_PLANTS,
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: 8000,
+      getFillColor: (d) => {
+        switch (d.type) {
+          case 'smelter':    return [255, 80, 30, 210] as [number, number, number, number];
+          case 'refinery':   return [255, 160, 50, 200] as [number, number, number, number];
+          case 'separation': return [160, 100, 255, 200] as [number, number, number, number];
+          case 'processing': return [100, 200, 150, 200] as [number, number, number, number];
+          default:           return [200, 150, 100, 200] as [number, number, number, number];
+        }
+      },
+      radiusMinPixels: 5,
+      radiusMaxPixels: 12,
+      pickable: true,
+      stroked: true,
+      getLineColor: [255, 255, 255, 80] as [number, number, number, number],
+      lineWidthMinPixels: 1,
+    });
+  }
+
+  private createCommodityPortsLayer(): ScatterplotLayer {
+    return new ScatterplotLayer({
+      id: 'commodity-ports-layer',
+      data: COMMODITY_GEO_PORTS,
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: 12000,
+      getFillColor: (d) => {
+        const primary = d.commodities[0];
+        switch (primary) {
+          case 'Iron Ore': return [139, 69, 19, 210] as [number, number, number, number];
+          case 'Copper':   return [184, 115, 51, 210] as [number, number, number, number];
+          case 'Coal':     return [80, 80, 80, 200] as [number, number, number, number];
+          case 'Gold':     return [255, 215, 0, 200] as [number, number, number, number];
+          case 'Uranium':  return [50, 255, 80, 200] as [number, number, number, number];
+          case 'Cobalt':   return [100, 100, 255, 200] as [number, number, number, number];
+          default:         return [80, 180, 255, 200] as [number, number, number, number];
+        }
+      },
+      radiusMinPixels: 6,
+      radiusMaxPixels: 14,
+      pickable: true,
+      stroked: true,
+      getLineColor: [255, 255, 255, 100] as [number, number, number, number],
+      lineWidthMinPixels: 1.5,
+    });
+  }
+
   // Tech variant layers
   private createStartupHubsLayer(): ScatterplotLayer {
     return new ScatterplotLayer({
@@ -2906,6 +3004,21 @@ export class DeckGLMap {
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.aka)}<br/>${t('popups.sponsor')}: ${text(obj.sponsor)}</div>` };
       case 'minerals-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.mineral)} - ${text(obj.country)}<br/>${text(obj.operator)}</div>` };
+      case 'mining-sites-layer': {
+        const statusLabel = obj.status === 'producing' ? '⛏️ Producing' : obj.status === 'development' ? '🔧 Development' : '🔍 Exploration';
+        const outputStr = obj.annualOutput ? `<br/><span style="opacity:.75">${text(obj.annualOutput)}</span>` : '';
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.mineral)} · ${text(obj.country)}<br/>${statusLabel}${outputStr}</div>` };
+      }
+      case 'processing-plants-layer': {
+        const typeLabel = obj.type === 'smelter' ? '🏭 Smelter' : obj.type === 'refinery' ? '⚗️ Refinery' : obj.type === 'separation' ? '🧪 Separation' : '🏗️ Processing';
+        const capacityStr = obj.capacityTpa ? `<br/><span style="opacity:.75">${(obj.capacityTpa / 1000).toFixed(0)}k t/yr</span>` : '';
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.mineral ?? obj.materials?.join(', '))} · ${text(obj.country)}<br/>${typeLabel}${capacityStr}</div>` };
+      }
+      case 'commodity-ports-layer': {
+        const commoditiesStr = Array.isArray(obj.commodities) ? obj.commodities.join(', ') : '';
+        const volumeStr = obj.annualVolumeMt ? `<br/><span style="opacity:.75">${obj.annualVolumeMt}Mt/yr</span>` : '';
+        return { html: `<div class="deckgl-tooltip"><strong>⚓ ${text(obj.name)}</strong><br/>${text(obj.country)}<br/>${text(commoditiesStr)}${volumeStr}</div>` };
+      }
       case 'ais-disruptions-layer':
         return { html: `<div class="deckgl-tooltip"><strong>AIS ${text(obj.type || t('components.deckgl.tooltip.disruption'))}</strong><br/>${text(obj.severity)} ${t('popups.severity')}<br/>${text(obj.description)}</div>` };
       case 'gps-jamming-layer':

@@ -5,10 +5,12 @@ import type { VariantConfig } from './base';
 // Re-export base config
 export * from './base';
 
-// Commodity-specific data exports
-export * from '../commodity-miners';
-export * from '../commodity-markets';
-export * from '../commodity-geo';
+// Commodity-specific data exports (explicit named re-exports avoid VS Code language-server path issues)
+export type { CommodityMiner } from '@/config/commodity-miners';
+export { COMMODITY_MINERS } from '@/config/commodity-miners';
+export { COMMODITY_SECTORS, COMMODITY_PRICES, COMMODITY_MARKET_SYMBOLS } from '@/config/commodity-markets';
+export type { MineralType, MineSiteStatus, MineSite, ProcessingPlant, CommodityPort } from '@/config/commodity-geo';
+export { MINING_SITES, PROCESSING_PLANTS, COMMODITY_PORTS } from '@/config/commodity-geo';
 
 // Re-export feeds infrastructure
 export {
