@@ -331,6 +331,7 @@ export class DeckGLMap {
 
   // CII choropleth data
   private ciiScoresMap: Map<string, { score: number; level: string }> = new Map();
+  private ciiScoresVersion = 0;
 
   // Country highlight state
   private countryGeoJsonLoaded = false;
@@ -2710,9 +2711,22 @@ export class DeckGLMap {
     });
   }
 
+  private static readonly CII_LEVEL_COLORS: Record<string, [number, number, number, number]> = {
+    low:      [40, 180, 60, 130],
+    normal:   [220, 200, 50, 135],
+    elevated: [240, 140, 30, 145],
+    high:     [220, 50, 20, 155],
+    critical: [140, 10, 0, 170],
+  };
+
+  private static readonly CII_LEVEL_HEX: Record<string, string> = {
+    critical: '#b91c1c', high: '#dc2626', elevated: '#f59e0b', normal: '#eab308', low: '#22c55e',
+  };
+
   private createCIIChoroplethLayer(): GeoJsonLayer | null {
     if (!this.countriesGeoJsonData || this.ciiScoresMap.size === 0) return null;
     const scores = this.ciiScoresMap;
+    const colors = DeckGLMap.CII_LEVEL_COLORS;
     return new GeoJsonLayer({
       id: 'cii-choropleth-layer',
       data: this.countriesGeoJsonData,
@@ -2721,31 +2735,13 @@ export class DeckGLMap {
       getFillColor: (feature: { properties?: Record<string, unknown> }) => {
         const code = feature.properties?.['ISO3166-1-Alpha-2'] as string | undefined;
         const entry = code ? scores.get(code) : undefined;
-        if (!entry) return [0, 0, 0, 0] as [number, number, number, number];
-        const s = entry.score;
-        // 5-stop heatmap: low(green) → normal(yellow) → elevated(orange) → high(red) → critical(dark-red)
-        if (s < 25) {
-          const t = s / 25;
-          return [Math.round(40 + t * 180), Math.round(180 - t * 40), 60, 130] as [number, number, number, number];
-        } else if (s < 50) {
-          const t = (s - 25) / 25;
-          return [Math.round(220 + t * 35), Math.round(140 - t * 40), Math.round(60 - t * 30), 140] as [number, number, number, number];
-        } else if (s < 70) {
-          const t = (s - 50) / 20;
-          return [255, Math.round(100 - t * 60), Math.round(30 - t * 30), 150] as [number, number, number, number];
-        } else if (s < 85) {
-          const t = (s - 70) / 15;
-          return [Math.round(255 - t * 55), Math.round(40 - t * 20), 0, 160] as [number, number, number, number];
-        } else {
-          const t = Math.min((s - 85) / 15, 1);
-          return [Math.round(200 - t * 60), Math.round(20 - t * 20), 0, 170] as [number, number, number, number];
-        }
+        return entry ? (colors[entry.level] ?? [0, 0, 0, 0]) : [0, 0, 0, 0];
       },
       getLineColor: [80, 80, 80, 80] as [number, number, number, number],
       getLineWidth: 1,
       lineWidthMinPixels: 0.5,
       pickable: true,
-      updateTriggers: { getFillColor: [scores.size, ...Array.from(scores.values()).map(v => v.score)] },
+      updateTriggers: { getFillColor: [this.ciiScoresVersion] },
     });
   }
 
@@ -2952,8 +2948,7 @@ export class DeckGLMap {
         const ciiCode = obj.properties?.['ISO3166-1-Alpha-2'];
         const ciiEntry = ciiCode ? this.ciiScoresMap.get(ciiCode as string) : undefined;
         if (!ciiEntry) return { html: `<div class="deckgl-tooltip"><strong>${text(ciiName)}</strong><br/><span style="opacity:.7">No CII data</span></div>` };
-        const levelColors: Record<string, string> = { critical: '#b91c1c', high: '#dc2626', elevated: '#f59e0b', normal: '#eab308', low: '#22c55e' };
-        const levelColor = levelColors[ciiEntry.level] ?? '#888';
+        const levelColor = DeckGLMap.CII_LEVEL_HEX[ciiEntry.level] ?? '#888';
         return { html: `<div class="deckgl-tooltip"><strong>${text(ciiName)}</strong><br/>CII: <span style="color:${levelColor};font-weight:600">${ciiEntry.score}/100</span><br/><span style="text-transform:capitalize;opacity:.7">${text(ciiEntry.level)}</span></div>` };
       }
       case 'species-recovery-layer': {
@@ -3607,23 +3602,21 @@ export class DeckGLMap {
       ${legendItems.map(({ shape, label }) => `<span class="legend-item">${shape}<span class="legend-label">${label}</span></span>`).join('')}
     `;
 
-    // CII choropleth gradient legend (shown when layer is active, full variant only)
-    if (SITE_VARIANT !== 'happy' && SITE_VARIANT !== 'tech' && SITE_VARIANT !== 'finance') {
-      const ciiLegend = document.createElement('div');
-      ciiLegend.className = 'cii-choropleth-legend';
-      ciiLegend.id = 'ciiChoroplethLegend';
-      ciiLegend.style.display = this.state.layers.ciiChoropleth ? 'block' : 'none';
-      ciiLegend.innerHTML = `
-        <span class="legend-label-title" style="font-size:9px;letter-spacing:0.5px;">CII SCALE</span>
-        <div style="display:flex;align-items:center;gap:2px;margin-top:2px;">
-          <div style="width:100%;height:8px;border-radius:3px;background:linear-gradient(to right,#28b33e,#dcc030,#e87425,#dc2626,#7f1d1d);"></div>
-        </div>
-        <div style="display:flex;justify-content:space-between;font-size:8px;opacity:0.7;margin-top:1px;">
-          <span>0</span><span>25</span><span>50</span><span>75</span><span>100</span>
-        </div>
-      `;
-      legend.appendChild(ciiLegend);
-    }
+    // CII choropleth gradient legend (shown when layer is active)
+    const ciiLegend = document.createElement('div');
+    ciiLegend.className = 'cii-choropleth-legend';
+    ciiLegend.id = 'ciiChoroplethLegend';
+    ciiLegend.style.display = this.state.layers.ciiChoropleth ? 'block' : 'none';
+    ciiLegend.innerHTML = `
+      <span class="legend-label-title" style="font-size:9px;letter-spacing:0.5px;">CII SCALE</span>
+      <div style="display:flex;align-items:center;gap:2px;margin-top:2px;">
+        <div style="width:100%;height:8px;border-radius:3px;background:linear-gradient(to right,#28b33e,#dcc030,#e87425,#dc2626,#7f1d1d);"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:8px;opacity:0.7;margin-top:1px;">
+        <span>0</span><span>31</span><span>51</span><span>66</span><span>81</span><span>100</span>
+      </div>
+    `;
+    legend.appendChild(ciiLegend);
 
     this.container.appendChild(legend);
   }
@@ -4132,6 +4125,7 @@ export class DeckGLMap {
 
   public setCIIScores(scores: Array<{ code: string; score: number; level: string }>): void {
     this.ciiScoresMap = new Map(scores.map(s => [s.code, { score: s.score, level: s.level }]));
+    this.ciiScoresVersion++;
     this.render();
   }
 

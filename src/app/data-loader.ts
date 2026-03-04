@@ -199,9 +199,9 @@ export class DataLoaderManager implements AppModule {
   private refreshCiiAndBrief(): void {
     (this.ctx.panels['cii'] as CIIPanel)?.refresh();
     this.callbacks.refreshOpenCountryBrief();
-    // Push CII scores to map choropleth layer
     const scores = calculateCII();
     this.ctx.map?.setCIIScores(scores.map(s => ({ code: s.code, score: s.score, level: s.level })));
+    this.ctx.map?.setLayerReady('ciiChoropleth', scores.length > 0);
   }
 
   private async tryFetchDigest(): Promise<ListFeedDigestResponse | null> {

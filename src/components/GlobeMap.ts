@@ -26,7 +26,9 @@ import { getLayersForVariant, resolveLayerLabel, type MapVariant } from '@/confi
 import { resolveTradeRouteSegments, type TradeRouteSegment } from '@/config/trade-routes';
 import { GAMMA_IRRADIATORS } from '@/config/irradiators';
 import { AI_DATA_CENTERS } from '@/config/ai-datacenters';
-import { getCountryBbox } from '@/services/country-geometry';
+import { getCountryBbox, getCountriesGeoJson } from '@/services/country-geometry';
+import { escapeHtml } from '@/utils/sanitize';
+import type { FeatureCollection, Geometry } from 'geojson';
 import type { MapLayers, Hotspot, MilitaryFlight, MilitaryVessel, NaturalEvent, InternetOutage, CyberThreat, SocialUnrestEvent, UcdpGeoEvent, MilitaryBase, GammaIrradiator, Spaceport, EconomicCenter, StrategicWaterway, CriticalMineralProject, AIDataCenter, UnderseaCable, Pipeline, CableAdvisory, RepairShip, AisDisruptionEvent, AisDensityZone, AisDisruptionType } from '@/types';
 import type { Earthquake } from '@/services/earthquakes';
 import type { AirportDelayAlert } from '@/services/aviation';
@@ -279,6 +281,14 @@ interface GlobePath {
   pathType: 'cable' | 'oil' | 'gas' | 'products';
   status: string;
 }
+interface GlobePolygon {
+  coords: number[][][];
+  name: string;
+  _kind: 'boundary' | 'cii';
+  level?: string;
+  score?: number;
+  boundaryType?: string;
+}
 type GlobeMarker =
   | ConflictMarker | HotspotMarker | FlightMarker | VesselMarker
   | WeatherMarker | NaturalMarker | IranMarker | OutageMarker
@@ -350,6 +360,8 @@ export class GlobeMap {
   private globePaths: GlobePath[] = [];
   private cableFaultIds = new Set<string>();
   private cableDegradedIds = new Set<string>();
+  private ciiScoresMap: Map<string, { score: number; level: string }> = new Map();
+  private countriesGeoData: FeatureCollection<Geometry> | null = null;
 
   // Current layers state
   private layers: MapLayers;
@@ -549,6 +561,14 @@ export class GlobeMap {
 
     // Flush any data that arrived before init completed
     this.flushMarkers();
+
+    // Load countries GeoJSON for CII choropleth
+    getCountriesGeoJson().then(geojson => {
+      if (geojson && !this.destroyed) {
+        this.countriesGeoData = geojson;
+        if (this.ciiScoresMap.size > 0) this.flushPolygons();
+      }
+    }).catch(err => { if (import.meta.env.DEV) console.warn('[GlobeMap] Failed to load countries GeoJSON', err); });
   }
 
   // ─── Marker element builder ────────────────────────────────────────────────
@@ -1185,25 +1205,54 @@ export class GlobeMap {
       .pathLabel((d: GlobePath) => d.name);
   }
 
+  private static readonly CII_GLOBE_COLORS: Record<string, string> = {
+    low:      'rgba(40, 180, 60, 0.35)',
+    normal:   'rgba(220, 200, 50, 0.35)',
+    elevated: 'rgba(240, 140, 30, 0.40)',
+    high:     'rgba(220, 50, 20, 0.45)',
+    critical: 'rgba(140, 10, 0, 0.50)',
+  };
+
   private flushPolygons(): void {
     if (!this.globe || !this.initialized || this.destroyed) return;
-    const polys = this.layers.conflicts
-      ? GEOPOLITICAL_BOUNDARIES.map(b => ({
-          coords: [b.coords],
-          name: b.name,
-          boundaryType: b.boundaryType,
-        }))
-      : [];
+    const polys: GlobePolygon[] = [];
+
+    if (this.layers.conflicts) {
+      for (const b of GEOPOLITICAL_BOUNDARIES) {
+        polys.push({ coords: [b.coords], name: b.name, _kind: 'boundary', boundaryType: b.boundaryType });
+      }
+    }
+
+    if (this.layers.ciiChoropleth && this.countriesGeoData) {
+      for (const feat of this.countriesGeoData.features) {
+        const code = feat.properties?.['ISO3166-1-Alpha-2'] as string | undefined;
+        const entry = code ? this.ciiScoresMap.get(code) : undefined;
+        if (!entry || !code) continue;
+        const geom = feat.geometry;
+        const rings = geom.type === 'Polygon' ? [geom.coordinates] : geom.type === 'MultiPolygon' ? geom.coordinates : [];
+        const name = (feat.properties?.name as string) ?? code;
+        for (const ring of rings) {
+          polys.push({ coords: ring, name, _kind: 'cii', level: entry.level, score: entry.score });
+        }
+      }
+    }
+
+    const colors = GlobeMap.CII_GLOBE_COLORS;
     (this.globe as any)
       .polygonsData(polys)
-      .polygonCapColor(() => 'rgba(255, 60, 60, 0.15)')
-      .polygonSideColor(() => 'rgba(255, 60, 60, 0.08)')
-      .polygonStrokeColor(() => '#ff4444')
-      .polygonAltitude(0.005)
-      .polygonLabel((d: { name: string }) => d.name);
+      .polygonCapColor((d: GlobePolygon) => d._kind === 'cii' ? (colors[d.level!] ?? 'rgba(0,0,0,0)') : 'rgba(255, 60, 60, 0.15)')
+      .polygonSideColor((d: GlobePolygon) => d._kind === 'cii' ? 'rgba(0,0,0,0)' : 'rgba(255, 60, 60, 0.08)')
+      .polygonStrokeColor((d: GlobePolygon) => d._kind === 'cii' ? 'rgba(80, 80, 80, 0.3)' : '#ff4444')
+      .polygonAltitude((d: GlobePolygon) => d._kind === 'cii' ? 0.002 : 0.005)
+      .polygonLabel((d: GlobePolygon) => d._kind === 'cii' ? `<b>${escapeHtml(d.name)}</b><br/>CII: ${d.score}/100 (${escapeHtml(d.level ?? '')})` : escapeHtml(d.name));
   }
 
   // ─── Public data setters ──────────────────────────────────────────────────
+
+  public setCIIScores(scores: Array<{ code: string; score: number; level: string }>): void {
+    this.ciiScoresMap = new Map(scores.map(s => [s.code, { score: s.score, level: s.level }]));
+    this.flushPolygons();
+  }
 
   public setHotspots(hotspots: Hotspot[]): void {
     this.hotspots = hotspots.map(h => ({

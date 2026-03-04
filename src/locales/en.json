@@ -964,11 +964,11 @@
         "monitoring": "Monitoring",
         "base": "Base",
         "nuclear": "Nuclear",
-        "ciiLow": "Low (0–24)",
-        "ciiNormal": "Normal (25–49)",
-        "ciiElevated": "Elevated (50–69)",
-        "ciiHigh": "High (70–84)",
-        "ciiCritical": "Critical (85–100)"
+        "ciiLow": "Low (0–30)",
+        "ciiNormal": "Normal (31–50)",
+        "ciiElevated": "Elevated (51–65)",
+        "ciiHigh": "High (66–80)",
+        "ciiCritical": "Critical (81–100)"
       },
       "layerGuide": "Layer Guide",
       "layersTitle": "Layers",

@@ -435,10 +435,8 @@ export class MapContainer {
   }
 
   public setCIIScores(scores: Array<{ code: string; score: number; level: string }>): void {
-    if (this.useDeckGL) {
-      this.deckGLMap?.setCIIScores(scores);
-    }
-    // SVG and Globe maps do not support CII choropleth yet
+    if (this.useGlobe) { this.globeMap?.setCIIScores(scores); return; }
+    if (this.useDeckGL) { this.deckGLMap?.setCIIScores(scores); }
   }
 
   public setSpeciesRecoveryZones(species: SpeciesRecovery[]): void {
