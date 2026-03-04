@@ -497,7 +497,8 @@
         "tradeRoutes": "Rotas Comerciais",
         "gpsJamming": "GPS JAMMING",
         "dayNight": "Dia/Noite",
-        "iranAttacks": "Ataques iranianos"
+        "iranAttacks": "Ataques iranianos",
+        "geopoliticalBoundaries": "Fronteiras Geopolíticas"
       },
       "layersTitle": "Camadas",
       "layerGuide": "Guia de camadas",
@@ -1834,6 +1835,19 @@
     },
     "iranEvent": {
       "relatedEvents": "Eventos relacionados"
+    },
+    "geopoliticalBoundary": {
+      "title": "FRONTEIRA GEOPOLÍTICA",
+      "established": "ESTABELECIDA",
+      "dimensions": "DIMENSÕES",
+      "legalBasis": "BASE LEGAL",
+      "parties": "SIGNATÁRIOS",
+      "types": {
+        "demilitarized": "ZONA DESMILITARIZADA",
+        "ceasefire": "LINHA DE CESSAR-FOGO",
+        "disputed": "FRONTEIRA DISPUTADA",
+        "armistice": "LINHA DE ARMISTÍCIO"
+      }
     }
   },
   "signals": {

@@ -53,7 +53,7 @@ import { debounce, rafSchedule, getCurrentTheme } from '@/utils/index';
 import {
   INTEL_HOTSPOTS,
   CONFLICT_ZONES,
-
+  GEOPOLITICAL_BOUNDARIES,
   MILITARY_BASES,
   UNDERSEA_CABLES,
   NUCLEAR_FACILITIES,
@@ -269,6 +269,14 @@ const CONFLICT_ZONES_GEOJSON: GeoJSON.FeatureCollection = {
   })),
 };
 
+const GEOPOLITICAL_BOUNDARIES_GEOJSON: GeoJSON.FeatureCollection = {
+  type: 'FeatureCollection',
+  features: GEOPOLITICAL_BOUNDARIES.map(b => ({
+    type: 'Feature' as const,
+    properties: { id: b.id, name: b.name, boundaryType: b.boundaryType },
+    geometry: { type: 'Polygon' as const, coordinates: [b.coords] },
+  })),
+};
 
 export class DeckGLMap {
   private static readonly MAX_CLUSTER_LEAVES = 200;
@@ -1084,6 +1092,10 @@ export class DeckGLMap {
       layers.push(this.createConflictZonesLayer());
     }
 
+    // Geopolitical boundaries layer
+    if (mapLayers.geopoliticalBoundaries) {
+      layers.push(this.createGeopoliticalBoundariesLayer());
+    }
 
     // Military bases layer — hidden at low zoom (E: progressive disclosure) + clusters
     if (mapLayers.bases && this.isLayerVisible('bases')) {
@@ -1441,6 +1453,23 @@ export class DeckGLMap {
     return layer;
   }
 
+  private createGeopoliticalBoundariesLayer(): GeoJsonLayer {
+    return new GeoJsonLayer({
+      id: 'geopolitical-boundaries-layer',
+      data: GEOPOLITICAL_BOUNDARIES_GEOJSON,
+      filled: true,
+      stroked: true,
+      getFillColor: () => getCurrentTheme() === 'light'
+        ? [0, 100, 200, 40] as [number, number, number, number]
+        : [0, 150, 255, 50] as [number, number, number, number],
+      getLineColor: () => getCurrentTheme() === 'light'
+        ? [0, 120, 220, 150] as [number, number, number, number]
+        : [0, 150, 255, 180] as [number, number, number, number],
+      getLineWidth: 2,
+      lineWidthMinPixels: 1,
+      pickable: true,
+    });
+  }
 
   private getBasesData(): MilitaryBaseEnriched[] {
     return this.serverBasesLoaded ? this.serverBases : MILITARY_BASES as MilitaryBaseEnriched[];
@@ -2874,7 +2903,10 @@ export class DeckGLMap {
         const props = obj.properties || obj;
         return { html: `<div class="deckgl-tooltip"><strong>${text(props.name)}</strong><br/>${t('components.deckgl.tooltip.conflictZone')}</div>` };
       }
-
+      case 'geopolitical-boundaries-layer': {
+        const props = obj.properties || obj;
+        return { html: `<div class="deckgl-tooltip"><strong>${text(props.name)}</strong><br/>${t('popups.geopoliticalBoundary.title')}</div>` };
+      }
       case 'natural-events-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.title)}</strong><br/>${text(obj.category || t('components.deckgl.tooltip.naturalEvent'))}</div>` };
       case 'ais-density-layer':
@@ -3161,7 +3193,7 @@ export class DeckGLMap {
     // Map layer IDs to popup types
     const layerToPopupType: Record<string, PopupType> = {
       'conflict-zones-layer': 'conflict',
-
+      'geopolitical-boundaries-layer': 'geopoliticalBoundary',
       'bases-layer': 'base',
       'nuclear-layer': 'nuclear',
       'irradiators-layer': 'irradiator',
@@ -3212,6 +3244,11 @@ export class DeckGLMap {
       const conflictId = info.object.properties.id;
       const fullConflict = CONFLICT_ZONES.find(c => c.id === conflictId);
       if (fullConflict) data = fullConflict;
+    }
+    if (layerId === 'geopolitical-boundaries-layer' && info.object.properties) {
+      const boundaryId = info.object.properties.id;
+      const fullBoundary = GEOPOLITICAL_BOUNDARIES.find(b => b.id === boundaryId);
+      if (fullBoundary) data = fullBoundary;
     }
 
     // Enrich iran events with related events from same location
@@ -3486,7 +3523,7 @@ export class DeckGLMap {
     ], 'timeAffects')}
         ${helpSection('geopolitical', [
       helpItem(label('conflictZones'), 'geoConflicts'),
-
+      helpItem(label('geopoliticalBoundaries'), 'geoBoundaries'),
       helpItem(label('intelHotspots'), 'geoHotspots'),
       helpItem(staticLabel('sanctions'), 'geoSanctions'),
       helpItem(label('protests'), 'geoProtests'),

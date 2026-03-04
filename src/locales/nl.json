@@ -497,7 +497,8 @@
         "tradeRoutes": "Handelsroutes",
         "gpsJamming": "GPS JAMMING",
         "dayNight": "Dag/Nacht",
-        "iranAttacks": "Iraanse aanvallen"
+        "iranAttacks": "Iraanse aanvallen",
+        "geopoliticalBoundaries": "Geopolitieke Grenzen"
       },
       "layersTitle": "Lagen",
       "layerGuide": "Lagengids",
@@ -1834,6 +1835,19 @@
     },
     "iranEvent": {
       "relatedEvents": "Gerelateerde gebeurtenissen"
+    },
+    "geopoliticalBoundary": {
+      "title": "GEOPOLITIEKE GRENS",
+      "established": "OPGERICHT",
+      "dimensions": "AFMETINGEN",
+      "legalBasis": "JURIDISCHE BASIS",
+      "parties": "ONDERTEKENAARS",
+      "types": {
+        "demilitarized": "GEDEMILITARISEERDE ZONE",
+        "ceasefire": "STAAKT-HET-VUREN-LIJN",
+        "disputed": "BETWISTE GRENS",
+        "armistice": "WAPENSTILSTANDSLIJN"
+      }
     }
   },
   "signals": {

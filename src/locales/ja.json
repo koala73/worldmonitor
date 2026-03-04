@@ -874,7 +874,8 @@
         "tradeRoutes": "貿易ルート",
         "gpsJamming": "GPS JAMMING",
         "dayNight": "昼/夜",
-        "iranAttacks": "イラン攻撃"
+        "iranAttacks": "イラン攻撃",
+        "geopoliticalBoundaries": "地政学的境界"
       },
       "tooltip": {
         "earthquake": "地震",
@@ -1980,6 +1981,19 @@
     },
     "iranEvent": {
       "relatedEvents": "関連イベント"
+    },
+    "geopoliticalBoundary": {
+      "title": "地政学的境界",
+      "established": "設定日",
+      "dimensions": "規模",
+      "legalBasis": "法的根拠",
+      "parties": "署名国",
+      "types": {
+        "demilitarized": "非武装地帯",
+        "ceasefire": "停戦ライン",
+        "disputed": "係争境界",
+        "armistice": "休戦ライン"
+      }
     }
   },
   "signals": {

@@ -894,7 +894,8 @@
         "tradeRoutes": "무역 항로",
         "iranAttacks": "이란 공격",
         "gpsJamming": "GPS JAMMING",
-        "dayNight": "주/야간"
+        "dayNight": "주/야간",
+        "geopoliticalBoundaries": "지정학적 경계"
       },
       "tooltip": {
         "earthquake": "지진",
@@ -1988,6 +1989,19 @@
       "uae_ecsr": "UAE/ECSR",
       "venezuela_crisis": "베네수엘라 위기",
       "yemen_houthis": "예멘/후티"
+    },
+    "geopoliticalBoundary": {
+      "title": "지정학적 경계",
+      "established": "설정일",
+      "dimensions": "규모",
+      "legalBasis": "법적 근거",
+      "parties": "당사국",
+      "types": {
+        "demilitarized": "비무장지대",
+        "ceasefire": "휴전선",
+        "disputed": "분쟁 경계",
+        "armistice": "정전 경계선"
+      }
     }
   },
   "signals": {

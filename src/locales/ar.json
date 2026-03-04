@@ -938,7 +938,8 @@
         "tradeRoutes": "طرق التجارة",
         "gpsJamming": "GPS JAMMING",
         "dayNight": "نهار/ليل",
-        "iranAttacks": "هجمات إيران"
+        "iranAttacks": "هجمات إيران",
+        "geopoliticalBoundaries": "الحدود الجيوسياسية"
       },
       "tooltip": {
         "earthquake": "زلزال",
@@ -2044,6 +2045,19 @@
       "uae_ecsr": "الإمارات/ECSR",
       "venezuela_crisis": "أزمة فنزويلا",
       "yemen_houthis": "اليمن/الحوثيون"
+    },
+    "geopoliticalBoundary": {
+      "title": "الحدود الجيوسياسية",
+      "established": "تاريخ التأسيس",
+      "dimensions": "الأبعاد",
+      "legalBasis": "الأساس القانوني",
+      "parties": "الأطراف الموقعة",
+      "types": {
+        "demilitarized": "منطقة منزوعة السلاح",
+        "ceasefire": "خط وقف إطلاق النار",
+        "disputed": "حدود متنازع عليها",
+        "armistice": "خط الهدنة"
+      }
     }
   },
   "signals": {

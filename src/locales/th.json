@@ -874,7 +874,8 @@
         "tradeRoutes": "เส้นทางการค้า",
         "gpsJamming": "GPS JAMMING",
         "dayNight": "กลางวัน/กลางคืน",
-        "iranAttacks": "การโจมตีอิหร่าน"
+        "iranAttacks": "การโจมตีอิหร่าน",
+        "geopoliticalBoundaries": "พรมแดนภูรัฐศาสตร์"
       },
       "tooltip": {
         "earthquake": "แผ่นดินไหว",
@@ -1980,6 +1981,19 @@
     },
     "iranEvent": {
       "relatedEvents": "เหตุการณ์ที่เกี่ยวข้อง"
+    },
+    "geopoliticalBoundary": {
+      "title": "พรมแดนภูรัฐศาสตร์",
+      "established": "ก่อตั้ง",
+      "dimensions": "ขนาด",
+      "legalBasis": "พื้นฐานทางกฎหมาย",
+      "parties": "ผู้ลงนาม",
+      "types": {
+        "demilitarized": "เขตปลอดทหาร",
+        "ceasefire": "แนวหยุดยิง",
+        "disputed": "พรมแดนข้อพิพาท",
+        "armistice": "แนวสงบศึก"
+      }
     }
   },
   "signals": {

@@ -874,7 +874,8 @@
         "tradeRoutes": "Tuyến Thương mại",
         "gpsJamming": "GPS JAMMING",
         "dayNight": "Ngày/Đêm",
-        "iranAttacks": "Tấn công Iran"
+        "iranAttacks": "Tấn công Iran",
+        "geopoliticalBoundaries": "Ranh Giới Địa Chính Trị"
       },
       "tooltip": {
         "earthquake": "Động đất",
@@ -1980,6 +1981,19 @@
     },
     "iranEvent": {
       "relatedEvents": "Sự kiện Liên quan"
+    },
+    "geopoliticalBoundary": {
+      "title": "RANH GIỚI ĐỊA CHÍNH TRỊ",
+      "established": "THÀNH LẬP",
+      "dimensions": "KÍCH THƯỚC",
+      "legalBasis": "CƠ SỞ PHÁP LÝ",
+      "parties": "CÁC BÊN KÝ KẾT",
+      "types": {
+        "demilitarized": "KHU PHI QUÂN SỰ",
+        "ceasefire": "ĐƯỜNG NGỪNG BẮN",
+        "disputed": "RANH GIỚI TRANH CHẤP",
+        "armistice": "ĐƯỜNG ĐÌNH CHIẾN"
+      }
     }
   },
   "signals": {

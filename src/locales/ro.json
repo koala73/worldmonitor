@@ -1009,7 +1009,8 @@
         "tradeRoutes": "Rute comerciale",
         "iranAttacks": "Atacurile Iranului",
         "gpsJamming": "Bruiaj GPS",
-        "dayNight": "Zi/Noapte"
+        "dayNight": "Zi/Noapte",
+        "geopoliticalBoundaries": "Limite geopolitice"
       },
       "tooltip": {
         "earthquake": "Cutremur",
@@ -2103,6 +2104,19 @@
       "uae_ecsr": "EAU/ECSR",
       "venezuela_crisis": "Criza din Venezuela",
       "yemen_houthis": "Yemen/Houthi"
+    },
+    "geopoliticalBoundary": {
+      "title": "FRONTARĂ GEOPOLITĂ",
+      "established": "INFIINTAT",
+      "dimensions": "DIMENSIUNI",
+      "legalBasis": "TEMEI LEGAL",
+      "parties": "SEMNATORI",
+      "types": {
+        "demilitarized": "ZONA DEMILITARIZATĂ",
+        "ceasefire": "LINIA DE OPRIRE FOCUL",
+        "disputed": "LIMITARĂ DISPUTAȚĂ",
+        "armistice": "LINIA ARMISTICIULUI"
+      }
     }
   },
   "signals": {

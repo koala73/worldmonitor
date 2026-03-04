@@ -874,7 +874,8 @@
         "tradeRoutes": "贸易航线",
         "gpsJamming": "GPS JAMMING",
         "dayNight": "昼/夜",
-        "iranAttacks": "伊朗袭击"
+        "iranAttacks": "伊朗袭击",
+        "geopoliticalBoundaries": "地缘政治边界"
       },
       "tooltip": {
         "earthquake": "地震",
@@ -1980,6 +1981,19 @@
     },
     "iranEvent": {
       "relatedEvents": "相关事件"
+    },
+    "geopoliticalBoundary": {
+      "title": "地缘政治边界",
+      "established": "建立时间",
+      "dimensions": "规模",
+      "legalBasis": "法律依据",
+      "parties": "签署方",
+      "types": {
+        "demilitarized": "非军事区",
+        "ceasefire": "停火线",
+        "disputed": "争议边界",
+        "armistice": "停战线"
+      }
     }
   },
   "signals": {

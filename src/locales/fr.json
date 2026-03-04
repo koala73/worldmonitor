@@ -874,7 +874,8 @@
         "tradeRoutes": "Routes Commerciales",
         "gpsJamming": "GPS JAMMING",
         "dayNight": "Jour/Nuit",
-        "iranAttacks": "Attaques iraniennes"
+        "iranAttacks": "Attaques iraniennes",
+        "geopoliticalBoundaries": "Frontières Géopolitiques"
       },
       "tooltip": {
         "earthquake": "Tremblement de terre",
@@ -1980,6 +1981,19 @@
       "uae_ecsr": "EAU/CEDS",
       "venezuela_crisis": "Crise au Venezuela",
       "yemen_houthis": "Yémen/Houtis"
+    },
+    "geopoliticalBoundary": {
+      "title": "FRONTIÈRE GÉOPOLITIQUE",
+      "established": "ÉTABLI",
+      "dimensions": "DIMENSIONS",
+      "legalBasis": "BASE LÉGALE",
+      "parties": "SIGNATAIRES",
+      "types": {
+        "demilitarized": "ZONE DÉMILITARISÉE",
+        "ceasefire": "LIGNE DE CESSEZ-LE-FEU",
+        "disputed": "FRONTIÈRE CONTESTÉE",
+        "armistice": "LIGNE D'ARMISTICE"
+      }
     }
   },
   "signals": {

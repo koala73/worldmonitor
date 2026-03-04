@@ -17,7 +17,7 @@
 import Globe from 'globe.gl';
 import { isDesktopRuntime } from '@/services/runtime';
 import type { GlobeInstance, ConfigOptions } from 'globe.gl';
-import { INTEL_HOTSPOTS, CONFLICT_ZONES, MILITARY_BASES, NUCLEAR_FACILITIES, SPACEPORTS, ECONOMIC_CENTERS, STRATEGIC_WATERWAYS, CRITICAL_MINERALS, UNDERSEA_CABLES } from '@/config/geo';
+import { INTEL_HOTSPOTS, CONFLICT_ZONES, GEOPOLITICAL_BOUNDARIES, MILITARY_BASES, NUCLEAR_FACILITIES, SPACEPORTS, ECONOMIC_CENTERS, STRATEGIC_WATERWAYS, CRITICAL_MINERALS, UNDERSEA_CABLES } from '@/config/geo';
 import { PIPELINES } from '@/config/pipelines';
 import { t } from '@/services/i18n';
 import { SITE_VARIANT } from '@/config/variant';
@@ -284,10 +284,10 @@ interface GlobePath {
 interface GlobePolygon {
   coords: number[][][];
   name: string;
-  _kind: 'cii' | 'conflict';
+  _kind: 'boundary' | 'cii' | 'conflict';
   level?: string;
   score?: number;
-
+  boundaryType?: string;
   intensity?: string;
   parties?: string[];
   casualties?: string;
@@ -1226,6 +1226,13 @@ export class GlobeMap {
     if (!this.globe || !this.initialized || this.destroyed) return;
     const polys: GlobePolygon[] = [];
 
+    if (this.layers.geopoliticalBoundaries) {
+      for (const b of GEOPOLITICAL_BOUNDARIES) {
+        const ring: number[][] = b.coords.map((c: number[]) => [c[0]!, c[1]!]);
+        if (GlobeMap.ringIsClockwise(ring)) ring.reverse();
+        polys.push({ coords: [ring], name: b.name, _kind: 'boundary', boundaryType: b.boundaryType });
+      }
+    }
 
     if (this.layers.conflicts) {
       for (const z of CONFLICT_ZONES) {

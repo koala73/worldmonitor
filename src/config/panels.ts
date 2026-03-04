@@ -61,7 +61,7 @@ const FULL_PANELS: Record<string, PanelConfig> = {
 const FULL_MAP_LAYERS: MapLayers = {
   iranAttacks: true,
   gpsJamming: false,
-
+  geopoliticalBoundaries: true,
   conflicts: true,
   bases: true,
   cables: false,
@@ -114,7 +114,7 @@ const FULL_MAP_LAYERS: MapLayers = {
 const FULL_MOBILE_MAP_LAYERS: MapLayers = {
   iranAttacks: true,
   gpsJamming: false,
-
+  geopoliticalBoundaries: true,
   conflicts: true,
   bases: false,
   cables: false,
@@ -208,7 +208,7 @@ const TECH_PANELS: Record<string, PanelConfig> = {
 
 const TECH_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
-
+  geopoliticalBoundaries: false,
   conflicts: false,
   bases: false,
   cables: true,
@@ -261,7 +261,7 @@ const TECH_MAP_LAYERS: MapLayers = {
 
 const TECH_MOBILE_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
-
+  geopoliticalBoundaries: false,
   conflicts: false,
   bases: false,
   cables: false,
@@ -354,7 +354,7 @@ const FINANCE_PANELS: Record<string, PanelConfig> = {
 
 const FINANCE_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
-
+  geopoliticalBoundaries: false,
   conflicts: false,
   bases: false,
   cables: true,
@@ -407,7 +407,7 @@ const FINANCE_MAP_LAYERS: MapLayers = {
 
 const FINANCE_MOBILE_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
-
+  geopoliticalBoundaries: false,
   conflicts: false,
   bases: false,
   cables: false,
@@ -476,7 +476,7 @@ const HAPPY_PANELS: Record<string, PanelConfig> = {
 
 const HAPPY_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
-
+  geopoliticalBoundaries: false,
   conflicts: false,
   bases: false,
   cables: false,
@@ -529,7 +529,7 @@ const HAPPY_MAP_LAYERS: MapLayers = {
 
 const HAPPY_MOBILE_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
-
+  geopoliticalBoundaries: false,
   conflicts: false,
   bases: false,
   cables: false,

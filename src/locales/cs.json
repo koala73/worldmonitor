@@ -890,7 +890,8 @@
         "tradeRoutes": "Obchodní cesty",
         "iranAttacks": "Útoky Íránu",
         "gpsJamming": "RUŠENÍ GPS",
-        "dayNight": "Den/Noc"
+        "dayNight": "Den/Noc",
+        "geopoliticalBoundaries": "Geopolitické hranice"
       },
       "tooltip": {
         "earthquake": "Zemětřesení",
@@ -1984,6 +1985,19 @@
       "uae_ecsr": "SAE/ECSR",
       "venezuela_crisis": "Krize ve Venezuele",
       "yemen_houthis": "Jemen/Húsíové"
+    },
+    "geopoliticalBoundary": {
+      "title": "GEOPOLITICKÁ HRANICE",
+      "established": "ZŘÍZENO",
+      "dimensions": "ROZMĚRY",
+      "legalBasis": "PRÁVNÍ ZÁKLAD",
+      "parties": "SIGNATÁŘI",
+      "types": {
+        "demilitarized": "DEMILITARIZOVANÁ ZÓNA",
+        "ceasefire": "LINIE PŘÍMĚŘÍ",
+        "disputed": "SPORNÁ HRANICE",
+        "armistice": "PŘÍMĚŘOVÁ LINIE"
+      }
     }
   },
   "signals": {

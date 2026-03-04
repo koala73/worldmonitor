@@ -80,7 +80,14 @@
     "noSignals": "No recent high-severity signals.",
     "assessmentUnavailable": "Assessment unavailable.",
     "noNews": "No recent country-specific coverage.",
+    "noMarkets": "No active markets for this country.",
     "noIndicators": "No country-specific indicators available.",
+    "components": {
+      "unrest": "Unrest",
+      "conflict": "Conflict",
+      "security": "Security",
+      "information": "Information"
+    },
     "nearbyPorts": "Nearby Ports",
     "detected": "Detected",
     "notDetected": "No",
@@ -652,7 +659,7 @@
     "webcams": {
       "expand": "Expand",
       "paused": "Webcams paused",
-      "pausedIdle": "Webcams paused — move mouse to resume",
+      "pausedIdle": "Webcams paused \u2014 move mouse to resume",
       "regions": {
         "iran": "IRAN ATTACKS",
         "all": "ALL",
@@ -667,7 +674,7 @@
     },
     "goodThingsDigest": {
       "noStories": "No stories available",
-      "summarizing": "Summarizing…"
+      "summarizing": "Summarizing\u2026"
     },
     "progressCharts": {
       "noData": "No progress data available"
@@ -1020,6 +1027,7 @@
         "gpsJamming": "GPS JAMMING",
         "ciiChoropleth": "CII Instability",
         "dayNight": "Day/Night",
+        "geopoliticalBoundaries": "Geopolitical Boundaries",
         "positiveEvents": "Positive Events",
         "kindness": "Acts of Kindness",
         "happiness": "World Happiness",
@@ -1159,11 +1167,11 @@
       "globeRenderQualityLabel": "Globe render quality",
       "globeRenderQualityDesc": "Controls the globe canvas resolution. Higher values look sharper on 4K displays but can melt GPUs.",
       "globeRenderScaleOptions": {
-        "1": "Eco (1x)",
-        "2": "4K (2x)",
-        "3": "Insane (3x)",
         "auto": "Auto (device)",
-        "1_5": "Sharp (1.5x)"
+        "1": "Eco (1x)",
+        "1_5": "Sharp (1.5x)",
+        "2": "4K (2x)",
+        "3": "Insane (3x)"
       },
       "mapFlashLabel": "Live Event Pulse",
       "mapFlashDesc": "Flash locations on the map when breaking news arrives",
@@ -2139,6 +2147,19 @@
       "uae_ecsr": "UAE/ECSR",
       "venezuela_crisis": "Venezuela Crisis",
       "yemen_houthis": "Yemen/Houthis"
+    },
+    "geopoliticalBoundary": {
+      "title": "GEOPOLITICAL BOUNDARY",
+      "established": "ESTABLISHED",
+      "dimensions": "DIMENSIONS",
+      "legalBasis": "LEGAL BASIS",
+      "parties": "SIGNATORIES",
+      "types": {
+        "demilitarized": "DEMILITARIZED ZONE",
+        "ceasefire": "CEASEFIRE LINE",
+        "disputed": "DISPUTED BOUNDARY",
+        "armistice": "ARMISTICE LINE"
+      }
     }
   },
   "signals": {

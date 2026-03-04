@@ -23,7 +23,7 @@ export const LAYER_REGISTRY: Record<keyof MapLayers, LayerDefinition> = {
   iranAttacks:              def('iranAttacks',              '&#127919;', 'iranAttacks',              'Iran Attacks'),
   hotspots:                 def('hotspots',                 '&#127919;', 'intelHotspots',            'Intel Hotspots'),
   conflicts:                def('conflicts',                '&#9876;',   'conflictZones',            'Conflict Zones'),
-
+  geopoliticalBoundaries:   def('geopoliticalBoundaries',   '&#9878;',   'geopoliticalBoundaries',   'Geopolitical Boundaries'),
   bases:                    def('bases',                    '&#127963;', 'militaryBases',            'Military Bases'),
   nuclear:                  def('nuclear',                  '&#9762;',   'nuclearSites',             'Nuclear Sites'),
   irradiators:              def('irradiators',              '&#9888;',   'gammaIrradiators',         'Gamma Irradiators'),
@@ -70,7 +70,7 @@ export const LAYER_REGISTRY: Record<keyof MapLayers, LayerDefinition> = {
 
 const VARIANT_LAYER_ORDER: Record<MapVariant, Array<keyof MapLayers>> = {
   full: [
-    'iranAttacks', 'hotspots', 'conflicts',
+    'iranAttacks', 'hotspots', 'conflicts', 'geopoliticalBoundaries',
     'bases', 'nuclear', 'irradiators', 'spaceports',
     'cables', 'pipelines', 'datacenters', 'military',
     'ais', 'tradeRoutes', 'flights', 'protests',
