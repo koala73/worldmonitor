@@ -3,6 +3,8 @@ import LanguageDetector from 'i18next-browser-languagedetector';
 
 // English is always needed as fallback — bundle it eagerly.
 import enTranslation from '../locales/en.json';
+// SENTINEL: Sentinel-specific i18n keys (avoids editing upstream en.json)
+import sentinelEn from '../locales/sentinel-en.json';
 
 const SUPPORTED_LANGUAGES = ['en', 'bg', 'cs', 'fr', 'de', 'el', 'es', 'it', 'pl', 'pt', 'nl', 'sv', 'ru', 'ar', 'zh', 'ja', 'ko', 'tr', 'th', 'vi'] as const;
 type SupportedLanguage = typeof SUPPORTED_LANGUAGES[number];
@@ -90,6 +92,9 @@ export async function initI18n(): Promise<void> {
         caches: ['localStorage'],
       },
     });
+
+  // SENTINEL: merge sentinel-specific i18n keys into English bundle
+  i18next.addResourceBundle('en', 'translation', sentinelEn, true, true);
 
   const detectedLanguage = await ensureLanguageLoaded(i18next.language || 'en');
   if (detectedLanguage !== 'en') {

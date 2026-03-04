@@ -1,0 +1,57 @@
+{
+  "sentinel": {
+    "claude": {
+      "title": "Claude AI",
+      "summarizing": "Generating summary...",
+      "analyzing": "Running analysis...",
+      "error": "Claude AI is not available. Check your API key in settings.",
+      "budgetExceeded": "Daily Claude budget exceeded. Try again tomorrow.",
+      "cached": "Using cached result"
+    },
+    "socialFeed": {
+      "title": "Social Intelligence",
+      "filterAll": "All",
+      "filterReddit": "Reddit",
+      "filterTwitter": "X",
+      "filterBluesky": "Bluesky",
+      "filterYouTube": "YouTube",
+      "filterTikTok": "TikTok",
+      "filterVK": "VK",
+      "loading": "Loading social feeds...",
+      "empty": "No posts available",
+      "error": "Failed to load social feed",
+      "disabled": "Social feed is not configured"
+    },
+    "analyst": {
+      "title": "JP 3-60 Analysis",
+      "placeholder": "Enter analysis query (e.g., 'Middle East conflict trajectory next 7 days')",
+      "analyze": "Run Analysis",
+      "analyzing": "Analyzing...",
+      "dimensions": "Dimension Scores",
+      "probability": "Overall Probability",
+      "confidence": "Confidence",
+      "timeframe": "Timeframe",
+      "noResults": "Enter a query to begin analysis",
+      "error": "Analysis failed. Check your Claude API key in settings.",
+      "disclaimer": "AI-generated estimate. Do not use as sole basis for decisions."
+    },
+    "govdata": {
+      "title": "NOTAM / TFR",
+      "loading": "Loading NOTAMs...",
+      "error": "Failed to load NOTAMs",
+      "empty": "No active NOTAMs in this region"
+    },
+    "trajectory": {
+      "title": "Flight History",
+      "loading": "Loading flight history...",
+      "error": "Failed to load flight history",
+      "empty": "No trajectory data available"
+    },
+    "prediction": {
+      "kalshi": "Kalshi Markets",
+      "metaculus": "Metaculus Forecasts",
+      "loading": "Loading predictions...",
+      "error": "Failed to load prediction data"
+    }
+  }
+}
