@@ -28,6 +28,22 @@ const GDACS_TO_CATEGORY: Record<string, string> = {
   DR: 'drought',
 };
 
+const NATURAL_EVENT_CATEGORIES = new Set([
+  'severeStorms',
+  'wildfires',
+  'volcanoes',
+  'earthquakes',
+  'floods',
+  'landslides',
+  'drought',
+  'dustHaze',
+  'snow',
+  'tempExtremes',
+  'seaLakeIce',
+  'waterColor',
+  'manmade',
+]);
+
 const EVENT_TYPE_NAMES: Record<string, string> = {
   EQ: 'Earthquake',
   FL: 'Flood',
@@ -36,6 +52,11 @@ const EVENT_TYPE_NAMES: Record<string, string> = {
   WF: 'Wildfire',
   DR: 'Drought',
 };
+
+function normalizeNaturalCategory(value: unknown): string {
+  const category = String(value || '').trim();
+  return NATURAL_EVENT_CATEGORIES.has(category) ? category : 'manmade';
+}
 
 async function fetchEonet(days: number): Promise<NaturalEvent[]> {
   const url = `${EONET_API_URL}?status=open&days=${days}`;
@@ -52,7 +73,8 @@ async function fetchEonet(days: number): Promise<NaturalEvent[]> {
   for (const event of data.events || []) {
     const category = event.categories?.[0];
     if (!category) continue;
-    if (category.id === 'earthquakes') continue;
+    const normalizedCategory = normalizeNaturalCategory(category.id);
+    if (normalizedCategory === 'earthquakes') continue;
 
     const latestGeo = event.geometry?.[event.geometry.length - 1];
     if (!latestGeo || latestGeo.type !== 'Point') continue;
@@ -60,14 +82,14 @@ async function fetchEonet(days: number): Promise<NaturalEvent[]> {
     const eventDate = new Date(latestGeo.date);
     const [lon, lat] = latestGeo.coordinates;
 
-    if (category.id === 'wildfires' && now - eventDate.getTime() > WILDFIRE_MAX_AGE_MS) continue;
+    if (normalizedCategory === 'wildfires' && now - eventDate.getTime() > WILDFIRE_MAX_AGE_MS) continue;
 
     const source = event.sources?.[0];
     events.push({
       id: event.id || '',
       title: event.title || '',
       description: event.description || '',
-      category: category.id || '',
+      category: normalizedCategory,
       categoryTitle: category.title || '',
       lat,
       lon,
@@ -104,7 +126,7 @@ async function fetchGdacs(): Promise<NaturalEvent[]> {
 
     if (props.alertlevel === 'Green') continue;
 
-    const category = GDACS_TO_CATEGORY[props.eventtype] || 'manmade';
+    const category = normalizeNaturalCategory(GDACS_TO_CATEGORY[props.eventtype] || 'manmade');
     const alertPrefix = props.alertlevel === 'Red' ? '🔴 ' : props.alertlevel === 'Orange' ? '🟠 ' : '';
     const description = props.description || EVENT_TYPE_NAMES[props.eventtype] || props.eventtype;
     const severity = props.severitydata?.severitytext || '';

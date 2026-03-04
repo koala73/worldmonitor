@@ -26,6 +26,29 @@ export function getNaturalEventIcon(category: NaturalEventCategory): string {
   return CATEGORY_ICONS[category] || '⚠️';
 }
 
+const NATURAL_EVENT_CATEGORIES = new Set<NaturalEventCategory>([
+  'severeStorms',
+  'wildfires',
+  'volcanoes',
+  'earthquakes',
+  'floods',
+  'landslides',
+  'drought',
+  'dustHaze',
+  'snow',
+  'tempExtremes',
+  'seaLakeIce',
+  'waterColor',
+  'manmade',
+]);
+
+function normalizeNaturalCategory(category: string | undefined): NaturalEventCategory {
+  if (!category) return 'manmade';
+  return NATURAL_EVENT_CATEGORIES.has(category as NaturalEventCategory)
+    ? (category as NaturalEventCategory)
+    : 'manmade';
+}
+
 const client = new NaturalServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
 const breaker = createCircuitBreaker<ListNaturalEventsResponse>({ name: 'NaturalEvents', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
 
@@ -36,7 +59,7 @@ function toNaturalEvent(e: ListNaturalEventsResponse['events'][number]): Natural
     id: e.id,
     title: e.title,
     description: e.description || undefined,
-    category: (e.category || 'manmade') as NaturalEventCategory,
+    category: normalizeNaturalCategory(e.category),
     categoryTitle: e.categoryTitle,
     lat: e.lat,
     lon: e.lon,
