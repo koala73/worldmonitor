@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package worldmonitor.trajectory.v1;
+
+message FlightHistoryRequest {
+  string icao24 = 1;
+  int64 begin = 2;
+  int64 end = 3;
+}
+
+message FlightHistoryResponse {
+  repeated TrajectoryPoint points = 1;
+  string callsign = 2;
+  string status = 3;
+  string error_message = 4;
+}
+
+message TrajectoryPoint {
+  double latitude = 1;
+  double longitude = 2;
+  double altitude = 3;
+  int64 timestamp = 4;
+  double velocity = 5;
+  double heading = 6;
+  bool on_ground = 7;
+}

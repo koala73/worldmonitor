@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package worldmonitor.trajectory.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/trajectory/v1/flight_history.proto";
+
+// TrajectoryService provides APIs for historical flight trajectory data from OpenSky.
+service TrajectoryService {
+  option (sebuf.http.service_config) = {base_path: "/api/trajectory/v1"};
+
+  // QueryFlightHistory retrieves the recent track for an aircraft by ICAO24 hex code.
+  // NOTE: Phase 1 uses the /api/tracks/all REST endpoint which only returns ~1 hour of data.
+  rpc QueryFlightHistory(FlightHistoryRequest) returns (FlightHistoryResponse) {
+    option (sebuf.http.config) = {path: "/query-flight-history", method: HTTP_METHOD_GET};
+  }
+}
