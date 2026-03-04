@@ -4353,8 +4353,6 @@ const server = http.createServer(async (req, res) => {
         'feeds.capi24.com',  // News24 redirect destination
         'islandtimes.org',
         'www.atlanticcouncil.org',
-        'smartraveller.gov.au',
-        'www.smartraveller.gov.au',
       ];
       const parsed = new URL(feedUrl);
       // Block deprecated/stale feed domains — stale clients still request these

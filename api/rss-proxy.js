@@ -281,7 +281,6 @@ const ALLOWED_DOMAINS = [
   'cointelegraph.com',
   // Security advisories — government travel advisory feeds
   'travel.state.gov',
-  'www.smartraveller.gov.au',
   'www.safetravel.govt.nz',
   // US Embassy security alerts
   'th.usembassy.gov',

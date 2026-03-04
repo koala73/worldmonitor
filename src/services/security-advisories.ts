@@ -63,27 +63,6 @@ const ADVISORY_FEEDS: AdvisoryFeed[] = [
     url: 'https://travel.state.gov/_res/rss/TAsTWs.xml',
     parseLevel: parseUsLevel,
   },
-  // Australia (DFAT Smartraveller) — all destinations
-  {
-    name: 'AU Smartraveller',
-    sourceCountry: 'AU',
-    url: 'https://www.smartraveller.gov.au/countries/documents/index.rss',
-    parseLevel: parseAuLevel,
-  },
-  // Australia — Do Not Travel specifically
-  {
-    name: 'AU DNT',
-    sourceCountry: 'AU',
-    url: 'https://www.smartraveller.gov.au/countries/documents/do-not-travel.rss',
-    parseLevel: () => 'do-not-travel',
-  },
-  // Australia — Reconsider
-  {
-    name: 'AU Reconsider',
-    sourceCountry: 'AU',
-    url: 'https://www.smartraveller.gov.au/countries/documents/reconsider-your-need-to-travel.rss',
-    parseLevel: () => 'reconsider',
-  },
   // New Zealand MFAT
   {
     name: 'NZ MFAT',
