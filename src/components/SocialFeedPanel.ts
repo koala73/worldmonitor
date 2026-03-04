@@ -196,12 +196,11 @@ export class SocialFeedPanel extends Panel {
     );
   }
 
-  public showError(error: Error | string): void {
-    const err = error instanceof Error ? error : new Error(String(error));
+  public showError(message = t('sentinel.socialFeed.error')): void {
     try {
-      createErrorDisplay('SocialFeed', this.content, err);
+      createErrorDisplay('SocialFeed', this.content, new Error(message));
     } catch {
-      super.showError(t('sentinel.socialFeed.error'));
+      super.showError(message);
     }
   }
 
@@ -211,7 +210,7 @@ export class SocialFeedPanel extends Panel {
       const result = await fetchAllSocialFeeds();
       this.setData(result);
     } catch (err) {
-      this.showError(err as Error);
+      this.showError(err instanceof Error ? err.message : String(err));
     }
   }
 
