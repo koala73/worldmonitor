@@ -1,6 +1,8 @@
 import type { PanelConfig, MapLayers } from '@/types';
 import type { DataSourceId } from '@/services/data-freshness';
 import { SITE_VARIANT } from './variant';
+// SENTINEL: import Sentinel panel registrations
+import { SENTINEL_PANELS } from './sentinel-panels';
 
 // ============================================
 // FULL VARIANT (Geopolitical)
@@ -55,6 +57,7 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   'oref-sirens': { name: 'Israel Sirens', enabled: true, priority: 2 },
   'telegram-intel': { name: 'Telegram Intel', enabled: true, priority: 2 },
   'world-clock': { name: 'World Clock', enabled: true, priority: 2 },
+  ...SENTINEL_PANELS,  // SENTINEL
 };
 
 const FULL_MAP_LAYERS: MapLayers = {

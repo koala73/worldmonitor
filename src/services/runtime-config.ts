@@ -1,5 +1,7 @@
 import { getApiBaseUrl, isDesktopRuntime } from './runtime';
 import { invokeTauri } from './tauri-bridge';
+// SENTINEL: import Sentinel feature definitions
+import { SENTINEL_FEATURES, SENTINEL_DEFAULT_TOGGLES } from '../config/sentinel-features';
 
 export type RuntimeSecretKey =
   | 'GROQ_API_KEY'
@@ -25,7 +27,17 @@ export type RuntimeSecretKey =
   | 'WORLDMONITOR_API_KEY'
   | 'WTO_API_KEY'
   | 'AVIATIONSTACK_API'
-  | 'ICAO_API_KEY';
+  | 'ICAO_API_KEY'
+  // SENTINEL: Sentinel secret keys
+  | 'CLAUDE_API_KEY'
+  | 'REDDIT_CLIENT_ID'
+  | 'REDDIT_CLIENT_SECRET'
+  | 'TWITTER_API_IO_KEY'
+  | 'TWITTER_BEARER_TOKEN'
+  | 'YOUTUBE_API_KEY'
+  | 'FAA_API_KEY'
+  | 'TIKTOK_APIFY_TOKEN'
+  | 'VK_SERVICE_TOKEN';  // SENTINEL: end
 
 export type RuntimeFeatureId =
   | 'aiGroq'
@@ -48,7 +60,19 @@ export type RuntimeFeatureId =
   | 'newsPerFeedFallback'
   | 'aviationStack'
   | 'ucdpConflicts'
-  | 'icaoNotams';
+  | 'icaoNotams'
+  // SENTINEL: Sentinel feature IDs
+  | 'aiClaude'
+  | 'socialReddit'
+  | 'socialTwitter'
+  | 'socialBluesky'
+  | 'socialYouTube'
+  | 'socialTikTok'
+  | 'socialVK'
+  | 'govdataNotam'
+  | 'trajectoryFlight'
+  | 'predictionKalshi'
+  | 'predictionMetaculus';  // SENTINEL: end
 
 export interface RuntimeFeatureDefinition {
   id: RuntimeFeatureId;
@@ -99,6 +123,7 @@ const defaultToggles: Record<RuntimeFeatureId, boolean> = {
   newsPerFeedFallback: false,
   aviationStack: true,
   icaoNotams: true,
+  ...SENTINEL_DEFAULT_TOGGLES,  // SENTINEL
 };
 
 export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
@@ -251,6 +276,7 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
     requiredSecrets: ['ICAO_API_KEY'],
     fallback: 'Closures detected only via AviationStack flight cancellation data.',
   },
+  ...SENTINEL_FEATURES,  // SENTINEL
 ];
 
 function readEnvSecret(key: RuntimeSecretKey): string {

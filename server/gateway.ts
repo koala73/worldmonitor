@@ -11,6 +11,8 @@
 
 import { createRouter, type RouteDescriptor } from './router';
 import { getCorsHeaders, isDisallowedOrigin } from './cors';
+// SENTINEL: import Sentinel cache tier overrides
+import { SENTINEL_CACHE_TIERS } from './sentinel-cache-tiers';
 // @ts-expect-error — JS module, no declaration file
 import { validateApiKey } from '../api/_api-key.js';
 import { mapErrorToResponse } from './error-mapper';
@@ -101,6 +103,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/news/v1/list-feed-digest': 'slow',
   '/api/intelligence/v1/classify-event': 'static',
   '/api/news/v1/summarize-article-cache': 'slow',
+  ...SENTINEL_CACHE_TIERS,  // SENTINEL
 };
 
 /**
