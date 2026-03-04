@@ -289,10 +289,26 @@ type GlobeMarker =
   | FlightDelayMarker | CableAdvisoryMarker | RepairShipMarker | AisDisruptionMarker
   | NewsLocationMarker | FlashMarker;
 
+interface GlobeControlsLike {
+  autoRotate: boolean;
+  autoRotateSpeed: number;
+  enablePan: boolean;
+  enableZoom: boolean;
+  zoomSpeed: number;
+  minDistance: number;
+  maxDistance: number;
+  enableDamping: boolean;
+}
+
 export class GlobeMap {
   private container: HTMLElement;
   private globe: GlobeInstance | null = null;
   private unsubscribeGlobeQuality: (() => void) | null = null;
+  private controls: GlobeControlsLike | null = null;
+  private renderPaused = false;
+  private pendingFlushWhilePaused = false;
+  private controlsAutoRotateBeforePause: boolean | null = null;
+  private controlsDampingBeforePause: boolean | null = null;
 
   private initialized = false;
   private destroyed = false;
@@ -429,7 +445,8 @@ export class GlobeMap {
       .pathTransitionDuration(0);
 
     // Orbit controls — match Sentinel's settings
-    const controls = globe.controls();
+    const controls = globe.controls() as GlobeControlsLike;
+    this.controls = controls;
     controls.autoRotate = !desktop;
     controls.autoRotateSpeed = 0.3;
     controls.enablePan = false;
@@ -480,13 +497,15 @@ export class GlobeMap {
 
     // Pause auto-rotate on user interaction; resume after 60 s idle (like Sentinel)
     const pauseAutoRotate = () => {
+      if (this.renderPaused) return;
       controls.autoRotate = false;
       if (this.autoRotateTimer) clearTimeout(this.autoRotateTimer);
     };
     const scheduleResumeAutoRotate = () => {
+      if (this.renderPaused) return;
       if (this.autoRotateTimer) clearTimeout(this.autoRotateTimer);
       this.autoRotateTimer = setTimeout(() => {
-        controls.autoRotate = !desktop;
+        if (!this.renderPaused) controls.autoRotate = !desktop;
       }, 60_000);
     };
 
@@ -1054,6 +1073,10 @@ export class GlobeMap {
 
   private flushMarkers(): void {
     if (!this.globe || !this.initialized || this.destroyed) return;
+    if (this.renderPaused) {
+      this.pendingFlushWhilePaused = true;
+      return;
+    }
     if (this.flushTimer) return;
     this.flushTimer = requestAnimationFrame(() => {
       this.flushTimer = null;
@@ -1464,7 +1487,45 @@ export class GlobeMap {
     if (!isResizing) this.resize();
   }
   public setZoom(_z: number): void {}
-  public setRenderPaused(_paused: boolean): void {}
+  public setRenderPaused(paused: boolean): void {
+    if (this.renderPaused === paused) return;
+    this.renderPaused = paused;
+
+    if (paused) {
+      if (this.flushTimer) {
+        cancelAnimationFrame(this.flushTimer);
+        this.flushTimer = null;
+      }
+      this.pendingFlushWhilePaused = true;
+      if (this.autoRotateTimer) {
+        clearTimeout(this.autoRotateTimer);
+        this.autoRotateTimer = null;
+      }
+    }
+
+    if (this.controls) {
+      if (paused) {
+        this.controlsAutoRotateBeforePause = this.controls.autoRotate;
+        this.controlsDampingBeforePause = this.controls.enableDamping;
+        this.controls.autoRotate = false;
+        this.controls.enableDamping = false;
+      } else {
+        if (this.controlsAutoRotateBeforePause !== null) {
+          this.controls.autoRotate = this.controlsAutoRotateBeforePause;
+        }
+        if (this.controlsDampingBeforePause !== null) {
+          this.controls.enableDamping = this.controlsDampingBeforePause;
+        }
+        this.controlsAutoRotateBeforePause = null;
+        this.controlsDampingBeforePause = null;
+      }
+    }
+
+    if (!paused && this.pendingFlushWhilePaused) {
+      this.pendingFlushWhilePaused = false;
+      this.flushMarkers();
+    }
+  }
   public updateHotspotActivity(_news: any[]): void {}
   public updateMilitaryForEscalation(_f: any[], _v: any[]): void {}
   public getHotspotDynamicScore(_id: string) { return undefined; }
@@ -1755,6 +1816,9 @@ export class GlobeMap {
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
     this.hideTooltip();
+    this.controls = null;
+    this.controlsAutoRotateBeforePause = null;
+    this.controlsDampingBeforePause = null;
     this.layerTogglesEl = null;
     if (this.globe) {
       try { this.globe._destructor(); } catch { /* ignore */ }
