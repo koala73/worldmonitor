@@ -5,6 +5,7 @@ import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_EMAIL_LENGTH = 320;
+const MAX_META_LENGTH = 100;
 
 const rateLimitMap = new Map();
 const RATE_LIMIT = 5;
@@ -42,7 +43,14 @@ export default async function handler(req) {
     });
   }
 
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+  // x-real-ip is injected by Vercel from the TCP connection and cannot be spoofed by
+  // clients. x-forwarded-for is client-settable and MUST NOT be the primary source for
+  // rate limiting — an attacker can rotate arbitrary values to bypass the limit entirely.
+  const ip =
+    req.headers.get('x-real-ip') ||
+    req.headers.get('cf-connecting-ip') ||
+    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+    'unknown';
   if (isRateLimited(ip)) {
     return new Response(JSON.stringify({ error: 'Too many requests' }), {
       status: 429,
@@ -68,6 +76,17 @@ export default async function handler(req) {
     });
   }
 
+  // Coerce metadata fields to strings and enforce length caps to prevent
+  // non-string values (objects/arrays are truthy and bypass `|| 'unknown'`)
+  // from being forwarded to the database as wrong types, and to prevent
+  // arbitrarily large payloads filling the registrations table.
+  const safeSource = typeof source === 'string'
+    ? source.slice(0, MAX_META_LENGTH)
+    : 'unknown';
+  const safeAppVersion = typeof appVersion === 'string'
+    ? appVersion.slice(0, MAX_META_LENGTH)
+    : 'unknown';
+
   const convexUrl = process.env.CONVEX_URL;
   if (!convexUrl) {
     return new Response(JSON.stringify({ error: 'Registration service unavailable' }), {
@@ -80,8 +99,8 @@ export default async function handler(req) {
     const client = new ConvexHttpClient(convexUrl);
     const result = await client.mutation('registerInterest:register', {
       email,
-      source: source || 'unknown',
-      appVersion: appVersion || 'unknown',
+      source: safeSource,
+      appVersion: safeAppVersion,
     });
     return new Response(JSON.stringify(result), {
       status: 200,
