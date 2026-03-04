@@ -8,13 +8,28 @@ import {
   riskRating,
   detectSpike,
   SEVERITY_SCORE,
+  THREAT_LEVEL,
+  warningComponent,
+  aisComponent,
 } from '../server/worldmonitor/supply-chain/v1/_scoring.mjs';
+import {
+  resolveChokepointId,
+  isThreatConfigFresh,
+  THREAT_CONFIG_LAST_REVIEWED,
+} from '../server/worldmonitor/supply-chain/v1/get-chokepoint-status.ts';
 
 describe('Chokepoint scoring', () => {
-  it('computes disruption score with cap at 100', () => {
-    assert.equal(computeDisruptionScore(3, 2), Math.min(100, 3 * 15 + 2 * 30));
-    assert.equal(computeDisruptionScore(5, 3), 100);
-    assert.equal(computeDisruptionScore(0, 0), 0);
+  it('computes disruption score as threat + warnings + ais, capped at 100', () => {
+    // threat=0, 3 warnings (15), severity 2 (10) → 25
+    assert.equal(computeDisruptionScore(0, 3, 2), 25);
+    // threat=30 (high), 3 warnings (15), severity 3 (15) → 60
+    assert.equal(computeDisruptionScore(THREAT_LEVEL.high, 3, 3), 60);
+    // war_zone=70, 3 warnings (15), severity 3 (15) → 100
+    assert.equal(computeDisruptionScore(THREAT_LEVEL.war_zone, 3, 3), 100);
+    // overflow clamps to 100
+    assert.equal(computeDisruptionScore(THREAT_LEVEL.war_zone, 10, 3), 100);
+    // all zeros → 0
+    assert.equal(computeDisruptionScore(0, 0, 0), 0);
   });
 
   it('maps score to status correctly', () => {
@@ -98,5 +113,59 @@ describe('Spike detection', () => {
       { date: '2024-03-04', value: 500 },
     ];
     assert.equal(detectSpike(points), true);
+  });
+});
+
+describe('Chokepoint assignment', () => {
+  it('matches explicit chokepoint names', () => {
+    assert.equal(
+      resolveChokepointId({ text: 'Convoy delays reported in the Suez Canal transit corridor' }),
+      'suez',
+    );
+    assert.equal(
+      resolveChokepointId({ text: 'New advisory issued for Strait of Hormuz tanker traffic' }),
+      'hormuz',
+    );
+  });
+
+  it('does not classify a single broad regional token', () => {
+    assert.equal(
+      resolveChokepointId({ text: 'General security alert for Red Sea traffic' }),
+      null,
+    );
+  });
+
+  it('uses nearest location when text has no match', () => {
+    assert.equal(
+      resolveChokepointId({
+        text: '',
+        location: { latitude: 26.6, longitude: 56.2 }, // near Hormuz
+      }),
+      'hormuz',
+    );
+  });
+
+  it('text evidence beats nearby location (P2 regression)', () => {
+    assert.equal(
+      resolveChokepointId({
+        text: 'Houthi drone strike near Bab el-Mandeb strait',
+        location: { latitude: 30.4, longitude: 32.3 }, // near Suez
+      }),
+      'bab_el_mandeb',
+    );
+  });
+});
+
+describe('Threat config freshness', () => {
+  it('is fresh within the max-age window', () => {
+    const reviewedAtMs = Date.parse(THREAT_CONFIG_LAST_REVIEWED);
+    const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
+    assert.equal(isThreatConfigFresh(reviewedAtMs + ninetyDaysMs), true);
+  });
+
+  it('becomes stale after the max-age window', () => {
+    const reviewedAtMs = Date.parse(THREAT_CONFIG_LAST_REVIEWED);
+    const oneHundredTwentyOneDaysMs = 121 * 24 * 60 * 60 * 1000;
+    assert.equal(isThreatConfigFresh(reviewedAtMs + oneHundredTwentyOneDaysMs), false);
   });
 });

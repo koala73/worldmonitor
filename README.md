@@ -1986,6 +1986,7 @@ Thanks to everyone who has contributed to World Monitor:
 [@cwnicoletti](https://github.com/cwnicoletti),
 [@facusturla](https://github.com/facusturla),
 [@toasterbook88](https://github.com/toasterbook88)
+[@FayezBast](https://github.com/FayezBast)
 
 ---
 

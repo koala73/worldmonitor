@@ -46,6 +46,7 @@ export interface ChokepointInfo {
   congestionLevel: string;
   affectedRoutes: string[];
   description: string;
+  aisDisruptions: number;
 }
 
 export interface GetCriticalMineralsRequest {

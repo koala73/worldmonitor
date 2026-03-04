@@ -15,13 +15,20 @@
  */
 
 import Globe from 'globe.gl';
+import { isDesktopRuntime } from '@/services/runtime';
 import type { GlobeInstance, ConfigOptions } from 'globe.gl';
 import { INTEL_HOTSPOTS, CONFLICT_ZONES, GEOPOLITICAL_BOUNDARIES, MILITARY_BASES, NUCLEAR_FACILITIES, SPACEPORTS, ECONOMIC_CENTERS, STRATEGIC_WATERWAYS, CRITICAL_MINERALS, UNDERSEA_CABLES } from '@/config/geo';
 import { PIPELINES } from '@/config/pipelines';
+import { t } from '@/services/i18n';
+import { SITE_VARIANT } from '@/config/variant';
+import { getGlobeRenderScale, resolveGlobePixelRatio, subscribeGlobeRenderScaleChange, type GlobeRenderScale } from '@/services/globe-render-settings';
+import { getLayersForVariant, resolveLayerLabel, type MapVariant } from '@/config/map-layer-definitions';
 import { resolveTradeRouteSegments, type TradeRouteSegment } from '@/config/trade-routes';
 import { GAMMA_IRRADIATORS } from '@/config/irradiators';
 import { AI_DATA_CENTERS } from '@/config/ai-datacenters';
-import { getCountryBbox } from '@/services/country-geometry';
+import { getCountryBbox, getCountriesGeoJson } from '@/services/country-geometry';
+import { escapeHtml } from '@/utils/sanitize';
+import type { FeatureCollection, Geometry } from 'geojson';
 import type { MapLayers, Hotspot, MilitaryFlight, MilitaryVessel, NaturalEvent, InternetOutage, CyberThreat, SocialUnrestEvent, UcdpGeoEvent, MilitaryBase, GammaIrradiator, Spaceport, EconomicCenter, StrategicWaterway, CriticalMineralProject, AIDataCenter, UnderseaCable, Pipeline, CableAdvisory, RepairShip, AisDisruptionEvent, AisDensityZone, AisDisruptionType } from '@/types';
 import type { Earthquake } from '@/services/earthquakes';
 import type { AirportDelayAlert } from '@/services/aviation';
@@ -274,6 +281,14 @@ interface GlobePath {
   pathType: 'cable' | 'oil' | 'gas' | 'products';
   status: string;
 }
+interface GlobePolygon {
+  coords: number[][][];
+  name: string;
+  _kind: 'boundary' | 'cii';
+  level?: string;
+  score?: number;
+  boundaryType?: string;
+}
 type GlobeMarker =
   | ConflictMarker | HotspotMarker | FlightMarker | VesselMarker
   | WeatherMarker | NaturalMarker | IranMarker | OutageMarker
@@ -284,9 +299,27 @@ type GlobeMarker =
   | FlightDelayMarker | CableAdvisoryMarker | RepairShipMarker | AisDisruptionMarker
   | NewsLocationMarker | FlashMarker;
 
+interface GlobeControlsLike {
+  autoRotate: boolean;
+  autoRotateSpeed: number;
+  enablePan: boolean;
+  enableZoom: boolean;
+  zoomSpeed: number;
+  minDistance: number;
+  maxDistance: number;
+  enableDamping: boolean;
+}
+
 export class GlobeMap {
   private container: HTMLElement;
   private globe: GlobeInstance | null = null;
+  private unsubscribeGlobeQuality: (() => void) | null = null;
+  private controls: GlobeControlsLike | null = null;
+  private renderPaused = false;
+  private pendingFlushWhilePaused = false;
+  private controlsAutoRotateBeforePause: boolean | null = null;
+  private controlsDampingBeforePause: boolean | null = null;
+
   private initialized = false;
   private destroyed = false;
   private flushTimer: ReturnType<typeof requestAnimationFrame> | null = null;
@@ -327,6 +360,8 @@ export class GlobeMap {
   private globePaths: GlobePath[] = [];
   private cableFaultIds = new Set<string>();
   private cableDegradedIds = new Set<string>();
+  private ciiScoresMap: Map<string, { score: number; level: string }> = new Map();
+  private countriesGeoData: FeatureCollection<Geometry> | null = null;
 
   // Current layers state
   private layers: MapLayers;
@@ -366,9 +401,20 @@ export class GlobeMap {
   private async initGlobe(): Promise<void> {
     if (this.destroyed) return;
 
+    const desktop = isDesktopRuntime();
+    const initialScale = getGlobeRenderScale();
+    const initialPixelRatio = desktop
+      ? Math.min(resolveGlobePixelRatio(initialScale), 1.25)
+      : resolveGlobePixelRatio(initialScale);
     const config: ConfigOptions = {
       animateIn: false,
-      rendererConfig: { logarithmicDepthBuffer: true },
+      rendererConfig: {
+        // Desktop (Tauri/WebView2) can fall back to software rendering on some machines.
+        // Keep defaults conservative to avoid 1fps reports (see #930).
+        powerPreference: desktop ? 'high-performance' : 'default',
+        logarithmicDepthBuffer: !desktop,
+        antialias: initialPixelRatio > 1,
+      },
     };
 
     const globe = new Globe(this.container, config) as GlobeInstance;
@@ -377,6 +423,25 @@ export class GlobeMap {
       globe._destructor();
       return;
     }
+
+    const applyRenderQuality = (scale?: GlobeRenderScale, width?: number, height?: number) => {
+      try {
+        const pr = desktop
+          ? Math.min(resolveGlobePixelRatio(scale ?? getGlobeRenderScale()), 1.25)
+          : resolveGlobePixelRatio(scale ?? getGlobeRenderScale());
+        const renderer = globe.renderer();
+        renderer.setPixelRatio(pr);
+        const w = (width ?? this.container.clientWidth) || window.innerWidth;
+        const h = (height ?? this.container.clientHeight) || window.innerHeight;
+        if (w > 0 && h > 0) globe.width(w).height(h);
+      } catch {
+        // best-effort
+      }
+    };
+
+    applyRenderQuality(initialScale);
+    this.unsubscribeGlobeQuality?.();
+    this.unsubscribeGlobeQuality = subscribeGlobeRenderScaleChange((scale) => applyRenderQuality(scale));
 
     // Initial sizing: use container dimensions, fall back to window if not yet laid out
     const initW = this.container.clientWidth || window.innerWidth;
@@ -392,15 +457,16 @@ export class GlobeMap {
       .pathTransitionDuration(0);
 
     // Orbit controls — match Sentinel's settings
-    const controls = globe.controls();
-    controls.autoRotate = true;
+    const controls = globe.controls() as GlobeControlsLike;
+    this.controls = controls;
+    controls.autoRotate = !desktop;
     controls.autoRotateSpeed = 0.3;
     controls.enablePan = false;
     controls.enableZoom = true;
     controls.zoomSpeed = 1.4;
     controls.minDistance = 101;
     controls.maxDistance = 600;
-    controls.enableDamping = true;
+    controls.enableDamping = !desktop;
 
     // Force the canvas to visually fill the container so it expands with CSS transitions.
     // globe.gl sets explicit width/height attributes; we override the CSS so the canvas
@@ -417,7 +483,7 @@ export class GlobeMap {
       if (!this.globe || this.destroyed) return;
       const w = this.container.clientWidth;
       const h = this.container.clientHeight;
-      if (w > 0 && h > 0) this.globe.width(w).height(h);
+      applyRenderQuality(undefined, w, h);
     });
     this.resizeObserver.observe(this.container);
 
@@ -443,13 +509,15 @@ export class GlobeMap {
 
     // Pause auto-rotate on user interaction; resume after 60 s idle (like Sentinel)
     const pauseAutoRotate = () => {
+      if (this.renderPaused) return;
       controls.autoRotate = false;
       if (this.autoRotateTimer) clearTimeout(this.autoRotateTimer);
     };
     const scheduleResumeAutoRotate = () => {
+      if (this.renderPaused) return;
       if (this.autoRotateTimer) clearTimeout(this.autoRotateTimer);
       this.autoRotateTimer = setTimeout(() => {
-        controls.autoRotate = true;
+        if (!this.renderPaused) controls.autoRotate = !desktop;
       }, 60_000);
     };
 
@@ -489,12 +557,18 @@ export class GlobeMap {
     // Navigate to initial view
     this.setView(this.currentView);
 
-    // Day/Night is a DeckGL solar-terminator polygon layer — not available on globe
-    this.layers.dayNight = false;
-    this.hideLayerToggle('dayNight');
+    // dayNight toggle excluded by catalog (renderers: ['flat'])
 
     // Flush any data that arrived before init completed
     this.flushMarkers();
+
+    // Load countries GeoJSON for CII choropleth
+    getCountriesGeoJson().then(geojson => {
+      if (geojson && !this.destroyed) {
+        this.countriesGeoData = geojson;
+        if (this.ciiScoresMap.size > 0) this.flushPolygons();
+      }
+    }).catch(err => { if (import.meta.env.DEV) console.warn('[GlobeMap] Failed to load countries GeoJSON', err); });
   }
 
   // ─── Marker element builder ────────────────────────────────────────────────
@@ -957,39 +1031,12 @@ export class GlobeMap {
   }
 
   private createLayerToggles(): void {
-    const layers: Array<{ key: keyof MapLayers; label: string; icon: string }> = [
-      // Conflict & Security
-      { key: 'iranAttacks',  label: 'Iran Attacks',          icon: '&#127919;' },
-      { key: 'hotspots',     label: 'Intel Hotspots',        icon: '&#127919;' },
-      { key: 'conflicts',    label: 'Conflict Zones',         icon: '&#9876;'   },
-      { key: 'bases',        label: 'Military Bases',         icon: '&#127963;' },
-      { key: 'nuclear',      label: 'Nuclear Sites',          icon: '&#9762;'   },
-      { key: 'irradiators',  label: 'Gamma Irradiators',      icon: '&#9888;'   },
-      { key: 'spaceports',   label: 'Spaceports',             icon: '&#128640;' },
-      { key: 'military',     label: 'Military Activity',      icon: '&#9992;'   },
-      { key: 'ais',          label: 'Ship Traffic',           icon: '&#128674;' },
-      { key: 'flights',      label: 'Flight Delays',          icon: '&#9992;'   },
-      { key: 'protests',     label: 'Protests & Unrest',      icon: '&#128226;' },
-      { key: 'ucdpEvents',   label: 'UCDP Events',            icon: '&#9876;'   },
-      { key: 'displacement', label: 'Displacement Flows',     icon: '&#128101;' },
-      // Infrastructure
-      { key: 'cables',       label: 'Undersea Cables',        icon: '&#128268;' },
-      { key: 'pipelines',    label: 'Pipelines',              icon: '&#128738;' },
-      { key: 'datacenters',  label: 'Data Centers',           icon: '&#128421;' },
-      { key: 'tradeRoutes',  label: 'Trade Routes',           icon: '&#9875;'   },
-      { key: 'waterways',    label: 'Strategic Waterways',    icon: '&#9875;'   },
-      { key: 'economic',     label: 'Economic Centers',       icon: '&#128176;' },
-      { key: 'minerals',     label: 'Critical Minerals',      icon: '&#128142;' },
-      // Hazards & Environment
-      { key: 'weather',      label: 'Weather Alerts',         icon: '&#9928;'   },
-      { key: 'natural',      label: 'Natural Events',         icon: '&#127755;' },
-      { key: 'fires',        label: 'Wildfires',              icon: '&#128293;' },
-      { key: 'climate',      label: 'Climate Anomalies',      icon: '&#127787;' },
-      { key: 'outages',      label: 'Internet Outages',       icon: '&#128225;' },
-      { key: 'cyberThreats', label: 'Cyber Threats',          icon: '&#128737;' },
-      { key: 'gpsJamming',   label: 'GPS Jamming',            icon: '&#128225;' },
-      { key: 'dayNight',     label: 'Day / Night',            icon: '&#127763;' },
-    ];
+    const layerDefs = getLayersForVariant((SITE_VARIANT || 'full') as MapVariant, 'globe');
+    const layers = layerDefs.map(def => ({
+      key: def.key,
+      label: resolveLayerLabel(def, t),
+      icon: def.icon,
+    }));
 
     const el = document.createElement('div');
     el.className = 'layer-toggles deckgl-layer-toggles';
@@ -998,7 +1045,7 @@ export class GlobeMap {
     el.style.top = '10px';
     el.innerHTML = `
       <div class="toggle-header">
-        <span>LAYERS</span>
+        <span>${t('components.deckgl.layersTitle')}</span>
         <button class="toggle-collapse">&#9660;</button>
       </div>
       <div class="toggle-list" style="max-height:32vh;overflow-y:auto;scrollbar-width:thin;">
@@ -1046,6 +1093,10 @@ export class GlobeMap {
 
   private flushMarkers(): void {
     if (!this.globe || !this.initialized || this.destroyed) return;
+    if (this.renderPaused) {
+      this.pendingFlushWhilePaused = true;
+      return;
+    }
     if (this.flushTimer) return;
     this.flushTimer = requestAnimationFrame(() => {
       this.flushTimer = null;
@@ -1154,25 +1205,54 @@ export class GlobeMap {
       .pathLabel((d: GlobePath) => d.name);
   }
 
+  private static readonly CII_GLOBE_COLORS: Record<string, string> = {
+    low:      'rgba(40, 180, 60, 0.35)',
+    normal:   'rgba(220, 200, 50, 0.35)',
+    elevated: 'rgba(240, 140, 30, 0.40)',
+    high:     'rgba(220, 50, 20, 0.45)',
+    critical: 'rgba(140, 10, 0, 0.50)',
+  };
+
   private flushPolygons(): void {
     if (!this.globe || !this.initialized || this.destroyed) return;
-    const polys = this.layers.conflicts
-      ? GEOPOLITICAL_BOUNDARIES.map(b => ({
-          coords: [b.coords],
-          name: b.name,
-          boundaryType: b.boundaryType,
-        }))
-      : [];
+    const polys: GlobePolygon[] = [];
+
+    if (this.layers.conflicts) {
+      for (const b of GEOPOLITICAL_BOUNDARIES) {
+        polys.push({ coords: [b.coords], name: b.name, _kind: 'boundary', boundaryType: b.boundaryType });
+      }
+    }
+
+    if (this.layers.ciiChoropleth && this.countriesGeoData) {
+      for (const feat of this.countriesGeoData.features) {
+        const code = feat.properties?.['ISO3166-1-Alpha-2'] as string | undefined;
+        const entry = code ? this.ciiScoresMap.get(code) : undefined;
+        if (!entry || !code) continue;
+        const geom = feat.geometry;
+        const rings = geom.type === 'Polygon' ? [geom.coordinates] : geom.type === 'MultiPolygon' ? geom.coordinates : [];
+        const name = (feat.properties?.name as string) ?? code;
+        for (const ring of rings) {
+          polys.push({ coords: ring, name, _kind: 'cii', level: entry.level, score: entry.score });
+        }
+      }
+    }
+
+    const colors = GlobeMap.CII_GLOBE_COLORS;
     (this.globe as any)
       .polygonsData(polys)
-      .polygonCapColor(() => 'rgba(255, 60, 60, 0.15)')
-      .polygonSideColor(() => 'rgba(255, 60, 60, 0.08)')
-      .polygonStrokeColor(() => '#ff4444')
-      .polygonAltitude(0.005)
-      .polygonLabel((d: { name: string }) => d.name);
+      .polygonCapColor((d: GlobePolygon) => d._kind === 'cii' ? (colors[d.level!] ?? 'rgba(0,0,0,0)') : 'rgba(255, 60, 60, 0.15)')
+      .polygonSideColor((d: GlobePolygon) => d._kind === 'cii' ? 'rgba(0,0,0,0)' : 'rgba(255, 60, 60, 0.08)')
+      .polygonStrokeColor((d: GlobePolygon) => d._kind === 'cii' ? 'rgba(80, 80, 80, 0.3)' : '#ff4444')
+      .polygonAltitude((d: GlobePolygon) => d._kind === 'cii' ? 0.002 : 0.005)
+      .polygonLabel((d: GlobePolygon) => d._kind === 'cii' ? `<b>${escapeHtml(d.name)}</b><br/>CII: ${d.score}/100 (${escapeHtml(d.level ?? '')})` : escapeHtml(d.name));
   }
 
   // ─── Public data setters ──────────────────────────────────────────────────
+
+  public setCIIScores(scores: Array<{ code: string; score: number; level: string }>): void {
+    this.ciiScoresMap = new Map(scores.map(s => [s.code, { score: s.score, level: s.level }]));
+    this.flushPolygons();
+  }
 
   public setHotspots(hotspots: Hotspot[]): void {
     this.hotspots = hotspots.map(h => ({
@@ -1356,12 +1436,13 @@ export class GlobeMap {
   // ─── Layer control ────────────────────────────────────────────────────────
 
   public setLayers(layers: MapLayers): void {
-    this.layers = { ...layers, dayNight: false }; // dayNight unsupported on globe
+    // dayNight toggle excluded by catalog — harmless if true in memory
+    this.layers = { ...layers };
     this.flushMarkers();
   }
 
   public enableLayer(layer: keyof MapLayers): void {
-    if (layer === 'dayNight') return; // unsupported on globe
+    // dayNight toggle excluded by catalog — no guard needed
     (this.layers as any)[layer] = true;
     this.flushMarkers();
   }
@@ -1455,7 +1536,45 @@ export class GlobeMap {
     if (!isResizing) this.resize();
   }
   public setZoom(_z: number): void {}
-  public setRenderPaused(_paused: boolean): void {}
+  public setRenderPaused(paused: boolean): void {
+    if (this.renderPaused === paused) return;
+    this.renderPaused = paused;
+
+    if (paused) {
+      if (this.flushTimer) {
+        cancelAnimationFrame(this.flushTimer);
+        this.flushTimer = null;
+      }
+      this.pendingFlushWhilePaused = true;
+      if (this.autoRotateTimer) {
+        clearTimeout(this.autoRotateTimer);
+        this.autoRotateTimer = null;
+      }
+    }
+
+    if (this.controls) {
+      if (paused) {
+        this.controlsAutoRotateBeforePause = this.controls.autoRotate;
+        this.controlsDampingBeforePause = this.controls.enableDamping;
+        this.controls.autoRotate = false;
+        this.controls.enableDamping = false;
+      } else {
+        if (this.controlsAutoRotateBeforePause !== null) {
+          this.controls.autoRotate = this.controlsAutoRotateBeforePause;
+        }
+        if (this.controlsDampingBeforePause !== null) {
+          this.controls.enableDamping = this.controlsDampingBeforePause;
+        }
+        this.controlsAutoRotateBeforePause = null;
+        this.controlsDampingBeforePause = null;
+      }
+    }
+
+    if (!paused && this.pendingFlushWhilePaused) {
+      this.pendingFlushWhilePaused = false;
+      this.flushMarkers();
+    }
+  }
   public updateHotspotActivity(_news: any[]): void {}
   public updateMilitaryForEscalation(_f: any[], _v: any[]): void {}
   public getHotspotDynamicScore(_id: string) { return undefined; }
@@ -1738,12 +1857,17 @@ export class GlobeMap {
   // ─── Destroy ──────────────────────────────────────────────────────────────
 
   public destroy(): void {
+    this.unsubscribeGlobeQuality?.();
+    this.unsubscribeGlobeQuality = null;
     this.destroyed = true;
     if (this.flushTimer) { cancelAnimationFrame(this.flushTimer); this.flushTimer = null; }
     if (this.autoRotateTimer) clearTimeout(this.autoRotateTimer);
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
     this.hideTooltip();
+    this.controls = null;
+    this.controlsAutoRotateBeforePause = null;
+    this.controlsDampingBeforePause = null;
     this.layerTogglesEl = null;
     if (this.globe) {
       try { this.globe._destructor(); } catch { /* ignore */ }

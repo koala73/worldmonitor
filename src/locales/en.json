@@ -746,8 +746,8 @@
     },
     "supplyChain": {
       "chokepoints": "Chokepoints",
-      "shipping": "Shipping",
-      "minerals": "Minerals",
+      "shipping": "Shipping Rates",
+      "minerals": "Critical Minerals",
       "noChokepoints": "Chokepoint data loading...",
       "noShipping": "Shipping rate data not available",
       "noMinerals": "Mineral data loading...",
@@ -755,6 +755,7 @@
       "upstreamUnavailable": "Supply chain data temporarily unavailable — showing cached data",
       "spikeAlert": "Spike detected — rate significantly above 52-week average (weekly)",
       "warnings": "warning(s)",
+      "aisDisruptions": "AIS disruption(s)",
       "mineral": "Mineral",
       "topProducers": "Top Producers",
       "risk": "Risk",
@@ -965,6 +966,11 @@
         "base": "Base",
         "nuclear": "Nuclear",
         "aircraft": "Aircraft"
+        "ciiLow": "Low (0–30)",
+        "ciiNormal": "Normal (31–50)",
+        "ciiElevated": "Elevated (51–65)",
+        "ciiHigh": "High (66–80)",
+        "ciiCritical": "Critical (81–100)"
       },
       "layerGuide": "Layer Guide",
       "layersTitle": "Layers",
@@ -1017,8 +1023,14 @@
         "tradeRoutes": "Trade Routes",
         "iranAttacks": "Iran Attacks",
         "gpsJamming": "GPS JAMMING",
+        "ciiChoropleth": "CII Instability",
         "dayNight": "Day/Night",
-        "geopoliticalBoundaries": "Geopolitical Boundaries"
+        "geopoliticalBoundaries": "Geopolitical Boundaries",
+        "positiveEvents": "Positive Events",
+        "kindness": "Acts of Kindness",
+        "happiness": "World Happiness",
+        "speciesRecovery": "Species Recovery",
+        "renewableInstallations": "Clean Energy"
       },
       "tooltip": {
         "earthquake": "Earthquake",
@@ -1123,7 +1135,8 @@
           "financeGulfInvestments": "GCC sovereign wealth fund investments and FDI",
           "tradeRoutes": "Major global shipping lanes connecting ports through strategic chokepoints",
           "dayNight": "Real-time solar terminator showing day and night zones",
-          "geoBoundaries": "Demilitarized zones, ceasefire lines, and disputed boundaries"
+          "geoBoundaries": "Demilitarized zones, ceasefire lines, and disputed boundaries",
+          "ciiChoropleth": "Country Instability Index heat-map — colors countries by CII score (green=stable, red=critical)"
         },
         "notes": {
           "timeAffects": "Affects: Earthquakes, Weather, Protests, Outages"
@@ -1149,6 +1162,15 @@
       "sectionStreaming": "Streaming",
       "streamQualityLabel": "Video Quality",
       "streamQualityDesc": "Set quality for all live streams (lower saves bandwidth)",
+      "globeRenderQualityLabel": "Globe render quality",
+      "globeRenderQualityDesc": "Controls the globe canvas resolution. Higher values look sharper on 4K displays but can melt GPUs.",
+      "globeRenderScaleOptions": {
+        "auto": "Auto (device)",
+        "1": "Eco (1x)",
+        "1_5": "Sharp (1.5x)",
+        "2": "4K (2x)",
+        "3": "Insane (3x)"
+      },
       "mapFlashLabel": "Live Event Pulse",
       "mapFlashDesc": "Flash locations on the map when breaking news arrives",
       "aiFlowTitle": "Settings",
@@ -1171,7 +1193,9 @@
       "badgeAnimDesc": "Animate update badges on panel headers",
       "sectionIntelligence": "Intelligence",
       "headlineMemoryLabel": "Headline Memory",
-      "headlineMemoryDesc": "Remember seen headlines to highlight new stories"
+      "headlineMemoryDesc": "Remember seen headlines to highlight new stories",
+      "streamAlwaysOnLabel": "Keep live streams running",
+      "streamAlwaysOnDesc": "Prevents Live Cams and Live News from auto-pausing when you are idle. Recommended for second-monitor / wallboard usage. Disable (Eco) to save CPU/bandwidth."
     },
     "cascade": {
       "noImpacts": "No country impacts detected",

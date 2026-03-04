@@ -2523,6 +2523,62 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
   }
 }
 
+
+
+/* Mobile: make toolbars swipeable (horizontal scroll) */
+@media (max-width: 768px) {
+  /* Live News channels */
+  .live-news-switcher {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+    touch-action: pan-x;
+    padding-bottom: 2px;
+  }
+
+  .live-news-switcher::-webkit-scrollbar {
+    display: none;
+  }
+
+  .live-news-switcher {
+    scrollbar-width: none;
+  }
+
+  .live-channel-btn {
+    scroll-snap-align: start;
+    flex: 0 0 auto;
+  }
+
+  /* Webcams regions */
+  .webcam-toolbar {
+    align-items: flex-start;
+  }
+
+  .webcam-toolbar-group {
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+    touch-action: pan-x;
+    min-width: 0;
+    flex-wrap: nowrap;
+  }
+
+  .webcam-toolbar-group::-webkit-scrollbar {
+    display: none;
+  }
+
+  .webcam-toolbar-group {
+    scrollbar-width: none;
+  }
+
+  .webcam-region-btn {
+    scroll-snap-align: start;
+    flex: 0 0 auto;
+  }
+}
 /* News Items */
 .item {
   padding: 8px 0;
@@ -9439,11 +9495,12 @@ a.prediction-link:hover {
     -webkit-overflow-scrolling: touch;
   }
 
-  /* Make map section smaller on mobile to show panels */
+  /* Full-viewport map on mobile (Google Maps-like experience) */
   .map-section {
-    height: 40vh !important;
-    min-height: 250px !important;
-    max-height: 50vh !important;
+    height: calc(100vh - 48px) !important;
+    height: calc(100dvh - 48px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) !important;
+    min-height: 60vh !important;
+    max-height: 100dvh !important;
   }
 
   /* Collapsed map on mobile — higher specificity overrides .map-section above */
@@ -9876,6 +9933,14 @@ a.prediction-link:hover {
   background: var(--darken-medium);
   border-radius: 4px;
   padding: 8px;
+  cursor: pointer;
+  transition: background 0.1s ease, border-color 0.1s ease;
+  border: 1px solid transparent;
+}
+
+.cii-country:hover {
+  background: var(--surface-hover);
+  border-color: var(--border);
 }
 
 .cii-header {
@@ -13687,7 +13752,8 @@ a.prediction-link:hover {
   color: var(--green);
 }
 
-/* Language select */
+/* Unified settings selects */
+.unified-settings-select,
 .unified-settings-lang-select {
   background: var(--bg);
   border: 1px solid var(--border);
@@ -13700,6 +13766,7 @@ a.prediction-link:hover {
   margin-top: 4px;
 }
 
+.unified-settings-select:focus,
 .unified-settings-lang-select:focus {
   outline: none;
   border-color: var(--text-dim);
@@ -16560,6 +16627,7 @@ body.has-breaking-alert .panels-grid {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
 /* ─── Globe Map Styles ──────────────────────────────────────────────────────── */
 
 .globe-mode {

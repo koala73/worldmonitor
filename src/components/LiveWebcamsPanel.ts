@@ -5,6 +5,8 @@ import { escapeHtml } from '@/utils/sanitize';
 import { t } from '../services/i18n';
 import { trackWebcamSelected, trackWebcamRegionFiltered } from '@/services/analytics';
 import { getStreamQuality, subscribeStreamQualityChange } from '@/services/ai-flow-settings';
+import { isMobileDevice } from '@/utils';
+import { getLiveStreamsAlwaysOn, subscribeLiveStreamsSettingsChange } from '@/services/live-stream-settings';
 
 type WebcamRegion = 'iran' | 'middle-east' | 'europe' | 'asia' | 'americas';
 
@@ -51,6 +53,10 @@ const WEBCAM_FEEDS: WebcamFeed[] = [
 
 const MAX_GRID_CELLS = 4;
 
+// Eco mode pauses streams after inactivity to save CPU/bandwidth.
+const ECO_IDLE_PAUSE_MS = IDLE_PAUSE_MS;
+const IDLE_ACTIVITY_EVENTS = ['mousedown', 'keydown', 'scroll', 'touchstart', 'mousemove'] as const;
+
 type ViewMode = 'grid' | 'single';
 type RegionFilter = 'all' | WebcamRegion;
 
@@ -62,21 +68,36 @@ export class LiveWebcamsPanel extends Panel {
   private iframes: HTMLIFrameElement[] = [];
   private observer: IntersectionObserver | null = null;
   private isVisible = false;
+  // Stream lifecycle
   private idleTimeout: ReturnType<typeof setTimeout> | null = null;
   private boundIdleResetHandler!: () => void;
   private boundVisibilityHandler!: () => void;
-  private readonly IDLE_PAUSE_MS = IDLE_PAUSE_MS;
+  private idleDetectionEnabled = false;
   private isIdle = false;
+  private alwaysOn = getLiveStreamsAlwaysOn();
+  private unsubscribeStreamSettings: (() => void) | null = null;
+
+  // UI
   private fullscreenBtn: HTMLButtonElement | null = null;
   private isFullscreen = false;
+  private readonly forceSingleView = !isDesktopRuntime() && isMobileDevice();
 
   constructor() {
     super({ id: 'live-webcams', title: t('panels.liveWebcams'), className: 'panel-wide' });
+
+    // Mobile: force single-cam view. 4 iframes at once is a battery + performance disaster.
+    if (this.forceSingleView) {
+      this.viewMode = 'single';
+    }
     this.createFullscreenButton();
     this.createToolbar();
     this.setupIntersectionObserver();
     this.setupIdleDetection();
     subscribeStreamQualityChange(() => this.render());
+    this.unsubscribeStreamSettings = subscribeLiveStreamsSettingsChange((alwaysOn) => {
+      this.alwaysOn = alwaysOn;
+      this.applyIdleMode();
+    });
     this.render();
     document.addEventListener('keydown', this.boundFullscreenEscHandler);
   }
@@ -168,6 +189,12 @@ export class LiveWebcamsPanel extends Panel {
     singleBtn.title = 'Single view';
     singleBtn.addEventListener('click', () => this.setViewMode('single'));
 
+    // On mobile we force single view and hide/disable the grid toggle.
+    if (this.forceSingleView) {
+      gridBtn.disabled = true;
+      gridBtn.style.display = 'none';
+    }
+
     viewGroup.appendChild(gridBtn);
     viewGroup.appendChild(singleBtn);
 
@@ -191,6 +218,7 @@ export class LiveWebcamsPanel extends Panel {
   }
 
   private setViewMode(mode: ViewMode): void {
+    if (this.forceSingleView && mode === 'grid') return;
     if (mode === this.viewMode) return;
     this.viewMode = mode;
     this.toolbar?.querySelectorAll('.webcam-view-btn').forEach(btn => {
@@ -243,6 +271,12 @@ export class LiveWebcamsPanel extends Panel {
   }
 
   private renderGrid(): void {
+    if (this.forceSingleView) {
+      this.viewMode = 'single';
+      this.renderSingle();
+      return;
+    }
+
     this.content.innerHTML = '';
     this.content.className = 'panel-content webcam-content';
 
@@ -317,11 +351,13 @@ export class LiveWebcamsPanel extends Panel {
     const switcher = document.createElement('div');
     switcher.className = 'webcam-switcher';
 
-    const backBtn = document.createElement('button');
-    backBtn.className = 'webcam-feed-btn webcam-back-btn';
-    backBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/></svg> Grid';
-    backBtn.addEventListener('click', () => this.setViewMode('grid'));
-    switcher.appendChild(backBtn);
+    if (!this.forceSingleView) {
+      const backBtn = document.createElement('button');
+      backBtn.className = 'webcam-feed-btn webcam-back-btn';
+      backBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/></svg> Grid';
+      backBtn.addEventListener('click', () => this.setViewMode('grid'));
+      switcher.appendChild(backBtn);
+    }
 
     this.filteredFeeds.forEach(feed => {
       const btn = document.createElement('button');
@@ -363,21 +399,57 @@ export class LiveWebcamsPanel extends Panel {
     this.observer.observe(this.element);
   }
 
+  private applyIdleMode(): void {
+    if (this.alwaysOn) {
+      if (this.idleTimeout) {
+        clearTimeout(this.idleTimeout);
+        this.idleTimeout = null;
+      }
+      if (this.idleDetectionEnabled) {
+        IDLE_ACTIVITY_EVENTS.forEach((event) => {
+          document.removeEventListener(event, this.boundIdleResetHandler);
+        });
+        this.idleDetectionEnabled = false;
+      }
+      if (this.isIdle && !document.hidden) {
+        this.isIdle = false;
+        if (this.isVisible) this.render();
+      }
+      return;
+    }
+
+    if (!this.idleDetectionEnabled) {
+      IDLE_ACTIVITY_EVENTS.forEach((event) => {
+        document.addEventListener(event, this.boundIdleResetHandler, { passive: true });
+      });
+      this.idleDetectionEnabled = true;
+    }
+
+    this.boundIdleResetHandler();
+  }
+
   private setupIdleDetection(): void {
+    // Background: always suspend when the document is hidden.
     this.boundVisibilityHandler = () => {
       if (document.hidden) {
+        // Suspend idle timer so background playback isn't killed.
         if (this.idleTimeout) clearTimeout(this.idleTimeout);
-      } else {
-        if (this.isIdle) {
-          this.isIdle = false;
-          if (this.isVisible) this.render();
-        }
-        this.boundIdleResetHandler();
+        return;
       }
+
+      // Visible again.
+      if (this.isIdle) {
+        this.isIdle = false;
+        if (this.isVisible) this.render();
+      }
+
+      this.applyIdleMode();
     };
     document.addEventListener('visibilitychange', this.boundVisibilityHandler);
 
+    // Eco mode idle timer.
     this.boundIdleResetHandler = () => {
+      if (this.alwaysOn) return;
       if (this.idleTimeout) clearTimeout(this.idleTimeout);
       if (this.isIdle) {
         this.isIdle = false;
@@ -387,14 +459,10 @@ export class LiveWebcamsPanel extends Panel {
         this.isIdle = true;
         this.destroyIframes();
         this.content.innerHTML = `<div class="webcam-placeholder">${escapeHtml(t('components.webcams.pausedIdle'))}</div>`;
-      }, this.IDLE_PAUSE_MS);
+      }, ECO_IDLE_PAUSE_MS);
     };
 
-    ['mousedown', 'keydown', 'scroll', 'touchstart', 'mousemove'].forEach(event => {
-      document.addEventListener(event, this.boundIdleResetHandler, { passive: true });
-    });
-
-    this.boundIdleResetHandler();
+    this.applyIdleMode();
   }
 
   public refresh(): void {
@@ -410,11 +478,13 @@ export class LiveWebcamsPanel extends Panel {
     }
     document.removeEventListener('visibilitychange', this.boundVisibilityHandler);
     document.removeEventListener('keydown', this.boundFullscreenEscHandler);
-    ['mousedown', 'keydown', 'scroll', 'touchstart', 'mousemove'].forEach(event => {
+    IDLE_ACTIVITY_EVENTS.forEach(event => {
       document.removeEventListener(event, this.boundIdleResetHandler);
     });
     if (this.isFullscreen) this.toggleFullscreen();
     this.observer?.disconnect();
+    this.unsubscribeStreamSettings?.();
+    this.unsubscribeStreamSettings = null;
     this.destroyIframes();
     super.destroy();
   }

@@ -25,7 +25,7 @@ import {
   type RuntimeFeatureId,
   type RuntimeSecretKey,
 } from '@/services/runtime-config';
-import { getApiBaseUrl, getRemoteApiBaseUrl, isDesktopRuntime, resolveLocalApiPort, startSmartPollLoop, type SmartPollLoopHandle } from '@/services/runtime';
+import { getApiBaseUrl, isDesktopRuntime, resolveLocalApiPort, startSmartPollLoop, type SmartPollLoopHandle } from '@/services/runtime';
 import { tryInvokeTauri, invokeTauri } from '@/services/tauri-bridge';
 import { escapeHtml } from '@/utils/sanitize';
 import { initI18n, t } from '@/services/i18n';
@@ -287,8 +287,7 @@ function initOverviewListeners(area: HTMLElement): void {
     btn.textContent = t('modals.settingsWindow.worldMonitor.register.submitting');
 
     try {
-      const base = isDesktopRuntime() ? getRemoteApiBaseUrl() : '';
-      const res = await fetch(`${base}/api/register-interest`, {
+      const res = await diagFetch('/api/register-interest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, source: 'desktop-settings' }),

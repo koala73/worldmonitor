@@ -1127,6 +1127,15 @@ async function dispatch(requestUrl, req, routes, context) {
     }
   }
 
+  // YouTube live detection — requires residential proxy (Railway relay).
+  // Direct fetch from sidecar fails (YouTube blocks datacenter IPs).
+  // Always proxy to cloud, bypassing the cloudFallback flag.
+  if (requestUrl.pathname === '/api/youtube/live') {
+    const cloudResponse = await tryCloudFallback(requestUrl, req, context, 'youtube-live needs relay');
+    if (cloudResponse) return cloudResponse;
+    return json({ error: 'YouTube live detection unavailable' }, 503);
+  }
+
   // RSS proxy — fetch public feeds with SSRF protection
   if (requestUrl.pathname === '/api/rss-proxy') {
     const feedUrl = requestUrl.searchParams.get('url');

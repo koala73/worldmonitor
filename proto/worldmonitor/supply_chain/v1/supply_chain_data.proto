@@ -29,6 +29,7 @@ message ChokepointInfo {
   string congestion_level = 8;
   repeated string affected_routes = 9;
   string description = 10;
+  int32 ais_disruptions = 11;
 }
 
 message MineralProducer {

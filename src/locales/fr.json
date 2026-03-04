@@ -1028,7 +1028,9 @@
       "badgeAnimDesc": "Animer les badges de mise à jour dans les en-têtes de panneau",
       "sectionIntelligence": "Renseignement",
       "headlineMemoryLabel": "Mémoire des titres",
-      "headlineMemoryDesc": "Mémoriser les titres vus pour mettre en évidence les nouveaux"
+      "headlineMemoryDesc": "Mémoriser les titres vus pour mettre en évidence les nouveaux",
+      "streamAlwaysOnLabel": "Garder les flux en direct actifs",
+      "streamAlwaysOnDesc": "Empêche la mise en pause automatique de Live Cams et Live News lorsque vous êtes inactif. Recommandé pour un second écran / usage wallboard. Désactivez (Éco) pour économiser CPU/bande passante."
     },
     "cascade": {
       "noImpacts": "Aucun impact pays détecté",

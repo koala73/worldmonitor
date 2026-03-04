@@ -1760,6 +1760,146 @@ async function startCyberThreatsSeedLoop() {
   }, CYBER_SEED_INTERVAL_MS).unref?.();
 }
 
+// ─────────────────────────────────────────────────────────────
+// Positive Events Seed — Railway fetches GDELT GEO API → writes to Redis
+// so Vercel handler serves from cache (avoids 25s edge timeout on slow GDELT)
+// ─────────────────────────────────────────────────────────────
+const POSITIVE_EVENTS_INTERVAL_MS = 900_000; // 15 min
+const POSITIVE_EVENTS_TTL = 2700; // 3× interval
+const POSITIVE_EVENTS_RPC_KEY = 'positive-events:geo:v1';
+const POSITIVE_EVENTS_BOOTSTRAP_KEY = 'positive-events:geo-bootstrap:v1';
+const POSITIVE_EVENTS_MAX = 500;
+
+const POSITIVE_QUERIES = [
+  '(breakthrough OR discovery OR "renewable energy")',
+  '(conservation OR "poverty decline" OR "humanitarian aid")',
+  '("good news" OR volunteer OR donation OR charity)',
+];
+
+// Mirrors CATEGORY_KEYWORDS from src/services/positive-classifier.ts — keep in sync
+const POSITIVE_CATEGORY_KEYWORDS = [
+  ['clinical trial', 'science-health'], ['study finds', 'science-health'],
+  ['researchers', 'science-health'], ['scientists', 'science-health'],
+  ['breakthrough', 'science-health'], ['discovery', 'science-health'],
+  ['cure', 'science-health'], ['vaccine', 'science-health'],
+  ['treatment', 'science-health'], ['medical', 'science-health'],
+  ['endangered species', 'nature-wildlife'], ['conservation', 'nature-wildlife'],
+  ['wildlife', 'nature-wildlife'], ['species', 'nature-wildlife'],
+  ['marine', 'nature-wildlife'], ['forest', 'nature-wildlife'],
+  ['renewable', 'climate-wins'], ['solar', 'climate-wins'],
+  ['wind energy', 'climate-wins'], ['electric vehicle', 'climate-wins'],
+  ['emissions', 'climate-wins'], ['carbon', 'climate-wins'],
+  ['clean energy', 'climate-wins'], ['climate', 'climate-wins'],
+  ['robot', 'innovation-tech'], ['technology', 'innovation-tech'],
+  ['startup', 'innovation-tech'], ['innovation', 'innovation-tech'],
+  ['artificial intelligence', 'innovation-tech'],
+  ['volunteer', 'humanity-kindness'], ['donated', 'humanity-kindness'],
+  ['charity', 'humanity-kindness'], ['rescued', 'humanity-kindness'],
+  ['hero', 'humanity-kindness'], ['kindness', 'humanity-kindness'],
+  [' art ', 'culture-community'], ['music', 'culture-community'],
+  ['festival', 'culture-community'], ['education', 'culture-community'],
+];
+
+function classifyPositiveName(name) {
+  const lower = ` ${name.toLowerCase()} `;
+  for (const [kw, cat] of POSITIVE_CATEGORY_KEYWORDS) {
+    if (lower.includes(kw)) return cat;
+  }
+  return 'humanity-kindness';
+}
+
+function fetchGdeltGeoPositive(query) {
+  return new Promise((resolve) => {
+    const params = new URLSearchParams({ query, format: 'geojson', timespan: '24h', maxrecords: '75' });
+    const req = https.get(`https://api.gdeltproject.org/api/v2/geo/geo?${params}`, {
+      headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
+      timeout: 15000,
+    }, (resp) => {
+      if (resp.statusCode !== 200) { resp.resume(); return resolve([]); }
+      let body = '';
+      resp.on('data', (chunk) => { body += chunk; });
+      resp.on('end', () => {
+        try {
+          const data = JSON.parse(body);
+          const features = Array.isArray(data?.features) ? data.features : [];
+          const events = [];
+          const seen = new Set();
+          for (const f of features) {
+            const name = String(f.properties?.name || '').substring(0, 200);
+            if (!name || seen.has(name)) continue;
+            if (name.startsWith('ERROR:') || name.includes('unknown error')) continue;
+            const count = Number(f.properties?.count) || 1;
+            if (count < 3) continue;
+            const coords = f.geometry?.coordinates;
+            if (!Array.isArray(coords) || coords.length < 2) continue;
+            const [lon, lat] = coords;
+            if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) continue;
+            seen.add(name);
+            events.push({ latitude: lat, longitude: lon, name, category: classifyPositiveName(name), count, timestamp: Date.now() });
+          }
+          resolve(events);
+        } catch { resolve([]); }
+      });
+    });
+    req.on('error', () => resolve([]));
+    req.on('timeout', () => { req.destroy(); resolve([]); });
+  });
+}
+
+let positiveEventsInFlight = false;
+
+async function seedPositiveEvents() {
+  if (positiveEventsInFlight) return;
+  positiveEventsInFlight = true;
+  const t0 = Date.now();
+  try {
+    const allEvents = [];
+    const seenNames = new Set();
+    let anyQuerySucceeded = false;
+
+    for (let i = 0; i < POSITIVE_QUERIES.length; i++) {
+      if (i > 0) await new Promise((r) => setTimeout(r, 500));
+      try {
+        const events = await fetchGdeltGeoPositive(POSITIVE_QUERIES[i]);
+        anyQuerySucceeded = true;
+        for (const e of events) {
+          if (!seenNames.has(e.name)) {
+            seenNames.add(e.name);
+            allEvents.push(e);
+          }
+        }
+      } catch { /* individual query failure is non-fatal */ }
+    }
+
+    if (!anyQuerySucceeded) {
+      console.warn('[PositiveEvents] All queries failed — preserving last good data');
+      return;
+    }
+
+    const capped = allEvents.slice(0, POSITIVE_EVENTS_MAX);
+    const payload = { events: capped, fetchedAt: Date.now() };
+    const ok1 = await upstashSet(POSITIVE_EVENTS_RPC_KEY, payload, POSITIVE_EVENTS_TTL);
+    const ok2 = await upstashSet(POSITIVE_EVENTS_BOOTSTRAP_KEY, payload, POSITIVE_EVENTS_TTL);
+    console.log(`[PositiveEvents] Seeded ${capped.length} events (redis: ${ok1 && ok2 ? 'OK' : 'PARTIAL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  } catch (e) {
+    console.warn('[PositiveEvents] Seed error:', e?.message || e);
+  } finally {
+    positiveEventsInFlight = false;
+  }
+}
+
+async function startPositiveEventsSeedLoop() {
+  if (!UPSTASH_ENABLED) {
+    console.log('[PositiveEvents] Disabled (no Upstash Redis)');
+    return;
+  }
+  console.log(`[PositiveEvents] Seed loop starting (interval ${POSITIVE_EVENTS_INTERVAL_MS / 1000 / 60}min)`);
+  seedPositiveEvents().catch((e) => console.warn('[PositiveEvents] Initial seed error:', e?.message || e));
+  setInterval(() => {
+    seedPositiveEvents().catch((e) => console.warn('[PositiveEvents] Seed error:', e?.message || e));
+  }, POSITIVE_EVENTS_INTERVAL_MS).unref?.();
+}
+
 function gzipSyncBuffer(body) {
   try {
     return zlib.gzipSync(typeof body === 'string' ? Buffer.from(body) : body);
@@ -4586,6 +4726,7 @@ server.listen(PORT, () => {
   startMarketDataSeedLoop();
   startAviationSeedLoop();
   startCyberThreatsSeedLoop();
+  startPositiveEventsSeedLoop();
 });
 
 wss.on('connection', (ws, req) => {

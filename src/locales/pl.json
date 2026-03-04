@@ -1297,7 +1297,9 @@
       "badgeAnimDesc": "Animuj odznaki aktualizacji w nagłówkach paneli",
       "sectionIntelligence": "Wywiad",
       "headlineMemoryLabel": "Pamięć nagłówków",
-      "headlineMemoryDesc": "Zapamiętuj widziane nagłówki, aby wyróżnić nowe"
+      "headlineMemoryDesc": "Zapamiętuj widziane nagłówki, aby wyróżnić nowe",
+      "streamAlwaysOnLabel": "Utrzymuj transmisje na żywo",
+      "streamAlwaysOnDesc": "Zapobiega automatycznemu wstrzymywaniu Live Cams i Live News podczas bezczynności. Zalecane do użycia na drugim monitorze / wallboardzie. Wyłącz (Eco), aby oszczędzać CPU/pasmo."
     },
     "etfFlows": {
       "unavailable": "Dane ETF tymczasowo niedostępne",

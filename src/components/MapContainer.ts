@@ -196,6 +196,10 @@ export class MapContainer {
   }
 
   public resize(): void {
+    if (this.useGlobe) {
+      this.globeMap?.resize();
+      return;
+    }
     if (this.useDeckGL) {
       this.deckGLMap?.resize();
     } else {
@@ -440,6 +444,11 @@ export class MapContainer {
       this.deckGLMap?.setHappinessScores(data);
     }
     // SVG map does not support choropleth overlay
+  }
+
+  public setCIIScores(scores: Array<{ code: string; score: number; level: string }>): void {
+    if (this.useGlobe) { this.globeMap?.setCIIScores(scores); return; }
+    if (this.useDeckGL) { this.deckGLMap?.setCIIScores(scores); }
   }
 
   public setSpeciesRecoveryZones(species: SpeciesRecovery[]): void {

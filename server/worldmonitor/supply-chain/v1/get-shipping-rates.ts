@@ -23,8 +23,8 @@ interface FredSeriesConfig {
 }
 
 const SHIPPING_SERIES: FredSeriesConfig[] = [
-  { seriesId: 'PCU483111483111', name: 'Deep Sea Freight PPI', unit: 'index', frequency: 'm' },
-  { seriesId: 'TSIFRGHT', name: 'Freight Transportation Index', unit: 'index', frequency: 'm' },
+  { seriesId: 'PCU483111483111', name: 'Deep Sea Freight Producer Price Index', unit: 'index', frequency: 'm' },
+  { seriesId: 'TSIFRGHT', name: 'Freight Transportation Services Index', unit: 'index', frequency: 'm' },
 ];
 
 async function fetchFredSeries(cfg: FredSeriesConfig): Promise<ShippingIndex | null> {

@@ -1028,7 +1028,9 @@
       "badgeAnimDesc": "在面板标题中显示更新徽章动画",
       "sectionIntelligence": "情报",
       "headlineMemoryLabel": "标题记忆",
-      "headlineMemoryDesc": "记住已阅标题以突出显示新内容"
+      "headlineMemoryDesc": "记住已阅标题以突出显示新内容",
+      "streamAlwaysOnLabel": "保持实时流持续播放",
+      "streamAlwaysOnDesc": "防止 Live Cams 和 Live News 在你空闲时自动暂停。建议用于副屏 / 墙面看板场景。关闭（Eco）可节省 CPU/带宽。"
     },
     "cascade": {
       "noImpacts": "未检测到国家影响",

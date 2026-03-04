@@ -60,10 +60,15 @@ export class SupplyChainPanel extends Panel {
       </div>
     `;
 
+    const activeHasData = this.activeTab === 'chokepoints'
+      ? (this.chokepointData?.chokepoints.length ?? 0) > 0
+      : this.activeTab === 'shipping'
+        ? (this.shippingData?.indices.length ?? 0) > 0
+        : (this.mineralsData?.minerals.length ?? 0) > 0;
     const activeData = this.activeTab === 'chokepoints' ? this.chokepointData
       : this.activeTab === 'shipping' ? this.shippingData
       : this.mineralsData;
-    const unavailableBanner = activeData?.upstreamUnavailable
+    const unavailableBanner = !activeHasData && activeData?.upstreamUnavailable
       ? `<div class="economic-warning">${t('components.supplyChain.upstreamUnavailable')}</div>`
       : '';
 
@@ -93,6 +98,7 @@ export class SupplyChainPanel extends Panel {
       ${[...this.chokepointData.chokepoints].sort((a, b) => b.disruptionScore - a.disruptionScore).map(cp => {
         const statusClass = cp.status === 'red' ? 'status-active' : cp.status === 'yellow' ? 'status-notified' : 'status-terminated';
         const statusDot = cp.status === 'red' ? 'sc-dot-red' : cp.status === 'yellow' ? 'sc-dot-yellow' : 'sc-dot-green';
+        const aisDisruptions = cp.aisDisruptions ?? (cp.congestionLevel === 'normal' ? 0 : 1);
         return `<div class="trade-restriction-card">
           <div class="trade-restriction-header">
             <span class="trade-country">${escapeHtml(cp.name)}</span>
@@ -101,7 +107,7 @@ export class SupplyChainPanel extends Panel {
             <span class="trade-status ${statusClass}">${escapeHtml(cp.status)}</span>
           </div>
           <div class="trade-restriction-body">
-            <div class="trade-sector">${cp.activeWarnings} ${t('components.supplyChain.warnings')}</div>
+            <div class="trade-sector">${cp.activeWarnings} ${t('components.supplyChain.warnings')} · ${aisDisruptions} ${t('components.supplyChain.aisDisruptions')}</div>
             <div class="trade-description">${escapeHtml(cp.description)}</div>
             <div class="trade-affected">${escapeHtml(cp.affectedRoutes.join(', '))}</div>
           </div>

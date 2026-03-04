@@ -34,7 +34,7 @@ function extractGetRoutes() {
 function extractCacheTierKeys() {
   const gatewayPath = join(root, 'server', 'gateway.ts');
   const src = readFileSync(gatewayPath, 'utf-8');
-  const re = /'\/(api\/[^']+)':\s*'(fast|medium|slow|static|no-store)'/g;
+  const re = /'\/(api\/[^']+)':\s*'(fast|medium|slow|static|daily|no-store)'/g;
   const entries = {};
   let m;
   while ((m = re.exec(src)) !== null) {

@@ -1028,7 +1028,9 @@
       "badgeAnimDesc": "パネルヘッダーの更新バッジをアニメーション表示",
       "sectionIntelligence": "インテリジェンス",
       "headlineMemoryLabel": "ヘッドラインメモリ",
-      "headlineMemoryDesc": "閲覧済みの見出しを記憶して新着を強調"
+      "headlineMemoryDesc": "閲覧済みの見出しを記憶して新着を強調",
+      "streamAlwaysOnLabel": "ライブ配信を常に実行",
+      "streamAlwaysOnDesc": "アイドル時に Live Cams と Live News が自動一時停止されるのを防ぎます。セカンドモニター / 壁面ダッシュボード用途に推奨。CPU/帯域を節約するには（Eco）を無効にしてください。"
     },
     "cascade": {
       "noImpacts": "国への影響未検出",

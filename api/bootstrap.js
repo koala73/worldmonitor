@@ -16,13 +16,14 @@ const BOOTSTRAP_CACHE_KEYS = {
   bisExchange:      'economic:bis:eer:v1',
   bisCredit:        'economic:bis:credit:v1',
   shippingRates:    'supply_chain:shipping:v2',
-  chokepoints:      'supply_chain:chokepoints:v1',
-  minerals:         'supply_chain:minerals:v1',
+  chokepoints:      'supply_chain:chokepoints:v2',
+  minerals:         'supply_chain:minerals:v2',
   giving:           'giving:summary:v1',
   climateAnomalies: 'climate:anomalies:v1',
   wildfires:        'wildfire:fires:v1',
   cyberThreats:     'cyber:threats-bootstrap:v2',
   techReadiness:    'economic:worldbank-techreadiness:v1',
+  positiveGeoEvents: 'positive-events:geo-bootstrap:v1',
 };
 
 const SLOW_KEYS = new Set([
@@ -32,7 +33,7 @@ const SLOW_KEYS = new Set([
 ]);
 const FAST_KEYS = new Set([
   'earthquakes', 'outages', 'serviceStatuses', 'macroSignals', 'chokepoints',
-  'marketQuotes', 'commodityQuotes',
+  'marketQuotes', 'commodityQuotes', 'positiveGeoEvents',
 ]);
 
 const TIER_CACHE = {

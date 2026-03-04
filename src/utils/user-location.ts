@@ -104,6 +104,18 @@ export function resolveUserCountryCode(): Promise<string | null> {
   return _countryPromise;
 }
 
+export interface PreciseCoordinates {
+  lat: number;
+  lon: number;
+}
+
+export function resolvePreciseUserCoordinates(timeout = 5000): Promise<PreciseCoordinates | null> {
+  if (typeof navigator === 'undefined' || !navigator.geolocation) return Promise.resolve(null);
+  return getGeolocationPosition(timeout)
+    .then(pos => ({ lat: pos.coords.latitude, lon: pos.coords.longitude }))
+    .catch(() => null);
+}
+
 export async function resolveUserRegion(): Promise<MapView> {
   let tzRegion: MapView = 'global';
   try {

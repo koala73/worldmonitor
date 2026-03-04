@@ -8,6 +8,7 @@ export class CIIPanel extends Panel {
   private scores: CountryScore[] = [];
   private focalPointsReady = false;
   private onShareStory?: (code: string, name: string) => void;
+  private onCountryClick?: (code: string) => void;
 
   constructor() {
     super({
@@ -20,6 +21,10 @@ export class CIIPanel extends Panel {
 
   public setShareStoryHandler(handler: (code: string, name: string) => void): void {
     this.onShareStory = handler;
+  }
+
+  public setCountryClickHandler(handler: (code: string) => void): void {
+    this.onCountryClick = handler;
   }
 
   private getLevelColor(level: CountryScore['level']): string {
@@ -82,14 +87,25 @@ export class CIIPanel extends Panel {
   }
 
   private bindShareButtons(): void {
-    if (!this.onShareStory) return;
+    if (!this.onShareStory && !this.onCountryClick) return;
+
+    this.content.querySelectorAll('.cii-country').forEach(el => {
+      el.addEventListener('click', (e) => {
+        const target = e.currentTarget as HTMLElement;
+        const code = target.dataset.code;
+        if (code && this.onCountryClick) {
+          this.onCountryClick(code);
+        }
+      });
+    });
+
     this.content.querySelectorAll('.cii-share-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         const el = e.currentTarget as HTMLElement;
         const code = el.dataset.code || '';
         const name = el.dataset.name || '';
-        if (code && name) this.onShareStory!(code, name);
+        if (code && name && this.onShareStory) this.onShareStory(code, name);
       });
     });
   }

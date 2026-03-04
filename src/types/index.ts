@@ -568,6 +568,8 @@ export interface MapLayers {
   gpsJamming: boolean;
   // Geopolitical boundary layers
   geopoliticalBoundaries: boolean;
+  // CII choropleth layer
+  ciiChoropleth: boolean;
   // Overlay layers
   dayNight: boolean;
 }

@@ -198,6 +198,9 @@ components:
                         type: string
                 description:
                     type: string
+                aisDisruptions:
+                    type: integer
+                    format: int32
         GetCriticalMineralsRequest:
             type: object
         GetCriticalMineralsResponse:

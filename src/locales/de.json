@@ -1347,7 +1347,9 @@
       "badgeAnimDesc": "Update-Badges in Panel-Kopfzeilen animieren",
       "sectionIntelligence": "Intelligence",
       "headlineMemoryLabel": "Schlagzeilen-Speicher",
-      "headlineMemoryDesc": "Gesehene Schlagzeilen merken, um neue hervorzuheben"
+      "headlineMemoryDesc": "Gesehene Schlagzeilen merken, um neue hervorzuheben",
+      "streamAlwaysOnLabel": "Live-Streams weiterlaufen lassen",
+      "streamAlwaysOnDesc": "Verhindert, dass Live Cams und Live News bei Inaktivität automatisch pausieren. Empfohlen für Zweitmonitor-/Wallboard-Nutzung. Zum Sparen von CPU/Bandbreite deaktivieren (Eco)."
     },
     "export": {
       "exportData": "Daten exportieren"
