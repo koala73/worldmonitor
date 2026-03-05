@@ -37,7 +37,8 @@ async function fetchTrendingRepos(req: ListTrendingReposRequest): Promise<Github
 
     if (!response.ok) throw new Error('Primary API failed');
     data = await response.json() as any[];
-  } catch {
+  } catch (error) {
+    console.warn('[list-trending-repos] primary API failed, trying fallback', error);
     // Fallback API
     try {
       const fallbackUrl = `https://gh-trending-api.herokuapp.com/repositories/${language}?since=${period}`;
@@ -48,7 +49,8 @@ async function fetchTrendingRepos(req: ListTrendingReposRequest): Promise<Github
 
       if (!fallbackResponse.ok) return [];
       data = await fallbackResponse.json() as any[];
-    } catch {
+    } catch (error) {
+      console.warn('[list-trending-repos] fallback API also failed', error);
       return [];
     }
   }
@@ -79,7 +81,8 @@ export async function listTrendingRepos(
       return repos.length > 0 ? { repos, pagination: undefined } : null;
     });
     return result || { repos: [], pagination: undefined };
-  } catch {
+  } catch (error) {
+    console.warn('[list-trending-repos] failed to fetch trending repos', error);
     return { repos: [], pagination: undefined };
   }
 }

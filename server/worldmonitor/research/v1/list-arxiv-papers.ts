@@ -102,7 +102,8 @@ export async function listArxivPapers(
       },
     );
     return result || { papers: [], pagination: undefined };
-  } catch {
+  } catch (error) {
+    console.warn('[list-arxiv-papers] failed to fetch arXiv papers', error);
     return { papers: [], pagination: undefined };
   }
 }
