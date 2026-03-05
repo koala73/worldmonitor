@@ -314,7 +314,7 @@ if (!('__TAURI_INTERNALS__' in window) && !('__TAURI__' in window) && 'serviceWo
       const swUpdateInterval = setInterval(async () => {
         if (!navigator.onLine) return;
         try { await registration.update(); } catch {}
-      }, 60 * 60 * 1000);
+      }, 5 * 60 * 1000);
       // Expose interval ID for cleanup/debugging
       (window as unknown as Record<string, unknown>).__swUpdateInterval = swUpdateInterval;
     })
