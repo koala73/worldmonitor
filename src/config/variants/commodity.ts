@@ -31,7 +31,7 @@ const rss = (url: string) => `/api/rss-proxy?url=${encodeURIComponent(url)}`;
 export const FEEDS: Record<string, Feed[]> = {
   // ── Core Commodity & Mining News ────────────────────────────────────────
   'commodity-news': [
-    { name: 'Kitco News', url: rss('https://www.kitco.com/rss/KitcoNews.xml') },
+    { name: 'Kitco News', url: rss('https://www.kitco.com/news/category/mining/rss') },
     { name: 'Mining.com', url: rss('https://www.mining.com/feed/') },
     { name: 'Bloomberg Commodities', url: rss('https://news.google.com/rss/search?q=site:bloomberg.com+commodities+OR+metals+OR+mining+when:1d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Reuters Commodities', url: rss('https://news.google.com/rss/search?q=site:reuters.com+commodities+OR+metals+OR+mining+when:1d&hl=en-US&gl=US&ceid=US:en') },
@@ -42,13 +42,13 @@ export const FEEDS: Record<string, Feed[]> = {
 
   // ── Gold & Silver ─────────────────────────────────────────────────────
   'gold-silver': [
-    { name: 'Kitco Gold', url: rss('https://www.kitco.com/rss/KitcoGold.xml') },
+    { name: 'Kitco Gold', url: rss('https://www.kitco.com/news/category/mining/rss') },
     { name: 'Gold Price News', url: rss('https://news.google.com/rss/search?q=(gold+price+OR+"gold+market"+OR+bullion+OR+LBMA)+when:1d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Silver Price News', url: rss('https://news.google.com/rss/search?q=(silver+price+OR+"silver+market"+OR+"silver+futures")+when:2d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Precious Metals', url: rss('https://news.google.com/rss/search?q=("precious+metals"+OR+platinum+OR+palladium+OR+"gold+ETF"+OR+GLD+OR+SLV)+when:2d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'World Gold Council', url: rss('https://news.google.com/rss/search?q="World+Gold+Council"+OR+"central+bank+gold"+OR+"gold+reserves"+when:7d&hl=en-US&gl=US&ceid=US:en') },
-    { name: 'GoldSeek', url: rss('https://news.goldseek.com/GoldSeek/rss.xml') },
-    { name: 'SilverSeek', url: rss('https://news.silverseek.com/SilverSeek/rss.xml') },
+    //{ name: 'GoldSeek', url: rss('https://news.goldseek.com/GoldSeek/rss.xml') },
+    //{ name: 'SilverSeek', url: rss('https://news.silverseek.com/SilverSeek/rss.xml') },
   ],
 
   // ── Energy (Oil, Gas, LNG) ────────────────────────────────────────────

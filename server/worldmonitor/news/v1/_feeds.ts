@@ -261,6 +261,88 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
     ],
   },
 
+  // ── Commodity variant (Mining, Metals, Energy) ─────────────────────────────
+  commodity: {
+    'commodity-news': [
+      { name: 'Kitco News', url: gn('site:kitco.com gold OR silver OR commodity OR metals when:1d') },
+      { name: 'Mining.com', url: 'https://www.mining.com/feed/' },
+      { name: 'Bloomberg Commodities', url: gn('site:bloomberg.com commodities OR metals OR mining when:1d') },
+      { name: 'Reuters Commodities', url: gn('site:reuters.com commodities OR metals OR mining when:1d') },
+      { name: 'S&P Global Commodity', url: gn('site:spglobal.com commodities metals when:3d') },
+      { name: 'Commodity Trade Mantra', url: gn('commodities trading metals energy gold silver when:1d') },
+      { name: 'CNBC Commodities', url: gn('site:cnbc.com (commodities OR metals OR gold OR copper) when:1d') },
+    ],
+    'gold-silver': [
+      { name: 'Kitco Gold', url: gn('site:kitco.com gold price OR "gold market" OR "silver price" when:2d') },
+      { name: 'Gold Price News', url: gn('(gold price OR "gold market" OR bullion OR LBMA) when:1d') },
+      { name: 'Silver Price News', url: gn('(silver price OR "silver market" OR "silver futures") when:2d') },
+      { name: 'Precious Metals', url: gn('("precious metals" OR platinum OR palladium OR "gold ETF" OR GLD OR SLV) when:2d') },
+      { name: 'World Gold Council', url: gn('"World Gold Council" OR "central bank gold" OR "gold reserves" when:7d') },
+    ],
+    energy: [
+      { name: 'OilPrice.com', url: 'https://oilprice.com/rss/main' },
+      { name: 'Rigzone', url: 'https://www.rigzone.com/news/rss/rigzone_latest.aspx' },
+      { name: 'EIA Reports', url: gn('site:eia.gov energy oil gas when:14d') },
+      { name: 'OPEC News', url: gn('(OPEC OR "oil price" OR "crude oil" OR WTI OR Brent OR "oil production") when:1d') },
+      { name: 'Natural Gas News', url: gn('("natural gas" OR LNG OR "gas price" OR "Henry Hub") when:1d') },
+      { name: 'Energy Intel', url: gn('(energy commodities OR "energy market" OR "energy prices") when:2d') },
+      { name: 'Reuters Energy', url: gn('site:reuters.com (oil OR gas OR energy) when:1d') },
+    ],
+    'mining-news': [
+      { name: 'Mining Journal', url: gn('site:mining-journal.com when:7d') },
+      { name: 'Northern Miner', url: gn('site:northernminer.com when:7d') },
+      { name: 'Mining Weekly', url: gn('site:miningweekly.com when:7d') },
+      { name: 'Mining Technology', url: 'https://www.mining-technology.com/feed/' },
+      { name: 'Australian Mining', url: 'https://www.australianmining.com.au/feed/' },
+      { name: 'Mine Web (SNL)', url: gn('("mining company" OR "mine production" OR "mining operations") when:2d') },
+      { name: 'Resource World', url: gn('("mining project" OR "mineral exploration" OR "mine development") when:3d') },
+    ],
+    'critical-minerals': [
+      { name: 'Benchmark Mineral', url: gn('("critical minerals" OR "battery metals" OR lithium OR cobalt OR "rare earths") when:2d') },
+      { name: 'Lithium Market', url: gn('(lithium price OR "lithium market" OR "lithium supply" OR spodumene OR LCE) when:2d') },
+      { name: 'Cobalt Market', url: gn('(cobalt price OR "cobalt market" OR "DRC cobalt" OR "battery cobalt") when:3d') },
+      { name: 'Rare Earths News', url: gn('("rare earth" OR "rare earths" OR REE OR neodymium OR praseodymium) when:3d') },
+      { name: 'EV Battery Supply', url: gn('("EV battery" OR "battery supply chain" OR "battery materials") when:3d') },
+      { name: 'IEA Critical Minerals', url: gn('site:iea.org (minerals OR critical OR battery) when:14d') },
+      { name: 'Uranium Market', url: gn('(uranium price OR "uranium market" OR U3O8 OR nuclear fuel) when:3d') },
+    ],
+    'base-metals': [
+      { name: 'LME Metals', url: gn('(LME OR "London Metal Exchange") copper OR aluminum OR zinc OR nickel when:2d') },
+      { name: 'Copper Market', url: gn('(copper price OR "copper market" OR "copper supply" OR COMEX copper) when:2d') },
+      { name: 'Nickel News', url: gn('(nickel price OR "nickel market" OR "nickel supply" OR Indonesia nickel) when:3d') },
+      { name: 'Aluminum & Zinc', url: gn('(aluminum price OR aluminium OR zinc price OR "base metals") when:3d') },
+      { name: 'Iron Ore Market', url: gn('("iron ore" price OR "iron ore market" OR "steel raw materials") when:2d') },
+      { name: 'Metals Bulletin', url: gn('("metals market" OR "base metals" OR SHFE OR "Shanghai Futures") when:2d') },
+    ],
+    'mining-companies': [
+      { name: 'BHP News', url: gn('BHP (mining OR production OR results OR copper OR "iron ore") when:7d') },
+      { name: 'Rio Tinto News', url: gn('"Rio Tinto" (mining OR production OR results OR Pilbara) when:7d') },
+      { name: 'Glencore & Vale', url: gn('(Glencore OR Vale) (mining OR production OR cobalt OR "iron ore") when:7d') },
+      { name: 'Gold Majors', url: gn('(Newmont OR Barrick OR AngloGold OR Agnico) (gold mine OR production OR results) when:7d') },
+      { name: 'Freeport & Copper Miners', url: gn('(Freeport McMoRan OR Southern Copper OR Teck OR Antofagasta) when:7d') },
+      { name: 'Critical Mineral Companies', url: gn('(Albemarle OR SQM OR "MP Materials" OR Lynas OR Cameco) when:7d') },
+    ],
+    'supply-chain': [
+      { name: 'Shipping & Freight', url: gn('("bulk carrier" OR "dry bulk" OR "commodity shipping" OR "Port Hedland" OR "Strait of Hormuz") when:3d') },
+      { name: 'Trade Routes', url: gn('("trade route" OR "supply chain" OR "commodity export" OR "mineral export") when:3d') },
+      { name: 'China Commodity Imports', url: gn('China imports copper OR "iron ore" OR lithium OR cobalt OR "rare earth" when:3d') },
+      { name: 'Port & Logistics', url: gn('("iron ore port" OR "copper port" OR "commodity port" OR "mineral logistics") when:7d') },
+    ],
+    'commodity-regulation': [
+      { name: 'Mining Regulation', url: gn('("mining regulation" OR "mining policy" OR "mining permit" OR "mining ban") when:7d') },
+      { name: 'ESG in Mining', url: gn('("mining ESG" OR "responsible mining" OR "mine closure" OR tailings) when:7d') },
+      { name: 'Trade & Tariffs', url: gn('("mineral tariff" OR "metals tariff" OR "critical mineral policy" OR "mining export ban") when:7d') },
+      { name: 'Indonesia Nickel Policy', url: gn('(Indonesia nickel OR "nickel export" OR "nickel ban" OR "nickel processing") when:7d') },
+      { name: 'China Mineral Policy', url: gn('China "rare earth" OR "mineral export" OR "critical mineral" policy OR restriction when:7d') },
+    ],
+    markets: [
+      { name: 'Yahoo Finance Commodities', url: 'https://finance.yahoo.com/rss/topstories' },
+      { name: 'CNBC Markets', url: 'https://www.cnbc.com/id/100003114/device/rss/rss.html' },
+      { name: 'Seeking Alpha Metals', url: gn('site:seekingalpha.com (gold OR silver OR copper OR mining) when:2d') },
+      { name: 'Commodity Futures', url: gn('(COMEX OR NYMEX OR "commodity futures" OR CME commodities) when:2d') },
+    ],
+  },
+
   happy: {
     positive: [
       { name: 'Good News Network', url: 'https://www.goodnewsnetwork.org/feed/' },

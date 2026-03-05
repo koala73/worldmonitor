@@ -32,7 +32,7 @@ function getRelayHeaders(): Record<string, string> {
   return headers;
 }
 
-const VALID_VARIANTS = new Set(['full', 'tech', 'finance', 'happy']);
+const VALID_VARIANTS = new Set(['full', 'tech', 'finance', 'happy', 'commodity']);
 const fallbackDigestCache = new Map<string, { data: ListFeedDigestResponse; ts: number }>();
 const ITEMS_PER_FEED = 5;
 const MAX_ITEMS_PER_CATEGORY = 20;
