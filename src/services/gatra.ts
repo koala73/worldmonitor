@@ -51,11 +51,26 @@ interface Location {
 }
 
 const LOCATIONS: Location[] = [
+  // Indonesia
   { name: 'Jakarta', lat: -6.2088, lon: 106.8456 },
   { name: 'Surabaya', lat: -7.2575, lon: 112.7521 },
   { name: 'Bandung', lat: -6.9175, lon: 107.6191 },
   { name: 'Medan', lat: 3.5952, lon: 98.6722 },
   { name: 'Makassar', lat: -5.1477, lon: 119.4327 },
+  // Iran / Middle East theater
+  { name: 'Tehran', lat: 35.6892, lon: 51.3890 },
+  { name: 'Isfahan (Natanz)', lat: 32.6546, lon: 51.6680 },
+  { name: 'Bushehr', lat: 28.9234, lon: 50.8203 },
+  { name: 'Strait of Hormuz', lat: 26.5667, lon: 56.2500 },
+  { name: 'Baghdad', lat: 33.3152, lon: 44.3661 },
+  { name: 'Damascus', lat: 33.5138, lon: 36.2765 },
+  { name: 'Riyadh (Aramco)', lat: 24.7136, lon: 46.6753 },
+  // Global cyber targets
+  { name: 'Washington DC', lat: 38.9072, lon: -77.0369 },
+  { name: 'London', lat: 51.5074, lon: -0.1278 },
+  { name: 'Tel Aviv', lat: 32.0853, lon: 34.7818 },
+  { name: 'Kyiv', lat: 50.4501, lon: 30.5234 },
+  { name: 'Singapore', lat: 1.3521, lon: 103.8198 },
 ];
 
 const MITRE_TECHNIQUES: Array<{ id: string; name: string }> = [

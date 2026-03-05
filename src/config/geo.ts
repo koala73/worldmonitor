@@ -563,6 +563,38 @@ export const CONFLICT_ZONES: ConflictZone[] = [
     description: 'Cross-border artillery and rocket fire. Targeted assassinations. High risk of full-scale escalation.',
     keyDevelopments: ['Daily rocket fire', 'IDF airstrikes', 'Buffer zone evacuation', 'Litani River tensions'],
   },
+  {
+    id: 'iran_theater',
+    name: 'Iran War Theater',
+    // Iran + Strait of Hormuz + Persian Gulf region
+    coords: [[44, 39], [63, 39], [63, 25], [55, 24], [52, 26], [48, 30], [44, 32]],
+    center: [53, 32],
+    intensity: 'high',
+    parties: ['Iran (IRGC)', 'Israel', 'US CENTCOM', 'Proxy militias'],
+    casualties: 'Classified / Ongoing',
+    displaced: '500k+ (est.)',
+    keywords: ['iran', 'tehran', 'irgc', 'hormuz', 'persian gulf', 'proxy', 'missile', 'nuclear', 'natanz', 'isfahan', 'centcom', 'strait'],
+    startDate: 'Apr 13, 2024',
+    location: 'Iran, Strait of Hormuz, Persian Gulf',
+    description: 'Escalating conflict between Iran and Israel/US. Direct missile exchanges, cyber warfare, nuclear facility tensions. IRGC proxy network across Iraq, Syria, Yemen. Critical Strait of Hormuz chokepoint.',
+    keyDevelopments: ['Iran-Israel direct strikes', 'IRGC drone/missile program', 'Nuclear enrichment escalation', 'Strait of Hormuz threats', 'Cyber attacks on infrastructure', 'Proxy coordination hub'],
+  },
+  {
+    id: 'iran_cyber',
+    name: 'Iran Cyber Operations',
+    // Broader Middle East cyber theater
+    coords: [[44, 37], [58, 37], [58, 28], [44, 28]],
+    center: [51, 32.5],
+    intensity: 'high',
+    parties: ['APT33/Elfin', 'APT35/Charming Kitten', 'MuddyWater', 'Shamoon Group'],
+    casualties: 'N/A (Cyber)',
+    displaced: 'N/A',
+    keywords: ['apt33', 'apt35', 'charming kitten', 'muddywater', 'shamoon', 'cyber', 'iran cyber', 'wiper', 'scada', 'ics'],
+    startDate: 'Ongoing',
+    location: 'Iran / Middle East / Global Targets',
+    description: 'State-sponsored cyber operations by IRGC-linked groups. Targeting critical infrastructure, energy sector, government networks. Wiper malware, spear-phishing, ICS/SCADA attacks.',
+    keyDevelopments: ['Infrastructure wiper attacks', 'Energy sector targeting', 'Election interference', 'ICS/SCADA exploitation', 'Supply chain compromises'],
+  },
 ];
 
 // US Domestic bases (not in overseas dataset - these are CONUS bases)
