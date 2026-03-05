@@ -769,50 +769,56 @@ export class PanelLayoutManager implements AppModule {
 
     // Happy variant panels (lazy-loaded — only relevant for happy variant)
     if (SITE_VARIANT === 'happy') {
-      import('@/components/PositiveNewsFeedPanel').then(m => {
-        this.ctx.positivePanel = new m.PositiveNewsFeedPanel();
-        this.ctx.panels['positive-feed'] = this.ctx.positivePanel;
-      });
+      this.lazyPanel('positive-feed', () =>
+        import('@/components/PositiveNewsFeedPanel').then(m => new m.PositiveNewsFeedPanel()),
+        (p) => { this.ctx.positivePanel = p as unknown as import('@/components/PositiveNewsFeedPanel').PositiveNewsFeedPanel; },
+      );
 
-      import('@/components/CountersPanel').then(m => {
-        this.ctx.countersPanel = new m.CountersPanel();
-        this.ctx.panels['counters'] = this.ctx.countersPanel;
-        this.ctx.countersPanel.startTicking();
-      });
+      this.lazyPanel('counters', () =>
+        import('@/components/CountersPanel').then(m => {
+          const p = new m.CountersPanel();
+          p.startTicking();
+          return p;
+        }),
+        (p) => { this.ctx.countersPanel = p as unknown as import('@/components/CountersPanel').CountersPanel; },
+      );
 
-      import('@/components/ProgressChartsPanel').then(m => {
-        this.ctx.progressPanel = new m.ProgressChartsPanel();
-        this.ctx.panels['progress'] = this.ctx.progressPanel;
-      });
+      this.lazyPanel('progress', () =>
+        import('@/components/ProgressChartsPanel').then(m => new m.ProgressChartsPanel()),
+        (p) => { this.ctx.progressPanel = p as unknown as import('@/components/ProgressChartsPanel').ProgressChartsPanel; },
+      );
 
-      import('@/components/BreakthroughsTickerPanel').then(m => {
-        this.ctx.breakthroughsPanel = new m.BreakthroughsTickerPanel();
-        this.ctx.panels['breakthroughs'] = this.ctx.breakthroughsPanel;
-      });
+      this.lazyPanel('breakthroughs', () =>
+        import('@/components/BreakthroughsTickerPanel').then(m => new m.BreakthroughsTickerPanel()),
+        (p) => { this.ctx.breakthroughsPanel = p as unknown as import('@/components/BreakthroughsTickerPanel').BreakthroughsTickerPanel; },
+      );
 
-      import('@/components/HeroSpotlightPanel').then(m => {
-        this.ctx.heroPanel = new m.HeroSpotlightPanel();
-        this.ctx.panels['spotlight'] = this.ctx.heroPanel;
-        this.ctx.heroPanel.onLocationRequest = (lat: number, lon: number) => {
-          this.ctx.map?.setCenter(lat, lon, 4);
-          this.ctx.map?.flashLocation(lat, lon, 3000);
-        };
-      });
+      this.lazyPanel('spotlight', () =>
+        import('@/components/HeroSpotlightPanel').then(m => {
+          const p = new m.HeroSpotlightPanel();
+          p.onLocationRequest = (lat: number, lon: number) => {
+            this.ctx.map?.setCenter(lat, lon, 4);
+            this.ctx.map?.flashLocation(lat, lon, 3000);
+          };
+          return p;
+        }),
+        (p) => { this.ctx.heroPanel = p as unknown as import('@/components/HeroSpotlightPanel').HeroSpotlightPanel; },
+      );
 
-      import('@/components/GoodThingsDigestPanel').then(m => {
-        this.ctx.digestPanel = new m.GoodThingsDigestPanel();
-        this.ctx.panels['digest'] = this.ctx.digestPanel;
-      });
+      this.lazyPanel('digest', () =>
+        import('@/components/GoodThingsDigestPanel').then(m => new m.GoodThingsDigestPanel()),
+        (p) => { this.ctx.digestPanel = p as unknown as import('@/components/GoodThingsDigestPanel').GoodThingsDigestPanel; },
+      );
 
-      import('@/components/SpeciesComebackPanel').then(m => {
-        this.ctx.speciesPanel = new m.SpeciesComebackPanel();
-        this.ctx.panels['species'] = this.ctx.speciesPanel;
-      });
+      this.lazyPanel('species', () =>
+        import('@/components/SpeciesComebackPanel').then(m => new m.SpeciesComebackPanel()),
+        (p) => { this.ctx.speciesPanel = p as unknown as import('@/components/SpeciesComebackPanel').SpeciesComebackPanel; },
+      );
 
-      import('@/components/RenewableEnergyPanel').then(m => {
-        this.ctx.renewablePanel = new m.RenewableEnergyPanel();
-        this.ctx.panels['renewable'] = this.ctx.renewablePanel;
-      });
+      this.lazyPanel('renewable', () =>
+        import('@/components/RenewableEnergyPanel').then(m => new m.RenewableEnergyPanel()),
+        (p) => { this.ctx.renewablePanel = p as unknown as import('@/components/RenewableEnergyPanel').RenewableEnergyPanel; },
+      );
     }
 
     const defaultOrder = Object.keys(DEFAULT_PANELS).filter(k => k !== 'map');
@@ -1116,6 +1122,8 @@ export class PanelLayoutManager implements AppModule {
       this.makeDraggable(el, key);
       const grid = document.getElementById('panelsGrid');
       if (grid) grid.appendChild(el);
+    }).catch((err) => {
+      console.error(`[panel] failed to lazy-load "${key}"`, err);
     });
   }
 

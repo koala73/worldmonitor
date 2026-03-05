@@ -1224,9 +1224,11 @@ async function dispatch(requestUrl, req, routes, context) {
         }
         results.push({ key, ok: true });
       }
-      moduleCache.clear();
-      failedImports.clear();
-      cloudPreferred.clear();
+      if (results.some(r => r.ok)) {
+        moduleCache.clear();
+        failedImports.clear();
+        cloudPreferred.clear();
+      }
       return json({ ok: true, results });
     } catch { /* bad JSON */ }
     return json({ error: 'invalid JSON' }, 400);

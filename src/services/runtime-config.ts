@@ -553,8 +553,8 @@ export async function loadDesktopSecrets(): Promise<void> {
     if (entries.length > 0) {
       try {
         await pushSecretBatchToSidecar(entries);
-      } catch {
-        // Batch endpoint unavailable (older sidecar) — fall back to individual pushes
+      } catch (batchErr) {
+        console.warn('[runtime-config] Batch env update failed, falling back to individual pushes', batchErr);
         await Promise.allSettled(
           entries.map(({ key, value }) =>
             pushSecretToSidecar(key as RuntimeSecretKey, value).catch((error) => {

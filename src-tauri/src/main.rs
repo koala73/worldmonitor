@@ -347,6 +347,57 @@ fn read_cache_entry(webview: Webview, cache: tauri::State<'_, PersistentCache>, 
     Ok(cache.get(&key))
 }
 
+const MAX_FLUSH_RETRIES: u32 = 5;
+
+fn schedule_debounced_flush(cache: &PersistentCache, app: &AppHandle) {
+    {
+        let mut gen = cache.generation.lock().unwrap_or_else(|e| e.into_inner());
+        *gen += 1;
+    }
+    let should_spawn = {
+        let mut sched = cache.flush_scheduled.lock().unwrap_or_else(|e| e.into_inner());
+        if *sched {
+            false
+        } else {
+            *sched = true;
+            true
+        }
+    };
+    if should_spawn {
+        let handle = app.app_handle().clone();
+        std::thread::spawn(move || {
+            let mut retries = 0u32;
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(2));
+                let Some(c) = handle.try_state::<PersistentCache>() else { break };
+                let Ok(path) = cache_file_path(&handle) else { break };
+                let gen_before = *c.generation.lock().unwrap_or_else(|e| e.into_inner());
+                match c.flush(&path) {
+                    Ok(_) => {
+                        retries = 0;
+                        let gen_after = *c.generation.lock().unwrap_or_else(|e| e.into_inner());
+                        if gen_after > gen_before {
+                            continue;
+                        }
+                        *c.flush_scheduled.lock().unwrap_or_else(|e| e.into_inner()) = false;
+                        break;
+                    }
+                    Err(e) => {
+                        retries += 1;
+                        eprintln!("[cache] flush error ({retries}/{MAX_FLUSH_RETRIES}): {e}");
+                        if retries >= MAX_FLUSH_RETRIES {
+                            eprintln!("[cache] giving up after {MAX_FLUSH_RETRIES} failures");
+                            *c.flush_scheduled.lock().unwrap_or_else(|e| e.into_inner()) = false;
+                            break;
+                        }
+                        continue;
+                    }
+                }
+            }
+        });
+    }
+}
+
 #[tauri::command]
 fn delete_cache_entry(webview: Webview, app: AppHandle, cache: tauri::State<'_, PersistentCache>, key: String) -> Result<(), String> {
     require_trusted_window(webview.label())?;
@@ -358,39 +409,7 @@ fn delete_cache_entry(webview: Webview, app: AppHandle, cache: tauri::State<'_, 
         let mut dirty = cache.dirty.lock().unwrap_or_else(|e| e.into_inner());
         *dirty = true;
     }
-    {
-        let mut gen = cache.generation.lock().unwrap_or_else(|e| e.into_inner());
-        *gen += 1;
-    }
-
-    let mut sched = cache.flush_scheduled.lock().unwrap_or_else(|e| e.into_inner());
-    if !*sched {
-        *sched = true;
-        let handle = app.app_handle().clone();
-        std::thread::spawn(move || {
-            loop {
-                std::thread::sleep(std::time::Duration::from_secs(2));
-                let Some(c) = handle.try_state::<PersistentCache>() else { break };
-                let Ok(path) = cache_file_path(&handle) else { break };
-                let gen_before = *c.generation.lock().unwrap_or_else(|e| e.into_inner());
-                match c.flush(&path) {
-                    Ok(_) => {
-                        let gen_after = *c.generation.lock().unwrap_or_else(|e| e.into_inner());
-                        if gen_after > gen_before {
-                            continue;
-                        }
-                        *c.flush_scheduled.lock().unwrap_or_else(|e| e.into_inner()) = false;
-                        break;
-                    }
-                    Err(e) => {
-                        eprintln!("[cache] flush error: {e}");
-                        continue;
-                    }
-                }
-            }
-        });
-    }
-
+    schedule_debounced_flush(&cache, &app);
     Ok(())
 }
 
@@ -407,39 +426,7 @@ fn write_cache_entry(webview: Webview, app: AppHandle, cache: tauri::State<'_, P
         let mut dirty = cache.dirty.lock().unwrap_or_else(|e| e.into_inner());
         *dirty = true;
     }
-    {
-        let mut gen = cache.generation.lock().unwrap_or_else(|e| e.into_inner());
-        *gen += 1;
-    }
-
-    let mut sched = cache.flush_scheduled.lock().unwrap_or_else(|e| e.into_inner());
-    if !*sched {
-        *sched = true;
-        let handle = app.app_handle().clone();
-        std::thread::spawn(move || {
-            loop {
-                std::thread::sleep(std::time::Duration::from_secs(2));
-                let Some(c) = handle.try_state::<PersistentCache>() else { break };
-                let Ok(path) = cache_file_path(&handle) else { break };
-                let gen_before = *c.generation.lock().unwrap_or_else(|e| e.into_inner());
-                match c.flush(&path) {
-                    Ok(_) => {
-                        let gen_after = *c.generation.lock().unwrap_or_else(|e| e.into_inner());
-                        if gen_after > gen_before {
-                            continue;
-                        }
-                        *c.flush_scheduled.lock().unwrap_or_else(|e| e.into_inner()) = false;
-                        break;
-                    }
-                    Err(e) => {
-                        eprintln!("[cache] flush error: {e}");
-                        continue;
-                    }
-                }
-            }
-        });
-    }
-
+    schedule_debounced_flush(&cache, &app);
     Ok(())
 }
 
