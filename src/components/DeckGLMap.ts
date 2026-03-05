@@ -563,30 +563,33 @@ export class DeckGLMap {
     };
 
     let tileLoadOk = false;
+    let tileErrorCount = 0;
 
     this.maplibreMap.on('error', (e: { error?: Error; message?: string }) => {
       const msg = e.error?.message ?? e.message ?? '';
+      console.warn('[DeckGLMap] map error:', msg);
       if (msg.includes('Failed to fetch') || msg.includes('AJAXError') || msg.includes('CORS') || msg.includes('NetworkError') || msg.includes('403') || msg.includes('Forbidden')) {
-        if (!tileLoadOk) {
+        tileErrorCount++;
+        if (!tileLoadOk && tileErrorCount >= 2) {
           recreateWithFallback();
         }
       }
     });
 
-    this.maplibreMap.once('data', (e: { dataType?: string }) => {
-      if (e.dataType === 'source') tileLoadOk = true;
+    this.maplibreMap.on('data', (e: { dataType?: string }) => {
+      if (e.dataType === 'source') {
+        tileLoadOk = true;
+        if (this.styleLoadTimeoutId) {
+          clearTimeout(this.styleLoadTimeoutId);
+          this.styleLoadTimeoutId = null;
+        }
+      }
     });
 
     this.styleLoadTimeoutId = setTimeout(() => {
       this.styleLoadTimeoutId = null;
       if (!tileLoadOk) recreateWithFallback();
-    }, 5000);
-    this.maplibreMap.once('style.load', () => {
-      if (this.styleLoadTimeoutId && tileLoadOk) {
-        clearTimeout(this.styleLoadTimeoutId);
-        this.styleLoadTimeoutId = null;
-      }
-    });
+    }, 10000);
 
     const canvas = this.maplibreMap.getCanvas();
     canvas.addEventListener('webglcontextlost', (e) => {
