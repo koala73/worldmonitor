@@ -29,6 +29,7 @@ const BOOTSTRAP_CACHE_KEYS = {
   naturalEvents: 'natural:events:v1',
   flightDelays: 'aviation:delays-bootstrap:v1',
   insights: 'news:insights:v1',
+  predictions: 'prediction:markets-bootstrap:v1',
 };
 
 const SLOW_KEYS = new Set([
@@ -38,7 +39,7 @@ const SLOW_KEYS = new Set([
 ]);
 const FAST_KEYS = new Set([
   'earthquakes', 'outages', 'serviceStatuses', 'macroSignals', 'chokepoints',
-  'marketQuotes', 'commodityQuotes', 'positiveGeoEvents', 'riskScores', 'flightDelays','insights',
+  'marketQuotes', 'commodityQuotes', 'positiveGeoEvents', 'riskScores', 'flightDelays','insights', 'predictions',
 ]);
 
 const TIER_CACHE = {

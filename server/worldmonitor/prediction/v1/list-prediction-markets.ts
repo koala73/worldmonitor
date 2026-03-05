@@ -16,10 +16,11 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/prediction/v1/service_server';
 
 import { CHROME_UA } from '../../../_shared/constants';
-import { cachedFetchJson } from '../../../_shared/redis';
+import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
 
 const REDIS_CACHE_KEY = 'prediction:markets:v1';
 const REDIS_CACHE_TTL = 600; // 10 min
+const BOOTSTRAP_KEY = 'prediction:markets-bootstrap:v1';
 
 const GAMMA_BASE = 'https://gamma-api.polymarket.com';
 const FETCH_TIMEOUT = 8000;
@@ -104,6 +105,31 @@ export const listPredictionMarkets: PredictionServiceHandler['listPredictionMark
   req: ListPredictionMarketsRequest,
 ): Promise<ListPredictionMarketsResponse> => {
   try {
+    // Try Railway-seeded bootstrap data first (no Gamma API call needed)
+    if (!req.query) {
+      try {
+        const bootstrap = await getCachedJson(BOOTSTRAP_KEY) as { geopolitical?: PredictionMarket[]; tech?: PredictionMarket[] } | null;
+        if (bootstrap) {
+          const variant = req.category && ['ai', 'tech', 'crypto', 'science'].includes(req.category)
+            ? bootstrap.tech : bootstrap.geopolitical;
+          if (variant && variant.length > 0) {
+            const limit = Math.max(1, Math.min(100, req.pageSize || 50));
+            const markets: PredictionMarket[] = variant.slice(0, limit).map((m: PredictionMarket & { endDate?: string }) => ({
+              id: m.url?.split('/').pop() || '',
+              title: m.title,
+              yesPrice: (m.yesPrice ?? 50) / 100, // bootstrap stores 0-100, proto uses 0-1
+              volume: m.volume ?? 0,
+              url: m.url || '',
+              closesAt: m.endDate ? Date.parse(m.endDate) : 0,
+              category: req.category || '',
+            }));
+            return { markets, pagination: undefined };
+          }
+        }
+      } catch { /* bootstrap read failed, fall through */ }
+    }
+
+    // Fallback: fetch from Gamma API directly (may fail due to JA3 blocking)
     const cacheKey = `${REDIS_CACHE_KEY}:${req.category || 'all'}:${req.query || ''}:${req.pageSize || 50}`;
     const result = await cachedFetchJson<ListPredictionMarketsResponse>(
       cacheKey,

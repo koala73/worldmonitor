@@ -3,6 +3,7 @@ import { createCircuitBreaker } from '@/utils';
 import { SITE_VARIANT } from '@/config';
 import { isDesktopRuntime } from '@/services/runtime';
 import { tryInvokeTauri } from '@/services/tauri-bridge';
+import { getHydratedData } from '@/services/bootstrap';
 
 // Consumer-friendly type (re-export, matches legacy shape)
 export interface PredictionMarket {
@@ -270,10 +271,48 @@ async function fetchTopMarkets(): Promise<PredictionMarket[]> {
     });
 }
 
+interface BootstrapPredictionData {
+  geopolitical: PredictionMarket[];
+  tech: PredictionMarket[];
+  fetchedAt: number;
+}
+
 export async function fetchPredictions(): Promise<PredictionMarket[]> {
   return breaker.execute(async () => {
-    const tags = SITE_VARIANT === 'tech' ? TECH_TAGS : GEOPOLITICAL_TAGS;
+    // Strategy 1: Bootstrap hydration (zero network cost — data arrived with page load)
+    const hydrated = getHydratedData('predictions') as BootstrapPredictionData | undefined;
+    if (hydrated && hydrated.fetchedAt && Date.now() - hydrated.fetchedAt < 20 * 60 * 1000) {
+      const variant = SITE_VARIANT === 'tech' ? hydrated.tech : hydrated.geopolitical;
+      if (variant && variant.length > 0) {
+        return variant.slice(0, 15);
+      }
+    }
 
+    // Strategy 2: Sebuf RPC (single request to Vercel → Redis, no Polymarket fan-out)
+    try {
+      const tags = SITE_VARIANT === 'tech' ? TECH_TAGS : GEOPOLITICAL_TAGS;
+      const rpcResults = await client.listPredictionMarkets({
+        category: tags[0] ?? '',
+        query: '',
+        pageSize: 50,
+        cursor: '',
+      });
+      if (rpcResults.markets && rpcResults.markets.length > 0) {
+        return rpcResults.markets
+          .filter(m => !isExpired(m.closesAt ? new Date(m.closesAt).toISOString() : undefined))
+          .map(m => ({
+            title: m.title,
+            yesPrice: m.yesPrice * 100,
+            volume: m.volume,
+            url: m.url,
+            endDate: m.closesAt ? new Date(m.closesAt).toISOString() : undefined,
+          }))
+          .slice(0, 15);
+      }
+    } catch { /* RPC failed, fall through to direct fetch */ }
+
+    // Strategy 3: Direct fan-out (legacy — only used when bootstrap + RPC both fail)
+    const tags = SITE_VARIANT === 'tech' ? TECH_TAGS : GEOPOLITICAL_TAGS;
     const eventResults = await Promise.all(tags.map(tag => fetchEventsByTag(tag, 20)));
 
     const seen = new Set<string>();
@@ -320,7 +359,6 @@ export async function fetchPredictions(): Promise<PredictionMarket[]> {
       }
     }
 
-    // Fallback: only fetch top markets if tag queries didn't yield enough
     if (markets.length < 15) {
       const fallbackMarkets = await fetchTopMarkets();
       for (const m of fallbackMarkets) {
@@ -331,7 +369,6 @@ export async function fetchPredictions(): Promise<PredictionMarket[]> {
       }
     }
 
-    // Sort by volume descending, then filter for meaningful signal
     const result = markets
       .filter(m => !isExpired(m.endDate))
       .filter(m => {
@@ -341,7 +378,6 @@ export async function fetchPredictions(): Promise<PredictionMarket[]> {
       .sort((a, b) => (b.volume ?? 0) - (a.volume ?? 0))
       .slice(0, 15);
 
-    // Throw on empty so circuit breaker doesn't cache a failed upstream as "success"
     if (result.length === 0 && markets.length === 0) {
       throw new Error('No markets returned — upstream may be down');
     }
