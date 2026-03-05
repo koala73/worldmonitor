@@ -486,9 +486,6 @@ export class DeckGLMap {
   }
 
   private initMapLibre(): void {
-    // Load the RTL text plugin for correct Arabic/Hebrew glyph joining.
-    // Self-hosted in public/ to avoid CSP issues with external CDN scripts.
-    // Lazy-loaded — only fetched when a RTL text-field is actually rendered.
     if (maplibregl.getRTLTextPluginStatus() === 'unavailable') {
       maplibregl.setRTLTextPlugin(
         '/mapbox-gl-rtl-text.min.js',
@@ -498,10 +495,11 @@ export class DeckGLMap {
 
     const preset = VIEW_PRESETS[this.state.view];
     const initialTheme = getCurrentTheme();
+    const primaryStyle = initialTheme === 'light' ? LIGHT_STYLE : DARK_STYLE;
 
     this.maplibreMap = new maplibregl.Map({
       container: 'deckgl-basemap',
-      style: initialTheme === 'light' ? LIGHT_STYLE : DARK_STYLE,
+      style: primaryStyle,
       center: [preset.longitude, preset.latitude],
       zoom: preset.zoom,
       renderWorldCopies: false,
@@ -517,26 +515,57 @@ export class DeckGLMap {
         : {}),
     });
 
-    const switchToFallback = () => {
+    const recreateWithFallback = () => {
       if (this.usedFallbackStyle) return;
       this.usedFallbackStyle = true;
       const fallback = initialTheme === 'light' ? FALLBACK_LIGHT_STYLE : FALLBACK_DARK_STYLE;
-      console.warn(`[DeckGLMap] Primary basemap failed, switching to fallback: ${fallback}`);
-      this.maplibreMap?.setStyle(fallback);
+      console.warn(`[DeckGLMap] Primary basemap failed, recreating with fallback: ${fallback}`);
+      this.maplibreMap?.remove();
+      this.maplibreMap = new maplibregl.Map({
+        container: 'deckgl-basemap',
+        style: fallback,
+        center: [preset.longitude, preset.latitude],
+        zoom: preset.zoom,
+        renderWorldCopies: false,
+        attributionControl: false,
+        interactive: true,
+        ...(MAP_INTERACTION_MODE === 'flat'
+          ? {
+            maxPitch: 0,
+            pitchWithRotate: false,
+            dragRotate: false,
+            touchPitch: false,
+          }
+          : {}),
+      });
+      this.maplibreMap.on('load', () => {
+        localizeMapLabels(this.maplibreMap);
+        this.rebuildTechHQSupercluster();
+        this.rebuildDatacenterSupercluster();
+        this.initDeck();
+        this.loadCountryBoundaries();
+        this.fetchServerBases();
+        this.render();
+      });
     };
+
+    let styleLoaded = false;
 
     this.maplibreMap.on('error', (e: { error?: Error; message?: string }) => {
       const msg = e.error?.message ?? e.message ?? '';
-      if (msg.includes('Failed to fetch') || msg.includes('AJAXError') || msg.includes('CORS') || msg.includes('NetworkError') || msg.includes('cartocdn.com')) {
-        switchToFallback();
+      if (msg.includes('Failed to fetch') || msg.includes('AJAXError') || msg.includes('CORS') || msg.includes('NetworkError') || msg.includes('cartocdn.com') || msg.includes('403') || msg.includes('Forbidden')) {
+        if (!styleLoaded) {
+          recreateWithFallback();
+        }
       }
     });
 
     this.styleLoadTimeoutId = setTimeout(() => {
       this.styleLoadTimeoutId = null;
-      if (!this.maplibreMap?.isStyleLoaded()) switchToFallback();
+      if (!this.maplibreMap?.isStyleLoaded()) recreateWithFallback();
     }, 5000);
     this.maplibreMap.once('style.load', () => {
+      styleLoaded = true;
       if (this.styleLoadTimeoutId) {
         clearTimeout(this.styleLoadTimeoutId);
         this.styleLoadTimeoutId = null;
