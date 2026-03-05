@@ -508,7 +508,7 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
       }
 
       // Create custom HLS channel
-      const id = `custom-hls-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const id = `custom-hls-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
       if (channels.some((c) => c.id === id)) return;
 
       const name = nameInput?.value?.trim() || 'HLS Stream';
