@@ -8,7 +8,20 @@
  */
 
 import { Panel } from './Panel';
-import * as d3 from 'd3';
+import {
+  select,
+  extent,
+  scaleLinear,
+  area,
+  curveMonotoneX,
+  line,
+  axisBottom,
+  axisLeft,
+  bisector,
+  pointer,
+  type Selection,
+  type ScaleLinear,
+} from 'd3';
 import { type ProgressDataSet, type ProgressDataPoint } from '@/services/progress-data';
 import { getCSSColor } from '@/utils';
 import { replaceChildren } from '@/utils/dom-utils';
@@ -160,7 +173,7 @@ export class ProgressChartsPanel extends Panel {
     const width = containerWidth - CHART_MARGIN.left - CHART_MARGIN.right;
     const height = CHART_HEIGHT;
 
-    const svg = d3.select(container)
+    const svg = select(container)
       .append('svg')
       .attr('width', containerWidth)
       .attr('height', height + CHART_MARGIN.top + CHART_MARGIN.bottom)
@@ -170,48 +183,48 @@ export class ProgressChartsPanel extends Panel {
       .attr('transform', `translate(${CHART_MARGIN.left},${CHART_MARGIN.top})`);
 
     // Scales
-    const xExtent = d3.extent(data, d => d.year) as [number, number];
-    const yExtent = d3.extent(data, d => d.value) as [number, number];
+    const xExtent = extent(data, d => d.year) as [number, number];
+    const yExtent = extent(data, d => d.value) as [number, number];
     const yPadding = (yExtent[1] - yExtent[0]) * 0.1;
 
-    const x = d3.scaleLinear()
+    const x = scaleLinear()
       .domain(xExtent)
       .range([0, width]);
 
-    const y = d3.scaleLinear()
+    const y = scaleLinear()
       .domain([yExtent[0] - yPadding, yExtent[1] + yPadding])
       .range([height, 0]);
 
     // Area generator with smooth curve
-    const area = d3.area<ProgressDataPoint>()
+    const areaGen = area<ProgressDataPoint>()
       .x(d => x(d.year))
       .y0(height)
       .y1(d => y(d.value))
-      .curve(d3.curveMonotoneX);
+      .curve(curveMonotoneX);
 
     // Line generator for top edge
-    const line = d3.line<ProgressDataPoint>()
+    const lineGen = line<ProgressDataPoint>()
       .x(d => x(d.year))
       .y(d => y(d.value))
-      .curve(d3.curveMonotoneX);
+      .curve(curveMonotoneX);
 
     // Filled area
     g.append('path')
       .datum(data)
-      .attr('d', area)
+      .attr('d', areaGen)
       .attr('fill', color)
       .attr('opacity', 0.2);
 
     // Stroke line
     g.append('path')
       .datum(data)
-      .attr('d', line)
+      .attr('d', lineGen)
       .attr('fill', 'none')
       .attr('stroke', color)
       .attr('stroke-width', 2);
 
     // X axis
-    const xAxis = d3.axisBottom(x)
+    const xAxis = axisBottom(x)
       .ticks(Math.min(5, data.length))
       .tickFormat(d => String(d));
 
@@ -226,7 +239,7 @@ export class ProgressChartsPanel extends Panel {
     xAxisG.select('.domain').attr('stroke', 'var(--border-subtle)');
 
     // Y axis
-    const yAxis = d3.axisLeft(y)
+    const yAxis = axisLeft(y)
       .ticks(3)
       .tickFormat(d => formatAxisValue(d as number));
 
@@ -247,10 +260,10 @@ export class ProgressChartsPanel extends Panel {
    * Add mouse hover tooltip interaction to a chart.
    */
   private addHoverInteraction(
-    g: d3.Selection<SVGGElement, unknown, null, undefined>,
+    g: Selection<SVGGElement, unknown, null, undefined>,
     data: ProgressDataPoint[],
-    x: d3.ScaleLinear<number, number>,
-    y: d3.ScaleLinear<number, number>,
+    x: ScaleLinear<number, number>,
+    y: ScaleLinear<number, number>,
     width: number,
     height: number,
     color: string,
@@ -259,7 +272,7 @@ export class ProgressChartsPanel extends Panel {
     const tooltip = this.tooltip;
     if (!tooltip) return;
 
-    const bisector = d3.bisector<ProgressDataPoint, number>(d => d.year).left;
+    const bisect = bisector<ProgressDataPoint, number>(d => d.year).left;
 
     // Invisible overlay rect for mouse events
     const overlay = g.append('rect')
@@ -285,9 +298,9 @@ export class ProgressChartsPanel extends Panel {
 
     overlay
       .on('mousemove', (event: MouseEvent) => {
-        const [mx] = d3.pointer(event, overlay.node()!);
+        const [mx] = pointer(event, overlay.node()!);
         const yearVal = x.invert(mx);
-        const idx = bisector(data, yearVal, 1);
+        const idx = bisect(data, yearVal, 1);
         const d0 = data[idx - 1];
         const d1 = data[idx];
         if (!d0) return;

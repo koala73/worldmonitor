@@ -8,7 +8,15 @@
  */
 
 import { Panel } from './Panel';
-import * as d3 from 'd3';
+import {
+  select,
+  extent,
+  max,
+  scaleLinear,
+  area,
+  curveMonotoneX,
+  line,
+} from 'd3';
 import type { SpeciesRecovery } from '@/services/conservation-data';
 import { getCSSColor } from '@/utils';
 import { replaceChildren } from '@/utils/dom-utils';
@@ -198,7 +206,7 @@ export class SpeciesComebackPanel extends Panel {
     const width = viewBoxWidth - SPARKLINE_MARGIN.left - SPARKLINE_MARGIN.right;
     const height = SPARKLINE_HEIGHT;
 
-    const svg = d3.select(container)
+    const svg = select(container)
       .append('svg')
       .attr('width', '100%')
       .attr('height', height + SPARKLINE_MARGIN.top + SPARKLINE_MARGIN.bottom)
@@ -210,42 +218,42 @@ export class SpeciesComebackPanel extends Panel {
       .attr('transform', `translate(${SPARKLINE_MARGIN.left},${SPARKLINE_MARGIN.top})`);
 
     // Scales
-    const xExtent = d3.extent(data, d => d.year) as [number, number];
-    const yMax = d3.max(data, d => d.value) as number;
+    const xExtent = extent(data, d => d.year) as [number, number];
+    const yMax = max(data, d => d.value) as number;
     const yPadding = yMax * 0.1;
 
-    const x = d3.scaleLinear()
+    const x = scaleLinear()
       .domain(xExtent)
       .range([0, width]);
 
-    const y = d3.scaleLinear()
+    const y = scaleLinear()
       .domain([0, yMax + yPadding])
       .range([height, 0]);
 
     // Area generator with smooth curve
-    const area = d3.area<{ year: number; value: number }>()
+    const areaGen = area<{ year: number; value: number }>()
       .x(d => x(d.year))
       .y0(height)
       .y1(d => y(d.value))
-      .curve(d3.curveMonotoneX);
+      .curve(curveMonotoneX);
 
     // Line generator for top edge
-    const line = d3.line<{ year: number; value: number }>()
+    const lineGen = line<{ year: number; value: number }>()
       .x(d => x(d.year))
       .y(d => y(d.value))
-      .curve(d3.curveMonotoneX);
+      .curve(curveMonotoneX);
 
     // Filled area
     g.append('path')
       .datum(data)
-      .attr('d', area)
+      .attr('d', areaGen)
       .attr('fill', color)
       .attr('opacity', 0.2);
 
     // Stroke line
     g.append('path')
       .datum(data)
-      .attr('d', line)
+      .attr('d', lineGen)
       .attr('fill', 'none')
       .attr('stroke', color)
       .attr('stroke-width', 1.5);
