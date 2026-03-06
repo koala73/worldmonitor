@@ -105,3 +105,37 @@ export function subscribeGlobeTextureChange(cb: (texture: GlobeTexture) => void)
   window.addEventListener(TEXTURE_EVENT_NAME, handler);
   return () => window.removeEventListener(TEXTURE_EVENT_NAME, handler);
 }
+
+// ─── Visual Preset (4 March classic vs 6 March enhanced) ─────────────────────
+
+export type GlobeVisualPreset = 'classic' | 'enhanced';
+
+const PRESET_STORAGE_KEY = 'wm-globe-visual-preset';
+const PRESET_EVENT_NAME = 'wm-globe-visual-preset-changed';
+
+export const GLOBE_VISUAL_PRESET_OPTIONS: { value: GlobeVisualPreset; label: string }[] = [
+  { value: 'classic', label: 'Earth' },
+  { value: 'enhanced', label: 'Cosmos' },
+];
+
+export function getGlobeVisualPreset(): GlobeVisualPreset {
+  try {
+    const raw = localStorage.getItem(PRESET_STORAGE_KEY);
+    if (raw === 'classic' || raw === 'enhanced') return raw;
+  } catch { /* ignore */ }
+  return 'classic';
+}
+
+export function setGlobeVisualPreset(preset: GlobeVisualPreset): void {
+  try { localStorage.setItem(PRESET_STORAGE_KEY, preset); } catch { /* ignore */ }
+  window.dispatchEvent(new CustomEvent(PRESET_EVENT_NAME, { detail: { preset } }));
+}
+
+export function subscribeGlobeVisualPresetChange(cb: (preset: GlobeVisualPreset) => void): () => void {
+  const handler = (e: Event) => {
+    const detail = (e as CustomEvent).detail as { preset?: GlobeVisualPreset } | undefined;
+    cb(detail?.preset ?? getGlobeVisualPreset());
+  };
+  window.addEventListener(PRESET_EVENT_NAME, handler);
+  return () => window.removeEventListener(PRESET_EVENT_NAME, handler);
+}

@@ -21,7 +21,7 @@ import { INTEL_HOTSPOTS, CONFLICT_ZONES, MILITARY_BASES, NUCLEAR_FACILITIES, SPA
 import { PIPELINES } from '@/config/pipelines';
 import { t } from '@/services/i18n';
 import { SITE_VARIANT } from '@/config/variant';
-import { getGlobeRenderScale, resolveGlobePixelRatio, resolvePerformanceProfile, subscribeGlobeRenderScaleChange, getGlobeTexture, GLOBE_TEXTURE_URLS, subscribeGlobeTextureChange, type GlobeRenderScale, type GlobePerformanceProfile } from '@/services/globe-render-settings';
+import { getGlobeRenderScale, resolveGlobePixelRatio, resolvePerformanceProfile, subscribeGlobeRenderScaleChange, getGlobeTexture, GLOBE_TEXTURE_URLS, subscribeGlobeTextureChange, getGlobeVisualPreset, subscribeGlobeVisualPresetChange, type GlobeRenderScale, type GlobePerformanceProfile, type GlobeVisualPreset } from '@/services/globe-render-settings';
 import { getLayersForVariant, resolveLayerLabel, type MapVariant } from '@/config/map-layer-definitions';
 import { resolveTradeRouteSegments, type TradeRouteSegment } from '@/config/trade-routes';
 import { GAMMA_IRRADIATORS } from '@/config/irradiators';
@@ -319,6 +319,8 @@ export class GlobeMap {
   private globe: GlobeInstance | null = null;
   private unsubscribeGlobeQuality: (() => void) | null = null;
   private unsubscribeGlobeTexture: (() => void) | null = null;
+  private unsubscribeVisualPreset: (() => void) | null = null;
+  private savedDefaultMaterial: any = null;
   private controls: GlobeControlsLike | null = null;
   private renderPaused = false;
   private outerGlow: any = null;
@@ -482,87 +484,20 @@ export class GlobeMap {
     this.container.appendChild(attribution);
 
     // Upgrade material to MeshStandardMaterial + add scene enhancements
-    setTimeout(async () => {
-      try {
-        const THREE = await import('three');
-        const scene = globe.scene();
+    // Save default material for classic preset restoration
+    this.savedDefaultMaterial = globe.globeMaterial();
 
-        // --- Material: MeshStandardMaterial with emissive glow ---
-        const oldMat = globe.globeMaterial();
-        if (oldMat) {
-          const stdMat = new THREE.MeshStandardMaterial({
-            color: 0xffffff,
-            roughness: 0.8,
-            metalness: 0.1,
-            emissive: new THREE.Color(0x0a1f2e),
-            emissiveIntensity: 0.3,
-          });
-          if ((oldMat as any).map) stdMat.map = (oldMat as any).map;
-          (globe as any).globeMaterial(stdMat);
-        }
+    // Apply visual enhancements based on preset
+    const initialPreset = getGlobeVisualPreset();
+    if (initialPreset === 'enhanced') {
+      setTimeout(() => this.applyEnhancedVisuals(), 800);
+    }
 
-        // --- Lighting: cyan backlight ---
-        this.cyanLight = new THREE.PointLight(0x00d4ff, 0.3);
-        this.cyanLight.position.set(-10, -10, -10);
-        scene.add(this.cyanLight);
+    this.unsubscribeVisualPreset = subscribeGlobeVisualPresetChange((preset) => {
+      this.applyVisualPreset(preset);
+    });
 
-        // --- Dual atmosphere glow layers ---
-        const outerGeo = new THREE.SphereGeometry(2.15, 64, 64);
-        const outerMat = new THREE.MeshBasicMaterial({
-          color: 0x00d4ff,
-          side: THREE.BackSide,
-          transparent: true,
-          opacity: 0.15,
-        });
-        this.outerGlow = new THREE.Mesh(outerGeo, outerMat);
-        scene.add(this.outerGlow);
-
-        const innerGeo = new THREE.SphereGeometry(2.08, 64, 64);
-        const innerMat = new THREE.MeshBasicMaterial({
-          color: 0x00a8cc,
-          side: THREE.BackSide,
-          transparent: true,
-          opacity: 0.1,
-        });
-        this.innerGlow = new THREE.Mesh(innerGeo, innerMat);
-        scene.add(this.innerGlow);
-
-        // --- Procedural starfield ---
-        const starCount = 2000;
-        const starPositions = new Float32Array(starCount * 3);
-        const starColors = new Float32Array(starCount * 3);
-        for (let i = 0; i < starCount; i++) {
-          const r = 50 + Math.random() * 50;
-          const theta = Math.random() * Math.PI * 2;
-          const phi = Math.acos(2 * Math.random() - 1);
-          starPositions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-          starPositions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
-          starPositions[i * 3 + 2] = r * Math.cos(phi);
-          const brightness = 0.5 + Math.random() * 0.5;
-          starColors[i * 3] = brightness;
-          starColors[i * 3 + 1] = brightness;
-          starColors[i * 3 + 2] = brightness;
-        }
-        const starGeo = new THREE.BufferGeometry();
-        starGeo.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
-        starGeo.setAttribute('color', new THREE.BufferAttribute(starColors, 3));
-        const starMat = new THREE.PointsMaterial({ size: 0.1, vertexColors: true, transparent: true });
-        this.starField = new THREE.Points(starGeo, starMat);
-        scene.add(this.starField);
-
-        const animateExtras = () => {
-          if (this.destroyed) return;
-          if (this.outerGlow) this.outerGlow.rotation.y += 0.0003;
-          if (this.starField) this.starField.rotation.y += 0.00005;
-          this.extrasAnimFrameId = requestAnimationFrame(animateExtras);
-        };
-        animateExtras();
-      } catch {
-        // enhancements are cosmetic — ignore
-      }
-    }, 800);
-
-    // Subscribe to texture changes
+    // Subscribe to texture changes (kept as-is)
     this.unsubscribeGlobeTexture = subscribeGlobeTextureChange((texture) => {
       if (this.globe) this.globe.globeImageUrl(GLOBE_TEXTURE_URLS[texture]);
     });
@@ -2045,6 +1980,110 @@ export class GlobeMap {
   public setOnCountry(_cb: any): void {}
   public getHotspotLevel(_id: string) { return 'low'; }
 
+  private async applyEnhancedVisuals(): Promise<void> {
+    if (!this.globe || this.destroyed) return;
+    try {
+      const THREE = await import('three');
+      const scene = this.globe.scene();
+
+      const oldMat = this.globe.globeMaterial();
+      if (oldMat) {
+        const stdMat = new THREE.MeshStandardMaterial({
+          color: 0xffffff, roughness: 0.8, metalness: 0.1,
+          emissive: new THREE.Color(0x0a1f2e), emissiveIntensity: 0.3,
+        });
+        if ((oldMat as any).map) stdMat.map = (oldMat as any).map;
+        (this.globe as any).globeMaterial(stdMat);
+      }
+
+      this.cyanLight = new THREE.PointLight(0x00d4ff, 0.3);
+      this.cyanLight.position.set(-10, -10, -10);
+      scene.add(this.cyanLight);
+
+      const outerGeo = new THREE.SphereGeometry(2.15, 64, 64);
+      const outerMat = new THREE.MeshBasicMaterial({
+        color: 0x00d4ff, side: THREE.BackSide, transparent: true, opacity: 0.15,
+      });
+      this.outerGlow = new THREE.Mesh(outerGeo, outerMat);
+      scene.add(this.outerGlow);
+
+      const innerGeo = new THREE.SphereGeometry(2.08, 64, 64);
+      const innerMat = new THREE.MeshBasicMaterial({
+        color: 0x00a8cc, side: THREE.BackSide, transparent: true, opacity: 0.1,
+      });
+      this.innerGlow = new THREE.Mesh(innerGeo, innerMat);
+      scene.add(this.innerGlow);
+
+      const starCount = 2000;
+      const starPositions = new Float32Array(starCount * 3);
+      const starColors = new Float32Array(starCount * 3);
+      for (let i = 0; i < starCount; i++) {
+        const r = 50 + Math.random() * 50;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos(2 * Math.random() - 1);
+        starPositions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+        starPositions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+        starPositions[i * 3 + 2] = r * Math.cos(phi);
+        const brightness = 0.5 + Math.random() * 0.5;
+        starColors[i * 3] = brightness;
+        starColors[i * 3 + 1] = brightness;
+        starColors[i * 3 + 2] = brightness;
+      }
+      const starGeo = new THREE.BufferGeometry();
+      starGeo.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+      starGeo.setAttribute('color', new THREE.BufferAttribute(starColors, 3));
+      const starMat = new THREE.PointsMaterial({ size: 0.1, vertexColors: true, transparent: true });
+      this.starField = new THREE.Points(starGeo, starMat);
+      scene.add(this.starField);
+
+      const animateExtras = () => {
+        if (this.destroyed) return;
+        if (this.outerGlow) this.outerGlow.rotation.y += 0.0003;
+        if (this.starField) this.starField.rotation.y += 0.00005;
+        this.extrasAnimFrameId = requestAnimationFrame(animateExtras);
+      };
+      animateExtras();
+    } catch { /* cosmetic — ignore */ }
+  }
+
+  private removeEnhancedVisuals(): void {
+    if (!this.globe) return;
+    if (this.extrasAnimFrameId != null) {
+      cancelAnimationFrame(this.extrasAnimFrameId);
+      this.extrasAnimFrameId = null;
+    }
+    const scene = this.globe.scene();
+    for (const obj of [this.outerGlow, this.innerGlow, this.starField, this.cyanLight]) {
+      if (!obj) continue;
+      scene.remove(obj);
+      if (obj.geometry) obj.geometry.dispose();
+      if (obj.material) obj.material.dispose();
+    }
+    const mat = this.globe.globeMaterial();
+    if (mat && (mat as any).isMeshStandardMaterial) {
+      const texMap = (mat as any).map;
+      mat.dispose();
+      if (this.savedDefaultMaterial) {
+        if (texMap) (this.savedDefaultMaterial as any).map = texMap;
+        (this.globe as any).globeMaterial(this.savedDefaultMaterial);
+      }
+    }
+    this.outerGlow = null;
+    this.innerGlow = null;
+    this.starField = null;
+    this.cyanLight = null;
+  }
+
+  private applyVisualPreset(preset: GlobeVisualPreset): void {
+    if (!this.globe || this.destroyed) return;
+    if (preset === 'enhanced') {
+      this.removeEnhancedVisuals();
+      this.applyEnhancedVisuals();
+    } else {
+      this.removeEnhancedVisuals();
+    }
+  }
+
   // ─── Render quality & performance profile ────────────────────────────────
 
   private applyRenderQuality(scale?: GlobeRenderScale, width?: number, height?: number): void {
@@ -2098,6 +2137,8 @@ export class GlobeMap {
     this.unsubscribeGlobeQuality = null;
     this.unsubscribeGlobeTexture?.();
     this.unsubscribeGlobeTexture = null;
+    this.unsubscribeVisualPreset?.();
+    this.unsubscribeVisualPreset = null;
     this.destroyed = true;
     if (this.extrasAnimFrameId != null) {
       cancelAnimationFrame(this.extrasAnimFrameId);

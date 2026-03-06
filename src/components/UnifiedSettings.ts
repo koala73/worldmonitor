@@ -4,6 +4,7 @@ import { SITE_VARIANT } from '@/config/variant';
 import { LANGUAGES, changeLanguage, getCurrentLanguage, t } from '@/services/i18n';
 import { getAiFlowSettings, setAiFlowSetting, getStreamQuality, setStreamQuality, STREAM_QUALITY_OPTIONS } from '@/services/ai-flow-settings';
 import { getLiveStreamsAlwaysOn, setLiveStreamsAlwaysOn } from '@/services/live-stream-settings';
+import { getGlobeVisualPreset, setGlobeVisualPreset, GLOBE_VISUAL_PRESET_OPTIONS, type GlobeVisualPreset } from '@/services/globe-render-settings';
 import type { StreamQuality } from '@/services/ai-flow-settings';
 import { escapeHtml } from '@/utils/sanitize';
 import { trackLanguageChange } from '@/services/analytics';
@@ -198,6 +199,11 @@ export class UnifiedSettings {
         return;
       }
 
+
+      if (target.id === 'us-globe-visual-preset') {
+        setGlobeVisualPreset(target.value as GlobeVisualPreset);
+        return;
+      }
 
       if (target.id === 'us-live-streams-always-on') {
         setLiveStreamsAlwaysOn(target.checked);
@@ -412,6 +418,22 @@ export class UnifiedSettings {
     if (currentLang === 'vi') {
       html += `<div class="ai-flow-toggle-desc">${t('components.languageSelector.mapLabelsFallbackVi')}</div>`;
     }
+
+    // 3D Globe Visual Preset
+    const currentPreset = getGlobeVisualPreset();
+    html += `<div class="ai-flow-section-label">3D Globe Visual</div>`;
+    html += `<div class="ai-flow-toggle-row">
+      <div class="ai-flow-toggle-label-wrap">
+        <div class="ai-flow-toggle-label">Visual Preset</div>
+        <div class="ai-flow-toggle-desc">Switch between classic and enhanced globe visuals to compare</div>
+      </div>
+    </div>`;
+    html += `<select class="unified-settings-select" id="us-globe-visual-preset">`;
+    for (const opt of GLOBE_VISUAL_PRESET_OPTIONS) {
+      const selected = opt.value === currentPreset ? ' selected' : '';
+      html += `<option value="${opt.value}"${selected}>${opt.label}</option>`;
+    }
+    html += `</select>`;
 
     // Data Management section
     html += `<div class="ai-flow-section-label">${t('components.settings.dataManagementLabel')}</div>`;
