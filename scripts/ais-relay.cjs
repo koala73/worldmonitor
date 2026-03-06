@@ -2161,137 +2161,66 @@ function startTheaterPostureSeedLoop() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// GPS/GNSS Jamming Seed — fetches from gpsjam.org, seeds Redis
-// Data updates once per day; we poll every 6 hours.
+// GPS/GNSS Jamming Seed — fetches from Wingbits API, seeds Redis
+// Data updates continuously; we poll every hour.
 // ─────────────────────────────────────────────────────────────
-const GPSJAM_SEED_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
+const GPSJAM_SEED_INTERVAL_MS = 1 * 60 * 60 * 1000; // 1 hour
 const GPSJAM_SEED_TTL = 86400; // 24 hours
-const GPSJAM_REDIS_KEY = 'intelligence:gpsjam:v1';
-const GPSJAM_BASE_URL = 'https://gpsjam.org/data';
-const GPSJAM_MIN_AIRCRAFT = 3;
+const GPSJAM_REDIS_KEY = 'intelligence:gpsjam:v2';
+const GPSJAM_NP_HIGH = 0.5;
+const GPSJAM_NP_MEDIUM = 1.0;
 let gpsJamSeedInFlight = false;
 
-function gpsJamClassifyRegion(lat, lon) {
-  if (lat >= 29 && lat <= 42 && lon >= 43 && lon <= 63) return 'iran-iraq';
-  if (lat >= 31 && lat <= 37 && lon >= 35 && lon <= 43) return 'levant';
-  if (lat >= 28 && lat <= 34 && lon >= 29 && lon <= 36) return 'israel-sinai';
-  if (lat >= 44 && lat <= 53 && lon >= 22 && lon <= 41) return 'ukraine-russia';
-  if (lat >= 54 && lat <= 70 && lon >= 27 && lon <= 60) return 'russia-north';
-  if (lat >= 36 && lat <= 42 && lon >= 26 && lon <= 45) return 'turkey-caucasus';
-  if (lat >= 32 && lat <= 38 && lon >= 63 && lon <= 75) return 'afghanistan-pakistan';
-  if (lat >= 10 && lat <= 20 && lon >= 42 && lon <= 55) return 'yemen-horn';
-  if (lat >= 0 && lat <= 12 && lon >= 32 && lon <= 48) return 'east-africa';
-  if (lat >= 15 && lat <= 24 && lon >= 25 && lon <= 40) return 'sudan-sahel';
-  if (lat >= 50 && lat <= 72 && lon >= -10 && lon <= 25) return 'northern-europe';
-  if (lat >= 35 && lat <= 50 && lon >= -10 && lon <= 25) return 'western-europe';
-  if (lat >= 1 && lat <= 8 && lon >= 95 && lon <= 108) return 'southeast-asia';
-  if (lat >= 20 && lat <= 45 && lon >= 100 && lon <= 145) return 'east-asia';
-  if (lat >= 25 && lat <= 50 && lon >= -125 && lon <= -65) return 'north-america';
-  return 'other';
-}
-
-function gpsJamFetchText(urlStr) {
-  return new Promise((resolve, reject) => {
-    const url = new URL(urlStr);
-    const req = https.request(url, {
-      method: 'GET',
-      headers: { 'User-Agent': CHROME_UA, 'Accept-Encoding': 'gzip, deflate' },
-      timeout: 15000,
-    }, (res) => {
-      if (res.statusCode !== 200) {
-        res.resume();
-        return reject(new Error(`HTTP ${res.statusCode} for ${urlStr}`));
-      }
-      const chunks = [];
-      const stream = (res.headers['content-encoding'] === 'gzip')
-        ? res.pipe(zlib.createGunzip())
-        : (res.headers['content-encoding'] === 'deflate')
-          ? res.pipe(zlib.createInflate())
-          : res;
-      stream.on('data', (c) => chunks.push(c));
-      stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
-      stream.on('error', reject);
-    });
-    req.on('error', reject);
-    req.on('timeout', () => { req.destroy(); reject(new Error('Timeout')); });
-    req.end();
-  });
-}
+let h3Lib;
+try { h3Lib = require('h3-js'); } catch { h3Lib = null; }
 
 async function seedGpsJamData() {
   if (gpsJamSeedInFlight) return;
+  const apiKey = process.env.WINGBITS_API_KEY;
+  if (!apiKey) {
+    console.log('[GPSJam] No WINGBITS_API_KEY — skipping');
+    return;
+  }
   gpsJamSeedInFlight = true;
   const t0 = Date.now();
   try {
-    const manifest = await gpsJamFetchText(`${GPSJAM_BASE_URL}/manifest.csv`);
-    const manifestLines = manifest.trim().split('\n');
-    const latestDate = manifestLines[manifestLines.length - 1].split(',')[0];
+    const resp = await fetch('https://customer-api.wingbits.com/v1/gps/jam', {
+      headers: { 'x-api-key': apiKey, Accept: 'application/json' },
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!resp.ok) throw new Error(`Wingbits GPS HTTP ${resp.status}`);
 
-    const csv = await gpsJamFetchText(`${GPSJAM_BASE_URL}/${latestDate}-h3_4.csv`);
-    const rows = csv.trim().split('\n');
-    const header = rows[0];
-    if (!header.includes('hex')) throw new Error(`Unexpected CSV header: ${header}`);
-
-    let h3Lib;
-    try { h3Lib = require('h3-js'); } catch { h3Lib = null; }
+    const body = await resp.json();
+    if (!body.hexes || !Array.isArray(body.hexes)) throw new Error('Unexpected response shape: missing hexes array');
 
     const hexes = [];
-    let skippedLow = 0;
-    let skippedSample = 0;
-
-    for (let i = 1; i < rows.length; i++) {
-      const parts = rows[i].split(',');
-      if (parts.length < 3) continue;
-      const hex = parts[0];
-      const good = parseInt(parts[1], 10);
-      const bad = parseInt(parts[2], 10);
-      const total = good + bad;
-      if (total < GPSJAM_MIN_AIRCRAFT) { skippedSample++; continue; }
-      const pct = (bad / total) * 100;
+    for (const h of body.hexes) {
+      const np = h.npAvg;
       let level;
-      if (pct > 10) level = 'high';
-      else if (pct >= 2) level = 'medium';
-      else { skippedLow++; continue; }
+      if (np <= GPSJAM_NP_HIGH) level = 'high';
+      else if (np <= GPSJAM_NP_MEDIUM) level = 'medium';
+      else continue;
 
-      let lat, lon;
+      const entry = { h3: h.h3Index, level, npAvg: np, sampleCount: h.sampleCount, aircraftCount: h.aircraftCount };
       if (h3Lib) {
         try {
-          const [lt, ln] = h3Lib.cellToLatLng(hex);
-          lat = Math.round(lt * 1e5) / 1e5;
-          lon = Math.round(ln * 1e5) / 1e5;
-        } catch { continue; }
-      }
-
-      const entry = { h3: hex, pct: Math.round(pct * 10) / 10, good, bad, total, level };
-      if (lat !== undefined) {
-        entry.lat = lat;
-        entry.lon = lon;
-        entry.region = gpsJamClassifyRegion(lat, lon);
+          const [lt, ln] = h3Lib.cellToLatLng(h.h3Index);
+          entry.lat = Math.round(lt * 1e5) / 1e5;
+          entry.lon = Math.round(ln * 1e5) / 1e5;
+        } catch { /* skip invalid hex */ }
       }
       hexes.push(entry);
     }
 
-    hexes.sort((a, b) => {
-      if (a.level !== b.level) return a.level === 'high' ? -1 : 1;
-      return b.pct - a.pct;
-    });
-
-    const highCount = hexes.filter(h => h.level === 'high').length;
-    const mediumCount = hexes.filter(h => h.level === 'medium').length;
-
     const output = {
-      date: latestDate,
-      fetchedAt: new Date().toISOString(),
-      source: 'gpsjam.org',
-      attribution: 'Data derived from ADS-B Exchange via gpsjam.org',
-      minAircraftThreshold: GPSJAM_MIN_AIRCRAFT,
-      stats: { totalHexes: rows.length - 1, highCount, mediumCount, skippedLowSample: skippedSample, skippedLow },
       hexes,
+      lastUpdated: body.lastUpdated || new Date().toISOString(),
     };
 
     const ok = await upstashSet(GPSJAM_REDIS_KEY, output, GPSJAM_SEED_TTL);
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-    console.log(`[GPSJam] Seeded ${hexes.length} hexes (${highCount} high, ${mediumCount} medium, date: ${latestDate}, redis: ${ok ? 'OK' : 'FAIL'}) in ${elapsed}s`);
+    const highCount = hexes.filter(h => h.level === 'high').length;
+    console.log(`[GPSJam] Seeded ${hexes.length} hexes (${highCount} high, ${hexes.length - highCount} medium, redis: ${ok ? 'OK' : 'FAIL'}) in ${elapsed}s`);
   } catch (e) {
     console.warn('[GPSJam] Seed error:', e?.message || e);
   } finally {
@@ -2451,7 +2380,7 @@ async function seedCiiScores() {
       upstashGet('climate:anomalies:v1'),
       upstashGet('cyber:threats-bootstrap:v2'),
       upstashGet('wildfire:fires:v1'),
-      upstashGet('intelligence:gpsjam:v1'),
+      upstashGet('intelligence:gpsjam:v2'),
       upstashGet('conflict:iran-events:v1'),
     ]);
 

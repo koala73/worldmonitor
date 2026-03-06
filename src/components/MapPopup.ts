@@ -54,10 +54,9 @@ interface GpsJammingPopupData {
   lat: number;
   lon: number;
   level: 'medium' | 'high';
-  pct: number;
-  good: number;
-  bad: number;
-  total: number;
+  npAvg: number;
+  sampleCount: number;
+  aircraftCount: number;
 }
 
 interface IranEventPopupData {
@@ -2713,16 +2712,16 @@ export class MapPopup {
       <div class="popup-body">
         <div class="popup-stats">
           <div class="popup-stat">
-            <span class="stat-label">${t('popups.gpsJamming.interference')}</span>
-            <span class="stat-value">${data.pct}%</span>
+            <span class="stat-label">${t('popups.gpsJamming.navPerformance')}</span>
+            <span class="stat-value">${data.npAvg.toFixed(2)}</span>
           </div>
           <div class="popup-stat">
-            <span class="stat-label">${t('popups.gpsJamming.aircraftAffected')}</span>
-            <span class="stat-value">${data.bad} / ${data.total}</span>
+            <span class="stat-label">${t('popups.gpsJamming.samples')}</span>
+            <span class="stat-value">${data.sampleCount.toLocaleString()}</span>
           </div>
           <div class="popup-stat">
-            <span class="stat-label">${t('popups.gpsJamming.aircraftNormal')}</span>
-            <span class="stat-value">${data.good}</span>
+            <span class="stat-label">${t('popups.gpsJamming.aircraft')}</span>
+            <span class="stat-value">${data.aircraftCount}</span>
           </div>
           <div class="popup-stat">
             <span class="stat-label">${t('popups.gpsJamming.h3Hex')}</span>

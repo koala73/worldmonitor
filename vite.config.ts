@@ -575,6 +575,29 @@ function youtubeLivePlugin(): Plugin {
   };
 }
 
+function gpsjamDevPlugin(): Plugin {
+  const dataPath = resolve(__dirname, 'scripts/data/gpsjam-latest.json');
+  return {
+    name: 'gpsjam-dev',
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        if (!req.url?.startsWith('/api/gpsjam')) return next();
+
+        try {
+          const data = await readFile(dataPath, 'utf8');
+          res.setHeader('Content-Type', 'application/json');
+          res.setHeader('Cache-Control', 'public, max-age=300');
+          res.end(data);
+        } catch {
+          res.statusCode = 503;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: 'No GPS jam data. Run: node scripts/fetch-gpsjam.mjs' }));
+        }
+      });
+    },
+  };
+}
+
 export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
@@ -585,6 +608,7 @@ export default defineConfig({
     rssProxyPlugin(),
     youtubeLivePlugin(),
     sebufApiPlugin(),
+    gpsjamDevPlugin(),
     brotliPrecompressPlugin(),
     VitePWA({
       registerType: 'autoUpdate',
@@ -1169,6 +1193,8 @@ export default defineConfig({
           });
         },
       },
+      // GPS jam data is served from Redis (seeded by scripts/fetch-gpsjam.mjs)
+      // No proxy needed — handled by gpsjamDevPlugin()
     },
   },
 });

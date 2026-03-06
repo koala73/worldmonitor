@@ -1,4 +1,3 @@
-import { cellToLatLng } from 'h3-js';
 import { getApiBaseUrl } from '@/services/runtime';
 
 export interface GpsJamHex {
@@ -6,16 +5,13 @@ export interface GpsJamHex {
   lat: number;
   lon: number;
   level: 'medium' | 'high';
-  pct: number;
-  good: number;
-  bad: number;
-  total: number;
+  npAvg: number;
+  sampleCount: number;
+  aircraftCount: number;
 }
 
 export interface GpsJamData {
-  date: string;
-  fetchedAt: string;
-  source: string;
+  lastUpdated: string;
   stats: {
     totalHexes: number;
     highCount: number;
@@ -26,7 +22,7 @@ export interface GpsJamData {
 
 let cachedData: GpsJamData | null = null;
 let cachedAt = 0;
-const CACHE_TTL = 60 * 60 * 1000; // 1 hour
+const CACHE_TTL = 5 * 60 * 1000;
 
 export async function fetchGpsInterference(): Promise<GpsJamData | null> {
   const now = Date.now();
@@ -39,40 +35,16 @@ export async function fetchGpsInterference(): Promise<GpsJamData | null> {
     });
     if (!resp.ok) return cachedData;
 
-    const raw = await resp.json() as {
-      date: string;
-      fetchedAt: string;
-      source: string;
-      stats: { totalHexes: number; highCount: number; mediumCount: number };
-      hexes: Array<{ h3: string; pct: number; good: number; bad: number; total: number; level: string }>;
-    };
-
-    // Convert H3 hex IDs to lat/lon
-    const hexes: GpsJamHex[] = [];
-    for (const h of raw.hexes) {
-      try {
-        const [lat, lon] = cellToLatLng(h.h3);
-        hexes.push({
-          h3: h.h3,
-          lat: Math.round(lat * 1e5) / 1e5,
-          lon: Math.round(lon * 1e5) / 1e5,
-          level: h.level as 'medium' | 'high',
-          pct: h.pct,
-          good: h.good,
-          bad: h.bad,
-          total: h.total,
-        });
-      } catch {
-        // skip invalid hex
-      }
-    }
+    const raw = await resp.json() as { hexes: GpsJamHex[]; lastUpdated: string };
 
     cachedData = {
-      date: raw.date,
-      fetchedAt: raw.fetchedAt,
-      source: raw.source,
-      stats: raw.stats,
-      hexes,
+      lastUpdated: raw.lastUpdated,
+      stats: {
+        totalHexes: raw.hexes.length,
+        highCount: raw.hexes.filter(h => h.level === 'high').length,
+        mediumCount: raw.hexes.filter(h => h.level === 'medium').length,
+      },
+      hexes: raw.hexes,
     };
     cachedAt = now;
     return cachedData;
