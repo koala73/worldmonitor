@@ -180,5 +180,19 @@ export function getProviderCredentials(provider: string): ProviderCredentials | 
     };
   }
 
+  if (provider === 'minimax') {
+    const apiKey = process.env.MINIMAX_API_KEY;
+    if (!apiKey) return null;
+    const baseUrl = process.env.MINIMAX_API_URL || 'https://api.minimax.io/v1';
+    return {
+      apiUrl: new URL('/chat/completions', baseUrl).toString(),
+      model: process.env.MINIMAX_MODEL || 'MiniMax-M2.5',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+    };
+  }
+
   return null;
 }

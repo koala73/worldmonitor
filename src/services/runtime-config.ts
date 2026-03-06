@@ -4,6 +4,7 @@ import { invokeTauri } from './tauri-bridge';
 export type RuntimeSecretKey =
   | 'GROQ_API_KEY'
   | 'OPENROUTER_API_KEY'
+  | 'MINIMAX_API_KEY'
   | 'FRED_API_KEY'
   | 'EIA_API_KEY'
   | 'CLOUDFLARE_API_TOKEN'
@@ -30,6 +31,7 @@ export type RuntimeSecretKey =
 export type RuntimeFeatureId =
   | 'aiGroq'
   | 'aiOpenRouter'
+  | 'aiMiniMax'
   | 'economicFred'
   | 'energyEia'
   | 'internetOutages'
@@ -83,6 +85,7 @@ function getSidecarSecretValidateUrl(): string {
 const defaultToggles: Record<RuntimeFeatureId, boolean> = {
   aiGroq: true,
   aiOpenRouter: true,
+  aiMiniMax: true,
   economicFred: true,
   energyEia: true,
   internetOutages: true,
@@ -124,7 +127,14 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
     name: 'OpenRouter summarization',
     description: 'Secondary LLM provider for AI summary fallback.',
     requiredSecrets: ['OPENROUTER_API_KEY'],
-    fallback: 'Falls back to local browser model only.',
+    fallback: 'Falls back to MiniMax, then local browser model.',
+  },
+  {
+    id: 'aiMiniMax',
+    name: 'MiniMax summarization',
+    description: 'MiniMax LLM provider for AI summary generation (OpenAI-compatible).',
+    requiredSecrets: ['MINIMAX_API_KEY'],
+    fallback: 'Falls back to OpenRouter, then local browser model.',
   },
   {
     id: 'economicFred',

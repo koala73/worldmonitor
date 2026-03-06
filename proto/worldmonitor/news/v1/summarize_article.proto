@@ -6,7 +6,7 @@ import "buf/validate/validate.proto";
 
 // SummarizeArticleRequest specifies parameters for LLM article summarization.
 message SummarizeArticleRequest {
-  // LLM provider: "ollama", "groq", "openrouter"
+  // LLM provider: "ollama", "groq", "minimax", "openrouter"
   string provider = 1 [
     (buf.validate.field).required = true,
     (buf.validate.field).string.min_len = 1

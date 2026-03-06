@@ -99,7 +99,7 @@ globalThis.fetch = async function ipv4Fetch(input, init) {
 };
 
 const ALLOWED_ENV_KEYS = new Set([
-  'GROQ_API_KEY', 'OPENROUTER_API_KEY', 'FRED_API_KEY', 'EIA_API_KEY',
+  'GROQ_API_KEY', 'OPENROUTER_API_KEY', 'MINIMAX_API_KEY', 'FRED_API_KEY', 'EIA_API_KEY',
   'CLOUDFLARE_API_TOKEN', 'ACLED_ACCESS_TOKEN', 'URLHAUS_AUTH_KEY',
   'OTX_API_KEY', 'ABUSEIPDB_API_KEY', 'WINGBITS_API_KEY', 'WS_RELAY_URL',
   'VITE_OPENSKY_RELAY_URL', 'OPENSKY_CLIENT_ID', 'OPENSKY_CLIENT_SECRET',
@@ -669,6 +669,17 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
       if (isAuthFailure(response.status, text)) return fail('OpenRouter rejected this key');
       if (!response.ok) return fail(`OpenRouter probe failed (${response.status})`);
       return ok('OpenRouter key verified');
+    }
+
+    case 'MINIMAX_API_KEY': {
+      const response = await fetchWithTimeout('https://api.minimax.io/v1/models', {
+        headers: { Authorization: `Bearer ${value}`, 'User-Agent': CHROME_UA },
+      });
+      const text = await response.text();
+      if (isCloudflareChallenge403(response, text)) return ok('MiniMax key stored (Cloudflare blocked verification)');
+      if (isAuthFailure(response.status, text)) return fail('MiniMax rejected this key');
+      if (!response.ok) return fail(`MiniMax probe failed (${response.status})`);
+      return ok('MiniMax key verified');
     }
 
     case 'FRED_API_KEY': {
