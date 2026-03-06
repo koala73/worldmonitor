@@ -59,6 +59,25 @@ export async function setCachedJson(key: string, value: unknown, ttlSeconds: num
 }
 
 const NEG_SENTINEL = '__WM_NEG__';
+const SEED_META_TTL = 604800; // 7 days
+
+/** Estimate record count from an RPC response object for seed-meta tracking. */
+function estimateRecordCount(obj: unknown): number {
+  if (!obj || typeof obj !== 'object') return 0;
+  if (Array.isArray(obj)) return obj.length;
+  // Check common array fields in RPC responses
+  for (const v of Object.values(obj as Record<string, unknown>)) {
+    if (Array.isArray(v)) return v.length;
+  }
+  return Object.keys(obj as Record<string, unknown>).length;
+}
+
+/** Write seed-meta for a cache key (fire-and-forget). */
+function writeSeedMeta(cacheKey: string, recordCount: number): void {
+  const metaKey = `seed-meta:${cacheKey.replace(/[-:]v\d+$/, '')}`;
+  setCachedJson(metaKey, { fetchedAt: Date.now(), recordCount }, SEED_META_TTL)
+    .catch((err: unknown) => console.warn(`[redis] seed-meta write failed for "${metaKey}":`, errMsg(err)));
+}
 
 /**
  * Batch GET using Upstash pipeline API — single HTTP round-trip for N keys.
@@ -128,6 +147,7 @@ export async function cachedFetchJson<T extends object>(
     .then(async (result) => {
       if (result != null) {
         await setCachedJson(key, result, ttlSeconds);
+        writeSeedMeta(key, estimateRecordCount(result));
       } else {
         await setCachedJson(key, NEG_SENTINEL, negativeTtlSeconds);
       }
@@ -174,6 +194,7 @@ export async function cachedFetchJsonWithMeta<T extends object>(
     .then(async (result) => {
       if (result != null) {
         await setCachedJson(key, result, ttlSeconds);
+        writeSeedMeta(key, estimateRecordCount(result));
       } else {
         await setCachedJson(key, NEG_SENTINEL, negativeTtlSeconds);
       }

@@ -66,6 +66,18 @@ const SEED_META = {
   insights:         { key: 'seed-meta:news:insights',           maxStaleMin: 30 },
   marketQuotes:     { key: 'seed-meta:market:stocks',         maxStaleMin: 30 },
   commodityQuotes:  { key: 'seed-meta:market:commodities',    maxStaleMin: 30 },
+  // RPC-populated keys — auto-tracked by cachedFetchJson seed-meta writes
+  serviceStatuses:  { key: 'seed-meta:infra:service-statuses',    maxStaleMin: 120 },
+  macroSignals:     { key: 'seed-meta:economic:macro-signals',    maxStaleMin: 60 },
+  bisPolicy:        { key: 'seed-meta:economic:bis:policy',       maxStaleMin: 1440 },
+  bisExchange:      { key: 'seed-meta:economic:bis:eer',          maxStaleMin: 1440 },
+  bisCredit:        { key: 'seed-meta:economic:bis:credit',       maxStaleMin: 1440 },
+  shippingRates:    { key: 'seed-meta:supply_chain:shipping',     maxStaleMin: 240 },
+  chokepoints:      { key: 'seed-meta:supply_chain:chokepoints',  maxStaleMin: 60 },
+  minerals:         { key: 'seed-meta:supply_chain:minerals',     maxStaleMin: 2880 },
+  giving:           { key: 'seed-meta:giving:summary',            maxStaleMin: 2880 },
+  gpsjam:           { key: 'seed-meta:intelligence:gpsjam',       maxStaleMin: 720 },
+  cableHealth:      { key: 'seed-meta:cable-health',              maxStaleMin: 60 },
 };
 
 // Standalone keys that are populated on-demand by RPC handlers (not seeds).
@@ -206,6 +218,21 @@ export default async function handler(req) {
     const parsed = parseRedisValue(raw);
     const size = dataSize(parsed);
     const isOnDemand = ON_DEMAND_KEYS.has(name);
+    const seedCfg = SEED_META[name];
+
+    // Freshness tracking for standalone keys (same logic as bootstrap keys)
+    let seedAge = null;
+    let seedStale = null;
+    if (seedCfg) {
+      const metaRaw = keyValues.get(seedCfg.key);
+      const meta = parseRedisValue(metaRaw);
+      if (meta?.fetchedAt) {
+        seedAge = Math.round((now - meta.fetchedAt) / 60_000);
+        seedStale = seedAge > seedCfg.maxStaleMin;
+      }
+      // Don't mark stale if no meta yet — seed-meta auto-writes are new,
+      // existing data may not have meta until next refresh cycle.
+    }
 
     let status;
     if (!parsed || raw === NEG_SENTINEL) {
@@ -224,12 +251,18 @@ export default async function handler(req) {
         status = 'EMPTY_DATA';
         critCount++;
       }
+    } else if (seedStale === true) {
+      status = 'STALE_SEED';
+      warnCount++;
     } else {
       status = 'OK';
       okCount++;
     }
 
-    checks[name] = { status, redisKey, records: size };
+    const entry = { status, redisKey, records: size };
+    if (seedAge !== null) entry.seedAgeMin = seedAge;
+    if (seedCfg) entry.maxStaleMin = seedCfg.maxStaleMin;
+    checks[name] = entry;
   }
 
   let overall;
