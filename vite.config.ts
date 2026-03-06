@@ -4,11 +4,35 @@ import { resolve, dirname, extname } from 'path';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { brotliCompress } from 'zlib';
 import { promisify } from 'util';
+import { execSync } from 'child_process';
 import pkg from './package.json';
-import { VARIANT_META } from './src/config/variant-meta';
+
+// Auto-detect Windows system proxy (e.g. VPN browser extension sets it in registry)
+// and enable NODE_USE_ENV_PROXY so built-in fetch routes through it.
+if (process.platform === 'win32' && !process.env.HTTPS_PROXY) {
+  try {
+    const out = execSync(
+      'reg query "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" /v ProxyEnable /t REG_DWORD',
+      { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
+    );
+    if (out.includes('0x1')) {
+      const out2 = execSync(
+        'reg query "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" /v ProxyServer /t REG_SZ',
+        { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
+      );
+      const m = out2.match(/ProxyServer\s+REG_SZ\s+(\S+)/);
+      if (m) {
+        process.env.HTTPS_PROXY = `http://${m[1]}`;
+        process.env.HTTP_PROXY = `http://${m[1]}`;
+        process.env.NODE_USE_ENV_PROXY = '1';
+        console.log(`[vite] System proxy detected: ${process.env.HTTPS_PROXY}`);
+      }
+    }
+  } catch { /* no proxy or registry unavailable */ }
+}
 
 const isE2E = process.env.VITE_E2E === '1';
-const isDesktopBuild = process.env.VITE_DESKTOP_RUNTIME === '1';
+
 
 const brotliCompressAsync = promisify(brotliCompress);
 const BROTLI_EXTENSIONS = new Set(['.js', '.mjs', '.css', '.html', '.svg', '.json', '.txt', '.xml', '.wasm']);
@@ -38,6 +62,93 @@ function brotliPrecompressPlugin(): Plugin {
   };
 }
 
+const VARIANT_META: Record<string, {
+  title: string;
+  description: string;
+  keywords: string;
+  url: string;
+  siteName: string;
+  shortName: string;
+  subject: string;
+  classification: string;
+  categories: string[];
+  features: string[];
+}> = {
+  full: {
+    title: 'World Monitor - Real-Time Global Intelligence Dashboard',
+    description: 'Real-time global intelligence dashboard with live news, markets, military tracking, infrastructure monitoring, and geopolitical data. OSINT in one view.',
+    keywords: 'global intelligence, geopolitical dashboard, world news, market data, military bases, nuclear facilities, undersea cables, conflict zones, real-time monitoring, situation awareness, OSINT, flight tracking, AIS ships, earthquake monitor, protest tracker, power outages, oil prices, government spending, polymarket predictions',
+    url: 'https://worldmonitor.app/',
+    siteName: 'World Monitor',
+    shortName: 'WorldMonitor',
+    subject: 'Real-Time Global Intelligence and Situation Awareness',
+    classification: 'Intelligence Dashboard, OSINT Tool, News Aggregator',
+    categories: ['news', 'productivity'],
+    features: [
+      'Real-time news aggregation',
+      'Stock market tracking',
+      'Military flight monitoring',
+      'Ship AIS tracking',
+      'Earthquake alerts',
+      'Protest tracking',
+      'Power outage monitoring',
+      'Oil price analytics',
+      'Government spending data',
+      'Prediction markets',
+      'Infrastructure monitoring',
+      'Geopolitical intelligence',
+    ],
+  },
+  tech: {
+    title: 'Tech Monitor - Real-Time AI & Tech Industry Dashboard',
+    description: 'Real-time AI and tech industry dashboard tracking tech giants, AI labs, startup ecosystems, funding rounds, and tech events worldwide.',
+    keywords: 'tech dashboard, AI industry, startup ecosystem, tech companies, AI labs, venture capital, tech events, tech conferences, cloud infrastructure, datacenters, tech layoffs, funding rounds, unicorns, FAANG, tech HQ, accelerators, Y Combinator, tech news',
+    url: 'https://tech.worldmonitor.app/',
+    siteName: 'Tech Monitor',
+    shortName: 'TechMonitor',
+    subject: 'AI, Tech Industry, and Startup Ecosystem Intelligence',
+    classification: 'Tech Dashboard, AI Tracker, Startup Intelligence',
+    categories: ['news', 'business'],
+    features: [
+      'Tech news aggregation',
+      'AI lab tracking',
+      'Startup ecosystem mapping',
+      'Tech HQ locations',
+      'Conference & event calendar',
+      'Cloud infrastructure monitoring',
+      'Datacenter mapping',
+      'Tech layoff tracking',
+      'Funding round analytics',
+      'Tech stock tracking',
+      'Service status monitoring',
+    ],
+  },
+  finance: {
+    title: 'Finance Monitor - Real-Time Markets & Trading Dashboard',
+    description: 'Real-time finance and trading dashboard tracking global markets, stock exchanges, central banks, commodities, forex, crypto, and economic indicators worldwide.',
+    keywords: 'finance dashboard, trading dashboard, stock market, forex, commodities, central banks, crypto, economic indicators, market news, financial centers, stock exchanges, bonds, derivatives, fintech, hedge funds, IPO tracker, market analysis',
+    url: 'https://finance.worldmonitor.app/',
+    siteName: 'Finance Monitor',
+    shortName: 'FinanceMonitor',
+    subject: 'Global Markets, Trading, and Financial Intelligence',
+    classification: 'Finance Dashboard, Market Tracker, Trading Intelligence',
+    categories: ['finance', 'news'],
+    features: [
+      'Real-time market data',
+      'Stock exchange mapping',
+      'Central bank monitoring',
+      'Commodity price tracking',
+      'Forex & currency news',
+      'Crypto & digital assets',
+      'Economic indicator alerts',
+      'IPO & earnings tracking',
+      'Financial center mapping',
+      'Sector heatmap',
+      'Market radar signals',
+    ],
+  },
+};
+
 const activeVariant = process.env.VITE_VARIANT || 'full';
 const activeMeta = VARIANT_META[activeVariant] || VARIANT_META.full;
 
@@ -45,7 +156,7 @@ function htmlVariantPlugin(): Plugin {
   return {
     name: 'html-variant',
     transformIndexHtml(html) {
-      let result = html
+      return html
         .replace(/<title>.*?<\/title>/, `<title>${activeMeta.title}</title>`)
         .replace(/<meta name="title" content=".*?" \/>/, `<meta name="title" content="${activeMeta.title}" />`)
         .replace(/<meta name="description" content=".*?" \/>/, `<meta name="description" content="${activeMeta.description}" />`)
@@ -66,49 +177,129 @@ function htmlVariantPlugin(): Plugin {
         .replace(/"url": "https:\/\/worldmonitor\.app\/"/, `"url": "${activeMeta.url}"`)
         .replace(/"description": "Real-time global intelligence dashboard with live news, markets, military tracking, infrastructure monitoring, and geopolitical data."/, `"description": "${activeMeta.description}"`)
         .replace(/"featureList": \[[\s\S]*?\]/, `"featureList": ${JSON.stringify(activeMeta.features, null, 8).replace(/\n/g, '\n      ')}`);
+    },
+  };
+}
 
-      // Theme-color meta — warm cream for happy variant
-      if (activeVariant === 'happy') {
-        result = result.replace(
-          /<meta name="theme-color" content=".*?" \/>/,
-          '<meta name="theme-color" content="#FAFAF5" />'
-        );
-      }
+/**
+ * LLM Proxy plugin — forwards /api/llm-proxy requests to the target LLM API
+ * server-side, bypassing CORS restrictions. The client sends:
+ *   POST /api/llm-proxy
+ *   X-Target-URL: https://api.duojie.games/v1/chat/completions
+ *   (all other headers forwarded as-is)
+ */
+function llmProxyPlugin(): Plugin {
+  return {
+    name: 'llm-proxy',
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        if (!req.url?.startsWith('/api/llm-proxy')) return next();
 
-      // Desktop builds: inject build-time variant into the inline script so data-variant is set
-      // before CSS loads. Web builds always use 'full' — runtime hostname detection handles variants.
-      if (activeVariant !== 'full') {
-        result = result.replace(
-          /if\(v\)document\.documentElement\.dataset\.variant=v;/,
-          `v='${activeVariant}';document.documentElement.dataset.variant=v;`
-        );
-      }
+        const targetUrl = req.headers['x-target-url'] as string | undefined;
+        if (!targetUrl) {
+          res.statusCode = 400;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: 'Missing X-Target-URL header' }));
+          return;
+        }
 
-      // Desktop CSP: inject localhost wildcard for dynamic sidecar port.
-      // Web builds intentionally exclude localhost to avoid exposing attack surface.
-      if (isDesktopBuild) {
-        result = result
-          .replace(
-            /connect-src 'self' https: http:\/\/localhost:5173/,
-            "connect-src 'self' https: http://localhost:5173 http://127.0.0.1:*"
-          )
-          .replace(
-            /frame-src 'self'/,
-            "frame-src 'self' http://127.0.0.1:*"
-          );
-      }
+        // Read request body
+        const chunks: Buffer[] = [];
+        for await (const chunk of req) {
+          chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
+        }
+        const body = Buffer.concat(chunks).toString();
 
-      // Desktop builds: replace favicon paths with variant-specific subdirectory.
-      // Web builds use 'full' favicons in HTML; runtime JS swaps them per hostname.
-      if (activeVariant !== 'full') {
-        result = result
-          .replace(/\/favico\/favicon/g, `/favico/${activeVariant}/favicon`)
-          .replace(/\/favico\/apple-touch-icon/g, `/favico/${activeVariant}/apple-touch-icon`)
-          .replace(/\/favico\/android-chrome/g, `/favico/${activeVariant}/android-chrome`)
-          .replace(/\/favico\/og-image/g, `/favico/${activeVariant}/og-image`);
-      }
+        // Only forward essential headers — strip all browser-specific ones
+        const allowHeaders = new Set(['content-type', 'authorization', 'x-api-key', 'anthropic-version', 'api-key']);
+        const forwardHeaders: Record<string, string> = {};
+        for (const [key, value] of Object.entries(req.headers)) {
+          if (!allowHeaders.has(key)) continue;
+          if (typeof value === 'string') forwardHeaders[key] = value;
+        }
+        // Only inject anthropic-version for Anthropic /v1/messages endpoint
+        if (targetUrl.includes('/v1/messages') && !forwardHeaders['anthropic-version']) {
+          forwardHeaders['anthropic-version'] = '2023-06-01';
+        }
 
-      return result;
+        try {
+          // Retry up to 3 times for 5xx upstream errors (503/504 transient failures)
+          let upstream!: Response;
+          for (let attempt = 0; attempt < 3; attempt++) {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 120000);
+            try {
+              upstream = await fetch(targetUrl, {
+                method: 'POST',
+                headers: forwardHeaders,
+                body,
+                signal: controller.signal,
+              });
+              clearTimeout(timer);
+            } catch (fetchErr) {
+              clearTimeout(timer);
+              if (attempt < 2) {
+                await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
+                continue;
+              }
+              throw fetchErr;
+            }
+            if (upstream.status < 500 || attempt === 2) break;
+            // 5xx: wait and retry
+            await upstream.text(); // drain
+            await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
+          }
+
+          if (upstream.status >= 400) {
+            const errBody = await upstream.text();
+            res.statusCode = upstream.status;
+            res.setHeader('Content-Type', 'application/json');
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.end(errBody);
+            return;
+          }
+
+          // Set response status and headers
+          res.statusCode = upstream.status;
+          res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/json');
+          res.setHeader('Access-Control-Allow-Origin', '*');
+
+          // Stream the response back
+          if (upstream.body) {
+            const reader = (upstream.body as any).getReader();
+            const pump = async () => {
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) { res.end(); return; }
+                res.write(value);
+              }
+            };
+            await pump();
+          } else {
+            res.end(await upstream.text());
+          }
+        } catch (err: any) {
+          console.error('[llm-proxy] Error:', err.message, '|', err.cause?.message || err.code || '');
+          if (!res.headersSent) {
+            res.statusCode = 502;
+            res.setHeader('Content-Type', 'application/json');
+          }
+          res.end(JSON.stringify({ error: `Proxy error: ${err.message}` }));
+        }
+      });
+
+      // Handle CORS preflight for the proxy endpoint
+      server.middlewares.use((req, res, next) => {
+        if (req.method === 'OPTIONS' && req.url?.startsWith('/api/llm-proxy')) {
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+          res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-api-key, x-target-url, anthropic-version');
+          res.statusCode = 204;
+          res.end();
+          return;
+        }
+        next();
+      });
     },
   };
 }
@@ -192,11 +383,6 @@ function sebufApiPlugin(): Plugin {
       newsServerMod, newsHandlerMod,
       intelligenceServerMod, intelligenceHandlerMod,
       militaryServerMod, militaryHandlerMod,
-      positiveEventsServerMod, positiveEventsHandlerMod,
-      givingServerMod, givingHandlerMod,
-      tradeServerMod, tradeHandlerMod,
-      supplyChainServerMod, supplyChainHandlerMod,
-      naturalServerMod, naturalHandlerMod,
     ] = await Promise.all([
         import('./server/router'),
         import('./server/cors'),
@@ -235,16 +421,6 @@ function sebufApiPlugin(): Plugin {
         import('./server/worldmonitor/intelligence/v1/handler'),
         import('./src/generated/server/worldmonitor/military/v1/service_server'),
         import('./server/worldmonitor/military/v1/handler'),
-        import('./src/generated/server/worldmonitor/positive_events/v1/service_server'),
-        import('./server/worldmonitor/positive-events/v1/handler'),
-        import('./src/generated/server/worldmonitor/giving/v1/service_server'),
-        import('./server/worldmonitor/giving/v1/handler'),
-        import('./src/generated/server/worldmonitor/trade/v1/service_server'),
-        import('./server/worldmonitor/trade/v1/handler'),
-        import('./src/generated/server/worldmonitor/supply_chain/v1/service_server'),
-        import('./server/worldmonitor/supply-chain/v1/handler'),
-        import('./src/generated/server/worldmonitor/natural/v1/service_server'),
-        import('./server/worldmonitor/natural/v1/handler'),
       ]);
 
     const serverOptions = { onError: errorMod.mapErrorToResponse };
@@ -266,11 +442,6 @@ function sebufApiPlugin(): Plugin {
       ...newsServerMod.createNewsServiceRoutes(newsHandlerMod.newsHandler, serverOptions),
       ...intelligenceServerMod.createIntelligenceServiceRoutes(intelligenceHandlerMod.intelligenceHandler, serverOptions),
       ...militaryServerMod.createMilitaryServiceRoutes(militaryHandlerMod.militaryHandler, serverOptions),
-      ...positiveEventsServerMod.createPositiveEventsServiceRoutes(positiveEventsHandlerMod.positiveEventsHandler, serverOptions),
-      ...givingServerMod.createGivingServiceRoutes(givingHandlerMod.givingHandler, serverOptions),
-      ...tradeServerMod.createTradeServiceRoutes(tradeHandlerMod.tradeHandler, serverOptions),
-      ...supplyChainServerMod.createSupplyChainServiceRoutes(supplyChainHandlerMod.supplyChainHandler, serverOptions),
-      ...naturalServerMod.createNaturalServiceRoutes(naturalHandlerMod.naturalHandler, serverOptions),
     ];
     cachedCorsMod = corsMod;
     return routerMod.createRouter(allRoutes);
@@ -287,8 +458,8 @@ function sebufApiPlugin(): Plugin {
       });
 
       server.middlewares.use(async (req, res, next) => {
-        // Only intercept sebuf routes: /api/{domain}/v1/* (domain may contain hyphens)
-        if (!req.url || !/^\/api\/[a-z-]+\/v1\//.test(req.url)) {
+        // Only intercept sebuf routes: /api/{domain}/v1/*
+        if (!req.url || !/^\/api\/[a-z]+\/v1\//.test(req.url)) {
           return next();
         }
 
@@ -330,7 +501,7 @@ function sebufApiPlugin(): Plugin {
             body: body || undefined,
           });
 
-          const corsHeaders = corsMod.getCorsHeaders(webRequest);
+          const corsHeaders: Record<string, string> = corsMod.getCorsHeaders(webRequest) as Record<string, string>;
 
           // OPTIONS preflight
           if (req.method === 'OPTIONS') {
@@ -356,19 +527,12 @@ function sebufApiPlugin(): Plugin {
           // Route matching
           const matchedHandler = router.match(webRequest);
           if (!matchedHandler) {
-            const allowed = router.allowedMethods(new URL(webRequest.url).pathname);
-            if (allowed.length > 0) {
-              res.statusCode = 405;
-              res.setHeader('Content-Type', 'application/json');
-              res.setHeader('Allow', allowed.join(', '));
-            } else {
-              res.statusCode = 404;
-              res.setHeader('Content-Type', 'application/json');
-            }
+            res.statusCode = 404;
+            res.setHeader('Content-Type', 'application/json');
             for (const [key, value] of Object.entries(corsHeaders)) {
               res.setHeader(key, value);
             }
-            res.end(JSON.stringify({ error: res.statusCode === 405 ? 'Method not allowed' : 'Not found' }));
+            res.end(JSON.stringify({ error: 'Not found' }));
             return;
           }
 
@@ -389,120 +553,6 @@ function sebufApiPlugin(): Plugin {
           res.statusCode = 500;
           res.setHeader('Content-Type', 'application/json');
           res.end(JSON.stringify({ error: 'Internal server error' }));
-        }
-      });
-    },
-  };
-}
-
-// RSS proxy allowlist — duplicated from api/rss-proxy.js for dev mode.
-// Keep in sync when adding new domains.
-const RSS_PROXY_ALLOWED_DOMAINS = new Set([
-  'feeds.bbci.co.uk', 'www.theguardian.com', 'feeds.npr.org', 'news.google.com',
-  'www.aljazeera.com', 'rss.cnn.com', 'hnrss.org', 'feeds.arstechnica.com',
-  'www.theverge.com', 'www.cnbc.com', 'feeds.marketwatch.com', 'www.defenseone.com',
-  'breakingdefense.com', 'www.bellingcat.com', 'techcrunch.com', 'huggingface.co',
-  'www.technologyreview.com', 'rss.arxiv.org', 'export.arxiv.org',
-  'www.federalreserve.gov', 'www.sec.gov', 'www.whitehouse.gov', 'www.state.gov',
-  'www.defense.gov', 'home.treasury.gov', 'www.justice.gov', 'tools.cdc.gov',
-  'www.fema.gov', 'www.dhs.gov', 'www.thedrive.com', 'krebsonsecurity.com',
-  'finance.yahoo.com', 'thediplomat.com', 'venturebeat.com', 'foreignpolicy.com',
-  'www.ft.com', 'openai.com', 'www.reutersagency.com', 'feeds.reuters.com',
-  'asia.nikkei.com', 'www.cfr.org', 'www.csis.org', 'www.politico.com',
-  'www.brookings.edu', 'layoffs.fyi', 'www.defensenews.com', 'www.militarytimes.com',
-  'taskandpurpose.com', 'news.usni.org', 'www.oryxspioenkop.com', 'www.gov.uk',
-  'www.foreignaffairs.com', 'www.atlanticcouncil.org',
-  // Tech variant
-  'www.zdnet.com', 'www.techmeme.com', 'www.darkreading.com', 'www.schneier.com',
-  'rss.politico.com', 'www.anandtech.com', 'www.tomshardware.com', 'www.semianalysis.com',
-  'feed.infoq.com', 'thenewstack.io', 'devops.com', 'dev.to', 'lobste.rs', 'changelog.com',
-  'seekingalpha.com', 'news.crunchbase.com', 'www.saastr.com', 'feeds.feedburner.com',
-  'www.producthunt.com', 'www.axios.com', 'api.axios.com', 'github.blog', 'githubnext.com',
-  'mshibanami.github.io', 'www.engadget.com', 'news.mit.edu', 'dev.events',
-  'www.ycombinator.com', 'a16z.com', 'review.firstround.com', 'www.sequoiacap.com',
-  'www.nfx.com', 'www.aaronsw.com', 'bothsidesofthetable.com', 'www.lennysnewsletter.com',
-  'stratechery.com', 'www.eu-startups.com', 'tech.eu', 'sifted.eu', 'www.techinasia.com',
-  'kr-asia.com', 'techcabal.com', 'disrupt-africa.com', 'lavca.org', 'contxto.com',
-  'inc42.com', 'yourstory.com', 'pitchbook.com', 'www.cbinsights.com', 'www.techstars.com',
-  // Regional & international
-  'english.alarabiya.net', 'www.arabnews.com', 'www.timesofisrael.com', 'www.haaretz.com',
-  'www.scmp.com', 'kyivindependent.com', 'www.themoscowtimes.com', 'feeds.24.com',
-  'feeds.capi24.com', 'www.france24.com', 'www.euronews.com', 'www.lemonde.fr',
-  'rss.dw.com', 'www.africanews.com', 'www.lasillavacia.com', 'www.channelnewsasia.com',
-  'www.thehindu.com', 'news.un.org', 'www.iaea.org', 'www.who.int', 'www.cisa.gov',
-  'www.crisisgroup.org',
-  // Think tanks
-  'rusi.org', 'warontherocks.com', 'www.aei.org', 'responsiblestatecraft.org',
-  'www.fpri.org', 'jamestown.org', 'www.chathamhouse.org', 'ecfr.eu', 'www.gmfus.org',
-  'www.wilsoncenter.org', 'www.lowyinstitute.org', 'www.mei.edu', 'www.stimson.org',
-  'www.cnas.org', 'carnegieendowment.org', 'www.rand.org', 'fas.org',
-  'www.armscontrol.org', 'www.nti.org', 'thebulletin.org', 'www.iss.europa.eu',
-  // Economic & Food Security
-  'www.fao.org', 'worldbank.org', 'www.imf.org',
-  // Regional locale feeds
-  'www.hurriyet.com.tr', 'tvn24.pl', 'www.polsatnews.pl', 'www.rp.pl', 'meduza.io',
-  'novayagazeta.eu', 'www.bangkokpost.com', 'vnexpress.net', 'www.abc.net.au',
-  'news.ycombinator.com',
-  // Finance variant
-  'www.coindesk.com', 'cointelegraph.com',
-  // Happy variant — positive news sources
-  'www.goodnewsnetwork.org', 'www.positive.news', 'reasonstobecheerful.world',
-  'www.optimistdaily.com', 'www.sunnyskyz.com', 'www.huffpost.com',
-  'www.sciencedaily.com', 'feeds.nature.com', 'www.livescience.com', 'www.newscientist.com',
-]);
-
-function rssProxyPlugin(): Plugin {
-  return {
-    name: 'rss-proxy',
-    configureServer(server) {
-      server.middlewares.use(async (req, res, next) => {
-        if (!req.url?.startsWith('/api/rss-proxy')) {
-          return next();
-        }
-
-        const url = new URL(req.url, 'http://localhost');
-        const feedUrl = url.searchParams.get('url');
-        if (!feedUrl) {
-          res.statusCode = 400;
-          res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({ error: 'Missing url parameter' }));
-          return;
-        }
-
-        try {
-          const parsed = new URL(feedUrl);
-          if (!RSS_PROXY_ALLOWED_DOMAINS.has(parsed.hostname)) {
-            res.statusCode = 403;
-            res.setHeader('Content-Type', 'application/json');
-            res.end(JSON.stringify({ error: `Domain not allowed: ${parsed.hostname}` }));
-            return;
-          }
-
-          const controller = new AbortController();
-          const timeout = feedUrl.includes('news.google.com') ? 20000 : 12000;
-          const timer = setTimeout(() => controller.abort(), timeout);
-
-          const response = await fetch(feedUrl, {
-            signal: controller.signal,
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-              'Accept': 'application/rss+xml, application/xml, text/xml, */*',
-            },
-            redirect: 'follow',
-          });
-          clearTimeout(timer);
-
-          const data = await response.text();
-          res.statusCode = response.status;
-          res.setHeader('Content-Type', 'application/xml');
-          res.setHeader('Cache-Control', 'public, max-age=300');
-          res.setHeader('Access-Control-Allow-Origin', '*');
-          res.end(data);
-        } catch (error: any) {
-          console.error('[rss-proxy]', feedUrl, error.message);
-          res.statusCode = error.name === 'AbortError' ? 504 : 502;
-          res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({ error: error.name === 'AbortError' ? 'Feed timeout' : 'Failed to fetch feed' }));
         }
       });
     },
@@ -581,8 +631,8 @@ export default defineConfig({
   },
   plugins: [
     htmlVariantPlugin(),
+    llmProxyPlugin(),
     polymarketPlugin(),
-    rssProxyPlugin(),
     youtubeLivePlugin(),
     sebufApiPlugin(),
     brotliPrecompressPlugin(),
@@ -617,8 +667,6 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,ico,png,svg,woff2}'],
         globIgnores: ['**/ml*.js', '**/onnx*.wasm', '**/locale-*.js'],
-        // globe.gl + three.js grows main bundle past the 2 MiB default limit
-        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         navigateFallback: null,
         skipWaiting: true,
         clientsClaim: true,
@@ -627,7 +675,11 @@ export default defineConfig({
         runtimeCaching: [
           {
             urlPattern: ({ request }: { request: Request }) => request.mode === 'navigate',
-            handler: 'NetworkOnly',
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'html-navigation',
+              networkTimeoutSeconds: 3,
+            },
           },
           {
             urlPattern: ({ url, sameOrigin }: { url: URL; sameOrigin: boolean }) =>
@@ -643,28 +695,37 @@ export default defineConfig({
           },
           {
             urlPattern: ({ url, sameOrigin }: { url: URL; sameOrigin: boolean }) =>
+              sameOrigin && /^\/ingest\//.test(url.pathname),
+            handler: 'NetworkOnly',
+            method: 'GET',
+          },
+          {
+            urlPattern: ({ url, sameOrigin }: { url: URL; sameOrigin: boolean }) =>
+              sameOrigin && /^\/ingest\//.test(url.pathname),
+            handler: 'NetworkOnly',
+            method: 'POST',
+          },
+          {
+            urlPattern: ({ url, sameOrigin }: { url: URL; sameOrigin: boolean }) =>
               sameOrigin && /^\/rss\//.test(url.pathname),
             handler: 'NetworkOnly',
             method: 'GET',
           },
           {
-            urlPattern: ({ url }: { url: URL }) =>
-              url.pathname.endsWith('.pmtiles') ||
-              url.hostname.endsWith('.r2.dev') ||
-              url.hostname === 'build.protomaps.com',
-            handler: 'NetworkFirst',
+            urlPattern: /^https:\/\/api\.maptiler\.com\//,
+            handler: 'CacheFirst',
             options: {
-              cacheName: 'pmtiles-ranges',
+              cacheName: 'map-tiles',
               expiration: { maxEntries: 500, maxAgeSeconds: 30 * 24 * 60 * 60 },
-              cacheableResponse: { statuses: [0, 200, 206] },
+              cacheableResponse: { statuses: [0, 200] },
             },
           },
           {
-            urlPattern: /^https:\/\/protomaps\.github\.io\//,
+            urlPattern: /^https:\/\/[abc]\.basemaps\.cartocdn\.com\//,
             handler: 'CacheFirst',
             options: {
-              cacheName: 'protomaps-assets',
-              expiration: { maxEntries: 100, maxAgeSeconds: 365 * 24 * 60 * 60 },
+              cacheName: 'carto-tiles',
+              expiration: { maxEntries: 500, maxAgeSeconds: 30 * 24 * 60 * 60 },
               cacheableResponse: { statuses: [0, 200] },
             },
           },
@@ -713,57 +774,24 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),
-      child_process: resolve(__dirname, 'src/shims/child-process.ts'),
-      'node:child_process': resolve(__dirname, 'src/shims/child-process.ts'),
-      '@loaders.gl/worker-utils/dist/lib/process-utils/child-process-proxy.js': resolve(
-        __dirname,
-        'src/shims/child-process-proxy.ts'
-      ),
     },
   },
   build: {
-    // Geospatial bundles (maplibre/deck) are expected to be large even when split.
-    // Raise warning threshold to reduce noisy false alarms in CI.
-    chunkSizeWarningLimit: 1200,
     rollupOptions: {
-      onwarn(warning, warn) {
-        // onnxruntime-web ships a minified browser bundle that intentionally uses eval.
-        // Keep build logs focused by filtering this known third-party warning only.
-        if (
-          warning.code === 'EVAL'
-          && typeof warning.id === 'string'
-          && warning.id.includes('/onnxruntime-web/dist/ort-web.min.js')
-        ) {
-          return;
-        }
-
-        warn(warning);
-      },
       input: {
         main: resolve(__dirname, 'index.html'),
         settings: resolve(__dirname, 'settings.html'),
         liveChannels: resolve(__dirname, 'live-channels.html'),
+        agent: resolve(__dirname, 'agent.html'),
       },
       output: {
         manualChunks(id) {
           if (id.includes('node_modules')) {
-            if (id.includes('/@xenova/transformers/')) {
-              return 'transformers';
+            if (id.includes('/@xenova/transformers/') || id.includes('/onnxruntime-web/')) {
+              return 'ml';
             }
-            if (id.includes('/onnxruntime-web/')) {
-              return 'onnxruntime';
-            }
-            if (id.includes('/maplibre-gl/') || id.includes('/pmtiles/') || id.includes('/@protomaps/basemaps/')) {
-              return 'maplibre';
-            }
-            if (
-              id.includes('/@deck.gl/')
-              || id.includes('/@luma.gl/')
-              || id.includes('/@loaders.gl/')
-              || id.includes('/@math.gl/')
-              || id.includes('/h3-js/')
-            ) {
-              return 'deck-stack';
+            if (id.includes('/@deck.gl/') || id.includes('/maplibre-gl/') || id.includes('/h3-js/')) {
+              return 'map';
             }
             if (id.includes('/d3/')) {
               return 'd3';
@@ -795,6 +823,7 @@ export default defineConfig({
   },
   server: {
     port: 3000,
+    host: '0.0.0.0',
     open: !isE2E,
     hmr: isE2E ? false : undefined,
     watch: {
@@ -866,6 +895,12 @@ export default defineConfig({
         target: 'https://feeds.npr.org',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/rss\/npr/, ''),
+      },
+      // RSS Feeds - AP News
+      '/rss/apnews': {
+        target: 'https://rsshub.app/apnews',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/rss\/apnews/, ''),
       },
       // RSS Feeds - Al Jazeera
       '/rss/aljazeera': {
