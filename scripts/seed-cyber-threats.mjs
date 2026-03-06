@@ -566,34 +566,12 @@ function validate(data) {
   return Array.isArray(data?.threats) && data.threats.length >= 1;
 }
 
-import { atomicPublish } from './_seed-utils.mjs';
-
-let cachedResult = null;
-
-async function fetchOnce() {
-  if (cachedResult) return cachedResult;
-  cachedResult = await fetchAllThreats();
-  return cachedResult;
-}
-
-async function run() {
-  const result = await runSeed('cyber', 'threats', CANONICAL_KEY, fetchOnce, {
-    validateFn: validate,
-    ttlSeconds: CACHE_TTL,
-    sourceVersion: 'multi-ioc-v2',
-  });
-
-  if (result?.success && cachedResult) {
-    try {
-      await atomicPublish(BOOTSTRAP_KEY, cachedResult, validate, CACHE_TTL);
-      console.log(`  Bootstrap key written: ${BOOTSTRAP_KEY}`);
-    } catch (e) {
-      console.warn(`  Bootstrap write failed (non-fatal): ${e.message}`);
-    }
-  }
-}
-
-run().catch((err) => {
+runSeed('cyber', 'threats', CANONICAL_KEY, fetchAllThreats, {
+  validateFn: validate,
+  ttlSeconds: CACHE_TTL,
+  sourceVersion: 'multi-ioc-v2',
+  extraKeys: [{ key: BOOTSTRAP_KEY }],
+}).catch((err) => {
   console.error('FATAL:', err.message || err);
   process.exit(1);
 });

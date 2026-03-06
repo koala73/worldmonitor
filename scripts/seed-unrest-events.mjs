@@ -238,7 +238,7 @@ async function fetchUnrestEvents() {
 }
 
 function validate(data) {
-  return Array.isArray(data?.events);
+  return Array.isArray(data?.events) && data.events.length > 0;
 }
 
 runSeed('unrest', 'events', CANONICAL_KEY, fetchUnrestEvents, {

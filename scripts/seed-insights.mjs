@@ -181,8 +181,29 @@ function categorizeStory(title) {
   return { category: 'general', threatLevel: 'moderate' };
 }
 
+async function warmDigestCache() {
+  const apiBase = process.env.API_BASE_URL || 'https://api.worldmonitor.app';
+  try {
+    const resp = await fetch(`${apiBase}/api/rpc/worldmonitor.news.v1.NewsService/ListFeedDigest`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
+      body: JSON.stringify({ variant: 'full', lang: 'en' }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (resp.ok) console.log('  Digest cache warmed via RPC');
+    else console.warn(`  Digest warm failed: HTTP ${resp.status}`);
+  } catch (err) {
+    console.warn(`  Digest warm failed: ${err.message}`);
+  }
+}
+
 async function fetchInsights() {
-  const digest = await readDigestFromRedis();
+  let digest = await readDigestFromRedis();
+  if (!digest) {
+    console.log('  Digest not in Redis, warming cache via RPC...');
+    await warmDigestCache();
+    digest = await readDigestFromRedis();
+  }
   if (!digest) throw new Error('No news digest found in Redis');
 
   // Digest shape: { categories: { politics: { items: [...] }, ... }, feedStatuses, generatedAt }

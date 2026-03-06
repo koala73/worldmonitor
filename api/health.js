@@ -7,9 +7,6 @@ const BOOTSTRAP_KEYS = {
   sectors:           'market:sectors:v1',
   etfFlows:          'market:etf-flows:v1',
   macroSignals:      'economic:macro-signals:v1',
-  bisPolicy:         'economic:bis:policy:v1',
-  bisExchange:       'economic:bis:eer:v1',
-  bisCredit:         'economic:bis:credit:v1',
   shippingRates:     'supply_chain:shipping:v2',
   chokepoints:       'supply_chain:chokepoints:v2',
   minerals:          'supply_chain:minerals:v2',
@@ -21,7 +18,6 @@ const BOOTSTRAP_KEYS = {
   cyberThreats:      'cyber:threats-bootstrap:v2',
   techReadiness:     'economic:worldbank-techreadiness:v1',
   positiveGeoEvents: 'positive-events:geo-bootstrap:v1',
-  theaterPosture:    'theater-posture:sebuf:stale:v1',
   riskScores:        'risk:scores:sebuf:stale:v1',
   naturalEvents:     'natural:events:v1',
   flightDelays:      'aviation:delays-bootstrap:v1',
@@ -36,7 +32,11 @@ const BOOTSTRAP_KEYS = {
 };
 
 const STANDALONE_KEYS = {
+  bisPolicy:             'economic:bis:policy:v1',
+  bisExchange:           'economic:bis:eer:v1',
+  bisCredit:             'economic:bis:credit:v1',
   gpsjam:                'intelligence:gpsjam:v1',
+  theaterPosture:        'theater-posture:sebuf:stale:v1',
   theaterPostureLive:    'theater-posture:sebuf:v1',
   theaterPostureBackup:  'theater-posture:sebuf:backup:v1',
   riskScoresLive:        'risk:scores:sebuf:v1',
@@ -73,6 +73,7 @@ const SEED_META = {
 const ON_DEMAND_KEYS = new Set([
   'theaterPostureLive', 'theaterPostureBackup', 'riskScoresLive',
   'usniFleet', 'usniFleetStale', 'positiveEventsLive', 'cableHealth',
+  'theaterPosture', 'bisPolicy', 'bisExchange', 'bisCredit',
 ]);
 
 const NEG_SENTINEL = '__WM_NEG__';
