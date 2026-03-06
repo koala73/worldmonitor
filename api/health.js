@@ -64,7 +64,8 @@ const SEED_META = {
   flightDelays:     { key: 'seed-meta:aviation:faa',            maxStaleMin: 30 },
   predictions:      { key: 'seed-meta:prediction:markets',      maxStaleMin: 15 },
   insights:         { key: 'seed-meta:news:insights',           maxStaleMin: 30 },
-  // marketQuotes + commodityQuotes: seeded by AIS relay (continuous, no seed-meta)
+  marketQuotes:     { key: 'seed-meta:market:stocks',         maxStaleMin: 30 },
+  commodityQuotes:  { key: 'seed-meta:market:commodities',    maxStaleMin: 30 },
 };
 
 // Standalone keys that are populated on-demand by RPC handlers (not seeds).

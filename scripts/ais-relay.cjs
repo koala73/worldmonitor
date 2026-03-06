@@ -1087,7 +1087,8 @@ async function seedMarketQuotes() {
   const ok = await upstashSet(redisKey, payload, MARKET_SEED_TTL);
   // Bootstrap-friendly fixed key — frontend hydrates from /api/bootstrap without RPC
   const ok2 = await upstashSet('market:stocks-bootstrap:v1', payload, MARKET_SEED_TTL);
-  console.log(`[Market] Seeded ${quotes.length}/${MARKET_SYMBOLS.length} quotes (redis: ${ok && ok2 ? 'OK' : 'PARTIAL'})`);
+  const ok3 = await upstashSet('seed-meta:market:stocks', { fetchedAt: Date.now(), recordCount: quotes.length }, 604800);
+  console.log(`[Market] Seeded ${quotes.length}/${MARKET_SYMBOLS.length} quotes (redis: ${ok && ok2 && ok3 ? 'OK' : 'PARTIAL'})`);
   return quotes.length;
 }
 
@@ -1114,7 +1115,8 @@ async function seedCommodityQuotes() {
   const ok2 = await upstashSet(quotesKey, quotesPayload, MARKET_SEED_TTL);
   // Bootstrap-friendly fixed key — frontend hydrates from /api/bootstrap without RPC
   const ok3 = await upstashSet('market:commodities-bootstrap:v1', quotesPayload, MARKET_SEED_TTL);
-  console.log(`[Market] Seeded ${quotes.length}/${COMMODITY_SYMBOLS.length} commodities (redis: ${ok && ok2 && ok3 ? 'OK' : 'PARTIAL'})`);
+  const ok4 = await upstashSet('seed-meta:market:commodities', { fetchedAt: Date.now(), recordCount: quotes.length }, 604800);
+  console.log(`[Market] Seeded ${quotes.length}/${COMMODITY_SYMBOLS.length} commodities (redis: ${ok && ok2 && ok3 && ok4 ? 'OK' : 'PARTIAL'})`);
   return quotes.length;
 }
 
@@ -1934,16 +1936,21 @@ async function seedCyberThreats() {
 
   const combined = cyberDedupe([...feodo, ...urlhaus, ...c2intel, ...otx, ...abuseipdb]);
   const hydrated = await cyberHydrateGeo(combined);
-  const filtered = hydrated.filter((t) => cyberValidCoords(t.lat, t.lon));
+  const geoCount = hydrated.filter((t) => cyberValidCoords(t.lat, t.lon)).length;
+  console.log(`[Cyber] Geo resolved: ${geoCount}/${hydrated.length}`);
 
-  filtered.sort((a, b) => {
+  // Sort geo-resolved first, then by severity/recency
+  hydrated.sort((a, b) => {
+    const aGeo = cyberValidCoords(a.lat, a.lon) ? 0 : 1;
+    const bGeo = cyberValidCoords(b.lat, b.lon) ? 0 : 1;
+    if (aGeo !== bGeo) return aGeo - bGeo;
     const bySev = (CYBER_SEVERITY_RANK[CYBER_SEVERITY_MAP[b.severity]||'']||0) - (CYBER_SEVERITY_RANK[CYBER_SEVERITY_MAP[a.severity]||'']||0);
     return bySev !== 0 ? bySev : (b.lastSeen || b.firstSeen) - (a.lastSeen || a.firstSeen);
   });
 
-  const threats = filtered.slice(0, CYBER_MAX_CACHED).map(cyberToProto);
+  const threats = hydrated.slice(0, CYBER_MAX_CACHED).map(cyberToProto);
   if (threats.length === 0) {
-    console.warn('[Cyber] No threats with valid coordinates — skipping Redis write');
+    console.warn('[Cyber] No threats from any source — skipping Redis write');
     return 0;
   }
 
@@ -2017,8 +2024,8 @@ function classifyPositiveName(name) {
 
 function fetchGdeltGeoPositive(query) {
   return new Promise((resolve) => {
-    const params = new URLSearchParams({ query, format: 'geojson', timespan: '24h', maxrecords: '75' });
-    const req = https.get(`https://api.gdeltproject.org/api/v2/geo/geo?${params}`, {
+    const params = new URLSearchParams({ query, maxrows: '500' });
+    const req = https.get(`https://api.gdeltproject.org/api/v1/gkg_geojson?${params}`, {
       headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
       timeout: 15000,
     }, (resp) => {
@@ -2029,20 +2036,24 @@ function fetchGdeltGeoPositive(query) {
         try {
           const data = JSON.parse(body);
           const features = Array.isArray(data?.features) ? data.features : [];
-          const events = [];
-          const seen = new Set();
+          const locationMap = new Map();
           for (const f of features) {
             const name = String(f.properties?.name || '').substring(0, 200);
-            if (!name || seen.has(name)) continue;
+            if (!name) continue;
             if (name.startsWith('ERROR:') || name.includes('unknown error')) continue;
-            const count = Number(f.properties?.count) || 1;
-            if (count < 3) continue;
             const coords = f.geometry?.coordinates;
             if (!Array.isArray(coords) || coords.length < 2) continue;
             const [lon, lat] = coords;
             if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) continue;
-            seen.add(name);
-            events.push({ latitude: lat, longitude: lon, name, category: classifyPositiveName(name), count, timestamp: Date.now() });
+            const key = `${lat.toFixed(1)}:${lon.toFixed(1)}`;
+            const existing = locationMap.get(key);
+            if (existing) { existing.count++; }
+            else { locationMap.set(key, { latitude: lat, longitude: lon, name, count: 1 }); }
+          }
+          const events = [];
+          for (const [, loc] of locationMap) {
+            if (loc.count < 3) continue;
+            events.push({ latitude: loc.latitude, longitude: loc.longitude, name: loc.name, category: classifyPositiveName(loc.name), count: loc.count, timestamp: Date.now() });
           }
           resolve(events);
         } catch { resolve([]); }

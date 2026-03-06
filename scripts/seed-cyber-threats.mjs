@@ -546,9 +546,11 @@ async function fetchAllThreats() {
 
   const hydrated = await hydrateCoordinates(combined);
 
-  let results = hydrated.filter((t) =>
-    t.lat !== null && t.lon !== null && t.lat >= -90 && t.lat <= 90 && t.lon >= -180 && t.lon <= 180
-  );
+  // Keep all threats — geo-resolved first, then unresolved (so the seed never returns 0
+  // when GeoIP APIs are rate-limited). Frontend handles missing location gracefully.
+  let results = hydrated.slice();
+  const geoCount = results.filter((t) => validCoords(t.lat, t.lon)).length;
+  console.log(`  Geo resolved: ${geoCount}/${results.length}`);
 
   results.sort((a, b) => {
     const bySev = (SEVERITY_RANK[SEVERITY_MAP[b.severity] || ''] || 0) - (SEVERITY_RANK[SEVERITY_MAP[a.severity] || ''] || 0);
