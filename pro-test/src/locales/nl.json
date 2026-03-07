@@ -225,7 +225,6 @@
     "failedTryAgain": "Mislukt — probeer opnieuw"
   },
   "referral": {
-    "yourPosition": "Jouw positie",
     "alreadyOnList": "Je staat al op de lijst.",
     "shareHint": "Deel je link om hogerop te komen. Elke vriend die zich aanmeldt brengt je dichter bij de voorkant.",
     "copied": "Gekopieerd!",
@@ -234,6 +233,7 @@
     "whatsapp": "WhatsApp",
     "telegram": "Telegram",
     "shareText": "Ik heb me net ingeschreven voor de World Monitor Pro-wachtlijst — real-time wereldwijde inlichtingen aangedreven door AI. Doe mee:",
-    "joinWaitlistShare": "Schrijf je in voor de World Monitor Pro-wachtlijst:"
+    "joinWaitlistShare": "Schrijf je in voor de World Monitor Pro-wachtlijst:",
+    "youreIn": "Je bent erbij!"
   }
 }

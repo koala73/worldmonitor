@@ -225,7 +225,6 @@
     "failedTryAgain": "失敗しました — 再試行してください"
   },
   "referral": {
-    "yourPosition": "あなたの順位",
     "alreadyOnList": "すでにリストに登録済みです。",
     "shareHint": "リンクをシェアして順位を上げましょう。友達が参加するたびに、あなたの順番が繰り上がります。",
     "copied": "コピーしました！",
@@ -234,6 +233,7 @@
     "whatsapp": "WhatsApp",
     "telegram": "Telegram",
     "shareText": "World Monitor Pro のウェイトリストに登録しました — AIが駆動するリアルタイムグローバルインテリジェンス。一緒に参加しよう：",
-    "joinWaitlistShare": "World Monitor Pro ウェイトリストに登録："
+    "joinWaitlistShare": "World Monitor Pro ウェイトリストに登録：",
+    "youreIn": "登録完了！"
   }
 }

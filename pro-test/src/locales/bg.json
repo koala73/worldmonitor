@@ -225,7 +225,6 @@
     "failedTryAgain": "Неуспешно — опитайте отново"
   },
   "referral": {
-    "yourPosition": "Вашата позиция",
     "alreadyOnList": "Вече сте в списъка.",
     "shareHint": "Споделете линка си, за да се придвижите напред в опашката. Всеки приятел, който се присъедини, ви приближава към началото.",
     "copied": "Копирано!",
@@ -234,6 +233,7 @@
     "whatsapp": "WhatsApp",
     "telegram": "Telegram",
     "shareText": "Току-що се записах в списъка на чакащите за World Monitor Pro — глобално разузнаване в реално време, задвижвано от AI. Присъедини се:",
-    "joinWaitlistShare": "Запиши се в списъка на чакащите за World Monitor Pro:"
+    "joinWaitlistShare": "Запиши се в списъка на чакащите за World Monitor Pro:",
+    "youreIn": "Вие сте вътре!"
   }
 }

@@ -62,7 +62,6 @@ function showReferralSuccess(formEl: HTMLFormElement, data: { referralCode?: str
     return;
   }
   const safeCode = sanitize(data.referralCode);
-  const safePosition = sanitize(data.position);
   const referralLink = `${PRO_URL}?ref=${safeCode}`;
   const shareText = encodeURIComponent(t('referral.shareText'));
   const shareUrl = encodeURIComponent(referralLink);
@@ -81,14 +80,10 @@ function showReferralSuccess(formEl: HTMLFormElement, data: { referralCode?: str
 
   if (isAlreadyRegistered) {
     successDiv.appendChild(el('p', 'text-lg font-display font-bold text-wm-green mb-2', t('referral.alreadyOnList')));
-    successDiv.appendChild(el('p', 'text-sm text-wm-muted mb-4', shareHint));
   } else {
-    const badge = el('div', 'inline-block bg-wm-card border border-wm-green/30 px-6 py-4 mb-4');
-    badge.appendChild(el('p', 'text-xs text-wm-green font-mono uppercase tracking-widest mb-1', t('referral.yourPosition')));
-    badge.appendChild(el('p', 'text-4xl font-display font-bold text-wm-text', `#${safePosition || '?'}`));
-    successDiv.appendChild(badge);
-    successDiv.appendChild(el('p', 'text-sm text-wm-muted mb-4', shareHint));
+    successDiv.appendChild(el('p', 'text-lg font-display font-bold text-wm-green mb-2', t('referral.youreIn')));
   }
+  successDiv.appendChild(el('p', 'text-sm text-wm-muted mb-4', shareHint));
 
   if (safeCode) {
     const linkBox = el('div', 'bg-wm-card border border-wm-border px-4 py-3 mb-4 font-mono text-xs text-wm-green break-all select-all cursor-pointer', referralLink);

@@ -225,7 +225,6 @@
     "failedTryAgain": "فشل — حاول مجددًا"
   },
   "referral": {
-    "yourPosition": "ترتيبك",
     "alreadyOnList": "أنت بالفعل في القائمة.",
     "shareHint": "شارك رابطك للتقدّم في الترتيب. كل صديق ينضم يقرّبك من المقدمة.",
     "copied": "تمّ النسخ!",
@@ -234,6 +233,7 @@
     "whatsapp": "WhatsApp",
     "telegram": "Telegram",
     "shareText": "انضممت للتو إلى قائمة انتظار World Monitor Pro — استخبارات عالمية فورية مدعومة بالذكاء الاصطناعي. انضم إليّ:",
-    "joinWaitlistShare": "انضم إلى قائمة انتظار World Monitor Pro:"
+    "joinWaitlistShare": "انضم إلى قائمة انتظار World Monitor Pro:",
+    "youreIn": "أنت مسجّل!"
   }
 }

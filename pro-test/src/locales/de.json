@@ -225,7 +225,6 @@
     "failedTryAgain": "Fehlgeschlagen — erneut versuchen"
   },
   "referral": {
-    "yourPosition": "Ihre Position",
     "alreadyOnList": "Sie stehen bereits auf der Liste.",
     "shareHint": "Teilen Sie Ihren Link, um in der Warteschlange aufzurücken. Jeder Freund, der beitritt, bringt Sie näher an die Spitze.",
     "copied": "Kopiert!",
@@ -234,6 +233,7 @@
     "whatsapp": "WhatsApp",
     "telegram": "Telegram",
     "shareText": "Ich bin gerade der World Monitor Pro-Warteliste beigetreten — globale Echtzeit-Intelligence mit KI. Mach mit:",
-    "joinWaitlistShare": "Tritt der World Monitor Pro-Warteliste bei:"
+    "joinWaitlistShare": "Tritt der World Monitor Pro-Warteliste bei:",
+    "youreIn": "Sie sind dabei!"
   }
 }

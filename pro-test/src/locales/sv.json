@@ -225,7 +225,6 @@
     "failedTryAgain": "Misslyckades — försök igen"
   },
   "referral": {
-    "yourPosition": "Din position",
     "alreadyOnList": "Du finns redan på listan.",
     "shareHint": "Dela din länk för att flytta uppåt i kön. Varje vän som ansluter sig flyttar dig närmare fronten.",
     "copied": "Kopierat!",
@@ -234,6 +233,7 @@
     "whatsapp": "WhatsApp",
     "telegram": "Telegram",
     "shareText": "Jag har precis gått med i World Monitor Pro-väntelistan — global underrättelse i realtid driven av AI. Häng med:",
-    "joinWaitlistShare": "Gå med i World Monitor Pro-väntelistan:"
+    "joinWaitlistShare": "Gå med i World Monitor Pro-väntelistan:",
+    "youreIn": "Du är med!"
   }
 }

@@ -225,7 +225,6 @@
     "failedTryAgain": "Thất bại — thử lại"
   },
   "referral": {
-    "yourPosition": "Vị trí của bạn",
     "alreadyOnList": "Bạn đã có trong danh sách.",
     "shareHint": "Chia sẻ liên kết để tiến lên trong hàng chờ. Mỗi người bạn tham gia sẽ đẩy bạn gần hơn đến vị trí đầu.",
     "copied": "Đã sao chép!",
@@ -234,6 +233,7 @@
     "whatsapp": "WhatsApp",
     "telegram": "Telegram",
     "shareText": "Tôi vừa tham gia danh sách chờ World Monitor Pro — tình báo toàn cầu thời gian thực được hỗ trợ bởi AI. Tham gia cùng tôi:",
-    "joinWaitlistShare": "Tham gia danh sách chờ World Monitor Pro:"
+    "joinWaitlistShare": "Tham gia danh sách chờ World Monitor Pro:",
+    "youreIn": "Bạn đã đăng ký!"
   }
 }

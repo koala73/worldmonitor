@@ -225,7 +225,6 @@
     "failedTryAgain": "Ошибка — попробуйте снова"
   },
   "referral": {
-    "yourPosition": "Ваша позиция",
     "alreadyOnList": "Вы уже в списке.",
     "shareHint": "Поделитесь ссылкой, чтобы продвинуться в очереди. Каждый присоединившийся друг приближает вас к началу.",
     "copied": "Скопировано!",
@@ -234,6 +233,7 @@
     "whatsapp": "WhatsApp",
     "telegram": "Telegram",
     "shareText": "Я записался в лист ожидания World Monitor Pro — глобальная аналитика в реальном времени на базе ИИ. Присоединяйтесь:",
-    "joinWaitlistShare": "Запишитесь в лист ожидания World Monitor Pro:"
+    "joinWaitlistShare": "Запишитесь в лист ожидания World Monitor Pro:",
+    "youreIn": "Вы в списке!"
   }
 }

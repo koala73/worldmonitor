@@ -225,7 +225,6 @@
     "failedTryAgain": "ล้มเหลว — ลองอีกครั้ง"
   },
   "referral": {
-    "yourPosition": "ตำแหน่งของคุณ",
     "alreadyOnList": "คุณอยู่ในรายชื่อแล้ว",
     "shareHint": "แชร์ลิงก์ของคุณเพื่อขยับขึ้นในคิว เพื่อนแต่ละคนที่เข้าร่วมจะดันคุณเข้าใกล้ตำแหน่งหน้าสุด",
     "copied": "คัดลอกแล้ว!",
@@ -234,6 +233,7 @@
     "whatsapp": "WhatsApp",
     "telegram": "Telegram",
     "shareText": "ฉันเพิ่งเข้าร่วมรายชื่อรอ World Monitor Pro — ข่าวกรองทั่วโลกแบบเรียลไทม์ขับเคลื่อนด้วย AI มาร่วมกัน:",
-    "joinWaitlistShare": "เข้าร่วมรายชื่อรอ World Monitor Pro:"
+    "joinWaitlistShare": "เข้าร่วมรายชื่อรอ World Monitor Pro:",
+    "youreIn": "ลงทะเบียนแล้ว!"
   }
 }

@@ -225,7 +225,6 @@
     "failedTryAgain": "실패 — 다시 시도해 주세요"
   },
   "referral": {
-    "yourPosition": "내 순위",
     "alreadyOnList": "이미 목록에 등록되어 있습니다.",
     "shareHint": "링크를 공유하면 순위가 올라갑니다. 친구가 가입할 때마다 앞으로 이동합니다.",
     "copied": "복사됨!",
@@ -234,6 +233,7 @@
     "whatsapp": "WhatsApp",
     "telegram": "Telegram",
     "shareText": "World Monitor Pro 대기 목록에 등록했습니다 — AI 기반 실시간 글로벌 인텔리전스. 함께하세요:",
-    "joinWaitlistShare": "World Monitor Pro 대기 목록에 등록하세요:"
+    "joinWaitlistShare": "World Monitor Pro 대기 목록에 등록하세요:",
+    "youreIn": "등록되었습니다!"
   }
 }

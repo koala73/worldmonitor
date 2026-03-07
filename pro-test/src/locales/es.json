@@ -225,7 +225,6 @@
     "failedTryAgain": "Error — reintentar"
   },
   "referral": {
-    "yourPosition": "Tu posición",
     "alreadyOnList": "Ya estás en la lista.",
     "shareHint": "Comparte tu enlace para avanzar en la cola. Cada amigo que se une te acerca al frente.",
     "copied": "¡Copiado!",
@@ -234,6 +233,7 @@
     "whatsapp": "WhatsApp",
     "telegram": "Telegram",
     "shareText": "Acabo de unirme a la lista de espera de World Monitor Pro — inteligencia global en tiempo real impulsada por IA. Únete:",
-    "joinWaitlistShare": "Únete a la lista de espera de World Monitor Pro:"
+    "joinWaitlistShare": "Únete a la lista de espera de World Monitor Pro:",
+    "youreIn": "¡Estás dentro!"
   }
 }

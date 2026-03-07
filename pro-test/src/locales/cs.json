@@ -94,7 +94,7 @@
     "subtitle": "Bezplatný dashboard vám ukazuje svět. Pro vám řekne, co to znamená — a zajistí, že vám nic důležitého neunikne.",
     "nearRealTime": "Data téměř v reálném čase",
     "nearRealTimeDesc": "Obnovení zrychleno z 5-15 min na méně než 60 sekund. Prioritní pipeline pro vaše výstrahy.",
-    "soWhat": "Analýza \u201eA co to znamená?\u201c",
+    "soWhat": "Analýza „A co to znamená?“",
     "soWhatDesc": "Řetězce dopadů, rozpoznávání vzorců, detekce konvergence a korelace trhu s geopolitikou.",
     "morningBriefs": "Ranní přehledy a bleskové výstrahy",
     "morningBriefsDesc": "AI syntetizovaný přehled nočního vývoje seřazený podle vašich prioritních oblastí. Zlomové události doručovány v reálném čase.",
@@ -209,7 +209,7 @@
     "a4": "Model Context Protocol umožňuje AI agentům (Claude, GPT nebo vlastní LLM) používat World Monitor jako nástroj — dotazování všech 22 služeb, čtení stavu mapy a spouštění analýz. Pouze pro Enterprise.",
     "q5": "Lze nasadit on-premises?",
     "a5": "Enterprise zahrnuje Docker nasazení, air-gapped režim s lokálním Ollama AI, nulové externí síťové volání, kompletní auditní protokolování a možnosti datové rezidence (EU, US, MENA).",
-    "q6": "Jak rychlé je \u201etéměř v reálném čase\u201c?",
+    "q6": "Jak rychlé je „téměř v reálném čase“?",
     "a6": "Pro obnovuje data pod 60 sekund s prioritním pipeline. Bezplatná úroveň se obnovuje každých 5-15 minut. Enterprise získává live-edge streaming pro kritické typy událostí."
   },
   "footer": {
@@ -225,7 +225,6 @@
     "failedTryAgain": "Selhalo — zkuste to znovu"
   },
   "referral": {
-    "yourPosition": "Vaše pozice",
     "alreadyOnList": "Už jste na seznamu.",
     "shareHint": "Sdílejte svůj odkaz a posuňte se v pořadníku. Každý přítel, který se připojí, vás posune blíže na začátek.",
     "copied": "Zkopírováno!",
@@ -234,6 +233,7 @@
     "whatsapp": "WhatsApp",
     "telegram": "Telegram",
     "shareText": "Právě jsem se zapsal do pořadníku World Monitor Pro — globální zpravodajství v reálném čase poháněné AI. Přidejte se:",
-    "joinWaitlistShare": "Zapište se do pořadníku World Monitor Pro:"
+    "joinWaitlistShare": "Zapište se do pořadníku World Monitor Pro:",
+    "youreIn": "Jste přihlášeni!"
   }
 }

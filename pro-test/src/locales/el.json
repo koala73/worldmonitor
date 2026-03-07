@@ -225,7 +225,6 @@
     "failedTryAgain": "Αποτυχία — δοκιμάστε ξανά"
   },
   "referral": {
-    "yourPosition": "Η θέση σας",
     "alreadyOnList": "Είστε ήδη στη λίστα.",
     "shareHint": "Μοιραστείτε τον σύνδεσμό σας για να ανεβείτε στη σειρά. Κάθε φίλος που εγγράφεται σας φέρνει πιο κοντά στην αρχή.",
     "copied": "Αντιγράφηκε!",
@@ -234,6 +233,7 @@
     "whatsapp": "WhatsApp",
     "telegram": "Telegram",
     "shareText": "Μόλις εγγράφηκα στη λίστα αναμονής του World Monitor Pro — πληροφορίες παγκόσμιας εμβέλειας σε πραγματικό χρόνο με AI. Ελάτε κι εσείς:",
-    "joinWaitlistShare": "Εγγραφείτε στη λίστα αναμονής του World Monitor Pro:"
+    "joinWaitlistShare": "Εγγραφείτε στη λίστα αναμονής του World Monitor Pro:",
+    "youreIn": "Είστε μέσα!"
   }
 }

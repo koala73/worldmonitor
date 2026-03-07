@@ -65,9 +65,14 @@ export const register = mutation({
       .first();
 
     if (existing) {
+      let code = existing.referralCode;
+      if (!code) {
+        code = await generateUniqueReferralCode(ctx.db, normalizedEmail);
+        await ctx.db.patch(existing._id, { referralCode: code });
+      }
       return {
         status: "already_registered" as const,
-        referralCode: existing.referralCode ?? "",
+        referralCode: code,
         referralCount: existing.referralCount ?? 0,
       };
     }

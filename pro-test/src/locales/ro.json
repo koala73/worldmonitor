@@ -225,7 +225,6 @@
     "failedTryAgain": "Eșuat — încearcă din nou"
   },
   "referral": {
-    "yourPosition": "Poziția ta",
     "alreadyOnList": "Ești deja pe listă.",
     "shareHint": "Distribuie linkul tău pentru a avansa în rând. Fiecare prieten care se alătură te mută mai aproape de față.",
     "copied": "Copiat!",
@@ -234,6 +233,7 @@
     "whatsapp": "WhatsApp",
     "telegram": "Telegram",
     "shareText": "Tocmai m-am înscris pe lista de așteptare World Monitor Pro — informații globale în timp real alimentate de AI. Alătură-te:",
-    "joinWaitlistShare": "Înscrie-te pe lista de așteptare World Monitor Pro:"
+    "joinWaitlistShare": "Înscrie-te pe lista de așteptare World Monitor Pro:",
+    "youreIn": "Ești înscris!"
   }
 }

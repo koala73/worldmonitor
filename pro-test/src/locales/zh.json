@@ -225,7 +225,6 @@
     "failedTryAgain": "失败 — 请重试"
   },
   "referral": {
-    "yourPosition": "你的排位",
     "alreadyOnList": "你已在名单中。",
     "shareHint": "分享你的链接来提升排位。每位加入的朋友都会让你更靠前。",
     "copied": "已复制！",
@@ -234,6 +233,7 @@
     "whatsapp": "WhatsApp",
     "telegram": "Telegram",
     "shareText": "我刚加入了 World Monitor Pro 等候名单 — AI 驱动的全球实时情报。快来加入：",
-    "joinWaitlistShare": "加入 World Monitor Pro 等候名单："
+    "joinWaitlistShare": "加入 World Monitor Pro 等候名单：",
+    "youreIn": "注册成功！"
   }
 }

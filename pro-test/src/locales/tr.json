@@ -225,7 +225,6 @@
     "failedTryAgain": "Başarısız — tekrar deneyin"
   },
   "referral": {
-    "yourPosition": "Sıranız",
     "alreadyOnList": "Zaten listedesiniz.",
     "shareHint": "Sırada yükselmek için bağlantınızı paylaşın. Katılan her arkadaş sizi öne taşır.",
     "copied": "Kopyalandı!",
@@ -234,6 +233,7 @@
     "whatsapp": "WhatsApp",
     "telegram": "Telegram",
     "shareText": "World Monitor Pro bekleme listesine katıldım — AI destekli gerçek zamanlı küresel istihbarat. Siz de katılın:",
-    "joinWaitlistShare": "World Monitor Pro bekleme listesine katılın:"
+    "joinWaitlistShare": "World Monitor Pro bekleme listesine katılın:",
+    "youreIn": "Kayıt oldunuz!"
   }
 }
