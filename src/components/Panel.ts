@@ -650,7 +650,7 @@ export class Panel {
     );
   }
 
-  public showError(_message?: string, onRetry?: () => void, _autoRetrySeconds?: number): void {
+  public showError(message?: string, onRetry?: () => void, autoRetrySeconds?: number): void {
     if (this._locked) return;
     this.clearRetryCountdown();
     if (onRetry !== undefined) this.retryCallback = onRetry;
@@ -660,12 +660,12 @@ export class Panel {
       h('div', { className: 'panel-radar-dot error' }),
     );
 
-    const msgEl = h('div', { className: 'panel-error-msg' }, t('common.failedToLoad'));
+    const msgEl = h('div', { className: 'panel-error-msg' }, message || t('common.failedToLoad'));
 
     const children: (HTMLElement | string)[] = [radarEl, msgEl];
 
     if (this.retryCallback) {
-      const backoffSeconds = Math.min(15 * Math.pow(2, this.retryAttempt), 180);
+      const backoffSeconds = autoRetrySeconds ?? Math.min(15 * Math.pow(2, this.retryAttempt), 180);
       this.retryAttempt++;
       let remaining = Math.round(backoffSeconds);
       const countdownEl = h('div', { className: 'panel-error-countdown' },
@@ -718,7 +718,7 @@ export class Panel {
     replaceChildren(this.content, h('div', { className: 'panel-locked-state' }, ...lockedChildren));
   }
 
-  public showRetrying(_message?: string, countdownSeconds?: number): void {
+  public showRetrying(message?: string, countdownSeconds?: number): void {
     if (this._locked) return;
     this.clearRetryCountdown();
 
@@ -727,7 +727,7 @@ export class Panel {
       h('div', { className: 'panel-radar-dot error' }),
     );
 
-    const msgEl = h('div', { className: 'panel-error-msg' }, t('common.failedToLoad'));
+    const msgEl = h('div', { className: 'panel-error-msg' }, message || t('common.retrying'));
     const children: (HTMLElement | string)[] = [radarEl, msgEl];
 
     if (countdownSeconds && countdownSeconds > 0) {

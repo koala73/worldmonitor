@@ -143,9 +143,9 @@ export async function listUcdpEvents(
 
   // 3. Direct UCDP API fetch (desktop sidecar path — no Redis available)
   if (Date.now() - lastDirectFetchMs > DIRECT_FETCH_COOLDOWN_MS) {
-    lastDirectFetchMs = Date.now();
     try {
       const events = await fetchDirectFromUcdp();
+      lastDirectFetchMs = Date.now(); // only after successful fetch
       if (events.length > 0) {
         fallback = { events, ts: Date.now() };
         let filtered = events;
