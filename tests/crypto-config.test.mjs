@@ -26,6 +26,24 @@ describe('shared/crypto.json integrity', () => {
     }
   });
 
+  it('coinpaprika ids exist on CoinPaprika API', async () => {
+    const resp = await fetch('https://api.coinpaprika.com/v1/coins', {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!resp.ok) {
+      console.log(`  skipping: CoinPaprika API returned ${resp.status}`);
+      return;
+    }
+    const coins = await resp.json();
+    const validIds = new Set(coins.map((c) => c.id));
+    const invalid = [];
+    for (const [geckoId, paprikaId] of Object.entries(crypto.coinpaprika)) {
+      if (!validIds.has(paprikaId)) invalid.push(`${geckoId} → ${paprikaId}`);
+    }
+    assert.equal(invalid.length, 0, `invalid CoinPaprika ids:\n  ${invalid.join('\n  ')}`);
+  });
+
   it('symbols are unique', () => {
     const symbols = Object.values(crypto.meta).map((m) => m.symbol);
     assert.equal(new Set(symbols).size, symbols.length, `duplicate symbols: ${symbols}`);
