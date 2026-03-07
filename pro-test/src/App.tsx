@@ -34,6 +34,7 @@ export function renderTurnstileWidgets(): number {
   document.querySelectorAll<HTMLElement>('.cf-turnstile:not([data-rendered])').forEach(el => {
     const widgetId = window.turnstile!.render(el, {
       sitekey: TURNSTILE_SITE_KEY,
+      size: 'flexible',
       callback: (token: string) => { el.dataset.token = token; },
       'expired-callback': () => { delete el.dataset.token; },
       'error-callback': () => { delete el.dataset.token; },
@@ -55,7 +56,7 @@ function sanitize(val: unknown): string {
 }
 
 function showReferralSuccess(formEl: HTMLFormElement, data: { referralCode?: string; position?: number; status?: string }) {
-  if (!data.referralCode) {
+  if (data.referralCode == null && data.status == null) {
     const btn = formEl.querySelector('button[type="submit"]') as HTMLButtonElement;
     if (btn) { btn.textContent = t('form.joinWaitlist'); btn.disabled = false; }
     return;
@@ -89,30 +90,32 @@ function showReferralSuccess(formEl: HTMLFormElement, data: { referralCode?: str
     successDiv.appendChild(el('p', 'text-sm text-wm-muted mb-4', shareHint));
   }
 
-  const linkBox = el('div', 'bg-wm-card border border-wm-border px-4 py-3 mb-4 font-mono text-xs text-wm-green break-all select-all cursor-pointer', referralLink);
-  linkBox.addEventListener('click', () => {
-    navigator.clipboard.writeText(referralLink).then(() => {
-      linkBox.textContent = t('referral.copied');
-      setTimeout(() => { linkBox.textContent = referralLink; }, 2000);
+  if (safeCode) {
+    const linkBox = el('div', 'bg-wm-card border border-wm-border px-4 py-3 mb-4 font-mono text-xs text-wm-green break-all select-all cursor-pointer', referralLink);
+    linkBox.addEventListener('click', () => {
+      navigator.clipboard.writeText(referralLink).then(() => {
+        linkBox.textContent = t('referral.copied');
+        setTimeout(() => { linkBox.textContent = referralLink; }, 2000);
+      });
     });
-  });
-  successDiv.appendChild(linkBox);
+    successDiv.appendChild(linkBox);
 
-  const shareRow = el('div', 'flex gap-3 justify-center flex-wrap');
-  const shareLinks = [
-    { label: t('referral.shareOnX'), href: `https://x.com/intent/tweet?text=${shareText}&url=${shareUrl}` },
-    { label: t('referral.linkedin'), href: `https://www.linkedin.com/sharing/share-offsite/?url=${shareUrl}` },
-    { label: t('referral.whatsapp'), href: `https://wa.me/?text=${shareText}%20${shareUrl}` },
-    { label: t('referral.telegram'), href: `https://t.me/share/url?url=${shareUrl}&text=${encodeURIComponent(t('referral.joinWaitlistShare'))}` },
-  ];
-  for (const s of shareLinks) {
-    const a = el('a', 'bg-wm-card border border-wm-border px-4 py-2 text-xs font-mono text-wm-muted hover:text-wm-text hover:border-wm-text transition-colors', s.label);
-    (a as HTMLAnchorElement).href = s.href;
-    (a as HTMLAnchorElement).target = '_blank';
-    (a as HTMLAnchorElement).rel = 'noreferrer';
-    shareRow.appendChild(a);
+    const shareRow = el('div', 'flex gap-3 justify-center flex-wrap');
+    const shareLinks = [
+      { label: t('referral.shareOnX'), href: `https://x.com/intent/tweet?text=${shareText}&url=${shareUrl}` },
+      { label: t('referral.linkedin'), href: `https://www.linkedin.com/sharing/share-offsite/?url=${shareUrl}` },
+      { label: t('referral.whatsapp'), href: `https://wa.me/?text=${shareText}%20${shareUrl}` },
+      { label: t('referral.telegram'), href: `https://t.me/share/url?url=${shareUrl}&text=${encodeURIComponent(t('referral.joinWaitlistShare'))}` },
+    ];
+    for (const s of shareLinks) {
+      const a = el('a', 'bg-wm-card border border-wm-border px-4 py-2 text-xs font-mono text-wm-muted hover:text-wm-text hover:border-wm-text transition-colors', s.label);
+      (a as HTMLAnchorElement).href = s.href;
+      (a as HTMLAnchorElement).target = '_blank';
+      (a as HTMLAnchorElement).rel = 'noreferrer';
+      shareRow.appendChild(a);
+    }
+    successDiv.appendChild(shareRow);
   }
-  successDiv.appendChild(shareRow);
 
   formEl.replaceWith(successDiv);
 }
