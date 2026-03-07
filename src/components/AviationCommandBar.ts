@@ -264,17 +264,17 @@ export class AviationCommandBar {
         style.id = 'aviation-cmd-styles';
         style.textContent = `
       #aviation-cmd-overlay { position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding-top:80px; }
-      #aviation-cmd-box { background:var(--panel-bg,#1a1f2e);border:1px solid var(--border-color,#374151);border-radius:10px;padding:16px;width:min(560px,92vw);box-shadow:0 24px 60px rgba(0,0,0,.7);max-height:80vh;overflow-y:auto; }
-      #aviation-cmd-header { display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;font-size:14px;font-weight:600;color:var(--text-primary,#e5e7eb); }
+      #aviation-cmd-box { background:var(--surface,#141414);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:16px;width:min(560px,92vw);box-shadow:0 24px 60px rgba(0,0,0,.7);max-height:80vh;overflow-y:auto; }
+      #aviation-cmd-header { display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;font-size:14px;font-weight:600;color:var(--text,#e8e8e8); }
       #aviation-cmd-close { background:none;border:none;color:#6b7280;cursor:pointer;font-size:18px;line-height:1; }
-      #aviation-cmd-input { width:100%;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid var(--border-color,#374151);border-radius:6px;color:var(--text-primary,#e5e7eb);font-size:14px;padding:10px;outline:none; }
+      #aviation-cmd-input { width:100%;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid var(--border,#2a2a2a);border-radius:6px;color:var(--text,#e8e8e8);font-size:14px;padding:10px;outline:none; }
       #aviation-cmd-input:focus { border-color:var(--accent,#60a5fa); }
       #aviation-cmd-result { margin-top:12px;font-size:13px; }
       .cmd-row { display:flex;gap:10px;align-items:center;padding:4px 0;font-size:13px; }
       .cmd-section { padding:8px 0; }
       .cmd-empty { color:#6b7280;font-size:12px;padding:8px 0; }
       .cmd-news-item { padding:4px 0; }
-      .cmd-news-item a { color:var(--text-primary,#e5e7eb);text-decoration:none;font-size:12px; }
+      .cmd-news-item a { color:var(--text,#e8e8e8);text-decoration:none;font-size:12px; }
       .cmd-news-item a:hover { color:var(--accent,#60a5fa); }
       #aviation-cmd-hint { font-size:11px;color:#4b5563;margin-top:10px;text-align:right; }
       #aviation-cmd-hint kbd { background:#374151;border-radius:2px;padding:1px 4px;font-family:monospace; }

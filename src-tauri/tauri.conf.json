@@ -14,7 +14,6 @@
     "windows": [
       {
         "title": "World Monitor",
-        "titleBarStyle": "Overlay",
         "width": 1440,
         "height": 900,
         "minWidth": 1200,

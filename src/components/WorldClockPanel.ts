@@ -126,52 +126,7 @@ function pad2(n: number): string {
   return n < 10 ? `0${n}` : `${n}`;
 }
 
-const STYLE = `<style>
-.wc-container{display:flex;flex-direction:column}
-.wc-row{display:grid;grid-template-columns:auto 1fr auto;align-items:center;padding:7px 10px;border-bottom:1px solid var(--border-subtle,#1a1a1a);transition:background .15s;gap:0}
-.wc-row:last-child{border-bottom:none}
-.wc-row:hover{background:var(--surface-hover,#1e1e1e)}
-.wc-row.wc-home{border-left:2px solid #44ff88;padding-left:8px;background:rgba(68,255,136,.03)}
-.wc-row.wc-night .wc-time{opacity:.65}
-.wc-info{display:flex;flex-direction:column;gap:3px;min-width:0}
-.wc-name{font-size:12px;font-weight:700;color:var(--text,#e8e8e8);letter-spacing:.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.wc-home-tag{font-size:9px;color:#44ff88;margin-left:4px;font-weight:400;opacity:.7}
-.wc-detail{display:flex;align-items:center;gap:6px}
-.wc-exchange{font-size:10px;color:var(--text-dim,#888);letter-spacing:.5px;text-transform:uppercase}
-.wc-status{display:inline-flex;align-items:center;gap:4px;font-size:9px;font-weight:600;letter-spacing:.5px}
-.wc-dot{width:5px;height:5px;border-radius:50%;flex-shrink:0}
-.wc-dot.open{background:#44ff88;box-shadow:0 0 6px rgba(68,255,136,.6);animation:wc-pulse 2s ease-in-out infinite}
-.wc-dot.closed{background:var(--text-muted,#666)}
-.wc-status.open{color:#44ff88}
-.wc-status.closed{color:var(--text-muted,#666)}
-.wc-clock{display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex-shrink:0}
-.wc-time{font-family:var(--font-mono);font-size:18px;font-weight:700;color:var(--text,#e8e8e8);letter-spacing:1.5px;line-height:1;font-variant-numeric:tabular-nums}
-.wc-tz{font-size:9px;color:var(--text-dim,#888);display:flex;align-items:center;gap:6px}
-.wc-bar-wrap{width:36px;height:3px;background:var(--border,#2a2a2a);border-radius:2px;overflow:hidden}
-.wc-bar{height:100%;border-radius:2px;transition:width 1s linear}
-.wc-bar.day{background:linear-gradient(90deg,#44ff88,#88ff44)}
-.wc-bar.night{background:linear-gradient(90deg,#445,#556)}
-@keyframes wc-pulse{0%,100%{opacity:1}50%{opacity:.4}}
-.wc-settings-btn{background:none;border:1px solid transparent;color:var(--text-dim,#888);cursor:pointer;font-size:13px;padding:2px 6px;border-radius:4px;display:flex;align-items:center;justify-content:center;transition:all .15s;line-height:1}
-.wc-settings-btn:hover{background:var(--overlay-light,rgba(255,255,255,.05));color:var(--text,#e8e8e8);border-color:var(--border,#2a2a2a)}
-.wc-settings-btn.wc-active{background:rgba(68,255,136,.1);color:#44ff88;border-color:rgba(68,255,136,.3)}
-.wc-settings-view{padding:2px 0}
-.wc-region-header{font-size:9px;font-weight:600;color:var(--text-dim,#888);text-transform:uppercase;letter-spacing:1px;padding:8px 10px 4px;border-bottom:1px solid var(--border-subtle,#1a1a1a)}
-.wc-region-header:first-child{padding-top:4px}
-.wc-region-grid{display:grid;grid-template-columns:1fr 1fr;gap:0}
-.wc-city-option{display:flex;align-items:center;gap:6px;padding:5px 10px;cursor:pointer;transition:background .1s;font-size:11px}
-.wc-city-option:hover{background:var(--surface-hover,#1e1e1e)}
-.wc-city-option input[type=checkbox]{accent-color:#44ff88;width:12px;height:12px;flex-shrink:0;cursor:pointer}
-.wc-opt-name{font-weight:600;color:var(--text,#e8e8e8);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.wc-opt-label{font-size:9px;color:var(--text-muted,#666);margin-left:auto;flex-shrink:0}
-.wc-empty{padding:20px 10px;text-align:center;color:var(--text-dim,#888);font-size:11px}
-.wc-drag-handle{cursor:grab;color:var(--text-muted,#555);font-size:11px;padding:0 6px 0 2px;user-select:none;opacity:.35;transition:opacity .15s;display:flex;align-items:center}
-.wc-row:hover .wc-drag-handle{opacity:.6}
-.wc-drag-handle:hover{opacity:1!important;color:var(--text,#e8e8e8);cursor:grab}
-.wc-row.wc-dragging{opacity:.3}
-.wc-row.wc-drag-over-above{box-shadow:inset 0 2px 0 #44ff88}
-.wc-row.wc-drag-over-below{box-shadow:inset 0 -2px 0 #44ff88}
-</style>`;
+/* Styles moved to panels.css (PERF-012) */
 
 export class WorldClockPanel extends Panel {
   private tickInterval: ReturnType<typeof setInterval> | null = null;
@@ -234,7 +189,7 @@ export class WorldClockPanel extends Panel {
   }
 
   private renderSettings(): void {
-    let html = STYLE + '<div class="wc-settings-view">';
+    let html = '<div class="wc-settings-view">';
     for (const region of CITY_REGIONS) {
       html += `<div class="wc-region-header">${region.name}</div><div class="wc-region-grid">`;
       for (const id of region.ids) {
@@ -322,11 +277,11 @@ export class WorldClockPanel extends Panel {
       .filter((c): c is CityEntry => !!c);
 
     if (sorted.length === 0) {
-      this.setContent(STYLE + '<div class="wc-empty">No cities selected. Click \u2699 to add cities.</div>');
+      this.setContent('<div class="wc-empty">No cities selected. Click \u2699 to add cities.</div>');
       return;
     }
 
-    let html = STYLE + '<div class="wc-container" translate="no">';
+    let html = '<div class="wc-container" translate="no">';
     for (const city of sorted) {
       const { h, m, s, dayOfWeek } = getTimeInZone(city.timezone);
       const isDay = h >= 6 && h < 20;

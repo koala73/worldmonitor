@@ -18,9 +18,7 @@ function cacheKey(lat: number, lon: number): string {
   return `${lat.toFixed(1)},${lon.toFixed(1)}`;
 }
 
-const TIMEOUT_MS = 8000;
-
-export async function reverseGeocode(lat: number, lon: number, signal?: AbortSignal): Promise<GeoResult | null> {
+export async function reverseGeocode(lat: number, lon: number): Promise<GeoResult | null> {
   const key = cacheKey(lat, lon);
   if (cache.has(key)) return cache.get(key) ?? null;
 
@@ -30,16 +28,10 @@ export async function reverseGeocode(lat: number, lon: number, signal?: AbortSig
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));
   lastRequestTime = Date.now();
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  const onExternalAbort = () => controller.abort();
-  signal?.addEventListener('abort', onExternalAbort, { once: true });
-
   try {
     const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=3&accept-language=en`;
     const res = await fetch(url, {
       headers: { 'User-Agent': 'WorldMonitor/2.0 (https://worldmonitor.app)' },
-      signal: controller.signal,
     });
     if (!res.ok) {
       cache.set(key, null);
@@ -59,15 +51,8 @@ export async function reverseGeocode(lat: number, lon: number, signal?: AbortSig
     cache.set(key, result);
     return result;
   } catch (err) {
-    // Don't cache abort/timeout errors — the request may succeed on retry
-    if (controller.signal.aborted) {
-      return null;
-    }
     console.warn('[reverseGeocode] Failed:', err);
     cache.set(key, null);
     return null;
-  } finally {
-    clearTimeout(timeout);
-    signal?.removeEventListener('abort', onExternalAbort);
   }
 }

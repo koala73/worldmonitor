@@ -50,6 +50,7 @@ import { BETA_MODE } from '@/config/beta';
 import { t } from '@/services/i18n';
 import { getCurrentTheme } from '@/utils';
 import { trackCriticalBannerAction } from '@/services/analytics';
+import { getSecretState } from '@/services/runtime-config';
 
 export interface PanelLayoutCallbacks {
   openCountryStory: (code: string, name: string) => void;
@@ -110,6 +111,7 @@ export class PanelLayoutManager implements AppModule {
 
   renderLayout(): void {
     this.ctx.container.innerHTML = `
+      ${this.ctx.isDesktopApp ? '<div class="tauri-titlebar" data-tauri-drag-region></div>' : ''}
       <div class="header">
         <div class="header-left">
           <button class="hamburger-btn" id="hamburgerBtn" aria-label="Menu">
@@ -289,7 +291,7 @@ export class PanelLayoutManager implements AppModule {
               <span class="panel-title">${SITE_VARIANT === 'tech' ? t('panels.techMap') : SITE_VARIANT === 'happy' ? 'Good News Map' : t('panels.map')}</span>
             </div>
             <span class="header-clock" id="headerClock" translate="no"></span>
-            <div style="display:flex;align-items:center;gap:2px">
+            <div class="map-header-actions">
               <div class="map-dimension-toggle" id="mapDimensionToggle">
                 <button class="map-dim-btn${loadFromStorage<string>(STORAGE_KEYS.mapMode, 'flat') === 'globe' ? '' : ' active'}" data-mode="flat" title="2D Map">2D</button>
                 <button class="map-dim-btn${loadFromStorage<string>(STORAGE_KEYS.mapMode, 'flat') === 'globe' ? ' active' : ''}" data-mode="globe" title="3D Globe">3D</button>
@@ -716,12 +718,18 @@ export class PanelLayoutManager implements AppModule {
         }),
       );
 
+      const _wmKeyPresent = getSecretState('WORLDMONITOR_API_KEY').present;
+
       this.lazyPanel('oref-sirens', () =>
         import('@/components/OrefSirensPanel').then(m => new m.OrefSirensPanel()),
+        undefined,
+        !_wmKeyPresent ? [t('premium.features.orefSirens1'), t('premium.features.orefSirens2')] : undefined,
       );
 
       this.lazyPanel('telegram-intel', () =>
         import('@/components/TelegramIntelPanel').then(m => new m.TelegramIntelPanel()),
+        undefined,
+        !_wmKeyPresent ? [t('premium.features.telegramIntel1'), t('premium.features.telegramIntel2')] : undefined,
       );
     }
 
@@ -1168,11 +1176,16 @@ export class PanelLayoutManager implements AppModule {
     key: string,
     loader: () => Promise<T>,
     setup?: (panel: T) => void,
+    lockedFeatures?: string[],
   ): void {
     loader().then(async (panel) => {
       this.ctx.panels[key] = panel as unknown as import('@/components/Panel').Panel;
-      await replayPendingCalls(key, panel);
-      if (setup) setup(panel);
+      if (lockedFeatures) {
+        (panel as unknown as import('@/components/Panel').Panel).showLocked(lockedFeatures);
+      } else {
+        await replayPendingCalls(key, panel);
+        if (setup) setup(panel);
+      }
       const el = panel.getElement();
       this.makeDraggable(el, key);
 

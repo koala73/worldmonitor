@@ -9,6 +9,7 @@ export interface LayerDefinition {
   i18nSuffix: string;
   fallbackLabel: string;
   renderers: MapRenderer[];
+  premium?: 'locked' | 'enhanced';
 }
 
 const def = (
@@ -17,10 +18,11 @@ const def = (
   i18nSuffix: string,
   fallbackLabel: string,
   renderers: MapRenderer[] = ['flat', 'globe'],
-): LayerDefinition => ({ key, icon, i18nSuffix, fallbackLabel, renderers });
+  premium?: 'locked' | 'enhanced',
+): LayerDefinition => ({ key, icon, i18nSuffix, fallbackLabel, renderers, ...(premium && { premium }) });
 
 export const LAYER_REGISTRY: Record<keyof MapLayers, LayerDefinition> = {
-  iranAttacks:              def('iranAttacks',              '&#127919;', 'iranAttacks',              'Iran Attacks'),
+  iranAttacks:              def('iranAttacks',              '&#127919;', 'iranAttacks',              'Iran Attacks', ['flat', 'globe'], 'locked'),
   hotspots:                 def('hotspots',                 '&#127919;', 'intelHotspots',            'Intel Hotspots'),
   conflicts:                def('conflicts',                '&#9876;',   'conflictZones',            'Conflict Zones'),
 
@@ -47,8 +49,8 @@ export const LAYER_REGISTRY: Record<keyof MapLayers, LayerDefinition> = {
   waterways:                def('waterways',                '&#9875;',   'strategicWaterways',       'Strategic Waterways'),
   economic:                 def('economic',                 '&#128176;', 'economicCenters',          'Economic Centers'),
   minerals:                 def('minerals',                 '&#128142;', 'criticalMinerals',         'Critical Minerals'),
-  gpsJamming:               def('gpsJamming',               '&#128225;', 'gpsJamming',               'GPS Jamming'),
-  ciiChoropleth:            def('ciiChoropleth',            '&#127758;', 'ciiChoropleth',            'CII Instability'),
+  gpsJamming:               def('gpsJamming',               '&#128225;', 'gpsJamming',               'GPS Jamming', ['flat', 'globe'], 'locked'),
+  ciiChoropleth:            def('ciiChoropleth',            '&#127758;', 'ciiChoropleth',            'CII Instability', ['flat', 'globe'], 'enhanced'),
   dayNight:                 def('dayNight',                 '&#127763;', 'dayNight',                 'Day/Night', ['flat']),
   sanctions:                def('sanctions',                '&#128683;', 'sanctions',                'Sanctions', []),
   startupHubs:              def('startupHubs',              '&#128640;', 'startupHubs',              'Startup Hubs'),

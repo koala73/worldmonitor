@@ -273,6 +273,28 @@ canvas,
   flex-shrink: 0;
 }
 
+/* -- Tauri desktop: separate title bar for traffic lights -- */
+.tauri-titlebar {
+  height: 28px;
+  background: var(--bg);
+  flex-shrink: 0;
+  -webkit-app-region: drag;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.tauri-titlebar + .header {
+  border-top: none;
+  -webkit-app-region: drag;
+}
+
+.tauri-titlebar + .header button,
+.tauri-titlebar + .header a,
+.tauri-titlebar + .header input,
+.tauri-titlebar + .header select,
+.tauri-titlebar + .header .search-wrapper {
+  -webkit-app-region: no-drag;
+}
+
 .header-left {
   display: flex;
   align-items: center;
@@ -905,6 +927,9 @@ canvas,
 .map-section .panel-header {
   flex-shrink: 0;
   gap: 6px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
 }
 
 .map-section .map-container {
@@ -5704,15 +5729,36 @@ a.prediction-link:hover {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 8px;
+  padding: 1.5rem 1rem;
+  min-height: 120px;
   padding: 24px 12px;
   min-height: 100px;
+}
+
+.panel-error-radar {
+  transform: scale(0.65);
+  margin-bottom: -8px;
+  opacity: 0.7;
+}
+
+.panel-error-radar .panel-radar-dot.error {
+  background: var(--semantic-warning, #ff8844);
+  box-shadow: 0 0 6px var(--semantic-warning, #ff8844);
+}
+
+.panel-error-countdown {
+  font-size: 10px;
+  color: var(--text-dim);
+  opacity: 0.7;
+  margin-top: 2px;
 }
 
 .panel-error-icon {
   font-size: 18px;
   color: var(--text-dim);
   opacity: 0.5;
+  display: none;
 }
 
 .panel-error-msg {
@@ -5721,6 +5767,18 @@ a.prediction-link:hover {
   text-align: center;
   max-width: 180px;
   line-height: 1.4;
+}
+
+.panel-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 12px;
+  min-height: 100px;
+  font-size: 11px;
+  color: var(--text-dim);
+  text-align: center;
+  opacity: 0.6;
 }
 
 .panel-error-retry-btn {
@@ -9190,19 +9248,10 @@ a.prediction-link:hover {
   border-left: 2px solid var(--accent);
 }
 
-.cluster-toggle {
-  display: block;
+.cluster-more {
   padding: 4px 8px;
-  margin-top: 4px;
-  background: none;
-  border: none;
-  color: var(--accent);
-  cursor: pointer;
-  font-size: 0.85em;
-}
-
-.cluster-toggle:hover {
-  text-decoration: underline;
+  color: var(--text-muted);
+  font-style: italic;
 }
 
 .popup-description.alert {
@@ -9254,6 +9303,88 @@ a.prediction-link:hover {
     transform: scale(1.05);
     box-shadow: 0 0 8px 2px var(--overlay-heavy);
   }
+}
+
+/* -- Premium locked panel overlay -- */
+.panel-locked-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 1.2rem 1rem;
+  gap: 8px;
+  background: radial-gradient(ellipse at center, rgba(180, 130, 40, 0.06) 0%, transparent 70%);
+}
+
+.panel-locked-icon {
+  color: #d4a843;
+  filter: drop-shadow(0 0 8px rgba(212, 168, 67, 0.3));
+}
+
+.panel-locked-desc {
+  font-size: 11px;
+  color: var(--text-dim, #888);
+}
+
+.panel-locked-cta {
+  padding: 6px 18px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: #111;
+  background: linear-gradient(135deg, #d4a843 0%, #b8902e 100%);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: filter 0.15s;
+}
+
+.panel-locked-cta:hover {
+  filter: brightness(1.15);
+}
+
+/* -- PRO badge (panel header) -- */
+.panel-pro-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #d4a843;
+  border: 1px solid rgba(212, 168, 67, 0.4);
+  border-radius: 3px;
+  padding: 1px 4px;
+  margin-left: 6px;
+  vertical-align: middle;
+  line-height: 1;
+}
+
+/* -- PRO badge (layer toggle) -- */
+.layer-pro-badge {
+  display: inline;
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: #d4a843;
+  border: 1px solid rgba(212, 168, 67, 0.35);
+  border-radius: 2px;
+  padding: 0 3px;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
+/* -- Locked panel: hide count badge + extra chrome -- */
+.panel-is-locked .panel-count,
+.panel-is-locked .panel-data-badge {
+  display: none !important;
+}
+
+/* -- Locked layer toggle -- */
+.layer-toggle-locked {
+  opacity: 0.45;
+  pointer-events: none;
 }
 
 /* Panel header glow when has new items */
@@ -14939,6 +15070,10 @@ body.has-critical-banner .panels-grid {
   pointer-events: none;
 }
 
+body:has(.tauri-titlebar) .breaking-news-container {
+  top: 70px;
+}
+
 .breaking-alert {
   pointer-events: auto;
   padding: 8px 16px;
@@ -17051,45 +17186,6 @@ body.has-breaking-alert .panels-grid {
 /* Loading / Empty States */
 .cb-loading-state {
   padding: 40px 24px;
-}
-
-.cb-geo-error {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 40px 24px;
-  text-align: center;
-}
-
-.cb-geo-error-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 4px;
-}
-
-.cb-geo-retry-btn,
-.cb-geo-close-btn {
-  padding: 6px 16px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-primary);
-  font-size: 12px;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-
-.cb-geo-retry-btn:hover,
-.cb-geo-close-btn:hover {
-  background: color-mix(in srgb, var(--text-faint) 15%, transparent);
-}
-
-.cb-geo-retry-btn {
-  background: color-mix(in srgb, var(--accent) 15%, transparent);
-  border-color: var(--accent);
-  color: var(--accent);
 }
 
 .cb-empty {
