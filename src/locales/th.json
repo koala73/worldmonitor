@@ -6,6 +6,9 @@
   "countryBrief": {
     "identifying": "กำลังระบุประเทศ...",
     "locating": "กำลังค้นหาภูมิภาค...",
+    "geocodeFailed": "ไม่สามารถระบุประเทศที่ตำแหน่งนี้ได้",
+    "retryBtn": "ลองอีกครั้ง",
+    "closeBtn": "ปิด",
     "limitedCoverage": "ครอบคลุมจำกัด",
     "instabilityIndex": "ดัชนีความไม่มั่นคง",
     "notTracked": "ไม่ได้ติดตาม — {{country}} ไม่อยู่ในรายการ CII ระดับ 1",

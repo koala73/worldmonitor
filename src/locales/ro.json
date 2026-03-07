@@ -6,6 +6,9 @@
   "countryBrief": {
     "identifying": "Se identifică țara...",
     "locating": "Se localizează regiunea...",
+    "geocodeFailed": "Nu s-a putut identifica o țară la această locație",
+    "retryBtn": "Reîncearcă",
+    "closeBtn": "Închide",
     "limitedCoverage": "Acoperire limitată",
     "instabilityIndex": "Indicele de instabilitate",
     "notTracked": "Nu este urmărită — {{country}} nu se află în lista CII de nivel 1",

@@ -6,6 +6,9 @@
   "countryBrief": {
     "identifying": "جارٍ تحديد الدولة...",
     "locating": "جارٍ تحديد المنطقة...",
+    "geocodeFailed": "تعذّر تحديد دولة في هذا الموقع",
+    "retryBtn": "إعادة المحاولة",
+    "closeBtn": "إغلاق",
     "limitedCoverage": "تغطية محدودة",
     "instabilityIndex": "مؤشر عدم الاستقرار",
     "notTracked": "غير مُتتبَّع — {{country}} ليست في قائمة CII من المستوى الأول",

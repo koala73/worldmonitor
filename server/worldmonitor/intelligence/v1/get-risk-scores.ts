@@ -11,11 +11,6 @@ import type {
 import { getCachedJson, setCachedJson, cachedFetchJson } from '../../../_shared/redis';
 import { TIER1_COUNTRIES } from './_shared';
 import { fetchAcledCached } from '../../../_shared/acled';
-import { listUcdpEvents } from '../../conflict/v1/list-ucdp-events';
-import { listInternetOutages } from '../../infrastructure/v1/list-internet-outages';
-import { listClimateAnomalies } from '../../climate/v1/list-climate-anomalies';
-import { listCyberThreats } from '../../cyber/v1/list-cyber-threats';
-import { listFireDetections } from '../../wildfire/v1/list-fire-detections';
 
 // ========================================================================
 // Country risk baselines and multipliers
@@ -143,8 +138,6 @@ async function fetchACLEDEvents(): Promise<Array<{ country: string; event_type: 
   }));
 }
 
-const DUMMY_CTX = { request: new Request('http://localhost'), pathParams: {}, headers: {} } as ServerContext;
-
 async function fetchAuxiliarySources(): Promise<{
   ucdpEvents: any[];
   outages: any[];
@@ -154,12 +147,12 @@ async function fetchAuxiliarySources(): Promise<{
   gpsHexes: any[];
   iranEvents: any[];
 }> {
-  const [ucdpRes, outagesRes, climateRes, cyberRes, firesRes, gpsRaw, iranRaw] = await Promise.all([
-    listUcdpEvents(DUMMY_CTX, {} as any).catch(() => null),
-    listInternetOutages(DUMMY_CTX, {} as any).catch(() => null),
-    listClimateAnomalies(DUMMY_CTX, {} as any).catch(() => null),
-    listCyberThreats(DUMMY_CTX, {} as any).catch(() => null),
-    listFireDetections(DUMMY_CTX, {} as any).catch(() => null),
+  const [ucdpRaw, outagesRaw, climateRaw, cyberRaw, firesRaw, gpsRaw, iranRaw] = await Promise.all([
+    getCachedJson('conflict:ucdp-events:v1', true).catch(() => null),
+    getCachedJson('infra:outages:v1', true).catch(() => null),
+    getCachedJson('climate:anomalies:v1', true).catch(() => null),
+    getCachedJson('cyber:threats-bootstrap:v2', true).catch(() => null),
+    getCachedJson('wildfire:fires:v1', true).catch(() => null),
     getCachedJson('intelligence:gpsjam:v1', true).catch(() => null),
     getCachedJson('conflict:iran-events:v1', true).catch(() => null),
   ]);
@@ -168,11 +161,11 @@ async function fetchAuxiliarySources(): Promise<{
     return Array.isArray(v) ? v : [];
   };
   return {
-    ucdpEvents: ucdpRes?.events ?? [],
-    outages: outagesRes?.outages ?? [],
-    climate: climateRes?.anomalies ?? [],
-    cyber: cyberRes?.threats ?? [],
-    fires: firesRes?.fireDetections ?? [],
+    ucdpEvents: arr(ucdpRaw, 'events'),
+    outages: arr(outagesRaw, 'outages'),
+    climate: arr(climateRaw, 'anomalies'),
+    cyber: arr(cyberRaw, 'threats'),
+    fires: arr(firesRaw, 'fireDetections') || arr(firesRaw, 'fires'),
     gpsHexes: arr(gpsRaw, 'hexes'),
     iranEvents: arr(iranRaw, 'events'),
   };

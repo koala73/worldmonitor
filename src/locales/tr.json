@@ -6,6 +6,9 @@
   "countryBrief": {
     "identifying": "Ulke belirleniyor...",
     "locating": "Bolge tespit ediliyor...",
+    "geocodeFailed": "Bu konumda bir ülke belirlenemedi",
+    "retryBtn": "Tekrar dene",
+    "closeBtn": "Kapat",
     "limitedCoverage": "Sinirli kapsam",
     "instabilityIndex": "Istikrarsizlik Endeksi",
     "notTracked": "Takip edilmiyor — {{country}} CII seviye-1 listesinde degil",

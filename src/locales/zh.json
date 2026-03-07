@@ -6,6 +6,9 @@
   "countryBrief": {
     "identifying": "正在识别国家...",
     "locating": "正在定位区域...",
+    "geocodeFailed": "无法识别此位置的国家",
+    "retryBtn": "重试",
+    "closeBtn": "关闭",
     "limitedCoverage": "覆盖范围有限",
     "instabilityIndex": "不稳定指数",
     "notTracked": "未跟踪 — {{country}}不在CII一级监控名单中",

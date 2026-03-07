@@ -6,6 +6,9 @@
   "countryBrief": {
     "identifying": "Đang xác định quốc gia...",
     "locating": "Đang định vị khu vực...",
+    "geocodeFailed": "Không thể xác định quốc gia tại vị trí này",
+    "retryBtn": "Thử lại",
+    "closeBtn": "Đóng",
     "limitedCoverage": "Phạm vi theo dõi hạn chế",
     "instabilityIndex": "Chỉ số Bất ổn",
     "notTracked": "Không theo dõi — {{country}} không nằm trong danh sách CII cấp 1",

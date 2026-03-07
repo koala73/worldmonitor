@@ -6,6 +6,9 @@
   "countryBrief": {
     "identifying": "Identifikuji zemi...",
     "locating": "Lokalizuji region...",
+    "geocodeFailed": "Nepodařilo se identifikovat zemi na tomto místě",
+    "retryBtn": "Zkusit znovu",
+    "closeBtn": "Zavřít",
     "limitedCoverage": "Omezené pokrytí",
     "instabilityIndex": "Index nestability",
     "notTracked": "Nesledováno — {{country}} není v seznamu CII tier-1",

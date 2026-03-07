@@ -6,6 +6,9 @@
   "countryBrief": {
     "identifying": "Αναγνώριση χώρας...",
     "locating": "Εντοπισμός περιοχής...",
+    "geocodeFailed": "Δεν ήταν δυνατή η αναγνώριση χώρας σε αυτή τη θέση",
+    "retryBtn": "Επανάληψη",
+    "closeBtn": "Κλείσιμο",
     "limitedCoverage": "Περιορισμένη κάλυψη",
     "instabilityIndex": "Δείκτης Αστάθειας",
     "notTracked": "Δεν παρακολουθείται — η {{country}} δεν είναι στη λίστα CII tier-1",

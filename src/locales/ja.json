@@ -6,6 +6,9 @@
   "countryBrief": {
     "identifying": "国を特定中...",
     "locating": "地域を特定中...",
+    "geocodeFailed": "この場所の国を特定できませんでした",
+    "retryBtn": "再試行",
+    "closeBtn": "閉じる",
     "limitedCoverage": "限定的なカバレッジ",
     "instabilityIndex": "不安定性指数",
     "notTracked": "未追跡 — {{country}}はCII第1階層リストに含まれていない",

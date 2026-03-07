@@ -6,6 +6,9 @@
   "countryBrief": {
     "identifying": "Идентифициране на държава...",
     "locating": "Локализиране на регион...",
+    "geocodeFailed": "Не може да се определи държава на това местоположение",
+    "retryBtn": "Опитай отново",
+    "closeBtn": "Затвори",
     "limitedCoverage": "Ограничено покритие",
     "instabilityIndex": "Индекс на нестабилност",
     "notTracked": "Не се проследява — {{country}} не е в списъка на CII tier-1",

@@ -134,8 +134,12 @@ export class CountryIntelManager implements AppModule {
     const geo = await reverseGeocode(lat, lon);
     if (token !== this.briefRequestToken) return;
     if (!geo) {
-      this.ctx.countryBriefPage.hide();
-      this.ctx.map?.setRenderPaused(false);
+      if (this.ctx.countryBriefPage.showGeoError) {
+        this.ctx.countryBriefPage.showGeoError(() => this.openCountryBrief(lat, lon));
+      } else {
+        this.ctx.countryBriefPage.hide();
+        this.ctx.map?.setRenderPaused(false);
+      }
       return;
     }
 
@@ -343,7 +347,7 @@ export class CountryIntelManager implements AppModule {
     const page = this.ctx.countryBriefPage;
     if (!page?.isVisible()) return;
     const code = page.getCode();
-    if (!code || code === '__loading__') return;
+    if (!code || code === '__loading__' || code === '__error__') return;
     const name = TIER1_COUNTRIES[code] ?? CountryIntelManager.resolveCountryName(code);
     const scores = calculateCII();
     let score = scores.find((s) => s.code === code) ?? null;

@@ -72,10 +72,18 @@ function estimateRecordCount(obj: unknown): number {
   return Object.keys(obj as Record<string, unknown>).length;
 }
 
-/** Write seed-meta for a cache key (fire-and-forget). */
+/** Write seed-meta for a cache key (fire-and-forget, throttled to once per 5 min per key). */
+const seedMetaLastWrite = new Map<string, number>();
+const SEED_META_THROTTLE_MS = 300_000; // 5 minutes
+
 function writeSeedMeta(cacheKey: string, recordCount: number): void {
+  const now = Date.now();
+  const last = seedMetaLastWrite.get(cacheKey) ?? 0;
+  if (now - last < SEED_META_THROTTLE_MS) return;
+  seedMetaLastWrite.set(cacheKey, now);
+
   const metaKey = `seed-meta:${cacheKey.replace(/[-:]v\d+$/, '')}`;
-  setCachedJson(metaKey, { fetchedAt: Date.now(), recordCount }, SEED_META_TTL)
+  setCachedJson(metaKey, { fetchedAt: now, recordCount }, SEED_META_TTL)
     .catch((err: unknown) => console.warn(`[redis] seed-meta write failed for "${metaKey}":`, errMsg(err)));
 }
 
@@ -138,7 +146,10 @@ export async function cachedFetchJson<T extends object>(
 ): Promise<T | null> {
   const cached = await getCachedJson(key);
   if (cached === NEG_SENTINEL) return null;
-  if (cached !== null) return cached as T;
+  if (cached !== null) {
+    writeSeedMeta(key, estimateRecordCount(cached));
+    return cached as T;
+  }
 
   const existing = inflight.get(key);
   if (existing) return existing as Promise<T | null>;
@@ -182,7 +193,10 @@ export async function cachedFetchJsonWithMeta<T extends object>(
 ): Promise<{ data: T | null; source: 'cache' | 'fresh' }> {
   const cached = await getCachedJson(key);
   if (cached === NEG_SENTINEL) return { data: null, source: 'cache' };
-  if (cached !== null) return { data: cached as T, source: 'cache' };
+  if (cached !== null) {
+    writeSeedMeta(key, estimateRecordCount(cached));
+    return { data: cached as T, source: 'cache' };
+  }
 
   const existing = inflight.get(key);
   if (existing) {

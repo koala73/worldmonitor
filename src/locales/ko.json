@@ -6,6 +6,9 @@
   "countryBrief": {
     "identifying": "국가 식별 중...",
     "locating": "지역 탐색 중...",
+    "geocodeFailed": "이 위치의 국가를 식별할 수 없습니다",
+    "retryBtn": "다시 시도",
+    "closeBtn": "닫기",
     "limitedCoverage": "제한된 커버리지",
     "instabilityIndex": "불안정 지수",
     "notTracked": "추적 대상 아님 — {{country}}은(는) CII 1등급 목록에 포함되지 않습니다",
