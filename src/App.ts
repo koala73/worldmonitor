@@ -88,6 +88,8 @@ export class App {
       localStorage.removeItem(STORAGE_KEYS.mapLayers);
       localStorage.removeItem(STORAGE_KEYS.panels);
       localStorage.removeItem(PANEL_ORDER_KEY);
+      localStorage.removeItem(PANEL_ORDER_KEY + '-bottom');
+      localStorage.removeItem(PANEL_ORDER_KEY + '-bottom-set');
       localStorage.removeItem(PANEL_SPANS_KEY);
       mapLayers = { ...defaultLayers };
       panelSettings = { ...DEFAULT_PANELS };
@@ -163,6 +165,8 @@ export class App {
       const hadSavedSpans = !!localStorage.getItem(PANEL_SPANS_KEY);
       if (hadSavedOrder || hadSavedSpans) {
         localStorage.removeItem(PANEL_ORDER_KEY);
+        localStorage.removeItem(PANEL_ORDER_KEY + '-bottom');
+        localStorage.removeItem(PANEL_ORDER_KEY + '-bottom-set');
         localStorage.removeItem(PANEL_SPANS_KEY);
         console.log('[App] Applied layout reset migration (v2.5): cleared panel order/spans');
       }
