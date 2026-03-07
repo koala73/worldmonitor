@@ -47,6 +47,14 @@ interface GammaEvent {
   endDate?: string;
 }
 
+interface BootstrapPredictionMarket {
+  title: string;
+  yesPrice?: number;
+  volume?: number;
+  url?: string;
+  endDate?: string;
+}
+
 // ---------- Helpers ----------
 
 /** Parse the yes-side price from a Gamma market's outcomePrices JSON string (0-1 scale). */
@@ -97,6 +105,21 @@ function mapMarket(market: GammaMarket): PredictionMarket {
   };
 }
 
+function bootstrapToProto(
+  market: BootstrapPredictionMarket,
+  category: string,
+): PredictionMarket {
+  return {
+    id: market.url?.split('/').pop() || '',
+    title: market.title,
+    yesPrice: (market.yesPrice ?? 50) / 100,
+    volume: market.volume ?? 0,
+    url: market.url || '',
+    closesAt: market.endDate ? Date.parse(market.endDate) : 0,
+    category,
+  };
+}
+
 // ---------- RPC ----------
 
 export const listPredictionMarkets: PredictionServiceHandler['listPredictionMarkets'] = async (
@@ -105,28 +128,26 @@ export const listPredictionMarkets: PredictionServiceHandler['listPredictionMark
 ): Promise<ListPredictionMarketsResponse> => {
   try {
     // Try Railway-seeded bootstrap data first (no Gamma API call needed)
-    if (!req.query) {
-      try {
-        const bootstrap = await getCachedJson(BOOTSTRAP_KEY) as { geopolitical?: PredictionMarket[]; tech?: PredictionMarket[] } | null;
-        if (bootstrap) {
-          const variant = req.category && ['ai', 'tech', 'crypto', 'science'].includes(req.category)
-            ? bootstrap.tech : bootstrap.geopolitical;
-          if (variant && variant.length > 0) {
+    try {
+      const bootstrap = await getCachedJson(BOOTSTRAP_KEY) as { geopolitical?: BootstrapPredictionMarket[]; tech?: BootstrapPredictionMarket[] } | null;
+      if (bootstrap) {
+        const variant = req.category && ['ai', 'tech', 'crypto', 'science'].includes(req.category)
+          ? bootstrap.tech : bootstrap.geopolitical;
+        if (variant && variant.length > 0) {
+          const q = (req.query || '').trim().toLowerCase();
+          const filtered = q
+            ? variant.filter((market) => market.title.toLowerCase().includes(q))
+            : variant;
+          if (filtered.length > 0) {
             const limit = Math.max(1, Math.min(100, req.pageSize || 50));
-            const markets: PredictionMarket[] = variant.slice(0, limit).map((m: PredictionMarket & { endDate?: string }) => ({
-              id: m.url?.split('/').pop() || '',
-              title: m.title,
-              yesPrice: (m.yesPrice ?? 50) / 100, // bootstrap stores 0-100, proto uses 0-1
-              volume: m.volume ?? 0,
-              url: m.url || '',
-              closesAt: m.endDate ? Date.parse(m.endDate) : 0,
-              category: req.category || '',
-            }));
-            return { markets, pagination: undefined };
+            return {
+              markets: filtered.slice(0, limit).map((market) => bootstrapToProto(market, req.category || '')),
+              pagination: undefined,
+            };
           }
         }
-      } catch { /* bootstrap read failed, fall through */ }
-    }
+      }
+    } catch { /* bootstrap read failed, fall through */ }
 
     // Fallback: fetch from Gamma API directly (may fail due to JA3 blocking)
     const cacheKey = `${REDIS_CACHE_KEY}:${req.category || 'all'}:${req.query || ''}:${req.pageSize || 50}`;

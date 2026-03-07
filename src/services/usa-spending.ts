@@ -1,4 +1,4 @@
-import { getHydratedData } from '@/services/bootstrap';
+import { fetchBootstrapKey, getHydratedData } from '@/services/bootstrap';
 
 export interface GovernmentAward {
   id: string;
@@ -18,22 +18,22 @@ export interface SpendingSummary {
   fetchedAt: Date;
 }
 
-export async function fetchRecentAwards(): Promise<SpendingSummary> {
-  const hydrated = getHydratedData('spending') as {
-    awards?: GovernmentAward[];
-    totalAmount?: number;
-    periodStart?: string;
-    periodEnd?: string;
-    fetchedAt?: number;
-  } | undefined;
+interface BootstrapSpending {
+  awards?: GovernmentAward[];
+  totalAmount?: number;
+  periodStart?: string;
+  periodEnd?: string;
+  fetchedAt?: number;
+}
 
-  if (hydrated?.awards?.length) {
+function toSummary(data?: BootstrapSpending): SpendingSummary {
+  if (data?.awards) {
     return {
-      awards: hydrated.awards,
-      totalAmount: hydrated.totalAmount ?? hydrated.awards.reduce((s, a) => s + a.amount, 0),
-      periodStart: hydrated.periodStart ?? '',
-      periodEnd: hydrated.periodEnd ?? '',
-      fetchedAt: hydrated.fetchedAt ? new Date(hydrated.fetchedAt) : new Date(),
+      awards: data.awards,
+      totalAmount: data.totalAmount ?? data.awards.reduce((s, a) => s + a.amount, 0),
+      periodStart: data.periodStart ?? '',
+      periodEnd: data.periodEnd ?? '',
+      fetchedAt: data.fetchedAt ? new Date(data.fetchedAt) : new Date(),
     };
   }
 
@@ -44,6 +44,14 @@ export async function fetchRecentAwards(): Promise<SpendingSummary> {
     periodEnd: '',
     fetchedAt: new Date(),
   };
+}
+
+export async function fetchRecentAwards(): Promise<SpendingSummary> {
+  const hydrated = getHydratedData('spending') as BootstrapSpending | undefined;
+  if (hydrated?.awards) return toSummary(hydrated);
+
+  const current = await fetchBootstrapKey<BootstrapSpending>('spending');
+  return toSummary(current);
 }
 
 export function formatAwardAmount(amount: number): string {

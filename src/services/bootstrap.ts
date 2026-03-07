@@ -6,6 +6,17 @@ export function getHydratedData(key: string): unknown | undefined {
   return val;
 }
 
+export async function fetchBootstrapKey<T>(key: string, signal?: AbortSignal): Promise<T | undefined> {
+  try {
+    const resp = await fetch(`/api/bootstrap?keys=${encodeURIComponent(key)}`, { signal });
+    if (!resp.ok) return undefined;
+    const { data } = (await resp.json()) as { data?: Record<string, unknown> };
+    return data?.[key] as T | undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function populateCache(data: Record<string, unknown>): void {
   for (const [k, v] of Object.entries(data)) {
     if (v !== null && v !== undefined) {

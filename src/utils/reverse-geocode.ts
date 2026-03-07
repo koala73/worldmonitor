@@ -26,7 +26,6 @@ export async function reverseGeocode(lat: number, lon: number, signal?: AbortSig
       signal: controller.signal,
     });
     if (!res.ok) {
-      cache.set(key, null);
       return null;
     }
 
@@ -40,7 +39,6 @@ export async function reverseGeocode(lat: number, lon: number, signal?: AbortSig
     cache.set(key, result);
     return result;
   } catch {
-    cache.set(key, null);
     return null;
   } finally {
     clearTimeout(timeout);

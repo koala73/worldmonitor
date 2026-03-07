@@ -1,5 +1,5 @@
 import { createCircuitBreaker, getCSSColor } from '@/utils';
-import { getHydratedData } from '@/services/bootstrap';
+import { fetchBootstrapKey, getHydratedData } from '@/services/bootstrap';
 
 export interface WeatherAlert {
   id: string;
@@ -47,10 +47,16 @@ function mapAlert(a: BootstrapAlert): WeatherAlert {
 export async function fetchWeatherAlerts(): Promise<WeatherAlert[]> {
   return breaker.execute(async () => {
     const hydrated = getHydratedData('weatherAlerts') as { alerts?: BootstrapAlert[] } | undefined;
-    if (hydrated?.alerts?.length) {
+    if (hydrated?.alerts) {
       return hydrated.alerts.map(mapAlert);
     }
-    throw new Error('No weather data in bootstrap');
+
+    const current = await fetchBootstrapKey<{ alerts?: BootstrapAlert[] }>('weatherAlerts');
+    if (current?.alerts) {
+      return current.alerts.map(mapAlert);
+    }
+
+    throw new Error('No weather data available');
   }, []);
 }
 
