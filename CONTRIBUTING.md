@@ -257,6 +257,14 @@ For endpoints that deal with non-JSON payloads (XML feeds, binary data, HTML emb
 - Should update at least daily for real-time relevance
 - Must include geographic coordinates or be geo-locatable
 
+### Country boundary overrides
+
+Country outlines are loaded from `public/data/countries.geojson`. Optional higher-resolution overrides (sourced from [Natural Earth](https://www.naturalearthdata.com/)) live in `public/data/country-boundary-overrides.geojson`. The app loads overrides after the main file and replaces geometry for any country whose `ISO3166-1-Alpha-2` (or `ISO_A2`) matches. To refresh the Pakistan boundary from Natural Earth, run:
+
+```bash
+node scripts/fetch-pakistan-boundary-override.mjs
+```
+
 ## Adding RSS Feeds
 
 To add new RSS feeds:

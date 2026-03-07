@@ -14,6 +14,9 @@ interface CountryHit {
 
 const COUNTRY_GEOJSON_URL = '/data/countries.geojson';
 
+/** Optional higher-resolution boundary overrides sourced from Natural Earth. */
+const COUNTRY_OVERRIDES_URL = '/data/country-boundary-overrides.geojson';
+
 const POLITICAL_OVERRIDES: Record<string, string> = { 'CN-TW': 'TW' };
 
 const NAME_ALIASES: Record<string, string> = {
@@ -176,7 +179,10 @@ async function ensureLoaded(): Promise<void> {
     if (typeof fetch !== 'function') return;
 
     try {
-      const response = await fetch(COUNTRY_GEOJSON_URL);
+      const [response, overrideResp] = await Promise.all([
+        fetch(COUNTRY_GEOJSON_URL),
+        fetch(COUNTRY_OVERRIDES_URL).catch(() => null),
+      ]);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
@@ -218,6 +224,33 @@ async function ensureLoaded(): Promise<void> {
         if (!nameToIso2.has(alias)) {
           nameToIso2.set(alias, code);
         }
+      }
+
+      // Apply optional higher-resolution boundary overrides (sourced from Natural Earth)
+      try {
+        if (overrideResp?.ok) {
+          const overrideData = (await overrideResp.json()) as FeatureCollection<Geometry>;
+          if (overrideData?.type === 'FeatureCollection' && Array.isArray(overrideData.features)) {
+            for (const overrideFeature of overrideData.features) {
+              const code = normalizeCode(overrideFeature.properties);
+              if (!code || !overrideFeature.geometry) continue;
+              const mainFeature = data.features.find((f) => normalizeCode(f.properties) === code);
+              if (!mainFeature) continue;
+              mainFeature.geometry = overrideFeature.geometry;
+              const polygons = normalizeGeometry(overrideFeature.geometry);
+              const bbox = computeBbox(polygons);
+              if (bbox && polygons.length > 0) {
+                const existing = countryIndex.get(code);
+                if (existing) {
+                  existing.polygons = polygons;
+                  existing.bbox = bbox;
+                }
+              }
+            }
+          }
+        }
+      } catch {
+        // Overrides are optional; ignore fetch/parse errors
       }
 
       buildCountryNameMatchers();
