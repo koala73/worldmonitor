@@ -2,8 +2,8 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https: http://localhost:5173 ws: wss: blob: data:; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'sha256-LnMFPWZxTgVOr2VYwIh9mhQ3l/l3+a3SfNOLERnuHfY=' 'sha256-+SFBjfmi2XfnyAT3POBxf6JIKYDcNXtllPclOcaNBI0=' 'sha256-AhZAmdCW6h8iXMyBcvIrqN71FGNk4lwLD+lPxx43hxg=' 'sha256-PnEBZii+iFaNE2EyXaJhRq34g6bdjRJxpLfJALdXYt8=' 'sha256-cVhuR63Moy56DV5yG0caJCEyCugMTbYclkvkK6fSwXY=' 'sha256-903UI9my1I7mqHoiVeZSc56yd50YoRJTB2269QqL76w=' 'wasm-unsafe-eval' https://www.youtube.com https://static.cloudflareinsights.com https://vercel.live; worker-src 'self' blob:; font-src 'self' data: https:; media-src 'self' data: blob: https: http://127.0.0.1:* http://localhost:*; frame-src 'self' http://127.0.0.1:* http://localhost:* https://worldmonitor.app https://tech.worldmonitor.app https://happy.worldmonitor.app https://www.youtube.com https://www.youtube-nocookie.com;" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https: http://localhost:5173 http://localhost:3000 http://localhost:3004 http://127.0.0.1:46123 ws: wss: blob: data:; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://www.youtube.com https://static.cloudflareinsights.com https://vercel.live https://va.vercel-scripts.com https://us-assets.i.posthog.com; worker-src 'self' blob:; font-src 'self' data: https:; media-src 'self' data: blob: https:; frame-src 'self' http://127.0.0.1:46123 https://worldmonitor.app https://tech.worldmonitor.app https://www.youtube.com https://www.youtube-nocookie.com;" />
     <meta name="referrer" content="strict-origin-when-cross-origin" />
 
     <!-- Primary Meta Tags -->
@@ -102,7 +102,7 @@
 
 
     <!-- Theme: apply stored preference before first paint to prevent FOUC -->
-    <script>(function(){try{var h=location.hostname;var v;if(h.startsWith('happy.'))v='happy';else if(h.startsWith('tech.'))v='tech';else if(h.startsWith('finance.'))v='finance';if(!v&&(h==='localhost'||h==='127.0.0.1'||'__TAURI_INTERNALS__' in window))v=localStorage.getItem('worldmonitor-variant');if(v)document.documentElement.dataset.variant=v;else document.documentElement.removeAttribute('data-variant');var t=localStorage.getItem('worldmonitor-theme');if(t==='dark'||t==='light'){document.documentElement.dataset.theme=t;}else if(v==='happy'){document.documentElement.dataset.theme='light';}}catch(e){}document.documentElement.classList.add('no-transition');})()</script>
+    <script>(function(){try{var t=localStorage.getItem('worldmonitor-theme');if(t==='light')document.documentElement.dataset.theme='light';}catch(e){}document.documentElement.classList.add('no-transition');})()</script>
 
     <!-- Critical CSS: inline skeleton visible before JS boots -->
     <style>
@@ -139,42 +139,10 @@
       [data-theme="light"] .skeleton-panel{background:#fff;border-color:#d4d4d4}
       [data-theme="light"] .skeleton-panel-header{border-bottom-color:#e8e8e8}
       [data-theme="light"] .skeleton-line{background:linear-gradient(90deg,rgba(0,0,0,.04) 25%,rgba(0,0,0,.08) 50%,rgba(0,0,0,.04) 75%);background-size:200% 100%;animation:skel-shimmer 1.5s infinite}
-
-      /* ---------- skeleton shell (happy variant — light) ---------- */
-      [data-variant="happy"] .skeleton-shell{background:#FAFAF5;font-family:'Nunito',system-ui,sans-serif}
-      [data-variant="happy"] .skeleton-header{background:#FFFFFF;border-bottom-color:#DDD9CF}
-      [data-variant="happy"] .skeleton-pill{background:#F2EFE8;border-radius:8px}
-      [data-variant="happy"] .skeleton-dot{background:#6B8F5E}
-      [data-variant="happy"] .skeleton-main{background:#FAFAF5}
-      [data-variant="happy"] .skeleton-map{border-color:#DDD9CF;background:#D4E6EC;border-radius:14px}
-      [data-variant="happy"] .skeleton-map-bar{background:#FFFFFF;border-bottom-color:#DDD9CF}
-      [data-variant="happy"] .skeleton-map-body::after{background:radial-gradient(ellipse 60% 50% at 50% 50%,#B9CDA8 0%,#D4E6EC 100%);opacity:.3}
-      [data-variant="happy"] .skeleton-panel{background:#FFFFFF;border-color:#DDD9CF;border-radius:14px}
-      [data-variant="happy"] .skeleton-panel-header{border-bottom-color:#EBE8E0}
-      [data-variant="happy"] .skeleton-line{background:linear-gradient(90deg,rgba(107,143,94,.06) 25%,rgba(107,143,94,.12) 50%,rgba(107,143,94,.06) 75%);background-size:200% 100%;animation:skel-shimmer 1.5s infinite}
-
-      /* ---------- skeleton shell (happy variant — dark) ---------- */
-      [data-variant="happy"][data-theme="dark"] .skeleton-shell{background:#1A2332}
-      [data-variant="happy"][data-theme="dark"] .skeleton-header{background:#222E3E;border-bottom-color:#344050}
-      [data-variant="happy"][data-theme="dark"] .skeleton-pill{background:#2A3848}
-      [data-variant="happy"][data-theme="dark"] .skeleton-dot{background:#8BAF7A}
-      [data-variant="happy"][data-theme="dark"] .skeleton-main{background:#1A2332}
-      [data-variant="happy"][data-theme="dark"] .skeleton-map{border-color:#344050;background:#16202E}
-      [data-variant="happy"][data-theme="dark"] .skeleton-map-bar{background:#222E3E;border-bottom-color:#344050}
-      [data-variant="happy"][data-theme="dark"] .skeleton-map-body::after{background:radial-gradient(ellipse 60% 50% at 50% 50%,#2D4035 0%,#16202E 100%);opacity:.3}
-      [data-variant="happy"][data-theme="dark"] .skeleton-panel{background:#222E3E;border-color:#344050}
-      [data-variant="happy"][data-theme="dark"] .skeleton-panel-header{border-bottom-color:#283545}
-      [data-variant="happy"][data-theme="dark"] .skeleton-line{background:linear-gradient(90deg,rgba(139,175,122,.05) 25%,rgba(139,175,122,.10) 50%,rgba(139,175,122,.05) 75%);background-size:200% 100%;animation:skel-shimmer 1.5s infinite}
     </style>
 
-    <!-- Preconnect: map tiles + assets -->
-    <link rel="preconnect" href="https://maps.worldmonitor.app" crossorigin>
-    <link rel="dns-prefetch" href="https://protomaps.github.io">
-
-    <!-- Google Fonts (Nunito for happy variant, Tajawal for Arabic) -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,300;0,400;0,600;0,700;1,400&family=Tajawal:wght@200;300;400;500;700;800;900&display=swap" rel="stylesheet">
+    <!-- Styles -->
+    <link rel="stylesheet" href="/src/styles/main.css" />
   </head>
   <body>
     <div id="app">
@@ -210,36 +178,6 @@
         </div>
       </div>
     </div>
-    <aside id="country-deep-dive-panel" class="country-deep-dive" aria-label="Country Intelligence" aria-hidden="true">
-      <div class="country-deep-dive-shell">
-        <button id="deep-dive-close" class="panel-close" aria-label="Close">×</button>
-        <div id="deep-dive-content" class="panel-content"></div>
-      </div>
-    </aside>
-    <!-- Force-clear stale service worker if module scripts 404 (post-deploy cache mismatch) -->
-    <script>
-    (function(){
-      if(!('serviceWorker' in navigator))return;
-      var key='wm-sw-nuke';
-      if(sessionStorage.getItem(key))return;
-      window.addEventListener('error',function(e){
-        var u=e.target&&(e.target.src||e.target.href)||'';
-        if(u&&/\/assets\//.test(u)){
-          sessionStorage.setItem(key,'1');
-          navigator.serviceWorker.getRegistrations().then(function(regs){
-            var p=regs.map(function(r){return r.unregister()});
-            Promise.all(p).then(function(){
-              if(caches&&caches.keys){
-                caches.keys().then(function(ks){
-                  return Promise.all(ks.map(function(k){return caches.delete(k)}));
-                }).then(function(){location.reload()});
-              }else{location.reload()}
-            });
-          });
-        }
-      },true);
-    })()
-    </script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
