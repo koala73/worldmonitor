@@ -18,6 +18,54 @@ import { CHROME_UA } from '../../../_shared/constants';
 const CACHE_KEY = 'cable-health-v1';
 const CACHE_TTL = 600; // 10 min — cable health not time-critical
 
+// -- Geo / proximity constants --
+const KM_PER_DEGREE = 111;
+const MAX_PROXIMITY_DIST_KM = 555; // ~5 degrees at equator
+const DISTANCE_CONFIDENCE_DIVISOR = 500;
+const DEG_TO_RAD = Math.PI / 180;
+
+// -- Text truncation --
+const SUMMARY_MAX_LENGTH = 150;
+
+// -- Time constants (seconds) --
+const SECONDS_PER_DAY = 86_400;
+const SECONDS_PER_HOUR = 3_600;
+
+// -- Fault signal parameters --
+const FAULT_SEVERITY = 1.0;
+const FAULT_CONFIDENCE_NAME = 0.9;
+const FAULT_CONFIDENCE_GEO_BASE = 0.8;
+const FAULT_CONFIDENCE_GEO_MIN = 0.4;
+const FAULT_TTL_DAYS = 5;
+
+// -- Advisory signal parameters --
+const ADVISORY_SEVERITY = 0.6;
+const ADVISORY_CONFIDENCE_NAME = 0.8;
+const ADVISORY_CONFIDENCE_GEO_BASE = 0.7;
+const ADVISORY_CONFIDENCE_GEO_MIN = 0.3;
+const ADVISORY_TTL_DAYS = 3;
+
+// -- Repair activity signal parameters --
+const REPAIR_ON_STATION_SEVERITY = 0.8;
+const REPAIR_OFF_STATION_SEVERITY = 0.5;
+const REPAIR_ON_STATION_CONFIDENCE = 0.85;
+const REPAIR_OFF_STATION_CONFIDENCE = 0.6;
+const REPAIR_ON_STATION_TTL_HOURS = 24;
+const REPAIR_OFF_STATION_TTL_HOURS = 12;
+
+// -- Health status thresholds --
+const OPERATOR_FAULT_EFFECTIVE_THRESHOLD = 0.50;
+const REPAIR_ACTIVITY_EFFECTIVE_THRESHOLD = 0.40;
+const TOP_SCORE_FAULT_THRESHOLD = 0.80;
+const TOP_SCORE_DEGRADED_THRESHOLD = 0.50;
+
+// -- Evidence limits --
+const MAX_EVIDENCE_SIGNALS = 3;
+const MAX_EVIDENCE_ITEMS = 3;
+
+// -- Rounding precision --
+const ROUNDING_FACTOR = 100;
+
 // In-memory fallback: serves stale data when both Redis and NGA are down
 let fallbackCache: GetCableHealthResponse | null = null;
 
@@ -166,16 +214,15 @@ export function matchCableByName(text: string): string | null {
 export function findNearestCable(lat: number, lon: number): { cableId: string; distanceKm: number } | null {
   let bestId: string | null = null;
   let bestDist = Infinity;
-  const MAX_DIST_KM = 555; // ~5 degrees at equator
 
-  const cosLat = Math.cos(lat * Math.PI / 180);
+  const cosLat = Math.cos(lat * DEG_TO_RAD);
 
   for (const [cableId, landings] of Object.entries(CABLE_LANDINGS)) {
     for (const [lLat, lLon] of landings) {
-      const dLat = (lat - lLat) * 111;
-      const dLon = (lon - lLon) * 111 * cosLat;
+      const dLat = (lat - lLat) * KM_PER_DEGREE;
+      const dLon = (lon - lLon) * KM_PER_DEGREE * cosLat;
       const distKm = Math.sqrt(dLat ** 2 + dLon ** 2);
-      if (distKm < bestDist && distKm < MAX_DIST_KM) {
+      if (distKm < bestDist && distKm < MAX_PROXIMITY_DIST_KM) {
         bestDist = distKm;
         bestId = cableId;
       }
@@ -241,15 +288,15 @@ export function processNgaSignals(warnings: NgaWarning[]): Signal[] {
     const isRepairShip = hasShipName(text);
     const isOnStation = ON_STATION_RE.test(text);
 
-    const summaryText = text.slice(0, 150) + (text.length > 150 ? '...' : '');
+    const summaryText = text.slice(0, SUMMARY_MAX_LENGTH) + (text.length > SUMMARY_MAX_LENGTH ? '...' : '');
 
     if (isFault) {
       signals.push({
         cableId,
         ts,
-        severity: 1.0,
-        confidence: joinMethod === 'name' ? 0.9 : Math.max(0.4, 0.8 - distanceKm / 500),
-        ttlSeconds: 5 * 86400,
+        severity: FAULT_SEVERITY,
+        confidence: joinMethod === 'name' ? FAULT_CONFIDENCE_NAME : Math.max(FAULT_CONFIDENCE_GEO_MIN, FAULT_CONFIDENCE_GEO_BASE - distanceKm / DISTANCE_CONFIDENCE_DIVISOR),
+        ttlSeconds: FAULT_TTL_DAYS * SECONDS_PER_DAY,
         kind: 'operator_fault',
         evidence: [{ source: 'NGA', summary: `Fault/damage reported: ${summaryText}`, ts }],
       });
@@ -257,9 +304,9 @@ export function processNgaSignals(warnings: NgaWarning[]): Signal[] {
       signals.push({
         cableId,
         ts,
-        severity: 0.6,
-        confidence: joinMethod === 'name' ? 0.8 : Math.max(0.3, 0.7 - distanceKm / 500),
-        ttlSeconds: 3 * 86400,
+        severity: ADVISORY_SEVERITY,
+        confidence: joinMethod === 'name' ? ADVISORY_CONFIDENCE_NAME : Math.max(ADVISORY_CONFIDENCE_GEO_MIN, ADVISORY_CONFIDENCE_GEO_BASE - distanceKm / DISTANCE_CONFIDENCE_DIVISOR),
+        ttlSeconds: ADVISORY_TTL_DAYS * SECONDS_PER_DAY,
         kind: 'cable_advisory',
         evidence: [{ source: 'NGA', summary: `Cable advisory: ${summaryText}`, ts }],
       });
@@ -269,9 +316,9 @@ export function processNgaSignals(warnings: NgaWarning[]): Signal[] {
       signals.push({
         cableId,
         ts,
-        severity: isOnStation ? 0.8 : 0.5,
-        confidence: isOnStation ? 0.85 : 0.6,
-        ttlSeconds: isOnStation ? 24 * 3600 : 12 * 3600,
+        severity: isOnStation ? REPAIR_ON_STATION_SEVERITY : REPAIR_OFF_STATION_SEVERITY,
+        confidence: isOnStation ? REPAIR_ON_STATION_CONFIDENCE : REPAIR_OFF_STATION_CONFIDENCE,
+        ttlSeconds: isOnStation ? REPAIR_ON_STATION_TTL_HOURS * SECONDS_PER_HOUR : REPAIR_OFF_STATION_TTL_HOURS * SECONDS_PER_HOUR,
         kind: 'repair_activity',
         evidence: [{
           source: 'NGA',
@@ -324,27 +371,27 @@ export function computeHealthMap(signals: Signal[]): Record<string, CableHealthR
     const topConfidence = effectiveSignals[0]!.confidence * effectiveSignals[0]!.recencyWeight;
 
     const hasOperatorFault = effectiveSignals.some(
-      (s) => s.kind === 'operator_fault' && s.effective >= 0.50,
+      (s) => s.kind === 'operator_fault' && s.effective >= OPERATOR_FAULT_EFFECTIVE_THRESHOLD,
     );
     const hasRepairActivity = effectiveSignals.some(
-      (s) => s.kind === 'repair_activity' && s.effective >= 0.40,
+      (s) => s.kind === 'repair_activity' && s.effective >= REPAIR_ACTIVITY_EFFECTIVE_THRESHOLD,
     );
 
     let status: CableHealthStatus;
-    if (topScore >= 0.80 && hasOperatorFault) {
+    if (topScore >= TOP_SCORE_FAULT_THRESHOLD && hasOperatorFault) {
       status = 'CABLE_HEALTH_STATUS_FAULT';
-    } else if (topScore >= 0.80 && hasRepairActivity) {
+    } else if (topScore >= TOP_SCORE_FAULT_THRESHOLD && hasRepairActivity) {
       status = 'CABLE_HEALTH_STATUS_DEGRADED';
-    } else if (topScore >= 0.50) {
+    } else if (topScore >= TOP_SCORE_DEGRADED_THRESHOLD) {
       status = 'CABLE_HEALTH_STATUS_DEGRADED';
     } else {
       status = 'CABLE_HEALTH_STATUS_OK';
     }
 
     const evidence: CableHealthEvidence[] = effectiveSignals
-      .slice(0, 3)
+      .slice(0, MAX_EVIDENCE_SIGNALS)
       .flatMap((s) => s.evidence)
-      .slice(0, 3);
+      .slice(0, MAX_EVIDENCE_ITEMS);
 
     const lastUpdated = effectiveSignals
       .map((s) => s.ts)
@@ -352,8 +399,8 @@ export function computeHealthMap(signals: Signal[]): Record<string, CableHealthR
 
     healthMap[cableId] = {
       status,
-      score: Math.round(topScore * 100) / 100,
-      confidence: Math.round(topConfidence * 100) / 100,
+      score: Math.round(topScore * ROUNDING_FACTOR) / ROUNDING_FACTOR,
+      confidence: Math.round(topConfidence * ROUNDING_FACTOR) / ROUNDING_FACTOR,
       lastUpdated,
       evidence,
     };
