@@ -16,6 +16,7 @@ const COUNTRY_GEOJSON_URL = '/data/countries.geojson';
 
 /** Optional higher-resolution boundary overrides sourced from Natural Earth (served from R2 CDN). */
 const COUNTRY_OVERRIDES_URL = 'https://maps.worldmonitor.app/country-boundary-overrides.geojson';
+const COUNTRY_OVERRIDE_TIMEOUT_MS = 3_000;
 
 const POLITICAL_OVERRIDES: Record<string, string> = { 'CN-TW': 'TW' };
 
@@ -169,6 +170,78 @@ function buildCountryNameMatchers(): void {
     }));
 }
 
+function makeTimeout(ms: number): AbortSignal {
+  if (typeof AbortSignal.timeout === 'function') return AbortSignal.timeout(ms);
+  const ctrl = new AbortController();
+  setTimeout(() => ctrl.abort(), ms);
+  return ctrl.signal;
+}
+
+function rebuildCountryIndex(data: FeatureCollection<Geometry>): void {
+  countryIndex.clear();
+  countryList = [];
+  iso3ToIso2.clear();
+  nameToIso2.clear();
+  codeToName.clear();
+
+  for (const feature of data.features) {
+    const code = normalizeCode(feature.properties);
+    const name = normalizeName(feature.properties);
+    if (!code || !name) continue;
+
+    const iso3 = feature.properties?.['ISO3166-1-Alpha-3'];
+    if (typeof iso3 === 'string' && /^[A-Z]{3}$/i.test(iso3.trim())) {
+      iso3ToIso2.set(iso3.trim().toUpperCase(), code);
+    }
+    nameToIso2.set(name.toLowerCase(), code);
+    if (!codeToName.has(code)) codeToName.set(code, name);
+
+    const polygons = normalizeGeometry(feature.geometry);
+    const bbox = computeBbox(polygons);
+    if (!bbox || polygons.length === 0) continue;
+
+    const indexed: IndexedCountryGeometry = { code, name, polygons, bbox };
+    countryIndex.set(code, indexed);
+    countryList.push(indexed);
+  }
+
+  for (const [alias, code] of Object.entries(NAME_ALIASES)) {
+    if (!nameToIso2.has(alias)) {
+      nameToIso2.set(alias, code);
+    }
+  }
+
+  buildCountryNameMatchers();
+}
+
+function applyCountryGeometryOverrides(
+  data: FeatureCollection<Geometry>,
+  overrideData: FeatureCollection<Geometry>,
+): void {
+  const featureByCode = new Map<string, (typeof data.features)[number]>();
+  for (const feature of data.features) {
+    const code = normalizeCode(feature.properties);
+    if (code) featureByCode.set(code, feature);
+  }
+
+  for (const overrideFeature of overrideData.features) {
+    const code = normalizeCode(overrideFeature.properties);
+    if (!code || !overrideFeature.geometry) continue;
+    const mainFeature = featureByCode.get(code);
+    if (!mainFeature) continue;
+
+    mainFeature.geometry = overrideFeature.geometry;
+    const polygons = normalizeGeometry(overrideFeature.geometry);
+    const bbox = computeBbox(polygons);
+    if (!bbox || polygons.length === 0) continue;
+
+    const existing = countryIndex.get(code);
+    if (!existing) continue;
+    existing.polygons = polygons;
+    existing.bbox = bbox;
+  }
+}
+
 async function ensureLoaded(): Promise<void> {
   if (loadedGeoJson || loadPromise) {
     await loadPromise;
@@ -179,10 +252,7 @@ async function ensureLoaded(): Promise<void> {
     if (typeof fetch !== 'function') return;
 
     try {
-      const [response, overrideResp] = await Promise.all([
-        fetch(COUNTRY_GEOJSON_URL),
-        fetch(COUNTRY_OVERRIDES_URL).catch(() => null),
-      ]);
+      const response = await fetch(COUNTRY_GEOJSON_URL);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
@@ -193,67 +263,22 @@ async function ensureLoaded(): Promise<void> {
       }
 
       loadedGeoJson = data;
-      countryIndex.clear();
-      countryList = [];
-      iso3ToIso2.clear();
-      nameToIso2.clear();
-      codeToName.clear();
-
-      for (const feature of data.features) {
-        const code = normalizeCode(feature.properties);
-        const name = normalizeName(feature.properties);
-        if (!code || !name) continue;
-
-        const iso3 = feature.properties?.['ISO3166-1-Alpha-3'];
-        if (typeof iso3 === 'string' && /^[A-Z]{3}$/i.test(iso3.trim())) {
-          iso3ToIso2.set(iso3.trim().toUpperCase(), code);
-        }
-        nameToIso2.set(name.toLowerCase(), code);
-        if (!codeToName.has(code)) codeToName.set(code, name);
-
-        const polygons = normalizeGeometry(feature.geometry);
-        const bbox = computeBbox(polygons);
-        if (!bbox || polygons.length === 0) continue;
-
-        const indexed: IndexedCountryGeometry = { code, name, polygons, bbox };
-        countryIndex.set(code, indexed);
-        countryList.push(indexed);
-      }
-
-      for (const [alias, code] of Object.entries(NAME_ALIASES)) {
-        if (!nameToIso2.has(alias)) {
-          nameToIso2.set(alias, code);
-        }
-      }
+      rebuildCountryIndex(data);
 
       // Apply optional higher-resolution boundary overrides (sourced from Natural Earth)
       try {
-        if (overrideResp?.ok) {
+        const overrideResp = await fetch(COUNTRY_OVERRIDES_URL, {
+          signal: makeTimeout(COUNTRY_OVERRIDE_TIMEOUT_MS),
+        });
+        if (overrideResp.ok) {
           const overrideData = (await overrideResp.json()) as FeatureCollection<Geometry>;
           if (overrideData?.type === 'FeatureCollection' && Array.isArray(overrideData.features)) {
-            for (const overrideFeature of overrideData.features) {
-              const code = normalizeCode(overrideFeature.properties);
-              if (!code || !overrideFeature.geometry) continue;
-              const mainFeature = data.features.find((f) => normalizeCode(f.properties) === code);
-              if (!mainFeature) continue;
-              mainFeature.geometry = overrideFeature.geometry;
-              const polygons = normalizeGeometry(overrideFeature.geometry);
-              const bbox = computeBbox(polygons);
-              if (bbox && polygons.length > 0) {
-                const existing = countryIndex.get(code);
-                if (existing) {
-                  existing.polygons = polygons;
-                  existing.bbox = bbox;
-                }
-              }
-            }
+            applyCountryGeometryOverrides(data, overrideData);
           }
         }
       } catch {
         // Overrides optional; ignore fetch/parse errors
       }
-
-      buildCountryNameMatchers();
     } catch (err) {
       console.warn('[country-geometry] Failed to load countries.geojson:', err);
     }
