@@ -253,6 +253,48 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/market/v1/analyze-stock:
+        get:
+            tags:
+                - MarketService
+            summary: AnalyzeStock
+            description: AnalyzeStock retrieves a premium stock analysis report with technicals, news, and AI synthesis.
+            operationId: AnalyzeStock
+            parameters:
+                - name: symbol
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+                - name: name
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+                - name: include_news
+                  in: query
+                  required: false
+                  schema:
+                    type: boolean
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AnalyzeStockResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -721,3 +763,142 @@ components:
                         type: number
                         format: double
             description: GulfQuote represents a Gulf region market quote (index, currency, or oil).
+        AnalyzeStockRequest:
+            type: object
+            properties:
+                symbol:
+                    type: string
+                    maxLength: 32
+                    minLength: 1
+                name:
+                    type: string
+                    maxLength: 120
+                includeNews:
+                    type: boolean
+            required:
+                - symbol
+        AnalyzeStockResponse:
+            type: object
+            properties:
+                available:
+                    type: boolean
+                symbol:
+                    type: string
+                name:
+                    type: string
+                display:
+                    type: string
+                currency:
+                    type: string
+                currentPrice:
+                    type: number
+                    format: double
+                changePercent:
+                    type: number
+                    format: double
+                signalScore:
+                    type: number
+                    format: double
+                signal:
+                    type: string
+                trendStatus:
+                    type: string
+                volumeStatus:
+                    type: string
+                macdStatus:
+                    type: string
+                rsiStatus:
+                    type: string
+                summary:
+                    type: string
+                action:
+                    type: string
+                confidence:
+                    type: string
+                technicalSummary:
+                    type: string
+                newsSummary:
+                    type: string
+                whyNow:
+                    type: string
+                bullishFactors:
+                    type: array
+                    items:
+                        type: string
+                riskFactors:
+                    type: array
+                    items:
+                        type: string
+                supportLevels:
+                    type: array
+                    items:
+                        type: number
+                        format: double
+                resistanceLevels:
+                    type: array
+                    items:
+                        type: number
+                        format: double
+                headlines:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/StockAnalysisHeadline'
+                ma5:
+                    type: number
+                    format: double
+                ma10:
+                    type: number
+                    format: double
+                ma20:
+                    type: number
+                    format: double
+                ma60:
+                    type: number
+                    format: double
+                biasMa5:
+                    type: number
+                    format: double
+                biasMa10:
+                    type: number
+                    format: double
+                biasMa20:
+                    type: number
+                    format: double
+                volumeRatio5d:
+                    type: number
+                    format: double
+                rsi12:
+                    type: number
+                    format: double
+                macdDif:
+                    type: number
+                    format: double
+                macdDea:
+                    type: number
+                    format: double
+                macdBar:
+                    type: number
+                    format: double
+                provider:
+                    type: string
+                model:
+                    type: string
+                fallback:
+                    type: boolean
+                newsSearched:
+                    type: boolean
+                generatedAt:
+                    type: string
+        StockAnalysisHeadline:
+            type: object
+            properties:
+                title:
+                    type: string
+                source:
+                    type: string
+                link:
+                    type: string
+                publishedAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'

@@ -166,6 +166,63 @@ export interface GulfQuote {
   sparkline: number[];
 }
 
+export interface AnalyzeStockRequest {
+  symbol: string;
+  name: string;
+  includeNews: boolean;
+}
+
+export interface AnalyzeStockResponse {
+  available: boolean;
+  symbol: string;
+  name: string;
+  display: string;
+  currency: string;
+  currentPrice: number;
+  changePercent: number;
+  signalScore: number;
+  signal: string;
+  trendStatus: string;
+  volumeStatus: string;
+  macdStatus: string;
+  rsiStatus: string;
+  summary: string;
+  action: string;
+  confidence: string;
+  technicalSummary: string;
+  newsSummary: string;
+  whyNow: string;
+  bullishFactors: string[];
+  riskFactors: string[];
+  supportLevels: number[];
+  resistanceLevels: number[];
+  headlines: StockAnalysisHeadline[];
+  ma5: number;
+  ma10: number;
+  ma20: number;
+  ma60: number;
+  biasMa5: number;
+  biasMa10: number;
+  biasMa20: number;
+  volumeRatio5d: number;
+  rsi12: number;
+  macdDif: number;
+  macdDea: number;
+  macdBar: number;
+  provider: string;
+  model: string;
+  fallback: boolean;
+  newsSearched: boolean;
+  generatedAt: string;
+}
+
+export interface StockAnalysisHeadline {
+  title: string;
+  source: string;
+  link: string;
+  publishedAt: number;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -408,6 +465,33 @@ export class MarketServiceClient {
     }
 
     return await resp.json() as ListGulfQuotesResponse;
+  }
+
+  async analyzeStock(req: AnalyzeStockRequest, options?: MarketServiceCallOptions): Promise<AnalyzeStockResponse> {
+    let path = "/api/market/v1/analyze-stock";
+    const params = new URLSearchParams();
+    if (req.symbol != null && req.symbol !== "") params.set("symbol", String(req.symbol));
+    if (req.name != null && req.name !== "") params.set("name", String(req.name));
+    if (req.includeNews) params.set("include_news", String(req.includeNews));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as AnalyzeStockResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

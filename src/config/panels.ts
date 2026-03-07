@@ -341,6 +341,7 @@ const FINANCE_PANELS: Record<string, PanelConfig> = {
   'live-webcams': { name: 'Live Webcams', enabled: true, priority: 2 },
   insights: { name: 'AI Market Insights', enabled: true, priority: 1 },
   markets: { name: 'Live Markets', enabled: true, priority: 1 },
+  'stock-analysis': { name: 'Premium Stock Analysis', enabled: true, priority: 1, premium: 'locked' },
   'markets-news': { name: 'Markets News', enabled: true, priority: 2 },
   forex: { name: 'Forex & Currencies', enabled: true, priority: 1 },
   bonds: { name: 'Fixed Income', enabled: true, priority: 1 },
@@ -874,7 +875,7 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   // Finance variant
   finMarkets: {
     labelKey: 'header.panelCatMarkets',
-    panelKeys: ['markets', 'markets-news', 'heatmap', 'macro-signals', 'analysis', 'polymarket'],
+    panelKeys: ['markets', 'stock-analysis', 'markets-news', 'heatmap', 'macro-signals', 'analysis', 'polymarket'],
     variants: ['finance'],
   },
   fixedIncomeFx: {

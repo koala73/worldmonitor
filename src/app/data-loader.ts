@@ -60,6 +60,7 @@ import {
   fetchCriticalMinerals,
 } from '@/services';
 import { getMarketWatchlistEntries } from '@/services/market-watchlist';
+import { fetchStockAnalyses } from '@/services/stock-analysis';
 import { checkBatchForBreakingAlerts, dispatchOrefBreakingAlert } from '@/services/breaking-news-alerts';
 import { mlWorker } from '@/services/ml-worker';
 import { clusterNewsHybrid } from '@/services/clustering';
@@ -80,7 +81,7 @@ import { fetchTelegramFeed } from '@/services/telegram-intel';
 import { fetchOrefAlerts, startOrefPolling, stopOrefPolling, onOrefAlertsUpdate } from '@/services/oref-alerts';
 import { enrichEventsWithExposure } from '@/services/population-exposure';
 import { debounce, getCircuitBreakerCooldownInfo } from '@/utils';
-import { isFeatureAvailable, isFeatureEnabled } from '@/services/runtime-config';
+import { getSecretState, isFeatureAvailable, isFeatureEnabled } from '@/services/runtime-config';
 import { isDesktopRuntime } from '@/services/runtime';
 import { getAiFlowSettings } from '@/services/ai-flow-settings';
 import { t, getCurrentLanguage } from '@/services/i18n';
@@ -94,6 +95,7 @@ import { mountCommunityWidget } from '@/components/CommunityWidget';
 import { ResearchServiceClient } from '@/generated/client/worldmonitor/research/v1/service_client';
 import {
   MarketPanel,
+  StockAnalysisPanel,
   HeatmapPanel,
   CommoditiesPanel,
   CryptoPanel,
@@ -203,6 +205,9 @@ export class DataLoaderManager implements AppModule {
   init(): void {
     this.boundMarketWatchlistHandler = () => {
       void this.loadMarkets();
+      if (SITE_VARIANT === 'finance' && getSecretState('WORLDMONITOR_API_KEY').present) {
+        void this.loadStockAnalysis();
+      }
     };
     window.addEventListener('wm-market-watchlist-changed', this.boundMarketWatchlistHandler as EventListener);
   }
@@ -311,6 +316,9 @@ export class DataLoaderManager implements AppModule {
     // Happy variant only loads news data -- skip all geopolitical/financial/military data
     if (SITE_VARIANT !== 'happy') {
       tasks.push({ name: 'markets', task: runGuarded('markets', () => this.loadMarkets()) });
+      if (SITE_VARIANT === 'finance' && getSecretState('WORLDMONITOR_API_KEY').present) {
+        tasks.push({ name: 'stockAnalysis', task: runGuarded('stockAnalysis', () => this.loadStockAnalysis()) });
+      }
       tasks.push({ name: 'predictions', task: runGuarded('predictions', () => this.loadPredictions()) });
       tasks.push({ name: 'pizzint', task: runGuarded('pizzint', () => this.loadPizzInt()) });
       tasks.push({ name: 'fred', task: runGuarded('fred', () => this.loadFredData()) });
@@ -940,6 +948,23 @@ export class DataLoaderManager implements AppModule {
         this.ctx.mapLayers.positiveEvents ? this.loadPositiveEvents() : Promise.resolve(),
         this.ctx.mapLayers.kindness ? Promise.resolve(this.loadKindnessData()) : Promise.resolve(),
       ]);
+    }
+  }
+
+  async loadStockAnalysis(): Promise<void> {
+    const panel = this.ctx.panels['stock-analysis'] as StockAnalysisPanel | undefined;
+    if (!panel) return;
+
+    try {
+      const results = await fetchStockAnalyses();
+      if (results.length === 0) {
+        panel.showRetrying('Stock analysis is waiting for eligible watchlist symbols.');
+        return;
+      }
+      panel.renderAnalyses(results);
+    } catch (error) {
+      console.error('[StockAnalysis] failed:', error);
+      panel.showError('Premium stock analysis is temporarily unavailable.');
     }
   }
 

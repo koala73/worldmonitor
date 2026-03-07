@@ -11,6 +11,7 @@ import "worldmonitor/market/v1/list_stablecoin_markets.proto";
 import "worldmonitor/market/v1/list_etf_flows.proto";
 import "worldmonitor/market/v1/get_country_stock_index.proto";
 import "worldmonitor/market/v1/list_gulf_quotes.proto";
+import "worldmonitor/market/v1/analyze_stock.proto";
 
 // MarketService provides APIs for financial market data from Finnhub, Yahoo Finance, and CoinGecko.
 service MarketService {
@@ -54,5 +55,10 @@ service MarketService {
   // ListGulfQuotes retrieves Gulf region market quotes (indices, currencies, oil).
   rpc ListGulfQuotes(ListGulfQuotesRequest) returns (ListGulfQuotesResponse) {
     option (sebuf.http.config) = {path: "/list-gulf-quotes", method: HTTP_METHOD_GET};
+  }
+
+  // AnalyzeStock retrieves a premium stock analysis report with technicals, news, and AI synthesis.
+  rpc AnalyzeStock(AnalyzeStockRequest) returns (AnalyzeStockResponse) {
+    option (sebuf.http.config) = {path: "/analyze-stock", method: HTTP_METHOD_GET};
   }
 }

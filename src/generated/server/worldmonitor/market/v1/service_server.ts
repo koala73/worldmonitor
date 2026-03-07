@@ -166,6 +166,63 @@ export interface GulfQuote {
   sparkline: number[];
 }
 
+export interface AnalyzeStockRequest {
+  symbol: string;
+  name: string;
+  includeNews: boolean;
+}
+
+export interface AnalyzeStockResponse {
+  available: boolean;
+  symbol: string;
+  name: string;
+  display: string;
+  currency: string;
+  currentPrice: number;
+  changePercent: number;
+  signalScore: number;
+  signal: string;
+  trendStatus: string;
+  volumeStatus: string;
+  macdStatus: string;
+  rsiStatus: string;
+  summary: string;
+  action: string;
+  confidence: string;
+  technicalSummary: string;
+  newsSummary: string;
+  whyNow: string;
+  bullishFactors: string[];
+  riskFactors: string[];
+  supportLevels: number[];
+  resistanceLevels: number[];
+  headlines: StockAnalysisHeadline[];
+  ma5: number;
+  ma10: number;
+  ma20: number;
+  ma60: number;
+  biasMa5: number;
+  biasMa10: number;
+  biasMa20: number;
+  volumeRatio5d: number;
+  rsi12: number;
+  macdDif: number;
+  macdDea: number;
+  macdBar: number;
+  provider: string;
+  model: string;
+  fallback: boolean;
+  newsSearched: boolean;
+  generatedAt: string;
+}
+
+export interface StockAnalysisHeadline {
+  title: string;
+  source: string;
+  link: string;
+  publishedAt: number;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -219,6 +276,7 @@ export interface MarketServiceHandler {
   listEtfFlows(ctx: ServerContext, req: ListEtfFlowsRequest): Promise<ListEtfFlowsResponse>;
   getCountryStockIndex(ctx: ServerContext, req: GetCountryStockIndexRequest): Promise<GetCountryStockIndexResponse>;
   listGulfQuotes(ctx: ServerContext, req: ListGulfQuotesRequest): Promise<ListGulfQuotesResponse>;
+  analyzeStock(ctx: ServerContext, req: AnalyzeStockRequest): Promise<AnalyzeStockResponse>;
 }
 
 export function createMarketServiceRoutes(
@@ -561,6 +619,55 @@ export function createMarketServiceRoutes(
 
           const result = await handler.listGulfQuotes(ctx, body);
           return new Response(JSON.stringify(result as ListGulfQuotesResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/market/v1/analyze-stock",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: AnalyzeStockRequest = {
+            symbol: params.get("symbol") ?? "",
+            name: params.get("name") ?? "",
+            includeNews: params.get("include_news") === "true",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("analyzeStock", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.analyzeStock(ctx, body);
+          return new Response(JSON.stringify(result as AnalyzeStockResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

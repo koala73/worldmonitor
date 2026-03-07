@@ -6,6 +6,7 @@ import {
   MapContainer,
   NewsPanel,
   MarketPanel,
+  StockAnalysisPanel,
   HeatmapPanel,
   CommoditiesPanel,
   CryptoPanel,
@@ -479,6 +480,14 @@ export class PanelLayoutManager implements AppModule {
 
     this.createPanel('heatmap', () => new HeatmapPanel());
     this.createPanel('markets', () => new MarketPanel());
+    const stockAnalysisPanel = this.createPanel('stock-analysis', () => new StockAnalysisPanel());
+    if (stockAnalysisPanel && !getSecretState('WORLDMONITOR_API_KEY').present) {
+      stockAnalysisPanel.showLocked([
+        'AI stock briefs with technical + news synthesis',
+        'Trend scoring from MA, MACD, RSI, and volume structure',
+        'Actionable watchlist monitoring for your premium workspace',
+      ]);
+    }
 
     const monitorPanel = this.createPanel('monitors', () => new MonitorPanel(this.ctx.monitors));
     monitorPanel?.onChanged((monitors) => {
