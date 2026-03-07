@@ -3,6 +3,7 @@ syntax = "proto3";
 package worldmonitor.infrastructure.v1;
 
 import "buf/validate/validate.proto";
+import "worldmonitor/core/v1/service_error.proto";
 
 // BaselineUpdate is a single metric observation to incorporate into the running baseline.
 message BaselineUpdate {
@@ -27,6 +28,9 @@ message RecordBaselineSnapshotRequest {
 message RecordBaselineSnapshotResponse {
   // Number of baselines that were written.
   int32 updated = 1;
-  // Error message if the request was invalid.
-  string error = 2;
+  // Field 2 was string error — migrated to ServiceError at field 3.
+  reserved 2;
+  reserved "error";
+  // Structured error, if any.
+  worldmonitor.core.v1.ServiceError service_error = 3;
 }

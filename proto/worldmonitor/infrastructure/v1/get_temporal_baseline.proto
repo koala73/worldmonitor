@@ -4,6 +4,7 @@ package worldmonitor.infrastructure.v1;
 
 import "buf/validate/validate.proto";
 import "sebuf/http/annotations.proto";
+import "worldmonitor/core/v1/service_error.proto";
 
 // GetTemporalBaselineRequest checks current activity count against stored baseline.
 message GetTemporalBaselineRequest {
@@ -51,6 +52,9 @@ message GetTemporalBaselineResponse {
   int32 sample_count = 4;
   // Minimum samples required before anomaly detection activates.
   int32 samples_needed = 5;
-  // Error message if request was invalid.
-  string error = 6;
+  // Field 6 was string error — migrated to ServiceError at field 7.
+  reserved 6;
+  reserved "error";
+  // Structured error, if any.
+  worldmonitor.core.v1.ServiceError service_error = 7;
 }

@@ -25,7 +25,7 @@ export async function recordBaselineSnapshot(
     const updates = req.updates;
 
     if (!Array.isArray(updates) || updates.length === 0) {
-      return { updated: 0, error: 'Body must have updates array' };
+      return { updated: 0, serviceError: { code: 'INVALID_ARGUMENT', message: 'Body must have updates array' } };
     }
 
     const batch = updates.slice(0, 20);
@@ -63,8 +63,8 @@ export async function recordBaselineSnapshot(
       await Promise.all(writes);
     }
 
-    return { updated: writes.length, error: '' };
+    return { updated: writes.length };
   } catch {
-    return { updated: 0, error: 'Internal error' };
+    return { updated: 0, serviceError: { code: 'INTERNAL', message: 'Internal error' } };
   }
 }

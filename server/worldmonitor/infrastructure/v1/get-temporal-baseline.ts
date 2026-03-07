@@ -31,7 +31,7 @@ export async function getTemporalBaseline(
         learning: false,
         sampleCount: 0,
         samplesNeeded: 0,
-        error: 'Missing or invalid params: type and count required',
+        serviceError: { code: 'INVALID_ARGUMENT', message: 'Missing or invalid params: type and count required' },
       };
     }
 
@@ -47,7 +47,6 @@ export async function getTemporalBaseline(
         learning: true,
         sampleCount: baseline?.sampleCount || 0,
         samplesNeeded: MIN_SAMPLES,
-        error: '',
       };
     }
 
@@ -73,14 +72,13 @@ export async function getTemporalBaseline(
       learning: false,
       sampleCount: baseline.sampleCount,
       samplesNeeded: MIN_SAMPLES,
-      error: '',
     };
   } catch {
     return {
       learning: false,
       sampleCount: 0,
       samplesNeeded: 0,
-      error: 'Internal error',
+      serviceError: { code: 'INTERNAL', message: 'Internal error' },
     };
   }
 }

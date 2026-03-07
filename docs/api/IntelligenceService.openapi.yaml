@@ -681,9 +681,8 @@ components:
                 query:
                     type: string
                     description: Echo of the search query.
-                error:
-                    type: string
-                    description: Error message if the search failed.
+                serviceError:
+                    $ref: '#/components/schemas/ServiceError'
             description: SearchGdeltDocumentsResponse contains GDELT article search results.
         GdeltArticle:
             type: object
@@ -711,6 +710,29 @@ components:
                     format: double
                     description: GDELT tone score (negative = negative tone, positive = positive tone).
             description: GdeltArticle represents a single article from the GDELT document API.
+        ServiceError:
+            type: object
+            properties:
+                code:
+                    type: string
+                    description: Machine-readable error code, e.g. "NOT_FOUND", "INVALID_ARGUMENT", "INTERNAL".
+                message:
+                    type: string
+                    description: Human-readable error description.
+            description: |-
+                ServiceError is a shared error type for RPC response messages.
+
+                 It replaces the ad-hoc `string error` fields that evolved independently
+                 across different services.  By carrying a machine-readable `code` alongside
+                 a human-readable `message`, clients can branch on the code while still
+                 displaying the message to users.
+
+                 Intended codes (not an enum, to allow per-domain extension):
+                   "NOT_FOUND"          – requested resource does not exist
+                   "INVALID_ARGUMENT"   – request parameters failed validation
+                   "INTERNAL"           – unexpected server-side failure
+                   "UPSTREAM_ERROR"     – an upstream data provider returned an error
+                   "UNAVAILABLE"        – service temporarily unavailable
         DeductSituationRequest:
             type: object
             properties:

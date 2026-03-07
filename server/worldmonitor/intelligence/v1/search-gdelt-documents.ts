@@ -32,7 +32,7 @@ export async function searchGdeltDocuments(
   const MAX_QUERY_LEN = 500;
   let query = req.query;
   if (!query || query.length < 2) {
-    return { articles: [], query: query || '', error: 'Query parameter required (min 2 characters)' };
+    return { articles: [], query: query || '', serviceError: { code: 'INVALID_ARGUMENT', message: 'Query parameter required (min 2 characters)' } };
   }
   if (query.length > MAX_QUERY_LEN) {
     return { articles: [], query, error: 'Query too long' };
@@ -97,15 +97,18 @@ export async function searchGdeltDocuments(
         }));
 
         if (articles.length === 0) return null;
-        return { articles, query, error: '' } as SearchGdeltDocumentsResponse;
+        return { articles, query } as SearchGdeltDocumentsResponse;
       },
     );
-    return result || { articles: [], query, error: '' };
+    return result || { articles: [], query };
   } catch (error) {
     return {
       articles: [],
       query,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      serviceError: {
+        code: 'UPSTREAM_ERROR',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      },
     };
   }
 }

@@ -128,7 +128,7 @@ const client = new IntelligenceServiceClient('', { fetch: (...args) => globalThi
 const gdeltBreaker = createCircuitBreaker<SearchGdeltDocumentsResponse>({ name: 'GDELT Intelligence', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
 const positiveGdeltBreaker = createCircuitBreaker<SearchGdeltDocumentsResponse>({ name: 'GDELT Positive', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
 
-const emptyGdeltFallback: SearchGdeltDocumentsResponse = { articles: [], query: '', error: '' };
+const emptyGdeltFallback: SearchGdeltDocumentsResponse = { articles: [], query: '' };
 
 const CACHE_TTL = 5 * 60 * 1000;
 const articleCache = new Map<string, { articles: GdeltArticle[]; timestamp: number }>();
@@ -168,8 +168,8 @@ export async function fetchGdeltArticles(
     });
   }, emptyGdeltFallback);
 
-  if (resp.error) {
-    console.warn(`[GDELT-Intel] RPC error: ${resp.error}`);
+  if (resp.serviceError) {
+    console.warn(`[GDELT-Intel] RPC error [${resp.serviceError.code}]: ${resp.serviceError.message}`);
     return cached?.articles || [];
   }
 
@@ -261,8 +261,8 @@ export async function fetchPositiveGdeltArticles(
     });
   }, emptyGdeltFallback);
 
-  if (resp.error) {
-    console.warn(`[GDELT-Intel] Positive RPC error: ${resp.error}`);
+  if (resp.serviceError) {
+    console.warn(`[GDELT-Intel] Positive RPC error [${resp.serviceError.code}]: ${resp.serviceError.message}`);
     return cached?.articles || [];
   }
 

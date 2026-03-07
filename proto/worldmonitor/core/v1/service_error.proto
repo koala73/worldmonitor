@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package worldmonitor.core.v1;
+
+// ServiceError is a shared error type for RPC response messages.
+//
+// It replaces the ad-hoc `string error` fields that evolved independently
+// across different services.  By carrying a machine-readable `code` alongside
+// a human-readable `message`, clients can branch on the code while still
+// displaying the message to users.
+//
+// Intended codes (not an enum, to allow per-domain extension):
+//   "NOT_FOUND"          – requested resource does not exist
+//   "INVALID_ARGUMENT"   – request parameters failed validation
+//   "INTERNAL"           – unexpected server-side failure
+//   "UPSTREAM_ERROR"     – an upstream data provider returned an error
+//   "UNAVAILABLE"        – service temporarily unavailable
+message ServiceError {
+  // Machine-readable error code, e.g. "NOT_FOUND", "INVALID_ARGUMENT", "INTERNAL".
+  string code = 1;
+  // Human-readable error description.
+  string message = 2;
+}

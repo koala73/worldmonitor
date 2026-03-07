@@ -4,6 +4,7 @@ package worldmonitor.intelligence.v1;
 
 import "buf/validate/validate.proto";
 import "sebuf/http/annotations.proto";
+import "worldmonitor/core/v1/service_error.proto";
 
 // SearchGdeltDocumentsRequest specifies filters for searching GDELT news articles.
 message SearchGdeltDocumentsRequest {
@@ -52,6 +53,9 @@ message SearchGdeltDocumentsResponse {
   repeated GdeltArticle articles = 1;
   // Echo of the search query.
   string query = 2;
-  // Error message if the search failed.
-  string error = 3;
+  // Field 3 was string error — migrated to ServiceError at field 4.
+  reserved 3;
+  reserved "error";
+  // Structured error, if any.
+  worldmonitor.core.v1.ServiceError service_error = 4;
 }

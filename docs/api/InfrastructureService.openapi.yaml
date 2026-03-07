@@ -439,9 +439,8 @@ components:
                     type: integer
                     format: int32
                     description: Minimum samples required before anomaly detection activates.
-                error:
-                    type: string
-                    description: Error message if request was invalid.
+                serviceError:
+                    $ref: '#/components/schemas/ServiceError'
             description: GetTemporalBaselineResponse returns anomaly info or learning status.
         BaselineAnomaly:
             type: object
@@ -474,6 +473,29 @@ components:
                     format: int32
                     description: Number of samples incorporated so far.
             description: BaselineStats contains the running statistics for a baseline key.
+        ServiceError:
+            type: object
+            properties:
+                code:
+                    type: string
+                    description: Machine-readable error code, e.g. "NOT_FOUND", "INVALID_ARGUMENT", "INTERNAL".
+                message:
+                    type: string
+                    description: Human-readable error description.
+            description: |-
+                ServiceError is a shared error type for RPC response messages.
+
+                 It replaces the ad-hoc `string error` fields that evolved independently
+                 across different services.  By carrying a machine-readable `code` alongside
+                 a human-readable `message`, clients can branch on the code while still
+                 displaying the message to users.
+
+                 Intended codes (not an enum, to allow per-domain extension):
+                   "NOT_FOUND"          – requested resource does not exist
+                   "INVALID_ARGUMENT"   – request parameters failed validation
+                   "INTERNAL"           – unexpected server-side failure
+                   "UPSTREAM_ERROR"     – an upstream data provider returned an error
+                   "UNAVAILABLE"        – service temporarily unavailable
         RecordBaselineSnapshotRequest:
             type: object
             properties:
@@ -506,9 +528,8 @@ components:
                     type: integer
                     format: int32
                     description: Number of baselines that were written.
-                error:
-                    type: string
-                    description: Error message if the request was invalid.
+                serviceError:
+                    $ref: '#/components/schemas/ServiceError'
             description: RecordBaselineSnapshotResponse reports how many baselines were successfully updated.
         GetCableHealthRequest:
             type: object

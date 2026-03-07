@@ -71,7 +71,7 @@ export interface GetTemporalBaselineResponse {
   learning: boolean;
   sampleCount: number;
   samplesNeeded: number;
-  error: string;
+  serviceError?: ServiceError;
 }
 
 export interface BaselineAnomaly {
@@ -86,6 +86,11 @@ export interface BaselineStats {
   sampleCount: number;
 }
 
+export interface ServiceError {
+  code: string;
+  message: string;
+}
+
 export interface RecordBaselineSnapshotRequest {
   updates: BaselineUpdate[];
 }
@@ -98,7 +103,7 @@ export interface BaselineUpdate {
 
 export interface RecordBaselineSnapshotResponse {
   updated: number;
-  error: string;
+  serviceError?: ServiceError;
 }
 
 export interface ListTemporalAnomaliesRequest {
