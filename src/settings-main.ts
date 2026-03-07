@@ -300,12 +300,18 @@ function initOverviewListeners(area: HTMLElement): void {
           ? t('modals.settingsWindow.worldMonitor.register.alreadyRegistered')
           : t('modals.settingsWindow.worldMonitor.register.success');
         regStatus.className = 'wm-reg-status ok';
+      } else if (res.status === 429) {
+        regStatus.textContent = t('modals.settingsWindow.worldMonitor.register.errorRateLimit');
+        regStatus.className = 'wm-reg-status error';
+      } else if (res.status === 503) {
+        regStatus.textContent = t('modals.settingsWindow.worldMonitor.register.errorServiceUnavailable');
+        regStatus.className = 'wm-reg-status error';
       } else {
         regStatus.textContent = data.error || t('modals.settingsWindow.worldMonitor.register.error');
         regStatus.className = 'wm-reg-status error';
       }
     } catch {
-      regStatus.textContent = t('modals.settingsWindow.worldMonitor.register.error');
+      regStatus.textContent = t('modals.settingsWindow.worldMonitor.register.errorNetwork');
       regStatus.className = 'wm-reg-status error';
     } finally {
       btn.disabled = false;
