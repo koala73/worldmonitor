@@ -1546,9 +1546,9 @@
     },
     "gpsJamming": {
       "title": "GPS/GNSS-storing",
-      "interference": "Storing",
-      "aircraftAffected": "Getroffen vliegtuigen",
-      "aircraftNormal": "Normale vliegtuigen",
+      "navPerformance": "Nav Performance",
+      "samples": "ADS-B Samples",
+      "aircraft": "Aircraft",
       "h3Hex": "H3 Hex"
     },
     "flight": {

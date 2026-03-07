@@ -1737,9 +1737,9 @@
     },
     "gpsJamming": {
       "title": "Interférence GPS/GNSS",
-      "interference": "Interférence",
-      "aircraftAffected": "Aéronefs affectés",
-      "aircraftNormal": "Aéronefs normaux",
+      "navPerformance": "Nav Performance",
+      "samples": "ADS-B Samples",
+      "aircraft": "Aircraft",
       "h3Hex": "H3 Hex"
     },
     "flight": {

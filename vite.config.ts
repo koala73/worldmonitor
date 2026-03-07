@@ -575,6 +575,31 @@ function youtubeLivePlugin(): Plugin {
   };
 }
 
+function gpsjamDevPlugin(): Plugin {
+  return {
+    name: 'gpsjam-dev',
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        if (req.url !== '/api/gpsjam' && !req.url?.startsWith('/api/gpsjam?')) {
+          return next();
+        }
+
+        try {
+          const data = await readFile(resolve(__dirname, 'scripts/data/gpsjam-latest.json'), 'utf8');
+          res.setHeader('Content-Type', 'application/json');
+          res.setHeader('Cache-Control', 'no-cache');
+          res.end(data);
+        } catch {
+          res.statusCode = 503;
+          res.setHeader('Content-Type', 'application/json');
+          res.setHeader('Cache-Control', 'no-cache');
+          res.end(JSON.stringify({ error: 'No GPS jam data. Run: node scripts/fetch-gpsjam.mjs' }));
+        }
+      });
+    },
+  };
+}
+
 export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
@@ -584,6 +609,7 @@ export default defineConfig({
     polymarketPlugin(),
     rssProxyPlugin(),
     youtubeLivePlugin(),
+    gpsjamDevPlugin(),
     sebufApiPlugin(),
     brotliPrecompressPlugin(),
     VitePWA({

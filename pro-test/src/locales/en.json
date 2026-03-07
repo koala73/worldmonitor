@@ -23,20 +23,28 @@
   "twoPath": {
     "proTitle": "World Monitor Pro",
     "proDesc": "For individuals who want faster understanding, deeper access, and better monitoring workflows.",
-    "proF1": "AI briefings & context",
-    "proF2": "Custom alerts",
-    "proF3": "Saved watchlists",
-    "proF4": "Premium layers",
-    "proF5": "Longer history",
-    "proF6": "Desktop workflows",
+    "proF1": "Near-real-time data (<60s refresh)",
+    "proF2": "AI morning briefs & flash alerts",
+    "proF3": "\"So what?\" impact analysis & pattern detection",
+    "proF4": "Configurable alert rules (CII, convergence, proximity)",
+    "proF5": "22 services, 1 key — no separate registrations",
+    "proF6": "Delivery via Slack, Telegram, WhatsApp, Email",
+    "proF7": "Saved watchlists & custom views",
+    "proF8": "Premium map layers & longer history",
+    "proF9": "Desktop app workflows",
     "proCta": "Reserve Your Early Access",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "For teams that need shared monitoring, API access, deployment options, and direct support.",
-    "entF1": "Team workspaces",
-    "entF2": "Admin controls",
-    "entF3": "API access",
-    "entF4": "Deployment options",
-    "entF5": "Onboarding & support",
+    "entF1": "Everything in Pro, plus:",
+    "entF2": "Live-edge + satellite imagery & SAR",
+    "entF3": "AI agents with investor personas & MCP",
+    "entF4": "50,000+ infrastructure assets mapped",
+    "entF5": "100+ data connectors (Splunk, Snowflake, Sentinel...)",
+    "entF6": "REST API + webhooks + bulk export",
+    "entF7": "Team workspaces with SSO/MFA/RBAC",
+    "entF8": "White-label & embeddable panels",
+    "entF9": "Cloud, on-prem, or air-gapped deployment",
+    "entF10": "Dedicated onboarding & support",
     "entCta": "Talk to Sales"
   },
   "whyUpgrade": {
@@ -51,11 +59,11 @@
     "deeperDesc": "Unlock premium layers, longer history, desktop workflows, and advanced monitoring tools."
   },
   "livePreview": {
-    "windowTitle": "worldmonitor.app \u2014 Live Dashboard",
+    "windowTitle": "worldmonitor.app — Live Dashboard",
     "openFullScreen": "Open full screen",
     "tryLiveDashboard": "Try the Live Dashboard",
-    "iframeTitle": "World Monitor \u2014 Live OSINT Dashboard",
-    "description": "3D WebGL globe \u00b7 45+ interactive map layers \u00b7 Real-time geopolitical, market, energy, and infrastructure data"
+    "iframeTitle": "World Monitor — Live OSINT Dashboard",
+    "description": "3D WebGL globe · 45+ interactive map layers · Real-time geopolitical, market, energy, and infrastructure data"
   },
   "socialProof": {
     "uniqueVisitors": "Unique visitors",
@@ -139,7 +147,7 @@
   "proShowcase": {
     "proTier": "PRO TIER",
     "title": "Your AI Analyst That Never Sleeps",
-    "subtitle": "The free dashboard shows you the world. Pro tells you what it means \u2014 and makes sure you never miss what matters.",
+    "subtitle": "The free dashboard shows you the world. Pro tells you what it means — and makes sure you never miss what matters.",
     "nearRealTime": "Near-Real-Time Data",
     "nearRealTimeDesc": "Refresh accelerated from 5-15 min to under 60 seconds. Priority pipeline for your alerts.",
     "soWhat": "\"So What?\" Analysis",
@@ -149,7 +157,7 @@
     "alerting": "Configurable Alerting",
     "alertingDesc": "Set rules for CII deltas, convergence events, proximity to saved locations, and market correlation triggers.",
     "oneKey": "22 Services, 1 Key",
-    "oneKeyDesc": "ACLED, UCDP, Finnhub, FRED, NASA FIRMS, AISStream, OpenSky, and more \u2014 all active, no separate registrations.",
+    "oneKeyDesc": "ACLED, UCDP, Finnhub, FRED, NASA FIRMS, AISStream, OpenSky, and more — all active, no separate registrations.",
     "deliveryLabel": "Choose how intelligence finds you"
   },
   "slackMock": {
@@ -157,14 +165,14 @@
     "critical": "Critical",
     "criticalText": "GPS jamming across 3 Baltic zones. Pattern matches prior infrastructure disruption signatures. NordBalt cable + Balticconnector in affected area.",
     "elevated": "Elevated",
-    "elevatedText": "Pakistan CII 67\u219274. 12 new protest events (Lahore, Karachi, Islamabad). Last comparable spike preceded 2024 political crisis.",
+    "elevatedText": "Pakistan CII 67→74. 12 new protest events (Lahore, Karachi, Islamabad). Last comparable spike preceded 2024 political crisis.",
     "watch": "Watch",
     "watchText": "Brent +2.3% on Hormuz AIS anomaly. 4 dark ships in 6h. IRGC exercise announced next week."
   },
   "apiSection": {
     "apiTier": "API TIER",
     "title": "Programmatic Intelligence",
-    "subtitle": "For developers, analysts, and teams building on World Monitor data. Separate from Pro \u2014 use both or either.",
+    "subtitle": "For developers, analysts, and teams building on World Monitor data. Separate from Pro — use both or either.",
     "restApi": "REST API across all 22 service domains",
     "authenticated": "Authenticated per-key, rate-limited per tier",
     "structured": "Structured JSON with cache headers and OpenAPI 3.1 docs",
@@ -274,7 +282,7 @@
     "q7": "Can I still use my own API keys?",
     "a7": "Yes. Bring-your-own-keys always works. Pro simply means you don't have to register for 20+ separate services.",
     "q8": "What's MCP?",
-    "a8": "Model Context Protocol lets AI agents (Claude, GPT, or custom LLMs) use World Monitor as a tool \u2014 querying all 22 services, reading map state, and triggering analysis. Enterprise only."
+    "a8": "Model Context Protocol lets AI agents (Claude, GPT, or custom LLMs) use World Monitor as a tool — querying all 22 services, reading map state, and triggering analysis. Enterprise only."
   },
   "finalCta": {
     "title": "Start with Pro. Scale to Enterprise.",
@@ -292,10 +300,9 @@
     "submitting": "Submitting...",
     "joinWaitlist": "Reserve Your Early Access",
     "tooManyRequests": "Too many requests",
-    "failedTryAgain": "Failed \u2014 try again"
+    "failedTryAgain": "Failed — try again"
   },
   "referral": {
-    "yourPosition": "Your position",
     "alreadyOnList": "You're already on the list.",
     "shareHint": "Share your link to move up the line. Each friend who joins bumps you closer to the front.",
     "copied": "Copied!",
@@ -303,7 +310,9 @@
     "linkedin": "LinkedIn",
     "whatsapp": "WhatsApp",
     "telegram": "Telegram",
-    "shareText": "I just joined the World Monitor Pro waitlist \u2014 real-time global intelligence powered by AI. Join me:",
-    "joinWaitlistShare": "Join the World Monitor Pro waitlist:"
+    "shareText": "I just joined the World Monitor Pro waitlist — real-time global intelligence powered by AI. Join me:",
+    "joinWaitlistShare": "Join the World Monitor Pro waitlist:",
+    "youreIn": "You're in!",
+    "invitedBanner": "You've been invited — join the waitlist"
   }
 }

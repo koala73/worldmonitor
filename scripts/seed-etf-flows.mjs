@@ -1,10 +1,8 @@
 #!/usr/bin/env node
 
-import { createRequire } from 'module';
-import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { loadEnvFile, loadSharedConfig, CHROME_UA, runSeed } from './_seed-utils.mjs';
 
-const require = createRequire(import.meta.url);
-const etfConfig = require('../shared/etfs.json');
+const etfConfig = loadSharedConfig('etfs.json');
 
 loadEnvFile(import.meta.url);
 

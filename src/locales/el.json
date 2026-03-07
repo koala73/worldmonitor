@@ -1738,9 +1738,9 @@
     },
     "gpsJamming": {
       "title": "Παρεμβολή GPS/GNSS",
-      "interference": "Παρεμβολή",
-      "aircraftAffected": "Επηρεασμένα αεροσκάφη",
-      "aircraftNormal": "Κανονικά αεροσκάφη",
+      "navPerformance": "Nav Performance",
+      "samples": "ADS-B Samples",
+      "aircraft": "Aircraft",
       "h3Hex": "H3 Hex"
     },
     "flight": {

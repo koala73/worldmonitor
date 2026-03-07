@@ -34,6 +34,7 @@ export function renderTurnstileWidgets(): number {
   document.querySelectorAll<HTMLElement>('.cf-turnstile:not([data-rendered])').forEach(el => {
     const widgetId = window.turnstile!.render(el, {
       sitekey: TURNSTILE_SITE_KEY,
+      size: 'flexible',
       callback: (token: string) => { el.dataset.token = token; },
       'expired-callback': () => { delete el.dataset.token; },
       'error-callback': () => { delete el.dataset.token; },
@@ -55,13 +56,12 @@ function sanitize(val: unknown): string {
 }
 
 function showReferralSuccess(formEl: HTMLFormElement, data: { referralCode?: string; position?: number; status?: string }) {
-  if (!data.referralCode) {
+  if (data.referralCode == null && data.status == null) {
     const btn = formEl.querySelector('button[type="submit"]') as HTMLButtonElement;
     if (btn) { btn.textContent = t('form.joinWaitlist'); btn.disabled = false; }
     return;
   }
   const safeCode = sanitize(data.referralCode);
-  const safePosition = sanitize(data.position);
   const referralLink = `${PRO_URL}?ref=${safeCode}`;
   const shareText = encodeURIComponent(t('referral.shareText'));
   const shareUrl = encodeURIComponent(referralLink);
@@ -80,39 +80,37 @@ function showReferralSuccess(formEl: HTMLFormElement, data: { referralCode?: str
 
   if (isAlreadyRegistered) {
     successDiv.appendChild(el('p', 'text-lg font-display font-bold text-wm-green mb-2', t('referral.alreadyOnList')));
-    successDiv.appendChild(el('p', 'text-sm text-wm-muted mb-4', shareHint));
   } else {
-    const badge = el('div', 'inline-block bg-wm-card border border-wm-green/30 px-6 py-4 mb-4');
-    badge.appendChild(el('p', 'text-xs text-wm-green font-mono uppercase tracking-widest mb-1', t('referral.yourPosition')));
-    badge.appendChild(el('p', 'text-4xl font-display font-bold text-wm-text', `#${safePosition || '?'}`));
-    successDiv.appendChild(badge);
-    successDiv.appendChild(el('p', 'text-sm text-wm-muted mb-4', shareHint));
+    successDiv.appendChild(el('p', 'text-lg font-display font-bold text-wm-green mb-2', t('referral.youreIn')));
   }
+  successDiv.appendChild(el('p', 'text-sm text-wm-muted mb-4', shareHint));
 
-  const linkBox = el('div', 'bg-wm-card border border-wm-border px-4 py-3 mb-4 font-mono text-xs text-wm-green break-all select-all cursor-pointer', referralLink);
-  linkBox.addEventListener('click', () => {
-    navigator.clipboard.writeText(referralLink).then(() => {
-      linkBox.textContent = t('referral.copied');
-      setTimeout(() => { linkBox.textContent = referralLink; }, 2000);
+  if (safeCode) {
+    const linkBox = el('div', 'bg-wm-card border border-wm-border px-4 py-3 mb-4 font-mono text-xs text-wm-green break-all select-all cursor-pointer', referralLink);
+    linkBox.addEventListener('click', () => {
+      navigator.clipboard.writeText(referralLink).then(() => {
+        linkBox.textContent = t('referral.copied');
+        setTimeout(() => { linkBox.textContent = referralLink; }, 2000);
+      });
     });
-  });
-  successDiv.appendChild(linkBox);
+    successDiv.appendChild(linkBox);
 
-  const shareRow = el('div', 'flex gap-3 justify-center flex-wrap');
-  const shareLinks = [
-    { label: t('referral.shareOnX'), href: `https://x.com/intent/tweet?text=${shareText}&url=${shareUrl}` },
-    { label: t('referral.linkedin'), href: `https://www.linkedin.com/sharing/share-offsite/?url=${shareUrl}` },
-    { label: t('referral.whatsapp'), href: `https://wa.me/?text=${shareText}%20${shareUrl}` },
-    { label: t('referral.telegram'), href: `https://t.me/share/url?url=${shareUrl}&text=${encodeURIComponent(t('referral.joinWaitlistShare'))}` },
-  ];
-  for (const s of shareLinks) {
-    const a = el('a', 'bg-wm-card border border-wm-border px-4 py-2 text-xs font-mono text-wm-muted hover:text-wm-text hover:border-wm-text transition-colors', s.label);
-    (a as HTMLAnchorElement).href = s.href;
-    (a as HTMLAnchorElement).target = '_blank';
-    (a as HTMLAnchorElement).rel = 'noreferrer';
-    shareRow.appendChild(a);
+    const shareRow = el('div', 'flex gap-3 justify-center flex-wrap');
+    const shareLinks = [
+      { label: t('referral.shareOnX'), href: `https://x.com/intent/tweet?text=${shareText}&url=${shareUrl}` },
+      { label: t('referral.linkedin'), href: `https://www.linkedin.com/sharing/share-offsite/?url=${shareUrl}` },
+      { label: t('referral.whatsapp'), href: `https://wa.me/?text=${shareText}%20${shareUrl}` },
+      { label: t('referral.telegram'), href: `https://t.me/share/url?url=${shareUrl}&text=${encodeURIComponent(t('referral.joinWaitlistShare'))}` },
+    ];
+    for (const s of shareLinks) {
+      const a = el('a', 'bg-wm-card border border-wm-border px-4 py-2 text-xs font-mono text-wm-muted hover:text-wm-text hover:border-wm-text transition-colors', s.label);
+      (a as HTMLAnchorElement).href = s.href;
+      (a as HTMLAnchorElement).target = '_blank';
+      (a as HTMLAnchorElement).rel = 'noreferrer';
+      shareRow.appendChild(a);
+    }
+    successDiv.appendChild(shareRow);
   }
-  successDiv.appendChild(shareRow);
 
   formEl.replaceWith(successDiv);
 }
@@ -220,6 +218,12 @@ const Hero = () => (
           {t('hero.missionLine')}
         </p>
 
+        {getRefCode() && (
+          <div className="inline-flex items-center gap-2 px-4 py-2 mb-4 rounded-sm border border-wm-green/30 bg-wm-green/5 text-sm font-mono text-wm-green">
+            <Users className="w-4 h-4" aria-hidden="true" />
+            {t('referral.invitedBanner')}
+          </div>
+        )}
         <form className="flex flex-col gap-3 max-w-md mx-auto" onSubmit={(e) => { e.preventDefault(); const form = e.currentTarget; const email = new FormData(form).get('email') as string; submitWaitlist(email, form); }}>
           <input type="text" name="website" autoComplete="off" tabIndex={-1} aria-hidden="true" className="absolute opacity-0 h-0 w-0 pointer-events-none" />
           <div className="flex flex-col sm:flex-row gap-3">
@@ -256,7 +260,7 @@ const SocialProof = () => (
       <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center mb-12">
         {[
           { value: "2M+", label: t('socialProof.uniqueVisitors') },
-          { value: "216K", label: t('socialProof.peakDailyUsers') },
+          { value: "421K", label: t('socialProof.peakDailyUsers') },
           { value: "190+", label: t('socialProof.countriesReached') },
           { value: "435+", label: t('socialProof.liveDataSources') },
         ].map((stat, i) => (
@@ -271,13 +275,9 @@ const SocialProof = () => (
           "{t('socialProof.quote')}"
         </p>
         <footer className="mt-6 flex items-center justify-center gap-3">
-          <div className="text-sm">
-            <span className="text-wm-text font-bold">Elie Habib</span>
-            <span className="text-wm-muted"> — {t('socialProof.ceo')} </span>
-            <a href="https://anghami.com" target="_blank" rel="noreferrer" className="text-wm-muted underline underline-offset-4 hover:text-wm-text transition-colors">Anghami</a>
-            <span className="text-wm-muted">, {t('socialProof.asToldTo')} </span>
-            <a href="https://www.wired.me/story/the-music-streaming-ceo-who-built-a-global-war-map" target="_blank" rel="noreferrer" className="text-wm-text underline underline-offset-4 hover:text-wm-green transition-colors">WIRED</a>
-          </div>
+          <a href="https://www.wired.me/story/the-music-streaming-ceo-who-built-a-global-war-map" target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-wm-muted hover:text-wm-text transition-colors">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/9/95/Wired_logo.svg" alt="WIRED" className="h-5 brightness-0 invert opacity-60 hover:opacity-100 transition-opacity" />
+          </a>
         </footer>
       </blockquote>
     </div>
@@ -293,7 +293,7 @@ const TwoPathSplit = () => (
         <h3 className="font-display text-2xl font-bold mb-2">{t('twoPath.proTitle')}</h3>
         <p className="text-sm text-wm-muted mb-6">{t('twoPath.proDesc')}</p>
         <ul className="space-y-3 mb-8">
-          {[t('twoPath.proF1'), t('twoPath.proF2'), t('twoPath.proF3'), t('twoPath.proF4'), t('twoPath.proF5'), t('twoPath.proF6')].map((f, i) => (
+          {[t('twoPath.proF1'), t('twoPath.proF2'), t('twoPath.proF3'), t('twoPath.proF4'), t('twoPath.proF5'), t('twoPath.proF6'), t('twoPath.proF7'), t('twoPath.proF8'), t('twoPath.proF9')].map((f, i) => (
             <li key={i} className="flex items-start gap-3 text-sm">
               <Check className="w-4 h-4 shrink-0 mt-0.5 text-wm-green" aria-hidden="true" />
               <span className="text-wm-muted">{f}</span>
@@ -309,7 +309,8 @@ const TwoPathSplit = () => (
         <h3 className="font-display text-2xl font-bold mb-2">{t('twoPath.entTitle')}</h3>
         <p className="text-sm text-wm-muted mb-6">{t('twoPath.entDesc')}</p>
         <ul className="space-y-3 mb-8">
-          {[t('twoPath.entF1'), t('twoPath.entF2'), t('twoPath.entF3'), t('twoPath.entF4'), t('twoPath.entF5')].map((f, i) => (
+          <li className="text-xs font-mono text-wm-green uppercase tracking-wider mb-1">{t('twoPath.entF1')}</li>
+          {[t('twoPath.entF2'), t('twoPath.entF3'), t('twoPath.entF4'), t('twoPath.entF5'), t('twoPath.entF6'), t('twoPath.entF7'), t('twoPath.entF8'), t('twoPath.entF9'), t('twoPath.entF10')].map((f, i) => (
             <li key={i} className="flex items-start gap-3 text-sm">
               <Check className="w-4 h-4 shrink-0 mt-0.5 text-wm-muted" aria-hidden="true" />
               <span className="text-wm-muted">{f}</span>
@@ -381,7 +382,7 @@ const LivePreview = () => (
             className="absolute inset-0 w-full h-full object-cover"
           />
           <iframe
-            src="https://worldmonitor.app"
+            src="https://worldmonitor.app?alert=false"
             title={t('livePreview.iframeTitle')}
             className="relative w-full h-full border-0"
             loading="lazy"

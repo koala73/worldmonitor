@@ -1738,9 +1738,9 @@
     },
     "gpsJamming": {
       "title": "GPS/GNSS 간섭",
-      "interference": "간섭",
-      "aircraftAffected": "영향받은 항공기",
-      "aircraftNormal": "정상 항공기",
+      "navPerformance": "Nav Performance",
+      "samples": "ADS-B Samples",
+      "aircraft": "Aircraft",
       "h3Hex": "H3 Hex"
     },
     "flight": {

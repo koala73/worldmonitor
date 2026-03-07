@@ -1738,9 +1738,9 @@
     },
     "gpsJamming": {
       "title": "GPS/GNSS интерференция",
-      "interference": "Интерференция",
-      "aircraftAffected": "Летателни средства засегнати",
-      "aircraftNormal": "Летателни средства нормално",
+      "navPerformance": "Nav Performance",
+      "samples": "ADS-B Samples",
+      "aircraft": "Aircraft",
       "h3Hex": "H3 Hex"
     },
     "flight": {

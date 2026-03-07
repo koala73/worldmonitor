@@ -1737,9 +1737,9 @@
     },
     "gpsJamming": {
       "title": "GPS/GNSS-Störung",
-      "interference": "Störung",
-      "aircraftAffected": "Betroffene Flugzeuge",
-      "aircraftNormal": "Normale Flugzeuge",
+      "navPerformance": "Nav Performance",
+      "samples": "ADS-B Samples",
+      "aircraft": "Aircraft",
       "h3Hex": "H3 Hex"
     },
     "flight": {

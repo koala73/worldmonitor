@@ -1,10 +1,8 @@
 #!/usr/bin/env node
 
-import { createRequire } from 'module';
-import { loadEnvFile, CHROME_UA, sleep, runSeed, parseYahooChart, writeExtraKey } from './_seed-utils.mjs';
+import { loadEnvFile, loadSharedConfig, CHROME_UA, sleep, runSeed, parseYahooChart, writeExtraKey } from './_seed-utils.mjs';
 
-const require = createRequire(import.meta.url);
-const stocksConfig = require('../shared/stocks.json');
+const stocksConfig = loadSharedConfig('stocks.json');
 
 loadEnvFile(import.meta.url);
 

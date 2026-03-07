@@ -3124,7 +3124,7 @@ export class DeckGLMap {
       case 'ais-disruptions-layer':
         return { html: `<div class="deckgl-tooltip"><strong>AIS ${text(obj.type || t('components.deckgl.tooltip.disruption'))}</strong><br/>${text(obj.severity)} ${t('popups.severity')}<br/>${text(obj.description)}</div>` };
       case 'gps-jamming-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>GPS Jamming</strong><br/>${text(obj.level)} interference (${obj.pct}%)<br/>H3: ${text(obj.h3)}</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>GPS Jamming</strong><br/>${text(obj.level)} · NP avg: ${Number(obj.npAvg).toFixed(2)}<br/>H3: ${text(obj.h3)}</div>` };
       case 'cable-advisories-layer': {
         const cableName = UNDERSEA_CABLES.find(c => c.id === obj.cableId)?.name || obj.cableId;
         return { html: `<div class="deckgl-tooltip"><strong>${text(cableName)}</strong><br/>${text(obj.severity || t('components.deckgl.tooltip.advisory'))}<br/>${text(obj.description)}</div>` };

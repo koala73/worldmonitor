@@ -1738,9 +1738,9 @@
     },
     "gpsJamming": {
       "title": "GPS/GNSS干扰",
-      "interference": "干扰",
-      "aircraftAffected": "受影响航空器",
-      "aircraftNormal": "正常航空器",
+      "navPerformance": "Nav Performance",
+      "samples": "ADS-B Samples",
+      "aircraft": "Aircraft",
       "h3Hex": "H3 Hex"
     },
     "flight": {

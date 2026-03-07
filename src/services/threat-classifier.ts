@@ -423,10 +423,13 @@ const STAGGER_JITTER_MS = 200;
 const MIN_GAP_MS = 2000;
 const MAX_RETRIES = 2;
 const MAX_QUEUE_LENGTH = 100;
+const BASE_PAUSE_MS = 60_000;
+const MAX_PAUSE_MS = 300_000;
 let batchPaused = false;
 let batchInFlight = false;
 let batchTimer: ReturnType<typeof setTimeout> | null = null;
 let lastRequestAt = 0;
+let consecutive429s = 0;
 const batchQueue: BatchJob[] = [];
 
 async function waitForGap(): Promise<void> {
@@ -460,23 +463,36 @@ function flushBatch(): void {
           const resp = await classifyClient.classifyEvent({
             title: job.title, description: '', source: '', country: '',
           });
+          consecutive429s = 0;
           job.resolve(toThreat(resp));
         } catch (err) {
           if (err instanceof ApiError && (err.statusCode === 401 || err.statusCode === 429 || err.statusCode >= 500)) {
             batchPaused = true;
-            const delay = err.statusCode === 401 ? 120_000 : err.statusCode === 429 ? 60_000 : 30_000;
-            console.warn(`[Classify] ${err.statusCode} — pausing AI classification for ${delay / 1000}s`);
+            let delay: number;
+            if (err.statusCode === 401) {
+              delay = 120_000;
+            } else if (err.statusCode === 429) {
+              consecutive429s++;
+              delay = Math.min(BASE_PAUSE_MS * Math.pow(2, consecutive429s - 1), MAX_PAUSE_MS);
+            } else {
+              delay = 30_000;
+            }
+            console.warn(`[Classify] ${err.statusCode} — pausing AI classification for ${delay / 1000}s (backoff #${consecutive429s})`);
             const remaining = batch.slice(i + 1);
-            // Failed job: increment attempts, requeue if under limit
             if ((job.attempts ?? 0) < MAX_RETRIES) {
               job.attempts = (job.attempts ?? 0) + 1;
               batchQueue.unshift(job);
             } else {
               job.resolve(null);
             }
-            // Remaining jobs never hit the API — requeue without burning attempts
             for (let j = remaining.length - 1; j >= 0; j--) {
               batchQueue.unshift(remaining[j]!);
+            }
+            // On repeated 429s, drop excess queue to avoid hammering on resume
+            if (consecutive429s >= 2 && batchQueue.length > BATCH_SIZE) {
+              const dropped = batchQueue.splice(BATCH_SIZE);
+              for (const d of dropped) d.resolve(null);
+              console.warn(`[Classify] Dropped ${dropped.length} queued items after repeated 429s`);
             }
             batchInFlight = false;
             setTimeout(() => { batchPaused = false; scheduleBatch(); }, delay);

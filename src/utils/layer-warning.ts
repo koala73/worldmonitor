@@ -6,6 +6,8 @@ let activeDialog: HTMLElement | null = null;
 export function showLayerWarning(threshold: number): void {
   if (localStorage.getItem(DISMISS_KEY) === '1') return;
   if (activeDialog) return;
+  if (window.self !== window.top) return;
+  if (new URLSearchParams(window.location.search).get('alert') === 'false') return;
 
   const overlay = document.createElement('div');
   overlay.className = 'layer-warn-overlay';

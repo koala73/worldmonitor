@@ -153,7 +153,7 @@ async function fetchAuxiliarySources(): Promise<{
     getCachedJson('climate:anomalies:v1', true).catch(() => null),
     getCachedJson('cyber:threats-bootstrap:v2', true).catch(() => null),
     getCachedJson('wildfire:fires:v1', true).catch(() => null),
-    getCachedJson('intelligence:gpsjam:v1', true).catch(() => null),
+    getCachedJson('intelligence:gpsjam:v2', true).catch(() => null),
     getCachedJson('conflict:iran-events:v1', true).catch(() => null),
   ]);
   const arr = (v: any, field?: string) => {

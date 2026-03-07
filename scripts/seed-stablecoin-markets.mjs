@@ -1,10 +1,8 @@
 #!/usr/bin/env node
 
-import { createRequire } from 'module';
-import { loadEnvFile, CHROME_UA, runSeed, sleep } from './_seed-utils.mjs';
+import { loadEnvFile, loadSharedConfig, CHROME_UA, runSeed, sleep } from './_seed-utils.mjs';
 
-const require = createRequire(import.meta.url);
-const stablecoinConfig = require('../shared/stablecoins.json');
+const stablecoinConfig = loadSharedConfig('stablecoins.json');
 
 loadEnvFile(import.meta.url);
 

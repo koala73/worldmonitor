@@ -1,10 +1,8 @@
 #!/usr/bin/env node
 
-import { createRequire } from 'module';
-import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { loadEnvFile, loadSharedConfig, CHROME_UA, runSeed } from './_seed-utils.mjs';
 
-const require = createRequire(import.meta.url);
-const gulfConfig = require('../shared/gulf.json');
+const gulfConfig = loadSharedConfig('gulf.json');
 
 loadEnvFile(import.meta.url);
 

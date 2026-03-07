@@ -1461,7 +1461,7 @@ export class DataLoaderManager implements AppModule {
       }
     })());
 
-    // GPS/GNSS jamming (cloud-only — needs gpsjam.org relay)
+    // GPS/GNSS jamming (cloud-only — seeded by Wingbits API via fetch-gpsjam.mjs)
     if (!isDesktopRuntime()) {
       tasks.push((async () => {
         try {
