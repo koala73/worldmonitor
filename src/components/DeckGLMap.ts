@@ -263,15 +263,24 @@ const NUCLEAR_ICON_MAPPING = { hexagon: { x: 0, y: 0, width: 32, height: 32, mas
 const DATACENTER_ICON_MAPPING = { square: { x: 0, y: 0, width: 32, height: 32, mask: true } };
 const AIRCRAFT_ICON_MAPPING = { plane: { x: 0, y: 0, width: 32, height: 32, mask: true } };
 
-const CONFLICT_ZONES_GEOJSON: GeoJSON.FeatureCollection = {
-  type: 'FeatureCollection',
-  features: CONFLICT_ZONES.map(zone => ({
-    type: 'Feature' as const,
-    properties: { id: zone.id, name: zone.name, intensity: zone.intensity },
-    geometry: { type: 'Polygon' as const, coordinates: [zone.coords] },
-  })),
+const CONFLICT_COUNTRY_ISO: Record<string, string[]> = {
+  iran: ['IR'],
+  ukraine: ['UA'],
+  sudan: ['SD'],
+  myanmar: ['MM'],
 };
 
+function isClosedRing(ring: [number, number][]): boolean {
+  if (ring.length < 2) return false;
+  const [firstLon, firstLat] = ring[0];
+  const [lastLon, lastLat] = ring[ring.length - 1];
+  return firstLon === lastLon && firstLat === lastLat;
+}
+
+function closeRing(ring: [number, number][]): [number, number][] {
+  if (ring.length === 0 || isClosedRing(ring)) return ring;
+  return [...ring, ring[0]];
+}
 
 export class DeckGLMap {
   private static readonly MAX_CLUSTER_LEAVES = 200;
@@ -1538,12 +1547,55 @@ export class DeckGLMap {
     return layer;
   }
 
+  private buildConflictZoneGeoJson(): GeoJSON.FeatureCollection {
+    const features: GeoJSON.Feature[] = [];
+
+    for (const zone of CONFLICT_ZONES) {
+      const isoCodes = CONFLICT_COUNTRY_ISO[zone.id];
+      let usedCountryGeometry = false;
+
+      if (isoCodes?.length && this.countriesGeoJsonData) {
+        for (const feature of this.countriesGeoJsonData.features) {
+          const code = feature.properties?.['ISO3166-1-Alpha-2'];
+          if (typeof code !== 'string' || !isoCodes.includes(code)) continue;
+
+          features.push({
+            type: 'Feature',
+            properties: {
+              ...(feature.properties ?? {}),
+              id: zone.id,
+              name: zone.name,
+              intensity: zone.intensity,
+            },
+            geometry: feature.geometry,
+          });
+          usedCountryGeometry = true;
+        }
+      }
+
+      if (usedCountryGeometry) continue;
+
+      features.push({
+        type: 'Feature',
+        properties: { id: zone.id, name: zone.name, intensity: zone.intensity },
+        geometry: { type: 'Polygon', coordinates: [closeRing(zone.coords)] },
+      });
+    }
+
+    return {
+      type: 'FeatureCollection',
+      features,
+    };
+  }
+
   private createConflictZonesLayer(): GeoJsonLayer {
-    const cacheKey = 'conflict-zones-layer';
+    const cacheKey = this.countriesGeoJsonData
+      ? 'conflict-zones-layer-country-geometry'
+      : 'conflict-zones-layer';
 
     const layer = new GeoJsonLayer({
       id: cacheKey,
-      data: CONFLICT_ZONES_GEOJSON,
+      data: this.buildConflictZoneGeoJson(),
       filled: true,
       stroked: true,
       getFillColor: () => COLORS.conflict,
@@ -4894,6 +4946,7 @@ export class DeckGLMap {
         const paintMapTheme = getMapTheme(paintProvider);
         this.updateCountryLayerPaint(isLightMapTheme(paintMapTheme) ? 'light' : 'dark');
         if (this.highlightedCountryCode) this.highlightCountry(this.highlightedCountryCode);
+        this.render();
       })
       .catch((err) => console.warn('[DeckGLMap] Failed to load country boundaries:', err));
   }
