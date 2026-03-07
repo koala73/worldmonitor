@@ -989,6 +989,7 @@ async function seedUcdpEvents() {
 
     const payload = { events: mapped, fetchedAt: Date.now(), version, totalRaw: allEvents.length, filteredCount: mapped.length };
     const ok = await upstashSet(UCDP_REDIS_KEY, payload, UCDP_TTL_SECONDS);
+    await upstashSet('seed-meta:conflict:ucdp-events', { fetchedAt: Date.now(), recordCount: mapped.length }, 604800);
     console.log(`[UCDP] Seeded ${mapped.length} events (raw: ${allEvents.length}, failed pages: ${failedPages}, redis: ${ok ? 'OK' : 'FAIL'})`);
   } catch (e) {
     console.warn('[UCDP] Seed error:', e?.message || e);
@@ -2406,7 +2407,7 @@ async function startClassifySeedLoop() {
 // so service statuses are always cached (TTL is 30 min).
 // ─────────────────────────────────────────────────────────────
 const SERVICE_STATUSES_SEED_INTERVAL_MS = 15 * 60 * 1000; // 15 min (TTL/2)
-const SERVICE_STATUSES_RPC_URL = 'https://worldmonitor.app/api/infrastructure/v1/list-service-statuses';
+const SERVICE_STATUSES_RPC_URL = 'https://api.worldmonitor.app/api/infrastructure/v1/list-service-statuses';
 
 async function seedServiceStatuses() {
   try {
@@ -2445,7 +2446,7 @@ function startServiceStatusesSeedLoop() {
 // so the strategic posture panel always has data in Redis.
 // ─────────────────────────────────────────────────────────────
 const THEATER_POSTURE_SEED_INTERVAL_MS = 600_000; // 10 min
-const THEATER_POSTURE_RPC_URL = 'https://worldmonitor.app/api/military/v1/get-theater-posture';
+const THEATER_POSTURE_RPC_URL = 'https://api.worldmonitor.app/api/military/v1/get-theater-posture';
 
 async function seedTheaterPosture() {
   try {
@@ -2612,6 +2613,7 @@ async function seedGpsJamData() {
     };
 
     const ok = await upstashSet(GPSJAM_REDIS_KEY, output, GPSJAM_SEED_TTL);
+    await upstashSet('seed-meta:intelligence:gpsjam', { fetchedAt: Date.now(), recordCount: hexes.length }, 604800);
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
     console.log(`[GPSJam] Seeded ${hexes.length} hexes (${highCount} high, ${mediumCount} medium, date: ${latestDate}, redis: ${ok ? 'OK' : 'FAIL'}) in ${elapsed}s`);
   } catch (e) {
@@ -3136,6 +3138,244 @@ async function startSpendingSeedLoop() {
   setInterval(() => {
     seedUsaSpending().catch((e) => console.warn('[Spending] Seed error:', e?.message || e));
   }, SPENDING_SEED_INTERVAL_MS).unref?.();
+}
+
+// ─────────────────────────────────────────────────────────────
+// World Bank Indicators seed loop (tech readiness, progress, renewable)
+// ─────────────────────────────────────────────────────────────
+
+const WB_SEED_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours (data is annual)
+const WB_TTL_SECONDS = 7 * 24 * 3600; // 7 days
+const WB_BOOTSTRAP_KEY = 'economic:worldbank-techreadiness:v1';
+const WB_PROGRESS_KEY = 'economic:worldbank-progress:v1';
+const WB_RENEWABLE_KEY = 'economic:worldbank-renewable:v1';
+
+const WB_WEIGHTS = { internet: 30, mobile: 15, broadband: 20, rdSpend: 35 };
+const WB_NORMALIZE_MAX = { internet: 100, mobile: 150, broadband: 50, rdSpend: 5 };
+
+const WB_INDICATORS = [
+  { key: 'internet',  id: 'IT.NET.USER.ZS', dateRange: '2019:2024' },
+  { key: 'mobile',    id: 'IT.CEL.SETS.P2', dateRange: '2019:2024' },
+  { key: 'broadband', id: 'IT.NET.BBND.P2', dateRange: '2019:2024' },
+  { key: 'rdSpend',   id: 'GB.XPD.RSDV.GD.ZS', dateRange: '2018:2024' },
+];
+
+const WB_PROGRESS_INDICATORS = [
+  { id: 'lifeExpectancy', code: 'SP.DYN.LE00.IN', years: 65, invertTrend: false },
+  { id: 'literacy',       code: 'SE.ADT.LITR.ZS', years: 55, invertTrend: false },
+  { id: 'childMortality', code: 'SH.DYN.MORT',    years: 65, invertTrend: true },
+  { id: 'poverty',        code: 'SI.POV.DDAY',    years: 45, invertTrend: true },
+];
+
+const WB_RENEWABLE_REGIONS = ['1W', 'EAS', 'ECS', 'LCN', 'MEA', 'NAC', 'SAS', 'SSF'];
+const WB_RENEWABLE_REGION_NAMES = {
+  '1W': 'World', EAS: 'East Asia & Pacific', ECS: 'Europe & Central Asia',
+  LCN: 'Latin America & Caribbean', MEA: 'Middle East & N. Africa',
+  NAC: 'North America', SAS: 'South Asia', SSF: 'Sub-Saharan Africa',
+};
+
+function wbFetchJson(url) {
+  return new Promise((resolve, reject) => {
+    const req = https.get(url, {
+      headers: { 'User-Agent': 'WorldMonitor-Seed/1.0', Accept: 'application/json' },
+      timeout: 30000,
+    }, (resp) => {
+      if (resp.statusCode < 200 || resp.statusCode >= 300) {
+        resp.resume();
+        return reject(new Error(`WB HTTP ${resp.statusCode}`));
+      }
+      let data = '';
+      resp.on('data', (chunk) => { data += chunk; });
+      resp.on('end', () => {
+        try { resolve(JSON.parse(data)); } catch (e) { reject(e); }
+      });
+    });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('WB timeout')); });
+  });
+}
+
+async function wbFetchIndicator(indicatorId, dateRange) {
+  const baseUrl = `https://api.worldbank.org/v2/country/all/indicator/${indicatorId}`;
+  let page = 1;
+  let totalPages = 1;
+  const allEntries = [];
+
+  while (page <= totalPages) {
+    const url = `${baseUrl}?format=json&date=${dateRange}&per_page=1000&page=${page}`;
+    const raw = await wbFetchJson(url);
+    if (!Array.isArray(raw) || raw.length < 2) break;
+    totalPages = raw[0].pages || 1;
+    if (Array.isArray(raw[1])) allEntries.push(...raw[1]);
+    page++;
+  }
+
+  const latestByCountry = {};
+  for (const entry of allEntries) {
+    if (entry.value === null || entry.value === undefined) continue;
+    const iso3 = entry.countryiso3code;
+    if (!iso3 || iso3.length !== 3) continue;
+    const year = parseInt(entry.date, 10);
+    if (!latestByCountry[iso3] || year > latestByCountry[iso3].year) {
+      latestByCountry[iso3] = { value: entry.value, name: entry.country?.value || iso3, year };
+    }
+  }
+  return latestByCountry;
+}
+
+function wbNormalize(val, max) {
+  if (val === undefined || val === null) return null;
+  return Math.min(100, (val / max) * 100);
+}
+
+function wbComputeRankings(indicatorData) {
+  const allCountries = new Set();
+  for (const data of Object.values(indicatorData)) {
+    Object.keys(data).forEach(c => allCountries.add(c));
+  }
+  const scores = [];
+  for (const cc of allCountries) {
+    const components = {
+      internet:  wbNormalize(indicatorData.internet[cc]?.value, WB_NORMALIZE_MAX.internet),
+      mobile:    wbNormalize(indicatorData.mobile[cc]?.value, WB_NORMALIZE_MAX.mobile),
+      broadband: wbNormalize(indicatorData.broadband[cc]?.value, WB_NORMALIZE_MAX.broadband),
+      rdSpend:   wbNormalize(indicatorData.rdSpend[cc]?.value, WB_NORMALIZE_MAX.rdSpend),
+    };
+    let totalWeight = 0, weightedSum = 0;
+    for (const [key, weight] of Object.entries(WB_WEIGHTS)) {
+      if (components[key] !== null) { weightedSum += components[key] * weight; totalWeight += weight; }
+    }
+    const score = totalWeight > 0 ? weightedSum / totalWeight : 0;
+    const name = indicatorData.internet[cc]?.name || indicatorData.mobile[cc]?.name || cc;
+    scores.push({ country: cc, countryName: name, score: Math.round(score * 10) / 10, rank: 0, components });
+  }
+  scores.sort((a, b) => b.score - a.score);
+  scores.forEach((s, i) => { s.rank = i + 1; });
+  return scores;
+}
+
+async function wbFetchProgress() {
+  const currentYear = new Date().getFullYear();
+  const results = [];
+  for (const ind of WB_PROGRESS_INDICATORS) {
+    const startYear = currentYear - ind.years;
+    const url = `https://api.worldbank.org/v2/country/1W/indicator/${ind.code}?format=json&date=${startYear}:${currentYear}&per_page=1000`;
+    try {
+      const raw = await wbFetchJson(url);
+      if (!Array.isArray(raw) || raw.length < 2 || !Array.isArray(raw[1])) {
+        results.push({ id: ind.id, code: ind.code, data: [], invertTrend: ind.invertTrend });
+        continue;
+      }
+      const data = raw[1]
+        .filter(e => e.value !== null && e.value !== undefined)
+        .map(e => ({ year: parseInt(e.date, 10), value: e.value }))
+        .filter(d => !isNaN(d.year))
+        .sort((a, b) => a.year - b.year);
+      results.push({ id: ind.id, code: ind.code, data, invertTrend: ind.invertTrend });
+    } catch (e) {
+      console.warn(`[WB] Progress ${ind.code} failed:`, e?.message);
+      results.push({ id: ind.id, code: ind.code, data: [], invertTrend: ind.invertTrend });
+    }
+  }
+  return results;
+}
+
+async function wbFetchRenewable() {
+  const currentYear = new Date().getFullYear();
+  const startYear = currentYear - 35;
+  const codes = WB_RENEWABLE_REGIONS.join(';');
+  const url = `https://api.worldbank.org/v2/country/${codes}/indicator/EG.ELC.RNEW.ZS?format=json&date=${startYear}:${currentYear}&per_page=1000`;
+  try {
+    const raw = await wbFetchJson(url);
+    if (!Array.isArray(raw) || raw.length < 2 || !Array.isArray(raw[1])) {
+      return { globalPercentage: 0, globalYear: 0, historicalData: [], regions: [] };
+    }
+    const entries = raw[1].filter(e => e.value !== null && e.value !== undefined);
+    const byRegion = {};
+    for (const e of entries) {
+      const code = e.countryiso3code || e.country?.id;
+      if (!code) continue;
+      if (!byRegion[code]) byRegion[code] = [];
+      byRegion[code].push({ year: parseInt(e.date, 10), value: e.value });
+    }
+    for (const arr of Object.values(byRegion)) arr.sort((a, b) => a.year - b.year);
+
+    const worldData = byRegion['WLD'] || byRegion['1W'] || [];
+    const latest = worldData.length ? worldData[worldData.length - 1] : null;
+    const regions = [];
+    for (const code of WB_RENEWABLE_REGIONS) {
+      if (code === '1W') continue;
+      const rd = byRegion[code] || [];
+      if (!rd.length) continue;
+      const lr = rd[rd.length - 1];
+      regions.push({ code, name: WB_RENEWABLE_REGION_NAMES[code] || code, percentage: lr.value, year: lr.year });
+    }
+    regions.sort((a, b) => b.percentage - a.percentage);
+    return { globalPercentage: latest?.value || 0, globalYear: latest?.year || 0, historicalData: worldData, regions };
+  } catch (e) {
+    console.warn('[WB] Renewable fetch failed:', e?.message);
+    return { globalPercentage: 0, globalYear: 0, historicalData: [], regions: [] };
+  }
+}
+
+async function seedWorldBank() {
+  try {
+    console.log('[WB] Fetching tech readiness indicators...');
+    const indicatorData = {};
+    for (const { key, id, dateRange } of WB_INDICATORS) {
+      indicatorData[key] = await wbFetchIndicator(id, dateRange);
+      console.log(`[WB]   ${id}: ${Object.keys(indicatorData[key]).length} countries`);
+    }
+    const rankings = wbComputeRankings(indicatorData);
+    console.log(`[WB] Rankings: ${rankings.length} countries`);
+
+    console.log('[WB] Fetching progress indicators...');
+    const progressData = await wbFetchProgress();
+    const progressWithData = progressData.filter(p => p.data.length > 0);
+    console.log(`[WB] Progress: ${progressWithData.length}/${progressData.length} with data`);
+
+    console.log('[WB] Fetching renewable energy...');
+    const renewableData = await wbFetchRenewable();
+    console.log(`[WB] Renewable: global=${renewableData.globalPercentage}%, ${renewableData.regions.length} regions`);
+
+    if (rankings.length === 0) {
+      console.warn('[WB] No rankings — aborting seed');
+      return;
+    }
+
+    const metaTtl = WB_TTL_SECONDS + 3600;
+    let ok = await upstashSet(WB_BOOTSTRAP_KEY, rankings, WB_TTL_SECONDS);
+    console.log(`[WB] techReadiness: ${rankings.length} rankings (redis: ${ok ? 'OK' : 'FAIL'})`);
+    await upstashSet(`seed-meta:${WB_BOOTSTRAP_KEY}`, { fetchedAt: Date.now(), recordCount: rankings.length }, metaTtl);
+
+    if (progressWithData.length > 0) {
+      ok = await upstashSet(WB_PROGRESS_KEY, progressData, WB_TTL_SECONDS);
+      console.log(`[WB] progressData: ${progressWithData.length} indicators (redis: ${ok ? 'OK' : 'FAIL'})`);
+      await upstashSet(`seed-meta:${WB_PROGRESS_KEY}`, { fetchedAt: Date.now(), recordCount: progressWithData.length }, metaTtl);
+    }
+
+    if (renewableData.historicalData.length > 0) {
+      ok = await upstashSet(WB_RENEWABLE_KEY, renewableData, WB_TTL_SECONDS);
+      console.log(`[WB] renewableEnergy: ${renewableData.regions.length} regions (redis: ${ok ? 'OK' : 'FAIL'})`);
+      await upstashSet(`seed-meta:${WB_RENEWABLE_KEY}`, { fetchedAt: Date.now(), recordCount: renewableData.historicalData.length }, metaTtl);
+    }
+
+    console.log('[WB] Seed complete');
+  } catch (e) {
+    console.warn('[WB] Seed error:', e?.message || e);
+  }
+}
+
+async function startWorldBankSeedLoop() {
+  if (!UPSTASH_ENABLED) {
+    console.log('[WB] Disabled (no Upstash Redis)');
+    return;
+  }
+  console.log(`[WB] Seed loop starting (interval ${WB_SEED_INTERVAL_MS / 1000 / 60 / 60}h)`);
+  seedWorldBank().catch(e => console.warn('[WB] Initial seed error:', e?.message || e));
+  setInterval(() => {
+    seedWorldBank().catch(e => console.warn('[WB] Seed error:', e?.message || e));
+  }, WB_SEED_INTERVAL_MS).unref?.();
 }
 
 function gzipSyncBuffer(body) {
@@ -5967,6 +6207,7 @@ server.listen(PORT, () => {
   startGpsJamSeedLoop();
   startWeatherSeedLoop();
   startSpendingSeedLoop();
+  startWorldBankSeedLoop();
 });
 
 wss.on('connection', (ws, req) => {

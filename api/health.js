@@ -89,7 +89,7 @@ const SEED_META = {
   positiveGeoEvents:{ key: 'seed-meta:positive-events:geo',       maxStaleMin: 60 },
   riskScores:       { key: 'seed-meta:risk:scores',               maxStaleMin: 30 },
   iranEvents:       { key: 'seed-meta:conflict:iran-events',      maxStaleMin: 10080 },
-  ucdpEvents:       { key: 'seed-meta:conflict:ucdp-events',      maxStaleMin: 60 },
+  ucdpEvents:       { key: 'seed-meta:conflict:ucdp-events',      maxStaleMin: 420 },
   weatherAlerts:    { key: 'seed-meta:weather:alerts',             maxStaleMin: 30 },
   spending:         { key: 'seed-meta:economic:spending',          maxStaleMin: 120 },
   sectors:          { key: 'seed-meta:market:sectors',             maxStaleMin: 30 },
