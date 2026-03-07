@@ -8,7 +8,7 @@ import { getStreamQuality, subscribeStreamQualityChange } from '@/services/ai-fl
 import { isMobileDevice } from '@/utils';
 import { getLiveStreamsAlwaysOn, subscribeLiveStreamsSettingsChange } from '@/services/live-stream-settings';
 
-type WebcamRegion = 'iran' | 'middle-east' | 'europe' | 'asia' | 'americas' | 'space';
+type WebcamRegion = 'iran' | 'middle-east' | 'turkey' | 'europe' | 'asia' | 'americas' | 'space';
 
 interface WebcamFeed {
   id: string;
@@ -33,6 +33,13 @@ const WEBCAM_FEEDS: WebcamFeed[] = [
   { id: 'tel-aviv', city: 'Tel Aviv', country: 'Israel', region: 'middle-east', channelHandle: '@IsraelLiveCam', fallbackVideoId: 'gmtlJ_m2r5A' },
   { id: 'mecca', city: 'Mecca', country: 'Saudi Arabia', region: 'middle-east', channelHandle: '@MakkahLive', fallbackVideoId: 'Cm1v4bteXbI' },
   { id: 'beirut-mtv', city: 'Beirut', country: 'Lebanon', region: 'middle-east', channelHandle: '@MTVLebanonNews', fallbackVideoId: 'djF-Lkgfp6k' },
+  // Turkey — verified livestreams Mar 2026
+  { id: 'istanbul-multi', city: 'Istanbul', country: 'Turkey', region: 'turkey', channelHandle: '@IstanbulLiveCity', fallbackVideoId: '5UOLtygL3q8' },
+  { id: 'istanbul-taksim', city: 'Istanbul Taksim', country: 'Turkey', region: 'turkey', channelHandle: '@LiveCAMISTANBUL', fallbackVideoId: 'Xzp6k_PBvcU' },
+  { id: 'istanbul-istiklal', city: 'Istanbul Istiklal', country: 'Turkey', region: 'turkey', channelHandle: '@LiveCamIstanbul', fallbackVideoId: 'yJ8207Eg9g8' },
+  { id: 'izmir', city: 'Izmir', country: 'Turkey', region: 'turkey', channelHandle: '@IzmirLiveCam', fallbackVideoId: 't5yAIHqeXxk' },
+  { id: 'bodrum', city: 'Bodrum', country: 'Turkey', region: 'turkey', channelHandle: '@BodrumCastleCam', fallbackVideoId: '0VlaR0x1HZc' },
+  { id: 'alanya', city: 'Alanya', country: 'Turkey', region: 'turkey', channelHandle: '@AlanyaWebcam', fallbackVideoId: 'ko1nJWo-SQk' },
   // Europe
   { id: 'kyiv', city: 'Kyiv', country: 'Ukraine', region: 'europe', channelHandle: '@DWNews', fallbackVideoId: '-Q7FuPINDjA' },
   { id: 'odessa', city: 'Odessa', country: 'Ukraine', region: 'europe', channelHandle: '@UkraineLiveCam', fallbackVideoId: 'e2gC37ILQmk' },
@@ -176,6 +183,7 @@ export class LiveWebcamsPanel extends Panel {
       { key: 'iran', label: t('components.webcams.regions.iran') },
       { key: 'all', label: t('components.webcams.regions.all') },
       { key: 'middle-east', label: t('components.webcams.regions.mideast') },
+      { key: 'turkey', label: t('components.webcams.regions.turkey') },
       { key: 'europe', label: t('components.webcams.regions.europe') },
       { key: 'americas', label: t('components.webcams.regions.americas') },
       { key: 'asia', label: t('components.webcams.regions.asia') },
