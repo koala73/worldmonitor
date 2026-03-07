@@ -88,6 +88,7 @@ import {
 import type { GulfInvestment } from '@/types';
 import { resolveTradeRouteSegments, TRADE_ROUTES as TRADE_ROUTES_LIST, type TradeRouteSegment } from '@/config/trade-routes';
 import { getLayersForVariant, resolveLayerLabel, type MapVariant } from '@/config/map-layer-definitions';
+import { getSecretState } from '@/services/runtime-config';
 import { MapPopup, type PopupType } from './MapPopup';
 import {
   updateHotspotEscalation,
@@ -515,7 +516,7 @@ export class DeckGLMap {
     const primaryStyle = isHappyVariant
       ? (getCurrentTheme() === 'light' ? HAPPY_LIGHT_STYLE : HAPPY_DARK_STYLE)
       : getStyleForProvider(initialProvider, initialMapTheme);
-    if (!isHappyVariant && typeof primaryStyle === 'string' && !primaryStyle.includes('pmtiles') && initialProvider !== 'carto') {
+    if (!isHappyVariant && typeof primaryStyle === 'string' && !primaryStyle.includes('pmtiles')) {
       this.usedFallbackStyle = true;
       const attr = this.container.querySelector('.map-attribution');
       if (attr) attr.innerHTML = '© <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>';
@@ -3537,10 +3538,12 @@ export class DeckGLMap {
     toggles.className = 'layer-toggles deckgl-layer-toggles';
 
     const layerDefs = getLayersForVariant((SITE_VARIANT || 'full') as MapVariant, 'flat');
+    const _wmKey = getSecretState('WORLDMONITOR_API_KEY').present;
     const layerConfig = layerDefs.map(def => ({
       key: def.key,
       label: resolveLayerLabel(def, t),
       icon: def.icon,
+      premium: def.premium,
     }));
 
     toggles.innerHTML = `
@@ -3550,13 +3553,16 @@ export class DeckGLMap {
         <button class="toggle-collapse">&#9660;</button>
       </div>
       <div class="toggle-list" style="max-height: 32vh; overflow-y: auto; scrollbar-width: thin;">
-        ${layerConfig.map(({ key, label, icon }) => `
-          <label class="layer-toggle" data-layer="${key}">
-            <input type="checkbox" ${this.state.layers[key as keyof MapLayers] ? 'checked' : ''}>
+        ${layerConfig.map(({ key, label, icon, premium }) => {
+          const isLocked = premium === 'locked' && !_wmKey;
+          const isEnhanced = premium === 'enhanced' && !_wmKey;
+          return `
+          <label class="layer-toggle${isLocked ? ' layer-toggle-locked' : ''}" data-layer="${key}">
+            <input type="checkbox" ${this.state.layers[key as keyof MapLayers] ? 'checked' : ''}${isLocked ? ' disabled' : ''}>
             <span class="toggle-icon">${icon}</span>
-            <span class="toggle-label">${label}</span>
-          </label>
-        `).join('')}
+            <span class="toggle-label">${label}${isLocked ? ' \uD83D\uDD12' : ''}${isEnhanced ? ' <span class="layer-pro-badge">PRO</span>' : ''}</span>
+          </label>`;
+        }).join('')}
       </div>
     `;
 

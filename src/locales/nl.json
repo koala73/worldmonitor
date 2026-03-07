@@ -304,9 +304,9 @@
     "countryIntel": {
       "identifying": "Land identificeren...",
       "locating": "Regio lokaliseren...",
-    "geocodeFailed": "Kan geen land identificeren op deze locatie",
-    "retryBtn": "Opnieuw proberen",
-    "closeBtn": "Sluiten",
+      "geocodeFailed": "Kan geen land identificeren op deze locatie",
+      "retryBtn": "Opnieuw proberen",
+      "closeBtn": "Sluiten",
       "instabilityIndex": "Instabiliteitsindex",
       "protests": "protesten",
       "militaryAircraft": "miljoen vliegtuigen",

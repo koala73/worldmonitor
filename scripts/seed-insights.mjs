@@ -70,7 +70,7 @@ const LLM_PROVIDERS = [
     name: 'openrouter',
     envKey: 'OPENROUTER_API_KEY',
     apiUrl: 'https://openrouter.ai/api/v1/chat/completions',
-    model: 'openai/gpt-oss-safeguard-20b:nitro',
+    model: 'google/gemini-2.5-flash',
     headers: (key) => ({ 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'WorldMonitor', 'User-Agent': CHROME_UA }),
     timeout: 20_000,
   },
@@ -205,9 +205,19 @@ async function fetchInsights() {
   if (!digest) {
     console.log('  Digest not in Redis, warming cache via RPC...');
     await warmDigestCache();
+    // Wait for RPC write to propagate to Redis
+    await new Promise(r => setTimeout(r, 3_000));
     digest = await readDigestFromRedis();
   }
-  if (!digest) throw new Error('No news digest found in Redis');
+  if (!digest) {
+    // LKG fallback: reuse existing insights if digest is unavailable
+    const existing = await readExistingInsights();
+    if (existing?.topStories?.length) {
+      console.log('  Digest unavailable — reusing existing insights (LKG)');
+      return existing;
+    }
+    throw new Error('No news digest found in Redis');
+  }
 
   // Digest shape: { categories: { politics: { items: [...] }, ... }, feedStatuses, generatedAt }
   let items;
@@ -318,5 +328,6 @@ runSeed('news', 'insights', CANONICAL_KEY, fetchInsights, {
   sourceVersion: 'digest-clustering-v1',
 }).catch((err) => {
   console.error('FATAL:', err.message || err);
-  process.exit(1);
+  // Exit gracefully for cron — health endpoint flags stale data via seed-meta.
+  process.exit(0);
 });

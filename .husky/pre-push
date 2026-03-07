@@ -22,5 +22,8 @@ done
 echo "Running edge function tests..."
 node --test tests/edge-functions.test.mjs || exit 1
 
+echo "Running markdown lint..."
+npm run lint:md || exit 1
+
 echo "Running version sync check..."
 npm run version:check || exit 1

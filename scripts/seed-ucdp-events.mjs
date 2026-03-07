@@ -58,7 +58,7 @@ async function fetchGedPage(version, page, token) {
   if (token) headers['x-ucdp-access-token'] = token;
   const resp = await fetch(
     `https://ucdpapi.pcr.uu.se/api/gedevents/${version}?pagesize=${UCDP_PAGE_SIZE}&page=${page}`,
-    { headers, signal: AbortSignal.timeout(30_000) },
+    { headers, signal: AbortSignal.timeout(90_000) },
   );
   if (!resp.ok) throw new Error(`UCDP GED API error (${version}, page ${page}): ${resp.status}`);
   return resp.json();
@@ -66,16 +66,17 @@ async function fetchGedPage(version, page, token) {
 
 async function discoverVersion(token) {
   const candidates = buildVersionCandidates();
-  console.log(`  Probing versions: ${candidates.join(', ')}`);
-  const results = await Promise.allSettled(
-    candidates.map(async (version) => {
+  console.log(`  Probing versions sequentially: ${candidates.join(', ')}`);
+  for (const version of candidates) {
+    try {
+      console.log(`  Trying v${version}...`);
       const page0 = await fetchGedPage(version, 0, token);
-      if (!Array.isArray(page0?.Result)) throw new Error('No results');
+      if (!Array.isArray(page0?.Result)) continue;
+      console.log(`  Found v${version} with ${page0.Result.length} events on page 0`);
       return { version, page0 };
-    }),
-  );
-  for (const result of results) {
-    if (result.status === 'fulfilled') return result.value;
+    } catch (err) {
+      console.warn(`  v${version} failed: ${err.message}`);
+    }
   }
   throw new Error('No valid UCDP GED version found');
 }
@@ -212,6 +213,18 @@ async function main() {
   const result = await resp.json();
   console.log('  Redis SET result:', result);
 
+  // Write seed-meta for health endpoint freshness tracking
+  const metaKey = 'seed-meta:conflict:ucdp-events';
+  const meta = { fetchedAt: Date.now(), recordCount: capped.length };
+  const metaBody = JSON.stringify(['SET', metaKey, JSON.stringify(meta), 'EX', 604800]);
+  await fetch(redisUrl, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${redisToken}`, 'Content-Type': 'application/json' },
+    body: metaBody,
+    signal: AbortSignal.timeout(5_000),
+  }).catch(() => console.error('  seed-meta write failed'));
+  console.log(`  Wrote seed-meta: ${metaKey}`);
+
   const getResp = await fetch(`${redisUrl}/get/${encodeURIComponent(REDIS_KEY)}`, {
     headers: { Authorization: `Bearer ${redisToken}` },
     signal: AbortSignal.timeout(5_000),
@@ -230,5 +243,7 @@ async function main() {
 
 main().catch(err => {
   console.error('FATAL:', err.message || err);
-  process.exit(1);
+  // Exit gracefully for cron — crashing restarts the container unnecessarily.
+  // The health endpoint will flag stale data via seed-meta.
+  process.exit(0);
 });

@@ -1,0 +1,150 @@
+#!/usr/bin/env node
+
+import { loadEnvFile, CHROME_UA, getRedisCredentials, runSeed } from './_seed-utils.mjs';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+loadEnvFile(import.meta.url);
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const CANONICAL_KEY = 'conflict:iran-events:v1';
+
+const LOCATION_COORDS = {
+  'tehran':        { lat: 35.6892, lon: 51.3890 },
+  'isfahan':       { lat: 32.6546, lon: 51.6680 },
+  'shiraz':        { lat: 29.5918, lon: 52.5837 },
+  'mashhad':       { lat: 36.2605, lon: 59.6168 },
+  'tabriz':        { lat: 38.0800, lon: 46.2919 },
+  'ahvaz':         { lat: 31.3183, lon: 48.6706 },
+  'kermanshah':    { lat: 34.3142, lon: 47.0650 },
+  'urmia':         { lat: 37.5527, lon: 45.0761 },
+  'bushehr':       { lat: 28.9234, lon: 50.8203 },
+  'bandar abbas':  { lat: 27.1865, lon: 56.2808 },
+  'erbil':         { lat: 36.1912, lon: 44.0119 },
+  'baghdad':       { lat: 33.3152, lon: 44.3661 },
+  'basra':         { lat: 30.5085, lon: 47.7804 },
+  'mosul':         { lat: 36.3350, lon: 43.1189 },
+  'tel aviv':      { lat: 32.0853, lon: 34.7818 },
+  'israel':        { lat: 31.7683, lon: 35.2137 },
+  'negev':         { lat: 30.8, lon: 34.8 },
+  'manama':        { lat: 26.2285, lon: 50.5860 },
+  'bahrain':       { lat: 26.0667, lon: 50.5577 },
+  'kuwait':        { lat: 29.3759, lon: 47.9774 },
+  'dubai':         { lat: 25.2048, lon: 55.2708 },
+  'abu dhabi':     { lat: 24.4539, lon: 54.3773 },
+  'fujairah':      { lat: 25.1288, lon: 56.3265 },
+  'qatar':         { lat: 25.2854, lon: 51.5310 },
+  'doha':          { lat: 25.2854, lon: 51.5310 },
+  'jordan':        { lat: 31.9454, lon: 35.9284 },
+  'irbid':         { lat: 32.5560, lon: 35.8500 },
+  'syria':         { lat: 34.8021, lon: 38.9968 },
+  'daraa':         { lat: 32.6189, lon: 36.1021 },
+  'cyprus':        { lat: 34.7071, lon: 33.0226 },
+  'akrotiri':      { lat: 34.5839, lon: 32.9879 },
+  'hormuz':        { lat: 27.0, lon: 56.5 },
+  'strait of hormuz': { lat: 26.5, lon: 56.3 },
+  'parchin':       { lat: 35.5167, lon: 51.7667 },
+  'mehrabad':      { lat: 35.6892, lon: 51.3134 },
+  'paveh':         { lat: 35.0442, lon: 46.3558 },
+  'poldokhtar':    { lat: 33.1517, lon: 47.7133 },
+  'azadi':         { lat: 35.6997, lon: 51.3380 },
+  'kohak':         { lat: 35.6000, lon: 51.5000 },
+  'zibashir':      { lat: 29.55, lon: 52.55 },
+  'jam':           { lat: 27.82, lon: 52.35 },
+  'london':        { lat: 51.5074, lon: -0.1278 },
+  'azerbaijan':    { lat: 40.4093, lon: 49.8671 },
+  'baku':          { lat: 40.4093, lon: 49.8671 },
+  'gibraltar':     { lat: 36.1408, lon: -5.3536 },
+  'iran':          { lat: 32.4279, lon: 53.6880 },
+  'iraq':          { lat: 33.2232, lon: 43.6793 },
+  'saudi':         { lat: 24.7136, lon: 46.6753 },
+  'uae':           { lat: 24.4539, lon: 54.3773 },
+  'al udeid':      { lat: 25.1173, lon: 51.3150 },
+  'jomhouri':      { lat: 35.6850, lon: 51.4050 },
+  'jurf al-sakhar': { lat: 32.9500, lon: 44.1000 },
+  'haji omeran':   { lat: 36.6500, lon: 45.0500 },
+  'nineveh':       { lat: 36.3500, lon: 43.1500 },
+  'rashidiya':     { lat: 36.4000, lon: 43.1000 },
+};
+
+const CATEGORY_MAP = {
+  cat1: 'military',
+  cat2: 'international',
+  cat6: 'political',
+  cat7: 'civil',
+  cat9: 'intelligence',
+  cat10: 'airstrike',
+  cat11: 'defense',
+};
+
+function geolocate(title) {
+  const lower = title.toLowerCase();
+  for (const [name, coords] of Object.entries(LOCATION_COORDS)) {
+    if (lower.includes(name)) return { ...coords, locationName: name };
+  }
+  return { lat: 32.4279, lon: 53.6880, locationName: 'Iran' };
+}
+
+function categorizeSeverity(title) {
+  const lower = title.toLowerCase();
+  if (/killed|dead|casualties|death toll|wounded/.test(lower)) return 'critical';
+  if (/airstrike|bombing|missile|explosion|struck|destroyed/.test(lower)) return 'high';
+  if (/intercept|defense|sirens|alert/.test(lower)) return 'elevated';
+  return 'moderate';
+}
+
+function parseRelativeTime(timeStr) {
+  const now = Date.now();
+  const match = timeStr.match(/(\d+)\s+hours?\s+ago/);
+  if (match) return now - parseInt(match[1]) * 3600_000;
+  const minMatch = timeStr.match(/(\d+)\s+min/);
+  if (minMatch) return now - parseInt(minMatch[1]) * 60_000;
+  return now;
+}
+
+async function fetchIranEvents() {
+  const dataPath = process.argv[2] || join(__dirname, 'data', 'iran-events-latest.json');
+  console.log(`  Reading from: ${dataPath}`);
+
+  const raw = JSON.parse(readFileSync(dataPath, 'utf8'));
+  const events = raw.filter(e => e.id && e.title);
+
+  console.log(`  Raw events: ${events.length}`);
+
+  const mapped = events.map(e => {
+    const geo = geolocate(e.title);
+    const cat = CATEGORY_MAP[e.category] || 'general';
+    return {
+      id: e.id,
+      title: e.title.slice(0, 500),
+      category: cat,
+      sourceUrl: e.link || '',
+      latitude: geo.lat,
+      longitude: geo.lon,
+      locationName: geo.locationName,
+      timestamp: parseRelativeTime(e.time || ''),
+      severity: categorizeSeverity(e.title),
+    };
+  });
+
+  mapped.sort((a, b) => b.timestamp - a.timestamp);
+
+  return {
+    events: mapped,
+    scrapedAt: Date.now(),
+  };
+}
+
+function validate(data) {
+  return Array.isArray(data?.events) && data.events.length >= 1;
+}
+
+runSeed('conflict', 'iran-events', CANONICAL_KEY, fetchIranEvents, {
+  validateFn: validate,
+  ttlSeconds: 86400,
+  sourceVersion: 'liveuamap-manual-v1',
+}).catch((err) => {
+  console.error('FATAL:', err.message || err);
+  process.exit(0);
+});

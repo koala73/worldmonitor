@@ -14,7 +14,7 @@ import { getCorsHeaders, isDisallowedOrigin } from './cors';
 // @ts-expect-error — JS module, no declaration file
 import { validateApiKey } from '../api/_api-key.js';
 import { mapErrorToResponse } from './error-mapper';
-import { checkRateLimit } from './_shared/rate-limit';
+import { checkRateLimit, checkEndpointRateLimit, hasEndpointRatePolicy } from './_shared/rate-limit';
 import { drainResponseHeaders } from './_shared/response-headers';
 import type { ServerOptions } from '../src/generated/server/worldmonitor/seismology/v1/service_server';
 
@@ -166,9 +166,17 @@ export function createDomainGateway(
       });
     }
 
-    // IP-based rate limiting (60 req/min sliding window)
-    const rateLimitResponse = await checkRateLimit(request, corsHeaders);
-    if (rateLimitResponse) return rateLimitResponse;
+    // IP-based rate limiting — two-phase: endpoint-specific first, then global fallback
+    const rawPathname = new URL(request.url).pathname;
+    const pathname = rawPathname.length > 1 ? rawPathname.replace(/\/+$/, '') : rawPathname;
+
+    const endpointRlResponse = await checkEndpointRateLimit(request, pathname, corsHeaders);
+    if (endpointRlResponse) return endpointRlResponse;
+
+    if (!hasEndpointRatePolicy(pathname)) {
+      const rateLimitResponse = await checkRateLimit(request, corsHeaders);
+      if (rateLimitResponse) return rateLimitResponse;
+    }
 
     // Route matching — if POST doesn't match, convert to GET for stale clients
     let matchedHandler = router.match(request);
@@ -233,7 +241,6 @@ export function createDomainGateway(
         mergedHeaders.set('Cache-Control', 'no-store');
         mergedHeaders.set('X-Cache-Tier', 'no-store');
       } else {
-        const pathname = new URL(request.url).pathname;
         const rpcName = pathname.split('/').pop() ?? '';
         const envOverride = process.env[`CACHE_TIER_OVERRIDE_${rpcName.replace(/-/g, '_').toUpperCase()}`] as CacheTier | undefined;
         const tier = (envOverride && envOverride in TIER_HEADERS ? envOverride : null) ?? RPC_CACHE_TIER[pathname] ?? 'medium';

@@ -8,7 +8,7 @@ import {
   Cable, Wifi, MapPin, Users, TrendingUp
 } from 'lucide-react';
 
-const API_BASE = 'https://api.worldmonitor.app';
+const API_BASE = location.hostname === 'localhost' ? 'https://api.worldmonitor.app' : '';
 const TURNSTILE_SITE_KEY = '0x4AAAAAACnaYgHIyxclu8Tj';
 const PRO_URL = 'https://worldmonitor.app/pro';
 

@@ -11,6 +11,8 @@ const BOOTSTRAP_KEYS = {
   commodityQuotes:   'market:commodities-bootstrap:v1',
   cyberThreats:      'cyber:threats-bootstrap:v2',
   techReadiness:     'economic:worldbank-techreadiness:v1',
+  progressData:      'economic:worldbank-progress:v1',
+  renewableEnergy:   'economic:worldbank-renewable:v1',
   positiveGeoEvents: 'positive-events:geo-bootstrap:v1',
   riskScores:        'risk:scores:sebuf:stale:v1',
   naturalEvents:     'natural:events:v1',
@@ -78,6 +80,14 @@ const SEED_META = {
   giving:           { key: 'seed-meta:giving:summary',            maxStaleMin: 10080 },
   gpsjam:           { key: 'seed-meta:intelligence:gpsjam',       maxStaleMin: 720 },
   cableHealth:      { key: 'seed-meta:cable-health',              maxStaleMin: 60 },
+  positiveGeoEvents:{ key: 'seed-meta:positive-events:geo',       maxStaleMin: 60 },
+  riskScores:       { key: 'seed-meta:risk:scores',               maxStaleMin: 30 },
+  iranEvents:       { key: 'seed-meta:conflict:iran-events',      maxStaleMin: 10080 },
+  ucdpEvents:       { key: 'seed-meta:conflict:ucdp-events',      maxStaleMin: 60 },
+  sectors:          { key: 'seed-meta:market:sectors',             maxStaleMin: 30 },
+  techReadiness:    { key: 'seed-meta:economic:worldbank-techreadiness:v1', maxStaleMin: 10080 },
+  progressData:     { key: 'seed-meta:economic:worldbank-progress:v1',     maxStaleMin: 10080 },
+  renewableEnergy:  { key: 'seed-meta:economic:worldbank-renewable:v1',    maxStaleMin: 10080 },
 };
 
 // Standalone keys that are populated on-demand by RPC handlers (not seeds).

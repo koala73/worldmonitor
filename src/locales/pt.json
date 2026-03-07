@@ -304,9 +304,9 @@
     "countryIntel": {
       "identifying": "Identificando país...",
       "locating": "Localizando região...",
-    "geocodeFailed": "Não foi possível identificar um país nesta localização",
-    "retryBtn": "Tentar novamente",
-    "closeBtn": "Fechar",
+      "geocodeFailed": "Não foi possível identificar um país nesta localização",
+      "retryBtn": "Tentar novamente",
+      "closeBtn": "Fechar",
       "instabilityIndex": "Índice de Instabilidade",
       "protests": "protestos",
       "militaryAircraft": "mil. aeronave",

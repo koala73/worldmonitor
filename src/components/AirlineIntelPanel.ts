@@ -131,7 +131,6 @@ export class AirlineIntelPanel extends Panel {
             }
         });
 
-        this.addStyles();
         void this.refresh();
 
         // Auto-refresh every 5 min — refresh() loads ops + active tab
@@ -316,9 +315,9 @@ export class AirlineIntelPanel extends Panel {
             return;
         }
         const items = this.newsData.map(n => `
-      <div class="news-item" style="padding:8px 0;border-bottom:1px solid var(--border-color,#333)">
+      <div class="news-item" style="padding:8px 0;border-bottom:1px solid var(--border,#2a2a2a)">
         <a href="${sanitizeUrl(n.url)}" target="_blank" rel="noopener" class="news-link">${escapeHtml(n.title)}</a>
-        <div class="news-meta" style="font-size:11px;color:var(--text-secondary,#999);margin-top:2px">${escapeHtml(n.sourceName)} · ${n.publishedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+        <div class="news-meta" style="font-size:11px;color:var(--text-dim,#888);margin-top:2px">${escapeHtml(n.sourceName)} · ${n.publishedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
       </div>`).join('');
         this.content.innerHTML = `<div class="news-list" style="padding:0 4px">${items}</div>`;
     }
@@ -372,34 +371,5 @@ export class AirlineIntelPanel extends Panel {
 
     }
 
-    // ---- Styles ----
-    private addStyles(): void {
-        if (document.getElementById('airline-intel-styles')) return;
-        const style = document.createElement('style');
-        style.id = 'airline-intel-styles';
-        style.textContent = `
-      .airline-intel-tabs { display:flex;gap:2px;padding:8px 10px 0;flex-wrap:wrap;border-bottom:1px solid var(--border); }
-      .airline-intel-tabs .tab-btn { background:transparent;border:none;border-bottom:2px solid transparent;color:var(--text-dim,#9ca3af);cursor:pointer;font-size:11px;padding:6px 10px;transition:all .15s ease;white-space:nowrap; }
-      .airline-intel-tabs .tab-btn:hover { color:var(--text); }
-      .airline-intel-tabs .tab-btn.active { color:var(--accent);border-bottom-color:var(--accent); }
-      .airline-intel-content { overflow-y:auto;max-height:320px;padding:8px; }
-      .ops-grid,.flights-list,.carriers-list,.tracking-list { display:flex;flex-direction:column;gap:4px; }
-      .ops-row,.flight-row,.carrier-row,.track-row { display:flex;gap:8px;align-items:center;font-size:12px;padding:4px;border-radius:4px;transition:background .15s; }
-      .ops-row:hover,.flight-row:hover,.carrier-row:hover,.track-row:hover { background:var(--hover-bg,rgba(255,255,255,.04)); }
-      .ops-iata,.flight-num,.carrier-name,.track-cs { font-weight:600;min-width:36px; }
-      .ops-name,.flight-route { flex:1;color:var(--text-secondary,#9ca3af);overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
-      .ops-closed { color:#ef4444;font-weight:700;font-size:11px; }
-      .ops-notam { color:#f59e0b;font-size:11px; }
-      .price-row { display:flex;gap:8px;align-items:center;font-size:12px;padding:6px;border-bottom:1px solid var(--border-color,#333); }
-      .price-carrier { min-width:80px;font-weight:600; }
-      .price-route { flex:1;color:var(--text-secondary,#9ca3af); }
-      .price-input { background:var(--input-bg,#1e2533);border:1px solid var(--border-color,#374151);border-radius:4px;color:var(--text-primary,#e5e7eb);padding:4px 6px;font-size:12px; }
-      .demo-badge { display:inline-block;font-size:10px;padding:2px 6px;background:rgba(245,158,11,.15);border:1px solid #f59e0b;border-radius:3px;color:#f59e0b;margin-bottom:6px; }
-      .tp-badge { display:inline-block;font-size:10px;padding:2px 6px;background:rgba(96,165,250,.12);border:1px solid #60a5fa;border-radius:3px;color:#60a5fa;margin-bottom:6px; }
-      .no-data { color:var(--text-secondary,#9ca3af);font-size:12px;text-align:center;padding:20px 0; }
-      .news-link { color:var(--text-primary,#e5e7eb);text-decoration:none;font-size:12px;line-height:1.4; }
-      .news-link:hover { color:var(--accent,#60a5fa); }
-    `;
-        document.head.appendChild(style);
-    }
+    /* Styles moved to panels.css (PERF-012) */
 }

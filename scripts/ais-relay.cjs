@@ -1155,7 +1155,8 @@ async function seedSectorSummary() {
   }));
   const quotesPayload = { quotes: sectorQuotes, finnhubSkipped: false, skipReason: '', rateLimited: false };
   const ok2 = await upstashSet(quotesKey, quotesPayload, MARKET_SEED_TTL);
-  console.log(`[Market] Seeded ${sectors.length}/${SECTOR_SYMBOLS.length} sectors (redis: ${ok && ok2 ? 'OK' : 'PARTIAL'})`);
+  const ok3 = await upstashSet('seed-meta:market:sectors', { fetchedAt: Date.now(), recordCount: sectors.length }, 604800);
+  console.log(`[Market] Seeded ${sectors.length}/${SECTOR_SYMBOLS.length} sectors (redis: ${ok && ok2 && ok3 ? 'OK' : 'PARTIAL'})`);
   return sectors.length;
 }
 
@@ -2098,7 +2099,8 @@ async function seedPositiveEvents() {
     const payload = { events: capped, fetchedAt: Date.now() };
     const ok1 = await upstashSet(POSITIVE_EVENTS_RPC_KEY, payload, POSITIVE_EVENTS_TTL);
     const ok2 = await upstashSet(POSITIVE_EVENTS_BOOTSTRAP_KEY, payload, POSITIVE_EVENTS_TTL);
-    console.log(`[PositiveEvents] Seeded ${capped.length} events (redis: ${ok1 && ok2 ? 'OK' : 'PARTIAL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+    const ok3 = await upstashSet('seed-meta:positive-events:geo', { fetchedAt: Date.now(), recordCount: capped.length }, 604800);
+    console.log(`[PositiveEvents] Seeded ${capped.length} events (redis: ${ok1 && ok2 && ok3 ? 'OK' : 'PARTIAL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
   } catch (e) {
     console.warn('[PositiveEvents] Seed error:', e?.message || e);
   } finally {
@@ -2640,6 +2642,7 @@ async function seedCiiScores() {
     if (ok1) {
       await upstashSet(CII_STALE_KEY, payload, CII_STALE_TTL);
     }
+    await upstashSet('seed-meta:risk:scores', { fetchedAt: Date.now(), recordCount: ciiScores.length }, 604800);
     const topEntry = ciiScores[0];
     console.log(`[CII] Seeded ${ciiScores.length} scores (top: ${topEntry?.region}=${topEntry?.combinedScore}, acled:${Array.isArray(acled) ? acled.length : 0} redis:${ok1 ? 'OK' : 'FAIL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
   } catch (e) {

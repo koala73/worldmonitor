@@ -4,6 +4,7 @@ import { t } from '../services/i18n';
 import { h, replaceChildren, safeHtml } from '../utils/dom-utils';
 import { trackPanelResized } from '@/services/analytics';
 import { getAiFlowSettings } from '@/services/ai-flow-settings';
+import { getSecretState } from '@/services/runtime-config';
 
 export interface PanelOptions {
   id: string;
@@ -12,6 +13,7 @@ export interface PanelOptions {
   className?: string;
   trackActivity?: boolean;
   infoTooltip?: string;
+  premium?: 'locked' | 'enhanced';
 }
 
 const PANEL_SPANS_KEY = 'worldmonitor-panel-spans';
@@ -196,7 +198,9 @@ export class Panel {
   private contentDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private retryCallback: (() => void) | null = null;
   private retryCountdownTimer: ReturnType<typeof setInterval> | null = null;
+  private retryAttempt = 0;
   private _fetching = false;
+  private _locked = false;
 
   constructor(options: PanelOptions) {
     this.panelId = options.id;
@@ -242,6 +246,11 @@ export class Panel {
       this.newBadgeEl.className = 'panel-new-badge';
       this.newBadgeEl.style.display = 'none';
       headerLeft.appendChild(this.newBadgeEl);
+    }
+
+    if (options.premium === 'enhanced' && !getSecretState('WORLDMONITOR_API_KEY').present) {
+      const proBadge = h('span', { className: 'panel-pro-badge' }, t('premium.pro'));
+      headerLeft.appendChild(proBadge);
     }
 
     this.header.appendChild(headerLeft);
@@ -628,6 +637,7 @@ export class Panel {
   }
 
   public showLoading(message = t('common.loading')): void {
+    if (this._locked) return;
     this.clearRetryCountdown();
     replaceChildren(this.content,
       h('div', { className: 'panel-loading' },
@@ -640,54 +650,105 @@ export class Panel {
     );
   }
 
-  public showError(message = t('common.failedToLoad'), onRetry?: () => void): void {
+  public showError(message?: string, onRetry?: () => void, autoRetrySeconds?: number): void {
+    if (this._locked) return;
     this.clearRetryCountdown();
     if (onRetry !== undefined) this.retryCallback = onRetry;
-    const children: (HTMLElement | string)[] = [
-      h('div', { className: 'panel-error-icon' }, '\u2014'),
-      h('div', { className: 'panel-error-msg' }, message),
-    ];
-    if (this.retryCallback) {
-      children.push(
-        h('button', {
-          type: 'button',
-          className: 'panel-error-retry-btn',
-          'data-panel-retry': '',
-        }, t('common.retry')),
-      );
-    }
-    replaceChildren(this.content, h('div', { className: 'panel-error-state' }, ...children));
-  }
 
-  public showRetrying(message = t('common.retrying'), countdownSeconds?: number): void {
-    this.clearRetryCountdown();
-    const textNode = document.createTextNode(
-      countdownSeconds ? `${message} (${countdownSeconds}s)` : message,
+    const radarEl = h('div', { className: 'panel-loading-radar panel-error-radar' },
+      h('div', { className: 'panel-radar-sweep' }),
+      h('div', { className: 'panel-radar-dot error' }),
     );
-    const textEl = h('div', { className: 'panel-loading-text retrying' });
-    textEl.appendChild(textNode);
 
-    if (countdownSeconds && countdownSeconds > 0) {
-      let remaining = countdownSeconds;
+    const msgEl = h('div', { className: 'panel-error-msg' }, message || t('common.failedToLoad'));
+
+    const children: (HTMLElement | string)[] = [radarEl, msgEl];
+
+    if (this.retryCallback) {
+      const backoffSeconds = autoRetrySeconds ?? Math.min(15 * Math.pow(2, this.retryAttempt), 180);
+      this.retryAttempt++;
+      let remaining = Math.round(backoffSeconds);
+      const countdownEl = h('div', { className: 'panel-error-countdown' },
+        `${t('common.retrying')} (${remaining}s)`,
+      );
+      children.push(countdownEl);
       this.retryCountdownTimer = setInterval(() => {
         remaining--;
         if (remaining <= 0) {
           this.clearRetryCountdown();
-          textNode.textContent = message;
+          this.retryCallback?.();
           return;
         }
-        textNode.textContent = `${message} (${remaining}s)`;
+        countdownEl.textContent = `${t('common.retrying')} (${remaining}s)`;
+      }, 1000);
+    }
+    replaceChildren(this.content, h('div', { className: 'panel-error-state' }, ...children));
+  }
+
+  public resetRetryBackoff(): void {
+    this.retryAttempt = 0;
+  }
+
+  public showLocked(_features: string[] = []): void {
+    this._locked = true;
+    this.clearRetryCountdown();
+
+    for (let child = this.header.nextElementSibling; child && child !== this.content; child = child.nextElementSibling) {
+      (child as HTMLElement).style.display = 'none';
+    }
+    this.element.classList.add('panel-is-locked');
+
+    const lockSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>`;
+    const iconEl = h('div', { className: 'panel-locked-icon' });
+    iconEl.innerHTML = lockSvg;
+
+    const lockedChildren: (HTMLElement | string)[] = [
+      iconEl,
+      h('div', { className: 'panel-locked-desc' }, t('premium.lockedDesc')),
+    ];
+
+    const ctaBtn = h('button', { type: 'button', className: 'panel-locked-cta' }, t('premium.joinWaitlist'));
+    if (isDesktopRuntime()) {
+      ctaBtn.addEventListener('click', () => void invokeTauri<void>('open_settings_window_command').catch(() => {}));
+    } else {
+      ctaBtn.addEventListener('click', () => window.open('https://worldmonitor.app/pro', '_blank'));
+    }
+    lockedChildren.push(ctaBtn);
+
+    replaceChildren(this.content, h('div', { className: 'panel-locked-state' }, ...lockedChildren));
+  }
+
+  public showRetrying(message?: string, countdownSeconds?: number): void {
+    if (this._locked) return;
+    this.clearRetryCountdown();
+
+    const radarEl = h('div', { className: 'panel-loading-radar panel-error-radar' },
+      h('div', { className: 'panel-radar-sweep' }),
+      h('div', { className: 'panel-radar-dot error' }),
+    );
+
+    const msgEl = h('div', { className: 'panel-error-msg' }, message || t('common.retrying'));
+    const children: (HTMLElement | string)[] = [radarEl, msgEl];
+
+    if (countdownSeconds && countdownSeconds > 0) {
+      let remaining = countdownSeconds;
+      const countdownEl = h('div', { className: 'panel-error-countdown' },
+        `${t('common.retrying')} (${remaining}s)`,
+      );
+      children.push(countdownEl);
+      this.retryCountdownTimer = setInterval(() => {
+        remaining--;
+        if (remaining <= 0) {
+          this.clearRetryCountdown();
+          countdownEl.textContent = t('common.retrying');
+          return;
+        }
+        countdownEl.textContent = `${t('common.retrying')} (${remaining}s)`;
       }, 1000);
     }
 
     replaceChildren(this.content,
-      h('div', { className: 'panel-loading' },
-        h('div', { className: 'panel-loading-radar' },
-          h('div', { className: 'panel-radar-sweep' }),
-          h('div', { className: 'panel-radar-dot' }),
-        ),
-        textEl,
-      ),
+      h('div', { className: 'panel-error-state' }, ...children),
     );
   }
 
@@ -748,7 +809,9 @@ export class Panel {
   }
 
   public setContent(html: string): void {
+    if (this._locked) return;
     this.clearRetryCountdown();
+    this.retryAttempt = 0;
     if (this.pendingContentHtml === html || this.content.innerHTML === html) {
       return;
     }

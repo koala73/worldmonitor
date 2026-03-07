@@ -304,9 +304,9 @@
     "countryIntel": {
       "identifying": "Identifierar land...",
       "locating": "Hittar region...",
-    "geocodeFailed": "Kunde inte identifiera ett land på denna plats",
-    "retryBtn": "Försök igen",
-    "closeBtn": "Stäng",
+      "geocodeFailed": "Kunde inte identifiera ett land på denna plats",
+      "retryBtn": "Försök igen",
+      "closeBtn": "Stäng",
       "instabilityIndex": "Instabilitetsindex",
       "protests": "protester",
       "militaryAircraft": "mil. flygplan",

@@ -23,6 +23,8 @@ const BOOTSTRAP_CACHE_KEYS = {
   wildfires:        'wildfire:fires:v1',
   cyberThreats:     'cyber:threats-bootstrap:v2',
   techReadiness:    'economic:worldbank-techreadiness:v1',
+  progressData:     'economic:worldbank-progress:v1',
+  renewableEnergy:  'economic:worldbank-renewable:v1',
   positiveGeoEvents: 'positive-events:geo-bootstrap:v1',
   theaterPosture: 'theater-posture:sebuf:stale:v1',
   riskScores: 'risk:scores:sebuf:stale:v1',
@@ -41,7 +43,8 @@ const BOOTSTRAP_CACHE_KEYS = {
 const SLOW_KEYS = new Set([
   'bisPolicy', 'bisExchange', 'bisCredit', 'minerals', 'giving',
   'sectors', 'etfFlows', 'shippingRates', 'wildfires', 'climateAnomalies',
-  'cyberThreats', 'techReadiness', 'theaterPosture', 'naturalEvents',
+  'cyberThreats', 'techReadiness', 'progressData', 'renewableEnergy',
+  'theaterPosture', 'naturalEvents',
   'cryptoQuotes', 'gulfQuotes', 'stablecoinMarkets', 'unrestEvents', 'ucdpEvents',
 ]);
 const FAST_KEYS = new Set([
