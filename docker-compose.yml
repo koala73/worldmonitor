@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  # Frontend - Vite SPA served via Nginx
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+    networks:
+      - worldmonitor
+
+  # Backend - Express API replacing Vercel Edge Functions
+  api:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3001"
+    env_file:
+      - .env
+    depends_on:
+      - redis
+    restart: unless-stopped
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - PORT=3001
+    networks:
+      - worldmonitor
+
+  # Redis - caching layer
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - worldmonitor
+    command: redis-server --appendonly yes
+
+volumes:
+  redis_data:
+    driver: local
+
+networks:
+  worldmonitor:
+    driver: bridge
