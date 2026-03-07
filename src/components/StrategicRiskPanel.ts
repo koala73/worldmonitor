@@ -450,12 +450,12 @@ export class StrategicRiskPanel extends Panel {
   private render(): void {
     this.freshnessSummary = dataFreshness.getSummary();
 
-    if (!this.overview) {
-      this.showLoading();
-      return;
-    }
-
     try {
+      if (!this.overview) {
+        this.showLoading();
+        return;
+      }
+
       // Render full data view — partial data is handled gracefully by CII baselines
       // Only show insufficient state if zero sources after 60s (true failure)
       const uptime = performance.now();
@@ -466,9 +466,9 @@ export class StrategicRiskPanel extends Panel {
 
       this.content.innerHTML = html;
       this.attachEventListeners();
-    } catch (e) {
+    } catch (e: unknown) {
       console.error('[StrategicRiskPanel] Render error:', e);
-      this.showError(t('common.failedRiskOverview'), () => void this.refresh());
+      this.showError(t('common.failedRiskOverview'), () => this.refresh());
     }
   }
 
