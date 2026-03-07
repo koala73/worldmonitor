@@ -120,15 +120,26 @@ function buildDataSet(indicator: ProgressIndicator, data: ProgressDataPoint[]): 
   };
 }
 
+function buildSeedMap(seeds: SeedProgressIndicator[]): Map<string, SeedProgressIndicator> {
+  const map = new Map<string, SeedProgressIndicator>();
+  for (const s of seeds) {
+    map.set(s.id, s);
+    map.set(s.code, s);
+  }
+  return map;
+}
+
+function resolveFromSeeds(seedMap: Map<string, SeedProgressIndicator>): ProgressDataSet[] {
+  return PROGRESS_INDICATORS.map(indicator => {
+    const seed = seedMap.get(indicator.id) || seedMap.get(indicator.code);
+    return seed?.data?.length ? buildDataSet(indicator, seed.data) : fallbackDataSet(indicator);
+  });
+}
+
 async function fetchProgressDataFresh(): Promise<ProgressDataSet[]> {
   // 1. Try bootstrap hydration cache (first page load)
   const hydrated = getHydratedData('progressData') as SeedProgressIndicator[] | undefined;
-  if (hydrated?.length) {
-    return PROGRESS_INDICATORS.map(indicator => {
-      const seed = hydrated.find(s => s.id === indicator.id || s.code === indicator.code);
-      return seed?.data?.length ? buildDataSet(indicator, seed.data) : fallbackDataSet(indicator);
-    });
-  }
+  if (hydrated?.length) return resolveFromSeeds(buildSeedMap(hydrated));
 
   // 2. Fallback: fetch from bootstrap endpoint directly
   try {
@@ -137,12 +148,7 @@ async function fetchProgressDataFresh(): Promise<ProgressDataSet[]> {
     });
     if (resp.ok) {
       const { data } = (await resp.json()) as { data: { progressData?: SeedProgressIndicator[] } };
-      if (data.progressData?.length) {
-        return PROGRESS_INDICATORS.map(indicator => {
-          const seed = data.progressData!.find(s => s.id === indicator.id || s.code === indicator.code);
-          return seed?.data?.length ? buildDataSet(indicator, seed.data) : fallbackDataSet(indicator);
-        });
-      }
+      if (data.progressData?.length) return resolveFromSeeds(buildSeedMap(data.progressData));
     }
   } catch { /* fall through to fallback */ }
 

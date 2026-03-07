@@ -324,7 +324,8 @@ async function fetchRenewableData() {
   const raw = await fetchWithRetry(url);
 
   if (!Array.isArray(raw) || raw.length < 2 || !Array.isArray(raw[1])) {
-    throw new Error('No renewable energy data from WB');
+    console.warn('    → No renewable energy data from WB');
+    return { globalPercentage: 0, globalYear: 0, historicalData: [], regions: [] };
   }
 
   const entries = raw[1].filter(e => e.value !== null && e.value !== undefined);
@@ -462,11 +463,11 @@ async function main() {
     ['GET', renewableKey],
   ]);
 
-  const storedRankings = verifyResp[0]?.result;
-  if (!storedRankings || !Array.isArray(JSON.parse(storedRankings)) || JSON.parse(storedRankings).length === 0) {
+  const parsedRankings = verifyResp[0]?.result ? JSON.parse(verifyResp[0].result) : null;
+  if (!Array.isArray(parsedRankings) || parsedRankings.length === 0) {
     throw new Error('Verification failed: techReadiness key missing or empty');
   }
-  console.log(`  ✓ techReadiness: ${JSON.parse(storedRankings).length} rankings`);
+  console.log(`  ✓ techReadiness: ${parsedRankings.length} rankings`);
 
   if (verifyResp[1]?.result) {
     const p = JSON.parse(verifyResp[1].result);
