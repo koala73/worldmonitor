@@ -42,8 +42,7 @@ scripts/data/gpsjam-latest.json
 scripts/data/mirta-raw.geojson
 scripts/data/osm-military-raw.json
 
-# Iran events seed script + data (sensitive, not for public repo)
-scripts/seed-iran-events.mjs
+# Iran events data (sensitive, not for public repo)
 scripts/data/iran-events-latest.json
 
 # Military bases rebuild script (references external Supabase URLs)
