@@ -76,8 +76,9 @@ export async function getPizzintStatus(
             recordedAt: d.recorded_at,
             dataFreshness: (d.data_freshness === 'fresh' ? 'DATA_FRESHNESS_FRESH' : 'DATA_FRESHNESS_STALE') as DataFreshness,
             isClosedNow: d.is_closed_now ?? false,
-            lat: d.lat ?? 0,
-            lng: d.lng ?? 0,
+            location: (d.lat != null && d.lng != null)
+              ? { latitude: d.lat, longitude: d.lng }
+              : undefined,
           }));
 
           const openLocations = locations.filter((l) => !l.isClosedNow);

@@ -69,8 +69,12 @@ export interface PizzintLocation {
   recordedAt: string;
   dataFreshness: DataFreshness;
   isClosedNow: boolean;
-  lat: number;
-  lng: number;
+  location?: GeoCoordinates;
+}
+
+export interface GeoCoordinates {
+  latitude: number;
+  longitude: number;
 }
 
 export interface GdeltTensionPair {

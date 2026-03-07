@@ -65,8 +65,8 @@ function toLocation(proto: ProtoLocation): PizzIntLocation {
     recorded_at: proto.recordedAt,
     data_freshness: FRESHNESS_REVERSE[proto.dataFreshness] || 'stale',
     is_closed_now: proto.isClosedNow,
-    lat: proto.lat || undefined,
-    lng: proto.lng || undefined,
+    lat: proto.location?.latitude || undefined,
+    lng: proto.location?.longitude || undefined,
   };
 }
 
