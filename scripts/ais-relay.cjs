@@ -935,17 +935,18 @@ function ucdpFetchPage(version, page) {
 async function ucdpDiscoverVersion() {
   const year = new Date().getFullYear() - 2000;
   const candidates = [...new Set([`${year}.1`, `${year - 1}.1`, '25.1', '24.1'])];
-  const results = await Promise.allSettled(
-    candidates.map(async (v) => {
-      const p0 = await ucdpFetchPage(v, 0);
-      if (!Array.isArray(p0?.Result)) throw new Error('No results');
-      return { version: v, page0: p0 };
-    }),
-  );
-  for (const r of results) {
-    if (r.status === 'fulfilled') return r.value;
+  // Race all candidates — first valid result wins (avoids 30s hang on broken versions)
+  const attempts = candidates.map(async (v) => {
+    const p0 = await ucdpFetchPage(v, 0);
+    if (!Array.isArray(p0?.Result) || p0.Result.length === 0) throw new Error(`${v}: no results`);
+    return { version: v, page0: p0 };
+  });
+  try {
+    return await Promise.any(attempts);
+  } catch (aggErr) {
+    const reasons = aggErr.errors?.map(e => e?.message).join('; ') || aggErr.message;
+    throw new Error(`No valid UCDP GED version found (${reasons})`);
   }
-  throw new Error('No valid UCDP GED version found');
 }
 
 async function seedUcdpEvents() {
