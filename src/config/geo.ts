@@ -703,7 +703,7 @@ export const CONFLICT_ZONES: ConflictZone[] = [
       [71.02, 36.55],
       [72.50, 35.70],
     ],
-    center: [50, 30],
+    center: [69, 31.8],
     intensity: 'high',
     parties: ['Pakistan (Military)', 'TTP', 'Afghan Taliban'],
     casualties: 'Ongoing military and civilian casualties',
