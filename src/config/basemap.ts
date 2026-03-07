@@ -123,9 +123,9 @@ export function isLightMapTheme(mapTheme: string): boolean {
   return ['light', 'white', 'positron', 'voyager'].includes(mapTheme);
 }
 
-const CARTO_DARK = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
-const CARTO_VOYAGER = 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json';
-const CARTO_POSITRON = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
+const CARTO_DARK = "https://demotiles.maplibre.org/style.json";
+const CARTO_VOYAGER = "https://demotiles.maplibre.org/style.json";
+const CARTO_POSITRON = "https://demotiles.maplibre.org/style.json";
 
 const CARTO_STYLES: Record<string, string> = {
   'dark-matter': CARTO_DARK,
