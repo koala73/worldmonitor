@@ -352,6 +352,7 @@ export class GlobeMap {
 
   private initialized = false;
   private destroyed = false;
+  private webglLost = false;
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private flushMaxTimer: ReturnType<typeof setTimeout> | null = null;
   private _pulseEnabled = true;
@@ -543,6 +544,16 @@ export class GlobeMap {
       canvas.addEventListener('touchstart', pauseAutoRotate, { passive: true });
       canvas.addEventListener('mouseup', scheduleResumeAutoRotate);
       canvas.addEventListener('touchend', scheduleResumeAutoRotate);
+      canvas.addEventListener('webglcontextlost', (e) => {
+        e.preventDefault();
+        this.webglLost = true;
+        console.warn('[GlobeMap] WebGL context lost — will restore when browser recovers');
+      });
+      canvas.addEventListener('webglcontextrestored', () => {
+        this.webglLost = false;
+        console.info('[GlobeMap] WebGL context restored');
+        this.flushMarkers();
+      });
     }
 
     // Wire HTML marker layer
@@ -1225,7 +1236,7 @@ export class GlobeMap {
   // ─── Flush all current data to globe ──────────────────────────────────────
 
   private flushMarkers(): void {
-    if (!this.globe || !this.initialized || this.destroyed) return;
+    if (!this.globe || !this.initialized || this.destroyed || this.webglLost) return;
     if (this.renderPaused) { this.pendingFlushWhilePaused = true; return; }
 
     if (!this.flushMaxTimer) {
@@ -1244,7 +1255,7 @@ export class GlobeMap {
   }
 
   private flushMarkersImmediate(): void {
-    if (!this.globe || !this.initialized || this.destroyed) return;
+    if (!this.globe || !this.initialized || this.destroyed || this.webglLost) return;
 
     const markers: GlobeMarker[] = [];
     if (this.layers.hotspots) markers.push(...this.hotspots);
@@ -1295,13 +1306,13 @@ export class GlobeMap {
   }
 
   private flushArcs(): void {
-    if (!this.globe || !this.initialized || this.destroyed) return;
+    if (!this.globe || !this.initialized || this.destroyed || this.webglLost) return;
     const segments = this.layers.tradeRoutes ? this.tradeRouteSegments : [];
     (this.globe as any).arcsData(segments);
   }
 
   private flushPaths(): void {
-    if (!this.globe || !this.initialized || this.destroyed) return;
+    if (!this.globe || !this.initialized || this.destroyed || this.webglLost) return;
     const showCables = this.layers.cables;
     const showPipelines = this.layers.pipelines;
     const paths = (showCables && showPipelines)
@@ -1334,7 +1345,7 @@ export class GlobeMap {
   }
 
   private flushPolygons(): void {
-    if (!this.globe || !this.initialized || this.destroyed) return;
+    if (!this.globe || !this.initialized || this.destroyed || this.webglLost) return;
     const polys: GlobePolygon[] = [];
 
     if (this.layers.conflicts) {
@@ -2196,7 +2207,7 @@ export class GlobeMap {
   }
 
   private applyPerformanceProfile(profile: GlobePerformanceProfile): void {
-    if (!this.globe || !this.initialized || this.destroyed) return;
+    if (!this.globe || !this.initialized || this.destroyed || this.webglLost) return;
 
     const prevPulse = this._pulseEnabled;
     this._pulseEnabled = !profile.disablePulseAnimations;

@@ -93,6 +93,16 @@ const LOCATION_COORDS = {
   'qeshm':         { lat: 26.9500, lon: 56.2700 },
   'pakdasht':      { lat: 35.4747, lon: 51.6856 },
   'tasluja':       { lat: 35.5100, lon: 45.3700 },
+  'al-kharj':      { lat: 24.1500, lon: 47.3100 },
+  'petah tikva':   { lat: 32.0841, lon: 34.8878 },
+  'beersheba':     { lat: 31.2518, lon: 34.7913 },
+  'oman':          { lat: 23.5880, lon: 58.3829 },
+  'oslo':          { lat: 59.9139, lon: 10.7522 },
+  'norway':        { lat: 59.9139, lon: 10.7522 },
+  'aghdasiyeh':    { lat: 35.7900, lon: 51.4500 },
+  'rey':           { lat: 35.5959, lon: 51.4350 },
+  'beirut':        { lat: 33.8938, lon: 35.5018 },
+  'azraq':         { lat: 31.8300, lon: 36.8300 },
 };
 
 const CATEGORY_MAP = {
@@ -127,6 +137,9 @@ function parseRelativeTime(timeStr) {
   if (match) return now - parseInt(match[1]) * 3600_000;
   const minMatch = timeStr.match(/(\d+)\s+min/);
   if (minMatch) return now - parseInt(minMatch[1]) * 60_000;
+  if (/a day ago/.test(timeStr)) return now - 86400_000;
+  const dayMatch = timeStr.match(/(\d+)\s+days?\s+ago/);
+  if (dayMatch) return now - parseInt(dayMatch[1]) * 86400_000;
   return now;
 }
 

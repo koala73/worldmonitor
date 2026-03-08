@@ -59,6 +59,12 @@ Sentry.init({
     /objectStoreNames/,
     /Unexpected identifier 'https'/,
     /Can't find variable: _0x/,
+    /Can't find variable: video/,
+    /hackLocationFailed is not defined/,
+    /userScripts is not defined/,
+    /NS_ERROR_ABORT/,
+    /DataCloneError.*could not be cloned/,
+    /cannot decode message/,
     /WKWebView was deallocated/,
     /Unexpected end of(?: JSON)? input/,
     /window\.android\.\w+ is not a function/,
@@ -224,8 +230,8 @@ Sentry.init({
       const nonSentryFrames = frames.filter(f => f.filename && f.filename !== '<anonymous>' && !/\/sentry-[A-Za-z0-9_-]+\.js/.test(f.filename));
       if (nonSentryFrames.length > 0 && nonSentryFrames.every(f => /\/(map|maplibre|deck-stack)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
     }
-    // Suppress Three.js/globe.gl TypeError crashes in main bundle (reading 'type' on undefined during WebGL traversal)
-    if (/reading 'type'|can't access property "type",? \w+ is undefined/.test(msg)) {
+    // Suppress Three.js/globe.gl TypeError crashes in main bundle (reading 'type'/'pathType'/'count'/'__globeObjType' on undefined during WebGL traversal/raycast)
+    if (/reading '(?:type|pathType|count|__globeObjType)'|can't access property "(?:type|pathType|count|__globeObjType)",? \w+ is (?:undefined|null)|undefined is not an object \(evaluating '\w+\.(?:pathType|count|__globeObjType)'\)|null is not an object \(evaluating '\w+\.__globeObjType'\)/.test(msg)) {
       const nonSentryFrames = frames.filter(f => f.filename && f.filename !== '<anonymous>' && !/\/sentry-[A-Za-z0-9_-]+\.js/.test(f.filename));
       const hasSourceMapped = nonSentryFrames.some(f => /\.(ts|tsx)$/.test(f.filename ?? '') || /^src\//.test(f.filename ?? ''));
       if (!hasSourceMapped) return null;
