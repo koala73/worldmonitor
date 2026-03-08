@@ -3,7 +3,7 @@
   "steps": {
     "install": {
       "commands": [
-        { "cmd": "npm ci --omit=dev" }
+        { "cmd": "npm install --omit=dev" }
       ]
     }
   }

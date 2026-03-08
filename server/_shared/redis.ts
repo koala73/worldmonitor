@@ -285,3 +285,39 @@ export async function getHashFieldsBatch(
   }
   return result;
 }
+
+export async function runRedisPipeline(
+  commands: Array<Array<string | number>>,
+  raw = false,
+): Promise<Array<{ result?: unknown }>> {
+  if (commands.length === 0) return [];
+
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return [];
+
+  const pipeline = commands.map((command) => {
+    const [verb, ...rest] = command;
+    if (raw || rest.length === 0 || typeof rest[0] !== 'string') {
+      return command.map((part) => String(part));
+    }
+    return [String(verb), prefixKey(rest[0]), ...rest.slice(1).map((part) => String(part))];
+  });
+
+  try {
+    const resp = await fetch(`${url}/pipeline`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(pipeline),
+      signal: AbortSignal.timeout(REDIS_PIPELINE_TIMEOUT_MS),
+    });
+    if (!resp.ok) {
+      console.warn(`[redis] runRedisPipeline HTTP ${resp.status}`);
+      return [];
+    }
+    return await resp.json() as Array<{ result?: unknown }>;
+  } catch (err) {
+    console.warn('[redis] runRedisPipeline failed:', errMsg(err));
+    return [];
+  }
+}

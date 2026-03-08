@@ -6,6 +6,8 @@ import {
   MapContainer,
   NewsPanel,
   MarketPanel,
+  StockAnalysisPanel,
+  StockBacktestPanel,
   HeatmapPanel,
   CommoditiesPanel,
   CryptoPanel,
@@ -480,6 +482,22 @@ export class PanelLayoutManager implements AppModule {
 
     this.createPanel('heatmap', () => new HeatmapPanel());
     this.createPanel('markets', () => new MarketPanel());
+    const stockAnalysisPanel = this.createPanel('stock-analysis', () => new StockAnalysisPanel());
+    if (stockAnalysisPanel && !getSecretState('WORLDMONITOR_API_KEY').present) {
+      stockAnalysisPanel.showLocked([
+        'AI stock briefs with technical + news synthesis',
+        'Trend scoring from MA, MACD, RSI, and volume structure',
+        'Actionable watchlist monitoring for your premium workspace',
+      ]);
+    }
+    const stockBacktestPanel = this.createPanel('stock-backtest', () => new StockBacktestPanel());
+    if (stockBacktestPanel && !getSecretState('WORLDMONITOR_API_KEY').present) {
+      stockBacktestPanel.showLocked([
+        'Historical replay of premium stock-analysis signals',
+        'Win-rate, accuracy, and simulated-return metrics',
+        'Recent evaluation samples for your tracked symbols',
+      ]);
+    }
 
     const monitorPanel = this.createPanel('monitors', () => new MonitorPanel(this.ctx.monitors));
     monitorPanel?.onChanged((monitors) => {
@@ -626,6 +644,12 @@ export class PanelLayoutManager implements AppModule {
 
     const _wmKeyPresent = getSecretState('WORLDMONITOR_API_KEY').present;
     const _lockPanels = this.ctx.isDesktopApp && !_wmKeyPresent;
+
+    this.lazyPanel('daily-market-brief', () =>
+      import('@/components/DailyMarketBriefPanel').then(m => new m.DailyMarketBriefPanel()),
+      undefined,
+      !_wmKeyPresent ? ['Pre-market watchlist priorities', 'Action plan for the session', 'Risk watch tied to current finance headlines'] : undefined,
+    );
 
     this.lazyPanel('oref-sirens', () =>
       import('@/components/OrefSirensPanel').then(m => new m.OrefSirensPanel()),

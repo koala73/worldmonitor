@@ -55,6 +55,10 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/market/v1/list-stablecoin-markets': 'medium',
   '/api/market/v1/get-sector-summary': 'medium',
   '/api/market/v1/list-gulf-quotes': 'medium',
+  '/api/market/v1/analyze-stock': 'slow',
+  '/api/market/v1/get-stock-analysis-history': 'medium',
+  '/api/market/v1/backtest-stock': 'slow',
+  '/api/market/v1/list-stored-stock-backtests': 'medium',
   '/api/infrastructure/v1/list-service-statuses': 'slow',
   '/api/seismology/v1/list-earthquakes': 'slow',
   '/api/infrastructure/v1/list-internet-outages': 'slow',
@@ -123,6 +127,13 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/news/v1/summarize-article-cache': 'slow',
 };
 
+const PREMIUM_RPC_PATHS = new Set([
+  '/api/market/v1/analyze-stock',
+  '/api/market/v1/get-stock-analysis-history',
+  '/api/market/v1/backtest-stock',
+  '/api/market/v1/list-stored-stock-backtests',
+]);
+
 /**
  * Creates a Vercel Edge handler for a single domain's routes.
  *
@@ -136,6 +147,8 @@ export function createDomainGateway(
 
   return async function handler(originalRequest: Request): Promise<Response> {
     let request = originalRequest;
+    const rawPathname = new URL(request.url).pathname;
+    const pathname = rawPathname.length > 1 ? rawPathname.replace(/\/+$/, '') : rawPathname;
 
     // Origin check — skip CORS headers for disallowed origins
     if (isDisallowedOrigin(request)) {
@@ -158,7 +171,9 @@ export function createDomainGateway(
     }
 
     // API key validation (origin-aware)
-    const keyCheck = validateApiKey(request);
+    const keyCheck = validateApiKey(request, {
+      forceKey: PREMIUM_RPC_PATHS.has(pathname),
+    });
     if (keyCheck.required && !keyCheck.valid) {
       return new Response(JSON.stringify({ error: keyCheck.error }), {
         status: 401,
@@ -167,9 +182,6 @@ export function createDomainGateway(
     }
 
     // IP-based rate limiting — two-phase: endpoint-specific first, then global fallback
-    const rawPathname = new URL(request.url).pathname;
-    const pathname = rawPathname.length > 1 ? rawPathname.replace(/\/+$/, '') : rawPathname;
-
     const endpointRlResponse = await checkEndpointRateLimit(request, pathname, corsHeaders);
     if (endpointRlResponse) return endpointRlResponse;
 

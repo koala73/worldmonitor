@@ -40,3 +40,6 @@ export * from './cached-theater-posture';
 export * from './trade';
 export * from './supply-chain';
 export * from './breaking-news-alerts';
+export * from './daily-market-brief';
+export * from './stock-analysis-history';
+export * from './stock-backtest';

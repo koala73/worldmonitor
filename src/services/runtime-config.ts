@@ -4,6 +4,9 @@ import { invokeTauri } from './tauri-bridge';
 export type RuntimeSecretKey =
   | 'GROQ_API_KEY'
   | 'OPENROUTER_API_KEY'
+  | 'TAVILY_API_KEYS'
+  | 'BRAVE_API_KEYS'
+  | 'SERPAPI_API_KEYS'
   | 'FRED_API_KEY'
   | 'EIA_API_KEY'
   | 'CLOUDFLARE_API_TOKEN'
@@ -30,6 +33,9 @@ export type RuntimeSecretKey =
 export type RuntimeFeatureId =
   | 'aiGroq'
   | 'aiOpenRouter'
+  | 'stockNewsSearchTavily'
+  | 'stockNewsSearchBrave'
+  | 'stockNewsSearchSerpApi'
   | 'economicFred'
   | 'energyEia'
   | 'internetOutages'
@@ -84,6 +90,9 @@ function getSidecarSecretValidateUrl(): string {
 const defaultToggles: Record<RuntimeFeatureId, boolean> = {
   aiGroq: true,
   aiOpenRouter: true,
+  stockNewsSearchTavily: true,
+  stockNewsSearchBrave: true,
+  stockNewsSearchSerpApi: true,
   economicFred: true,
   energyEia: true,
   internetOutages: true,
@@ -127,6 +136,27 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
     description: 'Secondary LLM provider for AI summary fallback.',
     requiredSecrets: ['OPENROUTER_API_KEY'],
     fallback: 'Falls back to local browser model only.',
+  },
+  {
+    id: 'stockNewsSearchTavily',
+    name: 'Tavily stock-news search',
+    description: 'Primary targeted stock-news search provider for premium analysis enrichment.',
+    requiredSecrets: ['TAVILY_API_KEYS'],
+    fallback: 'Falls back to Brave, then SerpAPI, then Google News RSS.',
+  },
+  {
+    id: 'stockNewsSearchBrave',
+    name: 'Brave stock-news search',
+    description: 'Fallback targeted stock-news provider for premium analysis enrichment.',
+    requiredSecrets: ['BRAVE_API_KEYS'],
+    fallback: 'Falls back to SerpAPI, then Google News RSS.',
+  },
+  {
+    id: 'stockNewsSearchSerpApi',
+    name: 'SerpAPI stock-news search',
+    description: 'Additional targeted stock-news provider for premium analysis enrichment.',
+    requiredSecrets: ['SERPAPI_API_KEYS'],
+    fallback: 'Falls back to Google News RSS.',
   },
   {
     id: 'economicFred',

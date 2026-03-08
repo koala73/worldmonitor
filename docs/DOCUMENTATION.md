@@ -17,6 +17,8 @@ AI-powered real-time global intelligence dashboard aggregating news, markets, ge
 | [RAG Failure Checklist](./RAG_FAILURE_CHECKLIST.md) | Troubleshoot suspicious AI summaries, retrieval misses, and reasoning drift |
 | [Desktop App](./DESKTOP_APP.md) | Tauri architecture, sidecar, secret management |
 | [Finance Data](./FINANCE_DATA.md) | Market radar, Gulf FDI, stablecoins, BIS, WTO |
+| [Premium Finance](./PREMIUM_FINANCE.md) | Premium stock analysis, stored history, backtests, daily brief |
+| [Premium Finance Search Layer](./PREMIUM_FINANCE_SEARCH.md) | Targeted stock-news provider chain layered on top of premium finance |
 | [Orbital Surveillance](./ORBITAL_SURVEILLANCE.md) | Satellite tracking, SGP4 propagation, tier availability, roadmap |
 | [API Reference](./api/) | OpenAPI specs for all 22 services |
 | [Adding Endpoints](./ADDING_ENDPOINTS.md) | Guide for adding new RPC endpoints |

@@ -33,6 +33,10 @@ function getRelayHeaders(): Record<string, string> {
 
 export const UPSTREAM_TIMEOUT_MS = 10_000;
 
+export function sanitizeSymbol(raw: string): string {
+  return raw.trim().replace(/\s+/g, '').slice(0, 32).toUpperCase();
+}
+
 /**
  * Defensive parser for repeated-string query params.
  * The sebuf codegen assigns `params.get("symbols")` (a string) to a field

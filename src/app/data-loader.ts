@@ -60,6 +60,20 @@ import {
   fetchCriticalMinerals,
 } from '@/services';
 import { getMarketWatchlistEntries } from '@/services/market-watchlist';
+import { fetchStockAnalysesForTargets, getStockAnalysisTargets } from '@/services/stock-analysis';
+import {
+  fetchStockBacktestsForTargets,
+  fetchStoredStockBacktests,
+  getMissingOrStaleStoredStockBacktests,
+  hasFreshStoredStockBacktests,
+} from '@/services/stock-backtest';
+import {
+  fetchStockAnalysisHistory,
+  getMissingOrStaleStockAnalysisSymbols,
+  hasFreshStockAnalysisHistory,
+  getLatestStockAnalysisSnapshots,
+  mergeStockAnalysisHistory,
+} from '@/services/stock-analysis-history';
 import { checkBatchForBreakingAlerts, dispatchOrefBreakingAlert } from '@/services/breaking-news-alerts';
 import { mlWorker } from '@/services/ml-worker';
 import { clusterNewsHybrid } from '@/services/clustering';
@@ -82,7 +96,7 @@ import { fetchTelegramFeed } from '@/services/telegram-intel';
 import { fetchOrefAlerts, startOrefPolling, stopOrefPolling, onOrefAlertsUpdate } from '@/services/oref-alerts';
 import { enrichEventsWithExposure } from '@/services/population-exposure';
 import { debounce, getCircuitBreakerCooldownInfo } from '@/utils';
-import { isFeatureAvailable, isFeatureEnabled } from '@/services/runtime-config';
+import { getSecretState, isFeatureAvailable, isFeatureEnabled } from '@/services/runtime-config';
 import { isDesktopRuntime } from '@/services/runtime';
 import { getAiFlowSettings } from '@/services/ai-flow-settings';
 import { t, getCurrentLanguage } from '@/services/i18n';
@@ -96,6 +110,8 @@ import { mountCommunityWidget } from '@/components/CommunityWidget';
 import { ResearchServiceClient } from '@/generated/client/worldmonitor/research/v1/service_client';
 import {
   MarketPanel,
+  StockAnalysisPanel,
+  StockBacktestPanel,
   HeatmapPanel,
   CommoditiesPanel,
   CryptoPanel,
@@ -125,6 +141,12 @@ import { fetchPositiveGeoEvents, geocodePositiveNewsItems, type PositiveGeoEvent
 import type { HappyContentCategory } from '@/services/positive-classifier';
 import { fetchKindnessData } from '@/services/kindness-data';
 import { getPersistentCache, setPersistentCache } from '@/services/persistent-cache';
+import {
+  buildDailyMarketBrief,
+  cacheDailyMarketBrief,
+  getCachedDailyMarketBrief,
+  shouldRefreshDailyBrief,
+} from '@/services/daily-market-brief';
 import { fetchCachedRiskScores } from '@/services/cached-risk-scores';
 import type { ThreatLevel as ClientThreatLevel } from '@/services/threat-classifier';
 import type { NewsItem as ProtoNewsItem, ThreatLevel as ProtoThreatLevel } from '@/generated/client/worldmonitor/news/v1/service_client';
@@ -206,7 +228,13 @@ export class DataLoaderManager implements AppModule {
 
   init(): void {
     this.boundMarketWatchlistHandler = () => {
-      void this.loadMarkets();
+      void this.loadMarkets().then(async () => {
+        if (SITE_VARIANT === 'finance' && getSecretState('WORLDMONITOR_API_KEY').present) {
+          await this.loadStockAnalysis();
+          await this.loadStockBacktest();
+          await this.loadDailyMarketBrief(true);
+        }
+      });
     };
     window.addEventListener('wm-market-watchlist-changed', this.boundMarketWatchlistHandler as EventListener);
   }
@@ -316,6 +344,10 @@ export class DataLoaderManager implements AppModule {
     // Happy variant only loads news data -- skip all geopolitical/financial/military data
     if (SITE_VARIANT !== 'happy') {
       tasks.push({ name: 'markets', task: runGuarded('markets', () => this.loadMarkets()) });
+      if (SITE_VARIANT === 'finance' && getSecretState('WORLDMONITOR_API_KEY').present) {
+        tasks.push({ name: 'stockAnalysis', task: runGuarded('stockAnalysis', () => this.loadStockAnalysis()) });
+        tasks.push({ name: 'stockBacktest', task: runGuarded('stockBacktest', () => this.loadStockBacktest()) });
+      }
       tasks.push({ name: 'predictions', task: runGuarded('predictions', () => this.loadPredictions()) });
       tasks.push({ name: 'pizzint', task: runGuarded('pizzint', () => this.loadPizzInt()) });
       tasks.push({ name: 'fred', task: runGuarded('fred', () => this.loadFredData()) });
@@ -421,6 +453,10 @@ export class DataLoaderManager implements AppModule {
     }
 
     this.updateSearchIndex();
+
+    if (SITE_VARIANT === 'finance' && getSecretState('WORLDMONITOR_API_KEY').present) {
+      await this.loadDailyMarketBrief();
+    }
 
     const bootstrapTemporal = consumeServerAnomalies();
     if (bootstrapTemporal.anomalies.length > 0 || bootstrapTemporal.trackedTypes.length > 0) {
@@ -973,6 +1009,82 @@ export class DataLoaderManager implements AppModule {
     }
   }
 
+  async loadStockAnalysis(): Promise<void> {
+    const panel = this.ctx.panels['stock-analysis'] as StockAnalysisPanel | undefined;
+    if (!panel) return;
+
+    try {
+      const targets = getStockAnalysisTargets();
+      const targetSymbols = targets.map((target) => target.symbol);
+      const storedHistory = await fetchStockAnalysisHistory(targets.length);
+      const cachedSnapshots = getLatestStockAnalysisSnapshots(storedHistory, targets.length);
+      if (cachedSnapshots.length > 0) {
+        panel.renderAnalyses(cachedSnapshots, storedHistory, 'cached');
+      }
+
+      if (hasFreshStockAnalysisHistory(storedHistory, targetSymbols)) {
+        return;
+      }
+
+      const staleSymbols = getMissingOrStaleStockAnalysisSymbols(storedHistory, targetSymbols);
+      const staleTargets = targets.filter((target) => staleSymbols.includes(target.symbol));
+      const results = await fetchStockAnalysesForTargets(staleTargets);
+      if (results.length === 0) {
+        if (cachedSnapshots.length === 0) {
+          panel.showRetrying('Stock analysis is waiting for eligible watchlist symbols.');
+        }
+        return;
+      }
+      const nextHistory = mergeStockAnalysisHistory(storedHistory, results);
+      panel.renderAnalyses(results, nextHistory, 'live');
+    } catch (error) {
+      console.error('[StockAnalysis] failed:', error);
+      const cachedHistory = await fetchStockAnalysisHistory().catch(() => ({}));
+      const cachedSnapshots = getLatestStockAnalysisSnapshots(cachedHistory);
+      if (cachedSnapshots.length > 0) {
+        panel.renderAnalyses(cachedSnapshots, cachedHistory, 'cached');
+        return;
+      }
+      panel.showError('Premium stock analysis is temporarily unavailable.');
+    }
+  }
+
+  async loadStockBacktest(): Promise<void> {
+    const panel = this.ctx.panels['stock-backtest'] as StockBacktestPanel | undefined;
+    if (!panel) return;
+
+    try {
+      const targets = getStockAnalysisTargets();
+      const targetSymbols = targets.map((target) => target.symbol);
+      const stored = await fetchStoredStockBacktests(targets.length);
+      if (stored.length > 0) {
+        panel.renderBacktests(stored, 'cached');
+      }
+      if (hasFreshStoredStockBacktests(stored, targetSymbols)) {
+        return;
+      }
+
+      const staleSymbols = getMissingOrStaleStoredStockBacktests(stored, targetSymbols);
+      const staleTargets = targets.filter((target) => staleSymbols.includes(target.symbol));
+      const results = await fetchStockBacktestsForTargets(staleTargets);
+      if (results.length === 0) {
+        if (stored.length === 0) {
+          panel.showRetrying('Backtesting is waiting for eligible watchlist symbols.');
+        }
+        return;
+      }
+      panel.renderBacktests(results);
+    } catch (error) {
+      console.error('[StockBacktest] failed:', error);
+      const stored = await fetchStoredStockBacktests().catch(() => []);
+      if (stored.length > 0) {
+        panel.renderBacktests(stored, 'cached');
+        return;
+      }
+      panel.showError('Premium stock backtesting is temporarily unavailable.');
+    }
+  }
+
   async loadMarkets(): Promise<void> {
     try {
       const customEntries = getMarketWatchlistEntries();
@@ -1118,6 +1230,56 @@ export class DataLoaderManager implements AppModule {
       this.ctx.statusPanel?.updateApi('CoinGecko', { status: crypto.length > 0 ? 'ok' : 'error' });
     } catch {
       this.ctx.statusPanel?.updateApi('CoinGecko', { status: 'error' });
+    }
+  }
+
+  async loadDailyMarketBrief(force = false): Promise<void> {
+    if (SITE_VARIANT !== 'finance' || !getSecretState('WORLDMONITOR_API_KEY').present) return;
+    if (this.ctx.isDestroyed || this.ctx.inFlight.has('dailyMarketBrief')) return;
+
+    this.ctx.inFlight.add('dailyMarketBrief');
+    try {
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+      const cached = await getCachedDailyMarketBrief(timezone);
+
+      if (cached?.available) {
+        this.callPanel('daily-market-brief', 'renderBrief', cached, 'cached');
+      }
+
+      if (!force && cached && !shouldRefreshDailyBrief(cached, timezone)) {
+        return;
+      }
+
+      if (!cached) {
+        this.callPanel('daily-market-brief', 'showLoading', 'Building daily market brief...');
+      }
+
+      const brief = await buildDailyMarketBrief({
+        markets: this.ctx.latestMarkets,
+        newsByCategory: this.ctx.newsByCategory,
+        timezone,
+      });
+
+      if (!brief.available) {
+        if (!cached?.available) {
+          this.callPanel('daily-market-brief', 'showUnavailable');
+        }
+        return;
+      }
+
+      await cacheDailyMarketBrief(brief);
+      this.callPanel('daily-market-brief', 'renderBrief', brief, 'live');
+    } catch (error) {
+      console.warn('[DailyBrief] Failed to build daily market brief:', error);
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+      const cached = await getCachedDailyMarketBrief(timezone).catch(() => null);
+      if (cached?.available) {
+        this.callPanel('daily-market-brief', 'renderBrief', cached, 'cached');
+        return;
+      }
+      this.callPanel('daily-market-brief', 'showError', 'Failed to build daily market brief. Retrying later.');
+    } finally {
+      this.ctx.inFlight.delete('dailyMarketBrief');
     }
   }
 

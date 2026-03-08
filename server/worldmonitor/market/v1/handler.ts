@@ -21,6 +21,10 @@ import { listStablecoinMarkets } from './list-stablecoin-markets';
 import { listEtfFlows } from './list-etf-flows';
 import { getCountryStockIndex } from './get-country-stock-index';
 import { listGulfQuotes } from './list-gulf-quotes';
+import { analyzeStock } from './analyze-stock';
+import { getStockAnalysisHistory } from './get-stock-analysis-history';
+import { backtestStock } from './backtest-stock';
+import { listStoredStockBacktests } from './list-stored-stock-backtests';
 
 export const marketHandler: MarketServiceHandler = {
   listMarketQuotes,
@@ -31,4 +35,8 @@ export const marketHandler: MarketServiceHandler = {
   listEtfFlows,
   getCountryStockIndex,
   listGulfQuotes,
+  analyzeStock,
+  getStockAnalysisHistory,
+  backtestStock,
+  listStoredStockBacktests,
 };

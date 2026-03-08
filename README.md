@@ -145,6 +145,7 @@ All five variants run from a single codebase — switch between them with one cl
 - **Stablecoin & BTC ETF** — peg health monitoring and spot ETF flow tracking. [Details →](./docs/FINANCE_DATA.md)
 - **Oil & Energy** — WTI/Brent prices, production, inventory via EIA. [Details →](./docs/FINANCE_DATA.md#oil--energy-analytics)
 - **BIS & WTO** — central bank rates, trade policy intelligence. [Details →](./docs/FINANCE_DATA.md)
+- **Premium Stock Analysis** — analysis engine with stored history, backtesting, and daily market brief. [Details →](./docs/PREMIUM_FINANCE.md)
 
 ### Desktop & Mobile
 

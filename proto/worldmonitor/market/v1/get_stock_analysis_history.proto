@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package worldmonitor.market.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+import "worldmonitor/market/v1/analyze_stock.proto";
+
+message GetStockAnalysisHistoryRequest {
+  repeated string symbols = 1 [(sebuf.http.query) = { name: "symbols" }];
+  int32 limit_per_symbol = 2 [
+    (sebuf.http.query) = { name: "limit_per_symbol" },
+    (buf.validate.field).int32.gte = 1,
+    (buf.validate.field).int32.lte = 32
+  ];
+  bool include_news = 3 [(sebuf.http.query) = { name: "include_news" }];
+}
+
+message StockAnalysisHistoryItem {
+  string symbol = 1;
+  repeated AnalyzeStockResponse snapshots = 2;
+}
+
+message GetStockAnalysisHistoryResponse {
+  repeated StockAnalysisHistoryItem items = 1;
+}
