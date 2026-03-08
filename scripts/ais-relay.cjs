@@ -80,6 +80,10 @@ const RELAY_RSS_RATE_LIMIT_MAX = Number.isFinite(Number(process.env.RELAY_RSS_RA
 const RELAY_LOG_THROTTLE_MS = Math.max(1000, Number(process.env.RELAY_LOG_THROTTLE_MS || 10000));
 const ALLOW_VERCEL_PREVIEW_ORIGINS = process.env.ALLOW_VERCEL_PREVIEW_ORIGINS === 'true';
 
+// OpenSky proxy — routes through residential proxy to avoid Railway IP blocks
+const OPENSKY_PROXY_AUTH = process.env.OPENSKY_PROXY_AUTH || process.env.OREF_PROXY_AUTH || '';
+const OPENSKY_PROXY_ENABLED = !!OPENSKY_PROXY_AUTH;
+
 // OREF (Israel Home Front Command) siren alerts — fetched via HTTP proxy (Israel exit)
 const OREF_PROXY_AUTH = process.env.OREF_PROXY_AUTH || ''; // format: user:pass@host:port
 const OREF_ALERTS_URL = 'https://www.oref.org.il/WarningMessages/alert/alerts.json';
@@ -2452,428 +2456,6 @@ function startServiceStatusesSeedLoop() {
   }, SERVICE_STATUSES_SEED_INTERVAL_MS).unref?.();
 }
 
-// ─────────────────────────────────────────────────────────────
-// Military Flights Seed — fetches OpenSky directly via localhost
-// proxy, filters for military aircraft, converts units, writes to Redis.
-// Frontend reads from Redis via /api/military-flights edge handler.
-// ─────────────────────────────────────────────────────────────
-const MIL_FLIGHTS_SEED_INTERVAL_MS = 300_000;
-const MIL_FLIGHTS_LIVE_KEY = 'military:flights:v1';
-const MIL_FLIGHTS_STALE_KEY = 'military:flights:stale:v1';
-const MIL_FLIGHTS_LIVE_TTL = 600;
-const MIL_FLIGHTS_STALE_TTL = 86400;
-let milFlightsSeedRunning = false;
-let lastMilFlightsSeedMs = 0;
-
-const MIL_HEX_RANGES = [
-  { start: 'ADF7C8', end: 'AFFFFF', operator: 'usaf', country: 'USA' },
-  { start: '400000', end: '40003F', operator: 'raf', country: 'UK' },
-  { start: '43C000', end: '43CFFF', operator: 'raf', country: 'UK' },
-  { start: '3AA000', end: '3AFFFF', operator: 'faf', country: 'France' },
-  { start: '3B7000', end: '3BFFFF', operator: 'faf', country: 'France' },
-  { start: '3EA000', end: '3EBFFF', operator: 'gaf', country: 'Germany' },
-  { start: '3F4000', end: '3FBFFF', operator: 'gaf', country: 'Germany' },
-  { start: '738A00', end: '738BFF', operator: 'iaf', country: 'Israel' },
-  { start: '4D0000', end: '4D03FF', operator: 'nato', country: 'NATO' },
-  { start: '33FF00', end: '33FFFF', operator: 'other', country: 'Italy' },
-  { start: '350000', end: '37FFFF', operator: 'other', country: 'Spain' },
-  { start: '480000', end: '480FFF', operator: 'other', country: 'Netherlands' },
-  { start: '4B8200', end: '4B82FF', operator: 'other', country: 'Turkey' },
-  { start: '710258', end: '71028F', operator: 'other', country: 'Saudi Arabia' },
-  { start: '710380', end: '71039F', operator: 'other', country: 'Saudi Arabia' },
-  { start: '896000', end: '896FFF', operator: 'other', country: 'UAE' },
-  { start: '06A000', end: '06AFFF', operator: 'other', country: 'Qatar' },
-  { start: '706000', end: '706FFF', operator: 'other', country: 'Kuwait' },
-  { start: '7CF800', end: '7CFAFF', operator: 'other', country: 'Australia' },
-  { start: 'C20000', end: 'C3FFFF', operator: 'other', country: 'Canada' },
-  { start: '800200', end: '8002FF', operator: 'other', country: 'India' },
-  { start: '010070', end: '01008F', operator: 'other', country: 'Egypt' },
-  { start: '48D800', end: '48D87F', operator: 'other', country: 'Poland' },
-  { start: '468000', end: '4683FF', operator: 'other', country: 'Greece' },
-  { start: '478100', end: '4781FF', operator: 'other', country: 'Norway' },
-  { start: '444000', end: '446FFF', operator: 'other', country: 'Austria' },
-  { start: '44F000', end: '44FFFF', operator: 'other', country: 'Belgium' },
-  { start: '4B7000', end: '4B7FFF', operator: 'other', country: 'Switzerland' },
-  { start: 'E40000', end: 'E41FFF', operator: 'other', country: 'Brazil' },
-];
-
-const MIL_CALLSIGN_PATTERNS = [
-  { re: /^RCH/i, operator: 'usaf', aircraftType: 'transport' },
-  { re: /^REACH/i, operator: 'usaf', aircraftType: 'transport' },
-  { re: /^DUKE/i, operator: 'usaf', aircraftType: 'transport' },
-  { re: /^SAM/i, operator: 'usaf', aircraftType: 'vip' },
-  { re: /^AF[12]/i, operator: 'usaf', aircraftType: 'vip' },
-  { re: /^EXEC/i, operator: 'usaf', aircraftType: 'vip' },
-  { re: /^GOLD/i, operator: 'usaf', aircraftType: 'special_ops' },
-  { re: /^KING/i, operator: 'usaf', aircraftType: 'tanker' },
-  { re: /^SHELL/i, operator: 'usaf', aircraftType: 'tanker' },
-  { re: /^TEAL/i, operator: 'usaf', aircraftType: 'tanker' },
-  { re: /^BOLT/i, operator: 'usaf', aircraftType: 'fighter' },
-  { re: /^VIPER/i, operator: 'usaf', aircraftType: 'fighter' },
-  { re: /^RAPTOR/i, operator: 'usaf', aircraftType: 'fighter' },
-  { re: /^BONE/i, operator: 'usaf', aircraftType: 'bomber' },
-  { re: /^DEATH/i, operator: 'usaf', aircraftType: 'bomber' },
-  { re: /^DOOM/i, operator: 'usaf', aircraftType: 'bomber' },
-  { re: /^SNTRY/i, operator: 'usaf', aircraftType: 'awacs' },
-  { re: /^DRAGN/i, operator: 'usaf', aircraftType: 'reconnaissance' },
-  { re: /^COBRA/i, operator: 'usaf', aircraftType: 'reconnaissance' },
-  { re: /^RIVET/i, operator: 'usaf', aircraftType: 'reconnaissance' },
-  { re: /^OLIVE/i, operator: 'usaf', aircraftType: 'reconnaissance' },
-  { re: /^JAKE/i, operator: 'usaf', aircraftType: 'reconnaissance' },
-  { re: /^NCHO/i, operator: 'usaf', aircraftType: 'special_ops' },
-  { re: /^SHADOW/i, operator: 'usaf', aircraftType: 'special_ops' },
-  { re: /^EVAC/i, operator: 'usaf', aircraftType: 'transport' },
-  { re: /^MOOSE/i, operator: 'usaf', aircraftType: 'transport' },
-  { re: /^HERKY/i, operator: 'usaf', aircraftType: 'transport' },
-  { re: /^FORTE/i, operator: 'usaf', aircraftType: 'drone' },
-  { re: /^HAWK/i, operator: 'usaf', aircraftType: 'drone' },
-  { re: /^REAPER/i, operator: 'usaf', aircraftType: 'drone' },
-  { re: /^NAVY/i, operator: 'usn', aircraftType: null },
-  { re: /^CNV/i, operator: 'usn', aircraftType: 'transport' },
-  { re: /^VRC/i, operator: 'usn', aircraftType: 'transport' },
-  { re: /^TRIDENT/i, operator: 'usn', aircraftType: 'patrol' },
-  { re: /^RED/i, operator: 'usn', aircraftType: 'patrol' },
-  { re: /^BRONCO/i, operator: 'usn', aircraftType: 'fighter' },
-  { re: /^MARINE/i, operator: 'usmc', aircraftType: null },
-  { re: /^HMX/i, operator: 'usmc', aircraftType: 'vip' },
-  { re: /^NIGHT/i, operator: 'usmc', aircraftType: 'vip' },
-  { re: /^ARMY/i, operator: 'usa', aircraftType: null },
-  { re: /^PAT/i, operator: 'usa', aircraftType: 'transport' },
-  { re: /^DUSTOFF/i, operator: 'usa', aircraftType: 'helicopter' },
-  { re: /^COAST GUARD/i, operator: 'other', aircraftType: 'patrol' },
-  { re: /^CG[0-9]/i, operator: 'other', aircraftType: 'patrol' },
-  { re: /^RRR/i, operator: 'raf', aircraftType: null },
-  { re: /^ASCOT/i, operator: 'raf', aircraftType: 'transport' },
-  { re: /^RAFAIR/i, operator: 'raf', aircraftType: 'transport' },
-  { re: /^TARTAN/i, operator: 'raf', aircraftType: 'tanker' },
-  { re: /^NATO/i, operator: 'nato', aircraftType: 'awacs' },
-  { re: /^RN/i, operator: 'rn', aircraftType: null },
-  { re: /^FAF/i, operator: 'faf', aircraftType: null },
-  { re: /^CTM/i, operator: 'faf', aircraftType: 'transport' },
-  { re: /^FRENCH/i, operator: 'faf', aircraftType: null },
-  { re: /^GAF/i, operator: 'gaf', aircraftType: null },
-  { re: /^GERMAN/i, operator: 'gaf', aircraftType: null },
-  { re: /^IAF/i, operator: 'iaf', aircraftType: null },
-  { re: /^ELAL/i, operator: 'iaf', aircraftType: null },
-  { re: /^THK/i, operator: 'other', aircraftType: null },
-  { re: /^TUR/i, operator: 'other', aircraftType: null },
-  { re: /^SVA/i, operator: 'other', aircraftType: null },
-  { re: /^RSAF/i, operator: 'other', aircraftType: null },
-  { re: /^UAF/i, operator: 'other', aircraftType: null },
-  { re: /^AIR INDIA ONE/i, operator: 'other', aircraftType: 'vip' },
-  { re: /^IAM/i, operator: 'other', aircraftType: null },
-  { re: /^JPN/i, operator: 'other', aircraftType: null },
-  { re: /^JASDF/i, operator: 'other', aircraftType: null },
-  { re: /^ROKAF/i, operator: 'other', aircraftType: null },
-  { re: /^KAF/i, operator: 'other', aircraftType: null },
-  { re: /^RAAF/i, operator: 'other', aircraftType: null },
-  { re: /^AUSSIE/i, operator: 'other', aircraftType: null },
-  { re: /^CANFORCE/i, operator: 'other', aircraftType: 'transport' },
-  { re: /^CFC/i, operator: 'other', aircraftType: null },
-  { re: /^ITALY/i, operator: 'other', aircraftType: null },
-  { re: /^AME/i, operator: 'other', aircraftType: null },
-  { re: /^PLF/i, operator: 'other', aircraftType: null },
-  { re: /^HAF/i, operator: 'other', aircraftType: null },
-  { re: /^EGY/i, operator: 'other', aircraftType: null },
-  { re: /^PAF/i, operator: 'other', aircraftType: null },
-  { re: /^RFF/i, operator: 'vks', aircraftType: null },
-  { re: /^RF/i, operator: 'vks', aircraftType: null },
-  { re: /^RUSSIAN/i, operator: 'vks', aircraftType: null },
-  { re: /^CCA/i, operator: 'plaaf', aircraftType: null },
-  { re: /^CHH/i, operator: 'plan', aircraftType: null },
-  { re: /^CHINA/i, operator: 'plaaf', aircraftType: null },
-];
-
-const MIL_HOTSPOTS = [
-  { name: 'INDO-PACIFIC', lat: 28.0, lon: 125.0, radius: 18, priority: 'high' },
-  { name: 'CENTCOM', lat: 28.0, lon: 42.0, radius: 15, priority: 'high' },
-  { name: 'EUCOM', lat: 52.0, lon: 28.0, radius: 15, priority: 'medium' },
-  { name: 'ARCTIC', lat: 75.0, lon: 0.0, radius: 10, priority: 'low' },
-];
-
-function milIsKnownHex(hexCode) {
-  const hex = hexCode.toUpperCase();
-  for (const r of MIL_HEX_RANGES) {
-    if (hex >= r.start && hex <= r.end) return r;
-  }
-  return null;
-}
-
-function milIdentifyByCallsign(callsign, originCountry) {
-  const cs = callsign.toUpperCase().trim();
-  const origin = (originCountry || '').toLowerCase().trim();
-  const preferred = [];
-  if (origin === 'united kingdom' || origin === 'uk') preferred.push('rn', 'raf');
-  if (origin === 'united states' || origin === 'usa') preferred.push('usn', 'usaf', 'usa', 'usmc');
-  if (preferred.length > 0) {
-    for (const p of MIL_CALLSIGN_PATTERNS) {
-      if (!preferred.includes(p.operator)) continue;
-      if (p.re.test(cs)) return p;
-    }
-  }
-  for (const p of MIL_CALLSIGN_PATTERNS) {
-    if (p.re.test(cs)) return p;
-  }
-  return null;
-}
-
-function milGetNearbyHotspot(lat, lon) {
-  for (const h of MIL_HOTSPOTS) {
-    const d = Math.sqrt((lat - h.lat) ** 2 + (lon - h.lon) ** 2);
-    if (d <= h.radius) return h;
-  }
-  return null;
-}
-
-const MIL_OPERATOR_COUNTRY = {
-  usaf: 'USA', usn: 'USA', usmc: 'USA', usa: 'USA',
-  raf: 'UK', rn: 'UK', faf: 'France', gaf: 'Germany',
-  plaaf: 'China', plan: 'China', vks: 'Russia',
-  iaf: 'Israel', nato: 'NATO', other: 'Unknown',
-};
-
-const MIL_QUERY_REGIONS = [
-  { name: 'PACIFIC', lamin: 10, lamax: 46, lomin: 107, lomax: 143 },
-  { name: 'WESTERN', lamin: 13, lamax: 85, lomin: -10, lomax: 57 },
-];
-
-async function fetchMilitaryFlightsFromWingbits() {
-  const apiKey = process.env.WINGBITS_API_KEY;
-  if (!apiKey) return [];
-  const areas = MIL_QUERY_REGIONS.map((r) => ({
-    alias: r.name,
-    by: 'box',
-    la: (r.lamax + r.lamin) / 2,
-    lo: (r.lomax + r.lomin) / 2,
-    w: Math.abs(r.lomax - r.lomin) * 60,
-    h: Math.abs(r.lamax - r.lamin) * 60,
-    unit: 'nm',
-  }));
-  try {
-    const resp = await fetch('https://customer-api.wingbits.com/v1/flights', {
-      method: 'POST',
-      headers: { 'x-api-key': apiKey, Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
-      body: JSON.stringify(areas),
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!resp.ok) {
-      console.warn(`[MilitaryFlights] Wingbits ${resp.status}`);
-      return [];
-    }
-    const data = await resp.json();
-    const seenIds = new Set();
-    const states = [];
-    for (const areaResult of data) {
-      const flightList = Array.isArray(areaResult.flights || areaResult) ? (areaResult.flights || areaResult) : [];
-      for (const f of flightList) {
-        const icao24 = f.h || f.icao24 || f.id;
-        if (!icao24 || seenIds.has(icao24)) continue;
-        seenIds.add(icao24);
-        const callsign = (f.f || f.callsign || f.flight || '').trim();
-        // Convert Wingbits to OpenSky state array format for unified processing
-        states.push([
-          icao24,                                    // [0] icao24
-          callsign,                                  // [1] callsign
-          f.co || f.originCountry || '',             // [2] origin country
-          null,                                      // [3] time_position
-          f.ts ? f.ts / 1000 : Date.now() / 1000,   // [4] last_contact (seconds)
-          f.lo || f.longitude || f.lon || f.lng,     // [5] longitude
-          f.la || f.latitude || f.lat,               // [6] latitude
-          (f.ab || f.altitude || f.alt || 0) * 0.3048, // [7] baro_altitude (Wingbits ft → meters for unified conversion)
-          f.gr || f.onGround || false,               // [8] on_ground
-          (f.gs || f.groundSpeed || f.speed || 0) * 0.514444, // [9] velocity (Wingbits kts → m/s)
-          f.th || f.heading || f.track || 0,         // [10] true_track
-          (f.vr || f.verticalRate || 0) * 0.00508,   // [11] vertical_rate (Wingbits ft/min → m/s)
-          null,                                      // [12] sensors
-          null,                                      // [13] geo_altitude
-          f.sq || f.squawk || null,                  // [14] squawk
-        ]);
-      }
-    }
-    console.log(`[MilitaryFlights] Wingbits returned ${states.length} aircraft`);
-    return states;
-  } catch (e) {
-    console.warn(`[MilitaryFlights] Wingbits failed: ${e?.message || e}`);
-    return [];
-  }
-}
-
-async function seedMilitaryFlights() {
-  if (milFlightsSeedRunning) {
-    console.log('[MilitaryFlights] Skipping — previous seed still running');
-    return;
-  }
-  milFlightsSeedRunning = true;
-  const t0 = Date.now();
-  try {
-    const seenIds = new Set();
-    const allStates = [];
-    for (const region of MIL_QUERY_REGIONS) {
-      const params = `lamin=${region.lamin}&lamax=${region.lamax}&lomin=${region.lomin}&lomax=${region.lomax}`;
-      let data = null;
-      // Try authenticated proxy first
-      try {
-        const resp = await fetch(`http://localhost:${PORT}/opensky?${params}`, {
-          headers: { 'User-Agent': CHROME_UA, ...(RELAY_SHARED_SECRET ? { 'x-relay-key': RELAY_SHARED_SECRET } : {}) },
-          signal: AbortSignal.timeout(20_000),
-        });
-        if (resp.ok) {
-          data = await resp.json();
-        } else {
-          console.warn(`[MilitaryFlights] Proxy ${resp.status} for ${region.name}, trying anonymous`);
-        }
-      } catch (e) {
-        console.warn(`[MilitaryFlights] Proxy failed for ${region.name}: ${e?.message || e}, trying anonymous`);
-      }
-      // Fallback to anonymous OpenSky API (no auth, ~10 req/min)
-      if (!data || !data.states) {
-        try {
-          const anonResp = await fetch(`https://opensky-network.org/api/states/all?${params}`, {
-            headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
-            signal: AbortSignal.timeout(15_000),
-          });
-          if (anonResp.ok) {
-            data = await anonResp.json();
-            if (data?.states) console.log(`[MilitaryFlights] Anonymous fallback OK for ${region.name}: ${data.states.length} states`);
-          } else {
-            console.warn(`[MilitaryFlights] Anonymous ${anonResp.status} for ${region.name}`);
-          }
-        } catch (e) {
-          console.warn(`[MilitaryFlights] Anonymous failed for ${region.name}: ${e?.message || e}`);
-        }
-      }
-      if (!data?.states) continue;
-      for (const state of data.states) {
-        const icao24 = state[0];
-        if (seenIds.has(icao24)) continue;
-        seenIds.add(icao24);
-        allStates.push(state);
-      }
-    }
-
-    // Wingbits fallback — always try to supplement (merges with OpenSky, dedupes by icao24)
-    if (allStates.length === 0 || process.env.WINGBITS_API_KEY) {
-      try {
-        const wbStates = await fetchMilitaryFlightsFromWingbits();
-        for (const state of wbStates) {
-          const icao24 = state[0];
-          if (seenIds.has(icao24)) continue;
-          seenIds.add(icao24);
-          allStates.push(state);
-        }
-        if (wbStates.length > 0) console.log(`[MilitaryFlights] Merged ${wbStates.length} Wingbits states (total: ${allStates.length})`);
-      } catch (e) {
-        console.warn(`[MilitaryFlights] Wingbits merge error: ${e?.message || e}`);
-      }
-    }
-
-    const flights = [];
-    const byType = {};
-    for (const state of allStates) {
-      const icao24 = state[0];
-      const callsign = (state[1] || '').trim();
-      const lat = state[6];
-      const lon = state[5];
-      if (lat == null || lon == null) continue;
-
-      const originCountry = state[2] || '';
-      const csMatch = callsign ? milIdentifyByCallsign(callsign, originCountry) : null;
-      const hexMatch = milIsKnownHex(icao24);
-      if (!csMatch && !hexMatch) continue;
-
-      let operator, aircraftType, operatorCountry, confidence;
-      if (csMatch && hexMatch) {
-        operator = csMatch.operator;
-        aircraftType = csMatch.aircraftType || 'unknown';
-        operatorCountry = MIL_OPERATOR_COUNTRY[csMatch.operator] || 'Unknown';
-        confidence = 'high';
-      } else if (csMatch) {
-        operator = csMatch.operator;
-        aircraftType = csMatch.aircraftType || 'unknown';
-        operatorCountry = MIL_OPERATOR_COUNTRY[csMatch.operator] || 'Unknown';
-        confidence = 'high';
-      } else {
-        operator = hexMatch.operator;
-        aircraftType = 'unknown';
-        operatorCountry = hexMatch.country;
-        confidence = 'medium';
-      }
-
-      const baroAlt = state[7];
-      const velocity = state[9];
-      const track = state[10];
-      const vertRate = state[11];
-
-      const hotspot = milGetNearbyHotspot(lat, lon);
-      const isInteresting = (hotspot && hotspot.priority === 'high') ||
-        aircraftType === 'bomber' || aircraftType === 'reconnaissance' || aircraftType === 'awacs';
-
-      const flight = {
-        id: `opensky-${icao24}`,
-        callsign: callsign || `UNKN-${icao24.substring(0, 4).toUpperCase()}`,
-        hexCode: icao24.toUpperCase(),
-        lat,
-        lon,
-        altitude: baroAlt != null ? Math.round(baroAlt * 3.28084) : 0,
-        heading: track != null ? track : 0,
-        speed: velocity != null ? Math.round(velocity * 1.94384) : 0,
-        verticalRate: vertRate != null ? Math.round(vertRate * 196.85) : undefined,
-        onGround: state[8],
-        squawk: state[14] || undefined,
-        aircraftType,
-        operator,
-        operatorCountry,
-        confidence,
-        isInteresting: isInteresting || false,
-        note: hotspot ? `Near ${hotspot.name}` : undefined,
-        lastSeenMs: state[4] ? state[4] * 1000 : Date.now(),
-      };
-      flights.push(flight);
-      byType[aircraftType] = (byType[aircraftType] || 0) + 1;
-    }
-
-    if (flights.length === 0) {
-      console.warn('[MilitaryFlights] 0 flights after filtering — preserving stale data');
-      return;
-    }
-
-    const payload = {
-      flights,
-      fetchedAt: Date.now(),
-      stats: { total: flights.length, byType },
-    };
-
-    const ok1 = await upstashSet(MIL_FLIGHTS_LIVE_KEY, payload, MIL_FLIGHTS_LIVE_TTL);
-    const ok2 = await upstashSet(MIL_FLIGHTS_STALE_KEY, payload, MIL_FLIGHTS_STALE_TTL);
-    await upstashSet('seed-meta:military:flights', { fetchedAt: Date.now(), recordCount: flights.length }, 604800);
-
-    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-    console.log(`[MilitaryFlights] Seeded ${flights.length} flights (${Object.entries(byType).map(([t, n]) => `${t}:${n}`).join(', ')}), redis: ${ok1 && ok2 ? 'OK' : 'PARTIAL'} [${elapsed}s]`);
-
-    try {
-      await seedTheaterPostureFromFlights(flights);
-      lastMilFlightsSeedMs = Date.now();
-    } catch (e) {
-      console.warn(`[MilitaryFlights] Theater posture passthrough error: ${e?.message || e}`);
-    }
-  } finally {
-    milFlightsSeedRunning = false;
-  }
-}
-
-function startMilitaryFlightsSeedLoop() {
-  if (!UPSTASH_ENABLED) {
-    console.log('[MilitaryFlights] Disabled (no Upstash Redis)');
-    return;
-  }
-  console.log(`[MilitaryFlights] Seed loop starting (interval ${MIL_FLIGHTS_SEED_INTERVAL_MS / 1000 / 60}min)`);
-  setTimeout(() => {
-    seedMilitaryFlights().catch((e) => console.warn('[MilitaryFlights] Initial seed error:', e?.message || e));
-    setInterval(() => {
-      seedMilitaryFlights().catch((e) => console.warn('[MilitaryFlights] Seed error:', e?.message || e));
-    }, MIL_FLIGHTS_SEED_INTERVAL_MS).unref?.();
-  }, 15_000);
-}
 
 // ─────────────────────────────────────────────────────────────
 // Theater Posture Seed — fetches OpenSky directly via localhost
@@ -3014,7 +2596,9 @@ async function fetchTheaterFlightsFromWingbits() {
     const flights = [];
     const seenIds = new Set();
     for (const areaResult of data) {
-      const flightList = Array.isArray(areaResult.flights || areaResult) ? (areaResult.flights || areaResult) : [];
+      const flightList = Array.isArray(areaResult.data) ? areaResult.data
+        : Array.isArray(areaResult.flights) ? areaResult.flights
+        : Array.isArray(areaResult) ? areaResult : [];
       for (const f of flightList) {
         const icao24 = f.h || f.icao24 || f.id;
         if (!icao24 || seenIds.has(icao24)) continue;
@@ -3062,36 +2646,7 @@ function calculateTheaterPostures(flights) {
     };
   });
 }
-
-async function seedTheaterPostureFromFlights(milFlights) {
-  const t0 = Date.now();
-  const flights = milFlights.map((f) => ({
-    id: f.hexCode || f.id,
-    callsign: f.callsign,
-    lat: f.lat,
-    lon: f.lon,
-    altitude: f.altitude || 0,
-    heading: f.heading || 0,
-    speed: f.speed || 0,
-    aircraftType: f.aircraftType || theaterDetectAircraftType(f.callsign),
-  }));
-  if (flights.length === 0) return;
-  const theaters = calculateTheaterPostures(flights);
-  const payload = { theaters };
-  const ok1 = await upstashSet(THEATER_POSTURE_LIVE_KEY, payload, THEATER_POSTURE_LIVE_TTL);
-  const ok2 = await upstashSet(THEATER_POSTURE_STALE_KEY, payload, THEATER_POSTURE_STALE_TTL);
-  const ok3 = await upstashSet(THEATER_POSTURE_BACKUP_KEY, payload, THEATER_POSTURE_BACKUP_TTL);
-  await upstashSet('seed-meta:theater-posture', { fetchedAt: Date.now(), recordCount: flights.length }, 604800);
-  const elevated = theaters.filter((t) => t.postureLevel !== 'normal').length;
-  const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-  console.log(`[TheaterPosture] Seeded from military flights: ${flights.length} flights, ${theaters.length} theaters (${elevated} elevated), redis: ${ok1 && ok2 && ok3 ? 'OK' : 'PARTIAL'} [${elapsed}s]`);
-}
-
 async function seedTheaterPosture() {
-  if (lastMilFlightsSeedMs > 0 && (Date.now() - lastMilFlightsSeedMs) < 360_000) {
-    console.log('[TheaterPosture] Skipping — military flights seed fed posture recently');
-    return;
-  }
   const t0 = Date.now();
   let flights = [];
   try {
@@ -4942,21 +4497,95 @@ async function getOpenSkyToken() {
   }
 }
 
-function _attemptOpenSkyTokenFetch(clientId, clientSecret) {
-  return new Promise((resolve) => {
-    const postData = `grant_type=client_credentials&client_id=${encodeURIComponent(clientId)}&client_secret=${encodeURIComponent(clientSecret)}`;
+function _openskyProxyConnect(targetHost, targetPort, timeoutMs = 10000) {
+  if (!OPENSKY_PROXY_ENABLED) return Promise.resolve(null);
+  const atIdx = OPENSKY_PROXY_AUTH.lastIndexOf('@');
+  if (atIdx === -1) return Promise.resolve(null);
+  const userPass = OPENSKY_PROXY_AUTH.substring(0, atIdx);
+  const hostPort = OPENSKY_PROXY_AUTH.substring(atIdx + 1);
+  const colonIdx = hostPort.lastIndexOf(':');
+  const proxyHost = hostPort.substring(0, colonIdx);
+  const proxyPort = parseInt(hostPort.substring(colonIdx + 1), 10);
 
+  return new Promise((resolve, reject) => {
+    const connectReq = http.request({
+      host: proxyHost,
+      port: proxyPort,
+      method: 'CONNECT',
+      path: `${targetHost}:${targetPort}`,
+      headers: {
+        'Host': `${targetHost}:${targetPort}`,
+        'Proxy-Authorization': 'Basic ' + Buffer.from(userPass).toString('base64'),
+      },
+      timeout: timeoutMs,
+    });
+    connectReq.on('connect', (res, socket) => {
+      if (res.statusCode !== 200) {
+        socket.destroy();
+        return reject(new Error(`CONNECT ${res.statusCode}`));
+      }
+      const tls = require('tls');
+      const tlsSocket = tls.connect({ socket, servername: targetHost }, () => {
+        resolve(tlsSocket);
+      });
+      tlsSocket.on('error', reject);
+    });
+    connectReq.on('error', reject);
+    connectReq.on('timeout', () => { connectReq.destroy(); reject(new Error('CONNECT timeout')); });
+    connectReq.end();
+  });
+}
+
+function _attemptOpenSkyTokenFetch(clientId, clientSecret) {
+  const postData = `grant_type=client_credentials&client_id=${encodeURIComponent(clientId)}&client_secret=${encodeURIComponent(clientSecret)}`;
+  const reqHeaders = {
+    'Content-Type': 'application/x-www-form-urlencoded',
+    'Content-Length': Buffer.byteLength(postData),
+    'User-Agent': 'WorldMonitor/1.0',
+  };
+
+  if (OPENSKY_PROXY_ENABLED) {
+    return _openskyProxyConnect('auth.opensky-network.org', 443).then((tlsSocket) => {
+      return new Promise((resolve) => {
+        const req = https.request({
+          socket: tlsSocket,
+          hostname: 'auth.opensky-network.org',
+          path: '/auth/realms/opensky-network/protocol/openid-connect/token',
+          method: 'POST',
+          headers: reqHeaders,
+          timeout: 10000,
+        }, (res) => {
+          let data = '';
+          res.on('data', chunk => data += chunk);
+          res.on('end', () => {
+            try {
+              const json = JSON.parse(data);
+              if (json.access_token) {
+                resolve({ token: json.access_token, expiresIn: json.expires_in || 1800 });
+              } else {
+                resolve({ error: json.error || 'no_access_token', status: res.statusCode });
+              }
+            } catch (e) {
+              resolve({ error: `parse: ${e.message}`, status: res.statusCode });
+            }
+          });
+        });
+        req.on('error', (err) => resolve({ error: `${err.code || 'UNKNOWN'}: ${err.message}` }));
+        req.on('timeout', () => { req.destroy(); resolve({ error: 'TIMEOUT' }); });
+        req.write(postData);
+        req.end();
+      });
+    }).catch((err) => ({ error: `PROXY: ${err.message}` }));
+  }
+
+  return new Promise((resolve) => {
     const req = https.request({
       hostname: 'auth.opensky-network.org',
       port: 443,
       family: 4,
       path: '/auth/realms/opensky-network/protocol/openid-connect/token',
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Content-Length': Buffer.byteLength(postData),
-        'User-Agent': 'WorldMonitor/1.0',
-      },
+      headers: reqHeaders,
       timeout: 10000
     }, (res) => {
       let data = '';
@@ -5025,14 +4654,37 @@ async function _fetchOpenSkyToken(clientId, clientSecret) {
 
 // Promisified upstream OpenSky fetch (single request)
 function _openskyRawFetch(url, token) {
+  const parsed = new URL(url);
+  const reqHeaders = {
+    'Accept': 'application/json',
+    'User-Agent': 'WorldMonitor/1.0',
+    'Authorization': `Bearer ${token}`,
+  };
+
+  if (OPENSKY_PROXY_ENABLED) {
+    return _openskyProxyConnect(parsed.hostname, 443, 15000).then((tlsSocket) => {
+      return new Promise((resolve) => {
+        const request = https.get({
+          socket: tlsSocket,
+          hostname: parsed.hostname,
+          path: parsed.pathname + parsed.search,
+          headers: reqHeaders,
+          timeout: 15000,
+        }, (response) => {
+          let data = '';
+          response.on('data', chunk => data += chunk);
+          response.on('end', () => resolve({ status: response.statusCode || 502, data }));
+        });
+        request.on('error', (err) => resolve({ status: 0, data: null, error: err }));
+        request.on('timeout', () => { request.destroy(); resolve({ status: 504, data: null, error: new Error('timeout') }); });
+      });
+    }).catch((err) => ({ status: 0, data: null, error: new Error(`PROXY: ${err.message}`) }));
+  }
+
   return new Promise((resolve) => {
     const request = https.get(url, {
       family: 4,
-      headers: {
-        'Accept': 'application/json',
-        'User-Agent': 'WorldMonitor/1.0',
-        'Authorization': `Bearer ${token}`,
-      },
+      headers: reqHeaders,
       timeout: 15000,
     }, (response) => {
       let data = '';
@@ -6225,7 +5877,7 @@ const server = http.createServer(async (req, res) => {
     const clientId = process.env.OPENSKY_CLIENT_ID;
     const clientSecret = process.env.OPENSKY_CLIENT_SECRET;
 
-    diag.steps.push({ step: 'env_check', hasClientId: !!clientId, hasClientSecret: !!clientSecret });
+    diag.steps.push({ step: 'env_check', hasClientId: !!clientId, hasClientSecret: !!clientSecret, proxyEnabled: OPENSKY_PROXY_ENABLED });
     diag.steps.push({
       step: 'auth_state',
       cachedToken: !!openskyToken,
@@ -6689,7 +6341,7 @@ function connectUpstream() {
 const wss = new WebSocketServer({ server });
 
 server.listen(PORT, () => {
-  console.log(`[Relay] WebSocket relay on port ${PORT}`);
+  console.log(`[Relay] WebSocket relay on port ${PORT} (OpenSky: ${OPENSKY_PROXY_ENABLED ? 'via proxy' : 'direct'})`);
   startTelegramPollLoop();
   startOrefPollLoop();
   startUcdpSeedLoop();
@@ -6701,7 +6353,6 @@ server.listen(PORT, () => {
   startPositiveEventsSeedLoop();
   startClassifySeedLoop();
   startServiceStatusesSeedLoop();
-  startMilitaryFlightsSeedLoop();
   startTheaterPostureSeedLoop();
 
   startWeatherSeedLoop();
