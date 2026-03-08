@@ -256,7 +256,10 @@ export class LiveWebcamsPanel extends Panel {
       return `http://localhost:${getLocalApiPort()}/api/youtube-embed?${params.toString()}`;
     }
     const vq = quality !== 'auto' ? `&vq=${quality}` : '';
-    return `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&mute=1&controls=0&modestbranding=1&playsinline=1&rel=0&enablejsapi=1&origin=${window.location.origin}${vq}`;
+    // Use youtube.com (not youtube-nocookie.com) so the user's cached YouTube
+    // session cookies are sent with the embed request — nocookie intentionally
+    // omits cookies which causes the bot-check prompt for signed-in users.
+    return `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&controls=0&modestbranding=1&playsinline=1&rel=0&enablejsapi=1&origin=${window.location.origin}${vq}`;
   }
 
   private createIframe(feed: WebcamFeed): HTMLIFrameElement {
@@ -264,12 +267,15 @@ export class LiveWebcamsPanel extends Panel {
     iframe.className = 'webcam-iframe';
     iframe.src = this.buildEmbedUrl(feed.fallbackVideoId);
     iframe.title = `${feed.city} live webcam`;
-    iframe.allow = 'autoplay; encrypted-media; picture-in-picture';
+    // storage-access lets YouTube call requestStorageAccess() to reach the
+    // user's cached session cookies and skip the bot-check prompt.
+    iframe.allow = 'autoplay; encrypted-media; picture-in-picture; storage-access';
     iframe.referrerPolicy = 'strict-origin-when-cross-origin';
     if (!isDesktopRuntime()) {
       iframe.allowFullscreen = true;
       iframe.setAttribute('loading', 'lazy');
-      iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-presentation');
+      // sandbox deliberately omitted — it would block allow-storage-access-by-user-activation
+      // which prevents the Storage Access API from working inside the iframe.
     }
     return iframe;
   }

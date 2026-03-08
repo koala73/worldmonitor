@@ -1095,6 +1095,10 @@ export class LiveNewsPanel extends Panel {
       mute: this.isMuted ? '1' : '0',
     });
     if (quality !== 'auto') params.set('vq', quality);
+    // origin = canonical site origin YouTube trusts for embed restrictions.
+    // parentOrigin = actual parent frame origin so postMessage round-trips work.
+    params.set('origin', this.youtubeOrigin || 'https://worldmonitor.app');
+    params.set('parentOrigin', window.location.origin);
     const embedUrl = `http://localhost:${getLocalApiPort()}/api/youtube-embed?${params.toString()}`;
 
     if (renderToken !== this.desktopEmbedRenderToken) {
@@ -1108,7 +1112,7 @@ export class LiveNewsPanel extends Panel {
     iframe.style.width = '100%';
     iframe.style.height = '100%';
     iframe.style.border = '0';
-    iframe.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+    iframe.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen; storage-access';
     iframe.allowFullscreen = true;
     iframe.referrerPolicy = 'strict-origin-when-cross-origin';
     iframe.setAttribute('loading', 'eager');
@@ -1280,7 +1284,31 @@ export class LiveNewsPanel extends Panel {
     if (!this.element?.isConnected) return;
     if (this.player || !this.playerElement || !window.YT?.Player) return;
 
-    this.player = new window.YT!.Player(this.playerElement, {
+    // When YT.Player receives a DOM element it replaces that element in the
+    // parent — the mutation fires on playerContainer, not inside playerElement.
+    // Passing the string ID instead makes the API insert the iframe *as a child*
+    // of the div, which the observer on playerContainer can catch.
+    // We add storage-access so YouTube can call requestStorageAccess() and
+    // access the user's cached session (avoids bot-check for signed-in users).
+    const storageObserver = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes) {
+          if (node instanceof HTMLIFrameElement && node.src.includes('youtube.com')) {
+            const cur = node.getAttribute('allow') || '';
+            if (!cur.includes('storage-access')) {
+              node.setAttribute('allow', cur ? `${cur}; storage-access` : 'storage-access');
+            }
+            storageObserver.disconnect();
+            return;
+          }
+        }
+      }
+    });
+    if (this.playerContainer) {
+      storageObserver.observe(this.playerContainer, { childList: true, subtree: true });
+    }
+
+    this.player = new window.YT!.Player(this.playerElementId, {
       host: 'https://www.youtube.com',
       videoId: this.activeChannel.videoId,
       playerVars: {
