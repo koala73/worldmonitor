@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, CHROME_UA, getRedisCredentials, acquireLock, releaseLock, withRetry, writeFreshnessMetadata, logSeedResult, verifySeedKey } from './_seed-utils.mjs';
-import { execFileSync } from 'node:child_process';
+import http from 'node:http';
+import https from 'node:https';
+import tls from 'node:tls';
 
 loadEnvFile(import.meta.url);
 
@@ -228,24 +230,73 @@ function redactProxy(msg) {
   return String(msg || '').replace(/\/\/[^@]+@/g, '//<redacted>@');
 }
 
-function curlFetchJson(url, { headers = {}, proxy = false, timeout = 15 } = {}) {
-  const args = ['-sS', '--compressed', '--max-time', String(timeout)];
-  if (proxy && PROXY_ENABLED) {
-    args.push('-x', `http://${OPENSKY_PROXY_AUTH}`);
-  }
-  for (const [k, v] of Object.entries(headers)) {
-    args.push('-H', `${k}: ${v}`);
-  }
-  args.push(url);
-  try {
-    const raw = execFileSync('curl', args, { encoding: 'utf8', timeout: (timeout + 5) * 1000, stdio: ['pipe', 'pipe', 'pipe'] });
-    return JSON.parse(raw);
-  } catch (e) {
-    if (e.status) {
-      throw new Error(`curl exit ${e.status} for ${url}`);
-    }
-    throw new Error(redactProxy(e.message));
-  }
+function parseProxyAuth() {
+  const atIdx = OPENSKY_PROXY_AUTH.lastIndexOf('@');
+  if (atIdx === -1) return null;
+  const userPass = OPENSKY_PROXY_AUTH.substring(0, atIdx);
+  const hostPort = OPENSKY_PROXY_AUTH.substring(atIdx + 1);
+  const colonIdx = hostPort.lastIndexOf(':');
+  return {
+    userPass,
+    host: hostPort.substring(0, colonIdx),
+    port: parseInt(hostPort.substring(colonIdx + 1), 10),
+  };
+}
+
+function proxyFetchJson(url, { headers = {}, timeout = 15000 } = {}) {
+  const parsed = new URL(url);
+  const proxy = parseProxyAuth();
+  if (!proxy) return Promise.reject(new Error('No proxy config'));
+
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { reject(new Error('PROXY TIMEOUT')); }, timeout + 5000);
+    const connectReq = http.request({
+      host: proxy.host,
+      port: proxy.port,
+      method: 'CONNECT',
+      path: `${parsed.hostname}:443`,
+      headers: {
+        'Host': `${parsed.hostname}:443`,
+        'Proxy-Authorization': 'Basic ' + Buffer.from(proxy.userPass).toString('base64'),
+      },
+      timeout,
+    });
+    connectReq.on('connect', (res, socket) => {
+      if (res.statusCode !== 200) {
+        clearTimeout(timer);
+        socket.destroy();
+        return reject(new Error(`CONNECT ${res.statusCode}`));
+      }
+      const tlsSocket = tls.connect({ socket, servername: parsed.hostname }, () => {
+        const req = https.request({
+          socket: tlsSocket,
+          hostname: parsed.hostname,
+          path: parsed.pathname + parsed.search,
+          method: 'GET',
+          headers: { ...headers, 'Accept': 'application/json', 'User-Agent': CHROME_UA },
+          timeout,
+        }, (resp) => {
+          let data = '';
+          resp.on('data', chunk => data += chunk);
+          resp.on('end', () => {
+            clearTimeout(timer);
+            if (resp.statusCode >= 400) {
+              return reject(new Error(`HTTP ${resp.statusCode}: ${data.substring(0, 200)}`));
+            }
+            try { resolve(JSON.parse(data)); }
+            catch (e) { reject(new Error(`JSON parse: ${e.message}`)); }
+          });
+        });
+        req.on('error', (e) => { clearTimeout(timer); reject(e); });
+        req.on('timeout', () => { req.destroy(); clearTimeout(timer); reject(new Error('TIMEOUT')); });
+        req.end();
+      });
+      tlsSocket.on('error', (e) => { clearTimeout(timer); reject(e); });
+    });
+    connectReq.on('error', (e) => { clearTimeout(timer); reject(new Error(redactProxy(e.message))); });
+    connectReq.on('timeout', () => { connectReq.destroy(); clearTimeout(timer); reject(new Error('CONNECT TIMEOUT')); });
+    connectReq.end();
+  });
 }
 
 // ── Data Sources ───────────────────────────────────────────
@@ -262,9 +313,8 @@ async function fetchOpenSkyAuthenticated(region) {
 
   if (PROXY_ENABLED) {
     const authHeader = 'Basic ' + Buffer.from(`${username}:${password}`).toString('base64');
-    const data = curlFetchJson(url, {
-      headers: { Authorization: authHeader, 'User-Agent': CHROME_UA, Accept: 'application/json' },
-      proxy: true,
+    const data = await proxyFetchJson(url, {
+      headers: { Authorization: authHeader },
     });
     return data.states || [];
   }
@@ -287,10 +337,7 @@ async function fetchOpenSkyAnonymous(region) {
   const url = `${OPENSKY_BASE}/states/all?${params}`;
 
   if (PROXY_ENABLED) {
-    const data = curlFetchJson(url, {
-      headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
-      proxy: true,
-    });
+    const data = await proxyFetchJson(url);
     return data.states || [];
   }
 

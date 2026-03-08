@@ -2,6 +2,7 @@ import type { AppContext, AppModule } from '@/app/app-context';
 import { invokeTauri } from '@/services/tauri-bridge';
 import { trackUpdateShown, trackUpdateClicked, trackUpdateDismissed } from '@/services/analytics';
 import { escapeHtml } from '@/utils/sanitize';
+import { getDismissed, setDismissed } from '@/utils/cross-domain-storage';
 
 interface DesktopRuntimeInfo {
   os: string;
@@ -88,7 +89,7 @@ export class DesktopUpdater implements AppModule {
       }
 
       const dismissKey = `wm-update-dismissed-${remote}`;
-      if (localStorage.getItem(dismissKey)) {
+      if (getDismissed(dismissKey)) {
         this.logUpdaterOutcome('update_available', { current, remote, dismissed: true });
         return;
       }
@@ -185,7 +186,7 @@ export class DesktopUpdater implements AppModule {
     `;
 
     const dismissToast = () => {
-      localStorage.setItem(`wm-update-dismissed-${version}`, '1');
+      setDismissed(`wm-update-dismissed-${version}`);
       toast.classList.remove('visible');
       setTimeout(() => toast.remove(), 300);
     };

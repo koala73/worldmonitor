@@ -1,6 +1,10 @@
 {
   "$schema": "https://schema.railpack.com",
-  "deploy": {
-    "aptPackages": ["curl"]
+  "steps": {
+    "install": {
+      "commands": [
+        { "cmd": "npm ci --omit=dev" }
+      ]
+    }
   }
 }
