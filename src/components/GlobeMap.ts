@@ -1568,13 +1568,16 @@ export class GlobeMap {
   }
 
   private layerWarningShown = false;
+  private lastActiveLayerCount = 0;
 
   private enforceLayerLimit(): void {
     if (!this.layerTogglesEl) return;
     const WARN_THRESHOLD = 6;
     const activeCount = Array.from(this.layerTogglesEl.querySelectorAll<HTMLInputElement>('.layer-toggle input'))
       .filter(i => i.checked).length;
-    if (activeCount >= WARN_THRESHOLD && !this.layerWarningShown) {
+    const increasing = activeCount > this.lastActiveLayerCount;
+    this.lastActiveLayerCount = activeCount;
+    if (activeCount >= WARN_THRESHOLD && increasing && !this.layerWarningShown) {
       this.layerWarningShown = true;
       showLayerWarning(WARN_THRESHOLD);
     } else if (activeCount < WARN_THRESHOLD) {
