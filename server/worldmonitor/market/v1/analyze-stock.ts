@@ -166,7 +166,7 @@ function rsiSeries(values: number[], period: number): number[] {
   return values.map((_, index) => {
     const avgGain = avgGains[index];
     const avgLoss = avgLosses[index];
-    if (!Number.isFinite(avgGain) || !Number.isFinite(avgLoss)) return 50;
+    if (avgGain == null || avgLoss == null || !Number.isFinite(avgGain) || !Number.isFinite(avgLoss)) return 50;
     if (avgLoss === 0) return avgGain === 0 ? 50 : 100;
     const rs = avgGain / avgLoss;
     return 100 - (100 / (1 + rs));
