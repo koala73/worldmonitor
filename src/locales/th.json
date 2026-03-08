@@ -175,7 +175,7 @@
     "sourceRegionGulfMena": "อ่าวเปอร์เซีย & MENA",
     "filterPanels": "กรองแผงควบคุม...",
     "resetLayout": "รีเซ็ตเลย์เอาต์",
-    "resetLayoutTooltip": "Restore default panel arrangement",
+    "resetLayoutTooltip": "คืนค่าการจัดเรียงแผงควบคุมเริ่มต้น",
     "unsavedChanges": "คุณมีการเปลี่ยนแปลงแผงควบคุมที่ยังไม่ได้บันทึก ยกเลิกหรือไม่?",
     "panelCatCore": "หลัก",
     "panelCatIntelligence": "ข่าวกรอง",

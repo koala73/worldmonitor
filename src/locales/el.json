@@ -175,7 +175,7 @@
     "sourceRegionGulfMena": "Κόλπος & ΜΕΝΑ",
     "filterPanels": "Φιλτράρισμα πάνελ...",
     "resetLayout": "Επαναφορά διάταξης",
-    "resetLayoutTooltip": "Restore default panel arrangement",
+    "resetLayoutTooltip": "Επαναφορά προεπιλεγμένης διάταξης πάνελ",
     "unsavedChanges": "Έχετε μη αποθηκευμένες αλλαγές πάνελ. Να απορριφθούν;",
     "panelCatCore": "Βασικά",
     "panelCatIntelligence": "Πληροφορίες",
