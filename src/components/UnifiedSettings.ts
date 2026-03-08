@@ -4,6 +4,7 @@ import { SITE_VARIANT } from '@/config/variant';
 import { t } from '@/services/i18n';
 import type { MapProvider } from '@/config/basemap';
 import { escapeHtml } from '@/utils/sanitize';
+import { showToast } from '@/utils/toast';
 import type { PanelConfig } from '@/types';
 import { renderPreferences } from '@/services/preferences-content';
 
@@ -200,7 +201,7 @@ export class UnifiedSettings {
     const prefs = renderPreferences({
       isDesktopApp: this.config.isDesktopApp,
       onMapProviderChange: this.config.onMapProviderChange,
-      onSettingSaved: () => this.showSaveToast(),
+      onSettingSaved: () => showToast(t('modals.settingsWindow.saved')),
     });
 
     this.overlay.innerHTML = `
@@ -385,27 +386,13 @@ export class UnifiedSettings {
     this.draftPanelSettings = this.clonePanelSettings();
     this.panelsJustSaved = true;
     this.renderPanelsTab();
-    this.showSaveToast();
+    showToast(t('modals.settingsWindow.saved'));
     if (this.savedTimeout) clearTimeout(this.savedTimeout);
     this.savedTimeout = setTimeout(() => {
       this.panelsJustSaved = false;
       this.savedTimeout = null;
       this.updatePanelsFooter();
     }, 2000);
-  }
-
-  private showSaveToast(): void {
-    document.querySelector('.toast-notification')?.remove();
-    const el = document.createElement('div');
-    el.className = 'toast-notification';
-    el.setAttribute('role', 'status');
-    el.textContent = t('modals.settingsWindow.saved');
-    document.body.appendChild(el);
-    requestAnimationFrame(() => el.classList.add('visible'));
-    setTimeout(() => {
-      el.classList.remove('visible');
-      setTimeout(() => el.remove(), 300);
-    }, 3000);
   }
 
   private updatePanelsFooter(): void {
