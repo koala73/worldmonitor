@@ -727,6 +727,14 @@ canvas,
   color: var(--text);
 }
 
+/* Medium-width desktop: keep header utility actions reachable when OS scaling
+   reduces the effective viewport width (e.g. 1920px @ 150% = ~1280px CSS). */
+@media (max-width: 1360px) {
+  .credit-link {
+    display: none;
+  }
+}
+
 .search-btn {
   padding: 4px 10px;
   background: transparent;
