@@ -14,6 +14,8 @@ const DESKTOP_RELEASES_URL = 'https://github.com/koala73/worldmonitor/releases';
 export interface PreferencesHost {
   isDesktopApp: boolean;
   onMapProviderChange?: (provider: MapProvider) => void;
+  /** Called when a preference is saved (for visual feedback e.g. toast). Not called for import/export. */
+  onSettingSaved?: () => void;
 }
 
 export interface PreferencesResult {
@@ -260,14 +262,17 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
 
         if (target.id === 'us-stream-quality') {
           setStreamQuality(target.value as StreamQuality);
+          host.onSettingSaved?.();
           return;
         }
         if (target.id === 'us-globe-visual-preset') {
           setGlobeVisualPreset(target.value as GlobeVisualPreset);
+          host.onSettingSaved?.();
           return;
         }
         if (target.id === 'us-theme') {
           setThemePreference(target.value as ThemePreference);
+          host.onSettingSaved?.();
           return;
         }
         if (target.id === 'us-map-provider') {
@@ -276,37 +281,46 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           renderMapThemeDropdown(container, provider);
           host.onMapProviderChange?.(provider);
           window.dispatchEvent(new CustomEvent('map-theme-changed'));
+          host.onSettingSaved?.();
           return;
         }
         if (target.id === 'us-map-theme') {
           const provider = getMapProvider();
           setMapTheme(provider, target.value);
           window.dispatchEvent(new CustomEvent('map-theme-changed'));
+          host.onSettingSaved?.();
           return;
         }
         if (target.id === 'us-live-streams-always-on') {
           setLiveStreamsAlwaysOn(target.checked);
+          host.onSettingSaved?.();
           return;
         }
         if (target.id === 'us-language') {
           trackLanguageChange(target.value);
           void changeLanguage(target.value);
+          host.onSettingSaved?.();
           return;
         }
         if (target.id === 'us-cloud') {
           setAiFlowSetting('cloudLlm', target.checked);
           updateAiStatus(container);
+          host.onSettingSaved?.();
         } else if (target.id === 'us-browser') {
           setAiFlowSetting('browserModel', target.checked);
           const warn = container.querySelector('.ai-flow-toggle-warn') as HTMLElement;
           if (warn) warn.style.display = target.checked ? 'block' : 'none';
           updateAiStatus(container);
+          host.onSettingSaved?.();
         } else if (target.id === 'us-map-flash') {
           setAiFlowSetting('mapNewsFlash', target.checked);
+          host.onSettingSaved?.();
         } else if (target.id === 'us-headline-memory') {
           setAiFlowSetting('headlineMemory', target.checked);
+          host.onSettingSaved?.();
         } else if (target.id === 'us-badge-anim') {
           setAiFlowSetting('badgeAnimation', target.checked);
+          host.onSettingSaved?.();
         }
       }, { signal });
 
