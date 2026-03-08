@@ -637,10 +637,24 @@ export class LiveNewsPanel extends Panel {
     header?.appendChild(this.fullscreenBtn);
   }
 
+  private originalParent: HTMLElement | null = null;
+  private originalNextSibling: Node | null = null;
+
   private toggleFullscreen(): void {
     this.isFullscreen = !this.isFullscreen;
     this.element.classList.toggle('live-news-fullscreen', this.isFullscreen);
     document.body.classList.toggle('live-news-fullscreen-active', this.isFullscreen);
+
+    if (this.isFullscreen) {
+      this.originalParent = this.element.parentElement;
+      this.originalNextSibling = this.element.nextSibling;
+      document.body.appendChild(this.element);
+    } else if (this.originalParent) {
+      this.originalParent.insertBefore(this.element, this.originalNextSibling);
+      this.originalParent = null;
+      this.originalNextSibling = null;
+    }
+
     if (this.fullscreenBtn) {
       this.fullscreenBtn.title = this.isFullscreen ? 'Exit fullscreen' : 'Fullscreen';
       this.fullscreenBtn.innerHTML = this.isFullscreen

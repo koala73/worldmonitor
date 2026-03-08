@@ -1917,7 +1917,7 @@ body.panel-resize-active iframe {
   left: 0 !important;
   width: 100vw !important;
   height: 100vh !important;
-  z-index: 9999 !important;
+  z-index: 10000 !important;
   border-radius: 0 !important;
   margin: 0 !important;
 }
@@ -1935,6 +1935,10 @@ body.panel-resize-active iframe {
 
 body.live-news-fullscreen-active {
   overflow: hidden;
+}
+
+body.live-news-fullscreen-active .community-widget {
+  display: none;
 }
 
 .live-indicator-btn {

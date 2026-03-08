@@ -189,7 +189,7 @@ function renderOverview(area: HTMLElement): void {
   const wmState = getSecretState('WORLDMONITOR_API_KEY');
   const wmStatusText = wmState.present ? 'Active' : 'Not set';
   const wmStatusClass = wmState.present ? 'ok' : 'warn';
-  const alreadyRegistered = localStorage.getItem('wm-waitlist-registered') === '1';
+  const alreadyRegistered = false; // Force-show form for email testing
 
   const catCards = SETTINGS_CATEGORIES.map(cat => {
     const { ready: catReady, total: catTotal } = getFeatureStatusCounts(cat);
