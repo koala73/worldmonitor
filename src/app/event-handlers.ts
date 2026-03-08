@@ -28,6 +28,7 @@ import {
   INTEL_SOURCES,
   DEFAULT_PANELS,
 } from '@/config';
+import { VARIANT_META } from '@/config/variant-meta';
 import {
   saveSnapshot,
   initAisStream,
@@ -668,12 +669,7 @@ export class EventHandlerManager implements AppModule {
     if (!document.fullscreenElement) return;
     try {
       await document.exitFullscreen?.();
-    } catch {
-      // Ignore exit failures and fall back to normal navigation.
-    }
-    if (document.fullscreenElement) {
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    }
+    } catch { /* proceed with navigation regardless */ }
   }
 
   private async navigateToVariant(
@@ -689,14 +685,7 @@ export class EventHandlerManager implements AppModule {
       return;
     }
 
-    const hosts: Record<string, string> = {
-      full: 'https://worldmonitor.app',
-      tech: 'https://tech.worldmonitor.app',
-      finance: 'https://finance.worldmonitor.app',
-      happy: 'https://happy.worldmonitor.app',
-    };
-
-    const target = options.href || hosts[variant];
+    const target = options.href || VARIANT_META[variant]?.url;
     if (target) window.location.href = target;
   }
 
