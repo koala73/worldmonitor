@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as digestSubscriptions from "../digestSubscriptions.js";
 import type * as registerInterest from "../registerInterest.js";
 
 import type {
@@ -17,6 +18,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  digestSubscriptions: typeof digestSubscriptions;
   registerInterest: typeof registerInterest;
 }>;
 

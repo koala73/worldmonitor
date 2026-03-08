@@ -106,6 +106,7 @@
     "papaparse": "^5.5.3",
     "pmtiles": "^4.4.0",
     "preact": "^10.25.4",
+    "resend": "^4.0.0",
     "supercluster": "^8.0.1",
     "telegram": "^2.26.22",
     "topojson-client": "^3.1.0",
