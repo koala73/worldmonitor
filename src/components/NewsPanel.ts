@@ -7,6 +7,8 @@ import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { analysisWorker, enrichWithVelocityML, getClusterAssetContext, MAX_DISTANCE_KM, activityTracker, generateSummary, translateText } from '@/services';
 import { getSourcePropagandaRisk, getSourceTier, getSourceType } from '@/config/feeds';
 import { SITE_VARIANT } from '@/config';
+
+type SortMode = 'relevance' | 'newest';
 import { t, getCurrentLanguage } from '@/services/i18n';
 
 /** Threshold for enabling virtual scrolling */
@@ -37,6 +39,12 @@ export class NewsPanel extends Panel {
   private boundScrollHandler: (() => void) | null = null;
   private boundClickHandler: (() => void) | null = null;
 
+  // Sort mode toggle (#107)
+  private sortMode: SortMode = 'relevance';
+  private sortBtn: HTMLButtonElement | null = null;
+  private lastRawClusters: ClusteredEvent[] | null = null;
+  private lastRawItems: NewsItem[] | null = null;
+
   // Panel summary feature
   private summaryBtn: HTMLButtonElement | null = null;
   private summaryContainer: HTMLElement | null = null;
@@ -46,7 +54,9 @@ export class NewsPanel extends Panel {
 
   constructor(id: string, title: string) {
     super({ id, title, showCount: true, trackActivity: true });
+    this.sortMode = this.loadSortMode();
     this.createDeviationIndicator();
+    this.createSortToggle();
     this.createSummarizeButton();
     this.setupActivityTracking();
     this.initWindowedList();
@@ -110,6 +120,56 @@ export class NewsPanel extends Panel {
       this.deviationEl.className = 'deviation-indicator';
       header.appendChild(this.deviationEl);
     }
+  }
+
+  // --- Sort toggle (#107) ---
+  private get sortStorageKey(): string {
+    return `wm_sort_${SITE_VARIANT}_${this.panelId}`;
+  }
+
+  private loadSortMode(): SortMode {
+    try {
+      const v = localStorage.getItem(this.sortStorageKey);
+      return v === 'newest' ? 'newest' : 'relevance';
+    } catch { return 'relevance'; }
+  }
+
+  private saveSortMode(): void {
+    try { localStorage.setItem(this.sortStorageKey, this.sortMode); } catch { /* storage full */ }
+  }
+
+  private createSortToggle(): void {
+    this.sortBtn = document.createElement('button');
+    this.sortBtn.className = 'panel-sort-btn';
+    this.updateSortButtonLabel();
+    this.sortBtn.addEventListener('click', () => {
+      this.sortMode = this.sortMode === 'relevance' ? 'newest' : 'relevance';
+      this.saveSortMode();
+      this.updateSortButtonLabel();
+      // Re-render with cached data
+      if (this.lastRawClusters) {
+        this.renderClusters(this.lastRawClusters);
+      } else if (this.lastRawItems) {
+        this.renderFlat(this.lastRawItems);
+      }
+    });
+
+    const countEl = this.header.querySelector('.panel-count');
+    if (countEl) {
+      this.header.insertBefore(this.sortBtn, countEl);
+    } else {
+      this.header.appendChild(this.sortBtn);
+    }
+  }
+
+  private updateSortButtonLabel(): void {
+    if (!this.sortBtn) return;
+    const icon = this.sortMode === 'newest' ? '🕐' : '🔥';
+    const label = this.sortMode === 'newest'
+      ? t('components.newsPanel.sortNewest') || 'Newest'
+      : t('components.newsPanel.sortRelevance') || 'Relevance';
+    this.sortBtn.innerHTML = icon;
+    this.sortBtn.title = `${t('components.newsPanel.sortBy') || 'Sort by'}: ${label}`;
   }
 
   private createSummarizeButton(): void {
@@ -346,15 +406,22 @@ export class NewsPanel extends Panel {
   }
 
   private renderFlat(items: NewsItem[]): void {
-    this.setCount(items.length);
-    this.currentHeadlines = items
+    this.lastRawItems = items;
+
+    // Sort items based on user preference
+    const sorted = this.sortMode === 'newest'
+      ? [...items].sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime())
+      : items; // default feed order
+
+    this.setCount(sorted.length);
+    this.currentHeadlines = sorted
       .slice(0, 5)
       .map(item => item.title)
       .filter((title): title is string => typeof title === 'string' && title.trim().length > 0);
 
     this.updateHeadlineSignature();
 
-    const html = items
+    const html = sorted
       .map(
         (item) => `
       <div class="item ${item.isAlert ? 'alert' : ''}" ${item.monitorColor ? `style="border-inline-start-color: ${escapeHtml(item.monitorColor)}"` : ''}>
@@ -377,8 +444,15 @@ export class NewsPanel extends Panel {
   }
 
   private renderClusters(clusters: ClusteredEvent[]): void {
-    // Sort by threat priority, then by time within same level
+    this.lastRawClusters = clusters;
+
+    // Sort based on user preference (#107)
     const sorted = [...clusters].sort((a, b) => {
+      if (this.sortMode === 'newest') {
+        // Pure chronological, newest first
+        return b.lastUpdated.getTime() - a.lastUpdated.getTime();
+      }
+      // Default: threat priority first, then recency within same level
       const pa = THREAT_PRIORITY[a.threat?.level ?? 'info'];
       const pb = THREAT_PRIORITY[b.threat?.level ?? 'info'];
       if (pb !== pa) return pb - pa;
