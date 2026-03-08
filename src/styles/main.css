@@ -13615,6 +13615,109 @@ a.prediction-link:hover {
   border-color: rgba(68, 255, 136, 0.2);
 }
 
+/* Pro early-access banner */
+.pro-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 7px 36px 7px 16px;
+  background: linear-gradient(90deg, rgba(74, 222, 128, 0.06), rgba(74, 222, 128, 0.12), rgba(74, 222, 128, 0.06));
+  border-bottom: 1px solid rgba(74, 222, 128, 0.15);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-dim);
+  position: relative;
+  transform: translateY(-100%);
+  opacity: 0;
+  transition: transform 0.3s ease-out, opacity 0.3s ease-out;
+}
+
+.pro-banner.pro-banner-in {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+.pro-banner.pro-banner-out {
+  transform: translateY(-100%);
+  opacity: 0;
+}
+
+.pro-banner-badge {
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--green);
+  background: rgba(74, 222, 128, 0.1);
+  border: 1px solid rgba(74, 222, 128, 0.2);
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.pro-banner-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pro-banner-text strong {
+  color: var(--text);
+}
+
+.pro-banner-cta {
+  padding: 4px 14px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: #0a0a0a;
+  background: var(--green);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.2s, transform 0.2s;
+}
+
+.pro-banner-cta:hover {
+  background: #5eead4;
+  transform: translateY(-1px);
+}
+
+.pro-banner-close {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 4px;
+}
+
+.pro-banner-close:hover {
+  color: var(--text);
+}
+
+@media (max-width: 768px) {
+  .pro-banner {
+    font-size: 11px;
+    gap: 8px;
+    padding: 6px 32px 6px 10px;
+    flex-wrap: wrap;
+  }
+
+  .pro-banner-text {
+    white-space: normal;
+    flex: 1 1 0;
+    min-width: 0;
+  }
+}
+
 /* Layer performance warning dialog */
 .layer-warn-overlay {
   position: fixed;
