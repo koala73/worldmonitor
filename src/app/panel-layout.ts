@@ -429,6 +429,7 @@ export class PanelLayoutManager implements AppModule {
           if (mainContent) {
             mainContent.classList.toggle('map-hidden', !config.enabled);
           }
+          this.ensureCorrectZones();
         }
         return;
       }
