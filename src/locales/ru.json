@@ -175,6 +175,7 @@
     "sourceRegionGulfMena": "Залив и БВСА",
     "filterPanels": "Фильтр панелей...",
     "resetLayout": "Сбросить макет",
+    "unsavedChanges": "У вас есть несохранённые изменения панелей. Отменить?",
     "panelCatCore": "Основные",
     "panelCatIntelligence": "Разведка",
     "panelCatRegionalNews": "Региональные новости",

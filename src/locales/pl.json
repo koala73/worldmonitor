@@ -173,6 +173,7 @@
     "sourceRegionGulfMena": "Zatoka & MENA",
     "filterPanels": "Filtruj panele...",
     "resetLayout": "Resetuj układ",
+    "unsavedChanges": "Masz niezapisane zmiany paneli. Odrzucić je?",
     "panelCatCore": "Główne",
     "panelCatIntelligence": "Wywiad",
     "panelCatRegionalNews": "Wiadomości Regionalne",
@@ -441,7 +442,7 @@
     },
     "story": {
       "generating": "Generuję historię...",
-      "save": "Ratować",
+      "save": "Zapisz",
       "whatsapp": "WhatsApp",
       "twitter": "X",
       "linkedin": "LinkedIn",

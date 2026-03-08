@@ -173,6 +173,7 @@
     "sourceRegionGulfMena": "Golfo e MENA",
     "filterPanels": "Filtra pannelli...",
     "resetLayout": "Ripristina layout",
+    "unsavedChanges": "Hai modifiche ai pannelli non salvate. Scartarle?",
     "panelCatCore": "Principale",
     "panelCatIntelligence": "Intelligence",
     "panelCatRegionalNews": "Notizie Regionali",

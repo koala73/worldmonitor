@@ -175,6 +175,7 @@
     "sourceRegionGulfMena": "걸프 & MENA",
     "filterPanels": "패널 필터...",
     "resetLayout": "레이아웃 초기화",
+    "unsavedChanges": "저장되지 않은 패널 변경 사항이 있습니다. 취소하시겠습니까?",
     "panelCatCore": "핵심",
     "panelCatIntelligence": "정보",
     "panelCatRegionalNews": "지역 뉴스",

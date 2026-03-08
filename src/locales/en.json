@@ -176,6 +176,7 @@
     "sourceRegionGulfMena": "Gulf & MENA",
     "filterPanels": "Filter panels...",
     "resetLayout": "Reset Layout",
+    "unsavedChanges": "You have unsaved panel changes. Discard them?",
     "panelCatCore": "Core",
     "panelCatIntelligence": "Intelligence",
     "panelCatRegionalNews": "Regional News",

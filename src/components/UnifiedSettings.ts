@@ -36,6 +36,7 @@ export class UnifiedSettings {
   private prefsCleanup: (() => void) | null = null;
   private draftPanelSettings: Record<string, PanelConfig> = {};
   private panelsJustSaved = false;
+  private savedTimeout: ReturnType<typeof setTimeout> | null = null;
 
   constructor(config: UnifiedSettingsConfig) {
     this.config = config;
@@ -161,6 +162,7 @@ export class UnifiedSettings {
   }
 
   public close(): void {
+    if (this.hasPendingPanelChanges() && !confirm(t('header.unsavedChanges'))) return;
     this.overlay.classList.remove('active');
     this.resetPanelDraft();
     localStorage.removeItem('wm-settings-open');
@@ -183,6 +185,7 @@ export class UnifiedSettings {
   }
 
   public destroy(): void {
+    if (this.savedTimeout) clearTimeout(this.savedTimeout);
     this.prefsCleanup?.();
     this.prefsCleanup = null;
     document.removeEventListener('keydown', this.escapeHandler);
@@ -381,6 +384,12 @@ export class UnifiedSettings {
     this.draftPanelSettings = this.clonePanelSettings();
     this.panelsJustSaved = true;
     this.renderPanelsTab();
+    if (this.savedTimeout) clearTimeout(this.savedTimeout);
+    this.savedTimeout = setTimeout(() => {
+      this.panelsJustSaved = false;
+      this.savedTimeout = null;
+      this.updatePanelsFooter();
+    }, 2000);
   }
 
   private updatePanelsFooter(): void {

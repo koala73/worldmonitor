@@ -175,6 +175,7 @@
     "sourceRegionGulfMena": "湾岸・中東",
     "filterPanels": "パネルを絞り込む...",
     "resetLayout": "レイアウトをリセット",
+    "unsavedChanges": "パネルの未保存の変更があります。破棄しますか？",
     "panelCatCore": "コア",
     "panelCatIntelligence": "インテリジェンス",
     "panelCatRegionalNews": "地域ニュース",

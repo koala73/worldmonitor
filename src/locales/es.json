@@ -173,6 +173,7 @@
     "sourceRegionGulfMena": "Golfo y MENA",
     "filterPanels": "Filtrar paneles...",
     "resetLayout": "Restablecer diseño",
+    "unsavedChanges": "Tiene cambios de panel sin guardar. ¿Descartarlos?",
     "panelCatCore": "Principal",
     "panelCatIntelligence": "Inteligencia",
     "panelCatRegionalNews": "Noticias Regionales",
@@ -441,7 +442,7 @@
     },
     "story": {
       "generating": "Generando historia...",
-      "save": "Ahorrar",
+      "save": "Guardar",
       "whatsapp": "WhatsApp",
       "twitter": "X",
       "linkedin": "LinkedIn",
