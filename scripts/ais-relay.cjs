@@ -1028,31 +1028,42 @@ async function startUcdpSeedLoop() {
 // ─────────────────────────────────────────────────────────────
 const SAT_SEED_INTERVAL_MS = 7_200_000;
 const SAT_SEED_TTL = 14_400;
-const SAT_GROUPS = ['military', 'resource'];
+const SAT_GROUPS = ['military', 'resource', 'active'];
 
 const SAT_NAME_FILTERS = [
   /^YAOGAN/i, /^GAOFEN/i, /^JILIN/i,
-  /^COSMOS 2[45]\d{2}/i,
+  /^COSMOS 2[4-9]\d{2}/i,
   /^COSMO-SKYMED/i, /^TERRASAR/i, /^PAZ$/i, /^SAR-LUPE/i,
   /^WORLDVIEW/i, /^SKYSAT/i, /^PLEIADES/i, /^KOMPSAT/i,
   /^SAPPHIRE/i, /^PRAETORIAN/i,
   /^SENTINEL/i,
+  /^OFEK/i, /^EROS/i,
+  /^RISAT/i, /^CARTOSAT/i, /^EOS-0[1-9]/i,
+  /^IGS/i,
+  /^GOKTURK/i, /^RASAT/i,
+  /^CSO-/i, /^HELIOS/i,
+  /^LACROSSE/i, /^TOPAZ/i, /^USA[ -]?\d/i,
+  /^KONDOR/i, /^PERSONA/i, /^BARS-M/i, /^RESURS-P/i,
+  /^HISEA/i, /^SUPERVIEW/i, /^ZIYUAN/i,
 ];
 
 function satClassify(name) {
   const n = name.toUpperCase();
   let type = 'military';
-  if (/COSMO-SKYMED|TERRASAR|PAZ|SAR-LUPE|YAOGAN/i.test(n)) type = 'sar';
-  else if (/WORLDVIEW|SKYSAT|PLEIADES|KOMPSAT|GAOFEN|JILIN/i.test(n)) type = 'optical';
-  else if (/SAPPHIRE|PRAETORIAN/i.test(n)) type = 'military';
+  if (/COSMO-SKYMED|TERRASAR|PAZ|SAR-LUPE|YAOGAN|RISAT|KONDOR|HISEA|CSO-/i.test(n)) type = 'sar';
+  else if (/WORLDVIEW|SKYSAT|PLEIADES|KOMPSAT|GAOFEN|JILIN|CARTOSAT|EOS-0|EROS|SUPERVIEW|ZIYUAN/i.test(n)) type = 'optical';
+  else if (/SAPPHIRE|PRAETORIAN|LACROSSE|TOPAZ|USA|IGS|OFEK|GOKTURK|PERSONA|BARS-M/i.test(n)) type = 'military';
 
   let country = 'OTHER';
-  if (/^YAOGAN|^GAOFEN|^JILIN/i.test(n)) country = 'CN';
-  else if (/^COSMOS/i.test(n)) country = 'RU';
-  else if (/^WORLDVIEW|^SAPPHIRE|^PRAETORIAN/i.test(n)) country = 'US';
-  else if (/^SENTINEL|^COSMO-SKYMED|^TERRASAR|^SAR-LUPE|^PAZ|^PLEIADES/i.test(n)) country = 'EU';
+  if (/^YAOGAN|^GAOFEN|^JILIN|^HISEA|^SUPERVIEW|^ZIYUAN/i.test(n)) country = 'CN';
+  else if (/^COSMOS|^KONDOR|^PERSONA|^BARS-M|^RESURS-P/i.test(n)) country = 'RU';
+  else if (/^WORLDVIEW|^SAPPHIRE|^PRAETORIAN|^LACROSSE|^TOPAZ|^USA|^SKYSAT/i.test(n)) country = 'US';
+  else if (/^SENTINEL|^COSMO-SKYMED|^TERRASAR|^SAR-LUPE|^PAZ|^PLEIADES|^CSO-|^HELIOS/i.test(n)) country = 'EU';
   else if (/^KOMPSAT/i.test(n)) country = 'KR';
-  else if (/^SKYSAT/i.test(n)) country = 'US';
+  else if (/^OFEK|^EROS/i.test(n)) country = 'IL';
+  else if (/^RISAT|^CARTOSAT|^EOS-0/i.test(n)) country = 'IN';
+  else if (/^IGS/i.test(n)) country = 'JP';
+  else if (/^GOKTURK|^RASAT/i.test(n)) country = 'TR';
 
   return { type, country };
 }

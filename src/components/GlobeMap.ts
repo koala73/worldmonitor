@@ -43,7 +43,7 @@ import type { ClimateAnomaly } from '@/services/climate';
 import type { GpsJamHex } from '@/services/gps-interference';
 import type { SatellitePosition } from '@/services/satellites';
 
-const SAT_COUNTRY_COLORS: Record<string, string> = { CN: '#ff2020', RU: '#ff8800', US: '#4488ff', EU: '#44cc44', KR: '#aa66ff', OTHER: '#ccccff' };
+const SAT_COUNTRY_COLORS: Record<string, string> = { CN: '#ff2020', RU: '#ff8800', US: '#4488ff', EU: '#44cc44', KR: '#aa66ff', IL: '#00ccff', IN: '#ff66aa', JP: '#ffcc00', TR: '#ff4466', OTHER: '#ccccff' };
 
 // ─── Marker discriminated union ─────────────────────────────────────────────
 interface BaseMarker {
