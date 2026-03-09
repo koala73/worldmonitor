@@ -192,7 +192,7 @@ Sentry.init({
     /Can't find variable: caches/,
     /crypto\.randomUUID is not a function/,
     /ucapi is not defined/,
-    /Identifier '(?:script|reportPage)' has already been declared/,
+    /Identifier '(?:script|reportPage|element)' has already been declared/,
     /getAttribute is not a function.*getAttribute\("role"\)/,
     /^TypeError: Internal error$/,
     /SCDynimacBridge/,
