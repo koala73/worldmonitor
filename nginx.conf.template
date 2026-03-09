@@ -58,6 +58,12 @@ http {
       add_header Cache-Control "public, max-age=86400";
     }
 
+    location ^~ /pro/assets/ {
+      include /etc/nginx/security_headers.conf;
+      try_files $uri =404;
+      add_header Cache-Control "public, max-age=31536000, immutable";
+    }
+
     location ^~ /pro {
       include /etc/nginx/security_headers.conf;
       try_files $uri /pro/index.html;
