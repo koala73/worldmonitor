@@ -12,7 +12,6 @@ coverage
 .DS_Store
 
 src-tauri
-server
 e2e
 scripts
 docs
