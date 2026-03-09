@@ -59,6 +59,7 @@ import {
   fetchChokepointStatus,
   fetchCriticalMinerals,
 } from '@/services';
+import { fetchEarningsReports } from '@/services/earnings';
 import { getMarketWatchlistEntries } from '@/services/market-watchlist';
 import { fetchStockAnalysesForTargets, getStockAnalysisTargets } from '@/services/stock-analysis';
 import {
@@ -109,10 +110,11 @@ import type { GetSectorSummaryResponse, ListMarketQuotesResponse } from '@/gener
 import { mountCommunityWidget } from '@/components/CommunityWidget';
 import { ResearchServiceClient } from '@/generated/client/worldmonitor/research/v1/service_client';
 import {
-  MarketPanel,
   StockAnalysisPanel,
   StockBacktestPanel,
+  MarketPanel,
   HeatmapPanel,
+  EarningsPanel,
   CommoditiesPanel,
   CryptoPanel,
   PredictionPanel,
@@ -195,7 +197,7 @@ export class DataLoaderManager implements AppModule {
     this.applyTimeRangeFilterToNewsPanels();
   }, 120);
 
-  public updateSearchIndex: () => void = () => {};
+  public updateSearchIndex: () => void = () => { };
 
   private callPanel(key: string, method: string, ...args: unknown[]): void {
     const panel = this.ctx.panels[key];
@@ -292,7 +294,7 @@ export class DataLoaderManager implements AppModule {
   }
 
   private persistDigest(data: ListFeedDigestResponse): void {
-    setPersistentCache('digest:last-good', data).catch(() => {});
+    setPersistentCache('digest:last-good', data).catch(() => { });
   }
 
   private async loadPersistedDigest(): Promise<ListFeedDigestResponse | null> {
@@ -464,7 +466,7 @@ export class DataLoaderManager implements AppModule {
       ingestTemporalAnomaliesForCII(bootstrapTemporal.anomalies);
       this.refreshCiiAndBrief();
     } else {
-      this.refreshTemporalBaseline().catch(() => {});
+      this.refreshTemporalBaseline().catch(() => { });
     }
   }
 
@@ -711,7 +713,7 @@ export class DataLoaderManager implements AppModule {
               item.threat = ai;
               item.isAlert = ai.level === 'critical' || ai.level === 'high';
             }
-          }).catch(() => {});
+          }).catch(() => { });
         }
 
         checkBatchForBreakingAlerts(items);
@@ -1173,6 +1175,8 @@ export class DataLoaderManager implements AppModule {
       const commoditiesPanel = this.ctx.panels['commodities'] as CommoditiesPanel | undefined;
       const mapCommodity = (c: MarketData) => ({ display: c.display, price: c.price, change: c.change, sparkline: c.sparkline });
 
+      void this.loadEarnings();
+
       if (commoditiesPanel) {
         // Hydrate commodities from bootstrap (same pattern as sectors/markets)
         const hydratedCommodities = getHydratedData('commodityQuotes') as ListMarketQuotesResponse | undefined;
@@ -1230,6 +1234,25 @@ export class DataLoaderManager implements AppModule {
       this.ctx.statusPanel?.updateApi('CoinGecko', { status: crypto.length > 0 ? 'ok' : 'error' });
     } catch {
       this.ctx.statusPanel?.updateApi('CoinGecko', { status: 'error' });
+    }
+  }
+
+  async loadEarnings(): Promise<void> {
+    try {
+      const upcomingResult = await fetchEarningsReports('upcoming');
+      const upcomingPanel = this.ctx.panels['upcoming-earnings'] as EarningsPanel | undefined;
+      upcomingPanel?.renderEarnings(upcomingResult.reports, upcomingResult.skipReason);
+
+      const recentResult = await fetchEarningsReports('recent');
+      const recentPanel = this.ctx.panels['recent-earnings'] as EarningsPanel | undefined;
+      recentPanel?.renderEarnings(recentResult.reports, recentResult.skipReason);
+    } catch (err) {
+      console.error('[DataLoader] Failed to load earnings:', err);
+      const errReason = 'Failed to load earnings data.';
+      const upcomingPanel = this.ctx.panels['upcoming-earnings'] as EarningsPanel | undefined;
+      const recentPanel = this.ctx.panels['recent-earnings'] as EarningsPanel | undefined;
+      upcomingPanel?.renderEarnings([], errReason);
+      recentPanel?.renderEarnings([], errReason);
     }
   }
 
@@ -1509,7 +1532,7 @@ export class DataLoaderManager implements AppModule {
         };
         fetchUSNIFleetReport().then((report) => {
           if (report) this.ctx.intelligenceCache.usniFleet = report;
-        }).catch(() => {});
+        }).catch(() => { });
         ingestFlights(flightData.flights);
         ingestVessels(vesselData.vessels);
         ingestMilitaryForCII(flightData.flights, vesselData.vessels);
@@ -1990,7 +2013,7 @@ export class DataLoaderManager implements AppModule {
       };
       fetchUSNIFleetReport().then((report) => {
         if (report) this.ctx.intelligenceCache.usniFleet = report;
-      }).catch(() => {});
+      }).catch(() => { });
       this.ctx.map?.setMilitaryFlights(flightData.flights, flightData.clusters);
       this.ctx.map?.setMilitaryVessels(vesselData.vessels, vesselData.clusters);
       ingestFlights(flightData.flights);
@@ -2457,7 +2480,7 @@ export class DataLoaderManager implements AppModule {
     setPersistentCache(
       DataLoaderManager.HAPPY_ITEMS_CACHE_KEY,
       this.ctx.happyAllItems.map(item => ({ ...item, pubDate: item.pubDate.getTime() }))
-    ).catch(() => {});
+    ).catch(() => { });
   }
 
   private async loadPositiveEvents(): Promise<void> {

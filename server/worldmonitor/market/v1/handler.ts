@@ -25,6 +25,7 @@ import { analyzeStock } from './analyze-stock';
 import { getStockAnalysisHistory } from './get-stock-analysis-history';
 import { backtestStock } from './backtest-stock';
 import { listStoredStockBacktests } from './list-stored-stock-backtests';
+import { getEarningsCalendar } from './get-earnings-calendar';
 
 export const marketHandler: MarketServiceHandler = {
   listMarketQuotes,
@@ -39,4 +40,5 @@ export const marketHandler: MarketServiceHandler = {
   getStockAnalysisHistory,
   backtestStock,
   listStoredStockBacktests,
+  getEarningsCalendar,
 };

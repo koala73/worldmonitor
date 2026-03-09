@@ -8,6 +8,7 @@ import {
   MarketPanel,
   StockAnalysisPanel,
   StockBacktestPanel,
+  EarningsPanel,
   HeatmapPanel,
   CommoditiesPanel,
   CryptoPanel,
@@ -482,6 +483,8 @@ export class PanelLayoutManager implements AppModule {
 
     this.createPanel('heatmap', () => new HeatmapPanel());
     this.createPanel('markets', () => new MarketPanel());
+    this.createPanel('upcoming-earnings', () => new EarningsPanel('upcoming-earnings', 'panels.upcomingEarnings'));
+    this.createPanel('recent-earnings', () => new EarningsPanel('recent-earnings', 'panels.recentEarnings'));
     const stockAnalysisPanel = this.createPanel('stock-analysis', () => new StockAnalysisPanel());
     if (stockAnalysisPanel && !getSecretState('WORLDMONITOR_API_KEY').present) {
       stockAnalysisPanel.showLocked([

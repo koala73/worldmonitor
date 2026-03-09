@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package worldmonitor.market.v1;
+
+import "worldmonitor/market/v1/earnings_report.proto";
+import "sebuf/http/annotations.proto";
+
+message GetEarningsCalendarRequest {
+  // UPCOMING or RECENT
+  string timeframe = 1;
+}
+
+message GetEarningsCalendarResponse {
+  repeated EarningsReport reports = 1;
+  bool finnhub_skipped = 2;
+  string skip_reason = 3;
+}

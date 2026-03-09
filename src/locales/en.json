@@ -197,6 +197,8 @@
     "panelCatTradePolicy": "Trade Policy"
   },
   "panels": {
+    "upcomingEarnings": "Upcoming Earnings",
+    "recentEarnings": "Recent Earnings",
     "liveNews": "Live News",
     "markets": "Markets",
     "map": "Global Situation",

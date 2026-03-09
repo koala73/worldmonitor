@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package worldmonitor.market.v1;
+
+message EarningsReport {
+  string symbol = 1;
+  string title = 2; // e.g. "Apple Inc."
+  optional double eps_estimate = 3;
+  optional double eps_actual = 4;
+  optional double eps_surprise_percent = 5;
+  optional double revenue_estimate = 6;
+  optional double revenue_actual = 7;
+  optional double revenue_surprise_percent = 8;
+  string report_date = 9; // YYYY-MM-DD
+  string report_time = 10; // e.g. "pre-market", "post-market"
+}
