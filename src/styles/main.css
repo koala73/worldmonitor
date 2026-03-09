@@ -2290,6 +2290,7 @@ body.panel-resize-active iframe {
   z-index: 10000 !important;
   border-radius: 0 !important;
   margin: 0 !important;
+  visibility: visible !important;
 }
 
 .live-news-fullscreen .panel-content,
@@ -2307,29 +2308,26 @@ body.live-news-fullscreen-active {
   overflow: hidden;
 }
 
-body.live-news-fullscreen-active .time-slider,
-body.live-news-fullscreen-active .deckgl-layer-toggles,
-body.live-news-fullscreen-active .map-legend,
-body.live-news-fullscreen-active .map-controls,
-body.live-news-fullscreen-active .map-timestamp,
-body.live-news-fullscreen-active .map-bottom-grid,
-body.live-news-fullscreen-active .map-resize-handle {
+/* Hide everything behind the fullscreen panel (#829, #859).
+   Previous attempts hid individual overlays (.layer-toggles, .map-legend, etc.)
+   but new elements kept slipping through. Hiding the entire map-section and
+   non-fullscreen panels is comprehensive and future-proof.
+   :not(.live-news-fullscreen) excludes the map-section itself when it is the
+   fullscreen element. For panels inside .map-bottom-grid that go fullscreen,
+   visibility: visible !important on .live-news-fullscreen overrides the
+   inherited hidden state, and position: fixed renders it independently. */
+body.live-news-fullscreen-active .map-section:not(.live-news-fullscreen) {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
   visibility: hidden !important;
   pointer-events: none !important;
 }
 
 body.live-news-fullscreen-active .community-widget {
-  display: none;
-}
-
-/* Hide map overlays and sibling panels behind fullscreen panel (#829, #859) */
-body.live-news-fullscreen-active .layer-toggles,
-body.live-news-fullscreen-active .map-legend {
   display: none !important;
-}
-
-body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
-  visibility: hidden !important;
 }
 
 .live-indicator-btn {
