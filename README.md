@@ -421,6 +421,8 @@ Then open [http://localhost:3000](http://localhost:3000).
 | --------------- | ------------------------------ | ------------------------------------------------ |
 | `API_UPSTREAM`  | `https://api.worldmonitor.app` | Backend URL for `/api/*` proxy (set at runtime)  |
 
+The proxy forwards the upstream host (`Host: <API_UPSTREAM host>`) so the default API receives the correct Host. If your backend expects a different Host, configure it accordingly.
+
 Example with a custom API backend:
 
 ```bash
