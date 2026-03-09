@@ -1299,16 +1299,22 @@ export class LiveNewsPanel extends Panel {
               node.setAttribute('allow', cur ? `${cur}; storage-access` : 'storage-access');
             }
             storageObserver.disconnect();
+            if (observerTimeout !== null) clearTimeout(observerTimeout);
             return;
           }
         }
       }
     });
+    // Auto-disconnect after 10 s to avoid leaking the observer if the iframe
+    // never appears (e.g. YT.Player throws or the API fails to load).
+    let observerTimeout: ReturnType<typeof setTimeout> | null = null;
     if (this.playerContainer) {
       storageObserver.observe(this.playerContainer, { childList: true, subtree: true });
+      observerTimeout = setTimeout(() => storageObserver.disconnect(), 10_000);
     }
 
-    this.player = new window.YT!.Player(this.playerElementId, {
+    try {
+      this.player = new window.YT!.Player(this.playerElementId, {
       host: 'https://www.youtube.com',
       videoId: this.activeChannel.videoId,
       playerVars: {
@@ -1367,6 +1373,12 @@ export class LiveNewsPanel extends Panel {
         },
       },
     });
+    } catch (err) {
+      // YT.Player constructor threw — disconnect the observer so it doesn't leak.
+      storageObserver.disconnect();
+      if (observerTimeout !== null) clearTimeout(observerTimeout);
+      throw err;
+    }
 
     this.startBotCheckTimeout();
   }

@@ -21,7 +21,7 @@ const ALLOWED_ORIGINS = [
 
 const ALLOWED_PARENT_ORIGINS = [
   ...ALLOWED_ORIGINS,
-  /^tauri:\/\/localhost$/,
+  // tauri://localhost is already covered via ALLOWED_ORIGINS spread above.
   /^https?:\/\/tauri\.localhost$/,
   /^https?:\/\/[a-z0-9-]+\.tauri\.localhost$/,
 ];
@@ -95,9 +95,15 @@ export default async function handler(request) {
   <script>
     // Request unpartitioned cookie access so the YouTube player can use the
     // user's cached YouTube session (bypasses bot-check for signed-in users).
-    if (document.requestStorageAccess) {
-      document.requestStorageAccess().catch(function(){});
+    // Most browsers require a user gesture; we try eagerly here (Chrome may
+    // grant it automatically if the user has visited youtube.com), then retry
+    // on the first overlay click as a gesture-gated fallback.
+    function tryStorageAccess() {
+      if (document.requestStorageAccess) {
+        document.requestStorageAccess().catch(function(){});
+      }
     }
+    tryStorageAccess();
     var tag=document.createElement('script');
     tag.src='https://www.youtube.com/iframe_api';
     document.head.appendChild(tag);
@@ -140,6 +146,9 @@ export default async function handler(request) {
       });
     }
     overlay.addEventListener('click',function(){
+      // Gesture-gated fallback: retry storage access on first user interaction,
+      // which satisfies browsers that require a gesture before granting access.
+      tryStorageAccess();
       if(player&&player.playVideo){player.playVideo();player.unMute();hideOverlay()}
     });
     setTimeout(function(){if(!started)overlay.classList.remove('hidden')},3000);
@@ -167,7 +176,8 @@ export default async function handler(request) {
       'cache-control': 'public, s-maxage=900, stale-while-revalidate=300',
       // Allow the nested YouTube iframe to call requestStorageAccess() for
       // unpartitioned cookie access (lets signed-in users skip bot-check).
-      'permissions-policy': 'storage-access=*',
+      // Scope storage-access permission to self and YouTube only rather than *.
+      'permissions-policy': 'storage-access=(self "https://www.youtube.com")',
     },
   });
 }

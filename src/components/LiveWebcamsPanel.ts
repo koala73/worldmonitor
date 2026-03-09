@@ -259,6 +259,9 @@ export class LiveWebcamsPanel extends Panel {
     // Use youtube.com (not youtube-nocookie.com) so the user's cached YouTube
     // session cookies are sent with the embed request — nocookie intentionally
     // omits cookies which causes the bot-check prompt for signed-in users.
+    // Trade-off: this allows YouTube tracking via embed cookies. The alternative
+    // (nocookie) causes bot-check failures for signed-in users, which breaks
+    // the core webcam feature. Accepted intentionally; could be made a user pref.
     return `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&controls=0&modestbranding=1&playsinline=1&rel=0&enablejsapi=1&origin=${window.location.origin}${vq}`;
   }
 
@@ -274,8 +277,12 @@ export class LiveWebcamsPanel extends Panel {
     if (!isDesktopRuntime()) {
       iframe.allowFullscreen = true;
       iframe.setAttribute('loading', 'lazy');
-      // sandbox deliberately omitted — it would block allow-storage-access-by-user-activation
-      // which prevents the Storage Access API from working inside the iframe.
+      // sandbox is intentionally omitted. We tested allow-storage-access-by-user-activation
+      // (the targeted sandbox token for this use case) but Chrome does not honour it in
+      // practice — the Storage Access API is silently blocked even with the token present.
+      // Removing sandbox entirely is the only working approach in current browsers.
+      // Trade-off: the embed gains full iframe powers (top-nav, popups). Acceptable here
+      // because the src is always youtube.com which has its own sandboxing.
     }
     return iframe;
   }
