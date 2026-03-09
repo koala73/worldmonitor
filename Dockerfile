@@ -1,8 +1,9 @@
 ## syntax=docker/dockerfile:1.7
 
-# Multi-stage build for the World Monitor web app.
-# Stage 1: Build the frontend (full variant) with Vite.
-FROM node:22-alpine AS builder
+# Multi-stage build for the World Monitor web app (frontend only).
+
+# Stage 1: Build the frontend with TypeScript + Vite.
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
@@ -12,34 +13,34 @@ ENV NODE_ENV=production
 COPY package.json package-lock.json ./
 RUN npm ci
 
-# Copy source and build the full variant.
+# Copy source and build.
 COPY . .
 
-# Build arguments allow overriding defaults at build time.
+# Build-time configuration
 ARG VITE_VARIANT=full
 ARG VITE_WS_API_URL=https://api.worldmonitor.app
 
 ENV VITE_VARIANT=${VITE_VARIANT}
 ENV VITE_WS_API_URL=${VITE_WS_API_URL}
 
-RUN npm run build:full
+# tsc + vite build (see package.json "build" script)
+RUN npm run build
 
 
-# Stage 2: Serve the built assets from a minimal Node image.
-FROM node:22-alpine AS runner
+# Stage 2: Serve the built assets from nginx.
+FROM nginx:alpine AS runtime
 
-WORKDIR /app
+WORKDIR /usr/share/nginx/html
 
-ENV NODE_ENV=production
+# Allow API_UPSTREAM to be read from the environment.
+ENV API_UPSTREAM=https://api.worldmonitor.app
 
-# Use a small static file server for the built assets.
-RUN npm install -g serve@14
+# Copy built assets and nginx configuration.
+COPY --from=builder /app/dist/ ./
+COPY nginx.conf /etc/nginx/nginx.conf
 
-COPY --from=builder /app/dist ./dist
+EXPOSE 80
 
-# Default Vite preview port; can be overridden at runtime.
-ENV PORT=4173
-EXPOSE 4173
+CMD ["nginx", "-g", "daemon off;"]
 
-CMD ["sh", "-c", "serve -s dist -l ${PORT}"]
 
