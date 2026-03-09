@@ -1,4 +1,4 @@
-## syntax=docker/dockerfile:1.7
+# syntax=docker/dockerfile:1.7
 
 # Multi-stage build for the World Monitor web app (frontend only).
 
@@ -7,11 +7,9 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-ENV NODE_ENV=production
-
-# Install dependencies (including dev deps needed for the build).
+# Install all dependencies (including devDependencies for tsc, vite, etc.).
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm ci --include=dev
 
 # Copy source and build.
 COPY . .
@@ -32,15 +30,17 @@ FROM nginx:alpine AS runtime
 
 WORKDIR /usr/share/nginx/html
 
-# Allow API_UPSTREAM to be read from the environment.
 ENV API_UPSTREAM=https://api.worldmonitor.app
 
-# Copy built assets and nginx configuration.
+# Copy built assets, nginx template (API_UPSTREAM substituted at startup), and entrypoint.
 COPY --from=builder /app/dist/ ./
-COPY nginx.conf /etc/nginx/nginx.conf
+COPY nginx.conf.template /etc/nginx/nginx.conf.template
+COPY nginx-security-headers.conf /etc/nginx/security_headers.conf
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 
 EXPOSE 80
 
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["/docker-entrypoint.sh"]
 
 
