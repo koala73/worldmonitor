@@ -19,13 +19,13 @@ import { fetchAcledCached } from '../../../_shared/acled';
 const BASELINE_RISK: Record<string, number> = {
   US: 5, RU: 35, CN: 25, UA: 50, IR: 40, IL: 45, TW: 30, KP: 45,
   SA: 20, TR: 25, PL: 10, DE: 5, FR: 10, GB: 5, IN: 20, PK: 35,
-  SY: 50, YE: 50, MM: 45, VE: 40,
+  SY: 50, YE: 50, MM: 45, VE: 40, CU: 45,
 };
 
 const EVENT_MULTIPLIER: Record<string, number> = {
   US: 0.3, RU: 2.0, CN: 2.5, UA: 0.8, IR: 2.0, IL: 0.7, TW: 1.5, KP: 3.0,
   SA: 2.0, TR: 1.2, PL: 0.8, DE: 0.5, FR: 0.6, GB: 0.5, IN: 0.8, PK: 1.5,
-  SY: 0.7, YE: 0.7, MM: 1.8, VE: 1.8,
+  SY: 0.7, YE: 0.7, MM: 1.8, VE: 1.8, CU: 2.0,
 };
 
 const COUNTRY_KEYWORDS: Record<string, string[]> = {
@@ -49,6 +49,7 @@ const COUNTRY_KEYWORDS: Record<string, string[]> = {
   YE: ['yemen', 'sanaa', 'houthi'],
   MM: ['myanmar', 'burma'],
   VE: ['venezuela', 'caracas', 'maduro'],
+  CU: ['cuba', 'havana', 'diaz-canel'],
 };
 
 const COUNTRY_BBOX: Record<string, { minLat: number; maxLat: number; minLon: number; maxLon: number }> = {
@@ -72,13 +73,14 @@ const COUNTRY_BBOX: Record<string, { minLat: number; maxLat: number; minLon: num
   YE: { minLat: 12.1, maxLat: 19.0, minLon: 42.5, maxLon: 54.5 },
   MM: { minLat: 9.8, maxLat: 28.5, minLon: 92.2, maxLon: 101.2 },
   VE: { minLat: 0.6, maxLat: 12.2, minLon: -73.4, maxLon: -59.8 },
+  CU: { minLat: 19.8, maxLat: 23.3, minLon: -85.0, maxLon: -74.1 },
 };
 
 const ZONE_COUNTRY_MAP: Record<string, string[]> = {
   'North America': ['US'], 'Europe': ['DE', 'FR', 'GB', 'PL', 'TR', 'UA'],
   'East Asia': ['CN', 'TW', 'KP'], 'South Asia': ['IN', 'PK', 'MM'],
   'Middle East': ['IR', 'IL', 'SA', 'SY', 'YE'], 'Russia': ['RU'],
-  'Latin America': ['VE'],
+  'Latin America': ['VE', 'CU'],
 };
 
 // ========================================================================
