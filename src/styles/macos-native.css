@@ -694,6 +694,14 @@ body.is-desktop-macos[data-theme="light"] .mac-content-toolbar {
   -webkit-app-region: no-drag;
 }
 
+/* Non-interactive toolbar elements are drag handles */
+.mac-toolbar-title,
+.mac-toolbar-status,
+.mac-toolbar-spacer,
+.mac-content-toolbar .header-clock {
+  -webkit-app-region: drag;
+}
+
 .mac-toolbar-title {
   font-size: 13px;
   font-weight: 600;

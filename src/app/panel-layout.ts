@@ -311,14 +311,14 @@ export class PanelLayoutManager implements AppModule {
         <main class="mac-content">
           <!-- Draggable toolbar (title bar area) -->
           <div class="mac-content-toolbar" data-tauri-drag-region>
-            <span class="mac-toolbar-title">
+            <span class="mac-toolbar-title" data-tauri-drag-region>
               ${SITE_VARIANT === 'tech' ? 'Tech Monitor' : SITE_VARIANT === 'finance' ? 'Finance Monitor' : SITE_VARIANT === 'happy' ? 'Good News' : 'World Monitor'}
             </span>
-            <div class="mac-toolbar-status">
+            <div class="mac-toolbar-status" data-tauri-drag-region>
               <span class="status-dot"></span>
               <span>${t('header.live')}</span>
             </div>
-            <div class="mac-toolbar-spacer"></div>
+            <div class="mac-toolbar-spacer" data-tauri-drag-region></div>
             <div class="region-selector">
               <select id="regionSelect" class="region-select">
                 <option value="global">${t('components.deckgl.views.global')}</option>
@@ -331,7 +331,7 @@ export class PanelLayoutManager implements AppModule {
                 <option value="oceania">${t('components.deckgl.views.oceania')}</option>
               </select>
             </div>
-            <span class="header-clock" id="headerClock"></span>
+            <span class="header-clock" id="headerClock" data-tauri-drag-region></span>
             <button class="search-btn" id="searchBtn"><kbd>⌘K</kbd> ${t('header.search')}</button>
           </div>
 
