@@ -216,7 +216,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           tagName: v__VERSION__
-          releaseName: 'Crystal Ball v__VERSION__'
+          releaseName: 'World Monitor v__VERSION__'
           releaseBody: 'See changelog below.'
           releaseDraft: ${{ github.event_name == 'workflow_dispatch' && fromJSON(github.event.inputs.draft) }}
           prerelease: false
@@ -234,7 +234,7 @@ jobs:
           CONVEX_URL: ${{ secrets.CONVEX_URL }}
         with:
           tagName: v__VERSION__
-          releaseName: 'Crystal Ball v__VERSION__'
+          releaseName: 'World Monitor v__VERSION__'
           releaseBody: 'See changelog below.'
           releaseDraft: ${{ github.event_name == 'workflow_dispatch' && fromJSON(github.event.inputs.draft) }}
           prerelease: false
