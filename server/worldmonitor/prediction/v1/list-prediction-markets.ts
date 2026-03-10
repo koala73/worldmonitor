@@ -73,6 +73,25 @@ interface KalshiEvent {
   markets?: KalshiMarket[];
 }
 
+// ---------- Bootstrap types ----------
+
+interface BootstrapMarket {
+  title: string;
+  yesPrice: number;
+  volume: number;
+  url: string;
+  endDate?: string;
+  source?: 'kalshi' | 'polymarket';
+}
+
+interface BootstrapData {
+  geopolitical?: BootstrapMarket[];
+  tech?: BootstrapMarket[];
+  finance?: BootstrapMarket[];
+}
+
+const KALSHI_CATEGORIES = ['economy', 'fed', 'inflation', 'markets', 'business'];
+
 // ---------- Helpers ----------
 
 /** Parse the yes-side price from a Gamma market's outcomePrices JSON string (0-1 scale). */
@@ -127,15 +146,14 @@ function mapMarket(market: GammaMarket): PredictionMarket {
   };
 }
 
-/** Map a KalshiMarket to a proto PredictionMarket. Only returns a result for active binary markets. */
-function mapKalshiMarket(market: KalshiMarket, category: string): PredictionMarket | null {
-  if (market.market_type !== 'binary' || market.status !== 'active') return null;
-
+/** Map a KalshiMarket to a proto PredictionMarket. Caller must pre-filter for active binary markets. */
+function mapKalshiMarket(market: KalshiMarket, category: string): PredictionMarket {
   const closesAtMs = market.close_time ? Date.parse(market.close_time) : 0;
+  const yesPrice = parseFloat(market.last_price_dollars || '0.5');
   return {
     id: market.ticker,
     title: market.yes_sub_title || market.title,
-    yesPrice: parseFloat(market.last_price_dollars || '0.5'),
+    yesPrice: Number.isFinite(yesPrice) ? yesPrice : 0.5,
     volume: parseFloat(market.volume_fp || '0'),
     url: `https://kalshi.com/markets/${market.ticker}`,
     closesAt: Number.isFinite(closesAtMs) ? closesAtMs : 0,
@@ -165,14 +183,15 @@ async function fetchKalshiMarkets(): Promise<PredictionMarket[] | null> {
         const markets: PredictionMarket[] = [];
         for (const event of data.events) {
           if (!event.markets) continue;
-          // Pick first active binary market from each event
+          // Pick highest-volume active binary market from each event (single pass)
+          let topMarket: KalshiMarket | null = null;
+          let topVol = 0;
           for (const m of event.markets) {
-            const mapped = mapKalshiMarket(m, event.category || '');
-            if (mapped) {
-              markets.push(mapped);
-              break;
-            }
+            if (m.market_type !== 'binary' || m.status !== 'active') continue;
+            const vol = parseFloat(m.volume_fp || '0');
+            if (vol > topVol) { topMarket = m; topVol = vol; }
           }
+          if (topMarket) markets.push(mapKalshiMarket(topMarket, event.category || ''));
         }
         return markets.length > 0 ? markets : null;
       },
@@ -191,17 +210,15 @@ export const listPredictionMarkets: PredictionServiceHandler['listPredictionMark
 ): Promise<ListPredictionMarketsResponse> => {
   try {
     const limit = clampInt(req.pageSize, 50, 1, 100);
-
-    // Start Kalshi fetch eagerly so it overlaps with bootstrap/Gamma reads
-    const kalshiFetch = fetchKalshiMarkets();
+    const includeKalshi = !req.category || KALSHI_CATEGORIES.includes(req.category);
 
     // Try Railway-seeded bootstrap data first (no Gamma API call needed)
     if (!req.query) {
       try {
-        const bootstrap = await getCachedJson(BOOTSTRAP_KEY) as { geopolitical?: (PredictionMarket & { endDate?: string; source?: string })[]; tech?: (PredictionMarket & { endDate?: string; source?: string })[]; finance?: (PredictionMarket & { endDate?: string; source?: string })[] } | null;
+        const bootstrap = await getCachedJson(BOOTSTRAP_KEY) as BootstrapData | null;
         if (bootstrap) {
           const isTech = req.category && ['ai', 'tech', 'crypto', 'science'].includes(req.category);
-          const isFinance = req.category && ['economy', 'fed', 'inflation', 'markets', 'business'].includes(req.category);
+          const isFinance = req.category && KALSHI_CATEGORIES.includes(req.category);
           const variant = isTech ? bootstrap.tech
             : isFinance ? (bootstrap.finance || bootstrap.geopolitical)
             : bootstrap.geopolitical;
@@ -214,7 +231,7 @@ export const listPredictionMarkets: PredictionServiceHandler['listPredictionMark
               url: m.url || '',
               closesAt: m.endDate ? Date.parse(m.endDate) : 0,
               category: req.category || '',
-              source: (m as unknown as { source?: string }).source === 'kalshi' ? MarketSource.MARKET_SOURCE_KALSHI : MarketSource.MARKET_SOURCE_POLYMARKET,
+              source: m.source === 'kalshi' ? MarketSource.MARKET_SOURCE_KALSHI : MarketSource.MARKET_SOURCE_POLYMARKET,
               openInterest: 0,
             }));
             return { markets, pagination: undefined };
@@ -224,6 +241,8 @@ export const listPredictionMarkets: PredictionServiceHandler['listPredictionMark
     }
 
     // Fallback: fetch from Gamma API and Kalshi API in parallel
+    // Only start Kalshi fetch when the category warrants it
+    const kalshiFetch = includeKalshi ? fetchKalshiMarkets() : Promise.resolve(null);
 
     const gammaFetch = cachedFetchJson<PredictionMarket[]>(
       `${REDIS_CACHE_KEY}:${req.category || 'all'}:${req.query || ''}:${req.pageSize || 50}`,
@@ -274,8 +293,6 @@ export const listPredictionMarkets: PredictionServiceHandler['listPredictionMark
 
     const polymarketMarkets = gammaResult.status === 'fulfilled' && gammaResult.value ? gammaResult.value : [];
 
-    // Only merge Kalshi results for finance-scoped or unscoped requests
-    const includeKalshi = !req.category || ['economy', 'fed', 'inflation', 'markets', 'business'].includes(req.category);
     let filteredKalshi: PredictionMarket[] = [];
     if (includeKalshi) {
       const kalshiMarkets = kalshiResult.status === 'fulfilled' && kalshiResult.value ? kalshiResult.value : [];

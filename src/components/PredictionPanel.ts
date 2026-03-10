@@ -45,8 +45,9 @@ export class PredictionPanel extends Panel {
           }
         }
 
-        const sourceLabel = p.source === 'kalshi' ? 'Kalshi' : 'Polymarket';
-        const sourceBadge = `<span class="prediction-source" data-source="${p.source || 'polymarket'}">${sourceLabel}</span>`;
+        const isKalshi = p.source === 'kalshi';
+        const sourceLabel = isKalshi ? 'Kalshi' : 'Polymarket';
+        const sourceBadge = `<span class="prediction-source" data-source="${isKalshi ? 'kalshi' : 'polymarket'}">${sourceLabel}</span>`;
 
         const metaHtml = (volumeStr || expiryHtml)
           ? `<div class="prediction-meta">${volumeStr ? `<span class="prediction-volume">${t('components.predictions.vol')}: ${volumeStr}</span>` : ''}${expiryHtml}</div>`

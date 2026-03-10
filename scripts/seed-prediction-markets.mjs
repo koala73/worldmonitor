@@ -126,9 +126,10 @@ async function fetchKalshiMarkets() {
     });
 
     const volume = parseFloat(topMarket.volume_fp) || 0;
-    if (volume <= 1000) continue;
+    if (volume <= 5000) continue;
 
-    const yesPrice = +(parseFloat(topMarket.last_price_dollars) * 100).toFixed(1) || 50;
+    const rawPrice = parseFloat(topMarket.last_price_dollars);
+    const yesPrice = Number.isFinite(rawPrice) ? +(rawPrice * 100).toFixed(1) : 50;
 
     results.push({
       title: topMarket.title || event.title,
