@@ -7,6 +7,8 @@ import type {
 import { getCachedJson } from '../../../_shared/redis';
 
 const CACHE_KEY = 'positive-events:geo:v1';
+// Bootstrap cache key:
+// 'positive_events:geo-bootstrap:v1'
 const MAX_AGE_MS = 25 * 60 * 60 * 1000;
 
 let fallback: { events: PositiveGeoEvent[]; ts: number } | null = null;

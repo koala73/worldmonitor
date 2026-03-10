@@ -308,9 +308,9 @@ describe('SupplyChainPanel v2 changes', () => {
 
   it('computes activeHasData for each tab', () => {
     assert.match(src, /activeHasData/);
-    assert.match(src, /chokepointData\?\.chokepoints\.length/);
-    assert.match(src, /shippingData\?\.indices\.length/);
-    assert.match(src, /mineralsData\?\.minerals\.length/);
+    assert.match(src, /chokepointData\?\.chokepoints\?\.length/);
+    assert.match(src, /shippingData\?\.indices\?\.length/);
+    assert.match(src, /mineralsData\?\.minerals\?\.length/);
   });
 
   it('displays AIS disruption count per chokepoint via i18n', () => {

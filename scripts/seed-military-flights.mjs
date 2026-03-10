@@ -12,9 +12,9 @@ const STALE_KEY = 'military:flights:stale:v1';
 const LIVE_TTL = 600;
 const STALE_TTL = 86400;
 
-const THEATER_POSTURE_LIVE_KEY = 'theater-posture:sebuf:v1';
-const THEATER_POSTURE_STALE_KEY = 'theater-posture:sebuf:stale:v1';
-const THEATER_POSTURE_BACKUP_KEY = 'theater-posture:sebuf:backup:v1';
+const THEATER_POSTURE_LIVE_KEY = 'theater_posture:sebuf:v1';
+const THEATER_POSTURE_STALE_KEY = 'theater_posture:sebuf:stale:v1';
+const THEATER_POSTURE_BACKUP_KEY = 'theater_posture:sebuf:backup:v1';
 const THEATER_POSTURE_LIVE_TTL = 900;
 const THEATER_POSTURE_STALE_TTL = 86400;
 const THEATER_POSTURE_BACKUP_TTL = 604800;
@@ -419,7 +419,7 @@ async function fetchWingbits() {
   for (const areaResult of data) {
     const flightList = Array.isArray(areaResult.data) ? areaResult.data
       : Array.isArray(areaResult.flights) ? areaResult.flights
-      : Array.isArray(areaResult) ? areaResult : [];
+        : Array.isArray(areaResult) ? areaResult : [];
     for (const f of flightList) {
       const icao24 = f.h || f.icao24 || f.id;
       if (!icao24 || seenIds.has(icao24)) continue;

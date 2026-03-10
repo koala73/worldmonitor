@@ -16,9 +16,9 @@ import {
 } from './_shared';
 import { CHROME_UA } from '../../../_shared/constants';
 
-const CACHE_KEY = 'theater-posture:sebuf:v1';
-const STALE_CACHE_KEY = 'theater-posture:sebuf:stale:v1';
-const BACKUP_CACHE_KEY = 'theater-posture:sebuf:backup:v1';
+const CACHE_KEY = 'theater_posture:sebuf:v1';
+const STALE_CACHE_KEY = 'theater_posture:sebuf:stale:v1';
+const BACKUP_CACHE_KEY = 'theater_posture:sebuf:backup:v1';
 const CACHE_TTL = 900; // 15 minutes
 const STALE_TTL = 86400;
 const BACKUP_TTL = 604800;

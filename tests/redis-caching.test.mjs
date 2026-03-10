@@ -85,7 +85,10 @@ describe('redis caching behavior', { concurrency: 1 }, () => {
         return jsonResponse({ result: undefined });
       }
       if (raw.includes('/set/')) {
-        setCalls += 1;
+        const key = decodeURIComponent(raw.split('/set/').pop()?.split('/')[0] || '');
+        if (!key.startsWith('seed-meta:')) {
+          setCalls += 1;
+        }
         return jsonResponse({ result: 'OK' });
       }
       throw new Error(`Unexpected fetch URL: ${raw}`);
@@ -418,7 +421,10 @@ describe('negative-result caching', { concurrency: 1 }, () => {
       const raw = String(url);
       if (raw.includes('/get/')) return jsonResponse({ result: undefined });
       if (raw.includes('/set/')) {
-        setCalls += 1;
+        const key = decodeURIComponent(raw.split('/set/').pop()?.split('/')[0] || '');
+        if (!key.startsWith('seed-meta:')) {
+          setCalls += 1;
+        }
         return jsonResponse({ result: 'OK' });
       }
       throw new Error(`Unexpected fetch URL: ${raw}`);
@@ -530,10 +536,10 @@ describe('theater posture caching behavior', { concurrency: 1 }, () => {
       const raw = String(url);
       if (raw.includes('/get/')) {
         const key = decodeURIComponent(raw.split('/get/').pop() || '');
-        if (key === 'theater-posture:sebuf:v1') {
+        if (key === 'theater_posture:sebuf:v1') {
           return jsonResponse({ result: undefined });
         }
-        if (key === 'theater-posture:sebuf:stale:v1') {
+        if (key === 'theater_posture:sebuf:stale:v1') {
           return jsonResponse({ result: JSON.stringify(staleData) });
         }
         return jsonResponse({ result: undefined });
@@ -684,7 +690,9 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
         const key = parseRedisKey(raw, 'set');
         const encodedValue = raw.slice(raw.indexOf('/set/') + 5).split('/')[1] || '';
         store.set(key, decodeURIComponent(encodedValue));
-        setKeys.push(key);
+        if (!key.startsWith('seed-meta:')) {
+          setKeys.push(key);
+        }
         return jsonResponse({ result: 'OK' });
       }
       if (raw.includes('api.groq.com/openai/v1/chat/completions')) {
@@ -745,7 +753,9 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
         const key = parseRedisKey(raw, 'set');
         const encodedValue = raw.slice(raw.indexOf('/set/') + 5).split('/')[1] || '';
         store.set(key, decodeURIComponent(encodedValue));
-        setKeys.push(key);
+        if (!key.startsWith('seed-meta:')) {
+          setKeys.push(key);
+        }
         return jsonResponse({ result: 'OK' });
       }
       if (raw.includes('api.groq.com/openai/v1/chat/completions')) {

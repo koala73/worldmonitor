@@ -11,7 +11,6 @@
 
 import { createRouter, type RouteDescriptor } from './router';
 import { getCorsHeaders, isDisallowedOrigin } from './cors';
-// @ts-expect-error — JS module, no declaration file
 import { validateApiKey } from '../api/_api-key.js';
 import { mapErrorToResponse } from './error-mapper';
 import { checkRateLimit, checkEndpointRateLimit, hasEndpointRatePolicy } from './_shared/rate-limit';
@@ -59,7 +58,9 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/market/v1/get-stock-analysis-history': 'medium',
   '/api/market/v1/backtest-stock': 'slow',
   '/api/market/v1/list-stored-stock-backtests': 'medium',
+  '/api/market/v1/get-earnings-calendar': 'medium',
   '/api/infrastructure/v1/list-service-statuses': 'slow',
+  '/api/infrastructure/v1/list-temporal-anomalies': 'slow',
   '/api/seismology/v1/list-earthquakes': 'slow',
   '/api/infrastructure/v1/list-internet-outages': 'slow',
 

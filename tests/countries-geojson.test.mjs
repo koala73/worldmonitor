@@ -1,11 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const geojson = JSON.parse(readFileSync(resolve(__dirname, '../public/data/countries.geojson'), 'utf-8'));
+const res = await fetch('https://maps.worldmonitor.app/countries.geojson');
+const geojson = await res.json();
 const features = geojson.features;
 
 describe('countries.geojson data integrity', () => {

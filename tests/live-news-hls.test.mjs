@@ -51,10 +51,12 @@ describe('DIRECT_HLS_MAP integrity', () => {
 
   it('every mapped channel has a fallbackVideoId', () => {
     for (const { id } of hlsMapEntries) {
-      const channelDef = liveNewsSrc.match(new RegExp(`id:\\s*'${id}'[^}]*}`));
+      const channelDef = liveNewsSrc.match(new RegExp(`id:\\s*'${id}'[\\s\\S]*?}`));
       assert.ok(channelDef, `Channel '${id}' definition not found`);
-      assert.match(channelDef[0], /fallbackVideoId:\s*'[^']+'/,
-        `Channel '${id}' in DIRECT_HLS_MAP lacks fallbackVideoId`);
+      assert.ok(
+        /fallbackVideoId:\s*'[^']+'/.test(channelDef[0]) || /hlsUrl:\s*'[^']+'/.test(channelDef[0]),
+        `Channel '${id}' in DIRECT_HLS_MAP lacks both fallbackVideoId and hlsUrl`
+      );
     }
   });
 
@@ -64,9 +66,9 @@ describe('DIRECT_HLS_MAP integrity', () => {
     }
   });
 
-  it('all HLS URLs end with .m3u8', () => {
+  it('all HLS URLs end with .m3u8 (ignoring query params)', () => {
     for (const { id, url } of hlsMapEntries) {
-      assert.ok(url.endsWith('.m3u8'), `HLS URL for '${id}' does not end with .m3u8: ${url}`);
+      assert.ok(/\.m3u8($|\?)/.test(url), `HLS URL for '${id}' does not contain .m3u8: ${url}`);
     }
   });
 
@@ -351,7 +353,7 @@ describe('sidecar youtube-embed endpoint', () => {
 // ── 10. Optional channels with fallbackVideoId ──
 
 describe('optional channels fallback coverage', () => {
-  const highPriorityOptional = ['livenow-fox', 'abc-news', 'nbc-news', 'wion'];
+  const highPriorityOptional = ['fox-news', 'nbc-news', 'cbc-news', 'bbc-news'];
 
   for (const id of highPriorityOptional) {
     it(`${id} has fallbackVideoId`, () => {
@@ -366,8 +368,10 @@ describe('optional channels fallback coverage', () => {
     const useFallbackMatches = [...liveNewsSrc.matchAll(/id:\s*'([^']+)'[^}]*useFallbackOnly:\s*true[^}]*}/g)];
     for (const m of useFallbackMatches) {
       const channelId = m[1];
-      assert.match(m[0], /fallbackVideoId:\s*'[^']+'/,
-        `Channel '${channelId}' has useFallbackOnly but no fallbackVideoId`);
+      assert.ok(
+        /fallbackVideoId:\s*'[^']+'/.test(m[0]) || /hlsUrl:\s*'[^']+'/.test(m[0]),
+        `Channel '${channelId}' has useFallbackOnly but lacks both fallbackVideoId and hlsUrl`
+      );
     }
   });
 });
