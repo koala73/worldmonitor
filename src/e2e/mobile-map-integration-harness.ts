@@ -88,7 +88,6 @@ const layers = {
   gpsJamming: false,
   satellites: false,
   satelliteImagery: false,
-  notamOverlay: false,
   conflicts: false,
   bases: false,
   cables: false,

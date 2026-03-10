@@ -37,6 +37,7 @@ const BATCH_CONCURRENCY = 10;
 const MIN_FLIGHTS_FOR_CLOSURE = 10;
 const RESOLVED_STATUSES = new Set(['cancelled', 'landed', 'active', 'arrived', 'diverted']);
 const NOTAM_CLOSURE_QCODES = new Set(['FA', 'AH', 'AL', 'AW', 'AC', 'AM']);
+const NOTAM_RESTRICTION_QCODES = new Set(['RA', 'RO']);
 
 // ---------- XML Parser ----------
 
@@ -373,6 +374,7 @@ interface IcaoNotam {
 
 export interface NotamClosureResult {
   closedIcaoCodes: Set<string>;
+  restrictedIcaoCodes: Set<string>;
   notamsByIcao: Map<string, string>;
 }
 
@@ -400,7 +402,7 @@ export async function fetchNotamClosures(
   airports: MonitoredAirport[]
 ): Promise<NotamClosureResult> {
   const apiKey = process.env.ICAO_API_KEY;
-  const result: NotamClosureResult = { closedIcaoCodes: new Set(), notamsByIcao: new Map() };
+  const result: NotamClosureResult = { closedIcaoCodes: new Set(), restrictedIcaoCodes: new Set(), notamsByIcao: new Map() };
   if (!apiKey) {
     console.warn('[Aviation] NOTAM: no ICAO_API_KEY — skipping');
     return result;
@@ -460,23 +462,32 @@ export async function fetchNotamClosures(
     const code23 = (n.code23 || '').toUpperCase();
     const code45 = (n.code45 || '').toUpperCase();
     const text = (n.iteme || '').toUpperCase();
-    const isClosureCode = NOTAM_CLOSURE_QCODES.has(code23) &&
-      (code45 === 'LC' || code45 === 'AS' || code45 === 'AU' || code45 === 'XX' || code45 === 'AW');
+    const closureCode45 = code45 === 'LC' || code45 === 'AS' || code45 === 'AU' || code45 === 'XX' || code45 === 'AW';
+    const restrictionCode45 = code45 === 'RE' || code45 === 'RT';
+    const isClosureCode = NOTAM_CLOSURE_QCODES.has(code23) && closureCode45;
+    const isRestrictionCode = (NOTAM_RESTRICTION_QCODES.has(code23) || NOTAM_CLOSURE_QCODES.has(code23)) && restrictionCode45;
     const isClosureText = /\b(AD CLSD|AIRPORT CLOSED|AIRSPACE CLOSED|AD NOT AVBL|CLSD TO ALL)\b/.test(text);
+    const isRestrictionText = /\b(RESTRICTED AREA|PROHIBITED AREA|DANGER AREA|TFR|TEMPORARY FLIGHT RESTRICTION)\b/.test(text);
 
     if (isClosureCode || isClosureText) {
       result.closedIcaoCodes.add(icao);
       result.notamsByIcao.set(icao, n.iteme || 'Airport closure (NOTAM)');
+    } else if (isRestrictionCode || isRestrictionText) {
+      result.closedIcaoCodes.add(icao);
+      result.notamsByIcao.set(icao, n.iteme || 'Airspace restriction (NOTAM)');
+      result.restrictedIcaoCodes.add(icao);
     }
   }
 
   if (result.closedIcaoCodes.size > 0) {
-    console.warn(`[Aviation] NOTAM closures: ${[...result.closedIcaoCodes].join(', ')}`);
+    const closures = [...result.closedIcaoCodes].filter(c => !result.restrictedIcaoCodes.has(c));
+    const restrictions = [...result.restrictedIcaoCodes];
+    console.warn(`[Aviation] NOTAM: ${closures.length} closures [${closures.join(', ')}], ${restrictions.length} restrictions [${restrictions.join(', ')}]`);
   }
   return result;
 }
 
-export function buildNotamAlert(airport: MonitoredAirport, reason: string): AirportDelayAlert {
+export function buildNotamAlert(airport: MonitoredAirport, reason: string, severity: 'severe' | 'major' = 'severe'): AirportDelayAlert {
   return {
     id: `notam-${airport.iata}`,
     iata: airport.iata,
@@ -487,7 +498,7 @@ export function buildNotamAlert(airport: MonitoredAirport, reason: string): Airp
     location: { latitude: airport.lat, longitude: airport.lon },
     region: toProtoRegion(airport.region),
     delayType: toProtoDelayType('closure'),
-    severity: toProtoSeverity('severe'),
+    severity: toProtoSeverity(severity),
     avgDelayMinutes: 0,
     delayedFlightsPct: 0,
     cancelledFlights: 0,
@@ -506,6 +517,7 @@ const SEED_FRESHNESS_MS = 45 * 60 * 1000;
 
 export interface LoadedNotamResult {
   closedIcaos: string[];
+  restrictedIcaos: string[];
   reasons: Record<string, string>;
 }
 
@@ -531,9 +543,10 @@ export async function loadNotamClosures(): Promise<LoadedNotamResult | null> {
           const allAirports = MONITORED_AIRPORTS;
           const result = await fetchNotamClosures(allAirports);
           const closedIcaos = [...result.closedIcaoCodes];
+          const restrictedIcaos = [...result.restrictedIcaoCodes];
           const reasons: Record<string, string> = {};
           for (const [icao, reason] of result.notamsByIcao) reasons[icao] = reason;
-          return { closedIcaos, reasons };
+          return { closedIcaos, restrictedIcaos, reasons };
         }
       );
     } catch (err) {
@@ -552,9 +565,10 @@ export function mergeNotamWithExistingAlert(
   airport: MonitoredAirport,
   notamReason: string,
   existing: AirportDelayAlert | null,
+  severity: 'severe' | 'major' = 'severe',
 ): AirportDelayAlert {
   if (!existing || existing.totalFlights === 0) {
-    return buildNotamAlert(airport, notamReason);
+    return buildNotamAlert(airport, notamReason, severity);
   }
 
   const cancelRate = (existing.cancelledFlights / existing.totalFlights) * 100;

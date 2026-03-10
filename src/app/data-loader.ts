@@ -508,9 +508,6 @@ export class DataLoaderManager implements AppModule {
         case 'flights':
           await this.loadFlightDelays();
           break;
-        case 'notamOverlay':
-          await this.loadFlightDelays();
-          break;
         case 'military':
           await this.loadMilitary();
           break;

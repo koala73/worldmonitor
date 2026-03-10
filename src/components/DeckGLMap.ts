@@ -1179,7 +1179,7 @@ export class DeckGLMap {
     const filteredWeatherAlerts = mapLayers.weather ? this.filterByTime(this.weatherAlerts, (alert) => alert.onset) : [];
     const filteredOutages = mapLayers.outages ? this.filterByTime(this.outages, (outage) => outage.pubDate) : [];
     const filteredCableAdvisories = mapLayers.cables ? this.filterByTime(this.cableAdvisories, (advisory) => advisory.reported) : [];
-    const filteredFlightDelays = (mapLayers.flights || mapLayers.notamOverlay) ? this.filterByTime(this.flightDelays, (delay) => delay.updatedAt) : [];
+    const filteredFlightDelays = mapLayers.flights ? this.filterByTime(this.flightDelays, (delay) => delay.updatedAt) : [];
     const filteredMilitaryFlights = mapLayers.military ? this.filterByTime(this.militaryFlights, (flight) => flight.lastSeen) : [];
     const filteredMilitaryVessels = mapLayers.military ? this.filterByTime(this.militaryVessels, (vessel) => vessel.lastAisUpdate) : [];
     const filteredMilitaryFlightClusters = mapLayers.military ? this.filterMilitaryFlightClustersByTime(this.militaryFlightClusters) : [];
@@ -1323,13 +1323,9 @@ export class DeckGLMap {
       layers.push(this.createRepairShipsLayer());
     }
 
-    // Flight delays layer
+    // Aviation layer (flight delays + NOTAM closures + aircraft positions)
     if (mapLayers.flights && filteredFlightDelays.length > 0) {
       layers.push(this.createFlightDelaysLayer(filteredFlightDelays));
-    }
-
-    // NOTAM overlay (airspace closure rings)
-    if (mapLayers.notamOverlay && filteredFlightDelays.length > 0) {
       const closures = filteredFlightDelays.filter(d => d.delayType === 'closure');
       if (closures.length > 0) {
         layers.push(this.createNotamOverlayLayer(closures));
@@ -3658,6 +3654,7 @@ export class DeckGLMap {
       'spaceports-layer': 'spaceport',
       'ports-layer': 'port',
       'flight-delays-layer': 'flight',
+      'notam-overlay-layer': 'flight',
       'aircraft-positions-layer': 'aircraft',
       'startup-hubs-layer': 'startupHub',
       'tech-hqs-layer': 'techHQ',

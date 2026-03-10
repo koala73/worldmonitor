@@ -557,8 +557,6 @@ export interface MapLayers {
   satellites: boolean;
   // Satellite imagery footprints
   satelliteImagery: boolean;
-  // NOTAM overlay (airspace closures)
-  notamOverlay: boolean;
 
   // CII choropleth layer
   ciiChoropleth: boolean;

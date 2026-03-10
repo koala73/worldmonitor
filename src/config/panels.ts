@@ -68,7 +68,6 @@ const FULL_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
   satellites: false,
   satelliteImagery: false,
-  notamOverlay: false,
 
   conflicts: true,
   bases: _desktop ? false : true,
@@ -128,7 +127,6 @@ const FULL_MOBILE_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
   satellites: false,
   satelliteImagery: false,
-  notamOverlay: false,
 
   conflicts: true,
   bases: false,
@@ -229,7 +227,6 @@ const TECH_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
   satellites: false,
   satelliteImagery: false,
-  notamOverlay: false,
 
   conflicts: false,
   bases: false,
@@ -289,7 +286,6 @@ const TECH_MOBILE_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
   satellites: false,
   satelliteImagery: false,
-  notamOverlay: false,
 
   conflicts: false,
   bases: false,
@@ -392,7 +388,6 @@ const FINANCE_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
   satellites: false,
   satelliteImagery: false,
-  notamOverlay: false,
 
   conflicts: false,
   bases: false,
@@ -452,7 +447,6 @@ const FINANCE_MOBILE_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
   satellites: false,
   satelliteImagery: false,
-  notamOverlay: false,
 
   conflicts: false,
   bases: false,
@@ -528,7 +522,6 @@ const HAPPY_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
   satellites: false,
   satelliteImagery: false,
-  notamOverlay: false,
 
   conflicts: false,
   bases: false,
@@ -588,7 +581,6 @@ const HAPPY_MOBILE_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
   satellites: false,
   satelliteImagery: false,
-  notamOverlay: false,
 
   conflicts: false,
   bases: false,
@@ -679,7 +671,6 @@ const COMMODITY_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
   satellites: false,
   satelliteImagery: false,
-  notamOverlay: false,
 
   conflicts: false,
   bases: false,
@@ -739,7 +730,6 @@ const COMMODITY_MOBILE_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
   satellites: false,
   satelliteImagery: false,
-  notamOverlay: false,
 
   conflicts: false,
   bases: false,

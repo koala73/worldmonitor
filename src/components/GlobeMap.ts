@@ -1403,8 +1403,10 @@ export class GlobeMap {
     if (this.layers.datacenters) markers.push(...this.datacenterMarkers);
     if (this.layers.waterways) markers.push(...this.waterwayMarkers);
     if (this.layers.minerals) markers.push(...this.mineralMarkers);
-    if (this.layers.flights) markers.push(...this.flightDelayMarkers);
-    if (this.layers.notamOverlay) markers.push(...this.notamRingMarkers);
+    if (this.layers.flights) {
+      markers.push(...this.flightDelayMarkers);
+      markers.push(...this.notamRingMarkers);
+    }
     if (this.layers.ais) markers.push(...this.aisMarkers);
     if (this.layers.iranAttacks) markers.push(...this.iranMarkers);
     if (this.layers.outages) markers.push(...this.outageMarkers);
@@ -1777,7 +1779,6 @@ export class GlobeMap {
     ['cables',        { markers: true,  arcs: false, paths: true,  polygons: false }],
     ['satellites',        { markers: true,  arcs: false, paths: true,  polygons: false }],
     ['satelliteImagery',  { markers: true,  arcs: false, paths: false, polygons: true }],
-    ['notamOverlay',      { markers: true,  arcs: false, paths: false, polygons: false }],
     ['natural',           { markers: true,  arcs: false, paths: true,  polygons: true }],
   ]);
 

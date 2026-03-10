@@ -130,20 +130,24 @@ export async function listAirportDelays(
   const notamResult = await loadNotamClosures();
   if (notamResult && notamResult.closedIcaos?.length > 0) {
     const existingIatas = new Set(allAlerts.map(a => a.iata));
+    const restrictedSet = new Set(notamResult.restrictedIcaos ?? []);
     for (const icao of notamResult.closedIcaos) {
       const airport = MONITORED_AIRPORTS.find(a => a.icao === icao);
       if (!airport) continue;
-      const reason = notamResult.reasons[icao] || 'Airport closure (NOTAM)';
+      const isRestriction = restrictedSet.has(icao);
+      const severity = isRestriction ? 'major' as const : 'severe' as const;
+      const fallbackReason = isRestriction ? 'Airspace restriction (NOTAM)' : 'Airport closure (NOTAM)';
+      const reason = notamResult.reasons[icao] || fallbackReason;
       if (existingIatas.has(airport.iata)) {
         const idx = allAlerts.findIndex(a => a.iata === airport.iata);
         if (idx >= 0) {
-          allAlerts[idx] = mergeNotamWithExistingAlert(airport, reason, allAlerts[idx] ?? null);
+          allAlerts[idx] = mergeNotamWithExistingAlert(airport, reason, allAlerts[idx] ?? null, severity);
         }
       } else {
-        allAlerts.push(buildNotamAlert(airport, reason));
+        allAlerts.push(buildNotamAlert(airport, reason, severity));
       }
     }
-    console.warn(`[Aviation] NOTAM: ${notamResult.closedIcaos.length} closures applied`);
+    console.warn(`[Aviation] NOTAM: ${notamResult.closedIcaos.length} alerts applied (${restrictedSet.size} restrictions)`);
   }
 
   // 4. Fill in ALL monitored airports with no alerts as "normal operations"
