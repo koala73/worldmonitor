@@ -241,6 +241,7 @@ export class DataLoaderManager implements AppModule {
 
   destroy(): void {
     this.stopSatellitePropagation();
+    if (this.imageryRetryTimer) { clearTimeout(this.imageryRetryTimer); this.imageryRetryTimer = null; }
     this.applyTimeRangeFilterToNewsPanelsDebounced.cancel();
     stopOrefPolling();
     if (this.boundMarketWatchlistHandler) {
@@ -560,21 +561,33 @@ export class DataLoaderManager implements AppModule {
     this.satellitePropagationCleanup = null;
   }
 
-  private loadImageryFootprints(): void {
+  private imageryRetryTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private loadImageryFootprints(retries = 2): void {
+    if (!this.ctx.mapLayers.satellites) return;
+    if (this.ctx.map?.isGlobeMode()) return;
     const bbox = this.ctx.map?.getBbox();
-    if (!bbox) return;
+    if (!bbox) {
+      if (retries > 0) {
+        this.imageryRetryTimer = setTimeout(() => this.loadImageryFootprints(retries - 1), 1500);
+      }
+      return;
+    }
     void import('@/services/imagery').then(async ({ fetchImageryScenes }) => {
       try {
         const scenes = await fetchImageryScenes({ bbox, limit: 20 });
+        if (!this.ctx.mapLayers.satellites) return;
+        if (this.ctx.map?.isGlobeMode()) return;
         this.ctx.map?.setImageryScenes(scenes);
-        const panel = this.ctx.panels['satellite-imagery'] as import('@/components/SatelliteImageryPanel').SatelliteImageryPanel | undefined;
-        panel?.update(scenes);
       } catch { /* imagery is best-effort */ }
     });
   }
 
   stopLayerActivity(layer: keyof MapLayers): void {
-    if (layer === 'satellites') this.stopSatellitePropagation();
+    if (layer === 'satellites') {
+      this.stopSatellitePropagation();
+      if (this.imageryRetryTimer) { clearTimeout(this.imageryRetryTimer); this.imageryRetryTimer = null; }
+    }
   }
 
   private findFlashLocation(title: string): { lat: number; lon: number } | null {

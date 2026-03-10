@@ -43,6 +43,7 @@ import type { ClimateAnomaly } from '@/services/climate';
 import type { GpsJamHex } from '@/services/gps-interference';
 import type { SatellitePosition } from '@/services/satellites';
 import type { ImageryScene } from '@/generated/server/worldmonitor/imagery/v1/service_server';
+import { isAllowedPreviewUrl } from '@/utils/imagery-preview';
 
 const SAT_COUNTRY_COLORS: Record<string, string> = { CN: '#ff2020', RU: '#ff8800', US: '#4488ff', EU: '#44cc44', KR: '#aa66ff', IN: '#ff66aa', TR: '#ff4466', OTHER: '#ccccff' };
 const SAT_TYPE_EMOJI: Record<string, string> = { sar: '\u{1F4E1}', optical: '\u{1F4F7}', military: '\u{1F396}', sigint: '\u{1F4FB}' };
@@ -333,6 +334,9 @@ interface GlobePolygon {
 
   satellite?: string;
   datetime?: string;
+  resolutionM?: number;
+  mode?: string;
+  previewUrl?: string;
 }
 type GlobeMarker =
   | ConflictMarker | HotspotMarker | FlightMarker | VesselMarker
@@ -353,6 +357,8 @@ interface GlobeControlsLike {
   minDistance: number;
   maxDistance: number;
   enableDamping: boolean;
+  addEventListener(type: string, listener: () => void): void;
+  removeEventListener(type: string, listener: () => void): void;
 }
 
 export class GlobeMap {
@@ -426,6 +432,10 @@ export class GlobeMap {
   private satelliteFootprintMarkers: SatFootprintMarker[] = [];
   private imagerySceneMarkers: ImagerySceneMarker[] = [];
   private imageryFootprintPolygons: GlobePolygon[] = [];
+  private lastImageryCenter: { lat: number; lon: number } | null = null;
+  private imageryFetchTimer: ReturnType<typeof setTimeout> | null = null;
+  private imageryFetchVersion = 0;
+  private controlsEndHandler: (() => void) | null = null;
   private satBeamGroup: any = null;
   private tradeRouteSegments: TradeRouteSegment[] = [];
   private globePaths: GlobePath[] = [];
@@ -530,6 +540,13 @@ export class GlobeMap {
     controls.minDistance = 101;
     controls.maxDistance = 600;
     controls.enableDamping = !desktop;
+
+    this.controlsEndHandler = () => {
+      if (!this.layers.satellites) return;
+      if (this.imageryFetchTimer) clearTimeout(this.imageryFetchTimer);
+      this.imageryFetchTimer = setTimeout(() => this.fetchImageryForViewport(), 800);
+    };
+    controls.addEventListener('end', this.controlsEndHandler);
 
     // Force the canvas to visually fill the container so it expands with CSS transitions.
     // globe.gl sets explicit width/height attributes; we override the CSS so the canvas
@@ -741,6 +758,21 @@ export class GlobeMap {
           let label = `<b>${escapeHtml(d.name)}</b>`;
           if (d.parties?.length) label += `<br/>Parties: ${d.parties.map(p => escapeHtml(p)).join(', ')}`;
           if (d.casualties) label += `<br/>Casualties: ${escapeHtml(d.casualties)}`;
+          return label;
+        }
+        if (d._kind === 'imageryFootprint') {
+          let label = `<span style="color:#00b4ff;font-weight:bold;">&#128752; ${escapeHtml(d.satellite ?? '')}</span>`;
+          if (d.datetime) label += `<br><span style="opacity:.7;">${escapeHtml(d.datetime)}</span>`;
+          if (d.resolutionM != null || d.mode) {
+            const parts: string[] = [];
+            if (d.resolutionM != null) parts.push(`${d.resolutionM}m`);
+            if (d.mode) parts.push(escapeHtml(d.mode));
+            label += `<br><span style="opacity:.5;">Res: ${parts.join(' \u00B7 ')}</span>`;
+          }
+          if (isAllowedPreviewUrl(d.previewUrl)) {
+            const safeHref = escapeHtml(new URL(d.previewUrl!).href);
+            label += `<br><img src="${safeHref}" referrerpolicy="no-referrer" style="max-width:180px;max-height:120px;margin-top:4px;border-radius:4px;" class="imagery-preview">`;
+          }
           return label;
         }
         return escapeHtml(d.name);
@@ -1224,8 +1256,17 @@ export class GlobeMap {
         `</div></div>`;
     } else if (d._kind === 'imageryScene') {
       html = `<span style="color:#00b4ff;font-weight:bold;">&#128752; ${esc(d.satellite)}</span>` +
-             `<br><span style="opacity:.7;">${esc(d.datetime)}</span>` +
-             `<br><span style="opacity:.5;">Res: ${d.resolutionM}m · ${esc(d.mode)}</span>`;
+             `<br><span style="opacity:.7;">${esc(d.datetime)}</span>`;
+      if (d.resolutionM != null || d.mode) {
+        const rp: string[] = [];
+        if (d.resolutionM != null) rp.push(`${d.resolutionM}m`);
+        if (d.mode) rp.push(esc(d.mode));
+        html += `<br><span style="opacity:.5;">Res: ${rp.join(' \u00B7 ')}</span>`;
+      }
+      if (isAllowedPreviewUrl(d.previewUrl)) {
+        const safeHref = escapeHtml(new URL(d.previewUrl!).href);
+        html += `<br><img src="${safeHref}" referrerpolicy="no-referrer" style="max-width:180px;max-height:120px;margin-top:4px;border-radius:4px;" class="imagery-preview">`;
+      }
     }
     el.innerHTML = `<div style="padding-right:16px;position:relative;">${closeBtn}${html}</div>`;
     if (d._kind === 'satellite') el.style.maxWidth = '300px';
@@ -1830,8 +1871,13 @@ export class GlobeMap {
     if (needArcs)     this.flushArcs();
     if (needPaths)    this.flushPaths();
     if (needPolygons) this.flushPolygons();
-    if (prev.satellites !== layers.satellites && this.satBeamGroup) {
-      this.satBeamGroup.visible = !!layers.satellites;
+    if (prev.satellites !== layers.satellites) {
+      if (this.satBeamGroup) this.satBeamGroup.visible = !!layers.satellites;
+      if (!layers.satellites) {
+        if (this.imageryFetchTimer) { clearTimeout(this.imageryFetchTimer); this.imageryFetchTimer = null; }
+        this.lastImageryCenter = null;
+        this.imageryFetchVersion++;
+      }
     }
   }
 
@@ -2088,12 +2134,40 @@ export class GlobeMap {
         _kind: 'imageryFootprint' as const,
         satellite: s.satellite,
         datetime: s.datetime,
+        resolutionM: s.resolutionM,
+        mode: s.mode,
+        previewUrl: s.previewUrl,
       };
     });
     if (this.layers.satellites) {
       this.flushMarkers();
       this.flushPolygons();
     }
+  }
+
+  private async fetchImageryForViewport(): Promise<void> {
+    if (this.destroyed) return;
+    const center = this.getCenter();
+    if (!center) return;
+    if (this.lastImageryCenter) {
+      const dLat = Math.abs(center.lat - this.lastImageryCenter.lat);
+      const dLon = Math.abs(center.lon - this.lastImageryCenter.lon);
+      if (dLat < 2 && dLon < 2) return;
+    }
+    const R = 5;
+    const south = Math.max(-90, center.lat - R);
+    const north = Math.min(90, center.lat + R);
+    const west = Math.max(-180, center.lon - R);
+    const east = Math.min(180, center.lon + R);
+    const bbox = `${west.toFixed(4)},${south.toFixed(4)},${east.toFixed(4)},${north.toFixed(4)}`;
+    const thisVersion = ++this.imageryFetchVersion;
+    try {
+      const { fetchImageryScenes } = await import('@/services/imagery');
+      const scenes = await fetchImageryScenes({ bbox, limit: 20 });
+      if (thisVersion !== this.imageryFetchVersion) return;
+      this.setImageryScenes(scenes);
+      this.lastImageryCenter = { lat: center.lat, lon: center.lon };
+    } catch { /* imagery is best-effort */ }
   }
 
   public setOutages(outages: InternetOutage[]): void {
@@ -2689,6 +2763,12 @@ export class GlobeMap {
       this.visibilityHandler = null;
     }
     if (this.idleTimer) { clearTimeout(this.idleTimer); this.idleTimer = null; }
+    if (this.imageryFetchTimer) { clearTimeout(this.imageryFetchTimer); this.imageryFetchTimer = null; }
+    this.imageryFetchVersion++;
+    if (this.controlsEndHandler && this.controls) {
+      this.controls.removeEventListener('end', this.controlsEndHandler);
+      this.controlsEndHandler = null;
+    }
     this.destroyed = true;
     if (this.extrasAnimFrameId != null) {
       cancelAnimationFrame(this.extrasAnimFrameId);
