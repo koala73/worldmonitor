@@ -18,9 +18,15 @@ function extractGetRoutes() {
         walk(full);
       } else if (entry === 'service_server.ts') {
         const src = readFileSync(full, 'utf-8');
+        // Match both object literal { method: "GET", path: "/..." }
+        // and factory call makeHandler(..., "/...") which is hardcoded as GET
         const re = /method:\s*"GET",[\s\S]*?path:\s*"([^"]+)"/g;
+        const re2 = /makeHandler\s*\(\s*"[^"]+",\s*"([^"]+)"/g;
         let m;
         while ((m = re.exec(src)) !== null) {
+          routes.push(m[1]);
+        }
+        while ((m = re2.exec(src)) !== null) {
           routes.push(m[1]);
         }
       }
