@@ -62,12 +62,24 @@ interface StacSearchResponse {
   context?: { matched?: number };
 }
 
+function s3ToHttps(url: string): string {
+  if (!url.startsWith('s3://')) return url;
+  const withoutProto = url.slice(5);
+  const slashIdx = withoutProto.indexOf('/');
+  if (slashIdx === -1) return url;
+  const bucket = withoutProto.slice(0, slashIdx);
+  const key = withoutProto.slice(slashIdx + 1);
+  return `https://${bucket}.s3.amazonaws.com/${key}`;
+}
+
 function mapFeature(f: StacFeature): ImageryScene {
   const props = f.properties;
-  const thumbnail = f.assets?.['thumbnail']?.href
+  const thumbnail = s3ToHttps(
+    f.assets?.['thumbnail']?.href
     ?? f.assets?.['overview']?.href
     ?? f.links?.find(l => l.rel === 'thumbnail')?.href
-    ?? '';
+    ?? '',
+  );
   const asset = f.assets?.['visual']?.href
     ?? f.assets?.['vv']?.href
     ?? f.assets?.['vh']?.href

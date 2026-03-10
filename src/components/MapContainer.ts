@@ -94,7 +94,7 @@ export class MapContainer {
   private cachedOnCountryClicked: ((country: CountryClickPayload) => void) | null = null;
   private cachedOnHotspotClicked: ((hotspot: Hotspot) => void) | null = null;
   private cachedOnAircraftPositionsUpdate: ((positions: PositionSample[]) => void) | null = null;
-  private cachedOnImageryUpdate: ((scenes: ImageryScene[]) => void) | null = null;
+
 
   // ─── Data cache (survives map mode switches) ───────────────────────────────
   private cachedEarthquakes: Earthquake[] | null = null;
@@ -261,7 +261,7 @@ export class MapContainer {
     if (this.cachedOnCountryClicked) this.onCountryClicked(this.cachedOnCountryClicked);
     if (this.cachedOnHotspotClicked) this.onHotspotClicked(this.cachedOnHotspotClicked);
     if (this.cachedOnAircraftPositionsUpdate) this.setOnAircraftPositionsUpdate(this.cachedOnAircraftPositionsUpdate);
-    if (this.cachedOnImageryUpdate) this.setOnImageryUpdate(this.cachedOnImageryUpdate);
+
 
     // 2. Re-push all cached data
     if (this.cachedEarthquakes) this.setEarthquakes(this.cachedEarthquakes);
@@ -692,20 +692,17 @@ export class MapContainer {
     }
   }
 
-  public setOnImageryUpdate(callback: (scenes: ImageryScene[]) => void): void {
-    this.cachedOnImageryUpdate = callback;
-    if (this.useDeckGL) {
-      this.deckGLMap?.setOnImageryUpdate(callback);
-    }
-  }
-
   public getBbox(): string | null {
     if (this.useDeckGL) return this.deckGLMap?.getBbox() ?? null;
     if (this.useGlobe) {
       const center = this.globeMap?.getCenter();
       if (!center) return null;
       const R = 5;
-      return `${(center.lon - R).toFixed(4)},${(center.lat - R).toFixed(4)},${(center.lon + R).toFixed(4)},${(center.lat + R).toFixed(4)}`;
+      const south = Math.max(-90, center.lat - R);
+      const north = Math.min(90, center.lat + R);
+      const west = Math.max(-180, center.lon - R);
+      const east = Math.min(180, center.lon + R);
+      return `${west.toFixed(4)},${south.toFixed(4)},${east.toFixed(4)},${north.toFixed(4)}`;
     }
     return null;
   }
@@ -920,7 +917,6 @@ export class MapContainer {
     this.cachedOnCountryClicked = null;
     this.cachedOnHotspotClicked = null;
     this.cachedOnAircraftPositionsUpdate = null;
-    this.cachedOnImageryUpdate = null;
     this.cachedEarthquakes = null;
     this.cachedWeatherAlerts = null;
     this.cachedOutages = null;

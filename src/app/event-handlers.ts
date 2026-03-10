@@ -85,6 +85,7 @@ export class EventHandlerManager implements AppModule {
   private boundMapResizeVisChangeHandler: (() => void) | null = null;
   private boundMapFullscreenEscHandler: ((e: KeyboardEvent) => void) | null = null;
   private boundMobileMenuKeyHandler: ((e: KeyboardEvent) => void) | null = null;
+  private boundPanelCloseHandler: ((e: Event) => void) | null = null;
   private idleTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private snapshotIntervalId: ReturnType<typeof setInterval> | null = null;
   private clockIntervalId: ReturnType<typeof setInterval> | null = null;
@@ -230,6 +231,10 @@ export class EventHandlerManager implements AppModule {
       document.removeEventListener('keydown', this.boundMobileMenuKeyHandler);
       this.boundMobileMenuKeyHandler = null;
     }
+    if (this.boundPanelCloseHandler) {
+      this.ctx.container.removeEventListener('wm:panel-close', this.boundPanelCloseHandler);
+      this.boundPanelCloseHandler = null;
+    }
     this.ctx.tvMode?.destroy();
     this.ctx.tvMode = null;
     this.ctx.unifiedSettings?.destroy();
@@ -276,6 +281,19 @@ export class EventHandlerManager implements AppModule {
       }
     };
     window.addEventListener('storage', this.boundStorageHandler);
+
+    // Handle panel close (X) button clicks
+    this.boundPanelCloseHandler = ((e: CustomEvent<{ panelId: string }>) => {
+      const { panelId } = e.detail;
+      const config = this.ctx.panelSettings[panelId];
+      if (!config) return;
+      config.enabled = false;
+      trackPanelToggled(panelId, false);
+      saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
+      this.applyPanelSettings();
+      this.ctx.unifiedSettings?.refreshPanelToggles();
+    }) as EventListener;
+    this.ctx.container.addEventListener('wm:panel-close', this.boundPanelCloseHandler);
 
     document.getElementById('headerThemeToggle')?.addEventListener('click', () => {
       const next = getCurrentTheme() === 'dark' ? 'light' : 'dark';

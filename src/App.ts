@@ -160,6 +160,31 @@ export class App {
       }
     }
 
+    // One-time migration: prune removed panel keys from stored settings and order
+    const PANEL_PRUNE_KEY = 'worldmonitor-panel-prune-v1';
+    if (!localStorage.getItem(PANEL_PRUNE_KEY)) {
+      const validKeys = new Set(Object.keys(DEFAULT_PANELS));
+      let pruned = false;
+      for (const key of Object.keys(panelSettings)) {
+        if (!validKeys.has(key) && key !== 'runtime-config') {
+          delete panelSettings[key];
+          pruned = true;
+        }
+      }
+      if (pruned) saveToStorage(STORAGE_KEYS.panels, panelSettings);
+      for (const orderKey of [PANEL_ORDER_KEY, PANEL_ORDER_KEY + '-bottom-set', PANEL_ORDER_KEY + '-bottom']) {
+        try {
+          const raw = localStorage.getItem(orderKey);
+          if (!raw) continue;
+          const arr = JSON.parse(raw);
+          if (!Array.isArray(arr)) continue;
+          const filtered = arr.filter((k: string) => validKeys.has(k));
+          if (filtered.length !== arr.length) localStorage.setItem(orderKey, JSON.stringify(filtered));
+        } catch { localStorage.removeItem(orderKey); }
+      }
+      localStorage.setItem(PANEL_PRUNE_KEY, 'done');
+    }
+
     // One-time migration: clear stale panel ordering and sizing state
     const LAYOUT_RESET_MIGRATION_KEY = 'worldmonitor-layout-reset-v2.5';
     if (!localStorage.getItem(LAYOUT_RESET_MIGRATION_KEY)) {

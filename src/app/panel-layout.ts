@@ -38,7 +38,6 @@ import {
   AviationCommandBar,
 } from '@/components';
 import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
-import { SatelliteImageryPanel } from '@/components/SatelliteImageryPanel';
 import { focusInvestmentOnMap } from '@/services/investments-focus';
 import { debounce, saveToStorage, loadFromStorage } from '@/utils';
 import { escapeHtml } from '@/utils/sanitize';
@@ -589,23 +588,6 @@ export class PanelLayoutManager implements AppModule {
 
     this.createPanel('cascade', () => new CascadePanel());
     this.createPanel('satellite-fires', () => new SatelliteFiresPanel());
-    const imageryPanel = this.createPanel('satellite-imagery', () => new SatelliteImageryPanel());
-    if (imageryPanel) {
-      this.ctx.map?.setOnImageryUpdate((scenes) => {
-        imageryPanel.update(scenes);
-        this.ctx.map?.setImageryScenes(scenes);
-      });
-      imageryPanel.setOnSearchArea(async () => {
-        const bbox = this.ctx.map?.getBbox();
-        if (!bbox) return;
-        try {
-          const { fetchImageryScenes } = await import('@/services/imagery');
-          const scenes = await fetchImageryScenes({ bbox, limit: 20 });
-          imageryPanel.update(scenes);
-          this.ctx.map?.setImageryScenes(scenes);
-        } catch { /* search failed */ }
-      });
-    }
 
     if (this.shouldCreatePanel('strategic-risk')) {
       const strategicRiskPanel = new StrategicRiskPanel();
@@ -885,6 +867,23 @@ export class PanelLayoutManager implements AppModule {
         panelsGrid.appendChild(el);
       }
     });
+
+    // "+" Add Panel block at the end of the grid
+    const addPanelBlock = document.createElement('button');
+    addPanelBlock.className = 'add-panel-block';
+    addPanelBlock.setAttribute('aria-label', t('components.panel.addPanel'));
+    const addIcon = document.createElement('span');
+    addIcon.className = 'add-panel-block-icon';
+    addIcon.textContent = '+';
+    const addLabel = document.createElement('span');
+    addLabel.className = 'add-panel-block-label';
+    addLabel.textContent = t('components.panel.addPanel');
+    addPanelBlock.appendChild(addIcon);
+    addPanelBlock.appendChild(addLabel);
+    addPanelBlock.addEventListener('click', () => {
+      this.ctx.unifiedSettings?.open('panels');
+    });
+    panelsGrid.appendChild(addPanelBlock);
 
     const bottomGrid = document.getElementById('mapBottomGrid');
     if (bottomGrid) {

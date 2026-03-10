@@ -99,7 +99,7 @@ export class LiveWebcamsPanel extends Panel {
   private boundEmbedMessageHandler: (e: MessageEvent) => void;
 
   constructor() {
-    super({ id: 'live-webcams', title: t('panels.liveWebcams'), className: 'panel-wide' });
+    super({ id: 'live-webcams', title: t('panels.liveWebcams'), className: 'panel-wide', closable: false });
     this.insertLiveCountBadge(WEBCAM_FEEDS.length);
 
     // Mobile: force single-cam view. 4 iframes at once is a battery + performance disaster.
