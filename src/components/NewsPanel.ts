@@ -9,6 +9,8 @@ import { getSourcePropagandaRisk, getSourceTier, getSourceType } from '@/config/
 import { SITE_VARIANT } from '@/config';
 import { t, getCurrentLanguage } from '@/services/i18n';
 
+type SortMode = 'relevance' | 'newest';
+
 /** Threshold for enabling virtual scrolling */
 const VIRTUAL_SCROLL_THRESHOLD = 15;
 
@@ -37,6 +39,12 @@ export class NewsPanel extends Panel {
   private boundScrollHandler: (() => void) | null = null;
   private boundClickHandler: (() => void) | null = null;
 
+  // Sort mode toggle (#107)
+  private sortMode!: SortMode;
+  private sortBtn: HTMLButtonElement | null = null;
+  private lastRawClusters: ClusteredEvent[] | null = null;
+  private lastRawItems: NewsItem[] | null = null;
+
   // Panel summary feature
   private summaryBtn: HTMLButtonElement | null = null;
   private summaryContainer: HTMLElement | null = null;
@@ -46,7 +54,9 @@ export class NewsPanel extends Panel {
 
   constructor(id: string, title: string) {
     super({ id, title, showCount: true, trackActivity: true });
+    this.sortMode = this.loadSortMode();
     this.createDeviationIndicator();
+    this.createSortToggle();
     this.createSummarizeButton();
     this.setupActivityTracking();
     this.initWindowedList();
@@ -110,6 +120,61 @@ export class NewsPanel extends Panel {
       this.deviationEl.className = 'deviation-indicator';
       header.appendChild(this.deviationEl);
     }
+  }
+
+  // --- Sort toggle (#107) ---
+  private get sortStorageKey(): string {
+    return `wm_sort_${SITE_VARIANT}_${this.panelId}`;
+  }
+
+  private loadSortMode(): SortMode {
+    try {
+      const v = localStorage.getItem(this.sortStorageKey);
+      return v === 'newest' ? 'newest' : 'relevance';
+    } catch { return 'relevance'; }
+  }
+
+  private saveSortMode(): void {
+    try { localStorage.setItem(this.sortStorageKey, this.sortMode); } catch { /* storage full */ }
+  }
+
+  private createSortToggle(): void {
+    this.sortBtn = document.createElement('button');
+    this.sortBtn.className = 'panel-sort-btn';
+    this.updateSortButtonLabel();
+    this.sortBtn.addEventListener('click', () => {
+      this.sortMode = this.sortMode === 'relevance' ? 'newest' : 'relevance';
+      this.saveSortMode();
+      this.updateSortButtonLabel();
+      // Re-render with cached data
+      if (this.lastRawClusters) {
+        this.renderClusters(this.lastRawClusters);
+      } else if (this.lastRawItems) {
+        this.renderFlat(this.lastRawItems);
+      }
+    });
+
+    const countEl = this.header.querySelector('.panel-count');
+    if (countEl) {
+      this.header.insertBefore(this.sortBtn, countEl);
+    } else {
+      this.header.appendChild(this.sortBtn);
+    }
+  }
+
+  private updateSortButtonLabel(): void {
+    if (!this.sortBtn) return;
+    // SVG icons for cross-platform consistency
+    const icon = this.sortMode === 'newest'
+      ? '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6.5"/><polyline points="8,4 8,8 11,10"/></svg>'
+      : '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2v8M4 7l4 4 4-4"/><line x1="3" y1="14" x2="13" y2="14"/></svg>';
+    const label = this.sortMode === 'newest'
+      ? t('components.newsPanel.sortNewest') || 'Newest'
+      : t('components.newsPanel.sortRelevance') || 'Relevance';
+    const tooltip = `${t('components.newsPanel.sortBy') || 'Sort by'}: ${label}`;
+    this.sortBtn.innerHTML = icon;
+    this.sortBtn.title = tooltip;
+    this.sortBtn.setAttribute('aria-label', tooltip);
   }
 
   private createSummarizeButton(): void {
@@ -301,6 +366,12 @@ export class NewsPanel extends Panel {
     this.deviationEl.title = `z-score: ${zScore} (vs 7-day avg)`;
   }
 
+  public override showError(message?: string, onRetry?: () => void, autoRetrySeconds?: number): void {
+    this.lastRawClusters = null;
+    this.lastRawItems = null;
+    super.showError(message, onRetry, autoRetrySeconds);
+  }
+
   public renderNews(items: NewsItem[]): void {
     if (items.length === 0) {
       this.renderRequestId += 1; // Cancel in-flight clustering from previous renders.
@@ -322,6 +393,8 @@ export class NewsPanel extends Panel {
 
   public renderFilteredEmpty(message: string): void {
     this.renderRequestId += 1; // Cancel in-flight clustering from previous renders.
+    this.lastRawClusters = null;
+    this.lastRawItems = null;
     this.setDataBadge('live');
     this.setCount(0);
     this.relatedAssetContext.clear();
@@ -346,15 +419,24 @@ export class NewsPanel extends Panel {
   }
 
   private renderFlat(items: NewsItem[]): void {
-    this.setCount(items.length);
-    this.currentHeadlines = items
+    this.lastRawItems = items;
+
+    let sorted: NewsItem[];
+    if (this.sortMode === 'newest') {
+      sorted = [...items].sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime());
+    } else {
+      sorted = items;
+    }
+
+    this.setCount(sorted.length);
+    this.currentHeadlines = sorted
       .slice(0, 5)
       .map(item => item.title)
       .filter((title): title is string => typeof title === 'string' && title.trim().length > 0);
 
     this.updateHeadlineSignature();
 
-    const html = items
+    const html = sorted
       .map(
         (item) => `
       <div class="item ${item.isAlert ? 'alert' : ''}" ${item.monitorColor ? `style="border-inline-start-color: ${escapeHtml(item.monitorColor)}"` : ''}>
@@ -377,8 +459,16 @@ export class NewsPanel extends Panel {
   }
 
   private renderClusters(clusters: ClusteredEvent[]): void {
-    // Sort by threat priority, then by time within same level
+    this.lastRawClusters = clusters;
+    this.lastRawItems = null;
+
+    // Sort based on user preference (#107)
     const sorted = [...clusters].sort((a, b) => {
+      if (this.sortMode === 'newest') {
+        // Pure chronological, newest first
+        return b.lastUpdated.getTime() - a.lastUpdated.getTime();
+      }
+      // Default: threat priority first, then recency within same level
       const pa = THREAT_PRIORITY[a.threat?.level ?? 'info'];
       const pb = THREAT_PRIORITY[b.threat?.level ?? 'info'];
       if (pb !== pa) return pb - pa;

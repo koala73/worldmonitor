@@ -1,3 +1,9 @@
+# Ensure dependencies are installed (worktrees start with no node_modules)
+if [ ! -d node_modules ]; then
+  echo "node_modules missing, running npm install..."
+  npm install --prefer-offline || exit 1
+fi
+
 echo "Running type check..."
 npm run typecheck || exit 1
 

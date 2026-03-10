@@ -982,6 +982,7 @@
       "layerWarningDismiss": "今後表示しない",
       "layerWarningOk": "了解",
       "layersTitle": "レイヤー",
+      "layerSearch": "レイヤーを検索...",
       "timeAll": "全期間",
       "views": {
         "global": "グローバル",
@@ -1761,7 +1762,9 @@
       "sources": {
         "faa": "FAA ASWS",
         "eurocontrol": "Eurocontrol",
-        "computed": "算出値"
+        "computed": "算出値",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "アメリカ",

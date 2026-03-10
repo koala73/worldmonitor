@@ -54,6 +54,20 @@ function toNaturalEvent(e: ListNaturalEventsResponse['events'][number]): Natural
     sourceUrl: e.sourceUrl || undefined,
     sourceName: e.sourceName || undefined,
     closed: e.closed,
+    stormId: e.stormId || undefined,
+    stormName: e.stormName || undefined,
+    basin: e.basin || undefined,
+    stormCategory: e.stormCategory ?? undefined,
+    classification: e.classification || undefined,
+    windKt: e.windKt ?? undefined,
+    pressureMb: e.pressureMb ?? undefined,
+    movementDir: e.movementDir ?? undefined,
+    movementSpeedKt: e.movementSpeedKt ?? undefined,
+    forecastTrack: e.forecastTrack?.length ? e.forecastTrack : undefined,
+    conePolygon: e.conePolygon?.length
+      ? e.conePolygon.map(ring => ring.points.map(p => [p.lon, p.lat]))
+      : undefined,
+    pastTrack: e.pastTrack?.length ? e.pastTrack : undefined,
   };
 }
 

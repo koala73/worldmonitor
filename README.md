@@ -389,7 +389,47 @@ This runs the frontend without the API layer. Panels that require server-side pr
 | **Linux x86_64**       | Full support            | Works with `vercel dev` for local development. Desktop .AppImage available for x86_64. WebKitGTK rendering uses DMA-BUF with fallback to SHM for GPU compatibility. Font stack includes DejaVu Sans Mono and Liberation Mono for consistent rendering across distros |
 | **macOS**              | Works with `vercel dev` | Full local development                                                                                                         |
 | **Raspberry Pi / ARM** | Partial                 | `vercel dev` edge runtime emulation may not work on ARM. Use Option 1 (deploy to Vercel) or Option 3 (static frontend) instead |
-| **Docker**             | Planned                 | See [Roadmap](#roadmap)                                                                                                        |
+| **Docker**             | Official image         | See [Docker image](#docker-image-official) ([#1260](https://github.com/koala73/worldmonitor/issues/1260))                    |
+
+### Docker image (official)
+
+An official Docker image is published to GitHub Container Registry on each [release](https://github.com/koala73/worldmonitor/releases) ([#1260](https://github.com/koala73/worldmonitor/issues/1260)):
+
+- **Image**: `ghcr.io/koala73/worldmonitor`
+- **Architectures**: `linux/amd64`, `linux/arm64`
+- **Tags**: `latest`, `vX.Y.Z` (e.g. `v2.6.0`), and `X.Y` (e.g. `2.6`)
+
+The image is **frontend-only**: it serves the Vite-built static app with nginx and proxies `/api/*` to an upstream API. No Node or edge functions run inside the container.
+
+**Build (from repo root):**
+
+```bash
+docker build -f docker/Dockerfile -t ghcr.io/koala73/worldmonitor:latest .
+```
+
+**Run (default API: `https://api.worldmonitor.app`):**
+
+```bash
+docker run -d --name worldmonitor -p 3000:80 ghcr.io/koala73/worldmonitor:latest
+```
+
+Then open [http://localhost:3000](http://localhost:3000).
+
+**Environment variables:**
+
+| Variable        | Default                        | Description                                      |
+| --------------- | ------------------------------ | ------------------------------------------------ |
+| `API_UPSTREAM`  | `https://api.worldmonitor.app` | Backend URL for `/api/*` proxy (set at runtime)  |
+
+The proxy forwards the upstream host (`Host: <API_UPSTREAM host>`) so the default API receives the correct Host. If your backend expects a different Host, configure it accordingly.
+
+Example with a custom API backend:
+
+```bash
+docker run -d -p 3000:80 -e API_UPSTREAM=http://my-api:3001 ghcr.io/koala73/worldmonitor:latest
+```
+
+Build-time options (optional, for custom builds): pass `VITE_VARIANT` and `VITE_WS_API_URL` via `--build-arg`. Other `VITE_*` vars the app uses (e.g. `VITE_PMTILES_URL`, `VITE_WS_RELAY_URL`) can be added the same way; see `.env.example` for the full list.
 
 ### Railway Relay (Optional)
 
@@ -488,7 +528,6 @@ Desktop release details, signing hooks, variant outputs, and clean-machine valid
 
 - [ ] Mobile-optimized views
 - [ ] Push notifications for critical alerts
-- [ ] Self-hosted Docker image
 
 See [full roadmap](./docs/DOCUMENTATION.md#roadmap).
 

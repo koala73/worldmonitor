@@ -44,11 +44,13 @@ export async function getAirportOpsSummary(
 
                 // Fetch NOTAM closures via shared loader
                 let notamClosedIcaos = new Set<string>();
+                let notamRestrictedIcaos = new Set<string>();
                 let notamReasons: Record<string, string> = {};
                 try {
                     const notamResult = await loadNotamClosures();
                     if (notamResult) {
                         notamClosedIcaos = new Set(notamResult.closedIcaos);
+                        notamRestrictedIcaos = new Set(notamResult.restrictedIcaos ?? []);
                         notamReasons = notamResult.reasons;
                     }
                 } catch { /* graceful degradation */ }
@@ -56,6 +58,7 @@ export async function getAirportOpsSummary(
                 for (const airport of airports) {
                     const alert = avResult.alerts.find(a => a.iata === airport.iata);
                     const isClosed = notamClosedIcaos.has(airport.icao);
+                    const isRestricted = notamRestrictedIcaos.has(airport.icao);
                     const notamText = notamReasons[airport.icao];
 
                     const delayPct = alert?.delayedFlightsPct ?? 0;
@@ -68,7 +71,7 @@ export async function getAirportOpsSummary(
                     const delaySev = determineSeverity(avgDelay, delayPct);
                     const notamFloor = isClosed
                         ? (totalFlights === 0 ? 'severe' : 'moderate')
-                        : 'normal';
+                        : isRestricted ? 'minor' : 'normal';
                     const sevOrder = ['normal', 'minor', 'moderate', 'major', 'severe'];
                     const sevStr = sevOrder[Math.max(
                         sevOrder.indexOf(cancelSev),
@@ -79,11 +82,12 @@ export async function getAirportOpsSummary(
 
                     const notamFlags: string[] = [];
                     if (isClosed) notamFlags.push('CLOSED');
+                    if (isRestricted) notamFlags.push('RESTRICTED');
                     if (notamText) notamFlags.push('NOTAM');
 
                     const topDelayReasons: string[] = [];
                     if (alert?.reason) topDelayReasons.push(alert.reason);
-                    if (isClosed && notamText) topDelayReasons.push(notamText.slice(0, 80));
+                    if ((isClosed || isRestricted) && notamText) topDelayReasons.push(notamText.slice(0, 80));
 
                     summaries.push({
                         iata: airport.iata,

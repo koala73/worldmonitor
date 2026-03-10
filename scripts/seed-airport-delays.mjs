@@ -5,7 +5,7 @@ import { loadEnvFile, CHROME_UA, getRedisCredentials, acquireLock, releaseLock, 
 loadEnvFile(import.meta.url);
 
 const FAA_CACHE_KEY = 'aviation:delays:faa:v1';
-const NOTAM_CACHE_KEY = 'aviation:notam:closures:v1';
+const NOTAM_CACHE_KEY = 'aviation:notam:closures:v2';
 const CACHE_TTL = 7200;
 
 const FAA_URL = 'https://nasstatus.faa.gov/api/airport-status-information';
@@ -19,11 +19,23 @@ const FAA_AIRPORTS = [
   'LGA', 'BWI', 'SLC', 'SAN', 'IAD', 'DCA', 'MDW', 'TPA', 'HNL', 'PDX',
 ];
 
-const MENA_AIRPORTS_ICAO = [
+const MONITORED_AIRPORTS_ICAO = [
+  // MENA
   'OEJN', 'OERK', 'OEMA', 'OEDF', 'OMDB', 'OMAA', 'OMSJ',
   'OTHH', 'OBBI', 'OOMS', 'OKBK', 'OLBA', 'OJAI', 'OSDI',
   'ORBI', 'OIIE', 'OISS', 'OIMM', 'OIKB', 'HECA', 'GMMN',
   'DTTA', 'DAAG', 'HLLT',
+  // Europe
+  'EGLL', 'LFPG', 'EDDF', 'EHAM', 'LEMD', 'LIRF', 'LTFM',
+  'LSZH', 'LOWW', 'EKCH', 'ENGM', 'ESSA', 'EFHK', 'EPWA',
+  // Americas
+  'KJFK', 'KLAX', 'KORD', 'KATL', 'KDFW', 'KDEN', 'KSFO',
+  'CYYZ', 'MMMX', 'SBGR', 'SCEL', 'SKBO',
+  // APAC
+  'RJTT', 'RKSI', 'VHHH', 'WSSS', 'VTBS', 'VIDP', 'YSSY',
+  'ZBAA', 'ZPPP', 'WMKK',
+  // Africa
+  'FAOR', 'DNMM', 'HKJK', 'GABS',
 ];
 
 function parseDelayTypeFromReason(reason) {
@@ -177,8 +189,8 @@ async function seedNotamClosures() {
     return null;
   }
 
-  console.log(`[NOTAM] Fetching closures for ${MENA_AIRPORTS_ICAO.length} MENA airports...`);
-  const locations = MENA_AIRPORTS_ICAO.join(',');
+  console.log(`[NOTAM] Fetching closures for ${MONITORED_AIRPORTS_ICAO.length} monitored airports...`);
+  const locations = MONITORED_AIRPORTS_ICAO.join(',');
   const now = Math.floor(Date.now() / 1000);
 
   let notams = [];
@@ -212,7 +224,7 @@ async function seedNotamClosures() {
 
   for (const n of notams) {
     const icao = n.itema || n.location || '';
-    if (!icao || !MENA_AIRPORTS_ICAO.includes(icao)) continue;
+    if (!icao || !MONITORED_AIRPORTS_ICAO.includes(icao)) continue;
     if (n.endvalidity && n.endvalidity < now) continue;
 
     const code23 = (n.code23 || '').toUpperCase();

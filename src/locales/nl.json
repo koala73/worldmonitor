@@ -584,6 +584,7 @@
         "renewableInstallations": "Schone energie"
       },
       "layersTitle": "Lagen",
+      "layerSearch": "Lagen zoeken...",
       "layerGuide": "Lagengids",
       "layerWarningTitle": "Prestatie-opmerking",
       "layerWarningBody": "Het inschakelen van meer dan {{threshold}} lagen kan de renderprestaties en framesnelheid beïnvloeden.",
@@ -1567,7 +1568,9 @@
       "sources": {
         "faa": "FAA ASWS",
         "eurocontrol": "Eurocontrol",
-        "computed": "Berekend"
+        "computed": "Berekend",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "Amerika",

@@ -982,6 +982,7 @@
       "layerWarningDismiss": "不再显示",
       "layerWarningOk": "知道了",
       "layersTitle": "图层",
+      "layerSearch": "搜索图层...",
       "timeAll": "全部",
       "views": {
         "global": "全球",
@@ -1761,7 +1762,9 @@
       "sources": {
         "faa": "FAA ASWS",
         "eurocontrol": "Eurocontrol",
-        "computed": "计算值"
+        "computed": "计算值",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "美洲",

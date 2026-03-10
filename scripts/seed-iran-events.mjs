@@ -103,6 +103,11 @@ const LOCATION_COORDS = {
   'rey':           { lat: 35.5959, lon: 51.4350 },
   'beirut':        { lat: 33.8938, lon: 35.5018 },
   'azraq':         { lat: 31.8300, lon: 36.8300 },
+  'yehud':         { lat: 32.0333, lon: 34.8833 },
+  'sitra':         { lat: 26.1547, lon: 50.6028 },
+  'sanandaj':      { lat: 35.3219, lon: 46.9862 },
+  'ma\'ameer':     { lat: 26.0500, lon: 50.5200 },
+  'northern cyprus': { lat: 35.1856, lon: 33.3823 },
 };
 
 const CATEGORY_MAP = {

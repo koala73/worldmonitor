@@ -3104,32 +3104,48 @@ Strategic risk and Country Instability Index (CII) scores are pre-computed serve
 
 ### How It Works
 
-The `/api/risk-scores` edge function:
+The `GetRiskScores` RPC handler (`get-risk-scores.ts`):
 
-1. Fetches recent protest/riot data from ACLED (7-day window)
-2. Computes CII scores for 20 Tier 1 countries
-3. Derives strategic risk from weighted top-5 CII scores
-4. Caches results in Redis (10-minute TTL)
+1. Fetches recent protest/riot/battle/explosion/civilian-violence data from ACLED (7-day window)
+2. Fetches auxiliary sources from Redis: UCDP conflicts, outages, climate, cyber threats, fires, GPS jamming, Iran events, OREF alerts
+3. Computes CII scores for 24 Tier 1 countries using the same formulas as the frontend
+4. Derives strategic risk from weighted top-5 CII scores
+5. Caches results in Redis (10-minute TTL, 1-hour stale fallback)
 
 ### CII Score Calculation
 
-Each country's score combines:
+Each country's score combines a static baseline (40%) with a dynamic event score (60%), plus supplemental boosts and floors.
 
-**Baseline Risk** (0–50 points): Static geopolitical risk based on historical instability, ongoing conflicts, and authoritarian governance.
+**Baseline Risk** (0-50 points): Static geopolitical risk reflecting structural fragility.
 
 | Country | Baseline | Rationale |
 |---------|----------|-----------|
 | Syria, Ukraine, Yemen | 50 | Active conflict zones |
-| Myanmar, Venezuela, North Korea | 40-45 | Civil unrest, authoritarian |
-| Iran, Israel, Pakistan | 35-45 | Regional tensions |
-| Saudi Arabia, Turkey, India | 20-25 | Moderate instability |
-| Germany, UK, US | 5-10 | Stable democracies |
+| Myanmar, North Korea, Cuba | 45 | Civil unrest, authoritarian |
+| Iran, Israel, Pakistan, Venezuela, Mexico | 35-40 | Regional tensions, organized crime |
+| Taiwan, Saudi Arabia, Turkey, Russia, China, India | 20-35 | Moderate instability |
+| Brazil, Mexico | 15-35 | Variable instability |
+| Germany, UK, US, France, Poland, UAE | 5-10 | Stable/low risk |
 
-**Unrest Component** (0–50 points): Recent protest and riot activity, weighted by event significance multiplier.
+**Event Score** blends four sub-components:
 
-**Information Component** (0–25 points): News coverage intensity (proxy for international attention).
+| Sub-component | Weight | Scoring |
+|---------------|--------|---------|
+| Unrest | 25% | Log2 dampening for democracies (multiplier < 0.7), linear for authoritarian states. Base capped at 50, plus protest fatality boost (up to 30), plus outage severity boost (TOTAL 30pts, MAJOR 15pts, PARTIAL 5pts, capped at 50) |
+| Conflict | 30% | Weighted ACLED events (battles x3, explosions x4, civilian violence x5), sqrt-scaled fatalities, civilian boost, Iran strike severity, OREF alert boost (IL only: 25 base + 5 per alert) |
+| Security | 20% | GPS/GNSS jamming hexes (high: 5pts, medium: 2pts, capped at 35) |
+| Information | 25% | Reserved (0); no server-side news data |
 
-**Security Component** (0–25 points): Baseline plus riot contribution.
+**Floors** (minimum score guarantees):
+
+| Floor type | Threshold | Trigger |
+|------------|-----------|---------|
+| UCDP active war | >= 70 | UCDP intensity level 2+ |
+| UCDP minor conflict | >= 50 | UCDP intensity level 1 |
+| Advisory do-not-travel | >= 60 | UA, SY, YE, MM |
+| Advisory reconsider | >= 50 | IL, IR, PK, VE, CU, MX |
+
+**Supplemental Boosts**: Advisory boost (+15/+10/+5), OREF blend boost for IL (+15 active + history tiers), climate (+15 max), cyber (+10 max), fires (+8 max).
 
 ### Event Significance Multipliers
 
@@ -3137,10 +3153,11 @@ Events in some countries carry more global significance than others:
 
 | Multiplier | Countries | Rationale |
 |------------|-----------|-----------|
-| 3.0× | North Korea | Any visible unrest is highly unusual |
-| 2.0-2.5× | China, Russia, Iran, Saudi Arabia | Authoritarian states suppress protests |
-| 1.5-1.8× | Taiwan, Pakistan, Myanmar, Venezuela | Regional flashpoints |
-| 0.5-0.8× | US, UK, France, Germany | Protests are routine in democracies |
+| 3.0x | North Korea | Any visible unrest is highly unusual |
+| 2.0-2.5x | China, Russia, Iran, Saudi Arabia, Cuba | Authoritarian states suppress protests |
+| 1.5-1.8x | Taiwan, Pakistan, Myanmar, Venezuela, UAE | Regional flashpoints |
+| 1.0-1.2x | Mexico, Turkey | Moderate significance |
+| 0.5-0.8x | US, UK, France, Germany, Poland, Ukraine, Syria, Yemen, Israel, India, Brazil | Protests are routine or events already captured by floors |
 
 ### Strategic Risk Derivation
 
@@ -3153,14 +3170,28 @@ Strategic Risk = (Σ CII[i] × weight[i]) / 3.5 × 0.7 + 15
 
 The top countries contribute most heavily, with diminishing influence for lower-ranked countries.
 
+### Data Sources
+
+| Source | Redis Key | Used For |
+|--------|-----------|----------|
+| ACLED | Fetched live via API | Protests, riots, battles, explosions, civilian violence, fatalities |
+| UCDP | `conflict:ucdp-events:v1` | War/minor conflict floors |
+| Outages | `infra:outages:v1` | Unrest outage boost (TOTAL/MAJOR/PARTIAL severity) |
+| Climate | `climate:anomalies:v1` | Climate severity boost |
+| Cyber | `cyber:threats-bootstrap:v2` | Cyber threat count boost |
+| Fires | `wildfire:fires:v1` | Wildfire count boost |
+| GPS Jamming | `intelligence:gpsjam:v2` | Security score (high/medium hex levels) |
+| Iran Events | `conflict:iran-events:v1` | Strike boost with severity weighting |
+| OREF Alerts | `relay:oref:history:v1` | IL conflict boost + blend boost (activeAlertCount, historyCount24h) |
+
 ### Fallback Behavior
 
-When ACLED data is unavailable (API errors, rate limits, expired auth):
+When upstream data is unavailable (API errors, rate limits):
 
-1. **Stale cache** (1-hour TTL): Return recent scores with `stale: true` flag
-2. **Baseline fallback**: Return scores using only static baseline values with `baseline: true` flag
+1. **Stale cache** (1-hour TTL): Return recent scores
+2. **Baseline fallback**: Return scores using only static baselines and advisory floors
 
-This ensures the dashboard always displays meaningful data even during upstream outages.
+This ensures the dashboard always displays meaningful data even during upstream outages. The relay CII seed loop is disabled; the RPC handler computes scores on-demand with `cachedFetchJson` coalescing concurrent requests.
 
 ---
 
@@ -3679,7 +3710,7 @@ See [ROADMAP.md](../.planning/ROADMAP.md) for detailed planning. Recent intellig
 - ✅ **WebGL Map (deck.gl)** - High-performance rendering for desktop users
 - ✅ **Browser ML Fallback** - ONNX Runtime for offline summarization capability
 - ✅ **Multi-Signal Geographic Convergence** - Alerts when 3+ data types converge on same region within 24h
-- ✅ **Country Instability Index (CII)** - Real-time composite risk score for 20 Tier-1 countries
+- ✅ **Country Instability Index (CII)** - Real-time composite risk score for 24 Tier-1 countries
 - ✅ **Infrastructure Cascade Visualization** - Dependency graph showing downstream effects of disruptions
 - ✅ **Strategic Risk Overview** - Unified alert system with cross-module correlation and deduplication
 - ✅ **GDELT Topic Intelligence** - Categorized feeds for military, cyber, nuclear, and sanctions topics

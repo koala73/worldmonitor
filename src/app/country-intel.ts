@@ -134,12 +134,8 @@ export class CountryIntelManager implements AppModule {
     const geo = await reverseGeocode(lat, lon);
     if (token !== this.briefRequestToken) return;
     if (!geo) {
-      if (this.ctx.countryBriefPage.showGeoError) {
-        this.ctx.countryBriefPage.showGeoError(() => this.openCountryBrief(lat, lon));
-      } else {
-        this.ctx.countryBriefPage.hide();
-        this.ctx.map?.setRenderPaused(false);
-      }
+      this.ctx.countryBriefPage.hide();
+      this.ctx.map?.setRenderPaused(false);
       return;
     }
 

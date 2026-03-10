@@ -107,6 +107,10 @@ enum FlightDelaySource {
   FLIGHT_DELAY_SOURCE_FAA = 1;
   // Eurocontrol (European air traffic management).
   FLIGHT_DELAY_SOURCE_EUROCONTROL = 2;
-  // Computed from multiple sources.
+  // Computed from multiple sources (legacy, prefer specific sources below).
   FLIGHT_DELAY_SOURCE_COMPUTED = 3;
+  // AviationStack real-time flight data.
+  FLIGHT_DELAY_SOURCE_AVIATIONSTACK = 4;
+  // ICAO NOTAM (Notice to Air Missions).
+  FLIGHT_DELAY_SOURCE_NOTAM = 5;
 }

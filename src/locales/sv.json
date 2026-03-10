@@ -584,6 +584,7 @@
         "renewableInstallations": "Ren energi"
       },
       "layersTitle": "Lager",
+      "layerSearch": "Sök lager...",
       "layerGuide": "Lagerguide",
       "layerWarningTitle": "Prestandameddelande",
       "layerWarningBody": "Att aktivera fler än {{threshold}} lager kan påverka renderingsprestanda och bildfrekvens.",
@@ -1567,7 +1568,9 @@
       "sources": {
         "faa": "FAA ASWS",
         "eurocontrol": "Eurocontrol",
-        "computed": "Beräknad"
+        "computed": "Beräknad",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "Amerika",

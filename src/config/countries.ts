@@ -217,6 +217,13 @@ export const CURATED_COUNTRIES: Record<string, CuratedCountryConfig> = {
     baselineRisk: 15,
     eventMultiplier: 1.0,
   },
+  CU: {
+    name: 'Cuba',
+    scoringKeywords: ['cuba', 'cuban', 'havana', 'diaz-canel'],
+    searchAliases: ['cuba', 'cuban', 'havana', 'diaz-canel', 'canel'],
+    baselineRisk: 45,
+    eventMultiplier: 2.0,
+  },
 };
 
 export const TIER1_COUNTRIES: Record<string, string> = {
@@ -243,6 +250,7 @@ export const TIER1_COUNTRIES: Record<string, string> = {
   BR: 'Brazil',
   AE: 'United Arab Emirates',
   MX: 'Mexico',
+  CU: 'Cuba',
 };
 
 export const DEFAULT_BASELINE_RISK = 15;
@@ -253,7 +261,7 @@ export const HOTSPOT_COUNTRY_MAP: Record<string, string | string[]> = {
   telaviv: 'IL', pyongyang: 'KP', sanaa: 'YE', riyadh: 'SA', ankara: 'TR',
   damascus: 'SY', caracas: 'VE', dc: 'US', london: 'GB',
   brussels: 'BE', baghdad: 'IQ', beirut: 'LB', doha: 'QA', abudhabi: 'AE',
-  mexico: 'MX', nuuk: 'GL', sahel: ['ML', 'NE', 'BF'], haiti: 'HT',
+  mexico: 'MX', havana: 'CU', nuuk: 'GL', sahel: ['ML', 'NE', 'BF'], haiti: 'HT',
   horn_africa: ['ET', 'SO', 'SD'], silicon_valley: 'US', wall_street: 'US',
   houston: 'US', cairo: 'EG',
 };

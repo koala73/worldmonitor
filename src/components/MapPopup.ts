@@ -1100,6 +1100,8 @@ export class MapPopup {
       'faa': t('popups.flight.sources.faa'),
       'eurocontrol': t('popups.flight.sources.eurocontrol'),
       'computed': t('popups.flight.sources.computed'),
+      'aviationstack': t('popups.flight.sources.aviationstack'),
+      'notam': t('popups.flight.sources.notam'),
     };
     const sourceLabel = sourceLabels[delay.source] || escapeHtml(delay.source);
     const regionLabels: Record<string, string> = {
@@ -2442,9 +2444,48 @@ export class MapPopup {
           </div>
           ` : ''}
         </div>
-        ${event.description ? `<p class="popup-description">${escapeHtml(event.description)}</p>` : ''}
+        ${event.stormName || event.windKt ? this.renderTcDetails(event) : ''}
+        ${event.description && !event.windKt ? `<p class="popup-description">${escapeHtml(event.description)}</p>` : ''}
         ${event.sourceUrl ? `<a href="${sanitizeUrl(event.sourceUrl)}" target="_blank" class="popup-link">${t('popups.naturalEvent.viewOnSource', { source: escapeHtml(event.sourceName || t('popups.source')) })} →</a>` : ''}
         <div class="popup-attribution">${t('popups.naturalEvent.attribution')}</div>
+      </div>
+    `;
+  }
+
+  private renderTcDetails(event: NaturalEvent): string {
+    const TC_COLORS: Record<number, string> = {
+      0: '#5ebaff', 1: '#00faf4', 2: '#ffffcc', 3: '#ffe775', 4: '#ffc140', 5: '#ff6060',
+    };
+    const cat = event.stormCategory ?? 0;
+    const color = TC_COLORS[cat] || TC_COLORS[0];
+    const catLabel = event.classification || (cat > 0 ? `Category ${cat}` : t('popups.naturalEvent.tropicalSystem'));
+
+    return `
+      <div class="popup-stats">
+        ${event.stormName ? `
+        <div class="popup-stat" style="grid-column: 1 / -1">
+          <span class="stat-label">${t('popups.naturalEvent.storm')}</span>
+          <span class="stat-value">${escapeHtml(event.stormName)}</span>
+        </div>` : ''}
+        <div class="popup-stat">
+          <span class="stat-label">${t('popups.naturalEvent.classification')}</span>
+          <span class="stat-value" style="color: ${color}">${escapeHtml(catLabel)}</span>
+        </div>
+        ${event.windKt != null ? `
+        <div class="popup-stat">
+          <span class="stat-label">${t('popups.naturalEvent.maxWind')}</span>
+          <span class="stat-value">${event.windKt} kt (${Math.round(event.windKt * 1.15078)} mph)</span>
+        </div>` : ''}
+        ${event.pressureMb != null ? `
+        <div class="popup-stat">
+          <span class="stat-label">${t('popups.naturalEvent.pressure')}</span>
+          <span class="stat-value">${event.pressureMb} mb</span>
+        </div>` : ''}
+        ${event.movementSpeedKt != null ? `
+        <div class="popup-stat">
+          <span class="stat-label">${t('popups.naturalEvent.movement')}</span>
+          <span class="stat-value">${event.movementDir != null ? event.movementDir + '° at ' : ''}${event.movementSpeedKt} kt</span>
+        </div>` : ''}
       </div>
     `;
   }

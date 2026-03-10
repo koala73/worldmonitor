@@ -955,6 +955,7 @@
       "layerWarningDismiss": "لا تظهر هذا مجددًا",
       "layerWarningOk": "فهمت",
       "layersTitle": "الطبقات",
+      "layerSearch": "بحث في الطبقات...",
       "timeAll": "الكل",
       "views": {
         "global": "عالمي",
@@ -1761,7 +1762,9 @@
       "sources": {
         "faa": "FAA ASWS",
         "eurocontrol": "Eurocontrol",
-        "computed": "محسوب"
+        "computed": "محسوب",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "الأمريكتان",

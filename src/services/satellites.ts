@@ -33,6 +33,7 @@ export interface SatellitePosition {
   type: string;
   country: string;
   velocity: number;
+  inclination: number;
   trail: [number, number, number][];
 }
 
@@ -127,7 +128,8 @@ export function propagatePositions(satRecs: SatRecEntry[], date?: Date): Satelli
         } catch { /* skip */ }
       }
 
-      positions.push({ ...meta, lat, lng, alt, velocity, trail });
+      const inclination = satrec.inclo * (180 / Math.PI);
+      positions.push({ ...meta, lat, lng, alt, velocity, inclination, trail });
     } catch { /* skip propagation errors */ }
   }
   return positions;
