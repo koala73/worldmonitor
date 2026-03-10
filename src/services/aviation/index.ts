@@ -14,7 +14,7 @@ import { getHydratedData } from '@/services/bootstrap';
 
 // ---- Consumer-friendly display types ----
 
-export type FlightDelaySource = 'faa' | 'eurocontrol' | 'computed';
+export type FlightDelaySource = 'faa' | 'eurocontrol' | 'computed' | 'aviationstack' | 'notam';
 export type FlightDelaySeverity = 'normal' | 'minor' | 'moderate' | 'major' | 'severe';
 export type FlightDelayType = 'ground_stop' | 'ground_delay' | 'departure_delay' | 'arrival_delay' | 'general' | 'closure';
 export type AirportRegion = 'americas' | 'europe' | 'apac' | 'mena' | 'africa';
@@ -167,6 +167,8 @@ const SOURCE_MAP: Record<string, FlightDelaySource> = {
   FLIGHT_DELAY_SOURCE_FAA: 'faa',
   FLIGHT_DELAY_SOURCE_EUROCONTROL: 'eurocontrol',
   FLIGHT_DELAY_SOURCE_COMPUTED: 'computed',
+  FLIGHT_DELAY_SOURCE_AVIATIONSTACK: 'aviationstack',
+  FLIGHT_DELAY_SOURCE_NOTAM: 'notam',
 };
 
 const FLIGHT_STATUS_MAP: Record<string, FlightStatus> = {

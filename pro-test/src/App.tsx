@@ -1052,7 +1052,7 @@ const EnterprisePage = () => (
             const turnstileWidget = form.querySelector('.cf-turnstile') as HTMLElement | null;
             const turnstileToken = turnstileWidget?.dataset.token || '';
             try {
-              const res = await fetch(`${API_BASE}/register-interest`, {
+              const res = await fetch(`${API_BASE}/contact`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

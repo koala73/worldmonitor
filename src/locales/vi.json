@@ -982,6 +982,7 @@
       "layerWarningDismiss": "Không hiển thị lại",
       "layerWarningOk": "Đã hiểu",
       "layersTitle": "Lớp",
+      "layerSearch": "Tìm lớp...",
       "timeAll": "Tất cả",
       "views": {
         "global": "Toàn cầu",
@@ -1761,7 +1762,9 @@
       "sources": {
         "faa": "FAA ASWS",
         "eurocontrol": "Eurocontrol",
-        "computed": "Tính toán"
+        "computed": "Tính toán",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "Châu Mỹ",

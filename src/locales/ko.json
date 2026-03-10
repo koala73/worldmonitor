@@ -982,6 +982,7 @@
       "layerWarningDismiss": "다시 표시하지 않기",
       "layerWarningOk": "확인",
       "layersTitle": "레이어",
+      "layerSearch": "레이어 검색...",
       "timeAll": "전체",
       "views": {
         "global": "글로벌",
@@ -1761,7 +1762,9 @@
       "sources": {
         "faa": "FAA ASWS",
         "eurocontrol": "Eurocontrol",
-        "computed": "산출값"
+        "computed": "산출값",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "아메리카",

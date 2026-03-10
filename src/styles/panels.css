@@ -1489,10 +1489,6 @@
    World Clock Panel
    ---------------------------------------------------------- */
 .wc-settings-btn {
-  position: absolute;
-  right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
   background: none;
   border: none;
   color: var(--text-dim);
@@ -1502,6 +1498,7 @@
   line-height: 1;
   opacity: 0.6;
   transition: opacity 0.15s;
+  flex-shrink: 0;
 }
 
 .wc-settings-btn:hover,

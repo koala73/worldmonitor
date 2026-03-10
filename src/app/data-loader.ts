@@ -525,9 +525,11 @@ export class DataLoaderManager implements AppModule {
         case 'iranAttacks':
           await this.loadIranEvents();
           break;
-        case 'satellites':
+        case 'satellites': {
           await this.loadSatellites();
+          this.loadImageryFootprints();
           break;
+        }
         case 'ucdpEvents':
         case 'displacement':
         case 'climate':
@@ -556,6 +558,19 @@ export class DataLoaderManager implements AppModule {
   private stopSatellitePropagation(): void {
     this.satellitePropagationCleanup?.();
     this.satellitePropagationCleanup = null;
+  }
+
+  private loadImageryFootprints(): void {
+    const bbox = this.ctx.map?.getBbox();
+    if (!bbox) return;
+    void import('@/services/imagery').then(async ({ fetchImageryScenes }) => {
+      try {
+        const scenes = await fetchImageryScenes({ bbox, limit: 20 });
+        this.ctx.map?.setImageryScenes(scenes);
+        const panel = this.ctx.panels['satellite-imagery'] as import('@/components/SatelliteImageryPanel').SatelliteImageryPanel | undefined;
+        panel?.update(scenes);
+      } catch { /* imagery is best-effort */ }
+    });
   }
 
   stopLayerActivity(layer: keyof MapLayers): void {

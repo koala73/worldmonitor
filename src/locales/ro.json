@@ -982,6 +982,7 @@
       "layerWarningDismiss": "Nu mai afișa",
       "layerWarningOk": "Am înțeles",
       "layersTitle": "Straturi",
+      "layerSearch": "Caută straturi...",
       "timeAll": "Toate",
       "views": {
         "global": "Global",
@@ -1761,7 +1762,9 @@
       "sources": {
         "faa": "FAA ASWS",
         "eurocontrol": "Eurocontrol",
-        "computed": "Calculat"
+        "computed": "Calculat",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "America",

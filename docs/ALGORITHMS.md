@@ -8,16 +8,26 @@ Detailed documentation of World Monitor's scoring formulas, detection algorithms
 
 ### Country Instability Index (CII)
 
-Every country with incoming event data receives a live instability score (0–100). 23 curated tier-1 nations (US, Russia, China, Ukraine, Iran, Israel, Taiwan, North Korea, Saudi Arabia, Turkey, Poland, Germany, France, UK, India, Pakistan, Syria, Yemen, Myanmar, Venezuela, Brazil, UAE, and Japan) have individually tuned baseline risk profiles and keyword lists. All other countries that generate any signal (protests, conflicts, outages, displacement flows, climate anomalies) are scored automatically using a universal default baseline (`DEFAULT_BASELINE_RISK = 15`, `DEFAULT_EVENT_MULTIPLIER = 1.0`). The score is computed from:
+Every country with incoming event data receives a live instability score (0-100). 24 curated tier-1 nations (US, Russia, China, Ukraine, Iran, Israel, Taiwan, North Korea, Saudi Arabia, Turkey, Poland, Germany, France, UK, India, Pakistan, Syria, Yemen, Myanmar, Venezuela, Cuba, Mexico, Brazil, UAE) have individually tuned baseline risk profiles and keyword lists. All other countries that generate any signal (protests, conflicts, outages, displacement flows, climate anomalies) are scored automatically using a universal default baseline (`DEFAULT_BASELINE_RISK = 15`, `DEFAULT_EVENT_MULTIPLIER = 1.0`).
 
-| Component                | Weight | Details                                                                                                                                                                                         |
-| ------------------------ | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Baseline risk**        | 40%    | Pre-configured per country reflecting structural fragility                                                                                                                                      |
-| **Unrest events**        | 20%    | Protests scored logarithmically for democracies (routine protests don't trigger), linearly for authoritarian states (every protest is significant). Boosted for fatalities and internet outages |
-| **Security activity**    | 20%    | Military flights (3pts) + vessels (5pts) from own forces + foreign military presence (doubled weight)                                                                                           |
-| **Information velocity** | 20%    | News mention frequency weighted by event severity multiplier, log-scaled for high-volume countries                                                                                              |
+The server-side score (`get-risk-scores.ts`) uses the same formulas as the frontend (`country-instability.ts`):
 
-Additional boosts apply for hotspot proximity, focal point urgency, conflict-zone floors (e.g., Ukraine is pinned at ≥55, Syria at ≥50), GPS/GNSS jamming (up to +35 in Security component), OREF rocket alerts (up to +50 in Conflict component for Israel), and government travel advisories (Do-Not-Travel forces CII ≥ 60 with multi-source consensus bonuses).
+| Component            | Weight | Details |
+| -------------------- | ------ | ------- |
+| **Baseline risk**    | 40%    | Pre-configured per country reflecting structural fragility (0-50 scale) |
+| **Event score**      | 60%    | Blend of Unrest (25%), Conflict (30%), Security (20%), Information (25%) |
+
+**Unrest score** (0-100): Log2 dampening for high-volume low-multiplier countries (`multiplier < 0.7`), linear otherwise. Base capped at 50, plus protest/riot fatality boost (up to 30), plus outage severity boost (TOTAL: 30pts, MAJOR: 15pts, PARTIAL: 5pts, capped at 50).
+
+**Conflict score** (0-100): Weighted ACLED events (battles x3, explosions x4, civilian violence x5, capped at 50), sqrt-scaled fatalities (up to 40), civilian boost (up to 10), Iran strike boost with severity weighting (up to 50), and OREF alert boost for Israel (25 base + 5 per active alert, up to 50 total).
+
+**Security score** (0-100): GPS/GNSS jamming (high: 5pts, medium: 2pts per hex, capped at 35).
+
+**Information score**: Reserved (0); no server-side news data available.
+
+**Floors**: UCDP active war pins score at >= 70, UCDP minor conflict at >= 50. Travel advisory do-not-travel pins at >= 60, reconsider at >= 50.
+
+**Boosts**: Advisory boost (+15 do-not-travel, +10 reconsider, +5 caution), OREF blend boost for Israel (+15 active alerts, +5/10 based on 24h history count), climate severity (up to +15), cyber threats (up to +10), wildfires (up to +8).
 
 ### Hotspot Escalation Scoring
 

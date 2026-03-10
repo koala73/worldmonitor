@@ -982,6 +982,7 @@
       "layerWarningDismiss": "Να μην εμφανιστεί ξανά",
       "layerWarningOk": "Κατάλαβα",
       "layersTitle": "Επίπεδα",
+      "layerSearch": "Αναζήτηση επιπέδων...",
       "timeAll": "Όλα",
       "views": {
         "global": "Παγκόσμια",
@@ -1761,7 +1762,9 @@
       "sources": {
         "faa": "FAA ASWS",
         "eurocontrol": "Eurocontrol",
-        "computed": "Υπολογισμένο"
+        "computed": "Υπολογισμένο",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "Αμερική",

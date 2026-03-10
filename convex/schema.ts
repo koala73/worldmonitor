@@ -14,6 +14,14 @@ export default defineSchema({
   })
     .index("by_normalized_email", ["normalizedEmail"])
     .index("by_referral_code", ["referralCode"]),
+  contactMessages: defineTable({
+    name: v.string(),
+    email: v.string(),
+    organization: v.optional(v.string()),
+    message: v.optional(v.string()),
+    source: v.string(),
+    receivedAt: v.number(),
+  }),
   counters: defineTable({
     name: v.string(),
     value: v.number(),

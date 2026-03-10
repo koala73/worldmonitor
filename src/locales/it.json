@@ -884,6 +884,7 @@
         "renewableInstallations": "Energia pulita"
       },
       "layersTitle": "Livelli",
+      "layerSearch": "Cerca livelli...",
       "layerGuide": "Guida ai livelli",
       "layerWarningTitle": "Avviso sulle prestazioni",
       "layerWarningBody": "Attivare più di {{threshold}} livelli può influire sulle prestazioni di rendering e sul frame rate.",
@@ -1760,7 +1761,9 @@
       "sources": {
         "faa": "FAA ASWS",
         "eurocontrol": "Eurocontrol",
-        "computed": "Calcolato"
+        "computed": "Calcolato",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "Americhe",

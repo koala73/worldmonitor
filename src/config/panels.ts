@@ -45,6 +45,7 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   layoffs: { name: 'Layoffs Tracker', enabled: true, priority: 2 },
   monitors: { name: 'My Monitors', enabled: true, priority: 2 },
   'satellite-fires': { name: 'Fires', enabled: true, priority: 2 },
+  'satellite-imagery': { name: 'Satellite Imagery', enabled: true, priority: 2 },
   'macro-signals': { name: 'Market Radar', enabled: true, priority: 2 },
   'gulf-economies': { name: 'Gulf Economies', enabled: false, priority: 2 },
   'etf-flows': { name: 'BTC ETF Tracker', enabled: true, priority: 2 },
@@ -66,6 +67,7 @@ const FULL_MAP_LAYERS: MapLayers = {
   iranAttacks: _desktop ? false : true,
   gpsJamming: false,
   satellites: false,
+  notamOverlay: false,
 
   conflicts: true,
   bases: _desktop ? false : true,
@@ -124,6 +126,7 @@ const FULL_MOBILE_MAP_LAYERS: MapLayers = {
   iranAttacks: true,
   gpsJamming: false,
   satellites: false,
+  notamOverlay: false,
 
   conflicts: true,
   bases: false,
@@ -223,6 +226,7 @@ const TECH_PANELS: Record<string, PanelConfig> = {
 const TECH_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
   satellites: false,
+  notamOverlay: false,
 
   conflicts: false,
   bases: false,
@@ -281,6 +285,7 @@ const TECH_MAP_LAYERS: MapLayers = {
 const TECH_MOBILE_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
   satellites: false,
+  notamOverlay: false,
 
   conflicts: false,
   bases: false,
@@ -382,6 +387,7 @@ const FINANCE_PANELS: Record<string, PanelConfig> = {
 const FINANCE_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
   satellites: false,
+  notamOverlay: false,
 
   conflicts: false,
   bases: false,
@@ -440,6 +446,7 @@ const FINANCE_MAP_LAYERS: MapLayers = {
 const FINANCE_MOBILE_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
   satellites: false,
+  notamOverlay: false,
 
   conflicts: false,
   bases: false,
@@ -514,6 +521,7 @@ const HAPPY_PANELS: Record<string, PanelConfig> = {
 const HAPPY_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
   satellites: false,
+  notamOverlay: false,
 
   conflicts: false,
   bases: false,
@@ -572,6 +580,7 @@ const HAPPY_MAP_LAYERS: MapLayers = {
 const HAPPY_MOBILE_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
   satellites: false,
+  notamOverlay: false,
 
   conflicts: false,
   bases: false,
@@ -661,6 +670,7 @@ const COMMODITY_PANELS: Record<string, PanelConfig> = {
 const COMMODITY_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
   satellites: false,
+  notamOverlay: false,
 
   conflicts: false,
   bases: false,
@@ -719,6 +729,7 @@ const COMMODITY_MAP_LAYERS: MapLayers = {
 const COMMODITY_MOBILE_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
   satellites: false,
+  notamOverlay: false,
 
   conflicts: false,
   bases: false,

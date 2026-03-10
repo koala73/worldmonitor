@@ -215,8 +215,8 @@ export default async function handler(req) {
   // x-real-ip is injected by Vercel from the TCP connection and cannot be spoofed.
   // x-forwarded-for is client-settable — only use as last resort.
   const ip =
-    req.headers.get('x-real-ip') ||
     req.headers.get('cf-connecting-ip') ||
+    req.headers.get('x-real-ip') ||
     req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
     'unknown';
   if (isRateLimited(ip)) {

@@ -955,6 +955,7 @@
       "layerWarningDismiss": "Ne plus afficher",
       "layerWarningOk": "Compris",
       "layersTitle": "Couches",
+      "layerSearch": "Rechercher...",
       "timeAll": "Tout",
       "views": {
         "global": "Mondial",
@@ -1760,7 +1761,9 @@
       "sources": {
         "faa": "FAA-ASWS",
         "eurocontrol": "Eurocontrôle",
-        "computed": "Calculé"
+        "computed": "Calculé",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "Amériques",

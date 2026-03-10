@@ -867,6 +867,7 @@
         "renewableInstallations": "Czysta energia"
       },
       "layersTitle": "Warstwy",
+      "layerSearch": "Szukaj warstw...",
       "layerGuide": "Przewodnik po warstwach",
       "layerWarningTitle": "Informacja o wydajności",
       "layerWarningBody": "Włączenie więcej niż {{threshold}} warstw może wpłynąć na wydajność renderowania i liczbę klatek na sekundę.",
@@ -1760,7 +1761,9 @@
       "sources": {
         "faa": "FAA ASWS",
         "eurocontrol": "Eurokontrola",
-        "computed": "Obliczone"
+        "computed": "Obliczone",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "Ameryki",

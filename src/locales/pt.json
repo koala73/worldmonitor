@@ -584,6 +584,7 @@
         "renewableInstallations": "Energia limpa"
       },
       "layersTitle": "Camadas",
+      "layerSearch": "Pesquisar camadas...",
       "layerGuide": "Guia de camadas",
       "layerWarningTitle": "Aviso de desempenho",
       "layerWarningBody": "Ativar mais de {{threshold}} camadas pode afetar o desempenho de renderização e a taxa de quadros.",
@@ -1567,7 +1568,9 @@
       "sources": {
         "faa": "FAA ASWS",
         "eurocontrol": "Eurocontrol",
-        "computed": "Calculado"
+        "computed": "Calculado",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "Américas",

@@ -175,6 +175,7 @@ export const DEFAULT_PANELS: Record<string, PanelConfig> = {
 export const DEFAULT_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
   satellites: false,
+  notamOverlay: false,
 
   conflicts: false,
   bases: false,
@@ -233,6 +234,7 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
 export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
   satellites: false,
+  notamOverlay: false,
 
   conflicts: false,
   bases: false,

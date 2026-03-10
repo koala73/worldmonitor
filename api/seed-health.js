@@ -6,26 +6,45 @@ export const config = { runtime: 'edge' };
 const SEED_DOMAINS = {
   // Phase 1 — Snapshot endpoints
   'seismology:earthquakes':   { key: 'seed-meta:seismology:earthquakes',   intervalMin: 15 },
-  'wildfire:fires':           { key: 'seed-meta:wildfire:fires',           intervalMin: 30 },
+  'wildfire:fires':           { key: 'seed-meta:wildfire:fires',           intervalMin: 60 },
   'infra:outages':            { key: 'seed-meta:infra:outages',            intervalMin: 15 },
   'climate:anomalies':        { key: 'seed-meta:climate:anomalies',        intervalMin: 60 },
   // Phase 2 — Parameterized endpoints
   'unrest:events':            { key: 'seed-meta:unrest:events',            intervalMin: 15 },
-  'cyber:threats':            { key: 'seed-meta:cyber:threats',            intervalMin: 120 },
-  // market:quotes and market:commodities seeded by ais-relay (separate monitoring)
-  'market:crypto':            { key: 'seed-meta:market:crypto',            intervalMin: 10 },
+  'cyber:threats':            { key: 'seed-meta:cyber:threats',            intervalMin: 240 },
+  'market:crypto':            { key: 'seed-meta:market:crypto',            intervalMin: 15 },
   'market:etf-flows':         { key: 'seed-meta:market:etf-flows',         intervalMin: 30 },
   'market:gulf-quotes':       { key: 'seed-meta:market:gulf-quotes',       intervalMin: 15 },
   'market:stablecoins':       { key: 'seed-meta:market:stablecoins',       intervalMin: 30 },
   // Phase 3 — Hybrid endpoints
-  'natural:events':           { key: 'seed-meta:natural:events',           intervalMin: 30 },
+  'natural:events':           { key: 'seed-meta:natural:events',           intervalMin: 60 },
   'displacement:summary':     { key: 'seed-meta:displacement:summary',     intervalMin: 360 },
+  // Aligned with health.js SEED_META (intervalMin = maxStaleMin / 2)
+  'market:stocks':            { key: 'seed-meta:market:stocks',            intervalMin: 15 },
+  'market:commodities':       { key: 'seed-meta:market:commodities',       intervalMin: 15 },
+  'market:sectors':           { key: 'seed-meta:market:sectors',           intervalMin: 15 },
+  'aviation:faa':             { key: 'seed-meta:aviation:faa',             intervalMin: 45 },
+  'news:insights':            { key: 'seed-meta:news:insights',            intervalMin: 15 },
+  'positive-events:geo':      { key: 'seed-meta:positive-events:geo',      intervalMin: 30 },
+  'risk:scores:sebuf':        { key: 'seed-meta:risk:scores:sebuf',        intervalMin: 15 },
+  'conflict:iran-events':     { key: 'seed-meta:conflict:iran-events',     intervalMin: 5040 },
+  'conflict:ucdp-events':     { key: 'seed-meta:conflict:ucdp-events',     intervalMin: 210 },
+  'weather:alerts':           { key: 'seed-meta:weather:alerts',           intervalMin: 15 },
+  'economic:spending':        { key: 'seed-meta:economic:spending',        intervalMin: 60 },
+  'intelligence:gpsjam':      { key: 'seed-meta:intelligence:gpsjam',      intervalMin: 360 },
+  'intelligence:satellites':  { key: 'seed-meta:intelligence:satellites',  intervalMin: 90 },
+  'military:flights':         { key: 'seed-meta:military:flights',         intervalMin: 8 },
+  'infra:service-statuses':   { key: 'seed-meta:infra:service-statuses',   intervalMin: 60 },
+  'supply_chain:shipping':    { key: 'seed-meta:supply_chain:shipping',    intervalMin: 120 },
+  'supply_chain:chokepoints': { key: 'seed-meta:supply_chain:chokepoints', intervalMin: 30 },
+  'cable-health':             { key: 'seed-meta:cable-health',             intervalMin: 30 },
+  'prediction:markets':       { key: 'seed-meta:prediction:markets',       intervalMin: 8 },
 };
 
 async function getMetaBatch(keys) {
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return new Map();
+  if (!url || !token) throw new Error('Redis not configured');
 
   const pipeline = keys.map((k) => ['GET', k]);
   const resp = await fetch(`${url}/pipeline`, {
@@ -34,7 +53,7 @@ async function getMetaBatch(keys) {
     body: JSON.stringify(pipeline),
     signal: AbortSignal.timeout(3000),
   });
-  if (!resp.ok) return new Map();
+  if (!resp.ok) throw new Error(`Redis HTTP ${resp.status}`);
 
   const data = await resp.json();
   const result = new Map();

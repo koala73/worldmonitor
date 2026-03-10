@@ -14,6 +14,7 @@ export interface PanelOptions {
   trackActivity?: boolean;
   infoTooltip?: string;
   premium?: 'locked' | 'enhanced';
+  closable?: boolean;
 }
 
 const PANEL_SPANS_KEY = 'worldmonitor-panel-spans';
@@ -265,6 +266,10 @@ export class Panel {
       this.countEl.className = 'panel-count';
       this.countEl.textContent = '0';
       this.header.appendChild(this.countEl);
+    }
+
+    if (options.closable !== false) {
+      this.appendCloseButton();
     }
 
     this.content = document.createElement('div');
@@ -632,6 +637,32 @@ export class Panel {
     if (!this.statusBadgeEl) return;
     this.statusBadgeEl.style.display = 'none';
   }
+
+  protected insertLiveCountBadge(count: number): void {
+    const headerLeft = this.header.querySelector('.panel-header-left');
+    if (!headerLeft) return;
+    const badge = document.createElement('span');
+    badge.className = 'panel-live-count';
+    badge.textContent = `${count}`;
+    headerLeft.appendChild(badge);
+  }
+
+  protected appendCloseButton(): void {
+    const closeBtn = h('button', {
+      className: 'icon-btn panel-close-btn',
+      'aria-label': t('components.panel.closePanel'),
+      title: t('components.panel.closePanel'),
+    }, '\u2715');
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.element.dispatchEvent(new CustomEvent('wm:panel-close', {
+        bubbles: true,
+        detail: { panelId: this.panelId },
+      }));
+    });
+    this.header.appendChild(closeBtn);
+  }
+
   public getElement(): HTMLElement {
     return this.element;
   }

@@ -125,6 +125,8 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/news/v1/list-feed-digest': 'slow',
   '/api/intelligence/v1/classify-event': 'static',
   '/api/news/v1/summarize-article-cache': 'slow',
+
+  '/api/imagery/v1/search-imagery': 'static',
 };
 
 const PREMIUM_RPC_PATHS = new Set([

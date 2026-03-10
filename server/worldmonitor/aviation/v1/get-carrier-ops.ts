@@ -95,7 +95,7 @@ export async function getCarrierOps(
 
         return {
             carriers: (result?.carriers ?? []).filter(c => c.totalFlights >= minFlights),
-            source: 'computed',
+            source: 'aviationstack',
             updatedAt: now,
         };
     } catch (err) {

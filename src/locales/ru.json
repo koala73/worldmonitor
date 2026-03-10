@@ -982,6 +982,7 @@
       "layerWarningDismiss": "Больше не показывать",
       "layerWarningOk": "Понятно",
       "layersTitle": "Слои",
+      "layerSearch": "Поиск слоёв...",
       "timeAll": "Все",
       "views": {
         "global": "Глобальный",
@@ -1761,7 +1762,9 @@
       "sources": {
         "faa": "FAA ASWS",
         "eurocontrol": "Eurocontrol",
-        "computed": "Расчётные"
+        "computed": "Расчётные",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "Америка",
