@@ -1055,9 +1055,11 @@ export class GlobeMap {
       'color:#d4d4d4',
       'max-width:240px',
       'z-index:1000',
-      'pointer-events:none',
+      'pointer-events:auto',
       'line-height:1.5',
     ].join(';');
+
+    const closeBtn = `<button style="position:absolute;top:4px;right:4px;background:none;border:none;color:#888;cursor:pointer;font-size:14px;line-height:1;padding:2px 4px;" aria-label="Close">\u00D7</button>`;
 
     const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -1220,8 +1222,15 @@ export class GlobeMap {
              `<br><span style="opacity:.7;">${esc(d.datetime)}</span>` +
              `<br><span style="opacity:.5;">Res: ${d.resolutionM}m · ${esc(d.mode)}</span>`;
     }
-    el.innerHTML = html;
+    el.innerHTML = `<div style="padding-right:16px;position:relative;">${closeBtn}${html}</div>`;
     if (d._kind === 'satellite') el.style.maxWidth = '300px';
+    el.querySelector('button')?.addEventListener('click', () => this.hideTooltip());
+    el.addEventListener('mouseenter', () => {
+      if (this.tooltipHideTimer) { clearTimeout(this.tooltipHideTimer); this.tooltipHideTimer = null; }
+    });
+    el.addEventListener('mouseleave', () => {
+      this.tooltipHideTimer = setTimeout(() => this.hideTooltip(), 2000);
+    });
 
     this.container.appendChild(el);
 
