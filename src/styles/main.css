@@ -1367,7 +1367,7 @@ body.panel-resize-active iframe {
 
 .panel-sort-btn:hover {
   opacity: 1;
-  background: var(--overlay-medium);
+  background: var(--overlay-heavy);
   transform: scale(1.05);
   color: var(--text);
 }

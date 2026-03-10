@@ -40,7 +40,7 @@ export class NewsPanel extends Panel {
   private boundClickHandler: (() => void) | null = null;
 
   // Sort mode toggle (#107)
-  private sortMode: SortMode = 'relevance';
+  private sortMode!: SortMode;
   private sortBtn: HTMLButtonElement | null = null;
   private lastRawClusters: ClusteredEvent[] | null = null;
   private lastRawItems: NewsItem[] | null = null;
@@ -171,8 +171,10 @@ export class NewsPanel extends Panel {
     const label = this.sortMode === 'newest'
       ? t('components.newsPanel.sortNewest') || 'Newest'
       : t('components.newsPanel.sortRelevance') || 'Relevance';
+    const tooltip = `${t('components.newsPanel.sortBy') || 'Sort by'}: ${label}`;
     this.sortBtn.innerHTML = icon;
-    this.sortBtn.title = `${t('components.newsPanel.sortBy') || 'Sort by'}: ${label}`;
+    this.sortBtn.title = tooltip;
+    this.sortBtn.setAttribute('aria-label', tooltip);
   }
 
   private createSummarizeButton(): void {
