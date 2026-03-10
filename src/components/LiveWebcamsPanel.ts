@@ -1,5 +1,5 @@
 import { Panel } from './Panel';
-import { isDesktopRuntime, getLocalApiPort } from '@/services/runtime';
+import { isDesktopRuntime, getApiBaseUrl } from '@/services/runtime';
 import { escapeHtml } from '@/utils/sanitize';
 import { t } from '../services/i18n';
 import { trackWebcamSelected, trackWebcamRegionFiltered } from '@/services/analytics';
@@ -169,10 +169,11 @@ export class LiveWebcamsPanel extends Panel {
     const quality = getStreamQuality();
     if (isDesktopRuntime()) {
       // Use local sidecar embed — YouTube rejects tauri:// parent origin with error 153.
-      // The sidecar serves the embed from http://127.0.0.1:PORT which YouTube accepts.
+      // Must use getApiBaseUrl() (http://127.0.0.1:PORT) — the Tauri CSP frame-src only
+      // allows http://127.0.0.1:* and WKWebView treats localhost as a distinct origin.
       const params = new URLSearchParams({ videoId, autoplay: '1', mute: '1' });
       if (quality !== 'auto') params.set('vq', quality);
-      return `http://localhost:${getLocalApiPort()}/api/youtube-embed?${params.toString()}`;
+      return `${getApiBaseUrl()}/api/youtube-embed?${params.toString()}`;
     }
     const vq = quality !== 'auto' ? `&vq=${quality}` : '';
     return `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&mute=1&controls=0&modestbranding=1&playsinline=1&rel=0${vq}`;
