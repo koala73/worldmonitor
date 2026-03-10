@@ -20,7 +20,7 @@ const { WebSocketServer, WebSocket } = require('ws');
 
 function requireShared(name) {
   const candidates = [path.join(__dirname, '..', 'shared', name), path.join(__dirname, 'shared', name)];
-  for (const p of candidates) { try { return require(p); } catch {} }
+  for (const p of candidates) { try { return require(p); } catch { } }
   throw new Error(`Cannot find shared/${name}`);
 }
 const RSS_ALLOWED_DOMAINS = new Set(requireShared('rss-allowed-domains.cjs'));
@@ -229,10 +229,19 @@ let upstreamQueue = [];
 let upstreamQueueReadIndex = 0;
 let upstreamDrainScheduled = false;
 let clients = new Set();
+let sseClients = new Set();
 let messageCount = 0;
 let droppedMessages = 0;
 const requestRateBuckets = new Map(); // key: route:ip -> { count, resetAt }
 const logThrottleState = new Map(); // key: event key -> timestamp
+
+function broadcastSse(eventType, payload) {
+  if (sseClients.size === 0) return;
+  const dataString = `event: ${eventType}\ndata: ${JSON.stringify(payload)}\n\n`;
+  for (const client of sseClients) {
+    client.write(dataString);
+  }
+}
 
 // Safe response: guard against "headers already sent" crashes
 function safeEnd(res, statusCode, headers, body) {
@@ -486,7 +495,7 @@ async function pollTelegramOnce() {
         telegramPermanentlyDisabled = true;
         telegramState.lastError = 'session invalidated (AUTH_KEY_DUPLICATED) — generate a new TELEGRAM_SESSION';
         console.error('[Relay] Telegram session permanently invalidated (AUTH_KEY_DUPLICATED). Generate a new session with: node scripts/telegram/session-auth.mjs');
-        try { telegramState.client?.disconnect(); } catch {}
+        try { telegramState.client?.disconnect(); } catch { }
         telegramState.client = null;
         break;
       }
@@ -508,6 +517,17 @@ async function pollTelegramOnce() {
       })
       .sort((a, b) => (b.ts || '').localeCompare(a.ts || ''))
       .slice(0, TELEGRAM_MAX_FEED_ITEMS);
+
+    // Broadcast new items via Server-Sent Events to connected clients
+    try {
+      broadcastSse('telegram', {
+        source: 'telegram',
+        earlySignal: true,
+        items: newItems,
+      });
+    } catch (err) {
+      console.warn('[Relay] SSE Telegram broadcast error:', err);
+    }
   }
 
   telegramState.lastPollAt = Date.now();
@@ -642,6 +662,17 @@ async function orefFetchAlerts() {
         timestamp: new Date().toISOString(),
       });
       orefState._persistVersion++;
+
+      // Broadcast new alerts via Server-Sent Events to connected clients
+      try {
+        broadcastSse('oref', {
+          source: 'oref',
+          alerts: alerts,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (err) {
+        console.warn('[Relay] SSE OREF broadcast error:', err);
+      }
     }
 
     const cutoff = Date.now() - 24 * 60 * 60 * 1000;
@@ -658,7 +689,7 @@ async function orefFetchAlerts() {
       return sum + h.alerts.reduce((s, a) => s + (Array.isArray(a.data) ? a.data.length : 1), 0);
     }, 0);
 
-    orefPersistHistory().catch(() => {});
+    orefPersistHistory().catch(() => { });
   } catch (err) {
     const stderr = err.stderr ? err.stderr.toString().trim() : '';
     orefState.lastError = redactOrefError(stderr || err.message);
@@ -672,7 +703,7 @@ async function orefBootstrapHistoryFromUpstream() {
   try {
     raw = orefCurlFetch(OREF_PROXY_AUTH, OREF_HISTORY_URL, { toFile: tmpFile });
   } finally {
-    try { require('fs').unlinkSync(tmpFile); } catch {}
+    try { require('fs').unlinkSync(tmpFile); } catch { }
   }
   const cleaned = stripBom(raw).trim();
   if (!cleaned || cleaned === '[]') return;
@@ -863,7 +894,7 @@ async function orefBootstrapHistoryWithRetry() {
     try {
       await orefBootstrapHistoryFromUpstream();
       if (UPSTASH_ENABLED) {
-        await orefPersistHistory().catch(() => {});
+        await orefPersistHistory().catch(() => { });
       }
       console.log(`[Relay] OREF upstream bootstrap succeeded on attempt ${attempt}`);
       return;
@@ -1427,7 +1458,7 @@ async function seedEtfFlows() {
       });
       const parsed = raw ? parseEtfChart(raw, ticker, issuer) : null;
       if (parsed) etfs.push(parsed);
-    } catch {}
+    } catch { }
     await sleep(150);
   }
   if (etfs.length === 0) { console.warn('[ETF] No data fetched — skipping'); return 0; }
@@ -1857,32 +1888,32 @@ const CYBER_GEO_TIMEOUT_MS = 20_000;
 const CYBER_SOURCE_TIMEOUT_MS = 15_000; // longer than Vercel edge budget — OK on Railway
 
 const CYBER_COUNTRY_CENTROIDS = {
-  US:[39.8,-98.6],CA:[56.1,-106.3],MX:[23.6,-102.6],BR:[-14.2,-51.9],AR:[-38.4,-63.6],
-  GB:[55.4,-3.4],DE:[51.2,10.5],FR:[46.2,2.2],IT:[41.9,12.6],ES:[40.5,-3.7],
-  NL:[52.1,5.3],BE:[50.5,4.5],SE:[60.1,18.6],NO:[60.5,8.5],FI:[61.9,25.7],
-  DK:[56.3,9.5],PL:[51.9,19.1],CZ:[49.8,15.5],AT:[47.5,14.6],CH:[46.8,8.2],
-  PT:[39.4,-8.2],IE:[53.1,-8.2],RO:[45.9,25.0],HU:[47.2,19.5],BG:[42.7,25.5],
-  HR:[45.1,15.2],SK:[48.7,19.7],UA:[48.4,31.2],RU:[61.5,105.3],BY:[53.7,28.0],
-  TR:[39.0,35.2],GR:[39.1,21.8],RS:[44.0,21.0],CN:[35.9,104.2],JP:[36.2,138.3],
-  KR:[35.9,127.8],IN:[20.6,79.0],PK:[30.4,69.3],BD:[23.7,90.4],ID:[-0.8,113.9],
-  TH:[15.9,101.0],VN:[14.1,108.3],PH:[12.9,121.8],MY:[4.2,101.9],SG:[1.4,103.8],
-  TW:[23.7,121.0],HK:[22.4,114.1],AU:[-25.3,133.8],NZ:[-40.9,174.9],
-  ZA:[-30.6,22.9],NG:[9.1,8.7],EG:[26.8,30.8],KE:[-0.02,37.9],ET:[9.1,40.5],
-  MA:[31.8,-7.1],DZ:[28.0,1.7],TN:[33.9,9.5],GH:[7.9,-1.0],
-  SA:[23.9,45.1],AE:[23.4,53.8],IL:[31.0,34.9],IR:[32.4,53.7],IQ:[33.2,43.7],
-  KW:[29.3,47.5],QA:[25.4,51.2],BH:[26.0,50.6],JO:[30.6,36.2],LB:[33.9,35.9],
-  CL:[-35.7,-71.5],CO:[4.6,-74.3],PE:[-9.2,-75.0],VE:[6.4,-66.6],
-  KZ:[48.0,68.0],UZ:[41.4,64.6],GE:[42.3,43.4],AZ:[40.1,47.6],AM:[40.1,45.0],
-  LT:[55.2,23.9],LV:[56.9,24.1],EE:[58.6,25.0],
-  HN:[15.2,-86.2],GT:[15.8,-90.2],PA:[8.5,-80.8],CR:[9.7,-84.0],
-  SN:[14.5,-14.5],CM:[7.4,12.4],CI:[7.5,-5.5],TZ:[-6.4,34.9],UG:[1.4,32.3],
+  US: [39.8, -98.6], CA: [56.1, -106.3], MX: [23.6, -102.6], BR: [-14.2, -51.9], AR: [-38.4, -63.6],
+  GB: [55.4, -3.4], DE: [51.2, 10.5], FR: [46.2, 2.2], IT: [41.9, 12.6], ES: [40.5, -3.7],
+  NL: [52.1, 5.3], BE: [50.5, 4.5], SE: [60.1, 18.6], NO: [60.5, 8.5], FI: [61.9, 25.7],
+  DK: [56.3, 9.5], PL: [51.9, 19.1], CZ: [49.8, 15.5], AT: [47.5, 14.6], CH: [46.8, 8.2],
+  PT: [39.4, -8.2], IE: [53.1, -8.2], RO: [45.9, 25.0], HU: [47.2, 19.5], BG: [42.7, 25.5],
+  HR: [45.1, 15.2], SK: [48.7, 19.7], UA: [48.4, 31.2], RU: [61.5, 105.3], BY: [53.7, 28.0],
+  TR: [39.0, 35.2], GR: [39.1, 21.8], RS: [44.0, 21.0], CN: [35.9, 104.2], JP: [36.2, 138.3],
+  KR: [35.9, 127.8], IN: [20.6, 79.0], PK: [30.4, 69.3], BD: [23.7, 90.4], ID: [-0.8, 113.9],
+  TH: [15.9, 101.0], VN: [14.1, 108.3], PH: [12.9, 121.8], MY: [4.2, 101.9], SG: [1.4, 103.8],
+  TW: [23.7, 121.0], HK: [22.4, 114.1], AU: [-25.3, 133.8], NZ: [-40.9, 174.9],
+  ZA: [-30.6, 22.9], NG: [9.1, 8.7], EG: [26.8, 30.8], KE: [-0.02, 37.9], ET: [9.1, 40.5],
+  MA: [31.8, -7.1], DZ: [28.0, 1.7], TN: [33.9, 9.5], GH: [7.9, -1.0],
+  SA: [23.9, 45.1], AE: [23.4, 53.8], IL: [31.0, 34.9], IR: [32.4, 53.7], IQ: [33.2, 43.7],
+  KW: [29.3, 47.5], QA: [25.4, 51.2], BH: [26.0, 50.6], JO: [30.6, 36.2], LB: [33.9, 35.9],
+  CL: [-35.7, -71.5], CO: [4.6, -74.3], PE: [-9.2, -75.0], VE: [6.4, -66.6],
+  KZ: [48.0, 68.0], UZ: [41.4, 64.6], GE: [42.3, 43.4], AZ: [40.1, 47.6], AM: [40.1, 45.0],
+  LT: [55.2, 23.9], LV: [56.9, 24.1], EE: [58.6, 25.0],
+  HN: [15.2, -86.2], GT: [15.8, -90.2], PA: [8.5, -80.8], CR: [9.7, -84.0],
+  SN: [14.5, -14.5], CM: [7.4, 12.4], CI: [7.5, -5.5], TZ: [-6.4, 34.9], UG: [1.4, 32.3],
 };
 
-const CYBER_THREAT_TYPE_MAP = { c2_server:'CYBER_THREAT_TYPE_C2_SERVER', malware_host:'CYBER_THREAT_TYPE_MALWARE_HOST', phishing:'CYBER_THREAT_TYPE_PHISHING', malicious_url:'CYBER_THREAT_TYPE_MALICIOUS_URL' };
-const CYBER_SOURCE_MAP = { feodo:'CYBER_THREAT_SOURCE_FEODO', urlhaus:'CYBER_THREAT_SOURCE_URLHAUS', c2intel:'CYBER_THREAT_SOURCE_C2INTEL', otx:'CYBER_THREAT_SOURCE_OTX', abuseipdb:'CYBER_THREAT_SOURCE_ABUSEIPDB' };
-const CYBER_INDICATOR_MAP = { ip:'CYBER_THREAT_INDICATOR_TYPE_IP', domain:'CYBER_THREAT_INDICATOR_TYPE_DOMAIN', url:'CYBER_THREAT_INDICATOR_TYPE_URL' };
-const CYBER_SEVERITY_MAP = { low:'CRITICALITY_LEVEL_LOW', medium:'CRITICALITY_LEVEL_MEDIUM', high:'CRITICALITY_LEVEL_HIGH', critical:'CRITICALITY_LEVEL_CRITICAL' };
-const CYBER_SEVERITY_RANK = { CRITICALITY_LEVEL_CRITICAL:4, CRITICALITY_LEVEL_HIGH:3, CRITICALITY_LEVEL_MEDIUM:2, CRITICALITY_LEVEL_LOW:1, CRITICALITY_LEVEL_UNSPECIFIED:0 };
+const CYBER_THREAT_TYPE_MAP = { c2_server: 'CYBER_THREAT_TYPE_C2_SERVER', malware_host: 'CYBER_THREAT_TYPE_MALWARE_HOST', phishing: 'CYBER_THREAT_TYPE_PHISHING', malicious_url: 'CYBER_THREAT_TYPE_MALICIOUS_URL' };
+const CYBER_SOURCE_MAP = { feodo: 'CYBER_THREAT_SOURCE_FEODO', urlhaus: 'CYBER_THREAT_SOURCE_URLHAUS', c2intel: 'CYBER_THREAT_SOURCE_C2INTEL', otx: 'CYBER_THREAT_SOURCE_OTX', abuseipdb: 'CYBER_THREAT_SOURCE_ABUSEIPDB' };
+const CYBER_INDICATOR_MAP = { ip: 'CYBER_THREAT_INDICATOR_TYPE_IP', domain: 'CYBER_THREAT_INDICATOR_TYPE_DOMAIN', url: 'CYBER_THREAT_INDICATOR_TYPE_URL' };
+const CYBER_SEVERITY_MAP = { low: 'CRITICALITY_LEVEL_LOW', medium: 'CRITICALITY_LEVEL_MEDIUM', high: 'CRITICALITY_LEVEL_HIGH', critical: 'CRITICALITY_LEVEL_CRITICAL' };
+const CYBER_SEVERITY_RANK = { CRITICALITY_LEVEL_CRITICAL: 4, CRITICALITY_LEVEL_HIGH: 3, CRITICALITY_LEVEL_MEDIUM: 2, CRITICALITY_LEVEL_LOW: 1, CRITICALITY_LEVEL_UNSPECIFIED: 0 };
 
 function cyberClean(v, max) { if (typeof v !== 'string') return ''; return v.trim().replace(/\s+/g, ' ').slice(0, max || 120); }
 function cyberToNum(v) { const n = typeof v === 'number' ? v : parseFloat(String(v ?? '')); return Number.isFinite(n) ? n : null; }
@@ -1913,7 +1944,7 @@ function cyberCentroid(cc, seed) {
 function cyberSanitize(t) {
   const ind = cyberClean(t.indicator, 255); if (!ind) return null;
   if ((t.indicatorType || 'ip') === 'ip' && !cyberIsIp(ind)) return null;
-  return { id: cyberClean(t.id, 255) || `${t.source||'feodo'}:${t.indicatorType||'ip'}:${ind}`, type: t.type||'malicious_url', source: t.source||'feodo', indicator: ind, indicatorType: t.indicatorType||'ip', lat: t.lat??null, lon: t.lon??null, country: t.country||'', severity: t.severity||'medium', malwareFamily: cyberClean(t.malwareFamily, 80), tags: t.tags||[], firstSeen: t.firstSeen||0, lastSeen: t.lastSeen||0 };
+  return { id: cyberClean(t.id, 255) || `${t.source || 'feodo'}:${t.indicatorType || 'ip'}:${ind}`, type: t.type || 'malicious_url', source: t.source || 'feodo', indicator: ind, indicatorType: t.indicatorType || 'ip', lat: t.lat ?? null, lon: t.lon ?? null, country: t.country || '', severity: t.severity || 'medium', malwareFamily: cyberClean(t.malwareFamily, 80), tags: t.tags || [], firstSeen: t.firstSeen || 0, lastSeen: t.lastSeen || 0 };
 }
 function cyberDedupe(threats) {
   const map = new Map();
@@ -1926,7 +1957,7 @@ function cyberDedupe(threats) {
   return Array.from(map.values());
 }
 function cyberToProto(t) {
-  return { id: t.id, type: CYBER_THREAT_TYPE_MAP[t.type]||'CYBER_THREAT_TYPE_UNSPECIFIED', source: CYBER_SOURCE_MAP[t.source]||'CYBER_THREAT_SOURCE_UNSPECIFIED', indicator: t.indicator, indicatorType: CYBER_INDICATOR_MAP[t.indicatorType]||'CYBER_THREAT_INDICATOR_TYPE_UNSPECIFIED', location: cyberValidCoords(t.lat, t.lon) ? { latitude: t.lat, longitude: t.lon } : undefined, country: t.country, severity: CYBER_SEVERITY_MAP[t.severity]||'CRITICALITY_LEVEL_UNSPECIFIED', malwareFamily: t.malwareFamily, tags: t.tags, firstSeenAt: t.firstSeen, lastSeenAt: t.lastSeen };
+  return { id: t.id, type: CYBER_THREAT_TYPE_MAP[t.type] || 'CYBER_THREAT_TYPE_UNSPECIFIED', source: CYBER_SOURCE_MAP[t.source] || 'CYBER_THREAT_SOURCE_UNSPECIFIED', indicator: t.indicator, indicatorType: CYBER_INDICATOR_MAP[t.indicatorType] || 'CYBER_THREAT_INDICATOR_TYPE_UNSPECIFIED', location: cyberValidCoords(t.lat, t.lon) ? { latitude: t.lat, longitude: t.lon } : undefined, country: t.country, severity: CYBER_SEVERITY_MAP[t.severity] || 'CRITICALITY_LEVEL_UNSPECIFIED', malwareFamily: t.malwareFamily, tags: t.tags, firstSeenAt: t.firstSeen, lastSeenAt: t.lastSeen };
 }
 
 function cyberHttpGetJson(url, reqHeaders, timeoutMs) {
@@ -1968,12 +1999,12 @@ async function cyberGeoLookup(ip) {
   if (d1?.loc) {
     const [latS, lonS] = d1.loc.split(',');
     const lat = parseFloat(latS), lon = parseFloat(lonS);
-    if (cyberValidCoords(lat, lon)) { const r = { lat, lon, country: String(d1.country||'').slice(0,2).toUpperCase() }; cyberGeoCacheSet(ip, r); return r; }
+    if (cyberValidCoords(lat, lon)) { const r = { lat, lon, country: String(d1.country || '').slice(0, 2).toUpperCase() }; cyberGeoCacheSet(ip, r); return r; }
   }
   const d2 = await cyberHttpGetJson(`https://freeipapi.com/api/json/${encodeURIComponent(ip)}`, {}, 3000);
   if (d2) {
     const lat = parseFloat(d2.latitude), lon = parseFloat(d2.longitude);
-    if (cyberValidCoords(lat, lon)) { const r = { lat, lon, country: String(d2.countryCode||d2.countryName||'').slice(0,2).toUpperCase() }; cyberGeoCacheSet(ip, r); return r; }
+    if (cyberValidCoords(lat, lon)) { const r = { lat, lon, country: String(d2.countryCode || d2.countryName || '').slice(0, 2).toUpperCase() }; cyberGeoCacheSet(ip, r); return r; }
   }
   return null;
 }
@@ -2027,7 +2058,7 @@ async function cyberFetchFeodo(limit, cutoffMs) {
       if ((lastSeen || firstSeen) && (lastSeen || firstSeen) < cutoffMs) continue;
       const malwareFamily = cyberClean(r?.malware || r?.malware_family || r?.family, 80);
       const sev = status === 'online' ? (/emotet|qakbot|trickbot|dridex|ransom/i.test(malwareFamily) ? 'critical' : 'high') : 'medium';
-      const t = cyberSanitize({ id: `feodo:${ip}`, type: 'c2_server', source: 'feodo', indicator: ip, indicatorType: 'ip', lat: cyberToNum(r?.latitude ?? r?.lat), lon: cyberToNum(r?.longitude ?? r?.lon), country: cyberNormCountry(r?.country || r?.country_code), severity: sev, malwareFamily, tags: cyberNormTags(['botnet', 'c2', ...(r?.tags||[])]), firstSeen, lastSeen });
+      const t = cyberSanitize({ id: `feodo:${ip}`, type: 'c2_server', source: 'feodo', indicator: ip, indicatorType: 'ip', lat: cyberToNum(r?.latitude ?? r?.lat), lon: cyberToNum(r?.longitude ?? r?.lon), country: cyberNormCountry(r?.country || r?.country_code), severity: sev, malwareFamily, tags: cyberNormTags(['botnet', 'c2', ...(r?.tags || [])]), firstSeen, lastSeen });
       if (t) { out.push(t); if (out.length >= limit) break; }
     }
     return out;
@@ -2045,7 +2076,7 @@ async function cyberFetchUrlhaus(limit, cutoffMs) {
       const status = cyberClean(r?.url_status || r?.status || '', 30).toLowerCase();
       if (status && status !== 'online') continue;
       const tags = cyberNormTags(r?.tags);
-      let hostname = ''; try { hostname = new URL(rawUrl).hostname.toLowerCase(); } catch {}
+      let hostname = ''; try { hostname = new URL(rawUrl).hostname.toLowerCase(); } catch { }
       const recordIp = cyberClean(r?.host || r?.ip_address || r?.ip, 80).toLowerCase();
       const ipCandidate = cyberIsIp(recordIp) ? recordIp : (cyberIsIp(hostname) ? hostname : '');
       const indType = ipCandidate ? 'ip' : (hostname ? 'domain' : 'url');
@@ -2148,7 +2179,7 @@ async function seedCyberThreats() {
     const aGeo = cyberValidCoords(a.lat, a.lon) ? 0 : 1;
     const bGeo = cyberValidCoords(b.lat, b.lon) ? 0 : 1;
     if (aGeo !== bGeo) return aGeo - bGeo;
-    const bySev = (CYBER_SEVERITY_RANK[CYBER_SEVERITY_MAP[b.severity]||'']||0) - (CYBER_SEVERITY_RANK[CYBER_SEVERITY_MAP[a.severity]||'']||0);
+    const bySev = (CYBER_SEVERITY_RANK[CYBER_SEVERITY_MAP[b.severity] || ''] || 0) - (CYBER_SEVERITY_RANK[CYBER_SEVERITY_MAP[a.severity] || ''] || 0);
     return bySev !== 0 ? bySev : (b.lastSeen || b.firstSeen) - (a.lastSeen || a.firstSeen);
   });
 
@@ -2185,7 +2216,7 @@ async function startCyberThreatsSeedLoop() {
 const POSITIVE_EVENTS_INTERVAL_MS = 900_000; // 15 min
 const POSITIVE_EVENTS_TTL = 2700; // 3× interval
 const POSITIVE_EVENTS_RPC_KEY = 'positive-events:geo:v1';
-const POSITIVE_EVENTS_BOOTSTRAP_KEY = 'positive-events:geo-bootstrap:v1';
+const POSITIVE_EVENTS_BOOTSTRAP_KEY = 'positive_events:geo-bootstrap:v1';
 const POSITIVE_EVENTS_MAX = 500;
 
 const POSITIVE_QUERIES = [
@@ -2590,9 +2621,9 @@ function startServiceStatusesSeedLoop() {
 // Eliminates circular dependency on Vercel RPC.
 // ─────────────────────────────────────────────────────────────
 const THEATER_POSTURE_SEED_INTERVAL_MS = 600_000; // 10 min
-const THEATER_POSTURE_LIVE_KEY = 'theater-posture:sebuf:v1';
-const THEATER_POSTURE_STALE_KEY = 'theater-posture:sebuf:stale:v1';
-const THEATER_POSTURE_BACKUP_KEY = 'theater-posture:sebuf:backup:v1';
+const THEATER_POSTURE_LIVE_KEY = 'theater_posture:sebuf:v1';
+const THEATER_POSTURE_STALE_KEY = 'theater_posture:sebuf:stale:v1';
+const THEATER_POSTURE_BACKUP_KEY = 'theater_posture:sebuf:backup:v1';
 const THEATER_POSTURE_LIVE_TTL = 900;    // 15 min
 const THEATER_POSTURE_STALE_TTL = 86400; // 24h
 const THEATER_POSTURE_BACKUP_TTL = 604800; // 7d
@@ -2725,7 +2756,7 @@ async function fetchTheaterFlightsFromWingbits() {
     for (const areaResult of data) {
       const flightList = Array.isArray(areaResult.data) ? areaResult.data
         : Array.isArray(areaResult.flights) ? areaResult.flights
-        : Array.isArray(areaResult) ? areaResult : [];
+          : Array.isArray(areaResult) ? areaResult : [];
       for (const f of flightList) {
         const icao24 = f.h || f.icao24 || f.id;
         if (!icao24 || seenIds.has(icao24)) continue;
@@ -3334,17 +3365,17 @@ const WB_WEIGHTS = { internet: 30, mobile: 15, broadband: 20, rdSpend: 35 };
 const WB_NORMALIZE_MAX = { internet: 100, mobile: 150, broadband: 50, rdSpend: 5 };
 
 const WB_INDICATORS = [
-  { key: 'internet',  id: 'IT.NET.USER.ZS', dateRange: '2019:2024' },
-  { key: 'mobile',    id: 'IT.CEL.SETS.P2', dateRange: '2019:2024' },
+  { key: 'internet', id: 'IT.NET.USER.ZS', dateRange: '2019:2024' },
+  { key: 'mobile', id: 'IT.CEL.SETS.P2', dateRange: '2019:2024' },
   { key: 'broadband', id: 'IT.NET.BBND.P2', dateRange: '2019:2024' },
-  { key: 'rdSpend',   id: 'GB.XPD.RSDV.GD.ZS', dateRange: '2018:2024' },
+  { key: 'rdSpend', id: 'GB.XPD.RSDV.GD.ZS', dateRange: '2018:2024' },
 ];
 
 const WB_PROGRESS_INDICATORS = [
   { id: 'lifeExpectancy', code: 'SP.DYN.LE00.IN', years: 65, invertTrend: false },
-  { id: 'literacy',       code: 'SE.ADT.LITR.ZS', years: 55, invertTrend: false },
-  { id: 'childMortality', code: 'SH.DYN.MORT',    years: 65, invertTrend: true },
-  { id: 'poverty',        code: 'SI.POV.DDAY',    years: 45, invertTrend: true },
+  { id: 'literacy', code: 'SE.ADT.LITR.ZS', years: 55, invertTrend: false },
+  { id: 'childMortality', code: 'SH.DYN.MORT', years: 65, invertTrend: true },
+  { id: 'poverty', code: 'SI.POV.DDAY', years: 45, invertTrend: true },
 ];
 
 const WB_RENEWABLE_REGIONS = ['1W', 'EAS', 'ECS', 'LCN', 'MEA', 'NAC', 'SAS', 'SSF'];
@@ -3416,10 +3447,10 @@ function wbComputeRankings(indicatorData) {
   const scores = [];
   for (const cc of allCountries) {
     const components = {
-      internet:  wbNormalize(indicatorData.internet[cc]?.value, WB_NORMALIZE_MAX.internet),
-      mobile:    wbNormalize(indicatorData.mobile[cc]?.value, WB_NORMALIZE_MAX.mobile),
+      internet: wbNormalize(indicatorData.internet[cc]?.value, WB_NORMALIZE_MAX.internet),
+      mobile: wbNormalize(indicatorData.mobile[cc]?.value, WB_NORMALIZE_MAX.mobile),
       broadband: wbNormalize(indicatorData.broadband[cc]?.value, WB_NORMALIZE_MAX.broadband),
-      rdSpend:   wbNormalize(indicatorData.rdSpend[cc]?.value, WB_NORMALIZE_MAX.rdSpend),
+      rdSpend: wbNormalize(indicatorData.rdSpend[cc]?.value, WB_NORMALIZE_MAX.rdSpend),
     };
     let totalWeight = 0, weightedSum = 0;
     for (const [key, weight] of Object.entries(WB_WEIGHTS)) {
@@ -4838,7 +4869,7 @@ function openskyQueuedFetch(url, token) {
     openskyLastUpstreamTime = Date.now();
     return _openskyRawFetch(url, token);
   });
-  openskyUpstreamQueue = job.catch(() => {});
+  openskyUpstreamQueue = job.catch(() => { });
   return job;
 }
 
@@ -5072,11 +5103,11 @@ function handleWorldBankRequest(req, res) {
       'NE.EXP.GNFS.ZS': 'Exports of Goods & Services (% of GDP)',
     };
     const defaultCountries = [
-      'USA','CHN','JPN','DEU','KOR','GBR','IND','ISR','SGP','TWN',
-      'FRA','CAN','SWE','NLD','CHE','FIN','IRL','AUS','BRA','IDN',
-      'ARE','SAU','QAT','BHR','EGY','TUR','MYS','THA','VNM','PHL',
-      'ESP','ITA','POL','CZE','DNK','NOR','AUT','BEL','PRT','EST',
-      'MEX','ARG','CHL','COL','ZAF','NGA','KEN',
+      'USA', 'CHN', 'JPN', 'DEU', 'KOR', 'GBR', 'IND', 'ISR', 'SGP', 'TWN',
+      'FRA', 'CAN', 'SWE', 'NLD', 'CHE', 'FIN', 'IRL', 'AUS', 'BRA', 'IDN',
+      'ARE', 'SAU', 'QAT', 'BHR', 'EGY', 'TUR', 'MYS', 'THA', 'VNM', 'PHL',
+      'ESP', 'ITA', 'POL', 'CZE', 'DNK', 'NOR', 'AUT', 'BEL', 'PRT', 'EST',
+      'MEX', 'ARG', 'CHL', 'COL', 'ZAF', 'NGA', 'KEN',
     ];
     const body = JSON.stringify({ indicators, defaultCountries });
     worldbankCache.set(cacheKey, { data: body, timestamp: Date.now() });
@@ -5098,11 +5129,11 @@ function handleWorldBankRequest(req, res) {
   const countries = wbParams.get('countries');
   const years = parseInt(wbParams.get('years') || '5', 10);
   let countryList = country || (countries ? countries.split(',').join(';') : [
-    'USA','CHN','JPN','DEU','KOR','GBR','IND','ISR','SGP','TWN',
-    'FRA','CAN','SWE','NLD','CHE','FIN','IRL','AUS','BRA','IDN',
-    'ARE','SAU','QAT','BHR','EGY','TUR','MYS','THA','VNM','PHL',
-    'ESP','ITA','POL','CZE','DNK','NOR','AUT','BEL','PRT','EST',
-    'MEX','ARG','CHL','COL','ZAF','NGA','KEN',
+    'USA', 'CHN', 'JPN', 'DEU', 'KOR', 'GBR', 'IND', 'ISR', 'SGP', 'TWN',
+    'FRA', 'CAN', 'SWE', 'NLD', 'CHE', 'FIN', 'IRL', 'AUS', 'BRA', 'IDN',
+    'ARE', 'SAU', 'QAT', 'BHR', 'EGY', 'TUR', 'MYS', 'THA', 'VNM', 'PHL',
+    'ESP', 'ITA', 'POL', 'CZE', 'DNK', 'NOR', 'AUT', 'BEL', 'PRT', 'EST',
+    'MEX', 'ARG', 'CHL', 'COL', 'ZAF', 'NGA', 'KEN',
   ].join(';'));
 
   const currentYear = new Date().getFullYear();
@@ -5654,7 +5685,7 @@ function handleYouTubeLiveRequest(req, res) {
             const json = JSON.stringify({ channelName: data.author_name || null, title: data.title || null, videoId: videoIdParam });
             ytLiveCache.set(cacheKey, { json, ts: Date.now() });
             return sendCompressed(req, res, 200, { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=3600' }, json);
-          } catch {}
+          } catch { }
         }
         sendCompressed(req, res, 200, { 'Content-Type': 'application/json' },
           JSON.stringify({ channelName: null, title: null, videoId: videoIdParam }));
@@ -6181,140 +6212,140 @@ const server = http.createServer(async (req, res) => {
       logThrottled('log', `rss-miss:${feedUrl}`, '[Relay] RSS request (MISS):', feedUrl);
 
       const fetchPromise = new Promise((resolveInFlight, rejectInFlight) => {
-      let responseHandled = false;
+        let responseHandled = false;
 
-      const sendError = (statusCode, message) => {
-        if (responseHandled || res.headersSent) return;
-        responseHandled = true;
-        res.writeHead(statusCode, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: message }));
-        rejectInFlight(new Error(message));
-      };
+        const sendError = (statusCode, message) => {
+          if (responseHandled || res.headersSent) return;
+          responseHandled = true;
+          res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: message }));
+          rejectInFlight(new Error(message));
+        };
 
-      const fetchWithRedirects = (url, redirectCount = 0) => {
-        if (redirectCount > 3) {
-          return sendError(502, 'Too many redirects');
-        }
+        const fetchWithRedirects = (url, redirectCount = 0) => {
+          if (redirectCount > 3) {
+            return sendError(502, 'Too many redirects');
+          }
 
-        const conditionalHeaders = {};
-        if (rssCached?.etag) conditionalHeaders['If-None-Match'] = rssCached.etag;
-        if (rssCached?.lastModified) conditionalHeaders['If-Modified-Since'] = rssCached.lastModified;
+          const conditionalHeaders = {};
+          if (rssCached?.etag) conditionalHeaders['If-None-Match'] = rssCached.etag;
+          if (rssCached?.lastModified) conditionalHeaders['If-Modified-Since'] = rssCached.lastModified;
 
-        const protocol = url.startsWith('https') ? https : http;
-        const request = protocol.get(url, {
-          headers: {
-            'Accept': 'application/rss+xml, application/xml, text/xml, */*',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept-Language': 'en-US,en;q=0.9',
-            ...conditionalHeaders,
-          },
-          timeout: 15000
-        }, (response) => {
-          if ([301, 302, 303, 307, 308].includes(response.statusCode) && response.headers.location) {
-            const redirectUrl = response.headers.location.startsWith('http')
-              ? response.headers.location
-              : new URL(response.headers.location, url).href;
-            const redirectHost = new URL(redirectUrl).hostname;
-            if (!RSS_ALLOWED_DOMAINS.has(redirectHost)) {
-              return sendError(403, 'Redirect to disallowed domain');
+          const protocol = url.startsWith('https') ? https : http;
+          const request = protocol.get(url, {
+            headers: {
+              'Accept': 'application/rss+xml, application/xml, text/xml, */*',
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              'Accept-Language': 'en-US,en;q=0.9',
+              ...conditionalHeaders,
+            },
+            timeout: 15000
+          }, (response) => {
+            if ([301, 302, 303, 307, 308].includes(response.statusCode) && response.headers.location) {
+              const redirectUrl = response.headers.location.startsWith('http')
+                ? response.headers.location
+                : new URL(response.headers.location, url).href;
+              const redirectHost = new URL(redirectUrl).hostname;
+              if (!RSS_ALLOWED_DOMAINS.has(redirectHost)) {
+                return sendError(403, 'Redirect to disallowed domain');
+              }
+              logThrottled('log', `rss-redirect:${feedUrl}:${redirectUrl}`, `[Relay] Following redirect to: ${redirectUrl}`);
+              return fetchWithRedirects(redirectUrl, redirectCount + 1);
             }
-            logThrottled('log', `rss-redirect:${feedUrl}:${redirectUrl}`, `[Relay] Following redirect to: ${redirectUrl}`);
-            return fetchWithRedirects(redirectUrl, redirectCount + 1);
-          }
 
-          if (response.statusCode === 304 && rssCached) {
-            responseHandled = true;
-            rssCached.timestamp = Date.now();
-            rssResetFailure(feedUrl);
-            resolveInFlight();
-            logThrottled('log', `rss-revalidated:${feedUrl}`, '[Relay] RSS 304 revalidated:', feedUrl);
-            sendCompressed(req, res, 200, {
-              'Content-Type': rssCached.contentType || 'application/xml',
-              'Cache-Control': 'public, max-age=300',
-              'CDN-Cache-Control': 'public, max-age=600, stale-while-revalidate=300',
-              'X-Cache': 'REVALIDATED',
-            }, rssCached.data);
-            return;
-          }
-
-          const encoding = response.headers['content-encoding'];
-          let stream = response;
-          if (encoding === 'gzip' || encoding === 'deflate') {
-            stream = encoding === 'gzip' ? response.pipe(zlib.createGunzip()) : response.pipe(zlib.createInflate());
-          }
-
-          const chunks = [];
-          stream.on('data', chunk => chunks.push(chunk));
-          stream.on('end', () => {
-            if (responseHandled || res.headersSent) return;
-            responseHandled = true;
-            const data = Buffer.concat(chunks);
-            // Cache all responses: 2xx with full TTL, non-2xx with short TTL (negative cache)
-            // FIFO eviction: drop oldest-inserted entry if at capacity
-            if (rssResponseCache.size >= RSS_CACHE_MAX_ENTRIES && !rssResponseCache.has(feedUrl)) {
-              const oldest = rssResponseCache.keys().next().value;
-              if (oldest) rssResponseCache.delete(oldest);
-            }
-            rssResponseCache.set(feedUrl, {
-              data, contentType: 'application/xml', statusCode: response.statusCode, timestamp: Date.now(),
-              etag: response.headers['etag'] || null,
-              lastModified: response.headers['last-modified'] || null,
-            });
-            if (response.statusCode >= 200 && response.statusCode < 300) {
+            if (response.statusCode === 304 && rssCached) {
+              responseHandled = true;
+              rssCached.timestamp = Date.now();
               rssResetFailure(feedUrl);
-            } else {
-              const { failures, backoffSec } = rssRecordFailure(feedUrl);
-              logThrottled('warn', `rss-upstream:${feedUrl}:${response.statusCode}`, `[Relay] RSS upstream ${response.statusCode} for ${feedUrl} (backoff ${backoffSec}s, failures=${failures})`);
+              resolveInFlight();
+              logThrottled('log', `rss-revalidated:${feedUrl}`, '[Relay] RSS 304 revalidated:', feedUrl);
+              sendCompressed(req, res, 200, {
+                'Content-Type': rssCached.contentType || 'application/xml',
+                'Cache-Control': 'public, max-age=300',
+                'CDN-Cache-Control': 'public, max-age=600, stale-while-revalidate=300',
+                'X-Cache': 'REVALIDATED',
+              }, rssCached.data);
+              return;
             }
-            resolveInFlight();
-            sendCompressed(req, res, response.statusCode, {
-              'Content-Type': 'application/xml',
-              'Cache-Control': response.statusCode >= 200 && response.statusCode < 300 ? 'public, max-age=300' : 'no-cache',
-              'CDN-Cache-Control': response.statusCode >= 200 && response.statusCode < 300 ? 'public, max-age=600, stale-while-revalidate=300' : 'no-store',
-              'X-Cache': 'MISS',
-            }, data);
-          });
-          stream.on('error', (err) => {
-            const { failures, backoffSec } = rssRecordFailure(feedUrl);
-            logThrottled('error', `rss-decompress:${feedUrl}:${err.code || err.message}`, `[Relay] Decompression error: ${err.message} (backoff ${backoffSec}s, failures=${failures})`);
-            sendError(502, 'Decompression failed: ' + err.message);
-          });
-        });
 
-        request.on('error', (err) => {
-          const { failures, backoffSec } = rssRecordFailure(feedUrl);
-          logThrottled('error', `rss-error:${feedUrl}:${err.code || err.message}`, `[Relay] RSS error: ${err.message} (backoff ${backoffSec}s, failures=${failures})`);
-          // Serve stale on error (only if we have previous successful data)
-          if (rssCached && rssCached.statusCode >= 200 && rssCached.statusCode < 300) {
-            if (!responseHandled && !res.headersSent) {
+            const encoding = response.headers['content-encoding'];
+            let stream = response;
+            if (encoding === 'gzip' || encoding === 'deflate') {
+              stream = encoding === 'gzip' ? response.pipe(zlib.createGunzip()) : response.pipe(zlib.createInflate());
+            }
+
+            const chunks = [];
+            stream.on('data', chunk => chunks.push(chunk));
+            stream.on('end', () => {
+              if (responseHandled || res.headersSent) return;
+              responseHandled = true;
+              const data = Buffer.concat(chunks);
+              // Cache all responses: 2xx with full TTL, non-2xx with short TTL (negative cache)
+              // FIFO eviction: drop oldest-inserted entry if at capacity
+              if (rssResponseCache.size >= RSS_CACHE_MAX_ENTRIES && !rssResponseCache.has(feedUrl)) {
+                const oldest = rssResponseCache.keys().next().value;
+                if (oldest) rssResponseCache.delete(oldest);
+              }
+              rssResponseCache.set(feedUrl, {
+                data, contentType: 'application/xml', statusCode: response.statusCode, timestamp: Date.now(),
+                etag: response.headers['etag'] || null,
+                lastModified: response.headers['last-modified'] || null,
+              });
+              if (response.statusCode >= 200 && response.statusCode < 300) {
+                rssResetFailure(feedUrl);
+              } else {
+                const { failures, backoffSec } = rssRecordFailure(feedUrl);
+                logThrottled('warn', `rss-upstream:${feedUrl}:${response.statusCode}`, `[Relay] RSS upstream ${response.statusCode} for ${feedUrl} (backoff ${backoffSec}s, failures=${failures})`);
+              }
+              resolveInFlight();
+              sendCompressed(req, res, response.statusCode, {
+                'Content-Type': 'application/xml',
+                'Cache-Control': response.statusCode >= 200 && response.statusCode < 300 ? 'public, max-age=300' : 'no-cache',
+                'CDN-Cache-Control': response.statusCode >= 200 && response.statusCode < 300 ? 'public, max-age=600, stale-while-revalidate=300' : 'no-store',
+                'X-Cache': 'MISS',
+              }, data);
+            });
+            stream.on('error', (err) => {
+              const { failures, backoffSec } = rssRecordFailure(feedUrl);
+              logThrottled('error', `rss-decompress:${feedUrl}:${err.code || err.message}`, `[Relay] Decompression error: ${err.message} (backoff ${backoffSec}s, failures=${failures})`);
+              sendError(502, 'Decompression failed: ' + err.message);
+            });
+          });
+
+          request.on('error', (err) => {
+            const { failures, backoffSec } = rssRecordFailure(feedUrl);
+            logThrottled('error', `rss-error:${feedUrl}:${err.code || err.message}`, `[Relay] RSS error: ${err.message} (backoff ${backoffSec}s, failures=${failures})`);
+            // Serve stale on error (only if we have previous successful data)
+            if (rssCached && rssCached.statusCode >= 200 && rssCached.statusCode < 300) {
+              if (!responseHandled && !res.headersSent) {
+                responseHandled = true;
+                sendCompressed(req, res, 200, { 'Content-Type': 'application/xml', 'Cache-Control': 'no-store', 'CDN-Cache-Control': 'no-store', 'X-Cache': 'STALE' }, rssCached.data);
+              }
+              resolveInFlight();
+              return;
+            }
+            sendError(502, err.message);
+          });
+
+          request.on('timeout', () => {
+            request.destroy();
+            const { failures, backoffSec } = rssRecordFailure(feedUrl);
+            logThrottled('warn', `rss-timeout:${feedUrl}`, `[Relay] RSS timeout for ${feedUrl} (backoff ${backoffSec}s, failures=${failures})`);
+            if (rssCached && rssCached.statusCode >= 200 && rssCached.statusCode < 300 && !responseHandled && !res.headersSent) {
               responseHandled = true;
               sendCompressed(req, res, 200, { 'Content-Type': 'application/xml', 'Cache-Control': 'no-store', 'CDN-Cache-Control': 'no-store', 'X-Cache': 'STALE' }, rssCached.data);
+              resolveInFlight();
+              return;
             }
-            resolveInFlight();
-            return;
-          }
-          sendError(502, err.message);
-        });
+            sendError(504, 'Request timeout');
+          });
+        };
 
-        request.on('timeout', () => {
-          request.destroy();
-          const { failures, backoffSec } = rssRecordFailure(feedUrl);
-          logThrottled('warn', `rss-timeout:${feedUrl}`, `[Relay] RSS timeout for ${feedUrl} (backoff ${backoffSec}s, failures=${failures})`);
-          if (rssCached && rssCached.statusCode >= 200 && rssCached.statusCode < 300 && !responseHandled && !res.headersSent) {
-            responseHandled = true;
-            sendCompressed(req, res, 200, { 'Content-Type': 'application/xml', 'Cache-Control': 'no-store', 'CDN-Cache-Control': 'no-store', 'X-Cache': 'STALE' }, rssCached.data);
-            resolveInFlight();
-            return;
-          }
-          sendError(504, 'Request timeout');
-        });
-      };
-
-      fetchWithRedirects(feedUrl);
+        fetchWithRedirects(feedUrl);
       }); // end fetchPromise
 
       rssInFlight.set(feedUrl, fetchPromise);
-      fetchPromise.catch(() => {}).finally(() => rssInFlight.delete(feedUrl));
+      fetchPromise.catch(() => { }).finally(() => rssInFlight.delete(feedUrl));
     } catch (err) {
       if (feedUrl) rssInFlight.delete(feedUrl);
       if (!res.headersSent) {
@@ -6359,6 +6390,48 @@ const server = http.createServer(async (req, res) => {
     handleYahooChartRequest(req, res);
   } else if (pathname === '/notam') {
     handleNotamProxyRequest(req, res);
+  } else if (pathname === '/sse') {
+    // Server-Sent Events endpoint
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no', // Disable NGINX/proxy buffering
+    });
+
+    // Send immediate initial connection struct
+    res.write(`event: connection\ndata: ${JSON.stringify({ status: 'connected', time: Date.now() })}\n\n`);
+
+    // Add client
+    sseClients.add(res);
+
+    // Ping to keep connection alive every 30s
+    const pingInterval = setInterval(() => {
+      res.write(':\n\n'); // SSE comment to keep socket open
+    }, 30000);
+
+    req.on('close', () => {
+      clearInterval(pingInterval);
+      sseClients.delete(res);
+    });
+  } else if (pathname === '/sse/mock-telegram') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    const mockMsg = {
+      id: `mock:${Date.now()}`,
+      channel: 'WM_Debug',
+      channelTitle: 'WM Auto Debug',
+      url: 'https://example.com',
+      ts: new Date().toISOString(),
+      text: '🚨 This is a mock breaking news event injected via the SSE testing endpoint.',
+      topic: 'other',
+      tags: [],
+    };
+    broadcastSse('telegram', {
+      source: 'telegram',
+      earlySignal: true,
+      items: [mockMsg],
+    });
+    res.end(JSON.stringify({ success: true, broadcasted: sseClients.size }));
   } else {
     res.writeHead(404);
     res.end();
@@ -6368,7 +6441,7 @@ const server = http.createServer(async (req, res) => {
 function connectUpstream() {
   // Skip if already connected or connecting
   if (upstreamSocket?.readyState === WebSocket.OPEN ||
-      upstreamSocket?.readyState === WebSocket.CONNECTING) return;
+    upstreamSocket?.readyState === WebSocket.CONNECTING) return;
 
   console.log('[Relay] Connecting to aisstream.io...');
   const socket = new WebSocket(AISSTREAM_URL);
@@ -6394,8 +6467,8 @@ function connectUpstream() {
     let processed = 0;
 
     while (processed < UPSTREAM_DRAIN_BATCH &&
-           getUpstreamQueueSize() > 0 &&
-           Date.now() - startedAt < UPSTREAM_DRAIN_BUDGET_MS) {
+      getUpstreamQueueSize() > 0 &&
+      Date.now() - startedAt < UPSTREAM_DRAIN_BUDGET_MS) {
       const raw = dequeueUpstreamMessage();
       if (!raw) break;
       processRawUpstreamMessage(raw);
@@ -6550,11 +6623,11 @@ async function gracefulShutdown(signal) {
         telegramState.client.disconnect(),
         new Promise(r => setTimeout(r, 3000)),
       ]);
-    } catch {}
+    } catch { }
     telegramState.client = null;
   }
   if (upstreamSocket) {
-    try { upstreamSocket.close(); } catch {}
+    try { upstreamSocket.close(); } catch { }
   }
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 5000);
