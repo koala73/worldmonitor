@@ -19,8 +19,9 @@ import { getHydratedData } from '@/services/bootstrap';
 // ---- Client + Circuit Breakers ----
 
 const client = new MarketServiceClient('', { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) });
-const stockBreaker = createCircuitBreaker<ListMarketQuotesResponse>({ name: 'Market Quotes', cacheTtlMs: 0 });
-const commodityBreaker = createCircuitBreaker<ListMarketQuotesResponse>({ name: 'Commodity Quotes', cacheTtlMs: 0 });
+const MARKET_QUOTES_CACHE_TTL_MS = 5 * 60 * 1000;
+const stockBreaker = createCircuitBreaker<ListMarketQuotesResponse>({ name: 'Market Quotes', cacheTtlMs: MARKET_QUOTES_CACHE_TTL_MS });
+const commodityBreaker = createCircuitBreaker<ListMarketQuotesResponse>({ name: 'Commodity Quotes', cacheTtlMs: MARKET_QUOTES_CACHE_TTL_MS });
 const cryptoBreaker = createCircuitBreaker<ListCryptoQuotesResponse>({ name: 'Crypto Quotes' });
 
 const emptyStockFallback: ListMarketQuotesResponse = { quotes: [], finnhubSkipped: false, skipReason: '', rateLimited: false };
@@ -67,24 +68,33 @@ export interface MarketFetchResult {
 const lastSuccessfulByKey = new Map<string, MarketData[]>();
 
 function symbolSetKey(symbols: string[]): string {
-  return [...symbols].sort().join(',');
+  return [...new Set(symbols.map((symbol) => symbol.trim().toUpperCase()))].sort().join(',');
 }
 
 export async function fetchMultipleStocks(
   symbols: Array<{ symbol: string; name: string; display: string }>,
   options: { onBatch?: (results: MarketData[]) => void; useCommodityBreaker?: boolean } = {},
 ): Promise<MarketFetchResult> {
-  const allSymbolStrings = symbols.map((s) => s.symbol);
+  // Build normalized metadata — ensures request payload, metadata lookup,
+  // and cache key all use the same normalized symbol strings.
+  const symbolMetaMap = new Map<string, { symbol: string; name: string; display: string }>();
+  for (const s of symbols) {
+    const norm = s.symbol.trim().toUpperCase();
+    if (!symbolMetaMap.has(norm)) symbolMetaMap.set(norm, s);
+  }
+  const allSymbolStrings = [...symbolMetaMap.keys()];
   const setKey = symbolSetKey(allSymbolStrings);
-  const symbolMetaMap = new Map(symbols.map((s) => [s.symbol, s]));
 
   const breaker = options.useCommodityBreaker ? commodityBreaker : stockBreaker;
   const resp = await breaker.execute(async () => {
     return client.listMarketQuotes({ symbols: allSymbolStrings });
-  }, emptyStockFallback);
+  }, emptyStockFallback, {
+    cacheKey: setKey,
+    shouldCache: (r) => r.quotes.length > 0,
+  });
 
   const results = resp.quotes.map((q) => {
-    const meta = symbolMetaMap.get(q.symbol);
+    const meta = symbolMetaMap.get(q.symbol.trim().toUpperCase());
     return toMarketData(q, meta);
   });
 
