@@ -25,6 +25,7 @@ export class MarketPanel extends Panel {
     this.settingsBtn.className = 'live-news-settings-btn';
     this.settingsBtn.title = 'Customize market watchlist';
     this.settingsBtn.textContent = 'Watchlist';
+    this.settingsBtn.style.marginLeft = 'auto';
     this.settingsBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       this.openWatchlistModal();

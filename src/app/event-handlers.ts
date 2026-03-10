@@ -277,6 +277,18 @@ export class EventHandlerManager implements AppModule {
     };
     window.addEventListener('storage', this.boundStorageHandler);
 
+    // Handle panel close (X) button clicks
+    this.ctx.container.addEventListener('wm:panel-close', ((e: CustomEvent<{ panelId: string }>) => {
+      const { panelId } = e.detail;
+      const config = this.ctx.panelSettings[panelId];
+      if (!config) return;
+      config.enabled = false;
+      trackPanelToggled(panelId, false);
+      saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
+      this.applyPanelSettings();
+      this.ctx.unifiedSettings?.refreshPanelToggles();
+    }) as EventListener);
+
     document.getElementById('headerThemeToggle')?.addEventListener('click', () => {
       const next = getCurrentTheme() === 'dark' ? 'light' : 'dark';
       setTheme(next);

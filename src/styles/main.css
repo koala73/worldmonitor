@@ -1292,6 +1292,7 @@ body.panel-resize-active iframe {
   background: var(--border);
   padding: 2px 6px;
   border-radius: 2px;
+  margin-left: auto;
   transition: color 0.3s ease, background 0.3s ease;
 }
 
@@ -1319,6 +1320,105 @@ body.panel-resize-active iframe {
   }
 }
 
+
+/* ---- Icon buttons in panel headers ---- */
+.panel-header .icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+  flex-shrink: 0;
+}
+
+.panel-header .icon-btn:hover {
+  background: var(--overlay-subtle);
+  color: var(--text);
+}
+
+/* ---- Close (X) button on panels ---- */
+.panel-close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  margin-left: 4px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
+  flex-shrink: 0;
+  order: 999;
+}
+
+.panel:hover .panel-close-btn,
+.panel-close-btn:focus-visible {
+  opacity: 1;
+}
+
+.panel-close-btn:hover {
+  background: rgba(255, 60, 60, 0.15);
+  color: var(--semantic-critical, #ff4444);
+}
+
+/* On touch devices, always show the close button */
+@media (hover: none) {
+  .panel-close-btn {
+    opacity: 0.7;
+  }
+}
+
+/* ---- Add Panel (+) block ---- */
+.add-panel-block {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 120px;
+  border: 2px dashed var(--border);
+  border-radius: var(--panel-radius, 6px);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
+  padding: 0;
+  font-family: inherit;
+}
+
+.add-panel-block:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(0, 255, 136, 0.04);
+}
+
+.add-panel-block-icon {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.add-panel-block-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
 
 .panel-data-badge {
   font-size: 9px;

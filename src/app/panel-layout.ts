@@ -868,6 +868,23 @@ export class PanelLayoutManager implements AppModule {
       }
     });
 
+    // "+" Add Panel block at the end of the grid
+    const addPanelBlock = document.createElement('button');
+    addPanelBlock.className = 'add-panel-block';
+    addPanelBlock.setAttribute('aria-label', t('components.panel.addPanel'));
+    const addIcon = document.createElement('span');
+    addIcon.className = 'add-panel-block-icon';
+    addIcon.textContent = '+';
+    const addLabel = document.createElement('span');
+    addLabel.className = 'add-panel-block-label';
+    addLabel.textContent = t('components.panel.addPanel');
+    addPanelBlock.appendChild(addIcon);
+    addPanelBlock.appendChild(addLabel);
+    addPanelBlock.addEventListener('click', () => {
+      this.ctx.unifiedSettings?.open('panels');
+    });
+    panelsGrid.appendChild(addPanelBlock);
+
     const bottomGrid = document.getElementById('mapBottomGrid');
     if (bottomGrid) {
       bottomOrder.forEach(key => {

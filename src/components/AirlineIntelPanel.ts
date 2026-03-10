@@ -94,6 +94,7 @@ export class AirlineIntelPanel extends Panel {
         refreshBtn.className = 'icon-btn';
         refreshBtn.title = t('common.refresh');
         refreshBtn.textContent = '↻';
+        refreshBtn.style.marginLeft = 'auto';
         refreshBtn.addEventListener('click', () => this.refresh());
         this.header.appendChild(refreshBtn);
 
