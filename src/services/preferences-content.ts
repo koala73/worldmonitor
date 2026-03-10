@@ -5,6 +5,7 @@ import { getLiveStreamsAlwaysOn, setLiveStreamsAlwaysOn } from '@/services/live-
 import { getGlobeVisualPreset, setGlobeVisualPreset, GLOBE_VISUAL_PRESET_OPTIONS, type GlobeVisualPreset } from '@/services/globe-render-settings';
 import type { StreamQuality } from '@/services/ai-flow-settings';
 import { getThemePreference, setThemePreference, type ThemePreference } from '@/utils/theme-manager';
+import { getFontPreference, setFontPreference, type FontStyle } from '@/utils/font-manager';
 import { escapeHtml } from '@/utils/sanitize';
 import { trackLanguageChange } from '@/services/analytics';
 import { exportSettings, importSettings, type ImportResult } from '@/utils/settings-persistence';
@@ -92,6 +93,24 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
     { value: 'light', label: t('preferences.themeLight') },
   ] as { value: ThemePreference; label: string }[]) {
     const selected = opt.value === currentThemePref ? ' selected' : '';
+    html += `<option value="${opt.value}"${selected}>${escapeHtml(opt.label)}</option>`;
+  }
+  html += `</select>`;
+
+  // Font style
+  const currentFont = getFontPreference();
+  html += `<div class="ai-flow-toggle-row">
+    <div class="ai-flow-toggle-label-wrap">
+      <div class="ai-flow-toggle-label">${t('preferences.fontStyle')}</div>
+      <div class="ai-flow-toggle-desc">${t('preferences.fontStyleDesc')}</div>
+    </div>
+  </div>`;
+  html += `<select class="unified-settings-select" id="us-font-style">`;
+  for (const opt of [
+    { value: 'mono', label: t('preferences.fontStyleMono') },
+    { value: 'system', label: t('preferences.fontStyleSystem') },
+  ] as { value: FontStyle; label: string }[]) {
+    const selected = opt.value === currentFont ? ' selected' : '';
     html += `<option value="${opt.value}"${selected}>${escapeHtml(opt.label)}</option>`;
   }
   html += `</select>`;
@@ -268,6 +287,10 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
         }
         if (target.id === 'us-theme') {
           setThemePreference(target.value as ThemePreference);
+          return;
+        }
+        if (target.id === 'us-font-style') {
+          setFontPreference(target.value as FontStyle);
           return;
         }
         if (target.id === 'us-map-provider') {
