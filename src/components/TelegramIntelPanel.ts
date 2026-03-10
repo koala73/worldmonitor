@@ -51,14 +51,16 @@ export class TelegramIntelPanel extends Panel {
     this.renderItems();
   }
 
-  public setData(response: TelegramFeedResponse): void {
-    this.relayEnabled = response.enabled;
+  public setData(response: TelegramFeedResponse & { error?: string }): void {
+    this.relayEnabled = response.enabled !== false;
     this.items = response.items || [];
 
-    if (!this.relayEnabled) {
+    if (!this.relayEnabled || response.error) {
       this.setCount(0);
       replaceChildren(this.content,
-        h('div', { className: 'empty-state' }, t('components.telegramIntel.disabled')),
+        h('div', { className: 'empty-state error' },
+          response.error || t('components.telegramIntel.disabled')
+        ),
       );
       return;
     }

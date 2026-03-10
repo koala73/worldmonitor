@@ -288,7 +288,7 @@ function initOverviewListeners(area: HTMLElement): void {
     btn.textContent = t('modals.settingsWindow.worldMonitor.register.submitting');
 
     try {
-      const res = await diagFetch('/api/register-interest', {
+      const res = await fetch('https://worldmonitor.app/api/register-interest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, source: 'desktop-settings' }),

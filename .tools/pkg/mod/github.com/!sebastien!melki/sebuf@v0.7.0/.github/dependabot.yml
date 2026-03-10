@@ -1,0 +1,105 @@
+version: 2
+updates:
+  # Go module dependencies
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+    reviewers:
+      - "SebastienMelki"
+    assignees:
+      - "SebastienMelki"
+    labels:
+      - "dependencies"
+      - "go"
+    commit-message:
+      prefix: "chore"
+      prefix-development: "chore"
+      include: "scope"
+    pull-request-branch-name:
+      separator: "-"
+    open-pull-requests-limit: 10
+    groups:
+      # Group all protobuf-related dependencies
+      protobuf:
+        patterns:
+          - "google.golang.org/protobuf"
+          - "github.com/bufbuild/*"
+          - "buf.build/*"
+        update-types:
+          - "minor"
+          - "patch"
+      # Group all testing dependencies
+      testing:
+        patterns:
+          - "github.com/stretchr/testify"
+          - "github.com/google/go-cmp"
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      # Don't update major versions automatically
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    
+  # GitHub Actions dependencies
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+    reviewers:
+      - "SebastienMelki"
+    assignees:
+      - "SebastienMelki"
+    labels:
+      - "dependencies"
+      - "ci/cd"
+      - "github-actions"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    pull-request-branch-name:
+      separator: "-"
+    open-pull-requests-limit: 5
+    groups:
+      # Group all actions from the same organization
+      actions:
+        patterns:
+          - "actions/*"
+        update-types:
+          - "minor"
+          - "patch"
+      golang:
+        patterns:
+          - "golangci/golangci-lint-action"
+          - "goreleaser/goreleaser-action"
+        update-types:
+          - "minor"
+          - "patch"
+    
+  # Docker dependencies (if Dockerfiles exist)
+  - package-ecosystem: "docker"
+    directory: "/docker"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+    reviewers:
+      - "SebastienMelki"
+    labels:
+      - "dependencies"
+      - "docker"
+    commit-message:
+      prefix: "build"
+      include: "scope"
+    ignore:
+      # Only update patch versions for base images
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]

@@ -448,25 +448,26 @@ export function setFeatureToggle(featureId: RuntimeFeatureId, enabled: boolean):
 }
 
 export async function setSecretValue(key: RuntimeSecretKey, value: string): Promise<void> {
-  if (!isDesktopRuntime()) {
-    console.warn('[runtime-config] Ignoring secret write outside desktop runtime');
-    return;
-  }
-
   const sanitized = value.trim();
   if (sanitized) {
-    try {
-      await invokeTauri<void>('set_secret', { key, value: sanitized });
-    } catch (e) {
-      console.warn(`[runtime-config] Keyring failed, falling back to localStorage for ${key}`, e);
+    if (isDesktopRuntime()) {
+      try {
+        await invokeTauri<void>('set_secret', { key, value: sanitized });
+      } catch (e) {
+        console.warn(`[runtime-config] Keyring failed, falling back to localStorage for ${key}`, e);
+        localStorage.setItem(`wm-secret-fallback-${key}`, sanitized);
+      }
+    } else {
       localStorage.setItem(`wm-secret-fallback-${key}`, sanitized);
     }
-    runtimeConfig.secrets[key] = { value: sanitized, source: 'vault' };
+    runtimeConfig.secrets[key] = { value: sanitized, source: isDesktopRuntime() ? 'vault' : 'env' };
   } else {
-    try {
-      await invokeTauri<void>('delete_secret', { key });
-    } catch {
-      // ignore
+    if (isDesktopRuntime()) {
+      try {
+        await invokeTauri<void>('delete_secret', { key });
+      } catch {
+        // ignore
+      }
     }
     localStorage.removeItem(`wm-secret-fallback-${key}`);
     delete runtimeConfig.secrets[key];
@@ -474,10 +475,12 @@ export async function setSecretValue(key: RuntimeSecretKey, value: string): Prom
 
   // Push to sidecar so handlers pick it up immediately.
   // This is best-effort: keyring persistence is the source of truth.
-  try {
-    await pushSecretToSidecar(key, sanitized || '');
-  } catch (error) {
-    console.warn(`[runtime-config] Failed to sync ${key} to sidecar`, error);
+  if (isDesktopRuntime()) {
+    try {
+      await pushSecretToSidecar(key, sanitized || '');
+    } catch (error) {
+      console.warn(`[runtime-config] Failed to sync ${key} to sidecar`, error);
+    }
   }
 
   // Signal other windows (main ↔ settings) to reload secrets from keychain.
@@ -586,51 +589,45 @@ export async function verifySecretWithApi(
 }
 
 export async function loadDesktopSecrets(): Promise<void> {
-  if (!isDesktopRuntime()) return;
-
   try {
-    const allSecrets = await invokeTauri<Record<string, string>>('get_all_secrets').catch((err) => {
-      console.warn('[runtime-config] Failed to get secrets from vault, using fallbacks', err);
-      return {} as Record<string, string>;
-    });
-
-    // Merge localStorage fallbacks for any missing keys
+    // 1. Load from localStorage fallbacks (available in both web and desktop)
     const expectedKeys = new Set(RUNTIME_FEATURES.flatMap(f => f.requiredSecrets).concat(RUNTIME_FEATURES.flatMap(f => f.desktopRequiredSecrets || [])));
     for (const key of expectedKeys) {
-      if (!allSecrets[key]) {
-        const fall = localStorage.getItem(`wm-secret-fallback-${key}`);
-        if (fall) allSecrets[key] = fall;
+      const fallback = localStorage.getItem(`wm-secret-fallback-${key}`);
+      if (fallback) {
+        runtimeConfig.secrets[key] = { value: fallback, source: 'env' };
       }
     }
 
-    const entries: { key: string; value: string }[] = [];
-    for (const [key, value] of Object.entries(allSecrets)) {
-      if (value && value.trim().length > 0) {
-        runtimeConfig.secrets[key as RuntimeSecretKey] = { value, source: 'vault' };
-        entries.push({ key, value });
-      }
-    }
+    // 2. Overlay with Tauri vault (desktop only, source of truth)
+    if (isDesktopRuntime()) {
+      const allSecrets = await invokeTauri<Record<string, string>>('get_all_secrets').catch((err) => {
+        console.warn('[runtime-config] Failed to get secrets from vault, using fallbacks', err);
+        return {} as Record<string, string>;
+      });
 
-    if (entries.length > 0) {
-      try {
-        await pushSecretBatchToSidecar(entries);
-      } catch (batchErr) {
-        console.warn('[runtime-config] Batch env update failed, falling back to individual pushes', batchErr);
-        await Promise.allSettled(
-          entries.map(({ key, value }) =>
-            pushSecretToSidecar(key as RuntimeSecretKey, value).catch((error) => {
-              console.warn(`[runtime-config] Failed to sync ${key} to sidecar`, error);
-            })
-          )
+      const entries: { key: string; value: string }[] = [];
+      for (const [key, value] of Object.entries(allSecrets)) {
+        if (value && typeof key === 'string') {
+          runtimeConfig.secrets[key as RuntimeSecretKey] = { value, source: 'vault' };
+          entries.push({ key, value });
+        }
+      }
+
+      // Sync to sidecar
+      if (entries.length > 0) {
+        await pushSecretBatchToSidecar(entries).catch((err) =>
+          console.warn('[runtime-config] Failed to batch sync to sidecar', err)
         );
       }
     }
-
-    notifyConfigChanged();
   } catch (error) {
-    console.warn('[runtime-config] Failed to load desktop secrets from vault', error);
+    console.warn('[runtime-config] Failed to load secrets', error);
   } finally {
-    secretsReadyResolve();
+    if (isDesktopRuntime()) {
+      secretsReadyResolve();
+    }
+    notifyConfigChanged();
   }
 }
 

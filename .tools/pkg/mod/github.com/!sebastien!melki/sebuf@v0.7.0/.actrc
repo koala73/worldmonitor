@@ -1,0 +1,45 @@
+# Configuration for nektos/act - local GitHub Actions runner
+# https://github.com/nektos/act
+
+# Default Docker image to use for runners
+# Using the medium image which has most tools pre-installed
+-P ubuntu-latest=catthehacker/ubuntu:act-latest
+-P ubuntu-22.04=catthehacker/ubuntu:act-22.04
+-P ubuntu-20.04=catthehacker/ubuntu:act-20.04
+-P macos-latest=catthehacker/ubuntu:act-latest
+-P macos-13=catthehacker/ubuntu:act-latest
+-P macos-12=catthehacker/ubuntu:act-latest
+-P windows-latest=catthehacker/ubuntu:act-latest
+
+# Reuse Docker containers for better performance
+--reuse
+
+# Use Docker host network mode for better performance
+--network host
+
+# Set environment variables
+--env-file .env.act
+
+# Use BuildKit for better Docker build performance
+--use-gitignore
+
+# Default platform
+--platform ubuntu-latest
+
+# Artifact server (optional, for local artifact storage)
+# --artifact-server-path /tmp/act-artifacts
+
+# Default workflow to run when none specified
+--workflows .github/workflows/ci.yml
+
+# Secret file location (create .secrets for local testing)
+--secret-file .secrets
+
+# Verbose output for debugging (commented out by default)
+# --verbose
+
+# Use local repository as the workspace
+--bind
+
+# Pull Docker images if newer version exists
+--pull=true

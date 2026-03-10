@@ -1,0 +1,339 @@
+// Copyright 2024 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+// This proto verifies that we keep the name mangling algorithm (which is
+// position dependent) intact in the protoc_gen_go generator. The field names
+// and the getter names have to be kept intact over time, both in the OPEN and
+// in the HYBRID API. How fields are "mangled" is described in a comment per
+// field.
+
+// The order of "evaluation" of fields is important. Fields are evaluated in
+// order of appearance, except the oneof union names, that are evaluated after
+// their first member. For each field, check if there is a previous field name
+// or getter name that clashes with this field or it's getter. In case there is
+// a clash, add an _ to the field name and repeat. In the case of oneof's, the
+// union will be renamed if it clashes with it's first member, but not if it
+// clashes with it's second.
+
+// This scheme is here for backwards compatibility.
+// The type of clashes that can be are the following:
+// 1 - My field name clashes with their getter name
+// 2 - My getter name clashes with their field name
+
+edition = "2023";
+
+package net.proto2.go.testdata.nameclashhybrid;
+
+import "google/protobuf/go_features.proto";
+
+option go_package = "google.golang.org/protobuf/cmd/protoc-gen-go/testdata/nameclash/test_name_clash_hybrid";
+
+option features.(pb.go).api_level = API_HYBRID;
+
+message M1 {
+  // Old Scheme:
+  // initial name in Go     | Clashes with field | type | final name
+  // Foo                    | -                  | -    | Foo
+  // GetFoo                 | foo                | 1    | GetFoo_
+  // GetGetFoo              | -                  | -    | GetGetFoo
+  // New Scheme:
+  // initial name in Go     | Clashes with field | type | Getter name
+  // Foo                    | get_foo            | G    | Get_Foo
+  // GetFoo                 | get_get_foo        | G    | Get_GetFoo
+  // GetGetFoo              | -                  | -    | GetGetGetFoo
+  int32 foo = 1;
+  int32 get_foo = 2;
+  int32 get_get_foo = 3;
+}
+
+message M2 {
+  // Old Scheme:
+  // initial name in Go     | Clashes with field | type | final name
+  // GetGetFoo              | -                  | -    | GetGetFoo
+  // GetFoo                 | get_get_foo        | 2    | GetFoo_
+  // Foo                    | -                  | -    | Foo
+  // New Scheme:
+  // initial name in Go     | Clashes with field | type | Getter name
+  // Foo                    | get_foo            | G    | Get_Foo
+  // GetFoo                 | get_get_foo        | G    | Get_GetFoo
+  // GetGetFoo              | -                  | -    | GetGetGetFoo
+  int32 get_get_foo = 3;
+  int32 get_foo = 2;
+  int32 foo = 1;
+}
+
+message M3 {
+  // Old Scheme:
+  // initial name in Go     | Clashes with field | type | final name
+  // GetFoo                 | -                  | -    | GetFoo
+  // GetGetFoo              | get_foo            | 1    | GetGetFoo_
+  // Foo                    | get_foo            | 2    | Foo_
+  // New Scheme:
+  // initial name in Go     | Clashes with field | type | Getter name
+  // Foo                    | get_foo            | G    | Get_Foo
+  // GetFoo                 | get_get_foo        | G    | Get_GetFoo
+  // GetGetFoo              | -                  | -    | GetGetGetFoo
+  int32 get_foo = 2;
+  int32 get_get_foo = 3;
+  int32 foo = 1;
+}
+
+message M4 {
+  // Old Scheme:
+  // initial name in Go     | Clashes with field | type | final name
+  // GetFoo                 | -                  | -    | GetFoo
+  // GetGetFoo              | get_foo            | 1    | GetGetFoo_
+  //  GetGetGetFoo          | -                  | -    | GetGetGetFoo
+  //                        |                    |      |
+  // Foo                    | get_foo            | 2    | Foo_
+  // New Scheme:
+  // initial name in Go     | Clashes with field | type | Getter name
+  // Foo                    | get_foo            | G    | Get_Foo
+  // GetFoo                 | get_get_foo        | G    | Get_GetFoo
+  // GetGetGetFoo           | -                  | -    | GetGetGetGetFoo
+  int32 get_foo = 2;
+  oneof get_get_foo {
+    int32 get_get_get_foo = 3;
+  }
+  int32 foo = 1;
+}
+
+message M5 {
+  // Old Scheme:
+  // Note evaluation order - get_get_foo before get_get_get_foo
+  // initial name in Go     | Clashes with field | type | final name
+  // GetFoo                 | -                  | -    | GetFoo
+  // GetGetGetFoo           | -                  | -    | GetGetGetFoo
+  //  GetGetFoo             | get_foo            | 1    | GetGetFoo_
+  //                        |                    |      |
+  // Foo                    | get_foo            | 2    | Foo_
+  // New Scheme:
+  // initial name in Go     | Clashes with field | type | Getter name
+  // Foo                    | get_foo            | G    | Get_Foo
+  // GetFoo                 | get_get_foo        | G    | Get_GetFoo
+  // GetGetFoo              | get_get_get_foo    | G    | Get_GetGetFoo
+  int32 get_foo = 2;
+  oneof get_get_get_foo {
+    int32 get_get_foo = 3;
+  }
+  int32 foo = 1;
+}
+
+message M6 {
+  // Note evaluation order - get_get_get_foo before get_get_foo
+  // initial name in Go     | Clashes with field | type | final name
+  // GetGetFoo              | -                  | -    | GetGetFoo
+  //  GetGetGetFoo          | -                  | -    | GetGetGetFoo
+  //                        |                    |      |
+  // GetFoo                 | get_get_foo        | 2    | GetFoo_
+  // Foo                    | -                  | -    | Foo
+  // New Scheme:
+  // initial name in Go     | Clashes with field | type | Getter name
+  // Foo                    | get_foo            | G    | Get_Foo
+  // GetFoo                 | get_get_foo        | G    | Get_GetFoo
+  // GetGetGetFoo           | -                  | -    | GetGetGetGetFoo
+  oneof get_get_foo {
+    int32 get_get_get_foo = 3;
+  }
+  int32 get_foo = 2;
+  int32 foo = 1;
+}
+
+message M7 {
+  // Note evaluation order - bar before get_get_foo, then get_get_get_foo
+  // initial name in Go     | Clashes with field | type | final name
+  // GetGetFoo              | -                  | -    | GetGetFoo
+  //  Bar                   | -                  | -    | Bar
+  //  GetFoo                | foo                | 1    | GetFoo_
+  //                        |                    |      |
+  // Foo                    | -                  | -    | Foo
+  // New Scheme:
+  // initial name in Go     | Clashes with field | type | Getter name
+  // Foo                    | get_foo            | G    | Get_Foo
+  // GetFoo                 | get_get_foo        | G    | Get_GetFoo
+  // Bar                    | -                  | -    | GetBar
+  oneof get_get_foo {
+    bool bar = 4;
+    int32 get_foo = 3;
+  }
+  int32 foo = 1;
+}
+
+message M8 {
+  // Note evaluation order - get_get_foo before get_get_get_foo
+  // initial name in Go     | Clashes with field | type | final name
+  // GetGetGetFoo           | get_get_foo        | 1    | GetGetGetFoo_
+  //  GetGetFoo             | -                  | -    | GetGetFoo
+  //                        |                    |      |
+  // GetFoo                 | get_get_foo        | 2    | GetFoo_
+  // Foo                    | -                  | -    | Foo
+  // New Scheme:
+  // initial name in Go     | Clashes with field | type | Getter name
+  // Foo                    | get_foo            | G    | Get_Foo
+  // GetFoo                 | get_get_foo        | G    | Get_GetFoo
+  // GetGetFoo              | get_get_get_foo    | G    | Get_GetGetFoo
+  oneof get_get_get_foo {
+    int32 get_get_foo = 3;
+  }
+  int32 get_foo = 2;
+  int32 foo = 1;
+}
+
+message M9 {
+  // Note evaluation order - get_get_foo before get_get_get_foo, then get_foo
+  // initial name in Go     | Clashes with field | type | final name
+  // GetGetGetFoo           | get_get_foo        | 1    | GetGetGetFoo_
+  //  GetGetFoo             | -                  | -    | GetGetFoo
+  //  GetFoo                | get_get_foo        | 2    | GetFoo_
+  //                        |                    |      |
+  // Foo                    | -                  | -    | Foo
+  // New Scheme:
+  // initial name in Go     | Clashes with field | type | Getter name
+  // Foo                    | get_foo            | G    | Get_Foo
+  // GetFoo                 | get_get_foo        | G    | Get_GetFoo
+  // GetGetFoo              | get_get_get_foo    | G    | Get_GetGetFoo
+  oneof get_get_get_foo {
+    int32 get_get_foo = 3;
+    int32 get_foo = 2;
+  }
+  int32 foo = 1;
+}
+
+message M10 {
+  // Set Clashes - no concerns with get-mangling as legacy open struct
+  // does not have setters except for weak fields:
+  // initial name in Go     | Clashes with field | Setter name
+  // Foo                    | set_foo            | Set_Foo
+  // SetFoo                 | -                  | SetSetFoo
+  int32 foo = 1;
+  int32 set_foo = 2;
+}
+
+message M11 {
+  // Set Clashes - no concerns with get-mangling as legacy open struct
+  // does not have setters except for weak fields:
+  // initial name in Go     | Clashes with field | Setter name
+  // Foo                    | set_foo            | Set_Foo
+  // SetSetFoo              | -                  | SetSetSetFoo
+  int32 foo = 1;
+  oneof set_foo {
+    int32 set_set_foo = 2;
+  }
+}
+
+message M12 {
+  // Set Clashes - no concerns with get-mangling as legacy open struct
+  // does not have setters except for weak fields:
+  // initial name in Go     | Clashes with field | Setter name
+  // Foo                    | set_foo            | Set_Foo
+  // SetFoo                 | set_set_foo        | Set_SetFoo
+  int32 foo = 1;
+  oneof set_set_foo {
+    int32 set_foo = 2;
+  }
+}
+
+message M13 {
+  // Has Clashes - no concerns with get-mangling as legacy open struct
+  // does not have hassers except for weak fields:
+  // initial name in Go     | Clashes with field | Hasser name
+  // Foo                    | has_foo            | Has_Foo
+  // HasFoo                 | -                  | HasHasFoo
+  int32 foo = 1;
+  int32 has_foo = 2;
+}
+
+message M14 {
+  // Has Clashes - no concerns with get-mangling as legacy open struct
+  // does not have hassers except for weak fields:
+  // initial name in Go     | Clashes with field | Hasser name
+  // Foo                    | has_foo            | Has_Foo
+  // HasFoo                 | has_has_foo        | Has_HasFoo
+  // HasHasFoo              | -                  | HasHasHasFoo
+  int32 foo = 1;
+  oneof has_foo {
+    int32 has_has_foo = 2;
+  }
+}
+
+message M15 {
+  // Has Clashes - no concerns with get-mangling as legacy open struct
+  // does not have hassers except for weak fields:
+  // initial name in Go     | Clashes with field | Hasser name
+  // Foo                    | has_foo            | Has_Foo
+  // HasFoo                 | has_has_foo        | Has_HasFoo
+  // HasHasFoo              | -                  | HasHasHasFoo
+  int32 foo = 1;
+  oneof has_has_foo {
+    int32 has_foo = 2;
+  }
+}
+
+message M16 {
+  // Clear Clashes - no concerns with get-mangling as legacy open
+  // struct does not have clearers except for weak fields:
+  // initial name in Go     | Clashes with field | Clearer name
+  // Foo                    | clear_foo            | Clear_Foo
+  // ClearFoo               | -                  | ClearClearFoo
+  int32 foo = 1;
+  int32 clear_foo = 2;
+}
+
+message M17 {
+  // Clear Clashes - no concerns with get-mangling as legacy open
+  // struct does not have clearers except for weak fields:
+  // initial name in Go     | Clashes with field | Clearer name
+  // Foo                    | clear_foo          | Clear_Foo
+  // ClearFoo               | clear_clear_foo    | Clear_ClearFoo
+  // ClearClearFoo          | -                  | ClearClearClearFoo
+  int32 foo = 1;
+  oneof clear_foo {
+    int32 clear_clear_foo = 2;
+  }
+}
+
+message M18 {
+  // Clear Clashes - no concerns with get-mangling as legacy open
+  // struct does not have clearers except for weak fields:
+  // initial name in Go     | Clashes with field | Clearer name
+  // Foo                    | clear_foo          | Clear_Foo
+  // ClearFoo               | clear_clear_foo    | Clear_ClearFoo
+  // ClearClearFoo          | -                  | ClearClearClearFoo
+  int32 foo = 1;
+  oneof clear_clear_foo {
+    int32 clear_foo = 2;
+  }
+}
+
+message M19 {
+  // Which Clashes - no concerns with get-mangling as legacy open
+  // struct does not have whichers except for weak fields:
+  // initial name in Go     | Clashes with field | Whicher name
+  // Foo                    | -                  | -
+  // WhichFoo               | -                  | -
+  // WhichWhichFoo          | -                  | WhichWhichWhichFoo
+  int32 foo = 1;
+  oneof which_which_foo {
+    int32 which_foo = 2;
+  }
+}
+
+message M20 {
+  // Which Clashes - no concerns with get-mangling as legacy open
+  // struct does not have whichers except for weak fields:
+  // initial name in Go     | Clashes with field | Whicher name
+  // Foo                    | -                  | -
+  // WhichFoo               | which_which_foo    | Which_WhichFoo
+  // WhichWhichFoo          | -                  | -
+  int32 foo = 1;
+  oneof which_foo {
+    int32 which_which_foo = 2;
+  }
+}
+
+message M21 {
+  string _foo = 1;
+  string X_foo = 2;
+  string get_x_foo = 3;
+}

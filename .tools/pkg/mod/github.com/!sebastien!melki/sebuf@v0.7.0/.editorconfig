@@ -1,0 +1,88 @@
+# EditorConfig helps maintain consistent coding styles across different editors and IDEs
+# https://editorconfig.org
+
+# Top-most EditorConfig file
+root = true
+
+# Default settings for all files
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = tab
+indent_size = 4
+
+# Go source files
+[*.go]
+indent_style = tab
+indent_size = 4
+# Go fmt uses tabs, so we enforce that
+
+# Protocol Buffer files
+[*.proto]
+indent_style = space
+indent_size = 2
+# Proto files conventionally use 2 spaces
+
+# YAML files (workflows, configs)
+[*.{yml,yaml}]
+indent_style = space
+indent_size = 2
+
+# JSON files
+[*.json]
+indent_style = space
+indent_size = 2
+insert_final_newline = false
+
+# Markdown files
+[*.md]
+indent_style = space
+indent_size = 2
+trim_trailing_whitespace = false
+# Preserve trailing spaces for line breaks in markdown
+
+# Bash scripts
+[*.{sh,bash}]
+indent_style = space
+indent_size = 2
+
+# Makefiles must use tabs
+[{Makefile,makefile,GNUmakefile,*.mk}]
+indent_style = tab
+indent_size = 4
+
+# Dockerfiles
+[{Dockerfile,*.dockerfile}]
+indent_style = space
+indent_size = 2
+
+# Git config files
+[.git*]
+indent_style = space
+indent_size = 2
+
+# GitHub Actions workflows
+[.github/workflows/*.{yml,yaml}]
+indent_style = space
+indent_size = 2
+
+# Configuration files
+[.{editorconfig,gitignore,gitattributes,goreleaser.yml,golangci.yml}]
+indent_style = space
+indent_size = 2
+
+# Test data and golden files - preserve exact formatting
+[testdata/**]
+trim_trailing_whitespace = false
+insert_final_newline = false
+
+# Generated files - don't enforce style
+[*.pb.go]
+trim_trailing_whitespace = false
+insert_final_newline = false
+
+# License file
+[LICENSE]
+insert_final_newline = false

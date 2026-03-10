@@ -1,0 +1,38 @@
+# Multi-stage build for protoc-gen-openapiv3
+FROM golang:1.21-alpine AS builder
+
+# Install build dependencies
+RUN apk add --no-cache git make
+
+# Set working directory
+WORKDIR /build
+
+# Copy go mod files
+COPY go.mod go.sum ./
+
+# Download dependencies
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Build the plugin
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /protoc-gen-openapiv3 ./cmd/protoc-gen-openapiv3
+
+# Final stage - minimal image
+FROM alpine:latest
+
+# Install protoc and basic tools
+RUN apk add --no-cache protobuf git
+
+# Copy the binary from builder
+COPY --from=builder /protoc-gen-openapiv3 /usr/local/bin/protoc-gen-openapiv3
+
+# Make it executable
+RUN chmod +x /usr/local/bin/protoc-gen-openapiv3
+
+# Set up working directory
+WORKDIR /workspace
+
+# Default entrypoint
+ENTRYPOINT ["/usr/local/bin/protoc-gen-openapiv3"]

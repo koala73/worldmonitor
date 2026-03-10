@@ -1,0 +1,38 @@
+// Copyright 2024 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+edition = "2023";
+
+package goproto.protoc.protoeditions;
+
+import "google/protobuf/go_features.proto";
+
+option go_package = "google.golang.org/protobuf/cmd/protoc-gen-go/testdata/protoeditions";
+option features.(pb.go).legacy_unmarshal_json_enum = true;
+
+// EnumTypeWithLegacyUnmarshalJSON comment.
+enum EnumTypeWithLegacyUnmarshalJSON {
+  option features.enum_type = CLOSED;
+
+  // EnumTypeWithLegacyUnmarshalJSON_ONE comment.
+  FIRST = 1;
+  // EnumTypeWithLegacyUnmarshalJSON_TWO comment.
+  SECOND = 2;
+}
+
+message ContainerForNestedEnum {
+  // NestedEnumType1A comment.
+  enum NestedEnum {
+    // NestedEnum_VALUE comment.
+    VALUE = 0;
+  }
+}
+
+enum EnumWithoutUnmarshalJSON {
+  option features.(pb.go).legacy_unmarshal_json_enum = false;
+
+  WITHOUT_UNMARSHAL_JSON_FOO = 0;
+  WITHOUT_UNMARSHAL_JSON_BAR = 1;
+  WITHOUT_UNMARSHAL_JSON_BAZ = 2;
+}

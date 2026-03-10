@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions & Discussions
+    url: https://github.com/SebastienMelki/sebuf/discussions
+    about: Ask questions and discuss ideas with the community
+  - name: Security Issues
+    url: https://github.com/SebastienMelki/sebuf/security/advisories/new
+    about: Report security vulnerabilities privately
+  - name: Documentation
+    url: https://github.com/SebastienMelki/sebuf/tree/main/docs
+    about: Read the documentation before opening an issue
+  - name: Examples
+    url: https://github.com/SebastienMelki/sebuf/tree/main/examples
+    about: Check out working examples that might answer your question

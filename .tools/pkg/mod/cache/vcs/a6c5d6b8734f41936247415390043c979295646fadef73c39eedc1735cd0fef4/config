@@ -1,0 +1,9 @@
+[core]
+	repositoryformatversion = 0
+	filemode = true
+	bare = true
+	ignorecase = true
+	precomposeunicode = true
+[remote "origin"]
+	url = https://go.googlesource.com/protobuf
+	fetch = +refs/heads/*:refs/remotes/origin/*

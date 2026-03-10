@@ -1,0 +1,538 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  GO_VERSION: '1.24'
+  BUF_VERSION: 'latest'
+  PROTOC_VERSION: '25.1'
+
+jobs:
+  lint:
+    name: Lint & Code Quality
+    runs-on: ubuntu-latest
+    outputs:
+      lint-status: ${{ steps.lint-summary.outputs.status }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+          cache-dependency-path: |
+            go.sum
+            go.mod
+          
+      - name: Setup Buf
+        uses: bufbuild/buf-setup-action@v1
+        with:
+          version: ${{ env.BUF_VERSION }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.1.6
+          args: ""
+          only-new-issues: true
+          
+      - name: Run Go fmt check
+        id: fmt-check
+        run: |
+          fmt_output=$(gofmt -l .)
+          if [ -n "$fmt_output" ]; then
+            echo "::error::The following files need formatting:"
+            echo "$fmt_output" | while read -r file; do
+              echo "::error file=$file::File needs gofmt formatting"
+            done
+            echo "FMT_STATUS=❌ Format issues" >> $GITHUB_ENV
+            exit 1
+          else
+            echo "FMT_STATUS=✅ Well formatted" >> $GITHUB_ENV
+          fi
+          
+      - name: Run Go vet
+        id: vet-check
+        run: |
+          if go vet ./...; then
+            echo "VET_STATUS=✅ No issues" >> $GITHUB_ENV
+          else
+            echo "VET_STATUS=❌ Vet issues" >> $GITHUB_ENV
+            exit 1
+          fi
+        
+      - name: Run Buf lint
+        id: buf-check
+        run: |
+          if buf lint proto/; then
+            echo "BUF_STATUS=✅ Proto lint passed" >> $GITHUB_ENV
+          else
+            echo "BUF_STATUS=⚠️ Proto lint warnings" >> $GITHUB_ENV
+            echo "::warning::Buf lint found issues - consider fixing package versioning"
+            # Don't fail for now, just warn
+          fi
+          
+      - name: Lint summary
+        id: lint-summary
+        if: always()
+        run: |
+          echo "📝 Lint Summary:"
+          echo "- Go Format: ${FMT_STATUS:-❌ Failed}"
+          echo "- Go Vet: ${VET_STATUS:-❌ Failed}"  
+          echo "- Buf Lint: ${BUF_STATUS:-❌ Failed}"
+          
+          if [[ "${FMT_STATUS}" == *"✅"* && "${VET_STATUS}" == *"✅"* ]]; then
+            if [[ "${BUF_STATUS}" == *"✅"* ]]; then
+              echo "status=✅ All checks passed" >> $GITHUB_OUTPUT
+            else
+              echo "status=⚠️ Passed with warnings" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "status=❌ Some checks failed" >> $GITHUB_OUTPUT
+          fi
+
+  test:
+    name: Test (Go ${{ matrix.go-version }} - ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        go-version: ['1.24']
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ matrix.go-version }}
+          cache: true
+          cache-dependency-path: |
+            go.sum
+            go.mod
+          
+      - name: Setup Protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: ${{ env.PROTOC_VERSION }}
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Setup Buf
+        uses: bufbuild/buf-setup-action@v1
+        with:
+          version: ${{ env.BUF_VERSION }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Install dependencies
+        run: |
+          go mod download
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          
+      - name: Build plugins
+        run: make build
+        
+      - name: Run tests
+        run: ./scripts/run_tests.sh --verbose
+        shell: bash
+        
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: test-results-${{ matrix.os }}-go${{ matrix.go-version }}
+          path: |
+            coverage/coverage.out
+            coverage/coverage.html
+            coverage/coverage.json
+            coverage/coverage-badge.svg
+            
+  coverage:
+    name: Coverage Analysis
+    runs-on: ubuntu-latest
+    needs: test
+    if: always()
+    continue-on-error: true  # Make coverage a warning, not a failure
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+          
+      - name: Download coverage from test job
+        uses: actions/download-artifact@v7
+        with:
+          name: test-results-ubuntu-latest-go1.24
+          path: ./coverage-download
+          
+      - name: Verify and locate coverage file
+        run: |
+          echo "📁 Checking for coverage files in downloaded artifacts..."
+          echo "Available files in coverage-download:"
+          find ./coverage-download -type f | head -20
+          
+          # Create coverage directory for final location
+          mkdir -p coverage
+          
+          # Check for coverage file in multiple possible locations within the download
+          if [ -f "coverage-download/coverage/coverage.out" ]; then
+            echo "✅ Coverage file found: coverage-download/coverage/coverage.out"
+            cp coverage-download/coverage/coverage.out coverage/coverage.out
+            echo "COVERAGE_FILE=coverage/coverage.out" >> $GITHUB_ENV
+          elif [ -f "coverage-download/coverage.out" ]; then
+            echo "✅ Coverage file found: coverage-download/coverage.out (root level)"
+            cp coverage-download/coverage.out coverage/coverage.out
+            echo "COVERAGE_FILE=coverage/coverage.out" >> $GITHUB_ENV
+          else
+            echo "❌ No coverage file found in expected locations!"
+            echo "Available files structure:"
+            ls -la coverage-download/ || true
+            find coverage-download -name "*.out" 2>/dev/null || true
+            exit 1
+          fi
+          
+          echo "📋 Coverage file ready at: coverage/coverage.out"
+          ls -la coverage/
+          
+      - name: Setup Go for coverage tools
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          
+      - name: Generate coverage badge and reports
+        run: |
+          coverage_file="${COVERAGE_FILE:-coverage/coverage.out}"
+          if [ -f "$coverage_file" ]; then
+            echo "📊 Generating coverage reports from: $coverage_file"
+            
+            # Get total coverage percentage
+            total_coverage=$(go tool cover -func="$coverage_file" | grep "total:" | awk '{print $3}')
+            echo "Total coverage: $total_coverage"
+            
+            # Create a simple coverage badge
+            coverage_num=$(echo "$total_coverage" | sed 's/%//')
+            color="red"
+            if (( $(echo "$coverage_num >= 80" | bc -l) )); then
+              color="green"
+            elif (( $(echo "$coverage_num >= 60" | bc -l) )); then
+              color="yellow"
+            fi
+            
+            # Generate badge URL
+            badge_url="https://img.shields.io/badge/coverage-${total_coverage}-${color}"
+            echo "Coverage badge URL: $badge_url"
+            
+            # Save badge info for later use
+            echo "COVERAGE_PERCENTAGE=$total_coverage" >> $GITHUB_ENV
+            echo "COVERAGE_BADGE_URL=$badge_url" >> $GITHUB_ENV
+          else
+            echo "❌ No coverage file found for badge generation"
+            exit 1
+          fi
+          
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          file: ./coverage/coverage.out
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+          
+      - name: Comment PR with coverage
+        if: github.event_name == 'pull_request'
+        uses: fgrosse/go-coverage-report@v1.2.0
+        continue-on-error: true  # Don't fail on coverage reporting issues
+        with:
+          coverage-artifact-name: test-results-ubuntu-latest-go1.24
+          coverage-file-name: coverage/coverage.out
+          
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v6
+        with:
+          name: coverage-reports
+          path: |
+            coverage/
+            .testcoverage.yml
+
+  coverage-check:
+    name: Coverage Status Check
+    runs-on: ubuntu-latest
+    needs: coverage
+    if: always()
+    continue-on-error: true  # Don't fail the whole pipeline on coverage issues
+    steps:
+      - name: Download coverage reports
+        uses: actions/download-artifact@v7
+        with:
+          name: coverage-reports
+          path: ./
+        continue-on-error: true  # Handle missing artifacts gracefully
+          
+      - name: Setup Go for coverage analysis
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          
+      - name: Check coverage threshold
+        run: |
+          coverage_file="coverage/coverage.out"
+          if [ -f "$coverage_file" ]; then
+            # Extract total coverage percentage using go tool cover
+            total_coverage=$(go tool cover -func="$coverage_file" | grep "total:" | awk '{print $3}')
+            coverage_num=$(echo "$total_coverage" | sed 's/%//')
+            
+            echo "📊 Coverage: ${total_coverage}"
+            
+            # Set threshold (85%)
+            threshold=85
+            if [ "${coverage_num%.*}" -ge "$threshold" ]; then
+              echo "✅ Coverage meets threshold (${threshold}%)"
+              echo "COVERAGE_STATUS=✅ ${total_coverage}" >> $GITHUB_ENV
+            else
+              echo "⚠️ Coverage below threshold (${threshold}%) - This is currently a warning"
+              echo "COVERAGE_STATUS=⚠️ ${total_coverage}" >> $GITHUB_ENV
+              # Don't fail, just warn
+            fi
+          else
+            echo "⚠️ No coverage file found"
+            echo "COVERAGE_STATUS=⚠️ No coverage" >> $GITHUB_ENV
+            # Don't fail, just warn
+          fi
+          
+      - name: Update commit status
+        if: github.event_name == 'pull_request'
+        continue-on-error: true  # Don't fail on status update issues
+        uses: actions/github-script@v8
+        with:
+          script: |
+            try {
+              await github.rest.repos.createCommitStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                sha: context.payload.pull_request.head.sha,
+                state: 'success',
+                target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+                description: process.env.COVERAGE_STATUS,
+                context: 'Coverage Report'
+              });
+            } catch (error) {
+              console.log('Failed to update commit status:', error.message);
+              // Don't fail the job
+            }
+          
+  build:
+    name: Build Binaries
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+          cache-dependency-path: |
+            go.sum
+            go.mod
+          
+      - name: Build all plugins
+        run: |
+          make build
+          
+      - name: Test plugin execution
+        run: |
+          ./bin/protoc-gen-go-http --version || true
+          ./bin/protoc-gen-openapiv3 --version || true
+          
+      - name: Upload binaries
+        uses: actions/upload-artifact@v6
+        with:
+          name: plugin-binaries
+          path: bin/
+          
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        
+      - name: Clean Go module cache to prevent conflicts
+        run: |
+          rm -rf ~/.cache/go-build || true
+          rm -rf ~/go/pkg || true
+        
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+          cache-dependency-path: |
+            go.sum
+            go.mod
+          
+      - name: Setup Protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: ${{ env.PROTOC_VERSION }}
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Setup Buf
+        uses: bufbuild/buf-setup-action@v1
+        with:
+          version: ${{ env.BUF_VERSION }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Install protoc-gen-go dependency
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          
+      - name: Download binaries
+        uses: actions/download-artifact@v7
+        with:
+          name: plugin-binaries
+          path: bin/
+          
+      - name: Make binaries executable
+        run: chmod +x bin/*
+        
+      - name: Run integration test with sample proto files
+        run: |
+          # Ensure Go bin directory is in PATH for protoc-gen-go
+          export PATH=$(go env GOPATH)/bin:$PATH
+          
+          # Test all plugins with sample proto files
+          export PATH=$PWD/bin:$PATH
+          
+          # Verify protoc-gen-go is available
+          if ! which protoc-gen-go; then
+            echo "protoc-gen-go not found in PATH"
+            exit 1
+          fi
+          
+          # Create test directory
+          mkdir -p integration-test-output
+          
+          echo "🔍 Testing plugins with simple_service.proto (has services)..."
+          # Test all plugins with simple_service.proto (has services)
+          protoc \
+            --plugin=protoc-gen-go-http=bin/protoc-gen-go-http \
+            --plugin=protoc-gen-openapiv3=bin/protoc-gen-openapiv3 \
+            --go_out=integration-test-output \
+            --go_opt=module=github.com/SebastienMelki/sebuf \
+            --go-http_out=integration-test-output \
+            --go-http_opt=module=github.com/SebastienMelki/sebuf \
+            --openapiv3_out=integration-test-output \
+            --proto_path=internal/openapiv3/testdata/proto \
+            internal/openapiv3/testdata/proto/simple_service.proto
+          
+          # Debug: List all generated files
+          echo "📁 Generated files:"
+          find integration-test-output -type f -name "*.go" -o -name "*.yaml" | sort
+          
+          # Verify HTTP handler output for service proto
+          echo "✅ Checking HTTP handler outputs..."
+          if [ -f "integration-test-output/internal/openapiv3/testdata/simple/simple_service_http.pb.go" ]; then
+            echo "✅ simple_service_http.pb.go found"
+          else
+            echo "❌ simple_service_http.pb.go missing"
+            exit 1
+          fi
+          
+          # Verify OpenAPI output for service proto (this should exist!)
+          echo "✅ Checking OpenAPI outputs..."
+          openapi_files=$(find integration-test-output -name "*.openapi.yaml" | wc -l)
+          if [ "$openapi_files" -gt 0 ]; then
+            echo "✅ Found $openapi_files OpenAPI service file(s)"
+            find integration-test-output -name "*.openapi.yaml"
+          else
+            echo "❌ No OpenAPI files found - this should not happen with simple_service.proto"
+            echo "Available YAML files:"
+            find integration-test-output -name "*.yaml" -o -name "*.yml" || echo "No YAML files found"
+            exit 1
+          fi
+          
+      - name: Compile generated code
+        run: |
+          cd integration-test-output
+          go mod init test-module
+          go mod tidy
+          go build ./...
+
+  status-check:
+    name: PR Status Summary
+    runs-on: ubuntu-latest
+    needs: [lint, test, coverage-check, build, integration]
+    if: always() && github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write
+      checks: write
+    steps:
+      - name: Generate PR status summary
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const { data: checkRuns } = await github.rest.checks.listForRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.payload.pull_request.head.sha
+            });
+            
+            const jobs = {
+              lint: '${{ needs.lint.result }}',
+              test: '${{ needs.test.result }}', 
+              coverage: '${{ needs.coverage-check.result }}',
+              build: '${{ needs.build.result }}',
+              integration: '${{ needs.integration.result }}'
+            };
+            
+            let summary = '## 🔍 CI Pipeline Status\n\n';
+            
+            for (const [job, status] of Object.entries(jobs)) {
+              const emoji = status === 'success' ? '✅' : status === 'failure' ? '❌' : '⚠️';
+              const jobName = job.charAt(0).toUpperCase() + job.slice(1);
+              summary += `${emoji} **${jobName}**: ${status}\n`;
+            }
+            
+            summary += '\n---\n';
+            summary += '📊 **Coverage Report**: Available in checks above\n';
+            summary += '🔗 **Artifacts**: Test results and coverage reports uploaded\n';
+            
+            // Post comment on PR
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number
+            });
+            
+            const botComment = comments.find(comment => 
+              comment.user.login === 'github-actions[bot]' && 
+              comment.body.includes('CI Pipeline Status')
+            );
+            
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: summary
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                body: summary
+              });
+            }

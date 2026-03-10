@@ -13,11 +13,22 @@ import {
 } from '@/generated/client/worldmonitor/conflict/v1/service_client';
 import type { UcdpGeoEvent, UcdpEventType } from '@/types';
 import { createCircuitBreaker } from '@/utils';
+import { getRuntimeConfigSnapshot } from '@/services/runtime-config';
+import { getApiBaseUrl } from '@/services/runtime';
 import { getHydratedData } from '@/services/bootstrap';
 
 // ---- Client + Circuit Breakers (per-RPC; HAPI uses per-country map) ----
 
-const client = new ConflictServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+function getConflictClient() {
+  const { secrets } = getRuntimeConfigSnapshot();
+  const acledToken = secrets.ACLED_ACCESS_TOKEN?.value;
+
+  return new ConflictServiceClient(getApiBaseUrl(), {
+    fetch: globalThis.fetch,
+    defaultHeaders: acledToken ? { 'x-acled-token': acledToken } : {},
+  });
+}
+
 const acledBreaker = createCircuitBreaker<ListAcledEventsResponse>({ name: 'ACLED Conflicts', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
 const ucdpBreaker = createCircuitBreaker<ListUcdpEventsResponse>({ name: 'UCDP Events', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
 const hapiBreakers = new Map<string, ReturnType<typeof createCircuitBreaker<GetHumanitarianSummaryResponse>>>();
@@ -253,7 +264,7 @@ const hapiBatchBreaker = createCircuitBreaker<GetHumanitarianSummaryBatchRespons
 
 export async function fetchConflictEvents(): Promise<ConflictData> {
   const resp = await acledBreaker.execute(async () => {
-    return client.listAcledEvents({ country: '', start: 0, end: 0, pageSize: 0, cursor: '' });
+    return getConflictClient().listAcledEvents({ country: '', start: 0, end: 0, pageSize: 0, cursor: '' });
   }, emptyAcledFallback);
 
   const events = resp.events.map(toConflictEvent);
@@ -280,7 +291,7 @@ export async function fetchUcdpClassifications(hydrated?: ListUcdpEventsResponse
   if (hydrated?.events?.length) return deriveUcdpClassifications(hydrated.events);
 
   const resp = await ucdpBreaker.execute(async () => {
-    return client.listUcdpEvents({ country: '', start: 0, end: 0, pageSize: 0, cursor: '' });
+    return getConflictClient().listUcdpEvents({ country: '', start: 0, end: 0, pageSize: 0, cursor: '' });
   }, emptyUcdpFallback);
 
   // Don't let the breaker cache empty responses — clear so next call retries
@@ -294,7 +305,7 @@ export async function fetchHapiSummary(): Promise<Map<string, HapiConflictSummar
 
   const resp = await hapiBatchBreaker.execute(async () => {
     try {
-      return await client.getHumanitarianSummaryBatch(
+      return await getConflictClient().getHumanitarianSummaryBatch(
         { countryCodes: [...HAPI_COUNTRY_CODES] },
         { signal: AbortSignal.timeout(60_000) },
       );
@@ -304,7 +315,7 @@ export async function fetchHapiSummary(): Promise<Map<string, HapiConflictSummar
         const results = await Promise.allSettled(
           HAPI_COUNTRY_CODES.map(async (iso2) => {
             const r = await getHapiBreaker(iso2).execute(async () => {
-              return client.getHumanitarianSummary({ countryCode: iso2 });
+              return getConflictClient().getHumanitarianSummary({ countryCode: iso2 });
             }, emptyHapiFallback);
             return { iso2, r };
           }),
@@ -328,21 +339,21 @@ export async function fetchHapiSummary(): Promise<Map<string, HapiConflictSummar
   return byCode;
 }
 
-interface UcdpEventsResponse {
+interface LegacyUcdpEventsResponse {
   success: boolean;
   count: number;
   data: UcdpGeoEvent[];
   cached_at: string;
 }
 
-export async function fetchUcdpEvents(hydrated?: ListUcdpEventsResponse): Promise<UcdpEventsResponse> {
+export async function fetchUcdpEvents(hydrated?: ListUcdpEventsResponse): Promise<LegacyUcdpEventsResponse> {
   if (hydrated?.events?.length) {
     const events = hydrated.events.map(toUcdpGeoEvent);
     return { success: true, count: events.length, data: events, cached_at: '' };
   }
 
   const resp = await ucdpBreaker.execute(async () => {
-    return client.listUcdpEvents({ country: '', start: 0, end: 0, pageSize: 0, cursor: '' });
+    return getConflictClient().listUcdpEvents({ country: '', start: 0, end: 0, pageSize: 0, cursor: '' });
   }, emptyUcdpFallback);
 
   // Don't let the breaker cache empty responses — clear so next call retries

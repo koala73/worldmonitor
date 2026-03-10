@@ -1,0 +1,77 @@
+# Binaries for programs and plugins
+.env.act
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Test plugin binaries (should be cleaned up automatically)
+protoc-gen-*-test
+protoc-gen-*-golden*
+protoc-gen-*-regression*
+protoc-gen-*-integration*
+
+# Stray plugin binaries in repo root (should only be in bin/)
+/protoc-gen-go-http
+/protoc-gen-go-client
+/protoc-gen-ts-client
+/protoc-gen-openapiv3
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# Dependency directories (remove the comment below to include it)
+# vendor/
+
+# Go workspace file
+go.work
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Log files
+*.log
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Build artifacts
+/dist/
+/build/
+/bin/hexago
+
+# Coverage reports and profiles
+*.coverprofile
+coverage/
+
+# Generated protobuf files
+internal/generated/proto/
+
+# Generated sqlc files
+internal/modules/*/internal/infrastructure/persistence/sqlc/
+
+# Temporary test files
+*.generated

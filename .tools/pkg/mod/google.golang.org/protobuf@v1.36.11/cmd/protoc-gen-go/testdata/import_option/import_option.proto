@@ -1,0 +1,18 @@
+// Copyright 2025 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+edition = "2024";
+
+package testimportoption;
+
+import "google/protobuf/descriptor.proto";
+import option "cmd/protoc-gen-go/testdata/import_option_custom/import_option_custom.proto";
+import option "cmd/protoc-gen-go/testdata/import_option_unlinked/import_option_unlinked.proto";
+
+option go_package = "google.golang.org/protobuf/cmd/protoc-gen-go/testdata/import_option";
+
+message TestMessage {
+  string hello = 1 [(testimportoption_custom.field_option) = { plain_field: 23 }];
+  string world = 2 [(testimportoption_unlinked.field_option) = { plain_field: 23 }];
+}

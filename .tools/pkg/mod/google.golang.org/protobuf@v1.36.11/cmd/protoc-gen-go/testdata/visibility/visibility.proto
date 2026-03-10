@@ -1,0 +1,85 @@
+// Copyright 2020 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+edition = "2024";
+
+package goproto.protoc.visibility;
+
+option features.default_symbol_visibility = LOCAL_ALL;
+option go_package = "google.golang.org/protobuf/cmd/protoc-gen-go/testdata/visibility";
+
+message DefaultMessage {
+  message NestedDefaultMessage {
+    uint64 id = 1;
+  }
+  enum NestedDefaultEnum {
+    DEFAULT_ZERO = 0;
+  }
+  export message NestedExportMessage {
+    string name = 1;
+  }
+  export enum NestedExportEnum {
+    EXPORT_ZERO = 0;
+  }
+  local message NestedLocalMessage {
+    bytes uuid = 1;
+  }
+  local enum NestedLocalEnum {
+    LOCAL_ZERO = 0;
+  }
+}
+
+export message ExportMessage {
+  message NestedDefaultMessage {
+    uint64 id = 1;
+  }
+  enum NestedDefaultEnum {
+    DEFAULT_ZERO = 0;
+  }
+  export message NestedExportMessage {
+    string name = 1;
+  }
+  export enum NestedExportEnum {
+    EXPORT_ZERO = 0;
+  }
+  local message NestedLocalMessage {
+    bytes uuid = 1;
+  }
+  local enum NestedLocalEnum {
+    LOCAL_ZERO = 0;
+  }
+}
+
+local message LocalMessage {
+  message NestedDefaultMessage {
+    uint64 id = 1;
+  }
+  enum NestedDefaultEnum {
+    DEFAULT_ZERO = 0;
+  }
+  export message NestedExportMessage {
+    string name = 1;
+  }
+  export enum NestedExportEnum {
+    EXPORT_ZERO = 0;
+  }
+  local message NestedLocalMessage {
+    bytes uuid = 1;
+  }
+  local enum NestedLocalEnum {
+    LOCAL_ZERO = 0;
+  }
+}
+
+enum DefaultEnum {
+  DEFAULT_ZERO = 0;
+}
+
+export enum ExportEnum {
+  EXPORT_ZERO = 0;
+}
+
+local enum LocalEnum {
+  LOCAL_ZERO = 0;
+}

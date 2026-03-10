@@ -1,0 +1,22 @@
+// Copyright 2024 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+edition = "2023";
+
+package goproto.protoc.protoeditions;
+
+option go_package = "google.golang.org/protobuf/cmd/protoc-gen-go/testdata/protoeditions";
+option features.message_encoding = DELIMITED;
+
+message MessageWithMaps {
+  map<string, string> map_without_message = 1;
+  map<uint32, bytes> map_without_message_b = 2;
+  map<int64, NestedMessage> map_with_message = 3;
+  message NestedMessage {
+    uint64 id = 1;
+    string name = 2;
+  }
+  NestedMessage nested_message = 4;
+  repeated NestedMessage repeated_message = 5;
+}

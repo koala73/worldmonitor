@@ -1,0 +1,10 @@
+version: v2
+plugins:
+  - local: protoc-gen-go
+    out: ..
+    opt:
+      - module=github.com/SebastienMelki/sebuf
+  - local: ../protoc-gen-go-http
+    out: ..
+    opt:
+      - module=github.com/SebastienMelki/sebuf

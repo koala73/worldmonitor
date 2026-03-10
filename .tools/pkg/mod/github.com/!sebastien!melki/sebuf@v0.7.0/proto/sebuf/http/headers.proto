@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package sebuf.http;
+
+import "google/protobuf/descriptor.proto";
+
+option go_package = "github.com/SebastienMelki/sebuf/http;http";
+
+// Header definition for OpenAPI specification
+message Header {
+  // Name of the header parameter
+  string name = 1;
+  
+  // Description of the header parameter
+  string description = 2;
+  
+  // Type of the header parameter (string, integer, number, boolean, array)
+  string type = 3;
+  
+  // Whether the header is required
+  bool required = 4;
+  
+  // Schema format (e.g. "uuid", "email", "date-time")
+  string format = 5;
+  
+  // Example value for the header
+  string example = 6;
+  
+  // Whether the header is deprecated
+  bool deprecated = 7;
+}
+
+// Service-level headers configuration
+message ServiceHeaders {
+  // List of required headers for all RPCs in the service
+  repeated Header required_headers = 1;
+}
+
+// Method-level headers configuration
+message MethodHeaders {
+  // List of required headers for this specific RPC
+  repeated Header required_headers = 1;
+}
+
+// Extension for service-level headers
+extend google.protobuf.ServiceOptions {
+  ServiceHeaders service_headers = 50005;
+}
+
+// Extension for method-level headers
+extend google.protobuf.MethodOptions {
+  MethodHeaders method_headers = 50006;
+}

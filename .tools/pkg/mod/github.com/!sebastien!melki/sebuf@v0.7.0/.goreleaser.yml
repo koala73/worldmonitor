@@ -1,0 +1,343 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+    - go mod download
+    - go fmt ./...
+    - go vet ./...
+    - ./scripts/run_tests.sh --fast
+
+builds:
+  - id: protoc-gen-go-http
+    binary: protoc-gen-go-http
+    main: ./cmd/protoc-gen-go-http
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+      - arm
+    goarm:
+      - "7"
+    ignore:
+      - goos: windows
+        goarch: arm64
+      - goos: windows
+        goarch: arm
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+      - -X main.builtBy=goreleaser
+    mod_timestamp: '{{ .CommitTimestamp }}'
+
+  - id: protoc-gen-openapiv3
+    binary: protoc-gen-openapiv3
+    main: ./cmd/protoc-gen-openapiv3
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+      - arm
+    goarm:
+      - "7"
+    ignore:
+      - goos: windows
+        goarch: arm64
+      - goos: windows
+        goarch: arm
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+      - -X main.builtBy=goreleaser
+    mod_timestamp: '{{ .CommitTimestamp }}'
+
+archives:
+  - id: protoc-gen-go-http
+    builds:
+      - protoc-gen-go-http
+    name_template: >-
+      protoc-gen-go-http_
+      {{- .Version }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - LICENSE*
+      - README.md
+      - docs/http-generation.md
+
+  - id: protoc-gen-openapiv3
+    builds:
+      - protoc-gen-openapiv3
+    name_template: >-
+      protoc-gen-openapiv3_
+      {{- .Version }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - LICENSE*
+      - README.md
+      - docs/openapi-generation.md
+
+checksum:
+  name_template: 'checksums.txt'
+  algorithm: sha256
+
+snapshot:
+  name_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  use: github
+  groups:
+    - title: '🚀 Features'
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: '🐛 Bug Fixes'
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: '⚡ Performance'
+      regexp: '^.*?perf(\([[:word:]]+\))??!?:.+$'
+      order: 2
+    - title: '♻️ Refactoring'
+      regexp: '^.*?refactor(\([[:word:]]+\))??!?:.+$'
+      order: 3
+    - title: '📚 Documentation'
+      regexp: '^.*?docs(\([[:word:]]+\))??!?:.+$'
+      order: 4
+    - title: '🧪 Testing'
+      regexp: '^.*?test(\([[:word:]]+\))??!?:.+$'
+      order: 5
+    - title: '🔧 Configuration'
+      regexp: '^.*?chore(\([[:word:]]+\))??!?:.+$'
+      order: 6
+    - title: '🛠️ Build System'
+      regexp: '^.*?build(\([[:word:]]+\))??!?:.+$'
+      order: 7
+    - title: '🔄 CI/CD'
+      regexp: '^.*?ci(\([[:word:]]+\))??!?:.+$'
+      order: 8
+    - title: 'Other Changes'
+      order: 999
+  filters:
+    exclude:
+      - '^style:'
+      - '^Merge pull request'
+      - '^Merge branch'
+      - 'typo'
+      - 'minor'
+      - 'cosmetic'
+
+release:
+  github:
+    owner: SebastienMelki
+    name: sebuf
+  
+  name_template: "{{.ProjectName}} v{{.Version}}"
+  
+  header: |
+    ## sebuf {{.Version}} ({{.Date}})
+    
+    Welcome to the {{.Version}} release of sebuf! 🎉
+    
+    This release includes specialized server/client protoc plugins:
+    - `protoc-gen-go-http`: HTTP handler and routing generator
+    - `protoc-gen-openapiv3`: OpenAPI v3.1 specification generator
+    
+  footer: |
+    ## Installation
+    
+    ### Using Go Install
+    ```bash
+    go install github.com/SebastienMelki/sebuf/cmd/protoc-gen-go-http@v{{.Version}}
+    go install github.com/SebastienMelki/sebuf/cmd/protoc-gen-openapiv3@v{{.Version}}
+    ```
+    
+    ### Using Homebrew (macOS/Linux)
+    ```bash
+    brew tap SebastienMelki/sebuf
+    brew install sebuf
+    ```
+    
+    ### Using Docker
+    ```bash
+    docker pull ghcr.io/sebastienmelki/protoc-gen-go-http:{{.Version}}
+    docker pull ghcr.io/sebastienmelki/protoc-gen-openapiv3:{{.Version}}
+    ```
+    
+    ### Download Binaries
+    Download pre-built binaries for your platform from the assets below.
+    
+    ## Verifying Checksums
+    ```bash
+    # Download checksums file
+    curl -L https://github.com/SebastienMelki/sebuf/releases/download/v{{.Version}}/checksums.txt -o checksums.txt
+    
+    # Verify (macOS)
+    shasum -a 256 -c checksums.txt
+    
+    # Verify (Linux)
+    sha256sum -c checksums.txt
+    ```
+    
+    ## Documentation
+    - [Getting Started Guide](https://github.com/SebastienMelki/sebuf#quickstart)
+    - [API Documentation](https://pkg.go.dev/github.com/SebastienMelki/sebuf)
+    - [Examples](https://github.com/SebastienMelki/sebuf/tree/v{{.Version}}/examples)
+    
+    ---
+    
+    **Full Changelog**: https://github.com/SebastienMelki/sebuf/compare/{{.PreviousTag}}...v{{.Version}}
+    
+  prerelease: auto
+  draft: false
+  replace_existing_draft: true
+  target_commitish: '{{ .Commit }}'
+  discussion_category_name: Releases
+  
+  extra_files:
+    - glob: ./dist/*.json
+    - glob: ./dist/*.yaml
+
+announce:
+  skip: false
+  
+brews:
+  - name: sebuf
+    repository:
+      owner: SebastienMelki
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    
+    commit_author:
+      name: goreleaserbot
+      email: goreleaserbot@users.noreply.github.com
+    
+    homepage: "https://github.com/SebastienMelki/sebuf"
+    description: "Comprehensive Go protobuf toolkit for building HTTP APIs"
+    license: "MIT"
+    
+    dependencies:
+      - name: protobuf
+        type: optional
+      - name: buf
+        type: optional
+    
+    test: |
+      system "#{bin}/protoc-gen-go-http", "--version"
+      system "#{bin}/protoc-gen-openapiv3", "--version"
+    
+    install: |
+      bin.install "protoc-gen-go-http"
+      bin.install "protoc-gen-openapiv3"
+
+nfpms:
+  - id: packages
+    package_name: sebuf
+    vendor: Sebastien Melki
+    homepage: https://github.com/SebastienMelki/sebuf
+    maintainer: Sebastien Melki <sebastien@melki.dev>
+    description: Comprehensive Go protobuf toolkit for building HTTP APIs
+    license: MIT
+    formats:
+      - deb
+      - rpm
+      - apk
+    bindir: /usr/bin
+    section: utils
+    priority: optional
+    meta: true
+    contents:
+      - src: ./LICENSE
+        dst: /usr/share/licenses/sebuf/LICENSE
+      - src: ./README.md
+        dst: /usr/share/doc/sebuf/README.md
+
+dockers:
+  - id: protoc-gen-go-http
+    ids:
+      - protoc-gen-go-http
+    image_templates:
+      - "ghcr.io/sebastienmelki/protoc-gen-go-http:{{ .Version }}-amd64"
+      - "ghcr.io/sebastienmelki/protoc-gen-go-http:latest-amd64"
+    dockerfile: docker/Dockerfile.http
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title=protoc-gen-go-http"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+      - "--label=org.opencontainers.image.source={{.GitURL}}"
+    
+  - id: protoc-gen-openapiv3
+    ids:
+      - protoc-gen-openapiv3
+    image_templates:
+      - "ghcr.io/sebastienmelki/protoc-gen-openapiv3:{{ .Version }}-amd64"
+      - "ghcr.io/sebastienmelki/protoc-gen-openapiv3:latest-amd64"
+    dockerfile: docker/Dockerfile.openapi
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title=protoc-gen-openapiv3"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+      - "--label=org.opencontainers.image.source={{.GitURL}}"
+
+docker_manifests:
+  - name_template: "ghcr.io/sebastienmelki/protoc-gen-go-http:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/sebastienmelki/protoc-gen-go-http:{{ .Version }}-amd64"
+  
+  - name_template: "ghcr.io/sebastienmelki/protoc-gen-go-http:latest"
+    image_templates:
+      - "ghcr.io/sebastienmelki/protoc-gen-go-http:latest-amd64"
+  
+  - name_template: "ghcr.io/sebastienmelki/protoc-gen-openapiv3:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/sebastienmelki/protoc-gen-openapiv3:{{ .Version }}-amd64"
+  
+  - name_template: "ghcr.io/sebastienmelki/protoc-gen-openapiv3:latest"
+    image_templates:
+      - "ghcr.io/sebastienmelki/protoc-gen-openapiv3:latest-amd64"
+
+signs:
+  - artifacts: checksum
+    args:
+      - "--batch"
+      - "--local-user"
+      - "{{ .Env.GPG_FINGERPRINT }}"
+      - "--output"
+      - "${signature}"
+      - "--detach-sign"
+      - "${artifact}"
+    cmd: gpg
+    output: true

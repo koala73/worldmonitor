@@ -46,19 +46,25 @@ export default async function handler(req) {
     }, 15000);
 
     const body = await response.text();
-
-    let cacheControl = 'public, max-age=30, s-maxage=120, stale-while-revalidate=60, stale-if-error=120';
+    let data;
     try {
-      const parsed = JSON.parse(body);
-      if (!parsed || parsed.count === 0 || !parsed.items || parsed.items.length === 0) {
-        cacheControl = 'public, max-age=0, s-maxage=15, stale-while-revalidate=10';
+      data = JSON.parse(body);
+      // Ensure the frontend knows it's enabled if we got a valid response from the relay
+      if (typeof data === 'object' && data !== null) {
+        data.enabled = true;
       }
-    } catch {}
+    } catch {
+      data = { error: 'Invalid relay response', enabled: false };
+    }
 
-    return new Response(body, {
+    const cacheControl = data.count > 0
+      ? 'public, max-age=30, s-maxage=120, stale-while-revalidate=60, stale-if-error=120'
+      : 'public, max-age=0, s-maxage=15, stale-while-revalidate=10';
+
+    return new Response(JSON.stringify(data), {
       status: response.status,
       headers: {
-        'Content-Type': response.headers.get('content-type') || 'application/json',
+        'Content-Type': 'application/json',
         'Cache-Control': cacheControl,
         ...corsHeaders,
       },

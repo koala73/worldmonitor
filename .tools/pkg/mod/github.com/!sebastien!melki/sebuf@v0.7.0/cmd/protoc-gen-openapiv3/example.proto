@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package example.v1;
+
+option go_package = "example/v1;examplev1";
+
+// User represents a system user
+message User {
+  string id = 1;
+  string email = 2;
+  string name = 3;
+  int32 age = 4;
+  repeated string tags = 5;
+  map<string, string> metadata = 6;
+  UserStatus status = 7;
+}
+
+// UserStatus represents the user's current status
+enum UserStatus {
+  USER_STATUS_UNSPECIFIED = 0;
+  USER_STATUS_ACTIVE = 1;
+  USER_STATUS_INACTIVE = 2;
+  USER_STATUS_SUSPENDED = 3;
+}
+
+// CreateUserRequest for creating a new user
+message CreateUserRequest {
+  User user = 1;
+}
+
+// CreateUserResponse returns the created user
+message CreateUserResponse {
+  User user = 1;
+}
+
+// GetUserRequest for fetching a user
+message GetUserRequest {
+  string id = 1;
+}
+
+// GetUserResponse returns the requested user
+message GetUserResponse {
+  User user = 1;
+}
+
+// UserService manages users
+service UserService {
+  // CreateUser creates a new user in the system
+  rpc CreateUser(CreateUserRequest) returns (CreateUserResponse);
+
+  // GetUser retrieves an existing user
+  rpc GetUser(GetUserRequest) returns (GetUserResponse);
+}

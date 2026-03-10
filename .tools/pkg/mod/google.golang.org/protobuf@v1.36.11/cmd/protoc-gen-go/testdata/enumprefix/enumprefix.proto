@@ -1,0 +1,39 @@
+// Copyright 2024 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+edition = "2024";
+
+package goproto.protoc.enumprefix;
+
+import "google/protobuf/go_features.proto";
+
+option go_package = "google.golang.org/protobuf/cmd/protoc-gen-go/testdata/enumprefix";
+option features.(pb.go).strip_enum_prefix = STRIP_ENUM_PREFIX_STRIP;
+
+enum Strip {
+  STRIP_ZERO = 0;
+  STRIP_ONE = 1;
+}
+
+enum Both {
+  option features.(pb.go).strip_enum_prefix = STRIP_ENUM_PREFIX_GENERATE_BOTH;
+
+  BOTH_ZERO = 0;
+  BOTH_ONE = 1;
+}
+
+enum BothNoPrefix {
+  option features.(pb.go).strip_enum_prefix = STRIP_ENUM_PREFIX_GENERATE_BOTH;
+
+  ZERO = 0;
+  ONE = 1;
+}
+
+enum BothButOne {
+  option features.(pb.go).strip_enum_prefix = STRIP_ENUM_PREFIX_GENERATE_BOTH;
+
+  BOTH_BUT_ONE_ZERO = 0;
+  BOTH_BUT_ONE_ONE = 1
+      [features.(pb.go).strip_enum_prefix = STRIP_ENUM_PREFIX_KEEP];
+}

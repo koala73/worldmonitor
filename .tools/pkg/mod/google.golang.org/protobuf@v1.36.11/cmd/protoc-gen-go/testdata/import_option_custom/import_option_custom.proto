@@ -1,0 +1,19 @@
+// Copyright 2025 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+edition = "2024";
+
+package testimportoption_custom;
+
+import "google/protobuf/descriptor.proto";
+
+option go_package = "google.golang.org/protobuf/cmd/protoc-gen-go/testdata/import_option_custom";
+
+extend google.protobuf.FieldOptions {
+  OptionsMessage field_option = 504589221;
+}
+
+message OptionsMessage {
+  int32 plain_field = 1;
+}

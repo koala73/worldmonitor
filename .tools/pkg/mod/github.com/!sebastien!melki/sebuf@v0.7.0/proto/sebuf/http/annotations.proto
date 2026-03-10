@@ -1,0 +1,212 @@
+syntax = "proto3";
+
+package sebuf.http;
+
+import "google/protobuf/descriptor.proto";
+
+option go_package = "github.com/SebastienMelki/sebuf/http;http";
+
+// HttpMethod specifies the HTTP verb for an RPC method
+enum HttpMethod {
+  // Unspecified defaults to POST for backward compatibility
+  HTTP_METHOD_UNSPECIFIED = 0;
+  HTTP_METHOD_GET = 1;
+  HTTP_METHOD_POST = 2;
+  HTTP_METHOD_PUT = 3;
+  HTTP_METHOD_DELETE = 4;
+  HTTP_METHOD_PATCH = 5;
+}
+
+// HttpConfig defines HTTP-specific configuration for an RPC method
+message HttpConfig {
+  // The HTTP path for this method (supports path variables like /users/{id})
+  string path = 1;
+
+  // The HTTP method (GET, POST, PUT, DELETE, PATCH). Defaults to POST if unspecified.
+  HttpMethod method = 2;
+}
+
+// Extension for method options
+extend google.protobuf.MethodOptions {
+  HttpConfig config = 50003;
+}
+
+// ServiceConfig defines HTTP-specific configuration for an entire service
+message ServiceConfig {
+  // Base path prefix for all methods in this service
+  string base_path = 1;
+}
+
+// Extension for service options
+extend google.protobuf.ServiceOptions {
+  ServiceConfig service_config = 50004;
+}
+
+// FieldExamples defines example values for a field
+message FieldExamples {
+  // List of example values for this field
+  repeated string values = 1;
+}
+
+// QueryConfig defines query parameter configuration for a message field
+message QueryConfig {
+  // The query parameter name in the URL (e.g., "page_size" for ?page_size=10)
+  string name = 1;
+
+  // Whether this query parameter is required
+  bool required = 2;
+}
+
+// Int64Encoding controls how int64/uint64 fields serialize to JSON
+enum Int64Encoding {
+  // Follow protojson default (serialize as string)
+  INT64_ENCODING_UNSPECIFIED = 0;
+  // Explicit string encoding: "12345"
+  INT64_ENCODING_STRING = 1;
+  // Numeric encoding: 12345 (precision warning for values > 2^53)
+  INT64_ENCODING_NUMBER = 2;
+}
+
+// EnumEncoding controls how enum fields serialize to JSON
+enum EnumEncoding {
+  // Follow protojson default (serialize as proto name string)
+  ENUM_ENCODING_UNSPECIFIED = 0;
+  // Explicit string encoding: "STATUS_ACTIVE"
+  ENUM_ENCODING_STRING = 1;
+  // Numeric encoding: 1
+  ENUM_ENCODING_NUMBER = 2;
+}
+
+// EmptyBehavior controls how empty message fields serialize to JSON.
+// "Empty" means all fields at proto default (proto.Size() == 0).
+enum EmptyBehavior {
+  // Follow default behavior: serialize empty messages as {} (same as PRESERVE)
+  EMPTY_BEHAVIOR_UNSPECIFIED = 0;
+  // Serialize empty messages as {} (explicit same as default)
+  EMPTY_BEHAVIOR_PRESERVE = 1;
+  // Serialize empty messages as null
+  EMPTY_BEHAVIOR_NULL = 2;
+  // Omit the field entirely when message is empty
+  EMPTY_BEHAVIOR_OMIT = 3;
+}
+
+// TimestampFormat controls how google.protobuf.Timestamp fields serialize to JSON.
+enum TimestampFormat {
+  // Follow protojson default (RFC 3339 string: "2024-01-15T09:30:00Z")
+  TIMESTAMP_FORMAT_UNSPECIFIED = 0;
+  // Explicit RFC 3339 (same as default but self-documenting)
+  TIMESTAMP_FORMAT_RFC3339 = 1;
+  // Unix seconds as integer: 1705312200 (nanos truncated)
+  TIMESTAMP_FORMAT_UNIX_SECONDS = 2;
+  // Unix milliseconds as integer: 1705312200000 (sub-millisecond nanos truncated)
+  TIMESTAMP_FORMAT_UNIX_MILLIS = 3;
+  // Date-only string: "2024-01-15" (time component dropped, lossy)
+  TIMESTAMP_FORMAT_DATE = 4;
+}
+
+// BytesEncoding controls how bytes fields serialize to JSON.
+enum BytesEncoding {
+  // Follow protojson default (standard base64 with padding)
+  BYTES_ENCODING_UNSPECIFIED = 0;
+  // Standard base64 with padding (RFC 4648): "SGVsbG8="
+  BYTES_ENCODING_BASE64 = 1;
+  // Base64 without padding: "SGVsbG8"
+  BYTES_ENCODING_BASE64_RAW = 2;
+  // URL-safe base64 with padding: "SGVsbG8="
+  BYTES_ENCODING_BASE64URL = 3;
+  // URL-safe base64 without padding: "SGVsbG8"
+  BYTES_ENCODING_BASE64URL_RAW = 4;
+  // Hexadecimal encoding (lowercase): "48656c6c6f"
+  BYTES_ENCODING_HEX = 5;
+}
+
+// OneofConfig controls oneof serialization as a discriminated union.
+// Applied to a oneof definition via (sebuf.http.oneof_config).
+message OneofConfig {
+  // The JSON field name for the discriminator (e.g., "type", "kind").
+  // Required: if empty, the annotation is ignored.
+  string discriminator = 1;
+
+  // Whether to flatten variant message fields to the same level as the discriminator.
+  // When true: variant's child fields are promoted to the parent object alongside the discriminator.
+  // When false: variant stays nested under its field name with the discriminator alongside.
+  // Requires all variant fields to be message types when true.
+  bool flatten = 2;
+}
+
+// Extension for oneof-level options
+extend google.protobuf.OneofOptions {
+  // Controls oneof serialization as a discriminated union.
+  // When set, adds a discriminator field to the JSON output identifying which variant is set.
+  optional OneofConfig oneof_config = 50017;
+}
+
+// Extension for field-level options
+extend google.protobuf.FieldOptions {
+  // Example values for documentation/OpenAPI
+  FieldExamples field_examples = 50007;
+
+  // Query parameter configuration for a field
+  QueryConfig query = 50008;
+
+  // Mark a repeated field for unwrapping when parent message is a map value.
+  // When set to true on a repeated field, and the message containing this field
+  // is used as a map value, the JSON serialization will collapse the wrapper
+  // to just the unwrapped field's array value.
+  // Constraints: Only valid on repeated fields, only one per message.
+  bool unwrap = 50009;
+
+  // Controls int64/uint64 JSON encoding for this field.
+  // Valid on: int64, sint64, sfixed64, uint64, fixed64 fields.
+  // Default: STRING encoding (protojson default for JavaScript precision safety).
+  optional Int64Encoding int64_encoding = 50010;
+
+  // Controls enum JSON encoding for this field.
+  // Valid on: enum fields only.
+  // Default: STRING encoding (protojson default using proto enum names).
+  optional EnumEncoding enum_encoding = 50011;
+
+  // Mark a primitive field as nullable (explicit null vs absent).
+  // Only valid on proto3 optional fields (HasOptionalKeyword=true).
+  // When true: unset field serializes as null, set field serializes normally.
+  // When false (default): unset field is omitted from JSON.
+  optional bool nullable = 50013;
+
+  // Controls how empty message fields serialize to JSON.
+  // Only valid on singular message fields (not repeated, not map).
+  // "Empty" = all fields at proto default (proto.Size() == 0).
+  optional EmptyBehavior empty_behavior = 50014;
+
+  // Controls timestamp JSON encoding for this field.
+  // Valid on: google.protobuf.Timestamp fields only.
+  // Default: RFC3339 (protojson default).
+  optional TimestampFormat timestamp_format = 50015;
+
+  // Controls bytes JSON encoding for this field.
+  // Valid on: bytes fields only.
+  // Default: BASE64 (protojson default).
+  optional BytesEncoding bytes_encoding = 50016;
+
+  // Custom discriminator value for this oneof variant field.
+  // When set, this value is used in the discriminator field instead of the proto field name.
+  // Only valid on fields that are part of a oneof with oneof_config annotation.
+  optional string oneof_value = 50018;
+
+  // Flatten a nested message field, promoting its child fields to the parent level in JSON.
+  // Only valid on singular message fields (not repeated, not map, not oneof variant).
+  // When true: child message fields appear at the parent level (e.g., address.street becomes street).
+  optional bool flatten = 50019;
+
+  // Prefix to prepend to flattened field names to avoid collisions.
+  // Only valid when flatten=true is also set.
+  // Example: flatten_prefix="billing_" with child field "street" produces "billing_street" in JSON.
+  optional string flatten_prefix = 50020;
+}
+
+// Extension for enum value options
+extend google.protobuf.EnumValueOptions {
+  // Custom JSON string for this enum value (e.g., "active" instead of "STATUS_ACTIVE").
+  // When set, this value is used for JSON serialization instead of the proto name.
+  // Combines with enum_encoding=STRING on fields using this enum.
+  optional string enum_value = 50012;
+}

@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>sebuf TypeScript Full-Stack Demo</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace; background: #0f172a; color: #e2e8f0; height: 100vh; display: flex; flex-direction: column; }
+  header { background: #1e293b; border-bottom: 1px solid #334155; padding: 12px 20px; display: flex; align-items: center; gap: 12px; }
+  header h1 { font-size: 16px; font-weight: 600; color: #f8fafc; }
+  header span { font-size: 12px; color: #94a3b8; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+  .badge-green { background: #065f46; color: #6ee7b7; }
+  .badge-blue { background: #1e3a5f; color: #93c5fd; }
+  main { display: flex; flex: 1; overflow: hidden; }
+  .panel { display: flex; flex-direction: column; overflow: hidden; }
+  .panel-left { width: 380px; min-width: 380px; border-right: 1px solid #334155; background: #0f172a; }
+  .panel-right { flex: 1; overflow-y: auto; padding: 16px; }
+  .panel-header { padding: 10px 16px; background: #1e293b; border-bottom: 1px solid #334155; font-size: 12px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; display: flex; justify-content: space-between; align-items: center; }
+  .panel-header button { background: #334155; border: none; color: #94a3b8; padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; }
+  .panel-header button:hover { background: #475569; color: #e2e8f0; }
+  #log-container { flex: 1; overflow-y: auto; padding: 8px 12px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; line-height: 1.6; }
+  .log-entry { padding: 2px 0; border-bottom: 1px solid #1e293b; }
+  .log-time { color: #475569; margin-right: 8px; }
+  .log-method { font-weight: 600; margin-right: 4px; }
+  .log-method.GET { color: #22d3ee; }
+  .log-method.POST { color: #a78bfa; }
+  .log-method.PUT { color: #fbbf24; }
+  .log-method.PATCH { color: #fb923c; }
+  .log-method.DELETE { color: #f87171; }
+  .log-status { margin-left: 4px; font-weight: 600; }
+  .log-status.s2xx { color: #4ade80; }
+  .log-status.s4xx { color: #fbbf24; }
+  .log-status.s5xx { color: #f87171; }
+  .log-msg { color: #94a3b8; }
+  .log-handler { color: #67e8f9; }
+
+  .section { margin-bottom: 20px; }
+  .section-title { font-size: 13px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid #1e293b; }
+  .op-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+  .op-card { background: #1e293b; border: 1px solid #334155; border-radius: 8px; overflow: hidden; transition: border-color 0.15s; }
+  .op-card:hover { border-color: #475569; }
+  .op-card-header { padding: 10px 12px; display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+  .op-card-header:hover { background: #253347; }
+  .method-badge { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 3px; min-width: 48px; text-align: center; }
+  .method-badge.GET { background: #164e63; color: #22d3ee; }
+  .method-badge.POST { background: #3b1f6e; color: #a78bfa; }
+  .method-badge.PUT { background: #713f12; color: #fbbf24; }
+  .method-badge.PATCH { background: #7c2d12; color: #fb923c; }
+  .method-badge.DELETE { background: #7f1d1d; color: #f87171; }
+  .op-name { font-size: 13px; font-weight: 500; color: #f1f5f9; }
+  .op-path { font-size: 11px; color: #64748b; margin-left: auto; font-family: monospace; }
+  .op-body { padding: 0 12px 12px; display: none; }
+  .op-body.open { display: block; }
+  .op-desc { font-size: 12px; color: #94a3b8; margin-bottom: 8px; }
+  .op-fields { margin-bottom: 8px; }
+  .op-field { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+  .op-field label { font-size: 11px; color: #94a3b8; min-width: 70px; }
+  .op-field input, .op-field select { background: #0f172a; border: 1px solid #334155; color: #e2e8f0; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-family: monospace; flex: 1; }
+  .op-field input:focus, .op-field select:focus { outline: none; border-color: #6366f1; }
+  .btn-run { background: #4f46e5; color: white; border: none; padding: 6px 14px; border-radius: 5px; font-size: 12px; font-weight: 600; cursor: pointer; width: 100%; }
+  .btn-run:hover { background: #6366f1; }
+  .btn-run:active { background: #4338ca; }
+  .btn-run:disabled { opacity: 0.5; cursor: not-allowed; }
+  .op-result { margin-top: 8px; display: none; }
+  .op-result.visible { display: block; }
+  .result-header { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+  .result-status { font-size: 12px; font-weight: 600; }
+  .result-status.ok { color: #4ade80; }
+  .result-status.err { color: #f87171; }
+  .result-time { font-size: 11px; color: #64748b; }
+  .result-body { background: #0f172a; border: 1px solid #334155; border-radius: 4px; padding: 8px; font-family: 'SF Mono', monospace; font-size: 11px; line-height: 1.5; max-height: 200px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; color: #cbd5e1; }
+  .json-key { color: #93c5fd; }
+  .json-str { color: #86efac; }
+  .json-num { color: #fde68a; }
+  .json-bool { color: #c4b5fd; }
+  .json-null { color: #94a3b8; }
+
+  .connected { width: 8px; height: 8px; border-radius: 50%; background: #4ade80; display: inline-block; }
+  .disconnected { width: 8px; height: 8px; border-radius: 50%; background: #f87171; display: inline-block; }
+</style>
+</head>
+<body>
+<header>
+  <h1>sebuf</h1>
+  <span>TypeScript Full-Stack Demo</span>
+  <span class="badge badge-green">protoc-gen-ts-server</span>
+  <span class="badge badge-blue">protoc-gen-ts-client</span>
+  <span style="margin-left:auto; font-size:12px; color:#64748b;">
+    <span id="conn-dot" class="disconnected"></span>
+    <span id="conn-text">connecting...</span>
+  </span>
+</header>
+<main>
+  <div class="panel panel-left">
+    <div class="panel-header">
+      Server Logs
+      <button onclick="clearLogs()">Clear</button>
+    </div>
+    <div id="log-container"></div>
+  </div>
+  <div class="panel panel-right">
+
+    <div class="section">
+      <div class="section-title">CRUD Operations</div>
+      <div class="op-grid">
+
+        <div class="op-card" id="op-list">
+          <div class="op-card-header" onclick="toggleOp('op-list')">
+            <span class="method-badge GET">GET</span>
+            <span class="op-name">List Notes</span>
+            <span class="op-path">/notes</span>
+          </div>
+          <div class="op-body" id="op-list-body">
+            <div class="op-desc">List all notes with optional filters</div>
+            <div class="op-fields">
+              <div class="op-field"><label>status</label><select id="list-status"><option value="">all</option><option value="pending">pending</option><option value="in_progress">in_progress</option><option value="done">done</option><option value="archived">archived</option></select></div>
+              <div class="op-field"><label>priority</label><select id="list-priority"><option value="">all</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option><option value="urgent">urgent</option></select></div>
+              <div class="op-field"><label>limit</label><input id="list-limit" type="number" value="" placeholder="e.g. 2"></div>
+            </div>
+            <button class="btn-run" onclick="runListNotes()">Run</button>
+            <div class="op-result" id="op-list-result"></div>
+          </div>
+        </div>
+
+        <div class="op-card" id="op-get">
+          <div class="op-card-header" onclick="toggleOp('op-get')">
+            <span class="method-badge GET">GET</span>
+            <span class="op-name">Get Note</span>
+            <span class="op-path">/notes/{id}</span>
+          </div>
+          <div class="op-body" id="op-get-body">
+            <div class="op-desc">Fetch a single note by ID</div>
+            <div class="op-fields">
+              <div class="op-field"><label>id</label><input id="get-id" value="note-1" placeholder="note-1"></div>
+            </div>
+            <button class="btn-run" onclick="runGetNote()">Run</button>
+            <div class="op-result" id="op-get-result"></div>
+          </div>
+        </div>
+
+        <div class="op-card" id="op-create">
+          <div class="op-card-header" onclick="toggleOp('op-create')">
+            <span class="method-badge POST">POST</span>
+            <span class="op-name">Create Note</span>
+            <span class="op-path">/notes</span>
+          </div>
+          <div class="op-body" id="op-create-body">
+            <div class="op-desc">Create a new note</div>
+            <div class="op-fields">
+              <div class="op-field"><label>title</label><input id="create-title" value="Deploy to staging"></div>
+              <div class="op-field"><label>content</label><input id="create-content" value="Run integration tests"></div>
+              <div class="op-field"><label>priority</label><select id="create-priority"><option value="PRIORITY_LOW">low</option><option value="PRIORITY_MEDIUM" selected>medium</option><option value="PRIORITY_HIGH">high</option><option value="PRIORITY_URGENT">urgent</option></select></div>
+            </div>
+            <button class="btn-run" onclick="runCreateNote()">Run</button>
+            <div class="op-result" id="op-create-result"></div>
+          </div>
+        </div>
+
+        <div class="op-card" id="op-update">
+          <div class="op-card-header" onclick="toggleOp('op-update')">
+            <span class="method-badge PUT">PUT</span>
+            <span class="op-name">Update Note</span>
+            <span class="op-path">/notes/{id}</span>
+          </div>
+          <div class="op-body" id="op-update-body">
+            <div class="op-desc">Update an existing note</div>
+            <div class="op-fields">
+              <div class="op-field"><label>id</label><input id="update-id" value="note-2"></div>
+              <div class="op-field"><label>title</label><input id="update-title" value="Write unit tests (updated)"></div>
+              <div class="op-field"><label>status</label><select id="update-status"><option value="STATUS_PENDING">pending</option><option value="STATUS_IN_PROGRESS" selected>in_progress</option><option value="STATUS_DONE">done</option></select></div>
+            </div>
+            <button class="btn-run" onclick="runUpdateNote()">Run</button>
+            <div class="op-result" id="op-update-result"></div>
+          </div>
+        </div>
+
+        <div class="op-card" id="op-archive">
+          <div class="op-card-header" onclick="toggleOp('op-archive')">
+            <span class="method-badge PATCH">PATCH</span>
+            <span class="op-name">Archive Note</span>
+            <span class="op-path">/notes/{id}/archive</span>
+          </div>
+          <div class="op-body" id="op-archive-body">
+            <div class="op-desc">Archive a note (sets status to ARCHIVED)</div>
+            <div class="op-fields">
+              <div class="op-field"><label>id</label><input id="archive-id" value="note-3"></div>
+            </div>
+            <button class="btn-run" onclick="runArchiveNote()">Run</button>
+            <div class="op-result" id="op-archive-result"></div>
+          </div>
+        </div>
+
+        <div class="op-card" id="op-delete">
+          <div class="op-card-header" onclick="toggleOp('op-delete')">
+            <span class="method-badge DELETE">DELETE</span>
+            <span class="op-name">Delete Note</span>
+            <span class="op-path">/notes/{id}</span>
+          </div>
+          <div class="op-body" id="op-delete-body">
+            <div class="op-desc">Permanently delete a note</div>
+            <div class="op-fields">
+              <div class="op-field"><label>id</label><input id="delete-id" value="note-4"></div>
+            </div>
+            <button class="btn-run" onclick="runDeleteNote()">Run</button>
+            <div class="op-result" id="op-delete-result"></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Query & Unwrap</div>
+      <div class="op-grid">
+
+        <div class="op-card" id="op-bytag">
+          <div class="op-card-header" onclick="toggleOp('op-bytag')">
+            <span class="method-badge GET">GET</span>
+            <span class="op-name">Get Notes by Tag</span>
+            <span class="op-path">/notes/by-tag</span>
+          </div>
+          <div class="op-body" id="op-bytag-body">
+            <div class="op-desc">Returns Note[] directly (unwrap annotation)</div>
+            <div class="op-fields">
+              <div class="op-field"><label>tag</label><input id="bytag-tag" value="backend"></div>
+            </div>
+            <button class="btn-run" onclick="runGetByTag()">Run</button>
+            <div class="op-result" id="op-bytag-result"></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Error Handling</div>
+      <div class="op-grid">
+
+        <div class="op-card" id="op-404">
+          <div class="op-card-header" onclick="toggleOp('op-404')">
+            <span class="method-badge GET">GET</span>
+            <span class="op-name">Not Found (404)</span>
+            <span class="op-path">/notes/{id}</span>
+          </div>
+          <div class="op-body" id="op-404-body">
+            <div class="op-desc">Proto-defined NotFoundError — resourceType + resourceId</div>
+            <button class="btn-run" onclick="runNotFound()">Run</button>
+            <div class="op-result" id="op-404-result"></div>
+          </div>
+        </div>
+
+        <div class="op-card" id="op-login-err">
+          <div class="op-card-header" onclick="toggleOp('op-login-err')">
+            <span class="method-badge GET">GET</span>
+            <span class="op-name">Login Error (401)</span>
+            <span class="op-path">/notes</span>
+          </div>
+          <div class="op-body" id="op-login-err-body">
+            <div class="op-desc">Proto-defined LoginError — expired API key returns reason + email + retryAfterSeconds</div>
+            <button class="btn-run" onclick="runLoginError()">Run</button>
+            <div class="op-result" id="op-login-err-result"></div>
+          </div>
+        </div>
+
+        <div class="op-card" id="op-header-err">
+          <div class="op-card-header" onclick="toggleOp('op-header-err')">
+            <span class="method-badge POST">POST</span>
+            <span class="op-name">Missing Header (400)</span>
+            <span class="op-path">/notes</span>
+          </div>
+          <div class="op-body" id="op-header-err-body">
+            <div class="op-desc">Omit X-Request-ID header on CreateNote</div>
+            <button class="btn-run" onclick="runMissingHeader()">Run</button>
+            <div class="op-result" id="op-header-err-result"></div>
+          </div>
+        </div>
+
+        <div class="op-card" id="op-no-apikey">
+          <div class="op-card-header" onclick="toggleOp('op-no-apikey')">
+            <span class="method-badge GET">GET</span>
+            <span class="op-name">Missing API Key (400)</span>
+            <span class="op-path">/notes</span>
+          </div>
+          <div class="op-body" id="op-no-apikey-body">
+            <div class="op-desc">Omit X-API-Key service header</div>
+            <button class="btn-run" onclick="runMissingApiKey()">Run</button>
+            <div class="op-result" id="op-no-apikey-result"></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<script>
+const API_KEY = "550e8400-e29b-41d4-a716-446655440000";
+const TENANT_ID = "42";
+const BASE = "/api/v1";
+
+function defaultHeaders() {
+  return { "Content-Type": "application/json", "X-API-Key": API_KEY, "X-Tenant-ID": TENANT_ID };
+}
+
+// SSE log streaming
+const logContainer = document.getElementById("log-container");
+function connectSSE() {
+  const es = new EventSource("/events");
+  es.onopen = () => {
+    document.getElementById("conn-dot").className = "connected";
+    document.getElementById("conn-text").textContent = "live";
+  };
+  es.onerror = () => {
+    document.getElementById("conn-dot").className = "disconnected";
+    document.getElementById("conn-text").textContent = "reconnecting...";
+  };
+  es.addEventListener("log", (e) => {
+    const data = JSON.parse(e.data);
+    addLogEntry(data);
+  });
+  es.addEventListener("request", (e) => {
+    const data = JSON.parse(e.data);
+    addRequestLog(data);
+  });
+}
+
+function addLogEntry(data) {
+  const el = document.createElement("div");
+  el.className = "log-entry";
+  const time = new Date(data.time).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  el.innerHTML = `<span class="log-time">${time}</span><span class="log-handler">${escapeHtml(data.message)}</span>`;
+  logContainer.appendChild(el);
+  logContainer.scrollTop = logContainer.scrollHeight;
+}
+
+function addRequestLog(data) {
+  const el = document.createElement("div");
+  el.className = "log-entry";
+  const time = new Date(data.time).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const statusClass = data.status < 300 ? "s2xx" : data.status < 500 ? "s4xx" : "s5xx";
+  el.innerHTML = `<span class="log-time">${time}</span><span class="log-method ${data.method}">${data.method}</span> ${escapeHtml(data.path)} <span class="log-status ${statusClass}">${data.status}</span> <span class="log-msg">${data.duration}ms</span>`;
+  logContainer.appendChild(el);
+  logContainer.scrollTop = logContainer.scrollHeight;
+}
+
+function clearLogs() { logContainer.innerHTML = ""; }
+function escapeHtml(s) { return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+// Toggle operation card
+function toggleOp(id) {
+  const body = document.getElementById(id + "-body");
+  body.classList.toggle("open");
+}
+
+// Syntax-highlighted JSON
+function highlightJson(obj) {
+  const json = JSON.stringify(obj, null, 2);
+  return json.replace(/("(?:\\.|[^"\\])*")\s*:/g, '<span class="json-key">$1</span>:')
+    .replace(/:\s*("(?:\\.|[^"\\])*")/g, ': <span class="json-str">$1</span>')
+    .replace(/:\s*(\d+\.?\d*)/g, ': <span class="json-num">$1</span>')
+    .replace(/:\s*(true|false)/g, ': <span class="json-bool">$1</span>')
+    .replace(/:\s*(null)/g, ': <span class="json-null">$1</span>')
+    // standalone strings in arrays
+    .replace(/\[\s*\n/g, '[\n')
+    .replace(/("(?:\\.|[^"\\])*")(?=\s*[,\]])/g, '<span class="json-str">$1</span>');
+}
+
+function showResult(containerId, status, body, duration) {
+  const el = document.getElementById(containerId);
+  const isOk = status >= 200 && status < 300;
+  el.className = "op-result visible";
+  el.innerHTML = `
+    <div class="result-header">
+      <span class="result-status ${isOk ? 'ok' : 'err'}">${status} ${isOk ? 'OK' : 'Error'}</span>
+      <span class="result-time">${duration}ms</span>
+    </div>
+    <div class="result-body">${typeof body === 'object' ? highlightJson(body) : escapeHtml(String(body))}</div>
+  `;
+}
+
+async function apiCall(method, path, body, headers) {
+  const t0 = performance.now();
+  const opts = { method, headers: headers || defaultHeaders() };
+  if (body && ["POST", "PUT", "PATCH"].includes(method)) {
+    opts.body = JSON.stringify(body);
+  }
+  const res = await fetch(BASE + path, opts);
+  const duration = Math.round(performance.now() - t0);
+  let data;
+  const text = await res.text();
+  try { data = JSON.parse(text); } catch { data = text; }
+  return { status: res.status, data, duration };
+}
+
+// Operations
+async function runListNotes() {
+  const params = new URLSearchParams();
+  const status = document.getElementById("list-status").value;
+  const priority = document.getElementById("list-priority").value;
+  const limit = document.getElementById("list-limit").value;
+  if (status) params.set("status", status);
+  if (priority) params.set("priority", priority);
+  if (limit) params.set("limit", limit);
+  const qs = params.toString() ? "?" + params.toString() : "";
+  const r = await apiCall("GET", "/notes" + qs);
+  showResult("op-list-result", r.status, r.data, r.duration);
+}
+
+async function runGetNote() {
+  const id = document.getElementById("get-id").value;
+  const r = await apiCall("GET", `/notes/${id}`);
+  showResult("op-get-result", r.status, r.data, r.duration);
+}
+
+async function runCreateNote() {
+  const r = await apiCall("POST", "/notes", {
+    title: document.getElementById("create-title").value,
+    content: document.getElementById("create-content").value,
+    priority: document.getElementById("create-priority").value,
+    tags: [{ name: "demo", color: "#6366f1" }],
+    metadata: { source: "browser-demo" },
+  }, { ...defaultHeaders(), "X-Request-ID": crypto.randomUUID() });
+  showResult("op-create-result", r.status, r.data, r.duration);
+}
+
+async function runUpdateNote() {
+  const id = document.getElementById("update-id").value;
+  const r = await apiCall("PUT", `/notes/${id}`, {
+    title: document.getElementById("update-title").value,
+    content: "Updated via browser demo",
+    priority: "PRIORITY_MEDIUM",
+    status: document.getElementById("update-status").value,
+    tags: [{ name: "updated", color: "#f59e0b" }],
+    metadata: { updatedVia: "browser" },
+  }, { ...defaultHeaders(), "X-Idempotency-Key": crypto.randomUUID() });
+  showResult("op-update-result", r.status, r.data, r.duration);
+}
+
+async function runArchiveNote() {
+  const id = document.getElementById("archive-id").value;
+  const r = await apiCall("PATCH", `/notes/${id}/archive`, {});
+  showResult("op-archive-result", r.status, r.data, r.duration);
+}
+
+async function runDeleteNote() {
+  const id = document.getElementById("delete-id").value;
+  const r = await apiCall("DELETE", `/notes/${id}`);
+  showResult("op-delete-result", r.status, r.data, r.duration);
+}
+
+async function runGetByTag() {
+  const tag = document.getElementById("bytag-tag").value;
+  const r = await apiCall("GET", `/notes/by-tag?tag=${encodeURIComponent(tag)}`);
+  showResult("op-bytag-result", r.status, r.data, r.duration);
+}
+
+async function runNotFound() {
+  const r = await apiCall("GET", "/notes/does-not-exist-999");
+  showResult("op-404-result", r.status, r.data, r.duration);
+}
+
+async function runLoginError() {
+  // Send request with an "expired" API key to trigger proto-defined LoginError
+  const t0 = performance.now();
+  const res = await fetch(BASE + "/notes", {
+    headers: { "X-API-Key": "deadbeef-dead-dead-dead-deaddeaddead", "X-Tenant-ID": TENANT_ID },
+  });
+  const duration = Math.round(performance.now() - t0);
+  let data;
+  const text = await res.text();
+  try { data = JSON.parse(text); } catch { data = text; }
+  showResult("op-login-err-result", res.status, data, duration);
+}
+
+async function runMissingHeader() {
+  // Omit X-Request-ID
+  const r = await apiCall("POST", "/notes", {
+    title: "Should fail", content: "Missing header", priority: "PRIORITY_LOW", tags: [], metadata: {},
+  });
+  showResult("op-header-err-result", r.status, r.data, r.duration);
+}
+
+async function runMissingApiKey() {
+  const t0 = performance.now();
+  const res = await fetch(BASE + "/notes", {
+    headers: { "X-Tenant-ID": TENANT_ID },
+  });
+  const duration = Math.round(performance.now() - t0);
+  let data;
+  const text = await res.text();
+  try { data = JSON.parse(text); } catch { data = text; }
+  showResult("op-no-apikey-result", res.status, data, duration);
+}
+
+// Start
+connectSSE();
+</script>
+</body>
+</html>

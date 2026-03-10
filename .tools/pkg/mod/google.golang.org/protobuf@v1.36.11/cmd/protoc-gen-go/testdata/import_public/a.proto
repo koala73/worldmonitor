@@ -1,0 +1,21 @@
+// Copyright 2018 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+syntax = "proto2";
+
+package goproto.protoc.import_public;
+
+// Same Go package.
+import public "cmd/protoc-gen-go/testdata/import_public/b.proto";
+
+// Different Go package.
+import public "cmd/protoc-gen-go/testdata/import_public/sub/a.proto";
+
+option go_package = "google.golang.org/protobuf/cmd/protoc-gen-go/testdata/import_public";
+
+message Public {
+  optional goproto.protoc.import_public.sub.M m = 1;
+  optional goproto.protoc.import_public.sub.E e = 2;
+  optional Local local = 3;
+}

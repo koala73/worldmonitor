@@ -1,0 +1,14 @@
+version: v2
+
+deps:
+  - buf.build/sebmelki/sebuf
+
+lint:
+  use:
+    - STANDARD
+  except:
+    - PACKAGE_VERSION_SUFFIX
+    - PACKAGE_DIRECTORY_MATCH
+    - IMPORT_USED
+  enum_zero_value_suffix: _UNSPECIFIED
+  service_suffix: Service

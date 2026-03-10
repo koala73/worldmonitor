@@ -36,6 +36,7 @@ interface FetchAcledOptions {
   endDate: string;
   country?: string;
   limit?: number;
+  token?: string; // Optional override from client
 }
 
 /**
@@ -44,7 +45,7 @@ interface FetchAcledOptions {
  * different handlers share the same cached result.
  */
 export async function fetchAcledCached(opts: FetchAcledOptions): Promise<AcledRawEvent[]> {
-  const token = process.env.ACLED_ACCESS_TOKEN;
+  const token = opts.token || process.env.ACLED_ACCESS_TOKEN;
   if (!token) return [];
 
   const cacheKey = `acled:shared:${opts.eventTypes}:${opts.startDate}:${opts.endDate}:${opts.country || 'all'}:${opts.limit || 500}`;

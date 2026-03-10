@@ -1,0 +1,218 @@
+name: Proto Validation
+
+on:
+  pull_request:
+    paths:
+      - 'proto/**'
+      - 'buf.yaml'
+      - 'buf.gen.yaml'
+      - 'buf.work.yaml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'proto/**'
+      - 'buf.yaml'
+      - 'buf.gen.yaml'
+      - 'buf.work.yaml'
+  workflow_dispatch:
+
+jobs:
+  buf-lint:
+    name: Buf Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        
+      - name: Setup Buf
+        uses: bufbuild/buf-setup-action@v1
+        with:
+          version: latest
+          
+      - name: Buf format check
+        run: |
+          buf format -d --exit-code proto/
+          
+      - name: Buf lint
+        run: |
+          buf lint proto/
+          
+      - name: Comment PR on lint failure
+        if: failure() && github.event_name == 'pull_request'
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '❌ **Proto Lint Failed**\n\nPlease run `buf lint proto/` locally and fix any issues.'
+            })
+            
+  buf-breaking:
+    name: Buf Breaking Changes
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v6
+        
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          path: .base
+          
+      - name: Setup Buf
+        uses: bufbuild/buf-setup-action@v1
+        with:
+          version: latest
+          
+      - name: Check breaking changes
+        id: breaking
+        run: |
+          set +e
+          output=$(buf breaking proto/ --against .base/proto/ 2>&1)
+          exit_code=$?
+          set -e
+          
+          if [ $exit_code -eq 0 ]; then
+            echo "No breaking changes detected"
+            echo "has_breaking=false" >> $GITHUB_OUTPUT
+          else
+            echo "Breaking changes detected:"
+            echo "$output"
+            echo "has_breaking=true" >> $GITHUB_OUTPUT
+            echo "breaking_output<<EOF" >> $GITHUB_OUTPUT
+            echo "$output" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          fi
+          
+      - name: Comment PR with breaking changes
+        if: steps.breaking.outputs.has_breaking == 'true'
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const output = `${{ steps.breaking.outputs.breaking_output }}`;
+            const body = `⚠️ **Breaking Changes Detected**
+            
+            The following breaking changes were detected in your proto files:
+            
+            \`\`\`
+            ${output}
+            \`\`\`
+            
+            Please ensure these breaking changes are intentional and documented in your PR description.
+            
+            If these changes are intentional, add the label \`breaking-change\` to this PR.`;
+            
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+            
+            // Add warning label
+            await github.rest.issues.addLabels({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: ['proto-breaking-change']
+            });
+            
+  proto-compatibility:
+    name: Proto Compatibility Check
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        protoc-version: ['3.19.0', '3.20.0', '25.1']
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        
+      - name: Setup Protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: ${{ matrix.protoc-version }}
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.21'
+          cache: true
+          
+      - name: Install protoc-gen-go
+        run: go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+        
+      - name: Test proto compilation
+        run: |
+          # Test that protos compile with different protoc versions
+          mkdir -p test-output
+          
+          for proto in $(find proto -name "*.proto"); do
+            echo "Testing $proto with protoc ${{ matrix.protoc-version }}"
+            protoc \
+              --go_out=test-output \
+              --go_opt=paths=source_relative \
+              --proto_path=proto \
+              --proto_path=. \
+              "$proto"
+          done
+          
+  proto-documentation:
+    name: Generate Proto Documentation
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        
+      - name: Setup Buf
+        uses: bufbuild/buf-setup-action@v1
+        with:
+          version: latest
+          
+      - name: Install protoc-gen-doc
+        run: |
+          go install github.com/pseudomuto/protoc-gen-doc/cmd/protoc-gen-doc@latest
+          
+      - name: Generate documentation
+        run: |
+          mkdir -p docs/proto
+          
+          # Generate HTML documentation
+          protoc \
+            --doc_out=docs/proto \
+            --doc_opt=html,index.html \
+            --proto_path=proto \
+            proto/sebuf/http/*.proto
+          
+          # Generate Markdown documentation
+          protoc \
+            --doc_out=docs/proto \
+            --doc_opt=markdown,api.md \
+            --proto_path=proto \
+            proto/sebuf/http/*.proto
+            
+      - name: Upload documentation
+        uses: actions/upload-artifact@v6
+        with:
+          name: proto-documentation
+          path: docs/proto/
+          
+      - name: Comment PR with docs link
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '📚 **Proto Documentation Updated**\n\nProto documentation has been generated. View the artifacts in the [Actions tab](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}).'
+            })

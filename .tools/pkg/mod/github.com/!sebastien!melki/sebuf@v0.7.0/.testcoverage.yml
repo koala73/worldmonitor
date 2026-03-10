@@ -1,0 +1,46 @@
+# Test coverage configuration for go-test-coverage action
+# https://github.com/vladopajic/go-test-coverage
+
+# Profile path (relative to project root)
+profile: coverage/coverage.out
+
+# Threshold configuration (percentages)
+threshold:
+  file: 70
+  package: 80  
+  total: 85
+
+# Local prefix for coverage calculation
+localPrefix: "github.com/SebastienMelki/sebuf"
+
+# Files and packages to exclude from coverage analysis
+exclude:
+  files:
+    - ".*\\.pb\\.go$"           # Protocol buffer generated files
+    - ".*\\.pb\\.gw\\.go$"      # gRPC gateway generated files  
+    - ".*_gen\\.go$"            # Any generated files
+    - ".*_generated\\.go$"      # Any generated files
+    - ".*_test\\.go$"           # Test files
+    - ".*/testdata/.*"          # Test data
+    - ".*/mocks/.*"             # Mock files
+    - ".*/fixtures/.*"          # Fixture files
+  
+  packages:
+    - "github.com/SebastienMelki/sebuf/cmd/.*"       # Command entry points
+    - "github.com/SebastienMelki/sebuf/vendor/.*"    # Vendor directory
+    - "github.com/SebastienMelki/sebuf/examples/.*"  # Examples
+    - "github.com/SebastienMelki/sebuf/docs/.*"      # Documentation
+
+# Coverage calculation settings
+coverageMode: "atomic"
+
+# Badge generation
+badge:
+  fileName: "coverage-badge.svg"
+
+# Report settings
+report:
+  enabled: true
+  
+# GitHub Actions specific settings
+githubActionOutput: true

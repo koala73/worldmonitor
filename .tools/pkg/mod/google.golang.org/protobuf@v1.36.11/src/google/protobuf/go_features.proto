@@ -1,0 +1,80 @@
+// Protocol Buffers - Google's data interchange format
+// Copyright 2023 Google Inc.  All rights reserved.
+//
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file or at
+// https://developers.google.com/open-source/licenses/bsd
+
+syntax = "proto2";
+
+package pb;
+
+import "google/protobuf/descriptor.proto";
+
+option go_package = "google.golang.org/protobuf/types/gofeaturespb";
+
+extend google.protobuf.FeatureSet {
+  optional GoFeatures go = 1002;
+}
+
+message GoFeatures {
+  // Whether or not to generate the deprecated UnmarshalJSON method for enums.
+  // Can only be true for proto using the Open Struct api.
+  optional bool legacy_unmarshal_json_enum = 1 [
+    retention = RETENTION_RUNTIME,
+    targets = TARGET_TYPE_ENUM,
+    targets = TARGET_TYPE_FILE,
+    feature_support = {
+      edition_introduced: EDITION_2023,
+      edition_deprecated: EDITION_2023,
+      deprecation_warning: "The legacy UnmarshalJSON API is deprecated and "
+                           "will be removed in a future edition.",
+    },
+    edition_defaults = { edition: EDITION_LEGACY, value: "true" },
+    edition_defaults = { edition: EDITION_PROTO3, value: "false" }
+  ];
+
+  enum APILevel {
+    // API_LEVEL_UNSPECIFIED results in selecting the OPEN API,
+    // but needs to be a separate value to distinguish between
+    // an explicitly set api level or a missing api level.
+    API_LEVEL_UNSPECIFIED = 0;
+    API_OPEN = 1;
+    API_HYBRID = 2;
+    API_OPAQUE = 3;
+  }
+
+  // One of OPEN, HYBRID or OPAQUE.
+  optional APILevel api_level = 2 [
+    retention = RETENTION_RUNTIME,
+    targets = TARGET_TYPE_MESSAGE,
+    targets = TARGET_TYPE_FILE,
+    feature_support = {
+      edition_introduced: EDITION_2023,
+    },
+    edition_defaults = { edition: EDITION_LEGACY, value: "API_LEVEL_UNSPECIFIED" },
+    edition_defaults = { edition: EDITION_2024, value: "API_OPAQUE" }
+   ];
+
+  enum StripEnumPrefix {
+    STRIP_ENUM_PREFIX_UNSPECIFIED = 0;
+    STRIP_ENUM_PREFIX_KEEP = 1;
+    STRIP_ENUM_PREFIX_GENERATE_BOTH = 2;
+    STRIP_ENUM_PREFIX_STRIP = 3;
+  }
+
+  optional StripEnumPrefix strip_enum_prefix = 3 [
+    retention = RETENTION_RUNTIME,
+    targets = TARGET_TYPE_ENUM,
+    targets = TARGET_TYPE_ENUM_ENTRY,
+    targets = TARGET_TYPE_FILE,
+    feature_support = {
+      edition_introduced: EDITION_2024,
+    },
+    // TODO: change the default to STRIP_ENUM_PREFIX_STRIP for edition 2025.
+    edition_defaults = {
+      edition: EDITION_LEGACY,
+      value: "STRIP_ENUM_PREFIX_KEEP"
+    }
+  ];
+}
