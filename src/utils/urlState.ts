@@ -1,43 +1,9 @@
 import type { MapLayers } from '@/types';
 import type { MapView, TimeRange } from '@/components/Map';
 
-const LAYER_KEYS: (keyof MapLayers)[] = [
-  'conflicts',
-  'bases',
-  'cables',
-  'pipelines',
-  'hotspots',
-  'ais',
-  'nuclear',
-  'irradiators',
-  'sanctions',
-  'weather',
-  'economic',
-  'waterways',
-  'outages',
-  'cyberThreats',
-  'datacenters',
-  'protests',
-  'flights',
-  'military',
-  'natural',
-  'spaceports',
-  'minerals',
-  'fires',
-  'ucdpEvents',
-  'displacement',
-  'climate',
-  'startupHubs',
-  'cloudRegions',
-  'accelerators',
-  'techHQs',
-  'techEvents',
-  'tradeRoutes',
-  'iranAttacks',
-  'gpsJamming',
-  'satellites',
-  'ciiChoropleth',
-];
+import { LAYER_REGISTRY } from '@/config/map-layer-definitions';
+
+const LAYER_KEYS = Object.keys(LAYER_REGISTRY) as Array<keyof MapLayers>;
 
 const TIME_RANGES: TimeRange[] = ['1h', '6h', '24h', '48h', '7d', 'all'];
 const VIEW_VALUES: MapView[] = ['global', 'america', 'mena', 'eu', 'asia', 'latam', 'africa', 'oceania'];

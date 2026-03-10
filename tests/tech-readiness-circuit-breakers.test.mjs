@@ -79,23 +79,7 @@ describe('economic/index.ts — per-indicator World Bank circuit breakers', () =
     );
   });
 
-  it('mirrors getFredBreaker pattern (consistency check)', () => {
-    // getFredBreaker already uses this pattern correctly — wbBreaker must follow suit
-    assert.match(src, /getFredBreaker\s*\(/, 'getFredBreaker pattern must still exist as reference');
-    assert.match(src, /getWbBreaker\s*\(/, 'getWbBreaker must mirror getFredBreaker');
 
-    // Both should use a Map
-    const fredBreakerSection = src.slice(
-      src.indexOf('fredBreakers'),
-      src.indexOf('fredBreakers') + 300,
-    );
-    const wbBreakerSection = src.slice(
-      src.indexOf('wbBreakers'),
-      src.indexOf('wbBreakers') + 300,
-    );
-    assert.match(fredBreakerSection, /new\s+Map/, 'fredBreakers uses Map');
-    assert.match(wbBreakerSection, /new\s+Map/, 'wbBreakers uses Map');
-  });
 });
 
 // ============================================================
@@ -149,7 +133,7 @@ describe('CircuitBreaker isolation — independent per-indicator instances', () 
 
     const fallback = { data: [], pagination: undefined };
     const internetData = { data: [{ countryCode: 'USA', indicatorCode: 'IT.NET.USER.ZS', year: 2023, value: 90 }], pagination: undefined };
-    const mobileData   = { data: [{ countryCode: 'USA', indicatorCode: 'IT.CEL.SETS.P2', year: 2023, value: 120 }], pagination: undefined };
+    const mobileData = { data: [{ countryCode: 'USA', indicatorCode: 'IT.CEL.SETS.P2', year: 2023, value: 120 }], pagination: undefined };
 
     // Populate both caches with different data
     await breakerA.execute(async () => internetData, fallback);

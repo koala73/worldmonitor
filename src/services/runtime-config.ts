@@ -455,10 +455,20 @@ export async function setSecretValue(key: RuntimeSecretKey, value: string): Prom
 
   const sanitized = value.trim();
   if (sanitized) {
-    await invokeTauri<void>('set_secret', { key, value: sanitized });
+    try {
+      await invokeTauri<void>('set_secret', { key, value: sanitized });
+    } catch (e) {
+      console.warn(`[runtime-config] Keyring failed, falling back to localStorage for ${key}`, e);
+      localStorage.setItem(`wm-secret-fallback-${key}`, sanitized);
+    }
     runtimeConfig.secrets[key] = { value: sanitized, source: 'vault' };
   } else {
-    await invokeTauri<void>('delete_secret', { key });
+    try {
+      await invokeTauri<void>('delete_secret', { key });
+    } catch {
+      // ignore
+    }
+    localStorage.removeItem(`wm-secret-fallback-${key}`);
     delete runtimeConfig.secrets[key];
   }
 
@@ -579,7 +589,19 @@ export async function loadDesktopSecrets(): Promise<void> {
   if (!isDesktopRuntime()) return;
 
   try {
-    const allSecrets = await invokeTauri<Record<string, string>>('get_all_secrets');
+    const allSecrets = await invokeTauri<Record<string, string>>('get_all_secrets').catch((err) => {
+      console.warn('[runtime-config] Failed to get secrets from vault, using fallbacks', err);
+      return {} as Record<string, string>;
+    });
+
+    // Merge localStorage fallbacks for any missing keys
+    const expectedKeys = new Set(RUNTIME_FEATURES.flatMap(f => f.requiredSecrets).concat(RUNTIME_FEATURES.flatMap(f => f.desktopRequiredSecrets || [])));
+    for (const key of expectedKeys) {
+      if (!allSecrets[key]) {
+        const fall = localStorage.getItem(`wm-secret-fallback-${key}`);
+        if (fall) allSecrets[key] = fall;
+      }
+    }
 
     const entries: { key: string; value: string }[] = [];
     for (const [key, value] of Object.entries(allSecrets)) {

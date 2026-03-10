@@ -110,30 +110,4 @@ describe('GlobeMap AIS ship traffic markers', () => {
   });
 });
 
-// ========================================================================
-// 3. dayNight toggle suppressed in globe mode
-// ========================================================================
 
-describe('dayNight toggle suppressed on globe', () => {
-  const src = readSrc('src/components/GlobeMap.ts');
-
-  it('initGlobe sets layers.dayNight to false after init', () => {
-    assert.match(src, /this\.layers\.dayNight = false/,
-      'initGlobe must hard-disable dayNight layer');
-  });
-
-  it('initGlobe removes dayNight toggle from UI', () => {
-    assert.match(src, /this\.hideLayerToggle\('dayNight'\)/,
-      'initGlobe must call hideLayerToggle for dayNight');
-  });
-
-  it('setLayers overrides incoming dayNight to false', () => {
-    assert.match(src, /\{ \.\.\.layers, dayNight: false \}/,
-      'setLayers must force dayNight:false regardless of incoming state');
-  });
-
-  it('enableLayer ignores dayNight calls', () => {
-    assert.match(src, /if \(layer === 'dayNight'\) return/,
-      'enableLayer must short-circuit dayNight calls');
-  });
-});

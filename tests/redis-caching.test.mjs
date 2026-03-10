@@ -85,7 +85,7 @@ describe('redis caching behavior', { concurrency: 1 }, () => {
         return jsonResponse({ result: undefined });
       }
       if (raw.includes('/set/')) {
-        setCalls += 1;
+        if (!raw.includes('seed-meta')) setCalls += 1;
         return jsonResponse({ result: 'OK' });
       }
       throw new Error(`Unexpected fetch URL: ${raw}`);
@@ -682,9 +682,11 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
       }
       if (raw.includes('/set/')) {
         const key = parseRedisKey(raw, 'set');
-        const encodedValue = raw.slice(raw.indexOf('/set/') + 5).split('/')[1] || '';
-        store.set(key, decodeURIComponent(encodedValue));
-        setKeys.push(key);
+        if (!key.includes('seed-meta')) {
+          const encodedValue = raw.slice(raw.indexOf('/set/') + 5).split('/')[1] || '';
+          store.set(key, decodeURIComponent(encodedValue));
+          setKeys.push(key);
+        }
         return jsonResponse({ result: 'OK' });
       }
       if (raw.includes('api.groq.com/openai/v1/chat/completions')) {
@@ -743,9 +745,11 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
       }
       if (raw.includes('/set/')) {
         const key = parseRedisKey(raw, 'set');
-        const encodedValue = raw.slice(raw.indexOf('/set/') + 5).split('/')[1] || '';
-        store.set(key, decodeURIComponent(encodedValue));
-        setKeys.push(key);
+        if (!key.includes('seed-meta')) {
+          const encodedValue = raw.slice(raw.indexOf('/set/') + 5).split('/')[1] || '';
+          store.set(key, decodeURIComponent(encodedValue));
+          setKeys.push(key);
+        }
         return jsonResponse({ result: 'OK' });
       }
       if (raw.includes('api.groq.com/openai/v1/chat/completions')) {
