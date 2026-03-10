@@ -160,15 +160,29 @@ export class App {
       }
     }
 
-    // One-time migration: enable satellite imagery panel for existing users
-    const IMAGERY_PANEL_MIGRATION_KEY = 'worldmonitor-imagery-panel-enabled-v1';
-    if (!localStorage.getItem(IMAGERY_PANEL_MIGRATION_KEY)) {
-      if (panelSettings['satellite-imagery'] && !panelSettings['satellite-imagery'].enabled) {
-        panelSettings['satellite-imagery'].enabled = true;
-        saveToStorage(STORAGE_KEYS.panels, panelSettings);
-        console.log('[App] Migration: enabled satellite imagery panel');
+    // One-time migration: prune removed panel keys from stored settings and order
+    const PANEL_PRUNE_KEY = 'worldmonitor-panel-prune-v1';
+    if (!localStorage.getItem(PANEL_PRUNE_KEY)) {
+      const validKeys = new Set(Object.keys(DEFAULT_PANELS));
+      let pruned = false;
+      for (const key of Object.keys(panelSettings)) {
+        if (!validKeys.has(key) && key !== 'runtime-config') {
+          delete panelSettings[key];
+          pruned = true;
+        }
       }
-      localStorage.setItem(IMAGERY_PANEL_MIGRATION_KEY, 'done');
+      if (pruned) saveToStorage(STORAGE_KEYS.panels, panelSettings);
+      for (const orderKey of [PANEL_ORDER_KEY, PANEL_ORDER_KEY + '-bottom-set', PANEL_ORDER_KEY + '-bottom']) {
+        try {
+          const raw = localStorage.getItem(orderKey);
+          if (!raw) continue;
+          const arr = JSON.parse(raw);
+          if (!Array.isArray(arr)) continue;
+          const filtered = arr.filter((k: string) => validKeys.has(k));
+          if (filtered.length !== arr.length) localStorage.setItem(orderKey, JSON.stringify(filtered));
+        } catch { localStorage.removeItem(orderKey); }
+      }
+      localStorage.setItem(PANEL_PRUNE_KEY, 'done');
     }
 
     // One-time migration: clear stale panel ordering and sizing state
