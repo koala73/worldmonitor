@@ -99,15 +99,16 @@
     "youtubei.js": "^16.0.1"
   },
   "overrides": {
-    "fast-xml-parser": "^5.3.7"
+    "fast-xml-parser": "^5.3.7",
+    "serialize-javascript": "^7.0.3"
   },
   "author": "Bradley Bond (https://github.com/bradleybond512)",
-  "homepage": "https://github.com/bradleybond512/crystal-ball#readme",
+  "homepage": "https://github.com/bradleybond512/worldmonitor-macos#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/bradleybond512/crystal-ball"
+    "url": "https://github.com/bradleybond512/worldmonitor-macos"
   },
   "bugs": {
-    "url": "https://github.com/bradleybond512/crystal-ball/issues"
+    "url": "https://github.com/bradleybond512/worldmonitor-macos/issues"
   }
 }
