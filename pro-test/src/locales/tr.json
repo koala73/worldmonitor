@@ -153,7 +153,10 @@
     "risk": "Risk danışmanlığı",
     "riskDesc": "Senaryo simülasyonu, yatırımcı profilleri, talep üzerine markalı PDF/PowerPoint raporları.",
     "soc": "SOC & CERT",
-    "socDesc": "Siber tehdit katmanı, SIEM entegrasyonu, BGP anomali izleme, ransomware akışları."
+    "socDesc": "Siber tehdit katmanı, SIEM entegrasyonu, BGP anomali izleme, ransomware akışları.",
+    "orgPlaceholder": "Şirket *",
+    "phonePlaceholder": "Telefon numarası *",
+    "workEmailRequired": "Lütfen iş e-postanızı kullanın"
   },
   "pricingTable": {
     "title": "Seviyeleri karşılaştırın",

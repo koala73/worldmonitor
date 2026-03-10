@@ -18,6 +18,7 @@ export default defineSchema({
     name: v.string(),
     email: v.string(),
     organization: v.optional(v.string()),
+    phone: v.optional(v.string()),
     message: v.optional(v.string()),
     source: v.string(),
     receivedAt: v.number(),

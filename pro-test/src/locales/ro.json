@@ -153,7 +153,10 @@
     "risk": "Consultanțe de risc",
     "riskDesc": "Simulare scenarii, profiluri de investitori, rapoarte PDF/PowerPoint de brand la cerere.",
     "soc": "SOCs și CERT",
-    "socDesc": "Strat de amenințări cibernetice, integrare SIEM, monitorizare anomalii BGP, fluxuri ransomware."
+    "socDesc": "Strat de amenințări cibernetice, integrare SIEM, monitorizare anomalii BGP, fluxuri ransomware.",
+    "orgPlaceholder": "Companie *",
+    "phonePlaceholder": "Telefon *",
+    "workEmailRequired": "Vă rugăm să utilizați e-mailul de serviciu"
   },
   "pricingTable": {
     "title": "Compară planurile",
