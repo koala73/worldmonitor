@@ -14,6 +14,8 @@ const DESKTOP_RELEASES_URL = 'https://github.com/koala73/worldmonitor/releases';
 export interface PreferencesHost {
   isDesktopApp: boolean;
   onMapProviderChange?: (provider: MapProvider) => void;
+  /** Called when a preference is saved (for visual feedback e.g. toast). Not called for import/export. */
+  onSettingSaved?: () => void;
 }
 
 export interface PreferencesResult {
@@ -260,40 +262,26 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
 
         if (target.id === 'us-stream-quality') {
           setStreamQuality(target.value as StreamQuality);
-          return;
-        }
-        if (target.id === 'us-globe-visual-preset') {
+        } else if (target.id === 'us-globe-visual-preset') {
           setGlobeVisualPreset(target.value as GlobeVisualPreset);
-          return;
-        }
-        if (target.id === 'us-theme') {
+        } else if (target.id === 'us-theme') {
           setThemePreference(target.value as ThemePreference);
-          return;
-        }
-        if (target.id === 'us-map-provider') {
+        } else if (target.id === 'us-map-provider') {
           const provider = target.value as MapProvider;
           setMapProvider(provider);
           renderMapThemeDropdown(container, provider);
           host.onMapProviderChange?.(provider);
           window.dispatchEvent(new CustomEvent('map-theme-changed'));
-          return;
-        }
-        if (target.id === 'us-map-theme') {
+        } else if (target.id === 'us-map-theme') {
           const provider = getMapProvider();
           setMapTheme(provider, target.value);
           window.dispatchEvent(new CustomEvent('map-theme-changed'));
-          return;
-        }
-        if (target.id === 'us-live-streams-always-on') {
+        } else if (target.id === 'us-live-streams-always-on') {
           setLiveStreamsAlwaysOn(target.checked);
-          return;
-        }
-        if (target.id === 'us-language') {
+        } else if (target.id === 'us-language') {
           trackLanguageChange(target.value);
           void changeLanguage(target.value);
-          return;
-        }
-        if (target.id === 'us-cloud') {
+        } else if (target.id === 'us-cloud') {
           setAiFlowSetting('cloudLlm', target.checked);
           updateAiStatus(container);
         } else if (target.id === 'us-browser') {
@@ -307,7 +295,10 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           setAiFlowSetting('headlineMemory', target.checked);
         } else if (target.id === 'us-badge-anim') {
           setAiFlowSetting('badgeAnimation', target.checked);
+        } else {
+          return; // not a preference we persist (e.g. import input already returned above)
         }
+        host.onSettingSaved?.();
       }, { signal });
 
       container.addEventListener('click', (e) => {

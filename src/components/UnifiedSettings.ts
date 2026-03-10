@@ -4,6 +4,7 @@ import { SITE_VARIANT } from '@/config/variant';
 import { t } from '@/services/i18n';
 import type { MapProvider } from '@/config/basemap';
 import { escapeHtml } from '@/utils/sanitize';
+import { showToast } from '@/utils/toast';
 import type { PanelConfig } from '@/types';
 import { renderPreferences } from '@/services/preferences-content';
 
@@ -200,6 +201,7 @@ export class UnifiedSettings {
     const prefs = renderPreferences({
       isDesktopApp: this.config.isDesktopApp,
       onMapProviderChange: this.config.onMapProviderChange,
+      onSettingSaved: () => showToast(t('modals.settingsWindow.saved')),
     });
 
     this.overlay.innerHTML = `
@@ -384,6 +386,7 @@ export class UnifiedSettings {
     this.draftPanelSettings = this.clonePanelSettings();
     this.panelsJustSaved = true;
     this.renderPanelsTab();
+    showToast(t('modals.settingsWindow.saved'));
     if (this.savedTimeout) clearTimeout(this.savedTimeout);
     this.savedTimeout = setTimeout(() => {
       this.panelsJustSaved = false;
