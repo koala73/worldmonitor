@@ -473,21 +473,23 @@ export async function fetchNotamClosures(
       result.closedIcaoCodes.add(icao);
       result.notamsByIcao.set(icao, n.iteme || 'Airport closure (NOTAM)');
     } else if (isRestrictionCode || isRestrictionText) {
-      result.closedIcaoCodes.add(icao);
-      result.notamsByIcao.set(icao, n.iteme || 'Airspace restriction (NOTAM)');
       result.restrictedIcaoCodes.add(icao);
+      result.notamsByIcao.set(icao, n.iteme || 'Airspace restriction (NOTAM)');
     }
   }
 
-  if (result.closedIcaoCodes.size > 0) {
-    const closures = [...result.closedIcaoCodes].filter(c => !result.restrictedIcaoCodes.has(c));
-    const restrictions = [...result.restrictedIcaoCodes];
-    console.warn(`[Aviation] NOTAM: ${closures.length} closures [${closures.join(', ')}], ${restrictions.length} restrictions [${restrictions.join(', ')}]`);
+  if (result.closedIcaoCodes.size > 0 || result.restrictedIcaoCodes.size > 0) {
+    console.warn(`[Aviation] NOTAM: ${result.closedIcaoCodes.size} closures [${[...result.closedIcaoCodes].join(', ')}], ${result.restrictedIcaoCodes.size} restrictions [${[...result.restrictedIcaoCodes].join(', ')}]`);
   }
   return result;
 }
 
-export function buildNotamAlert(airport: MonitoredAirport, reason: string, severity: 'severe' | 'major' = 'severe'): AirportDelayAlert {
+export function buildNotamAlert(
+  airport: MonitoredAirport,
+  reason: string,
+  severity: 'severe' | 'major' = 'severe',
+  delayType: 'closure' | 'general' = 'closure',
+): AirportDelayAlert {
   return {
     id: `notam-${airport.iata}`,
     iata: airport.iata,
@@ -497,7 +499,7 @@ export function buildNotamAlert(airport: MonitoredAirport, reason: string, sever
     country: airport.country,
     location: { latitude: airport.lat, longitude: airport.lon },
     region: toProtoRegion(airport.region),
-    delayType: toProtoDelayType('closure'),
+    delayType: toProtoDelayType(delayType),
     severity: toProtoSeverity(severity),
     avgDelayMinutes: 0,
     delayedFlightsPct: 0,
@@ -566,9 +568,10 @@ export function mergeNotamWithExistingAlert(
   notamReason: string,
   existing: AirportDelayAlert | null,
   severity: 'severe' | 'major' = 'severe',
+  delayType: 'closure' | 'general' = 'closure',
 ): AirportDelayAlert {
   if (!existing || existing.totalFlights === 0) {
-    return buildNotamAlert(airport, notamReason, severity);
+    return buildNotamAlert(airport, notamReason, severity, delayType);
   }
 
   const cancelRate = (existing.cancelledFlights / existing.totalFlights) * 100;
@@ -582,8 +585,6 @@ export function mergeNotamWithExistingAlert(
     SEV_ORDER.indexOf(notamCancelSev),
     SEV_ORDER.indexOf(notamFloor),
   )] ?? 'moderate';
-
-  const delayType = 'closure';
 
   const cancelText = `${Math.round(cancelRate)}% cxl`;
   const reason = `NOTAM: ${notamReason.slice(0, 120)} — ${cancelText}`;
