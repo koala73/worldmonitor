@@ -607,7 +607,7 @@ export class GlobeMap {
       .arcColor((d: TradeRouteSegment) => {
         if (d.status === 'disrupted') return ['rgba(255,32,32,0.1)', 'rgba(255,32,32,0.8)', 'rgba(255,32,32,0.1)'];
         if (d.status === 'high_risk') return ['rgba(255,180,0,0.1)', 'rgba(255,180,0,0.7)', 'rgba(255,180,0,0.1)'];
-        if (d.category === 'energy')    return ['rgba(255,140,0,0.05)', 'rgba(255,140,0,0.6)', 'rgba(255,140,0,0.05)'];
+        if (d.category === 'energy') return ['rgba(255,140,0,0.05)', 'rgba(255,140,0,0.6)', 'rgba(255,140,0,0.05)'];
         if (d.category === 'container') return ['rgba(68,136,255,0.05)', 'rgba(68,136,255,0.6)', 'rgba(68,136,255,0.05)'];
         return ['rgba(68,204,136,0.05)', 'rgba(68,204,136,0.6)', 'rgba(68,204,136,0.05)'];
       })
@@ -632,12 +632,12 @@ export class GlobeMap {
           return colors[d.country || ''] || 'rgba(200,200,255,0.3)';
         }
         if (d.pathType === 'cable') {
-          if (this.cableFaultIds.has(d.id))    return '#ff3030';
+          if (this.cableFaultIds.has(d.id)) return '#ff3030';
           if (this.cableDegradedIds.has(d.id)) return '#ff8800';
           return 'rgba(0,200,255,0.65)';
         }
-        if (d.pathType === 'oil')   return 'rgba(255,140,0,0.6)';
-        if (d.pathType === 'gas')   return 'rgba(80,220,120,0.6)';
+        if (d.pathType === 'oil') return 'rgba(255,140,0,0.6)';
+        if (d.pathType === 'gas') return 'rgba(80,220,120,0.6)';
         return 'rgba(180,160,255,0.6)';
       })
       .pathStroke((d: GlobePath) => d.pathType === 'orbit' ? 0.3 : d.pathType === 'cable' ? 0.3 : 0.6)
@@ -700,6 +700,8 @@ export class GlobeMap {
     this.setView(this.currentView);
 
     // dayNight toggle excluded by catalog (renderers: ['flat'])
+    this.layers.dayNight = false;
+    this.hideLayerToggle('dayNight');
 
     // Flush any data that arrived before init completed
     this.flushMarkers();
@@ -919,9 +921,9 @@ export class GlobeMap {
       el.title = d.name;
     } else if (d._kind === 'newsLocation') {
       const tc = d.threatLevel === 'critical' ? '#ff2020'
-               : d.threatLevel === 'high'     ? '#ff6600'
-               : d.threatLevel === 'elevated' ? '#ffaa00'
-               : '#44aaff';
+        : d.threatLevel === 'high' ? '#ff6600'
+          : d.threatLevel === 'elevated' ? '#ffaa00'
+            : '#44aaff';
       el.innerHTML = `
         <div style="position:relative;width:16px;height:16px;">
           <div style="position:absolute;inset:0;border-radius:50%;background:${tc}44;border:1.5px solid ${tc};box-shadow:0 0 5px 2px ${tc}55;"></div>
@@ -997,11 +999,11 @@ export class GlobeMap {
     let html = '';
     if (d._kind === 'conflict') {
       html = `<span style="color:#ff5050;font-weight:bold;">⚔ ${esc(d.location)}</span>` +
-             (d.fatalities ? `<br><span style="opacity:.7;">Casualties: ${d.fatalities}</span>` : '');
+        (d.fatalities ? `<br><span style="opacity:.7;">Casualties: ${d.fatalities}</span>` : '');
     } else if (d._kind === 'hotspot') {
       const sc = ['', '#88ff44', '#ffdd00', '#ffaa00', '#ff6600', '#ff2020'][d.escalationScore] ?? '#ffaa00';
       html = `<span style="color:${sc};font-weight:bold;">🎯 ${esc(d.name)}</span>` +
-             `<br><span style="opacity:.7;">Escalation: ${d.escalationScore}/5</span>`;
+        `<br><span style="opacity:.7;">Escalation: ${d.escalationScore}/5</span>`;
     } else if (d._kind === 'flight') {
       html = `<span style="font-weight:bold;">✈ ${esc(d.callsign)}</span><br><span style="opacity:.7;">${esc(d.type)}</span>`;
     } else if (d._kind === 'vessel') {
@@ -1009,124 +1011,124 @@ export class GlobeMap {
     } else if (d._kind === 'weather') {
       const wc = d.severity === 'Extreme' ? '#ff0044' : d.severity === 'Severe' ? '#ff6600' : '#88aaff';
       html = `<span style="color:${wc};font-weight:bold;">⚡ ${esc(d.severity)}</span>` +
-             `<br><span style="opacity:.7;white-space:normal;display:block;">${esc(d.headline.slice(0, 90))}</span>`;
+        `<br><span style="opacity:.7;white-space:normal;display:block;">${esc(d.headline.slice(0, 90))}</span>`;
     } else if (d._kind === 'natural') {
       html = `<span style="font-weight:bold;">${esc(d.title.slice(0, 60))}</span>` +
-             `<br><span style="opacity:.7;">${esc(d.category)}</span>`;
+        `<br><span style="opacity:.7;">${esc(d.category)}</span>`;
     } else if (d._kind === 'iran') {
       const sc = getIranEventHexColor(d);
       html = `<span style="color:${sc};font-weight:bold;">🎯 ${esc(d.title.slice(0, 60))}</span>` +
-             `<br><span style="opacity:.7;">${esc(d.category)}${d.location ? ' · ' + esc(d.location) : ''}</span>`;
+        `<br><span style="opacity:.7;">${esc(d.category)}${d.location ? ' · ' + esc(d.location) : ''}</span>`;
     } else if (d._kind === 'outage') {
       const sc = d.severity === 'total' ? '#ff2020' : d.severity === 'major' ? '#ff8800' : '#ffcc00';
       html = `<span style="color:${sc};font-weight:bold;">📡 ${d.severity.toUpperCase()} Outage</span>` +
-             `<br><span style="opacity:.7;">${esc(d.country)}</span>` +
-             `<br><span style="opacity:.7;white-space:normal;display:block;">${esc(d.title.slice(0, 70))}</span>`;
+        `<br><span style="opacity:.7;">${esc(d.country)}</span>` +
+        `<br><span style="opacity:.7;white-space:normal;display:block;">${esc(d.title.slice(0, 70))}</span>`;
     } else if (d._kind === 'cyber') {
       const sc = d.severity === 'critical' ? '#ff0044' : d.severity === 'high' ? '#ff4400' : '#ffaa00';
       html = `<span style="color:${sc};font-weight:bold;">🛡 ${d.severity.toUpperCase()}</span>` +
-             `<br><span style="opacity:.7;">${esc(d.type)}</span>` +
-             `<br><span style="opacity:.5;font-size:10px;">${esc(d.indicator.slice(0, 40))}</span>`;
+        `<br><span style="opacity:.7;">${esc(d.type)}</span>` +
+        `<br><span style="opacity:.5;font-size:10px;">${esc(d.indicator.slice(0, 40))}</span>`;
     } else if (d._kind === 'fire') {
       html = `<span style="color:#ff6600;font-weight:bold;">🔥 Wildfire</span>` +
-             `<br><span style="opacity:.7;">${esc(d.region)}</span>` +
-             `<br><span style="opacity:.5;">Brightness: ${d.brightness.toFixed(0)} K</span>`;
+        `<br><span style="opacity:.7;">${esc(d.region)}</span>` +
+        `<br><span style="opacity:.5;">Brightness: ${d.brightness.toFixed(0)} K</span>`;
     } else if (d._kind === 'protest') {
       const typeColors: Record<string, string> = { riot: '#ff3030', strike: '#44aaff', protest: '#ffaa00' };
       const c = typeColors[d.eventType] ?? '#ffaa00';
       html = `<span style="color:${c};font-weight:bold;">📢 ${esc(d.eventType)}</span>` +
-             `<br><span style="opacity:.7;">${esc(d.country)}</span>` +
-             `<br><span style="opacity:.7;white-space:normal;display:block;">${esc(d.title.slice(0, 70))}</span>`;
+        `<br><span style="opacity:.7;">${esc(d.country)}</span>` +
+        `<br><span style="opacity:.7;white-space:normal;display:block;">${esc(d.title.slice(0, 70))}</span>`;
     } else if (d._kind === 'ucdp') {
       html = `<span style="color:#ff6400;font-weight:bold;">⚔ ${esc(d.country)}</span>` +
-             `<br><span style="opacity:.7;">${esc(d.sideA)} vs ${esc(d.sideB)}</span>` +
-             (d.deaths ? `<br><span style="opacity:.5;">Deaths: ${d.deaths}</span>` : '');
+        `<br><span style="opacity:.7;">${esc(d.sideA)} vs ${esc(d.sideB)}</span>` +
+        (d.deaths ? `<br><span style="opacity:.5;">Deaths: ${d.deaths}</span>` : '');
     } else if (d._kind === 'displacement') {
       html = `<span style="color:#88bbff;font-weight:bold;">👥 Displacement</span>` +
-             `<br><span style="opacity:.7;">${esc(d.origin)} → ${esc(d.asylum)}</span>` +
-             `<br><span style="opacity:.5;">Refugees: ${d.refugees.toLocaleString()}</span>`;
+        `<br><span style="opacity:.7;">${esc(d.origin)} → ${esc(d.asylum)}</span>` +
+        `<br><span style="opacity:.5;">Refugees: ${d.refugees.toLocaleString()}</span>`;
     } else if (d._kind === 'climate') {
       const tc = d.type === 'warm' ? '#ff4400' : d.type === 'cold' ? '#44aaff' : '#88ff88';
       html = `<span style="color:${tc};font-weight:bold;">🌡 ${esc(d.type.toUpperCase())}</span>` +
-             `<br><span style="opacity:.7;">${esc(d.zone)}</span>` +
-             `<br><span style="opacity:.5;">ΔT: ${d.tempDelta > 0 ? '+' : ''}${d.tempDelta.toFixed(1)}°C · ${esc(d.severity)}</span>`;
+        `<br><span style="opacity:.7;">${esc(d.zone)}</span>` +
+        `<br><span style="opacity:.5;">ΔT: ${d.tempDelta > 0 ? '+' : ''}${d.tempDelta.toFixed(1)}°C · ${esc(d.severity)}</span>`;
     } else if (d._kind === 'gpsjam') {
       const gc = d.level === 'high' ? '#ff2020' : '#ff8800';
       html = `<span style="color:${gc};font-weight:bold;">📡 GPS Jamming</span>` +
-             `<br><span style="opacity:.7;">Level: ${esc(d.level)}</span>` +
-             `<br><span style="opacity:.5;">NP avg: ${d.npAvg.toFixed(2)}</span>`;
+        `<br><span style="opacity:.7;">Level: ${esc(d.level)}</span>` +
+        `<br><span style="opacity:.5;">NP avg: ${d.npAvg.toFixed(2)}</span>`;
     } else if (d._kind === 'tech') {
       html = `<span style="color:#44aaff;font-weight:bold;">💻 ${esc(d.title.slice(0, 50))}</span>` +
-             `<br><span style="opacity:.7;">${esc(d.country)}</span>` +
-             (d.daysUntil >= 0 ? `<br><span style="opacity:.5;">In ${d.daysUntil} days</span>` : '');
+        `<br><span style="opacity:.7;">${esc(d.country)}</span>` +
+        (d.daysUntil >= 0 ? `<br><span style="opacity:.5;">In ${d.daysUntil} days</span>` : '');
     } else if (d._kind === 'conflictZone') {
       const ic = d.intensity === 'high' ? '#ff3030' : d.intensity === 'medium' ? '#ff8800' : '#ffcc00';
       html = `<span style="color:${ic};font-weight:bold;">⚔ ${esc(d.name)}</span>` +
-             (d.parties.length ? `<br><span style="opacity:.7;">${d.parties.map(esc).join(', ')}</span>` : '') +
-             (d.casualties ? `<br><span style="opacity:.5;">Casualties: ${esc(d.casualties)}</span>` : '');
+        (d.parties.length ? `<br><span style="opacity:.7;">${d.parties.map(esc).join(', ')}</span>` : '') +
+        (d.casualties ? `<br><span style="opacity:.5;">Casualties: ${esc(d.casualties)}</span>` : '');
     } else if (d._kind === 'milbase') {
       html = `<span style="color:#4488ff;font-weight:bold;">🏛 ${esc(d.name)}</span>` +
-             `<br><span style="opacity:.7;">${esc(d.type)}${d.country ? ' · ' + esc(d.country) : ''}</span>`;
+        `<br><span style="opacity:.7;">${esc(d.type)}${d.country ? ' · ' + esc(d.country) : ''}</span>`;
     } else if (d._kind === 'nuclearSite') {
       const nc = d.status === 'active' ? '#ffd700' : d.status === 'construction' ? '#ff8800' : '#888888';
       html = `<span style="color:${nc};font-weight:bold;">☢ ${esc(d.name)}</span>` +
-             `<br><span style="opacity:.7;">${esc(d.type)} · ${esc(d.status)}</span>`;
+        `<br><span style="opacity:.7;">${esc(d.type)} · ${esc(d.status)}</span>`;
     } else if (d._kind === 'irradiator') {
       html = `<span style="color:#ff8800;font-weight:bold;">⚠ Gamma Irradiator</span>` +
-             `<br><span style="opacity:.7;">${esc(d.city)}, ${esc(d.country)}</span>`;
+        `<br><span style="opacity:.7;">${esc(d.city)}, ${esc(d.country)}</span>`;
     } else if (d._kind === 'spaceport') {
       const lc = d.launches === 'High' ? '#88ddff' : d.launches === 'Medium' ? '#44aaff' : '#aaaaaa';
       html = `<span style="color:${lc};font-weight:bold;">🚀 ${esc(d.name)}</span>` +
-             `<br><span style="opacity:.7;">${esc(d.operator)} · ${esc(d.country)}</span>` +
-             `<br><span style="opacity:.5;">Launch frequency: ${esc(d.launches)}</span>`;
+        `<br><span style="opacity:.7;">${esc(d.operator)} · ${esc(d.country)}</span>` +
+        `<br><span style="opacity:.5;">Launch frequency: ${esc(d.launches)}</span>`;
     } else if (d._kind === 'earthquake') {
       const mc = d.magnitude >= 6 ? '#ff3030' : d.magnitude >= 4 ? '#ff8800' : '#ffcc00';
       html = `<span style="color:${mc};font-weight:bold;">🌍 M${d.magnitude.toFixed(1)}</span>` +
-             `<br><span style="opacity:.7;white-space:normal;display:block;">${esc(d.place.slice(0, 70))}</span>`;
+        `<br><span style="opacity:.7;white-space:normal;display:block;">${esc(d.place.slice(0, 70))}</span>`;
     } else if (d._kind === 'economic') {
       const ec = d.type === 'exchange' ? '#ffd700' : d.type === 'central-bank' ? '#4488ff' : '#44cc88';
       html = `<span style="color:${ec};font-weight:bold;">💰 ${esc(d.name)}</span>` +
-             `<br><span style="opacity:.7;">${esc(d.type)} · ${esc(d.country)}</span>` +
-             (d.description ? `<br><span style="opacity:.5;white-space:normal;display:block;">${esc(d.description.slice(0, 70))}</span>` : '');
+        `<br><span style="opacity:.7;">${esc(d.type)} · ${esc(d.country)}</span>` +
+        (d.description ? `<br><span style="opacity:.5;white-space:normal;display:block;">${esc(d.description.slice(0, 70))}</span>` : '');
     } else if (d._kind === 'datacenter') {
       html = `<span style="color:#88aaff;font-weight:bold;">🖥 ${esc(d.name)}</span>` +
-             `<br><span style="opacity:.7;">${esc(d.owner)} · ${esc(d.country)}</span>` +
-             `<br><span style="opacity:.5;">${esc(d.chipType)}</span>`;
+        `<br><span style="opacity:.7;">${esc(d.owner)} · ${esc(d.country)}</span>` +
+        `<br><span style="opacity:.5;">${esc(d.chipType)}</span>`;
     } else if (d._kind === 'waterway') {
       html = `<span style="color:#44aadd;font-weight:bold;">⚓ ${esc(d.name)}</span>` +
-             (d.description ? `<br><span style="opacity:.7;white-space:normal;display:block;">${esc(d.description.slice(0, 80))}</span>` : '');
+        (d.description ? `<br><span style="opacity:.7;white-space:normal;display:block;">${esc(d.description.slice(0, 80))}</span>` : '');
     } else if (d._kind === 'mineral') {
       const mc2 = d.status === 'producing' ? '#cc88ff' : '#8866bb';
       html = `<span style="color:${mc2};font-weight:bold;">💎 ${esc(d.mineral)}</span>` +
-             `<br><span style="opacity:.7;">${esc(d.name)} · ${esc(d.country)}</span>` +
-             `<br><span style="opacity:.5;">${esc(d.status)}</span>`;
+        `<br><span style="opacity:.7;">${esc(d.name)} · ${esc(d.country)}</span>` +
+        `<br><span style="opacity:.5;">${esc(d.status)}</span>`;
     } else if (d._kind === 'flightDelay') {
       const sc = d.severity === 'severe' ? '#ff3030' : d.severity === 'major' ? '#ff6600' : d.severity === 'moderate' ? '#ffaa00' : '#ffee44';
       html = `<span style="color:${sc};font-weight:bold;">✈ ${esc(d.iata)} — ${esc(d.severity.toUpperCase())}</span>` +
-             `<br><span style="opacity:.7;">${esc(d.name)}, ${esc(d.country)}</span>` +
-             `<br><span style="opacity:.7;">${esc(d.delayType.replace(/_/g, ' '))}` +
-             (d.avgDelayMinutes > 0 ? ` · avg ${d.avgDelayMinutes}min` : '') + `</span>` +
-             (d.reason ? `<br><span style="opacity:.5;white-space:normal;display:block;">${esc(d.reason.slice(0, 70))}</span>` : '');
+        `<br><span style="opacity:.7;">${esc(d.name)}, ${esc(d.country)}</span>` +
+        `<br><span style="opacity:.7;">${esc(d.delayType.replace(/_/g, ' '))}` +
+        (d.avgDelayMinutes > 0 ? ` · avg ${d.avgDelayMinutes}min` : '') + `</span>` +
+        (d.reason ? `<br><span style="opacity:.5;white-space:normal;display:block;">${esc(d.reason.slice(0, 70))}</span>` : '');
     } else if (d._kind === 'cableAdvisory') {
       const sc = d.severity === 'fault' ? '#ff2020' : '#ff8800';
       html = `<span style="color:${sc};font-weight:bold;">🔌 ${esc(d.severity.toUpperCase())} — ${esc(d.title.slice(0, 50))}</span>` +
-             (d.impact ? `<br><span style="opacity:.7;white-space:normal;display:block;">${esc(d.impact.slice(0, 70))}</span>` : '') +
-             (d.repairEta ? `<br><span style="opacity:.5;">ETA: ${esc(d.repairEta)}</span>` : '');
+        (d.impact ? `<br><span style="opacity:.7;white-space:normal;display:block;">${esc(d.impact.slice(0, 70))}</span>` : '') +
+        (d.repairEta ? `<br><span style="opacity:.5;">ETA: ${esc(d.repairEta)}</span>` : '');
     } else if (d._kind === 'repairShip') {
       const sc = d.status === 'on-station' ? '#44ff88' : '#44aaff';
       html = `<span style="color:${sc};font-weight:bold;">🚢 ${esc(d.name)}</span>` +
-             `<br><span style="opacity:.7;">${esc(d.status.replace(/-/g, ' '))}${d.operator ? ' · ' + esc(d.operator) : ''}</span>` +
-             (d.eta ? `<br><span style="opacity:.5;">ETA: ${esc(d.eta)}</span>` : '');
+        `<br><span style="opacity:.7;">${esc(d.status.replace(/-/g, ' '))}${d.operator ? ' · ' + esc(d.operator) : ''}</span>` +
+        (d.eta ? `<br><span style="opacity:.5;">ETA: ${esc(d.eta)}</span>` : '');
     } else if (d._kind === 'aisDisruption') {
       const sc = d.severity === 'high' ? '#ff2020' : d.severity === 'elevated' ? '#ff8800' : '#44aaff';
       const typeLabel = d.type === 'gap_spike' ? 'Gap Spike' : 'Chokepoint Congestion';
       html = `<span style="color:${sc};font-weight:bold;">⛴ ${esc(typeLabel)}</span>` +
-             `<br><span style="opacity:.7;">${esc(d.name)}</span>` +
-             `<br><span style="opacity:.5;">${esc(d.severity)} · ${esc(d.description.slice(0, 60))}</span>`;
+        `<br><span style="opacity:.7;">${esc(d.name)}</span>` +
+        `<br><span style="opacity:.5;">${esc(d.severity)} · ${esc(d.description.slice(0, 60))}</span>`;
     } else if (d._kind === 'newsLocation') {
       const tc = d.threatLevel === 'critical' ? '#ff2020' : d.threatLevel === 'high' ? '#ff6600' : d.threatLevel === 'elevated' ? '#ffaa00' : '#44aaff';
       html = `<span style="color:${tc};font-weight:bold;">📰 ${esc(d.title.slice(0, 60))}</span>` +
-             `<br><span style="opacity:.5;">${esc(d.threatLevel)}</span>`;
+        `<br><span style="opacity:.5;">${esc(d.threatLevel)}</span>`;
     } else if (d._kind === 'satellite') {
       const sc = SAT_COUNTRY_COLORS[d.country] || '#ccccff';
       const altBand = d.alt < 2000 ? 'LEO' : d.alt < 35786 ? 'MEO' : 'GEO';
@@ -1162,7 +1164,7 @@ export class GlobeMap {
       cr.height - el.offsetHeight - 4
     ));
     el.style.left = left + 'px';
-    el.style.top  = top  + 'px';
+    el.style.top = top + 'px';
 
     this.tooltipEl = el;
     if (this.tooltipHideTimer) clearTimeout(this.tooltipHideTimer);
@@ -1191,8 +1193,8 @@ export class GlobeMap {
     this.container.appendChild(el);
     el.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
-      if      (target.classList.contains('zoom-in'))    this.zoomInGlobe();
-      else if (target.classList.contains('zoom-out'))   this.zoomOutGlobe();
+      if (target.classList.contains('zoom-in')) this.zoomInGlobe();
+      else if (target.classList.contains('zoom-out')) this.zoomOutGlobe();
       else if (target.classList.contains('zoom-reset')) this.setView(this.currentView);
     });
   }
@@ -1234,15 +1236,15 @@ export class GlobeMap {
       </div>
       <div class="toggle-list" style="max-height:32vh;overflow-y:auto;scrollbar-width:thin;">
         ${layers.map(({ key, label, icon, premium }) => {
-          const isLocked = premium === 'locked' && !_wmKey;
-          const isEnhanced = premium === 'enhanced' && !_wmKey;
-          return `
+      const isLocked = premium === 'locked' && !_wmKey;
+      const isEnhanced = premium === 'enhanced' && !_wmKey;
+      return `
           <label class="layer-toggle${isLocked ? ' layer-toggle-locked' : ''}" data-layer="${key}">
             <input type="checkbox" ${this.layers[key] ? 'checked' : ''}${isLocked ? ' disabled' : ''}>
             <span class="toggle-icon">${icon}</span>
             <span class="toggle-label">${label}${isLocked ? ' \uD83D\uDD12' : ''}${isEnhanced ? ' <span class="layer-pro-badge">PRO</span>' : ''}</span>
           </label>`;
-        }).join('')}
+    }).join('')}
       </div>`;
     const authorBadge = document.createElement('div');
     authorBadge.className = 'map-author-badge';
@@ -1376,10 +1378,10 @@ export class GlobeMap {
   }
 
   private static readonly CII_GLOBE_COLORS: Record<string, string> = {
-    low:      'rgba(40, 180, 60, 0.35)',
-    normal:   'rgba(220, 200, 50, 0.35)',
+    low: 'rgba(40, 180, 60, 0.35)',
+    normal: 'rgba(220, 200, 50, 0.35)',
     elevated: 'rgba(240, 140, 30, 0.40)',
-    high:     'rgba(220, 50, 20, 0.45)',
+    high: 'rgba(220, 50, 20, 0.45)',
     critical: 'rgba(140, 10, 0, 0.50)',
   };
   private static readonly CONFLICT_CAP: Record<string, string> = { high: 'rgba(255,40,40,0.25)', medium: 'rgba(255,120,0,0.20)', low: 'rgba(255,200,0,0.15)' };
@@ -1638,38 +1640,38 @@ export class GlobeMap {
 
   private static readonly LAYER_CHANNELS: Map<string, { markers: boolean; arcs: boolean; paths: boolean; polygons: boolean }> = new Map([
     ['ciiChoropleth', { markers: false, arcs: false, paths: false, polygons: true }],
-    ['tradeRoutes',   { markers: false, arcs: true,  paths: false, polygons: false }],
-    ['pipelines',     { markers: false, arcs: false, paths: true,  polygons: false }],
-    ['conflicts',     { markers: true,  arcs: false, paths: false, polygons: true }],
-    ['cables',        { markers: true,  arcs: false, paths: true,  polygons: false }],
-    ['satellites',    { markers: true,  arcs: false, paths: true,  polygons: false }],
+    ['tradeRoutes', { markers: false, arcs: true, paths: false, polygons: false }],
+    ['pipelines', { markers: false, arcs: false, paths: true, polygons: false }],
+    ['conflicts', { markers: true, arcs: false, paths: false, polygons: true }],
+    ['cables', { markers: true, arcs: false, paths: true, polygons: false }],
+    ['satellites', { markers: true, arcs: false, paths: true, polygons: false }],
   ]);
 
   private flushLayerChannels(layer: keyof MapLayers): void {
     const ch = GlobeMap.LAYER_CHANNELS.get(layer);
     if (!ch) { this.flushMarkers(); return; }
-    if (ch.markers)  this.flushMarkers();
-    if (ch.arcs)     this.flushArcs();
-    if (ch.paths)    this.flushPaths();
+    if (ch.markers) this.flushMarkers();
+    if (ch.arcs) this.flushArcs();
+    if (ch.paths) this.flushPaths();
     if (ch.polygons) this.flushPolygons();
   }
 
   public setLayers(layers: MapLayers): void {
     const prev = this.layers;
-    this.layers = { ...layers };
+    this.layers = { ...layers, dayNight: false };
     let needMarkers = false, needArcs = false, needPaths = false, needPolygons = false;
     for (const k of Object.keys(layers) as (keyof MapLayers)[]) {
       if (prev[k] === layers[k]) continue;
       const ch = GlobeMap.LAYER_CHANNELS.get(k);
       if (!ch) { needMarkers = true; continue; }
-      if (ch.markers)  needMarkers = true;
-      if (ch.arcs)     needArcs = true;
-      if (ch.paths)    needPaths = true;
+      if (ch.markers) needMarkers = true;
+      if (ch.arcs) needArcs = true;
+      if (ch.paths) needPaths = true;
       if (ch.polygons) needPolygons = true;
     }
-    if (needMarkers)  this.flushMarkers();
-    if (needArcs)     this.flushArcs();
-    if (needPaths)    this.flushPaths();
+    if (needMarkers) this.flushMarkers();
+    if (needArcs) this.flushArcs();
+    if (needPaths) this.flushPaths();
     if (needPolygons) this.flushPolygons();
     if (prev.satellites !== layers.satellites && this.satBeamGroup) {
       this.satBeamGroup.visible = !!layers.satellites;
@@ -1677,6 +1679,7 @@ export class GlobeMap {
   }
 
   public enableLayer(layer: keyof MapLayers): void {
+    if (layer === 'dayNight') return;
     if (this.layers[layer]) return;
     (this.layers as any)[layer] = true;
     const toggle = this.layerTogglesEl?.querySelector(`.layer-toggle[data-layer="${layer}"] input`) as HTMLInputElement | null;
@@ -1706,14 +1709,14 @@ export class GlobeMap {
   // ─── Camera / navigation ──────────────────────────────────────────────────
 
   private static readonly VIEW_POVS: Record<MapView, { lat: number; lng: number; altitude: number }> = {
-    global:   { lat: 20,  lng:  0,   altitude: 1.8 },
-    america:  { lat: 20,  lng: -90,  altitude: 1.5 },
-    mena:     { lat: 25,  lng:  40,  altitude: 1.2 },
-    eu:       { lat: 50,  lng:  10,  altitude: 1.2 },
-    asia:     { lat: 35,  lng: 105,  altitude: 1.5 },
-    latam:    { lat: -15, lng: -60,  altitude: 1.5 },
-    africa:   { lat:  5,  lng:  20,  altitude: 1.5 },
-    oceania:  { lat: -25, lng: 140,  altitude: 1.5 },
+    global: { lat: 20, lng: 0, altitude: 1.8 },
+    america: { lat: 20, lng: -90, altitude: 1.5 },
+    mena: { lat: 25, lng: 40, altitude: 1.2 },
+    eu: { lat: 50, lng: 10, altitude: 1.2 },
+    asia: { lat: 35, lng: 105, altitude: 1.5 },
+    latam: { lat: -15, lng: -60, altitude: 1.5 },
+    africa: { lat: 5, lng: 20, altitude: 1.5 },
+    oceania: { lat: -25, lng: 140, altitude: 1.5 },
   };
 
   public setView(view: MapView): void {
@@ -1732,12 +1735,12 @@ export class GlobeMap {
     // globe.gl altitude: 1.8=full globe, 0.6=country, 0.15=city
     let altitude = 1.2;
     if (zoom !== undefined) {
-      if      (zoom >= 7) altitude = 0.08;
+      if (zoom >= 7) altitude = 0.08;
       else if (zoom >= 6) altitude = 0.15;
       else if (zoom >= 5) altitude = 0.3;
       else if (zoom >= 4) altitude = 0.5;
       else if (zoom >= 3) altitude = 0.8;
-      else                altitude = 1.5;
+      else altitude = 1.5;
     }
     this.globe.pointOfView({ lat, lng: lon, altitude }, 1200);
   }
@@ -1792,7 +1795,7 @@ export class GlobeMap {
     // After drag-resize or fullscreen transition completes, re-sync dimensions
     if (!isResizing) this.resize();
   }
-  public setZoom(_z: number): void {}
+  public setZoom(_z: number): void { }
   public setRenderPaused(paused: boolean): void {
     if (this.renderPaused === paused) return;
     this.renderPaused = paused;
@@ -1830,17 +1833,17 @@ export class GlobeMap {
       this.flushMarkers();
     }
   }
-  public updateHotspotActivity(_news: any[]): void {}
-  public updateMilitaryForEscalation(_f: any[], _v: any[]): void {}
+  public updateHotspotActivity(_news: any[]): void { }
+  public updateMilitaryForEscalation(_f: any[], _v: any[]): void { }
   public getHotspotDynamicScore(_id: string) { return undefined; }
   public getHotspotLevels() { return {} as Record<string, string>; }
-  public setHotspotLevels(_l: Record<string, string>): void {}
-  public initEscalationGetters(): void {}
-  public highlightAssets(_assets: any): void {}
+  public setHotspotLevels(_l: Record<string, string>): void { }
+  public initEscalationGetters(): void { }
+  public highlightAssets(_assets: any): void { }
   public setOnLayerChange(cb: (layer: keyof MapLayers, enabled: boolean, source: 'user' | 'programmatic') => void): void {
     this.onLayerChangeCb = cb;
   }
-  public setOnTimeRangeChange(_cb: any): void {}
+  public setOnTimeRangeChange(_cb: any): void { }
   public hideLayerToggle(layer: keyof MapLayers): void {
     this.layerTogglesEl?.querySelector(`.layer-toggle[data-layer="${layer}"]`)?.remove();
   }
@@ -1850,7 +1853,7 @@ export class GlobeMap {
   public setLayerReady(layer: keyof MapLayers, hasData: boolean): void {
     this.layerTogglesEl?.querySelector(`.layer-toggle[data-layer="${layer}"]`)?.classList.toggle('no-data', !hasData);
   }
-  public flashAssets(_type: string, _ids: string[]): void {}
+  public flashAssets(_type: string, _ids: string[]): void { }
   public flashLocation(lat: number, lon: number, durationMs = 2000): void {
     if (!this.globe || !this.initialized) return;
     const id = `flash-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -1861,14 +1864,14 @@ export class GlobeMap {
       this.flushMarkers();
     }, durationMs);
   }
-  public triggerHotspotClick(_id: string): void {}
-  public triggerConflictClick(_id: string): void {}
-  public triggerBaseClick(_id: string): void {}
-  public triggerPipelineClick(_id: string): void {}
-  public triggerCableClick(_id: string): void {}
-  public triggerDatacenterClick(_id: string): void {}
-  public triggerNuclearClick(_id: string): void {}
-  public triggerIrradiatorClick(_id: string): void {}
+  public triggerHotspotClick(_id: string): void { }
+  public triggerConflictClick(_id: string): void { }
+  public triggerBaseClick(_id: string): void { }
+  public triggerPipelineClick(_id: string): void { }
+  public triggerCableClick(_id: string): void { }
+  public triggerDatacenterClick(_id: string): void { }
+  public triggerNuclearClick(_id: string): void { }
+  public triggerIrradiatorClick(_id: string): void { }
   public fitCountry(code: string): void {
     if (!this.globe) return;
     const bbox = getCountryBbox(code);
@@ -1881,8 +1884,8 @@ export class GlobeMap {
     const altitude = span > 60 ? 1.0 : span > 20 ? 0.7 : span > 8 ? 0.45 : span > 3 ? 0.25 : 0.12;
     this.globe.pointOfView({ lat, lng, altitude }, 1200);
   }
-  public highlightCountry(_code: string): void {}
-  public clearCountryHighlight(): void {}
+  public highlightCountry(_code: string): void { }
+  public clearCountryHighlight(): void { }
   public setEarthquakes(earthquakes: Earthquake[]): void {
     this.earthquakeMarkers = (earthquakes ?? [])
       .filter(e => e.location != null)
@@ -1950,12 +1953,12 @@ export class GlobeMap {
         eta: r.eta ?? '',
         operator: r.operator ?? '',
       }));
-    this.cableFaultIds    = new Set((advisories ?? []).filter(a => a.severity === 'fault').map(a => a.cableId));
+    this.cableFaultIds = new Set((advisories ?? []).filter(a => a.severity === 'fault').map(a => a.cableId));
     this.cableDegradedIds = new Set((advisories ?? []).filter(a => a.severity === 'degraded').map(a => a.cableId));
     this.flushMarkers();
     this.flushPaths();
   }
-  public setCableHealth(_m: any): void {}
+  public setCableHealth(_m: any): void { }
   public setProtests(events: SocialUnrestEvent[]): void {
     this.protestMarkers = (events ?? []).filter(e => e.lat != null && e.lon != null).map(e => ({
       _kind: 'protest' as const,
@@ -2000,11 +2003,11 @@ export class GlobeMap {
       }));
     this.flushMarkers();
   }
-  public setPositiveEvents(_events: any[]): void {}
-  public setKindnessData(_points: any[]): void {}
-  public setHappinessScores(_data: any): void {}
-  public setSpeciesRecoveryZones(_zones: any[]): void {}
-  public setRenewableInstallations(_installations: any[]): void {}
+  public setPositiveEvents(_events: any[]): void { }
+  public setKindnessData(_points: any[]): void { }
+  public setHappinessScores(_data: any): void { }
+  public setSpeciesRecoveryZones(_zones: any[]): void { }
+  public setRenewableInstallations(_installations: any[]): void { }
   public setCyberThreats(threats: CyberThreat[]): void {
     this.cyberMarkers = (threats ?? []).filter(t => t.lat != null && t.lon != null).map(t => ({
       _kind: 'cyber' as const,
@@ -2030,7 +2033,7 @@ export class GlobeMap {
     }));
     this.flushMarkers();
   }
-  public setFires(fires: Array<{ lat: number; lon: number; brightness: number; region: string; [key: string]: any }>): void {
+  public setFires(fires: Array<{ lat: number; lon: number; brightness: number; region: string;[key: string]: any }>): void {
     this.fireMarkers = (fires ?? []).filter(f => f.lat != null && f.lon != null).map(f => ({
       _kind: 'fire' as const,
       _lat: f.lat,
@@ -2242,7 +2245,7 @@ export class GlobeMap {
     this.flushMarkers();
     this.flushPaths();
   }
-  public setTechEvents(events: Array<{ id: string; title: string; lat: number; lng: number; country: string; daysUntil: number; [key: string]: any }>): void {
+  public setTechEvents(events: Array<{ id: string; title: string; lat: number; lng: number; country: string; daysUntil: number;[key: string]: any }>): void {
     this.techMarkers = (events ?? []).filter(e => e.lat != null && e.lng != null).map(e => ({
       _kind: 'tech' as const,
       _lat: e.lat,
@@ -2255,9 +2258,9 @@ export class GlobeMap {
     this.flushMarkers();
   }
   public onHotspotClicked(cb: (h: Hotspot) => void): void { this.onHotspotClickCb = cb; }
-  public onTimeRangeChanged(_cb: (r: TimeRange) => void): void {}
-  public onStateChanged(_cb: (s: MapContainerState) => void): void {}
-  public setOnCountry(_cb: any): void {}
+  public onTimeRangeChanged(_cb: (r: TimeRange) => void): void { }
+  public onStateChanged(_cb: (s: MapContainerState) => void): void { }
+  public setOnCountry(_cb: any): void { }
   public getHotspotLevel(_id: string) { return 'low'; }
 
   private async applyEnhancedVisuals(): Promise<void> {
