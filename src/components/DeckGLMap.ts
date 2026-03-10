@@ -49,6 +49,7 @@ import type { ClimateAnomaly } from '@/services/climate';
 import { ArcLayer } from '@deck.gl/layers';
 import { HeatmapLayer } from '@deck.gl/aggregation-layers';
 import { H3HexagonLayer } from '@deck.gl/geo-layers';
+import { PathStyleExtension } from '@deck.gl/extensions';
 import type { WeatherAlert } from '@/services/weather';
 import { escapeHtml } from '@/utils/sanitize';
 import { tokenizeForMatch, matchKeyword, matchesAnyKeyword, findMatchingKeywords } from '@/utils/keyword-match';
@@ -1259,9 +1260,9 @@ export class DeckGLMap {
     }
     layers.push(this.createEmptyGhost('earthquakes-layer'));
 
-    // Natural events layer
+    // Natural events layers (non-TC scatter + TC tracks/cones/centers)
     if (mapLayers.natural && filteredNaturalEvents.length > 0) {
-      layers.push(this.createNaturalEventsLayer(filteredNaturalEvents));
+      layers.push(...this.createNaturalEventsLayers(filteredNaturalEvents));
     }
 
     // Satellite fires layer (NASA FIRMS)
@@ -1915,21 +1916,133 @@ export class DeckGLMap {
     });
   }
 
-  private createNaturalEventsLayer(events: NaturalEvent[]): ScatterplotLayer {
-    return new ScatterplotLayer({
-      id: 'natural-events-layer',
-      data: events,
+  private static readonly TC_WIND_COLORS: [number, [number, number, number, number]][] = [
+    [137, [255, 96, 96, 200]],    // Cat5
+    [113, [255, 140, 0, 200]],    // Cat4
+    [96,  [255, 140, 0, 200]],    // Cat3
+    [83,  [255, 231, 117, 200]],  // Cat2
+    [64,  [255, 231, 117, 200]],  // Cat1
+    [34,  [94, 186, 255, 200]],   // TS
+    [0,   [160, 160, 160, 160]],  // TD
+  ];
+
+  private static windColor(kt: number): [number, number, number, number] {
+    for (const [threshold, color] of DeckGLMap.TC_WIND_COLORS) {
+      if (kt >= threshold) return color;
+    }
+    return [160, 160, 160, 160];
+  }
+
+  private createNaturalEventsLayers(events: NaturalEvent[]): Layer[] {
+    const nonTC = events.filter(e => !e.stormName && !e.windKt);
+    const cyclones = events.filter(e => e.stormName || e.windKt);
+    const layers: Layer[] = [];
+
+    if (nonTC.length > 0) {
+      layers.push(new ScatterplotLayer({
+        id: 'natural-events-layer',
+        data: nonTC,
+        getPosition: (d: NaturalEvent) => [d.lon, d.lat],
+        getRadius: (d: NaturalEvent) => d.title.startsWith('🔴') ? 20000 : d.title.startsWith('🟠') ? 15000 : 8000,
+        getFillColor: (d: NaturalEvent) => {
+          if (d.title.startsWith('🔴')) return [255, 0, 0, 220] as [number, number, number, number];
+          if (d.title.startsWith('🟠')) return [255, 140, 0, 200] as [number, number, number, number];
+          return [255, 150, 50, 180] as [number, number, number, number];
+        },
+        radiusMinPixels: 5,
+        radiusMaxPixels: 18,
+        pickable: true,
+      }));
+    }
+
+    if (cyclones.length === 0) return layers;
+
+    // Cone polygons (render first, underneath tracks)
+    const coneData: { polygon: number[][]; stormName: string }[] = [];
+    for (const e of cyclones) {
+      if (!e.conePolygon?.length) continue;
+      for (const ring of e.conePolygon) {
+        coneData.push({ polygon: ring, stormName: e.stormName || e.title });
+      }
+    }
+    if (coneData.length > 0) {
+      layers.push(new PolygonLayer({
+        id: 'storm-cone-layer',
+        data: coneData,
+        getPolygon: (d: { polygon: number[][] }) => d.polygon,
+        getFillColor: [255, 255, 255, 30],
+        getLineColor: [255, 255, 255, 80],
+        lineWidthMinPixels: 1,
+        pickable: true,
+      }));
+    }
+
+    // Past track segments (per-segment wind coloring)
+    const pastSegments: { path: [number, number][]; windKt: number; stormName: string }[] = [];
+    for (const e of cyclones) {
+      if (!e.pastTrack?.length) continue;
+      for (let i = 0; i < e.pastTrack.length - 1; i++) {
+        const a = e.pastTrack[i]!;
+        const b = e.pastTrack[i + 1]!;
+        pastSegments.push({
+          path: [[a.lon, a.lat] as [number, number], [b.lon, b.lat] as [number, number]],
+          windKt: b.windKt ?? a.windKt ?? 0,
+          stormName: e.stormName || e.title,
+        });
+      }
+    }
+    if (pastSegments.length > 0) {
+      layers.push(new PathLayer({
+        id: 'storm-past-track-layer',
+        data: pastSegments,
+        getPath: (d: { path: [number, number][] }) => d.path,
+        getColor: (d: { windKt: number }) => DeckGLMap.windColor(d.windKt),
+        getWidth: 3,
+        widthUnits: 'pixels' as const,
+        pickable: true,
+      }));
+    }
+
+    // Forecast track
+    const forecastPaths: { path: [number, number][]; stormName: string }[] = [];
+    for (const e of cyclones) {
+      if (!e.forecastTrack?.length) continue;
+      forecastPaths.push({
+        path: [[e.lon, e.lat] as [number, number], ...e.forecastTrack.map(p => [p.lon, p.lat] as [number, number])],
+        stormName: e.stormName || e.title,
+      });
+    }
+    if (forecastPaths.length > 0) {
+      layers.push(new PathLayer({
+        id: 'storm-forecast-track-layer',
+        data: forecastPaths,
+        getPath: (d: { path: [number, number][] }) => d.path,
+        getColor: [255, 100, 100, 200],
+        getWidth: 2,
+        widthUnits: 'pixels' as const,
+        getDashArray: [6, 4],
+        dashJustified: true,
+        pickable: true,
+        extensions: [new PathStyleExtension({ dash: true })],
+      }));
+    }
+
+    // Storm center markers (on top)
+    layers.push(new ScatterplotLayer({
+      id: 'storm-centers-layer',
+      data: cyclones,
       getPosition: (d: NaturalEvent) => [d.lon, d.lat],
-      getRadius: (d: NaturalEvent) => d.title.startsWith('🔴') ? 20000 : d.title.startsWith('🟠') ? 15000 : 8000,
-      getFillColor: (d: NaturalEvent) => {
-        if (d.title.startsWith('🔴')) return [255, 0, 0, 220] as [number, number, number, number];
-        if (d.title.startsWith('🟠')) return [255, 140, 0, 200] as [number, number, number, number];
-        return [255, 150, 50, 180] as [number, number, number, number];
-      },
-      radiusMinPixels: 5,
-      radiusMaxPixels: 18,
+      getRadius: 15000,
+      getFillColor: (d: NaturalEvent) => DeckGLMap.windColor(d.windKt ?? 0),
+      getLineColor: [255, 255, 255, 200],
+      lineWidthMinPixels: 2,
+      stroked: true,
+      radiusMinPixels: 6,
+      radiusMaxPixels: 20,
       pickable: true,
-    });
+    }));
+
+    return layers;
   }
 
   private createFiresLayer(): ScatterplotLayer {
@@ -3193,6 +3306,14 @@ export class DeckGLMap {
 
       case 'natural-events-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.title)}</strong><br/>${text(obj.category || t('components.deckgl.tooltip.naturalEvent'))}</div>` };
+      case 'storm-centers-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.stormName || obj.title)}</strong><br/>${text(obj.classification || '')} ${obj.windKt ? obj.windKt + ' kt' : ''}</div>` };
+      case 'storm-forecast-track-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.stormName)}</strong><br/>${t('popups.naturalEvent.classification')}: Forecast Track</div>` };
+      case 'storm-past-track-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.stormName)}</strong><br/>Past Track (${obj.windKt} kt)</div>` };
+      case 'storm-cone-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.stormName)}</strong><br/>Forecast Cone</div>` };
       case 'ais-density-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${t('components.deckgl.layers.shipTraffic')}</strong><br/>${t('popups.intensity')}: ${text(obj.intensity)}</div>` };
       case 'waterways-layer':
@@ -3522,6 +3643,10 @@ export class DeckGLMap {
       'military-vessel-clusters-layer': 'militaryVesselCluster',
       'military-flight-clusters-layer': 'militaryFlightCluster',
       'natural-events-layer': 'natEvent',
+      'storm-centers-layer': 'natEvent',
+      'storm-forecast-track-layer': 'natEvent',
+      'storm-past-track-layer': 'natEvent',
+      'storm-cone-layer': 'natEvent',
       'waterways-layer': 'waterway',
       'economic-centers-layer': 'economic',
       'stock-exchanges-layer': 'stockExchange',
