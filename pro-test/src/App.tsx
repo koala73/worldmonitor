@@ -1059,13 +1059,26 @@ const EnterprisePage = () => (
                   email: fd.get('email'),
                   name: fd.get('name'),
                   organization: fd.get('organization'),
+                  phone: fd.get('phone'),
                   message: fd.get('message'),
                   source: 'enterprise-contact',
                   website: honeypot,
                   turnstileToken,
                 }),
               });
-              if (!res.ok) throw new Error();
+              const errorEl = form.querySelector('[data-form-error]') as HTMLElement | null;
+              if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                if (res.status === 422 && errorEl) {
+                  errorEl.textContent = data.error || t('enterpriseShowcase.workEmailRequired');
+                  errorEl.classList.remove('hidden');
+                  btn.textContent = origText;
+                  btn.disabled = false;
+                  return;
+                }
+                throw new Error();
+              }
+              if (errorEl) errorEl.classList.add('hidden');
               btn.textContent = t('enterpriseShowcase.contactSent');
               btn.className = btn.className.replace('bg-wm-green', 'bg-wm-card border border-wm-green text-wm-green');
             } catch {
@@ -1083,7 +1096,11 @@ const EnterprisePage = () => (
               <input type="text" name="name" placeholder={t('enterpriseShowcase.namePlaceholder')} required className="bg-wm-bg border border-wm-border rounded-sm px-4 py-3 text-sm focus:outline-none focus:border-wm-green transition-colors font-mono" />
               <input type="email" name="email" placeholder={t('enterpriseShowcase.emailPlaceholder')} required className="bg-wm-bg border border-wm-border rounded-sm px-4 py-3 text-sm focus:outline-none focus:border-wm-green transition-colors font-mono" />
             </div>
-            <input type="text" name="organization" placeholder={t('enterpriseShowcase.orgPlaceholder')} className="w-full bg-wm-bg border border-wm-border rounded-sm px-4 py-3 text-sm focus:outline-none focus:border-wm-green transition-colors font-mono" />
+            <span data-form-error className="hidden text-red-400 text-xs font-mono block" />
+            <div className="grid grid-cols-2 gap-4">
+              <input type="text" name="organization" placeholder={t('enterpriseShowcase.orgPlaceholder')} required className="bg-wm-bg border border-wm-border rounded-sm px-4 py-3 text-sm focus:outline-none focus:border-wm-green transition-colors font-mono" />
+              <input type="tel" name="phone" placeholder={t('enterpriseShowcase.phonePlaceholder')} required className="bg-wm-bg border border-wm-border rounded-sm px-4 py-3 text-sm focus:outline-none focus:border-wm-green transition-colors font-mono" />
+            </div>
             <textarea name="message" placeholder={t('enterpriseShowcase.messagePlaceholder')} rows={4} className="w-full bg-wm-bg border border-wm-border rounded-sm px-4 py-3 text-sm focus:outline-none focus:border-wm-green transition-colors font-mono resize-none" />
             <div className="cf-turnstile mx-auto" />
             <button type="submit" className="w-full bg-wm-green text-wm-bg py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors">

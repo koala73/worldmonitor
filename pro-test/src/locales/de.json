@@ -153,7 +153,10 @@
     "risk": "Risikoberatungen",
     "riskDesc": "Szenariosimulation, Investoren-Personas, gebrandete PDF-/PowerPoint-Berichte auf Abruf.",
     "soc": "SOCs & CERT",
-    "socDesc": "Cyberbedrohungs-Ebene, SIEM-Integration, BGP-Anomalie-Monitoring, Ransomware-Feeds."
+    "socDesc": "Cyberbedrohungs-Ebene, SIEM-Integration, BGP-Anomalie-Monitoring, Ransomware-Feeds.",
+    "orgPlaceholder": "Unternehmen *",
+    "phonePlaceholder": "Telefonnummer *",
+    "workEmailRequired": "Bitte verwenden Sie Ihre geschäftliche E-Mail"
   },
   "pricingTable": {
     "title": "Tarife vergleichen",

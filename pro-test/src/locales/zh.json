@@ -153,7 +153,10 @@
     "risk": "风险咨询",
     "riskDesc": "情景模拟、投资者画像、按需生成品牌化 PDF/PowerPoint 报告。",
     "soc": "SOCs 与 CERT",
-    "socDesc": "网络威胁图层、SIEM 集成、BGP 异常监测、勒索软件数据流。"
+    "socDesc": "网络威胁图层、SIEM 集成、BGP 异常监测、勒索软件数据流。",
+    "orgPlaceholder": "公司 *",
+    "phonePlaceholder": "电话号码 *",
+    "workEmailRequired": "请使用工作邮箱"
   },
   "pricingTable": {
     "title": "版本对比",

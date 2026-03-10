@@ -21,6 +21,7 @@ function validBody(overrides = {}) {
     name: 'Test User',
     email: 'test@example.com',
     organization: 'TestCorp',
+    phone: '+1 555 123 4567',
     message: 'Hello',
     source: 'enterprise-contact',
     turnstileToken: 'valid-token',
@@ -88,6 +89,48 @@ describe('api/contact', () => {
       assert.equal(res.status, 400);
       const data = await res.json();
       assert.match(data.error, /name/i);
+    });
+
+    it('rejects free email domains with 422', async () => {
+      globalThis.fetch = async (url) => {
+        if (url.includes('turnstile')) return new Response(JSON.stringify({ success: true }));
+        return new Response('{}');
+      };
+      const res = await handler(makeRequest(validBody({ email: 'test@gmail.com' })));
+      assert.equal(res.status, 422);
+      const data = await res.json();
+      assert.match(data.error, /work email/i);
+    });
+
+    it('rejects missing organization', async () => {
+      globalThis.fetch = async (url) => {
+        if (url.includes('turnstile')) return new Response(JSON.stringify({ success: true }));
+        return new Response('{}');
+      };
+      const res = await handler(makeRequest(validBody({ organization: '' })));
+      assert.equal(res.status, 400);
+      const data = await res.json();
+      assert.match(data.error, /company/i);
+    });
+
+    it('rejects missing phone', async () => {
+      globalThis.fetch = async (url) => {
+        if (url.includes('turnstile')) return new Response(JSON.stringify({ success: true }));
+        return new Response('{}');
+      };
+      const res = await handler(makeRequest(validBody({ phone: '' })));
+      assert.equal(res.status, 400);
+      const data = await res.json();
+      assert.match(data.error, /phone/i);
+    });
+
+    it('rejects invalid phone format', async () => {
+      globalThis.fetch = async (url) => {
+        if (url.includes('turnstile')) return new Response(JSON.stringify({ success: true }));
+        return new Response('{}');
+      };
+      const res = await handler(makeRequest(validBody({ phone: '(((((' })));
+      assert.equal(res.status, 400);
     });
 
     it('rejects disallowed origins', async () => {

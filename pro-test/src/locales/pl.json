@@ -153,7 +153,10 @@
     "risk": "Firmy doradztwa ryzyka",
     "riskDesc": "Symulacja scenariuszy, profile inwestorów, brandowane raporty PDF/PowerPoint na żądanie.",
     "soc": "SOCs i CERT",
-    "socDesc": "Warstwa zagrożeń cybernetycznych, integracja SIEM, monitoring anomalii BGP, kanały ransomware."
+    "socDesc": "Warstwa zagrożeń cybernetycznych, integracja SIEM, monitoring anomalii BGP, kanały ransomware.",
+    "orgPlaceholder": "Firma *",
+    "phonePlaceholder": "Numer telefonu *",
+    "workEmailRequired": "Użyj służbowego adresu e-mail"
   },
   "pricingTable": {
     "title": "Porównaj plany",

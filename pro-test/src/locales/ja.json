@@ -153,7 +153,10 @@
     "risk": "リスクコンサルティング",
     "riskDesc": "シナリオシミュレーション、投資家ペルソナ、ブランド付きPDF/PowerPointレポートをオンデマンドで。",
     "soc": "SOCs・CERT",
-    "socDesc": "サイバー脅威レイヤー、SIEM統合、BGP異常モニタリング、ランサムウェアフィード。"
+    "socDesc": "サイバー脅威レイヤー、SIEM統合、BGP異常モニタリング、ランサムウェアフィード。",
+    "orgPlaceholder": "会社名 *",
+    "phonePlaceholder": "電話番号 *",
+    "workEmailRequired": "業務用メールアドレスをご使用ください"
   },
   "pricingTable": {
     "title": "ティア比較",
