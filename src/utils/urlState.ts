@@ -19,6 +19,7 @@ const LAYER_KEYS: (keyof MapLayers)[] = [
   'datacenters',
   'protests',
   'flights',
+  'notamOverlay',
   'military',
   'natural',
   'spaceports',
@@ -36,6 +37,7 @@ const LAYER_KEYS: (keyof MapLayers)[] = [
   'iranAttacks',
   'gpsJamming',
   'satellites',
+  'satelliteImagery',
   'ciiChoropleth',
 ];
 

@@ -508,6 +508,9 @@ export class DataLoaderManager implements AppModule {
         case 'flights':
           await this.loadFlightDelays();
           break;
+        case 'notamOverlay':
+          await this.loadFlightDelays();
+          break;
         case 'military':
           await this.loadMilitary();
           break;
@@ -527,6 +530,8 @@ export class DataLoaderManager implements AppModule {
           break;
         case 'satellites':
           await this.loadSatellites();
+          break;
+        case 'satelliteImagery':
           break;
         case 'ucdpEvents':
         case 'displacement':

@@ -500,7 +500,7 @@ export function buildNotamAlert(airport: MonitoredAirport, reason: string): Airp
 
 // ---------- Shared NOTAM loader (used by both list-airport-delays and get-airport-ops-summary) ----------
 
-const NOTAM_CACHE_KEY = 'aviation:notam:closures:v1';
+const NOTAM_CACHE_KEY = 'aviation:notam:closures:v2';
 const NOTAM_CACHE_TTL = 7200;
 const SEED_FRESHNESS_MS = 45 * 60 * 1000;
 
@@ -528,8 +528,8 @@ export async function loadNotamClosures(): Promise<LoadedNotamResult | null> {
     try {
       notamResult = await cachedFetchJson<LoadedNotamResult>(
         NOTAM_CACHE_KEY, NOTAM_CACHE_TTL, async () => {
-          const mena = MONITORED_AIRPORTS.filter(a => a.region === 'mena');
-          const result = await fetchNotamClosures(mena);
+          const allAirports = MONITORED_AIRPORTS;
+          const result = await fetchNotamClosures(allAirports);
           const closedIcaos = [...result.closedIcaoCodes];
           const reasons: Record<string, string> = {};
           for (const [icao, reason] of result.notamsByIcao) reasons[icao] = reason;

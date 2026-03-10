@@ -65,6 +65,7 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   // Geopolitical / military
   gpsJamming: false,
   satellites: false,
+  satelliteImagery: false,
   iranAttacks: false,
   conflicts: false,
   bases: false,
@@ -80,6 +81,7 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   // Transport / tracking
   ais: true,              // Commodity shipping, tanker routes, bulk carriers
   flights: false,
+  notamOverlay: false,
   // Infrastructure
   cables: true,           // Undersea cables (trade comms)
   outages: true,          // Power outages affect operations
@@ -134,6 +136,7 @@ export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   // All others disabled on mobile
   gpsJamming: false,
   satellites: false,
+  satelliteImagery: false,
   iranAttacks: false,
   conflicts: false,
   bases: false,
@@ -147,6 +150,7 @@ export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   protests: false,
   ais: false,
   flights: false,
+  notamOverlay: false,
   cables: false,
   outages: false,
   datacenters: false,

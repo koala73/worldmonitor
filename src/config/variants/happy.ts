@@ -22,6 +22,7 @@ export const DEFAULT_PANELS: Record<string, PanelConfig> = {
 export const DEFAULT_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
   satellites: false,
+  satelliteImagery: false,
 
   conflicts: false,
   bases: false,
@@ -40,6 +41,7 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   datacenters: false,
   protests: false,
   flights: false,
+  notamOverlay: false,
   military: false,
   natural: false,
   spaceports: false,
@@ -81,6 +83,7 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
 export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
   satellites: false,
+  satelliteImagery: false,
 
   conflicts: false,
   bases: false,
@@ -99,6 +102,7 @@ export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   datacenters: false,
   protests: false,
   flights: false,
+  notamOverlay: false,
   military: false,
   natural: false,
   spaceports: false,

@@ -41,6 +41,8 @@ import type { AirportDelayAlert, PositionSample } from '@/services/aviation';
 import { fetchAircraftPositions } from '@/services/aviation';
 import { type IranEvent, getIranEventColor, getIranEventRadius } from '@/services/conflict';
 import type { GpsJamHex } from '@/services/gps-interference';
+import { fetchImageryScenes } from '@/services/imagery';
+import type { ImageryScene } from '@/generated/server/worldmonitor/imagery/v1/service_server';
 import type { DisplacementFlow } from '@/services/displacement';
 import type { Earthquake } from '@/services/earthquakes';
 import type { ClimateAnomaly } from '@/services/climate';
@@ -326,6 +328,8 @@ export class DeckGLMap {
   private tradeRouteSegments: TradeRouteSegment[] = resolveTradeRouteSegments();
   private positiveEvents: PositiveGeoEvent[] = [];
   private kindnessPoints: KindnessPoint[] = [];
+  private imageryScenes: ImageryScene[] = [];
+  private imagerySearchTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Phase 8 overlay data
   private happinessScores: Map<string, number> = new Map();
@@ -684,6 +688,10 @@ export class DeckGLMap {
       this.debouncedFetchAircraft();
       this.state.zoom = this.maplibreMap?.getZoom() ?? this.state.zoom;
       this.onStateChange?.(this.getState());
+      if (this.state.layers.satelliteImagery) {
+        if (this.imagerySearchTimer) clearTimeout(this.imagerySearchTimer);
+        this.imagerySearchTimer = setTimeout(() => this.fetchImageryForViewport(), 500);
+      }
     });
 
     this.maplibreMap.on('move', () => {
@@ -1168,7 +1176,7 @@ export class DeckGLMap {
     const filteredWeatherAlerts = mapLayers.weather ? this.filterByTime(this.weatherAlerts, (alert) => alert.onset) : [];
     const filteredOutages = mapLayers.outages ? this.filterByTime(this.outages, (outage) => outage.pubDate) : [];
     const filteredCableAdvisories = mapLayers.cables ? this.filterByTime(this.cableAdvisories, (advisory) => advisory.reported) : [];
-    const filteredFlightDelays = mapLayers.flights ? this.filterByTime(this.flightDelays, (delay) => delay.updatedAt) : [];
+    const filteredFlightDelays = (mapLayers.flights || mapLayers.notamOverlay) ? this.filterByTime(this.flightDelays, (delay) => delay.updatedAt) : [];
     const filteredMilitaryFlights = mapLayers.military ? this.filterByTime(this.militaryFlights, (flight) => flight.lastSeen) : [];
     const filteredMilitaryVessels = mapLayers.military ? this.filterByTime(this.militaryVessels, (vessel) => vessel.lastAisUpdate) : [];
     const filteredMilitaryFlightClusters = mapLayers.military ? this.filterMilitaryFlightClustersByTime(this.militaryFlightClusters) : [];
@@ -1315,6 +1323,14 @@ export class DeckGLMap {
     // Flight delays layer
     if (mapLayers.flights && filteredFlightDelays.length > 0) {
       layers.push(this.createFlightDelaysLayer(filteredFlightDelays));
+    }
+
+    // NOTAM overlay (airspace closure rings)
+    if (mapLayers.notamOverlay && filteredFlightDelays.length > 0) {
+      const closures = filteredFlightDelays.filter(d => d.delayType === 'closure');
+      if (closures.length > 0) {
+        layers.push(this.createNotamOverlayLayer(closures));
+      }
     }
 
     // Aircraft positions layer (live tracking, under flights toggle)
@@ -1467,6 +1483,10 @@ export class DeckGLMap {
     // Phase 8: Renewable energy installations
     if (mapLayers.renewableInstallations && this.renewableInstallations.length > 0) {
       layers.push(this.createRenewableInstallationsLayer());
+    }
+
+    if (mapLayers.satelliteImagery && this.imageryScenes.length > 0) {
+      layers.push(this.createImageryFootprintLayer());
     }
 
     // News geo-locations (always shown if data exists)
@@ -1786,6 +1806,22 @@ export class DeckGLMap {
       },
       radiusMinPixels: 4,
       radiusMaxPixels: 15,
+      pickable: true,
+    });
+  }
+
+  private createNotamOverlayLayer(closures: AirportDelayAlert[]): ScatterplotLayer {
+    return new ScatterplotLayer({
+      id: 'notam-overlay-layer',
+      data: closures,
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: 55000,
+      getFillColor: [255, 40, 40, 100] as [number, number, number, number],
+      getLineColor: [255, 40, 40, 200] as [number, number, number, number],
+      stroked: true,
+      lineWidthMinPixels: 2,
+      radiusMinPixels: 8,
+      radiusMaxPixels: 40,
       pickable: true,
     });
   }
@@ -3042,6 +3078,36 @@ export class DeckGLMap {
     });
   }
 
+  private createImageryFootprintLayer(): PolygonLayer {
+    return new PolygonLayer({
+      id: 'satellite-imagery-layer',
+      data: this.imageryScenes.filter(s => s.geometryGeojson),
+      getPolygon: (d: ImageryScene) => {
+        try {
+          const geom = JSON.parse(d.geometryGeojson);
+          if (geom.type === 'Polygon') return geom.coordinates[0];
+          return [];
+        } catch { return []; }
+      },
+      getFillColor: [0, 180, 255, 40] as [number, number, number, number],
+      getLineColor: [0, 180, 255, 180] as [number, number, number, number],
+      lineWidthMinPixels: 1,
+      pickable: true,
+    });
+  }
+
+  private async fetchImageryForViewport(): Promise<void> {
+    const map = this.maplibreMap;
+    if (!map) return;
+    const bounds = map.getBounds();
+    const bbox = `${bounds.getWest().toFixed(4)},${bounds.getSouth().toFixed(4)},${bounds.getEast().toFixed(4)},${bounds.getNorth().toFixed(4)}`;
+    try {
+      const scenes = await fetchImageryScenes({ bbox, limit: 20 });
+      this.imageryScenes = scenes;
+      this.render();
+    } catch { /* viewport fetch failed silently */ }
+  }
+
   private getTooltip(info: PickingInfo): { html: string } | null {
     if (!info.object) return null;
 
@@ -3152,6 +3218,8 @@ export class DeckGLMap {
       }
       case 'flight-delays-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)} (${text(obj.iata)})</strong><br/>${text(obj.severity)}: ${text(obj.reason)}</div>` };
+      case 'notam-overlay-layer':
+        return { html: `<div class="deckgl-tooltip"><strong style="color:#ff2828;">&#9888; NOTAM CLOSURE</strong><br/>${text(obj.name)} (${text(obj.iata)})<br/><span style="opacity:.7">${text((obj.reason || '').slice(0, 100))}</span></div>` };
       case 'aircraft-positions-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.callsign || obj.icao24)}</strong><br/>${obj.altitudeFt?.toLocaleString() ?? 0} ft · ${obj.groundSpeedKts ?? 0} kts · ${Math.round(obj.trackDeg ?? 0)}°</div>` };
       case 'apt-groups-layer':
@@ -3243,6 +3311,8 @@ export class DeckGLMap {
           </div>`,
         };
       }
+      case 'satellite-imagery-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>&#128752; ${text(obj.satellite)}</strong><br/>${text(obj.datetime)}<br/>Res: ${obj.resolutionM}m ${text(obj.mode)}</div>` };
       default:
         return null;
     }
@@ -4267,6 +4337,11 @@ export class DeckGLMap {
 
   public setWeatherAlerts(alerts: WeatherAlert[]): void {
     this.weatherAlerts = alerts;
+    this.render();
+  }
+
+  public setImageryScenes(scenes: ImageryScene[]): void {
+    this.imageryScenes = scenes;
     this.render();
   }
 

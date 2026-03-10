@@ -41,6 +41,7 @@ import type { RenewableInstallation } from '@/services/renewable-installations';
 import type { GpsJamHex } from '@/services/gps-interference';
 import type { SatellitePosition } from '@/services/satellites';
 import type { IranEvent } from '@/services/conflict';
+import type { ImageryScene } from '@/generated/server/worldmonitor/imagery/v1/service_server';
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
 export type MapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
@@ -130,6 +131,7 @@ export class MapContainer {
   private cachedHotspotActivity: NewsItem[] | null = null;
   private cachedEscalationFlights: MilitaryFlight[] | null = null;
   private cachedEscalationVessels: MilitaryVessel[] | null = null;
+  private cachedImageryScenes: ImageryScene[] | null = null;
 
   constructor(container: HTMLElement, initialState: MapContainerState, preferGlobe = false) {
     this.container = container;
@@ -290,6 +292,7 @@ export class MapContainer {
     if (this.cachedRenewableInstallations) this.setRenewableInstallations(this.cachedRenewableInstallations);
     if (this.cachedHotspotActivity) this.updateHotspotActivity(this.cachedHotspotActivity);
     if (this.cachedEscalationFlights && this.cachedEscalationVessels) this.updateMilitaryForEscalation(this.cachedEscalationFlights, this.cachedEscalationVessels);
+    if (this.cachedImageryScenes) this.setImageryScenes(this.cachedImageryScenes);
   }
 
   public isGlobeMode(): boolean {
@@ -387,6 +390,12 @@ export class MapContainer {
     this.cachedEarthquakes = earthquakes;
     if (this.useGlobe) { this.globeMap?.setEarthquakes(earthquakes); return; }
     if (this.useDeckGL) { this.deckGLMap?.setEarthquakes(earthquakes); } else { this.svgMap?.setEarthquakes(earthquakes); }
+  }
+
+  public setImageryScenes(scenes: ImageryScene[]): void {
+    this.cachedImageryScenes = scenes;
+    if (this.useGlobe) { this.globeMap?.setImageryScenes(scenes); return; }
+    if (this.useDeckGL) { this.deckGLMap?.setImageryScenes(scenes); }
   }
 
   public setWeatherAlerts(alerts: WeatherAlert[]): void {
@@ -926,5 +935,6 @@ export class MapContainer {
     this.cachedHotspotActivity = null;
     this.cachedEscalationFlights = null;
     this.cachedEscalationVessels = null;
+    this.cachedImageryScenes = null;
   }
 }

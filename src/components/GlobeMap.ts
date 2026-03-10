@@ -42,6 +42,7 @@ import type { DisplacementFlow } from '@/services/displacement';
 import type { ClimateAnomaly } from '@/services/climate';
 import type { GpsJamHex } from '@/services/gps-interference';
 import type { SatellitePosition } from '@/services/satellites';
+import type { ImageryScene } from '@/generated/server/worldmonitor/imagery/v1/service_server';
 
 const SAT_COUNTRY_COLORS: Record<string, string> = { CN: '#ff2020', RU: '#ff8800', US: '#4488ff', EU: '#44cc44', KR: '#aa66ff', IN: '#ff66aa', TR: '#ff4466', OTHER: '#ccccff' };
 const SAT_TYPE_EMOJI: Record<string, string> = { sar: '\u{1F4E1}', optical: '\u{1F4F7}', military: '\u{1F396}', sigint: '\u{1F4FB}' };
@@ -247,6 +248,11 @@ interface FlightDelayMarker extends BaseMarker {
   avgDelayMinutes: number;
   reason: string;
 }
+interface NotamRingMarker extends BaseMarker {
+  _kind: 'notamRing';
+  name: string;
+  reason: string;
+}
 interface NewsLocationMarker extends BaseMarker {
   _kind: 'newsLocation';
   id: string;
@@ -297,6 +303,14 @@ interface SatFootprintMarker extends BaseMarker {
   country: string;
   noradId: string;
 }
+interface ImagerySceneMarker extends BaseMarker {
+  _kind: 'imageryScene';
+  satellite: string;
+  datetime: string;
+  resolutionM: number;
+  mode: string;
+  previewUrl: string;
+}
 interface GlobePath {
   id: string;
   name: string;
@@ -308,13 +322,16 @@ interface GlobePath {
 interface GlobePolygon {
   coords: number[][][];
   name: string;
-  _kind: 'cii' | 'conflict';
+  _kind: 'cii' | 'conflict' | 'imageryFootprint';
   level?: string;
   score?: number;
 
   intensity?: string;
   parties?: string[];
   casualties?: string;
+
+  satellite?: string;
+  datetime?: string;
 }
 type GlobeMarker =
   | ConflictMarker | HotspotMarker | FlightMarker | VesselMarker
@@ -323,8 +340,8 @@ type GlobeMarker =
   | UcdpMarker | DisplacementMarker | ClimateMarker | GpsJamMarker | TechMarker
   | ConflictZoneMarker | MilBaseMarker | NuclearSiteMarker | IrradiatorSiteMarker | SpaceportSiteMarker
   | EarthquakeMarker | EconomicMarker | DatacenterMarker | WaterwayMarker | MineralMarker
-  | FlightDelayMarker | CableAdvisoryMarker | RepairShipMarker | AisDisruptionMarker
-  | NewsLocationMarker | FlashMarker | SatelliteMarker | SatFootprintMarker;
+  | FlightDelayMarker | NotamRingMarker | CableAdvisoryMarker | RepairShipMarker | AisDisruptionMarker
+  | NewsLocationMarker | FlashMarker | SatelliteMarker | SatFootprintMarker | ImagerySceneMarker;
 
 interface GlobeControlsLike {
   autoRotate: boolean;
@@ -395,6 +412,7 @@ export class GlobeMap {
   private waterwayMarkers: WaterwayMarker[] = [];
   private mineralMarkers: MineralMarker[] = [];
   private flightDelayMarkers: FlightDelayMarker[] = [];
+  private notamRingMarkers: NotamRingMarker[] = [];
   private newsLocationMarkers: NewsLocationMarker[] = [];
   private flashMarkers: FlashMarker[] = [];
   private cableAdvisoryMarkers: CableAdvisoryMarker[] = [];
@@ -403,6 +421,8 @@ export class GlobeMap {
   private satelliteMarkers: SatelliteMarker[] = [];
   private satelliteTrailPaths: GlobePath[] = [];
   private satelliteFootprintMarkers: SatFootprintMarker[] = [];
+  private imagerySceneMarkers: ImagerySceneMarker[] = [];
+  private imageryFootprintPolygons: GlobePolygon[] = [];
   private satBeamGroup: any = null;
   private tradeRouteSegments: TradeRouteSegment[] = [];
   private globePaths: GlobePath[] = [];
@@ -652,16 +672,19 @@ export class GlobeMap {
       .polygonCapColor((d: GlobePolygon) => {
         if (d._kind === 'cii') return GlobeMap.CII_GLOBE_COLORS[d.level!] ?? 'rgba(0,0,0,0)';
         if (d._kind === 'conflict') return GlobeMap.CONFLICT_CAP[d.intensity!] ?? GlobeMap.CONFLICT_CAP.low;
+        if (d._kind === 'imageryFootprint') return 'rgba(0,180,255,0.08)';
         return 'rgba(255,60,60,0.15)';
       })
       .polygonSideColor((d: GlobePolygon) => {
         if (d._kind === 'cii') return 'rgba(0,0,0,0)';
         if (d._kind === 'conflict') return GlobeMap.CONFLICT_SIDE[d.intensity!] ?? GlobeMap.CONFLICT_SIDE.low;
+        if (d._kind === 'imageryFootprint') return 'rgba(0,180,255,0.04)';
         return 'rgba(255,60,60,0.08)';
       })
       .polygonStrokeColor((d: GlobePolygon) => {
         if (d._kind === 'cii') return 'rgba(80,80,80,0.3)';
         if (d._kind === 'conflict') return GlobeMap.CONFLICT_STROKE[d.intensity!] ?? GlobeMap.CONFLICT_STROKE.low;
+        if (d._kind === 'imageryFootprint') return '#00b4ff';
         return '#ff4444';
       })
       .polygonAltitude((d: GlobePolygon) => {
@@ -909,6 +932,9 @@ export class GlobeMap {
       const sc = d.severity === 'severe' ? '#ff2020' : d.severity === 'major' ? '#ff6600' : d.severity === 'moderate' ? '#ffaa00' : '#ffee44';
       el.innerHTML = `<div style="font-size:11px;color:${sc};text-shadow:0 0 4px ${sc}88;">✈</div>`;
       el.title = `${d.iata} — ${d.severity}`;
+    } else if (d._kind === 'notamRing') {
+      el.innerHTML = `<div style="position:relative;width:20px;height:20px;display:flex;align-items:center;justify-content:center;"><div style="position:absolute;inset:-3px;border-radius:50%;border:2px solid #ff282888;${this.pulseStyle('2s')}"></div><div style="font-size:12px;color:#ff2828;text-shadow:0 0 6px #ff282888;">⚠</div></div>`;
+      el.title = `NOTAM: ${d.name}`;
     } else if (d._kind === 'cableAdvisory') {
       const sc = d.severity === 'fault' ? '#ff2020' : '#ff8800';
       el.innerHTML = `<div style="font-size:11px;color:${sc};text-shadow:0 0 4px ${sc}88;">🔌</div>`;
@@ -941,6 +967,9 @@ export class GlobeMap {
       const c = colors[(d as SatFootprintMarker).country] || '#ccccff';
       el.innerHTML = `<div style="width:12px;height:12px;border-radius:50%;border:1px solid ${c}66;background:${c}15;margin:-6px 0 0 -6px"></div>`;
       el.style.pointerEvents = 'none';
+    } else if (d._kind === 'imageryScene') {
+      el.innerHTML = `<div style="font-size:11px;color:#00b4ff;text-shadow:0 0 4px #00b4ff88;">&#128752;</div>`;
+      el.title = `${d.satellite} ${d.datetime}`;
     } else if (d._kind === 'flash') {
       el.style.pointerEvents = 'none';
       el.innerHTML = `
@@ -1107,6 +1136,10 @@ export class GlobeMap {
              `<br><span style="opacity:.7;">${esc(d.delayType.replace(/_/g, ' '))}` +
              (d.avgDelayMinutes > 0 ? ` · avg ${d.avgDelayMinutes}min` : '') + `</span>` +
              (d.reason ? `<br><span style="opacity:.5;white-space:normal;display:block;">${esc(d.reason.slice(0, 70))}</span>` : '');
+    } else if (d._kind === 'notamRing') {
+      html = `<span style="color:#ff2828;font-weight:bold;">⚠ NOTAM CLOSURE</span>` +
+             `<br><span style="opacity:.7;">${esc(d.name)}</span>` +
+             (d.reason ? `<br><span style="opacity:.5;white-space:normal;display:block;">${esc(d.reason.slice(0, 100))}</span>` : '');
     } else if (d._kind === 'cableAdvisory') {
       const sc = d.severity === 'fault' ? '#ff2020' : '#ff8800';
       html = `<span style="color:${sc};font-weight:bold;">🔌 ${esc(d.severity.toUpperCase())} — ${esc(d.title.slice(0, 50))}</span>` +
@@ -1144,6 +1177,10 @@ export class GlobeMap {
         `<span style="opacity:.5;">Incl.</span><span>${d.inclination.toFixed(1)}\u00B0</span>` +
         `<span style="opacity:.5;">Velocity</span><span>${d.velocity.toFixed(1)} km/s</span>` +
         `</div></div>`;
+    } else if (d._kind === 'imageryScene') {
+      html = `<span style="color:#00b4ff;font-weight:bold;">&#128752; ${esc(d.satellite)}</span>` +
+             `<br><span style="opacity:.7;">${esc(d.datetime)}</span>` +
+             `<br><span style="opacity:.5;">Res: ${d.resolutionM}m · ${esc(d.mode)}</span>`;
     }
     el.innerHTML = html;
     if (d._kind === 'satellite') el.style.maxWidth = '300px';
@@ -1329,6 +1366,7 @@ export class GlobeMap {
     if (this.layers.waterways) markers.push(...this.waterwayMarkers);
     if (this.layers.minerals) markers.push(...this.mineralMarkers);
     if (this.layers.flights) markers.push(...this.flightDelayMarkers);
+    if (this.layers.notamOverlay) markers.push(...this.notamRingMarkers);
     if (this.layers.ais) markers.push(...this.aisMarkers);
     if (this.layers.iranAttacks) markers.push(...this.iranMarkers);
     if (this.layers.outages) markers.push(...this.outageMarkers);
@@ -1344,6 +1382,7 @@ export class GlobeMap {
       markers.push(...this.satelliteFootprintMarkers);
     }
     if (this.layers.techEvents) markers.push(...this.techMarkers);
+    if (this.layers.satelliteImagery) markers.push(...this.imagerySceneMarkers);
     if (this.layers.cables) {
       markers.push(...this.cableAdvisoryMarkers);
       markers.push(...this.repairShipMarkers);
@@ -1443,6 +1482,10 @@ export class GlobeMap {
           polys.push({ coords: ring, name, _kind: 'cii', level: entry.level, score: entry.score });
         }
       }
+    }
+
+    if (this.layers.satelliteImagery) {
+      polys.push(...this.imageryFootprintPolygons);
     }
 
     (this.globe as any).polygonsData(polys);
@@ -1642,7 +1685,9 @@ export class GlobeMap {
     ['pipelines',     { markers: false, arcs: false, paths: true,  polygons: false }],
     ['conflicts',     { markers: true,  arcs: false, paths: false, polygons: true }],
     ['cables',        { markers: true,  arcs: false, paths: true,  polygons: false }],
-    ['satellites',    { markers: true,  arcs: false, paths: true,  polygons: false }],
+    ['satellites',        { markers: true,  arcs: false, paths: true,  polygons: false }],
+    ['satelliteImagery',  { markers: true,  arcs: false, paths: false, polygons: true }],
+    ['notamOverlay',      { markers: true,  arcs: false, paths: false, polygons: false }],
   ]);
 
   private flushLayerChannels(layer: keyof MapLayers): void {
@@ -1896,6 +1941,47 @@ export class GlobeMap {
       }));
     this.flushMarkers();
   }
+  public setImageryScenes(scenes: ImageryScene[]): void {
+    const valid = (scenes ?? []).filter(s => {
+      try {
+        const geom = JSON.parse(s.geometryGeojson);
+        return geom?.type === 'Polygon' && geom.coordinates?.[0]?.[0];
+      } catch { return false; }
+    });
+    this.imagerySceneMarkers = valid.map(s => {
+      const geom = JSON.parse(s.geometryGeojson);
+      const coords = geom.coordinates[0] as number[][];
+      const lats = coords.map(c => c[1] ?? 0);
+      const lons = coords.map(c => c[0] ?? 0);
+      const centerLat = (Math.min(...lats) + Math.max(...lats)) / 2;
+      const centerLon = (Math.min(...lons) + Math.max(...lons)) / 2;
+      return {
+        _kind: 'imageryScene' as const,
+        _lat: centerLat,
+        _lng: centerLon,
+        satellite: s.satellite,
+        datetime: s.datetime,
+        resolutionM: s.resolutionM,
+        mode: s.mode,
+        previewUrl: s.previewUrl,
+      };
+    });
+    this.imageryFootprintPolygons = valid.map(s => {
+      const geom = JSON.parse(s.geometryGeojson);
+      return {
+        coords: geom.coordinates as number[][][],
+        name: `${s.satellite} ${s.datetime}`,
+        _kind: 'imageryFootprint' as const,
+        satellite: s.satellite,
+        datetime: s.datetime,
+      };
+    });
+    if (this.layers.satelliteImagery) {
+      this.flushMarkers();
+      this.flushPolygons();
+    }
+  }
+
   public setOutages(outages: InternetOutage[]): void {
     this.outageMarkers = (outages ?? []).filter(o => o.lat != null && o.lon != null).map(o => ({
       _kind: 'outage' as const,
@@ -1984,6 +2070,15 @@ export class GlobeMap {
         delayType: d.delayType,
         avgDelayMinutes: d.avgDelayMinutes,
         reason: d.reason ?? '',
+      }));
+    this.notamRingMarkers = (delays ?? [])
+      .filter(d => d.lat != null && d.lon != null && d.delayType === 'closure')
+      .map(d => ({
+        _kind: 'notamRing' as const,
+        _lat: d.lat,
+        _lng: d.lon,
+        name: d.name || d.iata,
+        reason: d.reason || 'Airspace closure',
       }));
     this.flushMarkers();
   }

@@ -48,7 +48,7 @@ const STANDALONE_KEYS = {
   usniFleetStale:        'usni-fleet:sebuf:stale:v1',
   faaDelays:             'aviation:delays:faa:v1',
   intlDelays:            'aviation:delays:intl:v3',
-  notamClosures:         'aviation:notam:closures:v1',
+  notamClosures:         'aviation:notam:closures:v2',
   positiveEventsLive:    'positive-events:geo:v1',
   cableHealth:           'cable-health-v1',
   cyberThreatsRpc:       'cyber:threats:v2',

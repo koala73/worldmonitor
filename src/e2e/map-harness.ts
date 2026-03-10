@@ -138,6 +138,7 @@ app.style.margin = '0 auto';
 const allLayersEnabled: MapLayers = {
   gpsJamming: true,
   satellites: false,
+  satelliteImagery: false,
 
   conflicts: true,
   bases: true,
@@ -156,6 +157,7 @@ const allLayersEnabled: MapLayers = {
   datacenters: true,
   protests: true,
   flights: true,
+  notamOverlay: true,
   military: true,
   natural: true,
   spaceports: true,
@@ -191,6 +193,7 @@ const allLayersEnabled: MapLayers = {
 const allLayersDisabled: MapLayers = {
   gpsJamming: false,
   satellites: false,
+  satelliteImagery: false,
 
   conflicts: false,
   bases: false,
@@ -209,6 +212,7 @@ const allLayersDisabled: MapLayers = {
   datacenters: false,
   protests: false,
   flights: false,
+  notamOverlay: false,
   military: false,
   natural: false,
   spaceports: false,
