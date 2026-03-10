@@ -1,7 +1,7 @@
 [package]
-name = "crystal-ball"
+name = "worldmonitor-macos"
 version = "2.5.25"
-description = "Crystal Ball macOS native desktop application (based on World Monitor)"
+description = "World Monitor macOS native desktop application (based on World Monitor by Elie Habib)"
 authors = ["Bradley Bond", "Elie Habib"]
 edition = "2021"
 

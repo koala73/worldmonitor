@@ -1412,7 +1412,7 @@ async function dispatch(requestUrl, req, routes, context) {
     try {
       const resp = await fetchWithTimeout(
         'https://api.weather.gov/alerts/active?status=actual&message_type=alert&urgency=Immediate,Expected&severity=Extreme,Severe,Moderate',
-        { headers: { Accept: 'application/geo+json', 'User-Agent': 'CrystalBall-NWS/1.0 (https://github.com/bradleybond512/crystal-ball)' } },
+        { headers: { Accept: 'application/geo+json', 'User-Agent': 'WorldMonitor-NWS/1.0 (https://github.com/bradleybond512/worldmonitor-macos)' } },
         12000,
       );
       if (!resp.ok) return json([], 200);
