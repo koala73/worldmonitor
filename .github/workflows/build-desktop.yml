@@ -107,6 +107,9 @@ jobs:
             gstreamer1.0-gl
 
       - name: Install frontend dependencies
+        run: npm run lockfile:check
+
+      - name: Install frontend dependencies
         run: npm ci
 
       - name: Check version consistency

@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "lint:md": "markdownlint-cli2 '**/*.md' '!.agent/**' '!.agents/**' '!.claude/**' '!.factory/**' '!.windsurf/**' '!skills/**' '!docs/internal/**' '!docs/Docs_To_Review/**'",
+    "lockfile:check": "node scripts/check-package-lock.mjs",
     "version:sync": "node scripts/sync-desktop-version.mjs",
     "version:check": "node scripts/sync-desktop-version.mjs --check",
     "dev": "vite",
