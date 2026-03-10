@@ -110,6 +110,8 @@ import type { SpeciesRecovery } from '@/services/conservation-data';
 import { getCountriesGeoJson, getCountryAtCoordinates, getCountryBbox } from '@/services/country-geometry';
 import type { FeatureCollection, Geometry } from 'geojson';
 
+import { isAllowedPreviewUrl } from '@/utils/imagery-preview';
+
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
 export type DeckMapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
 type MapInteractionMode = 'flat' | '3d';
@@ -358,7 +360,6 @@ export class DeckGLMap {
   private onLayerChange?: (layer: keyof MapLayers, enabled: boolean, source: 'user' | 'programmatic') => void;
   private onStateChange?: (state: DeckMapState) => void;
   private onAircraftPositionsUpdate?: (positions: PositionSample[]) => void;
-  private onImageryUpdate?: (scenes: ImageryScene[]) => void;
 
   // Highlighted assets
   private highlightedAssets: Record<AssetType, Set<string>> = {
@@ -3219,13 +3220,8 @@ export class DeckGLMap {
       const scenes = await fetchImageryScenes({ bbox, limit: 20 });
       if (version !== this.imagerySearchVersion) return;
       this.imageryScenes = scenes;
-      this.onImageryUpdate?.(scenes);
       this.render();
     } catch { /* viewport fetch failed silently */ }
-  }
-
-  public setOnImageryUpdate(callback: (scenes: ImageryScene[]) => void): void {
-    this.onImageryUpdate = callback;
   }
 
   private getTooltip(info: PickingInfo): { html: string } | null {
@@ -3439,8 +3435,15 @@ export class DeckGLMap {
           </div>`,
         };
       }
-      case 'satellite-imagery-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>&#128752; ${text(obj.satellite)}</strong><br/>${text(obj.datetime)}<br/>Res: ${obj.resolutionM}m ${text(obj.mode)}</div>` };
+      case 'satellite-imagery-layer': {
+        let imgHtml = `<div class="deckgl-tooltip"><strong>&#128752; ${text(obj.satellite)}</strong><br/>${text(obj.datetime)}<br/>Res: ${Number(obj.resolutionM)}m \u00B7 ${text(obj.mode)}`;
+        if (isAllowedPreviewUrl(obj.previewUrl)) {
+          const safeHref = escapeHtml(new URL(obj.previewUrl).href);
+          imgHtml += `<br><img src="${safeHref}" referrerpolicy="no-referrer" style="max-width:180px;max-height:120px;margin-top:4px;border-radius:4px;" class="imagery-preview">`;
+        }
+        imgHtml += '</div>';
+        return { html: imgHtml };
+      }
       default:
         return null;
     }
