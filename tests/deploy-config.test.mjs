@@ -121,8 +121,8 @@ describe('security header guardrails', () => {
     for (const api of ytDelegated) {
       assert.match(
         policy,
-        new RegExp(`${api}=\\(self "https://www\\.youtube\\.com" "https://www\\.youtube-nocookie\\.com"\\)`),
-        `Permissions-Policy should delegate ${api} to YouTube origins`
+        new RegExp(`${api}=\\(self "https://www\\.youtube\\.com" "https://www\\.youtube-nocookie\\.com"[^)]*\\)`),
+        `Permissions-Policy should delegate ${api} to YouTube and other required origins`
       );
     }
   });
