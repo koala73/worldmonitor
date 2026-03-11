@@ -682,11 +682,33 @@ async fn install_update(download_url: String) -> Result<(), String> {
             ));
         }
 
-        // 3. Verify the app bundle identifier before overwriting /Applications.
+        // 3. Verify the app bundle identifier and code signature before overwriting /Applications.
         //    This prevents a compromised GitHub account or MITM from replacing the app
         //    with a malicious binary that passes the host check but is not World Monitor.
         let source = format!("{}/Crystal Ball.app", mount_point);
         let dest = "/Applications/Crystal Ball.app";
+
+        // 3a. Verify macOS code signature — ensures binary was signed by the legitimate developer.
+        //     --deep checks all nested bundles/frameworks, --strict applies additional requirements.
+        let sig_check = Command::new("codesign")
+            .args(["--verify", "--deep", "--strict", &source])
+            .output();
+        match sig_check {
+            Ok(out) if out.status.success() => { /* signature valid */ }
+            Ok(out) => {
+                let _ = Command::new("hdiutil").args(["detach", mount_point, "-quiet"]).output();
+                let _ = std::fs::remove_file(tmp_dmg);
+                return Err(format!(
+                    "Code signature verification failed: {}",
+                    String::from_utf8_lossy(&out.stderr).trim()
+                ));
+            }
+            Err(e) => {
+                let _ = Command::new("hdiutil").args(["detach", mount_point, "-quiet"]).output();
+                let _ = std::fs::remove_file(tmp_dmg);
+                return Err(format!("codesign command failed: {e}"));
+            }
+        }
 
         const EXPECTED_BUNDLE_ID: &str = "com.bradleybond.crystalball";
         let plist = format!("{source}/Contents/Info.plist");

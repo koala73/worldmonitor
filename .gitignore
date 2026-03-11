@@ -5,6 +5,7 @@ dist/
 *.log
 .env
 .env.local
+scripts/telegram/telegram-session.txt
 .playwright-mcp/
 .vercel
 api/\[domain\]/v1/\[rpc\].js

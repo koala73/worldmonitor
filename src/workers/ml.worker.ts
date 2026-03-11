@@ -109,24 +109,29 @@ async function loadModel(modelId: string): Promise<void> {
     const ort = (globalThis as any).ort;
     if (ort?.env) { try { ort.env.logLevel = 'error'; } catch { /* ignore */ } }
 
-    const pipe = await pipeline(config.task, config.hfModel, {
-      progress_callback: (progress: { status: string; progress?: number }) => {
-        if (progress.status === 'progress' && progress.progress !== undefined) {
-          self.postMessage({
-            type: 'model-progress',
-            modelId,
-            progress: progress.progress,
-          });
-        }
-      },
-    });
+    try {
+      const pipe = await pipeline(config.task, config.hfModel, {
+        progress_callback: (progress: { status: string; progress?: number }) => {
+          if (progress.status === 'progress' && progress.progress !== undefined) {
+            self.postMessage({
+              type: 'model-progress',
+              modelId,
+              progress: progress.progress,
+            });
+          }
+        },
+      });
 
-    loadedPipelines.set(modelId, pipe);
-    loadingPromises.delete(modelId);
-    console.log(`[MLWorker] Model loaded in ${Date.now() - startTime}ms: ${modelId}`);
+      loadedPipelines.set(modelId, pipe);
+      console.log(`[MLWorker] Model loaded in ${Date.now() - startTime}ms: ${modelId}`);
 
-    // Notify manager that model is now available (no id = unsolicited notification)
-    self.postMessage({ type: 'model-loaded', modelId });
+      // Notify manager that model is now available (no id = unsolicited notification)
+      self.postMessage({ type: 'model-loaded', modelId });
+    } finally {
+      // Always clean up the loading promise, whether success or failure,
+      // so future calls can retry rather than waiting on a rejected promise.
+      loadingPromises.delete(modelId);
+    }
   })();
 
   loadingPromises.set(modelId, loadPromise);

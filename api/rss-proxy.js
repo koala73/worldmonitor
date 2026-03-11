@@ -375,7 +375,10 @@ export default async function handler(req) {
         const location = response.headers.get('location');
         if (location) {
           const redirectUrl = new URL(location, feedUrl);
-          if (!ALLOWED_DOMAINS.includes(redirectUrl.hostname)) {
+          const rHost = redirectUrl.hostname;
+          const rBare = rHost.replace(/^www\./, '');
+          const rWithWww = rHost.startsWith('www.') ? rHost : `www.${rHost}`;
+          if (!ALLOWED_DOMAINS.includes(rHost) && !ALLOWED_DOMAINS.includes(rBare) && !ALLOWED_DOMAINS.includes(rWithWww)) {
             throw new Error('Redirect to disallowed domain');
           }
           return fetchWithTimeout(redirectUrl.href, {

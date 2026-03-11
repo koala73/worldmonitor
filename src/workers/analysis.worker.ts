@@ -61,7 +61,14 @@ function isRecentDuplicate(key: string): boolean {
   return recentSignalKeys.has(key);
 }
 
+const RECENT_SIGNAL_MAX = 5_000;
+
 function markSignalSeen(key: string): void {
+  // Evict oldest entries if the set grows too large (e.g. during a high-velocity signal burst).
+  if (recentSignalKeys.size >= RECENT_SIGNAL_MAX) {
+    const first = recentSignalKeys.values().next().value;
+    if (first !== undefined) recentSignalKeys.delete(first);
+  }
   recentSignalKeys.add(key);
   setTimeout(() => recentSignalKeys.delete(key), 30 * 60 * 1000);
 }

@@ -1,8 +1,15 @@
 /**
  * PostHog Analytics Service
  *
- * Always active when VITE_POSTHOG_KEY is set. No consent gate.
- * All exports are no-ops when the key is absent (dev/local).
+ * Active when VITE_POSTHOG_KEY is set AND the user has not opted out.
+ * All exports are no-ops when the key is absent (dev/local) or user opted out.
+ *
+ * Consent model:
+ * - localStorage key 'wm-analytics-consent':
+ *     'false'  → user explicitly opted out (analytics disabled)
+ *     'true'   → user explicitly opted in
+ *     absent   → not yet decided (analytics active by default for existing users)
+ * - Ghost Mode always suppresses analytics regardless of consent.
  *
  * Data safety:
  * - Typed allowlists per event — unlisted properties silently dropped
@@ -17,6 +24,26 @@ import { getRuntimeConfigSnapshot, type RuntimeSecretKey } from './runtime-confi
 import { SITE_VARIANT } from '@/config';
 import { isMobileDevice } from '@/utils';
 import { invokeTauri } from './tauri-bridge';
+
+// ── Analytics consent ──
+
+const CONSENT_KEY = 'wm-analytics-consent';
+
+export function hasAnalyticsConsent(): boolean {
+  // Explicit opt-out takes precedence. Absent = default active (preserves existing behaviour for
+  // users who installed before consent gating was added). Set to 'false' to opt out.
+  return localStorage.getItem(CONSENT_KEY) !== 'false';
+}
+
+export function setAnalyticsConsent(allow: boolean): void {
+  localStorage.setItem(CONSENT_KEY, allow ? 'true' : 'false');
+  if (!allow) {
+    // Clear the persistent installation ID so re-identification is not possible.
+    localStorage.removeItem('wm-installation-id');
+    posthogInstance = null;
+    initPromise = null;
+  }
+}
 
 // ── Installation identity ──
 
@@ -148,6 +175,7 @@ const POSTHOG_HOST = isDesktopRuntime()
 
 export async function initAnalytics(): Promise<void> {
   if (!POSTHOG_KEY) return;
+  if (!hasAnalyticsConsent()) return;
   if (initPromise) return initPromise;
 
   initPromise = (async () => {
@@ -249,6 +277,7 @@ function flushOfflineQueue(): void {
 
 export function trackEvent(name: string, props?: Record<string, unknown>): void {
   if (isGhostMode()) return;  // Ghost Mode: analytics suppressed
+  if (!hasAnalyticsConsent()) return;
   const safeProps = props ? sanitizeProps(name, props) : {};
   if (!posthogInstance) {
     if (isDesktopRuntime() && POSTHOG_KEY) enqueueOffline(name, safeProps);

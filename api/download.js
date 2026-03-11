@@ -4,6 +4,11 @@ export const config = { runtime: 'edge' };
 const RELEASES_URL = 'https://api.github.com/repos/bradleybond512/crystal-ball/releases/latest';
 const RELEASES_PAGE = 'https://github.com/bradleybond512/crystal-ball/releases/latest';
 
+// In-process cache for the GitHub release response (survives warm Edge Function invocations).
+// CDN s-maxage=300 is the primary protection; this is a secondary layer.
+let releaseCache = null; // { data: object, expiresAt: number }
+const RELEASE_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
 const PLATFORM_PATTERNS = {
   'windows-exe': (name) => name.endsWith('_x64-setup.exe'),
   'windows-msi': (name) => name.endsWith('_x64_en-US.msi'),
@@ -48,18 +53,26 @@ export default async function handler(req) {
   }
 
   try {
-    const res = await fetch(RELEASES_URL, {
-      headers: {
-        'Accept': 'application/vnd.github+json',
-        'User-Agent': 'CrystalBall-Download-Redirect',
-      },
-    });
+    let release;
+    const now = Date.now();
+    if (releaseCache && now < releaseCache.expiresAt) {
+      release = releaseCache.data;
+    } else {
+      const res = await fetch(RELEASES_URL, {
+        headers: {
+          'Accept': 'application/vnd.github+json',
+          'User-Agent': 'CrystalBall-Download-Redirect',
+        },
+        signal: AbortSignal.timeout(8_000),
+      });
 
-    if (!res.ok) {
-      return Response.redirect(RELEASES_PAGE, 302);
+      if (!res.ok) {
+        return Response.redirect(RELEASES_PAGE, 302);
+      }
+
+      release = await res.json();
+      releaseCache = { data: release, expiresAt: now + RELEASE_CACHE_TTL_MS };
     }
-
-    const release = await res.json();
     const matcher = PLATFORM_PATTERNS[platform];
     const assets = Array.isArray(release.assets) ? release.assets : [];
     const asset = variant

@@ -95,7 +95,7 @@ export class SettingsManager {
         })),
         new Promise<Array<{ key: RuntimeSecretKey; result: { valid: boolean; message?: string } }>>(resolve =>
           setTimeout(() => resolve(toVerifyRemotely.map(([key]) => ({
-            key, result: { valid: true, message: 'Saved (verification timed out)' },
+            key, result: { valid: false, message: 'Verification timed out — please try again' },
           }))), 15000)
         ),
       ]);

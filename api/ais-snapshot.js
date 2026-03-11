@@ -59,7 +59,12 @@ export default async function handler(req) {
 
   try {
     const requestUrl = new URL(req.url);
-    const relayUrl = `${relayBaseUrl}/ais/snapshot${requestUrl.search || ''}`;
+    // Whitelist only known params — never forward raw query strings to the relay.
+    const safeParams = new URLSearchParams();
+    const candidates = requestUrl.searchParams.get('candidates');
+    if (candidates === 'true' || candidates === 'false') safeParams.set('candidates', candidates);
+    const safeSearch = safeParams.toString() ? `?${safeParams.toString()}` : '';
+    const relayUrl = `${relayBaseUrl}/ais/snapshot${safeSearch}`;
     const response = await fetchWithTimeout(relayUrl, {
       headers: getRelayHeaders({ Accept: 'application/json' }),
     }, 12000);

@@ -154,6 +154,7 @@ export class RuntimeConfigPanel extends Panel {
   public destroy(): void {
     this.unsubscribe?.();
     this.unsubscribe = null;
+    this.pendingSecrets.clear();
   }
 
   private captureUnsavedInputs(): void {

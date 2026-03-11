@@ -40,8 +40,17 @@ try {
   });
 
   const session = client.session.save();
-  console.log('\n✅ Generated session. Add this as a Railway secret:');
-  console.log(`TELEGRAM_SESSION=${session}`);
+
+  // ⚠️  SECURITY: This session token grants FULL access to the Telegram account.
+  // Treat it like a password. Write it to a file rather than relying on terminal
+  // history/scrollback (which may be logged or captured by screen recorders).
+  const outFile = new URL('./telegram-session.txt', import.meta.url);
+  import('node:fs').then(fs => {
+    fs.writeFileSync(outFile, `TELEGRAM_SESSION=${session}\n`, { mode: 0o600 });
+    console.log(`\n✅ Session written to: ${outFile.pathname}`);
+    console.log('   Copy TELEGRAM_SESSION=... into your Railway secret, then DELETE the file.');
+    console.log('   ⚠️  This token grants full Telegram account access — never commit or share it.');
+  });
 
   await client.disconnect();
 } finally {
