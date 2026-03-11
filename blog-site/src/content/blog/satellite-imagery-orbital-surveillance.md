@@ -4,7 +4,7 @@ description: "Access real-time satellite imagery of geopolitical hotspots with W
 metaTitle: "Free Satellite Imagery Dashboard | Orbital Surveillance for OSINT | WorldMonitor"
 keywords: "satellite imagery OSINT, free satellite intelligence, orbital surveillance dashboard, STAC API satellite search, geopolitical satellite monitoring"
 audience: "OSINT analysts, remote sensing enthusiasts, defense researchers, environmental monitors"
-pubDate: "2026-03-10"
+pubDate: "2026-02-28"
 ---
 
 Satellite imagery used to require government clearance or a Maxar contract. Today, a growing constellation of Earth observation satellites captures the planet daily, and WorldMonitor brings that data directly into your intelligence workflow.

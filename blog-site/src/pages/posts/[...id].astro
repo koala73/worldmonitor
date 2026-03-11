@@ -21,6 +21,8 @@ const { Content } = await render(post);
   keywords={post.data.keywords}
   pubDate={post.data.pubDate}
   audience={post.data.audience}
+  heroImage={post.data.heroImage}
+  slug={post.id}
 >
   <Content />
 </BlogPost>

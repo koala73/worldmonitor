@@ -1160,7 +1160,7 @@
           "infraPipelinesFull": "Oil/gas pipelines (Nord Stream, TAPI, etc.)",
           "infraDatacentersFull": "AI compute clusters >=10,000 GPUs only",
           "transportShipping": "Live vessel tracking via AIS (ship positions)",
-          "transportDelays": "Airport delays and ground stops (FAA)",
+          "transportDelays": "Airport delays, ground stops, and NOTAM closures",
           "naturalEventsFull": "Earthquakes (USGS) + storms, fires, volcanoes, floods (NASA EONET)",
           "firesFull": "Active wildfires and fire perimeters (NASA FIRMS)",
           "climateAnomalies": "Temperature and precipitation anomalies",

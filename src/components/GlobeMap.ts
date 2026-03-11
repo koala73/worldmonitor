@@ -1861,7 +1861,7 @@ export class GlobeMap {
     ['conflicts',     { markers: true,  arcs: false, paths: false, polygons: true }],
     ['cables',        { markers: true,  arcs: false, paths: true,  polygons: false }],
     ['satellites',        { markers: true,  arcs: false, paths: true,  polygons: true }],
-    ['notamOverlay',      { markers: true,  arcs: false, paths: false, polygons: false }],
+
     ['natural',           { markers: true,  arcs: false, paths: true,  polygons: true }],
   ]);
 

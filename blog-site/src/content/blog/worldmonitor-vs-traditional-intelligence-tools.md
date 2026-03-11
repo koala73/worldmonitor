@@ -4,7 +4,7 @@ description: "Compare WorldMonitor to traditional intelligence platforms like Bl
 metaTitle: "WorldMonitor vs Bloomberg, Palantir, Dataminr: Free Open Source Alternative"
 keywords: "Bloomberg Terminal alternative free, Palantir alternative open source, Dataminr alternative, intelligence platform comparison, free OSINT alternative"
 audience: "Analysts evaluating tools, budget-conscious teams, procurement decision-makers, open-source advocates"
-pubDate: "2026-03-10"
+pubDate: "2026-03-11"
 ---
 
 A Bloomberg Terminal costs $24,000 per year. A Palantir deployment starts in the millions. Dataminr licenses run six figures for enterprise teams. Recorded Future isn't cheap either.

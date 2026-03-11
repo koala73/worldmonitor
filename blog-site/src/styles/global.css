@@ -285,11 +285,32 @@ img { max-width: 100%; height: auto; border-radius: var(--radius); }
 
 .post-card {
   background: var(--wm-bg);
-  padding: 1.75rem;
+  padding: 0;
   display: flex;
   flex-direction: column;
   transition: background 0.2s;
   color: inherit;
+  overflow: hidden;
+}
+
+.post-card-img {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1200 / 630;
+  object-fit: cover;
+  border-bottom: 1px solid var(--wm-border);
+}
+
+.post-card .tag,
+.post-card h2,
+.post-card p,
+.post-card .meta {
+  padding-left: 1.75rem;
+  padding-right: 1.75rem;
+}
+
+.post-card .tag {
+  padding-top: 1.25rem;
 }
 
 .post-card:hover {
@@ -325,6 +346,7 @@ img { max-width: 100%; height: auto; border-radius: var(--radius); }
 
 .post-card .meta {
   margin-top: 1rem;
+  padding-bottom: 1.5rem;
   font-size: 0.6875rem;
   color: var(--wm-muted);
   font-family: var(--font-mono);

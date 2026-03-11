@@ -4,10 +4,18 @@ interface Props {
   description: string;
   metaTitle?: string;
   keywords?: string;
+  ogType?: string;
+  ogImage?: string;
+  publishedTime?: string;
+  modifiedTime?: string;
+  author?: string;
+  jsonLd?: Record<string, unknown>;
 }
 
-const { title, description, metaTitle, keywords } = Astro.props;
+const { title, description, metaTitle, keywords, ogType, ogImage, publishedTime, modifiedTime, author, jsonLd } = Astro.props;
 const pageTitle = metaTitle || title;
+const resolvedOgImage = ogImage || 'https://www.worldmonitor.app/favico/og-image.png';
+const resolvedOgType = ogType || 'website';
 ---
 
 <!doctype html>
@@ -19,19 +27,38 @@ const pageTitle = metaTitle || title;
     <meta name="description" content={description} />
     {keywords && <meta name="keywords" content={keywords} />}
     <meta name="robots" content="index, follow" />
+    <meta name="author" content={author || 'WorldMonitor'} />
     <link rel="canonical" href={Astro.url.href} />
 
-    <meta property="og:type" content="website" />
+    <meta property="og:type" content={resolvedOgType} />
     <meta property="og:title" content={pageTitle} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={Astro.url.href} />
     <meta property="og:site_name" content="WorldMonitor Blog" />
+    <meta property="og:image" content={resolvedOgImage} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:locale" content="en_US" />
+    {publishedTime && <meta property="article:published_time" content={publishedTime} />}
+    {modifiedTime && <meta property="article:modified_time" content={modifiedTime} />}
+    {resolvedOgType === 'article' && <meta property="article:publisher" content="https://worldmonitor.app" />}
 
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={pageTitle} />
     <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={resolvedOgImage} />
+    <meta name="twitter:site" content="@worldmonitorai" />
+    <meta name="twitter:creator" content="@worldmonitorai" />
 
-    <link rel="icon" type="image/svg+xml" href="/blog/favicon.svg" />
+    <link rel="icon" type="image/x-icon" href="/favico/favicon.ico" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favico/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favico/favicon-16x16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/favico/apple-touch-icon.png" />
+    <link rel="alternate" type="application/rss+xml" title="WorldMonitor Blog" href="/blog/rss.xml" />
+
+    {jsonLd && (
+      <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+    )}
 
     <style is:global>
       @import '../styles/global.css';
@@ -75,6 +102,7 @@ const pageTitle = metaTitle || title;
           <a href="https://x.com/worldmonitorai" target="_blank" rel="noopener noreferrer">X</a>
           <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noopener noreferrer">GitHub</a>
           <a href="https://www.wired.me/story/the-music-streaming-ceo-who-built-a-global-war-map" target="_blank" rel="noopener noreferrer">WIRED</a>
+          <a href="/blog/rss.xml">RSS</a>
         </div>
         <div class="footer-copy">
           &copy; {new Date().getFullYear()} WorldMonitor. Free, open-source global intelligence.

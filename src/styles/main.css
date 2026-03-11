@@ -1055,6 +1055,29 @@ canvas,
   /* This ensures panels scroll UNDER the pinned map (z-index: 100) */
 }
 
+.site-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  font-size: 11px;
+  color: var(--text-dim);
+  border-top: 1px solid var(--border);
+  grid-column: 1 / -1;
+}
+.site-footer nav {
+  display: flex;
+  gap: 16px;
+}
+.site-footer a {
+  color: var(--text-dim);
+  text-decoration: none;
+  transition: color 0.15s;
+}
+.site-footer a:hover {
+  color: var(--accent);
+}
+
 .panel {
   background: var(--surface);
   border: 1px solid var(--border);

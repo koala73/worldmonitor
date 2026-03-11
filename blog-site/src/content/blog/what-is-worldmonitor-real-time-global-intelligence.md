@@ -4,7 +4,7 @@ description: "WorldMonitor is a free, open-source global intelligence dashboard 
 metaTitle: "WorldMonitor: Free Real-Time Global Intelligence Dashboard | Open Source OSINT"
 keywords: "global intelligence dashboard, real-time intelligence platform, OSINT dashboard, open source intelligence tool, geopolitical monitoring"
 audience: "General tech audience, OSINT researchers, analysts, journalists"
-pubDate: "2026-03-10"
+pubDate: "2026-02-10"
 ---
 
 Imagine opening 100 browser tabs every morning: one for Reuters, another for flight tracking, a third for earthquake monitors, a fourth for stock markets, a fifth for military ship positions. Now imagine replacing all of them with a single dashboard.

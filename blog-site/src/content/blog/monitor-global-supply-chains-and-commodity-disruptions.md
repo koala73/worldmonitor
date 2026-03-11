@@ -4,7 +4,7 @@ description: "Track commodity prices, port disruptions, pipeline infrastructure,
 metaTitle: "Real-Time Supply Chain Monitoring Dashboard | Commodity Disruption Alerts | WorldMonitor"
 keywords: "supply chain monitoring tool, commodity price dashboard, supply chain disruption alerts, global shipping tracker, commodity risk monitoring"
 audience: "Supply chain managers, commodity traders, logistics professionals, procurement teams, risk analysts"
-pubDate: "2026-03-10"
+pubDate: "2026-02-26"
 ---
 
 In March 2021, the Ever Given blocked the Suez Canal for six days. Global trade lost an estimated $9.6 billion per day. Most supply chain teams learned about it from Twitter.

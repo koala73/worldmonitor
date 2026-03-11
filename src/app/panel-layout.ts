@@ -311,6 +311,14 @@ export class PanelLayoutManager implements AppModule {
           <div class="map-bottom-grid" id="mapBottomGrid"></div>
         </div>
         <div class="panels-grid" id="panelsGrid"></div>
+        <footer class="site-footer">
+          <span>&copy; ${new Date().getFullYear()} WorldMonitor</span>
+          <nav>
+            <a href="/blog/">Blog</a>
+            <a href="/pro">Pro</a>
+            <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noopener">GitHub</a>
+          </nav>
+        </footer>
         <button class="search-mobile-fab" id="searchMobileFab" aria-label="Search">\u{1F50D}</button>
       </div>
     `;

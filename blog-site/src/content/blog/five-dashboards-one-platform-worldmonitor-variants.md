@@ -4,7 +4,7 @@ description: "WorldMonitor runs 5 specialized dashboards from one codebase: geop
 metaTitle: "5 Free Intelligence Dashboards: World, Tech, Finance, Commodity, Happy | WorldMonitor"
 keywords: "intelligence dashboard variants, tech monitoring dashboard, positive news dashboard, multi-purpose intelligence platform, specialized monitoring tools"
 audience: "General tech audience, product managers, developers, knowledge workers, content creators"
-pubDate: "2026-03-10"
+pubDate: "2026-02-12"
 ---
 
 Most intelligence platforms force you into a single vertical. A financial terminal. A cybersecurity feed. A conflict tracker. If your work spans multiple domains, you're left juggling subscriptions.

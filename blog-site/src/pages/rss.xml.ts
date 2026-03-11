@@ -7,6 +7,13 @@ export async function GET(context: { site: URL }) {
     title: 'WorldMonitor Blog',
     description: 'Real-time global intelligence, OSINT, geopolitics, and markets.',
     site: context.site,
+    xmlns: {
+      atom: 'http://www.w3.org/2005/Atom',
+    },
+    customData: [
+      '<language>en-us</language>',
+      `<atom:link href="https://www.worldmonitor.app/blog/rss.xml" rel="self" type="application/rss+xml" />`,
+    ].join(''),
     items: posts
       .sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf())
       .map((post) => ({
@@ -14,6 +21,7 @@ export async function GET(context: { site: URL }) {
         pubDate: post.data.pubDate,
         description: post.data.description,
         link: `/blog/posts/${post.id}/`,
+        categories: post.data.keywords?.split(',').map((k: string) => k.trim()),
       })),
   });
 }

@@ -4,7 +4,7 @@ description: "Run AI-powered intelligence analysis entirely on your own hardware
 metaTitle: "AI Intelligence Analysis Without the Cloud | Local LLM + OSINT | WorldMonitor"
 keywords: "local LLM intelligence, private AI analysis, offline intelligence tool, Ollama OSINT, privacy-first AI dashboard"
 audience: "Privacy-conscious analysts, security researchers, government users, enterprise security teams, local LLM enthusiasts"
-pubDate: "2026-03-10"
+pubDate: "2026-03-07"
 ---
 
 Every time you paste a sensitive document into ChatGPT, that data touches someone else's servers. For intelligence analysts, security researchers, and anyone handling sensitive geopolitical information, that's not just inconvenient. It's a risk.

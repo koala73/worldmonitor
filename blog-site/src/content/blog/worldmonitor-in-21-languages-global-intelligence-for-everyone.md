@@ -4,7 +4,7 @@ description: "WorldMonitor supports 21 languages including Arabic (RTL), Japanes
 metaTitle: "Global Intelligence Dashboard in 21 Languages | Arabic RTL, Japanese, Chinese | WorldMonitor"
 keywords: "multilingual intelligence dashboard, Arabic OSINT tool, Japanese intelligence platform, global dashboard localized, RTL intelligence dashboard"
 audience: "Non-English-speaking analysts, international organizations, global enterprises, multilingual researchers"
-pubDate: "2026-03-10"
+pubDate: "2026-03-04"
 ---
 
 The world doesn't operate in English. Crises unfold in Arabic. Markets move in Mandarin. Diplomatic cables are written in French. Military communications happen in Russian. Yet most intelligence platforms are English-only, forcing analysts to work in a second language during high-pressure situations.

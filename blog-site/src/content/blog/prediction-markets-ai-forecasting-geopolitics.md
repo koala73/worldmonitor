@@ -4,7 +4,7 @@ description: "Combine Polymarket prediction odds with AI-powered geopolitical fo
 metaTitle: "Geopolitical Prediction Markets + AI Forecasting | Free Intelligence Tool | WorldMonitor"
 keywords: "prediction markets geopolitics, Polymarket intelligence tool, AI geopolitical forecasting, geopolitical risk prediction, political prediction dashboard"
 audience: "Geopolitical analysts, traders using prediction markets, policy researchers, forecasting enthusiasts"
-pubDate: "2026-03-10"
+pubDate: "2026-03-03"
 ---
 
 Intelligence is about the past and present. Forecasting is about what comes next. Most dashboards give you one or the other. WorldMonitor gives you both.

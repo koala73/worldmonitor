@@ -1,5 +1,8 @@
 # build output
 dist/
+
+# generated OG images (rebuilt at build time)
+public/og/
 # generated types
 .astro/
 

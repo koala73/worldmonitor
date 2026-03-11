@@ -4,7 +4,7 @@ description: "Monitor earthquakes (USGS), satellite-detected fires (NASA FIRMS),
 metaTitle: "Real-Time Natural Disaster Monitoring Dashboard | Earthquakes, Fires, Volcanoes | WorldMonitor"
 keywords: "real-time earthquake map, natural disaster monitoring dashboard, NASA fire detection map, disaster tracking tool free, earthquake volcano flood tracker"
 audience: "Emergency responders, disaster preparedness professionals, insurers, humanitarian organizations, concerned citizens"
-pubDate: "2026-03-10"
+pubDate: "2026-02-19"
 ---
 
 On February 6, 2023, two earthquakes struck southern Turkey and northern Syria within hours of each other. Over 50,000 people died. In the first hours, before rescue teams mobilized, the clearest picture of the devastation came from seismic data, satellite fire detection, and population exposure overlays.
