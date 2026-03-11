@@ -26,6 +26,8 @@ import { collectStoryData } from '@/services/story-data';
 import { renderStoryToCanvas } from '@/services/story-renderer';
 import { openStoryModal } from '@/components/StoryModal';
 import { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
+import { IntelligenceServiceClient } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
+import { showMapContextMenu } from '@/components/MapContextMenu';
 import { BETA_MODE } from '@/config/beta';
 import { MILITARY_BASES } from '@/config';
 import { mlWorker } from '@/services/ml-worker';
@@ -107,6 +109,13 @@ export class CountryIntelManager implements AppModule {
       } else {
         this.openCountryBrief(countryClick.lat, countryClick.lon);
       }
+    });
+
+    this.ctx.map.onMapContextMenu((payload) => {
+      showMapContextMenu(payload.screenX, payload.screenY, [
+        { label: t('contextMenu.openCountryBrief'), action: () => this.openCountryBrief(payload.lat, payload.lon) },
+        { label: t('contextMenu.copyCoordinates'), action: () => navigator.clipboard.writeText(`${payload.lat.toFixed(5)}, ${payload.lon.toFixed(5)}`).catch(() => {}) },
+      ]);
     });
 
     this.ctx.countryBriefPage.onClose(() => {
@@ -222,6 +231,34 @@ export class CountryIntelManager implements AppModule {
     this.ctx.countryBriefPage.updateNews(filteredNews.slice(0, 10));
 
     this.ctx.countryBriefPage.updateInfrastructure(code);
+
+    const intelClient = new IntelligenceServiceClient('', {
+      fetch: (...args: Parameters<typeof globalThis.fetch>) => globalThis.fetch(...args),
+    });
+    intelClient.getCountryFacts({ countryCode: code })
+      .then((facts) => {
+        if (this.ctx.countryBriefPage?.getCode() !== code) return;
+        this.ctx.countryBriefPage.updateCountryFacts?.({
+          headOfState: facts.headOfState,
+          headOfStateTitle: facts.headOfStateTitle,
+          wikipediaSummary: facts.wikipediaSummary,
+          wikipediaThumbnailUrl: facts.wikipediaThumbnailUrl,
+          population: Number(facts.population),
+          capital: facts.capital,
+          languages: facts.languages,
+          currencies: facts.currencies,
+          areaSqKm: facts.areaSqKm,
+          countryName: facts.countryName,
+        });
+      })
+      .catch(() => {
+        if (this.ctx.countryBriefPage?.getCode() !== code) return;
+        this.ctx.countryBriefPage.updateCountryFacts?.({
+          headOfState: '', headOfStateTitle: '', wikipediaSummary: '',
+          wikipediaThumbnailUrl: '', population: 0, capital: '',
+          languages: [], currencies: [], areaSqKm: 0, countryName: '',
+        });
+      });
 
     this.mountCountryTimeline(code, country);
 

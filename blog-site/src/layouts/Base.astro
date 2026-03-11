@@ -1,0 +1,71 @@
+---
+interface Props {
+  title: string;
+  description: string;
+  metaTitle?: string;
+  keywords?: string;
+}
+
+const { title, description, metaTitle, keywords } = Astro.props;
+const pageTitle = metaTitle || title;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{pageTitle}</title>
+    <meta name="description" content={description} />
+    {keywords && <meta name="keywords" content={keywords} />}
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href={Astro.url.href} />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={Astro.url.href} />
+    <meta property="og:site_name" content="WorldMonitor Blog" />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={pageTitle} />
+    <meta name="twitter:description" content={description} />
+
+    <link rel="icon" type="image/svg+xml" href="/blog/favicon.svg" />
+
+    <style is:global>
+      @import '../styles/global.css';
+    </style>
+  </head>
+  <body>
+    <header class="site-header">
+      <nav>
+        <a href="/blog/" class="logo">
+          <span>WM</span> WorldMonitor Blog
+        </a>
+        <ul class="nav-links">
+          <li><a href="/blog/">Articles</a></li>
+          <li><a href="https://worldmonitor.app" target="_blank" rel="noopener noreferrer">Open Dashboard</a></li>
+          <li><a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+        </ul>
+      </nav>
+    </header>
+
+    <main>
+      <slot />
+    </main>
+
+    <footer class="site-footer">
+      <p>&copy; {new Date().getFullYear()} WorldMonitor. Free, open-source global intelligence.</p>
+      <p style="margin-top: 0.5rem;">
+        <a href="https://worldmonitor.app">worldmonitor.app</a> &middot;
+        <a href="https://tech.worldmonitor.app">Tech</a> &middot;
+        <a href="https://finance.worldmonitor.app">Finance</a> &middot;
+        <a href="https://commodity.worldmonitor.app">Commodity</a> &middot;
+        <a href="https://happy.worldmonitor.app">Happy</a>
+      </p>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,334 @@
+:root {
+  --bg: #0a0a0f;
+  --bg-surface: #12121a;
+  --bg-card: #1a1a25;
+  --text: #e4e4e7;
+  --text-muted: #a1a1aa;
+  --accent: #3b82f6;
+  --accent-hover: #60a5fa;
+  --border: #27272a;
+  --radius: 8px;
+  --max-width: 780px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  scroll-behavior: smooth;
+}
+
+body {
+  min-height: 100vh;
+  line-height: 1.7;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+a:hover { color: var(--accent-hover); }
+
+img { max-width: 100%; height: auto; border-radius: var(--radius); }
+
+/* Article Prose */
+.prose {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  font-size: 1.1rem;
+}
+
+.prose h1 {
+  font-size: 2.4rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+  margin-bottom: 1rem;
+  background: linear-gradient(135deg, #fff 0%, #a1a1aa 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.prose h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 2.5rem 0 1rem;
+  color: #fff;
+}
+
+.prose h3 {
+  font-size: 1.2rem;
+  font-weight: 600;
+  margin: 2rem 0 0.75rem;
+  color: var(--text);
+}
+
+.prose p {
+  margin-bottom: 1.25rem;
+  color: var(--text-muted);
+}
+
+.prose strong { color: var(--text); font-weight: 600; }
+
+.prose ul, .prose ol {
+  margin: 0 0 1.25rem 1.5rem;
+  color: var(--text-muted);
+}
+
+.prose li { margin-bottom: 0.4rem; }
+
+.prose blockquote {
+  border-left: 3px solid var(--accent);
+  padding: 0.75rem 1rem;
+  margin: 1.5rem 0;
+  background: var(--bg-surface);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.5rem 0;
+  font-size: 0.95rem;
+}
+
+.prose th, .prose td {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.prose th {
+  color: var(--text);
+  font-weight: 600;
+  background: var(--bg-surface);
+}
+
+.prose td { color: var(--text-muted); }
+
+.prose code {
+  background: var(--bg-surface);
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.9em;
+  color: var(--accent);
+}
+
+.prose pre {
+  background: var(--bg-surface);
+  padding: 1.25rem;
+  border-radius: var(--radius);
+  overflow-x: auto;
+  margin: 1.5rem 0;
+  border: 1px solid var(--border);
+}
+
+.prose pre code {
+  background: none;
+  padding: 0;
+  color: var(--text);
+}
+
+.prose hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 2.5rem 0;
+}
+
+/* Header */
+.site-header {
+  padding: 1rem 2rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-surface);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  backdrop-filter: blur(12px);
+}
+
+.site-header nav {
+  max-width: 1100px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.site-header .logo {
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.site-header .logo span {
+  color: var(--accent);
+}
+
+.site-header .nav-links {
+  display: flex;
+  gap: 1.5rem;
+  list-style: none;
+  font-size: 0.9rem;
+}
+
+.site-header .nav-links a {
+  color: var(--text-muted);
+  transition: color 0.2s;
+}
+.site-header .nav-links a:hover { color: #fff; }
+
+/* Footer */
+.site-footer {
+  padding: 3rem 2rem;
+  border-top: 1px solid var(--border);
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin-top: 4rem;
+}
+
+/* Blog listing */
+.blog-list {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 3rem 2rem;
+}
+
+.blog-list h1 {
+  font-size: 2.5rem;
+  font-weight: 800;
+  margin-bottom: 0.5rem;
+  background: linear-gradient(135deg, #fff 0%, #a1a1aa 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.blog-list .subtitle {
+  color: var(--text-muted);
+  font-size: 1.15rem;
+  margin-bottom: 3rem;
+}
+
+.post-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 1.5rem;
+}
+
+.post-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.75rem;
+  transition: border-color 0.2s, transform 0.2s;
+  display: flex;
+  flex-direction: column;
+}
+
+.post-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+}
+
+.post-card .tag {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--accent);
+  margin-bottom: 0.75rem;
+  font-weight: 600;
+}
+
+.post-card h2 {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 0.75rem;
+  line-height: 1.35;
+}
+
+.post-card p {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1.6;
+  flex: 1;
+}
+
+.post-card .meta {
+  margin-top: 1rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+/* Article page */
+.article-header {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 3rem 2rem 0;
+}
+
+.article-header .back {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 1.5rem;
+  display: inline-block;
+}
+
+.article-header .meta {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin-bottom: 2rem;
+}
+
+.article-content {
+  padding: 0 2rem 3rem;
+}
+
+/* CTA Banner */
+.cta-banner {
+  max-width: var(--max-width);
+  margin: 3rem auto;
+  padding: 2rem;
+  background: linear-gradient(135deg, #1e3a5f 0%, #1a1a25 100%);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  text-align: center;
+}
+
+.cta-banner h3 {
+  color: #fff;
+  font-size: 1.3rem;
+  margin-bottom: 0.5rem;
+}
+
+.cta-banner p {
+  color: var(--text-muted);
+  margin-bottom: 1.25rem;
+}
+
+.cta-banner a.btn {
+  display: inline-block;
+  background: var(--accent);
+  color: #fff;
+  padding: 0.75rem 2rem;
+  border-radius: var(--radius);
+  font-weight: 600;
+  transition: background 0.2s;
+}
+
+.cta-banner a.btn:hover {
+  background: var(--accent-hover);
+}
+
+@media (max-width: 640px) {
+  .prose h1 { font-size: 1.8rem; }
+  .blog-list h1 { font-size: 1.8rem; }
+  .post-grid { grid-template-columns: 1fr; }
+  .site-header nav { flex-direction: column; gap: 0.75rem; }
+}

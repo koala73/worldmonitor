@@ -1,0 +1,38 @@
+---
+import Base from '../layouts/Base.astro';
+import { getCollection } from 'astro:content';
+
+const posts = (await getCollection('blog')).sort(
+  (a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf()
+);
+---
+
+<Base
+  title="WorldMonitor Blog"
+  description="Insights on real-time global intelligence, OSINT, geopolitics, markets, and the open-source tools that power situational awareness."
+>
+  <div class="blog-list">
+    <h1>WorldMonitor Blog</h1>
+    <p class="subtitle">
+      Real-time intelligence, OSINT, geopolitics, and markets.
+    </p>
+    <div class="post-grid">
+      {posts.map((post) => (
+        <a href={`/blog/posts/${post.id}/`} class="post-card">
+          <div class="tag">{post.data.audience}</div>
+          <h2>{post.data.title}</h2>
+          <p>{post.data.description}</p>
+          <div class="meta">
+            <time datetime={post.data.pubDate.toISOString()}>
+              {post.data.pubDate.toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+              })}
+            </time>
+          </div>
+        </a>
+      ))}
+    </div>
+  </div>
+</Base>

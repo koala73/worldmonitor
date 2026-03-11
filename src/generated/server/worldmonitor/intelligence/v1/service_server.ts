@@ -150,6 +150,23 @@ export interface DeductSituationResponse {
   provider: string;
 }
 
+export interface GetCountryFactsRequest {
+  countryCode: string;
+}
+
+export interface GetCountryFactsResponse {
+  headOfState: string;
+  headOfStateTitle: string;
+  wikipediaSummary: string;
+  wikipediaThumbnailUrl: string;
+  population: number;
+  capital: string;
+  languages: string[];
+  currencies: string[];
+  areaSqKm: number;
+  countryName: string;
+}
+
 export type SeverityLevel = "SEVERITY_LEVEL_UNSPECIFIED" | "SEVERITY_LEVEL_LOW" | "SEVERITY_LEVEL_MEDIUM" | "SEVERITY_LEVEL_HIGH";
 
 export type TrendDirection = "TREND_DIRECTION_UNSPECIFIED" | "TREND_DIRECTION_RISING" | "TREND_DIRECTION_STABLE" | "TREND_DIRECTION_FALLING";
@@ -207,6 +224,7 @@ export interface IntelligenceServiceHandler {
   getCountryIntelBrief(ctx: ServerContext, req: GetCountryIntelBriefRequest): Promise<GetCountryIntelBriefResponse>;
   searchGdeltDocuments(ctx: ServerContext, req: SearchGdeltDocumentsRequest): Promise<SearchGdeltDocumentsResponse>;
   deductSituation(ctx: ServerContext, req: DeductSituationRequest): Promise<DeductSituationResponse>;
+  getCountryFacts(ctx: ServerContext, req: GetCountryFactsRequest): Promise<GetCountryFactsResponse>;
 }
 
 export function createIntelligenceServiceRoutes(
@@ -478,6 +496,53 @@ export function createIntelligenceServiceRoutes(
 
           const result = await handler.deductSituation(ctx, body);
           return new Response(JSON.stringify(result as DeductSituationResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/intelligence/v1/get-country-facts",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetCountryFactsRequest = {
+            countryCode: params.get("country_code") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getCountryFacts", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getCountryFacts(ctx, body);
+          return new Response(JSON.stringify(result as GetCountryFactsResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

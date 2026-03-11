@@ -2350,6 +2350,17 @@
       "sirens24h": "Sirenes / 24h",
       "aviationDisruptions": "Perturbações aéreas",
       "gpsJammingZones": "Zonas de interferência GPS"
+    },
+    "countryFacts": "Dados do país",
+    "loadingFacts": "Carregando dados do país...",
+    "noFacts": "Dados do país indisponíveis.",
+    "facts": {
+      "headOfState": "Chefe de Estado",
+      "population": "População",
+      "capital": "Capital",
+      "languages": "Idiomas",
+      "currencies": "Moedas",
+      "area": "Área"
     }
   },
   "preferences": {
@@ -2369,5 +2380,9 @@
     "mapThemeDesc": "Estilo visual dos tiles do mapa.",
     "globePreset": "Predefinição visual",
     "globePresetDesc": "Alternar entre visuais clássicos e aprimorados do globo."
+  },
+  "contextMenu": {
+    "openCountryBrief": "Abrir resumo do país",
+    "copyCoordinates": "Copiar coordenadas"
   }
 }

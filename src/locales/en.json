@@ -122,6 +122,17 @@
       "stockIndex": "Stock index: {{value}}",
       "recentHeadlines": "**Recent headlines:**",
       "activeStrikes": "{{count}} active strikes detected"
+    },
+    "countryFacts": "Country Facts",
+    "loadingFacts": "Loading country facts...",
+    "noFacts": "Country facts unavailable.",
+    "facts": {
+      "headOfState": "Head of State",
+      "population": "Population",
+      "capital": "Capital",
+      "languages": "Languages",
+      "currencies": "Currencies",
+      "area": "Area"
     }
   },
   "header": {
@@ -2408,5 +2419,9 @@
       "telegramIntel1": "Curated Telegram OSINT channels",
       "telegramIntel2": "Near-real-time conflict & geopolitical updates"
     }
+  },
+  "contextMenu": {
+    "openCountryBrief": "Open Country Brief",
+    "copyCoordinates": "Copy Coordinates"
   }
 }

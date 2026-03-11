@@ -122,6 +122,17 @@
       "stockIndex": "주가 지수: {{value}}",
       "recentHeadlines": "**최근 헤드라인:**",
       "activeStrikes": "{{count}}건의 활성 공습 감지"
+    },
+    "countryFacts": "국가 정보",
+    "loadingFacts": "국가 정보 로딩 중...",
+    "noFacts": "국가 정보를 사용할 수 없습니다.",
+    "facts": {
+      "headOfState": "국가 원수",
+      "population": "인구",
+      "capital": "수도",
+      "languages": "언어",
+      "currencies": "통화",
+      "area": "면적"
     }
   },
   "header": {
@@ -2369,5 +2380,9 @@
     "mapThemeDesc": "지도 타일의 시각적 스타일.",
     "globePreset": "시각적 프리셋",
     "globePresetDesc": "클래식과 향상된 글로브 시각화 간 전환."
+  },
+  "contextMenu": {
+    "openCountryBrief": "국가 개요 열기",
+    "copyCoordinates": "좌표 복사"
   }
 }
