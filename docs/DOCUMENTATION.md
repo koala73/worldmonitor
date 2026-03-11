@@ -20,6 +20,7 @@ AI-powered real-time global intelligence dashboard aggregating news, markets, ge
 | [Premium Finance Search Layer](./PREMIUM_FINANCE_SEARCH.md) | Targeted stock-news provider chain layered on top of premium finance |
 | [Orbital Surveillance](./ORBITAL_SURVEILLANCE.md) | Satellite tracking, SGP4 propagation, tier availability, roadmap |
 | [API Reference](./api/) | OpenAPI specs for all 22 services |
+| [Health Endpoints](./HEALTH_ENDPOINTS.md) | `/api/health` and `/api/seed-health` reference, staleness thresholds, monitoring integration |
 | [Adding Endpoints](./ADDING_ENDPOINTS.md) | Guide for adding new RPC endpoints |
 | [Release Packaging](./RELEASE_PACKAGING.md) | Desktop build and release process |
 
