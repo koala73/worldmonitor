@@ -37,6 +37,7 @@ import { trackCountrySelected, trackCountryBriefOpened } from '@/services/analyt
 import type { StrategicPosturePanel } from '@/components/StrategicPosturePanel';
 import type { NewsItem } from '@/types';
 import { getNearbyInfrastructure } from '@/services/related-assets';
+import { toFlagEmoji } from '@/utils/country-flag';
 
 type IntlDisplayNamesCtor = new (
   locales: string | string[],
@@ -993,11 +994,6 @@ export class CountryIntelManager implements AppModule {
   }
 
   static toFlagEmoji(code: string): string {
-    const upperCode = code.toUpperCase();
-    if (!/^[A-Z]{2}$/.test(upperCode)) return '🏳️';
-    return upperCode
-      .split('')
-      .map((char) => String.fromCodePoint(0x1f1e6 + char.charCodeAt(0) - 65))
-      .join('');
+    return toFlagEmoji(code, '🏳️');
   }
 }

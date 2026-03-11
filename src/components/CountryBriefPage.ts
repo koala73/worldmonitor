@@ -13,6 +13,7 @@ import type { Port } from '@/config/ports';
 import { exportCountryBriefJSON, exportCountryBriefCSV } from '@/utils/export';
 import type { CountryBriefExport } from '@/utils/export';
 import { ME_STRIKE_BOUNDS } from '@/services/country-geometry';
+import { toFlagEmoji } from '@/utils/country-flag';
 
 type BriefAssetType = AssetType | 'port';
 
@@ -163,15 +164,7 @@ export class CountryBriefPage implements CountryBriefPanel {
   }
 
   private countryFlag(code: string): string {
-    try {
-      return code
-        .toUpperCase()
-        .split('')
-        .map((c) => String.fromCodePoint(0x1f1e6 + c.charCodeAt(0) - 65))
-        .join('');
-    } catch {
-      return '🌍';
-    }
+    return toFlagEmoji(code, '🌍');
   }
 
   private levelColor(level: string): string {
