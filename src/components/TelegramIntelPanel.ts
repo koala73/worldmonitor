@@ -1,7 +1,7 @@
 import { Panel } from './Panel';
 import { sanitizeUrl } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
-import { h, replaceChildren } from '@/utils/dom-utils';
+import { h, replaceChildren, safeHtml } from '@/utils/dom-utils';
 import {
   TELEGRAM_TOPICS,
   formatTelegramTime,
@@ -51,14 +51,16 @@ export class TelegramIntelPanel extends Panel {
     this.renderItems();
   }
 
-  public setData(response: TelegramFeedResponse): void {
-    this.relayEnabled = response.enabled;
+  public setData(response: TelegramFeedResponse & { error?: string }): void {
+    this.relayEnabled = response.enabled !== false;
     this.items = response.items || [];
 
-    if (!this.relayEnabled) {
+    if (!this.relayEnabled || response.error) {
       this.setCount(0);
       replaceChildren(this.content,
-        h('div', { className: 'empty-state' }, t('components.telegramIntel.disabled')),
+        h('div', { className: 'empty-state error' },
+          response.error || t('components.telegramIntel.disabled')
+        ),
       );
       return;
     }
@@ -89,19 +91,50 @@ export class TelegramIntelPanel extends Panel {
 
   private buildItem(item: TelegramItem): HTMLElement {
     const timeAgo = formatTelegramTime(item.ts);
+    const itemDate = new Date(item.ts).getTime();
+    const isLive = !isNaN(itemDate) && (Date.now() - itemDate) < 600000; // 10 minutes for "LIVE" status
+    const textHtml = item.text.replace(/\n/g, '<br>');
 
-    return h('a', {
-      href: sanitizeUrl(item.url),
-      target: '_blank',
-      rel: 'noopener noreferrer',
-      className: 'telegram-intel-item',
-    },
+    return h('div', { className: `telegram-intel-item ${isLive ? 'is-live' : ''}` },
       h('div', { className: 'telegram-intel-item-header' },
-        h('span', { className: 'telegram-intel-channel' }, item.channelTitle || item.channel),
-        h('span', { className: 'telegram-intel-topic' }, item.topic),
-        h('span', { className: 'telegram-intel-time' }, timeAgo),
+        h('div', { className: 'telegram-intel-channel-wrapper' },
+          h('span', { className: 'telegram-intel-channel' }, item.channelTitle || item.channel),
+          isLive ? h('span', { className: 'live-indicator' }, 'LIVE') : null,
+        ),
+        h('div', { className: 'telegram-intel-meta' },
+          h('span', { className: 'telegram-intel-topic' }, item.topic),
+          h('span', { className: 'telegram-intel-time' }, timeAgo),
+        ),
       ),
-      h('div', { className: 'telegram-intel-text' }, item.text),
+      h('div', { className: 'telegram-intel-text' }, safeHtml(textHtml)),
+      item.mediaUrls && item.mediaUrls.length > 0 ? h('div', { className: 'telegram-intel-media-grid' },
+        ...item.mediaUrls.map(url => {
+          const isVideo = url.match(/\.(mp4|webm|mov)(\?.*)?$/i);
+          if (isVideo) {
+            return h('video', {
+              className: 'telegram-intel-video',
+              src: sanitizeUrl(url),
+              controls: true,
+              preload: 'metadata',
+              playsinline: true,
+            });
+          }
+          return h('img', {
+            className: 'telegram-intel-image',
+            src: sanitizeUrl(url),
+            loading: 'lazy',
+            onClick: () => window.open(url, '_blank'),
+          });
+        })
+      ) : null,
+      h('div', { className: 'telegram-intel-item-actions' },
+        h('a', {
+          href: sanitizeUrl(item.url),
+          target: '_blank',
+          rel: 'noopener noreferrer',
+          className: 'telegram-follow-btn',
+        }, t('components.telegramIntel.viewSource')),
+      ),
     );
   }
 

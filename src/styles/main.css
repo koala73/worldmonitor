@@ -1,64 +1,34 @@
-@import './rtl-overrides.css';
-@import './panels.css';
+ @import './rtl-overrides.css';
+ @import './panels.css';
+ @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto+Mono:wght@400;500;700&display=swap');
+ @import url('https://cdn.jsdelivr.net/npm/geist@1.3.0/dist/css/geist.min.css');
+ 
+ /* ============================================================
+    Theme Colors — overridden by [data-theme="light"] below
+    ============================================================ */
+ :root {
+   /* ... existing colors ... */
+ 
+   /* Font stack */
+   --font-fallback-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+   --font-fallback-mono: 'SF Mono', 'Monaco', 'Cascadia Code', 'Fira Code', 'DejaVu Sans Mono', 'Liberation Mono', monospace;
+   --font-body: var(--font-fallback-mono);
+ }
+ 
+ [data-font="inter"] {
+   --font-body: 'Inter', var(--font-fallback-sans);
+ }
+ 
+ [data-font="roboto-mono"] {
+   --font-body: 'Roboto Mono', var(--font-fallback-mono);
+ }
+ 
+ [data-font="geist"] {
+   --font-body: 'Geist', var(--font-fallback-sans);
+ }
+ 
+ [dir="rtl"] {
 
-/* ============================================================
-   Theme Colors — overridden by [data-theme="light"] below
-   ============================================================ */
-:root {
-  /* Backgrounds */
-  --bg: #0a0a0a;
-  --bg-secondary: #111;
-  --surface: #141414;
-  --surface-hover: #1e1e1e;
-  --surface-active: #1a1a2e;
-
-  /* Borders */
-  --border: #2a2a2a;
-  --border-strong: #444;
-  --border-subtle: #1a1a1a;
-
-  /* Text */
-  --text: #e8e8e8;
-  --text-secondary: #ccc;
-  --text-dim: #888;
-  --text-muted: #666;
-  --text-faint: #555;
-  --text-ghost: #444;
-  --accent: #fff;
-
-  /* Overlays & shadows */
-  --overlay-subtle: rgba(255, 255, 255, 0.03);
-  --overlay-light: rgba(255, 255, 255, 0.05);
-  --overlay-medium: rgba(255, 255, 255, 0.1);
-  --overlay-heavy: rgba(255, 255, 255, 0.2);
-  --shadow-color: rgba(0, 0, 0, 0.5);
-  --darken-light: rgba(0, 0, 0, 0.15);
-  --darken-medium: rgba(0, 0, 0, 0.2);
-  --darken-heavy: rgba(0, 0, 0, 0.3);
-
-  /* Scrollbar */
-  --scrollbar-thumb: #333;
-  --scrollbar-thumb-hover: #555;
-
-  /* Input */
-  --input-bg: #1a1a1a;
-
-  /* Panels */
-  --panel-bg: #141414;
-  --panel-border: #2a2a2a;
-
-  /* Map */
-  --map-bg: #020a08;
-  --map-grid: #0a2a20;
-  --map-country: #0a2018;
-  --map-stroke: #0f5040;
-
-  /* Font stack */
-  --font-mono: 'SF Mono', 'Monaco', 'Cascadia Code', 'Fira Code', 'DejaVu Sans Mono', 'Liberation Mono', monospace;
-  --font-body: var(--font-mono);
-}
-
-[dir="rtl"] {
   --font-body: 'Tajawal', 'Geeza Pro', 'SF Arabic', 'Tahoma', system-ui, sans-serif;
 }
 
@@ -916,77 +886,40 @@ canvas,
 }
 
 .map-section {
-  height: 50vh;
-  min-height: 350px;
-  max-height: 90vh;
-  /* Allow resize up to 90% of viewport */
-  border: 1px solid var(--border);
+  min-height: 400px;
   background: var(--surface);
   display: flex;
   flex-direction: column;
-  flex-shrink: 0;
   position: relative;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+
+
+.map-section.dragging {
+  opacity: 0.5;
+  transform: scale(0.98);
+  box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+  z-index: 1000;
+  pointer-events: none;
 }
 
 .map-section.hidden {
   display: none;
 }
 
-.map-section .panel-header {
-  flex-shrink: 0;
-  gap: 6px;
-  padding: 8px 12px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-}
-
 .map-section .map-container {
   flex: 1;
   position: relative;
+  min-height: 300px;
 }
 
+/* Map specific resize handle (overridden by .panel-resize-handle if added) */
 .map-resize-handle {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 8px;
-  cursor: ns-resize;
-  background: linear-gradient(to bottom, transparent, var(--border));
-  z-index: 200;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.map-resize-handle::after {
-  content: '';
-  width: 40px;
-  height: 3px;
-  background: var(--text-dim);
-  border-radius: 2px;
-  opacity: 0.5;
-  transition: opacity 0.2s;
-}
-
-.map-resize-handle:hover::after {
-  opacity: 1;
-}
-
-.map-section.resizing {
-  user-select: none;
-  overflow: hidden;
-}
-
-.map-section.resizing .map-resize-handle::after {
-  background: var(--green);
-  opacity: 1;
-}
-
-.map-section.pinned {
-  position: sticky;
-  top: 0;
-  z-index: 100;
+  display: none;
 }
 
 .map-dimension-toggle {
@@ -1092,36 +1025,36 @@ canvas,
 
 /* .panel.resized: Custom height set - use grid-row span for height */
 
-/* Row span classes for resizable panels */
-.panel.span-1 {
+/* Grid span classes for resizable tiles (Panels & Map) */
+.span-1 {
   grid-row: span 1 !important;
   min-height: 200px !important;
 }
 
-.panel.span-2 {
+.span-2 {
   grid-row: span 2 !important;
   min-height: 400px !important;
 }
 
-.panel.span-3 {
+.span-3 {
   grid-row: span 3 !important;
   min-height: 600px !important;
 }
 
-.panel.span-4 {
+.span-4 {
   grid-row: span 4 !important;
   min-height: 800px !important;
 }
 
-.panel.col-span-1 {
+.col-span-1 {
   grid-column: span 1 !important;
 }
 
-.panel.col-span-2 {
+.col-span-2 {
   grid-column: span 2 !important;
 }
 
-.panel.col-span-3 {
+.col-span-3 {
   grid-column: span 3 !important;
 }
 
@@ -2294,7 +2227,7 @@ body.panel-resize-active iframe {
 
 .live-news-fullscreen .panel-content,
 .live-news-fullscreen .map-container {
-  height: calc(100vh - 80px) !important;
+  height: calc(100vh - 38px) !important;
 }
 
 .live-news-fullscreen .live-news-player,
@@ -2314,7 +2247,7 @@ body.live-news-fullscreen-active .map-controls,
 body.live-news-fullscreen-active .map-timestamp,
 body.live-news-fullscreen-active .map-bottom-grid,
 body.live-news-fullscreen-active .map-resize-handle {
-  visibility: hidden !important;
+  display: none !important;
   pointer-events: none !important;
 }
 
@@ -6565,6 +6498,109 @@ a.prediction-link:hover {
 .popup-news-item .news-title:hover {
   color: var(--accent);
 }
+
+/* Vessel Popup Enhancements */
+.flag-icon {
+  font-size: 1.25em;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.usni-intel-section {
+  background: rgba(var(--semantic-high-rgb), 0.05);
+  border: 1px solid rgba(var(--semantic-high-rgb), 0.2);
+  border-radius: 6px;
+  padding: 10px;
+  margin: 12px 0;
+}
+
+.section-header.usni {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  color: var(--semantic-high);
+}
+
+.section-header.usni .section-label {
+  font-weight: 700;
+  color: inherit;
+  margin-bottom: 0;
+  letter-spacing: 1px;
+}
+
+.usni-intel-content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.usni-field {
+  font-size: 11px;
+  color: var(--text);
+}
+
+.usni-description {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  border-left: 2px solid rgba(var(--semantic-high-rgb), 0.3);
+  padding-left: 8px;
+  margin: 4px 0;
+}
+
+.usni-source-row {
+  margin-top: 4px;
+  font-size: 10px;
+}
+
+.usni-link {
+  color: var(--semantic-high);
+  text-decoration: none;
+  opacity: 0.8;
+  transition: opacity 0.15s;
+}
+
+.usni-link:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
+.vessel-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.vessel-history-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 6px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 4px;
+  font-size: 10px;
+}
+
+.history-point {
+  color: var(--text-muted);
+  font-family: monospace;
+}
+
+.history-tag {
+  background: var(--overlay-light);
+  color: var(--accent);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+/* Specific badge colors for USNI status */
+.popup-badge.usni-deployed { background: var(--semantic-high); color: white; }
+.popup-badge.usni-underway { background: var(--semantic-elevated); color: white; }
+.popup-badge.usni-in-port { background: var(--semantic-normal); color: white; }
 
 .popup-link {
   display: inline-block;
@@ -17718,53 +17754,159 @@ body.has-breaking-alert .panels-grid {
 }
 
 .telegram-intel-item {
-  display: block;
-  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
   background: var(--surface);
-  text-decoration: none;
-  transition: background 0.15s ease;
+  transition: background 0.15s ease, border-left-color 0.15s ease;
   border-left: 2px solid transparent;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.telegram-intel-item.is-live {
+  background: rgba(0, 255, 127, 0.02);
+  border-left-color: var(--green);
 }
 
 .telegram-intel-item:hover {
   background: var(--overlay-light);
-  border-left-color: var(--accent);
 }
 
 .telegram-intel-item-header {
   display: flex;
   align-items: center;
-  margin-bottom: 4px;
+  justify-content: space-between;
+  margin-bottom: 6px;
   gap: 8px;
+}
+
+.telegram-intel-channel-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  overflow: hidden;
 }
 
 .telegram-intel-channel {
   font-size: 10px;
   color: var(--accent);
-  font-weight: 500;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.5px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 50%;
+}
+
+.live-indicator {
+  background: var(--green);
+  color: var(--bg);
+  font-size: 8px;
+  font-weight: 900;
+  padding: 1px 4px;
+  border-radius: 3px;
+  line-height: 1;
+  animation: pulse-live 2s infinite ease-in-out;
+}
+
+@keyframes pulse-live {
+  0% { opacity: 1; }
+  50% { opacity: 0.6; }
+  100% { opacity: 1; }
+}
+
+.telegram-intel-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.telegram-intel-time {
+  font-size: 10px;
+  color: var(--text-dim);
 }
 
 .telegram-intel-topic {
   font-size: 9px;
   color: var(--text-dim);
   background: var(--overlay-subtle);
-  padding: 1px 5px;
+  padding: 1px 4px;
   border-radius: 3px;
   text-transform: uppercase;
-  letter-spacing: 0.3px;
+}
+
+.telegram-intel-text {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+  margin-bottom: 8px;
+  word-break: break-word;
+}
+
+.telegram-intel-media-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.telegram-intel-image {
+  width: 100%;
+  aspect-ratio: 16/9;
+  object-fit: cover;
+  border-radius: 4px;
+  cursor: pointer;
+  background: var(--overlay-subtle);
+  transition: opacity 0.2s;
+}
+
+.telegram-intel-image:hover {
+  opacity: 0.9;
+}
+
+.telegram-intel-video {
+  width: 100%;
+  aspect-ratio: 16/9;
+  border-radius: 4px;
+  background: #000;
+}
+
+.telegram-intel-item-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.telegram-follow-btn {
+  font-size: 10px;
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 500;
+  padding: 4px 8px;
+  border: 1px solid var(--accent-dim);
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.telegram-follow-btn:hover {
+  background: var(--accent-dim);
+  color: var(--bg);
+}
+
+.telegram-intel-topic {
+  font-size: 9px;
+  color: var(--text-dim);
+  background: var(--overlay-subtle);
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  font-weight: 600;
 }
 
 .telegram-intel-time {
   font-size: 10px;
   color: var(--text-dim);
-  flex-shrink: 0;
-  margin-left: auto;
 }
 
 .telegram-intel-text {
