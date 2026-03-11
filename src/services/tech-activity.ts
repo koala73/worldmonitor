@@ -1,5 +1,6 @@
 import type { ClusteredEvent } from '@/types';
 import { inferHubsFromTitle, type TechHubLocation } from './tech-hub-index';
+import { deriveHubActivityLevel, deriveHubTrend, normalizeHubScore } from './hub-activity-scoring';
 
 export interface TechHubActivity {
   hubId: string;
@@ -94,19 +95,8 @@ export function aggregateTechActivity(clusters: ClusteredEvent[]): TechHubActivi
     const newsCount = acc.clusters.length;
 
     // Normalize to 0-100 scale relative to top hub
-    const score = maxRawScore > 0
-      ? Math.round((rawScore / maxRawScore) * 100)
-      : 0;
-
-    // Determine activity level based on relative position
-    let activityLevel: 'high' | 'elevated' | 'low';
-    if (score >= 70 || acc.hasBreaking) {
-      activityLevel = 'high';
-    } else if (score >= 40) {
-      activityLevel = 'elevated';
-    } else {
-      activityLevel = 'low';
-    }
+    const score = normalizeHubScore(rawScore, maxRawScore);
+    const activityLevel = deriveHubActivityLevel(score, acc.hasBreaking);
 
     // Get top stories (up to 3)
     const topStories = acc.clusters
@@ -114,12 +104,7 @@ export function aggregateTechActivity(clusters: ClusteredEvent[]): TechHubActivi
       .map(c => ({ title: c.primaryTitle, link: c.primaryLink }));
 
     // Determine trend based on velocity
-    let trend: 'rising' | 'stable' | 'falling' = 'stable';
-    if (acc.totalVelocity > 2) {
-      trend = 'rising';
-    } else if (acc.totalVelocity < 0.5 && newsCount > 1) {
-      trend = 'falling';
-    }
+    const trend = deriveHubTrend(acc.totalVelocity, newsCount);
 
     activities.push({
       hubId,
