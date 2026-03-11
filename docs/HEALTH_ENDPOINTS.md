@@ -1,3 +1,8 @@
+---
+title: "Health Endpoints"
+description: "World Monitor exposes two health endpoints for monitoring data pipeline integrity. Both run on the Vercel Edge Runtime and query Redis (Upstash) to assess system state."
+---
+
 # Health Endpoints
 
 World Monitor exposes two health endpoints for monitoring data pipeline integrity. Both run on the Vercel Edge Runtime and query Redis (Upstash) to assess system state.

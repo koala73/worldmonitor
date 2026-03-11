@@ -1,11 +1,16 @@
+---
+title: "Finance & Market Data"
+description: "Market radar, Gulf FDI tracking, stablecoin monitoring, energy analytics, and trade policy intelligence in World Monitor."
+---
+
 # Finance & Market Data
 
 Market radar, Gulf FDI tracking, stablecoin monitoring, energy analytics, and trade policy intelligence in World Monitor.
 
 For the premium stock-analysis product layer, see:
 
-- [Premium Finance](./PREMIUM_FINANCE.md)
-- [Premium Finance Search Layer](./PREMIUM_FINANCE_SEARCH.md)
+- [Premium Finance](/PREMIUM_FINANCE)
+- [Premium Finance Search Layer](/PREMIUM_FINANCE_SEARCH)
 
 ---
 

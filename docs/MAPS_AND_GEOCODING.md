@@ -1,3 +1,8 @@
+---
+title: "Maps Infrastructure & Geocoding"
+description: "Static map assets, country geometry, geocoding services, and boundary overrides."
+---
+
 # Maps Infrastructure & Geocoding
 
 Static map assets, country geometry, geocoding services, and boundary overrides.

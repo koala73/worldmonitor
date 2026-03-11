@@ -1,3 +1,8 @@
+---
+title: "API Key Gating & Registration — Deployment Guide"
+description: "Desktop cloud fallback is gated on a WORLDMONITOR_API_KEY. Without a valid key, the desktop app operates local-only (sidecar). A registration form collects emails via Convex DB for future key distribution."
+---
+
 # API Key Gating & Registration — Deployment Guide
 
 ## Overview

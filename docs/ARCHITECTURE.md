@@ -1,3 +1,8 @@
+---
+title: "Architecture"
+description: "System design, caching strategies, bootstrap hydration, edge functions, and implementation patterns used in World Monitor."
+---
+
 # Architecture
 
 System design, caching strategies, bootstrap hydration, edge functions, and implementation patterns used in World Monitor.
@@ -122,7 +127,7 @@ This pattern is enforced project-wide across all panel subclasses. In E2E tests,
 
 ## API & Data Pipeline
 
-> **CORS** — all API endpoints enforce an origin allowlist. See [CORS.md](./CORS.md) for the allowed origins, implementation details, and how to add CORS to new endpoints.
+> **CORS** — all API endpoints enforce an origin allowlist. See [CORS.md](/CORS) for the allowed origins, implementation details, and how to add CORS to new endpoints.
 
 ### Proto-First API Contracts
 

@@ -1,3 +1,8 @@
+---
+title: "CORS"
+description: "How cross-origin request protection works and what to do when adding new API endpoints."
+---
+
 # CORS
 
 How cross-origin request protection works and what to do when adding new API endpoints.
@@ -73,7 +78,7 @@ To allow a new origin:
 
 1. Add a regex pattern to `ALLOWED_ORIGIN_PATTERNS` in **both** `api/_cors.js` and `server/cors.ts`.
 2. Update the test in `api/_cors.test.mjs`.
-3. If the origin is a new production subdomain, also add it to the Cloudflare R2 CORS rules (see [MEMORY.md notes on R2 CORS](../MEMORY.md)).
+3. If the origin is a new production subdomain, also add it to the Cloudflare R2 CORS rules (see MEMORY.md notes on R2 CORS in the repo root).
 
 ## Allowed Headers
 
@@ -87,4 +92,4 @@ To allow additional headers, update `Access-Control-Allow-Headers` in both files
 
 ## Railway Relay CORS
 
-The Railway relay (`scripts/ais-relay.cjs`) has its own CORS handling with the `ALLOW_VERCEL_PREVIEW_ORIGINS` env var. See [RELAY_PARAMETERS.md](./RELAY_PARAMETERS.md) for details.
+The Railway relay (`scripts/ais-relay.cjs`) has its own CORS handling with the `ALLOW_VERCEL_PREVIEW_ORIGINS` env var. See [RELAY_PARAMETERS.md](/RELAY_PARAMETERS) for details.

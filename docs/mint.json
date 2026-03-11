@@ -1,0 +1,134 @@
+{
+  "$schema": "https://mintlify.com/schema.json",
+  "name": "World Monitor",
+  "logo": {
+    "dark": "/logo.png",
+    "light": "/logo.png"
+  },
+  "favicon": "/favicon.png",
+  "colors": {
+    "primary": "#3b82f6",
+    "light": "#60a5fa",
+    "dark": "#2563eb",
+    "background": {
+      "dark": "#0a0a1a"
+    }
+  },
+  "topbarLinks": [
+    {
+      "name": "Live App",
+      "url": "https://worldmonitor.app"
+    }
+  ],
+  "topbarCtaButton": {
+    "name": "GitHub",
+    "url": "https://github.com/koala73/worldmonitor"
+  },
+  "anchors": [
+    {
+      "name": "API Reference",
+      "icon": "code",
+      "url": "api-reference"
+    }
+  ],
+  "navigation": [
+    {
+      "group": "Getting Started",
+      "pages": [
+        "DOCUMENTATION",
+        "ARCHITECTURE"
+      ]
+    },
+    {
+      "group": "Core Systems",
+      "pages": [
+        "DATA_SOURCES",
+        "ALGORITHMS",
+        "MAP_ENGINE",
+        "AI_INTELLIGENCE",
+        "MAPS_AND_GEOCODING"
+      ]
+    },
+    {
+      "group": "Finance",
+      "pages": [
+        "FINANCE_DATA",
+        "PREMIUM_FINANCE",
+        "PREMIUM_FINANCE_SEARCH"
+      ]
+    },
+    {
+      "group": "Infrastructure",
+      "pages": [
+        "DESKTOP_APP",
+        "ORBITAL_SURVEILLANCE",
+        "CORS",
+        "HEALTH_ENDPOINTS",
+        "RELAY_PARAMETERS"
+      ]
+    },
+    {
+      "group": "Contributing",
+      "pages": [
+        "ADDING_ENDPOINTS",
+        "API_KEY_DEPLOYMENT",
+        "RELEASE_PACKAGING"
+      ]
+    },
+    {
+      "group": "API Reference",
+      "pages": [
+        {
+          "group": "Geopolitical",
+          "openapi": [
+            "api/ConflictService.openapi.yaml",
+            "api/MilitaryService.openapi.yaml",
+            "api/UnrestService.openapi.yaml",
+            "api/IntelligenceService.openapi.yaml",
+            "api/DisplacementService.openapi.yaml",
+            "api/CyberService.openapi.yaml"
+          ]
+        },
+        {
+          "group": "Natural Events",
+          "openapi": [
+            "api/NaturalService.openapi.yaml",
+            "api/SeismologyService.openapi.yaml",
+            "api/ClimateService.openapi.yaml",
+            "api/WildfireService.openapi.yaml"
+          ]
+        },
+        {
+          "group": "Economy & Markets",
+          "openapi": [
+            "api/EconomicService.openapi.yaml",
+            "api/MarketService.openapi.yaml",
+            "api/TradeService.openapi.yaml",
+            "api/SupplyChainService.openapi.yaml",
+            "api/PredictionService.openapi.yaml"
+          ]
+        },
+        {
+          "group": "Infrastructure & Transport",
+          "openapi": [
+            "api/AviationService.openapi.yaml",
+            "api/MaritimeService.openapi.yaml",
+            "api/InfrastructureService.openapi.yaml"
+          ]
+        },
+        {
+          "group": "Other",
+          "openapi": [
+            "api/NewsService.openapi.yaml",
+            "api/ResearchService.openapi.yaml",
+            "api/PositiveEventsService.openapi.yaml",
+            "api/GivingService.openapi.yaml"
+          ]
+        }
+      ]
+    }
+  ],
+  "footerSocials": {
+    "github": "https://github.com/koala73/worldmonitor"
+  }
+}

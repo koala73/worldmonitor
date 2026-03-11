@@ -1,3 +1,8 @@
+---
+title: "Desktop Release Packaging Guide (Local, Reproducible)"
+description: "This guide provides reproducible local packaging steps for both desktop variants: full (World Monitor) and tech (Tech Monitor)."
+---
+
 # Desktop Release Packaging Guide (Local, Reproducible)
 
 This guide provides reproducible local packaging steps for both desktop variants:

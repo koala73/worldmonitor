@@ -1,3 +1,8 @@
+---
+title: "World Monitor — Full Documentation"
+description: "AI-powered real-time global intelligence dashboard aggregating news, markets, geopolitical data, and infrastructure monitoring into a unified situation awareness interface."
+---
+
 # World Monitor — Full Documentation
 
 AI-powered real-time global intelligence dashboard aggregating news, markets, geopolitical data, and infrastructure monitoring into a unified situation awareness interface.
@@ -8,21 +13,21 @@ AI-powered real-time global intelligence dashboard aggregating news, markets, ge
 
 | Document | Description |
 |---|---|
-| [README](../README.md) | Project overview, quick start, and self-hosting guide |
-| [Algorithms](./ALGORITHMS.md) | Scoring formulas, detection algorithms, classification pipelines |
-| [Data Sources](./DATA_SOURCES.md) | All 31+ data sources, feed tiers, and collection methods |
-| [Architecture](./ARCHITECTURE.md) | System design, caching, bootstrap hydration, edge functions |
-| [Map Engine](./MAP_ENGINE.md) | 3D globe and flat map rendering details |
-| [AI Intelligence](./AI_INTELLIGENCE.md) | LLM chains, RAG, threat classification, deduction |
-| [Desktop App](./DESKTOP_APP.md) | Tauri architecture, sidecar, secret management |
-| [Finance Data](./FINANCE_DATA.md) | Market radar, Gulf FDI, stablecoins, BIS, WTO |
-| [Premium Finance](./PREMIUM_FINANCE.md) | Premium stock analysis, stored history, backtests, daily brief |
-| [Premium Finance Search Layer](./PREMIUM_FINANCE_SEARCH.md) | Targeted stock-news provider chain layered on top of premium finance |
-| [Orbital Surveillance](./ORBITAL_SURVEILLANCE.md) | Satellite tracking, SGP4 propagation, tier availability, roadmap |
+| [README](https://github.com/koala73/worldmonitor#readme) | Project overview, quick start, and self-hosting guide |
+| [Algorithms](/ALGORITHMS) | Scoring formulas, detection algorithms, classification pipelines |
+| [Data Sources](/DATA_SOURCES) | All 31+ data sources, feed tiers, and collection methods |
+| [Architecture](/ARCHITECTURE) | System design, caching, bootstrap hydration, edge functions |
+| [Map Engine](/MAP_ENGINE) | 3D globe and flat map rendering details |
+| [AI Intelligence](/AI_INTELLIGENCE) | LLM chains, RAG, threat classification, deduction |
+| [Desktop App](/DESKTOP_APP) | Tauri architecture, sidecar, secret management |
+| [Finance Data](/FINANCE_DATA) | Market radar, Gulf FDI, stablecoins, BIS, WTO |
+| [Premium Finance](/PREMIUM_FINANCE) | Premium stock analysis, stored history, backtests, daily brief |
+| [Premium Finance Search Layer](/PREMIUM_FINANCE_SEARCH) | Targeted stock-news provider chain layered on top of premium finance |
+| [Orbital Surveillance](/ORBITAL_SURVEILLANCE) | Satellite tracking, SGP4 propagation, tier availability, roadmap |
 | [API Reference](./api/) | OpenAPI specs for all 22 services |
-| [Health Endpoints](./HEALTH_ENDPOINTS.md) | `/api/health` and `/api/seed-health` reference, staleness thresholds, monitoring integration |
-| [Adding Endpoints](./ADDING_ENDPOINTS.md) | Guide for adding new RPC endpoints |
-| [Release Packaging](./RELEASE_PACKAGING.md) | Desktop build and release process |
+| [Health Endpoints](/HEALTH_ENDPOINTS) | `/api/health` and `/api/seed-health` reference, staleness thresholds, monitoring integration |
+| [Adding Endpoints](/ADDING_ENDPOINTS) | Guide for adding new RPC endpoints |
+| [Release Packaging](/RELEASE_PACKAGING) | Desktop build and release process |
 
 ---
 
@@ -3699,7 +3704,7 @@ The system degrades gracefully—blocked sources are skipped while others contin
 
 ## Roadmap
 
-See [ROADMAP.md](../.planning/ROADMAP.md) for detailed planning. Recent intelligence enhancements:
+See [ROADMAP.md](https://github.com/koala73/worldmonitor/blob/main/.planning/ROADMAP.md) for detailed planning. Recent intelligence enhancements:
 
 ### Completed
 
@@ -3755,7 +3760,7 @@ See [ROADMAP.md](../.planning/ROADMAP.md) for detailed planning. Recent intellig
 - **Additional Data Sources** - World Bank, IMF, OFAC sanctions, UNHCR refugee data, FAO food security
 - **Think Tank Feeds** - RUSI, Chatham House, ECFR, CFR, Wilson Center, CNAS, Arms Control Association
 
-The full [ROADMAP.md](../.planning/ROADMAP.md) documents implementation details, API endpoints, and 30+ free data sources for future integration.
+The full [ROADMAP.md](https://github.com/koala73/worldmonitor/blob/main/.planning/ROADMAP.md) documents implementation details, API endpoints, and 30+ free data sources for future integration.
 
 ---
 
