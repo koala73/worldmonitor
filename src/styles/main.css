@@ -16164,6 +16164,124 @@ body.has-breaking-alert .panels-grid {
   color: var(--text-dim, #888);
 }
 
+/* ── Debug tab in UnifiedSettings ── */
+.us-debug-content {
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.us-debug-section-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim, #888);
+  margin-top: 8px;
+}
+
+.us-debug-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.us-debug-btn {
+  padding: 4px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border, #333);
+  background: var(--bg2, #1e2022);
+  color: var(--text, #e8eaed);
+  font-size: 11px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.us-debug-btn:hover { opacity: 0.8; }
+
+.us-debug-toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.us-debug-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text, #e8eaed);
+  cursor: pointer;
+}
+
+.us-debug-traffic-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+}
+
+.us-debug-traffic-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text, #e8eaed);
+}
+
+.us-debug-traffic-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-dim, #888);
+}
+
+.us-debug-traffic-log {
+  max-height: 280px;
+  overflow-y: auto;
+  border: 1px solid var(--border, #333);
+  border-radius: 6px;
+  background: var(--bg2, #0e1012);
+  padding: 4px;
+}
+
+.us-debug-empty {
+  color: var(--text-dim, #888);
+  font-size: 11px;
+  padding: 8px;
+  margin: 0;
+}
+
+.us-debug-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10px;
+  font-family: monospace;
+}
+
+.us-debug-table th {
+  text-align: left;
+  padding: 4px 6px;
+  color: var(--text-dim, #888);
+  border-bottom: 1px solid var(--border, #333);
+  position: sticky;
+  top: 0;
+  background: var(--bg2, #0e1012);
+}
+
+.us-debug-table td {
+  padding: 3px 6px;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+
+.us-diag-ok td { color: #4ade80; }
+.us-diag-warn td { color: #facc15; }
+.us-diag-err td { color: #f87171; }
+
 /* ── Ultra-wide layout: map left, panels beside it ── */
 @media (min-width: 2000px) {
   .main-content {

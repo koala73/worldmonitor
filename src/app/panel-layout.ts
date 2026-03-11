@@ -973,6 +973,9 @@ export class PanelLayoutManager implements AppModule {
     document.addEventListener('wm:toggle-ghost-mode', () => {
       toggleGhostMode();
     });
+    document.addEventListener('wm:open-settings', () => {
+      this.ctx.unifiedSettings?.open();
+    });
 
     // React to mode changes: update button states, body class, re-render family button
     document.addEventListener('wm:mode-changed', ((e: CustomEvent) => {

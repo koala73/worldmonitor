@@ -10,6 +10,8 @@ import type { PanelConfig } from '@/types';
 import { RuntimeConfigPanel } from './RuntimeConfigPanel';
 import type { StatusPanel } from './StatusPanel';
 import { isYouTubeConnected, signInToYouTube, signOutOfYouTube, initYouTubeAccountListeners } from '@/services/youtube-account';
+import { getApiBaseUrl } from '@/services/runtime';
+import { tryInvokeTauri } from '@/services/tauri-bridge';
 
 const GEAR_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`;
 
@@ -27,7 +29,7 @@ export interface UnifiedSettingsConfig {
   statusPanel?: StatusPanel | null;
 }
 
-type TabId = 'general' | 'panels' | 'sources' | 'api-keys' | 'status' | 'help';
+type TabId = 'general' | 'panels' | 'sources' | 'api-keys' | 'status' | 'help' | 'debug';
 
 export class UnifiedSettings {
   private overlay: HTMLElement;
@@ -39,6 +41,8 @@ export class UnifiedSettings {
   private panelFilter = '';
   private escapeHandler: (e: KeyboardEvent) => void;
   private apiConfigPanel: RuntimeConfigPanel | null = null;
+  private _diagToken: string | null = null;
+  private _diagRefreshInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor(config: UnifiedSettingsConfig) {
     this.config = config;
@@ -145,6 +149,24 @@ export class UnifiedSettings {
         signOutOfYouTube();
         return;
       }
+
+      // Debug tab buttons
+      if (target.id === 'us-open-logs') {
+        void tryInvokeTauri<string>('open_logs_folder');
+        return;
+      }
+      if (target.id === 'us-open-api-log') {
+        void tryInvokeTauri<string>('open_sidecar_log_file');
+        return;
+      }
+      if (target.id === 'us-refresh-traffic') {
+        void this._refreshTrafficLog();
+        return;
+      }
+      if (target.id === 'us-clear-traffic') {
+        void this._clearTrafficLog();
+        return;
+      }
     });
 
     // Handle input events for search
@@ -187,6 +209,12 @@ export class UnifiedSettings {
         this.updateAiStatus();
       } else if (target.id === 'us-map-flash') {
         setAiFlowSetting('mapNewsFlash', target.checked);
+      } else if (target.id === 'us-verbose-log') {
+        void this._toggleVerboseLog(target.checked);
+      } else if (target.id === 'us-fetch-debug') {
+        localStorage.setItem('wm-debug-log', target.checked ? '1' : '0');
+      } else if (target.id === 'us-auto-refresh') {
+        if (target.checked) this._startDebugAutoRefresh(); else this._stopDebugAutoRefresh();
       }
     });
 
@@ -207,6 +235,7 @@ export class UnifiedSettings {
   }
 
   public close(): void {
+    this._stopDebugAutoRefresh();
     this.overlay.classList.remove('active');
     localStorage.removeItem('wm-settings-open');
     document.removeEventListener('keydown', this.escapeHandler);
@@ -218,7 +247,7 @@ export class UnifiedSettings {
 
   private refreshGeneralTab(): void {
     if (this.activeTab !== 'general') return;
-    const content = this.overlay.querySelector('.unified-settings-tab-content');
+    const content = this.overlay.querySelector('[data-panel-id="general"]');
     if (content) content.innerHTML = this.renderGeneralContent();
   }
 
@@ -233,6 +262,7 @@ export class UnifiedSettings {
   }
 
   public destroy(): void {
+    this._stopDebugAutoRefresh();
     document.removeEventListener('keydown', this.escapeHandler);
     this.apiConfigPanel?.destroy();
     this.apiConfigPanel = null;
@@ -255,6 +285,7 @@ export class UnifiedSettings {
           ${this.config.isDesktopApp ? `<button class="${tabClass('api-keys')}" data-tab="api-keys">${t('header.tabApiKeys')}</button>` : ''}
           <button class="${tabClass('status')}" data-tab="status">${t('panels.status')}</button>
           <button class="${tabClass('help')}" data-tab="help">Help</button>
+          ${this.config.isDesktopApp ? `<button class="${tabClass('debug')}" data-tab="debug">Debug</button>` : ''}
         </div>
         <div class="unified-settings-tab-panel${this.activeTab === 'general' ? ' active' : ''}" data-panel-id="general">
           ${this.renderGeneralContent()}
@@ -291,6 +322,10 @@ export class UnifiedSettings {
         <div class="unified-settings-tab-panel${this.activeTab === 'help' ? ' active' : ''}" data-panel-id="help">
           ${this.renderHelpContent()}
         </div>
+        ${this.config.isDesktopApp ? `
+        <div class="unified-settings-tab-panel${this.activeTab === 'debug' ? ' active' : ''}" data-panel-id="debug">
+          ${this.renderDebugContent()}
+        </div>` : ''}
       </div>
     `;
 
@@ -316,6 +351,9 @@ export class UnifiedSettings {
   }
 
   private switchTab(tab: TabId): void {
+    if (this.activeTab === 'debug' && tab !== 'debug') {
+      this._stopDebugAutoRefresh();
+    }
     this.activeTab = tab;
 
     // Update tab buttons
@@ -327,6 +365,12 @@ export class UnifiedSettings {
     this.overlay.querySelectorAll('.unified-settings-tab-panel').forEach(el => {
       el.classList.toggle('active', (el as HTMLElement).dataset.panelId === tab);
     });
+
+    if (tab === 'debug') {
+      void this._refreshTrafficLog();
+      void this._syncVerboseState();
+      this._startDebugAutoRefresh();
+    }
   }
 
   private renderGeneralContent(): string {
@@ -752,5 +796,108 @@ export class UnifiedSettings {
     const enabledTotal = allSources.length - disabled.size;
 
     counter.textContent = t('header.sourcesEnabled', { enabled: String(enabledTotal), total: String(allSources.length) });
+  }
+
+  // ── Debug tab ──────────────────────────────────────────────────────────────
+
+  private renderDebugContent(): string {
+    const fetchDebug = localStorage.getItem('wm-debug-log') === '1';
+    return `
+      <div class="us-debug-content">
+        <div class="us-debug-section-label">Logs</div>
+        <div class="us-debug-actions">
+          <button id="us-open-logs" class="us-debug-btn">Open Logs Folder</button>
+          <button id="us-open-api-log" class="us-debug-btn">Open API Log</button>
+        </div>
+        <div class="us-debug-section-label">Diagnostics</div>
+        <div class="us-debug-toggles">
+          <label class="us-debug-toggle-row"><input type="checkbox" id="us-verbose-log"> Verbose Sidecar Log</label>
+          <label class="us-debug-toggle-row"><input type="checkbox" id="us-fetch-debug" ${fetchDebug ? 'checked' : ''}> Frontend Fetch Debug</label>
+        </div>
+        <div class="us-debug-traffic-header">
+          <span class="us-debug-traffic-title">API Traffic <span id="us-traffic-count"></span></span>
+          <div class="us-debug-traffic-controls">
+            <label><input type="checkbox" id="us-auto-refresh" checked> Auto</label>
+            <button id="us-refresh-traffic" class="us-debug-btn">Refresh</button>
+            <button id="us-clear-traffic" class="us-debug-btn">Clear</button>
+          </div>
+        </div>
+        <div id="us-traffic-log" class="us-debug-traffic-log"><p class="us-debug-empty">Loading…</p></div>
+      </div>
+    `;
+  }
+
+  private async _diagFetch(path: string, init?: RequestInit): Promise<Response> {
+    if (!this._diagToken) {
+      try { this._diagToken = await tryInvokeTauri<string>('get_local_api_token'); } catch { /* unavailable */ }
+    }
+    const headers = new Headers(init?.headers);
+    if (this._diagToken) headers.set('Authorization', `Bearer ${this._diagToken}`);
+    const base = getApiBaseUrl() || '';
+    return fetch(`${base}${path}`, { ...init, headers });
+  }
+
+  private async _syncVerboseState(): Promise<void> {
+    const toggle = this.overlay.querySelector<HTMLInputElement>('#us-verbose-log');
+    if (!toggle) return;
+    try {
+      const res = await this._diagFetch('/api/local-debug-toggle');
+      const data = await res.json() as { verboseMode: boolean };
+      toggle.checked = data.verboseMode;
+    } catch { /* sidecar not running */ }
+  }
+
+  private async _toggleVerboseLog(enabled: boolean): Promise<void> {
+    try {
+      const res = await this._diagFetch('/api/local-debug-toggle', { method: 'POST' });
+      const data = await res.json() as { verboseMode: boolean };
+      const toggle = this.overlay.querySelector<HTMLInputElement>('#us-verbose-log');
+      if (toggle) toggle.checked = data.verboseMode;
+    } catch { /* sidecar not running */ }
+    void enabled; // consumed via POST response
+  }
+
+  private async _refreshTrafficLog(): Promise<void> {
+    const logEl = this.overlay.querySelector<HTMLElement>('#us-traffic-log');
+    const countEl = this.overlay.querySelector<HTMLElement>('#us-traffic-count');
+    if (!logEl) return;
+    try {
+      const res = await this._diagFetch('/api/local-traffic-log');
+      const data = await res.json() as { entries?: Array<{ timestamp: string; method: string; path: string; status: number; durationMs: number }> };
+      const entries = data.entries || [];
+      if (countEl) countEl.textContent = `(${entries.length})`;
+      if (entries.length === 0) {
+        logEl.innerHTML = '<p class="us-debug-empty">No traffic recorded.</p>';
+        return;
+      }
+      const rows = entries.slice().reverse().map(e => {
+        const ts = e.timestamp.split('T')[1]?.replace('Z', '') || e.timestamp;
+        const cls = e.status < 300 ? 'ok' : e.status < 500 ? 'warn' : 'err';
+        return `<tr class="us-diag-${cls}"><td>${escapeHtml(ts)}</td><td>${e.method}</td><td title="${escapeHtml(e.path)}">${escapeHtml(e.path)}</td><td>${e.status}</td><td>${e.durationMs}ms</td></tr>`;
+      }).join('');
+      logEl.innerHTML = `<table class="us-debug-table"><thead><tr><th>Time</th><th>Method</th><th>Path</th><th>Status</th><th>Duration</th></tr></thead><tbody>${rows}</tbody></table>`;
+    } catch {
+      logEl.innerHTML = '<p class="us-debug-empty">Sidecar unreachable.</p>';
+    }
+  }
+
+  private async _clearTrafficLog(): Promise<void> {
+    try { await this._diagFetch('/api/local-traffic-log', { method: 'DELETE' }); } catch { /* ignore */ }
+    const logEl = this.overlay.querySelector<HTMLElement>('#us-traffic-log');
+    const countEl = this.overlay.querySelector<HTMLElement>('#us-traffic-count');
+    if (logEl) logEl.innerHTML = '<p class="us-debug-empty">Log cleared.</p>';
+    if (countEl) countEl.textContent = '(0)';
+  }
+
+  private _startDebugAutoRefresh(): void {
+    this._stopDebugAutoRefresh();
+    this._diagRefreshInterval = setInterval(() => void this._refreshTrafficLog(), 3000);
+  }
+
+  private _stopDebugAutoRefresh(): void {
+    if (this._diagRefreshInterval) {
+      clearInterval(this._diagRefreshInterval);
+      this._diagRefreshInterval = null;
+    }
   }
 }

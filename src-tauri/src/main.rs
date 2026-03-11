@@ -536,7 +536,10 @@ fn open_sidecar_log_file(app: AppHandle) -> Result<String, String> {
 
 #[tauri::command]
 async fn open_settings_window_command(app: AppHandle) -> Result<(), String> {
-    open_settings_window(&app)
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.eval("document.dispatchEvent(new CustomEvent('wm:open-settings'))");
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -1013,9 +1016,8 @@ fn build_app_menu(handle: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
 fn handle_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
     match event.id().as_ref() {
         MENU_FILE_SETTINGS_ID => {
-            if let Err(err) = open_settings_window(app) {
-                append_desktop_log(app, "ERROR", &format!("settings menu failed: {err}"));
-                eprintln!("[tauri] settings menu failed: {err}");
+            if let Some(win) = app.get_webview_window("main") {
+                let _ = win.eval("document.dispatchEvent(new CustomEvent('wm:open-settings'))");
             }
         }
         MENU_FILE_GHOST_MODE_ID => {

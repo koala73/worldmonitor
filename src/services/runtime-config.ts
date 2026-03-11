@@ -244,7 +244,6 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
     name: 'NASA FIRMS fire data',
     description: 'Fire Information for Resource Management System satellite data.',
     requiredSecrets: ['NASA_FIRMS_API_KEY'],
-    desktopRequiredSecrets: [],
     fallback: 'FIRMS fire layer uses public VIIRS feed.',
   },
   {
