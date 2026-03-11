@@ -43,6 +43,7 @@ export class ResizeHandler {
   }
 
   private onMouseDown(e: MouseEvent): void {
+    if (e.button !== 0) return; // Only primary button
     e.preventDefault();
     e.stopPropagation();
     this.startResize(this.options.type === 'row' ? e.clientY : e.clientX);
@@ -79,20 +80,23 @@ export class ResizeHandler {
 
   private onMouseMove(e: MouseEvent): void {
     if (!this.isResizing) return;
-    this.handleMove(this.options.type === 'row' ? e.clientY : e.clientX);
+    this.scheduleUpdate(this.options.type === 'row' ? e.clientY : e.clientX);
   }
 
   private onTouchMove(e: TouchEvent): void {
     if (!this.isResizing) return;
     const touch = e.touches[0];
     if (!touch) return;
-    this.handleMove(this.options.type === 'row' ? touch.clientY : touch.clientX);
+    this.scheduleUpdate(this.options.type === 'row' ? touch.clientY : touch.clientX);
   }
 
-  private handleMove(coord: number): void {
-    if (this.rafId !== null) cancelAnimationFrame(this.rafId);
+  private scheduleUpdate(coord: number): void {
+    if (this.rafId !== null) return; // Already scheduled
     
     this.rafId = requestAnimationFrame(() => {
+      this.rafId = null;
+      if (!this.isResizing) return;
+
       const delta = coord - this.startCoord;
       const step = this.options.type === 'row' ? ROW_RESIZE_STEP_PX : COL_RESIZE_STEP_PX;
       const spanDelta = delta > 0 ? Math.floor(delta / step) : Math.ceil(delta / step);
@@ -107,7 +111,6 @@ export class ResizeHandler {
       
       this.options.setSpanClass(newSpan);
       this.options.onResizeMove?.(newSpan);
-      this.rafId = null;
     });
   }
 

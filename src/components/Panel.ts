@@ -5,6 +5,7 @@ import { h, replaceChildren, safeHtml } from '../utils/dom-utils';
 import { trackPanelResized } from '@/services/analytics';
 import { getAiFlowSettings } from '@/services/ai-flow-settings';
 import { getSecretState } from '@/services/runtime-config';
+import { ResizeHandler } from '../utils/resize-handler';
 
 export interface PanelOptions {
   id: string;
@@ -203,43 +204,41 @@ export class Panel {
   }
 
   private setupResizeHandlers(): void {
-    import('../utils/resize-handler').then(({ ResizeHandler }) => {
-      if (this.resizeHandle) {
-        this.resizeHandler = new ResizeHandler({
-          id: this.panelId,
-          element: this.element,
-          handle: this.resizeHandle,
-          type: 'row',
-          getStartSpan: () => getRowSpan(this.element),
-          setSpanClass: (span) => setSpanClass(this.element, span),
-          onResizeEnd: (span) => {
-            savePanelSpan(this.panelId, span);
-            trackPanelResized(this.panelId, span);
-          }
-        });
+    if (this.resizeHandle) {
+      this.resizeHandler = new ResizeHandler({
+        id: this.panelId,
+        element: this.element,
+        handle: this.resizeHandle,
+        type: 'row',
+        getStartSpan: () => getRowSpan(this.element),
+        setSpanClass: (span) => setSpanClass(this.element, span),
+        onResizeEnd: (span) => {
+          savePanelSpan(this.panelId, span);
+          trackPanelResized(this.panelId, span);
+        }
+      });
 
-        // Double-click to reset height
-        this.resizeHandle.addEventListener('dblclick', () => this.resetHeight());
-      }
+      // Double-click to reset height
+      this.resizeHandle.addEventListener('dblclick', () => this.resetHeight());
+    }
 
-      if (this.colResizeHandle) {
-        this.colResizeHandler = new ResizeHandler({
-          id: this.panelId,
-          element: this.element,
-          handle: this.colResizeHandle,
-          type: 'col',
-          getStartSpan: () => clampColSpan(getColSpan(this.element), getMaxColSpan(this.element)),
-          setSpanClass: (span) => setColSpanClass(this.element, span),
-          maxSpan: 3,
-          onResizeEnd: () => {
-            persistPanelColSpan(this.panelId, this.element);
-          }
-        });
+    if (this.colResizeHandle) {
+      this.colResizeHandler = new ResizeHandler({
+        id: this.panelId,
+        element: this.element,
+        handle: this.colResizeHandle,
+        type: 'col',
+        getStartSpan: () => clampColSpan(getColSpan(this.element), getMaxColSpan(this.element)),
+        setSpanClass: (span) => setColSpanClass(this.element, span),
+        maxSpan: 3,
+        onResizeEnd: () => {
+          persistPanelColSpan(this.panelId, this.element);
+        }
+      });
 
-        // Double-click to reset width
-        this.colResizeHandle.addEventListener('dblclick', () => this.resetWidth());
-      }
-    });
+      // Double-click to reset width
+      this.colResizeHandle.addEventListener('dblclick', () => this.resetWidth());
+    }
 
     this.onDocMouseUp = () => {
       if (this.element?.dataset.resizing) {
