@@ -4,6 +4,7 @@ description: "Monitor active conflicts, military movements, and geopolitical esc
 metaTitle: "Track Global Conflicts in Real Time | Free Geopolitical Intelligence Map"
 keywords: "real-time conflict map, geopolitical intelligence map, military tracking dashboard, conflict monitoring tool, global conflict tracker"
 audience: "Geopolitical analysts, defense researchers, policy makers, journalists covering conflict"
+heroImage: "/blog/images/blog/track-global-conflicts-in-real-time.jpg"
 pubDate: "2026-02-14"
 ---
 

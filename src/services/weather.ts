@@ -1,5 +1,6 @@
 import { createCircuitBreaker, getCSSColor } from '@/utils';
 import { getHydratedData } from '@/services/bootstrap';
+import { toApiUrl } from '@/services/runtime';
 
 export interface WeatherAlert {
   id: string;
@@ -51,7 +52,7 @@ export async function fetchWeatherAlerts(): Promise<WeatherAlert[]> {
       return hydrated.alerts.map(mapAlert);
     }
 
-    const resp = await fetch('/api/bootstrap?keys=weatherAlerts', { signal: AbortSignal.timeout(8000) });
+    const resp = await fetch(toApiUrl('/api/bootstrap?keys=weatherAlerts'), { signal: AbortSignal.timeout(8000) });
     if (!resp.ok) throw new Error(`Bootstrap fetch failed: ${resp.status}`);
     const json = await resp.json() as { data?: { weatherAlerts?: { alerts?: BootstrapAlert[] } } };
     const alerts = json.data?.weatherAlerts?.alerts;

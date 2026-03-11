@@ -4,6 +4,7 @@ description: "Combine Polymarket prediction odds with AI-powered geopolitical fo
 metaTitle: "Geopolitical Prediction Markets + AI Forecasting | Free Intelligence Tool | WorldMonitor"
 keywords: "prediction markets geopolitics, Polymarket intelligence tool, AI geopolitical forecasting, geopolitical risk prediction, political prediction dashboard"
 audience: "Geopolitical analysts, traders using prediction markets, policy researchers, forecasting enthusiasts"
+heroImage: "/blog/images/blog/prediction-markets-ai-forecasting-geopolitics.jpg"
 pubDate: "2026-03-03"
 ---
 

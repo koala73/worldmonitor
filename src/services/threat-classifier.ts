@@ -13,6 +13,7 @@ export interface ThreatClassification {
 }
 
 import { getCSSColor } from '@/utils';
+import { getRpcBaseUrl } from '@/services/rpc-client';
 
 /** @deprecated Use getThreatColor() instead for runtime CSS variable reads */
 export const THREAT_COLORS: Record<ThreatLevel, string> = {
@@ -389,7 +390,7 @@ import {
   type ClassifyEventResponse,
 } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 
-const classifyClient = new IntelligenceServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+const classifyClient = new IntelligenceServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 
 const VALID_LEVELS: Record<string, ThreatLevel> = {
   critical: 'critical', high: 'high', medium: 'medium', low: 'low', info: 'info',

@@ -501,6 +501,7 @@
         "some": "Some features need API keys"
       },
       "openSettings": "Open Settings",
+      "reserveEarlyAccess": "Reserve Your Early Access",
       "skipSetup": "Skip the setup — a single World Monitor license unlocks everything. Join the waitlist for early access.",
       "summary": {
         "desktop": "Desktop mode",

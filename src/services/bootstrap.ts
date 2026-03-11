@@ -1,3 +1,5 @@
+import { toApiUrl } from '@/services/runtime';
+
 const hydrationCache = new Map<string, unknown>();
 
 export function getHydratedData(key: string): unknown | undefined {
@@ -16,7 +18,7 @@ function populateCache(data: Record<string, unknown>): void {
 
 async function fetchTier(tier: string, signal: AbortSignal): Promise<void> {
   try {
-    const resp = await fetch(`/api/bootstrap?tier=${tier}`, { signal });
+    const resp = await fetch(toApiUrl(`/api/bootstrap?tier=${tier}`), { signal });
     if (!resp.ok) return;
     const { data } = (await resp.json()) as { data: Record<string, unknown> };
     populateCache(data);

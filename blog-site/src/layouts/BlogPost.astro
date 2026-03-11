@@ -13,7 +13,7 @@ interface Props {
 }
 
 const { title, description, metaTitle, keywords, pubDate, audience, heroImage, slug } = Astro.props;
-const ogImage = heroImage || (slug ? `https://www.worldmonitor.app/blog/og/${slug}.png` : undefined);
+const ogImage = heroImage || (slug ? `https://www.worldmonitor.app/blog/images/blog/${slug}.jpg` : undefined);
 const formattedDate = pubDate.toLocaleDateString('en-US', {
   year: 'numeric',
   month: 'short',
@@ -95,7 +95,11 @@ const jsonLd = {
         {audience && <span> &middot; {audience}</span>}
       </div>
     </div>
+    {heroImage && (
+      <img src={heroImage} alt={title} class="hero-image" width="1200" height="630" />
+    )}
     <div class="article-content prose">
+      <h1>{title}</h1>
       <slot />
     </div>
     <div class="cta-banner">

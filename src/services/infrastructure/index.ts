@@ -6,6 +6,7 @@
  * All data now flows through the InfrastructureServiceClient RPC.
  */
 
+import { getRpcBaseUrl } from '@/services/rpc-client';
 import {
   InfrastructureServiceClient,
   type ListInternetOutagesResponse,
@@ -20,7 +21,7 @@ import { getHydratedData } from '@/services/bootstrap';
 
 // ---- Client + Circuit Breakers ----
 
-const client = new InfrastructureServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+const client = new InfrastructureServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 const outageBreaker = createCircuitBreaker<ListInternetOutagesResponse>({ name: 'Internet Outages', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
 const statusBreaker = createCircuitBreaker<ListServiceStatusesResponse>({ name: 'Service Statuses', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
 

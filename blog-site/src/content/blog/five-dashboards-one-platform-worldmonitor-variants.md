@@ -4,6 +4,7 @@ description: "WorldMonitor runs 5 specialized dashboards from one codebase: geop
 metaTitle: "5 Free Intelligence Dashboards: World, Tech, Finance, Commodity, Happy | WorldMonitor"
 keywords: "intelligence dashboard variants, tech monitoring dashboard, positive news dashboard, multi-purpose intelligence platform, specialized monitoring tools"
 audience: "General tech audience, product managers, developers, knowledge workers, content creators"
+heroImage: "/blog/images/blog/five-dashboards-one-platform-worldmonitor-variants.jpg"
 pubDate: "2026-02-12"
 ---
 

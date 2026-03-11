@@ -1,9 +1,10 @@
+import { getRpcBaseUrl } from '@/services/rpc-client';
 import {
   MarketServiceClient,
   type BacktestStockResponse,
 } from '@/generated/client/worldmonitor/market/v1/service_client';
 
-const client = new MarketServiceClient('', {
+const client = new MarketServiceClient(getRpcBaseUrl(), {
   fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args),
 });
 

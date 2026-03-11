@@ -1,4 +1,5 @@
 import { t } from '@/services/i18n';
+import { getCanonicalApiOrigin } from '@/services/runtime';
 
 export type Platform = 'macos-arm64' | 'macos-x64' | 'macos' | 'windows' | 'linux' | 'linux-x64' | 'linux-arm64' | 'unknown';
 
@@ -27,12 +28,13 @@ export function detectPlatform(): Platform {
 export interface DlButton { cls: string; href: string; label: string }
 
 export function allButtons(): DlButton[] {
+  const apiOrigin = getCanonicalApiOrigin();
   return [
-    { cls: 'mac', href: '/api/download?platform=macos-arm64', label: `\uF8FF ${t('modals.downloadBanner.macSilicon')}` },
-    { cls: 'mac', href: '/api/download?platform=macos-x64', label: `\uF8FF ${t('modals.downloadBanner.macIntel')}` },
-    { cls: 'win', href: '/api/download?platform=windows-msi', label: `\u229E ${t('modals.downloadBanner.windows')}` },
-    { cls: 'linux', href: '/api/download?platform=linux-appimage', label: `\u{1F427} ${t('modals.downloadBanner.linux')} (x64)` },
-    { cls: 'linux', href: '/api/download?platform=linux-appimage-arm64', label: `\u{1F427} ${t('modals.downloadBanner.linux')} (ARM64)` },
+    { cls: 'mac', href: `${apiOrigin}/api/download?platform=macos-arm64`, label: `\uF8FF ${t('modals.downloadBanner.macSilicon')}` },
+    { cls: 'mac', href: `${apiOrigin}/api/download?platform=macos-x64`, label: `\uF8FF ${t('modals.downloadBanner.macIntel')}` },
+    { cls: 'win', href: `${apiOrigin}/api/download?platform=windows-msi`, label: `\u229E ${t('modals.downloadBanner.windows')}` },
+    { cls: 'linux', href: `${apiOrigin}/api/download?platform=linux-appimage`, label: `\u{1F427} ${t('modals.downloadBanner.linux')} (x64)` },
+    { cls: 'linux', href: `${apiOrigin}/api/download?platform=linux-appimage-arm64`, label: `\u{1F427} ${t('modals.downloadBanner.linux')} (ARM64)` },
   ];
 }
 

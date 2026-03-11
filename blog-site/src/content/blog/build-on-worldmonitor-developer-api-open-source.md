@@ -4,6 +4,7 @@ description: "Build intelligence applications on WorldMonitor's typed API layer.
 metaTitle: "WorldMonitor Developer API: 22 Services, 92 Proto Files, Open Source Intelligence Platform"
 keywords: "open source intelligence API, OSINT API free, geopolitical data API, intelligence platform developer, proto-first API architecture"
 audience: "Developers, data engineers, startup builders, academic researchers, open-source contributors"
+heroImage: "/blog/images/blog/build-on-worldmonitor-developer-api-open-source.jpg"
 pubDate: "2026-03-09"
 ---
 

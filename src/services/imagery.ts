@@ -1,3 +1,4 @@
+import { toApiUrl } from '@/services/runtime';
 import type { ImageryScene } from '@/generated/server/worldmonitor/imagery/v1/service_server';
 
 export type { ImageryScene };
@@ -10,7 +11,7 @@ export interface ImagerySearchParams {
 }
 
 export async function fetchImageryScenes(params: ImagerySearchParams): Promise<ImageryScene[]> {
-  const url = new URL('/api/imagery/v1/search-imagery', window.location.origin);
+  const url = new URL(toApiUrl('/api/imagery/v1/search-imagery'), window.location.origin);
   url.searchParams.set('bbox', params.bbox);
   if (params.datetime) url.searchParams.set('datetime', params.datetime);
   if (params.source) url.searchParams.set('source', params.source);

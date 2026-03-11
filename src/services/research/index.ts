@@ -1,3 +1,4 @@
+import { getRpcBaseUrl } from '@/services/rpc-client';
 import {
   ResearchServiceClient,
   type ArxivPaper,
@@ -9,7 +10,7 @@ import { createCircuitBreaker } from '@/utils';
 // Re-export proto types (no legacy mapping needed -- proto types are clean)
 export type { ArxivPaper, GithubRepo, HackernewsItem };
 
-const client = new ResearchServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+const client = new ResearchServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 
 const arxivBreaker = createCircuitBreaker<ArxivPaper[]>({ name: 'ArXiv Papers', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
 const trendingBreaker = createCircuitBreaker<GithubRepo[]>({ name: 'GitHub Trending', cacheTtlMs: 10 * 60 * 1000, persistCache: true });

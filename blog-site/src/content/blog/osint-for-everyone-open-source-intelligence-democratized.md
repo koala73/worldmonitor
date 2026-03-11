@@ -4,6 +4,7 @@ description: "Learn how WorldMonitor brings professional-grade OSINT capabilitie
 metaTitle: "OSINT for Everyone: Free Open Source Intelligence Dashboard | WorldMonitor"
 keywords: "OSINT tools free, open source intelligence software, OSINT dashboard, intelligence gathering tools, OSINT for beginners"
 audience: "OSINT researchers, security analysts, journalists, hobbyist investigators"
+heroImage: "/blog/images/blog/osint-for-everyone-open-source-intelligence-democratized.jpg"
 pubDate: "2026-02-17"
 ---
 

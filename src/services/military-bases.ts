@@ -1,3 +1,4 @@
+import { getRpcBaseUrl } from '@/services/rpc-client';
 import {
   MilitaryServiceClient,
   type ListMilitaryBasesResponse,
@@ -6,7 +7,7 @@ import {
 } from '@/generated/client/worldmonitor/military/v1/service_client';
 import type { MilitaryBase, MilitaryBaseType, MilitaryBaseEnriched } from '@/types';
 
-const client = new MilitaryServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+const client = new MilitaryServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 
 interface CachedResult {
   bases: MilitaryBaseEnriched[];

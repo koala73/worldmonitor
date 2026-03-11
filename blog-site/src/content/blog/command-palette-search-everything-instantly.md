@@ -4,6 +4,7 @@ description: "WorldMonitor's Cmd+K command palette lets you fuzzy-search across 
 metaTitle: "WorldMonitor Command Palette: Search 24 Data Types, 195 Countries Instantly"
 keywords: "intelligence dashboard search, command palette dashboard, OSINT search tool, fast country intelligence lookup, keyboard-driven intelligence"
 audience: "Power users, analysts, developers, keyboard-first professionals"
+heroImage: "/blog/images/blog/command-palette-search-everything-instantly.jpg"
 pubDate: "2026-03-06"
 ---
 

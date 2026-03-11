@@ -4,6 +4,7 @@ description: "Track commodity prices, port disruptions, pipeline infrastructure,
 metaTitle: "Real-Time Supply Chain Monitoring Dashboard | Commodity Disruption Alerts | WorldMonitor"
 keywords: "supply chain monitoring tool, commodity price dashboard, supply chain disruption alerts, global shipping tracker, commodity risk monitoring"
 audience: "Supply chain managers, commodity traders, logistics professionals, procurement teams, risk analysts"
+heroImage: "/blog/images/blog/monitor-global-supply-chains-and-commodity-disruptions.jpg"
 pubDate: "2026-02-26"
 ---
 

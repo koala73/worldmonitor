@@ -4,6 +4,7 @@ description: "Monitor botnets (Feodo Tracker), malicious URLs (URLhaus), threat 
 metaTitle: "Free Cyber Threat Intelligence Dashboard | Botnet, Malware & Outage Tracking | WorldMonitor"
 keywords: "cyber threat intelligence dashboard free, botnet tracking tool, malware monitoring dashboard, internet outage map, threat intelligence OSINT"
 audience: "SOC analysts, cybersecurity professionals, CISO teams, threat researchers, IT security managers"
+heroImage: "/blog/images/blog/cyber-threat-intelligence-for-security-teams.jpg"
 pubDate: "2026-02-24"
 ---
 

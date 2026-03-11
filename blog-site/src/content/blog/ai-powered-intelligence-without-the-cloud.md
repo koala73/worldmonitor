@@ -4,6 +4,7 @@ description: "Run AI-powered intelligence analysis entirely on your own hardware
 metaTitle: "AI Intelligence Analysis Without the Cloud | Local LLM + OSINT | WorldMonitor"
 keywords: "local LLM intelligence, private AI analysis, offline intelligence tool, Ollama OSINT, privacy-first AI dashboard"
 audience: "Privacy-conscious analysts, security researchers, government users, enterprise security teams, local LLM enthusiasts"
+heroImage: "/blog/images/blog/ai-powered-intelligence-without-the-cloud.jpg"
 pubDate: "2026-03-07"
 ---
 

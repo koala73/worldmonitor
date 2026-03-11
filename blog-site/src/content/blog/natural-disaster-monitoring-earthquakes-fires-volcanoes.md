@@ -4,6 +4,7 @@ description: "Monitor earthquakes (USGS), satellite-detected fires (NASA FIRMS),
 metaTitle: "Real-Time Natural Disaster Monitoring Dashboard | Earthquakes, Fires, Volcanoes | WorldMonitor"
 keywords: "real-time earthquake map, natural disaster monitoring dashboard, NASA fire detection map, disaster tracking tool free, earthquake volcano flood tracker"
 audience: "Emergency responders, disaster preparedness professionals, insurers, humanitarian organizations, concerned citizens"
+heroImage: "/blog/images/blog/natural-disaster-monitoring-earthquakes-fires-volcanoes.jpg"
 pubDate: "2026-02-19"
 ---
 

@@ -1,5 +1,6 @@
 import { SITE_VARIANT } from '@/config/variant';
 import { VARIANT_META } from '@/config/variant-meta';
+import { getCanonicalApiOrigin } from '@/services/runtime';
 
 interface StoryMeta {
   countryCode: string;
@@ -12,6 +13,7 @@ interface StoryMeta {
 
 const variantMeta = VARIANT_META[SITE_VARIANT] ?? VARIANT_META.full;
 const BASE_URL = variantMeta.url.replace(/\/$/, '');
+const API_ORIGIN = getCanonicalApiOrigin();
 const DEFAULT_IMAGE = `${BASE_URL}/favico/${SITE_VARIANT === 'full' ? '' : SITE_VARIANT + '/'}og-image.png`;
 
 export function updateMetaTagsForStory(meta: StoryMeta): void {
@@ -19,8 +21,8 @@ export function updateMetaTagsForStory(meta: StoryMeta): void {
 
   const title = `${countryName} Intelligence Brief | ${variantMeta.siteName}`;
   const description = generateDescription(ciiScore, ciiLevel, trend, type, countryName);
-  const storyUrl = `${BASE_URL}/api/story?c=${countryCode}&t=${type}`;
-  let imageUrl = `${BASE_URL}/api/og-story?c=${countryCode}&t=${type}`;
+  const storyUrl = `${API_ORIGIN}/api/story?c=${countryCode}&t=${type}`;
+  let imageUrl = `${API_ORIGIN}/api/og-story?c=${countryCode}&t=${type}`;
   if (ciiScore !== undefined) imageUrl += `&s=${ciiScore}`;
   if (ciiLevel) imageUrl += `&l=${ciiLevel}`;
 
