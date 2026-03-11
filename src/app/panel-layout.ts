@@ -256,7 +256,7 @@ export class PanelLayoutManager implements AppModule {
           <button class="search-btn" id="searchBtn" style="display:none"><kbd>⌘K</kbd> ${t('header.search')}</button>
           <button class="theme-toggle-btn" id="headerThemeToggle" style="display:none" title="${t('header.toggleTheme')}">${this.buildThemeIcon()}</button>
           ${SITE_VARIANT === 'happy' ? '<button class="tv-mode-btn" id="tvModeBtn" style="display:none"></button>' : ''}
-          <span id="unifiedSettingsMount" style="display:none"></span>
+          <span style="display:none"></span>
         </div>
       </div>
 
