@@ -1059,12 +1059,12 @@ canvas,
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 20px;
+  padding: 12px 20px;
   font-size: 11px;
   color: var(--text-dim);
   border-top: 1px solid var(--border);
-  grid-column: 1 / -1;
   flex-shrink: 0;
+  background: var(--surface);
 }
 .site-footer-brand {
   display: flex;
@@ -1107,13 +1107,19 @@ canvas,
 .site-footer a:hover {
   color: var(--accent);
 }
+.site-footer-copy {
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  color: var(--text-dim);
+  opacity: 0.6;
+}
 
 @media (max-width: 768px) {
   .site-footer {
     flex-direction: column;
-    gap: 12px;
+    gap: 10px;
     text-align: center;
-    padding: 16px;
+    padding: 12px 16px;
   }
   .site-footer nav {
     flex-wrap: wrap;

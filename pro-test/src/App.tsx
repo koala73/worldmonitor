@@ -923,15 +923,18 @@ const Footer = () => (
     </div>
 
     <div className="flex flex-col md:flex-row items-center justify-between max-w-7xl mx-auto pt-8 border-t border-wm-border/50 text-xs text-wm-muted font-mono">
-      <div className="flex items-center gap-4 mb-4 md:mb-0">
+      <div className="flex items-center gap-3 mb-4 md:mb-0">
         <Logo />
+        <span className="text-[9px] uppercase tracking-[2px] opacity-60">by Someone.ceo</span>
       </div>
-      <div className="flex gap-6">
-        <a href="/blog/" aria-label="WorldMonitor Blog" className="hover:text-wm-text transition-colors">Blog</a>
-        <a href="https://x.com/worldmonitorai" target="_blank" rel="noreferrer" aria-label="Follow World Monitor on X" className="hover:text-wm-text transition-colors">X</a>
-        <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noreferrer" aria-label="World Monitor on GitHub" className="hover:text-wm-text transition-colors">GitHub</a>
-        <a href="https://github.com/koala73/worldmonitor/discussions" target="_blank" rel="noreferrer" aria-label="World Monitor Discussions" className="hover:text-wm-text transition-colors">Discussions</a>
+      <div className="flex items-center gap-6">
+        <a href="/" className="hover:text-wm-text transition-colors">Dashboard</a>
+        <a href="/blog/" className="hover:text-wm-text transition-colors">Blog</a>
+        <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">GitHub</a>
+        <a href="https://github.com/koala73/worldmonitor/discussions" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">Discussions</a>
+        <a href="https://x.com/worldmonitorai" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">X</a>
       </div>
+      <span className="text-[10px] opacity-40 mt-4 md:mt-0">&copy; {new Date().getFullYear()} WorldMonitor</span>
     </div>
   </footer>
 );
@@ -1115,16 +1118,19 @@ const EnterprisePage = () => (
     {/* Footer */}
     <footer className="border-t border-wm-border bg-[#020202] py-8 px-6 text-center">
       <div className="flex flex-col md:flex-row items-center justify-between max-w-7xl mx-auto text-xs text-wm-muted font-mono">
-        <div className="flex items-center gap-4 mb-4 md:mb-0">
+        <div className="flex items-center gap-3 mb-4 md:mb-0">
           <Logo />
+          <span className="text-[9px] uppercase tracking-[2px] opacity-60">by Someone.ceo</span>
         </div>
-        <div className="flex gap-6">
+        <div className="flex items-center gap-6">
+          <a href="/" className="hover:text-wm-text transition-colors">Dashboard</a>
           <a href="#" onClick={(e) => { e.preventDefault(); window.location.hash = ''; }} className="hover:text-wm-text transition-colors">{t('nav.pro')}</a>
           <a href="/blog/" className="hover:text-wm-text transition-colors">Blog</a>
-          <a href="https://x.com/worldmonitorai" target="_blank" rel="noreferrer" aria-label="Follow World Monitor on X" className="hover:text-wm-text transition-colors">X</a>
           <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">GitHub</a>
           <a href="https://github.com/koala73/worldmonitor/discussions" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">Discussions</a>
+          <a href="https://x.com/worldmonitorai" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">X</a>
         </div>
+        <span className="text-[10px] opacity-40 mt-4 md:mt-0">&copy; {new Date().getFullYear()} WorldMonitor</span>
       </div>
     </footer>
   </div>
