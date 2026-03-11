@@ -28,7 +28,7 @@ Sentry.init({
     /importScripts/,
     /^TypeError: Load failed( \(.*\))?$/,
     /^TypeError: Failed to fetch( \(.*\))?$/,
-    /^TypeError: cancelled$/,
+    /^TypeError: (?:cancelled|avbruten)$/,
     /^TypeError: NetworkError/,
     /runtime\.sendMessage\(\)/,
     /Java object is gone/,

@@ -122,6 +122,17 @@
       "stockIndex": "Χρηματιστηριακός δείκτης: {{value}}",
       "recentHeadlines": "**Πρόσφατοι τίτλοι:**",
       "activeStrikes": "{{count}} ενεργές απεργίες ανιχνεύθηκαν"
+    },
+    "countryFacts": "Στοιχεία χώρας",
+    "loadingFacts": "Φόρτωση στοιχείων χώρας...",
+    "noFacts": "Τα στοιχεία χώρας δεν είναι διαθέσιμα.",
+    "facts": {
+      "headOfState": "Αρχηγός κράτους",
+      "population": "Πληθυσμός",
+      "capital": "Πρωτεύουσα",
+      "languages": "Γλώσσες",
+      "currencies": "Νομίσματα",
+      "area": "Έκταση"
     }
   },
   "header": {
@@ -2369,5 +2380,9 @@
     "mapThemeDesc": "Οπτικό στυλ των πλακιδίων χάρτη.",
     "globePreset": "Οπτική προεπιλογή",
     "globePresetDesc": "Εναλλαγή μεταξύ κλασικής και βελτιωμένης απεικόνισης."
+  },
+  "contextMenu": {
+    "openCountryBrief": "Άνοιγμα επισκόπησης χώρας",
+    "copyCoordinates": "Αντιγραφή συντεταγμένων"
   }
 }

@@ -930,6 +930,35 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
     panelKeys: ['gulf-economies', 'gcc-investments', 'gccNews', 'monitors', 'world-clock'],
     variants: ['finance'],
   },
+
+  // Commodity variant
+  commodityPrices: {
+    labelKey: 'header.panelCatCommodityPrices',
+    panelKeys: ['commodities', 'gold-silver', 'energy', 'base-metals', 'critical-minerals', 'markets', 'heatmap', 'macro-signals'],
+    variants: ['commodity'],
+  },
+  miningIndustry: {
+    labelKey: 'header.panelCatMining',
+    panelKeys: ['commodity-news', 'mining-news', 'mining-companies', 'supply-chain', 'commodity-regulation'],
+    variants: ['commodity'],
+  },
+  commodityEcon: {
+    labelKey: 'header.panelCatCommodityEcon',
+    panelKeys: ['trade-policy', 'economic', 'gulf-economies', 'gcc-investments', 'finance', 'polymarket', 'airline-intel', 'world-clock', 'monitors'],
+    variants: ['commodity'],
+  },
+
+  // Happy variant
+  happyNews: {
+    labelKey: 'header.panelCatHappyNews',
+    panelKeys: ['positive-feed', 'progress', 'counters', 'spotlight', 'breakthroughs', 'digest'],
+    variants: ['happy'],
+  },
+  happyPlanet: {
+    labelKey: 'header.panelCatHappyPlanet',
+    panelKeys: ['species', 'renewable', 'giving'],
+    variants: ['happy'],
+  },
 };
 
 // Monitor palette — fixed category colors persisted to localStorage (not theme-dependent)

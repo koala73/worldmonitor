@@ -463,6 +463,17 @@ export class GlobeMap {
 
   // Callbacks
   private onLayerChangeCb: ((layer: keyof MapLayers, enabled: boolean, source: 'user' | 'programmatic') => void) | null = null;
+  private onMapContextMenuCb?: (payload: { lat: number; lon: number; screenX: number; screenY: number }) => void;
+  private readonly handleContextMenu = (e: MouseEvent): void => {
+    e.preventDefault();
+    if (!this.onMapContextMenuCb || !this.globe) return;
+    const rect = this.container.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const coords = this.globe.toGlobeCoords(x, y);
+    if (!coords) return;
+    this.onMapContextMenuCb({ lat: coords.lat, lon: coords.lng, screenX: e.clientX, screenY: e.clientY });
+  };
 
   constructor(container: HTMLElement, initialState: MapContainerState) {
     this.container = container;
@@ -621,6 +632,8 @@ export class GlobeMap {
         this.flushMarkers();
       });
     }
+
+    this.container.addEventListener('contextmenu', this.handleContextMenu);
 
     // Wire HTML marker layer
     globe
@@ -2005,6 +2018,10 @@ export class GlobeMap {
     // Globe country click not yet implemented — no-op
   }
 
+  public setOnMapContextMenu(cb: (payload: { lat: number; lon: number; screenX: number; screenY: number }) => void): void {
+    this.onMapContextMenuCb = cb;
+  }
+
   // ─── No-op stubs (keep MapContainer happy) ────────────────────────────────
   public render(): void { this.resize(); }
   public setIsResizing(isResizing: boolean): void {
@@ -2766,6 +2783,7 @@ export class GlobeMap {
   // ─── Destroy ──────────────────────────────────────────────────────────────
 
   public destroy(): void {
+    this.container.removeEventListener('contextmenu', this.handleContextMenu);
     this.unsubscribeGlobeQuality?.();
     this.unsubscribeGlobeQuality = null;
     this.unsubscribeGlobeTexture?.();

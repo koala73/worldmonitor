@@ -122,6 +122,17 @@
       "sirens24h": "Sirény / 24h",
       "aviationDisruptions": "Letecké poruchy",
       "gpsJammingZones": "Zóny rušení GPS"
+    },
+    "countryFacts": "Fakta o zemi",
+    "loadingFacts": "Načítání faktů o zemi...",
+    "noFacts": "Fakta o zemi nejsou k dispozici.",
+    "facts": {
+      "headOfState": "Hlava státu",
+      "population": "Počet obyvatel",
+      "capital": "Hlavní město",
+      "languages": "Jazyky",
+      "currencies": "Měny",
+      "area": "Rozloha"
     }
   },
   "header": {
@@ -2369,5 +2380,9 @@
     "mapThemeDesc": "Vizuální styl dlaždic mapy.",
     "globePreset": "Vizuální předvolba",
     "globePresetDesc": "Přepínejte mezi klasickým a vylepšeným zobrazením globálu."
+  },
+  "contextMenu": {
+    "openCountryBrief": "Otevřít přehled země",
+    "copyCoordinates": "Kopírovat souřadnice"
   }
 }

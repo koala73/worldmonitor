@@ -122,6 +122,17 @@
       "stockIndex": "Фондовый индекс: {{value}}",
       "recentHeadlines": "**Последние заголовки:**",
       "activeStrikes": "{{count}} активных забастовок обнаружено"
+    },
+    "countryFacts": "Сведения о стране",
+    "loadingFacts": "Загрузка сведений о стране...",
+    "noFacts": "Сведения о стране недоступны.",
+    "facts": {
+      "headOfState": "Глава государства",
+      "population": "Население",
+      "capital": "Столица",
+      "languages": "Языки",
+      "currencies": "Валюты",
+      "area": "Площадь"
     }
   },
   "header": {
@@ -2369,5 +2380,9 @@
     "mapThemeDesc": "Визуальный стиль тайлов карты.",
     "globePreset": "Визуальный пресет",
     "globePresetDesc": "Переключение между классической и улучшенной визуализацией глобуса."
+  },
+  "contextMenu": {
+    "openCountryBrief": "Открыть обзор страны",
+    "copyCoordinates": "Скопировать координаты"
   }
 }

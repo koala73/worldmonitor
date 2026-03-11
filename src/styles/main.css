@@ -660,26 +660,6 @@ canvas,
   gap: 12px;
 }
 
-.theme-toggle-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  color: var(--text-dim);
-  cursor: pointer;
-  transition: color 0.2s, border-color 0.2s;
-}
-
-.theme-toggle-btn:hover {
-  color: var(--text-primary);
-  border-color: var(--text-dim);
-}
-
 .fullscreen-btn {
   padding: 4px 8px;
   background: transparent;

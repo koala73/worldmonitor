@@ -94,7 +94,7 @@ export class MapContainer {
   private cachedOnCountryClicked: ((country: CountryClickPayload) => void) | null = null;
   private cachedOnHotspotClicked: ((hotspot: Hotspot) => void) | null = null;
   private cachedOnAircraftPositionsUpdate: ((positions: PositionSample[]) => void) | null = null;
-
+  private cachedOnMapContextMenu: ((payload: { lat: number; lon: number; screenX: number; screenY: number }) => void) | null = null;
 
   // ─── Data cache (survives map mode switches) ───────────────────────────────
   private cachedEarthquakes: Earthquake[] | null = null;
@@ -261,7 +261,7 @@ export class MapContainer {
     if (this.cachedOnCountryClicked) this.onCountryClicked(this.cachedOnCountryClicked);
     if (this.cachedOnHotspotClicked) this.onHotspotClicked(this.cachedOnHotspotClicked);
     if (this.cachedOnAircraftPositionsUpdate) this.setOnAircraftPositionsUpdate(this.cachedOnAircraftPositionsUpdate);
-
+    if (this.cachedOnMapContextMenu) this.onMapContextMenu(this.cachedOnMapContextMenu);
 
     // 2. Re-push all cached data
     if (this.cachedEarthquakes) this.setEarthquakes(this.cachedEarthquakes);
@@ -866,6 +866,12 @@ export class MapContainer {
     if (this.useDeckGL) { this.deckGLMap?.setOnCountryClick(callback); } else { this.svgMap?.setOnCountryClick(callback); }
   }
 
+  public onMapContextMenu(callback: (payload: { lat: number; lon: number; screenX: number; screenY: number }) => void): void {
+    this.cachedOnMapContextMenu = callback;
+    if (this.useGlobe) { this.globeMap?.setOnMapContextMenu(callback); return; }
+    if (this.useDeckGL) { this.deckGLMap?.setOnMapContextMenu(callback); }
+  }
+
   public fitCountry(code: string): void {
     if (this.useGlobe) { this.globeMap?.fitCountry(code); return; }
     if (this.useDeckGL) {
@@ -917,6 +923,7 @@ export class MapContainer {
     this.cachedOnCountryClicked = null;
     this.cachedOnHotspotClicked = null;
     this.cachedOnAircraftPositionsUpdate = null;
+    this.cachedOnMapContextMenu = null;
     this.cachedEarthquakes = null;
     this.cachedWeatherAlerts = null;
     this.cachedOutages = null;

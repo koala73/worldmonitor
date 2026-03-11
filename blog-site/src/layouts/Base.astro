@@ -1,0 +1,85 @@
+---
+interface Props {
+  title: string;
+  description: string;
+  metaTitle?: string;
+  keywords?: string;
+}
+
+const { title, description, metaTitle, keywords } = Astro.props;
+const pageTitle = metaTitle || title;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{pageTitle}</title>
+    <meta name="description" content={description} />
+    {keywords && <meta name="keywords" content={keywords} />}
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href={Astro.url.href} />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={Astro.url.href} />
+    <meta property="og:site_name" content="WorldMonitor Blog" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={pageTitle} />
+    <meta name="twitter:description" content={description} />
+
+    <link rel="icon" type="image/svg+xml" href="/blog/favicon.svg" />
+
+    <style is:global>
+      @import '../styles/global.css';
+    </style>
+  </head>
+  <body>
+    <header class="site-header">
+      <nav>
+        <a href="/blog/" class="logo">
+          <div class="logo-icon">WM</div>
+          <div class="logo-text">
+            <span class="logo-name">WORLD MONITOR</span>
+            <span class="logo-sub">by Someone.ceo</span>
+          </div>
+        </a>
+        <ul class="nav-links">
+          <li><a href="/blog/">Blog</a></li>
+          <li><a href="https://worldmonitor.app" target="_blank" rel="noopener noreferrer">Dashboard</a></li>
+          <li><a href="https://worldmonitor.app/pro" target="_blank" rel="noopener noreferrer">Pro</a></li>
+          <li><a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+        </ul>
+        <a href="https://worldmonitor.app/pro#waitlist" class="nav-cta" target="_blank" rel="noopener noreferrer">
+          Get Early Access
+        </a>
+      </nav>
+    </header>
+
+    <main>
+      <slot />
+    </main>
+
+    <footer class="site-footer">
+      <div class="footer-inner">
+        <div class="footer-brand">
+          <div class="footer-icon">WM</div>
+          <span class="footer-name">WORLD MONITOR</span>
+        </div>
+        <div class="footer-links">
+          <a href="https://worldmonitor.app" target="_blank" rel="noopener noreferrer">Dashboard</a>
+          <a href="https://worldmonitor.app/pro" target="_blank" rel="noopener noreferrer">Pro</a>
+          <a href="https://x.com/worldmonitorai" target="_blank" rel="noopener noreferrer">X</a>
+          <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noopener noreferrer">GitHub</a>
+          <a href="https://www.wired.me/story/the-music-streaming-ceo-who-built-a-global-war-map" target="_blank" rel="noopener noreferrer">WIRED</a>
+        </div>
+        <div class="footer-copy">
+          &copy; {new Date().getFullYear()} WorldMonitor. Free, open-source global intelligence.
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

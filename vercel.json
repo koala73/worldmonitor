@@ -1,9 +1,9 @@
 {
-  "ignoreCommand": "if [ -z \"$VERCEL_GIT_PREVIOUS_SHA\" ]; then exit 1; fi; git cat-file -e $VERCEL_GIT_PREVIOUS_SHA 2>/dev/null || exit 1; git diff --quiet $VERCEL_GIT_PREVIOUS_SHA HEAD -- ':!*.md' ':!.planning' ':!docs/' ':!e2e/' ':!scripts/' ':!.github/'",
+  "ignoreCommand": "bash scripts/vercel-ignore.sh",
   "crons": [],
   "rewrites": [
     { "source": "/pro", "destination": "/pro/index.html" },
-    { "source": "/((?!api|assets|favico|map-styles|data|textures|pro|sw\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|\\.well-known).*)", "destination": "/index.html" }
+    { "source": "/((?!api|assets|blog|favico|map-styles|data|textures|pro|sw\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|\\.well-known).*)", "destination": "/index.html" }
   ],
   "headers": [
     {
@@ -25,13 +25,19 @@
       ]
     },
     {
-      "source": "/((?!api|assets|favico|map-styles|data|textures|pro|sw\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|\\.well-known).*)",
+      "source": "/((?!api|assets|blog|favico|map-styles|data|textures|pro|sw\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|\\.well-known).*)",
       "headers": [
         { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
       ]
     },
     {
       "source": "/assets/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    },
+    {
+      "source": "/blog/_astro/(.*)",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
       ]

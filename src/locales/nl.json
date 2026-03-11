@@ -2350,6 +2350,17 @@
       "sirens24h": "Sirenes / 24u",
       "aviationDisruptions": "Luchtvaartverstoringen",
       "gpsJammingZones": "GPS-storingszones"
+    },
+    "countryFacts": "Landenfeiten",
+    "loadingFacts": "Landenfeiten laden...",
+    "noFacts": "Landenfeiten niet beschikbaar.",
+    "facts": {
+      "headOfState": "Staatshoofd",
+      "population": "Bevolking",
+      "capital": "Hoofdstad",
+      "languages": "Talen",
+      "currencies": "Valuta's",
+      "area": "Oppervlakte"
     }
   },
   "preferences": {
@@ -2369,5 +2380,9 @@
     "mapThemeDesc": "Visuele stijl van de kaarttegels.",
     "globePreset": "Visuele voorinstelling",
     "globePresetDesc": "Schakel tussen klassieke en verbeterde globevisuals."
+  },
+  "contextMenu": {
+    "openCountryBrief": "Landenoverzicht openen",
+    "copyCoordinates": "Coördinaten kopiëren"
   }
 }

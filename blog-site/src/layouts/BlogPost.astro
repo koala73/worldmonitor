@@ -1,0 +1,39 @@
+---
+import Base from './Base.astro';
+
+interface Props {
+  title: string;
+  description: string;
+  metaTitle?: string;
+  keywords?: string;
+  pubDate: Date;
+  audience?: string;
+}
+
+const { title, description, metaTitle, keywords, pubDate, audience } = Astro.props;
+const formattedDate = pubDate.toLocaleDateString('en-US', {
+  year: 'numeric',
+  month: 'short',
+  day: 'numeric',
+});
+---
+
+<Base title={title} description={description} metaTitle={metaTitle} keywords={keywords}>
+  <article>
+    <div class="article-header">
+      <a href="/blog/" class="back">&larr; All articles</a>
+      <div class="meta">
+        <time datetime={pubDate.toISOString()}>{formattedDate}</time>
+        {audience && <span> &middot; {audience}</span>}
+      </div>
+    </div>
+    <div class="article-content prose">
+      <slot />
+    </div>
+    <div class="cta-banner">
+      <h3>See the World in Real Time</h3>
+      <p>Markets, geopolitics, conflicts, infrastructure. One dashboard. No login required.</p>
+      <a href="https://worldmonitor.app" class="btn" target="_blank" rel="noopener noreferrer">Open Dashboard</a>
+    </div>
+  </article>
+</Base>

@@ -122,6 +122,17 @@
       "stockIndex": "Stock index: {{value}}",
       "recentHeadlines": "**Recent headlines:**",
       "activeStrikes": "{{count}} active strikes detected"
+    },
+    "countryFacts": "Country Facts",
+    "loadingFacts": "Loading country facts...",
+    "noFacts": "Country facts unavailable.",
+    "facts": {
+      "headOfState": "Head of State",
+      "population": "Population",
+      "capital": "Capital",
+      "languages": "Languages",
+      "currencies": "Currencies",
+      "area": "Area"
     }
   },
   "header": {
@@ -194,7 +205,12 @@
     "panelCatCentralBanks": "Central Banks & Econ",
     "panelCatDeals": "Deals & Institutional",
     "panelCatGulfMena": "Gulf & MENA",
-    "panelCatTradePolicy": "Trade Policy"
+    "panelCatTradePolicy": "Trade Policy",
+    "panelCatCommodityPrices": "Prices & Markets",
+    "panelCatMining": "Mining & Supply Chain",
+    "panelCatCommodityEcon": "Economy & Trade",
+    "panelCatHappyNews": "Good News",
+    "panelCatHappyPlanet": "Planet & Giving"
   },
   "panels": {
     "liveNews": "Live News",
@@ -2412,5 +2428,9 @@
       "telegramIntel1": "Curated Telegram OSINT channels",
       "telegramIntel2": "Near-real-time conflict & geopolitical updates"
     }
+  },
+  "contextMenu": {
+    "openCountryBrief": "Open Country Brief",
+    "copyCoordinates": "Copy Coordinates"
   }
 }
