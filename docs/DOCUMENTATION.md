@@ -14,6 +14,7 @@ AI-powered real-time global intelligence dashboard aggregating news, markets, ge
 | [Architecture](./ARCHITECTURE.md) | System design, caching, bootstrap hydration, edge functions |
 | [Map Engine](./MAP_ENGINE.md) | 3D globe and flat map rendering details |
 | [AI Intelligence](./AI_INTELLIGENCE.md) | LLM chains, RAG, threat classification, deduction |
+| [RAG Failure Checklist](./RAG_FAILURE_CHECKLIST.md) | Troubleshoot suspicious AI summaries, retrieval misses, and reasoning drift |
 | [Desktop App](./DESKTOP_APP.md) | Tauri architecture, sidecar, secret management |
 | [Finance Data](./FINANCE_DATA.md) | Market radar, Gulf FDI, stablecoins, BIS, WTO |
 | [Premium Finance](./PREMIUM_FINANCE.md) | Premium stock analysis, stored history, backtests, daily brief |

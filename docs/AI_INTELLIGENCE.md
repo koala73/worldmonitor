@@ -130,6 +130,8 @@ RSS Feed Parse → isHeadlineMemoryEnabled()? → ML Worker (Web Worker)
 
 **Opt-in mechanism**: The setting defaults to `false` (stored as `wm-headline-memory` in localStorage). Enabling it triggers `mlWorker.init()` → `loadModel('embeddings')`. Disabling it unloads the model and optionally terminates the entire worker if no other ML features are active. The `ai-flow-changed` CustomEvent propagates toggle changes to all interested components.
 
+When a summary or retrieval result looks plausible but suspicious, use the [RAG Failure Checklist](./RAG_FAILURE_CHECKLIST.md) for a fast audit flow covering stale context, entity collisions, semantic-mismatch retrieval, reasoning drift, and claim traceability.
+
 ### Threat Classification Pipeline
 
 Every news item passes through a three-stage classification pipeline:
