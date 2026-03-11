@@ -20,9 +20,10 @@ export interface UnifiedSettingsConfig {
   resetLayout: () => void;
   isDesktopApp: boolean;
   onMapProviderChange?: (provider: MapProvider) => void;
+  alertManager?: import('@/app/alert-manager').AlertManager;
 }
 
-type TabId = 'settings' | 'panels' | 'sources';
+type TabId = 'settings' | 'panels' | 'sources' | 'alerts';
 
 export class UnifiedSettings {
   private overlay: HTMLElement;
@@ -128,10 +129,27 @@ export class UnifiedSettings {
       }
 
       if (target.closest('.sources-select-none')) {
-        const visible = this.getVisibleSourceNames();
-        this.config.setSourcesEnabled(visible, false);
         this.renderSourcesGrid();
         this.updateSourcesCounter();
+        return;
+      }
+
+      const alertDeleteBtn = target.closest<HTMLElement>('.alert-rule-delete');
+      if (alertDeleteBtn?.dataset.id) {
+        this.config.alertManager?.removeRule(alertDeleteBtn.dataset.id);
+        this.renderAlertsTab();
+        return;
+      }
+
+      const alertToggleBtn = target.closest<HTMLElement>('.alert-rule-toggle');
+      if (alertToggleBtn?.dataset.id) {
+        this.config.alertManager?.toggleRule(alertToggleBtn.dataset.id);
+        this.renderAlertsTab();
+        return;
+      }
+
+      if (target.closest('#addAlertBtn')) {
+        this.handleAddAlert();
         return;
       }
     });
@@ -212,6 +230,7 @@ export class UnifiedSettings {
           <button class="${tabClass('settings')}" data-tab="settings" role="tab" aria-selected="${this.activeTab === 'settings'}" id="us-tab-settings" aria-controls="us-tab-panel-settings">${t('header.tabSettings')}</button>
           <button class="${tabClass('panels')}" data-tab="panels" role="tab" aria-selected="${this.activeTab === 'panels'}" id="us-tab-panels" aria-controls="us-tab-panel-panels">${t('header.tabPanels')}</button>
           <button class="${tabClass('sources')}" data-tab="sources" role="tab" aria-selected="${this.activeTab === 'sources'}" id="us-tab-sources" aria-controls="us-tab-panel-sources">${t('header.tabSources')}</button>
+          <button class="${tabClass('alerts')}" data-tab="alerts" role="tab" aria-selected="${this.activeTab === 'alerts'}" id="us-tab-alerts" aria-controls="us-tab-panel-alerts">${t('header.tabAlerts') || 'Alerts'}</button>
         </div>
         <div class="unified-settings-tab-panel${this.activeTab === 'settings' ? ' active' : ''}" data-panel-id="settings" id="us-tab-panel-settings" role="tabpanel" aria-labelledby="us-tab-settings">
           ${prefs.html}
@@ -244,6 +263,16 @@ export class UnifiedSettings {
             <button class="sources-select-none">${t('common.selectNone')}</button>
           </div>
         </div>
+        <div class="unified-settings-tab-panel${this.activeTab === 'alerts' ? ' active' : ''}" data-panel-id="alerts" id="us-tab-panel-alerts" role="tabpanel" aria-labelledby="us-tab-alerts">
+          <div class="alerts-tab-header">
+            <h3>Signal Alerts (Alpha)</h3>
+            <p>Monitor real-time market and intelligence thresholds.</p>
+          </div>
+          <div class="alerts-list" id="usAlertsList"></div>
+          <div class="alerts-footer">
+            <button class="add-alert-btn" id="addAlertBtn">+ Create New Alert</button>
+          </div>
+        </div>
       </div>
     `;
 
@@ -265,6 +294,7 @@ export class UnifiedSettings {
     this.renderRegionPills();
     this.renderSourcesGrid();
     this.updateSourcesCounter();
+    this.renderAlertsTab();
   }
 
   private switchTab(tab: TabId): void {
@@ -507,5 +537,68 @@ export class UnifiedSettings {
     const enabledTotal = allSources.length - disabled.size;
 
     counter.textContent = t('header.sourcesEnabled', { enabled: String(enabledTotal), total: String(allSources.length) });
+  }
+
+  private renderAlertsTab(): void {
+    const list = this.overlay.querySelector('#usAlertsList');
+    if (!list) return;
+
+    const rules = this.config.alertManager?.getRules() || [];
+    if (rules.length === 0) {
+      list.innerHTML = `<div class="empty-state">No active alerts. Create one to monitor specific signals.</div>`;
+      return;
+    }
+
+    list.innerHTML = rules.map(rule => {
+      const title = rule.type === 'market' 
+        ? `${escapeHtml(rule.symbol)} ${rule.condition} ${rule.threshold}`
+        : `Keyword: "${escapeHtml(rule.symbol)}"`;
+      
+      return `
+        <div class="alert-rule-item ${rule.enabled ? '' : 'disabled'}" data-id="${rule.id}">
+          <div class="alert-rule-info">
+            <span class="alert-rule-title">${title}</span>
+            <span class="alert-rule-meta">${rule.type.toUpperCase()} · Triggered: ${rule.lastTriggered ? new Date(rule.lastTriggered).toLocaleString() : 'Never'}</span>
+          </div>
+          <div class="alert-rule-actions">
+            <button class="alert-rule-toggle ${rule.enabled ? 'active' : ''}" data-id="${rule.id}" title="Toggle Alert">${rule.enabled ? 'Enabled' : 'Disabled'}</button>
+            <button class="alert-rule-delete" data-id="${rule.id}" title="Delete Alert">×</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  private handleAddAlert(): void {
+    const type = prompt("Alert Type (market / intel):") as 'market' | 'intel';
+    if (type !== 'market' && type !== 'intel') return;
+
+    if (type === 'market') {
+      const symbol = prompt("Enter Ticker Symbol (e.g. ^GSPC, TSLA, BTC-USD):");
+      if (!symbol) return;
+      const threshold = parseFloat(prompt("Enter Threshold Price:") || "0");
+      if (isNaN(threshold)) return;
+      const condition = prompt("Condition (above / below):") as 'above' | 'below';
+      if (condition !== 'above' && condition !== 'below') return;
+
+      this.config.alertManager?.addRule({
+        type: 'market',
+        symbol,
+        threshold,
+        condition
+      });
+    } else {
+      const keyword = prompt("Enter Keyword to monitor (e.g. 'war', 'cyber', 'strike'):");
+      if (!keyword) return;
+      this.config.alertManager?.addRule({
+        type: 'intel',
+        symbol: keyword,
+        condition: 'contains'
+      });
+    }
+    this.renderAlertsTab();
+    
+    // Auto-request notifications when first alert added
+    this.config.alertManager?.requestNotificationPermission();
   }
 }

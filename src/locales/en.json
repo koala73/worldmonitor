@@ -199,6 +199,7 @@
   "panels": {
     "liveNews": "Live News",
     "markets": "Markets",
+    "indiaMarkets": "India Markets",
     "map": "Global Situation",
     "techMap": "Global Tech",
     "techHubs": "Hot Tech Hubs",
@@ -2073,6 +2074,11 @@
       "region": "REGION",
       "strikeGroup": "STRIKE GROUP",
       "deploymentStatus": "STATUS",
+      "lastSeen": "LAST SEEN",
+      "nearChokepoint": "NEAR CHOKEPOINT",
+      "nearBase": "NEAR BASE",
+      "recentTracking": "RECENT TRACKING",
+      "lastReport": "Last Report",
       "usniIntel": "USNI Intel",
       "usniSource": "Source: USNI News Fleet Tracker",
       "approximatePosition": "Position approximate — based on USNI weekly report, not real-time AIS.",
@@ -2382,8 +2388,16 @@
     "mapTheme": "Map Theme",
     "mapThemeDesc": "Visual style of the map tiles. Options vary by provider.",
     "globePreset": "Visual Preset",
-    "globePresetDesc": "Switch between classic and enhanced globe visuals to compare."
+    "globePresetDesc": "Switch between classic and enhanced globe visuals to compare.",
+    "typography": "Typography",
+    "fontFamily": "Font Family",
+    "fontFamilyDesc": "Choose the application font style.",
+    "fontInter": "Inter (Modern Sans)",
+    "fontRobotoMono": "Roboto Mono (Data-heavy)",
+    "fontGeist": "Geist (Next-gen)",
+    "fontSystem": "System Default"
   },
+
   "premium": {
     "pro": "PRO",
     "lockedDesc": "Requires a World Monitor license key",
