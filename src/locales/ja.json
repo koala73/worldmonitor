@@ -123,16 +123,16 @@
       "recentHeadlines": "**最近のヘッドライン：**",
       "activeStrikes": "{{count}}件の活発なストライキを検知"
     },
-    "countryFacts": "Country Facts",
-    "loadingFacts": "Loading country facts...",
-    "noFacts": "Country facts unavailable.",
+    "countryFacts": "国の基本情報",
+    "loadingFacts": "国の基本情報を読み込み中...",
+    "noFacts": "国の基本情報は利用できません。",
     "facts": {
-      "headOfState": "Head of State",
-      "population": "Population",
-      "capital": "Capital",
-      "languages": "Languages",
-      "currencies": "Currencies",
-      "area": "Area"
+      "headOfState": "国家元首",
+      "population": "人口",
+      "capital": "首都",
+      "languages": "言語",
+      "currencies": "通貨",
+      "area": "面積"
     }
   },
   "header": {
@@ -2382,7 +2382,7 @@
     "globePresetDesc": "クラシックと拡張地球表示を切り替えます。"
   },
   "contextMenu": {
-    "openCountryBrief": "Open Country Brief",
-    "copyCoordinates": "Copy Coordinates"
+    "openCountryBrief": "国の概要を開く",
+    "copyCoordinates": "座標をコピー"
   }
 }

@@ -123,16 +123,16 @@
       "recentHeadlines": "**Скорошни заглавия:**",
       "activeStrikes": "{{count}} активни удари открити"
     },
-    "countryFacts": "Country Facts",
-    "loadingFacts": "Loading country facts...",
-    "noFacts": "Country facts unavailable.",
+    "countryFacts": "Факти за страната",
+    "loadingFacts": "Зареждане на фактите за страната...",
+    "noFacts": "Фактите за страната не са налични.",
     "facts": {
-      "headOfState": "Head of State",
-      "population": "Population",
-      "capital": "Capital",
-      "languages": "Languages",
-      "currencies": "Currencies",
-      "area": "Area"
+      "headOfState": "Държавен глава",
+      "population": "Население",
+      "capital": "Столица",
+      "languages": "Езици",
+      "currencies": "Валути",
+      "area": "Площ"
     }
   },
   "header": {
@@ -2382,7 +2382,7 @@
     "globePresetDesc": "Превключване между класически и подобрени визуализации."
   },
   "contextMenu": {
-    "openCountryBrief": "Open Country Brief",
-    "copyCoordinates": "Copy Coordinates"
+    "openCountryBrief": "Отвори обзор на страната",
+    "copyCoordinates": "Копирай координати"
   }
 }

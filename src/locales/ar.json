@@ -123,16 +123,16 @@
       "aviationDisruptions": "اضطرابات الطيران",
       "gpsJammingZones": "مناطق تشويش GPS"
     },
-    "countryFacts": "Country Facts",
-    "loadingFacts": "Loading country facts...",
-    "noFacts": "Country facts unavailable.",
+    "countryFacts": "حقائق عن البلد",
+    "loadingFacts": "جارٍ تحميل حقائق البلد...",
+    "noFacts": "حقائق البلد غير متوفرة.",
     "facts": {
-      "headOfState": "Head of State",
-      "population": "Population",
-      "capital": "Capital",
-      "languages": "Languages",
-      "currencies": "Currencies",
-      "area": "Area"
+      "headOfState": "رئيس الدولة",
+      "population": "عدد السكان",
+      "capital": "العاصمة",
+      "languages": "اللغات",
+      "currencies": "العملات",
+      "area": "المساحة"
     }
   },
   "header": {
@@ -2382,7 +2382,7 @@
     "globePresetDesc": "التبديل بين المرئيات الكلاسيكية والمحسنة للكرة الأرضية."
   },
   "contextMenu": {
-    "openCountryBrief": "Open Country Brief",
-    "copyCoordinates": "Copy Coordinates"
+    "openCountryBrief": "فتح ملخص البلد",
+    "copyCoordinates": "نسخ الإحداثيات"
   }
 }

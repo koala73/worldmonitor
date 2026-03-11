@@ -123,16 +123,16 @@
       "recentHeadlines": "**Tin tức gần đây:**",
       "activeStrikes": "Phát hiện {{count}} cuộc đình công đang diễn ra"
     },
-    "countryFacts": "Country Facts",
-    "loadingFacts": "Loading country facts...",
-    "noFacts": "Country facts unavailable.",
+    "countryFacts": "Thông tin quốc gia",
+    "loadingFacts": "Đang tải thông tin quốc gia...",
+    "noFacts": "Không có thông tin quốc gia.",
     "facts": {
-      "headOfState": "Head of State",
-      "population": "Population",
-      "capital": "Capital",
-      "languages": "Languages",
-      "currencies": "Currencies",
-      "area": "Area"
+      "headOfState": "Nguyên thủ quốc gia",
+      "population": "Dân số",
+      "capital": "Thủ đô",
+      "languages": "Ngôn ngữ",
+      "currencies": "Tiền tệ",
+      "area": "Diện tích"
     }
   },
   "header": {
@@ -2382,7 +2382,7 @@
     "globePresetDesc": "Chuyển đổi giữa chế độ cổ điển và nâng cao của quả địa cầu."
   },
   "contextMenu": {
-    "openCountryBrief": "Open Country Brief",
-    "copyCoordinates": "Copy Coordinates"
+    "openCountryBrief": "Mở tổng quan quốc gia",
+    "copyCoordinates": "Sao chép tọa độ"
   }
 }

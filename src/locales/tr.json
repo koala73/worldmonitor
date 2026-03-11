@@ -123,16 +123,16 @@
       "recentHeadlines": "**Son basliklar:**",
       "activeStrikes": "{{count}} aktif grev tespit edildi"
     },
-    "countryFacts": "Country Facts",
-    "loadingFacts": "Loading country facts...",
-    "noFacts": "Country facts unavailable.",
+    "countryFacts": "Ülke bilgileri",
+    "loadingFacts": "Ülke bilgileri yükleniyor...",
+    "noFacts": "Ülke bilgileri mevcut değil.",
     "facts": {
-      "headOfState": "Head of State",
-      "population": "Population",
-      "capital": "Capital",
-      "languages": "Languages",
-      "currencies": "Currencies",
-      "area": "Area"
+      "headOfState": "Devlet Başkanı",
+      "population": "Nüfus",
+      "capital": "Başkent",
+      "languages": "Diller",
+      "currencies": "Para birimleri",
+      "area": "Yüz ölçümü"
     }
   },
   "header": {
@@ -2382,7 +2382,7 @@
     "globePresetDesc": "Klasik ve geliştirilmiş küre görselleri arasında geçiş yapın."
   },
   "contextMenu": {
-    "openCountryBrief": "Open Country Brief",
-    "copyCoordinates": "Copy Coordinates"
+    "openCountryBrief": "Ülke özetini aç",
+    "copyCoordinates": "Koordinatları kopyala"
   }
 }

@@ -2351,16 +2351,16 @@
       "aviationDisruptions": "Flygstörningar",
       "gpsJammingZones": "GPS-störningszoner"
     },
-    "countryFacts": "Country Facts",
-    "loadingFacts": "Loading country facts...",
-    "noFacts": "Country facts unavailable.",
+    "countryFacts": "Fakta om landet",
+    "loadingFacts": "Laddar fakta om landet...",
+    "noFacts": "Fakta om landet ej tillgängliga.",
     "facts": {
-      "headOfState": "Head of State",
-      "population": "Population",
-      "capital": "Capital",
-      "languages": "Languages",
-      "currencies": "Currencies",
-      "area": "Area"
+      "headOfState": "Statschef",
+      "population": "Befolkning",
+      "capital": "Huvudstad",
+      "languages": "Språk",
+      "currencies": "Valutor",
+      "area": "Yta"
     }
   },
   "preferences": {
@@ -2382,7 +2382,7 @@
     "globePresetDesc": "Växla mellan klassiska och förbättrade globvisualer."
   },
   "contextMenu": {
-    "openCountryBrief": "Open Country Brief",
-    "copyCoordinates": "Copy Coordinates"
+    "openCountryBrief": "Öppna landsöversikt",
+    "copyCoordinates": "Kopiera koordinater"
   }
 }

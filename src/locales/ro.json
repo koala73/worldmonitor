@@ -123,16 +123,16 @@
       "recentHeadlines": "**Titluri recente:**",
       "activeStrikes": "{{count}} avertismente active detectate"
     },
-    "countryFacts": "Country Facts",
-    "loadingFacts": "Loading country facts...",
-    "noFacts": "Country facts unavailable.",
+    "countryFacts": "Date despre țară",
+    "loadingFacts": "Se încarcă datele țării...",
+    "noFacts": "Datele țării nu sunt disponibile.",
     "facts": {
-      "headOfState": "Head of State",
-      "population": "Population",
-      "capital": "Capital",
-      "languages": "Languages",
-      "currencies": "Currencies",
-      "area": "Area"
+      "headOfState": "Șeful statului",
+      "population": "Populație",
+      "capital": "Capitală",
+      "languages": "Limbi",
+      "currencies": "Monede",
+      "area": "Suprafață"
     }
   },
   "header": {
@@ -2382,7 +2382,7 @@
     "globePresetDesc": "Comută între vizualizări clasice și îmbunătățite ale globului."
   },
   "contextMenu": {
-    "openCountryBrief": "Open Country Brief",
-    "copyCoordinates": "Copy Coordinates"
+    "openCountryBrief": "Deschide prezentarea țării",
+    "copyCoordinates": "Copiază coordonatele"
   }
 }

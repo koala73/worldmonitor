@@ -123,16 +123,16 @@
       "aviationDisruptions": "Luftfahrtstörungen",
       "gpsJammingZones": "GPS-Störzonen"
     },
-    "countryFacts": "Country Facts",
-    "loadingFacts": "Loading country facts...",
-    "noFacts": "Country facts unavailable.",
+    "countryFacts": "Länderfakten",
+    "loadingFacts": "Länderfakten werden geladen...",
+    "noFacts": "Länderfakten nicht verfügbar.",
     "facts": {
-      "headOfState": "Head of State",
-      "population": "Population",
-      "capital": "Capital",
-      "languages": "Languages",
-      "currencies": "Currencies",
-      "area": "Area"
+      "headOfState": "Staatsoberhaupt",
+      "population": "Bevölkerung",
+      "capital": "Hauptstadt",
+      "languages": "Sprachen",
+      "currencies": "Währungen",
+      "area": "Fläche"
     }
   },
   "header": {
@@ -2382,7 +2382,7 @@
     "globePresetDesc": "Zwischen klassischer und verbesserter Globus-Darstellung wechseln."
   },
   "contextMenu": {
-    "openCountryBrief": "Open Country Brief",
-    "copyCoordinates": "Copy Coordinates"
+    "openCountryBrief": "Länderübersicht öffnen",
+    "copyCoordinates": "Koordinaten kopieren"
   }
 }

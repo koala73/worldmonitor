@@ -2351,16 +2351,16 @@
       "aviationDisruptions": "Luchtvaartverstoringen",
       "gpsJammingZones": "GPS-storingszones"
     },
-    "countryFacts": "Country Facts",
-    "loadingFacts": "Loading country facts...",
-    "noFacts": "Country facts unavailable.",
+    "countryFacts": "Landenfeiten",
+    "loadingFacts": "Landenfeiten laden...",
+    "noFacts": "Landenfeiten niet beschikbaar.",
     "facts": {
-      "headOfState": "Head of State",
-      "population": "Population",
-      "capital": "Capital",
-      "languages": "Languages",
-      "currencies": "Currencies",
-      "area": "Area"
+      "headOfState": "Staatshoofd",
+      "population": "Bevolking",
+      "capital": "Hoofdstad",
+      "languages": "Talen",
+      "currencies": "Valuta's",
+      "area": "Oppervlakte"
     }
   },
   "preferences": {
@@ -2382,7 +2382,7 @@
     "globePresetDesc": "Schakel tussen klassieke en verbeterde globevisuals."
   },
   "contextMenu": {
-    "openCountryBrief": "Open Country Brief",
-    "copyCoordinates": "Copy Coordinates"
+    "openCountryBrief": "Landenoverzicht openen",
+    "copyCoordinates": "Coördinaten kopiëren"
   }
 }
