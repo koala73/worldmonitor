@@ -1,41 +1,42 @@
 {
   "$schema": "https://mintlify.com/schema.json",
   "theme": "mint",
-  "name": "World Monitor Docs",
+  "name": "World Monitor",
+  "description": "AI-powered real-time global intelligence dashboard",
   "logo": {
     "dark": "/logo.png",
     "light": "/logo.png",
-    "href": "https://worldmonitor.app"
+    "href": "https://www.worldmonitor.app"
   },
   "favicon": "/favicon.png",
   "colors": {
-    "primary": "#3b82f6",
-    "light": "#60a5fa",
-    "dark": "#2563eb"
+    "primary": "#4ade80",
+    "light": "#4ade80",
+    "dark": "#22c55e"
   },
   "navbar": {
     "links": [
       {
-        "label": "Live App",
-        "href": "https://worldmonitor.app"
-      },
-      {
-        "label": "Tech",
-        "href": "https://tech.worldmonitor.app"
-      },
-      {
-        "label": "Finance",
-        "href": "https://finance.worldmonitor.app"
-      },
-      {
         "label": "Blog",
-        "href": "https://worldmonitor.app/blog"
+        "href": "https://www.worldmonitor.app/blog"
+      },
+      {
+        "label": "Dashboard",
+        "href": "https://www.worldmonitor.app"
+      },
+      {
+        "label": "Pro",
+        "href": "https://www.worldmonitor.app/pro"
+      },
+      {
+        "label": "GitHub",
+        "href": "https://github.com/koala73/worldmonitor"
       }
     ],
     "primary": {
       "type": "button",
-      "label": "GitHub",
-      "href": "https://github.com/koala73/worldmonitor"
+      "label": "Get Early Access",
+      "href": "https://www.worldmonitor.app/pro#waitlist"
     }
   },
   "navigation": {
@@ -210,44 +211,41 @@
   },
   "footer": {
     "socials": {
-      "github": "https://github.com/koala73/worldmonitor"
+      "github": "https://github.com/koala73/worldmonitor",
+      "x": "https://x.com/worldmonitorai"
     },
     "links": [
       {
         "header": "World Monitor",
         "items": [
           {
-            "label": "Live App",
-            "href": "https://worldmonitor.app"
+            "label": "Dashboard",
+            "href": "https://www.worldmonitor.app"
           },
           {
-            "label": "Tech Variant",
-            "href": "https://tech.worldmonitor.app"
+            "label": "Pro",
+            "href": "https://www.worldmonitor.app/pro"
           },
           {
-            "label": "Finance Variant",
-            "href": "https://finance.worldmonitor.app"
-          },
-          {
-            "label": "Happy Variant",
-            "href": "https://happy.worldmonitor.app"
+            "label": "Blog",
+            "href": "https://www.worldmonitor.app/blog"
           }
         ]
       },
       {
-        "header": "Resources",
+        "header": "Community",
         "items": [
-          {
-            "label": "Blog",
-            "href": "https://worldmonitor.app/blog"
-          },
           {
             "label": "GitHub",
             "href": "https://github.com/koala73/worldmonitor"
           },
           {
-            "label": "Pro",
-            "href": "https://worldmonitor.app/pro"
+            "label": "Discussions",
+            "href": "https://github.com/koala73/worldmonitor/discussions"
+          },
+          {
+            "label": "X",
+            "href": "https://x.com/worldmonitorai"
           }
         ]
       }
