@@ -7,6 +7,7 @@
  */
 import { CHROME_UA } from './constants';
 import { cachedFetchJson } from './redis';
+import { getAcledAccessToken } from './acled-auth';
 
 const ACLED_API_URL = 'https://acleddata.com/api/acled/read';
 const ACLED_CACHE_TTL = 900; // 15 min — matches ACLED rate-limit window
@@ -44,7 +45,7 @@ interface FetchAcledOptions {
  * different handlers share the same cached result.
  */
 export async function fetchAcledCached(opts: FetchAcledOptions): Promise<AcledRawEvent[]> {
-  const token = process.env.ACLED_ACCESS_TOKEN;
+  const token = await getAcledAccessToken();
   if (!token) return [];
 
   const cacheKey = `acled:shared:${opts.eventTypes}:${opts.startDate}:${opts.endDate}:${opts.country || 'all'}:${opts.limit || 500}`;
