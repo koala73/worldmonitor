@@ -11,11 +11,17 @@ const posts = (await getCollection('blog')).sort(
   title="WorldMonitor Blog"
   description="Insights on real-time global intelligence, OSINT, geopolitics, markets, and the open-source tools that power situational awareness."
 >
-  <div class="blog-list">
-    <h1>WorldMonitor Blog</h1>
+  <div class="blog-hero">
+    <div class="badge">
+      <span class="dot"></span>
+      Intelligence Feed
+    </div>
+    <h1>Noise<span class="green">.</span>Signal<span class="green">.</span>Blog</h1>
     <p class="subtitle">
-      Real-time intelligence, OSINT, geopolitics, and markets.
+      Analysis, guides, and deep dives on real-time intelligence, OSINT, geopolitics, markets, and the open-source tools behind WorldMonitor.
     </p>
+  </div>
+  <div class="blog-list">
     <div class="post-grid">
       {posts.map((post) => (
         <a href={`/blog/posts/${post.id}/`} class="post-card">
@@ -26,7 +32,7 @@ const posts = (await getCollection('blog')).sort(
             <time datetime={post.data.pubDate.toISOString()}>
               {post.data.pubDate.toLocaleDateString('en-US', {
                 year: 'numeric',
-                month: 'long',
+                month: 'short',
                 day: 'numeric',
               })}
             </time>

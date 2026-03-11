@@ -13,7 +13,7 @@ interface Props {
 const { title, description, metaTitle, keywords, pubDate, audience } = Astro.props;
 const formattedDate = pubDate.toLocaleDateString('en-US', {
   year: 'numeric',
-  month: 'long',
+  month: 'short',
   day: 'numeric',
 });
 ---
@@ -31,8 +31,8 @@ const formattedDate = pubDate.toLocaleDateString('en-US', {
       <slot />
     </div>
     <div class="cta-banner">
-      <h3>Try WorldMonitor Now</h3>
-      <p>Real-time global intelligence. No login. No paywall. 100% free.</p>
+      <h3>See the World in Real Time</h3>
+      <p>Markets, geopolitics, conflicts, infrastructure. One dashboard. No login required.</p>
       <a href="https://worldmonitor.app" class="btn" target="_blank" rel="noopener noreferrer">Open Dashboard</a>
     </div>
   </article>

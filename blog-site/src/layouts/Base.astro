@@ -21,14 +21,12 @@ const pageTitle = metaTitle || title;
     <meta name="robots" content="index, follow" />
     <link rel="canonical" href={Astro.url.href} />
 
-    <!-- Open Graph -->
     <meta property="og:type" content="website" />
     <meta property="og:title" content={pageTitle} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={Astro.url.href} />
     <meta property="og:site_name" content="WorldMonitor Blog" />
 
-    <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={pageTitle} />
     <meta name="twitter:description" content={description} />
@@ -43,13 +41,21 @@ const pageTitle = metaTitle || title;
     <header class="site-header">
       <nav>
         <a href="/blog/" class="logo">
-          <span>WM</span> WorldMonitor Blog
+          <div class="logo-icon">WM</div>
+          <div class="logo-text">
+            <span class="logo-name">WORLD MONITOR</span>
+            <span class="logo-sub">by Someone.ceo</span>
+          </div>
         </a>
         <ul class="nav-links">
-          <li><a href="/blog/">Articles</a></li>
-          <li><a href="https://worldmonitor.app" target="_blank" rel="noopener noreferrer">Open Dashboard</a></li>
+          <li><a href="/blog/">Blog</a></li>
+          <li><a href="https://worldmonitor.app" target="_blank" rel="noopener noreferrer">Dashboard</a></li>
+          <li><a href="https://worldmonitor.app/pro" target="_blank" rel="noopener noreferrer">Pro</a></li>
           <li><a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noopener noreferrer">GitHub</a></li>
         </ul>
+        <a href="https://worldmonitor.app/pro#waitlist" class="nav-cta" target="_blank" rel="noopener noreferrer">
+          Get Early Access
+        </a>
       </nav>
     </header>
 
@@ -58,14 +64,22 @@ const pageTitle = metaTitle || title;
     </main>
 
     <footer class="site-footer">
-      <p>&copy; {new Date().getFullYear()} WorldMonitor. Free, open-source global intelligence.</p>
-      <p style="margin-top: 0.5rem;">
-        <a href="https://worldmonitor.app">worldmonitor.app</a> &middot;
-        <a href="https://tech.worldmonitor.app">Tech</a> &middot;
-        <a href="https://finance.worldmonitor.app">Finance</a> &middot;
-        <a href="https://commodity.worldmonitor.app">Commodity</a> &middot;
-        <a href="https://happy.worldmonitor.app">Happy</a>
-      </p>
+      <div class="footer-inner">
+        <div class="footer-brand">
+          <div class="footer-icon">WM</div>
+          <span class="footer-name">WORLD MONITOR</span>
+        </div>
+        <div class="footer-links">
+          <a href="https://worldmonitor.app" target="_blank" rel="noopener noreferrer">Dashboard</a>
+          <a href="https://worldmonitor.app/pro" target="_blank" rel="noopener noreferrer">Pro</a>
+          <a href="https://x.com/worldmonitorai" target="_blank" rel="noopener noreferrer">X</a>
+          <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noopener noreferrer">GitHub</a>
+          <a href="https://www.wired.me/story/the-music-streaming-ceo-who-built-a-global-war-map" target="_blank" rel="noopener noreferrer">WIRED</a>
+        </div>
+        <div class="footer-copy">
+          &copy; {new Date().getFullYear()} WorldMonitor. Free, open-source global intelligence.
+        </div>
+      </div>
     </footer>
   </body>
 </html>

@@ -725,7 +725,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     marketsBody.append(this.makeLoading(t('countryBrief.loadingMarkets')));
     briefBody.append(this.makeLoading(t('countryBrief.generatingBrief')));
 
-    bodyGrid.append(signalsCard, timelineCard, newsCard, militaryCard, infraCard, factsExpanded, economicCard, marketsCard, briefCard);
+    bodyGrid.append(briefCard, factsExpanded, signalsCard, timelineCard, newsCard, militaryCard, infraCard, economicCard, marketsCard);
     shell.append(header, scoreCard, bodyGrid);
     this.content.append(shell);
   }
