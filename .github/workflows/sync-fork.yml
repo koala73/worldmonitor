@@ -29,7 +29,16 @@ jobs:
       - name: Merge Upstream (prefer upstream on conflicts)
         run: |
           git checkout main
-          git merge upstream/main --no-edit -X theirs
+
+          # Some forks are initialized from a different root commit, which can
+          # make a standard merge fail with:
+          # "fatal: refusing to merge unrelated histories".
+          # Try the normal path first, then fall back to allowing unrelated
+          # histories so the sync job can keep applying local patches.
+          if ! git merge upstream/main --no-edit -X theirs; then
+            echo "Standard merge failed; retrying with --allow-unrelated-histories"
+            git merge upstream/main --no-edit -X theirs --allow-unrelated-histories
+          fi
 
       - name: Re-apply custom domain patches
         run: |
