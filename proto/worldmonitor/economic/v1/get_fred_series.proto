@@ -15,7 +15,7 @@ message GetFredSeriesRequest {
     (sebuf.http.query) = {name: "series_id"}
   ];
   // Maximum number of observations to return. Defaults to 120.
-  int32 limit = 2 [(sebuf.http.query) = { name: "limit" }];
+  int32 limit = 2 [(sebuf.http.query) = {name: "limit"}];
 }
 
 // GetFredSeriesResponse contains the requested FRED series data.

@@ -10,7 +10,7 @@ import "worldmonitor/aviation/v1/airport_delay.proto";
 message GetAirportOpsSummaryRequest {
   // IATA airport codes to query (e.g., ["IST", "ESB", "LHR"]).
   repeated string airports = 1 [
-    (sebuf.http.query) = { name: "airports" },
+    (sebuf.http.query) = {name: "airports"},
     (buf.validate.field).repeated.min_items = 1,
     (buf.validate.field).repeated.max_items = 20
   ];

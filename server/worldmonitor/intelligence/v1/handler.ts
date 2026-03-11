@@ -6,6 +6,12 @@ import { classifyEvent } from './classify-event';
 import { getCountryIntelBrief } from './get-country-intel-brief';
 import { searchGdeltDocuments } from './search-gdelt-documents';
 import { deductSituation } from './deduct-situation';
+import { listSatellites } from './list-satellites';
+import { listGpsInterference } from './list-gps-interference';
+import { listOrefAlerts } from './list-oref-alerts';
+import { listTelegramFeed } from './list-telegram-feed';
+import { getCompanyEnrichment } from './get-company-enrichment';
+import { listCompanySignals } from './list-company-signals';
 
 export const intelligenceHandler: IntelligenceServiceHandler = {
   getRiskScores,
@@ -14,4 +20,10 @@ export const intelligenceHandler: IntelligenceServiceHandler = {
   getCountryIntelBrief,
   searchGdeltDocuments,
   deductSituation,
+  listSatellites,
+  listGpsInterference,
+  listOrefAlerts,
+  listTelegramFeed,
+  getCompanyEnrichment,
+  listCompanySignals,
 };

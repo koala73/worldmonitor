@@ -8,7 +8,7 @@ import "worldmonitor/infrastructure/v1/infrastructure.proto";
 // ListServiceStatusesRequest specifies filters for retrieving service statuses.
 message ListServiceStatusesRequest {
   // Optional status filter. Returns only services in this state.
-  ServiceOperationalStatus status = 1 [(sebuf.http.query) = { name: "status" }];
+  ServiceOperationalStatus status = 1 [(sebuf.http.query) = {name: "status"}];
 }
 
 // ListServiceStatusesResponse contains service operational statuses.

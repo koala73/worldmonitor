@@ -8,7 +8,7 @@ import "worldmonitor/market/v1/market_quote.proto";
 // ListCommodityQuotesRequest specifies which commodities to retrieve.
 message ListCommodityQuotesRequest {
   // Commodity symbols to retrieve (Yahoo symbols). Empty returns defaults.
-  repeated string symbols = 1 [(sebuf.http.query) = { name: "symbols" }];
+  repeated string symbols = 1 [(sebuf.http.query) = {name: "symbols"}];
 }
 
 // ListCommodityQuotesResponse contains commodity quotes.

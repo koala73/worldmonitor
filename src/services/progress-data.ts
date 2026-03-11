@@ -7,7 +7,7 @@
  */
 
 import { createCircuitBreaker } from '@/utils';
-import { getHydratedData } from '@/services/bootstrap';
+import { fetchBootstrapKeys, getHydratedData } from '@/services/bootstrap';
 
 // ---- Types ----
 
@@ -143,13 +143,9 @@ async function fetchProgressDataFresh(): Promise<ProgressDataSet[]> {
 
   // 2. Fallback: fetch from bootstrap endpoint directly
   try {
-    const resp = await fetch('/api/bootstrap?keys=progressData', {
-      signal: AbortSignal.timeout(5_000),
-    });
-    if (resp.ok) {
-      const { data } = (await resp.json()) as { data: { progressData?: SeedProgressIndicator[] } };
-      if (data.progressData?.length) return resolveFromSeeds(buildSeedMap(data.progressData));
-    }
+    const data = await fetchBootstrapKeys(['progressData'], AbortSignal.timeout(5_000));
+    const raw = data.progressData as SeedProgressIndicator[] | undefined;
+    if (raw?.length) return resolveFromSeeds(buildSeedMap(raw));
   } catch { /* fall through to fallback */ }
 
   // 3. Static fallback

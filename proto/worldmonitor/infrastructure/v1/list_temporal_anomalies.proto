@@ -4,8 +4,7 @@ package worldmonitor.infrastructure.v1;
 
 import "sebuf/http/annotations.proto";
 
-message ListTemporalAnomaliesRequest {
-}
+message ListTemporalAnomaliesRequest {}
 
 message ListTemporalAnomaliesResponse {
   repeated TemporalAnomaly anomalies = 1;

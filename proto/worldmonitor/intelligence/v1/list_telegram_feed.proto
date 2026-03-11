@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package worldmonitor.intelligence.v1;
+
+import "sebuf/http/annotations.proto";
+
+// ListTelegramFeedRequest parameters for fetching Telegram OSINT feed.
+message ListTelegramFeedRequest {
+  // Maximum number of messages to return.
+  int32 limit = 1 [(sebuf.http.query) = {name: "limit"}];
+  // Optional topic filter.
+  string topic = 2 [(sebuf.http.query) = {name: "topic"}];
+  // Optional channel filter.
+  string channel = 3 [(sebuf.http.query) = {name: "channel"}];
+}
+
+// ListTelegramFeedResponse containing the OSINT messages.
+message ListTelegramFeedResponse {
+  // Whether the Telegram bridge is enabled.
+  bool enabled = 1;
+  // List of messages.
+  repeated TelegramMessage messages = 2;
+  // Total count of messages matching the filter.
+  int32 count = 3;
+  // Optional error message.
+  string error = 4;
+}
+
+// TelegramMessage represents a single post from a monitored channel.
+message TelegramMessage {
+  string id = 1;
+  string channel_id = 2;
+  string channel_name = 3;
+  string text = 4;
+  int64 timestamp = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  repeated string media_urls = 6;
+  string source_url = 7;
+  string topic = 8;
+}

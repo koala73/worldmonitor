@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package worldmonitor.intelligence.v1;
+
+import "sebuf/http/annotations.proto";
+
+message GetCompanyEnrichmentRequest {
+  string domain = 1 [(sebuf.http.query) = {name: "domain"}];
+  string name = 2 [(sebuf.http.query) = {name: "name"}];
+}
+
+message GetCompanyEnrichmentResponse {
+  EnrichedCompany company = 1;
+  EnrichedGithub github = 2;
+  repeated TechStackItem tech_stack = 3;
+  SecFilings sec_filings = 4;
+  repeated HNMention hacker_news_mentions = 5;
+  string enriched_at = 6;
+  repeated string sources = 7;
+}
+
+message EnrichedCompany {
+  string name = 1;
+  string domain = 2;
+  string description = 3;
+  string location = 4;
+  string website = 5;
+  int32 founded = 6;
+}
+
+message EnrichedGithub {
+  int32 public_repos = 1;
+  int32 followers = 2;
+  string avatar_url = 3;
+}
+
+message TechStackItem {
+  string name = 1;
+  string category = 2;
+  float confidence = 3;
+}
+
+message SecFilings {
+  int32 total_filings = 1;
+  repeated SecFiling recent_filings = 2;
+}
+
+message SecFiling {
+  string form = 1;
+  string date = 2;
+  string description = 3;
+}
+
+message HNMention {
+  string title = 1;
+  string url = 2;
+  int32 points = 3;
+  int32 comments = 4;
+  string date = 5;
+}

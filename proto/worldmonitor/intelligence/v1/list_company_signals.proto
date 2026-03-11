@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package worldmonitor.intelligence.v1;
+
+import "sebuf/http/annotations.proto";
+
+message ListCompanySignalsRequest {
+  string company = 1 [(sebuf.http.query) = {name: "company"}];
+  string domain = 2 [(sebuf.http.query) = {name: "domain"}];
+}
+
+message ListCompanySignalsResponse {
+  string company = 1;
+  string domain = 2;
+  repeated CompanySignal signals = 3;
+  SignalSummary summary = 4;
+  string discovered_at = 5;
+}
+
+message CompanySignal {
+  string type = 1;
+  string title = 2;
+  string url = 3;
+  string source = 4;
+  int32 source_tier = 5;
+  string timestamp = 6;
+  string strength = 7;
+  SignalEngagement engagement = 8;
+}
+
+message SignalEngagement {
+  int32 points = 1;
+  int32 comments = 2;
+  int32 stars = 3;
+  int32 forks = 4;
+  int32 mentions = 5;
+}
+
+message SignalSummary {
+  int32 total_signals = 1;
+  map<string, int32> by_type = 2;
+  CompanySignal strongest_signal = 3;
+  int32 signal_diversity = 4;
+}

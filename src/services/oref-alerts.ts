@@ -1,4 +1,5 @@
-import { getApiBaseUrl, startSmartPollLoop, type SmartPollLoopHandle } from '@/services/runtime';
+import { IntelligenceServiceClient } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
+import { startSmartPollLoop, type SmartPollLoopHandle } from '@/services/runtime';
 import { translateText } from '@/services/summarization';
 
 export interface OrefAlert {
@@ -222,11 +223,7 @@ async function translateAlerts(alerts: OrefAlert[]): Promise<boolean> {
   return translated;
 }
 
-function getOrefApiUrl(endpoint?: string): string {
-  const base = getApiBaseUrl();
-  const suffix = endpoint ? `?endpoint=${endpoint}` : '';
-  return `${base}/api/oref-alerts${suffix}`;
-}
+const client = new IntelligenceServiceClient('', { fetch: (input, init) => globalThis.fetch(input, init) });
 
 export async function fetchOrefAlerts(options: { signal?: AbortSignal } = {}): Promise<OrefAlertsResponse> {
   await ensureLocationMapLoaded();
@@ -236,14 +233,22 @@ export async function fetchOrefAlerts(options: { signal?: AbortSignal } = {}): P
   }
 
   try {
-    const res = await fetch(getOrefApiUrl(), {
-      headers: { Accept: 'application/json' },
-      signal: options.signal,
-    });
-    if (!res.ok) {
-      return { configured: false, alerts: [], historyCount24h: 0, timestamp: new Date().toISOString(), error: `HTTP ${res.status}` };
-    }
-    const data: OrefAlertsResponse = await res.json();
+    const response = await client.listOrefAlerts({ mode: 'MODE_ALERTS' }, { signal: options.signal });
+    const data: OrefAlertsResponse = {
+      configured: response.configured,
+      alerts: response.alerts.map((a: any) => ({
+        id: a.id,
+        cat: a.cat,
+        title: a.title,
+        data: a.data,
+        desc: a.desc,
+        alertDate: a.alertDate,
+      })),
+      historyCount24h: response.historyCount24h,
+      totalHistoryCount: response.totalHistoryCount,
+      timestamp: response.timestamp,
+      error: response.error || undefined,
+    };
     cachedResponse = data;
     lastFetchAt = now;
 
@@ -267,14 +272,24 @@ export async function fetchOrefAlerts(options: { signal?: AbortSignal } = {}): P
 export async function fetchOrefHistory(): Promise<OrefHistoryResponse> {
   await ensureLocationMapLoaded();
   try {
-    const res = await fetch(getOrefApiUrl('history'), {
-      headers: { Accept: 'application/json' },
-    });
-    if (!res.ok) {
-      console.warn('[OREF History] HTTP', res.status);
-      return { configured: false, history: [], historyCount24h: 0, timestamp: new Date().toISOString(), error: `HTTP ${res.status}` };
-    }
-    const data: OrefHistoryResponse = await res.json();
+    const response = await client.listOrefAlerts({ mode: 'MODE_HISTORY' });
+    const data: OrefHistoryResponse = {
+      configured: response.configured,
+      history: response.history.map((h: any) => ({
+        alerts: h.alerts.map((a: any) => ({
+          id: a.id,
+          cat: a.cat,
+          title: a.title,
+          data: a.data,
+          desc: a.desc,
+          alertDate: a.alertDate,
+        })),
+        timestamp: h.timestamp,
+      })),
+      historyCount24h: response.historyCount24h,
+      timestamp: response.timestamp,
+      error: response.error || undefined,
+    };
 
     if (data.history?.length) {
       const recentWaves = data.history.slice(-50);

@@ -6,12 +6,18 @@ import { listServiceStatuses } from './list-service-statuses';
 import { getTemporalBaseline } from './get-temporal-baseline';
 import { recordBaselineSnapshot } from './record-baseline-snapshot';
 import { listTemporalAnomalies } from './list-temporal-anomalies';
+import { getIpGeo } from './get-ip-geo';
+import { reverseGeocode } from './reverse-geocode';
+import { getBootstrapData } from './get-bootstrap-data';
 
 export const infrastructureHandler: InfrastructureServiceHandler = {
-  getCableHealth,
   listInternetOutages,
   listServiceStatuses,
   getTemporalBaseline,
-  recordBaselineSnapshot,
+  getCableHealth,
   listTemporalAnomalies,
+  recordBaselineSnapshot,
+  getIpGeo,
+  reverseGeocode,
+  getBootstrapData,
 };

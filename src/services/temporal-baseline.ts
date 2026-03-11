@@ -1,4 +1,4 @@
-import { InfrastructureServiceClient, type TemporalAnomalyProto } from '@/generated/client/worldmonitor/infrastructure/v1/service_client';
+import { InfrastructureServiceClient, type TemporalAnomaly as TemporalAnomalyProto } from '@/generated/client/worldmonitor/infrastructure/v1/service_client';
 import { getHydratedData } from '@/services/bootstrap';
 
 export type TemporalEventType =
@@ -17,6 +17,7 @@ export interface TemporalAnomaly {
   zScore: number;
   message: string;
   severity: 'medium' | 'high' | 'critical';
+  multiplier?: number;
 }
 
 const client = new InfrastructureServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
@@ -65,6 +66,7 @@ function mapServerAnomaly(a: TemporalAnomalyProto): TemporalAnomaly {
     zScore: a.zScore,
     severity: getSeverity(a.zScore),
     message: a.message,
+    multiplier: a.multiplier ?? undefined,
   };
 }
 

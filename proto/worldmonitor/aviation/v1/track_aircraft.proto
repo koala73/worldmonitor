@@ -8,17 +8,17 @@ import "worldmonitor/aviation/v1/position_sample.proto";
 // TrackAircraftRequest specifies an aircraft to track.
 message TrackAircraftRequest {
   // ICAO 24-bit transponder address (hex, e.g., "4b1805").
-  string icao24 = 1 [(sebuf.http.query) = { name: "icao24" }];
+  string icao24 = 1 [(sebuf.http.query) = {name: "icao24"}];
   // ATC callsign (e.g., "THY7CX").
-  string callsign = 2 [(sebuf.http.query) = { name: "callsign" }];
+  string callsign = 2 [(sebuf.http.query) = {name: "callsign"}];
   // Optional bounding box south-west latitude.
-  double sw_lat = 3 [(sebuf.http.query) = { name: "sw_lat" }];
+  double sw_lat = 3 [(sebuf.http.query) = {name: "sw_lat"}];
   // Optional bounding box south-west longitude.
-  double sw_lon = 4 [(sebuf.http.query) = { name: "sw_lon" }];
+  double sw_lon = 4 [(sebuf.http.query) = {name: "sw_lon"}];
   // Optional bounding box north-east latitude.
-  double ne_lat = 5 [(sebuf.http.query) = { name: "ne_lat" }];
+  double ne_lat = 5 [(sebuf.http.query) = {name: "ne_lat"}];
   // Optional bounding box north-east longitude.
-  double ne_lon = 6 [(sebuf.http.query) = { name: "ne_lon" }];
+  double ne_lon = 6 [(sebuf.http.query) = {name: "ne_lon"}];
 }
 
 // TrackAircraftResponse contains aircraft position observations.

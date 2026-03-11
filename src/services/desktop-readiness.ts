@@ -31,7 +31,6 @@ const keyBackedFeatures: RuntimeFeatureId[] = [
   'alienvaultOtxThreatIntel',
   'abuseIpdbThreatIntel',
   'aisRelay',
-  'openskyRelay',
   'wingbitsEnrichment',
   'energyEia',
 ];
@@ -107,16 +106,6 @@ export const DESKTOP_PARITY_FEATURES: DesktopParityFeature[] = [
     fallback: 'Flight tracks continue with heuristic classification when Wingbits credentials are unavailable.',
     priority: 3,
   },
-  {
-    id: 'opensky-relay-cloud',
-    panel: 'Map layers (military flights relay)',
-    serviceFiles: ['src/services/military-flights.ts'],
-    apiRoutes: ['/api/military/v1/list-military-flights'],
-    apiHandlers: ['server/worldmonitor/military/v1/handler.ts'],
-    locality: 'cloud-fallback',
-    fallback: 'If relay is unreachable, service falls back to Vercel proxy path and then no-data mode.',
-    priority: 3,
-  },
 ];
 
 export function getNonParityFeatures(): DesktopParityFeature[] {
@@ -124,7 +113,7 @@ export function getNonParityFeatures(): DesktopParityFeature[] {
 }
 
 export function getDesktopReadinessChecks(localBackendEnabled: boolean): DesktopReadinessCheck[] {
-  const liveTrackingReady = isFeatureAvailable('aisRelay') || isFeatureAvailable('openskyRelay');
+  const liveTrackingReady = isFeatureAvailable('aisRelay') || isFeatureAvailable('militaryFlights');
 
   return [
     { id: 'startup', label: 'Desktop startup + sidecar API health', ready: localBackendEnabled },

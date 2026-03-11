@@ -1,5 +1,5 @@
 import { createCircuitBreaker, getCSSColor } from '@/utils';
-import { getHydratedData } from '@/services/bootstrap';
+import { fetchBootstrapKeys } from '@/services/bootstrap';
 
 export interface WeatherAlert {
   id: string;
@@ -44,20 +44,19 @@ function mapAlert(a: BootstrapAlert): WeatherAlert {
   };
 }
 
-export async function fetchWeatherAlerts(): Promise<WeatherAlert[]> {
+export async function fetchWeatherAlerts(signal?: AbortSignal): Promise<WeatherAlert[]> {
   return breaker.execute(async () => {
-    const hydrated = getHydratedData('weatherAlerts') as { alerts?: BootstrapAlert[] } | undefined;
-    if (hydrated?.alerts?.length) {
-      return hydrated.alerts.map(mapAlert);
+    try {
+      const data = await fetchBootstrapKeys(['weatherAlerts'], signal || AbortSignal.timeout(8000));
+      const alerts = data.weatherAlerts as BootstrapAlert[] | undefined;
+      if (alerts?.length) {
+        return alerts.map(mapAlert);
+      }
+      throw new Error('No weather data in bootstrap');
+    } catch (error) {
+      console.error('Failed to fetch weather alerts:', error);
+      return [];
     }
-
-    const resp = await fetch('/api/bootstrap?keys=weatherAlerts', { signal: AbortSignal.timeout(8000) });
-    if (!resp.ok) throw new Error(`Bootstrap fetch failed: ${resp.status}`);
-    const json = await resp.json() as { data?: { weatherAlerts?: { alerts?: BootstrapAlert[] } } };
-    const alerts = json.data?.weatherAlerts?.alerts;
-    if (alerts?.length) return alerts.map(mapAlert);
-
-    throw new Error('No weather data in bootstrap');
   }, []);
 }
 

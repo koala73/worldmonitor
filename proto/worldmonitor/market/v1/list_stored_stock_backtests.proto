@@ -7,9 +7,9 @@ import "sebuf/http/annotations.proto";
 import "worldmonitor/market/v1/backtest_stock.proto";
 
 message ListStoredStockBacktestsRequest {
-  repeated string symbols = 1 [(sebuf.http.query) = { name: "symbols" }];
+  repeated string symbols = 1 [(sebuf.http.query) = {name: "symbols"}];
   int32 eval_window_days = 2 [
-    (sebuf.http.query) = { name: "eval_window_days" },
+    (sebuf.http.query) = {name: "eval_window_days"},
     (buf.validate.field).int32.gte = 3,
     (buf.validate.field).int32.lte = 30
   ];

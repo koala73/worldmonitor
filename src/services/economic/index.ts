@@ -28,7 +28,7 @@ import { createCircuitBreaker } from '@/utils';
 import { getCSSColor } from '@/utils';
 import { isFeatureAvailable } from '../runtime-config';
 import { dataFreshness } from '../data-freshness';
-import { getHydratedData } from '@/services/bootstrap';
+import { fetchBootstrapKeys, getHydratedData } from '@/services/bootstrap';
 
 // ---- Client + Circuit Breakers ----
 
@@ -497,17 +497,13 @@ export async function getTechReadinessRankings(
   // Fallback: fetch the pre-computed seed key directly from bootstrap endpoint.
   // Data is seeded by seed-wb-indicators.mjs — never call WB API from frontend.
   try {
-    const resp = await fetch('/api/bootstrap?keys=techReadiness', {
-      signal: AbortSignal.timeout(5_000),
-    });
-    if (resp.ok) {
-      const { data } = (await resp.json()) as { data: { techReadiness?: TechReadinessScore[] } };
-      if (data.techReadiness?.length) {
-        const scores = countries
-          ? data.techReadiness.filter(s => countries.includes(s.country))
-          : data.techReadiness;
-        return scores;
-      }
+    const data = await fetchBootstrapKeys(['techReadiness'], AbortSignal.timeout(5_000));
+    const raw = data.techReadiness as TechReadinessScore[] | undefined;
+    if (raw?.length) {
+      const scores = countries
+        ? raw.filter(s => countries.includes(s.country))
+        : raw;
+      return scores;
     }
   } catch { /* fall through */ }
 

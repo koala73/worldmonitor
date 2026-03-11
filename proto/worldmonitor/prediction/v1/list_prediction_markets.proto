@@ -9,13 +9,13 @@ import "worldmonitor/prediction/v1/prediction_market.proto";
 // ListPredictionMarketsRequest specifies filters for retrieving prediction markets.
 message ListPredictionMarketsRequest {
   // Maximum items per page (1-100).
-  int32 page_size = 1 [(sebuf.http.query) = { name: "page_size" }];
+  int32 page_size = 1 [(sebuf.http.query) = {name: "page_size"}];
   // Cursor for next page.
-  string cursor = 2 [(sebuf.http.query) = { name: "cursor" }];
+  string cursor = 2 [(sebuf.http.query) = {name: "cursor"}];
   // Optional category filter (e.g., "Politics").
-  string category = 3 [(sebuf.http.query) = { name: "category" }];
+  string category = 3 [(sebuf.http.query) = {name: "category"}];
   // Optional search query for market titles.
-  string query = 4 [(sebuf.http.query) = { name: "query" }];
+  string query = 4 [(sebuf.http.query) = {name: "query"}];
 }
 
 // ListPredictionMarketsResponse contains prediction markets matching the request.

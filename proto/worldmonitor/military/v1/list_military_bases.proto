@@ -5,14 +5,14 @@ package worldmonitor.military.v1;
 import "sebuf/http/annotations.proto";
 
 message ListMilitaryBasesRequest {
-  double ne_lat = 1 [(sebuf.http.query) = { name: "ne_lat" }];
-  double ne_lon = 2 [(sebuf.http.query) = { name: "ne_lon" }];
-  double sw_lat = 3 [(sebuf.http.query) = { name: "sw_lat" }];
-  double sw_lon = 4 [(sebuf.http.query) = { name: "sw_lon" }];
-  int32 zoom = 5 [(sebuf.http.query) = { name: "zoom" }];
-  string type = 6 [(sebuf.http.query) = { name: "type" }];
-  string kind = 7 [(sebuf.http.query) = { name: "kind" }];
-  string country = 8 [(sebuf.http.query) = { name: "country" }];
+  double ne_lat = 1 [(sebuf.http.query) = {name: "ne_lat"}];
+  double ne_lon = 2 [(sebuf.http.query) = {name: "ne_lon"}];
+  double sw_lat = 3 [(sebuf.http.query) = {name: "sw_lat"}];
+  double sw_lon = 4 [(sebuf.http.query) = {name: "sw_lon"}];
+  int32 zoom = 5 [(sebuf.http.query) = {name: "zoom"}];
+  string type = 6 [(sebuf.http.query) = {name: "type"}];
+  string kind = 7 [(sebuf.http.query) = {name: "kind"}];
+  string country = 8 [(sebuf.http.query) = {name: "country"}];
 }
 
 message MilitaryBaseEntry {

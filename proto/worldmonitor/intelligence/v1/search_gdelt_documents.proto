@@ -11,21 +11,21 @@ message SearchGdeltDocumentsRequest {
   string query = 1 [
     (buf.validate.field).required = true,
     (buf.validate.field).string.min_len = 1,
-    (sebuf.http.query) = { name: "query" }
+    (sebuf.http.query) = {name: "query"}
   ];
   // Maximum number of articles to return (1-250).
   int32 max_records = 2 [
     (buf.validate.field).int32.gte = 1,
     (buf.validate.field).int32.lte = 250,
-    (sebuf.http.query) = { name: "max_records" }
+    (sebuf.http.query) = {name: "max_records"}
   ];
   // Time span filter (e.g., "15min", "1h", "24h").
-  string timespan = 3 [(sebuf.http.query) = { name: "timespan" }];
+  string timespan = 3 [(sebuf.http.query) = {name: "timespan"}];
   // Tone filter appended to query (e.g., "tone>5" for positive, "tone<-5" for negative).
   // Left empty to skip tone filtering.
-  string tone_filter = 4 [(sebuf.http.query) = { name: "tone_filter" }];
+  string tone_filter = 4 [(sebuf.http.query) = {name: "tone_filter"}];
   // Sort mode: "DateDesc" (default), "ToneDesc", "ToneAsc", "HybridRel".
-  string sort = 5 [(sebuf.http.query) = { name: "sort" }];
+  string sort = 5 [(sebuf.http.query) = {name: "sort"}];
 }
 
 // GdeltArticle represents a single article from the GDELT document API.

@@ -8,9 +8,9 @@ import "worldmonitor/trade/v1/trade_data.proto";
 // Request for quantitative restriction data.
 message GetTradeRestrictionsRequest {
   // WTO member codes to filter by. Empty = all.
-  repeated string countries = 1 [(sebuf.http.query) = { name: "countries" }];
+  repeated string countries = 1 [(sebuf.http.query) = {name: "countries"}];
   // Max results to return (server caps at 100).
-  int32 limit = 2 [(sebuf.http.query) = { name: "limit" }];
+  int32 limit = 2 [(sebuf.http.query) = {name: "limit"}];
 }
 
 // Response containing trade restrictions and fetch metadata.

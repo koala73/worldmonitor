@@ -10,13 +10,13 @@ import "worldmonitor/aviation/v1/carrier.proto";
 message GetCarrierOpsRequest {
   // IATA airport codes to aggregate carrier metrics from.
   repeated string airports = 1 [
-    (sebuf.http.query) = { name: "airports" },
+    (sebuf.http.query) = {name: "airports"},
     (buf.validate.field).repeated.min_items = 1,
     (buf.validate.field).repeated.max_items = 20
   ];
   // Minimum number of flights required to include a carrier (default: 1).
   int32 min_flights = 2 [
-    (sebuf.http.query) = { name: "min_flights" },
+    (sebuf.http.query) = {name: "min_flights"},
     (buf.validate.field).int32.gte = 0
   ];
 }

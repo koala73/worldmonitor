@@ -8,7 +8,7 @@ import "worldmonitor/market/v1/market_quote.proto";
 // ListMarketQuotesRequest specifies which stock/index symbols to retrieve.
 message ListMarketQuotesRequest {
   // Ticker symbols to retrieve (e.g., ["AAPL", "^GSPC"]). Empty returns defaults.
-  repeated string symbols = 1 [(sebuf.http.query) = { name: "symbols" }];
+  repeated string symbols = 1 [(sebuf.http.query) = {name: "symbols"}];
 }
 
 // ListMarketQuotesResponse contains stock and index quotes.

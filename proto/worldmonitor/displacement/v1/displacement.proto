@@ -21,15 +21,30 @@ message DisplacementSummary {
 // GlobalDisplacementTotals represents worldwide displacement figures.
 message GlobalDisplacementTotals {
   // Total recognized refugees worldwide.
-  int64 refugees = 1 [(buf.validate.field).int64.gte = 0, (sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  int64 refugees = 1 [
+    (buf.validate.field).int64.gte = 0,
+    (sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER
+  ];
   // Total asylum seekers worldwide.
-  int64 asylum_seekers = 2 [(buf.validate.field).int64.gte = 0, (sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  int64 asylum_seekers = 2 [
+    (buf.validate.field).int64.gte = 0,
+    (sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER
+  ];
   // Total internally displaced persons worldwide.
-  int64 idps = 3 [(buf.validate.field).int64.gte = 0, (sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  int64 idps = 3 [
+    (buf.validate.field).int64.gte = 0,
+    (sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER
+  ];
   // Total stateless persons worldwide.
-  int64 stateless = 4 [(buf.validate.field).int64.gte = 0, (sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  int64 stateless = 4 [
+    (buf.validate.field).int64.gte = 0,
+    (sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER
+  ];
   // Grand total of displaced persons.
-  int64 total = 5 [(buf.validate.field).int64.gte = 0, (sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  int64 total = 5 [
+    (buf.validate.field).int64.gte = 0,
+    (sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER
+  ];
 }
 
 // CountryDisplacement represents displacement metrics for a single country.

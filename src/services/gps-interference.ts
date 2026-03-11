@@ -1,4 +1,5 @@
 import { getApiBaseUrl } from '@/services/runtime';
+import { IntelligenceServiceClient } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 
 export interface GpsJamHex {
   h3: string;
@@ -25,38 +26,40 @@ let cachedData: GpsJamData | null = null;
 let cachedAt = 0;
 const CACHE_TTL = 5 * 60 * 1000;
 
+const client = new IntelligenceServiceClient(getApiBaseUrl());
+
 export async function fetchGpsInterference(): Promise<GpsJamData | null> {
   const now = Date.now();
   if (cachedData && now - cachedAt < CACHE_TTL) return cachedData;
 
   try {
-    const base = getApiBaseUrl();
-    const resp = await fetch(`${base}/api/gpsjam`, {
-      signal: AbortSignal.timeout(20_000),
-    });
-    if (!resp.ok) return cachedData;
+    const resp = await client.listGpsInterference({ region: '' });
 
-    const raw = await resp.json() as GpsJamData;
 
-    const hexes: GpsJamHex[] = (raw.hexes ?? []).map(h => ({
+    const hexes: GpsJamHex[] = (resp.hexes ?? []).map(h => ({
       h3: h.h3,
       lat: h.lat,
       lon: h.lon,
-      level: h.level as 'medium' | 'high',
+      level: h.level === 'INTERFERENCE_LEVEL_HIGH' ? 'high' : 'medium',
       npAvg: Number.isFinite(h.npAvg) ? h.npAvg : 0,
       sampleCount: Number.isFinite(h.sampleCount) ? h.sampleCount : 0,
       aircraftCount: Number.isFinite(h.aircraftCount) ? h.aircraftCount : 0,
     }));
 
     cachedData = {
-      fetchedAt: raw.fetchedAt,
-      source: raw.source,
-      stats: raw.stats,
+      fetchedAt: resp.fetchedAt ? new Date(resp.fetchedAt).toISOString() : new Date().toISOString(),
+      source: resp.source || 'gpsjam.org',
+      stats: {
+        totalHexes: resp.stats?.totalHexes || 0,
+        highCount: resp.stats?.highCount || 0,
+        mediumCount: resp.stats?.mediumCount || 0,
+      },
       hexes,
     };
     cachedAt = now;
     return cachedData;
-  } catch {
+  } catch (err) {
+    console.error('[GPS Jam] RPC error:', err);
     return cachedData;
   }
 }

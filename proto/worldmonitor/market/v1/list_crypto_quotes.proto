@@ -8,7 +8,7 @@ import "worldmonitor/market/v1/market_quote.proto";
 // ListCryptoQuotesRequest specifies which cryptocurrencies to retrieve.
 message ListCryptoQuotesRequest {
   // Cryptocurrency IDs to retrieve (CoinGecko IDs). Empty returns defaults.
-  repeated string ids = 1 [(sebuf.http.query) = { name: "ids" }];
+  repeated string ids = 1 [(sebuf.http.query) = {name: "ids"}];
 }
 
 // ListCryptoQuotesResponse contains cryptocurrency quotes.

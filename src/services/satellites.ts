@@ -12,6 +12,7 @@
 //   (useful for identifying imaging windows after events)
 
 import { getApiBaseUrl } from '@/services/runtime';
+import { IntelligenceServiceClient } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import { twoline2satrec, propagate, eciToGeodetic, gstime, degreesLong, degreesLat } from 'satellite.js';
 import type { SatRec } from 'satellite.js';
 
@@ -51,25 +52,30 @@ let cooldownUntil = 0;
 const MAX_FAILURES = 3;
 const COOLDOWN_MS = 10 * 60 * 1000;
 
+const client = new IntelligenceServiceClient(getApiBaseUrl());
+
 export async function fetchSatelliteTLEs(): Promise<SatelliteTLE[] | null> {
   const now = Date.now();
   if (now < cooldownUntil) return cachedData;
   if (cachedData && now - cachedAt < CACHE_TTL) return cachedData;
 
   try {
-    const base = getApiBaseUrl();
-    const resp = await fetch(`${base}/api/satellites`, {
-      signal: AbortSignal.timeout(20_000),
-    });
-    if (!resp.ok) return cachedData;
+    const resp = await client.listSatellites({ country: '' });
+    const tles: SatelliteTLE[] = (resp.satellites ?? []).map(s => ({
+      noradId: s.id,
+      name: s.name,
+      line1: s.line1,
+      line2: s.line2,
+      type: s.type,
+      country: s.country,
+    }));
 
-    const raw = await resp.json();
-    const satellites = (raw.satellites ?? []) as SatelliteTLE[];
-    cachedData = satellites;
+    cachedData = tles;
     cachedAt = now;
     failures = 0;
     return cachedData;
-  } catch {
+  } catch (err) {
+    console.error('[Satellites] RPC error:', err);
     failures++;
     if (failures >= MAX_FAILURES) {
       cooldownUntil = now + COOLDOWN_MS;

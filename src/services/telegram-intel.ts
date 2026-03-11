@@ -1,5 +1,4 @@
-import { proxyUrl } from '@/utils';
-import { isDesktopRuntime } from '@/services/runtime';
+import { IntelligenceServiceClient } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 
 export interface TelegramItem {
   id: string;
@@ -12,6 +11,7 @@ export interface TelegramItem {
   topic: string;
   tags: string[];
   earlySignal: boolean;
+  mediaUrls: string[];
 }
 
 export interface TelegramFeedResponse {
@@ -37,18 +37,35 @@ let cachedResponse: TelegramFeedResponse | null = null;
 let cachedAt = 0;
 const CACHE_TTL = 30_000;
 
-function telegramFeedUrl(limit: number): string {
-  const path = `/api/telegram-feed?limit=${limit}`;
-  return isDesktopRuntime() ? proxyUrl(path) : path;
-}
+const client = new IntelligenceServiceClient('', { fetch: (input, init) => globalThis.fetch(input, init) });
 
 export async function fetchTelegramFeed(limit = 50): Promise<TelegramFeedResponse> {
   if (cachedResponse && Date.now() - cachedAt < CACHE_TTL) return cachedResponse;
 
-  const res = await fetch(telegramFeedUrl(limit));
-  if (!res.ok) throw new Error(`Telegram feed ${res.status}`);
+  const response = await client.listTelegramFeed({ limit, channel: '', topic: '' });
+  const items: TelegramItem[] = response.messages.map((m: any) => ({
+    id: m.id,
+    source: 'telegram',
+    channel: m.channelId,
+    channelTitle: m.channelName,
+    url: m.sourceUrl,
+    ts: new Date(Number(m.timestamp)).toISOString(),
+    text: m.text,
+    topic: m.topic,
+    tags: [],
+    earlySignal: true,
+    mediaUrls: m.mediaUrls || [],
+  }));
 
-  const json: TelegramFeedResponse = await res.json();
+  const json: TelegramFeedResponse = {
+    source: 'Telegram OSINT Relay',
+    earlySignal: true,
+    enabled: response.enabled,
+    count: response.count,
+    updatedAt: new Date().toISOString(),
+    items,
+  };
+
   cachedResponse = json;
   cachedAt = Date.now();
   return json;

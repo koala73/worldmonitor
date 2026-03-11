@@ -13,18 +13,19 @@ message StockAnalysisHeadline {
 }
 
 message AnalyzeStockRequest {
-  string symbol = 1 [(sebuf.http.query) = { name: "symbol" },
+  string symbol = 1 [
+    (sebuf.http.query) = {name: "symbol"},
     (buf.validate.field).required = true,
     (buf.validate.field).string.min_len = 1,
     (buf.validate.field).string.max_len = 32
   ];
 
   string name = 2 [
-    (sebuf.http.query) = { name: "name" },
+    (sebuf.http.query) = {name: "name"},
     (buf.validate.field).string.max_len = 120
   ];
 
-  bool include_news = 3 [(sebuf.http.query) = { name: "include_news" }];
+  bool include_news = 3 [(sebuf.http.query) = {name: "include_news"}];
 }
 
 message AnalyzeStockResponse {

@@ -20,19 +20,20 @@ message BacktestStockEvaluation {
 }
 
 message BacktestStockRequest {
-  string symbol = 1 [(sebuf.http.query) = { name: "symbol" },
+  string symbol = 1 [
+    (sebuf.http.query) = {name: "symbol"},
     (buf.validate.field).required = true,
     (buf.validate.field).string.min_len = 1,
     (buf.validate.field).string.max_len = 32
   ];
 
   string name = 2 [
-    (sebuf.http.query) = { name: "name" },
+    (sebuf.http.query) = {name: "name"},
     (buf.validate.field).string.max_len = 120
   ];
 
   int32 eval_window_days = 3 [
-    (sebuf.http.query) = { name: "eval_window_days" },
+    (sebuf.http.query) = {name: "eval_window_days"},
     (buf.validate.field).int32.gte = 3,
     (buf.validate.field).int32.lte = 30
   ];

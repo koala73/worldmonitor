@@ -3,9 +3,9 @@ syntax = "proto3";
 package worldmonitor.news.v1;
 
 import "sebuf/http/annotations.proto";
-import "worldmonitor/news/v1/summarize_article.proto";
 import "worldmonitor/news/v1/get_summarize_article_cache.proto";
 import "worldmonitor/news/v1/list_feed_digest.proto";
+import "worldmonitor/news/v1/summarize_article.proto";
 
 // NewsService provides AI-powered article summarization and feed aggregation.
 service NewsService {
@@ -18,11 +18,17 @@ service NewsService {
 
   // GetSummarizeArticleCache looks up a cached summary by deterministic key (CDN-cacheable GET).
   rpc GetSummarizeArticleCache(GetSummarizeArticleCacheRequest) returns (SummarizeArticleResponse) {
-    option (sebuf.http.config) = {path: "/summarize-article-cache", method: HTTP_METHOD_GET};
+    option (sebuf.http.config) = {
+      path: "/summarize-article-cache"
+      method: HTTP_METHOD_GET
+    };
   }
 
   // ListFeedDigest returns a pre-aggregated digest of all RSS feeds for a site variant.
   rpc ListFeedDigest(ListFeedDigestRequest) returns (ListFeedDigestResponse) {
-    option (sebuf.http.config) = {path: "/list-feed-digest", method: HTTP_METHOD_GET};
+    option (sebuf.http.config) = {
+      path: "/list-feed-digest"
+      method: HTTP_METHOD_GET
+    };
   }
 }

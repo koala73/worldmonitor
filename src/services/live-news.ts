@@ -1,4 +1,6 @@
-import { isDesktopRuntime, getRemoteApiBaseUrl } from '@/services/runtime';
+import { AviationServiceClient } from '@/generated/client/worldmonitor/aviation/v1/service_client';
+
+const client = new AviationServiceClient('', { fetch: (input, init) => globalThis.fetch(input, init) });
 
 interface LiveVideoInfo {
   videoId: string | null;
@@ -15,12 +17,9 @@ export async function fetchLiveVideoInfo(channelHandle: string): Promise<LiveVid
   }
 
   try {
-    const baseUrl = isDesktopRuntime() ? getRemoteApiBaseUrl() : '';
-    const res = await fetch(`${baseUrl}/api/youtube/live?channel=${encodeURIComponent(channelHandle)}`);
-    if (!res.ok) throw new Error('API error');
-    const data = await res.json();
-    const videoId = data.videoId || null;
-    const hlsUrl = data.hlsUrl || null;
+    const response = await client.getYoutubeLiveStreamInfo({ channel: channelHandle, videoId: '' });
+    const videoId = response.videoId || null;
+    const hlsUrl = response.hlsUrl || null;
     liveVideoCache.set(channelHandle, { videoId, hlsUrl, timestamp: Date.now() });
     return { videoId, hlsUrl };
   } catch (error) {

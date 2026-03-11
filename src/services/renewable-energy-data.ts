@@ -11,7 +11,7 @@
 
 import { fetchEnergyCapacityRpc } from '@/services/economic';
 import { createCircuitBreaker } from '@/utils';
-import { getHydratedData } from '@/services/bootstrap';
+import { fetchBootstrapKeys, getHydratedData } from '@/services/bootstrap';
 
 // ---- Types ----
 
@@ -76,13 +76,9 @@ async function fetchRenewableEnergyDataFresh(): Promise<RenewableEnergyData> {
 
   // 2. Fallback: fetch from bootstrap endpoint directly
   try {
-    const resp = await fetch('/api/bootstrap?keys=renewableEnergy', {
-      signal: AbortSignal.timeout(5_000),
-    });
-    if (resp.ok) {
-      const { data } = (await resp.json()) as { data: { renewableEnergy?: RenewableEnergyData } };
-      if (data.renewableEnergy?.historicalData?.length) return data.renewableEnergy;
-    }
+    const data = await fetchBootstrapKeys(['renewableEnergy'], AbortSignal.timeout(5_000));
+    const raw = data.renewableEnergy as RenewableEnergyData | undefined;
+    if (raw?.historicalData?.length) return raw;
   } catch { /* fall through */ }
 
   // 3. Static fallback

@@ -11,12 +11,12 @@ message GetTemporalBaselineRequest {
   string type = 1 [
     (buf.validate.field).required = true,
     (buf.validate.field).string.min_len = 1,
-    (sebuf.http.query) = { name: "type" }
+    (sebuf.http.query) = {name: "type"}
   ];
   // Geographic region key, defaults to "global".
-  string region = 2 [(sebuf.http.query) = { name: "region" }];
+  string region = 2 [(sebuf.http.query) = {name: "region"}];
   // Current observed count to compare against baseline.
-  double count = 3 [(sebuf.http.query) = { name: "count" }];
+  double count = 3 [(sebuf.http.query) = {name: "count"}];
 }
 
 // BaselineAnomaly describes a detected deviation from historical baseline.

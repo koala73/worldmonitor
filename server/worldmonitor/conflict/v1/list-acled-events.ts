@@ -21,7 +21,7 @@ const REDIS_CACHE_TTL = 900; // 15 min — ACLED rate-limited
 
 const fallbackAcledCache = new Map<string, { data: ListAcledEventsResponse; ts: number }>();
 
-async function fetchAcledConflicts(req: ListAcledEventsRequest): Promise<AcledConflictEvent[]> {
+async function fetchAcledConflicts(req: ListAcledEventsRequest, token?: string): Promise<AcledConflictEvent[]> {
   try {
     const now = Date.now();
     const startMs = req.start ?? (now - 30 * 24 * 60 * 60 * 1000);
@@ -34,6 +34,8 @@ async function fetchAcledConflicts(req: ListAcledEventsRequest): Promise<AcledCo
       startDate,
       endDate,
       country: req.country || undefined,
+      limit: req.pageSize || 500,
+      token,
     });
 
     return rawEvents
@@ -62,24 +64,29 @@ async function fetchAcledConflicts(req: ListAcledEventsRequest): Promise<AcledCo
 }
 
 export async function listAcledEvents(
-  _ctx: ServerContext,
+  ctx: ServerContext,
   req: ListAcledEventsRequest,
 ): Promise<ListAcledEventsResponse> {
-  const cacheKey = `${REDIS_CACHE_KEY}:${req.country || 'all'}:${req.start || 0}:${req.end || 0}`;
+  const acledToken = ctx.headers['x-acled-token'] || ctx.headers['X-ACLED-Token'];
+  const cacheKey = `${REDIS_CACHE_KEY}:${req.country || 'all'}:${req.start || 0}:${req.end || 0}${acledToken ? `:t-${acledToken.slice(-4)}` : ''}`;
+
   try {
     const result = await cachedFetchJson<ListAcledEventsResponse>(
       cacheKey,
       REDIS_CACHE_TTL,
       async () => {
-        const events = await fetchAcledConflicts(req);
+        const events = await fetchAcledConflicts(req, acledToken);
         return events.length > 0 ? { events, pagination: undefined } : null;
       },
     );
+
     if (result) {
       if (fallbackAcledCache.size > 50) fallbackAcledCache.clear();
       fallbackAcledCache.set(cacheKey, { data: result, ts: Date.now() });
+      return result;
     }
-    return result || fallbackAcledCache.get(cacheKey)?.data || { events: [], pagination: undefined };
+
+    return fallbackAcledCache.get(cacheKey)?.data || { events: [], pagination: undefined };
   } catch {
     return fallbackAcledCache.get(cacheKey)?.data || { events: [], pagination: undefined };
   }

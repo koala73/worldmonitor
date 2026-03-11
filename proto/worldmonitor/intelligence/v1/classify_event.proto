@@ -12,14 +12,14 @@ message ClassifyEventRequest {
   string title = 1 [
     (buf.validate.field).required = true,
     (buf.validate.field).string.min_len = 1,
-    (sebuf.http.query) = { name: "title" }
+    (sebuf.http.query) = {name: "title"}
   ];
   // Event description or body text.
-  string description = 2 [(sebuf.http.query) = { name: "description" }];
+  string description = 2 [(sebuf.http.query) = {name: "description"}];
   // Event source (e.g., "reuters", "acled").
-  string source = 3 [(sebuf.http.query) = { name: "source" }];
+  string source = 3 [(sebuf.http.query) = {name: "source"}];
   // Country context (ISO 3166-1 alpha-2).
-  string country = 4 [(sebuf.http.query) = { name: "country" }];
+  string country = 4 [(sebuf.http.query) = {name: "country"}];
 }
 
 // ClassifyEventResponse contains the AI-generated event classification.

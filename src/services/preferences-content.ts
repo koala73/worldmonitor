@@ -7,7 +7,9 @@ import type { StreamQuality } from '@/services/ai-flow-settings';
 import { getThemePreference, setThemePreference, type ThemePreference } from '@/utils/theme-manager';
 import { escapeHtml } from '@/utils/sanitize';
 import { trackLanguageChange } from '@/services/analytics';
-import { exportSettings, importSettings, type ImportResult } from '@/utils/settings-persistence';
+ import { exportSettings, importSettings, type ImportResult } from '@/utils/settings-persistence';
+ import { getFontFamily, setFontFamily, type FontFamily } from '@/services/font-settings';
+
 
 const DESKTOP_RELEASES_URL = 'https://github.com/koala73/worldmonitor/releases';
 
@@ -152,10 +154,32 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
   }
   html += `</select>`;
   if (currentLang === 'vi') {
-    html += `<div class="ai-flow-toggle-desc">${t('components.languageSelector.mapLabelsFallbackVi')}</div>`;
-  }
+   html += `<div class="ai-flow-toggle-desc">${t('components.languageSelector.mapLabelsFallbackVi')}</div>`;
+   }
+ 
+   // Typography
+   const currentFont = getFontFamily();
+   html += `<div class="ai-flow-section-label">${t('preferences.typography')}</div>`;
+   html += `<div class="ai-flow-toggle-row">
+     <div class="ai-flow-toggle-label-wrap">
+       <div class="ai-flow-toggle-label">${t('preferences.fontFamily')}</div>
+       <div class="ai-flow-toggle-desc">${t('preferences.fontFamilyDesc')}</div>
+     </div>
+   </div>`;
+   html += `<select class="unified-settings-select" id="us-font-family">`;
+   for (const opt of [
+     { value: 'system', label: t('preferences.fontSystem') },
+     { value: 'inter', label: t('preferences.fontInter') },
+     { value: 'roboto-mono', label: t('preferences.fontRobotoMono') },
+     { value: 'geist', label: t('preferences.fontGeist') },
+   ] as { value: FontFamily; label: string }[]) {
+     const selected = opt.value === currentFont ? ' selected' : '';
+     html += `<option value="${opt.value}"${selected}>${escapeHtml(opt.label)}</option>`;
+   }
+   html += `</select>`;
+ 
+   html += `</div></details>`;
 
-  html += `</div></details>`;
 
   // ── Intelligence group ──
   html += `<details class="wm-pref-group">`;
@@ -278,13 +302,18 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           window.dispatchEvent(new CustomEvent('map-theme-changed'));
           return;
         }
-        if (target.id === 'us-map-theme') {
-          const provider = getMapProvider();
-          setMapTheme(provider, target.value);
-          window.dispatchEvent(new CustomEvent('map-theme-changed'));
-          return;
-        }
-        if (target.id === 'us-live-streams-always-on') {
+         if (target.id === 'us-map-theme') {
+           const provider = getMapProvider();
+           setMapTheme(provider, target.value);
+           window.dispatchEvent(new CustomEvent('map-theme-changed'));
+           return;
+         }
+         if (target.id === 'us-font-family') {
+           setFontFamily(target.value as FontFamily);
+           return;
+         }
+         if (target.id === 'us-live-streams-always-on') {
+
           setLiveStreamsAlwaysOn(target.checked);
           return;
         }

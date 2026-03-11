@@ -1,4 +1,4 @@
-import { getHydratedData } from '@/services/bootstrap';
+import { fetchBootstrapKeys, getHydratedData } from '@/services/bootstrap';
 
 export interface GovernmentAward {
   id: string;
@@ -43,12 +43,9 @@ export async function fetchRecentAwards(): Promise<SpendingSummary> {
   if (hydrated?.awards?.length) return toSummary(hydrated);
 
   try {
-    const resp = await fetch('/api/bootstrap?keys=spending', { signal: AbortSignal.timeout(8000) });
-    if (resp.ok) {
-      const json = await resp.json() as { data?: { spending?: RawSpending } };
-      const raw = json.data?.spending;
-      if (raw?.awards?.length) return toSummary(raw);
-    }
+    const data = await fetchBootstrapKeys(['spending'], AbortSignal.timeout(8000));
+    const raw = data.spending as RawSpending | undefined;
+    if (raw?.awards?.length) return toSummary(raw);
   } catch { /* fall through to empty */ }
 
   return EMPTY_SUMMARY;

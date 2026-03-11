@@ -8,7 +8,7 @@ import "worldmonitor/intelligence/v1/intelligence.proto";
 // GetRiskScoresRequest specifies parameters for retrieving risk scores.
 message GetRiskScoresRequest {
   // Optional region filter. Empty returns all tracked regions.
-  string region = 1 [(sebuf.http.query) = { name: "region" }];
+  string region = 1 [(sebuf.http.query) = {name: "region"}];
 }
 
 // GetRiskScoresResponse contains composite risk scores and strategic assessments.

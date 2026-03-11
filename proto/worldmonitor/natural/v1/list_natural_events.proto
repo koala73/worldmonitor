@@ -21,7 +21,7 @@ message NaturalEvent {
 }
 
 message ListNaturalEventsRequest {
-  int32 days = 1 [(sebuf.http.query) = { name: "days" }];
+  int32 days = 1 [(sebuf.http.query) = {name: "days"}];
 }
 
 message ListNaturalEventsResponse {

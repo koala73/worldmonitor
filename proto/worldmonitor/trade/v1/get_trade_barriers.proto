@@ -8,11 +8,11 @@ import "worldmonitor/trade/v1/trade_data.proto";
 // Request for SPS/TBT trade barrier notifications.
 message GetTradeBarriersRequest {
   // WTO member codes to filter by. Empty = all.
-  repeated string countries = 1 [(sebuf.http.query) = { name: "countries" }];
+  repeated string countries = 1 [(sebuf.http.query) = {name: "countries"}];
   // Filter by measure type: "SPS", "TBT", or empty for both.
-  string measure_type = 2 [(sebuf.http.query) = { name: "measure_type" }];
+  string measure_type = 2 [(sebuf.http.query) = {name: "measure_type"}];
   // Max results to return (server caps at 100).
-  int32 limit = 3 [(sebuf.http.query) = { name: "limit" }];
+  int32 limit = 3 [(sebuf.http.query) = {name: "limit"}];
 }
 
 // Response containing trade barrier notifications.

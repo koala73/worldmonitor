@@ -13,16 +13,16 @@ message ListWorldBankIndicatorsRequest {
   string indicator_code = 1 [
     (buf.validate.field).required = true,
     (buf.validate.field).string.min_len = 1,
-    (sebuf.http.query) = { name: "indicator_code" }
+    (sebuf.http.query) = {name: "indicator_code"}
   ];
   // Optional country filter (ISO 3166-1 alpha-2).
-  string country_code = 2 [(sebuf.http.query) = { name: "country_code" }];
+  string country_code = 2 [(sebuf.http.query) = {name: "country_code"}];
   // Optional year filter. Defaults to latest available.
-  int32 year = 3 [(sebuf.http.query) = { name: "year" }];
+  int32 year = 3 [(sebuf.http.query) = {name: "year"}];
   // Maximum items per page.
-  int32 page_size = 4 [(sebuf.http.query) = { name: "page_size" }];
+  int32 page_size = 4 [(sebuf.http.query) = {name: "page_size"}];
   // Cursor for next page.
-  string cursor = 5 [(sebuf.http.query) = { name: "cursor" }];
+  string cursor = 5 [(sebuf.http.query) = {name: "cursor"}];
 }
 
 // ListWorldBankIndicatorsResponse contains World Bank indicator data.

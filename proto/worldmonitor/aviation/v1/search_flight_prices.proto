@@ -10,47 +10,47 @@ import "worldmonitor/aviation/v1/price_quote.proto";
 message SearchFlightPricesRequest {
   // Origin airport IATA code.
   string origin = 1 [
-    (sebuf.http.query) = { name: "origin" },
+    (sebuf.http.query) = {name: "origin"},
     (buf.validate.field).required = true,
     (buf.validate.field).string.min_len = 3,
     (buf.validate.field).string.max_len = 4
   ];
   // Destination airport IATA code.
   string destination = 2 [
-    (sebuf.http.query) = { name: "destination" },
+    (sebuf.http.query) = {name: "destination"},
     (buf.validate.field).required = true,
     (buf.validate.field).string.min_len = 3,
     (buf.validate.field).string.max_len = 4
   ];
   // Outbound departure date (ISO 8601).
   string departure_date = 3 [
-    (sebuf.http.query) = { name: "departure_date" },
+    (sebuf.http.query) = {name: "departure_date"},
     (buf.validate.field).required = true,
     (buf.validate.field).string.min_len = 10,
     (buf.validate.field).string.max_len = 10
   ];
   // Return date (ISO 8601), empty for one-way.
-  string return_date = 4 [(sebuf.http.query) = { name: "return_date" }];
+  string return_date = 4 [(sebuf.http.query) = {name: "return_date"}];
   // Number of adult passengers (1-9).
   int32 adults = 5 [
-    (sebuf.http.query) = { name: "adults" },
+    (sebuf.http.query) = {name: "adults"},
     (buf.validate.field).int32.gte = 1,
     (buf.validate.field).int32.lte = 9
   ];
   // Desired cabin class.
-  CabinClass cabin = 6 [(sebuf.http.query) = { name: "cabin" }];
+  CabinClass cabin = 6 [(sebuf.http.query) = {name: "cabin"}];
   // Whether to restrict to nonstop flights only.
-  bool nonstop_only = 7 [(sebuf.http.query) = { name: "nonstop_only" }];
+  bool nonstop_only = 7 [(sebuf.http.query) = {name: "nonstop_only"}];
   // Maximum number of quotes to return (1-50).
   int32 max_results = 8 [
-    (sebuf.http.query) = { name: "max_results" },
+    (sebuf.http.query) = {name: "max_results"},
     (buf.validate.field).int32.gte = 1,
     (buf.validate.field).int32.lte = 50
   ];
   // ISO 4217 currency code for prices (e.g., "usd", "eur", "try").
-  string currency = 9 [(sebuf.http.query) = { name: "currency" }];
+  string currency = 9 [(sebuf.http.query) = {name: "currency"}];
   // Market/locale code (e.g., "us", "tr").
-  string market = 10 [(sebuf.http.query) = { name: "market" }];
+  string market = 10 [(sebuf.http.query) = {name: "market"}];
 }
 
 // SearchFlightPricesResponse contains flight price offers.

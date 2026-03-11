@@ -3,10 +3,10 @@ syntax = "proto3";
 package worldmonitor.trade.v1;
 
 import "sebuf/http/annotations.proto";
-import "worldmonitor/trade/v1/get_trade_restrictions.proto";
 import "worldmonitor/trade/v1/get_tariff_trends.proto";
-import "worldmonitor/trade/v1/get_trade_flows.proto";
 import "worldmonitor/trade/v1/get_trade_barriers.proto";
+import "worldmonitor/trade/v1/get_trade_flows.proto";
+import "worldmonitor/trade/v1/get_trade_restrictions.proto";
 
 // Trade policy intelligence from WTO data sources.
 service TradeService {
@@ -14,21 +14,33 @@ service TradeService {
 
   // Get quantitative restrictions and export controls.
   rpc GetTradeRestrictions(GetTradeRestrictionsRequest) returns (GetTradeRestrictionsResponse) {
-    option (sebuf.http.config) = {path: "/get-trade-restrictions", method: HTTP_METHOD_GET};
+    option (sebuf.http.config) = {
+      path: "/get-trade-restrictions"
+      method: HTTP_METHOD_GET
+    };
   }
 
   // Get tariff rate timeseries for a country pair.
   rpc GetTariffTrends(GetTariffTrendsRequest) returns (GetTariffTrendsResponse) {
-    option (sebuf.http.config) = {path: "/get-tariff-trends", method: HTTP_METHOD_GET};
+    option (sebuf.http.config) = {
+      path: "/get-tariff-trends"
+      method: HTTP_METHOD_GET
+    };
   }
 
   // Get bilateral merchandise trade flows.
   rpc GetTradeFlows(GetTradeFlowsRequest) returns (GetTradeFlowsResponse) {
-    option (sebuf.http.config) = {path: "/get-trade-flows", method: HTTP_METHOD_GET};
+    option (sebuf.http.config) = {
+      path: "/get-trade-flows"
+      method: HTTP_METHOD_GET
+    };
   }
 
   // Get SPS/TBT barrier notifications.
   rpc GetTradeBarriers(GetTradeBarriersRequest) returns (GetTradeBarriersResponse) {
-    option (sebuf.http.config) = {path: "/get-trade-barriers", method: HTTP_METHOD_GET};
+    option (sebuf.http.config) = {
+      path: "/get-trade-barriers"
+      method: HTTP_METHOD_GET
+    };
   }
 }

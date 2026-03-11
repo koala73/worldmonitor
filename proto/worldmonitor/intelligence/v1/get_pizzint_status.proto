@@ -8,7 +8,7 @@ import "worldmonitor/intelligence/v1/intelligence.proto";
 // GetPizzintStatusRequest specifies parameters for retrieving PizzINT and GDELT data.
 message GetPizzintStatusRequest {
   // Whether to include GDELT tension pairs in the response.
-  bool include_gdelt = 1 [(sebuf.http.query) = { name: "include_gdelt" }];
+  bool include_gdelt = 1 [(sebuf.http.query) = {name: "include_gdelt"}];
 }
 
 // GetPizzintStatusResponse contains Pentagon Pizza Index and GDELT tension data.

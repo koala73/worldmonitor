@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package worldmonitor.intelligence.v1;
+
+import "sebuf/http/annotations.proto";
+
+// ListOrefAlertsRequest defines the parameters for fetching OREF alerts or history.
+message ListOrefAlertsRequest {
+  // Mode of operation.
+  enum Mode {
+    // Current active alerts.
+    MODE_ALERTS = 0;
+    // History of alerts (recent waves).
+    MODE_HISTORY = 1;
+  }
+  Mode mode = 1 [(sebuf.http.query) = {name: "mode"}];
+}
+
+// ListOrefAlertsResponse contains the alerts or history data.
+message ListOrefAlertsResponse {
+  // Whether the OREF bridge is configured.
+  bool configured = 1;
+  // List of active alerts (if mode is ALERTS).
+  repeated OrefAlert alerts = 2;
+  // List of alert waves (if mode is HISTORY).
+  repeated OrefHistoryWave history = 3;
+  // Number of alerts in the last 24 hours.
+  int32 history_count_24h = 4;
+  // Total alerts in history.
+  int32 total_history_count = 5;
+  // Server-side timestamp.
+  string timestamp = 6;
+  // Optional error message.
+  string error = 7;
+}
+
+// OrefAlert represents a single red alert.
+message OrefAlert {
+  string id = 1;
+  string cat = 2;
+  string title = 3;
+  repeated string data = 4;
+  string desc = 5;
+  string alert_date = 6;
+}
+
+// OrefHistoryWave represents a set of alerts emitted at a specific time.
+message OrefHistoryWave {
+  repeated OrefAlert alerts = 1;
+  string timestamp = 2;
+}

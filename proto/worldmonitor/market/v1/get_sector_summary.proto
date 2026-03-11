@@ -8,7 +8,7 @@ import "worldmonitor/market/v1/market_quote.proto";
 // GetSectorSummaryRequest specifies parameters for retrieving sector performance.
 message GetSectorSummaryRequest {
   // Time period for performance calculation (e.g., "1d", "1w", "1m"). Defaults to "1d".
-  string period = 1 [(sebuf.http.query) = { name: "period" }];
+  string period = 1 [(sebuf.http.query) = {name: "period"}];
 }
 
 // GetSectorSummaryResponse contains sector performance data.

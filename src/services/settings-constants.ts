@@ -15,8 +15,6 @@ export const SIGNUP_URLS: Partial<Record<RuntimeSecretKey, string>> = {
   ABUSEIPDB_API_KEY: 'https://www.abuseipdb.com/login',
   WINGBITS_API_KEY: 'https://wingbits.com/register',
   AISSTREAM_API_KEY: 'https://aisstream.io/authenticate',
-  OPENSKY_CLIENT_ID: 'https://opensky-network.org/login?view=registration',
-  OPENSKY_CLIENT_SECRET: 'https://opensky-network.org/login?view=registration',
   FINNHUB_API_KEY: 'https://finnhub.io/register',
   NASA_FIRMS_API_KEY: 'https://firms.modaps.eosdis.nasa.gov/api/area/',
   UCDP_ACCESS_TOKEN: 'https://ucdp.uu.se/apidocs/',
@@ -31,7 +29,6 @@ export const PLAINTEXT_KEYS = new Set<RuntimeSecretKey>([
   'OLLAMA_API_URL',
   'OLLAMA_MODEL',
   'WS_RELAY_URL',
-  'VITE_OPENSKY_RELAY_URL',
 ]);
 
 export const MASKED_SENTINEL = '__WM_MASKED__';
@@ -51,9 +48,6 @@ export const HUMAN_LABELS: Record<RuntimeSecretKey, string> = {
   ABUSEIPDB_API_KEY: 'AbuseIPDB API Key',
   WINGBITS_API_KEY: 'Wingbits API Key',
   WS_RELAY_URL: 'WebSocket Relay URL',
-  VITE_OPENSKY_RELAY_URL: 'OpenSky Relay URL',
-  OPENSKY_CLIENT_ID: 'OpenSky Client ID',
-  OPENSKY_CLIENT_SECRET: 'OpenSky Client Secret',
   AISSTREAM_API_KEY: 'AISStream API Key',
   FINNHUB_API_KEY: 'Finnhub API Key',
   NASA_FIRMS_API_KEY: 'NASA FIRMS API Key',
@@ -96,6 +90,6 @@ export const SETTINGS_CATEGORIES: SettingsCategory[] = [
   {
     id: 'tracking',
     label: 'Tracking & Sensing',
-    features: ['aisRelay', 'openskyRelay', 'wingbitsEnrichment', 'nasaFirms', 'aviationStack', 'icaoNotams', 'newsPerFeedFallback'],
+    features: ['aisRelay', 'wingbitsEnrichment', 'nasaFirms', 'aviationStack', 'icaoNotams', 'newsPerFeedFallback'],
   },
 ];

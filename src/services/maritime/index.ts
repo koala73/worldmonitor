@@ -135,13 +135,7 @@ const MAX_CALLBACK_TRACKED_VESSELS = 20000;
 
 // ---- Raw Relay URL (for candidate reports path) ----
 
-const SNAPSHOT_PROXY_URL = '/api/ais-snapshot';
-const wsRelayUrl = import.meta.env.VITE_WS_RELAY_URL || '';
-const DIRECT_RAILWAY_SNAPSHOT_URL = wsRelayUrl
-  ? wsRelayUrl.replace('wss://', 'https://').replace('ws://', 'http://').replace(/\/$/, '') + '/ais/snapshot'
-  : '';
-const LOCAL_SNAPSHOT_FALLBACK = 'http://localhost:3004/ais/snapshot';
-const isLocalhost = isClientRuntime && window.location.hostname === 'localhost';
+
 
 // ---- Internal Helpers ----
 
@@ -177,57 +171,22 @@ function parseSnapshot(data: unknown): {
 
 // ---- Hybrid Fetch Strategy ----
 
-async function fetchRawRelaySnapshot(includeCandidates: boolean, signal?: AbortSignal): Promise<unknown> {
-  const query = `?candidates=${includeCandidates ? 'true' : 'false'}`;
+async function fetchSnapshotPayload(_includeCandidates: boolean, signal?: AbortSignal): Promise<unknown> {
+  const response = await snapshotBreaker.execute(async () => {
+    return client.getVesselSnapshot({ neLat: 0, neLon: 0, swLat: 0, swLon: 0 }, { signal });
+  }, emptySnapshotFallback);
 
-  try {
-    const proxied = await fetch(`${SNAPSHOT_PROXY_URL}${query}`, { headers: { Accept: 'application/json' }, signal });
-    if (proxied.ok) return proxied.json();
-  } catch { /* Proxy unavailable -- fall through */ }
-
-  // Local development fallback only.
-  if (isLocalhost && DIRECT_RAILWAY_SNAPSHOT_URL) {
-    try {
-      const railway = await fetch(`${DIRECT_RAILWAY_SNAPSHOT_URL}${query}`, { headers: { Accept: 'application/json' }, signal });
-      if (railway.ok) return railway.json();
-    } catch { /* Railway unavailable -- fall through */ }
+  if (!response.snapshot) {
+    throw new Error('AIS snapshot unavailable');
   }
 
-  if (isLocalhost) {
-    const local = await fetch(`${LOCAL_SNAPSHOT_FALLBACK}${query}`, { headers: { Accept: 'application/json' }, signal });
-    if (local.ok) return local.json();
-  }
-
-  throw new Error('AIS raw relay snapshot unavailable');
-}
-
-async function fetchSnapshotPayload(includeCandidates: boolean, signal?: AbortSignal): Promise<unknown> {
-  if (includeCandidates) {
-    // Candidate reports are only available on the raw relay endpoint.
-    return fetchRawRelaySnapshot(true, signal);
-  }
-
-  try {
-    // Prefer direct relay path to avoid normal web traffic double-hop via Vercel.
-    return await fetchRawRelaySnapshot(false, signal);
-  } catch (rawError) {
-    // Desktop fallback: use proto route when relay URL/local relay is unavailable.
-    const response = await snapshotBreaker.execute(async () => {
-      return client.getVesselSnapshot({ neLat: 0, neLon: 0, swLat: 0, swLon: 0 });
-    }, emptySnapshotFallback);
-
-    if (response.snapshot) {
-      return {
-        sequence: 0, // Proto payload does not include relay sequence.
-        status: { connected: true, vessels: 0, messages: 0 },
-        disruptions: response.snapshot.disruptions.map(toDisruptionEvent),
-        density: response.snapshot.densityZones.map(toDensityZone),
-        candidateReports: [],
-      };
-    }
-
-    throw rawError;
-  }
+  return {
+    sequence: 0, // RPC payload does not include relay sequence.
+    status: { connected: true, vessels: 0, messages: 0 },
+    disruptions: response.snapshot.disruptions.map(toDisruptionEvent),
+    density: response.snapshot.densityZones.map(toDensityZone),
+    candidateReports: [],
+  };
 }
 
 // ---- Callback Emission ----
