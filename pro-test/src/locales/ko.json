@@ -153,7 +153,10 @@
     "risk": "리스크 컨설팅",
     "riskDesc": "시나리오 시뮬레이션, 투자자 페르소나, 주문형 브랜드 PDF/PowerPoint 보고서.",
     "soc": "SOCs 및 CERT",
-    "socDesc": "사이버 위협 레이어, SIEM 통합, BGP 이상 모니터링, 랜섬웨어 피드."
+    "socDesc": "사이버 위협 레이어, SIEM 통합, BGP 이상 모니터링, 랜섬웨어 피드.",
+    "orgPlaceholder": "회사명 *",
+    "phonePlaceholder": "전화번호 *",
+    "workEmailRequired": "업무용 이메일을 사용해 주세요"
   },
   "pricingTable": {
     "title": "티어 비교",

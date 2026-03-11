@@ -48,7 +48,7 @@ const STANDALONE_KEYS = {
   usniFleetStale:        'usni-fleet:sebuf:stale:v1',
   faaDelays:             'aviation:delays:faa:v1',
   intlDelays:            'aviation:delays:intl:v3',
-  notamClosures:         'aviation:notam:closures:v1',
+  notamClosures:         'aviation:notam:closures:v2',
   positiveEventsLive:    'positive-events:geo:v1',
   cableHealth:           'cable-health-v1',
   cyberThreatsRpc:       'cyber:threats:v2',
@@ -72,7 +72,7 @@ const SEED_META = {
   gulfQuotes:       { key: 'seed-meta:market:gulf-quotes',      maxStaleMin: 30 },
   stablecoinMarkets:{ key: 'seed-meta:market:stablecoins',      maxStaleMin: 60 },
   naturalEvents:    { key: 'seed-meta:natural:events',          maxStaleMin: 120 },
-  flightDelays:     { key: 'seed-meta:aviation:faa',            maxStaleMin: 90 },
+  flightDelays:     { key: 'seed-meta:aviation:faa',            maxStaleMin: 60 },
   predictions:      { key: 'seed-meta:prediction:markets',      maxStaleMin: 15 },
   insights:         { key: 'seed-meta:news:insights',           maxStaleMin: 30 },
   marketQuotes:     { key: 'seed-meta:market:stocks',         maxStaleMin: 30 },
@@ -90,7 +90,7 @@ const SEED_META = {
   gpsjam:           { key: 'seed-meta:intelligence:gpsjam',       maxStaleMin: 720 },
   cableHealth:      { key: 'seed-meta:cable-health',              maxStaleMin: 60 },
   positiveGeoEvents:{ key: 'seed-meta:positive-events:geo',       maxStaleMin: 60 },
-  riskScores:       { key: 'seed-meta:risk:scores',               maxStaleMin: 30 },
+  riskScores:       { key: 'seed-meta:risk:scores:sebuf',          maxStaleMin: 30 },
   iranEvents:       { key: 'seed-meta:conflict:iran-events',      maxStaleMin: 10080 },
   ucdpEvents:       { key: 'seed-meta:conflict:ucdp-events',      maxStaleMin: 420 },
   militaryFlights:  { key: 'seed-meta:military:flights',           maxStaleMin: 15 },
@@ -154,7 +154,8 @@ function dataSize(parsed) {
                       'papers', 'repos', 'articles', 'signals', 'rates', 'countries',
                       'chokepoints', 'minerals', 'anomalies', 'flows', 'bases', 'flights',
                       'theaters', 'fleets', 'warnings', 'closures', 'cables',
-                      'airports', 'categories', 'regions', 'entries', 'satellites']) {
+                      'airports', 'categories', 'regions', 'entries', 'satellites',
+                      'sectors', 'statuses', 'scores']) {
       if (Array.isArray(parsed[k])) return parsed[k].length;
     }
     return Object.keys(parsed).length;
@@ -240,7 +241,7 @@ export default async function handler(req) {
       okCount++;
     }
 
-    const entry = { status, redisKey, records: size };
+    const entry = { status, records: size };
     if (seedAge !== null) entry.seedAgeMin = seedAge;
     if (seedCfg) entry.maxStaleMin = seedCfg.maxStaleMin;
     checks[name] = entry;
@@ -317,7 +318,7 @@ export default async function handler(req) {
       okCount++;
     }
 
-    const entry = { status, redisKey, records: size };
+    const entry = { status, records: size };
     if (seedAge !== null) entry.seedAgeMin = seedAge;
     if (seedCfg) entry.maxStaleMin = seedCfg.maxStaleMin;
     checks[name] = entry;
@@ -325,11 +326,11 @@ export default async function handler(req) {
 
   let overall;
   if (critCount === 0 && warnCount === 0) overall = 'HEALTHY';
-  else if (critCount === 0) overall = 'DEGRADED';
+  else if (critCount === 0) overall = 'WARNING';
   else if (critCount <= 3) overall = 'DEGRADED';
   else overall = 'UNHEALTHY';
 
-  const httpStatus = overall === 'HEALTHY' ? 200 : overall === 'DEGRADED' ? 200 : 503;
+  const httpStatus = overall === 'HEALTHY' || overall === 'WARNING' ? 200 : 503;
 
   const url = new URL(req.url);
   const compact = url.searchParams.get('compact') === '1';
@@ -350,7 +351,7 @@ export default async function handler(req) {
   } else {
     const problems = {};
     for (const [name, check] of Object.entries(checks)) {
-      if (check.status !== 'OK') problems[name] = check;
+      if (check.status !== 'OK' && check.status !== 'OK_CASCADE') problems[name] = check;
     }
     if (Object.keys(problems).length > 0) body.problems = problems;
   }

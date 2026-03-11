@@ -153,7 +153,10 @@
     "risk": "Risicoadviesbureaus",
     "riskDesc": "Scenariosimulatie, beleggersprofielen, branded PDF/PowerPoint-rapporten op aanvraag.",
     "soc": "SOCs & CERT",
-    "socDesc": "Cyberdreigingslaag, SIEM-integratie, BGP-anomaliemonitoring, ransomware-feeds."
+    "socDesc": "Cyberdreigingslaag, SIEM-integratie, BGP-anomaliemonitoring, ransomware-feeds.",
+    "orgPlaceholder": "Bedrijf *",
+    "phonePlaceholder": "Telefoonnummer *",
+    "workEmailRequired": "Gebruik uw zakelijke e-mailadres"
   },
   "pricingTable": {
     "title": "Vergelijk tiers",

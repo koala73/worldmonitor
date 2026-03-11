@@ -122,6 +122,17 @@
       "stockIndex": "Borsa endeksi: {{value}}",
       "recentHeadlines": "**Son basliklar:**",
       "activeStrikes": "{{count}} aktif grev tespit edildi"
+    },
+    "countryFacts": "Ülke bilgileri",
+    "loadingFacts": "Ülke bilgileri yükleniyor...",
+    "noFacts": "Ülke bilgileri mevcut değil.",
+    "facts": {
+      "headOfState": "Devlet Başkanı",
+      "population": "Nüfus",
+      "capital": "Başkent",
+      "languages": "Diller",
+      "currencies": "Para birimleri",
+      "area": "Yüz ölçümü"
     }
   },
   "header": {
@@ -982,6 +993,7 @@
       "layerWarningDismiss": "Bir daha gösterme",
       "layerWarningOk": "Anladım",
       "layersTitle": "Katmanlar",
+      "layerSearch": "Katman ara...",
       "timeAll": "Tumu",
       "views": {
         "global": "Kuresel",
@@ -1761,7 +1773,9 @@
       "sources": {
         "faa": "FAA ASWS",
         "eurocontrol": "Eurocontrol",
-        "computed": "Hesaplanan"
+        "computed": "Hesaplanan",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "Amerikalar",
@@ -2366,5 +2380,9 @@
     "mapThemeDesc": "Harita döşemelerinin görsel stili.",
     "globePreset": "Görsel ön ayar",
     "globePresetDesc": "Klasik ve geliştirilmiş küre görselleri arasında geçiş yapın."
+  },
+  "contextMenu": {
+    "openCountryBrief": "Ülke özetini aç",
+    "copyCoordinates": "Koordinatları kopyala"
   }
 }

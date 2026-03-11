@@ -122,6 +122,17 @@
       "sirens24h": "Sirènes / 24h",
       "aviationDisruptions": "Perturbations aériennes",
       "gpsJammingZones": "Zones de brouillage GPS"
+    },
+    "countryFacts": "Fiche pays",
+    "loadingFacts": "Chargement des données du pays...",
+    "noFacts": "Données du pays indisponibles.",
+    "facts": {
+      "headOfState": "Chef d'État",
+      "population": "Population",
+      "capital": "Capitale",
+      "languages": "Langues",
+      "currencies": "Devises",
+      "area": "Superficie"
     }
   },
   "header": {
@@ -955,6 +966,7 @@
       "layerWarningDismiss": "Ne plus afficher",
       "layerWarningOk": "Compris",
       "layersTitle": "Couches",
+      "layerSearch": "Rechercher...",
       "timeAll": "Tout",
       "views": {
         "global": "Mondial",
@@ -1760,7 +1772,9 @@
       "sources": {
         "faa": "FAA-ASWS",
         "eurocontrol": "Eurocontrôle",
-        "computed": "Calculé"
+        "computed": "Calculé",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "Amériques",
@@ -2366,5 +2380,9 @@
     "mapThemeDesc": "Style visuel des tuiles de carte.",
     "globePreset": "Préréglage visuel",
     "globePresetDesc": "Basculer entre les visuels classiques et améliorés du globe."
+  },
+  "contextMenu": {
+    "openCountryBrief": "Ouvrir la fiche pays",
+    "copyCoordinates": "Copier les coordonnées"
   }
 }

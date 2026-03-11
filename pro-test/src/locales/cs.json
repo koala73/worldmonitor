@@ -153,7 +153,10 @@
     "risk": "Rizikové poradenství",
     "riskDesc": "Simulace scénářů, investorské persony, brandované PDF/PowerPoint reporty na vyžádání.",
     "soc": "SOC a CERT",
-    "socDesc": "Vrstva kybernetických hrozeb, integrace SIEM, monitoring BGP anomálií, ransomware feedy."
+    "socDesc": "Vrstva kybernetických hrozeb, integrace SIEM, monitoring BGP anomálií, ransomware feedy.",
+    "orgPlaceholder": "Společnost *",
+    "phonePlaceholder": "Telefonní číslo *",
+    "workEmailRequired": "Použijte prosím svůj pracovní e-mail"
   },
   "pricingTable": {
     "title": "Porovnání úrovní",

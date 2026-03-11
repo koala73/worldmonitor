@@ -1,6 +1,7 @@
 node_modules/
 .idea/
 dist/
+public/blog/
 .DS_Store
 *.log
 .env

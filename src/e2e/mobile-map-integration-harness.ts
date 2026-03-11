@@ -87,6 +87,7 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
 const layers = {
   gpsJamming: false,
   satellites: false,
+
   conflicts: false,
   bases: false,
   cables: false,

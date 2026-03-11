@@ -584,6 +584,7 @@
         "renewableInstallations": "Energia limpa"
       },
       "layersTitle": "Camadas",
+      "layerSearch": "Pesquisar camadas...",
       "layerGuide": "Guia de camadas",
       "layerWarningTitle": "Aviso de desempenho",
       "layerWarningBody": "Ativar mais de {{threshold}} camadas pode afetar o desempenho de renderização e a taxa de quadros.",
@@ -1567,7 +1568,9 @@
       "sources": {
         "faa": "FAA ASWS",
         "eurocontrol": "Eurocontrol",
-        "computed": "Calculado"
+        "computed": "Calculado",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "Américas",
@@ -2347,6 +2350,17 @@
       "sirens24h": "Sirenes / 24h",
       "aviationDisruptions": "Perturbações aéreas",
       "gpsJammingZones": "Zonas de interferência GPS"
+    },
+    "countryFacts": "Dados do país",
+    "loadingFacts": "Carregando dados do país...",
+    "noFacts": "Dados do país indisponíveis.",
+    "facts": {
+      "headOfState": "Chefe de Estado",
+      "population": "População",
+      "capital": "Capital",
+      "languages": "Idiomas",
+      "currencies": "Moedas",
+      "area": "Área"
     }
   },
   "preferences": {
@@ -2366,5 +2380,9 @@
     "mapThemeDesc": "Estilo visual dos tiles do mapa.",
     "globePreset": "Predefinição visual",
     "globePresetDesc": "Alternar entre visuais clássicos e aprimorados do globo."
+  },
+  "contextMenu": {
+    "openCountryBrief": "Abrir resumo do país",
+    "copyCoordinates": "Copiar coordenadas"
   }
 }

@@ -122,6 +122,17 @@
       "sirens24h": "Syreny / 24h",
       "aviationDisruptions": "Zakłócenia lotnicze",
       "gpsJammingZones": "Strefy zakłóceń GPS"
+    },
+    "countryFacts": "Fakty o kraju",
+    "loadingFacts": "Ładowanie faktów o kraju...",
+    "noFacts": "Fakty o kraju niedostępne.",
+    "facts": {
+      "headOfState": "Głowa państwa",
+      "population": "Ludność",
+      "capital": "Stolica",
+      "languages": "Języki",
+      "currencies": "Waluty",
+      "area": "Powierzchnia"
     }
   },
   "header": {
@@ -867,6 +878,7 @@
         "renewableInstallations": "Czysta energia"
       },
       "layersTitle": "Warstwy",
+      "layerSearch": "Szukaj warstw...",
       "layerGuide": "Przewodnik po warstwach",
       "layerWarningTitle": "Informacja o wydajności",
       "layerWarningBody": "Włączenie więcej niż {{threshold}} warstw może wpłynąć na wydajność renderowania i liczbę klatek na sekundę.",
@@ -1760,7 +1772,9 @@
       "sources": {
         "faa": "FAA ASWS",
         "eurocontrol": "Eurokontrola",
-        "computed": "Obliczone"
+        "computed": "Obliczone",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "Ameryki",
@@ -2366,5 +2380,9 @@
     "mapThemeDesc": "Styl wizualny kafelków mapy.",
     "globePreset": "Ustawienie wizualne",
     "globePresetDesc": "Przełączaj między klasycznymi a ulepszonymi wizualizacjami globu."
+  },
+  "contextMenu": {
+    "openCountryBrief": "Otwórz przegląd kraju",
+    "copyCoordinates": "Kopiuj współrzędne"
   }
 }

@@ -122,6 +122,17 @@
       "sirens24h": "Sirenas / 24h",
       "aviationDisruptions": "Interrupciones aéreas",
       "gpsJammingZones": "Zonas de interferencia GPS"
+    },
+    "countryFacts": "Datos del país",
+    "loadingFacts": "Cargando datos del país...",
+    "noFacts": "Datos del país no disponibles.",
+    "facts": {
+      "headOfState": "Jefe de Estado",
+      "population": "Población",
+      "capital": "Capital",
+      "languages": "Idiomas",
+      "currencies": "Monedas",
+      "area": "Superficie"
     }
   },
   "header": {
@@ -884,6 +895,7 @@
         "renewableInstallations": "Energía limpia"
       },
       "layersTitle": "capas",
+      "layerSearch": "Buscar capas...",
       "layerGuide": "Guía de capas",
       "layerWarningTitle": "Aviso de rendimiento",
       "layerWarningBody": "Activar más de {{threshold}} capas puede afectar el rendimiento de renderizado y la tasa de fotogramas.",
@@ -1760,7 +1772,9 @@
       "sources": {
         "faa": "ASWS de la FAA",
         "eurocontrol": "Eurocontrol",
-        "computed": "Calculado"
+        "computed": "Calculado",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "Américas",
@@ -2366,5 +2380,9 @@
     "mapThemeDesc": "Estilo visual de los mosaicos del mapa.",
     "globePreset": "Preajuste visual",
     "globePresetDesc": "Alternar entre visuales clásicos y mejorados del globo."
+  },
+  "contextMenu": {
+    "openCountryBrief": "Abrir resumen del país",
+    "copyCoordinates": "Copiar coordenadas"
   }
 }

@@ -1,3 +1,8 @@
+---
+title: "Relay Parameters (Railway + Vercel)"
+description: "This document covers all environment variables used by the AIS/OpenSky relay path."
+---
+
 # Relay Parameters (Railway + Vercel)
 
 This document covers all environment variables used by the AIS/OpenSky relay path:

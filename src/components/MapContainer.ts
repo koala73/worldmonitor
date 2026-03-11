@@ -41,6 +41,7 @@ import type { RenewableInstallation } from '@/services/renewable-installations';
 import type { GpsJamHex } from '@/services/gps-interference';
 import type { SatellitePosition } from '@/services/satellites';
 import type { IranEvent } from '@/services/conflict';
+import type { ImageryScene } from '@/generated/server/worldmonitor/imagery/v1/service_server';
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
 export type MapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
@@ -93,6 +94,7 @@ export class MapContainer {
   private cachedOnCountryClicked: ((country: CountryClickPayload) => void) | null = null;
   private cachedOnHotspotClicked: ((hotspot: Hotspot) => void) | null = null;
   private cachedOnAircraftPositionsUpdate: ((positions: PositionSample[]) => void) | null = null;
+  private cachedOnMapContextMenu: ((payload: { lat: number; lon: number; screenX: number; screenY: number }) => void) | null = null;
 
   // ─── Data cache (survives map mode switches) ───────────────────────────────
   private cachedEarthquakes: Earthquake[] | null = null;
@@ -130,6 +132,7 @@ export class MapContainer {
   private cachedHotspotActivity: NewsItem[] | null = null;
   private cachedEscalationFlights: MilitaryFlight[] | null = null;
   private cachedEscalationVessels: MilitaryVessel[] | null = null;
+  private cachedImageryScenes: ImageryScene[] | null = null;
 
   constructor(container: HTMLElement, initialState: MapContainerState, preferGlobe = false) {
     this.container = container;
@@ -258,6 +261,7 @@ export class MapContainer {
     if (this.cachedOnCountryClicked) this.onCountryClicked(this.cachedOnCountryClicked);
     if (this.cachedOnHotspotClicked) this.onHotspotClicked(this.cachedOnHotspotClicked);
     if (this.cachedOnAircraftPositionsUpdate) this.setOnAircraftPositionsUpdate(this.cachedOnAircraftPositionsUpdate);
+    if (this.cachedOnMapContextMenu) this.onMapContextMenu(this.cachedOnMapContextMenu);
 
     // 2. Re-push all cached data
     if (this.cachedEarthquakes) this.setEarthquakes(this.cachedEarthquakes);
@@ -290,6 +294,7 @@ export class MapContainer {
     if (this.cachedRenewableInstallations) this.setRenewableInstallations(this.cachedRenewableInstallations);
     if (this.cachedHotspotActivity) this.updateHotspotActivity(this.cachedHotspotActivity);
     if (this.cachedEscalationFlights && this.cachedEscalationVessels) this.updateMilitaryForEscalation(this.cachedEscalationFlights, this.cachedEscalationVessels);
+    if (this.cachedImageryScenes) this.setImageryScenes(this.cachedImageryScenes);
   }
 
   public isGlobeMode(): boolean {
@@ -387,6 +392,12 @@ export class MapContainer {
     this.cachedEarthquakes = earthquakes;
     if (this.useGlobe) { this.globeMap?.setEarthquakes(earthquakes); return; }
     if (this.useDeckGL) { this.deckGLMap?.setEarthquakes(earthquakes); } else { this.svgMap?.setEarthquakes(earthquakes); }
+  }
+
+  public setImageryScenes(scenes: ImageryScene[]): void {
+    this.cachedImageryScenes = scenes;
+    if (this.useGlobe) { this.globeMap?.setImageryScenes(scenes); return; }
+    if (this.useDeckGL) { this.deckGLMap?.setImageryScenes(scenes); }
   }
 
   public setWeatherAlerts(alerts: WeatherAlert[]): void {
@@ -681,6 +692,21 @@ export class MapContainer {
     }
   }
 
+  public getBbox(): string | null {
+    if (this.useDeckGL) return this.deckGLMap?.getBbox() ?? null;
+    if (this.useGlobe) {
+      const center = this.globeMap?.getCenter();
+      if (!center) return null;
+      const R = 5;
+      const south = Math.max(-90, center.lat - R);
+      const north = Math.min(90, center.lat + R);
+      const west = Math.max(-180, center.lon - R);
+      const east = Math.min(180, center.lon + R);
+      return `${west.toFixed(4)},${south.toFixed(4)},${east.toFixed(4)},${north.toFixed(4)}`;
+    }
+    return null;
+  }
+
   public onStateChanged(callback: (state: MapContainerState) => void): void {
     this.cachedOnStateChanged = callback;
     if (this.useGlobe) { this.globeMap?.onStateChanged(callback); return; }
@@ -840,6 +866,12 @@ export class MapContainer {
     if (this.useDeckGL) { this.deckGLMap?.setOnCountryClick(callback); } else { this.svgMap?.setOnCountryClick(callback); }
   }
 
+  public onMapContextMenu(callback: (payload: { lat: number; lon: number; screenX: number; screenY: number }) => void): void {
+    this.cachedOnMapContextMenu = callback;
+    if (this.useGlobe) { this.globeMap?.setOnMapContextMenu(callback); return; }
+    if (this.useDeckGL) { this.deckGLMap?.setOnMapContextMenu(callback); }
+  }
+
   public fitCountry(code: string): void {
     if (this.useGlobe) { this.globeMap?.fitCountry(code); return; }
     if (this.useDeckGL) {
@@ -891,6 +923,7 @@ export class MapContainer {
     this.cachedOnCountryClicked = null;
     this.cachedOnHotspotClicked = null;
     this.cachedOnAircraftPositionsUpdate = null;
+    this.cachedOnMapContextMenu = null;
     this.cachedEarthquakes = null;
     this.cachedWeatherAlerts = null;
     this.cachedOutages = null;
@@ -926,5 +959,6 @@ export class MapContainer {
     this.cachedHotspotActivity = null;
     this.cachedEscalationFlights = null;
     this.cachedEscalationVessels = null;
+    this.cachedImageryScenes = null;
   }
 }

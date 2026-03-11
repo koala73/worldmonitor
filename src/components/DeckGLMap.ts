@@ -41,12 +41,15 @@ import type { AirportDelayAlert, PositionSample } from '@/services/aviation';
 import { fetchAircraftPositions } from '@/services/aviation';
 import { type IranEvent, getIranEventColor, getIranEventRadius } from '@/services/conflict';
 import type { GpsJamHex } from '@/services/gps-interference';
+import { fetchImageryScenes } from '@/services/imagery';
+import type { ImageryScene } from '@/generated/server/worldmonitor/imagery/v1/service_server';
 import type { DisplacementFlow } from '@/services/displacement';
 import type { Earthquake } from '@/services/earthquakes';
 import type { ClimateAnomaly } from '@/services/climate';
 import { ArcLayer } from '@deck.gl/layers';
 import { HeatmapLayer } from '@deck.gl/aggregation-layers';
 import { H3HexagonLayer } from '@deck.gl/geo-layers';
+import { PathStyleExtension } from '@deck.gl/extensions';
 import type { WeatherAlert } from '@/services/weather';
 import { escapeHtml } from '@/utils/sanitize';
 import { tokenizeForMatch, matchKeyword, matchesAnyKeyword, findMatchingKeywords } from '@/utils/keyword-match';
@@ -87,7 +90,7 @@ import {
 } from '@/config';
 import type { GulfInvestment } from '@/types';
 import { resolveTradeRouteSegments, TRADE_ROUTES as TRADE_ROUTES_LIST, type TradeRouteSegment } from '@/config/trade-routes';
-import { getLayersForVariant, resolveLayerLabel, type MapVariant } from '@/config/map-layer-definitions';
+import { getLayersForVariant, resolveLayerLabel, bindLayerSearch, type MapVariant } from '@/config/map-layer-definitions';
 import { getSecretState } from '@/services/runtime-config';
 import { MapPopup, type PopupType } from './MapPopup';
 import {
@@ -106,6 +109,8 @@ import type { RenewableInstallation } from '@/services/renewable-installations';
 import type { SpeciesRecovery } from '@/services/conservation-data';
 import { getCountriesGeoJson, getCountryAtCoordinates, getCountryBbox } from '@/services/country-geometry';
 import type { FeatureCollection, Geometry } from 'geojson';
+
+import { isAllowedPreviewUrl } from '@/utils/imagery-preview';
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
 export type DeckMapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
@@ -326,6 +331,9 @@ export class DeckGLMap {
   private tradeRouteSegments: TradeRouteSegment[] = resolveTradeRouteSegments();
   private positiveEvents: PositiveGeoEvent[] = [];
   private kindnessPoints: KindnessPoint[] = [];
+  private imageryScenes: ImageryScene[] = [];
+  private imagerySearchTimer: ReturnType<typeof setTimeout> | null = null;
+  private imagerySearchVersion = 0;
 
   // Phase 8 overlay data
   private happinessScores: Map<string, number> = new Map();
@@ -349,6 +357,17 @@ export class DeckGLMap {
   private onHotspotClick?: (hotspot: Hotspot) => void;
   private onTimeRangeChange?: (range: TimeRange) => void;
   private onCountryClick?: (country: CountryClickPayload) => void;
+  private onMapContextMenu?: (payload: { lat: number; lon: number; screenX: number; screenY: number }) => void;
+  private readonly handleContextMenu = (e: MouseEvent): void => {
+    e.preventDefault();
+    if (!this.onMapContextMenu || !this.maplibreMap) return;
+    const rect = this.container.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const lngLat = this.maplibreMap.unproject([x, y]);
+    if (!Number.isFinite(lngLat.lng)) return;
+    this.onMapContextMenu({ lat: lngLat.lat, lon: lngLat.lng, screenX: e.clientX, screenY: e.clientY });
+  };
   private onLayerChange?: (layer: keyof MapLayers, enabled: boolean, source: 'user' | 'programmatic') => void;
   private onStateChange?: (state: DeckMapState) => void;
   private onAircraftPositionsUpdate?: (positions: PositionSample[]) => void;
@@ -653,6 +672,8 @@ export class DeckGLMap {
         // so every frame targets the exact same geographic anchor.
       }
     });
+
+    this.container.addEventListener('contextmenu', this.handleContextMenu);
   }
 
   private initDeck(): void {
@@ -684,6 +705,10 @@ export class DeckGLMap {
       this.debouncedFetchAircraft();
       this.state.zoom = this.maplibreMap?.getZoom() ?? this.state.zoom;
       this.onStateChange?.(this.getState());
+      if (this.state.layers.satellites) {
+        if (this.imagerySearchTimer) clearTimeout(this.imagerySearchTimer);
+        this.imagerySearchTimer = setTimeout(() => this.fetchImageryForViewport(), 500);
+      }
     });
 
     this.maplibreMap.on('move', () => {
@@ -1249,9 +1274,9 @@ export class DeckGLMap {
     }
     layers.push(this.createEmptyGhost('earthquakes-layer'));
 
-    // Natural events layer
+    // Natural events layers (non-TC scatter + TC tracks/cones/centers)
     if (mapLayers.natural && filteredNaturalEvents.length > 0) {
-      layers.push(this.createNaturalEventsLayer(filteredNaturalEvents));
+      layers.push(...this.createNaturalEventsLayers(filteredNaturalEvents));
     }
 
     // Satellite fires layer (NASA FIRMS)
@@ -1312,9 +1337,13 @@ export class DeckGLMap {
       layers.push(this.createRepairShipsLayer());
     }
 
-    // Flight delays layer
+    // Aviation layer (flight delays + NOTAM closures + aircraft positions)
     if (mapLayers.flights && filteredFlightDelays.length > 0) {
       layers.push(this.createFlightDelaysLayer(filteredFlightDelays));
+      const closures = filteredFlightDelays.filter(d => d.delayType === 'closure');
+      if (closures.length > 0) {
+        layers.push(this.createNotamOverlayLayer(closures));
+      }
     }
 
     // Aircraft positions layer (live tracking, under flights toggle)
@@ -1467,6 +1496,10 @@ export class DeckGLMap {
     // Phase 8: Renewable energy installations
     if (mapLayers.renewableInstallations && this.renewableInstallations.length > 0) {
       layers.push(this.createRenewableInstallationsLayer());
+    }
+
+    if (mapLayers.satellites && this.imageryScenes.length > 0) {
+      layers.push(this.createImageryFootprintLayer());
     }
 
     // News geo-locations (always shown if data exists)
@@ -1790,6 +1823,22 @@ export class DeckGLMap {
     });
   }
 
+  private createNotamOverlayLayer(closures: AirportDelayAlert[]): ScatterplotLayer {
+    return new ScatterplotLayer({
+      id: 'notam-overlay-layer',
+      data: closures,
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: 55000,
+      getFillColor: [255, 40, 40, 100] as [number, number, number, number],
+      getLineColor: [255, 40, 40, 200] as [number, number, number, number],
+      stroked: true,
+      lineWidthMinPixels: 2,
+      radiusMinPixels: 8,
+      radiusMaxPixels: 40,
+      pickable: true,
+    });
+  }
+
   private createAircraftPositionsLayer(): IconLayer<PositionSample> {
     return new IconLayer<PositionSample>({
       id: 'aircraft-positions-layer',
@@ -1877,21 +1926,135 @@ export class DeckGLMap {
     });
   }
 
-  private createNaturalEventsLayer(events: NaturalEvent[]): ScatterplotLayer {
-    return new ScatterplotLayer({
-      id: 'natural-events-layer',
-      data: events,
+  private static readonly TC_WIND_COLORS: [number, [number, number, number, number]][] = [
+    [137, [255, 96, 96, 200]],    // Cat5
+    [113, [255, 140, 0, 200]],    // Cat4
+    [96,  [255, 140, 0, 200]],    // Cat3
+    [83,  [255, 231, 117, 200]],  // Cat2
+    [64,  [255, 231, 117, 200]],  // Cat1
+    [34,  [94, 186, 255, 200]],   // TS
+    [0,   [160, 160, 160, 160]],  // TD
+  ];
+
+  private static windColor(kt: number): [number, number, number, number] {
+    for (const [threshold, color] of DeckGLMap.TC_WIND_COLORS) {
+      if (kt >= threshold) return color;
+    }
+    return [160, 160, 160, 160];
+  }
+
+  private createNaturalEventsLayers(events: NaturalEvent[]): Layer[] {
+    const nonTC = events.filter(e => !e.stormName && !e.windKt);
+    const cyclones = events.filter(e => e.stormName || e.windKt);
+    const layers: Layer[] = [];
+
+    if (nonTC.length > 0) {
+      layers.push(new ScatterplotLayer({
+        id: 'natural-events-layer',
+        data: nonTC,
+        getPosition: (d: NaturalEvent) => [d.lon, d.lat],
+        getRadius: (d: NaturalEvent) => d.title.startsWith('🔴') ? 20000 : d.title.startsWith('🟠') ? 15000 : 8000,
+        getFillColor: (d: NaturalEvent) => {
+          if (d.title.startsWith('🔴')) return [255, 0, 0, 220] as [number, number, number, number];
+          if (d.title.startsWith('🟠')) return [255, 140, 0, 200] as [number, number, number, number];
+          return [255, 150, 50, 180] as [number, number, number, number];
+        },
+        radiusMinPixels: 5,
+        radiusMaxPixels: 18,
+        pickable: true,
+      }));
+    }
+
+    if (cyclones.length === 0) return layers;
+
+    // Cone polygons (render first, underneath tracks)
+    const coneData: { polygon: number[][]; stormName: string; _event: NaturalEvent }[] = [];
+    for (const e of cyclones) {
+      if (!e.conePolygon?.length) continue;
+      for (const ring of e.conePolygon) {
+        coneData.push({ polygon: ring, stormName: e.stormName || e.title, _event: e });
+      }
+    }
+    if (coneData.length > 0) {
+      layers.push(new PolygonLayer({
+        id: 'storm-cone-layer',
+        data: coneData,
+        getPolygon: (d: { polygon: number[][] }) => d.polygon,
+        getFillColor: [255, 255, 255, 30],
+        getLineColor: [255, 255, 255, 80],
+        lineWidthMinPixels: 1,
+        pickable: true,
+      }));
+    }
+
+    // Past track segments (per-segment wind coloring)
+    const pastSegments: { path: [number, number][]; windKt: number; stormName: string; _event: NaturalEvent }[] = [];
+    for (const e of cyclones) {
+      if (!e.pastTrack?.length) continue;
+      for (let i = 0; i < e.pastTrack.length - 1; i++) {
+        const a = e.pastTrack[i]!;
+        const b = e.pastTrack[i + 1]!;
+        pastSegments.push({
+          path: [[a.lon, a.lat] as [number, number], [b.lon, b.lat] as [number, number]],
+          windKt: b.windKt ?? a.windKt ?? 0,
+          stormName: e.stormName || e.title,
+          _event: e,
+        });
+      }
+    }
+    if (pastSegments.length > 0) {
+      layers.push(new PathLayer({
+        id: 'storm-past-track-layer',
+        data: pastSegments,
+        getPath: (d: { path: [number, number][] }) => d.path,
+        getColor: (d: { windKt: number }) => DeckGLMap.windColor(d.windKt),
+        getWidth: 3,
+        widthUnits: 'pixels' as const,
+        pickable: true,
+      }));
+    }
+
+    // Forecast track
+    const forecastPaths: { path: [number, number][]; stormName: string; _event: NaturalEvent }[] = [];
+    for (const e of cyclones) {
+      if (!e.forecastTrack?.length) continue;
+      forecastPaths.push({
+        path: [[e.lon, e.lat] as [number, number], ...e.forecastTrack.map(p => [p.lon, p.lat] as [number, number])],
+        stormName: e.stormName || e.title,
+        _event: e,
+      });
+    }
+    if (forecastPaths.length > 0) {
+      layers.push(new PathLayer({
+        id: 'storm-forecast-track-layer',
+        data: forecastPaths,
+        getPath: (d: { path: [number, number][] }) => d.path,
+        getColor: [255, 100, 100, 200],
+        getWidth: 2,
+        widthUnits: 'pixels' as const,
+        getDashArray: [6, 4],
+        dashJustified: true,
+        pickable: true,
+        extensions: [new PathStyleExtension({ dash: true })],
+      }));
+    }
+
+    // Storm center markers (on top)
+    layers.push(new ScatterplotLayer({
+      id: 'storm-centers-layer',
+      data: cyclones,
       getPosition: (d: NaturalEvent) => [d.lon, d.lat],
-      getRadius: (d: NaturalEvent) => d.title.startsWith('🔴') ? 20000 : d.title.startsWith('🟠') ? 15000 : 8000,
-      getFillColor: (d: NaturalEvent) => {
-        if (d.title.startsWith('🔴')) return [255, 0, 0, 220] as [number, number, number, number];
-        if (d.title.startsWith('🟠')) return [255, 140, 0, 200] as [number, number, number, number];
-        return [255, 150, 50, 180] as [number, number, number, number];
-      },
-      radiusMinPixels: 5,
-      radiusMaxPixels: 18,
+      getRadius: 15000,
+      getFillColor: (d: NaturalEvent) => DeckGLMap.windColor(d.windKt ?? 0),
+      getLineColor: [255, 255, 255, 200],
+      lineWidthMinPixels: 2,
+      stroked: true,
+      radiusMinPixels: 6,
+      radiusMaxPixels: 20,
       pickable: true,
-    });
+    }));
+
+    return layers;
   }
 
   private createFiresLayer(): ScatterplotLayer {
@@ -3042,6 +3205,38 @@ export class DeckGLMap {
     });
   }
 
+  private createImageryFootprintLayer(): PolygonLayer {
+    return new PolygonLayer({
+      id: 'satellite-imagery-layer',
+      data: this.imageryScenes.filter(s => s.geometryGeojson),
+      getPolygon: (d: ImageryScene) => {
+        try {
+          const geom = JSON.parse(d.geometryGeojson);
+          if (geom.type === 'Polygon') return geom.coordinates[0];
+          return [];
+        } catch { return []; }
+      },
+      getFillColor: [0, 180, 255, 40] as [number, number, number, number],
+      getLineColor: [0, 180, 255, 180] as [number, number, number, number],
+      lineWidthMinPixels: 1,
+      pickable: true,
+    });
+  }
+
+  private async fetchImageryForViewport(): Promise<void> {
+    const map = this.maplibreMap;
+    if (!map) return;
+    const bounds = map.getBounds();
+    const bbox = `${bounds.getWest().toFixed(4)},${bounds.getSouth().toFixed(4)},${bounds.getEast().toFixed(4)},${bounds.getNorth().toFixed(4)}`;
+    const version = ++this.imagerySearchVersion;
+    try {
+      const scenes = await fetchImageryScenes({ bbox, limit: 20 });
+      if (version !== this.imagerySearchVersion) return;
+      this.imageryScenes = scenes;
+      this.render();
+    } catch { /* viewport fetch failed silently */ }
+  }
+
   private getTooltip(info: PickingInfo): { html: string } | null {
     if (!info.object) return null;
 
@@ -3118,6 +3313,14 @@ export class DeckGLMap {
 
       case 'natural-events-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.title)}</strong><br/>${text(obj.category || t('components.deckgl.tooltip.naturalEvent'))}</div>` };
+      case 'storm-centers-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.stormName || obj.title)}</strong><br/>${text(obj.classification || '')} ${obj.windKt ? obj.windKt + ' kt' : ''}</div>` };
+      case 'storm-forecast-track-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.stormName)}</strong><br/>${t('popups.naturalEvent.classification')}: Forecast Track</div>` };
+      case 'storm-past-track-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.stormName)}</strong><br/>Past Track (${obj.windKt} kt)</div>` };
+      case 'storm-cone-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.stormName)}</strong><br/>Forecast Cone</div>` };
       case 'ais-density-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${t('components.deckgl.layers.shipTraffic')}</strong><br/>${t('popups.intensity')}: ${text(obj.intensity)}</div>` };
       case 'waterways-layer':
@@ -3152,6 +3355,8 @@ export class DeckGLMap {
       }
       case 'flight-delays-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)} (${text(obj.iata)})</strong><br/>${text(obj.severity)}: ${text(obj.reason)}</div>` };
+      case 'notam-overlay-layer':
+        return { html: `<div class="deckgl-tooltip"><strong style="color:#ff2828;">&#9888; NOTAM CLOSURE</strong><br/>${text(obj.name)} (${text(obj.iata)})<br/><span style="opacity:.7">${text((obj.reason || '').slice(0, 100))}</span></div>` };
       case 'aircraft-positions-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.callsign || obj.icao24)}</strong><br/>${obj.altitudeFt?.toLocaleString() ?? 0} ft · ${obj.groundSpeedKts ?? 0} kts · ${Math.round(obj.trackDeg ?? 0)}°</div>` };
       case 'apt-groups-layer':
@@ -3242,6 +3447,15 @@ export class DeckGLMap {
             <span style="text-transform:capitalize">${text(inv.status)}</span>
           </div>`,
         };
+      }
+      case 'satellite-imagery-layer': {
+        let imgHtml = `<div class="deckgl-tooltip"><strong>&#128752; ${text(obj.satellite)}</strong><br/>${text(obj.datetime)}<br/>Res: ${Number(obj.resolutionM)}m \u00B7 ${text(obj.mode)}`;
+        if (isAllowedPreviewUrl(obj.previewUrl)) {
+          const safeHref = escapeHtml(new URL(obj.previewUrl).href);
+          imgHtml += `<br><img src="${safeHref}" referrerpolicy="no-referrer" style="max-width:180px;max-height:120px;margin-top:4px;border-radius:4px;" class="imagery-preview">`;
+        }
+        imgHtml += '</div>';
+        return { html: imgHtml };
       }
       default:
         return null;
@@ -3443,6 +3657,10 @@ export class DeckGLMap {
       'military-vessel-clusters-layer': 'militaryVesselCluster',
       'military-flight-clusters-layer': 'militaryFlightCluster',
       'natural-events-layer': 'natEvent',
+      'storm-centers-layer': 'natEvent',
+      'storm-forecast-track-layer': 'natEvent',
+      'storm-past-track-layer': 'natEvent',
+      'storm-cone-layer': 'natEvent',
       'waterways-layer': 'waterway',
       'economic-centers-layer': 'economic',
       'stock-exchanges-layer': 'stockExchange',
@@ -3452,6 +3670,7 @@ export class DeckGLMap {
       'spaceports-layer': 'spaceport',
       'ports-layer': 'port',
       'flight-delays-layer': 'flight',
+      'notam-overlay-layer': 'flight',
       'aircraft-positions-layer': 'aircraft',
       'startup-hubs-layer': 'startupHub',
       'tech-hqs-layer': 'techHQ',
@@ -3469,8 +3688,8 @@ export class DeckGLMap {
     const popupType = layerToPopupType[layerId];
     if (!popupType) return;
 
-    // For GeoJSON layers, the data is in properties
-    let data = info.object;
+    // For synthetic storm layers, unwrap the backing NaturalEvent
+    let data = info.object?._event ?? info.object;
     if (layerId === 'conflict-zones-layer' && info.object.properties) {
       // Find the full conflict zone data from config
       const conflictId = info.object.properties.id;
@@ -3608,6 +3827,7 @@ export class DeckGLMap {
         <button class="layer-help-btn" title="${t('components.deckgl.layerGuide')}">?</button>
         <button class="toggle-collapse">&#9660;</button>
       </div>
+      <input type="text" class="layer-search" placeholder="${t('components.deckgl.layerSearch')}" autocomplete="off" spellcheck="false" />
       <div class="toggle-list" style="max-height: 32vh; overflow-y: auto; scrollbar-width: thin;">
         ${layerConfig.map(({ key, label, icon, premium }) => {
           const isLocked = premium === 'locked' && !_wmKey;
@@ -3665,8 +3885,12 @@ export class DeckGLMap {
       }, { passive: false });
       toggles.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: false });
     }
+    bindLayerSearch(toggles);
+    const searchEl = toggles.querySelector('.layer-search') as HTMLElement | null;
+
     collapseBtn?.addEventListener('click', () => {
       toggleList?.classList.toggle('collapsed');
+      if (searchEl) searchEl.style.display = toggleList?.classList.contains('collapsed') ? 'none' : '';
       if (collapseBtn) collapseBtn.innerHTML = toggleList?.classList.contains('collapsed') ? '&#9654;' : '&#9660;';
     });
   }
@@ -4023,6 +4247,12 @@ export class DeckGLMap {
     return null;
   }
 
+  public getBbox(): string | null {
+    if (!this.maplibreMap) return null;
+    const b = this.maplibreMap.getBounds();
+    return `${b.getWest().toFixed(4)},${b.getSouth().toFixed(4)},${b.getEast().toFixed(4)},${b.getNorth().toFixed(4)}`;
+  }
+
   public setTimeRange(range: TimeRange): void {
     this.state.timeRange = range;
     this.rebuildProtestSupercluster();
@@ -4267,6 +4497,11 @@ export class DeckGLMap {
 
   public setWeatherAlerts(alerts: WeatherAlert[]): void {
     this.weatherAlerts = alerts;
+    this.render();
+  }
+
+  public setImageryScenes(scenes: ImageryScene[]): void {
+    this.imageryScenes = scenes;
     this.render();
   }
 
@@ -4670,7 +4905,10 @@ export class DeckGLMap {
   // UI visibility methods
   public hideLayerToggle(layer: keyof MapLayers): void {
     const toggle = this.container.querySelector(`.layer-toggle[data-layer="${layer}"]`);
-    if (toggle) (toggle as HTMLElement).style.display = 'none';
+    if (toggle) {
+      (toggle as HTMLElement).style.display = 'none';
+      toggle.setAttribute('data-layer-hidden', '');
+    }
   }
 
   public setLayerLoading(layer: keyof MapLayers, loading: boolean): void {
@@ -4879,6 +5117,10 @@ export class DeckGLMap {
 
   public setOnCountryClick(cb: (country: CountryClickPayload) => void): void {
     this.onCountryClick = cb;
+  }
+
+  public setOnMapContextMenu(cb: (payload: { lat: number; lon: number; screenX: number; screenY: number }) => void): void {
+    this.onMapContextMenu = cb;
   }
 
   private resolveCountryFromCoordinate(lon: number, lat: number): { code: string; name: string } | null {
@@ -5157,6 +5399,7 @@ export class DeckGLMap {
     this.maplibreMap?.remove();
     this.maplibreMap = null;
 
+    this.container.removeEventListener('contextmenu', this.handleContextMenu);
     this.container.innerHTML = '';
   }
 }

@@ -1,4 +1,5 @@
 import type { AppContext, AppModule, CountryBriefSignals } from '@/app/app-context';
+import { getRpcBaseUrl } from '@/services/rpc-client';
 import type { TimelineEvent } from '@/components/CountryTimeline';
 import { CountryTimeline } from '@/components/CountryTimeline';
 import type {
@@ -26,15 +27,19 @@ import { collectStoryData } from '@/services/story-data';
 import { renderStoryToCanvas } from '@/services/story-renderer';
 import { openStoryModal } from '@/components/StoryModal';
 import { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
+import { IntelligenceServiceClient } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
+import { showMapContextMenu } from '@/components/MapContextMenu';
 import { BETA_MODE } from '@/config/beta';
 import { MILITARY_BASES } from '@/config';
 import { mlWorker } from '@/services/ml-worker';
 import { isHeadlineMemoryEnabled } from '@/services/ai-flow-settings';
 import { t, getCurrentLanguage } from '@/services/i18n';
 import { trackCountrySelected, trackCountryBriefOpened } from '@/services/analytics';
+import { toApiUrl } from '@/services/runtime';
 import type { StrategicPosturePanel } from '@/components/StrategicPosturePanel';
 import type { NewsItem } from '@/types';
 import { getNearbyInfrastructure } from '@/services/related-assets';
+import { toFlagEmoji } from '@/utils/country-flag';
 
 type IntlDisplayNamesCtor = new (
   locales: string | string[],
@@ -109,6 +114,13 @@ export class CountryIntelManager implements AppModule {
       }
     });
 
+    this.ctx.map.onMapContextMenu((payload) => {
+      showMapContextMenu(payload.screenX, payload.screenY, [
+        { label: t('contextMenu.openCountryBrief'), action: () => this.openCountryBrief(payload.lat, payload.lon) },
+        { label: t('contextMenu.copyCoordinates'), action: () => navigator.clipboard.writeText(`${payload.lat.toFixed(5)}, ${payload.lon.toFixed(5)}`).catch(() => {}) },
+      ]);
+    });
+
     this.ctx.countryBriefPage.onClose(() => {
       this.briefRequestToken++;
       this.ctx.map?.clearCountryHighlight();
@@ -134,12 +146,8 @@ export class CountryIntelManager implements AppModule {
     const geo = await reverseGeocode(lat, lon);
     if (token !== this.briefRequestToken) return;
     if (!geo) {
-      if (this.ctx.countryBriefPage.showGeoError) {
-        this.ctx.countryBriefPage.showGeoError(() => this.openCountryBrief(lat, lon));
-      } else {
-        this.ctx.countryBriefPage.hide();
-        this.ctx.map?.setRenderPaused(false);
-      }
+      this.ctx.countryBriefPage.hide();
+      this.ctx.map?.setRenderPaused(false);
       return;
     }
 
@@ -180,7 +188,7 @@ export class CountryIntelManager implements AppModule {
     this.ctx.countryBriefPage.updateMilitaryActivity?.(this.buildMilitarySummary(code, country));
     this.ctx.countryBriefPage.updateEconomicIndicators?.(this.buildEconomicIndicators(code, score, null));
 
-    const marketClient = new MarketServiceClient('', { fetch: (...args: Parameters<typeof globalThis.fetch>) => globalThis.fetch(...args) });
+    const marketClient = new MarketServiceClient(getRpcBaseUrl(), { fetch: (...args: Parameters<typeof globalThis.fetch>) => globalThis.fetch(...args) });
     const stockPromise = marketClient.getCountryStockIndex({ countryCode: code })
       .then((resp) => ({
         available: resp.available,
@@ -226,6 +234,34 @@ export class CountryIntelManager implements AppModule {
     this.ctx.countryBriefPage.updateNews(filteredNews.slice(0, 10));
 
     this.ctx.countryBriefPage.updateInfrastructure(code);
+
+    const intelClient = new IntelligenceServiceClient(getRpcBaseUrl(), {
+      fetch: (...args: Parameters<typeof globalThis.fetch>) => globalThis.fetch(...args),
+    });
+    intelClient.getCountryFacts({ countryCode: code })
+      .then((facts) => {
+        if (this.ctx.countryBriefPage?.getCode() !== code) return;
+        this.ctx.countryBriefPage.updateCountryFacts?.({
+          headOfState: facts.headOfState,
+          headOfStateTitle: facts.headOfStateTitle,
+          wikipediaSummary: facts.wikipediaSummary,
+          wikipediaThumbnailUrl: facts.wikipediaThumbnailUrl,
+          population: Number(facts.population),
+          capital: facts.capital,
+          languages: facts.languages,
+          currencies: facts.currencies,
+          areaSqKm: facts.areaSqKm,
+          countryName: facts.countryName,
+        });
+      })
+      .catch(() => {
+        if (this.ctx.countryBriefPage?.getCode() !== code) return;
+        this.ctx.countryBriefPage.updateCountryFacts?.({
+          headOfState: '', headOfStateTitle: '', wikipediaSummary: '',
+          wikipediaThumbnailUrl: '', population: 0, capital: '',
+          languages: [], currencies: [], areaSqKm: 0, countryName: '',
+        });
+      });
 
     this.mountCountryTimeline(code, country);
 
@@ -326,10 +362,6 @@ export class CountryIntelManager implements AppModule {
           if (signals.earthquakes > 0) lines.push(t('countryBrief.fallback.recentEarthquakes', { count: String(signals.earthquakes) }));
           if (signals.orefHistory24h > 0) lines.push(`🚨 Sirens in past 24h: ${signals.orefHistory24h}`);
           if (context.stockIndex) lines.push(t('countryBrief.fallback.stockIndex', { value: context.stockIndex }));
-          if (briefHeadlines.length > 0) {
-            lines.push('', t('countryBrief.fallback.recentHeadlines'));
-            briefHeadlines.slice(0, 5).forEach(h => lines.push(`• ${h}`));
-          }
           if (lines.length > 0) {
             this.ctx.countryBriefPage?.updateBrief({ brief: lines.join('\n'), country, code, fallback: true });
           } else {
@@ -367,7 +399,7 @@ export class CountryIntelManager implements AppModule {
       params.set('context', trimmed.slice(0, 2200));
     }
 
-    const resp = await fetch(`/api/intelligence/v1/get-country-intel-brief?${params.toString()}`, {
+    const resp = await fetch(toApiUrl(`/api/intelligence/v1/get-country-intel-brief?${params.toString()}`), {
       method: 'GET',
       headers: { Accept: 'application/json' },
       signal: this.ctx.countryBriefPage?.signal,
@@ -964,11 +996,6 @@ export class CountryIntelManager implements AppModule {
   }
 
   static toFlagEmoji(code: string): string {
-    const upperCode = code.toUpperCase();
-    if (!/^[A-Z]{2}$/.test(upperCode)) return '🏳️';
-    return upperCode
-      .split('')
-      .map((char) => String.fromCodePoint(0x1f1e6 + char.charCodeAt(0) - 65))
-      .join('');
+    return toFlagEmoji(code, '🏳️');
   }
 }

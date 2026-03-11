@@ -1,3 +1,8 @@
+---
+title: "Premium Finance Search Layer"
+description: "This document covers the extra targeted stock-news search layer used by premium finance."
+---
+
 # Premium Finance Search Layer
 
 This document covers the **extra** targeted stock-news search layer used by premium finance.
@@ -6,7 +11,7 @@ It is separate from the core premium-finance architecture on purpose.
 
 Core premium finance can still function without this layer. The search layer exists to improve stock-news discovery quality for targeted ticker analysis, especially where feed-only coverage is weak.
 
-See the core system document in [PREMIUM_FINANCE.md](./PREMIUM_FINANCE.md).
+See the core system document in [PREMIUM_FINANCE.md](/PREMIUM_FINANCE).
 
 ---
 
@@ -45,11 +50,11 @@ The current provider chain is:
 
 Primary implementation:
 
-- [stock-news-search.ts](../server/worldmonitor/market/v1/stock-news-search.ts)
+- [stock-news-search.ts](https://github.com/koala73/worldmonitor/blob/main/server/worldmonitor/market/v1/stock-news-search.ts)
 
 Integration point:
 
-- [analyze-stock.ts](../server/worldmonitor/market/v1/analyze-stock.ts)
+- [analyze-stock.ts](https://github.com/koala73/worldmonitor/blob/main/server/worldmonitor/market/v1/analyze-stock.ts)
 
 The helper:
 
@@ -96,10 +101,10 @@ Configured keys:
 
 These are wired through:
 
-- [runtime-config.ts](../src/services/runtime-config.ts)
-- [settings-constants.ts](../src/services/settings-constants.ts)
-- [main.rs](../src-tauri/src/main.rs)
-- [local-api-server.mjs](../src-tauri/sidecar/local-api-server.mjs)
+- [runtime-config.ts](https://github.com/koala73/worldmonitor/blob/main/src/services/runtime-config.ts)
+- [settings-constants.ts](https://github.com/koala73/worldmonitor/blob/main/src/services/settings-constants.ts)
+- [main.rs](https://github.com/koala73/worldmonitor/blob/main/src-tauri/src/main.rs)
+- [local-api-server.mjs](https://github.com/koala73/worldmonitor/blob/main/src-tauri/sidecar/local-api-server.mjs)
 
 The values are multi-key strings, split on commas or newlines.
 

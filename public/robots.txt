@@ -5,6 +5,7 @@ Disallow: /api/
 Disallow: /tests/
 
 Sitemap: https://www.worldmonitor.app/sitemap.xml
+Sitemap: https://www.worldmonitor.app/blog/sitemap-index.xml
 
 # Allow social media bots for OG previews
 User-agent: Twitterbot

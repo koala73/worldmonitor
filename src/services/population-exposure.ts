@@ -1,9 +1,10 @@
 import { createCircuitBreaker } from '@/utils';
+import { getRpcBaseUrl } from '@/services/rpc-client';
 import type { CountryPopulation, PopulationExposure } from '@/types';
 import { DisplacementServiceClient } from '@/generated/client/worldmonitor/displacement/v1/service_client';
 import type { GetPopulationExposureResponse } from '@/generated/client/worldmonitor/displacement/v1/service_client';
 
-const client = new DisplacementServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+const client = new DisplacementServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 
 const countriesBreaker = createCircuitBreaker<GetPopulationExposureResponse>({ name: 'WorldPop Countries', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
 

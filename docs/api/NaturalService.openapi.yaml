@@ -115,3 +115,89 @@ components:
                     type: string
                 closed:
                     type: boolean
+                stormId:
+                    type: string
+                    description: Optional tropical cyclone fields (populated for severeStorms from GDACS TC / NHC)
+                stormName:
+                    type: string
+                basin:
+                    type: string
+                stormCategory:
+                    type: integer
+                    format: int32
+                classification:
+                    type: string
+                windKt:
+                    type: integer
+                    format: int32
+                pressureMb:
+                    type: integer
+                    format: int32
+                movementDir:
+                    type: integer
+                    format: int32
+                movementSpeedKt:
+                    type: integer
+                    format: int32
+                forecastTrack:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ForecastPoint'
+                conePolygon:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CoordRing'
+                pastTrack:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/PastTrackPoint'
+        ForecastPoint:
+            type: object
+            properties:
+                lat:
+                    type: number
+                    format: double
+                lon:
+                    type: number
+                    format: double
+                hour:
+                    type: integer
+                    format: int32
+                windKt:
+                    type: integer
+                    format: int32
+                category:
+                    type: integer
+                    format: int32
+        CoordRing:
+            type: object
+            properties:
+                points:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Coordinate'
+        Coordinate:
+            type: object
+            properties:
+                lon:
+                    type: number
+                    format: double
+                lat:
+                    type: number
+                    format: double
+        PastTrackPoint:
+            type: object
+            properties:
+                lat:
+                    type: number
+                    format: double
+                lon:
+                    type: number
+                    format: double
+                windKt:
+                    type: integer
+                    format: int32
+                timestamp:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'

@@ -43,7 +43,6 @@ export class ServiceStatusPanel extends Panel {
 
   constructor() {
     super({ id: 'service-status', title: t('panels.serviceStatus'), showCount: false });
-    void this.fetchStatus();
   }
 
   private lastServicesJson = '';

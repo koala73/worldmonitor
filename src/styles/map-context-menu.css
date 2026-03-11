@@ -1,0 +1,3 @@
+.map-context-menu { position: fixed; z-index: 9999; background: var(--panel-bg); border: 1px solid var(--border); border-radius: 6px; padding: 4px 0; min-width: 180px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+.map-context-menu-item { padding: 6px 12px; font-size: 0.82rem; cursor: pointer; color: var(--text-primary); }
+.map-context-menu-item:hover { background: var(--hover-bg); }

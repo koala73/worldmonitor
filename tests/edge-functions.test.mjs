@@ -61,6 +61,7 @@ describe('Legacy api/*.js endpoint allowlist', () => {
     'ais-snapshot.js',
     'bootstrap.js',
     'cache-purge.js',
+    'contact.js',
     'download.js',
     'fwdstart.js',
     'geo.js',

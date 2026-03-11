@@ -1,3 +1,8 @@
+---
+title: "Premium Finance"
+description: "Premium finance is the finance-variant layer that ports the reusable stock-analysis product surface from daily_stock_analysis into World Monitor without importing that repo's full standalone app architecture."
+---
+
 # Premium Finance
 
 Premium finance is the finance-variant layer that ports the reusable stock-analysis product surface from `../daily_stock_analysis` into World Monitor without importing that repo's full standalone app architecture.
@@ -48,35 +53,35 @@ It does **not** attempt full parity with the source repo's:
 
 Primary handlers:
 
-- [analyze-stock.ts](../server/worldmonitor/market/v1/analyze-stock.ts)
-- [get-stock-analysis-history.ts](../server/worldmonitor/market/v1/get-stock-analysis-history.ts)
-- [backtest-stock.ts](../server/worldmonitor/market/v1/backtest-stock.ts)
-- [list-stored-stock-backtests.ts](../server/worldmonitor/market/v1/list-stored-stock-backtests.ts)
-- [premium-stock-store.ts](../server/worldmonitor/market/v1/premium-stock-store.ts)
+- [analyze-stock.ts](https://github.com/koala73/worldmonitor/blob/main/server/worldmonitor/market/v1/analyze-stock.ts)
+- [get-stock-analysis-history.ts](https://github.com/koala73/worldmonitor/blob/main/server/worldmonitor/market/v1/get-stock-analysis-history.ts)
+- [backtest-stock.ts](https://github.com/koala73/worldmonitor/blob/main/server/worldmonitor/market/v1/backtest-stock.ts)
+- [list-stored-stock-backtests.ts](https://github.com/koala73/worldmonitor/blob/main/server/worldmonitor/market/v1/list-stored-stock-backtests.ts)
+- [premium-stock-store.ts](https://github.com/koala73/worldmonitor/blob/main/server/worldmonitor/market/v1/premium-stock-store.ts)
 
 Primary contracts:
 
-- [analyze_stock.proto](../proto/worldmonitor/market/v1/analyze_stock.proto)
-- [get_stock_analysis_history.proto](../proto/worldmonitor/market/v1/get_stock_analysis_history.proto)
-- [backtest_stock.proto](../proto/worldmonitor/market/v1/backtest_stock.proto)
-- [list_stored_stock_backtests.proto](../proto/worldmonitor/market/v1/list_stored_stock_backtests.proto)
-- [service.proto](../proto/worldmonitor/market/v1/service.proto)
+- [analyze_stock.proto](https://github.com/koala73/worldmonitor/blob/main/proto/worldmonitor/market/v1/analyze_stock.proto)
+- [get_stock_analysis_history.proto](https://github.com/koala73/worldmonitor/blob/main/proto/worldmonitor/market/v1/get_stock_analysis_history.proto)
+- [backtest_stock.proto](https://github.com/koala73/worldmonitor/blob/main/proto/worldmonitor/market/v1/backtest_stock.proto)
+- [list_stored_stock_backtests.proto](https://github.com/koala73/worldmonitor/blob/main/proto/worldmonitor/market/v1/list_stored_stock_backtests.proto)
+- [service.proto](https://github.com/koala73/worldmonitor/blob/main/proto/worldmonitor/market/v1/service.proto)
 
 ### Frontend Surfaces
 
 Panels:
 
-- [StockAnalysisPanel.ts](../src/components/StockAnalysisPanel.ts)
-- [StockBacktestPanel.ts](../src/components/StockBacktestPanel.ts)
-- [DailyMarketBriefPanel.ts](../src/components/DailyMarketBriefPanel.ts)
+- [StockAnalysisPanel.ts](https://github.com/koala73/worldmonitor/blob/main/src/components/StockAnalysisPanel.ts)
+- [StockBacktestPanel.ts](https://github.com/koala73/worldmonitor/blob/main/src/components/StockBacktestPanel.ts)
+- [DailyMarketBriefPanel.ts](https://github.com/koala73/worldmonitor/blob/main/src/components/DailyMarketBriefPanel.ts)
 
 Services and loading:
 
-- [stock-analysis.ts](../src/services/stock-analysis.ts)
-- [stock-analysis-history.ts](../src/services/stock-analysis-history.ts)
-- [stock-backtest.ts](../src/services/stock-backtest.ts)
-- [daily-market-brief.ts](../src/services/daily-market-brief.ts)
-- [data-loader.ts](../src/app/data-loader.ts)
+- [stock-analysis.ts](https://github.com/koala73/worldmonitor/blob/main/src/services/stock-analysis.ts)
+- [stock-analysis-history.ts](https://github.com/koala73/worldmonitor/blob/main/src/services/stock-analysis-history.ts)
+- [stock-backtest.ts](https://github.com/koala73/worldmonitor/blob/main/src/services/stock-backtest.ts)
+- [daily-market-brief.ts](https://github.com/koala73/worldmonitor/blob/main/src/services/daily-market-brief.ts)
+- [data-loader.ts](https://github.com/koala73/worldmonitor/blob/main/src/app/data-loader.ts)
 
 ---
 
@@ -176,8 +181,8 @@ Premium finance endpoints are enforced server-side.
 
 Premium RPC paths are gated in:
 
-- [gateway.ts](../server/gateway.ts)
-- [api/_api-key.js](../api/_api-key.js)
+- [gateway.ts](https://github.com/koala73/worldmonitor/blob/main/server/gateway.ts)
+- [api/_api-key.js](https://github.com/koala73/worldmonitor/blob/main/api/_api-key.js)
 
 This matters because a UI-only lock would still allow direct API usage from trusted browser origins.
 
@@ -190,9 +195,9 @@ Core premium finance currently depends on:
 - Yahoo Finance chart/history endpoints
 - Finnhub for broader market data already used elsewhere in World Monitor
 - Google News RSS as the baseline stock-news fallback
-- the shared LLM provider chain in [llm.ts](../server/_shared/llm.ts)
+- the shared LLM provider chain in [llm.ts](https://github.com/koala73/worldmonitor/blob/main/server/_shared/llm.ts)
 
-The provider-backed targeted stock-news layer is documented separately in [PREMIUM_FINANCE_SEARCH.md](./PREMIUM_FINANCE_SEARCH.md).
+The provider-backed targeted stock-news layer is documented separately in [PREMIUM_FINANCE_SEARCH.md](/PREMIUM_FINANCE_SEARCH).
 
 ---
 
@@ -225,7 +230,7 @@ The core layer is:
 
 The search-backed stock-news layer is intentionally separate because it improves analysis quality but is not required for the feature to function. If all search providers are unavailable, premium stock analysis still works using Google News RSS fallback.
 
-See [PREMIUM_FINANCE_SEARCH.md](./PREMIUM_FINANCE_SEARCH.md).
+See [PREMIUM_FINANCE_SEARCH.md](/PREMIUM_FINANCE_SEARCH).
 
 ---
 

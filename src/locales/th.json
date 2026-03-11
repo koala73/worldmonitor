@@ -122,6 +122,17 @@
       "stockIndex": "ดัชนีหุ้น: {{value}}",
       "recentHeadlines": "**พาดหัวข่าวล่าสุด:**",
       "activeStrikes": "ตรวจพบการนัดหยุดงาน {{count}} รายการ"
+    },
+    "countryFacts": "ข้อมูลประเทศ",
+    "loadingFacts": "กำลังโหลดข้อมูลประเทศ...",
+    "noFacts": "ไม่มีข้อมูลประเทศ",
+    "facts": {
+      "headOfState": "ประมุขแห่งรัฐ",
+      "population": "ประชากร",
+      "capital": "เมืองหลวง",
+      "languages": "ภาษา",
+      "currencies": "สกุลเงิน",
+      "area": "พื้นที่"
     }
   },
   "header": {
@@ -982,6 +993,7 @@
       "layerWarningDismiss": "ไม่ต้องแสดงอีก",
       "layerWarningOk": "รับทราบ",
       "layersTitle": "เลเยอร์",
+      "layerSearch": "ค้นหาเลเยอร์...",
       "timeAll": "ทั้งหมด",
       "views": {
         "global": "ทั่วโลก",
@@ -1761,7 +1773,9 @@
       "sources": {
         "faa": "FAA ASWS",
         "eurocontrol": "Eurocontrol",
-        "computed": "คำนวณ"
+        "computed": "คำนวณ",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "อเมริกา",
@@ -2366,5 +2380,9 @@
     "mapThemeDesc": "สไตล์ภาพของไทล์แผนที่",
     "globePreset": "พรีเซ็ตภาพ",
     "globePresetDesc": "สลับระหว่างภาพลูกโลกแบบคลาสสิกและปรับปรุง"
+  },
+  "contextMenu": {
+    "openCountryBrief": "เปิดภาพรวมประเทศ",
+    "copyCoordinates": "คัดลอกพิกัด"
   }
 }

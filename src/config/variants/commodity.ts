@@ -65,6 +65,7 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   // Geopolitical / military
   gpsJamming: false,
   satellites: false,
+
   iranAttacks: false,
   conflicts: false,
   bases: false,
@@ -134,6 +135,7 @@ export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   // All others disabled on mobile
   gpsJamming: false,
   satellites: false,
+
   iranAttacks: false,
   conflicts: false,
   bases: false,

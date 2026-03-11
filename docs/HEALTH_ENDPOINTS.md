@@ -1,0 +1,216 @@
+---
+title: "Health Endpoints"
+description: "World Monitor exposes two health endpoints for monitoring data pipeline integrity. Both run on the Vercel Edge Runtime and query Redis (Upstash) to assess system state."
+---
+
+# Health Endpoints
+
+World Monitor exposes two health endpoints for monitoring data pipeline integrity. Both run on the Vercel Edge Runtime and query Redis (Upstash) to assess system state.
+
+## `/api/health`
+
+Primary health endpoint. Checks all Redis-backed data keys and seed freshness metadata in a single pipeline call.
+
+**Authentication:** None required. Open to all origins (`Access-Control-Allow-Origin: *`).
+
+**HTTP Method:** `GET`
+
+### Query Parameters
+
+| Parameter | Values | Description |
+|-----------|--------|-------------|
+| `compact` | `1` | Omit per-key details; only return keys with problems |
+
+### Response Status Codes
+
+| HTTP Status | Overall Status | Meaning |
+|-------------|---------------|---------|
+| `200` | `HEALTHY` | All checks OK, no warnings |
+| `200` | `WARNING` | Some keys stale or on-demand keys empty, but no critical failures |
+| `503` | `DEGRADED` | 1-3 bootstrap keys empty |
+| `503` | `UNHEALTHY` | 4+ bootstrap keys empty |
+| `503` | `REDIS_DOWN` | Could not connect to Redis |
+
+### Response Body
+
+```json
+{
+  "status": "HEALTHY | WARNING | DEGRADED | UNHEALTHY | REDIS_DOWN",
+  "summary": {
+    "total": 57,
+    "ok": 52,
+    "warn": 5,
+    "crit": 0
+  },
+  "checkedAt": "2026-03-11T14:00:00.000Z",
+  "checks": {
+    "earthquakes": {
+      "status": "OK",
+      "records": 142,
+      "seedAgeMin": 8,
+      "maxStaleMin": 30
+    }
+  }
+}
+```
+
+With `?compact=1`, the `checks` object is replaced by `problems` containing only non-OK keys.
+
+### Key Classifications
+
+Keys are grouped into three tiers that determine alert severity:
+
+| Tier | Severity when empty | Description |
+|------|-------------------|-------------|
+| **Bootstrap** | CRIT | Seeded data required at startup. Empty means the dashboard is missing critical data |
+| **Standalone** | CRIT (seeded) / WARN (on-demand) | Populated by seed loops or RPC handlers. On-demand keys are expected to be empty until first request |
+| **On-demand** | WARN | Populated lazily by RPC calls. Empty is normal if nobody has requested the data yet |
+
+### Per-Key Statuses
+
+| Status | Severity | Meaning |
+|--------|----------|---------|
+| `OK` | Green | Data present, seed fresh |
+| `OK_CASCADE` | Green | Key empty but a sibling in the cascade group has data (e.g., theater posture fallback chain) |
+| `STALE_SEED` | Warn | Data present but `seed-meta` age exceeds `maxStaleMin` |
+| `EMPTY_ON_DEMAND` | Warn | On-demand key has no data yet |
+| `EMPTY` | Crit | Bootstrap or standalone key has no data |
+| `EMPTY_DATA` | Crit | Key exists but contains zero records |
+
+### Cascade Groups
+
+Some keys use fallback chains. If any sibling has data, empty siblings report `OK_CASCADE`:
+
+- **Theater Posture:** `theaterPostureLive` -> `theaterPosture` (stale) -> `theaterPostureBackup`
+- **Military Flights:** `militaryFlights` -> `militaryFlightsStale`
+
+### Staleness Thresholds (maxStaleMin)
+
+Selected thresholds from `SEED_META`:
+
+| Domain | Max Stale (min) | Notes |
+|--------|----------------|-------|
+| Market quotes, crypto, sectors | 30 | High-frequency relay loops |
+| Earthquakes, unrest, insights | 30 | Critical event data |
+| Predictions | 15 | Polymarket, fast-moving |
+| Military flights | 15 | Near-real-time tracking |
+| Flight delays (FAA) | 60 | Airport delay snapshots |
+| Wildfires, climate anomalies | 120 | Slower-moving natural events |
+| Cyber threats | 480 | APT data updated less frequently |
+| BIS data, World Bank, minerals | 2880-10080 | Institutional data, weekly/monthly updates |
+
+### Example Requests
+
+```bash
+# Full health check
+curl -s https://api.worldmonitor.app/api/health | jq .
+
+# Compact (problems only)
+curl -s "https://api.worldmonitor.app/api/health?compact=1" | jq .
+
+# UptimeRobot / monitoring: check HTTP status code
+curl -o /dev/null -s -w "%{http_code}" https://api.worldmonitor.app/api/health
+# Returns 200 (healthy/warning) or 503 (degraded/unhealthy)
+```
+
+## `/api/seed-health`
+
+Focused endpoint for seed loop freshness. Checks only `seed-meta:*` keys without fetching actual data payloads.
+
+**Authentication:** Requires valid API key or allowed origin.
+
+**HTTP Method:** `GET`
+
+### Response Status Codes
+
+| HTTP Status | Overall Status | Meaning |
+|-------------|---------------|---------|
+| `200` | `healthy` | All seed loops reporting on time |
+| `200` | `warning` | Some seeds stale (age > 2x interval) |
+| `200` | `degraded` | Some seeds missing entirely |
+| `401` | - | Invalid or missing API key |
+| `503` | - | Redis unavailable |
+
+### Response Body
+
+```json
+{
+  "overall": "healthy | warning | degraded",
+  "checkedAt": 1710158400000,
+  "seeds": {
+    "seismology:earthquakes": {
+      "status": "ok",
+      "fetchedAt": 1710158100000,
+      "recordCount": 142,
+      "sourceVersion": null,
+      "ageMinutes": 5,
+      "stale": false
+    },
+    "market:stocks": {
+      "status": "stale",
+      "fetchedAt": 1710150000000,
+      "recordCount": 85,
+      "sourceVersion": null,
+      "ageMinutes": 140,
+      "stale": true
+    }
+  }
+}
+```
+
+### Staleness Logic
+
+A seed is considered stale when its age exceeds **2x the configured interval**. This accounts for normal jitter in cron/relay timing.
+
+| Domain | Interval (min) | Stale After (min) |
+|--------|---------------|-------------------|
+| Predictions, military flights | 8 | 16 |
+| Market quotes, earthquakes, unrest | 15 | 30 |
+| ETF flows, stablecoins, chokepoints | 30 | 60 |
+| Service statuses, spending, wildfires | 60 | 120 |
+| Shipping rates, satellites | 90-120 | 180-240 |
+| GPS jamming, displacement | 360 | 720 |
+| Iran events, UCDP | 210-5040 | 420-10080 |
+
+### Example Request
+
+```bash
+curl -s https://api.worldmonitor.app/api/seed-health \
+  -H "Origin: https://worldmonitor.app" | jq .
+```
+
+## Integration with Monitoring Tools
+
+### UptimeRobot
+
+Use `/api/health` as the monitor URL. UptimeRobot checks HTTP status:
+
+- `200` = up
+- `503` = down
+
+For keyword monitoring, check for `"status":"HEALTHY"` in the response body.
+
+### Custom Alerting
+
+Parse the JSON response to build granular alerts:
+
+```bash
+# Alert on any critical keys
+STATUS=$(curl -s "https://api.worldmonitor.app/api/health?compact=1")
+CRIT=$(echo "$STATUS" | jq '.summary.crit')
+if [ "$CRIT" -gt 0 ]; then
+  echo "CRITICAL: $CRIT data keys empty"
+  echo "$STATUS" | jq '.problems'
+fi
+```
+
+## Differences Between Endpoints
+
+| Aspect | `/api/health` | `/api/seed-health` |
+|--------|--------------|-------------------|
+| **Scope** | Data keys + seed metadata | Seed metadata only |
+| **Auth** | None (public) | API key or allowed origin |
+| **Data fetched** | Full Redis values (to count records) | Only `seed-meta:*` keys |
+| **HTTP 503** | Yes (DEGRADED/UNHEALTHY) | No (always 200 unless Redis down) |
+| **Best for** | Uptime monitoring, dashboard health | Debugging seed loop issues |
+| **Response size** | Larger (57+ keys with record counts) | Smaller (42 seed domains) |

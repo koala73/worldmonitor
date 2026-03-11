@@ -122,6 +122,17 @@
       "stockIndex": "Фондов индекс: {{value}}",
       "recentHeadlines": "**Скорошни заглавия:**",
       "activeStrikes": "{{count}} активни удари открити"
+    },
+    "countryFacts": "Факти за страната",
+    "loadingFacts": "Зареждане на фактите за страната...",
+    "noFacts": "Фактите за страната не са налични.",
+    "facts": {
+      "headOfState": "Държавен глава",
+      "population": "Население",
+      "capital": "Столица",
+      "languages": "Езици",
+      "currencies": "Валути",
+      "area": "Площ"
     }
   },
   "header": {
@@ -982,6 +993,7 @@
       "layerWarningDismiss": "Не показвай отново",
       "layerWarningOk": "Разбрах",
       "layersTitle": "Слои",
+      "layerSearch": "Търсене на слоеве...",
       "timeAll": "Всички",
       "views": {
         "global": "Глобално",
@@ -1761,7 +1773,9 @@
       "sources": {
         "faa": "FAA ASWS",
         "eurocontrol": "Eurocontrol",
-        "computed": "Изчислено"
+        "computed": "Изчислено",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "Америки",
@@ -2366,5 +2380,9 @@
     "mapThemeDesc": "Визуален стил на картните плочки.",
     "globePreset": "Визуален предварителен набор",
     "globePresetDesc": "Превключване между класически и подобрени визуализации."
+  },
+  "contextMenu": {
+    "openCountryBrief": "Отвори обзор на страната",
+    "copyCoordinates": "Копирай координати"
   }
 }

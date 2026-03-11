@@ -153,7 +153,10 @@
     "risk": "Tư vấn rủi ro",
     "riskDesc": "Mô phỏng kịch bản, hồ sơ nhà đầu tư, báo cáo PDF/PowerPoint có thương hiệu theo yêu cầu.",
     "soc": "SOC & CERT",
-    "socDesc": "Lớp mối đe dọa mạng, tích hợp SIEM, giám sát bất thường BGP, nguồn cấp ransomware."
+    "socDesc": "Lớp mối đe dọa mạng, tích hợp SIEM, giám sát bất thường BGP, nguồn cấp ransomware.",
+    "orgPlaceholder": "Công ty *",
+    "phonePlaceholder": "Số điện thoại *",
+    "workEmailRequired": "Vui lòng sử dụng email công việc"
   },
   "pricingTable": {
     "title": "So sánh các gói",

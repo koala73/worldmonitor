@@ -8,7 +8,7 @@ import type {
   SeverityLevel,
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
-import { getCachedJson, setCachedJson, cachedFetchJson } from '../../../_shared/redis';
+import { getCachedJson, setCachedJson, cachedFetchJsonWithMeta } from '../../../_shared/redis';
 import { TIER1_COUNTRIES } from './_shared';
 import { fetchAcledCached } from '../../../_shared/acled';
 
@@ -52,7 +52,7 @@ const COUNTRY_KEYWORDS: Record<string, string[]> = {
   CU: ['cuba', 'havana', 'diaz-canel'],
   MX: ['mexico', 'mexican', 'sheinbaum', 'cartel', 'sinaloa'],
   BR: ['brazil', 'brasilia', 'lula'],
-  AE: ['uae', 'emirates', 'dubai', 'abu dhabi'],
+  AE: ['uae', 'emirates', 'dubai', 'abu dhabi', 'united arab emirates'],
 };
 
 const COUNTRY_BBOX: Record<string, { minLat: number; maxLat: number; minLon: number; maxLon: number }> = {
@@ -107,10 +107,14 @@ function normalizeCountryName(text: string): string | null {
   return null;
 }
 
+const BBOX_BY_AREA = Object.entries(COUNTRY_BBOX)
+  .map(([code, b]) => ({ code, ...b, area: (b.maxLat - b.minLat) * (b.maxLon - b.minLon) }))
+  .sort((a, b) => a.area - b.area);
+
 function geoToCountry(lat: number, lon: number): string | null {
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-  for (const [code, bbox] of Object.entries(COUNTRY_BBOX)) {
-    if (lat >= bbox.minLat && lat <= bbox.maxLat && lon >= bbox.minLon && lon <= bbox.maxLon) return code;
+  for (const b of BBOX_BY_AREA) {
+    if (lat >= b.minLat && lat <= b.maxLat && lon >= b.minLon && lon <= b.maxLon) return b.code;
   }
   return null;
 }
@@ -275,7 +279,7 @@ export function computeCIIScores(
     const sev = String(o.severity || '').toUpperCase();
     if (sev.includes('TOTAL') || sev === 'NATIONWIDE') data[code].outageTotalCount++;
     else if (sev.includes('MAJOR') || sev === 'REGIONAL') data[code].outageMajorCount++;
-    else data[code].outagePartialCount++;
+    else if (sev.includes('PARTIAL') || sev.includes('LOCAL') || sev.includes('MINOR')) data[code].outagePartialCount++;
   }
 
   // --- Climate ---
@@ -454,7 +458,7 @@ export async function getRiskScores(
   _req: GetRiskScoresRequest,
 ): Promise<GetRiskScoresResponse> {
   try {
-    const result = await cachedFetchJson<GetRiskScoresResponse>(
+    const { data: result } = await cachedFetchJsonWithMeta<GetRiskScoresResponse>(
       RISK_CACHE_KEY,
       RISK_CACHE_TTL,
       async () => {
@@ -464,12 +468,13 @@ export async function getRiskScores(
         ]);
         const ciiScores = computeCIIScores(acled, aux);
         const strategicRisks = computeStrategicRisks(ciiScores);
-        const r: GetRiskScoresResponse = { ciiScores, strategicRisks };
-        await setCachedJson(RISK_STALE_CACHE_KEY, r, RISK_STALE_TTL).catch(() => {});
-        return r;
+        return { ciiScores, strategicRisks };
       },
     );
-    if (result) return result;
+    if (result) {
+      await setCachedJson(RISK_STALE_CACHE_KEY, result, RISK_STALE_TTL).catch(() => {});
+      return result;
+    }
   } catch { /* upstream failed, fall through to stale */ }
 
   const stale = (await getCachedJson(RISK_STALE_CACHE_KEY)) as GetRiskScoresResponse | null;

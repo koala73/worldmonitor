@@ -1,3 +1,8 @@
+---
+title: "Algorithms & Scoring"
+description: "Detailed documentation of World Monitor's scoring formulas, detection algorithms, and classification pipelines."
+---
+
 # Algorithms & Scoring
 
 Detailed documentation of World Monitor's scoring formulas, detection algorithms, and classification pipelines.

@@ -1,3 +1,8 @@
+---
+title: "Desktop Application"
+description: "Tauri desktop architecture, sidecar management, secret storage, cloud fallback, and multi-platform build details."
+---
+
 # Desktop Application
 
 Tauri desktop architecture, sidecar management, secret storage, cloud fallback, and multi-platform build details.

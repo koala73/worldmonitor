@@ -584,6 +584,7 @@
         "renewableInstallations": "Ren energi"
       },
       "layersTitle": "Lager",
+      "layerSearch": "Sök lager...",
       "layerGuide": "Lagerguide",
       "layerWarningTitle": "Prestandameddelande",
       "layerWarningBody": "Att aktivera fler än {{threshold}} lager kan påverka renderingsprestanda och bildfrekvens.",
@@ -1567,7 +1568,9 @@
       "sources": {
         "faa": "FAA ASWS",
         "eurocontrol": "Eurocontrol",
-        "computed": "Beräknad"
+        "computed": "Beräknad",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "Amerika",
@@ -2347,6 +2350,17 @@
       "sirens24h": "Sirener / 24h",
       "aviationDisruptions": "Flygstörningar",
       "gpsJammingZones": "GPS-störningszoner"
+    },
+    "countryFacts": "Fakta om landet",
+    "loadingFacts": "Laddar fakta om landet...",
+    "noFacts": "Fakta om landet ej tillgängliga.",
+    "facts": {
+      "headOfState": "Statschef",
+      "population": "Befolkning",
+      "capital": "Huvudstad",
+      "languages": "Språk",
+      "currencies": "Valutor",
+      "area": "Yta"
     }
   },
   "preferences": {
@@ -2366,5 +2380,9 @@
     "mapThemeDesc": "Visuell stil för kartpaneler.",
     "globePreset": "Visuell förinställning",
     "globePresetDesc": "Växla mellan klassiska och förbättrade globvisualer."
+  },
+  "contextMenu": {
+    "openCountryBrief": "Öppna landsöversikt",
+    "copyCoordinates": "Kopiera koordinater"
   }
 }

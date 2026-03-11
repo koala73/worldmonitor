@@ -122,6 +122,17 @@
       "stockIndex": "Indice bursier: {{value}}",
       "recentHeadlines": "**Titluri recente:**",
       "activeStrikes": "{{count}} avertismente active detectate"
+    },
+    "countryFacts": "Date despre țară",
+    "loadingFacts": "Se încarcă datele țării...",
+    "noFacts": "Datele țării nu sunt disponibile.",
+    "facts": {
+      "headOfState": "Șeful statului",
+      "population": "Populație",
+      "capital": "Capitală",
+      "languages": "Limbi",
+      "currencies": "Monede",
+      "area": "Suprafață"
     }
   },
   "header": {
@@ -982,6 +993,7 @@
       "layerWarningDismiss": "Nu mai afișa",
       "layerWarningOk": "Am înțeles",
       "layersTitle": "Straturi",
+      "layerSearch": "Caută straturi...",
       "timeAll": "Toate",
       "views": {
         "global": "Global",
@@ -1761,7 +1773,9 @@
       "sources": {
         "faa": "FAA ASWS",
         "eurocontrol": "Eurocontrol",
-        "computed": "Calculat"
+        "computed": "Calculat",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "America",
@@ -2366,5 +2380,9 @@
     "mapThemeDesc": "Stilul vizual al dalelor hărții.",
     "globePreset": "Presetare vizuală",
     "globePresetDesc": "Comută între vizualizări clasice și îmbunătățite ale globului."
+  },
+  "contextMenu": {
+    "openCountryBrief": "Deschide prezentarea țării",
+    "copyCoordinates": "Copiază coordonatele"
   }
 }

@@ -153,6 +153,16 @@ describe('CII scoring', () => {
     }
   });
 
+  it('UAE geo events attributed to AE not SA despite bbox overlap', () => {
+    const aux = emptyAux();
+    aux.gpsHexes = [{ lat: 25.2, lon: 55.3, level: 'high' }];
+    const scores = computeCIIScores([], aux);
+    const ae = scoreFor(scores, 'AE')!;
+    const sa = scoreFor(scores, 'SA')!;
+    assert.ok(ae.components!.militaryActivity > 0, 'AE should get the Dubai GPS hex');
+    assert.equal(sa.components!.militaryActivity, 0, 'SA should not get the Dubai GPS hex');
+  });
+
   it('empty data returns baseline-derived scores with floors', () => {
     const scores = computeCIIScores([], emptyAux());
     const us = scoreFor(scores, 'US')!;

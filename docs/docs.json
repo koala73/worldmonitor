@@ -1,0 +1,203 @@
+{
+  "$schema": "https://mintlify.com/schema.json",
+  "theme": "mint",
+  "name": "World Monitor Docs",
+  "logo": {
+    "dark": "/logo.png",
+    "light": "/logo.png"
+  },
+  "favicon": "/favicon.png",
+  "colors": {
+    "primary": "#3b82f6",
+    "light": "#60a5fa",
+    "dark": "#2563eb"
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "Live App",
+        "href": "https://worldmonitor.app"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "GitHub",
+      "href": "https://github.com/koala73/worldmonitor"
+    }
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "DOCUMENTATION",
+              "ARCHITECTURE"
+            ]
+          },
+          {
+            "group": "Core Systems",
+            "pages": [
+              "DATA_SOURCES",
+              "ALGORITHMS",
+              "MAP_ENGINE",
+              "AI_INTELLIGENCE",
+              "MAPS_AND_GEOCODING"
+            ]
+          },
+          {
+            "group": "Finance",
+            "pages": [
+              "FINANCE_DATA",
+              "PREMIUM_FINANCE",
+              "PREMIUM_FINANCE_SEARCH"
+            ]
+          },
+          {
+            "group": "Infrastructure",
+            "pages": [
+              "DESKTOP_APP",
+              "ORBITAL_SURVEILLANCE",
+              "CORS",
+              "HEALTH_ENDPOINTS",
+              "RELAY_PARAMETERS"
+            ]
+          },
+          {
+            "group": "Contributing",
+            "pages": [
+              "ADDING_ENDPOINTS",
+              "API_KEY_DEPLOYMENT",
+              "RELEASE_PACKAGING"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Geopolitical",
+            "pages": [
+              {
+                "group": "Conflicts",
+                "openapi": "api/ConflictService.openapi.yaml"
+              },
+              {
+                "group": "Military",
+                "openapi": "api/MilitaryService.openapi.yaml"
+              },
+              {
+                "group": "Unrest",
+                "openapi": "api/UnrestService.openapi.yaml"
+              },
+              {
+                "group": "Intelligence",
+                "openapi": "api/IntelligenceService.openapi.yaml"
+              },
+              {
+                "group": "Displacement",
+                "openapi": "api/DisplacementService.openapi.yaml"
+              },
+              {
+                "group": "Cyber",
+                "openapi": "api/CyberService.openapi.yaml"
+              }
+            ]
+          },
+          {
+            "group": "Natural Events",
+            "pages": [
+              {
+                "group": "Natural Disasters",
+                "openapi": "api/NaturalService.openapi.yaml"
+              },
+              {
+                "group": "Seismology",
+                "openapi": "api/SeismologyService.openapi.yaml"
+              },
+              {
+                "group": "Climate",
+                "openapi": "api/ClimateService.openapi.yaml"
+              },
+              {
+                "group": "Wildfires",
+                "openapi": "api/WildfireService.openapi.yaml"
+              }
+            ]
+          },
+          {
+            "group": "Economy & Markets",
+            "pages": [
+              {
+                "group": "Economic",
+                "openapi": "api/EconomicService.openapi.yaml"
+              },
+              {
+                "group": "Markets",
+                "openapi": "api/MarketService.openapi.yaml"
+              },
+              {
+                "group": "Trade",
+                "openapi": "api/TradeService.openapi.yaml"
+              },
+              {
+                "group": "Supply Chain",
+                "openapi": "api/SupplyChainService.openapi.yaml"
+              },
+              {
+                "group": "Predictions",
+                "openapi": "api/PredictionService.openapi.yaml"
+              }
+            ]
+          },
+          {
+            "group": "Infrastructure & Transport",
+            "pages": [
+              {
+                "group": "Aviation",
+                "openapi": "api/AviationService.openapi.yaml"
+              },
+              {
+                "group": "Maritime",
+                "openapi": "api/MaritimeService.openapi.yaml"
+              },
+              {
+                "group": "Infrastructure",
+                "openapi": "api/InfrastructureService.openapi.yaml"
+              }
+            ]
+          },
+          {
+            "group": "Other",
+            "pages": [
+              {
+                "group": "News",
+                "openapi": "api/NewsService.openapi.yaml"
+              },
+              {
+                "group": "Research",
+                "openapi": "api/ResearchService.openapi.yaml"
+              },
+              {
+                "group": "Positive Events",
+                "openapi": "api/PositiveEventsService.openapi.yaml"
+              },
+              {
+                "group": "Giving",
+                "openapi": "api/GivingService.openapi.yaml"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/koala73/worldmonitor"
+    }
+  }
+}

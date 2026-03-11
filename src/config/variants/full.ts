@@ -55,6 +55,7 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
   satellites: false,
 
+
   conflicts: true,
   bases: true,
   cables: false,
@@ -112,6 +113,7 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
 export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
   satellites: false,
+
 
   conflicts: true,
   bases: false,
