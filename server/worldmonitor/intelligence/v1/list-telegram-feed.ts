@@ -5,6 +5,24 @@ import type {
   ListTelegramFeedResponse,
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
+interface TelegramRelayMessage {
+  id: string | number;
+  channelId: string | number;
+  channelName: string;
+  text: string;
+  timestamp: string | number;
+  mediaUrls?: string[];
+  sourceUrl?: string;
+  topic?: string;
+}
+
+interface TelegramRelayResponse {
+  enabled?: boolean;
+  messages: TelegramRelayMessage[];
+  count?: number;
+  error?: string;
+}
+
 /**
  * ListTelegramFeed fetches OSINT messages from the Telegram relay.
  */
@@ -39,15 +57,15 @@ export const listTelegramFeed: IntelligenceServiceHandler['listTelegramFeed'] = 
       return { enabled: false, messages: [], count: 0, error: `Relay HTTP ${resp.status}` };
     }
 
-    const data = await resp.json();
+    const data = await resp.json() as TelegramRelayResponse;
     return {
       enabled: data.enabled ?? true,
-      messages: (data.messages || []).map((m: any) => ({
+      messages: (data.messages || []).map((m) => ({
         id: String(m.id || ''),
         channelId: String(m.channelId || ''),
         channelName: String(m.channelName || ''),
         text: String(m.text || ''),
-        timestamp: Number(m.timestamp) || 0,
+        timestampMs: (Number(m.timestamp) || 0).toString(),
         mediaUrls: Array.isArray(m.mediaUrls) ? m.mediaUrls.map(String) : [],
         sourceUrl: String(m.sourceUrl || ''),
         topic: String(m.topic || ''),

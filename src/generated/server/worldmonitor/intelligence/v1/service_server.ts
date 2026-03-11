@@ -203,10 +203,10 @@ export interface ListOrefAlertsRequest {
 export interface ListOrefAlertsResponse {
   configured: boolean;
   alerts: OrefAlert[];
-  history: OrefHistoryWave[];
+  history: OrefWave[];
   historyCount24h: number;
   totalHistoryCount: number;
-  timestamp: string;
+  timestampMs: string;
   error: string;
 }
 
@@ -216,12 +216,12 @@ export interface OrefAlert {
   title: string;
   data: string[];
   desc: string;
-  alertDate: string;
+  timestampMs: string;
 }
 
-export interface OrefHistoryWave {
+export interface OrefWave {
   alerts: OrefAlert[];
-  timestamp: string;
+  timestampMs: string;
 }
 
 export interface ListTelegramFeedRequest {
@@ -242,7 +242,7 @@ export interface TelegramMessage {
   channelId: string;
   channelName: string;
   text: string;
-  timestamp: number;
+  timestampMs: string;
   mediaUrls: string[];
   sourceUrl: string;
   topic: string;
@@ -259,7 +259,7 @@ export interface GetCompanyEnrichmentResponse {
   techStack: TechStackItem[];
   secFilings?: SecFilings;
   hackerNewsMentions: HNMention[];
-  enrichedAt: string;
+  enrichedAtMs: string;
   sources: string[];
 }
 
@@ -291,7 +291,7 @@ export interface SecFilings {
 
 export interface SecFiling {
   form: string;
-  date: string;
+  fileDate: string;
   description: string;
 }
 
@@ -300,7 +300,7 @@ export interface HNMention {
   url: string;
   points: number;
   comments: number;
-  date: string;
+  createdAtMs: string;
 }
 
 export interface ListCompanySignalsRequest {
@@ -313,7 +313,7 @@ export interface ListCompanySignalsResponse {
   domain: string;
   signals: CompanySignal[];
   summary?: SignalSummary;
-  discoveredAt: string;
+  discoveredAtMs: string;
 }
 
 export interface CompanySignal {
@@ -322,7 +322,7 @@ export interface CompanySignal {
   url: string;
   source: string;
   sourceTier: number;
-  timestamp: string;
+  timestampMs: string;
   strength: string;
   engagement?: SignalEngagement;
 }
@@ -417,12 +417,16 @@ export function createIntelligenceServiceRoutes(
 ): RouteDescriptor[] {
   return [
     {
-      method: "POST",
+      method: "GET",
       path: "/api/intelligence/v1/get-risk-scores",
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
-          const body = await req.json() as GetRiskScoresRequest;
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetRiskScoresRequest = {
+            region: params.get("region") ?? "",
+          };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("getRiskScores", body);
             if (bodyViolations) {
@@ -460,12 +464,16 @@ export function createIntelligenceServiceRoutes(
       },
     },
     {
-      method: "POST",
+      method: "GET",
       path: "/api/intelligence/v1/get-pizzint-status",
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
-          const body = await req.json() as GetPizzintStatusRequest;
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetPizzintStatusRequest = {
+            includeGdelt: params.get("include_gdelt") === "true",
+          };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("getPizzintStatus", body);
             if (bodyViolations) {
@@ -546,12 +554,16 @@ export function createIntelligenceServiceRoutes(
       },
     },
     {
-      method: "POST",
+      method: "GET",
       path: "/api/intelligence/v1/get-country-intel-brief",
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
-          const body = await req.json() as GetCountryIntelBriefRequest;
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetCountryIntelBriefRequest = {
+            countryCode: params.get("country_code") ?? "",
+          };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("getCountryIntelBrief", body);
             if (bodyViolations) {
@@ -589,12 +601,20 @@ export function createIntelligenceServiceRoutes(
       },
     },
     {
-      method: "POST",
+      method: "GET",
       path: "/api/intelligence/v1/search-gdelt-documents",
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
-          const body = await req.json() as SearchGdeltDocumentsRequest;
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: SearchGdeltDocumentsRequest = {
+            query: params.get("query") ?? "",
+            maxRecords: Number(params.get("max_records") ?? "0"),
+            timespan: params.get("timespan") ?? "",
+            toneFilter: params.get("tone_filter") ?? "",
+            sort: params.get("sort") ?? "",
+          };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("searchGdeltDocuments", body);
             if (bodyViolations) {
@@ -777,7 +797,7 @@ export function createIntelligenceServiceRoutes(
           const url = new URL(req.url, "http://localhost");
           const params = url.searchParams;
           const body: ListOrefAlertsRequest = {
-            mode: (params.get("mode") ?? "") as any,
+            mode: params.get("mode") ?? "",
           };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("listOrefAlerts", body);

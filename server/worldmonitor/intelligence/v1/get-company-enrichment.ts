@@ -16,7 +16,11 @@ import { CHROME_UA } from '../../../_shared/constants';
  * Fetch JSON from a URL with a configurable timeout.
  * Rejects on non-2xx status.
  */
-async function fetchJSON(url: string, timeout = 8000): Promise<any> {
+/**
+ * Fetch JSON from a URL with a configurable timeout.
+ * Rejects on non-2xx status.
+ */
+async function fetchJSON<T>(url: string, timeout = 8000): Promise<T | null> {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeout);
   try {
@@ -28,12 +32,56 @@ async function fetchJSON(url: string, timeout = 8000): Promise<any> {
       signal: controller.signal,
     });
     if (!res.ok) return null;
-    return await res.json();
+    return await res.json() as T;
   } catch {
     return null;
   } finally {
     clearTimeout(id);
   }
+}
+
+interface GitHubOrg {
+  name: string;
+  login: string;
+  description: string;
+  blog: string;
+  location: string;
+  public_repos: number;
+  followers: number;
+  avatar_url: string;
+  created_at: string;
+}
+
+interface GitHubRepo {
+  language: string | null;
+  stargazers_count: number;
+}
+
+interface SECSearchResponse {
+  hits: {
+    total?: { value: number };
+    hits: Array<{
+      _source?: {
+        form_type?: string;
+        file_type?: string;
+        file_date?: string;
+        period_of_report?: string;
+        display_names?: string[];
+      }
+    }>;
+  };
+}
+
+interface HNAlgoliaHit {
+  title: string;
+  url: string;
+  points: number;
+  num_comments: number;
+  created_at: string;
+}
+
+interface HNAlgoliaResponse {
+  hits: HNAlgoliaHit[];
 }
 
 function getDateMonthsAgo(months: number) {
@@ -57,22 +105,22 @@ function inferFromDomain(domain: string) {
 }
 
 async function fetchGitHubOrg(name: string) {
-  const data = await fetchJSON(`https://api.github.com/orgs/${encodeURIComponent(name)}`);
+  const data = await fetchJSON<GitHubOrg>(`https://api.github.com/orgs/${encodeURIComponent(name)}`);
   if (!data) return null;
   return {
     name: data.name || data.login,
-    description: data.description,
-    blog: data.blog,
-    location: data.location,
-    publicRepos: data.public_repos,
-    followers: data.followers,
-    avatarUrl: data.avatar_url,
+    description: data.description || "",
+    blog: data.blog || "",
+    location: data.location || "",
+    publicRepos: data.public_repos || 0,
+    followers: data.followers || 0,
+    avatarUrl: data.avatar_url || "",
     createdAt: data.created_at,
   };
 }
 
 async function fetchGitHubTechStack(orgName: string) {
-  const repos = await fetchJSON(`https://api.github.com/orgs/${encodeURIComponent(orgName)}/repos?sort=stars&per_page=10`);
+  const repos = await fetchJSON<GitHubRepo[]>(`https://api.github.com/orgs/${encodeURIComponent(orgName)}/repos?sort=stars&per_page=10`);
   if (!Array.isArray(repos)) return [];
 
   const languages = new Map<string, number>();
@@ -94,29 +142,29 @@ async function fetchGitHubTechStack(orgName: string) {
 
 async function fetchSECData(companyName: string) {
   const url = `https://efts.sec.gov/LATEST/search-index?q=${encodeURIComponent(companyName)}&dateRange=custom&startdt=${getDateMonthsAgo(6)}&enddt=${getTodayISO()}&forms=10-K,10-Q,8-K&from=0&size=5`;
-  const data = await fetchJSON(url, 12000);
+  const data = await fetchJSON<SECSearchResponse>(url, 12000);
   if (!data?.hits?.hits) return null;
 
   return {
     totalFilings: data.hits.total?.value || 0,
-    recentFilings: data.hits.hits.slice(0, 5).map((h: any) => ({
-      form: h._source?.form_type || h._source?.file_type,
-      date: h._source?.file_date || h._source?.period_of_report,
+    recentFilings: data.hits.hits.slice(0, 5).map((h) => ({
+      form: h._source?.form_type || h._source?.file_type || "Unknown",
+      fileDate: h._source?.file_date || h._source?.period_of_report || "",
       description: h._source?.display_names?.[0] || companyName,
     })),
   };
 }
 
 async function fetchHackerNewsMentions(companyName: string) {
-  const data = await fetchJSON(`https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(companyName)}&tags=story&hitsPerPage=5`);
+  const data = await fetchJSON<HNAlgoliaResponse>(`https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(companyName)}&tags=story&hitsPerPage=5`);
   if (!data?.hits) return [];
 
-  return data.hits.map((h: any) => ({
+  return data.hits.map((h) => ({
     title: h.title,
-    url: h.url,
-    points: h.points,
-    comments: h.num_comments,
-    date: h.created_at,
+    url: h.url || "",
+    points: h.points || 0,
+    comments: h.num_comments || 0,
+    createdAtMs: h.created_at ? new Date(h.created_at).getTime().toString() : "0",
   }));
 }
 
@@ -155,10 +203,10 @@ export async function getCompanyEnrichment(
       followers: githubOrg.followers,
       avatarUrl: githubOrg.avatarUrl,
     } : undefined,
-    techStack: techStack.length > 0 ? techStack : [],
+    techStack,
     secFilings: secData || undefined,
-    hackerNewsMentions: hnMentions.length > 0 ? hnMentions : [],
-    enrichedAt: new Date().toISOString(),
+    hackerNewsMentions: hnMentions,
+    enrichedAtMs: Date.now().toString(),
     sources: [
       githubOrg ? 'github' : null,
       techStack.length > 0 ? 'github_repos' : null,

@@ -64,10 +64,10 @@ export class OrefSirensPanel extends Panel {
       .finally(() => { this.historyFetchInFlight = false; });
   }
 
-  private formatAlertTime(dateStr: string): string {
+  private formatAlertTime(tsStr: string): string {
     try {
-      const ts = new Date(dateStr).getTime();
-      if (!Number.isFinite(ts)) return '';
+      const ts = Number(tsStr);
+      if (!Number.isFinite(ts) || ts <= 0) return '';
       const diff = Date.now() - ts;
       if (diff < 60_000) return t('components.orefSirens.justNow');
       const mins = Math.floor(diff / 60_000);
@@ -80,10 +80,11 @@ export class OrefSirensPanel extends Panel {
     }
   }
 
-  private formatWaveTime(dateStr: string): string {
+  private formatWaveTime(tsStr: string): string {
     try {
-      const d = new Date(dateStr);
-      if (!Number.isFinite(d.getTime())) return '';
+      const ts = Number(tsStr);
+      if (!Number.isFinite(ts) || ts <= 0) return '';
+      const d = new Date(ts);
       return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
         + ' ' + d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
     } catch {
@@ -103,7 +104,7 @@ export class OrefSirensPanel extends Panel {
     }
 
     const now = Date.now();
-    const withTs = this.historyWaves.map(w => ({ wave: w, ts: new Date(w.timestamp).getTime() }));
+    const withTs = this.historyWaves.map(w => ({ wave: w, ts: Number(w.timestampMs) }));
     withTs.sort((a, b) => b.ts - a.ts);
     const sorted = withTs.slice(0, MAX_HISTORY_WAVES);
 
@@ -118,7 +119,7 @@ export class OrefSirensPanel extends Panel {
 
       return `<div class="${rowClass}">
         <div class="oref-wave-header">
-          <span class="oref-wave-time">${this.formatWaveTime(wave.timestamp)}</span>
+          <span class="oref-wave-time">${this.formatWaveTime(wave.timestampMs)}</span>
           ${badge}
         </div>
         <div class="oref-wave-summary">${summary}</div>
@@ -149,7 +150,7 @@ export class OrefSirensPanel extends Panel {
 
     const alertRows = this.alerts.slice(0, 20).map(alert => {
       const areas = (alert.data || []).map(a => escapeHtml(a)).join(', ');
-      const time = this.formatAlertTime(alert.alertDate);
+      const time = this.formatAlertTime(alert.timestampMs);
       return `<div class="oref-alert-row">
         <div class="oref-alert-header">
           <span class="oref-alert-title">${escapeHtml(alert.title || alert.cat)}</span>

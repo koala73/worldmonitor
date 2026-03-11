@@ -4,8 +4,6 @@ import type {
   GetRiskScoresResponse,
   CiiScore,
   StrategicRisk,
-  TrendDirection,
-  SeverityLevel,
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
 import { getCachedJson, setCachedJson, cachedFetchJsonWithMeta } from '../../../_shared/redis';
@@ -180,14 +178,65 @@ async function fetchACLEDEvents(): Promise<Array<{ country: string; event_type: 
   }));
 }
 
+// Support interfaces for auxiliary data
+interface UCDPEvent {
+  country?: string;
+  location?: string;
+  intensity_level?: string | number;
+  type_of_violence?: string | number;
+}
+
+interface OutageEvent {
+  countryCode?: string;
+  country_code?: string;
+  severity?: string;
+}
+
+interface ClimateAnomaly {
+  zone?: string;
+  region?: string;
+  severity?: number;
+  score?: number;
+}
+
+interface CyberThreat {
+  country?: string;
+}
+
+interface FireDetection {
+  lat?: number;
+  latitude?: number;
+  location?: { latitude: number; longitude: number };
+  lon?: number;
+  longitude?: number;
+}
+
+interface GPSHex {
+  lat?: number;
+  latitude?: number;
+  lon?: number;
+  longitude?: number;
+  level?: string;
+}
+
+interface IranStrike {
+  lat?: number;
+  latitude?: number;
+  lon?: number;
+  longitude?: number;
+  title?: string;
+  location?: string;
+  severity?: string;
+}
+
 interface AuxiliarySources {
-  ucdpEvents: any[];
-  outages: any[];
-  climate: any[];
-  cyber: any[];
-  fires: any[];
-  gpsHexes: any[];
-  iranEvents: any[];
+  ucdpEvents: UCDPEvent[];
+  outages: OutageEvent[];
+  climate: ClimateAnomaly[];
+  cyber: CyberThreat[];
+  fires: FireDetection[];
+  gpsHexes: GPSHex[];
+  iranEvents: IranStrike[];
   orefData: { activeAlertCount: number; historyCount24h: number } | null;
 }
 
@@ -202,29 +251,39 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
     getCachedJson('conflict:iran-events:v1', true).catch(() => null),
     getCachedJson('relay:oref:history:v1', true).catch(() => null),
   ]);
-  const arr = (v: any, field?: string, maxLen = 10000) => {
-    let a: any[];
-    if (field && v && Array.isArray(v[field])) a = v[field];
-    else a = Array.isArray(v) ? v : [];
+
+  const arr = <T>(v: unknown, field?: string, maxLen = 10000): T[] => {
+    let a: T[];
+    if (field && typeof v === 'object' && v !== null && field in v) {
+      const potentialArray = (v as Record<string, unknown>)[field];
+      if (Array.isArray(potentialArray)) {
+        a = potentialArray as T[];
+      } else {
+        a = [];
+      }
+    } else {
+      a = Array.isArray(v) ? v as T[] : [];
+    }
     return a.length > maxLen ? a.slice(0, maxLen) : a;
   };
 
-  let orefData: AuxiliarySources['orefData'] = null;
+  let orefDataValue: AuxiliarySources['orefData'] = null;
   if (orefRaw && typeof orefRaw === 'object') {
-    const alertCount = safeNum((orefRaw as any).activeAlertCount);
-    const histCount = safeNum((orefRaw as any).historyCount24h);
-    orefData = { activeAlertCount: alertCount, historyCount24h: histCount };
+    const oref = orefRaw as Record<string, unknown>;
+    const alertCount = safeNum(oref.activeAlertCount);
+    const histCount = safeNum(oref.historyCount24h);
+    orefDataValue = { activeAlertCount: alertCount, historyCount24h: histCount };
   }
 
   return {
-    ucdpEvents: arr(ucdpRaw, 'events'),
-    outages: arr(outagesRaw, 'outages'),
-    climate: arr(climateRaw, 'anomalies'),
-    cyber: arr(cyberRaw, 'threats'),
-    fires: arr(firesRaw, 'fireDetections').length ? arr(firesRaw, 'fireDetections') : arr(firesRaw, 'fires'),
-    gpsHexes: arr(gpsRaw, 'hexes'),
-    iranEvents: arr(iranRaw, 'events'),
-    orefData,
+    ucdpEvents: arr<UCDPEvent>(ucdpRaw, 'events'),
+    outages: arr<OutageEvent>(outagesRaw, 'outages'),
+    climate: arr<ClimateAnomaly>(climateRaw, 'anomalies'),
+    cyber: arr<CyberThreat>(cyberRaw, 'threats'),
+    fires: arr<FireDetection>(firesRaw, 'fireDetections').length ? arr<FireDetection>(firesRaw, 'fireDetections') : arr<FireDetection>(firesRaw, 'fires'),
+    gpsHexes: arr<GPSHex>(gpsRaw, 'hexes'),
+    iranEvents: arr<IranStrike>(iranRaw, 'events'),
+    orefData: orefDataValue,
   };
 }
 
@@ -267,7 +326,7 @@ export function computeCIIScores(
   for (const ev of aux.ucdpEvents) {
     const code = normalizeCountryName(ev.country || ev.location || '');
     if (!code || !data[code]) continue;
-    const intensity = parseInt(ev.intensity_level || ev.type_of_violence || '0', 10);
+    const intensity = parseInt(String(ev.intensity_level || ev.type_of_violence || '0'), 10);
     if (intensity >= 2) data[code].ucdpWar = true;
     else if (intensity >= 1) data[code].ucdpMinor = true;
   }
@@ -403,7 +462,7 @@ export function computeCIIScores(
       staticBaseline: baseline,
       dynamicScore: composite - baseline,
       combinedScore: composite,
-      trend: 'TREND_DIRECTION_STABLE' as TrendDirection,
+      trend: 'TREND_DIRECTION_STABLE',
       components: {
         newsActivity: information,
         ciiContribution: unrest,
@@ -418,7 +477,7 @@ export function computeCIIScores(
   return scores;
 }
 
-function computeStrategicRisks(ciiScores: CiiScore[]): StrategicRisk[] {
+export function computeStrategicRisks(ciiScores: CiiScore[]): StrategicRisk[] {
   const top5 = ciiScores.slice(0, 5);
   const weights = top5.map((_, i) => 1 - i * 0.15);
   const totalWeight = weights.reduce((sum, w) => sum + w, 0);
@@ -428,14 +487,14 @@ function computeStrategicRisks(ciiScores: CiiScore[]): StrategicRisk[] {
   return [
     {
       region: 'global',
-      level: (overallScore >= 70
+      level: overallScore >= 70
         ? 'SEVERITY_LEVEL_HIGH'
         : overallScore >= 40
           ? 'SEVERITY_LEVEL_MEDIUM'
-          : 'SEVERITY_LEVEL_LOW') as SeverityLevel,
+          : 'SEVERITY_LEVEL_LOW',
       score: overallScore,
       factors: top5.map((s) => s.region),
-      trend: 'TREND_DIRECTION_STABLE' as TrendDirection,
+      trend: 'TREND_DIRECTION_STABLE',
     },
   ];
 }
@@ -479,7 +538,17 @@ export async function getRiskScores(
 
   const stale = (await getCachedJson(RISK_STALE_CACHE_KEY)) as GetRiskScoresResponse | null;
   if (stale) return stale;
-  const emptyAux: AuxiliarySources = { ucdpEvents: [], outages: [], climate: [], cyber: [], fires: [], gpsHexes: [], iranEvents: [], orefData: null };
+  
+  const emptyAux: AuxiliarySources = { 
+    ucdpEvents: [], 
+    outages: [], 
+    climate: [], 
+    cyber: [], 
+    fires: [], 
+    gpsHexes: [], 
+    iranEvents: [], 
+    orefData: null 
+  };
   const ciiScores = computeCIIScores([], emptyAux);
   return { ciiScores, strategicRisks: computeStrategicRisks(ciiScores) };
 }

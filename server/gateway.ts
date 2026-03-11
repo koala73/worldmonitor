@@ -63,7 +63,12 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/intelligence/v1/list-oref-alerts': 'slow',
   '/api/intelligence/v1/list-satellites': 'slow',
   '/api/intelligence/v1/list-telegram-feed': 'slow',
-
+  '/api/intelligence/v1/get-company-enrichment': 'static',
+  '/api/intelligence/v1/list-company-signals': 'slow',
+  '/api/intelligence/v1/get-risk-scores': 'slow',
+  '/api/intelligence/v1/get-pizzint-status': 'slow',
+  '/api/intelligence/v1/get-country-intel-brief': 'slow',
+  '/api/intelligence/v1/search-gdelt-documents': 'slow',
   '/api/maritime/v1/get-vessel-snapshot': 'no-store',
 
   '/api/market/v1/list-market-quotes': 'medium',

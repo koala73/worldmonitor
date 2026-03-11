@@ -203,10 +203,10 @@ export interface ListOrefAlertsRequest {
 export interface ListOrefAlertsResponse {
   configured: boolean;
   alerts: OrefAlert[];
-  history: OrefHistoryWave[];
+  history: OrefWave[];
   historyCount24h: number;
   totalHistoryCount: number;
-  timestamp: string;
+  timestampMs: string;
   error: string;
 }
 
@@ -216,12 +216,12 @@ export interface OrefAlert {
   title: string;
   data: string[];
   desc: string;
-  alertDate: string;
+  timestampMs: string;
 }
 
-export interface OrefHistoryWave {
+export interface OrefWave {
   alerts: OrefAlert[];
-  timestamp: string;
+  timestampMs: string;
 }
 
 export interface ListTelegramFeedRequest {
@@ -242,7 +242,7 @@ export interface TelegramMessage {
   channelId: string;
   channelName: string;
   text: string;
-  timestamp: number;
+  timestampMs: string;
   mediaUrls: string[];
   sourceUrl: string;
   topic: string;
@@ -259,7 +259,7 @@ export interface GetCompanyEnrichmentResponse {
   techStack: TechStackItem[];
   secFilings?: SecFilings;
   hackerNewsMentions: HNMention[];
-  enrichedAt: string;
+  enrichedAtMs: string;
   sources: string[];
 }
 
@@ -291,7 +291,7 @@ export interface SecFilings {
 
 export interface SecFiling {
   form: string;
-  date: string;
+  fileDate: string;
   description: string;
 }
 
@@ -300,7 +300,7 @@ export interface HNMention {
   url: string;
   points: number;
   comments: number;
-  date: string;
+  createdAtMs: string;
 }
 
 export interface ListCompanySignalsRequest {
@@ -313,7 +313,7 @@ export interface ListCompanySignalsResponse {
   domain: string;
   signals: CompanySignal[];
   summary?: SignalSummary;
-  discoveredAt: string;
+  discoveredAtMs: string;
 }
 
 export interface CompanySignal {
@@ -322,7 +322,7 @@ export interface CompanySignal {
   url: string;
   source: string;
   sourceTier: number;
-  timestamp: string;
+  timestampMs: string;
   strength: string;
   engagement?: SignalEngagement;
 }
@@ -402,7 +402,9 @@ export class IntelligenceServiceClient {
 
   async getRiskScores(req: GetRiskScoresRequest, options?: IntelligenceServiceCallOptions): Promise<GetRiskScoresResponse> {
     let path = "/api/intelligence/v1/get-risk-scores";
-    const url = this.baseURL + path;
+    const params = new URLSearchParams();
+    if (req.region != null && req.region !== "") params.set("region", String(req.region));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -411,9 +413,8 @@ export class IntelligenceServiceClient {
     };
 
     const resp = await this.fetchFn(url, {
-      method: "POST",
+      method: "GET",
       headers,
-      body: JSON.stringify(req),
       signal: options?.signal,
     });
 
@@ -426,7 +427,9 @@ export class IntelligenceServiceClient {
 
   async getPizzintStatus(req: GetPizzintStatusRequest, options?: IntelligenceServiceCallOptions): Promise<GetPizzintStatusResponse> {
     let path = "/api/intelligence/v1/get-pizzint-status";
-    const url = this.baseURL + path;
+    const params = new URLSearchParams();
+    if (req.includeGdelt) params.set("include_gdelt", String(req.includeGdelt));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -435,9 +438,8 @@ export class IntelligenceServiceClient {
     };
 
     const resp = await this.fetchFn(url, {
-      method: "POST",
+      method: "GET",
       headers,
-      body: JSON.stringify(req),
       signal: options?.signal,
     });
 
@@ -474,7 +476,9 @@ export class IntelligenceServiceClient {
 
   async getCountryIntelBrief(req: GetCountryIntelBriefRequest, options?: IntelligenceServiceCallOptions): Promise<GetCountryIntelBriefResponse> {
     let path = "/api/intelligence/v1/get-country-intel-brief";
-    const url = this.baseURL + path;
+    const params = new URLSearchParams();
+    if (req.countryCode != null && req.countryCode !== "") params.set("country_code", String(req.countryCode));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -483,9 +487,8 @@ export class IntelligenceServiceClient {
     };
 
     const resp = await this.fetchFn(url, {
-      method: "POST",
+      method: "GET",
       headers,
-      body: JSON.stringify(req),
       signal: options?.signal,
     });
 
@@ -498,7 +501,13 @@ export class IntelligenceServiceClient {
 
   async searchGdeltDocuments(req: SearchGdeltDocumentsRequest, options?: IntelligenceServiceCallOptions): Promise<SearchGdeltDocumentsResponse> {
     let path = "/api/intelligence/v1/search-gdelt-documents";
-    const url = this.baseURL + path;
+    const params = new URLSearchParams();
+    if (req.query != null && req.query !== "") params.set("query", String(req.query));
+    if (req.maxRecords != null && req.maxRecords !== 0) params.set("max_records", String(req.maxRecords));
+    if (req.timespan != null && req.timespan !== "") params.set("timespan", String(req.timespan));
+    if (req.toneFilter != null && req.toneFilter !== "") params.set("tone_filter", String(req.toneFilter));
+    if (req.sort != null && req.sort !== "") params.set("sort", String(req.sort));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -507,9 +516,8 @@ export class IntelligenceServiceClient {
     };
 
     const resp = await this.fetchFn(url, {
-      method: "POST",
+      method: "GET",
       headers,
-      body: JSON.stringify(req),
       signal: options?.signal,
     });
 

@@ -16,7 +16,10 @@ import { CHROME_UA } from '../../../_shared/constants';
 /**
  * Fetch JSON from a URL with a configurable timeout.
  */
-async function fetchJSON(url: string, timeout = 8000): Promise<any> {
+/**
+ * Fetch JSON from a URL with a configurable timeout.
+ */
+async function fetchJSON<T>(url: string, timeout = 8000): Promise<T | null> {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeout);
   try {
@@ -28,12 +31,37 @@ async function fetchJSON(url: string, timeout = 8000): Promise<any> {
       signal: controller.signal,
     });
     if (!res.ok) return null;
-    return await res.json();
+    return await res.json() as T;
   } catch {
     return null;
   } finally {
     clearTimeout(id);
   }
+}
+
+interface HNAlgoliaSignalHit {
+  title: string;
+  url?: string;
+  objectID: string;
+  created_at: string;
+  points?: number;
+  num_comments?: number;
+  comment_text?: string;
+  story_title?: string;
+  story_id?: number;
+}
+
+interface HNAlgoliaSignalResponse {
+  hits: HNAlgoliaSignalHit[];
+}
+
+interface GitHubSignalRepo {
+  full_name: string;
+  description: string | null;
+  html_url: string;
+  created_at: string;
+  stargazers_count: number;
+  forks_count: number;
 }
 
 const SIGNAL_KEYWORDS: Record<string, string[]> = {
@@ -76,13 +104,13 @@ function scoreSignalStrength(points: number, comments: number, recencyDays: numb
 
 async function fetchHNSignals(companyName: string): Promise<CompanySignal[]> {
   const thirtyDaysAgo = Math.floor(Date.now() / 1000) - 30 * 86400;
-  const data = await fetchJSON(
+  const data = await fetchJSON<HNAlgoliaSignalResponse>(
     `https://hn.algolia.com/api/v1/search_by_date?query=${encodeURIComponent(companyName)}&tags=story&hitsPerPage=20&numericFilters=created_at_i>${thirtyDaysAgo}`
   );
   if (!data?.hits) return [];
 
   const now = Date.now();
-  return data.hits.map((h: any) => {
+  return data.hits.map((h) => {
     const recencyDays = (now - new Date(h.created_at).getTime()) / 86400000;
     return {
       type: classifySignal(h.title),
@@ -90,7 +118,7 @@ async function fetchHNSignals(companyName: string): Promise<CompanySignal[]> {
       url: h.url || `https://news.ycombinator.com/item?id=${h.objectID}`,
       source: 'Hacker News',
       sourceTier: 2,
-      timestamp: h.created_at,
+      timestampMs: h.created_at ? new Date(h.created_at).getTime().toString() : "0",
       strength: scoreSignalStrength(h.points || 0, h.num_comments || 0, recencyDays),
       engagement: {
         points: h.points || 0,
@@ -104,21 +132,21 @@ async function fetchHNSignals(companyName: string): Promise<CompanySignal[]> {
 }
 
 async function fetchGitHubSignals(orgName: string): Promise<CompanySignal[]> {
-  const repos = await fetchJSON(`https://api.github.com/orgs/${encodeURIComponent(orgName)}/repos?sort=created&per_page=10`);
+  const repos = await fetchJSON<GitHubSignalRepo[]>(`https://api.github.com/orgs/${encodeURIComponent(orgName)}/repos?sort=created&per_page=10`);
   if (!Array.isArray(repos)) return [];
 
   const now = Date.now();
   const thirtyDaysAgo = now - 30 * 86400000;
 
   return repos
-    .filter((r: any) => new Date(r.created_at).getTime() > thirtyDaysAgo)
-    .map((r: any) => ({
+    .filter((r) => new Date(r.created_at).getTime() > thirtyDaysAgo)
+    .map((r) => ({
       type: 'technology_adoption',
       title: `New repository: ${r.full_name} — ${r.description || 'No description'}`,
       url: r.html_url,
       source: 'GitHub',
       sourceTier: 2,
-      timestamp: r.created_at,
+      timestampMs: r.created_at ? new Date(r.created_at).getTime().toString() : "0",
       strength: r.stargazers_count > 50 ? 'high' : r.stargazers_count > 10 ? 'medium' : 'low',
       engagement: {
         points: 0,
@@ -132,12 +160,12 @@ async function fetchGitHubSignals(orgName: string): Promise<CompanySignal[]> {
 
 async function fetchJobSignals(companyName: string): Promise<CompanySignal[]> {
   const sixtyDaysAgo = Math.floor(Date.now() / 1000) - 60 * 86400;
-  const data = await fetchJSON(
+  const data = await fetchJSON<HNAlgoliaSignalResponse>(
     `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(companyName)}&tags=comment,ask_hn&hitsPerPage=10&numericFilters=created_at_i>${sixtyDaysAgo}`
   );
   if (!data?.hits) return [];
 
-  const hiringComments = data.hits.filter((h: any) => {
+  const hiringComments = data.hits.filter((h) => {
     const text = (h.comment_text || '').toLowerCase();
     return text.includes('hiring') || text.includes('job') || text.includes('apply');
   });
@@ -150,7 +178,7 @@ async function fetchJobSignals(companyName: string): Promise<CompanySignal[]> {
     url: `https://news.ycombinator.com/item?id=${hiringComments[0].story_id}`,
     source: 'HN Hiring Threads',
     sourceTier: 3,
-    timestamp: hiringComments[0].created_at,
+    timestampMs: hiringComments[0].created_at ? new Date(hiringComments[0].created_at).getTime().toString() : "0",
     strength: hiringComments.length >= 3 ? 'high' : 'medium',
     engagement: {
       points: 0,
@@ -182,7 +210,7 @@ export async function listCompanySignals(
   ]);
 
   const allSignals = [...hnSignals, ...githubSignals, ...jobSignals]
-    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    .sort((a, b) => Number(b.timestampMs) - Number(a.timestampMs));
 
   const signalTypeCounts: Record<string, number> = {};
   for (const s of allSignals) {
@@ -199,6 +227,6 @@ export async function listCompanySignals(
       strongestSignal: allSignals[0] || undefined,
       signalDiversity: Object.keys(signalTypeCounts).length,
     },
-    discoveredAt: new Date().toISOString(),
+    discoveredAtMs: Date.now().toString(),
   };
 }

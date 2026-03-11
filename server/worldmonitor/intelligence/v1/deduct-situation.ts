@@ -13,6 +13,18 @@ const DEDUCT_CACHE_TTL = 3600;
 const DEFAULT_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const DEFAULT_MODEL = 'llama-3.1-8b-instant';
 
+interface GroqChoice {
+    message?: {
+        role?: string;
+        content?: string;
+        reasoning?: string;
+    };
+}
+
+interface GroqResponse {
+    choices?: GroqChoice[];
+}
+
 export async function deductSituation(
     _ctx: ServerContext,
     req: DeductSituationRequest,
@@ -73,11 +85,11 @@ Your task is to DEDUCT the situation in a near timeline (e.g. 24 hours to a few 
                 });
 
                 if (!resp.ok) return null;
-                const data = (await resp.json()) as { choices?: Array<{ message?: { content?: string } }> };
+                const data = (await resp.json()) as GroqResponse;
                 const firstChoice = data.choices?.[0];
 
                 const content = firstChoice?.message?.content?.trim();
-                const reasoning = (firstChoice?.message as any)?.reasoning?.trim();
+                const reasoning = firstChoice?.message?.reasoning?.trim();
 
                 let raw = content || reasoning;
                 if (!raw) return null;

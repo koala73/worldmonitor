@@ -23,7 +23,7 @@ function prefixKey(key: string): string {
   return `${cachedPrefix}${key}`;
 }
 
-export async function getCachedJson(key: string, raw = false): Promise<unknown | null> {
+export async function getCachedJson<T = unknown>(key: string, raw = false): Promise<T | null> {
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;

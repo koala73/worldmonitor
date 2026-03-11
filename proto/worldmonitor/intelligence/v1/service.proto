@@ -21,12 +21,18 @@ service IntelligenceService {
 
   // GetRiskScores retrieves composite risk scores and strategic assessments.
   rpc GetRiskScores(GetRiskScoresRequest) returns (GetRiskScoresResponse) {
-    option (sebuf.http.config) = {path: "/get-risk-scores"};
+    option (sebuf.http.config) = {
+      path: "/get-risk-scores"
+      method: HTTP_METHOD_GET
+    };
   }
 
   // GetPizzintStatus retrieves Pentagon Pizza Index and GDELT tension data.
   rpc GetPizzintStatus(GetPizzintStatusRequest) returns (GetPizzintStatusResponse) {
-    option (sebuf.http.config) = {path: "/get-pizzint-status"};
+    option (sebuf.http.config) = {
+      path: "/get-pizzint-status"
+      method: HTTP_METHOD_GET
+    };
   }
 
   // ClassifyEvent analyzes a news event using AI models.
@@ -36,12 +42,18 @@ service IntelligenceService {
 
   // GetCountryIntelBrief generates a strategic brief for a specific country.
   rpc GetCountryIntelBrief(GetCountryIntelBriefRequest) returns (GetCountryIntelBriefResponse) {
-    option (sebuf.http.config) = {path: "/get-country-intel-brief"};
+    option (sebuf.http.config) = {
+      path: "/get-country-intel-brief"
+      method: HTTP_METHOD_GET
+    };
   }
 
   // SearchGdeltDocuments searches the GDELT GKG API for relevant documentation.
   rpc SearchGdeltDocuments(SearchGdeltDocumentsRequest) returns (SearchGdeltDocumentsResponse) {
-    option (sebuf.http.config) = {path: "/search-gdelt-documents"};
+    option (sebuf.http.config) = {
+      path: "/search-gdelt-documents"
+      method: HTTP_METHOD_GET
+    };
   }
 
   // DeductSituation performs broad situational analysis using LLMs.

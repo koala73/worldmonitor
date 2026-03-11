@@ -8,7 +8,7 @@ export interface OrefAlert {
   title: string;
   data: string[];
   desc: string;
-  alertDate: string;
+  timestampMs: string;
 }
 
 export interface OrefAlertsResponse {
@@ -16,20 +16,20 @@ export interface OrefAlertsResponse {
   alerts: OrefAlert[];
   historyCount24h: number;
   totalHistoryCount?: number;
-  timestamp: string;
+  timestampMs: string;
   error?: string;
 }
 
 export interface OrefHistoryEntry {
   alerts: OrefAlert[];
-  timestamp: string;
+  timestampMs: string;
 }
 
 export interface OrefHistoryResponse {
   configured: boolean;
   history: OrefHistoryEntry[];
   historyCount24h: number;
-  timestamp: string;
+  timestampMs: string;
   error?: string;
 }
 
@@ -51,7 +51,6 @@ async function ensureLocationMapLoaded(): Promise<void> {
   await locationMapPromise;
 }
 
-const MAX_TRANSLATION_CACHE = 200;
 const translationCache = new Map<string, { title: string; data: string[]; desc: string }>();
 let translationPromise: Promise<boolean> | null = null;
 
@@ -159,14 +158,6 @@ function parseTranslationResponse(raw: string, alerts: OrefAlert[]): void {
     };
     translationCache.set(alert.id, entry);
   }
-  if (translationCache.size > MAX_TRANSLATION_CACHE) {
-    const excess = translationCache.size - MAX_TRANSLATION_CACHE;
-    const iter = translationCache.keys();
-    for (let i = 0; i < excess; i++) {
-      const k = iter.next().value;
-      if (k !== undefined) translationCache.delete(k);
-    }
-  }
 }
 
 function translateFields(alert: OrefAlert): OrefAlert {
@@ -202,25 +193,25 @@ async function translateAlerts(alerts: OrefAlert[]): Promise<boolean> {
     return translateAlerts(alerts);
   }
 
-  let translated = false;
+  let translatedStatus = false;
   translationPromise = (async () => {
     try {
       const prompt = buildTranslationPrompt(untranslated);
       const result = await translateText(prompt, 'en');
       if (result) {
         parseTranslationResponse(result, untranslated);
-        translated = true;
+        translatedStatus = true;
       }
     } catch (e) {
       console.warn('OREF alert translation failed', e);
     } finally {
       translationPromise = null;
     }
-    return translated;
+    return translatedStatus;
   })();
 
   await translationPromise;
-  return translated;
+  return translatedStatus;
 }
 
 const client = new IntelligenceServiceClient('', { fetch: (input, init) => globalThis.fetch(input, init) });
@@ -236,17 +227,17 @@ export async function fetchOrefAlerts(options: { signal?: AbortSignal } = {}): P
     const response = await client.listOrefAlerts({ mode: 'MODE_ALERTS' }, { signal: options.signal });
     const data: OrefAlertsResponse = {
       configured: response.configured,
-      alerts: response.alerts.map((a: any) => ({
+      alerts: response.alerts.map((a) => ({
         id: a.id,
         cat: a.cat,
         title: a.title,
         data: a.data,
         desc: a.desc,
-        alertDate: a.alertDate,
+        timestampMs: a.timestampMs,
       })),
       historyCount24h: response.historyCount24h,
       totalHistoryCount: response.totalHistoryCount,
-      timestamp: response.timestamp,
+      timestampMs: response.timestampMs,
       error: response.error || undefined,
     };
     cachedResponse = data;
@@ -265,7 +256,13 @@ export async function fetchOrefAlerts(options: { signal?: AbortSignal } = {}): P
     if ((err as { name?: string })?.name === 'AbortError') {
       throw err;
     }
-    return { configured: false, alerts: [], historyCount24h: 0, timestamp: new Date().toISOString(), error: String(err) };
+    return { 
+      configured: false, 
+      alerts: [], 
+      historyCount24h: 0, 
+      timestampMs: Date.now().toString(), 
+      error: String(err) 
+    };
   }
 }
 
@@ -275,19 +272,19 @@ export async function fetchOrefHistory(): Promise<OrefHistoryResponse> {
     const response = await client.listOrefAlerts({ mode: 'MODE_HISTORY' });
     const data: OrefHistoryResponse = {
       configured: response.configured,
-      history: response.history.map((h: any) => ({
-        alerts: h.alerts.map((a: any) => ({
+      history: response.history.map((h) => ({
+        alerts: h.alerts.map((a) => ({
           id: a.id,
           cat: a.cat,
           title: a.title,
           data: a.data,
           desc: a.desc,
-          alertDate: a.alertDate,
+          timestampMs: a.timestampMs,
         })),
-        timestamp: h.timestamp,
+        timestampMs: h.timestampMs,
       })),
       historyCount24h: response.historyCount24h,
-      timestamp: response.timestamp,
+      timestampMs: response.timestampMs,
       error: response.error || undefined,
     };
 
@@ -303,7 +300,13 @@ export async function fetchOrefHistory(): Promise<OrefHistoryResponse> {
 
     return data;
   } catch (err) {
-    return { configured: false, history: [], historyCount24h: 0, timestamp: new Date().toISOString(), error: String(err) };
+    return { 
+      configured: false, 
+      history: [], 
+      historyCount24h: 0, 
+      timestampMs: Date.now().toString(), 
+      error: String(err) 
+    };
   }
 }
 

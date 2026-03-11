@@ -217,7 +217,7 @@ export function dispatchOrefBreakingAlert(alerts: OrefAlert[]): void {
     : '';
   const headline = title + locationSuffix;
 
-  const keyParts = alerts.map(a => a.id || `${a.cat}|${a.title}|${a.alertDate}`).sort();
+  const keyParts = alerts.map(a => a.id || `${a.cat}|${a.title}|${a.timestampMs}`).sort();
   const dedupeKey = 'oref:' + simpleHash(keyParts.join(','));
 
   if (isDuplicate(dedupeKey)) return;

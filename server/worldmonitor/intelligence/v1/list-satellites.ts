@@ -9,17 +9,32 @@ import { getCachedJson } from '../../../_shared/redis';
 
 const REDIS_KEY = 'intelligence:satellites:tle:v1';
 
+interface SatelliteCache {
+  satellites: Array<{
+    id?: string;
+    noradId?: string;
+    name?: string;
+    country?: string;
+    type?: string;
+    alt?: number | string;
+    velocity?: number | string;
+    inclination?: number | string;
+    line1?: string;
+    line2?: string;
+  }>;
+}
+
 export const listSatellites: IntelligenceServiceHandler['listSatellites'] = async (
   _ctx: ServerContext,
   req: ListSatellitesRequest,
 ): Promise<ListSatellitesResponse> => {
-  const data = (await getCachedJson(REDIS_KEY, true)) as any;
+  const data = (await getCachedJson(REDIS_KEY, true)) as unknown as SatelliteCache;
 
   if (!data || !Array.isArray(data.satellites)) {
     return { satellites: [] };
   }
 
-  let satellites: Satellite[] = data.satellites.map((s: any) => ({
+  let satellitesArr: Satellite[] = data.satellites.map((s) => ({
     id: String(s.id || s.noradId || ''),
     name: s.name || '',
     country: s.country || '',
@@ -32,8 +47,8 @@ export const listSatellites: IntelligenceServiceHandler['listSatellites'] = asyn
   }));
 
   if (req.country) {
-    satellites = satellites.filter(s => s.country === req.country);
+    satellitesArr = satellitesArr.filter(s => s.country === req.country);
   }
 
-  return { satellites };
+  return { satellites: satellitesArr };
 };
