@@ -21,6 +21,24 @@ const formattedDate = pubDate.toLocaleDateString('en-US', {
 });
 const isoDate = pubDate.toISOString();
 
+const breadcrumbLd = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Blog",
+      "item": "https://www.worldmonitor.app/blog/"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": title
+    }
+  ]
+};
+
 const jsonLd = {
   "@context": "https://schema.org",
   "@type": "Article",
@@ -65,7 +83,9 @@ const jsonLd = {
   ogImage={ogImage}
   publishedTime={isoDate}
   modifiedTime={isoDate}
+  section={audience}
   jsonLd={jsonLd}
+  breadcrumbLd={breadcrumbLd}
 >
   <article>
     <div class="article-header">

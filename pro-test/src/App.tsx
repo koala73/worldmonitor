@@ -930,7 +930,7 @@ const Footer = () => (
         <a href="/blog/" aria-label="WorldMonitor Blog" className="hover:text-wm-text transition-colors">Blog</a>
         <a href="https://x.com/worldmonitorai" target="_blank" rel="noreferrer" aria-label="Follow World Monitor on X" className="hover:text-wm-text transition-colors">X</a>
         <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noreferrer" aria-label="World Monitor on GitHub" className="hover:text-wm-text transition-colors">GitHub</a>
-        <a href="https://www.wired.me/story/the-music-streaming-ceo-who-built-a-global-war-map" target="_blank" rel="noreferrer" aria-label="Read the WIRED article about World Monitor" className="hover:text-wm-text transition-colors">{t('footer.wiredArticle')}</a>
+        <a href="https://github.com/koala73/worldmonitor/discussions" target="_blank" rel="noreferrer" aria-label="World Monitor Discussions" className="hover:text-wm-text transition-colors">Discussions</a>
       </div>
     </div>
   </footer>
@@ -1123,6 +1123,7 @@ const EnterprisePage = () => (
           <a href="/blog/" className="hover:text-wm-text transition-colors">Blog</a>
           <a href="https://x.com/worldmonitorai" target="_blank" rel="noreferrer" aria-label="Follow World Monitor on X" className="hover:text-wm-text transition-colors">X</a>
           <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">GitHub</a>
+          <a href="https://github.com/koala73/worldmonitor/discussions" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">Discussions</a>
         </div>
       </div>
     </footer>

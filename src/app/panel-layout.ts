@@ -312,11 +312,19 @@ export class PanelLayoutManager implements AppModule {
         </div>
         <div class="panels-grid" id="panelsGrid"></div>
         <footer class="site-footer">
-          <span>&copy; ${new Date().getFullYear()} WorldMonitor</span>
+          <div class="site-footer-brand">
+            <img src="/favico/favicon-32x32.png" alt="" width="28" height="28" class="site-footer-icon" />
+            <div class="site-footer-brand-text">
+              <span class="site-footer-name">WORLD MONITOR</span>
+              <span class="site-footer-sub">by Someone.ceo</span>
+            </div>
+          </div>
           <nav>
-            <a href="/blog/">Blog</a>
             <a href="/pro">Pro</a>
+            <a href="/blog/">Blog</a>
             <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noopener">GitHub</a>
+            <a href="https://github.com/koala73/worldmonitor/discussions" target="_blank" rel="noopener">Discussions</a>
+            <a href="https://x.com/worldmonitorai" target="_blank" rel="noopener">X</a>
           </nav>
         </footer>
         <button class="search-mobile-fab" id="searchMobileFab" aria-label="Search">\u{1F50D}</button>

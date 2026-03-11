@@ -2,6 +2,50 @@
 
 All notable changes to World Monitor are documented here.
 
+## [2.6.1] - 2026-03-11
+
+### Highlights
+
+- **Blog Platform** — Astro-powered blog at /blog with 16 SEO-optimized posts, OG images, and site footer (#1401, #1405, #1409)
+- **Country Intelligence** — country facts section with right-click context menu (#1400)
+- **Satellite Imagery Overhaul** — globe-native rendering, outline-only polygons, CSP fixes (#1381, #1385, #1376)
+
+### Added
+
+- Astro blog at /blog with 16 SEO posts and build integration (#1401, #1403)
+- Blog redesign to match /pro page design system (#1405)
+- Blog SEO, OG images, favicon fix, and site footer (#1409)
+- Country facts section and right-click context menu for intel panel (#1400)
+- Satellite imagery panel enabled in orbital surveillance layer (#1375)
+- Globe-native satellite imagery, removed sidebar panel (#1381)
+- Layer search filter with synonym support (#1369)
+- Close buttons on panels and Add Panel block (#1354)
+- Enterprise contact form endpoint (#1365)
+- Commodity and happy variants shown on all header versions (#1407)
+
+### Fixed
+
+- NOTAM closures merged into Aviation layer (#1408)
+- Intel deep dive layout reordered, duplicate headlines removed (#1404)
+- Satellite imagery outline-only polygons to eliminate alpha stacking blue tint (#1385)
+- Enterprise form hardened with mandatory fields and lead qualification (#1382)
+- Country intel silently dismisses when geocode cannot identify a country (#1383)
+- Globe hit targets enlarged for small marker types (#1378)
+- Imagery panel hidden for existing users and viewport refetch deadlock (#1377)
+- CSP violations for satellite preview images (#1376)
+- Safari TypeError filtering and Sentry noise patterns (#1380)
+- Swedish locale 'avbruten' TypeError variant filtered (#1402)
+- Satellite imagery STAC backend fix, merged into Orbital Surveillance (#1364)
+- Aviation "Computed" source replaced with specific labels, reduced cache TTLs (#1374)
+- Close button and hover-pause on all marker tooltips (#1371)
+- Invalid 'satelliteImagery' removed from LAYER_SYNONYMS (#1370)
+- Risk scores seeding gap and seed-meta key mismatch (#1366)
+- Consistent LIVE header pattern across news and webcams panels (#1367)
+- Globe null guards in path accessor callbacks (#1372)
+- Node_modules guard in pre-push hook, pinned Node 22 (#1368)
+- Typecheck CI workflow: removed paths-ignore, added push trigger (#1373)
+- Theme toggle removed from header (#1407)
+
 ## [2.6.0] - 2026-03-09
 
 ### Highlights
