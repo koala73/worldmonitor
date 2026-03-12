@@ -26,6 +26,8 @@ const BOOTSTRAP_KEY = 'prediction:markets-bootstrap:v1';
 const GAMMA_BASE = 'https://gamma-api.polymarket.com';
 const KALSHI_BASE = 'https://trading-api.kalshi.com/trade-api/v2';
 const KALSHI_CACHE_KEY = 'prediction:kalshi:v1';
+const KALSHI_API_KEY = process.env.KALSHI_API_KEY || '';
+const KALSHI_ENABLED = KALSHI_API_KEY.length > 0;
 const FETCH_TIMEOUT = 8000;
 
 const TECH_CATEGORY_TAGS = ['ai', 'tech', 'crypto', 'science'];
@@ -183,15 +185,18 @@ function mapKalshiMarket(market: KalshiMarket, category: string, eventTitle?: st
 
 /** Fetch open markets from the Kalshi API. Returns null on failure. */
 async function fetchKalshiMarkets(): Promise<PredictionMarket[] | null> {
+  if (!KALSHI_ENABLED) return null;
   try {
     const result = await cachedFetchJson<PredictionMarket[]>(
       KALSHI_CACHE_KEY,
       REDIS_CACHE_TTL,
       async () => {
+        const headers: Record<string, string> = { Accept: 'application/json', 'User-Agent': CHROME_UA };
+        if (KALSHI_API_KEY) headers.Authorization = `Bearer ${KALSHI_API_KEY}`;
         const response = await fetch(
           `${KALSHI_BASE}/events?status=open&with_nested_markets=true&limit=40`,
           {
-            headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
+            headers,
             signal: AbortSignal.timeout(FETCH_TIMEOUT),
           },
         );
