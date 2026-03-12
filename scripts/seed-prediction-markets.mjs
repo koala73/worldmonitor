@@ -146,7 +146,7 @@ async function fetchKalshiMarkets() {
 }
 
 async function fetchAllPredictions() {
-  const allTags = [...new Set([...GEOPOLITICAL_TAGS, ...TECH_TAGS])];
+  const allTags = [...new Set([...GEOPOLITICAL_TAGS, ...TECH_TAGS, ...FINANCE_TAGS])];
   const seen = new Set();
   const markets = [];
 

@@ -62,7 +62,7 @@ export async function fetchPredictions(): Promise<PredictionMarket[]> {
     const hydrated = getHydratedData('predictions') as BootstrapPredictionData | undefined;
     if (hydrated && hydrated.fetchedAt && Date.now() - hydrated.fetchedAt < 20 * 60 * 1000) {
       const variant = SITE_VARIANT === 'tech' ? hydrated.tech
-        : SITE_VARIANT === 'finance' ? (hydrated.finance || hydrated.geopolitical)
+        : SITE_VARIANT === 'finance' ? hydrated.finance
         : hydrated.geopolitical;
       if (variant && variant.length > 0) {
         return variant

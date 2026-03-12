@@ -92,6 +92,22 @@ interface BootstrapData {
 
 const KALSHI_CATEGORIES = ['economy', 'fed', 'inflation', 'markets', 'business'];
 
+const EXCLUDE_KEYWORDS = [
+  'nba', 'nfl', 'mlb', 'nhl', 'fifa', 'world cup', 'super bowl', 'championship',
+  'playoffs', 'oscar', 'grammy', 'emmy', 'box office', 'movie', 'album', 'song',
+  'streamer', 'influencer', 'celebrity', 'kardashian',
+  'bachelor', 'reality tv', 'mvp', 'touchdown', 'home run', 'goal scorer',
+  'academy award', 'bafta', 'golden globe', 'cannes', 'sundance',
+  'documentary', 'feature film', 'tv series', 'season finale',
+];
+
+function isExcluded(title: string): boolean {
+  const lower = title.toLowerCase();
+  return EXCLUDE_KEYWORDS.some(kw => lower.includes(kw));
+}
+
+const KALSHI_VOLUME_THRESHOLD = 5000;
+
 // ---------- Helpers ----------
 
 /** Parse the yes-side price from a Gamma market's outcomePrices JSON string (0-1 scale). */
@@ -147,12 +163,12 @@ function mapMarket(market: GammaMarket): PredictionMarket {
 }
 
 /** Map a KalshiMarket to a proto PredictionMarket. Caller must pre-filter for active binary markets. */
-function mapKalshiMarket(market: KalshiMarket, category: string): PredictionMarket {
+function mapKalshiMarket(market: KalshiMarket, category: string, eventTitle?: string): PredictionMarket {
   const closesAtMs = market.close_time ? Date.parse(market.close_time) : 0;
   const yesPrice = parseFloat(market.last_price_dollars || '0.5');
   return {
     id: market.ticker,
-    title: market.yes_sub_title || market.title,
+    title: market.title || eventTitle || '',
     yesPrice: Number.isFinite(yesPrice) ? yesPrice : 0.5,
     volume: parseFloat(market.volume_fp || '0'),
     url: `https://kalshi.com/markets/${market.ticker}`,
@@ -183,6 +199,7 @@ async function fetchKalshiMarkets(): Promise<PredictionMarket[] | null> {
         const markets: PredictionMarket[] = [];
         for (const event of data.events) {
           if (!event.markets) continue;
+          if (isExcluded(event.title)) continue;
           // Pick highest-volume active binary market from each event (single pass)
           let topMarket: KalshiMarket | null = null;
           let topVol = 0;
@@ -191,7 +208,9 @@ async function fetchKalshiMarkets(): Promise<PredictionMarket[] | null> {
             const vol = parseFloat(m.volume_fp || '0');
             if (vol > topVol) { topMarket = m; topVol = vol; }
           }
-          if (topMarket) markets.push(mapKalshiMarket(topMarket, event.category || ''));
+          if (topMarket && topVol > KALSHI_VOLUME_THRESHOLD) {
+            markets.push(mapKalshiMarket(topMarket, event.category || '', event.title));
+          }
         }
         return markets.length > 0 ? markets : null;
       },
@@ -220,7 +239,7 @@ export const listPredictionMarkets: PredictionServiceHandler['listPredictionMark
           const isTech = req.category && ['ai', 'tech', 'crypto', 'science'].includes(req.category);
           const isFinance = req.category && KALSHI_CATEGORIES.includes(req.category);
           const variant = isTech ? bootstrap.tech
-            : isFinance ? (bootstrap.finance || bootstrap.geopolitical)
+            : isFinance ? bootstrap.finance
             : bootstrap.geopolitical;
           if (variant && variant.length > 0) {
             const markets: PredictionMarket[] = variant.slice(0, limit).map((m) => ({
