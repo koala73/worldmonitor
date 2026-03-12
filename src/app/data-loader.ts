@@ -138,6 +138,7 @@ import { fetchHappinessScores } from '@/services/happiness-data';
 import { fetchRenewableInstallations } from '@/services/renewable-installations';
 import { filterBySentiment } from '@/services/sentiment-gate';
 import { fetchAllPositiveTopicIntelligence } from '@/services/gdelt-intel';
+import { extractLocationFromText } from '@/services/entity-extraction';
 import { fetchPositiveGeoEvents, geocodePositiveNewsItems, type PositiveGeoEvent } from '@/services/positive-events-geo';
 import type { HappyContentCategory } from '@/services/positive-classifier';
 import { fetchKindnessData } from '@/services/kindness-data';
@@ -1044,14 +1045,31 @@ export class DataLoaderManager implements AppModule {
       insightsPanel?.updateInsights(this.ctx.latestClusters);
 
       const geoLocated = this.ctx.latestClusters
-        .filter((c): c is typeof c & { lat: number; lon: number } => c.lat != null && c.lon != null)
-        .map(c => ({
-          lat: c.lat,
-          lon: c.lon,
-          title: c.primaryTitle,
-          threatLevel: c.threat?.level ?? 'info',
-          timestamp: c.lastUpdated,
-        }));
+        .map(c => {
+          if (c.lat != null && c.lon != null) {
+            return {
+              lat: c.lat,
+              lon: c.lon,
+              title: c.primaryTitle,
+              threatLevel: c.threat?.level ?? 'info',
+              timestamp: c.lastUpdated,
+            };
+          }
+          // Try to extract location from title if not already tagged
+          const ext = extractLocationFromText(c.primaryTitle);
+          if (ext) {
+            return {
+              lat: ext.lat,
+              lon: ext.lon,
+              title: c.primaryTitle,
+              threatLevel: (c.threat?.level as any) ?? 'info',
+              timestamp: c.lastUpdated ?? new Date(),
+            };
+          }
+          return null;
+        })
+        .filter((x): x is { lat: number; lon: number; title: string; threatLevel: ClientThreatLevel; timestamp: Date } => x !== null);
+
       if (geoLocated.length > 0) {
         this.ctx.map?.setNewsLocations(geoLocated);
       }
@@ -2601,6 +2619,28 @@ export class DataLoaderManager implements AppModule {
     try {
       const result = await fetchTelegramFeed();
       this.callPanel('telegram-intel', 'setData', result);
+
+      if (result.items?.length > 0) {
+        const geoLocated = result.items
+          .map(item => {
+            const ext = extractLocationFromText(item.text);
+            if (ext) {
+              return {
+                lat: ext.lat,
+                lon: ext.lon,
+                title: `${item.channelTitle}: ${item.text.slice(0, 50)}...`,
+                threatLevel: 'info' as ClientThreatLevel,
+                timestamp: new Date(item.ts),
+              };
+            }
+            return null;
+          })
+          .filter((x): x is { lat: number; lon: number; title: string; threatLevel: ClientThreatLevel; timestamp: Date } => x !== null);
+
+        if (geoLocated.length > 0) {
+          this.ctx.map?.setNewsLocations([...(this.ctx.map.getNewsLocations?.() || []), ...geoLocated]);
+        }
+      }
     } catch (error) {
       console.error('[App] Telegram intel fetch failed:', error);
     }

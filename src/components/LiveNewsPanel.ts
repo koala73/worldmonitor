@@ -314,8 +314,8 @@ export class LiveNewsPanel extends Panel {
   private activeChannel!: LiveChannel;
   private channelSwitcher: HTMLElement | null = null;
   private isMuted = true;
-  private isPlaying = true;
-  private wasPlayingBeforeIdle = true;
+  private isPlaying = false;
+  private wasPlayingBeforeIdle = false;
   private muteBtn: HTMLButtonElement | null = null;
   private fullscreenBtn: HTMLButtonElement | null = null;
   private isFullscreen = false;

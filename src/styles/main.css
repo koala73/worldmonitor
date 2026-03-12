@@ -5,26 +5,26 @@
    Theme Colors — overridden by [data-theme="light"] below
    ============================================================ */
 :root {
-  /* Backgrounds */
-  --bg: #0a0a0a;
-  --bg-secondary: #111;
-  --surface: #141414;
-  --surface-hover: #1e1e1e;
-  --surface-active: #1a1a2e;
+  /* Backgrounds - Johnny Ive Goth Theme */
+  --bg: #000000;
+  --bg-secondary: #0a0a0a;
+  --surface: rgba(18, 18, 18, 0.7);
+  --surface-hover: rgba(30, 30, 30, 0.8);
+  --surface-active: rgba(40, 40, 40, 0.9);
 
-  /* Borders */
-  --border: #2a2a2a;
-  --border-strong: #444;
-  --border-subtle: #1a1a1a;
+  /* Borders - Ultra thin, Apple-style */
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.15);
+  --border-subtle: rgba(255, 255, 255, 0.04);
 
-  /* Text */
-  --text: #e8e8e8;
-  --text-secondary: #ccc;
-  --text-dim: #888;
-  --text-muted: #666;
-  --text-faint: #555;
-  --text-ghost: #444;
-  --accent: #fff;
+  /* Text - High contrast, minimalist */
+  --text: #ffffff;
+  --text-secondary: #a1a1a6;
+  --text-dim: #86868b;
+  --text-muted: #6e6e73;
+  --text-faint: #424245;
+  --text-ghost: #2c2c2e;
+  --accent: #ffffff;
 
   /* Overlays & shadows */
   --overlay-subtle: rgba(255, 255, 255, 0.03);
@@ -201,9 +201,11 @@ html {
 }
 
 body {
-  font-family: var(--font-body);
-  font-size: 12px;
-  line-height: 1.5;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  font-size: 13px;
+  line-height: 1.47059;
+  font-weight: 400;
+  letter-spacing: -0.022em;
   background: var(--bg);
   color: var(--text);
   overflow: hidden;
@@ -211,6 +213,7 @@ body {
   width: 100%;
   min-height: 100vh;
   min-width: 100vw;
+  -webkit-font-smoothing: antialiased;
 }
 
 /* Pause all animations when tab is hidden or idle */
@@ -1130,7 +1133,10 @@ canvas,
 
 .panel {
   background: var(--surface);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--border);
+  border-radius: 12px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1138,9 +1144,21 @@ canvas,
   min-height: 200px;
   min-width: 0;
   cursor: grab;
-  transition: transform 0.15s, box-shadow 0.15s;
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1), height 0.3s ease;
   position: relative;
   contain: content;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+}
+
+.panel.collapsed {
+  height: 40px !important;
+  min-height: 40px !important;
+}
+
+.panel.collapsed .panel-content,
+.panel.collapsed .panel-resize-handle,
+.panel.collapsed .panel-col-resize-handle {
+  display: none !important;
 }
 
 /* .panel.resized: Custom height set - use grid-row span for height */
@@ -1217,7 +1235,7 @@ canvas,
 /* Right-edge handle - mirrors the bottom handle exactly */
 .panel-col-resize-handle {
   position: absolute;
-  top: 0;
+  top: 40px;
   right: 0;
   bottom: 0;
   width: 20px;
@@ -1292,12 +1310,13 @@ body.panel-resize-active iframe {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 6px 10px;
-  background: var(--overlay-subtle);
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.03);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   position: relative;
   transition: background-color 0.3s ease, border-color 0.3s ease;
+  height: 40px;
 }
 
 .panel-header-error {

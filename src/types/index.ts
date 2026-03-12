@@ -1183,7 +1183,7 @@ export interface HeadlineWithUrl {
 
 export interface EntityMention {
   entityId: string;
-  entityType: 'country' | 'company' | 'index' | 'commodity' | 'crypto' | 'sector';
+  entityType: 'country' | 'company' | 'index' | 'commodity' | 'crypto' | 'sector' | 'location';
   displayName: string;
   mentionCount: number;
   avgConfidence: number;
@@ -1194,7 +1194,7 @@ export interface EntityMention {
 export interface FocalPoint {
   id: string;
   entityId: string;
-  entityType: 'country' | 'company' | 'index' | 'commodity' | 'crypto' | 'sector';
+  entityType: 'country' | 'company' | 'index' | 'commodity' | 'crypto' | 'sector' | 'location';
   displayName: string;
 
   // News dimension

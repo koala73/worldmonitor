@@ -269,6 +269,7 @@ export class Panel {
     }
 
     if (options.closable !== false) {
+      this.appendCollapseButton();
       this.appendCloseButton();
     }
 
@@ -310,7 +311,36 @@ export class Panel {
     this.restoreSavedColSpan();
     this.reconcileColSpanAfterAttach();
 
+    this.restoreCollapsedState();
+
     this.showLoading();
+  }
+
+  private appendCollapseButton(): void {
+    const collapseBtn = h('button', {
+      className: 'icon-btn panel-collapse-btn',
+      'aria-label': 'Toggle Collapse',
+      title: 'Toggle Collapse',
+    }, '_');
+
+    collapseBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.toggleCollapse();
+    });
+
+    this.header.appendChild(collapseBtn);
+  }
+
+  private toggleCollapse(): void {
+    const isCollapsed = this.element.classList.toggle('collapsed');
+    localStorage.setItem(`panel-collapsed-${this.panelId}`, isCollapsed ? 'true' : 'false');
+  }
+
+  private restoreCollapsedState(): void {
+    const isCollapsed = localStorage.getItem(`panel-collapsed-${this.panelId}`) === 'true';
+    if (isCollapsed) {
+      this.element.classList.add('collapsed');
+    }
   }
 
   private restoreSavedColSpan(): void {

@@ -88,6 +88,7 @@ export class LiveWebcamsPanel extends Panel {
   private boundVisibilityHandler!: () => void;
   private idleDetectionEnabled = false;
   private isIdle = false;
+  private userActivated = false;
   private alwaysOn = getLiveStreamsAlwaysOn();
   private unsubscribeStreamSettings: (() => void) | null = null;
 
@@ -425,6 +426,11 @@ export class LiveWebcamsPanel extends Panel {
       return;
     }
 
+    if (!this.userActivated) {
+      this.renderPlaceholder();
+      return;
+    }
+
     if (this.viewMode === 'grid') {
       this.renderGrid();
     } else {
@@ -538,6 +544,34 @@ export class LiveWebcamsPanel extends Panel {
 
     this.content.appendChild(wrapper);
     this.content.appendChild(switcher);
+  }
+
+  private renderPlaceholder(): void {
+    this.content.innerHTML = '';
+    const container = document.createElement('div');
+    container.className = 'webcam-placeholder';
+    container.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;cursor:pointer;';
+
+    const label = document.createElement('div');
+    label.style.cssText = 'color:var(--text-secondary);font-size:13px;';
+    label.textContent = t('components.webcams.paused') || 'Webcams Paused';
+
+    const playBtn = document.createElement('button');
+    playBtn.className = 'offline-retry';
+    playBtn.textContent = 'Load Webcams';
+    playBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.userActivated = true;
+      this.render();
+    });
+
+    container.appendChild(label);
+    container.appendChild(playBtn);
+    container.addEventListener('click', () => {
+      this.userActivated = true;
+      this.render();
+    });
+    this.content.appendChild(container);
   }
 
   private destroyIframes(): void {

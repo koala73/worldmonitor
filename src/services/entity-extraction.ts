@@ -159,3 +159,55 @@ export function getTopEntitiesFromNews(
     .sort((a, b) => b.mentionCount - a.mentionCount)
     .slice(0, limit);
 }
+
+/**
+ * Extracts a location (lat/lon) from text by matching against ENTITY_REGISTRY
+ * and country names.
+ */
+export function extractLocationFromText(text: string): { lat: number, lon: number, name: string } | null {
+  const matches = findEntitiesInText(text);
+  const locationMatch = matches.find(m => {
+    const entity = getEntityIndex().byId.get(m.entityId);
+    return entity?.type === 'location' && entity.lat !== undefined && entity.lon !== undefined;
+  });
+
+  if (locationMatch) {
+    const entity = getEntityIndex().byId.get(locationMatch.entityId)!;
+    return { lat: entity.lat!, lon: entity.lon!, name: entity.name };
+  }
+
+  // Fallback: simple country name matching if no high-confidence entity found
+  const countries = matchCountryNamesInText(text);
+  if (countries.length > 0 && countries[0]) {
+    return { lat: countries[0].lat, lon: countries[0].lon, name: countries[0].name };
+  }
+
+  return null;
+}
+
+export function matchCountryNamesInText(text: string): Array<{ name: string, lat: number, lon: number }> {
+  // Simple list for fallback geotagging
+  const commonCountries: Record<string, [number, number]> = {
+    'Israel': [31.0461, 34.8516],
+    'Iran': [32.4279, 53.6880],
+    'Ukraine': [48.3794, 31.1656],
+    'Russia': [61.5240, 105.3188],
+    'USA': [37.0902, -95.7129],
+    'China': [35.8617, 104.1954],
+    'Taiwan': [23.6978, 120.9605],
+    'Lebanon': [33.8547, 35.8623],
+    'Syria': [34.8021, 38.9968],
+    'Yemen': [15.5527, 48.5164],
+    'Red Sea': [20.3858, 38.1221],
+    'Gaza': [31.3547, 34.3088],
+  };
+
+  const results: Array<{ name: string, lat: number, lon: number }> = [];
+  const lower = text.toLowerCase();
+  for (const [name, coords] of Object.entries(commonCountries)) {
+    if (lower.includes(name.toLowerCase())) {
+      results.push({ name, lat: coords[0], lon: coords[1] });
+    }
+  }
+  return results;
+}
