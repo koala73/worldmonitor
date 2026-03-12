@@ -8,7 +8,7 @@ const CANONICAL_KEY = 'prediction:markets-bootstrap:v1';
 const CACHE_TTL = 900; // 15 min — matches client poll interval
 
 const GAMMA_BASE = 'https://gamma-api.polymarket.com';
-const KALSHI_BASE = 'https://api.elections.kalshi.com/trade-api/v2';
+const KALSHI_BASE = 'https://trading-api.kalshi.com/trade-api/v2';
 const FETCH_TIMEOUT = 10_000;
 const TAG_DELAY_MS = 300;
 

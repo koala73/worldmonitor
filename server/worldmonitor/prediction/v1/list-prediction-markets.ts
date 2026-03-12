@@ -24,7 +24,7 @@ const REDIS_CACHE_TTL = 600; // 10 min
 const BOOTSTRAP_KEY = 'prediction:markets-bootstrap:v1';
 
 const GAMMA_BASE = 'https://gamma-api.polymarket.com';
-const KALSHI_BASE = 'https://api.elections.kalshi.com/trade-api/v2';
+const KALSHI_BASE = 'https://trading-api.kalshi.com/trade-api/v2';
 const KALSHI_CACHE_KEY = 'prediction:kalshi:v1';
 const FETCH_TIMEOUT = 8000;
 
