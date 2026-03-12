@@ -1137,7 +1137,7 @@ Enhance existing risk analytics with scenario analysis and convergence alerting.
 **Priority**: P1 | **Size**: M | **Dependencies**: #4.1
 
 **Description**:
-Pro users should NOT need to configure individual API keys for Finnhub, FRED, ACLED, etc. A single World Monitor Pro subscription gives access to all 22 services.
+Pro users should NOT need to configure individual API keys for Finnhub, FRED, ACLED, etc. A single World Monitor Pro subscription gives access to all 24 services.
 
 **Implementation**:
 

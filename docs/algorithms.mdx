@@ -3,10 +3,6 @@ title: "Algorithms & Scoring"
 description: "Detailed documentation of World Monitor's scoring formulas, detection algorithms, and classification pipelines."
 ---
 
-# Algorithms & Scoring
-
-Detailed documentation of World Monitor's scoring formulas, detection algorithms, and classification pipelines.
-
 ---
 
 ## Country & Regional Scoring
@@ -24,9 +20,9 @@ The server-side score (`get-risk-scores.ts`) uses the same formulas as the front
 
 **Unrest score** (0-100): Log2 dampening for high-volume low-multiplier countries (`multiplier &lt; 0.7`), linear otherwise. Base capped at 50, plus protest/riot fatality boost (up to 30), plus outage severity boost (TOTAL: 30pts, MAJOR: 15pts, PARTIAL: 5pts, capped at 50).
 
-**Conflict score** (0-100): Weighted ACLED events (battles x3, explosions x4, civilian violence x5, capped at 50), sqrt-scaled fatalities (up to 40), civilian boost (up to 10), Iran strike boost with severity weighting (up to 50), and OREF alert boost for Israel (25 base + 5 per active alert, up to 50 total).
+**Conflict score** (0-100): Weighted ACLED events (battles x3, explosions x4, civilian violence x5, capped at 50), sqrt-scaled fatalities (up to 40), civilian boost (up to 10), Iran strike boost with severity weighting (up to 50), and OREF alert boost for Israel (25 base + 5 per active alert, up to 50 total). Rolling 24-hour history adds a secondary boost: 3-9 alerts contribute +5, 10+ contribute +10 to the blended score.
 
-**Security score** (0-100): GPS/GNSS jamming (high: 5pts, medium: 2pts per hex, capped at 35).
+**Security score** (0-100): GPS/GNSS jamming (high: 5pts, medium: 2pts per hex, capped at 35). Jamming classification thresholds: Low 0-2% (hidden), Medium 2-10% (amber), High >10% (red).
 
 **Information score**: Reserved (0); no server-side news data available.
 
@@ -221,7 +217,7 @@ A structured entity registry catalogs countries, organizations, world leaders, a
 
 Entity matching uses word-boundary regex to prevent false positives (e.g., "Iran" matching "Ukraine"). Confidence scores are tiered by match quality: exact name matches score 1.0, aliases 0.85–0.95, and keyword matches 0.7. When the same entity surfaces across multiple independent data sources (news, military tracking, protest feeds, market signals), the system identifies it as a focal point and escalates its prominence in the intelligence picture.
 
-### News Importance Scoring
+### Headline Scoring
 
 The AI Insights panel ranks news items by geopolitical significance using a multi-signal importance scoring algorithm. Rather than displaying stories in chronological order, the algorithm surfaces the most consequential developments by applying keyword-weighted scoring across five severity tiers:
 
@@ -294,7 +290,7 @@ When an alert passes all gates, the system dispatches a `wm:breaking-news` Custo
 
 ---
 
-## Signal Correlation
+## Cross-Stream Correlation
 
 ### Signal Aggregation
 

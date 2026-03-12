@@ -364,6 +364,13 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Seeking Alpha Metals', url: gn('site:seekingalpha.com (gold OR silver OR copper OR mining) when:2d') },
       { name: 'Commodity Futures', url: gn('(COMEX OR NYMEX OR "commodity futures" OR CME commodities) when:2d') },
     ],
+    finance: [
+      { name: 'CNBC', url: 'https://www.cnbc.com/id/100003114/device/rss/rss.html' },
+      { name: 'MarketWatch', url: gn('site:marketwatch.com markets when:1d') },
+      { name: 'Yahoo Finance', url: 'https://finance.yahoo.com/news/rssindex' },
+      { name: 'Financial Times', url: 'https://www.ft.com/rss/home' },
+      { name: 'Reuters Business', url: gn('site:reuters.com business markets') },
+    ],
   },
 
   happy: {

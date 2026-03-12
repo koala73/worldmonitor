@@ -1,6 +1,10 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, CHROME_UA, sleep, runSeed } from './_seed-utils.mjs';
+import {
+  isExcluded, isMemeCandidate, tagRegions, parseYesPrice,
+  shouldInclude, scoreMarket, filterAndScore, isExpired,
+} from './_prediction-scoring.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -22,36 +26,10 @@ const TECH_TAGS = [
   'elon-musk', 'business', 'economy',
 ];
 
-const EXCLUDE_KEYWORDS = [
-  'nba', 'nfl', 'mlb', 'nhl', 'fifa', 'world cup', 'super bowl', 'championship',
-  'playoffs', 'oscar', 'grammy', 'emmy', 'box office', 'movie', 'album', 'song',
-  'streamer', 'influencer', 'celebrity', 'kardashian',
-  'bachelor', 'reality tv', 'mvp', 'touchdown', 'home run', 'goal scorer',
-  'academy award', 'bafta', 'golden globe', 'cannes', 'sundance',
-  'documentary', 'feature film', 'tv series', 'season finale',
+const FINANCE_TAGS = [
+  'economy', 'fed', 'inflation', 'interest-rates', 'recession',
+  'trade', 'tariffs', 'debt-ceiling',
 ];
-
-function isExcluded(title) {
-  const lower = title.toLowerCase();
-  return EXCLUDE_KEYWORDS.some(kw => lower.includes(kw));
-}
-
-function parseYesPrice(market) {
-  try {
-    const prices = JSON.parse(market.outcomePrices || '[]');
-    if (prices.length >= 1) {
-      const p = parseFloat(prices[0]);
-      if (!isNaN(p)) return +(p * 100).toFixed(1);
-    }
-  } catch {}
-  return 50;
-}
-
-function isExpired(endDate) {
-  if (!endDate) return false;
-  const ms = Date.parse(endDate);
-  return Number.isFinite(ms) && ms < Date.now();
-}
 
 async function fetchEventsByTag(tag, limit = 20) {
   const params = new URLSearchParams({
@@ -78,7 +56,7 @@ async function fetchEventsByTag(tag, limit = 20) {
 }
 
 async function fetchAllPredictions() {
-  const allTags = [...new Set([...GEOPOLITICAL_TAGS, ...TECH_TAGS])];
+  const allTags = [...new Set([...GEOPOLITICAL_TAGS, ...TECH_TAGS, ...FINANCE_TAGS])];
   const seen = new Set();
   const markets = [];
 
@@ -105,23 +83,19 @@ async function fetchAllPredictions() {
             return vol > bestVol ? m : best;
           });
 
+          const yesPrice = parseYesPrice(topMarket);
+          if (yesPrice === null) continue;
+
           markets.push({
             title: topMarket.question || event.title,
-            yesPrice: parseYesPrice(topMarket),
+            yesPrice,
             volume: eventVolume,
             url: `https://polymarket.com/event/${event.slug}`,
             endDate: topMarket.endDate ?? event.endDate ?? undefined,
             tags: (event.tags ?? []).map(t => t.slug),
           });
         } else {
-          markets.push({
-            title: event.title,
-            yesPrice: 50,
-            volume: eventVolume,
-            url: `https://polymarket.com/event/${event.slug}`,
-            endDate: event.endDate ?? undefined,
-            tags: (event.tags ?? []).map(t => t.slug),
-          });
+          continue; // no markets = no price signal, skip
         }
       }
     } catch (err) {
@@ -130,28 +104,18 @@ async function fetchAllPredictions() {
     await sleep(TAG_DELAY_MS);
   }
 
-  const geopolitical = markets
-    .filter(m => !isExpired(m.endDate))
-    .filter(m => {
-      const discrepancy = Math.abs(m.yesPrice - 50);
-      return discrepancy > 5 || (m.volume > 50000);
-    })
-    .sort((a, b) => b.volume - a.volume)
-    .slice(0, 25);
+  console.log(`  total raw markets: ${markets.length}`);
 
-  const tech = markets
-    .filter(m => !isExpired(m.endDate))
-    .filter(m => m.tags?.some(t => TECH_TAGS.includes(t)))
-    .filter(m => {
-      const discrepancy = Math.abs(m.yesPrice - 50);
-      return discrepancy > 5 || (m.volume > 50000);
-    })
-    .sort((a, b) => b.volume - a.volume)
-    .slice(0, 25);
+  const geopolitical = filterAndScore(markets, null);
+  const tech = filterAndScore(markets, m => m.tags?.some(t => TECH_TAGS.includes(t)));
+  const finance = filterAndScore(markets, m => m.tags?.some(t => FINANCE_TAGS.includes(t)));
+
+  console.log(`  geopolitical: ${geopolitical.length}, tech: ${tech.length}, finance: ${finance.length}`);
 
   return {
     geopolitical,
     tech,
+    finance,
     fetchedAt: Date.now(),
   };
 }
@@ -159,5 +123,5 @@ async function fetchAllPredictions() {
 await runSeed('prediction', 'markets', CANONICAL_KEY, fetchAllPredictions, {
   ttlSeconds: CACHE_TTL,
   lockTtlMs: 60_000,
-  validateFn: (data) => (data?.geopolitical?.length > 0 || data?.tech?.length > 0),
+  validateFn: (data) => (data?.geopolitical?.length > 0 || data?.tech?.length > 0) && data?.finance?.length > 0,
 });

@@ -3,10 +3,6 @@ title: "Finance & Market Data"
 description: "Market radar, Gulf FDI tracking, stablecoin monitoring, energy analytics, and trade policy intelligence in World Monitor."
 ---
 
-# Finance & Market Data
-
-Market radar, Gulf FDI tracking, stablecoin monitoring, energy analytics, and trade policy intelligence in World Monitor.
-
 For the premium stock-analysis product layer, see:
 
 - [Premium Finance](/premium-finance)
@@ -153,10 +149,12 @@ The `trade/v1` proto service defines four RPCs, each with its own circuit breake
 
 The Supply Chain panel provides real-time visibility into global logistics risk across three complementary dimensions — strategic chokepoint health, shipping cost trends, and critical mineral concentration — enabling early detection of disruptions that cascade into economic and geopolitical consequences.
 
-**Chokepoints tab** — monitors 6 strategic maritime bottlenecks (Suez Canal, Strait of Malacca, Strait of Hormuz, Bab el-Mandeb, Panama Canal, Taiwan Strait) by cross-referencing live navigational warnings with AIS vessel disruption data. Each chokepoint receives a disruption score (0–100) computed from a three-component formula: baseline threat level (war zone / critical / high / elevated / normal), active warning count (capped contribution), and AIS congestion severity — mapped to color-coded status indicators (green/yellow/red). Chokepoint identification uses text-evidence matching (keyword scoring with primary and area terms) before falling back to geographic proximity, preventing misclassification of events that mention one chokepoint but are geographically closer to another. Data is cached with a 5-minute TTL for near-real-time awareness.
+**Chokepoints tab** — monitors 9 strategic waterways (Suez Canal, Strait of Malacca, Strait of Hormuz, Bab el-Mandeb, Panama Canal, Taiwan Strait, Strait of Gibraltar, Bosphorus, Dardanelles) by cross-referencing live navigational warnings with AIS vessel disruption data. Each chokepoint receives a disruption score (0–100) computed from a three-component formula: baseline threat level (war zone / critical / high / elevated / normal), active warning count (capped contribution), and AIS congestion severity — mapped to color-coded status indicators (green/yellow/red). Chokepoint identification uses text-evidence matching (keyword scoring with primary and area terms) before falling back to geographic proximity, preventing misclassification of events that mention one chokepoint but are geographically closer to another. Data is cached with a 5-minute TTL for near-real-time awareness.
 
 **Shipping Rates tab** — tracks two Federal Reserve Economic Data (FRED) series: the Deep Sea Freight Producer Price Index (`PCU483111483111`) and the Freight Transportation Services Index (`TSIFRGHT`). Statistical spike detection flags abnormal price movements against recent history. Inline SVG sparklines render 24 months of rate history at a glance. Cached for 1 hour to reflect the weekly release cadence of underlying data.
 
 **Critical Minerals tab** — applies the **Herfindahl-Hirschman Index (HHI)** to 2024 global production data for minerals critical to technology and defense manufacturing — lithium, cobalt, rare earths, gallium, germanium, and others. The HHI quantifies supply concentration risk: a market dominated by a single producer scores near 10,000, while a perfectly distributed market scores near 0. Each mineral displays the top 3 producing countries with market share percentages, flagging single-country dependencies that represent strategic vulnerability (e.g., China's dominance in rare earth processing). This tab uses static production data, cached for 24 hours with no external API dependency.
 
 The panel is available on the FULL (World Monitor) variant and integrates with the infrastructure cascade model — when a chokepoint disruption coincides with high mineral concentration risk for affected trade routes, the combined signal feeds into convergence detection.
+
+See also [Maritime Intelligence](/maritime-intelligence) for vessel tracking and dark ship detection.

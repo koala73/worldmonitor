@@ -3,10 +3,6 @@ title: "AI Intelligence"
 description: "LLM chains, RAG pipelines, threat classification, deduction engines, and browser-side ML used in World Monitor."
 ---
 
-# AI Intelligence
-
-LLM chains, RAG pipelines, threat classification, deduction engines, and browser-side ML used in World Monitor.
-
 ## AI Summarization
 
 ### AI Summarization Chain
@@ -187,3 +183,215 @@ The dashboard runs a full ML pipeline in the browser via Transformers.js, with n
 **Hybrid clustering** combines fast Jaccard similarity (n-gram overlap, threshold 0.4) with ML-refined semantic similarity (cosine similarity, threshold 0.78). Jaccard runs instantly on every refresh; semantic refinement runs when the ML worker is loaded and merges clusters that are textually different but semantically identical (e.g., "NATO expands missile shield" and "Alliance deploys new air defense systems").
 
 News velocity is tracked per cluster — when multiple Tier 1–2 sources converge on the same story within a short window, the cluster is flagged as a breaking alert with `sourcesPerHour` as the velocity metric.
+
+---
+
+## Browser-Based Machine Learning
+
+For offline resilience and reduced API costs, the system includes browser-based ML capabilities using ONNX Runtime Web.
+
+### Available Models
+
+| Model | Task | Size | Use Case |
+|-------|------|------|----------|
+| **T5-small** | Text summarization | ~60MB | Offline briefing generation |
+| **DistilBERT** | Sentiment analysis | ~67MB | News tone classification |
+
+### Fallback Strategy
+
+Browser ML serves as the final fallback when cloud APIs are unavailable:
+
+```
+User requests summary
+    ↓
+1. Try Groq API (fast, free tier)
+    ↓ (rate limited or error)
+2. Try OpenRouter API (fallback provider)
+    ↓ (unavailable)
+3. Use Browser T5 (offline, always available)
+```
+
+### Lazy Loading
+
+Models are loaded on-demand to minimize initial page load:
+
+- Models download only when first needed
+- Progress indicator shows download status
+- Once cached, models load instantly from IndexedDB
+
+### Worker Isolation
+
+All ML inference runs in a dedicated Web Worker:
+
+- Main thread remains responsive during inference
+- 30-second timeout prevents hanging
+- Automatic cleanup on errors
+
+### Limitations
+
+Browser ML has constraints compared to cloud models:
+
+| Aspect | Cloud (Llama 3.3) | Browser (T5) |
+|--------|-------------------|--------------|
+| Context window | 128K tokens | 512 tokens |
+| Output quality | High | Moderate |
+| Inference speed | 2-3 seconds | 5-10 seconds |
+| Offline support | No | Yes |
+
+Browser summarization is intentionally limited to 6 headlines × 80 characters to stay within model constraints.
+
+---
+
+## AI Insights Panel
+
+The Insights Panel provides AI-powered analysis of the current news landscape, transforming raw headlines into actionable intelligence briefings.
+
+### World Brief Generation
+
+Every 2 minutes (with rate limiting), the system generates a concise situation brief using a multi-provider fallback chain:
+
+| Priority | Provider | Model | Latency | Use Case |
+|----------|----------|-------|---------|----------|
+| 1 | Groq | Llama 3.3 70B | ~2s | Primary provider (fast inference) |
+| 2 | OpenRouter | Llama 3.3 70B | ~3s | Fallback when Groq rate-limited |
+| 3 | Browser | T5 (ONNX) | ~5s | Offline fallback (local ML) |
+
+**Caching Strategy**: Redis server-side caching prevents redundant API calls. When the same headline set has been summarized recently, the cached result is returned immediately.
+
+### Focal Point Detection
+
+The AI receives enriched context about **focal points**—entities that appear in both news coverage AND map signals. This enables intelligence-grade analysis:
+
+```
+[INTELLIGENCE SYNTHESIS]
+FOCAL POINTS (entities across news + signals):
+- IRAN [CRITICAL]: 12 news mentions + 5 map signals (military_flight, protest, internet_outage)
+  KEY: "Iran protests continue..." | SIGNALS: military activity, outage detected
+- TAIWAN [ELEVATED]: 8 news mentions + 3 map signals (military_vessel, military_flight)
+  KEY: "Taiwan tensions rise..." | SIGNALS: naval vessels detected
+```
+
+### Headline Scoring Algorithm
+
+Not all news is equally important. Headlines are scored to identify the most significant stories for the briefing:
+
+**Score Boosters** (high weight):
+
+- Military keywords: war, invasion, airstrike, missile, deployment, mobilization
+- Violence indicators: killed, casualties, clashes, massacre, crackdown
+- Civil unrest: protest, uprising, coup, riot, martial law
+
+**Geopolitical Multipliers**:
+
+- Flashpoint regions: Iran, Russia, China, Taiwan, Ukraine, North Korea, Gaza
+- Critical actors: NATO, Pentagon, Kremlin, Hezbollah, Hamas, Wagner
+
+**Score Reducers** (demoted):
+
+- Business context: CEO, earnings, stock, revenue, startup, data center
+- Entertainment: celebrity, movie, streaming
+
+This ensures military conflicts and humanitarian crises surface above routine business news.
+
+### Sentiment Analysis
+
+Headlines are analyzed for overall sentiment distribution:
+
+| Sentiment | Detection Method | Display |
+|-----------|------------------|---------|
+| **Negative** | Crisis, conflict, death keywords | Red percentage |
+| **Positive** | Agreement, growth, peace keywords | Green percentage |
+| **Neutral** | Neither detected | Gray percentage |
+
+The overall sentiment balance provides a quick read on whether the news cycle is trending toward escalation or de-escalation.
+
+### Velocity Detection
+
+Fast-moving stories are flagged when the same topic appears in multiple recent headlines:
+
+- Headlines are grouped by shared keywords and entities
+- Topics with 3+ mentions in 6 hours are marked as "high velocity"
+- Displayed separately to highlight developing situations
+
+---
+
+## Focal Point Detector
+
+The Focal Point Detector is the intelligence synthesis layer that correlates news entities with map signals to identify "main characters" driving current events.
+
+### The Problem It Solves
+
+Without synthesis, intelligence streams operate in silos:
+
+- News feeds show 344 sources with thousands of headlines
+- Map layers display military flights, protests, outages independently
+- No automated way to see that IRAN appears in news AND has military activity AND an internet outage
+
+### How It Works
+
+1. **Entity Extraction**: Extract countries, companies, and organizations from all news clusters using the entity registry (66 entities with aliases)
+
+2. **Signal Aggregation**: Collect all map signals (military flights, protests, outages, vessels) and group by country
+
+3. **Cross-Reference**: Match news entities with signal countries
+
+4. **Score & Rank**: Calculate focal scores based on correlation strength
+
+### Focal Point Scoring
+
+```
+FocalScore = NewsScore + SignalScore + CorrelationBonus
+
+NewsScore (0-40):
+  base = min(20, mentionCount × 4)
+  velocity = min(10, newsVelocity × 2)
+  confidence = avgConfidence × 10
+
+SignalScore (0-40):
+  types = signalTypes.count × 10
+  count = min(15, signalCount × 3)
+  severity = highSeverityCount × 5
+
+CorrelationBonus (0-20):
+  +10 if entity appears in BOTH news AND signals
+  +5 if news keywords match signal types (e.g., "military" + military_flight)
+  +5 if related entities also have signals
+```
+
+### Urgency Classification
+
+| Urgency | Criteria | Visual |
+|---------|----------|--------|
+| **Critical** | Score > 70 OR 3+ signal types | Red badge |
+| **Elevated** | Score > 50 OR 2+ signal types | Orange badge |
+| **Watch** | Default | Yellow badge |
+
+### Signal Type Icons
+
+Focal points display icons indicating which signal types are active:
+
+| Icon | Signal Type | Meaning |
+|------|-------------|---------|
+| ✈️ | military_flight | Military aircraft detected nearby |
+| ⚓ | military_vessel | Naval vessels in waters |
+| 📢 | protest | Civil unrest events |
+| 🌐 | internet_outage | Network disruption |
+| 🚢 | ais_disruption | Shipping anomaly |
+
+### Example Output
+
+A focal point for IRAN might show:
+
+- **Display**: "Iran [CRITICAL] ✈️📢🌐"
+- **News**: 12 mentions, velocity 0.5/hour
+- **Signals**: 5 military flights, 3 protests, 1 outage
+- **Narrative**: "12 news mentions | 5 military flights, 3 protests, 1 internet outage | 'Iran protests continue amid...'"
+- **Correlation Evidence**: "Iran appears in both news (12) and map signals (9)"
+
+### Integration with CII
+
+Focal point urgency levels feed into the Country Instability Index:
+
+- **Critical** focal point → CII score boost for that country
+- Ensures countries with multi-source convergence are properly flagged
+- Prevents "silent" instability when news alone wouldn't trigger alerts

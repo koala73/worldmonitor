@@ -150,7 +150,7 @@ export class MacroSignalsPanel extends Panel {
       if (this.isAbortError(err)) return false;
       if (!this.element?.isConnected) return false;
       console.warn('[MacroSignals] Fetch error:', err);
-      this.error = null;
+      this.error = t('common.noDataShort');
     }
     this.loading = false;
     this.renderPanel();

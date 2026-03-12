@@ -3,10 +3,6 @@ title: "Maps Infrastructure & Geocoding"
 description: "Static map assets, country geometry, geocoding services, and boundary overrides."
 ---
 
-# Maps Infrastructure & Geocoding
-
-Static map assets, country geometry, geocoding services, and boundary overrides.
-
 ## R2 CDN — `maps.worldmonitor.app`
 
 All large static map files are served from Cloudflare R2, **not** from Vercel. The R2 bucket `worldmonitor-maps` is fronted by a CF-proxied custom domain:
@@ -136,7 +132,7 @@ For regions where full polygon geometry may not be loaded, `ME_STRIKE_BOUNDS` in
 
 ## Basemap Tiles
 
-Basemap tile configuration lives in `src/config/basemap.ts`. See [MAP_ENGINE.md](MAP_ENGINE.md) for full details on tile providers (PMTiles, OpenFreeMap, CARTO), themes, and fallback behavior.
+Basemap tile configuration lives in `src/config/basemap.ts`. See [Map Engine](/map-engine) for full details on tile providers (PMTiles, OpenFreeMap, CARTO), themes, and fallback behavior.
 
 PMTiles are also served from R2 via `maps.worldmonitor.app`, configured through `VITE_PMTILES_URL`.
 

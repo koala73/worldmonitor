@@ -3,10 +3,6 @@ title: "Architecture"
 description: "System design, caching strategies, bootstrap hydration, edge functions, and implementation patterns used in World Monitor."
 ---
 
-# Architecture
-
-System design, caching strategies, bootstrap hydration, edge functions, and implementation patterns used in World Monitor.
-
 ---
 
 ## Design Principles
@@ -25,11 +21,11 @@ System design, caching strategies, bootstrap hydration, edge functions, and impl
 | **Bandwidth efficiency**            | Gzip compression on all relay responses (80% reduction). Content-hash static assets with 1-year immutable cache. Staggered polling intervals prevent synchronized API storms. Animations and polling pause on hidden tabs.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | **Baseline-aware alerting**         | Trending keyword detection uses rolling 2-hour windows against 7-day baselines with per-term spike multipliers, cooldowns, and source diversity requirements — surfacing genuine surges while suppressing noise.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | **Contract-first APIs**             | Every API endpoint starts as a `.proto` definition with field validation, HTTP annotations, and examples. Code generation produces typed TypeScript clients and servers, eliminating schema drift. Breaking changes are caught automatically at CI time.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| **Run anywhere**                    | Same codebase produces four specialized variants (geopolitical, tech, finance, happy) from a single Vercel deployment and deploys to Vercel (web), Railway (relay), Tauri (desktop), and PWA (installable). Desktop sidecar mirrors all cloud API handlers locally. Service worker caches map tiles for offline use while keeping intelligence data always-fresh (NetworkOnly).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| **Run anywhere**                    | Same codebase produces five specialized variants (geopolitical, tech, finance, commodity, happy) from a single Vercel deployment and deploys to Vercel (web), Railway (relay), Tauri (desktop), and PWA (installable). Desktop sidecar mirrors all cloud API handlers locally. Service worker caches map tiles for offline use while keeping intelligence data always-fresh (NetworkOnly).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | **Graceful degradation**            | Every feature degrades gracefully when dependencies are unavailable. Missing API keys skip the associated data source — they don't crash the app. Failed upstream APIs serve stale cached data. Browser-side ML works without any server. The dashboard is useful with zero API keys configured (static layers, map, ML models all work offline).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | **Multi-source corroboration**      | Critical intelligence signals use multiple independent sources to reduce single-source bias. Protest data merges ACLED + GDELT with Haversine deduplication. Country risk blends news velocity + military activity + unrest events + baseline risk. Disaster data merges USGS + GDACS + NASA EONET on a 0.1° geographic grid.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | **No framework overhead**           | Vanilla TypeScript with direct DOM manipulation, event delegation, and custom `Panel`/`VirtualList` classes. No virtual DOM diffing, no framework runtime, no adapter libraries. The entire application shell weighs less than React's runtime. Browser standards (Web Workers, IndexedDB, Intersection Observer, ResizeObserver, CustomEvent) serve as the reactivity and component model.                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| **Type-safe data flow**             | Discriminated union markers (`_kind` field), proto-generated typed clients/servers, and exhaustive `switch` matching ensure compile-time safety across 15+ marker types, 22 service domains, and 45 map layers. Adding a new data type produces compiler errors at every unhandled site.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| **Type-safe data flow**             | Discriminated union markers (`_kind` field), proto-generated typed clients/servers, and exhaustive `switch` matching ensure compile-time safety across 15+ marker types, 24 service domains, and 49 map layers. Adding a new data type produces compiler errors at every unhandled site.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 
 ### Intelligence Analysis Tradecraft
 
@@ -133,7 +129,7 @@ This pattern is enforced project-wide across all panel subclasses. In E2E tests,
 
 The entire API surface is defined in Protocol Buffer (`.proto`) files using [sebuf](https://github.com/SebastienMelki/sebuf) HTTP annotations. Code generation produces TypeScript clients, server handler stubs, and OpenAPI 3.1.0 documentation from a single source of truth — eliminating request/response schema drift between frontend and backend.
 
-**22 service domains** cover every data vertical:
+**24 service domains** cover every data vertical:
 
 | Domain           | RPCs                                             |
 | ---------------- | ------------------------------------------------ |
@@ -268,20 +264,21 @@ All edge functions include circuit breaker logic and return cached stale data wh
 
 ### Cold-Start Optimization — Per-Domain Edge Function Split
 
-The original monolithic edge gateway (`api/[domain]/v1/[rpc].ts`) imported all 22 service domain handlers into a single function. When any RPC was called, the edge runtime loaded the entire handler graph — initializing Redis clients, parsing configuration, and importing utility modules for all 22 domains even though only 1 was needed.
+The original monolithic edge gateway (`api/[domain]/v1/[rpc].ts`) imported all 24 service domain handlers into a single function. When any RPC was called, the edge runtime loaded the entire handler graph — initializing Redis clients, parsing configuration, and importing utility modules for all 24 domains even though only 1 was needed.
 
-This was split into 22 per-domain thin entry points, each importing only its own handler module. The shared gateway (`server/gateway.ts`) provides common routing logic, but each domain's edge function tree-shakes to include only its dependencies.
+This was split into 24 per-domain thin entry points, each importing only its own handler module. The shared gateway (`server/gateway.ts`) provides common routing logic, but each domain's edge function tree-shakes to include only its dependencies.
 
 **Impact**: Cold-start time dropped by ~85% — a market quote request no longer loads the cyber threat intelligence parser, the OREF alert handler, or the climate anomaly detector. On Vercel's edge runtime, this translates to sub-100ms cold starts for most endpoints, compared to 500ms+ with the monolithic handler.
 
 ### Single-Deployment Variant Consolidation
 
-All four dashboard variants (World Monitor, Tech Monitor, Finance Monitor, Happy Monitor) serve from a **single Vercel deployment**. The variant is determined at runtime by hostname detection:
+All five dashboard variants (World Monitor, Tech Monitor, Finance Monitor, Commodity Monitor, Happy Monitor) serve from a **single Vercel deployment**. The variant is determined at runtime by hostname detection:
 
 | Hostname | Variant |
 | --- | --- |
 | `tech.worldmonitor.app` | `tech` |
 | `finance.worldmonitor.app` | `finance` |
+| `commodity.worldmonitor.app` | `commodity` |
 | `happy.worldmonitor.app` | `happy` |
 | `worldmonitor.app` (default) | `full` |
 
@@ -364,9 +361,9 @@ Countries GeoJSON is lazy-loaded from a shared `getCountriesGeoJson()` function,
 
 ### Unified Layer Toggle Catalog
 
-All 45 map layer toggle definitions — icon, localization key, fallback display label, and supported renderer types — are consolidated in a single shared registry (`src/config/map-layer-definitions.ts`). Each entry declares which map renderers support it via a `renderers: MapRenderer[]` field (e.g., `dayNight` is flat-only, `ciiChoropleth` is both flat and globe), preventing the two map components from showing inconsistent layer options.
+All 49 map layer toggle definitions — icon, localization key, fallback display label, and supported renderer types — are consolidated in a single shared registry (`src/config/map-layer-definitions.ts`). Each entry declares which map renderers support it via a `renderers: MapRenderer[]` field (e.g., `dayNight` is flat-only, `ciiChoropleth` is both flat and globe), preventing the two map components from showing inconsistent layer options.
 
-A `def()` factory function reduces per-entry boilerplate. Variant-specific layer ordering (`VARIANT_LAYER_ORDER`) defines the display sequence for each of the four dashboard variants without duplicating the definitions themselves. Adding a new map layer requires a single registry entry — both the flat map and 3D globe derive their toggle panels from this catalog automatically.
+A `def()` factory function reduces per-entry boilerplate. Variant-specific layer ordering (`VARIANT_LAYER_ORDER`) defines the display sequence for each of the five dashboard variants without duplicating the definitions themselves. Adding a new map layer requires a single registry entry — both the flat map and 3D globe derive their toggle panels from this catalog automatically.
 
 ---
 
@@ -499,3 +496,417 @@ A custom `beforeSend` hook provides second-stage filtering: it suppresses single
 **Storage quota management** — when a device's localStorage or IndexedDB quota is exhausted (common on mobile Safari with its 5MB limit), a global `_storageQuotaExceeded` flag disables all further write attempts across both the persistent cache (IndexedDB + localStorage fallback) and the utility `saveToStorage()` function. The flag is set on the first `DOMException` with `name === 'QuotaExceededError'` or `code === 22`, and prevents cascading errors from repeated failed writes. Read operations continue normally — cached data remains accessible, only new writes are suppressed.
 
 Transactions are sampled at 10% to balance observability with cost. Release tracking (`worldmonitor@{version}`) enables regression detection across deployments.
+
+---
+
+## Fault Tolerance
+
+External APIs are unreliable. Rate limits, outages, and network errors are inevitable. The system implements **circuit breaker** patterns to maintain availability.
+
+### Circuit Breaker Pattern
+
+Each external service is wrapped in a circuit breaker that tracks failures:
+
+```
+Normal → Failure #1 → Failure #2 → OPEN (cooldown)
+                                      ↓
+                              5 minutes pass
+                                      ↓
+                                   CLOSED
+```
+
+**Behavior during cooldown:**
+
+- New requests return cached data (if available)
+- UI shows "temporarily unavailable" status
+- No API calls are made (prevents hammering)
+
+### Protected Services
+
+| Service | Cooldown | Cache TTL |
+|---------|----------|-----------|
+| Yahoo Finance | 5 min | 10 min |
+| Polymarket | 5 min | 10 min |
+| USGS Earthquakes | 5 min | 10 min |
+| NWS Weather | 5 min | 10 min |
+| FRED Economic | 5 min | 10 min |
+| Cloudflare Radar | 5 min | 10 min |
+| ACLED | 5 min | 10 min |
+| GDELT | 5 min | 10 min |
+| FAA Status | 5 min | 5 min |
+| RSS Feeds | 5 min per feed | 10 min |
+
+RSS feeds use per-feed circuit breakers—one failing feed doesn't affect others.
+
+### Graceful Degradation
+
+When a service enters cooldown:
+
+1. Cached data continues to display (stale but available)
+2. Status panel shows service health
+3. Automatic recovery when cooldown expires
+4. No user intervention required
+
+---
+
+## System Health Monitoring
+
+The status panel (accessed via the health indicator in the header) provides real-time visibility into data source status and system health.
+
+### Health Indicator
+
+The header displays a system health badge:
+
+| State | Visual | Meaning |
+|-------|--------|---------|
+| **Healthy** | Green dot | All data sources operational |
+| **Degraded** | Yellow dot | Some sources in cooldown |
+| **Unhealthy** | Red dot | Multiple sources failing |
+
+Click the indicator to expand the full status panel.
+
+### Data Source Status
+
+The status panel lists all data feeds with their current state:
+
+| Status | Icon | Description |
+|--------|------|-------------|
+| **Active** | ● Green | Fetching data normally |
+| **Cooldown** | ● Yellow | Temporarily paused (circuit breaker) |
+| **Disabled** | ○ Gray | Layer not enabled |
+| **Error** | ● Red | Persistent failure |
+
+### Per-Feed Information
+
+Each feed entry shows:
+
+- **Source name** - The data provider
+- **Last update** - Time since last successful fetch
+- **Next refresh** - Countdown to next scheduled fetch
+- **Cooldown remaining** - Time until circuit breaker resets (if in cooldown)
+
+### Why This Matters
+
+External APIs are unreliable. The status panel helps you understand:
+
+- **Data freshness** - Is the news feed current or stale?
+- **Coverage gaps** - Which sources are currently unavailable?
+- **Recovery timeline** - When will failed sources retry?
+
+This transparency enables informed interpretation of the dashboard data.
+
+---
+
+## Data Freshness Tracking
+
+Beyond simple "online/offline" status, the system tracks fine-grained freshness for each data source to indicate data reliability and staleness.
+
+### Freshness Levels
+
+| Status | Color | Criteria | Meaning |
+|--------|-------|----------|---------|
+| **Fresh** | Green | Updated within expected interval | Data is current |
+| **Aging** | Yellow | 1-2× expected interval elapsed | Data may be slightly stale |
+| **Stale** | Orange | 2-4× expected interval elapsed | Data is outdated |
+| **Critical** | Red | >4× expected interval elapsed | Data unreliable |
+| **Disabled** | Gray | Layer toggled off | Not fetching |
+
+### Source-Specific Thresholds
+
+Each data source has calibrated freshness expectations:
+
+| Source | Expected Interval | "Fresh" Threshold |
+|--------|------------------|-------------------|
+| News feeds | 5 minutes | &lt;10 minutes |
+| Stock quotes | 1 minute | &lt;5 minutes |
+| Earthquakes | 5 minutes | &lt;15 minutes |
+| Weather | 10 minutes | &lt;30 minutes |
+| Flight delays | 10 minutes | &lt;20 minutes |
+| AIS vessels | Real-time | &lt;1 minute |
+
+### Visual Indicators
+
+The status panel displays freshness for each source:
+
+- **Colored dot** indicates freshness level
+- **Time since update** shows exact staleness
+- **Next refresh countdown** shows when data will update
+
+### Why This Matters
+
+Understanding data freshness is critical for decision-making:
+
+- A "fresh" earthquake feed means recent events are displayed
+- A "stale" news feed means you may be missing breaking stories
+- A "critical" AIS stream means vessel positions are unreliable
+
+This visibility enables appropriate confidence calibration when interpreting the dashboard.
+
+### Core vs. Optional Sources
+
+Data sources are classified by their importance to risk assessment:
+
+| Classification | Sources | Impact |
+|----------------|---------|--------|
+| **Core** | GDELT, RSS feeds | Required for meaningful risk scores |
+| **Optional** | ACLED, Military, AIS, Weather, Economic | Enhance but not required |
+
+The Strategic Risk Overview panel adapts its display based on core source availability:
+
+| Status | Display Mode | Behavior |
+|--------|--------------|----------|
+| **Sufficient** | Full data view | All metrics shown with confidence |
+| **Limited** | Limited data view | Shows "Limited Data" warning banner |
+| **Insufficient** | Insufficient data view | "Insufficient Data" message, no risk score |
+
+### Freshness-Aware Risk Assessment
+
+The composite risk score is adjusted based on data freshness:
+
+```
+If core sources fresh:
+  → Full confidence in risk score
+  → "All data sources active" indicator
+
+If core sources stale:
+  → Display warning: "Limited Data - [active sources]"
+  → Score shown but flagged as potentially unreliable
+
+If core sources unavailable:
+  → "Insufficient data for risk assessment"
+  → No score displayed
+```
+
+This prevents false "all clear" signals when the system actually lacks data to make that determination.
+
+---
+
+## Conditional Data Loading
+
+API calls are expensive. The system only fetches data for **enabled layers**, reducing unnecessary network traffic and rate limit consumption.
+
+### Layer-Aware Loading
+
+When a layer is toggled OFF:
+
+- No API calls for that data source
+- No refresh interval scheduled
+- WebSocket connections closed (for AIS)
+
+When a layer is toggled ON:
+
+- Data is fetched immediately
+- Refresh interval begins
+- Loading indicator shown on toggle button
+
+### Unconfigured Services
+
+Some data sources require API keys (AIS relay, Cloudflare Radar). If credentials are not configured:
+
+- The layer toggle is hidden entirely
+- No failed requests pollute the console
+- Users see only functional layers
+
+This prevents confusion when deploying without full API access.
+
+---
+
+## Performance Optimizations
+
+The dashboard processes thousands of data points in real-time. Several techniques keep the UI responsive even with heavy data loads.
+
+### Web Worker for Analysis
+
+CPU-intensive operations run in a dedicated Web Worker to avoid blocking the main thread:
+
+| Operation | Complexity | Worker? |
+|-----------|------------|---------|
+| News clustering (Jaccard) | O(n²) | Yes |
+| Correlation detection | O(n × m) | Yes |
+| DOM rendering | O(n) | Main thread |
+
+The worker manager implements:
+
+- **Lazy initialization**: Worker spawns on first use
+- **10-second ready timeout**: Rejects if worker fails to initialize
+- **30-second request timeout**: Prevents hanging on stuck operations
+- **Automatic cleanup**: Terminates worker on fatal errors
+
+### Virtual Scrolling
+
+Large lists (100+ news items) use virtualized rendering:
+
+**Fixed-Height Mode** (VirtualList):
+
+- Only renders items visible in viewport + 3-item overscan buffer
+- Element pooling—reuses DOM nodes rather than creating new ones
+- Invisible spacers maintain scroll position without rendering all items
+
+**Variable-Height Mode** (WindowedList):
+
+- Chunk-based rendering (10 items per chunk)
+- Renders chunks on-scroll with 1-chunk buffer
+- CSS containment for performance isolation
+
+This reduces DOM node count from thousands to ~30, dramatically improving scroll performance.
+
+### Request Deduplication
+
+Identical requests within a short window are deduplicated:
+
+- Market quotes batch multiple symbols into single API call
+- Concurrent layer toggles don't spawn duplicate fetches
+- `Promise.allSettled` ensures one failing request doesn't block others
+
+### Efficient Data Updates
+
+When refreshing data:
+
+- **Incremental updates**: Only changed items trigger re-renders
+- **Stale-while-revalidate**: Old data displays while fetch completes
+- **Delta compression**: Baselines store 7-day/30-day deltas, not raw history
+
+---
+
+## Cross-Module Integration
+
+Intelligence modules don't operate in isolation. Data flows between systems to enable composite analysis.
+
+### Data Flow Architecture
+
+```
+News Feeds → Clustering → Velocity Analysis → Hotspot Correlation
+                ↓                                    ↓
+         Topic Extraction                    CII Information Score
+                ↓                                    ↓
+         Keyword Monitors              Strategic Risk Overview
+                                                     ↑
+Military Flights → Near-Hotspot Detection ──────────┤
+                                                     ↑
+AIS Vessels → Chokepoint Monitoring ────────────────┤
+                                                     ↑
+ACLED/GDELT → Protest Events ───────────────────────┤
+                       ↓
+                CII Unrest Score
+```
+
+### Module Dependencies
+
+| Consumer Module | Data Source | Integration |
+|----------------|-------------|-------------|
+| **CII Unrest Score** | ACLED, GDELT protests | Event count, fatalities |
+| **CII Security Score** | Military flights, vessels | Activity near hotspots |
+| **CII Information Score** | News clusters | Velocity, keyword matches |
+| **Strategic Risk** | CII, Convergence, Cascade | Composite scoring |
+| **Related Assets** | News location inference | Pipeline/cable proximity |
+| **Geographic Convergence** | All geo-located events | Multi-type clustering |
+
+### Alert Propagation
+
+When a threshold is crossed:
+
+1. **Source module** generates alert (e.g., CII spike)
+2. **Alert merges** with related alerts (same country/region)
+3. **Strategic Risk** receives composite alert
+4. **UI updates** header badge and panel indicators
+
+This ensures a single escalation (e.g., Ukraine military flights + protests + news spike) surfaces as one coherent signal rather than three separate alerts.
+
+---
+
+## Service Status Monitoring
+
+The Service Status panel tracks the operational health of external services that WorldMonitor users may depend on.
+
+### Monitored Services
+
+| Service | Status Endpoint | Parser |
+|---------|-----------------|--------|
+| Anthropic (Claude) | status.claude.com | Statuspage.io |
+| OpenAI | status.openai.com | Statuspage.io |
+| Vercel | vercel-status.com | Statuspage.io |
+| Cloudflare | cloudflarestatus.com | Statuspage.io |
+| AWS | health.aws.amazon.com | Custom |
+| GitHub | githubstatus.com | Statuspage.io |
+
+### Status Levels
+
+| Status | Color | Meaning |
+|--------|-------|---------|
+| **Operational** | Green | All systems functioning normally |
+| **Degraded** | Yellow | Partial outage or performance issues |
+| **Partial Outage** | Orange | Some components unavailable |
+| **Major Outage** | Red | Significant service disruption |
+
+### Why This Matters
+
+External service outages can affect:
+
+- AI summarization (Groq, OpenRouter outages)
+- Deployment pipelines (Vercel, GitHub outages)
+- API availability (Cloudflare, AWS outages)
+
+Monitoring these services provides context when dashboard features behave unexpectedly.
+
+---
+
+## Refresh Intervals
+
+Different data sources update at different frequencies based on volatility and API constraints.
+
+### Polling Schedule
+
+| Data Type | Interval | Rationale |
+|-----------|----------|-----------|
+| **News feeds** | 5 min | Balance freshness vs. rate limits |
+| **Stock quotes** | 1 min | Market hours require near-real-time |
+| **Crypto prices** | 1 min | 24/7 markets, high volatility |
+| **Predictions** | 5 min | Probabilities shift slowly |
+| **Earthquakes** | 5 min | USGS updates every 5 min |
+| **Weather alerts** | 10 min | NWS alert frequency |
+| **Flight delays** | 10 min | FAA status update cadence |
+| **Internet outages** | 60 min | BGP events are rare |
+| **Economic data** | 30 min | FRED data rarely changes intraday |
+| **Military tracking** | 5 min | Activity patterns need timely updates |
+| **PizzINT** | 10 min | Foot traffic changes slowly |
+
+### Real-Time Streams
+
+AIS vessel tracking uses WebSocket for true real-time:
+
+- **Connection**: Persistent WebSocket to Railway relay
+- **Messages**: Position updates as vessels transmit
+- **Reconnection**: Automatic with exponential backoff (5s → 10s → 20s)
+
+### User Control
+
+Time range selector affects displayed data, not fetch frequency:
+
+| Selection | Effect |
+|-----------|--------|
+| **1 hour** | Show only events from last 60 minutes |
+| **6 hours** | Show events from last 6 hours |
+| **24 hours** | Show events from last day |
+| **7 days** | Show all recent events |
+
+Historical filtering is client-side—all data is fetched but filtered for display.
+
+---
+
+## Design Philosophy
+
+**Information density over aesthetics.** Every pixel should convey signal. The dark interface minimizes eye strain during extended monitoring sessions. Panels are collapsible, draggable, and hideable—customize to show only what matters.
+
+**Authority matters.** Not all sources are equal. Wire services and official government channels are prioritized over aggregators and blogs. When multiple sources report the same story, the most authoritative source is displayed as primary.
+
+**Correlation over accumulation.** Raw news feeds are noise. The value is in clustering related stories, detecting velocity changes, and identifying cross-source patterns. A single "Broadcom +2.5% explained by AI chip news" signal is more valuable than showing both data points separately.
+
+**Signal, not noise.** Deduplication is aggressive. The same market move doesn't generate repeated alerts. Signals include confidence scores so you can prioritize attention. Alert fatigue is the enemy of situational awareness.
+
+**Knowledge-first matching.** Simple keyword matching produces false positives. The entity knowledge base understands that AVGO is Broadcom, that Broadcom competes with Nvidia, and that both are in semiconductors. This semantic layer transforms naive string matching into intelligent correlation.
+
+**Fail gracefully.** External APIs are unreliable. Circuit breakers prevent cascading failures. Cached data displays during outages. The status panel shows exactly what's working and what isn't—no silent failures.
+
+**Local-first.** No accounts, no cloud sync. All preferences and history stored locally. The only network traffic is fetching public data. Your monitoring configuration is yours alone.
+
+**Compute where it matters.** CPU-intensive operations (clustering, correlation) run in Web Workers to keep the UI responsive. The main thread handles only rendering and user interaction.

@@ -228,6 +228,11 @@ Sentry.init({
     /zp_token is not defined/,
     /literal not terminated before end of script/,
     /'' is not a valid selector/,
+    /frappe is not defined/,
+    /Unexpected identifier 'does'/,
+    /Failed reading data from the file system/,
+    /^UnavailableError(:.*)?$/,
+    /null is not an object \(evaluating '\w{1,3}\.indexOf'\)/,
   ],
   beforeSend(event) {
     const msg = event.exception?.values?.[0]?.value ?? '';
@@ -240,12 +245,12 @@ Sentry.init({
     // Suppress any TypeError that happens entirely within maplibre or deck.gl internals
     const excType = event.exception?.values?.[0]?.type ?? '';
     if ((excType === 'TypeError' || /^TypeError:/.test(msg)) && frames.length > 0) {
-      const nonSentryFrames = frames.filter(f => f.filename && f.filename !== '<anonymous>' && !/\/sentry-[A-Za-z0-9_-]+\.js/.test(f.filename));
+      const nonSentryFrames = frames.filter(f => f.filename && f.filename !== '<anonymous>' && f.filename !== '[native code]' && !/\/sentry-[A-Za-z0-9_-]+\.js/.test(f.filename));
       if (nonSentryFrames.length > 0 && nonSentryFrames.every(f => /\/(map|maplibre|deck-stack)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
     }
     // Suppress Three.js/globe.gl TypeError crashes in main bundle (reading 'type'/'pathType'/'count'/'__globeObjType' on undefined during WebGL traversal/raycast)
     if (/reading '(?:type|pathType|count|__globeObjType)'|can't access property "(?:type|pathType|count|__globeObjType)",? \w+ is (?:undefined|null)|undefined is not an object \(evaluating '\w+\.(?:pathType|count|__globeObjType)'\)|null is not an object \(evaluating '\w+\.__globeObjType'\)/.test(msg)) {
-      const nonSentryFrames = frames.filter(f => f.filename && f.filename !== '<anonymous>' && !/\/sentry-[A-Za-z0-9_-]+\.js/.test(f.filename));
+      const nonSentryFrames = frames.filter(f => f.filename && f.filename !== '<anonymous>' && f.filename !== '[native code]' && !/\/sentry-[A-Za-z0-9_-]+\.js/.test(f.filename));
       const hasSourceMapped = nonSentryFrames.some(f => /\.(ts|tsx)$/.test(f.filename ?? '') || /^src\//.test(f.filename ?? ''));
       if (!hasSourceMapped) return null;
     }
@@ -255,7 +260,7 @@ Sentry.init({
     }
     // Suppress Three.js OrbitControls touch crashes (finger lifted during pinch-zoom)
     if (/undefined is not an object \(evaluating 't\.x'\)|Cannot read properties of undefined \(reading 'x'\)/.test(msg)) {
-      const nonSentryFrames = frames.filter(f => f.filename && f.filename !== '<anonymous>' && !/\/sentry-[A-Za-z0-9_-]+\.js/.test(f.filename));
+      const nonSentryFrames = frames.filter(f => f.filename && f.filename !== '<anonymous>' && f.filename !== '[native code]' && !/\/sentry-[A-Za-z0-9_-]+\.js/.test(f.filename));
       const hasSourceMapped = nonSentryFrames.some(f => /\.(ts|tsx)$/.test(f.filename ?? '') || /^src\//.test(f.filename ?? ''));
       if (!hasSourceMapped) return null;
     }
@@ -393,40 +398,43 @@ if ('__TAURI_INTERNALS__' in window || '__TAURI__' in window) {
 }
 
 if (!('__TAURI_INTERNALS__' in window) && !('__TAURI__' in window) && 'serviceWorker' in navigator) {
-  // One-time nuke: clear stale SWs and caches from old deploys, then re-register fresh.
-  // Safe to remove after 2026-03-20 when all users have cycled through.
-  const nukeKey = 'wm-sw-nuked-v2';
-  let alreadyNuked = false;
-  try { alreadyNuked = !!localStorage.getItem(nukeKey); } catch { /* private browsing */ }
-  if (!alreadyNuked) {
-    try { localStorage.setItem(nukeKey, '1'); } catch { /* best effort */ }
-    navigator.serviceWorker.getRegistrations().then(async (regs) => {
-      await Promise.all(regs.map(r => r.unregister()));
-      const keys = await caches.keys();
-      await Promise.all(keys.map(k => caches.delete(k)));
-      console.log('[PWA] Nuked stale service workers and caches');
-      window.location.reload();
-    });
-  } else {
-    // Auto-reload when a new SW takes control (fixes stale HTML after deploys)
-    let refreshing = false;
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (refreshing) return;
-      refreshing = true;
-      window.location.reload();
-    });
+  // Auto-reload when a new SW takes control (fixes stale HTML after deploys)
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshing) return;
+    refreshing = true;
+    window.location.reload();
+  });
 
-    navigator.serviceWorker.register('/sw.js', { scope: '/' })
-      .then((registration) => {
-        console.log('[PWA] Service worker registered');
-        const swUpdateInterval = setInterval(async () => {
-          if (!navigator.onLine) return;
-          try { await registration.update(); } catch {}
-        }, 5 * 60 * 1000);
-        (window as unknown as Record<string, unknown>).__swUpdateInterval = swUpdateInterval;
-      })
-      .catch((err) => {
-        console.warn('[PWA] Service worker registration failed:', err);
-      });
-  }
+  navigator.serviceWorker.register('/sw.js', { scope: '/' })
+    .then((registration) => {
+      console.log('[PWA] Service worker registered');
+      const swUpdateInterval = setInterval(async () => {
+        if (!navigator.onLine) return;
+        try { await registration.update(); } catch {}
+      }, 5 * 60 * 1000);
+      (window as unknown as Record<string, unknown>).__swUpdateInterval = swUpdateInterval;
+    })
+    .catch((err) => {
+      console.warn('[PWA] Service worker registration failed:', err);
+    });
 }
+
+// --- SW/Cache Nuke Template ---
+// If stale service workers or caches cause issues after a major deploy, re-enable this block.
+// It runs once per user (guarded by a localStorage key), nukes all SWs and caches, then reloads.
+// IMPORTANT: This causes a visible double-load for every new/unkeyed user. Remove once rollout is complete.
+//
+// const nukeKey = 'wm-sw-nuked-v3';
+// let alreadyNuked = false;
+// try { alreadyNuked = !!localStorage.getItem(nukeKey); } catch {}
+// if (!alreadyNuked) {
+//   try { localStorage.setItem(nukeKey, '1'); } catch {}
+//   navigator.serviceWorker.getRegistrations().then(async (regs) => {
+//     await Promise.all(regs.map(r => r.unregister()));
+//     const keys = await caches.keys();
+//     await Promise.all(keys.map(k => caches.delete(k)));
+//     console.log('[PWA] Nuked stale service workers and caches');
+//     window.location.reload();
+//   });
+// }

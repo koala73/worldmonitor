@@ -3,10 +3,6 @@ title: "Data Sources"
 description: "Comprehensive documentation of all data sources, feed tiers, and collection methods used by World Monitor."
 ---
 
-# Data Sources
-
-Comprehensive documentation of all data sources, feed tiers, and collection methods used by World Monitor.
-
 ---
 
 ## Data Layers
@@ -32,7 +28,7 @@ Comprehensive documentation of all data sources, feed tiers, and collection meth
 <details>
 <summary><strong>Military & Strategic</strong></summary>
 
-- 210+ military bases from 9 operators
+- 226 military bases from 9 operators
 - Live military flight tracking (ADS-B)
 - Naval vessel monitoring (AIS)
 - Nuclear facilities & gamma irradiators
@@ -47,8 +43,8 @@ Comprehensive documentation of all data sources, feed tiers, and collection meth
 
 - Undersea cables with landing points, cable health advisories (NGA navigational warnings), and cable repair ship tracking
 - Oil & gas pipelines
-- AI datacenters (111 major clusters)
-- 83 strategic ports across 6 types (container, oil, LNG, naval, mixed, bulk) with throughput rankings
+- AI datacenters (313 clusters from Epoch AI dataset)
+- 62 strategic ports across 6 types (container, oil, LNG, naval, mixed, bulk) with throughput rankings
 - Internet outages (Cloudflare Radar)
 - Critical mineral deposits
 - NASA FIRMS satellite fire detection (VIIRS thermal hotspots)
@@ -158,7 +154,7 @@ The Security Advisories panel displays advisories with colored level badges and 
 
 ### Airport Delay & NOTAM Monitoring
 
-107 airports across 5 regions (Americas, Europe, Asia-Pacific, MENA, Africa) are continuously monitored for delays, ground stops, and closures through three independent data sources:
+111 airports across 5 regions (Americas, Europe, Asia-Pacific, MENA, Africa) are continuously monitored for delays, ground stops, and closures through three independent data sources:
 
 | Source             | Coverage                  | Method                                                                                                  |
 | ------------------ | ------------------------- | ------------------------------------------------------------------------------------------------------- |
@@ -260,16 +256,7 @@ Crisis badges flag countries with extreme displacement: > 1 million displaced (r
 
 ### Population Exposure Estimation
 
-Active events (conflicts, earthquakes, floods, wildfires) are cross-referenced against WorldPop population density data to estimate the number of civilians within the impact zone. Event-specific radii reflect typical impact footprints:
-
-| Event Type      | Radius | Rationale                                |
-| --------------- | ------ | ---------------------------------------- |
-| **Conflicts**   | 50 km  | Direct combat zone + displacement buffer |
-| **Earthquakes** | 100 km | Shaking intensity propagation            |
-| **Floods**      | 100 km | Watershed and drainage basin extent      |
-| **Wildfires**   | 30 km  | Smoke and evacuation perimeter           |
-
-API calls to WorldPop are batched concurrently (max 10 parallel requests) to handle multiple simultaneous events without sequential bottlenecks. The Population Exposure panel displays a summary header with total affected population and a per-event breakdown table.
+Population exposure estimation calculates affected populations within event-specific radii. See [Algorithms - Population Exposure](/algorithms#population-exposure-estimation) for the full methodology.
 
 ---
 
@@ -277,13 +264,13 @@ API calls to WorldPop are batched concurrently (max 10 parallel requests) to han
 
 ### Strategic Port Infrastructure
 
-83 strategic ports are cataloged across six types, reflecting their role in global trade and military posture:
+62 strategic ports are cataloged across six types, reflecting their role in global trade and military posture:
 
 | Type           | Count | Examples                                             |
 | -------------- | ----- | ---------------------------------------------------- |
 | **Container**  | 21    | Shanghai (#1, 47M+ TEU), Singapore, Ningbo, Shenzhen |
 | **Oil/LNG**    | 8     | Ras Tanura (Saudi), Sabine Pass (US), Fujairah (UAE) |
-| **Chokepoint** | 8     | Suez Canal, Panama Canal, Strait of Malacca          |
+| **Chokepoint** | 9     | Suez Canal, Panama Canal, Strait of Malacca, Gibraltar, Bosphorus, Dardanelles |
 | **Naval**      | 6     | Zhanjiang, Yulin (China), Vladivostok (Russia)       |
 | **Mixed**      | 15+   | Ports serving multiple roles (trade + military)      |
 | **Bulk**       | 20+   | Regional commodity ports                             |
