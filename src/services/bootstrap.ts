@@ -1,4 +1,4 @@
-import { toApiUrl } from '@/services/runtime';
+import { isDesktopRuntime, toApiUrl } from '@/services/runtime';
 
 const hydrationCache = new Map<string, unknown>();
 
@@ -33,8 +33,11 @@ export async function fetchBootstrapData(): Promise<void> {
   // critical for instant panel rendering.
   const fastCtrl = new AbortController();
   const slowCtrl = new AbortController();
-  const fastTimeout = setTimeout(() => fastCtrl.abort(), 3_000);
-  const slowTimeout = setTimeout(() => slowCtrl.abort(), 5_000);
+  // Desktop needs longer timeouts: fetch patch resolves port + token via IPC,
+  // then sidecar proxies to cloud. The extra hops easily exceed 3s.
+  const desktop = isDesktopRuntime();
+  const fastTimeout = setTimeout(() => fastCtrl.abort(), desktop ? 8_000 : 3_000);
+  const slowTimeout = setTimeout(() => slowCtrl.abort(), desktop ? 12_000 : 5_000);
   try {
     await Promise.all([
       fetchTier('slow', slowCtrl.signal),

@@ -10,6 +10,7 @@ export interface PredictionMarket {
   volume?: number;
   url?: string;
   endDate?: string;
+  regions?: string[];
 }
 
 function isExpired(endDate?: string): boolean {
@@ -33,10 +34,32 @@ const TECH_TAGS = [
   'elon-musk', 'business', 'economy',
 ];
 
+const FINANCE_TAGS = [
+  'economy', 'fed', 'inflation', 'interest-rates', 'recession',
+  'trade', 'tariffs', 'debt-ceiling',
+];
+
 interface BootstrapPredictionData {
   geopolitical: PredictionMarket[];
   tech: PredictionMarket[];
+  finance?: PredictionMarket[];
   fetchedAt: number;
+}
+
+const REGION_PATTERNS: Record<string, RegExp> = {
+  america: /\b(us|u\.s\.|united states|america|trump|biden|congress|federal reserve|canada|mexico|brazil)\b/i,
+  eu: /\b(europe|european|eu|nato|germany|france|uk|britain|macron|ecb)\b/i,
+  mena: /\b(middle east|iran|iraq|syria|israel|palestine|gaza|saudi|yemen|houthi|lebanon)\b/i,
+  asia: /\b(china|japan|korea|india|taiwan|xi jinping|asean)\b/i,
+  latam: /\b(latin america|brazil|argentina|venezuela|colombia|chile)\b/i,
+  africa: /\b(africa|nigeria|south africa|ethiopia|sahel|kenya)\b/i,
+  oceania: /\b(australia|new zealand)\b/i,
+};
+
+function tagRegions(title: string): string[] {
+  return Object.entries(REGION_PATTERNS)
+    .filter(([, re]) => re.test(title))
+    .map(([region]) => region);
 }
 
 function protoToMarket(m: { title: string; yesPrice: number; volume: number; url: string; closesAt: number; category: string }): PredictionMarket {
@@ -46,22 +69,25 @@ function protoToMarket(m: { title: string; yesPrice: number; volume: number; url
     volume: m.volume,
     url: m.url || undefined,
     endDate: m.closesAt ? new Date(m.closesAt).toISOString() : undefined,
+    regions: tagRegions(m.title),
   };
 }
 
-export async function fetchPredictions(): Promise<PredictionMarket[]> {
-  return breaker.execute(async () => {
-    // Strategy 1: Bootstrap hydration (zero network cost — data arrived with page load)
+export async function fetchPredictions(opts?: { region?: string }): Promise<PredictionMarket[]> {
+  const markets = await breaker.execute(async () => {
     const hydrated = getHydratedData('predictions') as BootstrapPredictionData | undefined;
     if (hydrated && hydrated.fetchedAt && Date.now() - hydrated.fetchedAt < 20 * 60 * 1000) {
-      const variant = SITE_VARIANT === 'tech' ? hydrated.tech : hydrated.geopolitical;
+      const variant = SITE_VARIANT === 'tech' ? hydrated.tech
+        : SITE_VARIANT === 'finance' ? (hydrated.finance ?? hydrated.geopolitical)
+        : hydrated.geopolitical;
       if (variant && variant.length > 0) {
-        return variant.filter(m => !isExpired(m.endDate)).slice(0, 15);
+        return variant.filter(m => !isExpired(m.endDate)).slice(0, 25);
       }
     }
 
-    // Strategy 2: Sebuf RPC (Vercel → Redis / Gamma API server-side)
-    const tags = SITE_VARIANT === 'tech' ? TECH_TAGS : GEOPOLITICAL_TAGS;
+    const tags = SITE_VARIANT === 'tech' ? TECH_TAGS
+      : SITE_VARIANT === 'finance' ? FINANCE_TAGS
+      : GEOPOLITICAL_TAGS;
     const rpcResults = await client.listPredictionMarkets({
       category: tags[0] ?? '',
       query: '',
@@ -72,16 +98,28 @@ export async function fetchPredictions(): Promise<PredictionMarket[]> {
       return rpcResults.markets
         .map(protoToMarket)
         .filter(m => !isExpired(m.endDate))
-        .filter(m => {
-          const discrepancy = Math.abs(m.yesPrice - 50);
-          return discrepancy > 5 || (m.volume && m.volume > 50000);
+        .filter(m => m.yesPrice >= 10 && m.yesPrice <= 90)
+        .sort((a, b) => {
+          const aUncertainty = 1 - (2 * Math.abs(a.yesPrice - 50) / 100);
+          const bUncertainty = 1 - (2 * Math.abs(b.yesPrice - 50) / 100);
+          return bUncertainty - aUncertainty;
         })
-        .sort((a, b) => (b.volume ?? 0) - (a.volume ?? 0))
-        .slice(0, 15);
+        .slice(0, 25);
     }
 
     throw new Error('No markets returned — upstream may be down');
   }, []);
+
+  if (opts?.region && opts.region !== 'global' && markets.length > 0) {
+    const sorted = [...markets];
+    sorted.sort((a, b) => {
+      const aMatch = a.regions?.includes(opts.region!) ? 1 : 0;
+      const bMatch = b.regions?.includes(opts.region!) ? 1 : 0;
+      return bMatch - aMatch;
+    });
+    return sorted.slice(0, 15);
+  }
+  return markets.slice(0, 15);
 }
 
 export async function fetchCountryMarkets(country: string): Promise<PredictionMarket[]> {

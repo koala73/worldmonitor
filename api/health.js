@@ -27,6 +27,7 @@ const BOOTSTRAP_KEYS = {
   ucdpEvents:        'conflict:ucdp-events:v1',
   weatherAlerts:     'weather:alerts:v1',
   spending:          'economic:spending:v1',
+  techEvents:        'research:tech-events-bootstrap:v1',
 };
 
 const STANDALONE_KEYS = {
@@ -97,6 +98,7 @@ const SEED_META = {
   satellites:       { key: 'seed-meta:intelligence:satellites',    maxStaleMin: 180 },
   weatherAlerts:    { key: 'seed-meta:weather:alerts',             maxStaleMin: 30 },
   spending:         { key: 'seed-meta:economic:spending',          maxStaleMin: 120 },
+  techEvents:       { key: 'seed-meta:research:tech-events',       maxStaleMin: 420 },
   sectors:          { key: 'seed-meta:market:sectors',             maxStaleMin: 30 },
   techReadiness:    { key: 'seed-meta:economic:worldbank-techreadiness:v1', maxStaleMin: 10080 },
   progressData:     { key: 'seed-meta:economic:worldbank-progress:v1',     maxStaleMin: 10080 },
@@ -324,8 +326,12 @@ export default async function handler(req) {
     checks[name] = entry;
   }
 
+  // On-demand keys that simply haven't been requested yet should not affect overall status.
+  const onDemandWarnCount = Object.values(checks).filter(c => c.status === 'EMPTY_ON_DEMAND').length;
+  const realWarnCount = warnCount - onDemandWarnCount;
+
   let overall;
-  if (critCount === 0 && warnCount === 0) overall = 'HEALTHY';
+  if (critCount === 0 && realWarnCount === 0) overall = 'HEALTHY';
   else if (critCount === 0) overall = 'WARNING';
   else if (critCount <= 3) overall = 'DEGRADED';
   else overall = 'UNHEALTHY';

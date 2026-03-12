@@ -1,6 +1,7 @@
-# Data Sources
-
-Comprehensive documentation of all data sources, feed tiers, and collection methods used by World Monitor.
+---
+title: "Data Sources"
+description: "Comprehensive documentation of all data sources, feed tiers, and collection methods used by World Monitor."
+---
 
 ---
 
@@ -27,13 +28,13 @@ Comprehensive documentation of all data sources, feed tiers, and collection meth
 <details>
 <summary><strong>Military & Strategic</strong></summary>
 
-- 210+ military bases from 9 operators
+- 226 military bases from 9 operators
 - Live military flight tracking (ADS-B)
 - Naval vessel monitoring (AIS)
 - Nuclear facilities & gamma irradiators
 - APT cyber threat actor attribution
 - Spaceports & launch facilities
-- **Orbital surveillance** — ~80–120 intelligence-relevant satellites tracked in real time via CelesTrak TLE data and client-side SGP4 propagation (satellite.js). Country-coded markers at orbital altitude, 15-min orbit trails, ground footprints. Globe-only. [Details →](./ORBITAL_SURVEILLANCE.md)
+- **Orbital surveillance** — ~80–120 intelligence-relevant satellites tracked in real time via CelesTrak TLE data and client-side SGP4 propagation (satellite.js). Country-coded markers at orbital altitude, 15-min orbit trails, ground footprints. Globe-only. [Details →](/orbital-surveillance)
 
 </details>
 
@@ -42,8 +43,8 @@ Comprehensive documentation of all data sources, feed tiers, and collection meth
 
 - Undersea cables with landing points, cable health advisories (NGA navigational warnings), and cable repair ship tracking
 - Oil & gas pipelines
-- AI datacenters (111 major clusters)
-- 83 strategic ports across 6 types (container, oil, LNG, naval, mixed, bulk) with throughput rankings
+- AI datacenters (313 clusters from Epoch AI dataset)
+- 62 strategic ports across 6 types (container, oil, LNG, naval, mixed, bulk) with throughput rankings
 - Internet outages (Cloudflare Radar)
 - Critical mineral deposits
 - NASA FIRMS satellite fire detection (VIIRS thermal hotspots)
@@ -142,7 +143,7 @@ Government travel advisories serve as expert risk assessments from national inte
 
 **Sources**: 4 government advisory feeds (US State Dept, Australia DFAT Smartraveller, UK FCDO, New Zealand MFAT), 13 US Embassy country-specific alert feeds (Thailand, UAE, Germany, Ukraine, Mexico, India, Pakistan, Colombia, Poland, Bangladesh, Italy, Dominican Republic, Myanmar), and health agency feeds (CDC Travel Notices, ECDC epidemiological updates, WHO News, WHO Africa Emergencies).
 
-**Advisory levels** (ranked): Do-Not-Travel (4) → Reconsider Travel (3) → Exercise Caution (2) → Normal (1) → Info (0). Both RSS (`<item>`) and Atom (`<entry>`) formats are parsed. Country extraction uses regex parsing of advisory titles with `nameToCountryCode()` lookup.
+**Advisory levels** (ranked): Do-Not-Travel (4) → Reconsider Travel (3) → Exercise Caution (2) → Normal (1) → Info (0). Both RSS (item) and Atom (entry) formats are parsed. Country extraction uses regex parsing of advisory titles with `nameToCountryCode()` lookup.
 
 **CII integration** — advisories feed into instability scores through two mechanisms:
 
@@ -153,7 +154,7 @@ The Security Advisories panel displays advisories with colored level badges and 
 
 ### Airport Delay & NOTAM Monitoring
 
-107 airports across 5 regions (Americas, Europe, Asia-Pacific, MENA, Africa) are continuously monitored for delays, ground stops, and closures through three independent data sources:
+111 airports across 5 regions (Americas, Europe, Asia-Pacific, MENA, Africa) are continuously monitored for delays, ground stops, and closures through three independent data sources:
 
 | Source             | Coverage                  | Method                                                                                                  |
 | ------------------ | ------------------------- | ------------------------------------------------------------------------------------------------------- |
@@ -255,16 +256,7 @@ Crisis badges flag countries with extreme displacement: > 1 million displaced (r
 
 ### Population Exposure Estimation
 
-Active events (conflicts, earthquakes, floods, wildfires) are cross-referenced against WorldPop population density data to estimate the number of civilians within the impact zone. Event-specific radii reflect typical impact footprints:
-
-| Event Type      | Radius | Rationale                                |
-| --------------- | ------ | ---------------------------------------- |
-| **Conflicts**   | 50 km  | Direct combat zone + displacement buffer |
-| **Earthquakes** | 100 km | Shaking intensity propagation            |
-| **Floods**      | 100 km | Watershed and drainage basin extent      |
-| **Wildfires**   | 30 km  | Smoke and evacuation perimeter           |
-
-API calls to WorldPop are batched concurrently (max 10 parallel requests) to handle multiple simultaneous events without sequential bottlenecks. The Population Exposure panel displays a summary header with total affected population and a per-event breakdown table.
+Population exposure estimation calculates affected populations within event-specific radii. See [Algorithms - Population Exposure](/algorithms#population-exposure-estimation) for the full methodology.
 
 ---
 
@@ -272,13 +264,13 @@ API calls to WorldPop are batched concurrently (max 10 parallel requests) to han
 
 ### Strategic Port Infrastructure
 
-83 strategic ports are cataloged across six types, reflecting their role in global trade and military posture:
+62 strategic ports are cataloged across six types, reflecting their role in global trade and military posture:
 
 | Type           | Count | Examples                                             |
 | -------------- | ----- | ---------------------------------------------------- |
 | **Container**  | 21    | Shanghai (#1, 47M+ TEU), Singapore, Ningbo, Shenzhen |
 | **Oil/LNG**    | 8     | Ras Tanura (Saudi), Sabine Pass (US), Fujairah (UAE) |
-| **Chokepoint** | 8     | Suez Canal, Panama Canal, Strait of Malacca          |
+| **Chokepoint** | 9     | Suez Canal, Panama Canal, Strait of Malacca, Gibraltar, Bosphorus, Dardanelles |
 | **Naval**      | 6     | Zhanjiang, Yulin (China), Vladivostok (Russia)       |
 | **Mixed**      | 15+   | Ports serving multiple roles (trade + military)      |
 | **Bulk**       | 20+   | Regional commodity ports                             |
@@ -337,7 +329,7 @@ Client (1 RPC call) → listFeedDigest → Redis check (digest:v1:{variant}:{lan
                            └─────────────────────────┘
 ```
 
-The digest cache key is `news:digest:v1:{variant}:{lang}` with a 900-second TTL. Individual feed results are separately cached per URL for 600 seconds. Items per feed are capped at 5, categories at 20 items each. XML parsing is edge-runtime-compatible (regex-based, no DOM parser), handling both RSS `<item>` and Atom `<entry>` formats. Each item is keyword-classified at aggregation time. An in-memory fallback cache (capped at 50 entries) provides last-known-good data if Redis fails.
+The digest cache key is `news:digest:v1:{variant}:{lang}` with a 900-second TTL. Individual feed results are separately cached per URL for 600 seconds. Items per feed are capped at 5, categories at 20 items each. XML parsing is edge-runtime-compatible (regex-based, no DOM parser), handling both RSS item and Atom entry formats. Each item is keyword-classified at aggregation time. An in-memory fallback cache (capped at 50 entries) provides last-known-good data if Redis fails.
 
 This eliminates per-client feed fan-out — 1,000 concurrent users each polling 25 feed categories would have generated 25,000 edge invocations per poll cycle. With server-side aggregation, they generate exactly 1 (or 0 if the digest is cached).
 
@@ -362,7 +354,7 @@ Feeds also carry a **propaganda risk rating** and **state affiliation flag**. St
 
 ### Data Freshness & Intelligence Gaps
 
-A singleton tracker monitors 31 data sources (GDELT, GDELT Doc, RSS, AIS, OpenSky, Wingbits, USGS, weather, outages, ACLED, ACLED conflict, Polymarket, predictions, PizzINT, economic, oil, spending, NASA FIRMS, cyber threats, UCDP, UCDP events, HAPI, UNHCR, climate, WorldPop, giving, BIS, WTO trade, supply chain, security advisories, GPS jamming) with status categorization: fresh (<15 min), stale (2h), very_stale (6h), no_data, error, disabled. Two sources (GDELT, RSS) are flagged as `requiredForRisk` — their absence directly impacts CII scoring quality. The tracker explicitly reports **intelligence gaps** — what analysts can't see — preventing false confidence when critical data sources are down or degraded.
+A singleton tracker monitors 31 data sources (GDELT, GDELT Doc, RSS, AIS, OpenSky, Wingbits, USGS, weather, outages, ACLED, ACLED conflict, Polymarket, predictions, PizzINT, economic, oil, spending, NASA FIRMS, cyber threats, UCDP, UCDP events, HAPI, UNHCR, climate, WorldPop, giving, BIS, WTO trade, supply chain, security advisories, GPS jamming) with status categorization: fresh (&lt;15 min), stale (2h), very_stale (6h), no_data, error, disabled. Two sources (GDELT, RSS) are flagged as `requiredForRisk` — their absence directly impacts CII scoring quality. The tracker explicitly reports **intelligence gaps** — what analysts can't see — preventing false confidence when critical data sources are down or degraded.
 
 ---
 
@@ -374,7 +366,7 @@ Polymarket geopolitical markets are queried using tag-based filters (Ukraine, Ir
 
 **4-tier fetch strategy** — prediction markets use a cascading fetch chain to maximize data availability:
 
-1. **Bootstrap hydration** — zero-network, page-load-embedded data from the Redis-cached `predictions` key. If fresh (<20 min), the panel renders instantly without any API call
+1. **Bootstrap hydration** — zero-network, page-load-embedded data from the Redis-cached `predictions` key. If fresh (&lt;20 min), the panel renders instantly without any API call
 2. **Sebuf RPC** — `POST /api/prediction/v1/list-prediction-markets` queries Redis for the seed-script-maintained cache. Single request, sub-100ms cold start
 3. **Browser-direct Polymarket** — the browser fetches Polymarket's Gamma API directly, bypassing JA3 fingerprinting (browser TLS passes Cloudflare)
 4. **Sidecar native TLS** — on Tauri desktop, Rust's `reqwest` TLS fingerprint differs from Node.js, providing another bypass vector

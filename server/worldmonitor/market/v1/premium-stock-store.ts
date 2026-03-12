@@ -39,6 +39,10 @@ function backtestLedgerItemKey(analysisId: string): string {
   return `market:stock-analysis-ledger:item:v1:${analysisId}`;
 }
 
+function normalizeSymbolList(symbols: string[]): string[] {
+  return [...new Set(symbols.map(sanitizeSymbol).filter(Boolean))];
+}
+
 function normalizeAnalysisRecord(
   snapshot: AnalyzeStockResponse,
   includeNews: boolean,
@@ -134,7 +138,7 @@ export async function getStoredStockAnalysisHistory(
   includeNews: boolean,
   limitPerSymbol = ANALYSIS_HISTORY_LIMIT,
 ): Promise<AnalysisHistoryRecord> {
-  const normalized = [...new Set(symbols.map(sanitizeSymbol).filter(Boolean))];
+  const normalized = normalizeSymbolList(symbols);
   const clampedLimit = Math.max(1, Math.min(ANALYSIS_HISTORY_LIMIT, limitPerSymbol));
   const out: AnalysisHistoryRecord = {};
 
@@ -202,7 +206,7 @@ export async function getStoredStockBacktestSnapshots(
   symbols: string[],
   evalWindowDays: number,
 ): Promise<BacktestStockResponse[]> {
-  const normalized = [...new Set(symbols.map(sanitizeSymbol).filter(Boolean))];
+  const normalized = normalizeSymbolList(symbols);
   const keys = normalized.map((symbol) => backtestSnapshotKey(symbol, evalWindowDays));
   const cached = await getCachedJsonBatch(keys);
 

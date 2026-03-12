@@ -1,7 +1,7 @@
 ---
-title: "What Is WorldMonitor? The Free Real-Time Global Intelligence Dashboard"
-description: "WorldMonitor is a free, open-source global intelligence dashboard that aggregates news, markets, geopolitical data, and infrastructure monitoring into one unified view. No login required."
-metaTitle: "WorldMonitor: Free Real-Time Global Intelligence Dashboard | Open Source OSINT"
+title: "What Is World Monitor? The Free Real-Time Global Intelligence Dashboard"
+description: "World Monitor is a free, open-source global intelligence dashboard that aggregates news, markets, geopolitical data, and infrastructure monitoring into one unified view. No login required."
+metaTitle: "World Monitor: Free Real-Time Global Intelligence Dashboard | Open Source OSINT"
 keywords: "global intelligence dashboard, real-time intelligence platform, OSINT dashboard, open source intelligence tool, geopolitical monitoring"
 audience: "General tech audience, OSINT researchers, analysts, journalists"
 heroImage: "/blog/images/blog/what-is-worldmonitor-real-time-global-intelligence.jpg"
@@ -10,15 +10,15 @@ pubDate: "2026-02-10"
 
 Imagine opening 100 browser tabs every morning: one for Reuters, another for flight tracking, a third for earthquake monitors, a fourth for stock markets, a fifth for military ship positions. Now imagine replacing all of them with a single dashboard.
 
-That's WorldMonitor.
+That's World Monitor.
 
 ## A Bloomberg Terminal for the Rest of Us
 
-WorldMonitor is a **free, open-source, real-time global intelligence dashboard** that pulls together news, financial markets, military movements, natural disasters, cyber threats, and geopolitical risk scoring into one interactive map.
+World Monitor is a **free, open-source, real-time global intelligence dashboard** that pulls together news, financial markets, military movements, natural disasters, cyber threats, and geopolitical risk scoring into one interactive map.
 
 It's the kind of tool that used to be locked behind six-figure enterprise contracts. Now it's available to anyone with a browser. No login. No paywall. No data collection.
 
-## What You See When You Open WorldMonitor
+## What You See When You Open World Monitor
 
 The first thing you notice is the globe. A 3D interactive map powered by globe.gl and Three.js, dotted with live data points: conflict zones pulsing red, military bases marked by operator, undersea cables tracing the ocean floor, and ADS-B aircraft positions updating in real time.
 
@@ -35,7 +35,7 @@ Every data point is sourced from public, verifiable feeds: 435+ RSS sources, gov
 
 ## Five Dashboards, One Codebase
 
-WorldMonitor isn't one dashboard. It's five:
+World Monitor isn't one dashboard. It's five:
 
 | Dashboard | Focus | URL |
 |-----------|-------|-----|
@@ -49,7 +49,7 @@ Switch between them with a single click. Each variant curates panels and layers 
 
 ## AI That Runs on Your Machine
 
-Here's where WorldMonitor gets interesting for privacy-conscious users. The platform includes a **4-tier AI fallback chain**:
+Here's where World Monitor gets interesting for privacy-conscious users. The platform includes a **4-tier AI fallback chain**:
 
 1. **Local LLMs** (Ollama or LM Studio) for fully offline, private analysis
 2. **Groq** (Llama 3.1 8B) for fast cloud inference
@@ -69,7 +69,7 @@ Click any country on the map and you get a full intelligence dossier:
 - **Prediction markets:** What Polymarket bettors think happens next
 - **Infrastructure exposure:** Pipelines, cables, and datacenters within 600km
 
-## Who Uses WorldMonitor?
+## Who Uses World Monitor?
 
 The dashboard serves a surprisingly wide audience:
 
@@ -82,7 +82,7 @@ The dashboard serves a surprisingly wide audience:
 
 ## Available Everywhere
 
-WorldMonitor works as:
+World Monitor works as:
 
 - A **web app** at worldmonitor.app (no install needed)
 - A **Progressive Web App** you can install on any device with offline map caching
@@ -93,10 +93,10 @@ It supports **21 languages** including Arabic (with full RTL layout), Japanese, 
 
 ## Open Source, No Strings
 
-WorldMonitor is released under AGPL-3.0. The entire codebase, every data source, every algorithm, is open for inspection, contribution, and self-hosting. There's no "enterprise tier" waiting behind the free version. This is the product.
+World Monitor is released under AGPL-3.0. The entire codebase, every data source, every algorithm, is open for inspection, contribution, and self-hosting. There's no "enterprise tier" waiting behind the free version. This is the product.
 
 The tech stack is modern and approachable: React + TypeScript + Vite on the frontend, Vercel Edge Functions for the API layer, and Tauri for the desktop app.
 
 ---
 
-**Try WorldMonitor now at [worldmonitor.app](https://worldmonitor.app). No signup required.**
+**Try World Monitor now at [worldmonitor.app](https://worldmonitor.app). No signup required.**

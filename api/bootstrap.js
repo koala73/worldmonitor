@@ -41,6 +41,7 @@ const BOOTSTRAP_CACHE_KEYS = {
   temporalAnomalies: 'temporal:anomalies:v1',
   weatherAlerts:     'weather:alerts:v1',
   spending:          'economic:spending:v1',
+  techEvents:        'research:tech-events-bootstrap:v1',
 };
 
 const SLOW_KEYS = new Set([
@@ -49,6 +50,7 @@ const SLOW_KEYS = new Set([
   'cyberThreats', 'techReadiness', 'progressData', 'renewableEnergy',
   'naturalEvents',
   'cryptoQuotes', 'gulfQuotes', 'stablecoinMarkets', 'unrestEvents', 'ucdpEvents',
+  'techEvents',
 ]);
 const FAST_KEYS = new Set([
   'earthquakes', 'outages', 'serviceStatuses', 'macroSignals', 'chokepoints',

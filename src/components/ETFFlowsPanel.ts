@@ -54,7 +54,7 @@ export class ETFFlowsPanel extends Panel {
       if (this.isAbortError(err)) return;
       if (!this.element?.isConnected) return;
       console.warn('[ETFFlows] Fetch error:', err);
-      this.error = null;
+      this.error = t('components.etfFlows.unavailable');
     }
     this.loading = false;
     this.renderPanel();

@@ -3007,6 +3007,215 @@ async function startSpendingSeedLoop() {
 }
 
 // ─────────────────────────────────────────────────────────────
+// Tech Events seed — Techmeme ICS + dev.events RSS → Redis
+// Curated major conferences as fallback for events that may
+// fall off limited RSS feeds. Vercel edge can't reach these
+// sources reliably (IP blocking), so Railway fetches them.
+// ─────────────────────────────────────────────────────────────
+
+const TECH_EVENTS_SEED_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6h
+const TECH_EVENTS_TTL_SECONDS = 86400; // 24h safety net
+const TECH_EVENTS_REDIS_KEY = 'research:tech-events:v1';
+const TECH_EVENTS_BOOTSTRAP_KEY = 'research:tech-events-bootstrap:v1';
+const TECH_EVENTS_ICS_URL = 'https://www.techmeme.com/newsy_events.ics';
+const TECH_EVENTS_RSS_URL = 'https://dev.events/rss.xml';
+
+const TECH_EVENTS_CURATED = [
+  { id: 'gitex-global-2026', title: 'GITEX Global 2026', type: 'conference', location: 'Dubai World Trade Centre, Dubai', startDate: '2026-12-07', endDate: '2026-12-11', url: 'https://www.gitex.com', source: 'curated', description: "World's largest tech & startup show" },
+  { id: 'token2049-dubai-2026', title: 'TOKEN2049 Dubai 2026', type: 'conference', location: 'Dubai, UAE', startDate: '2026-04-29', endDate: '2026-04-30', url: 'https://www.token2049.com', source: 'curated', description: 'Premier crypto event in Dubai' },
+  { id: 'collision-2026', title: 'Collision 2026', type: 'conference', location: 'Toronto, Canada', startDate: '2026-06-22', endDate: '2026-06-25', url: 'https://collisionconf.com', source: 'curated', description: "North America's fastest growing tech conference" },
+  { id: 'web-summit-2026', title: 'Web Summit 2026', type: 'conference', location: 'Lisbon, Portugal', startDate: '2026-11-02', endDate: '2026-11-05', url: 'https://websummit.com', source: 'curated', description: "The world's premier tech conference" },
+];
+
+function techEventsParseICS(icsText) {
+  const events = [];
+  const blocks = icsText.split('BEGIN:VEVENT').slice(1);
+  for (const block of blocks) {
+    const summaryMatch = block.match(/SUMMARY:(.+)/);
+    const locationMatch = block.match(/LOCATION:(.+)/);
+    const dtstartMatch = block.match(/DTSTART;VALUE=DATE:(\d+)/);
+    const dtendMatch = block.match(/DTEND;VALUE=DATE:(\d+)/);
+    const urlMatch = block.match(/URL:(.+)/);
+    const uidMatch = block.match(/UID:(.+)/);
+    if (!summaryMatch || !dtstartMatch) continue;
+    const summary = summaryMatch[1].trim();
+    const location = locationMatch ? locationMatch[1].trim() : '';
+    const startDate = dtstartMatch[1];
+    const endDate = dtendMatch ? dtendMatch[1] : startDate;
+    let type = 'other';
+    if (summary.startsWith('Earnings:')) type = 'earnings';
+    else if (summary.startsWith('IPO')) type = 'ipo';
+    else if (location) type = 'conference';
+    events.push({
+      id: uidMatch ? uidMatch[1].trim() : '',
+      title: summary,
+      type,
+      location,
+      startDate: `${startDate.slice(0, 4)}-${startDate.slice(4, 6)}-${startDate.slice(6, 8)}`,
+      endDate: `${endDate.slice(0, 4)}-${endDate.slice(4, 6)}-${endDate.slice(6, 8)}`,
+      url: urlMatch ? urlMatch[1].trim() : '',
+      source: 'techmeme',
+      description: '',
+    });
+  }
+  return events;
+}
+
+function techEventsParseRSS(rssText) {
+  const events = [];
+  const itemMatches = rssText.matchAll(/<item>([\s\S]*?)<\/item>/g);
+  for (const match of itemMatches) {
+    const item = match[1];
+    const titleMatch = item.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>|<title>(.*?)<\/title>/);
+    const linkMatch = item.match(/<link>(.*?)<\/link>/);
+    const descMatch = item.match(/<description><!\[CDATA\[(.*?)\]\]><\/description>|<description>(.*?)<\/description>/s);
+    const guidMatch = item.match(/<guid[^>]*>(.*?)<\/guid>/);
+    const title = titleMatch ? (titleMatch[1] ?? titleMatch[2]) : null;
+    if (!title) continue;
+    const link = linkMatch ? linkMatch[1] || '' : '';
+    const description = descMatch ? (descMatch[1] ?? descMatch[2] ?? '') : '';
+    const guid = guidMatch ? guidMatch[1] || '' : '';
+    const dateMatch = description.match(/on\s+(\w+\s+\d{1,2},?\s+\d{4})/i);
+    let startDate = null;
+    if (dateMatch) {
+      const parsed = new Date(dateMatch[1]);
+      if (!isNaN(parsed.getTime())) startDate = parsed.toISOString().split('T')[0];
+    }
+    if (!startDate) continue;
+    if (new Date(startDate) < new Date(new Date().toISOString().split('T')[0])) continue;
+    let location = null;
+    const locMatch = description.match(/(?:in|at)\s+([A-Za-z\s]+,\s*[A-Za-z\s]+)(?:\.|$)/i) ||
+                     description.match(/Location:\s*([^<\n]+)/i);
+    if (locMatch) location = locMatch[1].trim();
+    if (description.toLowerCase().includes('online')) location = 'Online';
+    events.push({
+      id: guid || `dev-events-${title.slice(0, 20)}`,
+      title,
+      type: 'conference',
+      location: location || '',
+      startDate,
+      endDate: startDate,
+      url: link,
+      source: 'dev.events',
+      description: '',
+    });
+  }
+  return events;
+}
+
+function techEventsFetchUrl(url) {
+  return new Promise((resolve) => {
+    const request = https.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        Accept: 'text/calendar, application/rss+xml, application/xml, text/xml, */*',
+      },
+      timeout: 15000,
+    }, (response) => {
+      if ([301, 302, 303, 307, 308].includes(response.statusCode) && response.headers.location) {
+        return techEventsFetchUrl(response.headers.location).then(resolve);
+      }
+      if (response.statusCode !== 200) {
+        resolve(null);
+        response.resume();
+        return;
+      }
+      let data = '';
+      response.on('data', (chunk) => { data += chunk; });
+      response.on('end', () => resolve(data));
+      response.on('error', () => resolve(null));
+    });
+    request.on('error', () => resolve(null));
+    request.on('timeout', () => { request.destroy(); resolve(null); });
+  });
+}
+
+let techEventsSeedInFlight = false;
+
+async function seedTechEvents() {
+  if (techEventsSeedInFlight) return;
+  techEventsSeedInFlight = true;
+  const t0 = Date.now();
+  try {
+    const [icsText, rssText] = await Promise.all([
+      techEventsFetchUrl(TECH_EVENTS_ICS_URL),
+      techEventsFetchUrl(TECH_EVENTS_RSS_URL),
+    ]);
+
+    let events = [];
+    if (icsText) {
+      const parsed = techEventsParseICS(icsText);
+      events.push(...parsed);
+      console.log(`[TechEvents] Techmeme ICS: ${parsed.length} events`);
+    } else {
+      console.warn('[TechEvents] Techmeme ICS fetch failed');
+    }
+    if (rssText) {
+      const parsed = techEventsParseRSS(rssText);
+      events.push(...parsed);
+      console.log(`[TechEvents] dev.events RSS: ${parsed.length} events`);
+    } else {
+      console.warn('[TechEvents] dev.events RSS fetch failed');
+    }
+
+    // Add curated events that are still in the future
+    const today = new Date().toISOString().split('T')[0];
+    for (const curated of TECH_EVENTS_CURATED) {
+      if (curated.startDate >= today) events.push(curated);
+    }
+
+    // Deduplicate by normalized title + year
+    const seen = new Set();
+    events = events.filter((e) => {
+      const year = e.startDate.slice(0, 4);
+      const key = e.title.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 30) + year;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    // Sort by date
+    events.sort((a, b) => a.startDate.localeCompare(b.startDate));
+
+    if (events.length === 0) {
+      console.warn('[TechEvents] No events from any source — preserving last good data');
+      return;
+    }
+
+    const payload = {
+      success: true,
+      count: events.length,
+      conferenceCount: events.filter((e) => e.type === 'conference').length,
+      mappableCount: 0, // geocoding happens in RPC handler
+      lastUpdated: new Date().toISOString(),
+      events,
+      error: '',
+    };
+
+    const ok1 = await upstashSet(TECH_EVENTS_REDIS_KEY, payload, TECH_EVENTS_TTL_SECONDS);
+    const ok2 = await upstashSet(TECH_EVENTS_BOOTSTRAP_KEY, payload, TECH_EVENTS_TTL_SECONDS);
+    const ok3 = await upstashSet('seed-meta:research:tech-events', { fetchedAt: Date.now(), recordCount: events.length }, 604800);
+    console.log(`[TechEvents] Seeded ${events.length} events (redis: ${ok1 && ok2 && ok3 ? 'OK' : 'PARTIAL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  } catch (e) {
+    console.warn('[TechEvents] Seed error:', e?.message || e);
+  } finally {
+    techEventsSeedInFlight = false;
+  }
+}
+
+async function startTechEventsSeedLoop() {
+  if (!UPSTASH_ENABLED) {
+    console.log('[TechEvents] Disabled (no Upstash Redis)');
+    return;
+  }
+  console.log(`[TechEvents] Seed loop starting (interval ${TECH_EVENTS_SEED_INTERVAL_MS / 1000 / 60 / 60}h)`);
+  seedTechEvents().catch((e) => console.warn('[TechEvents] Initial seed error:', e?.message || e));
+  setInterval(() => {
+    seedTechEvents().catch((e) => console.warn('[TechEvents] Seed error:', e?.message || e));
+  }, TECH_EVENTS_SEED_INTERVAL_MS).unref?.();
+}
+
+// ─────────────────────────────────────────────────────────────
 // World Bank Indicators seed loop (tech readiness, progress, renewable)
 // ─────────────────────────────────────────────────────────────
 
@@ -6172,6 +6381,7 @@ server.listen(PORT, () => {
   startSpendingSeedLoop();
   startWorldBankSeedLoop();
   startSatelliteSeedLoop();
+  startTechEventsSeedLoop();
 });
 
 wss.on('connection', (ws, req) => {

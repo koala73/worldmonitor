@@ -83,7 +83,7 @@ export class App {
     return panelIds.some((panelId) => this.isPanelNearViewport(panelId, marginPx));
   }
 
-  private async primeVisiblePanelData(): Promise<void> {
+  private async primeVisiblePanelData(forceAll = false): Promise<void> {
     const tasks: Promise<unknown>[] = [];
     const primeTask = (key: string, task: () => Promise<unknown>): void => {
       if (this.visiblePanelPrimed.has(key) || this.state.inFlight.has(key)) return;
@@ -99,55 +99,58 @@ export class App {
       tasks.push(wrapped);
     };
 
-    if (this.isPanelNearViewport('service-status')) {
+    const shouldPrime = (id: string): boolean => forceAll || this.isPanelNearViewport(id);
+    const shouldPrimeAny = (ids: string[]): boolean => forceAll || this.isAnyPanelNearViewport(ids);
+
+    if (shouldPrime('service-status')) {
       const panel = this.state.panels['service-status'] as ServiceStatusPanel | undefined;
       if (panel) primeTask('service-status', () => panel.fetchStatus());
     }
-    if (this.isPanelNearViewport('macro-signals')) {
+    if (shouldPrime('macro-signals')) {
       const panel = this.state.panels['macro-signals'] as MacroSignalsPanel | undefined;
       if (panel) primeTask('macro-signals', () => panel.fetchData());
     }
-    if (this.isPanelNearViewport('etf-flows')) {
+    if (shouldPrime('etf-flows')) {
       const panel = this.state.panels['etf-flows'] as ETFFlowsPanel | undefined;
       if (panel) primeTask('etf-flows', () => panel.fetchData());
     }
-    if (this.isPanelNearViewport('stablecoins')) {
+    if (shouldPrime('stablecoins')) {
       const panel = this.state.panels['stablecoins'] as StablecoinPanel | undefined;
       if (panel) primeTask('stablecoins', () => panel.fetchData());
     }
-    if (this.isPanelNearViewport('telegram-intel')) {
-      primeTask('telegramIntel', () => this.dataLoader.loadTelegramIntel());
+    if (shouldPrime('telegram-intel')) {
+      primeTask('telegram-intel', () => this.dataLoader.loadTelegramIntel());
     }
-    if (this.isPanelNearViewport('gulf-economies')) {
+    if (shouldPrime('gulf-economies')) {
       const panel = this.state.panels['gulf-economies'] as GulfEconomiesPanel | undefined;
       if (panel) primeTask('gulf-economies', () => panel.fetchData());
     }
-    if (this.isAnyPanelNearViewport(['markets', 'heatmap', 'commodities', 'crypto'])) {
+    if (shouldPrimeAny(['markets', 'heatmap', 'commodities', 'crypto'])) {
       primeTask('markets', () => this.dataLoader.loadMarkets());
     }
-    if (this.isPanelNearViewport('polymarket')) {
+    if (shouldPrime('polymarket')) {
       primeTask('predictions', () => this.dataLoader.loadPredictions());
     }
-    if (this.isPanelNearViewport('economic')) {
+    if (shouldPrime('economic')) {
       primeTask('fred', () => this.dataLoader.loadFredData());
       primeTask('oil', () => this.dataLoader.loadOilAnalytics());
       primeTask('spending', () => this.dataLoader.loadGovernmentSpending());
       primeTask('bis', () => this.dataLoader.loadBisData());
     }
-    if (this.isPanelNearViewport('trade-policy')) {
+    if (shouldPrime('trade-policy')) {
       primeTask('tradePolicy', () => this.dataLoader.loadTradePolicy());
     }
-    if (this.isPanelNearViewport('supply-chain')) {
+    if (shouldPrime('supply-chain')) {
       primeTask('supplyChain', () => this.dataLoader.loadSupplyChain());
     }
     if (SITE_VARIANT === 'finance' && getSecretState('WORLDMONITOR_API_KEY').present) {
-      if (this.isPanelNearViewport('stock-analysis')) {
+      if (shouldPrime('stock-analysis')) {
         primeTask('stockAnalysis', () => this.dataLoader.loadStockAnalysis());
       }
-      if (this.isPanelNearViewport('stock-backtest')) {
+      if (shouldPrime('stock-backtest')) {
         primeTask('stockBacktest', () => this.dataLoader.loadStockBacktest());
       }
-      if (this.isPanelNearViewport('daily-market-brief')) {
+      if (shouldPrime('daily-market-brief')) {
         primeTask('dailyMarketBrief', () => this.dataLoader.loadDailyMarketBrief());
       }
     }
@@ -581,10 +584,16 @@ export class App {
     // Phase 6: Data loading
     this.dataLoader.syncDataFreshnessWithLayers();
     await preloadCountryGeometry();
-    await this.dataLoader.loadAllData();
-    await this.primeVisiblePanelData();
+    // Prime panel-specific data concurrently with bulk loading.
+    // primeVisiblePanelData owns ETF, Stablecoins, Gulf Economies, etc. that
+    // are NOT part of loadAllData. Running them in parallel prevents those
+    // panels from being blocked when a loadAllData batch is slow.
     window.addEventListener('scroll', this.handleViewportPrime, { passive: true });
     window.addEventListener('resize', this.handleViewportPrime);
+    await Promise.all([
+      this.dataLoader.loadAllData(true),
+      this.primeVisiblePanelData(true),
+    ]);
 
     startLearning();
 

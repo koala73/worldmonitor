@@ -31,6 +31,7 @@ import { tryInvokeTauri, invokeTauri } from '@/services/tauri-bridge';
 import { escapeHtml } from '@/utils/sanitize';
 import { initI18n, t } from '@/services/i18n';
 import { applyStoredTheme } from '@/utils/theme-manager';
+import { applyFont } from '@/services/font-settings';
 import { trackFeatureToggle } from '@/services/analytics';
 
 let activeSection = 'overview';
@@ -850,6 +851,7 @@ function handleSearch(query: string): void {
 async function initSettingsWindow(): Promise<void> {
   await initI18n();
   applyStoredTheme();
+  applyFont();
 
   try { await resolveLocalApiPort(); } catch { /* use default */ }
 
