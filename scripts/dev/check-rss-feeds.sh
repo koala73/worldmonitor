@@ -8,28 +8,13 @@ CONCURRENCY="${CONCURRENCY:-5}"
 echo "Scanning RSS source files..."
 echo
 
-<<<<<<< HEAD
-# find URLs but exclude large directories
-grep -rIhoE "https?://[a-zA-Z0-9./:_?&=%+-]+" . \
---exclude-dir=node_modules \
---exclude-dir=.git \
---exclude-dir=dist \
---exclude-dir=build \
-| sort -u \
-| while read -r url
-do
-  # additional validation
-  if [[ "$url" =~ ^https?://[a-zA-Z0-9./:_?&=%+-]+$ ]]; then
-    code=$(curl -L --max-time "${MAX_TIME:-8}" \
-      -o /dev/null -s -w "%{http_code}" --url "$url")
-=======
-urls=$(grep -rIhoE "https?://[a-zA-Z0-9./:_?&=%+-]+" "${SEARCH_PATHS[@]}" \
-  | grep -Ei "rss|feed|atom" \
-  | sort -u)
->>>>>>> 9678516f (fix(devtools): improve RSS validator with UA header, concurrency and f
-urls=$(grep -rIhoE "https?://[a-zA-Z0-9./:_?&=%+-]+" "${SEARCH_PATHS[@]}" \
-  | grep -Ei "rss|feed|atom" 
-  | sort -u)
+FILES=("shared/rss-allowed-domains.json")
+urls=$(jq -r '.[]' "${FILES[@]}" | sed 's|^|https://|' | sort -u)
+if [ -z "$urls" ]; then
+  echo "No RSS URLs found in source files."
+  echo "Scan complete."
+  exit 0
+fi
 
 check_feed() {
   url="$1"
