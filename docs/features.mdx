@@ -47,7 +47,7 @@ Layers are organized into logical groups for efficient monitoring:
 **Military & Strategic**
 | Layer | Description |
 |-------|-------------|
-| **Military Bases** | 220+ global military installations from 9 operators |
+| **Military Bases** | 226 global military installations from 9 operators |
 | **Nuclear Facilities** | Power plants, weapons labs, enrichment sites |
 | **Gamma Irradiators** | IAEA-tracked Category 1-3 radiation sources |
 | **APT Groups** | State-sponsored cyber threat actors with geographic attribution |
@@ -57,15 +57,15 @@ Layers are organized into logical groups for efficient monitoring:
 **Infrastructure**
 | Layer | Description |
 |-------|-------------|
-| **Undersea Cables** | 55 major submarine cable routes worldwide |
+| **Undersea Cables** | 86 submarine cable routes worldwide |
 | **Pipelines** | 88 operating oil & gas pipelines across all continents |
 | **Internet Outages** | Network disruptions via Cloudflare Radar |
-| **AI Datacenters** | 111 major AI compute clusters (≥10,000 GPUs) |
+| **AI Datacenters** | 313 AI compute clusters tracked from Epoch AI dataset |
 
 **Transport**
 | Layer | Description |
 |-------|-------------|
-| **Ships (AIS)** | Live vessel tracking via AIS with chokepoint monitoring and 61 strategic ports* |
+| **Ships (AIS)** | Live vessel tracking via AIS with chokepoint monitoring and 62 strategic ports* |
 | **Delays** | FAA airport delay status and ground stops |
 
 *\*AIS data via [AISStream.io](https://aisstream.io) uses terrestrial receivers with stronger coverage in European/Atlantic waters. Middle East, Asia, and open ocean coverage is limited. Satellite AIS providers (Spire, Kpler) offer global coverage but require commercial licenses.*
@@ -83,6 +83,13 @@ Layers are organized into logical groups for efficient monitoring:
 | **Economic** | Tabbed economic panel with FRED indicators, EIA oil analytics, and USASpending.gov government contracts |
 | **Countries** | Country boundary labels |
 | **Waterways** | Strategic waterways and chokepoints |
+| **Trade Routes** | 19 global trade routes (container, energy, bulk) with multi-segment arcs through strategic chokepoints |
+| **Fires (FIRMS)** | NASA FIRMS satellite fire detection (VIIRS thermal hotspots) for wildfire and operational risk monitoring |
+
+**Webcams**
+| Layer | Description |
+|-------|-------------|
+| **Live Webcams** | 22 live streams across 5 geopolitical regions (Middle East, Eastern Europe, Asia-Pacific, Africa, Americas) with automatic fallback handling |
 
 ## Intelligence Panels
 
@@ -92,10 +99,18 @@ Beyond raw data feeds, the dashboard provides synthesized intelligence panels:
 |-------|---------|
 | **AI Strategic Posture** | Theater-level military aggregation with strike capability analysis |
 | **Strategic Risk Overview** | Composite risk score combining all intelligence modules |
-| **Country Instability Index** | Real-time stability scores for 20 monitored countries |
+| **Country Instability Index** | Real-time stability scores for 24 monitored countries |
 | **Infrastructure Cascade** | Dependency analysis for cables, pipelines, and chokepoints |
 | **Live Intelligence** | GDELT-powered topic feeds (Military, Cyber, Nuclear, Sanctions) |
 | **Intel Feed** | Curated defense and security news sources |
+| **Country Brief** | AI-generated country profiles with key indicators, risk factors, and recent developments |
+| **Aviation Intelligence** | 6-tab aviation panel (Ops, Flights, Airlines, Tracking, News, Prices) with NOTAM closure detection across 111 monitored airports |
+| **Climate Anomalies** | Temperature and precipitation deviations across 15 zones using Open-Meteo ERA5 data against rolling baselines |
+| **Displacement Tracking** | UN OCHA HAPI refugee, asylum seeker, and IDP data with origin/host country perspectives |
+| **Gulf Economies** | Indices, currencies, and oil data for 6 GCC countries (Saudi, UAE, Qatar, Kuwait, Bahrain, Oman) |
+| **WTO Trade Policy** | Active trade restrictions, tariff trends, bilateral trade flows, and SPS/TBT barriers |
+| **Central Banks & BIS** | Policy rates and monetary decisions from 13 central banks via BIS data |
+| **Market Watchlist** | User-defined stock/commodity/crypto symbol lists (up to 50 symbols) |
 
 These panels transform raw signals into actionable intelligence by applying scoring algorithms, trend detection, and cross-source correlation.
 
@@ -435,10 +450,11 @@ The Flights layer tracks airport delays and ground stops at major US airports us
 
 ### Monitored Airports
 
-The 30 largest US airports are tracked:
+111 airports across 5 regions (Americas, Europe, Asia-Pacific, MENA, Africa) are monitored through three independent data sources (FAA ASWS, AviationStack, ICAO NOTAM):
 
-- Major hubs: JFK, LAX, ORD, ATL, DFW, DEN, SFO
+- Major US hubs: JFK, LAX, ORD, ATL, DFW, DEN, SFO
 - International gateways with high traffic volume
+- 46 MENA airports via ICAO NOTAM for closure detection
 - Airports frequently affected by weather or congestion
 
 Ground stops are particularly significant: they indicate severe disruption (weather, security, or infrastructure failure) and can cascade across the network.
@@ -563,6 +579,18 @@ Layers disabled by default on mobile (but available on desktop):
 - Protests, economic centers
 
 This curated set provides situational awareness without overwhelming the interface or consuming excessive data/battery.
+
+---
+
+## Offline ML Capabilities
+
+The dashboard includes browser-side machine learning that works without any server connection:
+
+- **Threat Classification** - Three-stage pipeline (keyword pre-filter, browser ML model, optional LLM refinement) classifies news headlines by threat category
+- **Headline Scoring** - ML-based importance scoring for news articles, enabling priority-based rendering
+- **Entity Extraction** - Client-side named entity recognition for identifying countries, organizations, and key figures in headlines
+
+These models run entirely in the browser via Web Workers, providing intelligence analysis capabilities even when offline or when API keys are not configured.
 
 ---
 

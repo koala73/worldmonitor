@@ -24,7 +24,7 @@ Both files use the same regex patterns:
 | `worldmonitor-*-elie-*.vercel.app` | Vercel preview deploys |
 | `localhost:*` / `127.0.0.1:*` | Local development |
 | `tauri.localhost:*` / `*.tauri.localhost:*` | Desktop app (Tauri v2) |
-| `tauri://localhost` / `asset://localhost` | Desktop app (Tauri v1 / asset protocol) |
+| `tauri://localhost` / `asset://localhost` | Desktop app (Tauri v2 asset protocol) |
 
 Requests from any other origin receive a 403 response. Requests with **no** `Origin` header (server-to-server, curl) are allowed through — the `isDisallowedOrigin` check only blocks when an origin is present and not on the allowlist.
 
@@ -82,7 +82,7 @@ Both implementations allow these request headers:
 
 - `Content-Type`
 - `Authorization`
-- `X-WorldMonitor-Key` (API key for desktop/third-party access)
+- `X-WorldMonitor-Key` (API key for desktop/third-party access). See [API Key Gating](/api-key-deployment) for key management details.
 
 To allow additional headers, update `Access-Control-Allow-Headers` in both files.
 

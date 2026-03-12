@@ -5,7 +5,11 @@ description: "This document covers all environment variables used by the AIS/Ope
 This document covers all environment variables used by the AIS/OpenSky relay path:
 
 - Railway relay process: `scripts/ais-relay.cjs`
-- Vercel relay proxy endpoints: `api/opensky.js`, `api/ais-snapshot.js`, `api/polymarket.js`, `api/rss-proxy.js`
+- Vercel relay proxy endpoints (legacy): `api/opensky.js`, `api/ais-snapshot.js`, `api/polymarket.js`, `api/rss-proxy.js`
+
+<Note>
+  The `api/*.js` edge function endpoints listed above are legacy patterns being phased out in favor of the sebuf proto-first approach. See [Adding Endpoints](/adding-endpoints) for the current recommended pattern.
+</Note>
 - Server relay callers: `server/worldmonitor/*` handlers
 - Optional browser local fallback callers in `src/services/*`
 

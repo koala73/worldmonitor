@@ -172,16 +172,16 @@ src/
 │   └── ...
 ├── config/
 │   ├── feeds.ts              # 70+ RSS feeds, source tiers, regional sources
-│   ├── geo.ts                # 30+ hotspots, conflicts, 55 cables, waterways, spaceports, minerals
+│   ├── geo.ts                # 30+ hotspots, conflicts, 86 cables, waterways, spaceports, minerals
 │   ├── pipelines.ts          # 88 oil & gas pipelines
-│   ├── ports.ts              # 61 strategic ports worldwide
-│   ├── bases-expanded.ts     # 220+ military bases
-│   ├── ai-datacenters.ts     # 313 AI clusters (filtered to 111)
-│   ├── airports.ts           # 30 monitored US airports
+│   ├── ports.ts              # 62 strategic ports worldwide
+│   ├── bases-expanded.ts     # 226 military bases
+│   ├── ai-datacenters.ts     # 313 AI compute clusters (Epoch AI dataset)
+│   ├── airports.ts           # 111 airports across 5 regions
 │   ├── irradiators.ts        # IAEA gamma irradiator sites
 │   ├── nuclear-facilities.ts # Global nuclear infrastructure
 │   ├── markets.ts            # Stock symbols, sectors
-│   ├── entities.ts           # 100+ entity definitions (companies, indices, commodities, countries)
+│   ├── entities.ts           # 66 entity definitions (companies, indices, commodities, countries)
 │   └── panels.ts             # Panel configs, layer defaults, mobile optimizations
 ├── services/
 │   ├── ais.ts                # WebSocket vessel tracking with density analysis
@@ -332,7 +332,7 @@ The system degrades gracefully. Blocked sources are skipped while others continu
 
 ## License
 
-MIT
+World Monitor is licensed under the [GNU Affero General Public License v3.0 (AGPL-3.0)](https://www.gnu.org/licenses/agpl-3.0.html) for non-commercial use. Commercial use requires a separate license. See the [Contributing guide](/contributing#license) for full details on what this means in practice.
 
 ## Author
 

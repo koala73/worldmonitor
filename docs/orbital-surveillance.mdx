@@ -3,8 +3,6 @@ title: "Orbital Surveillance"
 description: "Real-time satellite orbital tracking on the 3D globe, powered by SGP4 propagation from CelesTrak TLE data."
 ---
 
----
-
 ## Overview
 
 The Orbital Surveillance layer tracks ~80–120 intelligence-relevant satellites in real time. Satellites are rendered at their actual orbital altitude on the globe with country-coded colors, orbit trails, and ground footprint projections.
@@ -141,13 +139,13 @@ Client-side fetch uses a circuit breaker: 3 consecutive failures trigger a 10-mi
 | Live satellite positions on globe | Yes | Yes | Yes |
 | Orbit trails (15-min trace) | Yes | Yes | Yes |
 | Ground footprint markers | Yes | Yes | Yes |
-| Overhead pass predictions | — | Yes | Yes |
-| Revisit frequency analysis | — | Yes | Yes |
-| Imaging window alerts | — | Yes | Yes |
-| Cross-layer correlation (sat + GPS jam, sat + conflict) | — | Yes | Yes |
-| Satellite intel summary panel | — | Yes | Yes |
-| Sensor swath / FOV visualization | — | Yes | — |
-| Historical pass log (24h) | — | Yes | 30-day archive |
+| Overhead pass predictions | — | Planned | Planned |
+| Revisit frequency analysis | — | Planned | Planned |
+| Imaging window alerts | — | Planned | Planned |
+| Cross-layer correlation (sat + GPS jam, sat + conflict) | — | Planned | Planned |
+| Satellite intel summary panel | — | Planned | Planned |
+| Sensor swath / FOV visualization | — | Planned | — |
+| Historical pass log (24h) | — | Planned | Planned (30-day archive) |
 | Actual satellite imagery (SAR/optical) | — | — | Yes |
 
 ---

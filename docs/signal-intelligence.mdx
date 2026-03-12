@@ -75,7 +75,7 @@ Each refresh cycle compares current state to previous snapshot, applying thresho
 
 ### Entity-Aware Correlation
 
-The signal engine uses a **knowledge base of 100+ entities** to intelligently correlate market movements with news coverage. Rather than simple keyword matching, the system understands that "AVGO" (the ticker) relates to "Broadcom" (the company), "AI chips" (the sector), and entities like "Nvidia" (a competitor).
+The signal engine uses a **knowledge base of 66 entities** to intelligently correlate market movements with news coverage. Rather than simple keyword matching, the system understands that "AVGO" (the ticker) relates to "Broadcom" (the company), "AI chips" (the sector), and entities like "Nvidia" (a competitor).
 
 #### Entity Knowledge Base
 
@@ -95,12 +95,12 @@ Each entity in the registry contains:
 
 | Type | Count | Examples |
 |------|-------|----------|
-| **Companies** | 50+ | Nvidia, Apple, Tesla, Broadcom, Boeing, Lockheed Martin, TSMC, Rheinmetall |
-| **Indices** | 5+ | S&P 500, Dow Jones, NASDAQ |
-| **Sectors** | 10+ | Technology (XLK), Finance (XLF), Energy (XLE), Healthcare (XLV), Semiconductors (SMH) |
-| **Commodities** | 10+ | Oil (WTI), Gold, Natural Gas, Copper, Silver, VIX |
+| **Companies** | 38 | Nvidia, Apple, Tesla, Broadcom, Boeing, Lockheed Martin, TSMC, Rheinmetall |
+| **Indices** | 3 | S&P 500, Dow Jones, NASDAQ |
+| **Sectors** | 5 | Technology (XLK), Finance (XLF), Energy (XLE), Healthcare (XLV), Semiconductors (SMH) |
+| **Commodities** | 6 | Oil (WTI), Gold, Natural Gas, Copper, Silver, VIX |
 | **Crypto** | 3 | Bitcoin, Ethereum, Solana |
-| **Countries** | 15+ | China, Russia, Iran, Israel, Ukraine, Taiwan, Saudi Arabia, UAE, Qatar, Turkey, Egypt |
+| **Countries** | 11 | China, Russia, Iran, Israel, Ukraine, Taiwan, Saudi Arabia, UAE, Qatar, Turkey, Egypt |
 
 #### How Entity Matching Works
 
@@ -148,7 +148,7 @@ This broad coverage enables correlation detection across diverse geopolitical an
 
 ### Entity Registry Architecture
 
-The entity registry is a knowledge base of 600+ entities with rich metadata for intelligent correlation:
+The entity registry is a knowledge base of 66 entities with rich metadata for intelligent correlation:
 
 ```typescript
 {
@@ -168,11 +168,12 @@ The entity registry is a knowledge base of 600+ entities with rich metadata for 
 
 | Type | Count | Use Case |
 |------|-------|----------|
-| `company` | 100+ | Market-news correlation, sector analysis |
-| `country` | 200+ | Focal point detection, CII scoring |
-| `index` | 20+ | Market overview, regional tracking |
-| `commodity` | 15+ | Energy and mineral correlation |
-| `currency` | 10+ | FX market tracking |
+| `company` | 38 | Market-news correlation, sector analysis |
+| `country` | 11 | Focal point detection, CII scoring |
+| `index` | 3 | Market overview, regional tracking |
+| `commodity` | 6 | Energy and mineral correlation |
+| `sector` | 5 | Sector cascade analysis |
+| `crypto` | 3 | Cryptocurrency correlation |
 
 **Lookup Indexes**:
 

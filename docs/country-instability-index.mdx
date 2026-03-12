@@ -1,6 +1,6 @@
 ---
 title: "Country Instability Index"
-description: "Real-time stability scoring for 20 strategically significant countries, combining unrest, security, and information signals into a dynamic instability metric."
+description: "Real-time stability scoring for 24 strategically significant countries, combining unrest, security, and information signals into a dynamic instability metric."
 ---
 The Country Instability Index maintains a real-time instability score for strategically significant countries. Rather than relying on static risk ratings, the CII dynamically reflects current conditions based on multiple input streams.
 
@@ -8,10 +8,10 @@ The Country Instability Index maintains a real-time instability score for strate
 
 | Region | Countries |
 |--------|-----------|
-| **Americas** | United States, Venezuela |
+| **Americas** | United States, Venezuela, Brazil, Mexico, Cuba |
 | **Europe** | Germany, France, United Kingdom, Poland |
 | **Eastern Europe** | Russia, Ukraine |
-| **Middle East** | Iran, Israel, Saudi Arabia, Turkey, Syria, Yemen |
+| **Middle East** | Iran, Israel, Saudi Arabia, United Arab Emirates, Turkey, Syria, Yemen |
 | **Asia-Pacific** | China, Taiwan, North Korea, India, Pakistan, Myanmar |
 
 ## Three Component Scores
@@ -123,6 +123,8 @@ Beyond the base component scores, several contextual factors can boost a country
 - Normal urgency: +0 points
 
 These boosts are designed to elevate scores only when corroborating evidence exists. A country must have both high base scores AND contextual signals to reach extreme levels.
+
+See [Geographic Convergence](/geographic-convergence) for the full algorithm.
 
 ## Server-Side Pre-Computation
 

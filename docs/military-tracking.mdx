@@ -2,7 +2,11 @@
 title: "Military Tracking"
 description: "Military vessel and aircraft identification, surge detection, foreign presence monitoring, and strategic posture analysis across global theaters."
 ---
-WorldMonitor provides specialized tracking of military vessels and aircraft, identifying assets by their transponder characteristics and monitoring activity patterns. The system detects surge events, foreign military presence in sensitive regions, and assesses strike capability across nine strategic theaters.
+WorldMonitor provides specialized tracking of military vessels and aircraft, identifying assets by their transponder characteristics and monitoring activity patterns. The system detects surge events, foreign military presence in sensitive regions, and assesses strike capability across multiple strategic theaters.
+
+<Note>
+The system defines **10 active conflict zones** (Iran, Strait of Hormuz, Ukraine, Gaza, South Lebanon, Red Sea, Sudan, Myanmar, Korean DMZ, Pakistan-Afghanistan Border) and **4 military command hotspots** (INDO-PACIFIC, CENTCOM, EUCOM, ARCTIC). Different subsystems group these into theater lists tailored to their specific analysis, so theater counts vary by context throughout this page.
+</Note>
 
 ## Military Vessel Identification
 
@@ -110,7 +114,7 @@ The system continuously monitors military aircraft activity to detect **surge ev
 
 ### Theater Classification
 
-Military activity is analyzed across five geographic theaters:
+Military activity is analyzed across five geographic theaters (a subset of the system's full conflict zone and hotspot definitions, scoped to regions with reliable ADS-B coverage for surge analysis):
 
 | Theater | Coverage | Key Areas |
 |---------|----------|-----------|
@@ -237,7 +241,7 @@ Surges are detected by comparing current aircraft counts to historical baselines
 
 ### Military Theaters
 
-Surge detection groups activity into strategic theaters:
+Surge detection groups activity into four primary strategic theaters (a simplified grouping used for baseline comparison, distinct from the 5-theater and 9-theater lists used elsewhere):
 
 | Theater | Center | Key Bases |
 |---------|--------|-----------|
@@ -382,7 +386,7 @@ The AI Strategic Posture panel aggregates military aircraft and naval vessels ac
 
 ### Strategic Theaters
 
-Nine geographic theaters are monitored continuously, each with custom thresholds based on typical peacetime activity levels:
+Nine geographic theaters are monitored continuously for posture analysis (this is a separate, more granular grouping than the surge detection theaters above, tailored for strategic posture assessment with per-theater strike capability thresholds):
 
 | Theater | Bounds | Elevated Threshold | Critical Threshold |
 |---------|--------|--------------------|--------------------|
