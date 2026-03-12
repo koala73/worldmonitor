@@ -178,6 +178,30 @@ describe('Chokepoint assignment', () => {
       'cape_of_good_hope',
     );
   });
+
+  it('matches Bosphorus Strait by name', () => {
+    assert.equal(
+      resolveChokepointId({ text: 'Traffic suspension at the Bosphorus due to heavy fog' }),
+      'bosphorus',
+    );
+  });
+
+  it('matches Dardanelles by name', () => {
+    assert.equal(
+      resolveChokepointId({ text: 'Tanker queue forming at the Dardanelles strait' }),
+      'dardanelles',
+    );
+  });
+
+  it('uses nearest location for Bosphorus', () => {
+    assert.equal(
+      resolveChokepointId({
+        text: '',
+        location: { latitude: 41.1, longitude: 29.0 }, // near Istanbul
+      }),
+      'bosphorus',
+    );
+  });
 });
 
 describe('Threat config freshness', () => {

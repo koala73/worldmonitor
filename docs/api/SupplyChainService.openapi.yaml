@@ -205,6 +205,21 @@ components:
                     type: array
                     items:
                         type: string
+                directionalDwt:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/DirectionalDwt'
+        DirectionalDwt:
+            type: object
+            properties:
+                direction:
+                    type: string
+                dwtThousandTonnes:
+                    type: number
+                    format: double
+                wowChangePct:
+                    type: number
+                    format: double
         GetCriticalMineralsRequest:
             type: object
         GetCriticalMineralsResponse:

@@ -33,6 +33,17 @@ message ChokepointInfo {
   // Directional flow labels tracked at this chokepoint (e.g. "eastbound", "westbound").
   // Aligns with S&P Global Market Intelligence tanker DWT departure data.
   repeated string directions = 12;
+  // DWT (deadweight tonnage) departure metrics per direction.
+  // Sourced from S&P Global Market Intelligence vessel tracking data.
+  repeated DirectionalDwt directional_dwt = 13;
+}
+
+message DirectionalDwt {
+  string direction = 1;
+  // Current week DWT departing (thousands of metric tonnes).
+  double dwt_thousand_tonnes = 2;
+  // Week-over-week change in DWT departing (percentage).
+  double wow_change_pct = 3;
 }
 
 message MineralProducer {

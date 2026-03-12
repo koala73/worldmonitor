@@ -49,6 +49,13 @@ export interface ChokepointInfo {
   description: string;
   aisDisruptions: number;
   directions: string[];
+  directionalDwt: DirectionalDwt[];
+}
+
+export interface DirectionalDwt {
+  direction: string;
+  dwtThousandTonnes: number;
+  wowChangePct: number;
 }
 
 export interface GetCriticalMineralsRequest {

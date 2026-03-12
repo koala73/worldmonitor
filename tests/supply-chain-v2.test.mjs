@@ -3,8 +3,10 @@
  *
  * - Proto: ais_disruptions field added to ChokepointInfo (v2)
  * - Proto: directions field added to ChokepointInfo (v3)
+ * - Proto: DirectionalDwt message + directional_dwt field on ChokepointInfo (v3)
  * - Cache keys bumped to v3 for chokepoints
- * - Chokepoint handler: Cape of Good Hope + Gibraltar added, directions field (v3)
+ * - Chokepoint handler: Cape of Good Hope, Gibraltar, Bosphorus, Dardanelles added (v3)
+ * - Chokepoint handler: directions + directionalDwt fields (v3)
  * - Chokepoint handler: description format, aisDisruptions output, rename, TTL
  * - Minerals handler: top-3 producers, Nickel/Copper removed, v2 cache
  * - Shipping handler: updated series names
@@ -54,6 +56,18 @@ describe('ChokepointInfo proto has ais_disruptions field', () => {
     assert.match(proto, /repeated\s+string\s+directions\s*=\s*12/,
       'directions field should be repeated string at field number 12');
   });
+
+  it('declares directional_dwt as repeated DirectionalDwt at field 13', () => {
+    assert.match(proto, /repeated\s+DirectionalDwt\s+directional_dwt\s*=\s*13/,
+      'directional_dwt field should be repeated DirectionalDwt at field number 13');
+  });
+
+  it('defines DirectionalDwt message with direction, dwt_thousand_tonnes, wow_change_pct', () => {
+    assert.match(proto, /message\s+DirectionalDwt/);
+    assert.match(proto, /string\s+direction\s*=\s*1/);
+    assert.match(proto, /double\s+dwt_thousand_tonnes\s*=\s*2/);
+    assert.match(proto, /double\s+wow_change_pct\s*=\s*3/);
+  });
 });
 
 // ========================================================================
@@ -82,6 +96,28 @@ describe('Generated types include aisDisruptions', () => {
   it('server ChokepointInfo has directions: string[]', () => {
     assert.match(serverSrc, /directions:\s*string\[\]/,
       'Server type must include directions field');
+  });
+
+  it('client ChokepointInfo has directionalDwt: DirectionalDwt[]', () => {
+    assert.match(clientSrc, /directionalDwt:\s*DirectionalDwt\[\]/,
+      'Client type must include directionalDwt field');
+  });
+
+  it('server ChokepointInfo has directionalDwt: DirectionalDwt[]', () => {
+    assert.match(serverSrc, /directionalDwt:\s*DirectionalDwt\[\]/,
+      'Server type must include directionalDwt field');
+  });
+
+  it('client defines DirectionalDwt interface', () => {
+    assert.match(clientSrc, /interface\s+DirectionalDwt/);
+    assert.match(clientSrc, /dwtThousandTonnes:\s*number/);
+    assert.match(clientSrc, /wowChangePct:\s*number/);
+  });
+
+  it('server defines DirectionalDwt interface', () => {
+    assert.match(serverSrc, /interface\s+DirectionalDwt/);
+    assert.match(serverSrc, /dwtThousandTonnes:\s*number/);
+    assert.match(serverSrc, /wowChangePct:\s*number/);
   });
 });
 
@@ -116,6 +152,28 @@ describe('OpenAPI spec includes aisDisruptions', () => {
 
   it('YAML spec has directions property', () => {
     assert.match(yamlSpec, /directions:/, 'directions missing from YAML spec');
+  });
+
+  it('JSON spec has directionalDwt property on ChokepointInfo', () => {
+    const parsed = JSON.parse(jsonSpec);
+    const cpSchema = parsed.components.schemas.ChokepointInfo;
+    assert.ok(cpSchema.properties.directionalDwt, 'directionalDwt missing from JSON spec');
+    assert.equal(cpSchema.properties.directionalDwt.type, 'array');
+  });
+
+  it('JSON spec defines DirectionalDwt schema', () => {
+    const parsed = JSON.parse(jsonSpec);
+    const dwtSchema = parsed.components.schemas.DirectionalDwt;
+    assert.ok(dwtSchema, 'DirectionalDwt schema missing from JSON spec');
+    assert.ok(dwtSchema.properties.direction);
+    assert.ok(dwtSchema.properties.dwtThousandTonnes);
+    assert.ok(dwtSchema.properties.wowChangePct);
+  });
+
+  it('YAML spec has DirectionalDwt schema', () => {
+    assert.match(yamlSpec, /DirectionalDwt:/, 'DirectionalDwt schema missing from YAML spec');
+    assert.match(yamlSpec, /dwtThousandTonnes:/, 'dwtThousandTonnes missing from YAML spec');
+    assert.match(yamlSpec, /wowChangePct:/, 'wowChangePct missing from YAML spec');
   });
 });
 
@@ -198,7 +256,7 @@ describe('Chokepoint handler v2 changes', () => {
       'Old vague description removed');
   });
 
-  it('includes all 8 chokepoints (Suez, Malacca, Hormuz, Bab el-Mandeb, Panama, Taiwan, Cape of Good Hope, Gibraltar)', () => {
+  it('includes all 10 chokepoints', () => {
     assert.match(src, /id:\s*'suez'/);
     assert.match(src, /id:\s*'malacca'/);
     assert.match(src, /id:\s*'hormuz'/);
@@ -207,11 +265,18 @@ describe('Chokepoint handler v2 changes', () => {
     assert.match(src, /id:\s*'taiwan'/);
     assert.match(src, /id:\s*'cape_of_good_hope'/);
     assert.match(src, /id:\s*'gibraltar'/);
+    assert.match(src, /id:\s*'bosphorus'/);
+    assert.match(src, /id:\s*'dardanelles'/);
   });
 
   it('emits directions array in the response object', () => {
     assert.match(src, /directions:\s*cp\.directions/,
       'Should set directions from cp.directions');
+  });
+
+  it('emits directionalDwt array in the response object', () => {
+    assert.match(src, /directionalDwt:/,
+      'Should emit directionalDwt in the response');
   });
 });
 
@@ -362,6 +427,15 @@ describe('SupplyChainPanel v2 changes', () => {
   it('displays directions when present', () => {
     assert.match(src, /cp\.directions/,
       'Should reference cp.directions in the chokepoint card');
+  });
+
+  it('displays directionalDwt when DWT data is present', () => {
+    assert.match(src, /cp\.directionalDwt/,
+      'Should reference cp.directionalDwt in the chokepoint card');
+    assert.match(src, /dwtThousandTonnes/,
+      'Should display DWT thousand tonnes');
+    assert.match(src, /wowChangePct/,
+      'Should display week-over-week change');
   });
 });
 
@@ -573,8 +647,8 @@ import { CHOKEPOINTS, THREAT_CONFIG_LAST_REVIEWED } from '../server/worldmonitor
 const cpById = Object.fromEntries(CHOKEPOINTS.map(cp => [cp.id, cp]));
 
 describe('Chokepoint threat level config', () => {
-  it('exports all 8 chokepoints', () => {
-    assert.equal(CHOKEPOINTS.length, 8);
+  it('exports all 10 chokepoints', () => {
+    assert.equal(CHOKEPOINTS.length, 10);
     assert.ok(cpById.suez);
     assert.ok(cpById.malacca);
     assert.ok(cpById.hormuz);
@@ -583,6 +657,8 @@ describe('Chokepoint threat level config', () => {
     assert.ok(cpById.taiwan);
     assert.ok(cpById.cape_of_good_hope);
     assert.ok(cpById.gibraltar);
+    assert.ok(cpById.bosphorus);
+    assert.ok(cpById.dardanelles);
   });
 
   it('every entry has required fields', () => {
@@ -610,8 +686,10 @@ describe('Chokepoint threat level config', () => {
     assert.equal(cpById.suez.threatLevel, 'high');
   });
 
-  it('Taiwan uses elevated threat level', () => {
+  it('Taiwan, Bosphorus, and Dardanelles use elevated threat level', () => {
     assert.equal(cpById.taiwan.threatLevel, 'elevated');
+    assert.equal(cpById.bosphorus.threatLevel, 'elevated');
+    assert.equal(cpById.dardanelles.threatLevel, 'elevated');
   });
 
   it('Malacca, Panama, Cape of Good Hope, and Gibraltar use normal threat level', () => {
@@ -634,6 +712,29 @@ describe('Chokepoint threat level config', () => {
     assert.equal(cpById.panama.threatDescription, '');
     assert.equal(cpById.cape_of_good_hope.threatDescription, '');
     assert.equal(cpById.gibraltar.threatDescription, '');
+  });
+
+  it('Bosphorus threatDescription mentions Montreux', () => {
+    assert.ok(cpById.bosphorus.threatDescription.includes('Montreux'));
+  });
+
+  it('Dardanelles threatDescription mentions Montreux', () => {
+    assert.ok(cpById.dardanelles.threatDescription.includes('Montreux'));
+  });
+
+  it('Bosphorus areaKeywords include istanbul and black sea', () => {
+    assert.ok(cpById.bosphorus.areaKeywords.includes('istanbul'));
+    assert.ok(cpById.bosphorus.areaKeywords.includes('black sea'));
+  });
+
+  it('Dardanelles areaKeywords include gallipoli and aegean', () => {
+    assert.ok(cpById.dardanelles.areaKeywords.includes('gallipoli'));
+    assert.ok(cpById.dardanelles.areaKeywords.includes('aegean'));
+  });
+
+  it('Bosphorus and Dardanelles use northbound/southbound', () => {
+    assert.deepEqual(cpById.bosphorus.directions, ['northbound', 'southbound']);
+    assert.deepEqual(cpById.dardanelles.directions, ['northbound', 'southbound']);
   });
 
   it('Hormuz areaKeywords include gulf of oman and strait of hormuz', () => {

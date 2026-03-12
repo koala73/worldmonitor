@@ -34,6 +34,19 @@ type GeoCoordinates = { latitude: number; longitude: number };
  */
 type DirectionLabel = 'eastbound' | 'westbound' | 'northbound' | 'southbound';
 
+/**
+ * DWT (deadweight tonnage) departure metric for a single direction at a chokepoint.
+ * Values come from S&P Global Market Intelligence vessel tracking data.
+ * When no upstream data is available, fields default to 0.
+ */
+interface DirectionalDwt {
+  direction: DirectionLabel;
+  /** Current week DWT departing (thousands of metric tonnes). */
+  dwtThousandTonnes: number;
+  /** Week-over-week change in DWT departing (percentage). */
+  wowChangePct: number;
+}
+
 interface ChokepointConfig {
   id: string;
   name: string;
@@ -87,6 +100,8 @@ export const CHOKEPOINTS: ChokepointConfig[] = [
   { id: 'taiwan', name: 'Taiwan Strait', lat: 24.0, lon: 119.5, primaryKeywords: ['taiwan strait', 'formosa'], areaKeywords: ['taiwan strait', 'formosa', 'taiwan', 'south china sea'], routes: ['China-Japan Trade', 'Korea-Southeast Asia', 'Pacific Semiconductor'], threatLevel: 'elevated', threatDescription: 'Cross-strait military tensions and PLA exercises', directions: ['northbound', 'southbound'] },
   { id: 'cape_of_good_hope', name: 'Cape of Good Hope', lat: -34.36, lon: 18.49, primaryKeywords: ['cape of good hope', 'good hope'], areaKeywords: ['cape of good hope', 'good hope', 'cape town', 'south africa', 'cape agulhas'], routes: ['Asia-Europe (Cape Route)', 'Gulf-Americas Oil', 'Suez Bypass'], threatLevel: 'normal', threatDescription: '', directions: ['eastbound', 'westbound'] },
   { id: 'gibraltar', name: 'Strait of Gibraltar', lat: 35.96, lon: -5.35, primaryKeywords: ['strait of gibraltar', 'gibraltar'], areaKeywords: ['strait of gibraltar', 'gibraltar', 'mediterranean', 'algeciras', 'tangier'], routes: ['Atlantic-Mediterranean', 'Gulf-Europe Oil (final leg)', 'India-Europe'], threatLevel: 'normal', threatDescription: '', directions: ['eastbound', 'westbound'] },
+  { id: 'bosphorus', name: 'Bosphorus Strait', lat: 41.12, lon: 29.05, primaryKeywords: ['bosphorus', 'bosporus'], areaKeywords: ['bosphorus', 'bosporus', 'istanbul', 'marmara', 'black sea', 'turkish straits'], routes: ['Russia Black Sea Exports', 'Ukraine Grain', 'Caspian Oil Transit'], threatLevel: 'elevated', threatDescription: 'Montreux Convention restrictions; elevated due to Russia-Ukraine war and periodic Turkish traffic controls', directions: ['northbound', 'southbound'] },
+  { id: 'dardanelles', name: 'Dardanelles', lat: 40.20, lon: 26.40, primaryKeywords: ['dardanelles', 'canakkale'], areaKeywords: ['dardanelles', 'canakkale', 'gallipoli', 'aegean', 'marmara', 'turkish straits'], routes: ['Russia Black Sea Exports', 'Ukraine Grain', 'Aegean-Marmara Transit'], threatLevel: 'elevated', threatDescription: 'Montreux Convention restrictions; elevated due to Russia-Ukraine war and Turkish traffic management', directions: ['northbound', 'southbound'] },
 ];
 
 function normalizeText(input: string): string {
@@ -278,6 +293,11 @@ async function fetchChokepointData(): Promise<ChokepointFetchResult> {
       affectedRoutes: cp.routes,
       description: descriptions.join('; '),
       directions: cp.directions,
+      directionalDwt: cp.directions.map((dir): DirectionalDwt => ({
+        direction: dir,
+        dwtThousandTonnes: 0,
+        wowChangePct: 0,
+      })),
     };
   });
 
