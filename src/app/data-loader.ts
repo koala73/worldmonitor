@@ -66,8 +66,8 @@ import { ingestProtests, ingestFlights, ingestVessels, ingestEarthquakes, detect
 import { signalAggregator } from '@/services/signal-aggregator';
 import { updateAndCheck } from '@/services/temporal-baseline';
 import { fetchAllFires, flattenFires, computeRegionStats, toMapFires } from '@/services/wildfires';
-import { analyzeFlightsForSurge, surgeAlertToSignal, detectForeignMilitaryPresence, foreignPresenceToSignal, type TheaterPostureSummary } from '@/services/military-surge';
-import { fetchCachedTheaterPosture } from '@/services/cached-theater-posture';
+import { analyzeFlightsForSurge, surgeAlertToSignal, detectForeignMilitaryPresence, foreignPresenceToSignal, getTheaterPostureSummaries, type TheaterPostureSummary } from '@/services/military-surge';
+import { fetchCachedTheaterPosture, ingestLocalPostures } from '@/services/cached-theater-posture';
 import { ingestProtestsForCII, ingestMilitaryForCII, ingestNewsForCII, ingestOutagesForCII, ingestConflictsForCII, ingestUcdpForCII, ingestHapiForCII, ingestDisplacementForCII, ingestClimateForCII, ingestStrikesForCII, ingestOrefForCII, ingestAviationForCII, ingestAdvisoriesForCII, ingestGpsJammingForCII, ingestAisDisruptionsForCII, ingestSatelliteFiresForCII, ingestCyberThreatsForCII, ingestTemporalAnomaliesForCII, isInLearningMode } from '@/services/country-instability';
 import { fetchGpsInterference } from '@/services/gps-interference';
 import { dataFreshness, type DataSourceId } from '@/services/data-freshness';
@@ -1812,6 +1812,10 @@ export class DataLoaderManager implements AppModule {
           if (this.shouldShowIntelligenceNotifications()) this.ctx.signalModal?.show(foreignSignals);
         }
       }
+
+      // Compute local theater postures from live flight data — used as fallback
+      // when the upstream cloud API is unreachable.
+      ingestLocalPostures(getTheaterPostureSummaries(flightData.flights));
 
       this.loadCachedPosturesForBanner();
       const insightsPanel = this.ctx.panels['insights'] as InsightsPanel | undefined;

@@ -1,8 +1,7 @@
 /**
- * Unified market service module -- replaces legacy service:
- *   - src/services/markets.ts (Finnhub + Yahoo + CoinGecko)
- *
- * All data now flows through the MarketServiceClient RPCs.
+ * Unified market service module
+ * Fetches stocks/commodities via sidecar (Yahoo Finance or Finnhub),
+ * crypto via sidecar (CoinGecko). Falls back to upstream cloud API if sidecar fails.
  */
 
 import {
@@ -14,8 +13,9 @@ import {
 } from '@/generated/client/worldmonitor/market/v1/service_client';
 import type { MarketData, CryptoData } from '@/types';
 import { createCircuitBreaker } from '@/utils';
+import { getApiBaseUrl } from '@/services/runtime';
 
-// ---- Client + Circuit Breakers ----
+// ---- Upstream cloud client (fallback) ----
 
 const client = new MarketServiceClient('', { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) });
 const stockBreaker = createCircuitBreaker<ListMarketQuotesResponse>({ name: 'Market Quotes', cacheTtlMs: 0 });
@@ -48,7 +48,7 @@ function toCryptoData(proto: ProtoCryptoQuote): CryptoData {
 }
 
 // ========================================================================
-// Exported types (preserving legacy interface)
+// Exported types
 // ========================================================================
 
 export interface MarketFetchResult {
@@ -56,6 +56,64 @@ export interface MarketFetchResult {
   skipped?: boolean;
   reason?: string;
   rateLimited?: boolean;
+}
+
+// ========================================================================
+// Sidecar helpers
+// ========================================================================
+
+interface SidecarQuote { symbol: string; price: number | null; change: number | null; }
+interface SidecarCrypto { id: string; price: number | null; change: number | null; }
+
+const CRYPTO_META: Record<string, { name: string; symbol: string }> = {
+  bitcoin:  { name: 'Bitcoin',  symbol: 'BTC' },
+  ethereum: { name: 'Ethereum', symbol: 'ETH' },
+  solana:   { name: 'Solana',   symbol: 'SOL' },
+  ripple:   { name: 'XRP',      symbol: 'XRP' },
+};
+
+async function fetchMarketQuotesFromSidecar(
+  symbols: Array<{ symbol: string; name: string; display: string }>,
+): Promise<MarketData[] | null> {
+  try {
+    const base = getApiBaseUrl();
+    const syms = symbols.map(s => s.symbol).join(',');
+    const resp = await fetch(`${base}/api/market-quotes?symbols=${encodeURIComponent(syms)}`);
+    if (!resp.ok) return null;
+    const data = await resp.json() as { quotes?: SidecarQuote[] };
+    if (!Array.isArray(data.quotes) || data.quotes.every(q => q.price === null)) return null;
+    const metaMap = new Map(symbols.map(s => [s.symbol, s]));
+    return data.quotes.map(q => ({
+      symbol: q.symbol,
+      name: metaMap.get(q.symbol)?.name ?? q.symbol,
+      display: metaMap.get(q.symbol)?.display ?? q.symbol,
+      price: q.price,
+      change: q.change,
+    }));
+  } catch {
+    return null;
+  }
+}
+
+async function fetchCryptoFromSidecar(): Promise<CryptoData[] | null> {
+  try {
+    const base = getApiBaseUrl();
+    const ids = Object.keys(CRYPTO_META).join(',');
+    const resp = await fetch(`${base}/api/crypto-quotes?ids=${encodeURIComponent(ids)}`);
+    if (!resp.ok) return null;
+    const data = await resp.json() as { quotes?: SidecarCrypto[] };
+    if (!Array.isArray(data.quotes) || data.quotes.every(q => q.price === null)) return null;
+    return data.quotes
+      .map(q => ({
+        name: CRYPTO_META[q.id]?.name ?? q.id,
+        symbol: CRYPTO_META[q.id]?.symbol ?? q.id.toUpperCase(),
+        price: q.price ?? 0,
+        change: q.change ?? 0,
+      }))
+      .filter(c => c.price > 0);
+  } catch {
+    return null;
+  }
 }
 
 // ========================================================================
@@ -72,26 +130,26 @@ export async function fetchMultipleStocks(
   symbols: Array<{ symbol: string; name: string; display: string }>,
   options: { onBatch?: (results: MarketData[]) => void } = {},
 ): Promise<MarketFetchResult> {
-  // All symbols go through listMarketQuotes (handler handles Yahoo vs Finnhub routing internally)
-  const allSymbolStrings = symbols.map((s) => s.symbol);
-  const setKey = symbolSetKey(allSymbolStrings);
-  const symbolMetaMap = new Map(symbols.map((s) => [s.symbol, s]));
+  const setKey = symbolSetKey(symbols.map(s => s.symbol));
 
-  const resp = await stockBreaker.execute(async () => {
-    return client.listMarketQuotes({ symbols: allSymbolStrings });
-  }, emptyStockFallback);
-
-  const results = resp.quotes.map((q) => {
-    const meta = symbolMetaMap.get(q.symbol);
-    return toMarketData(q, meta);
-  });
-
-  // Fire onBatch with whatever we got
-  if (results.length > 0) {
-    options.onBatch?.(results);
+  // 1. Try sidecar (Yahoo Finance / Finnhub)
+  const sidecarResults = await fetchMarketQuotesFromSidecar(symbols);
+  if (sidecarResults && sidecarResults.length > 0) {
+    options.onBatch?.(sidecarResults);
+    lastSuccessfulByKey.set(setKey, sidecarResults);
+    return { data: sidecarResults };
   }
 
+  // 2. Fall back to upstream cloud API
+  const resp = await stockBreaker.execute(async () => {
+    return client.listMarketQuotes({ symbols: symbols.map(s => s.symbol) });
+  }, emptyStockFallback);
+
+  const symbolMetaMap = new Map(symbols.map(s => [s.symbol, s]));
+  const results = resp.quotes.map(q => toMarketData(q, symbolMetaMap.get(q.symbol)));
+
   if (results.length > 0) {
+    options.onBatch?.(results);
     lastSuccessfulByKey.set(setKey, results);
   }
 
@@ -120,13 +178,19 @@ export async function fetchStockQuote(
 let lastSuccessfulCrypto: CryptoData[] = [];
 
 export async function fetchCrypto(): Promise<CryptoData[]> {
+  // 1. Try sidecar (CoinGecko)
+  const sidecarCrypto = await fetchCryptoFromSidecar();
+  if (sidecarCrypto && sidecarCrypto.length > 0) {
+    lastSuccessfulCrypto = sidecarCrypto;
+    return sidecarCrypto;
+  }
+
+  // 2. Fall back to upstream cloud API
   const resp = await cryptoBreaker.execute(async () => {
-    return client.listCryptoQuotes({ ids: [] }); // empty = all defaults
+    return client.listCryptoQuotes({ ids: [] });
   }, emptyCryptoFallback);
 
-  const results = resp.quotes
-    .map(toCryptoData)
-    .filter(c => c.price > 0);
+  const results = resp.quotes.map(toCryptoData).filter(c => c.price > 0);
 
   if (results.length > 0) {
     lastSuccessfulCrypto = results;

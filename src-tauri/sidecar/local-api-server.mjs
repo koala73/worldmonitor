@@ -1439,6 +1439,243 @@ async function dispatch(requestUrl, req, routes, context) {
     }
   }
 
+  // ── BTC ETF flows via Yahoo Finance ──────────────────────────────────────
+  if (requestUrl.pathname === '/api/btc-etf-flows') {
+    const BTC_ETFS = [
+      { ticker: 'IBIT',  issuer: 'BlackRock'  },
+      { ticker: 'FBTC',  issuer: 'Fidelity'   },
+      { ticker: 'BITB',  issuer: 'Bitwise'    },
+      { ticker: 'ARKB',  issuer: 'ARK'        },
+      { ticker: 'BTCO',  issuer: 'Invesco'    },
+      { ticker: 'HODL',  issuer: 'VanEck'     },
+      { ticker: 'GBTC',  issuer: 'Grayscale'  },
+      { ticker: 'BRRR',  issuer: 'Valkyrie'   },
+    ];
+    try {
+      const syms = BTC_ETFS.map(e => e.ticker).join(',');
+      const r = await fetchWithTimeout(
+        `https://query1.finance.yahoo.com/v8/finance/quote?symbols=${encodeURIComponent(syms)}&fields=regularMarketPrice,regularMarketChangePercent,regularMarketVolume,averageDailyVolume3Month`,
+        { headers: { 'User-Agent': CHROME_UA, Accept: 'application/json', 'Accept-Language': 'en-US,en;q=0.9' } },
+        12000
+      );
+      if (!r.ok) throw new Error(`Yahoo ${r.status}`);
+      const body = await r.json();
+      const result = body?.quoteResponse?.result ?? [];
+      let totalVolume = 0, totalEstFlow = 0, inflowCount = 0, outflowCount = 0;
+      const etfs = BTC_ETFS.map(meta => {
+        const q = result.find(x => x.symbol === meta.ticker);
+        if (!q) return { ticker: meta.ticker, issuer: meta.issuer, price: 0, priceChange: 0, volume: 0, avgVolume: 0, volumeRatio: 1, direction: 'neutral', estFlow: 0 };
+        const price = q.regularMarketPrice ?? 0;
+        const priceChange = q.regularMarketChangePercent ?? 0;
+        const volume = q.regularMarketVolume ?? 0;
+        const avgVolume = q.averageDailyVolume3Month ?? volume || 1;
+        const volumeRatio = avgVolume > 0 ? volume / avgVolume : 1;
+        const estFlow = (volume - avgVolume) * price;
+        const direction = priceChange > 0.5 && volumeRatio > 1.1 ? 'inflow'
+                        : priceChange < -0.5 && volumeRatio > 1.1 ? 'outflow' : 'neutral';
+        totalVolume += volume * price;
+        totalEstFlow += estFlow;
+        if (direction === 'inflow') inflowCount++;
+        if (direction === 'outflow') outflowCount++;
+        return { ticker: meta.ticker, issuer: meta.issuer, price, priceChange: parseFloat(priceChange.toFixed(2)), volume, avgVolume, volumeRatio: parseFloat(volumeRatio.toFixed(2)), direction, estFlow: Math.round(estFlow) };
+      });
+      const netDirection = totalEstFlow > 0 ? 'inflow' : totalEstFlow < 0 ? 'outflow' : 'neutral';
+      return json({
+        timestamp: new Date().toISOString(),
+        rateLimited: false,
+        summary: { etfCount: etfs.length, totalVolume: Math.round(totalVolume), totalEstFlow: Math.round(totalEstFlow), netDirection, inflowCount, outflowCount },
+        etfs,
+      });
+    } catch (e) {
+      return json({ timestamp: new Date().toISOString(), rateLimited: false, etfs: [], error: String(e.message ?? e) });
+    }
+  }
+
+  // ── Stablecoin markets via CoinGecko ─────────────────────────────────────
+  if (requestUrl.pathname === '/api/stablecoin-markets') {
+    const STABLECOINS = ['tether', 'usd-coin', 'dai', 'first-digital-usd', 'true-usd', 'frax'];
+    try {
+      const r = await fetchWithTimeout(
+        `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${encodeURIComponent(STABLECOINS.join(','))}&price_change_percentage=24h,7d`,
+        { headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' } },
+        12000
+      );
+      if (!r.ok) throw new Error(`CoinGecko ${r.status}`);
+      const data = await r.json();
+      let totalMarketCap = 0, totalVolume24h = 0, depeggedCount = 0;
+      const stablecoins = data.map(c => {
+        const price = c.current_price ?? 1;
+        const deviation = Math.abs(price - 1);
+        const pegStatus = deviation < 0.002 ? 'ON PEG' : deviation < 0.01 ? 'SLIGHT DEPEG' : 'DEPEGGED';
+        if (pegStatus !== 'ON PEG') depeggedCount++;
+        totalMarketCap += c.market_cap ?? 0;
+        totalVolume24h += c.total_volume ?? 0;
+        return {
+          id: c.id,
+          symbol: (c.symbol ?? '').toUpperCase(),
+          name: c.name,
+          price,
+          deviation: parseFloat(deviation.toFixed(4)),
+          pegStatus,
+          marketCap: c.market_cap ?? 0,
+          volume24h: c.total_volume ?? 0,
+          change24h: parseFloat((c.price_change_percentage_24h ?? 0).toFixed(4)),
+          change7d: parseFloat((c.price_change_percentage_7d_in_currency ?? 0).toFixed(4)),
+          image: c.image ?? '',
+        };
+      });
+      const healthStatus = depeggedCount === 0 ? 'HEALTHY' : depeggedCount <= 1 ? 'CAUTION' : 'STRESSED';
+      return json({
+        timestamp: new Date().toISOString(),
+        summary: { totalMarketCap, totalVolume24h, coinCount: stablecoins.length, depeggedCount, healthStatus },
+        stablecoins,
+      });
+    } catch (e) {
+      return json({ timestamp: new Date().toISOString(), stablecoins: [], error: String(e.message ?? e) });
+    }
+  }
+
+  // ── Macro signals (Market Radar) ──────────────────────────────────────────
+  if (requestUrl.pathname === '/api/macro-signals') {
+    try {
+      // Fetch Fear & Greed index (alternative.me — free, no key)
+      const [fngResp, pricesResp] = await Promise.allSettled([
+        fetchWithTimeout('https://api.alternative.me/fng/?limit=1', { headers: { 'User-Agent': CHROME_UA } }, 8000),
+        fetchWithTimeout(
+          'https://query1.finance.yahoo.com/v8/finance/quote?symbols=BTC-USD%2CQQQ%2CXLP%2CSPY%2CGOLD',
+          { headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' } }, 12000
+        ),
+      ]);
+
+      // Fear & Greed
+      let fearGreed = null;
+      if (fngResp.status === 'fulfilled' && fngResp.value.ok) {
+        const fng = await fngResp.value.json();
+        const val = parseInt(fng?.data?.[0]?.value ?? '50', 10);
+        const classification = fng?.data?.[0]?.value_classification ?? '';
+        const status = val >= 75 ? 'EXTREME_GREED' : val >= 55 ? 'GREED' : val >= 45 ? 'NEUTRAL' : val >= 25 ? 'FEAR' : 'EXTREME_FEAR';
+        fearGreed = { status, value: val, classification };
+      }
+
+      // Price signals
+      let flowStructure = null, macroRegime = null, technicalTrend = null;
+      if (pricesResp.status === 'fulfilled' && pricesResp.value.ok) {
+        const body = await pricesResp.value.json();
+        const qs = body?.quoteResponse?.result ?? [];
+        const get = sym => qs.find(q => q.symbol === sym);
+        const btc = get('BTC-USD');
+        const qqq = get('QQQ');
+        const xlp = get('XLP');
+        const btcChange5 = btc?.regularMarketChangePercent ?? 0;
+        const qqqChange5 = qqq?.regularMarketChangePercent ?? 0;
+        const xlpChange5 = xlp?.regularMarketChangePercent ?? 0;
+        const flowStatus = btcChange5 > 2 && qqqChange5 > 0.5 ? 'RISK_ON' : btcChange5 < -2 && qqqChange5 < -0.5 ? 'RISK_OFF' : 'NEUTRAL';
+        flowStructure = { status: flowStatus, btcReturn5: parseFloat(btcChange5.toFixed(2)), qqqReturn5: parseFloat(qqqChange5.toFixed(2)) };
+        const regimeStatus = qqqChange5 > 0.5 && xlpChange5 < qqqChange5 ? 'RISK_ON' : qqqChange5 < -0.5 ? 'RISK_OFF' : 'NEUTRAL';
+        macroRegime = { status: regimeStatus, qqqRoc20: parseFloat(qqqChange5.toFixed(2)), xlpRoc20: parseFloat(xlpChange5.toFixed(2)) };
+        const btcPrice = btc?.regularMarketPrice ?? 0;
+        const techStatus = btcChange5 > 1 ? 'BULLISH' : btcChange5 < -1 ? 'BEARISH' : 'NEUTRAL';
+        technicalTrend = { status: techStatus, btcPrice, sma50: 0, sma200: 0, vwap30d: 0, mayerMultiple: 0, sparkline: [] };
+      }
+
+      const signals = { fearGreed, flowStructure, macroRegime, technicalTrend };
+      const bullishCount = [fearGreed?.value > 50, flowStructure?.status === 'RISK_ON', macroRegime?.status === 'RISK_ON', technicalTrend?.status === 'BULLISH'].filter(Boolean).length;
+      const totalCount = Object.values(signals).filter(s => s !== null).length;
+      const verdict = bullishCount / totalCount > 0.6 ? 'BULLISH' : bullishCount / totalCount < 0.4 ? 'BEARISH' : 'NEUTRAL';
+
+      return json({
+        timestamp: new Date().toISOString(),
+        verdict,
+        bullishCount,
+        totalCount,
+        unavailable: false,
+        signals,
+      });
+    } catch (e) {
+      return json({ timestamp: new Date().toISOString(), verdict: 'UNAVAILABLE', bullishCount: 0, totalCount: 0, unavailable: true, signals: null, error: String(e.message ?? e) });
+    }
+  }
+
+  // ── Market quotes (stocks + commodities) via Yahoo Finance ───────────────
+  if (requestUrl.pathname === '/api/market-quotes') {
+    const symbols = (requestUrl.searchParams.get('symbols') || '').split(',').map(s => s.trim()).filter(Boolean);
+    if (symbols.length === 0) return json({ quotes: [] });
+
+    // Try Finnhub first if key is set (more reliable, no rate-limit issues)
+    const finnhubKey = process.env.FINNHUB_API_KEY;
+    if (finnhubKey) {
+      try {
+        const quotes = await Promise.all(symbols.map(async sym => {
+          try {
+            const r = await fetchWithTimeout(
+              `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(sym)}&token=${encodeURIComponent(finnhubKey)}`,
+              { headers: { 'User-Agent': CHROME_UA } }, 8000
+            );
+            if (!r.ok) return { symbol: sym, price: null, change: null };
+            const d = await r.json();
+            if (typeof d?.c !== 'number') return { symbol: sym, price: null, change: null };
+            const change = d.pc > 0 ? ((d.c - d.pc) / d.pc) * 100 : 0;
+            return { symbol: sym, price: d.c, change: parseFloat(change.toFixed(2)) };
+          } catch { return { symbol: sym, price: null, change: null }; }
+        }));
+        const valid = quotes.filter(q => q.price !== null);
+        if (valid.length > 0) return json({ quotes, source: 'finnhub' });
+      } catch { /* fall through to Yahoo */ }
+    }
+
+    // Yahoo Finance v8 — no key required
+    try {
+      const batchUrl = `https://query1.finance.yahoo.com/v8/finance/quote?symbols=${encodeURIComponent(symbols.join(','))}&fields=regularMarketPrice,regularMarketChangePercent`;
+      const r = await fetchWithTimeout(batchUrl, {
+        headers: {
+          'User-Agent': CHROME_UA,
+          'Accept': 'application/json',
+          'Accept-Language': 'en-US,en;q=0.9',
+        }
+      }, 12000);
+      if (!r.ok) throw new Error(`Yahoo ${r.status}`);
+      const body = await r.json();
+      const result = body?.quoteResponse?.result ?? [];
+      const quotes = symbols.map(sym => {
+        const q = result.find(r => r.symbol === sym);
+        if (!q) return { symbol: sym, price: null, change: null };
+        return {
+          symbol: sym,
+          price: q.regularMarketPrice ?? null,
+          change: q.regularMarketChangePercent != null ? parseFloat(q.regularMarketChangePercent.toFixed(2)) : null,
+        };
+      });
+      return json({ quotes, source: 'yahoo' });
+    } catch (e) {
+      return json({ quotes: symbols.map(sym => ({ symbol: sym, price: null, change: null })), error: String(e.message ?? e) });
+    }
+  }
+
+  // ── Crypto quotes via CoinGecko ───────────────────────────────────────────
+  if (requestUrl.pathname === '/api/crypto-quotes') {
+    const ids = (requestUrl.searchParams.get('ids') || 'bitcoin,ethereum,solana,ripple');
+    try {
+      const r = await fetchWithTimeout(
+        `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(ids)}&vs_currencies=usd&include_24hr_change=true`,
+        { headers: { 'User-Agent': CHROME_UA, 'Accept': 'application/json' } },
+        12000
+      );
+      if (!r.ok) throw new Error(`CoinGecko ${r.status}`);
+      const data = await r.json();
+      const quotes = ids.split(',').map(id => {
+        const d = data[id.trim()];
+        return {
+          id: id.trim(),
+          price: d?.usd ?? null,
+          change: d?.usd_24h_change != null ? parseFloat(d.usd_24h_change.toFixed(2)) : null,
+        };
+      });
+      return json({ quotes });
+    } catch (e) {
+      return json({ quotes: [], error: String(e.message ?? e) });
+    }
+  }
+
   // ── NASA FIRMS satellite fire detections ─────────────────────────────────
   if (requestUrl.pathname === '/api/nasa-firms') {
     const apiKey = process.env.NASA_FIRMS_API_KEY;

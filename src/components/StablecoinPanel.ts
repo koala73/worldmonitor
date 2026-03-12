@@ -3,6 +3,7 @@ import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
 import { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
 import type { ListStablecoinMarketsResponse } from '@/generated/client/worldmonitor/market/v1/service_client';
+import { getApiBaseUrl } from '@/services/runtime';
 
 type StablecoinResult = ListStablecoinMarketsResponse;
 
@@ -37,8 +38,22 @@ export class StablecoinPanel extends Panel {
   public async fetchData(): Promise<void> {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const client = new MarketServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
-        this.data = await client.listStablecoinMarkets({ coins: [] });
+        // Try sidecar first (CoinGecko), fall back to cloud API
+        let sidecarOk = false;
+        try {
+          const sr = await fetch(`${getApiBaseUrl()}/api/stablecoin-markets`);
+          if (sr.ok) {
+            const sd = await sr.json() as ListStablecoinMarketsResponse;
+            if (Array.isArray(sd.stablecoins) && sd.stablecoins.length > 0) {
+              this.data = sd;
+              sidecarOk = true;
+            }
+          }
+        } catch { /* fall through */ }
+        if (!sidecarOk) {
+          const client = new MarketServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+          this.data = await client.listStablecoinMarkets({ coins: [] });
+        }
         this.error = null;
 
         if (this.data && this.data.stablecoins.length === 0 && attempt < 2) {

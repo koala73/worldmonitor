@@ -220,3 +220,22 @@ export function getCachedPosture(): CachedTheaterPosture | null {
 export function hasCachedPosture(): boolean {
   return cachedPosture !== null;
 }
+
+/**
+ * Ingest locally-computed postures (from flight data) as a fallback when the
+ * upstream cloud API returns nothing.  Only updates if we have no fresh data.
+ */
+export function ingestLocalPostures(postures: TheaterPostureSummary[]): void {
+  if (postures.length === 0) return;
+  // Don't overwrite a fresh cloud fetch
+  if (cachedPosture && !cachedPosture.stale && Date.now() - lastFetchTime < REFETCH_INTERVAL_MS) return;
+  const totalFlights = postures.reduce((sum, p) => sum + p.totalAircraft, 0);
+  cachedPosture = {
+    postures,
+    totalFlights,
+    timestamp: new Date().toISOString(),
+    cached: false,
+    stale: false,
+  };
+  lastFetchTime = Date.now();
+}

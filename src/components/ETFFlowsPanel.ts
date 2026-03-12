@@ -4,6 +4,7 @@ import { escapeHtml } from '@/utils/sanitize';
 import { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
 import type { ListEtfFlowsResponse } from '@/generated/client/worldmonitor/market/v1/service_client';
 import { getHydratedData } from '@/services/bootstrap';
+import { getApiBaseUrl } from '@/services/runtime';
 
 type ETFFlowsResult = ListEtfFlowsResponse;
 
@@ -49,8 +50,22 @@ export class ETFFlowsPanel extends Panel {
 
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const client = new MarketServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
-        this.data = await client.listEtfFlows({});
+        // Try sidecar first (Yahoo Finance), fall back to cloud API
+        let sidecarOk = false;
+        try {
+          const sr = await fetch(`${getApiBaseUrl()}/api/btc-etf-flows`);
+          if (sr.ok) {
+            const sd = await sr.json() as ListEtfFlowsResponse;
+            if (Array.isArray(sd.etfs) && sd.etfs.length > 0) {
+              this.data = sd;
+              sidecarOk = true;
+            }
+          }
+        } catch { /* fall through */ }
+        if (!sidecarOk) {
+          const client = new MarketServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+          this.data = await client.listEtfFlows({});
+        }
         this.error = null;
 
         if (this.data && this.data.etfs.length === 0 && !this.data.rateLimited && attempt < 2) {

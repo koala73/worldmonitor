@@ -4,6 +4,7 @@ import { t } from '@/services/i18n';
 import { EconomicServiceClient } from '@/generated/client/worldmonitor/economic/v1/service_client';
 import type { GetMacroSignalsResponse } from '@/generated/client/worldmonitor/economic/v1/service_client';
 import { getHydratedData } from '@/services/bootstrap';
+import { getApiBaseUrl } from '@/services/runtime';
 
 interface MacroSignalData {
   timestamp: string;
@@ -143,7 +144,16 @@ export class MacroSignalsPanel extends Panel {
 
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const res = await economicClient.getMacroSignals({});
+        // Try sidecar first (Fear & Greed + Yahoo Finance), fall back to cloud API
+        let res: GetMacroSignalsResponse | null = null;
+        try {
+          const sr = await fetch(`${getApiBaseUrl()}/api/macro-signals`);
+          if (sr.ok) {
+            const sd = await sr.json() as GetMacroSignalsResponse;
+            if (!sd.unavailable && sd.totalCount > 0) res = sd;
+          }
+        } catch { /* fall through */ }
+        if (!res) res = await economicClient.getMacroSignals({});
         this.data = mapProtoToData(res);
         this.error = null;
 
