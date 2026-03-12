@@ -314,6 +314,7 @@ export class EventHandlerManager implements AppModule {
       this.boundFullscreenHandler = () => {
         fullscreenBtn.textContent = document.fullscreenElement ? '\u26F6' : '\u26F6';
         fullscreenBtn.classList.toggle('active', !!document.fullscreenElement);
+        this.syncMapAfterLayoutChange();
       };
       document.addEventListener('fullscreenchange', this.boundFullscreenHandler);
     }
@@ -683,6 +684,16 @@ export class EventHandlerManager implements AppModule {
       webkitFullscreenElement?: Element | null;
       webkitExitFullscreen?: () => Promise<void> | void;
     };
+  }
+
+  private syncMapAfterLayoutChange(delayMs = 320): void {
+    const sync = () => {
+      this.ctx.map?.setIsResizing(false);
+      this.ctx.map?.render();
+    };
+
+    requestAnimationFrame(sync);
+    window.setTimeout(sync, delayMs);
   }
 
   private async exitFullscreenForNavigation(): Promise<void> {
@@ -1171,8 +1182,7 @@ export class EventHandlerManager implements AppModule {
       document.body.classList.toggle('live-news-fullscreen-active', isFullscreen);
       btn.innerHTML = isFullscreen ? shrinkSvg : expandSvg;
       btn.title = isFullscreen ? 'Exit fullscreen' : 'Fullscreen';
-      // Notify map so globe (and deck.gl) can resize after CSS transition completes
-      setTimeout(() => this.ctx.map?.setIsResizing(false), 320);
+      this.syncMapAfterLayoutChange();
     };
 
     btn.addEventListener('click', toggle);
