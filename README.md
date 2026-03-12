@@ -389,17 +389,41 @@ This runs the frontend without the API layer. Panels that require server-side pr
 | **Linux x86_64**       | Full support            | Works with `vercel dev` for local development. Desktop .AppImage available for x86_64. WebKitGTK rendering uses DMA-BUF with fallback to SHM for GPU compatibility. Font stack includes DejaVu Sans Mono and Liberation Mono for consistent rendering across distros |
 | **macOS**              | Works with `vercel dev` | Full local development                                                                                                         |
 | **Raspberry Pi / ARM** | Partial                 | `vercel dev` edge runtime emulation may not work on ARM. Use Option 1 (deploy to Vercel) or Option 3 (static frontend) instead |
-| **Docker**             | Official image         | See [Docker image](#docker-image-official) ([#1260](https://github.com/koala73/worldmonitor/issues/1260))                    |
+| **Docker**             | Full support            | Full-stack (frontend + API) or frontend-only. See [Docker](#docker) below and [DOCKER.md](./DOCKER.md)                        |
 
-### Docker image (official)
+### Docker
 
-An official Docker image is published to GitHub Container Registry on each [release](https://github.com/koala73/worldmonitor/releases) ([#1260](https://github.com/koala73/worldmonitor/issues/1260)):
+World Monitor supports two Docker deployment modes:
+
+#### Full-Stack Self-Hosted (Recommended)
+
+Runs the complete application — nginx serves the frontend and proxies `/api/` requests to the built-in `local-api-server.mjs` backend. Supports **Docker secrets** for secure API key storage. See [DOCKER.md](./DOCKER.md) for the full setup guide.
+
+```bash
+cp .env.docker.example .env.docker   # Add your API keys
+docker compose up -d                 # Starts on http://localhost:8080
+```
+
+API keys can be provided via environment variables or Docker secrets (recommended):
+
+```yaml
+# docker-compose.yml — uncomment the secrets sections
+secrets:
+  GROQ_API_KEY:
+    file: ./secrets/groq_api_key.txt
+```
+
+Routes without a local API handler automatically fall back to `api.worldmonitor.app`. Set `LOCAL_API_CLOUD_FALLBACK=false` for fully air-gapped operation.
+
+#### Frontend-Only (Official Image)
+
+An official frontend-only Docker image is published to GitHub Container Registry on each [release](https://github.com/koala73/worldmonitor/releases) ([#1260](https://github.com/koala73/worldmonitor/issues/1260)):
 
 - **Image**: `ghcr.io/koala73/worldmonitor`
 - **Architectures**: `linux/amd64`, `linux/arm64`
 - **Tags**: `latest`, `vX.Y.Z` (e.g. `v2.6.0`), and `X.Y` (e.g. `2.6`)
 
-The image is **frontend-only**: it serves the Vite-built static app with nginx and proxies `/api/*` to an upstream API. No Node or edge functions run inside the container.
+The image serves the Vite-built static app with nginx and proxies `/api/*` to an upstream API. No Node or edge functions run inside the container.
 
 **Build (from repo root):**
 
@@ -468,7 +492,7 @@ Set `WS_RELAY_URL` (server-side, HTTPS) and `VITE_WS_RELAY_URL` (client-side, WS
 | **Localization**      | i18next (21 languages: en, bg, ro, fr, de, es, it, pl, pt, nl, sv, ru, ar, zh, ja, tr, th, vi, cs, el, ko), RTL support, lazy-loaded bundles, native-language feeds for 21 locales with one-time locale boost |
 | **API Contracts**     | Protocol Buffers (92 proto files, 22 services), sebuf HTTP annotations, buf CLI (lint + breaking checks), auto-generated TypeScript clients/servers + OpenAPI 3.1.0 docs |
 | **Analytics**         | Vercel Analytics (privacy-first, lightweight web vitals and page view tracking)                                                                 |
-| **Deployment**        | Vercel Edge Functions (60+ endpoints) + Railway (WebSocket relay + Telegram + OREF + Polymarket proxy + NOTAM) + Tauri (macOS/Windows/Linux) + PWA (installable) |
+| **Deployment**        | Vercel Edge Functions (60+ endpoints) + Railway (WebSocket relay + Telegram + OREF + Polymarket proxy + NOTAM) + Tauri (macOS/Windows/Linux) + Docker (full-stack or frontend-only) + PWA (installable) |
 | **Finance Data**      | 92 stock exchanges, 19 financial centers, 13 central banks, 10 commodity hubs, 64 Gulf FDI investments                                         |
 | **Data**              | 435+ RSS feeds across all 4 variants, ADS-B transponders, AIS maritime data, VIIRS satellite imagery, 30+ live video channels (8+ default YouTube + 18+ HLS native), 26 Telegram OSINT channels |
 
