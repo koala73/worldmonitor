@@ -13,6 +13,7 @@ import { fetchHotspotContext, formatArticleDate, extractDomain, type GdeltArticl
 import { getNaturalEventIcon } from '@/services/eonet';
 import { getHotspotEscalation, getEscalationChange24h } from '@/services/hotspot-escalation';
 import { getCableHealthRecord } from '@/services/cable-health';
+import { nameToCountryCode } from '@/services/country-geometry';
 
 export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'cyberThreat' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'cable-advisory' | 'repair-ship' | 'outage' | 'datacenter' | 'datacenterCluster' | 'ais' | 'protest' | 'protestCluster' | 'flight' | 'aircraft' | 'militaryFlight' | 'militaryVessel' | 'militaryFlightCluster' | 'militaryVesselCluster' | 'natEvent' | 'port' | 'spaceport' | 'mineral' | 'startupHub' | 'cloudRegion' | 'techHQ' | 'accelerator' | 'techEvent' | 'techHQCluster' | 'techEventCluster' | 'techActivity' | 'geoActivity' | 'stockExchange' | 'financialCenter' | 'centralBank' | 'commodityHub' | 'iranEvent' | 'gpsJamming';
 
@@ -2147,6 +2148,36 @@ export class MapPopup {
     `;
   }
 
+  private getFlagEmoji(countryCode: string): string {
+    if (!countryCode || countryCode.length !== 2) return '';
+    if (countryCode === 'NATO') return '🌐'; // Placeholder for NATO
+    const codePoints = countryCode
+      .toUpperCase()
+      .split('')
+      .map(char => 127397 + char.charCodeAt(0));
+    try {
+      return String.fromCodePoint(...codePoints);
+    } catch {
+      return '';
+    }
+  }
+
+  private mapOperatorToCountryCode(operator: string): string {
+    const map: Record<string, string> = {
+      usn: 'US', usaf: 'US', usmc: 'US', usa: 'US',
+      rn: 'GB', raf: 'GB',
+      plan: 'CN', plaaf: 'CN',
+      vks: 'RU', ruf: 'RU',
+      faf: 'FR', fn: 'FR',
+      gaf: 'DE',
+      iaf: 'IL',
+      jmsdf: 'JP',
+      rokn: 'KR',
+      nato: 'NATO'
+    };
+    return map[operator] || '';
+  }
+
   private renderMilitaryVesselPopup(vessel: MilitaryVessel): string {
     const operatorLabels: Record<string, string> = {
       usn: 'US Navy',
@@ -2197,33 +2228,76 @@ export class MapPopup {
     const vesselHull = vessel.hullNumber ? escapeHtml(vessel.hullNumber) : '';
     const vesselNote = vessel.note ? escapeHtml(vessel.note) : '';
 
+    // Flag handling
+    const opCountryCode = (vessel.operatorCountry ? nameToCountryCode(vessel.operatorCountry) : null) || this.mapOperatorToCountryCode(vessel.operator);
+    const flagEmoji = opCountryCode ? this.getFlagEmoji(opCountryCode) : '';
+
+    // Tracking History
+    const recentTrack = vessel.track && vessel.track.length > 0
+      ? `<div class="popup-section">
+          <details>
+            <summary>${t('popups.militaryVessel.recentTracking')}</summary>
+            <div class="popup-section-content">
+              <div class="vessel-history-list">
+                ${vessel.track.slice(-5).reverse().map((tp, i) => `
+                  <div class="vessel-history-item">
+                    <span class="history-point">${tp[1].toFixed(3)}°N, ${tp[0].toFixed(3)}°E</span>
+                    ${i === 0 ? `<span class="history-tag">${t('popups.militaryVessel.lastReport')}</span>` : ''}
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          </details>
+        </div>`
+      : '';
+
+    // USNI Intel Section
+    const usniIntel = (vessel.usniActivityDescription || vessel.usniRegion || vessel.usniStrikeGroup) ? `
+      <div class="popup-section usni-intel-section">
+        <div class="section-header usni">
+          <span class="section-icon">⚖️</span>
+          <span class="section-label">${t('popups.militaryVessel.usniIntel')}</span>
+        </div>
+        <div class="usni-intel-content">
+          ${vessel.usniStrikeGroup ? `<div class="usni-field"><strong>${t('popups.militaryVessel.strikeGroup')}:</strong> ${escapeHtml(vessel.usniStrikeGroup)}</div>` : ''}
+          ${vessel.usniRegion ? `<div class="usni-field"><strong>${t('popups.militaryVessel.region')}:</strong> ${escapeHtml(vessel.usniRegion)}</div>` : ''}
+          ${vessel.usniActivityDescription ? `<p class="usni-description">${escapeHtml(vessel.usniActivityDescription)}</p>` : ''}
+          ${vessel.usniArticleUrl ? `
+            <div class="usni-source-row">
+              <a href="${escapeHtml(vessel.usniArticleUrl)}" target="_blank" rel="noopener" class="usni-link">
+                ${t('popups.militaryVessel.usniSource')} ${vessel.usniArticleDate ? `(${new Date(vessel.usniArticleDate).toLocaleDateString()})` : ''}
+              </a>
+            </div>
+          ` : ''}
+        </div>
+      </div>
+    ` : '';
+
     return `
       <div class="popup-header military-vessel ${vessel.operator}">
-        <span class="popup-title">${vesselName}</span>
-        ${darkWarning}
-        ${deploymentBadge}
-        <span class="popup-badge elevated">${vesselBadgeType}</span>
+        <div class="popup-title-row">
+          <span class="popup-title">${vesselName}</span>
+          ${vessel.hullNumber ? `<span class="hull-badge">${vesselHull}</span>` : ''}
+        </div>
+        <div class="popup-badges">
+          ${darkWarning}
+          ${deploymentBadge}
+          <span class="popup-badge elevated">${vesselBadgeType}</span>
+        </div>
         <button class="popup-close" aria-label="Close">×</button>
       </div>
       <div class="popup-body">
-        <div class="popup-subtitle">${vesselOperator}</div>
+        <div class="popup-subtitle">
+          ${flagEmoji ? `<span class="flag-icon">${flagEmoji}</span>` : ''}
+          <span class="operator-label">${vesselOperator}</span>
+          ${vessel.operatorCountry && vessel.operatorCountry !== vesselOperator ? `<span class="country-label">· ${vessel.operatorCountry}</span>` : ''}
+        </div>
+        
         <div class="popup-stats">
           <div class="popup-stat">
             <span class="stat-label">${t('popups.type')}</span>
             <span class="stat-value">${vesselTypeLabel}</span>
           </div>
-          ${vessel.usniRegion ? `
-          <div class="popup-stat">
-            <span class="stat-label">${t('popups.militaryVessel.region')}</span>
-            <span class="stat-value">${escapeHtml(vessel.usniRegion)}</span>
-          </div>
-          ` : ''}
-          ${vessel.usniStrikeGroup ? `
-          <div class="popup-stat">
-            <span class="stat-label">${t('popups.militaryVessel.strikeGroup')}</span>
-            <span class="stat-value">${escapeHtml(vessel.usniStrikeGroup)}</span>
-          </div>
-          ` : ''}
           <div class="popup-stat">
             <span class="stat-label">${t('popups.militaryVessel.speed')}</span>
             <span class="stat-value">${vessel.speed} kts</span>
@@ -2238,18 +2312,30 @@ export class MapPopup {
             <span class="stat-value">${vesselMmsi}</span>
           </div>
           ` : ''}
-          ${vessel.hullNumber ? `
-          <div class="popup-stat">
-            <span class="stat-label">${t('popups.militaryVessel.hull')}</span>
-            <span class="stat-value">${vesselHull}</span>
+          ${vessel.nearChokepoint ? `
+          <div class="popup-stat warning">
+            <span class="stat-label">${t('popups.militaryVessel.nearChokepoint')}</span>
+            <span class="stat-value">${escapeHtml(vessel.nearChokepoint)}</span>
           </div>
           ` : ''}
+          ${vessel.nearBase ? `
+          <div class="popup-stat">
+            <span class="stat-label">${t('popups.militaryVessel.nearBase')}</span>
+            <span class="stat-value">${escapeHtml(vessel.nearBase)}</span>
+          </div>
+          ` : ''}
+          <div class="popup-stat full-width">
+            <span class="stat-label">${t('popups.militaryVessel.lastSeen')}</span>
+            <span class="stat-value">${new Date(vessel.lastAisUpdate).toLocaleString()} ${vessel.aisGapMinutes ? `(${vessel.aisGapMinutes}m ago)` : ''}</span>
+          </div>
         </div>
-        ${vessel.usniActivityDescription ? `<p class="popup-description"><strong>${t('popups.militaryVessel.usniIntel')}:</strong> ${escapeHtml(vessel.usniActivityDescription)}</p>` : ''}
+
+        ${usniIntel}
+        ${recentTrack}
+
         ${vessel.note ? `<p class="popup-description">${vesselNote}</p>` : ''}
         ${vessel.isDark ? `<p class="popup-description alert">${t('popups.militaryVessel.darkDescription')}</p>` : ''}
         ${vessel.usniSource ? `<p class="popup-description" style="opacity:0.7;font-size:0.85em">${t('popups.militaryVessel.approximatePosition')}</p>` : ''}
-        ${vessel.usniArticleUrl ? `<div class="popup-attribution"><a href="${escapeHtml(vessel.usniArticleUrl)}" target="_blank" rel="noopener">${t('popups.militaryVessel.usniSource')}${vessel.usniArticleDate ? ` (${new Date(vessel.usniArticleDate).toLocaleDateString()})` : ''}</a></div>` : ''}
       </div>
     `;
   }
@@ -2335,14 +2421,38 @@ export class MapPopup {
     const clusterName = escapeHtml(cluster.name);
     const activityTypeLabel = escapeHtml(activityType.toUpperCase());
     const region = cluster.region ? escapeHtml(cluster.region) : '';
+
+    // Calculate dominant operator
+    const opCounts: Record<string, number> = {};
+    cluster.vessels.forEach(v => {
+      opCounts[v.operator] = (opCounts[v.operator] || 0) + 1;
+    });
+    const dominantOperator = Object.entries(opCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
+
+    const dominantCountryCode = dominantOperator ? this.mapOperatorToCountryCode(dominantOperator) : '';
+    const dominantFlagEmoji = dominantCountryCode ? this.getFlagEmoji(dominantCountryCode) : '';
+
     const visibleVessels = cluster.vessels
       .slice(0, 5)
-      .map(v => `<div class="cluster-vessel-item">${escapeHtml(v.name)} - ${escapeHtml(v.vesselType)}</div>`)
+      .map(v => {
+        const vCountryCode = (v.operatorCountry ? nameToCountryCode(v.operatorCountry) : null) || this.mapOperatorToCountryCode(v.operator);
+        const vFlag = vCountryCode ? this.getFlagEmoji(vCountryCode) : '';
+        return `<div class="cluster-vessel-item">
+          ${vFlag ? `<span class="flag-icon-small">${vFlag}</span> ` : ''}${escapeHtml(v.name)} - ${escapeHtml(v.vesselType)}
+        </div>`;
+      })
       .join('');
+    
     const hiddenVessels = cluster.vessels.length > 5
       ? cluster.vessels
           .slice(5)
-          .map(v => `<div class="cluster-vessel-item">${escapeHtml(v.name)} - ${escapeHtml(v.vesselType)}</div>`)
+          .map(v => {
+            const vCountryCode = (v.operatorCountry ? nameToCountryCode(v.operatorCountry) : null) || this.mapOperatorToCountryCode(v.operator);
+            const vFlag = vCountryCode ? this.getFlagEmoji(vCountryCode) : '';
+            return `<div class="cluster-vessel-item">
+              ${vFlag ? `<span class="flag-icon-small">${vFlag}</span> ` : ''}${escapeHtml(v.name)} - ${escapeHtml(v.vesselType)}
+            </div>`;
+          })
           .join('')
       : '';
     const hiddenCount = cluster.vessels.length - 5;
@@ -2360,7 +2470,9 @@ export class MapPopup {
         <button class="popup-close" aria-label="Close">×</button>
       </div>
       <div class="popup-body">
-        <div class="popup-subtitle">${activityLabels[activityType] || t('popups.militaryCluster.vesselActivity.unknown')}</div>
+        <div class="popup-subtitle">
+          ${dominantFlagEmoji ? `<span class="flag-icon">${dominantFlagEmoji}</span> ` : ''}${activityLabels[activityType] || t('popups.militaryCluster.vesselActivity.unknown')}
+        </div>
         <div class="popup-stats">
           <div class="popup-stat">
             <span class="stat-label">${t('popups.militaryCluster.vessels')}</span>
