@@ -297,6 +297,10 @@
           {
             "label": "X",
             "href": "https://x.com/worldmonitorai"
+          },
+          {
+            "label": "Status",
+            "href": "https://status.worldmonitor.app/"
           }
         ]
       }

@@ -326,8 +326,12 @@ export default async function handler(req) {
     checks[name] = entry;
   }
 
+  // On-demand keys that simply haven't been requested yet should not affect overall status.
+  const onDemandWarnCount = Object.values(checks).filter(c => c.status === 'EMPTY_ON_DEMAND').length;
+  const realWarnCount = warnCount - onDemandWarnCount;
+
   let overall;
-  if (critCount === 0 && warnCount === 0) overall = 'HEALTHY';
+  if (critCount === 0 && realWarnCount === 0) overall = 'HEALTHY';
   else if (critCount === 0) overall = 'WARNING';
   else if (critCount <= 3) overall = 'DEGRADED';
   else overall = 'UNHEALTHY';
