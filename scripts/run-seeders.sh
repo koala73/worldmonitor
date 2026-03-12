@@ -16,7 +16,16 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 # These keys are configured for the container but seeders run on the host.
 OVERRIDE="$PROJECT_DIR/docker-compose.override.yml"
 if [ -f "$OVERRIDE" ]; then
-  eval "$(grep -E '^\s+[A-Z_]+:' "$OVERRIDE" | grep -v '#' | sed 's/^\s*//' | sed 's/: */=/' | sed 's/"//g' | grep -E '^(NASA_FIRMS|GROQ|AISSTREAM|FRED|FINNHUB|EIA|ACLED|CLOUDFLARE|AVIATIONSTACK|OPENROUTER)' | while read -r line; do echo "export $line"; done)"
+  _env_tmp=$(mktemp)
+  grep -E '^\s+[A-Z_]+:' "$OVERRIDE" \
+    | grep -v '#' \
+    | sed 's/^\s*//' \
+    | sed 's/: */=/' \
+    | sed "s/[\"']//g" \
+    | grep -E '^(NASA_FIRMS|GROQ|AISSTREAM|FRED|FINNHUB|EIA|ACLED|CLOUDFLARE|AVIATIONSTACK|OPENROUTER)' \
+    | sed 's/^/export /' > "$_env_tmp"
+  . "$_env_tmp"
+  rm -f "$_env_tmp"
 fi
 ok=0 fail=0 skip=0
 

@@ -88,7 +88,7 @@ The seed scripts fetch upstream data and write it to Redis. They run **on the ho
 ./scripts/run-seeders.sh
 ```
 
-**⚠️ Important:** Redis data is ephemeral — it's lost when the Redis container is rebuilt. Re-run the seeders after any `docker compose down` / `docker compose up` cycle.
+**⚠️ Important:** Redis data persists across container restarts via the `redis-data` volume, but is lost on `docker compose down -v`. Re-run the seeders if you remove volumes or see stale data.
 
 To automate, add a cron job:
 
@@ -119,7 +119,7 @@ node scripts/seed-military-flights.mjs
 │ Static Files │      /api/* proxy            │
 │  (Vite SPA)  │         │                    │
 │              │    Node.js API (:46123)       │
-│              │    51 route handlers          │
+│              │    50+ route handlers         │
 │              │         │                     │
 │              │    Redis REST proxy (:8079)   │
 │              │         │                     │

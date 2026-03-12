@@ -1205,7 +1205,7 @@ export class GlobeMap {
       html = `<span style="font-weight:bold;">✈ ${esc(d.callsign)}</span><br><span style="opacity:.7;">${esc(d.type)}</span>`;
     } else if (d._kind === 'vessel') {
       const deployStatus = d.usniDeploymentStatus && d.usniDeploymentStatus !== 'unknown'
-        ? ` <span style="opacity:.6;font-size:10px;">[${d.usniDeploymentStatus.toUpperCase().replace('-', ' ')}]</span>`
+        ? ` <span style="opacity:.6;font-size:10px;">[${esc(d.usniDeploymentStatus.toUpperCase().replace('-', ' '))}]</span>`
         : '';
       const darkWarning = d.isDark
         ? `<br><span style="color:#ff4444;font-size:10px;font-weight:bold;">⚠ AIS DARK</span>`
