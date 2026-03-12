@@ -20,7 +20,7 @@ import { escapeHtml } from '@/utils/sanitize';
 import { isDesktopRuntime } from '@/services/runtime';
 import { t } from '@/services/i18n';
 import { trackFeatureToggle } from '@/services/analytics';
-import { SIGNUP_URLS, PLAINTEXT_KEYS, MASKED_SENTINEL } from '@/services/settings-constants';
+import { SIGNUP_URLS, PLAINTEXT_KEYS, MASKED_SENTINEL, SETTINGS_CATEGORIES } from '@/services/settings-constants';
 
 interface RuntimeConfigPanelOptions {
   mode?: 'full' | 'alert';
@@ -225,12 +225,26 @@ export class RuntimeConfigPanel extends Panel {
       return;
     }
 
+    const featureById = new Map(features.map(f => [f.id, f]));
+    const categorized = new Set<RuntimeFeatureId>();
+    const categorySections = SETTINGS_CATEGORIES.map(cat => {
+      const catFeatures = cat.features.map(id => featureById.get(id)).filter(Boolean) as RuntimeFeatureDefinition[];
+      catFeatures.forEach(f => categorized.add(f.id));
+      if (catFeatures.length === 0) return '';
+      return `
+        <div class="runtime-category-header">${escapeHtml(cat.label)}</div>
+        ${catFeatures.map(f => this.renderFeature(f)).join('')}
+      `;
+    }).join('');
+    const uncategorized = features.filter(f => !categorized.has(f.id));
+
     this.content.innerHTML = `
       <div class="runtime-config-summary">
         ${desktop ? t('modals.runtimeConfig.summary.desktop') : t('modals.runtimeConfig.summary.web')} · ${features.filter(f => isFeatureAvailable(f.id)).length}/${features.length} ${t('modals.runtimeConfig.summary.available')}
       </div>
       <div class="runtime-config-list">
-        ${features.map(feature => this.renderFeature(feature)).join('')}
+        ${categorySections}
+        ${uncategorized.length > 0 ? `<div class="runtime-category-header">Other</div>${uncategorized.map(f => this.renderFeature(f)).join('')}` : ''}
       </div>
     `;
 

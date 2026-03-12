@@ -15188,6 +15188,17 @@ body.has-breaking-alert .panels-grid {
   margin-bottom: 10px;
 }
 
+.runtime-category-header {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim, #888);
+  padding: 10px 2px 4px;
+  border-bottom: 1px solid var(--overlay-medium);
+  margin-bottom: 6px;
+}
+
 .runtime-alert {
   border: 1px solid var(--overlay-medium);
   border-radius: 8px;
