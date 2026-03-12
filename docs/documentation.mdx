@@ -1,81 +1,29 @@
 ---
-title: "World Monitor Documentation"
-description: "AI-powered real-time global intelligence dashboard aggregating news, markets, geopolitical data, and infrastructure monitoring into a unified situation awareness interface."
+title: "Introduction"
+description: "World Monitor is an open-source, real-time global intelligence dashboard that aggregates news, markets, military activity, infrastructure data, and AI-powered analysis into a single map interface."
 ---
 
-[Live Demo: worldmonitor.app](https://worldmonitor.app) | [Tech Variant: tech.worldmonitor.app](https://tech.worldmonitor.app) | [Finance Variant: finance.worldmonitor.app](https://finance.worldmonitor.app) | [Happy Variant: happy.worldmonitor.app](https://happy.worldmonitor.app)
+World Monitor brings together 344 curated news sources, 49 interactive map layers, and AI-powered analysis into a situational awareness platform. It runs five specialized variants from a single codebase, each tailored to a different domain: geopolitics, technology, finance, commodities, and positive global trends.
 
----
+The platform is designed for journalists, security analysts, researchers, and anyone who needs to understand what is happening in the world beyond traditional news headlines.
 
-## Browse the Documentation
+## What you can do
 
-### Getting Started
+- **Monitor global events in real time** on a 3D globe or flat map with 49 toggleable data layers covering military flights, naval vessels, satellites, earthquakes, wildfires, cyber threats, and more
+- **Read AI-generated intelligence briefs** that synthesize hundreds of headlines into actionable summaries, with source attribution and confidence scoring
+- **Track country stability** through the Country Instability Index (CII), which scores 24 countries in real time using conflict data, social unrest indicators, and news velocity
+- **Analyze financial signals** including market data, prediction markets, central bank rates, commodity prices, and Gulf economy indicators
+- **Run entirely in your browser** with optional offline AI capabilities via ONNX Runtime Web, keeping your data on your device
 
-| Document | Description |
-|----------|-------------|
-| [Getting Started](/getting-started) | Tech stack, installation, API dependencies, and project structure |
-| [Architecture](/architecture) | System design, caching, bootstrap hydration, edge functions, fault tolerance |
+## Quick links
 
-### Platform & Features
+- **New here?** Start with [Getting Started](/getting-started) for installation and setup
+- **Want to understand the system?** Read [Architecture](/architecture) for how the pieces fit together
+- **Looking for specific features?** See [Features & Interface](/features) for the full capability list
+- **Interested in the data?** Check [Data Sources](/data-sources) for all 31+ sources and collection methods
+- **Want to contribute?** Read [Contributing](/contributing) for code style, PR process, and license terms
+- **Building on the API?** Browse the [API Reference](/api/) for all 24 typed services
 
-| Document | Description |
-|----------|-------------|
-| [Platform Overview](/overview) | Platform variants (World Monitor, Tech Monitor), key capabilities |
-| [Features & Interface](/features) | Interactive map, data layers, panels, news aggregation, search, export |
-| [Hotspots & Navigation](/hotspots) | Dynamic hotspot detection, regional focus selector, map pinning |
+## License
 
-### Intelligence & Analysis
-
-| Document | Description |
-|----------|-------------|
-| [Signal Intelligence](/signal-intelligence) | 12 signal types, entity-aware correlation, source tiers, propaganda detection |
-| [AI Intelligence](/ai-intelligence) | LLM chains, RAG pipelines, browser-side ML, focal point detection |
-| [Country Instability Index](/country-instability-index) | Real-time stability scoring for 24 monitored countries |
-| [Geographic Convergence](/geographic-convergence) | Multi-event clustering and convergence scoring |
-| [Strategic Risk](/strategic-risk) | Composite risk scoring, PizzINT, related assets, server-side API |
-| [Algorithms](/algorithms) | Scoring formulas, detection algorithms, classification pipelines |
-
-### Map Layers
-
-| Document | Description |
-|----------|-------------|
-| [Map Engine](/map-engine) | 3D globe and flat map rendering, textures, shaders, clustering |
-| [Orbital Surveillance](/orbital-surveillance) | Satellite tracking, SGP4 propagation from CelesTrak TLE data |
-| [Military Tracking](/military-tracking) | Vessel/aircraft identification, surge detection, strategic posture |
-| [Maritime Intelligence](/maritime-intelligence) | Chokepoint monitoring, density analysis, dark ship detection |
-| [Natural Disasters](/natural-disasters) | GDACS alerts, NASA EONET events, multi-source deduplication |
-| [Infrastructure Cascade](/infrastructure-cascade) | Dependency graphs, cascade analysis, undersea cable monitoring |
-| [Maps & Geocoding](/maps-and-geocoding) | Country boundaries, geocoding service, basemap configuration |
-
-### Finance
-
-| Document | Description |
-|----------|-------------|
-| [Finance & Market Data](/finance-data) | Market radar, Gulf FDI, stablecoins, energy analytics |
-| [Premium Finance](/premium-finance) | Premium stock analysis, stored history, backtests, daily brief |
-| [Premium Finance Search](/premium-finance-search) | Targeted stock-news provider chain |
-
-### Desktop Application
-
-| Document | Description |
-|----------|-------------|
-| [Desktop App](/desktop-app) | Tauri architecture, sidecar, secret management, cloud fallback |
-
-### Developer Guide
-
-| Document | Description |
-|----------|-------------|
-| [Contributing](/contributing) | Code style, PR process, security guidelines, AGPL-3.0 license |
-| [Adding Endpoints](/adding-endpoints) | Sebuf proto workflow, OpenAPI generation |
-| [API Key Deployment](/api-key-deployment) | Desktop cloud fallback gating, registration |
-| [Release Packaging](/release-packaging) | Desktop build and release process |
-| [CORS](/cors) | Cross-origin request protection |
-| [Health Endpoints](/health-endpoints) | `/api/health` and `/api/seed-health` reference |
-| [Relay Parameters](/relay-parameters) | Railway and Vercel relay configuration |
-| [Data Sources](/data-sources) | All 31+ data sources, feed tiers, collection methods |
-
-### API Reference
-
-| Document | Description |
-|----------|-------------|
-| [API Reference](./api/) | OpenAPI specs for all 24 services |
+World Monitor is open source under [AGPL-3.0](/contributing#license). Free for personal, educational, and research use. Commercial use requires a [separate license](/contributing#commercial-use-requires-a-separate-license).
