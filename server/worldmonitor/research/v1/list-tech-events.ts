@@ -29,6 +29,74 @@ const REDIS_CACHE_TTL = 21600; // 6 hr — weekly event data
 
 const ICS_URL = 'https://www.techmeme.com/newsy_events.ics';
 const DEV_EVENTS_RSS = 'https://dev.events/rss.xml';
+const FETCH_TIMEOUT_MS = 8000;
+
+// ---------- Relay helpers (Railway proxy for blocked sources) ----------
+
+function getRelayBaseUrl(): string | null {
+  const relayUrl = process.env.WS_RELAY_URL;
+  if (!relayUrl) return null;
+  return relayUrl
+    .replace(/^ws(s?):\/\//, 'http$1://')
+    .replace(/\/$/, '');
+}
+
+function getRelayHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    'User-Agent': CHROME_UA,
+    Accept: 'application/rss+xml, application/xml, text/xml, text/calendar, */*',
+  };
+  const relaySecret = process.env.RELAY_SHARED_SECRET;
+  if (relaySecret) {
+    const relayHeader = (process.env.RELAY_AUTH_HEADER || 'x-relay-key').toLowerCase();
+    headers[relayHeader] = relaySecret;
+  }
+  return headers;
+}
+
+async function fetchTextWithRelay(url: string): Promise<string | null> {
+  // Try direct fetch first
+  try {
+    const resp = await fetch(url, {
+      headers: { 'User-Agent': CHROME_UA },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+    if (resp.ok) {
+      const text = await resp.text();
+      if (text.length > 100) return text;
+      console.warn(`[tech-events] Direct fetch ${url} returned short response (${text.length} chars)`);
+    } else {
+      console.warn(`[tech-events] Direct fetch ${url}: HTTP ${resp.status}`);
+    }
+  } catch (e) {
+    console.warn(`[tech-events] Direct fetch ${url} failed: ${(e as Error).message}`);
+  }
+
+  // Fallback: route through Railway relay (different IP, avoids Vercel edge blocks)
+  const relayBase = getRelayBaseUrl();
+  if (relayBase) {
+    try {
+      const relayUrl = `${relayBase}/rss?url=${encodeURIComponent(url)}`;
+      const resp = await fetch(relayUrl, {
+        headers: getRelayHeaders(),
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      });
+      if (resp.ok) {
+        const text = await resp.text();
+        if (text.length > 100) {
+          console.log(`[tech-events] Relay fetch ${url}: success (${text.length} chars)`);
+          return text;
+        }
+      } else {
+        console.warn(`[tech-events] Relay fetch ${url}: HTTP ${resp.status}`);
+      }
+    } catch (e) {
+      console.warn(`[tech-events] Relay fetch ${url} failed: ${(e as Error).message}`);
+    }
+  }
+
+  return null;
+}
 
 // Curated major tech events that may fall off limited RSS feeds
 const CURATED_EVENTS: TechEvent[] = [
@@ -247,43 +315,33 @@ async function fetchTechEvents(req: ListTechEventsRequest): Promise<ListTechEven
   const limit = clampInt(req.limit, 50, 1, 200);
   const days = clampInt(req.days, 90, 1, 365);
 
-  // Fetch both sources in parallel with timeouts
-  const [icsResponse, rssResponse] = await Promise.allSettled([
-    fetch(ICS_URL, {
-      headers: { 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(8000),
-    }),
-    fetch(DEV_EVENTS_RSS, {
-      headers: { 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(8000),
-    }),
+  // Fetch both sources in parallel (direct → relay fallback)
+  const [icsText, rssText] = await Promise.all([
+    fetchTextWithRelay(ICS_URL),
+    fetchTextWithRelay(DEV_EVENTS_RSS),
   ]);
 
   let events: TechEvent[] = [];
   let externalSourcesFailed = 0;
 
   // Parse Techmeme ICS
-  if (icsResponse.status === 'fulfilled' && icsResponse.value.ok) {
-    const icsText = await icsResponse.value.text();
+  if (icsText) {
     const parsed = parseICS(icsText);
     events.push(...parsed);
     console.log(`[tech-events] Techmeme ICS: ${parsed.length} events parsed`);
   } else {
     externalSourcesFailed++;
-    const reason = icsResponse.status === 'rejected' ? icsResponse.reason?.message : `HTTP ${(icsResponse as PromiseFulfilledResult<Response>).value?.status}`;
-    console.warn(`[tech-events] Techmeme ICS fetch failed: ${reason}`);
+    console.warn(`[tech-events] Techmeme ICS: no data (direct + relay both failed)`);
   }
 
   // Parse dev.events RSS
-  if (rssResponse.status === 'fulfilled' && rssResponse.value.ok) {
-    const rssText = await rssResponse.value.text();
+  if (rssText) {
     const devEvents = parseDevEventsRSS(rssText);
     events.push(...devEvents);
     console.log(`[tech-events] dev.events RSS: ${devEvents.length} events parsed`);
   } else {
     externalSourcesFailed++;
-    const reason = rssResponse.status === 'rejected' ? rssResponse.reason?.message : `HTTP ${(rssResponse as PromiseFulfilledResult<Response>).value?.status}`;
-    console.warn(`[tech-events] dev.events RSS fetch failed: ${reason}`);
+    console.warn(`[tech-events] dev.events RSS: no data (direct + relay both failed)`);
   }
 
   // Add curated events (major conferences that may fall off limited RSS feeds)
