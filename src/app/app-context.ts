@@ -61,6 +61,7 @@ export interface IntelligenceCache {
   iranEvents?: IranEvent[];
   orefAlerts?: { alertCount: number; historyCount24h: number };
   advisories?: SecurityAdvisory[];
+  imageryScenes?: Array<{ id: string; satellite: string; datetime: string; resolutionM: number; mode: string; geometryGeojson: string; previewUrl: string; assetUrl: string }>;
 }
 
 export interface AppModule {

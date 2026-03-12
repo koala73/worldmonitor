@@ -9,10 +9,11 @@ import { MONITORED_AIRPORTS } from '../../../../src/config/airports';
 import { cachedFetchJson } from '../../../_shared/redis';
 import {
     fetchAviationStackDelays,
-    fetchNotamClosures,
     determineSeverity,
+    severityFromCancelRate,
     parseStringArray,
     DEFAULT_WATCHED_AIRPORTS,
+    loadNotamClosures,
 } from './_shared';
 
 const CACHE_TTL = 300; // 5 minutes
@@ -41,16 +42,24 @@ export async function getAirportOpsSummary(
                     avResult = await fetchAviationStackDelays(airports);
                 } catch { /* graceful degradation */ }
 
-                // Fetch NOTAM closures
-                let notamResult = { closedIcaoCodes: new Set<string>(), notamsByIcao: new Map<string, string>() };
+                // Fetch NOTAM closures via shared loader
+                let notamClosedIcaos = new Set<string>();
+                let notamRestrictedIcaos = new Set<string>();
+                let notamReasons: Record<string, string> = {};
                 try {
-                    notamResult = await fetchNotamClosures(airports);
+                    const notamResult = await loadNotamClosures();
+                    if (notamResult) {
+                        notamClosedIcaos = new Set(notamResult.closedIcaos);
+                        notamRestrictedIcaos = new Set(notamResult.restrictedIcaos ?? []);
+                        notamReasons = notamResult.reasons;
+                    }
                 } catch { /* graceful degradation */ }
 
                 for (const airport of airports) {
                     const alert = avResult.alerts.find(a => a.iata === airport.iata);
-                    const isClosed = notamResult.closedIcaoCodes.has(airport.icao);
-                    const notamText = notamResult.notamsByIcao.get(airport.icao);
+                    const isClosed = notamClosedIcaos.has(airport.icao);
+                    const isRestricted = notamRestrictedIcaos.has(airport.icao);
+                    const notamText = notamReasons[airport.icao];
 
                     const delayPct = alert?.delayedFlightsPct ?? 0;
                     const avgDelay = alert?.avgDelayMinutes ?? 0;
@@ -58,16 +67,27 @@ export async function getAirportOpsSummary(
                     const totalFlights = alert?.totalFlights ?? 0;
                     const cancelRate = totalFlights > 0 ? (cancelledFlights / totalFlights) * 100 : 0;
 
-                    const sevStr = isClosed ? 'severe' : determineSeverity(avgDelay, delayPct);
+                    const cancelSev = severityFromCancelRate(cancelRate);
+                    const delaySev = determineSeverity(avgDelay, delayPct);
+                    const notamFloor = isClosed
+                        ? (totalFlights === 0 ? 'severe' : 'moderate')
+                        : isRestricted ? 'minor' : 'normal';
+                    const sevOrder = ['normal', 'minor', 'moderate', 'major', 'severe'];
+                    const sevStr = sevOrder[Math.max(
+                        sevOrder.indexOf(cancelSev),
+                        sevOrder.indexOf(delaySev),
+                        sevOrder.indexOf(notamFloor),
+                    )] ?? 'normal';
                     const severity = `FLIGHT_DELAY_SEVERITY_${sevStr.toUpperCase()}` as FlightDelaySeverity;
 
                     const notamFlags: string[] = [];
                     if (isClosed) notamFlags.push('CLOSED');
+                    if (isRestricted) notamFlags.push('RESTRICTED');
                     if (notamText) notamFlags.push('NOTAM');
 
                     const topDelayReasons: string[] = [];
                     if (alert?.reason) topDelayReasons.push(alert.reason);
-                    if (isClosed && notamText) topDelayReasons.push(notamText.slice(0, 80));
+                    if ((isClosed || isRestricted) && notamText) topDelayReasons.push(notamText.slice(0, 80));
 
                     summaries.push({
                         iata: airport.iata,

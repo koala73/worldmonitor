@@ -1,13 +1,15 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed, sleep } from './_seed-utils.mjs';
+import { loadEnvFile, loadSharedConfig, CHROME_UA, runSeed, sleep } from './_seed-utils.mjs';
+
+const stablecoinConfig = loadSharedConfig('stablecoins.json');
 
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'market:stablecoins:v1';
 const CACHE_TTL = 3600; // 1 hour
 
-const STABLECOIN_IDS = 'tether,usd-coin,dai,first-digital-usd,ethena-usde';
+const STABLECOIN_IDS = stablecoinConfig.ids.join(',');
 
 async function fetchWithRateLimitRetry(url, maxAttempts = 5, headers = { Accept: 'application/json', 'User-Agent': CHROME_UA }) {
   for (let i = 0; i < maxAttempts; i++) {
@@ -27,13 +29,7 @@ async function fetchWithRateLimitRetry(url, maxAttempts = 5, headers = { Accept:
   throw new Error('CoinGecko rate limit exceeded after retries');
 }
 
-const COINPAPRIKA_ID_MAP = {
-  tether: 'usdt-tether',
-  'usd-coin': 'usdc-usd-coin',
-  dai: 'dai-dai',
-  'first-digital-usd': 'fdusd-first-digital-usd',
-  'ethena-usde': 'usde-ethena-usde',
-};
+const COINPAPRIKA_ID_MAP = stablecoinConfig.coinpaprika;
 
 async function fetchFromCoinGecko() {
   const apiKey = process.env.COINGECKO_API_KEY;

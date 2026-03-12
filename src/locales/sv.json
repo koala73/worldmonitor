@@ -104,7 +104,68 @@
       "brief": "Skriv ett landsnamn för en underrättelserapport",
       "layers": "Skriv \"military\" eller \"finance\" för lagerförinställningar",
       "time": "Skriv \"1h\", \"24h\" eller \"7d\" för att filtrera efter tid",
-      "settings": "Skriv \"dark mode\", \"settings\" eller \"fullscreen\""
+      "settings": "Skriv \"dark mode\", \"settings\" eller \"fullscreen\"",
+      "mapExample": "iran",
+      "panelExample": "news",
+      "briefExample": "brief china",
+      "layersExample": "military layers",
+      "timeExample": "24h",
+      "settingsExample": "dark mode"
+    },
+    "keywords": {
+      "military": "militär",
+      "finance": "finans",
+      "infrastructure": "infrastruktur",
+      "intelligence": "underrättelse",
+      "news": "nyheter",
+      "dark": "mörk",
+      "light": "ljus",
+      "settings": "inställningar",
+      "fullscreen": "helskärm",
+      "refresh": "uppdatera"
+    },
+    "labels": {
+      "layers": {
+        "military": "Visa militära lager",
+        "finance": "Visa finanslager",
+        "infra": "Visa infrastrukturlager",
+        "intel": "Visa underrättelselager",
+        "all": "Aktivera alla lager",
+        "none": "Dölj alla lager",
+        "minimal": "Minimala lager (konflikter + hotspots)"
+      },
+      "layer": {
+        "ais": "Växla AIS-fartygsspårning",
+        "flights": "Växla militärflygningar",
+        "conflicts": "Växla konfliktzoner",
+        "hotspots": "Växla underrättelse-hotspots",
+        "protests": "Växla protester & oroligheter",
+        "cables": "Växla undervattenskablar",
+        "pipelines": "Växla pipelines",
+        "nuclear": "Växla kärnkraftsanläggningar",
+        "bases": "Växla militärbaser",
+        "fires": "Växla satellitbränder",
+        "weather": "Växla väderöverlagring",
+        "cyber": "Växla cyberhot",
+        "displacement": "Växla förflyttningsflöden",
+        "climate": "Växla klimatanomalier",
+        "outages": "Växla internetavbrott",
+        "tradeRoutes": "Växla handelsrutter"
+      },
+      "view": {
+        "dark": "Byt till mörkt läge",
+        "light": "Byt till ljust läge",
+        "fullscreen": "Växla helskärm",
+        "settings": "Öppna inställningar",
+        "refresh": "Uppdatera alla data"
+      },
+      "time": {
+        "1h": "Visa händelser från senaste timmen",
+        "6h": "Visa händelser från senaste 6 timmarna",
+        "24h": "Visa händelser från senaste 24 timmarna",
+        "48h": "Visa händelser från senaste 48 timmarna",
+        "7d": "Visa händelser från senaste 7 dagarna"
+      }
     }
   },
   "modals": {
@@ -142,7 +203,11 @@
       "placeholderTech": "Sök eller skriv ett kommando...",
       "hintTech": "Sök • Företag • AI-labb • Lager • Navigering • Inställningar",
       "placeholderFinance": "Sök eller skriv ett kommando...",
-      "hintFinance": "Sök • Börser • Marknader • Lager • Navigering • Inställningar"
+      "hintFinance": "Sök • Börser • Marknader • Lager • Navigering • Inställningar",
+      "commands": "Kommandon",
+      "results": "Resultat",
+      "seeAllCommands": "Visa alla kommandon",
+      "hideCommandList": "Tillbaka"
     },
     "signal": {
       "source": "Source",
@@ -241,6 +306,9 @@
     "countryIntel": {
       "identifying": "Identifierar land...",
       "locating": "Hittar region...",
+      "geocodeFailed": "Kunde inte identifiera ett land på denna plats",
+      "retryBtn": "Försök igen",
+      "closeBtn": "Stäng",
       "instabilityIndex": "Instabilitetsindex",
       "protests": "protester",
       "militaryAircraft": "mil. flygplan",
@@ -412,9 +480,12 @@
         "mideast": "MELLANÖSTERN",
         "europe": "EUROPA",
         "americas": "AMERIKA",
-        "asia": "ASIEN"
+        "asia": "ASIEN",
+        "space": "RYMDEN"
       },
-      "expand": "Expandera"
+      "expand": "Expandera",
+      "paused": "Webbkameror pausade",
+      "pausedIdle": "Webbkameror pausade — flytta musen för att återuppta"
     },
     "playback": {
       "live": "LIVE",
@@ -456,7 +527,13 @@
         "elevated": "Förhöjd",
         "monitoring": "Övervakning",
         "base": "Bas",
-        "nuclear": "Kärnteknisk"
+        "nuclear": "Kärnteknisk",
+        "aircraft": "Flygplan",
+        "ciiLow": "Låg (0–30)",
+        "ciiNormal": "Normal (31–50)",
+        "ciiElevated": "Förhöjd (51–65)",
+        "ciiHigh": "Hög (66–80)",
+        "ciiCritical": "Kritisk (81–100)"
       },
       "timeAll": "Alla",
       "layers": {
@@ -477,6 +554,7 @@
         "nuclearSites": "Nukleära platser",
         "gammaIrradiators": "Gammastrålare",
         "spaceports": "Rymdhamnar",
+        "satellites": "Orbital Övervakning",
         "pipelines": "Rörledningar",
         "militaryActivity": "Militär aktivitet",
         "shipTraffic": "Fartygstrafik",
@@ -497,10 +575,21 @@
         "tradeRoutes": "Handelsrutter",
         "gpsJamming": "GPS JAMMING",
         "dayNight": "Dag/Natt",
-        "iranAttacks": "Iran-attacker"
+        "iranAttacks": "Iran-attacker",
+        "ciiChoropleth": "CII-instabilitet",
+        "positiveEvents": "Positiva händelser",
+        "kindness": "Godhjärtade handlingar",
+        "happiness": "Världslycka",
+        "speciesRecovery": "Artåterhämtning",
+        "renewableInstallations": "Ren energi"
       },
       "layersTitle": "Lager",
+      "layerSearch": "Sök lager...",
       "layerGuide": "Lagerguide",
+      "layerWarningTitle": "Prestandameddelande",
+      "layerWarningBody": "Att aktivera fler än {{threshold}} lager kan påverka renderingsprestanda och bildfrekvens.",
+      "layerWarningDismiss": "Visa inte igen",
+      "layerWarningOk": "Uppfattat",
       "tooltip": {
         "earthquake": "Jordbävning",
         "militaryAircraft": "Militära flygplan",
@@ -604,7 +693,8 @@
           "techCyberThreats": "Cyberattacker och säkerhetshändelser",
           "techEvents": "Stora teknikkonferenser och evenemang",
           "techFires": "Aktiva skogsbränder nära teknikinfrastruktur",
-          "geoBoundaries": "Demilitariserade zoner, eldupphörslinjer och omtvistade gränser"
+          "geoBoundaries": "Demilitariserade zoner, eldupphörslinjer och omtvistade gränser",
+          "ciiChoropleth": "Country Instability Index värmekarta — färgar länder efter CII-poäng (grön=stabil, röd=kritisk)"
         },
         "notes": {
           "timeAffects": "Påverkar: Jordbävningar, väder, protester, avbrott"
@@ -629,13 +719,16 @@
       "summarize": "Sammanfatta denna panel",
       "generatingSummary": "Genererar sammanfattning...",
       "sources": "{{count}} källor",
-      "relatedAssetsNear": "Relaterade tillgångar nära {{location}}"
+      "relatedAssetsNear": "Relaterade tillgångar nära {{location}}",
+      "summaryError": "Kunde inte skapa sammanfattning",
+      "summaryFailed": "Sammanfattning misslyckades"
     },
     "countryBrief": {
       "shareStory": "Dela berättelse",
       "printPdf": "Skriv ut / PDF",
       "exportData": "Exportera data",
-      "sourceRef": "Källa [{{n}}]"
+      "sourceRef": "Källa [{{n}}]",
+      "shareLink": "Dela länk"
     },
     "relatedAssets": {
       "pipeline": "Rörledning",
@@ -647,7 +740,8 @@
     "community": {
       "joinDiscussion": "Gå med i diskussionen",
       "openDiscussion": "Öppna diskussion",
-      "dontShowAgain": "Visa inte igen"
+      "dontShowAgain": "Visa inte igen",
+      "sectionLabel": "Gemenskap"
     },
     "threatLabels": {
       "critical": "KRIT",
@@ -1097,7 +1191,16 @@
       "headlineMemoryLabel": "Rubrikminne",
       "headlineMemoryDesc": "Kom ihåg sedda rubriker för att markera nya",
       "streamAlwaysOnLabel": "Håll liveströmmar igång",
-      "streamAlwaysOnDesc": "Förhindrar att Live Cams och Live News pausas automatiskt när du är inaktiv. Rekommenderas för andra skärmen / wallboard-användning. Stäng av (Eco) för att spara CPU/bandbredd."
+      "streamAlwaysOnDesc": "Förhindrar att Live Cams och Live News pausas automatiskt när du är inaktiv. Rekommenderas för andra skärmen / wallboard-användning. Stäng av (Eco) för att spara CPU/bandbredd.",
+      "globeRenderQualityLabel": "Globens renderkvalitet",
+      "globeRenderQualityDesc": "Styr globens canvasupplösning. Högre värden ser skarpare ut på 4K-skärmar men kan överbelasta GPUs.",
+      "globeRenderScaleOptions": {
+        "1": "Eco (1x)",
+        "2": "4K (2x)",
+        "3": "Extrem (3x)",
+        "auto": "Auto (enhet)",
+        "1_5": "Skarp (1.5x)"
+      }
     },
     "techHubs": {
       "infoTooltip": "<strong>Teknisk hubbaktivitet</strong><br>Visar tekniska nav med mest nyhetsaktivitet.<br><br><em>Aktivitetsnivåer:</em><br>• <span style=\"color: {{highColor}}\">Hög</span> — Nyheter från 50+ PH_• 50+ stil: {{elevatedColor}}\">Höjd</span> — Poäng 20-49<br>• <span style=\"color: {{lowColor}}\">Låg</span> — Poäng under 20<br><br>Klicka på ett nav för att zooma till dess plats.",
@@ -1200,7 +1303,8 @@
       "openSettings": "Open Settings"
     },
     "languageSelector": {
-      "selectLanguage": "Select Language"
+      "selectLanguage": "Select Language",
+      "mapLabelsFallbackVi": "Kartetiketter faller för närvarande tillbaka på engelska för vietnamesiska."
     },
     "serviceStatus": {
       "checkingServices": "Checking services...",
@@ -1278,7 +1382,10 @@
       "channelNotFound": "YouTube-kanal hittades inte",
       "invalidHandle": "Ange ett giltigt YouTube-handtag (t.ex. @Kanalnamn)",
       "signInToYouTube": "Logga in på YouTube",
-      "verifying": "Verifierar…"
+      "verifying": "Verifierar…",
+      "noResults": "Inga kanaler hittades för \"{{term}}\"",
+      "hlsUrl": "HLS-ström-URL (valfritt)",
+      "invalidHlsUrl": "Ange en giltig HLS-ström-URL (.m3u8)"
     },
     "securityAdvisories": {
       "loading": "Hämtar resevarningar...",
@@ -1363,7 +1470,32 @@
       "spikeAlert": "Topp upptäckt — priset betydligt över 52-veckorsgenomsnittet (veckovis)",
       "topProducers": "Största producenter",
       "upstreamUnavailable": "Försörjningskedjedata tillfälligt otillgänglig — visar cachad data",
-      "warnings": "varning(ar)"
+      "warnings": "varning(ar)",
+      "aisDisruptions": "AIS-störning(ar)"
+    },
+    "positiveNewsFeed": {
+      "noStories": "Inga berättelser i denna kategori ännu"
+    },
+    "goodThingsDigest": {
+      "noStories": "Inga berättelser tillgängliga",
+      "summarizing": "Sammanfattar…"
+    },
+    "progressCharts": {
+      "noData": "Inga framstegsdata tillgängliga"
+    },
+    "settings": {
+      "dataManagementLabel": "Datahantering",
+      "exportSettings": "Exportera inställningar",
+      "importSettings": "Importera inställningar",
+      "exportSuccess": "Inställningar exporterade",
+      "exportFailed": "Kunde inte exportera inställningar",
+      "importSuccess": "{{count}} inställningar importerade",
+      "importFailed": "Kunde inte importera inställningar",
+      "reloadNow": "Ladda om nu"
+    },
+    "map": {
+      "showMap": "Visa karta",
+      "hideMap": "Dölj karta"
     }
   },
   "popups": {
@@ -1418,9 +1550,9 @@
     },
     "gpsJamming": {
       "title": "GPS/GNSS-störning",
-      "interference": "Störning",
-      "aircraftAffected": "Drabbade flygplan",
-      "aircraftNormal": "Normala flygplan",
+      "navPerformance": "Nav Performance",
+      "samples": "ADS-B Samples",
+      "aircraft": "Aircraft",
       "h3Hex": "H3 Hex"
     },
     "flight": {
@@ -1436,7 +1568,9 @@
       "sources": {
         "faa": "FAA ASWS",
         "eurocontrol": "Eurocontrol",
-        "computed": "Beräknad"
+        "computed": "Beräknad",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "Amerika",
@@ -1834,6 +1968,14 @@
     },
     "iranEvent": {
       "relatedEvents": "Relaterade händelser"
+    },
+    "aircraft": {
+      "altitude": "Höjd",
+      "speed": "Markhastighet",
+      "heading": "Kurs",
+      "position": "Position",
+      "ground": "På marken",
+      "airborne": "I luften"
     }
   },
   "signals": {
@@ -2034,6 +2176,7 @@
     "toggleTheme": "Växla mellan mörkt/ljusläge",
     "panelDisplayCaption": "Välj vilka paneler som ska visas på instrumentpanelen",
     "tabGeneral": "Allmänt",
+    "tabSettings": "Inställningar",
     "tabPanels": "Paneler",
     "tabSources": "Källor",
     "languageLabel": "Språk",
@@ -2065,6 +2208,8 @@
     "sourceRegionGulfMena": "Gulfen & MENA",
     "filterPanels": "Filtrera paneler...",
     "resetLayout": "Återställ layout",
+    "resetLayoutTooltip": "Återställ standardpanelordning",
+    "unsavedChanges": "Du har osparade paneländringar. Kassera dem?",
     "panelCatCore": "Kärna",
     "panelCatIntelligence": "Underrättelser",
     "panelCatRegionalNews": "Regionala Nyheter",
@@ -2081,7 +2226,9 @@
     "panelCatCentralBanks": "Centralbanker & Ekonomi",
     "panelCatDeals": "Affärer & Institutionellt",
     "panelCatGulfMena": "Gulfen & MENA",
-    "panelCatTradePolicy": "Handelspolitik"
+    "panelCatTradePolicy": "Handelspolitik",
+    "downloadApp": "Ladda ner appen",
+    "selectRegion": "Välj region"
   },
   "app": {
     "title": "World Monitor",
@@ -2161,6 +2308,81 @@
       "stockIndex": "Aktieindex: {{value}}",
       "recentHeadlines": "**Senaste rubriker:**",
       "activeStrikes": "{{count}} aktiva strejker upptäckta"
+    },
+    "militaryActivity": "Militär aktivitet",
+    "economicIndicators": "Ekonomiska indikatorer",
+    "ownFlights": "Egna flygningar",
+    "foreignFlights": "Utländska flygningar",
+    "navalVessels": "Marinfartyg",
+    "foreignPresence": "Utländsk närvaro",
+    "nearestBases": "Närmaste militärbaser",
+    "noBasesNearby": "Inga baser inom 600 km.",
+    "noInfrastructure": "Ingen kritisk infrastruktur hittades inom 600 km.",
+    "noGeometry": "Inga geometridata tillgängliga för infrastrukturkorrelation.",
+    "noSignals": "Inga aktuella signaler med hög allvarlighetsgrad.",
+    "assessmentUnavailable": "Bedömning ej tillgänglig.",
+    "noNews": "Inga aktuella landsspecifika rapporter.",
+    "noIndicators": "Inga landsspecifika indikatorer tillgängliga.",
+    "nearbyPorts": "Närliggande hamnar",
+    "detected": "Upptäckt",
+    "notDetected": "Nej",
+    "ciiUnavailable": "CII-poäng ej tillgängligt för detta land.",
+    "chips": {
+      "criticalNews": "Kritiska nyheter",
+      "protests": "Protester",
+      "militaryAir": "Militär luftfart",
+      "navalVessels": "Marinfartyg",
+      "outages": "Avbrott",
+      "aisDisruptions": "AIS-störningar",
+      "satelliteFires": "Satellitbränder",
+      "temporalAnomalies": "Tidsmässiga anomalier",
+      "cyberThreats": "Cyberhot",
+      "earthquakes": "Jordbävningar",
+      "displaced": "Fördrivna",
+      "climateStress": "Klimatstress",
+      "conflictEvents": "Konflikthändelser",
+      "activeStrikes": "Aktiva angrepp",
+      "doNotTravel": "Res inte",
+      "reconsiderTravel": "Ompröva resa",
+      "exerciseCaution": "Iaktta försiktighet",
+      "advisory": "Reseråd",
+      "activeSirens": "Aktiva sirener",
+      "sirens24h": "Sirener / 24h",
+      "aviationDisruptions": "Flygstörningar",
+      "gpsJammingZones": "GPS-störningszoner"
+    },
+    "countryFacts": "Fakta om landet",
+    "loadingFacts": "Laddar fakta om landet...",
+    "noFacts": "Fakta om landet ej tillgängliga.",
+    "facts": {
+      "headOfState": "Statschef",
+      "population": "Befolkning",
+      "capital": "Huvudstad",
+      "languages": "Språk",
+      "currencies": "Valutor",
+      "area": "Yta"
     }
+  },
+  "preferences": {
+    "display": "Visning",
+    "intelligence": "Intelligens",
+    "media": "Media",
+    "panels": "Paneler",
+    "dataAndCommunity": "Data & Gemenskap",
+    "theme": "Tema",
+    "themeDesc": "Automatiskt följer systeminställningar.",
+    "themeAuto": "Automatisk (följ systemet)",
+    "themeDark": "Mörk",
+    "themeLight": "Ljus",
+    "mapProvider": "Kartpanel-leverantör",
+    "mapProviderDesc": "Välj varifrån kartpaneler laddas.",
+    "mapTheme": "Karttema",
+    "mapThemeDesc": "Visuell stil för kartpaneler.",
+    "globePreset": "Visuell förinställning",
+    "globePresetDesc": "Växla mellan klassiska och förbättrade globvisualer."
+  },
+  "contextMenu": {
+    "openCountryBrief": "Öppna landsöversikt",
+    "copyCoordinates": "Kopiera koordinater"
   }
 }

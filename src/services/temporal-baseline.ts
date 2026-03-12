@@ -1,8 +1,6 @@
-// Temporal Anomaly Detection Service
-// Detects when current activity levels deviate from historical baselines
-// Backed by InfrastructureService RPCs (GetTemporalBaseline, RecordBaselineSnapshot)
-
-import { InfrastructureServiceClient } from '@/generated/client/worldmonitor/infrastructure/v1/service_client';
+import { InfrastructureServiceClient, type TemporalAnomalyProto } from '@/generated/client/worldmonitor/infrastructure/v1/service_client';
+import { getRpcBaseUrl } from '@/services/rpc-client';
+import { getHydratedData } from '@/services/bootstrap';
 
 export type TemporalEventType =
   | 'military_flights'
@@ -22,7 +20,7 @@ export interface TemporalAnomaly {
   severity: 'medium' | 'high' | 'critical';
 }
 
-const client = new InfrastructureServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+const client = new InfrastructureServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 
 const TYPE_LABELS: Record<TemporalEventType, string> = {
   military_flights: 'Military flights',
@@ -36,6 +34,8 @@ const TYPE_LABELS: Record<TemporalEventType, string> = {
 const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const MONTH_NAMES = ['', 'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December'];
+
+const SERVER_TYPES = new Set<TemporalEventType>(['news', 'satellite_fires']);
 
 function formatAnomalyMessage(
   type: TemporalEventType,
@@ -57,8 +57,47 @@ function getSeverity(zScore: number): 'medium' | 'high' | 'critical' {
   return 'medium';
 }
 
-// Fire-and-forget baseline update
-export async function reportMetrics(
+function mapServerAnomaly(a: TemporalAnomalyProto): TemporalAnomaly {
+  return {
+    type: a.type as TemporalEventType,
+    region: a.region,
+    currentCount: a.currentCount,
+    expectedCount: a.expectedCount,
+    zScore: a.zScore,
+    severity: getSeverity(a.zScore),
+    message: a.message,
+  };
+}
+
+export function consumeServerAnomalies(): { anomalies: TemporalAnomaly[]; trackedTypes: string[] } {
+  const raw = getHydratedData('temporalAnomalies') as {
+    anomalies?: TemporalAnomalyProto[];
+    trackedTypes?: string[];
+    computedAt?: string;
+  } | undefined;
+
+  if (!raw?.anomalies) return { anomalies: [], trackedTypes: [] };
+  return {
+    anomalies: raw.anomalies.map(mapServerAnomaly),
+    trackedTypes: raw.trackedTypes ?? [],
+  };
+}
+
+export async function fetchLiveAnomalies(): Promise<{ anomalies: TemporalAnomaly[]; trackedTypes: string[] }> {
+  try {
+    const resp = await client.listTemporalAnomalies({});
+    return {
+      anomalies: (resp.anomalies ?? []).map(mapServerAnomaly),
+      trackedTypes: resp.trackedTypes ?? [],
+    };
+  } catch (e) {
+    console.warn('[TemporalBaseline] Live fetch failed:', e);
+    return { anomalies: [], trackedTypes: [] };
+  }
+}
+
+// Client-side baseline for types NOT handled server-side (military_flights, vessels, ais_gaps)
+async function reportMetrics(
   updates: Array<{ type: TemporalEventType; region: string; count: number }>
 ): Promise<void> {
   try {
@@ -68,8 +107,7 @@ export async function reportMetrics(
   }
 }
 
-// Check for anomaly (returns null if learning or normal)
-export async function checkAnomaly(
+async function checkAnomaly(
   type: TemporalEventType,
   region: string,
   count: number,
@@ -93,16 +131,16 @@ export async function checkAnomaly(
   }
 }
 
-// Batch: report metrics AND check for anomalies in one flow
 export async function updateAndCheck(
   metrics: Array<{ type: TemporalEventType; region: string; count: number }>
 ): Promise<TemporalAnomaly[]> {
-  // Fire-and-forget the update
-  reportMetrics(metrics).catch(() => {});
+  const clientOnly = metrics.filter(m => !SERVER_TYPES.has(m.type));
+  if (clientOnly.length === 0) return [];
 
-  // Check anomalies in parallel
+  reportMetrics(clientOnly).catch(() => {});
+
   const results = await Promise.allSettled(
-    metrics.map(m => checkAnomaly(m.type, m.region, m.count))
+    clientOnly.map(m => checkAnomaly(m.type, m.region, m.count))
   );
 
   return results

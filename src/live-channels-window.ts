@@ -13,7 +13,7 @@ import {
 } from '@/components/LiveNewsPanel';
 import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
-import { isDesktopRuntime, getRemoteApiBaseUrl } from '@/services/runtime';
+import { toApiUrl } from '@/services/runtime';
 import { resolveUserCountryCode } from '@/utils/user-location';
 
 /** Builds a stable custom channel id from a YouTube handle (e.g. @Foo -> custom-foo). */
@@ -71,7 +71,7 @@ function isHlsUrl(raw: string): boolean {
 }
 
 // Persist active region tab across re-renders
-let activeRegionTab = 'all';
+let activeRegionTab = 'na';
 
 function channelInitials(name: string): string {
   return name.split(/[\s-]+/).map((w) => w[0] ?? '').join('').slice(0, 2).toUpperCase();
@@ -315,6 +315,26 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
     const currentIds = new Set(channels.map((c) => c.id));
     const term = searchQuery.toLowerCase().trim();
 
+    // Auto-switch to the first tab with matches when searching
+    if (term) {
+      const activeHasMatch = filteredRegions.some(r => {
+        if (r.key !== activeRegionTab) return false;
+        return r.channelIds.some(id => {
+          const ch = optionalChannelMap.get(id);
+          return ch && (ch.name.toLowerCase().includes(term) || ch.handle?.toLowerCase().includes(term));
+        });
+      });
+      if (!activeHasMatch) {
+        const firstMatch = filteredRegions.find(r =>
+          r.channelIds.some(id => {
+            const ch = optionalChannelMap.get(id);
+            return ch && (ch.name.toLowerCase().includes(term) || ch.handle?.toLowerCase().includes(term));
+          }),
+        );
+        if (firstMatch) activeRegionTab = firstMatch.key;
+      }
+    }
+
     // Render tab buttons
     tabBar.innerHTML = '';
     for (const region of filteredRegions) {
@@ -330,7 +350,7 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
 
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'live-news-manage-tab-btn' + (region.key === activeRegionTab ? ' active' : '');
+      btn.className = 'panel-tab' + (region.key === activeRegionTab ? ' active' : '');
       const label = t(region.labelKey) ?? region.key.toUpperCase();
       btn.textContent = term
         ? `${label} (${matchingChannels.length})`
@@ -442,7 +462,7 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
               <input type="text" id="liveChannelsSearch" class="live-news-manage-search-input" placeholder="${escapeHtml(t('header.search') ?? 'Search')}..." autocomplete="off" />
             </div>
           </div>
-          <div class="live-news-manage-tab-bar" id="liveChannelsTabBar"></div>
+          <div class="panel-tabs" id="liveChannelsTabBar"></div>
           <div class="live-news-manage-tab-contents" id="liveChannelsTabContents"></div>
         </div>
         <div class="live-news-manage-add-section">
@@ -545,8 +565,7 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
       let resolvedName = nameInput?.value?.trim() || '';
       if (!resolvedName) {
         try {
-          const baseUrl = isDesktopRuntime() ? getRemoteApiBaseUrl() : '';
-          const res = await fetch(`${baseUrl}/api/youtube/live?videoId=${encodeURIComponent(videoId)}`);
+          const res = await fetch(toApiUrl(`/api/youtube/live?videoId=${encodeURIComponent(videoId)}`));
           if (res.ok) {
             const data = await res.json();
             resolvedName = data.channelName || data.title || '';
@@ -594,8 +613,7 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
 
     let resolvedName = '';
     try {
-      const baseUrl = isDesktopRuntime() ? getRemoteApiBaseUrl() : '';
-      const res = await fetch(`${baseUrl}/api/youtube/live?channel=${encodeURIComponent(handle)}`);
+      const res = await fetch(toApiUrl(`/api/youtube/live?channel=${encodeURIComponent(handle)}`));
       if (res.ok) {
         const data = await res.json();
         resolvedName = data.channelName || '';

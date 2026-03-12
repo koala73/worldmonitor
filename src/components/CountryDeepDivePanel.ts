@@ -8,6 +8,7 @@ import type { PredictionMarket } from '@/services/prediction';
 import type { AssetType, NewsItem, RelatedAsset } from '@/types';
 import { sanitizeUrl, escapeHtml } from '@/utils/sanitize';
 import { getCSSColor } from '@/utils';
+import { toFlagEmoji } from '@/utils/country-flag';
 import { PORTS } from '@/config/ports';
 import { haversineDistanceKm } from '@/services/related-assets';
 import type {
@@ -18,6 +19,7 @@ import type {
   CountryDeepDiveSignalItem,
   CountryDeepDiveMilitarySummary,
   CountryDeepDiveEconomicIndicator,
+  CountryFactsData,
 } from './CountryBriefPanel';
 import type { MapContainer } from './MapContainer';
 
@@ -72,6 +74,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private briefBody: HTMLElement | null = null;
   private timelineBody: HTMLElement | null = null;
   private scoreCard: HTMLElement | null = null;
+  private factsBody: HTMLElement | null = null;
 
   private readonly handleGlobalKeydown = (event: KeyboardEvent): void => {
     if (!this.panel.classList.contains('active')) return;
@@ -146,6 +149,32 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.currentName = null;
     this.renderLoading();
     this.open();
+  }
+
+  public showGeoError(onRetry: () => void): void {
+    this.currentCode = '__error__';
+    this.currentName = null;
+    this.content.replaceChildren();
+
+    const wrapper = this.el('div', 'cdp-geo-error');
+    wrapper.append(
+      this.el('div', 'cdp-geo-error-icon', '\u26A0\uFE0F'),
+      this.el('div', 'cdp-geo-error-msg', t('countryBrief.geocodeFailed')),
+    );
+
+    const actions = this.el('div', 'cdp-geo-error-actions');
+
+    const retryBtn = this.el('button', 'cdp-geo-error-retry', t('countryBrief.retryBtn')) as HTMLButtonElement;
+    retryBtn.type = 'button';
+    retryBtn.addEventListener('click', () => onRetry(), { once: true });
+
+    const closeBtn = this.el('button', 'cdp-geo-error-close', t('countryBrief.closeBtn')) as HTMLButtonElement;
+    closeBtn.type = 'button';
+    closeBtn.addEventListener('click', () => this.hide(), { once: true });
+
+    actions.append(retryBtn, closeBtn);
+    wrapper.append(actions);
+    this.content.append(wrapper);
   }
 
   public show(country: string, code: string, score: CountryScore | null, signals: CountryBriefSignals): void {
@@ -234,7 +263,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         if (sb !== sa) return sb - sa;
         return this.toTimestamp(b.pubDate) - this.toTimestamp(a.pubDate);
       })
-      .slice(0, 15);
+      .slice(0, 10);
 
     this.currentHeadlineCount = items.length;
 
@@ -404,6 +433,57 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.renderEconomicIndicators();
   }
 
+  public updateCountryFacts(data: CountryFactsData): void {
+    if (!this.factsBody) return;
+    this.factsBody.replaceChildren();
+
+    if (!data.headOfState && !data.wikipediaSummary && data.population === 0 && !data.capital) {
+      this.factsBody.append(this.makeEmpty(t('countryBrief.noFacts')));
+      return;
+    }
+
+    if (data.wikipediaThumbnailUrl) {
+      const img = this.el('img', 'cdp-facts-thumbnail');
+      img.loading = 'lazy';
+      img.referrerPolicy = 'no-referrer';
+      img.src = sanitizeUrl(data.wikipediaThumbnailUrl);
+      this.factsBody.append(img);
+    }
+
+    if (data.wikipediaSummary) {
+      const summaryText = data.wikipediaSummary.length > 300
+        ? data.wikipediaSummary.slice(0, 300) + '...'
+        : data.wikipediaSummary;
+      this.factsBody.append(this.el('p', 'cdp-facts-summary', summaryText));
+    }
+
+    const grid = this.el('div', 'cdp-facts-grid');
+
+    const popStr = data.population >= 1_000_000_000
+      ? `${(data.population / 1_000_000_000).toFixed(1)}B`
+      : data.population >= 1_000_000
+        ? `${(data.population / 1_000_000).toFixed(1)}M`
+        : data.population.toLocaleString();
+    grid.append(this.factItem(t('countryBrief.facts.population'), popStr));
+    grid.append(this.factItem(t('countryBrief.facts.capital'), data.capital));
+    grid.append(this.factItem(t('countryBrief.facts.area'), `${data.areaSqKm.toLocaleString()} km\u00B2`));
+
+    const rawTitle = data.headOfStateTitle || '';
+    const hosLabel = rawTitle.length > 30 ? t('countryBrief.facts.headOfState') : (rawTitle || t('countryBrief.facts.headOfState'));
+    grid.append(this.factItem(hosLabel, data.headOfState));
+    grid.append(this.factItem(t('countryBrief.facts.languages'), data.languages.join(', ')));
+    grid.append(this.factItem(t('countryBrief.facts.currencies'), data.currencies.join(', ')));
+
+    this.factsBody.append(grid);
+  }
+
+  private factItem(label: string, value: string): HTMLElement {
+    const wrapper = this.el('div', 'cdp-fact-item');
+    wrapper.append(this.el('div', 'cdp-fact-label', label));
+    wrapper.append(this.el('div', '', value));
+    return wrapper;
+  }
+
   public updateScore(score: CountryScore | null, _signals: CountryBriefSignals): void {
     if (!this.scoreCard) return;
     // Partial DOM update: score number, level color, trend, component bars only
@@ -506,8 +586,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       return;
     }
 
-    const summary = this.summarizeBrief(data.brief);
-    const text = this.el('p', 'cdp-assessment-text', summary);
+    const summaryHtml = this.formatBrief(this.summarizeBrief(data.brief), 0);
+    const text = this.el('div', 'cdp-assessment-text cdp-summary-only');
+    text.innerHTML = summaryHtml;
 
     const metaTokens: string[] = [];
     if (data.cached) metaTokens.push('Cached');
@@ -621,6 +702,12 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const [marketsCard, marketsBody] = this.sectionCard(t('countryBrief.predictionMarkets'));
     const [briefCard, briefBody] = this.sectionCard(t('countryBrief.intelBrief'));
 
+    const [factsCard, factsBody] = this.sectionCard(t('countryBrief.countryFacts'));
+    this.factsBody = factsBody;
+    factsBody.append(this.makeLoading(t('countryBrief.loadingFacts')));
+    const factsExpanded = this.el('div', 'cdp-expanded-only');
+    factsExpanded.append(factsCard);
+
     this.signalsBody = signalBody;
     this.timelineBody = timelineBody;
     this.timelineBody.classList.add('cdp-timeline-mount');
@@ -639,7 +726,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     marketsBody.append(this.makeLoading(t('countryBrief.loadingMarkets')));
     briefBody.append(this.makeLoading(t('countryBrief.generatingBrief')));
 
-    bodyGrid.append(signalsCard, timelineCard, newsCard, militaryCard, infraCard, economicCard, marketsCard, briefCard);
+    bodyGrid.append(briefCard, factsExpanded, signalsCard, timelineCard, newsCard, militaryCard, infraCard, economicCard, marketsCard);
     shell.append(header, scoreCard, bodyGrid);
     this.content.append(shell);
   }
@@ -905,7 +992,12 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   }
 
   private summarizeBrief(brief: string): string {
-    const normalized = brief.replace(/\s+/g, ' ').trim();
+    const stripped = brief.replace(/\*\*(.*?)\*\*/g, '$1');
+    const lines = stripped.split('\n').map((l) => l.trim()).filter((l) => l.length > 0);
+    if (lines.length >= 3) {
+      return lines.slice(0, 3).join('\n');
+    }
+    const normalized = stripped.replace(/\s+/g, ' ').trim();
     const sentences = normalized.split(/(?<=[.!?])\s+/).filter((part) => part.length > 0);
     return sentences.slice(0, 3).join(' ') || normalized;
   }
@@ -977,11 +1069,6 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   }
 
   public static toFlagEmoji(code: string): string {
-    const upperCode = code.toUpperCase();
-    if (!/^[A-Z]{2}$/.test(upperCode)) return '🌍';
-    return upperCode
-      .split('')
-      .map((char) => String.fromCodePoint(0x1f1e6 + char.charCodeAt(0) - 65))
-      .join('');
+    return toFlagEmoji(code, '🌍');
   }
 }

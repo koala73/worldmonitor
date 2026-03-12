@@ -39,6 +39,7 @@ export class VirtualList {
   private visibleEnd = 0;
   private scrollRAF: number | null = null;
   private isDestroyed = false;
+  private resizeObserver: ResizeObserver | null = null;
 
   constructor(options: VirtualListOptions) {
     this.container = options.container;
@@ -70,12 +71,12 @@ export class VirtualList {
 
     // Handle resize
     if (typeof ResizeObserver !== 'undefined') {
-      const resizeObserver = new ResizeObserver(() => {
+      this.resizeObserver = new ResizeObserver(() => {
         if (!this.isDestroyed) {
           this.updateVisibleRange();
         }
       });
-      resizeObserver.observe(this.viewport);
+      this.resizeObserver.observe(this.viewport);
     }
   }
 
@@ -123,6 +124,10 @@ export class VirtualList {
       cancelAnimationFrame(this.scrollRAF);
     }
     this.viewport.removeEventListener('scroll', this.handleScroll);
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+      this.resizeObserver = null;
+    }
     this.itemPool = [];
     this.container.innerHTML = '';
   }

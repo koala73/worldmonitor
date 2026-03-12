@@ -1,0 +1,18 @@
+{
+  "symbols": [
+    { "symbol": "^TASI.SR", "name": "Tadawul All Share", "country": "Saudi Arabia", "flag": "\ud83c\uddf8\ud83c\udde6", "type": "index" },
+    { "symbol": "DFMGI.AE", "name": "Dubai Financial Market", "country": "UAE", "flag": "\ud83c\udde6\ud83c\uddea", "type": "index" },
+    { "symbol": "UAE", "name": "Abu Dhabi (iShares)", "country": "UAE", "flag": "\ud83c\udde6\ud83c\uddea", "type": "index" },
+    { "symbol": "QAT", "name": "Qatar (iShares)", "country": "Qatar", "flag": "\ud83c\uddf6\ud83c\udde6", "type": "index" },
+    { "symbol": "GULF", "name": "Gulf Dividend (WisdomTree)", "country": "Kuwait", "flag": "\ud83c\uddf0\ud83c\uddfc", "type": "index" },
+    { "symbol": "^MSM", "name": "Muscat MSM 30", "country": "Oman", "flag": "\ud83c\uddf4\ud83c\uddf2", "type": "index" },
+    { "symbol": "SARUSD=X", "name": "Saudi Riyal", "country": "Saudi Arabia", "flag": "\ud83c\uddf8\ud83c\udde6", "type": "currency" },
+    { "symbol": "AEDUSD=X", "name": "UAE Dirham", "country": "UAE", "flag": "\ud83c\udde6\ud83c\uddea", "type": "currency" },
+    { "symbol": "QARUSD=X", "name": "Qatari Riyal", "country": "Qatar", "flag": "\ud83c\uddf6\ud83c\udde6", "type": "currency" },
+    { "symbol": "KWDUSD=X", "name": "Kuwaiti Dinar", "country": "Kuwait", "flag": "\ud83c\uddf0\ud83c\uddfc", "type": "currency" },
+    { "symbol": "BHDUSD=X", "name": "Bahraini Dinar", "country": "Bahrain", "flag": "\ud83c\udde7\ud83c\udded", "type": "currency" },
+    { "symbol": "OMRUSD=X", "name": "Omani Rial", "country": "Oman", "flag": "\ud83c\uddf4\ud83c\uddf2", "type": "currency" },
+    { "symbol": "CL=F", "name": "WTI Crude", "country": "", "flag": "\ud83d\udee2\ufe0f", "type": "oil" },
+    { "symbol": "BZ=F", "name": "Brent Crude", "country": "", "flag": "\ud83d\udee2\ufe0f", "type": "oil" }
+  ]
+}

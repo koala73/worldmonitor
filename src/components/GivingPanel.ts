@@ -23,7 +23,7 @@ export class GivingPanel extends Panel {
 
   public setData(data: GivingSummary): void {
     this.data = data;
-    this.setCount(data.platforms.length);
+    this.setCount(data.platforms?.length ?? 0);
     this.renderContent();
   }
 
@@ -64,8 +64,8 @@ export class GivingPanel extends Panel {
       institutional: t('components.giving.tabs.institutional'),
     };
     const tabsHtml = `
-      <div class="giving-tabs">
-        ${tabs.map(tab => `<button class="giving-tab ${this.activeTab === tab ? 'giving-tab-active' : ''}" data-tab="${tab}">${tabLabels[tab]}</button>`).join('')}
+      <div class="panel-tabs panel-tabs--wrap">
+        ${tabs.map(tab => `<button class="panel-tab ${this.activeTab === tab ? 'active' : ''}" data-tab="${tab}">${tabLabels[tab]}</button>`).join('')}
       </div>
     `;
 
@@ -96,7 +96,7 @@ export class GivingPanel extends Panel {
     `;
 
     // Attach tab click listeners
-    this.content.querySelectorAll('.giving-tab').forEach(btn => {
+    this.content.querySelectorAll('.panel-tab').forEach(btn => {
       btn.addEventListener('click', () => {
         this.activeTab = (btn as HTMLElement).dataset.tab as GivingTab;
         this.renderContent();

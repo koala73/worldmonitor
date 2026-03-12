@@ -84,6 +84,16 @@ export interface HumanitarianCountrySummary {
   updatedAt: number;
 }
 
+export interface GetHumanitarianSummaryBatchRequest {
+  countryCodes: string[];
+}
+
+export interface GetHumanitarianSummaryBatchResponse {
+  results: Record<string, HumanitarianCountrySummary>;
+  fetched: number;
+  requested: number;
+}
+
 export interface ListIranEventsRequest {
 }
 
@@ -154,6 +164,7 @@ export interface ConflictServiceHandler {
   listAcledEvents(ctx: ServerContext, req: ListAcledEventsRequest): Promise<ListAcledEventsResponse>;
   listUcdpEvents(ctx: ServerContext, req: ListUcdpEventsRequest): Promise<ListUcdpEventsResponse>;
   getHumanitarianSummary(ctx: ServerContext, req: GetHumanitarianSummaryRequest): Promise<GetHumanitarianSummaryResponse>;
+  getHumanitarianSummaryBatch(ctx: ServerContext, req: GetHumanitarianSummaryBatchRequest): Promise<GetHumanitarianSummaryBatchResponse>;
   listIranEvents(ctx: ServerContext, req: ListIranEventsRequest): Promise<ListIranEventsResponse>;
 }
 
@@ -290,6 +301,52 @@ export function createConflictServiceRoutes(
 
           const result = await handler.getHumanitarianSummary(ctx, body);
           return new Response(JSON.stringify(result as GetHumanitarianSummaryResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/conflict/v1/get-humanitarian-summary-batch",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const rawBody = await req.json() as { country_codes?: string[] };
+          const body: GetHumanitarianSummaryBatchRequest = {
+            countryCodes: rawBody.country_codes ?? [],
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getHumanitarianSummaryBatch", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getHumanitarianSummaryBatch(ctx, body);
+          return new Response(JSON.stringify(result as GetHumanitarianSummaryBatchResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

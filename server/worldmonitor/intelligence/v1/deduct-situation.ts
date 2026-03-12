@@ -5,7 +5,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
 import { cachedFetchJson } from '../../../_shared/redis';
-import { hashString } from './_shared';
+import { sha256Hex } from './_shared';
 import { CHROME_UA } from '../../../_shared/constants';
 
 const DEDUCT_TIMEOUT_MS = 120_000;
@@ -33,7 +33,7 @@ export async function deductSituation(
 
     if (!query) return { analysis: '', model: '', provider: 'skipped' };
 
-    const cacheKey = `deduct:situation:v1:${hashString(query.toLowerCase() + '|' + geoContext.toLowerCase())}`;
+    const cacheKey = `deduct:situation:v1:${(await sha256Hex(query.toLowerCase() + '|' + geoContext.toLowerCase())).slice(0, 16)}`;
 
     const cached = await cachedFetchJson<{ analysis: string; model: string; provider: string }>(
         cacheKey,

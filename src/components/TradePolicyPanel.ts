@@ -22,7 +22,7 @@ export class TradePolicyPanel extends Panel {
   constructor() {
     super({ id: 'trade-policy', title: t('panels.tradePolicy') });
     this.content.addEventListener('click', (e) => {
-      const target = (e.target as HTMLElement).closest('.economic-tab') as HTMLElement | null;
+      const target = (e.target as HTMLElement).closest('.panel-tab') as HTMLElement | null;
       if (!target) return;
       const tabId = target.dataset.tab as TabId;
       if (tabId && tabId !== this.activeTab) {
@@ -59,22 +59,22 @@ export class TradePolicyPanel extends Panel {
       return;
     }
 
-    const hasTariffs = this.tariffsData && this.tariffsData.datapoints.length > 0;
-    const hasFlows = this.flowsData && this.flowsData.flows.length > 0;
-    const hasBarriers = this.barriersData && this.barriersData.barriers.length > 0;
+    const hasTariffs = this.tariffsData && this.tariffsData.datapoints?.length > 0;
+    const hasFlows = this.flowsData && this.flowsData.flows?.length > 0;
+    const hasBarriers = this.barriersData && this.barriersData.barriers?.length > 0;
 
     const tabsHtml = `
-      <div class="economic-tabs">
-        <button class="economic-tab ${this.activeTab === 'restrictions' ? 'active' : ''}" data-tab="restrictions">
+      <div class="panel-tabs">
+        <button class="panel-tab ${this.activeTab === 'restrictions' ? 'active' : ''}" data-tab="restrictions">
           ${t('components.tradePolicy.restrictions')}
         </button>
-        ${hasTariffs ? `<button class="economic-tab ${this.activeTab === 'tariffs' ? 'active' : ''}" data-tab="tariffs">
+        ${hasTariffs ? `<button class="panel-tab ${this.activeTab === 'tariffs' ? 'active' : ''}" data-tab="tariffs">
           ${t('components.tradePolicy.tariffs')}
         </button>` : ''}
-        ${hasFlows ? `<button class="economic-tab ${this.activeTab === 'flows' ? 'active' : ''}" data-tab="flows">
+        ${hasFlows ? `<button class="panel-tab ${this.activeTab === 'flows' ? 'active' : ''}" data-tab="flows">
           ${t('components.tradePolicy.flows')}
         </button>` : ''}
-        ${hasBarriers ? `<button class="economic-tab ${this.activeTab === 'barriers' ? 'active' : ''}" data-tab="barriers">
+        ${hasBarriers ? `<button class="panel-tab ${this.activeTab === 'barriers' ? 'active' : ''}" data-tab="barriers">
           ${t('components.tradePolicy.barriers')}
         </button>` : ''}
       </div>
@@ -82,12 +82,12 @@ export class TradePolicyPanel extends Panel {
 
     // Only show unavailable banner when active tab has NO data and upstream is down
     const activeHasData = this.activeTab === 'restrictions'
-      ? (this.restrictionsData?.restrictions.length ?? 0) > 0
+      ? (this.restrictionsData?.restrictions?.length ?? 0) > 0
       : this.activeTab === 'tariffs'
-      ? (this.tariffsData?.datapoints.length ?? 0) > 0
+      ? (this.tariffsData?.datapoints?.length ?? 0) > 0
       : this.activeTab === 'flows'
-      ? (this.flowsData?.flows.length ?? 0) > 0
-      : (this.barriersData?.barriers.length ?? 0) > 0;
+      ? (this.flowsData?.flows?.length ?? 0) > 0
+      : (this.barriersData?.barriers?.length ?? 0) > 0;
     const activeData = this.activeTab === 'restrictions' ? this.restrictionsData
       : this.activeTab === 'tariffs' ? this.tariffsData
       : this.activeTab === 'flows' ? this.flowsData
@@ -116,7 +116,7 @@ export class TradePolicyPanel extends Panel {
   }
 
   private renderRestrictions(): string {
-    if (!this.restrictionsData || this.restrictionsData.restrictions.length === 0) {
+    if (!this.restrictionsData || !this.restrictionsData.restrictions?.length) {
       return `<div class="economic-empty">${t('components.tradePolicy.noRestrictions')}</div>`;
     }
 
@@ -146,7 +146,7 @@ export class TradePolicyPanel extends Panel {
   }
 
   private renderTariffs(): string {
-    if (!this.tariffsData || this.tariffsData.datapoints.length === 0) {
+    if (!this.tariffsData || !this.tariffsData.datapoints?.length) {
       return `<div class="economic-empty">${t('components.tradePolicy.noTariffData')}</div>`;
     }
 
@@ -173,7 +173,7 @@ export class TradePolicyPanel extends Panel {
   }
 
   private renderFlows(): string {
-    if (!this.flowsData || this.flowsData.flows.length === 0) {
+    if (!this.flowsData || !this.flowsData.flows?.length) {
       return `<div class="economic-empty">${t('components.tradePolicy.noFlowData')}</div>`;
     }
 
@@ -203,7 +203,7 @@ export class TradePolicyPanel extends Panel {
   }
 
   private renderBarriers(): string {
-    if (!this.barriersData || this.barriersData.barriers.length === 0) {
+    if (!this.barriersData || !this.barriersData.barriers?.length) {
       return `<div class="economic-empty">${t('components.tradePolicy.noBarriers')}</div>`;
     }
 

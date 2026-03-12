@@ -6,7 +6,8 @@ import type {
   NewsItem as ProtoNewsItem,
   ThreatLevel as ProtoThreatLevel,
 } from '../../../../src/generated/server/worldmonitor/news/v1/service_server';
-import { cachedFetchJson } from '../../../_shared/redis';
+import { cachedFetchJson, getCachedJsonBatch } from '../../../_shared/redis';
+import { sha256Hex } from '../../../_shared/hash';
 import { CHROME_UA } from '../../../_shared/constants';
 import { VARIANT_FEEDS, INTEL_SOURCES, type ServerFeed } from './_feeds';
 import { classifyByKeyword, type ThreatLevel } from './_classifier';
@@ -32,7 +33,7 @@ function getRelayHeaders(): Record<string, string> {
   return headers;
 }
 
-const VALID_VARIANTS = new Set(['full', 'tech', 'finance', 'happy']);
+const VALID_VARIANTS = new Set(['full', 'tech', 'finance', 'happy', 'commodity']);
 const fallbackDigestCache = new Map<string, { data: ListFeedDigestResponse; ts: number }>();
 const ITEMS_PER_FEED = 5;
 const MAX_ITEMS_PER_CATEGORY = 20;
@@ -57,7 +58,7 @@ interface ParsedItem {
   level: ThreatLevel;
   category: string;
   confidence: number;
-  classSource: 'keyword';
+  classSource: 'keyword' | 'llm';
 }
 
 async function fetchRssText(
@@ -211,6 +212,37 @@ function decodeXmlEntities(s: string): string {
     .replace(/&#x([0-9a-fA-F]+);/g, (_, n) => String.fromCharCode(parseInt(n, 16)));
 }
 
+async function enrichWithAiCache(items: ParsedItem[]): Promise<void> {
+  const candidates = items.filter(i => i.classSource === 'keyword');
+  if (candidates.length === 0) return;
+
+  const keyMap = new Map<string, ParsedItem[]>();
+  for (const item of candidates) {
+    const hash = (await sha256Hex(item.title.toLowerCase())).slice(0, 16);
+    const key = `classify:sebuf:v1:${hash}`;
+    const existing = keyMap.get(key) ?? [];
+    existing.push(item);
+    keyMap.set(key, existing);
+  }
+
+  const keys = [...keyMap.keys()];
+  const cached = await getCachedJsonBatch(keys);
+
+  for (const [key, relatedItems] of keyMap) {
+    const hit = cached.get(key) as { level?: string; category?: string } | undefined;
+    if (!hit || hit.level === '_skip' || !hit.level || !hit.category) continue;
+
+    for (const item of relatedItems) {
+      if (0.9 <= item.confidence) continue;
+      item.level = hit.level as typeof item.level;
+      item.category = hit.category;
+      item.confidence = 0.9;
+      item.classSource = 'llm';
+      item.isAlert = hit.level === 'critical' || hit.level === 'high';
+    }
+  }
+}
+
 function toProtoItem(item: ParsedItem): ProtoNewsItem {
   return {
     source: item.source,
@@ -307,10 +339,18 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
       }
     }
 
+    const slicedByCategory = new Map<string, ParsedItem[]>();
     for (const [category, items] of results) {
       items.sort((a, b) => b.publishedAt - a.publishedAt);
+      slicedByCategory.set(category, items.slice(0, MAX_ITEMS_PER_CATEGORY));
+    }
+
+    const allSliced = [...slicedByCategory.values()].flat();
+    await enrichWithAiCache(allSliced);
+
+    for (const [category, sliced] of slicedByCategory) {
       categories[category] = {
-        items: items.slice(0, MAX_ITEMS_PER_CATEGORY).map(toProtoItem),
+        items: sliced.map(toProtoItem),
       };
     }
 

@@ -1,0 +1,10 @@
+{
+  "commodities": [
+    { "symbol": "^VIX", "name": "VIX", "display": "VIX" },
+    { "symbol": "GC=F", "name": "Gold", "display": "GOLD" },
+    { "symbol": "CL=F", "name": "Crude Oil", "display": "OIL" },
+    { "symbol": "NG=F", "name": "Natural Gas", "display": "NATGAS" },
+    { "symbol": "SI=F", "name": "Silver", "display": "SILVER" },
+    { "symbol": "HG=F", "name": "Copper", "display": "COPPER" }
+  ]
+}

@@ -1,6 +1,7 @@
 import type { EconomicServiceHandler } from '../../../../src/generated/server/worldmonitor/economic/v1/service_server';
 
 import { getFredSeries } from './get-fred-series';
+import { getFredSeriesBatch } from './get-fred-series-batch';
 import { listWorldBankIndicators } from './list-world-bank-indicators';
 import { getEnergyPrices } from './get-energy-prices';
 import { getMacroSignals } from './get-macro-signals';
@@ -11,6 +12,7 @@ import { getBisCredit } from './get-bis-credit';
 
 export const economicHandler: EconomicServiceHandler = {
   getFredSeries,
+  getFredSeriesBatch,
   listWorldBankIndicators,
   getEnergyPrices,
   getMacroSignals,

@@ -117,3 +117,19 @@ export {
 
 // Gulf FDI investment database
 export { GULF_INVESTMENTS } from './gulf-fdi';
+
+// Commodity variant - these are included in commodity builds
+export {
+  COMMODITY_PRICES,
+  COMMODITY_MARKET_SYMBOLS,
+} from './commodity-markets';
+
+export {
+  MINING_SITES,
+  PROCESSING_PLANTS,
+  COMMODITY_PORTS,
+} from './commodity-geo';
+
+// COMMODITY_MINERS: 30+ mining company HQs — not yet rendered on map.
+// Uncomment when a miners layer is added to DeckGLMap.ts.
+// export { COMMODITY_MINERS, type CommodityMiner } from './commodity-miners';

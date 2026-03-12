@@ -6,6 +6,9 @@
   "countryBrief": {
     "identifying": "Identifying country...",
     "locating": "Locating region...",
+    "geocodeFailed": "Could not identify a country at this location",
+    "retryBtn": "Retry",
+    "closeBtn": "Close",
     "limitedCoverage": "Limited coverage",
     "instabilityIndex": "Instability Index",
     "notTracked": "Not tracked — {{country}} is not in the CII tier-1 list",
@@ -119,6 +122,17 @@
       "stockIndex": "Stock index: {{value}}",
       "recentHeadlines": "**Recent headlines:**",
       "activeStrikes": "{{count}} active strikes detected"
+    },
+    "countryFacts": "Country Facts",
+    "loadingFacts": "Loading country facts...",
+    "noFacts": "Country facts unavailable.",
+    "facts": {
+      "headOfState": "Head of State",
+      "population": "Population",
+      "capital": "Capital",
+      "languages": "Languages",
+      "currencies": "Currencies",
+      "area": "Area"
     }
   },
   "header": {
@@ -137,9 +151,11 @@
     "filterSources": "Filter sources...",
     "sourcesEnabled": "{{enabled}}/{{total}} enabled",
     "finance": "FINANCE",
+    "commodity": "COMMODITY",
     "toggleTheme": "Toggle dark/light mode",
     "panelDisplayCaption": "Choose which panels to show on the dashboard",
     "tabGeneral": "General",
+    "tabSettings": "Settings",
     "tabPanels": "Panels",
     "tabSources": "Sources",
     "languageLabel": "Language",
@@ -171,6 +187,8 @@
     "sourceRegionGulfMena": "Gulf & MENA",
     "filterPanels": "Filter panels...",
     "resetLayout": "Reset Layout",
+    "resetLayoutTooltip": "Restore default panel arrangement",
+    "unsavedChanges": "You have unsaved panel changes. Discard them?",
     "panelCatCore": "Core",
     "panelCatIntelligence": "Intelligence",
     "panelCatRegionalNews": "Regional News",
@@ -187,7 +205,12 @@
     "panelCatCentralBanks": "Central Banks & Econ",
     "panelCatDeals": "Deals & Institutional",
     "panelCatGulfMena": "Gulf & MENA",
-    "panelCatTradePolicy": "Trade Policy"
+    "panelCatTradePolicy": "Trade Policy",
+    "panelCatCommodityPrices": "Prices & Markets",
+    "panelCatMining": "Mining & Supply Chain",
+    "panelCatCommodityEcon": "Economy & Trade",
+    "panelCatHappyNews": "Good News",
+    "panelCatHappyPlanet": "Planet & Giving"
   },
   "panels": {
     "liveNews": "Live News",
@@ -262,7 +285,8 @@
     "gulfEconomies": "Gulf Economies",
     "gulfIndices": "Gulf Indices",
     "gulfCurrencies": "Gulf Currencies",
-    "gulfOil": "Gulf Oil"
+    "gulfOil": "Gulf Oil",
+    "airlineIntel": "✈️ Airline Intelligence"
   },
   "commands": {
     "prefixes": {
@@ -371,6 +395,8 @@
       "noResults": "No results",
       "commands": "Commands",
       "results": "Results",
+      "seeAllCommands": "See all commands",
+      "hideCommandList": "Back",
       "navigate": "navigate",
       "select": "select",
       "close": "close",
@@ -475,6 +501,7 @@
         "some": "Some features need API keys"
       },
       "openSettings": "Open Settings",
+      "reserveEarlyAccess": "Reserve Your Early Access",
       "skipSetup": "Skip the setup — a single World Monitor license unlocks everything. Join the waitlist for early access.",
       "summary": {
         "desktop": "Desktop mode",
@@ -659,11 +686,26 @@
         "mideast": "MIDEAST",
         "europe": "EUROPE",
         "americas": "AMERICAS",
-        "asia": "ASIA"
+        "asia": "ASIA",
+        "space": "SPACE"
       }
     },
     "positiveNewsFeed": {
       "noStories": "No stories in this category yet"
+    },
+    "breakthroughsTicker": {
+      "noData": "No science breakthroughs yet"
+    },
+    "airlineIntel": {
+      "noOpsData": "No ops data — loading…",
+      "noFlights": "No flights — select airport in settings.",
+      "noCarrierData": "No carrier data yet.",
+      "noTrackingData": "No aircraft tracking data.",
+      "noNews": "No aviation news.",
+      "enterRoute": "Enter route and search for prices.",
+      "cachedInsight": "Cached insight",
+      "demoMode": "DEMO MODE",
+      "pricesIndicative": "All prices indicative"
     },
     "goodThingsDigest": {
       "noStories": "No stories available",
@@ -968,7 +1010,12 @@
         "ciiCritical": "Critical (81–100)"
       },
       "layerGuide": "Layer Guide",
+      "layerWarningTitle": "Performance notice",
+      "layerWarningBody": "Enabling more than {{threshold}} layers may impact rendering performance and frame rate.",
+      "layerWarningDismiss": "Don't show this again",
+      "layerWarningOk": "Got it",
       "layersTitle": "Layers",
+      "layerSearch": "Search layers...",
       "timeAll": "All",
       "views": {
         "global": "Global",
@@ -998,6 +1045,7 @@
         "nuclearSites": "Nuclear Sites",
         "gammaIrradiators": "Gamma Irradiators",
         "spaceports": "Spaceports",
+        "satellites": "Orbital Surveillance",
         "pipelines": "Pipelines",
         "militaryActivity": "Military Activity",
         "shipTraffic": "Ship Traffic",
@@ -1113,7 +1161,7 @@
           "infraPipelinesFull": "Oil/gas pipelines (Nord Stream, TAPI, etc.)",
           "infraDatacentersFull": "AI compute clusters >=10,000 GPUs only",
           "transportShipping": "Live vessel tracking via AIS (ship positions)",
-          "transportDelays": "Airport delays and ground stops (FAA)",
+          "transportDelays": "Airport delays, ground stops, and NOTAM closures",
           "naturalEventsFull": "Earthquakes (USGS) + storms, fires, volcanoes, floods (NASA EONET)",
           "firesFull": "Active wildfires and fire perimeters (NASA FIRMS)",
           "climateAnomalies": "Temperature and precipitation anomalies",
@@ -1436,7 +1484,10 @@
       "summaryError": "Could not generate summary",
       "summaryFailed": "Summary failed",
       "sources": "{{count}} sources",
-      "relatedAssetsNear": "Related assets near {{location}}"
+      "relatedAssetsNear": "Related assets near {{location}}",
+      "sortBy": "Sort by",
+      "sortNewest": "Newest",
+      "sortRelevance": "Relevance"
     },
     "export": {
       "exportData": "Export Data"
@@ -1584,7 +1635,9 @@
     "panel": {
       "showMethodologyInfo": "Show methodology info",
       "dragToResize": "Drag to resize (double-click to reset)",
-      "openSettings": "Open Settings"
+      "openSettings": "Open Settings",
+      "closePanel": "Close panel",
+      "addPanel": "Add Panel"
     },
     "languageSelector": {
       "selectLanguage": "Select Language",
@@ -1729,9 +1782,9 @@
     },
     "gpsJamming": {
       "title": "GPS/GNSS Interference",
-      "interference": "Interference",
-      "aircraftAffected": "Aircraft Affected",
-      "aircraftNormal": "Aircraft Normal",
+      "navPerformance": "Nav Performance",
+      "samples": "ADS-B Samples",
+      "aircraft": "Aircraft",
       "h3Hex": "H3 Hex"
     },
     "flight": {
@@ -1747,7 +1800,9 @@
       "sources": {
         "faa": "FAA ASWS",
         "eurocontrol": "Eurocontrol",
-        "computed": "Computed"
+        "computed": "Computed",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "Americas",
@@ -2078,7 +2133,13 @@
       "active": "ACTIVE",
       "reported": "REPORTED",
       "viewOnSource": "View on {{source}}",
-      "attribution": "Data: NASA EONET"
+      "attribution": "Data: NASA EONET",
+      "storm": "Storm",
+      "classification": "Classification",
+      "maxWind": "Max Wind",
+      "pressure": "Pressure",
+      "movement": "Movement",
+      "tropicalSystem": "Tropical System"
     },
     "port": {
       "types": {
@@ -2283,8 +2344,9 @@
     "updated": "Updated just now",
     "ago": "{{time}} ago",
     "retrying": "Retrying...",
-    "failedToLoad": "Failed to load data",
+    "failedToLoad": "Temporarily unavailable — retrying",
     "noDataShort": "No data",
+    "dataTemporarilyUnavailable": "Data temporarily unavailable",
     "upstreamUnavailable": "Upstream API unavailable — will retry automatically",
     "loadingUcdpEvents": "Loading armed conflict events",
     "loadingStablecoins": "Loading stablecoins...",
@@ -2295,16 +2357,16 @@
     "loadingGiving": "Loading global giving data",
     "loadingDisplacement": "Loading displacement data",
     "loadingClimateData": "Loading climate data",
-    "failedTechReadiness": "Failed to load tech readiness data",
-    "failedRiskOverview": "Failed to calculate risk overview",
-    "failedPredictions": "Failed to load predictions",
-    "failedCII": "Failed to calculate CII",
-    "failedDependencyGraph": "Failed to build dependency graph",
-    "failedIntelFeed": "Failed to load intelligence feed",
-    "failedMarketData": "Failed to load market data",
-    "failedSectorData": "Failed to load sector data",
-    "failedCommodities": "Failed to load commodities",
-    "failedCryptoData": "Failed to load crypto data",
+    "failedTechReadiness": "Tech readiness data temporarily unavailable",
+    "failedRiskOverview": "Risk overview temporarily unavailable",
+    "failedPredictions": "Predictions temporarily unavailable",
+    "failedCII": "CII data temporarily unavailable",
+    "failedDependencyGraph": "Dependency graph temporarily unavailable",
+    "failedIntelFeed": "Intelligence feed temporarily unavailable",
+    "failedMarketData": "Market data temporarily unavailable",
+    "failedSectorData": "Sector data temporarily unavailable",
+    "failedCommodities": "Commodities data temporarily unavailable",
+    "failedCryptoData": "Crypto data temporarily unavailable",
     "rateLimitedMarket": "Market data temporarily unavailable (rate limited) — retrying shortly",
     "failedClusterNews": "Failed to cluster news",
     "noNewsAvailable": "No news available",
@@ -2334,5 +2396,42 @@
     "retry": "Retry",
     "refresh": "Refresh",
     "all": "All"
+  },
+  "preferences": {
+    "display": "Display",
+    "intelligence": "Intelligence",
+    "media": "Media",
+    "panels": "Panels",
+    "dataAndCommunity": "Data & Community",
+    "theme": "Theme",
+    "themeDesc": "Auto follows your system preference.",
+    "themeAuto": "Auto (follow system)",
+    "themeDark": "Dark",
+    "themeLight": "Light",
+    "mapProvider": "Map Tile Provider",
+    "mapProviderDesc": "Choose where map tiles are loaded from. Auto uses self-hosted PMTiles with OpenFreeMap fallback.",
+    "mapTheme": "Map Theme",
+    "mapThemeDesc": "Visual style of the map tiles. Options vary by provider.",
+    "globePreset": "Visual Preset",
+    "globePresetDesc": "Switch between classic and enhanced globe visuals to compare.",
+    "fontFamily": "Font Family",
+    "fontFamilyDesc": "Monospace for a technical look, system default for easier reading.",
+    "fontMono": "Monospace",
+    "fontSystem": "System Default"
+  },
+  "premium": {
+    "pro": "PRO",
+    "lockedDesc": "Requires a World Monitor license key",
+    "joinWaitlist": "Join Waitlist",
+    "features": {
+      "orefSirens1": "Real-time Israel missile & rocket alerts",
+      "orefSirens2": "Siren zone mapping with threat classification",
+      "telegramIntel1": "Curated Telegram OSINT channels",
+      "telegramIntel2": "Near-real-time conflict & geopolitical updates"
+    }
+  },
+  "contextMenu": {
+    "openCountryBrief": "Open Country Brief",
+    "copyCoordinates": "Copy Coordinates"
   }
 }

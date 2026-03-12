@@ -27,6 +27,14 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* ── Desktop titlebar (macOS traffic lights clearance) ── */
+.settings-titlebar {
+  height: 28px;
+  background: var(--settings-bg);
+  flex-shrink: 0;
+  -webkit-app-region: drag;
+}
+
 /* ── Header ── */
 .settings-header {
   display: flex;
@@ -256,7 +264,7 @@
 
 .settings-ov-cats {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  grid-template-columns: repeat(3, 1fr);
   gap: 8px;
   flex: 1;
 }
@@ -294,12 +302,6 @@
 .settings-ov-cat-count {
   font-size: 11px;
   color: var(--settings-text-secondary);
-}
-
-.settings-ov-actions {
-  display: flex;
-  gap: 12px;
-  margin-top: 16px;
 }
 
 .settings-ov-license {
@@ -685,6 +687,28 @@
 }
 
 /* ── Debug section ── */
+.debug-data-section {
+  border: 1px solid var(--settings-border);
+  background: var(--settings-surface);
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+
+.debug-data-section h3 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--settings-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.debug-data-actions {
+  display: flex;
+  gap: 10px;
+}
+
 .debug-actions {
   display: flex;
   gap: 10px;
@@ -1080,7 +1104,7 @@ tr.diag-err td { color: var(--settings-red); }
   }
 
   .settings-ov-cats {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, 1fr);
   }
 
   .settings-overview {
@@ -1095,13 +1119,3 @@ tr.diag-err td { color: var(--settings-red); }
   }
 }
 
-/* Data management in overview */
-.settings-ov-actions {
-  display: flex;
-  gap: 10px;
-  margin-top: 16px;
-}
-
-.settings-ov-actions .settings-btn {
-  flex: 1;
-}

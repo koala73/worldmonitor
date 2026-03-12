@@ -30,10 +30,10 @@ export class GdeltIntelPanel extends Panel {
   }
 
   private createTabs(): void {
-    this.tabsEl = h('div', { className: 'gdelt-intel-tabs' },
+    this.tabsEl = h('div', { className: 'panel-tabs' },
       ...getIntelTopics().map(topic =>
         h('button', {
-          className: `gdelt-intel-tab ${topic.id === this.activeTopic.id ? 'active' : ''}`,
+          className: `panel-tab ${topic.id === this.activeTopic.id ? 'active' : ''}`,
           dataset: { topicId: topic.id },
           title: topic.description,
           onClick: () => this.selectTopic(topic),
@@ -52,7 +52,7 @@ export class GdeltIntelPanel extends Panel {
 
     this.activeTopic = topic;
 
-    this.tabsEl?.querySelectorAll('.gdelt-intel-tab').forEach(tab => {
+    this.tabsEl?.querySelectorAll('.panel-tab').forEach(tab => {
       tab.classList.toggle('active', (tab as HTMLElement).dataset.topicId === topic.id);
     });
 
@@ -65,40 +65,44 @@ export class GdeltIntelPanel extends Panel {
   }
 
   private async loadActiveTopic(): Promise<void> {
+    const topic = this.activeTopic;
     this.showLoading();
 
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const data = await fetchTopicIntelligence(this.activeTopic);
+        const data = await fetchTopicIntelligence(topic);
         if (!this.element?.isConnected) return;
-        this.topicData.set(this.activeTopic.id, data);
+        this.topicData.set(topic.id, data);
 
-        if (data.articles.length === 0 && attempt < 2) {
-          this.showRetrying();
+        if (topic.id !== this.activeTopic.id) return;
+
+        if (!data.articles?.length && attempt < 2) {
+          this.showRetrying(undefined, 15);
           await new Promise(r => setTimeout(r, 15_000));
-          if (!this.element?.isConnected) return;
+          if (!this.element?.isConnected || topic.id !== this.activeTopic.id) return;
           continue;
         }
 
-        this.renderArticles(data.articles);
-        this.setCount(data.articles.length);
+        this.renderArticles(data.articles ?? []);
+        this.setCount(data.articles?.length ?? 0);
         return;
       } catch (error) {
         if (this.isAbortError(error)) return;
-        if (!this.element?.isConnected) return;
+        if (!this.element?.isConnected || topic.id !== this.activeTopic.id) return;
         console.error(`[GdeltIntelPanel] Load error (attempt ${attempt + 1}):`, error);
         if (attempt < 2) {
-          this.showRetrying();
+          this.showRetrying(undefined, 15);
           await new Promise(r => setTimeout(r, 15_000));
-          if (!this.element?.isConnected) return;
+          if (!this.element?.isConnected || topic.id !== this.activeTopic.id) return;
           continue;
         }
-        this.showError(t('common.failedIntelFeed'));
+        this.showError(t('common.failedIntelFeed'), () => this.loadActiveTopic());
       }
     }
   }
 
   private renderArticles(articles: GdeltArticle[]): void {
+    this.setErrorState(false);
     if (articles.length === 0) {
       replaceChildren(this.content, h('div', { className: 'empty-state' }, t('components.gdelt.empty')));
       return;

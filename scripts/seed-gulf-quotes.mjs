@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { loadEnvFile, loadSharedConfig, CHROME_UA, runSeed } from './_seed-utils.mjs';
+
+const gulfConfig = loadSharedConfig('gulf.json');
 
 loadEnvFile(import.meta.url);
 
@@ -8,22 +10,7 @@ const CANONICAL_KEY = 'market:gulf-quotes:v1';
 const CACHE_TTL = 3600;
 const YAHOO_DELAY_MS = 200;
 
-const GULF_SYMBOLS = [
-  { symbol: '^TASI.SR', name: 'Tadawul All Share', country: 'Saudi Arabia', flag: '\u{1F1F8}\u{1F1E6}', type: 'index' },
-  { symbol: 'DFMGI.AE', name: 'Dubai Financial Market', country: 'UAE', flag: '\u{1F1E6}\u{1F1EA}', type: 'index' },
-  { symbol: 'UAE', name: 'Abu Dhabi (iShares)', country: 'UAE', flag: '\u{1F1E6}\u{1F1EA}', type: 'index' },
-  { symbol: 'QAT', name: 'Qatar (iShares)', country: 'Qatar', flag: '\u{1F1F6}\u{1F1E6}', type: 'index' },
-  { symbol: 'GULF', name: 'Gulf Dividend (WisdomTree)', country: 'Kuwait', flag: '\u{1F1F0}\u{1F1FC}', type: 'index' },
-  { symbol: '^MSM', name: 'Muscat MSM 30', country: 'Oman', flag: '\u{1F1F4}\u{1F1F2}', type: 'index' },
-  { symbol: 'SARUSD=X', name: 'Saudi Riyal', country: 'Saudi Arabia', flag: '\u{1F1F8}\u{1F1E6}', type: 'currency' },
-  { symbol: 'AEDUSD=X', name: 'UAE Dirham', country: 'UAE', flag: '\u{1F1E6}\u{1F1EA}', type: 'currency' },
-  { symbol: 'QARUSD=X', name: 'Qatari Riyal', country: 'Qatar', flag: '\u{1F1F6}\u{1F1E6}', type: 'currency' },
-  { symbol: 'KWDUSD=X', name: 'Kuwaiti Dinar', country: 'Kuwait', flag: '\u{1F1F0}\u{1F1FC}', type: 'currency' },
-  { symbol: 'BHDUSD=X', name: 'Bahraini Dinar', country: 'Bahrain', flag: '\u{1F1E7}\u{1F1ED}', type: 'currency' },
-  { symbol: 'OMRUSD=X', name: 'Omani Rial', country: 'Oman', flag: '\u{1F1F4}\u{1F1F2}', type: 'currency' },
-  { symbol: 'CL=F', name: 'WTI Crude', country: '', flag: '\u{1F6E2}\u{FE0F}', type: 'oil' },
-  { symbol: 'BZ=F', name: 'Brent Crude', country: '', flag: '\u{1F6E2}\u{FE0F}', type: 'oil' },
-];
+const GULF_SYMBOLS = gulfConfig.symbols;
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));

@@ -24,7 +24,7 @@ export class RenewableEnergyPanel extends Panel {
     replaceChildren(this.content);
 
     // Empty state
-    if (data.globalPercentage === 0 && data.regions.length === 0) {
+    if (data.globalPercentage === 0 && !data.regions?.length) {
       const empty = document.createElement('div');
       empty.className = 'renewable-empty';
       Object.assign(empty.style, {
@@ -57,7 +57,7 @@ export class RenewableEnergyPanel extends Panel {
     container.appendChild(gaugeSection);
 
     // Historical sparkline (bonus below gauge)
-    if (data.historicalData.length > 2) {
+    if ((data.historicalData?.length ?? 0) > 2) {
       const sparkSection = document.createElement('div');
       sparkSection.className = 'renewable-sparkline-section';
       Object.assign(sparkSection.style, {
@@ -68,7 +68,7 @@ export class RenewableEnergyPanel extends Panel {
     }
 
     // Section 2: Regional Breakdown
-    if (data.regions.length > 0) {
+    if (data.regions?.length > 0) {
       const regionsSection = document.createElement('div');
       regionsSection.className = 'renewable-regions';
       this.renderRegions(regionsSection, data.regions);

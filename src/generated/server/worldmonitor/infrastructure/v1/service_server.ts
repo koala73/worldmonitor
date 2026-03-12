@@ -101,6 +101,26 @@ export interface RecordBaselineSnapshotResponse {
   error: string;
 }
 
+export interface ListTemporalAnomaliesRequest {
+}
+
+export interface ListTemporalAnomaliesResponse {
+  anomalies: TemporalAnomalyProto[];
+  trackedTypes: string[];
+  computedAt: string;
+}
+
+export interface TemporalAnomalyProto {
+  type: string;
+  region: string;
+  currentCount: number;
+  expectedCount: number;
+  zScore: number;
+  severity: string;
+  multiplier: number;
+  message: string;
+}
+
 export interface GetCableHealthRequest {
 }
 
@@ -179,6 +199,7 @@ export interface InfrastructureServiceHandler {
   getTemporalBaseline(ctx: ServerContext, req: GetTemporalBaselineRequest): Promise<GetTemporalBaselineResponse>;
   recordBaselineSnapshot(ctx: ServerContext, req: RecordBaselineSnapshotRequest): Promise<RecordBaselineSnapshotResponse>;
   getCableHealth(ctx: ServerContext, req: GetCableHealthRequest): Promise<GetCableHealthResponse>;
+  listTemporalAnomalies(ctx: ServerContext, req: ListTemporalAnomaliesRequest): Promise<ListTemporalAnomaliesResponse>;
 }
 
 export function createInfrastructureServiceRoutes(
@@ -392,6 +413,43 @@ export function createInfrastructureServiceRoutes(
 
           const result = await handler.getCableHealth(ctx, body);
           return new Response(JSON.stringify(result as GetCableHealthResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/infrastructure/v1/list-temporal-anomalies",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as ListTemporalAnomaliesRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listTemporalAnomalies(ctx, body);
+          return new Response(JSON.stringify(result as ListTemporalAnomaliesResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

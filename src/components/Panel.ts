@@ -4,6 +4,7 @@ import { t } from '../services/i18n';
 import { h, replaceChildren, safeHtml } from '../utils/dom-utils';
 import { trackPanelResized } from '@/services/analytics';
 import { getAiFlowSettings } from '@/services/ai-flow-settings';
+import { getSecretState } from '@/services/runtime-config';
 
 export interface PanelOptions {
   id: string;
@@ -12,6 +13,8 @@ export interface PanelOptions {
   className?: string;
   trackActivity?: boolean;
   infoTooltip?: string;
+  premium?: 'locked' | 'enhanced';
+  closable?: boolean;
 }
 
 const PANEL_SPANS_KEY = 'worldmonitor-panel-spans';
@@ -194,6 +197,11 @@ export class Panel {
   private readonly contentDebounceMs = 150;
   private pendingContentHtml: string | null = null;
   private contentDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private retryCallback: (() => void) | null = null;
+  private retryCountdownTimer: ReturnType<typeof setInterval> | null = null;
+  private retryAttempt = 0;
+  private _fetching = false;
+  private _locked = false;
 
   constructor(options: PanelOptions) {
     this.panelId = options.id;
@@ -241,6 +249,11 @@ export class Panel {
       headerLeft.appendChild(this.newBadgeEl);
     }
 
+    if (isDesktopRuntime() && options.premium === 'enhanced' && !getSecretState('WORLDMONITOR_API_KEY').present) {
+      const proBadge = h('span', { className: 'panel-pro-badge' }, t('premium.pro'));
+      headerLeft.appendChild(proBadge);
+    }
+
     this.header.appendChild(headerLeft);
 
     this.statusBadgeEl = document.createElement('span');
@@ -255,12 +268,22 @@ export class Panel {
       this.header.appendChild(this.countEl);
     }
 
+    if (options.closable !== false) {
+      this.appendCloseButton();
+    }
+
     this.content = document.createElement('div');
     this.content.className = 'panel-content';
     this.content.id = `${options.id}Content`;
 
     this.element.appendChild(this.header);
     this.element.appendChild(this.content);
+
+    this.content.addEventListener('click', (e) => {
+      const target = (e.target as HTMLElement).closest('[data-panel-retry]');
+      if (!target || this._fetching) return;
+      this.retryCallback?.();
+    });
 
     // Add resize handle
     this.resizeHandle = document.createElement('div');
@@ -614,11 +637,61 @@ export class Panel {
     if (!this.statusBadgeEl) return;
     this.statusBadgeEl.style.display = 'none';
   }
+
+  protected insertLiveCountBadge(count: number): void {
+    const headerLeft = this.header.querySelector('.panel-header-left');
+    if (!headerLeft) return;
+    const badge = document.createElement('span');
+    badge.className = 'panel-live-count';
+    badge.textContent = `${count}`;
+    headerLeft.appendChild(badge);
+  }
+
+  protected appendCloseButton(): void {
+    const closeBtn = h('button', {
+      className: 'icon-btn panel-close-btn',
+      'aria-label': t('components.panel.closePanel'),
+      title: t('components.panel.closePanel'),
+    }, '\u2715');
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.element.dispatchEvent(new CustomEvent('wm:panel-close', {
+        bubbles: true,
+        detail: { panelId: this.panelId },
+      }));
+    });
+    this.header.appendChild(closeBtn);
+  }
+
   public getElement(): HTMLElement {
     return this.element;
   }
 
+  public isNearViewport(marginPx = 400): boolean {
+    if (!this.element.isConnected) return false;
+    if (typeof window === 'undefined') return true;
+
+    const style = window.getComputedStyle(this.element);
+    if (style.display === 'none' || style.visibility === 'hidden') return false;
+
+    const rect = this.element.getBoundingClientRect();
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+
+    if (rect.width === 0 || rect.height === 0) return false;
+
+    return (
+      rect.bottom >= -marginPx &&
+      rect.right >= -marginPx &&
+      rect.top <= viewportHeight + marginPx &&
+      rect.left <= viewportWidth + marginPx
+    );
+  }
+
   public showLoading(message = t('common.loading')): void {
+    if (this._locked) return;
+    this.setErrorState(false);
+    this.clearRetryCountdown();
     replaceChildren(this.content,
       h('div', { className: 'panel-loading' },
         h('div', { className: 'panel-loading-radar' },
@@ -630,20 +703,137 @@ export class Panel {
     );
   }
 
-  public showError(message = t('common.failedToLoad')): void {
-    replaceChildren(this.content, h('div', { className: 'error-message' }, message));
+  public showError(message?: string, onRetry?: () => void, autoRetrySeconds?: number): void {
+    if (this._locked) return;
+    this.clearRetryCountdown();
+    this.setErrorState(true);
+    if (onRetry !== undefined) this.retryCallback = onRetry;
+
+    const radarEl = h('div', { className: 'panel-loading-radar panel-error-radar' },
+      h('div', { className: 'panel-radar-sweep' }),
+      h('div', { className: 'panel-radar-dot error' }),
+    );
+
+    const msgEl = h('div', { className: 'panel-error-msg' }, message || t('common.failedToLoad'));
+
+    const children: (HTMLElement | string)[] = [radarEl, msgEl];
+
+    if (this.retryCallback) {
+      const backoffSeconds = autoRetrySeconds ?? Math.min(15 * Math.pow(2, this.retryAttempt), 180);
+      this.retryAttempt++;
+      let remaining = Math.round(backoffSeconds);
+      const countdownEl = h('div', { className: 'panel-error-countdown' },
+        `${t('common.retrying')} (${remaining}s)`,
+      );
+      children.push(countdownEl);
+      this.retryCountdownTimer = setInterval(() => {
+        remaining--;
+        if (remaining <= 0) {
+          this.clearRetryCountdown();
+          this.retryCallback?.();
+          return;
+        }
+        countdownEl.textContent = `${t('common.retrying')} (${remaining}s)`;
+      }, 1000);
+    }
+    replaceChildren(this.content, h('div', { className: 'panel-error-state' }, ...children));
   }
 
-  public showRetrying(message = t('common.retrying')): void {
-    replaceChildren(this.content,
-      h('div', { className: 'panel-loading' },
-        h('div', { className: 'panel-loading-radar' },
-          h('div', { className: 'panel-radar-sweep' }),
-          h('div', { className: 'panel-radar-dot' }),
-        ),
-        h('div', { className: 'panel-loading-text retrying' }, message),
-      ),
+  public resetRetryBackoff(): void {
+    this.retryAttempt = 0;
+  }
+
+  public showLocked(features: string[] = []): void {
+    this._locked = true;
+    this.clearRetryCountdown();
+
+    for (let child = this.header.nextElementSibling; child && child !== this.content; child = child.nextElementSibling) {
+      (child as HTMLElement).style.display = 'none';
+    }
+    this.element.classList.add('panel-is-locked');
+
+    const lockSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>`;
+    const iconEl = h('div', { className: 'panel-locked-icon' });
+    iconEl.innerHTML = lockSvg;
+
+    const lockedChildren: (HTMLElement | string)[] = [
+      iconEl,
+      h('div', { className: 'panel-locked-desc' }, t('premium.lockedDesc')),
+    ];
+
+    if (features.length > 0) {
+      const featureList = h('ul', { className: 'panel-locked-features' });
+      for (const feat of features) {
+        featureList.appendChild(h('li', {}, feat));
+      }
+      lockedChildren.push(featureList);
+    }
+
+    const ctaBtn = h('button', { type: 'button', className: 'panel-locked-cta' }, t('premium.joinWaitlist'));
+    if (isDesktopRuntime()) {
+      ctaBtn.addEventListener('click', () => void invokeTauri<void>('open_url', { url: 'https://worldmonitor.app/pro' }).catch(() => window.open('https://worldmonitor.app/pro', '_blank')));
+    } else {
+      ctaBtn.addEventListener('click', () => window.open('https://worldmonitor.app/pro', '_blank'));
+    }
+    lockedChildren.push(ctaBtn);
+
+    replaceChildren(this.content, h('div', { className: 'panel-locked-state' }, ...lockedChildren));
+  }
+
+  public showRetrying(message?: string, countdownSeconds?: number): void {
+    if (this._locked) return;
+    this.clearRetryCountdown();
+    this.setErrorState(true);
+
+    const radarEl = h('div', { className: 'panel-loading-radar panel-error-radar' },
+      h('div', { className: 'panel-radar-sweep' }),
+      h('div', { className: 'panel-radar-dot error' }),
     );
+
+    const msgEl = h('div', { className: 'panel-error-msg' }, message || t('common.retrying'));
+    const children: (HTMLElement | string)[] = [radarEl, msgEl];
+
+    if (countdownSeconds && countdownSeconds > 0) {
+      let remaining = countdownSeconds;
+      const countdownEl = h('div', { className: 'panel-error-countdown' },
+        `${t('common.retrying')} (${remaining}s)`,
+      );
+      children.push(countdownEl);
+      this.retryCountdownTimer = setInterval(() => {
+        remaining--;
+        if (remaining <= 0) {
+          this.clearRetryCountdown();
+          countdownEl.textContent = t('common.retrying');
+          return;
+        }
+        countdownEl.textContent = `${t('common.retrying')} (${remaining}s)`;
+      }, 1000);
+    }
+
+    replaceChildren(this.content,
+      h('div', { className: 'panel-error-state' }, ...children),
+    );
+  }
+
+  private clearRetryCountdown(): void {
+    if (this.retryCountdownTimer) {
+      clearInterval(this.retryCountdownTimer);
+      this.retryCountdownTimer = null;
+    }
+  }
+
+  protected setRetryCallback(fn: (() => void) | null): void {
+    this.retryCallback = fn;
+  }
+
+  protected setFetching(v: boolean): void {
+    this._fetching = v;
+    const btn = this.content.querySelector<HTMLButtonElement>('[data-panel-retry]');
+    if (btn) btn.disabled = v;
+  }
+
+  protected get isFetching(): boolean {
+    return this._fetching;
   }
 
   public showConfigError(message: string): void {
@@ -682,6 +872,10 @@ export class Panel {
   }
 
   public setContent(html: string): void {
+    if (this._locked) return;
+    this.setErrorState(false);
+    this.clearRetryCountdown();
+    this.retryAttempt = 0;
     if (this.pendingContentHtml === html || this.content.innerHTML === html) {
       return;
     }
@@ -788,6 +982,7 @@ export class Panel {
 
   public destroy(): void {
     this.abortController.abort();
+    this.clearRetryCountdown();
     if (this.colSpanReconcileRaf !== null) {
       cancelAnimationFrame(this.colSpanReconcileRaf);
       this.colSpanReconcileRaf = null;

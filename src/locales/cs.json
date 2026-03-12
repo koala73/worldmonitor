@@ -6,6 +6,9 @@
   "countryBrief": {
     "identifying": "Identifikuji zemi...",
     "locating": "Lokalizuji region...",
+    "geocodeFailed": "Nepodařilo se identifikovat zemi na tomto místě",
+    "retryBtn": "Zkusit znovu",
+    "closeBtn": "Zavřít",
     "limitedCoverage": "Omezené pokrytí",
     "instabilityIndex": "Index nestability",
     "notTracked": "Nesledováno — {{country}} není v seznamu CII tier-1",
@@ -77,6 +80,59 @@
       "stockIndex": "Akciový index: {{value}}",
       "recentHeadlines": "**Nedávné titulky:**",
       "activeStrikes": "Detekováno aktivních útoků/stávek: {{count}}"
+    },
+    "militaryActivity": "Vojenská aktivita",
+    "economicIndicators": "Ekonomické ukazatele",
+    "ownFlights": "Vlastní lety",
+    "foreignFlights": "Zahraniční lety",
+    "navalVessels": "Námořní plavidla",
+    "foreignPresence": "Zahraniční přítomnost",
+    "nearestBases": "Nejbližší vojenské základny",
+    "noBasesNearby": "Žádné základny v okruhu 600 km.",
+    "noInfrastructure": "V okruhu 600 km nebyla nalezena žádná kritická infrastruktura.",
+    "noGeometry": "Žádná geometrická data pro korelaci infrastruktury.",
+    "noSignals": "Žádné aktuální signály s vysokou závažností.",
+    "assessmentUnavailable": "Hodnocení není k dispozici.",
+    "noNews": "Žádné aktuální zprávy specifické pro tuto zemi.",
+    "noIndicators": "Žádné ukazatele specifické pro tuto zemi.",
+    "nearbyPorts": "Blízké přístavy",
+    "detected": "Zjištěno",
+    "notDetected": "Ne",
+    "ciiUnavailable": "Skóre CII pro tuto zemi není k dispozici.",
+    "chips": {
+      "criticalNews": "Kritické zprávy",
+      "protests": "Protesty",
+      "militaryAir": "Vojenské letectví",
+      "navalVessels": "Námořní plavidla",
+      "outages": "Výpadky",
+      "aisDisruptions": "Poruchy AIS",
+      "satelliteFires": "Satelitní požáry",
+      "temporalAnomalies": "Časové anomálie",
+      "cyberThreats": "Kybernetické hrozby",
+      "earthquakes": "Zemětřesení",
+      "displaced": "Vysídlení",
+      "climateStress": "Klimatický stres",
+      "conflictEvents": "Konfliktní události",
+      "activeStrikes": "Aktivní útoky",
+      "doNotTravel": "Necestovat",
+      "reconsiderTravel": "Zvážit cestu",
+      "exerciseCaution": "Dbát opatrnosti",
+      "advisory": "Cestovní upozornění",
+      "activeSirens": "Aktivní sirény",
+      "sirens24h": "Sirény / 24h",
+      "aviationDisruptions": "Letecké poruchy",
+      "gpsJammingZones": "Zóny rušení GPS"
+    },
+    "countryFacts": "Fakta o zemi",
+    "loadingFacts": "Načítání faktů o zemi...",
+    "noFacts": "Fakta o zemi nejsou k dispozici.",
+    "facts": {
+      "headOfState": "Hlava státu",
+      "population": "Počet obyvatel",
+      "capital": "Hlavní město",
+      "languages": "Jazyky",
+      "currencies": "Měny",
+      "area": "Rozloha"
     }
   },
   "header": {
@@ -96,6 +152,7 @@
     "toggleTheme": "Přepnout tmavý/světlý režim",
     "panelDisplayCaption": "Vyberte, které panely se mají zobrazit na řídicím panelu",
     "tabGeneral": "Obecné",
+    "tabSettings": "Nastavení",
     "tabPanels": "Panely",
     "tabSources": "Zdroje",
     "languageLabel": "Jazyk",
@@ -127,6 +184,8 @@
     "sourceRegionGulfMena": "Záliv a MENA",
     "filterPanels": "Filtrovat panely...",
     "resetLayout": "Obnovit rozložení",
+    "resetLayoutTooltip": "Obnovit výchozí uspořádání panelů",
+    "unsavedChanges": "Máte neuložené změny panelů. Zahodit je?",
     "panelCatCore": "Hlavní",
     "panelCatIntelligence": "Zpravodajství",
     "panelCatRegionalNews": "Regionální zprávy",
@@ -143,7 +202,9 @@
     "panelCatCentralBanks": "Centrální banky a ekonomika",
     "panelCatDeals": "Transakce a instituce",
     "panelCatGulfMena": "Záliv a MENA",
-    "panelCatTradePolicy": "Obchodní politika"
+    "panelCatTradePolicy": "Obchodní politika",
+    "downloadApp": "Stáhnout aplikaci",
+    "selectRegion": "Vybrat region"
   },
   "panels": {
     "liveNews": "Živé zprávy",
@@ -250,7 +311,68 @@
       "brief": "Zadejte název země pro zpravodajský přehled",
       "layers": "Zadejte \"military\" nebo \"finance\" pro přednastavení vrstev",
       "time": "Zadejte \"1h\", \"24h\" nebo \"7d\" pro filtrování podle času",
-      "settings": "Zadejte \"dark mode\", \"settings\" nebo \"fullscreen\""
+      "settings": "Zadejte \"dark mode\", \"settings\" nebo \"fullscreen\"",
+      "mapExample": "iran",
+      "panelExample": "news",
+      "briefExample": "brief china",
+      "layersExample": "military layers",
+      "timeExample": "24h",
+      "settingsExample": "dark mode"
+    },
+    "keywords": {
+      "military": "vojenské",
+      "finance": "finance",
+      "infrastructure": "infrastruktura",
+      "intelligence": "zpravodajství",
+      "news": "zprávy",
+      "dark": "tmavý",
+      "light": "světlý",
+      "settings": "nastavení",
+      "fullscreen": "celá obrazovka",
+      "refresh": "obnovit"
+    },
+    "labels": {
+      "layers": {
+        "military": "Zobrazit vojenské vrstvy",
+        "finance": "Zobrazit finanční vrstvy",
+        "infra": "Zobrazit vrstvy infrastruktury",
+        "intel": "Zobrazit zpravodajské vrstvy",
+        "all": "Povolit všechny vrstvy",
+        "none": "Skrýt všechny vrstvy",
+        "minimal": "Minimální vrstvy (konflikty + hotspoty)"
+      },
+      "layer": {
+        "ais": "Přepnout sledování lodí AIS",
+        "flights": "Přepnout vojenské lety",
+        "conflicts": "Přepnout konfliktní zóny",
+        "hotspots": "Přepnout zpravodajské hotspoty",
+        "protests": "Přepnout protesty a nepokoje",
+        "cables": "Přepnout podmořské kabely",
+        "pipelines": "Přepnout ropovody",
+        "nuclear": "Přepnout jaderná zařízení",
+        "bases": "Přepnout vojenské základny",
+        "fires": "Přepnout satelitní požáry",
+        "weather": "Přepnout překryv počasí",
+        "cyber": "Přepnout kybernetické hrozby",
+        "displacement": "Přepnout toky vysídlení",
+        "climate": "Přepnout klimatické anomálie",
+        "outages": "Přepnout výpadky internetu",
+        "tradeRoutes": "Přepnout obchodní trasy"
+      },
+      "view": {
+        "dark": "Přepnout na tmavý režim",
+        "light": "Přepnout na světlý režim",
+        "fullscreen": "Přepnout celou obrazovku",
+        "settings": "Otevřít nastavení",
+        "refresh": "Obnovit všechna data"
+      },
+      "time": {
+        "1h": "Zobrazit události z poslední hodiny",
+        "6h": "Zobrazit události z posledních 6 hodin",
+        "24h": "Zobrazit události z posledních 24 hodin",
+        "48h": "Zobrazit události z posledních 48 hodin",
+        "7d": "Zobrazit události z posledních 7 dnů"
+      }
     }
   },
   "modals": {
@@ -288,7 +410,11 @@
         "techevent": "Tech událost",
         "techhq": "Tech centrála",
         "accelerator": "Akcelerátor"
-      }
+      },
+      "commands": "Příkazy",
+      "results": "Výsledky",
+      "seeAllCommands": "Zobrazit všechny příkazy",
+      "hideCommandList": "Zpět"
     },
     "signal": {
       "title": "ZPRAVODAJSKÉ ZJIŠTĚNÍ",
@@ -549,9 +675,12 @@
         "mideast": "BLÍZKÝ VÝCHOD",
         "europe": "EVROPA",
         "americas": "AMERIKA",
-        "asia": "ASIE"
+        "asia": "ASIE",
+        "space": "VESMÍR"
       },
-      "expand": "Rozbalit"
+      "expand": "Rozbalit",
+      "paused": "Webkamery pozastaveny",
+      "pausedIdle": "Webkamery pozastaveny — pohněte myší pro obnovení"
     },
     "monitor": {
       "placeholder": "Klíčová slova (oddělená čárkou)",
@@ -633,7 +762,8 @@
       "mineral": "Minerál",
       "topProducers": "Největší producenti",
       "risk": "Riziko",
-      "sources": "FRED / NGA / USGS"
+      "sources": "FRED / NGA / USGS",
+      "aisDisruptions": "Poruchy AIS"
     },
     "tradePolicy": {
       "restrictions": "Omezení",
@@ -796,7 +926,8 @@
       "shareStory": "Sdílet příběh",
       "printPdf": "Tisk / PDF",
       "exportData": "Exportovat data",
-      "sourceRef": "Zdroj [{{n}}]"
+      "sourceRef": "Zdroj [{{n}}]",
+      "shareLink": "Sdílet odkaz"
     },
     "relatedAssets": {
       "pipeline": "Potrubí",
@@ -808,7 +939,8 @@
     "community": {
       "joinDiscussion": "Připojit se k diskusi",
       "openDiscussion": "Otevřít diskusi",
-      "dontShowAgain": "Příště nezobrazovat"
+      "dontShowAgain": "Příště nezobrazovat",
+      "sectionLabel": "Komunita"
     },
     "threatLabels": {
       "critical": "KRIT",
@@ -837,10 +969,21 @@
         "elevated": "Zvýšená",
         "monitoring": "Monitorování",
         "base": "Základna",
-        "nuclear": "Jaderné zařízení"
+        "nuclear": "Jaderné zařízení",
+        "aircraft": "Letadla",
+        "ciiLow": "Nízký (0–30)",
+        "ciiNormal": "Normální (31–50)",
+        "ciiElevated": "Zvýšený (51–65)",
+        "ciiHigh": "Vysoký (66–80)",
+        "ciiCritical": "Kritický (81–100)"
       },
       "layerGuide": "Průvodce vrstvami",
+      "layerWarningTitle": "Upozornění na výkon",
+      "layerWarningBody": "Povolení více než {{threshold}} vrstev může ovlivnit výkon vykreslování a snímkovou frekvenci.",
+      "layerWarningDismiss": "Příště nezobrazovat",
+      "layerWarningOk": "Rozumím",
       "layersTitle": "Vrstvy",
+      "layerSearch": "Hledat vrstvy...",
       "timeAll": "Vše",
       "views": {
         "global": "Globální",
@@ -870,6 +1013,7 @@
         "nuclearSites": "Jaderná zařízení",
         "gammaIrradiators": "Gamma ozařovače",
         "spaceports": "Kosmodromy",
+        "satellites": "Orbitální sledování",
         "pipelines": "Potrubí",
         "militaryActivity": "Vojenská aktivita",
         "shipTraffic": "Lodní doprava",
@@ -890,7 +1034,13 @@
         "tradeRoutes": "Obchodní cesty",
         "iranAttacks": "Útoky Íránu",
         "gpsJamming": "RUŠENÍ GPS",
-        "dayNight": "Den/Noc"
+        "dayNight": "Den/Noc",
+        "ciiChoropleth": "Nestabilita CII",
+        "positiveEvents": "Pozitivní události",
+        "kindness": "Skutky laskavosti",
+        "happiness": "Světové štěstí",
+        "speciesRecovery": "Obnova druhů",
+        "renewableInstallations": "Čistá energie"
       },
       "tooltip": {
         "earthquake": "Zemětřesení",
@@ -995,7 +1145,8 @@
           "financeGulfInvestments": "Investice státních fondů GCC a PZI",
           "tradeRoutes": "Hlavní světové námořní trasy spojující přístavy přes strategická úzká hrdla",
           "dayNight": "Sluneční terminátor v reálném čase ukazující denní a noční zóny",
-          "geoBoundaries": "Demilitarizované zóny, linie příměří a sporné hranice"
+          "geoBoundaries": "Demilitarizované zóny, linie příměří a sporné hranice",
+          "ciiChoropleth": "Tepelná mapa Country Instability Index — zbarvuje země podle skóre CII (zelená=stabilní, červená=kritická)"
         },
         "notes": {
           "timeAffects": "Ovlivňuje: Zemětřesení, Počasí, Protesty, Výpadky"
@@ -1045,7 +1196,16 @@
       "headlineMemoryLabel": "Paměť titulků",
       "headlineMemoryDesc": "Zapamatovat si zobrazené titulky pro zvýraznění nových",
       "streamAlwaysOnLabel": "Ponechat živé streamy spuštěné",
-      "streamAlwaysOnDesc": "Zabrání automatickému pozastavení Live Cams a Live News při nečinnosti. Doporučeno pro druhý monitor / nástěnný dashboard. Vypněte (Eco) pro úsporu CPU a přenosu dat."
+      "streamAlwaysOnDesc": "Zabrání automatickému pozastavení Live Cams a Live News při nečinnosti. Doporučeno pro druhý monitor / nástěnný dashboard. Vypněte (Eco) pro úsporu CPU a přenosu dat.",
+      "globeRenderQualityLabel": "Kvalita vykreslování globu",
+      "globeRenderQualityDesc": "Ovládá rozlišení plátna globu. Vyšší hodnoty vypadají ostřeji na 4K displejích, ale mohou přetížit GPU.",
+      "globeRenderScaleOptions": {
+        "1": "Eco (1x)",
+        "2": "4K (2x)",
+        "3": "Extrémní (3x)",
+        "auto": "Auto (zařízení)",
+        "1_5": "Ostrý (1.5x)"
+      }
     },
     "cascade": {
       "noImpacts": "Nezjištěny žádné dopady na země",
@@ -1280,7 +1440,9 @@
       "summarize": "Shrnout tento panel",
       "generatingSummary": "Generuji souhrn...",
       "sources": "Zdrojů: {{count}}",
-      "relatedAssetsNear": "Související aktiva blízko {{location}}"
+      "relatedAssetsNear": "Související aktiva blízko {{location}}",
+      "summaryError": "Shrnutí se nepodařilo vytvořit",
+      "summaryFailed": "Shrnutí selhalo"
     },
     "export": {
       "exportData": "Exportovat data"
@@ -1431,7 +1593,8 @@
       "openSettings": "Otevřít Nastavení"
     },
     "languageSelector": {
-      "selectLanguage": "Vybrat jazyk"
+      "selectLanguage": "Vybrat jazyk",
+      "mapLabelsFallbackVi": "Popisky mapy aktuálně používají angličtinu jako náhradní jazyk pro vietnamštinu."
     },
     "serviceStatus": {
       "checkingServices": "Kontrola služeb...",
@@ -1509,11 +1672,34 @@
       "regionOceania": "Oceánie",
       "invalidHandle": "Zadejte platný úchyt YouTube (např. @NazevKanalu)",
       "channelNotFound": "Kanál YouTube nenalezen",
-      "verifying": "Ověřování…"
+      "verifying": "Ověřování…",
+      "noResults": "Nebyly nalezeny žádné kanály odpovídající \"{{term}}\"",
+      "hlsUrl": "URL HLS streamu (volitelné)",
+      "invalidHlsUrl": "Zadejte platnou URL HLS streamu (.m3u8)"
     },
     "map": {
       "showMap": "Zobrazit mapu",
       "hideMap": "Skrýt mapu"
+    },
+    "positiveNewsFeed": {
+      "noStories": "V této kategorii zatím nejsou žádné příběhy"
+    },
+    "goodThingsDigest": {
+      "noStories": "Žádné příběhy k dispozici",
+      "summarizing": "Shrnutí se vytváří…"
+    },
+    "progressCharts": {
+      "noData": "Žádná data o pokroku"
+    },
+    "settings": {
+      "dataManagementLabel": "Správa dat",
+      "exportSettings": "Exportovat nastavení",
+      "importSettings": "Importovat nastavení",
+      "exportSuccess": "Nastavení úspěšně exportováno",
+      "exportFailed": "Export nastavení se nezdařil",
+      "importSuccess": "Importováno {{count}} nastavení",
+      "importFailed": "Import nastavení se nezdařil",
+      "reloadNow": "Načíst znovu"
     }
   },
   "popups": {
@@ -1569,9 +1755,9 @@
     },
     "gpsJamming": {
       "title": "Interference GPS/GNSS",
-      "interference": "Interference",
-      "aircraftAffected": "Zasažená letadla",
-      "aircraftNormal": "Letadla v normálu",
+      "navPerformance": "Nav Performance",
+      "samples": "ADS-B Samples",
+      "aircraft": "Aircraft",
       "h3Hex": "H3 Hex"
     },
     "flight": {
@@ -1587,7 +1773,9 @@
       "sources": {
         "faa": "FAA ASWS",
         "eurocontrol": "Eurocontrol",
-        "computed": "Vypočítáno"
+        "computed": "Vypočítáno",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "Amerika",
@@ -1984,6 +2172,14 @@
       "uae_ecsr": "SAE/ECSR",
       "venezuela_crisis": "Krize ve Venezuele",
       "yemen_houthis": "Jemen/Húsíové"
+    },
+    "aircraft": {
+      "altitude": "Výška",
+      "speed": "Pozemní rychlost",
+      "heading": "Kurz",
+      "position": "Poloha",
+      "ground": "Na zemi",
+      "airborne": "Ve vzduchu"
     }
   },
   "signals": {
@@ -2166,5 +2362,27 @@
     "retry": "Zkusit znovu",
     "refresh": "Obnovit",
     "all": "Vše"
+  },
+  "preferences": {
+    "display": "Zobrazení",
+    "intelligence": "Inteligence",
+    "media": "Média",
+    "panels": "Panely",
+    "dataAndCommunity": "Data a komunita",
+    "theme": "Motiv",
+    "themeDesc": "Automaticky sleduje nastavení systému.",
+    "themeAuto": "Automaticky (podle systému)",
+    "themeDark": "Tmavý",
+    "themeLight": "Světlý",
+    "mapProvider": "Poskytovatel dlaždic mapy",
+    "mapProviderDesc": "Zvolte zdroj dlaždic mapy.",
+    "mapTheme": "Motiv mapy",
+    "mapThemeDesc": "Vizuální styl dlaždic mapy.",
+    "globePreset": "Vizuální předvolba",
+    "globePresetDesc": "Přepínejte mezi klasickým a vylepšeným zobrazením globálu."
+  },
+  "contextMenu": {
+    "openCountryBrief": "Otevřít přehled země",
+    "copyCoordinates": "Kopírovat souřadnice"
   }
 }

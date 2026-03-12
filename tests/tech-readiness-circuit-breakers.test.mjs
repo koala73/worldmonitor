@@ -79,22 +79,14 @@ describe('economic/index.ts — per-indicator World Bank circuit breakers', () =
     );
   });
 
-  it('mirrors getFredBreaker pattern (consistency check)', () => {
-    // getFredBreaker already uses this pattern correctly — wbBreaker must follow suit
-    assert.match(src, /getFredBreaker\s*\(/, 'getFredBreaker pattern must still exist as reference');
-    assert.match(src, /getWbBreaker\s*\(/, 'getWbBreaker must mirror getFredBreaker');
+  it('mirrors fredBatchBreaker pattern (consistency check)', () => {
+    // fredBatchBreaker uses the same circuit breaker pattern
+    assert.match(src, /fredBatchBreaker\s*=/, 'fredBatchBreaker must exist as reference');
+    assert.match(src, /getWbBreaker\s*\(/, 'getWbBreaker implementation should be present');
 
-    // Both should use a Map
-    const fredBreakerSection = src.slice(
-      src.indexOf('fredBreakers'),
-      src.indexOf('fredBreakers') + 300,
-    );
-    const wbBreakerSection = src.slice(
-      src.indexOf('wbBreakers'),
-      src.indexOf('wbBreakers') + 300,
-    );
-    assert.match(fredBreakerSection, /new\s+Map/, 'fredBreakers uses Map');
-    assert.match(wbBreakerSection, /new\s+Map/, 'wbBreakers uses Map');
+    // Both should use circuit breakers
+    assert.match(src, /fredBatchBreaker\s*=\s*createCircuitBreaker/, 'fredBatchBreaker uses createCircuitBreaker');
+    assert.match(src, /wbBreakers\s*=\s*new\s+Map/, 'wbBreakers uses Map for per-indicator breakers');
   });
 });
 
@@ -149,7 +141,7 @@ describe('CircuitBreaker isolation — independent per-indicator instances', () 
 
     const fallback = { data: [], pagination: undefined };
     const internetData = { data: [{ countryCode: 'USA', indicatorCode: 'IT.NET.USER.ZS', year: 2023, value: 90 }], pagination: undefined };
-    const mobileData   = { data: [{ countryCode: 'USA', indicatorCode: 'IT.CEL.SETS.P2', year: 2023, value: 120 }], pagination: undefined };
+    const mobileData = { data: [{ countryCode: 'USA', indicatorCode: 'IT.CEL.SETS.P2', year: 2023, value: 120 }], pagination: undefined };
 
     // Populate both caches with different data
     await breakerA.execute(async () => internetData, fallback);
@@ -198,29 +190,26 @@ describe('CircuitBreaker isolation — independent per-indicator instances', () 
 });
 
 // ============================================================
-// 3. getTechReadinessRankings: non-empty result requires at least partial data
+// 3. getTechReadinessRankings: reads from bootstrap/seed, never calls WB API
 // ============================================================
 
-describe('getTechReadinessRankings — result is empty only when ALL indicators return no data', () => {
+describe('getTechReadinessRankings — bootstrap-only data flow', () => {
   const src = readSrc('src/services/economic/index.ts');
 
-  it('allCountries union covers data from all 4 indicators', () => {
-    // The function must collect country codes from ALL 4 indicator responses
-    // by iterating over latestByCountry from each
+  it('reads from bootstrap hydration or endpoint, never calls WB API directly', () => {
     const fnStart = src.indexOf('export async function getTechReadinessRankings');
     const fnEnd = src.indexOf('\nexport ', fnStart + 1);
     const fnBody = src.slice(fnStart, fnEnd !== -1 ? fnEnd : fnStart + 3000);
 
-    assert.match(fnBody, /allCountries\s*=\s*new\s+Set/,
-      'Must build allCountries Set from all indicator responses');
-    assert.match(fnBody, /internet.*mobile.*broadband.*rdSpend|Promise\.all/,
-      'Must fetch all 4 indicators in parallel');
-    assert.match(fnBody, /latestByCountry/,
-      'Must use latestByCountry from each indicator response');
+    assert.match(fnBody, /getHydratedData\s*\(\s*'techReadiness'\s*\)/,
+      'Must try bootstrap hydration cache first');
+    assert.match(fnBody, /\/api\/bootstrap\?keys=techReadiness/,
+      'Must fallback to bootstrap endpoint');
+    assert.doesNotMatch(fnBody, /getIndicatorData\s*\(/,
+      'Must NOT call getIndicatorData (WB API) from frontend');
   });
 
-  it('uses 4 distinct indicator codes', () => {
-    // If these change, the panel will silently break
+  it('indicator codes exist in TECH_INDICATORS for seed script parity', () => {
     assert.match(src, /'IT\.NET\.USER\.ZS'/, 'Internet Users indicator must be present');
     assert.match(src, /'IT\.CEL\.SETS\.P2'/, 'Mobile Subscriptions indicator must be present');
     assert.match(src, /'IT\.NET\.BBND\.P2'/, 'Fixed Broadband indicator must be present');

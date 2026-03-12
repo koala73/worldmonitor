@@ -6,6 +6,9 @@
   "countryBrief": {
     "identifying": "国を特定中...",
     "locating": "地域を特定中...",
+    "geocodeFailed": "この場所の国を特定できませんでした",
+    "retryBtn": "再試行",
+    "closeBtn": "閉じる",
     "limitedCoverage": "限定的なカバレッジ",
     "instabilityIndex": "不安定性指数",
     "notTracked": "未追跡 — {{country}}はCII第1階層リストに含まれていない",
@@ -37,9 +40,9 @@
       "displaced": "避難民",
       "climate": "気候ストレス",
       "conflictEvents": "紛争イベント",
-      "gpsJammingZones": "GPS Jamming Zones",
       "activeStrikes": "活動中のストライキ",
-      "aviationDisruptions": "空港の混乱"
+      "aviationDisruptions": "空港の混乱",
+      "gpsJammingZones": "GPS Jamming Zones"
     },
     "timeAgo": {
       "m": "{{count}}分前",
@@ -67,6 +70,48 @@
       "falling": "下降中",
       "stable": "安定"
     },
+    "militaryActivity": "軍事活動",
+    "economicIndicators": "経済指標",
+    "ownFlights": "自国フライト",
+    "foreignFlights": "外国フライト",
+    "navalVessels": "海軍艦艇",
+    "foreignPresence": "外国軍の駐留",
+    "nearestBases": "最寄りの軍事基地",
+    "noBasesNearby": "600km圏内に基地はありません。",
+    "noInfrastructure": "600km圏内に重要インフラは見つかりません。",
+    "noGeometry": "インフラ相関用のジオメトリがありません。",
+    "noSignals": "最近の高重要度シグナルはありません。",
+    "assessmentUnavailable": "評価は利用できません。",
+    "noNews": "この国に関する最近の報道はありません。",
+    "noIndicators": "この国の指標は利用できません。",
+    "nearbyPorts": "近隣の港",
+    "detected": "検出済み",
+    "notDetected": "なし",
+    "ciiUnavailable": "この国のCIIスコアは利用できません。",
+    "chips": {
+      "criticalNews": "重要ニュース",
+      "protests": "抗議活動",
+      "militaryAir": "軍事航空",
+      "navalVessels": "海軍艦艇",
+      "outages": "障害",
+      "aisDisruptions": "AIS途絶",
+      "satelliteFires": "衛星火災",
+      "temporalAnomalies": "時間的異常",
+      "cyberThreats": "サイバー脅威",
+      "earthquakes": "地震",
+      "displaced": "避難民",
+      "climateStress": "気候ストレス",
+      "conflictEvents": "紛争事象",
+      "activeStrikes": "攻撃活動中",
+      "doNotTravel": "渡航禁止",
+      "reconsiderTravel": "渡航再考",
+      "exerciseCaution": "注意喚起",
+      "advisory": "勧告",
+      "activeSirens": "サイレン作動中",
+      "sirens24h": "サイレン / 24時間",
+      "aviationDisruptions": "航空障害",
+      "gpsJammingZones": "GPS妨害区域"
+    },
     "fallback": {
       "instabilityIndex": "**不安定性指数：{{score}}/100**（{{level}}、{{trend}}）",
       "protestsDetected": "{{count}}件の活発な抗議活動を検知",
@@ -77,6 +122,17 @@
       "stockIndex": "株価指数：{{value}}",
       "recentHeadlines": "**最近のヘッドライン：**",
       "activeStrikes": "{{count}}件の活発なストライキを検知"
+    },
+    "countryFacts": "国の基本情報",
+    "loadingFacts": "国の基本情報を読み込み中...",
+    "noFacts": "国の基本情報は利用できません。",
+    "facts": {
+      "headOfState": "国家元首",
+      "population": "人口",
+      "capital": "首都",
+      "languages": "言語",
+      "currencies": "通貨",
+      "area": "面積"
     }
   },
   "header": {
@@ -87,8 +143,10 @@
     "settings": "設定",
     "sources": "ソース",
     "copyLink": "リンクをコピー",
+    "downloadApp": "アプリをダウンロード",
     "fullscreen": "全画面",
     "pinMap": "マップを上部に固定",
+    "selectRegion": "地域を選択",
     "viewOnGitHub": "GitHubで見る",
     "filterSources": "ソースを絞り込み...",
     "sourcesEnabled": "{{enabled}}/{{total}} 有効",
@@ -96,6 +154,7 @@
     "toggleTheme": "ダーク/ライトモード切替",
     "panelDisplayCaption": "ダッシュボードに表示するパネルを選択",
     "tabGeneral": "一般",
+    "tabSettings": "設定",
     "tabPanels": "パネル",
     "tabSources": "ソース",
     "languageLabel": "言語",
@@ -127,6 +186,8 @@
     "sourceRegionGulfMena": "湾岸・中東",
     "filterPanels": "パネルを絞り込む...",
     "resetLayout": "レイアウトをリセット",
+    "resetLayoutTooltip": "デフォルトのパネル配置に戻す",
+    "unsavedChanges": "パネルの未保存の変更があります。破棄しますか？",
     "panelCatCore": "コア",
     "panelCatIntelligence": "インテリジェンス",
     "panelCatRegionalNews": "地域ニュース",
@@ -173,6 +234,7 @@
     "commodities": "コモディティ",
     "economic": "経済指標",
     "tradePolicy": "通商政策",
+    "supplyChain": "サプライチェーン",
     "finance": "金融",
     "tech": "テクノロジー",
     "crypto": "暗号資産",
@@ -186,9 +248,13 @@
     "stablecoins": "ステーブルコイン",
     "deduction": "状況推定",
     "ucdpEvents": "UCDP紛争イベント",
+    "giving": "グローバル寄付",
     "displacement": "UNHCR避難民",
     "climate": "気候異常",
     "populationExposure": "人口露出度",
+    "securityAdvisories": "セキュリティアドバイザリー",
+    "orefSirens": "Israel Sirens",
+    "telegramIntel": "Telegram インテリジェンス",
     "startups": "スタートアップ & VC",
     "vcblogs": "VCインサイト & エッセイ",
     "regionalStartups": "グローバルスタートアップニュース",
@@ -210,11 +276,6 @@
     "gccInvestments": "GCC投資",
     "geoHubs": "地政学ハブ",
     "liveWebcams": "ライブカメラ",
-    "securityAdvisories": "セキュリティアドバイザリー",
-    "orefSirens": "Israel Sirens",
-    "telegramIntel": "Telegram インテリジェンス",
-    "giving": "グローバル寄付",
-    "supplyChain": "サプライチェーン",
     "gulfEconomies": "湾岸経済",
     "gulfIndices": "湾岸指数",
     "gulfCurrencies": "湾岸通貨",
@@ -250,7 +311,68 @@
       "brief": "国名を入力してインテリジェンスブリーフを表示",
       "layers": "\"military\" または \"finance\" と入力してレイヤープリセットを適用",
       "time": "\"1h\"、\"24h\"、\"7d\" と入力して時間でフィルター",
-      "settings": "\"dark mode\"、\"settings\"、\"fullscreen\" と入力"
+      "settings": "\"dark mode\"、\"settings\"、\"fullscreen\" と入力",
+      "mapExample": "iran",
+      "panelExample": "news",
+      "briefExample": "brief china",
+      "layersExample": "military layers",
+      "timeExample": "24h",
+      "settingsExample": "dark mode"
+    },
+    "keywords": {
+      "military": "軍事",
+      "finance": "金融",
+      "infrastructure": "インフラ",
+      "intelligence": "情報",
+      "news": "ニュース",
+      "dark": "ダーク",
+      "light": "ライト",
+      "settings": "設定",
+      "fullscreen": "全画面",
+      "refresh": "更新"
+    },
+    "labels": {
+      "layers": {
+        "military": "軍事レイヤーを表示",
+        "finance": "金融レイヤーを表示",
+        "infra": "インフラレイヤーを表示",
+        "intel": "情報レイヤーを表示",
+        "all": "全レイヤーを有効化",
+        "none": "全レイヤーを非表示",
+        "minimal": "最小レイヤー（紛争＋ホットスポット）"
+      },
+      "layer": {
+        "ais": "AIS船舶追跡の切り替え",
+        "flights": "軍事フライトの切り替え",
+        "conflicts": "紛争地帯の切り替え",
+        "hotspots": "情報ホットスポットの切り替え",
+        "protests": "抗議・騒乱の切り替え",
+        "cables": "海底ケーブルの切り替え",
+        "pipelines": "パイプラインの切り替え",
+        "nuclear": "原子力施設の切り替え",
+        "bases": "軍事基地の切り替え",
+        "fires": "衛星火災の切り替え",
+        "weather": "天気オーバーレイの切り替え",
+        "cyber": "サイバー脅威の切り替え",
+        "displacement": "避難フローの切り替え",
+        "climate": "気候異常の切り替え",
+        "outages": "インターネット障害の切り替え",
+        "tradeRoutes": "貿易ルートの切り替え"
+      },
+      "view": {
+        "dark": "ダークモードに切り替え",
+        "light": "ライトモードに切り替え",
+        "fullscreen": "全画面の切り替え",
+        "settings": "設定を開く",
+        "refresh": "全データを更新"
+      },
+      "time": {
+        "1h": "過去1時間のイベントを表示",
+        "6h": "過去6時間のイベントを表示",
+        "24h": "過去24時間のイベントを表示",
+        "48h": "過去48時間のイベントを表示",
+        "7d": "過去7日間のイベントを表示"
+      }
     }
   },
   "modals": {
@@ -264,6 +386,10 @@
       "recent": "最近の検索",
       "empty": "データ検索またはコマンド実行",
       "noResults": "結果なし",
+      "commands": "コマンド",
+      "results": "結果",
+      "seeAllCommands": "コマンド一覧を見る",
+      "hideCommandList": "戻る",
       "navigate": "移動",
       "select": "選択",
       "close": "閉じる",
@@ -368,6 +494,7 @@
         "some": "一部の機能にAPIキーが必要"
       },
       "openSettings": "設定を開く",
+      "skipSetup": "セットアップをスキップ — World Monitorライセンス1つですべてが利用可能になります。早期アクセスのウェイトリストにご参加ください。",
       "summary": {
         "desktop": "デスクトップモード",
         "web": "Webモード（読み取り専用、サーバー管理の認証情報）",
@@ -395,8 +522,7 @@
         "NASA_FIRMS_API_KEY": "Fire Information for Resource Management System。",
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
-      },
-      "skipSetup": "セットアップをスキップ — World Monitorライセンス1つですべてが利用可能になります。早期アクセスのウェイトリストにご参加ください。"
+      }
     },
     "settingsWindow": {
       "validating": "APIキーを検証中...",
@@ -412,13 +538,6 @@
       "noTraffic": "まだトラフィックが記録されていない。",
       "sidecarUnreachable": "サイドカーに接続不能。",
       "logCleared": "ログをクリア済。",
-      "table": {
-        "time": "時刻",
-        "method": "メソッド",
-        "path": "パス",
-        "status": "ステータス",
-        "duration": "所要時間"
-      },
       "worldMonitor": {
         "tabLabel": "World Monitor",
         "heroTitle": "1つのキーですべてが揃います。",
@@ -444,6 +563,13 @@
         },
         "byokTitle": "または自分のキーを使用",
         "byokDescription": "完全な制御をご希望ですか？APIキーとLLMタブから各データソースとAIプロバイダーを個別に設定してください。"
+      },
+      "table": {
+        "time": "時刻",
+        "method": "メソッド",
+        "path": "パス",
+        "status": "ステータス",
+        "duration": "所要時間"
       }
     },
     "countryIntel": {
@@ -498,9 +624,9 @@
         "displaced": "避難民",
         "climate": "気候ストレス",
         "conflictEvents": "紛争イベント",
-        "gpsJammingZones": "GPS Jamming Zones",
         "activeStrikes": "活動中のストライキ",
-        "aviationDisruptions": "空港の混乱"
+        "aviationDisruptions": "空港の混乱",
+        "gpsJammingZones": "GPS Jamming Zones"
       },
       "timeAgo": {
         "m": "{{count}}分前",
@@ -533,25 +659,38 @@
         "protestsDetected": "{{count}} active protests detected",
         "aircraftTracked": "{{count}} military aircraft tracked",
         "vesselsTracked": "{{count}} military vessels tracked",
+        "activeStrikes": "{{count}}件の活発なストライキを検知",
         "internetOutages": "{{count}} internet outages",
         "recentEarthquakes": "{{count}} recent earthquakes",
         "stockIndex": "Stock index: {{value}}",
-        "recentHeadlines": "**Recent headlines:**",
-        "activeStrikes": "{{count}}件の活発なストライキを検知"
+        "recentHeadlines": "**Recent headlines:**"
       }
     }
   },
   "components": {
     "webcams": {
+      "expand": "拡大",
+      "paused": "ウェブカメラ一時停止中",
+      "pausedIdle": "ウェブカメラ一時停止中 — マウスを動かして再開",
       "regions": {
         "iran": "IRAN ATTACKS",
         "all": "すべて",
         "mideast": "中東",
         "europe": "ヨーロッパ",
         "americas": "アメリカ",
-        "asia": "アジア"
-      },
-      "expand": "拡大"
+        "asia": "アジア",
+        "space": "宇宙"
+      }
+    },
+    "positiveNewsFeed": {
+      "noStories": "このカテゴリにはまだ記事がありません"
+    },
+    "goodThingsDigest": {
+      "noStories": "記事がありません",
+      "summarizing": "要約中…"
+    },
+    "progressCharts": {
+      "noData": "進捗データがありません"
     },
     "monitor": {
       "placeholder": "キーワード（カンマ区切り）",
@@ -563,6 +702,7 @@
       "matches": "件一致"
     },
     "regulation": {
+      "dashboard": "AI Regulation Dashboard",
       "timeline": "タイムライン",
       "deadlines": "期限",
       "regulations": "規制",
@@ -579,7 +719,6 @@
       "active": "施行中",
       "proposed": "提案中",
       "updated": "更新済",
-      "dashboard": "AI Regulation Dashboard",
       "actionsCount": "{{count}} actions",
       "deadlinesCount": "{{count}} deadlines",
       "days": "days",
@@ -604,6 +743,7 @@
       "noSpending": "最近の政府支出なし",
       "awards": "件の支出",
       "noIndicatorData": "指標データなし — FREDが読み込み中の可能性",
+      "fredKeyMissing": "FRED APIキーが必要です — 設定で追加して経済指標を有効にしてください",
       "noOilDataRetry": "石油データ一時利用不可 — 自動リトライ予定",
       "vsPreviousWeek": "前週比",
       "in": "内",
@@ -616,8 +756,24 @@
       "change": "Change",
       "cut": "cut",
       "hike": "hike",
-      "hold": "hold",
-      "fredKeyMissing": "FRED APIキーが必要です — 設定で追加して経済指標を有効にしてください"
+      "hold": "hold"
+    },
+    "supplyChain": {
+      "chokepoints": "チョークポイント",
+      "shipping": "海運",
+      "minerals": "鉱物",
+      "noChokepoints": "チョークポイントデータを読み込み中...",
+      "noShipping": "海上輸送料金データが利用できません",
+      "noMinerals": "鉱物データを読み込み中...",
+      "fredKeyMissing": "海上輸送料金にはFRED APIキーが必要です — 設定で追加してください。チョークポイントと鉱物はキーなしで利用可能。",
+      "upstreamUnavailable": "サプライチェーンデータが一時的に利用不可 — キャッシュデータを表示中",
+      "spikeAlert": "スパイク検出 — 料金が52週平均を大幅に上回っています（週次）",
+      "warnings": "件の警告",
+      "aisDisruptions": "AIS途絶",
+      "mineral": "鉱物",
+      "topProducers": "主要生産国",
+      "risk": "リスク",
+      "sources": "FRED / NGA / USGS"
     },
     "tradePolicy": {
       "restrictions": "規制",
@@ -777,6 +933,7 @@
       }
     },
     "countryBrief": {
+      "shareLink": "リンクを共有",
       "shareStory": "ストーリーを共有",
       "printPdf": "印刷 / PDF",
       "exportData": "データをエクスポート",
@@ -792,7 +949,8 @@
     "community": {
       "joinDiscussion": "ディスカッションに参加",
       "openDiscussion": "ディスカッションを開く",
-      "dontShowAgain": "今後表示しない"
+      "dontShowAgain": "今後表示しない",
+      "sectionLabel": "コミュニティ"
     },
     "threatLabels": {
       "critical": "危険",
@@ -821,10 +979,21 @@
         "elevated": "上昇",
         "monitoring": "監視中",
         "base": "基地",
-        "nuclear": "核施設"
+        "nuclear": "核施設",
+        "aircraft": "航空機",
+        "ciiLow": "低 (0–30)",
+        "ciiNormal": "通常 (31–50)",
+        "ciiElevated": "やや高 (51–65)",
+        "ciiHigh": "高 (66–80)",
+        "ciiCritical": "危機的 (81–100)"
       },
       "layerGuide": "レイヤーガイド",
+      "layerWarningTitle": "パフォーマンスに関するお知らせ",
+      "layerWarningBody": "{{threshold}}個以上のレイヤーを有効にすると、描画パフォーマンスやフレームレートに影響する場合があります。",
+      "layerWarningDismiss": "今後表示しない",
+      "layerWarningOk": "了解",
       "layersTitle": "レイヤー",
+      "layerSearch": "レイヤーを検索...",
       "timeAll": "全期間",
       "views": {
         "global": "グローバル",
@@ -854,6 +1023,7 @@
         "nuclearSites": "核施設",
         "gammaIrradiators": "ガンマ線照射施設",
         "spaceports": "宇宙港",
+        "satellites": "軌道監視",
         "pipelines": "パイプライン",
         "militaryActivity": "軍事活動",
         "shipTraffic": "船舶交通",
@@ -872,9 +1042,15 @@
         "commodityHubs": "コモディティハブ",
         "gulfInvestments": "GCC投資",
         "tradeRoutes": "貿易ルート",
+        "iranAttacks": "イラン攻撃",
         "gpsJamming": "GPS JAMMING",
+        "ciiChoropleth": "CII不安定度",
         "dayNight": "昼/夜",
-        "iranAttacks": "イラン攻撃"
+        "positiveEvents": "ポジティブな出来事",
+        "kindness": "善意の行動",
+        "happiness": "世界幸福度",
+        "speciesRecovery": "種の回復",
+        "renewableInstallations": "クリーンエネルギー"
       },
       "tooltip": {
         "earthquake": "地震",
@@ -965,21 +1141,22 @@
           "transportShipping": "船舶、チョークポイント、61の戦略港湾",
           "transportDelays": "空港の遅延とグラウンドストップ（FAA）",
           "naturalEventsFull": "地震（USGS）+ 暴風雨、火災、火山、洪水（NASA EONET）",
-          "waterwaysLabels": "戦略的チョークポイントのラベル",
-          "tradeRoutes": "戦略的なチョークポイントを通じて港を結ぶ主要な世界の航路",
-          "dayNight": "リアルタイムの太陽ターミネーターで昼夜のゾーンを表示",
-          "climateAnomalies": "気温・降水量の異常",
-          "financeGulfInvestments": "GCC主権基金の投資と対外直接投資",
           "firesFull": "活動中の山火事と延焼域（NASA FIRMS）",
-          "geoDisplacement": "難民・避難民の移動パターン",
+          "climateAnomalies": "気温・降水量の異常",
+          "waterwaysLabels": "戦略的チョークポイントのラベル",
           "geoUcdpEvents": "ウプサラ紛争データプログラムの武力紛争イベント",
-          "infraCyberThreats": "サイバー攻撃およびセキュリティイベント",
+          "geoDisplacement": "難民・避難民の移動パターン",
           "militarySpaceports": "ロケット発射場と宇宙関連施設",
+          "infraCyberThreats": "サイバー攻撃およびセキュリティイベント",
           "mineralsFull": "戦略的鉱物資源の鉱床と採掘拠点",
           "techCyberThreats": "サイバー攻撃およびセキュリティイベント",
           "techEvents": "主要テックカンファレンスとイベント",
           "techFires": "テックインフラ付近の活動中の山火事",
-          "geoBoundaries": "非武装地帯、停戦ライン、係争境界線"
+          "financeGulfInvestments": "GCC主権基金の投資と対外直接投資",
+          "tradeRoutes": "戦略的なチョークポイントを通じて港を結ぶ主要な世界の航路",
+          "dayNight": "リアルタイムの太陽ターミネーターで昼夜のゾーンを表示",
+          "geoBoundaries": "非武装地帯、停戦ライン、係争境界線",
+          "ciiChoropleth": "国家不安定度指数ヒートマップ — CIIスコアで国を色分け（緑=安定、赤=危機的）"
         },
         "notes": {
           "timeAffects": "影響: 地震、気象、抗議活動、障害"
@@ -993,15 +1170,27 @@
     },
     "insights": {
       "noStories": "速報またはマルチソースストーリーはまだなし",
-      "infoTooltip": "<strong>AI分析</strong><br>• <strong>世界ブリーフ</strong>: AI要約（Groq/OpenRouter）<br>• <strong>センチメント</strong>: ニュースのトーン分析<br>• <strong>速度</strong>: 急速に広がるストーリー<br>• <strong>焦点</strong>: ニュースエンティティとマップシグナル（軍事、抗議、障害）を相関<br><em>デスクトップ版のみ・Llama 3.3 + 焦点検出搭載</em>",
       "step": "Step {{step}}/{{total}}",
       "waitingForData": "Waiting for news data...",
       "rankingStories": "Ranking important stories...",
       "analyzingSentiment": "Analyzing sentiment...",
       "generatingBrief": "Generating world brief...",
+      "infoTooltip": "<strong>AI分析</strong><br>• <strong>世界ブリーフ</strong>: AI要約（Groq/OpenRouter）<br>• <strong>センチメント</strong>: ニュースのトーン分析<br>• <strong>速度</strong>: 急速に広がるストーリー<br>• <strong>焦点</strong>: ニュースエンティティとマップシグナル（軍事、抗議、障害）を相関<br><em>デスクトップ版のみ・Llama 3.3 + 焦点検出搭載</em>",
       "settingsTitle": "Settings",
       "sectionMap": "Map",
       "sectionAi": "AI Analysis",
+      "sectionStreaming": "ストリーミング",
+      "streamQualityLabel": "動画画質",
+      "streamQualityDesc": "すべてのライブストリームの画質を設定（低画質は帯域幅を節約）",
+      "globeRenderQualityLabel": "地球儀の描画品質",
+      "globeRenderQualityDesc": "地球儀キャンバスの解像度を制御します。高い値は4Kディスプレイで鮮明ですが、GPUに負荷がかかります。",
+      "globeRenderScaleOptions": {
+        "1": "エコ (1x)",
+        "2": "4K (2x)",
+        "3": "超高精細 (3x)",
+        "auto": "自動（デバイス依存）",
+        "1_5": "シャープ (1.5x)"
+      },
       "mapFlashLabel": "Live Event Pulse",
       "mapFlashDesc": "Flash locations on the map when breaking news arrives",
       "aiFlowTitle": "Settings",
@@ -1019,9 +1208,6 @@
       "aiFlowStatusDisabled": "AIプロバイダーが有効になっていません",
       "insightsDisabledTitle": "AI分析が無効です",
       "insightsDisabledHint": "Enable providers via the settings gear in the map header",
-      "sectionStreaming": "ストリーミング",
-      "streamQualityDesc": "すべてのライブストリームの画質を設定（低画質は帯域幅を節約）",
-      "streamQualityLabel": "動画画質",
       "sectionPanels": "パネル",
       "badgeAnimLabel": "バッジアニメーション",
       "badgeAnimDesc": "パネルヘッダーの更新バッジをアニメーション表示",
@@ -1030,6 +1216,16 @@
       "headlineMemoryDesc": "閲覧済みの見出しを記憶して新着を強調",
       "streamAlwaysOnLabel": "ライブ配信を常に実行",
       "streamAlwaysOnDesc": "アイドル時に Live Cams と Live News が自動一時停止されるのを防ぎます。セカンドモニター / 壁面ダッシュボード用途に推奨。CPU/帯域を節約するには（Eco）を無効にしてください。"
+    },
+    "settings": {
+      "dataManagementLabel": "データ管理",
+      "exportSettings": "設定をエクスポート",
+      "importSettings": "設定をインポート",
+      "exportSuccess": "設定のエクスポートに成功しました",
+      "exportFailed": "設定のエクスポートに失敗しました",
+      "importSuccess": "{{count}}件の設定をインポートしました",
+      "importFailed": "設定のインポートに失敗しました",
+      "reloadNow": "今すぐ再読み込み"
     },
     "cascade": {
       "noImpacts": "国への影響未検出",
@@ -1076,7 +1272,6 @@
         "deEscalating": "沈静化中",
         "stable": "安定"
       },
-      "infoTooltip": "<strong>方法論</strong> 複合スコア（0-100）の構成:<ul><li>50% 国家不安定性（上位5カ国加重）</li><li>30% 地理的収束地帯</li><li>20% インフラインシデント</li></ul>5分ごとに自動更新。",
       "insufficientData": "Insufficient Data",
       "unableToAssess": "Unable to assess risk level.",
       "enableDataSources": "Enable data sources to begin monitoring.",
@@ -1099,7 +1294,8 @@
         "justNow": "just now",
         "minutesAgo": "{{count}}m ago",
         "hoursAgo": "{{count}}h ago"
-      }
+      },
+      "infoTooltip": "<strong>方法論</strong> 複合スコア（0-100）の構成:<ul><li>50% 国家不安定性（上位5カ国加重）</li><li>30% 地理的収束地帯</li><li>20% インフラインシデント</li></ul>5分ごとに自動更新。"
     },
     "techEvents": {
       "loading": "テックイベントを読み込み中...",
@@ -1121,7 +1317,6 @@
       "internetUsers": "インターネットユーザー",
       "mobileSubscriptions": "モバイル契約数",
       "rdSpending": "研究開発費",
-      "infoTooltip": "<strong>グローバルテック準備度</strong><br>世界銀行データに基づく複合スコア（0-100）:<br><br><strong>表示指標:</strong><br>🌐 インターネットユーザー（人口比%）<br>📱 モバイル契約数（100人あたり）<br>🔬 研究開発費（GDP比%）<br><br><strong>重み付け:</strong> 研究開発（35%）、インターネット（30%）、ブロードバンド（20%）、モバイル（15%）<br><br><em>— = 最新データなし</em><br><em>出典: 世界銀行オープンデータ（2019-2024）</em>",
       "fetchingData": "Fetching World Bank Data",
       "internetUsersIndicator": "Internet Users",
       "mobileSubscriptionsIndicator": "Mobile Subscriptions",
@@ -1129,7 +1324,8 @@
       "rdExpenditure": "R&D Expenditure",
       "analyzingCountries": "Analyzing 200+ countries...",
       "source": "Source: World Bank",
-      "updated": "Updated: {{date}}"
+      "updated": "Updated: {{date}}",
+      "infoTooltip": "<strong>グローバルテック準備度</strong><br>世界銀行データに基づく複合スコア（0-100）:<br><br><strong>表示指標:</strong><br>🌐 インターネットユーザー（人口比%）<br>📱 モバイル契約数（100人あたり）<br>🔬 研究開発費（GDP比%）<br><br><strong>重み付け:</strong> 研究開発（35%）、インターネット（30%）、ブロードバンド（20%）、モバイル（15%）<br><br><em>— = 最新データなし</em><br><em>出典: 世界銀行オープンデータ（2019-2024）</em>"
     },
     "populationExposure": {
       "noData": "露出データなし",
@@ -1137,6 +1333,41 @@
       "affectedCount": "{{count}}人が影響",
       "radiusKm": "半径{{km}}km",
       "infoTooltip": "<strong>人口露出推定</strong> イベント影響半径内の推定人口。WorldPopの国別人口密度データに基づく。<ul><li>紛争: 半径50km</li><li>地震: 半径100km</li><li>洪水: 半径100km</li><li>山火事: 半径30km</li></ul>"
+    },
+    "securityAdvisories": {
+      "loading": "渡航情報を取得中...",
+      "noMatching": "該当する情報なし",
+      "critical": "重大",
+      "health": "健康",
+      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT, CDC, ECDC, WHO, US Embassies",
+      "refresh": "更新",
+      "levels": {
+        "doNotTravel": "渡航中止",
+        "reconsider": "渡航再検討",
+        "caution": "注意",
+        "normal": "通常",
+        "info": "情報"
+      },
+      "time": {
+        "justNow": "たった今",
+        "minutesAgo": "{{count}}分前",
+        "hoursAgo": "{{count}}時間前",
+        "daysAgo": "{{count}}日前"
+      },
+      "infoTooltip": "<strong>セキュリティアドバイザリー</strong><br>各国政府の渡航情報と安全警告。"
+    },
+    "orefSirens": {
+      "checking": "Checking siren alerts...",
+      "noAlerts": "No active sirens — all clear",
+      "notConfigured": "Sirens service not configured",
+      "activeSirens": "{{count}} active siren(s)",
+      "area": "Area",
+      "time": "Time",
+      "justNow": "just now",
+      "historyCount": "{{count}} alerts in last 24h",
+      "historySummary": "24時間で{{count}}件のアラート — {{waves}}回の波",
+      "loadingHistory": "履歴を読み込み中...",
+      "infoTooltip": "<strong>Israel Sirens</strong><br>Real-time rocket and missile siren alerts from Israel Home Front Command.<br><br>Data is polled every 10 seconds. A pulsing red indicator means active sirens are sounding."
     },
     "satelliteFires": {
       "noData": "火災データなし",
@@ -1164,6 +1395,34 @@
       "moreNotShown": "他{{count}}件のイベントは非表示",
       "noEvents": "このカテゴリにイベントなし",
       "infoTooltip": "<strong>UCDP地理参照イベント</strong> ウプサラ大学によるイベントレベルの紛争データ。<ul><li><strong>国家間</strong>: 政府対反政府勢力</li><li><strong>非国家間</strong>: 武装グループ対武装グループ</li><li><strong>一方的暴力</strong>: 市民に対する暴力</li></ul>死者数は最良推定値（低-高範囲）で表示。ACLEDの重複は自動的に除外。"
+    },
+    "giving": {
+      "activityIndex": "アクティビティ指数",
+      "trend": "トレンド",
+      "estDailyFlow": "推定日次フロー",
+      "cryptoDaily": "暗号資産日次",
+      "tabs": {
+        "platforms": "プラットフォーム",
+        "categories": "カテゴリ",
+        "crypto": "暗号資産",
+        "institutional": "機関"
+      },
+      "platform": "プラットフォーム",
+      "dailyVol": "日次取引量",
+      "velocity": "速度",
+      "freshness": "データ",
+      "category": "カテゴリ",
+      "share": "シェア",
+      "trending": "トレンド",
+      "dailyInflow": "24時間流入額",
+      "wallets": "ウォレット",
+      "ofTotal": "総計比率",
+      "topReceivers": "トップ受取者",
+      "oecdOda": "OECD ODA",
+      "cafIndex": "CAF指数",
+      "candidGrants": "Candid助成金",
+      "dataLag": "データ遅延",
+      "infoTooltip": "<strong>グローバル寄付アクティビティ指数</strong> クラウドファンディングプラットフォームと暗号資産ウォレットを通じた個人寄付を追跡する複合指数。<ul><li><strong>プラットフォーム</strong>: GoFundMe、GlobalGiving、JustGivingのキャンペーンサンプリング</li><li><strong>暗号資産</strong>: オンチェーンの慈善ウォレット流入（Endaoment、Giving Block）</li><li><strong>機関</strong>: OECD ODA、CAF World Giving Index、Candid助成金</li></ul>指数は方向性を示すもので、正確な金額ではありません。ライブサンプリングと公表年次報告書を組み合わせています。"
     },
     "displacement": {
       "noData": "データなし",
@@ -1200,6 +1459,8 @@
       "close": "閉じる",
       "summarize": "このパネルを要約",
       "generatingSummary": "要約を生成中...",
+      "summaryError": "要約を生成できませんでした",
+      "summaryFailed": "要約に失敗しました",
       "sources": "{{count}}件のソース",
       "relatedAssetsNear": "{{location}}付近の関連アセット"
     },
@@ -1209,7 +1470,15 @@
     "runtimeConfig": {
       "getApiKey": "APIキーを取得"
     },
+    "breakingNews": {
+      "critical": "緊急",
+      "high": "重要",
+      "dismiss": "閉じる",
+      "enableNotifications": "デスクトップ通知を有効にする"
+    },
     "intelligenceFindings": {
+      "breakingAlerts": "速報アラート",
+      "popupAlerts": "新しいアラートをポップアップ表示",
       "badgeTitle": "インテリジェンス所見",
       "title": "インテリジェンス所見",
       "none": "最近のインテリジェンス所見なし",
@@ -1220,6 +1489,7 @@
       "detected": "{{count}}件 検出",
       "critical": "{{count}}件 危機的",
       "highPriority": "{{count}}件 高優先度",
+      "hideFindings": "検出結果を非表示",
       "more": "+{{count}}件の追加所見",
       "all": "全インテリジェンス所見（{{count}}件）",
       "priority": {
@@ -1241,10 +1511,7 @@
         "minutesAgo": "{{count}}分前",
         "hoursAgo": "{{count}}時間前",
         "daysAgo": "{{count}}日前"
-      },
-      "breakingAlerts": "速報アラート",
-      "popupAlerts": "新しいアラートをポップアップ表示",
-      "hideFindings": "検出結果を非表示"
+      }
     },
     "countryTimeline": {
       "now": "現在",
@@ -1308,6 +1575,7 @@
     },
     "etfFlows": {
       "unavailable": "ETFデータは一時的に利用不可",
+      "rateLimited": "ETFデータが一時的に利用不可（レート制限中）— まもなく再試行します",
       "netFlow": "純フロー",
       "estFlow": "推定フロー",
       "totalVol": "総出来高",
@@ -1320,8 +1588,7 @@
         "estFlow": "推定フロー",
         "volume": "出来高",
         "change": "変動率"
-      },
-      "rateLimited": "ETFデータが一時的に利用不可（レート制限中）— まもなく再試行します"
+      }
     },
     "macroSignals": {
       "overall": "総合",
@@ -1336,8 +1603,8 @@
         "regime": "市場環境",
         "btcTrend": "BTCトレンド",
         "hashRate": "Hash Rate",
-        "fearGreed": "恐怖 &amp; 貪欲",
-        "momentum": "Momentum"
+        "momentum": "Momentum",
+        "fearGreed": "恐怖 &amp; 貪欲"
       }
     },
     "panel": {
@@ -1346,7 +1613,8 @@
       "openSettings": "Open Settings"
     },
     "languageSelector": {
-      "selectLanguage": "Select Language"
+      "selectLanguage": "Select Language",
+      "mapLabelsFallbackVi": "ベトナム語の地図ラベルは現在英語にフォールバックされます。"
     },
     "serviceStatus": {
       "checkingServices": "Checking services...",
@@ -1396,6 +1664,8 @@
       "retry": "Retry",
       "notLive": "{{name}} is not currently live",
       "cannotEmbed": "{{name}} をここで再生できません — お住まいの地域で制限されている可能性があります（エラー {{code}}）",
+      "botCheck": "YouTubeが{{name}}の再生にサインインを要求しています",
+      "signInToYouTube": "YouTubeにサインイン",
       "openOnYouTube": "Open on YouTube",
       "manage": "チャンネル管理",
       "addChannel": "チャンネルを追加",
@@ -1411,6 +1681,7 @@
       "confirmTitle": "確認",
       "restoreDefaults": "デフォルトのチャンネルを復元",
       "availableChannels": "利用可能なチャンネル",
+      "noResults": "「{{term}}」に一致するチャンネルが見つかりません",
       "customChannel": "カスタムチャンネル",
       "regionAll": "すべて",
       "regionNorthAmerica": "北米",
@@ -1420,96 +1691,15 @@
       "regionMiddleEast": "中東",
       "regionAfrica": "アフリカ",
       "regionOceania": "オセアニア",
-      "botCheck": "YouTubeが{{name}}の再生にサインインを要求しています",
-      "channelNotFound": "YouTubeチャンネルが見つかりません",
       "invalidHandle": "有効なYouTubeハンドルを入力してください（例: @ChannelName）",
-      "signInToYouTube": "YouTubeにサインイン",
-      "verifying": "確認中…"
+      "channelNotFound": "YouTubeチャンネルが見つかりません",
+      "verifying": "確認中…",
+      "hlsUrl": "HLSストリームURL（任意）",
+      "invalidHlsUrl": "有効なHLSストリームURL（.m3u8）を入力してください"
     },
-    "securityAdvisories": {
-      "loading": "渡航情報を取得中...",
-      "noMatching": "該当する情報なし",
-      "critical": "重大",
-      "health": "健康",
-      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT, CDC, ECDC, WHO, US Embassies",
-      "refresh": "更新",
-      "levels": {
-        "doNotTravel": "渡航中止",
-        "reconsider": "渡航再検討",
-        "caution": "注意",
-        "normal": "通常",
-        "info": "情報"
-      },
-      "time": {
-        "justNow": "たった今",
-        "minutesAgo": "{{count}}分前",
-        "hoursAgo": "{{count}}時間前",
-        "daysAgo": "{{count}}日前"
-      },
-      "infoTooltip": "<strong>セキュリティアドバイザリー</strong><br>各国政府の渡航情報と安全警告。"
-    },
-    "orefSirens": {
-      "checking": "Checking siren alerts...",
-      "noAlerts": "No active sirens — all clear",
-      "notConfigured": "Sirens service not configured",
-      "activeSirens": "{{count}} active siren(s)",
-      "area": "Area",
-      "time": "Time",
-      "justNow": "just now",
-      "historyCount": "{{count}} alerts in last 24h",
-      "infoTooltip": "<strong>Israel Sirens</strong><br>Real-time rocket and missile siren alerts from Israel Home Front Command.<br><br>Data is polled every 10 seconds. A pulsing red indicator means active sirens are sounding.",
-      "historySummary": "24時間で{{count}}件のアラート — {{waves}}回の波",
-      "loadingHistory": "履歴を読み込み中..."
-    },
-    "breakingNews": {
-      "critical": "緊急",
-      "dismiss": "閉じる",
-      "enableNotifications": "デスクトップ通知を有効にする",
-      "high": "重要"
-    },
-    "giving": {
-      "activityIndex": "アクティビティ指数",
-      "cafIndex": "CAF指数",
-      "candidGrants": "Candid助成金",
-      "category": "カテゴリ",
-      "cryptoDaily": "暗号資産日次",
-      "dailyInflow": "24時間流入額",
-      "dailyVol": "日次取引量",
-      "dataLag": "データ遅延",
-      "estDailyFlow": "推定日次フロー",
-      "freshness": "データ",
-      "infoTooltip": "<strong>グローバル寄付アクティビティ指数</strong> クラウドファンディングプラットフォームと暗号資産ウォレットを通じた個人寄付を追跡する複合指数。<ul><li><strong>プラットフォーム</strong>: GoFundMe、GlobalGiving、JustGivingのキャンペーンサンプリング</li><li><strong>暗号資産</strong>: オンチェーンの慈善ウォレット流入（Endaoment、Giving Block）</li><li><strong>機関</strong>: OECD ODA、CAF World Giving Index、Candid助成金</li></ul>指数は方向性を示すもので、正確な金額ではありません。ライブサンプリングと公表年次報告書を組み合わせています。",
-      "oecdOda": "OECD ODA",
-      "ofTotal": "総計比率",
-      "platform": "プラットフォーム",
-      "share": "シェア",
-      "tabs": {
-        "categories": "カテゴリ",
-        "crypto": "暗号資産",
-        "institutional": "機関",
-        "platforms": "プラットフォーム"
-      },
-      "topReceivers": "トップ受取者",
-      "trend": "トレンド",
-      "trending": "トレンド",
-      "velocity": "速度",
-      "wallets": "ウォレット"
-    },
-    "supplyChain": {
-      "chokepoints": "チョークポイント",
-      "fredKeyMissing": "海上輸送料金にはFRED APIキーが必要です — 設定で追加してください。チョークポイントと鉱物はキーなしで利用可能。",
-      "mineral": "鉱物",
-      "minerals": "鉱物",
-      "noChokepoints": "チョークポイントデータを読み込み中...",
-      "noMinerals": "鉱物データを読み込み中...",
-      "noShipping": "海上輸送料金データが利用できません",
-      "risk": "リスク",
-      "shipping": "海運",
-      "sources": "FRED / NGA / USGS",
-      "spikeAlert": "スパイク検出 — 料金が52週平均を大幅に上回っています（週次）",
-      "topProducers": "主要生産国",
-      "upstreamUnavailable": "サプライチェーンデータが一時的に利用不可 — キャッシュデータを表示中",
-      "warnings": "件の警告"
+    "map": {
+      "showMap": "地図を表示",
+      "hideMap": "地図を非表示"
     }
   },
   "popups": {
@@ -1565,9 +1755,9 @@
     },
     "gpsJamming": {
       "title": "GPS/GNSS干渉",
-      "interference": "干渉",
-      "aircraftAffected": "影響を受けた航空機",
-      "aircraftNormal": "正常な航空機",
+      "navPerformance": "Nav Performance",
+      "samples": "ADS-B Samples",
+      "aircraft": "Aircraft",
       "h3Hex": "H3 Hex"
     },
     "flight": {
@@ -1583,7 +1773,9 @@
       "sources": {
         "faa": "FAA ASWS",
         "eurocontrol": "Eurocontrol",
-        "computed": "算出値"
+        "computed": "算出値",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "アメリカ",
@@ -1592,6 +1784,14 @@
         "mena": "中東",
         "africa": "アフリカ"
       }
+    },
+    "aircraft": {
+      "altitude": "高度",
+      "speed": "対地速度",
+      "heading": "機首方位",
+      "position": "位置",
+      "ground": "地上",
+      "airborne": "飛行中"
     },
     "apt": {
       "description": "国家レベルの能力を持つ高度持続的脅威グループ。重要インフラ、政府、防衛セクターを標的とした高度なサイバー作戦で知られる。"
@@ -1949,6 +2149,9 @@
     "commodityHub": {
       "commodities": "コモディティ"
     },
+    "iranEvent": {
+      "relatedEvents": "関連イベント"
+    },
     "hotspotSubtexts": {
       "conflict_zone": "紛争地帯",
       "dprk_watch": "北朝鮮監視",
@@ -1977,9 +2180,6 @@
       "uae_ecsr": "UAE/ECSR",
       "venezuela_crisis": "ベネズエラ危機",
       "yemen_houthis": "イエメン/フーシ"
-    },
-    "iranEvent": {
-      "relatedEvents": "関連イベント"
     }
   },
   "signals": {
@@ -2120,6 +2320,7 @@
     "calculatingExposure": "露出度を計算中",
     "computingSignals": "シグナルを計算中...",
     "loadingEtfData": "ETFデータを読み込み中...",
+    "loadingGiving": "世界の寄付データを読み込み中",
     "loadingDisplacement": "避難民データを読み込み中",
     "loadingClimateData": "気候データを読み込み中",
     "failedTechReadiness": "テック準備度データの読み込みに失敗",
@@ -2132,6 +2333,7 @@
     "failedSectorData": "セクターデータの読み込みに失敗",
     "failedCommodities": "コモディティの読み込みに失敗",
     "failedCryptoData": "暗号資産データの読み込みに失敗",
+    "rateLimitedMarket": "市場データが一時的に利用不可（レート制限中）— まもなく再試行します",
     "failedClusterNews": "ニュースのクラスタリングに失敗",
     "noNewsAvailable": "ニュースなし",
     "noActiveTechHubs": "アクティブなテックハブなし",
@@ -2159,8 +2361,28 @@
     "currentVariant": "（現在）",
     "retry": "Retry",
     "refresh": "Refresh",
-    "all": "すべて",
-    "loadingGiving": "世界の寄付データを読み込み中",
-    "rateLimitedMarket": "市場データが一時的に利用不可（レート制限中）— まもなく再試行します"
+    "all": "すべて"
+  },
+  "preferences": {
+    "display": "ディスプレイ",
+    "intelligence": "インテリジェンス",
+    "media": "メディア",
+    "panels": "パネル",
+    "dataAndCommunity": "データとコミュニティ",
+    "theme": "テーマ",
+    "themeDesc": "自動でシステム設定に従います。",
+    "themeAuto": "自動（システムに従う）",
+    "themeDark": "ダーク",
+    "themeLight": "ライト",
+    "mapProvider": "マップタイルプロバイダー",
+    "mapProviderDesc": "マップタイルの読み込み先を選択します。",
+    "mapTheme": "マップテーマ",
+    "mapThemeDesc": "マップタイルのビジュアルスタイル。",
+    "globePreset": "ビジュアルプリセット",
+    "globePresetDesc": "クラシックと拡張地球表示を切り替えます。"
+  },
+  "contextMenu": {
+    "openCountryBrief": "国の概要を開く",
+    "copyCoordinates": "座標をコピー"
   }
 }

@@ -4,7 +4,7 @@ import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
-const GDELT_GEO_URL = 'https://api.gdeltproject.org/api/v2/geo/geo';
+const GDELT_GKG_URL = 'https://api.gdeltproject.org/api/v1/gkg_geojson';
 const ACLED_API_URL = 'https://acleddata.com/api/acled/read';
 const CANONICAL_KEY = 'unrest:events:v1';
 const CACHE_TTL = 3600;
@@ -160,30 +160,25 @@ async function fetchAcledProtests() {
 
 async function fetchGdeltEvents() {
   const params = new URLSearchParams({
-    query: 'protest',
-    format: 'geojson',
-    maxrecords: '250',
-    timespan: '7d',
+    query: 'protest OR riot OR demonstration OR strike',
+    maxrows: '2500',
   });
 
-  const resp = await fetch(`${GDELT_GEO_URL}?${params}`, {
+  const resp = await fetch(`${GDELT_GKG_URL}?${params}`, {
     headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-    signal: AbortSignal.timeout(10_000),
+    signal: AbortSignal.timeout(15_000),
   });
 
   if (!resp.ok) throw new Error(`GDELT API error: ${resp.status}`);
 
   const data = await resp.json();
   const features = data?.features || [];
-  const seenLocations = new Set();
-  const events = [];
 
+  // Aggregate by location (v1 GKG returns individual mentions, not aggregated counts)
+  const locationMap = new Map();
   for (const feature of features) {
     const name = feature.properties?.name || '';
-    if (!name || seenLocations.has(name)) continue;
-
-    const count = feature.properties?.count || 1;
-    if (count < 5) continue;
+    if (!name) continue;
 
     const coords = feature.geometry?.coordinates;
     if (!Array.isArray(coords) || coords.length < 2) continue;
@@ -191,30 +186,44 @@ async function fetchGdeltEvents() {
     const [lon, lat] = coords;
     if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) continue;
 
-    seenLocations.add(name);
-    const country = name.split(',').pop()?.trim() || name;
+    const key = `${lat.toFixed(1)}:${lon.toFixed(1)}`;
+    const existing = locationMap.get(key);
+    if (existing) {
+      existing.count++;
+      if (feature.properties?.urltone < existing.worstTone) {
+        existing.worstTone = feature.properties.urltone;
+      }
+    } else {
+      locationMap.set(key, { name, lat, lon, count: 1, worstTone: feature.properties?.urltone ?? 0 });
+    }
+  }
 
+  const events = [];
+  for (const [, loc] of locationMap) {
+    if (loc.count < 5) continue;
+
+    const country = loc.name.split(',').pop()?.trim() || loc.name;
     events.push({
-      id: `gdelt-${lat.toFixed(2)}-${lon.toFixed(2)}-${Date.now()}`,
-      title: `${name} (${count} reports)`,
+      id: `gdelt-${loc.lat.toFixed(2)}-${loc.lon.toFixed(2)}-${Date.now()}`,
+      title: `${loc.name} (${loc.count} reports)`,
       summary: '',
-      eventType: classifyGdeltEventType(name),
-      city: name.split(',')[0]?.trim() || '',
+      eventType: classifyGdeltEventType(loc.name),
+      city: loc.name.split(',')[0]?.trim() || '',
       country,
       region: '',
-      location: { latitude: lat, longitude: lon },
+      location: { latitude: loc.lat, longitude: loc.lon },
       occurredAt: Date.now(),
-      severity: classifyGdeltSeverity(count, name),
+      severity: classifyGdeltSeverity(loc.count, loc.name),
       fatalities: 0,
       sources: ['GDELT'],
       sourceType: 'UNREST_SOURCE_TYPE_GDELT',
       tags: [],
       actors: [],
-      confidence: count > 20 ? 'CONFIDENCE_LEVEL_HIGH' : 'CONFIDENCE_LEVEL_MEDIUM',
+      confidence: loc.count > 20 ? 'CONFIDENCE_LEVEL_HIGH' : 'CONFIDENCE_LEVEL_MEDIUM',
     });
   }
 
-  console.log(`  GDELT: ${events.length} events`);
+  console.log(`  GDELT: ${features.length} mentions → ${events.length} aggregated events`);
   return events;
 }
 
@@ -238,7 +247,7 @@ async function fetchUnrestEvents() {
 }
 
 function validate(data) {
-  return Array.isArray(data?.events);
+  return Array.isArray(data?.events) && data.events.length > 0;
 }
 
 runSeed('unrest', 'events', CANONICAL_KEY, fetchUnrestEvents, {

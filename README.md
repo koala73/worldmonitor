@@ -13,6 +13,7 @@
   <a href="https://worldmonitor.app"><img src="https://img.shields.io/badge/Web_App-worldmonitor.app-blue?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Web App"></a>&nbsp;
   <a href="https://tech.worldmonitor.app"><img src="https://img.shields.io/badge/Tech_Variant-tech.worldmonitor.app-0891b2?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Tech Variant"></a>&nbsp;
   <a href="https://finance.worldmonitor.app"><img src="https://img.shields.io/badge/Finance_Variant-finance.worldmonitor.app-059669?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Finance Variant"></a>&nbsp;
+  <a href="https://commodity.worldmonitor.app"><img src="https://img.shields.io/badge/Commodity_Variant-commodity.worldmonitor.app-b45309?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Commodity Variant"></a>&nbsp;
   <a href="https://happy.worldmonitor.app"><img src="https://img.shields.io/badge/Happy_Variant-happy.worldmonitor.app-f59e0b?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Happy Variant"></a>
 </p>
 
@@ -28,7 +29,7 @@
   <a href="https://github.com/koala73/worldmonitor/releases/latest"><strong>All Releases</strong></a>
 </p>
 
-![World Monitor Dashboard](docs/images/new-world-monitor.png)
+![World Monitor Dashboard](docs/images/worldmonitor-7-mar-2026.jpg)
 
 ---
 
@@ -44,7 +45,7 @@
 | Static news feeds                  | **Real-time updates** with live video streams and AI-powered deductions                                    |
 | Cloud-dependent AI tools           | **Run AI locally** with Ollama/LM Studio — no API keys, no data leaves your machine. Opt-in **Headline Memory** builds a local semantic index of every headline for RAG-powered queries |
 | Web-only dashboards                | **Native desktop app** (Tauri) for macOS, Windows, and Linux + installable PWA with offline map support    |
-| Flat 2D maps                       | **Dual map engine** — photorealistic 3D globe (globe.gl + Three.js) and WebGL flat map (deck.gl) with 45 toggleable data layers, runtime-switchable. Choose from free tile providers or self-host your own |
+| Flat 2D maps                       | **Dual map engine** — photorealistic 3D globe (globe.gl + Three.js) and WebGL flat map (deck.gl) with 45 toggleable data layers, runtime-switchable |
 | English-only OSINT tools           | **21 languages** with native-language RSS feeds, AI-translated summaries, and RTL support for Arabic       |
 | Siloed financial data              | **Finance variant** with 92 stock exchanges, 19 financial centers, 13 central banks, BIS data, WTO trade policy, and Gulf FDI tracking |
 | Undocumented, fragile APIs         | **Proto-first API contracts** — 22 typed services with auto-generated clients, servers, and OpenAPI docs   |
@@ -58,9 +59,10 @@
 | **World Monitor**   | [worldmonitor.app](https://worldmonitor.app)                 | Geopolitics, military, conflicts, infrastructure |
 | **Tech Monitor**    | [tech.worldmonitor.app](https://tech.worldmonitor.app)       | Startups, AI/ML, cloud, cybersecurity            |
 | **Finance Monitor** | [finance.worldmonitor.app](https://finance.worldmonitor.app) | Global markets, trading, central banks, Gulf FDI |
+| **Commodity Monitor** | [commodity.worldmonitor.app](https://commodity.worldmonitor.app) | Mining, metals, energy commodities, critical minerals |
 | **Happy Monitor**   | [happy.worldmonitor.app](https://happy.worldmonitor.app)     | Good news, positive trends, uplifting stories    |
 
-All four variants run from a single codebase — switch between them with one click via the header bar.
+All five variants run from a single codebase — switch between them with one click via the header bar.
 
 ---
 
@@ -68,7 +70,7 @@ All four variants run from a single codebase — switch between them with one cl
 
 ### Maps & Visualization
 
-- **Dual Map Engine** — 3D globe (globe.gl + Three.js) and WebGL flat map (deck.gl), runtime-switchable with 45 shared data layers. Multiple tile providers (OpenFreeMap, CARTO, self-hosted PMTiles) selectable in Settings. [Details →](./docs/MAP_ENGINE.md)
+- **Dual Map Engine** — 3D globe (globe.gl + Three.js) and WebGL flat map (deck.gl), runtime-switchable with 45 shared data layers. [Details →](./docs/MAP_ENGINE.md)
 - **45 toggleable data layers** — conflicts, bases, cables, pipelines, flights, vessels, protests, fires, earthquakes, datacenters, and more across all variants
 - **8 regional presets** — Global, Americas, Europe, MENA, Asia, Africa, Oceania, Latin America with time filtering (1h–7d)
 - **CII choropleth heatmap** — five-stop color gradient paints every country by instability score on both map engines
@@ -91,9 +93,9 @@ All four variants run from a single codebase — switch between them with one cl
 </details>
 
 <details>
-<summary><strong>Military & Strategic</strong> — 210+ bases, live flights (ADS-B), naval vessels (AIS), nuclear facilities, spaceports</summary>
+<summary><strong>Military & Strategic</strong> — 210+ bases, live flights (ADS-B), naval vessels (AIS), nuclear facilities, spaceports, orbital surveillance</summary>
 
-[Full details →](./docs/DATA_SOURCES.md#data-layers)
+[Full details →](./docs/DATA_SOURCES.md#data-layers) · [Orbital Surveillance →](./docs/ORBITAL_SURVEILLANCE.md)
 </details>
 
 <details>
@@ -142,11 +144,12 @@ All four variants run from a single codebase — switch between them with one cl
 - **Stablecoin & BTC ETF** — peg health monitoring and spot ETF flow tracking. [Details →](./docs/FINANCE_DATA.md)
 - **Oil & Energy** — WTI/Brent prices, production, inventory via EIA. [Details →](./docs/FINANCE_DATA.md#oil--energy-analytics)
 - **BIS & WTO** — central bank rates, trade policy intelligence. [Details →](./docs/FINANCE_DATA.md)
+- **Premium Stock Analysis** — analysis engine with stored history, backtesting, and daily market brief. [Details →](./docs/PREMIUM_FINANCE.md)
 
 ### Desktop & Mobile
 
 - **Native desktop app** (Tauri) — macOS, Windows, Linux with OS keychain, local sidecar, and cloud fallback. [Details →](./docs/DESKTOP_APP.md)
-- **Progressive Web App** — installable with offline map support and configurable tile providers (OpenFreeMap, CARTO, or self-hosted PMTiles)
+- **Progressive Web App** — installable with offline map support (CacheFirst tiles, 500-tile cap)
 - **Mobile-optimized map** — touch pan with inertia, pinch-to-zoom, bottom-sheet popups, GPS centering
 - **Responsive layout** — ultra-wide L-shaped layout on 2000px+, collapsible panels, mobile search sheet
 
@@ -214,20 +217,20 @@ All four variants run from a single codebase — switch between them with one cl
 
 ---
 
-## Tri-Variant Architecture
+## Multi-Variant Architecture
 
-A single codebase produces four specialized dashboards, each with distinct feeds, panels, map layers, and branding:
+A single codebase produces five specialized dashboards, each with distinct feeds, panels, map layers, and branding:
 
-| Aspect                | World Monitor                                        | Tech Monitor                                    | Finance Monitor                                  | Happy Monitor                                         |
-| --------------------- | ---------------------------------------------------- | ----------------------------------------------- | ------------------------------------------------ | ----------------------------------------------------- |
-| **Domain**            | worldmonitor.app                                     | tech.worldmonitor.app                           | finance.worldmonitor.app                         | happy.worldmonitor.app                                |
-| **Focus**             | Geopolitics, military, conflicts                     | AI/ML, startups, cybersecurity                  | Markets, trading, central banks                  | Good news, conservation, human progress               |
-| **RSS Feeds**         | 15 categories, 200+ feeds (politics, MENA, Africa, think tanks) | 21 categories, 152 feeds (AI, VC blogs, startups, GitHub) | 14 categories, 55 feeds (forex, bonds, commodities, IPOs) | 5 categories, 21 positive-news sources (GNN, Positive.News, Upworthy) |
-| **Panels**            | 45 (strategic posture, CII, cascade, trade policy, airline intel, predictions) | 28 (AI labs, unicorns, accelerators, tech readiness) | 27 (forex, bonds, derivatives, trade policy, gulf economies) | 10 (good news, breakthroughs, conservation, renewables, giving) |
-| **Unique Map Layers** | Military bases, nuclear facilities, hotspots         | Tech HQs, cloud regions, startup hubs           | Stock exchanges, central banks, Gulf investments | Positive events, kindness, species recovery, renewables |
-| **Desktop App**       | World Monitor.app / .exe / .AppImage                 | Tech Monitor.app / .exe / .AppImage             | Finance Monitor.app / .exe / .AppImage           | (web-only)                                            |
+| Aspect                | World Monitor                                        | Tech Monitor                                    | Finance Monitor                                  | Commodity Monitor                                         | Happy Monitor                                         |
+| --------------------- | ---------------------------------------------------- | ----------------------------------------------- | ------------------------------------------------ | --------------------------------------------------------- | ----------------------------------------------------- |
+| **Domain**            | worldmonitor.app                                     | tech.worldmonitor.app                           | finance.worldmonitor.app                         | commodity.worldmonitor.app                                | happy.worldmonitor.app                                |
+| **Focus**             | Geopolitics, military, conflicts                     | AI/ML, startups, cybersecurity                  | Markets, trading, central banks                  | Mining, metals, energy commodities, critical minerals     | Good news, conservation, human progress               |
+| **RSS Feeds**         | 15 categories, 200+ feeds (politics, MENA, Africa, think tanks) | 21 categories, 152 feeds (AI, VC blogs, startups, GitHub) | 14 categories, 55 feeds (forex, bonds, commodities, IPOs) | 10 categories, 50+ feeds (gold/silver, energy, mining, critical minerals, base metals) | 5 categories, 21 positive-news sources (GNN, Positive.News, Upworthy) |
+| **Panels**            | 45 (strategic posture, CII, cascade, trade policy, airline intel, predictions) | 28 (AI labs, unicorns, accelerators, tech readiness) | 27 (forex, bonds, derivatives, trade policy, gulf economies) | 16 (live prices, sector heatmap, gold/silver, energy, mining, critical minerals, base metals, supply chain) | 10 (good news, breakthroughs, conservation, renewables, giving) |
+| **Unique Map Layers** | Military bases, nuclear facilities, hotspots         | Tech HQs, cloud regions, startup hubs           | Stock exchanges, central banks, Gulf investments | Mine sites, processing plants, commodity ports, commodity hubs, pipelines, trade routes | Positive events, kindness, species recovery, renewables |
+| **Desktop App**       | World Monitor.app / .exe / .AppImage                 | Tech Monitor.app / .exe / .AppImage             | Finance Monitor.app / .exe / .AppImage           | (web-only)                                                | (web-only)                                            |
 
-Single-deployment consolidation — all four variants serve from one Vercel deployment, determined by hostname. Build-time `VITE_VARIANT` tree-shakes unused data. Runtime variant selector in the header bar.
+Single-deployment consolidation — all five variants serve from one Vercel deployment, determined by hostname. Build-time `VITE_VARIANT` tree-shakes unused data. Runtime variant selector in the header bar.
 
 ---
 
@@ -334,7 +337,6 @@ The `.env.example` file documents every variable with descriptions and registrat
 | **Tracking**      | `WINGBITS_API_KEY`, `AISSTREAM_API_KEY`                                    | Free                                       |
 | **Geopolitical**  | `ACLED_ACCESS_TOKEN`, `CLOUDFLARE_API_TOKEN`, `NASA_FIRMS_API_KEY`         | Free for researchers                       |
 | **Relay**         | `WS_RELAY_URL`, `VITE_WS_RELAY_URL`, `OPENSKY_CLIENT_ID/SECRET`            | Self-hosted                                |
-| **Map Tiles**     | `VITE_PMTILES_URL` (optional — self-hosted PMTiles for offline/custom tiles) | Free without it (OpenFreeMap default)      |
 | **UI**            | `VITE_VARIANT`, `VITE_MAP_INTERACTION_MODE` (`flat` or `3d`, default `3d`) | N/A                                        |
 | **Observability** | `VITE_SENTRY_DSN` (optional, empty disables reporting)                     | N/A                                        |
 
@@ -387,7 +389,47 @@ This runs the frontend without the API layer. Panels that require server-side pr
 | **Linux x86_64**       | Full support            | Works with `vercel dev` for local development. Desktop .AppImage available for x86_64. WebKitGTK rendering uses DMA-BUF with fallback to SHM for GPU compatibility. Font stack includes DejaVu Sans Mono and Liberation Mono for consistent rendering across distros |
 | **macOS**              | Works with `vercel dev` | Full local development                                                                                                         |
 | **Raspberry Pi / ARM** | Partial                 | `vercel dev` edge runtime emulation may not work on ARM. Use Option 1 (deploy to Vercel) or Option 3 (static frontend) instead |
-| **Docker**             | Planned                 | See [Roadmap](#roadmap)                                                                                                        |
+| **Docker**             | Official image         | See [Docker image](#docker-image-official) ([#1260](https://github.com/koala73/worldmonitor/issues/1260))                    |
+
+### Docker image (official)
+
+An official Docker image is published to GitHub Container Registry on each [release](https://github.com/koala73/worldmonitor/releases) ([#1260](https://github.com/koala73/worldmonitor/issues/1260)):
+
+- **Image**: `ghcr.io/koala73/worldmonitor`
+- **Architectures**: `linux/amd64`, `linux/arm64`
+- **Tags**: `latest`, `vX.Y.Z` (e.g. `v2.6.0`), and `X.Y` (e.g. `2.6`)
+
+The image is **frontend-only**: it serves the Vite-built static app with nginx and proxies `/api/*` to an upstream API. No Node or edge functions run inside the container.
+
+**Build (from repo root):**
+
+```bash
+docker build -f docker/Dockerfile -t ghcr.io/koala73/worldmonitor:latest .
+```
+
+**Run (default API: `https://api.worldmonitor.app`):**
+
+```bash
+docker run -d --name worldmonitor -p 3000:80 ghcr.io/koala73/worldmonitor:latest
+```
+
+Then open [http://localhost:3000](http://localhost:3000).
+
+**Environment variables:**
+
+| Variable        | Default                        | Description                                      |
+| --------------- | ------------------------------ | ------------------------------------------------ |
+| `API_UPSTREAM`  | `https://api.worldmonitor.app` | Backend URL for `/api/*` proxy (set at runtime)  |
+
+The proxy forwards the upstream host (`Host: <API_UPSTREAM host>`) so the default API receives the correct Host. If your backend expects a different Host, configure it accordingly.
+
+Example with a custom API backend:
+
+```bash
+docker run -d -p 3000:80 -e API_UPSTREAM=http://my-api:3001 ghcr.io/koala73/worldmonitor:latest
+```
+
+Build-time options (optional, for custom builds): pass `VITE_VARIANT` and `VITE_WS_API_URL` via `--build-arg`. Other `VITE_*` vars the app uses (e.g. `VITE_PMTILES_URL`, `VITE_WS_RELAY_URL`) can be added the same way; see `.env.example` for the full list.
 
 ### Railway Relay (Optional)
 
@@ -415,7 +457,7 @@ Set `WS_RELAY_URL` (server-side, HTTPS) and `VITE_WS_RELAY_URL` (client-side, WS
 
 | Category              | Technologies                                                                                                                                   |
 | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Frontend**          | Vanilla TypeScript (no framework), Vite, globe.gl + Three.js (3D globe), deck.gl + MapLibre GL + PMTiles (flat map), vite-plugin-pwa (service worker + manifest) |
+| **Frontend**          | Vanilla TypeScript (no framework), Vite, globe.gl + Three.js (3D globe), deck.gl + MapLibre GL (flat map), vite-plugin-pwa (service worker + manifest) |
 | **Desktop**           | Tauri 2 (Rust) with Node.js sidecar, OS keychain integration (keyring crate), native TLS (reqwest)                                             |
 | **AI/ML**             | Ollama / LM Studio (local, OpenAI-compatible), Groq (Llama 3.1 8B), OpenRouter (fallback), Transformers.js (browser-side T5, NER, embeddings), IndexedDB vector store (5K headline RAG) |
 | **Caching**           | Redis (Upstash) — 3-tier cache with in-memory + Redis + upstream, cross-user AI deduplication. Vercel CDN (s-maxage). Service worker (Workbox) |
@@ -442,14 +484,16 @@ Contributions welcome! See [CONTRIBUTING.md](./CONTRIBUTING.md) for detailed gui
 # Development
 npm run dev          # Full variant (worldmonitor.app)
 npm run dev:tech     # Tech variant (tech.worldmonitor.app)
-npm run dev:finance  # Finance variant (finance.worldmonitor.app)
-npm run dev:happy    # Happy variant (happy.worldmonitor.app)
+npm run dev:finance    # Finance variant (finance.worldmonitor.app)
+npm run dev:commodity  # Commodity variant (commodity.worldmonitor.app)
+npm run dev:happy      # Happy variant (happy.worldmonitor.app)
 
 # Production builds
-npm run build:full      # Build full variant
-npm run build:tech      # Build tech variant
-npm run build:finance   # Build finance variant
-npm run build:happy     # Build happy variant
+npm run build:full       # Build full variant
+npm run build:tech       # Build tech variant
+npm run build:finance    # Build finance variant
+npm run build:commodity  # Build commodity variant
+npm run build:happy      # Build happy variant
 
 # Quality (also runs automatically on PRs via GitHub Actions)
 npm run typecheck    # TypeScript type checking (tsc --noEmit)
@@ -484,7 +528,6 @@ Desktop release details, signing hooks, variant outputs, and clean-machine valid
 
 - [ ] Mobile-optimized views
 - [ ] Push notifications for critical alerts
-- [ ] Self-hosted Docker image
 
 See [full roadmap](./docs/DOCUMENTATION.md#roadmap).
 
@@ -503,7 +546,53 @@ If you find World Monitor useful:
 
 ## License
 
-GNU Affero General Public License v3.0 (AGPL-3.0) — see [LICENSE](LICENSE) for details.
+This project is dual-licensed:
+
+- **AGPL-3.0** for non-commercial, personal, educational, and research use. See [LICENSE](LICENSE) for the full text.
+- **Commercial license** required for any commercial use. Contact the maintainer.
+
+### What This Means
+
+**You are free to (non-commercial):**
+
+- **Use** — run World Monitor for personal, educational, or research purposes
+- **Study** — read, audit, and learn from the source code
+- **Modify** — adapt, extend, and build upon the code for non-commercial use
+- **Distribute** — share copies with anyone under AGPL-3.0
+
+**Under these conditions:**
+
+- **Source code disclosure** — if you distribute or modify this software, you **must** make the complete source code available under the same AGPL-3.0 license
+- **Network use is distribution** — if you run a modified version as a network service (SaaS, web app, API), you **must** provide the source code to all users who interact with it over the network
+- **Same license (copyleft)** — any derivative work must be released under AGPL-3.0. You cannot re-license under a proprietary or more permissive license
+- **Attribution** — you must retain all copyright notices, give appropriate credit to the original author, and clearly indicate any changes you made
+- **No rebranding** — forking the code, changing the name/logo, and deploying as your own product is not permitted without a commercial license
+
+**Commercial use is prohibited without a commercial license.** This includes:
+
+- Rebranding, white-labeling, or renaming World Monitor and deploying it as your own product
+- Running World Monitor (or a fork) as a paid service or behind a paywall
+- Embedding World Monitor code, components, or data pipelines into a commercial product
+- Using World Monitor internally at a for-profit company for revenue or competitive advantage
+- Selling data collected or processed through World Monitor
+
+**In plain terms:**
+
+| Use Case | Allowed? | Condition |
+|----------|----------|-----------|
+| Personal / research use | Yes | No conditions |
+| Self-hosted deployment (non-commercial) | Yes | Must retain attribution |
+| Forking and modifying (non-commercial) | Yes | Must share source under AGPL-3.0, retain attribution |
+| Rebranding / renaming as your own product | No | Requires commercial license |
+| Commercial use of any kind | No | Requires commercial license |
+| Running as a SaaS / paid web service | No | Requires commercial license |
+| Bundling into a proprietary product | No | Requires commercial license |
+
+For commercial licensing, contact the maintainer at the [GitHub repository](https://github.com/koala73/worldmonitor).
+
+**No warranty** — the software is provided "as is" without warranty of any kind.
+
+Copyright (C) 2024-2026 Elie Habib. All rights reserved.
 
 ---
 
@@ -525,7 +614,7 @@ GNU Affero General Public License v3.0 (AGPL-3.0) — see [LICENSE](LICENSE) for
 
 We thank the following researchers for responsibly disclosing security issues:
 
-- **Cody Richard** — Disclosed three security findings covering IPC command exposure via DevTools in production builds, renderer-to-sidecar trust boundary analysis, and the global fetch patch credential injection architecture (2025)
+- **Cody Richard** — Disclosed three security findings covering IPC command exposure via DevTools in production builds, renderer-to-sidecar trust boundary analysis, and the global fetch patch credential injection architecture (2026)
 
 If you discover a vulnerability, please see our [Security Policy](./SECURITY.md) for responsible disclosure guidelines.
 
@@ -534,7 +623,8 @@ If you discover a vulnerability, please see our [Security Policy](./SECURITY.md)
 <p align="center">
   <a href="https://worldmonitor.app">worldmonitor.app</a> &nbsp;·&nbsp;
   <a href="https://tech.worldmonitor.app">tech.worldmonitor.app</a> &nbsp;·&nbsp;
-  <a href="https://finance.worldmonitor.app">finance.worldmonitor.app</a>
+  <a href="https://finance.worldmonitor.app">finance.worldmonitor.app</a> &nbsp;·&nbsp;
+  <a href="https://commodity.worldmonitor.app">commodity.worldmonitor.app</a>
 </p>
 
 ## Star History

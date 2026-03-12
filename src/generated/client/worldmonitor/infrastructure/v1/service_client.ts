@@ -101,6 +101,26 @@ export interface RecordBaselineSnapshotResponse {
   error: string;
 }
 
+export interface ListTemporalAnomaliesRequest {
+}
+
+export interface ListTemporalAnomaliesResponse {
+  anomalies: TemporalAnomalyProto[];
+  trackedTypes: string[];
+  computedAt: string;
+}
+
+export interface TemporalAnomalyProto {
+  type: string;
+  region: string;
+  currentCount: number;
+  expectedCount: number;
+  zScore: number;
+  severity: string;
+  multiplier: number;
+  message: string;
+}
+
 export interface GetCableHealthRequest {
 }
 
@@ -303,6 +323,29 @@ export class InfrastructureServiceClient {
     }
 
     return await resp.json() as GetCableHealthResponse;
+  }
+
+  async listTemporalAnomalies(req: ListTemporalAnomaliesRequest, options?: InfrastructureServiceCallOptions): Promise<ListTemporalAnomaliesResponse> {
+    let path = "/api/infrastructure/v1/list-temporal-anomalies";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListTemporalAnomaliesResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

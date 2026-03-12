@@ -22,7 +22,7 @@ export class EconomicPanel extends Panel {
   constructor() {
     super({ id: 'economic', title: t('panels.economic') });
     this.content.addEventListener('click', (e) => {
-      const tab = (e.target as HTMLElement).closest('.economic-tab') as HTMLElement | null;
+      const tab = (e.target as HTMLElement).closest('.panel-tab') as HTMLElement | null;
       if (tab?.dataset.tab) {
         this.activeTab = tab.dataset.tab as TabId;
         this.render();
@@ -59,27 +59,27 @@ export class EconomicPanel extends Panel {
 
   private render(): void {
     const hasOil = this.oilData && (this.oilData.wtiPrice || this.oilData.brentPrice);
-    const hasSpending = this.spendingData && this.spendingData.awards.length > 0;
-    const hasBis = this.bisData && this.bisData.policyRates.length > 0;
+    const hasSpending = this.spendingData && this.spendingData.awards?.length > 0;
+    const hasBis = this.bisData && this.bisData.policyRates?.length > 0;
 
     // Build tabs HTML
     const tabsHtml = `
-      <div class="economic-tabs">
-        <button class="economic-tab ${this.activeTab === 'indicators' ? 'active' : ''}" data-tab="indicators">
+      <div class="panel-tabs">
+        <button class="panel-tab ${this.activeTab === 'indicators' ? 'active' : ''}" data-tab="indicators">
           📊 ${t('components.economic.indicators')}
         </button>
         ${hasOil ? `
-          <button class="economic-tab ${this.activeTab === 'oil' ? 'active' : ''}" data-tab="oil">
+          <button class="panel-tab ${this.activeTab === 'oil' ? 'active' : ''}" data-tab="oil">
             🛢️ ${t('components.economic.oil')}
           </button>
         ` : ''}
         ${hasSpending ? `
-          <button class="economic-tab ${this.activeTab === 'spending' ? 'active' : ''}" data-tab="spending">
+          <button class="panel-tab ${this.activeTab === 'spending' ? 'active' : ''}" data-tab="spending">
             🏛️ ${t('components.economic.gov')}
           </button>
         ` : ''}
         ${hasBis ? `
-          <button class="economic-tab ${this.activeTab === 'centralBanks' ? 'active' : ''}" data-tab="centralBanks">
+          <button class="panel-tab ${this.activeTab === 'centralBanks' ? 'active' : ''}" data-tab="centralBanks">
             🏦 ${t('components.economic.centralBanks')}
           </button>
         ` : ''}
@@ -206,7 +206,7 @@ export class EconomicPanel extends Panel {
   }
 
   private renderSpending(): string {
-    if (!this.spendingData || this.spendingData.awards.length === 0) {
+    if (!this.spendingData || !this.spendingData.awards?.length) {
       return `<div class="economic-empty">${t('components.economic.noSpending')}</div>`;
     }
 
@@ -236,7 +236,7 @@ export class EconomicPanel extends Panel {
   }
 
   private renderCentralBanks(): string {
-    if (!this.bisData || this.bisData.policyRates.length === 0) {
+    if (!this.bisData || !this.bisData.policyRates?.length) {
       return `<div class="economic-empty">${t('components.economic.noBisData')}</div>`;
     }
 
@@ -274,7 +274,7 @@ export class EconomicPanel extends Panel {
 
     // Exchange Rates
     let eerHtml = '';
-    if (this.bisData.exchangeRates.length > 0) {
+    if (this.bisData.exchangeRates?.length > 0) {
       eerHtml = `
         <div class="bis-section">
           <div class="bis-section-title">${t('components.economic.realEer')}</div>
@@ -302,7 +302,7 @@ export class EconomicPanel extends Panel {
 
     // Credit-to-GDP
     let creditHtml = '';
-    if (this.bisData.creditToGdp.length > 0) {
+    if (this.bisData.creditToGdp?.length > 0) {
       const sortedCredit = [...this.bisData.creditToGdp].sort((a, b) => b.creditGdpRatio - a.creditGdpRatio);
       creditHtml = `
         <div class="bis-section">

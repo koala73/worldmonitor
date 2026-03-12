@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://www.worldmonitor.app/blog/sitemap-index.xml

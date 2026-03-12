@@ -5,6 +5,87 @@
    ========================================================== */
 
 /* ----------------------------------------------------------
+   Shared Panel Tabs (gold standard: Telegram Intel style)
+   ---------------------------------------------------------- */
+.panel-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 8px 10px 0;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+/* When .panel-content contains tabs (at any depth), remove top padding
+   so tabs sit flush against the header — matching panels using insertBefore(). */
+.panel-content:has(.panel-tabs) {
+  padding-top: 0;
+}
+
+/* Bleed tabs full-width: negate .panel-content's 8px horizontal padding.
+   Direct children get simple negative margin. For nested tabs, the
+   wrapper div is also pulled flush. */
+.panel-content > .panel-tabs {
+  margin-left: -8px;
+  margin-right: -8px;
+}
+.panel-content > :first-child:has(.panel-tabs) {
+  margin-left: -8px;
+  margin-right: -8px;
+}
+
+.panel-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.panel-tabs--wrap {
+  flex-wrap: wrap;
+  overflow-x: visible;
+}
+
+.panel-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.panel-tab:hover {
+  color: var(--text);
+  background: var(--overlay-subtle);
+}
+
+.panel-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: 500;
+}
+
+.panel-tab .tab-icon {
+  font-size: 12px;
+}
+
+.panel-tab .tab-label {
+  font-weight: 500;
+}
+
+.panel-tab.active .tab-label {
+  font-weight: 600;
+}
+
+/* ----------------------------------------------------------
    Satellite Fires Panel
    ---------------------------------------------------------- */
 .fires-panel-content {
@@ -303,33 +384,7 @@
   color: var(--accent);
 }
 
-.disp-tabs {
-  display: flex;
-  gap: 2px;
-  margin-bottom: 6px;
-}
-
-.disp-tab {
-  background: transparent;
-  border: 1px solid var(--border-strong);
-  color: var(--text-dim);
-  padding: 4px 14px;
-  font-size: 11px;
-  cursor: pointer;
-  border-radius: 3px;
-  transition: all 0.15s;
-}
-
-.disp-tab:hover {
-  border-color: var(--text-faint);
-  color: var(--text-secondary);
-}
-
-.disp-tab-active {
-  background: color-mix(in srgb, var(--threat-critical) 10%, transparent);
-  border-color: var(--threat-critical);
-  color: var(--threat-critical);
-}
+/* disp-tabs: now uses shared .panel-tabs / .panel-tab */
 
 .disp-table {
   width: 100%;
@@ -416,32 +471,7 @@
   gap: 4px;
 }
 
-.ucdp-tabs {
-  display: flex;
-  gap: 2px;
-}
-
-.ucdp-tab {
-  background: transparent;
-  border: 1px solid var(--border-strong);
-  color: var(--text-dim);
-  padding: 4px 10px;
-  font-size: 11px;
-  cursor: pointer;
-  border-radius: 3px;
-  transition: all 0.15s;
-}
-
-.ucdp-tab:hover {
-  border-color: var(--text-faint);
-  color: var(--text-secondary);
-}
-
-.ucdp-tab-active {
-  background: color-mix(in srgb, var(--threat-critical) 10%, transparent);
-  border-color: var(--threat-critical);
-  color: var(--threat-critical);
-}
+/* ucdp-tabs: now uses shared .panel-tabs / .panel-tab */
 
 .ucdp-tab-count {
   font-variant-numeric: tabular-nums;
@@ -706,34 +736,7 @@
   font-size: 22px;
 }
 
-.giving-tabs {
-  display: flex;
-  gap: 2px;
-  margin-bottom: 6px;
-  flex-wrap: wrap;
-}
-
-.giving-tab {
-  background: transparent;
-  border: 1px solid var(--border-strong);
-  color: var(--text-dim);
-  padding: 4px 10px;
-  font-size: 11px;
-  cursor: pointer;
-  border-radius: 3px;
-  transition: all 0.15s;
-}
-
-.giving-tab:hover {
-  border-color: var(--text-faint);
-  color: var(--text-secondary);
-}
-
-.giving-tab-active {
-  background: color-mix(in srgb, var(--semantic-positive, #44ff88) 10%, transparent);
-  border-color: var(--semantic-positive, #44ff88);
-  color: var(--semantic-positive, #44ff88);
-}
+/* giving-tabs: now uses shared .panel-tabs / .panel-tab */
 
 .giving-table {
   width: 100%;
@@ -1483,6 +1486,587 @@
 }
 
 /* ----------------------------------------------------------
+   World Clock Panel
+   ---------------------------------------------------------- */
+.wc-settings-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 15px;
+  cursor: pointer;
+  padding: 2px 4px;
+  line-height: 1;
+  opacity: 0.6;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+}
+
+.wc-settings-btn:hover,
+.wc-settings-btn.wc-active {
+  opacity: 1;
+  color: var(--accent);
+}
+
+.wc-container {
+  display: flex;
+  flex-direction: column;
+}
+
+.wc-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  transition: background 0.1s;
+}
+
+.wc-row:last-child {
+  border-bottom: none;
+}
+
+.wc-row:hover {
+  background: var(--surface-hover);
+}
+
+.wc-row.wc-night {
+  opacity: 0.7;
+}
+
+.wc-row.wc-home {
+  background: color-mix(in srgb, var(--semantic-positive, #44ff88) 8%, transparent);
+  border-left: 2px solid color-mix(in srgb, var(--semantic-positive, #44ff88) 40%, transparent);
+}
+
+.wc-drag-handle {
+  cursor: grab;
+  color: var(--text-faint);
+  font-size: 14px;
+  line-height: 1;
+  user-select: none;
+  flex-shrink: 0;
+  width: 12px;
+  text-align: center;
+}
+
+.wc-drag-handle:hover {
+  color: var(--text-dim);
+}
+
+.wc-row.wc-dragging {
+  opacity: 0.4;
+}
+
+.wc-row.wc-drag-over-above {
+  border-top: 2px solid var(--accent);
+}
+
+.wc-row.wc-drag-over-below {
+  border-bottom: 2px solid var(--accent);
+}
+
+.wc-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.wc-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wc-home-tag {
+  margin-left: 4px;
+  font-size: 11px;
+  color: var(--semantic-positive, #44ff88);
+}
+
+.wc-detail {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 1px;
+}
+
+.wc-exchange {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.wc-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.wc-status.open {
+  color: var(--semantic-positive, #44ff88);
+}
+
+.wc-status.closed {
+  color: var(--text-faint);
+}
+
+.wc-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.wc-dot.open {
+  background: var(--semantic-positive, #44ff88);
+}
+
+.wc-dot.closed {
+  background: var(--text-faint);
+}
+
+.wc-clock {
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.wc-time {
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  letter-spacing: 0.5px;
+  line-height: 1.2;
+}
+
+.wc-tz {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  font-size: 10px;
+  color: var(--text-muted);
+  justify-content: flex-end;
+}
+
+.wc-bar-wrap {
+  width: 40px;
+  height: 3px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.wc-bar {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 1s linear;
+}
+
+.wc-bar.day {
+  background: var(--semantic-elevated, #f59e0b);
+}
+
+.wc-bar.night {
+  background: var(--semantic-info, #3b82f6);
+}
+
+.wc-empty {
+  padding: 20px 8px;
+  text-align: center;
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+/* World Clock Settings View */
+.wc-settings-view {
+  padding: 4px 0;
+}
+
+.wc-region-header {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 6px 8px 3px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.wc-region-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 2px;
+  padding: 4px;
+}
+
+.wc-city-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 11px;
+  transition: background 0.1s;
+}
+
+.wc-city-option:hover {
+  background: var(--surface-hover);
+}
+
+.wc-city-option input[type="checkbox"] {
+  accent-color: var(--accent);
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.wc-opt-name {
+  color: var(--text);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wc-opt-label {
+  color: var(--text-faint);
+  font-size: 9px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* ----------------------------------------------------------
+   Airline Intelligence Panel
+   ---------------------------------------------------------- */
+.airline-intel-content {
+  font-size: 12px;
+}
+
+/* ---- Ops tab ---- */
+.ops-grid {
+  display: flex;
+  flex-direction: column;
+}
+
+.ops-row {
+  display: grid;
+  grid-template-columns: 42px 1fr auto auto auto;
+  align-items: center;
+  gap: 0 8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.ops-row:hover {
+  background: var(--surface-hover);
+}
+
+.ops-iata {
+  font-weight: 700;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.ops-name {
+  color: var(--text-secondary);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ops-severity {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.ops-delay {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+  text-align: right;
+}
+
+.ops-cancel {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-align: right;
+}
+
+.ops-closed {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--semantic-critical);
+  grid-column: 3 / -1;
+}
+
+.ops-notam {
+  font-size: 10px;
+  grid-column: 3 / -1;
+}
+
+/* ---- Flights tab ---- */
+.flights-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.flight-row {
+  display: grid;
+  grid-template-columns: 64px 1fr auto auto auto;
+  align-items: center;
+  gap: 0 8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.flight-row:hover {
+  background: var(--surface-hover);
+}
+
+.flight-num {
+  font-weight: 600;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.flight-route {
+  color: var(--text-secondary);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.flight-time {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+}
+
+.flight-delay {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  min-width: 36px;
+}
+
+.flight-status {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  text-align: right;
+  min-width: 56px;
+}
+
+/* ---- Airlines (Carriers) tab ---- */
+.carriers-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.carrier-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  align-items: center;
+  gap: 0 10px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.carrier-row:hover {
+  background: var(--surface-hover);
+}
+
+.carrier-name {
+  font-weight: 600;
+  color: var(--text);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.carrier-flights {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+  text-align: right;
+}
+
+.carrier-delay {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  min-width: 72px;
+}
+
+.carrier-cancel {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  text-align: right;
+  min-width: 54px;
+}
+
+/* ---- Tracking tab ---- */
+.tracking-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.track-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  align-items: center;
+  gap: 0 10px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.track-row:hover {
+  background: var(--surface-hover);
+}
+
+.track-cs {
+  font-weight: 600;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.track-alt {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+  text-align: right;
+}
+
+.track-spd {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+  text-align: right;
+}
+
+.track-pos {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* ---- Prices tab ---- */
+.prices-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.price-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto auto auto;
+  align-items: center;
+  gap: 0 8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.price-row:hover {
+  background: var(--surface-hover);
+}
+
+.price-carrier {
+  font-weight: 600;
+  color: var(--text);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.price-route {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.price-amount {
+  font-variant-numeric: tabular-nums;
+}
+
+.price-dur {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.price-stops {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-align: right;
+}
+
+.price-input {
+  background: var(--overlay-subtle);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 11px;
+  padding: 5px 6px;
+  outline: none;
+  font-family: inherit;
+  text-transform: uppercase;
+}
+
+.price-input:focus {
+  border-color: var(--accent);
+}
+
+.tp-badge,
+.demo-badge {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 3px;
+  letter-spacing: 0.3px;
+}
+
+.tp-badge {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+}
+
+.demo-badge {
+  background: color-mix(in srgb, var(--semantic-elevated) 12%, transparent);
+  color: var(--semantic-elevated);
+}
+
+/* ---- News tab ---- */
+.news-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.news-link {
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.news-link:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+/* ----------------------------------------------------------
    Map Bottom Grid (Large Screen Drop Zone)
    ---------------------------------------------------------- */
 .map-bottom-grid {
@@ -1550,3 +2134,18 @@
   height: 100%;
   min-height: 150px;
 }
+
+/* DeductionPanel (PERF-012: extracted from inline <style>) */
+.deduction-panel-content { display: flex; flex-direction: column; gap: 12px; padding: 8px; height: 100%; overflow-y: auto; }
+.deduction-form { display: flex; flex-direction: column; gap: 8px; }
+.deduction-input,
+.deduction-geo-input { width: 100%; padding: 8px; background: var(--bg-secondary, #2a2a2a); border: 1px solid var(--border-color, #444); color: var(--text-primary, #fff); border-radius: 4px; font-family: inherit; resize: vertical; box-sizing: border-box; }
+.deduction-submit-btn { padding: 8px 16px; background: var(--accent-color, #3b82f6); color: white; border: none; border-radius: 4px; cursor: pointer; align-self: flex-end; font-weight: 500; }
+.deduction-submit-btn:hover { background: var(--accent-hover, #2563eb); }
+.deduction-submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.deduction-result { flex: 1; margin-top: 8px; line-height: 1.5; font-size: 0.9em; color: var(--text-primary, #ddd); }
+.deduction-result.loading { opacity: 0.7; font-style: italic; }
+.deduction-result.error { color: var(--semantic-critical, #ef4444); }
+.deduction-result h3 { margin-top: 12px; margin-bottom: 4px; font-size: 1.1em; color: var(--text-bright, #fff); }
+.deduction-result ul { padding-left: 20px; margin-top: 4px; }
+.deduction-result li { margin-bottom: 4px; }

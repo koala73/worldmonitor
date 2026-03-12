@@ -1,4 +1,5 @@
 import { Panel } from './Panel';
+import { getRpcBaseUrl } from '@/services/rpc-client';
 import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
 import { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
@@ -32,9 +33,6 @@ export class ETFFlowsPanel extends Panel {
   private error: string | null = null;
   constructor() {
     super({ id: 'etf-flows', title: t('panels.etfFlows'), showCount: false });
-    // Delay initial fetch by 8s to avoid competing with stock/commodity Yahoo calls
-    // during cold start — all share a global yahooGate() rate limiter on the sidecar
-    setTimeout(() => void this.fetchData(), 8_000);
   }
 
   public async fetchData(): Promise<void> {
@@ -47,31 +45,16 @@ export class ETFFlowsPanel extends Panel {
       return;
     }
 
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        const client = new MarketServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
-        this.data = await client.listEtfFlows({});
-        if (!this.element?.isConnected) return;
-        this.error = null;
-
-        if (this.data && this.data.etfs.length === 0 && !this.data.rateLimited && attempt < 2) {
-          this.showRetrying();
-          await new Promise(r => setTimeout(r, 20_000));
-          if (!this.element?.isConnected) return;
-          continue;
-        }
-        break;
-      } catch (err) {
-        if (this.isAbortError(err)) return;
-        if (!this.element?.isConnected) return;
-        if (attempt < 2) {
-          this.showRetrying();
-          await new Promise(r => setTimeout(r, 20_000));
-          if (!this.element?.isConnected) return;
-          continue;
-        }
-        this.error = err instanceof Error ? err.message : 'Failed to fetch';
-      }
+    try {
+      const client = new MarketServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
+      this.data = await client.listEtfFlows({});
+      if (!this.element?.isConnected) return;
+      this.error = null;
+    } catch (err) {
+      if (this.isAbortError(err)) return;
+      if (!this.element?.isConnected) return;
+      console.warn('[ETFFlows] Fetch error:', err);
+      this.error = t('components.etfFlows.unavailable');
     }
     this.loading = false;
     this.renderPanel();
@@ -84,12 +67,12 @@ export class ETFFlowsPanel extends Panel {
     }
 
     if (this.error || !this.data) {
-      this.showError(this.error || t('common.noDataShort'));
+      this.showError(this.error || t('common.noDataShort'), () => void this.fetchData());
       return;
     }
 
     const d = this.data;
-    if (!d.etfs.length) {
+    if (!d.etfs?.length) {
       const msg = d.rateLimited ? t('components.etfFlows.rateLimited') : t('components.etfFlows.unavailable');
       this.setContent(`<div class="panel-loading-text">${msg}</div>`);
       return;

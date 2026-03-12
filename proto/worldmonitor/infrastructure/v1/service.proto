@@ -8,6 +8,7 @@ import "worldmonitor/infrastructure/v1/list_service_statuses.proto";
 import "worldmonitor/infrastructure/v1/get_temporal_baseline.proto";
 import "worldmonitor/infrastructure/v1/get_cable_health.proto";
 import "worldmonitor/infrastructure/v1/record_baseline_snapshot.proto";
+import "worldmonitor/infrastructure/v1/list_temporal_anomalies.proto";
 
 // InfrastructureService provides APIs for internet outage monitoring from Cloudflare Radar,
 // external service status tracking, and temporal baseline anomaly detection.
@@ -37,5 +38,10 @@ service InfrastructureService {
   // GetCableHealth computes health status for submarine cables from NGA maritime warning signals.
   rpc GetCableHealth(GetCableHealthRequest) returns (GetCableHealthResponse) {
     option (sebuf.http.config) = {path: "/get-cable-health", method: HTTP_METHOD_GET};
+  }
+
+  // ListTemporalAnomalies returns server-computed temporal anomalies for news and satellite_fires.
+  rpc ListTemporalAnomalies(ListTemporalAnomaliesRequest) returns (ListTemporalAnomaliesResponse) {
+    option (sebuf.http.config) = {path: "/list-temporal-anomalies", method: HTTP_METHOD_GET};
   }
 }

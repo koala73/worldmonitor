@@ -2,16 +2,12 @@ name: Typecheck
 
 on:
   pull_request:
-    paths-ignore:
-      - '*.md'
-      - '.planning/**'
-      - 'docs/**'
-      - 'e2e/**'
-      - 'scripts/**'
+  push:
+    branches: [main]
 
 jobs:
   typecheck:
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

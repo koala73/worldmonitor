@@ -1,14 +1,11 @@
 /**
- * FNV-1a 52-bit hash — stronger than Java hashCode (32-bit) or DJB2 (32-bit).
+ * FNV-1a 52-bit hash — fast, non-cryptographic.
  *
- * Uses 52 bits (JS safe integer range) to greatly reduce collision probability
- * compared to 32-bit hashes. At 77k keys, 32-bit has ~50% collision chance
- * (birthday problem); 52-bit has ~0.00007% chance at 77k keys.
- *
- * Unified implementation replacing two separate hashString functions (H-7 fix).
+ * WARNING: Do NOT use for cache keys derived from attacker-controlled input.
+ * Use sha256Hex() instead for any server-side cache key with user input.
+ * Retained for client-side non-security contexts (e.g. vector-db dedup).
  */
 export function hashString(input: string): string {
-  // FNV-1a parameters adapted for 52-bit output (within JS safe integer range)
   let h = 0xcbf29ce484222325n;
   const FNV_PRIME = 0x100000001b3n;
   const MASK_52 = (1n << 52n) - 1n;
@@ -19,4 +16,18 @@ export function hashString(input: string): string {
   }
 
   return Number(h).toString(36);
+}
+
+/**
+ * SHA-256 hex digest via Web Crypto (available in Edge/Vercel/Node 18+).
+ * Use for all server-side cache keys derived from user-controlled input.
+ */
+export async function sha256Hex(input: string): Promise<string> {
+  const buf = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(input),
+  );
+  return Array.from(new Uint8Array(buf))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
 }

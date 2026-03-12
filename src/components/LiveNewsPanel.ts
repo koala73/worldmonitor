@@ -146,6 +146,7 @@ export const OPTIONAL_LIVE_CHANNELS: LiveChannel[] = [
   { id: 'i24-news', name: 'i24NEWS (Israel)', handle: '@i24NEWS_HE', fallbackVideoId: 'myKybZUK0IA' },
   { id: 'asharq-news', name: 'Asharq News', handle: '@asharqnews', fallbackVideoId: 'f6VpkfV7m4Y', useFallbackOnly: true },
   { id: 'aljazeera-arabic', name: 'AlJazeera Arabic', handle: '@AljazeeraChannel', fallbackVideoId: 'bNyUyrR0PHo', useFallbackOnly: true },
+  { id: 'rudaw', name: 'Rudaw', hlsUrl: 'https://svs.itworkscdn.net/rudawlive/rudawlive.smil/playlist.m3u8', useFallbackOnly: true },
   // Africa
   { id: 'africanews', name: 'Africanews', handle: '@africanews' },
   { id: 'channels-tv', name: 'Channels TV', handle: '@ChannelsTelevision' },
@@ -172,12 +173,11 @@ const _REGION_ENTRIES: { key: string; labelKey: string; channelIds: string[] }[]
   { key: 'eu', labelKey: 'components.liveNews.regionEurope', channelIds: ['sky', 'euronews', 'dw', 'france24', 'bbc-news', 'france24-en', 'welt', 'rtve', 'trt-haber', 'ntv-turkey', 'cnn-turk', 'tv-rain', 'rt', 'tvp-info', 'telewizja-republika', 'tagesschau24', 'euronews-fr', 'france24-fr', 'france-info', 'bfmtv', 'tv5monde-info', 'nrk1', 'aljazeera-balkans'] },
   { key: 'latam', labelKey: 'components.liveNews.regionLatinAmerica', channelIds: ['cnn-brasil', 'jovem-pan', 'record-news', 'band-jornalismo', 'tn-argentina', 'c5n', 'milenio', 'noticias-caracol', 'ntn24', 't13'] },
   { key: 'asia', labelKey: 'components.liveNews.regionAsia', channelIds: ['tbs-news', 'ann-news', 'ntv-news', 'cti-news', 'wion', 'ndtv', 'cna-asia', 'nhk-world', 'arirang-news', 'india-today', 'abp-news'] },
-  { key: 'me', labelKey: 'components.liveNews.regionMiddleEast', channelIds: ['alarabiya', 'aljazeera', 'al-hadath', 'sky-news-arabia', 'trt-world', 'iran-intl', 'cgtn-arabic', 'kan-11', 'i24-news', 'asharq-news', 'aljazeera-arabic'] },
+  { key: 'me', labelKey: 'components.liveNews.regionMiddleEast', channelIds: ['alarabiya', 'aljazeera', 'al-hadath', 'sky-news-arabia', 'trt-world', 'iran-intl', 'cgtn-arabic', 'kan-11', 'i24-news', 'asharq-news', 'aljazeera-arabic', 'rudaw'] },
   { key: 'africa', labelKey: 'components.liveNews.regionAfrica', channelIds: ['africanews', 'channels-tv', 'ktn-news', 'enca', 'sabc-news', 'arise-news'] },
   { key: 'oc', labelKey: 'components.liveNews.regionOceania', channelIds: ['abc-news-au'] },
 ];
 export const OPTIONAL_CHANNEL_REGIONS: { key: string; labelKey: string; channelIds: string[] }[] = [
-  { key: 'all', labelKey: 'components.liveNews.regionAll', channelIds: _REGION_ENTRIES.flatMap((r) => r.channelIds) },
   ..._REGION_ENTRIES,
 ];
 
@@ -233,6 +233,7 @@ const DIRECT_HLS_MAP: Readonly<Record<string, string>> = {
   'bbc-news': 'https://vs-hls-push-uk.live.fastly.md.bbci.co.uk/x=4/i=urn:bbc:pips:service:bbc_news_channel_hd/iptv_hd_abr_v1.m3u8',
   'tagesschau24': 'https://tagesschau.akamaized.net/hls/live/2020115/tagesschau/tagesschau_1/master.m3u8',
   'india-today': 'https://indiatodaylive.akamaized.net/hls/live/2014320/indiatoday/indiatodaylive/playlist.m3u8',
+  'rudaw': 'https://svs.itworkscdn.net/rudawlive/rudawlive.smil/playlist.m3u8',
   'kan-11': 'https://kan11.media.kan.org.il/hls/live/2024514/2024514/master.m3u8',
   'tv5monde-info': 'https://ott.tv5monde.com/Content/HLS/Live/channel(info)/index.m3u8',
   'arise-news': 'https://liveedge-arisenews.visioncdn.com/live-hls/arisenews/arisenews/arisenews_web/master.m3u8',
@@ -260,7 +261,7 @@ if (import.meta.env.DEV) {
   for (const id of Object.keys(DIRECT_HLS_MAP)) {
     const ch = allChannels.find(c => c.id === id);
     if (!ch) console.error(`[LiveNews] DIRECT_HLS_MAP key '${id}' has no matching channel`);
-    else if (!ch.fallbackVideoId) console.error(`[LiveNews] Channel '${id}' in DIRECT_HLS_MAP lacks fallbackVideoId`);
+    else if (!ch.fallbackVideoId && !ch.hlsUrl) console.error(`[LiveNews] Channel '${id}' in DIRECT_HLS_MAP lacks fallbackVideoId`);
   }
 }
 
@@ -362,7 +363,8 @@ export class LiveNewsPanel extends Panel {
   private idleCallbackId: number | ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
-    super({ id: 'live-news', title: t('panels.liveNews'), className: 'panel-wide' });
+    super({ id: 'live-news', title: t('panels.liveNews'), className: 'panel-wide', closable: false });
+    this.insertLiveCountBadge(OPTIONAL_LIVE_CHANNELS.length);
     this.youtubeOrigin = LiveNewsPanel.resolveYouTubeOrigin();
     this.playerElementId = `live-news-player-${Date.now()}`;
     this.channels = loadChannelsFromStorage();
@@ -653,24 +655,20 @@ export class LiveNewsPanel extends Panel {
 
   private createLiveButton(): void {
     this.liveBtn = document.createElement('button');
-    this.liveBtn.className = 'live-indicator-btn';
+    this.liveBtn.className = 'live-mute-btn';
     this.liveBtn.title = 'Toggle playback';
     this.updateLiveIndicator();
     this.liveBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       this.togglePlayback();
     });
-
-    const header = this.element.querySelector('.panel-header');
-    header?.appendChild(this.liveBtn);
   }
 
   private updateLiveIndicator(): void {
     if (!this.liveBtn) return;
     this.liveBtn.innerHTML = this.isPlaying
-      ? '<span class="live-dot"></span>Live'
-      : '<span class="live-dot paused"></span>Paused';
-    this.liveBtn.classList.toggle('paused', !this.isPlaying);
+      ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>'
+      : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
   }
 
   private togglePlayback(): void {
@@ -696,6 +694,7 @@ export class LiveNewsPanel extends Panel {
     });
 
     const header = this.element.querySelector('.panel-header');
+    if (this.liveBtn) header?.appendChild(this.liveBtn);
     header?.appendChild(this.muteBtn);
 
     this.createFullscreenButton();
@@ -746,7 +745,7 @@ export class LiveNewsPanel extends Panel {
   }
 
   private getChannelDisplayName(channel: LiveChannel): string {
-    return channel.hlsUrl && !channel.handle ? `${channel.name} 🔗` : channel.name;
+    return channel.name;
   }
 
   /** Creates a single channel tab button with click and drag handlers. */
@@ -1094,6 +1093,10 @@ export class LiveNewsPanel extends Panel {
       mute: this.isMuted ? '1' : '0',
     });
     if (quality !== 'auto') params.set('vq', quality);
+    // origin = canonical site origin YouTube trusts for embed restrictions.
+    // parentOrigin = actual parent frame origin so postMessage round-trips work.
+    params.set('origin', this.youtubeOrigin || 'https://worldmonitor.app');
+    params.set('parentOrigin', window.location.origin);
     const embedUrl = `http://localhost:${getLocalApiPort()}/api/youtube-embed?${params.toString()}`;
 
     if (renderToken !== this.desktopEmbedRenderToken) {
@@ -1107,7 +1110,7 @@ export class LiveNewsPanel extends Panel {
     iframe.style.width = '100%';
     iframe.style.height = '100%';
     iframe.style.border = '0';
-    iframe.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+    iframe.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen; storage-access';
     iframe.allowFullscreen = true;
     iframe.referrerPolicy = 'strict-origin-when-cross-origin';
     iframe.setAttribute('loading', 'eager');
@@ -1279,7 +1282,37 @@ export class LiveNewsPanel extends Panel {
     if (!this.element?.isConnected) return;
     if (this.player || !this.playerElement || !window.YT?.Player) return;
 
-    this.player = new window.YT!.Player(this.playerElement, {
+    // When YT.Player receives a DOM element it replaces that element in the
+    // parent — the mutation fires on playerContainer, not inside playerElement.
+    // Passing the string ID instead makes the API insert the iframe *as a child*
+    // of the div, which the observer on playerContainer can catch.
+    // We add storage-access so YouTube can call requestStorageAccess() and
+    // access the user's cached session (avoids bot-check for signed-in users).
+    const storageObserver = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes) {
+          if (node instanceof HTMLIFrameElement && node.src.includes('youtube.com')) {
+            const cur = node.getAttribute('allow') || '';
+            if (!cur.includes('storage-access')) {
+              node.setAttribute('allow', cur ? `${cur}; storage-access` : 'storage-access');
+            }
+            storageObserver.disconnect();
+            if (observerTimeout !== null) clearTimeout(observerTimeout);
+            return;
+          }
+        }
+      }
+    });
+    // Auto-disconnect after 10 s to avoid leaking the observer if the iframe
+    // never appears (e.g. YT.Player throws or the API fails to load).
+    let observerTimeout: ReturnType<typeof setTimeout> | null = null;
+    if (this.playerContainer) {
+      storageObserver.observe(this.playerContainer, { childList: true, subtree: true });
+      observerTimeout = setTimeout(() => storageObserver.disconnect(), 10_000);
+    }
+
+    try {
+      this.player = new window.YT!.Player(this.playerElementId, {
       host: 'https://www.youtube.com',
       videoId: this.activeChannel.videoId,
       playerVars: {
@@ -1338,6 +1371,12 @@ export class LiveNewsPanel extends Panel {
         },
       },
     });
+    } catch (err) {
+      // YT.Player constructor threw — disconnect the observer so it doesn't leak.
+      storageObserver.disconnect();
+      if (observerTimeout !== null) clearTimeout(observerTimeout);
+      throw err;
+    }
 
     this.startBotCheckTimeout();
   }

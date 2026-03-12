@@ -28,6 +28,8 @@ const SETTINGS_KEY_PREFIXES = [
   'wm-breaking-alerts-v1',
   'wm-globe-render-scale',
   'wm-live-streams-always-on',
+  'wm-font-family',
+  'wm-map-theme:',
   'map-height',
   'map-pinned',
   'mobile-map-collapsed',

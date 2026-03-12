@@ -7,7 +7,7 @@ loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'news:insights:v1';
 const DIGEST_KEY = 'news:digest:v1:full:en';
-const CACHE_TTL = 600; // 10 min (2x the 5-min cron interval)
+const CACHE_TTL = 1800; // 30 min — matches health maxStaleMin; survives missed cron runs
 const MAX_HEADLINES = 10;
 const MAX_HEADLINE_LEN = 500;
 const GROQ_MODEL = 'llama-3.1-8b-instant';
@@ -56,10 +56,41 @@ async function readExistingInsights() {
   return data.result ? JSON.parse(data.result) : null;
 }
 
-async function callGroq(headlines) {
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) return null;
+// Provider config — mirrors server/worldmonitor/news/v1/_shared.ts getProviderCredentials()
+const LLM_PROVIDERS = [
+  {
+    name: 'groq',
+    envKey: 'GROQ_API_KEY',
+    apiUrl: 'https://api.groq.com/openai/v1/chat/completions',
+    model: GROQ_MODEL,
+    headers: (key) => ({ 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA }),
+    timeout: 15_000,
+  },
+  {
+    name: 'openrouter',
+    envKey: 'OPENROUTER_API_KEY',
+    apiUrl: 'https://openrouter.ai/api/v1/chat/completions',
+    model: 'google/gemini-2.5-flash',
+    headers: (key) => ({ 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor', 'User-Agent': CHROME_UA }),
+    timeout: 20_000,
+  },
+  {
+    name: 'ollama',
+    envKey: 'OLLAMA_API_URL',
+    apiUrlFn: (baseUrl) => new URL('/v1/chat/completions', baseUrl).toString(),
+    model: () => process.env.OLLAMA_MODEL || 'llama3.1:8b',
+    headers: (_key) => {
+      const h = { 'Content-Type': 'application/json', 'User-Agent': CHROME_UA };
+      const apiKey = process.env.OLLAMA_API_KEY;
+      if (apiKey) h['Authorization'] = `Bearer ${apiKey}`;
+      return h;
+    },
+    extraBody: { think: false },
+    timeout: 25_000,
+  },
+];
 
+async function callLLM(headlines) {
   const headlineText = headlines.map((h, i) => `${i + 1}. ${h}`).join('\n');
   const dateContext = `Current date: ${new Date().toISOString().split('T')[0]}. Provide geopolitical context appropriate for the current date.`;
 
@@ -77,87 +108,61 @@ Rules:
 
   const userPrompt = `Each headline below is a separate story. Pick the most important ONE and summarize only that story:\n${headlineText}`;
 
-  try {
-    const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        'User-Agent': CHROME_UA,
-      },
-      body: JSON.stringify({
-        model: GROQ_MODEL,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        max_tokens: 300,
-        temperature: 0.3,
-      }),
-      signal: AbortSignal.timeout(15_000),
-    });
+  for (const provider of LLM_PROVIDERS) {
+    const envVal = process.env[provider.envKey];
+    if (!envVal) continue;
 
-    if (!resp.ok) {
-      console.warn(`  Groq API error: ${resp.status}`);
-      return null;
+    const apiUrl = provider.apiUrlFn ? provider.apiUrlFn(envVal) : provider.apiUrl;
+    const model = typeof provider.model === 'function' ? provider.model() : provider.model;
+
+    try {
+      const resp = await fetch(apiUrl, {
+        method: 'POST',
+        headers: provider.headers(envVal),
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+          max_tokens: 300,
+          temperature: 0.3,
+          ...provider.extraBody,
+        }),
+        signal: AbortSignal.timeout(provider.timeout),
+      });
+
+      if (!resp.ok) {
+        console.warn(`  ${provider.name} API error: ${resp.status}`);
+        continue;
+      }
+
+      const json = await resp.json();
+      const rawText = json.choices?.[0]?.message?.content?.trim();
+      if (!rawText) {
+        console.warn(`  ${provider.name}: empty response`);
+        continue;
+      }
+
+      const text = stripReasoningPreamble(rawText)
+        .replace(/<think>[\s\S]*?<\/think>/gi, '')
+        .replace(/<\|thinking\|>[\s\S]*?<\|\/thinking\|>/gi, '')
+        .replace(/<think>[\s\S]*/gi, '')
+        .trim();
+
+      if (text.length < 20) {
+        console.warn(`  ${provider.name}: output too short (${text.length} chars)`);
+        continue;
+      }
+
+      return { text, model: json.model || model, provider: provider.name };
+    } catch (err) {
+      console.warn(`  ${provider.name} failed: ${err.message}`);
+      continue;
     }
-
-    const json = await resp.json();
-    const rawText = json.choices?.[0]?.message?.content?.trim();
-    if (!rawText) return null;
-    const text = stripReasoningPreamble(rawText);
-
-    return { text, model: json.model || GROQ_MODEL, provider: 'groq' };
-  } catch (err) {
-    console.warn(`  Groq call failed: ${err.message}`);
-    return null;
   }
-}
 
-async function callOpenRouter(headlines) {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) return null;
-
-  const headlineText = headlines.map((h, i) => `${i + 1}. ${h}`).join('\n');
-  const dateContext = `Current date: ${new Date().toISOString().split('T')[0]}.`;
-
-  try {
-    const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://worldmonitor.app',
-        'X-Title': 'WorldMonitor',
-        'User-Agent': CHROME_UA,
-      },
-      body: JSON.stringify({
-        model: 'openrouter/free',
-        messages: [
-          { role: 'system', content: `${dateContext} Summarize the single most important headline in 2 concise sentences MAX (under 60 words). Each headline is a SEPARATE story. Pick ONE. NEVER combine facts from different headlines. Lead with WHAT happened and WHERE.` },
-          { role: 'user', content: `Pick the most important story:\n${headlineText}` },
-        ],
-        max_tokens: 300,
-        temperature: 0.3,
-      }),
-      signal: AbortSignal.timeout(20_000),
-    });
-
-    if (!resp.ok) {
-      console.warn(`  OpenRouter API error: ${resp.status}`);
-      return null;
-    }
-
-    const json = await resp.json();
-    const rawText = json.choices?.[0]?.message?.content?.trim();
-    if (!rawText) return null;
-    const text = stripReasoningPreamble(rawText);
-
-    return { text, model: json.model || 'openrouter/free', provider: 'openrouter' };
-  } catch (err) {
-    console.warn(`  OpenRouter call failed: ${err.message}`);
-    return null;
-  }
+  return null;
 }
 
 function categorizeStory(title) {
@@ -181,9 +186,38 @@ function categorizeStory(title) {
   return { category: 'general', threatLevel: 'moderate' };
 }
 
+async function warmDigestCache() {
+  const apiBase = process.env.API_BASE_URL || 'https://api.worldmonitor.app';
+  try {
+    const resp = await fetch(`${apiBase}/api/news/v1/list-feed-digest?variant=full&lang=en`, {
+      headers: { 'User-Agent': CHROME_UA },
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (resp.ok) console.log('  Digest cache warmed via RPC');
+    else console.warn(`  Digest warm failed: HTTP ${resp.status}`);
+  } catch (err) {
+    console.warn(`  Digest warm failed: ${err.message}`);
+  }
+}
+
 async function fetchInsights() {
-  const digest = await readDigestFromRedis();
-  if (!digest) throw new Error('No news digest found in Redis');
+  let digest = await readDigestFromRedis();
+  if (!digest) {
+    console.log('  Digest not in Redis, warming cache via RPC...');
+    await warmDigestCache();
+    // Wait for RPC write to propagate to Redis
+    await new Promise(r => setTimeout(r, 3_000));
+    digest = await readDigestFromRedis();
+  }
+  if (!digest) {
+    // LKG fallback: reuse existing insights if digest is unavailable
+    const existing = await readExistingInsights();
+    if (existing?.topStories?.length) {
+      console.log('  Digest unavailable — reusing existing insights (LKG)');
+      return existing;
+    }
+    throw new Error('No news digest found in Redis');
+  }
 
   // Digest shape: { categories: { politics: { items: [...] }, ... }, feedStatuses, generatedAt }
   let items;
@@ -231,23 +265,15 @@ async function fetchInsights() {
   let briefModel = '';
   let status = 'ok';
 
-  const groqResult = await callGroq(headlines);
-  if (groqResult) {
-    worldBrief = groqResult.text;
-    briefProvider = groqResult.provider;
-    briefModel = groqResult.model;
+  const llmResult = await callLLM(headlines);
+  if (llmResult) {
+    worldBrief = llmResult.text;
+    briefProvider = llmResult.provider;
+    briefModel = llmResult.model;
     console.log(`  Brief generated via ${briefProvider} (${briefModel})`);
   } else {
-    const orResult = await callOpenRouter(headlines);
-    if (orResult) {
-      worldBrief = orResult.text;
-      briefProvider = orResult.provider;
-      briefModel = orResult.model;
-      console.log(`  Brief generated via ${briefProvider} (${briefModel})`);
-    } else {
-      status = 'degraded';
-      console.warn('  No LLM available — publishing degraded (stories without brief)');
-    }
+    status = 'degraded';
+    console.warn('  No LLM available — publishing degraded (stories without brief)');
   }
 
   const multiSourceCount = clusters.filter(c => c.sourceCount >= 2).length;
@@ -302,5 +328,6 @@ runSeed('news', 'insights', CANONICAL_KEY, fetchInsights, {
   sourceVersion: 'digest-clustering-v1',
 }).catch((err) => {
   console.error('FATAL:', err.message || err);
-  process.exit(1);
+  // Exit gracefully for cron — health endpoint flags stale data via seed-meta.
+  process.exit(0);
 });

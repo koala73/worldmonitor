@@ -17,6 +17,8 @@ import { dirname, join } from 'node:path';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const BOOTSTRAP_KEY = 'economic:worldbank-techreadiness:v1';
+const PROGRESS_KEY = 'economic:worldbank-progress:v1';
+const RENEWABLE_KEY = 'economic:worldbank-renewable:v1';
 const TTL_SECONDS = 7 * 24 * 3600; // 7 days — WB data is annual
 const MAX_RETRIES = 3;
 const RETRY_BASE_MS = 1000;
@@ -259,6 +261,115 @@ function computeRankings(indicatorData) {
 }
 
 // ---------------------------------------------------------------------------
+// Progress indicators (Human Progress panel)
+// ---------------------------------------------------------------------------
+
+const PROGRESS_INDICATORS = [
+  { id: 'lifeExpectancy', code: 'SP.DYN.LE00.IN', years: 65, invertTrend: false },
+  { id: 'literacy',       code: 'SE.ADT.LITR.ZS', years: 55, invertTrend: false },
+  { id: 'childMortality', code: 'SH.DYN.MORT',    years: 65, invertTrend: true },
+  { id: 'poverty',        code: 'SI.POV.DDAY',    years: 45, invertTrend: true },
+];
+
+async function fetchProgressData() {
+  const currentYear = new Date().getFullYear();
+  const results = [];
+
+  for (const ind of PROGRESS_INDICATORS) {
+    const startYear = currentYear - ind.years;
+    const dateRange = `${startYear}:${currentYear}`;
+    console.log(`  Progress: ${ind.code} (${dateRange})`);
+
+    const url = `https://api.worldbank.org/v2/country/1W/indicator/${ind.code}?format=json&date=${dateRange}&per_page=1000`;
+    const raw = await fetchWithRetry(url);
+
+    if (!Array.isArray(raw) || raw.length < 2 || !Array.isArray(raw[1])) {
+      console.warn(`    → No data for ${ind.code}`);
+      results.push({ id: ind.id, code: ind.code, data: [], invertTrend: ind.invertTrend });
+      continue;
+    }
+
+    const data = raw[1]
+      .filter(e => e.value !== null && e.value !== undefined)
+      .map(e => ({ year: parseInt(e.date, 10), value: e.value }))
+      .filter(d => !isNaN(d.year))
+      .sort((a, b) => a.year - b.year);
+
+    console.log(`    → ${data.length} data points`);
+    results.push({ id: ind.id, code: ind.code, data, invertTrend: ind.invertTrend });
+  }
+
+  return results;
+}
+
+// ---------------------------------------------------------------------------
+// Renewable energy (EG.ELC.RNEW.ZS) for world + regions
+// ---------------------------------------------------------------------------
+
+const RENEWABLE_REGIONS = ['1W', 'EAS', 'ECS', 'LCN', 'MEA', 'NAC', 'SAS', 'SSF'];
+const RENEWABLE_REGION_NAMES = {
+  '1W': 'World', EAS: 'East Asia & Pacific', ECS: 'Europe & Central Asia',
+  LCN: 'Latin America & Caribbean', MEA: 'Middle East & N. Africa',
+  NAC: 'North America', SAS: 'South Asia', SSF: 'Sub-Saharan Africa',
+};
+
+async function fetchRenewableData() {
+  const currentYear = new Date().getFullYear();
+  const startYear = currentYear - 35;
+  const dateRange = `${startYear}:${currentYear}`;
+  const countryCodes = RENEWABLE_REGIONS.join(';');
+  const url = `https://api.worldbank.org/v2/country/${countryCodes}/indicator/EG.ELC.RNEW.ZS?format=json&date=${dateRange}&per_page=1000`;
+
+  console.log(`  Renewable: EG.ELC.RNEW.ZS (${dateRange})`);
+  const raw = await fetchWithRetry(url);
+
+  if (!Array.isArray(raw) || raw.length < 2 || !Array.isArray(raw[1])) {
+    console.warn('    → No renewable energy data from WB');
+    return { globalPercentage: 0, globalYear: 0, historicalData: [], regions: [] };
+  }
+
+  const entries = raw[1].filter(e => e.value !== null && e.value !== undefined);
+  console.log(`    → ${entries.length} entries`);
+
+  const byRegion = {};
+  for (const e of entries) {
+    const code = e.countryiso3code || e.country?.id;
+    if (!code) continue;
+    if (!byRegion[code]) byRegion[code] = [];
+    byRegion[code].push({ year: parseInt(e.date, 10), value: e.value });
+  }
+
+  for (const arr of Object.values(byRegion)) {
+    arr.sort((a, b) => a.year - b.year);
+  }
+
+  const worldData = byRegion['WLD'] || byRegion['1W'] || [];
+  const latest = worldData.length ? worldData[worldData.length - 1] : null;
+
+  const regions = [];
+  for (const code of RENEWABLE_REGIONS) {
+    if (code === '1W') continue;
+    const regionData = byRegion[code] || [];
+    if (regionData.length === 0) continue;
+    const latestRegion = regionData[regionData.length - 1];
+    regions.push({
+      code,
+      name: RENEWABLE_REGION_NAMES[code] || code,
+      percentage: latestRegion.value,
+      year: latestRegion.year,
+    });
+  }
+  regions.sort((a, b) => b.percentage - a.percentage);
+
+  return {
+    globalPercentage: latest?.value || 0,
+    globalYear: latest?.year || 0,
+    historicalData: worldData,
+    regions,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -281,20 +392,23 @@ async function main() {
   }
 
   const fullKey = `${prefix}${BOOTSTRAP_KEY}`;
+  const progressKey = `${prefix}${PROGRESS_KEY}`;
+  const renewableKey = `${prefix}${RENEWABLE_KEY}`;
 
-  console.log('=== World Bank Tech Readiness Seed ===');
+  console.log('=== World Bank Indicators Seed ===');
   console.log(`  Environment:  ${env}`);
   console.log(`  Prefix:       ${prefix || '(none — production)'}`);
   console.log(`  Redis URL:    ${redisUrl}`);
   console.log(`  Redis Token:  ${maskToken(redisToken)}`);
-  console.log(`  Bootstrap key: ${fullKey}`);
+  console.log(`  Keys: ${fullKey}, ${progressKey}, ${renewableKey}`);
   console.log(`  TTL:          ${TTL_SECONDS}s (7 days)`);
   console.log();
 
-  // Fetch all 4 indicators
-  const indicatorData = {};
   const t0 = Date.now();
 
+  // ── 1. Tech Readiness rankings ──
+  console.log('── Tech Readiness ──');
+  const indicatorData = {};
   for (const { key, id, dateRange } of INDICATORS) {
     console.log(`Fetching indicator: ${id} (${dateRange})`);
     indicatorData[key] = await fetchWbIndicator(id, dateRange);
@@ -302,48 +416,77 @@ async function main() {
     console.log(`  → ${count} countries with non-null data\n`);
   }
 
-  const fetchElapsed = ((Date.now() - t0) / 1000).toFixed(1);
-  console.log(`All indicators fetched in ${fetchElapsed}s\n`);
-
-  // Compute rankings
-  console.log('Computing rankings...');
   const rankings = computeRankings(indicatorData);
   console.log(`  → ${rankings.length} countries ranked`);
-  console.log(`  Top 5: ${rankings.slice(0, 5).map(r => `${r.rank}. ${r.countryName} (${r.score})`).join(', ')}`);
-  console.log();
+  console.log(`  Top 5: ${rankings.slice(0, 5).map(r => `${r.rank}. ${r.countryName} (${r.score})`).join(', ')}\n`);
 
+  // ── 2. Progress indicators ──
+  console.log('── Progress Indicators ──');
+  const progressData = await fetchProgressData();
+  const progressWithData = progressData.filter(p => p.data.length > 0);
+  console.log(`  → ${progressWithData.length}/${progressData.length} indicators with data\n`);
+
+  // ── 3. Renewable energy ──
+  console.log('── Renewable Energy ──');
+  const renewableData = await fetchRenewableData();
+  console.log(`  → Global: ${renewableData.globalPercentage}% (${renewableData.globalYear})`);
+  console.log(`  → ${renewableData.regions.length} regions\n`);
+
+  const fetchElapsed = ((Date.now() - t0) / 1000).toFixed(1);
+  console.log(`All data fetched in ${fetchElapsed}s\n`);
+
+  // Validate
   if (rankings.length === 0) {
-    console.error('No rankings computed — aborting to avoid writing empty data.');
+    console.error('No rankings computed — aborting.');
     process.exit(1);
   }
 
-  // Write to Redis
-  console.log(`Writing to Redis key: ${fullKey}`);
-  await redisPipeline(redisUrl, redisToken, [
+  // Write all keys + seed-meta to Redis in one pipeline
+  const metaTtl = String(TTL_SECONDS + 3600); // seed-meta outlives data by 1h
+  const pipeline = [
     ['SET', fullKey, JSON.stringify(rankings), 'EX', String(TTL_SECONDS)],
-  ]);
+    ['SET', `seed-meta:${BOOTSTRAP_KEY}`, JSON.stringify({ fetchedAt: Date.now(), recordCount: rankings.length }), 'EX', metaTtl],
+  ];
+  if (progressWithData.length > 0) {
+    pipeline.push(['SET', progressKey, JSON.stringify(progressData), 'EX', String(TTL_SECONDS)]);
+    pipeline.push(['SET', `seed-meta:${PROGRESS_KEY}`, JSON.stringify({ fetchedAt: Date.now(), recordCount: progressWithData.length }), 'EX', metaTtl]);
+  }
+  if (renewableData.historicalData.length > 0) {
+    pipeline.push(['SET', renewableKey, JSON.stringify(renewableData), 'EX', String(TTL_SECONDS)]);
+    pipeline.push(['SET', `seed-meta:${RENEWABLE_KEY}`, JSON.stringify({ fetchedAt: Date.now(), recordCount: renewableData.historicalData.length }), 'EX', metaTtl]);
+  }
+
+  console.log(`Writing ${pipeline.length} keys to Redis...`);
+  await redisPipeline(redisUrl, redisToken, pipeline);
 
   // Verify
   console.log('Verifying...');
   const verifyResp = await redisPipeline(redisUrl, redisToken, [
     ['GET', fullKey],
+    ['GET', progressKey],
+    ['GET', renewableKey],
   ]);
-  const stored = verifyResp[0]?.result;
-  if (!stored) {
-    throw new Error('Verification failed: key not found in Redis after write');
+
+  const parsedRankings = verifyResp[0]?.result ? JSON.parse(verifyResp[0].result) : null;
+  if (!Array.isArray(parsedRankings) || parsedRankings.length === 0) {
+    throw new Error('Verification failed: techReadiness key missing or empty');
   }
-  const parsed = JSON.parse(stored);
-  if (!Array.isArray(parsed) || parsed.length === 0) {
-    throw new Error('Verification failed: stored value is not a non-empty array');
+  console.log(`  ✓ techReadiness: ${parsedRankings.length} rankings`);
+
+  if (verifyResp[1]?.result) {
+    const p = JSON.parse(verifyResp[1].result);
+    console.log(`  ✓ progressData: ${p.length} indicators`);
   }
-  console.log(`  ✓ Verified ${parsed.length} rankings stored`);
+  if (verifyResp[2]?.result) {
+    const r = JSON.parse(verifyResp[2].result);
+    console.log(`  ✓ renewableEnergy: ${r.regions?.length || 0} regions, global=${r.globalPercentage}%`);
+  }
 
   const total = ((Date.now() - t0) / 1000).toFixed(1);
   console.log(`\n=== Done in ${total}s ===`);
-  console.log(`  ✓ Wrote ${fullKey} (${rankings.length} rankings)`);
 }
 
 main().catch(err => {
   console.error('\nFATAL:', err.message || err);
-  process.exit(1);
+  process.exit(0); // graceful for cron
 });

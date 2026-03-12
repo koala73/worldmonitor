@@ -21,6 +21,8 @@ export const DEFAULT_PANELS: Record<string, PanelConfig> = {
 // Map layers — all geopolitical overlays disabled; natural events only
 export const DEFAULT_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
+  satellites: false,
+
 
   conflicts: false,
   bases: false,
@@ -70,11 +72,17 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   iranAttacks: false,
   ciiChoropleth: false,
   dayNight: false,
+  // Commodity variant layers (disabled in happy variant)
+  miningSites: false,
+  processingPlants: false,
+  commodityPorts: false,
 };
 
 // Mobile defaults — same as desktop for happy variant
 export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
+  satellites: false,
+
 
   conflicts: false,
   bases: false,
@@ -124,6 +132,10 @@ export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   iranAttacks: false,
   ciiChoropleth: false,
   dayNight: false,
+  // Commodity variant layers (disabled in happy variant)
+  miningSites: false,
+  processingPlants: false,
+  commodityPorts: false,
 };
 
 export const VARIANT_CONFIG: VariantConfig = {

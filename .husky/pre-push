@@ -1,3 +1,9 @@
+# Ensure dependencies are installed (worktrees start with no node_modules)
+if [ ! -d node_modules ]; then
+  echo "node_modules missing, running npm install..."
+  npm install --prefer-offline || exit 1
+fi
+
 echo "Running type check..."
 npm run typecheck || exit 1
 
@@ -21,6 +27,12 @@ done
 
 echo "Running edge function tests..."
 node --test tests/edge-functions.test.mjs || exit 1
+
+echo "Running markdown lint..."
+npm run lint:md || exit 1
+
+echo "Running MDX lint (Mintlify compatibility)..."
+node --test tests/mdx-lint.test.mjs || exit 1
 
 echo "Running version sync check..."
 npm run version:check || exit 1

@@ -5,7 +5,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
 import { cachedFetchJson } from '../../../_shared/redis';
-import { UPSTREAM_TIMEOUT_MS, GROQ_API_URL, GROQ_MODEL, TIER1_COUNTRIES, hashString } from './_shared';
+import { UPSTREAM_TIMEOUT_MS, GROQ_API_URL, GROQ_MODEL, TIER1_COUNTRIES, sha256Hex } from './_shared';
 import { CHROME_UA } from '../../../_shared/constants';
 
 // ========================================================================
@@ -45,7 +45,7 @@ export async function getCountryIntelBrief(
     contextSnapshot = '';
   }
 
-  const contextHash = contextSnapshot ? hashString(contextSnapshot) : 'base';
+  const contextHash = contextSnapshot ? (await sha256Hex(contextSnapshot)).slice(0, 16) : 'base';
   const cacheKey = `ci-sebuf:v2:${req.countryCode}:${lang}:${contextHash}`;
   const countryName = TIER1_COUNTRIES[req.countryCode] || req.countryCode;
   const dateStr = new Date().toISOString().split('T')[0];

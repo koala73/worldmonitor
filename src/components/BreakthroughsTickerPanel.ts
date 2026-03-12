@@ -1,6 +1,7 @@
 import { Panel } from './Panel';
 import type { NewsItem } from '@/types';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
+import { t } from '@/services/i18n';
 
 /**
  * BreakthroughsTickerPanel -- Horizontally scrolling ticker of science breakthroughs.
@@ -45,7 +46,7 @@ export class BreakthroughsTickerPanel extends Panel {
 
     if (items.length === 0) {
       this.tickerTrack.innerHTML =
-        '<span class="ticker-item ticker-placeholder">No science breakthroughs yet</span>';
+        `<span class="ticker-item ticker-placeholder">${t('components.breakthroughsTicker.noData')}</span>`;
       return;
     }
 

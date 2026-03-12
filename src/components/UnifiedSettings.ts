@@ -1,26 +1,17 @@
 import { FEEDS, INTEL_SOURCES, SOURCE_REGION_MAP } from '@/config/feeds';
 import { PANEL_CATEGORY_MAP } from '@/config/panels';
 import { SITE_VARIANT } from '@/config/variant';
-import { LANGUAGES, changeLanguage, getCurrentLanguage, t } from '@/services/i18n';
-import { getAiFlowSettings, setAiFlowSetting, getStreamQuality, setStreamQuality, STREAM_QUALITY_OPTIONS } from '@/services/ai-flow-settings';
-import { getMapProvider, setMapProvider, MAP_PROVIDER_OPTIONS, type MapProvider } from '@/config/basemap';
-import { getLiveStreamsAlwaysOn, setLiveStreamsAlwaysOn } from '@/services/live-stream-settings';
-import { getGlobeVisualPreset, setGlobeVisualPreset, GLOBE_VISUAL_PRESET_OPTIONS, type GlobeVisualPreset } from '@/services/globe-render-settings';
-import type { StreamQuality } from '@/services/ai-flow-settings';
-import { getThemePreference, setThemePreference, type ThemePreference } from '@/utils/theme-manager';
+import { t } from '@/services/i18n';
+import type { MapProvider } from '@/config/basemap';
 import { escapeHtml } from '@/utils/sanitize';
-import { trackLanguageChange } from '@/services/analytics';
 import type { PanelConfig } from '@/types';
-import type { StatusPanel } from './StatusPanel';
-import { exportSettings, importSettings, type ImportResult } from '@/utils/settings-persistence';
+import { renderPreferences } from '@/services/preferences-content';
 
 const GEAR_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`;
 
-const DESKTOP_RELEASES_URL = 'https://github.com/koala73/worldmonitor/releases';
-
 export interface UnifiedSettingsConfig {
   getPanelSettings: () => Record<string, PanelConfig>;
-  togglePanel: (key: string) => void;
+  savePanelSettings: (panels: Record<string, PanelConfig>) => void;
   getDisabledSources: () => Set<string>;
   toggleSource: (name: string) => void;
   setSourcesEnabled: (names: string[], enabled: boolean) => void;
@@ -28,26 +19,24 @@ export interface UnifiedSettingsConfig {
   getLocalizedPanelName: (key: string, fallback: string) => string;
   resetLayout: () => void;
   isDesktopApp: boolean;
-  statusPanel?: StatusPanel | null;
-  /** True when the 3D globe is currently active */
-  isGlobeMode?: () => boolean;
-  /** Switch between flat-map and 3D-globe */
-  onMapModeChange?: (useGlobe: boolean) => void;
-  /** Switch map tile provider */
   onMapProviderChange?: (provider: MapProvider) => void;
 }
 
-type TabId = 'general' | 'panels' | 'sources' | 'status';
+type TabId = 'settings' | 'panels' | 'sources';
 
 export class UnifiedSettings {
   private overlay: HTMLElement;
   private config: UnifiedSettingsConfig;
-  private activeTab: TabId = 'general';
+  private activeTab: TabId = 'settings';
   private activeSourceRegion = 'all';
   private sourceFilter = '';
   private activePanelCategory = 'all';
   private panelFilter = '';
   private escapeHandler: (e: KeyboardEvent) => void;
+  private prefsCleanup: (() => void) | null = null;
+  private draftPanelSettings: Record<string, PanelConfig> = {};
+  private panelsJustSaved = false;
+  private savedTimeout: ReturnType<typeof setTimeout> | null = null;
 
   constructor(config: UnifiedSettingsConfig) {
     this.config = config;
@@ -58,34 +47,31 @@ export class UnifiedSettings {
     this.overlay.setAttribute('role', 'dialog');
     this.overlay.setAttribute('aria-label', t('header.settings'));
 
+    this.resetPanelDraft();
+
     this.escapeHandler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') this.close();
     };
 
-    // Event delegation on stable overlay element
     this.overlay.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
 
-      // Close on overlay background click
       if (target === this.overlay) {
         this.close();
         return;
       }
 
-      // Close button
       if (target.closest('.unified-settings-close')) {
         this.close();
         return;
       }
 
-      // Tab switching
       const tab = target.closest<HTMLElement>('.unified-settings-tab');
       if (tab?.dataset.tab) {
         this.switchTab(tab.dataset.tab as TabId);
         return;
       }
 
-      // Panel category pill
       const panelCatPill = target.closest<HTMLElement>('[data-panel-cat]');
       if (panelCatPill?.dataset.panelCat) {
         this.activePanelCategory = panelCatPill.dataset.panelCat;
@@ -97,21 +83,22 @@ export class UnifiedSettings {
         return;
       }
 
-      // Reset layout
       if (target.closest('.panels-reset-layout')) {
         this.config.resetLayout();
         return;
       }
 
-      // Panel toggle
-      const panelItem = target.closest<HTMLElement>('.panel-toggle-item');
-      if (panelItem?.dataset.panel) {
-        this.config.togglePanel(panelItem.dataset.panel);
-        this.renderPanelsTab();
+      if (target.closest('.panels-save-layout')) {
+        this.savePanelChanges();
         return;
       }
 
-      // Source toggle
+      const panelItem = target.closest<HTMLElement>('.panel-toggle-item');
+      if (panelItem?.dataset.panel) {
+        this.toggleDraftPanel(panelItem.dataset.panel);
+        return;
+      }
+
       const sourceItem = target.closest<HTMLElement>('.source-toggle-item');
       if (sourceItem?.dataset.source) {
         this.config.toggleSource(sourceItem.dataset.source);
@@ -120,7 +107,6 @@ export class UnifiedSettings {
         return;
       }
 
-      // Region pill
       const pill = target.closest<HTMLElement>('.unified-settings-region-pill');
       if (pill?.dataset.region) {
         this.activeSourceRegion = pill.dataset.region;
@@ -133,7 +119,6 @@ export class UnifiedSettings {
         return;
       }
 
-      // Select All
       if (target.closest('.sources-select-all')) {
         const visible = this.getVisibleSourceNames();
         this.config.setSourcesEnabled(visible, true);
@@ -142,7 +127,6 @@ export class UnifiedSettings {
         return;
       }
 
-      // Select None
       if (target.closest('.sources-select-none')) {
         const visible = this.getVisibleSourceNames();
         this.config.setSourcesEnabled(visible, false);
@@ -150,25 +134,8 @@ export class UnifiedSettings {
         this.updateSourcesCounter();
         return;
       }
-
-      if (target.closest('#usExportBtn')) {
-        try {
-          exportSettings();
-          this.showDataMgmtToast(t('components.settings.exportSuccess'), true);
-        } catch {
-          this.showDataMgmtToast(t('components.settings.exportFailed'), false);
-        }
-        return;
-      }
-
-      if (target.closest('#usImportBtn')) {
-        const input = this.overlay.querySelector<HTMLInputElement>('#usImportInput');
-        input?.click();
-        return;
-      }
     });
 
-    // Handle input events for search
     this.overlay.addEventListener('input', (e) => {
       const target = e.target as HTMLInputElement;
       if (target.closest('.panels-search')) {
@@ -181,81 +148,13 @@ export class UnifiedSettings {
       }
     });
 
-    // Handle change events for toggles and language select
-    this.overlay.addEventListener('change', (e) => {
-      const target = e.target as HTMLInputElement;
-
-      if (target.id === 'usImportInput') {
-        const file = target.files?.[0];
-        if (!file) return;
-        importSettings(file).then((result: ImportResult) => {
-          this.showDataMgmtToast(t('components.settings.importSuccess', { count: String(result.keysImported) }), true);
-        }).catch(() => {
-          this.showDataMgmtToast(t('components.settings.importFailed'), false);
-        });
-        target.value = '';
-        return;
-      }
-
-      // Stream quality select
-      if (target.id === 'us-stream-quality') {
-        setStreamQuality(target.value as StreamQuality);
-        return;
-      }
-
-
-      if (target.id === 'us-globe-visual-preset') {
-        setGlobeVisualPreset(target.value as GlobeVisualPreset);
-        return;
-      }
-
-      if (target.id === 'us-theme') {
-        setThemePreference(target.value as ThemePreference);
-        return;
-      }
-
-      if (target.id === 'us-map-provider') {
-        const provider = target.value as MapProvider;
-        setMapProvider(provider);
-        this.config.onMapProviderChange?.(provider);
-        return;
-      }
-
-      if (target.id === 'us-live-streams-always-on') {
-        setLiveStreamsAlwaysOn(target.checked);
-        return;
-      }
-
-      // Language select
-      if (target.id === 'us-language') {
-        trackLanguageChange(target.value);
-        void changeLanguage(target.value);
-        return;
-      }
-
-      if (target.id === 'us-cloud') {
-        setAiFlowSetting('cloudLlm', target.checked);
-        this.updateAiStatus();
-      } else if (target.id === 'us-browser') {
-        setAiFlowSetting('browserModel', target.checked);
-        const warn = this.overlay.querySelector('.ai-flow-toggle-warn') as HTMLElement;
-        if (warn) warn.style.display = target.checked ? 'block' : 'none';
-        this.updateAiStatus();
-      } else if (target.id === 'us-map-flash') {
-        setAiFlowSetting('mapNewsFlash', target.checked);
-      } else if (target.id === 'us-headline-memory') {
-        setAiFlowSetting('headlineMemory', target.checked);
-      } else if (target.id === 'us-badge-anim') {
-        setAiFlowSetting('badgeAnimation', target.checked);
-      }
-    });
-
     this.render();
     document.body.appendChild(this.overlay);
   }
 
   public open(tab?: TabId): void {
     if (tab) this.activeTab = tab;
+    this.resetPanelDraft();
     this.render();
     this.overlay.classList.add('active');
     localStorage.setItem('wm-settings-open', '1');
@@ -263,12 +162,15 @@ export class UnifiedSettings {
   }
 
   public close(): void {
+    if (this.hasPendingPanelChanges() && !confirm(t('header.unsavedChanges'))) return;
     this.overlay.classList.remove('active');
+    this.resetPanelDraft();
     localStorage.removeItem('wm-settings-open');
     document.removeEventListener('keydown', this.escapeHandler);
   }
 
   public refreshPanelToggles(): void {
+    this.resetPanelDraft();
     if (this.activeTab === 'panels') this.renderPanelsTab();
   }
 
@@ -283,27 +185,36 @@ export class UnifiedSettings {
   }
 
   public destroy(): void {
+    if (this.savedTimeout) clearTimeout(this.savedTimeout);
+    this.prefsCleanup?.();
+    this.prefsCleanup = null;
     document.removeEventListener('keydown', this.escapeHandler);
     this.overlay.remove();
   }
 
   private render(): void {
+    this.prefsCleanup?.();
+    this.prefsCleanup = null;
+
     const tabClass = (id: TabId) => `unified-settings-tab${this.activeTab === id ? ' active' : ''}`;
+    const prefs = renderPreferences({
+      isDesktopApp: this.config.isDesktopApp,
+      onMapProviderChange: this.config.onMapProviderChange,
+    });
 
     this.overlay.innerHTML = `
       <div class="modal unified-settings-modal">
         <div class="modal-header">
           <span class="modal-title">${t('header.settings')}</span>
-          <button class="modal-close unified-settings-close" aria-label="Close">×</button>
+          <button class="modal-close unified-settings-close" aria-label="Close">\u00d7</button>
         </div>
         <div class="unified-settings-tabs" role="tablist" aria-label="Settings">
-          <button class="${tabClass('general')}" data-tab="general" role="tab" aria-selected="${this.activeTab === 'general'}" id="us-tab-general" aria-controls="us-tab-panel-general">${t('header.tabGeneral')}</button>
+          <button class="${tabClass('settings')}" data-tab="settings" role="tab" aria-selected="${this.activeTab === 'settings'}" id="us-tab-settings" aria-controls="us-tab-panel-settings">${t('header.tabSettings')}</button>
           <button class="${tabClass('panels')}" data-tab="panels" role="tab" aria-selected="${this.activeTab === 'panels'}" id="us-tab-panels" aria-controls="us-tab-panel-panels">${t('header.tabPanels')}</button>
           <button class="${tabClass('sources')}" data-tab="sources" role="tab" aria-selected="${this.activeTab === 'sources'}" id="us-tab-sources" aria-controls="us-tab-panel-sources">${t('header.tabSources')}</button>
-          <button class="${tabClass('status')}" data-tab="status" role="tab" aria-selected="${this.activeTab === 'status'}" id="us-tab-status" aria-controls="us-tab-panel-status">${t('panels.status')}</button>
         </div>
-        <div class="unified-settings-tab-panel${this.activeTab === 'general' ? ' active' : ''}" data-panel-id="general" id="us-tab-panel-general" role="tabpanel" aria-labelledby="us-tab-general">
-          ${this.renderGeneralContent()}
+        <div class="unified-settings-tab-panel${this.activeTab === 'settings' ? ' active' : ''}" data-panel-id="settings" id="us-tab-panel-settings" role="tabpanel" aria-labelledby="us-tab-settings">
+          ${prefs.html}
         </div>
         <div class="unified-settings-tab-panel${this.activeTab === 'panels' ? ' active' : ''}" data-panel-id="panels" id="us-tab-panel-panels" role="tabpanel" aria-labelledby="us-tab-panels">
           <div class="unified-settings-region-wrapper">
@@ -314,7 +225,9 @@ export class UnifiedSettings {
           </div>
           <div class="panel-toggle-grid" id="usPanelToggles"></div>
           <div class="panels-footer">
-            <button class="panels-reset-layout">${t('header.resetLayout')}</button>
+            <span class="panels-status" id="usPanelsStatus" aria-live="polite"></span>
+            <button class="panels-save-layout">${t('modals.story.save')}</button>
+            <button class="panels-reset-layout" title="${t('header.resetLayoutTooltip')}" aria-label="${t('header.resetLayoutTooltip')}">${t('header.resetLayout')}</button>
           </div>
         </div>
         <div class="unified-settings-tab-panel${this.activeTab === 'sources' ? ' active' : ''}" data-panel-id="sources" id="us-tab-panel-sources" role="tabpanel" aria-labelledby="us-tab-sources">
@@ -331,307 +244,41 @@ export class UnifiedSettings {
             <button class="sources-select-none">${t('common.selectNone')}</button>
           </div>
         </div>
-        <div class="unified-settings-tab-panel${this.activeTab === 'status' ? ' active' : ''}" data-panel-id="status" id="us-tab-panel-status" role="tabpanel" aria-labelledby="us-tab-status">
-          <div class="us-status-content" id="usStatusContent"></div>
-        </div>
       </div>
     `;
 
-    // Populate dynamic sections after innerHTML is set
+    const settingsPanel = this.overlay.querySelector('#us-tab-panel-settings');
+    if (settingsPanel) {
+      this.prefsCleanup = prefs.attach(settingsPanel as HTMLElement);
+    }
+
+    const closeBtn = this.overlay.querySelector<HTMLButtonElement>('.unified-settings-close');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.close();
+      });
+    }
+
     this.renderPanelCategoryPills();
     this.renderPanelsTab();
     this.renderRegionPills();
     this.renderSourcesGrid();
     this.updateSourcesCounter();
-    this.renderStatusTab();
-    if (!this.config.isDesktopApp) this.updateAiStatus();
   }
 
   private switchTab(tab: TabId): void {
     this.activeTab = tab;
 
-    // Update tab buttons
     this.overlay.querySelectorAll('.unified-settings-tab').forEach(el => {
       const isActive = (el as HTMLElement).dataset.tab === tab;
       el.classList.toggle('active', isActive);
       el.setAttribute('aria-selected', String(isActive));
     });
 
-    // Update tab panels
     this.overlay.querySelectorAll('.unified-settings-tab-panel').forEach(el => {
       el.classList.toggle('active', (el as HTMLElement).dataset.panelId === tab);
     });
-  }
-
-  private renderGeneralContent(): string {
-    const settings = getAiFlowSettings();
-    const currentLang = getCurrentLanguage();
-    let html = '';
-
-    // Appearance section
-    html += `<div class="ai-flow-section-label">Appearance</div>`;
-
-    const currentThemePref = getThemePreference();
-    html += `<div class="ai-flow-toggle-row">
-      <div class="ai-flow-toggle-label-wrap">
-        <div class="ai-flow-toggle-label">Theme</div>
-        <div class="ai-flow-toggle-desc">Auto follows your system preference.</div>
-      </div>
-    </div>`;
-    html += `<select class="unified-settings-select" id="us-theme">`;
-    for (const opt of [
-      { value: 'auto', label: 'Auto (follow system)' },
-      { value: 'dark', label: 'Dark' },
-      { value: 'light', label: 'Light' },
-    ] as { value: ThemePreference; label: string }[]) {
-      const selected = opt.value === currentThemePref ? ' selected' : '';
-      html += `<option value="${opt.value}"${selected}>${opt.label}</option>`;
-    }
-    html += `</select>`;
-
-    // Map section
-    html += `<div class="ai-flow-section-label">${t('components.insights.sectionMap')}</div>`;
-
-    // Map tile provider
-    const currentProvider = getMapProvider();
-    html += `<div class="ai-flow-toggle-row">
-      <div class="ai-flow-toggle-label-wrap">
-        <div class="ai-flow-toggle-label">Map Tile Provider</div>
-        <div class="ai-flow-toggle-desc">Choose where map tiles are loaded from. Auto uses self-hosted PMTiles with OpenFreeMap fallback.</div>
-      </div>
-    </div>`;
-    html += `<select class="unified-settings-select" id="us-map-provider">`;
-    for (const opt of MAP_PROVIDER_OPTIONS) {
-      const selected = opt.value === currentProvider ? ' selected' : '';
-      html += `<option value="${opt.value}"${selected}>${opt.label}</option>`;
-    }
-    html += `</select>`;
-
-    html += this.toggleRowHtml('us-map-flash', t('components.insights.mapFlashLabel'), t('components.insights.mapFlashDesc'), settings.mapNewsFlash);
-
-    // Panels section
-    html += `<div class="ai-flow-section-label">${t('components.insights.sectionPanels')}</div>`;
-    html += this.toggleRowHtml('us-badge-anim', t('components.insights.badgeAnimLabel'), t('components.insights.badgeAnimDesc'), settings.badgeAnimation);
-
-    // AI Analysis section (web-only)
-    if (!this.config.isDesktopApp) {
-      html += `<div class="ai-flow-section-label">${t('components.insights.sectionAi')}</div>`;
-      html += this.toggleRowHtml('us-cloud', t('components.insights.aiFlowCloudLabel'), t('components.insights.aiFlowCloudDesc'), settings.cloudLlm);
-
-      html += this.toggleRowHtml('us-browser', t('components.insights.aiFlowBrowserLabel'), t('components.insights.aiFlowBrowserDesc'), settings.browserModel);
-      html += `<div class="ai-flow-toggle-warn" style="display:${settings.browserModel ? 'block' : 'none'}">${t('components.insights.aiFlowBrowserWarn')}</div>`;
-
-      // Ollama CTA
-      html += `
-        <div class="ai-flow-cta">
-          <div class="ai-flow-cta-title">${t('components.insights.aiFlowOllamaCta')}</div>
-          <div class="ai-flow-cta-desc">${t('components.insights.aiFlowOllamaCtaDesc')}</div>
-          <a href="${DESKTOP_RELEASES_URL}" target="_blank" rel="noopener noreferrer" class="ai-flow-cta-link">${t('components.insights.aiFlowDownloadDesktop')}</a>
-        </div>
-      `;
-    }
-
-    // Intelligence section
-    html += `<div class="ai-flow-section-label">${t('components.insights.sectionIntelligence')}</div>`;
-    html += this.toggleRowHtml('us-headline-memory', t('components.insights.headlineMemoryLabel'), t('components.insights.headlineMemoryDesc'), settings.headlineMemory);
-
-    // Streaming quality section
-    const currentQuality = getStreamQuality();
-    html += `<div class="ai-flow-section-label">${t('components.insights.sectionStreaming')}</div>`;
-    html += `<div class="ai-flow-toggle-row">
-      <div class="ai-flow-toggle-label-wrap">
-        <div class="ai-flow-toggle-label">${t('components.insights.streamQualityLabel')}</div>
-        <div class="ai-flow-toggle-desc">${t('components.insights.streamQualityDesc')}</div>
-      </div>
-    </div>`;
-    html += `<select class="unified-settings-select" id="us-stream-quality">`;
-    for (const opt of STREAM_QUALITY_OPTIONS) {
-      const selected = opt.value === currentQuality ? ' selected' : '';
-      html += `<option value="${opt.value}"${selected}>${opt.label}</option>`;
-    }
-    html += `</select>`;
-
-    // Live streams idle behavior
-    html += this.toggleRowHtml(
-      'us-live-streams-always-on',
-      t('components.insights.streamAlwaysOnLabel'),
-      t('components.insights.streamAlwaysOnDesc'),
-      getLiveStreamsAlwaysOn(),
-    );
-
-    // Language section
-    html += `<div class="ai-flow-section-label">${t('header.languageLabel')}</div>`;
-    html += `<select class="unified-settings-lang-select" id="us-language">`;
-    for (const lang of LANGUAGES) {
-      const selected = lang.code === currentLang ? ' selected' : '';
-      html += `<option value="${lang.code}"${selected}>${lang.flag} ${lang.label}</option>`;
-    }
-    html += `</select>`;
-    if (currentLang === 'vi') {
-      html += `<div class="ai-flow-toggle-desc">${t('components.languageSelector.mapLabelsFallbackVi')}</div>`;
-    }
-
-    // 3D Globe Visual Preset
-    const currentPreset = getGlobeVisualPreset();
-    html += `<div class="ai-flow-section-label">3D Globe Visual</div>`;
-    html += `<div class="ai-flow-toggle-row">
-      <div class="ai-flow-toggle-label-wrap">
-        <div class="ai-flow-toggle-label">Visual Preset</div>
-        <div class="ai-flow-toggle-desc">Switch between classic and enhanced globe visuals to compare</div>
-      </div>
-    </div>`;
-    html += `<select class="unified-settings-select" id="us-globe-visual-preset">`;
-    for (const opt of GLOBE_VISUAL_PRESET_OPTIONS) {
-      const selected = opt.value === currentPreset ? ' selected' : '';
-      html += `<option value="${opt.value}"${selected}>${opt.label}</option>`;
-    }
-    html += `</select>`;
-
-    // Data Management section
-    html += `<div class="ai-flow-section-label">${t('components.settings.dataManagementLabel')}</div>`;
-    html += `
-      <div class="us-data-mgmt">
-        <button type="button" class="settings-btn settings-btn-secondary" id="usExportBtn">${t('components.settings.exportSettings')}</button>
-        <button type="button" class="settings-btn settings-btn-secondary" id="usImportBtn">${t('components.settings.importSettings')}</button>
-        <input type="file" id="usImportInput" accept=".json" class="us-hidden-input" />
-      </div>
-      <div class="us-data-mgmt-toast" id="usDataMgmtToast"></div>
-    `;
-    // Community section
-    html += `<div class="ai-flow-section-label">${t('components.community.sectionLabel')}</div>`;
-    html += `<a href="https://github.com/koala73/worldmonitor/discussions/94" target="_blank" rel="noopener" class="us-discussion-link">
-      <span class="us-discussion-dot"></span>
-      <span>${t('components.community.joinDiscussion')}</span>
-    </a>`;
-
-    // AI status footer (web-only)
-    if (!this.config.isDesktopApp) {
-      html += `<div class="ai-flow-popup-footer"><span class="ai-flow-status-dot" id="usStatusDot"></span><span class="ai-flow-status-text" id="usStatusText"></span></div>`;
-    }
-
-    return html;
-  }
-
-  private toggleRowHtml(id: string, label: string, desc: string, checked: boolean): string {
-    return `
-      <div class="ai-flow-toggle-row">
-        <div class="ai-flow-toggle-label-wrap">
-          <div class="ai-flow-toggle-label">${label}</div>
-          <div class="ai-flow-toggle-desc">${desc}</div>
-        </div>
-        <label class="ai-flow-switch">
-          <input type="checkbox" id="${id}"${checked ? ' checked' : ''}>
-          <span class="ai-flow-slider"></span>
-        </label>
-      </div>
-    `;
-  }
-
-  private updateAiStatus(): void {
-    const settings = getAiFlowSettings();
-    const dot = this.overlay.querySelector('#usStatusDot');
-    const text = this.overlay.querySelector('#usStatusText');
-    if (!dot || !text) return;
-
-    dot.className = 'ai-flow-status-dot';
-    if (settings.cloudLlm && settings.browserModel) {
-      dot.classList.add('active');
-      text.textContent = t('components.insights.aiFlowStatusCloudAndBrowser');
-    } else if (settings.cloudLlm) {
-      dot.classList.add('active');
-      text.textContent = t('components.insights.aiFlowStatusActive');
-    } else if (settings.browserModel) {
-      dot.classList.add('browser-only');
-      text.textContent = t('components.insights.aiFlowStatusBrowserOnly');
-    } else {
-      dot.classList.add('disabled');
-      text.textContent = t('components.insights.aiFlowStatusDisabled');
-    }
-  }
-
-  private showDataMgmtToast(msg: string, success: boolean): void {
-    const toast = this.overlay.querySelector('#usDataMgmtToast');
-    if (!toast) return;
-    toast.className = `us-data-mgmt-toast ${success ? 'ok' : 'error'}`;
-    toast.innerHTML = success
-      ? `${escapeHtml(msg)} <a href="#" class="us-toast-reload">${t('components.settings.reloadNow')}</a>`
-      : escapeHtml(msg);
-    toast.querySelector('.us-toast-reload')?.addEventListener('click', (e) => {
-      e.preventDefault();
-      window.location.reload();
-    });
-  }
-
-  public refreshStatusTab(): void {
-    if (this.activeTab === 'status') this.renderStatusTab();
-  }
-
-  private renderStatusTab(): void {
-    const container = this.overlay.querySelector('#usStatusContent');
-    if (!container) return;
-    const sp = this.config.statusPanel;
-    if (!sp) {
-      container.innerHTML = `<div style="padding:16px;color:var(--text-dim)">${t('components.status.storageUnavailable')}</div>`;
-      return;
-    }
-
-    const feeds = sp.getFeeds();
-    const apis = sp.getApis();
-
-    let html = `<div class="us-status-section">
-      <div class="us-status-section-title">${t('components.status.dataFeeds')}</div>`;
-    for (const feed of feeds.values()) {
-      html += `<div class="status-row">
-        <span class="status-dot ${feed.status}"></span>
-        <span class="status-name">${escapeHtml(feed.name)}</span>
-        <span class="status-detail">${feed.itemCount} items</span>
-        <span class="status-time">${feed.lastUpdate ? sp.formatTime(feed.lastUpdate) : 'Never'}</span>
-      </div>`;
-    }
-    html += `</div>`;
-
-    html += `<div class="us-status-section">
-      <div class="us-status-section-title">${t('components.status.apiStatus')}</div>`;
-    for (const api of apis.values()) {
-      html += `<div class="status-row">
-        <span class="status-dot ${api.status}"></span>
-        <span class="status-name">${escapeHtml(api.name)}</span>
-        ${api.latency ? `<span class="status-detail">${api.latency}ms</span>` : ''}
-      </div>`;
-    }
-    html += `</div>`;
-
-    html += `<div class="us-status-section">
-      <div class="us-status-section-title">${t('components.status.storage')}</div>
-      <div id="usStorageInfo"></div>
-    </div>`;
-
-    html += `<div class="us-status-footer">${t('components.status.updatedAt', { time: sp.formatTime(new Date()) })}</div>`;
-
-    container.innerHTML = html;
-    this.updateStorageInfo();
-  }
-
-  private async updateStorageInfo(): Promise<void> {
-    const container = this.overlay.querySelector('#usStorageInfo');
-    if (!container) return;
-    try {
-      if ('storage' in navigator && 'estimate' in navigator.storage) {
-        const estimate = await navigator.storage.estimate();
-        if (!container.isConnected) return;
-        const used = estimate.usage ? (estimate.usage / 1024 / 1024).toFixed(2) : '0';
-        const quota = estimate.quota ? (estimate.quota / 1024 / 1024).toFixed(0) : 'N/A';
-        container.innerHTML = `<div class="status-row">
-          <span class="status-name">IndexedDB</span>
-          <span class="status-detail">${used} MB / ${quota} MB</span>
-        </div>`;
-      } else {
-        container.innerHTML = `<div class="status-row">${t('components.status.storageUnavailable')}</div>`;
-      }
-    } catch {
-      if (!container.isConnected) return;
-      container.innerHTML = `<div class="status-row">${t('components.status.storageUnavailable')}</div>`;
-    }
   }
 
   private getAvailablePanelCategories(): Array<{ key: string; label: string }> {
@@ -653,7 +300,7 @@ export class UnifiedSettings {
   }
 
   private getVisiblePanelEntries(): Array<[string, PanelConfig]> {
-    const panelSettings = this.config.getPanelSettings();
+    const panelSettings = this.draftPanelSettings;
     const variant = SITE_VARIANT || 'full';
     let entries = Object.entries(panelSettings)
       .filter(([key]) => key !== 'runtime-config' || this.config.isDesktopApp);
@@ -692,13 +339,72 @@ export class UnifiedSettings {
     const container = this.overlay.querySelector('#usPanelToggles');
     if (!container) return;
 
+    const savedSettings = this.config.getPanelSettings();
     const entries = this.getVisiblePanelEntries();
-    container.innerHTML = entries.map(([key, panel]) => `
-      <div class="panel-toggle-item ${panel.enabled ? 'active' : ''}" data-panel="${escapeHtml(key)}">
-        <div class="panel-toggle-checkbox">${panel.enabled ? '✓' : ''}</div>
-        <span class="panel-toggle-label">${escapeHtml(this.config.getLocalizedPanelName(key, panel.name))}</span>
-      </div>
-    `).join('');
+    container.innerHTML = entries.map(([key, panel]) => {
+      const changed = savedSettings[key]?.enabled !== panel.enabled;
+      return `
+        <div class="panel-toggle-item ${panel.enabled ? 'active' : ''}${changed ? ' changed' : ''}" data-panel="${escapeHtml(key)}" aria-pressed="${panel.enabled}">
+          <div class="panel-toggle-checkbox">${panel.enabled ? '\u2713' : ''}</div>
+          <span class="panel-toggle-label">${escapeHtml(this.config.getLocalizedPanelName(key, panel.name))}</span>
+        </div>
+      `;
+    }).join('');
+
+    this.updatePanelsFooter();
+  }
+
+  private clonePanelSettings(source: Record<string, PanelConfig> = this.config.getPanelSettings()): Record<string, PanelConfig> {
+    return Object.fromEntries(
+      Object.entries(source).map(([key, panel]) => [key, { ...panel }]),
+    );
+  }
+
+  private resetPanelDraft(): void {
+    this.draftPanelSettings = this.clonePanelSettings();
+    this.panelsJustSaved = false;
+  }
+
+  private hasPendingPanelChanges(): boolean {
+    const savedSettings = this.config.getPanelSettings();
+    return Object.entries(this.draftPanelSettings).some(([key, panel]) => savedSettings[key]?.enabled !== panel.enabled);
+  }
+
+  private toggleDraftPanel(key: string): void {
+    const panel = this.draftPanelSettings[key];
+    if (!panel) return;
+    panel.enabled = !panel.enabled;
+    this.panelsJustSaved = false;
+    this.renderPanelsTab();
+  }
+
+  private savePanelChanges(): void {
+    if (!this.hasPendingPanelChanges()) return;
+    this.config.savePanelSettings(this.clonePanelSettings(this.draftPanelSettings));
+    this.draftPanelSettings = this.clonePanelSettings();
+    this.panelsJustSaved = true;
+    this.renderPanelsTab();
+    if (this.savedTimeout) clearTimeout(this.savedTimeout);
+    this.savedTimeout = setTimeout(() => {
+      this.panelsJustSaved = false;
+      this.savedTimeout = null;
+      this.updatePanelsFooter();
+    }, 2000);
+  }
+
+  private updatePanelsFooter(): void {
+    const status = this.overlay.querySelector<HTMLElement>('#usPanelsStatus');
+    const saveButton = this.overlay.querySelector<HTMLButtonElement>('.panels-save-layout');
+    const hasPendingChanges = this.hasPendingPanelChanges();
+
+    if (saveButton) {
+      saveButton.disabled = !hasPendingChanges;
+    }
+
+    if (status) {
+      status.textContent = this.panelsJustSaved ? t('modals.settingsWindow.saved') : '';
+      status.classList.toggle('visible', this.panelsJustSaved);
+    }
   }
 
   private getAvailableRegions(): Array<{ key: string; label: string }> {
@@ -785,7 +491,7 @@ export class UnifiedSettings {
       const escaped = escapeHtml(source);
       return `
         <div class="source-toggle-item ${isEnabled ? 'active' : ''}" data-source="${escaped}">
-          <div class="source-toggle-checkbox">${isEnabled ? '✓' : ''}</div>
+          <div class="source-toggle-checkbox">${isEnabled ? '\u2713' : ''}</div>
           <span class="source-toggle-label">${escaped}</span>
         </div>
       `;

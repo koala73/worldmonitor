@@ -23,6 +23,8 @@ const BOOTSTRAP_CACHE_KEYS = {
   wildfires:        'wildfire:fires:v1',
   cyberThreats:     'cyber:threats-bootstrap:v2',
   techReadiness:    'economic:worldbank-techreadiness:v1',
+  progressData:     'economic:worldbank-progress:v1',
+  renewableEnergy:  'economic:worldbank-renewable:v1',
   positiveGeoEvents: 'positive-events:geo-bootstrap:v1',
   theaterPosture: 'theater-posture:sebuf:stale:v1',
   riskScores: 'risk:scores:sebuf:stale:v1',
@@ -36,18 +38,24 @@ const BOOTSTRAP_CACHE_KEYS = {
   unrestEvents: 'unrest:events:v1',
   iranEvents: 'conflict:iran-events:v1',
   ucdpEvents: 'conflict:ucdp-events:v1',
+  temporalAnomalies: 'temporal:anomalies:v1',
+  weatherAlerts:     'weather:alerts:v1',
+  spending:          'economic:spending:v1',
+  techEvents:        'research:tech-events-bootstrap:v1',
 };
 
 const SLOW_KEYS = new Set([
   'bisPolicy', 'bisExchange', 'bisCredit', 'minerals', 'giving',
   'sectors', 'etfFlows', 'shippingRates', 'wildfires', 'climateAnomalies',
-  'cyberThreats', 'techReadiness', 'theaterPosture', 'naturalEvents',
+  'cyberThreats', 'techReadiness', 'progressData', 'renewableEnergy',
+  'naturalEvents',
   'cryptoQuotes', 'gulfQuotes', 'stablecoinMarkets', 'unrestEvents', 'ucdpEvents',
+  'techEvents',
 ]);
 const FAST_KEYS = new Set([
   'earthquakes', 'outages', 'serviceStatuses', 'macroSignals', 'chokepoints',
   'marketQuotes', 'commodityQuotes', 'positiveGeoEvents', 'riskScores', 'flightDelays','insights', 'predictions',
-  'iranEvents',
+  'iranEvents', 'temporalAnomalies', 'weatherAlerts', 'spending', 'theaterPosture',
 ]);
 
 const TIER_CACHE = {
@@ -56,7 +64,7 @@ const TIER_CACHE = {
 };
 const TIER_CDN_CACHE = {
   slow: 'public, s-maxage=7200, stale-while-revalidate=1800, stale-if-error=7200',
-  fast: 'public, s-maxage=1200, stale-while-revalidate=300, stale-if-error=1800',
+  fast: 'public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900',
 };
 
 const NEG_SENTINEL = '__WM_NEG__';

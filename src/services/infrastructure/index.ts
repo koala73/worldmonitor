@@ -6,6 +6,7 @@
  * All data now flows through the InfrastructureServiceClient RPC.
  */
 
+import { getRpcBaseUrl } from '@/services/rpc-client';
 import {
   InfrastructureServiceClient,
   type ListInternetOutagesResponse,
@@ -20,7 +21,7 @@ import { getHydratedData } from '@/services/bootstrap';
 
 // ---- Client + Circuit Breakers ----
 
-const client = new InfrastructureServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+const client = new InfrastructureServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 const outageBreaker = createCircuitBreaker<ListInternetOutagesResponse>({ name: 'Internet Outages', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
 const statusBreaker = createCircuitBreaker<ListServiceStatusesResponse>({ name: 'Service Statuses', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
 
@@ -38,7 +39,7 @@ const SEVERITY_REVERSE: Record<string, 'partial' | 'major' | 'total'> = {
 const STATUS_REVERSE: Record<string, 'operational' | 'degraded' | 'outage' | 'unknown'> = {
   SERVICE_OPERATIONAL_STATUS_OPERATIONAL: 'operational',
   SERVICE_OPERATIONAL_STATUS_DEGRADED: 'degraded',
-  SERVICE_OPERATIONAL_STATUS_PARTIAL_OUTAGE: 'outage',
+  SERVICE_OPERATIONAL_STATUS_PARTIAL_OUTAGE: 'degraded',
   SERVICE_OPERATIONAL_STATUS_MAJOR_OUTAGE: 'outage',
   SERVICE_OPERATIONAL_STATUS_MAINTENANCE: 'degraded',
   SERVICE_OPERATIONAL_STATUS_UNSPECIFIED: 'unknown',

@@ -278,12 +278,14 @@ class SignalAggregator {
     zScore: number;
     message: string;
     severity: 'medium' | 'high' | 'critical';
-  }>): void {
-    // Remove existing temporal signals that match incoming source types
-    const incomingSourceTypes = new Set(anomalies.map(a => a.type));
+  }>, trackedTypes?: string[]): void {
+    // Clear signals for tracked types (server tells us which types it covers)
+    const typesToClear = trackedTypes?.length
+      ? new Set(trackedTypes)
+      : new Set(anomalies.map(a => a.type));
     this.signals = this.signals.filter(s =>
       s.type !== 'temporal_anomaly' ||
-      !incomingSourceTypes.has(this.temporalSourceMap.get(s) || '')
+      !typesToClear.has(this.temporalSourceMap.get(s) || '')
     );
 
     for (const a of anomalies) {

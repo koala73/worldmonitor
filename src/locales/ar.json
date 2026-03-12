@@ -6,6 +6,9 @@
   "countryBrief": {
     "identifying": "جارٍ تحديد الدولة...",
     "locating": "جارٍ تحديد المنطقة...",
+    "geocodeFailed": "تعذّر تحديد دولة في هذا الموقع",
+    "retryBtn": "إعادة المحاولة",
+    "closeBtn": "إغلاق",
     "limitedCoverage": "تغطية محدودة",
     "instabilityIndex": "مؤشر عدم الاستقرار",
     "notTracked": "غير مُتتبَّع — {{country}} ليست في قائمة CII من المستوى الأول",
@@ -77,6 +80,59 @@
       "stockIndex": "مؤشر الأسهم: {{value}}",
       "recentHeadlines": "**أحدث العناوين:**",
       "activeStrikes": "{{count}} ضربة نشطة مُكتشفة"
+    },
+    "militaryActivity": "النشاط العسكري",
+    "economicIndicators": "المؤشرات الاقتصادية",
+    "ownFlights": "رحلات محلية",
+    "foreignFlights": "رحلات أجنبية",
+    "navalVessels": "سفن بحرية",
+    "foreignPresence": "وجود أجنبي",
+    "nearestBases": "أقرب القواعد العسكرية",
+    "noBasesNearby": "لا توجد قواعد قريبة ضمن 600 كم.",
+    "noInfrastructure": "لم يُعثر على بنية تحتية حيوية ضمن 600 كم.",
+    "noGeometry": "لا تتوفر بيانات جغرافية لربط البنية التحتية.",
+    "noSignals": "لا توجد إشارات حديثة عالية الخطورة.",
+    "assessmentUnavailable": "التقييم غير متاح.",
+    "noNews": "لا توجد تغطية إخبارية حديثة خاصة بالبلد.",
+    "noIndicators": "لا تتوفر مؤشرات خاصة بهذا البلد.",
+    "nearbyPorts": "موانئ قريبة",
+    "detected": "تم الرصد",
+    "notDetected": "لا",
+    "ciiUnavailable": "درجة CII غير متاحة لهذا البلد.",
+    "chips": {
+      "criticalNews": "أخبار حرجة",
+      "protests": "احتجاجات",
+      "militaryAir": "طيران عسكري",
+      "navalVessels": "سفن بحرية",
+      "outages": "انقطاعات",
+      "aisDisruptions": "اضطرابات AIS",
+      "satelliteFires": "حرائق أقمار صناعية",
+      "temporalAnomalies": "شذوذات زمنية",
+      "cyberThreats": "تهديدات سيبرانية",
+      "earthquakes": "زلازل",
+      "displaced": "نازحون",
+      "climateStress": "إجهاد مناخي",
+      "conflictEvents": "أحداث نزاع",
+      "activeStrikes": "ضربات نشطة",
+      "doNotTravel": "لا تسافر",
+      "reconsiderTravel": "أعد النظر في السفر",
+      "exerciseCaution": "توخَّ الحذر",
+      "advisory": "تحذير",
+      "activeSirens": "صفارات إنذار نشطة",
+      "sirens24h": "صفارات / 24 ساعة",
+      "aviationDisruptions": "اضطرابات الطيران",
+      "gpsJammingZones": "مناطق تشويش GPS"
+    },
+    "countryFacts": "حقائق عن البلد",
+    "loadingFacts": "جارٍ تحميل حقائق البلد...",
+    "noFacts": "حقائق البلد غير متوفرة.",
+    "facts": {
+      "headOfState": "رئيس الدولة",
+      "population": "عدد السكان",
+      "capital": "العاصمة",
+      "languages": "اللغات",
+      "currencies": "العملات",
+      "area": "المساحة"
     }
   },
   "header": {
@@ -96,6 +152,7 @@
     "toggleTheme": "تبديل الوضع الداكن/الفاتح",
     "panelDisplayCaption": "اختر اللوحات التي تريد عرضها على لوحة المعلومات",
     "tabGeneral": "عام",
+    "tabSettings": "إعدادات",
     "tabPanels": "اللوحات",
     "tabSources": "المصادر",
     "languageLabel": "اللغة",
@@ -127,6 +184,8 @@
     "sourceRegionGulfMena": "الخليج والشرق الأوسط",
     "filterPanels": "تصفية اللوحات...",
     "resetLayout": "إعادة تعيين التخطيط",
+    "resetLayoutTooltip": "استعادة ترتيب اللوحات الافتراضي",
+    "unsavedChanges": "لديك تغييرات غير محفوظة في اللوحات. هل تريد تجاهلها؟",
     "panelCatCore": "أساسي",
     "panelCatIntelligence": "استخبارات",
     "panelCatRegionalNews": "أخبار إقليمية",
@@ -143,7 +202,9 @@
     "panelCatCentralBanks": "البنوك المركزية والاقتصاد",
     "panelCatDeals": "الصفقات والمؤسسات",
     "panelCatGulfMena": "الخليج والشرق الأوسط",
-    "panelCatTradePolicy": "السياسة التجارية"
+    "panelCatTradePolicy": "السياسة التجارية",
+    "downloadApp": "تحميل التطبيق",
+    "selectRegion": "اختر المنطقة"
   },
   "panels": {
     "liveNews": "أخبار مباشرة",
@@ -327,6 +388,8 @@
       "noResults": "لا توجد نتائج",
       "commands": "أوامر",
       "results": "نتائج",
+      "seeAllCommands": "عرض جميع الأوامر",
+      "hideCommandList": "رجوع",
       "navigate": "تنقّل",
       "select": "اختيار",
       "close": "إغلاق",
@@ -612,9 +675,12 @@
         "mideast": "الشرق الأوسط",
         "europe": "أوروبا",
         "americas": "الأمريكتان",
-        "asia": "آسيا"
+        "asia": "آسيا",
+        "space": "الفضاء"
       },
-      "expand": "توسيع"
+      "expand": "توسيع",
+      "paused": "كاميرات الويب متوقفة",
+      "pausedIdle": "كاميرات الويب متوقفة — حرّك الماوس للاستئناف"
     },
     "monitor": {
       "placeholder": "كلمات مفتاحية (مفصولة بفواصل)",
@@ -843,7 +909,8 @@
       "shareStory": "مشاركة القصة",
       "printPdf": "طباعة / PDF",
       "exportData": "تصدير البيانات",
-      "sourceRef": "المصدر [{{n}}]"
+      "sourceRef": "المصدر [{{n}}]",
+      "shareLink": "مشاركة الرابط"
     },
     "relatedAssets": {
       "pipeline": "خط أنابيب",
@@ -885,10 +952,21 @@
         "elevated": "متصاعد",
         "monitoring": "مراقبة",
         "base": "قاعدة",
-        "nuclear": "نووي"
+        "nuclear": "نووي",
+        "aircraft": "طائرات",
+        "ciiLow": "منخفض (0–30)",
+        "ciiNormal": "طبيعي (31–50)",
+        "ciiElevated": "مرتفع (51–65)",
+        "ciiHigh": "عالٍ (66–80)",
+        "ciiCritical": "حرج (81–100)"
       },
       "layerGuide": "دليل الطبقات",
+      "layerWarningTitle": "ملاحظة حول الأداء",
+      "layerWarningBody": "قد يؤثر تفعيل أكثر من {{threshold}} طبقة على أداء العرض ومعدل الإطارات.",
+      "layerWarningDismiss": "لا تظهر هذا مجددًا",
+      "layerWarningOk": "فهمت",
       "layersTitle": "الطبقات",
+      "layerSearch": "بحث في الطبقات...",
       "timeAll": "الكل",
       "views": {
         "global": "عالمي",
@@ -918,6 +996,7 @@
         "nuclearSites": "مواقع نووية",
         "gammaIrradiators": "أجهزة تشعيع غاما",
         "spaceports": "مطارات فضائية",
+        "satellites": "مراقبة مدارية",
         "pipelines": "خطوط أنابيب",
         "militaryActivity": "نشاط عسكري",
         "shipTraffic": "حركة السفن",
@@ -938,7 +1017,13 @@
         "tradeRoutes": "طرق التجارة",
         "gpsJamming": "GPS JAMMING",
         "dayNight": "نهار/ليل",
-        "iranAttacks": "هجمات إيران"
+        "iranAttacks": "هجمات إيران",
+        "ciiChoropleth": "مؤشر عدم الاستقرار CII",
+        "positiveEvents": "أحداث إيجابية",
+        "kindness": "أعمال لطف",
+        "happiness": "السعادة العالمية",
+        "speciesRecovery": "تعافي الأنواع",
+        "renewableInstallations": "طاقة نظيفة"
       },
       "tooltip": {
         "earthquake": "زلزال",
@@ -1043,7 +1128,8 @@
           "techCyberThreats": "هجمات سيبرانية وأحداث أمنية",
           "techEvents": "مؤتمرات وفعاليات تقنية كبرى",
           "techFires": "حرائق غابات نشطة بالقرب من البنية التحتية التقنية",
-          "geoBoundaries": "مناطق منزوعة السلاح وخطوط الهدنة والحدود المتنازع عليها"
+          "geoBoundaries": "مناطق منزوعة السلاح وخطوط الهدنة والحدود المتنازع عليها",
+          "ciiChoropleth": "خريطة حرارية لمؤشر عدم الاستقرار — تلوّن الدول حسب درجة CII (أخضر=مستقر، أحمر=حرج)"
         },
         "notes": {
           "timeAffects": "يؤثر على: الزلازل، الطقس، الاحتجاجات، الانقطاعات"
@@ -1093,7 +1179,16 @@
       "headlineMemoryLabel": "ذاكرة العناوين",
       "headlineMemoryDesc": "تذكر العناوين المشاهدة لتمييز الجديدة",
       "streamAlwaysOnLabel": "إبقاء البث المباشر قيد التشغيل",
-      "streamAlwaysOnDesc": "يمنع إيقاف Live Cams وLive News تلقائيًا عند الخمول. يُنصح به لاستخدام الشاشة الثانية / لوحة المراقبة. عطّله (Eco) لتوفير CPU/النطاق الترددي."
+      "streamAlwaysOnDesc": "يمنع إيقاف Live Cams وLive News تلقائيًا عند الخمول. يُنصح به لاستخدام الشاشة الثانية / لوحة المراقبة. عطّله (Eco) لتوفير CPU/النطاق الترددي.",
+      "globeRenderQualityLabel": "جودة عرض الكرة الأرضية",
+      "globeRenderQualityDesc": "يتحكم في دقة لوحة الكرة الأرضية. القيم الأعلى أوضح على شاشات 4K لكنها قد تُرهق GPU.",
+      "globeRenderScaleOptions": {
+        "1": "اقتصادي (1x)",
+        "2": "4K (2x)",
+        "3": "مفرط (3x)",
+        "auto": "تلقائي (الجهاز)",
+        "1_5": "حاد (1.5x)"
+      }
     },
     "cascade": {
       "noImpacts": "لم يتم رصد تأثيرات على الدول",
@@ -1265,7 +1360,9 @@
       "summarize": "تلخيص هذه اللوحة",
       "generatingSummary": "جارٍ إنشاء الملخص...",
       "sources": "{{count}} مصادر",
-      "relatedAssetsNear": "أصول ذات صلة بالقرب من {{location}}"
+      "relatedAssetsNear": "أصول ذات صلة بالقرب من {{location}}",
+      "summaryError": "تعذّر إنشاء الملخص",
+      "summaryFailed": "فشل التلخيص"
     },
     "export": {
       "exportData": "تصدير البيانات"
@@ -1410,7 +1507,8 @@
       "openSettings": "Open Settings"
     },
     "languageSelector": {
-      "selectLanguage": "Select Language"
+      "selectLanguage": "Select Language",
+      "mapLabelsFallbackVi": "تسميات الخريطة تعود حاليًا إلى الإنجليزية للفيتنامية."
     },
     "serviceStatus": {
       "checkingServices": "Checking services...",
@@ -1488,7 +1586,10 @@
       "channelNotFound": "لم يتم العثور على قناة YouTube",
       "invalidHandle": "أدخل معرّف YouTube صالح (مثال: @ChannelName)",
       "signInToYouTube": "تسجيل الدخول إلى YouTube",
-      "verifying": "جارٍ التحقق…"
+      "verifying": "جارٍ التحقق…",
+      "noResults": "لم يُعثر على قنوات تطابق \"{{term}}\"",
+      "hlsUrl": "رابط بث HLS (اختياري)",
+      "invalidHlsUrl": "أدخل رابط بث HLS صالحًا (.m3u8)"
     },
     "securityAdvisories": {
       "loading": "جاري جلب التحذيرات الأمنية...",
@@ -1573,7 +1674,32 @@
       "spikeAlert": "تم رصد ارتفاع حاد — المعدل أعلى بكثير من متوسط 52 أسبوع (أسبوعي)",
       "topProducers": "أكبر المنتجين",
       "upstreamUnavailable": "بيانات سلسلة الإمداد غير متاحة مؤقتاً — عرض البيانات المخزنة",
-      "warnings": "تحذير(ات)"
+      "warnings": "تحذير(ات)",
+      "aisDisruptions": "اضطراب(ات) AIS"
+    },
+    "positiveNewsFeed": {
+      "noStories": "لا توجد قصص في هذه الفئة بعد"
+    },
+    "goodThingsDigest": {
+      "noStories": "لا تتوفر قصص",
+      "summarizing": "جارٍ التلخيص…"
+    },
+    "progressCharts": {
+      "noData": "لا تتوفر بيانات تقدم"
+    },
+    "settings": {
+      "dataManagementLabel": "إدارة البيانات",
+      "exportSettings": "تصدير الإعدادات",
+      "importSettings": "استيراد الإعدادات",
+      "exportSuccess": "تم تصدير الإعدادات بنجاح",
+      "exportFailed": "فشل تصدير الإعدادات",
+      "importSuccess": "تم استيراد {{count}} إعداد",
+      "importFailed": "فشل استيراد الإعدادات",
+      "reloadNow": "إعادة التحميل الآن"
+    },
+    "map": {
+      "showMap": "إظهار الخريطة",
+      "hideMap": "إخفاء الخريطة"
     }
   },
   "popups": {
@@ -1629,9 +1755,9 @@
     },
     "gpsJamming": {
       "title": "تداخل GPS/GNSS",
-      "interference": "التداخل",
-      "aircraftAffected": "الطائرات المتأثرة",
-      "aircraftNormal": "الطائرات السليمة",
+      "navPerformance": "Nav Performance",
+      "samples": "ADS-B Samples",
+      "aircraft": "Aircraft",
       "h3Hex": "H3 Hex"
     },
     "flight": {
@@ -1647,7 +1773,9 @@
       "sources": {
         "faa": "FAA ASWS",
         "eurocontrol": "Eurocontrol",
-        "computed": "محسوب"
+        "computed": "محسوب",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "الأمريكتان",
@@ -2044,6 +2172,14 @@
       "uae_ecsr": "الإمارات/ECSR",
       "venezuela_crisis": "أزمة فنزويلا",
       "yemen_houthis": "اليمن/الحوثيون"
+    },
+    "aircraft": {
+      "altitude": "الارتفاع",
+      "speed": "السرعة الأرضية",
+      "heading": "الاتجاه",
+      "position": "الموقع",
+      "ground": "على الأرض",
+      "airborne": "في الجو"
     }
   },
   "signals": {
@@ -2226,5 +2362,27 @@
     "all": "الكل",
     "loadingGiving": "جارٍ تحميل بيانات العطاء العالمي",
     "rateLimitedMarket": "بيانات السوق غير متاحة مؤقتاً (تقييد معدل الطلبات) — ستتم إعادة المحاولة قريباً"
+  },
+  "preferences": {
+    "display": "العرض",
+    "intelligence": "الذكاء",
+    "media": "الوسائط",
+    "panels": "اللوحات",
+    "dataAndCommunity": "البيانات والمجتمع",
+    "theme": "السمة",
+    "themeDesc": "تلقائي يتبع تفضيلات النظام.",
+    "themeAuto": "تلقائي (تبع النظام)",
+    "themeDark": "داكن",
+    "themeLight": "فاتح",
+    "mapProvider": "مزود بلاطات الخريطة",
+    "mapProviderDesc": "اختر مصدر تحميل بلاطات الخريطة.",
+    "mapTheme": "سمة الخريطة",
+    "mapThemeDesc": "النمط البصري لبلاطات الخريطة.",
+    "globePreset": "الإعداد البصري",
+    "globePresetDesc": "التبديل بين المرئيات الكلاسيكية والمحسنة للكرة الأرضية."
+  },
+  "contextMenu": {
+    "openCountryBrief": "فتح ملخص البلد",
+    "copyCoordinates": "نسخ الإحداثيات"
   }
 }

@@ -7,7 +7,7 @@ import type {
 
 import { cachedFetchJson } from '../../../_shared/redis';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
-import { UPSTREAM_TIMEOUT_MS, GROQ_API_URL, GROQ_MODEL, hashString } from './_shared';
+import { UPSTREAM_TIMEOUT_MS, GROQ_API_URL, GROQ_MODEL, sha256Hex } from './_shared';
 import { CHROME_UA } from '../../../_shared/constants';
 
 // ========================================================================
@@ -40,7 +40,7 @@ export async function classifyEvent(
   ctx: ServerContext,
   req: ClassifyEventRequest,
 ): Promise<ClassifyEventResponse> {
-  const apiKey = process.env.GROQ_API_KEY;
+  const apiKey = process.env.LLM_API_KEY || process.env.GROQ_API_KEY;
   if (!apiKey) { markNoCacheResponse(ctx.request); return { classification: undefined }; }
 
   // Input sanitization (M-14 fix): limit title length
@@ -48,7 +48,10 @@ export async function classifyEvent(
   const title = typeof req.title === 'string' ? req.title.slice(0, MAX_TITLE_LEN) : '';
   if (!title) { markNoCacheResponse(ctx.request); return { classification: undefined }; }
 
-  const cacheKey = `classify:sebuf:v1:${hashString(title.toLowerCase())}`;
+  const apiUrl = process.env.LLM_API_URL || GROQ_API_URL;
+  const model = process.env.LLM_MODEL || GROQ_MODEL;
+
+  const cacheKey = `classify:sebuf:v1:${(await sha256Hex(title.toLowerCase())).slice(0, 16)}`;
 
   let cached: { level: string; category: string; timestamp: number } | null = null;
   try {
@@ -66,11 +69,11 @@ Focus: geopolitical events, conflicts, disasters, diplomacy. Classify by real-wo
 
 Return: {"level":"...","category":"..."}`;
 
-          const resp = await fetch(GROQ_API_URL, {
+          const resp = await fetch(apiUrl, {
             method: 'POST',
             headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
             body: JSON.stringify({
-              model: GROQ_MODEL,
+              model,
               messages: [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: title },
@@ -90,7 +93,13 @@ Return: {"level":"...","category":"..."}`;
           try {
             parsed = JSON.parse(raw);
           } catch {
-            return null;
+            const jsonMatch = raw.match(/\{[\s\S]*\}/);
+            if (!jsonMatch) return null;
+            try {
+              parsed = JSON.parse(jsonMatch[0]);
+            } catch {
+              return null;
+            }
           }
 
           const level = VALID_LEVELS.includes(parsed.level ?? '') ? parsed.level! : null;

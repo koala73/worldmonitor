@@ -8,6 +8,7 @@ import type {
 import { UPSTREAM_TIMEOUT_MS } from './_shared';
 import { CHROME_UA } from '../../../_shared/constants';
 import { cachedFetchJson } from '../../../_shared/redis';
+import { sha256Hex } from '../../../_shared/hash';
 
 const REDIS_CACHE_KEY = 'intel:gdelt-docs:v1';
 const REDIS_CACHE_TTL = 600; // 10 min
@@ -28,9 +29,13 @@ export async function searchGdeltDocuments(
   _ctx: ServerContext,
   req: SearchGdeltDocumentsRequest,
 ): Promise<SearchGdeltDocumentsResponse> {
+  const MAX_QUERY_LEN = 500;
   let query = req.query;
   if (!query || query.length < 2) {
     return { articles: [], query: query || '', error: 'Query parameter required (min 2 characters)' };
+  }
+  if (query.length > MAX_QUERY_LEN) {
+    return { articles: [], query, error: 'Query too long' };
   }
 
   // Append tone filter to query if provided (e.g., "tone>5" for positive articles)
@@ -45,7 +50,8 @@ export async function searchGdeltDocuments(
   const timespan = req.timespan || '72h';
 
   try {
-    const cacheKey = `${REDIS_CACHE_KEY}:${query}:${timespan}:${maxRecords}`;
+    const keyHash = await sha256Hex(`${query}|${timespan}|${maxRecords}`);
+    const cacheKey = `${REDIS_CACHE_KEY}:${keyHash}`;
     const result = await cachedFetchJson<SearchGdeltDocumentsResponse>(
       cacheKey,
       REDIS_CACHE_TTL,

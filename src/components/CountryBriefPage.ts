@@ -13,6 +13,7 @@ import type { Port } from '@/config/ports';
 import { exportCountryBriefJSON, exportCountryBriefCSV } from '@/utils/export';
 import type { CountryBriefExport } from '@/utils/export';
 import { ME_STRIKE_BOUNDS } from '@/services/country-geometry';
+import { toFlagEmoji } from '@/utils/country-flag';
 
 type BriefAssetType = AssetType | 'port';
 
@@ -163,15 +164,7 @@ export class CountryBriefPage implements CountryBriefPanel {
   }
 
   private countryFlag(code: string): string {
-    try {
-      return code
-        .toUpperCase()
-        .split('')
-        .map((c) => String.fromCodePoint(0x1f1e6 + c.charCodeAt(0) - 65))
-        .join('');
-    } catch {
-      return '🌍';
-    }
+    return toFlagEmoji(code, '🌍');
   }
 
   private levelColor(level: string): string {
@@ -307,6 +300,56 @@ export class CountryBriefPage implements CountryBriefPanel {
         </div>
       </div>`;
     // Close button click is handled via event delegation on the overlay (set up in constructor)
+    this.overlay.classList.add('active');
+  }
+
+  public showGeoError(onRetry: () => void): void {
+    this.currentCode = '__error__';
+    this.overlay.textContent = '';
+
+    const page = document.createElement('div');
+    page.className = 'country-brief-page';
+
+    const header = document.createElement('div');
+    header.className = 'cb-header';
+    const headerLeft = document.createElement('div');
+    headerLeft.className = 'cb-header-left';
+    const flag = document.createElement('span');
+    flag.className = 'cb-flag';
+    flag.textContent = '\u26A0\uFE0F';
+    const title = document.createElement('span');
+    title.className = 'cb-country-name';
+    title.textContent = t('countryBrief.geocodeFailed');
+    headerLeft.append(flag, title);
+    const headerRight = document.createElement('div');
+    headerRight.className = 'cb-header-right';
+    const closeX = document.createElement('button');
+    closeX.className = 'cb-close';
+    closeX.setAttribute('aria-label', t('components.newsPanel.close'));
+    closeX.textContent = '\u00D7';
+    headerRight.append(closeX);
+    header.append(headerLeft, headerRight);
+
+    const body = document.createElement('div');
+    body.className = 'cb-body';
+    const errorWrap = document.createElement('div');
+    errorWrap.className = 'cb-geo-error';
+    const actions = document.createElement('div');
+    actions.className = 'cb-geo-error-actions';
+    const retryBtn = document.createElement('button');
+    retryBtn.className = 'cb-geo-retry-btn';
+    retryBtn.textContent = t('countryBrief.retryBtn');
+    retryBtn.addEventListener('click', () => onRetry(), { once: true });
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'cb-geo-close-btn';
+    closeBtn.textContent = t('countryBrief.closeBtn');
+    closeBtn.addEventListener('click', () => this.hide(), { once: true });
+    actions.append(retryBtn, closeBtn);
+    errorWrap.append(actions);
+    body.append(errorWrap);
+
+    page.append(header, body);
+    this.overlay.append(page);
     this.overlay.classList.add('active');
   }
 

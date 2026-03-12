@@ -1,0 +1,33 @@
+{
+  "symbols": [
+    { "symbol": "^GSPC", "name": "S&P 500", "display": "SPX" },
+    { "symbol": "^DJI", "name": "Dow Jones", "display": "DOW" },
+    { "symbol": "^IXIC", "name": "NASDAQ", "display": "NDX" },
+    { "symbol": "AAPL", "name": "Apple", "display": "AAPL" },
+    { "symbol": "MSFT", "name": "Microsoft", "display": "MSFT" },
+    { "symbol": "NVDA", "name": "NVIDIA", "display": "NVDA" },
+    { "symbol": "GOOGL", "name": "Alphabet", "display": "GOOGL" },
+    { "symbol": "AMZN", "name": "Amazon", "display": "AMZN" },
+    { "symbol": "META", "name": "Meta", "display": "META" },
+    { "symbol": "BRK-B", "name": "Berkshire", "display": "BRK.B" },
+    { "symbol": "TSM", "name": "TSMC", "display": "TSM" },
+    { "symbol": "LLY", "name": "Eli Lilly", "display": "LLY" },
+    { "symbol": "TSLA", "name": "Tesla", "display": "TSLA" },
+    { "symbol": "AVGO", "name": "Broadcom", "display": "AVGO" },
+    { "symbol": "WMT", "name": "Walmart", "display": "WMT" },
+    { "symbol": "JPM", "name": "JPMorgan", "display": "JPM" },
+    { "symbol": "V", "name": "Visa", "display": "V" },
+    { "symbol": "UNH", "name": "UnitedHealth", "display": "UNH" },
+    { "symbol": "NVO", "name": "Novo Nordisk", "display": "NVO" },
+    { "symbol": "XOM", "name": "Exxon", "display": "XOM" },
+    { "symbol": "MA", "name": "Mastercard", "display": "MA" },
+    { "symbol": "ORCL", "name": "Oracle", "display": "ORCL" },
+    { "symbol": "PG", "name": "P&G", "display": "PG" },
+    { "symbol": "COST", "name": "Costco", "display": "COST" },
+    { "symbol": "JNJ", "name": "J&J", "display": "JNJ" },
+    { "symbol": "HD", "name": "Home Depot", "display": "HD" },
+    { "symbol": "NFLX", "name": "Netflix", "display": "NFLX" },
+    { "symbol": "BAC", "name": "BofA", "display": "BAC" }
+  ],
+  "yahooOnly": ["^GSPC", "^DJI", "^IXIC"]
+}

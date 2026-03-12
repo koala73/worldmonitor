@@ -59,47 +59,84 @@ function isTransientVerificationError(error) {
   return /timed out|timeout|network|fetch failed|failed to fetch|socket hang up/i.test(error.message);
 }
 
+// Global concurrency limiter for upstream requests.
+let _activeUpstream = 0;
+const _upstreamQueue = [];
+const MAX_CONCURRENT_UPSTREAM = 6;
+function acquireUpstreamSlot() {
+  if (_activeUpstream < MAX_CONCURRENT_UPSTREAM) {
+    _activeUpstream++;
+    return Promise.resolve();
+  }
+  return new Promise(resolve => _upstreamQueue.push(resolve));
+}
+function releaseUpstreamSlot() {
+  if (_upstreamQueue.length > 0) {
+    _upstreamQueue.shift()();
+  } else {
+    _activeUpstream--;
+  }
+}
+
+// Global Yahoo Finance rate gate — shared across ALL handler bundles.
+let _yahooLastReq = 0;
+let _yahooQueue = Promise.resolve();
+function sidecarYahooGate() {
+  _yahooQueue = _yahooQueue.then(async () => {
+    const elapsed = Date.now() - _yahooLastReq;
+    if (elapsed < 600) await new Promise(r => setTimeout(r, 600 - elapsed));
+    _yahooLastReq = Date.now();
+  });
+  return _yahooQueue;
+}
+
 globalThis.fetch = async function ipv4Fetch(input, init) {
   const isRequest = input && typeof input === 'object' && 'url' in input;
   let url;
   try { url = new URL(typeof input === 'string' ? input : input.url); } catch { return _originalFetch(input, init); }
   if (url.protocol !== 'https:' && url.protocol !== 'http:') return _originalFetch(input, init);
-  const mod = url.protocol === 'https:' ? https : http;
-  const method = init?.method || (isRequest ? input.method : 'GET');
-  const body = await resolveRequestBody(input, init, method, isRequest);
-  const headers = {};
-  const rawHeaders = init?.headers || (isRequest ? input.headers : null);
-  if (rawHeaders) {
-    const h = rawHeaders instanceof Headers ? Object.fromEntries(rawHeaders.entries())
-      : Array.isArray(rawHeaders) ? Object.fromEntries(rawHeaders) : rawHeaders;
-    Object.assign(headers, h);
-  }
-  return new Promise((resolve, reject) => {
-    const req = mod.request({ hostname: url.hostname, port: url.port || (url.protocol === 'https:' ? 443 : 80), path: url.pathname + url.search, method, headers, family: 4 }, (res) => {
-      const chunks = [];
-      res.on('data', (c) => chunks.push(c));
-      res.on('end', () => {
-        const buf = Buffer.concat(chunks);
-        const responseHeaders = new Headers();
-        for (const [k, v] of Object.entries(res.headers)) {
-          if (v) responseHeaders.set(k, Array.isArray(v) ? v.join(', ') : v);
-        }
-        try {
-          resolve(buildSafeResponse(res.statusCode, res.statusMessage, responseHeaders, buf));
-        } catch (error) {
-          reject(error);
-        }
+  if (url.hostname.includes('finance.yahoo.com')) await sidecarYahooGate();
+  await acquireUpstreamSlot();
+  try {
+    const mod = url.protocol === 'https:' ? https : http;
+    const method = init?.method || (isRequest ? input.method : 'GET');
+    const body = await resolveRequestBody(input, init, method, isRequest);
+    const headers = {};
+    const rawHeaders = init?.headers || (isRequest ? input.headers : null);
+    if (rawHeaders) {
+      const h = rawHeaders instanceof Headers ? Object.fromEntries(rawHeaders.entries())
+        : Array.isArray(rawHeaders) ? Object.fromEntries(rawHeaders) : rawHeaders;
+      Object.assign(headers, h);
+    }
+    return await new Promise((resolve, reject) => {
+      const req = mod.request({ hostname: url.hostname, port: url.port || (url.protocol === 'https:' ? 443 : 80), path: url.pathname + url.search, method, headers, family: 4 }, (res) => {
+        const chunks = [];
+        res.on('data', (c) => chunks.push(c));
+        res.on('end', () => {
+          const buf = Buffer.concat(chunks);
+          const responseHeaders = new Headers();
+          for (const [k, v] of Object.entries(res.headers)) {
+            if (v) responseHeaders.set(k, Array.isArray(v) ? v.join(', ') : v);
+          }
+          try {
+            resolve(buildSafeResponse(res.statusCode, res.statusMessage, responseHeaders, buf));
+          } catch (error) {
+            reject(error);
+          }
+        });
       });
+      req.on('error', reject);
+      if (init?.signal) { init.signal.addEventListener('abort', () => req.destroy()); }
+      if (body != null) req.write(body);
+      req.end();
     });
-    req.on('error', reject);
-    if (init?.signal) { init.signal.addEventListener('abort', () => req.destroy()); }
-    if (body != null) req.write(body);
-    req.end();
-  });
+  } finally {
+    releaseUpstreamSlot();
+  }
 };
 
 const ALLOWED_ENV_KEYS = new Set([
-  'GROQ_API_KEY', 'OPENROUTER_API_KEY', 'FRED_API_KEY', 'EIA_API_KEY',
+  'GROQ_API_KEY', 'OPENROUTER_API_KEY', 'TAVILY_API_KEYS', 'BRAVE_API_KEYS', 'SERPAPI_API_KEYS', 'FRED_API_KEY', 'EIA_API_KEY',
   'CLOUDFLARE_API_TOKEN', 'ACLED_ACCESS_TOKEN', 'URLHAUS_AUTH_KEY',
   'OTX_API_KEY', 'ABUSEIPDB_API_KEY', 'WINGBITS_API_KEY', 'WS_RELAY_URL',
   'VITE_OPENSKY_RELAY_URL', 'OPENSKY_CLIENT_ID', 'OPENSKY_CLIENT_SECRET',
@@ -367,10 +404,19 @@ function toHeaders(nodeHeaders, options = {}) {
 async function proxyToCloud(requestUrl, req, remoteBase) {
   const target = `${remoteBase}${requestUrl.pathname}${requestUrl.search}`;
   const body = ['GET', 'HEAD'].includes(req.method) ? undefined : await readBody(req);
+  const headers = toHeaders(req.headers, { stripOrigin: true });
+  // Strip sidecar auth token — meaningless to cloud API.
+  headers.delete('Authorization');
+  // Strip conditional headers so cloud always returns fresh 200, not 304.
+  // The browser may have stale ETags from previous sessions with empty data.
+  headers.delete('If-None-Match');
+  headers.delete('If-Modified-Since');
+  // Identify sidecar as trusted origin so the cloud API key validator
+  // doesn't reject the request (no origin + no key = 401).
+  headers.set('Origin', 'https://worldmonitor.app');
   return fetch(target, {
     method: req.method,
-    // Strip browser-origin headers for server-to-server parity.
-    headers: toHeaders(req.headers, { stripOrigin: true }),
+    headers,
     body,
   });
 }
@@ -391,6 +437,28 @@ const moduleCache = new Map();
 const failedImports = new Set();
 const fallbackCounts = new Map();
 const cloudPreferred = new Set();
+
+// Routes/prefixes that should always proxy to cloud. The sidecar lacks
+// WS_RELAY_URL (Yahoo/Finnhub relay) and seeded Redis data. These routes
+// return 200-with-empty-data locally, so normal cloudFallback won't trigger.
+const cloudPreferredPrefixes = !process.env.WS_RELAY_URL
+  ? [
+    '/api/market/v1/',
+    '/api/economic/v1/',
+    '/api/infrastructure/v1/',
+    '/api/news/v1/',
+    '/api/research/v1/',
+  ]
+  : [];
+const cloudPreferredExact = !process.env.WS_RELAY_URL
+  ? new Set(['/api/bootstrap'])
+  : new Set();
+
+function isCloudPreferred(pathname) {
+  if (cloudPreferred.has(pathname)) return true;
+  if (cloudPreferredExact.has(pathname)) return true;
+  return cloudPreferredPrefixes.some(p => pathname.startsWith(p));
+}
 
 const TRAFFIC_LOG_MAX = 200;
 const trafficLog = [];
@@ -452,7 +520,7 @@ async function importHandler(modulePath) {
 
 function resolveConfig(options = {}) {
   const port = Number(options.port ?? process.env.LOCAL_API_PORT ?? 46123);
-  const remoteBase = String(options.remoteBase ?? process.env.LOCAL_API_REMOTE_BASE ?? 'https://worldmonitor.app').replace(/\/$/, '');
+  const remoteBase = String(options.remoteBase ?? process.env.LOCAL_API_REMOTE_BASE ?? 'https://api.worldmonitor.app').replace(/\/$/, '');
   const resourceDir = String(options.resourceDir ?? process.env.LOCAL_API_RESOURCE_DIR ?? process.cwd());
   const apiDir = options.apiDir
     ? String(options.apiDir)
@@ -510,7 +578,11 @@ async function tryCloudFallback(requestUrl, req, context, reason) {
     }
   }
   try {
-    return await proxyToCloud(requestUrl, req, context.remoteBase);
+    const resp = await proxyToCloud(requestUrl, req, context.remoteBase);
+    if (!resp.ok) {
+      context.logger.warn(`[local-api] cloud returned ${resp.status} for ${requestUrl.pathname}`);
+    }
+    return resp;
   } catch (error) {
     context.logger.error('[local-api] cloud fallback failed', requestUrl.pathname, error);
     return null;
@@ -1035,8 +1107,8 @@ async function dispatch(requestUrl, req, routes, context) {
     const mute = requestUrl.searchParams.get('mute') === '0' ? '0' : '1';
     const vq = ['small','medium','large','hd720','hd1080'].includes(requestUrl.searchParams.get('vq') || '') ? requestUrl.searchParams.get('vq') : '';
     const origin = `http://localhost:${context.port}`;
-    const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="strict-origin-when-cross-origin"><style>html,body{margin:0;padding:0;width:100%;height:100%;background:#000;overflow:hidden}#player{width:100%;height:100%}#play-overlay{position:absolute;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;pointer-events:none;background:rgba(0,0,0,0.15)}#play-overlay svg{width:72px;height:72px;opacity:0.9;filter:drop-shadow(0 2px 8px rgba(0,0,0,0.5))}#play-overlay.hidden{display:none}</style></head><body><div id="player"></div><div id="play-overlay" class="hidden"><svg viewBox="0 0 68 48"><path d="M66.52 7.74c-.78-2.93-2.49-5.41-5.42-6.19C55.79.13 34 0 34 0S12.21.13 6.9 1.55C3.97 2.33 2.27 4.81 1.48 7.74.06 13.05 0 24 0 24s.06 10.95 1.48 16.26c.78 2.93 2.49 5.41 5.42 6.19C12.21 47.87 34 48 34 48s21.79-.13 27.1-1.55c2.93-.78 4.64-3.26 5.42-6.19C67.94 34.95 68 24 68 24s-.06-10.95-1.48-16.26z" fill="red"/><path d="M45 24L27 14v20" fill="#fff"/></svg></div><script>var tag=document.createElement('script');tag.src='https://www.youtube.com/iframe_api';document.head.appendChild(tag);var player,overlay=document.getElementById('play-overlay'),started=false,muteSyncId,retryTimers=[];var obs=new MutationObserver(function(muts){for(var i=0;i<muts.length;i++){var nodes=muts[i].addedNodes;for(var j=0;j<nodes.length;j++){if(nodes[j].tagName==='IFRAME'){var a=nodes[j].getAttribute('allow')||'';if(a.indexOf('autoplay')===-1){nodes[j].setAttribute('allow','autoplay; encrypted-media; picture-in-picture '+a);console.log('[yt-embed] patched iframe allow=autoplay')}obs.disconnect();return}}}});obs.observe(document.getElementById('player'),{childList:true,subtree:true});function hideOverlay(){overlay.classList.add('hidden')}function readMuted(){if(!player)return null;if(typeof player.isMuted==='function')return player.isMuted();if(typeof player.getVolume==='function')return player.getVolume()===0;return null}function stopMuteSync(){if(muteSyncId){clearInterval(muteSyncId);muteSyncId=null}}function startMuteSync(){if(muteSyncId)return;var last=readMuted();if(last!==null)window.parent.postMessage({type:'yt-mute-state',muted:last},'*');muteSyncId=setInterval(function(){var m=readMuted();if(m!==null&&m!==last){last=m;window.parent.postMessage({type:'yt-mute-state',muted:m},'*')}},500)}function tryAutoplay(){if(!player||!player.playVideo)return;try{player.mute();player.playVideo();console.log('[yt-embed] tryAutoplay: mute+play')}catch(e){}}function onYouTubeIframeAPIReady(){player=new YT.Player('player',{videoId:'${videoId}',host:'https://www.youtube.com',playerVars:{autoplay:${autoplay},mute:${mute},playsinline:1,rel:0,controls:1,modestbranding:1,enablejsapi:1,origin:'${origin}',widget_referrer:'${origin}'},events:{onReady:function(){console.log('[yt-embed] onReady');window.parent.postMessage({type:'yt-ready'},'*');${vq ? `if(player.setPlaybackQuality)player.setPlaybackQuality('${vq}');` : ''}if(${autoplay}===1){tryAutoplay();retryTimers.push(setTimeout(function(){if(!started)tryAutoplay()},500));retryTimers.push(setTimeout(function(){if(!started)tryAutoplay()},1500));retryTimers.push(setTimeout(function(){if(!started){console.log('[yt-embed] autoplay failed after retries');window.parent.postMessage({type:'yt-autoplay-failed'},'*')}},2500))}startMuteSync()},onError:function(e){console.log('[yt-embed] error code='+e.data);stopMuteSync();window.parent.postMessage({type:'yt-error',code:e.data},'*')},onStateChange:function(e){window.parent.postMessage({type:'yt-state',state:e.data},'*');if(e.data===1||e.data===3){hideOverlay();started=true;retryTimers.forEach(clearTimeout);retryTimers=[]}}}})}setTimeout(function(){if(!started)overlay.classList.remove('hidden')},4000);window.addEventListener('message',function(e){if(!player||!player.getPlayerState)return;var m=e.data;if(!m||!m.type)return;switch(m.type){case'play':player.playVideo();break;case'pause':player.pauseVideo();break;case'mute':player.mute();break;case'unmute':player.unMute();break;case'loadVideo':if(m.videoId)player.loadVideoById(m.videoId);break;case'setQuality':if(m.quality&&player.setPlaybackQuality)player.setPlaybackQuality(m.quality);break}});window.addEventListener('beforeunload',function(){stopMuteSync();obs.disconnect();retryTimers.forEach(clearTimeout)})<\/script></body></html>`;
-    return new Response(html, { status: 200, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'permissions-policy': 'autoplay=*, encrypted-media=*', ...makeCorsHeaders(req) } });
+    const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="strict-origin-when-cross-origin"><style>html,body{margin:0;padding:0;width:100%;height:100%;background:#000;overflow:hidden}#player{width:100%;height:100%}#play-overlay{position:absolute;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;pointer-events:none;background:rgba(0,0,0,0.15)}#play-overlay svg{width:72px;height:72px;opacity:0.9;filter:drop-shadow(0 2px 8px rgba(0,0,0,0.5))}#play-overlay.hidden{display:none}</style></head><body><div id="player"></div><div id="play-overlay" class="hidden"><svg viewBox="0 0 68 48"><path d="M66.52 7.74c-.78-2.93-2.49-5.41-5.42-6.19C55.79.13 34 0 34 0S12.21.13 6.9 1.55C3.97 2.33 2.27 4.81 1.48 7.74.06 13.05 0 24 0 24s.06 10.95 1.48 16.26c.78 2.93 2.49 5.41 5.42 6.19C12.21 47.87 34 48 34 48s21.79-.13 27.1-1.55c2.93-.78 4.64-3.26 5.42-6.19C67.94 34.95 68 24 68 24s-.06-10.95-1.48-16.26z" fill="red"/><path d="M45 24L27 14v20" fill="#fff"/></svg></div><script>function tryStorageAccess(){if(document.requestStorageAccess){document.requestStorageAccess().catch(function(){})}}tryStorageAccess();var tag=document.createElement('script');tag.src='https://www.youtube.com/iframe_api';document.head.appendChild(tag);var player,overlay=document.getElementById('play-overlay'),started=false,muteSyncId,retryTimers=[];var obs=new MutationObserver(function(muts){for(var i=0;i<muts.length;i++){var nodes=muts[i].addedNodes;for(var j=0;j<nodes.length;j++){if(nodes[j].tagName==='IFRAME'){var a=nodes[j].getAttribute('allow')||'';if(a.indexOf('autoplay')===-1){nodes[j].setAttribute('allow','autoplay; encrypted-media; picture-in-picture; storage-access'+(a?'; '+a:''));console.log('[yt-embed] patched iframe allow=autoplay+storage-access')}obs.disconnect();return}}}});obs.observe(document.getElementById('player'),{childList:true,subtree:true});function hideOverlay(){overlay.classList.add('hidden')}function readMuted(){if(!player)return null;if(typeof player.isMuted==='function')return player.isMuted();if(typeof player.getVolume==='function')return player.getVolume()===0;return null}function stopMuteSync(){if(muteSyncId){clearInterval(muteSyncId);muteSyncId=null}}function startMuteSync(){if(muteSyncId)return;var last=readMuted();if(last!==null)window.parent.postMessage({type:'yt-mute-state',muted:last},'*');muteSyncId=setInterval(function(){var m=readMuted();if(m!==null&&m!==last){last=m;window.parent.postMessage({type:'yt-mute-state',muted:m},'*')}},500)}function tryAutoplay(){if(!player||!player.playVideo)return;try{player.mute();player.playVideo();console.log('[yt-embed] tryAutoplay: mute+play')}catch(e){}}function onYouTubeIframeAPIReady(){player=new YT.Player('player',{videoId:'${videoId}',host:'https://www.youtube.com',playerVars:{autoplay:${autoplay},mute:${mute},playsinline:1,rel:0,controls:1,modestbranding:1,enablejsapi:1,origin:'${origin}',widget_referrer:'${origin}'},events:{onReady:function(){console.log('[yt-embed] onReady');window.parent.postMessage({type:'yt-ready'},'*');${vq ? `if(player.setPlaybackQuality)player.setPlaybackQuality('${vq}');` : ''}if(${autoplay}===1){tryAutoplay();retryTimers.push(setTimeout(function(){if(!started)tryAutoplay()},500));retryTimers.push(setTimeout(function(){if(!started)tryAutoplay()},1500));retryTimers.push(setTimeout(function(){if(!started){console.log('[yt-embed] autoplay failed after retries');window.parent.postMessage({type:'yt-autoplay-failed'},'*')}},2500))}startMuteSync()},onError:function(e){console.log('[yt-embed] error code='+e.data);stopMuteSync();window.parent.postMessage({type:'yt-error',code:e.data},'*')},onStateChange:function(e){window.parent.postMessage({type:'yt-state',state:e.data},'*');if(e.data===1||e.data===3){hideOverlay();started=true;retryTimers.forEach(clearTimeout);retryTimers=[]}}}})}setTimeout(function(){if(!started)overlay.classList.remove('hidden')},4000);window.addEventListener('message',function(e){if(!player||!player.getPlayerState)return;var m=e.data;if(!m||!m.type)return;switch(m.type){case'play':player.playVideo();break;case'pause':player.pauseVideo();break;case'mute':player.mute();break;case'unmute':player.unMute();break;case'loadVideo':if(m.videoId)player.loadVideoById(m.videoId);break;case'setQuality':if(m.quality&&player.setPlaybackQuality)player.setPlaybackQuality(m.quality);break}});window.addEventListener('beforeunload',function(){stopMuteSync();obs.disconnect();retryTimers.forEach(clearTimeout)})<\/script></body></html>`;
+    return new Response(html, { status: 200, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'permissions-policy': 'autoplay=*, encrypted-media=*, storage-access=(self "https://www.youtube.com")', ...makeCorsHeaders(req) } });
   }
 
   // ── Global auth gate ────────────────────────────────────────────────────
@@ -1253,8 +1325,8 @@ async function dispatch(requestUrl, req, routes, context) {
     }
   }
 
-  if (context.cloudFallback && cloudPreferred.has(requestUrl.pathname)) {
-    const cloudResponse = await tryCloudFallback(requestUrl, req, context);
+  if (context.cloudFallback && isCloudPreferred(requestUrl.pathname)) {
+    const cloudResponse = await tryCloudFallback(requestUrl, req, context, 'cloud-preferred');
     if (cloudResponse) return cloudResponse;
   }
 
@@ -1306,7 +1378,7 @@ async function dispatch(requestUrl, req, routes, context) {
     return response;
   } catch (error) {
     const reason = error.code === 'ERR_MODULE_NOT_FOUND' ? 'missing dependency' : error.message;
-    context.logger.error(`[local-api] ${requestUrl.pathname} → ${reason}`);
+    logOnce(context.logger, requestUrl.pathname, reason);
     if (context.cloudFallback) {
       const cloudResponse = await tryCloudFallback(requestUrl, req, context, error);
       if (cloudResponse) { cloudPreferred.add(requestUrl.pathname); return cloudResponse; }

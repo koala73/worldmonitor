@@ -6,6 +6,8 @@ import type { Command } from '@/config/commands';
 import { SearchModal } from '@/components';
 import { CIIPanel } from '@/components';
 import { SITE_VARIANT, STORAGE_KEYS } from '@/config';
+import { getAllowedLayerKeys } from '@/config/map-layer-definitions';
+import type { MapVariant } from '@/config/map-layer-definitions';
 import { LAYER_PRESETS, LAYER_KEY_MAP } from '@/config/commands';
 import { calculateCII, TIER1_COUNTRIES } from '@/services/country-instability';
 import { CURATED_COUNTRIES } from '@/config/countries';
@@ -397,9 +399,11 @@ export class SearchManager implements AppModule {
         break;
 
       case 'layers': {
+        const allowed = getAllowedLayerKeys((SITE_VARIANT || 'full') as MapVariant);
         if (action === 'all') {
-          for (const key of Object.keys(this.ctx.mapLayers))
-            this.ctx.mapLayers[key as keyof MapLayers] = true;
+          for (const key of Object.keys(this.ctx.mapLayers)) {
+            this.ctx.mapLayers[key as keyof MapLayers] = allowed.has(key as keyof MapLayers);
+          }
         } else if (action === 'none') {
           for (const key of Object.keys(this.ctx.mapLayers))
             this.ctx.mapLayers[key as keyof MapLayers] = false;
@@ -408,8 +412,9 @@ export class SearchManager implements AppModule {
           if (preset) {
             for (const key of Object.keys(this.ctx.mapLayers))
               this.ctx.mapLayers[key as keyof MapLayers] = false;
-            for (const layer of preset)
-              this.ctx.mapLayers[layer] = true;
+            for (const layer of preset) {
+              if (allowed.has(layer)) this.ctx.mapLayers[layer] = true;
+            }
           }
         }
         saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
@@ -420,6 +425,8 @@ export class SearchManager implements AppModule {
       case 'layer': {
         const layerKey = (LAYER_KEY_MAP[action] || action) as keyof MapLayers;
         if (!(layerKey in this.ctx.mapLayers)) return;
+        const variantAllowed = getAllowedLayerKeys((SITE_VARIANT || 'full') as MapVariant);
+        if (!variantAllowed.has(layerKey)) return;
         this.ctx.mapLayers[layerKey] = !this.ctx.mapLayers[layerKey];
         saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
         if (this.ctx.mapLayers[layerKey]) {

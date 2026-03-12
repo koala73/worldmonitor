@@ -30,6 +30,20 @@ export function makeBaselineKey(type: string, region: string, weekday: number, m
   return `baseline:${type}:${region}:${weekday}:${month}`;
 }
 
+export function makeBaselineKeyV2(type: string, region: string, weekday: number, month: number): string {
+  return `baseline:v2:${type}:${region}:${weekday}:${month}`;
+}
+
+export const COUNT_SOURCE_KEYS: Record<string, string> = {
+  news: 'news:insights:v1',
+  satellite_fires: 'wildfire:fires:v1',
+};
+
+export const TEMPORAL_ANOMALIES_KEY = 'temporal:anomalies:v1';
+export const TEMPORAL_ANOMALIES_TTL = 900;
+export const BASELINE_LOCK_KEY = 'baseline:lock';
+export const BASELINE_LOCK_TTL = 30;
+
 export function getBaselineSeverity(zScore: number): string {
   if (zScore >= Z_THRESHOLD_HIGH) return 'critical';
   if (zScore >= Z_THRESHOLD_MEDIUM) return 'high';

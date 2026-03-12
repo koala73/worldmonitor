@@ -1,0 +1,136 @@
+---
+title: "Hotspots & Navigation"
+description: "Dynamic hotspot detection with real-time activity scoring, regional focus navigation presets, and map pinning for persistent monitoring."
+---
+WorldMonitor uses real-time news correlation to detect and visualize global hotspots, provides regional focus presets for rapid context switching, and supports map pinning for persistent monitoring workflows.
+
+## Dynamic Hotspot Activity
+
+Hotspots on the map are **not static threat levels**. Activity is calculated in real-time based on news correlation.
+
+Each hotspot defines keywords:
+```typescript
+{
+  id: 'dc',
+  name: 'DC',
+  keywords: ['pentagon', 'white house', 'congress', 'cia', 'nsa', ...],
+  agencies: ['Pentagon', 'CIA', 'NSA', 'State Dept'],
+}
+```
+
+The system counts matching news articles in the current feed, applies velocity analysis, and assigns activity levels:
+
+| Level | Criteria | Visual |
+|-------|----------|--------|
+| **Low** | &lt;3 matches, normal velocity | Gray marker |
+| **Elevated** | 3-6 matches OR elevated velocity | Yellow pulse |
+| **High** | >6 matches OR spike velocity | Red pulse |
+
+This creates a dynamic "heat map" of global attention based on live news flow.
+
+### Hotspot Escalation Signals
+
+Beyond visual activity levels, the system generates **escalation signals** when hotspots show significant changes across multiple dimensions. This multi-component approach reduces false positives by requiring corroboration from independent data streams.
+
+**Escalation Components**
+
+Each hotspot's escalation score blends four weighted components:
+
+| Component | Weight | Data Source | What It Measures |
+|-----------|--------|-------------|------------------|
+| **News Activity** | 35% | RSS feeds | Matching news count, breaking flags, velocity |
+| **CII Contribution** | 25% | Country Instability Index | Instability score of associated country |
+| **Geographic Convergence** | 25% | Multi-source events | Event type diversity in geographic cell |
+| **Military Activity** | 15% | OpenSky/AIS | Flights and vessels within 200km |
+
+**Score Calculation**
+
+```
+static_baseline = hotspot.baselineRisk  // 1-5 per hotspot
+dynamic_score = (
+  news_component × 0.35 +
+  cii_component × 0.25 +
+  geo_component × 0.25 +
+  military_component × 0.15
+)
+proximity_boost = hotspot_proximity_multiplier  // 1.0-2.0
+
+final_score = (static_baseline × 0.30 + dynamic_score × 0.70) × proximity_boost
+```
+
+**Trend Detection**
+
+The system maintains 48-point history (24 hours at 30-minute intervals) per hotspot:
+
+- **Linear regression** calculates slope of recent scores
+- **Rising**: Slope > +0.1 points per interval
+- **Falling**: Slope &lt; -0.1 points per interval
+- **Stable**: Slope within ±0.1
+
+**Signal Generation**
+
+Escalation signals (`hotspot_escalation`) are emitted when:
+
+1. Final score exceeds threshold (typically 60)
+2. At least 2 hours since last signal for this hotspot (cooldown)
+3. Trend is rising or score is critical (>80)
+
+**Signal Context**
+
+| Field | Content |
+|-------|---------|
+| **Why It Matters** | "Geopolitical hotspot showing significant escalation based on news activity, country instability, geographic convergence, and military presence" |
+| **Actionable Insight** | "Increase monitoring priority; assess downstream impacts on infrastructure, markets, and regional stability" |
+| **Confidence Note** | "Weighted by multiple data sources—news (35%), CII (25%), geo-convergence (25%), military (15%)" |
+
+This multi-signal approach means a hotspot escalation signal represents **corroborated evidence** across independent data streams, not just a spike in news mentions.
+
+## Regional Focus Navigation
+
+The FOCUS selector in the header provides instant navigation to strategic regions. Each preset is calibrated to center on the region's geographic area with an appropriate zoom level.
+
+### Available Regions
+
+| Region | Coverage | Primary Use Cases |
+|--------|----------|-------------------|
+| **Global** | Full world view | Overview, cross-regional comparison |
+| **Americas** | North America focus | US monitoring, NORAD activity |
+| **Europe** | EU + UK + Scandinavia + Western Russia | NATO activity, energy infrastructure |
+| **MENA** | Middle East + North Africa | Conflict zones, oil infrastructure |
+| **Asia** | East Asia + Southeast Asia | China-Taiwan, Korean peninsula |
+| **Latin America** | Central + South America | Regional instability, drug trafficking |
+| **Africa** | Sub-Saharan Africa | Conflict zones, resource extraction |
+| **Oceania** | Australia + Pacific | Indo-Pacific activity |
+
+### Quick Navigation
+
+The FOCUS dropdown enables rapid context switching:
+
+1. **Breaking news** - Jump to the affected region
+2. **Regional briefing** - Cycle through regions for situational awareness
+3. **Crisis monitoring** - Lock onto a specific theater
+
+Regional views are encoded in shareable URLs, enabling direct links to specific geographic contexts.
+
+## Map Pinning
+
+By default, the map scrolls with the page, allowing you to scroll down to view panels below. The **pin button** in the map header toggles sticky behavior:
+
+| State | Behavior |
+|-------|----------|
+| **Unpinned** (default) | Map scrolls with page; scroll down to see panels |
+| **Pinned** | Map stays fixed at top; panels scroll beneath |
+
+### When to Pin
+
+- **Active monitoring** - Keep the map visible while reading news panels
+- **Cross-referencing** - Compare map markers with panel data
+- **Presentation** - Show the map while discussing panel content
+
+### When to Unpin
+
+- **Panel focus** - Read through panels without map taking screen space
+- **Mobile** - Pin is disabled on mobile for better space utilization
+- **Research** - Focus on data panels without geographic distraction
+
+Pin state persists across sessions via localStorage.

@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { loadEnvFile, loadSharedConfig, CHROME_UA, runSeed } from './_seed-utils.mjs';
+
+const etfConfig = loadSharedConfig('etfs.json');
 
 loadEnvFile(import.meta.url);
 
@@ -8,18 +10,7 @@ const CANONICAL_KEY = 'market:etf-flows:v1';
 const CACHE_TTL = 3600;
 const YAHOO_DELAY_MS = 200;
 
-const ETF_LIST = [
-  { ticker: 'IBIT', issuer: 'BlackRock' },
-  { ticker: 'FBTC', issuer: 'Fidelity' },
-  { ticker: 'ARKB', issuer: 'ARK/21Shares' },
-  { ticker: 'BITB', issuer: 'Bitwise' },
-  { ticker: 'GBTC', issuer: 'Grayscale' },
-  { ticker: 'HODL', issuer: 'VanEck' },
-  { ticker: 'BRRR', issuer: 'Valkyrie' },
-  { ticker: 'EZBC', issuer: 'Franklin' },
-  { ticker: 'BTCO', issuer: 'Invesco' },
-  { ticker: 'BTCW', issuer: 'WisdomTree' },
-];
+const ETF_LIST = etfConfig.btcSpot;
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));

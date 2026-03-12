@@ -20,7 +20,7 @@ export class SupplyChainPanel extends Panel {
   constructor() {
     super({ id: 'supply-chain', title: t('panels.supplyChain') });
     this.content.addEventListener('click', (e) => {
-      const target = (e.target as HTMLElement).closest('.economic-tab') as HTMLElement | null;
+      const target = (e.target as HTMLElement).closest('.panel-tab') as HTMLElement | null;
       if (!target) return;
       const tabId = target.dataset.tab as TabId;
       if (tabId && tabId !== this.activeTab) {
@@ -47,24 +47,24 @@ export class SupplyChainPanel extends Panel {
 
   private render(): void {
     const tabsHtml = `
-      <div class="economic-tabs">
-        <button class="economic-tab ${this.activeTab === 'chokepoints' ? 'active' : ''}" data-tab="chokepoints">
+      <div class="panel-tabs">
+        <button class="panel-tab ${this.activeTab === 'chokepoints' ? 'active' : ''}" data-tab="chokepoints">
           ${t('components.supplyChain.chokepoints')}
         </button>
-        <button class="economic-tab ${this.activeTab === 'shipping' ? 'active' : ''}" data-tab="shipping">
+        <button class="panel-tab ${this.activeTab === 'shipping' ? 'active' : ''}" data-tab="shipping">
           ${t('components.supplyChain.shipping')}
         </button>
-        <button class="economic-tab ${this.activeTab === 'minerals' ? 'active' : ''}" data-tab="minerals">
+        <button class="panel-tab ${this.activeTab === 'minerals' ? 'active' : ''}" data-tab="minerals">
           ${t('components.supplyChain.minerals')}
         </button>
       </div>
     `;
 
     const activeHasData = this.activeTab === 'chokepoints'
-      ? (this.chokepointData?.chokepoints.length ?? 0) > 0
+      ? (this.chokepointData?.chokepoints?.length ?? 0) > 0
       : this.activeTab === 'shipping'
-        ? (this.shippingData?.indices.length ?? 0) > 0
-        : (this.mineralsData?.minerals.length ?? 0) > 0;
+        ? (this.shippingData?.indices?.length ?? 0) > 0
+        : (this.mineralsData?.minerals?.length ?? 0) > 0;
     const activeData = this.activeTab === 'chokepoints' ? this.chokepointData
       : this.activeTab === 'shipping' ? this.shippingData
       : this.mineralsData;
@@ -90,7 +90,7 @@ export class SupplyChainPanel extends Panel {
   }
 
   private renderChokepoints(): string {
-    if (!this.chokepointData || this.chokepointData.chokepoints.length === 0) {
+    if (!this.chokepointData || !this.chokepointData.chokepoints?.length) {
       return `<div class="economic-empty">${t('components.supplyChain.noChokepoints')}</div>`;
     }
 
@@ -121,7 +121,7 @@ export class SupplyChainPanel extends Panel {
       return `<div class="economic-empty">${t('components.supplyChain.fredKeyMissing')}</div>`;
     }
 
-    if (!this.shippingData || this.shippingData.indices.length === 0) {
+    if (!this.shippingData || !this.shippingData.indices?.length) {
       return `<div class="economic-empty">${t('components.supplyChain.noShipping')}</div>`;
     }
 
@@ -167,7 +167,7 @@ export class SupplyChainPanel extends Panel {
   }
 
   private renderMinerals(): string {
-    if (!this.mineralsData || this.mineralsData.minerals.length === 0) {
+    if (!this.mineralsData || !this.mineralsData.minerals?.length) {
       return `<div class="economic-empty">${t('components.supplyChain.noMinerals')}</div>`;
     }
 

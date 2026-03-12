@@ -6,6 +6,9 @@
   "countryBrief": {
     "identifying": "Se identifică țara...",
     "locating": "Se localizează regiunea...",
+    "geocodeFailed": "Nu s-a putut identifica o țară la această locație",
+    "retryBtn": "Reîncearcă",
+    "closeBtn": "Închide",
     "limitedCoverage": "Acoperire limitată",
     "instabilityIndex": "Indicele de instabilitate",
     "notTracked": "Nu este urmărită — {{country}} nu se află în lista CII de nivel 1",
@@ -119,6 +122,17 @@
       "stockIndex": "Indice bursier: {{value}}",
       "recentHeadlines": "**Titluri recente:**",
       "activeStrikes": "{{count}} avertismente active detectate"
+    },
+    "countryFacts": "Date despre țară",
+    "loadingFacts": "Se încarcă datele țării...",
+    "noFacts": "Datele țării nu sunt disponibile.",
+    "facts": {
+      "headOfState": "Șeful statului",
+      "population": "Populație",
+      "capital": "Capitală",
+      "languages": "Limbi",
+      "currencies": "Monede",
+      "area": "Suprafață"
     }
   },
   "header": {
@@ -132,6 +146,7 @@
     "downloadApp": "Descărcați aplicația",
     "fullscreen": "Ecran complet",
     "pinMap": "Fixați harta în partea de sus",
+    "selectRegion": "Selectare regiune",
     "viewOnGitHub": "Vizualizați pe GitHub",
     "filterSources": "Filtrare surse...",
     "sourcesEnabled": "{{enabled}}/{{total}} activat",
@@ -139,6 +154,7 @@
     "toggleTheme": "Comutați modul întuneric/luminos",
     "panelDisplayCaption": "Alegeți ce panouri să afișați pe tabloul de bord",
     "tabGeneral": "General",
+    "tabSettings": "Setări",
     "tabPanels": "Panouri",
     "tabSources": "Surse",
     "languageLabel": "Limba",
@@ -170,6 +186,8 @@
     "sourceRegionGulfMena": "Golf și MENA",
     "filterPanels": "Filtrare panouri...",
     "resetLayout": "Resetați aspectul",
+    "resetLayoutTooltip": "Restaurați aranjamentul implicit al panourilor",
+    "unsavedChanges": "Aveți modificări nesalvate ale panourilor. Le abandonați?",
     "panelCatCore": "Principal",
     "panelCatIntelligence": "Informații",
     "panelCatRegionalNews": "Știri regionale",
@@ -370,6 +388,8 @@
       "noResults": "Niciun rezultat",
       "commands": "Comenzi",
       "results": "Rezultate",
+      "seeAllCommands": "Vezi toate comenzile",
+      "hideCommandList": "Înapoi",
       "navigate": "navigați",
       "select": "selectați",
       "close": "închide",
@@ -658,7 +678,8 @@
         "mideast": "ORIENT. MIJ.",
         "europe": "EUROPA",
         "americas": "AMERICA",
-        "asia": "ASIA"
+        "asia": "ASIA",
+        "space": "SPAȚIU"
       }
     },
     "positiveNewsFeed": {
@@ -748,6 +769,7 @@
       "upstreamUnavailable": "Datele lanțului de aprovizionare sunt temporar indisponibile — afișează datele din cache",
       "spikeAlert": "Salt detectat — rata semnificativ peste media pe 52 de săptămâni",
       "warnings": "avertisment(e)",
+      "aisDisruptions": "Perturbări AIS",
       "mineral": "Mineral",
       "topProducers": "Producători de top",
       "risk": "Risc",
@@ -927,7 +949,8 @@
     "community": {
       "joinDiscussion": "Alăturați-vă discuției",
       "openDiscussion": "Deschideți discuția",
-      "dontShowAgain": "Nu mai afișa"
+      "dontShowAgain": "Nu mai afișa",
+      "sectionLabel": "Comunitate"
     },
     "threatLabels": {
       "critical": "CRIT",
@@ -956,10 +979,21 @@
         "elevated": "Ridicat",
         "monitoring": "Monitorizare",
         "base": "Baza",
-        "nuclear": "Nuclear"
+        "nuclear": "Nuclear",
+        "aircraft": "Aeronavă",
+        "ciiLow": "Scăzut (0–30)",
+        "ciiNormal": "Normal (31–50)",
+        "ciiElevated": "Ridicat (51–65)",
+        "ciiHigh": "Înalt (66–80)",
+        "ciiCritical": "Critic (81–100)"
       },
       "layerGuide": "Ghid de straturi",
+      "layerWarningTitle": "Notificare de performanță",
+      "layerWarningBody": "Activarea a mai mult de {{threshold}} straturi poate afecta performanța de randare și rata de cadre.",
+      "layerWarningDismiss": "Nu mai afișa",
+      "layerWarningOk": "Am înțeles",
       "layersTitle": "Straturi",
+      "layerSearch": "Caută straturi...",
       "timeAll": "Toate",
       "views": {
         "global": "Global",
@@ -989,6 +1023,7 @@
         "nuclearSites": "Situri nucleare",
         "gammaIrradiators": "Iradiatoare Gamma",
         "spaceports": "Porturi spațiale",
+        "satellites": "Supraveghere Orbitală",
         "pipelines": "Conducte",
         "militaryActivity": "Activitate militară",
         "shipTraffic": "Trafic naval",
@@ -1009,7 +1044,13 @@
         "tradeRoutes": "Rute comerciale",
         "iranAttacks": "Atacurile Iranului",
         "gpsJamming": "Bruiaj GPS",
-        "dayNight": "Zi/Noapte"
+        "ciiChoropleth": "Instabilitate CII",
+        "dayNight": "Zi/Noapte",
+        "positiveEvents": "Evenimente pozitive",
+        "kindness": "Acte de bunătate",
+        "happiness": "Fericirea mondială",
+        "speciesRecovery": "Recuperarea speciilor",
+        "renewableInstallations": "Energie curată"
       },
       "tooltip": {
         "earthquake": "Cutremur",
@@ -1114,7 +1155,8 @@
           "financeGulfInvestments": "Investiții în fondurile suverane ale GCC și ISD",
           "tradeRoutes": "Principalele linii maritime globale care conectează porturile prin puncte strategice de blocare",
           "dayNight": "Terminator solar în timp real care arată zonele de zi și de noapte",
-          "geoBoundaries": "Zone demilitarizate, linii de încetare a focului și granițe disputate"
+          "geoBoundaries": "Zone demilitarizate, linii de încetare a focului și granițe disputate",
+          "ciiChoropleth": "Harta termică a instabilității — colorează țările după scorul CII (verde=stabil, roșu=critic)"
         },
         "notes": {
           "timeAffects": "Afectează: cutremure, vreme, proteste, întreruperi"
@@ -1140,6 +1182,15 @@
       "sectionStreaming": "Streaming",
       "streamQualityLabel": "Calitate video",
       "streamQualityDesc": "Setați calitatea pentru toate fluxurile live (lățime de bandă mai mică pentru economii)",
+      "globeRenderQualityLabel": "Calitatea randării globului",
+      "globeRenderQualityDesc": "Controlează rezoluția pânzei globului. Valorile mai mari arată mai clar pe ecrane 4K, dar pot suprasolicita GPU-ul.",
+      "globeRenderScaleOptions": {
+        "1": "Eco (1x)",
+        "2": "4K (2x)",
+        "3": "Extrem (3x)",
+        "auto": "Auto (dispozitiv)",
+        "1_5": "Clar (1.5x)"
+      },
       "mapFlashLabel": "Impuls eveniment live",
       "mapFlashDesc": "Flash locații pe hartă când sosesc știri de ultimă oră",
       "aiFlowTitle": "Setări",
@@ -1162,7 +1213,19 @@
       "badgeAnimDesc": "Animați insigne de actualizare pe anteturile panoului",
       "sectionIntelligence": "Informații",
       "headlineMemoryLabel": "Memorie titlu",
-      "headlineMemoryDesc": "Amintiți-vă titlurile văzute pentru a evidenția povești noi"
+      "headlineMemoryDesc": "Amintiți-vă titlurile văzute pentru a evidenția povești noi",
+      "streamAlwaysOnLabel": "Menține fluxurile live active",
+      "streamAlwaysOnDesc": "Împiedică oprirea automată a camerelor și știrilor live când nu interacționați. Recomandat pentru monitorizare continuă. Dezactivați (Eco) pentru a economisi CPU/lățime de bandă."
+    },
+    "settings": {
+      "dataManagementLabel": "Gestionarea datelor",
+      "exportSettings": "Exportare setări",
+      "importSettings": "Importare setări",
+      "exportSuccess": "Setările au fost exportate cu succes",
+      "exportFailed": "Exportul setărilor a eșuat",
+      "importSuccess": "{{count}} setări importate",
+      "importFailed": "Importul setărilor a eșuat",
+      "reloadNow": "Reîncarcă acum"
     },
     "cascade": {
       "noImpacts": "Nu s-a detectat niciun impact asupra țării",
@@ -1550,7 +1613,8 @@
       "openSettings": "Deschide Setări"
     },
     "languageSelector": {
-      "selectLanguage": "Selectați Limba"
+      "selectLanguage": "Selectați Limba",
+      "mapLabelsFallbackVi": "Etichetele hărții sunt afișate în engleză pentru limba vietnameză."
     },
     "serviceStatus": {
       "checkingServices": "Se verifică serviciile...",
@@ -1617,6 +1681,7 @@
       "confirmTitle": "Confirmați",
       "restoreDefaults": "Restabiliți canalele implicite",
       "availableChannels": "Canale disponibile",
+      "noResults": "Niciun canal găsit pentru „{{term}}“",
       "customChannel": "Canal personalizat",
       "regionAll": "Toate",
       "regionNorthAmerica": "America de Nord",
@@ -1628,7 +1693,9 @@
       "regionOceania": "Oceania",
       "invalidHandle": "Introduceți un handle YouTube valid (de exemplu, @ChannelName)",
       "channelNotFound": "Canalul YouTube nu a fost găsit",
-      "verifying": "Se verifică..."
+      "verifying": "Se verifică...",
+      "hlsUrl": "URL flux HLS (opțional)",
+      "invalidHlsUrl": "Introduceți un URL valid de flux HLS (.m3u8)"
     },
     "map": {
       "showMap": "Arată harta",
@@ -1688,9 +1755,9 @@
     },
     "gpsJamming": {
       "title": "Interferență GPS/GNSS",
-      "interference": "Interferență",
-      "aircraftAffected": "Aeronava afectată",
-      "aircraftNormal": "Aeronavă Cloudmal",
+      "navPerformance": "Nav Performance",
+      "samples": "ADS-B Samples",
+      "aircraft": "Aircraft",
       "h3Hex": "H3 Hex"
     },
     "flight": {
@@ -1706,7 +1773,9 @@
       "sources": {
         "faa": "FAA ASWS",
         "eurocontrol": "Eurocontrol",
-        "computed": "Calculat"
+        "computed": "Calculat",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "America",
@@ -1715,6 +1784,14 @@
         "mena": "Orientul Mijlociu",
         "africa": "Africa"
       }
+    },
+    "aircraft": {
+      "altitude": "Altitudine",
+      "speed": "Viteză la sol",
+      "heading": "Direcție",
+      "position": "Poziție",
+      "ground": "La sol",
+      "airborne": "În zbor"
     },
     "apt": {
       "description": "Grup avansat de amenințări persistente cu capabilități la nivel de stat. Cunoscut pentru operațiunile cibernetice sofisticate care vizează infrastructura critică, guvernarea și sectoarele de apărare."
@@ -2285,5 +2362,27 @@
     "retry": "Reîncercați",
     "refresh": "Actualizează",
     "all": "Toate"
+  },
+  "preferences": {
+    "display": "Afișare",
+    "intelligence": "Inteligență",
+    "media": "Media",
+    "panels": "Panouri",
+    "dataAndCommunity": "Date și comunitate",
+    "theme": "Temă",
+    "themeDesc": "Automat urmează preferințele sistemului.",
+    "themeAuto": "Automat (urmează sistemul)",
+    "themeDark": "Întuneric",
+    "themeLight": "Luminos",
+    "mapProvider": "Furnizor de dale hartă",
+    "mapProviderDesc": "Alegeți sursa dalelor hărții.",
+    "mapTheme": "Tema hărții",
+    "mapThemeDesc": "Stilul vizual al dalelor hărții.",
+    "globePreset": "Presetare vizuală",
+    "globePresetDesc": "Comută între vizualizări clasice și îmbunătățite ale globului."
+  },
+  "contextMenu": {
+    "openCountryBrief": "Deschide prezentarea țării",
+    "copyCoordinates": "Copiază coordonatele"
   }
 }

@@ -1,19 +1,16 @@
-import { cellToLatLng } from 'h3-js';
-import { getApiBaseUrl } from '@/services/runtime';
+import { toApiUrl } from '@/services/runtime';
 
 export interface GpsJamHex {
   h3: string;
   lat: number;
   lon: number;
   level: 'medium' | 'high';
-  pct: number;
-  good: number;
-  bad: number;
-  total: number;
+  npAvg: number;
+  sampleCount: number;
+  aircraftCount: number;
 }
 
 export interface GpsJamData {
-  date: string;
   fetchedAt: string;
   source: string;
   stats: {
@@ -26,49 +23,31 @@ export interface GpsJamData {
 
 let cachedData: GpsJamData | null = null;
 let cachedAt = 0;
-const CACHE_TTL = 60 * 60 * 1000; // 1 hour
+const CACHE_TTL = 5 * 60 * 1000;
 
 export async function fetchGpsInterference(): Promise<GpsJamData | null> {
   const now = Date.now();
   if (cachedData && now - cachedAt < CACHE_TTL) return cachedData;
 
   try {
-    const base = getApiBaseUrl();
-    const resp = await fetch(`${base}/api/gpsjam`, {
+    const resp = await fetch(toApiUrl('/api/gpsjam'), {
       signal: AbortSignal.timeout(20_000),
     });
     if (!resp.ok) return cachedData;
 
-    const raw = await resp.json() as {
-      date: string;
-      fetchedAt: string;
-      source: string;
-      stats: { totalHexes: number; highCount: number; mediumCount: number };
-      hexes: Array<{ h3: string; pct: number; good: number; bad: number; total: number; level: string }>;
-    };
+    const raw = await resp.json() as GpsJamData;
 
-    // Convert H3 hex IDs to lat/lon
-    const hexes: GpsJamHex[] = [];
-    for (const h of raw.hexes) {
-      try {
-        const [lat, lon] = cellToLatLng(h.h3);
-        hexes.push({
-          h3: h.h3,
-          lat: Math.round(lat * 1e5) / 1e5,
-          lon: Math.round(lon * 1e5) / 1e5,
-          level: h.level as 'medium' | 'high',
-          pct: h.pct,
-          good: h.good,
-          bad: h.bad,
-          total: h.total,
-        });
-      } catch {
-        // skip invalid hex
-      }
-    }
+    const hexes: GpsJamHex[] = (raw.hexes ?? []).map(h => ({
+      h3: h.h3,
+      lat: h.lat,
+      lon: h.lon,
+      level: h.level as 'medium' | 'high',
+      npAvg: Number.isFinite(h.npAvg) ? h.npAvg : 0,
+      sampleCount: Number.isFinite(h.sampleCount) ? h.sampleCount : 0,
+      aircraftCount: Number.isFinite(h.aircraftCount) ? h.aircraftCount : 0,
+    }));
 
     cachedData = {
-      date: raw.date,
       fetchedAt: raw.fetchedAt,
       source: raw.source,
       stats: raw.stats,

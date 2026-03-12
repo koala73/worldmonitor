@@ -35,6 +35,7 @@ const LAYER_KEYS: (keyof MapLayers)[] = [
   'tradeRoutes',
   'iranAttacks',
   'gpsJamming',
+  'satellites',
   'ciiChoropleth',
 ];
 
@@ -98,6 +99,10 @@ export function parseMapUrlState(
           .map((layer) => layer.trim())
           .filter(Boolean)
       );
+      if (requested.has('satelliteImagery')) {
+        requested.delete('satelliteImagery');
+        requested.add('satellites');
+      }
       LAYER_KEYS.forEach((key) => {
         layers![key] = requested.has(key);
       });

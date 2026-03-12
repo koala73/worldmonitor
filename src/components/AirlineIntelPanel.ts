@@ -16,6 +16,7 @@ import {
 } from '@/services/aviation';
 import { aviationWatchlist } from '@/services/aviation/watchlist';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
+import { t } from '@/services/i18n';
 import { Panel } from './Panel';
 
 // ---- Helpers ----
@@ -83,7 +84,7 @@ export class AirlineIntelPanel extends Panel {
     private tabBar!: HTMLElement;
 
     constructor() {
-        super({ id: 'airline-intel', title: '✈️ Airline Intelligence', trackActivity: true });
+        super({ id: 'airline-intel', title: t('panels.airlineIntel'), trackActivity: true });
 
         const wl = aviationWatchlist.get();
         this.airports = wl.airports.slice(0, 8);
@@ -91,7 +92,7 @@ export class AirlineIntelPanel extends Panel {
         // Add refresh button to header
         const refreshBtn = document.createElement('button');
         refreshBtn.className = 'icon-btn';
-        refreshBtn.title = 'Refresh';
+        refreshBtn.title = t('common.refresh');
         refreshBtn.textContent = '↻';
         refreshBtn.addEventListener('click', () => this.refresh());
         this.header.appendChild(refreshBtn);
@@ -105,10 +106,10 @@ export class AirlineIntelPanel extends Panel {
 
         // Insert tab bar between header and content
         this.tabBar = document.createElement('div');
-        this.tabBar.className = 'airline-intel-tabs';
+        this.tabBar.className = 'panel-tabs';
         TABS.forEach(tab => {
             const btn = document.createElement('button');
-            btn.className = `tab-btn${tab === this.activeTab ? ' active' : ''}`;
+            btn.className = `panel-tab${tab === this.activeTab ? ' active' : ''}`;
             btn.textContent = TAB_LABELS[tab];
             btn.dataset.tab = tab;
             btn.addEventListener('click', () => this.switchTab(tab as Tab));
@@ -131,7 +132,6 @@ export class AirlineIntelPanel extends Panel {
             }
         });
 
-        this.addStyles();
         void this.refresh();
 
         // Auto-refresh every 5 min — refresh() loads ops + active tab
@@ -160,7 +160,7 @@ export class AirlineIntelPanel extends Panel {
 
     private switchTab(tab: Tab): void {
         this.activeTab = tab;
-        this.tabBar.querySelectorAll('.tab-btn').forEach(b => {
+        this.tabBar.querySelectorAll('.panel-tab').forEach(b => {
             b.classList.toggle('active', (b as HTMLElement).dataset.tab === tab);
         });
         this.renderTab();
@@ -223,7 +223,7 @@ export class AirlineIntelPanel extends Panel {
     }
 
     private renderLoading(): void {
-        this.content.innerHTML = '<div class="panel-loading">Loading…</div>';
+        this.content.innerHTML = `<div class="panel-loading">${t('common.loading')}</div>`;
     }
 
     private renderTab(): void {
@@ -241,7 +241,7 @@ export class AirlineIntelPanel extends Panel {
     // ---- Ops tab ----
     private renderOps(): void {
         if (!this.opsData.length) {
-            this.content.innerHTML = '<div class="no-data">No ops data — loading…</div>';
+            this.content.innerHTML = `<div class="no-data">${t('components.airlineIntel.noOpsData')}</div>`;
             return;
         }
         const rows = this.opsData.map(s => `
@@ -260,7 +260,7 @@ export class AirlineIntelPanel extends Panel {
     // ---- Flights tab ----
     private renderFlights(): void {
         if (!this.flightsData.length) {
-            this.content.innerHTML = `<div class="no-data">No flights — select airport in settings.</div>`;
+            this.content.innerHTML = `<div class="no-data">${t('components.airlineIntel.noFlights')}</div>`;
             return;
         }
         const rows = this.flightsData.map(f => {
@@ -280,7 +280,7 @@ export class AirlineIntelPanel extends Panel {
     // ---- Airlines tab ----
     private renderAirlines(): void {
         if (!this.carriersData.length) {
-            this.content.innerHTML = '<div class="no-data">No carrier data yet.</div>';
+            this.content.innerHTML = `<div class="no-data">${t('components.airlineIntel.noCarrierData')}</div>`;
             return;
         }
         const rows = this.carriersData.slice(0, 15).map(c => `
@@ -296,7 +296,7 @@ export class AirlineIntelPanel extends Panel {
     // ---- Tracking tab ----
     private renderTracking(): void {
         if (!this.trackingData.length) {
-            this.content.innerHTML = '<div class="no-data">No aircraft tracking data.</div>';
+            this.content.innerHTML = `<div class="no-data">${t('components.airlineIntel.noTrackingData')}</div>`;
             return;
         }
         const rows = this.trackingData.slice(0, 20).map(p => `
@@ -312,13 +312,13 @@ export class AirlineIntelPanel extends Panel {
     // ---- News tab ----
     private renderNews(): void {
         if (!this.newsData.length) {
-            this.content.innerHTML = '<div class="no-data">No aviation news.</div>';
+            this.content.innerHTML = `<div class="no-data">${t('components.airlineIntel.noNews')}</div>`;
             return;
         }
         const items = this.newsData.map(n => `
-      <div class="news-item" style="padding:8px 0;border-bottom:1px solid var(--border-color,#333)">
+      <div class="news-item" style="padding:8px 0;border-bottom:1px solid var(--border,#2a2a2a)">
         <a href="${sanitizeUrl(n.url)}" target="_blank" rel="noopener" class="news-link">${escapeHtml(n.title)}</a>
-        <div class="news-meta" style="font-size:11px;color:var(--text-secondary,#999);margin-top:2px">${escapeHtml(n.sourceName)} · ${n.publishedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+        <div class="news-meta" style="font-size:11px;color:var(--text-dim,#888);margin-top:2px">${escapeHtml(n.sourceName)} · ${n.publishedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
       </div>`).join('');
         this.content.innerHTML = `<div class="news-list" style="padding:0 4px">${items}</div>`;
     }
@@ -327,8 +327,8 @@ export class AirlineIntelPanel extends Panel {
     private renderPrices(): void {
         const provider = this.pricesProvider;
         const providerBadge = provider === 'travelpayouts_data'
-            ? '<span class="tp-badge">Cached insight \u00b7 Travelpayouts</span>'
-            : '<span class="demo-badge">DEMO MODE</span>';
+            ? `<span class="tp-badge">${t('components.airlineIntel.cachedInsight')} · Travelpayouts</span>`
+            : `<span class="demo-badge">${t('components.airlineIntel.demoMode')}</span>`;
 
         const searchForm = `
       <div class="price-controls" style="display:flex;gap:6px;flex-wrap:wrap;padding:8px 0;align-items:center">
@@ -342,12 +342,12 @@ export class AirlineIntelPanel extends Panel {
           <option value="try"${this.pricesCurrency === 'try' ? ' selected' : ''}>TRY</option>
           <option value="gbp"${this.pricesCurrency === 'gbp' ? ' selected' : ''}>GBP</option>
         </select>
-        <button id="priceSearchBtn" class="icon-btn" style="padding:4px 10px">Search</button>
+        <button id="priceSearchBtn" class="icon-btn" style="padding:4px 10px">${t('common.search')}</button>
       </div>
-      <div style="margin-bottom:6px">${providerBadge}<span style="font-size:10px;color:#6b7280;margin-left:6px">All prices indicative</span></div>`;
+      <div style="margin-bottom:6px">${providerBadge}<span style="font-size:10px;color:#6b7280;margin-left:6px">${t('components.airlineIntel.pricesIndicative')}</span></div>`;
 
         if (!this.pricesData.length) {
-            this.content.innerHTML = `${searchForm}<div class="no-data">Enter route and search for prices.</div>`;
+            this.content.innerHTML = `${searchForm}<div class="no-data">${t('components.airlineIntel.enterRoute')}</div>`;
         } else {
             const now = Date.now();
             const active = this.pricesData.filter(q => !isPriceExpired(q));
@@ -372,34 +372,5 @@ export class AirlineIntelPanel extends Panel {
 
     }
 
-    // ---- Styles ----
-    private addStyles(): void {
-        if (document.getElementById('airline-intel-styles')) return;
-        const style = document.createElement('style');
-        style.id = 'airline-intel-styles';
-        style.textContent = `
-      .airline-intel-tabs { display:flex;gap:2px;padding:4px 6px 0;flex-wrap:wrap;border-bottom:1px solid var(--border-color,#333); }
-      .airline-intel-tabs .tab-btn { background:none;border:none;color:var(--text-secondary,#9ca3af);cursor:pointer;font-size:12px;padding:5px 8px;border-radius:4px 4px 0 0;transition:color .15s,background .15s; }
-      .airline-intel-tabs .tab-btn:hover { color:var(--text-primary,#e5e7eb); }
-      .airline-intel-tabs .tab-btn.active { color:var(--accent,#60a5fa);border-bottom:2px solid var(--accent,#60a5fa);background:rgba(96,165,250,.08); }
-      .airline-intel-content { overflow-y:auto;max-height:320px;padding:8px; }
-      .ops-grid,.flights-list,.carriers-list,.tracking-list { display:flex;flex-direction:column;gap:4px; }
-      .ops-row,.flight-row,.carrier-row,.track-row { display:flex;gap:8px;align-items:center;font-size:12px;padding:4px;border-radius:4px;transition:background .15s; }
-      .ops-row:hover,.flight-row:hover,.carrier-row:hover,.track-row:hover { background:var(--hover-bg,rgba(255,255,255,.04)); }
-      .ops-iata,.flight-num,.carrier-name,.track-cs { font-weight:600;min-width:36px; }
-      .ops-name,.flight-route { flex:1;color:var(--text-secondary,#9ca3af);overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
-      .ops-closed { color:#ef4444;font-weight:700;font-size:11px; }
-      .ops-notam { color:#f59e0b;font-size:11px; }
-      .price-row { display:flex;gap:8px;align-items:center;font-size:12px;padding:6px;border-bottom:1px solid var(--border-color,#333); }
-      .price-carrier { min-width:80px;font-weight:600; }
-      .price-route { flex:1;color:var(--text-secondary,#9ca3af); }
-      .price-input { background:var(--input-bg,#1e2533);border:1px solid var(--border-color,#374151);border-radius:4px;color:var(--text-primary,#e5e7eb);padding:4px 6px;font-size:12px; }
-      .demo-badge { display:inline-block;font-size:10px;padding:2px 6px;background:rgba(245,158,11,.15);border:1px solid #f59e0b;border-radius:3px;color:#f59e0b;margin-bottom:6px; }
-      .tp-badge { display:inline-block;font-size:10px;padding:2px 6px;background:rgba(96,165,250,.12);border:1px solid #60a5fa;border-radius:3px;color:#60a5fa;margin-bottom:6px; }
-      .no-data { color:var(--text-secondary,#9ca3af);font-size:12px;text-align:center;padding:20px 0; }
-      .news-link { color:var(--text-primary,#e5e7eb);text-decoration:none;font-size:12px;line-height:1.4; }
-      .news-link:hover { color:var(--accent,#60a5fa); }
-    `;
-        document.head.appendChild(style);
-    }
+    /* Styles moved to panels.css (PERF-012) */
 }

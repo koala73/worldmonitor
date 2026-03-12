@@ -9,7 +9,8 @@
   },
   "dependencies": {
     "ws": "^8.18.0",
-    "telegram": "^2.22.2"
+    "telegram": "^2.22.2",
+    "h3-js": "^4.2.1"
   },
   "engines": {
     "node": ">=18"

@@ -28,10 +28,10 @@ export class TelegramIntelPanel extends Panel {
   }
 
   private createTabs(): void {
-    this.tabsEl = h('div', { className: 'telegram-intel-tabs' },
+    this.tabsEl = h('div', { className: 'panel-tabs' },
       ...TELEGRAM_TOPICS.map(topic =>
         h('button', {
-          className: `telegram-intel-tab ${topic.id === this.activeTopic ? 'active' : ''}`,
+          className: `panel-tab ${topic.id === this.activeTopic ? 'active' : ''}`,
           dataset: { topicId: topic.id },
           onClick: () => this.selectTopic(topic.id),
         }, t(topic.labelKey)),
@@ -44,7 +44,7 @@ export class TelegramIntelPanel extends Panel {
     if (topicId === this.activeTopic) return;
     this.activeTopic = topicId;
 
-    this.tabsEl?.querySelectorAll('.telegram-intel-tab').forEach(tab => {
+    this.tabsEl?.querySelectorAll('.panel-tab').forEach(tab => {
       tab.classList.toggle('active', (tab as HTMLElement).dataset.topicId === topicId);
     });
 

@@ -13,6 +13,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/market/v1/service_server';
 import { fetchYahooQuotesBatch } from './_shared';
 import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
+import gulfConfig from '../../../../shared/gulf.json';
 
 const REDIS_KEY = 'market:gulf-quotes:v1';
 const REDIS_TTL = 480; // 8 min
@@ -30,25 +31,7 @@ interface GulfSymbolMeta {
   type: 'index' | 'currency' | 'oil';
 }
 
-const GULF_SYMBOLS: GulfSymbolMeta[] = [
-  // Indices — real Yahoo indices where available, iShares ETF proxies otherwise
-  { symbol: '^TASI.SR', name: 'Tadawul All Share', country: 'Saudi Arabia', flag: '🇸🇦', type: 'index' },
-  { symbol: 'DFMGI.AE', name: 'Dubai Financial Market', country: 'UAE', flag: '🇦🇪', type: 'index' },
-  { symbol: 'UAE', name: 'Abu Dhabi (iShares)', country: 'UAE', flag: '🇦🇪', type: 'index' },
-  { symbol: 'QAT', name: 'Qatar (iShares)', country: 'Qatar', flag: '🇶🇦', type: 'index' },
-  { symbol: 'GULF', name: 'Gulf Dividend (WisdomTree)', country: 'Kuwait', flag: '🇰🇼', type: 'index' },
-  { symbol: '^MSM', name: 'Muscat MSM 30', country: 'Oman', flag: '🇴🇲', type: 'index' },
-  // Currencies (6)
-  { symbol: 'SARUSD=X', name: 'Saudi Riyal', country: 'Saudi Arabia', flag: '🇸🇦', type: 'currency' },
-  { symbol: 'AEDUSD=X', name: 'UAE Dirham', country: 'UAE', flag: '🇦🇪', type: 'currency' },
-  { symbol: 'QARUSD=X', name: 'Qatari Riyal', country: 'Qatar', flag: '🇶🇦', type: 'currency' },
-  { symbol: 'KWDUSD=X', name: 'Kuwaiti Dinar', country: 'Kuwait', flag: '🇰🇼', type: 'currency' },
-  { symbol: 'BHDUSD=X', name: 'Bahraini Dinar', country: 'Bahrain', flag: '🇧🇭', type: 'currency' },
-  { symbol: 'OMRUSD=X', name: 'Omani Rial', country: 'Oman', flag: '🇴🇲', type: 'currency' },
-  // Oil benchmarks (2)
-  { symbol: 'CL=F', name: 'WTI Crude', country: '', flag: '🛢️', type: 'oil' },
-  { symbol: 'BZ=F', name: 'Brent Crude', country: '', flag: '🛢️', type: 'oil' },
-];
+const GULF_SYMBOLS: GulfSymbolMeta[] = gulfConfig.symbols as GulfSymbolMeta[];
 
 const ALL_SYMBOLS = GULF_SYMBOLS.map(s => s.symbol);
 const META_MAP = new Map(GULF_SYMBOLS.map(s => [s.symbol, s]));

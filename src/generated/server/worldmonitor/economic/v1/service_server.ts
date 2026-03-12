@@ -24,6 +24,17 @@ export interface FredObservation {
   value: number;
 }
 
+export interface GetFredSeriesBatchRequest {
+  seriesIds: string[];
+  limit: number;
+}
+
+export interface GetFredSeriesBatchResponse {
+  results: Record<string, FredSeries>;
+  fetched: number;
+  requested: number;
+}
+
 export interface ListWorldBankIndicatorsRequest {
   indicatorCode: string;
   countryCode: string;
@@ -256,6 +267,7 @@ export interface RouteDescriptor {
 
 export interface EconomicServiceHandler {
   getFredSeries(ctx: ServerContext, req: GetFredSeriesRequest): Promise<GetFredSeriesResponse>;
+  getFredSeriesBatch(ctx: ServerContext, req: GetFredSeriesBatchRequest): Promise<GetFredSeriesBatchResponse>;
   listWorldBankIndicators(ctx: ServerContext, req: ListWorldBankIndicatorsRequest): Promise<ListWorldBankIndicatorsResponse>;
   getEnergyPrices(ctx: ServerContext, req: GetEnergyPricesRequest): Promise<GetEnergyPricesResponse>;
   getMacroSignals(ctx: ServerContext, req: GetMacroSignalsRequest): Promise<GetMacroSignalsResponse>;
@@ -297,6 +309,53 @@ export function createEconomicServiceRoutes(
 
           const result = await handler.getFredSeries(ctx, body);
           return new Response(JSON.stringify(result as GetFredSeriesResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/economic/v1/get-fred-series-batch",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const rawBody = await req.json() as { series_ids?: string[]; limit?: number };
+          const body: GetFredSeriesBatchRequest = {
+            seriesIds: rawBody.series_ids ?? [],
+            limit: rawBody.limit ?? 0,
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getFredSeriesBatch", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getFredSeriesBatch(ctx, body);
+          return new Response(JSON.stringify(result as GetFredSeriesBatchResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

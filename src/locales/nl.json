@@ -104,7 +104,68 @@
       "brief": "Typ een landnaam voor een inlichtingenbriefing",
       "layers": "Typ \"military\" of \"finance\" voor laagpresets",
       "time": "Typ \"1h\", \"24h\" of \"7d\" om te filteren op tijd",
-      "settings": "Typ \"dark mode\", \"settings\" of \"fullscreen\""
+      "settings": "Typ \"dark mode\", \"settings\" of \"fullscreen\"",
+      "mapExample": "iran",
+      "panelExample": "news",
+      "briefExample": "brief china",
+      "layersExample": "military layers",
+      "timeExample": "24h",
+      "settingsExample": "dark mode"
+    },
+    "keywords": {
+      "military": "militair",
+      "finance": "financiën",
+      "infrastructure": "infrastructuur",
+      "intelligence": "inlichtingen",
+      "news": "nieuws",
+      "dark": "donker",
+      "light": "licht",
+      "settings": "instellingen",
+      "fullscreen": "volledig scherm",
+      "refresh": "vernieuwen"
+    },
+    "labels": {
+      "layers": {
+        "military": "Militaire lagen tonen",
+        "finance": "Financiële lagen tonen",
+        "infra": "Infrastructuurlagen tonen",
+        "intel": "Inlichtingenlagen tonen",
+        "all": "Alle lagen activeren",
+        "none": "Alle lagen verbergen",
+        "minimal": "Minimale lagen (conflicten + hotspots)"
+      },
+      "layer": {
+        "ais": "AIS-scheepstracking in-/uitschakelen",
+        "flights": "Militaire vluchten in-/uitschakelen",
+        "conflicts": "Conflictzones in-/uitschakelen",
+        "hotspots": "Inlichtingen-hotspots in-/uitschakelen",
+        "protests": "Protesten & onrust in-/uitschakelen",
+        "cables": "Onderzeese kabels in-/uitschakelen",
+        "pipelines": "Pijpleidingen in-/uitschakelen",
+        "nuclear": "Nucleaire faciliteiten in-/uitschakelen",
+        "bases": "Militaire bases in-/uitschakelen",
+        "fires": "Satellietbranden in-/uitschakelen",
+        "weather": "Weeroverlay in-/uitschakelen",
+        "cyber": "Cyberdreigingen in-/uitschakelen",
+        "displacement": "Verplaatsingsstromen in-/uitschakelen",
+        "climate": "Klimaatanomalieën in-/uitschakelen",
+        "outages": "Internetstoringen in-/uitschakelen",
+        "tradeRoutes": "Handelsroutes in-/uitschakelen"
+      },
+      "view": {
+        "dark": "Naar donkere modus",
+        "light": "Naar lichte modus",
+        "fullscreen": "Volledig scherm in-/uitschakelen",
+        "settings": "Instellingen openen",
+        "refresh": "Alle gegevens vernieuwen"
+      },
+      "time": {
+        "1h": "Gebeurtenissen van het laatste uur",
+        "6h": "Gebeurtenissen van de laatste 6 uur",
+        "24h": "Gebeurtenissen van de laatste 24 uur",
+        "48h": "Gebeurtenissen van de laatste 48 uur",
+        "7d": "Gebeurtenissen van de laatste 7 dagen"
+      }
     }
   },
   "modals": {
@@ -142,7 +203,11 @@
       "placeholderTech": "Zoeken of commando typen...",
       "hintTech": "Zoeken • Bedrijven • AI Labs • Lagen • Navigatie • Instellingen",
       "placeholderFinance": "Zoeken of commando typen...",
-      "hintFinance": "Zoeken • Beurzen • Markten • Lagen • Navigatie • Instellingen"
+      "hintFinance": "Zoeken • Beurzen • Markten • Lagen • Navigatie • Instellingen",
+      "commands": "Opdrachten",
+      "results": "Resultaten",
+      "seeAllCommands": "Alle opdrachten tonen",
+      "hideCommandList": "Terug"
     },
     "signal": {
       "source": "Source",
@@ -241,6 +306,9 @@
     "countryIntel": {
       "identifying": "Land identificeren...",
       "locating": "Regio lokaliseren...",
+      "geocodeFailed": "Kan geen land identificeren op deze locatie",
+      "retryBtn": "Opnieuw proberen",
+      "closeBtn": "Sluiten",
       "instabilityIndex": "Instabiliteitsindex",
       "protests": "protesten",
       "militaryAircraft": "miljoen vliegtuigen",
@@ -336,7 +404,7 @@
       "shareTitle": "Deel verhaal",
       "close": "Dichtbij",
       "generating": "Verhaal genereren...",
-      "save": "Redden",
+      "save": "Opslaan",
       "whatsapp": "WhatsAppen",
       "twitter": "X",
       "linkedin": "LinkedIn",
@@ -412,9 +480,12 @@
         "mideast": "MIDDEN-OOSTEN",
         "europe": "EUROPA",
         "americas": "AMERIKA",
-        "asia": "AZIË"
+        "asia": "AZIË",
+        "space": "RUIMTE"
       },
-      "expand": "Uitvouwen"
+      "expand": "Uitvouwen",
+      "paused": "Webcams gepauzeerd",
+      "pausedIdle": "Webcams gepauzeerd — beweeg de muis om te hervatten"
     },
     "playback": {
       "live": "Live",
@@ -456,7 +527,13 @@
         "elevated": "Verhoogd",
         "monitoring": "Bewaking",
         "base": "Basis",
-        "nuclear": "Nucleair"
+        "nuclear": "Nucleair",
+        "aircraft": "Vliegtuigen",
+        "ciiLow": "Laag (0–30)",
+        "ciiNormal": "Normaal (31–50)",
+        "ciiElevated": "Verhoogd (51–65)",
+        "ciiHigh": "Hoog (66–80)",
+        "ciiCritical": "Kritiek (81–100)"
       },
       "timeAll": "Alle",
       "layers": {
@@ -477,6 +554,7 @@
         "nuclearSites": "Nucleaire locaties",
         "gammaIrradiators": "Gamma-bestralers",
         "spaceports": "Ruimtehavens",
+        "satellites": "Orbitale Bewaking",
         "pipelines": "Pijpleidingen",
         "militaryActivity": "Militaire activiteit",
         "shipTraffic": "Scheepsverkeer",
@@ -497,10 +575,21 @@
         "tradeRoutes": "Handelsroutes",
         "gpsJamming": "GPS JAMMING",
         "dayNight": "Dag/Nacht",
-        "iranAttacks": "Iraanse aanvallen"
+        "iranAttacks": "Iraanse aanvallen",
+        "ciiChoropleth": "CII-instabiliteit",
+        "positiveEvents": "Positieve gebeurtenissen",
+        "kindness": "Daden van goedheid",
+        "happiness": "Wereldgeluk",
+        "speciesRecovery": "Soortenherstel",
+        "renewableInstallations": "Schone energie"
       },
       "layersTitle": "Lagen",
+      "layerSearch": "Lagen zoeken...",
       "layerGuide": "Lagengids",
+      "layerWarningTitle": "Prestatie-opmerking",
+      "layerWarningBody": "Het inschakelen van meer dan {{threshold}} lagen kan de renderprestaties en framesnelheid beïnvloeden.",
+      "layerWarningDismiss": "Niet meer tonen",
+      "layerWarningOk": "Begrepen",
       "tooltip": {
         "earthquake": "Aardbeving",
         "militaryAircraft": "Militaire vliegtuigen",
@@ -604,7 +693,8 @@
           "techCyberThreats": "Cyberaanvallen en beveiligingsincidenten",
           "techEvents": "Grote techconferenties en evenementen",
           "techFires": "Actieve bosbranden nabij technische infrastructuur",
-          "geoBoundaries": "Gedemilitariseerde zones, staakt-het-vuren-lijnen en betwiste grenzen"
+          "geoBoundaries": "Gedemilitariseerde zones, staakt-het-vuren-lijnen en betwiste grenzen",
+          "ciiChoropleth": "Country Instability Index heatmap — kleurt landen op basis van CII-score (groen=stabiel, rood=kritiek)"
         },
         "notes": {
           "timeAffects": "Beïnvloedt: aardbevingen, weer, protesten, stroomstoringen"
@@ -629,13 +719,16 @@
       "summarize": "Vat dit paneel samen",
       "generatingSummary": "Samenvatting genereren...",
       "sources": "{{count}} bronnen",
-      "relatedAssetsNear": "Gerelateerde activa in de buurt van {{location}}"
+      "relatedAssetsNear": "Gerelateerde activa in de buurt van {{location}}",
+      "summaryError": "Samenvatting kon niet worden gemaakt",
+      "summaryFailed": "Samenvatting mislukt"
     },
     "countryBrief": {
       "shareStory": "Deel verhaal",
       "printPdf": "Afdrukken / PDF",
       "exportData": "Gegevens exporteren",
-      "sourceRef": "Bron [{{n}}]"
+      "sourceRef": "Bron [{{n}}]",
+      "shareLink": "Link delen"
     },
     "relatedAssets": {
       "pipeline": "Pijpleiding",
@@ -647,7 +740,8 @@
     "community": {
       "joinDiscussion": "Doe mee aan de discussie",
       "openDiscussion": "Open discussie",
-      "dontShowAgain": "Niet meer tonen"
+      "dontShowAgain": "Niet meer tonen",
+      "sectionLabel": "Gemeenschap"
     },
     "threatLabels": {
       "critical": "KRIT",
@@ -1097,7 +1191,16 @@
       "headlineMemoryLabel": "Koptekstgeheugen",
       "headlineMemoryDesc": "Gezien koppen onthouden om nieuwe te markeren",
       "streamAlwaysOnLabel": "Live streams actief houden",
-      "streamAlwaysOnDesc": "Voorkomt dat Live Cams en Live News automatisch pauzeren wanneer je inactief bent. Aanbevolen voor tweede monitor / wallboard-gebruik. Schakel uit (Eco) om CPU/bandbreedte te besparen."
+      "streamAlwaysOnDesc": "Voorkomt dat Live Cams en Live News automatisch pauzeren wanneer je inactief bent. Aanbevolen voor tweede monitor / wallboard-gebruik. Schakel uit (Eco) om CPU/bandbreedte te besparen.",
+      "globeRenderQualityLabel": "Bol-renderkwaliteit",
+      "globeRenderQualityDesc": "Regelt de canvasresolutie van de bol. Hogere waarden zijn scherper op 4K-schermen maar kunnen GPUs overbelasten.",
+      "globeRenderScaleOptions": {
+        "1": "Eco (1x)",
+        "2": "4K (2x)",
+        "3": "Extreem (3x)",
+        "auto": "Auto (apparaat)",
+        "1_5": "Scherp (1.5x)"
+      }
     },
     "techHubs": {
       "infoTooltip": "<strong>Tech Hub-activiteit</strong><br>Toont tech-hubs met de meeste nieuwsactiviteit.<br><br><em>Activiteitsniveaus:</em><br>• <span style=\"color: {{highColor}}\">Hoog</span> — Breaking news of 50+ score<br>• <span style=\"color: {{elevatedColor}}\">Verhoogd</span> — Score 20-49<br>• <span style=\"color: {{lowColor}}\">Laag</span> — Score lager dan 20<br><br>Klik op een hub om naar de locatie ervan te zoomen.",
@@ -1200,7 +1303,8 @@
       "openSettings": "Open Settings"
     },
     "languageSelector": {
-      "selectLanguage": "Select Language"
+      "selectLanguage": "Select Language",
+      "mapLabelsFallbackVi": "Kaartlabels vallen momenteel terug op Engels voor Vietnamees."
     },
     "serviceStatus": {
       "checkingServices": "Checking services...",
@@ -1278,7 +1382,10 @@
       "channelNotFound": "YouTube-kanaal niet gevonden",
       "invalidHandle": "Voer een geldig YouTube-handle in (bijv. @Kanaalnaam)",
       "signInToYouTube": "Inloggen bij YouTube",
-      "verifying": "Verifiëren…"
+      "verifying": "Verifiëren…",
+      "noResults": "Geen kanalen gevonden voor \"{{term}}\"",
+      "hlsUrl": "HLS-stream-URL (optioneel)",
+      "invalidHlsUrl": "Voer een geldige HLS-stream-URL in (.m3u8)"
     },
     "securityAdvisories": {
       "loading": "Reisadviezen laden...",
@@ -1363,7 +1470,32 @@
       "spikeAlert": "Piek gedetecteerd — tarief aanzienlijk boven 52-weeks gemiddelde (wekelijks)",
       "topProducers": "Topproducenten",
       "upstreamUnavailable": "Toeleveringsketengegevens tijdelijk niet beschikbaar — gecachete gegevens worden weergegeven",
-      "warnings": "waarschuwing(en)"
+      "warnings": "waarschuwing(en)",
+      "aisDisruptions": "AIS-verstoring(en)"
+    },
+    "positiveNewsFeed": {
+      "noStories": "Nog geen verhalen in deze categorie"
+    },
+    "goodThingsDigest": {
+      "noStories": "Geen verhalen beschikbaar",
+      "summarizing": "Samenvatten…"
+    },
+    "progressCharts": {
+      "noData": "Geen voortgangsgegevens beschikbaar"
+    },
+    "settings": {
+      "dataManagementLabel": "Gegevensbeheer",
+      "exportSettings": "Instellingen exporteren",
+      "importSettings": "Instellingen importeren",
+      "exportSuccess": "Instellingen succesvol geëxporteerd",
+      "exportFailed": "Instellingen exporteren mislukt",
+      "importSuccess": "{{count}} instellingen geïmporteerd",
+      "importFailed": "Instellingen importeren mislukt",
+      "reloadNow": "Nu herladen"
+    },
+    "map": {
+      "showMap": "Kaart tonen",
+      "hideMap": "Kaart verbergen"
     }
   },
   "popups": {
@@ -1418,9 +1550,9 @@
     },
     "gpsJamming": {
       "title": "GPS/GNSS-storing",
-      "interference": "Storing",
-      "aircraftAffected": "Getroffen vliegtuigen",
-      "aircraftNormal": "Normale vliegtuigen",
+      "navPerformance": "Nav Performance",
+      "samples": "ADS-B Samples",
+      "aircraft": "Aircraft",
       "h3Hex": "H3 Hex"
     },
     "flight": {
@@ -1436,7 +1568,9 @@
       "sources": {
         "faa": "FAA ASWS",
         "eurocontrol": "Eurocontrol",
-        "computed": "Berekend"
+        "computed": "Berekend",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "Amerika",
@@ -1834,6 +1968,14 @@
     },
     "iranEvent": {
       "relatedEvents": "Gerelateerde gebeurtenissen"
+    },
+    "aircraft": {
+      "altitude": "Hoogte",
+      "speed": "Grondsnelheid",
+      "heading": "Koers",
+      "position": "Positie",
+      "ground": "Op de grond",
+      "airborne": "In de lucht"
     }
   },
   "signals": {
@@ -2034,6 +2176,7 @@
     "toggleTheme": "Schakel tussen de donkere/lichte modus",
     "panelDisplayCaption": "Kies welke panelen op het dashboard worden weergegeven",
     "tabGeneral": "Algemeen",
+    "tabSettings": "Instellingen",
     "tabPanels": "Panelen",
     "tabSources": "Bronnen",
     "languageLabel": "Taal",
@@ -2065,6 +2208,8 @@
     "sourceRegionGulfMena": "Golf & MENA",
     "filterPanels": "Panels filteren...",
     "resetLayout": "Layout resetten",
+    "resetLayoutTooltip": "Standaard panelindeling herstellen",
+    "unsavedChanges": "U heeft niet-opgeslagen paneelwijzigingen. Verwijderen?",
     "panelCatCore": "Kern",
     "panelCatIntelligence": "Inlichtingen",
     "panelCatRegionalNews": "Regionaal Nieuws",
@@ -2081,7 +2226,9 @@
     "panelCatCentralBanks": "Centrale Banken & Economie",
     "panelCatDeals": "Deals & Institutioneel",
     "panelCatGulfMena": "Golf & MENA",
-    "panelCatTradePolicy": "Handelsbeleid"
+    "panelCatTradePolicy": "Handelsbeleid",
+    "downloadApp": "App downloaden",
+    "selectRegion": "Regio kiezen"
   },
   "app": {
     "title": "World Monitor",
@@ -2161,6 +2308,81 @@
       "stockIndex": "Beursindex: {{value}}",
       "recentHeadlines": "**Recente koppen:**",
       "activeStrikes": "{{count}} actieve stakingen gedetecteerd"
+    },
+    "militaryActivity": "Militaire activiteit",
+    "economicIndicators": "Economische indicatoren",
+    "ownFlights": "Eigen vluchten",
+    "foreignFlights": "Buitenlandse vluchten",
+    "navalVessels": "Marineschepen",
+    "foreignPresence": "Buitenlandse aanwezigheid",
+    "nearestBases": "Dichtstbijzijnde militaire bases",
+    "noBasesNearby": "Geen bases binnen 600 km.",
+    "noInfrastructure": "Geen kritieke infrastructuur gevonden binnen 600 km.",
+    "noGeometry": "Geen geometriegegevens beschikbaar voor infrastructuurcorrelatie.",
+    "noSignals": "Geen recente signalen met hoge ernst.",
+    "assessmentUnavailable": "Beoordeling niet beschikbaar.",
+    "noNews": "Geen recente landspecifieke berichtgeving.",
+    "noIndicators": "Geen landspecifieke indicatoren beschikbaar.",
+    "nearbyPorts": "Nabijgelegen havens",
+    "detected": "Gedetecteerd",
+    "notDetected": "Nee",
+    "ciiUnavailable": "CII-score niet beschikbaar voor dit land.",
+    "chips": {
+      "criticalNews": "Kritiek nieuws",
+      "protests": "Protesten",
+      "militaryAir": "Militair luchtverkeer",
+      "navalVessels": "Marineschepen",
+      "outages": "Storingen",
+      "aisDisruptions": "AIS-verstoringen",
+      "satelliteFires": "Satellietbranden",
+      "temporalAnomalies": "Temporele anomalieën",
+      "cyberThreats": "Cyberdreigingen",
+      "earthquakes": "Aardbevingen",
+      "displaced": "Ontheemden",
+      "climateStress": "Klimaatstress",
+      "conflictEvents": "Conflictgebeurtenissen",
+      "activeStrikes": "Actieve aanvallen",
+      "doNotTravel": "Niet reizen",
+      "reconsiderTravel": "Reis heroverwegen",
+      "exerciseCaution": "Wees voorzichtig",
+      "advisory": "Reisadvies",
+      "activeSirens": "Actieve sirenes",
+      "sirens24h": "Sirenes / 24u",
+      "aviationDisruptions": "Luchtvaartverstoringen",
+      "gpsJammingZones": "GPS-storingszones"
+    },
+    "countryFacts": "Landenfeiten",
+    "loadingFacts": "Landenfeiten laden...",
+    "noFacts": "Landenfeiten niet beschikbaar.",
+    "facts": {
+      "headOfState": "Staatshoofd",
+      "population": "Bevolking",
+      "capital": "Hoofdstad",
+      "languages": "Talen",
+      "currencies": "Valuta's",
+      "area": "Oppervlakte"
     }
+  },
+  "preferences": {
+    "display": "Weergave",
+    "intelligence": "Intelligentie",
+    "media": "Media",
+    "panels": "Panelen",
+    "dataAndCommunity": "Data & Community",
+    "theme": "Thema",
+    "themeDesc": "Automatisch volgt systeemvoorkeur.",
+    "themeAuto": "Automatisch (systeem volgen)",
+    "themeDark": "Donker",
+    "themeLight": "Licht",
+    "mapProvider": "Kaarttegel-provider",
+    "mapProviderDesc": "Kies waar kaarttegels vandaan worden geladen.",
+    "mapTheme": "Kaartthema",
+    "mapThemeDesc": "Visuele stijl van de kaarttegels.",
+    "globePreset": "Visuele voorinstelling",
+    "globePresetDesc": "Schakel tussen klassieke en verbeterde globevisuals."
+  },
+  "contextMenu": {
+    "openCountryBrief": "Landenoverzicht openen",
+    "copyCoordinates": "Coördinaten kopiëren"
   }
 }

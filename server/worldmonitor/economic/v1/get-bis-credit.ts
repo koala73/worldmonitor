@@ -33,7 +33,7 @@ export async function getBisCredit(
       // Group by country, take last 2 observations
       const byCountry = new Map<string, Array<{ date: string; value: number }>>();
       for (const row of rows) {
-        const cc = row['REF_AREA'] || row['Reference area'] || '';
+        const cc = row['REF_AREA'] || row['BORROWERS_CTY'] || row['Reference area'] || '';
         const date = row['TIME_PERIOD'] || row['Time period'] || '';
         const val = parseBisNumber(row['OBS_VALUE'] || row['Observation value']);
         if (!cc || !date || val === null) continue;

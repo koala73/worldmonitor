@@ -469,7 +469,7 @@ export class InsightsPanel extends Panel {
       this.renderInsights(importantClusters, sentiments, worldBrief);
     } catch (error) {
       console.error('[InsightsPanel] Error:', error);
-      this.setContent('<div class="insights-error">Analysis failed - retrying...</div>');
+      this.showError();
     }
   }
 

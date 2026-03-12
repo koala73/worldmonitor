@@ -4,6 +4,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import * as Sentry from '@sentry/browser';
 import { inject } from '@vercel/analytics';
 import { App } from './App';
+import { installUtmInterceptor } from './utils/utm';
 
 const sentryDsn = import.meta.env.VITE_SENTRY_DSN?.trim();
 
@@ -27,7 +28,7 @@ Sentry.init({
     /importScripts/,
     /^TypeError: Load failed( \(.*\))?$/,
     /^TypeError: Failed to fetch( \(.*\))?$/,
-    /^TypeError: cancelled$/,
+    /^TypeError: (?:cancelled|avbruten)$/,
     /^TypeError: NetworkError/,
     /runtime\.sendMessage\(\)/,
     /Java object is gone/,
@@ -58,6 +59,12 @@ Sentry.init({
     /objectStoreNames/,
     /Unexpected identifier 'https'/,
     /Can't find variable: _0x/,
+    /Can't find variable: video/,
+    /hackLocationFailed is not defined/,
+    /userScripts is not defined/,
+    /NS_ERROR_ABORT/,
+    /DataCloneError.*could not be cloned/,
+    /cannot decode message/,
     /WKWebView was deallocated/,
     /Unexpected end of(?: JSON)? input/,
     /window\.android\.\w+ is not a function/,
@@ -185,7 +192,7 @@ Sentry.init({
     /Can't find variable: caches/,
     /crypto\.randomUUID is not a function/,
     /ucapi is not defined/,
-    /Identifier '(?:script|reportPage)' has already been declared/,
+    /Identifier '(?:script|reportPage|element)' has already been declared/,
     /getAttribute is not a function.*getAttribute\("role"\)/,
     /^TypeError: Internal error$/,
     /SCDynimacBridge/,
@@ -199,6 +206,33 @@ Sentry.init({
     /Client can't handle this message/,
     /Invalid LngLat object/,
     /autoReset/,
+    /webkitExitFullScreen/,
+    /downProgCallback/,
+    /syncDownloadState/,
+    /^ReferenceError: HTMLOUT is not defined$/,
+    /^ReferenceError: xbrowser is not defined$/,
+    /LibraryDetectorTests_detect/,
+    /contentBoxSize\[0\] is undefined/,
+    /Attempting to run\(\), but is already running/,
+    /Out of range source coordinates for DEM data/,
+    /Invalid character: '\\0'/,
+    /Failed to execute 'unobserve' on 'IntersectionObserver'/,
+    /WKErrorDomain/,
+    /Content-Length header of network response exceeds response Body/,
+    /^Uncaught \[object ErrorEvent\]$/,
+    /trsMethod\w+ is not defined/,
+    /checkLogin is not a function/,
+    /VConsole is not defined/,
+    /exitFullscreen.*Document not active/,
+    /Force close delete origin/,
+    /zp_token is not defined/,
+    /literal not terminated before end of script/,
+    /'' is not a valid selector/,
+    /frappe is not defined/,
+    /Unexpected identifier 'does'/,
+    /Failed reading data from the file system/,
+    /^UnavailableError(:.*)?$/,
+    /null is not an object \(evaluating '\w{1,3}\.indexOf'\)/,
   ],
   beforeSend(event) {
     const msg = event.exception?.values?.[0]?.value ?? '';
@@ -209,24 +243,37 @@ Sentry.init({
       if (frames.some(f => /\/(map|maplibre|deck-stack)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
     }
     // Suppress any TypeError that happens entirely within maplibre or deck.gl internals
-    if (/^TypeError:/.test(msg) && frames.length > 0) {
-      const nonSentryFrames = frames.filter(f => f.filename && f.filename !== '<anonymous>' && !/\/sentry-[A-Za-z0-9_-]+\.js/.test(f.filename));
+    const excType = event.exception?.values?.[0]?.type ?? '';
+    if ((excType === 'TypeError' || /^TypeError:/.test(msg)) && frames.length > 0) {
+      const nonSentryFrames = frames.filter(f => f.filename && f.filename !== '<anonymous>' && f.filename !== '[native code]' && !/\/sentry-[A-Za-z0-9_-]+\.js/.test(f.filename));
       if (nonSentryFrames.length > 0 && nonSentryFrames.every(f => /\/(map|maplibre|deck-stack)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
     }
-    // Suppress Three.js/globe.gl TypeError crashes in main bundle (reading 'type' on undefined during WebGL traversal)
-    if (/reading 'type'|can't access property "type",? \w+ is undefined/.test(msg)) {
-      const nonSentryFrames = frames.filter(f => f.filename && f.filename !== '<anonymous>' && !/\/sentry-[A-Za-z0-9_-]+\.js/.test(f.filename));
+    // Suppress Three.js/globe.gl TypeError crashes in main bundle (reading 'type'/'pathType'/'count'/'__globeObjType' on undefined during WebGL traversal/raycast)
+    if (/reading '(?:type|pathType|count|__globeObjType)'|can't access property "(?:type|pathType|count|__globeObjType)",? \w+ is (?:undefined|null)|undefined is not an object \(evaluating '\w+\.(?:pathType|count|__globeObjType)'\)|null is not an object \(evaluating '\w+\.__globeObjType'\)/.test(msg)) {
+      const nonSentryFrames = frames.filter(f => f.filename && f.filename !== '<anonymous>' && f.filename !== '[native code]' && !/\/sentry-[A-Za-z0-9_-]+\.js/.test(f.filename));
       const hasSourceMapped = nonSentryFrames.some(f => /\.(ts|tsx)$/.test(f.filename ?? '') || /^src\//.test(f.filename ?? ''));
       if (!hasSourceMapped) return null;
     }
+    // Suppress minified Three.js/globe.gl crashes (e.g. "l is undefined" in raycast, "b is undefined" in update/initGlobe)
+    if (/^\w{1,2} is (?:undefined|not an object)$/.test(msg) && frames.length > 0) {
+      if (frames.some(f => /\/(main|index)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? '') && /(raycast|update|initGlobe|traverse|render)/.test(f.function ?? ''))) return null;
+    }
     // Suppress Three.js OrbitControls touch crashes (finger lifted during pinch-zoom)
     if (/undefined is not an object \(evaluating 't\.x'\)|Cannot read properties of undefined \(reading 'x'\)/.test(msg)) {
-      if (frames.some(f => /_handleTouchStart|Dolly|eie|jse/.test(f.function ?? ''))) return null;
+      const nonSentryFrames = frames.filter(f => f.filename && f.filename !== '<anonymous>' && f.filename !== '[native code]' && !/\/sentry-[A-Za-z0-9_-]+\.js/.test(f.filename));
+      const hasSourceMapped = nonSentryFrames.some(f => /\.(ts|tsx)$/.test(f.filename ?? '') || /^src\//.test(f.filename ?? ''));
+      if (!hasSourceMapped) return null;
     }
     // Suppress deck.gl/maplibre null-access crashes with no usable stack trace (requestAnimationFrame wrapping)
     if (/null is not an object \(evaluating '\w{1,3}\.(id|type|style)'\)/.test(msg) && frames.length === 0) return null;
-    // Suppress TypeErrors from anonymous/injected scripts (no real source files)
-    if (/^TypeError:/.test(msg) && frames.length > 0 && frames.every(f => !f.filename || f.filename === '<anonymous>' || /^blob:/.test(f.filename))) return null;
+    // Suppress Safari sortedTrackListForMenu native crash (value is generic "Type error", function name in stack)
+    if (excType === 'TypeError' && frames.some(f => /sortedTrackListForMenu/.test(f.function ?? ''))) return null;
+    // Suppress TypeErrors from anonymous/injected scripts (no real source files or only inline page URL)
+    if ((excType === 'TypeError' || /^TypeError:/.test(msg)) && frames.length > 0 && frames.every(f => !f.filename || f.filename === '<anonymous>' || /^blob:/.test(f.filename) || /^https?:\/\/[^/]+\/?$/.test(f.filename))) return null;
+    // Suppress parentNode.insertBefore from injected/inline scripts (iOS WKWebView, Apple Mail)
+    if (/parentNode\.insertBefore/.test(msg) && frames.every(f => !f.filename || f.filename === '<anonymous>' || /^blob:/.test(f.filename) || /^https?:\/\/[^/]+\/?$/.test(f.filename))) return null;
+    // Suppress Sentry breadcrumb DOM-measuring crashes (element.offsetWidth on detached DOM)
+    if (/evaluating '(?:element|e)\.offset(?:Width|Height)'/.test(msg) && frames.some(f => /\/sentry-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
     // Suppress errors originating entirely from blob: URLs (browser extensions)
     if (frames.length > 0 && frames.every(f => /^blob:/.test(f.filename ?? ''))) return null;
     // Suppress errors originating from UV proxy (Ultraviolet service worker)
@@ -247,14 +294,17 @@ import { initMetaTags } from '@/services/meta-tags';
 import { installRuntimeFetchPatch, installWebApiRedirect } from '@/services/runtime';
 import { loadDesktopSecrets } from '@/services/runtime-config';
 import { applyStoredTheme } from '@/utils/theme-manager';
+import { applyFont } from '@/services/font-settings';
 import { SITE_VARIANT } from '@/config/variant';
 import { clearChunkReloadGuard, installChunkReloadGuard } from '@/bootstrap/chunk-reload';
 
 // Auto-reload on stale chunk 404s after deployment (Vite fires this for modulepreload failures).
 const chunkReloadStorageKey = installChunkReloadGuard(__APP_VERSION__);
 
-// Initialize Vercel Analytics
-inject();
+// Initialize Vercel Analytics (10% sampling to reduce costs)
+inject({
+  beforeSend: (event) => (Math.random() > 0.1 ? null : event),
+});
 
 // Initialize dynamic meta tags for sharing
 initMetaTags();
@@ -267,6 +317,7 @@ loadDesktopSecrets().catch(() => {});
 
 // Apply stored theme preference before app initialization (safety net for inline script)
 applyStoredTheme();
+applyFont();
 
 // Set data-variant on <html> so CSS theme overrides activate
 if (SITE_VARIANT && SITE_VARIANT !== 'full') {
@@ -306,6 +357,7 @@ if (urlParams.get('settings') === '1') {
     }
   );
 } else {
+  installUtmInterceptor();
   const app = new App('app');
   app
     .init()
@@ -346,40 +398,43 @@ if ('__TAURI_INTERNALS__' in window || '__TAURI__' in window) {
 }
 
 if (!('__TAURI_INTERNALS__' in window) && !('__TAURI__' in window) && 'serviceWorker' in navigator) {
-  // One-time nuke: clear stale SWs and caches from old deploys, then re-register fresh.
-  // Safe to remove after 2026-03-20 when all users have cycled through.
-  const nukeKey = 'wm-sw-nuked-v2';
-  let alreadyNuked = false;
-  try { alreadyNuked = !!localStorage.getItem(nukeKey); } catch { /* private browsing */ }
-  if (!alreadyNuked) {
-    try { localStorage.setItem(nukeKey, '1'); } catch { /* best effort */ }
-    navigator.serviceWorker.getRegistrations().then(async (regs) => {
-      await Promise.all(regs.map(r => r.unregister()));
-      const keys = await caches.keys();
-      await Promise.all(keys.map(k => caches.delete(k)));
-      console.log('[PWA] Nuked stale service workers and caches');
-      window.location.reload();
-    });
-  } else {
-    // Auto-reload when a new SW takes control (fixes stale HTML after deploys)
-    let refreshing = false;
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (refreshing) return;
-      refreshing = true;
-      window.location.reload();
-    });
+  // Auto-reload when a new SW takes control (fixes stale HTML after deploys)
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshing) return;
+    refreshing = true;
+    window.location.reload();
+  });
 
-    navigator.serviceWorker.register('/sw.js', { scope: '/' })
-      .then((registration) => {
-        console.log('[PWA] Service worker registered');
-        const swUpdateInterval = setInterval(async () => {
-          if (!navigator.onLine) return;
-          try { await registration.update(); } catch {}
-        }, 5 * 60 * 1000);
-        (window as unknown as Record<string, unknown>).__swUpdateInterval = swUpdateInterval;
-      })
-      .catch((err) => {
-        console.warn('[PWA] Service worker registration failed:', err);
-      });
-  }
+  navigator.serviceWorker.register('/sw.js', { scope: '/' })
+    .then((registration) => {
+      console.log('[PWA] Service worker registered');
+      const swUpdateInterval = setInterval(async () => {
+        if (!navigator.onLine) return;
+        try { await registration.update(); } catch {}
+      }, 5 * 60 * 1000);
+      (window as unknown as Record<string, unknown>).__swUpdateInterval = swUpdateInterval;
+    })
+    .catch((err) => {
+      console.warn('[PWA] Service worker registration failed:', err);
+    });
 }
+
+// --- SW/Cache Nuke Template ---
+// If stale service workers or caches cause issues after a major deploy, re-enable this block.
+// It runs once per user (guarded by a localStorage key), nukes all SWs and caches, then reloads.
+// IMPORTANT: This causes a visible double-load for every new/unkeyed user. Remove once rollout is complete.
+//
+// const nukeKey = 'wm-sw-nuked-v3';
+// let alreadyNuked = false;
+// try { alreadyNuked = !!localStorage.getItem(nukeKey); } catch {}
+// if (!alreadyNuked) {
+//   try { localStorage.setItem(nukeKey, '1'); } catch {}
+//   navigator.serviceWorker.getRegistrations().then(async (regs) => {
+//     await Promise.all(regs.map(r => r.unregister()));
+//     const keys = await caches.keys();
+//     await Promise.all(keys.map(k => caches.delete(k)));
+//     console.log('[PWA] Nuked stale service workers and caches');
+//     window.location.reload();
+//   });
+// }

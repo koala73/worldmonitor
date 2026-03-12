@@ -1,0 +1,54 @@
+---
+title: "Geographic Convergence Detection"
+description: "Multi-event clustering analysis that detects when independent data streams converge on the same geographic area, providing early warning of significant events."
+---
+One of the most valuable intelligence signals is when **multiple independent data streams converge on the same geographic area**. This often precedes significant events.
+
+## How It Works
+
+The system maintains a real-time grid of geographic cells (1° x 1° resolution). Each cell tracks four event types:
+
+| Event Type | Source | Detection Method |
+|------------|--------|-----------------|
+| **Protests** | ACLED/GDELT | Direct geolocation |
+| **Military Flights** | OpenSky | ADS-B position |
+| **Naval Vessels** | AIS stream | Ship position |
+| **Earthquakes** | USGS | Epicenter location |
+
+When **3 or more different event types** occur within the same cell during a 24-hour window, a **convergence alert** is generated.
+
+## Convergence Scoring
+
+```
+type_score = event_types × 25      # Max 100 (4 types)
+count_boost = min(25, total_events × 2)
+convergence_score = min(100, type_score + count_boost)
+```
+
+## Alert Thresholds
+
+| Types Converging | Score Range | Alert Level |
+|-----------------|-------------|-------------|
+| **4 types** | 80-100 | Critical |
+| **3 types** | 60-80 | High |
+| **3 types** (low count) | 40-60 | Medium |
+
+## Example Scenarios
+
+**Taiwan Strait Buildup**
+
+- Cell: `25°N, 121°E`
+- Events: Military flights (3), Naval vessels (2), Protests (1)
+- Score: 75 + 12 = 87 (Critical)
+- Signal: "Geographic Convergence (3 types) - military flights, naval vessels, protests"
+
+**Middle East Flashpoint**
+
+- Cell: `32°N, 35°E`
+- Events: Military flights (5), Protests (8), Earthquake (1)
+- Score: 75 + 25 = 100 (Critical)
+- Signal: Multiple activity streams converging on region
+
+## Why This Matters
+
+Individual data points are often noise. But when **protests break out, military assets reposition, and seismic monitors detect anomalies** in the same location simultaneously, it warrants attention, regardless of whether any single source is reporting a crisis.

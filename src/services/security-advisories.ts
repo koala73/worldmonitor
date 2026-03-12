@@ -2,6 +2,7 @@ import { rssProxyUrl } from '@/utils';
 import { getPersistentCache, setPersistentCache } from './persistent-cache';
 import { dataFreshness } from './data-freshness';
 import { nameToCountryCode, matchCountryNamesInText } from './country-geometry';
+import { parseFeedDateOrNow } from './feed-date';
 
 const advisoryFeedUrl = rssProxyUrl;
 
@@ -143,8 +144,7 @@ function parseFeedXml(
     const pubDateStr = isAtom
       ? (item.querySelector('updated')?.textContent || item.querySelector('published')?.textContent || '')
       : (item.querySelector('pubDate')?.textContent || '');
-    const parsed = pubDateStr ? new Date(pubDateStr) : new Date();
-    const pubDate = Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+    const pubDate = parseFeedDateOrNow(pubDateStr);
 
     const level = feed.parseLevel ? feed.parseLevel(title) : 'info';
     const country = extractTargetCountry(title, feed);

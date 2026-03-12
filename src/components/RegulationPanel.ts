@@ -23,11 +23,11 @@ export class RegulationPanel extends Panel {
       <div class="regulation-panel">
         <div class="regulation-header">
           <h3>${t('components.regulation.dashboard')}</h3>
-          <div class="regulation-tabs">
-            <button class="tab ${this.viewMode === 'timeline' ? 'active' : ''}" data-view="timeline">${t('components.regulation.timeline')}</button>
-            <button class="tab ${this.viewMode === 'deadlines' ? 'active' : ''}" data-view="deadlines">${t('components.regulation.deadlines')}</button>
-            <button class="tab ${this.viewMode === 'regulations' ? 'active' : ''}" data-view="regulations">${t('components.regulation.regulations')}</button>
-            <button class="tab ${this.viewMode === 'countries' ? 'active' : ''}" data-view="countries">${t('components.regulation.countries')}</button>
+          <div class="panel-tabs">
+            <button class="panel-tab ${this.viewMode === 'timeline' ? 'active' : ''}" data-view="timeline">${t('components.regulation.timeline')}</button>
+            <button class="panel-tab ${this.viewMode === 'deadlines' ? 'active' : ''}" data-view="deadlines">${t('components.regulation.deadlines')}</button>
+            <button class="panel-tab ${this.viewMode === 'regulations' ? 'active' : ''}" data-view="regulations">${t('components.regulation.regulations')}</button>
+            <button class="panel-tab ${this.viewMode === 'countries' ? 'active' : ''}" data-view="countries">${t('components.regulation.countries')}</button>
           </div>
         </div>
         <div class="regulation-content">
@@ -37,7 +37,7 @@ export class RegulationPanel extends Panel {
     `;
 
     // Add event listeners for tabs
-    this.content.querySelectorAll('.tab').forEach(tab => {
+    this.content.querySelectorAll('.panel-tab').forEach(tab => {
       tab.addEventListener('click', (e) => {
         const target = e.target as HTMLElement;
         const view = target.dataset.view as typeof this.viewMode;

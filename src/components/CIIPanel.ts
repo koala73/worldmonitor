@@ -135,16 +135,18 @@ export class CIIPanel extends Panel {
       this.setCount(withData.length);
 
       if (withData.length === 0) {
+        this.setErrorState(false);
         replaceChildren(this.content, h('div', { className: 'empty-state' }, t('components.cii.noSignals')));
         return;
       }
 
+      this.setErrorState(false);
       const listEl = h('div', { className: 'cii-list' }, ...withData.map(s => this.buildCountry(s)));
       replaceChildren(this.content, listEl);
       this.bindShareButtons();
     } catch (error) {
       console.error('[CIIPanel] Refresh error:', error);
-      this.showError(t('common.failedCII'));
+      this.showError(t('common.failedCII'), () => void this.refresh());
     }
   }
 
@@ -154,6 +156,7 @@ export class CIIPanel extends Panel {
     this.scores = scores;
     this.hasCachedRender = true;
     this.setCount(scores.length);
+    this.setErrorState(false);
     const listEl = h('div', { className: 'cii-list' }, ...scores.map(s => this.buildCountry(s)));
     replaceChildren(this.content, listEl);
     this.bindShareButtons();

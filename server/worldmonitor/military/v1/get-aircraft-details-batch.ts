@@ -8,6 +8,7 @@ import type {
 import { mapWingbitsDetails } from './_shared';
 import { CHROME_UA } from '../../../_shared/constants';
 import { getCachedJsonBatch, cachedFetchJson } from '../../../_shared/redis';
+import { toUniqueSortedLimited } from '../../../_shared/normalize-list';
 
 interface CachedAircraftDetails {
   details: AircraftDetails | null;
@@ -25,8 +26,7 @@ export async function getAircraftDetailsBatch(
     const normalized = req.icao24s
       .map((id) => id.trim().toLowerCase())
       .filter((id) => id.length > 0);
-    const uniqueSorted = Array.from(new Set(normalized)).sort();
-    const limitedList = uniqueSorted.slice(0, 10);
+    const limitedList = toUniqueSortedLimited(normalized, 10);
 
     // Redis shared cache — batch GET all keys in a single pipeline round-trip
     const SINGLE_KEY = 'military:aircraft:v1';

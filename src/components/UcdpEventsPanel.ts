@@ -17,6 +17,21 @@ export class UcdpEventsPanel extends Panel {
       infoTooltip: t('components.ucdpEvents.infoTooltip'),
     });
     this.showLoading(t('common.loadingUcdpEvents'));
+
+    this.content.addEventListener('click', (e) => {
+      const tab = (e.target as HTMLElement).closest<HTMLElement>('.panel-tab');
+      if (tab?.dataset.tab) {
+        this.activeTab = tab.dataset.tab as UcdpEventType;
+        this.renderContent();
+        return;
+      }
+      const row = (e.target as HTMLElement).closest<HTMLElement>('.ucdp-row');
+      if (row) {
+        const lat = Number(row.dataset.lat);
+        const lon = Number(row.dataset.lon);
+        if (Number.isFinite(lat) && Number.isFinite(lon)) this.onEventClick?.(lat, lon);
+      }
+    });
   }
 
   public setEventClickHandler(handler: (lat: number, lon: number) => void): void {
@@ -53,7 +68,7 @@ export class UcdpEventsPanel extends Panel {
     const totalDeaths = filtered.reduce((sum, e) => sum + e.deaths_best, 0);
 
     const tabsHtml = tabs.map(t =>
-      `<button class="ucdp-tab ${t.key === this.activeTab ? 'ucdp-tab-active' : ''}" data-tab="${t.key}">${t.label} <span class="ucdp-tab-count">${tabCounts[t.key]}</span></button>`
+      `<button class="panel-tab ${t.key === this.activeTab ? 'active' : ''}" data-tab="${t.key}">${t.label} <span class="ucdp-tab-count">${tabCounts[t.key]}</span></button>`
     ).join('');
 
     const displayed = filtered.slice(0, 50);
@@ -100,27 +115,12 @@ export class UcdpEventsPanel extends Panel {
     this.setContent(`
       <div class="ucdp-panel-content">
         <div class="ucdp-header">
-          <div class="ucdp-tabs">${tabsHtml}</div>
+          <div class="panel-tabs">${tabsHtml}</div>
           ${totalDeaths > 0 ? `<span class="ucdp-total-deaths">${t('components.ucdpEvents.deathsCount', { count: totalDeaths.toLocaleString() })}</span>` : ''}
         </div>
         ${bodyHtml}
         ${moreHtml}
       </div>
     `);
-
-    this.content.querySelectorAll('.ucdp-tab').forEach(btn => {
-      btn.addEventListener('click', () => {
-        this.activeTab = (btn as HTMLElement).dataset.tab as UcdpEventType;
-        this.renderContent();
-      });
-    });
-
-    this.content.querySelectorAll('.ucdp-row').forEach(el => {
-      el.addEventListener('click', () => {
-        const lat = Number((el as HTMLElement).dataset.lat);
-        const lon = Number((el as HTMLElement).dataset.lon);
-        if (Number.isFinite(lat) && Number.isFinite(lon)) this.onEventClick?.(lat, lon);
-      });
-    });
   }
 }

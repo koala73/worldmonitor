@@ -7,7 +7,7 @@ import type { Feature, Geometry } from 'geojson';
 import type { MapLayers, Hotspot, NewsItem, InternetOutage, RelatedAsset, AssetType, AisDisruptionEvent, AisDensityZone, CableAdvisory, RepairShip, SocialUnrestEvent, MilitaryFlight, MilitaryVessel, MilitaryFlightCluster, MilitaryVesselCluster, NaturalEvent, CyberThreat, CableHealthRecord } from '@/types';
 import type { AirportDelayAlert, PositionSample } from '@/services/aviation';
 import type { Earthquake } from '@/services/earthquakes';
-import type { IranEvent } from '@/services/conflict';
+import { type IranEvent, getIranEventCssColor, getIranEventSize } from '@/services/conflict';
 import type { TechHubActivity } from '@/services/tech-activity';
 import type { GeoHubActivity } from '@/services/geo-activity';
 import { getNaturalEventIcon } from '@/services/eonet';
@@ -1490,10 +1490,8 @@ export class MapComponent {
         const pos = projection([ev.longitude, ev.latitude]);
         if (!pos || !Number.isFinite(pos[0]) || !Number.isFinite(pos[1])) return;
 
-        const size = (ev.severity === 'high' || ev.severity === 'critical') ? 14 : ev.severity === 'medium' ? 11 : 8;
-        const color = ev.category === 'military' ? 'rgba(255,50,50,0.85)'
-          : (ev.category === 'politics' || ev.category === 'diplomacy') ? 'rgba(255,165,0,0.8)'
-            : 'rgba(255,255,0,0.7)';
+        const size = getIranEventSize(ev.severity);
+        const color = getIranEventCssColor(ev);
 
         const div = document.createElement('div');
         div.className = 'iran-event-marker';

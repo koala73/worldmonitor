@@ -1,4 +1,5 @@
 import type { NaturalEvent, NaturalEventCategory } from '@/types';
+import { getRpcBaseUrl } from '@/services/rpc-client';
 import { NATURAL_EVENT_CATEGORIES } from '@/types';
 import {
   NaturalServiceClient,
@@ -34,7 +35,7 @@ function normalizeNaturalCategory(category: string | undefined): NaturalEventCat
     : 'manmade';
 }
 
-const client = new NaturalServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+const client = new NaturalServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 const breaker = createCircuitBreaker<ListNaturalEventsResponse>({ name: 'NaturalEvents', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
 
 const emptyFallback: ListNaturalEventsResponse = { events: [] };
@@ -54,6 +55,20 @@ function toNaturalEvent(e: ListNaturalEventsResponse['events'][number]): Natural
     sourceUrl: e.sourceUrl || undefined,
     sourceName: e.sourceName || undefined,
     closed: e.closed,
+    stormId: e.stormId || undefined,
+    stormName: e.stormName || undefined,
+    basin: e.basin || undefined,
+    stormCategory: e.stormCategory ?? undefined,
+    classification: e.classification || undefined,
+    windKt: e.windKt ?? undefined,
+    pressureMb: e.pressureMb ?? undefined,
+    movementDir: e.movementDir ?? undefined,
+    movementSpeedKt: e.movementSpeedKt ?? undefined,
+    forecastTrack: e.forecastTrack?.length ? e.forecastTrack : undefined,
+    conePolygon: e.conePolygon?.length
+      ? e.conePolygon.map(ring => ring.points.map(p => [p.lon, p.lat]))
+      : undefined,
+    pastTrack: e.pastTrack?.length ? e.pastTrack : undefined,
   };
 }
 

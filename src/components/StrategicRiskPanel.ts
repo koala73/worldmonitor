@@ -75,7 +75,7 @@ export class StrategicRiskPanel extends Panel {
       await this.refresh();
     } catch (error) {
       console.error('[StrategicRiskPanel] Init error:', error);
-      this.showError(t('common.failedRiskOverview'));
+      this.showError(t('common.failedRiskOverview'), () => void this.refresh());
     }
   }
 
@@ -450,23 +450,26 @@ export class StrategicRiskPanel extends Panel {
   private render(): void {
     this.freshnessSummary = dataFreshness.getSummary();
 
-    if (!this.overview) {
-      this.showLoading();
-      return;
-    }
+    try {
+      if (!this.overview) {
+        this.showLoading();
+        return;
+      }
 
-    // Render full data view — partial data is handled gracefully by CII baselines
-    // Only show insufficient state if zero sources after 60s (true failure)
-    let html: string;
-    const uptime = performance.now();
-    if (this.freshnessSummary.overallStatus === 'insufficient' && uptime > 60_000 && !this.usedCachedScores) {
-      html = this.renderInsufficientData();
-    } else {
-      html = this.renderFullData();
-    }
+      // Render full data view — partial data is handled gracefully by CII baselines
+      // Only show insufficient state if zero sources after 60s (true failure)
+      const uptime = performance.now();
+      const html =
+        this.freshnessSummary.overallStatus === 'insufficient' && uptime > 60_000 && !this.usedCachedScores
+          ? this.renderInsufficientData()
+          : this.renderFullData();
 
-    this.content.innerHTML = html;
-    this.attachEventListeners();
+      this.content.innerHTML = html;
+      this.attachEventListeners();
+    } catch (e: unknown) {
+      console.error('[StrategicRiskPanel] Render error:', e);
+      this.showError(t('common.failedRiskOverview'), () => this.refresh());
+    }
   }
 
   private attachEventListeners(): void {

@@ -12,7 +12,7 @@ export interface AviationWatchlist {
 }
 
 const DEFAULT_WATCHLIST: AviationWatchlist = {
-  airports: ['IST', 'ESB', 'SAW', 'LHR', 'FRA', 'CDG'],
+  airports: ['IST', 'ESB', 'SAW', 'LHR', 'FRA', 'CDG', 'DXB', 'RUH'],
   airlines: ['TK'],
   routes: ['IST-LHR', 'IST-FRA'],
 };

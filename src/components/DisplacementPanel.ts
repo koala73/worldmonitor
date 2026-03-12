@@ -20,6 +20,21 @@ export class DisplacementPanel extends Panel {
       infoTooltip: t('components.displacement.infoTooltip'),
     });
     this.showLoading(t('common.loadingDisplacement'));
+
+    this.content.addEventListener('click', (e) => {
+      const tab = (e.target as HTMLElement).closest<HTMLElement>('.panel-tab');
+      if (tab?.dataset.tab) {
+        this.activeTab = tab.dataset.tab as DisplacementTab;
+        this.renderContent();
+        return;
+      }
+      const row = (e.target as HTMLElement).closest<HTMLElement>('.disp-row');
+      if (row) {
+        const lat = Number(row.dataset.lat);
+        const lon = Number(row.dataset.lon);
+        if (Number.isFinite(lat) && Number.isFinite(lon)) this.onCountryClick?.(lat, lon);
+      }
+    });
   }
 
   public setCountryClickHandler(handler: (lat: number, lon: number) => void): void {
@@ -28,7 +43,7 @@ export class DisplacementPanel extends Panel {
 
   public setData(data: UnhcrSummary): void {
     this.data = data;
-    this.setCount(data.countries.length);
+    this.setCount(data.countries?.length ?? 0);
     this.renderContent();
   }
 
@@ -52,9 +67,9 @@ export class DisplacementPanel extends Panel {
     ).join('');
 
     const tabsHtml = `
-      <div class="disp-tabs" role="tablist" aria-label="Displacement data view">
-        <button class="disp-tab ${this.activeTab === 'origins' ? 'disp-tab-active' : ''}" data-tab="origins" role="tab" aria-selected="${this.activeTab === 'origins'}" id="disp-tab-origins" aria-controls="disp-tab-panel">${t('components.displacement.origins')}</button>
-        <button class="disp-tab ${this.activeTab === 'hosts' ? 'disp-tab-active' : ''}" data-tab="hosts" role="tab" aria-selected="${this.activeTab === 'hosts'}" id="disp-tab-hosts" aria-controls="disp-tab-panel">${t('components.displacement.hosts')}</button>
+      <div class="panel-tabs" role="tablist" aria-label="Displacement data view">
+        <button class="panel-tab ${this.activeTab === 'origins' ? 'active' : ''}" data-tab="origins" role="tab" aria-selected="${this.activeTab === 'origins'}" id="disp-tab-origins" aria-controls="disp-tab-panel">${t('components.displacement.origins')}</button>
+        <button class="panel-tab ${this.activeTab === 'hosts' ? 'active' : ''}" data-tab="hosts" role="tab" aria-selected="${this.activeTab === 'hosts'}" id="disp-tab-hosts" aria-controls="disp-tab-panel">${t('components.displacement.hosts')}</button>
       </div>
     `;
 
@@ -120,20 +135,5 @@ export class DisplacementPanel extends Panel {
         </div>
       </div>
     `);
-
-    this.content.querySelectorAll('.disp-tab').forEach(btn => {
-      btn.addEventListener('click', () => {
-        this.activeTab = (btn as HTMLElement).dataset.tab as DisplacementTab;
-        this.renderContent();
-      });
-    });
-
-    this.content.querySelectorAll('.disp-row').forEach(el => {
-      el.addEventListener('click', () => {
-        const lat = Number((el as HTMLElement).dataset.lat);
-        const lon = Number((el as HTMLElement).dataset.lon);
-        if (Number.isFinite(lat) && Number.isFinite(lon)) this.onCountryClick?.(lat, lon);
-      });
-    });
   }
 }

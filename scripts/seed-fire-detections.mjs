@@ -97,7 +97,7 @@ async function fetchAllRegions(apiKey) {
         failed++;
         console.error(`  [FIRMS] ${source}/${regionName}: ${err.message || err}`);
       }
-      await sleep(200);
+      await sleep(6_000); // FIRMS free tier: 10 req/min — 6s between calls stays safely under limit
     }
     console.log(`  ${source}: ${fireDetections.length} total (${fulfilled} ok, ${failed} failed)`);
   }
@@ -117,6 +117,7 @@ async function main() {
   await runSeed('wildfire', 'fires', CANONICAL_KEY, () => fetchAllRegions(apiKey), {
     validateFn: (data) => Array.isArray(data?.fireDetections) && data.fireDetections.length > 0,
     ttlSeconds: 7200,
+    lockTtlMs: 600_000, // 10 min — 27 calls × (6s pace + up to 30s timeout) can exceed 5 min under partial slowness
     sourceVersion: FIRMS_SOURCES.join('+'),
   });
 }

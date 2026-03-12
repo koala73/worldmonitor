@@ -1,0 +1,101 @@
+import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
+
+export const config = { runtime: 'edge' };
+
+const NOMINATIM_BASE = 'https://nominatim.openstreetmap.org/reverse';
+const CHROME_UA = 'WorldMonitor/2.0 (https://worldmonitor.app)';
+
+export default async function handler(req) {
+  if (isDisallowedOrigin(req))
+    return new Response('Forbidden', { status: 403 });
+
+  const cors = getCorsHeaders(req);
+  if (req.method === 'OPTIONS')
+    return new Response(null, { status: 204, headers: cors });
+
+  const url = new URL(req.url);
+  const lat = url.searchParams.get('lat');
+  const lon = url.searchParams.get('lon');
+
+  const latN = Number(lat);
+  const lonN = Number(lon);
+  if (!lat || !lon || isNaN(latN) || isNaN(lonN)
+      || latN < -90 || latN > 90 || lonN < -180 || lonN > 180) {
+    return new Response(JSON.stringify({ error: 'valid lat (-90..90) and lon (-180..180) required' }), {
+      status: 400,
+      headers: { ...cors, 'Content-Type': 'application/json' },
+    });
+  }
+
+  const redisUrl = process.env.UPSTASH_REDIS_REST_URL;
+  const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+  const cacheKey = `geocode:${latN.toFixed(1)},${lonN.toFixed(1)}`;
+
+  if (redisUrl && redisToken) {
+    try {
+      const cached = await fetch(`${redisUrl}/get/${encodeURIComponent(cacheKey)}`, {
+        headers: { Authorization: `Bearer ${redisToken}` },
+        signal: AbortSignal.timeout(1500),
+      });
+      if (cached.ok) {
+        const data = await cached.json();
+        if (data.result) {
+          return new Response(data.result, {
+            status: 200,
+            headers: {
+              ...cors,
+              'Content-Type': 'application/json',
+              'Cache-Control': 'public, s-maxage=86400, stale-while-revalidate=3600',
+            },
+          });
+        }
+      }
+    } catch { /* cache miss, fetch fresh */ }
+  }
+
+  try {
+    const resp = await fetch(
+      `${NOMINATIM_BASE}?lat=${latN}&lon=${lonN}&format=json&zoom=3&accept-language=en`,
+      {
+        headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
+        signal: AbortSignal.timeout(8000),
+      },
+    );
+
+    if (!resp.ok) {
+      return new Response(JSON.stringify({ error: `Nominatim ${resp.status}` }), {
+        status: 502,
+        headers: { ...cors, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const data = await resp.json();
+    const country = data.address?.country;
+    const code = data.address?.country_code?.toUpperCase();
+
+    const result = { country: country || null, code: code || null, displayName: data.display_name || country || '' };
+    const body = JSON.stringify(result);
+
+    if (redisUrl && redisToken && country && code) {
+      fetch(redisUrl, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${redisToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(['SET', cacheKey, body, 'EX', 604800]),
+      }).catch(() => {});
+    }
+
+    return new Response(body, {
+      status: 200,
+      headers: {
+        ...cors,
+        'Content-Type': 'application/json',
+        'Cache-Control': 'public, s-maxage=86400, stale-while-revalidate=3600',
+      },
+    });
+  } catch (err) {
+    return new Response(JSON.stringify({ error: 'Nominatim request failed' }), {
+      status: 502,
+      headers: { ...cors, 'Content-Type': 'application/json' },
+    });
+  }
+}

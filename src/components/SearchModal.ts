@@ -94,6 +94,8 @@ export class SearchModal {
   private placeholder: string;
   private activePanelIds: Set<string> = new Set();
   private isMobile: boolean;
+  /** When true, results area shows the full command list (opt-in). Sourced from getAllCommands(); no separate list to maintain. */
+  private showingAllCommands = false;
 
   constructor(container: HTMLElement, options?: SearchModalOptions) {
     this.container = container;
@@ -134,6 +136,7 @@ export class SearchModal {
     this.isMobile = isMobileDevice();
     this.createModal();
     this.input?.focus();
+    this.showingAllCommands = false;
     this.showRecentOrEmpty();
     if (this.isMobile) this.renderChips();
   }
@@ -270,6 +273,7 @@ export class SearchModal {
     const query = this.input?.value.trim().toLowerCase() || '';
 
     if (!query) {
+      this.showingAllCommands = false;
       this.commandResults = [];
       this.showRecentOrEmpty();
       if (this.isMobile) this.renderChips();
@@ -329,6 +333,11 @@ export class SearchModal {
   private showRecentOrEmpty(): void {
     this.results = [];
 
+    if (this.showingAllCommands) {
+      this.renderAllCommandsList();
+      return;
+    }
+
     if (this.recentSearches.length > 0) {
       this.renderRecent();
     } else {
@@ -364,6 +373,8 @@ export class SearchModal {
 
       this.resultsList?.appendChild(item);
     });
+
+    this.appendSeeAllCommandsLink();
   }
 
   private renderEmpty(): void {
@@ -401,6 +412,93 @@ export class SearchModal {
         if (this.input) {
           this.input.value = example;
           this.handleSearch();
+        }
+      });
+    });
+
+    this.appendSeeAllCommandsLink();
+  }
+
+  private appendSeeAllCommandsLink(): void {
+    if (!this.resultsList) return;
+    const link = document.createElement('a');
+    link.href = '#';
+    link.className = 'search-all-commands-link';
+    link.textContent = t('modals.search.seeAllCommands');
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      this.showingAllCommands = true;
+      this.renderAllCommandsList();
+    });
+    const wrap = document.createElement('div');
+    wrap.className = 'search-all-commands-wrap';
+    wrap.appendChild(link);
+    this.resultsList.appendChild(wrap);
+  }
+
+  /** Renders the full command list by category. Commands are sourced from getAllCommands(); no separate list to maintain. */
+  private renderAllCommandsList(): void {
+    if (!this.resultsList) return;
+
+    const allCommands = getAllCommands();
+    const commands = allCommands.filter(cmd => {
+      if (cmd.id.startsWith('panel:') && this.activePanelIds.size > 0) {
+        const panelId = cmd.id.slice(6);
+        if (!this.activePanelIds.has(panelId)) return false;
+      }
+      return true;
+    });
+
+    const categoryOrder: Command['category'][] = ['navigate', 'layers', 'panels', 'view', 'actions', 'country'];
+    const byCategory = new Map<Command['category'], Command[]>();
+    for (const cat of categoryOrder) byCategory.set(cat, []);
+    for (const cmd of commands) {
+      const list = byCategory.get(cmd.category);
+      if (list) list.push(cmd);
+    }
+
+    let html = `
+      <div class="search-section-header search-command-list-back">
+        <a href="#" class="search-all-commands-back">${escapeHtml(t('modals.search.hideCommandList'))}</a>
+      </div>`;
+
+    for (const category of categoryOrder) {
+      const list = byCategory.get(category) || [];
+      if (list.length === 0) continue;
+      const first = list[0];
+      if (!first) continue;
+      const label = resolveCategoryLabel(first);
+      html += `<details class="search-command-category" open>`;
+      html += `<summary class="search-command-category-summary">${escapeHtml(label)}</summary>`;
+      html += `<div class="search-command-category-list">`;
+      for (const cmd of list) {
+        html += `
+          <div class="search-result-item command-item" data-command="${escapeHtml(cmd.id)}">
+            <span class="search-result-icon">${escapeHtml(cmd.icon)}</span>
+            <div class="search-result-content">
+              <div class="search-result-title">${escapeHtml(resolveCommandLabel(cmd))}</div>
+            </div>
+          </div>`;
+      }
+      html += `</div></details>`;
+    }
+
+    this.resultsList.innerHTML = html;
+
+    const backLink = this.resultsList.querySelector('.search-all-commands-back');
+    backLink?.addEventListener('click', (e) => {
+      e.preventDefault();
+      this.showingAllCommands = false;
+      this.showRecentOrEmpty();
+    });
+
+    this.resultsList.querySelectorAll('.search-command-category .command-item').forEach((el) => {
+      el.addEventListener('click', () => {
+        const id = (el as HTMLElement).dataset.command;
+        const command = getAllCommands().find(c => c.id === id);
+        if (command) {
+          this.onCommand?.(command);
+          this.close();
         }
       });
     });
