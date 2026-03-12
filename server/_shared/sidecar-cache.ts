@@ -41,11 +41,14 @@ function startSweepIfNeeded(): void {
   }
 }
 
-function evictLRU(): void {
-  // Collect keys to evict first, then delete (avoids mutating Map during iteration)
+function evictLRU(incomingSize = 0): void {
+  // Collect keys to evict first, then delete (avoids mutating Map during iteration).
+  // Ensure headroom for an incoming write, not only current occupancy.
   const keysToEvict: string[] = [];
   for (const [k, entry] of store) {
-    if (store.size - keysToEvict.length < MAX_ENTRIES && totalBytes <= MAX_BYTES) break;
+    const nextEntryCount = store.size - keysToEvict.length + 1;
+    const nextTotalBytes = totalBytes + incomingSize;
+    if (nextEntryCount <= MAX_ENTRIES && nextTotalBytes <= MAX_BYTES) break;
     keysToEvict.push(k);
     totalBytes -= entry.size;
   }
@@ -92,7 +95,7 @@ export function sidecarCacheSet(key: string, value: unknown, ttlSeconds: number)
 
   // Evict if needed
   if (store.size >= MAX_ENTRIES || totalBytes + size > MAX_BYTES) {
-    evictLRU();
+    evictLRU(size);
   }
 
   store.set(key, {
@@ -108,4 +111,3 @@ export function sidecarCacheSet(key: string, value: unknown, ttlSeconds: number)
 export function sidecarCacheStats(): { entries: number; bytes: number; hits: number; misses: number } {
   return { entries: store.size, bytes: totalBytes, hits: hitCount, misses: missCount };
 }
-

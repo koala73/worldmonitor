@@ -119,7 +119,7 @@ export class App {
       if (panel) primeTask('stablecoins', () => panel.fetchData());
     }
     if (shouldPrime('telegram-intel')) {
-      primeTask('telegramIntel', () => this.dataLoader.loadTelegramIntel());
+      primeTask('telegram-intel', () => this.dataLoader.loadTelegramIntel());
     }
     if (shouldPrime('gulf-economies')) {
       const panel = this.state.panels['gulf-economies'] as GulfEconomiesPanel | undefined;
