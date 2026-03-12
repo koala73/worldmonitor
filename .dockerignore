@@ -1,0 +1,32 @@
+# ── Dependencies ──────────────────────────────────────────────────────────────
+node_modules
+npm-debug.log*
+yarn.lock
+.pnpm-store
+
+# ── Version control ──────────────────────────────────────────────────────────
+.git
+.gitignore
+.github
+
+# ── Build output (rebuilt inside Docker) ─────────────────────────────────────
+dist
+coverage
+
+# ── Desktop app (not needed in Docker) ───────────────────────────────────────
+src-tauri/target
+src-tauri/gen
+e2e
+
+# ── Documentation & planning ─────────────────────────────────────────────────
+.planning
+
+# ── OS artifacts ─────────────────────────────────────────────────────────────
+.DS_Store
+*.log
+
+# ── Docker (prevent recursive copy) ─────────────────────────────────────────
+Dockerfile
+docker-compose*.yml
+.dockerignore
+secrets/

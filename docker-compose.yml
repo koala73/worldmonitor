@@ -1,0 +1,74 @@
+# ────────────────────────────────────────────────────────────────────────────────
+# World Monitor — Docker Compose (Self-Hosted)
+#
+# Full-stack deployment: nginx (frontend) + local-api-server (backend).
+# See DOCKER.md for setup instructions.
+# ────────────────────────────────────────────────────────────────────────────────
+
+services:
+  worldmonitor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: worldmonitor
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    env_file:
+      - .env.docker
+    # ── Docker Secrets (recommended for API keys) ────────────────────────────
+    # Uncomment and add secrets as needed. Each secret is a file containing
+    # the key value. The entrypoint script reads /run/secrets/KEYNAME and
+    # exports it as an environment variable automatically.
+    #
+    # secrets:
+    #   - GROQ_API_KEY
+    #   - FINNHUB_API_KEY
+    #   - FRED_API_KEY
+    #   - EIA_API_KEY
+    #   - NASA_FIRMS_API_KEY
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:80/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # ── Optional: Ollama for local AI ────────────────────────────────────────────
+  # Uncomment to run a local Ollama instance for AI-powered analysis.
+  #
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   container_name: worldmonitor-ollama
+  #   restart: unless-stopped
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama_data:/root/.ollama
+  #   # GPU support (NVIDIA): uncomment the deploy section below
+  #   # deploy:
+  #   #   resources:
+  #   #     reservations:
+  #   #       devices:
+  #   #         - driver: nvidia
+  #   #           count: all
+  #   #           capabilities: [gpu]
+
+# ── Secrets (uncomment and configure as needed) ────────────────────────────────
+# Create a secrets/ directory and add one file per secret.
+# Example: echo "gsk_abc123" > secrets/groq_api_key.txt
+#
+# secrets:
+#   GROQ_API_KEY:
+#     file: ./secrets/groq_api_key.txt
+#   FINNHUB_API_KEY:
+#     file: ./secrets/finnhub_api_key.txt
+#   FRED_API_KEY:
+#     file: ./secrets/fred_api_key.txt
+#   EIA_API_KEY:
+#     file: ./secrets/eia_api_key.txt
+#   NASA_FIRMS_API_KEY:
+#     file: ./secrets/nasa_firms_api_key.txt
+
+# volumes:
+#   ollama_data:
