@@ -15236,6 +15236,8 @@ body.has-breaking-alert .panels-grid {
 
 .runtime-signup-input {
   flex: 1;
+  min-width: 0;
+  width: auto !important;
   padding: 6px 10px;
   border-radius: 6px;
   border: 1px solid var(--overlay-medium);
@@ -15420,6 +15422,18 @@ body.has-breaking-alert .panels-grid {
 .runtime-input-wrapper {
   grid-area: input;
   position: relative;
+}
+
+.runtime-input-with-save {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.runtime-input-with-save input {
+  flex: 1;
+  min-width: 0;
+  width: auto !important;
 }
 
 .runtime-input-wrapper.has-suffix input {

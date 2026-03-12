@@ -1439,6 +1439,74 @@ async function dispatch(requestUrl, req, routes, context) {
     }
   }
 
+  // ── NASA FIRMS satellite fire detections ─────────────────────────────────
+  if (requestUrl.pathname === '/api/nasa-firms') {
+    const apiKey = process.env.NASA_FIRMS_API_KEY;
+    if (!apiKey) return json({ fires: [], error: 'NASA_FIRMS_API_KEY not configured' }, 503);
+
+    // Cover the globe with 6 bounding boxes each well under the 10M km² area limit.
+    // Format: [west, south, east, north]
+    const REGIONS = [
+      { name: 'N_America',   bbox: [-170, 15, -52, 72]  },
+      { name: 'S_America',   bbox: [-82,  -56, -34, 15]  },
+      { name: 'Europe',      bbox: [-25,  35,  55,  72]  },
+      { name: 'Africa',      bbox: [-20, -35,  55,  38]  },
+      { name: 'Asia',        bbox: [25,  -10, 145,  72]  },
+      { name: 'Oceania',     bbox: [100, -50, 180, -10]  },
+    ];
+
+    // Parse a VIIRS CSV row into a lightweight fire object
+    function parseFiresCsv(csvText, regionName) {
+      const lines = csvText.trim().split('\n');
+      if (lines.length < 2) return [];
+      const header = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+      const latIdx   = header.indexOf('latitude');
+      const lonIdx   = header.indexOf('longitude');
+      const brightIdx = header.indexOf('bright_ti4');
+      const frpIdx   = header.indexOf('frp');
+      const confIdx  = header.indexOf('confidence');
+      const dateIdx  = header.indexOf('acq_date');
+      const dnIdx    = header.indexOf('daynight');
+      if (latIdx < 0 || lonIdx < 0) return [];
+      return lines.slice(1).flatMap(line => {
+        const cols = line.split(',').map(c => c.trim().replace(/"/g, ''));
+        const lat  = parseFloat(cols[latIdx]);
+        const lon  = parseFloat(cols[lonIdx]);
+        if (isNaN(lat) || isNaN(lon)) return [];
+        const confRaw = (cols[confIdx] ?? '').toLowerCase();
+        const confidence = confRaw === 'h' || confRaw === 'high' ? 'FIRE_CONFIDENCE_HIGH'
+                         : confRaw === 'n' || confRaw === 'nominal' ? 'FIRE_CONFIDENCE_NOMINAL'
+                         : 'FIRE_CONFIDENCE_LOW';
+        return [{
+          lat,
+          lon,
+          brightness: parseFloat(cols[brightIdx]) || 0,
+          frp:        parseFloat(cols[frpIdx])    || 0,
+          confidence,
+          region:     regionName,
+          acq_date:   cols[dateIdx] ?? '',
+          daynight:   cols[dnIdx]   ?? 'D',
+        }];
+      });
+    }
+
+    try {
+      const results = await Promise.allSettled(
+        REGIONS.map(({ name, bbox }) => {
+          const [w, s, e, n] = bbox;
+          const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${encodeURIComponent(apiKey)}/VIIRS_SNPP_NRT/${w},${s},${e},${n}/1`;
+          return fetchWithTimeout(url, { headers: { 'User-Agent': CHROME_UA } }, 20000)
+            .then(r => r.ok ? r.text() : Promise.resolve(''))
+            .then(csv => parseFiresCsv(csv, name));
+        })
+      );
+      const fires = results.flatMap(r => r.status === 'fulfilled' ? r.value : []);
+      return json({ fires, count: fires.length });
+    } catch (e) {
+      return json({ fires: [], error: String(e.message ?? e) }, 500);
+    }
+  }
+
   // RSS proxy — fetch public feeds with SSRF protection
   if (requestUrl.pathname === '/api/rss-proxy') {
     const feedUrl = requestUrl.searchParams.get('url');

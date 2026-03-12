@@ -343,14 +343,20 @@ export class RuntimeConfigPanel extends Panel {
       `;
     }
 
+    const inputVal = pending
+      ? (PLAINTEXT_KEYS.has(key) ? escapeHtml(this.pendingSecrets.get(key) || '') : MASKED_SENTINEL)
+      : (PLAINTEXT_KEYS.has(key) && state.present
+          ? escapeHtml(getRuntimeConfigSnapshot().secrets[key]?.value || '')
+          : (state.present ? MASKED_SENTINEL : ''));
     return `
       <div class="runtime-secret-row">
         <div class="runtime-secret-key"><code>${escapeHtml(key)}</code></div>
         <span class="runtime-secret-status ${statusClass}">${escapeHtml(status)}</span>
         <span class="runtime-secret-check ${checkClass}">&#x2713;</span>
         ${helpText ? `<div class="runtime-secret-meta">${escapeHtml(helpText)}</div>` : ''}
-        <div class="runtime-input-wrapper">
-          <input type="${PLAINTEXT_KEYS.has(key) ? 'text' : 'password'}" data-secret="${key}" placeholder="${pending ? t('modals.runtimeConfig.placeholder.staged') : t('modals.runtimeConfig.placeholder.setSecret')}" autocomplete="off" ${isDesktopRuntime() ? '' : 'disabled'} class="${inputClass}" ${pending ? `value="${PLAINTEXT_KEYS.has(key) ? escapeHtml(this.pendingSecrets.get(key) || '') : MASKED_SENTINEL}"` : (PLAINTEXT_KEYS.has(key) && state.present ? `value="${escapeHtml(getRuntimeConfigSnapshot().secrets[key]?.value || '')}"` : (state.present ? `value="${MASKED_SENTINEL}"` : ''))}>
+        <div class="runtime-input-wrapper runtime-input-with-save">
+          <input type="${PLAINTEXT_KEYS.has(key) ? 'text' : 'password'}" data-secret="${key}" placeholder="${pending ? t('modals.runtimeConfig.placeholder.staged') : t('modals.runtimeConfig.placeholder.setSecret')}" autocomplete="off" ${isDesktopRuntime() ? '' : 'disabled'} class="${inputClass}" ${inputVal ? `value="${inputVal}"` : ''}>
+          ${isDesktopRuntime() ? `<button type="button" class="runtime-secret-save-btn" data-save-secret="${key}">Save</button>` : ''}
         </div>
         ${hintText ? `<span class="runtime-secret-hint">${escapeHtml(hintText)}</span>` : ''}
       </div>
@@ -373,12 +379,14 @@ export class RuntimeConfigPanel extends Panel {
 
     if (!isDesktopRuntime()) return;
 
-    // Signup card Save buttons
+    // Save buttons (signup card + regular row)
     this.content.querySelectorAll<HTMLButtonElement>('button[data-save-secret]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const key = btn.dataset.saveSecret as RuntimeSecretKey | undefined;
         if (!key) return;
-        const input = btn.closest('.runtime-signup-card-input-row')?.querySelector<HTMLInputElement>('input[data-secret]');
+        // Try signup card row first, then regular input wrapper
+        const container = btn.closest('.runtime-signup-card-input-row') ?? btn.closest('.runtime-input-with-save');
+        const input = container?.querySelector<HTMLInputElement>('input[data-secret]');
         if (!input) return;
         const raw = input.value.trim();
         if (!raw || raw === MASKED_SENTINEL) return;

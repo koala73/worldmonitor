@@ -6,6 +6,7 @@ import {
 } from '@/generated/client/worldmonitor/wildfire/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import { getHydratedData } from '@/services/bootstrap';
+import { getApiBaseUrl } from '@/services/runtime';
 
 export type { FireDetection };
 
@@ -37,16 +38,73 @@ export interface MapFire {
   daynight: string;
 }
 
-// -- Client --
+// Sidecar fire shape returned by /api/nasa-firms
+interface SidecarFire {
+  lat: number;
+  lon: number;
+  brightness: number;
+  frp: number;
+  confidence: FireConfidence;
+  region: string;
+  acq_date: string;
+  daynight: string;
+}
+
+// -- Client (upstream cloud API fallback) --
 
 const client = new WildfireServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
 const breaker = createCircuitBreaker<ListFireDetectionsResponse>({ name: 'Wildfires', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
 
 const emptyFallback: ListFireDetectionsResponse = { fireDetections: [] };
 
+// Simple in-memory cache for the sidecar results (30 min)
+let _sidecarCache: { fires: SidecarFire[]; ts: number } | null = null;
+const SIDECAR_CACHE_MS = 30 * 60 * 1000;
+
+async function fetchFromSidecar(): Promise<SidecarFire[] | null> {
+  if (_sidecarCache && Date.now() - _sidecarCache.ts < SIDECAR_CACHE_MS) {
+    return _sidecarCache.fires;
+  }
+  try {
+    const base = getApiBaseUrl();
+    const resp = await fetch(`${base}/api/nasa-firms`);
+    if (!resp.ok) return null;
+    const data = await resp.json() as { fires?: SidecarFire[]; error?: string };
+    if (!Array.isArray(data.fires) || data.fires.length === 0) return null;
+    _sidecarCache = { fires: data.fires, ts: Date.now() };
+    return data.fires;
+  } catch {
+    return null;
+  }
+}
+
+function sidecarToDetection(f: SidecarFire): FireDetection {
+  return {
+    location: { latitude: f.lat, longitude: f.lon },
+    brightness: f.brightness,
+    frp: f.frp,
+    confidence: f.confidence,
+    region: f.region,
+    detectedAt: f.acq_date ? new Date(f.acq_date).toISOString() : new Date().toISOString(),
+    dayNight: f.daynight,
+  } as unknown as FireDetection;
+}
+
 // -- Public API --
 
 export async function fetchAllFires(_days?: number): Promise<FetchResult> {
+  // 1. Try sidecar route (uses stored NASA_FIRMS_API_KEY directly)
+  const sidecarFires = await fetchFromSidecar();
+  if (sidecarFires && sidecarFires.length > 0) {
+    const regions: Record<string, FireDetection[]> = {};
+    for (const f of sidecarFires) {
+      const r = f.region || 'Unknown';
+      (regions[r] ??= []).push(sidecarToDetection(f));
+    }
+    return { regions, totalCount: sidecarFires.length };
+  }
+
+  // 2. Fall back to upstream cloud API
   const hydrated = getHydratedData('wildfires') as ListFireDetectionsResponse | undefined;
   const response = hydrated ?? await breaker.execute(async () => {
     return client.listFireDetections({ start: 0, end: 0, pageSize: 0, cursor: '', neLat: 0, neLon: 0, swLat: 0, swLon: 0 });
