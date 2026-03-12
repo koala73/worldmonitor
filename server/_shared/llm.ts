@@ -1,4 +1,5 @@
 import { CHROME_UA } from './constants';
+import { isProviderAvailable } from './llm-health';
 
 export interface ProviderCredentials {
   apiUrl: string;
@@ -11,9 +12,9 @@ const OLLAMA_HOST_ALLOWLIST = new Set([
   'localhost', '127.0.0.1', '::1', '[::1]', 'host.docker.internal',
 ]);
 
-function isSidecar(): boolean {
-  return typeof process !== 'undefined' &&
-    (process.env?.LOCAL_API_MODE || '').includes('sidecar');
+function isLocalDeployment(): boolean {
+  const mode = typeof process !== 'undefined' ? (process.env?.LOCAL_API_MODE || '') : '';
+  return mode.includes('sidecar') || mode.includes('docker');
 }
 
 export function getProviderCredentials(provider: string): ProviderCredentials | null {
@@ -21,7 +22,7 @@ export function getProviderCredentials(provider: string): ProviderCredentials | 
     const baseUrl = process.env.OLLAMA_API_URL;
     if (!baseUrl) return null;
 
-    if (!isSidecar()) {
+    if (!isLocalDeployment()) {
       try {
         const hostname = new URL(baseUrl).hostname;
         if (!OLLAMA_HOST_ALLOWLIST.has(hostname)) {
@@ -131,6 +132,13 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
   for (const providerName of providers) {
     const creds = getProviderCredentials(providerName);
     if (!creds) {
+      if (forcedProvider) return null;
+      continue;
+    }
+
+    // Health gate: skip provider if endpoint is unreachable
+    if (!(await isProviderAvailable(creds.apiUrl))) {
+      console.warn(`[llm:${providerName}] Offline, skipping`);
       if (forcedProvider) return null;
       continue;
     }

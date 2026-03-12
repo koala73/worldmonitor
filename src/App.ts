@@ -371,6 +371,7 @@ export class App {
       exportPanel: null,
       unifiedSettings: null,
       pizzintIndicator: null,
+      llmStatusIndicator: null,
       countryBriefPage: null,
       countryTimeline: null,
       positivePanel: null,
@@ -552,6 +553,7 @@ export class App {
     this.eventHandlers.setupPlaybackControl();
     this.eventHandlers.setupStatusPanel();
     this.eventHandlers.setupPizzIntIndicator();
+    this.eventHandlers.setupLlmStatusIndicator();
     this.eventHandlers.setupExportPanel();
     this.eventHandlers.setupUnifiedSettings();
 

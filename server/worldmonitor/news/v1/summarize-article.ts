@@ -13,6 +13,7 @@ import {
   getCacheKey,
 } from './_shared';
 import { CHROME_UA } from '../../../_shared/constants';
+import { isProviderAvailable } from '../../../_shared/llm-health';
 
 // ======================================================================
 // Reasoning preamble detection
@@ -101,6 +102,11 @@ export async function summarizeArticle(
           variant,
           lang,
         });
+
+        // Health gate: skip if provider is unreachable
+        if (!(await isProviderAvailable(apiUrl))) {
+          return null;
+        }
 
         const response = await fetch(apiUrl, {
           method: 'POST',

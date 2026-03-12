@@ -17,6 +17,7 @@ export * from './EconomicPanel';
 export * from './SearchModal';
 export * from './MobileWarningModal';
 export * from './PizzIntIndicator';
+export * from './LlmStatusIndicator';
 export * from './GdeltIntelPanel';
 export * from './LiveNewsPanel';
 export * from './LiveWebcamsPanel';

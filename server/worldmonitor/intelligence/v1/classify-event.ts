@@ -9,6 +9,7 @@ import { cachedFetchJson } from '../../../_shared/redis';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
 import { UPSTREAM_TIMEOUT_MS, GROQ_API_URL, GROQ_MODEL, sha256Hex } from './_shared';
 import { CHROME_UA } from '../../../_shared/constants';
+import { isProviderAvailable } from '../../../_shared/llm-health';
 
 // ========================================================================
 // Constants
@@ -68,6 +69,10 @@ Categories: conflict, protest, disaster, diplomatic, economic, terrorism, cyber,
 Focus: geopolitical events, conflicts, disasters, diplomacy. Classify by real-world severity and impact.
 
 Return: {"level":"...","category":"..."}`;
+
+          if (!(await isProviderAvailable(apiUrl))) {
+            return null;
+          }
 
           const resp = await fetch(apiUrl, {
             method: 'POST',

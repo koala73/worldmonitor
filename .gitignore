@@ -22,6 +22,7 @@ CLAUDE.md
 skills/
 ideas/
 docs/internal/
+docs/superpowers/
 internal/
 test-results/
 src-tauri/sidecar/node/*
@@ -30,7 +31,9 @@ src-tauri/sidecar/node/*
 # AI planning session state
 .planning/
 
-# Compiled sebuf gateway bundle (built by scripts/build-sidecar-sebuf.mjs)
+# Compiled API handler bundles (built by docker/build-handlers.mjs)
+api/*/v1/\[rpc\].js
+api/data/city-coords.js
 api/[[][[].*.js
 .claudedocs/
 

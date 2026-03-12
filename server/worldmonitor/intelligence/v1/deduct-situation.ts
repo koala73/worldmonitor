@@ -7,6 +7,7 @@ import type {
 import { cachedFetchJson } from '../../../_shared/redis';
 import { sha256Hex } from './_shared';
 import { CHROME_UA } from '../../../_shared/constants';
+import { isProviderAvailable } from '../../../_shared/llm-health';
 
 const DEDUCT_TIMEOUT_MS = 120_000;
 const DEDUCT_CACHE_TTL = 3600;
@@ -51,6 +52,10 @@ Your task is to DEDUCT the situation in a near timeline (e.g. 24 hours to a few 
                 let userPrompt = query;
                 if (geoContext) {
                     userPrompt += `\n\n### Current Intelligence Context\n${geoContext}`;
+                }
+
+                if (!(await isProviderAvailable(apiUrl))) {
+                    return null;
                 }
 
                 const resp = await fetch(apiUrl, {

@@ -1,6 +1,7 @@
 import { setCachedJson } from '../../../_shared/redis';
 import { sha256Hex } from './_shared';
 import { CHROME_UA } from '../../../_shared/constants';
+import { isProviderAvailable } from '../../../_shared/llm-health';
 
 const VALID_LEVELS = ['critical', 'high', 'medium', 'low', 'info'];
 const VALID_CATEGORIES = [
@@ -55,6 +56,11 @@ export async function batchClassifyTitles(
     const prompt = sanitized.map((t, i) => `${i}|${t}`).join('\n');
 
     try {
+      // Health gate: skip entire batch if provider is unreachable
+      if (!(await isProviderAvailable(apiUrl))) {
+        break;
+      }
+
       const resp = await fetch(apiUrl, {
         method: 'POST',
         headers: {

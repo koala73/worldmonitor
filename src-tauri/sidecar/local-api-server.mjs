@@ -1100,6 +1100,36 @@ async function dispatch(requestUrl, req, routes, context) {
       routes: routes.length,
     });
   }
+  if (requestUrl.pathname === '/api/llm-health') {
+    const providers = [];
+    const ollamaUrl = process.env.OLLAMA_API_URL;
+    const groqKey = process.env.GROQ_API_KEY;
+
+    if (ollamaUrl) {
+      try {
+        const origin = new URL(ollamaUrl).origin;
+        let available = false;
+        try {
+          await fetch(origin, { method: 'GET', signal: AbortSignal.timeout(2000) });
+          available = true;
+        } catch {}
+        providers.push({ name: 'ollama', url: origin, available });
+      } catch {}
+    }
+
+    if (groqKey && groqKey.startsWith('gsk_')) {
+      let groqAvailable = false;
+      try {
+        await fetch('https://api.groq.com', { method: 'GET', signal: AbortSignal.timeout(2000) });
+        groqAvailable = true;
+      } catch {}
+      providers.push({ name: 'groq', url: 'https://api.groq.com', available: groqAvailable });
+    }
+
+    const anyAvailable = providers.some(p => p.available);
+    return json({ available: anyAvailable, providers, checkedAt: Date.now() });
+  }
+
   if (requestUrl.pathname === '/api/local-traffic-log') {
     if (req.method === 'DELETE') {
       trafficLog.length = 0;

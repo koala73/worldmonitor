@@ -8,6 +8,7 @@ import {
   PlaybackControl,
   StatusPanel,
   PizzIntIndicator,
+  LlmStatusIndicator,
   CIIPanel,
   PredictionPanel,
 } from '@/components';
@@ -764,6 +765,14 @@ export class EventHandlerManager implements AppModule {
     const headerLeft = this.ctx.container.querySelector('.header-left');
     if (headerLeft) {
       headerLeft.appendChild(this.ctx.pizzintIndicator.getElement());
+    }
+  }
+
+  setupLlmStatusIndicator(): void {
+    this.ctx.llmStatusIndicator = new LlmStatusIndicator();
+    const headerRight = this.ctx.container.querySelector('.header-right');
+    if (headerRight) {
+      headerRight.appendChild(this.ctx.llmStatusIndicator.getElement());
     }
   }
 

@@ -7,6 +7,7 @@ import type {
 import { cachedFetchJson } from '../../../_shared/redis';
 import { UPSTREAM_TIMEOUT_MS, GROQ_API_URL, GROQ_MODEL, TIER1_COUNTRIES, sha256Hex } from './_shared';
 import { CHROME_UA } from '../../../_shared/constants';
+import { isProviderAvailable } from '../../../_shared/llm-health';
 
 // ========================================================================
 // Constants
@@ -75,6 +76,10 @@ Rules:
         ];
         if (contextSnapshot) {
           userPromptParts.push(`Context snapshot:\n${contextSnapshot}`);
+        }
+
+        if (!(await isProviderAvailable(GROQ_API_URL))) {
+          return null;
         }
 
         const resp = await fetch(GROQ_API_URL, {
