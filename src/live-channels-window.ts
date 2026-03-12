@@ -622,6 +622,10 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
     } catch (e) {
       // Network/parse error — allow adding anyway (offline tolerance)
       console.warn('[LiveChannels] YouTube validation failed, allowing add:', e);
+      if (addBtn) {
+        addBtn.classList.add('warning');
+        addBtn.setAttribute('title', 'YouTube validation failed, but channel allowed.');
+      }
     } finally {
       if (addBtn) {
         addBtn.disabled = false;

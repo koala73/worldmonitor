@@ -365,6 +365,8 @@ const FINANCE_PANELS: Record<string, PanelConfig> = {
   'supply-chain': { name: 'Supply Chain', enabled: true, priority: 1 },
   'economic-news': { name: 'Economic News', enabled: true, priority: 2 },
   ipo: { name: 'IPOs, Earnings & M&A', enabled: true, priority: 1 },
+  'upcoming-earnings': { name: 'Upcoming Earnings', enabled: true, priority: 1 },
+  'recent-earnings': { name: 'Recent Earnings', enabled: true, priority: 1 },
   heatmap: { name: 'Sector Heatmap', enabled: true, priority: 1 },
   'macro-signals': { name: 'Market Radar', enabled: true, priority: 1 },
   derivatives: { name: 'Derivatives & Options', enabled: true, priority: 2 },
@@ -787,32 +789,32 @@ const COMMODITY_MOBILE_MAP_LAYERS: MapLayers = {
 // ============================================
 // VARIANT-AWARE EXPORTS
 // ============================================
-export const DEFAULT_PANELS = SITE_VARIANT === 'happy' 
-  ? HAPPY_PANELS 
-  : SITE_VARIANT === 'tech' 
-    ? TECH_PANELS 
-    : SITE_VARIANT === 'finance' 
-      ? FINANCE_PANELS 
+export const DEFAULT_PANELS = SITE_VARIANT === 'happy'
+  ? HAPPY_PANELS
+  : SITE_VARIANT === 'tech'
+    ? TECH_PANELS
+    : SITE_VARIANT === 'finance'
+      ? FINANCE_PANELS
       : SITE_VARIANT === 'commodity'
         ? COMMODITY_PANELS
         : FULL_PANELS;
 
-export const DEFAULT_MAP_LAYERS = SITE_VARIANT === 'happy' 
-  ? HAPPY_MAP_LAYERS 
-  : SITE_VARIANT === 'tech' 
-    ? TECH_MAP_LAYERS 
-    : SITE_VARIANT === 'finance' 
-      ? FINANCE_MAP_LAYERS 
+export const DEFAULT_MAP_LAYERS = SITE_VARIANT === 'happy'
+  ? HAPPY_MAP_LAYERS
+  : SITE_VARIANT === 'tech'
+    ? TECH_MAP_LAYERS
+    : SITE_VARIANT === 'finance'
+      ? FINANCE_MAP_LAYERS
       : SITE_VARIANT === 'commodity'
         ? COMMODITY_MAP_LAYERS
         : FULL_MAP_LAYERS;
 
-export const MOBILE_DEFAULT_MAP_LAYERS = SITE_VARIANT === 'happy' 
-  ? HAPPY_MOBILE_MAP_LAYERS 
-  : SITE_VARIANT === 'tech' 
-    ? TECH_MOBILE_MAP_LAYERS 
-    : SITE_VARIANT === 'finance' 
-      ? FINANCE_MOBILE_MAP_LAYERS 
+export const MOBILE_DEFAULT_MAP_LAYERS = SITE_VARIANT === 'happy'
+  ? HAPPY_MOBILE_MAP_LAYERS
+  : SITE_VARIANT === 'tech'
+    ? TECH_MOBILE_MAP_LAYERS
+    : SITE_VARIANT === 'finance'
+      ? FINANCE_MOBILE_MAP_LAYERS
       : SITE_VARIANT === 'commodity'
         ? COMMODITY_MOBILE_MAP_LAYERS
         : FULL_MOBILE_MAP_LAYERS;

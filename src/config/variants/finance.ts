@@ -156,6 +156,8 @@ export const DEFAULT_PANELS: Record<string, PanelConfig> = {
   economic: { name: 'Economic Data', enabled: true, priority: 1 },
   'economic-news': { name: 'Economic News', enabled: true, priority: 2 },
   ipo: { name: 'IPOs, Earnings & M&A', enabled: true, priority: 1 },
+  'upcoming-earnings': { name: 'Upcoming Earnings', enabled: true, priority: 1 },
+  'recent-earnings': { name: 'Recent Earnings', enabled: true, priority: 1 },
   heatmap: { name: 'Sector Heatmap', enabled: true, priority: 1 },
   'macro-signals': { name: 'Market Radar', enabled: true, priority: 1 },
   derivatives: { name: 'Derivatives & Options', enabled: true, priority: 2 },

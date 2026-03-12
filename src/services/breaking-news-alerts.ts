@@ -1,6 +1,7 @@
 import type { NewsItem } from '@/types';
 import type { OrefAlert } from '@/services/oref-alerts';
 import { getSourceTier } from '@/config/feeds';
+import { getSseClient } from '@/services/sse-client';
 
 export interface BreakingAlert {
   id: string;
@@ -82,14 +83,14 @@ function loadDedupeMap(): void {
         dedupeMap.set(key, ts);
       }
     }
-  } catch {}
+  } catch { }
 }
 
 function saveDedupeMap(): void {
   try {
     const entries = [...dedupeMap.entries()];
     localStorage.setItem(DEDUPE_KEY, JSON.stringify(entries));
-  } catch {}
+  } catch { }
 }
 
 // ─── Settings ──────────────────────────────────────────────────────────────
@@ -103,7 +104,7 @@ export function getAlertSettings(): AlertSettings {
       cachedSettings = { ...DEFAULT_SETTINGS, ...parsed };
       return cachedSettings!;
     }
-  } catch {}
+  } catch { }
   cachedSettings = { ...DEFAULT_SETTINGS };
   return cachedSettings;
 }
@@ -114,7 +115,7 @@ export function updateAlertSettings(partial: Partial<AlertSettings>): void {
   cachedSettings = updated;
   try {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(updated));
-  } catch {}
+  } catch { }
 }
 
 // ─── Gate checks ───────────────────────────────────────────────────────────
@@ -232,6 +233,9 @@ export function dispatchOrefBreakingAlert(alerts: OrefAlert[]): void {
   });
 }
 
+let sseUnsubTelegram: (() => void) | null = null;
+let sseUnsubOref: (() => void) | null = null;
+
 export function initBreakingNewsAlerts(): void {
   initTimestamp = Date.now();
   loadDedupeMap();
@@ -241,12 +245,42 @@ export function initBreakingNewsAlerts(): void {
     }
   };
   window.addEventListener('storage', storageListener);
+
+  // Subscribe to real-time Telegram feeds
+  sseUnsubTelegram = getSseClient().subscribe('telegram', (payload: any) => {
+    if (!payload?.items || !Array.isArray(payload.items)) return;
+
+    // Convert Telegram array to NewsItem-like objects to feed into checkBatchForBreakingAlerts
+    const mappedItems: NewsItem[] = payload.items.map((it: any) => ({
+      ...it,
+      title: it.text || 'Early Signal',
+      pubDate: new Date(it.ts || Date.now()),
+      isAlert: true,
+      threat: { level: 'critical', source: 'telegram' }
+    }));
+
+    checkBatchForBreakingAlerts(mappedItems);
+  });
+
+  // Subscribe to real-time OREF alarms
+  sseUnsubOref = getSseClient().subscribe('oref', (payload: any) => {
+    if (!payload?.alerts || !Array.isArray(payload.alerts)) return;
+    dispatchOrefBreakingAlert(payload.alerts);
+  });
 }
 
 export function destroyBreakingNewsAlerts(): void {
   if (storageListener) {
     window.removeEventListener('storage', storageListener);
     storageListener = null;
+  }
+  if (sseUnsubTelegram) {
+    sseUnsubTelegram();
+    sseUnsubTelegram = null;
+  }
+  if (sseUnsubOref) {
+    sseUnsubOref();
+    sseUnsubOref = null;
   }
   dedupeMap.clear();
   cachedSettings = null;

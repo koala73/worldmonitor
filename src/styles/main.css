@@ -282,16 +282,16 @@ canvas,
   border-bottom: 1px solid var(--border-subtle);
 }
 
-.tauri-titlebar + .header {
+.tauri-titlebar+.header {
   border-top: none;
   -webkit-app-region: drag;
 }
 
-.tauri-titlebar + .header button,
-.tauri-titlebar + .header a,
-.tauri-titlebar + .header input,
-.tauri-titlebar + .header select,
-.tauri-titlebar + .header .search-wrapper {
+.tauri-titlebar+.header button,
+.tauri-titlebar+.header a,
+.tauri-titlebar+.header input,
+.tauri-titlebar+.header select,
+.tauri-titlebar+.header .search-wrapper {
   -webkit-app-region: no-drag;
 }
 
@@ -2463,6 +2463,7 @@ body.panel-resize-active iframe {
   z-index: 10000 !important;
   border-radius: 0 !important;
   margin: 0 !important;
+  visibility: visible !important;
 }
 
 .live-news-fullscreen .panel-content,
@@ -2480,29 +2481,26 @@ body.live-news-fullscreen-active {
   overflow: hidden;
 }
 
-body.live-news-fullscreen-active .time-slider,
-body.live-news-fullscreen-active .deckgl-layer-toggles,
-body.live-news-fullscreen-active .map-legend,
-body.live-news-fullscreen-active .map-controls,
-body.live-news-fullscreen-active .map-timestamp,
-body.live-news-fullscreen-active .map-bottom-grid,
-body.live-news-fullscreen-active .map-resize-handle {
+/* Hide everything behind the fullscreen panel (#829, #859).
+   Previous attempts hid individual overlays (.layer-toggles, .map-legend, etc.)
+   but new elements kept slipping through. Hiding the entire map-section and
+   non-fullscreen panels is comprehensive and future-proof.
+   :not(.live-news-fullscreen) excludes the map-section itself when it is the
+   fullscreen element. For panels inside .map-bottom-grid that go fullscreen,
+   visibility: visible !important on .live-news-fullscreen overrides the
+   inherited hidden state, and position: fixed renders it independently. */
+body.live-news-fullscreen-active .map-section:not(.live-news-fullscreen) {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+body.live-news-fullscreen-active .panels-grid>*:not(.live-news-fullscreen) {
   visibility: hidden !important;
   pointer-events: none !important;
 }
 
 body.live-news-fullscreen-active .community-widget {
-  display: none;
-}
-
-/* Hide map overlays and sibling panels behind fullscreen panel (#829, #859) */
-body.live-news-fullscreen-active .layer-toggles,
-body.live-news-fullscreen-active .map-legend {
   display: none !important;
-}
-
-body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
-  visibility: hidden !important;
 }
 
 .live-indicator-btn {
@@ -2838,6 +2836,7 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
 
 /* Mobile: make toolbars swipeable (horizontal scroll) */
 @media (max-width: 768px) {
+
   /* Live News channels */
   .live-news-switcher {
     flex-wrap: nowrap;
@@ -2890,6 +2889,7 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
     flex: 0 0 auto;
   }
 }
+
 /* News Items */
 .item {
   padding: 8px 0;
@@ -5948,7 +5948,7 @@ a.prediction-link:hover {
 }
 
 .panel-error-retry-btn:hover {
-  background: var(--overlay-medium, rgba(255,255,255,0.08));
+  background: var(--overlay-medium, rgba(255, 255, 255, 0.08));
 }
 
 .panel-error-retry-btn[disabled] {
@@ -6717,7 +6717,7 @@ a.prediction-link:hover {
   padding: 5px 0;
 }
 
-.popup-news-item + .popup-news-item {
+.popup-news-item+.popup-news-item {
   border-top: 1px solid rgba(255, 255, 255, 0.03);
 }
 
@@ -9605,8 +9605,15 @@ a.prediction-link:hover {
 }
 
 @keyframes live-dot-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.4;
+  }
 }
 
 .panel-new-badge.pulse {
@@ -13553,8 +13560,15 @@ a.prediction-link:hover {
 }
 
 @keyframes globe-beta-pulse {
-  0%, 100% { box-shadow: 0 0 6px rgba(0, 229, 255, 0.3), 0 0 20px rgba(0, 229, 255, 0.15), inset 0 0 8px rgba(0, 229, 255, 0.05); }
-  50% { box-shadow: 0 0 10px rgba(0, 229, 255, 0.5), 0 0 30px rgba(0, 229, 255, 0.25), inset 0 0 12px rgba(0, 229, 255, 0.1); }
+
+  0%,
+  100% {
+    box-shadow: 0 0 6px rgba(0, 229, 255, 0.3), 0 0 20px rgba(0, 229, 255, 0.15), inset 0 0 8px rgba(0, 229, 255, 0.05);
+  }
+
+  50% {
+    box-shadow: 0 0 10px rgba(0, 229, 255, 0.5), 0 0 30px rgba(0, 229, 255, 0.25), inset 0 0 12px rgba(0, 229, 255, 0.1);
+  }
 }
 
 /* deck.gl Controls */
@@ -14141,19 +14155,34 @@ a.prediction-link:hover {
 
 /* deck.gl Tooltip */
 .deckgl-tooltip {
-  background: var(--bg);
-  padding: 8px 12px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  font-size: 11px;
-  color: var(--text);
-  max-width: 250px;
+  background: rgba(13, 17, 23, 0.8) !important;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 8px !important;
+  padding: 10px 14px !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4) !important;
+  font-family: inherit !important;
+  font-size: 13px !important;
+  color: #e6edf3 !important;
   pointer-events: none;
+  z-index: 1000000 !important;
 }
 
 .deckgl-tooltip strong {
-  color: var(--accent);
+  display: block;
+  margin-bottom: 4px;
+  color: #79c0ff;
   font-weight: 600;
+}
+
+.deckgl-tooltip small {
+  display: block;
+  margin-top: 4px;
+  color: #8b949e;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 /* MapLibre GL overrides for dark theme */
@@ -15052,7 +15081,7 @@ a.prediction-link:hover {
   overflow: hidden;
 }
 
-.wm-pref-group > summary {
+.wm-pref-group>summary {
   cursor: pointer;
   padding: 10px 14px;
   font-size: 12px;
@@ -15067,22 +15096,22 @@ a.prediction-link:hover {
   user-select: none;
 }
 
-.wm-pref-group > summary::-webkit-details-marker {
+.wm-pref-group>summary::-webkit-details-marker {
   display: none;
 }
 
-.wm-pref-group > summary::before {
+.wm-pref-group>summary::before {
   content: '\25B8';
   font-size: 10px;
   transition: transform 0.15s ease;
   color: var(--text-faint);
 }
 
-.wm-pref-group[open] > summary::before {
+.wm-pref-group[open]>summary::before {
   transform: rotate(90deg);
 }
 
-.wm-pref-group > summary:hover {
+.wm-pref-group>summary:hover {
   background: rgba(255, 255, 255, 0.06);
 }
 
@@ -17999,7 +18028,18 @@ body.has-breaking-alert .panels-grid {
 }
 
 @keyframes globe-pulse {
-  0%   { transform: scale(1); opacity: 0.6; }
-  70%  { transform: scale(2.5); opacity: 0; }
-  100% { transform: scale(2.5); opacity: 0; }
+  0% {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+
+  70% {
+    transform: scale(2.5);
+    opacity: 0;
+  }
+
+  100% {
+    transform: scale(2.5);
+    opacity: 0;
+  }
 }
