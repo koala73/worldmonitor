@@ -132,6 +132,19 @@ const LOCATION_COORDS = {
   'ilam':          { lat: 33.6374, lon: 46.4227 },
   'kerman':        { lat: 30.2839, lon: 57.0834 },
   'lorestan':      { lat: 33.4941, lon: 48.3530 },
+  'jerusalem':     { lat: 31.7683, lon: 35.2137 },
+  'fardis':        { lat: 35.7230, lon: 50.9875 },
+  'marivan':       { lat: 35.5269, lon: 46.1761 },
+  'salalah':       { lat: 17.0151, lon: 54.0924 },
+  'palmachim':     { lat: 31.8970, lon: 34.7000 },
+  'umm qasr':      { lat: 30.0362, lon: 47.9298 },
+  'al-siba':       { lat: 29.8700, lon: 48.6100 },
+  'taleghan':      { lat: 36.1700, lon: 50.7600 },
+  'persian gulf':  { lat: 27.0000, lon: 51.5000 },
+  'eastern province': { lat: 26.4207, lon: 50.0888 },
+  'empty quarter': { lat: 22.5200, lon: 54.0000 },
+  'ovadia':        { lat: 31.4700, lon: 34.5300 },
+  'shin bet':      { lat: 31.7683, lon: 35.2137 },
 };
 
 const CATEGORY_MAP = {

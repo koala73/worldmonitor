@@ -18,7 +18,7 @@ export const VARIANT_META: { full: VariantMeta; [k: string]: VariantMeta } = {
     keywords: 'global intelligence, geopolitical dashboard, world news, market data, military bases, nuclear facilities, undersea cables, conflict zones, real-time monitoring, situation awareness, OSINT, flight tracking, AIS ships, earthquake monitor, protest tracker, power outages, oil prices, government spending, polymarket predictions',
     url: 'https://www.worldmonitor.app/',
     siteName: 'World Monitor',
-    shortName: 'WorldMonitor',
+    shortName: 'World Monitor',
     subject: 'Real-Time Global Intelligence and Situation Awareness',
     classification: 'Intelligence Dashboard, OSINT Tool, News Aggregator',
     categories: ['news', 'productivity'],

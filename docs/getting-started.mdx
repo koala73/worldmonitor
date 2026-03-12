@@ -1,0 +1,343 @@
+---
+title: "Getting Started"
+description: "Installation instructions, tech stack overview, project structure, API dependencies, and setup guide for WorldMonitor."
+---
+This guide covers everything you need to set up WorldMonitor locally, from prerequisites and installation to understanding the project structure and API dependencies.
+
+## Tech Stack
+
+| Layer | Technology | Purpose |
+|-------|------------|---------|
+| **Language** | TypeScript 5.x | Type safety across 60+ source files |
+| **Build** | Vite | Fast HMR, optimized production builds |
+| **Map (Desktop)** | deck.gl + MapLibre GL | WebGL-accelerated rendering for large datasets |
+| **Map (Mobile)** | D3.js + TopoJSON | SVG fallback for battery efficiency |
+| **Concurrency** | Web Workers | Off-main-thread clustering and correlation |
+| **AI/ML** | ONNX Runtime Web | Browser-based inference for offline summarization |
+| **Networking** | WebSocket + REST | Real-time AIS stream, HTTP for other APIs |
+| **Storage** | IndexedDB | Snapshots, baselines (megabytes of state) |
+| **Preferences** | LocalStorage | User settings, monitors, panel order |
+| **Deployment** | Vercel Edge | Serverless proxies with global distribution |
+
+### Map Rendering Architecture
+
+The map uses a hybrid rendering strategy optimized for each platform:
+
+**Desktop (deck.gl + MapLibre GL)**:
+
+- WebGL-accelerated layers handle thousands of markers smoothly
+- MapLibre GL provides base map tiles (OpenStreetMap)
+- GeoJSON, Scatterplot, Path, and Icon layers for different data types
+- GPU-based clustering and picking for responsive interaction
+
+**Mobile (D3.js + TopoJSON)**:
+
+- SVG rendering for battery efficiency
+- Reduced marker count and simplified layers
+- Touch-optimized interaction with larger hit targets
+- Automatic fallback when WebGL unavailable
+
+### Key Libraries
+
+- **deck.gl**: High-performance WebGL visualization layers
+- **MapLibre GL**: Open-source map rendering engine
+- **D3.js**: SVG map rendering, zoom behavior (mobile fallback)
+- **TopoJSON**: Efficient geographic data encoding
+- **ONNX Runtime**: Browser-based ML inference
+- **Custom HTML escaping**: XSS prevention (DOMPurify pattern)
+
+### No External UI Frameworks
+
+The entire UI is hand-crafted DOM manipulation, no React, Vue, or Angular. This keeps the bundle small (~250KB gzipped) and provides fine-grained control over rendering performance.
+
+### Build-Time Configuration
+
+Vite injects configuration values at build time, enabling features like automatic version syncing:
+
+| Variable | Source | Purpose |
+|----------|--------|---------|
+| `__APP_VERSION__` | `package.json` version field | Header displays current version |
+
+This ensures the displayed version always matches the published package, no manual synchronization required.
+
+```typescript
+// vite.config.ts
+define: {
+  __APP_VERSION__: JSON.stringify(pkg.version),
+}
+
+// App.ts
+const header = `World Monitor v${__APP_VERSION__}`;
+```
+
+## Installation
+
+**Requirements:** Go 1.21+ and Node.js 18+.
+
+```bash
+# Clone the repository
+git clone https://github.com/koala73/worldmonitor.git
+cd worldmonitor
+
+# Install everything (buf, sebuf plugins, npm deps, proto deps)
+make install
+
+# Start development server
+npm run dev
+
+# Build for production
+npm run build
+```
+
+If you modify any `.proto` files, regenerate before building or pushing:
+
+```bash
+make generate   # regenerate TypeScript clients, servers, and OpenAPI docs
+```
+
+See [Adding Endpoints](/adding-endpoints) for the full proto workflow.
+
+## API Dependencies
+
+The dashboard fetches data from various public APIs and data sources:
+
+| Service | Data | Auth Required |
+|---------|------|---------------|
+| RSS2JSON | News feed parsing | No |
+| Finnhub | Stock quotes (primary) | Yes (free) |
+| Yahoo Finance | Stock indices & commodities (backup) | No |
+| CoinGecko | Cryptocurrency prices | No |
+| USGS | Earthquake data | No |
+| NASA EONET | Natural events (storms, fires, volcanoes, floods) | No |
+| NWS | Weather alerts | No |
+| FRED | Economic indicators (Fed data) | No |
+| EIA | Oil analytics (prices, production, inventory) | Yes (free) |
+| USASpending.gov | Federal government contracts & awards | No |
+| Polymarket | Prediction markets | No |
+| ACLED | Armed conflict & protest data | Yes (free) |
+| GDELT Geo | News-derived event geolocation + tensions | No |
+| GDELT Doc | Topic-based intelligence feeds (cyber, military, nuclear) | No |
+| FAA NASSTATUS | Airport delay status | No |
+| Cloudflare Radar | Internet outage data | Yes (free) |
+| AISStream | Live vessel positions | Yes (relay) |
+| OpenSky Network | Military aircraft tracking | Yes (free) |
+| Wingbits | Aircraft enrichment (owner, operator) | Yes (free) |
+| PizzINT | Pentagon-area activity metrics | No |
+
+### Optional API Keys
+
+Some features require API credentials. Without them, the corresponding layer is hidden:
+
+| Variable | Service | How to Get |
+|----------|---------|------------|
+| `FINNHUB_API_KEY` | Stock quotes (primary) | Free registration at [finnhub.io](https://finnhub.io/) |
+| `EIA_API_KEY` | Oil analytics | Free registration at [eia.gov/opendata](https://www.eia.gov/opendata/) |
+| `VITE_WS_RELAY_URL` | AIS vessel tracking | Deploy AIS relay or use hosted service |
+| `VITE_OPENSKY_RELAY_URL` | Military aircraft | Deploy relay with OpenSky credentials |
+| `OPENSKY_CLIENT_ID` | OpenSky auth (relay) | Free registration at [opensky-network.org](https://opensky-network.org) |
+| `OPENSKY_CLIENT_SECRET` | OpenSky auth (relay) | API key from OpenSky account settings |
+| `CLOUDFLARE_API_TOKEN` | Internet outages | Free Cloudflare account with Radar access |
+| `ACLED_ACCESS_TOKEN` | Protest data (server-side) | Free registration at acleddata.com |
+| `WINGBITS_API_KEY` | Aircraft enrichment | Contact [Wingbits](https://wingbits.com) for API access |
+
+The dashboard functions fully without these keys. Affected layers simply don't appear. Core functionality (news, markets, earthquakes, weather) requires no configuration.
+
+## Project Structure
+
+```
+src/
+├── App.ts                    # Main application orchestrator
+├── main.ts                   # Entry point
+├── components/
+│   ├── DeckGLMap.ts          # WebGL map with deck.gl + MapLibre (desktop)
+│   ├── Map.ts                # D3.js SVG map (mobile fallback)
+│   ├── MapContainer.ts       # Map wrapper with platform detection
+│   ├── MapPopup.ts           # Contextual info popups
+│   ├── SearchModal.ts        # Universal search (Cmd+K)
+│   ├── SignalModal.ts        # Signal intelligence display with focal points
+│   ├── PizzIntIndicator.ts   # Pentagon Pizza Index display
+│   ├── VirtualList.ts        # Virtual/windowed scrolling
+│   ├── InsightsPanel.ts      # AI briefings + focal point display
+│   ├── EconomicPanel.ts      # FRED economic indicators
+│   ├── GdeltIntelPanel.ts    # Topic-based intelligence (cyber, military, etc.)
+│   ├── LiveNewsPanel.ts      # YouTube live news streams with channel switching
+│   ├── NewsPanel.ts          # News feed with clustering
+│   ├── MarketPanel.ts        # Stock/commodity display
+│   ├── MonitorPanel.ts       # Custom keyword monitors
+│   ├── CIIPanel.ts           # Country Instability Index display
+│   ├── CascadePanel.ts       # Infrastructure cascade analysis
+│   ├── StrategicRiskPanel.ts # Strategic risk overview dashboard
+│   ├── StrategicPosturePanel.ts # AI strategic posture with theater analysis
+│   ├── ServiceStatusPanel.ts # External service health monitoring
+│   └── ...
+├── config/
+│   ├── feeds.ts              # 70+ RSS feeds, source tiers, regional sources
+│   ├── geo.ts                # 30+ hotspots, conflicts, 86 cables, waterways, spaceports, minerals
+│   ├── pipelines.ts          # 88 oil & gas pipelines
+│   ├── ports.ts              # 62 strategic ports worldwide
+│   ├── bases-expanded.ts     # 226 military bases
+│   ├── ai-datacenters.ts     # 313 AI compute clusters (Epoch AI dataset)
+│   ├── airports.ts           # 111 airports across 5 regions
+│   ├── irradiators.ts        # IAEA gamma irradiator sites
+│   ├── nuclear-facilities.ts # Global nuclear infrastructure
+│   ├── markets.ts            # Stock symbols, sectors
+│   ├── entities.ts           # 66 entity definitions (companies, indices, commodities, countries)
+│   └── panels.ts             # Panel configs, layer defaults, mobile optimizations
+├── services/
+│   ├── ais.ts                # WebSocket vessel tracking with density analysis
+│   ├── military-vessels.ts   # Naval vessel identification and tracking
+│   ├── military-flights.ts   # Aircraft tracking via OpenSky relay
+│   ├── military-surge.ts     # Surge detection with news correlation
+│   ├── cached-theater-posture.ts # Theater posture API client with caching
+│   ├── wingbits.ts           # Aircraft enrichment (owner, operator, type)
+│   ├── pizzint.ts            # Pentagon Pizza Index + GDELT tensions
+│   ├── protests.ts           # ACLED + GDELT integration
+│   ├── gdelt-intel.ts        # GDELT Doc API topic intelligence
+│   ├── gdacs.ts              # UN GDACS disaster alerts
+│   ├── eonet.ts              # NASA EONET natural events + GDACS merge
+│   ├── flights.ts            # FAA delay parsing
+│   ├── outages.ts            # Cloudflare Radar integration
+│   ├── rss.ts                # RSS parsing with circuit breakers
+│   ├── markets.ts            # Finnhub, Yahoo Finance, CoinGecko
+│   ├── earthquakes.ts        # USGS integration
+│   ├── weather.ts            # NWS alerts
+│   ├── fred.ts               # Federal Reserve data
+│   ├── oil-analytics.ts      # EIA oil prices, production, inventory
+│   ├── usa-spending.ts       # USASpending.gov contracts & awards
+│   ├── polymarket.ts         # Prediction markets (filtered)
+│   ├── clustering.ts         # Jaccard similarity clustering
+│   ├── correlation.ts        # Signal detection engine
+│   ├── velocity.ts           # Velocity & sentiment analysis
+│   ├── related-assets.ts     # Infrastructure near news events
+│   ├── activity-tracker.ts   # New item detection & highlighting
+│   ├── analysis-worker.ts    # Web Worker manager
+│   ├── ml-worker.ts          # Browser ML inference (ONNX)
+│   ├── summarization.ts      # AI briefings with fallback chain
+│   ├── parallel-analysis.ts  # Concurrent headline analysis
+│   ├── storage.ts            # IndexedDB snapshots & baselines
+│   ├── data-freshness.ts     # Real-time data staleness tracking
+│   ├── signal-aggregator.ts  # Central signal collection & grouping
+│   ├── focal-point-detector.ts   # Intelligence synthesis layer
+│   ├── entity-index.ts       # Entity lookup maps (by alias, keyword, sector)
+│   ├── entity-extraction.ts  # News-to-entity matching for market correlation
+│   ├── country-instability.ts    # CII scoring algorithm
+│   ├── geo-convergence.ts        # Geographic convergence detection
+│   ├── infrastructure-cascade.ts # Dependency graph and cascade analysis
+│   └── cross-module-integration.ts # Unified alerts and strategic risk
+├── workers/
+│   └── analysis.worker.ts    # Off-thread clustering & correlation
+├── utils/
+│   ├── circuit-breaker.ts    # Fault tolerance pattern
+│   ├── sanitize.ts           # XSS prevention (escapeHtml, sanitizeUrl)
+│   ├── urlState.ts           # Shareable link encoding/decoding
+│   └── analysis-constants.ts # Shared thresholds for worker sync
+├── styles/
+└── types/
+api/                          # Vercel Edge serverless proxies
+├── cloudflare-outages.js     # Proxies Cloudflare Radar
+├── coingecko.js              # Crypto prices with validation
+├── eia/[[...path]].js        # EIA petroleum data (oil prices, production)
+├── faa-status.js             # FAA ground stops/delays
+├── finnhub.js                # Stock quotes (batch, primary)
+├── fred-data.js              # Federal Reserve economic data
+├── gdelt-doc.js              # GDELT Doc API (topic intelligence)
+├── gdelt-geo.js              # GDELT Geo API (event geolocation)
+├── polymarket.js             # Prediction markets with validation
+├── yahoo-finance.js          # Stock indices/commodities (backup)
+├── opensky-relay.js          # Military aircraft tracking
+├── wingbits.js               # Aircraft enrichment proxy
+├── risk-scores.js            # Pre-computed CII and strategic risk (Redis cached)
+├── theater-posture.js        # Theater-level force aggregation (Redis cached)
+├── groq-summarize.js         # AI summarization with Groq API
+└── openrouter-summarize.js   # AI summarization fallback via OpenRouter
+```
+
+## Data Attribution
+
+This project uses data from the following sources. Please respect their terms of use.
+
+### Aircraft Tracking
+
+Data provided by [The OpenSky Network](https://opensky-network.org). If you use this data in publications, please cite:
+
+> Matthias Schafer, Martin Strohmeier, Vincent Lenders, Ivan Martinovic and Matthias Wilhelm. "Bringing Up OpenSky: A Large-scale ADS-B Sensor Network for Research". In *Proceedings of the 13th IEEE/ACM International Symposium on Information Processing in Sensor Networks (IPSN)*, pages 83-94, April 2014.
+
+### Conflict & Protest Data
+
+- **ACLED**: Armed Conflict Location & Event Data. Source: [ACLED](https://acleddata.com). Data must be attributed per their [Attribution Policy](https://acleddata.com/attributionpolicy/).
+- **GDELT**: Global Database of Events, Language, and Tone. Source: [The GDELT Project](https://www.gdeltproject.org/).
+
+### Financial Data
+
+- **Stock Quotes**: Powered by [Finnhub](https://finnhub.io/) (primary), with [Yahoo Finance](https://finance.yahoo.com/) as backup for indices and commodities
+- **Cryptocurrency**: Powered by [CoinGecko API](https://www.coingecko.com/en/api)
+- **Economic Indicators**: Data from [FRED](https://fred.stlouisfed.org/), Federal Reserve Bank of St. Louis
+
+### Geophysical Data
+
+- **Earthquakes**: [U.S. Geological Survey](https://earthquake.usgs.gov/), ANSS Comprehensive Catalog
+- **Natural Events**: [NASA EONET](https://eonet.gsfc.nasa.gov/) - Earth Observatory Natural Event Tracker (storms, wildfires, volcanoes, floods)
+- **Weather Alerts**: [National Weather Service](https://www.weather.gov/) - Open data, free to use
+
+### Infrastructure & Transport
+
+- **Airport Delays**: [FAA Air Traffic Control System Command Center](https://www.fly.faa.gov/)
+- **Vessel Tracking**: [AISstream](https://aisstream.io/) real-time AIS data
+- **Internet Outages**: [Cloudflare Radar](https://radar.cloudflare.com/) (CC BY-NC 4.0)
+
+### Other Sources
+
+- **Prediction Markets**: [Polymarket](https://polymarket.com/)
+
+## Acknowledgments
+
+Original dashboard concept inspired by Reggie James ([@HipCityReg](https://x.com/HipCityReg/status/2009003048044220622)), with thanks for the vision of a comprehensive situation awareness tool.
+
+Special thanks to **Yanal at [Wingbits](https://wingbits.com)** for providing API access for aircraft enrichment data, enabling military aircraft classification and ownership tracking.
+
+Thanks to **[@fai9al](https://github.com/fai9al)** for the inspiration and original PR that led to the Tech Monitor variant.
+
+## Limitations & Caveats
+
+This project is a **proof of concept** demonstrating what's possible with publicly available data. While functional, there are important limitations:
+
+### Data Completeness
+
+Some data sources require paid accounts for full access:
+
+- **ACLED**: Free tier has API restrictions; Research tier required for programmatic access
+- **OpenSky Network**: Rate-limited; commercial tiers offer higher quotas
+- **Satellite AIS**: Global coverage requires commercial providers (Spire, Kpler, etc.)
+
+The dashboard works with free tiers but may have gaps in coverage or update frequency.
+
+### AIS Coverage Bias
+
+The Ships layer uses terrestrial AIS receivers via [AISStream.io](https://aisstream.io). This creates a **geographic bias**:
+
+- **Strong coverage**: European waters, Atlantic, major ports
+- **Weak coverage**: Middle East, open ocean, remote regions
+
+Terrestrial receivers only detect vessels within ~50km of shore. Satellite AIS (commercial) provides true global coverage but is not included in this free implementation.
+
+### Blocked Data Sources
+
+Some publishers block requests from cloud providers (Vercel, Railway, AWS):
+
+- RSS feeds from certain outlets may fail with 403 errors
+- This is a common anti-bot measure, not a bug in the dashboard
+- Affected feeds are automatically disabled via circuit breakers
+
+The system degrades gracefully. Blocked sources are skipped while others continue functioning.
+
+## License
+
+World Monitor is licensed under the [GNU Affero General Public License v3.0 (AGPL-3.0)](https://www.gnu.org/licenses/agpl-3.0.html) for non-commercial use. Commercial use requires a separate license. See the [Contributing guide](/contributing#license) for full details on what this means in practice.
+
+## Author
+
+**Elie Habib**
+
+---
+
+*Built for situational awareness and open-source intelligence gathering.*

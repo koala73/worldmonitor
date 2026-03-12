@@ -1,6 +1,7 @@
 import { SITE_VARIANT } from '@/config/variant';
 
 const WS_API_URL = import.meta.env.VITE_WS_API_URL || '';
+const DEFAULT_WEB_API_URL = 'https://api.worldmonitor.app';
 const KEYED_CLOUD_API_PATTERN = /^\/api\/(?:[^/]+\/v1\/|bootstrap(?:\?|$)|polymarket(?:\?|$)|ais-snapshot(?:\?|$))/;
 
 const DEFAULT_REMOTE_HOSTS: Record<string, string> = {
@@ -110,10 +111,46 @@ export function getApiBaseUrl(): string {
   return `http://127.0.0.1:${getLocalApiPort()}`;
 }
 
+function isWorldMonitorWebHost(hostname: string): boolean {
+  return hostname === 'worldmonitor.app'
+    || hostname === 'www.worldmonitor.app'
+    || hostname.endsWith('.worldmonitor.app');
+}
+
+export function getConfiguredWebApiBaseUrl(): string {
+  if (WS_API_URL) {
+    return normalizeBaseUrl(WS_API_URL);
+  }
+
+  if (typeof window === 'undefined') {
+    return '';
+  }
+
+  if (isDesktopRuntime()) {
+    return '';
+  }
+
+  const hostname = window.location?.hostname ?? '';
+  if (!isWorldMonitorWebHost(hostname)) {
+    return '';
+  }
+
+  return DEFAULT_WEB_API_URL;
+}
+
+export function getCanonicalApiOrigin(): string {
+  return getConfiguredWebApiBaseUrl() || DEFAULT_WEB_API_URL;
+}
+
 export function getRemoteApiBaseUrl(): string {
   const configuredRemoteBase = import.meta.env.VITE_TAURI_REMOTE_API_BASE_URL;
   if (configuredRemoteBase) {
     return normalizeBaseUrl(configuredRemoteBase);
+  }
+
+  const webApiBase = getConfiguredWebApiBaseUrl();
+  if (webApiBase) {
+    return webApiBase;
   }
 
   const fromHosts = DEFAULT_REMOTE_HOSTS[SITE_VARIANT] ?? DEFAULT_REMOTE_HOSTS.full ?? '';
@@ -135,6 +172,23 @@ export function toRuntimeUrl(path: string): string {
   }
 
   return `${baseUrl}${path}`;
+}
+
+export function toApiUrl(path: string): string {
+  if (!path.startsWith('/')) {
+    return path;
+  }
+
+  if (isDesktopRuntime()) {
+    return toRuntimeUrl(path);
+  }
+
+  const webApiBase = getConfiguredWebApiBaseUrl();
+  if (!webApiBase) {
+    return path;
+  }
+
+  return `${webApiBase}${path}`;
 }
 
 function extractHostnames(...urls: (string | undefined)[]): string[] {
@@ -640,17 +694,20 @@ function isAllowedRedirectTarget(url: string): boolean {
 
 export function installWebApiRedirect(): void {
   if (isDesktopRuntime() || typeof window === 'undefined') return;
-  if (!WS_API_URL) return;
-  if (!isAllowedRedirectTarget(WS_API_URL)) {
-    console.warn('[runtime] VITE_WS_API_URL blocked — not in hostname allowlist:', WS_API_URL);
+  const apiBase = getConfiguredWebApiBaseUrl();
+  if (!apiBase) return;
+  if (!isAllowedRedirectTarget(apiBase)) {
+    console.warn('[runtime] web API base blocked — not in hostname allowlist:', apiBase);
     return;
   }
   if ((window as unknown as Record<string, unknown>).__wmWebRedirectPatched) return;
 
   const nativeFetch = window.fetch.bind(window);
-  const API_BASE = WS_API_URL;
+  const API_BASE = apiBase;
   const shouldRedirectPath = (pathWithQuery: string): boolean => pathWithQuery.startsWith('/api/');
-  const shouldFallbackToOrigin = (status: number): boolean => status === 404 || status === 405 || status === 501 || status === 502 || status === 503;
+  const shouldFallbackToOrigin = (status: number): boolean => (
+    status === 404 || status === 405 || status === 501 || status === 502 || status === 503
+  );
   const fetchWithRedirectFallback = async (
     redirectedInput: RequestInfo | URL,
     originalInput: RequestInfo | URL,
@@ -660,8 +717,12 @@ export function installWebApiRedirect(): void {
       const redirectedResponse = await nativeFetch(redirectedInput, originalInit);
       if (!shouldFallbackToOrigin(redirectedResponse.status)) return redirectedResponse;
       return nativeFetch(originalInput, originalInit);
-    } catch {
-      return nativeFetch(originalInput, originalInit);
+    } catch (error) {
+      try {
+        return await nativeFetch(originalInput, originalInit);
+      } catch {
+        throw error;
+      }
     }
   };
 

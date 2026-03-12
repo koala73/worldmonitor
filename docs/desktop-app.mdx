@@ -1,0 +1,222 @@
+---
+title: "Desktop Application"
+description: "Tauri desktop architecture, sidecar management, secret storage, cloud fallback, and multi-platform build details."
+---
+
+## Overview
+
+### Desktop Application (Tauri)
+
+- **Native desktop app** for macOS, Windows, and Linux — packages the full dashboard with a local Node.js sidecar that runs all 60+ API handlers locally
+- **OS keychain integration** — API keys stored in the system credential manager (macOS Keychain, Windows Credential Manager), never in plaintext files
+- **Token-authenticated sidecar** — a unique session token prevents other local processes from accessing the sidecar on localhost. Generated per launch using randomized hashing
+- **Cloud fallback** — when a local API handler fails or is missing, requests transparently fall through to the cloud deployment (worldmonitor.app) with origin headers stripped
+- **Settings window** — dedicated configuration UI (Cmd+,) with three tabs: **LLMs** (Ollama endpoint, model selection, Groq, OpenRouter), **API Keys** (12+ data source credentials with per-key validation), and **Debug & Logs** (traffic log, verbose mode, log files). Each tab runs an independent verification pipeline — saving in the LLMs tab doesn't block API Keys validation
+- **Automatic model discovery** — when you set an Ollama or LM Studio endpoint URL in the LLMs tab, the settings panel immediately queries it for available models (tries Ollama native `/api/tags` first, then OpenAI-compatible `/v1/models`) and populates a dropdown. Embedding models are filtered out. If discovery fails, a manual text input appears as fallback
+- **Cross-window secret sync** — the main dashboard and settings window run in separate webviews with independent JS contexts. Saving a secret in Settings writes to the OS keychain and broadcasts a `localStorage` change event. The main window listens for this event and hot-reloads all secrets without requiring an app restart
+- **Consolidated keychain vault** — all secrets are stored as a single JSON blob in one keychain entry (`secrets-vault`) rather than individual entries per key. This reduces macOS Keychain authorization prompts from 20+ to exactly 1 on each app launch. A one-time migration reads any existing individual entries, consolidates them, and cleans up the old format
+- **Verbose debug mode** — toggle traffic logging with persistent state across restarts. View the last 200 requests with timing, status codes, and error details
+- **DevTools toggle** — Cmd+Alt+I opens the embedded web inspector for debugging
+- **Auto-update checker** — polls the cloud API for new versions every 6 hours. Displays a non-intrusive update badge with direct download link and per-version dismiss. Variant-aware — a Tech Monitor desktop app links to the correct Tech Monitor release asset
+
+## Multi-Platform Architecture
+
+All five variants run on three platforms that work together:
+
+```
+┌─────────────────────────────────────┐
+│          Vercel (Edge)              │
+│  60+ edge functions · static SPA    │
+│  Proto gateway (24 typed services)  │
+│  CORS allowlist · Redis cache       │
+│  AI pipeline · market analytics     │
+│  CDN caching (s-maxage) · PWA host  │
+└──────────┬─────────────┬────────────┘
+           │             │ fallback
+           │             ▼
+           │  ┌───────────────────────────────────┐
+           │  │     Tauri Desktop (Rust + Node)   │
+           │  │  OS keychain · Token-auth sidecar │
+           │  │  60+ local API handlers · br/gzip    │
+           │  │  Cloud fallback · Traffic logging │
+           │  └───────────────────────────────────┘
+           │
+           │ https:// (server-side)
+           │ wss://   (client-side)
+           ▼
+┌──────────────────────────────────────────┐
+│        Railway (Relay Server)            │
+│  AIS WebSocket · OpenSky OAuth2          │
+│  Telegram MTProto (26 OSINT channels)    │
+│  OREF rocket alerts (residential proxy)  │
+│  Polymarket proxy (queue backpressure)   │
+│  ICAO NOTAM · RSS proxy · gzip all resp │
+└──────────────────────────────────────────┘
+```
+
+**Why two platforms?** Several upstream APIs (OpenSky Network, CNN RSS, UN News, CISA, IAEA) actively block requests from Vercel's IP ranges, and some require persistent connections or protocols that edge functions cannot support. The Railway relay server acts as an alternate origin, handling:
+
+- **AIS vessel tracking** — maintains a persistent WebSocket connection to AISStream.io and multiplexes it to all connected browser clients, avoiding per-user connection limits
+- **OpenSky aircraft data** — authenticates via OAuth2 client credentials flow (Vercel IPs get 403'd by OpenSky without auth tokens)
+- **Telegram intelligence** — a GramJS MTProto client polls 26 OSINT channels on a 60-second cycle with per-channel timeouts and FLOOD_WAIT handling
+- **OREF rocket alerts** — polls Israel's Home Front Command alert system via `curl` through a residential proxy (Akamai WAF blocks datacenter TLS fingerprints)
+- **Polymarket proxy** — fetches from Gamma API with concurrent upstream limiting (max 3 simultaneous, queue backpressure at 20), in-flight deduplication, and 10-minute caching to prevent stampedes from 11 parallel tag queries
+- **ICAO NOTAM proxy** — routes NOTAM closure queries through the relay for MENA airports, bypassing Vercel IP restrictions on ICAO's API
+- **GDELT positive events** — a 15-minute cron fetches three thematic GDELT GEO API queries (breakthroughs/renewables, conservation/humanitarian, volunteer/charity), deduplicates by event name, validates coordinates, classifies by category, and writes to Redis with a 45-minute TTL. This replaced direct Vercel Edge Function calls that failed on 99.9% of invocations due to GDELT's ~31-second sequential response time exceeding the 25-second edge timeout. Bootstrap hydration is registered so the Happy variant has data on first render
+- **RSS feeds** — proxies feeds from domains that block Vercel IPs, with a separate domain allowlist for security. Supports conditional GET (ETag/If-Modified-Since) to reduce bandwidth for unchanged feeds
+
+The Vercel edge functions connect to Railway via `WS_RELAY_URL` (server-side, HTTPS) while browser clients connect via `VITE_WS_RELAY_URL` (client-side, WSS). This separation keeps the relay URL configurable per deployment without leaking server-side configuration to the browser.
+
+All Railway relay responses are gzip-compressed (zlib `gzipSync`) when the client accepts it and the payload exceeds 1KB, reducing egress by ~80% for JSON and XML responses. The desktop local sidecar now prefers Brotli (`br`) and falls back to gzip for payloads larger than 1KB, setting `Content-Encoding` and `Vary: Accept-Encoding` automatically.
+
+## Desktop Application Architecture
+
+The Tauri desktop app wraps the dashboard in a native window (macOS, Windows, Linux) with a local Node.js sidecar that runs all API handlers without cloud dependency:
+
+```
+┌─────────────────────────────────────────────────┐
+│              Tauri (Rust)                       │
+│  Window management · Consolidated keychain vault│
+│  Token generation · Log management · Menu bar   │
+│  Polymarket native TLS bridge                   │
+└─────────────────────┬───────────────────────────┘
+                      │ spawn + env vars
+                      ▼
+┌─────────────────────────────────────────────────┐
+│      Node.js Sidecar (dynamic port)             │
+│  60+ API handlers · Local RSS proxy             │
+│  Brotli/Gzip compression · Cloud fallback       │
+│  Traffic logging · Verbose debug mode           │
+└─────────────────────┬───────────────────────────┘
+                      │ fetch (on local failure)
+                      ▼
+┌─────────────────────────────────────────────────┐
+│         Cloud (worldmonitor.app)                │
+│  Transparent fallback when local handlers fail  │
+└─────────────────────────────────────────────────┘
+```
+
+## Secret Management
+
+API keys are stored in the operating system's credential manager (macOS Keychain, Windows Credential Manager) — never in plaintext config files. All secrets are consolidated into a single JSON vault entry in the keychain, so app startup requires exactly one OS authorization prompt regardless of how many keys are configured.
+
+At sidecar launch, the vault is read, parsed, and injected as environment variables. Empty or whitespace-only values are skipped. Secrets can also be updated at runtime without restarting the sidecar: saving a key in the Settings window triggers a `POST /api/local-env-update` call that hot-patches `process.env` so handlers pick up the new value immediately.
+
+**Verification pipeline** — when you enter a credential in Settings, the app validates it against the actual provider API (Groq → `/openai/v1/models`, Ollama → `/api/tags`, FRED → GDP test query, NASA FIRMS → fire data fetch, etc.). Network errors (timeouts, DNS failures, unreachable hosts) are treated as soft passes — the key is saved with a "could not verify" notice rather than blocking. Only explicit 401/403 responses from the provider mark a key as invalid. This prevents transient network issues from locking users out of their own credentials.
+
+**Smart re-verification** — when saving settings, the verification pipeline skips keys that haven't been modified since their last successful verification. This prevents unnecessary round-trips to provider APIs when a user changes one key but has 15 others already configured and validated. Only newly entered or modified keys trigger verification requests.
+
+**Desktop-specific requirements** — some features require fewer credentials on desktop than on the web. For example, AIS vessel tracking on the web requires both a relay URL and an API key, but the desktop sidecar handles relay connections internally, so only the API key is needed. The settings panel adapts its required-fields display based on the detected platform.
+
+### Desktop Runtime Configuration Schema
+
+World Monitor desktop uses a runtime configuration schema with per-feature toggles and secret-backed credentials.
+
+### Secret keys
+
+The desktop vault schema (Rust `SUPPORTED_SECRET_KEYS`) supports the following 25 keys:
+
+- `GROQ_API_KEY`
+- `OPENROUTER_API_KEY`
+- `FRED_API_KEY`
+- `EIA_API_KEY`
+- `FINNHUB_API_KEY`
+- `CLOUDFLARE_API_TOKEN`
+- `ACLED_ACCESS_TOKEN`
+- `URLHAUS_AUTH_KEY`
+- `OTX_API_KEY`
+- `ABUSEIPDB_API_KEY`
+- `NASA_FIRMS_API_KEY`
+- `WINGBITS_API_KEY`
+- `WS_RELAY_URL`
+- `VITE_WS_RELAY_URL`
+- `VITE_OPENSKY_RELAY_URL`
+- `OPENSKY_CLIENT_ID`
+- `OPENSKY_CLIENT_SECRET`
+- `AISSTREAM_API_KEY`
+- `OLLAMA_API_URL`
+- `OLLAMA_MODEL`
+- `WORLDMONITOR_API_KEY` — gates cloud fallback access (min 16 chars)
+- `WTO_API_KEY`
+- `AVIATIONSTACK_API`
+- `ICAO_API_KEY`
+- `UCDP_ACCESS_TOKEN`
+
+### Feature schema
+
+Each feature includes:
+
+- `id`: stable feature identifier.
+- `requiredSecrets`: list of keys that must be present and valid.
+- `enabled`: user-toggle state from runtime settings panel.
+- `available`: computed (`enabled && requiredSecrets valid`).
+- `fallback`: user-facing degraded behavior description.
+
+### Desktop secret storage
+
+Desktop builds persist secrets in OS credential storage through Tauri command bindings backed by Rust `keyring` entries (`world-monitor` service namespace).
+
+Secrets are **not stored in plaintext files** by the frontend.
+
+### Degradation behavior
+
+If required secrets are missing/disabled:
+
+- Summarization: Groq/OpenRouter disabled, browser model fallback.
+- FRED / EIA / Finnhub: economic, oil analytics, and stock data return empty state.
+- Cloudflare / ACLED: outages/conflicts return empty state.
+- Cyber threat feeds (URLhaus, OTX, AbuseIPDB): cyber threat layer returns empty state.
+- NASA FIRMS: satellite fire detection returns empty state.
+- Wingbits: flight enrichment disabled, heuristic-only flight classification remains.
+- AIS / OpenSky relay: live tracking features are disabled cleanly.
+- World Monitor API key: cloud fallback is blocked; desktop operates local-only.
+
+## Sidecar
+
+### Sidecar Authentication
+
+A unique 32-character hex token is generated per app launch using randomized hash state (`RandomState` from Rust's standard library). The token is:
+
+1. Injected into the sidecar as `LOCAL_API_TOKEN`
+2. Retrieved by the frontend via the `get_local_api_token` Tauri command (lazy-loaded on first API request)
+3. Attached as `Authorization: Bearer <token>` to every local request
+
+The `/api/service-status` health check endpoint is exempt from token validation to support monitoring tools.
+
+### Dynamic Port Allocation
+
+The sidecar defaults to port 46123 but handles `EADDRINUSE` gracefully — if the port is occupied (another World Monitor instance, or any other process), the sidecar binds to port 0 and lets the OS assign an available ephemeral port. The actual bound port is written to a port file (`sidecar.port` in the logs directory) that the Rust host polls on startup (100ms intervals, 5-second timeout). The frontend discovers the port at runtime via the `get_local_api_port` IPC command, and `getApiBaseUrl()` in `runtime.ts` is the canonical accessor — hardcoding port 46123 in frontend code is prohibited. The CSP `connect-src` directive uses `http://127.0.0.1:*` to accommodate any port.
+
+### Local RSS Proxy
+
+The sidecar includes a built-in RSS proxy handler that fetches news feeds directly from source domains, bypassing the cloud RSS proxy entirely. This means the desktop app can load all 435+ RSS feeds without any cloud dependency — the same domain allowlist used by the Vercel edge proxy is enforced locally. Combined with the local API handlers, this enables the desktop app to operate as a fully self-contained intelligence aggregation platform.
+
+### Sidecar Resilience
+
+The sidecar employs multiple resilience patterns to maintain data availability when upstream APIs degrade:
+
+- **Stale-on-error** — when an upstream API returns a 5xx error or times out, the sidecar serves the last successful response from its in-memory cache rather than propagating the failure. Panels display stale data with a visual "retrying" indicator rather than going blank
+- **Negative caching** — after an upstream failure, the sidecar records a 5-minute negative cache entry to prevent immediately re-hitting the same broken endpoint. Subsequent requests during the cooldown receive the stale response instantly
+- **Staggered requests** — APIs with strict rate limits (Yahoo Finance) use sequential request batching with 150ms inter-request delays instead of `Promise.all`. This transforms 10 concurrent requests that would trigger HTTP 429 into a staggered sequence that stays under rate limits
+- **In-flight deduplication** — concurrent requests for the same resource (e.g., multiple panels polling the same endpoint) are collapsed into a single upstream fetch. The first request creates a Promise stored in an in-flight map; all concurrent requests await that single Promise
+- **Panel retry indicator** — when a panel's data fetch fails and retries, the Panel base class displays a non-intrusive "Retrying..." indicator so users understand the dashboard is self-healing rather than broken
+
+## Cloud Fallback
+
+When a local API handler is missing, throws an error, or returns a 5xx status, the sidecar transparently proxies the request to the cloud deployment. Endpoints that fail are marked as `cloudPreferred` — subsequent requests skip the local handler and go directly to the cloud until the sidecar is restarted. Origin and Referer headers are stripped before proxying to maintain server-to-server parity.
+
+## Observability
+
+- **Traffic log** — a ring buffer of the last 200 requests with method, path, status, and duration (ms), accessible via `GET /api/local-traffic-log`
+- **Verbose mode** — togglable via `POST /api/local-debug-toggle`, persists across sidecar restarts in `verbose-mode.json`
+- **Dual log files** — `desktop.log` captures Rust-side events (startup, secret injection counts, menu actions), while `local-api.log` captures Node.js stdout/stderr
+- **IPv4-forced fetch** — the sidecar patches `globalThis.fetch` to force IPv4 for all outbound requests. Government APIs (NASA FIRMS, EIA, FRED) publish AAAA DNS records but their IPv6 endpoints frequently timeout. The patch uses `node:https` with `family: 4` to bypass Happy Eyeballs and avoid cascading ETIMEDOUT failures
+- **DevTools** — `Cmd+Alt+I` toggles the embedded web inspector
+
+## Auto-Update
+
+The desktop app checks for new versions by polling `worldmonitor.app/api/version` — once at startup (after a 5-second delay) and then every 6 hours. When a newer version is detected (semver comparison), a non-intrusive update badge appears with a direct link to the GitHub Release page.
+
+Update prompts are dismissable per-version — dismissing v2.5.0 won't suppress v2.6.0 notifications. The updater is variant-aware: a Tech Monitor desktop build links to the Tech Monitor release asset, not the full variant.
+
+The `/api/version` endpoint reads the latest GitHub Release tag and caches the result for 1 hour, so version checks don't hit the GitHub API on every request.

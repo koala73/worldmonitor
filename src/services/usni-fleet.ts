@@ -1,4 +1,5 @@
 import type { MilitaryVessel, MilitaryVesselCluster, USNIFleetReport, USNIVesselEntry } from '@/types';
+import { getRpcBaseUrl } from '@/services/rpc-client';
 import { createCircuitBreaker } from '@/utils';
 import { getUSNIRegionApproxCoords, getUSNIRegionCoords } from '@/config/military';
 import {
@@ -6,7 +7,7 @@ import {
   type GetUSNIFleetReportResponse,
 } from '@/generated/client/worldmonitor/military/v1/service_client';
 
-const client = new MilitaryServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+const client = new MilitaryServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 
 const breaker = createCircuitBreaker<USNIFleetReport | null>({
   name: 'USNI Fleet Tracker',

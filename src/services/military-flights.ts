@@ -1,5 +1,5 @@
 import type { MilitaryFlight, MilitaryFlightCluster, MilitaryAircraftType, MilitaryOperator } from '@/types';
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker, toUniqueSortedLowercase } from '@/utils';
 import {
   identifyByCallsign,
   identifyByAircraftType,
@@ -15,10 +15,10 @@ import {
   checkWingbitsStatus,
 } from './wingbits';
 import { isFeatureAvailable } from './runtime-config';
-import { isDesktopRuntime } from './runtime';
+import { isDesktopRuntime, toApiUrl } from './runtime';
 
 // Desktop: direct OpenSky proxy path (relay or Vercel)
-const OPENSKY_PROXY_URL = '/api/opensky';
+const OPENSKY_PROXY_URL = toApiUrl('/api/opensky');
 const wsRelayUrl = import.meta.env.VITE_WS_RELAY_URL || '';
 const DIRECT_OPENSKY_BASE_URL = wsRelayUrl
   ? wsRelayUrl.replace('wss://', 'https://').replace('ws://', 'http://').replace(/\/$/, '') + '/opensky'
@@ -69,7 +69,7 @@ interface MilitaryFlightsResponse {
 }
 
 async function fetchFromRedis(): Promise<MilitaryFlight[]> {
-  const resp = await fetch('/api/military-flights', {
+  const resp = await fetch(toApiUrl('/api/military-flights'), {
     headers: { Accept: 'application/json' },
   });
   if (!resp.ok) {
@@ -255,7 +255,7 @@ async function enrichFlightsWithWingbits(flights: MilitaryFlight[]): Promise<Mil
   }
 
   // Use deterministic ordering to improve cache locality across refreshes.
-  const hexCodes = Array.from(new Set(flights.map((f) => f.hexCode.toLowerCase()))).sort();
+  const hexCodes = toUniqueSortedLowercase(flights.map((f) => f.hexCode));
 
   // Batch fetch aircraft details
   const detailsMap = await getAircraftDetailsBatch(hexCodes);

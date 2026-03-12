@@ -175,7 +175,7 @@ export function getProviderCredentials(provider: string): ProviderCredentials | 
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
         'HTTP-Referer': 'https://worldmonitor.app',
-        'X-Title': 'WorldMonitor',
+        'X-Title': 'World Monitor',
       },
     };
   }

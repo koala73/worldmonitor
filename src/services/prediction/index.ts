@@ -1,4 +1,5 @@
 import { PredictionServiceClient } from '@/generated/client/worldmonitor/prediction/v1/service_client';
+import { getRpcBaseUrl } from '@/services/rpc-client';
 import { createCircuitBreaker } from '@/utils';
 import { SITE_VARIANT } from '@/config';
 import { getHydratedData } from '@/services/bootstrap';
@@ -19,7 +20,7 @@ function isExpired(endDate?: string): boolean {
 
 const breaker = createCircuitBreaker<PredictionMarket[]>({ name: 'Polymarket', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
 
-const client = new PredictionServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+const client = new PredictionServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 
 const GEOPOLITICAL_TAGS = [
   'politics', 'geopolitics', 'elections', 'world',

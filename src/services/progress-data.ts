@@ -8,6 +8,7 @@
 
 import { createCircuitBreaker } from '@/utils';
 import { getHydratedData } from '@/services/bootstrap';
+import { toApiUrl } from '@/services/runtime';
 
 // ---- Types ----
 
@@ -143,7 +144,7 @@ async function fetchProgressDataFresh(): Promise<ProgressDataSet[]> {
 
   // 2. Fallback: fetch from bootstrap endpoint directly
   try {
-    const resp = await fetch('/api/bootstrap?keys=progressData', {
+    const resp = await fetch(toApiUrl('/api/bootstrap?keys=progressData'), {
       signal: AbortSignal.timeout(5_000),
     });
     if (resp.ok) {

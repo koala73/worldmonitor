@@ -225,6 +225,9 @@ Sentry.init({
     /VConsole is not defined/,
     /exitFullscreen.*Document not active/,
     /Force close delete origin/,
+    /zp_token is not defined/,
+    /literal not terminated before end of script/,
+    /'' is not a valid selector/,
   ],
   beforeSend(event) {
     const msg = event.exception?.values?.[0]?.value ?? '';
@@ -286,14 +289,17 @@ import { initMetaTags } from '@/services/meta-tags';
 import { installRuntimeFetchPatch, installWebApiRedirect } from '@/services/runtime';
 import { loadDesktopSecrets } from '@/services/runtime-config';
 import { applyStoredTheme } from '@/utils/theme-manager';
+import { applyFont } from '@/services/font-settings';
 import { SITE_VARIANT } from '@/config/variant';
 import { clearChunkReloadGuard, installChunkReloadGuard } from '@/bootstrap/chunk-reload';
 
 // Auto-reload on stale chunk 404s after deployment (Vite fires this for modulepreload failures).
 const chunkReloadStorageKey = installChunkReloadGuard(__APP_VERSION__);
 
-// Initialize Vercel Analytics
-inject();
+// Initialize Vercel Analytics (10% sampling to reduce costs)
+inject({
+  beforeSend: (event) => (Math.random() > 0.1 ? null : event),
+});
 
 // Initialize dynamic meta tags for sharing
 initMetaTags();
@@ -306,6 +312,7 @@ loadDesktopSecrets().catch(() => {});
 
 // Apply stored theme preference before app initialization (safety net for inline script)
 applyStoredTheme();
+applyFont();
 
 // Set data-variant on <html> so CSS theme overrides activate
 if (SITE_VARIANT && SITE_VARIANT !== 'full') {

@@ -68,7 +68,7 @@ World Monitor aggregates publicly available data from dozens of sources. No prop
 - **ADS-B Exchange / OpenSky**: Live military aircraft tracking
 - **AIS (Automatic Identification System)**: Naval vessel monitoring
 - **CelesTrak**: Intelligence satellite orbital data (TLE propagation)
-- **210+ military bases** from 9 operators mapped globally
+- **226 military bases** from 9 operators mapped globally
 - **Nuclear facility locations** and gamma irradiator sites
 
 ### Infrastructure & Environment
@@ -79,7 +79,7 @@ World Monitor aggregates publicly available data from dozens of sources. No prop
 - **NASA FIRMS**: Satellite fire detection (VIIRS thermal hotspots)
 - **Cloudflare Radar**: Internet outage detection
 - **Submarine cable landing points** and cable repair ship tracking
-- **107 airports** monitored for delays and NOTAM closures
+- **111 airports** monitored for delays and NOTAM closures
 
 ### Markets & Finance
 

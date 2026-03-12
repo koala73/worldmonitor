@@ -1,4 +1,4 @@
-import { isDesktopRuntime, toRuntimeUrl } from '../services/runtime';
+import { isDesktopRuntime, toApiUrl, toRuntimeUrl } from '../services/runtime';
 import { getPersistentCache, setPersistentCache } from '../services/persistent-cache';
 
 const isDev = import.meta.env.DEV;
@@ -41,7 +41,7 @@ export function proxyUrl(localPath: string): string {
     return localPath;
   }
 
-  return localPath;
+  return toApiUrl(localPath);
 }
 
 function shouldPersistResponse(url: string): boolean {
