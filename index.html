@@ -1,287 +1,34 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https: http://localhost:5173 ws: wss: blob: data:; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'sha256-LnMFPWZxTgVOr2VYwIh9mhQ3l/l3+a3SfNOLERnuHfY=' 'sha256-+SFBjfmi2XfnyAT3POBxf6JIKYDcNXtllPclOcaNBI0=' 'sha256-AhZAmdCW6h8iXMyBcvIrqN71FGNk4lwLD+lPxx43hxg=' 'sha256-PnEBZii+iFaNE2EyXaJhRq34g6bdjRJxpLfJALdXYt8=' 'sha256-cVhuR63Moy56DV5yG0caJCEyCugMTbYclkvkK6fSwXY=' 'sha256-903UI9my1I7mqHoiVeZSc56yd50YoRJTB2269QqL76w=' 'wasm-unsafe-eval' https://www.youtube.com https://static.cloudflareinsights.com https://vercel.live; worker-src 'self' blob:; font-src 'self' data: https:; media-src 'self' data: blob: https: http://127.0.0.1:* http://localhost:*; frame-src 'self' http://127.0.0.1:* http://localhost:* https://worldmonitor.app https://tech.worldmonitor.app https://finance.worldmonitor.app https://happy.worldmonitor.app https://www.youtube.com https://www.youtube-nocookie.com;" />
-    <meta name="referrer" content="strict-origin-when-cross-origin" />
-
-    <!-- Primary Meta Tags -->
-    <title>World Monitor - Real-Time Global Intelligence Dashboard</title>
-    <meta name="title" content="World Monitor - Real-Time Global Intelligence Dashboard" />
-    <meta name="description" content="AI-powered real-time global intelligence dashboard with live news, markets, military tracking, infrastructure monitoring, and geopolitical data. OSINT in one view." />
-    <meta name="keywords" content="AI intelligence, AI-powered dashboard, global intelligence, geopolitical dashboard, world news, market data, military bases, nuclear facilities, undersea cables, conflict zones, real-time monitoring, situation awareness, OSINT, flight tracking, AIS ships, earthquake monitor, protest tracker, power outages, oil prices, government spending, polymarket predictions" />
-    <meta name="author" content="Elie Habib" />
-    <meta name="theme-color" content="#0a0f0a" />
-    <meta name="robots" content="index, follow" />
-    <link rel="canonical" href="https://www.worldmonitor.app/" />
-    <link rel="alternate" hreflang="x-default" href="https://www.worldmonitor.app/" />
-    <link rel="alternate" hreflang="en" href="https://www.worldmonitor.app/" />
-    <link rel="alternate" hreflang="ar" href="https://www.worldmonitor.app/?lang=ar" />
-    <link rel="alternate" hreflang="bg" href="https://www.worldmonitor.app/?lang=bg" />
-    <link rel="alternate" hreflang="cs" href="https://www.worldmonitor.app/?lang=cs" />
-    <link rel="alternate" hreflang="de" href="https://www.worldmonitor.app/?lang=de" />
-    <link rel="alternate" hreflang="el" href="https://www.worldmonitor.app/?lang=el" />
-    <link rel="alternate" hreflang="es" href="https://www.worldmonitor.app/?lang=es" />
-    <link rel="alternate" hreflang="fr" href="https://www.worldmonitor.app/?lang=fr" />
-    <link rel="alternate" hreflang="it" href="https://www.worldmonitor.app/?lang=it" />
-    <link rel="alternate" hreflang="ja" href="https://www.worldmonitor.app/?lang=ja" />
-    <link rel="alternate" hreflang="ko" href="https://www.worldmonitor.app/?lang=ko" />
-    <link rel="alternate" hreflang="nl" href="https://www.worldmonitor.app/?lang=nl" />
-    <link rel="alternate" hreflang="pl" href="https://www.worldmonitor.app/?lang=pl" />
-    <link rel="alternate" hreflang="pt" href="https://www.worldmonitor.app/?lang=pt" />
-    <link rel="alternate" hreflang="ro" href="https://www.worldmonitor.app/?lang=ro" />
-    <link rel="alternate" hreflang="ru" href="https://www.worldmonitor.app/?lang=ru" />
-    <link rel="alternate" hreflang="sv" href="https://www.worldmonitor.app/?lang=sv" />
-    <link rel="alternate" hreflang="th" href="https://www.worldmonitor.app/?lang=th" />
-    <link rel="alternate" hreflang="tr" href="https://www.worldmonitor.app/?lang=tr" />
-    <link rel="alternate" hreflang="vi" href="https://www.worldmonitor.app/?lang=vi" />
-    <link rel="alternate" hreflang="zh" href="https://www.worldmonitor.app/?lang=zh" />
-
-    <!-- Additional Search Discovery -->
-    <meta name="application-name" content="World Monitor" />
-    <meta name="subject" content="AI-Powered Global Intelligence and Situation Awareness" />
-    <meta name="classification" content="AI Intelligence Dashboard, OSINT Tool, News Aggregator" />
-    <meta name="coverage" content="Worldwide" />
-    <meta name="distribution" content="Global" />
-    <meta name="rating" content="General" />
-
-    <!-- Open Graph / Facebook -->
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://www.worldmonitor.app/" />
-    <meta property="og:title" content="World Monitor - Real-Time Global Intelligence Dashboard" />
-    <meta property="og:description" content="AI-powered real-time global intelligence dashboard with live news, markets, military tracking, infrastructure monitoring, and geopolitical data." />
-    <meta property="og:image" content="https://www.worldmonitor.app/favico/og-image.png" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="World Monitor — real-time global intelligence dashboard with 3D globe, live markets, geopolitical data, and infrastructure monitoring" />
-    <meta property="og:site_name" content="World Monitor" />
-    <meta property="og:locale" content="en_US" />
-
-    <!-- Twitter -->
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:url" content="https://www.worldmonitor.app/" />
-    <meta name="twitter:title" content="World Monitor - Real-Time Global Intelligence Dashboard" />
-    <meta name="twitter:description" content="AI-powered real-time global intelligence dashboard with live news, markets, military tracking, infrastructure monitoring, and geopolitical data." />
-    <meta name="twitter:image" content="https://www.worldmonitor.app/favico/og-image.png" />
-    <meta name="twitter:site" content="@worldmonitorai" />
-    <meta name="twitter:creator" content="@worldmonitorai" />
-
-    <!-- JSON-LD Structured Data -->
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "WebApplication",
-      "name": "World Monitor",
-      "alternateName": "World Monitor",
-      "url": "https://www.worldmonitor.app/",
-      "description": "Open-source real-time OSINT dashboard for geopolitical monitoring, conflict tracking, military flight tracking, maritime AIS, and global threat intelligence. Used by 2M+ people across 190+ countries.",
-      "applicationCategory": "SecurityApplication",
-      "operatingSystem": "Web, Windows, macOS, Linux",
-      "offers": [
-        { "@type": "Offer", "price": "0", "priceCurrency": "USD", "name": "Free", "description": "Full dashboard with 435+ sources, 45 map layers, BYOK AI" },
-        { "@type": "Offer", "price": "0", "priceCurrency": "USD", "name": "Pro (Waitlist)", "url": "https://www.worldmonitor.app/pro" }
-      ],
-      "author": {
-        "@type": "Person",
-        "name": "Elie Habib",
-        "url": "https://x.com/eliehabib",
-        "jobTitle": "CEO",
-        "worksFor": { "@type": "Organization", "name": "Anghami", "url": "https://anghami.com" },
-        "sameAs": ["https://x.com/eliehabib", "https://github.com/koala73"]
-      },
-      "featureList": [
-        "Real-time conflict tracking (ACLED, UCDP)",
-        "Military ADS-B flight monitoring",
-        "Maritime AIS ship tracking and dark vessel detection",
-        "NASA FIRMS satellite fire detection",
-        "Nuclear installation and critical infrastructure mapping",
-        "Submarine cable and internet outage monitoring",
-        "GPS jamming zone detection",
-        "AI-powered intelligence synthesis and briefs",
-        "Country Instability Index (CII) scoring",
-        "Stock market, commodity, and crypto tracking",
-        "Earthquake and natural disaster alerts",
-        "Civil unrest and protest monitoring",
-        "Cyber threat and BGP anomaly detection",
-        "435+ curated RSS news feeds",
-        "21 language support with RTL"
-      ],
-      "screenshot": "https://www.worldmonitor.app/favico/og-image.png",
-      "sameAs": [
-        "https://github.com/koala73/worldmonitor",
-        "https://x.com/worldmonitorai",
-        "https://x.com/eliehabib",
-        "https://www.wired.me/story/the-music-streaming-ceo-who-built-a-global-war-map"
-      ],
-      "keywords": "OSINT dashboard, geopolitical monitoring, real-time intelligence, conflict tracker, threat intelligence, ADS-B tracking, AIS ship tracking, global risk monitoring, situational awareness"
-    }
-    </script>
-
-    <!-- Favicons -->
-    <link rel="icon" type="image/x-icon" href="/favico/favicon.ico" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/favico/favicon-32x32.png" />
-    <link rel="icon" type="image/png" sizes="16x16" href="/favico/favicon-16x16.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/favico/apple-touch-icon.png" />
-
-
-    <!-- Theme: apply stored preference before first paint to prevent FOUC -->
-    <script>(function(){try{var h=location.hostname;var v;if(h.startsWith('happy.'))v='happy';else if(h.startsWith('tech.'))v='tech';else if(h.startsWith('finance.'))v='finance';if(!v&&(h==='localhost'||h==='127.0.0.1'||'__TAURI_INTERNALS__' in window))v=localStorage.getItem('worldmonitor-variant');if(v)document.documentElement.dataset.variant=v;else document.documentElement.removeAttribute('data-variant');var t=localStorage.getItem('worldmonitor-theme');if(t==='dark'||t==='light'){document.documentElement.dataset.theme=t;}else if(v==='happy'){document.documentElement.dataset.theme='light';}}catch(e){}document.documentElement.classList.add('no-transition');})()</script>
-
-    <!-- Critical CSS: inline skeleton visible before JS boots -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI News Reader</title>
+    <meta name="description" content="AI-powered news reader with clustering, deduplication, and AI narration" />
+    <meta name="theme-color" content="#0f172a" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📰</text></svg>" />
     <style>
-      /* ---------- skeleton shell (dark default) ---------- */
-      .skeleton-shell{display:flex;flex-direction:column;height:100vh;background:#0a0a0a;font-family:'SF Mono','Monaco','Cascadia Code','Fira Code','DejaVu Sans Mono','Liberation Mono',monospace;overflow:hidden}
-      .skeleton-header{display:flex;align-items:center;justify-content:space-between;height:40px;padding:8px 16px;background:#141414;border-bottom:1px solid #2a2a2a;flex-shrink:0}
-      .skeleton-header-left{display:flex;align-items:center;gap:12px}
-      .skeleton-header-right{display:flex;align-items:center;gap:12px}
-      .skeleton-pill{height:24px;border-radius:4px;background:#1e1e1e}
-      .skeleton-dot{width:8px;height:8px;border-radius:50%;background:#0f5040}
-      .skeleton-main{flex:1;display:flex;flex-direction:column;overflow:hidden;background:#0a0a0a}
-      .skeleton-map{height:50vh;min-height:200px;border:1px solid #2a2a2a;background:#020a08;display:flex;flex-direction:column;flex-shrink:0}
-      .skeleton-map-bar{height:32px;display:flex;align-items:center;padding:0 12px;background:#141414;border-bottom:1px solid #2a2a2a}
-      .skeleton-map-body{flex:1;position:relative;overflow:hidden}
-      .skeleton-map-body::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 60% 50% at 50% 50%,#0a2a20 0%,#020a08 100%);opacity:.5}
-      .skeleton-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:4px;padding:4px;align-content:start}
-      .skeleton-panel{height:320px;background:#141414;border:1px solid #2a2a2a;border-radius:0;display:flex;flex-direction:column}
-      .skeleton-panel-header{height:36px;display:flex;align-items:center;padding:0 12px;border-bottom:1px solid #1a1a1a}
-      .skeleton-panel-body{flex:1;padding:12px;display:flex;flex-direction:column;gap:10px}
-      .skeleton-line{height:14px;border-radius:4px;background:linear-gradient(90deg,rgba(255,255,255,.05) 25%,rgba(255,255,255,.1) 50%,rgba(255,255,255,.05) 75%);background-size:200% 100%;animation:skel-shimmer 1.5s infinite}
-      .skeleton-line.w75{width:75%}.skeleton-line.w60{width:60%}.skeleton-line.w50{width:50%}.skeleton-line.w85{width:85%}.skeleton-line.w40{width:40%}
-
-      @keyframes skel-shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
-
-      /* ---------- skeleton shell (light theme) ---------- */
-      [data-theme="light"] .skeleton-shell{background:#f8f9fa}
-      [data-theme="light"] .skeleton-header{background:#fff;border-bottom-color:#d4d4d4}
-      [data-theme="light"] .skeleton-pill{background:#f0f0f0}
-      [data-theme="light"] .skeleton-dot{background:#16a34a}
-      [data-theme="light"] .skeleton-main{background:#f8f9fa}
-      [data-theme="light"] .skeleton-map{border-color:#d4d4d4;background:#e8f0f8}
-      [data-theme="light"] .skeleton-map-bar{background:#fff;border-bottom-color:#d4d4d4}
-      [data-theme="light"] .skeleton-map-body::after{background:radial-gradient(ellipse 60% 50% at 50% 50%,#b0c8d8 0%,#e8f0f8 100%)}
-      [data-theme="light"] .skeleton-panel{background:#fff;border-color:#d4d4d4}
-      [data-theme="light"] .skeleton-panel-header{border-bottom-color:#e8e8e8}
-      [data-theme="light"] .skeleton-line{background:linear-gradient(90deg,rgba(0,0,0,.04) 25%,rgba(0,0,0,.08) 50%,rgba(0,0,0,.04) 75%);background-size:200% 100%;animation:skel-shimmer 1.5s infinite}
-
-      /* ---------- skeleton shell (happy variant — light) ---------- */
-      [data-variant="happy"] .skeleton-shell{background:#FAFAF5;font-family:'Nunito',system-ui,sans-serif}
-      [data-variant="happy"] .skeleton-header{background:#FFFFFF;border-bottom-color:#DDD9CF}
-      [data-variant="happy"] .skeleton-pill{background:#F2EFE8;border-radius:8px}
-      [data-variant="happy"] .skeleton-dot{background:#6B8F5E}
-      [data-variant="happy"] .skeleton-main{background:#FAFAF5}
-      [data-variant="happy"] .skeleton-map{border-color:#DDD9CF;background:#D4E6EC;border-radius:14px}
-      [data-variant="happy"] .skeleton-map-bar{background:#FFFFFF;border-bottom-color:#DDD9CF}
-      [data-variant="happy"] .skeleton-map-body::after{background:radial-gradient(ellipse 60% 50% at 50% 50%,#B9CDA8 0%,#D4E6EC 100%);opacity:.3}
-      [data-variant="happy"] .skeleton-panel{background:#FFFFFF;border-color:#DDD9CF;border-radius:14px}
-      [data-variant="happy"] .skeleton-panel-header{border-bottom-color:#EBE8E0}
-      [data-variant="happy"] .skeleton-line{background:linear-gradient(90deg,rgba(107,143,94,.06) 25%,rgba(107,143,94,.12) 50%,rgba(107,143,94,.06) 75%);background-size:200% 100%;animation:skel-shimmer 1.5s infinite}
-
-      /* ---------- skeleton shell (happy variant — dark) ---------- */
-      [data-variant="happy"][data-theme="dark"] .skeleton-shell{background:#1A2332}
-      [data-variant="happy"][data-theme="dark"] .skeleton-header{background:#222E3E;border-bottom-color:#344050}
-      [data-variant="happy"][data-theme="dark"] .skeleton-pill{background:#2A3848}
-      [data-variant="happy"][data-theme="dark"] .skeleton-dot{background:#8BAF7A}
-      [data-variant="happy"][data-theme="dark"] .skeleton-main{background:#1A2332}
-      [data-variant="happy"][data-theme="dark"] .skeleton-map{border-color:#344050;background:#16202E}
-      [data-variant="happy"][data-theme="dark"] .skeleton-map-bar{background:#222E3E;border-bottom-color:#344050}
-      [data-variant="happy"][data-theme="dark"] .skeleton-map-body::after{background:radial-gradient(ellipse 60% 50% at 50% 50%,#2D4035 0%,#16202E 100%);opacity:.3}
-      [data-variant="happy"][data-theme="dark"] .skeleton-panel{background:#222E3E;border-color:#344050}
-      [data-variant="happy"][data-theme="dark"] .skeleton-panel-header{border-bottom-color:#283545}
-      [data-variant="happy"][data-theme="dark"] .skeleton-line{background:linear-gradient(90deg,rgba(139,175,122,.05) 25%,rgba(139,175,122,.10) 50%,rgba(139,175,122,.05) 75%);background-size:200% 100%;animation:skel-shimmer 1.5s infinite}
+      *{margin:0;padding:0;box-sizing:border-box}
+      body{font-family:system-ui,-apple-system,sans-serif;background:#0f172a;color:#f8fafc}
+      [data-theme="light"] body{background:#ffffff;color:#1e293b}
+      #app{min-height:100vh}
+      .loading-shell{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;gap:16px}
+      .loading-shell .spinner{width:32px;height:32px;border:3px solid rgba(13,148,136,.3);border-top-color:#0d9488;border-radius:50%;animation:spin .8s linear infinite}
+      @keyframes spin{to{transform:rotate(360deg)}}
+      .loading-shell p{color:#94a3b8;font-size:14px}
     </style>
-
-    <!-- Preconnect: map tiles + assets -->
-    <link rel="preconnect" href="https://maps.worldmonitor.app" crossorigin>
-    <link rel="dns-prefetch" href="https://protomaps.github.io">
-
-    <!-- Google Fonts (Nunito for happy variant, Tajawal for Arabic) -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,300;0,400;0,600;0,700;1,400&family=Tajawal:wght@200;300;400;500;700;800;900&display=swap" rel="stylesheet">
+    <script>
+      // Apply theme before paint
+      (function(){try{var t=localStorage.getItem('newsreader-theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t;}catch(e){}})()
+    </script>
   </head>
   <body>
     <div id="app">
-      <!-- Pre-render skeleton: visible instantly, replaced when JS calls renderLayout() -->
-      <div class="skeleton-shell" aria-hidden="true">
-        <div class="skeleton-header">
-          <div class="skeleton-header-left">
-            <div class="skeleton-pill" style="width:120px"></div>
-            <div class="skeleton-pill" style="width:72px"></div>
-            <div class="skeleton-dot"></div>
-          </div>
-          <div class="skeleton-header-right">
-            <div class="skeleton-pill" style="width:80px"></div>
-            <div class="skeleton-pill" style="width:28px;height:28px"></div>
-            <div class="skeleton-pill" style="width:64px"></div>
-          </div>
-        </div>
-        <div class="skeleton-main">
-          <div class="skeleton-map">
-            <div class="skeleton-map-bar">
-              <div class="skeleton-pill" style="width:48px;height:16px"></div>
-            </div>
-            <div class="skeleton-map-body"></div>
-          </div>
-          <div class="skeleton-grid">
-            <div class="skeleton-panel"><div class="skeleton-panel-header"><div class="skeleton-pill" style="width:80px;height:14px"></div></div><div class="skeleton-panel-body"><div class="skeleton-line w85"></div><div class="skeleton-line w75"></div><div class="skeleton-line w60"></div><div class="skeleton-line"></div><div class="skeleton-line w50"></div><div class="skeleton-line w75"></div></div></div>
-            <div class="skeleton-panel"><div class="skeleton-panel-header"><div class="skeleton-pill" style="width:64px;height:14px"></div></div><div class="skeleton-panel-body"><div class="skeleton-line w75"></div><div class="skeleton-line"></div><div class="skeleton-line w60"></div><div class="skeleton-line w85"></div><div class="skeleton-line w40"></div><div class="skeleton-line w75"></div></div></div>
-            <div class="skeleton-panel"><div class="skeleton-panel-header"><div class="skeleton-pill" style="width:96px;height:14px"></div></div><div class="skeleton-panel-body"><div class="skeleton-line"></div><div class="skeleton-line w60"></div><div class="skeleton-line w85"></div><div class="skeleton-line w50"></div><div class="skeleton-line w75"></div><div class="skeleton-line w40"></div></div></div>
-            <div class="skeleton-panel"><div class="skeleton-panel-header"><div class="skeleton-pill" style="width:72px;height:14px"></div></div><div class="skeleton-panel-body"><div class="skeleton-line w60"></div><div class="skeleton-line w85"></div><div class="skeleton-line w75"></div><div class="skeleton-line"></div><div class="skeleton-line w50"></div><div class="skeleton-line w60"></div></div></div>
-            <div class="skeleton-panel"><div class="skeleton-panel-header"><div class="skeleton-pill" style="width:88px;height:14px"></div></div><div class="skeleton-panel-body"><div class="skeleton-line w85"></div><div class="skeleton-line w50"></div><div class="skeleton-line w75"></div><div class="skeleton-line w60"></div><div class="skeleton-line"></div><div class="skeleton-line w40"></div></div></div>
-            <div class="skeleton-panel"><div class="skeleton-panel-header"><div class="skeleton-pill" style="width:56px;height:14px"></div></div><div class="skeleton-panel-body"><div class="skeleton-line w75"></div><div class="skeleton-line w60"></div><div class="skeleton-line"></div><div class="skeleton-line w85"></div><div class="skeleton-line w50"></div><div class="skeleton-line w75"></div></div></div>
-          </div>
-        </div>
+      <div class="loading-shell">
+        <div class="spinner"></div>
+        <p>Loading...</p>
       </div>
     </div>
-    <aside id="country-deep-dive-panel" class="country-deep-dive" aria-label="Country Intelligence" aria-hidden="true">
-      <div class="country-deep-dive-shell">
-        <button id="deep-dive-close" class="panel-close" aria-label="Close">×</button>
-        <div id="deep-dive-content" class="panel-content"></div>
-      </div>
-    </aside>
-    <noscript>
-      <div style="max-width:800px;margin:0 auto;padding:40px 20px;font-family:system-ui,sans-serif;color:#e5e5e5;background:#0a0a0a;">
-        <h1>World Monitor — Real-Time Global Intelligence Dashboard</h1>
-        <p>AI-powered real-time global intelligence dashboard with live news, markets, military tracking, infrastructure monitoring, and geopolitical data. Used by 2M+ people across 190+ countries.</p>
-        <h2>Features</h2>
-        <ul>
-          <li>Real-time conflict tracking (ACLED, UCDP)</li>
-          <li>Military ADS-B flight monitoring</li>
-          <li>Maritime AIS ship tracking and dark vessel detection</li>
-          <li>Stock market, commodity, and crypto tracking</li>
-          <li>AI-powered intelligence synthesis and daily briefs</li>
-          <li>Country Instability Index (CII) scoring</li>
-          <li>435+ curated RSS news feeds, 45 map layers</li>
-          <li>21 language support</li>
-        </ul>
-        <p><a href="https://www.worldmonitor.app/pro" style="color:#4ade80;">Upgrade to World Monitor Pro</a></p>
-      </div>
-    </noscript>
-    <!-- Force-clear stale service worker if module scripts 404 (post-deploy cache mismatch) -->
-    <script>
-    (function(){
-      if(!('serviceWorker' in navigator))return;
-      var key='wm-sw-nuke';
-      if(sessionStorage.getItem(key))return;
-      window.addEventListener('error',function(e){
-        var u=e.target&&(e.target.src||e.target.href)||'';
-        if(u&&/\/assets\//.test(u)){
-          sessionStorage.setItem(key,'1');
-          navigator.serviceWorker.getRegistrations().then(function(regs){
-            var p=regs.map(function(r){return r.unregister()});
-            Promise.all(p).then(function(){
-              if(caches&&caches.keys){
-                caches.keys().then(function(ks){
-                  return Promise.all(ks.map(function(k){return caches.delete(k)}));
-                }).then(function(){location.reload()});
-              }else{location.reload()}
-            });
-          });
-        }
-      },true);
-    })()
-    </script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

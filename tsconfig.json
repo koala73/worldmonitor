@@ -23,6 +23,17 @@
       "@/*": ["src/*"]
     }
   },
-  "include": ["src"],
-  "exclude": ["src/workers/ml.worker.ts"]
+  "include": [
+    "src/main.ts",
+    "src/types",
+    "src/ingestion",
+    "src/normalize",
+    "src/cluster",
+    "src/narration",
+    "src/pipeline",
+    "src/services/db.ts",
+    "src/services/settings-store.ts",
+    "src/ui",
+    "src/styles"
+  ]
 }
