@@ -1,24 +1,28 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
 echo "Scanning repository for RSS feeds..."
 echo
 
-DIRS=("api" "server" "shared" "data" "docs")
-
-for dir in "${DIRS[@]}"; do
-  if [ -d "$dir" ]; then
-    grep -rhoE "https?://[^\"' ]+" "$dir" \
-    | grep -Ei "rss|feed|xml" \
-    | sort -u
-  fi
-done | while read -r url
+# find URLs but exclude large directories
+grep -rhoE "https?://[a-zA-Z0-9./:_?&=%+-]+" . \
+--exclude-dir=node_modules \
+--exclude-dir=.git \
+--exclude-dir=dist \
+--exclude-dir=build \
+| sort -u \
+| while read -r url
 do
-  code=$(curl -L -o /dev/null -s -w "%{http_code}" --max-time 8 "$url")
+  # additional validation
+  if [[ "$url" =~ ^https?://[a-zA-Z0-9./:_?&=%+-]+$ ]]; then
+    code=$(curl -L --max-time "${MAX_TIME:-8}" \
+      -o /dev/null -s -w "%{http_code}" --url "$url")
 
-  if [[ "$code" == "200" ]]; then
-    echo "✅ $url"
-  else
-    echo "⚠️  $code  $url"
+    if [[ "$code" == "200" ]]; then
+      echo "✅ $url"
+    else
+      echo "⚠️  $code  $url"
+    fi
   fi
 done
 
