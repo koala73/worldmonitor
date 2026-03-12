@@ -16,6 +16,7 @@
  */
 
 import http from 'node:http';
+import crypto from 'node:crypto';
 import { createClient } from 'redis';
 
 const REDIS_URL = process.env.SRH_CONNECTION_STRING || process.env.REDIS_URL || 'redis://redis:6379';
@@ -30,7 +31,11 @@ console.log(`Connected to Redis at ${REDIS_URL}`);
 function checkAuth(req) {
   if (!TOKEN) return true;
   const auth = req.headers.authorization || '';
-  return auth === `Bearer ${TOKEN}`;
+  const prefix = 'Bearer ';
+  if (!auth.startsWith(prefix)) return false;
+  const provided = auth.slice(prefix.length);
+  if (provided.length !== TOKEN.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(TOKEN));
 }
 
 async function runCommand(args) {
@@ -39,9 +44,19 @@ async function runCommand(args) {
   return client.sendCommand([cmd, ...cmdArgs.map(String)]);
 }
 
+const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
+
 async function readBody(req) {
   const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
+  let totalLength = 0;
+  for await (const chunk of req) {
+    totalLength += chunk.length;
+    if (totalLength > MAX_BODY_BYTES) {
+      req.destroy();
+      throw new Error('Request body too large');
+    }
+    chunks.push(chunk);
+  }
   return Buffer.concat(chunks).toString();
 }
 

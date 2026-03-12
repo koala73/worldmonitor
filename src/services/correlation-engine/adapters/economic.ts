@@ -40,7 +40,7 @@ export const economicAdapter: DomainAdapter = {
         type,
         source: 'markets',
         severity,
-        timestamp: now,
+        timestamp: (m as any).updatedAt ?? (m as any).fetchedAt ?? now,
         label: `${m.display ?? m.symbol} ${m.change > 0 ? '+' : ''}${m.change.toFixed(1)}%`,
         rawData: m,
       });

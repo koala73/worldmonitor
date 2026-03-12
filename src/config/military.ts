@@ -568,7 +568,7 @@ export const HULL_HOMEPORT: Record<string, string> = {
   'LHD-3': 'Norfolk',           // USS Kearsarge
   'LHD-4': 'San Diego',         // USS Boxer
   'LHD-5': 'Norfolk',           // USS Bataan
-  'LHD-7': 'San Diego',         // USS Iwo Jima
+  'LHD-7': 'Norfolk',           // USS Iwo Jima
   'LHD-8': 'San Diego',         // USS Makin Island
   'LHA-6': 'San Diego',         // USS America
   'LHA-7': 'San Diego',         // USS Tripoli

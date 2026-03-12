@@ -133,44 +133,74 @@ export class CorrelationEngine {
     signals: SignalEvidence[],
     radiusKm: number,
   ): SignalCluster[] {
-    // Single-linkage clustering
-    const assigned = new Set<number>();
-    const clusters: SignalCluster[] = [];
+    // Grid-based spatial indexing + union-find: O(n * k) where k = avg signals per cell
+    const DEG_PER_KM_LAT = 1 / 111;
+    const cellSizeLat = radiusKm * DEG_PER_KM_LAT;
 
+    // Union-Find with path compression
+    const parent: number[] = signals.map((_, i) => i);
+    const find = (i: number): number => {
+      while (parent[i] !== i) { parent[i] = parent[parent[i]!]!; i = parent[i]!; }
+      return i;
+    };
+    const union = (a: number, b: number): void => {
+      const ra = find(a), rb = find(b);
+      if (ra !== rb) parent[ra] = rb;
+    };
+
+    // Index valid signals into spatial grid
+    const grid = new Map<string, number[]>();
+    const validIndices: number[] = [];
     for (let i = 0; i < signals.length; i++) {
-      if (assigned.has(i)) continue;
       const s = signals[i]!;
       if (s.lat == null || s.lon == null) continue;
+      validIndices.push(i);
+      const cellRow = Math.floor(s.lat / cellSizeLat);
+      const cosLat = Math.cos(s.lat * Math.PI / 180);
+      const cellSizeLon = cosLat > 0.01 ? cellSizeLat / cosLat : cellSizeLat;
+      const cellCol = Math.floor(s.lon / cellSizeLon);
+      const key = `${cellRow}:${cellCol}`;
+      const list = grid.get(key);
+      if (list) list.push(i); else grid.set(key, [i]);
+    }
 
-      const cluster: SignalEvidence[] = [s];
-      assigned.add(i);
-
-      // Expand cluster with single-linkage
-      let expanded = true;
-      while (expanded) {
-        expanded = false;
-        for (let j = 0; j < signals.length; j++) {
-          if (assigned.has(j)) continue;
-          const candidate = signals[j]!;
-          if (candidate.lat == null || candidate.lon == null) continue;
-
-          for (const member of cluster) {
-            if (member.lat == null || member.lon == null) continue;
-            if (haversineKm(member.lat, member.lon, candidate.lat, candidate.lon) <= radiusKm) {
-              cluster.push(candidate);
-              assigned.add(j);
-              expanded = true;
-              break;
+    // Check 3x3 neighborhood for each cell
+    for (const [key, indices] of grid) {
+      const sep = key.indexOf(':');
+      const row = Number(key.slice(0, sep));
+      const col = Number(key.slice(sep + 1));
+      for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          const neighbors = grid.get(`${row + dr}:${col + dc}`);
+          if (!neighbors) continue;
+          for (const i of indices) {
+            const si = signals[i]!;
+            for (const j of neighbors) {
+              if (i >= j) continue;
+              const sj = signals[j]!;
+              if (haversineKm(si.lat!, si.lon!, sj.lat!, sj.lon!) <= radiusKm) {
+                union(i, j);
+              }
             }
           }
         }
       }
-
-      if (cluster.length >= 2) {
-        clusters.push({ signals: cluster });
-      }
     }
 
+    // Collect clusters from union-find roots
+    const clusterMap = new Map<number, SignalEvidence[]>();
+    for (const i of validIndices) {
+      const root = find(i);
+      const list = clusterMap.get(root);
+      if (list) list.push(signals[i]!); else clusterMap.set(root, [signals[i]!]);
+    }
+
+    const clusters: SignalCluster[] = [];
+    for (const sigs of clusterMap.values()) {
+      if (sigs.length >= 2) {
+        clusters.push({ signals: sigs });
+      }
+    }
     return clusters;
   }
 
@@ -270,7 +300,7 @@ export class CorrelationEngine {
       : undefined;
 
     return {
-      id: `${adapter.domain}:${sc.state.key}:${Date.now()}`,
+      id: `${adapter.domain}:${sc.state.key}`,
       domain: adapter.domain,
       title,
       score: Math.round(sc.score),

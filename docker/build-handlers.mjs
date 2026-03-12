@@ -39,6 +39,9 @@ async function findTsHandlers(dir) {
 }
 
 // ── Pass 2: Plain JS handlers at api/ root level ──────────────────────────
+// NOTE: This pass only re-bundles JS files at the api/ root level (not subdirs).
+// If TS handlers are ever added at the api/ root (not under api/<domain>/v1/),
+// they would need to be handled in Pass 1 instead.
 async function findJsHandlers(dir) {
   const entries = await readdir(dir, { withFileTypes: true });
   return entries

@@ -10,8 +10,6 @@
 # The app will be available at http://localhost:3000
 # =============================================================================
 
-version: '3.9'
-
 services:
 
   worldmonitor:
@@ -24,7 +22,7 @@ services:
       - "${WM_PORT:-3000}:8080"
     environment:
       UPSTASH_REDIS_REST_URL: "http://redis-rest:80"
-      UPSTASH_REDIS_REST_TOKEN: "wm-local-token"
+      UPSTASH_REDIS_REST_TOKEN: "${REDIS_TOKEN:-wm-local-token}"
       LOCAL_API_PORT: "46123"
       LOCAL_API_MODE: "docker"
       LOCAL_API_CLOUD_FALLBACK: "false"
@@ -78,7 +76,7 @@ services:
     ports:
       - "127.0.0.1:8079:80"
     environment:
-      SRH_TOKEN: "wm-local-token"
+      SRH_TOKEN: "${REDIS_TOKEN:-wm-local-token}"
       SRH_CONNECTION_STRING: "redis://redis:6379"
     depends_on:
       - redis

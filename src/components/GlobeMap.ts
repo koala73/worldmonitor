@@ -909,44 +909,15 @@ export class GlobeMap {
       el.title = d.name;
     } else if (d._kind === 'flight') {
       const heading = d.heading ?? 0;
-      const typeColors: Record<string, string> = {
-        fighter: '#ff4444', bomber: '#ff8800', recon: '#44aaff',
-        tanker: '#88ff44', transport: '#aaaaff', helicopter: '#ffff44',
-        drone: '#ff44ff', maritime: '#44ffff',
-      };
-      const color = typeColors[d.type] ?? '#cccccc';
+      const color = GlobeMap.FLIGHT_TYPE_COLORS[d.type] ?? '#cccccc';
       el.innerHTML = GlobeMap.wrapHit(`
         <div style="transform:rotate(${heading}deg);font-size:11px;color:${color};text-shadow:0 0 4px ${color}88;line-height:1;">
           ✈
         </div>`);
       el.title = `${d.callsign} (${d.type})`;
     } else if (d._kind === 'vessel') {
-      const typeColors: Record<string, string> = {
-        carrier:    '#ff4444',
-        destroyer:  '#ff8800',
-        frigate:    '#ffcc00',
-        submarine:  '#8844ff',
-        amphibious: '#44cc88',
-        patrol:     '#44aaff',
-        auxiliary:  '#aaaaaa',
-        research:   '#44ffff',
-        icebreaker: '#88ccff',
-        special:    '#ff44ff',
-      };
-      const typeIcons: Record<string, string> = {
-        carrier:    '\u26f4',
-        destroyer:  '\u25b2',
-        frigate:    '\u25b2',
-        submarine:  '\u25c6',
-        amphibious: '\u2b21',
-        patrol:     '\u25b6',
-        auxiliary:  '\u25cf',
-        research:   '\u25ce',
-        icebreaker: '\u2745',
-        special:    '\u2605',
-      };
-      const c = typeColors[d.type] ?? '#44aaff';
-      const icon = typeIcons[d.type] ?? '\u26f4';
+      const c = GlobeMap.VESSEL_TYPE_COLORS[d.type] ?? '#44aaff';
+      const icon = GlobeMap.VESSEL_TYPE_ICONS[d.type] ?? '\u26f4';
       const isCarrier = d.type === 'carrier';
       const sz = isCarrier ? 15 : 10;
       const glow = isCarrier ? `0 0 10px 4px ${c}bb` : `0 0 4px ${c}88`;
@@ -965,10 +936,7 @@ export class GlobeMap {
       );
       el.title = `${d.name}${d.hullNumber ? ` (${d.hullNumber})` : ''} \u00b7 ${d.typeLabel} \u00b7 ${d.usniSource ? 'EST. POSITION' : 'AIS LIVE'}`;
     } else if (d._kind === 'cluster') {
-      const clusterColors: Record<string, string> = {
-        deployment: '#ff4444', exercise: '#ff8800', transit: '#ffcc00', unknown: '#6688aa',
-      };
-      const cc = clusterColors[d.activityType ?? 'unknown'] ?? '#6688aa';
+      const cc = GlobeMap.CLUSTER_ACTIVITY_COLORS[d.activityType ?? 'unknown'] ?? '#6688aa';
       const sz = Math.max(14, Math.min(26, 12 + d.vesselCount * 2));
       el.innerHTML = GlobeMap.wrapHit(
         `<div style="position:relative;display:inline-flex;align-items:center;justify-content:center;width:${sz}px;height:${sz}px;">` +
@@ -1267,10 +1235,7 @@ export class GlobeMap {
           ? `<br><span style="color:#ffaa44;font-size:9px;">⚠ EST. POSITION — ${inPort ? 'In-port' : 'Approx.'} via USNI${articleDate}</span>`
           : `<br><span style="color:#44ff88;font-size:9px;">● AIS LIVE</span>`);
     } else if (d._kind === 'cluster') {
-      const clusterActivityColors: Record<string, string> = {
-        deployment: '#ff4444', exercise: '#ff8800', transit: '#ffcc00', unknown: '#6688aa',
-      };
-      const cc = clusterActivityColors[d.activityType ?? 'unknown'] ?? '#6688aa';
+      const cc = GlobeMap.CLUSTER_ACTIVITY_COLORS[d.activityType ?? 'unknown'] ?? '#6688aa';
       const actLabel = d.activityType && d.activityType !== 'unknown'
         ? d.activityType.charAt(0).toUpperCase() + d.activityType.slice(1) : '';
       html = `<span style="color:${cc};font-weight:bold;">⚓ ${esc(d.name)}</span>`
@@ -1909,6 +1874,42 @@ export class GlobeMap {
     }));
     this.flushMarkers();
   }
+
+  private static readonly FLIGHT_TYPE_COLORS: Record<string, string> = {
+    fighter: '#ff4444', bomber: '#ff8800', recon: '#44aaff',
+    tanker: '#88ff44', transport: '#aaaaff', helicopter: '#ffff44',
+    drone: '#ff44ff', maritime: '#44ffff',
+  };
+
+  private static readonly VESSEL_TYPE_COLORS: Record<string, string> = {
+    carrier:    '#ff4444',
+    destroyer:  '#ff8800',
+    frigate:    '#ffcc00',
+    submarine:  '#8844ff',
+    amphibious: '#44cc88',
+    patrol:     '#44aaff',
+    auxiliary:  '#aaaaaa',
+    research:   '#44ffff',
+    icebreaker: '#88ccff',
+    special:    '#ff44ff',
+  };
+
+  private static readonly VESSEL_TYPE_ICONS: Record<string, string> = {
+    carrier:    '\u26f4',
+    destroyer:  '\u25b2',
+    frigate:    '\u25b2',
+    submarine:  '\u25c6',
+    amphibious: '\u2b21',
+    patrol:     '\u25b6',
+    auxiliary:  '\u25cf',
+    research:   '\u25ce',
+    icebreaker: '\u2745',
+    special:    '\u2605',
+  };
+
+  private static readonly CLUSTER_ACTIVITY_COLORS: Record<string, string> = {
+    deployment: '#ff4444', exercise: '#ff8800', transit: '#ffcc00', unknown: '#6688aa',
+  };
 
   private static readonly VESSEL_TYPE_LABELS: Record<string, string> = {
     carrier: 'Aircraft Carrier',
@@ -2967,6 +2968,7 @@ export class GlobeMap {
   // ─── Destroy ──────────────────────────────────────────────────────────────
 
   public destroy(): void {
+    this.popup?.hide();
     this.popup = null;
     this.vesselData.clear();
     this.clusterData.clear();

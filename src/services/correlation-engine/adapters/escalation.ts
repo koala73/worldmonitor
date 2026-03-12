@@ -5,11 +5,11 @@ import { matchCountryNamesInText, getCountryAtCoordinates } from '@/services/cou
 // v1 weights: displacement and cii_delta deferred — renormalized to sum to 1.0.
 const WEIGHTS: Record<string, number> = {
   conflict_event: 0.45,
-  internet_outage: 0.25,
+  escalation_outage: 0.25,
   news_severity: 0.30,
 };
 
-const ESCALATION_KEYWORDS = /\b(war|invasion|attack|bombing|strike|missile|airstrike|offensive|troops|military|killed|casualties|ceasefire|martial\s+law|clashes|conflict|fighting|shelling|drone|explosion|gunfire|protest|riot|coup|insurgent|rebel|militia|terror|hostage|siege|blockade|mobiliz|escalat|retaliat|deploy|incursion|annexed|occupation|humanitarian|refugee|displaced|evacuat|emergency|crisis|threat|sanctions|weapon|nuclear|chemical|biological)\b/i;
+const ESCALATION_KEYWORDS = /\b((?:military|armed|air)\s*(?:strike|attack|offensive)|invasion|bombing|missile|airstrike|shelling|drone\s+strike|war(?:fare)?|ceasefire|martial\s+law|armed\s+clash(?:es)?|gunfire|coup(?:\s+attempt)?|insurgent|rebel|militia|terror(?:ist|ism)|hostage|siege|blockade|mobiliz(?:ation|e)|escalat(?:ion|ing|e)|retaliat|deploy(?:ment|ed)|incursion|annex(?:ation|ed)|occupation|humanitarian\s+crisis|refugee|evacuat|nuclear|chemical\s+weapon|biological\s+weapon)\b/i;
 
 export const escalationAdapter: DomainAdapter = {
   domain: 'escalation',
@@ -58,7 +58,7 @@ export const escalationAdapter: DomainAdapter = {
       const severity = severityMap[o.severity] ?? 30;
 
       signals.push({
-        type: 'internet_outage',
+        type: 'escalation_outage',
         source: 'signal-aggregator',
         severity,
         lat: o.lat,
@@ -104,7 +104,11 @@ export const escalationAdapter: DomainAdapter = {
       });
     }
 
-    return signals;
+    // Only keep outage signals for countries that also have conflict events
+    const conflictCountries = new Set(
+      signals.filter(s => s.type === 'conflict_event').map(s => s.country).filter(Boolean),
+    );
+    return signals.filter(s => s.type !== 'escalation_outage' || conflictCountries.has(s.country));
   },
 
   generateTitle(cluster: SignalEvidence[]): string {
@@ -114,7 +118,7 @@ export const escalationAdapter: DomainAdapter = {
 
     const parts: string[] = [];
     if (types.has('conflict_event')) parts.push('conflict');
-    if (types.has('internet_outage')) parts.push('comms disruption');
+    if (types.has('escalation_outage')) parts.push('comms disruption');
     if (types.has('news_severity')) parts.push('news escalation');
 
     return parts.length > 0

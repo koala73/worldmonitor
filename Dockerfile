@@ -15,10 +15,6 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts
 
-# Install blog-site dependencies (separate workspace)
-COPY blog-site/package.json blog-site/package-lock.json ./blog-site/
-RUN cd blog-site && npm ci --ignore-scripts
-
 # Copy full source
 COPY . .
 
@@ -27,13 +23,14 @@ COPY . .
 RUN node docker/build-handlers.mjs
 
 # Build Vite frontend (outputs to dist/)
-RUN npm run build
+# Skip blog build — blog-site has its own deps not installed here
+RUN npx tsc && npx vite build
 
 # ── Stage 2: Runtime ─────────────────────────────────────────────────────────
-FROM node:20-alpine AS final
+FROM node:22-alpine AS final
 
 # nginx + supervisord
-RUN apk add --no-cache nginx supervisor && \
+RUN apk add --no-cache nginx supervisor gettext && \
     mkdir -p /tmp/nginx-client-body /tmp/nginx-proxy /tmp/nginx-fastcgi \
              /tmp/nginx-uwsgi /tmp/nginx-scgi /var/log/supervisor
 
@@ -53,8 +50,10 @@ COPY --from=builder /app/data ./data
 COPY --from=builder /app/dist /usr/share/nginx/html
 
 # Nginx + supervisord configs
-COPY docker/nginx.conf /etc/nginx/nginx.conf
+COPY docker/nginx.conf /etc/nginx/nginx.conf.template
 COPY docker/supervisord.conf /etc/supervisor/conf.d/worldmonitor.conf
+COPY docker/entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
 
 EXPOSE 8080
 
@@ -62,4 +61,4 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD wget -qO- http://localhost:8080/api/health || exit 1
 
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/worldmonitor.conf"]
+CMD ["/app/entrypoint.sh"]

@@ -12,6 +12,7 @@ interface HealthEntry {
 }
 
 const cache = new Map<string, HealthEntry>();
+const inFlight = new Map<string, Promise<boolean>>();
 
 /**
  * Probe a provider URL to check if it's reachable.
@@ -44,14 +45,20 @@ export async function isProviderAvailable(apiUrl: string): Promise<boolean> {
     return cached.available;
   }
 
-  const available = await probe(apiUrl);
-  cache.set(origin, { available, checkedAt: Date.now() });
+  // Coalesce concurrent probes to the same origin
+  const existing = inFlight.get(origin);
+  if (existing) return existing;
 
-  if (!available) {
-    console.warn(`[llm-health] Provider unreachable: ${origin}`);
-  }
-
-  return available;
+  const promise = probe(apiUrl).then(available => {
+    cache.set(origin, { available, checkedAt: Date.now() });
+    inFlight.delete(origin);
+    if (!available) {
+      console.warn(`[llm-health] Provider unreachable: ${origin}`);
+    }
+    return available;
+  });
+  inFlight.set(origin, promise);
+  return promise;
 }
 
 /**
@@ -76,4 +83,28 @@ export async function reprobeAll(): Promise<void> {
     const available = await probe(origin);
     cache.set(origin, { available, checkedAt: Date.now() });
   }));
+}
+
+/**
+ * Warm the health cache on startup by probing configured providers.
+ * Fire-and-forget — does not block the caller.
+ */
+export function warmHealthCache(): void {
+  const providerUrls: string[] = [];
+
+  const ollamaUrl = typeof process !== 'undefined'
+    ? (process.env?.OLLAMA_API_URL || process.env?.LLM_API_URL)
+    : undefined;
+  if (ollamaUrl) providerUrls.push(ollamaUrl);
+
+  if (typeof process !== 'undefined' && process.env?.GROQ_API_KEY) {
+    providerUrls.push('https://api.groq.com/openai/v1/chat/completions');
+  }
+  if (typeof process !== 'undefined' && process.env?.OPENROUTER_API_KEY) {
+    providerUrls.push('https://openrouter.ai/api/v1/chat/completions');
+  }
+
+  for (const url of providerUrls) {
+    void isProviderAvailable(url);
+  }
 }

@@ -39,6 +39,12 @@ export class LlmStatusIndicator {
       const resp = await fetch('/api/llm-health', {
         signal: AbortSignal.timeout(5_000),
       });
+      if (resp.status === 404) {
+        // Endpoint only exists in sidecar/Docker — hide indicator on Vercel
+        this.element.style.display = 'none';
+        this.destroy();
+        return;
+      }
       if (!resp.ok) {
         this.setStatus(false, 'LLM', 'Health endpoint error');
         return;

@@ -57,7 +57,7 @@ export class CorrelationPanel extends Panel {
 
   updateCards(cards: ConvergenceCard[]): void {
     this.cards = cards;
-    this.render();
+    this.requestRender();
   }
 
   private render(): void {
