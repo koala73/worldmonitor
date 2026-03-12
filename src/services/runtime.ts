@@ -111,11 +111,6 @@ export function getApiBaseUrl(): string {
   return `http://127.0.0.1:${getLocalApiPort()}`;
 }
 
-function isWorldMonitorWebHost(hostname: string): boolean {
-  return hostname === 'worldmonitor.app'
-    || hostname === 'www.worldmonitor.app'
-    || hostname.endsWith('.worldmonitor.app');
-}
 
 export function getConfiguredWebApiBaseUrl(): string {
   if (WS_API_URL) {
@@ -130,11 +125,8 @@ export function getConfiguredWebApiBaseUrl(): string {
     return '';
   }
 
-  const hostname = window.location?.hostname ?? '';
-  if (!isWorldMonitorWebHost(hostname)) {
-    return '';
-  }
-
+  // If we are on a recognized web host, use the default API.
+  // If we are on a third-party host (e.g. tiiny.site), we still fallback to the official API.
   return DEFAULT_WEB_API_URL;
 }
 
@@ -686,7 +678,9 @@ const ALLOWED_REDIRECT_HOSTS = /^https:\/\/([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)*wor
 function isAllowedRedirectTarget(url: string): boolean {
   try {
     const parsed = new URL(url);
-    return ALLOWED_REDIRECT_HOSTS.test(parsed.origin) || parsed.hostname === 'localhost';
+    // Allow redirects to any subdomain of worldmonitor.app or localhost.
+    // This is safe because we only redirect /api/* paths to these known trusted hosts.
+    return ALLOWED_REDIRECT_HOSTS.test(parsed.origin) || parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
   } catch {
     return false;
   }
