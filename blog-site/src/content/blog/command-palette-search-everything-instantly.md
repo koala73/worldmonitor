@@ -1,7 +1,7 @@
 ---
 title: "Cmd+K: Search Everything on the Planet in Under a Second"
-description: "WorldMonitor's Cmd+K command palette lets you fuzzy-search across countries, layers, panels, news, markets, military bases, and more. 150+ commands, 195 countries."
-metaTitle: "WorldMonitor Command Palette: Search 24 Data Types, 195 Countries Instantly"
+description: "World Monitor's Cmd+K command palette lets you fuzzy-search across countries, layers, panels, news, markets, military bases, and more. 150+ commands, 195 countries."
+metaTitle: "World Monitor Command Palette: Search 24 Data Types, 195 Countries Instantly"
 keywords: "intelligence dashboard search, command palette dashboard, OSINT search tool, fast country intelligence lookup, keyboard-driven intelligence"
 audience: "Power users, analysts, developers, keyboard-first professionals"
 heroImage: "/blog/images/blog/command-palette-search-everything-instantly.jpg"
@@ -10,11 +10,11 @@ pubDate: "2026-03-06"
 
 You're monitoring a developing situation. News breaks about a military incident in the South China Sea. You need Taiwan's intelligence dossier, the military bases layer, the AIS maritime panel, and the strategic theater posture, right now.
 
-In most dashboards, that's four separate navigation actions. In WorldMonitor, it's one: **Cmd+K** (or Ctrl+K on Windows/Linux), type what you need, hit Enter.
+In most dashboards, that's four separate navigation actions. In World Monitor, it's one: **Cmd+K** (or Ctrl+K on Windows/Linux), type what you need, hit Enter.
 
 ## The 150+ Command Universe
 
-WorldMonitor's command palette is a fuzzy-search interface that spans the entire platform. Hit Cmd+K and you can access:
+World Monitor's command palette is a fuzzy-search interface that spans the entire platform. Hit Cmd+K and you can access:
 
 ### Countries (195)
 
@@ -85,7 +85,7 @@ The entire palette is keyboard-driven:
 - **Escape**: Close palette
 - **Type**: Refine search in real time
 
-No mouse needed. For analysts who live in the keyboard, this means WorldMonitor's entire intelligence platform is accessible without touching a pointing device.
+No mouse needed. For analysts who live in the keyboard, this means World Monitor's entire intelligence platform is accessible without touching a pointing device.
 
 ## Mobile Search Experience
 
@@ -126,13 +126,13 @@ The command palette is panel-aware. When you have specific panels open, related 
 3. Cmd+K → "prediction" → Enter (Polymarket)
 4. Cmd+K → "commodity" → Enter (price panel)
 
-The command palette turns WorldMonitor from a visual dashboard into a queryable intelligence system. Ask it anything, get there instantly.
+The command palette turns World Monitor from a visual dashboard into a queryable intelligence system. Ask it anything, get there instantly.
 
 ## Why It Matters
 
 In intelligence analysis, **time to insight** is the critical metric. Every second spent navigating menus, scrolling sidebars, or clicking through panels is a second you're not analyzing.
 
-WorldMonitor's Cmd+K reduces the path from question to answer to a single search query. Type what you need, press Enter, and you're looking at it. For professionals who make time-sensitive decisions based on global intelligence, that speed compounds into a significant advantage.
+World Monitor's Cmd+K reduces the path from question to answer to a single search query. Type what you need, press Enter, and you're looking at it. For professionals who make time-sensitive decisions based on global intelligence, that speed compounds into a significant advantage.
 
 ---
 

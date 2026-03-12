@@ -1,7 +1,7 @@
 ---
-title: "Five Dashboards, One Platform: How WorldMonitor Serves Every Intelligence Need"
-description: "WorldMonitor runs 5 specialized dashboards from one codebase: geopolitical, tech, finance, commodity, and positive news. Switch between them instantly. All free."
-metaTitle: "5 Free Intelligence Dashboards: World, Tech, Finance, Commodity, Happy | WorldMonitor"
+title: "Five Dashboards, One Platform: How World Monitor Serves Every Intelligence Need"
+description: "World Monitor runs 5 specialized dashboards from one codebase: geopolitical, tech, finance, commodity, and positive news. Switch between them instantly. All free."
+metaTitle: "5 Free Intelligence Dashboards: World, Tech, Finance, Commodity, Happy | World Monitor"
 keywords: "intelligence dashboard variants, tech monitoring dashboard, positive news dashboard, multi-purpose intelligence platform, specialized monitoring tools"
 audience: "General tech audience, product managers, developers, knowledge workers, content creators"
 heroImage: "/blog/images/blog/five-dashboards-one-platform-worldmonitor-variants.jpg"
@@ -10,7 +10,7 @@ pubDate: "2026-02-12"
 
 Most intelligence platforms force you into a single vertical. A financial terminal. A cybersecurity feed. A conflict tracker. If your work spans multiple domains, you're left juggling subscriptions.
 
-WorldMonitor runs **five specialized dashboards** from a single codebase. Switch between them with one click. Each variant curates panels, layers, and data feeds for its specific audience while sharing the same underlying intelligence engine, map infrastructure, and AI capabilities.
+World Monitor runs **five specialized dashboards** from a single codebase. Switch between them with one click. Each variant curates panels, layers, and data feeds for its specific audience while sharing the same underlying intelligence engine, map infrastructure, and AI capabilities.
 
 ## 1. World Monitor: The Geopolitical Command Center
 

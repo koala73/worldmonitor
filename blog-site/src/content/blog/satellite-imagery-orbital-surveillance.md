@@ -1,18 +1,18 @@
 ---
-title: "Satellite Eyes: How WorldMonitor Brings Orbital Surveillance to Your Browser"
-description: "Access real-time satellite imagery of geopolitical hotspots with WorldMonitor's orbital surveillance layer. STAC API integration, cloud coverage data, and resolution metadata."
-metaTitle: "Free Satellite Imagery Dashboard | Orbital Surveillance for OSINT | WorldMonitor"
+title: "Satellite Eyes: How World Monitor Brings Orbital Surveillance to Your Browser"
+description: "Access real-time satellite imagery of geopolitical hotspots with World Monitor's orbital surveillance layer. STAC API integration, cloud coverage data, and resolution metadata."
+metaTitle: "Free Satellite Imagery Dashboard | Orbital Surveillance for OSINT | World Monitor"
 keywords: "satellite imagery OSINT, free satellite intelligence, orbital surveillance dashboard, STAC API satellite search, geopolitical satellite monitoring"
 audience: "OSINT analysts, remote sensing enthusiasts, defense researchers, environmental monitors"
 heroImage: "/blog/images/blog/satellite-imagery-orbital-surveillance.jpg"
 pubDate: "2026-02-28"
 ---
 
-Satellite imagery used to require government clearance or a Maxar contract. Today, a growing constellation of Earth observation satellites captures the planet daily, and WorldMonitor brings that data directly into your intelligence workflow.
+Satellite imagery used to require government clearance or a Maxar contract. Today, a growing constellation of Earth observation satellites captures the planet daily, and World Monitor brings that data directly into your intelligence workflow.
 
 ## The Orbital Surveillance Layer
 
-WorldMonitor's orbital surveillance layer overlays satellite imagery onto both the 3D globe and flat map views. This isn't just a static basemap. It's searchable, time-filtered satellite data integrated with the same geopolitical intelligence layers you use for everything else.
+World Monitor's orbital surveillance layer overlays satellite imagery onto both the 3D globe and flat map views. This isn't just a static basemap. It's searchable, time-filtered satellite data integrated with the same geopolitical intelligence layers you use for everything else.
 
 **What you get:**
 
@@ -24,7 +24,7 @@ WorldMonitor's orbital surveillance layer overlays satellite imagery onto both t
 
 ## STAC API: The Engine Behind the Imagery
 
-WorldMonitor connects to satellite data through the **STAC (SpatioTemporal Asset Catalog) API**, the open standard that makes Earth observation data searchable. Instead of browsing through satellite operator portals, you search by:
+World Monitor connects to satellite data through the **STAC (SpatioTemporal Asset Catalog) API**, the open standard that makes Earth observation data searchable. Instead of browsing through satellite operator portals, you search by:
 
 - **Location:** Click any point on the map
 - **Time range:** Specify when you want imagery from
@@ -58,11 +58,11 @@ Combine AIS vessel tracking with satellite imagery to:
 
 ### Nuclear Facility Monitoring
 
-WorldMonitor maps nuclear facilities worldwide. Satellite imagery adds visual verification: is there new construction? Are cooling systems active? Are there vehicle patterns suggesting operational changes?
+World Monitor maps nuclear facilities worldwide. Satellite imagery adds visual verification: is there new construction? Are cooling systems active? Are there vehicle patterns suggesting operational changes?
 
 ## Cross-Layer Integration
 
-The orbital layer becomes most powerful when combined with WorldMonitor's other 44 data layers:
+The orbital layer becomes most powerful when combined with World Monitor's other 44 data layers:
 
 | Situation | Intelligence Layers | + Satellite Adds |
 |-----------|-------------------|------------------|
@@ -77,7 +77,7 @@ No other free dashboard lets you overlay satellite imagery on top of real-time c
 
 ## Resolution and Coverage
 
-Satellite imagery resolution varies by source. WorldMonitor displays metadata for each image so you know what you're working with:
+Satellite imagery resolution varies by source. World Monitor displays metadata for each image so you know what you're working with:
 
 - **Low resolution (250m+):** Weather patterns, large-scale environmental changes
 - **Medium resolution (10-30m):** Land use changes, large military installations
@@ -91,7 +91,7 @@ The orbital surveillance layer is available across all platforms, with the deskt
 
 ## How to Use It
 
-1. Open WorldMonitor and toggle the **Orbital Surveillance** layer
+1. Open World Monitor and toggle the **Orbital Surveillance** layer
 2. Navigate to your area of interest on the map
 3. Open the **Satellite Imagery** panel
 4. Set your time range (last 7 days, 30 days, or custom)
@@ -101,9 +101,9 @@ The orbital surveillance layer is available across all platforms, with the deskt
 
 ## The Future of Open Satellite Intelligence
 
-Commercial satellite constellations are growing rapidly. More satellites mean more frequent revisits, higher resolution, and faster delivery. As this data becomes more accessible, tools like WorldMonitor that integrate imagery into multi-source intelligence workflows will become essential.
+Commercial satellite constellations are growing rapidly. More satellites mean more frequent revisits, higher resolution, and faster delivery. As this data becomes more accessible, tools like World Monitor that integrate imagery into multi-source intelligence workflows will become essential.
 
-The days of satellite intelligence being locked in classified systems are ending. WorldMonitor puts orbital surveillance alongside 44 other intelligence layers, in your browser, for free.
+The days of satellite intelligence being locked in classified systems are ending. World Monitor puts orbital surveillance alongside 44 other intelligence layers, in your browser, for free.
 
 ---
 

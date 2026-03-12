@@ -1,0 +1,56 @@
+---
+title: "Natural Disaster Tracking"
+description: "Multi-source natural disaster monitoring using GDACS and NASA EONET, with intelligent deduplication and filtering for earthquakes, wildfires, cyclones, and more."
+---
+The Natural layer combines two authoritative sources for comprehensive disaster monitoring, providing real-time alerts with severity assessments and satellite-derived event detection.
+
+## GDACS (Global Disaster Alert and Coordination System)
+
+UN-backed disaster alert system providing official severity assessments:
+
+| Event Type | Code | Icon | Sources |
+|------------|------|------|---------|
+| Earthquake | EQ | Red circle | USGS, EMSC |
+| Flood | FL | Wave | Satellite imagery |
+| Tropical Cyclone | TC | Cyclone | NOAA, JMA |
+| Volcano | VO | Volcano | Smithsonian GVP |
+| Wildfire | WF | Fire | MODIS, VIIRS |
+| Drought | DR | Sun | Multiple sources |
+
+**Alert Levels**:
+
+| Level | Color | Meaning |
+|-------|-------|---------|
+| **Red** | Critical | Significant humanitarian impact expected |
+| **Orange** | Alert | Moderate impact, monitoring required |
+| **Green** | Advisory | Minor event, localized impact |
+
+## NASA EONET (Earth Observatory Natural Event Tracker)
+
+Near-real-time natural event detection from satellite observation:
+
+| Category | Detection Method | Typical Delay |
+|----------|------------------|---------------|
+| Severe Storms | GOES/Himawari imagery | Minutes |
+| Wildfires | MODIS thermal anomalies | 4-6 hours |
+| Volcanoes | Thermal + SO2 emissions | Hours |
+| Floods | SAR imagery + gauges | Hours to days |
+| Sea/Lake Ice | Passive microwave | Daily |
+| Dust/Haze | Aerosol optical depth | Hours |
+
+## Multi-Source Deduplication
+
+When both GDACS and EONET report the same event:
+
+1. Events within 100km and 48 hours are considered duplicates
+2. GDACS severity takes precedence (human-verified)
+3. EONET geometry provides more precise coordinates
+4. Combined entry shows both source attributions
+
+## Filtering Logic
+
+To prevent map clutter, natural events are filtered:
+
+- **Wildfires**: Only events &lt; 48 hours old (older fires are either contained or well-known)
+- **Earthquakes**: M4.5+ globally, lower threshold for populated areas
+- **Storms**: Only named storms or those with warnings

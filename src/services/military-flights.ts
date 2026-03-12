@@ -1,5 +1,5 @@
 import type { MilitaryFlight, MilitaryFlightCluster, MilitaryAircraftType, MilitaryOperator } from '@/types';
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker, toUniqueSortedLowercase } from '@/utils';
 import {
   identifyByCallsign,
   identifyByAircraftType,
@@ -255,7 +255,7 @@ async function enrichFlightsWithWingbits(flights: MilitaryFlight[]): Promise<Mil
   }
 
   // Use deterministic ordering to improve cache locality across refreshes.
-  const hexCodes = Array.from(new Set(flights.map((f) => f.hexCode.toLowerCase()))).sort();
+  const hexCodes = toUniqueSortedLowercase(flights.map((f) => f.hexCode));
 
   // Batch fetch aircraft details
   const detailsMap = await getAircraftDetailsBatch(hexCodes);

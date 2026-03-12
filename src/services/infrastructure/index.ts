@@ -39,7 +39,7 @@ const SEVERITY_REVERSE: Record<string, 'partial' | 'major' | 'total'> = {
 const STATUS_REVERSE: Record<string, 'operational' | 'degraded' | 'outage' | 'unknown'> = {
   SERVICE_OPERATIONAL_STATUS_OPERATIONAL: 'operational',
   SERVICE_OPERATIONAL_STATUS_DEGRADED: 'degraded',
-  SERVICE_OPERATIONAL_STATUS_PARTIAL_OUTAGE: 'outage',
+  SERVICE_OPERATIONAL_STATUS_PARTIAL_OUTAGE: 'degraded',
   SERVICE_OPERATIONAL_STATUS_MAJOR_OUTAGE: 'outage',
   SERVICE_OPERATIONAL_STATUS_MAINTENANCE: 'degraded',
   SERVICE_OPERATIONAL_STATUS_UNSPECIFIED: 'unknown',

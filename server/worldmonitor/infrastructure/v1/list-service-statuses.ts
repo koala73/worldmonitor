@@ -76,7 +76,10 @@ function normalizeToProtoStatus(raw: string): ServiceOperationalStatus {
   if (val === 'partial_outage') {
     return 'SERVICE_OPERATIONAL_STATUS_PARTIAL_OUTAGE';
   }
-  if (val === 'major' || val === 'major_outage' || val === 'critical' || val.includes('outage')) {
+  if (val === 'major' || val.includes('partial system outage')) {
+    return 'SERVICE_OPERATIONAL_STATUS_PARTIAL_OUTAGE';
+  }
+  if (val === 'major_outage' || val === 'critical') {
     return 'SERVICE_OPERATIONAL_STATUS_MAJOR_OUTAGE';
   }
   if (val === 'maintenance' || val.includes('maintenance')) {

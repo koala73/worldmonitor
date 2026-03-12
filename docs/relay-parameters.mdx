@@ -2,13 +2,14 @@
 title: "Relay Parameters (Railway + Vercel)"
 description: "This document covers all environment variables used by the AIS/OpenSky relay path."
 ---
-
-# Relay Parameters (Railway + Vercel)
-
 This document covers all environment variables used by the AIS/OpenSky relay path:
 
 - Railway relay process: `scripts/ais-relay.cjs`
-- Vercel relay proxy endpoints: `api/opensky.js`, `api/ais-snapshot.js`, `api/polymarket.js`, `api/rss-proxy.js`
+- Vercel relay proxy endpoints (legacy): `api/opensky.js`, `api/ais-snapshot.js`, `api/polymarket.js`, `api/rss-proxy.js`
+
+<Note>
+  The `api/*.js` edge function endpoints listed above are legacy patterns being phased out in favor of the sebuf proto-first approach. See [Adding Endpoints](/adding-endpoints) for the current recommended pattern.
+</Note>
 - Server relay callers: `server/worldmonitor/*` handlers
 - Optional browser local fallback callers in `src/services/*`
 
@@ -77,7 +78,7 @@ Set these before enabling strict relay auth.
 | --- | --- | --- | --- | --- |
 | `AIS_SNAPSHOT_INTERVAL_MS` | Railway | `5000` (min `2000`) | No | Interval for rebuilding snapshot payloads. |
 | `AIS_UPSTREAM_QUEUE_HIGH_WATER` | Railway | `4000` (min `500`) | No | Pause upstream socket when queue reaches this. |
-| `AIS_UPSTREAM_QUEUE_LOW_WATER` | Railway | `1000` (clamped `< HIGH_WATER`) | No | Resume upstream socket when queue drops below this. |
+| `AIS_UPSTREAM_QUEUE_LOW_WATER` | Railway | `1000` (clamped below HIGH_WATER) | No | Resume upstream socket when queue drops below this. |
 | `AIS_UPSTREAM_QUEUE_HARD_CAP` | Railway | `8000` (must be `> HIGH_WATER`) | No | Max queue size before dropping incoming upstream messages. |
 | `AIS_UPSTREAM_DRAIN_BATCH` | Railway | `250` (min `1`) | No | Max messages drained per cycle. |
 | `AIS_UPSTREAM_DRAIN_BUDGET_MS` | Railway | `20` (min `2`) | No | Max CPU time budget per drain cycle. |

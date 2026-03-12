@@ -4,7 +4,7 @@ import { getCollection } from 'astro:content';
 export async function GET(context: { site: URL }) {
   const posts = await getCollection('blog');
   return rss({
-    title: 'WorldMonitor Blog',
+    title: 'World Monitor Blog',
     description: 'Real-time global intelligence, OSINT, geopolitics, and markets.',
     site: context.site,
     xmlns: {

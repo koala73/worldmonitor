@@ -79,22 +79,14 @@ describe('economic/index.ts — per-indicator World Bank circuit breakers', () =
     );
   });
 
-  it('mirrors getFredBreaker pattern (consistency check)', () => {
-    // getFredBreaker already uses this pattern correctly — wbBreaker must follow suit
-    assert.match(src, /getFredBreaker\s*\(/, 'getFredBreaker pattern must still exist as reference');
-    assert.match(src, /getWbBreaker\s*\(/, 'getWbBreaker must mirror getFredBreaker');
+  it('mirrors fredBatchBreaker pattern (consistency check)', () => {
+    // fredBatchBreaker uses the same circuit breaker pattern
+    assert.match(src, /fredBatchBreaker\s*=/, 'fredBatchBreaker must exist as reference');
+    assert.match(src, /getWbBreaker\s*\(/, 'getWbBreaker implementation should be present');
 
-    // Both should use a Map
-    const fredBreakerSection = src.slice(
-      src.indexOf('fredBreakers'),
-      src.indexOf('fredBreakers') + 300,
-    );
-    const wbBreakerSection = src.slice(
-      src.indexOf('wbBreakers'),
-      src.indexOf('wbBreakers') + 300,
-    );
-    assert.match(fredBreakerSection, /new\s+Map/, 'fredBreakers uses Map');
-    assert.match(wbBreakerSection, /new\s+Map/, 'wbBreakers uses Map');
+    // Both should use circuit breakers
+    assert.match(src, /fredBatchBreaker\s*=\s*createCircuitBreaker/, 'fredBatchBreaker uses createCircuitBreaker');
+    assert.match(src, /wbBreakers\s*=\s*new\s+Map/, 'wbBreakers uses Map for per-indicator breakers');
   });
 });
 
@@ -149,7 +141,7 @@ describe('CircuitBreaker isolation — independent per-indicator instances', () 
 
     const fallback = { data: [], pagination: undefined };
     const internetData = { data: [{ countryCode: 'USA', indicatorCode: 'IT.NET.USER.ZS', year: 2023, value: 90 }], pagination: undefined };
-    const mobileData   = { data: [{ countryCode: 'USA', indicatorCode: 'IT.CEL.SETS.P2', year: 2023, value: 120 }], pagination: undefined };
+    const mobileData = { data: [{ countryCode: 'USA', indicatorCode: 'IT.CEL.SETS.P2', year: 2023, value: 120 }], pagination: undefined };
 
     // Populate both caches with different data
     await breakerA.execute(async () => internetData, fallback);

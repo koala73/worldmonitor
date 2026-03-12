@@ -31,5 +31,8 @@ node --test tests/edge-functions.test.mjs || exit 1
 echo "Running markdown lint..."
 npm run lint:md || exit 1
 
+echo "Running MDX lint (Mintlify compatibility)..."
+node --test tests/mdx-lint.test.mjs || exit 1
+
 echo "Running version sync check..."
 npm run version:check || exit 1
