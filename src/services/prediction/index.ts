@@ -1,4 +1,4 @@
-import { PredictionServiceClient } from '@/generated/client/worldmonitor/prediction/v1/service_client';
+import { PredictionServiceClient, MarketSource } from '@/generated/client/worldmonitor/prediction/v1/service_client';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { createCircuitBreaker } from '@/utils';
 import { SITE_VARIANT } from '@/config';
@@ -10,6 +10,7 @@ export interface PredictionMarket {
   volume?: number;
   url?: string;
   endDate?: string;
+  source?: 'polymarket' | 'kalshi';
   regions?: string[];
 }
 
@@ -37,6 +38,7 @@ const TECH_TAGS = [
 const FINANCE_TAGS = [
   'economy', 'fed', 'inflation', 'interest-rates', 'recession',
   'trade', 'tariffs', 'debt-ceiling',
+  'crypto', 'business', 'markets',
 ];
 
 interface BootstrapPredictionData {
@@ -62,13 +64,14 @@ function tagRegions(title: string): string[] {
     .map(([region]) => region);
 }
 
-function protoToMarket(m: { title: string; yesPrice: number; volume: number; url: string; closesAt: number; category: string }): PredictionMarket {
+function protoToMarket(m: { title: string; yesPrice: number; volume: number; url: string; closesAt: number; category: string; source?: string }): PredictionMarket {
   return {
     title: m.title,
     yesPrice: m.yesPrice * 100,
     volume: m.volume,
     url: m.url || undefined,
     endDate: m.closesAt ? new Date(m.closesAt).toISOString() : undefined,
+    source: m.source === MarketSource.MARKET_SOURCE_KALSHI ? 'kalshi' : 'polymarket',
     regions: tagRegions(m.title),
   };
 }
@@ -81,7 +84,10 @@ export async function fetchPredictions(opts?: { region?: string }): Promise<Pred
         : SITE_VARIANT === 'finance' ? (hydrated.finance ?? hydrated.geopolitical)
         : hydrated.geopolitical;
       if (variant && variant.length > 0) {
-        return variant.filter(m => !isExpired(m.endDate)).slice(0, 25);
+        return variant
+          .filter(m => !isExpired(m.endDate))
+          .slice(0, 25)
+          .map(m => m.source ? m : { ...m, source: 'polymarket' as const });
       }
     }
 

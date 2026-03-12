@@ -833,7 +833,7 @@
       "infoTooltip": "<strong>Tech Hub Activity</strong><br>Shows tech hubs with the most news activity.<br><br><em>Activity levels:</em><br>• <span style=\"color: {{highColor}}\">High</span> — Breaking news or 50+ score<br>• <span style=\"color: {{elevatedColor}}\">Elevated</span> — Score 20-49<br>• <span style=\"color: {{lowColor}}\">Low</span> — Score below 20<br><br>Click a hub to zoom to its location."
     },
     "predictions": {
-      "tooltip": "<strong>Prediction Markets</strong><br>Real-money forecasting markets:<br><ul><li>Prices reflect crowd probability estimates</li><li>Higher volume = more reliable signal</li><li>Geopolitical and current events focus</li></ul>Source: Polymarket (polymarket.com)",
+      "tooltip": "<strong>Prediction Markets</strong><br>Real-money forecasting markets:<br><ul><li>Prices reflect crowd probability estimates</li><li>Higher volume = more reliable signal</li><li>Geopolitical and current events focus</li></ul>Sources: Polymarket, Kalshi",
       "error": "Failed to load predictions",
       "yes": "Yes",
       "no": "No",
@@ -1596,7 +1596,7 @@
       }
     },
     "prediction": {
-      "infoTooltip": "<strong>Prediction Markets</strong> Real-money forecasting markets:<ul><li>Prices reflect crowd probability estimates</li><li>Higher volume = more reliable signal</li><li>Geopolitical and current events focus</li></ul>Source: Polymarket (polymarket.com)"
+      "infoTooltip": "<strong>Prediction Markets</strong> Real-money forecasting markets:<ul><li>Prices reflect crowd probability estimates</li><li>Higher volume = more reliable signal</li><li>Geopolitical and current events focus</li></ul>Sources: Polymarket, Kalshi"
     },
     "etfFlows": {
       "unavailable": "ETF data temporarily unavailable",
