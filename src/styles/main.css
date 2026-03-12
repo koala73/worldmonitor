@@ -2469,8 +2469,7 @@ body.panel-resize-active iframe {
   margin: 0 !important;
 }
 
-.live-news-fullscreen .panel-content,
-.live-news-fullscreen .map-container {
+.live-news-fullscreen .panel-content {
   height: calc(100vh - 80px) !important;
 }
 
@@ -2501,7 +2500,7 @@ body.live-news-fullscreen-active #mapSection.live-news-fullscreen .map-resize-ha
 body.live-news-fullscreen-active #mapSection.live-news-fullscreen .map-container {
   height: auto !important;
   flex: 1 1 auto !important;
-  min-height: 0;
+  min-height: 0 !important;
 }
 
 body.live-news-fullscreen-active .community-widget {
