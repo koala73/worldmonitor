@@ -149,7 +149,7 @@ class FocalPointDetector {
       let signals: CountrySignalCluster | undefined;
       let signalCountry: string | undefined;
 
-      if (entityEntry.type === 'country') {
+      if (entityEntry.type === 'country' || entityEntry.type === 'location') {
         signals = countrySignals.get(entityId);
         signalCountry = entityId;
       } else if (entityEntry.related) {

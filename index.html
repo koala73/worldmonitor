@@ -130,21 +130,21 @@
 
     <!-- Critical CSS: inline skeleton visible before JS boots -->
     <style>
-      /* ---------- skeleton shell (dark default) ---------- */
-      .skeleton-shell{display:flex;flex-direction:column;height:100vh;background:#0a0a0a;font-family:'SF Mono','Monaco','Cascadia Code','Fira Code','DejaVu Sans Mono','Liberation Mono',monospace;overflow:hidden}
-      .skeleton-header{display:flex;align-items:center;justify-content:space-between;height:40px;padding:8px 16px;background:#141414;border-bottom:1px solid #2a2a2a;flex-shrink:0}
+      /* ---------- skeleton shell (dark default - Johnny Ive Goth) ---------- */
+      .skeleton-shell{display:flex;flex-direction:column;height:100vh;background:#000000;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;overflow:hidden}
+      .skeleton-header{display:flex;align-items:center;justify-content:space-between;height:40px;padding:8px 16px;background:#050505;border-bottom:1px solid rgba(255,255,255,0.08);flex-shrink:0}
       .skeleton-header-left{display:flex;align-items:center;gap:12px}
       .skeleton-header-right{display:flex;align-items:center;gap:12px}
-      .skeleton-pill{height:24px;border-radius:4px;background:#1e1e1e}
-      .skeleton-dot{width:8px;height:8px;border-radius:50%;background:#0f5040}
-      .skeleton-main{flex:1;display:flex;flex-direction:column;overflow:hidden;background:#0a0a0a}
-      .skeleton-map{height:50vh;min-height:200px;border:1px solid #2a2a2a;background:#020a08;display:flex;flex-direction:column;flex-shrink:0}
-      .skeleton-map-bar{height:32px;display:flex;align-items:center;padding:0 12px;background:#141414;border-bottom:1px solid #2a2a2a}
+      .skeleton-pill{height:24px;border-radius:6px;background:rgba(255,255,255,0.05)}
+      .skeleton-dot{width:8px;height:8px;border-radius:50%;background:#ffffff;opacity:0.2}
+      .skeleton-main{flex:1;display:flex;flex-direction:column;overflow:hidden;background:#000000}
+      .skeleton-map{height:50vh;min-height:200px;border:1px solid rgba(255,255,255,0.08);background:#000000;display:flex;flex-direction:column;flex-shrink:0}
+      .skeleton-map-bar{height:32px;display:flex;align-items:center;padding:0 12px;background:#050505;border-bottom:1px solid rgba(255,255,255,0.08)}
       .skeleton-map-body{flex:1;position:relative;overflow:hidden}
-      .skeleton-map-body::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 60% 50% at 50% 50%,#0a2a20 0%,#020a08 100%);opacity:.5}
+      .skeleton-map-body::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 60% 50% at 50% 50%,rgba(255,255,255,0.03) 0%,#000000 100%);opacity:.5}
       .skeleton-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:4px;padding:4px;align-content:start}
-      .skeleton-panel{height:320px;background:#141414;border:1px solid #2a2a2a;border-radius:0;display:flex;flex-direction:column}
-      .skeleton-panel-header{height:36px;display:flex;align-items:center;padding:0 12px;border-bottom:1px solid #1a1a1a}
+      .skeleton-panel{height:320px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.08);border-radius:12px;display:flex;flex-direction:column}
+      .skeleton-panel-header{height:36px;display:flex;align-items:center;padding:0 12px;border-bottom:1px solid rgba(255,255,255,0.05)}
       .skeleton-panel-body{flex:1;padding:12px;display:flex;flex-direction:column;gap:10px}
       .skeleton-line{height:14px;border-radius:4px;background:linear-gradient(90deg,rgba(255,255,255,.05) 25%,rgba(255,255,255,.1) 50%,rgba(255,255,255,.05) 75%);background-size:200% 100%;animation:skel-shimmer 1.5s infinite}
       .skeleton-line.w75{width:75%}.skeleton-line.w60{width:60%}.skeleton-line.w50{width:50%}.skeleton-line.w85{width:85%}.skeleton-line.w40{width:40%}

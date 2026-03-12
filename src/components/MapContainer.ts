@@ -580,6 +580,10 @@ export class MapContainer {
     }
   }
 
+  public getNewsLocations(): NewsLocationMarker[] {
+    return this.cachedNewsLocations || [];
+  }
+
   public setPositiveEvents(events: PositiveGeoEvent[]): void {
     this.cachedPositiveEvents = events;
     if (this.useGlobe) { this.globeMap?.setPositiveEvents(events); return; }

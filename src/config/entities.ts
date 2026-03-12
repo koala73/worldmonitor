@@ -1,4 +1,4 @@
-export type EntityType = 'company' | 'index' | 'commodity' | 'crypto' | 'sector' | 'country';
+export type EntityType = 'company' | 'index' | 'commodity' | 'crypto' | 'sector' | 'country' | 'location';
 
 export interface EntityEntry {
   id: string;
@@ -8,6 +8,8 @@ export interface EntityEntry {
   keywords: string[];
   sector?: string;
   related?: string[];
+  lat?: number;
+  lon?: number;
 }
 
 export const ENTITY_REGISTRY: EntityEntry[] = [
