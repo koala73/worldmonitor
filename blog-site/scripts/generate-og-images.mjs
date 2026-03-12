@@ -9,8 +9,8 @@ const OUT_DIR = join(import.meta.dirname, '..', 'public', 'og');
 const WIDTH = 1200;
 const HEIGHT = 630;
 
-const interRegular = await fetch('https://fonts.gstatic.com/s/inter/v20/UcCO3FwrK3iLTeHuS_nVMrMxCp50SjIw2boKoduKmMEVuLyfMZg.ttf').then(r => r.arrayBuffer());
-const interBold = await fetch('https://fonts.gstatic.com/s/inter/v20/UcCO3FwrK3iLTeHuS_nVMrMxCp50SjIw2boKoduKmMEVuFuYMZg.ttf').then(r => r.arrayBuffer());
+const interRegular = readFileSync(join(import.meta.dirname, 'fonts', 'inter-regular.ttf'));
+const interBold = readFileSync(join(import.meta.dirname, 'fonts', 'inter-bold.ttf'));
 
 mkdirSync(OUT_DIR, { recursive: true });
 
