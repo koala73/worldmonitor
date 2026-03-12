@@ -1,3 +1,4 @@
+import { getRpcBaseUrl } from '@/services/rpc-client';
 import {
   AviationServiceClient,
   type AirportDelayAlert as ProtoAlert,
@@ -270,7 +271,7 @@ function toDisplayNewsItem(p: ProtoAviationNews): AviationNewsItem {
 
 // ---- Client + circuit breakers ----
 
-const client = new AviationServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+const client = new AviationServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 
 const breakerDelays = createCircuitBreaker<AirportDelayAlert[]>({ name: 'Flight Delays v2', cacheTtlMs: 2 * 60 * 60 * 1000, persistCache: true });
 const breakerOps = createCircuitBreaker<AirportOpsSummary[]>({ name: 'Airport Ops', cacheTtlMs: 6 * 60 * 1000, persistCache: true });

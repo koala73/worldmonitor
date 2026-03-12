@@ -1,4 +1,4 @@
-# WorldMonitor - protect API routes from crawlers
+# World Monitor - protect API routes from crawlers
 User-agent: *
 Allow: /
 Disallow: /api/

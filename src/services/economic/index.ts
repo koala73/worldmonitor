@@ -7,6 +7,7 @@
  * All data now flows through the EconomicServiceClient RPC.
  */
 
+import { getRpcBaseUrl } from '@/services/rpc-client';
 import {
   EconomicServiceClient,
   ApiError,
@@ -29,10 +30,11 @@ import { getCSSColor } from '@/utils';
 import { isFeatureAvailable } from '../runtime-config';
 import { dataFreshness } from '../data-freshness';
 import { getHydratedData } from '@/services/bootstrap';
+import { toApiUrl } from '@/services/runtime';
 
 // ---- Client + Circuit Breakers ----
 
-const client = new EconomicServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+const client = new EconomicServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 const wbBreakers = new Map<string, ReturnType<typeof createCircuitBreaker<ListWorldBankIndicatorsResponse>>>();
 
 function getWbBreaker(indicatorCode: string) {
@@ -497,7 +499,7 @@ export async function getTechReadinessRankings(
   // Fallback: fetch the pre-computed seed key directly from bootstrap endpoint.
   // Data is seeded by seed-wb-indicators.mjs — never call WB API from frontend.
   try {
-    const resp = await fetch('/api/bootstrap?keys=techReadiness', {
+    const resp = await fetch(toApiUrl('/api/bootstrap?keys=techReadiness'), {
       signal: AbortSignal.timeout(5_000),
     });
     if (resp.ok) {

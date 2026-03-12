@@ -24,6 +24,11 @@ function prefixKey(key: string): string {
 }
 
 export async function getCachedJson(key: string, raw = false): Promise<unknown | null> {
+  if (process.env.LOCAL_API_MODE === 'tauri-sidecar') {
+    const { sidecarCacheGet } = await import('./sidecar-cache');
+    return sidecarCacheGet(key);
+  }
+
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
@@ -43,6 +48,12 @@ export async function getCachedJson(key: string, raw = false): Promise<unknown |
 }
 
 export async function setCachedJson(key: string, value: unknown, ttlSeconds: number): Promise<void> {
+  if (process.env.LOCAL_API_MODE === 'tauri-sidecar') {
+    const { sidecarCacheSet } = await import('./sidecar-cache');
+    sidecarCacheSet(key, value, ttlSeconds);
+    return;
+  }
+
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return;

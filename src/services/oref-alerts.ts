@@ -1,4 +1,4 @@
-import { getApiBaseUrl, startSmartPollLoop, type SmartPollLoopHandle } from '@/services/runtime';
+import { startSmartPollLoop, toApiUrl, type SmartPollLoopHandle } from '@/services/runtime';
 import { translateText } from '@/services/summarization';
 
 export interface OrefAlert {
@@ -223,9 +223,8 @@ async function translateAlerts(alerts: OrefAlert[]): Promise<boolean> {
 }
 
 function getOrefApiUrl(endpoint?: string): string {
-  const base = getApiBaseUrl();
   const suffix = endpoint ? `?endpoint=${endpoint}` : '';
-  return `${base}/api/oref-alerts${suffix}`;
+  return toApiUrl(`/api/oref-alerts${suffix}`);
 }
 
 export async function fetchOrefAlerts(options: { signal?: AbortSignal } = {}): Promise<OrefAlertsResponse> {

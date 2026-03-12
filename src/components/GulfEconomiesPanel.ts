@@ -1,14 +1,14 @@
 import { Panel } from './Panel';
+import { getRpcBaseUrl } from '@/services/rpc-client';
 import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
 import { formatPrice, formatChange, getChangeClass } from '@/utils';
 import { miniSparkline } from '@/utils/sparkline';
 import { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
 import type { ListGulfQuotesResponse, GulfQuote } from '@/generated/client/worldmonitor/market/v1/service_client';
-import { startSmartPollLoop, type SmartPollLoopHandle } from '@/services/runtime';
 import { getHydratedData } from '@/services/bootstrap';
 
-const client = new MarketServiceClient('', { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) });
+const client = new MarketServiceClient(getRpcBaseUrl(), { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) });
 
 function renderSection(title: string, quotes: GulfQuote[]): string {
   if (quotes.length === 0) return '';
@@ -29,22 +29,8 @@ function renderSection(title: string, quotes: GulfQuote[]): string {
 }
 
 export class GulfEconomiesPanel extends Panel {
-  private pollLoop: SmartPollLoopHandle;
-
   constructor() {
     super({ id: 'gulf-economies', title: t('panels.gulfEconomies') });
-    this.pollLoop = startSmartPollLoop(() => this.fetchData(), {
-      intervalMs: 60_000,
-      pauseWhenHidden: true,
-      refreshOnVisible: true,
-      runImmediately: false,
-    });
-    setTimeout(() => this.pollLoop.trigger(), 8_000);
-  }
-
-  destroy(): void {
-    this.pollLoop.stop();
-    super.destroy();
   }
 
   public async fetchData(): Promise<void> {

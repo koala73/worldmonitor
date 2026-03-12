@@ -1,4 +1,5 @@
 import type { AppContext, AppModule, CountryBriefSignals } from '@/app/app-context';
+import { getRpcBaseUrl } from '@/services/rpc-client';
 import type { TimelineEvent } from '@/components/CountryTimeline';
 import { CountryTimeline } from '@/components/CountryTimeline';
 import type {
@@ -34,6 +35,7 @@ import { mlWorker } from '@/services/ml-worker';
 import { isHeadlineMemoryEnabled } from '@/services/ai-flow-settings';
 import { t, getCurrentLanguage } from '@/services/i18n';
 import { trackCountrySelected, trackCountryBriefOpened } from '@/services/analytics';
+import { toApiUrl } from '@/services/runtime';
 import type { StrategicPosturePanel } from '@/components/StrategicPosturePanel';
 import type { NewsItem } from '@/types';
 import { getNearbyInfrastructure } from '@/services/related-assets';
@@ -186,7 +188,7 @@ export class CountryIntelManager implements AppModule {
     this.ctx.countryBriefPage.updateMilitaryActivity?.(this.buildMilitarySummary(code, country));
     this.ctx.countryBriefPage.updateEconomicIndicators?.(this.buildEconomicIndicators(code, score, null));
 
-    const marketClient = new MarketServiceClient('', { fetch: (...args: Parameters<typeof globalThis.fetch>) => globalThis.fetch(...args) });
+    const marketClient = new MarketServiceClient(getRpcBaseUrl(), { fetch: (...args: Parameters<typeof globalThis.fetch>) => globalThis.fetch(...args) });
     const stockPromise = marketClient.getCountryStockIndex({ countryCode: code })
       .then((resp) => ({
         available: resp.available,
@@ -233,7 +235,7 @@ export class CountryIntelManager implements AppModule {
 
     this.ctx.countryBriefPage.updateInfrastructure(code);
 
-    const intelClient = new IntelligenceServiceClient('', {
+    const intelClient = new IntelligenceServiceClient(getRpcBaseUrl(), {
       fetch: (...args: Parameters<typeof globalThis.fetch>) => globalThis.fetch(...args),
     });
     intelClient.getCountryFacts({ countryCode: code })
@@ -397,7 +399,7 @@ export class CountryIntelManager implements AppModule {
       params.set('context', trimmed.slice(0, 2200));
     }
 
-    const resp = await fetch(`/api/intelligence/v1/get-country-intel-brief?${params.toString()}`, {
+    const resp = await fetch(toApiUrl(`/api/intelligence/v1/get-country-intel-brief?${params.toString()}`), {
       method: 'GET',
       headers: { Accept: 'application/json' },
       signal: this.ctx.countryBriefPage?.signal,

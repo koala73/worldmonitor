@@ -24,6 +24,9 @@ const BOOTSTRAP_KEY = 'prediction:markets-bootstrap:v1';
 const GAMMA_BASE = 'https://gamma-api.polymarket.com';
 const FETCH_TIMEOUT = 8000;
 
+const TECH_CATEGORY_TAGS = ['ai', 'tech', 'crypto', 'science'];
+const FINANCE_CATEGORY_TAGS = ['economy', 'fed', 'inflation', 'interest-rates', 'recession', 'trade', 'tariffs', 'debt-ceiling'];
+
 // ---------- Internal Gamma API types ----------
 
 interface GammaMarket {
@@ -104,13 +107,19 @@ export const listPredictionMarkets: PredictionServiceHandler['listPredictionMark
   req: ListPredictionMarketsRequest,
 ): Promise<ListPredictionMarketsResponse> => {
   try {
+    const category = (req.category || '').slice(0, 50);
+    const query = (req.query || '').slice(0, 100);
+
     // Try Railway-seeded bootstrap data first (no Gamma API call needed)
-    if (!req.query) {
+    if (!query) {
       try {
-        const bootstrap = await getCachedJson(BOOTSTRAP_KEY) as { geopolitical?: PredictionMarket[]; tech?: PredictionMarket[] } | null;
+        const bootstrap = await getCachedJson(BOOTSTRAP_KEY) as { geopolitical?: PredictionMarket[]; tech?: PredictionMarket[]; finance?: PredictionMarket[] } | null;
         if (bootstrap) {
-          const variant = req.category && ['ai', 'tech', 'crypto', 'science'].includes(req.category)
-            ? bootstrap.tech : bootstrap.geopolitical;
+          const isTech = category && TECH_CATEGORY_TAGS.includes(category);
+          const isFinance = !isTech && category && FINANCE_CATEGORY_TAGS.includes(category);
+          const variant = isTech ? bootstrap.tech
+            : isFinance ? (bootstrap.finance ?? bootstrap.geopolitical)
+            : bootstrap.geopolitical;
           if (variant && variant.length > 0) {
             const limit = Math.max(1, Math.min(100, req.pageSize || 50));
             const markets: PredictionMarket[] = variant.slice(0, limit).map((m: PredictionMarket & { endDate?: string }) => ({
@@ -120,7 +129,7 @@ export const listPredictionMarkets: PredictionServiceHandler['listPredictionMark
               volume: m.volume ?? 0,
               url: m.url || '',
               closesAt: m.endDate ? Date.parse(m.endDate) : 0,
-              category: req.category || '',
+              category: category || '',
             }));
             return { markets, pagination: undefined };
           }
@@ -129,12 +138,12 @@ export const listPredictionMarkets: PredictionServiceHandler['listPredictionMark
     }
 
     // Fallback: fetch from Gamma API directly (may fail due to JA3 blocking)
-    const cacheKey = `${REDIS_CACHE_KEY}:${req.category || 'all'}:${req.query || ''}:${req.pageSize || 50}`;
+    const cacheKey = `${REDIS_CACHE_KEY}:${category || 'all'}:${query || ''}:${req.pageSize || 50}`;
     const result = await cachedFetchJson<ListPredictionMarketsResponse>(
       cacheKey,
       REDIS_CACHE_TTL,
       async () => {
-        const useEvents = !!req.category;
+        const useEvents = !!category;
         const endpoint = useEvents ? 'events' : 'markets';
         const limit = Math.max(1, Math.min(100, req.pageSize || 50));
         const params = new URLSearchParams({
@@ -147,7 +156,7 @@ export const listPredictionMarkets: PredictionServiceHandler['listPredictionMark
           limit: String(limit),
         });
         if (useEvents) {
-          params.set('tag_slug', req.category);
+          params.set('tag_slug', category);
         }
 
         const response = await fetch(
@@ -162,13 +171,13 @@ export const listPredictionMarkets: PredictionServiceHandler['listPredictionMark
         const data: unknown = await response.json();
         let markets: PredictionMarket[];
         if (useEvents) {
-          markets = (data as GammaEvent[]).map((e) => mapEvent(e, req.category));
+          markets = (data as GammaEvent[]).map((e) => mapEvent(e, category));
         } else {
           markets = (data as GammaMarket[]).map(mapMarket);
         }
 
-        if (req.query) {
-          const q = req.query.toLowerCase();
+        if (query) {
+          const q = query.toLowerCase();
           markets = markets.filter((m) => m.title.toLowerCase().includes(q));
         }
 

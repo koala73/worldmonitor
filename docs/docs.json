@@ -1,0 +1,309 @@
+{
+  "$schema": "https://mintlify.com/schema.json",
+  "theme": "mint",
+  "name": "World Monitor",
+  "description": "AI-powered real-time global intelligence dashboard",
+  "logo": {
+    "dark": "/logo.png",
+    "light": "/logo.png",
+    "href": "https://www.worldmonitor.app"
+  },
+  "favicon": "/favicon.png",
+  "seo": {
+    "metatags": {
+      "og:image": "https://www.worldmonitor.app/favico/og-image.png",
+      "og:site_name": "World Monitor Documentation",
+      "og:type": "website",
+      "og:locale": "en_US",
+      "twitter:card": "summary_large_image",
+      "twitter:site": "@worldmonitorai",
+      "twitter:image": "https://www.worldmonitor.app/favico/og-image.png"
+    }
+  },
+  "colors": {
+    "primary": "#4ade80",
+    "light": "#4ade80",
+    "dark": "#22c55e"
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "Blog",
+        "href": "https://www.worldmonitor.app/blog"
+      },
+      {
+        "label": "Dashboard",
+        "href": "https://www.worldmonitor.app"
+      },
+      {
+        "label": "Pro",
+        "href": "https://www.worldmonitor.app/pro"
+      },
+      {
+        "label": "GitHub",
+        "href": "https://github.com/koala73/worldmonitor"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Get Early Access",
+      "href": "https://www.worldmonitor.app/pro#waitlist"
+    }
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "documentation",
+              "getting-started",
+              "architecture"
+            ]
+          },
+          {
+            "group": "Platform & Features",
+            "pages": [
+              "overview",
+              "features",
+              "hotspots"
+            ]
+          },
+          {
+            "group": "Intelligence & Analysis",
+            "pages": [
+              "signal-intelligence",
+              "ai-intelligence",
+              "country-instability-index",
+              "geographic-convergence",
+              "strategic-risk",
+              "algorithms"
+            ]
+          },
+          {
+            "group": "Map Layers",
+            "pages": [
+              "map-engine",
+              "orbital-surveillance",
+              "military-tracking",
+              "maritime-intelligence",
+              "natural-disasters",
+              "infrastructure-cascade",
+              "maps-and-geocoding"
+            ]
+          },
+          {
+            "group": "Finance",
+            "pages": [
+              "finance-data",
+              "premium-finance",
+              "premium-finance-search"
+            ]
+          },
+          {
+            "group": "Desktop Application",
+            "pages": [
+              "desktop-app"
+            ]
+          },
+          {
+            "group": "Developer Guide",
+            "pages": [
+              "contributing",
+              "adding-endpoints",
+              "api-key-deployment",
+              "release-packaging",
+              "cors",
+              "health-endpoints",
+              "relay-parameters",
+              "data-sources"
+            ]
+          },
+          {
+            "group": "Legal",
+            "pages": [
+              "license"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Geopolitical",
+            "pages": [
+              {
+                "group": "Conflicts",
+                "openapi": "api/ConflictService.openapi.yaml"
+              },
+              {
+                "group": "Military",
+                "openapi": "api/MilitaryService.openapi.yaml"
+              },
+              {
+                "group": "Unrest",
+                "openapi": "api/UnrestService.openapi.yaml"
+              },
+              {
+                "group": "Intelligence",
+                "openapi": "api/IntelligenceService.openapi.yaml"
+              },
+              {
+                "group": "Displacement",
+                "openapi": "api/DisplacementService.openapi.yaml"
+              },
+              {
+                "group": "Cyber",
+                "openapi": "api/CyberService.openapi.yaml"
+              }
+            ]
+          },
+          {
+            "group": "Natural Events",
+            "pages": [
+              {
+                "group": "Natural Disasters",
+                "openapi": "api/NaturalService.openapi.yaml"
+              },
+              {
+                "group": "Seismology",
+                "openapi": "api/SeismologyService.openapi.yaml"
+              },
+              {
+                "group": "Climate",
+                "openapi": "api/ClimateService.openapi.yaml"
+              },
+              {
+                "group": "Wildfires",
+                "openapi": "api/WildfireService.openapi.yaml"
+              }
+            ]
+          },
+          {
+            "group": "Economy & Markets",
+            "pages": [
+              {
+                "group": "Economic",
+                "openapi": "api/EconomicService.openapi.yaml"
+              },
+              {
+                "group": "Markets",
+                "openapi": "api/MarketService.openapi.yaml"
+              },
+              {
+                "group": "Trade",
+                "openapi": "api/TradeService.openapi.yaml"
+              },
+              {
+                "group": "Supply Chain",
+                "openapi": "api/SupplyChainService.openapi.yaml"
+              },
+              {
+                "group": "Predictions",
+                "openapi": "api/PredictionService.openapi.yaml"
+              }
+            ]
+          },
+          {
+            "group": "Infrastructure & Transport",
+            "pages": [
+              {
+                "group": "Aviation",
+                "openapi": "api/AviationService.openapi.yaml"
+              },
+              {
+                "group": "Maritime",
+                "openapi": "api/MaritimeService.openapi.yaml"
+              },
+              {
+                "group": "Infrastructure",
+                "openapi": "api/InfrastructureService.openapi.yaml"
+              }
+            ]
+          },
+          {
+            "group": "Other",
+            "pages": [
+              {
+                "group": "News",
+                "openapi": "api/NewsService.openapi.yaml"
+              },
+              {
+                "group": "Research",
+                "openapi": "api/ResearchService.openapi.yaml"
+              },
+              {
+                "group": "Positive Events",
+                "openapi": "api/PositiveEventsService.openapi.yaml"
+              },
+              {
+                "group": "Giving",
+                "openapi": "api/GivingService.openapi.yaml"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Changelog",
+        "groups": [
+          {
+            "group": "Changelog",
+            "pages": [
+              "changelog"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/koala73/worldmonitor",
+      "x": "https://x.com/worldmonitorai"
+    },
+    "links": [
+      {
+        "header": "World Monitor",
+        "items": [
+          {
+            "label": "Dashboard",
+            "href": "https://www.worldmonitor.app"
+          },
+          {
+            "label": "Pro",
+            "href": "https://www.worldmonitor.app/pro"
+          },
+          {
+            "label": "Blog",
+            "href": "https://www.worldmonitor.app/blog"
+          }
+        ]
+      },
+      {
+        "header": "Community",
+        "items": [
+          {
+            "label": "GitHub",
+            "href": "https://github.com/koala73/worldmonitor"
+          },
+          {
+            "label": "Discussions",
+            "href": "https://github.com/koala73/worldmonitor/discussions"
+          },
+          {
+            "label": "X",
+            "href": "https://x.com/worldmonitorai"
+          },
+          {
+            "label": "Status",
+            "href": "https://status.worldmonitor.app/"
+          }
+        ]
+      }
+    ]
+  }
+}

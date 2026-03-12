@@ -269,19 +269,29 @@ img { max-width: 100%; height: auto; border-radius: var(--radius); }
 .post-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-  gap: 1px;
-  background: var(--wm-border);
-  border: 1px solid var(--wm-border);
+  gap: 1.5rem;
 }
 
 .post-card {
-  background: var(--wm-bg);
+  background: var(--wm-card);
+  border: 1px solid var(--wm-border);
+  border-radius: var(--radius);
   padding: 0;
   display: flex;
   flex-direction: column;
-  transition: background 0.2s;
+  transition: background 0.2s, border-color 0.2s;
   color: inherit;
   overflow: hidden;
+}
+
+.hero-image {
+  display: block;
+  max-width: var(--max-width);
+  width: 100%;
+  height: auto;
+  margin: 0 auto 2rem;
+  border-radius: 12px;
+  object-fit: cover;
 }
 
 .post-card-img {
@@ -305,7 +315,7 @@ img { max-width: 100%; height: auto; border-radius: var(--radius); }
 }
 
 .post-card:hover {
-  background: var(--wm-card);
+  border-color: var(--wm-green);
 }
 
 .post-card .tag {

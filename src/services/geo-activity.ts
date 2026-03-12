@@ -1,5 +1,6 @@
 import type { ClusteredEvent } from '@/types';
 import { inferGeoHubsFromTitle, type GeoHubLocation } from './geo-hub-index';
+import { deriveHubActivityLevel, deriveHubTrend, normalizeHubScore } from './hub-activity-scoring';
 
 export interface GeoHubActivity {
   hubId: string;
@@ -98,29 +99,14 @@ export function aggregateGeoActivity(clusters: ClusteredEvent[]): GeoHubActivity
   for (const { hubId, acc, rawScore } of rawScores) {
     const newsCount = acc.clusters.length;
 
-    const score = maxRawScore > 0
-      ? Math.round((rawScore / maxRawScore) * 100)
-      : 0;
-
-    let activityLevel: 'high' | 'elevated' | 'low';
-    if (score >= 70 || acc.hasBreaking) {
-      activityLevel = 'high';
-    } else if (score >= 40) {
-      activityLevel = 'elevated';
-    } else {
-      activityLevel = 'low';
-    }
+    const score = normalizeHubScore(rawScore, maxRawScore);
+    const activityLevel = deriveHubActivityLevel(score, acc.hasBreaking);
 
     const topStories = acc.clusters
       .slice(0, 3)
       .map(c => ({ title: c.primaryTitle, link: c.primaryLink }));
 
-    let trend: 'rising' | 'stable' | 'falling' = 'stable';
-    if (acc.totalVelocity > 2) {
-      trend = 'rising';
-    } else if (acc.totalVelocity < 0.5 && newsCount > 1) {
-      trend = 'falling';
-    }
+    const trend = deriveHubTrend(acc.totalVelocity, newsCount);
 
     activities.push({
       hubId,

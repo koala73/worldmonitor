@@ -1,5 +1,6 @@
 import type { StoryData } from './story-data';
 import { toFlagEmoji } from '@/utils/country-flag';
+import { getCanonicalApiOrigin } from '@/services/runtime';
 
 // Deep link generator for story sharing
 export function generateStoryDeepLink(
@@ -15,7 +16,7 @@ export function generateStoryDeepLink(
   });
   if (score !== undefined) params.set('s', String(score));
   if (level) params.set('l', level);
-  return `https://worldmonitor.app/api/story?${params.toString()}`;
+  return `${getCanonicalApiOrigin()}/api/story?${params.toString()}`;
 }
 
 // Parse deep link parameters

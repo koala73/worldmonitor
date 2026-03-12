@@ -8,6 +8,7 @@ import type {
 import { getCachedJsonBatch, cachedFetchJson } from '../../../_shared/redis';
 import { CHROME_UA } from '../../../_shared/constants';
 import { ISO2_TO_ISO3 } from './_shared';
+import { toUniqueSortedLimited } from '../../../_shared/normalize-list';
 
 const REDIS_CACHE_KEY = 'conflict:humanitarian:v1';
 const REDIS_CACHE_TTL = 21600;
@@ -100,8 +101,7 @@ export async function getHumanitarianSummaryBatch(
     const normalized = req.countryCodes
       .map((c) => c.trim().toUpperCase())
       .filter((c) => ISO2_PATTERN.test(c));
-    const uniqueSorted = Array.from(new Set(normalized)).sort();
-    const limitedList = uniqueSorted.slice(0, 25);
+    const limitedList = toUniqueSortedLimited(normalized, 25);
 
     const results: Record<string, HumanitarianCountrySummary> = {};
     const toFetch: string[] = [];

@@ -1,4 +1,4 @@
-# WorldMonitor — Performance Optimization Roadmap
+# World Monitor — Performance Optimization Roadmap
 
 All items below target **end-user perceived speed**: faster initial load, smoother panel rendering,
 lower memory footprint, and snappier map interactions. Items are ordered roughly by expected impact.

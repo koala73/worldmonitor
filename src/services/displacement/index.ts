@@ -1,3 +1,4 @@
+import { getRpcBaseUrl } from '@/services/rpc-client';
 import {
   DisplacementServiceClient,
   type GetDisplacementSummaryResponse as ProtoResponse,
@@ -106,7 +107,7 @@ function toDisplayFlow(proto: ProtoFlow): DisplacementFlow {
 
 // ─── Client + circuit breaker ───
 
-const client = new DisplacementServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+const client = new DisplacementServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 
 const emptyResult: UnhcrSummary = {
   year: new Date().getFullYear(),
