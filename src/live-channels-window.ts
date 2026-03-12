@@ -436,6 +436,7 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
       }
       saveChannelsToStorage(channels);
       renderList(listEl);
+      renderAvailableChannels(listEl);
     });
     return card;
   }

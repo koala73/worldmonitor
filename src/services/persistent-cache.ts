@@ -69,6 +69,44 @@ async function setInIndexedDb<T>(payload: CacheEnvelope<T>): Promise<void> {
   });
 }
 
+async function deleteFromIndexedDbByPrefix(prefix: string): Promise<void> {
+  const db = await getCacheDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(CACHE_STORE, 'readwrite');
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+
+    const store = tx.objectStore(CACHE_STORE);
+    const range = IDBKeyRange.bound(prefix, `${prefix}\uffff`);
+    const request = store.openKeyCursor(range);
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) return;
+
+      store.delete(cursor.primaryKey);
+      cursor.continue();
+    };
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function deleteFromLocalStorageByPrefix(prefix: string): void {
+  if (typeof localStorage === 'undefined') return;
+
+  const storagePrefix = `${CACHE_PREFIX}${prefix}`;
+  const keysToDelete: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key?.startsWith(storagePrefix)) {
+      keysToDelete.push(key);
+    }
+  }
+
+  for (const key of keysToDelete) {
+    localStorage.removeItem(key);
+  }
+}
+
 export async function getPersistentCache<T>(key: string): Promise<CacheEnvelope<T> | null> {
   if (isDesktopRuntime()) {
     try {
@@ -156,6 +194,33 @@ export async function deletePersistentCache(key: string): Promise<void> {
   if (isStorageQuotaExceeded()) return;
   try {
     localStorage.removeItem(`${CACHE_PREFIX}${key}`);
+  } catch {
+    // Ignore
+  }
+}
+
+export async function deletePersistentCacheByPrefix(prefix: string): Promise<void> {
+  if (isDesktopRuntime()) {
+    try {
+      await invokeTauri<void>('delete_cache_entries_by_prefix', { prefix });
+      return;
+    } catch {
+      // Fall through to browser storage
+    }
+  }
+
+  if (isIndexedDbAvailable()) {
+    try {
+      await deleteFromIndexedDbByPrefix(prefix);
+      return;
+    } catch (error) {
+      console.warn('[persistent-cache] IndexedDB prefix delete failed; falling back to localStorage', error);
+      cacheDbPromise = null;
+    }
+  }
+
+  try {
+    deleteFromLocalStorageByPrefix(prefix);
   } catch {
     // Ignore
   }
