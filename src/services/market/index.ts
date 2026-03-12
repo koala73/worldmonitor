@@ -83,13 +83,27 @@ async function fetchMarketQuotesFromSidecar(
     const data = await resp.json() as { quotes?: SidecarQuote[] };
     if (!Array.isArray(data.quotes) || data.quotes.every(q => q.price === null)) return null;
     const metaMap = new Map(symbols.map(s => [s.symbol, s]));
-    return data.quotes.map(q => ({
+    const quotes = data.quotes.map(q => ({
       symbol: q.symbol,
       name: metaMap.get(q.symbol)?.name ?? q.symbol,
       display: metaMap.get(q.symbol)?.display ?? q.symbol,
       price: q.price,
       change: q.change,
+      sparkline: undefined as number[] | undefined,
     }));
+
+    // Fetch sparklines for a sample of symbols (top 8 to avoid rate limits)
+    const sparkSample = quotes.filter(q => q.price !== null).slice(0, 8);
+    await Promise.allSettled(sparkSample.map(async q => {
+      try {
+        const r = await fetch(`${base}/api/stock-chart?symbol=${encodeURIComponent(q.symbol)}&range=1mo&interval=1d`);
+        if (!r.ok) return;
+        const d = await r.json() as { closes: number[] };
+        if (Array.isArray(d.closes) && d.closes.length > 0) q.sparkline = d.closes;
+      } catch { /* ignore */ }
+    }));
+
+    return quotes;
   } catch {
     return null;
   }

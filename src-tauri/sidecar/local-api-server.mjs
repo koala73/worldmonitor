@@ -1676,6 +1676,194 @@ async function dispatch(requestUrl, req, routes, context) {
     }
   }
 
+  // ── FRED economic series — direct API call using stored key ──────────────
+  // GET /api/fred-series?ids=WALCL,FEDFUNDS,... → calls api.stlouisfed.org
+  if (requestUrl.pathname === '/api/fred-series') {
+    const apiKey = process.env.FRED_API_KEY;
+    if (!apiKey) return json({ series: [], error: 'FRED_API_KEY not configured' }, 503);
+    const ids = (requestUrl.searchParams.get('ids') || 'WALCL,FEDFUNDS,T10Y2Y,UNRATE,CPIAUCSL,DGS10,VIXCLS').split(',').map(s => s.trim()).filter(Boolean);
+    try {
+      const results = await Promise.all(ids.map(async id => {
+        try {
+          const r = await fetchWithTimeout(
+            `https://api.stlouisfed.org/fred/series/observations?series_id=${encodeURIComponent(id)}&api_key=${encodeURIComponent(apiKey)}&file_type=json&limit=120&sort_order=asc&observation_start=2020-01-01`,
+            { headers: { 'User-Agent': CHROME_UA } }, 10000
+          );
+          if (!r.ok) return { id, observations: [], error: `FRED ${r.status}` };
+          const data = await r.json();
+          const obs = (data.observations ?? [])
+            .filter(o => o.value !== '.')
+            .map(o => ({ date: o.date, value: parseFloat(o.value) }));
+          return { id, observations: obs };
+        } catch (e) {
+          return { id, observations: [], error: String(e.message ?? e) };
+        }
+      }));
+      return json({ series: results });
+    } catch (e) {
+      return json({ series: [], error: String(e.message ?? e) }, 500);
+    }
+  }
+
+  // ── FRED fallback — free public data sources, no key required ────────────
+  // Combines Yahoo Finance (VIX, yields), US Treasury yield curve, BLS (UNRATE/CPI)
+  if (requestUrl.pathname === '/api/fred-fallback') {
+    try {
+      const [yahooResp, treasuryResp, blsUnrateResp, blsCpiResp] = await Promise.allSettled([
+        // Yahoo: VIX, 10Y yield, 13-week T-bill
+        fetchWithTimeout(
+          'https://query1.finance.yahoo.com/v8/finance/quote?symbols=%5EVIX%2C%5ETNX%2C%5EIRX%2C%5ETYX',
+          { headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' } }, 10000
+        ),
+        // US Treasury daily yield curve (free, no auth)
+        fetchWithTimeout(
+          `https://home.treasury.gov/resource-center/data-chart-center/interest-rates/pages/xml?data=daily_treasury_yield_curve&field_tdr_date_value=${new Date().getFullYear()}`,
+          { headers: { 'User-Agent': CHROME_UA, Accept: 'application/xml' } }, 10000
+        ),
+        // BLS unemployment rate series (no key, public tier 1)
+        fetchWithTimeout(
+          'https://api.bls.gov/publicAPI/v1/timeseries/data/LNS14000000',
+          { headers: { 'User-Agent': CHROME_UA, 'Content-Type': 'application/json' } }, 10000
+        ),
+        // BLS CPI-U series (no key, public tier 1)
+        fetchWithTimeout(
+          'https://api.bls.gov/publicAPI/v1/timeseries/data/CUUR0000SA0',
+          { headers: { 'User-Agent': CHROME_UA, 'Content-Type': 'application/json' } }, 10000
+        ),
+      ]);
+
+      const series = [];
+      const today = new Date().toISOString().slice(0, 10);
+
+      // Yahoo Finance quotes
+      if (yahooResp.status === 'fulfilled' && yahooResp.value.ok) {
+        const body = await yahooResp.value.json();
+        const qs = body?.quoteResponse?.result ?? [];
+        const get = sym => qs.find(q => q.symbol === sym);
+        const vix = get('^VIX');
+        const tnx = get('^TNX'); // 10-year, expressed as percent * 10 in Yahoo
+        const tyx = get('^TYX'); // 30-year
+        const irx = get('^IRX'); // 13-week T-bill
+        if (vix) series.push({ id: 'VIXCLS', observations: [{ date: today, value: vix.regularMarketPrice }] });
+        if (tnx) series.push({ id: 'DGS10', observations: [{ date: today, value: parseFloat((tnx.regularMarketPrice / 10).toFixed(2)) }] });
+        if (irx) series.push({ id: 'FEDFUNDS', observations: [{ date: today, value: parseFloat((irx.regularMarketPrice / 10).toFixed(2)) }] });
+        // 10Y-2Y spread approximated from Treasury XML (below); fallback if missing
+        if (tnx && irx) {
+          const tn = tnx.regularMarketPrice / 10;
+          const ir = irx.regularMarketPrice / 10;
+          series.push({ id: 'T10Y2Y', observations: [{ date: today, value: parseFloat((tn - ir).toFixed(2)) }] });
+        }
+      }
+
+      // US Treasury yield curve XML (has 2-year for proper T10Y2Y)
+      if (treasuryResp.status === 'fulfilled' && treasuryResp.value.ok) {
+        const xml = await treasuryResp.value.text();
+        // Extract latest 2-year and 10-year from XML
+        const y2 = xml.match(/<d:BC_2YEAR[^>]*>([0-9.]+)<\/d:BC_2YEAR>/)?.[1];
+        const y10 = xml.match(/<d:BC_10YEAR[^>]*>([0-9.]+)<\/d:BC_10YEAR>/)?.[1];
+        if (y2 && y10) {
+          const spread = parseFloat((parseFloat(y10) - parseFloat(y2)).toFixed(2));
+          // Overwrite the T10Y2Y approximation with accurate Treasury data
+          const idx = series.findIndex(s => s.id === 'T10Y2Y');
+          if (idx >= 0) series[idx] = { id: 'T10Y2Y', observations: [{ date: today, value: spread }] };
+          else series.push({ id: 'T10Y2Y', observations: [{ date: today, value: spread }] });
+          // Also refine DGS10 with Treasury official value
+          if (y10) {
+            const idx10 = series.findIndex(s => s.id === 'DGS10');
+            if (idx10 >= 0) series[idx10] = { id: 'DGS10', observations: [{ date: today, value: parseFloat(y10) }] };
+          }
+        }
+      }
+
+      // BLS unemployment
+      const blsUnrateObs = await (async () => {
+        if (blsUnrateResp.status !== 'fulfilled' || !blsUnrateResp.value.ok) return null;
+        const d = await blsUnrateResp.value.json();
+        const pts = d?.Results?.series?.[0]?.data ?? [];
+        return pts.slice(0, 6).reverse().map(p => ({
+          date: `${p.year}-${String(p.period.replace('M', '')).padStart(2, '0')}-01`,
+          value: parseFloat(p.value),
+        }));
+      })();
+      if (blsUnrateObs?.length) series.push({ id: 'UNRATE', observations: blsUnrateObs });
+
+      // BLS CPI
+      const blsCpiObs = await (async () => {
+        if (blsCpiResp.status !== 'fulfilled' || !blsCpiResp.value.ok) return null;
+        const d = await blsCpiResp.value.json();
+        const pts = d?.Results?.series?.[0]?.data ?? [];
+        return pts.slice(0, 6).reverse().map(p => ({
+          date: `${p.year}-${String(p.period.replace('M', '')).padStart(2, '0')}-01`,
+          value: parseFloat(p.value),
+        }));
+      })();
+      if (blsCpiObs?.length) series.push({ id: 'CPIAUCSL', observations: blsCpiObs });
+
+      return json({ series, source: 'free-fallback' });
+    } catch (e) {
+      return json({ series: [], error: String(e.message ?? e) }, 500);
+    }
+  }
+
+  // ── Energy prices — free fallback via Yahoo Finance ──────────────────────
+  // Returns WTI (CL=F), Brent (BZ=F), NatGas (NG=F) — no API key required
+  if (requestUrl.pathname === '/api/energy-fallback') {
+    try {
+      const r = await fetchWithTimeout(
+        'https://query1.finance.yahoo.com/v8/finance/quote?symbols=CL%3DF%2CBZ%3DF%2CNG%3DF',
+        { headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' } }, 10000
+      );
+      if (!r.ok) throw new Error(`Yahoo ${r.status}`);
+      const body = await r.json();
+      const qs = body?.quoteResponse?.result ?? [];
+      const get = (sym, id, name, unit) => {
+        const q = qs.find(x => x.symbol === sym);
+        if (!q) return null;
+        const price = q.regularMarketPrice ?? 0;
+        const changePct = q.regularMarketChangePercent ?? 0;
+        const prev = changePct !== 0 ? price / (1 + changePct / 100) : price;
+        return {
+          commodity: id, name, price, unit,
+          change: parseFloat(changePct.toFixed(2)),
+          trend: changePct > 0.5 ? 'up' : changePct < -0.5 ? 'down' : 'stable',
+          previous: parseFloat(prev.toFixed(2)),
+          priceAt: new Date().toISOString(),
+        };
+      };
+      const prices = [
+        get('CL=F', 'wti', 'WTI Crude Oil', '$/bbl'),
+        get('BZ=F', 'brent', 'Brent Crude Oil', '$/bbl'),
+        get('NG=F', 'natgas', 'Natural Gas', '$/MMBtu'),
+      ].filter(Boolean);
+      return json({ prices, source: 'yahoo' });
+    } catch (e) {
+      return json({ prices: [], error: String(e.message ?? e) }, 500);
+    }
+  }
+
+  // ── Stock chart — sparkline history via Yahoo Finance ────────────────────
+  // GET /api/stock-chart?symbol=AAPL&range=1mo&interval=1d
+  if (requestUrl.pathname === '/api/stock-chart') {
+    const symbol = requestUrl.searchParams.get('symbol') ?? '';
+    const range = requestUrl.searchParams.get('range') ?? '1mo';
+    const interval = requestUrl.searchParams.get('interval') ?? '1d';
+    if (!symbol) return json({ closes: [], error: 'Missing symbol' }, 400);
+    try {
+      const r = await fetchWithTimeout(
+        `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}&includeAdjustedClose=false`,
+        { headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' } }, 10000
+      );
+      if (!r.ok) throw new Error(`Yahoo chart ${r.status}`);
+      const body = await r.json();
+      const closes = body?.chart?.result?.[0]?.indicators?.quote?.[0]?.close ?? [];
+      const timestamps = body?.chart?.result?.[0]?.timestamp ?? [];
+      const points = timestamps.map((ts, i) => ({ date: new Date(ts * 1000).toISOString().slice(0, 10), close: closes[i] ?? null })).filter(p => p.close !== null);
+      return json({ symbol, points, closes: points.map(p => p.close) });
+    } catch (e) {
+      return json({ symbol, points: [], closes: [], error: String(e.message ?? e) });
+    }
+  }
+
   // ── NASA FIRMS satellite fire detections ─────────────────────────────────
   if (requestUrl.pathname === '/api/nasa-firms') {
     const apiKey = process.env.NASA_FIRMS_API_KEY;

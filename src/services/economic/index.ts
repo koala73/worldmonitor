@@ -27,6 +27,71 @@ import { getCSSColor } from '@/utils';
 import { isFeatureAvailable } from '../runtime-config';
 import { dataFreshness } from '../data-freshness';
 import { getHydratedData } from '@/services/bootstrap';
+import { getApiBaseUrl } from '@/services/runtime';
+
+// ---- Sidecar helpers ----
+
+interface SidecarFredObs { date: string; value: number; }
+interface SidecarFredSeries { id: string; observations: SidecarFredObs[]; error?: string; }
+
+async function fetchFredFromSidecar(): Promise<SidecarFredSeries[] | null> {
+  try {
+    const base = getApiBaseUrl();
+    // Try direct FRED API call first (uses stored key, returns richer data)
+    const directResp = await fetch(`${base}/api/fred-series`);
+    if (directResp.ok) {
+      const d = await directResp.json() as { series: SidecarFredSeries[] };
+      const valid = d.series?.filter(s => s.observations?.length > 0);
+      if (valid && valid.length >= 4) return valid;
+    }
+  } catch { /* fall through */ }
+  try {
+    const base = getApiBaseUrl();
+    // Fall back to free public sources (Yahoo Finance + BLS + Treasury)
+    const fallbackResp = await fetch(`${base}/api/fred-fallback`);
+    if (fallbackResp.ok) {
+      const d = await fallbackResp.json() as { series: SidecarFredSeries[] };
+      if (d.series?.length > 0) return d.series;
+    }
+  } catch { /* fall through */ }
+  return null;
+}
+
+function sidecarSeriesToFredSeries(s: SidecarFredSeries, config: { name: string; unit: string; precision: number }): FredSeries | null {
+  const obs = s.observations.filter(o => typeof o.value === 'number' && !isNaN(o.value));
+  if (obs.length === 0) return null;
+  const latest = obs[obs.length - 1]!;
+  let displayValue = latest.value;
+  if (s.id === 'WALCL') displayValue = latest.value / 1000;
+  if (obs.length >= 2) {
+    const previous = obs[obs.length - 2]!;
+    const prevDisplay = s.id === 'WALCL' ? previous.value / 1000 : previous.value;
+    const change = displayValue - prevDisplay;
+    const changePercent = prevDisplay !== 0 ? (change / prevDisplay) * 100 : 0;
+    return {
+      id: s.id, name: config.name,
+      value: Number(displayValue.toFixed(config.precision)),
+      previousValue: Number(prevDisplay.toFixed(config.precision)),
+      change: Number(change.toFixed(config.precision)),
+      changePercent: Number(changePercent.toFixed(2)),
+      date: latest.date, unit: config.unit,
+    };
+  }
+  return { id: s.id, name: config.name, value: Number(displayValue.toFixed(config.precision)), previousValue: null, change: null, changePercent: null, date: latest.date, unit: config.unit };
+}
+
+interface SidecarEnergyPrice { commodity: string; name: string; price: number; unit: string; change: number; trend: string; previous: number; priceAt: string; }
+
+async function fetchEnergyFromSidecar(): Promise<SidecarEnergyPrice[] | null> {
+  try {
+    const base = getApiBaseUrl();
+    const r = await fetch(`${base}/api/energy-fallback`);
+    if (!r.ok) return null;
+    const d = await r.json() as { prices: SidecarEnergyPrice[] };
+    if (Array.isArray(d.prices) && d.prices.length > 0) return d.prices;
+  } catch { /* ignore */ }
+  return null;
+}
 
 // ---- Client + Circuit Breakers ----
 
@@ -137,8 +202,23 @@ async function fetchSingleFredSeries(config: FredConfig): Promise<FredSeries | n
 }
 
 export async function fetchFredData(): Promise<FredSeries[]> {
-  if (!isFeatureAvailable('economicFred')) return [];
+  // Try sidecar first (direct FRED API with stored key, then free fallback sources).
+  // This works whether or not the feature is "available" in runtime-config.
+  const sidecarData = await fetchFredFromSidecar();
+  if (sidecarData && sidecarData.length >= 3) {
+    const configMap = new Map(FRED_SERIES.map(c => [c.id, c]));
+    const results = sidecarData
+      .map(s => {
+        const cfg = configMap.get(s.id);
+        if (!cfg) return null;
+        return sidecarSeriesToFredSeries(s, cfg);
+      })
+      .filter((r): r is FredSeries => r !== null);
+    if (results.length >= 3) return results;
+  }
 
+  // Fall back to upstream cloud API (requires valid FRED feature + key)
+  if (!isFeatureAvailable('economicFred')) return [];
   const results = await Promise.all(FRED_SERIES.map(fetchSingleFredSeries));
   return results.filter((r): r is FredSeries => r !== null);
 }
@@ -225,6 +305,27 @@ export async function fetchOilAnalytics(): Promise<OilAnalytics> {
   const empty: OilAnalytics = {
     wtiPrice: null, brentPrice: null, usProduction: null, usInventory: null, fetchedAt: new Date(),
   };
+
+  // Try sidecar first (Yahoo Finance — no EIA key required)
+  const sidecarEnergy = await fetchEnergyFromSidecar();
+  if (sidecarEnergy && sidecarEnergy.length > 0) {
+    const byId = new Map(sidecarEnergy.map(p => [p.commodity, p]));
+    const toMetric = (p: SidecarEnergyPrice): OilMetric => ({
+      id: p.commodity, name: p.name, description: `${p.name} price`,
+      current: p.price, previous: p.previous, changePct: p.change,
+      unit: p.unit, trend: (p.trend as 'up' | 'down' | 'stable'), lastUpdated: p.priceAt,
+    });
+    const result: OilAnalytics = {
+      wtiPrice: byId.has('wti') ? toMetric(byId.get('wti')!) : null,
+      brentPrice: byId.has('brent') ? toMetric(byId.get('brent')!) : null,
+      usProduction: null, usInventory: null,
+      fetchedAt: new Date(),
+    };
+    if (result.wtiPrice || result.brentPrice) {
+      dataFreshness.recordUpdate('oil', sidecarEnergy.length);
+      return result;
+    }
+  }
 
   if (!isFeatureAvailable('energyEia')) return empty;
 
