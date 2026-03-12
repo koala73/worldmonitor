@@ -329,6 +329,17 @@ function averageVelocity(history: TopicVelocityPoint[]): number {
   return total / history.length;
 }
 
+function countRelatedTopicMentions(
+  newsTopics: Map<string, number>,
+  market: Pick<MarketDataCore, 'name' | 'symbol'>
+): number {
+  const marketNameLower = market.name.toLowerCase();
+  const marketSymbolLower = market.symbol.toLowerCase();
+  return Array.from(newsTopics.entries())
+    .filter(([topic]) => marketNameLower.includes(topic) || topic.includes(marketSymbolLower))
+    .reduce((sum, [, velocity]) => sum + velocity, 0);
+}
+
 export function detectPipelineFlowDrops(
   events: ClusteredEventCore[],
   isRecentDuplicate: (key: string) => boolean,
@@ -615,9 +626,7 @@ export function analyzeCorrelationsCore(
         });
       }
     } else {
-      const oldRelatedNews = Array.from(newsTopics.entries())
-        .filter(([k]) => market.name.toLowerCase().includes(k) || k.includes(market.symbol.toLowerCase()))
-        .reduce((sum, [, v]) => sum + v, 0);
+      const oldRelatedNews = countRelatedTopicMentions(newsTopics, market);
 
       const dedupeKey = generateDedupeKey('silent_divergence', market.symbol, change);
       if (oldRelatedNews < 2 && !isRecentDuplicate(dedupeKey)) {
@@ -648,9 +657,7 @@ export function analyzeCorrelationsCore(
 
     const change = market.change ?? 0;
     if (change >= FLOW_PRICE_THRESHOLD) {
-      const relatedNews = Array.from(newsTopics.entries())
-        .filter(([k]) => market.name.toLowerCase().includes(k) || k.includes(market.symbol.toLowerCase()))
-        .reduce((sum, [, v]) => sum + v, 0);
+      const relatedNews = countRelatedTopicMentions(newsTopics, market);
 
       const dedupeKey = generateDedupeKey('flow_price_divergence', market.symbol, change);
       if (relatedNews < 2 && pipelineFlowMentions === 0 && !isRecentDuplicate(dedupeKey)) {
