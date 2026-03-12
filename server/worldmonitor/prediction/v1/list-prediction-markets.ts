@@ -1,20 +1,22 @@
 /**
- * ListPredictionMarkets RPC -- proxies the Gamma API for Polymarket prediction markets.
+ * ListPredictionMarkets RPC -- proxies the Gamma API for Polymarket prediction
+ * markets and the Kalshi API for Kalshi markets.
  *
  * Critical constraint: Gamma API is behind Cloudflare JA3 fingerprint detection
  * that blocks server-side TLS connections. The handler tries the fetch and
  * gracefully returns empty on failure. JA3 blocking is expected, not an error.
  */
 
-import type {
-  PredictionServiceHandler,
-  ServerContext,
-  ListPredictionMarketsRequest,
-  ListPredictionMarketsResponse,
-  PredictionMarket,
+import {
+  MarketSource,
+  type PredictionServiceHandler,
+  type ServerContext,
+  type ListPredictionMarketsRequest,
+  type ListPredictionMarketsResponse,
+  type PredictionMarket,
 } from '../../../../src/generated/server/worldmonitor/prediction/v1/service_server';
 
-import { CHROME_UA } from '../../../_shared/constants';
+import { CHROME_UA, clampInt } from '../../../_shared/constants';
 import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
 
 const REDIS_CACHE_KEY = 'prediction:markets:v1';
@@ -22,10 +24,13 @@ const REDIS_CACHE_TTL = 600; // 10 min
 const BOOTSTRAP_KEY = 'prediction:markets-bootstrap:v1';
 
 const GAMMA_BASE = 'https://gamma-api.polymarket.com';
+const KALSHI_BASE = 'https://trading-api.kalshi.com/trade-api/v2';
+const KALSHI_CACHE_KEY = 'prediction:kalshi:v1';
 const FETCH_TIMEOUT = 8000;
 
 const TECH_CATEGORY_TAGS = ['ai', 'tech', 'crypto', 'science'];
 const FINANCE_CATEGORY_TAGS = ['economy', 'fed', 'inflation', 'interest-rates', 'recession', 'trade', 'tariffs', 'debt-ceiling'];
+const KALSHI_CATEGORIES = [...FINANCE_CATEGORY_TAGS, 'markets', 'business'];
 
 // ---------- Internal Gamma API types ----------
 
@@ -49,6 +54,61 @@ interface GammaEvent {
   closed?: boolean;
   endDate?: string;
 }
+
+// ---------- Internal Kalshi API types ----------
+
+interface KalshiMarket {
+  ticker: string;
+  event_ticker: string;
+  title: string;
+  yes_sub_title?: string;
+  last_price_dollars?: string;
+  volume_fp?: string;
+  open_interest_fp?: string;
+  close_time?: string;
+  status?: string;
+  market_type?: string;
+}
+
+interface KalshiEvent {
+  event_ticker: string;
+  title: string;
+  category?: string;
+  markets?: KalshiMarket[];
+}
+
+// ---------- Bootstrap types ----------
+
+interface BootstrapMarket {
+  title: string;
+  yesPrice: number;
+  volume: number;
+  url: string;
+  endDate?: string;
+  source?: 'kalshi' | 'polymarket';
+}
+
+interface BootstrapData {
+  geopolitical?: BootstrapMarket[];
+  tech?: BootstrapMarket[];
+  finance?: BootstrapMarket[];
+}
+
+const EXCLUDE_KEYWORDS = [
+  'nba', 'nfl', 'mlb', 'nhl', 'fifa', 'world cup', 'super bowl', 'championship',
+  'playoffs', 'oscar', 'grammy', 'emmy', 'box office', 'movie', 'album', 'song',
+  'streamer', 'influencer', 'celebrity', 'kardashian',
+  'bachelor', 'reality tv', 'mvp', 'touchdown', 'home run', 'goal scorer',
+  'academy award', 'bafta', 'golden globe', 'cannes', 'sundance',
+  'documentary', 'feature film', 'tv series', 'season finale',
+];
+
+function isExcluded(title: string): boolean {
+  const lower = title.toLowerCase();
+  return EXCLUDE_KEYWORDS.some(kw => lower.includes(kw));
+}
+
+const KALSHI_VOLUME_THRESHOLD = 5000;
 
 // ---------- Helpers ----------
 
@@ -83,6 +143,8 @@ function mapEvent(event: GammaEvent, category: string): PredictionMarket {
     url: `https://polymarket.com/event/${event.slug}`,
     closesAt: Number.isFinite(closesAtMs) ? closesAtMs : 0,
     category: category || '',
+    source: MarketSource.MARKET_SOURCE_POLYMARKET,
+    openInterest: 0,
   };
 }
 
@@ -97,7 +159,67 @@ function mapMarket(market: GammaMarket): PredictionMarket {
     url: `https://polymarket.com/market/${market.slug}`,
     closesAt: Number.isFinite(closesAtMs) ? closesAtMs : 0,
     category: '',
+    source: MarketSource.MARKET_SOURCE_POLYMARKET,
+    openInterest: 0,
   };
+}
+
+/** Map a KalshiMarket to a proto PredictionMarket. Caller must pre-filter for active binary markets. */
+function mapKalshiMarket(market: KalshiMarket, category: string, eventTitle?: string): PredictionMarket {
+  const closesAtMs = market.close_time ? Date.parse(market.close_time) : 0;
+  const yesPrice = parseFloat(market.last_price_dollars || '0.5');
+  return {
+    id: market.ticker,
+    title: market.yes_sub_title || market.title || eventTitle || '',
+    yesPrice: Number.isFinite(yesPrice) ? yesPrice : 0.5,
+    volume: parseFloat(market.volume_fp || '0'),
+    url: `https://kalshi.com/markets/${market.ticker}`,
+    closesAt: Number.isFinite(closesAtMs) ? closesAtMs : 0,
+    category: category || '',
+    source: MarketSource.MARKET_SOURCE_KALSHI,
+    openInterest: parseFloat(market.open_interest_fp || '0'),
+  };
+}
+
+/** Fetch open markets from the Kalshi API. Returns null on failure. */
+async function fetchKalshiMarkets(): Promise<PredictionMarket[] | null> {
+  try {
+    const result = await cachedFetchJson<PredictionMarket[]>(
+      KALSHI_CACHE_KEY,
+      REDIS_CACHE_TTL,
+      async () => {
+        const response = await fetch(
+          `${KALSHI_BASE}/events?status=open&with_nested_markets=true&limit=40`,
+          {
+            headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
+            signal: AbortSignal.timeout(FETCH_TIMEOUT),
+          },
+        );
+        if (!response.ok) return null;
+
+        const data = (await response.json()) as { events: KalshiEvent[]; cursor: string };
+        const markets: PredictionMarket[] = [];
+        for (const event of data.events) {
+          if (!event.markets) continue;
+          if (isExcluded(event.title)) continue;
+          let topMarket: KalshiMarket | null = null;
+          let topVol = 0;
+          for (const m of event.markets) {
+            if (m.market_type !== 'binary' || m.status !== 'active') continue;
+            const vol = parseFloat(m.volume_fp || '0');
+            if (vol > topVol) { topMarket = m; topVol = vol; }
+          }
+          if (topMarket && topVol > KALSHI_VOLUME_THRESHOLD) {
+            markets.push(mapKalshiMarket(topMarket, event.category || '', event.title));
+          }
+        }
+        return markets.length > 0 ? markets : null;
+      },
+    );
+    return result || null;
+  } catch {
+    return null;
+  }
 }
 
 // ---------- RPC ----------
@@ -109,11 +231,13 @@ export const listPredictionMarkets: PredictionServiceHandler['listPredictionMark
   try {
     const category = (req.category || '').slice(0, 50);
     const query = (req.query || '').slice(0, 100);
+    const limit = clampInt(req.pageSize, 50, 1, 100);
+    const includeKalshi = !category || KALSHI_CATEGORIES.includes(category);
 
     // Try Railway-seeded bootstrap data first (no Gamma API call needed)
     if (!query) {
       try {
-        const bootstrap = await getCachedJson(BOOTSTRAP_KEY) as { geopolitical?: PredictionMarket[]; tech?: PredictionMarket[]; finance?: PredictionMarket[] } | null;
+        const bootstrap = await getCachedJson(BOOTSTRAP_KEY) as BootstrapData | null;
         if (bootstrap) {
           const isTech = category && TECH_CATEGORY_TAGS.includes(category);
           const isFinance = !isTech && category && FINANCE_CATEGORY_TAGS.includes(category);
@@ -121,8 +245,7 @@ export const listPredictionMarkets: PredictionServiceHandler['listPredictionMark
             : isFinance ? (bootstrap.finance ?? bootstrap.geopolitical)
             : bootstrap.geopolitical;
           if (variant && variant.length > 0) {
-            const limit = Math.max(1, Math.min(100, req.pageSize || 50));
-            const markets: PredictionMarket[] = variant.slice(0, limit).map((m: PredictionMarket & { endDate?: string }) => ({
+            const markets: PredictionMarket[] = variant.slice(0, limit).map((m) => ({
               id: m.url?.split('/').pop() || '',
               title: m.title,
               yesPrice: (m.yesPrice ?? 50) / 100, // bootstrap stores 0-100, proto uses 0-1
@@ -130,6 +253,8 @@ export const listPredictionMarkets: PredictionServiceHandler['listPredictionMark
               url: m.url || '',
               closesAt: m.endDate ? Date.parse(m.endDate) : 0,
               category: category || '',
+              source: m.source === 'kalshi' ? MarketSource.MARKET_SOURCE_KALSHI : MarketSource.MARKET_SOURCE_POLYMARKET,
+              openInterest: 0,
             }));
             return { markets, pagination: undefined };
           }
@@ -137,15 +262,15 @@ export const listPredictionMarkets: PredictionServiceHandler['listPredictionMark
       } catch { /* bootstrap read failed, fall through */ }
     }
 
-    // Fallback: fetch from Gamma API directly (may fail due to JA3 blocking)
-    const cacheKey = `${REDIS_CACHE_KEY}:${category || 'all'}:${query || ''}:${req.pageSize || 50}`;
-    const result = await cachedFetchJson<ListPredictionMarketsResponse>(
-      cacheKey,
+    // Fallback: fetch from Gamma API and Kalshi API in parallel
+    const kalshiFetch = includeKalshi ? fetchKalshiMarkets() : Promise.resolve(null);
+
+    const gammaFetch = cachedFetchJson<PredictionMarket[]>(
+      `${REDIS_CACHE_KEY}:${category || 'all'}:${query || ''}:${req.pageSize || 50}`,
       REDIS_CACHE_TTL,
       async () => {
         const useEvents = !!category;
         const endpoint = useEvents ? 'events' : 'markets';
-        const limit = Math.max(1, Math.min(100, req.pageSize || 50));
         const params = new URLSearchParams({
           closed: 'false',
           active: 'true',
@@ -181,10 +306,32 @@ export const listPredictionMarkets: PredictionServiceHandler['listPredictionMark
           markets = markets.filter((m) => m.title.toLowerCase().includes(q));
         }
 
-        return markets.length > 0 ? { markets, pagination: undefined } : null;
+        return markets.length > 0 ? markets : null;
       },
     );
-    return result || { markets: [], pagination: undefined };
+
+    const [gammaResult, kalshiResult] = await Promise.allSettled([gammaFetch, kalshiFetch]);
+
+    const polymarketMarkets = gammaResult.status === 'fulfilled' && gammaResult.value ? gammaResult.value : [];
+
+    let filteredKalshi: PredictionMarket[] = [];
+    if (includeKalshi) {
+      const kalshiMarkets = kalshiResult.status === 'fulfilled' && kalshiResult.value ? kalshiResult.value : [];
+      filteredKalshi = kalshiMarkets;
+      if (query && kalshiMarkets.length > 0) {
+        const q = query.toLowerCase();
+        filteredKalshi = kalshiMarkets.filter((m) => m.title.toLowerCase().includes(q));
+      }
+    }
+
+    const allMarkets = [...polymarketMarkets, ...filteredKalshi];
+
+    allMarkets.sort((a, b) => b.volume - a.volume);
+    const finalMarkets = allMarkets.slice(0, limit);
+
+    return finalMarkets.length > 0
+      ? { markets: finalMarkets, pagination: undefined }
+      : { markets: [], pagination: undefined };
   } catch {
     return { markets: [], pagination: undefined };
   }

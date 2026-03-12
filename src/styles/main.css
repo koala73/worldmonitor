@@ -5729,6 +5729,29 @@ a.prediction-link:hover {
   padding: 0 4px;
 }
 
+.prediction-source {
+  display: inline-block;
+  font-size: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-bottom: 3px;
+  background: var(--border);
+  color: var(--muted);
+}
+
+.prediction-source[data-source="kalshi"] {
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--semantic-info, #3b82f6);
+}
+
+.prediction-source[data-source="polymarket"] {
+  background: rgba(139, 92, 246, 0.15);
+  color: var(--accent, #8b5cf6);
+}
+
 /* Monitors */
 .monitor-input-container {
   margin-bottom: 12px;
