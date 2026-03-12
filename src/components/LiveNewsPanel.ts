@@ -370,7 +370,6 @@ export class LiveNewsPanel extends Panel {
     this.channels = loadChannelsFromStorage();
     if (this.channels.length === 0) this.channels = getDefaultLiveChannels();
     this.activeChannel = this.channels[0]!;
-    console.log('[LiveNews] Using deferred init:', this.deferredInit);
     this.createLiveButton();
     this.createMuteButton();
     this.createChannelSwitcher();
