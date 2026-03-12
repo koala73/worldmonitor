@@ -54,7 +54,7 @@ export class StablecoinPanel extends Panel {
       if (this.isAbortError(err)) return;
       if (!this.element?.isConnected) return;
       console.warn('[Stablecoin] Fetch error:', err);
-      this.error = null;
+      this.error = t('common.noDataShort');
     }
     this.loading = false;
     this.renderPanel();

@@ -584,10 +584,16 @@ export class App {
     // Phase 6: Data loading
     this.dataLoader.syncDataFreshnessWithLayers();
     await preloadCountryGeometry();
-    await this.dataLoader.loadAllData(true);
-    await this.primeVisiblePanelData(true);
+    // Prime panel-specific data concurrently with bulk loading.
+    // primeVisiblePanelData owns ETF, Stablecoins, Gulf Economies, etc. that
+    // are NOT part of loadAllData. Running them in parallel prevents those
+    // panels from being blocked when a loadAllData batch is slow.
     window.addEventListener('scroll', this.handleViewportPrime, { passive: true });
     window.addEventListener('resize', this.handleViewportPrime);
+    await Promise.all([
+      this.dataLoader.loadAllData(true),
+      this.primeVisiblePanelData(true),
+    ]);
 
     startLearning();
 
