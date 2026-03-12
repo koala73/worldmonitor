@@ -172,8 +172,12 @@ export function chunkArray<T>(items: T[], size: number): T[][] {
   return chunks;
 }
 
+export function toUniqueSorted(items: string[]): string[] {
+  return Array.from(new Set(items)).sort();
+}
+
 export function toUniqueSortedLowercase(items: string[]): string[] {
-  return Array.from(new Set(items.map((item) => item.toLowerCase()))).sort();
+  return toUniqueSorted(items.map((item) => item.toLowerCase()));
 }
 
 export { proxyUrl, fetchWithProxy, rssProxyUrl } from './proxy';
