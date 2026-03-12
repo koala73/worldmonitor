@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { getAcledToken } from './shared/acled-oauth.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -90,9 +91,9 @@ function sortBySeverityAndRecency(events) {
 // ---------- ACLED Fetch ----------
 
 async function fetchAcledProtests() {
-  const token = process.env.ACLED_ACCESS_TOKEN;
+  const token = await getAcledToken({ userAgent: CHROME_UA });
   if (!token) {
-    console.log('  ACLED_ACCESS_TOKEN not set, skipping ACLED');
+    console.log('  ACLED: no credentials configured, skipping');
     return [];
   }
 
