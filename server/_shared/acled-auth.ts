@@ -186,7 +186,7 @@ export async function getAcledAccessToken(): Promise<string | null> {
   const email = process.env.ACLED_EMAIL?.trim();
   const password = process.env.ACLED_PASSWORD?.trim();
 
-  // —— OAuth flow ————————————————————————————————————————
+  // -- OAuth flow --
   if (email && password) {
     // L1: Return in-memory token if still fresh.
     if (memCached && Date.now() < memCached.expiresAt - EXPIRY_MARGIN_MS) {
@@ -236,7 +236,7 @@ export async function getAcledAccessToken(): Promise<string | null> {
     return refreshPromise;
   }
 
-  // —— Static token fallback (legacy) ————————————————————
+  // -- Static token fallback (legacy) --
   const staticToken = process.env.ACLED_ACCESS_TOKEN?.trim();
   return staticToken || null;
 }

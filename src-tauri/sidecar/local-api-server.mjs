@@ -839,7 +839,7 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
       if (loginPayload?.access_token) {
         // Store the obtained OAuth token so API handlers can use it.
         process.env.ACLED_ACCESS_TOKEN = loginPayload.access_token;
-        return ok('ACLED credentials verified — OAuth token obtained');
+        return ok('ACLED credentials verified (OAuth token obtained)');
       }
       return ok('ACLED credentials accepted');
     }

@@ -1,71 +1,15 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { getAcledToken } from './shared/acled-oauth.mjs';
 
 loadEnvFile(import.meta.url);
 
 const GDELT_GKG_URL = 'https://api.gdeltproject.org/api/v1/gkg_geojson';
 const ACLED_API_URL = 'https://acleddata.com/api/acled/read';
-const ACLED_TOKEN_URL = 'https://acleddata.com/oauth/token';
-const ACLED_CLIENT_ID = 'acled';
 const CANONICAL_KEY = 'unrest:events:v1';
 const CACHE_TTL = 3600;
 
-// ---------- ACLED OAuth Helper (mirrors server/_shared/acled-auth.ts) ----------
-
-/**
- * Obtain a valid ACLED access token.
- *
- * Priority:
- *   1. ACLED_EMAIL + ACLED_PASSWORD → OAuth exchange
- *   2. ACLED_ACCESS_TOKEN          → static token (legacy, expires 24h)
- *   3. Neither                     → null
- */
-async function getAcledToken() {
-  const email = (process.env.ACLED_EMAIL || '').trim();
-  const password = (process.env.ACLED_PASSWORD || '').trim();
-
-  if (email && password) {
-    console.log('  ACLED: exchanging credentials for OAuth token...');
-    const body = new URLSearchParams({
-      username: email,
-      password,
-      grant_type: 'password',
-      client_id: ACLED_CLIENT_ID,
-    });
-
-    const resp = await fetch(ACLED_TOKEN_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': CHROME_UA,
-      },
-      body,
-      signal: AbortSignal.timeout(15_000),
-    });
-
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => '');
-      console.warn(`  ACLED OAuth exchange failed (${resp.status}): ${text.slice(0, 200)}`);
-      // Fall through to static token check
-    } else {
-      const data = await resp.json();
-      if (data.access_token) {
-        console.log('  ACLED: OAuth token obtained successfully');
-        return data.access_token;
-      }
-      console.warn('  ACLED: OAuth response missing access_token');
-    }
-  }
-
-  const staticToken = (process.env.ACLED_ACCESS_TOKEN || '').trim();
-  if (staticToken) {
-    console.log('  ACLED: using static ACLED_ACCESS_TOKEN (expires after 24h)');
-    return staticToken;
-  }
-
-  return null;
-}
 
 // ---------- ACLED Event Type Mapping (from _shared.ts) ----------
 
@@ -148,7 +92,7 @@ function sortBySeverityAndRecency(events) {
 // ---------- ACLED Fetch ----------
 
 async function fetchAcledProtests() {
-  const token = await getAcledToken();
+  const token = await getAcledToken({ userAgent: CHROME_UA });
   if (!token) {
     console.log('  ACLED: no credentials configured, skipping');
     return [];
