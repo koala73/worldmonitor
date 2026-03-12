@@ -182,5 +182,6 @@ export * from './analysis-constants';
 export { getCSSColor, invalidateColorCache } from './theme-colors';
 export { getStoredTheme, getCurrentTheme, setTheme, applyStoredTheme, getThemePreference, setThemePreference } from './theme-manager';
 export type { Theme, ThemePreference } from './theme-manager';
+export { toFlagEmoji } from './country-flag';
 
 import { getCurrentLanguage } from '../services/i18n';

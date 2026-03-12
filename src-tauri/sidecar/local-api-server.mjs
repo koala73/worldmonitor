@@ -404,10 +404,19 @@ function toHeaders(nodeHeaders, options = {}) {
 async function proxyToCloud(requestUrl, req, remoteBase) {
   const target = `${remoteBase}${requestUrl.pathname}${requestUrl.search}`;
   const body = ['GET', 'HEAD'].includes(req.method) ? undefined : await readBody(req);
+  const headers = toHeaders(req.headers, { stripOrigin: true });
+  // Strip sidecar auth token — meaningless to cloud API.
+  headers.delete('Authorization');
+  // Strip conditional headers so cloud always returns fresh 200, not 304.
+  // The browser may have stale ETags from previous sessions with empty data.
+  headers.delete('If-None-Match');
+  headers.delete('If-Modified-Since');
+  // Identify sidecar as trusted origin so the cloud API key validator
+  // doesn't reject the request (no origin + no key = 401).
+  headers.set('Origin', 'https://worldmonitor.app');
   return fetch(target, {
     method: req.method,
-    // Strip browser-origin headers for server-to-server parity.
-    headers: toHeaders(req.headers, { stripOrigin: true }),
+    headers,
     body,
   });
 }
@@ -428,6 +437,28 @@ const moduleCache = new Map();
 const failedImports = new Set();
 const fallbackCounts = new Map();
 const cloudPreferred = new Set();
+
+// Routes/prefixes that should always proxy to cloud. The sidecar lacks
+// WS_RELAY_URL (Yahoo/Finnhub relay) and seeded Redis data. These routes
+// return 200-with-empty-data locally, so normal cloudFallback won't trigger.
+const cloudPreferredPrefixes = !process.env.WS_RELAY_URL
+  ? [
+    '/api/market/v1/',
+    '/api/economic/v1/',
+    '/api/infrastructure/v1/',
+    '/api/news/v1/',
+    '/api/research/v1/',
+  ]
+  : [];
+const cloudPreferredExact = !process.env.WS_RELAY_URL
+  ? new Set(['/api/bootstrap'])
+  : new Set();
+
+function isCloudPreferred(pathname) {
+  if (cloudPreferred.has(pathname)) return true;
+  if (cloudPreferredExact.has(pathname)) return true;
+  return cloudPreferredPrefixes.some(p => pathname.startsWith(p));
+}
 
 const TRAFFIC_LOG_MAX = 200;
 const trafficLog = [];
@@ -547,7 +578,11 @@ async function tryCloudFallback(requestUrl, req, context, reason) {
     }
   }
   try {
-    return await proxyToCloud(requestUrl, req, context.remoteBase);
+    const resp = await proxyToCloud(requestUrl, req, context.remoteBase);
+    if (!resp.ok) {
+      context.logger.warn(`[local-api] cloud returned ${resp.status} for ${requestUrl.pathname}`);
+    }
+    return resp;
   } catch (error) {
     context.logger.error('[local-api] cloud fallback failed', requestUrl.pathname, error);
     return null;
@@ -1290,8 +1325,8 @@ async function dispatch(requestUrl, req, routes, context) {
     }
   }
 
-  if (context.cloudFallback && cloudPreferred.has(requestUrl.pathname)) {
-    const cloudResponse = await tryCloudFallback(requestUrl, req, context);
+  if (context.cloudFallback && isCloudPreferred(requestUrl.pathname)) {
+    const cloudResponse = await tryCloudFallback(requestUrl, req, context, 'cloud-preferred');
     if (cloudResponse) return cloudResponse;
   }
 
@@ -1343,7 +1378,7 @@ async function dispatch(requestUrl, req, routes, context) {
     return response;
   } catch (error) {
     const reason = error.code === 'ERR_MODULE_NOT_FOUND' ? 'missing dependency' : error.message;
-    context.logger.error(`[local-api] ${requestUrl.pathname} → ${reason}`);
+    logOnce(context.logger, requestUrl.pathname, reason);
     if (context.cloudFallback) {
       const cloudResponse = await tryCloudFallback(requestUrl, req, context, error);
       if (cloudResponse) { cloudPreferred.add(requestUrl.pathname); return cloudResponse; }

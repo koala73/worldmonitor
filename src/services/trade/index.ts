@@ -3,6 +3,7 @@
  * Trade restrictions, tariff trends, trade flows, and SPS/TBT barriers.
  */
 
+import { getRpcBaseUrl } from '@/services/rpc-client';
 import {
   TradeServiceClient,
   type GetTradeRestrictionsResponse,
@@ -26,7 +27,7 @@ export type {
   GetTradeBarriersResponse,
 };
 
-const client = new TradeServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+const client = new TradeServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 
 const restrictionsBreaker = createCircuitBreaker<GetTradeRestrictionsResponse>({ name: 'WTO Restrictions', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
 const tariffsBreaker = createCircuitBreaker<GetTariffTrendsResponse>({ name: 'WTO Tariffs', cacheTtlMs: 30 * 60 * 1000, persistCache: true });

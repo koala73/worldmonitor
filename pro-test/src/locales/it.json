@@ -153,7 +153,10 @@
     "risk": "Consulenze di rischio",
     "riskDesc": "Simulazione di scenari, persona investitore, report PDF/PowerPoint personalizzati on demand.",
     "soc": "SOCs & CERT",
-    "socDesc": "Livello minacce cyber, integrazione SIEM, monitoraggio anomalie BGP, feed ransomware."
+    "socDesc": "Livello minacce cyber, integrazione SIEM, monitoraggio anomalie BGP, feed ransomware.",
+    "orgPlaceholder": "Azienda *",
+    "phonePlaceholder": "Telefono *",
+    "workEmailRequired": "Utilizzare l'e-mail aziendale"
   },
   "pricingTable": {
     "title": "Confronta i piani",

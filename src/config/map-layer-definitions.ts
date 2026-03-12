@@ -34,7 +34,7 @@ export const LAYER_REGISTRY: Record<keyof MapLayers, LayerDefinition> = {
   irradiators:              def('irradiators',              '&#9888;',   'gammaIrradiators',         'Gamma Irradiators'),
   spaceports:               def('spaceports',               '&#128640;', 'spaceports',               'Spaceports'),
   satellites:               def('satellites',               '&#128752;', 'satellites',               'Orbital Surveillance', ['flat', 'globe']),
-  notamOverlay:             def('notamOverlay',             '&#9888;',   'notamOverlay',             'NOTAM Closures'),
+
   cables:                   def('cables',                   '&#128268;', 'underseaCables',           'Undersea Cables'),
   pipelines:                def('pipelines',                '&#128738;', 'pipelines',                'Pipelines'),
   datacenters:              def('datacenters',              '&#128421;', 'aiDataCenters',            'AI Data Centers'),
@@ -83,7 +83,7 @@ const VARIANT_LAYER_ORDER: Record<MapVariant, Array<keyof MapLayers>> = {
     'iranAttacks', 'hotspots', 'conflicts',
     'bases', 'nuclear', 'irradiators', 'spaceports',
     'cables', 'pipelines', 'datacenters', 'military',
-    'ais', 'tradeRoutes', 'flights', 'notamOverlay', 'protests',
+    'ais', 'tradeRoutes', 'flights', 'protests',
     'ucdpEvents', 'displacement', 'climate', 'weather',
     'outages', 'cyberThreats', 'natural', 'fires',
     'waterways', 'economic', 'minerals', 'gpsJamming',
@@ -143,11 +143,11 @@ export function sanitizeLayersForVariant(layers: MapLayers, variant: MapVariant)
 }
 
 export const LAYER_SYNONYMS: Record<string, Array<keyof MapLayers>> = {
-  aviation: ['flights', 'notamOverlay'],
-  flight: ['flights', 'notamOverlay'],
+  aviation: ['flights'],
+  flight: ['flights'],
   airplane: ['flights'],
   plane: ['flights'],
-  notam: ['notamOverlay', 'flights'],
+  notam: ['flights'],
   ship: ['ais', 'tradeRoutes'],
   vessel: ['ais'],
   maritime: ['ais', 'waterways', 'tradeRoutes'],

@@ -1,4 +1,5 @@
 import { Panel } from './Panel';
+import { getRpcBaseUrl } from '@/services/rpc-client';
 import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
 import { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
@@ -32,7 +33,6 @@ export class ETFFlowsPanel extends Panel {
   private error: string | null = null;
   constructor() {
     super({ id: 'etf-flows', title: t('panels.etfFlows'), showCount: false });
-    void this.fetchData();
   }
 
   public async fetchData(): Promise<void> {
@@ -45,32 +45,16 @@ export class ETFFlowsPanel extends Panel {
       return;
     }
 
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        const client = new MarketServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
-        this.data = await client.listEtfFlows({});
-        if (!this.element?.isConnected) return;
-        this.error = null;
-
-        if (this.data && !this.data.etfs?.length && !this.data.rateLimited && attempt < 1) {
-          this.showRetrying(undefined, 5);
-          await new Promise(r => setTimeout(r, 5_000));
-          if (!this.element?.isConnected) return;
-          continue;
-        }
-        break;
-      } catch (err) {
-        if (this.isAbortError(err)) return;
-        if (!this.element?.isConnected) return;
-        if (attempt < 1) {
-          this.showRetrying(undefined, 5);
-          await new Promise(r => setTimeout(r, 5_000));
-          if (!this.element?.isConnected) return;
-          continue;
-        }
-        console.warn('[ETFFlows] Fetch error:', err);
-        this.error = null;
-      }
+    try {
+      const client = new MarketServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
+      this.data = await client.listEtfFlows({});
+      if (!this.element?.isConnected) return;
+      this.error = null;
+    } catch (err) {
+      if (this.isAbortError(err)) return;
+      if (!this.element?.isConnected) return;
+      console.warn('[ETFFlows] Fetch error:', err);
+      this.error = null;
     }
     this.loading = false;
     this.renderPanel();

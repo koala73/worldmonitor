@@ -1,0 +1,111 @@
+---
+import Base from './Base.astro';
+
+interface Props {
+  title: string;
+  description: string;
+  metaTitle?: string;
+  keywords?: string;
+  pubDate: Date;
+  audience?: string;
+  heroImage?: string;
+  slug?: string;
+}
+
+const { title, description, metaTitle, keywords, pubDate, audience, heroImage, slug } = Astro.props;
+const ogImage = heroImage || (slug ? `https://www.worldmonitor.app/blog/images/blog/${slug}.jpg` : undefined);
+const formattedDate = pubDate.toLocaleDateString('en-US', {
+  year: 'numeric',
+  month: 'short',
+  day: 'numeric',
+});
+const isoDate = pubDate.toISOString();
+
+const breadcrumbLd = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Blog",
+      "item": "https://www.worldmonitor.app/blog/"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": title
+    }
+  ]
+};
+
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": metaTitle || title,
+  "description": description,
+  "datePublished": isoDate,
+  "dateModified": isoDate,
+  "author": {
+    "@type": "Organization",
+    "name": "World Monitor",
+    "url": "https://worldmonitor.app",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.worldmonitor.app/favico/apple-touch-icon.png"
+    }
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "World Monitor",
+    "url": "https://worldmonitor.app",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.worldmonitor.app/favico/apple-touch-icon.png"
+    }
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": Astro.url.href
+  },
+  "image": ogImage || "https://www.worldmonitor.app/favico/og-image.png",
+  "url": Astro.url.href,
+  ...(keywords ? { "keywords": keywords } : {})
+};
+---
+
+<Base
+  title={title}
+  description={description}
+  metaTitle={metaTitle}
+  keywords={keywords}
+  ogType="article"
+  ogImage={ogImage}
+  publishedTime={isoDate}
+  modifiedTime={isoDate}
+  section={audience}
+  jsonLd={jsonLd}
+  breadcrumbLd={breadcrumbLd}
+>
+  <article>
+    <div class="article-header">
+      <a href="/blog/" class="back">&larr; All articles</a>
+      <div class="meta">
+        <time datetime={isoDate}>{formattedDate}</time>
+        {audience && <span> &middot; {audience}</span>}
+      </div>
+    </div>
+    {heroImage && (
+      <img src={heroImage} alt={title} class="hero-image" width="1200" height="630" />
+    )}
+    <div class="article-content prose">
+      <h1>{title}</h1>
+      <slot />
+    </div>
+    <div class="cta-banner">
+      <h3>See the World in Real Time</h3>
+      <p>Markets, geopolitics, conflicts, infrastructure. One dashboard. No login required.</p>
+      <a href="https://worldmonitor.app" class="btn" target="_blank" rel="noopener noreferrer">Open Dashboard</a>
+    </div>
+  </article>
+</Base>

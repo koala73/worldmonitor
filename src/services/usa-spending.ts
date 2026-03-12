@@ -1,4 +1,5 @@
 import { getHydratedData } from '@/services/bootstrap';
+import { toApiUrl } from '@/services/runtime';
 
 export interface GovernmentAward {
   id: string;
@@ -43,7 +44,7 @@ export async function fetchRecentAwards(): Promise<SpendingSummary> {
   if (hydrated?.awards?.length) return toSummary(hydrated);
 
   try {
-    const resp = await fetch('/api/bootstrap?keys=spending', { signal: AbortSignal.timeout(8000) });
+    const resp = await fetch(toApiUrl('/api/bootstrap?keys=spending'), { signal: AbortSignal.timeout(8000) });
     if (resp.ok) {
       const json = await resp.json() as { data?: { spending?: RawSpending } };
       const raw = json.data?.spending;

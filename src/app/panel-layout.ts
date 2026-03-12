@@ -38,7 +38,6 @@ import {
   AviationCommandBar,
 } from '@/components';
 import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
-import { SatelliteImageryPanel } from '@/components/SatelliteImageryPanel';
 import { focusInvestmentOnMap } from '@/services/investments-focus';
 import { debounce, saveToStorage, loadFromStorage } from '@/utils';
 import { escapeHtml } from '@/utils/sanitize';
@@ -152,24 +151,24 @@ export class PanelLayoutManager implements AppModule {
               <span class="variant-icon">📈</span>
               <span class="variant-label">${t('header.finance')}</span>
             </a>
-            ${SITE_VARIANT === 'commodity' ? `<span class="variant-divider"></span>
+            <span class="variant-divider"></span>
             <a href="${vHref('commodity', 'https://commodity.worldmonitor.app')}"
-               class="variant-option active"
+               class="variant-option ${SITE_VARIANT === 'commodity' ? 'active' : ''}"
                data-variant="commodity"
                ${vTarget('commodity')}
-               title="${t('header.commodity')} ${t('common.currentVariant')}">
+               title="${t('header.commodity')}${SITE_VARIANT === 'commodity' ? ` ${t('common.currentVariant')}` : ''}">
               <span class="variant-icon">⛏️</span>
               <span class="variant-label">${t('header.commodity')}</span>
-            </a>` : ''}
-            ${SITE_VARIANT === 'happy' ? `<span class="variant-divider"></span>
+            </a>
+            <span class="variant-divider"></span>
             <a href="${vHref('happy', 'https://happy.worldmonitor.app')}"
-               class="variant-option active"
+               class="variant-option ${SITE_VARIANT === 'happy' ? 'active' : ''}"
                data-variant="happy"
                ${vTarget('happy')}
-               title="Good News ${t('common.currentVariant')}">
+               title="Good News${SITE_VARIANT === 'happy' ? ` ${t('common.currentVariant')}` : ''}">
               <span class="variant-icon">☀️</span>
               <span class="variant-label">Good News</span>
-            </a>` : ''}`;
+            </a>`;
       })()}</div>
           <span class="logo">MONITOR</span><span class="logo-mobile">World Monitor</span><span class="version">v${__APP_VERSION__}</span>${BETA_MODE ? '<span class="beta-badge">BETA</span>' : ''}
           <a href="https://x.com/eliehabib" target="_blank" rel="noopener" class="credit-link">
@@ -212,11 +211,6 @@ export class PanelLayoutManager implements AppModule {
           </div>`}
           <button class="search-btn" id="searchBtn"><kbd>⌘K</kbd> ${t('header.search')}</button>
           ${this.ctx.isDesktopApp ? '' : `<button class="copy-link-btn" id="copyLinkBtn">${t('header.copyLink')}</button>`}
-          <button class="theme-toggle-btn" id="headerThemeToggle" title="${t('header.toggleTheme')}">
-            ${getCurrentTheme() === 'dark'
-        ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>'
-        : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>'}
-          </button>
           ${this.ctx.isDesktopApp ? '' : `<button class="fullscreen-btn" id="fullscreenBtn" title="${t('header.fullscreen')}">⛶</button>`}
           ${SITE_VARIANT === 'happy' ? `<button class="tv-mode-btn" id="tvModeBtn" title="TV Mode (Shift+T)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></button>` : ''}
           <span id="unifiedSettingsMount"></span>
@@ -236,8 +230,9 @@ export class PanelLayoutManager implements AppModule {
           { key: 'full', icon: '🌍', label: t('header.world') },
           { key: 'tech', icon: '💻', label: t('header.tech') },
           { key: 'finance', icon: '📈', label: t('header.finance') },
+          { key: 'commodity', icon: '⛏️', label: t('header.commodity') },
+          { key: 'happy', icon: '☀️', label: 'Good News' },
         ];
-        if (SITE_VARIANT === 'happy') variants.push({ key: 'happy', icon: '☀️', label: 'Good News' });
         return variants.map(v =>
           `<button class="mobile-menu-item mobile-menu-variant ${v.key === SITE_VARIANT ? 'active' : ''}" data-variant="${v.key}">
             <span class="mobile-menu-item-icon">${v.icon}</span>
@@ -318,6 +313,24 @@ export class PanelLayoutManager implements AppModule {
         <div class="panels-grid" id="panelsGrid"></div>
         <button class="search-mobile-fab" id="searchMobileFab" aria-label="Search">\u{1F50D}</button>
       </div>
+      <footer class="site-footer">
+        <div class="site-footer-brand">
+          <img src="/favico/favicon-32x32.png" alt="" width="28" height="28" class="site-footer-icon" />
+          <div class="site-footer-brand-text">
+            <span class="site-footer-name">WORLD MONITOR</span>
+            <span class="site-footer-sub">by Someone.ceo</span>
+          </div>
+        </div>
+        <nav>
+          <a href="${this.ctx.isDesktopApp ? 'https://worldmonitor.app/pro' : 'https://www.worldmonitor.app/pro'}" target="_blank" rel="noopener">Pro</a>
+          <a href="${this.ctx.isDesktopApp ? 'https://worldmonitor.app/blog/' : 'https://www.worldmonitor.app/blog/'}" target="_blank" rel="noopener">Blog</a>
+          <a href="${this.ctx.isDesktopApp ? 'https://worldmonitor.app/docs' : 'https://www.worldmonitor.app/docs'}" target="_blank" rel="noopener">Docs</a>
+          <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noopener">GitHub</a>
+          <a href="https://github.com/koala73/worldmonitor/discussions" target="_blank" rel="noopener">Discussions</a>
+          <a href="https://x.com/worldmonitorai" target="_blank" rel="noopener">X</a>
+        </nav>
+        <span class="site-footer-copy">&copy; ${new Date().getFullYear()} World Monitor</span>
+      </footer>
     `;
 
     this.createPanels();
@@ -589,23 +602,6 @@ export class PanelLayoutManager implements AppModule {
 
     this.createPanel('cascade', () => new CascadePanel());
     this.createPanel('satellite-fires', () => new SatelliteFiresPanel());
-    const imageryPanel = this.createPanel('satellite-imagery', () => new SatelliteImageryPanel());
-    if (imageryPanel) {
-      this.ctx.map?.setOnImageryUpdate((scenes) => {
-        imageryPanel.update(scenes);
-        this.ctx.map?.setImageryScenes(scenes);
-      });
-      imageryPanel.setOnSearchArea(async () => {
-        const bbox = this.ctx.map?.getBbox();
-        if (!bbox) return;
-        try {
-          const { fetchImageryScenes } = await import('@/services/imagery');
-          const scenes = await fetchImageryScenes({ bbox, limit: 20 });
-          imageryPanel.update(scenes);
-          this.ctx.map?.setImageryScenes(scenes);
-        } catch { /* search failed */ }
-      });
-    }
 
     if (this.shouldCreatePanel('strategic-risk')) {
       const strategicRiskPanel = new StrategicRiskPanel();
@@ -885,6 +881,23 @@ export class PanelLayoutManager implements AppModule {
         panelsGrid.appendChild(el);
       }
     });
+
+    // "+" Add Panel block at the end of the grid
+    const addPanelBlock = document.createElement('button');
+    addPanelBlock.className = 'add-panel-block';
+    addPanelBlock.setAttribute('aria-label', t('components.panel.addPanel'));
+    const addIcon = document.createElement('span');
+    addIcon.className = 'add-panel-block-icon';
+    addIcon.textContent = '+';
+    const addLabel = document.createElement('span');
+    addLabel.className = 'add-panel-block-label';
+    addLabel.textContent = t('components.panel.addPanel');
+    addPanelBlock.appendChild(addIcon);
+    addPanelBlock.appendChild(addLabel);
+    addPanelBlock.addEventListener('click', () => {
+      this.ctx.unifiedSettings?.open('panels');
+    });
+    panelsGrid.appendChild(addPanelBlock);
 
     const bottomGrid = document.getElementById('mapBottomGrid');
     if (bottomGrid) {

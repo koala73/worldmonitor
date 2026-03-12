@@ -1,0 +1,119 @@
+---
+title: "Infrastructure Cascade Analysis"
+description: "Dependency graph modeling for critical infrastructure and undersea cable monitoring, visualizing how disruptions cascade across countries and systems."
+---
+Critical infrastructure is interdependent. A cable cut doesn't just affect connectivity; it creates cascading effects across dependent countries and systems. The cascade analysis and cable monitoring systems visualize these dependencies and provide early warning of disruptions.
+
+## Dependency Graph
+
+The system builds a graph of **350 infrastructure nodes** and dependency edges:
+
+| Node Type | Count | Examples |
+|-----------|-------|----------|
+| **Undersea Cables** | 86 | MAREA, FLAG Europe-Asia, SEA-ME-WE 6 |
+| **Pipelines** | 88 | Nord Stream, Trans-Siberian, Keystone |
+| **Ports** | 62 | Singapore, Rotterdam, Shenzhen |
+| **Chokepoints** | 9 | Suez, Hormuz, Malacca, Gibraltar, Bosphorus, Dardanelles |
+| **Countries** | 105 | End nodes representing national impact |
+
+## Cascade Calculation
+
+When a user selects an infrastructure asset for analysis, a **breadth-first cascade** propagates through the graph:
+
+```
+1. Start at source node (e.g., "cable:marea")
+2. For each dependent node:
+   impact = edge_strength × disruption_level × (1 - redundancy)
+3. Categorize impact:
+   - Critical: impact > 0.8
+   - High: impact > 0.5
+   - Medium: impact > 0.2
+   - Low: impact ≤ 0.2
+4. Recurse to depth 3 (prevent infinite loops)
+```
+
+## Redundancy Modeling
+
+The system accounts for alternative routes:
+
+- Cables with high redundancy show reduced impact
+- Countries with multiple cable landings show lower vulnerability
+- Alternative routes are displayed with capacity percentages
+
+## Example Analysis
+
+**MAREA Cable Disruption**:
+```
+Source: MAREA (US ↔ Spain, 200 Tbps)
+Countries Affected: 4
+- Spain: Medium (redundancy via other Atlantic cables)
+- Portugal: Low (secondary landing)
+- France: Low (alternative routes via UK)
+- US: Low (high redundancy)
+Alternative Routes: TAT-14 (35%), Hibernia (22%), AEConnect (18%)
+```
+
+**FLAG Europe-Asia Disruption**:
+```
+Source: FLAG Europe-Asia (UK ↔ Japan)
+Countries Affected: 7
+- India: Medium (major capacity share)
+- UAE, Saudi Arabia: Medium (limited alternatives)
+- UK, Japan: Low (high redundancy)
+Alternative Routes: SEA-ME-WE 6 (11%), 2Africa (8%), Falcon (8%)
+```
+
+## Use Cases
+
+- **Pre-positioning**: Understand which countries are most vulnerable to specific infrastructure failures
+- **Risk Assessment**: Evaluate supply chain exposure to chokepoint disruptions
+- **Incident Response**: Quickly identify downstream effects of reported cable cuts or pipeline damage
+
+## Undersea Cable Activity Monitoring
+
+The dashboard monitors real-time cable operations and advisories from official maritime warning systems, providing early warning of potential connectivity disruptions.
+
+### Data Sources
+
+| Source | Coverage | Data Type |
+|--------|----------|-----------|
+| **NGA Warnings** | Global | NAVAREA maritime warnings |
+| **Cable Operators** | Route-specific | Maintenance advisories |
+
+### How It Works
+
+The system parses NGA (National Geospatial-Intelligence Agency) maritime warnings for cable-related activity:
+
+1. **Keyword filtering**: Warnings containing "CABLE", "CABLESHIP", "SUBMARINE CABLE", "FIBER OPTIC" are extracted
+2. **Coordinate parsing**: DMS and decimal coordinates are extracted from warning text
+3. **Cable matching**: Coordinates are matched to nearest cable routes within 5° radius
+4. **Severity classification**: Keywords like "FAULT", "BREAK", "DAMAGE" indicate faults; others indicate maintenance
+
+### Alert Types
+
+| Type | Trigger | Map Display |
+|------|---------|-------------|
+| **Cable Advisory** | Any cable-related NAVAREA warning | Yellow marker at location |
+| **Repair Ship** | Cableship name detected in warning | Ship icon with status |
+
+### Repair Ship Tracking
+
+When a cableship is mentioned in warnings, the system extracts:
+
+- **Vessel name**: CS Reliance, Cable Innovator, etc.
+- **Status**: "En route" or "On station"
+- **Location**: Current working area
+- **Associated cable**: Nearest cable route
+
+This enables monitoring of ongoing repair operations before official carrier announcements.
+
+### Why This Matters
+
+Undersea cables carry 95% of intercontinental data traffic. A cable cut can:
+
+- Cause regional internet outages
+- Disrupt financial transactions
+- Impact military communications
+- Create economic cascading effects
+
+Early visibility into cable operations, even maintenance windows, provides advance warning for contingency planning.

@@ -85,6 +85,7 @@ export class EventHandlerManager implements AppModule {
   private boundMapResizeVisChangeHandler: (() => void) | null = null;
   private boundMapFullscreenEscHandler: ((e: KeyboardEvent) => void) | null = null;
   private boundMobileMenuKeyHandler: ((e: KeyboardEvent) => void) | null = null;
+  private boundPanelCloseHandler: ((e: Event) => void) | null = null;
   private idleTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private snapshotIntervalId: ReturnType<typeof setInterval> | null = null;
   private clockIntervalId: ReturnType<typeof setInterval> | null = null;
@@ -230,6 +231,10 @@ export class EventHandlerManager implements AppModule {
       document.removeEventListener('keydown', this.boundMobileMenuKeyHandler);
       this.boundMobileMenuKeyHandler = null;
     }
+    if (this.boundPanelCloseHandler) {
+      this.ctx.container.removeEventListener('wm:panel-close', this.boundPanelCloseHandler);
+      this.boundPanelCloseHandler = null;
+    }
     this.ctx.tvMode?.destroy();
     this.ctx.tvMode = null;
     this.ctx.unifiedSettings?.destroy();
@@ -277,12 +282,18 @@ export class EventHandlerManager implements AppModule {
     };
     window.addEventListener('storage', this.boundStorageHandler);
 
-    document.getElementById('headerThemeToggle')?.addEventListener('click', () => {
-      const next = getCurrentTheme() === 'dark' ? 'light' : 'dark';
-      setTheme(next);
-      this.updateHeaderThemeIcon();
-      trackThemeChanged(next);
-    });
+    // Handle panel close (X) button clicks
+    this.boundPanelCloseHandler = ((e: CustomEvent<{ panelId: string }>) => {
+      const { panelId } = e.detail;
+      const config = this.ctx.panelSettings[panelId];
+      if (!config) return;
+      config.enabled = false;
+      trackPanelToggled(panelId, false);
+      saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
+      this.applyPanelSettings();
+      this.ctx.unifiedSettings?.refreshPanelToggles();
+    }) as EventListener;
+    this.ctx.container.addEventListener('wm:panel-close', this.boundPanelCloseHandler);
 
     const isLocalDev = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
     this.ctx.container.querySelectorAll<HTMLAnchorElement>('.variant-option').forEach(link => {
@@ -345,7 +356,6 @@ export class EventHandlerManager implements AppModule {
 
     this.boundThemeChangedHandler = () => {
       this.ctx.map?.render();
-      this.updateHeaderThemeIcon();
       this.updateMobileMenuThemeItem();
     };
     window.addEventListener('theme-changed', this.boundThemeChangedHandler);
@@ -416,7 +426,6 @@ export class EventHandlerManager implements AppModule {
       this.closeMobileMenu();
       const next = getCurrentTheme() === 'dark' ? 'light' : 'dark';
       setTheme(next);
-      this.updateHeaderThemeIcon();
       trackThemeChanged(next);
     });
 
@@ -722,15 +731,6 @@ export class EventHandlerManager implements AppModule {
         try { el.webkitRequestFullscreen(); } catch { }
       }
     }
-  }
-
-  updateHeaderThemeIcon(): void {
-    const btn = document.getElementById('headerThemeToggle');
-    if (!btn) return;
-    const isDark = getCurrentTheme() === 'dark';
-    btn.innerHTML = isDark
-      ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>'
-      : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>';
   }
 
   private updateMobileMenuThemeItem(): void {

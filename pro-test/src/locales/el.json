@@ -153,7 +153,10 @@
     "risk": "Σύμβουλοι κινδύνου",
     "riskDesc": "Προσομοίωση σεναρίων, προφίλ επενδυτών, επώνυμες αναφορές PDF/PowerPoint κατ' απαίτηση.",
     "soc": "SOC & CERT",
-    "socDesc": "Επίπεδο κυβερνοαπειλών, ενσωμάτωση SIEM, παρακολούθηση ανωμαλιών BGP, ροές ransomware."
+    "socDesc": "Επίπεδο κυβερνοαπειλών, ενσωμάτωση SIEM, παρακολούθηση ανωμαλιών BGP, ροές ransomware.",
+    "orgPlaceholder": "Εταιρεία *",
+    "phonePlaceholder": "Τηλέφωνο *",
+    "workEmailRequired": "Χρησιμοποιήστε το επαγγελματικό σας email"
   },
   "pricingTable": {
     "title": "Σύγκριση επιπέδων",

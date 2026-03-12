@@ -11,7 +11,7 @@
 // - Historical Pass Log: which sats passed over a location in the last 24h
 //   (useful for identifying imaging windows after events)
 
-import { getApiBaseUrl } from '@/services/runtime';
+import { toApiUrl } from '@/services/runtime';
 import { twoline2satrec, propagate, eciToGeodetic, gstime, degreesLong, degreesLat } from 'satellite.js';
 import type { SatRec } from 'satellite.js';
 
@@ -57,8 +57,7 @@ export async function fetchSatelliteTLEs(): Promise<SatelliteTLE[] | null> {
   if (cachedData && now - cachedAt < CACHE_TTL) return cachedData;
 
   try {
-    const base = getApiBaseUrl();
-    const resp = await fetch(`${base}/api/satellites`, {
+    const resp = await fetch(toApiUrl('/api/satellites'), {
       signal: AbortSignal.timeout(20_000),
     });
     if (!resp.ok) return cachedData;

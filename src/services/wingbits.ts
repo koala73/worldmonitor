@@ -7,6 +7,7 @@
  */
 
 import { createCircuitBreaker } from '@/utils';
+import { getRpcBaseUrl } from '@/services/rpc-client';
 import { dataFreshness } from './data-freshness';
 import { isFeatureAvailable } from './runtime-config';
 import {
@@ -48,7 +49,7 @@ export interface EnrichedAircraftInfo {
 
 // ---- Sebuf client ----
 
-const client = new MilitaryServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+const client = new MilitaryServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 
 // Client-side cache for aircraft details
 const localCache = new Map<string, { data: WingbitsAircraftDetails; timestamp: number }>();

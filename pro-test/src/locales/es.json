@@ -153,7 +153,10 @@
     "risk": "Consultoras de riesgo",
     "riskDesc": "Simulación de escenarios, personas de inversor, informes PDF/PowerPoint personalizados bajo demanda.",
     "soc": "SOCs & CERT",
-    "socDesc": "Capa de amenazas cibernéticas, integración SIEM, monitoreo de anomalías BGP, feeds de ransomware."
+    "socDesc": "Capa de amenazas cibernéticas, integración SIEM, monitoreo de anomalías BGP, feeds de ransomware.",
+    "orgPlaceholder": "Empresa *",
+    "phonePlaceholder": "Teléfono *",
+    "workEmailRequired": "Use su correo electrónico corporativo"
   },
   "pricingTable": {
     "title": "Comparar planes",

@@ -1,4 +1,4 @@
-# WorldMonitor Pro — Implementation Roadmap
+# World Monitor Pro — Implementation Roadmap
 
 ## Context
 
@@ -72,7 +72,7 @@ Phase 0 (Decisions)
 **Priority**: P0 | **Size**: S | **Dependencies**: None
 
 **Description**:
-Evaluate and select an authentication provider for WorldMonitor Pro.
+Evaluate and select an authentication provider for World Monitor Pro.
 
 **Options**:
 
@@ -502,10 +502,10 @@ Create Stripe products and price objects for all tiers.
 
 **Products**:
 
-1. **WorldMonitor Pro Monthly** — $X/mo
-2. **WorldMonitor Pro Annual** — $X/yr (discount)
-3. **WorldMonitor API Starter** — $Y/mo (1,000 req/day, 5 webhook rules)
-4. **WorldMonitor API Business** — $Z/mo (50,000 req/day, unlimited webhooks + SLA)
+1. **World Monitor Pro Monthly** — $X/mo
+2. **World Monitor Pro Annual** — $X/yr (discount)
+3. **World Monitor API Starter** — $Y/mo (1,000 req/day, 5 webhook rules)
+4. **World Monitor API Business** — $Z/mo (50,000 req/day, unlimited webhooks + SLA)
 
 **Environment variables**:
 
@@ -1137,11 +1137,11 @@ Enhance existing risk analytics with scenario analysis and convergence alerting.
 **Priority**: P1 | **Size**: M | **Dependencies**: #4.1
 
 **Description**:
-Pro users should NOT need to configure individual API keys for Finnhub, FRED, ACLED, etc. A single WorldMonitor Pro subscription gives access to all 22 services.
+Pro users should NOT need to configure individual API keys for Finnhub, FRED, ACLED, etc. A single World Monitor Pro subscription gives access to all 24 services.
 
 **Implementation**:
 
-- Server-side: pro requests use WorldMonitor's own upstream API keys (already configured as env vars)
+- Server-side: pro requests use World Monitor's own upstream API keys (already configured as env vars)
 - Free tier: continues using BYOK via desktop settings panel
 - Gateway identifies pro user → skips BYOK requirement → uses server-side keys for upstream calls
 

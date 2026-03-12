@@ -122,6 +122,17 @@
       "stockIndex": "Фондов индекс: {{value}}",
       "recentHeadlines": "**Скорошни заглавия:**",
       "activeStrikes": "{{count}} активни удари открити"
+    },
+    "countryFacts": "Факти за страната",
+    "loadingFacts": "Зареждане на фактите за страната...",
+    "noFacts": "Фактите за страната не са налични.",
+    "facts": {
+      "headOfState": "Държавен глава",
+      "population": "Население",
+      "capital": "Столица",
+      "languages": "Езици",
+      "currencies": "Валути",
+      "area": "Площ"
     }
   },
   "header": {
@@ -2369,5 +2380,9 @@
     "mapThemeDesc": "Визуален стил на картните плочки.",
     "globePreset": "Визуален предварителен набор",
     "globePresetDesc": "Превключване между класически и подобрени визуализации."
+  },
+  "contextMenu": {
+    "openCountryBrief": "Отвори обзор на страната",
+    "copyCoordinates": "Копирай координати"
   }
 }

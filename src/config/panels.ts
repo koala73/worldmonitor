@@ -45,7 +45,6 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   layoffs: { name: 'Layoffs Tracker', enabled: true, priority: 2 },
   monitors: { name: 'My Monitors', enabled: true, priority: 2 },
   'satellite-fires': { name: 'Fires', enabled: true, priority: 2 },
-  'satellite-imagery': { name: 'Satellite Imagery', enabled: false, priority: 2 },
   'macro-signals': { name: 'Market Radar', enabled: true, priority: 2 },
   'gulf-economies': { name: 'Gulf Economies', enabled: false, priority: 2 },
   'etf-flows': { name: 'BTC ETF Tracker', enabled: true, priority: 2 },
@@ -67,7 +66,7 @@ const FULL_MAP_LAYERS: MapLayers = {
   iranAttacks: _desktop ? false : true,
   gpsJamming: false,
   satellites: false,
-  notamOverlay: false,
+
 
   conflicts: true,
   bases: _desktop ? false : true,
@@ -126,7 +125,7 @@ const FULL_MOBILE_MAP_LAYERS: MapLayers = {
   iranAttacks: true,
   gpsJamming: false,
   satellites: false,
-  notamOverlay: false,
+
 
   conflicts: true,
   bases: false,
@@ -226,7 +225,7 @@ const TECH_PANELS: Record<string, PanelConfig> = {
 const TECH_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
   satellites: false,
-  notamOverlay: false,
+
 
   conflicts: false,
   bases: false,
@@ -285,7 +284,7 @@ const TECH_MAP_LAYERS: MapLayers = {
 const TECH_MOBILE_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
   satellites: false,
-  notamOverlay: false,
+
 
   conflicts: false,
   bases: false,
@@ -387,7 +386,7 @@ const FINANCE_PANELS: Record<string, PanelConfig> = {
 const FINANCE_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
   satellites: false,
-  notamOverlay: false,
+
 
   conflicts: false,
   bases: false,
@@ -446,7 +445,7 @@ const FINANCE_MAP_LAYERS: MapLayers = {
 const FINANCE_MOBILE_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
   satellites: false,
-  notamOverlay: false,
+
 
   conflicts: false,
   bases: false,
@@ -521,7 +520,7 @@ const HAPPY_PANELS: Record<string, PanelConfig> = {
 const HAPPY_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
   satellites: false,
-  notamOverlay: false,
+
 
   conflicts: false,
   bases: false,
@@ -580,7 +579,7 @@ const HAPPY_MAP_LAYERS: MapLayers = {
 const HAPPY_MOBILE_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
   satellites: false,
-  notamOverlay: false,
+
 
   conflicts: false,
   bases: false,
@@ -661,7 +660,6 @@ const COMMODITY_PANELS: Record<string, PanelConfig> = {
   'gulf-economies': { name: 'Gulf & OPEC Economies', enabled: true, priority: 1 },
   'gcc-investments': { name: 'GCC Resource Investments', enabled: true, priority: 2 },
   'airline-intel': { name: 'Airline Intelligence', enabled: true, priority: 2 },
-  finance: { name: 'Financial News', enabled: true, priority: 2 },
   polymarket: { name: 'Commodity Predictions', enabled: true, priority: 2 },
   'world-clock': { name: 'World Clock', enabled: true, priority: 2 },
   monitors: { name: 'My Monitors', enabled: true, priority: 2 },
@@ -670,7 +668,7 @@ const COMMODITY_PANELS: Record<string, PanelConfig> = {
 const COMMODITY_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
   satellites: false,
-  notamOverlay: false,
+
 
   conflicts: false,
   bases: false,
@@ -729,7 +727,7 @@ const COMMODITY_MAP_LAYERS: MapLayers = {
 const COMMODITY_MOBILE_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
   satellites: false,
-  notamOverlay: false,
+
 
   conflicts: false,
   bases: false,
@@ -930,6 +928,35 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
     labelKey: 'header.panelCatGulfMena',
     panelKeys: ['gulf-economies', 'gcc-investments', 'gccNews', 'monitors', 'world-clock'],
     variants: ['finance'],
+  },
+
+  // Commodity variant
+  commodityPrices: {
+    labelKey: 'header.panelCatCommodityPrices',
+    panelKeys: ['commodities', 'gold-silver', 'energy', 'base-metals', 'critical-minerals', 'markets', 'heatmap', 'macro-signals'],
+    variants: ['commodity'],
+  },
+  miningIndustry: {
+    labelKey: 'header.panelCatMining',
+    panelKeys: ['commodity-news', 'mining-news', 'mining-companies', 'supply-chain', 'commodity-regulation'],
+    variants: ['commodity'],
+  },
+  commodityEcon: {
+    labelKey: 'header.panelCatCommodityEcon',
+    panelKeys: ['trade-policy', 'economic', 'gulf-economies', 'gcc-investments', 'finance', 'polymarket', 'airline-intel', 'world-clock', 'monitors'],
+    variants: ['commodity'],
+  },
+
+  // Happy variant
+  happyNews: {
+    labelKey: 'header.panelCatHappyNews',
+    panelKeys: ['positive-feed', 'progress', 'counters', 'spotlight', 'breakthroughs', 'digest'],
+    variants: ['happy'],
+  },
+  happyPlanet: {
+    labelKey: 'header.panelCatHappyPlanet',
+    panelKeys: ['species', 'renewable', 'giving'],
+    variants: ['happy'],
   },
 };
 

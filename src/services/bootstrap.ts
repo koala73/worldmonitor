@@ -1,3 +1,5 @@
+import { isDesktopRuntime, toApiUrl } from '@/services/runtime';
+
 const hydrationCache = new Map<string, unknown>();
 
 export function getHydratedData(key: string): unknown | undefined {
@@ -16,7 +18,7 @@ function populateCache(data: Record<string, unknown>): void {
 
 async function fetchTier(tier: string, signal: AbortSignal): Promise<void> {
   try {
-    const resp = await fetch(`/api/bootstrap?tier=${tier}`, { signal });
+    const resp = await fetch(toApiUrl(`/api/bootstrap?tier=${tier}`), { signal });
     if (!resp.ok) return;
     const { data } = (await resp.json()) as { data: Record<string, unknown> };
     populateCache(data);
@@ -31,8 +33,11 @@ export async function fetchBootstrapData(): Promise<void> {
   // critical for instant panel rendering.
   const fastCtrl = new AbortController();
   const slowCtrl = new AbortController();
-  const fastTimeout = setTimeout(() => fastCtrl.abort(), 3_000);
-  const slowTimeout = setTimeout(() => slowCtrl.abort(), 5_000);
+  // Desktop needs longer timeouts: fetch patch resolves port + token via IPC,
+  // then sidecar proxies to cloud. The extra hops easily exceed 3s.
+  const desktop = isDesktopRuntime();
+  const fastTimeout = setTimeout(() => fastCtrl.abort(), desktop ? 8_000 : 3_000);
+  const slowTimeout = setTimeout(() => slowCtrl.abort(), desktop ? 12_000 : 5_000);
   try {
     await Promise.all([
       fetchTier('slow', slowCtrl.signal),

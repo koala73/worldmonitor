@@ -122,6 +122,17 @@
       "stockIndex": "Chỉ số chứng khoán: {{value}}",
       "recentHeadlines": "**Tin tức gần đây:**",
       "activeStrikes": "Phát hiện {{count}} cuộc đình công đang diễn ra"
+    },
+    "countryFacts": "Thông tin quốc gia",
+    "loadingFacts": "Đang tải thông tin quốc gia...",
+    "noFacts": "Không có thông tin quốc gia.",
+    "facts": {
+      "headOfState": "Nguyên thủ quốc gia",
+      "population": "Dân số",
+      "capital": "Thủ đô",
+      "languages": "Ngôn ngữ",
+      "currencies": "Tiền tệ",
+      "area": "Diện tích"
     }
   },
   "header": {
@@ -2369,5 +2380,9 @@
     "mapThemeDesc": "Kiểu hiển thị của tile bản đồ.",
     "globePreset": "Cài đặt trước hình ảnh",
     "globePresetDesc": "Chuyển đổi giữa chế độ cổ điển và nâng cao của quả địa cầu."
+  },
+  "contextMenu": {
+    "openCountryBrief": "Mở tổng quan quốc gia",
+    "copyCoordinates": "Sao chép tọa độ"
   }
 }

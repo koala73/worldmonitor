@@ -122,6 +122,17 @@
       "stockIndex": "Stock index: {{value}}",
       "recentHeadlines": "**Recent headlines:**",
       "activeStrikes": "{{count}} active strikes detected"
+    },
+    "countryFacts": "Country Facts",
+    "loadingFacts": "Loading country facts...",
+    "noFacts": "Country facts unavailable.",
+    "facts": {
+      "headOfState": "Head of State",
+      "population": "Population",
+      "capital": "Capital",
+      "languages": "Languages",
+      "currencies": "Currencies",
+      "area": "Area"
     }
   },
   "header": {
@@ -194,7 +205,12 @@
     "panelCatCentralBanks": "Central Banks & Econ",
     "panelCatDeals": "Deals & Institutional",
     "panelCatGulfMena": "Gulf & MENA",
-    "panelCatTradePolicy": "Trade Policy"
+    "panelCatTradePolicy": "Trade Policy",
+    "panelCatCommodityPrices": "Prices & Markets",
+    "panelCatMining": "Mining & Supply Chain",
+    "panelCatCommodityEcon": "Economy & Trade",
+    "panelCatHappyNews": "Good News",
+    "panelCatHappyPlanet": "Planet & Giving"
   },
   "panels": {
     "liveNews": "Live News",
@@ -485,6 +501,7 @@
         "some": "Some features need API keys"
       },
       "openSettings": "Open Settings",
+      "reserveEarlyAccess": "Reserve Your Early Access",
       "skipSetup": "Skip the setup — a single World Monitor license unlocks everything. Join the waitlist for early access.",
       "summary": {
         "desktop": "Desktop mode",
@@ -1144,7 +1161,7 @@
           "infraPipelinesFull": "Oil/gas pipelines (Nord Stream, TAPI, etc.)",
           "infraDatacentersFull": "AI compute clusters >=10,000 GPUs only",
           "transportShipping": "Live vessel tracking via AIS (ship positions)",
-          "transportDelays": "Airport delays and ground stops (FAA)",
+          "transportDelays": "Airport delays, ground stops, and NOTAM closures",
           "naturalEventsFull": "Earthquakes (USGS) + storms, fires, volcanoes, floods (NASA EONET)",
           "firesFull": "Active wildfires and fire perimeters (NASA FIRMS)",
           "climateAnomalies": "Temperature and precipitation anomalies",
@@ -1618,7 +1635,9 @@
     "panel": {
       "showMethodologyInfo": "Show methodology info",
       "dragToResize": "Drag to resize (double-click to reset)",
-      "openSettings": "Open Settings"
+      "openSettings": "Open Settings",
+      "closePanel": "Close panel",
+      "addPanel": "Add Panel"
     },
     "languageSelector": {
       "selectLanguage": "Select Language",
@@ -2394,7 +2413,11 @@
     "mapTheme": "Map Theme",
     "mapThemeDesc": "Visual style of the map tiles. Options vary by provider.",
     "globePreset": "Visual Preset",
-    "globePresetDesc": "Switch between classic and enhanced globe visuals to compare."
+    "globePresetDesc": "Switch between classic and enhanced globe visuals to compare.",
+    "fontFamily": "Font Family",
+    "fontFamilyDesc": "Monospace for a technical look, system default for easier reading.",
+    "fontMono": "Monospace",
+    "fontSystem": "System Default"
   },
   "premium": {
     "pro": "PRO",
@@ -2406,5 +2429,9 @@
       "telegramIntel1": "Curated Telegram OSINT channels",
       "telegramIntel2": "Near-real-time conflict & geopolitical updates"
     }
+  },
+  "contextMenu": {
+    "openCountryBrief": "Open Country Brief",
+    "copyCoordinates": "Copy Coordinates"
   }
 }

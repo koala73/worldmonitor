@@ -259,13 +259,15 @@ async function fetchTechEvents(req: ListTechEventsRequest): Promise<ListTechEven
   const limit = clampInt(req.limit, 50, 1, 200);
   const days = clampInt(req.days, 90, 1, 365);
 
-  // Fetch both sources in parallel
+  // Fetch both sources in parallel with timeouts
   const [icsResponse, rssResponse] = await Promise.allSettled([
     fetch(ICS_URL, {
       headers: { 'User-Agent': CHROME_UA },
+      signal: AbortSignal.timeout(8000),
     }),
     fetch(DEV_EVENTS_RSS, {
       headers: { 'User-Agent': CHROME_UA },
+      signal: AbortSignal.timeout(8000),
     }),
   ]);
 
@@ -363,9 +365,10 @@ export async function listTechEvents(
 ): Promise<ListTechEventsResponse> {
   try {
     const cacheKey = `${REDIS_CACHE_KEY}:${req.type || 'all'}:${req.mappable ? 1 : 0}:${req.days || 0}`;
+    const MIN_EVENTS = 5; // at least curated count; avoid caching partial failures
     const result = await cachedFetchJson<ListTechEventsResponse>(cacheKey, REDIS_CACHE_TTL, async () => {
       const fetched = await fetchTechEvents({ ...req, limit: 0 });
-      return fetched.events.length > 0 ? fetched : null;
+      return fetched.events.length >= MIN_EVENTS ? fetched : null;
     });
     if (!result) {
       return { success: true, count: 0, conferenceCount: 0, mappableCount: 0, lastUpdated: new Date().toISOString(), events: [], error: '' };

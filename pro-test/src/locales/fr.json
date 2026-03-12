@@ -153,7 +153,10 @@
     "risk": "Cabinets de conseil en risque",
     "riskDesc": "Simulation de scénarios, personas investisseur, rapports PDF/PowerPoint personnalisés à la demande.",
     "soc": "SOCs & CERT",
-    "socDesc": "Couche de menaces cyber, intégration SIEM, surveillance des anomalies BGP, flux ransomware."
+    "socDesc": "Couche de menaces cyber, intégration SIEM, surveillance des anomalies BGP, flux ransomware.",
+    "orgPlaceholder": "Entreprise *",
+    "phonePlaceholder": "Téléphone *",
+    "workEmailRequired": "Veuillez utiliser votre e-mail professionnel"
   },
   "pricingTable": {
     "title": "Comparer les offres",

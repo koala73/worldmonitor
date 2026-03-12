@@ -15,10 +15,10 @@ import {
   checkWingbitsStatus,
 } from './wingbits';
 import { isFeatureAvailable } from './runtime-config';
-import { isDesktopRuntime } from './runtime';
+import { isDesktopRuntime, toApiUrl } from './runtime';
 
 // Desktop: direct OpenSky proxy path (relay or Vercel)
-const OPENSKY_PROXY_URL = '/api/opensky';
+const OPENSKY_PROXY_URL = toApiUrl('/api/opensky');
 const wsRelayUrl = import.meta.env.VITE_WS_RELAY_URL || '';
 const DIRECT_OPENSKY_BASE_URL = wsRelayUrl
   ? wsRelayUrl.replace('wss://', 'https://').replace('ws://', 'http://').replace(/\/$/, '') + '/opensky'
@@ -69,7 +69,7 @@ interface MilitaryFlightsResponse {
 }
 
 async function fetchFromRedis(): Promise<MilitaryFlight[]> {
-  const resp = await fetch('/api/military-flights', {
+  const resp = await fetch(toApiUrl('/api/military-flights'), {
     headers: { Accept: 'application/json' },
   });
   if (!resp.ok) {

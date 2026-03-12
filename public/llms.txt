@@ -13,6 +13,8 @@ The project is built with TypeScript, Vite, MapLibre GL JS, deck.gl, D3.js, and 
 - [World Monitor](https://worldmonitor.app): Geopolitics, military, conflicts, infrastructure
 - [Tech Monitor](https://tech.worldmonitor.app): Startups, AI/ML, cloud, cybersecurity
 - [Finance Monitor](https://finance.worldmonitor.app): Global markets, trading, central banks, Gulf FDI
+- [World Monitor Pro](https://worldmonitor.app/pro): AI-powered equity research, geopolitical analysis, macro intelligence
+- [Blog](https://www.worldmonitor.app/blog/): Analysis, OSINT guides, geopolitics, and market intelligence articles
 
 ## Documentation
 

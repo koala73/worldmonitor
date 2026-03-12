@@ -2350,6 +2350,17 @@
       "sirens24h": "Sirener / 24h",
       "aviationDisruptions": "Flygstörningar",
       "gpsJammingZones": "GPS-störningszoner"
+    },
+    "countryFacts": "Fakta om landet",
+    "loadingFacts": "Laddar fakta om landet...",
+    "noFacts": "Fakta om landet ej tillgängliga.",
+    "facts": {
+      "headOfState": "Statschef",
+      "population": "Befolkning",
+      "capital": "Huvudstad",
+      "languages": "Språk",
+      "currencies": "Valutor",
+      "area": "Yta"
     }
   },
   "preferences": {
@@ -2369,5 +2380,9 @@
     "mapThemeDesc": "Visuell stil för kartpaneler.",
     "globePreset": "Visuell förinställning",
     "globePresetDesc": "Växla mellan klassiska och förbättrade globvisualer."
+  },
+  "contextMenu": {
+    "openCountryBrief": "Öppna landsöversikt",
+    "copyCoordinates": "Kopiera koordinater"
   }
 }

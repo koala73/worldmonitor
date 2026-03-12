@@ -1,8 +1,9 @@
 import type { CableAdvisory, RepairShip, UnderseaCable } from '@/types';
+import { getRpcBaseUrl } from '@/services/rpc-client';
 import { UNDERSEA_CABLES } from '@/config';
 import { MaritimeServiceClient, type NavigationalWarning } from '@/generated/client/worldmonitor/maritime/v1/service_client';
 
-const maritimeClient = new MaritimeServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+const maritimeClient = new MaritimeServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 
 interface CableActivity {
   advisories: CableAdvisory[];

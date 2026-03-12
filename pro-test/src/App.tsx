@@ -15,7 +15,7 @@ import { t } from './i18n';
 import dashboardFallback from './assets/worldmonitor-7-mar-2026.jpg';
 import wiredLogo from './assets/wired-logo.svg';
 
-const API_BASE = location.hostname === 'localhost' ? 'https://api.worldmonitor.app' : '/api';
+const API_BASE = 'https://api.worldmonitor.app/api';
 const TURNSTILE_SITE_KEY = '0x4AAAAAACnaYgHIyxclu8Tj';
 const PRO_URL = 'https://worldmonitor.app/pro';
 
@@ -923,14 +923,21 @@ const Footer = () => (
     </div>
 
     <div className="flex flex-col md:flex-row items-center justify-between max-w-7xl mx-auto pt-8 border-t border-wm-border/50 text-xs text-wm-muted font-mono">
-      <div className="flex items-center gap-4 mb-4 md:mb-0">
-        <Logo />
+      <div className="flex items-center gap-3 mb-4 md:mb-0">
+        <img src="/favico/favicon-32x32.png" alt="" width="28" height="28" className="rounded-full" />
+        <div className="flex flex-col">
+          <span className="font-display font-bold text-sm leading-none tracking-tight text-wm-text">WORLD MONITOR</span>
+          <span className="text-[9px] uppercase tracking-[2px] opacity-60 mt-0.5">by Someone.ceo</span>
+        </div>
       </div>
-      <div className="flex gap-6">
-        <a href="https://x.com/worldmonitorai" target="_blank" rel="noreferrer" aria-label="Follow World Monitor on X" className="hover:text-wm-text transition-colors">X</a>
-        <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noreferrer" aria-label="World Monitor on GitHub" className="hover:text-wm-text transition-colors">GitHub</a>
-        <a href="https://www.wired.me/story/the-music-streaming-ceo-who-built-a-global-war-map" target="_blank" rel="noreferrer" aria-label="Read the WIRED article about World Monitor" className="hover:text-wm-text transition-colors">{t('footer.wiredArticle')}</a>
+      <div className="flex items-center gap-6">
+        <a href="/" className="hover:text-wm-text transition-colors">Dashboard</a>
+        <a href="https://www.worldmonitor.app/blog/" className="hover:text-wm-text transition-colors">Blog</a>
+        <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">GitHub</a>
+        <a href="https://github.com/koala73/worldmonitor/discussions" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">Discussions</a>
+        <a href="https://x.com/worldmonitorai" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">X</a>
       </div>
+      <span className="text-[10px] opacity-40 mt-4 md:mt-0">&copy; {new Date().getFullYear()} WorldMonitor</span>
     </div>
   </footer>
 );
@@ -1059,13 +1066,26 @@ const EnterprisePage = () => (
                   email: fd.get('email'),
                   name: fd.get('name'),
                   organization: fd.get('organization'),
+                  phone: fd.get('phone'),
                   message: fd.get('message'),
                   source: 'enterprise-contact',
                   website: honeypot,
                   turnstileToken,
                 }),
               });
-              if (!res.ok) throw new Error();
+              const errorEl = form.querySelector('[data-form-error]') as HTMLElement | null;
+              if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                if (res.status === 422 && errorEl) {
+                  errorEl.textContent = data.error || t('enterpriseShowcase.workEmailRequired');
+                  errorEl.classList.remove('hidden');
+                  btn.textContent = origText;
+                  btn.disabled = false;
+                  return;
+                }
+                throw new Error();
+              }
+              if (errorEl) errorEl.classList.add('hidden');
               btn.textContent = t('enterpriseShowcase.contactSent');
               btn.className = btn.className.replace('bg-wm-green', 'bg-wm-card border border-wm-green text-wm-green');
             } catch {
@@ -1083,7 +1103,11 @@ const EnterprisePage = () => (
               <input type="text" name="name" placeholder={t('enterpriseShowcase.namePlaceholder')} required className="bg-wm-bg border border-wm-border rounded-sm px-4 py-3 text-sm focus:outline-none focus:border-wm-green transition-colors font-mono" />
               <input type="email" name="email" placeholder={t('enterpriseShowcase.emailPlaceholder')} required className="bg-wm-bg border border-wm-border rounded-sm px-4 py-3 text-sm focus:outline-none focus:border-wm-green transition-colors font-mono" />
             </div>
-            <input type="text" name="organization" placeholder={t('enterpriseShowcase.orgPlaceholder')} className="w-full bg-wm-bg border border-wm-border rounded-sm px-4 py-3 text-sm focus:outline-none focus:border-wm-green transition-colors font-mono" />
+            <span data-form-error className="hidden text-red-400 text-xs font-mono block" />
+            <div className="grid grid-cols-2 gap-4">
+              <input type="text" name="organization" placeholder={t('enterpriseShowcase.orgPlaceholder')} required className="bg-wm-bg border border-wm-border rounded-sm px-4 py-3 text-sm focus:outline-none focus:border-wm-green transition-colors font-mono" />
+              <input type="tel" name="phone" placeholder={t('enterpriseShowcase.phonePlaceholder')} required className="bg-wm-bg border border-wm-border rounded-sm px-4 py-3 text-sm focus:outline-none focus:border-wm-green transition-colors font-mono" />
+            </div>
             <textarea name="message" placeholder={t('enterpriseShowcase.messagePlaceholder')} rows={4} className="w-full bg-wm-bg border border-wm-border rounded-sm px-4 py-3 text-sm focus:outline-none focus:border-wm-green transition-colors font-mono resize-none" />
             <div className="cf-turnstile mx-auto" />
             <button type="submit" className="w-full bg-wm-green text-wm-bg py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors">
@@ -1097,14 +1121,22 @@ const EnterprisePage = () => (
     {/* Footer */}
     <footer className="border-t border-wm-border bg-[#020202] py-8 px-6 text-center">
       <div className="flex flex-col md:flex-row items-center justify-between max-w-7xl mx-auto text-xs text-wm-muted font-mono">
-        <div className="flex items-center gap-4 mb-4 md:mb-0">
-          <Logo />
+        <div className="flex items-center gap-3 mb-4 md:mb-0">
+          <img src="/favico/favicon-32x32.png" alt="" width="28" height="28" className="rounded-full" />
+          <div className="flex flex-col">
+            <span className="font-display font-bold text-sm leading-none tracking-tight text-wm-text">WORLD MONITOR</span>
+            <span className="text-[9px] uppercase tracking-[2px] opacity-60 mt-0.5">by Someone.ceo</span>
+          </div>
         </div>
-        <div className="flex gap-6">
-          <a href="#" onClick={(e) => { e.preventDefault(); window.location.hash = ''; }} className="hover:text-wm-text transition-colors">{t('nav.pro')}</a>
-          <a href="https://x.com/worldmonitorai" target="_blank" rel="noreferrer" aria-label="Follow World Monitor on X" className="hover:text-wm-text transition-colors">X</a>
+        <div className="flex items-center gap-6">
+          <a href="/" className="hover:text-wm-text transition-colors">Dashboard</a>
+          <a href="https://www.worldmonitor.app/blog/" className="hover:text-wm-text transition-colors">Blog</a>
+          <a href="https://www.worldmonitor.app/docs" className="hover:text-wm-text transition-colors">Docs</a>
           <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">GitHub</a>
+          <a href="https://github.com/koala73/worldmonitor/discussions" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">Discussions</a>
+          <a href="https://x.com/worldmonitorai" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">X</a>
         </div>
+        <span className="text-[10px] opacity-40 mt-4 md:mt-0">&copy; {new Date().getFullYear()} WorldMonitor</span>
       </div>
     </footer>
   </div>

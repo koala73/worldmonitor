@@ -153,7 +153,10 @@
     "risk": "ที่ปรึกษาด้านความเสี่ยง",
     "riskDesc": "จำลองสถานการณ์ โปรไฟล์นักลงทุน รายงาน PDF/PowerPoint พร้อมแบรนด์ตามต้องการ",
     "soc": "SOC & CERT",
-    "socDesc": "เลเยอร์ภัยคุกคามทางไซเบอร์ การรวม SIEM การตรวจสอบความผิดปกติ BGP ฟีด ransomware"
+    "socDesc": "เลเยอร์ภัยคุกคามทางไซเบอร์ การรวม SIEM การตรวจสอบความผิดปกติ BGP ฟีด ransomware",
+    "orgPlaceholder": "บริษัท *",
+    "phonePlaceholder": "หมายเลขโทรศัพท์ *",
+    "workEmailRequired": "กรุณาใช้อีเมลที่ทำงาน"
   },
   "pricingTable": {
     "title": "เปรียบเทียบระดับ",

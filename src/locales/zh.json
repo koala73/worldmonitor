@@ -122,6 +122,17 @@
       "stockIndex": "股票指数：{{value}}",
       "recentHeadlines": "**近期头条：**",
       "activeStrikes": "检测到{{count}}起活跃罢工"
+    },
+    "countryFacts": "国家概况",
+    "loadingFacts": "正在加载国家概况...",
+    "noFacts": "国家概况不可用。",
+    "facts": {
+      "headOfState": "国家元首",
+      "population": "人口",
+      "capital": "首都",
+      "languages": "语言",
+      "currencies": "货币",
+      "area": "面积"
     }
   },
   "header": {
@@ -2369,5 +2380,9 @@
     "mapThemeDesc": "地图图块的视觉风格。",
     "globePreset": "视觉预设",
     "globePresetDesc": "在经典和增强的地球视觉之间切换。"
+  },
+  "contextMenu": {
+    "openCountryBrief": "打开国家简报",
+    "copyCoordinates": "复制坐标"
   }
 }

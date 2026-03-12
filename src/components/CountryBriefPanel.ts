@@ -66,6 +66,19 @@ export interface CountryDeepDiveEconomicIndicator {
   source?: string;
 }
 
+export interface CountryFactsData {
+  headOfState: string;
+  headOfStateTitle: string;
+  wikipediaSummary: string;
+  wikipediaThumbnailUrl: string;
+  population: number;
+  capital: string;
+  languages: string[];
+  currencies: string[];
+  areaSqKm: number;
+  countryName: string;
+}
+
 export interface CountryBriefPanel {
   show(country: string, code: string, score: CountryScore | null, signals: CountryBriefSignals): void;
   hide(): void;
@@ -88,6 +101,7 @@ export interface CountryBriefPanel {
   updateSignalDetails?(details: CountryDeepDiveSignalDetails): void;
   updateMilitaryActivity?(summary: CountryDeepDiveMilitarySummary): void;
   updateEconomicIndicators?(indicators: CountryDeepDiveEconomicIndicator[]): void;
+  updateCountryFacts?(data: CountryFactsData): void;
   maximize?(): void;
   minimize?(): void;
   getIsMaximized?(): boolean;

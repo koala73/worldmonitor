@@ -110,6 +110,8 @@ import type { SpeciesRecovery } from '@/services/conservation-data';
 import { getCountriesGeoJson, getCountryAtCoordinates, getCountryBbox } from '@/services/country-geometry';
 import type { FeatureCollection, Geometry } from 'geojson';
 
+import { isAllowedPreviewUrl } from '@/utils/imagery-preview';
+
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
 export type DeckMapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
 type MapInteractionMode = 'flat' | '3d';
@@ -355,10 +357,20 @@ export class DeckGLMap {
   private onHotspotClick?: (hotspot: Hotspot) => void;
   private onTimeRangeChange?: (range: TimeRange) => void;
   private onCountryClick?: (country: CountryClickPayload) => void;
+  private onMapContextMenu?: (payload: { lat: number; lon: number; screenX: number; screenY: number }) => void;
+  private readonly handleContextMenu = (e: MouseEvent): void => {
+    e.preventDefault();
+    if (!this.onMapContextMenu || !this.maplibreMap) return;
+    const rect = this.container.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const lngLat = this.maplibreMap.unproject([x, y]);
+    if (!Number.isFinite(lngLat.lng)) return;
+    this.onMapContextMenu({ lat: lngLat.lat, lon: lngLat.lng, screenX: e.clientX, screenY: e.clientY });
+  };
   private onLayerChange?: (layer: keyof MapLayers, enabled: boolean, source: 'user' | 'programmatic') => void;
   private onStateChange?: (state: DeckMapState) => void;
   private onAircraftPositionsUpdate?: (positions: PositionSample[]) => void;
-  private onImageryUpdate?: (scenes: ImageryScene[]) => void;
 
   // Highlighted assets
   private highlightedAssets: Record<AssetType, Set<string>> = {
@@ -660,6 +672,8 @@ export class DeckGLMap {
         // so every frame targets the exact same geographic anchor.
       }
     });
+
+    this.container.addEventListener('contextmenu', this.handleContextMenu);
   }
 
   private initDeck(): void {
@@ -691,7 +705,7 @@ export class DeckGLMap {
       this.debouncedFetchAircraft();
       this.state.zoom = this.maplibreMap?.getZoom() ?? this.state.zoom;
       this.onStateChange?.(this.getState());
-      if (this.state.layers.satellites && this.imageryScenes.length > 0) {
+      if (this.state.layers.satellites) {
         if (this.imagerySearchTimer) clearTimeout(this.imagerySearchTimer);
         this.imagerySearchTimer = setTimeout(() => this.fetchImageryForViewport(), 500);
       }
@@ -3219,13 +3233,8 @@ export class DeckGLMap {
       const scenes = await fetchImageryScenes({ bbox, limit: 20 });
       if (version !== this.imagerySearchVersion) return;
       this.imageryScenes = scenes;
-      this.onImageryUpdate?.(scenes);
       this.render();
     } catch { /* viewport fetch failed silently */ }
-  }
-
-  public setOnImageryUpdate(callback: (scenes: ImageryScene[]) => void): void {
-    this.onImageryUpdate = callback;
   }
 
   private getTooltip(info: PickingInfo): { html: string } | null {
@@ -3439,8 +3448,15 @@ export class DeckGLMap {
           </div>`,
         };
       }
-      case 'satellite-imagery-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>&#128752; ${text(obj.satellite)}</strong><br/>${text(obj.datetime)}<br/>Res: ${obj.resolutionM}m ${text(obj.mode)}</div>` };
+      case 'satellite-imagery-layer': {
+        let imgHtml = `<div class="deckgl-tooltip"><strong>&#128752; ${text(obj.satellite)}</strong><br/>${text(obj.datetime)}<br/>Res: ${Number(obj.resolutionM)}m \u00B7 ${text(obj.mode)}`;
+        if (isAllowedPreviewUrl(obj.previewUrl)) {
+          const safeHref = escapeHtml(new URL(obj.previewUrl).href);
+          imgHtml += `<br><img src="${safeHref}" referrerpolicy="no-referrer" style="max-width:180px;max-height:120px;margin-top:4px;border-radius:4px;" class="imagery-preview">`;
+        }
+        imgHtml += '</div>';
+        return { html: imgHtml };
+      }
       default:
         return null;
     }
@@ -5103,6 +5119,10 @@ export class DeckGLMap {
     this.onCountryClick = cb;
   }
 
+  public setOnMapContextMenu(cb: (payload: { lat: number; lon: number; screenX: number; screenY: number }) => void): void {
+    this.onMapContextMenu = cb;
+  }
+
   private resolveCountryFromCoordinate(lon: number, lat: number): { code: string; name: string } | null {
     const fromGeometry = getCountryAtCoordinates(lat, lon);
     if (fromGeometry) return fromGeometry;
@@ -5379,6 +5399,7 @@ export class DeckGLMap {
     this.maplibreMap?.remove();
     this.maplibreMap = null;
 
+    this.container.removeEventListener('contextmenu', this.handleContextMenu);
     this.container.innerHTML = '';
   }
 }

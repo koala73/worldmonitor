@@ -2,10 +2,10 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "World Monitor",
   "mainBinaryName": "world-monitor",
-  "version": "2.6.0",
+  "version": "2.6.1",
   "identifier": "app.worldmonitor.desktop",
   "build": {
-    "beforeDevCommand": "npm run build:sidecar-sebuf && npm run dev",
+    "beforeDevCommand": "npm run build:sidecar-sebuf && node scripts/build-sidecar-handlers.mjs && npm run dev",
     "beforeBuildCommand": "npm run build:desktop",
     "frontendDist": "../dist",
     "devUrl": "http://localhost:3000"

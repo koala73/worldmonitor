@@ -1,4 +1,5 @@
 import { Panel } from './Panel';
+import { getRpcBaseUrl } from '@/services/rpc-client';
 import { t } from '@/services/i18n';
 import { sanitizeUrl } from '@/utils/sanitize';
 import { h, replaceChildren } from '@/utils/dom-utils';
@@ -10,7 +11,7 @@ import { buildNewsContext } from '@/utils/news-context';
 
 type ViewMode = 'upcoming' | 'conferences' | 'earnings' | 'all';
 
-const researchClient = new ResearchServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+const researchClient = new ResearchServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 
 export class TechEventsPanel extends Panel {
   private viewMode: ViewMode = 'upcoming';
