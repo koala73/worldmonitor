@@ -29,6 +29,8 @@ const SETTINGS_KEY_PREFIXES = [
   'wm-globe-render-scale',
   'wm-live-streams-always-on',
   'wm-font-family',
+  'worldmonitor-active-channel',
+  'worldmonitor-webcam-prefs',
   'wm-map-theme:',
   'map-height',
   'map-pinned',

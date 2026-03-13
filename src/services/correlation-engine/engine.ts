@@ -332,7 +332,10 @@ export class CorrelationEngine {
     sc: ScoredClusterWithTrend,
     adapter: DomainAdapter,
   ): ConvergenceCard {
-    const title = adapter.generateTitle(sc.cluster.signals);
+    const title = adapter.generateTitle(sc.cluster.signals, {
+      entityKey: sc.cluster.entityKey,
+      country: sc.cluster.country,
+    });
     const location = sc.centroidLat != null && sc.centroidLon != null
       ? { lat: sc.centroidLat, lon: sc.centroidLon, label: sc.state.key }
       : undefined;

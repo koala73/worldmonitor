@@ -41,7 +41,7 @@ export interface DomainAdapter {
   threshold: number;        // minimum score to emit card
   weights: Record<string, number>;
   collectSignals(ctx: AppContext): SignalEvidence[];
-  generateTitle(cluster: SignalEvidence[]): string;
+  generateTitle(cluster: SignalEvidence[], context?: { entityKey?: string; country?: string }): string;
 }
 
 export interface ClusterState {

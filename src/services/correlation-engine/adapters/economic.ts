@@ -72,22 +72,78 @@ export const economicAdapter: DomainAdapter = {
     return signals;
   },
 
-  generateTitle(cluster: SignalEvidence[]): string {
+  generateTitle(cluster: SignalEvidence[], context?: { entityKey?: string; country?: string }): string {
     const types = new Set(cluster.map(s => s.type));
-    const parts: string[] = [];
+    const entity = context?.entityKey;
 
     if (types.has('commodity_spike')) {
-      const commodities = cluster
-        .filter(s => s.type === 'commodity_spike')
-        .map(s => (s.rawData as { symbol?: string })?.symbol ?? s.label.split(' ')[0])
+      const spikes = cluster.filter(s => s.type === 'commodity_spike');
+      const names = spikes
+        .map(s => (s.rawData as { display?: string; symbol?: string })?.display
+          ?? (s.rawData as { symbol?: string })?.symbol
+          ?? s.label.split(' ')[0])
         .slice(0, 2);
-      parts.push(`${commodities.join('/')} spike`);
+      const pctParts = spikes
+        .map(s => {
+          const change = (s.rawData as { change?: number })?.change;
+          return change != null ? `${change > 0 ? '+' : ''}${change.toFixed(1)}%` : null;
+        })
+        .filter(Boolean);
+      const pctSuffix = pctParts.length > 0 ? ` (${pctParts[0]})` : '';
+      const base = `${names.join('/')} spike${pctSuffix}`;
+      if (types.has('sanctions_news')) return `${base} + sanctions`;
+      return base;
     }
-    if (types.has('sanctions_news')) parts.push('sanctions activity');
-    if (types.has('market_move')) parts.push('market disruption');
 
-    return parts.length > 0
-      ? `Economic warfare: ${parts.join(' + ')}`
-      : 'Economic convergence detected';
+    if (types.has('sanctions_news')) {
+      const labels = cluster.filter(s => s.type === 'sanctions_news').map(s => s.label);
+      const countries = extractMentionedEntities(labels);
+      const qualifier = countries || displayEntity(entity) || '';
+      const sanctionsBase = qualifier ? `${qualifier} sanctions activity` : 'Sanctions activity';
+      if (types.has('market_move')) {
+        const movers = cluster.filter(s => s.type === 'market_move');
+        const moverNames = movers
+          .map(s => (s.rawData as { display?: string; symbol?: string })?.display
+            ?? (s.rawData as { symbol?: string })?.symbol
+            ?? s.label.split(' ')[0])
+          .slice(0, 2);
+        return `${sanctionsBase} + ${moverNames.join('/')} disruption`;
+      }
+      return sanctionsBase;
+    }
+
+    if (types.has('market_move')) {
+      const movers = cluster.filter(s => s.type === 'market_move');
+      const names = movers
+        .map(s => (s.rawData as { display?: string; symbol?: string })?.display
+          ?? (s.rawData as { symbol?: string })?.symbol
+          ?? s.label.split(' ')[0])
+        .slice(0, 2);
+      return `Market disruption: ${names.join('/')}`;
+    }
+
+    const fallbackName = displayEntity(entity);
+    return fallbackName ? `Economic convergence: ${fallbackName}` : 'Economic convergence detected';
   },
 };
+
+const KNOWN_ENTITIES = /\b(Iran|Russia|China|North Korea|Venezuela|Cuba|Syria|Myanmar|Belarus|Turkey|Saudi|OPEC|EU|USA?|United States|India)\b(?![A-Za-z])/i;
+
+function extractMentionedEntities(labels: string[]): string {
+  for (const label of labels) {
+    const match = KNOWN_ENTITIES.exec(label);
+    if (match) return match[1]!;
+  }
+  return '';
+}
+
+const GENERIC_ENTITY_KEYS = new Set([
+  'sanctions', 'trade', 'tariff', 'commodity', 'currency', 'energy',
+  'embargo', 'semiconductor', 'crypto', 'inflation',
+]);
+
+function displayEntity(key?: string): string {
+  if (!key) return '';
+  if (GENERIC_ENTITY_KEYS.has(key)) return '';
+  return key.charAt(0).toUpperCase() + key.slice(1);
+}

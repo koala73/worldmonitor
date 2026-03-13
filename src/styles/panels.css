@@ -40,11 +40,6 @@
   display: none;
 }
 
-.panel-tabs--wrap {
-  flex-wrap: wrap;
-  overflow-x: visible;
-}
-
 .panel-tab {
   display: inline-flex;
   align-items: center;

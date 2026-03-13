@@ -1,11 +1,11 @@
 import { Panel } from './Panel';
-import { IDLE_PAUSE_MS } from '@/config';
+import { IDLE_PAUSE_MS, STORAGE_KEYS } from '@/config';
 import { isDesktopRuntime, getLocalApiPort } from '@/services/runtime';
 import { escapeHtml } from '@/utils/sanitize';
 import { t } from '../services/i18n';
 import { trackWebcamSelected, trackWebcamRegionFiltered } from '@/services/analytics';
 import { getStreamQuality, subscribeStreamQualityChange } from '@/services/ai-flow-settings';
-import { isMobileDevice } from '@/utils';
+import { isMobileDevice, loadFromStorage, saveToStorage } from '@/utils';
 import { getLiveStreamsAlwaysOn, subscribeLiveStreamsSettingsChange } from '@/services/live-stream-settings';
 
 type WebcamRegion = 'iran' | 'middle-east' | 'europe' | 'asia' | 'americas' | 'space';
@@ -66,6 +66,31 @@ const IDLE_ACTIVITY_EVENTS = ['mousedown', 'keydown', 'scroll', 'touchstart', 'm
 type ViewMode = 'grid' | 'single';
 type RegionFilter = 'all' | WebcamRegion;
 
+const ALL_REGIONS: RegionFilter[] = ['all', 'iran', 'middle-east', 'europe', 'americas', 'asia', 'space'];
+
+interface WebcamPrefs {
+  regionFilter: RegionFilter;
+  viewMode: ViewMode;
+  activeFeedId: string;
+}
+
+function loadWebcamPrefs(forceSingleView: boolean): WebcamPrefs {
+  const stored = loadFromStorage<Partial<WebcamPrefs>>(STORAGE_KEYS.webcamPrefs, {});
+  const region = stored.regionFilter as RegionFilter;
+  const regionFilter = ALL_REGIONS.includes(region) ? region : 'iran';
+  const viewMode = forceSingleView ? 'single'
+    : (stored.viewMode === 'grid' || stored.viewMode === 'single' ? stored.viewMode : 'grid');
+  const regionFeeds = regionFilter === 'all' ? WEBCAM_FEEDS
+    : WEBCAM_FEEDS.filter(f => f.region === regionFilter);
+  const matchedFeed = regionFeeds.find(f => f.id === stored.activeFeedId);
+  const activeFeedId = matchedFeed?.id ?? regionFeeds[0]?.id ?? WEBCAM_FEEDS[0]!.id;
+  return { regionFilter, viewMode, activeFeedId };
+}
+
+function saveWebcamPrefs(prefs: WebcamPrefs): void {
+  saveToStorage(STORAGE_KEYS.webcamPrefs, prefs);
+}
+
 interface WebcamIframeTracker {
   feed: WebcamFeed;
   container: HTMLElement;
@@ -102,10 +127,11 @@ export class LiveWebcamsPanel extends Panel {
     super({ id: 'live-webcams', title: t('panels.liveWebcams'), className: 'panel-wide', closable: false });
     this.insertLiveCountBadge(WEBCAM_FEEDS.length);
 
-    // Mobile: force single-cam view. 4 iframes at once is a battery + performance disaster.
-    if (this.forceSingleView) {
-      this.viewMode = 'single';
-    }
+    const prefs = loadWebcamPrefs(this.forceSingleView);
+    this.regionFilter = prefs.regionFilter;
+    this.viewMode = prefs.viewMode;
+    this.activeFeed = WEBCAM_FEEDS.find(f => f.id === prefs.activeFeedId) ?? WEBCAM_FEEDS[0]!;
+
     this.createFullscreenButton();
     this.createToolbar();
     this.setupIntersectionObserver();
@@ -149,6 +175,14 @@ export class LiveWebcamsPanel extends Panel {
   private boundFullscreenEscHandler = (e: KeyboardEvent) => {
     if (e.key === 'Escape' && this.isFullscreen) this.toggleFullscreen();
   };
+
+  private savePrefs(): void {
+    saveWebcamPrefs({
+      regionFilter: this.regionFilter,
+      viewMode: this.viewMode,
+      activeFeedId: this.activeFeed.id,
+    });
+  }
 
   private get filteredFeeds(): WebcamFeed[] {
     if (this.regionFilter === 'all') return WEBCAM_FEEDS;
@@ -234,6 +268,7 @@ export class LiveWebcamsPanel extends Panel {
     if (feeds.length > 0 && !feeds.includes(this.activeFeed)) {
       this.activeFeed = feeds[0]!;
     }
+    this.savePrefs();
     this.render();
   }
 
@@ -241,6 +276,7 @@ export class LiveWebcamsPanel extends Panel {
     if (this.forceSingleView && mode === 'grid') return;
     if (mode === this.viewMode) return;
     this.viewMode = mode;
+    this.savePrefs();
     this.toolbar?.querySelectorAll('.webcam-view-btn').forEach(btn => {
       (btn as HTMLElement).classList.toggle('active', (btn as HTMLElement).dataset.mode === mode);
     });
@@ -531,6 +567,7 @@ export class LiveWebcamsPanel extends Panel {
       btn.addEventListener('click', () => {
         trackWebcamSelected(feed.id, feed.city, 'single');
         this.activeFeed = feed;
+        this.savePrefs();
         this.render();
       });
       switcher.appendChild(btn);
