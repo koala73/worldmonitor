@@ -1840,6 +1840,129 @@ async function startAviationSeedLoop() {
 }
 
 // ─────────────────────────────────────────────────────────────
+// NOTAM Closures Seed — Railway fetches ICAO NOTAMs → writes to Redis
+// so Vercel handler and map layer serve from cache (ICAO API times out from edge)
+// ─────────────────────────────────────────────────────────────
+const NOTAM_SEED_INTERVAL_MS = 30 * 60 * 1000; // 30min
+const NOTAM_SEED_TTL = 3600; // 1h — survives 1 missed cycle
+const NOTAM_REDIS_KEY = 'aviation:notam:closures:v2';
+const NOTAM_CLOSURE_QCODES = new Set(['FA', 'AH', 'AL', 'AW', 'AC', 'AM']);
+const NOTAM_MONITORED_ICAO = [
+  // MENA
+  'OEJN', 'OERK', 'OEMA', 'OEDF', 'OMDB', 'OMAA', 'OMSJ',
+  'OTHH', 'OBBI', 'OOMS', 'OKBK', 'OLBA', 'OJAI', 'OSDI',
+  'ORBI', 'OIIE', 'OISS', 'OIMM', 'OIKB', 'HECA', 'GMMN',
+  'DTTA', 'DAAG', 'HLLT',
+  // Europe
+  'EGLL', 'LFPG', 'EDDF', 'EHAM', 'LEMD', 'LIRF', 'LTFM',
+  'LSZH', 'LOWW', 'EKCH', 'ENGM', 'ESSA', 'EFHK', 'EPWA',
+  // Americas
+  'KJFK', 'KLAX', 'KORD', 'KATL', 'KDFW', 'KDEN', 'KSFO',
+  'CYYZ', 'MMMX', 'SBGR', 'SCEL', 'SKBO',
+  // APAC
+  'RJTT', 'RKSI', 'VHHH', 'WSSS', 'VTBS', 'VIDP', 'YSSY',
+  'ZBAA', 'ZPPP', 'WMKK',
+  // Africa
+  'FAOR', 'DNMM', 'HKJK', 'GABS',
+];
+
+function fetchIcaoNotams() {
+  return new Promise((resolve) => {
+    if (!ICAO_API_KEY) return resolve([]);
+    const locations = NOTAM_MONITORED_ICAO.join(',');
+    const apiUrl = `https://dataservices.icao.int/api/notams-realtime-list?api_key=${ICAO_API_KEY}&format=json&locations=${encodeURIComponent(locations)}`;
+    const req = https.get(apiUrl, {
+      headers: { 'User-Agent': CHROME_UA },
+      timeout: 30000,
+    }, (resp) => {
+      if (resp.statusCode !== 200) {
+        console.warn(`[NOTAM-Seed] ICAO HTTP ${resp.statusCode}`);
+        resp.resume();
+        return resolve([]);
+      }
+      const ct = resp.headers['content-type'] || '';
+      if (ct.includes('text/html')) {
+        console.warn('[NOTAM-Seed] ICAO returned HTML (challenge page)');
+        resp.resume();
+        return resolve([]);
+      }
+      const chunks = [];
+      resp.on('data', (c) => chunks.push(c));
+      resp.on('end', () => {
+        try {
+          const data = JSON.parse(Buffer.concat(chunks).toString());
+          resolve(Array.isArray(data) ? data : []);
+        } catch {
+          console.warn('[NOTAM-Seed] Invalid JSON from ICAO');
+          resolve([]);
+        }
+      });
+    });
+    req.on('error', (err) => { console.warn(`[NOTAM-Seed] Fetch error: ${err.message}`); resolve([]); });
+    req.on('timeout', () => { req.destroy(); console.warn('[NOTAM-Seed] Timeout (30s)'); resolve([]); });
+  });
+}
+
+async function seedNotamClosures() {
+  if (!ICAO_API_KEY) {
+    console.log('[NOTAM-Seed] No ICAO_API_KEY — skipping');
+    return;
+  }
+
+  const t0 = Date.now();
+  const notams = await fetchIcaoNotams();
+  if (notams.length === 0) {
+    console.log('[NOTAM-Seed] No NOTAMs received — preserving existing cache');
+    return;
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const closedSet = new Set();
+  const reasons = {};
+
+  for (const n of notams) {
+    const icao = n.itema || n.location || '';
+    if (!icao || !NOTAM_MONITORED_ICAO.includes(icao)) continue;
+    if (n.endvalidity && n.endvalidity < now) continue;
+
+    const code23 = (n.code23 || '').toUpperCase();
+    const code45 = (n.code45 || '').toUpperCase();
+    const text = (n.iteme || '').toUpperCase();
+    const isClosureCode = NOTAM_CLOSURE_QCODES.has(code23) &&
+      (code45 === 'LC' || code45 === 'AS' || code45 === 'AU' || code45 === 'XX' || code45 === 'AW');
+    const isClosureText = /\b(AD CLSD|AIRPORT CLOSED|AIRSPACE CLOSED|AD NOT AVBL|CLSD TO ALL)\b/.test(text);
+
+    if (isClosureCode || isClosureText) {
+      closedSet.add(icao);
+      reasons[icao] = n.iteme || 'Airport closure (NOTAM)';
+    }
+  }
+
+  const closedIcaos = [...closedSet];
+  const payload = { closedIcaos, reasons };
+  const ok = await upstashSet(NOTAM_REDIS_KEY, payload, NOTAM_SEED_TTL);
+  await upstashSet('seed-meta:aviation:notam', { fetchedAt: Date.now(), recordCount: closedIcaos.length }, 604800);
+  const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+  console.log(`[NOTAM-Seed] ${notams.length} raw NOTAMs, ${closedIcaos.length} closures (redis: ${ok ? 'OK' : 'FAIL'}) in ${elapsed}s`);
+}
+
+function startNotamSeedLoop() {
+  if (!UPSTASH_ENABLED) {
+    console.log('[NOTAM-Seed] Disabled (no Upstash Redis)');
+    return;
+  }
+  if (!ICAO_API_KEY) {
+    console.log('[NOTAM-Seed] Disabled (no ICAO_API_KEY)');
+    return;
+  }
+  console.log(`[NOTAM-Seed] Seed loop starting (interval ${NOTAM_SEED_INTERVAL_MS / 1000 / 60}min, airports: ${NOTAM_MONITORED_ICAO.length})`);
+  seedNotamClosures().catch((e) => console.warn('[NOTAM-Seed] Initial seed error:', e?.message || e));
+  setInterval(() => {
+    seedNotamClosures().catch((e) => console.warn('[NOTAM-Seed] Seed error:', e?.message || e));
+  }, NOTAM_SEED_INTERVAL_MS).unref?.();
+}
+
+// ─────────────────────────────────────────────────────────────
 // Cyber Threat Intelligence Seed — Railway fetches IOC feeds → writes to Redis
 // so Vercel handler (list-cyber-threats) serves from cache instead of live fetches
 // ─────────────────────────────────────────────────────────────
@@ -6369,6 +6492,7 @@ server.listen(PORT, () => {
   startUcdpSeedLoop();
   startMarketDataSeedLoop();
   startAviationSeedLoop();
+  startNotamSeedLoop();
   // Cyber seed disabled — standalone cron seed-cyber-threats.mjs handles this
   // (avoids burning 12 extra AbuseIPDB calls/day from duplicate relay loop)
   startCiiWarmPingLoop();

@@ -433,6 +433,25 @@ fn delete_cache_entry(webview: Webview, app: AppHandle, cache: tauri::State<'_, 
 }
 
 #[tauri::command]
+fn delete_cache_entries_by_prefix(webview: Webview, app: AppHandle, cache: tauri::State<'_, PersistentCache>, prefix: String) -> Result<(), String> {
+    require_trusted_window(webview.label())?;
+    let removed_any = {
+        let mut data = cache.data.lock().unwrap_or_else(|e| e.into_inner());
+        let before = data.len();
+        data.retain(|key, _| !key.starts_with(&prefix));
+        data.len() != before
+    };
+    if removed_any {
+        {
+            let mut dirty = cache.dirty.lock().unwrap_or_else(|e| e.into_inner());
+            *dirty = true;
+        }
+        schedule_debounced_flush(&cache, &app);
+    }
+    Ok(())
+}
+
+#[tauri::command]
 fn write_cache_entry(webview: Webview, app: AppHandle, cache: tauri::State<'_, PersistentCache>, key: String, value: String) -> Result<(), String> {
     require_trusted_window(webview.label())?;
     let parsed_value: Value = serde_json::from_str(&value)
@@ -1364,6 +1383,7 @@ fn main() {
             read_cache_entry,
             write_cache_entry,
             delete_cache_entry,
+            delete_cache_entries_by_prefix,
             open_logs_folder,
             open_sidecar_log_file,
             open_settings_window_command,

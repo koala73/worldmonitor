@@ -1,11 +1,6 @@
-export const EXCLUDE_KEYWORDS = [
-  'nba', 'nfl', 'mlb', 'nhl', 'fifa', 'world cup', 'super bowl', 'championship',
-  'playoffs', 'oscar', 'grammy', 'emmy', 'box office', 'movie', 'album', 'song',
-  'streamer', 'influencer', 'celebrity', 'kardashian',
-  'bachelor', 'reality tv', 'mvp', 'touchdown', 'home run', 'goal scorer',
-  'academy award', 'bafta', 'golden globe', 'cannes', 'sundance',
-  'documentary', 'feature film', 'tv series', 'season finale',
-];
+import predictionTags from '../shared/prediction-tags.json' with { type: 'json' };
+
+export const EXCLUDE_KEYWORDS = predictionTags.excludeKeywords;
 
 export const MEME_PATTERNS = [
   /\b(lebron|kanye|oprah|swift|rogan|dwayne|kardashian|cardi\s*b)\b/i,

@@ -12,8 +12,8 @@ test.describe('circuit breaker persistent cache', () => {
     await page.goto('/tests/runtime-harness.html');
 
     const result = await page.evaluate(async () => {
-      const { CircuitBreaker } = await import('/src/utils/circuit-breaker.ts');
-      const { getPersistentCache, deletePersistentCache } = await import('/src/services/persistent-cache.ts');
+      const { CircuitBreaker } = await import('/src/utils/circuit-breaker');
+      const { getPersistentCache, deletePersistentCache } = await import('/src/services/persistent-cache');
 
       const name = `test-persist-${Date.now()}`;
       const breaker = new CircuitBreaker<{ value: number }>({
@@ -51,8 +51,8 @@ test.describe('circuit breaker persistent cache', () => {
     await page.goto('/tests/runtime-harness.html');
 
     const result = await page.evaluate(async () => {
-      const { CircuitBreaker } = await import('/src/utils/circuit-breaker.ts');
-      const { setPersistentCache, deletePersistentCache } = await import('/src/services/persistent-cache.ts');
+      const { CircuitBreaker } = await import('/src/utils/circuit-breaker');
+      const { setPersistentCache, deletePersistentCache } = await import('/src/services/persistent-cache');
 
       const name = `test-hydrate-${Date.now()}`;
       const cacheKey = `breaker:${name}`;
@@ -89,12 +89,12 @@ test.describe('circuit breaker persistent cache', () => {
     expect(result.dataState).toBe('cached');
   });
 
-  test('expired persistent entry triggers fresh fetch (TTL respected)', async ({ page }) => {
+  test('expired persistent entry triggers stale-while-revalidate refresh', async ({ page }) => {
     await page.goto('/tests/runtime-harness.html');
 
     const result = await page.evaluate(async () => {
-      const { CircuitBreaker } = await import('/src/utils/circuit-breaker.ts');
-      const { deletePersistentCache } = await import('/src/services/persistent-cache.ts');
+      const { CircuitBreaker } = await import('/src/utils/circuit-breaker');
+      const { getPersistentCache, deletePersistentCache } = await import('/src/services/persistent-cache');
 
       const name = `test-ttl-${Date.now()}`;
       const cacheKey = `breaker:${name}`;
@@ -139,13 +139,15 @@ test.describe('circuit breaker persistent cache', () => {
           return { value: 222 };
         }, { value: 0 });
 
-        // Wait for fire-and-forget write
+        // Wait for background refresh and write completion.
         await new Promise((r) => setTimeout(r, 200));
+        const refreshedEntry = await getPersistentCache<{ value: number }>(cacheKey);
 
         return {
           result: result.value,
           fetchCalled,
-          dataState: breaker.getDataState().mode,
+          refreshedState: breaker.getDataState().mode,
+          refreshedValue: refreshedEntry?.data?.value ?? null,
         };
       } finally {
         await deletePersistentCache(cacheKey);
@@ -154,16 +156,17 @@ test.describe('circuit breaker persistent cache', () => {
 
     // Persistent entry was expired, so fetch MUST have been called
     expect(result.fetchCalled).toBe(true);
-    expect(result.result).toBe(222);
-    expect(result.dataState).toBe('live');
+    expect(result.result).toBe(111);
+    expect(result.refreshedState).toBe('live');
+    expect(result.refreshedValue).toBe(222);
   });
 
   test('persistent entry older than 24h stale ceiling is not hydrated', async ({ page }) => {
     await page.goto('/tests/runtime-harness.html');
 
     const result = await page.evaluate(async () => {
-      const { CircuitBreaker } = await import('/src/utils/circuit-breaker.ts');
-      const { deletePersistentCache } = await import('/src/services/persistent-cache.ts');
+      const { CircuitBreaker } = await import('/src/utils/circuit-breaker');
+      const { deletePersistentCache } = await import('/src/services/persistent-cache');
 
       const name = `test-stale-${Date.now()}`;
       const cacheKey = `breaker:${name}`;
@@ -227,8 +230,8 @@ test.describe('circuit breaker persistent cache', () => {
     await page.goto('/tests/runtime-harness.html');
 
     const result = await page.evaluate(async () => {
-      const { CircuitBreaker } = await import('/src/utils/circuit-breaker.ts');
-      const { getPersistentCache, deletePersistentCache } = await import('/src/services/persistent-cache.ts');
+      const { CircuitBreaker } = await import('/src/utils/circuit-breaker');
+      const { getPersistentCache, deletePersistentCache } = await import('/src/services/persistent-cache');
 
       const name = `test-clear-${Date.now()}`;
       const cacheKey = `breaker:${name}`;
@@ -265,12 +268,68 @@ test.describe('circuit breaker persistent cache', () => {
     expect(result.afterClearValue).toBeNull();
   });
 
+  test('LRU eviction removes the evicted persistent entry from IndexedDB', async ({ page }) => {
+    await page.goto('/tests/runtime-harness.html');
+
+    const result = await page.evaluate(async () => {
+      const { CircuitBreaker } = await import('/src/utils/circuit-breaker');
+      const { getPersistentCache, deletePersistentCache } = await import('/src/services/persistent-cache');
+
+      const name = `test-lru-evict-${Date.now()}`;
+      const keyA = `breaker:${name}:A`;
+      const keyB = `breaker:${name}:B`;
+      const keyC = `breaker:${name}:C`;
+
+      const breaker = new CircuitBreaker<{ value: number }>({
+        name,
+        cacheTtlMs: 60_000,
+        persistCache: true,
+        maxCacheEntries: 2,
+      });
+
+      try {
+        await breaker.execute(async () => ({ value: 1 }), { value: 0 }, { cacheKey: 'A' });
+        await breaker.execute(async () => ({ value: 2 }), { value: 0 }, { cacheKey: 'B' });
+
+        // Let the initial async persistent writes settle before triggering eviction.
+        await new Promise((r) => setTimeout(r, 200));
+
+        await breaker.execute(async () => ({ value: 3 }), { value: 0 }, { cacheKey: 'C' });
+        await new Promise((r) => setTimeout(r, 200));
+
+        const [entryA, entryB, entryC] = await Promise.all([
+          getPersistentCache<{ value: number }>(keyA),
+          getPersistentCache<{ value: number }>(keyB),
+          getPersistentCache<{ value: number }>(keyC),
+        ]);
+
+        return {
+          memoryKeys: breaker.getKnownCacheKeys(),
+          entryA: entryA?.data?.value ?? null,
+          entryB: entryB?.data?.value ?? null,
+          entryC: entryC?.data?.value ?? null,
+        };
+      } finally {
+        await Promise.all([
+          deletePersistentCache(keyA),
+          deletePersistentCache(keyB),
+          deletePersistentCache(keyC),
+        ]);
+      }
+    });
+
+    expect(result.memoryKeys).toEqual(['B', 'C']);
+    expect(result.entryA).toBeNull();
+    expect(result.entryB).toBe(2);
+    expect(result.entryC).toBe(3);
+  });
+
   test('persistCache disabled when cacheTtlMs is 0', async ({ page }) => {
     await page.goto('/tests/runtime-harness.html');
 
     const result = await page.evaluate(async () => {
-      const { CircuitBreaker } = await import('/src/utils/circuit-breaker.ts');
-      const { getPersistentCache, deletePersistentCache } = await import('/src/services/persistent-cache.ts');
+      const { CircuitBreaker } = await import('/src/utils/circuit-breaker');
+      const { getPersistentCache, deletePersistentCache } = await import('/src/services/persistent-cache');
 
       const name = `test-disabled-${Date.now()}`;
       const cacheKey = `breaker:${name}`;
@@ -302,8 +361,8 @@ test.describe('circuit breaker persistent cache', () => {
     await page.goto('/tests/runtime-harness.html');
 
     const result = await page.evaluate(async () => {
-      const { CircuitBreaker } = await import('/src/utils/circuit-breaker.ts');
-      const { setPersistentCache, deletePersistentCache } = await import('/src/services/persistent-cache.ts');
+      const { CircuitBreaker } = await import('/src/utils/circuit-breaker');
+      const { setPersistentCache, deletePersistentCache } = await import('/src/services/persistent-cache');
 
       const name = `test-fallback-${Date.now()}`;
       const cacheKey = `breaker:${name}`;
@@ -354,15 +413,15 @@ test.describe('circuit breaker persistent cache', () => {
 
     // Stale persistent data (777) is better than default (0)
     expect(result.result).toBe(777);
-    expect(result.dataState).toBe('unavailable');
+    expect(result.dataState).toBe('cached');
   });
 
   test('concurrent execute() calls with stale cache spawn exactly one background refresh', async ({ page }) => {
     await page.goto('/tests/runtime-harness.html');
 
     const result = await page.evaluate(async () => {
-      const { CircuitBreaker } = await import('/src/utils/circuit-breaker.ts');
-      const { deletePersistentCache } = await import('/src/services/persistent-cache.ts');
+      const { CircuitBreaker } = await import('/src/utils/circuit-breaker');
+      const { deletePersistentCache } = await import('/src/services/persistent-cache');
 
       const name = `test-swr-dedup-${Date.now()}`;
       const cacheKey = `breaker:${name}`;

@@ -220,26 +220,29 @@ function isAppOriginUrl(urlStr: string): boolean {
   }
 }
 
+function toPathAndSearch(url: string | URL): string {
+  const u = typeof url === 'string' ? new URL(url) : url;
+  return `${u.pathname}${u.search}`;
+}
+
 function getApiTargetFromRequestInput(input: RequestInfo | URL): string | null {
   if (typeof input === 'string') {
     if (input.startsWith('/')) return input;
     if (isAppOriginUrl(input)) {
-      const u = new URL(input);
-      return `${u.pathname}${u.search}`;
+      return toPathAndSearch(input);
     }
     return null;
   }
 
   if (input instanceof URL) {
     if (isAppOriginUrl(input.href)) {
-      return `${input.pathname}${input.search}`;
+      return toPathAndSearch(input);
     }
     return null;
   }
 
   if (isAppOriginUrl(input.url)) {
-    const u = new URL(input.url);
-    return `${u.pathname}${u.search}`;
+    return toPathAndSearch(input.url);
   }
   return null;
 }

@@ -24,22 +24,11 @@ const breaker = createCircuitBreaker<PredictionMarket[]>({ name: 'Polymarket', c
 
 const client = new PredictionServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 
-const GEOPOLITICAL_TAGS = [
-  'politics', 'geopolitics', 'elections', 'world',
-  'ukraine', 'china', 'middle-east', 'europe',
-  'economy', 'fed', 'inflation',
-];
+import predictionTags from '../../../shared/prediction-tags.json';
 
-const TECH_TAGS = [
-  'ai', 'tech', 'crypto', 'science',
-  'elon-musk', 'business', 'economy',
-];
-
-const FINANCE_TAGS = [
-  'economy', 'fed', 'inflation', 'interest-rates', 'recession',
-  'trade', 'tariffs', 'debt-ceiling',
-  'crypto', 'business', 'markets',
-];
+const GEOPOLITICAL_TAGS = predictionTags.geopolitical;
+const TECH_TAGS = predictionTags.tech;
+const FINANCE_TAGS = predictionTags.finance;
 
 interface BootstrapPredictionData {
   geopolitical: PredictionMarket[];

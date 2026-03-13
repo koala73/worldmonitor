@@ -5,6 +5,7 @@ import {
   isExcluded, isMemeCandidate, tagRegions, parseYesPrice,
   shouldInclude, scoreMarket, filterAndScore, isExpired,
 } from './_prediction-scoring.mjs';
+import predictionTags from '../shared/prediction-tags.json' with { type: 'json' };
 
 loadEnvFile(import.meta.url);
 
@@ -13,25 +14,13 @@ const CACHE_TTL = 900; // 15 min — matches client poll interval
 
 const GAMMA_BASE = 'https://gamma-api.polymarket.com';
 const KALSHI_BASE = 'https://trading-api.kalshi.com/trade-api/v2';
+const KALSHI_ENABLED = process.env.KALSHI_API_KEY !== undefined && process.env.KALSHI_API_KEY !== '';
 const FETCH_TIMEOUT = 10_000;
 const TAG_DELAY_MS = 300;
 
-const GEOPOLITICAL_TAGS = [
-  'politics', 'geopolitics', 'elections', 'world',
-  'ukraine', 'china', 'middle-east', 'europe',
-  'economy', 'fed', 'inflation',
-];
-
-const TECH_TAGS = [
-  'ai', 'tech', 'crypto', 'science',
-  'elon-musk', 'business', 'economy',
-];
-
-const FINANCE_TAGS = [
-  'economy', 'fed', 'inflation', 'interest-rates', 'recession',
-  'trade', 'tariffs', 'debt-ceiling',
-  'crypto', 'business', 'markets',
-];
+const GEOPOLITICAL_TAGS = predictionTags.geopolitical;
+const TECH_TAGS = predictionTags.tech;
+const FINANCE_TAGS = predictionTags.finance;
 
 async function fetchEventsByTag(tag, limit = 20) {
   const params = new URLSearchParams({
@@ -64,8 +53,10 @@ async function fetchKalshiEvents() {
       with_nested_markets: 'true',
       limit: '100',
     });
+    const headers = { Accept: 'application/json', 'User-Agent': CHROME_UA };
+    if (process.env.KALSHI_API_KEY) headers.Authorization = `Bearer ${process.env.KALSHI_API_KEY}`;
     const resp = await fetch(`${KALSHI_BASE}/events?${params}`, {
-      headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
+      headers,
       signal: AbortSignal.timeout(FETCH_TIMEOUT),
     });
     if (!resp.ok) {
@@ -125,7 +116,8 @@ async function fetchAllPredictions() {
   const markets = [];
 
   // Start Kalshi fetch early so it overlaps with Polymarket tag iterations
-  const kalshiPromise = fetchKalshiMarkets();
+  const kalshiPromise = KALSHI_ENABLED ? fetchKalshiMarkets() : Promise.resolve([]);
+  if (!KALSHI_ENABLED) console.log('  [kalshi] disabled (no KALSHI_API_KEY)');
 
   for (const tag of allTags) {
     try {
