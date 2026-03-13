@@ -64,7 +64,7 @@ export class GivingPanel extends Panel {
       institutional: t('components.giving.tabs.institutional'),
     };
     const tabsHtml = `
-      <div class="panel-tabs panel-tabs--wrap">
+      <div class="panel-tabs">
         ${tabs.map(tab => `<button class="panel-tab ${this.activeTab === tab ? 'active' : ''}" data-tab="${tab}">${tabLabels[tab]}</button>`).join('')}
       </div>
     `;
