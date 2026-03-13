@@ -1269,6 +1269,8 @@ export class PanelLayoutManager implements AppModule {
     let originalParent: HTMLElement | null = null;
     let dragOffsetX = 0;
     let dragOffsetY = 0;
+    let originalIndex = -1;
+    let onKeyDown: ((e: KeyboardEvent) => void) | null = null;
     const DRAG_THRESHOLD = 8;
 
     const onMouseDown = (e: MouseEvent) => {
@@ -1298,6 +1300,8 @@ export class PanelLayoutManager implements AppModule {
 
     const createGhostElement = (): HTMLElement => {
       const ghost = el.cloneNode(true) as HTMLElement;
+      // Strip iframes to prevent duplicate network requests and postMessage handlers
+      ghost.querySelectorAll('iframe').forEach(ifr => ifr.remove());
       ghost.classList.add('panel-drag-ghost');
       ghost.style.position = 'fixed';
       ghost.style.pointerEvents = 'none';
@@ -1321,15 +1325,34 @@ export class PanelLayoutManager implements AppModule {
       // overlay on body so it doesn't shift grid children
       indicator.style.position = 'fixed';
       indicator.style.pointerEvents = 'none';
-      indicator.style.height = '4px';
-      indicator.style.background = 'var(--accent)';
-      indicator.style.borderRadius = '2px';
-      indicator.style.opacity = '0';
-      indicator.style.transition = 'opacity 0.15s ease';
       indicator.style.zIndex = '9999';
       document.body.appendChild(indicator);
       return indicator;
     };
+    const swapElements = (a: HTMLElement, b: HTMLElement) => {
+      if (a === b) return;
+      const aParent = a.parentElement;
+      const bParent = b.parentElement;
+      if (!aParent || !bParent) return;
+
+      const aNext = a.nextSibling;
+      const bNext = b.nextSibling;
+
+      if (aParent === bParent) {
+        if (aNext === b) {
+          aParent.insertBefore(b, a);
+        } else if (bNext === a) {
+          aParent.insertBefore(a, b);
+        } else {
+          aParent.insertBefore(b, aNext);
+          aParent.insertBefore(a, bNext);
+        }
+      } else {
+        aParent.insertBefore(b, aNext);
+        bParent.insertBefore(a, bNext);
+      }
+    };
+
     const updateGhostPosition = (clientX: number, clientY: number) => {
       if (!ghostEl) return;
       ghostEl.style.left = (clientX - dragOffsetX) + 'px';
@@ -1342,9 +1365,10 @@ export class PanelLayoutManager implements AppModule {
       if (!grid || !bottomGrid) return null;
 
       // Temporarily hide the ghost to get accurate hit detection
+      const prevPointerEvents = ghostEl?.style.pointerEvents;
       if (ghostEl) ghostEl.style.pointerEvents = 'none';
       const target = document.elementFromPoint(clientX, clientY);
-      if (ghostEl) ghostEl.style.pointerEvents = 'none';
+      if (ghostEl && typeof prevPointerEvents === 'string') ghostEl.style.pointerEvents = prevPointerEvents;
 
       if (!target) return null;
 
@@ -1425,8 +1449,48 @@ export class PanelLayoutManager implements AppModule {
         // Initialize drag visualization
         el.classList.add('dragging-source');
         originalParent = el.parentElement as HTMLElement;
+        originalIndex = Array.from(originalParent.children).indexOf(el);
         ghostEl = createGhostElement();
         dropIndicator = createDropIndicator();
+        onKeyDown = (e: KeyboardEvent) => {
+          if (e.key === 'Escape') {
+            // Cancel drag and restore original position
+            el.classList.remove('dragging-source');
+            if (ghostEl) {
+              ghostEl.style.opacity = '0';
+              const g = ghostEl;
+              setTimeout(() => g.remove(), 200);
+              ghostEl = null;
+            }
+            if (dropIndicator) {
+              dropIndicator.style.opacity = '0';
+              const d = dropIndicator;
+              setTimeout(() => d.remove(), 200);
+              dropIndicator = null;
+            }
+            if (lastTargetPanel) {
+              lastTargetPanel.classList.remove('panel-drop-target');
+              lastTargetPanel = null;
+            }
+
+            if (originalParent && originalIndex >= 0) {
+              const children = Array.from(originalParent.children);
+              const insertBefore = children[originalIndex];
+              if (insertBefore) {
+                originalParent.insertBefore(el, insertBefore);
+              } else {
+                originalParent.appendChild(el);
+              }
+            }
+
+            document.removeEventListener('keydown', onKeyDown!);
+            onKeyDown = null;
+            isDragging = false;
+            dragStarted = false;
+            if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+          }
+        };
+        document.addEventListener('keydown', onKeyDown);
       }
 
       lastX = e.clientX;
@@ -1454,20 +1518,9 @@ export class PanelLayoutManager implements AppModule {
         
         if (dropPos) {
           const { grid, panel } = dropPos;
-          
+
           if (panel && panel !== el) {
-            const panelRect = panel.getBoundingClientRect();
-            const panelMid = panelRect.top + panelRect.height / 2;
-            
-            // Check if we should insert before or after based on ghost position
-            const ghostRect = ghostEl?.getBoundingClientRect();
-            const ghostCenter = ghostRect ? ghostRect.top + ghostRect.height / 2 : startY;
-            
-            if (ghostCenter < panelMid) {
-              grid.insertBefore(el, panel);
-            } else {
-              grid.insertBefore(el, panel.nextSibling);
-            }
+            swapElements(el, panel);
           } else if (grid !== originalParent) {
             grid.appendChild(el);
           }
@@ -1477,12 +1530,14 @@ export class PanelLayoutManager implements AppModule {
         el.classList.remove('dragging-source');
         if (ghostEl) {
           ghostEl.style.opacity = '0';
-          setTimeout(() => ghostEl?.remove(), 200);
+          const g = ghostEl;
+          setTimeout(() => g.remove(), 200);
           ghostEl = null;
         }
         if (dropIndicator) {
           dropIndicator.style.opacity = '0';
-          setTimeout(() => dropIndicator?.remove(), 200);
+          const d = dropIndicator;
+          setTimeout(() => d.remove(), 200);
           dropIndicator = null;
         }
         if (lastTargetPanel) {
@@ -1500,6 +1555,10 @@ export class PanelLayoutManager implements AppModule {
         this.savePanelOrder();
       }
       dragStarted = false;
+      if (onKeyDown) {
+        document.removeEventListener('keydown', onKeyDown);
+        onKeyDown = null;
+      }
     };
 
     el.addEventListener('mousedown', onMouseDown);
@@ -1510,6 +1569,10 @@ export class PanelLayoutManager implements AppModule {
       el.removeEventListener('mousedown', onMouseDown);
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
+      if (onKeyDown) {
+        document.removeEventListener('keydown', onKeyDown);
+        onKeyDown = null;
+      }
       if (rafId) {
         cancelAnimationFrame(rafId);
         rafId = 0;
