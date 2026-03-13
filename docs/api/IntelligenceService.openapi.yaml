@@ -508,15 +508,25 @@ components:
                 isClosedNow:
                     type: boolean
                     description: Whether the location is currently closed.
-                lat:
-                    type: number
-                    format: double
-                    description: Latitude of the location.
-                lng:
-                    type: number
-                    format: double
-                    description: Longitude of the location.
+                location:
+                    $ref: '#/components/schemas/GeoCoordinates'
             description: PizzintLocation represents a single monitored pizza location near the Pentagon.
+        GeoCoordinates:
+            type: object
+            properties:
+                latitude:
+                    type: number
+                    maximum: 90
+                    minimum: -90
+                    format: double
+                    description: Latitude in decimal degrees (-90 to 90).
+                longitude:
+                    type: number
+                    maximum: 180
+                    minimum: -180
+                    format: double
+                    description: Longitude in decimal degrees (-180 to 180).
+            description: GeoCoordinates represents a geographic location using WGS84 coordinates.
         GdeltTensionPair:
             type: object
             properties:

@@ -4,6 +4,7 @@ package worldmonitor.intelligence.v1;
 
 import "buf/validate/validate.proto";
 import "sebuf/http/annotations.proto";
+import "worldmonitor/core/v1/geo.proto";
 import "worldmonitor/core/v1/severity.proto";
 
 // CiiScore represents a Composite Instability Index score for a region or country.
@@ -123,10 +124,11 @@ message PizzintLocation {
   DataFreshness data_freshness = 10;
   // Whether the location is currently closed.
   bool is_closed_now = 11;
-  // Latitude of the location.
-  double lat = 12;
-  // Longitude of the location.
-  double lng = 13;
+  // Geographic coordinates of the location.
+  worldmonitor.core.v1.GeoCoordinates location = 14;
+
+  reserved 12, 13;
+  reserved "lat", "lng";
 }
 
 // GdeltTensionPair represents a bilateral tension score between two countries from GDELT.
