@@ -547,6 +547,7 @@ export const USNI_REGION_COORDINATES: Record<string, { lat: number; lon: number 
  * explicitly name the port.  Only covers ships whose homeports are stable and
  * well-documented; keep this list concise — Option A (parsed homePort text)
  * is preferred and this is the fallback.
+ * Last verified: March 2026 (USNI Fleet Tracker)
  */
 export const HULL_HOMEPORT: Record<string, string> = {
   // Aircraft Carriers

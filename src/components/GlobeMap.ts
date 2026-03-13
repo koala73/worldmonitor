@@ -1240,7 +1240,7 @@ export class GlobeMap {
         ? d.activityType.charAt(0).toUpperCase() + d.activityType.slice(1) : '';
       html = `<span style="color:${cc};font-weight:bold;">⚓ ${esc(d.name)}</span>`
         + `<br><span style="opacity:.7;">${d.vesselCount} vessel${d.vesselCount !== 1 ? 's' : ''}</span>`
-        + (actLabel ? `<br><span style="opacity:.6;font-size:10px;">Activity: ${actLabel}</span>` : '')
+        + (actLabel ? `<br><span style="opacity:.6;font-size:10px;">Activity: ${esc(actLabel)}</span>` : '')
         + (d.region ? `<br><span style="opacity:.6;font-size:10px;">${esc(d.region)}</span>` : '');
     } else if (d._kind === 'weather') {
       const wc = d.severity === 'Extreme' ? '#ff0044' : d.severity === 'Severe' ? '#ff6600' : '#88aaff';
@@ -1434,6 +1434,7 @@ export class GlobeMap {
     if (this.tooltipHideTimer) { clearTimeout(this.tooltipHideTimer); this.tooltipHideTimer = null; }
     this.tooltipEl?.remove();
     this.tooltipEl = null;
+    this.popup?.hide();
   }
 
   // ─── Overlay UI: zoom controls & layer panel ─────────────────────────────
