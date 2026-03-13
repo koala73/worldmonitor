@@ -25,6 +25,7 @@ import type { SpeciesComebackPanel } from '@/components/SpeciesComebackPanel';
 import type { RenewableEnergyPanel } from '@/components/RenewableEnergyPanel';
 import type { TvModeController } from '@/services/tv-mode';
 import type { BreakingNewsBanner } from '@/components/BreakingNewsBanner';
+import type { CorrelationEngine } from '@/services/correlation-engine';
 
 export interface CountryBriefSignals {
   criticalNews: number;
@@ -105,6 +106,7 @@ export interface AppContext {
   exportPanel: ExportPanel | null;
   unifiedSettings: UnifiedSettings | null;
   pizzintIndicator: PizzIntIndicator | null;
+  correlationEngine: CorrelationEngine | null;
   countryBriefPage: CountryBriefPanel | null;
   countryTimeline: CountryTimeline | null;
 

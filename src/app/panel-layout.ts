@@ -36,6 +36,10 @@ import {
   WorldClockPanel,
   AirlineIntelPanel,
   AviationCommandBar,
+  MilitaryCorrelationPanel,
+  EscalationCorrelationPanel,
+  EconomicCorrelationPanel,
+  DisasterCorrelationPanel,
 } from '@/components';
 import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
 import { focusInvestmentOnMap } from '@/services/investments-focus';
@@ -604,6 +608,24 @@ export class PanelLayoutManager implements AppModule {
 
     this.createPanel('cascade', () => new CascadePanel());
     this.createPanel('satellite-fires', () => new SatelliteFiresPanel());
+
+    // Correlation engine panels
+    if (this.shouldCreatePanel('military-correlation')) {
+      const p = new MilitaryCorrelationPanel();
+      p.setMapNavigateHandler((lat, lon) => { this.ctx.map?.setCenter(lat, lon, 6); });
+      this.ctx.panels['military-correlation'] = p;
+    }
+    if (this.shouldCreatePanel('escalation-correlation')) {
+      const p = new EscalationCorrelationPanel();
+      p.setMapNavigateHandler((lat, lon) => { this.ctx.map?.setCenter(lat, lon, 4); });
+      this.ctx.panels['escalation-correlation'] = p;
+    }
+    this.createPanel('economic-correlation', () => new EconomicCorrelationPanel());
+    if (this.shouldCreatePanel('disaster-correlation')) {
+      const p = new DisasterCorrelationPanel();
+      p.setMapNavigateHandler((lat, lon) => { this.ctx.map?.setCenter(lat, lon, 5); });
+      this.ctx.panels['disaster-correlation'] = p;
+    }
 
     if (this.shouldCreatePanel('strategic-risk')) {
       const strategicRiskPanel = new StrategicRiskPanel();

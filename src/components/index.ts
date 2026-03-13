@@ -52,3 +52,8 @@ export * from './GulfEconomiesPanel';
 export * from './WorldClockPanel';
 export { AirlineIntelPanel } from './AirlineIntelPanel';
 export { AviationCommandBar } from './AviationCommandBar';
+export * from './CorrelationPanel';
+export * from './MilitaryCorrelationPanel';
+export * from './EscalationCorrelationPanel';
+export * from './EconomicCorrelationPanel';
+export * from './DisasterCorrelationPanel';
