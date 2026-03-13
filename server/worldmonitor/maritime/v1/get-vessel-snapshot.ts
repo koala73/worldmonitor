@@ -135,7 +135,8 @@ async function fetchVesselSnapshotFromRelay(): Promise<VesselSnapshot | undefine
       densityZones,
       disruptions,
     };
-  } catch {
+  } catch (error) {
+    console.warn('[get-vessel-snapshot] failed to fetch snapshot from relay', error);
     return undefined;
   }
 }
@@ -151,7 +152,8 @@ export async function getVesselSnapshot(
   try {
     const snapshot = await fetchVesselSnapshot();
     return { snapshot };
-  } catch {
+  } catch (error) {
+    console.warn('[get-vessel-snapshot] getVesselSnapshot handler failed', error);
     return { snapshot: undefined };
   }
 }
