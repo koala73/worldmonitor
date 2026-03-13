@@ -2518,6 +2518,17 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
   visibility: hidden !important;
 }
 
+/* Keep header above fullscreen panels so variant switcher stays clickable (#887) */
+body.live-news-fullscreen-active .header {
+  position: relative;
+  z-index: 10001;
+}
+
+/* Hide map section behind fullscreen panel (#859) */
+body.live-news-fullscreen-active .map-section {
+  visibility: hidden !important;
+}
+
 .live-indicator-btn {
   background: transparent;
   border: none;
