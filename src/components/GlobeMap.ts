@@ -1113,7 +1113,7 @@ export class GlobeMap {
       'font-size:11px',
       'font-family:monospace',
       'color:#d4d4d4',
-      'max-width:240px',
+      'max-width:280px',
       'z-index:1000',
       'pointer-events:auto',
       'line-height:1.5',
@@ -1126,13 +1126,18 @@ export class GlobeMap {
     let html = '';
     if (d._kind === 'conflict') {
       html = `<span style="color:#ff5050;font-weight:bold;">⚔ ${esc(d.location)}</span>` +
-             (d.fatalities ? `<br><span style="opacity:.7;">Casualties: ${d.fatalities}</span>` : '');
+             (d.eventType ? `<br><span style="opacity:.7;">${esc(d.eventType)}</span>` : '') +
+             (d.fatalities ? `<br><span style="opacity:.5;">Casualties: ${d.fatalities}</span>` : '');
     } else if (d._kind === 'hotspot') {
       const sc = ['', '#88ff44', '#ffdd00', '#ffaa00', '#ff6600', '#ff2020'][d.escalationScore] ?? '#ffaa00';
       html = `<span style="color:${sc};font-weight:bold;">🎯 ${esc(d.name)}</span>` +
              `<br><span style="opacity:.7;">Escalation: ${d.escalationScore}/5</span>`;
     } else if (d._kind === 'flight') {
-      html = `<span style="font-weight:bold;">✈ ${esc(d.callsign)}</span><br><span style="opacity:.7;">${esc(d.type)}</span>`;
+      const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+      const compass = dirs[Math.round(((d.heading ?? 0) % 360 + 360) % 360 / 22.5) % 16];
+      html = `<span style="font-weight:bold;">✈ ${esc(d.callsign)}</span>` +
+             `<br><span style="opacity:.7;">${esc(d.type)}</span>` +
+             `<br><span style="opacity:.5;">Heading: ${compass} (${Math.round(d.heading ?? 0)}°)</span>`;
     } else if (d._kind === 'vessel') {
       html = `<span style="font-weight:bold;">⛴ ${esc(d.name)}</span><br><span style="opacity:.7;">${esc(d.type)}</span>`;
     } else if (d._kind === 'weather') {
@@ -1183,7 +1188,7 @@ export class GlobeMap {
       const gc = d.level === 'high' ? '#ff2020' : '#ff8800';
       html = `<span style="color:${gc};font-weight:bold;">📡 GPS Jamming</span>` +
              `<br><span style="opacity:.7;">Level: ${esc(d.level)}</span>` +
-             `<br><span style="opacity:.5;">NP avg: ${d.npAvg.toFixed(2)}</span>`;
+             `<br><span style="opacity:.5;">Avg satellites visible: ${d.npAvg.toFixed(1)}</span>`;
     } else if (d._kind === 'tech') {
       html = `<span style="color:#44aaff;font-weight:bold;">💻 ${esc(d.title.slice(0, 50))}</span>` +
              `<br><span style="opacity:.7;">${esc(d.country)}</span>` +
@@ -1292,7 +1297,8 @@ export class GlobeMap {
       }
     }
     el.innerHTML = `<div style="padding-right:16px;position:relative;">${closeBtn}${html}</div>`;
-    if (d._kind === 'satellite') el.style.maxWidth = '300px';
+    const wideKinds = new Set(['satellite', 'flightDelay', 'conflictZone', 'cableAdvisory']);
+    if (wideKinds.has(d._kind)) el.style.maxWidth = '300px';
     el.querySelector('button')?.addEventListener('click', () => this.hideTooltip());
     el.addEventListener('mouseenter', () => {
       if (this.tooltipHideTimer) { clearTimeout(this.tooltipHideTimer); this.tooltipHideTimer = null; }
@@ -1319,7 +1325,8 @@ export class GlobeMap {
 
     this.tooltipEl = el;
     if (this.tooltipHideTimer) clearTimeout(this.tooltipHideTimer);
-    const hideDelay = d._kind === 'satellite' ? 6000 : 3500;
+    const richKinds = new Set(['satellite', 'flightDelay', 'cableAdvisory', 'conflictZone', 'spaceport', 'economic', 'datacenter', 'imageryScene', 'repairShip', 'aisDisruption']);
+    const hideDelay = richKinds.has(d._kind) ? 6000 : 3500;
     this.tooltipHideTimer = setTimeout(() => this.hideTooltip(), hideDelay);
   }
 
