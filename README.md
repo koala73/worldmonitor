@@ -13,7 +13,15 @@
 [![Latest release](https://img.shields.io/github/v/release/bradleybond512/worldmonitor-macos?style=flat)](https://github.com/bradleybond512/worldmonitor-macos/releases/latest)
 
 <p align="center">
-  <a href="https://github.com/bradleybond512/worldmonitor-macos/releases/latest"><img src="https://img.shields.io/badge/Download-macOS_Apple_Silicon_(DMG)-000000?style=for-the-badge&logo=apple&logoColor=white" alt="Download macOS Apple Silicon"></a>
+  <strong>Download v2.5.25</strong>
+</p>
+<p align="center">
+  <a href="https://github.com/bradleybond512/worldmonitor-macos/releases/latest"><img src="https://img.shields.io/badge/macOS_Apple_Silicon-DMG-000000?style=for-the-badge&logo=apple&logoColor=white" alt="Download macOS Apple Silicon"></a>&nbsp;
+  <a href="https://github.com/bradleybond512/worldmonitor-macos/releases/latest"><img src="https://img.shields.io/badge/macOS_Intel-DMG-636366?style=for-the-badge&logo=apple&logoColor=white" alt="Download macOS Intel"></a>
+</p>
+<p align="center">
+  <a href="https://github.com/bradleybond512/worldmonitor-macos/releases/latest"><img src="https://img.shields.io/badge/Windows-MSI_Installer-0078D6?style=for-the-badge&logo=windows&logoColor=white" alt="Download Windows"></a>&nbsp;
+  <a href="https://github.com/bradleybond512/worldmonitor-macos/releases/latest"><img src="https://img.shields.io/badge/Linux-AppImage-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Download Linux"></a>
 </p>
 
 <p align="center">
@@ -47,7 +55,10 @@
 | **Claude AI provider** | Anthropic Claude Haiku in the summarization fallback chain alongside Groq/OpenRouter |
 | **Earthquakes panel** | USGS M4.5+ live seismic data with magnitude-color-coded table |
 | **Air Strikes & Drones panel** | ACLED-sourced air/drone strikes and missile attacks — last 30 days, mapped to globe, click-to-fly |
-| **Monitoring Modes** | Peace / Finance / War modes — Finance auto-triggers on ≥2.5% S&P or ≥5% BTC move; War mode on geopolitical escalation signals |
+| **Monitoring Modes** | Peace / Finance / War / Disaster modes — Finance auto-triggers on ≥2.5% S&P or ≥5% BTC move; War mode on geopolitical escalation signals; Disaster mode on GDACS Red alerts or M6.5+ earthquakes |
+| **Ollama Streaming** | Real-time typewriter effect for AI panel summaries via SSE — Stop button mid-stream; falls through to Groq → Claude → OpenRouter → browser T5 if Ollama unavailable |
+| **Shareable Map URLs** | `Cmd+S` encodes map center, zoom, active layers, and time range into a shareable URL — LZ-string compressed when > 2 000 bytes |
+| **Arrival Choreography** | Canvas overlay animations on breaking news: wavefront ripple, corona pulse on hotspots, full-screen flare on mode transitions — threat-type color-coded (conflict=red, cyber=cyan, economic=gold, natural=orange) |
 | **Low Power Mode (⚡)** | Sidebar button disables animations, trail layers, and spatial audio to reduce CPU/GPU load |
 | **Window menu** | Standard macOS Window menu — Minimize, Zoom, Close |
 | **Open Logs Folder** | Help → Open Logs Folder opens the app log directory in Finder for easy debugging |
