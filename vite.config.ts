@@ -665,6 +665,7 @@ function youtubeLivePlugin(): Plugin {
 }
 
 export default defineConfig({
+  base: process.env.BASE_PATH || '/',
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
   },

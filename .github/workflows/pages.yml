@@ -30,14 +30,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+        id: pages
+
       - name: Build web app (full variant)
         env:
           VITE_VARIANT: full
           CONVEX_URL: ${{ secrets.CONVEX_URL }}
+          BASE_PATH: ${{ steps.pages.outputs.base_path }}
         run: npm run build:full
-
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
