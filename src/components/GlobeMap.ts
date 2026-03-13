@@ -35,6 +35,11 @@ import type { MapLayers, Hotspot, MilitaryFlight, MilitaryVessel, MilitaryVessel
 import type { Earthquake } from '@/services/earthquakes';
 import type { AirportDelayAlert } from '@/services/aviation';
 import { MapPopup } from './MapPopup';
+import type { PositiveGeoEvent } from '@/services/positive-events-geo';
+import type { KindnessPoint } from '@/services/kindness-data';
+import type { HappinessData } from '@/services/happiness-data';
+import type { SpeciesRecovery } from '@/services/conservation-data';
+import type { RenewableInstallation } from '@/services/renewable-installations';
 import type { MapContainerState, MapView, TimeRange } from './MapContainer';
 import type { CountryClickPayload } from './DeckGLMap';
 import type { WeatherAlert } from '@/services/weather';
@@ -333,6 +338,32 @@ interface ImagerySceneMarker extends BaseMarker {
   mode: string;
   previewUrl: string;
 }
+interface PositiveEventMarker extends BaseMarker {
+  _kind: 'positiveEvent';
+  name: string;
+  category: string;
+  count: number;
+}
+interface KindnessMarker extends BaseMarker {
+  _kind: 'kindness';
+  name: string;
+  description: string;
+  intensity: number;
+  type: 'baseline' | 'real';
+}
+interface SpeciesRecoveryMarker extends BaseMarker {
+  _kind: 'speciesRecovery';
+  id: string;
+  commonName: string;
+  recoveryStatus: string;
+}
+interface RenewableInstallationMarker extends BaseMarker {
+  _kind: 'renewableInstallation';
+  id: string;
+  name: string;
+  type: string;
+  capacityMW: number;
+}
 interface GlobePath {
   id: string;
   name: string;
@@ -345,7 +376,7 @@ interface GlobePath {
 interface GlobePolygon {
   coords: number[][][];
   name: string;
-  _kind: 'cii' | 'conflict' | 'imageryFootprint' | 'forecastCone';
+  _kind: 'cii' | 'conflict' | 'imageryFootprint' | 'forecastCone' | 'happiness';
   level?: string;
   score?: number;
 
@@ -367,7 +398,8 @@ type GlobeMarker =
   | ConflictZoneMarker | MilBaseMarker | NuclearSiteMarker | IrradiatorSiteMarker | SpaceportSiteMarker
   | EarthquakeMarker | EconomicMarker | DatacenterMarker | WaterwayMarker | MineralMarker
   | FlightDelayMarker | NotamRingMarker | CableAdvisoryMarker | RepairShipMarker | AisDisruptionMarker
-  | NewsLocationMarker | FlashMarker | SatelliteMarker | SatFootprintMarker | ImagerySceneMarker;
+  | NewsLocationMarker | FlashMarker | SatelliteMarker | SatFootprintMarker | ImagerySceneMarker
+  | PositiveEventMarker | KindnessMarker | SpeciesRecoveryMarker | RenewableInstallationMarker;
 
 interface GlobeControlsLike {
   autoRotate: boolean;
@@ -457,6 +489,14 @@ export class GlobeMap {
   private satelliteFootprintMarkers: SatFootprintMarker[] = [];
   private imagerySceneMarkers: ImagerySceneMarker[] = [];
   private imageryFootprintPolygons: GlobePolygon[] = [];
+  private positiveEventMarkers: GlobeMarker[] = [];
+  private kindnessMarkers: GlobeMarker[] = [];
+  private speciesRecoveryMarkers: GlobeMarker[] = [];
+  private renewableInstallationMarkers: GlobeMarker[] = [];
+  private happinessScores: Map<string, number> = new Map();
+  private happinessYear = 0;
+  private happinessSource = '';
+  private hasFocusedOnHappy = false;
   private lastImageryCenter: { lat: number; lon: number } | null = null;
   private imageryFetchTimer: ReturnType<typeof setTimeout> | null = null;
   private imageryFetchVersion = 0;
@@ -508,7 +548,11 @@ export class GlobeMap {
     this.currentView = initialState.view;
 
     this.container.classList.add('globe-mode');
-    this.container.style.cssText = 'width:100%;height:100%;background:#000;position:relative;';
+    this.container.style.position = 'relative';
+    this.container.style.width = '100%';
+    this.container.style.height = '100%';
+    this.container.style.minHeight = '100%';
+    this.container.style.background = '#000';
 
     this.initGlobe().catch(err => {
       console.error('[GlobeMap] Init failed:', err);
@@ -592,6 +636,8 @@ export class GlobeMap {
     if (glCanvas) {
       (glCanvas as HTMLElement).style.cssText =
         'position:absolute;top:0;left:0;width:100% !important;height:100% !important;';
+    } else {
+      console.warn('[GlobeMap] initGlobe no canvas found (will retry on resize).');
     }
 
     // Globe attribution (texture + OpenStreetMap data)
@@ -768,6 +814,15 @@ export class GlobeMap {
       .polygonCapColor((d: GlobePolygon) => {
         if (d._kind === 'cii') return GlobeMap.CII_GLOBE_COLORS[d.level!] ?? 'rgba(0,0,0,0)';
         if (d._kind === 'conflict') return GlobeMap.CONFLICT_CAP[d.intensity!] ?? GlobeMap.CONFLICT_CAP.low;
+        if (d._kind === 'happiness') {
+          const score = (d as any).score as number | undefined;
+          if (score == null) return 'rgba(0,0,0,0)';
+          const t = score / 10;
+          const r = Math.round(40 + (1 - t) * 180);
+          const g = Math.round(180 + t * 60);
+          const b = Math.round(40 + (1 - t) * 100);
+          return `rgba(${r},${g},${b},0.35)`;
+        }
         if (d._kind === 'imageryFootprint') return 'rgba(0,0,0,0)';
         if (d._kind === 'forecastCone') return 'rgba(255,140,60,0.2)';
         return 'rgba(255,60,60,0.15)';
@@ -775,6 +830,7 @@ export class GlobeMap {
       .polygonSideColor((d: GlobePolygon) => {
         if (d._kind === 'cii') return 'rgba(0,0,0,0)';
         if (d._kind === 'conflict') return GlobeMap.CONFLICT_SIDE[d.intensity!] ?? GlobeMap.CONFLICT_SIDE.low;
+        if (d._kind === 'happiness') return 'rgba(70, 170, 70, 0.25)';
         if (d._kind === 'imageryFootprint') return 'rgba(0,0,0,0)';
         if (d._kind === 'forecastCone') return 'rgba(255,140,60,0.1)';
         return 'rgba(255,60,60,0.08)';
@@ -782,6 +838,7 @@ export class GlobeMap {
       .polygonStrokeColor((d: GlobePolygon) => {
         if (d._kind === 'cii') return 'rgba(80,80,80,0.3)';
         if (d._kind === 'conflict') return GlobeMap.CONFLICT_STROKE[d.intensity!] ?? GlobeMap.CONFLICT_STROKE.low;
+        if (d._kind === 'happiness') return 'rgba(70,170,70,0.4)';
         if (d._kind === 'imageryFootprint') return '#00b4ff';
         if (d._kind === 'forecastCone') return 'rgba(255,140,60,0.5)';
         return '#ff4444';
@@ -798,6 +855,11 @@ export class GlobeMap {
           if (d.parties?.length) label += `<br/>Parties: ${d.parties.map(p => escapeHtml(p)).join(', ')}`;
           if (d.casualties) label += `<br/>Casualties: ${escapeHtml(d.casualties)}`;
           return label;
+        }
+        if (d._kind === 'happiness') {
+          const year = this.happinessYear || 'unknown';
+          const source = this.happinessSource ? `Source: ${escapeHtml(this.happinessSource)}` : 'Source unknown';
+          return `<b>${escapeHtml(d.name)}</b><br/>Happiness score: ${d.score?.toFixed(1) ?? 'N/A'}<br/>Year: ${year}<br/>${source}`;
         }
         if (d._kind === 'imageryFootprint') {
           let label = `<span style="color:#00b4ff;font-weight:bold;">&#128752; ${escapeHtml(d.satellite ?? '')}</span>`;
@@ -1099,6 +1161,21 @@ export class GlobeMap {
       const sc = d.severity === 'high' ? '#ff2020' : d.severity === 'elevated' ? '#ff8800' : '#44aaff';
       el.innerHTML = GlobeMap.wrapHit(`<div style="font-size:11px;color:${sc};text-shadow:0 0 4px ${sc}88;">⛴</div>`);
       el.title = d.name;
+    } else if (d._kind === 'positiveEvent') {
+      const color = d.count > 8 ? '#44ff88' : '#88ff44';
+      el.innerHTML = GlobeMap.wrapHit(`<div style="font-size:11px;color:${color};text-shadow:0 0 4px ${color}88;">✨</div>`);
+      el.title = `${d.name} (${d.category})`;
+    } else if (d._kind === 'kindness') {
+      const color = d.type === 'real' ? '#38d6ff' : '#88c8ff';
+      el.innerHTML = GlobeMap.wrapHit(`<div style="font-size:11px;color:${color};text-shadow:0 0 4px ${color}88;">💖</div>`);
+      el.title = `${d.name}`;
+    } else if (d._kind === 'speciesRecovery') {
+      el.innerHTML = GlobeMap.wrapHit(`<div style="font-size:10px;color:#7fff7f;text-shadow:0 0 4px #7fff7f88;">🌿</div>`);
+      el.title = `${d.commonName} (${d.recoveryStatus || 'recovered'})`;
+    } else if (d._kind === 'renewableInstallation') {
+      const icon = d.type === 'wind' ? '🌀' : d.type === 'solar' ? '☀️' : d.type === 'hydro' ? '💧' : '🌋';
+      el.innerHTML = GlobeMap.wrapHit(`<div style="font-size:11px;">${icon}</div>`);
+      el.title = `${d.name} · ${d.type} ${d.capacityMW}MW`;
     } else if (d._kind === 'satellite') {
       const c = SAT_COUNTRY_COLORS[(d as SatelliteMarker).country] || '#ccccff';
       el.innerHTML = `<div class="sat-hit" style="width:16px;height:16px;display:flex;align-items:center;justify-content:center;margin:-8px 0 0 -8px;color:${c}"><div class="sat-dot" style="width:5px;height:5px;border-radius:50%;background:${c};box-shadow:0 0 6px 2px ${c}88;transition:transform .15s,box-shadow .15s;"></div></div>`;
@@ -1614,6 +1691,10 @@ export class GlobeMap {
       markers.push(...this.satelliteFootprintMarkers);
       markers.push(...this.imagerySceneMarkers);
     }
+    if (this.layers.positiveEvents) markers.push(...this.positiveEventMarkers);
+    if (this.layers.kindness) markers.push(...this.kindnessMarkers);
+    if (this.layers.speciesRecovery) markers.push(...this.speciesRecoveryMarkers);
+    if (this.layers.renewableInstallations) markers.push(...this.renewableInstallationMarkers);
     if (this.layers.techEvents) markers.push(...this.techMarkers);
     if (this.layers.cables) {
       markers.push(...this.cableAdvisoryMarkers);
@@ -1624,7 +1705,9 @@ export class GlobeMap {
 
     try {
       this.globe.htmlElementsData(markers);
-    } catch (err) { if (import.meta.env.DEV) console.warn('[GlobeMap] flush error', err); }
+    } catch (err) {
+      if (import.meta.env.DEV) console.warn('[GlobeMap] flush error', err);
+    }
   }
 
   private flushArcs(): void {
@@ -1713,6 +1796,22 @@ export class GlobeMap {
         const name = (feat.properties?.name as string) ?? code;
         for (const ring of rings) {
           polys.push({ coords: ring, name, _kind: 'cii', level: entry.level, score: entry.score });
+        }
+      }
+    }
+
+    if (this.layers.happiness && this.countriesGeoData && this.happinessScores.size > 0) {
+      for (const feat of this.countriesGeoData.features) {
+        const code = feat.properties?.['ISO3166-1-Alpha-2'] as string | undefined;
+        if (!code) continue;
+        const score = this.happinessScores.get(code);
+        if (score == null) continue;
+        const geom = feat.geometry;
+        if (!geom) continue;
+        const rings = geom.type === 'Polygon' ? [geom.coordinates] : geom.type === 'MultiPolygon' ? geom.coordinates : [];
+        const name = (feat.properties?.name as string) ?? code;
+        for (const ring of rings) {
+          polys.push({ coords: ring, name, _kind: 'happiness', score });
         }
       }
     }
@@ -2042,13 +2141,14 @@ export class GlobeMap {
 
   private static readonly LAYER_CHANNELS: Map<string, { markers: boolean; arcs: boolean; paths: boolean; polygons: boolean }> = new Map([
     ['ciiChoropleth', { markers: false, arcs: false, paths: false, polygons: true }],
+    ['happiness',     { markers: false, arcs: false, paths: false, polygons: true }],
     ['tradeRoutes',   { markers: false, arcs: true,  paths: false, polygons: false }],
     ['pipelines',     { markers: false, arcs: false, paths: true,  polygons: false }],
     ['conflicts',     { markers: true,  arcs: false, paths: false, polygons: true }],
     ['cables',        { markers: true,  arcs: false, paths: true,  polygons: false }],
-    ['satellites',        { markers: true,  arcs: false, paths: true,  polygons: true }],
+    ['satellites',    { markers: true,  arcs: false, paths: true,  polygons: true }],
 
-    ['natural',           { markers: true,  arcs: false, paths: true,  polygons: true }],
+    ['natural',       { markers: true,  arcs: false, paths: true,  polygons: true }],
   ]);
 
   private flushLayerChannels(layer: keyof MapLayers): void {
@@ -2500,11 +2600,122 @@ export class GlobeMap {
       }));
     this.flushMarkers();
   }
-  public setPositiveEvents(_events: any[]): void {}
-  public setKindnessData(_points: any[]): void {}
-  public setHappinessScores(_data: any): void {}
-  public setSpeciesRecoveryZones(_zones: any[]): void {}
-  public setRenewableInstallations(_installations: any[]): void {}
+  public setPositiveEvents(events: PositiveGeoEvent[]): void {
+    this.positiveEventMarkers = (events ?? []).map(e => ({
+      _kind: 'positiveEvent' as const,
+      _lat: e.lat,
+      _lng: e.lon,
+      name: e.name,
+      category: e.category,
+      count: e.count,
+    }));
+    this.flushMarkers();
+    this.focusOnHappyData();
+  }
+
+  public setKindnessData(points: KindnessPoint[]): void {
+    this.kindnessMarkers = (points ?? []).map(p => ({
+      _kind: 'kindness' as const,
+      _lat: p.lat,
+      _lng: p.lon,
+      name: p.name,
+      description: p.description,
+      intensity: p.intensity,
+      type: p.type,
+    }));
+    this.flushMarkers();
+    this.focusOnHappyData();
+  }
+
+  public setHappinessScores(data: HappinessData): void {
+    this.happinessScores = new Map(Object.entries(data.scores || {}));
+    this.happinessYear = data.year;
+    this.happinessSource = data.source;
+    this.flushPolygons();
+    this.focusOnHappyData();
+  }
+
+  private focusOnHappyData(): void {
+    if (!this.globe || !this.initialized || this.destroyed || this.webglLost) return;
+    if (this.hasFocusedOnHappy) return;
+
+    const pointSources: Array<{ lat: number; lng: number }> = [
+      ...this.positiveEventMarkers,
+      ...this.kindnessMarkers,
+      ...this.speciesRecoveryMarkers,
+      ...this.renewableInstallationMarkers,
+    ]
+      .filter(m => m._lat != null && m._lng != null)
+      .map(m => ({ lat: m._lat, lng: m._lng }));
+
+    let minLat = Number.POSITIVE_INFINITY;
+    let maxLat = Number.NEGATIVE_INFINITY;
+    let minLng = Number.POSITIVE_INFINITY;
+    let maxLng = Number.NEGATIVE_INFINITY;
+
+    for (const p of pointSources) {
+      minLat = Math.min(minLat, p.lat);
+      maxLat = Math.max(maxLat, p.lat);
+      minLng = Math.min(minLng, p.lng);
+      maxLng = Math.max(maxLng, p.lng);
+    }
+
+    if (this.layers.happiness && this.happinessScores.size > 0 && this.countriesGeoData) {
+      for (const feat of this.countriesGeoData.features) {
+        const code = feat.properties?.['ISO3166-1-Alpha-2'] as string | undefined;
+        if (!code || !this.happinessScores.has(code)) continue;
+        const bbox = getCountryBbox(code);
+        if (!bbox) continue;
+        const [cMinLng, cMinLat, cMaxLng, cMaxLat] = bbox;
+        minLat = Math.min(minLat, cMinLat);
+        maxLat = Math.max(maxLat, cMaxLat);
+        minLng = Math.min(minLng, cMinLng);
+        maxLng = Math.max(maxLng, cMaxLng);
+      }
+    }
+
+    if (!Number.isFinite(minLat) || !Number.isFinite(minLng)) return;
+
+    const centerLat = (minLat + maxLat) / 2;
+    const centerLng = (minLng + maxLng) / 2;
+    const latSpan = Math.max(0.5, maxLat - minLat);
+    const lngSpan = Math.max(0.5, maxLng - minLng);
+    const span = Math.max(latSpan, lngSpan);
+    const altitude = Math.min(2.5, Math.max(0.8, span * 0.03 + 0.8));
+
+    this.globe.pointOfView({ lat: centerLat, lng: centerLng, altitude }, 1200);
+    this.hasFocusedOnHappy = true;
+  }
+
+  public setSpeciesRecoveryZones(zones: SpeciesRecovery[]): void {
+    this.speciesRecoveryMarkers = (zones ?? [])
+      .filter(z => z.recoveryZone && z.recoveryZone.lat != null && z.recoveryZone.lon != null)
+      .map(z => ({
+        _kind: 'speciesRecovery' as const,
+        _lat: z.recoveryZone!.lat,
+        _lng: z.recoveryZone!.lon,
+        id: z.id,
+        commonName: z.commonName,
+        recoveryStatus: z.recoveryStatus,
+      } as any));
+    this.flushMarkers();
+    this.focusOnHappyData();
+  }
+
+  public setRenewableInstallations(installations: RenewableInstallation[]): void {
+    this.renewableInstallationMarkers = (installations ?? []).map(i => ({
+      _kind: 'renewableInstallation' as const,
+      _lat: i.lat,
+      _lng: i.lon,
+      id: i.id,
+      name: i.name,
+      type: i.type,
+      capacityMW: i.capacityMW,
+    }));
+    this.flushMarkers();
+    this.focusOnHappyData();
+  }
+
   public setCyberThreats(threats: CyberThreat[]): void {
     this.cyberMarkers = (threats ?? []).filter(t => t.lat != null && t.lon != null).map(t => ({
       _kind: 'cyber' as const,

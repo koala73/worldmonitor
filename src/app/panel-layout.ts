@@ -217,7 +217,6 @@ export class PanelLayoutManager implements AppModule {
           <button class="search-btn" id="searchBtn"><kbd>⌘K</kbd> ${t('header.search')}</button>
           ${this.ctx.isDesktopApp ? '' : `<button class="copy-link-btn" id="copyLinkBtn">${t('header.copyLink')}</button>`}
           ${this.ctx.isDesktopApp ? '' : `<button class="fullscreen-btn" id="fullscreenBtn" title="${t('header.fullscreen')}">⛶</button>`}
-          ${SITE_VARIANT === 'happy' ? `<button class="tv-mode-btn" id="tvModeBtn" title="TV Mode (Shift+T)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></button>` : ''}
           <span id="unifiedSettingsMount"></span>
         </div>
       </div>
@@ -317,7 +316,6 @@ export class PanelLayoutManager implements AppModule {
             </div>
           </div>
           <div class="map-container" id="mapContainer"></div>
-          ${SITE_VARIANT === 'happy' ? '<button class="tv-exit-btn" id="tvExitBtn">Exit TV Mode</button>' : ''}
           <div class="map-resize-handle" id="mapResizeHandle"></div>
           <div class="map-bottom-grid" id="mapBottomGrid"></div>
         </div>
@@ -931,9 +929,13 @@ export class PanelLayoutManager implements AppModule {
     addPanelBlock.addEventListener('click', () => {
       this.ctx.unifiedSettings?.open('panels');
     });
-    panelsGrid.appendChild(addPanelBlock);
 
     const bottomGrid = document.getElementById('mapBottomGrid');
+    if (SITE_VARIANT === 'happy' && bottomGrid) {
+      bottomGrid.appendChild(addPanelBlock);
+    } else {
+      panelsGrid.appendChild(addPanelBlock);
+    }
     if (bottomGrid) {
       bottomOrder.forEach(key => {
         const panel = this.ctx.panels[key];
