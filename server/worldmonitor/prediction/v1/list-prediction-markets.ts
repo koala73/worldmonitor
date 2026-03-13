@@ -18,6 +18,7 @@ import {
 
 import { CHROME_UA, clampInt } from '../../../_shared/constants';
 import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
+import predictionTags from '../../../../shared/prediction-tags.json';
 
 const REDIS_CACHE_KEY = 'prediction:markets:v1';
 const REDIS_CACHE_TTL = 600; // 10 min
@@ -26,6 +27,8 @@ const BOOTSTRAP_KEY = 'prediction:markets-bootstrap:v1';
 const GAMMA_BASE = 'https://gamma-api.polymarket.com';
 const KALSHI_BASE = 'https://trading-api.kalshi.com/trade-api/v2';
 const KALSHI_CACHE_KEY = 'prediction:kalshi:v1';
+const KALSHI_API_KEY = process.env.KALSHI_API_KEY || '';
+const KALSHI_ENABLED = KALSHI_API_KEY.length > 0;
 const FETCH_TIMEOUT = 8000;
 
 const TECH_CATEGORY_TAGS = ['ai', 'tech', 'crypto', 'science'];
@@ -94,18 +97,9 @@ interface BootstrapData {
   finance?: BootstrapMarket[];
 }
 
-const EXCLUDE_KEYWORDS = [
-  'nba', 'nfl', 'mlb', 'nhl', 'fifa', 'world cup', 'super bowl', 'championship',
-  'playoffs', 'oscar', 'grammy', 'emmy', 'box office', 'movie', 'album', 'song',
-  'streamer', 'influencer', 'celebrity', 'kardashian',
-  'bachelor', 'reality tv', 'mvp', 'touchdown', 'home run', 'goal scorer',
-  'academy award', 'bafta', 'golden globe', 'cannes', 'sundance',
-  'documentary', 'feature film', 'tv series', 'season finale',
-];
-
 function isExcluded(title: string): boolean {
   const lower = title.toLowerCase();
-  return EXCLUDE_KEYWORDS.some(kw => lower.includes(kw));
+  return predictionTags.excludeKeywords.some(kw => lower.includes(kw));
 }
 
 const KALSHI_VOLUME_THRESHOLD = 5000;
@@ -144,7 +138,7 @@ function mapEvent(event: GammaEvent, category: string): PredictionMarket {
     closesAt: Number.isFinite(closesAtMs) ? closesAtMs : 0,
     category: category || '',
     source: MarketSource.MARKET_SOURCE_POLYMARKET,
-    openInterest: 0,
+
   };
 }
 
@@ -160,7 +154,7 @@ function mapMarket(market: GammaMarket): PredictionMarket {
     closesAt: Number.isFinite(closesAtMs) ? closesAtMs : 0,
     category: '',
     source: MarketSource.MARKET_SOURCE_POLYMARKET,
-    openInterest: 0,
+
   };
 }
 
@@ -177,21 +171,23 @@ function mapKalshiMarket(market: KalshiMarket, category: string, eventTitle?: st
     closesAt: Number.isFinite(closesAtMs) ? closesAtMs : 0,
     category: category || '',
     source: MarketSource.MARKET_SOURCE_KALSHI,
-    openInterest: parseFloat(market.open_interest_fp || '0'),
   };
 }
 
 /** Fetch open markets from the Kalshi API. Returns null on failure. */
 async function fetchKalshiMarkets(): Promise<PredictionMarket[] | null> {
+  if (!KALSHI_ENABLED) return null;
   try {
     const result = await cachedFetchJson<PredictionMarket[]>(
       KALSHI_CACHE_KEY,
       REDIS_CACHE_TTL,
       async () => {
+        const headers: Record<string, string> = { Accept: 'application/json', 'User-Agent': CHROME_UA };
+        if (KALSHI_API_KEY) headers.Authorization = `Bearer ${KALSHI_API_KEY}`;
         const response = await fetch(
           `${KALSHI_BASE}/events?status=open&with_nested_markets=true&limit=40`,
           {
-            headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
+            headers,
             signal: AbortSignal.timeout(FETCH_TIMEOUT),
           },
         );
@@ -254,7 +250,7 @@ export const listPredictionMarkets: PredictionServiceHandler['listPredictionMark
               closesAt: m.endDate ? Date.parse(m.endDate) : 0,
               category: category || '',
               source: m.source === 'kalshi' ? MarketSource.MARKET_SOURCE_KALSHI : MarketSource.MARKET_SOURCE_POLYMARKET,
-              openInterest: 0,
+          
             }));
             return { markets, pagination: undefined };
           }

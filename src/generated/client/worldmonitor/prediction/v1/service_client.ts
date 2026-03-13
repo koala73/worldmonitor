@@ -29,7 +29,6 @@ export interface PredictionMarket {
   closesAt: number;
   category: string;
   source: MarketSource;
-  openInterest: number;
 }
 
 export interface PaginationResponse {

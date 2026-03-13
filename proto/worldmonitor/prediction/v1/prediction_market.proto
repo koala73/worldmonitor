@@ -36,6 +36,5 @@ message PredictionMarket {
   string category = 7;
   // Source platform (Polymarket, Kalshi, etc.).
   MarketSource source = 8;
-  // Open interest (number of outstanding contracts). Zero if unavailable.
-  double open_interest = 9;
+  reserved 9;
 }
