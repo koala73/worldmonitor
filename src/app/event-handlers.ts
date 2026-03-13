@@ -305,7 +305,6 @@ export class EventHandlerManager implements AppModule {
     this.ctx.authModal = null;
   }
 
-
   private setupEventListeners(): void {
     const openSearch = () => {
       this.callbacks.updateSearchIndex();
