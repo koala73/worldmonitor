@@ -25,11 +25,11 @@ const REDIS_CACHE_TTL = 3600; // 1 hour — data is weekly, no need to hammer
  */
 const SP_CHOKEPOINT_SLUGS: Record<string, string> = {
   suez: 'suez-canal',
-  malacca: 'malacca-strait',
-  hormuz: 'hormuz-strait',
+  malacca_strait: 'malacca-strait',
+  hormuz_strait: 'hormuz-strait',
   bab_el_mandeb: 'bab-el-mandeb',
   panama: 'panama-canal',
-  taiwan: 'taiwan-strait',
+  taiwan_strait: 'taiwan-strait',
   cape_of_good_hope: 'cape-good-hope',
   gibraltar: 'gibraltar-strait',
   bosphorus: 'bosphorus-strait',

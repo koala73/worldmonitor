@@ -124,7 +124,7 @@ describe('Chokepoint assignment', () => {
     );
     assert.equal(
       resolveChokepointId({ text: 'New advisory issued for Strait of Hormuz tanker traffic' }),
-      'hormuz',
+      'hormuz_strait',
     );
   });
 
@@ -141,7 +141,7 @@ describe('Chokepoint assignment', () => {
         text: '',
         location: { latitude: 26.6, longitude: 56.2 }, // near Hormuz
       }),
-      'hormuz',
+      'hormuz_strait',
     );
   });
 

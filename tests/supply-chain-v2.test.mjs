@@ -258,11 +258,11 @@ describe('Chokepoint handler v2 changes', () => {
 
   it('includes all 10 chokepoints', () => {
     assert.match(src, /id:\s*'suez'/);
-    assert.match(src, /id:\s*'malacca'/);
-    assert.match(src, /id:\s*'hormuz'/);
+    assert.match(src, /id:\s*'malacca_strait'/);
+    assert.match(src, /id:\s*'hormuz_strait'/);
     assert.match(src, /id:\s*'bab_el_mandeb'/);
     assert.match(src, /id:\s*'panama'/);
-    assert.match(src, /id:\s*'taiwan'/);
+    assert.match(src, /id:\s*'taiwan_strait'/);
     assert.match(src, /id:\s*'cape_of_good_hope'/);
     assert.match(src, /id:\s*'gibraltar'/);
     assert.match(src, /id:\s*'bosphorus'/);
@@ -686,11 +686,11 @@ describe('DWT upstream module', () => {
 
   it('maps all 10 chokepoint IDs to S&P Global slugs', () => {
     assert.match(src, /suez:\s*'suez-canal'/);
-    assert.match(src, /malacca:\s*'malacca-strait'/);
-    assert.match(src, /hormuz:\s*'hormuz-strait'/);
+    assert.match(src, /malacca_strait:\s*'malacca-strait'/);
+    assert.match(src, /hormuz_strait:\s*'hormuz-strait'/);
     assert.match(src, /bab_el_mandeb:\s*'bab-el-mandeb'/);
     assert.match(src, /panama:\s*'panama-canal'/);
-    assert.match(src, /taiwan:\s*'taiwan-strait'/);
+    assert.match(src, /taiwan_strait:\s*'taiwan-strait'/);
     assert.match(src, /cape_of_good_hope:\s*'cape-good-hope'/);
     assert.match(src, /gibraltar:\s*'gibraltar-strait'/);
     assert.match(src, /bosphorus:\s*'bosphorus-strait'/);
@@ -735,11 +735,11 @@ describe('Chokepoint threat level config', () => {
   it('exports all 10 chokepoints', () => {
     assert.equal(CHOKEPOINTS.length, 10);
     assert.ok(cpById.suez);
-    assert.ok(cpById.malacca);
-    assert.ok(cpById.hormuz);
+    assert.ok(cpById.malacca_strait);
+    assert.ok(cpById.hormuz_strait);
     assert.ok(cpById.bab_el_mandeb);
     assert.ok(cpById.panama);
-    assert.ok(cpById.taiwan);
+    assert.ok(cpById.taiwan_strait);
     assert.ok(cpById.cape_of_good_hope);
     assert.ok(cpById.gibraltar);
     assert.ok(cpById.bosphorus);
@@ -760,7 +760,7 @@ describe('Chokepoint threat level config', () => {
   });
 
   it('Hormuz uses war_zone threat level', () => {
-    assert.equal(cpById.hormuz.threatLevel, 'war_zone');
+    assert.equal(cpById.hormuz_strait.threatLevel, 'war_zone');
   });
 
   it('Bab el-Mandeb uses critical threat level', () => {
@@ -772,20 +772,20 @@ describe('Chokepoint threat level config', () => {
   });
 
   it('Taiwan, Bosphorus, and Dardanelles use elevated threat level', () => {
-    assert.equal(cpById.taiwan.threatLevel, 'elevated');
+    assert.equal(cpById.taiwan_strait.threatLevel, 'elevated');
     assert.equal(cpById.bosphorus.threatLevel, 'elevated');
     assert.equal(cpById.dardanelles.threatLevel, 'elevated');
   });
 
   it('Malacca, Panama, Cape of Good Hope, and Gibraltar use normal threat level', () => {
-    assert.equal(cpById.malacca.threatLevel, 'normal');
+    assert.equal(cpById.malacca_strait.threatLevel, 'normal');
     assert.equal(cpById.panama.threatLevel, 'normal');
     assert.equal(cpById.cape_of_good_hope.threatLevel, 'normal');
     assert.equal(cpById.gibraltar.threatLevel, 'normal');
   });
 
   it('Hormuz threatDescription mentions Iran-Israel war', () => {
-    assert.ok(cpById.hormuz.threatDescription.includes('Iran-Israel'));
+    assert.ok(cpById.hormuz_strait.threatDescription.includes('Iran-Israel'));
   });
 
   it('Bab el-Mandeb threatDescription mentions Houthi', () => {
@@ -793,7 +793,7 @@ describe('Chokepoint threat level config', () => {
   });
 
   it('Malacca, Panama, Cape of Good Hope, and Gibraltar have empty threatDescription', () => {
-    assert.equal(cpById.malacca.threatDescription, '');
+    assert.equal(cpById.malacca_strait.threatDescription, '');
     assert.equal(cpById.panama.threatDescription, '');
     assert.equal(cpById.cape_of_good_hope.threatDescription, '');
     assert.equal(cpById.gibraltar.threatDescription, '');
@@ -823,8 +823,8 @@ describe('Chokepoint threat level config', () => {
   });
 
   it('Hormuz areaKeywords include gulf of oman and strait of hormuz', () => {
-    assert.ok(cpById.hormuz.areaKeywords.includes('gulf of oman'));
-    assert.ok(cpById.hormuz.areaKeywords.includes('strait of hormuz'));
+    assert.ok(cpById.hormuz_strait.areaKeywords.includes('gulf of oman'));
+    assert.ok(cpById.hormuz_strait.areaKeywords.includes('strait of hormuz'));
   });
 
   it('Bab el-Mandeb areaKeywords include houthi and yemen', () => {
@@ -833,7 +833,7 @@ describe('Chokepoint threat level config', () => {
   });
 
   it('Taiwan areaKeywords include south china sea', () => {
-    assert.ok(cpById.taiwan.areaKeywords.includes('south china sea'));
+    assert.ok(cpById.taiwan_strait.areaKeywords.includes('south china sea'));
   });
 
   it('descriptions reference JWC for listed areas', () => {
@@ -855,7 +855,7 @@ describe('Chokepoint threat level config', () => {
   });
 
   it('Hormuz and Gibraltar use eastbound/westbound', () => {
-    assert.deepEqual(cpById.hormuz.directions, ['eastbound', 'westbound']);
+    assert.deepEqual(cpById.hormuz_strait.directions, ['eastbound', 'westbound']);
     assert.deepEqual(cpById.gibraltar.directions, ['eastbound', 'westbound']);
   });
 
@@ -869,7 +869,7 @@ describe('Chokepoint threat level config', () => {
   });
 
   it('Malacca uses northbound/southbound', () => {
-    assert.deepEqual(cpById.malacca.directions, ['northbound', 'southbound']);
+    assert.deepEqual(cpById.malacca_strait.directions, ['northbound', 'southbound']);
   });
 
   it('Cape of Good Hope areaKeywords include cape town and south africa', () => {
