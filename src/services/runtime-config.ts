@@ -284,7 +284,7 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
     name: 'AviationStack flight delays',
     description: 'Real-time international airport delay data from AviationStack API.',
     requiredSecrets: ['AVIATIONSTACK_API'],
-    fallback: 'Non-US airports use simulated delay data.',
+    fallback: 'International flight delay data unavailable without key.',
   },
   {
     id: 'icaoNotams',

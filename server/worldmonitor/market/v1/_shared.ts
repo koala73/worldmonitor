@@ -189,9 +189,16 @@ function parseYahooChartResponse(data: YahooChartResponse): { price: number; cha
   return { price, change, sparkline };
 }
 
+const IS_SIDECAR = process.env.LOCAL_API_MODE === 'tauri-sidecar';
+const YAHOO_QUOTE_CACHE = new Map<string, { data: { price: number; change: number; sparkline: number[] }; ts: number }>();
+const YAHOO_CACHE_TTL_MS = IS_SIDECAR ? 5 * 60 * 1000 : 60 * 1000;
+
 export async function fetchYahooQuote(
   symbol: string,
 ): Promise<{ price: number; change: number; sparkline: number[] } | null> {
+  const cached = YAHOO_QUOTE_CACHE.get(symbol);
+  if (cached && Date.now() - cached.ts < YAHOO_CACHE_TTL_MS) return cached.data;
+
   // Try direct Yahoo first
   try {
     await yahooGate();
@@ -203,20 +210,25 @@ export async function fetchYahooQuote(
     if (resp.ok) {
       const data: YahooChartResponse = await resp.json();
       const parsed = parseYahooChartResponse(data);
-      if (parsed) return parsed;
+      if (parsed) {
+        YAHOO_QUOTE_CACHE.set(symbol, { data: parsed, ts: Date.now() });
+        return parsed;
+      }
     } else {
       console.warn(`[Yahoo] ${symbol} direct HTTP ${resp.status}`);
+      if (cached) return cached.data;
     }
   } catch (err) {
     console.warn(`[Yahoo] ${symbol} direct error:`, (err as Error).message);
+    if (cached) return cached.data;
   }
+
+  // Sidecar: no relay available, return stale cache or null
+  if (IS_SIDECAR) return cached?.data ?? null;
 
   // Fallback: Railway relay (different IP, not rate-limited by Yahoo)
   const relayBase = getRelayBaseUrl();
-  if (!relayBase) {
-    console.warn(`[Yahoo] ${symbol} relay skipped: WS_RELAY_URL not set`);
-    return null;
-  }
+  if (!relayBase) return null;
   try {
     const relayUrl = `${relayBase}/yahoo-chart?symbol=${encodeURIComponent(symbol)}`;
     const resp = await fetch(relayUrl, {
@@ -228,7 +240,9 @@ export async function fetchYahooQuote(
       return null;
     }
     const data: YahooChartResponse = await resp.json();
-    return parseYahooChartResponse(data);
+    const parsed = parseYahooChartResponse(data);
+    if (parsed) YAHOO_QUOTE_CACHE.set(symbol, { data: parsed, ts: Date.now() });
+    return parsed;
   } catch (err) {
     console.warn(`[Yahoo] ${symbol} relay error:`, (err as Error).message);
     return null;

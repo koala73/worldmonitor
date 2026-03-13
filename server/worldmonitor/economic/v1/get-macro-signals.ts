@@ -183,6 +183,13 @@ async function computeMacroSignals(): Promise<GetMacroSignalsResponse> {
     }
   }
 
+  // If ALL Yahoo-dependent signals are UNKNOWN, the verdict is meaningless.
+  // Only FG + hashrate (non-Yahoo) may have computed. Mark unavailable.
+  const yahooFailed = !jpyChart && !btcChart && !qqqChart && !xlpChart;
+  if (yahooFailed) {
+    return buildFallbackResult();
+  }
+
   const verdict = totalCount === 0 ? 'UNKNOWN' : (bullishCount / totalCount >= 0.57 ? 'BUY' : 'CASH');
 
   return {

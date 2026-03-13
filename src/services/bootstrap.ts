@@ -3,9 +3,7 @@ import { isDesktopRuntime, toApiUrl } from '@/services/runtime';
 const hydrationCache = new Map<string, unknown>();
 
 export function getHydratedData(key: string): unknown | undefined {
-  const val = hydrationCache.get(key);
-  if (val !== undefined) hydrationCache.delete(key);
-  return val;
+  return hydrationCache.get(key);
 }
 
 function populateCache(data: Record<string, unknown>): void {

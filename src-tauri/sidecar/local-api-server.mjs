@@ -5,11 +5,24 @@ import dns from 'node:dns/promises';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { promisify } from 'node:util';
-import { brotliCompress, gzipSync } from 'node:zlib';
+import { brotliCompress, brotliDecompressSync, gunzipSync, inflateSync, gzipSync } from 'node:zlib';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const brotliCompressAsync = promisify(brotliCompress);
+
+function decompressBody(body, encoding) {
+  if (!encoding || body.length === 0) return body;
+  const enc = encoding.trim().toLowerCase();
+  try {
+    if (enc === 'br') return brotliDecompressSync(body);
+    if (enc === 'gzip' || enc === 'x-gzip') return gunzipSync(body);
+    if (enc === 'deflate') return inflateSync(body);
+  } catch {
+    return body;
+  }
+  return body;
+}
 
 // Monkey-patch globalThis.fetch to force IPv4 for HTTPS requests.
 // Node.js built-in fetch (undici) tries IPv6 first via Happy Eyeballs.
@@ -62,7 +75,7 @@ function isTransientVerificationError(error) {
 // Global concurrency limiter for upstream requests.
 let _activeUpstream = 0;
 const _upstreamQueue = [];
-const MAX_CONCURRENT_UPSTREAM = 6;
+const MAX_CONCURRENT_UPSTREAM = 12;
 function acquireUpstreamSlot() {
   if (_activeUpstream < MAX_CONCURRENT_UPSTREAM) {
     _activeUpstream++;
@@ -464,6 +477,7 @@ const TRAFFIC_LOG_MAX = 200;
 const trafficLog = [];
 let verboseMode = false;
 let _verboseStatePath = null;
+let _sidecarLogger = null;
 
 function loadVerboseState(dataDir) {
   _verboseStatePath = path.join(dataDir, 'verbose-mode.json');
@@ -481,9 +495,12 @@ function saveVerboseState() {
 function recordTraffic(entry) {
   trafficLog.push(entry);
   if (trafficLog.length > TRAFFIC_LOG_MAX) trafficLog.shift();
-  if (verboseMode) {
-    const ts = entry.timestamp.split('T')[1].replace('Z', '');
-    console.log(`[traffic] ${ts} ${entry.method} ${entry.path} → ${entry.status} ${entry.durationMs}ms`);
+  const ts = entry.timestamp.split('T')[1].replace('Z', '');
+  const line = `[traffic] ${ts} ${entry.method} ${entry.path} → ${entry.status} ${entry.durationMs}ms`;
+  if (_sidecarLogger) {
+    _sidecarLogger.log(line);
+  } else {
+    console.log(line);
   }
 }
 
@@ -561,6 +578,197 @@ async function handleLocalServiceStatus(context) {
     ],
     local: { enabled: true, mode: context.mode, port: context.port, remoteBase: context.remoteBase },
   });
+}
+
+// Bootstrap cache key mapping (mirrors api/bootstrap.js BOOTSTRAP_CACHE_KEYS)
+// Some bootstrap keys differ from RPC handler cache keys. On desktop there's no
+// Railway seeder to populate the bootstrap-specific keys, so RPC handlers write
+// to their own keys (e.g. 'market:commodities:v1'). BOOTSTRAP_FALLBACK_KEYS maps
+// the bootstrap key name to the RPC handler key when they differ, so the sidecar
+// bootstrap can read from whichever was populated.
+const BOOTSTRAP_CACHE_KEYS = {
+  earthquakes:        'seismology:earthquakes:v1',
+  outages:            'infra:outages:v1',
+  serviceStatuses:    'infra:service-statuses:v1',
+  marketQuotes:       'market:stocks-bootstrap:v1',
+  commodityQuotes:    'market:commodities-bootstrap:v1',
+  sectors:            'market:sectors:v1',
+  etfFlows:           'market:etf-flows:v1',
+  macroSignals:       'economic:macro-signals:v1',
+  bisPolicy:          'economic:bis:policy:v1',
+  bisExchange:        'economic:bis:eer:v1',
+  bisCredit:          'economic:bis:credit:v1',
+  shippingRates:      'supply_chain:shipping:v2',
+  chokepoints:        'supply_chain:chokepoints:v2',
+  minerals:           'supply_chain:minerals:v2',
+  giving:             'giving:summary:v1',
+  climateAnomalies:   'climate:anomalies:v1',
+  wildfires:          'wildfire:fires:v1',
+  cyberThreats:       'cyber:threats-bootstrap:v2',
+  techReadiness:      'economic:worldbank-techreadiness:v1',
+  progressData:       'economic:worldbank-progress:v1',
+  renewableEnergy:    'economic:worldbank-renewable:v1',
+  positiveGeoEvents:  'positive-events:geo-bootstrap:v1',
+  theaterPosture:     'theater-posture:sebuf:stale:v1',
+  riskScores:         'risk:scores:sebuf:stale:v1',
+  naturalEvents:      'natural:events:v1',
+  flightDelays:       'aviation:delays-bootstrap:v1',
+  insights:           'news:insights:v1',
+  predictions:        'prediction:markets-bootstrap:v1',
+  cryptoQuotes:       'market:crypto:v1',
+  gulfQuotes:         'market:gulf-quotes:v1',
+  stablecoinMarkets:  'market:stablecoins:v1',
+  unrestEvents:       'unrest:events:v1',
+  iranEvents:         'conflict:iran-events:v1',
+  ucdpEvents:         'conflict:ucdp-events:v1',
+  temporalAnomalies:  'temporal:anomalies:v1',
+  weatherAlerts:      'weather:alerts:v1',
+  spending:           'economic:spending:v1',
+  techEvents:         'research:tech-events-bootstrap:v1',
+};
+// Fallback RPC cache keys for bootstrap entries where bootstrap key != RPC key
+const BOOTSTRAP_FALLBACK_KEYS = {
+  marketQuotes:       'market:stocks:v1',
+  commodityQuotes:    'market:commodities:v1',
+  techEvents:         'research:tech-events:v1',
+  cyberThreats:       'cyber:threats:v2',
+  positiveGeoEvents:  'positive-events:geo:v1',
+  flightDelays:       'aviation:delays:v1',
+  predictions:        'prediction:markets:v1',
+};
+const BOOTSTRAP_SLOW = new Set([
+  'bisPolicy', 'bisExchange', 'bisCredit', 'minerals', 'giving',
+  'sectors', 'etfFlows', 'shippingRates', 'wildfires', 'climateAnomalies',
+  'cyberThreats', 'techReadiness', 'progressData', 'renewableEnergy',
+  'naturalEvents',
+  'cryptoQuotes', 'gulfQuotes', 'stablecoinMarkets', 'unrestEvents', 'ucdpEvents',
+  'techEvents',
+]);
+const BOOTSTRAP_FAST = new Set([
+  'earthquakes', 'outages', 'serviceStatuses', 'macroSignals', 'chokepoints',
+  'marketQuotes', 'commodityQuotes', 'positiveGeoEvents', 'riskScores', 'flightDelays', 'insights', 'predictions',
+  'iranEvents', 'temporalAnomalies', 'weatherAlerts', 'spending', 'theaterPosture',
+]);
+
+// On-demand WB tech readiness computation (replaces seed-wb-indicators.mjs for desktop)
+const WB_INDICATORS = [
+  { key: 'internet',  id: 'IT.NET.USER.ZS', dateRange: '2019:2024' },
+  { key: 'mobile',    id: 'IT.CEL.SETS.P2', dateRange: '2019:2024' },
+  { key: 'broadband', id: 'IT.NET.BBND.P2', dateRange: '2019:2024' },
+  { key: 'rdSpend',   id: 'GB.XPD.RSDV.GD.ZS', dateRange: '2018:2024' },
+];
+const WB_WEIGHTS = { internet: 30, mobile: 15, broadband: 20, rdSpend: 35 };
+const WB_NORMALIZE_MAX = { internet: 100, mobile: 150, broadband: 50, rdSpend: 5 };
+
+let _wbFetchPromise = null;
+
+async function fetchWbTechReadiness(logger) {
+  if (_wbFetchPromise) return _wbFetchPromise;
+  _wbFetchPromise = (async () => {
+    try {
+      const indicatorData = {};
+      for (const ind of WB_INDICATORS) {
+        const url = `https://api.worldbank.org/v2/country/all/indicator/${ind.id}?format=json&date=${ind.dateRange}&per_page=1000`;
+        const resp = await fetchWithTimeout(url, {
+          headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
+        }, 15000);
+        if (!resp.ok) { logger.warn(`[wb] ${ind.id} HTTP ${resp.status}`); continue; }
+        const raw = await resp.json();
+        if (!Array.isArray(raw) || raw.length < 2) continue;
+        const entries = raw[1] || [];
+        const latest = {};
+        for (const e of entries) {
+          const iso3 = e.countryiso3code || e.country?.id;
+          const val = e.value;
+          const year = parseInt(e.date, 10);
+          if (!iso3 || val == null || iso3.length !== 3) continue;
+          if (!latest[iso3] || year > latest[iso3].year) {
+            latest[iso3] = { value: val, name: e.country?.value || iso3, year };
+          }
+        }
+        indicatorData[ind.key] = latest;
+      }
+
+      const countries = new Set();
+      for (const d of Object.values(indicatorData)) {
+        for (const iso3 of Object.keys(d)) countries.add(iso3);
+      }
+
+      const rankings = [];
+      for (const iso3 of countries) {
+        const components = {};
+        let totalWeight = 0;
+        let weightedSum = 0;
+        for (const ind of WB_INDICATORS) {
+          const entry = indicatorData[ind.key]?.[iso3];
+          components[ind.key] = entry?.value ?? null;
+          if (entry?.value != null) {
+            const norm = Math.min(entry.value / WB_NORMALIZE_MAX[ind.key], 1);
+            weightedSum += norm * WB_WEIGHTS[ind.key];
+            totalWeight += WB_WEIGHTS[ind.key];
+          }
+        }
+        if (totalWeight === 0) continue;
+        const score = +(weightedSum / totalWeight * 100).toFixed(1);
+        const name = indicatorData.internet?.[iso3]?.name || iso3;
+        rankings.push({ country: iso3, countryName: name, score, rank: 0, components });
+      }
+      rankings.sort((a, b) => b.score - a.score);
+      rankings.forEach((r, i) => { r.rank = i + 1; });
+      logger.log(`[wb] computed tech readiness for ${rankings.length} countries`);
+      return rankings;
+    } catch (e) {
+      logger.warn(`[wb] tech readiness fetch failed: ${e.message}`);
+      return null;
+    } finally {
+      _wbFetchPromise = null;
+    }
+  })();
+  return _wbFetchPromise;
+}
+
+async function handleSidecarBootstrap(requestUrl, context) {
+  const cacheGet = globalThis.__sidecarCacheGet;
+  const cacheSet = globalThis.__sidecarCacheSet;
+  const tier = requestUrl.searchParams.get('tier');
+  let registry;
+  if (tier === 'slow' || tier === 'fast') {
+    const tierSet = tier === 'slow' ? BOOTSTRAP_SLOW : BOOTSTRAP_FAST;
+    registry = Object.fromEntries(Object.entries(BOOTSTRAP_CACHE_KEYS).filter(([k]) => tierSet.has(k)));
+  } else {
+    const requested = requestUrl.searchParams.get('keys')?.split(',').filter(Boolean);
+    registry = requested
+      ? Object.fromEntries(Object.entries(BOOTSTRAP_CACHE_KEYS).filter(([k]) => requested.includes(k)))
+      : BOOTSTRAP_CACHE_KEYS;
+  }
+
+  const data = {};
+  const missing = [];
+  for (const [name, redisKey] of Object.entries(registry)) {
+    let cached = cacheGet ? cacheGet(redisKey) : null;
+    // On desktop, bootstrap-specific keys may be empty (no Railway seeder).
+    // Fall back to the RPC handler's cache key which gets populated on first call.
+    if ((cached === null || cached === undefined) && BOOTSTRAP_FALLBACK_KEYS[name]) {
+      cached = cacheGet ? cacheGet(BOOTSTRAP_FALLBACK_KEYS[name]) : null;
+    }
+    if (cached !== null && cached !== undefined) {
+      data[name] = cached;
+    } else {
+      missing.push(name);
+    }
+  }
+
+  // On-demand: fetch WB tech readiness if requested but missing
+  if (missing.includes('techReadiness')) {
+    const rankings = await fetchWbTechReadiness(context.logger);
+    if (rankings?.length) {
+      data.techReadiness = rankings;
+      missing.splice(missing.indexOf('techReadiness'), 1);
+      if (cacheSet) cacheSet('economic:worldbank-techreadiness:v1', rankings, 86400);
+    }
+  }
+
+  return json({ data, missing });
 }
 
 async function tryCloudFallback(requestUrl, req, context, reason) {
@@ -1081,6 +1289,12 @@ async function dispatch(requestUrl, req, routes, context) {
     return handleLocalServiceStatus(context);
   }
 
+  // Bootstrap — read from sidecar-cache directly (the compiled bootstrap.js
+  // uses Upstash HTTP which is unavailable on desktop).
+  if (requestUrl.pathname === '/api/bootstrap') {
+    return handleSidecarBootstrap(requestUrl, context);
+  }
+
   // HLS proxy — exempt from auth because <video src="..."> cannot carry
   // custom headers.  Proxies HLS manifests and segments from allowlisted CDN
   // hosts, adding the required Referer header that browsers cannot set.
@@ -1154,6 +1368,14 @@ async function dispatch(requestUrl, req, routes, context) {
     const origin = `http://localhost:${context.port}`;
     const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="strict-origin-when-cross-origin"><style>html,body{margin:0;padding:0;width:100%;height:100%;background:#000;overflow:hidden}#player{width:100%;height:100%}#play-overlay{position:absolute;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;pointer-events:none;background:rgba(0,0,0,0.15)}#play-overlay svg{width:72px;height:72px;opacity:0.9;filter:drop-shadow(0 2px 8px rgba(0,0,0,0.5))}#play-overlay.hidden{display:none}</style></head><body><div id="player"></div><div id="play-overlay" class="hidden"><svg viewBox="0 0 68 48"><path d="M66.52 7.74c-.78-2.93-2.49-5.41-5.42-6.19C55.79.13 34 0 34 0S12.21.13 6.9 1.55C3.97 2.33 2.27 4.81 1.48 7.74.06 13.05 0 24 0 24s.06 10.95 1.48 16.26c.78 2.93 2.49 5.41 5.42 6.19C12.21 47.87 34 48 34 48s21.79-.13 27.1-1.55c2.93-.78 4.64-3.26 5.42-6.19C67.94 34.95 68 24 68 24s-.06-10.95-1.48-16.26z" fill="red"/><path d="M45 24L27 14v20" fill="#fff"/></svg></div><script>function tryStorageAccess(){if(document.requestStorageAccess){document.requestStorageAccess().catch(function(){})}}tryStorageAccess();var tag=document.createElement('script');tag.src='https://www.youtube.com/iframe_api';document.head.appendChild(tag);var player,overlay=document.getElementById('play-overlay'),started=false,muteSyncId,retryTimers=[];var obs=new MutationObserver(function(muts){for(var i=0;i<muts.length;i++){var nodes=muts[i].addedNodes;for(var j=0;j<nodes.length;j++){if(nodes[j].tagName==='IFRAME'){var a=nodes[j].getAttribute('allow')||'';if(a.indexOf('autoplay')===-1){nodes[j].setAttribute('allow','autoplay; encrypted-media; picture-in-picture; storage-access'+(a?'; '+a:''));console.log('[yt-embed] patched iframe allow=autoplay+storage-access')}obs.disconnect();return}}}});obs.observe(document.getElementById('player'),{childList:true,subtree:true});function hideOverlay(){overlay.classList.add('hidden')}function readMuted(){if(!player)return null;if(typeof player.isMuted==='function')return player.isMuted();if(typeof player.getVolume==='function')return player.getVolume()===0;return null}function stopMuteSync(){if(muteSyncId){clearInterval(muteSyncId);muteSyncId=null}}function startMuteSync(){if(muteSyncId)return;var last=readMuted();if(last!==null)window.parent.postMessage({type:'yt-mute-state',muted:last},'*');muteSyncId=setInterval(function(){var m=readMuted();if(m!==null&&m!==last){last=m;window.parent.postMessage({type:'yt-mute-state',muted:m},'*')}},500)}function tryAutoplay(){if(!player||!player.playVideo)return;try{player.mute();player.playVideo();console.log('[yt-embed] tryAutoplay: mute+play')}catch(e){}}function onYouTubeIframeAPIReady(){player=new YT.Player('player',{videoId:'${videoId}',host:'https://www.youtube.com',playerVars:{autoplay:${autoplay},mute:${mute},playsinline:1,rel:0,controls:1,modestbranding:1,enablejsapi:1,origin:'${origin}',widget_referrer:'${origin}'},events:{onReady:function(){console.log('[yt-embed] onReady');window.parent.postMessage({type:'yt-ready'},'*');${vq ? `if(player.setPlaybackQuality)player.setPlaybackQuality('${vq}');` : ''}if(${autoplay}===1){tryAutoplay();retryTimers.push(setTimeout(function(){if(!started)tryAutoplay()},500));retryTimers.push(setTimeout(function(){if(!started)tryAutoplay()},1500));retryTimers.push(setTimeout(function(){if(!started){console.log('[yt-embed] autoplay failed after retries');window.parent.postMessage({type:'yt-autoplay-failed'},'*')}},2500))}startMuteSync()},onError:function(e){console.log('[yt-embed] error code='+e.data);stopMuteSync();window.parent.postMessage({type:'yt-error',code:e.data},'*')},onStateChange:function(e){window.parent.postMessage({type:'yt-state',state:e.data},'*');if(e.data===1||e.data===3){hideOverlay();started=true;retryTimers.forEach(clearTimeout);retryTimers=[]}}}})}setTimeout(function(){if(!started)overlay.classList.remove('hidden')},4000);window.addEventListener('message',function(e){if(!player||!player.getPlayerState)return;var m=e.data;if(!m||!m.type)return;switch(m.type){case'play':player.playVideo();break;case'pause':player.pauseVideo();break;case'mute':player.mute();break;case'unmute':player.unMute();break;case'loadVideo':if(m.videoId)player.loadVideoById(m.videoId);break;case'setQuality':if(m.quality&&player.setPlaybackQuality)player.setPlaybackQuality(m.quality);break}});window.addEventListener('beforeunload',function(){stopMuteSync();obs.disconnect();retryTimers.forEach(clearTimeout)})<\/script></body></html>`;
     return new Response(html, { status: 200, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'permissions-policy': 'autoplay=*, encrypted-media=*, storage-access=(self "https://www.youtube.com")', ...makeCorsHeaders(req) } });
+  }
+
+  // Cloud-preferred routes: proxy to cloud BEFORE auth check.  The frontend
+  // may have a stale token after sidecar restart, but cloud-preferred routes
+  // don't need local auth — they just forward to the cloud API.
+  if (context.cloudFallback && isCloudPreferred(requestUrl.pathname)) {
+    const cloudResponse = await tryCloudFallback(requestUrl, req, context, 'cloud-preferred');
+    if (cloudResponse) return cloudResponse;
   }
 
   // ── Global auth gate ────────────────────────────────────────────────────
@@ -1370,11 +1592,6 @@ async function dispatch(requestUrl, req, routes, context) {
     }
   }
 
-  if (context.cloudFallback && isCloudPreferred(requestUrl.pathname)) {
-    const cloudResponse = await tryCloudFallback(requestUrl, req, context, 'cloud-preferred');
-    if (cloudResponse) return cloudResponse;
-  }
-
   const modulePath = pickModule(requestUrl.pathname, routes);
   if (!modulePath || !existsSync(modulePath)) {
     if (context.cloudFallback) {
@@ -1434,6 +1651,8 @@ async function dispatch(requestUrl, req, routes, context) {
 
 export async function createLocalApiServer(options = {}) {
   const context = resolveConfig(options);
+  _sidecarLogger = context.logger;
+
   loadVerboseState(context.dataDir);
   const routes = await buildRouteTable(context.apiDir);
 
@@ -1459,6 +1678,14 @@ export async function createLocalApiServer(options = {}) {
       const durationMs = Date.now() - start;
       let body = Buffer.from(await response.arrayBuffer());
       const headers = Object.fromEntries(response.headers.entries());
+      // ipv4Fetch (monkey-patched globalThis.fetch) uses node:https which
+      // does NOT auto-decompress. Decompress here so the body is plain text,
+      // then maybeCompressResponseBody will re-compress for the browser.
+      if (headers['content-encoding'] && body.length > 0) {
+        body = decompressBody(body, headers['content-encoding']);
+      }
+      delete headers['content-encoding'];
+      delete headers['transfer-encoding'];
       const corsOrigin = getSidecarCorsOrigin(req);
       headers['access-control-allow-origin'] = corsOrigin;
       headers['vary'] = appendVary(headers['vary'], 'Origin');
@@ -1536,6 +1763,33 @@ export async function createLocalApiServer(options = {}) {
       }
 
       context.logger.log(`[local-api] listening on http://127.0.0.1:${boundPort} (apiDir=${context.apiDir}, routes=${routes.length}, cloudFallback=${context.cloudFallback})`);
+
+      // Pre-warm digest cache so first client request hits hot cache.
+      // The digest handler takes 8-15s on cold cache; client times out at 8s.
+      // By warming here, subsequent client calls return instantly from cache.
+      setTimeout(async () => {
+        const variants = ['tech', 'full', 'finance', 'commodity'];
+        for (const variant of variants) {
+          try {
+            const warmupUrl = `http://127.0.0.1:${boundPort}/api/news/v1/list-feed-digest?variant=${variant}&lang=en`;
+            const warmupReq = new Request(warmupUrl, {
+              method: 'GET',
+              headers: { 'Origin': `http://127.0.0.1:${boundPort}` },
+            });
+            const modulePath = pickModule('/api/news/v1/list-feed-digest', routes);
+            if (!modulePath) { context.logger.log(`[warmup] no handler for digest`); break; }
+            const mod = await importHandler(modulePath);
+            if (typeof mod.default !== 'function') break;
+            const start = Date.now();
+            const resp = await mod.default(warmupReq);
+            const elapsed = Date.now() - start;
+            context.logger.log(`[warmup] digest variant=${variant} status=${resp.status} ${elapsed}ms`);
+          } catch (err) {
+            context.logger.log(`[warmup] digest variant=${variant} error: ${err.message}`);
+          }
+        }
+      }, 500);
+
       return { port: boundPort };
     },
     async close() {

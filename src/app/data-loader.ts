@@ -214,8 +214,8 @@ export class DataLoaderManager implements AppModule {
   private cachedSatRecs: SatRecEntry[] | null = null;
 
   private digestBreaker = { state: 'closed' as 'closed' | 'open' | 'half-open', failures: 0, cooldownUntil: 0 };
-  private readonly digestRequestTimeoutMs = 8000;
-  private readonly digestBreakerCooldownMs = 5 * 60 * 1000;
+  private readonly digestRequestTimeoutMs = isDesktopRuntime() ? 30_000 : 8000;
+  private readonly digestBreakerCooldownMs = isDesktopRuntime() ? 60_000 : 5 * 60 * 1000;
   private readonly persistedDigestMaxAgeMs = 6 * 60 * 60 * 1000;
   private readonly perFeedFallbackCategoryFeedLimit = 3;
   private readonly perFeedFallbackIntelFeedLimit = 6;
@@ -377,8 +377,10 @@ export class DataLoaderManager implements AppModule {
         tasks.push({ name: 'fred', task: runGuarded('fred', () => this.loadFredData()) });
         tasks.push({ name: 'oil', task: runGuarded('oil', () => this.loadOilAnalytics()) });
         tasks.push({ name: 'spending', task: runGuarded('spending', () => this.loadGovernmentSpending()) });
-        tasks.push({ name: 'bis', task: runGuarded('bis', () => this.loadBisData()) });
       }
+      // BIS loads unconditionally — lightweight single API call, populates Central Bank Watch
+      // even when the economic panel is below the viewport on initial load
+      tasks.push({ name: 'bis', task: runGuarded('bis', () => this.loadBisData()) });
 
       // Trade policy data (FULL and FINANCE only)
       if (SITE_VARIANT === 'full' || SITE_VARIANT === 'finance' || SITE_VARIANT === 'commodity') {
@@ -722,6 +724,11 @@ export class DataLoaderManager implements AppModule {
     if (!panel) return;
     const filteredItems = this.filterItemsByTimeRange(items);
     if (filteredItems.length === 0 && items.length > 0) {
+      const sample = items.slice(0, 2).map(i => {
+        const ts = i.pubDate instanceof Date ? i.pubDate.getTime() : new Date(i.pubDate).getTime();
+        return `${i.source}:${ts}(${new Date(ts).toISOString()})`;
+      });
+      console.warn(`[News] ${category}: ${items.length} items all filtered out by ${this.ctx.currentTimeRange}. Samples: ${sample.join(', ')}`);
       panel.renderFilteredEmpty(`No items in ${this.getTimeRangeLabel()}`);
       return;
     }
@@ -2347,7 +2354,11 @@ export class DataLoaderManager implements AppModule {
     try {
       const fireResult = await fetchAllFires(1);
       if (fireResult.skipped) {
-        this.ctx.panels['satellite-fires']?.showConfigError(t('panels.satelliteFires.noData'));
+        if (!isFeatureAvailable('nasaFirms')) {
+          this.ctx.panels['satellite-fires']?.showConfigError(t('components.satelliteFires.noData'));
+        } else {
+          this.ctx.panels['satellite-fires']?.showError(t('components.satelliteFires.noData'));
+        }
         this.ctx.statusPanel?.updateApi('FIRMS', { status: 'error' });
         return;
       }

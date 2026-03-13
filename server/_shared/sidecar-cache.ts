@@ -111,3 +111,10 @@ export function sidecarCacheSet(key: string, value: unknown, ttlSeconds: number)
 export function sidecarCacheStats(): { entries: number; bytes: number; hits: number; misses: number } {
   return { entries: store.size, bytes: totalBytes, hits: hitCount, misses: missCount };
 }
+
+// Expose cache functions on globalThis so the sidecar (local-api-server.mjs)
+// can read cached data without importing this module directly.
+if (process.env.LOCAL_API_MODE === 'tauri-sidecar') {
+  (globalThis as Record<string, unknown>).__sidecarCacheGet = sidecarCacheGet;
+  (globalThis as Record<string, unknown>).__sidecarCacheSet = sidecarCacheSet;
+}

@@ -615,25 +615,35 @@ export class PanelLayoutManager implements AppModule {
     this.createPanel('cascade', () => new CascadePanel());
     this.createPanel('satellite-fires', () => new SatelliteFiresPanel());
 
-    // Correlation engine panels
+    // Correlation engine panels — PRO-locked on desktop
+    const correlationLocked = this.ctx.isDesktopApp && !getSecretState('WORLDMONITOR_API_KEY').present;
+    const correlationFeatures = [
+      'Real-time convergence detection across intelligence signals',
+      'Multi-domain threat scoring with trend analysis',
+      'AI-powered situation assessments and map navigation',
+    ];
     if (this.shouldCreatePanel('military-correlation')) {
       const p = new MilitaryCorrelationPanel();
-      p.setMapNavigateHandler((lat, lon) => { this.ctx.map?.setCenter(lat, lon, 6); });
+      if (correlationLocked) { p.showLocked(correlationFeatures); }
+      else { p.setMapNavigateHandler((lat, lon) => { this.ctx.map?.setCenter(lat, lon, 6); }); }
       this.ctx.panels['military-correlation'] = p;
     }
     if (this.shouldCreatePanel('escalation-correlation')) {
       const p = new EscalationCorrelationPanel();
-      p.setMapNavigateHandler((lat, lon) => { this.ctx.map?.setCenter(lat, lon, 4); });
+      if (correlationLocked) { p.showLocked(correlationFeatures); }
+      else { p.setMapNavigateHandler((lat, lon) => { this.ctx.map?.setCenter(lat, lon, 4); }); }
       this.ctx.panels['escalation-correlation'] = p;
     }
     if (this.shouldCreatePanel('economic-correlation')) {
       const p = new EconomicCorrelationPanel();
-      p.setMapNavigateHandler((lat, lon) => { this.ctx.map?.setCenter(lat, lon, 4); });
+      if (correlationLocked) { p.showLocked(correlationFeatures); }
+      else { p.setMapNavigateHandler((lat, lon) => { this.ctx.map?.setCenter(lat, lon, 4); }); }
       this.ctx.panels['economic-correlation'] = p;
     }
     if (this.shouldCreatePanel('disaster-correlation')) {
       const p = new DisasterCorrelationPanel();
-      p.setMapNavigateHandler((lat, lon) => { this.ctx.map?.setCenter(lat, lon, 5); });
+      if (correlationLocked) { p.showLocked(correlationFeatures); }
+      else { p.setMapNavigateHandler((lat, lon) => { this.ctx.map?.setCenter(lat, lon, 5); }); }
       this.ctx.panels['disaster-correlation'] = p;
     }
 

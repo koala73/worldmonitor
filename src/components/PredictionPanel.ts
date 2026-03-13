@@ -59,10 +59,10 @@ export class PredictionPanel extends Panel {
         ${sourceBadge}
         ${metaHtml}
         <div class="prediction-bar">
-          <div class="prediction-yes" style="width: ${yesPercent}%">
+          <div class="prediction-yes" style="width:${yesPercent}%">
             <span class="prediction-label">${t('components.predictions.yes')} ${yesPercent}%</span>
           </div>
-          <div class="prediction-no" style="width: ${noPercent}%">
+          <div class="prediction-no" style="width:${noPercent}%">
             <span class="prediction-label">${t('components.predictions.no')} ${noPercent}%</span>
           </div>
         </div>
