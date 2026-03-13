@@ -266,6 +266,12 @@ export class PanelLayoutManager implements AppModule {
           <span class="mobile-menu-item-label">@eliehabib</span>
         </a>
         <div class="mobile-menu-divider"></div>
+        <div class="mobile-menu-footer-links">
+          <a href="${this.ctx.isDesktopApp ? 'https://worldmonitor.app/pro' : 'https://www.worldmonitor.app/pro'}" target="_blank" rel="noopener">Pro</a>
+          <a href="${this.ctx.isDesktopApp ? 'https://worldmonitor.app/blog/' : 'https://www.worldmonitor.app/blog/'}" target="_blank" rel="noopener">Blog</a>
+          <a href="${this.ctx.isDesktopApp ? 'https://worldmonitor.app/docs' : 'https://www.worldmonitor.app/docs'}" target="_blank" rel="noopener">Docs</a>
+          <a href="https://status.worldmonitor.app/" target="_blank" rel="noopener">Status</a>
+        </div>
         <div class="mobile-menu-version">v${__APP_VERSION__}</div>
       </nav>
       <div class="region-sheet-backdrop" id="regionSheetBackdrop"></div>

@@ -10418,8 +10418,26 @@ a.prediction-link:hover {
   background: rgba(68, 255, 136, 0.06);
 }
 
+.mobile-menu-footer-links {
+  display: flex;
+  gap: 16px;
+  padding: 12px 20px 0;
+  flex-wrap: wrap;
+}
+
+.mobile-menu-footer-links a {
+  font-size: 12px;
+  color: var(--text-ghost);
+  text-decoration: none;
+  letter-spacing: 0.02em;
+}
+
+.mobile-menu-footer-links a:hover {
+  color: var(--green);
+}
+
 .mobile-menu-version {
-  padding: 16px 20px;
+  padding: 4px 20px 16px;
   font-size: 11px;
   color: var(--text-ghost);
 }
