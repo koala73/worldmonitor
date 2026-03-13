@@ -1,7 +1,7 @@
 import type { MilitaryVessel, MilitaryVesselCluster, USNIFleetReport, USNIVesselEntry } from '@/types';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { createCircuitBreaker } from '@/utils';
-import { getUSNIRegionApproxCoords, getUSNIRegionCoords } from '@/config/military';
+import { getUSNIRegionApproxCoords, getUSNIRegionCoords, HULL_HOMEPORT } from '@/config/military';
 import {
   MilitaryServiceClient,
   type GetUSNIFleetReportResponse,
@@ -88,6 +88,44 @@ function scatterOffset(hullNumber: string, index: number): { lat: number; lon: n
   return { lat: Math.sin(angle) * dist, lon: Math.cos(angle) * dist };
 }
 
+/** Tighter scatter for in-port ships — just enough to separate icons at the same pier. */
+function portScatterOffset(hullNumber: string, index: number): { lat: number; lon: number } {
+  let hash = 0;
+  const str = hullNumber || String(index);
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    hash |= 0;
+  }
+  const angle = (hash % 360) * (Math.PI / 180);
+  const dist = 0.01 + (Math.abs(hash) % 10) * 0.003; // 0.01–0.04 deg ≈ 1–4 km
+  return { lat: Math.sin(angle) * dist, lon: Math.cos(angle) * dist };
+}
+
+/** Resolve homeport coordinates for an in-port vessel.
+ *  Option A: USNI text supplied an explicit homePort string.
+ *  Option B: Fall back to hull-number lookup table.
+ *  Returns undefined if neither resolves. */
+function resolvePortCoords(
+  homePort: string | undefined,
+  hullNumber: string | undefined,
+): { lat: number; lon: number; portName: string } | undefined {
+  // Option A — use what USNI actually told us
+  if (homePort) {
+    const coords = getUSNIRegionCoords(homePort);
+    if (coords) return { ...coords, portName: homePort };
+  }
+  // Option B — hull number fallback table
+  if (hullNumber) {
+    const normalized = hullNumber.toUpperCase().replace(/\s+/g, '').replace(/[–—]/g, '-');
+    const portName = HULL_HOMEPORT[normalized];
+    if (portName) {
+      const coords = getUSNIRegionCoords(portName);
+      if (coords) return { ...coords, portName };
+    }
+  }
+  return undefined;
+}
+
 export function mergeUSNIWithAIS(
   aisVessels: MilitaryVessel[],
   usniReport: USNIFleetReport,
@@ -110,6 +148,10 @@ export function mergeUSNIWithAIS(
         vessel.usniActivityDescription = usniVessel.activityDescription;
         vessel.usniArticleUrl = usniVessel.usniArticleUrl;
         vessel.usniArticleDate = usniVessel.usniArticleDate;
+        const portRes = usniVessel.deploymentStatus === 'in-port'
+          ? resolvePortCoords(usniVessel.homePort, usniVessel.hullNumber)
+          : undefined;
+        vessel.usniHomePort = portRes?.portName ?? usniVessel.homePort;
         matchedHulls.add(normalizeHull(usniVessel.hullNumber));
         break;
       }
@@ -132,6 +174,10 @@ export function mergeUSNIWithAIS(
         vessel.usniActivityDescription = usniVessel.activityDescription;
         vessel.usniArticleUrl = usniVessel.usniArticleUrl;
         vessel.usniArticleDate = usniVessel.usniArticleDate;
+        const portRes = usniVessel.deploymentStatus === 'in-port'
+          ? resolvePortCoords(usniVessel.homePort, usniVessel.hullNumber)
+          : undefined;
+        vessel.usniHomePort = portRes?.portName ?? usniVessel.homePort;
         matchedHulls.add(normalizeHull(usniVessel.hullNumber));
         break;
       }
@@ -143,14 +189,33 @@ export function mergeUSNIWithAIS(
   for (const usniVessel of usniReport.vessels) {
     if (matchedHulls.has(normalizeHull(usniVessel.hullNumber))) continue;
 
-    const coords = getUSNIRegionCoords(usniVessel.region);
+    // Resolve position: in-port ships use port coords (Option A + B),
+    // deployed/underway ships use deployment theater coords.
+    const inPort = usniVessel.deploymentStatus === 'in-port';
+    const portResolution = inPort
+      ? resolvePortCoords(usniVessel.homePort, usniVessel.hullNumber)
+      : undefined;
+
+    const regionCoords = getUSNIRegionCoords(usniVessel.region);
     const hasParsedCoords = Number.isFinite(usniVessel.regionLat)
       && Number.isFinite(usniVessel.regionLon)
       && !(usniVessel.regionLat === 0 && usniVessel.regionLon === 0);
     const fallbackCoords = getUSNIRegionApproxCoords(usniVessel.region);
-    const baseLat = coords?.lat ?? (hasParsedCoords ? usniVessel.regionLat : fallbackCoords.lat);
-    const baseLon = coords?.lon ?? (hasParsedCoords ? usniVessel.regionLon : fallbackCoords.lon);
-    const offset = scatterOffset(usniVessel.hullNumber, syntheticIndex++);
+
+    const baseLat = portResolution?.lat
+      ?? regionCoords?.lat
+      ?? (hasParsedCoords ? usniVessel.regionLat : fallbackCoords.lat);
+    const baseLon = portResolution?.lon
+      ?? regionCoords?.lon
+      ?? (hasParsedCoords ? usniVessel.regionLon : fallbackCoords.lon);
+
+    const offset = portResolution
+      ? portScatterOffset(usniVessel.hullNumber, syntheticIndex++)
+      : scatterOffset(usniVessel.hullNumber, syntheticIndex++);
+
+    const noteBase = portResolution
+      ? `In port — ${portResolution.portName} (USNI)`
+      : `USNI position — ${usniVessel.region} (approximate)`;
 
     merged.push({
       id: `usni-${usniVessel.hullNumber || usniVessel.name}`,
@@ -167,9 +232,10 @@ export function mergeUSNIWithAIS(
       lastAisUpdate: new Date(usniVessel.usniArticleDate),
       confidence: 'low',
       isInteresting: usniVessel.vesselType === 'carrier' || usniVessel.vesselType === 'amphibious',
-      note: `USNI position — ${usniVessel.region} (approximate)`,
+      note: noteBase,
       usniRegion: usniVessel.region,
       usniDeploymentStatus: usniVessel.deploymentStatus,
+      usniHomePort: portResolution?.portName ?? usniVessel.homePort,
       usniStrikeGroup: usniVessel.strikeGroup,
       usniActivityDescription: usniVessel.activityDescription,
       usniArticleUrl: usniVessel.usniArticleUrl,

@@ -31,9 +31,10 @@ import { getCountryBbox, getCountriesGeoJson, getCountryAtCoordinates, getCountr
 import { escapeHtml } from '@/utils/sanitize';
 import { showLayerWarning } from '@/utils/layer-warning';
 import type { FeatureCollection, Geometry } from 'geojson';
-import type { MapLayers, Hotspot, MilitaryFlight, MilitaryVessel, NaturalEvent, InternetOutage, CyberThreat, SocialUnrestEvent, UcdpGeoEvent, MilitaryBase, GammaIrradiator, Spaceport, EconomicCenter, StrategicWaterway, CriticalMineralProject, AIDataCenter, UnderseaCable, Pipeline, CableAdvisory, RepairShip, AisDisruptionEvent, AisDensityZone, AisDisruptionType } from '@/types';
+import type { MapLayers, Hotspot, MilitaryFlight, MilitaryVessel, MilitaryVesselCluster, NaturalEvent, InternetOutage, CyberThreat, SocialUnrestEvent, UcdpGeoEvent, MilitaryBase, GammaIrradiator, Spaceport, EconomicCenter, StrategicWaterway, CriticalMineralProject, AIDataCenter, UnderseaCable, Pipeline, CableAdvisory, RepairShip, AisDisruptionEvent, AisDensityZone, AisDisruptionType } from '@/types';
 import type { Earthquake } from '@/services/earthquakes';
 import type { AirportDelayAlert } from '@/services/aviation';
+import { MapPopup } from './MapPopup';
 import type { MapContainerState, MapView, TimeRange } from './MapContainer';
 import type { CountryClickPayload } from './DeckGLMap';
 import type { WeatherAlert } from '@/services/weather';
@@ -80,7 +81,27 @@ interface VesselMarker extends BaseMarker {
   _kind: 'vessel';
   id: string;
   name: string;
-  type: string;
+  type: string;       // raw enum key: 'carrier'|'destroyer' etc — color/icon lookup
+  typeLabel: string;  // human-readable: 'Aircraft Carrier' etc — display only
+  hullNumber?: string;
+  operator?: string;
+  operatorCountry?: string;
+  isDark?: boolean;
+  usniStrikeGroup?: string;
+  usniRegion?: string;
+  usniDeploymentStatus?: string;
+  usniHomePort?: string;
+  usniActivityDescription?: string;
+  usniArticleDate?: string;
+  usniSource?: boolean;
+}
+interface ClusterMarker extends BaseMarker {
+  _kind: 'cluster';
+  id: string;
+  name: string;
+  vesselCount: number;
+  activityType?: string;
+  region?: string;
 }
 interface WeatherMarker extends BaseMarker {
   _kind: 'weather';
@@ -339,7 +360,7 @@ interface GlobePolygon {
   previewUrl?: string;
 }
 type GlobeMarker =
-  | ConflictMarker | HotspotMarker | FlightMarker | VesselMarker
+  | ConflictMarker | HotspotMarker | FlightMarker | VesselMarker | ClusterMarker
   | WeatherMarker | NaturalMarker | IranMarker | OutageMarker
   | CyberMarker | FireMarker | ProtestMarker
   | UcdpMarker | DisplacementMarker | ClimateMarker | GpsJamMarker | TechMarker
@@ -396,6 +417,10 @@ export class GlobeMap {
   private hotspots: HotspotMarker[] = [];
   private flights: FlightMarker[] = [];
   private vessels: VesselMarker[] = [];
+  private vesselData: Map<string, MilitaryVessel> = new Map();
+  private clusterMarkers: ClusterMarker[] = [];
+  private clusterData: Map<string, MilitaryVesselCluster> = new Map();
+  private popup: MapPopup | null = null;
   private weatherMarkers: WeatherMarker[] = [];
   private naturalMarkers: NaturalMarker[] = [];
   private iranMarkers: IranMarker[] = [];
@@ -477,6 +502,7 @@ export class GlobeMap {
 
   constructor(container: HTMLElement, initialState: MapContainerState) {
     this.container = container;
+    this.popup = new MapPopup(this.container);
     this.layers = { ...initialState.layers };
     this.timeRange = initialState.timeRange;
     this.currentView = initialState.view;
@@ -644,7 +670,7 @@ export class GlobeMap {
         const m = d as GlobeMarker;
         if (m._kind === 'satFootprint') return 0;
         if (m._kind === 'satellite') return (m as SatelliteMarker).alt / 6371;
-        if (m._kind === 'flight' || m._kind === 'vessel') return 0.012;
+        if (m._kind === 'flight' || m._kind === 'vessel' || m._kind === 'cluster') return 0.012;
         if (m._kind === 'hotspot') return 0.005;
         return 0.003;
       })
@@ -883,25 +909,42 @@ export class GlobeMap {
       el.title = d.name;
     } else if (d._kind === 'flight') {
       const heading = d.heading ?? 0;
-      const typeColors: Record<string, string> = {
-        fighter: '#ff4444', bomber: '#ff8800', recon: '#44aaff',
-        tanker: '#88ff44', transport: '#aaaaff', helicopter: '#ffff44',
-        drone: '#ff44ff', maritime: '#44ffff',
-      };
-      const color = typeColors[d.type] ?? '#cccccc';
+      const color = GlobeMap.FLIGHT_TYPE_COLORS[d.type] ?? '#cccccc';
       el.innerHTML = GlobeMap.wrapHit(`
         <div style="transform:rotate(${heading}deg);font-size:11px;color:${color};text-shadow:0 0 4px ${color}88;line-height:1;">
           ✈
         </div>`);
       el.title = `${d.callsign} (${d.type})`;
     } else if (d._kind === 'vessel') {
-      const typeColors: Record<string, string> = {
-        carrier: '#ff4444', destroyer: '#ff8800', submarine: '#8844ff',
-        frigate: '#44aaff', amphibious: '#88ff44', support: '#aaaaaa',
-      };
-      const c = typeColors[d.type] ?? '#44aaff';
-      el.innerHTML = GlobeMap.wrapHit(`<div style="font-size:10px;color:${c};text-shadow:0 0 4px ${c}88;">⛴</div>`);
-      el.title = `${d.name} (${d.type})`;
+      const c = GlobeMap.VESSEL_TYPE_COLORS[d.type] ?? '#44aaff';
+      const icon = GlobeMap.VESSEL_TYPE_ICONS[d.type] ?? '\u26f4';
+      const isCarrier = d.type === 'carrier';
+      const sz = isCarrier ? 15 : 10;
+      const glow = isCarrier ? `0 0 10px 4px ${c}bb` : `0 0 4px ${c}88`;
+      const darkRing = d.isDark
+        ? `<div style="position:absolute;inset:-6px;border-radius:50%;border:2px solid #ff444499;${this.pulseStyle('1.5s')}"></div>`
+        : '';
+      const usniRing = d.usniSource
+        ? `<div style="position:absolute;inset:-4px;border-radius:50%;border:2px dashed #ffaa4466;"></div>`
+        : '';
+      el.innerHTML = GlobeMap.wrapHit(
+        `<div style="position:relative;display:inline-flex;align-items:center;justify-content:center;">` +
+        darkRing +
+        usniRing +
+        `<div style="font-size:${sz}px;color:${c};text-shadow:${glow};line-height:1;${d.usniSource ? 'opacity:0.8;' : ''}">${icon}</div>` +
+        `</div>`
+      );
+      el.title = `${d.name}${d.hullNumber ? ` (${d.hullNumber})` : ''} \u00b7 ${d.typeLabel} \u00b7 ${d.usniSource ? 'EST. POSITION' : 'AIS LIVE'}`;
+    } else if (d._kind === 'cluster') {
+      const cc = GlobeMap.CLUSTER_ACTIVITY_COLORS[d.activityType ?? 'unknown'] ?? '#6688aa';
+      const sz = Math.max(14, Math.min(26, 12 + d.vesselCount * 2));
+      el.innerHTML = GlobeMap.wrapHit(
+        `<div style="position:relative;display:inline-flex;align-items:center;justify-content:center;width:${sz}px;height:${sz}px;">` +
+        `<div style="position:absolute;inset:0;border-radius:50%;background:${cc}22;border:2px solid ${cc}bb;${this.pulseStyle('2.5s')}"></div>` +
+        `<span style="position:relative;font-size:9px;color:${cc};font-weight:bold;line-height:1;">${d.vesselCount}</span>` +
+        `</div>`
+      );
+      el.title = `${d.name} \u00b7 ${d.vesselCount} vessel${d.vesselCount !== 1 ? 's' : ''}`;
     } else if (d._kind === 'weather') {
       const severityColors: Record<string, string> = {
         Extreme: '#ff0044', Severe: '#ff6600', Moderate: '#ffaa00', Minor: '#88aaff',
@@ -1098,6 +1141,33 @@ export class GlobeMap {
         escalationScore: d.escalationScore as Hotspot['escalationScore'],
       });
     }
+
+    if (d._kind === 'vessel' && this.popup) {
+      const vessel = this.vesselData.get(d.id);
+      if (vessel) {
+        const aRect = anchor.getBoundingClientRect();
+        const cRect = this.container.getBoundingClientRect();
+        const x = aRect.left - cRect.left + aRect.width / 2;
+        const y = aRect.top  - cRect.top;
+        this.hideTooltip();
+        this.popup.show({ type: 'militaryVessel', data: vessel, x, y });
+        return;
+      }
+    }
+
+    if (d._kind === 'cluster' && this.popup) {
+      const cluster = this.clusterData.get(d.id);
+      if (cluster) {
+        const aRect = anchor.getBoundingClientRect();
+        const cRect = this.container.getBoundingClientRect();
+        const x = aRect.left - cRect.left + aRect.width / 2;
+        const y = aRect.top  - cRect.top;
+        this.hideTooltip();
+        this.popup.show({ type: 'militaryVesselCluster', data: cluster, x, y });
+        return;
+      }
+    }
+
     this.showMarkerTooltip(d, anchor);
   }
 
@@ -1134,7 +1204,44 @@ export class GlobeMap {
     } else if (d._kind === 'flight') {
       html = `<span style="font-weight:bold;">✈ ${esc(d.callsign)}</span><br><span style="opacity:.7;">${esc(d.type)}</span>`;
     } else if (d._kind === 'vessel') {
-      html = `<span style="font-weight:bold;">⛴ ${esc(d.name)}</span><br><span style="opacity:.7;">${esc(d.type)}</span>`;
+      const deployStatus = d.usniDeploymentStatus && d.usniDeploymentStatus !== 'unknown'
+        ? ` <span style="opacity:.6;font-size:10px;">[${esc(d.usniDeploymentStatus.toUpperCase().replace('-', ' '))}]</span>`
+        : '';
+      const darkWarning = d.isDark
+        ? `<br><span style="color:#ff4444;font-size:10px;font-weight:bold;">⚠ AIS DARK</span>`
+        : '';
+      const operatorLine = d.operatorCountry || d.operator
+        ? `<br><span style="opacity:.6;font-size:10px;">${esc(d.operatorCountry || d.operator || '')}</span>`
+        : '';
+      const hullLine = d.hullNumber
+        ? ` <span style="opacity:.5;font-size:10px;">(${esc(d.hullNumber)})</span>`
+        : '';
+      const articleDate = d.usniArticleDate
+        ? ` · ${new Date(d.usniArticleDate).toLocaleDateString()}`
+        : '';
+      const inPort = d.usniDeploymentStatus === 'in-port';
+      const portLine = inPort && d.usniHomePort
+        ? `<br><span style="color:#44aaff;font-size:10px;">🏠 ${esc(d.usniHomePort)}</span>`
+        : '';
+      html = `<span style="font-weight:bold;">⛴ ${esc(d.name)}${hullLine}${deployStatus}</span>`
+        + darkWarning
+        + `<br><span style="opacity:.7;">${esc(d.typeLabel)}</span>`
+        + operatorLine
+        + portLine
+        + (!inPort && d.usniStrikeGroup ? `<br><span style="opacity:.85;">⚓ ${esc(d.usniStrikeGroup)}</span>` : '')
+        + (d.usniRegion ? `<br><span style="opacity:.6;font-size:10px;">${esc(d.usniRegion)}</span>` : '')
+        + (d.usniActivityDescription ? `<br><span style="opacity:.6;font-size:10px;white-space:normal;display:block;max-width:200px;">${esc(d.usniActivityDescription.slice(0, 120))}</span>` : '')
+        + (d.usniSource
+          ? `<br><span style="color:#ffaa44;font-size:9px;">⚠ EST. POSITION — ${inPort ? 'In-port' : 'Approx.'} via USNI${articleDate}</span>`
+          : `<br><span style="color:#44ff88;font-size:9px;">● AIS LIVE</span>`);
+    } else if (d._kind === 'cluster') {
+      const cc = GlobeMap.CLUSTER_ACTIVITY_COLORS[d.activityType ?? 'unknown'] ?? '#6688aa';
+      const actLabel = d.activityType && d.activityType !== 'unknown'
+        ? d.activityType.charAt(0).toUpperCase() + d.activityType.slice(1) : '';
+      html = `<span style="color:${cc};font-weight:bold;">⚓ ${esc(d.name)}</span>`
+        + `<br><span style="opacity:.7;">${d.vesselCount} vessel${d.vesselCount !== 1 ? 's' : ''}</span>`
+        + (actLabel ? `<br><span style="opacity:.6;font-size:10px;">Activity: ${esc(actLabel)}</span>` : '')
+        + (d.region ? `<br><span style="opacity:.6;font-size:10px;">${esc(d.region)}</span>` : '');
     } else if (d._kind === 'weather') {
       const wc = d.severity === 'Extreme' ? '#ff0044' : d.severity === 'Severe' ? '#ff6600' : '#88aaff';
       html = `<span style="color:${wc};font-weight:bold;">⚡ ${esc(d.severity)}</span>` +
@@ -1327,6 +1434,7 @@ export class GlobeMap {
     if (this.tooltipHideTimer) { clearTimeout(this.tooltipHideTimer); this.tooltipHideTimer = null; }
     this.tooltipEl?.remove();
     this.tooltipEl = null;
+    this.popup?.hide();
   }
 
   // ─── Overlay UI: zoom controls & layer panel ─────────────────────────────
@@ -1476,6 +1584,7 @@ export class GlobeMap {
     if (this.layers.military) {
       markers.push(...this.flights);
       markers.push(...this.vessels);
+      markers.push(...this.clusterMarkers);
     }
     if (this.layers.weather) markers.push(...this.weatherMarkers);
     if (this.layers.natural) {
@@ -1767,14 +1876,91 @@ export class GlobeMap {
     this.flushMarkers();
   }
 
-  public setMilitaryVessels(vessels: MilitaryVessel[]): void {
+  private static readonly FLIGHT_TYPE_COLORS: Record<string, string> = {
+    fighter: '#ff4444', bomber: '#ff8800', recon: '#44aaff',
+    tanker: '#88ff44', transport: '#aaaaff', helicopter: '#ffff44',
+    drone: '#ff44ff', maritime: '#44ffff',
+  };
+
+  private static readonly VESSEL_TYPE_COLORS: Record<string, string> = {
+    carrier:    '#ff4444',
+    destroyer:  '#ff8800',
+    frigate:    '#ffcc00',
+    submarine:  '#8844ff',
+    amphibious: '#44cc88',
+    patrol:     '#44aaff',
+    auxiliary:  '#aaaaaa',
+    research:   '#44ffff',
+    icebreaker: '#88ccff',
+    special:    '#ff44ff',
+  };
+
+  private static readonly VESSEL_TYPE_ICONS: Record<string, string> = {
+    carrier:    '\u26f4',
+    destroyer:  '\u25b2',
+    frigate:    '\u25b2',
+    submarine:  '\u25c6',
+    amphibious: '\u2b21',
+    patrol:     '\u25b6',
+    auxiliary:  '\u25cf',
+    research:   '\u25ce',
+    icebreaker: '\u2745',
+    special:    '\u2605',
+  };
+
+  private static readonly CLUSTER_ACTIVITY_COLORS: Record<string, string> = {
+    deployment: '#ff4444', exercise: '#ff8800', transit: '#ffcc00', unknown: '#6688aa',
+  };
+
+  private static readonly VESSEL_TYPE_LABELS: Record<string, string> = {
+    carrier: 'Aircraft Carrier',
+    destroyer: 'Destroyer',
+    frigate: 'Frigate',
+    submarine: 'Submarine',
+    amphibious: 'Amphibious',
+    patrol: 'Patrol',
+    auxiliary: 'Auxiliary',
+    research: 'Research',
+    icebreaker: 'Icebreaker',
+    special: 'Special Mission',
+    unknown: 'Unknown',
+  };
+
+  public setMilitaryVessels(vessels: MilitaryVessel[], clusters: MilitaryVesselCluster[] = []): void {
+    this.vesselData.clear();
+    for (const v of vessels) this.vesselData.set(v.id, v);
+    this.clusterData.clear();
+    for (const c of clusters) this.clusterData.set(c.id, c);
+
     this.vessels = vessels.map(v => ({
       _kind: 'vessel' as const,
       _lat: v.lat,
       _lng: v.lon,
       id: v.id,
-      name: (v as any).name ?? 'vessel',
-      type: (v as any).vesselType ?? 'destroyer',
+      name: v.name ?? 'vessel',
+      type: v.vesselType,                                                    // raw enum — color/icon key
+      typeLabel: GlobeMap.VESSEL_TYPE_LABELS[v.vesselType] ?? v.vesselType,  // display string
+      hullNumber: v.hullNumber,
+      operator: v.operator !== 'other' ? v.operator : undefined,
+      operatorCountry: v.operatorCountry,
+      isDark: v.isDark,
+      usniStrikeGroup: v.usniStrikeGroup,
+      usniRegion: v.usniRegion,
+      usniDeploymentStatus: v.usniDeploymentStatus,
+      usniHomePort: v.usniHomePort,
+      usniActivityDescription: v.usniActivityDescription,
+      usniArticleDate: v.usniArticleDate,
+      usniSource: v.usniSource,
+    }));
+    this.clusterMarkers = clusters.map(c => ({
+      _kind: 'cluster' as const,
+      _lat: c.lat,
+      _lng: c.lon,
+      id: c.id,
+      name: c.name,
+      vesselCount: c.vesselCount,
+      activityType: c.activityType,
+      region: c.region,
     }));
     this.flushMarkers();
   }
@@ -2783,6 +2969,10 @@ export class GlobeMap {
   // ─── Destroy ──────────────────────────────────────────────────────────────
 
   public destroy(): void {
+    this.popup?.hide();
+    this.popup = null;
+    this.vesselData.clear();
+    this.clusterData.clear();
     this.container.removeEventListener('contextmenu', this.handleContextMenu);
     this.unsubscribeGlobeQuality?.();
     this.unsubscribeGlobeQuality = null;
