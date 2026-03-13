@@ -7,7 +7,22 @@
  */
 
 import { Panel } from './Panel';
-import * as d3 from 'd3';
+import {
+  select,
+  arc,
+  interpolate,
+  easeCubicOut,
+  extent,
+  scaleLinear,
+  area,
+  curveMonotoneX,
+  line,
+  stack,
+  stackOrderNone,
+  stackOffsetNone,
+  max,
+  type SeriesPoint,
+} from 'd3';
 import type { RenewableEnergyData, RegionRenewableData, CapacitySeries } from '@/services/renewable-energy-data';
 import { getCSSColor } from '@/utils';
 import { replaceChildren } from '@/utils/dom-utils';
@@ -91,7 +106,7 @@ export class RenewableEnergyPanel extends Panel {
     const innerRadius = radius * 0.7;
     const outerRadius = radius;
 
-    const svg = d3.select(container)
+    const svg = select(container)
       .append('svg')
       .attr('viewBox', `0 0 ${size} ${size}`)
       .attr('width', size)
@@ -102,7 +117,7 @@ export class RenewableEnergyPanel extends Panel {
       .attr('transform', `translate(${radius},${radius})`);
 
     // Arc generator
-    const arc = d3.arc()
+    const arcGen = arc()
       .innerRadius(innerRadius)
       .outerRadius(outerRadius)
       .cornerRadius(4)
@@ -111,23 +126,23 @@ export class RenewableEnergyPanel extends Panel {
     // Background arc (full circle) -- theme-aware track color
     g.append('path')
       .datum({ endAngle: Math.PI * 2 })
-      .attr('d', arc as any)
+      .attr('d', arcGen as any)
       .attr('fill', getCSSColor('--border'));
 
     // Foreground arc (renewable %) -- animated from 0 to target
     const targetAngle = (percentage / 100) * Math.PI * 2;
     const foreground = g.append('path')
       .datum({ endAngle: 0 })
-      .attr('d', arc as any)
+      .attr('d', arcGen as any)
       .attr('fill', getCSSColor('--green'));
 
     // Animate the arc from 0 to target percentage
-    const interpolate = d3.interpolate(0, targetAngle);
+    const angleInterpolator = interpolate(0, targetAngle);
     foreground.transition()
       .duration(1500)
-      .ease(d3.easeCubicOut)
+      .ease(easeCubicOut)
       .attrTween('d', () => (t: number) => {
-        return (arc as any)({ endAngle: interpolate(t) });
+        return (arcGen as any)({ endAngle: angleInterpolator(t) });
       });
 
     // Center text: percentage value
@@ -178,7 +193,7 @@ export class RenewableEnergyPanel extends Panel {
 
     if (width <= 0) return;
 
-    const svg = d3.select(container)
+    const svg = select(container)
       .append('svg')
       .attr('width', containerWidth)
       .attr('height', height + margin.top + margin.bottom)
@@ -187,39 +202,39 @@ export class RenewableEnergyPanel extends Panel {
     const g = svg.append('g')
       .attr('transform', `translate(${margin.left},${margin.top})`);
 
-    const xExtent = d3.extent(historicalData, d => d.year) as [number, number];
-    const yExtent = d3.extent(historicalData, d => d.value) as [number, number];
+    const xExtent = extent(historicalData, d => d.year) as [number, number];
+    const yExtent = extent(historicalData, d => d.value) as [number, number];
     const yPadding = (yExtent[1] - yExtent[0]) * 0.1;
 
-    const x = d3.scaleLinear().domain(xExtent).range([0, width]);
-    const y = d3.scaleLinear()
+    const x = scaleLinear().domain(xExtent).range([0, width]);
+    const y = scaleLinear()
       .domain([yExtent[0] - yPadding, yExtent[1] + yPadding])
       .range([height, 0]);
 
     const greenColor = getCSSColor('--green');
 
     // Area fill
-    const area = d3.area<{ year: number; value: number }>()
+    const sparkArea = area<{ year: number; value: number }>()
       .x(d => x(d.year))
       .y0(height)
       .y1(d => y(d.value))
-      .curve(d3.curveMonotoneX);
+      .curve(curveMonotoneX);
 
     g.append('path')
       .datum(historicalData)
-      .attr('d', area)
+      .attr('d', sparkArea)
       .attr('fill', greenColor)
       .attr('opacity', 0.15);
 
     // Line stroke
-    const line = d3.line<{ year: number; value: number }>()
+    const sparkLine = line<{ year: number; value: number }>()
       .x(d => x(d.year))
       .y(d => y(d.value))
-      .curve(d3.curveMonotoneX);
+      .curve(curveMonotoneX);
 
     g.append('path')
       .datum(historicalData)
-      .attr('d', line)
+      .attr('d', sparkLine)
       .attr('fill', 'none')
       .attr('stroke', greenColor)
       .attr('stroke-width', 1.5);
@@ -379,28 +394,28 @@ export class RenewableEnergyPanel extends Panel {
     if (innerWidth <= 0) return;
 
     // D3 stack for solar + wind
-    const stack = d3.stack<{ year: number; solar: number; wind: number }>()
+    const stackGen = stack<{ year: number; solar: number; wind: number }>()
       .keys(['solar', 'wind'])
-      .order(d3.stackOrderNone)
-      .offset(d3.stackOffsetNone);
+      .order(stackOrderNone)
+      .offset(stackOffsetNone);
 
-    const stacked = stack(combinedData);
+    const stacked = stackGen(combinedData);
 
     // Scales
-    const xScale = d3.scaleLinear()
+    const xScale = scaleLinear()
       .domain([sortedYears[0]!, sortedYears[sortedYears.length - 1]!])
       .range([0, innerWidth]);
 
-    const stackedMax = d3.max(stacked, layer => d3.max(layer, d => d[1])) ?? 0;
-    const coalMax = d3.max(combinedData, d => d.coal) ?? 0;
+    const stackedMax = max(stacked, layer => max(layer, d => d[1])) ?? 0;
+    const coalMax = max(combinedData, d => d.coal) ?? 0;
     const yMax = Math.max(stackedMax, coalMax) * 1.1; // 10% padding
 
-    const yScale = d3.scaleLinear()
+    const yScale = scaleLinear()
       .domain([0, yMax])
       .range([innerHeight, 0]);
 
     // Create SVG
-    const svg = d3.select(container)
+    const svg = select(container)
       .append('svg')
       .attr('width', containerWidth)
       .attr('height', height)
@@ -416,11 +431,11 @@ export class RenewableEnergyPanel extends Panel {
     const coalColor = getCSSColor('--red');
 
     // Area generator for stacked layers
-    const areaGen = d3.area<d3.SeriesPoint<{ year: number; solar: number; wind: number }>>()
+    const stackArea = area<SeriesPoint<{ year: number; solar: number; wind: number }>>()
       .x(d => xScale(d.data.year))
       .y0(d => yScale(d[0]))
       .y1(d => yScale(d[1]))
-      .curve(d3.curveMonotoneX);
+      .curve(curveMonotoneX);
 
     const fillColors = [solarColor, windColor];
 
@@ -428,17 +443,17 @@ export class RenewableEnergyPanel extends Panel {
     stacked.forEach((layer, i) => {
       g.append('path')
         .datum(layer)
-        .attr('d', areaGen)
+        .attr('d', stackArea)
         .attr('fill', fillColors[i]!)
         .attr('opacity', 0.6);
     });
 
     // Render coal as declining area + line
-    const coalArea = d3.area<{ year: number; coal: number }>()
+    const coalArea = area<{ year: number; coal: number }>()
       .x(d => xScale(d.year))
       .y0(innerHeight)
       .y1(d => yScale(d.coal))
-      .curve(d3.curveMonotoneX);
+      .curve(curveMonotoneX);
 
     g.append('path')
       .datum(combinedData)
@@ -446,10 +461,10 @@ export class RenewableEnergyPanel extends Panel {
       .attr('fill', coalColor)
       .attr('opacity', 0.2);
 
-    const coalLine = d3.line<{ year: number; coal: number }>()
+    const coalLine = line<{ year: number; coal: number }>()
       .x(d => xScale(d.year))
       .y(d => yScale(d.coal))
-      .curve(d3.curveMonotoneX);
+      .curve(curveMonotoneX);
 
     g.append('path')
       .datum(combinedData)
