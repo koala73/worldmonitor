@@ -41,6 +41,16 @@ services:
       NASA_FIRMS_API_KEY: "${NASA_FIRMS_API_KEY:-}"
       CLOUDFLARE_API_TOKEN: "${CLOUDFLARE_API_TOKEN:-}"
       AVIATIONSTACK_API: "${AVIATIONSTACK_API:-}"
+    # Docker secrets (recommended for API keys — keeps them out of docker inspect).
+    # Create secrets/ dir with one file per key, then uncomment below.
+    # See SELF_HOSTING.md or docker-compose.override.yml for details.
+    # secrets:
+    #   - GROQ_API_KEY
+    #   - AISSTREAM_API_KEY
+    #   - FINNHUB_API_KEY
+    #   - FRED_API_KEY
+    #   - NASA_FIRMS_API_KEY
+    #   - LLM_API_KEY
     depends_on:
       redis-rest:
         condition: service_started
@@ -81,6 +91,22 @@ services:
     depends_on:
       - redis
     restart: unless-stopped
+
+# Docker secrets — uncomment and point to your secret files.
+# Example: echo "gsk_abc123" > secrets/groq_api_key.txt
+# secrets:
+#   GROQ_API_KEY:
+#     file: ./secrets/groq_api_key.txt
+#   AISSTREAM_API_KEY:
+#     file: ./secrets/aisstream_api_key.txt
+#   FINNHUB_API_KEY:
+#     file: ./secrets/finnhub_api_key.txt
+#   FRED_API_KEY:
+#     file: ./secrets/fred_api_key.txt
+#   NASA_FIRMS_API_KEY:
+#     file: ./secrets/nasa_firms_api_key.txt
+#   LLM_API_KEY:
+#     file: ./secrets/llm_api_key.txt
 
 volumes:
   redis-data:
