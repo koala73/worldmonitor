@@ -1912,6 +1912,7 @@ async function seedNotamClosures() {
   const t0 = Date.now();
   const notams = await fetchIcaoNotams();
   if (notams.length === 0) {
+    await upstashSet('seed-meta:aviation:notam', { fetchedAt: Date.now(), recordCount: 0 }, 604800);
     console.log('[NOTAM-Seed] No NOTAMs received — preserving existing cache');
     return;
   }
