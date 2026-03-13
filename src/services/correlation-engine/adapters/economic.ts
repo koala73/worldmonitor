@@ -36,11 +36,13 @@ export const economicAdapter: DomainAdapter = {
       const type = isCommodity ? 'commodity_spike' : 'market_move';
       const severity = Math.min(100, absPct * 10);
 
+      // Market data from latestMarkets is always current-session quotes
+      // (no per-quote timestamp available on MarketDataCore), so use `now`.
       signals.push({
         type,
         source: 'markets',
         severity,
-        timestamp: (m as any).updatedAt ?? (m as any).fetchedAt ?? now,
+        timestamp: now,
         label: `${m.display ?? m.symbol} ${m.change > 0 ? '+' : ''}${m.change.toFixed(1)}%`,
         rawData: m,
       });

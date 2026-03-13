@@ -620,7 +620,11 @@ export class PanelLayoutManager implements AppModule {
       p.setMapNavigateHandler((lat, lon) => { this.ctx.map?.setCenter(lat, lon, 4); });
       this.ctx.panels['escalation-correlation'] = p;
     }
-    this.createPanel('economic-correlation', () => new EconomicCorrelationPanel());
+    if (this.shouldCreatePanel('economic-correlation')) {
+      const p = new EconomicCorrelationPanel();
+      p.setMapNavigateHandler((lat, lon) => { this.ctx.map?.setCenter(lat, lon, 4); });
+      this.ctx.panels['economic-correlation'] = p;
+    }
     if (this.shouldCreatePanel('disaster-correlation')) {
       const p = new DisasterCorrelationPanel();
       p.setMapNavigateHandler((lat, lon) => { this.ctx.map?.setCenter(lat, lon, 5); });

@@ -11,6 +11,7 @@ import { IntelligenceServiceClient } from '@/generated/client/worldmonitor/intel
 
 const LLM_SCORE_THRESHOLD = 60;
 const LLM_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+const LLM_MAX_CONCURRENT = 3;
 
 interface LlmCacheEntry {
   assessment: string;
@@ -24,6 +25,7 @@ export class CorrelationEngine {
   private llmCache: Map<string, LlmCacheEntry> = new Map();
   private intelligenceClient: IntelligenceServiceClient;
   private running = false;
+  private llmInFlight = 0;
 
   constructor() {
     // Use '' base URL — requests go to current origin, same as other panels
@@ -40,6 +42,7 @@ export class CorrelationEngine {
     if (this.running) return;
     this.running = true;
     try {
+      this.pruneLlmCache();
       const t0 = performance.now();
 
       for (const adapter of this.adapters) {
@@ -110,7 +113,7 @@ export class CorrelationEngine {
     }
     const clusters: SignalCluster[] = [];
     for (const [country, sigs] of byCountry) {
-      // Country-level: allow 1+ signal (convergence scored by type diversity)
+      if (sigs.length < 2) continue;
       clusters.push({ signals: sigs, country });
     }
     return clusters;
@@ -147,7 +150,7 @@ export class CorrelationEngine {
 
     const clusters: SignalCluster[] = [];
     for (const [key, sigs] of tokenMap) {
-      // Entity-level: allow 1+ signal (convergence scored by type diversity)
+      if (sigs.length < 2) continue;
       clusters.push({ signals: sigs, entityKey: key });
     }
     return clusters;
@@ -277,7 +280,7 @@ export class CorrelationEngine {
       const countries = [...new Set(cluster.signals.map(s => s.country).filter(Boolean) as string[])];
 
       const state: ClusterState = {
-        key: cluster.country ?? cluster.entityKey ?? `${centroidLat?.toFixed(0)},${centroidLon?.toFixed(0)}`,
+        key: cluster.country ?? cluster.entityKey ?? `${centroidLat?.toFixed(1)},${centroidLon?.toFixed(1)}`,
         centroidLat,
         centroidLon,
         country: cluster.country,
@@ -349,6 +352,7 @@ export class CorrelationEngine {
   // ── LLM Assessment ─────────────────────────────────────────
 
   private queueLlmAssessments(cards: ConvergenceCard[], adapter: DomainAdapter): void {
+    const pending: Array<{ card: ConvergenceCard; cacheKey: string }> = [];
     for (const card of cards) {
       if (card.score < LLM_SCORE_THRESHOLD) continue;
 
@@ -359,7 +363,13 @@ export class CorrelationEngine {
         continue;
       }
 
-      void this.fetchAssessment(card, adapter, cacheKey);
+      pending.push({ card, cacheKey });
+    }
+
+    for (const { card, cacheKey } of pending) {
+      if (this.llmInFlight >= LLM_MAX_CONCURRENT) break;
+      this.llmInFlight++;
+      void this.fetchAssessment(card, adapter, cacheKey).finally(() => { this.llmInFlight--; });
     }
   }
 
