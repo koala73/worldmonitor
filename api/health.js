@@ -119,6 +119,10 @@ const ON_DEMAND_KEYS = new Set([
   'cyberThreatsRpc', 'militaryBases', 'temporalAnomalies', 'displacement',
 ]);
 
+// Keys where 0 records is a valid healthy state (e.g. no airports closed).
+// The key must still exist in Redis; only the record count can be 0.
+const EMPTY_DATA_OK_KEYS = new Set(['notamClosures']);
+
 // Cascade groups: if any key in the group has data, all empty siblings are OK.
 // Theater posture uses live → stale → backup fallback chain.
 const CASCADE_GROUPS = {
@@ -160,7 +164,7 @@ function dataSize(parsed) {
                       'papers', 'repos', 'articles', 'signals', 'rates', 'countries',
                       'chokepoints', 'minerals', 'anomalies', 'flows', 'bases', 'flights',
                       'theaters', 'fleets', 'warnings', 'closures', 'cables',
-                      'airports', 'categories', 'regions', 'entries', 'satellites',
+                      'airports', 'closedIcaos', 'categories', 'regions', 'entries', 'satellites',
                       'sectors', 'statuses', 'scores']) {
       if (Array.isArray(parsed[k])) return parsed[k].length;
     }
@@ -298,6 +302,9 @@ export default async function handler(req) {
       if (cascadeCovered) {
         status = 'OK_CASCADE';
         okCount++;
+      } else if (EMPTY_DATA_OK_KEYS.has(name) && seedStale === false) {
+        status = 'OK';
+        okCount++;
       } else if (isOnDemand) {
         status = 'EMPTY_ON_DEMAND';
         warnCount++;
@@ -308,6 +315,9 @@ export default async function handler(req) {
     } else if (size === 0) {
       if (cascadeCovered) {
         status = 'OK_CASCADE';
+        okCount++;
+      } else if (EMPTY_DATA_OK_KEYS.has(name)) {
+        status = 'OK';
         okCount++;
       } else if (isOnDemand) {
         status = 'EMPTY_ON_DEMAND';

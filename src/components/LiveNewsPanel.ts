@@ -410,7 +410,9 @@ export class LiveNewsPanel extends Panel {
     this.playerElementId = `live-news-player-${Date.now()}`;
     this.channels = loadChannelsFromStorage();
     if (this.channels.length === 0) this.channels = getDefaultLiveChannels();
-    this.activeChannel = this.channels[0]!;
+    const savedChannelId = loadFromStorage<string>(STORAGE_KEYS.activeChannel, '');
+    const savedChannel = savedChannelId ? this.channels.find(c => c.id === savedChannelId) : null;
+    this.activeChannel = savedChannel ?? this.channels[0]!;
     this.createLiveButton();
     this.createMuteButton();
     this.createChannelSwitcher();
@@ -985,6 +987,7 @@ export class LiveNewsPanel extends Panel {
     if (channel.id === this.activeChannel.id) return;
 
     this.activeChannel = channel;
+    saveToStorage(STORAGE_KEYS.activeChannel, channel.id);
 
     this.channelSwitcher?.querySelectorAll('.live-channel-btn').forEach(btn => {
       const btnEl = btn as HTMLElement;

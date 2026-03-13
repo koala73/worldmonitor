@@ -188,6 +188,34 @@ function upstashSet(key, value, ttlSeconds) {
   });
 }
 
+function upstashExpire(key, ttlSeconds) {
+  return new Promise((resolve) => {
+    if (!UPSTASH_ENABLED) return resolve(false);
+    const url = new URL('/', UPSTASH_REDIS_REST_URL);
+    const body = JSON.stringify(['EXPIRE', key, String(ttlSeconds)]);
+    const req = https.request(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      timeout: 5000,
+    }, (resp) => {
+      let data = '';
+      resp.on('data', (chunk) => { data += chunk; });
+      resp.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          resolve(parsed?.result === 1);
+        } catch { resolve(false); }
+      });
+    });
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => { req.destroy(); resolve(false); });
+    req.end(body);
+  });
+}
+
 function upstashMGet(keys) {
   return new Promise((resolve) => {
     if (!UPSTASH_ENABLED || keys.length === 0) return resolve([]);
@@ -1913,8 +1941,9 @@ async function seedNotamClosures() {
   const t0 = Date.now();
   const notams = await fetchIcaoNotams();
   if (notams.length === 0) {
+    await upstashExpire(NOTAM_REDIS_KEY, NOTAM_SEED_TTL);
     await upstashSet('seed-meta:aviation:notam', { fetchedAt: Date.now(), recordCount: 0 }, 604800);
-    console.log('[NOTAM-Seed] No NOTAMs received — preserving existing cache');
+    console.log('[NOTAM-Seed] No NOTAMs received — refreshed data key TTL, preserving existing cache');
     return;
   }
 
