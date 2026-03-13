@@ -9,6 +9,7 @@ import { cachedFetchJson } from '../../../_shared/redis';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
 import { UPSTREAM_TIMEOUT_MS, GROQ_API_URL, GROQ_MODEL, buildClassifyCacheKey } from './_shared';
 import { CHROME_UA } from '../../../_shared/constants';
+import { isProviderAvailable } from '../../../_shared/llm-health';
 
 // ========================================================================
 // Constants
@@ -59,6 +60,8 @@ export async function classifyEvent(
       cacheKey,
       CLASSIFY_CACHE_TTL,
       async () => {
+        // Health gate inside fetcher — only runs on cache miss
+        if (!(await isProviderAvailable(apiUrl))) return null;
         try {
           const systemPrompt = `You classify news headlines into threat level and category. Return ONLY valid JSON, no other text.
 

@@ -1,4 +1,5 @@
 import { CHROME_UA } from './constants';
+import { isProviderAvailable } from './llm-health';
 
 export interface ProviderCredentials {
   apiUrl: string;
@@ -131,6 +132,13 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
   for (const providerName of providers) {
     const creds = getProviderCredentials(providerName);
     if (!creds) {
+      if (forcedProvider) return null;
+      continue;
+    }
+
+    // Health gate: skip provider if endpoint is unreachable
+    if (!(await isProviderAvailable(creds.apiUrl))) {
+      console.warn(`[llm:${providerName}] Offline, skipping`);
       if (forcedProvider) return null;
       continue;
     }

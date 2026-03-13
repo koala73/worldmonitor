@@ -1135,6 +1135,35 @@ async function dispatch(requestUrl, req, routes, context) {
       routes: routes.length,
     });
   }
+  // LLM health endpoint — mirrors probe logic from server/_shared/llm-health.ts.
+  // TODO: refactor to import getLlmHealthStatus() once handlers share a process-level module cache.
+  if (requestUrl.pathname === '/api/llm-health') {
+    const PROBE_TIMEOUT = 2000;
+    async function probeOrigin(url) {
+      try { await fetch(url, { method: 'GET', signal: AbortSignal.timeout(PROBE_TIMEOUT) }); return true; } catch { return false; }
+    }
+    const providers = [];
+    const ollamaUrl = process.env.OLLAMA_API_URL || process.env.LLM_API_URL;
+    const groqKey = process.env.GROQ_API_KEY;
+    const openrouterKey = process.env.OPENROUTER_API_KEY;
+
+    if (ollamaUrl) {
+      try {
+        const origin = new URL(ollamaUrl).origin;
+        providers.push({ name: 'ollama', url: origin, available: await probeOrigin(origin) });
+      } catch {}
+    }
+    if (groqKey && groqKey.startsWith('gsk_')) {
+      providers.push({ name: 'groq', url: 'https://api.groq.com', available: await probeOrigin('https://api.groq.com') });
+    }
+    if (openrouterKey) {
+      providers.push({ name: 'openrouter', url: 'https://openrouter.ai', available: await probeOrigin('https://openrouter.ai') });
+    }
+
+    const anyAvailable = providers.some(p => p.available);
+    return json({ available: anyAvailable, providers, checkedAt: Date.now() });
+  }
+
   if (requestUrl.pathname === '/api/local-traffic-log') {
     if (req.method === 'DELETE') {
       trafficLog.length = 0;
@@ -1491,6 +1520,20 @@ export async function createLocalApiServer(options = {}) {
       }
 
       context.logger.log(`[local-api] listening on http://127.0.0.1:${boundPort} (apiDir=${context.apiDir}, routes=${routes.length}, cloudFallback=${context.cloudFallback})`);
+
+      // Warm LLM health cache in background (non-blocking)
+      (async () => {
+        const urls = [
+          process.env.OLLAMA_API_URL || process.env.LLM_API_URL,
+          process.env.GROQ_API_KEY ? 'https://api.groq.com' : null,
+          process.env.OPENROUTER_API_KEY ? 'https://openrouter.ai' : null,
+        ].filter(Boolean);
+        for (const url of urls) {
+          try { await fetch(url, { method: 'GET', signal: AbortSignal.timeout(2000) }); } catch {}
+        }
+        if (urls.length) console.log(`[local-api] LLM health warmed for ${urls.length} provider(s)`);
+      })();
+
       return { port: boundPort };
     },
     async close() {

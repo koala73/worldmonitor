@@ -7,6 +7,7 @@ import type {
 import { cachedFetchJson } from '../../../_shared/redis';
 import { sha256Hex } from './_shared';
 import { CHROME_UA } from '../../../_shared/constants';
+import { isProviderAvailable } from '../../../_shared/llm-health';
 
 const DEDUCT_TIMEOUT_MS = 120_000;
 const DEDUCT_CACHE_TTL = 3600;
@@ -39,6 +40,8 @@ export async function deductSituation(
         cacheKey,
         DEDUCT_CACHE_TTL,
         async () => {
+            // Health gate inside fetcher — only runs on cache miss
+            if (!(await isProviderAvailable(apiUrl))) return null;
             try {
                 const systemPrompt = `You are a senior geopolitical intelligence analyst and forecaster.
 Your task is to DEDUCT the situation in a near timeline (e.g. 24 hours to a few months) based on the user's query.

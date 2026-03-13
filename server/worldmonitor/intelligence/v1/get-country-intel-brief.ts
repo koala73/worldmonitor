@@ -7,6 +7,7 @@ import type {
 import { cachedFetchJson } from '../../../_shared/redis';
 import { UPSTREAM_TIMEOUT_MS, GROQ_API_URL, GROQ_MODEL, TIER1_COUNTRIES, sha256Hex } from './_shared';
 import { CHROME_UA } from '../../../_shared/constants';
+import { isProviderAvailable } from '../../../_shared/llm-health';
 
 // ========================================================================
 // Constants
@@ -22,17 +23,19 @@ export async function getCountryIntelBrief(
   ctx: ServerContext,
   req: GetCountryIntelBriefRequest,
 ): Promise<GetCountryIntelBriefResponse> {
+  const apiKey = process.env.LLM_API_KEY || process.env.GROQ_API_KEY;
+  const apiUrl = process.env.LLM_API_URL || GROQ_API_URL;
+  const model = process.env.LLM_MODEL || GROQ_MODEL;
+
   const empty: GetCountryIntelBriefResponse = {
     countryCode: req.countryCode,
     countryName: '',
     brief: '',
-    model: GROQ_MODEL,
+    model,
     generatedAt: Date.now(),
   };
 
   if (!req.countryCode) return empty;
-
-  const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) return empty;
 
   let contextSnapshot = '';
@@ -69,6 +72,8 @@ Rules:
   let result: GetCountryIntelBriefResponse | null = null;
   try {
     result = await cachedFetchJson<GetCountryIntelBriefResponse>(cacheKey, INTEL_CACHE_TTL, async () => {
+      // Health gate inside fetcher — only runs on cache miss
+      if (!(await isProviderAvailable(apiUrl))) return null;
       try {
         const userPromptParts = [
           `Country: ${countryName} (${req.countryCode})`,
@@ -77,11 +82,11 @@ Rules:
           userPromptParts.push(`Context snapshot:\n${contextSnapshot}`);
         }
 
-        const resp = await fetch(GROQ_API_URL, {
+        const resp = await fetch(apiUrl, {
           method: 'POST',
           headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
           body: JSON.stringify({
-            model: GROQ_MODEL,
+            model,
             messages: [
               { role: 'system', content: systemPrompt },
               { role: 'user', content: userPromptParts.join('\n\n') },
@@ -101,7 +106,7 @@ Rules:
           countryCode: req.countryCode,
           countryName,
           brief,
-          model: GROQ_MODEL,
+          model,
           generatedAt: Date.now(),
         };
       } catch {
