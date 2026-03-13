@@ -109,7 +109,7 @@ export class SupplyChainPanel extends Panel {
           <div class="trade-restriction-body">
             <div class="trade-sector">${cp.activeWarnings} ${t('components.supplyChain.warnings')} · ${aisDisruptions} ${t('components.supplyChain.aisDisruptions')}${cp.directions?.length ? ` · ${escapeHtml(cp.directions.join('/'))}` : ''}</div>
             <div class="trade-description">${escapeHtml(cp.description)}</div>${cp.directionalDwt?.some((d: { dwtThousandTonnes: number }) => d.dwtThousandTonnes > 0) ? `
-            <div class="trade-sector">${cp.directionalDwt.map((d: { direction: string; dwtThousandTonnes: number; wowChangePct: number }) => `${escapeHtml(d.direction)}: ${d.dwtThousandTonnes.toFixed(0)}k DWT (${d.wowChangePct >= 0 ? '+' : ''}${d.wowChangePct.toFixed(1)}% w/w)`).join(' · ')}</div>` : ''}
+            <div class="trade-sector">${t('components.supplyChain.dwtDepartures')}: ${cp.directionalDwt.map((d: { direction: string; dwtThousandTonnes: number; wowChangePct: number }) => { const arrow = d.wowChangePct >= 0 ? '\u25B2' : '\u25BC'; const cls = d.wowChangePct >= 0 ? 'change-positive' : 'change-negative'; return `${escapeHtml(d.direction)} ${d.dwtThousandTonnes.toFixed(0)}k <span class="trade-flow-change ${cls}">${arrow}${Math.abs(d.wowChangePct).toFixed(1)}%</span>`; }).join(' · ')}</div>` : ''}
             <div class="trade-affected">${escapeHtml(cp.affectedRoutes.join(', '))}</div>
           </div>
         </div>`;

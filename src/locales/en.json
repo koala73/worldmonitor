@@ -792,10 +792,11 @@
       "spikeAlert": "Spike detected — rate significantly above 52-week average (weekly)",
       "warnings": "warning(s)",
       "aisDisruptions": "AIS disruption(s)",
+      "dwtDepartures": "Tanker DWT departing (w/w)",
       "mineral": "Mineral",
       "topProducers": "Top Producers",
       "risk": "Risk",
-      "sources": "FRED / NGA / USGS"
+      "sources": "FRED / NGA / S&P Global / USGS"
     },
     "tradePolicy": {
       "restrictions": "Restrictions",

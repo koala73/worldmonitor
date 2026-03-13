@@ -15,6 +15,7 @@ import type {
 import { cachedFetchJson } from '../../../_shared/redis';
 import { listNavigationalWarnings } from '../../maritime/v1/list-navigational-warnings';
 import { getVesselSnapshot } from '../../maritime/v1/get-vessel-snapshot';
+import { getDwtDepartures, type ChokepointDwtData } from './_dwt-upstream';
 // @ts-expect-error — .mjs module, no declaration file
 import { computeDisruptionScore, scoreToStatus, SEVERITY_SCORE, THREAT_LEVEL } from './_scoring.mjs';
 
@@ -233,15 +234,36 @@ interface ChokepointFetchResult {
   upstreamUnavailable: boolean;
 }
 
+function buildDirectionalDwt(cp: ChokepointConfig, dwtData: ChokepointDwtData | null): DirectionalDwt[] {
+  const upstream = dwtData?.[cp.id];
+  if (upstream?.length) {
+    // Use upstream data, matching on direction label
+    const upstreamByDir = new Map(upstream.map(d => [d.direction, d]));
+    return cp.directions.map((dir): DirectionalDwt => {
+      const match = upstreamByDir.get(dir);
+      return match
+        ? { direction: dir, dwtThousandTonnes: match.dwtThousandTonnes, wowChangePct: match.wowChangePct }
+        : { direction: dir, dwtThousandTonnes: 0, wowChangePct: 0 };
+    });
+  }
+  // Fallback: zero-filled when upstream unavailable or key not configured
+  return cp.directions.map((dir): DirectionalDwt => ({
+    direction: dir,
+    dwtThousandTonnes: 0,
+    wowChangePct: 0,
+  }));
+}
+
 async function fetchChokepointData(): Promise<ChokepointFetchResult> {
   const ctx = makeInternalCtx();
 
   let navFailed = false;
   let vesselFailed = false;
 
-  const [navResult, vesselResult] = await Promise.all([
+  const [navResult, vesselResult, dwtData] = await Promise.all([
     listNavigationalWarnings(ctx, { area: '', pageSize: 0, cursor: '' }).catch((): ListNavigationalWarningsResponse => { navFailed = true; return { warnings: [], pagination: undefined }; }),
     getVesselSnapshot(ctx, { neLat: 90, neLon: 180, swLat: -90, swLon: -180 }).catch((): GetVesselSnapshotResponse => { vesselFailed = true; return { snapshot: undefined }; }),
+    getDwtDepartures().catch((): ChokepointDwtData | null => null),
   ]);
 
   const warnings = navResult.warnings || [];
@@ -293,11 +315,7 @@ async function fetchChokepointData(): Promise<ChokepointFetchResult> {
       affectedRoutes: cp.routes,
       description: descriptions.join('; '),
       directions: cp.directions,
-      directionalDwt: cp.directions.map((dir): DirectionalDwt => ({
-        direction: dir,
-        dwtThousandTonnes: 0,
-        wowChangePct: 0,
-      })),
+      directionalDwt: buildDirectionalDwt(cp, dwtData),
     };
   });
 

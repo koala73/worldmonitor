@@ -437,6 +437,10 @@ describe('SupplyChainPanel v2 changes', () => {
     assert.match(src, /wowChangePct/,
       'Should display week-over-week change');
   });
+
+  it('uses i18n key for DWT departures label', () => {
+    assert.match(src, /t\('components\.supplyChain\.dwtDepartures'\)/);
+  });
 });
 
 // ========================================================================
@@ -635,6 +639,87 @@ describe('Composite disruption score', () => {
   it('overflow clamps at 100', () => {
     const score = computeDisruptionScore(THREAT_LEVEL.war_zone, 10, 3);
     assert.equal(score, 100);
+  });
+});
+
+// ========================================================================
+// 13c. DWT upstream module structure
+// ========================================================================
+
+describe('DWT upstream module', () => {
+  const src = readSrc('server/worldmonitor/supply-chain/v1/_dwt-upstream.ts');
+
+  it('uses SP_GLOBAL_API_KEY env variable', () => {
+    assert.match(src, /process\.env\.SP_GLOBAL_API_KEY/);
+  });
+
+  it('uses SP_GLOBAL_BASE_URL env variable with default', () => {
+    assert.match(src, /process\.env\.SP_GLOBAL_BASE_URL/);
+    assert.match(src, /api\.spglobal\.com\/maritime\/v1/);
+  });
+
+  it('uses Redis caching via cachedFetchJson', () => {
+    assert.match(src, /cachedFetchJson/);
+    assert.match(src, /supply_chain:dwt_departures:v1/);
+  });
+
+  it('returns null when API key is not configured', () => {
+    assert.match(src, /if\s*\(\s*!SP_GLOBAL_API_KEY\s*\)\s*return\s*null/);
+  });
+
+  it('uses Bearer token authentication', () => {
+    assert.match(src, /Authorization.*Bearer/);
+  });
+
+  it('has 15-second fetch timeout', () => {
+    assert.match(src, /15[_]?000/);
+  });
+
+  it('exports getDwtDepartures function', () => {
+    assert.match(src, /export\s+async\s+function\s+getDwtDepartures/);
+  });
+
+  it('exports ChokepointDwtData and DwtDataPoint types', () => {
+    assert.match(src, /export\s+interface\s+ChokepointDwtData/);
+    assert.match(src, /export\s+interface\s+DwtDataPoint/);
+  });
+
+  it('maps all 10 chokepoint IDs to S&P Global slugs', () => {
+    assert.match(src, /suez:\s*'suez-canal'/);
+    assert.match(src, /malacca:\s*'malacca-strait'/);
+    assert.match(src, /hormuz:\s*'hormuz-strait'/);
+    assert.match(src, /bab_el_mandeb:\s*'bab-el-mandeb'/);
+    assert.match(src, /panama:\s*'panama-canal'/);
+    assert.match(src, /taiwan:\s*'taiwan-strait'/);
+    assert.match(src, /cape_of_good_hope:\s*'cape-good-hope'/);
+    assert.match(src, /gibraltar:\s*'gibraltar-strait'/);
+    assert.match(src, /bosphorus:\s*'bosphorus-strait'/);
+    assert.match(src, /dardanelles:\s*'dardanelles-strait'/);
+  });
+
+  it('uses 1-hour Redis TTL', () => {
+    assert.match(src, /REDIS_CACHE_TTL\s*=\s*3600/);
+  });
+});
+
+// ========================================================================
+// 13d. Chokepoint handler integrates DWT upstream
+// ========================================================================
+
+describe('Chokepoint handler DWT integration', () => {
+  const src = readSrc('server/worldmonitor/supply-chain/v1/get-chokepoint-status.ts');
+
+  it('imports getDwtDepartures from _dwt-upstream', () => {
+    assert.match(src, /import.*getDwtDepartures.*from.*_dwt-upstream/);
+  });
+
+  it('fetches DWT data in parallel with nav warnings and vessel snapshot', () => {
+    assert.match(src, /getDwtDepartures\(\)/);
+    assert.match(src, /Promise\.all\(/);
+  });
+
+  it('uses buildDirectionalDwt helper to merge upstream data', () => {
+    assert.match(src, /buildDirectionalDwt/);
   });
 });
 
