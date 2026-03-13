@@ -1,0 +1,27 @@
+# =============================================================================
+# AIS Relay Sidecar
+# =============================================================================
+# Runs scripts/ais-relay.cjs as a standalone container.
+# Only dependency beyond Node stdlib is the 'ws' WebSocket library.
+# Set AISSTREAM_API_KEY in docker-compose.yml.
+# =============================================================================
+
+FROM node:22-alpine
+
+WORKDIR /app
+
+# Install only the ws package (everything else is Node stdlib)
+RUN npm install --omit=dev ws@8.19.0
+
+# Relay script
+COPY scripts/ais-relay.cjs ./scripts/ais-relay.cjs
+
+# Shared helper required by the relay (rss-allowed-domains.cjs)
+COPY shared/ ./shared/
+
+EXPOSE 3004
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget -qO- http://localhost:3004/health || exit 1
+
+CMD ["node", "scripts/ais-relay.cjs"]
