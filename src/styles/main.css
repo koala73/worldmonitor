@@ -5655,6 +5655,7 @@ body.playback-mode .status-dot {
 
 /* Predictions */
 .prediction-item {
+  width: 100%;
   padding: 10px 0;
   border-bottom: 1px solid var(--border);
 }
@@ -5695,8 +5696,8 @@ a.prediction-link:hover {
 }
 
 .prediction-bar {
+  width: 100%;
   height: 24px;
-  background: var(--border);
   border-radius: 3px;
   overflow: hidden;
   display: flex;
@@ -5704,20 +5705,18 @@ a.prediction-link:hover {
 
 .prediction-yes {
   background: var(--green);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 40px;
-  transition: width 0.3s ease;
 }
 
 .prediction-no {
   background: var(--red);
+}
+
+.prediction-yes,
+.prediction-no {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 40px;
-  transition: width 0.3s ease;
+  overflow: hidden;
 }
 
 .prediction-label {

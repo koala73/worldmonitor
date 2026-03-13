@@ -283,6 +283,7 @@ function renderFeatureSection(area: HTMLElement, cat: SettingsCategory): void {
     .map(fid => RUNTIME_FEATURES.find(f => f.id === fid))
     .filter(Boolean) as RuntimeFeatureDefinition[];
 
+  const renderedKeys = new Set<RuntimeSecretKey>();
   const featureCards = features.map(feature => {
     const enabled = isFeatureEnabled(feature.id);
     const available = isFeatureAvailable(feature.id);
@@ -293,7 +294,9 @@ function renderFeatureSection(area: HTMLElement, cat: SettingsCategory): void {
     const borderClass = available ? 'ready' : allStaged ? 'staged' : 'needs';
     const pillClass = available ? 'ok' : allStaged ? 'staged' : 'warn';
     const pillLabel = available ? 'Ready' : allStaged ? 'Staged' : 'Needs keys';
-    const secretRows = effectiveSecrets.map(key => renderSecretInput(key, feature.id)).join('');
+    const newSecrets = effectiveSecrets.filter(k => !renderedKeys.has(k));
+    for (const k of newSecrets) renderedKeys.add(k);
+    const secretRows = newSecrets.map(key => renderSecretInput(key, feature.id)).join('');
     const fallbackHtml = (available || allStaged) ? '' : `<p class="settings-feat-fallback">${escapeHtml(feature.fallback)}</p>`;
 
     return `

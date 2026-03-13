@@ -21,6 +21,20 @@ const GDELT_MAX_RECORDS = 20;
 const GDELT_DEFAULT_RECORDS = 10;
 const GDELT_DOC_API = 'https://api.gdeltproject.org/api/v2/doc/doc';
 
+// GDELT rate limit gate: min 2s between requests to avoid 429
+let gdeltLastRequest = 0;
+let gdeltQueue: Promise<void> = Promise.resolve();
+function gdeltGate(): Promise<void> {
+  gdeltQueue = gdeltQueue.then(async () => {
+    const elapsed = Date.now() - gdeltLastRequest;
+    if (elapsed < 2000) {
+      await new Promise<void>(r => setTimeout(r, 2000 - elapsed));
+    }
+    gdeltLastRequest = Date.now();
+  });
+  return gdeltQueue;
+}
+
 // ========================================================================
 // RPC handler
 // ========================================================================
@@ -56,6 +70,7 @@ export async function searchGdeltDocuments(
       cacheKey,
       REDIS_CACHE_TTL,
       async () => {
+        await gdeltGate();
         const gdeltUrl = new URL(GDELT_DOC_API);
         gdeltUrl.searchParams.set('query', query);
         gdeltUrl.searchParams.set('mode', 'artlist');

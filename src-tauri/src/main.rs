@@ -84,6 +84,7 @@ impl Default for LocalApiState {
 /// repeated macOS Keychain prompts (each `Entry::get_password()` triggers one).
 struct SecretsCache {
     secrets: Mutex<HashMap<String, String>>,
+    loaded: Mutex<bool>,
 }
 
 /// In-memory mirror of persistent-cache.json. The file can grow to 10+ MB,
@@ -98,7 +99,94 @@ struct PersistentCache {
 }
 
 impl SecretsCache {
-    fn load_from_keychain() -> Self {
+    fn empty() -> Self {
+        SecretsCache {
+            secrets: Mutex::new(HashMap::new()),
+            loaded: Mutex::new(false),
+        }
+    }
+
+    fn load_keychain_secrets(&self) {
+        let secrets = Self::read_keychain_with_timeout();
+        let mut guard = self.secrets.lock().unwrap_or_else(|e| e.into_inner());
+        *guard = secrets;
+        let mut loaded = self.loaded.lock().unwrap_or_else(|e| e.into_inner());
+        *loaded = true;
+    }
+
+    fn read_keychain_with_timeout() -> HashMap<String, String> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(Self::read_keychain());
+        });
+        match rx.recv_timeout(std::time::Duration::from_secs(10)) {
+            Ok(secrets) => secrets,
+            Err(_) => {
+                eprintln!("[keychain] timed out after 10s — starting with empty secrets");
+                HashMap::new()
+            }
+        }
+    }
+
+    /// File-based backup path for secrets.  Used when Keychain ACL blocks
+    /// access (e.g. after a code-signing change from dev builds).
+    fn backup_path() -> Option<PathBuf> {
+        // ~/Library/Application Support/app.worldmonitor.desktop/.secrets-backup
+        #[cfg(target_os = "macos")]
+        {
+            std::env::var("HOME").ok().map(|h| {
+                PathBuf::from(h)
+                    .join("Library/Application Support/app.worldmonitor.desktop/.secrets-backup")
+            })
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            std::env::var("APPDATA")
+                .or_else(|_| std::env::var("HOME"))
+                .ok()
+                .map(|h| PathBuf::from(h).join("app.worldmonitor.desktop").join(".secrets-backup"))
+        }
+    }
+
+    fn save_backup(secrets: &HashMap<String, String>) {
+        if secrets.is_empty() {
+            return;
+        }
+        if let Some(path) = Self::backup_path() {
+            if let Some(parent) = path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            if let Ok(json) = serde_json::to_string(secrets) {
+                let _ = std::fs::write(&path, json);
+            }
+        }
+    }
+
+    fn load_backup() -> HashMap<String, String> {
+        if let Some(path) = Self::backup_path() {
+            if let Ok(json) = std::fs::read_to_string(&path) {
+                if let Ok(map) = serde_json::from_str::<HashMap<String, String>>(&json) {
+                    let secrets: HashMap<String, String> = map
+                        .into_iter()
+                        .filter(|(k, v)| {
+                            SUPPORTED_SECRET_KEYS.contains(&k.as_str()) && !v.trim().is_empty()
+                        })
+                        .map(|(k, v)| (k, v.trim().to_string()))
+                        .collect();
+                    if !secrets.is_empty() {
+                        eprintln!(
+                            "[keychain] recovered {} secrets from file backup",
+                            secrets.len()
+                        );
+                        return secrets;
+                    }
+                }
+            }
+        }
+        HashMap::new()
+    }
+
+    fn read_keychain() -> HashMap<String, String> {
         // Try consolidated vault first — single keychain prompt
         if let Ok(entry) = Entry::new(KEYRING_SERVICE, "secrets-vault") {
             if let Ok(json) = entry.get_password() {
@@ -110,15 +198,16 @@ impl SecretsCache {
                         })
                         .map(|(k, v)| (k, v.trim().to_string()))
                         .collect();
-                    return SecretsCache {
-                        secrets: Mutex::new(secrets),
-                    };
+                    if !secrets.is_empty() {
+                        // Keychain read succeeded — update file backup
+                        Self::save_backup(&secrets);
+                        return secrets;
+                    }
                 }
             }
         }
 
         // Migration: read individual keys (old format), consolidate into vault.
-        // This triggers one keychain prompt per key — happens only once.
         let mut secrets = HashMap::new();
         for key in SUPPORTED_SECRET_KEYS.iter() {
             if let Ok(entry) = Entry::new(KEYRING_SERVICE, key) {
@@ -131,7 +220,7 @@ impl SecretsCache {
             }
         }
 
-        // Write consolidated vault and clean up individual entries
+        // If individual keys found, consolidate into vault
         if !secrets.is_empty() {
             if let Ok(json) = serde_json::to_string(&secrets) {
                 if let Ok(vault_entry) = Entry::new(KEYRING_SERVICE, "secrets-vault") {
@@ -144,11 +233,13 @@ impl SecretsCache {
                     }
                 }
             }
+            Self::save_backup(&secrets);
+            return secrets;
         }
 
-        SecretsCache {
-            secrets: Mutex::new(secrets),
-        }
+        // Keychain completely inaccessible (ACL denial from code-signing change).
+        // Recover from file backup so the user doesn't lose all their keys.
+        Self::load_backup()
     }
 }
 
@@ -222,6 +313,8 @@ fn save_vault(cache: &HashMap<String, String>) -> Result<(), String> {
     entry
         .set_password(&json)
         .map_err(|e| format!("Failed to write vault: {e}"))?;
+    // Keep file backup in sync so dev builds can recover after code-signing changes
+    SecretsCache::save_backup(cache);
     Ok(())
 }
 
@@ -298,6 +391,15 @@ fn get_secret(
 #[tauri::command]
 fn get_all_secrets(webview: Webview, cache: tauri::State<'_, SecretsCache>) -> Result<HashMap<String, String>, String> {
     require_trusted_window(webview.label())?;
+    // Wait up to 15s for background keychain loading to complete.
+    // Without this, the WebView may call get_all_secrets before the
+    // background thread has finished reading the macOS Keychain.
+    for _ in 0..150 {
+        let loaded = cache.loaded.lock().unwrap_or_else(|e| e.into_inner());
+        if *loaded { break; }
+        drop(loaded);
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
     Ok(cache
         .secrets
         .lock()
@@ -1370,7 +1472,6 @@ fn main() {
         .menu(build_app_menu)
         .on_menu_event(handle_menu_event)
         .manage(LocalApiState::default())
-        .manage(SecretsCache::load_from_keychain())
         .invoke_handler(tauri::generate_handler![
             list_supported_secret_keys,
             get_secret,
@@ -1394,19 +1495,31 @@ fn main() {
             open_youtube_login,
             fetch_polymarket
         ])
+        .manage(SecretsCache::empty())
         .setup(|app| {
             // Load persistent cache into memory (avoids 14MB file I/O on every IPC call)
             let cache_path = cache_file_path(&app.handle()).unwrap_or_default();
             app.manage(PersistentCache::load(&cache_path));
 
-            if let Err(err) = start_local_api(&app.handle()) {
-                append_desktop_log(
-                    &app.handle(),
-                    "ERROR",
-                    &format!("local API sidecar failed to start: {err}"),
-                );
-                eprintln!("[tauri] local API sidecar failed to start: {err}");
-            }
+            // Load keychain secrets on a background thread. SecKeychainFindGenericPassword
+            // may block waiting for user authorization (macOS Keychain ACL prompt) when the
+            // binary's code signature changes. Doing this on the main thread would freeze the
+            // entire app since the authorization dialog needs the event loop to display.
+            // Once secrets are loaded, start the sidecar which needs them for env injection.
+            let handle = app.handle().clone();
+            std::thread::spawn(move || {
+                if let Some(cache) = handle.try_state::<SecretsCache>() {
+                    cache.load_keychain_secrets();
+                }
+                if let Err(err) = start_local_api(&handle) {
+                    append_desktop_log(
+                        &handle,
+                        "ERROR",
+                        &format!("local API sidecar failed to start: {err}"),
+                    );
+                    eprintln!("[tauri] local API sidecar failed to start: {err}");
+                }
+            });
 
             Ok(())
         })

@@ -2,6 +2,38 @@
 
 All notable changes to World Monitor are documented here.
 
+## [2.6.2] - 2026-03-13
+
+### Highlights
+
+- **PRO-locked Correlation Panels** — Force Posture, Escalation Monitor, Economic Warfare, and Disaster Cascade now require PRO on desktop, with correlation engine skipped entirely to reduce API calls (#1538)
+- **Keychain Backup Recovery** — file-based backup prevents secret loss when macOS Keychain ACL denies access after code signature changes (#1538)
+- **Sidecar Reliability** — cloud-preferred routing before auth gate, brotli/gzip decompression, bootstrap handler, smoke test suite (#1538)
+
+### Added
+
+- Sidecar smoke test suite covering 46 API endpoints (#1538)
+- Sidecar bootstrap handler with fast/slow key tiers for faster cold start (#1538)
+- File-based keychain backup and recovery system for desktop (#1538)
+- Yahoo quote in-memory cache with stale-on-429 fallback (#1538)
+- GDELT request rate gate (2s minimum between requests) (#1538)
+- Reuse toFlagEmoji helper across codebase (#1418, #1420)
+- Feed date parsing refactored for consistency (#1417)
+- Registration redirect to worldmonitor.app/pro (#1421)
+- Disable banner dismiss during launch promotion (#1422)
+
+### Fixed
+
+- Correlation panels PRO-locked on desktop, engine skipped without API key (#1538)
+- Prediction bar CSS not filling full panel width in WKWebView containment (#1538)
+- Macro signals showing misleading CASH verdict on Yahoo 429 failures (#1538)
+- Cloud fallback broken after allowCloudFallback was set to false (#1538)
+- Cloud-preferred routes returning 401 when auth gate ran before cloud proxy (#1538)
+- Central Bank Watch empty on finance variant due to single server-side feed (#1538)
+- RSS proxy URL incorrect on desktop (#1538)
+- Settings page rendering duplicate API key inputs (#1538)
+- Sidecar upstream concurrency increased from 6 to 12 (#1538)
+
 ## [2.6.1] - 2026-03-11
 
 ### Highlights

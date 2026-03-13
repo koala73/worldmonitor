@@ -172,7 +172,7 @@ export class MacroSignalsPanel extends Panel {
       return;
     }
 
-    if (this.data.unavailable) {
+    if (this.data.unavailable || (this.data.totalCount === 0 && this.data.verdict === 'UNKNOWN')) {
       this.showError(t('common.upstreamUnavailable'), () => void this.fetchData());
       return;
     }

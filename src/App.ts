@@ -566,13 +566,16 @@ export class App {
     this.eventHandlers.setupPizzIntIndicator();
     this.eventHandlers.setupExportPanel();
 
-    // Correlation engine
-    const correlationEngine = new CorrelationEngine();
-    correlationEngine.registerAdapter(militaryAdapter);
-    correlationEngine.registerAdapter(escalationAdapter);
-    correlationEngine.registerAdapter(economicAdapter);
-    correlationEngine.registerAdapter(disasterAdapter);
-    this.state.correlationEngine = correlationEngine;
+    // Correlation engine — skip on desktop without PRO key (panels are locked)
+    const skipCorrelation = isDesktopRuntime() && !getSecretState('WORLDMONITOR_API_KEY').present;
+    if (!skipCorrelation) {
+      const correlationEngine = new CorrelationEngine();
+      correlationEngine.registerAdapter(militaryAdapter);
+      correlationEngine.registerAdapter(escalationAdapter);
+      correlationEngine.registerAdapter(economicAdapter);
+      correlationEngine.registerAdapter(disasterAdapter);
+      this.state.correlationEngine = correlationEngine;
+    }
     this.eventHandlers.setupUnifiedSettings();
 
     // Phase 4: SearchManager, MapLayerHandlers, CountryIntel

@@ -242,6 +242,8 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
     ],
     centralbanks: [
       { name: 'Federal Reserve', url: 'https://www.federalreserve.gov/feeds/press_all.xml' },
+      { name: 'ECB Watch', url: gn('("European Central Bank" OR ECB OR Lagarde) monetary policy when:3d') },
+      { name: 'Global Central Banks', url: gn('("rate hike" OR "rate cut" OR "interest rate decision") central bank when:3d') },
     ],
     economic: [
       { name: 'Economic Data', url: gn('(CPI OR inflation OR GDP OR "economic data" OR "jobs report") when:2d') },

@@ -467,7 +467,8 @@ export async function listTechEvents(
     // Primary: read from seed-populated Redis key (Railway relay seeds this every 6h)
     const result = await cachedFetchJson<ListTechEventsResponse>(REDIS_CACHE_KEY, REDIS_CACHE_TTL, async () => {
       // Fallback fetcher: only runs on cold start when seed hasn't populated yet
-      const fetched = await fetchTechEvents({ ...req, limit: 0 });
+      // Use limit=500 (max allowed by clampInt) to cache the full event set
+      const fetched = await fetchTechEvents({ ...req, type: '', mappable: false, limit: 500, days: 365 });
       return fetched.events.length > 0 ? fetched : null;
     });
 

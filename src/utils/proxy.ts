@@ -1,4 +1,4 @@
-import { isDesktopRuntime, toApiUrl, toRuntimeUrl } from '../services/runtime';
+import { getApiBaseUrl, isDesktopRuntime, toApiUrl, toRuntimeUrl } from '../services/runtime';
 import { getPersistentCache, setPersistentCache } from '../services/persistent-cache';
 
 const isDev = import.meta.env.DEV;
@@ -14,7 +14,9 @@ const RSS_PROXY_BASE = isDev
     : '';
 
 export function rssProxyUrl(feedUrl: string): string {
-  if (isDesktopRuntime()) return proxyUrl(feedUrl);
+  if (isDesktopRuntime()) {
+    return `${getApiBaseUrl()}/api/rss-proxy?url=${encodeURIComponent(feedUrl)}`;
+  }
   if (RSS_PROXY_BASE) {
     return `${RSS_PROXY_BASE}/rss?url=${encodeURIComponent(feedUrl)}`;
   }

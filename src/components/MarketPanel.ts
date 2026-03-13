@@ -173,7 +173,7 @@ export class CommoditiesPanel extends Panel {
     const validData = data.filter((d) => d.price !== null);
 
     if (validData.length === 0) {
-      this.showRetrying(t('common.failedCommodities'));
+      this.showRetrying(t('common.rateLimitedMarket'));
       return;
     }
 

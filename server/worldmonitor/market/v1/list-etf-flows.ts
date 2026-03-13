@@ -38,16 +38,15 @@ async function fetchEtfChart(ticker: string): Promise<YahooChartResponse | null>
     await yahooGate();
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?range=5d&interval=1d`;
     const resp = await fetch(url, {
-      headers: {
-        'User-Agent': CHROME_UA,
-      },
+      headers: { 'User-Agent': CHROME_UA },
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
-    if (!resp.ok) return null;
-    return (await resp.json()) as YahooChartResponse;
-  } catch {
-    return null;
+    if (resp.ok) return (await resp.json()) as YahooChartResponse;
+    console.warn(`[ETF] ${ticker} direct HTTP ${resp.status}`);
+  } catch (err) {
+    console.warn(`[ETF] ${ticker} direct error: ${(err as Error).message}`);
   }
+  return null;
 }
 
 function parseEtfChartData(chart: YahooChartResponse, ticker: string, issuer: string): EtfFlow | null {
