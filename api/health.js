@@ -104,6 +104,9 @@ const SEED_META = {
   techReadiness:    { key: 'seed-meta:economic:worldbank-techreadiness:v1', maxStaleMin: 10080 },
   progressData:     { key: 'seed-meta:economic:worldbank-progress:v1',     maxStaleMin: 10080 },
   renewableEnergy:  { key: 'seed-meta:economic:worldbank-renewable:v1',    maxStaleMin: 10080 },
+  intlDelays:       { key: 'seed-meta:aviation:intl',           maxStaleMin: 90 },
+  faaDelays:        { key: 'seed-meta:aviation:faa',            maxStaleMin: 60 },
+  theaterPosture:   { key: 'seed-meta:theater-posture',         maxStaleMin: 30 },
 };
 
 // Standalone keys that are populated on-demand by RPC handlers (not seeds).

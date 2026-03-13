@@ -39,6 +39,12 @@ const SEED_DOMAINS = {
   'supply_chain:chokepoints': { key: 'seed-meta:supply_chain:chokepoints', intervalMin: 30 },
   'cable-health':             { key: 'seed-meta:cable-health',             intervalMin: 30 },
   'prediction:markets':       { key: 'seed-meta:prediction:markets',       intervalMin: 8 },
+  'aviation:intl':            { key: 'seed-meta:aviation:intl',            intervalMin: 15 },
+  'theater-posture':          { key: 'seed-meta:theater-posture',          intervalMin: 8 },
+  'economic:worldbank-techreadiness': { key: 'seed-meta:economic:worldbank-techreadiness:v1', intervalMin: 5040 },
+  'economic:worldbank-progress':      { key: 'seed-meta:economic:worldbank-progress:v1',     intervalMin: 5040 },
+  'economic:worldbank-renewable':     { key: 'seed-meta:economic:worldbank-renewable:v1',    intervalMin: 5040 },
+  'research:tech-events':    { key: 'seed-meta:research:tech-events',     intervalMin: 210 },
 };
 
 async function getMetaBatch(keys) {
@@ -123,8 +129,10 @@ export default async function handler(req) {
 
   const overall = missingCount > 0 ? 'degraded' : staleCount > 0 ? 'warning' : 'healthy';
 
+  const httpStatus = overall === 'healthy' ? 200 : overall === 'warning' ? 200 : 503;
+
   return new Response(JSON.stringify({ overall, seeds, checkedAt: now }), {
-    status: 200,
+    status: httpStatus,
     headers: {
       ...cors,
       'Content-Type': 'application/json',
