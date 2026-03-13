@@ -88,7 +88,7 @@ export class EventHandlerManager implements AppModule {
   private boundMobileMenuKeyHandler: ((e: KeyboardEvent) => void) | null = null;
   private boundPanelCloseHandler: ((e: Event) => void) | null = null;
   private boundUndoHandler: ((e: KeyboardEvent) => void) | null = null;
-  private closedPanelStack: string[] = [];
+  private closedPanelStack: string[] = []; // max-items: 20
   private idleTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private snapshotIntervalId: ReturnType<typeof setInterval> | null = null;
   private clockIntervalId: ReturnType<typeof setInterval> | null = null;
@@ -121,6 +121,12 @@ export class EventHandlerManager implements AppModule {
     saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
     this.applyPanelSettings();
     this.ctx.unifiedSettings?.refreshPanelToggles();
+
+    // Ensure restored panel fetches fresh data (otherwise it may show no content)
+    const panel = this.ctx.panels[panelId];
+    if (panel && 'fetchData' in panel) {
+      (panel as any).fetchData();
+    }
   }
 
   private setupTvMode(): void {
@@ -260,7 +266,6 @@ export class EventHandlerManager implements AppModule {
     this.ctx.unifiedSettings = null;
   }
 
-
   private setupEventListeners(): void {
     const openSearch = () => {
       this.callbacks.updateSearchIndex();
@@ -312,14 +317,17 @@ export class EventHandlerManager implements AppModule {
       saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
       this.applyPanelSettings();
       this.ctx.unifiedSettings?.refreshPanelToggles();
-      // push to undo stack
+      // push to undo stack (cap size for memory safety)
       this.closedPanelStack.push(panelId);
+      if (this.closedPanelStack.length > 20) this.closedPanelStack.shift();
     }) as EventListener;
     this.ctx.container.addEventListener('wm:panel-close', this.boundPanelCloseHandler);
 
     // undo via Ctrl/Cmd+Z
     this.boundUndoHandler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        const tag = (e.target as HTMLElement).tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement).isContentEditable) return;
         e.preventDefault();
         this.performUndo();
       }

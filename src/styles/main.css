@@ -1308,11 +1308,15 @@ body.panel-resize-active iframe {
 
 .panel-drop-indicator {
   display: block;
-  height: 3px;
-  background: linear-gradient(90deg, var(--accent) 0%, var(--accent) 100%);
+  position: fixed;
+  pointer-events: none;
+  height: 4px;
+  background: var(--accent);
   border-radius: 2px;
-  margin: 6px 4px;
   box-shadow: 0 0 8px var(--accent);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  z-index: 9999;
 }
 
 /* Hover highlight for potential drop target */
