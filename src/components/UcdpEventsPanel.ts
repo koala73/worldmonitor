@@ -15,8 +15,8 @@ export class UcdpEventsPanel extends Panel {
       showCount: true,
       trackActivity: true,
       infoTooltip: t('components.ucdpEvents.infoTooltip'),
+      defaultRowSpan: 2,
     });
-    this.element.classList.add('span-2');
     this.showLoading(t('common.loadingUcdpEvents'));
 
     this.content.addEventListener('click', (e) => {

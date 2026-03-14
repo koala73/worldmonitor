@@ -18,8 +18,8 @@ export class SecurityAdvisoriesPanel extends Panel {
       showCount: true,
       trackActivity: true,
       infoTooltip: t('components.securityAdvisories.infoTooltip'),
+      defaultRowSpan: 2,
     });
-    this.element.classList.add('span-2');
     this.showLoading(t('components.securityAdvisories.loading'));
 
     this.content.addEventListener('click', (e) => {

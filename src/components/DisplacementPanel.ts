@@ -18,8 +18,8 @@ export class DisplacementPanel extends Panel {
       showCount: true,
       trackActivity: true,
       infoTooltip: t('components.displacement.infoTooltip'),
+      defaultRowSpan: 2,
     });
-    this.element.classList.add('span-2');
     this.showLoading(t('common.loadingDisplacement'));
 
     this.content.addEventListener('click', (e) => {
