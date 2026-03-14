@@ -5,6 +5,7 @@ import {
   type AnalyzeStockResponse,
 } from '@/generated/client/worldmonitor/market/v1/service_client';
 import { getMarketWatchlistEntries } from '@/services/market-watchlist';
+import { runThrottledTargetRequests } from '@/services/throttled-target-requests';
 
 const client = new MarketServiceClient(getRpcBaseUrl(), {
   fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args),
@@ -46,21 +47,13 @@ export function getStockAnalysisTargets(limit = DEFAULT_LIMIT): StockAnalysisTar
 }
 
 export async function fetchStockAnalysesForTargets(targets: StockAnalysisTarget[]): Promise<StockAnalysisResult[]> {
-  const results: StockAnalysisResult[] = [];
-  for (let i = 0; i < targets.length; i++) {
-    if (i > 0) await new Promise((resolve) => setTimeout(resolve, 200));
-    try {
-      const result = await client.analyzeStock({
-        symbol: targets[i]!.symbol,
-        name: targets[i]!.name,
+  return runThrottledTargetRequests(targets, async (target) => {
+    return client.analyzeStock({
+      symbol: target.symbol,
+      name: target.name,
         includeNews: true,
-      });
-      if (result.available) results.push(result);
-    } catch {
-      // Skip failed individual analysis
-    }
-  }
-  return results;
+    });
+  });
 }
 
 export async function fetchStockAnalyses(limit = DEFAULT_LIMIT): Promise<StockAnalysisResult[]> {
