@@ -121,25 +121,8 @@ export function loadFromStorage<T>(key: string, defaultValue: T): T {
   return defaultValue;
 }
 
-let _storageQuotaExceeded = false;
-
-export function isStorageQuotaExceeded(): boolean {
-  return _storageQuotaExceeded;
-}
-
-export function isQuotaError(e: unknown): boolean {
-  return e instanceof DOMException && (e.name === 'QuotaExceededError' || e.code === 22);
-}
-
-export function markStorageQuotaExceeded(): void {
-  if (!_storageQuotaExceeded) {
-    _storageQuotaExceeded = true;
-    console.warn('[Storage] Quota exceeded — disabling further writes');
-  }
-}
-
 export function saveToStorage<T>(key: string, value: T): void {
-  if (_storageQuotaExceeded) return;
+  if (isStorageQuotaExceeded()) return;
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch (e) {
@@ -187,9 +170,11 @@ export type { ParsedMapUrlState } from './urlState';
 export { CircuitBreaker, createCircuitBreaker, getCircuitBreakerStatus, getCircuitBreakerCooldownInfo } from './circuit-breaker';
 export type { CircuitBreakerOptions } from './circuit-breaker';
 export * from './analysis-constants';
+export { isStorageQuotaExceeded, isQuotaError, markStorageQuotaExceeded } from './storage-quota';
 export { getCSSColor, invalidateColorCache } from './theme-colors';
 export { getStoredTheme, getCurrentTheme, setTheme, applyStoredTheme, getThemePreference, setThemePreference } from './theme-manager';
 export type { Theme, ThemePreference } from './theme-manager';
 export { toFlagEmoji } from './country-flag';
 
 import { getCurrentLanguage } from '../services/i18n';
+import { isStorageQuotaExceeded, isQuotaError, markStorageQuotaExceeded } from './storage-quota';

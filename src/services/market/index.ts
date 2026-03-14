@@ -68,12 +68,8 @@ export interface MarketFetchResult {
 
 const lastSuccessfulByKey = new Map<string, MarketData[]>();
 
-function trimSymbol(symbol: string): string {
-  return symbol.trim();
-}
-
 function symbolSetKey(symbols: string[]): string {
-  return [...new Set(symbols.map(trimSymbol))].sort().join(',');
+  return [...new Set(symbols.map((symbol) => symbol.trim()))].sort().join(',');
 }
 
 export async function fetchMultipleStocks(
@@ -83,17 +79,16 @@ export async function fetchMultipleStocks(
   // Preserve exact requested symbols for cache keys and request payloads so
   // case-distinct instruments do not collapse into one cache entry.
   const symbolMetaMap = new Map<string, { symbol: string; name: string; display: string }>();
-  const uppercaseMetaMap = new Map<string, { symbol: string; name: string; display: string } | null>();
+  // Keep the first requested candidate as a case-insensitive fallback so
+  // backend symbol normalization still retains metadata instead of dropping it.
+  const uppercaseMetaMap = new Map<string, { symbol: string; name: string; display: string }>();
   for (const s of symbols) {
-    const trimmed = trimSymbol(s.symbol);
+    const trimmed = s.symbol.trim();
     if (!symbolMetaMap.has(trimmed)) symbolMetaMap.set(trimmed, s);
 
     const upper = trimmed.toUpperCase();
-    const existingUpper = uppercaseMetaMap.get(upper);
-    if (existingUpper === undefined) {
+    if (!uppercaseMetaMap.has(upper)) {
       uppercaseMetaMap.set(upper, s);
-    } else if (existingUpper !== null && existingUpper.symbol !== s.symbol) {
-      uppercaseMetaMap.set(upper, null);
     }
   }
   const allSymbolStrings = [...symbolMetaMap.keys()];
@@ -108,7 +103,7 @@ export async function fetchMultipleStocks(
   });
 
   const results = resp.quotes.map((q) => {
-    const trimmed = trimSymbol(q.symbol);
+    const trimmed = q.symbol.trim();
     const meta = symbolMetaMap.get(trimmed) ?? uppercaseMetaMap.get(trimmed.toUpperCase()) ?? undefined;
     return toMarketData(q, meta);
   });
