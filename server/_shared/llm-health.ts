@@ -22,11 +22,10 @@ const inFlight = new Map<string, Promise<boolean>>();
 async function probe(url: string): Promise<boolean> {
   try {
     const origin = new URL(url).origin;
-    const resp = await fetch(origin, {
+    await fetch(origin, {
       method: 'GET',
       signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
     });
-    // Any HTTP response means the server is reachable
     return true;
   } catch {
     return false;
