@@ -322,7 +322,7 @@ function validate(data) {
   return data?.indices?.length > 0;
 }
 
-runSeed('supply-chain', 'shipping-trade', KEYS.shipping, fetchAll, {
+runSeed('supply_chain', 'shipping', KEYS.shipping, fetchAll, {
   validateFn: validate,
   ttlSeconds: SHIPPING_TTL,
   sourceVersion: 'fred-wto',

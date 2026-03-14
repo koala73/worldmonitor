@@ -209,10 +209,11 @@ export async function writeExtraKey(key, data, ttl) {
   else console.log(`  Extra key ${key}: written`);
 }
 
-export async function writeExtraKeyWithMeta(key, data, ttl, recordCount) {
+export async function writeExtraKeyWithMeta(key, data, ttl, recordCount, metaKeyOverride) {
   await writeExtraKey(key, data, ttl);
   const { url, token } = getRedisCredentials();
-  const metaKey = `seed-meta:${key}`;
+  // Use explicit override or strip version suffix (:v1, :v2, etc.) to match health.js conventions
+  const metaKey = metaKeyOverride || `seed-meta:${key.replace(/:v\d+$/, '')}`;
   const meta = { fetchedAt: Date.now(), recordCount: recordCount ?? 0 };
   const resp = await fetch(url, {
     method: 'POST',
