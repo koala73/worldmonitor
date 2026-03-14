@@ -4,6 +4,7 @@
 import { CHROME_UA, yahooGate } from '../../../_shared/constants';
 import cryptoConfig from '../../../../shared/crypto.json';
 import stablecoinConfig from '../../../../shared/stablecoins.json';
+export { parseStringArray } from '../../../_shared/parse-string-array';
 
 // ========================================================================
 // Relay helpers (Railway proxy for Yahoo when Vercel IPs are rate-limited)
@@ -35,18 +36,6 @@ export const UPSTREAM_TIMEOUT_MS = 10_000;
 
 export function sanitizeSymbol(raw: string): string {
   return raw.trim().replace(/\s+/g, '').slice(0, 32).toUpperCase();
-}
-
-/**
- * Defensive parser for repeated-string query params.
- * The sebuf codegen assigns `params.get("symbols")` (a string) to a field
- * typed as `string[]`.  At runtime `req.symbols` may therefore be a
- * comma-separated string rather than an actual array.
- */
-export function parseStringArray(raw: unknown): string[] {
-  if (Array.isArray(raw)) return raw.filter(Boolean);
-  if (typeof raw === 'string' && raw.length > 0) return raw.split(',').filter(Boolean);
-  return [];
 }
 
 export async function fetchYahooQuotesBatch(

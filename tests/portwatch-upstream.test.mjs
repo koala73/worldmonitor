@@ -88,6 +88,12 @@ describe('PortWatch relay seed loop', () => {
   it('computes week-over-week change percentage in relay', () => {
     assert.match(relaySrc, /pwComputeWowChangePct/);
   });
+
+  it('uses ArcGIS timestamp syntax for date filter (not raw epoch)', () => {
+    assert.match(relaySrc, /pwEpochToTimestamp/);
+    assert.match(relaySrc, /timestamp '/);
+    assert.doesNotMatch(relaySrc, /date >= \$\{sinceEpoch\}/);
+  });
 });
 
 describe('classifyVesselType', () => {

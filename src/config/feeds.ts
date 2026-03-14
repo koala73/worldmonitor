@@ -633,8 +633,6 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     // New verified think tank feeds
     // War on the Rocks - Defense and national security analysis
     { name: 'War on the Rocks', url: rss('https://warontherocks.com/feed') },
-    // AEI - American Enterprise Institute (US conservative think tank)
-    { name: 'AEI', url: rss('https://www.aei.org/feed/') },
     // Responsible Statecraft - Foreign policy analysis (Quincy Institute)
     { name: 'Responsible Statecraft', url: rss('https://responsiblestatecraft.org/feed/') },
     // RUSI - Royal United Services Institute (UK defense & security)
@@ -678,7 +676,7 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'El Tiempo', url: rss('https://www.eltiempo.com/rss/mundo_latinoamerica.xml'), lang: 'es' },
     { name: 'La Silla Vacía', url: rss('https://www.lasillavacia.com/rss') },
     { name: 'Primicias', url: rss('https://www.primicias.ec/feed/'), lang: 'es' },
-    { name: 'Infobae Americas', url: rss('https://www.infobae.com/feeds/rss/'), lang: 'es' },
+    { name: 'Infobae Americas', url: rss('https://www.infobae.com/arc/outboundfeeds/rss/'), lang: 'es' },
     { name: 'El Universo', url: rss('https://www.eluniverso.com/arc/outboundfeeds/rss/category/noticias/?outputType=xml'), lang: 'es' },
     // Mexico
     { name: 'Mexico News Daily', url: rss('https://mexiconewsdaily.com/feed/') },
@@ -1051,7 +1049,6 @@ const HAPPY_FEEDS: Record<string, Feed[]> = {
     { name: 'GOOD Magazine', url: rss('https://www.good.is/feed/') },
     { name: 'Sunny Skyz', url: rss('https://www.sunnyskyz.com/rss_tebow.php') },
     { name: 'The Better India', url: rss('https://thebetterindia.com/feed/') },
-    { name: 'My Modern Met', url: rss('https://mymodernmet.com/feed/') },
   ],
   science: [
     { name: 'GNN Science', url: rss('https://www.goodnewsnetwork.org/category/news/science/feed/') },
@@ -1220,7 +1217,6 @@ export const SOURCE_REGION_MAP: Record<string, { labelKey: string; feedKeys: str
 export const INTEL_SOURCES: Feed[] = [
   // Defense & Security (Tier 1)
   { name: 'Defense One', url: rss('https://www.defenseone.com/rss/all/'), type: 'defense' },
-  { name: 'Breaking Defense', url: rss('https://breakingdefense.com/feed/'), type: 'defense' },
   { name: 'The War Zone', url: rss('https://www.twz.com/feed'), type: 'defense' },
   { name: 'Defense News', url: rss('https://www.defensenews.com/arc/outboundfeeds/rss/?outputType=xml'), type: 'defense' },
   { name: 'Janes', url: rss('https://news.google.com/rss/search?q=site:janes.com+when:3d&hl=en-US&gl=US&ceid=US:en'), type: 'defense' },

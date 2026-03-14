@@ -34,5 +34,36 @@ npm run lint:md || exit 1
 echo "Running MDX lint (Mintlify compatibility)..."
 node --test tests/mdx-lint.test.mjs || exit 1
 
+echo "Running proto freshness check..."
+if git diff --name-only origin/main -- proto/ src/generated/ docs/api/ Makefile | grep -q .; then
+  if command -v buf &>/dev/null && command -v protoc-gen-ts-client &>/dev/null; then
+    make generate
+    if ! git diff --exit-code src/generated/ docs/api/; then
+      echo ""
+      echo "============================================================"
+      echo "ERROR: Proto-generated code is out of date."
+      echo "Run 'make generate' locally and commit the updated files."
+      echo "============================================================"
+      exit 1
+    fi
+    UNTRACKED=$(git ls-files --others --exclude-standard src/generated/ docs/api/)
+    if [ -n "$UNTRACKED" ]; then
+      echo ""
+      echo "============================================================"
+      echo "ERROR: Untracked generated files found:"
+      echo "$UNTRACKED"
+      echo "Run 'make generate' locally and commit the new files."
+      echo "============================================================"
+      exit 1
+    fi
+    echo "Proto-generated code is up to date."
+  else
+    echo "WARNING: buf or protoc plugins not installed, skipping proto freshness check."
+    echo "  Install with: make install-buf install-plugins"
+  fi
+else
+  echo "No proto-related changes, skipping."
+fi
+
 echo "Running version sync check..."
 npm run version:check || exit 1

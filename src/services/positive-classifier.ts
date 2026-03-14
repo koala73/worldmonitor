@@ -1,13 +1,8 @@
 // Positive content classifier for the happy variant
 // Mirrors the pattern in threat-classifier.ts but for positive news categorization
 
-export type HappyContentCategory =
-  | 'science-health'
-  | 'nature-wildlife'
-  | 'humanity-kindness'
-  | 'innovation-tech'
-  | 'climate-wins'
-  | 'culture-community';
+export type { HappyContentCategory } from '@/types';
+import type { HappyContentCategory } from '@/types';
 
 export const HAPPY_CATEGORY_LABELS: Record<HappyContentCategory, string> = {
   'science-health': 'Science & Health',

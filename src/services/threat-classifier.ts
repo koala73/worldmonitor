@@ -1,16 +1,5 @@
-export type ThreatLevel = 'critical' | 'high' | 'medium' | 'low' | 'info';
-
-export type EventCategory =
-  | 'conflict' | 'protest' | 'disaster' | 'diplomatic' | 'economic'
-  | 'terrorism' | 'cyber' | 'health' | 'environmental' | 'military'
-  | 'crime' | 'infrastructure' | 'tech' | 'general';
-
-export interface ThreatClassification {
-  level: ThreatLevel;
-  category: EventCategory;
-  confidence: number;
-  source: 'keyword' | 'ml' | 'llm';
-}
+export type { ThreatLevel, EventCategory, ThreatClassification } from '@/types';
+import type { ThreatLevel, EventCategory, ThreatClassification } from '@/types';
 
 import { getCSSColor } from '@/utils';
 import { getRpcBaseUrl } from '@/services/rpc-client';
