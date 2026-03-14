@@ -682,6 +682,9 @@ async function main() {
 
 main().catch(async (err) => {
   console.error(`FETCH FAILED: ${err.message || err} — extending TTL on stale data`);
-  await extendExistingTtl([LIVE_KEY, STALE_KEY, THEATER_POSTURE_LIVE_KEY, THEATER_POSTURE_STALE_KEY, THEATER_POSTURE_BACKUP_KEY], STALE_TTL);
+  await extendExistingTtl([LIVE_KEY], LIVE_TTL);
+  await extendExistingTtl([STALE_KEY, THEATER_POSTURE_STALE_KEY], STALE_TTL);
+  await extendExistingTtl([THEATER_POSTURE_LIVE_KEY], THEATER_POSTURE_LIVE_TTL);
+  await extendExistingTtl([THEATER_POSTURE_BACKUP_KEY], THEATER_POSTURE_BACKUP_TTL);
   process.exit(0);
 });
