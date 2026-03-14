@@ -80,7 +80,7 @@ describe('chokepoint definitions', () => {
   });
 
   it('includes new chokepoints with correct names', () => {
-    const added = ['Cape of Good Hope', 'Strait of Gibraltar', 'Turkish Straits'];
+    const added = ['Cape of Good Hope', 'Strait of Gibraltar', 'Bosporus Strait'];
     for (const name of added) {
       assert.ok(names.includes(name), `missing new chokepoint: ${name}`);
     }

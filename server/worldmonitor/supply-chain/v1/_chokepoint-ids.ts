@@ -14,7 +14,7 @@ export const CANONICAL_CHOKEPOINTS: readonly CanonicalChokepoint[] = [
   { id: 'taiwan_strait', relayName: 'Taiwan Strait', portwatchName: 'Taiwan Strait', corridorRiskName: 'Taiwan' },
   { id: 'cape_of_good_hope', relayName: 'Cape of Good Hope', portwatchName: 'Cape of Good Hope', corridorRiskName: 'Cape of Good Hope' },
   { id: 'gibraltar', relayName: 'Strait of Gibraltar', portwatchName: 'Gibraltar Strait', corridorRiskName: null },
-  { id: 'bosphorus', relayName: 'Turkish Straits', portwatchName: 'Bosporus Strait', corridorRiskName: null },
+  { id: 'bosphorus', relayName: 'Bosporus Strait', portwatchName: 'Bosporus Strait', corridorRiskName: null },
   { id: 'korea_strait', relayName: 'Korea Strait', portwatchName: 'Korea Strait', corridorRiskName: null },
   { id: 'dover_strait', relayName: 'Dover Strait', portwatchName: 'Dover Strait', corridorRiskName: null },
   { id: 'kerch_strait', relayName: 'Kerch Strait', portwatchName: 'Kerch Strait', corridorRiskName: null },

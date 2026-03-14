@@ -4100,7 +4100,7 @@ const CHOKEPOINTS = [
   { name: 'Black Sea', lat: 43.5, lon: 34.0, radius: 3 },
   { name: 'Cape of Good Hope', lat: -34.36, lon: 18.49, radius: 2 },
   { name: 'Strait of Gibraltar', lat: 35.96, lon: -5.35, radius: 1 },
-  { name: 'Turkish Straits', lat: 40.70, lon: 28.0, radius: 1.5 },
+  { name: 'Bosporus Strait', lat: 40.70, lon: 28.0, radius: 1.5 },
   { name: 'Korea Strait', lat: 34.0, lon: 129.0, radius: 1.5 },
   { name: 'Dover Strait', lat: 51.05, lon: 1.45, radius: 0.5 },
   { name: 'Kerch Strait', lat: 45.33, lon: 36.60, radius: 0.5 },

@@ -27,9 +27,9 @@ describe('CANONICAL_CHOKEPOINTS registry', () => {
     assert.equal(new Set(names).size, names.length);
   });
 
-  it('Bosphorus (Turkish Straits) has relayName "Turkish Straits"', () => {
+  it('Bosphorus has relayName "Bosporus Strait"', () => {
     const bos = CANONICAL_CHOKEPOINTS.find(c => c.id === 'bosphorus');
-    assert.equal(bos.relayName, 'Turkish Straits');
+    assert.equal(bos.relayName, 'Bosporus Strait');
   });
 });
 

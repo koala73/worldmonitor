@@ -7,7 +7,7 @@ All notable changes to World Monitor are documented here.
 ### Added
 
 - Chokepoint transit intelligence with 3 free data sources: IMF PortWatch (vessel transit counts), CorridorRisk (risk intelligence), AISStream (24h crossing counter) (#1560)
-- 13 monitored chokepoints (was 6): added Cape of Good Hope, Gibraltar, Turkish Straits (Bosphorus+Dardanelles merged), Korea, Dover, Kerch, Lombok (#1560, #1572)
+- 13 monitored chokepoints (was 6): added Cape of Good Hope, Gibraltar, Bosporus Strait (absorbs Dardanelles), Korea, Dover, Kerch, Lombok (#1560, #1572)
 - Expandable chokepoint cards with TradingView lightweight-charts 180-day time-series (tanker vs cargo) (#1560)
 - Real-time transit counting with enter+dwell+exit crossing detection, 30min cooldown (#1560)
 - PortWatch, CorridorRisk, and transit seed loops on Railway relay (#1560)
