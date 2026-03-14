@@ -76,7 +76,7 @@ async function readInputKeys() {
     'temporal:anomalies:v1',
     'theater-posture:sebuf:stale:v1',
     'prediction:markets-bootstrap:v1',
-    'supply_chain:chokepoints:v2',
+    'supply_chain:chokepoints:v4',
     'conflict:iran-events:v1',
     'conflict:ucdp-events:v1',
     'unrest:events:v1',
@@ -163,8 +163,9 @@ function normalizeCiiEntry(c) {
     : rawTrend.includes('falling') ? 'falling'
     : 'stable';
   const level = score >= 81 ? 'critical' : score >= 66 ? 'high' : score >= 51 ? 'elevated' : score >= 31 ? 'normal' : 'low';
-  // Unrest component: try both sebuf proto shape and frontend shape
-  const unrest = c.components?.unrest ?? c.components?.protest ?? c.components?.geoConvergence ?? 0;
+  // Unrest component: try sebuf proto shape (ciiContribution is the primary unrest signal
+  // from get-risk-scores.ts), then frontend shape, then geoConvergence as fallback
+  const unrest = c.components?.unrest ?? c.components?.protest ?? c.components?.ciiContribution ?? c.components?.geoConvergence ?? 0;
   return { code, name: c.name || code, score, level, trend, change24h: c.change24h ?? 0, components: { ...c.components, unrest } };
 }
 
