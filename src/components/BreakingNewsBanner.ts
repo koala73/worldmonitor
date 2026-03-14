@@ -28,7 +28,7 @@ export class BreakingNewsBanner {
   private boundOnVisibility: () => void;
   private boundOnResize: () => void;
   private dismissed = new Map<string, number>();
-  private highlightTimer: ReturnType<typeof setTimeout> | null = null;
+  private highlightTimers = new WeakMap<Element, ReturnType<typeof setTimeout>>();
 
   constructor() {
     this.container = document.createElement('div');
@@ -180,14 +180,15 @@ export class BreakingNewsBanner {
     const panel = document.querySelector(`[data-panel="${panelId}"]`);
     if (!panel) return;
     panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    if (this.highlightTimer) clearTimeout(this.highlightTimer);
+    const prev = this.highlightTimers.get(panel);
+    if (prev) clearTimeout(prev);
     panel.classList.remove('search-highlight');
     void (panel as HTMLElement).offsetWidth;
     panel.classList.add('search-highlight');
-    this.highlightTimer = setTimeout(() => {
+    this.highlightTimers.set(panel, setTimeout(() => {
       panel.classList.remove('search-highlight');
-      this.highlightTimer = null;
-    }, 3100);
+      this.highlightTimers.delete(panel);
+    }, 3100));
   }
 
   private createAlertElement(alert: BreakingAlert): HTMLElement {
