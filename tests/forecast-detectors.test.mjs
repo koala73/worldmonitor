@@ -14,6 +14,12 @@ import {
   detectPoliticalScenarios,
   detectMilitaryScenarios,
   detectInfraScenarios,
+  attachNewsContext,
+  computeConfidence,
+  sanitizeForPrompt,
+  parseLLMScenarios,
+  validateScenarios,
+  SIGNAL_TO_SOURCE,
 } from '../scripts/seed-forecasts.mjs';
 
 describe('forecastId', () => {
@@ -407,5 +413,180 @@ describe('detectInfraScenarios', () => {
     const cyberResult = detectInfraScenarios(withCyber);
     assert.ok(cyberResult[0].probability > baseResult[0].probability,
       'cyber threats should boost probability');
+  });
+});
+
+// ── Phase 2 Tests ──────────────────────────────────────────
+
+describe('attachNewsContext', () => {
+  it('attaches top-5 headlines to all predictions', () => {
+    const preds = [makePrediction('conflict', 'Iran', 'test', 0.5, 0.5, '7d', [])];
+    const news = { topStories: [
+      { primaryTitle: 'H1' }, { primaryTitle: 'H2' }, { primaryTitle: 'H3' },
+      { primaryTitle: 'H4' }, { primaryTitle: 'H5' }, { primaryTitle: 'H6' },
+    ]};
+    attachNewsContext(preds, news);
+    assert.equal(preds[0].newsContext.length, 5);
+    assert.equal(preds[0].newsContext[0], 'H1');
+  });
+
+  it('handles null newsInsights', () => {
+    const preds = [makePrediction('conflict', 'Iran', 'test', 0.5, 0.5, '7d', [])];
+    attachNewsContext(preds, null);
+    assert.equal(preds[0].newsContext, undefined);
+  });
+
+  it('handles empty topStories', () => {
+    const preds = [makePrediction('conflict', 'Iran', 'test', 0.5, 0.5, '7d', [])];
+    attachNewsContext(preds, { topStories: [] });
+    assert.equal(preds[0].newsContext, undefined);
+  });
+});
+
+describe('computeConfidence', () => {
+  it('higher source diversity = higher confidence', () => {
+    const p1 = makePrediction('conflict', 'Iran', 'a', 0.5, 0, '7d', [
+      { type: 'cii', value: 'test', weight: 0.4 },
+    ]);
+    const p2 = makePrediction('conflict', 'Iran', 'b', 0.5, 0, '7d', [
+      { type: 'cii', value: 'test', weight: 0.4 },
+      { type: 'theater', value: 'test', weight: 0.3 },
+      { type: 'ucdp', value: 'test', weight: 0.2 },
+    ]);
+    computeConfidence([p1, p2]);
+    assert.ok(p2.confidence > p1.confidence);
+  });
+
+  it('cii and cii_delta count as one source', () => {
+    const p = makePrediction('conflict', 'Iran', 'a', 0.5, 0, '7d', [
+      { type: 'cii', value: 'test', weight: 0.4 },
+      { type: 'cii_delta', value: 'test', weight: 0.2 },
+    ]);
+    const pSingle = makePrediction('conflict', 'Iran', 'b', 0.5, 0, '7d', [
+      { type: 'cii', value: 'test', weight: 0.4 },
+    ]);
+    computeConfidence([p, pSingle]);
+    assert.equal(p.confidence, pSingle.confidence);
+  });
+
+  it('low calibration drift = higher confidence than high drift', () => {
+    const pLow = makePrediction('conflict', 'Iran', 'a', 0.5, 0, '7d', [
+      { type: 'cii', value: 'test', weight: 0.4 },
+    ]);
+    pLow.calibration = { marketTitle: 'test', marketPrice: 0.5, drift: 0.01, source: 'polymarket' };
+    const pHigh = makePrediction('conflict', 'Iran', 'b', 0.5, 0, '7d', [
+      { type: 'cii', value: 'test', weight: 0.4 },
+    ]);
+    pHigh.calibration = { marketTitle: 'test', marketPrice: 0.5, drift: 0.4, source: 'polymarket' };
+    computeConfidence([pLow, pHigh]);
+    assert.ok(pLow.confidence > pHigh.confidence);
+  });
+
+  it('high calibration drift = lower confidence', () => {
+    const p = makePrediction('conflict', 'Iran', 'a', 0.5, 0, '7d', [
+      { type: 'cii', value: 'test', weight: 0.4 },
+    ]);
+    p.calibration = { marketTitle: 'test', marketPrice: 0.5, drift: 0.4, source: 'polymarket' };
+    computeConfidence([p]);
+    assert.ok(p.confidence <= 0.5);
+  });
+
+  it('floors at 0.2', () => {
+    const p = makePrediction('conflict', 'Iran', 'a', 0.5, 0, '7d', []);
+    p.calibration = { marketTitle: 'test', marketPrice: 0.5, drift: 0.5, source: 'polymarket' };
+    computeConfidence([p]);
+    assert.ok(p.confidence >= 0.2);
+  });
+});
+
+describe('sanitizeForPrompt', () => {
+  it('strips HTML tags', () => {
+    assert.equal(sanitizeForPrompt('<script>alert("xss")</script>hello'), 'scriptalert("xss")/scripthello');
+  });
+
+  it('strips newlines', () => {
+    assert.equal(sanitizeForPrompt('line1\nline2\rline3'), 'line1 line2 line3');
+  });
+
+  it('truncates to 200 chars', () => {
+    const long = 'x'.repeat(300);
+    assert.equal(sanitizeForPrompt(long).length, 200);
+  });
+
+  it('handles null/undefined', () => {
+    assert.equal(sanitizeForPrompt(null), '');
+    assert.equal(sanitizeForPrompt(undefined), '');
+  });
+});
+
+describe('parseLLMScenarios', () => {
+  it('parses valid JSON array', () => {
+    const result = parseLLMScenarios('[{"index": 0, "scenario": "Test scenario"}]');
+    assert.equal(result.length, 1);
+    assert.equal(result[0].index, 0);
+  });
+
+  it('returns null for invalid JSON', () => {
+    assert.equal(parseLLMScenarios('not json at all'), null);
+  });
+
+  it('strips thinking tags before parsing', () => {
+    const result = parseLLMScenarios('<think>reasoning here</think>[{"index": 0, "scenario": "Test"}]');
+    assert.equal(result.length, 1);
+  });
+
+  it('repairs truncated JSON array', () => {
+    const result = parseLLMScenarios('[{"index": 0, "scenario": "Test scenario"');
+    assert.ok(result !== null);
+    assert.equal(result[0].index, 0);
+  });
+
+  it('extracts JSON from surrounding text', () => {
+    const result = parseLLMScenarios('Here is my analysis:\n[{"index": 0, "scenario": "Test"}]\nDone.');
+    assert.equal(result.length, 1);
+  });
+});
+
+describe('validateScenarios', () => {
+  const preds = [
+    makePrediction('conflict', 'Iran', 'test', 0.5, 0.5, '7d', [
+      { type: 'cii', value: 'Iran CII 87 critical', weight: 0.4 },
+    ]),
+  ];
+
+  it('accepts scenario with signal reference', () => {
+    const scenarios = [{ index: 0, scenario: 'The Iran CII score of 87 indicates critical instability in the region, driven by ongoing military activity.' }];
+    const valid = validateScenarios(scenarios, preds);
+    assert.equal(valid.length, 1);
+  });
+
+  it('rejects scenario without signal reference', () => {
+    const scenarios = [{ index: 0, scenario: 'Tensions continue to rise in the region due to various geopolitical factors and ongoing disputes.' }];
+    const valid = validateScenarios(scenarios, preds);
+    assert.equal(valid.length, 0);
+  });
+
+  it('rejects too-short scenario', () => {
+    const scenarios = [{ index: 0, scenario: 'Short.' }];
+    const valid = validateScenarios(scenarios, preds);
+    assert.equal(valid.length, 0);
+  });
+
+  it('rejects out-of-bounds index', () => {
+    const scenarios = [{ index: 5, scenario: 'Iran CII 87 indicates critical instability in the region.' }];
+    const valid = validateScenarios(scenarios, preds);
+    assert.equal(valid.length, 0);
+  });
+
+  it('strips HTML from scenario', () => {
+    const scenarios = [{ index: 0, scenario: 'The Iran CII score of 87 <b>critical</b> indicates instability in the conflict zone region.' }];
+    const valid = validateScenarios(scenarios, preds);
+    assert.equal(valid.length, 1);
+    assert.ok(!valid[0].scenario.includes('<b>'));
+  });
+
+  it('handles null/non-array input', () => {
+    assert.deepEqual(validateScenarios(null, preds), []);
+    assert.deepEqual(validateScenarios('not array', preds), []);
   });
 });

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import crypto from 'node:crypto';
-import { loadEnvFile, runSeed } from './_seed-utils.mjs';
+import { loadEnvFile, runSeed, CHROME_UA } from './_seed-utils.mjs';
 import { tagRegions } from './_prediction-scoring.mjs';
 
 const _isDirectRun = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/'));
@@ -568,6 +568,211 @@ function computeTrends(predictions, prior) {
   }
 }
 
+// ── Phase 2: News Context ──────────────────────────────────
+function attachNewsContext(predictions, newsInsights) {
+  if (!newsInsights?.topStories?.length) return;
+  const headlines = newsInsights.topStories.slice(0, 5).map(s => s.primaryTitle);
+  for (const pred of predictions) {
+    pred.newsContext = headlines;
+  }
+}
+
+// ── Phase 2: Deterministic Confidence Model ────────────────
+const SIGNAL_TO_SOURCE = {
+  cii: 'cii', cii_delta: 'cii', unrest: 'cii',
+  conflict_events: 'iran_events',
+  ucdp: 'ucdp',
+  theater: 'theater_posture', indicators: 'theater_posture',
+  mil_flights: 'temporal_anomalies', anomaly: 'temporal_anomalies',
+  chokepoint: 'chokepoints',
+  ais_gap: 'temporal_anomalies',
+  gps_jamming: 'gps_jamming',
+  outage: 'outages',
+  cyber: 'cyber_threats',
+};
+
+function computeConfidence(predictions) {
+  for (const pred of predictions) {
+    const sources = new Set(pred.signals.map(s => SIGNAL_TO_SOURCE[s.type] || s.type));
+    const sourceDiversity = normalize(sources.size, 1, 4);
+    const calibrationAgreement = pred.calibration
+      ? Math.max(0, 1 - Math.abs(pred.calibration.drift) * 3)
+      : 0.5;
+    const conf = 0.5 * sourceDiversity + 0.5 * calibrationAgreement;
+    pred.confidence = Math.round(Math.max(0.2, Math.min(1, conf)) * 1000) / 1000;
+  }
+}
+
+// ── Phase 2: LLM Scenario Enrichment ───────────────────────
+const FORECAST_LLM_PROVIDERS = [
+  { name: 'groq', envKey: 'GROQ_API_KEY', apiUrl: 'https://api.groq.com/openai/v1/chat/completions', model: 'llama-3.1-8b-instant', timeout: 20_000 },
+  { name: 'openrouter', envKey: 'OPENROUTER_API_KEY', apiUrl: 'https://openrouter.ai/api/v1/chat/completions', model: 'google/gemini-2.5-flash', timeout: 25_000 },
+];
+
+const SCENARIO_SYSTEM_PROMPT = `You are a senior geopolitical intelligence analyst writing scenario briefs.
+
+RULES:
+- Each scenario MUST be exactly 2-3 sentences, 40-80 words.
+- Each scenario MUST name at least one specific signal value from the data (e.g., "CII score of 87", "3 UCDP events", "theater posture elevated").
+- Each scenario MUST state a causal mechanism (what leads to what).
+- Do NOT use hedging words ("could", "might", "potentially") without citing a data point.
+- Do NOT use your own knowledge. Base everything on the provided signals and headlines.
+
+GOOD EXAMPLE:
+{"index": 0, "scenario": "Iran's CII score of 87 (critical, rising) combined with 3 active UCDP conflict events indicates sustained military pressure. The elevated Middle East theater posture with 47 tracked flights suggests force projection capability is being maintained."}
+
+BAD EXAMPLE (too generic, no signal values):
+{"index": 0, "scenario": "Tensions in the Middle East continue to escalate as various factors contribute to regional instability."}
+
+Respond with ONLY a JSON array: [{"index": 0, "scenario": "..."}, ...]`;
+
+function sanitizeForPrompt(text) {
+  return (text || '').replace(/[\n\r]/g, ' ').replace(/[<>{}\x00-\x1f]/g, '').slice(0, 200).trim();
+}
+
+function parseLLMScenarios(text) {
+  const cleaned = text
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/<\|thinking\|>[\s\S]*?<\|\/thinking\|>/gi, '')
+    .trim();
+  // Try complete JSON array first
+  const match = cleaned.match(/\[[\s\S]*\]/);
+  if (match) {
+    try { return JSON.parse(match[0]); } catch { /* fall through to repair */ }
+  }
+  // Try truncated: find opening bracket and attempt repair
+  const bracketIdx = cleaned.indexOf('[');
+  if (bracketIdx === -1) return null;
+  const partial = cleaned.slice(bracketIdx);
+  for (const suffix of ['"}]', '}]', '"]', ']']) {
+    try { return JSON.parse(partial + suffix); } catch { /* next */ }
+  }
+  return null;
+}
+
+function validateScenarios(scenarios, predictions) {
+  if (!Array.isArray(scenarios)) return [];
+  return scenarios.filter(s => {
+    if (!s || typeof s.scenario !== 'string' || s.scenario.length < 30) return false;
+    if (typeof s.index !== 'number' || s.index < 0 || s.index >= predictions.length) return false;
+    const pred = predictions[s.index];
+    const scenarioLower = s.scenario.toLowerCase();
+    const hasSignalRef = pred.signals.some(sig =>
+      scenarioLower.includes(sig.type.toLowerCase()) ||
+      sig.value.split(/\s+/).some(word => word.length > 3 && scenarioLower.includes(word.toLowerCase()))
+    );
+    if (!hasSignalRef) {
+      console.warn(`  [LLM] Scenario ${s.index} rejected: no signal reference`);
+      return false;
+    }
+    s.scenario = s.scenario.replace(/<[^>]*>/g, '').slice(0, 500);
+    return true;
+  });
+}
+
+async function callForecastLLM(systemPrompt, userPrompt) {
+  for (const provider of FORECAST_LLM_PROVIDERS) {
+    const apiKey = process.env[provider.envKey];
+    if (!apiKey) continue;
+    try {
+      const resp = await fetch(provider.apiUrl, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'User-Agent': CHROME_UA,
+          ...(provider.name === 'openrouter' ? { 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor' } : {}),
+        },
+        body: JSON.stringify({
+          model: provider.model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+          max_tokens: 1500,
+          temperature: 0.3,
+        }),
+        signal: AbortSignal.timeout(provider.timeout),
+      });
+      if (!resp.ok) { console.warn(`  [LLM] ${provider.name}: HTTP ${resp.status}`); continue; }
+      const json = await resp.json();
+      const text = json.choices?.[0]?.message?.content?.trim();
+      if (!text || text.length < 20) continue;
+      return { text, model: json.model || provider.model, provider: provider.name };
+    } catch (err) { console.warn(`  [LLM] ${provider.name}: ${err.message}`); continue; }
+  }
+  return null;
+}
+
+async function redisSet(url, token, key, data, ttlSeconds) {
+  try {
+    await fetch(`${url}/set/${encodeURIComponent(key)}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value: JSON.stringify(data), ex: ttlSeconds }),
+      signal: AbortSignal.timeout(5_000),
+    });
+  } catch { /* non-fatal cache write */ }
+}
+
+async function enrichScenariosWithLLM(predictions) {
+  const top = predictions.slice(0, 4);
+  if (top.length === 0) return;
+
+  const { url, token } = getRedisCredentials();
+  const inputHash = crypto.createHash('sha256')
+    .update(JSON.stringify(top.map(p => ({ id: p.id, d: p.domain, r: p.region, p: p.probability }))))
+    .digest('hex').slice(0, 16);
+  const cacheKey = `forecast:llm-scenarios:${inputHash}`;
+
+  const cached = await redisGet(url, token, cacheKey);
+  if (cached?.scenarios) {
+    let applied = 0;
+    for (const s of cached.scenarios) {
+      if (s.index >= 0 && s.index < top.length && s.scenario) {
+        top[s.index].scenario = s.scenario;
+        applied++;
+      }
+    }
+    console.log(JSON.stringify({ event: 'llm_scenario', cached: true, applied, inputHash }));
+    return;
+  }
+
+  const t0 = Date.now();
+  const headlines = (top[0]?.newsContext || []).map(h => `- ${sanitizeForPrompt(h)}`).join('\n');
+  const predsText = top.map((p, i) => {
+    const sigs = p.signals.map(s => `[SIGNAL] ${sanitizeForPrompt(s.value)}`).join('\n');
+    const cal = p.calibration ? `\n[CALIBRATION] ${sanitizeForPrompt(p.calibration.marketTitle)} at ${Math.round(p.calibration.marketPrice * 100)}%` : '';
+    return `[${i}] "${sanitizeForPrompt(p.title)}" (${p.domain}, ${p.region})\nProbability: ${Math.round(p.probability * 100)}% | Horizon: ${p.timeHorizon}\n${sigs}${cal}`;
+  }).join('\n\n');
+
+  const userPrompt = headlines ? `Current top headlines:\n${headlines}\n\nPredictions to analyze:\n\n${predsText}` : `Predictions to analyze:\n\n${predsText}`;
+
+  const result = await callForecastLLM(SCENARIO_SYSTEM_PROMPT, userPrompt);
+  if (!result) {
+    console.warn('  [LLM] All providers failed, scenarios will be empty');
+    return;
+  }
+
+  const raw = parseLLMScenarios(result.text);
+  const valid = validateScenarios(raw, top);
+
+  for (const s of valid) {
+    top[s.index].scenario = s.scenario;
+  }
+
+  console.log(JSON.stringify({
+    event: 'llm_scenario', provider: result.provider, model: result.model,
+    inputHash, predictionsCount: top.length, scenariosProduced: valid.length,
+    latencyMs: Math.round(Date.now() - t0), cached: false,
+  }));
+
+  if (valid.length > 0) {
+    await redisSet(url, token, cacheKey, { scenarios: valid }, 3600);
+  }
+}
+
+// ── Main pipeline ──────────────────────────────────────────
 async function fetchForecasts() {
   console.log('  Reading input data from Redis...');
   const inputs = await readInputKeys();
@@ -585,11 +790,15 @@ async function fetchForecasts() {
 
   console.log(`  Generated ${predictions.length} predictions`);
 
-  resolveCascades(predictions);
+  attachNewsContext(predictions, inputs.newsInsights);
   calibrateWithMarkets(predictions, inputs.predictionMarkets);
+  computeConfidence(predictions);
+  resolveCascades(predictions);
   computeTrends(predictions, prior);
 
   predictions.sort((a, b) => (b.probability * b.confidence) - (a.probability * a.confidence));
+
+  await enrichScenariosWithLLM(predictions);
 
   return { predictions, generatedAt: Date.now() };
 }
@@ -628,4 +837,10 @@ export {
   detectMilitaryScenarios,
   detectInfraScenarios,
   CASCADE_RULES,
+  attachNewsContext,
+  computeConfidence,
+  sanitizeForPrompt,
+  parseLLMScenarios,
+  validateScenarios,
+  SIGNAL_TO_SOURCE,
 };
