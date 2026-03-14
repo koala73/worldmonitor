@@ -458,7 +458,7 @@ function detectInfraScenarios(inputs) {
     const confidence = normalize(sourceCount, 1, 3);
 
     predictions.push(makePrediction(
-      'infra', country,
+      'infrastructure', country,
       `Infrastructure cascade risk: ${country}`,
       prob, confidence, '24h', signals,
     ));

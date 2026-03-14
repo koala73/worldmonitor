@@ -379,7 +379,7 @@ describe('detectInfraScenarios', () => {
     };
     const result = detectInfraScenarios(inputs);
     assert.ok(result.length >= 1);
-    assert.equal(result[0].domain, 'infra');
+    assert.equal(result[0].domain, 'infrastructure');
     assert.ok(result[0].title.includes('Syria'));
   });
 
