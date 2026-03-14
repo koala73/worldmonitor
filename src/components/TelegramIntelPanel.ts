@@ -95,7 +95,12 @@ export class TelegramIntelPanel extends Panel {
     const timeAgo = formatTelegramTime(item.ts);
     const itemDate = new Date(item.ts).getTime();
     const isLive = !isNaN(itemDate) && (Date.now() - itemDate) < LIVE_THRESHOLD_MS;
-    const textHtml = item.text.replace(/\n/g, '<br>');
+    const escaped = item.text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+    const textHtml = escaped.replace(/\n/g, '<br>');
 
     return h('div', { className: `telegram-intel-item ${isLive ? 'is-live' : ''}` },
       h('div', { className: 'telegram-intel-item-header' },
@@ -125,7 +130,7 @@ export class TelegramIntelPanel extends Panel {
             className: 'telegram-intel-image',
             src: sanitizeUrl(url),
             loading: 'lazy',
-            onClick: () => window.open(sanitizeUrl(url), '_blank'),
+            onClick: () => window.open(sanitizeUrl(url), '_blank', 'noopener,noreferrer'),
           });
         })
       ) : null,
