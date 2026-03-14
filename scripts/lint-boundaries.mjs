@@ -112,6 +112,34 @@ for (const file of serverFiles) {
   }
 }
 
+// --- Check 3: api/ must not import from src/ or server/ (Edge Function self-containment) ---
+const apiFiles = walkDir(join(ROOT, 'api'), ['.js', '.mjs']);
+for (const file of apiFiles) {
+  // Skip helper files (prefixed with _) and test files
+  const basename = file.split('/').pop();
+  if (basename.startsWith('_') || basename.includes('.test.')) continue;
+
+  const content = readFileSync(file, 'utf8');
+  const lines = content.split('\n');
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.includes('boundary-ignore')) continue;
+    if (i > 0 && lines[i - 1].includes('boundary-ignore')) continue;
+
+    if (line.match(/from\s+['"]\.\.\/(?:src|server)\//)) {
+      violations.push({
+        file: relative(ROOT, file),
+        line: i + 1,
+        from: 'api',
+        to: line.match(/\.\.\/(\w+)/)[1],
+        text: line.trim(),
+        remedy: 'Edge Functions must be self-contained. Only same-directory _*.js helpers and npm packages are allowed. See AGENTS.md "API Layer Constraints".',
+      });
+    }
+  }
+}
+
 // --- Output ---
 if (violations.length === 0) {
   console.log('✓ No architectural boundary violations found.');

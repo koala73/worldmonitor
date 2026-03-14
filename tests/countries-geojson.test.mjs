@@ -3,12 +3,18 @@ import assert from 'node:assert/strict';
 
 const COUNTRY_GEOJSON_URL = 'https://maps.worldmonitor.app/countries.geojson';
 
-const response = await fetch(COUNTRY_GEOJSON_URL);
-if (!response.ok) throw new Error(`Failed to fetch countries.geojson: HTTP ${response.status}`);
-const geojson = await response.json();
-const features = geojson.features;
+let features;
+let fetchError;
+try {
+  const response = await fetch(COUNTRY_GEOJSON_URL, { signal: AbortSignal.timeout(5_000) });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const geojson = await response.json();
+  features = geojson.features;
+} catch (err) {
+  fetchError = err;
+}
 
-describe('countries.geojson data integrity', () => {
+describe('countries.geojson data integrity', { skip: fetchError ? `CDN unreachable: ${fetchError.message}` : undefined }, () => {
   it('all feature names are unique', () => {
     const names = features.map(f => f.properties.name);
     const dupes = names.filter((n, i) => names.indexOf(n) !== i);

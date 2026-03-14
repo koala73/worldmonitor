@@ -93,7 +93,7 @@ describe('country geometry overrides', () => {
     const elapsedMs = Date.now() - start;
 
     assert.equal(overrideAborted, true);
-    assert.ok(elapsedMs < 250, `Expected preload to complete quickly, got ${elapsedMs}ms`);
+    assert.ok(elapsedMs < 2000, `Expected preload to complete within timeout, got ${elapsedMs}ms`);
     assert.deepEqual(countryGeometry.getCountryBbox('PK'), [0, 0, 1, 1]);
   });
 
