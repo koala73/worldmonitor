@@ -138,7 +138,7 @@ components:
                     description: Trading volume in USD.
                 url:
                     type: string
-                    description: URL to the Polymarket market page.
+                    description: URL to the market page.
                 closesAt:
                     type: integer
                     format: int64
@@ -146,9 +146,16 @@ components:
                 category:
                     type: string
                     description: Market category (e.g., "Politics", "Crypto", "Sports").
+                source:
+                    type: string
+                    enum:
+                        - MARKET_SOURCE_UNSPECIFIED
+                        - MARKET_SOURCE_POLYMARKET
+                        - MARKET_SOURCE_KALSHI
+                    description: Source platform for prediction market data.
             required:
                 - id
-            description: PredictionMarket represents a prediction market contract from Polymarket.
+            description: PredictionMarket represents a prediction market contract.
         PaginationResponse:
             type: object
             properties:

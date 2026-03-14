@@ -56,7 +56,7 @@ export async function fetchWebcamImage(webcamId: string): Promise<GetWebcamImage
     return {
       thumbnailUrl: '', playerUrl: '', title: '',
       windyUrl: `https://www.windy.com/webcams/${webcamId}`,
-      lastUpdated: 0, error: 'unavailable',
+      lastUpdated: '', error: 'unavailable',
     };
   }
 }

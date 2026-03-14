@@ -1,4 +1,4 @@
-import { PredictionServiceClient, MarketSource } from '@/generated/client/worldmonitor/prediction/v1/service_client';
+import { PredictionServiceClient } from '@/generated/client/worldmonitor/prediction/v1/service_client';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { createCircuitBreaker } from '@/utils';
 import { SITE_VARIANT } from '@/config';
@@ -60,7 +60,7 @@ function protoToMarket(m: { title: string; yesPrice: number; volume: number; url
     volume: m.volume,
     url: m.url || undefined,
     endDate: m.closesAt ? new Date(m.closesAt).toISOString() : undefined,
-    source: m.source === MarketSource.MARKET_SOURCE_KALSHI ? 'kalshi' : 'polymarket',
+    source: m.source === 'MARKET_SOURCE_KALSHI' ? 'kalshi' : 'polymarket',
     regions: tagRegions(m.title),
   };
 }

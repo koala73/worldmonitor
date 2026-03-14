@@ -659,3 +659,4 @@ export class MarketServiceClient {
     throw new ApiError(resp.status, `Request failed with status ${resp.status}`, body);
   }
 }
+

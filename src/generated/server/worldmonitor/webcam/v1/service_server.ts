@@ -10,6 +10,12 @@ export interface ListWebcamsRequest {
   boundN: number;
 }
 
+export interface ListWebcamsResponse {
+  webcams: WebcamEntry[];
+  clusters: WebcamCluster[];
+  totalInView: number;
+}
+
 export interface WebcamEntry {
   webcamId: string;
   title: string;
@@ -26,12 +32,6 @@ export interface WebcamCluster {
   categories: string[];
 }
 
-export interface ListWebcamsResponse {
-  webcams: WebcamEntry[];
-  clusters: WebcamCluster[];
-  totalInView: number;
-}
-
 export interface GetWebcamImageRequest {
   webcamId: string;
 }
@@ -41,7 +41,7 @@ export interface GetWebcamImageResponse {
   playerUrl: string;
   title: string;
   windyUrl: string;
-  lastUpdated: number;
+  lastUpdated: string;
   error: string;
 }
 
@@ -108,11 +108,11 @@ export function createWebcamServiceRoutes(
           const url = new URL(req.url, "http://localhost");
           const params = url.searchParams;
           const body: ListWebcamsRequest = {
-            zoom: Number(params.get("zoom") ?? "3"),
-            boundW: Number(params.get("bound_w") ?? "-180"),
-            boundS: Number(params.get("bound_s") ?? "-90"),
-            boundE: Number(params.get("bound_e") ?? "180"),
-            boundN: Number(params.get("bound_n") ?? "90"),
+            zoom: Number(params.get("zoom") ?? "0"),
+            boundW: Number(params.get("bound_w") ?? "0"),
+            boundS: Number(params.get("bound_s") ?? "0"),
+            boundE: Number(params.get("bound_e") ?? "0"),
+            boundN: Number(params.get("bound_n") ?? "0"),
           };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("listWebcams", body);
@@ -157,8 +157,9 @@ export function createWebcamServiceRoutes(
         try {
           const pathParams: Record<string, string> = {};
           const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
           const body: GetWebcamImageRequest = {
-            webcamId: url.searchParams.get("webcam_id") ?? "",
+            webcamId: params.get("webcam_id") ?? "",
           };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("getWebcamImage", body);
@@ -198,3 +199,4 @@ export function createWebcamServiceRoutes(
     },
   ];
 }
+

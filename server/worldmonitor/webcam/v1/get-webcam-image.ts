@@ -11,12 +11,12 @@ export async function getWebcamImage(_ctx: ServerContext, req: GetWebcamImageReq
   const windyUrl = `https://www.windy.com/webcams/${encodeURIComponent(webcamId || '')}`;
 
   if (!webcamId || !WEBCAM_ID_RE.test(webcamId)) {
-    return { thumbnailUrl: '', playerUrl: '', title: '', windyUrl, lastUpdated: 0, error: 'missing webcam_id' };
+    return { thumbnailUrl: '', playerUrl: '', title: '', windyUrl, lastUpdated: '', error: 'missing webcam_id' };
   }
 
   const apiKey = process.env.WINDY_API_KEY;
   if (!apiKey) {
-    return { thumbnailUrl: '', playerUrl: '', title: '', windyUrl, lastUpdated: 0, error: 'unavailable' };
+    return { thumbnailUrl: '', playerUrl: '', title: '', windyUrl, lastUpdated: '', error: 'unavailable' };
   }
 
   const result = await cachedFetchJson<GetWebcamImageResponse>(
@@ -39,11 +39,11 @@ export async function getWebcamImage(_ctx: ServerContext, req: GetWebcamImageReq
         playerUrl: urls.player || '',
         title: wc.title || '',
         windyUrl,
-        lastUpdated: wc.lastUpdatedOn ? new Date(wc.lastUpdatedOn).getTime() : 0,
+        lastUpdated: wc.lastUpdatedOn ? new Date(wc.lastUpdatedOn).toISOString() : '',
         error: '',
       };
     },
   );
 
-  return result ?? { thumbnailUrl: '', playerUrl: '', title: '', windyUrl, lastUpdated: 0, error: 'unavailable' };
+  return result ?? { thumbnailUrl: '', playerUrl: '', title: '', windyUrl, lastUpdated: '', error: 'unavailable' };
 }

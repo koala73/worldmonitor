@@ -12,6 +12,24 @@ export interface GetForecastsResponse {
   generatedAt: number;
 }
 
+export interface Forecast {
+  id: string;
+  domain: string;
+  region: string;
+  title: string;
+  scenario: string;
+  probability: number;
+  confidence: number;
+  timeHorizon: string;
+  signals: ForecastSignal[];
+  cascades: CascadeEffect[];
+  trend: string;
+  priorProbability: number;
+  calibration?: CalibrationInfo;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface ForecastSignal {
   type: string;
   value: string;
@@ -29,24 +47,6 @@ export interface CalibrationInfo {
   marketPrice: number;
   drift: number;
   source: string;
-}
-
-export interface Forecast {
-  id: string;
-  domain: string;
-  region: string;
-  title: string;
-  scenario: string;
-  probability: number;
-  confidence: number;
-  timeHorizon: string;
-  signals: ForecastSignal[];
-  cascades: CascadeEffect[];
-  trend: string;
-  priorProbability: number;
-  calibration?: CalibrationInfo;
-  createdAt: number;
-  updatedAt: number;
 }
 
 export interface FieldViolation {
@@ -152,3 +152,4 @@ export function createForecastServiceRoutes(
     },
   ];
 }
+

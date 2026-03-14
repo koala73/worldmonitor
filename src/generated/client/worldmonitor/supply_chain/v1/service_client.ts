@@ -50,21 +50,13 @@ export interface ChokepointInfo {
   aisDisruptions: number;
   directions: string[];
   directionalDwt: DirectionalDwt[];
-  transitSummary: TransitSummary;
+  transitSummary?: TransitSummary;
 }
 
 export interface DirectionalDwt {
   direction: string;
   dwtThousandTonnes: number;
   wowChangePct: number;
-}
-
-export interface TransitDayCount {
-  date: string;
-  tanker: number;
-  cargo: number;
-  other: number;
-  total: number;
 }
 
 export interface TransitSummary {
@@ -77,6 +69,14 @@ export interface TransitSummary {
   riskLevel: string;
   incidentCount7d: number;
   disruptionPct: number;
+}
+
+export interface TransitDayCount {
+  date: string;
+  tanker: number;
+  cargo: number;
+  other: number;
+  total: number;
 }
 
 export interface GetCriticalMineralsRequest {
@@ -236,3 +236,4 @@ export class SupplyChainServiceClient {
     throw new ApiError(resp.status, `Request failed with status ${resp.status}`, body);
   }
 }
+

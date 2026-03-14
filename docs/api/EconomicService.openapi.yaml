@@ -281,6 +281,38 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/economic/v1/get-fred-series-batch:
+        post:
+            tags:
+                - EconomicService
+            summary: GetFredSeriesBatch
+            description: GetFredSeriesBatch retrieves multiple FRED series in a single call.
+            operationId: GetFredSeriesBatch
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/GetFredSeriesBatchRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetFredSeriesBatchResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -813,3 +845,44 @@ components:
                     type: string
                     description: Date as YYYY-QN.
             description: BisCreditToGdp represents total credit as percentage of GDP from BIS.
+        GetFredSeriesBatchRequest:
+            type: object
+            properties:
+                seriesIds:
+                    type: array
+                    items:
+                        type: string
+                        maxItems: 10
+                        minItems: 1
+                        description: FRED series IDs (e.g., "WALCL", "FEDFUNDS"). Max 10.
+                    maxItems: 10
+                    minItems: 1
+                limit:
+                    type: integer
+                    format: int32
+                    description: Maximum number of observations per series. Defaults to 120.
+            description: GetFredSeriesBatchRequest looks up multiple FRED series in a single call.
+        GetFredSeriesBatchResponse:
+            type: object
+            properties:
+                results:
+                    type: object
+                    additionalProperties:
+                        $ref: '#/components/schemas/FredSeries'
+                    description: Map of series_id -> FRED series for found series.
+                fetched:
+                    type: integer
+                    format: int32
+                    description: Number of series successfully fetched.
+                requested:
+                    type: integer
+                    format: int32
+                    description: Number of series requested.
+            description: GetFredSeriesBatchResponse contains the requested FRED series data.
+        ResultsEntry:
+            type: object
+            properties:
+                key:
+                    type: string
+                value:
+                    $ref: '#/components/schemas/FredSeries'

@@ -9,6 +9,12 @@ export interface SearchImageryRequest {
   limit: number;
 }
 
+export interface SearchImageryResponse {
+  scenes: ImageryScene[];
+  totalResults: number;
+  cacheHit: boolean;
+}
+
 export interface ImageryScene {
   id: string;
   satellite: string;
@@ -19,14 +25,6 @@ export interface ImageryScene {
   previewUrl: string;
   assetUrl: string;
 }
-
-export interface SearchImageryResponse {
-  scenes: ImageryScene[];
-  totalResults: number;
-  cacheHit: boolean;
-}
-
-// ---- Framework types ----
 
 export interface FieldViolation {
   field: string;
@@ -76,70 +74,61 @@ export interface ImageryServiceHandler {
   searchImagery(ctx: ServerContext, req: SearchImageryRequest): Promise<SearchImageryResponse>;
 }
 
-function makeHandler<Req, Res>(
-  methodName: string,
-  path: string,
-  parseReq: (params: URLSearchParams) => Req,
-  handlerFn: (ctx: ServerContext, req: Req) => Promise<Res>,
-  options?: ServerOptions,
-): RouteDescriptor {
-  return {
-    method: "GET",
-    path,
-    handler: async (req: Request): Promise<Response> => {
-      try {
-        const pathParams: Record<string, string> = {};
-        const url = new URL(req.url, "http://localhost");
-        const params = url.searchParams;
-        const body = parseReq(params);
-        if (options?.validateRequest) {
-          const violations = options.validateRequest(methodName, body);
-          if (violations) throw new ValidationError(violations);
-        }
-        const ctx: ServerContext = {
-          request: req,
-          pathParams,
-          headers: Object.fromEntries(req.headers.entries()),
-        };
-        const result = await handlerFn(ctx, body);
-        return new Response(JSON.stringify(result), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
-      } catch (err: unknown) {
-        if (err instanceof ValidationError) {
-          return new Response(JSON.stringify({ violations: err.violations }), {
-            status: 400,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-        if (options?.onError) return options.onError(err, req);
-        const message = err instanceof Error ? err.message : String(err);
-        return new Response(JSON.stringify({ message }), {
-          status: 500,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-    },
-  };
-}
-
 export function createImageryServiceRoutes(
   handler: ImageryServiceHandler,
   options?: ServerOptions,
 ): RouteDescriptor[] {
   return [
-    makeHandler(
-      "searchImagery",
-      "/api/imagery/v1/search-imagery",
-      (p) => ({
-        bbox: p.get("bbox") ?? "",
-        datetime: p.get("datetime") ?? "",
-        source: p.get("source") ?? "",
-        limit: Number(p.get("limit") ?? "10"),
-      }),
-      handler.searchImagery.bind(handler),
-      options,
-    ),
+    {
+      method: "GET",
+      path: "/api/imagery/v1/search-imagery",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: SearchImageryRequest = {
+            bbox: params.get("bbox") ?? "",
+            datetime: params.get("datetime") ?? "",
+            source: params.get("source") ?? "",
+            limit: Number(params.get("limit") ?? "0"),
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("searchImagery", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.searchImagery(ctx, body);
+          return new Response(JSON.stringify(result as SearchImageryResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
   ];
 }
+

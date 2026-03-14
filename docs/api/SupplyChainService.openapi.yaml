@@ -209,7 +209,6 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/DirectionalDwt'
-                    deprecated: true
                 transitSummary:
                     $ref: '#/components/schemas/TransitSummary'
         DirectionalDwt:
@@ -223,23 +222,6 @@ components:
                 wowChangePct:
                     type: number
                     format: double
-        TransitDayCount:
-            type: object
-            properties:
-                date:
-                    type: string
-                tanker:
-                    type: integer
-                    format: int32
-                cargo:
-                    type: integer
-                    format: int32
-                other:
-                    type: integer
-                    format: int32
-                total:
-                    type: integer
-                    format: int32
         TransitSummary:
             type: object
             properties:
@@ -270,6 +252,23 @@ components:
                 disruptionPct:
                     type: number
                     format: double
+        TransitDayCount:
+            type: object
+            properties:
+                date:
+                    type: string
+                tanker:
+                    type: integer
+                    format: int32
+                cargo:
+                    type: integer
+                    format: int32
+                other:
+                    type: integer
+                    format: int32
+                total:
+                    type: integer
+                    format: int32
         GetCriticalMineralsRequest:
             type: object
         GetCriticalMineralsResponse:
