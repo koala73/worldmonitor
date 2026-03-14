@@ -107,7 +107,7 @@ import { classifyWithAI } from '@/services/threat-classifier';
 import { ingestHeadlines } from '@/services/trending-keywords';
 import type { ListFeedDigestResponse } from '@/generated/client/worldmonitor/news/v1/service_client';
 import type { GetSectorSummaryResponse, ListMarketQuotesResponse } from '@/generated/client/worldmonitor/market/v1/service_client';
-import { mountCommunityWidget } from '@/components/CommunityWidget';
+// import { mountCommunityWidget } from '@/components/CommunityWidget';
 import { ResearchServiceClient } from '@/generated/client/worldmonitor/research/v1/service_client';
 import {
   MarketPanel,
@@ -1033,7 +1033,7 @@ export class DataLoaderManager implements AppModule {
 
     this.ctx.allNews = collectedNews;
     this.ctx.initialLoadComplete = true;
-    mountCommunityWidget();
+    // mountCommunityWidget(); // Community widget disabled
 
     this.ctx.map?.updateHotspotActivity(this.ctx.allNews);
 
