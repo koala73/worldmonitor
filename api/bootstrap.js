@@ -42,6 +42,7 @@ const BOOTSTRAP_CACHE_KEYS = {
   weatherAlerts:     'weather:alerts:v1',
   spending:          'economic:spending:v1',
   techEvents:        'research:tech-events-bootstrap:v1',
+  gdeltIntel:        'intelligence:gdelt-intel:v1',
 };
 
 const SLOW_KEYS = new Set([
@@ -55,7 +56,7 @@ const SLOW_KEYS = new Set([
 const FAST_KEYS = new Set([
   'earthquakes', 'outages', 'serviceStatuses', 'macroSignals', 'chokepoints',
   'marketQuotes', 'commodityQuotes', 'positiveGeoEvents', 'riskScores', 'flightDelays','insights', 'predictions',
-  'iranEvents', 'temporalAnomalies', 'weatherAlerts', 'spending', 'theaterPosture',
+  'iranEvents', 'temporalAnomalies', 'weatherAlerts', 'spending', 'theaterPosture', 'gdeltIntel',
 ]);
 
 const TIER_CACHE = {

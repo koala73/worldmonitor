@@ -7,6 +7,7 @@ import {
   type SearchGdeltDocumentsResponse,
 } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
+import { getHydratedData } from '@/services/bootstrap';
 
 export interface GdeltArticle {
   title: string;
@@ -185,7 +186,29 @@ export async function fetchHotspotContext(hotspot: Hotspot): Promise<GdeltArticl
   return fetchGdeltArticles(query, 8, '48h');
 }
 
+let _bootstrapConsumed = false;
+const _bootstrapData = new Map<string, TopicIntelligence>();
+
+function _consumeBootstrap(): void {
+  if (_bootstrapConsumed) return;
+  _bootstrapConsumed = true;
+  const raw = getHydratedData('gdeltIntel') as { topics?: Array<{ id: string; articles: GdeltArticle[]; fetchedAt?: string }> } | undefined;
+  if (!raw?.topics) return;
+  const now = new Date();
+  for (const entry of raw.topics) {
+    const topic = INTEL_TOPICS.find(t => t.id === entry.id);
+    if (!topic || !entry.articles?.length) continue;
+    _bootstrapData.set(entry.id, { topic, articles: entry.articles, fetchedAt: now });
+  }
+}
+
 export async function fetchTopicIntelligence(topic: IntelTopic): Promise<TopicIntelligence> {
+  _consumeBootstrap();
+  const bootstrapped = _bootstrapData.get(topic.id);
+  if (bootstrapped) {
+    _bootstrapData.delete(topic.id);
+    return bootstrapped;
+  }
   const articles = await fetchGdeltArticles(topic.query, 10, '24h');
   return {
     topic,

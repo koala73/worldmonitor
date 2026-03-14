@@ -45,6 +45,7 @@ const SEED_DOMAINS = {
   'economic:worldbank-progress':      { key: 'seed-meta:economic:worldbank-progress:v1',     intervalMin: 5040 },
   'economic:worldbank-renewable':     { key: 'seed-meta:economic:worldbank-renewable:v1',    intervalMin: 5040 },
   'research:tech-events':    { key: 'seed-meta:research:tech-events',     intervalMin: 210 },
+  'intelligence:gdelt-intel': { key: 'seed-meta:intelligence:gdelt-intel', intervalMin: 30 },
 };
 
 async function getMetaBatch(keys) {
