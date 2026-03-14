@@ -16,7 +16,7 @@ export class MarketPanel extends Panel {
   private overlay: HTMLElement | null = null;
 
   constructor() {
-    super({ id: 'markets', title: t('panels.markets') });
+    super({ id: 'markets', title: t('panels.markets'), infoTooltip: t('components.markets.infoTooltip') });
     this.createSettingsButton();
   }
 
@@ -135,7 +135,7 @@ export class MarketPanel extends Panel {
 
 export class HeatmapPanel extends Panel {
   constructor() {
-    super({ id: 'heatmap', title: t('panels.heatmap') });
+    super({ id: 'heatmap', title: t('panels.heatmap'), infoTooltip: t('components.heatmap.infoTooltip') });
   }
 
   public renderHeatmap(data: Array<{ name: string; change: number | null }>): void {
@@ -166,7 +166,7 @@ export class HeatmapPanel extends Panel {
 
 export class CommoditiesPanel extends Panel {
   constructor() {
-    super({ id: 'commodities', title: t('panels.commodities') });
+    super({ id: 'commodities', title: t('panels.commodities'), infoTooltip: t('components.commodities.infoTooltip') });
   }
 
   public renderCommodities(data: Array<{ display: string; price: number | null; change: number | null; sparkline?: number[] }>): void {

@@ -783,7 +783,8 @@
       "change": "Change",
       "cut": "cut",
       "hike": "hike",
-      "hold": "hold"
+      "hold": "hold",
+      "infoTooltip": "<strong>Economic Indicators</strong> Key macro data from FRED, EIA, and BIS:<ul><li><strong>Indicators</strong>: GDP, unemployment, inflation, interest rates</li><li><strong>Oil</strong>: WTI/Brent prices, inventory, and spreads</li><li><strong>Gov</strong>: Recent US government contract awards</li><li><strong>Central Banks</strong>: Policy rates and exchange rate data</li></ul>"
     },
     "supplyChain": {
       "chokepoints": "Chokepoints",
@@ -806,7 +807,8 @@
       "mineral": "Mineral",
       "topProducers": "Top Producers",
       "risk": "Risk",
-      "sources": "IMF PortWatch / AISStream / CorridorRisk / NGA / USGS"
+      "sources": "IMF PortWatch / AISStream / CorridorRisk / NGA / USGS",
+      "infoTooltip": "<strong>Supply Chain Monitor</strong> Global logistics and resource tracking:<ul><li><strong>Chokepoints</strong>: Maritime transit status, disruption scores, and vessel counts</li><li><strong>Shipping</strong>: Baltic Dry Index and freight rate trends</li><li><strong>Minerals</strong>: Critical mineral concentration risk (HHI) and top producers</li></ul>Click a chokepoint card to expand transit history chart."
     },
     "tradePolicy": {
       "restrictions": "Restrictions",
@@ -826,7 +828,8 @@
       "yoyChange": "YoY Change",
       "highTariff": "High",
       "moderateTariff": "Moderate",
-      "lowTariff": "Low"
+      "lowTariff": "Low",
+      "infoTooltip": "<strong>Trade Policy</strong> WTO trade monitoring:<ul><li><strong>Restrictions</strong>: Active trade measures by country and sector</li><li><strong>Tariffs</strong>: Applied tariff rate trends by year</li><li><strong>Trade Flows</strong>: Export/import volumes with year-over-year changes</li><li><strong>Barriers</strong>: Technical barriers to trade (TBT/SPS notifications)</li></ul>"
     },
     "gdelt": {
       "empty": "No recent articles for this topic"
@@ -1626,7 +1629,8 @@
         "estFlow": "Est. Flow",
         "volume": "Volume",
         "change": "Change"
-      }
+      },
+      "infoTooltip": "<strong>BTC ETF Tracker</strong> Tracks daily estimated fund flows for US spot Bitcoin ETFs:<ul><li>Inflow/outflow direction and magnitude</li><li>Volume and price change per fund</li><li>Net aggregate flow across all tracked ETFs</li></ul>"
     },
     "macroSignals": {
       "overall": "Overall",
@@ -1643,7 +1647,23 @@
         "hashRate": "Hash Rate",
         "momentum": "Momentum",
         "fearGreed": "Fear & Greed"
-      }
+      },
+      "infoTooltip": "<strong>Market Radar</strong> Composite signal dashboard for crypto macro positioning:<ul><li><strong>Liquidity</strong>: Net Fed liquidity proxy</li><li><strong>Flow</strong>: BTC vs QQQ 5-day returns</li><li><strong>Regime</strong>: QQQ vs XLP rotation (risk-on/off)</li><li><strong>BTC Trend</strong>: Price vs SMA50/200, Mayer Multiple</li><li><strong>Hash Rate</strong>: 30-day network hash change</li><li><strong>Fear & Greed</strong>: Market sentiment index</li></ul>Verdict: BUY when majority signals bullish, CASH otherwise."
+    },
+    "escalationCorrelation": {
+      "infoTooltip": "<strong>Escalation Monitor</strong> Detects converging geopolitical signals:<ul><li>Correlates military movements, conflict events, and news spikes</li><li>Scores convergence zones by severity (critical/high/medium/low)</li><li>Tracks escalation or de-escalation trends over time</li></ul>Click a card to zoom to the region on the map."
+    },
+    "economicCorrelation": {
+      "infoTooltip": "<strong>Economic Warfare</strong> Detects converging economic pressure signals:<ul><li>Sanctions, trade restrictions, and currency movements</li><li>Commodity disruptions linked to geopolitical actors</li><li>Cross-domain correlation between economic and security events</li></ul>Click a card to zoom to the affected region."
+    },
+    "markets": {
+      "infoTooltip": "<strong>Markets</strong> Real-time stock indices, equities, and crypto prices. Customize your watchlist with the Watchlist button. Sparklines show recent price trend."
+    },
+    "heatmap": {
+      "infoTooltip": "<strong>Sector Heatmap</strong> S&P 500 sector performance at a glance. Color intensity reflects the magnitude of daily change. Green = gains, Red = losses."
+    },
+    "commodities": {
+      "infoTooltip": "<strong>Commodities</strong> Key commodity prices including gold, silver, oil, natural gas, copper, and agricultural products. Sparklines show recent price trend."
     },
     "panel": {
       "showMethodologyInfo": "Show methodology info",

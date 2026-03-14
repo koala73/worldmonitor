@@ -31,8 +31,8 @@ export class CorrelationPanel extends Panel {
   private boundUpdateHandler: EventListener;
   private hasLiveData = false;
 
-  constructor(id: string, title: string, domain: CorrelationDomain) {
-    super({ id, title, showCount: true });
+  constructor(id: string, title: string, domain: CorrelationDomain, infoTooltip?: string) {
+    super({ id, title, showCount: true, infoTooltip });
     this.domain = domain;
 
     const bootstrap = getCorrelationBootstrap();

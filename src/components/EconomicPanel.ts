@@ -20,7 +20,7 @@ export class EconomicPanel extends Panel {
   private activeTab: TabId = 'indicators';
 
   constructor() {
-    super({ id: 'economic', title: t('panels.economic'), defaultRowSpan: 2 });
+    super({ id: 'economic', title: t('panels.economic'), defaultRowSpan: 2, infoTooltip: t('components.economic.infoTooltip') });
     this.content.addEventListener('click', (e) => {
       const tab = (e.target as HTMLElement).closest('.panel-tab') as HTMLElement | null;
       if (tab?.dataset.tab) {

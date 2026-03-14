@@ -22,7 +22,7 @@ export class SupplyChainPanel extends Panel {
   private chartObserver: MutationObserver | null = null;
 
   constructor() {
-    super({ id: 'supply-chain', title: t('panels.supplyChain'), defaultRowSpan: 2 });
+    super({ id: 'supply-chain', title: t('panels.supplyChain'), defaultRowSpan: 2, infoTooltip: t('components.supplyChain.infoTooltip') });
     this.content.addEventListener('click', (e) => {
       const tab = (e.target as HTMLElement).closest('.panel-tab') as HTMLElement | null;
       if (tab) {
@@ -104,9 +104,6 @@ export class SupplyChainPanel extends Panel {
       ${tabsHtml}
       ${unavailableBanner}
       <div class="economic-content">${contentHtml}</div>
-      <div class="economic-footer">
-        <span class="economic-source">${t('components.supplyChain.sources')}</span>
-      </div>
     `);
 
     if (this.activeTab === 'chokepoints' && this.expandedChokepoint) {

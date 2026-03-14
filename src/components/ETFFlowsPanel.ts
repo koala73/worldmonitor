@@ -32,7 +32,7 @@ export class ETFFlowsPanel extends Panel {
   private loading = true;
   private error: string | null = null;
   constructor() {
-    super({ id: 'etf-flows', title: t('panels.etfFlows'), showCount: false });
+    super({ id: 'etf-flows', title: t('panels.etfFlows'), showCount: false, infoTooltip: t('components.etfFlows.infoTooltip') });
   }
 
   public async fetchData(): Promise<void> {

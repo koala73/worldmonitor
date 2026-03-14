@@ -20,7 +20,7 @@ export class TradePolicyPanel extends Panel {
   private activeTab: TabId = 'restrictions';
 
   constructor() {
-    super({ id: 'trade-policy', title: t('panels.tradePolicy'), defaultRowSpan: 2 });
+    super({ id: 'trade-policy', title: t('panels.tradePolicy'), defaultRowSpan: 2, infoTooltip: t('components.tradePolicy.infoTooltip') });
     this.content.addEventListener('click', (e) => {
       const target = (e.target as HTMLElement).closest('.panel-tab') as HTMLElement | null;
       if (!target) return;

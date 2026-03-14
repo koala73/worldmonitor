@@ -127,7 +127,7 @@ export class MacroSignalsPanel extends Panel {
   private lastTimestamp = '';
 
   constructor() {
-    super({ id: 'macro-signals', title: t('panels.macroSignals'), showCount: false });
+    super({ id: 'macro-signals', title: t('panels.macroSignals'), showCount: false, infoTooltip: t('components.macroSignals.infoTooltip') });
   }
 
   public async fetchData(): Promise<boolean> {
