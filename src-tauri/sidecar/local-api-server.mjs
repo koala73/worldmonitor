@@ -1455,7 +1455,52 @@ async function dispatch(requestUrl, req, routes, context) {
     }
   }
 
-  // ── BTC ETF flows via Yahoo Finance ──────────────────────────────────────
+  // ── Stooq helpers (replaces Yahoo Finance — blocked by Cloudflare) ────────
+  // Stooq.com: free, no API key, real-time US equities/ETFs/futures/crypto CSV.
+  // Symbol conventions: AAPL → aapl.us, CL=F → cl.f, BTC-USD → btc.v
+  // Batch quote URL: /q/l/?s=sym1+sym2&f=sd2t2ohlcvp&h&e=csv
+  // Format: Symbol,Date,Time,Open,High,Low,Close,Volume,Prev
+
+  function toStooqSym(yahooSym) {
+    const s = (yahooSym ?? '').trim();
+    if (!s) return null;
+    // Index proxies (Stooq doesn't carry ^GSPC/^DJI/^IXIC directly)
+    const IDX = { '^GSPC': 'spy.us', '^DJI': 'dia.us', '^IXIC': 'qqq.us', '^VIX': null };
+    if (s in IDX) return IDX[s];
+    if (s.endsWith('=F')) return s.slice(0, -2).toLowerCase() + '.f'; // CL=F → cl.f
+    if (s.endsWith('-USD')) return s.slice(0, -4).toLowerCase() + '.v'; // BTC-USD → btc.v
+    return s.toLowerCase() + '.us'; // AAPL → aapl.us, XLK → xlk.us, BRK-B → brk-b.us
+  }
+
+  function parseStooqBatchCsv(text) {
+    // Returns Map<stooqSymLower, { price, change, prev }>
+    const map = new Map();
+    const lines = (text ?? '').trim().split('\n');
+    for (let i = 1; i < lines.length; i++) { // skip header row
+      const cols = lines[i].split(',');
+      const sym   = (cols[0] ?? '').trim().toLowerCase();
+      const date  = (cols[1] ?? '').trim();
+      const close = parseFloat(cols[6]);
+      const prev  = parseFloat(cols[8]);
+      if (!sym || date === 'N/D' || isNaN(close)) continue;
+      const change = (!isNaN(prev) && prev > 0)
+        ? parseFloat(((close - prev) / prev * 100).toFixed(2))
+        : 0;
+      map.set(sym, { price: close, change, prev: isNaN(prev) ? close : prev });
+    }
+    return map;
+  }
+
+  // Helper: parse a FRED CSV response and return the latest { current, previous } values.
+  function parseFredCsvLatest(text) {
+    const lines = (text ?? '').trim().split('\n').slice(1).filter(l => l && !/^observation/i.test(l));
+    const recent = lines.slice(-2);
+    const cur = parseFloat((recent[recent.length - 1] ?? '').split(',')?.[1] ?? '');
+    const prv = parseFloat((recent[0] ?? '').split(',')?.[1] ?? '');
+    return { current: cur, previous: prv };
+  }
+
+  // ── BTC ETF flows via Stooq ───────────────────────────────────────────────
   if (requestUrl.pathname === '/api/btc-etf-flows') {
     const BTC_ETFS = [
       { ticker: 'IBIT',  issuer: 'BlackRock'  },
@@ -1468,32 +1513,26 @@ async function dispatch(requestUrl, req, routes, context) {
       { ticker: 'BRRR',  issuer: 'Valkyrie'   },
     ];
     try {
-      const syms = BTC_ETFS.map(e => e.ticker).join(',');
+      const stooqSyms = BTC_ETFS.map(e => e.ticker.toLowerCase() + '.us').join('+');
       const r = await fetchWithTimeout(
-        `https://query1.finance.yahoo.com/v8/finance/quote?symbols=${encodeURIComponent(syms)}&fields=regularMarketPrice,regularMarketChangePercent,regularMarketVolume,averageDailyVolume3Month`,
-        { headers: { 'User-Agent': CHROME_UA, Accept: 'application/json', 'Accept-Language': 'en-US,en;q=0.9' } },
-        12000
+        `https://stooq.com/q/l/?s=${stooqSyms}&f=sd2t2ohlcvp&h&e=csv`,
+        { headers: { 'User-Agent': CHROME_UA } }, 10000
       );
-      if (!r.ok) throw new Error(`Yahoo ${r.status}`);
-      const body = await r.json();
-      const result = body?.quoteResponse?.result ?? [];
+      if (!r.ok) throw new Error(`Stooq ${r.status}`);
+      const stooq = parseStooqBatchCsv(await r.text());
       let totalVolume = 0, totalEstFlow = 0, inflowCount = 0, outflowCount = 0;
-      const etfs = BTC_ETFS.map(meta => {
-        const q = result.find(x => x.symbol === meta.ticker);
-        if (!q) return { ticker: meta.ticker, issuer: meta.issuer, price: 0, priceChange: 0, volume: 0, avgVolume: 0, volumeRatio: 1, direction: 'neutral', estFlow: 0 };
-        const price = q.regularMarketPrice ?? 0;
-        const priceChange = q.regularMarketChangePercent ?? 0;
-        const volume = q.regularMarketVolume ?? 0;
-        const avgVolume = q.averageDailyVolume3Month ?? volume || 1;
-        const volumeRatio = avgVolume > 0 ? volume / avgVolume : 1;
-        const estFlow = (volume - avgVolume) * price;
-        const direction = priceChange > 0.5 && volumeRatio > 1.1 ? 'inflow'
-                        : priceChange < -0.5 && volumeRatio > 1.1 ? 'outflow' : 'neutral';
-        totalVolume += volume * price;
+      const etfs = BTC_ETFS.map(({ ticker, issuer }) => {
+        const d = stooq.get(ticker.toLowerCase() + '.us');
+        if (!d) return { ticker, issuer, price: 0, priceChange: 0, volume: 0, avgVolume: 0, volumeRatio: 1, direction: 'neutral', estFlow: 0 };
+        const priceChange = d.change;
+        // Estimate flow from price momentum (no avg-volume history available from Stooq batch)
+        const estFlow = Math.round(d.price * 1_000_000 * (priceChange / 100));
+        const direction = priceChange > 0.5 ? 'inflow' : priceChange < -0.5 ? 'outflow' : 'neutral';
+        totalVolume += d.price;
         totalEstFlow += estFlow;
         if (direction === 'inflow') inflowCount++;
         if (direction === 'outflow') outflowCount++;
-        return { ticker: meta.ticker, issuer: meta.issuer, price, priceChange: parseFloat(priceChange.toFixed(2)), volume, avgVolume, volumeRatio: parseFloat(volumeRatio.toFixed(2)), direction, estFlow: Math.round(estFlow) };
+        return { ticker, issuer, price: d.price, priceChange: d.change, volume: 0, avgVolume: 0, volumeRatio: 1, direction, estFlow };
       });
       const netDirection = totalEstFlow > 0 ? 'inflow' : totalEstFlow < 0 ? 'outflow' : 'neutral';
       return json({
@@ -1551,15 +1590,15 @@ async function dispatch(requestUrl, req, routes, context) {
     }
   }
 
-  // ── Macro signals (Market Radar) ──────────────────────────────────────────
+  // ── Macro signals (Market Radar) via alternative.me + Stooq ─────────────
   if (requestUrl.pathname === '/api/macro-signals') {
     try {
-      // Fetch Fear & Greed index (alternative.me — free, no key)
+      // Fetch Fear & Greed (alternative.me) + market prices (Stooq) in parallel
       const [fngResp, pricesResp] = await Promise.allSettled([
         fetchWithTimeout('https://api.alternative.me/fng/?limit=1', { headers: { 'User-Agent': CHROME_UA } }, 8000),
         fetchWithTimeout(
-          'https://query1.finance.yahoo.com/v8/finance/quote?symbols=BTC-USD%2CQQQ%2CXLP%2CSPY%2CGOLD',
-          { headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' } }, 12000
+          'https://stooq.com/q/l/?s=btc.v+qqq.us+xlp.us+spy.us+gc.f&f=sd2t2ohlcvp&h&e=csv',
+          { headers: { 'User-Agent': CHROME_UA } }, 10000
         ),
       ]);
 
@@ -1573,23 +1612,21 @@ async function dispatch(requestUrl, req, routes, context) {
         fearGreed = { status, value: val, classification };
       }
 
-      // Price signals
+      // Price signals from Stooq CSV
       let flowStructure = null, macroRegime = null, technicalTrend = null;
       if (pricesResp.status === 'fulfilled' && pricesResp.value.ok) {
-        const body = await pricesResp.value.json();
-        const qs = body?.quoteResponse?.result ?? [];
-        const get = sym => qs.find(q => q.symbol === sym);
-        const btc = get('BTC-USD');
-        const qqq = get('QQQ');
-        const xlp = get('XLP');
-        const btcChange5 = btc?.regularMarketChangePercent ?? 0;
-        const qqqChange5 = qqq?.regularMarketChangePercent ?? 0;
-        const xlpChange5 = xlp?.regularMarketChangePercent ?? 0;
+        const stooq = parseStooqBatchCsv(await pricesResp.value.text());
+        const btc = stooq.get('btc.v');
+        const qqq = stooq.get('qqq.us');
+        const xlp = stooq.get('xlp.us');
+        const btcChange5 = btc?.change ?? 0;
+        const qqqChange5 = qqq?.change ?? 0;
+        const xlpChange5 = xlp?.change ?? 0;
         const flowStatus = btcChange5 > 2 && qqqChange5 > 0.5 ? 'RISK_ON' : btcChange5 < -2 && qqqChange5 < -0.5 ? 'RISK_OFF' : 'NEUTRAL';
-        flowStructure = { status: flowStatus, btcReturn5: parseFloat(btcChange5.toFixed(2)), qqqReturn5: parseFloat(qqqChange5.toFixed(2)) };
+        flowStructure = { status: flowStatus, btcReturn5: btcChange5, qqqReturn5: qqqChange5 };
         const regimeStatus = qqqChange5 > 0.5 && xlpChange5 < qqqChange5 ? 'RISK_ON' : qqqChange5 < -0.5 ? 'RISK_OFF' : 'NEUTRAL';
-        macroRegime = { status: regimeStatus, qqqRoc20: parseFloat(qqqChange5.toFixed(2)), xlpRoc20: parseFloat(xlpChange5.toFixed(2)) };
-        const btcPrice = btc?.regularMarketPrice ?? 0;
+        macroRegime = { status: regimeStatus, qqqRoc20: qqqChange5, xlpRoc20: xlpChange5 };
+        const btcPrice = btc?.price ?? 0;
         const techStatus = btcChange5 > 1 ? 'BULLISH' : btcChange5 < -1 ? 'BEARISH' : 'NEUTRAL';
         technicalTrend = { status: techStatus, btcPrice, sma50: 0, sma200: 0, vwap30d: 0, mayerMultiple: 0, sparkline: [] };
       }
@@ -1612,12 +1649,12 @@ async function dispatch(requestUrl, req, routes, context) {
     }
   }
 
-  // ── Market quotes (stocks + commodities) via Yahoo Finance ───────────────
+  // ── Market quotes (stocks + commodities) via Finnhub → Stooq ────────────
   if (requestUrl.pathname === '/api/market-quotes') {
     const symbols = (requestUrl.searchParams.get('symbols') || '').split(',').map(s => s.trim()).filter(Boolean);
     if (symbols.length === 0) return json({ quotes: [] });
 
-    // Try Finnhub first if key is set (more reliable, no rate-limit issues)
+    // Try Finnhub first if key is set (higher precision, real-time)
     const finnhubKey = process.env.FINNHUB_API_KEY;
     if (finnhubKey) {
       try {
@@ -1636,32 +1673,49 @@ async function dispatch(requestUrl, req, routes, context) {
         }));
         const valid = quotes.filter(q => q.price !== null);
         if (valid.length > 0) return json({ quotes, source: 'finnhub' });
-      } catch { /* fall through to Yahoo */ }
+      } catch { /* fall through to Stooq */ }
     }
 
-    // Yahoo Finance v8 — no key required
+    // Stooq CSV batch quote — free, no key, real-time US markets
     try {
-      const batchUrl = `https://query1.finance.yahoo.com/v8/finance/quote?symbols=${encodeURIComponent(symbols.join(','))}&fields=regularMarketPrice,regularMarketChangePercent`;
-      const r = await fetchWithTimeout(batchUrl, {
-        headers: {
-          'User-Agent': CHROME_UA,
-          'Accept': 'application/json',
-          'Accept-Language': 'en-US,en;q=0.9',
-        }
-      }, 12000);
-      if (!r.ok) throw new Error(`Yahoo ${r.status}`);
-      const body = await r.json();
-      const result = body?.quoteResponse?.result ?? [];
-      const quotes = symbols.map(sym => {
-        const q = result.find(r => r.symbol === sym);
-        if (!q) return { symbol: sym, price: null, change: null };
-        return {
-          symbol: sym,
-          price: q.regularMarketPrice ?? null,
-          change: q.regularMarketChangePercent != null ? parseFloat(q.regularMarketChangePercent.toFixed(2)) : null,
-        };
+      const vixRequested = symbols.includes('^VIX');
+      const nonVix = symbols.filter(s => s !== '^VIX');
+      const stooqSyms = nonVix.map(toStooqSym).filter(Boolean);
+
+      let stooq = new Map();
+      if (stooqSyms.length > 0) {
+        const r = await fetchWithTimeout(
+          `https://stooq.com/q/l/?s=${stooqSyms.join('+')}&f=sd2t2ohlcvp&h&e=csv`,
+          { headers: { 'User-Agent': CHROME_UA } }, 10000
+        );
+        if (!r.ok) throw new Error(`Stooq ${r.status}`);
+        stooq = parseStooqBatchCsv(await r.text());
+      }
+
+      const quotes = symbols.map(origSym => {
+        if (origSym === '^VIX') return { symbol: origSym, price: null, change: null }; // filled below
+        const key = toStooqSym(origSym);
+        const d = key ? stooq.get(key.toLowerCase()) : null;
+        return { symbol: origSym, price: d?.price ?? null, change: d?.change ?? null };
       });
-      return json({ quotes, source: 'yahoo' });
+
+      // VIX via FRED CSV (1-day lag; adequate for the volatility indicator)
+      if (vixRequested) {
+        try {
+          const fr = await fetchWithTimeout('https://fred.stlouisfed.org/graph/fredgraph.csv?id=VIXCLS', {}, 5000);
+          if (fr.ok) {
+            const { current, previous } = parseFredCsvLatest(await fr.text());
+            if (!isNaN(current)) {
+              const vixChange = (!isNaN(previous) && previous > 0)
+                ? parseFloat(((current - previous) / previous * 100).toFixed(2)) : 0;
+              const vixIdx = symbols.indexOf('^VIX');
+              if (vixIdx >= 0) quotes[vixIdx] = { symbol: '^VIX', price: current, change: vixChange };
+            }
+          }
+        } catch { /* leave VIX null */ }
+      }
+
+      return json({ quotes, source: 'stooq' });
     } catch (e) {
       return json({ quotes: symbols.map(sym => ({ symbol: sym, price: null, change: null })), error: String(e.message ?? e) });
     }
@@ -1725,12 +1779,13 @@ async function dispatch(requestUrl, req, routes, context) {
   // Combines Yahoo Finance (VIX, yields), US Treasury yield curve, BLS (UNRATE/CPI)
   if (requestUrl.pathname === '/api/fred-fallback') {
     try {
-      const [yahooResp, treasuryResp, blsUnrateResp, blsCpiResp] = await Promise.allSettled([
-        // Yahoo: VIX, 10Y yield, 13-week T-bill
-        fetchWithTimeout(
-          'https://query1.finance.yahoo.com/v8/finance/quote?symbols=%5EVIX%2C%5ETNX%2C%5EIRX%2C%5ETYX',
-          { headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' } }, 10000
-        ),
+      // FRED CSV replaces Yahoo Finance for VIX and Fed Funds — free, no auth, no Cloudflare block.
+      // Treasury XML (DGS10, T10Y2Y) and BLS (UNRATE, CPIAUCSL) are already free — kept as-is.
+      const [fredVixResp, fredFedFundsResp, treasuryResp, blsUnrateResp, blsCpiResp] = await Promise.allSettled([
+        // FRED: VIX closing level (1-day lag)
+        fetchWithTimeout('https://fred.stlouisfed.org/graph/fredgraph.csv?id=VIXCLS', {}, 8000),
+        // FRED: Federal Funds Effective Rate (monthly)
+        fetchWithTimeout('https://fred.stlouisfed.org/graph/fredgraph.csv?id=FEDFUNDS', {}, 8000),
         // US Treasury daily yield curve (free, no auth)
         fetchWithTimeout(
           `https://home.treasury.gov/resource-center/data-chart-center/interest-rates/pages/xml?data=daily_treasury_yield_curve&field_tdr_date_value=${new Date().getFullYear()}`,
@@ -1751,23 +1806,19 @@ async function dispatch(requestUrl, req, routes, context) {
       const series = [];
       const today = new Date().toISOString().slice(0, 10);
 
-      // Yahoo Finance quotes
-      if (yahooResp.status === 'fulfilled' && yahooResp.value.ok) {
-        const body = await yahooResp.value.json();
-        const qs = body?.quoteResponse?.result ?? [];
-        const get = sym => qs.find(q => q.symbol === sym);
-        const vix = get('^VIX');
-        const tnx = get('^TNX'); // 10-year, expressed as percent * 10 in Yahoo
-        const tyx = get('^TYX'); // 30-year
-        const irx = get('^IRX'); // 13-week T-bill
-        if (vix) series.push({ id: 'VIXCLS', observations: [{ date: today, value: vix.regularMarketPrice }] });
-        if (tnx) series.push({ id: 'DGS10', observations: [{ date: today, value: parseFloat((tnx.regularMarketPrice / 10).toFixed(2)) }] });
-        if (irx) series.push({ id: 'FEDFUNDS', observations: [{ date: today, value: parseFloat((irx.regularMarketPrice / 10).toFixed(2)) }] });
-        // 10Y-2Y spread approximated from Treasury XML (below); fallback if missing
-        if (tnx && irx) {
-          const tn = tnx.regularMarketPrice / 10;
-          const ir = irx.regularMarketPrice / 10;
-          series.push({ id: 'T10Y2Y', observations: [{ date: today, value: parseFloat((tn - ir).toFixed(2)) }] });
+      // FRED VIX
+      if (fredVixResp.status === 'fulfilled' && fredVixResp.value.ok) {
+        const { current } = parseFredCsvLatest(await fredVixResp.value.text());
+        if (!isNaN(current) && current > 0) {
+          series.push({ id: 'VIXCLS', observations: [{ date: today, value: current }] });
+        }
+      }
+
+      // FRED Federal Funds Rate
+      if (fredFedFundsResp.status === 'fulfilled' && fredFedFundsResp.value.ok) {
+        const { current } = parseFredCsvLatest(await fredFedFundsResp.value.text());
+        if (!isNaN(current) && current > 0) {
+          series.push({ id: 'FEDFUNDS', observations: [{ date: today, value: current }] });
         }
       }
 
@@ -1821,59 +1872,94 @@ async function dispatch(requestUrl, req, routes, context) {
     }
   }
 
-  // ── Energy prices — free fallback via Yahoo Finance ──────────────────────
-  // Returns WTI (CL=F), Brent (BZ=F), NatGas (NG=F) — no API key required
+  // ── Energy prices — Stooq (WTI/NatGas) + FRED CSV (Brent) ───────────────
+  // Returns WTI (cl.f), Brent (DCOILBRENTEU), NatGas (ng.f) — no API key required
   if (requestUrl.pathname === '/api/energy-fallback') {
     try {
-      const r = await fetchWithTimeout(
-        'https://query1.finance.yahoo.com/v8/finance/quote?symbols=CL%3DF%2CBZ%3DF%2CNG%3DF',
-        { headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' } }, 10000
-      );
-      if (!r.ok) throw new Error(`Yahoo ${r.status}`);
-      const body = await r.json();
-      const qs = body?.quoteResponse?.result ?? [];
-      const get = (sym, id, name, unit) => {
-        const q = qs.find(x => x.symbol === sym);
-        if (!q) return null;
-        const price = q.regularMarketPrice ?? 0;
-        const changePct = q.regularMarketChangePercent ?? 0;
-        const prev = changePct !== 0 ? price / (1 + changePct / 100) : price;
-        return {
-          commodity: id, name, price, unit,
-          change: parseFloat(changePct.toFixed(2)),
-          trend: changePct > 0.5 ? 'up' : changePct < -0.5 ? 'down' : 'stable',
-          previous: parseFloat(prev.toFixed(2)),
-          priceAt: new Date().toISOString(),
-        };
-      };
-      const prices = [
-        get('CL=F', 'wti', 'WTI Crude Oil', '$/bbl'),
-        get('BZ=F', 'brent', 'Brent Crude Oil', '$/bbl'),
-        get('NG=F', 'natgas', 'Natural Gas', '$/MMBtu'),
-      ].filter(Boolean);
-      return json({ prices, source: 'yahoo' });
+      const [stooqResp, brentResp] = await Promise.allSettled([
+        // Stooq: WTI crude + Natural Gas (real-time futures)
+        fetchWithTimeout(
+          'https://stooq.com/q/l/?s=cl.f+ng.f&f=sd2t2ohlcvp&h&e=csv',
+          { headers: { 'User-Agent': CHROME_UA } }, 10000
+        ),
+        // FRED: Brent crude daily spot price (1-day lag, free, no auth)
+        fetchWithTimeout('https://fred.stlouisfed.org/graph/fredgraph.csv?id=DCOILBRENTEU', {}, 8000),
+      ]);
+
+      const prices = [];
+      const now = new Date().toISOString();
+
+      if (stooqResp.status === 'fulfilled' && stooqResp.value.ok) {
+        const stooq = parseStooqBatchCsv(await stooqResp.value.text());
+        const wti = stooq.get('cl.f');
+        if (wti && wti.price > 0) prices.push({
+          commodity: 'wti', name: 'WTI Crude Oil', price: wti.price, unit: '$/bbl',
+          change: wti.change,
+          trend: wti.change > 0.5 ? 'up' : wti.change < -0.5 ? 'down' : 'stable',
+          previous: parseFloat(wti.prev.toFixed(2)), priceAt: now,
+        });
+        const ng = stooq.get('ng.f');
+        if (ng && ng.price > 0) prices.push({
+          commodity: 'natgas', name: 'Natural Gas', price: ng.price, unit: '$/MMBtu',
+          change: ng.change,
+          trend: ng.change > 0.5 ? 'up' : ng.change < -0.5 ? 'down' : 'stable',
+          previous: parseFloat(ng.prev.toFixed(2)), priceAt: now,
+        });
+      }
+
+      if (brentResp.status === 'fulfilled' && brentResp.value.ok) {
+        const { current, previous } = parseFredCsvLatest(await brentResp.value.text());
+        if (!isNaN(current) && current > 0) {
+          const change = (!isNaN(previous) && previous > 0)
+            ? parseFloat(((current - previous) / previous * 100).toFixed(2)) : 0;
+          prices.push({
+            commodity: 'brent', name: 'Brent Crude Oil', price: current, unit: '$/bbl',
+            change,
+            trend: change > 0.5 ? 'up' : change < -0.5 ? 'down' : 'stable',
+            previous: isNaN(previous) ? current : parseFloat(previous.toFixed(2)), priceAt: now,
+          });
+        }
+      }
+
+      return json({ prices, source: 'stooq+fred' });
     } catch (e) {
       return json({ prices: [], error: String(e.message ?? e) }, 500);
     }
   }
 
-  // ── Stock chart — sparkline history via Yahoo Finance ────────────────────
+  // ── Stock chart — sparkline history via Stooq daily CSV ──────────────────
   // GET /api/stock-chart?symbol=AAPL&range=1mo&interval=1d
   if (requestUrl.pathname === '/api/stock-chart') {
     const symbol = requestUrl.searchParams.get('symbol') ?? '';
     const range = requestUrl.searchParams.get('range') ?? '1mo';
-    const interval = requestUrl.searchParams.get('interval') ?? '1d';
     if (!symbol) return json({ closes: [], error: 'Missing symbol' }, 400);
     try {
+      const stooqSym = toStooqSym(symbol);
+      if (!stooqSym) return json({ symbol, points: [], closes: [], error: 'Symbol not mappable' });
+
       const r = await fetchWithTimeout(
-        `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}&includeAdjustedClose=false`,
-        { headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' } }, 10000
+        `https://stooq.com/q/d/l/?s=${encodeURIComponent(stooqSym)}&i=d`,
+        { headers: { 'User-Agent': CHROME_UA } }, 12000
       );
-      if (!r.ok) throw new Error(`Yahoo chart ${r.status}`);
-      const body = await r.json();
-      const closes = body?.chart?.result?.[0]?.indicators?.quote?.[0]?.close ?? [];
-      const timestamps = body?.chart?.result?.[0]?.timestamp ?? [];
-      const points = timestamps.map((ts, i) => ({ date: new Date(ts * 1000).toISOString().slice(0, 10), close: closes[i] ?? null })).filter(p => p.close !== null);
+      if (!r.ok) throw new Error(`Stooq chart ${r.status}`);
+      const text = await r.text();
+
+      // Stooq returns: Date,Open,High,Low,Close,Volume (header + oldest-first rows)
+      const RANGE_DAYS = { '1d': 1, '5d': 5, '1mo': 30, '3mo': 90, '6mo': 180, '1y': 365, '2y': 730, '5y': 1825, 'max': 999999 };
+      const days = RANGE_DAYS[range] ?? 30;
+      const cutoff = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+
+      const points = text.trim().split('\n')
+        .filter(l => /^\d{4}-\d{2}-\d{2}/.test(l))   // data rows only (skip header)
+        .filter(l => l.split(',')[0]?.trim() >= cutoff)
+        .map(l => {
+          const cols = l.split(',');
+          const date = cols[0]?.trim();
+          const close = parseFloat(cols[4]);
+          return (!date || isNaN(close)) ? null : { date, close };
+        })
+        .filter(Boolean);
+
       return json({ symbol, points, closes: points.map(p => p.close) });
     } catch (e) {
       return json({ symbol, points: [], closes: [], error: String(e.message ?? e) });
