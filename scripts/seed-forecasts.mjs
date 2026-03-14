@@ -4,7 +4,8 @@ import crypto from 'node:crypto';
 import { loadEnvFile, runSeed } from './_seed-utils.mjs';
 import { tagRegions } from './_prediction-scoring.mjs';
 
-loadEnvFile(import.meta.url);
+const _isDirectRun = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/'));
+if (_isDirectRun) loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'forecast:predictions:v1';
 const PRIOR_KEY = 'forecast:predictions:prior:v1';
@@ -559,17 +560,35 @@ async function fetchForecasts() {
   return { predictions, generatedAt: Date.now() };
 }
 
-await runSeed('forecast', 'predictions', CANONICAL_KEY, fetchForecasts, {
-  ttlSeconds: TTL_SECONDS,
-  lockTtlMs: 180_000,
-  validateFn: (data) => Array.isArray(data?.predictions) && data.predictions.length > 0,
-  extraKeys: [
-    {
-      key: PRIOR_KEY,
-      transform: (data) => ({
-        predictions: data.predictions.map(p => ({ id: p.id, probability: p.probability })),
-      }),
-      ttl: 7200,
-    },
-  ],
-});
+if (_isDirectRun) {
+  await runSeed('forecast', 'predictions', CANONICAL_KEY, fetchForecasts, {
+    ttlSeconds: TTL_SECONDS,
+    lockTtlMs: 180_000,
+    validateFn: (data) => Array.isArray(data?.predictions) && data.predictions.length > 0,
+    extraKeys: [
+      {
+        key: PRIOR_KEY,
+        transform: (data) => ({
+          predictions: data.predictions.map(p => ({ id: p.id, probability: p.probability })),
+        }),
+        ttl: 7200,
+      },
+    ],
+  });
+}
+
+export {
+  forecastId,
+  normalize,
+  makePrediction,
+  resolveCascades,
+  calibrateWithMarkets,
+  computeTrends,
+  detectConflictScenarios,
+  detectMarketScenarios,
+  detectSupplyChainScenarios,
+  detectPoliticalScenarios,
+  detectMilitaryScenarios,
+  detectInfraScenarios,
+  CASCADE_RULES,
+};
