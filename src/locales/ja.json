@@ -1532,7 +1532,9 @@
       "filterAlerts": "警報",
       "filterOsint": "OSINT",
       "filterPolitics": "政治",
-      "filterMiddleeast": "中東"
+      "filterMiddleeast": "中東",
+      "live": "ライブ",
+      "viewSource": "ソースを見る"
     },
     "investments": {
       "infoTooltip": "サウジアラビアとUAEによるグローバル重要インフラへの外国直接投資データベース。行をクリックするとマップ上の投資先にズーム。",

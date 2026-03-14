@@ -1532,7 +1532,9 @@
       "filterAlerts": "Uyarılar",
       "filterOsint": "OSINT",
       "filterPolitics": "Siyaset",
-      "filterMiddleeast": "Orta Doğu"
+      "filterMiddleeast": "Orta Doğu",
+      "live": "CANLI",
+      "viewSource": "Kaynağı görüntüle"
     },
     "investments": {
       "infoTooltip": "Suudi Arabistan ve BAE'nin kuresel kritik altyapilara dogrudan yabanci yatirimlari veritabani. Yatirimi haritada gormek icin bir satira tiklayin.",

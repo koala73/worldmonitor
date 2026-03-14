@@ -1512,7 +1512,9 @@
       "filterAlerts": "Upozornění",
       "filterOsint": "OSINT",
       "filterPolitics": "Politika",
-      "filterMiddleeast": "Blízký východ"
+      "filterMiddleeast": "Blízký východ",
+      "live": "ŽIVĚ",
+      "viewSource": "Zobrazit zdroj"
     },
     "investments": {
       "infoTooltip": "Databáze přímých zahraničních investic Saúdské Arábie a SAE do globální kritické infrastruktury. Kliknutím na řádek přejdete k investici na mapě.",

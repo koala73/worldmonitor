@@ -1060,7 +1060,9 @@
       "filterAlerts": "Waarschuwingen",
       "filterOsint": "OSINT",
       "filterPolitics": "Politiek",
-      "filterMiddleeast": "Midden-Oosten"
+      "filterMiddleeast": "Midden-Oosten",
+      "live": "LIVE",
+      "viewSource": "Bron bekijken"
     },
     "investments": {
       "infoTooltip": "Database van directe buitenlandse investeringen van Saoedi-Arabië en de VAE in mondiale kritieke infrastructuur. Klik op een rij om naar de investering op de kaart te vliegen.",

@@ -1532,7 +1532,9 @@
       "filterAlerts": "Alerte",
       "filterOsint": "OSINT",
       "filterPolitics": "Politică",
-      "filterMiddleeast": "Orientul Mijlociu"
+      "filterMiddleeast": "Orientul Mijlociu",
+      "live": "ÎN DIRECT",
+      "viewSource": "Vezi sursa"
     },
     "investments": {
       "infoTooltip": "Baza de date despre investițiile străine directe din Arabia Saudită și Emiratele Arabe Unite în infrastructura critică globală. Faceți clic pe un rând pentru a zbura către investiția de pe hartă.",

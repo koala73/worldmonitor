@@ -1567,7 +1567,9 @@
       "filterAlerts": "Alerts",
       "filterOsint": "OSINT",
       "filterPolitics": "Politics",
-      "filterMiddleeast": "Middle East"
+      "filterMiddleeast": "Middle East",
+      "live": "LIVE",
+      "viewSource": "View Source"
     },
     "investments": {
       "infoTooltip": "Database of Saudi Arabia and UAE foreign direct investments in global critical infrastructure. Click a row to fly to the investment on the map.",

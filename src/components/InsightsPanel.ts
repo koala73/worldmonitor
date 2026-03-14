@@ -257,16 +257,16 @@ export class InsightsPanel extends Panel {
     this.updateGeneration++;
     const thisGeneration = this.updateGeneration;
 
-    if (clusters.length === 0) {
-      this.setDataBadge('unavailable');
-      this.setContent(`<div class="insights-empty">${t('components.insights.waitingForData')}</div>`);
-      return;
-    }
-
-    // Try server-side pre-computed insights first (instant)
+    // Try server-side pre-computed insights first (instant, works even without clusters)
     const serverInsights = getServerInsights();
     if (serverInsights) {
       await this.updateFromServer(serverInsights, clusters, thisGeneration);
+      return;
+    }
+
+    if (clusters.length === 0) {
+      this.setDataBadge('unavailable');
+      this.setContent(`<div class="insights-empty">${t('components.insights.waitingForData')}</div>`);
       return;
     }
 

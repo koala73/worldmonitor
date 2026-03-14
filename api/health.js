@@ -29,6 +29,7 @@ const BOOTSTRAP_KEYS = {
   spending:          'economic:spending:v1',
   techEvents:        'research:tech-events-bootstrap:v1',
   gdeltIntel:        'intelligence:gdelt-intel:v1',
+  correlationCards:   'correlation:cards-bootstrap:v1',
 };
 
 const STANDALONE_KEYS = {
@@ -111,6 +112,7 @@ const SEED_META = {
   intlDelays:       { key: 'seed-meta:aviation:intl',           maxStaleMin: 90 },
   faaDelays:        { key: 'seed-meta:aviation:faa',            maxStaleMin: 60 },
   theaterPosture:   { key: 'seed-meta:theater-posture',         maxStaleMin: 60 },
+  correlationCards: { key: 'seed-meta:correlation:cards',       maxStaleMin: 15 },
   portwatch:        { key: 'seed-meta:supply_chain:portwatch',   maxStaleMin: 720 },
   corridorrisk:     { key: 'seed-meta:supply_chain:corridorrisk', maxStaleMin: 120 },
 };

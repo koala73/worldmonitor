@@ -18375,64 +18375,145 @@ body.has-breaking-alert .panels-grid {
 }
 
 .telegram-intel-item {
-  display: block;
-  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
   background: var(--surface);
-  text-decoration: none;
-  transition: background 0.15s ease;
+  transition: background 0.15s ease, border-left-color 0.15s ease;
   border-left: 2px solid transparent;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.telegram-intel-item.is-live {
+  background: rgba(0, 255, 127, 0.02);
+  border-left-color: var(--green);
 }
 
 .telegram-intel-item:hover {
   background: var(--overlay-light);
-  border-left-color: var(--accent);
 }
 
 .telegram-intel-item-header {
   display: flex;
   align-items: center;
-  margin-bottom: 4px;
+  justify-content: space-between;
+  margin-bottom: 6px;
   gap: 8px;
+}
+
+.telegram-intel-channel-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  overflow: hidden;
 }
 
 .telegram-intel-channel {
   font-size: 10px;
   color: var(--accent);
-  font-weight: 500;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.5px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 50%;
+}
+
+.live-indicator {
+  background: var(--green);
+  color: var(--bg);
+  font-size: 8px;
+  font-weight: 900;
+  padding: 1px 4px;
+  border-radius: 3px;
+  line-height: 1;
+  animation: pulse-live 2s infinite ease-in-out;
+}
+
+@keyframes pulse-live {
+  0% { opacity: 1; }
+  50% { opacity: 0.6; }
+  100% { opacity: 1; }
+}
+
+.telegram-intel-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 .telegram-intel-topic {
   font-size: 9px;
   color: var(--text-dim);
   background: var(--overlay-subtle);
-  padding: 1px 5px;
-  border-radius: 3px;
+  padding: 2px 6px;
+  border-radius: 4px;
   text-transform: uppercase;
-  letter-spacing: 0.3px;
+  font-weight: 600;
 }
 
 .telegram-intel-time {
   font-size: 10px;
   color: var(--text-dim);
-  flex-shrink: 0;
-  margin-left: auto;
 }
 
 .telegram-intel-text {
-  font-size: 12px;
+  font-size: 13px;
+  line-height: 1.5;
   color: var(--text);
-  line-height: 1.4;
-  display: -webkit-box;
-  line-clamp: 3;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  margin-bottom: 8px;
+  word-break: break-word;
+}
+
+.telegram-intel-media-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.telegram-intel-image {
+  width: 100%;
+  aspect-ratio: 16/9;
+  object-fit: cover;
+  border-radius: 4px;
+  cursor: pointer;
+  background: var(--overlay-subtle);
+  transition: opacity 0.2s;
+}
+
+.telegram-intel-image:hover {
+  opacity: 0.9;
+}
+
+.telegram-intel-video {
+  width: 100%;
+  aspect-ratio: 16/9;
+  border-radius: 4px;
+  background: #000;
+}
+
+.telegram-intel-item-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.telegram-follow-btn {
+  font-size: 10px;
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 500;
+  padding: 4px 8px;
+  border: 1px solid var(--accent-dim);
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.telegram-follow-btn:hover {
+  background: var(--accent-dim);
+  color: var(--bg);
 }
 
 /* ─── Globe Map Styles ──────────────────────────────────────────────────────── */

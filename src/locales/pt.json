@@ -1060,7 +1060,9 @@
       "filterAlerts": "Alertas",
       "filterOsint": "OSINT",
       "filterPolitics": "Política",
-      "filterMiddleeast": "Oriente Médio"
+      "filterMiddleeast": "Oriente Médio",
+      "live": "AO VIVO",
+      "viewSource": "Ver fonte"
     },
     "investments": {
       "infoTooltip": "Banco de dados de investimentos diretos estrangeiros da Arábia Saudita e dos Emirados Árabes Unidos em infraestrutura crítica global. Clique em uma linha para ir até o investimento no mapa.",

@@ -1532,7 +1532,9 @@
       "filterAlerts": "Алерти",
       "filterOsint": "OSINT",
       "filterPolitics": "Политика",
-      "filterMiddleeast": "Близкия изток"
+      "filterMiddleeast": "Близкия изток",
+      "live": "НА ЖИВО",
+      "viewSource": "Виж източника"
     },
     "investments": {
       "infoTooltip": "База данни на Саудитска Арабия и UAE преки чужди инвестиции в глобална критична инфраструктура. Кликнете на ред, за да летите на инвестицията на карта.",

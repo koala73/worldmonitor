@@ -1,6 +1,15 @@
 import { Panel } from './Panel';
 import type { ConvergenceCard, CorrelationDomain } from '@/services/correlation-engine';
 import { h, replaceChildren } from '@/utils/dom-utils';
+import { getHydratedData } from '@/services/bootstrap';
+
+let correlationBootstrap: Record<string, ConvergenceCard[]> | null | undefined;
+function getCorrelationBootstrap(): Record<string, ConvergenceCard[]> | null {
+  if (correlationBootstrap === undefined) {
+    correlationBootstrap = (getHydratedData('correlationCards') as Record<string, ConvergenceCard[]>) ?? null;
+  }
+  return correlationBootstrap;
+}
 
 const SCORE_COLORS = {
   critical: '#ff4444',
@@ -20,11 +29,20 @@ export class CorrelationPanel extends Panel {
   private expandedCard: string | null = null;
   private onMapNavigate?: (lat: number, lon: number) => void;
   private boundUpdateHandler: EventListener;
+  private hasLiveData = false;
 
   constructor(id: string, title: string, domain: CorrelationDomain) {
     super({ id, title, showCount: true });
     this.domain = domain;
-    this.showLoading('Waiting for data...');
+
+    const bootstrap = getCorrelationBootstrap();
+    const cards = bootstrap?.[domain] ?? null;
+    if (cards && cards.length > 0) {
+      this.cards = cards;
+      this.requestRender();
+    } else {
+      this.showLoading('Waiting for data...');
+    }
 
     this.boundUpdateHandler = ((e: CustomEvent) => {
       if (e.detail?.domains?.includes(this.domain)) {
@@ -56,6 +74,7 @@ export class CorrelationPanel extends Panel {
   private cards: ConvergenceCard[] = [];
 
   updateCards(cards: ConvergenceCard[]): void {
+    this.hasLiveData = true;
     this.cards = cards;
     this.requestRender();
   }
@@ -141,7 +160,7 @@ export class CorrelationPanel extends Panel {
       children.push(h('div', {
         style: 'padding:6px 8px;margin:4px 0;border-radius:4px;background:rgba(100,150,255,0.08);border-left:2px solid rgba(100,150,255,0.3);font-size:10px;line-height:1.4;',
       }, card.assessment));
-    } else if (card.score >= 60) {
+    } else if (card.score >= 60 && this.hasLiveData) {
       children.push(h('div', {
         style: 'padding:4px;font-size:9px;opacity:0.4;font-style:italic;',
       }, 'Analyzing...'));

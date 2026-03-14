@@ -1532,7 +1532,9 @@
       "filterAlerts": "แจ้งเตือน",
       "filterOsint": "OSINT",
       "filterPolitics": "การเมือง",
-      "filterMiddleeast": "ตะวันออกกลาง"
+      "filterMiddleeast": "ตะวันออกกลาง",
+      "live": "สด",
+      "viewSource": "ดูแหล่งที่มา"
     },
     "investments": {
       "infoTooltip": "ฐานข้อมูลการลงทุนโดยตรงจากต่างประเทศของซาอุดีอาระเบียและ UAE ในโครงสร้างพื้นฐานสำคัญระดับโลก คลิกแถวเพื่อบินไปยังการลงทุนบนแผนที่",

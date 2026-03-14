@@ -1470,7 +1470,9 @@
       "filterAlerts": "Alertes",
       "filterOsint": "OSINT",
       "filterPolitics": "Politique",
-      "filterMiddleeast": "Moyen-Orient"
+      "filterMiddleeast": "Moyen-Orient",
+      "live": "EN DIRECT",
+      "viewSource": "Voir la source"
     },
     "investments": {
       "infoTooltip": "Base de données des investissements directs étrangers de l'Arabie saoudite et des Émirats arabes unis dans les infrastructures critiques mondiales. Cliquez sur une ligne pour accéder à l'investissement sur la carte.",

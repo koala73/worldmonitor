@@ -285,6 +285,7 @@ async function fetchInsights() {
       primaryTitle: story.primaryTitle,
       primarySource: story.primarySource,
       primaryLink: story.primaryLink,
+      pubDate: story.pubDate,
       sourceCount: story.sourceCount,
       importanceScore: story.importanceScore,
       velocity: { level: 'normal', sourcesPerHour: 0 },

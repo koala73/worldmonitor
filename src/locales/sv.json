@@ -1060,7 +1060,9 @@
       "filterAlerts": "Varningar",
       "filterOsint": "OSINT",
       "filterPolitics": "Politik",
-      "filterMiddleeast": "Mellanöstern"
+      "filterMiddleeast": "Mellanöstern",
+      "live": "LIVE",
+      "viewSource": "Visa källa"
     },
     "investments": {
       "infoTooltip": "Databas över Saudiarabien och Förenade Arabemiratens utländska direktinvesteringar i global kritisk infrastruktur. Klicka på en rad för att flyga till investeringen på kartan.",

@@ -12,6 +12,7 @@ export interface TelegramItem {
   topic: string;
   tags: string[];
   earlySignal: boolean;
+  mediaUrls?: string[];
 }
 
 export interface TelegramFeedResponse {

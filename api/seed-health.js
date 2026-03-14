@@ -46,6 +46,7 @@ const SEED_DOMAINS = {
   'economic:worldbank-renewable':     { key: 'seed-meta:economic:worldbank-renewable:v1',    intervalMin: 5040 },
   'research:tech-events':    { key: 'seed-meta:research:tech-events',     intervalMin: 210 },
   'intelligence:gdelt-intel': { key: 'seed-meta:intelligence:gdelt-intel', intervalMin: 60 },
+  'correlation:cards':        { key: 'seed-meta:correlation:cards',        intervalMin: 5 },
 };
 
 async function getMetaBatch(keys) {

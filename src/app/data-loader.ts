@@ -2652,6 +2652,9 @@ export class DataLoaderManager implements AppModule {
       this.callPanel('telegram-intel', 'setData', result);
     } catch (error) {
       console.error('[App] Telegram intel fetch failed:', error);
+      this.callPanel('telegram-intel', 'setData', {
+        source: 'telegram', enabled: false, count: 0, updatedAt: null, items: [],
+      });
     }
   }
 }
