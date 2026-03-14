@@ -98,7 +98,7 @@ async function warmPingChokepoints() {
   try {
     const resp = await fetch(`${baseUrl}/api/supply-chain/v1/get-chokepoint-status`, {
       headers: { 'User-Agent': CHROME_UA, Origin: 'https://worldmonitor.app' },
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(15_000),
     });
     if (!resp.ok) console.warn(`  [Chokepoints] Warm-ping failed: HTTP ${resp.status}`);
     else console.log('  [Chokepoints] Warm-ping OK');
@@ -163,10 +163,6 @@ function forecastId(domain, region, title) {
 function normalize(value, min, max) {
   if (max <= min) return 0;
   return Math.max(0, Math.min(1, (value - min) / (max - min)));
-}
-
-function confidenceFromSources(sourceCount, maxSources = 4) {
-  return Math.max(0.3, normalize(sourceCount, 0, maxSources));
 }
 
 function makePrediction(domain, region, title, probability, confidence, timeHorizon, signals) {
@@ -252,7 +248,7 @@ function detectConflictScenarios(inputs) {
     const ciiNorm = normalize(c.score, 50, 100);
     const eventBoost = (matchingIran.length + matchingUcdp.length) > 0 ? 0.1 : 0;
     const prob = Math.min(0.9, ciiNorm * 0.6 + eventBoost + (c.trend === 'rising' ? 0.1 : 0));
-    const confidence = confidenceFromSources(sourceCount);
+    const confidence = Math.max(0.3, normalize(sourceCount, 0, 4));
 
     predictions.push(makePrediction(
       'conflict', c.name,
@@ -379,7 +375,7 @@ function detectSupplyChainScenarios(inputs) {
 
     const riskNorm = normalize(cp.riskScore || 70, 40, 100);
     const prob = Math.min(0.85, riskNorm * 0.7 + (aisGaps.length > 0 ? 0.1 : 0) + (nearbyJam.length > 0 ? 0.05 : 0));
-    const confidence = confidenceFromSources(sourceCount);
+    const confidence = Math.max(0.3, normalize(sourceCount, 0, 4));
 
     predictions.push(makePrediction(
       'supply_chain', cp.region || route,
@@ -421,7 +417,7 @@ function detectPoliticalScenarios(inputs) {
     const unrestNorm = normalize(unrestComp, 30, 100);
     const anomalyBoost = protestAnomalies.length > 0 ? 0.1 : 0;
     const prob = Math.min(0.8, unrestNorm * 0.6 + anomalyBoost);
-    const confidence = confidenceFromSources(sourceCount);
+    const confidence = Math.max(0.3, normalize(sourceCount, 0, 4));
 
     predictions.push(makePrediction(
       'political', c.name,
@@ -470,7 +466,7 @@ function detectMilitaryScenarios(inputs) {
     const baseLine = posture === 'critical' ? 0.6 : 0.35;
     const flightBoost = milFlights.length > 0 ? 0.1 : 0;
     const prob = Math.min(0.85, baseLine + flightBoost);
-    const confidence = confidenceFromSources(sourceCount);
+    const confidence = Math.max(0.3, normalize(sourceCount, 0, 4));
 
     predictions.push(makePrediction(
       'military', region,
@@ -527,7 +523,7 @@ function detectInfraScenarios(inputs) {
     const jamBoost = nearbyJam.length > 0 ? 0.05 : 0;
     const baseLine = severity === 'total' ? 0.55 : 0.4;
     const prob = Math.min(0.85, baseLine + cyberBoost + jamBoost);
-    const confidence = confidenceFromSources(sourceCount);
+    const confidence = Math.max(0.3, normalize(sourceCount, 0, 4));
 
     predictions.push(makePrediction(
       'infrastructure', country,
@@ -558,7 +554,7 @@ function detectUcdpConflictZones(inputs) {
       'conflict', country,
       `Active armed conflict: ${country}`,
       Math.min(0.85, normalize(count, 5, 100) * 0.7),
-      confidenceFromSources(1), '30d',
+      0.3, '30d',
       [{ type: 'ucdp', value: `${count} UCDP conflict events`, weight: 0.5 }],
     ));
   }
@@ -585,7 +581,7 @@ function detectCyberScenarios(inputs) {
       'infrastructure', country,
       `Cyber threat concentration: ${country}`,
       Math.min(0.7, normalize(items.length, 3, 50) * 0.6),
-      confidenceFromSources(1), '7d',
+      0.3, '7d',
       [{ type: 'cyber', value: `${items.length} threats (${[...types].join(', ')})`, weight: 0.5 }],
     ));
   }
@@ -618,7 +614,7 @@ function detectGpsJammingScenarios(inputs) {
       'supply_chain', region,
       `GPS interference in ${region} shipping zone`,
       Math.min(0.6, normalize(inRegion.length, 2, 30) * 0.5),
-      confidenceFromSources(1), '7d',
+      0.3, '7d',
       [{ type: 'gps_jamming', value: `${inRegion.length} jamming hexes in ${region}`, weight: 0.5 }],
     ));
   }
@@ -1282,7 +1278,6 @@ if (_isDirectRun) {
 export {
   forecastId,
   normalize,
-  confidenceFromSources,
   makePrediction,
   normalizeCiiEntry,
   extractCiiScores,
