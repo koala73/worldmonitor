@@ -19,6 +19,7 @@ export class SecurityAdvisoriesPanel extends Panel {
       trackActivity: true,
       infoTooltip: t('components.securityAdvisories.infoTooltip'),
     });
+    this.element.classList.add('span-2');
     this.showLoading(t('components.securityAdvisories.loading'));
 
     this.content.addEventListener('click', (e) => {

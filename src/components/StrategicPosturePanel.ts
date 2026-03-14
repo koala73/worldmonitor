@@ -25,6 +25,7 @@ export class StrategicPosturePanel extends Panel {
       trackActivity: true,
       infoTooltip: t('components.strategicPosture.infoTooltip'),
     });
+    this.element.classList.add('span-2');
     this.init();
   }
 

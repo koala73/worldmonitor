@@ -19,6 +19,7 @@ export class CIIPanel extends Panel {
       title: t('panels.cii'),
       infoTooltip: t('components.cii.infoTooltip'),
     });
+    this.element.classList.add('span-2');
     this.showLoading(t('common.loading'));
   }
 

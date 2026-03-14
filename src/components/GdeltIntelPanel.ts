@@ -25,6 +25,7 @@ export class GdeltIntelPanel extends Panel {
       trackActivity: true,
       infoTooltip: t('components.gdeltIntel.infoTooltip'),
     });
+    this.element.classList.add('span-2');
     this.createTabs();
     this.loadActiveTopic();
   }

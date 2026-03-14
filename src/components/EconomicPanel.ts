@@ -21,6 +21,7 @@ export class EconomicPanel extends Panel {
 
   constructor() {
     super({ id: 'economic', title: t('panels.economic') });
+    this.element.classList.add('span-2');
     this.content.addEventListener('click', (e) => {
       const tab = (e.target as HTMLElement).closest('.panel-tab') as HTMLElement | null;
       if (tab?.dataset.tab) {

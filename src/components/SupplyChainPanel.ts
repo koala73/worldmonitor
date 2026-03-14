@@ -23,6 +23,7 @@ export class SupplyChainPanel extends Panel {
 
   constructor() {
     super({ id: 'supply-chain', title: t('panels.supplyChain') });
+    this.element.classList.add('span-2');
     this.content.addEventListener('click', (e) => {
       const tab = (e.target as HTMLElement).closest('.panel-tab') as HTMLElement | null;
       if (tab) {
