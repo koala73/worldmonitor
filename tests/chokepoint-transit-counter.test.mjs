@@ -71,7 +71,7 @@ describe('chokepoint definitions', () => {
 
   it('includes original 8 chokepoints', () => {
     const original = [
-      'Strait of Hormuz', 'Suez Canal', 'Strait of Malacca', 'Bab el-Mandeb',
+      'Strait of Hormuz', 'Suez Canal', 'Malacca Strait', 'Bab el-Mandeb Strait',
       'Panama Canal', 'Taiwan Strait', 'South China Sea', 'Black Sea',
     ];
     for (const name of original) {
@@ -80,7 +80,7 @@ describe('chokepoint definitions', () => {
   });
 
   it('includes new chokepoints with correct names', () => {
-    const added = ['Cape of Good Hope', 'Strait of Gibraltar', 'Bosporus Strait'];
+    const added = ['Cape of Good Hope', 'Gibraltar Strait', 'Bosporus Strait'];
     for (const name of added) {
       assert.ok(names.includes(name), `missing new chokepoint: ${name}`);
     }
