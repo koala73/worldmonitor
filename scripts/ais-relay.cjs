@@ -276,6 +276,19 @@ function safeEnd(res, statusCode, headers, body) {
   }
 }
 
+function _acceptsEncoding(header, encoding) {
+  if (!header) return false;
+  const tokens = header.split(',');
+  for (const token of tokens) {
+    const parts = token.trim().split(';');
+    if (parts[0].trim().toLowerCase() !== encoding) continue;
+    const qPart = parts.find(p => p.trim().startsWith('q='));
+    if (qPart && parseFloat(qPart.trim().substring(2)) === 0) return false;
+    return true;
+  }
+  return false;
+}
+
 function _varyHeader(res) {
   const existing = String(res.getHeader('vary') || '');
   return existing.toLowerCase().includes('accept-encoding')
@@ -286,9 +299,9 @@ function _varyHeader(res) {
 // Compress & send a response (Brotli preferred ~15-20% smaller than gzip on JSON)
 function sendCompressed(req, res, statusCode, headers, body) {
   if (res.headersSent || res.writableEnded) return;
-  const acceptEncoding = req.headers['accept-encoding'] || '';
+  const ae = req.headers['accept-encoding'] || '';
   const buf = typeof body === 'string' ? Buffer.from(body) : body;
-  if (acceptEncoding.includes('br')) {
+  if (_acceptsEncoding(ae, 'br')) {
     zlib.brotliCompress(buf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 4 } }, (err, compressed) => {
       if (err || res.headersSent || res.writableEnded) {
         safeEnd(res, statusCode, headers, body);
@@ -296,7 +309,7 @@ function sendCompressed(req, res, statusCode, headers, body) {
       }
       safeEnd(res, statusCode, { ...headers, 'Content-Encoding': 'br', 'Vary': _varyHeader(res) }, compressed);
     });
-  } else if (acceptEncoding.includes('gzip')) {
+  } else if (_acceptsEncoding(ae, 'gzip')) {
     zlib.gzip(buf, (err, compressed) => {
       if (err || res.headersSent || res.writableEnded) {
         safeEnd(res, statusCode, headers, body);
@@ -312,10 +325,10 @@ function sendCompressed(req, res, statusCode, headers, body) {
 // Pre-compressed response: serve cached gzip/brotli buffer directly (zero CPU per request)
 function sendPreGzipped(req, res, statusCode, headers, rawBody, gzippedBody, brotliBody) {
   if (res.headersSent || res.writableEnded) return;
-  const acceptEncoding = req.headers['accept-encoding'] || '';
-  if (acceptEncoding.includes('br') && brotliBody) {
+  const ae = req.headers['accept-encoding'] || '';
+  if (_acceptsEncoding(ae, 'br') && brotliBody) {
     safeEnd(res, statusCode, { ...headers, 'Content-Encoding': 'br', 'Vary': _varyHeader(res) }, brotliBody);
-  } else if (acceptEncoding.includes('gzip') && gzippedBody) {
+  } else if (_acceptsEncoding(ae, 'gzip') && gzippedBody) {
     safeEnd(res, statusCode, { ...headers, 'Content-Encoding': 'gzip', 'Vary': _varyHeader(res) }, gzippedBody);
   } else {
     safeEnd(res, statusCode, headers, rawBody);
@@ -5192,7 +5205,7 @@ async function _fetchOpenSkyToken(clientId, clientSecret) {
 
 // Promisified upstream OpenSky fetch (single request)
 function _collectDecompressed(response) {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const enc = (response.headers['content-encoding'] || '').trim().toLowerCase();
     let stream = response;
     if (enc === 'gzip' || enc === 'x-gzip') stream = response.pipe(zlib.createGunzip());
@@ -5201,7 +5214,7 @@ function _collectDecompressed(response) {
     const chunks = [];
     stream.on('data', chunk => chunks.push(chunk));
     stream.on('end', () => resolve(Buffer.concat(chunks).toString()));
-    stream.on('error', () => resolve(Buffer.concat(chunks).toString()));
+    stream.on('error', (err) => reject(new Error(`decompression failed (${enc}): ${err.message}`)));
   });
 }
 
@@ -5224,7 +5237,9 @@ function _openskyRawFetch(url, token) {
           headers: reqHeaders,
           timeout: 15000,
         }, (response) => {
-          _collectDecompressed(response).then(data => resolve({ status: response.statusCode || 502, data }));
+          _collectDecompressed(response)
+            .then(data => resolve({ status: response.statusCode || 502, data }))
+            .catch(err => resolve({ status: 0, data: null, error: err }));
         });
         request.on('error', (err) => resolve({ status: 0, data: null, error: err }));
         request.on('timeout', () => { request.destroy(); resolve({ status: 504, data: null, error: new Error('timeout') }); });
@@ -5239,7 +5254,9 @@ function _openskyRawFetch(url, token) {
       agent: httpsKeepAliveAgent,
       timeout: 15000,
     }, (response) => {
-      _collectDecompressed(response).then(data => resolve({ status: response.statusCode || 502, data }));
+      _collectDecompressed(response)
+        .then(data => resolve({ status: response.statusCode || 502, data }))
+        .catch(err => resolve({ status: 0, data: null, error: err }));
     });
     request.on('error', (err) => resolve({ status: 0, data: null, error: err }));
     request.on('timeout', () => { request.destroy(); resolve({ status: 504, data: null, error: new Error('timeout') }); });
