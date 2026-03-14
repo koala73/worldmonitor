@@ -23,7 +23,7 @@ function prefixKey(key: string): string {
   return `${cachedPrefix}${key}`;
 }
 
-export async function getCachedJson(key: string, raw = false): Promise<unknown | null> {
+export async function getCachedJson(key: string, raw = false, timeoutMs = REDIS_OP_TIMEOUT_MS): Promise<unknown | null> {
   if (process.env.LOCAL_API_MODE === 'tauri-sidecar') {
     const { sidecarCacheGet } = await import('./sidecar-cache');
     return sidecarCacheGet(key);
@@ -36,7 +36,7 @@ export async function getCachedJson(key: string, raw = false): Promise<unknown |
     const finalKey = raw ? key : prefixKey(key);
     const resp = await fetch(`${url}/get/${encodeURIComponent(finalKey)}`, {
       headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(REDIS_OP_TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (!resp.ok) return null;
     const data = (await resp.json()) as { result?: string };

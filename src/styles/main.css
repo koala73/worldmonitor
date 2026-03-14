@@ -8504,7 +8504,8 @@ a.prediction-link:hover {
 
 .economic-content {
   padding: 8px;
-  max-height: 300px;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
 }
 

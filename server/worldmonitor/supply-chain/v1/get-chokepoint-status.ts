@@ -272,7 +272,7 @@ async function fetchChokepointData(): Promise<ChokepointFetchResult> {
   const [navResult, vesselResult, portwatchData, corridorRiskData, transitData] = await Promise.all([
     listNavigationalWarnings(ctx, { area: '', pageSize: 0, cursor: '' }).catch((): ListNavigationalWarningsResponse => { navFailed = true; return { warnings: [], pagination: undefined }; }),
     getVesselSnapshot(ctx, { neLat: 90, neLon: 180, swLat: -90, swLon: -180 }).catch((): GetVesselSnapshotResponse => { vesselFailed = true; return { snapshot: undefined }; }),
-    getCachedJson(PORTWATCH_REDIS_KEY, true).catch(() => null) as Promise<PortWatchData | null>,
+    getCachedJson(PORTWATCH_REDIS_KEY, true, 5000).catch(() => null) as Promise<PortWatchData | null>,
     getCachedJson(CORRIDORRISK_REDIS_KEY, true).catch(() => null) as Promise<CorridorRiskData | null>,
     getCachedJson(RELAY_TRANSIT_KEY, true).catch(() => null) as Promise<RelayTransitPayload | null>,
   ]);
