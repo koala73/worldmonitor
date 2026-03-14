@@ -152,8 +152,8 @@ describe('detectTrafficAnomaly', () => {
     assert.equal(result.signal, false);
   });
 
-  it('returns no signal with <30 days of history', () => {
-    const result = detectTrafficAnomaly(makeDays(20, 100, 0), 'war_zone');
+  it('returns no signal with <37 days of history (needs 7 recent + 30 baseline)', () => {
+    const result = detectTrafficAnomaly(makeDays(36, 100, 0), 'war_zone');
     assert.equal(result.signal, false);
     assert.equal(result.dropPct, 0);
   });

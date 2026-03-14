@@ -73,7 +73,7 @@ export function riskRating(hhi) {
 }
 
 export function detectTrafficAnomaly(history, threatLevel) {
-  if (!history || history.length < 30) return { dropPct: 0, signal: false };
+  if (!history || history.length < 37) return { dropPct: 0, signal: false };
   const sorted = [...history].sort((a, b) => b.date.localeCompare(a.date));
   let recent7 = 0;
   let baseline30 = 0;
