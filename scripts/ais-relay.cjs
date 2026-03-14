@@ -3802,33 +3802,32 @@ async function startPortWatchSeedLoop() {
   }, PORTWATCH_SEED_INTERVAL_MS).unref?.();
 }
 
-const CORRIDOR_RISK_API_KEY = process.env.CORRIDOR_RISK_API_KEY || '';
-const CORRIDOR_RISK_BASE_URL = 'https://api.corridorrisk.io/v1/corridors';
+const CORRIDOR_RISK_BASE_URL = 'https://corridorrisk.io/api/corridors';
 const CORRIDOR_RISK_REDIS_KEY = 'supply_chain:corridorrisk:v1';
 const CORRIDOR_RISK_TTL = 7200;
 const CORRIDOR_RISK_SEED_INTERVAL_MS = 60 * 60 * 1000;
-const CORRIDOR_RISK_NAMES = [
-  { name: 'Suez', id: 'suez' },
-  { name: 'Malacca', id: 'malacca_strait' },
-  { name: 'Hormuz', id: 'hormuz_strait' },
-  { name: 'Bab el-Mandeb', id: 'bab_el_mandeb' },
-  { name: 'Panama', id: 'panama' },
-  { name: 'Taiwan', id: 'taiwan_strait' },
-  { name: 'Cape of Good Hope', id: 'cape_of_good_hope' },
+// API name -> canonical chokepoint ID (partial substring match)
+const CORRIDOR_RISK_NAME_MAP = [
+  { pattern: 'hormuz', id: 'hormuz_strait' },
+  { pattern: 'bab-el-mandeb', id: 'bab_el_mandeb' },
+  { pattern: 'red sea', id: 'bab_el_mandeb' },
+  { pattern: 'suez', id: 'suez' },
+  { pattern: 'south china sea', id: 'taiwan_strait' },
+  { pattern: 'black sea', id: 'bosphorus' },
 ];
 let corridorRiskSeedInFlight = false;
+let latestCorridorRiskData = null;
 
 async function seedCorridorRisk() {
-  if (!CORRIDOR_RISK_API_KEY) return;
   if (corridorRiskSeedInFlight) return;
   corridorRiskSeedInFlight = true;
   const t0 = Date.now();
   try {
     const resp = await fetch(CORRIDOR_RISK_BASE_URL, {
       headers: {
-        Authorization: `Bearer ${CORRIDOR_RISK_API_KEY}`,
         Accept: 'application/json',
         'User-Agent': CHROME_UA,
+        Referer: 'https://corridorrisk.io/dashboard.html',
       },
       signal: AbortSignal.timeout(10000),
     });
@@ -3836,32 +3835,37 @@ async function seedCorridorRisk() {
       console.warn(`[CorridorRisk] HTTP ${resp.status}`);
       return;
     }
-    const body = await resp.json();
-    const corridors = Array.isArray(body) ? body : body.data;
-    if (!corridors?.length) {
+    const corridors = await resp.json();
+    if (!Array.isArray(corridors) || !corridors.length) {
       console.warn('[CorridorRisk] No corridors returned — skipping');
       return;
     }
-    const crNameMap = new Map(CORRIDOR_RISK_NAMES.map(c => [c.name.toLowerCase(), c.id]));
     const result = {};
     for (const corridor of corridors) {
-      const name = corridor.name;
-      if (!name) continue;
-      const id = crNameMap.get(name.toLowerCase());
-      if (!id) continue;
-      result[id] = {
-        riskLevel: String(corridor.risk_level ?? ''),
+      const name = (corridor.name || '').toLowerCase();
+      const mapping = CORRIDOR_RISK_NAME_MAP.find(m => name.includes(m.pattern));
+      if (!mapping) continue;
+      const score = Number(corridor.score ?? 0);
+      const riskLevel = score >= 70 ? 'critical' : score >= 50 ? 'high' : score >= 30 ? 'elevated' : 'normal';
+      result[mapping.id] = {
+        riskLevel,
+        riskScore: score,
         incidentCount7d: Number(corridor.incident_count_7d ?? 0),
+        eventCount7d: Number(corridor.event_count_7d ?? 0),
         disruptionPct: Number(corridor.disruption_pct ?? 0),
+        vesselCount: Number(corridor.vessel_count ?? 0),
+        riskSummary: String(corridor.risk_summary || '').slice(0, 200),
       };
     }
     if (Object.keys(result).length === 0) {
       console.warn('[CorridorRisk] No matching corridors — skipping');
       return;
     }
+    latestCorridorRiskData = result;
     const ok = await upstashSet(CORRIDOR_RISK_REDIS_KEY, result, CORRIDOR_RISK_TTL);
     await upstashSet('seed-meta:supply_chain:corridorrisk', { fetchedAt: Date.now(), recordCount: Object.keys(result).length }, 604800);
     console.log(`[CorridorRisk] Seeded ${Object.keys(result).length} corridors (redis: ${ok ? 'OK' : 'FAIL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+    seedTransitSummaries().catch(e => console.warn('[TransitSummary] Post-CorridorRisk seed error:', e?.message || e));
   } catch (e) {
     console.warn('[CorridorRisk] Seed error:', e?.message || e);
   } finally {
@@ -3872,10 +3876,6 @@ async function seedCorridorRisk() {
 async function startCorridorRiskSeedLoop() {
   if (!UPSTASH_ENABLED) {
     console.log('[CorridorRisk] Disabled (no Upstash Redis)');
-    return;
-  }
-  if (!CORRIDOR_RISK_API_KEY) {
-    console.log('[CorridorRisk] Disabled (no CORRIDOR_RISK_API_KEY)');
     return;
   }
   console.log(`[CorridorRisk] Seed loop starting (interval ${CORRIDOR_RISK_SEED_INTERVAL_MS / 1000 / 60}min)`);
@@ -4787,6 +4787,7 @@ async function seedTransitSummaries() {
       }
     }
 
+    const cr = latestCorridorRiskData?.[cpId];
     summaries[cpId] = {
       todayTotal: relayTransit?.total ?? 0,
       todayTanker: relayTransit?.tanker ?? 0,
@@ -4794,9 +4795,9 @@ async function seedTransitSummaries() {
       todayOther: relayTransit?.other ?? 0,
       wowChangePct: cpData.wowChangePct ?? 0,
       history: cpData.history ?? [],
-      riskLevel: '',
-      incidentCount7d: 0,
-      disruptionPct: 0,
+      riskLevel: cr?.riskLevel ?? '',
+      incidentCount7d: cr?.incidentCount7d ?? 0,
+      disruptionPct: cr?.disruptionPct ?? 0,
       anomaly,
     };
   }
