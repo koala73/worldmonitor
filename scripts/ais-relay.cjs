@@ -1108,7 +1108,7 @@ async function startUcdpSeedLoop() {
 // ─────────────────────────────────────────────────────────────
 const SAT_SEED_INTERVAL_MS = 7_200_000;
 const SAT_SEED_TTL = 14_400;
-const SAT_GROUPS = ['military', 'resource', 'active'];
+const SAT_GROUPS = ['military', 'resource'];
 
 const SAT_NAME_FILTERS = [
   /^YAOGAN/i, /^GAOFEN/i, /^JILIN/i,

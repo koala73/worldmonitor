@@ -88,7 +88,7 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'BBC Latin America', url: 'https://feeds.bbci.co.uk/news/world/latin_america/rss.xml' },
       { name: 'Guardian Americas', url: 'https://www.theguardian.com/world/americas/rss' },
       { name: 'Primicias', url: 'https://www.primicias.ec/feed/', lang: 'es' },
-      { name: 'Infobae Americas', url: 'https://www.infobae.com/feeds/rss/', lang: 'es' },
+      { name: 'Infobae Americas', url: 'https://www.infobae.com/arc/outboundfeeds/rss/', lang: 'es' },
       { name: 'El Universo', url: 'https://www.eluniverso.com/arc/outboundfeeds/rss/category/noticias/?outputType=xml', lang: 'es' },
       { name: 'Clarín', url: 'https://www.clarin.com/rss/lo-ultimo/', lang: 'es' },
       { name: 'InSight Crime', url: 'https://insightcrime.org/feed/' },
@@ -113,7 +113,7 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Atlantic Council', url: 'https://www.atlanticcouncil.org/feed/' },
       { name: 'Foreign Affairs', url: 'https://www.foreignaffairs.com/rss.xml' },
       { name: 'War on the Rocks', url: 'https://warontherocks.com/feed/' },
-      { name: 'CSIS', url: 'https://www.csis.org/feed' },
+      { name: 'CSIS', url: 'https://www.csis.org/rss.xml' },
     ],
     crisis: [
       { name: 'CrisisWatch', url: 'https://www.crisisgroup.org/rss' },
@@ -379,7 +379,6 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Positive.News', url: 'https://www.positive.news/feed/' },
       { name: 'Reasons to be Cheerful', url: 'https://reasonstobecheerful.world/feed/' },
       { name: 'Optimist Daily', url: 'https://www.optimistdaily.com/feed/' },
-      { name: 'My Modern Met', url: 'https://mymodernmet.com/feed/' },
     ],
     science: [
       { name: 'ScienceDaily', url: 'https://www.sciencedaily.com/rss/all.xml' },
@@ -404,7 +403,6 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
 
 export const INTEL_SOURCES: ServerFeed[] = [
   { name: 'Defense One', url: 'https://www.defenseone.com/rss/all/' },
-  { name: 'Breaking Defense', url: 'https://breakingdefense.com/feed/' },
   { name: 'The War Zone', url: 'https://www.twz.com/feed' },
   { name: 'Defense News', url: 'https://www.defensenews.com/arc/outboundfeeds/rss/?outputType=xml' },
   { name: 'Military Times', url: 'https://www.militarytimes.com/arc/outboundfeeds/rss/?outputType=xml' },
