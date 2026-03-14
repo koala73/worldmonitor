@@ -372,6 +372,9 @@ export class DataLoaderManager implements AppModule {
       if (shouldLoad('polymarket')) {
         tasks.push({ name: 'predictions', task: runGuarded('predictions', () => this.loadPredictions()) });
       }
+      if (getSecretState('WORLDMONITOR_API_KEY').present && shouldLoad('forecast')) {
+        tasks.push({ name: 'forecasts', task: runGuarded('forecasts', () => this.loadForecasts()) });
+      }
       tasks.push({ name: 'pizzint', task: runGuarded('pizzint', () => this.loadPizzInt()) });
       if (shouldLoad('economic')) {
         tasks.push({ name: 'fred', task: runGuarded('fred', () => this.loadFredData()) });
@@ -1358,6 +1361,14 @@ export class DataLoaderManager implements AppModule {
       dataFreshness.recordError('polymarket', String(error));
       dataFreshness.recordError('predictions', String(error));
     }
+  }
+
+  async loadForecasts(): Promise<void> {
+    try {
+      const { fetchForecasts } = await import('@/services/forecast');
+      const forecasts = await fetchForecasts();
+      this.callPanel('forecast', 'updateForecasts', forecasts);
+    } catch { /* premium feature, silent fail */ }
   }
 
   async loadNatural(): Promise<void> {

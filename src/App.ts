@@ -756,6 +756,12 @@ export class App {
           intervalMs: REFRESH_INTERVALS.predictions,
           condition: () => this.isPanelNearViewport('polymarket'),
         },
+        ...(getSecretState('WORLDMONITOR_API_KEY').present ? [{
+          name: 'forecasts',
+          fn: () => this.dataLoader.loadForecasts(),
+          intervalMs: REFRESH_INTERVALS.forecasts,
+          condition: () => this.isPanelNearViewport('forecast'),
+        }] : []),
         { name: 'pizzint', fn: () => this.dataLoader.loadPizzInt(), intervalMs: 10 * 60 * 1000 },
         { name: 'natural', fn: () => this.dataLoader.loadNatural(), intervalMs: 60 * 60 * 1000, condition: () => this.state.mapLayers.natural },
         { name: 'weather', fn: () => this.dataLoader.loadWeatherAlerts(), intervalMs: 10 * 60 * 1000, condition: () => this.state.mapLayers.weather },

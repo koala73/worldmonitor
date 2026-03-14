@@ -700,6 +700,13 @@ export class PanelLayoutManager implements AppModule {
       !_wmKeyPresent ? ['Pre-market watchlist priorities', 'Action plan for the session', 'Risk watch tied to current finance headlines'] : undefined,
     );
 
+    const _forecastLocked = !_wmKeyPresent;
+    this.lazyPanel('forecast', () =>
+      import('@/components/ForecastPanel').then(m => new m.ForecastPanel()),
+      undefined,
+      _forecastLocked ? ['AI-powered geopolitical forecasts', 'Cross-domain cascade predictions', 'Prediction market calibration'] : undefined,
+    );
+
     this.lazyPanel('oref-sirens', () =>
       import('@/components/OrefSirensPanel').then(m => new m.OrefSirensPanel()),
       undefined,

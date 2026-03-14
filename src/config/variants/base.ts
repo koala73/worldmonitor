@@ -15,6 +15,7 @@ export const REFRESH_INTERVALS = {
   markets: 12 * 60 * 1000,
   crypto: 12 * 60 * 1000,
   predictions: 15 * 60 * 1000,
+  forecasts: 30 * 60 * 1000,
   ais: 15 * 60 * 1000,
 };
 

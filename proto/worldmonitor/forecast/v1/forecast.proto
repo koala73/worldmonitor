@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package worldmonitor.forecast.v1;
+
+import "sebuf/http/annotations.proto";
+
+message ForecastSignal {
+  string type = 1;
+  string value = 2;
+  double weight = 3;
+}
+
+message CascadeEffect {
+  string domain = 1;
+  string effect = 2;
+  double probability = 3;
+}
+
+message CalibrationInfo {
+  string market_title = 1;
+  double market_price = 2;
+  double drift = 3;
+  string source = 4;
+}
+
+message Forecast {
+  string id = 1;
+  string domain = 2;
+  string region = 3;
+  string title = 4;
+  string scenario = 5;
+  double probability = 6;
+  double confidence = 7;
+  string time_horizon = 8;
+  repeated ForecastSignal signals = 9;
+  repeated CascadeEffect cascades = 10;
+  string trend = 11;
+  double prior_probability = 12;
+  CalibrationInfo calibration = 13;
+  int64 created_at = 14 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  int64 updated_at = 15 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}

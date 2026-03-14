@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package worldmonitor.forecast.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/forecast/v1/forecast.proto";
+
+message GetForecastsRequest {
+  string domain = 1 [(sebuf.http.query) = { name: "domain" }];
+  string region = 2 [(sebuf.http.query) = { name: "region" }];
+}
+
+message GetForecastsResponse {
+  repeated Forecast forecasts = 1;
+  int64 generated_at = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}
