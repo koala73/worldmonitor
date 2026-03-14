@@ -17,6 +17,7 @@ import {
   GdeltIntelPanel,
   LiveNewsPanel,
   LiveWebcamsPanel,
+  PinnedWebcamsPanel,
   CIIPanel,
   CascadePanel,
   StrategicRiskPanel,
@@ -737,6 +738,10 @@ export class PanelLayoutManager implements AppModule {
 
     if (this.shouldCreatePanel('live-webcams')) {
       this.ctx.panels['live-webcams'] = new LiveWebcamsPanel();
+    }
+
+    if (this.shouldCreatePanel('pinned-webcams')) {
+      this.ctx.panels['pinned-webcams'] = new PinnedWebcamsPanel();
     }
 
     this.createPanel('events', () => new TechEventsPanel('events', () => this.ctx.allNews));

@@ -187,6 +187,7 @@ const allLayersEnabled: MapLayers = {
   miningSites: false,
   processingPlants: false,
   commodityPorts: false,
+  webcams: false,
 };
 
 const allLayersDisabled: MapLayers = {
@@ -241,6 +242,7 @@ const allLayersDisabled: MapLayers = {
   miningSites: false,
   processingPlants: false,
   commodityPorts: false,
+  webcams: false,
 };
 
 const SEEDED_NEWS_LOCATIONS: Array<{

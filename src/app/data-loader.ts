@@ -466,6 +466,7 @@ export class DataLoaderManager implements AppModule {
     if (SITE_VARIANT !== 'happy' && !isDesktopRuntime()) tasks.push({ name: 'iranAttacks', task: runGuarded('iranAttacks', () => this.loadIranEvents()) });
     if (SITE_VARIANT !== 'happy' && (this.ctx.mapLayers.techEvents || SITE_VARIANT === 'tech')) tasks.push({ name: 'techEvents', task: runGuarded('techEvents', () => this.loadTechEvents()) });
     if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.satellites && this.ctx.map?.isGlobeMode?.()) tasks.push({ name: 'satellites', task: runGuarded('satellites', () => this.loadSatellites()) });
+    if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.webcams) tasks.push({ name: 'webcams', task: runGuarded('webcams', () => this.loadWebcams()) });
 
     if (SITE_VARIANT !== 'happy') {
       tasks.push({ name: 'techReadiness', task: runGuarded('techReadiness', () => (this.ctx.panels['tech-readiness'] as TechReadinessPanel)?.refresh()) });
@@ -565,6 +566,9 @@ export class DataLoaderManager implements AppModule {
           this.loadImageryFootprints();
           break;
         }
+        case 'webcams':
+          await this.loadWebcams();
+          break;
         case 'ucdpEvents':
         case 'displacement':
         case 'climate':
@@ -2006,6 +2010,51 @@ export class DataLoaderManager implements AppModule {
       this.ctx.statusPanel?.updateApi('ACLED', { status: 'error' });
       this.ctx.statusPanel?.updateApi('GDELT Doc', { status: 'error' });
       dataFreshness.recordError('gdelt_doc', String(error));
+    }
+  }
+
+  private lastWebcamBbox: { w: number; s: number; e: number; n: number; zoom: number } | null = null;
+  private lastWebcamFetchAt = 0;
+
+  async loadWebcams(): Promise<void> {
+    if (!this.ctx.map) return;
+    try {
+      const map = this.ctx.map;
+      const zoom = map.getState().zoom ?? 3;
+
+      if (zoom < 2) return;
+
+      const now = Date.now();
+      if (now - this.lastWebcamFetchAt < 1000) return;
+
+      const bboxStr = map.getBbox();
+      const parts = bboxStr ? bboxStr.split(',').map(Number) : [-180, -90, 180, 90];
+      const w = parts[0] ?? -180;
+      const s = parts[1] ?? -90;
+      const e = parts[2] ?? 180;
+      const n = parts[3] ?? 90;
+
+      if (this.lastWebcamBbox && this.lastWebcamBbox.zoom === zoom) {
+        const prev = this.lastWebcamBbox;
+        const overlapW = Math.max(0, Math.min(prev.e, e) - Math.max(prev.w, w));
+        const overlapH = Math.max(0, Math.min(prev.n, n) - Math.max(prev.s, s));
+        const overlapArea = overlapW * overlapH;
+        const currentArea = Math.max(0.001, (e - w) * (n - s));
+        if (overlapArea / currentArea > 0.8) return;
+      }
+
+      this.lastWebcamFetchAt = now;
+      this.lastWebcamBbox = { w, s, e, n, zoom };
+
+      const { fetchWebcams } = await import('@/services/webcams');
+      const result = await fetchWebcams(zoom, { w, s, e, n });
+
+      const allMarkers = [...result.webcams, ...result.clusters];
+      map.setWebcams(allMarkers);
+      map.setLayerReady('webcams', allMarkers.length > 0);
+    } catch (err) {
+      console.warn('[data-loader] webcams failed:', err);
+      this.ctx.map?.setLayerReady('webcams', false);
     }
   }
 

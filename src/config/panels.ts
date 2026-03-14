@@ -13,7 +13,8 @@ const _desktop = isDesktopRuntime();
 const FULL_PANELS: Record<string, PanelConfig> = {
   map: { name: 'Global Map', enabled: true, priority: 1 },
   'live-news': { name: 'Live News', enabled: true, priority: 1 },
-  'live-webcams': { name: 'Live Webcams', enabled: true, priority: 1 },
+  'live-youtube': { name: 'Live YouTube', enabled: true, priority: 1 },
+  'pinned-webcams': { name: 'Pinned Webcams', enabled: true, priority: 2 },
   insights: { name: 'AI Insights', enabled: true, priority: 1 },
   'strategic-posture': { name: 'AI Strategic Posture', enabled: true, priority: 1 },
   cii: { name: 'Country Instability', enabled: true, priority: 1, ...(_desktop && { premium: 'enhanced' as const }) },
@@ -123,6 +124,7 @@ const FULL_MAP_LAYERS: MapLayers = {
   miningSites: false,
   processingPlants: false,
   commodityPorts: false,
+  webcams: false,
 };
 
 const FULL_MOBILE_MAP_LAYERS: MapLayers = {
@@ -182,6 +184,7 @@ const FULL_MOBILE_MAP_LAYERS: MapLayers = {
   miningSites: false,
   processingPlants: false,
   commodityPorts: false,
+  webcams: false,
 };
 
 // ============================================
@@ -190,7 +193,8 @@ const FULL_MOBILE_MAP_LAYERS: MapLayers = {
 const TECH_PANELS: Record<string, PanelConfig> = {
   map: { name: 'Global Tech Map', enabled: true, priority: 1 },
   'live-news': { name: 'Tech Headlines', enabled: true, priority: 1 },
-  'live-webcams': { name: 'Live Webcams', enabled: true, priority: 2 },
+  'live-youtube': { name: 'Live YouTube', enabled: true, priority: 2 },
+  'pinned-webcams': { name: 'Pinned Webcams', enabled: true, priority: 2 },
   insights: { name: 'AI Insights', enabled: true, priority: 1 },
   ai: { name: 'AI/ML News', enabled: true, priority: 1 },
   tech: { name: 'Technology', enabled: true, priority: 1 },
@@ -283,6 +287,7 @@ const TECH_MAP_LAYERS: MapLayers = {
   miningSites: false,
   processingPlants: false,
   commodityPorts: false,
+  webcams: false,
 };
 
 const TECH_MOBILE_MAP_LAYERS: MapLayers = {
@@ -342,6 +347,7 @@ const TECH_MOBILE_MAP_LAYERS: MapLayers = {
   miningSites: false,
   processingPlants: false,
   commodityPorts: false,
+  webcams: false,
 };
 
 // ============================================
@@ -350,7 +356,8 @@ const TECH_MOBILE_MAP_LAYERS: MapLayers = {
 const FINANCE_PANELS: Record<string, PanelConfig> = {
   map: { name: 'Global Markets Map', enabled: true, priority: 1 },
   'live-news': { name: 'Market Headlines', enabled: true, priority: 1 },
-  'live-webcams': { name: 'Live Webcams', enabled: true, priority: 2 },
+  'live-youtube': { name: 'Live YouTube', enabled: true, priority: 2 },
+  'pinned-webcams': { name: 'Pinned Webcams', enabled: true, priority: 2 },
   insights: { name: 'AI Market Insights', enabled: true, priority: 1 },
   markets: { name: 'Live Markets', enabled: true, priority: 1 },
   'stock-analysis': { name: 'Premium Stock Analysis', enabled: true, priority: 1, premium: 'locked' },
@@ -444,6 +451,7 @@ const FINANCE_MAP_LAYERS: MapLayers = {
   miningSites: false,
   processingPlants: false,
   commodityPorts: false,
+  webcams: false,
 };
 
 const FINANCE_MOBILE_MAP_LAYERS: MapLayers = {
@@ -503,6 +511,7 @@ const FINANCE_MOBILE_MAP_LAYERS: MapLayers = {
   miningSites: false,
   processingPlants: false,
   commodityPorts: false,
+  webcams: false,
 };
 
 // ============================================
@@ -578,6 +587,7 @@ const HAPPY_MAP_LAYERS: MapLayers = {
   miningSites: false,
   processingPlants: false,
   commodityPorts: false,
+  webcams: false,
 };
 
 const HAPPY_MOBILE_MAP_LAYERS: MapLayers = {
@@ -637,6 +647,7 @@ const HAPPY_MOBILE_MAP_LAYERS: MapLayers = {
   miningSites: false,
   processingPlants: false,
   commodityPorts: false,
+  webcams: false,
 };
 
 // ============================================
@@ -726,6 +737,7 @@ const COMMODITY_MAP_LAYERS: MapLayers = {
   miningSites: true,
   processingPlants: true,
   commodityPorts: true,
+  webcams: false,
 };
 
 const COMMODITY_MOBILE_MAP_LAYERS: MapLayers = {
@@ -785,6 +797,7 @@ const COMMODITY_MOBILE_MAP_LAYERS: MapLayers = {
   miningSites: true,
   processingPlants: false,
   commodityPorts: true,
+  webcams: false,
 };
 
 // ============================================
@@ -845,7 +858,7 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   // All variants — essential panels
   core: {
     labelKey: 'header.panelCatCore',
-    panelKeys: ['map', 'live-news', 'live-webcams', 'insights', 'strategic-posture'],
+    panelKeys: ['map', 'live-news', 'live-youtube', 'pinned-webcams', 'insights', 'strategic-posture'],
   },
 
   // Full (geopolitical) variant

@@ -2626,8 +2626,8 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
   display: block;
 }
 
-/* Live Webcams Panel */
-.panel[data-panel="live-webcams"] .panel-content {
+/* Live YouTube Panel */
+.panel[data-panel="live-youtube"] .panel-content {
   padding: 0;
   flex: 1;
   display: flex;
@@ -2943,6 +2943,219 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
     flex: 0 0 auto;
   }
 }
+
+/* ── Pinned Webcams Panel ── */
+.pinned-webcams-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 4px;
+  aspect-ratio: 16 / 9;
+  width: 100%;
+}
+
+.pinned-webcam-slot {
+  position: relative;
+  background: var(--bg-secondary, #1a1a2e);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.pinned-webcam-slot--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pinned-webcam-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+}
+
+.pinned-webcam-placeholder {
+  color: var(--text-muted, #666);
+  font-size: 0.75rem;
+  text-align: center;
+  padding: 8px;
+}
+
+.pinned-webcam-label {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  background: rgba(0, 0, 0, 0.7);
+  font-size: 0.65rem;
+}
+
+.pinned-webcam-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #eee;
+}
+
+.pinned-webcam-toggle,
+.pinned-webcam-unpin {
+  background: none;
+  border: none;
+  color: #aaa;
+  cursor: pointer;
+  font-size: 0.7rem;
+  padding: 0 2px;
+  line-height: 1;
+}
+
+.pinned-webcam-toggle:hover,
+.pinned-webcam-unpin:hover {
+  color: #fff;
+}
+
+/* Pinned list below grid */
+.pinned-webcams-list {
+  margin-top: 8px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.pinned-webcams-list-header {
+  font-size: 0.7rem;
+  color: var(--text-muted, #888);
+  padding: 4px 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.pinned-webcam-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  font-size: 0.75rem;
+}
+
+.pinned-webcam-row--active {
+  background: rgba(0, 212, 255, 0.08);
+}
+
+.pinned-webcam-row-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pinned-webcam-row-country {
+  color: var(--text-muted, #888);
+  font-size: 0.65rem;
+}
+
+.pinned-webcam-row-toggle {
+  background: none;
+  border: 1px solid var(--border-color, #333);
+  color: var(--text-secondary, #aaa);
+  border-radius: 3px;
+  padding: 1px 6px;
+  font-size: 0.65rem;
+  cursor: pointer;
+}
+
+.pinned-webcam-row--active .pinned-webcam-row-toggle {
+  border-color: var(--accent, #00d4ff);
+  color: var(--accent, #00d4ff);
+}
+
+.pinned-webcam-row-remove {
+  background: none;
+  border: none;
+  color: var(--text-muted, #666);
+  cursor: pointer;
+  font-size: 0.7rem;
+  padding: 0 2px;
+}
+
+.pinned-webcam-row-remove:hover {
+  color: var(--error, #ff4444);
+}
+
+/* Pin button in map tooltips */
+.webcam-pin-btn {
+  background: none;
+  border: 1px solid var(--border-color, #444);
+  color: var(--text-secondary, #ccc);
+  border-radius: 3px;
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  margin-top: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.webcam-pin-btn:hover {
+  border-color: var(--accent, #00d4ff);
+  color: var(--accent, #00d4ff);
+}
+
+/* Toast notification (localStorage full, etc.) */
+.wm-toast {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-secondary, #1a1a2e);
+  border: 1px solid var(--error, #ff4444);
+  color: var(--text-primary, #eee);
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  z-index: 10000;
+  pointer-events: none;
+  animation: wm-toast-fade 3s ease-in-out;
+}
+
+@keyframes wm-toast-fade {
+  0%, 80% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.webcam-pin-btn--pinned {
+  opacity: 0.6;
+  cursor: default;
+  border-color: var(--accent, #00d4ff);
+  color: var(--accent, #00d4ff);
+}
+
+/* DeckGL webcam click popup */
+.deckgl-webcam-popup {
+  background: var(--bg-secondary, #1a1a2e);
+  border: 1px solid var(--border-color, #333);
+  border-radius: 6px;
+  padding: 8px 12px;
+  min-width: 140px;
+  pointer-events: auto;
+}
+
+.deckgl-webcam-popup-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.deckgl-webcam-popup-location {
+  font-size: 0.7rem;
+  color: var(--text-muted, #888);
+  margin-bottom: 6px;
+}
+
 /* News Items */
 .item {
   padding: 8px 0;

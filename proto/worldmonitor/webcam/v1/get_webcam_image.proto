@@ -1,0 +1,15 @@
+syntax = "proto3";
+package worldmonitor.webcam.v1;
+
+message GetWebcamImageRequest {
+  string webcam_id = 1;
+}
+
+message GetWebcamImageResponse {
+  string thumbnail_url = 1;
+  string player_url = 2;
+  string title = 3;
+  string windy_url = 4;
+  int64 last_updated = 5;
+  string error = 6;
+}

@@ -564,6 +564,7 @@ export interface MapLayers {
   miningSites: boolean;
   processingPlants: boolean;
   commodityPorts: boolean;
+  webcams: boolean;
 }
 
 export interface AIDataCenter {

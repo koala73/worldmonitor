@@ -44,6 +44,8 @@ import {
   CENTRAL_BANKS,
   COMMODITY_HUBS,
 } from '@/config';
+import { pinWebcam, isPinned } from '@/services/webcams/pinned-store';
+import type { WebcamEntry, WebcamCluster } from '@/generated/client/worldmonitor/webcam/v1/service_client';
 import { tokenizeForMatch, matchKeyword, findMatchingKeywords } from '@/utils/keyword-match';
 import { MapPopup } from './MapPopup';
 import {
@@ -141,6 +143,7 @@ export class MapComponent {
   private techActivities: TechHubActivity[] = [];
   private geoActivities: GeoHubActivity[] = [];
   private iranEvents: IranEvent[] = [];
+  private webcamData: Array<WebcamEntry | WebcamCluster> = [];
   private news: NewsItem[] = [];
   private onTechHubClick?: (hub: TechHubActivity) => void;
   private onGeoHubClick?: (hub: GeoHubActivity) => void;
@@ -2786,6 +2789,217 @@ export class MapComponent {
         this.overlays.appendChild(dot);
       });
     }
+
+    // Webcam markers (colored circles, gated by zoom >= 2)
+    if (this.state.layers.webcams && this.webcamData.length > 0 && this.state.zoom >= 2) {
+      const CATEGORY_COLORS: Record<string, string> = {
+        traffic: '#ffd700', city: '#00d4ff', landscape: '#45b7d1',
+        nature: '#96ceb4', beach: '#f4a460', water: '#4169e1', other: '#888888',
+      };
+      this.webcamData.forEach((cam) => {
+        const pos = projection([cam.lng, cam.lat]);
+        if (!pos || !Number.isFinite(pos[0]) || !Number.isFinite(pos[1])) return;
+        const isCluster = 'count' in cam;
+        const radius = isCluster ? Math.min(4 + Math.sqrt((cam as WebcamCluster).count), 12) : 3;
+        const size = radius * 2;
+        const color = isCluster ? '#00d4ff' : (CATEGORY_COLORS[(cam as WebcamEntry).category] ?? '#888888');
+        const dot = document.createElement('div');
+        dot.className = 'webcam-dot';
+        dot.style.left = `${pos[0]}px`;
+        dot.style.top = `${pos[1]}px`;
+        dot.style.width = `${size}px`;
+        dot.style.height = `${size}px`;
+        dot.style.position = 'absolute';
+        dot.style.borderRadius = '50%';
+        dot.style.backgroundColor = color;
+        dot.style.opacity = '0.75';
+        dot.style.cursor = 'pointer';
+        dot.title = isCluster ? `${(cam as WebcamCluster).count} webcams` : ((cam as WebcamEntry).title || 'Webcam');
+        dot.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (isCluster) {
+            this.showWebcamClusterPopup(cam as WebcamCluster, e.clientX, e.clientY);
+          } else {
+            this.showWebcamTooltip(cam as WebcamEntry, e.clientX, e.clientY);
+          }
+        });
+        this.overlays.appendChild(dot);
+      });
+    }
+  }
+
+  private makeWebcamTooltipShell(): { tooltip: HTMLDivElement; closeBtn: HTMLButtonElement } {
+    this.container.querySelector('.webcam-tooltip')?.remove();
+    const tooltip = document.createElement('div');
+    tooltip.className = 'webcam-tooltip';
+    tooltip.style.cssText = [
+      'position:absolute',
+      'background:rgba(10,12,16,0.95)',
+      'border:1px solid rgba(60,120,60,0.6)',
+      'padding:8px 12px',
+      'border-radius:3px',
+      'font-size:11px',
+      'font-family:monospace',
+      'color:#d4d4d4',
+      'max-width:240px',
+      'z-index:1000',
+      'pointer-events:auto',
+      'line-height:1.5',
+    ].join(';');
+    const closeBtn = document.createElement('button');
+    closeBtn.style.cssText = 'position:absolute;top:4px;right:4px;background:none;border:none;color:#888;cursor:pointer;font-size:14px;line-height:1;padding:2px 4px;';
+    closeBtn.setAttribute('aria-label', 'Close');
+    closeBtn.textContent = '×';
+    closeBtn.addEventListener('click', () => tooltip.remove());
+    tooltip.appendChild(closeBtn);
+    return { tooltip, closeBtn };
+  }
+
+  private placeWebcamTooltip(tooltip: HTMLElement, clientX: number, clientY: number): void {
+    const rect = this.container.getBoundingClientRect();
+    this.container.appendChild(tooltip);
+    const x = Math.min(clientX - rect.left + 10, rect.width - 260);
+    const y = Math.max(clientY - rect.top - 20, 4);
+    tooltip.style.left = `${x}px`;
+    tooltip.style.top = `${y}px`;
+    let hideTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => tooltip.remove(), 8000);
+    tooltip.addEventListener('mouseenter', () => { if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; } });
+    tooltip.addEventListener('mouseleave', () => { hideTimer = setTimeout(() => tooltip.remove(), 2000); });
+  }
+
+  private showWebcamTooltip(cam: WebcamEntry, clientX: number, clientY: number): void {
+    const { tooltip } = this.makeWebcamTooltipShell();
+
+    const title = document.createElement('div');
+    title.style.cssText = 'font-weight:bold;color:#00d4ff;padding-right:18px;';
+    title.textContent = `\u{1F4F7} ${cam.title || cam.category || 'Webcam'}`;
+    tooltip.appendChild(title);
+
+    const meta = document.createElement('div');
+    meta.style.cssText = 'opacity:0.7;font-size:10px;margin-top:2px;';
+    meta.textContent = [cam.country, cam.category].filter(Boolean).join(' \u00B7 ');
+    if (meta.textContent) tooltip.appendChild(meta);
+
+    const previewDiv = document.createElement('div');
+    previewDiv.style.marginTop = '6px';
+    const loadingSpan = document.createElement('span');
+    loadingSpan.style.cssText = 'opacity:0.5;font-size:10px;';
+    loadingSpan.textContent = 'Loading preview...';
+    previewDiv.appendChild(loadingSpan);
+    tooltip.appendChild(previewDiv);
+
+    if (cam.webcamId) {
+      const link = document.createElement('a');
+      link.href = `https://www.windy.com/webcams/${cam.webcamId}`;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      link.style.cssText = 'display:block;margin-top:4px;color:#00d4ff;font-size:11px;text-decoration:none;';
+      link.textContent = 'Open on Windy \u2197';
+      tooltip.appendChild(link);
+    }
+
+    this.placeWebcamTooltip(tooltip, clientX, clientY);
+
+    if (cam.webcamId) {
+      import('@/services/webcams').then(({ fetchWebcamImage }) => {
+        fetchWebcamImage(cam.webcamId).then(img => {
+          if (!tooltip.isConnected) return;
+          previewDiv.replaceChildren();
+          if (img.thumbnailUrl) {
+            const imgEl = document.createElement('img');
+            imgEl.src = img.thumbnailUrl;
+            imgEl.style.cssText = 'width:200px;border-radius:4px;margin-bottom:4px;';
+            imgEl.loading = 'lazy';
+            previewDiv.appendChild(imgEl);
+          } else {
+            const span = document.createElement('span');
+            span.style.cssText = 'opacity:0.5;font-size:10px;';
+            span.textContent = 'Preview unavailable';
+            previewDiv.appendChild(span);
+          }
+
+          const pinBtn = document.createElement('button');
+          pinBtn.className = 'webcam-pin-btn';
+          const wcId = cam.webcamId;
+          if (isPinned(wcId)) {
+            pinBtn.classList.add('webcam-pin-btn--pinned');
+            pinBtn.textContent = '\u{1F4CC} Pinned';
+            pinBtn.disabled = true;
+          } else {
+            pinBtn.textContent = '\u{1F4CC} Pin';
+            pinBtn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              pinWebcam({
+                webcamId: wcId,
+                title: cam.title || img?.title || '',
+                lat: cam.lat,
+                lng: cam.lng,
+                category: cam.category || 'other',
+                country: cam.country || '',
+                playerUrl: img?.playerUrl || '',
+              });
+              pinBtn.classList.add('webcam-pin-btn--pinned');
+              pinBtn.textContent = '\u{1F4CC} Pinned';
+              pinBtn.disabled = true;
+            });
+          }
+          tooltip.appendChild(pinBtn);
+        });
+      });
+    } else {
+      previewDiv.remove();
+    }
+  }
+
+  private showWebcamClusterPopup(cam: WebcamCluster, clientX: number, clientY: number): void {
+    const { tooltip } = this.makeWebcamTooltipShell();
+
+    const header = document.createElement('div');
+    header.style.cssText = 'font-weight:bold;color:#00d4ff;padding-right:18px;';
+    header.textContent = `\u{1F4F7} ${cam.count} webcams — loading...`;
+    tooltip.appendChild(header);
+
+    this.placeWebcamTooltip(tooltip, clientX, clientY);
+
+    const currentZoom = this.state.zoom ?? 3;
+    import('@/services/webcams').then(({ fetchWebcams, getClusterCellSize }) => {
+      const margin = Math.max(0.5, getClusterCellSize(currentZoom));
+      fetchWebcams(10, {
+        w: cam.lng - margin, s: cam.lat - margin,
+        e: cam.lng + margin, n: cam.lat + margin,
+      }).then(result => {
+        if (!tooltip.isConnected) return;
+        const webcams = result.webcams.slice(0, 20);
+        header.textContent = `\u{1F4F7} ${webcams.length} webcams`;
+
+        const list = document.createElement('div');
+        list.style.cssText = 'max-height:200px;overflow-y:auto;margin-top:6px;';
+        for (const webcam of webcams) {
+          const item = document.createElement('div');
+          item.style.cssText = 'padding:3px 2px;cursor:pointer;color:#aaa;border-bottom:1px solid rgba(255,255,255,0.08);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+          const nameSpan = document.createElement('span');
+          nameSpan.textContent = webcam.title || webcam.category || 'Webcam';
+          item.appendChild(nameSpan);
+          if (webcam.country) {
+            const cc = document.createElement('span');
+            cc.style.cssText = 'float:right;opacity:0.4;font-size:10px;margin-left:6px;';
+            cc.textContent = webcam.country;
+            item.appendChild(cc);
+          }
+          item.addEventListener('mouseenter', () => { item.style.color = '#00d4ff'; });
+          item.addEventListener('mouseleave', () => { item.style.color = '#aaa'; });
+          item.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.showWebcamTooltip(webcam, e.clientX, e.clientY);
+          });
+          list.appendChild(item);
+        }
+        tooltip.appendChild(list);
+      }).catch(() => {
+        if (!tooltip.isConnected) return;
+        header.textContent = '\u{1F4F7} Failed to load webcam list';
+      });
+    });
   }
 
   private renderWaterways(projection: d3.GeoProjection): void {
@@ -3690,6 +3904,11 @@ export class MapComponent {
 
   public setFires(fires: Array<{ lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string }>): void {
     this.firmsFireData = fires;
+    this.render();
+  }
+
+  public setWebcams(markers: Array<WebcamEntry | WebcamCluster>): void {
+    this.webcamData = markers;
     this.render();
   }
 

@@ -124,7 +124,6 @@ export class LiveWebcamsPanel extends Panel {
   private boundEmbedMessageHandler: (e: MessageEvent) => void;
 
   constructor() {
-    // allow users to close the live webcams panel
     super({ id: 'live-webcams', title: t('panels.liveWebcams'), className: 'panel-wide', closable: true });
     this.insertLiveCountBadge(WEBCAM_FEEDS.length);
 

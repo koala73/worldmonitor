@@ -76,6 +76,7 @@ export const LAYER_REGISTRY: Record<keyof MapLayers, LayerDefinition> = {
   miningSites:              def('miningSites',              '&#128301;', 'miningSites',              'Mining Sites'),
   processingPlants:         def('processingPlants',         '&#127981;', 'processingPlants',         'Processing Plants'),
   commodityPorts:           def('commodityPorts',           '&#9973;',   'commodityPorts',           'Commodity Ports'),
+  webcams:                  def('webcams',                  '&#128247;', 'webcams',                  'Live Webcams'),
 };
 
 const VARIANT_LAYER_ORDER: Record<MapVariant, Array<keyof MapLayers>> = {
@@ -87,7 +88,7 @@ const VARIANT_LAYER_ORDER: Record<MapVariant, Array<keyof MapLayers>> = {
     'ucdpEvents', 'displacement', 'climate', 'weather',
     'outages', 'cyberThreats', 'natural', 'fires',
     'waterways', 'economic', 'minerals', 'gpsJamming',
-    'satellites', 'ciiChoropleth', 'dayNight',
+    'satellites', 'ciiChoropleth', 'dayNight', 'webcams',
   ],
   tech: [
     'startupHubs', 'techHQs', 'accelerators', 'cloudRegions',
@@ -207,6 +208,9 @@ export const LAYER_SYNONYMS: Record<string, Array<keyof MapLayers>> = {
   sanction: ['sanctions'],
   night: ['dayNight'],
   sun: ['dayNight'],
+  webcam: ['webcams'],
+  camera: ['webcams'],
+  livecam: ['webcams'],
 };
 
 export function resolveLayerLabel(def: LayerDefinition, tFn?: (key: string) => string): string {

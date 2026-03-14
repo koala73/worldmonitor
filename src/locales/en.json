@@ -282,7 +282,8 @@
     "techReadiness": "Tech Readiness Index",
     "gccInvestments": "GCC Investments",
     "geoHubs": "Geopolitical Hubs",
-    "liveWebcams": "Live Webcams",
+    "liveYouTube": "Live YouTube",
+    "pinnedWebcams": "Pinned Webcams",
     "gulfEconomies": "Gulf Economies",
     "gulfIndices": "Gulf Indices",
     "gulfCurrencies": "Gulf Currencies",
@@ -690,6 +691,9 @@
         "asia": "ASIA",
         "space": "SPACE"
       }
+    },
+    "pinnedWebcams": {
+      "pinFromMap": "Pin a webcam from the map"
     },
     "positiveNewsFeed": {
       "noStories": "No stories in this category yet"

@@ -100,6 +100,12 @@ export class EventHandlerManager implements AppModule {
     try { history.replaceState(null, '', shareUrl); } catch { }
   }, 250);
 
+  private readonly debouncedWebcamReload = debounce(() => {
+    if (this.ctx.mapLayers?.webcams) {
+      this.callbacks.loadDataForLayer('webcams');
+    }
+  }, 350);
+
   constructor(ctx: AppContext, callbacks: EventHandlerCallbacks) {
     this.ctx = ctx;
     this.callbacks = callbacks;
@@ -173,6 +179,7 @@ export class EventHandlerManager implements AppModule {
 
   destroy(): void {
     this.debouncedUrlSync.cancel();
+    this.debouncedWebcamReload.cancel();
     if (this.boundFullscreenHandler) {
       document.removeEventListener('fullscreenchange', this.boundFullscreenHandler);
       this.boundFullscreenHandler = null;
@@ -581,6 +588,7 @@ export class EventHandlerManager implements AppModule {
           regionSelect.value = state.view;
         }
       }
+      this.debouncedWebcamReload();
     });
     this.debouncedUrlSync();
   }

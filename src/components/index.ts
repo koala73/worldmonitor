@@ -21,6 +21,7 @@ export * from './LlmStatusIndicator';
 export * from './GdeltIntelPanel';
 export * from './LiveNewsPanel';
 export * from './LiveWebcamsPanel';
+export * from './PinnedWebcamsPanel';
 export * from './CIIPanel';
 export * from './CascadePanel';
 export * from './StrategicRiskPanel';
