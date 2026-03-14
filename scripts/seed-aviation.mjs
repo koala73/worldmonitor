@@ -240,37 +240,31 @@ async function fetchAviationNews() {
 
 // ─── Main ───
 
-let allData = null;
-
 async function fetchAll() {
   const [ops, news] = await Promise.allSettled([
     fetchAirportOpsSummary(),
     fetchAviationNews(),
   ]);
 
-  allData = {
-    ops: ops.status === 'fulfilled' ? ops.value : null,
-    news: news.status === 'fulfilled' ? news.value : null,
-  };
+  const opsData = ops.status === 'fulfilled' ? ops.value : null;
+  const newsData = news.status === 'fulfilled' ? news.value : null;
 
-  if (!allData.ops && !allData.news) throw new Error('All aviation fetches failed');
-  return allData.ops || { summaries: [] };
+  if (!opsData && !newsData) throw new Error('All aviation fetches failed');
+
+  // Write secondary keys BEFORE returning (runSeed calls process.exit after primary write)
+  if (newsData?.items?.length > 0) await writeExtraKey(NEWS_CACHE_KEY, newsData, NEWS_TTL);
+
+  return opsData || { summaries: [] };
 }
 
-function validate() {
-  return allData?.ops?.summaries?.length > 0 || allData?.news?.items?.length > 0;
+function validate(data) {
+  return data?.summaries?.length > 0;
 }
 
 runSeed('aviation', 'ops-news', OPS_CACHE_KEY, fetchAll, {
   validateFn: validate,
   ttlSeconds: OPS_TTL,
   sourceVersion: 'aviationstack-rss',
-}).then(async (result) => {
-  if (result?.skipped || !allData) return;
-
-  if (allData.news?.items?.length > 0) {
-    await writeExtraKey(NEWS_CACHE_KEY, allData.news, NEWS_TTL);
-  }
 }).catch((err) => {
   console.error('FATAL:', err.message || err);
   process.exit(1);

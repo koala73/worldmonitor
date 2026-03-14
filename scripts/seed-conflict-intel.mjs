@@ -243,8 +243,6 @@ async function fetchGdeltTensions() {
 
 // ─── Main ───
 
-let allData = null;
-
 async function fetchAll() {
   const [acled, hapi, pizzint, gdelt] = await Promise.allSettled([
     fetchAcledEvents(),
@@ -253,44 +251,29 @@ async function fetchAll() {
     fetchGdeltTensions(),
   ]);
 
-  allData = {
-    acled: acled.status === 'fulfilled' ? acled.value : null,
-    hapi: hapi.status === 'fulfilled' ? hapi.value : null,
-    pizzint: pizzint.status === 'fulfilled' ? pizzint.value : null,
-    gdelt: gdelt.status === 'fulfilled' ? gdelt.value : null,
-  };
+  const ac = acled.status === 'fulfilled' ? acled.value : null;
+  const ha = hapi.status === 'fulfilled' ? hapi.value : null;
+  const pi = pizzint.status === 'fulfilled' ? pizzint.value : null;
+  const gd = gdelt.status === 'fulfilled' ? gdelt.value : null;
 
-  if (!allData.acled && !allData.pizzint) throw new Error('All conflict/intel fetches failed');
-  return allData.acled || { events: [], pagination: undefined };
+  if (!ac && !pi) throw new Error('All conflict/intel fetches failed');
+
+  // Write secondary keys BEFORE returning (runSeed calls process.exit after primary write)
+  if (ha) { for (const [cc, data] of Object.entries(ha)) await writeExtraKey(`${HAPI_CACHE_KEY_PREFIX}:${cc}`, data, HAPI_TTL); }
+  if (pi) await writeExtraKey('intel:pizzint:v1:base', { pizzint: pi, tensionPairs: [] }, PIZZINT_TTL);
+  if (pi && gd) await writeExtraKey('intel:pizzint:v1:gdelt', { pizzint: pi, tensionPairs: gd }, PIZZINT_TTL);
+
+  return ac || { events: [], pagination: undefined };
 }
 
-function validate() {
-  return allData?.acled?.events?.length > 0 || allData?.pizzint;
+function validate(data) {
+  return data?.events?.length > 0;
 }
 
 runSeed('conflict', 'acled-intel', ACLED_CACHE_KEY, fetchAll, {
   validateFn: validate,
   ttlSeconds: ACLED_TTL,
   sourceVersion: 'acled-hapi-pizzint',
-}).then(async (result) => {
-  if (result?.skipped || !allData) return;
-
-  // Humanitarian summaries (one key per country)
-  if (allData.hapi) {
-    for (const [cc, data] of Object.entries(allData.hapi)) {
-      await writeExtraKey(`${HAPI_CACHE_KEY_PREFIX}:${cc}`, data, HAPI_TTL);
-    }
-  }
-
-  // PizzINT base (no GDELT)
-  if (allData.pizzint) {
-    await writeExtraKey('intel:pizzint:v1:base', { pizzint: allData.pizzint, tensionPairs: [] }, PIZZINT_TTL);
-  }
-
-  // PizzINT + GDELT
-  if (allData.pizzint && allData.gdelt) {
-    await writeExtraKey('intel:pizzint:v1:gdelt', { pizzint: allData.pizzint, tensionPairs: allData.gdelt }, PIZZINT_TTL);
-  }
 }).catch((err) => {
   console.error('FATAL:', err.message || err);
   process.exit(1);

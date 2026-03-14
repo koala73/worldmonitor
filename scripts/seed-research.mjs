@@ -270,48 +270,29 @@ async function fetchAll() {
 
   if (!allData.arxiv && !allData.hn && !allData.trending) throw new Error('All research fetches failed');
 
-  // Primary key: arXiv cs.AI (most commonly requested)
+  // Write secondary keys BEFORE returning (runSeed calls process.exit after primary write)
+  if (allData.arxiv) {
+    for (const [key, data] of Object.entries(allData.arxiv)) {
+      if (key === 'research:arxiv:v1:cs.AI::50') continue;
+      await writeExtraKey(key, data, ARXIV_TTL);
+    }
+  }
+  if (allData.hn) { for (const [key, data] of Object.entries(allData.hn)) await writeExtraKey(key, data, HN_TTL); }
+  if (allData.techEvents?.events?.length > 0) await writeExtraKey('research:tech-events:v1', allData.techEvents, TECH_EVENTS_TTL);
+  if (allData.trending) { for (const [key, data] of Object.entries(allData.trending)) await writeExtraKey(key, data, TRENDING_TTL); }
+
   const primaryKey = allData.arxiv?.['research:arxiv:v1:cs.AI::50'];
   return primaryKey || { papers: [], pagination: undefined };
 }
 
-function validate() {
-  return allData?.arxiv || allData?.hn || allData?.trending;
+function validate(data) {
+  return data?.papers?.length > 0;
 }
 
 runSeed('research', 'arxiv-hn-trending', 'research:arxiv:v1:cs.AI::50', fetchAll, {
   validateFn: validate,
   ttlSeconds: ARXIV_TTL,
   sourceVersion: 'arxiv-hn-gitter',
-}).then(async (result) => {
-  if (result?.skipped || !allData) return;
-
-  // Extra arXiv categories
-  if (allData.arxiv) {
-    for (const [key, data] of Object.entries(allData.arxiv)) {
-      if (key === 'research:arxiv:v1:cs.AI::50') continue; // already primary
-      await writeExtraKey(key, data, ARXIV_TTL);
-    }
-  }
-
-  // HN feeds
-  if (allData.hn) {
-    for (const [key, data] of Object.entries(allData.hn)) {
-      await writeExtraKey(key, data, HN_TTL);
-    }
-  }
-
-  // Tech events (relay also seeds this key)
-  if (allData.techEvents?.events?.length > 0) {
-    await writeExtraKey('research:tech-events:v1', allData.techEvents, TECH_EVENTS_TTL);
-  }
-
-  // Trending repos
-  if (allData.trending) {
-    for (const [key, data] of Object.entries(allData.trending)) {
-      await writeExtraKey(key, data, TRENDING_TTL);
-    }
-  }
 }).catch((err) => {
   console.error('FATAL:', err.message || err);
   process.exit(1);

@@ -355,8 +355,8 @@ async function fetchMacroSignals() {
 }
 
 // ─── Main: seed all economic data ───
-
-let allData = null;
+// NOTE: runSeed() calls process.exit(0) after writing the primary key.
+// All secondary keys MUST be written inside fetchAll() before returning.
 
 async function fetchAll() {
   const [energyPrices, energyCapacity, fredResults, macroSignals] = await Promise.allSettled([
@@ -366,46 +366,35 @@ async function fetchAll() {
     fetchMacroSignals(),
   ]);
 
-  allData = {
-    energyPrices: energyPrices.status === 'fulfilled' ? energyPrices.value : null,
-    energyCapacity: energyCapacity.status === 'fulfilled' ? energyCapacity.value : null,
-    fredResults: fredResults.status === 'fulfilled' ? fredResults.value : null,
-    macroSignals: macroSignals.status === 'fulfilled' ? macroSignals.value : null,
-  };
+  const ep = energyPrices.status === 'fulfilled' ? energyPrices.value : null;
+  const ec = energyCapacity.status === 'fulfilled' ? energyCapacity.value : null;
+  const fr = fredResults.status === 'fulfilled' ? fredResults.value : null;
+  const ms = macroSignals.status === 'fulfilled' ? macroSignals.value : null;
 
-  if (!allData.energyPrices && !allData.fredResults && !allData.macroSignals) {
-    throw new Error('All economic fetches failed');
+  if (!ep && !fr && !ms) throw new Error('All economic fetches failed');
+
+  // Write secondary keys BEFORE returning (runSeed calls process.exit after primary write)
+  if (ec?.series?.length > 0) await writeExtraKey(KEYS.energyCapacity, ec, CAPACITY_TTL);
+
+  if (fr) {
+    for (const [seriesId, series] of Object.entries(fr)) {
+      await writeExtraKey(`${FRED_KEY_PREFIX}:${seriesId}:0`, { series }, FRED_TTL);
+    }
   }
-  return allData.energyPrices || { prices: [] };
+
+  if (ms && !ms.unavailable) await writeExtraKey(KEYS.macroSignals, ms, MACRO_TTL);
+
+  return ep || { prices: [] };
 }
 
 function validate(data) {
-  return data?.prices?.length > 0 || allData?.fredResults || allData?.macroSignals;
+  return data?.prices?.length > 0;
 }
 
 runSeed('economic', 'energy-prices', KEYS.energyPrices, fetchAll, {
   validateFn: validate,
   ttlSeconds: ENERGY_TTL,
   sourceVersion: 'eia-fred-macro',
-}).then(async (result) => {
-  if (result?.skipped || !allData) return;
-
-  // Energy capacity
-  if (allData.energyCapacity?.series?.length > 0) {
-    await writeExtraKey(KEYS.energyCapacity, allData.energyCapacity, CAPACITY_TTL);
-  }
-
-  // FRED series (one key per series, matching handler cache key pattern)
-  if (allData.fredResults) {
-    for (const [seriesId, series] of Object.entries(allData.fredResults)) {
-      await writeExtraKey(`${FRED_KEY_PREFIX}:${seriesId}:120`, { series }, FRED_TTL);
-    }
-  }
-
-  // Macro signals
-  if (allData.macroSignals && !allData.macroSignals.unavailable) {
-    await writeExtraKey(KEYS.macroSignals, allData.macroSignals, MACRO_TTL);
-  }
 }).catch((err) => {
   console.error('FATAL:', err.message || err);
   process.exit(1);

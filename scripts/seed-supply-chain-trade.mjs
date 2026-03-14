@@ -292,8 +292,6 @@ async function fetchTariffTrends() {
 
 // ─── Main ───
 
-let allData = null;
-
 async function fetchAll() {
   const [shipping, barriers, restrictions, flows, tariffs] = await Promise.allSettled([
     fetchShippingRates(),
@@ -303,50 +301,31 @@ async function fetchAll() {
     fetchTariffTrends(),
   ]);
 
-  allData = {
-    shipping: shipping.status === 'fulfilled' ? shipping.value : null,
-    barriers: barriers.status === 'fulfilled' ? barriers.value : null,
-    restrictions: restrictions.status === 'fulfilled' ? restrictions.value : null,
-    flows: flows.status === 'fulfilled' ? flows.value : null,
-    tariffs: tariffs.status === 'fulfilled' ? tariffs.value : null,
-  };
+  const sh = shipping.status === 'fulfilled' ? shipping.value : null;
+  const ba = barriers.status === 'fulfilled' ? barriers.value : null;
+  const re = restrictions.status === 'fulfilled' ? restrictions.value : null;
+  const fl = flows.status === 'fulfilled' ? flows.value : null;
+  const ta = tariffs.status === 'fulfilled' ? tariffs.value : null;
 
-  if (!allData.shipping && !allData.barriers && !allData.restrictions) {
-    throw new Error('All supply-chain/trade fetches failed');
-  }
-  return allData.shipping || { indices: [], fetchedAt: new Date().toISOString(), upstreamUnavailable: true };
+  if (!sh && !ba && !re) throw new Error('All supply-chain/trade fetches failed');
+
+  // Write secondary keys BEFORE returning (runSeed calls process.exit after primary write)
+  if (ba) await writeExtraKey(KEYS.barriers, ba, TRADE_TTL);
+  if (re) await writeExtraKey(KEYS.restrictions, re, TRADE_TTL);
+  if (fl) { for (const [key, data] of Object.entries(fl)) await writeExtraKey(key, data, TRADE_TTL); }
+  if (ta) { for (const [key, data] of Object.entries(ta)) await writeExtraKey(key, data, TRADE_TTL); }
+
+  return sh || { indices: [], fetchedAt: new Date().toISOString(), upstreamUnavailable: true };
 }
 
-function validate() {
-  return allData?.shipping || allData?.barriers || allData?.restrictions;
+function validate(data) {
+  return data?.indices?.length > 0;
 }
 
 runSeed('supply-chain', 'shipping-trade', KEYS.shipping, fetchAll, {
   validateFn: validate,
   ttlSeconds: SHIPPING_TTL,
   sourceVersion: 'fred-wto',
-}).then(async (result) => {
-  if (result?.skipped || !allData) return;
-
-  // Trade barriers
-  if (allData.barriers) await writeExtraKey(KEYS.barriers, allData.barriers, TRADE_TTL);
-
-  // Trade restrictions
-  if (allData.restrictions) await writeExtraKey(KEYS.restrictions, allData.restrictions, TRADE_TTL);
-
-  // Trade flows (one key per country pair)
-  if (allData.flows) {
-    for (const [key, data] of Object.entries(allData.flows)) {
-      await writeExtraKey(key, data, TRADE_TTL);
-    }
-  }
-
-  // Tariff trends (one key per country)
-  if (allData.tariffs) {
-    for (const [key, data] of Object.entries(allData.tariffs)) {
-      await writeExtraKey(key, data, TRADE_TTL);
-    }
-  }
 }).catch((err) => {
   console.error('FATAL:', err.message || err);
   process.exit(1);
