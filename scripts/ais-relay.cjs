@@ -18,6 +18,8 @@ const crypto = require('crypto');
 const v8 = require('v8');
 const { WebSocketServer, WebSocket } = require('ws');
 
+const httpsKeepAliveAgent = new https.Agent({ keepAlive: true, maxSockets: 6, timeout: 60_000 });
+
 function requireShared(name) {
   const candidates = [path.join(__dirname, '..', 'shared', name), path.join(__dirname, 'shared', name)];
   for (const p of candidates) { try { return require(p); } catch {} }
@@ -274,37 +276,47 @@ function safeEnd(res, statusCode, headers, body) {
   }
 }
 
-// gzip compress & send a response (reduces egress ~80% for JSON)
+function _varyHeader(res) {
+  const existing = String(res.getHeader('vary') || '');
+  return existing.toLowerCase().includes('accept-encoding')
+    ? existing
+    : (existing ? `${existing}, Accept-Encoding` : 'Accept-Encoding');
+}
+
+// Compress & send a response (Brotli preferred ~15-20% smaller than gzip on JSON)
 function sendCompressed(req, res, statusCode, headers, body) {
   if (res.headersSent || res.writableEnded) return;
   const acceptEncoding = req.headers['accept-encoding'] || '';
-  if (acceptEncoding.includes('gzip')) {
-    zlib.gzip(typeof body === 'string' ? Buffer.from(body) : body, (err, compressed) => {
+  const buf = typeof body === 'string' ? Buffer.from(body) : body;
+  if (acceptEncoding.includes('br')) {
+    zlib.brotliCompress(buf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 4 } }, (err, compressed) => {
       if (err || res.headersSent || res.writableEnded) {
         safeEnd(res, statusCode, headers, body);
         return;
       }
-      const existingVary = String(res.getHeader('vary') || '');
-      const vary = existingVary.toLowerCase().includes('accept-encoding')
-        ? existingVary
-        : (existingVary ? `${existingVary}, Accept-Encoding` : 'Accept-Encoding');
-      safeEnd(res, statusCode, { ...headers, 'Content-Encoding': 'gzip', 'Vary': vary }, compressed);
+      safeEnd(res, statusCode, { ...headers, 'Content-Encoding': 'br', 'Vary': _varyHeader(res) }, compressed);
+    });
+  } else if (acceptEncoding.includes('gzip')) {
+    zlib.gzip(buf, (err, compressed) => {
+      if (err || res.headersSent || res.writableEnded) {
+        safeEnd(res, statusCode, headers, body);
+        return;
+      }
+      safeEnd(res, statusCode, { ...headers, 'Content-Encoding': 'gzip', 'Vary': _varyHeader(res) }, compressed);
     });
   } else {
     safeEnd(res, statusCode, headers, body);
   }
 }
 
-// Pre-gzipped response: serve a cached gzip buffer directly (zero CPU per request)
-function sendPreGzipped(req, res, statusCode, headers, rawBody, gzippedBody) {
+// Pre-compressed response: serve cached gzip/brotli buffer directly (zero CPU per request)
+function sendPreGzipped(req, res, statusCode, headers, rawBody, gzippedBody, brotliBody) {
   if (res.headersSent || res.writableEnded) return;
   const acceptEncoding = req.headers['accept-encoding'] || '';
-  if (acceptEncoding.includes('gzip') && gzippedBody) {
-    const existingVary = String(res.getHeader('vary') || '');
-    const vary = existingVary.toLowerCase().includes('accept-encoding')
-      ? existingVary
-      : (existingVary ? `${existingVary}, Accept-Encoding` : 'Accept-Encoding');
-    safeEnd(res, statusCode, { ...headers, 'Content-Encoding': 'gzip', 'Vary': vary }, gzippedBody);
+  if (acceptEncoding.includes('br') && brotliBody) {
+    safeEnd(res, statusCode, { ...headers, 'Content-Encoding': 'br', 'Vary': _varyHeader(res) }, brotliBody);
+  } else if (acceptEncoding.includes('gzip') && gzippedBody) {
+    safeEnd(res, statusCode, { ...headers, 'Content-Encoding': 'gzip', 'Vary': _varyHeader(res) }, gzippedBody);
   } else {
     safeEnd(res, statusCode, headers, rawBody);
   }
@@ -345,6 +357,8 @@ const orefState = {
   _persistVersion: 0,
   _lastPersistedVersion: 0,
   _persistInFlight: false,
+  _alertsCache: null,  // { json, gzip, brotli }
+  _historyCache: null, // { json, gzip, brotli }
 };
 
 function loadTelegramChannels() {
@@ -686,12 +700,35 @@ async function orefFetchAlerts() {
       return sum + h.alerts.reduce((s, a) => s + (Array.isArray(a.data) ? a.data.length : 1), 0);
     }, 0);
 
+    orefPreSerializeResponses();
     orefPersistHistory().catch(() => {});
   } catch (err) {
     const stderr = err.stderr ? err.stderr.toString().trim() : '';
     orefState.lastError = redactOrefError(stderr || err.message);
     console.warn('[Relay] OREF poll error:', orefState.lastError);
   }
+}
+
+function orefPreSerializeResponses() {
+  const ts = orefState.lastPollAt ? new Date(orefState.lastPollAt).toISOString() : new Date().toISOString();
+  const alertsJson = JSON.stringify({
+    configured: OREF_ENABLED,
+    alerts: orefState.lastAlerts || [],
+    historyCount24h: orefState.historyCount24h,
+    totalHistoryCount: orefState.totalHistoryCount,
+    timestamp: ts,
+    ...(orefState.lastError ? { error: orefState.lastError } : {}),
+  });
+  orefState._alertsCache = { json: alertsJson, gzip: gzipSyncBuffer(alertsJson), brotli: brotliSyncBuffer(alertsJson) };
+
+  const historyJson = JSON.stringify({
+    configured: OREF_ENABLED,
+    history: orefState.history || [],
+    historyCount24h: orefState.historyCount24h,
+    totalHistoryCount: orefState.totalHistoryCount,
+    timestamp: ts,
+  });
+  orefState._historyCache = { json: historyJson, gzip: gzipSyncBuffer(historyJson), brotli: brotliSyncBuffer(historyJson) };
 }
 
 async function orefBootstrapHistoryFromUpstream() {
@@ -3833,6 +3870,17 @@ function gzipSyncBuffer(body) {
   }
 }
 
+function brotliSyncBuffer(body) {
+  try {
+    return zlib.brotliCompressSync(
+      typeof body === 'string' ? Buffer.from(body) : body,
+      { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 4 } }
+    );
+  } catch {
+    return null;
+  }
+}
+
 function getClientIp(req, isPublic = false) {
   if (isPublic) {
     // Public routes: only trust CF-Connecting-IP (set by Cloudflare, not spoofable).
@@ -4096,8 +4144,10 @@ let lastSnapshotAt = 0;
 // Pre-serialized cache: avoids JSON.stringify + gzip per request
 let lastSnapshotJson = null;       // cached JSON string (no candidates)
 let lastSnapshotGzip = null;       // cached gzip buffer (no candidates)
+let lastSnapshotBrotli = null;     // cached brotli buffer (no candidates)
 let lastSnapshotWithCandJson = null;
 let lastSnapshotWithCandGzip = null;
+let lastSnapshotWithCandBrotli = null;
 
 // Chokepoint spatial index: bucket vessels into grid cells at ingest time
 // instead of O(chokepoints * vessels) on every snapshot
@@ -4597,13 +4647,13 @@ function buildSnapshot() {
   const withCandPayload = { ...lastSnapshot, candidateReports: getCandidateReportsSnapshot() };
   lastSnapshotWithCandJson = JSON.stringify(withCandPayload);
 
-  // Pre-gzip both variants asynchronously (zero CPU on request path)
-  zlib.gzip(Buffer.from(lastSnapshotJson), (err, buf) => {
-    if (!err) lastSnapshotGzip = buf;
-  });
-  zlib.gzip(Buffer.from(lastSnapshotWithCandJson), (err, buf) => {
-    if (!err) lastSnapshotWithCandGzip = buf;
-  });
+  // Pre-compress both variants asynchronously (zero CPU on request path)
+  const baseBuf = Buffer.from(lastSnapshotJson);
+  const candBuf = Buffer.from(lastSnapshotWithCandJson);
+  zlib.gzip(baseBuf, (err, buf) => { if (!err) lastSnapshotGzip = buf; });
+  zlib.gzip(candBuf, (err, buf) => { if (!err) lastSnapshotWithCandGzip = buf; });
+  zlib.brotliCompress(baseBuf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 4 } }, (err, buf) => { if (!err) lastSnapshotBrotli = buf; });
+  zlib.brotliCompress(candBuf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 4 } }, (err, buf) => { if (!err) lastSnapshotWithCandBrotli = buf; });
 
   return lastSnapshot;
 }
@@ -4839,6 +4889,7 @@ const OPENSKY_BBOX_DECIMALS = OPENSKY_BBOX_QUANT_STEP > 0
   : 6;
 const OPENSKY_DEDUP_EMPTY_RESPONSE_JSON = JSON.stringify({ states: [], time: 0 });
 const OPENSKY_DEDUP_EMPTY_RESPONSE_GZIP = gzipSyncBuffer(OPENSKY_DEDUP_EMPTY_RESPONSE_JSON);
+const OPENSKY_DEDUP_EMPTY_RESPONSE_BROTLI = brotliSyncBuffer(OPENSKY_DEDUP_EMPTY_RESPONSE_JSON);
 const rssResponseCache = new Map(); // key: feed URL → { data, contentType, timestamp, statusCode }
 const rssInFlight = new Map(); // key: feed URL → Promise (dedup concurrent requests)
 const rssFailureCount = new Map(); // key: feed URL → consecutive failure count (for exponential backoff)
@@ -4878,6 +4929,7 @@ function cacheOpenSkyPositive(cacheKey, data) {
   setBoundedCacheEntry(openskyResponseCache, cacheKey, {
     data,
     gzip: gzipSyncBuffer(data),
+    brotli: brotliSyncBuffer(data),
     timestamp: Date.now(),
   }, OPENSKY_CACHE_MAX_ENTRIES);
 }
@@ -4890,6 +4942,7 @@ function cacheOpenSkyNegative(cacheKey, status) {
     timestamp: now,
     body,
     gzip: gzipSyncBuffer(body),
+    brotli: brotliSyncBuffer(body),
   }, OPENSKY_NEGATIVE_CACHE_MAX_ENTRIES);
 }
 
@@ -5137,10 +5190,25 @@ async function _fetchOpenSkyToken(clientId, clientSecret) {
 }
 
 // Promisified upstream OpenSky fetch (single request)
+function _collectDecompressed(response) {
+  return new Promise((resolve) => {
+    const enc = (response.headers['content-encoding'] || '').trim().toLowerCase();
+    let stream = response;
+    if (enc === 'gzip' || enc === 'x-gzip') stream = response.pipe(zlib.createGunzip());
+    else if (enc === 'deflate') stream = response.pipe(zlib.createInflate());
+    else if (enc === 'br') stream = response.pipe(zlib.createBrotliDecompress());
+    const chunks = [];
+    stream.on('data', chunk => chunks.push(chunk));
+    stream.on('end', () => resolve(Buffer.concat(chunks).toString()));
+    stream.on('error', () => resolve(Buffer.concat(chunks).toString()));
+  });
+}
+
 function _openskyRawFetch(url, token) {
   const parsed = new URL(url);
   const reqHeaders = {
     'Accept': 'application/json',
+    'Accept-Encoding': 'gzip, deflate, br',
     'User-Agent': 'WorldMonitor/1.0',
     'Authorization': `Bearer ${token}`,
   };
@@ -5155,9 +5223,7 @@ function _openskyRawFetch(url, token) {
           headers: reqHeaders,
           timeout: 15000,
         }, (response) => {
-          let data = '';
-          response.on('data', chunk => data += chunk);
-          response.on('end', () => resolve({ status: response.statusCode || 502, data }));
+          _collectDecompressed(response).then(data => resolve({ status: response.statusCode || 502, data }));
         });
         request.on('error', (err) => resolve({ status: 0, data: null, error: err }));
         request.on('timeout', () => { request.destroy(); resolve({ status: 504, data: null, error: new Error('timeout') }); });
@@ -5169,11 +5235,10 @@ function _openskyRawFetch(url, token) {
     const request = https.get(url, {
       family: 4,
       headers: reqHeaders,
+      agent: httpsKeepAliveAgent,
       timeout: 15000,
     }, (response) => {
-      let data = '';
-      response.on('data', chunk => data += chunk);
-      response.on('end', () => resolve({ status: response.statusCode || 502, data }));
+      _collectDecompressed(response).then(data => resolve({ status: response.statusCode || 502, data }));
     });
     request.on('error', (err) => resolve({ status: 0, data: null, error: err }));
     request.on('timeout', () => { request.destroy(); resolve({ status: 504, data: null, error: new Error('timeout') }); });
@@ -5227,7 +5292,7 @@ async function handleOpenSkyRequest(req, res, PORT) {
         'Cache-Control': 'public, max-age=30',
         'CDN-Cache-Control': 'public, max-age=15',
         'X-Cache': 'HIT',
-      }, cached.data, cached.gzip);
+      }, cached.data, cached.gzip, cached.brotli);
     }
 
     // 2. Check negative cache — prevents retry storms when upstream returns 429/5xx
@@ -5240,7 +5305,7 @@ async function handleOpenSkyRequest(req, res, PORT) {
         'Cache-Control': 'no-cache',
         'CDN-Cache-Control': 'no-store',
         'X-Cache': 'NEG',
-      }, negCached.body, negCached.gzip);
+      }, negCached.body, negCached.gzip, negCached.brotli);
     }
 
     // 2b. Global 429 cooldown — blocks ALL bbox queries when OpenSky is rate-limiting.
@@ -5272,7 +5337,7 @@ async function handleOpenSkyRequest(req, res, PORT) {
           'Cache-Control': 'public, max-age=30',
           'CDN-Cache-Control': 'public, max-age=15',
           'X-Cache': 'DEDUP',
-        }, deduped.data, deduped.gzip);
+        }, deduped.data, deduped.gzip, deduped.brotli);
       }
       const dedupNeg = openskyNegativeCache.get(cacheKey);
       if (dedupNeg && Date.now() - dedupNeg.timestamp < OPENSKY_NEGATIVE_CACHE_TTL_MS) {
@@ -5283,7 +5348,7 @@ async function handleOpenSkyRequest(req, res, PORT) {
           'Cache-Control': 'no-cache',
           'CDN-Cache-Control': 'no-store',
           'X-Cache': 'DEDUP-NEG',
-        }, dedupNeg.body, dedupNeg.gzip);
+        }, dedupNeg.body, dedupNeg.gzip, dedupNeg.brotli);
       }
       // In-flight completed but no cache entry (upstream failed) — return empty instead of thundering herd
       incrementRelayMetric('openskyDedupEmpty');
@@ -5292,7 +5357,7 @@ async function handleOpenSkyRequest(req, res, PORT) {
         'Cache-Control': 'no-cache',
         'CDN-Cache-Control': 'no-store',
         'X-Cache': 'DEDUP-EMPTY',
-      }, OPENSKY_DEDUP_EMPTY_RESPONSE_JSON, OPENSKY_DEDUP_EMPTY_RESPONSE_GZIP);
+      }, OPENSKY_DEDUP_EMPTY_RESPONSE_JSON, OPENSKY_DEDUP_EMPTY_RESPONSE_GZIP, OPENSKY_DEDUP_EMPTY_RESPONSE_BROTLI);
     }
 
     incrementRelayMetric('openskyMiss');
@@ -5357,7 +5422,7 @@ async function handleOpenSkyRequest(req, res, PORT) {
 
     // Serve stale cache on network errors
     if (result.error && cached) {
-      return sendPreGzipped(req, res, 200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'CDN-Cache-Control': 'no-store', 'X-Cache': 'STALE' }, cached.data, cached.gzip);
+      return sendPreGzipped(req, res, 200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'CDN-Cache-Control': 'no-store', 'X-Cache': 'STALE' }, cached.data, cached.gzip, cached.brotli);
     }
 
     const responseData = result.data || JSON.stringify({ error: result.error?.message || 'upstream error', time: Date.now(), states: null });
@@ -6320,13 +6385,14 @@ const server = http.createServer(async (req, res) => {
     const includeCandidates = url.searchParams.get('candidates') === 'true';
     const json = includeCandidates ? lastSnapshotWithCandJson : lastSnapshotJson;
     const gz = includeCandidates ? lastSnapshotWithCandGzip : lastSnapshotGzip;
+    const br = includeCandidates ? lastSnapshotWithCandBrotli : lastSnapshotBrotli;
 
     if (json) {
       sendPreGzipped(req, res, 200, {
         'Content-Type': 'application/json',
         'Cache-Control': 'public, max-age=2',
         'CDN-Cache-Control': 'public, max-age=10',
-      }, json, gz);
+      }, json, gz, br);
     } else {
       // Cold start fallback
       const payload = { ...lastSnapshot, candidateReports: includeCandidates ? getCandidateReportsSnapshot() : [] };
@@ -6680,28 +6746,44 @@ const server = http.createServer(async (req, res) => {
       }
     }
   } else if (pathname === '/oref/alerts') {
-    sendCompressed(req, res, 200, {
-      'Content-Type': 'application/json',
-      'Cache-Control': 'public, max-age=5, s-maxage=5, stale-while-revalidate=3',
-    }, JSON.stringify({
-      configured: OREF_ENABLED,
-      alerts: orefState.lastAlerts || [],
-      historyCount24h: orefState.historyCount24h,
-      totalHistoryCount: orefState.totalHistoryCount,
-      timestamp: orefState.lastPollAt ? new Date(orefState.lastPollAt).toISOString() : new Date().toISOString(),
-      ...(orefState.lastError ? { error: orefState.lastError } : {}),
-    }));
+    const c = orefState._alertsCache;
+    if (c) {
+      sendPreGzipped(req, res, 200, {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'public, max-age=5, s-maxage=5, stale-while-revalidate=3',
+      }, c.json, c.gzip, c.brotli);
+    } else {
+      sendCompressed(req, res, 200, {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'public, max-age=5, s-maxage=5, stale-while-revalidate=3',
+      }, JSON.stringify({
+        configured: OREF_ENABLED,
+        alerts: orefState.lastAlerts || [],
+        historyCount24h: orefState.historyCount24h,
+        totalHistoryCount: orefState.totalHistoryCount,
+        timestamp: orefState.lastPollAt ? new Date(orefState.lastPollAt).toISOString() : new Date().toISOString(),
+        ...(orefState.lastError ? { error: orefState.lastError } : {}),
+      }));
+    }
   } else if (pathname === '/oref/history') {
-    sendCompressed(req, res, 200, {
-      'Content-Type': 'application/json',
-      'Cache-Control': 'public, max-age=30, s-maxage=30, stale-while-revalidate=10',
-    }, JSON.stringify({
-      configured: OREF_ENABLED,
-      history: orefState.history || [],
-      historyCount24h: orefState.historyCount24h,
-      totalHistoryCount: orefState.totalHistoryCount,
-      timestamp: orefState.lastPollAt ? new Date(orefState.lastPollAt).toISOString() : new Date().toISOString(),
-    }));
+    const c = orefState._historyCache;
+    if (c) {
+      sendPreGzipped(req, res, 200, {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'public, max-age=30, s-maxage=30, stale-while-revalidate=10',
+      }, c.json, c.gzip, c.brotli);
+    } else {
+      sendCompressed(req, res, 200, {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'public, max-age=30, s-maxage=30, stale-while-revalidate=10',
+      }, JSON.stringify({
+        configured: OREF_ENABLED,
+        history: orefState.history || [],
+        historyCount24h: orefState.historyCount24h,
+        totalHistoryCount: orefState.totalHistoryCount,
+        timestamp: orefState.lastPollAt ? new Date(orefState.lastPollAt).toISOString() : new Date().toISOString(),
+      }));
+    }
   } else if (pathname.startsWith('/ucdp-events')) {
     handleUcdpEventsRequest(req, res);
   } else if (pathname.startsWith('/opensky')) {
