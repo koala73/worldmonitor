@@ -342,6 +342,18 @@ export class MapContainer {
     if (this.useDeckGL) { this.deckGLMap?.setIsResizing(isResizing); } else { this.svgMap?.setIsResizing(isResizing); }
   }
 
+  public getIsResizing(): boolean {
+    return this.isResizingInternal;
+  }
+
+  public getIsPinned(): boolean {
+    return this.container.classList.contains('map-pinned');
+  }
+
+  public setIsPinned(pinned: boolean): void {
+    this.container.classList.toggle('map-pinned', pinned);
+  }
+
   public setView(view: MapView): void {
     if (this.useGlobe) { this.globeMap?.setView(view); return; }
     if (this.useDeckGL) { this.deckGLMap?.setView(view as DeckMapView); } else { this.svgMap?.setView(view); }
