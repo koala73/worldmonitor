@@ -3611,7 +3611,7 @@ const PORTWATCH_ARCGIS_BASE = 'https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arc
 const PORTWATCH_PAGE_SIZE = 2000;
 const PORTWATCH_FETCH_TIMEOUT_MS = 30000;
 const PORTWATCH_REDIS_KEY = 'supply_chain:portwatch:v1';
-const PORTWATCH_TTL = 21600;
+const PORTWATCH_TTL = 43200;
 const PORTWATCH_SEED_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const PORTWATCH_CHOKEPOINT_NAMES = [
   { name: 'Suez Canal', id: 'suez' },
@@ -3743,7 +3743,7 @@ async function startPortWatchSeedLoop() {
 const CORRIDOR_RISK_API_KEY = process.env.CORRIDOR_RISK_API_KEY || '';
 const CORRIDOR_RISK_BASE_URL = 'https://api.corridorrisk.io/v1/corridors';
 const CORRIDOR_RISK_REDIS_KEY = 'supply_chain:corridorrisk:v1';
-const CORRIDOR_RISK_TTL = 3600;
+const CORRIDOR_RISK_TTL = 7200;
 const CORRIDOR_RISK_SEED_INTERVAL_MS = 60 * 60 * 1000;
 const CORRIDOR_RISK_NAMES = [
   { name: 'Suez', id: 'suez' },
