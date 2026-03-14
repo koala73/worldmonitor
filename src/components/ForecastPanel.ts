@@ -141,12 +141,12 @@ export class ForecastPanel extends Panel {
       ? `<div class="fc-calibration">Market: ${escapeHtml(f.calibration.marketTitle)} (${Math.round((f.calibration.marketPrice || 0) * 100)}%)</div>`
       : '';
 
-    const proj = (f as any).projections;
+    const proj = f.projections;
     const projectionsHtml = proj
       ? `<div class="fc-projections">24h: ${Math.round(proj.h24 * 100)}% | 7d: ${Math.round(proj.d7 * 100)}% | 30d: ${Math.round(proj.d30 * 100)}%</div>`
       : '';
 
-    const persp = (f as any).perspectives;
+    const persp = f.perspectives;
     const perspectivesHtml = persp?.strategic
       ? `<span class="fc-toggle" data-fc-toggle>Perspectives</span>
          <div class="fc-perspectives fc-hidden">

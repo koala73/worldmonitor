@@ -850,6 +850,7 @@ const SIGNAL_TO_SOURCE = {
   gps_jamming: 'gps_jamming',
   outage: 'outages',
   cyber: 'cyber_threats',
+  prediction_market: 'prediction_markets',
 };
 
 function computeConfidence(predictions) {
@@ -997,10 +998,10 @@ async function callForecastLLM(systemPrompt, userPrompt) {
 
 async function redisSet(url, token, key, data, ttlSeconds) {
   try {
-    await fetch(`${url}/set/${encodeURIComponent(key)}`, {
+    await fetch(url, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ value: JSON.stringify(data), ex: ttlSeconds }),
+      body: JSON.stringify(['SET', key, JSON.stringify(data), 'EX', ttlSeconds]),
       signal: AbortSignal.timeout(5_000),
     });
   } catch { /* non-fatal cache write */ }
