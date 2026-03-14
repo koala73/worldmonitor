@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, getRedisCredentials, acquireLock, releaseLock, withRetry, writeFreshnessMetadata, logSeedResult, verifySeedKey } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, getRedisCredentials, acquireLock, releaseLock, withRetry, writeFreshnessMetadata, logSeedResult, verifySeedKey, extendExistingTtl } from './_seed-utils.mjs';
 import http from 'node:http';
 import https from 'node:https';
 import tls from 'node:tls';
@@ -680,7 +680,8 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error('FATAL:', err.message || err);
-  process.exit(1);
+main().catch(async (err) => {
+  console.error(`FETCH FAILED: ${err.message || err} — extending TTL on stale data`);
+  await extendExistingTtl([LIVE_KEY, STALE_KEY, THEATER_POSTURE_LIVE_KEY, THEATER_POSTURE_STALE_KEY, THEATER_POSTURE_BACKUP_KEY], STALE_TTL);
+  process.exit(0);
 });

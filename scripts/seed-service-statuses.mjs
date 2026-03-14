@@ -8,7 +8,7 @@
  * Standalone fallback — primary seeder is the AIS relay loop.
  */
 
-import { loadEnvFile, CHROME_UA, getRedisCredentials, logSeedResult } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, getRedisCredentials, logSeedResult, extendExistingTtl } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -58,7 +58,8 @@ async function warmPing() {
 
 warmPing().then(() => {
   process.exit(0);
-}).catch((err) => {
-  console.error('FATAL:', err.message || err);
-  process.exit(1);
+}).catch(async (err) => {
+  console.error(`FETCH FAILED: ${err.message || err} — extending TTL on stale data`);
+  await extendExistingTtl([CANONICAL_KEY], 7200);
+  process.exit(0);
 });

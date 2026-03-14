@@ -209,6 +209,29 @@ export async function writeExtraKey(key, data, ttl) {
   else console.log(`  Extra key ${key}: written`);
 }
 
+export async function extendExistingTtl(keys, ttlSeconds = 600) {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) {
+    console.error('  Cannot extend TTL: missing Redis credentials');
+    return;
+  }
+  try {
+    const pipeline = keys.map(k => ['EXPIRE', k, ttlSeconds]);
+    const resp = await fetch(`${url}/pipeline`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(pipeline),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (resp.ok) {
+      console.log(`  Extended TTL on ${keys.length} existing key(s) (${ttlSeconds}s)`);
+    }
+  } catch (e) {
+    console.error(`  TTL extension failed: ${e.message}`);
+  }
+}
+
 export function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
@@ -291,6 +314,15 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     process.exit(0);
   } catch (err) {
     await releaseLock(`${domain}:${resource}`, runId);
-    throw err;
+    const durationMs = Date.now() - startMs;
+    console.error(`  FETCH FAILED: ${err.message || err}`);
+
+    const ttl = ttlSeconds || 600;
+    const keys = [canonicalKey];
+    if (extraKeys) keys.push(...extraKeys.map(ek => ek.key));
+    await extendExistingTtl(keys, ttl);
+
+    console.log(`\n=== Failed gracefully (${Math.round(durationMs)}ms) ===`);
+    process.exit(0);
   }
 }

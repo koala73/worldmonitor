@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, getRedisCredentials, acquireLock, releaseLock, withRetry, writeFreshnessMetadata, logSeedResult, verifySeedKey } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, getRedisCredentials, acquireLock, releaseLock, withRetry, writeFreshnessMetadata, logSeedResult, verifySeedKey, extendExistingTtl } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -293,7 +293,8 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error('FATAL:', err.message || err);
-  process.exit(1);
+main().catch(async (err) => {
+  console.error(`FETCH FAILED: ${err.message || err} — extending TTL on stale data`);
+  await extendExistingTtl([FAA_CACHE_KEY, NOTAM_CACHE_KEY], CACHE_TTL);
+  process.exit(0);
 });

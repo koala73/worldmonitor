@@ -2,6 +2,7 @@ import { cellToLatLng } from 'h3-js';
 import { writeFileSync, mkdirSync, readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { extendExistingTtl } from './_seed-utils.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.resolve(__dirname, 'data');
@@ -251,7 +252,15 @@ async function main() {
     process.exit(1);
   }
 
-  const body = await fetchWingbits(apiKey);
+  let body;
+  try {
+    body = await fetchWingbits(apiKey);
+  } catch (err) {
+    console.error(`[gpsjam] Fetch failed: ${err.message} — extending TTL on stale data`);
+    await extendExistingTtl([REDIS_KEY_V2, REDIS_KEY_V1], REDIS_TTL);
+    process.exit(0);
+  }
+
   const hexes = processHexes(body.hexes);
 
   const highCount = hexes.filter(r => r.level === 'high').length;
