@@ -108,7 +108,7 @@ describe('Generated types include aisDisruptions', () => {
   });
 
   it('client ChokepointInfo has transitSummary field', () => {
-    assert.match(clientSrc, /transitSummary:\s*TransitSummary/);
+    assert.match(clientSrc, /transitSummary\??:\s*TransitSummary/);
   });
 
   it('server has TransitSummary interface', () => {
@@ -120,7 +120,7 @@ describe('Generated types include aisDisruptions', () => {
   });
 
   it('server ChokepointInfo has transitSummary field', () => {
-    assert.match(serverSrc, /transitSummary:\s*TransitSummary/);
+    assert.match(serverSrc, /transitSummary\??:\s*TransitSummary/);
   });
 });
 
