@@ -1,4 +1,5 @@
 import type {
+  Forecast,
   ForecastServiceHandler,
   ServerContext,
   GetForecastsRequest,
@@ -13,12 +14,12 @@ export const getForecasts: ForecastServiceHandler['getForecasts'] = async (
   req: GetForecastsRequest,
 ): Promise<GetForecastsResponse> => {
   try {
-    const data = await getCachedJson(REDIS_KEY) as { predictions: any[]; generatedAt: number } | null;
+    const data = await getCachedJson(REDIS_KEY) as { predictions: Forecast[]; generatedAt: number } | null;
     if (!data?.predictions) return { forecasts: [], generatedAt: 0 };
 
     let forecasts = data.predictions;
-    if (req.domain) forecasts = forecasts.filter((f: any) => f.domain === req.domain);
-    if (req.region) forecasts = forecasts.filter((f: any) => f.region.toLowerCase().includes(req.region.toLowerCase()));
+    if (req.domain) forecasts = forecasts.filter(f => f.domain === req.domain);
+    if (req.region) forecasts = forecasts.filter(f => f.region.toLowerCase().includes(req.region.toLowerCase()));
 
     return { forecasts, generatedAt: data.generatedAt || 0 };
   } catch {

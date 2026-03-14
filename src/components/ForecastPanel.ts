@@ -14,12 +14,52 @@ const DOMAIN_LABELS: Record<string, string> = {
   infrastructure: 'Infra',
 };
 
+let _styleInjected = false;
+function injectStyles(): void {
+  if (_styleInjected) return;
+  _styleInjected = true;
+  const style = document.createElement('style');
+  style.textContent = `
+    .fc-panel { font-size: 12px; }
+    .fc-filters { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--border-color, #333); }
+    .fc-filter { background: transparent; border: 1px solid var(--border-color, #444); color: var(--text-secondary, #aaa); padding: 2px 8px; border-radius: 3px; cursor: pointer; font-size: 11px; }
+    .fc-filter.fc-active { background: var(--accent-color, #3b82f6); color: #fff; border-color: var(--accent-color, #3b82f6); }
+    .fc-list { padding: 4px 0; }
+    .fc-card { padding: 6px 10px; border-bottom: 1px solid var(--border-color, #222); }
+    .fc-card:hover { background: var(--hover-bg, rgba(255,255,255,0.03)); }
+    .fc-header { display: flex; justify-content: space-between; align-items: center; }
+    .fc-title { font-weight: 600; color: var(--text-primary, #eee); }
+    .fc-prob { font-weight: 700; font-size: 14px; }
+    .fc-prob.high { color: #ef4444; }
+    .fc-prob.medium { color: #f59e0b; }
+    .fc-prob.low { color: #22c55e; }
+    .fc-meta { color: var(--text-secondary, #888); font-size: 11px; margin-top: 2px; }
+    .fc-trend-rising { color: #ef4444; }
+    .fc-trend-falling { color: #22c55e; }
+    .fc-trend-stable { color: var(--text-secondary, #888); }
+    .fc-signals { margin-top: 4px; }
+    .fc-signal { color: var(--text-secondary, #999); font-size: 11px; padding: 1px 0; }
+    .fc-signal::before { content: ''; display: inline-block; width: 6px; height: 1px; background: var(--text-secondary, #666); margin-right: 6px; vertical-align: middle; }
+    .fc-cascade { font-size: 11px; color: var(--accent-color, #3b82f6); margin-top: 3px; }
+    .fc-scenario { font-size: 11px; color: var(--text-primary, #ccc); margin: 4px 0; font-style: italic; }
+    .fc-hidden { display: none; }
+    .fc-toggle { cursor: pointer; color: var(--text-secondary, #888); font-size: 11px; }
+    .fc-toggle:hover { color: var(--text-primary, #eee); }
+    .fc-calibration { font-size: 10px; color: var(--text-secondary, #777); margin-top: 2px; }
+    .fc-bar { height: 3px; border-radius: 1.5px; margin-top: 3px; background: var(--border-color, #333); }
+    .fc-bar-fill { height: 100%; border-radius: 1.5px; }
+    .fc-empty { padding: 20px; text-align: center; color: var(--text-secondary, #888); }
+  `;
+  document.head.appendChild(style);
+}
+
 export class ForecastPanel extends Panel {
   private forecasts: Forecast[] = [];
   private activeDomain: string = 'all';
 
   constructor() {
     super({ id: 'forecast', title: 'AI Forecasts', showCount: true });
+    injectStyles();
     this.content.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
 
@@ -71,37 +111,6 @@ export class ForecastPanel extends Panel {
         <div class="fc-filters">${filtersHtml}</div>
         <div class="fc-list">${cardsHtml}</div>
       </div>
-      <style>
-        .fc-panel { font-size: 12px; }
-        .fc-filters { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--border-color, #333); }
-        .fc-filter { background: transparent; border: 1px solid var(--border-color, #444); color: var(--text-secondary, #aaa); padding: 2px 8px; border-radius: 3px; cursor: pointer; font-size: 11px; }
-        .fc-filter.fc-active { background: var(--accent-color, #3b82f6); color: #fff; border-color: var(--accent-color, #3b82f6); }
-        .fc-list { padding: 4px 0; }
-        .fc-card { padding: 6px 10px; border-bottom: 1px solid var(--border-color, #222); }
-        .fc-card:hover { background: var(--hover-bg, rgba(255,255,255,0.03)); }
-        .fc-header { display: flex; justify-content: space-between; align-items: center; }
-        .fc-title { font-weight: 600; color: var(--text-primary, #eee); }
-        .fc-prob { font-weight: 700; font-size: 14px; }
-        .fc-prob.high { color: #ef4444; }
-        .fc-prob.medium { color: #f59e0b; }
-        .fc-prob.low { color: #22c55e; }
-        .fc-meta { color: var(--text-secondary, #888); font-size: 11px; margin-top: 2px; }
-        .fc-trend-rising { color: #ef4444; }
-        .fc-trend-falling { color: #22c55e; }
-        .fc-trend-stable { color: var(--text-secondary, #888); }
-        .fc-signals { margin-top: 4px; }
-        .fc-signal { color: var(--text-secondary, #999); font-size: 11px; padding: 1px 0; }
-        .fc-signal::before { content: ''; display: inline-block; width: 6px; height: 1px; background: var(--text-secondary, #666); margin-right: 6px; vertical-align: middle; }
-        .fc-cascade { font-size: 11px; color: var(--accent-color, #3b82f6); margin-top: 3px; }
-        .fc-scenario { font-size: 11px; color: var(--text-primary, #ccc); margin: 4px 0; font-style: italic; }
-        .fc-hidden { display: none; }
-        .fc-toggle { cursor: pointer; color: var(--text-secondary, #888); font-size: 11px; }
-        .fc-toggle:hover { color: var(--text-primary, #eee); }
-        .fc-calibration { font-size: 10px; color: var(--text-secondary, #777); margin-top: 2px; }
-        .fc-bar { height: 3px; border-radius: 1.5px; margin-top: 3px; background: var(--border-color, #333); }
-        .fc-bar-fill { height: 100%; border-radius: 1.5px; }
-        .fc-empty { padding: 20px; text-align: center; color: var(--text-secondary, #888); }
-      </style>
     `);
   }
 
