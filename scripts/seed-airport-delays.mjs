@@ -135,7 +135,7 @@ async function redisSet(url, token, key, value, ttl) {
     body: JSON.stringify(cmd),
     signal: AbortSignal.timeout(10_000),
   });
-  return resp.ok;
+  if (!resp.ok) throw new Error(`Redis SET ${key} failed: HTTP ${resp.status}`);
 }
 
 async function seedFaaDelays() {
@@ -277,8 +277,8 @@ async function main() {
   }
 
   try {
-    const ok1 = await redisSet(url, token, FAA_CACHE_KEY, faaData, CACHE_TTL);
-    console.log(`  ${FAA_CACHE_KEY}: ${ok1 ? 'written' : 'FAILED'}`);
+    await redisSet(url, token, FAA_CACHE_KEY, faaData, CACHE_TTL);
+    console.log(`  ${FAA_CACHE_KEY}: written`);
     await writeFreshnessMetadata('aviation', 'faa', faaData.alerts.length, 'faa-asws');
 
     const verified1 = await verifySeedKey(FAA_CACHE_KEY);
@@ -286,8 +286,8 @@ async function main() {
 
     let notamCount = 0;
     if (notamData) {
-      const ok2 = await redisSet(url, token, NOTAM_CACHE_KEY, notamData, CACHE_TTL);
-      console.log(`  ${NOTAM_CACHE_KEY}: ${ok2 ? 'written' : 'FAILED'}`);
+      await redisSet(url, token, NOTAM_CACHE_KEY, notamData, CACHE_TTL);
+      console.log(`  ${NOTAM_CACHE_KEY}: written`);
       notamCount = notamData.closedIcaos.length;
       await writeFreshnessMetadata('aviation', 'notam', notamCount, 'icao-notam');
 

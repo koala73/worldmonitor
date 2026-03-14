@@ -205,8 +205,8 @@ export async function writeExtraKey(key, data, ttl) {
     body: JSON.stringify(['SET', key, payload, 'EX', ttl]),
     signal: AbortSignal.timeout(10_000),
   });
-  if (!resp.ok) console.warn(`  Extra key ${key}: write failed (HTTP ${resp.status})`);
-  else console.log(`  Extra key ${key}: written`);
+  if (!resp.ok) throw new Error(`Extra key ${key}: write failed (HTTP ${resp.status})`);
+  console.log(`  Extra key ${key}: written`);
 }
 
 export async function extendExistingTtl(keys, ttlSeconds = 600) {
