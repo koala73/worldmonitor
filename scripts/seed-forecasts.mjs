@@ -1098,7 +1098,7 @@ async function redisSet(url, token, key, data, ttlSeconds) {
       body: JSON.stringify(['SET', key, JSON.stringify(data), 'EX', ttlSeconds]),
       signal: AbortSignal.timeout(5_000),
     });
-  } catch { /* non-fatal cache write */ }
+  } catch (err) { console.warn(`  [Redis] Cache write failed for ${key}: ${err.message}`); }
 }
 
 function buildCacheHash(preds) {
@@ -1166,10 +1166,14 @@ async function enrichScenariosWithLLM(predictions) {
           topWithPerspectives[p.index].perspectives = { strategic: p.strategic, regional: p.regional, contrarian: p.contrarian };
         }
 
-        const items = (raw || []).filter(r => typeof r.index === 'number').map(r => ({
-          index: r.index, scenario: r.scenario,
-          strategic: r.strategic, regional: r.regional, contrarian: r.contrarian,
-        }));
+        // Cache only validated items (not raw) to prevent persisting invalid LLM output
+        const items = [];
+        for (const s of validScenarios) {
+          const entry = { index: s.index, scenario: s.scenario };
+          const p = validPerspectives.find(vp => vp.index === s.index);
+          if (p) { entry.strategic = p.strategic; entry.regional = p.regional; entry.contrarian = p.contrarian; }
+          items.push(entry);
+        }
 
         console.log(JSON.stringify({
           event: 'llm_combined', provider: result.provider, model: result.model,

@@ -485,15 +485,28 @@ describe('attachNewsContext', () => {
     assert.equal(corr, undefined, 'commodity names should not trigger corroboration');
   });
 
-  it('handles null newsInsights', () => {
+  it('reads headlines from digest categories (primary path)', () => {
     const preds = [makePrediction('conflict', 'Iran', 'test', 0.5, 0.5, '7d', [])];
-    attachNewsContext(preds, null);
+    const digest = { categories: {
+      middleeast: { items: [{ title: 'Iran launches missile test' }, { title: 'Saudi oil output stable' }] },
+      europe: { items: [{ title: 'EU summit concludes' }] },
+    }};
+    attachNewsContext(preds, null, digest);
+    assert.ok(preds[0].newsContext.length >= 1);
+    assert.ok(preds[0].newsContext[0].includes('Iran'));
+    const corr = preds[0].signals.find(s => s.type === 'news_corroboration');
+    assert.ok(corr, 'should have corroboration from digest headlines');
+  });
+
+  it('handles null newsInsights and null digest', () => {
+    const preds = [makePrediction('conflict', 'Iran', 'test', 0.5, 0.5, '7d', [])];
+    attachNewsContext(preds, null, null);
     assert.equal(preds[0].newsContext, undefined);
   });
 
-  it('handles empty topStories', () => {
+  it('handles empty topStories with no digest', () => {
     const preds = [makePrediction('conflict', 'Iran', 'test', 0.5, 0.5, '7d', [])];
-    attachNewsContext(preds, { topStories: [] });
+    attachNewsContext(preds, { topStories: [] }, null);
     assert.equal(preds[0].newsContext, undefined);
   });
 });
