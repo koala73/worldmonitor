@@ -264,8 +264,19 @@ async function main() {
     process.exit(0);
   }
 
+  let faaData, notamData;
   try {
-    const faaData = await withRetry(seedFaaDelays);
+    faaData = await withRetry(seedFaaDelays);
+    notamData = await seedNotamClosures();
+  } catch (err) {
+    await releaseLock('aviation:delays', runId);
+    console.error(`  FETCH FAILED: ${err.message || err}`);
+    await extendExistingTtl([FAA_CACHE_KEY, NOTAM_CACHE_KEY], CACHE_TTL);
+    console.log(`\n=== Failed gracefully (${Math.round(Date.now() - startMs)}ms) ===`);
+    process.exit(0);
+  }
+
+  try {
     const ok1 = await redisSet(url, token, FAA_CACHE_KEY, faaData, CACHE_TTL);
     console.log(`  ${FAA_CACHE_KEY}: ${ok1 ? 'written' : 'FAILED'}`);
     await writeFreshnessMetadata('aviation', 'faa', faaData.alerts.length, 'faa-asws');
@@ -274,7 +285,6 @@ async function main() {
     console.log(`  FAA verified: ${verified1 ? 'yes' : 'NO'}`);
 
     let notamCount = 0;
-    const notamData = await seedNotamClosures();
     if (notamData) {
       const ok2 = await redisSet(url, token, NOTAM_CACHE_KEY, notamData, CACHE_TTL);
       console.log(`  ${NOTAM_CACHE_KEY}: ${ok2 ? 'written' : 'FAILED'}`);
@@ -293,8 +303,7 @@ async function main() {
   }
 }
 
-main().catch(async (err) => {
-  console.error(`FETCH FAILED: ${err.message || err} — extending TTL on stale data`);
-  await extendExistingTtl([FAA_CACHE_KEY, NOTAM_CACHE_KEY], CACHE_TTL);
-  process.exit(0);
+main().catch((err) => {
+  console.error(`PUBLISH FAILED: ${err.message || err}`);
+  process.exit(1);
 });

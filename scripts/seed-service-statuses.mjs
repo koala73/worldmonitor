@@ -21,24 +21,31 @@ async function warmPing() {
   console.log(`  Key:     ${CANONICAL_KEY}`);
   console.log(`  Target:  ${RPC_URL}`);
 
-  const resp = await fetch(RPC_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'User-Agent': CHROME_UA,
-      Origin: 'https://worldmonitor.app',
-    },
-    body: '{}',
-    signal: AbortSignal.timeout(60_000),
-  });
+  let data;
+  try {
+    const resp = await fetch(RPC_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': CHROME_UA,
+        Origin: 'https://worldmonitor.app',
+      },
+      body: '{}',
+      signal: AbortSignal.timeout(60_000),
+    });
 
-  if (!resp.ok) throw new Error(`RPC failed: HTTP ${resp.status}`);
+    if (!resp.ok) throw new Error(`RPC failed: HTTP ${resp.status}`);
+    data = await resp.json();
+  } catch (err) {
+    console.error(`  FETCH FAILED: ${err.message || err}`);
+    await extendExistingTtl([CANONICAL_KEY], 7200);
+    console.log(`\n=== Failed gracefully (${Math.round(Date.now() - startMs)}ms) ===`);
+    process.exit(0);
+  }
 
-  const data = await resp.json();
   const count = data?.statuses?.length || 0;
   console.log(`  Statuses: ${count}`);
 
-  // Verify cache was populated
   const { url, token } = getRedisCredentials();
   const verifyResp = await fetch(`${url}/get/${encodeURIComponent(CANONICAL_KEY)}`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -58,8 +65,7 @@ async function warmPing() {
 
 warmPing().then(() => {
   process.exit(0);
-}).catch(async (err) => {
-  console.error(`FETCH FAILED: ${err.message || err} — extending TTL on stale data`);
-  await extendExistingTtl([CANONICAL_KEY], 7200);
-  process.exit(0);
+}).catch((err) => {
+  console.error(`ERROR: ${err.message || err}`);
+  process.exit(1);
 });
