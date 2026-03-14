@@ -390,6 +390,10 @@ export interface SourceResult {
   threats: RawThreat[];
 }
 
+function sourceFailure(): SourceResult {
+  return { ok: false, threats: [] };
+}
+
 // ========================================================================
 // Source 1: Feodo Tracker
 // ========================================================================
@@ -443,7 +447,7 @@ export async function fetchFeodoSource(limit: number, cutoffMs: number): Promise
       headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
-    if (!response.ok) return { ok: false, threats: [] };
+    if (!response.ok) return sourceFailure();
 
     const payload = await response.json();
     const records: any[] = Array.isArray(payload) ? payload : (Array.isArray(payload?.data) ? payload.data : []);
@@ -456,7 +460,7 @@ export async function fetchFeodoSource(limit: number, cutoffMs: number): Promise
 
     return { ok: true, threats: parsed };
   } catch {
-    return { ok: false, threats: [] };
+    return sourceFailure();
   }
 }
 
@@ -525,7 +529,7 @@ function parseUrlhausRecord(record: any, cutoffMs: number): RawThreat | null {
 
 export async function fetchUrlhausSource(limit: number, cutoffMs: number): Promise<SourceResult> {
   const authKey = cleanString(process.env.URLHAUS_AUTH_KEY || '', 200);
-  if (!authKey) return { ok: false, threats: [] };
+  if (!authKey) return sourceFailure();
 
   try {
     const response = await fetch(URLHAUS_RECENT_URL(limit), {
@@ -533,7 +537,7 @@ export async function fetchUrlhausSource(limit: number, cutoffMs: number): Promi
       headers: { Accept: 'application/json', 'Auth-Key': authKey, 'User-Agent': CHROME_UA },
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
-    if (!response.ok) return { ok: false, threats: [] };
+    if (!response.ok) return sourceFailure();
 
     const payload = await response.json();
     const rows: any[] = Array.isArray(payload?.urls) ? payload.urls : (Array.isArray(payload?.data) ? payload.data : []);
@@ -546,7 +550,7 @@ export async function fetchUrlhausSource(limit: number, cutoffMs: number): Promi
 
     return { ok: true, threats: parsed };
   } catch {
-    return { ok: false, threats: [] };
+    return sourceFailure();
   }
 }
 
@@ -600,7 +604,7 @@ export async function fetchC2IntelSource(limit: number): Promise<SourceResult> {
       headers: { Accept: 'text/plain', 'User-Agent': CHROME_UA },
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
-    if (!response.ok) return { ok: false, threats: [] };
+    if (!response.ok) return sourceFailure();
 
     const text = await response.text();
     const parsed = text.split('\n')
@@ -610,7 +614,7 @@ export async function fetchC2IntelSource(limit: number): Promise<SourceResult> {
 
     return { ok: true, threats: parsed };
   } catch {
-    return { ok: false, threats: [] };
+    return sourceFailure();
   }
 }
 
@@ -620,7 +624,7 @@ export async function fetchC2IntelSource(limit: number): Promise<SourceResult> {
 
 export async function fetchOtxSource(limit: number, days: number): Promise<SourceResult> {
   const apiKey = cleanString(process.env.OTX_API_KEY || '', 200);
-  if (!apiKey) return { ok: false, threats: [] };
+  if (!apiKey) return sourceFailure();
 
   try {
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -631,7 +635,7 @@ export async function fetchOtxSource(limit: number, days: number): Promise<Sourc
         signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
       },
     );
-    if (!response.ok) return { ok: false, threats: [] };
+    if (!response.ok) return sourceFailure();
 
     const payload = await response.json();
     const results: any[] = Array.isArray(payload?.results) ? payload.results : (Array.isArray(payload) ? payload : []);
@@ -666,7 +670,7 @@ export async function fetchOtxSource(limit: number, days: number): Promise<Sourc
 
     return { ok: true, threats: parsed };
   } catch {
-    return { ok: false, threats: [] };
+    return sourceFailure();
   }
 }
 
@@ -676,7 +680,7 @@ export async function fetchOtxSource(limit: number, days: number): Promise<Sourc
 
 export async function fetchAbuseIpDbSource(limit: number): Promise<SourceResult> {
   const apiKey = cleanString(process.env.ABUSEIPDB_API_KEY || '', 200);
-  if (!apiKey) return { ok: false, threats: [] };
+  if (!apiKey) return sourceFailure();
 
   try {
     const url = `${ABUSEIPDB_BLACKLIST_URL}?confidenceMinimum=90&limit=${Math.min(limit, 500)}`;
@@ -684,7 +688,7 @@ export async function fetchAbuseIpDbSource(limit: number): Promise<SourceResult>
       headers: { Accept: 'application/json', Key: apiKey, 'User-Agent': CHROME_UA },
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
-    if (!response.ok) return { ok: false, threats: [] };
+    if (!response.ok) return sourceFailure();
 
     const payload = await response.json();
     const records: any[] = Array.isArray(payload?.data) ? payload.data : [];
@@ -718,7 +722,7 @@ export async function fetchAbuseIpDbSource(limit: number): Promise<SourceResult>
 
     return { ok: true, threats: parsed };
   } catch {
-    return { ok: false, threats: [] };
+    return sourceFailure();
   }
 }
 
