@@ -1,12 +1,15 @@
 syntax = "proto3";
+
 package worldmonitor.webcam.v1;
 
+import "sebuf/http/annotations.proto";
+
 message ListWebcamsRequest {
-  int32 zoom = 1;
-  double bound_w = 2;
-  double bound_s = 3;
-  double bound_e = 4;
-  double bound_n = 5;
+  int32 zoom = 1 [(sebuf.http.query) = {name: "zoom"}];
+  double bound_w = 2 [(sebuf.http.query) = {name: "bound_w"}];
+  double bound_s = 3 [(sebuf.http.query) = {name: "bound_s"}];
+  double bound_e = 4 [(sebuf.http.query) = {name: "bound_e"}];
+  double bound_n = 5 [(sebuf.http.query) = {name: "bound_n"}];
 }
 
 message WebcamEntry {

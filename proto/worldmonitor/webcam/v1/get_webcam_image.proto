@@ -1,8 +1,11 @@
 syntax = "proto3";
+
 package worldmonitor.webcam.v1;
 
+import "sebuf/http/annotations.proto";
+
 message GetWebcamImageRequest {
-  string webcam_id = 1;
+  string webcam_id = 1 [(sebuf.http.query) = {name: "webcam_id"}];
 }
 
 message GetWebcamImageResponse {
