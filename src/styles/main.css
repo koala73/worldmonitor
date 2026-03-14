@@ -8502,9 +8502,14 @@ a.prediction-link:hover {
 
 /* economic-tabs: now uses shared .panel-tabs / .panel-tab */
 
+.panel-content:has(.economic-content) {
+  display: flex;
+  flex-direction: column;
+}
+
 .economic-content {
   padding: 8px;
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-height: 0;
   overflow-y: auto;
 }
