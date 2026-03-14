@@ -205,14 +205,18 @@ export async function writeExtraKey(key, data, ttl) {
     body: JSON.stringify(['SET', key, payload, 'EX', ttl]),
     signal: AbortSignal.timeout(10_000),
   });
-  if (!resp.ok) console.warn(`  Extra key ${key}: write failed (HTTP ${resp.status})`);
-  else console.log(`  Extra key ${key}: written`);
+  if (!resp.ok) {
+    console.warn(`  Extra key ${key}: write failed (HTTP ${resp.status})`);
+    return false;
+  }
+  console.log(`  Extra key ${key}: written`);
+  return true;
 }
 
 export async function writeExtraKeyWithMeta(key, data, ttl, recordCount, metaKeyOverride) {
-  await writeExtraKey(key, data, ttl);
+  const ok = await writeExtraKey(key, data, ttl);
+  if (!ok) return; // data write failed — do NOT write seed-meta (avoids false-positive health)
   const { url, token } = getRedisCredentials();
-  // Use explicit override or strip version suffix (:v1, :v2, etc.) to match health.js conventions
   const metaKey = metaKeyOverride || `seed-meta:${key.replace(/:v\d+$/, '')}`;
   const meta = { fetchedAt: Date.now(), recordCount: recordCount ?? 0 };
   const resp = await fetch(url, {
