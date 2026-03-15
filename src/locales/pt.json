@@ -1462,6 +1462,13 @@
     "supplyChain": {
       "chokepoints": "Pontos de estrangulamento",
       "fredKeyMissing": "Chave API FRED necessária para tarifas de frete — adicione nas Configurações. Pontos de estrangulamento e minerais disponíveis sem chave.",
+      "routingAction": "Routing",
+      "disruption": "Disruption",
+      "vessels": "vessels",
+      "incidents7d": "incidents (7d)",
+      "corridorDisruption": "Corridor Disruption",
+      "corridor": "Corridor",
+      "loadingCorridors": "Loading corridor data...",
       "mineral": "Mineral",
       "minerals": "Minerais",
       "noChokepoints": "Dados de pontos de estrangulamento carregando...",

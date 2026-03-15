@@ -1462,6 +1462,13 @@
     "supplyChain": {
       "chokepoints": "Knelpunten",
       "fredKeyMissing": "FRED API-sleutel vereist voor verzendtarieven — voeg deze toe in Instellingen. Knelpunten en mineralen beschikbaar zonder sleutel.",
+      "routingAction": "Routing",
+      "disruption": "Disruption",
+      "vessels": "vessels",
+      "incidents7d": "incidents (7d)",
+      "corridorDisruption": "Corridor Disruption",
+      "corridor": "Corridor",
+      "loadingCorridors": "Loading corridor data...",
       "mineral": "Mineraal",
       "minerals": "Mineralen",
       "noChokepoints": "Knelpuntgegevens worden geladen...",

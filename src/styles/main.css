@@ -8719,6 +8719,65 @@ a.prediction-link:hover {
   color: var(--green, #69f0ae);
 }
 
+.trade-restriction-card.expanded {
+  background: var(--overlay-medium);
+  border-left-color: var(--accent-primary, #4fc3f7);
+  border-left-width: 3px;
+}
+
+.sc-metric-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 10px;
+  color: var(--text-dim);
+  margin: 2px 0;
+}
+
+.sc-metric-row span {
+  white-space: nowrap;
+}
+
+.sc-disrupt-red { color: var(--red, #ff5252); }
+.sc-disrupt-yellow { color: var(--yellow, #ffd740); }
+.sc-disrupt-green { color: var(--green, #69f0ae); }
+
+.sc-routing-advisory {
+  font-size: 10px;
+  padding: 6px 8px;
+  margin-top: 6px;
+  background: rgba(255, 171, 64, 0.08);
+  border-left: 2px solid var(--orange, #ffab40);
+  border-radius: 2px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.sc-disruption-table {
+  width: 100%;
+  font-size: 10px;
+  border-collapse: collapse;
+  margin-bottom: 4px;
+}
+
+.sc-disruption-table th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--text-dim);
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.sc-disruption-table td {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border-faint);
+}
+
+.sc-disruption-table td:nth-child(n+2) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 .trade-sector {
   font-size: 10px;
   color: var(--text-dim);

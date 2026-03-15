@@ -337,16 +337,10 @@ async function fetchChokepointData(): Promise<ChokepointFetchResult> {
     if (anomaly.signal) {
       descriptions.push(`Traffic down ${anomaly.dropPct}% vs 30-day baseline, vessels may be transiting dark (AIS off)`);
     }
-    if (ts?.riskSummary) {
-      descriptions.push(ts.riskSummary);
-    }
     if (!threatConfigFresh) {
       descriptions.push(THREAT_CONFIG_STALE_NOTE);
     }
-    if (matchedWarnings.length > 0 || matchedDisruptions.length > 0) {
-      descriptions.push(`Navigational warnings: ${matchedWarnings.length}`);
-      descriptions.push(`AIS vessel disruptions: ${matchedDisruptions.length}`);
-    } else if (!cp.threatDescription && !anomaly.signal) {
+    if (descriptions.length === 0) {
       descriptions.push('No active disruptions');
     }
 

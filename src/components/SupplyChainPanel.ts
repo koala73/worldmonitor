@@ -86,7 +86,7 @@ export class SupplyChainPanel extends Panel {
     const activeHasData = this.activeTab === 'chokepoints'
       ? (this.chokepointData?.chokepoints?.length ?? 0) > 0
       : this.activeTab === 'shipping'
-        ? (this.shippingData?.indices?.length ?? 0) > 0
+        ? (this.shippingData?.indices?.length ?? 0) > 0 || this.chokepointData !== null
         : (this.mineralsData?.minerals?.length ?? 0) > 0;
     const activeData = this.activeTab === 'chokepoints' ? this.chokepointData
       : this.activeTab === 'shipping' ? this.shippingData
@@ -147,25 +147,22 @@ export class SupplyChainPanel extends Panel {
         const statusDot = cp.status === 'red' ? 'sc-dot-red' : cp.status === 'yellow' ? 'sc-dot-yellow' : 'sc-dot-green';
         const aisDisruptions = cp.aisDisruptions ?? (cp.congestionLevel === 'normal' ? 0 : 1);
         const ts = cp.transitSummary;
-        const hasRealtimeCounts = ts && ts.todayTotal > 0;
-        const hasWow = ts && ts.wowChangePct !== 0;
         const wowPct = ts?.wowChangePct ?? 0;
-        const wowSpan = hasWow ? `<span class="trade-flow-change ${wowPct >= 0 ? 'change-positive' : 'change-negative'}">${wowPct >= 0 ? '\u25B2' : '\u25BC'}${Math.abs(wowPct).toFixed(1)}%</span>` : '';
-        const transitRow = hasRealtimeCounts
-          ? `<div class="trade-sector">${t('components.supplyChain.transit24h')}: ${ts.todayTotal} vessels (${ts.todayTanker} ${t('components.supplyChain.tankers')}, ${ts.todayCargo} ${t('components.supplyChain.cargo')}, ${ts.todayOther} other)${hasWow ? ` | ${t('components.supplyChain.wowChange')}: ${wowSpan}` : ''}</div>`
-          : hasWow
-            ? `<div class="trade-sector">${t('components.supplyChain.wowChange')}: ${wowSpan}</div>`
-            : '';
-        const riskRow = ts?.riskLevel
-          ? `<div class="trade-sector">${t('components.supplyChain.riskLevel')}: ${escapeHtml(ts.riskLevel)} | ${ts.incidentCount7d} incidents (7d)${ts.riskSummary ? ` | ${escapeHtml(ts.riskSummary)}` : ''}</div>`
-          : '';
+        const hasWow = ts && wowPct !== 0;
+        const wowSpan = hasWow ? `<span class="${wowPct >= 0 ? 'change-positive' : 'change-negative'}">${wowPct >= 0 ? '\u25B2' : '\u25BC'}${Math.abs(wowPct).toFixed(1)}%</span>` : '';
+        const disruptPct = ts?.disruptionPct ?? 0;
+        const disruptClass = disruptPct > 10 ? 'sc-disrupt-red' : disruptPct > 3 ? 'sc-disrupt-yellow' : 'sc-disrupt-green';
+        const riskClass = (ts?.riskLevel === 'critical' || ts?.riskLevel === 'high') ? 'sc-disrupt-red'
+          : (ts?.riskLevel === 'elevated' || ts?.riskLevel === 'moderate') ? 'sc-disrupt-yellow' : 'sc-disrupt-green';
+
         const expanded = this.expandedChokepoint === cp.name;
         const actionRow = expanded && ts?.riskReportAction
-          ? `<div class="trade-sector"><strong>${t('components.supplyChain.routingAction')}:</strong> ${escapeHtml(ts.riskReportAction)}</div>`
+          ? `<div class="sc-routing-advisory">${escapeHtml(ts.riskReportAction)}</div>`
           : '';
         const chartPlaceholder = expanded && ts?.history?.length
           ? `<div data-chart-cp="${escapeHtml(cp.name)}" style="margin-top:8px;min-height:120px"></div>`
           : '';
+
         return `<div class="trade-restriction-card${expanded ? ' expanded' : ''}" data-cp-id="${escapeHtml(cp.name)}" style="cursor:pointer">
           <div class="trade-restriction-header">
             <span class="trade-country">${escapeHtml(cp.name)}</span>
@@ -174,13 +171,21 @@ export class SupplyChainPanel extends Panel {
             <span class="trade-status ${statusClass}">${escapeHtml(cp.status)}</span>
           </div>
           <div class="trade-restriction-body">
-            ${cp.activeWarnings > 0 || aisDisruptions > 0
-              ? `<div class="trade-sector">${cp.activeWarnings} ${t('components.supplyChain.warnings')} · ${aisDisruptions} ${t('components.supplyChain.aisDisruptions')}${cp.directions?.length ? ` · ${escapeHtml(cp.directions.join('/'))}` : ''}</div>`
-              : cp.directions?.length ? `<div class="trade-sector">${escapeHtml(cp.directions.join('/'))}</div>` : ''}
-            ${transitRow}
-            ${riskRow}
-            <div class="trade-description">${escapeHtml(cp.description)}</div>
-            <div class="trade-affected">${escapeHtml(cp.affectedRoutes.join(', '))}</div>
+            <div class="sc-metric-row">
+              <span>${cp.activeWarnings} ${t('components.supplyChain.warnings')} · ${aisDisruptions} ${t('components.supplyChain.aisDisruptions')}</span>
+              ${cp.directions?.length ? `<span>${cp.directions.map(d => escapeHtml(d)).join('/')}</span>` : ''}
+            </div>
+            ${ts && (ts.todayTotal > 0 || hasWow || disruptPct > 0) ? `<div class="sc-metric-row">
+              ${ts.todayTotal > 0 ? `<span>${ts.todayTotal} ${t('components.supplyChain.vessels')}</span>` : ''}
+              ${hasWow ? `<span>${t('components.supplyChain.wowChange')}: ${wowSpan}</span>` : ''}
+              ${disruptPct > 0 ? `<span>${t('components.supplyChain.disruption')}: <span class="${disruptClass}">${disruptPct.toFixed(1)}%</span></span>` : ''}
+            </div>` : ''}
+            ${ts?.riskLevel ? `<div class="sc-metric-row">
+              <span>${t('components.supplyChain.riskLevel')}: <span class="${riskClass}">${escapeHtml(ts.riskLevel)}</span></span>
+              <span>${ts.incidentCount7d} ${t('components.supplyChain.incidents7d')}</span>
+            </div>` : ''}
+            ${cp.description ? `<div class="trade-description">${escapeHtml(cp.description)}</div>` : ''}
+            <div class="trade-affected">${cp.affectedRoutes.slice(0, 3).map(r => escapeHtml(r)).join(', ')}</div>
             ${actionRow}
             ${chartPlaceholder}
           </div>
@@ -190,35 +195,89 @@ export class SupplyChainPanel extends Panel {
   }
 
   private renderShipping(): string {
-    if (isDesktopRuntime() && !isFeatureAvailable('supplyChain')) {
-      return `<div class="economic-empty">${t('components.supplyChain.fredKeyMissing')}</div>`;
-    }
+    const hasFred = this.shippingData?.indices?.length;
+    const disruptionHtml = this.renderDisruptionSnapshot();
 
-    if (!this.shippingData || !this.shippingData.indices?.length) {
+    if (!hasFred && !disruptionHtml) {
       return `<div class="economic-empty">${t('components.supplyChain.noShipping')}</div>`;
     }
 
     return `<div class="trade-restrictions-list">
-      ${this.shippingData.indices.map(idx => {
-        const changeClass = idx.changePct >= 0 ? 'change-positive' : 'change-negative';
-        const changeArrow = idx.changePct >= 0 ? '\u25B2' : '\u25BC';
-        const sparkline = this.renderSparkline(idx.history.map(h => h.value));
-        const spikeBanner = idx.spikeAlert
-          ? `<div class="economic-warning">${t('components.supplyChain.spikeAlert')}</div>`
-          : '';
-        return `<div class="trade-restriction-card">
-          ${spikeBanner}
-          <div class="trade-restriction-header">
-            <span class="trade-country">${escapeHtml(idx.name)}</span>
-            <span class="trade-badge">${idx.currentValue.toFixed(0)} ${escapeHtml(idx.unit)}</span>
-            <span class="trade-flow-change ${changeClass}">${changeArrow} ${Math.abs(idx.changePct).toFixed(1)}%</span>
-          </div>
-          <div class="trade-restriction-body">
-            ${sparkline}
-          </div>
-        </div>`;
-      }).join('')}
+      ${disruptionHtml}
+      ${hasFred ? this.renderFredIndices() : ''}
     </div>`;
+  }
+
+  private renderDisruptionSnapshot(): string {
+    if (this.chokepointData === null) {
+      return `<div class="trade-sector" style="padding:8px;opacity:0.6">${t('components.supplyChain.loadingCorridors')}</div>`;
+    }
+    const cps = this.chokepointData.chokepoints;
+    if (!cps?.length) return '';
+
+    const sorted = [...cps].sort((a, b) => b.disruptionScore - a.disruptionScore);
+    const filtered = sorted.filter(cp => cp.disruptionScore > 0);
+    const rows = (filtered.length > 0 ? filtered : sorted.slice(0, 5));
+
+    const tableRows = rows.map(cp => {
+      const ts = cp.transitSummary;
+      const statusDot = cp.status === 'red' ? 'sc-dot-red' : cp.status === 'yellow' ? 'sc-dot-yellow' : 'sc-dot-green';
+      const wowPct = ts?.wowChangePct ?? 0;
+      const wowCell = wowPct !== 0
+        ? `<span class="${wowPct >= 0 ? 'change-positive' : 'change-negative'}">${wowPct >= 0 ? '\u25B2' : '\u25BC'}${Math.abs(wowPct).toFixed(1)}%</span>`
+        : '-';
+      const disruptPct = ts?.disruptionPct ?? 0;
+      const disruptClass = disruptPct > 10 ? 'sc-disrupt-red' : disruptPct > 3 ? 'sc-disrupt-yellow' : 'sc-disrupt-green';
+      const riskLevel = ts?.riskLevel || '-';
+      const riskClass = (riskLevel === 'critical' || riskLevel === 'high') ? 'sc-disrupt-red'
+        : (riskLevel === 'elevated' || riskLevel === 'moderate') ? 'sc-disrupt-yellow' : '';
+      return `<tr>
+        <td><span class="sc-status-dot ${statusDot}"></span> ${escapeHtml(cp.name)}</td>
+        <td>${ts?.todayTotal ?? 0}</td>
+        <td>${wowCell}</td>
+        <td><span class="${disruptClass}">${disruptPct > 0 ? disruptPct.toFixed(1) + '%' : '-'}</span></td>
+        <td>${riskClass ? `<span class="${riskClass}">${escapeHtml(riskLevel)}</span>` : escapeHtml(riskLevel)}</td>
+      </tr>`;
+    }).join('');
+
+    return `<div style="margin-bottom:8px">
+      <div class="trade-sector" style="font-weight:600;margin-bottom:4px">${t('components.supplyChain.corridorDisruption')}</div>
+      <table class="sc-disruption-table">
+        <thead><tr>
+          <th>${t('components.supplyChain.corridor')}</th>
+          <th>${t('components.supplyChain.vessels')}</th>
+          <th>${t('components.supplyChain.wowChange')}</th>
+          <th>${t('components.supplyChain.disruption')}</th>
+          <th>${t('components.supplyChain.risk')}</th>
+        </tr></thead>
+        <tbody>${tableRows}</tbody>
+      </table>
+    </div>`;
+  }
+
+  private renderFredIndices(): string {
+    if (isDesktopRuntime() && !isFeatureAvailable('supplyChain')) return '';
+    if (!this.shippingData?.indices?.length) return '';
+
+    return this.shippingData.indices.map(idx => {
+      const changeClass = idx.changePct >= 0 ? 'change-positive' : 'change-negative';
+      const changeArrow = idx.changePct >= 0 ? '\u25B2' : '\u25BC';
+      const sparkline = this.renderSparkline(idx.history.map(h => h.value));
+      const spikeBanner = idx.spikeAlert
+        ? `<div class="economic-warning">${t('components.supplyChain.spikeAlert')}</div>`
+        : '';
+      return `<div class="trade-restriction-card">
+        ${spikeBanner}
+        <div class="trade-restriction-header">
+          <span class="trade-country">${escapeHtml(idx.name)}</span>
+          <span class="trade-badge">${idx.currentValue.toFixed(0)} ${escapeHtml(idx.unit)}</span>
+          <span class="trade-flow-change ${changeClass}">${changeArrow} ${Math.abs(idx.changePct).toFixed(1)}%</span>
+        </div>
+        <div class="trade-restriction-body">
+          ${sparkline}
+        </div>
+      </div>`;
+    }).join('');
   }
 
   private renderSparkline(values: number[]): string {
