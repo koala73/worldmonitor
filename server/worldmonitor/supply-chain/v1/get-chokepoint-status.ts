@@ -12,7 +12,7 @@ import type {
   AisDisruption,
 } from '../../../../src/generated/server/worldmonitor/maritime/v1/service_server';
 
-import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
+import { cachedFetchJson, getCachedJson, setCachedJson } from '../../../_shared/redis';
 import { listNavigationalWarnings } from '../../maritime/v1/list-navigational-warnings';
 import { getVesselSnapshot } from '../../maritime/v1/get-vessel-snapshot';
 import type { PortWatchData } from './_portwatch-upstream';
@@ -388,7 +388,9 @@ export async function getChokepointStatus(
       async () => {
         const { chokepoints, upstreamUnavailable } = await fetchChokepointData();
         if (upstreamUnavailable) return null;
-        return { chokepoints, fetchedAt: new Date().toISOString(), upstreamUnavailable };
+        const response = { chokepoints, fetchedAt: new Date().toISOString(), upstreamUnavailable };
+        setCachedJson('seed-meta:supply_chain:chokepoints', { fetchedAt: Date.now(), recordCount: chokepoints.length }, 604800).catch(() => {});
+        return response;
       },
     );
 
