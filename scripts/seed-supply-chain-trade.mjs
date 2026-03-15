@@ -245,6 +245,8 @@ const BILATERAL_PAIRS = [
   ['156', '840'], // China ↔ US
   ['156', '276'], // China ↔ Germany
   ['826', '156'], // UK ↔ China
+  ['000', '156'], // World ↔ China
+  ['000', '840'], // World ↔ US
 ];
 
 function parseFlowRows(data, indicator) {
