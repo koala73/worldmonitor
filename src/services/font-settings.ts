@@ -32,9 +32,9 @@ export function setFontFamily(font: FontFamily): void {
 export function applyFont(font?: FontFamily): void {
   const resolved = font ?? getFontFamily();
   if (resolved === 'system') {
-    document.documentElement.style.setProperty('--font-body', SYSTEM_FONT_STACK);
+    document.documentElement.style.setProperty('--font-body-base', SYSTEM_FONT_STACK);
   } else {
-    document.documentElement.style.removeProperty('--font-body');
+    document.documentElement.style.removeProperty('--font-body-base');
   }
 }
 
