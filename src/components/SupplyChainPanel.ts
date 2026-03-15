@@ -259,25 +259,42 @@ export class SupplyChainPanel extends Panel {
     if (isDesktopRuntime() && !isFeatureAvailable('supplyChain')) return '';
     if (!this.shippingData?.indices?.length) return '';
 
-    return this.shippingData.indices.map(idx => {
-      const changeClass = idx.changePct >= 0 ? 'change-positive' : 'change-negative';
-      const changeArrow = idx.changePct >= 0 ? '\u25B2' : '\u25BC';
-      const sparkline = this.renderSparkline(idx.history.map(h => h.value));
-      const spikeBanner = idx.spikeAlert
-        ? `<div class="economic-warning">${t('components.supplyChain.spikeAlert')}</div>`
-        : '';
-      return `<div class="trade-restriction-card">
-        ${spikeBanner}
-        <div class="trade-restriction-header">
-          <span class="trade-country">${escapeHtml(idx.name)}</span>
-          <span class="trade-badge">${idx.currentValue.toFixed(0)} ${escapeHtml(idx.unit)}</span>
-          <span class="trade-flow-change ${changeClass}">${changeArrow} ${Math.abs(idx.changePct).toFixed(1)}%</span>
-        </div>
-        <div class="trade-restriction-body">
-          ${sparkline}
-        </div>
-      </div>`;
-    }).join('');
+    const container = new Set(['SCFI', 'CCFI']);
+    const bulk = new Set(['BDI', 'BCI', 'BPI', 'BSI', 'BHSI']);
+
+    const containerIndices = this.shippingData.indices.filter(i => container.has(i.indexId));
+    const bulkIndices = this.shippingData.indices.filter(i => bulk.has(i.indexId));
+    const econIndices = this.shippingData.indices.filter(i => !container.has(i.indexId) && !bulk.has(i.indexId));
+
+    const renderGroup = (label: string, indices: typeof this.shippingData.indices): string => {
+      if (!indices.length) return '';
+      const cards = indices.map(idx => {
+        const changeClass = idx.changePct >= 0 ? 'change-positive' : 'change-negative';
+        const changeArrow = idx.changePct >= 0 ? '\u25B2' : '\u25BC';
+        const sparkline = this.renderSparkline(idx.history.map(h => h.value));
+        const spikeBanner = idx.spikeAlert
+          ? `<div class="economic-warning">${t('components.supplyChain.spikeAlert')}</div>`
+          : '';
+        return `<div class="trade-restriction-card">
+          ${spikeBanner}
+          <div class="trade-restriction-header">
+            <span class="trade-country">${escapeHtml(idx.name)}</span>
+            <span class="trade-badge">${idx.currentValue.toFixed(0)} ${escapeHtml(idx.unit)}</span>
+            <span class="trade-flow-change ${changeClass}">${changeArrow} ${Math.abs(idx.changePct).toFixed(1)}%</span>
+          </div>
+          <div class="trade-restriction-body">
+            ${sparkline}
+          </div>
+        </div>`;
+      }).join('');
+      return `<div class="trade-sector" style="font-weight:600;margin:8px 0 4px">${escapeHtml(label)}</div>${cards}`;
+    };
+
+    return [
+      renderGroup(t('components.supplyChain.containerRates'), containerIndices),
+      renderGroup(t('components.supplyChain.bulkShipping'), bulkIndices),
+      renderGroup(t('components.supplyChain.economicIndicators'), econIndices),
+    ].join('');
   }
 
   private renderSparkline(values: number[]): string {

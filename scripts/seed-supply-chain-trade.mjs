@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep, verifySeedKey } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -76,6 +76,145 @@ async function fetchShippingRates() {
   }
   console.log(`  Shipping rates: ${indices.length} indices`);
   return { indices, fetchedAt: new Date().toISOString(), upstreamUnavailable: false };
+}
+
+// ─── Container Indices (Shanghai Shipping Exchange) ───
+
+async function fetchSSEIndex(indexName, indexId, dataItemType, displayName, unit) {
+  try {
+    const resp = await fetch(`https://en.sse.net.cn/currentIndex?indexName=${indexName}`, {
+      headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!resp.ok) { console.warn(`  SSE ${indexName}: HTTP ${resp.status}`); return []; }
+    const json = await resp.json();
+    const lines = json?.data?.lineDataList;
+    if (!Array.isArray(lines)) { console.warn(`  SSE ${indexName}: no lineDataList`); return []; }
+    const composite = lines.find(l => l.dataItemTypeName === dataItemType);
+    if (!composite) { console.warn(`  SSE ${indexName}: ${dataItemType} not found`); return []; }
+    const currentValue = composite.currentContent;
+    const previousValue = composite.lastContent;
+    if (typeof currentValue !== 'number') return [];
+    const changePct = typeof composite.percentage === 'number' ? composite.percentage
+      : (previousValue > 0 ? ((currentValue - previousValue) / previousValue) * 100 : 0);
+    const observationDate = json.data?.currentDate || new Date().toISOString().slice(0, 10);
+    return [{
+      indexId, name: displayName, currentValue, previousValue: previousValue ?? currentValue,
+      changePct, unit, history: [], spikeAlert: false, _observationDate: observationDate,
+    }];
+  } catch (e) {
+    console.warn(`  SSE ${indexName}: ${e.message}`);
+    return [];
+  }
+}
+
+async function fetchSCFI() {
+  return fetchSSEIndex('scfi', 'SCFI', 'SCFI_T', 'SCFI - Shanghai Container Freight', 'USD/TEU');
+}
+
+async function fetchCCFI() {
+  return fetchSSEIndex('ccfi', 'CCFI', 'CCFI_T', 'CCFI - China Container Freight', 'index');
+}
+
+// ─── Baltic Dry Index (HandyBulk scrape) ───
+
+const BDI_INDEX_MAP = [
+  { label: 'Dry', id: 'BDI', name: 'BDI - Baltic Dry Index' },
+  { label: 'Capesize', id: 'BCI', name: 'BCI - Baltic Capesize Index' },
+  { label: 'Panamax', id: 'BPI', name: 'BPI - Baltic Panamax Index' },
+  { label: 'Supramax', id: 'BSI', name: 'BSI - Baltic Supramax Index' },
+  { label: 'Handysize', id: 'BHSI', name: 'BHSI - Baltic Handysize Index' },
+];
+
+async function fetchBDI() {
+  try {
+    const resp = await fetch('https://www.handybulk.com/baltic-dry-index/', {
+      headers: { 'User-Agent': CHROME_UA },
+      signal: AbortSignal.timeout(10_000),
+      redirect: 'manual',
+    });
+    if (!resp.ok && resp.status !== 301 && resp.status !== 302) {
+      console.warn(`  BDI: HTTP ${resp.status}`);
+      return [];
+    }
+    const contentLength = parseInt(resp.headers.get('content-length') || '0', 10);
+    if (contentLength > 500_000) { console.warn('  BDI: response too large'); return []; }
+    const html = await resp.text();
+    if (html.length > 500_000) { console.warn('  BDI: body too large'); return []; }
+
+    // Parse article date from heading (e.g., "13-March-2026" or "13-Mar-2026")
+    const dateMatch = html.match(/(\d{1,2})-(\w+)-(\d{4})/);
+    let articleDate = new Date().toISOString().slice(0, 10);
+    if (dateMatch) {
+      const parsed = new Date(`${dateMatch[2]} ${dateMatch[1]}, ${dateMatch[3]}`);
+      if (!isNaN(parsed.getTime())) articleDate = parsed.toISOString().slice(0, 10);
+    }
+
+    const indices = [];
+    for (const cfg of BDI_INDEX_MAP) {
+      const patterns = [
+        new RegExp(`Baltic ${cfg.label} Index \\(${cfg.id}\\)[^.]*?(?:reach|to|at)\\s+([\\d,]+)\\s*points`, 'i'),
+        new RegExp(`${cfg.id}[^.]*?(?:reach|to|at)\\s+([\\d,]+)\\s*points`, 'i'),
+        new RegExp(`Baltic ${cfg.label} Index \\(${cfg.id}\\)[^.]*?([\\d,]+)\\s*points`, 'i'),
+      ];
+      let currentValue = null;
+      for (const re of patterns) {
+        const m = html.match(re);
+        if (m) { currentValue = parseFloat(m[1].replace(/,/g, '')); break; }
+      }
+      if (currentValue == null || !Number.isFinite(currentValue)) continue;
+
+      let changePct = 0;
+      let previousValue = currentValue;
+      const deltaRe = new RegExp(`${cfg.id}\\)?[^.]*?(increased|decreased|gained|lost|dropped|rose)\\s+by\\s+([\\d,]+)\\s+points`, 'i');
+      const deltaMatch = html.match(deltaRe);
+      if (deltaMatch) {
+        const delta = parseFloat(deltaMatch[2].replace(/,/g, ''));
+        const isNeg = /decreased|lost|dropped/i.test(deltaMatch[1]);
+        const signedDelta = isNeg ? -delta : delta;
+        previousValue = currentValue - signedDelta;
+        changePct = previousValue !== 0 ? (signedDelta / previousValue) * 100 : 0;
+      }
+
+      indices.push({
+        indexId: cfg.id, name: cfg.name, currentValue, previousValue,
+        changePct, unit: 'index', history: [], spikeAlert: false, _observationDate: articleDate,
+      });
+    }
+    console.log(`  BDI: ${indices.length} indices parsed`);
+    return indices;
+  } catch (e) {
+    console.warn(`  BDI: ${e.message}`);
+    return [];
+  }
+}
+
+// ─── History accumulation (inline in canonical payload) ───
+
+function accumulateHistory(newIndices, previousPayload) {
+  if (!previousPayload?.indices?.length) {
+    for (const idx of newIndices) delete idx._observationDate;
+    return newIndices;
+  }
+  const prevMap = new Map();
+  for (const idx of previousPayload.indices) {
+    if (idx.indexId) prevMap.set(idx.indexId, idx);
+  }
+  const fallbackDate = new Date().toISOString().slice(0, 10);
+  for (const idx of newIndices) {
+    const prev = prevMap.get(idx.indexId);
+    const existingHistory = prev?.history ?? [];
+    if (idx.history?.length > 0) { delete idx._observationDate; continue; }
+    const obsDate = idx._observationDate || fallbackDate;
+    const last = existingHistory[existingHistory.length - 1];
+    const newHistory = [...existingHistory];
+    if (!last || last.date !== obsDate) {
+      newHistory.push({ date: obsDate, value: idx.currentValue });
+    }
+    idx.history = newHistory.slice(-24);
+    delete idx._observationDate;
+  }
+  return newIndices;
 }
 
 // ─── WTO helpers ───
@@ -297,8 +436,11 @@ async function fetchTariffTrends() {
 // ─── Main ───
 
 async function fetchAll() {
-  const [shipping, barriers, restrictions, flows, tariffs] = await Promise.allSettled([
+  const [shipping, scfi, ccfi, bdi, barriers, restrictions, flows, tariffs] = await Promise.allSettled([
     fetchShippingRates(),
+    fetchSCFI(),
+    fetchCCFI(),
+    fetchBDI(),
     fetchTradeBarriers(),
     fetchTradeRestrictions(),
     fetchTradeFlows(),
@@ -306,18 +448,37 @@ async function fetchAll() {
   ]);
 
   const sh = shipping.status === 'fulfilled' ? shipping.value : null;
+  const scfiResult = scfi.status === 'fulfilled' ? scfi.value : [];
+  const ccfiResult = ccfi.status === 'fulfilled' ? ccfi.value : [];
+  const bdiResult = bdi.status === 'fulfilled' ? bdi.value : [];
   const ba = barriers.status === 'fulfilled' ? barriers.value : null;
   const re = restrictions.status === 'fulfilled' ? restrictions.value : null;
   const fl = flows.status === 'fulfilled' ? flows.value : null;
   const ta = tariffs.status === 'fulfilled' ? tariffs.value : null;
 
   if (shipping.status === 'rejected') console.warn(`  Shipping failed: ${shipping.reason?.message || shipping.reason}`);
+  if (scfi.status === 'rejected') console.warn(`  SCFI failed: ${scfi.reason?.message || scfi.reason}`);
+  if (ccfi.status === 'rejected') console.warn(`  CCFI failed: ${ccfi.reason?.message || ccfi.reason}`);
+  if (bdi.status === 'rejected') console.warn(`  BDI failed: ${bdi.reason?.message || bdi.reason}`);
   if (barriers.status === 'rejected') console.warn(`  Barriers failed: ${barriers.reason?.message || barriers.reason}`);
   if (restrictions.status === 'rejected') console.warn(`  Restrictions failed: ${restrictions.reason?.message || restrictions.reason}`);
   if (flows.status === 'rejected') console.warn(`  Flows failed: ${flows.reason?.message || flows.reason}`);
   if (tariffs.status === 'rejected') console.warn(`  Tariffs failed: ${tariffs.reason?.message || tariffs.reason}`);
 
-  if (!sh && !ba && !re) throw new Error('All supply-chain/trade fetches failed');
+  const allIndices = [
+    ...(sh?.indices || []),
+    ...scfiResult,
+    ...ccfiResult,
+    ...bdiResult,
+  ];
+
+  if (allIndices.length === 0 && !ba && !re) throw new Error('All supply-chain/trade fetches failed');
+
+  // History accumulation: read previous payload, merge history
+  let previousPayload = null;
+  try { previousPayload = await verifySeedKey(KEYS.shipping); } catch { /* ignore */ }
+  const mergedIndices = accumulateHistory(allIndices, previousPayload);
+  console.log(`  Merged shipping indices: ${mergedIndices.length} (FRED: ${sh?.indices?.length ?? 0}, SCFI: ${scfiResult.length}, CCFI: ${ccfiResult.length}, BDI: ${bdiResult.length})`);
 
   // Write secondary keys BEFORE returning (runSeed calls process.exit after primary write)
   if (ba) await writeExtraKeyWithMeta(KEYS.barriers, ba, TRADE_TTL, ba.barriers?.length ?? 0);
@@ -325,7 +486,9 @@ async function fetchAll() {
   if (fl) { for (const [key, data] of Object.entries(fl)) await writeExtraKeyWithMeta(key, data, TRADE_TTL, data.flows?.length ?? 0); }
   if (ta) { for (const [key, data] of Object.entries(ta)) await writeExtraKeyWithMeta(key, data, TRADE_TTL, data.datapoints?.length ?? 0); }
 
-  return sh || { indices: [], fetchedAt: new Date().toISOString(), upstreamUnavailable: true };
+  return mergedIndices.length > 0
+    ? { indices: mergedIndices, fetchedAt: new Date().toISOString(), upstreamUnavailable: false }
+    : { indices: [], fetchedAt: new Date().toISOString(), upstreamUnavailable: true };
 }
 
 function validate(data) {
@@ -335,7 +498,7 @@ function validate(data) {
 runSeed('supply_chain', 'shipping', KEYS.shipping, fetchAll, {
   validateFn: validate,
   ttlSeconds: SHIPPING_TTL,
-  sourceVersion: 'fred-wto',
+  sourceVersion: 'fred-wto-sse-bdi',
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(1);
