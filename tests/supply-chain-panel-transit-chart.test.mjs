@@ -114,3 +114,89 @@ describe('SupplyChainPanel transit chart mount contract', () => {
     );
   });
 });
+
+const serverSrc = readFileSync(resolve(__dirname, '..', 'server', 'worldmonitor', 'supply-chain', 'v1', 'get-chokepoint-status.ts'), 'utf-8');
+
+describe('SupplyChainPanel restructure contract', () => {
+
+  it('activeHasData for shipping tab accepts chokepointData without FRED', () => {
+    const block = panelSrc.match(/const activeHasData[\s\S]*?;/);
+    assert.ok(block, 'activeHasData assignment should exist');
+    const shippingPart = block[0].slice(block[0].indexOf("'shipping'"));
+    assert.ok(
+      shippingPart.includes('chokepointData'),
+      'shipping activeHasData must check chokepointData (not just shippingData)'
+    );
+  });
+
+  it('renderShipping delegates to renderDisruptionSnapshot', () => {
+    const shippingMethod = panelSrc.match(/private\s+renderShipping\(\)[\s\S]*?\{([\s\S]*?)\n\s{2}\}/);
+    assert.ok(shippingMethod, 'renderShipping method should exist');
+    assert.ok(
+      shippingMethod[1].includes('renderDisruptionSnapshot()'),
+      'renderShipping must call renderDisruptionSnapshot'
+    );
+    assert.ok(
+      shippingMethod[1].includes('renderFredIndices()'),
+      'renderShipping must call renderFredIndices'
+    );
+  });
+
+  it('renderDisruptionSnapshot handles null chokepointData as loading state', () => {
+    const method = panelSrc.match(/private\s+renderDisruptionSnapshot\(\)[\s\S]*?\{([\s\S]*?)\n\s{2}\}/);
+    assert.ok(method, 'renderDisruptionSnapshot method should exist');
+    assert.ok(
+      method[1].includes('this.chokepointData === null'),
+      'must check for null chokepointData (loading state)'
+    );
+    assert.ok(
+      method[1].includes('loadingCorridors'),
+      'must show loading placeholder when chokepointData is null'
+    );
+  });
+
+  it('renderDisruptionSnapshot returns empty string for empty chokepoints', () => {
+    const method = panelSrc.match(/private\s+renderDisruptionSnapshot\(\)[\s\S]*?\{([\s\S]*?)\n\s{2}\}/);
+    assert.ok(method, 'renderDisruptionSnapshot method should exist');
+    assert.ok(
+      /if\s*\(!cps\?\.length\)\s*return\s*''/.test(method[1]),
+      'must return empty string when chokepoints array is empty'
+    );
+  });
+
+  it('chokepoint cards preserve data-cp-id and data-chart-cp attributes', () => {
+    assert.ok(
+      panelSrc.includes('data-cp-id="${escapeHtml(cp.name)}"'),
+      'cards must have data-cp-id for click delegation'
+    );
+    assert.ok(
+      panelSrc.includes('data-chart-cp="${escapeHtml(cp.name)}"'),
+      'expanded cards must have data-chart-cp for transit chart mount'
+    );
+  });
+
+  it('chokepoint description is conditionally hidden when empty', () => {
+    assert.ok(
+      panelSrc.includes("cp.description ? `<div class=\"trade-description\">"),
+      'description div must be conditional on non-empty description'
+    );
+  });
+
+  it('server description no longer contains riskSummary or warning count text', () => {
+    const descBlock = serverSrc.match(/const descriptions:\s*string\[\]\s*=\s*\[\];([\s\S]*?)description:\s*descriptions\.join/);
+    assert.ok(descBlock, 'description assembly block should exist');
+    const body = descBlock[1];
+    assert.ok(
+      !body.includes('riskSummary'),
+      'descriptions[] must not include riskSummary (it is in transitSummary)'
+    );
+    assert.ok(
+      !body.includes('Navigational warnings:'),
+      'descriptions[] must not include warning count text (use activeWarnings field)'
+    );
+    assert.ok(
+      !body.includes('AIS vessel disruptions:'),
+      'descriptions[] must not include disruption count text (use aisDisruptions field)'
+    );
+  });
+});

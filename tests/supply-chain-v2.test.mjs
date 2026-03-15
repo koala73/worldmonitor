@@ -218,9 +218,11 @@ describe('Chokepoint handler v2 changes', () => {
       'Should set aisDisruptions to matchedDisruptions.length');
   });
 
-  it('description includes warning and disruption counts when present', () => {
-    assert.match(src, /Navigational warnings:\s*\$\{matchedWarnings\.length\}/);
-    assert.match(src, /AIS vessel disruptions:\s*\$\{matchedDisruptions\.length\}/);
+  it('description does not duplicate warning/disruption counts (use structured fields)', () => {
+    assert.doesNotMatch(src, /descriptions\.push\(`Navigational warnings:/,
+      'Warning counts should not be in description text (use activeWarnings field)');
+    assert.doesNotMatch(src, /descriptions\.push\(`AIS vessel disruptions:/,
+      'Disruption counts should not be in description text (use aisDisruptions field)');
   });
 
   it('description shows threatDescription when set', () => {
