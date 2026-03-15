@@ -568,3 +568,51 @@ export function getInterestingFlights(): MilitaryFlight[] {
   if (!flightCache) return [];
   return flightCache.data.filter((f) => f.isInteresting);
 }
+
+// SAR (Search and Rescue) callsign patterns
+// Includes USCG, NOAA WP-3D/GIV recon, military rescue, civil SAR
+const SAR_CALLSIGN_PATTERNS = [
+  /^RCH\d/i,       // USAF MAC rescue
+  /^DUSTOFF/i,     // US Army medevac
+  /^PEDRO/i,       // USAF pararescue
+  /^JOLLY/i,       // USAF HH-60 rescue
+  /^KING\d/i,      // USAF HC-130 combat rescue tanker
+  /^NOAA\d/i,      // NOAA research/recon aircraft
+  /^AF3\d{2}/i,    // AFRES WC-130J hurricane hunter
+  /^GUARDIAN/i,    // USCG callsign
+  /^SAR\d/i,       // explicit SAR callsign
+  /^RESCUE/i,      // explicit rescue
+  /^LIFE\d/i,      // Lifeflight / air ambulance
+  /^MEDEVAC/i,     // medical evacuation
+  /^LIFEGUARD/i,   // FAA LIFEGUARD medevac priority
+  /^EVAC\d/i,      // evacuation flight
+  /^CGR\d/i,       // Coast Guard Rescue
+];
+
+const SAR_TYPE_CODES = new Set([
+  'HH60',  // Sikorsky HH-60 Jayhawk (USCG)
+  'HC130', // USCG HC-130 Hercules
+  'WP3',   // NOAA WP-3D Orion
+]);
+
+/**
+ * Filter cached military flights to Search and Rescue (SAR) operations.
+ */
+export function getSarFlights(): MilitaryFlight[] {
+  if (!flightCache) return [];
+  return flightCache.data.filter(f => {
+    const cs = (f.callsign ?? '').toUpperCase();
+    if (SAR_CALLSIGN_PATTERNS.some(p => p.test(cs))) return true;
+    const typeCode = (f.aircraftType ?? '').toUpperCase().replace(/[-\s]/g, '');
+    if (SAR_TYPE_CODES.has(typeCode)) return true;
+    return false;
+  });
+}
+
+/**
+ * Check if a callsign is a hurricane reconnaissance aircraft.
+ */
+export function isHurricaneRecon(callsign: string): boolean {
+  const cs = callsign.toUpperCase();
+  return /^NOAA4[23]/.test(cs) || /^AF3\d{2}/.test(cs);
+}

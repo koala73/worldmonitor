@@ -338,6 +338,11 @@ const ALLOWED_DOMAINS = [
   'www.csb.gov',           // Chemical Safety Board incident reports
   'www.phmsa.dot.gov',     // PHMSA pipeline/hazmat incidents
   'www.ferc.gov',          // FERC hydropower/dam safety
+  // Emergency round 3
+  'emergency.copernicus.eu', // EU Copernicus Emergency Management Service
+  'www.cisa.gov',          // CISA critical infrastructure advisories
+  'inciweb.wildfire.gov',  // InciWeb wildfire incidents (official US)
+  'www.nhc.noaa.gov',      // NHC hurricane recon VDMs RSS
 ];
 
 export default async function handler(req) {
