@@ -646,6 +646,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
       '../../../_shared/redis': resolve(root, 'server/_shared/redis.ts'),
       '../../../_shared/llm-health': resolve(root, 'tests/helpers/llm-health-stub.ts'),
       '../../../_shared/llm': resolve(root, 'server/_shared/llm.ts'),
+      '../../../_shared/hash': resolve(root, 'server/_shared/hash.ts'),
     });
   }
 

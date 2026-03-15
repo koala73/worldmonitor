@@ -814,7 +814,10 @@
       "yes": "Ja",
       "no": "NEIN",
       "vol": "Bd",
-      "closes": "Schließt"
+      "closes": "Schließt",
+      "leanYes": "Lean Yes",
+      "leanNo": "Lean No",
+      "tossUp": "Toss-up"
     },
     "deckgl": {
       "views": {

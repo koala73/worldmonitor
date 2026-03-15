@@ -83,3 +83,13 @@ message TradeBarrier {
   // WTO source document URL (must be http/https protocol).
   string source_url = 9;
 }
+
+// Monthly US customs duties revenue from Treasury MTS data.
+message CustomsRevenueMonth {
+  string record_date = 1;
+  int32 fiscal_year = 2;
+  int32 calendar_year = 3;
+  int32 calendar_month = 4;
+  double monthly_amount_billions = 5;
+  double fytd_amount_billions = 6;
+}

@@ -402,9 +402,13 @@ if ('__TAURI_INTERNALS__' in window || '__TAURI__' in window) {
 }
 
 if (!('__TAURI_INTERNALS__' in window) && !('__TAURI__' in window) && 'serviceWorker' in navigator) {
-  // Auto-reload when a new SW takes control (fixes stale HTML after deploys)
+  // Auto-reload when a NEW SW replaces an existing one (fixes stale HTML after deploys).
+  // Skip on first visit: skipWaiting+clientsClaim fires controllerchange when the SW
+  // claims the page for the first time, causing a useless full reload on every new session.
+  const hadController = !!navigator.serviceWorker.controller;
   let refreshing = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController) return;
     if (refreshing) return;
     refreshing = true;
     window.location.reload();

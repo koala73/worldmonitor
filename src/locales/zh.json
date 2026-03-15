@@ -824,7 +824,10 @@
       "yes": "是",
       "no": "否",
       "vol": "交易量",
-      "closes": "截止"
+      "closes": "截止",
+      "leanYes": "Lean Yes",
+      "leanNo": "Lean No",
+      "tossUp": "Toss-up"
     },
     "stablecoins": {
       "pegHealth": "锚定健康度",

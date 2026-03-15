@@ -3846,7 +3846,7 @@ async function startPortWatchSeedLoop() {
 
 const CORRIDOR_RISK_BASE_URL = 'https://corridorrisk.io/api/corridors';
 const CORRIDOR_RISK_REDIS_KEY = 'supply_chain:corridorrisk:v1';
-const CORRIDOR_RISK_TTL = 7200;
+const CORRIDOR_RISK_TTL = 14400; // 4h (seed runs hourly, gives 3 retries before expiry)
 const CORRIDOR_RISK_SEED_INTERVAL_MS = 60 * 60 * 1000;
 // API name -> canonical chokepoint ID (partial substring match)
 const CORRIDOR_RISK_NAME_MAP = [

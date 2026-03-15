@@ -814,7 +814,10 @@
       "yes": "Ano",
       "no": "Ne",
       "vol": "Obj",
-      "closes": "Zavírá"
+      "closes": "Zavírá",
+      "leanYes": "Lean Yes",
+      "leanNo": "Lean No",
+      "tossUp": "Toss-up"
     },
     "stablecoins": {
       "pegHealth": "Zdraví vazby (Peg)",

@@ -29,7 +29,8 @@ export type DataSourceId =
   | 'wto_trade'
   | 'supply_chain'
   | 'security_advisories'
-  | 'gpsjam';
+  | 'gpsjam'
+  | 'treasury_revenue';
 
 // AppContext lives in src/app/app-context.ts because it references
 // components, services, and utils (top-level aggregate type).

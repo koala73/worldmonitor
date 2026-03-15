@@ -12,7 +12,7 @@ if (_isDirectRun) loadEnvFile(import.meta.url);
 const CANONICAL_KEY = 'forecast:predictions:v2';
 const PRIOR_KEY = 'forecast:predictions:prior:v2';
 const HISTORY_KEY = 'forecast:predictions:history:v1';
-const TTL_SECONDS = 3600;
+const TTL_SECONDS = 4800; // 80min (cron runs hourly, 20min buffer for cold start + LLM latency)
 const HISTORY_MAX_RUNS = 200;
 const HISTORY_MAX_FORECASTS = 25;
 const HISTORY_TTL_SECONDS = 45 * 24 * 60 * 60;
@@ -2573,14 +2573,16 @@ if (_isDirectRun) {
       }
 
       try {
+        console.log('  [Trace] Starting R2 export...');
         const pointer = await writeForecastTraceArtifacts(data, { runId: meta?.runId || `${Date.now()}` });
         if (pointer) {
-          console.log(`  Trace artifacts written: ${pointer.summaryKey}`);
+          console.log(`  [Trace] Written: ${pointer.summaryKey} (${pointer.tracedForecastCount} forecasts)`);
         } else {
-          console.log('  Trace artifacts skipped: Cloudflare R2 trace storage not configured');
+          console.log('  [Trace] Skipped: R2 storage not configured');
         }
       } catch (err) {
         console.warn(`  [Trace] Export failed: ${err.message}`);
+        if (err.stack) console.warn(`  [Trace] Stack: ${err.stack.split('\n').slice(0, 3).join(' | ')}`);
       }
     },
     extraKeys: [

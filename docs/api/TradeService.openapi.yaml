@@ -187,6 +187,32 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/trade/v1/get-customs-revenue:
+        get:
+            tags:
+                - TradeService
+            summary: GetCustomsRevenue
+            description: Get US customs duties revenue (Treasury MTS data, seeded by Railway).
+            operationId: GetCustomsRevenue
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetCustomsRevenueResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -459,3 +485,37 @@ components:
                     type: string
                     description: WTO source document URL (must be http/https protocol).
             description: SPS or TBT trade barrier notification.
+        GetCustomsRevenueRequest:
+            type: object
+        GetCustomsRevenueResponse:
+            type: object
+            properties:
+                months:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CustomsRevenueMonth'
+                fetchedAt:
+                    type: string
+                upstreamUnavailable:
+                    type: boolean
+        CustomsRevenueMonth:
+            type: object
+            properties:
+                recordDate:
+                    type: string
+                fiscalYear:
+                    type: integer
+                    format: int32
+                calendarYear:
+                    type: integer
+                    format: int32
+                calendarMonth:
+                    type: integer
+                    format: int32
+                monthlyAmountBillions:
+                    type: number
+                    format: double
+                fytdAmountBillions:
+                    type: number
+                    format: double
+            description: Monthly US customs duties revenue from Treasury MTS data.

@@ -32,6 +32,7 @@ const BOOTSTRAP_KEYS = {
   correlationCards:   'correlation:cards-bootstrap:v1',
   forecasts:         'forecast:predictions:v2',
   securityAdvisories: 'intelligence:advisories-bootstrap:v1',
+  customsRevenue:    'trade:customs-revenue:v1',
 };
 
 const STANDALONE_KEYS = {
@@ -88,7 +89,7 @@ const SEED_META = {
   marketQuotes:     { key: 'seed-meta:market:stocks',         maxStaleMin: 30 },
   commodityQuotes:  { key: 'seed-meta:market:commodities',    maxStaleMin: 30 },
   // RPC-populated keys — auto-tracked by cachedFetchJson seed-meta writes
-  serviceStatuses:  { key: 'seed-meta:infra:service-statuses',    maxStaleMin: 120 },
+  // serviceStatuses: removed — RPC-populated, no seed-meta after PR #1649
   macroSignals:     { key: 'seed-meta:economic:macro-signals',    maxStaleMin: 60 },
   bisPolicy:        { key: 'seed-meta:economic:bis:policy',       maxStaleMin: 2880 },
   bisExchange:      { key: 'seed-meta:economic:bis:eer',          maxStaleMin: 2880 },
@@ -98,9 +99,9 @@ const SEED_META = {
   minerals:         { key: 'seed-meta:supply_chain:minerals',     maxStaleMin: 10080 },
   giving:           { key: 'seed-meta:giving:summary',            maxStaleMin: 10080 },
   gpsjam:           { key: 'seed-meta:intelligence:gpsjam',       maxStaleMin: 720 },
-  cableHealth:      { key: 'seed-meta:cable-health',              maxStaleMin: 60 },
+  // cableHealth: removed — RPC-populated, no seed-meta after PR #1649
   positiveGeoEvents:{ key: 'seed-meta:positive-events:geo',       maxStaleMin: 60 },
-  riskScores:       { key: 'seed-meta:risk:scores:sebuf',          maxStaleMin: 30 },
+  // riskScores: removed — RPC-populated, no seed-meta after PR #1649
   iranEvents:       { key: 'seed-meta:conflict:iran-events',      maxStaleMin: 10080 },
   ucdpEvents:       { key: 'seed-meta:conflict:ucdp-events',      maxStaleMin: 420 },
   militaryFlights:  { key: 'seed-meta:military:flights',           maxStaleMin: 15 },
@@ -124,6 +125,7 @@ const SEED_META = {
   transitSummaries:    { key: 'seed-meta:supply_chain:transit-summaries',    maxStaleMin: 15 },
   usniFleet:           { key: 'seed-meta:military:usni-fleet',               maxStaleMin: 420 },
   securityAdvisories:  { key: 'seed-meta:intelligence:advisories',           maxStaleMin: 90 },
+  customsRevenue:      { key: 'seed-meta:trade:customs-revenue',              maxStaleMin: 1440 },
 };
 
 // Standalone keys that are populated on-demand by RPC handlers (not seeds).
@@ -134,6 +136,8 @@ const ON_DEMAND_KEYS = new Set([
   'bisPolicy', 'bisExchange', 'bisCredit',
   'macroSignals', 'shippingRates', 'chokepoints', 'minerals', 'giving',
   'cyberThreatsRpc', 'militaryBases', 'temporalAnomalies', 'displacement',
+  'corridorrisk', // intermediate key; data flows through transit-summaries:v1
+  'riskScores', 'serviceStatuses', // RPC-populated; no seed-meta after PR #1649 removed it from cachedFetchJson
 ]);
 
 // Keys where 0 records is a valid healthy state (e.g. no airports closed).
@@ -182,7 +186,7 @@ function dataSize(parsed) {
                       'chokepoints', 'minerals', 'anomalies', 'flows', 'bases', 'flights',
                       'theaters', 'fleets', 'warnings', 'closures', 'cables',
                       'airports', 'closedIcaos', 'categories', 'regions', 'entries', 'satellites',
-                      'sectors', 'statuses', 'scores', 'topics', 'advisories']) {
+                      'sectors', 'statuses', 'scores', 'topics', 'advisories', 'months']) {
       if (Array.isArray(parsed[k])) return parsed[k].length;
     }
     return Object.keys(parsed).length;
@@ -193,7 +197,8 @@ function dataSize(parsed) {
 export default async function handler(req) {
   const headers = {
     'Content-Type': 'application/json',
-    'Cache-Control': 'no-cache, no-store',
+    'Cache-Control': 'private, no-store, max-age=0',
+    'CDN-Cache-Control': 'no-store',
     'Access-Control-Allow-Origin': '*',
   };
 

@@ -38,7 +38,10 @@ function resolveR2StorageConfig(env = process.env, options = {}) {
     .replace(/^\/+|\/+$/g, '');
   const forcePathStyle = parseBoolean(getEnvValue(env, ['CLOUDFLARE_R2_FORCE_PATH_STYLE']), true);
 
-  if (!bucket || !accountId) return null;
+  if (!bucket || !accountId) {
+    console.log(`  [R2] Config: accountId=${accountId ? 'set' : 'MISSING'}, bucket=${bucket ? 'set' : 'MISSING'}`);
+    return null;
+  }
 
   if (endpoint && accessKeyId && secretAccessKey) {
     return {

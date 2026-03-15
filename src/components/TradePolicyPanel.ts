@@ -4,19 +4,21 @@ import type {
   GetTariffTrendsResponse,
   GetTradeFlowsResponse,
   GetTradeBarriersResponse,
+  GetCustomsRevenueResponse,
 } from '@/services/trade';
 import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
 import { isFeatureAvailable } from '@/services/runtime-config';
 import { isDesktopRuntime } from '@/services/runtime';
 
-type TabId = 'restrictions' | 'tariffs' | 'flows' | 'barriers';
+type TabId = 'restrictions' | 'tariffs' | 'flows' | 'barriers' | 'revenue';
 
 export class TradePolicyPanel extends Panel {
   private restrictionsData: GetTradeRestrictionsResponse | null = null;
   private tariffsData: GetTariffTrendsResponse | null = null;
   private flowsData: GetTradeFlowsResponse | null = null;
   private barriersData: GetTradeBarriersResponse | null = null;
+  private revenueData: GetCustomsRevenueResponse | null = null;
   private activeTab: TabId = 'restrictions';
 
   constructor() {
@@ -52,22 +54,35 @@ export class TradePolicyPanel extends Panel {
     this.render();
   }
 
+  public updateRevenue(data: GetCustomsRevenueResponse): void {
+    this.revenueData = data;
+    if (isDesktopRuntime() && !isFeatureAvailable('wtoTrade') && this.activeTab !== 'revenue') {
+      this.activeTab = 'revenue';
+    }
+    this.render();
+  }
+
   private render(): void {
-    // Check for API key
-    if (isDesktopRuntime() && !isFeatureAvailable('wtoTrade')) {
+    const wtoAvailable = !isDesktopRuntime() || isFeatureAvailable('wtoTrade');
+    const hasTariffs = wtoAvailable && this.tariffsData && this.tariffsData.datapoints?.length > 0;
+    const hasFlows = wtoAvailable && this.flowsData && this.flowsData.flows?.length > 0;
+    const hasBarriers = wtoAvailable && this.barriersData && this.barriersData.barriers?.length > 0;
+    const hasRevenue = this.revenueData && this.revenueData.months?.length > 0;
+
+    if (!wtoAvailable && !hasRevenue) {
       this.setContent(`<div class="economic-empty">${t('components.tradePolicy.apiKeyMissing')}</div>`);
       return;
     }
 
-    const hasTariffs = this.tariffsData && this.tariffsData.datapoints?.length > 0;
-    const hasFlows = this.flowsData && this.flowsData.flows?.length > 0;
-    const hasBarriers = this.barriersData && this.barriersData.barriers?.length > 0;
+    if (!wtoAvailable && this.activeTab !== 'revenue') {
+      this.activeTab = 'revenue';
+    }
 
     const tabsHtml = `
       <div class="panel-tabs">
-        <button class="panel-tab ${this.activeTab === 'restrictions' ? 'active' : ''}" data-tab="restrictions">
+        ${wtoAvailable ? `<button class="panel-tab ${this.activeTab === 'restrictions' ? 'active' : ''}" data-tab="restrictions">
           ${t('components.tradePolicy.restrictions')}
-        </button>
+        </button>` : ''}
         ${hasTariffs ? `<button class="panel-tab ${this.activeTab === 'tariffs' ? 'active' : ''}" data-tab="tariffs">
           ${t('components.tradePolicy.tariffs')}
         </button>` : ''}
@@ -77,23 +92,28 @@ export class TradePolicyPanel extends Panel {
         ${hasBarriers ? `<button class="panel-tab ${this.activeTab === 'barriers' ? 'active' : ''}" data-tab="barriers">
           ${t('components.tradePolicy.barriers')}
         </button>` : ''}
+        ${hasRevenue ? `<button class="panel-tab ${this.activeTab === 'revenue' ? 'active' : ''}" data-tab="revenue">
+          ${t('components.tradePolicy.revenue')}
+        </button>` : ''}
       </div>
     `;
 
-    // Only show unavailable banner when active tab has NO data and upstream is down
     const activeHasData = this.activeTab === 'restrictions'
       ? (this.restrictionsData?.restrictions?.length ?? 0) > 0
       : this.activeTab === 'tariffs'
       ? (this.tariffsData?.datapoints?.length ?? 0) > 0
       : this.activeTab === 'flows'
       ? (this.flowsData?.flows?.length ?? 0) > 0
-      : (this.barriersData?.barriers?.length ?? 0) > 0;
+      : this.activeTab === 'barriers'
+      ? (this.barriersData?.barriers?.length ?? 0) > 0
+      : (this.revenueData?.months?.length ?? 0) > 0;
     const activeData = this.activeTab === 'restrictions' ? this.restrictionsData
       : this.activeTab === 'tariffs' ? this.tariffsData
       : this.activeTab === 'flows' ? this.flowsData
-      : this.barriersData;
+      : this.activeTab === 'barriers' ? this.barriersData
+      : this.revenueData;
     const unavailableBanner = !activeHasData && activeData?.upstreamUnavailable
-      ? `<div class="economic-warning">${t('components.tradePolicy.upstreamUnavailable')}</div>`
+      ? `<div class="economic-warning">${this.activeTab === 'revenue' ? t('components.tradePolicy.treasuryUnavailable') : t('components.tradePolicy.upstreamUnavailable')}</div>`
       : '';
 
     let contentHtml = '';
@@ -102,14 +122,17 @@ export class TradePolicyPanel extends Panel {
       case 'tariffs': contentHtml = this.renderTariffs(); break;
       case 'flows': contentHtml = this.renderFlows(); break;
       case 'barriers': contentHtml = this.renderBarriers(); break;
+      case 'revenue': contentHtml = this.renderRevenue(); break;
     }
+
+    const source = this.activeTab === 'revenue' ? t('components.tradePolicy.sourceTreasury') : t('components.tradePolicy.sourceWto');
 
     this.setContent(`
       ${tabsHtml}
       ${unavailableBanner}
       <div class="economic-content">${contentHtml}</div>
       <div class="economic-footer">
-        <span class="economic-source">WTO</span>
+        <span class="economic-source">${source}</span>
       </div>
     `);
 
@@ -179,8 +202,8 @@ export class TradePolicyPanel extends Panel {
 
     return `<div class="trade-flows-list">
       ${this.flowsData.flows.map(f => {
-        const exportArrow = f.yoyExportChange >= 0 ? '▲' : '▼';
-        const importArrow = f.yoyImportChange >= 0 ? '▲' : '▼';
+        const exportArrow = f.yoyExportChange >= 0 ? '\u25B2' : '\u25BC';
+        const importArrow = f.yoyImportChange >= 0 ? '\u25B2' : '\u25BC';
         const exportClass = f.yoyExportChange >= 0 ? 'change-positive' : 'change-negative';
         const importClass = f.yoyImportChange >= 0 ? 'change-positive' : 'change-negative';
         return `<div class="trade-flow-card">
@@ -226,6 +249,64 @@ export class TradePolicyPanel extends Panel {
           </div>
         </div>`;
       }).join('')}
+    </div>`;
+  }
+
+  private renderRevenue(): string {
+    if (!this.revenueData || !this.revenueData.months?.length) {
+      return `<div class="economic-empty">${t('components.tradePolicy.noRevenueData')}</div>`;
+    }
+
+    const months = this.revenueData.months;
+    const latest = months[months.length - 1]!;
+    const latestFy = latest.fiscalYear;
+
+    const currentFyMonths = months.filter(m => m.fiscalYear === latestFy);
+    const currentFyCount = currentFyMonths.length;
+    const priorFyAll = months.filter(m => m.fiscalYear === latestFy - 1);
+    const priorFyMonths = priorFyAll.slice(0, currentFyCount);
+    const currentFytd = currentFyMonths.reduce((s, m) => s + m.monthlyAmountBillions, 0);
+    const priorFytd = priorFyMonths.reduce((s, m) => s + m.monthlyAmountBillions, 0);
+    const yoyChange = priorFytd > 0 ? ((currentFytd - priorFytd) / priorFytd) * 100 : 0;
+    const changeClass = yoyChange >= 0 ? 'change-negative' : 'change-positive';
+    const arrow = yoyChange >= 0 ? '\u25B2' : '\u25BC';
+
+    const summaryHtml = `
+      <div class="trade-revenue-summary">
+        <div class="trade-revenue-headline">
+          <span class="trade-revenue-label">${t('components.tradePolicy.fytdLabel', { year: String(latestFy) })}</span>
+          <span class="trade-revenue-value">$${currentFytd.toFixed(1)}B</span>
+        </div>
+        <div class="trade-revenue-compare">
+          ${t('components.tradePolicy.vsPriorFy', { year: String(latestFy - 1) })}: $${priorFytd.toFixed(1)}B
+          <span class="${changeClass}">${arrow} ${Math.abs(yoyChange).toFixed(0)}%</span>
+        </div>
+      </div>
+    `;
+
+    const priorAvg = priorFyMonths.length > 0 ? priorFytd / priorFyMonths.length : 0;
+
+    const rows = [...months].reverse().slice(0, 24).map(m => {
+      const highlight = m.monthlyAmountBillions > priorAvg * 2 ? ' class="trade-revenue-spike"' : '';
+      return `<tr${highlight}>
+        <td>${m.recordDate}</td>
+        <td>$${m.monthlyAmountBillions.toFixed(1)}B</td>
+        <td>$${m.fytdAmountBillions.toFixed(1)}B</td>
+      </tr>`;
+    }).join('');
+
+    return `${summaryHtml}
+    <div class="trade-tariffs-table">
+      <table>
+        <thead>
+          <tr>
+            <th>${t('components.tradePolicy.colDate')}</th>
+            <th>${t('components.tradePolicy.colMonthly')}</th>
+            <th>${t('components.tradePolicy.colFytd')}</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
     </div>`;
   }
 

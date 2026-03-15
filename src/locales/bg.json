@@ -824,7 +824,10 @@
       "yes": "Да",
       "no": "Не",
       "vol": "Обем",
-      "closes": "Затвария"
+      "closes": "Затвария",
+      "leanYes": "Lean Yes",
+      "leanNo": "Lean No",
+      "tossUp": "Toss-up"
     },
     "stablecoins": {
       "pegHealth": "Здравина на пега",

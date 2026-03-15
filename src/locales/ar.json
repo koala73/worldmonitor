@@ -790,7 +790,10 @@
       "yes": "نعم",
       "no": "لا",
       "vol": "الحجم",
-      "closes": "يغلق"
+      "closes": "يغلق",
+      "leanYes": "Lean Yes",
+      "leanNo": "Lean No",
+      "tossUp": "Toss-up"
     },
     "stablecoins": {
       "pegHealth": "صحة الربط",

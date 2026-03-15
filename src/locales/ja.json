@@ -824,7 +824,10 @@
       "yes": "はい",
       "no": "いいえ",
       "vol": "出来高",
-      "closes": "締切"
+      "closes": "締切",
+      "leanYes": "Lean Yes",
+      "leanNo": "Lean No",
+      "tossUp": "Toss-up"
     },
     "stablecoins": {
       "pegHealth": "ペグ健全性",

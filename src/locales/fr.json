@@ -790,7 +790,10 @@
       "yes": "Oui",
       "no": "Non",
       "vol": "Vol",
-      "closes": "Ferme"
+      "closes": "Ferme",
+      "leanYes": "Lean Yes",
+      "leanNo": "Lean No",
+      "tossUp": "Toss-up"
     },
     "stablecoins": {
       "pegHealth": "Santé de l'ancrage",

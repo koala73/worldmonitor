@@ -63,7 +63,7 @@ describe('deploy/cache configuration guardrails', () => {
 });
 
 const getSecurityHeaders = () => {
-  const rule = vercelConfig.headers.find((entry) => entry.source === '/((?!docs).*)');
+  const rule = vercelConfig.headers.find((entry) => entry.source === '/(.*)');
   return rule?.headers ?? [];
 };
 
@@ -93,7 +93,7 @@ describe('security header guardrails', () => {
     const expectedDisabled = [
       'camera=()',
       'microphone=()',
-      'geolocation=(self)',
+      'geolocation=()',
       'accelerometer=()',
       'bluetooth=()',
       'display-capture=()',
@@ -123,11 +123,11 @@ describe('security header guardrails', () => {
         `Permissions-Policy should delegate ${api} to YouTube origins`
       );
     }
-    // picture-in-picture also includes Cloudflare challenges
+    // picture-in-picture delegates to self + YouTube
     assert.match(
       policy,
-      /picture-in-picture=\(self "https:\/\/www\.youtube\.com" "https:\/\/www\.youtube-nocookie\.com" "https:\/\/challenges\.cloudflare\.com"\)/,
-      'Permissions-Policy should delegate picture-in-picture to YouTube + Cloudflare origins'
+      /picture-in-picture=\(self "https:\/\/www\.youtube\.com" "https:\/\/www\.youtube-nocookie\.com"\)/,
+      'Permissions-Policy should delegate picture-in-picture to YouTube origins'
     );
   });
 

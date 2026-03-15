@@ -69,6 +69,13 @@ async function fetchKalshiEvents() {
   }
 }
 
+function kalshiTitle(marketTitle, eventTitle) {
+  if (!marketTitle) return eventTitle || '';
+  if (marketTitle.includes('?') || marketTitle.length > 60) return marketTitle;
+  if (!eventTitle || marketTitle === eventTitle) return marketTitle;
+  return `${eventTitle}: ${marketTitle}`;
+}
+
 async function fetchKalshiMarkets() {
   const events = await fetchKalshiEvents();
   const results = [];
@@ -94,8 +101,11 @@ async function fetchKalshiMarkets() {
     const rawPrice = parseFloat(topMarket.last_price_dollars);
     const yesPrice = Number.isFinite(rawPrice) ? +(rawPrice * 100).toFixed(1) : 50;
 
+    const marketTitle = topMarket.yes_sub_title || topMarket.title || '';
+    const title = kalshiTitle(marketTitle, event.title);
+
     results.push({
-      title: topMarket.yes_sub_title || topMarket.title || event.title,
+      title,
       yesPrice,
       volume,
       url: `https://kalshi.com/markets/${topMarket.ticker}`,
