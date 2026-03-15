@@ -328,6 +328,16 @@ const ALLOWED_DOMAINS = [
   'tfr.faa.gov',           // FAA Temporary Flight Restrictions
   'www.nrc.gov',           // NRC Nuclear Regulatory Commission
   'promedmail.org',        // ProMED disease surveillance
+  // Global emergency services (round 2)
+  'www.metoc.navy.mil',    // JTWC tropical cyclone advisories
+  'www.iaea.org',          // IAEA nuclear safety news
+  'fews.net',              // FEWS NET famine early warning
+  'www.fews.net',          // FEWS NET (www variant)
+  'www.nerc.com',          // NERC power grid reliability alerts
+  'www.energy.gov',        // DOE CESER energy emergency alerts
+  'www.csb.gov',           // Chemical Safety Board incident reports
+  'www.phmsa.dot.gov',     // PHMSA pipeline/hazmat incidents
+  'www.ferc.gov',          // FERC hydropower/dam safety
 ];
 
 export default async function handler(req) {
