@@ -824,7 +824,10 @@
       "yes": "Ναι",
       "no": "Όχι",
       "vol": "Όγκ",
-      "closes": "Κλείνει"
+      "closes": "Κλείνει",
+      "leanYes": "Lean Yes",
+      "leanNo": "Lean No",
+      "tossUp": "Toss-up"
     },
     "stablecoins": {
       "pegHealth": "Υγεία Σύνδεσης",

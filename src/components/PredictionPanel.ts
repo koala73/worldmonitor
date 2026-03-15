@@ -19,6 +19,12 @@ export class PredictionPanel extends Panel {
     return `$${volume.toFixed(0)}`;
   }
 
+  private convictionLabel(yes: number): { label: string; cls: string } {
+    if (yes >= 60) return { label: t('components.predictions.leanYes'), cls: 'conviction-yes' };
+    if (yes <= 40) return { label: t('components.predictions.leanNo'), cls: 'conviction-no' };
+    return { label: t('components.predictions.tossUp'), cls: 'conviction-neutral' };
+  }
+
   public renderPredictions(data: PredictionMarket[]): void {
     if (data.length === 0) {
       this.showError(t('common.failedPredictions'));
@@ -36,38 +42,41 @@ export class PredictionPanel extends Panel {
           ? `<a href="${safeUrl}" target="_blank" rel="noopener" class="prediction-question prediction-link">${escapeHtml(p.title)}</a>`
           : `<div class="prediction-question">${escapeHtml(p.title)}</div>`;
 
-        let expiryHtml = '';
+        let expiryStr = '';
         if (p.endDate) {
           const d = new Date(p.endDate);
           if (Number.isFinite(d.getTime())) {
-            const formatted = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-            expiryHtml = `<span class="prediction-expiry">${t('components.predictions.closes')}: ${formatted}</span>`;
+            expiryStr = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
           }
         }
 
         const isKalshi = p.source === 'kalshi';
         const sourceLabel = isKalshi ? 'Kalshi' : 'Polymarket';
-        const sourceBadge = `<span class="prediction-source" data-source="${isKalshi ? 'kalshi' : 'polymarket'}">${sourceLabel}</span>`;
+        const srcClass = isKalshi ? 'kalshi' : 'polymarket';
+        const { label: convLabel, cls: convCls } = this.convictionLabel(yesPercent);
 
-        const metaHtml = (volumeStr || expiryHtml)
-          ? `<div class="prediction-meta">${volumeStr ? `<span class="prediction-volume">${t('components.predictions.vol')}: ${volumeStr}</span>` : ''}${expiryHtml}</div>`
-          : '';
+        const yesStrong = yesPercent >= 60 ? ' prediction-bar-strong' : '';
+        const noStrong = noPercent >= 60 ? ' prediction-bar-strong' : '';
 
-        return `
-      <div class="prediction-item">
-        ${titleHtml}
-        ${sourceBadge}
-        ${metaHtml}
+        return `<div class="prediction-item prediction-src-${srcClass}">
+        <div class="prediction-head">
+          <span class="prediction-source" data-source="${srcClass}">${sourceLabel}</span>
+          ${titleHtml}
+        </div>
+        <div class="prediction-meta">
+          ${volumeStr ? `<span>${t('components.predictions.vol')}: ${volumeStr}</span>` : ''}
+          ${expiryStr ? `<span>${t('components.predictions.closes')}: ${expiryStr}</span>` : ''}
+          <span class="prediction-conviction ${convCls}">${convLabel}</span>
+        </div>
         <div class="prediction-bar">
-          <div class="prediction-yes" style="width: ${yesPercent}%">
+          <div class="prediction-yes${yesStrong}" style="width:${yesPercent}%">
             <span class="prediction-label">${t('components.predictions.yes')} ${yesPercent}%</span>
           </div>
-          <div class="prediction-no" style="width: ${noPercent}%">
+          <div class="prediction-no${noStrong}" style="width:${noPercent}%">
             <span class="prediction-label">${t('components.predictions.no')} ${noPercent}%</span>
           </div>
         </div>
-      </div>
-    `;
+      </div>`;
       })
       .join('');
 

@@ -824,7 +824,10 @@
       "yes": "예",
       "no": "아니오",
       "vol": "거래량",
-      "closes": "마감"
+      "closes": "마감",
+      "leanYes": "Lean Yes",
+      "leanNo": "Lean No",
+      "tossUp": "Toss-up"
     },
     "stablecoins": {
       "pegHealth": "페그 건전성",

@@ -824,7 +824,10 @@
       "yes": "Da",
       "no": "Nu",
       "vol": "Vol",
-      "closes": "Se închide"
+      "closes": "Se închide",
+      "leanYes": "Lean Yes",
+      "leanNo": "Lean No",
+      "tossUp": "Toss-up"
     },
     "stablecoins": {
       "pegHealth": "Peg Health",

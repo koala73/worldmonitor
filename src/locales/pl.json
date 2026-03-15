@@ -790,7 +790,10 @@
       "yes": "Tak",
       "no": "NIE",
       "vol": "Tom",
-      "closes": "Zamyka się"
+      "closes": "Zamyka się",
+      "leanYes": "Lean Yes",
+      "leanNo": "Lean No",
+      "tossUp": "Toss-up"
     },
     "deckgl": {
       "views": {

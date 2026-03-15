@@ -824,7 +824,10 @@
       "yes": "ใช่",
       "no": "ไม่",
       "vol": "ปริมาณ",
-      "closes": "ปิด"
+      "closes": "ปิด",
+      "leanYes": "Lean Yes",
+      "leanNo": "Lean No",
+      "tossUp": "Toss-up"
     },
     "stablecoins": {
       "pegHealth": "สุขภาพ Peg",
