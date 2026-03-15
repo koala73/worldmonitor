@@ -80,7 +80,7 @@ See the **[self-hosting guide](https://docs.worldmonitor.app/getting-started)** 
 |----------|-------------|
 | **Frontend** | Vanilla TypeScript, Vite, globe.gl + Three.js, deck.gl + MapLibre GL |
 | **Desktop** | Tauri 2 (Rust) with Node.js sidecar |
-| **AI/ML** | Ollama / Groq / OpenRouter, Transformers.js (browser-side) |
+| **AI/ML** | Ollama / Groq / OpenRouter / [MiniMax](https://platform.minimaxi.com/), Transformers.js (browser-side) |
 | **API Contracts** | Protocol Buffers (92 protos, 22 services), sebuf HTTP annotations |
 | **Deployment** | Vercel Edge Functions (60+), Railway relay, Tauri, PWA |
 | **Caching** | Redis (Upstash), 3-tier cache, CDN, service worker |
