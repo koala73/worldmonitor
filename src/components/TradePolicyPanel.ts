@@ -125,7 +125,7 @@ export class TradePolicyPanel extends Panel {
       case 'revenue': contentHtml = this.renderRevenue(); break;
     }
 
-    const source = this.activeTab === 'revenue' ? 'US Treasury' : 'WTO';
+    const source = this.activeTab === 'revenue' ? t('components.tradePolicy.sourceTreasury') : t('components.tradePolicy.sourceWto');
 
     this.setContent(`
       ${tabsHtml}
@@ -274,11 +274,11 @@ export class TradePolicyPanel extends Panel {
     const summaryHtml = `
       <div class="trade-revenue-summary">
         <div class="trade-revenue-headline">
-          <span class="trade-revenue-label">FY${latestFy} YTD</span>
+          <span class="trade-revenue-label">${t('components.tradePolicy.fytdLabel', { year: String(latestFy) })}</span>
           <span class="trade-revenue-value">$${currentFytd.toFixed(1)}B</span>
         </div>
         <div class="trade-revenue-compare">
-          vs FY${latestFy - 1}: $${priorFytd.toFixed(1)}B
+          ${t('components.tradePolicy.vsPriorFy', { year: String(latestFy - 1) })}: $${priorFytd.toFixed(1)}B
           <span class="${changeClass}">${arrow} ${Math.abs(yoyChange).toFixed(0)}%</span>
         </div>
       </div>
@@ -300,9 +300,9 @@ export class TradePolicyPanel extends Panel {
       <table>
         <thead>
           <tr>
-            <th>Date</th>
-            <th>Monthly</th>
-            <th>FY YTD</th>
+            <th>${t('components.tradePolicy.colDate')}</th>
+            <th>${t('components.tradePolicy.colMonthly')}</th>
+            <th>${t('components.tradePolicy.colFytd')}</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
