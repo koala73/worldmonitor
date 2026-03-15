@@ -57,7 +57,7 @@ export class DesktopUpdater implements AppModule {
   private async checkForUpdate(manual = false): Promise<void> {
     try {
       const res = await fetch(
-        'https://api.github.com/repos/bradleybond512/crystal-ball/releases/latest',
+        'https://api.github.com/repos/bradleybond512/worldmonitor-macos/releases/latest',
         { headers: { Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(10000) }
       );
       if (!res.ok) {
@@ -87,12 +87,17 @@ export class DesktopUpdater implements AppModule {
         return;
       }
 
-      // Find the macOS DMG asset in the release
+      // Find the macOS DMG asset that matches the current build architecture
+      // __BUILD_ARCH__ is injected by Vite at build time ('aarch64' or 'x64')
+      const buildArch = (typeof __BUILD_ARCH__ !== 'undefined' ? __BUILD_ARCH__ : 'aarch64') as string;
       const assets: Array<{ name: string; browser_download_url: string }> =
         Array.isArray(data.assets) ? data.assets : [];
-      const dmg = assets.find(a => typeof a.name === 'string' && a.name.endsWith('.dmg'));
+      // Prefer arch-specific DMG; fall back to any DMG if exact match not found
+      const dmg =
+        assets.find(a => typeof a.name === 'string' && a.name.endsWith('.dmg') && a.name.includes(buildArch)) ??
+        assets.find(a => typeof a.name === 'string' && a.name.endsWith('.dmg'));
       const downloadUrl = dmg?.browser_download_url
-        ?? 'https://github.com/bradleybond512/crystal-ball/releases/latest';
+        ?? 'https://github.com/bradleybond512/worldmonitor-macos/releases/latest';
 
       this.logUpdaterOutcome('update_available', { current, remote, dismissed: false });
       trackUpdateShown(current, remote);
@@ -164,7 +169,7 @@ export class DesktopUpdater implements AppModule {
               if (btn) { btn.textContent = 'Failed — retry?'; btn.disabled = false; }
               // Fall back to opening the releases page
               void invokeTauri<void>('open_url', {
-                url: 'https://github.com/bradleybond512/crystal-ball/releases/latest',
+                url: 'https://github.com/bradleybond512/worldmonitor-macos/releases/latest',
               }).catch(() => {});
             });
         } else {

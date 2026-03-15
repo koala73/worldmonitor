@@ -667,6 +667,9 @@ function youtubeLivePlugin(): Plugin {
 export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
+    // Build-time CPU arch: 'aarch64' on Apple Silicon, 'x64' on Intel.
+    // Used by the auto-updater to select the matching DMG asset from GitHub Releases.
+    __BUILD_ARCH__: JSON.stringify(process.arch === 'arm64' ? 'aarch64' : 'x64'),
   },
   plugins: [
     htmlVariantPlugin(),
