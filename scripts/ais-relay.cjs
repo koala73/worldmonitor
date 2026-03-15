@@ -989,7 +989,7 @@ const UCDP_VIOLENCE_TYPE_MAP = { 1: 'UCDP_VIOLENCE_TYPE_STATE_BASED', 2: 'UCDP_V
 function ucdpFetchPage(version, page) {
   return new Promise((resolve, reject) => {
     const pageUrl = new URL(`https://ucdpapi.pcr.uu.se/api/gedevents/${version}?pagesize=${UCDP_PAGE_SIZE}&page=${page}`);
-    const headers = { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' };
+    const headers = { Accept: 'application/json', 'Accept-Encoding': 'gzip, deflate', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' };
     if (UCDP_ACCESS_TOKEN) headers['x-ucdp-access-token'] = UCDP_ACCESS_TOKEN;
     const req = https.request(pageUrl, { method: 'GET', headers, timeout: 30000 }, (resp) => {
       if (resp.statusCode === 401 || resp.statusCode === 403) {
@@ -1000,15 +1000,13 @@ function ucdpFetchPage(version, page) {
         resp.resume();
         return reject(new Error(`UCDP ${version} page ${page}: HTTP ${resp.statusCode}`));
       }
-      let data = '';
-      resp.on('data', (chunk) => { data += chunk; });
-      resp.on('end', () => {
+      _collectDecompressed(resp).then((data) => {
         try {
           const parsed = JSON.parse(data);
           if (typeof parsed === 'string') return reject(new Error(`UCDP ${version} page ${page}: ${parsed}`));
           resolve(parsed);
         } catch (e) { reject(e); }
-      });
+      }).catch((err) => reject(err));
     });
     req.on('error', reject);
     req.on('timeout', () => { req.destroy(); reject(new Error('UCDP timeout')); });
@@ -1156,19 +1154,15 @@ async function seedSatelliteTLEs() {
       try {
         text = await new Promise((resolve, reject) => {
           const url = new URL(`https://celestrak.org/NORAD/elements/gp.php?GROUP=${group}&FORMAT=tle`);
-          const req = https.request(url, { method: 'GET', headers: { 'User-Agent': CHROME_UA }, timeout: 15000 }, (resp) => {
+          const req = https.request(url, { method: 'GET', headers: { 'User-Agent': CHROME_UA, 'Accept-Encoding': 'gzip, deflate' }, timeout: 15000 }, (resp) => {
             if (resp.statusCode < 200 || resp.statusCode >= 300) {
               resp.resume();
               return reject(new Error(`CelesTrak ${group}: HTTP ${resp.statusCode}`));
             }
-            let data = '';
-            let size = 0;
-            resp.on('data', (chunk) => {
-              size += chunk.length;
-              if (size > 2 * 1024 * 1024) { req.destroy(); return reject(new Error(`CelesTrak ${group}: payload > 2MB`)); }
-              data += chunk;
-            });
-            resp.on('end', () => resolve(data));
+            _collectDecompressed(resp).then((data) => {
+              if (data.length > 2 * 1024 * 1024) { return reject(new Error(`CelesTrak ${group}: payload > 2MB`)); }
+              resolve(data);
+            }).catch((err) => reject(err));
           });
           req.on('error', reject);
           req.on('timeout', () => { req.destroy(); reject(new Error(`CelesTrak ${group}: timeout`)); });
@@ -1255,7 +1249,7 @@ function fetchYahooChartDirect(symbol) {
   return new Promise((resolve) => {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`;
     const req = https.get(url, {
-      headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
+      headers: { 'User-Agent': CHROME_UA, Accept: 'application/json', 'Accept-Encoding': 'gzip, deflate' },
       timeout: 10000,
     }, (resp) => {
       if (resp.statusCode !== 200) {
@@ -1263,9 +1257,7 @@ function fetchYahooChartDirect(symbol) {
         logThrottled('warn', `market-yahoo-${resp.statusCode}:${symbol}`, `[Market] Yahoo ${symbol} HTTP ${resp.statusCode}`);
         return resolve(null);
       }
-      let body = '';
-      resp.on('data', (chunk) => { body += chunk; });
-      resp.on('end', () => {
+      _collectDecompressed(resp).then((body) => {
         try {
           const data = JSON.parse(body);
           const result = data?.chart?.result?.[0];
@@ -1278,7 +1270,7 @@ function fetchYahooChartDirect(symbol) {
           const sparkline = Array.isArray(closes) ? closes.filter((v) => v != null) : [];
           resolve({ price, change, sparkline });
         } catch { resolve(null); }
-      });
+      }).catch(() => resolve(null));
     });
     req.on('error', (err) => { logThrottled('warn', `market-yahoo-err:${symbol}`, `[Market] Yahoo ${symbol} error: ${err.message}`); resolve(null); });
     req.on('timeout', () => { req.destroy(); logThrottled('warn', `market-yahoo-timeout:${symbol}`, `[Market] Yahoo ${symbol} timeout`); resolve(null); });
@@ -1289,22 +1281,20 @@ function fetchFinnhubQuoteDirect(symbol, apiKey) {
   return new Promise((resolve) => {
     const url = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}`;
     const req = https.get(url, {
-      headers: { 'User-Agent': CHROME_UA, Accept: 'application/json', 'X-Finnhub-Token': apiKey },
+      headers: { 'User-Agent': CHROME_UA, Accept: 'application/json', 'Accept-Encoding': 'gzip, deflate', 'X-Finnhub-Token': apiKey },
       timeout: 10000,
     }, (resp) => {
       if (resp.statusCode !== 200) {
         resp.resume();
         return resolve(null);
       }
-      let body = '';
-      resp.on('data', (chunk) => { body += chunk; });
-      resp.on('end', () => {
+      _collectDecompressed(resp).then((body) => {
         try {
           const data = JSON.parse(body);
           if (data.c === 0 && data.h === 0 && data.l === 0) return resolve(null);
           resolve({ price: data.c, changePercent: data.dp });
         } catch { resolve(null); }
-      });
+      }).catch(() => resolve(null));
     });
     req.on('error', () => resolve(null));
     req.on('timeout', () => { req.destroy(); resolve(null); });
@@ -1495,11 +1485,9 @@ async function seedEtfFlows() {
     try {
       const raw = await new Promise((resolve) => {
         const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=5d&interval=1d`;
-        const req = https.get(url, { headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' }, timeout: 10000 }, (resp) => {
+        const req = https.get(url, { headers: { 'User-Agent': CHROME_UA, Accept: 'application/json', 'Accept-Encoding': 'gzip, deflate' }, timeout: 10000 }, (resp) => {
           if (resp.statusCode !== 200) { resp.resume(); return resolve(null); }
-          let body = '';
-          resp.on('data', (chunk) => { body += chunk; });
-          resp.on('end', () => { try { resolve(JSON.parse(body)); } catch { resolve(null); } });
+          _collectDecompressed(resp).then((body) => { try { resolve(JSON.parse(body)); } catch { resolve(null); } }).catch(() => resolve(null));
         });
         req.on('error', () => resolve(null));
         req.on('timeout', () => { req.destroy(); resolve(null); });
@@ -1767,7 +1755,7 @@ function fetchAviationStackSingle(apiKey, iata) {
     const today = new Date().toISOString().slice(0, 10);
     const url = `https://api.aviationstack.com/v1/flights?access_key=${apiKey}&dep_iata=${iata}&flight_date=${today}&limit=100`;
     const req = https.get(url, {
-      headers: { 'User-Agent': CHROME_UA },
+      headers: { 'User-Agent': CHROME_UA, 'Accept-Encoding': 'gzip, deflate' },
       timeout: 5000,
       family: 4,
     }, (resp) => {
@@ -1776,9 +1764,7 @@ function fetchAviationStackSingle(apiKey, iata) {
         logThrottled('warn', `aviation-http-${resp.statusCode}:${iata}`, `[Aviation] ${iata}: HTTP ${resp.statusCode}`);
         return resolve({ ok: false, alert: null });
       }
-      let body = '';
-      resp.on('data', (chunk) => { body += chunk; });
-      resp.on('end', () => {
+      _collectDecompressed(resp).then((body) => {
         try {
           const json = JSON.parse(body);
           if (json.error) {
@@ -1789,7 +1775,7 @@ function fetchAviationStackSingle(apiKey, iata) {
           const alert = aviationAggregateFlights(iata, flights);
           resolve({ ok: true, alert });
         } catch { resolve({ ok: false, alert: null }); }
-      });
+      }).catch(() => resolve({ ok: false, alert: null }));
     });
     req.on('error', (err) => {
       logThrottled('warn', `aviation-err:${iata}`, `[Aviation] ${iata}: fetch error: ${err.message}`);
@@ -1952,7 +1938,7 @@ function fetchIcaoNotams() {
     const locations = NOTAM_MONITORED_ICAO.join(',');
     const apiUrl = `https://dataservices.icao.int/api/notams-realtime-list?api_key=${ICAO_API_KEY}&format=json&locations=${locations}`;
     const req = https.get(apiUrl, {
-      headers: { 'User-Agent': CHROME_UA },
+      headers: { 'User-Agent': CHROME_UA, 'Accept-Encoding': 'gzip, deflate' },
       timeout: 30000,
     }, (resp) => {
       if (resp.statusCode !== 200) {
@@ -1966,17 +1952,15 @@ function fetchIcaoNotams() {
         resp.resume();
         return resolve([]);
       }
-      const chunks = [];
-      resp.on('data', (c) => chunks.push(c));
-      resp.on('end', () => {
+      _collectDecompressed(resp).then((body) => {
         try {
-          const data = JSON.parse(Buffer.concat(chunks).toString());
+          const data = JSON.parse(body);
           resolve(Array.isArray(data) ? data : []);
         } catch {
           console.warn('[NOTAM-Seed] Invalid JSON from ICAO');
           resolve([]);
         }
-      });
+      }).catch(() => { console.warn('[NOTAM-Seed] Decompression error'); resolve([]); });
     });
     req.on('error', (err) => { console.warn(`[NOTAM-Seed] Fetch error: ${err.message}`); resolve([]); });
     req.on('timeout', () => { req.destroy(); console.warn('[NOTAM-Seed] Timeout (30s)'); resolve([]); });
@@ -2136,11 +2120,9 @@ function cyberToProto(t) {
 
 function cyberHttpGetJson(url, reqHeaders, timeoutMs) {
   return new Promise((resolve) => {
-    const req = https.get(url, { headers: { 'User-Agent': CHROME_UA, ...reqHeaders }, timeout: timeoutMs || 10000 }, (resp) => {
+    const req = https.get(url, { headers: { 'User-Agent': CHROME_UA, 'Accept-Encoding': 'gzip, deflate', ...reqHeaders }, timeout: timeoutMs || 10000 }, (resp) => {
       if (resp.statusCode < 200 || resp.statusCode >= 300) { resp.resume(); return resolve(null); }
-      const chunks = [];
-      resp.on('data', (c) => chunks.push(c));
-      resp.on('end', () => { try { resolve(JSON.parse(Buffer.concat(chunks).toString())); } catch { resolve(null); } });
+      _collectDecompressed(resp).then((body) => { try { resolve(JSON.parse(body)); } catch { resolve(null); } }).catch(() => resolve(null));
     });
     req.on('error', () => resolve(null));
     req.on('timeout', () => { req.destroy(); resolve(null); });
@@ -2148,11 +2130,9 @@ function cyberHttpGetJson(url, reqHeaders, timeoutMs) {
 }
 function cyberHttpGetText(url, reqHeaders, timeoutMs) {
   return new Promise((resolve) => {
-    const req = https.get(url, { headers: { 'User-Agent': CHROME_UA, ...reqHeaders }, timeout: timeoutMs || 10000 }, (resp) => {
+    const req = https.get(url, { headers: { 'User-Agent': CHROME_UA, 'Accept-Encoding': 'gzip, deflate', ...reqHeaders }, timeout: timeoutMs || 10000 }, (resp) => {
       if (resp.statusCode < 200 || resp.statusCode >= 300) { resp.resume(); return resolve(null); }
-      const chunks = [];
-      resp.on('data', (c) => chunks.push(c));
-      resp.on('end', () => resolve(Buffer.concat(chunks).toString()));
+      _collectDecompressed(resp).then((body) => resolve(body)).catch(() => resolve(null));
     });
     req.on('error', () => resolve(null));
     req.on('timeout', () => { req.destroy(); resolve(null); });
@@ -2435,13 +2415,11 @@ function fetchGdeltGeoPositive(query) {
   return new Promise((resolve) => {
     const params = new URLSearchParams({ query, maxrows: '500' });
     const req = https.get(`https://api.gdeltproject.org/api/v1/gkg_geojson?${params}`, {
-      headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
+      headers: { Accept: 'application/json', 'User-Agent': CHROME_UA, 'Accept-Encoding': 'gzip, deflate' },
       timeout: 15000,
     }, (resp) => {
       if (resp.statusCode !== 200) { resp.resume(); return resolve([]); }
-      let body = '';
-      resp.on('data', (chunk) => { body += chunk; });
-      resp.on('end', () => {
+      _collectDecompressed(resp).then((body) => {
         try {
           const data = JSON.parse(body);
           const features = Array.isArray(data?.features) ? data.features : [];
@@ -2466,7 +2444,7 @@ function fetchGdeltGeoPositive(query) {
           }
           resolve(events);
         } catch { resolve([]); }
-      });
+      }).catch(() => resolve([]));
     });
     req.on('error', () => resolve([]));
     req.on('timeout', () => { req.destroy(); resolve([]); });
@@ -2667,18 +2645,14 @@ async function seedClassifyForVariant(variant) {
   try {
     const resp = await new Promise((resolve, reject) => {
       const req = https.get(digestUrl, {
-        headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
+        headers: { Accept: 'application/json', 'User-Agent': CHROME_UA, 'Accept-Encoding': 'gzip, deflate' },
         timeout: 15000,
       }, resolve);
       req.on('error', reject);
       req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
     });
     if (resp.statusCode !== 200) { resp.resume(); return { total: 0, classified: 0, skipped: 0 }; }
-    const body = await new Promise((resolve) => {
-      let d = '';
-      resp.on('data', (c) => { d += c; });
-      resp.on('end', () => resolve(d));
-    });
+    const body = await _collectDecompressed(resp);
     digest = JSON.parse(body);
   } catch {
     return { total: 0, classified: 0, skipped: 0 };
@@ -3364,6 +3338,7 @@ function techEventsFetchUrl(url) {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         Accept: 'text/calendar, application/rss+xml, application/xml, text/xml, */*',
+        'Accept-Encoding': 'gzip, deflate',
       },
       timeout: 15000,
     }, (response) => {
@@ -3375,10 +3350,7 @@ function techEventsFetchUrl(url) {
         response.resume();
         return;
       }
-      let data = '';
-      response.on('data', (chunk) => { data += chunk; });
-      response.on('end', () => resolve(data));
-      response.on('error', () => resolve(null));
+      _collectDecompressed(response).then((data) => resolve(data)).catch(() => resolve(null));
     });
     request.on('error', () => resolve(null));
     request.on('timeout', () => { request.destroy(); resolve(null); });
@@ -3507,18 +3479,16 @@ const WB_RENEWABLE_REGION_NAMES = {
 function wbFetchJson(url) {
   return new Promise((resolve, reject) => {
     const req = https.get(url, {
-      headers: { 'User-Agent': 'WorldMonitor-Seed/1.0', Accept: 'application/json' },
+      headers: { 'User-Agent': 'WorldMonitor-Seed/1.0', Accept: 'application/json', 'Accept-Encoding': 'gzip, deflate' },
       timeout: 30000,
     }, (resp) => {
       if (resp.statusCode < 200 || resp.statusCode >= 300) {
         resp.resume();
         return reject(new Error(`WB HTTP ${resp.statusCode}`));
       }
-      let data = '';
-      resp.on('data', (chunk) => { data += chunk; });
-      resp.on('end', () => {
+      _collectDecompressed(resp).then((data) => {
         try { resolve(JSON.parse(data)); } catch (e) { reject(e); }
-      });
+      }).catch((err) => reject(err));
     });
     req.on('error', reject);
     req.on('timeout', () => { req.destroy(); reject(new Error('WB timeout')); });
@@ -5164,17 +5134,15 @@ async function ucdpRelayFetchPage(version, page) {
   const url = `https://ucdpapi.pcr.uu.se/api/gedevents/${version}?pagesize=${UCDP_PAGE_SIZE}&page=${page}`;
 
   return new Promise((resolve, reject) => {
-    const req = https.get(url, { headers: { Accept: 'application/json' }, timeout: UCDP_FETCH_TIMEOUT }, (res) => {
+    const req = https.get(url, { headers: { Accept: 'application/json', 'Accept-Encoding': 'gzip, deflate' }, timeout: UCDP_FETCH_TIMEOUT }, (res) => {
       if (res.statusCode !== 200) {
         res.resume();
         return reject(new Error(`UCDP API ${res.statusCode} (v${version} p${page})`));
       }
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
+      _collectDecompressed(res).then((data) => {
         try { resolve(JSON.parse(data)); }
         catch (e) { reject(new Error('UCDP JSON parse error')); }
-      });
+      }).catch((err) => reject(err));
     });
     req.on('error', reject);
     req.on('timeout', () => { req.destroy(); reject(new Error('UCDP timeout')); });
@@ -5524,12 +5492,10 @@ function _attemptOpenSkyTokenFetch(clientId, clientSecret) {
           hostname: 'auth.opensky-network.org',
           path: '/auth/realms/opensky-network/protocol/openid-connect/token',
           method: 'POST',
-          headers: reqHeaders,
+          headers: { ...reqHeaders, 'Accept-Encoding': 'gzip, deflate' },
           timeout: 10000,
         }, (res) => {
-          let data = '';
-          res.on('data', chunk => data += chunk);
-          res.on('end', () => {
+          _collectDecompressed(res).then((data) => {
             try {
               const json = JSON.parse(data);
               if (json.access_token) {
@@ -5540,7 +5506,7 @@ function _attemptOpenSkyTokenFetch(clientId, clientSecret) {
             } catch (e) {
               resolve({ error: `parse: ${e.message}`, status: res.statusCode });
             }
-          });
+          }).catch((err) => resolve({ error: `decompress: ${err.message}`, status: res.statusCode }));
         });
         req.on('error', (err) => resolve({ error: `${err.code || 'UNKNOWN'}: ${err.message}` }));
         req.on('timeout', () => { req.destroy(); resolve({ error: 'TIMEOUT' }); });
@@ -5557,12 +5523,10 @@ function _attemptOpenSkyTokenFetch(clientId, clientSecret) {
       family: 4,
       path: '/auth/realms/opensky-network/protocol/openid-connect/token',
       method: 'POST',
-      headers: reqHeaders,
+      headers: { ...reqHeaders, 'Accept-Encoding': 'gzip, deflate' },
       timeout: 10000
     }, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
+      _collectDecompressed(res).then((data) => {
         try {
           const json = JSON.parse(data);
           if (json.access_token) {
@@ -5573,7 +5537,7 @@ function _attemptOpenSkyTokenFetch(clientId, clientSecret) {
         } catch (e) {
           resolve({ error: `parse: ${e.message}`, status: res.statusCode });
         }
-      });
+      }).catch((err) => resolve({ error: `decompress: ${err.message}`, status: res.statusCode }));
     });
 
     req.on('error', (err) => {
@@ -5994,6 +5958,7 @@ function handleWorldBankRequest(req, res) {
   const request = https.get(wbUrl, {
     headers: {
       'Accept': 'application/json',
+      'Accept-Encoding': 'gzip, deflate',
       'User-Agent': 'Mozilla/5.0 (compatible; WorldMonitor/1.0; +https://worldmonitor.app)',
     },
     timeout: 15000,
@@ -6002,9 +5967,7 @@ function handleWorldBankRequest(req, res) {
       safeEnd(res, response.statusCode, { 'Content-Type': 'application/json' }, JSON.stringify({ error: `World Bank API ${response.statusCode}` }));
       return;
     }
-    let rawData = '';
-    response.on('data', chunk => rawData += chunk);
-    response.on('end', () => {
+    _collectDecompressed(response).then((rawData) => {
       try {
         const parsed = JSON.parse(rawData);
         // Transform raw World Bank response to match client-expected format
@@ -6060,6 +6023,9 @@ function handleWorldBankRequest(req, res) {
         console.error('[Relay] World Bank parse error:', e.message);
         safeEnd(res, 500, { 'Content-Type': 'application/json' }, JSON.stringify({ error: 'Parse error' }));
       }
+    }).catch((err) => {
+      console.error('[Relay] World Bank decompression error:', err.message);
+      safeEnd(res, 500, { 'Content-Type': 'application/json' }, JSON.stringify({ error: 'Decompression error' }));
     });
   });
   request.on('error', (err) => {
@@ -6157,7 +6123,7 @@ function fetchPolymarketUpstream(cacheKey, endpoint, params, tag) {
         }
       }
       const request = https.get(gammaUrl, {
-        headers: { 'Accept': 'application/json' },
+        headers: { 'Accept': 'application/json', 'Accept-Encoding': 'gzip, deflate' },
         timeout: 10000,
       }, (response) => {
         if (response.statusCode !== 200) {
@@ -6167,14 +6133,11 @@ function fetchPolymarketUpstream(cacheKey, endpoint, params, tag) {
           resolve(null);
           return;
         }
-        let data = '';
-        response.on('data', chunk => data += chunk);
-        response.on('end', () => {
+        _collectDecompressed(response).then((data) => {
           finalize(true);
           polymarketCache.set(cacheKey, { data, timestamp: Date.now() });
           resolve(data);
-        });
-        response.on('error', () => { finalize(false); resolve(null); });
+        }).catch(() => { finalize(false); resolve(null); });
       });
       request.on('error', (err) => {
         console.error('[Relay] Polymarket error:', err.message);
@@ -6352,26 +6315,30 @@ function handleYahooChartRequest(req, res) {
     headers: {
       'User-Agent': CHROME_UA,
       Accept: 'application/json',
+      'Accept-Encoding': 'gzip, deflate',
     },
     timeout: 10000,
   }, (upstream) => {
-    let body = '';
-    upstream.on('data', (chunk) => { body += chunk; });
-    upstream.on('end', () => {
-      if (upstream.statusCode !== 200) {
-        logThrottled('warn', `yahoo-chart-upstream-${upstream.statusCode}:${symbol}`,
-          `[Relay] Yahoo chart upstream ${upstream.statusCode} for ${symbol}`);
-        return sendCompressed(req, res, upstream.statusCode || 502, {
-          'Content-Type': 'application/json',
-          'X-Yahoo-Source': 'relay-upstream-error',
-        }, JSON.stringify({ error: `Yahoo upstream ${upstream.statusCode}`, symbol }));
-      }
+    if (upstream.statusCode !== 200) {
+      upstream.resume();
+      logThrottled('warn', `yahoo-chart-upstream-${upstream.statusCode}:${symbol}`,
+        `[Relay] Yahoo chart upstream ${upstream.statusCode} for ${symbol}`);
+      return sendCompressed(req, res, upstream.statusCode || 502, {
+        'Content-Type': 'application/json',
+        'X-Yahoo-Source': 'relay-upstream-error',
+      }, JSON.stringify({ error: `Yahoo upstream ${upstream.statusCode}`, symbol }));
+    }
+    _collectDecompressed(upstream).then((body) => {
       yahooChartCache.set(cacheKey, { json: body, ts: Date.now() });
       sendCompressed(req, res, 200, {
         'Content-Type': 'application/json',
         'Cache-Control': 'public, max-age=120, s-maxage=120, stale-while-revalidate=60',
         'X-Yahoo-Source': 'relay-upstream',
       }, body);
+    }).catch((err) => {
+      logThrottled('error', `yahoo-chart-decompress:${symbol}`, `[Relay] Yahoo chart decompress error for ${symbol}: ${err.message}`);
+      sendCompressed(req, res, 502, { 'Content-Type': 'application/json' },
+        JSON.stringify({ error: 'Yahoo upstream decompression error', symbol }));
     });
   });
   yahooReq.on('error', (err) => {
@@ -6426,12 +6393,10 @@ function handleAviationStackRequest(req, res) {
 
   const apiUrl = `https://api.aviationstack.com/v1/flights?${params}`;
   const apiReq = https.get(apiUrl, {
-    headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
+    headers: { 'User-Agent': CHROME_UA, Accept: 'application/json', 'Accept-Encoding': 'gzip, deflate' },
     timeout: 10000,
   }, (upstream) => {
-    let body = '';
-    upstream.on('data', (chunk) => { body += chunk; });
-    upstream.on('end', () => {
+    _collectDecompressed(upstream).then((body) => {
       if (upstream.statusCode !== 200) {
         logThrottled('warn', `aviationstack-upstream-${upstream.statusCode}`,
           `[Relay] AviationStack upstream ${upstream.statusCode}`);
@@ -6453,6 +6418,10 @@ function handleAviationStackRequest(req, res) {
         'Cache-Control': 'public, max-age=120, s-maxage=120',
         'X-Aviation-Source': 'relay-upstream',
       }, body);
+    }).catch((err) => {
+      logThrottled('error', 'aviationstack-decompress', `[Relay] AviationStack decompress error: ${err.message}`);
+      sendCompressed(req, res, 502, { 'Content-Type': 'application/json' },
+        JSON.stringify({ error: 'AviationStack decompression error' }));
     });
   });
   apiReq.on('error', (err) => {
@@ -6704,7 +6673,7 @@ function handleNotamProxyRequest(req, res) {
   const apiUrl = `https://dataservices.icao.int/api/notams-realtime-list?api_key=${ICAO_API_KEY}&format=json&locations=${locations}`;
 
   const request = https.get(apiUrl, {
-    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' },
+    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36', 'Accept-Encoding': 'gzip, deflate' },
     timeout: 25000,
   }, (upstream) => {
     if (upstream.statusCode !== 200) {
@@ -6720,12 +6689,9 @@ function handleNotamProxyRequest(req, res) {
       return sendCompressed(req, res, 200, { 'Content-Type': 'application/json' },
         JSON.stringify([]));
     }
-    const chunks = [];
-    upstream.on('data', c => chunks.push(c));
-    upstream.on('end', () => {
-      const body = Buffer.concat(chunks).toString();
+    _collectDecompressed(upstream).then((body) => {
       try {
-        JSON.parse(body); // validate JSON
+        JSON.parse(body);
         notamCache.data = body;
         notamCache.key = cacheKey;
         notamCache.ts = Date.now();
@@ -6740,6 +6706,10 @@ function handleNotamProxyRequest(req, res) {
         sendCompressed(req, res, 200, { 'Content-Type': 'application/json' },
           JSON.stringify([]));
       }
+    }).catch(() => {
+      console.warn('[Relay] NOTAM: decompression error');
+      sendCompressed(req, res, 200, { 'Content-Type': 'application/json' },
+        JSON.stringify([]));
     });
   });
 
@@ -6982,17 +6952,15 @@ const server = http.createServer(async (req, res) => {
         const start = Date.now();
         const apiReq = https.get('https://opensky-network.org/api/states/all?lamin=47&lomin=5&lamax=48&lomax=6', {
           family: 4,
-          headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
+          headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json', 'Accept-Encoding': 'gzip, deflate' },
           timeout: 15000,
         }, (apiRes) => {
-          let data = '';
-          apiRes.on('data', chunk => data += chunk);
-          apiRes.on('end', () => resolve({
+          _collectDecompressed(apiRes).then((data) => resolve({
             status: apiRes.statusCode,
             latencyMs: Date.now() - start,
             bodyLength: data.length,
             statesCount: (data.match(/"states":\s*\[/) ? 'present' : 'missing'),
-          }));
+          })).catch((err) => resolve({ error: `decompress: ${err.message}`, latencyMs: Date.now() - start }));
         });
         apiReq.on('error', (err) => resolve({ error: err.message, code: err.code, latencyMs: Date.now() - start }));
         apiReq.on('timeout', () => { apiReq.destroy(); resolve({ error: 'timeout', latencyMs: Date.now() - start }); });
