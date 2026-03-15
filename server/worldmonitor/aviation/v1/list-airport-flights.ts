@@ -8,8 +8,7 @@ import type {
     AirportRef,
 } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
 import { cachedFetchJson } from '../../../_shared/redis';
-import { CHROME_UA } from '../../../_shared/constants';
-import { AVIATIONSTACK_URL } from './_shared';
+import { getRelayBaseUrl, getRelayHeaders } from './_shared';
 
 const CACHE_TTL = 300;
 
@@ -150,26 +149,22 @@ export async function listAirportFlights(
     try {
         const result = await cachedFetchJson<{ flights: FlightInstance[]; source: string }>(
             cacheKey, CACHE_TTL, async () => {
-                const apiKey = process.env.AVIATIONSTACK_API;
-                if (!apiKey) {
+                const relayBase = getRelayBaseUrl();
+                if (!relayBase) {
                     return { flights: buildSimulatedFlights(airport, direction, limit, now), source: 'simulated' };
                 }
 
-                // TODO: FLIGHT_DIRECTION_BOTH only fetches departures (dep_iata). To support true
-                // bidirectional results, two parallel calls (dep_iata + arr_iata at limit/2 each)
-                // would be needed — deferred due to AviationStack rate-limit cost.
                 const paramKey = direction === 'FLIGHT_DIRECTION_ARRIVAL' ? 'arr_iata' : 'dep_iata';
                 const params = new URLSearchParams({
-                    access_key: apiKey,
                     [paramKey]: airport,
                     limit: String(limit),
                 });
-                const url = `${AVIATIONSTACK_URL}?${params}`;
+                const url = `${relayBase}/aviationstack?${params}`;
 
                 try {
                     const resp = await fetch(url, {
-                        headers: { 'User-Agent': CHROME_UA },
-                        signal: AbortSignal.timeout(10_000),
+                        headers: getRelayHeaders(),
+                        signal: AbortSignal.timeout(15_000),
                     });
                     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
                     const json = await resp.json() as { data?: AVSFlight[]; error?: { message?: string } };
@@ -177,7 +172,7 @@ export async function listAirportFlights(
                     const flights = normalizeFlights(json.data ?? [], now);
                     return { flights, source: 'aviationstack' };
                 } catch (err) {
-                    console.warn(`[Aviation] Flights fetch failed for ${airport}: ${err instanceof Error ? err.message : err}`);
+                    console.warn(`[Aviation] Flights relay fetch failed for ${airport}: ${err instanceof Error ? err.message : err}`);
                     return { flights: buildSimulatedFlights(airport, direction, limit, now), source: 'simulated' };
                 }
             }

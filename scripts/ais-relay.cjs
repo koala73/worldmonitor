@@ -4252,6 +4252,7 @@ function getRouteGroup(pathname) {
   if (pathname.startsWith('/oref')) return 'oref';
   if (pathname === '/notam') return 'notam';
   if (pathname === '/yahoo-chart') return 'yahoo-chart';
+  if (pathname === '/aviationstack') return 'aviationstack';
   return 'other';
 }
 
@@ -6397,6 +6398,87 @@ function handleYahooChartRequest(req, res) {
   });
 }
 
+// ── AviationStack Proxy ─────────────────────────────────────────────
+// Vercel handlers proxy flight queries through Railway to keep the API key
+// off Vercel edge and consolidate external calls on one egress IP.
+const aviationStackCache = new Map();
+const AVIATIONSTACK_CACHE_TTL_MS = 120_000; // 2 min
+
+function handleAviationStackRequest(req, res) {
+  if (!AVIATIONSTACK_API_KEY) {
+    return sendCompressed(req, res, 503, { 'Content-Type': 'application/json' },
+      JSON.stringify({ error: 'AviationStack not configured' }));
+  }
+
+  const url = new URL(req.url, `http://localhost:${PORT}`);
+  const params = new URLSearchParams(url.searchParams);
+  params.set('access_key', AVIATIONSTACK_API_KEY);
+
+  const cacheKey = params.toString();
+  const cached = aviationStackCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < AVIATIONSTACK_CACHE_TTL_MS) {
+    return sendCompressed(req, res, 200, {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'public, max-age=120, s-maxage=120',
+      'X-Aviation-Source': 'relay-cache',
+    }, cached.json);
+  }
+
+  const apiUrl = `https://api.aviationstack.com/v1/flights?${params}`;
+  const apiReq = https.get(apiUrl, {
+    headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
+    timeout: 10000,
+  }, (upstream) => {
+    let body = '';
+    upstream.on('data', (chunk) => { body += chunk; });
+    upstream.on('end', () => {
+      if (upstream.statusCode !== 200) {
+        logThrottled('warn', `aviationstack-upstream-${upstream.statusCode}`,
+          `[Relay] AviationStack upstream ${upstream.statusCode}`);
+        return sendCompressed(req, res, upstream.statusCode || 502, {
+          'Content-Type': 'application/json',
+          'X-Aviation-Source': 'relay-upstream-error',
+        }, JSON.stringify({ error: `AviationStack upstream ${upstream.statusCode}` }));
+      }
+      aviationStackCache.set(cacheKey, { json: body, ts: Date.now() });
+      // Prune stale entries periodically
+      if (aviationStackCache.size > 200) {
+        const now = Date.now();
+        for (const [k, v] of aviationStackCache) {
+          if (now - v.ts > AVIATIONSTACK_CACHE_TTL_MS * 2) aviationStackCache.delete(k);
+        }
+      }
+      sendCompressed(req, res, 200, {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'public, max-age=120, s-maxage=120',
+        'X-Aviation-Source': 'relay-upstream',
+      }, body);
+    });
+  });
+  apiReq.on('error', (err) => {
+    logThrottled('error', 'aviationstack-error', `[Relay] AviationStack error: ${err.message}`);
+    if (cached) {
+      return sendCompressed(req, res, 200, {
+        'Content-Type': 'application/json',
+        'X-Aviation-Source': 'relay-stale',
+      }, cached.json);
+    }
+    sendCompressed(req, res, 502, { 'Content-Type': 'application/json' },
+      JSON.stringify({ error: 'AviationStack upstream error' }));
+  });
+  apiReq.on('timeout', () => {
+    apiReq.destroy();
+    if (cached) {
+      return sendCompressed(req, res, 200, {
+        'Content-Type': 'application/json',
+        'X-Aviation-Source': 'relay-stale',
+      }, cached.json);
+    }
+    sendCompressed(req, res, 504, { 'Content-Type': 'application/json' },
+      JSON.stringify({ error: 'AviationStack upstream timeout' }));
+  });
+}
+
 // ── YouTube Live Detection (residential proxy bypass) ──────────────
 const YOUTUBE_PROXY_URL = process.env.YOUTUBE_PROXY_URL || '';
 
@@ -7236,6 +7318,8 @@ const server = http.createServer(async (req, res) => {
     handleYahooChartRequest(req, res);
   } else if (pathname === '/notam') {
     handleNotamProxyRequest(req, res);
+  } else if (pathname === '/aviationstack') {
+    handleAviationStackRequest(req, res);
   } else {
     res.writeHead(404);
     res.end();
