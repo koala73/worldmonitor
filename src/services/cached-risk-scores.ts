@@ -174,6 +174,7 @@ const breaker = createCircuitBreaker<CachedRiskScores>({
   name: 'Risk Scores',
   cacheTtlMs: 30 * 60 * 1000,
   persistCache: true,
+  persistentStaleCeilingMs: 60 * 60 * 1000, // 1 h — risk scores go stale fast
 });
 
 // Sync prime from localStorage (before async IndexedDB hydration)
