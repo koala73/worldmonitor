@@ -134,6 +134,7 @@ const ON_DEMAND_KEYS = new Set([
   'bisPolicy', 'bisExchange', 'bisCredit',
   'macroSignals', 'shippingRates', 'chokepoints', 'minerals', 'giving',
   'cyberThreatsRpc', 'militaryBases', 'temporalAnomalies', 'displacement',
+  'corridorrisk', // intermediate key; data flows through transit-summaries:v1
 ]);
 
 // Keys where 0 records is a valid healthy state (e.g. no airports closed).
