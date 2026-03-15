@@ -47,7 +47,16 @@
 | **Claude AI provider** | Anthropic Claude Haiku in the summarization fallback chain alongside Groq/OpenRouter |
 | **Earthquakes panel** | USGS M4.5+ live seismic data with magnitude-color-coded table |
 | **Air Strikes & Drones panel** | ACLED-sourced air/drone strikes and missile attacks — last 30 days, mapped to globe, click-to-fly |
-| **Monitoring Modes** | Peace / Finance / War modes — Finance auto-triggers on ≥2.5% S&P or ≥5% BTC move; War mode on geopolitical escalation signals |
+| **Monitoring Modes** | 5 modes — Peace / Finance / War / Disaster / Ghost. Finance auto-triggers on ≥2.5% S&P or ≥5% BTC move; War on geopolitical escalation signals; Disaster on GDACS Red alert or M≥6.5 earthquake; Ghost is manual stealth mode (⌘⇧G) |
+| **GDACS Alerts panel** | UN-coordinated disaster alerts table with click-to-fly — color-coded by severity |
+| **Volcano Alerts panel** | USGS Volcano Hazards Program live alert levels for active volcanoes worldwide |
+| **NWS Alerts panel** | NOAA National Weather Service hazardous weather alerts — tornado, flood, hurricane |
+| **Cyber Intelligence expansion** | ThreatFox IOCs, OpenPhish phishing URLs, Spamhaus DROP/EDROP blocklists, CISA KEV — plotted on globe |
+| **EMA Threat Forecasting** | Rolling 24-session EMA on conflict event velocity per country — spikes feed into War Mode trigger scoring |
+| **Conflict Baseline Normalization** | Chronic conflict zones (Ukraine, Syria, Gaza, Sudan, Myanmar) require elevated signal counts before War Mode triggers, reducing false positives |
+| **Radiation Decay Calculator** | Offline Rule-of-7 dose estimator with shelter factor, cumulative dose, and SVG decay curve (disabled by default) |
+| **Resource Inventory** | Offline supplies tracker with days-remaining color coding, IndexedDB persistence, and JSON import/export (disabled by default) |
+| **Ghost Mode (👻)** | Manual stealth mode: 5× slower polling, analytics suppressed, desktop notifications suppressed, dark crimson sidebar tint. Toggle via ⌘⇧G or File → Toggle Ghost Mode |
 | **Low Power Mode (⚡)** | Sidebar button disables animations, trail layers, and spatial audio to reduce CPU/GPU load |
 | **Window menu** | Standard macOS Window menu — Minimize, Zoom, Close |
 | **Open Logs Folder** | Help → Open Logs Folder opens the app log directory in Finder for easy debugging |
@@ -109,11 +118,13 @@
 
 ### Monitoring Modes
 
-Switch modes with the mode button in the bottom-left sidebar:
+Switch modes with the mode button in the bottom-left sidebar (or keyboard shortcuts):
 
 - **Peace Mode** — Default. All panels visible, balanced view.
 - **Finance Mode** — Auto-triggers when S&P 500 moves ≥2.5% or BTC ≥5% in a day. Prioritizes markets, economy, and trade panels.
-- **War Mode** — Auto-triggers on geopolitical escalation signals (conflict spikes, military surges, threat intelligence). Prioritizes security, military, and intelligence panels.
+- **War Mode** — Auto-triggers on ≥2 independent geopolitical escalation signals above confidence 0.6 (conflict spikes, military surges, threat intelligence). Conflict-baseline normalization prevents chronic hotspots (Ukraine, Gaza, Sudan, etc.) from causing constant false triggers.
+- **Disaster Mode** — Auto-triggers on GDACS Red alert, 3+ GDACS Orange alerts, or M≥6.5 earthquake. Prioritizes hazard, disaster, and emergency panels.
+- **Ghost Mode (👻)** — Manual only (⌘⇧G or File → Toggle Ghost Mode). Stealth configuration: refresh intervals ×5 slower, analytics suppressed, macOS notifications suppressed, dark crimson/violet sidebar tint. Saves pre-ghost mode state and restores it on exit.
 
 ---
 
