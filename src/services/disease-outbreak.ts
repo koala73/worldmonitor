@@ -1,5 +1,5 @@
-// Disease outbreak surveillance — WHO Disease Outbreak News + ReliefWeb API
-// Both are free with no API key required
+// Disease outbreak surveillance — WHO Disease Outbreak News + ReliefWeb API + ProMED
+// All sources are free with no API key required
 
 export interface DiseaseOutbreak {
   id: string;
@@ -22,6 +22,46 @@ const RELIEFWEB_API =
 // WHO Health Emergencies Dashboard — JSON endpoint
 const WHO_EMERGENCIES =
   'https://www.who.int/api/hubs/cms/s3fs-public/attachments/disease-outbreak-news.json';
+
+// ProMED-mail — Program for Monitoring Emerging Diseases (ISID)
+// Free RSS feed, earlier than official WHO alerts
+const PROMED_RSS = 'https://promedmail.org/promed-posts/';
+
+function promedProxyUrl(): string {
+  return `/api/rss-proxy?url=${encodeURIComponent(PROMED_RSS)}`;
+}
+
+async function fetchProMED(): Promise<DiseaseOutbreak[]> {
+  try {
+    const res = await fetch(promedProxyUrl(), { signal: AbortSignal.timeout(10000) });
+    if (!res.ok) return [];
+    const text = await res.text();
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(text, 'text/xml');
+    if (doc.querySelector('parsererror')) return [];
+
+    const items = doc.querySelectorAll('item');
+    return Array.from(items).slice(0, 30).map((item, i) => {
+      const title = item.querySelector('title')?.textContent?.trim() ?? '';
+      const link = item.querySelector('link')?.textContent?.trim() ?? '';
+      const pubDateStr = item.querySelector('pubDate')?.textContent?.trim() ?? '';
+      const description = item.querySelector('description')?.textContent?.trim() ?? '';
+      const country = extractCountry(title + ' ' + description);
+      return {
+        id: `promed-${i}-${pubDateStr.slice(0, 10)}`,
+        title,
+        country,
+        disease: extractDiseaseName(title),
+        date: pubDateStr ? new Date(pubDateStr) : new Date(),
+        url: link,
+        source: 'ProMED' as const,
+        severity: scoreSeverity(title),
+      };
+    });
+  } catch {
+    return [];
+  }
+}
 
 function extractDiseaseName(title: string): string {
   const patterns = [
@@ -130,14 +170,16 @@ export async function fetchDiseaseOutbreaks(): Promise<DiseaseOutbreak[]> {
     return cache.outbreaks;
   }
 
-  const [rwResult, whoResult] = await Promise.allSettled([
+  const [rwResult, whoResult, promedResult] = await Promise.allSettled([
     fetchReliefWeb(),
     fetchWHOEmergencies(),
+    fetchProMED(),
   ]);
 
   const combined: DiseaseOutbreak[] = [
     ...(rwResult.status === 'fulfilled' ? rwResult.value : []),
     ...(whoResult.status === 'fulfilled' ? whoResult.value : []),
+    ...(promedResult.status === 'fulfilled' ? promedResult.value : []),
   ];
 
   // Dedupe by disease+country within 7 days

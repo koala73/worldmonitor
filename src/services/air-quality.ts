@@ -128,3 +128,43 @@ export async function fetchGlobalAirQuality(): Promise<AirQualityReading[]> {
   cache = { readings, fetchedAt: Date.now() };
   return readings;
 }
+
+export interface AirQualityAlert {
+  id: string;
+  city: string;
+  country: string;
+  lat: number;
+  lon: number;
+  aqi: number;
+  aqiLevel: AqiLevel;
+  pm25: number | null;
+  alertedAt: Date;
+}
+
+/**
+ * Returns cities currently at Unhealthy (AQI > 150) or worse thresholds.
+ * AQI 151–200 = Unhealthy, 201–300 = Very Unhealthy, 301–500 = Hazardous.
+ */
+export async function fetchAirQualityAlerts(): Promise<AirQualityAlert[]> {
+  const readings = await fetchGlobalAirQuality();
+  return readings
+    .filter(r => r.aqi > 150)
+    .map(r => ({
+      id: `aq-${r.city.toLowerCase().replace(/\s+/g, '-')}-${r.country.toLowerCase()}`,
+      city: r.city,
+      country: r.country,
+      lat: r.lat,
+      lon: r.lon,
+      aqi: r.aqi,
+      aqiLevel: r.aqiLevel,
+      pm25: r.pm25,
+      alertedAt: r.updatedAt,
+    }));
+}
+
+export function aqiAlertSeverityClass(aqi: number): string {
+  if (aqi > 300) return 'eq-row eq-major';
+  if (aqi > 200) return 'eq-row eq-strong';
+  if (aqi > 150) return 'eq-row eq-moderate';
+  return 'eq-row';
+}

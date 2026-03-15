@@ -323,6 +323,11 @@ const ALLOWED_DOMAINS = [
   'www.nature.com',
   'www.livescience.com',
   'www.newscientist.com',
+  // Emergency alert services
+  'www.tsunami.gov',       // NOAA Pacific & Atlantic Tsunami Warning Centers
+  'tfr.faa.gov',           // FAA Temporary Flight Restrictions
+  'www.nrc.gov',           // NRC Nuclear Regulatory Commission
+  'promedmail.org',        // ProMED disease surveillance
 ];
 
 export default async function handler(req) {
