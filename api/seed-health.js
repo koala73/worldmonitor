@@ -47,6 +47,7 @@ const SEED_DOMAINS = {
   'research:tech-events':    { key: 'seed-meta:research:tech-events',     intervalMin: 210 },
   'intelligence:gdelt-intel': { key: 'seed-meta:intelligence:gdelt-intel', intervalMin: 60 },
   'correlation:cards':        { key: 'seed-meta:correlation:cards',        intervalMin: 5 },
+  'intelligence:advisories':  { key: 'seed-meta:intelligence:advisories',  intervalMin: 45 },
 };
 
 async function getMetaBatch(keys) {

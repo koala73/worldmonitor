@@ -10,6 +10,7 @@ import "worldmonitor/intelligence/v1/get_country_intel_brief.proto";
 import "worldmonitor/intelligence/v1/search_gdelt_documents.proto";
 import "worldmonitor/intelligence/v1/deduct_situation.proto";
 import "worldmonitor/intelligence/v1/get_country_facts.proto";
+import "worldmonitor/intelligence/v1/list_security_advisories.proto";
 
 // IntelligenceService provides APIs for cross-domain intelligence synthesis including
 // risk scores, PizzINT monitoring, GDELT tension analysis, and AI-powered classification.
@@ -49,5 +50,10 @@ service IntelligenceService {
   // GetCountryFacts retrieves factual country data from RestCountries and Wikipedia.
   rpc GetCountryFacts(GetCountryFactsRequest) returns (GetCountryFactsResponse) {
     option (sebuf.http.config) = {path: "/get-country-facts", method: HTTP_METHOD_GET};
+  }
+
+  // ListSecurityAdvisories retrieves pre-seeded travel and health advisories.
+  rpc ListSecurityAdvisories(ListSecurityAdvisoriesRequest) returns (ListSecurityAdvisoriesResponse) {
+    option (sebuf.http.config) = {path: "/list-security-advisories", method: HTTP_METHOD_GET};
   }
 }

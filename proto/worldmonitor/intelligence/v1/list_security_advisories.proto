@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package worldmonitor.intelligence.v1;
+
+import "sebuf/http/annotations.proto";
+
+message SecurityAdvisoryItem {
+  string title = 1;
+  string link = 2;
+  string pub_date = 3;
+  string source = 4;
+  string source_country = 5;
+  string level = 6;
+  string country = 7;
+}
+
+message ListSecurityAdvisoriesRequest {}
+
+message ListSecurityAdvisoriesResponse {
+  repeated SecurityAdvisoryItem advisories = 1;
+  map<string, string> by_country = 2;
+}

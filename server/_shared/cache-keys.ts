@@ -44,6 +44,7 @@ export const BOOTSTRAP_CACHE_KEYS: Record<string, string> = {
   techEvents:        'research:tech-events-bootstrap:v1',
   gdeltIntel:        'intelligence:gdelt-intel:v1',
   correlationCards:   'correlation:cards-bootstrap:v1',
+  securityAdvisories: 'intelligence:advisories-bootstrap:v1',
 };
 
 export const BOOTSTRAP_TIERS: Record<string, 'slow' | 'fast'> = {
@@ -63,4 +64,5 @@ export const BOOTSTRAP_TIERS: Record<string, 'slow' | 'fast'> = {
   weatherAlerts: 'fast', spending: 'fast', gdeltIntel: 'fast',
   techEvents: 'slow',
   correlationCards: 'fast',
+  securityAdvisories: 'slow',
 };

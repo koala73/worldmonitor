@@ -277,6 +277,32 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/list-security-advisories:
+        get:
+            tags:
+                - IntelligenceService
+            summary: ListSecurityAdvisories
+            description: ListSecurityAdvisories retrieves pre-seeded travel and health advisories.
+            operationId: ListSecurityAdvisories
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListSecurityAdvisoriesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -796,4 +822,41 @@ components:
                     type: number
                     format: double
                 countryName:
+                    type: string
+        ListSecurityAdvisoriesRequest:
+            type: object
+        ListSecurityAdvisoriesResponse:
+            type: object
+            properties:
+                advisories:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SecurityAdvisoryItem'
+                byCountry:
+                    type: object
+                    additionalProperties:
+                        type: string
+        ByCountryEntry:
+            type: object
+            properties:
+                key:
+                    type: string
+                value:
+                    type: string
+        SecurityAdvisoryItem:
+            type: object
+            properties:
+                title:
+                    type: string
+                link:
+                    type: string
+                pubDate:
+                    type: string
+                source:
+                    type: string
+                sourceCountry:
+                    type: string
+                level:
+                    type: string
+                country:
                     type: string

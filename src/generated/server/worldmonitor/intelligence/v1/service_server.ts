@@ -167,6 +167,24 @@ export interface GetCountryFactsResponse {
   countryName: string;
 }
 
+export interface ListSecurityAdvisoriesRequest {
+}
+
+export interface ListSecurityAdvisoriesResponse {
+  advisories: SecurityAdvisoryItem[];
+  byCountry: Record<string, string>;
+}
+
+export interface SecurityAdvisoryItem {
+  title: string;
+  link: string;
+  pubDate: string;
+  source: string;
+  sourceCountry: string;
+  level: string;
+  country: string;
+}
+
 export type SeverityLevel = "SEVERITY_LEVEL_UNSPECIFIED" | "SEVERITY_LEVEL_LOW" | "SEVERITY_LEVEL_MEDIUM" | "SEVERITY_LEVEL_HIGH";
 
 export type TrendDirection = "TREND_DIRECTION_UNSPECIFIED" | "TREND_DIRECTION_RISING" | "TREND_DIRECTION_STABLE" | "TREND_DIRECTION_FALLING";
@@ -225,6 +243,7 @@ export interface IntelligenceServiceHandler {
   searchGdeltDocuments(ctx: ServerContext, req: SearchGdeltDocumentsRequest): Promise<SearchGdeltDocumentsResponse>;
   deductSituation(ctx: ServerContext, req: DeductSituationRequest): Promise<DeductSituationResponse>;
   getCountryFacts(ctx: ServerContext, req: GetCountryFactsRequest): Promise<GetCountryFactsResponse>;
+  listSecurityAdvisories(ctx: ServerContext, req: ListSecurityAdvisoriesRequest): Promise<ListSecurityAdvisoriesResponse>;
 }
 
 export function createIntelligenceServiceRoutes(
@@ -543,6 +562,43 @@ export function createIntelligenceServiceRoutes(
 
           const result = await handler.getCountryFacts(ctx, body);
           return new Response(JSON.stringify(result as GetCountryFactsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/intelligence/v1/list-security-advisories",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as ListSecurityAdvisoriesRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listSecurityAdvisories(ctx, body);
+          return new Response(JSON.stringify(result as ListSecurityAdvisoriesResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });
