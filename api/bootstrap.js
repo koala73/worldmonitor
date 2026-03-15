@@ -47,6 +47,7 @@ const BOOTSTRAP_CACHE_KEYS = {
   correlationCards:   'correlation:cards-bootstrap:v1',
   forecasts:         'forecast:predictions:v2',
   securityAdvisories: 'intelligence:advisories-bootstrap:v1',
+  customsRevenue:    'trade:customs-revenue:v1',
 };
 
 const SLOW_KEYS = new Set([
@@ -57,6 +58,7 @@ const SLOW_KEYS = new Set([
   'cryptoQuotes', 'gulfQuotes', 'stablecoinMarkets', 'unrestEvents', 'ucdpEvents',
   'techEvents',
   'securityAdvisories',
+  'customsRevenue',
 ]);
 const FAST_KEYS = new Set([
   'earthquakes', 'outages', 'serviceStatuses', 'macroSignals', 'chokepoints', 'chokepointTransits',

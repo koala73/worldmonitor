@@ -32,6 +32,7 @@ const BOOTSTRAP_KEYS = {
   correlationCards:   'correlation:cards-bootstrap:v1',
   forecasts:         'forecast:predictions:v2',
   securityAdvisories: 'intelligence:advisories-bootstrap:v1',
+  customsRevenue:    'trade:customs-revenue:v1',
 };
 
 const STANDALONE_KEYS = {
@@ -124,6 +125,7 @@ const SEED_META = {
   transitSummaries:    { key: 'seed-meta:supply_chain:transit-summaries',    maxStaleMin: 15 },
   usniFleet:           { key: 'seed-meta:military:usni-fleet',               maxStaleMin: 420 },
   securityAdvisories:  { key: 'seed-meta:intelligence:advisories',           maxStaleMin: 90 },
+  customsRevenue:      { key: 'seed-meta:trade:customs-revenue',              maxStaleMin: 1440 },
 };
 
 // Standalone keys that are populated on-demand by RPC handlers (not seeds).
@@ -183,7 +185,7 @@ function dataSize(parsed) {
                       'chokepoints', 'minerals', 'anomalies', 'flows', 'bases', 'flights',
                       'theaters', 'fleets', 'warnings', 'closures', 'cables',
                       'airports', 'closedIcaos', 'categories', 'regions', 'entries', 'satellites',
-                      'sectors', 'statuses', 'scores', 'topics', 'advisories']) {
+                      'sectors', 'statuses', 'scores', 'topics', 'advisories', 'months']) {
       if (Array.isArray(parsed[k])) return parsed[k].length;
     }
     return Object.keys(parsed).length;

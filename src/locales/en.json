@@ -836,7 +836,12 @@
       "highTariff": "High",
       "moderateTariff": "Moderate",
       "lowTariff": "Low",
-      "infoTooltip": "<strong>Trade Policy</strong> WTO trade monitoring:<ul><li><strong>Restrictions</strong>: Active trade measures by country and sector</li><li><strong>Tariffs</strong>: Applied tariff rate trends by year</li><li><strong>Trade Flows</strong>: Export/import volumes with year-over-year changes</li><li><strong>Barriers</strong>: Technical barriers to trade (TBT/SPS notifications)</li></ul>"
+      "revenue": "Revenue",
+      "noRevenueData": "No customs revenue data available",
+      "treasuryUnavailable": "Treasury data temporarily unavailable",
+      "fytdLabel": "FY{{year}} YTD",
+      "vsPriorFy": "vs FY{{year}}",
+      "infoTooltip": "<strong>Trade Policy</strong> WTO trade monitoring:<ul><li><strong>Restrictions</strong>: Active trade measures by country and sector</li><li><strong>Tariffs</strong>: Applied tariff rate trends by year</li><li><strong>Trade Flows</strong>: Export/import volumes with year-over-year changes</li><li><strong>Barriers</strong>: Technical barriers to trade (TBT/SPS notifications)</li><li><strong>Revenue</strong>: Monthly US customs duties revenue (US Treasury MTS data)</li></ul>"
     },
     "gdelt": {
       "empty": "No recent articles for this topic"

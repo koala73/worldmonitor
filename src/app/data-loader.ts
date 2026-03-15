@@ -56,6 +56,7 @@ import {
   fetchTariffTrends,
   fetchTradeFlows,
   fetchTradeBarriers,
+  fetchCustomsRevenue,
   fetchShippingRates,
   fetchChokepointStatus,
   fetchCriticalMinerals,
@@ -2301,27 +2302,38 @@ export class DataLoaderManager implements AppModule {
     if (!tradePanel) return;
 
     try {
-      const [restrictions, tariffs, flows, barriers] = await Promise.all([
+      const [restrictions, tariffs, flows, barriers, revenue] = await Promise.allSettled([
         fetchTradeRestrictions([], 50),
         fetchTariffTrends('840', '156', '', 10),
         fetchTradeFlows('840', '156', 10),
         fetchTradeBarriers([], '', 50),
+        fetchCustomsRevenue(),
       ]);
 
-      tradePanel.updateRestrictions(restrictions);
-      tradePanel.updateTariffs(tariffs);
-      tradePanel.updateFlows(flows);
-      tradePanel.updateBarriers(barriers);
+      const r = restrictions.status === 'fulfilled' ? restrictions.value : null;
+      const ta = tariffs.status === 'fulfilled' ? tariffs.value : null;
+      const fl = flows.status === 'fulfilled' ? flows.value : null;
+      const ba = barriers.status === 'fulfilled' ? barriers.value : null;
+      const rev = revenue.status === 'fulfilled' ? revenue.value : null;
 
-      const totalItems = restrictions.restrictions.length + tariffs.datapoints.length + flows.flows.length + barriers.barriers.length;
-      const anyUnavailable = restrictions.upstreamUnavailable || tariffs.upstreamUnavailable || flows.upstreamUnavailable || barriers.upstreamUnavailable;
+      if (r) tradePanel.updateRestrictions(r);
+      if (ta) tradePanel.updateTariffs(ta);
+      if (fl) tradePanel.updateFlows(fl);
+      if (ba) tradePanel.updateBarriers(ba);
+      if (rev) tradePanel.updateRevenue(rev);
 
-      this.ctx.statusPanel?.updateApi('WTO', { status: anyUnavailable ? 'warning' : totalItems > 0 ? 'ok' : 'error' });
+      const wtoItems = (r?.restrictions?.length ?? 0) + (ta?.datapoints?.length ?? 0) + (fl?.flows?.length ?? 0) + (ba?.barriers?.length ?? 0);
+      const anyUnavailable = r?.upstreamUnavailable || ta?.upstreamUnavailable || fl?.upstreamUnavailable || ba?.upstreamUnavailable;
 
-      if (totalItems > 0) {
-        dataFreshness.recordUpdate('wto_trade', totalItems);
+      this.ctx.statusPanel?.updateApi('WTO', { status: anyUnavailable ? 'warning' : wtoItems > 0 ? 'ok' : 'error' });
+
+      if (wtoItems > 0) {
+        dataFreshness.recordUpdate('wto_trade', wtoItems);
       } else if (anyUnavailable) {
         dataFreshness.recordError('wto_trade', 'WTO upstream temporarily unavailable');
+      }
+      if (rev?.months?.length) {
+        dataFreshness.recordUpdate('treasury_revenue', rev.months.length);
       }
     } catch (e) {
       console.error('[App] Trade policy failed:', e);

@@ -9,6 +9,7 @@ const KEYS = {
   shipping: 'supply_chain:shipping:v2',
   barriers: 'trade:barriers:v1:tariff-gap:50',
   restrictions: 'trade:restrictions:v1:tariff-overview:50',
+  customsRevenue: 'trade:customs-revenue:v1',
 };
 
 const SHIPPING_TTL = 3600;
@@ -294,15 +295,56 @@ async function fetchTariffTrends() {
   return trends;
 }
 
+// ─── US Treasury Customs Revenue ───
+
+const TREASURY_MTS_URL = 'https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v1/accounting/mts/mts_table_9';
+
+async function fetchCustomsRevenue() {
+  const threeYearsAgo = `${new Date().getFullYear() - 3}-01-01`;
+  const fields = 'record_date,current_month_rcpt_outly_amt,current_fytd_rcpt_outly_amt,record_fiscal_year,record_calendar_year,record_calendar_month';
+  const url = `${TREASURY_MTS_URL}?fields=${fields}&filter=classification_desc:eq:Customs%20Duties,record_date:gte:${threeYearsAgo}&sort=-record_date&page[size]=50`;
+
+  const resp = await fetch(url, {
+    headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!resp.ok) throw new Error(`Treasury MTS HTTP ${resp.status}`);
+  const json = await resp.json();
+  const rows = json.data;
+  if (!Array.isArray(rows) || rows.length === 0) throw new Error('Treasury MTS returned no data');
+  if (rows.length > 100) throw new Error(`Treasury MTS returned unexpected row count: ${rows.length}`);
+
+  const months = rows
+    .map(r => {
+      const monthly = parseFloat(r.current_month_rcpt_outly_amt);
+      const fytd = parseFloat(r.current_fytd_rcpt_outly_amt);
+      if (!Number.isFinite(monthly) || !Number.isFinite(fytd)) return null;
+      return {
+        recordDate: r.record_date,
+        fiscalYear: parseInt(r.record_fiscal_year, 10) || 0,
+        calendarYear: parseInt(r.record_calendar_year, 10) || 0,
+        calendarMonth: parseInt(r.record_calendar_month, 10) || 0,
+        monthlyAmountBillions: Math.round((monthly / 1e9) * 100) / 100,
+        fytdAmountBillions: Math.round((fytd / 1e9) * 100) / 100,
+      };
+    })
+    .filter(Boolean)
+    .reverse();
+
+  console.log(`  Treasury customs revenue: ${months.length} months (${months[0]?.recordDate} to ${months[months.length - 1]?.recordDate})`);
+  return { months, fetchedAt: new Date().toISOString(), upstreamUnavailable: false };
+}
+
 // ─── Main ───
 
 async function fetchAll() {
-  const [shipping, barriers, restrictions, flows, tariffs] = await Promise.allSettled([
+  const [shipping, barriers, restrictions, flows, tariffs, customs] = await Promise.allSettled([
     fetchShippingRates(),
     fetchTradeBarriers(),
     fetchTradeRestrictions(),
     fetchTradeFlows(),
     fetchTariffTrends(),
+    fetchCustomsRevenue(),
   ]);
 
   const sh = shipping.status === 'fulfilled' ? shipping.value : null;
@@ -310,12 +352,14 @@ async function fetchAll() {
   const re = restrictions.status === 'fulfilled' ? restrictions.value : null;
   const fl = flows.status === 'fulfilled' ? flows.value : null;
   const ta = tariffs.status === 'fulfilled' ? tariffs.value : null;
+  const cu = customs.status === 'fulfilled' ? customs.value : null;
 
   if (shipping.status === 'rejected') console.warn(`  Shipping failed: ${shipping.reason?.message || shipping.reason}`);
   if (barriers.status === 'rejected') console.warn(`  Barriers failed: ${barriers.reason?.message || barriers.reason}`);
   if (restrictions.status === 'rejected') console.warn(`  Restrictions failed: ${restrictions.reason?.message || restrictions.reason}`);
   if (flows.status === 'rejected') console.warn(`  Flows failed: ${flows.reason?.message || flows.reason}`);
   if (tariffs.status === 'rejected') console.warn(`  Tariffs failed: ${tariffs.reason?.message || tariffs.reason}`);
+  if (customs.status === 'rejected') console.warn(`  Treasury customs failed: ${customs.reason?.message || customs.reason}`);
 
   if (!sh && !ba && !re) throw new Error('All supply-chain/trade fetches failed');
 
@@ -324,6 +368,7 @@ async function fetchAll() {
   if (re) await writeExtraKeyWithMeta(KEYS.restrictions, re, TRADE_TTL, re.restrictions?.length ?? 0);
   if (fl) { for (const [key, data] of Object.entries(fl)) await writeExtraKeyWithMeta(key, data, TRADE_TTL, data.flows?.length ?? 0); }
   if (ta) { for (const [key, data] of Object.entries(ta)) await writeExtraKeyWithMeta(key, data, TRADE_TTL, data.datapoints?.length ?? 0); }
+  if (cu) await writeExtraKeyWithMeta(KEYS.customsRevenue, cu, TRADE_TTL, cu.months?.length ?? 0);
 
   return sh || { indices: [], fetchedAt: new Date().toISOString(), upstreamUnavailable: true };
 }

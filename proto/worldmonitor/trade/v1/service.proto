@@ -7,8 +7,9 @@ import "worldmonitor/trade/v1/get_trade_restrictions.proto";
 import "worldmonitor/trade/v1/get_tariff_trends.proto";
 import "worldmonitor/trade/v1/get_trade_flows.proto";
 import "worldmonitor/trade/v1/get_trade_barriers.proto";
+import "worldmonitor/trade/v1/get_customs_revenue.proto";
 
-// Trade policy intelligence from WTO data sources.
+// Trade policy intelligence from WTO and US Treasury data sources.
 service TradeService {
   option (sebuf.http.service_config) = {base_path: "/api/trade/v1"};
 
@@ -30,5 +31,10 @@ service TradeService {
   // Get SPS/TBT barrier notifications.
   rpc GetTradeBarriers(GetTradeBarriersRequest) returns (GetTradeBarriersResponse) {
     option (sebuf.http.config) = {path: "/get-trade-barriers", method: HTTP_METHOD_GET};
+  }
+
+  // Get US customs duties revenue (Treasury MTS data, seeded by Railway).
+  rpc GetCustomsRevenue(GetCustomsRevenueRequest) returns (GetCustomsRevenueResponse) {
+    option (sebuf.http.config) = {path: "/get-customs-revenue", method: HTTP_METHOD_GET};
   }
 }

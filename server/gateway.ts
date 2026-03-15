@@ -103,6 +103,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/trade/v1/get-trade-flows': 'static',
   '/api/trade/v1/get-trade-barriers': 'static',
   '/api/trade/v1/get-trade-restrictions': 'static',
+  '/api/trade/v1/get-customs-revenue': 'static',
   '/api/economic/v1/list-world-bank-indicators': 'static',
   '/api/economic/v1/get-energy-capacity': 'static',
   '/api/supply-chain/v1/get-critical-minerals': 'daily',
