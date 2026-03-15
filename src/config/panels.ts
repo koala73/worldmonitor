@@ -65,6 +65,8 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   'nws-alerts': { name: 'NWS Hazard Alerts', enabled: true, priority: 2 },
   'radiation-decay': { name: 'Radiation Decay Calculator', enabled: false, priority: 3 },
   'resource-inventory': { name: 'Resource Inventory', enabled: false, priority: 3 },
+  'world-clock': { name: 'World Clock', enabled: true, priority: 2 },
+  'pinned-webcams': { name: 'Pinned Webcams', enabled: false, priority: 3 },
 };
 
 const FULL_MAP_LAYERS: MapLayers = {

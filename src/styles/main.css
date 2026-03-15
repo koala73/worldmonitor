@@ -16607,3 +16607,210 @@ body.has-breaking-alert .panels-grid {
 .ri-edit-btn, .ri-del-btn { background: none; border: none; cursor: pointer; padding: 2px 5px; font-size: 12px; opacity: 0.6; transition: opacity 0.12s; }
 .ri-edit-btn:hover, .ri-del-btn:hover { opacity: 1; }
 .ri-empty { text-align: center; color: var(--text-dim, #888); font-size: 12px; padding: 20px 0; }
+
+/* ══════════════════════════════════════════════════════════
+   WORLD CLOCK PANEL
+   ══════════════════════════════════════════════════════════ */
+.wc-container { display: flex; flex-direction: column; gap: 1px; }
+.wc-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 8px; border-radius: 5px;
+  transition: background 0.1s ease;
+}
+.wc-row:hover { background: rgba(255,255,255,0.05); }
+.wc-row.wc-night { opacity: 0.65; }
+.wc-row.wc-home { background: rgba(10,132,255,0.06); }
+.wc-row.wc-dragging { opacity: 0.45; }
+.wc-row.wc-drag-over-above { border-top: 2px solid var(--accent-blue, #0a84ff); }
+.wc-row.wc-drag-over-below { border-bottom: 2px solid var(--accent-blue, #0a84ff); }
+
+.wc-drag-handle {
+  cursor: grab; font-size: 14px; color: rgba(255,255,255,0.2);
+  padding: 0 2px; user-select: none; flex-shrink: 0;
+}
+.wc-drag-handle:hover { color: rgba(255,255,255,0.5); }
+
+.wc-info { flex: 1; min-width: 0; }
+.wc-name {
+  font-size: 12px; font-weight: 500; color: var(--text-primary, #e8e8e8);
+  display: flex; align-items: center; gap: 4px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.wc-home-tag { font-size: 10px; opacity: 0.6; }
+.wc-detail { display: flex; align-items: center; gap: 5px; margin-top: 1px; }
+.wc-exchange { font-size: 10px; color: rgba(255,255,255,0.4); }
+.wc-status { display: flex; align-items: center; gap: 3px; font-size: 9px; font-weight: 700; letter-spacing: 0.05em; }
+.wc-status.open  { color: #4ade80; }
+.wc-status.closed { color: rgba(255,255,255,0.3); }
+.wc-dot { width: 5px; height: 5px; border-radius: 50%; }
+.wc-dot.open   { background: #4ade80; }
+.wc-dot.closed { background: rgba(255,255,255,0.25); }
+
+.wc-clock { text-align: right; flex-shrink: 0; }
+.wc-time {
+  font-family: var(--font-mono, "SF Mono", ui-monospace, monospace);
+  font-size: 13px; font-weight: 600; color: var(--text-primary, #e8e8e8);
+  letter-spacing: 0.03em;
+}
+.wc-tz { font-size: 9px; color: rgba(255,255,255,0.35); margin-top: 2px; }
+.wc-bar-wrap {
+  display: inline-block; width: 36px; height: 2px;
+  background: rgba(255,255,255,0.1); border-radius: 2px;
+  vertical-align: middle; margin-right: 3px;
+}
+.wc-bar { height: 100%; border-radius: 2px; }
+.wc-bar.day   { background: #ffd60a; }
+.wc-bar.night { background: #5e5ce6; }
+
+/* Settings gear button in panel header */
+.wc-settings-btn {
+  background: none; border: none; cursor: pointer;
+  font-size: 13px; color: rgba(255,255,255,0.4);
+  padding: 2px 4px; border-radius: 4px;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+.wc-settings-btn:hover { color: rgba(255,255,255,0.9); background: rgba(255,255,255,0.08); }
+.wc-settings-btn.wc-active { color: #4ade80; }
+
+/* Settings view */
+.wc-settings-view { padding: 8px 10px; overflow-y: auto; max-height: 320px; }
+.wc-region-header {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.07em;
+  text-transform: uppercase; color: rgba(255,255,255,0.35);
+  padding: 6px 0 3px;
+}
+.wc-region-grid { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
+.wc-city-option {
+  display: flex; align-items: center; gap: 4px;
+  padding: 3px 6px; border-radius: 5px; cursor: pointer;
+  background: rgba(255,255,255,0.05);
+  font-size: 11px; color: var(--text-primary, #e8e8e8);
+  transition: background 0.1s;
+}
+.wc-city-option:hover { background: rgba(255,255,255,0.1); }
+.wc-city-option input[type="checkbox"] { accent-color: #0a84ff; }
+.wc-opt-name { font-weight: 500; }
+.wc-opt-label { font-size: 9px; color: rgba(255,255,255,0.35); }
+.wc-empty { text-align: center; color: rgba(255,255,255,0.35); font-size: 12px; padding: 24px 0; }
+
+/* ══════════════════════════════════════════════════════════
+   MAP CONTEXT MENU
+   ══════════════════════════════════════════════════════════ */
+.map-context-menu {
+  position: fixed; z-index: 9999;
+  min-width: 180px;
+  background: rgba(32, 32, 36, 0.97);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6), 0 0 0 0.5px rgba(255,255,255,0.06);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  padding: 4px 0;
+  overflow: hidden;
+  animation: ctx-menu-in 0.1s ease;
+}
+@keyframes ctx-menu-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.map-context-menu-item {
+  padding: 7px 14px;
+  font-size: 12.5px;
+  color: rgba(255,255,255,0.85);
+  cursor: pointer;
+  transition: background 0.08s ease;
+  white-space: nowrap;
+}
+.map-context-menu-item:hover {
+  background: rgba(255,255,255,0.08);
+  color: #fff;
+}
+
+/* ══════════════════════════════════════════════════════════
+   PINNED WEBCAMS PANEL
+   ══════════════════════════════════════════════════════════ */
+.pinned-webcams-content { padding: 0 !important; }
+
+.pinned-webcams-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  padding: 4px;
+}
+
+.pinned-webcam-slot {
+  position: relative;
+  aspect-ratio: 16/9;
+  background: rgba(0,0,0,0.4);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.pinned-webcam-slot--empty {
+  display: flex; align-items: center; justify-content: center;
+  border: 1px dashed rgba(255,255,255,0.12);
+}
+
+.pinned-webcam-placeholder {
+  font-size: 10px; color: rgba(255,255,255,0.3);
+  text-align: center; padding: 8px;
+}
+
+.pinned-webcam-iframe {
+  width: 100%; height: 100%; border: none; display: block;
+}
+
+.pinned-webcam-label {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  display: flex; align-items: center; gap: 4px;
+  padding: 3px 6px;
+  background: linear-gradient(to top, rgba(0,0,0,0.75), transparent);
+}
+.pinned-webcam-title {
+  flex: 1; min-width: 0;
+  font-size: 9px; color: rgba(255,255,255,0.85);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.pinned-webcam-toggle,
+.pinned-webcam-unpin {
+  background: rgba(0,0,0,0.4); border: none; border-radius: 3px;
+  color: rgba(255,255,255,0.6); font-size: 9px; cursor: pointer;
+  padding: 1px 4px; flex-shrink: 0;
+  transition: background 0.1s, color 0.1s;
+}
+.pinned-webcam-toggle:hover,
+.pinned-webcam-unpin:hover {
+  background: rgba(255,255,255,0.15); color: #fff;
+}
+
+/* Overflow list for more than 4 webcams */
+.pinned-webcams-list { padding: 4px 8px 8px; }
+.pinned-webcams-list-header {
+  font-size: 10px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.06em; color: rgba(255,255,255,0.35);
+  padding: 6px 0 3px;
+}
+.pinned-webcam-row {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 6px; border-radius: 4px; font-size: 11px;
+  transition: background 0.1s;
+}
+.pinned-webcam-row:hover { background: rgba(255,255,255,0.05); }
+.pinned-webcam-row--active { color: #4ade80; }
+.pinned-webcam-row-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pinned-webcam-row-country { font-size: 10px; color: rgba(255,255,255,0.35); flex-shrink: 0; }
+.pinned-webcam-row-toggle,
+.pinned-webcam-row-remove {
+  background: none; border: none; cursor: pointer; font-size: 10px;
+  color: rgba(255,255,255,0.4); flex-shrink: 0; padding: 2px 4px;
+  transition: color 0.1s;
+}
+.pinned-webcam-row-toggle:hover,
+.pinned-webcam-row-remove:hover { color: rgba(255,255,255,0.9); }
+
+/* Empty state */
+.pinned-webcams-empty {
+  text-align: center; padding: 24px 16px;
+}
+.pinned-webcams-empty-icon { font-size: 28px; margin-bottom: 8px; opacity: 0.5; }
+.pinned-webcams-empty-text { font-size: 11px; color: rgba(255,255,255,0.35); line-height: 1.5; }

@@ -49,6 +49,8 @@ import { VolcanoAlertsPanel } from '@/components/VolcanoAlertsPanel';
 import { NWSAlertsPanel } from '@/components/NWSAlertsPanel';
 import { RadiationDecayPanel } from '@/components/RadiationDecayPanel';
 import { ResourceInventoryPanel } from '@/components/ResourceInventoryPanel';
+import { WorldClockPanel } from '@/components/WorldClockPanel';
+import { PinnedWebcamsPanel } from '@/components/PinnedWebcamsPanel';
 import { PositiveNewsFeedPanel } from '@/components/PositiveNewsFeedPanel';
 import { CountersPanel } from '@/components/CountersPanel';
 import { ProgressChartsPanel } from '@/components/ProgressChartsPanel';
@@ -781,6 +783,8 @@ export class PanelLayoutManager implements AppModule {
 
       this.ctx.panels['radiation-decay'] = new RadiationDecayPanel();
       this.ctx.panels['resource-inventory'] = new ResourceInventoryPanel();
+      this.ctx.panels['world-clock'] = new WorldClockPanel();
+      this.ctx.panels['pinned-webcams'] = new PinnedWebcamsPanel();
 
       const displacementPanel = new DisplacementPanel();
       displacementPanel.setCountryClickHandler((lat, lon) => {

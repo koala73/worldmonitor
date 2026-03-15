@@ -51,3 +51,7 @@ export * from './BreakingNewsBanner';
 export * from './SpaceWeatherPanel';
 export * from './DiseaseOutbreakPanel';
 export * from './AirQualityPanel';
+export * from './WorldClockPanel';
+export * from './PinnedWebcamsPanel';
+export { showMapContextMenu, dismissMapContextMenu } from './MapContextMenu';
+export type { MapContextMenuItem } from './MapContextMenu';
