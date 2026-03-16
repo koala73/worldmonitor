@@ -4,48 +4,45 @@ All notable changes to World Monitor are documented here.
 
 ## [Unreleased]
 
+---
+
+## [2.6.0] - 2026-03-14
+
 ### Added
 
-- **Arrival Choreography** — canvas overlay for animated world events
-  - Wavefront ripple: ease-out expanding ring (0 → 280 px, 2.6 s, dual trailing rings) triggered on breaking news or geo-convergence via `triggerArrivalEffect()` on DeckGLMap
-  - Corona pulse: looping radial glow on all high-severity hotspots, synced to `setHotspotLevels()`, animated with sinusoidal phase advancement
-  - Global flare: full-screen semi-transparent flash (peak 250 ms, decay 1.4 s) on War/Disaster/Finance mode transitions and war-score threshold crossings
-  - Threat-type color coding: conflict = red, cyber = cyan, economic = gold, natural = orange, generic = purple
-  - Respects `prefers-reduced-motion`; hard caps (20 wavefronts, 5 flares) prevent unbounded memory growth
-  - `destroyArrivalChoreography()` cleans up all listeners + RAF + canvas
-- **Shareable URL state** — `?view=&zoom=&lat=&lon=&layers=&timeRange=` serialized on every map interaction
-  - LZ-string compression when query string exceeds 2 000 bytes (`?z=<compressed>` with decompression bomb guard: max 32 KB decompressed, max 8 KB input)
-  - All `MapLayers` keys now included (added `stockExchanges`, `financialCenters`, `centralBanks`, `commodityHubs`, `gulfInvestments`, `positiveEvents`, `kindness`, `happiness`, `speciesRecovery`, `renewableInstallations`, `dayNight`)
-  - `Cmd+S` keyboard shortcut on desktop copies share URL to clipboard with animated bottom-center toast
-- **Ollama streaming** — real-time typewriter effect for AI panel summaries
-  - `/api/ollama-stream` SSE endpoint in sidecar, bypasses response buffering pipeline
-  - Frontend `_runStreamingDisplay()` method with blinking cursor and Stop button
-  - Falls through to full provider chain (Groq → Claude → OpenRouter → Browser T5) if Ollama is not configured
+- **Yahoo Finance → free data sources migration** — all sidecar routes now use Stooq batch CSV + FRED CSV, eliminating Yahoo Finance dependency entirely
+  - `/api/market-quotes`: Stooq batch CSV (cl.f, gc.f, spy.us, qqq.us, etc.) + FRED VIXCLS for VIX
+  - `/api/btc-etf-flows`: Stooq batch CSV for IBIT, FBTC, ARKB, BITB, HODL
+  - `/api/macro-signals`: Stooq for BTC/QQQ/XLP/SPY/Gold price signals
+  - `/api/fred-fallback`: FRED CSV (VIXCLS + FEDFUNDS) replaces Yahoo finance quotes
+  - `/api/energy-fallback`: Stooq for WTI (cl.f) and NatGas (ng.f); FRED DCOILBRENTEU CSV for Brent crude
+  - `/api/stock-chart`: Stooq daily historical CSV replaces Yahoo chart API
+- **Comprehensive free-API fallbacks** for resilient data loading across markets, ETF flows, stablecoins, macro signals, and AI posture
+- **API Keys UX overhaul** — prominent signup card for missing keys, grouped features by category, masked sentinel for stored password keys
+- **Unified settings modal** — single modal for all entry points, removed duplicate settings mounts
+- **Expanded FIRMS monitoring** — 18 global wildfire regions
+- **Professional sound design** — replaced klaxons/sweeps with sine-wave alerts, overhauled all mode audio
+- **Arrival Choreography** — canvas overlay for animated world events (wavefront ripple, corona pulse, global flare)
+- **Shareable URL state** — LZ-compressed `?view=&zoom=&lat=&lon=&layers=&timeRange=` with `Cmd+S` shortcut
+- **Ollama streaming** — real-time typewriter effect for AI panel summaries with Stop button
+- **Natural Disaster Mode** — 4th monitoring mode with amber/orange theme, auto-triggers, and synthesized audio
+
+### Fixed
+
+- Webcam iframes use `127.0.0.1` instead of `localhost` to satisfy CSP `frame-src`
+- Window drag replaced CSS drag region with JS `startDragging()` for reliability
+- Toolbar drag zones expanded to title, status, and clock elements
+- Toolbar title renamed Crystal Ball → World Monitor
 
 ### Security
 
-- **urlState.ts** — decompression bomb guard: reject `?z=` params > 8 KB; cap decompressed output to 32 KB
-- **local-api-server.mjs** — validate `OLLAMA_MODEL` env var against `^[a-zA-Z0-9._:/-]{1,80}$` before use
-- **arrival-choreography.ts** — stored event listener refs enable proper `removeEventListener` via `destroyArrivalChoreography()`; hard array caps prevent memory exhaustion from rapid event injection
-
-### Added (previous sprint)
-
-- **Natural Disaster Mode** — 4th monitoring mode (`'disaster'`) with amber/orange Apple system orange theme
-  - Auto-triggers from Peace Mode on: any GDACS Red alert, 3+ simultaneous GDACS Orange alerts, or M6.5+ earthquake
-  - Auto-deescalates to Peace Mode after 30 min with no new disaster events
-  - Synthesized audio: low sub-bass rumble (80 Hz square wave) + descending klaxon (480→340 Hz sawtooth)
-  - Amber/orange CSS theme: sidebar gradient, animated top-line, toolbar title, panel borders, button pulse
-  - Panel priority: natural-disasters, earthquakes, satellite-fires, gdacs, alert-center, displacement
-  - System notification on auto-trigger
-- `src/services/oref-locations.ts` — 1,478 Hebrew→English location translations (cherry-picked from upstream)
+- Hardened secret detection, IndexedDB cap, idle throttle, AISSTREAM validation
+- Fixed oscillator leak, Ghost Mode analytics gap, CSP, and proxy timeout
+- Decompression bomb guard for URL state; OLLAMA_MODEL validation; arrival choreography memory caps
 
 ### Changed
 
-- `src/services/mode-manager.ts` — `AppMode` extended to `'peace' | 'finance' | 'war' | 'disaster'`; `evaluateDisasterTrigger()` added; `initMode()` accepts `'disaster'`
-- `src/services/sound-manager.ts` — `_playDisasterAlert()` added; switch statement covers all 4 modes
-- `src/styles/macos-native.css` — Disaster Mode amber/orange theme + button `.mac-mode-disaster-active` style
-- `src/app/panel-layout.ts` — `DISASTER_PRIORITY` array; disaster sidebar button; `mac-mode-disaster-active` toggle in event handler; `_applyModePanelOrder` covers `'disaster'`
-- `src/app/data-loader.ts` — `evaluateDisasterTrigger()` wired after `loadNatural()` completes
+- `src/services/oref-locations.ts` — 1,478 Hebrew→English location translations (cherry-picked from upstream)
 
 ### Upstream sync (cherry-picked from koala73/worldmonitor)
 
