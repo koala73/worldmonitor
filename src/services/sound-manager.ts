@@ -27,6 +27,14 @@ const MUTE_KEY = 'wm-sound-muted';
 let _ctx: AudioContext | null = null;
 let _initialized = false;
 
+// Stored handler references for cleanup (prevents event listener leaks)
+let _modeChangedHandler: EventListener | null = null;
+let _breakingNewsHandler: EventListener | null = null;
+let _warScoreHandler: EventListener | null = null;
+let _lowPowerHandler: EventListener | null = null;
+let _idleMouseHandler: (() => void) | null = null;
+let _idleKeyHandler: (() => void) | null = null;
+
 // ──────────────────────────────────────────────────────────────────────────────
 // Public API
 // ──────────────────────────────────────────────────────────────────────────────
@@ -36,12 +44,13 @@ export function initSoundManager(): void {
   if (_initialized) return;
   _initialized = true;
 
-  document.addEventListener('wm:mode-changed', ((e: CustomEvent<ModeChangedDetail>) => {
+  _modeChangedHandler = ((e: CustomEvent<ModeChangedDetail>) => {
     const { mode, prev } = e.detail;
     if (mode !== prev) {
       _playModeSound(mode);
     }
-  }) as EventListener);
+  }) as EventListener;
+  document.addEventListener('wm:mode-changed', _modeChangedHandler);
 
   // Lazy-init AudioContext on first user gesture so browsers allow audio
   const unlockAudio = () => {
@@ -59,6 +68,52 @@ export function initSoundManager(): void {
   document.addEventListener('keydown', unlockAudio, { once: true });
 
   _initSpatialAudio();
+}
+
+/** Tear down the sound manager — remove all event listeners and stop audio. */
+export function destroySoundManager(): void {
+  if (!_initialized) return;
+
+  if (_modeChangedHandler) {
+    document.removeEventListener('wm:mode-changed', _modeChangedHandler);
+    _modeChangedHandler = null;
+  }
+  if (_breakingNewsHandler) {
+    document.removeEventListener('wm:breaking-news', _breakingNewsHandler);
+    _breakingNewsHandler = null;
+  }
+  if (_warScoreHandler) {
+    document.removeEventListener('wm:war-score', _warScoreHandler);
+    _warScoreHandler = null;
+  }
+  if (_lowPowerHandler) {
+    document.removeEventListener('wm:low-power-changed', _lowPowerHandler);
+    _lowPowerHandler = null;
+  }
+  document.removeEventListener('visibilitychange', _onVisibilityChange);
+
+  if (_idleMouseHandler) {
+    document.removeEventListener('mousemove', _idleMouseHandler);
+    _idleMouseHandler = null;
+  }
+  if (_idleKeyHandler) {
+    document.removeEventListener('keydown', _idleKeyHandler);
+    _idleKeyHandler = null;
+  }
+  if (_idleTimer !== null) {
+    clearTimeout(_idleTimer);
+    _idleTimer = null;
+  }
+
+  _stopDrone();
+  _cancelChatter();
+
+  if (_ctx) {
+    void _ctx.close().catch(() => {});
+    _ctx = null;
+  }
+  _masterGain = null;
+  _initialized = false;
 }
 
 /** Toggle mute. Returns the new muted state. */
@@ -316,26 +371,28 @@ export function setSpatialLayerEnabled(layer: 'ambient' | 'drone' | 'pings', ena
 
 function _initSpatialAudio(): void {
   // Escalation ping + ambient density bump on every breaking alert
-  document.addEventListener('wm:breaking-news', ((e: CustomEvent) => {
+  _breakingNewsHandler = ((e: CustomEvent) => {
     const { threatLevel } = e.detail as { threatLevel?: string };
     _recentBreakingCount = Math.min(_recentBreakingCount + 3, 20);
     setTimeout(() => { _recentBreakingCount = Math.max(0, _recentBreakingCount - 3); }, 5 * 60_000);
     if (isSpatialLayerEnabled('pings') && !isMuted()) {
       _playEscalationPing(threatLevel as 'critical' | 'high' | undefined);
     }
-  }) as EventListener);
+  }) as EventListener;
+  document.addEventListener('wm:breaking-news', _breakingNewsHandler);
 
   // Drone pitch tracks war threat score
-  document.addEventListener('wm:war-score', ((e: CustomEvent) => {
+  _warScoreHandler = ((e: CustomEvent) => {
     _warScore = (e.detail as { score: number }).score ?? 0;
     _updateDronePitch();
-  }) as EventListener);
+  }) as EventListener;
+  document.addEventListener('wm:war-score', _warScoreHandler);
 
   // Visibility mute/unmute
   document.addEventListener('visibilitychange', _onVisibilityChange);
 
   // Low power mode: stop all spatial layers when enabled, restart when disabled
-  document.addEventListener('wm:low-power-changed', ((e: CustomEvent) => {
+  _lowPowerHandler = ((e: CustomEvent) => {
     const enabled = e.detail as boolean;
     if (enabled) {
       _stopDrone();
@@ -344,7 +401,8 @@ function _initSpatialAudio(): void {
       if (isSpatialLayerEnabled('drone')   && !isMuted()) _startDrone();
       if (isSpatialLayerEnabled('ambient') && !isMuted()) _scheduleChatter();
     }
-  }) as EventListener);
+  }) as EventListener;
+  document.addEventListener('wm:low-power-changed', _lowPowerHandler);
 
   // Idle mute wiring
   _wireIdleMute();
@@ -559,6 +617,8 @@ function _wireIdleMute(): void {
       if (ctx && _masterGain) _masterGain.gain.setTargetAtTime(0, ctx.currentTime, 1.5);
     }, IDLE_MUTE_MS);
   };
+  _idleMouseHandler = resetIdle;
+  _idleKeyHandler = resetIdle;
   document.addEventListener('mousemove', resetIdle, { passive: true });
   document.addEventListener('keydown',   resetIdle, { passive: true });
   resetIdle();
