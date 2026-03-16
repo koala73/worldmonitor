@@ -2672,6 +2672,8 @@ export class DataLoaderManager implements AppModule {
     try {
       const result = await fetchRadiationWatch();
       this.callPanel('radiation-watch', 'setData', result);
+      this.ctx.intelligenceCache.radiation = result;
+      signalAggregator.ingestRadiationObservations(result.observations);
       if (result.observations.length > 0) {
         dataFreshness.recordUpdate('radiation', result.observations.length);
       }

@@ -41,6 +41,8 @@ export interface RadiationWatchResult {
   };
 }
 
+let latestRadiationWatchResult: RadiationWatchResult | null = null;
+
 const breaker = createCircuitBreaker<RadiationWatchResult>({
   name: 'Radiation Watch',
   cacheTtlMs: 15 * 60 * 1000,
@@ -77,7 +79,9 @@ function toObservation(raw: ProtoRadiationObservation): RadiationObservation {
 export async function fetchRadiationWatch(): Promise<RadiationWatchResult> {
   const hydrated = getHydratedData('radiationWatch') as ListRadiationObservationsResponse | undefined;
   if (hydrated?.observations?.length) {
-    return toResult(hydrated);
+    const result = toResult(hydrated);
+    latestRadiationWatchResult = result;
+    return result;
   }
 
   return breaker.execute(async () => {
@@ -86,8 +90,14 @@ export async function fetchRadiationWatch(): Promise<RadiationWatchResult> {
     }, {
       signal: AbortSignal.timeout(20_000),
     });
-    return toResult(response);
+    const result = toResult(response);
+    latestRadiationWatchResult = result;
+    return result;
   }, emptyResult);
+}
+
+export function getLatestRadiationWatch(): RadiationWatchResult | null {
+  return latestRadiationWatchResult;
 }
 
 function toResult(response: ListRadiationObservationsResponse): RadiationWatchResult {
