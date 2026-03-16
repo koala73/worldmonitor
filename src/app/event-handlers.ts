@@ -302,8 +302,11 @@ export class EventHandlerManager implements AppModule {
           if (url.origin === window.location.origin) return;
           e.preventDefault();
           e.stopPropagation();
-          void invokeTauri<void>('open_url', { url: url.toString() }).catch(() => {
-            window.open(url.toString(), '_blank');
+          void invokeTauri<void>('open_url', { url: url.toString() }).catch((error: unknown) => {
+            console.warn('[external-link] Failed to open external URL', {
+              url: url.toString(),
+              error: error instanceof Error ? error.message : String(error),
+            });
           });
         } catch { /* malformed URL -- let browser handle */ }
       };

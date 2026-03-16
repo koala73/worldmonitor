@@ -6,7 +6,7 @@ import type {
   GetTradeBarriersResponse,
 } from '@/services/trade';
 import { t } from '@/services/i18n';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { isFeatureAvailable } from '@/services/runtime-config';
 import { isDesktopRuntime } from '@/services/runtime';
 
@@ -230,13 +230,9 @@ export class TradePolicyPanel extends Panel {
   }
 
   private renderSourceUrl(url: string): string {
-    if (!url) return '';
-    try {
-      const parsed = new URL(url);
-      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
-        return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="trade-source-link">Source</a>`;
-      }
-    } catch { /* invalid URL */ }
-    return '';
+    const safeUrl = sanitizeUrl(url);
+    return safeUrl
+      ? `<a href="${safeUrl}" target="_blank" rel="noopener" class="trade-source-link">Source</a>`
+      : '';
   }
 }

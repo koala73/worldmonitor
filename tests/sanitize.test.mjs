@@ -25,17 +25,39 @@ const escapeAttr = escapeHtml;
 // ---------- isPrivateHostname ----------
 
 function isPrivateHostname(hostname) {
-  const h = hostname.toLowerCase();
-  if (h === 'localhost' || h === '[::1]') return true;
-  const ipv4Match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h);
+  const h = hostname.toLowerCase().replace(/\.+$/, '');
+  let ipCandidate = h.replace(/^\[|\]$/g, '');
+  if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local')) return true;
+  if (ipCandidate === '::1' || ipCandidate === '::') return true;
+  if (/^f[cd][0-9a-f]{2}:/i.test(ipCandidate)) return true;
+  if (/^fe[89ab][0-9a-f]:/i.test(ipCandidate)) return true;
+  const v4Mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(ipCandidate);
+  if (v4Mapped) {
+    ipCandidate = v4Mapped[1];
+  } else {
+    const v4MappedHex = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i.exec(ipCandidate);
+    if (v4MappedHex) {
+      const hi = Number.parseInt(v4MappedHex[1], 16);
+      const lo = Number.parseInt(v4MappedHex[2], 16);
+      ipCandidate = [
+        (hi >> 8) & 0xff,
+        hi & 0xff,
+        (lo >> 8) & 0xff,
+        lo & 0xff,
+      ].join('.');
+    }
+  }
+  const ipv4Match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(ipCandidate);
   if (ipv4Match) {
-    const [, a, b] = ipv4Match.map(Number);
+    const [a, b, c, d] = ipv4Match.slice(1).map(Number);
+    if ([a, b, c, d].some((part) => part > 255)) return false;
     if (a === 127) return true;
     if (a === 10) return true;
     if (a === 172 && b >= 16 && b <= 31) return true;
     if (a === 192 && b === 168) return true;
     if (a === 169 && b === 254) return true;
     if (a === 0) return true;
+    if (a >= 224) return true;
   }
   return false;
 }
@@ -151,6 +173,8 @@ test('sanitizeUrl blocks localhost', () => {
   assert.equal(sanitizeUrl('http://localhost'), '');
   assert.equal(sanitizeUrl('http://localhost:8080'), '');
   assert.equal(sanitizeUrl('https://localhost/admin'), '');
+  assert.equal(sanitizeUrl('https://tauri.localhost/path'), '');
+  assert.equal(sanitizeUrl('https://printer.local/dashboard'), '');
 });
 
 test('sanitizeUrl blocks 127.0.0.0/8 loopback addresses', () => {
@@ -187,9 +211,23 @@ test('sanitizeUrl blocks 0.0.0.0/8 range', () => {
   assert.equal(sanitizeUrl('http://0.0.0.0'), '');
 });
 
+test('sanitizeUrl blocks IPv6 loopback, local, and mapped private ranges', () => {
+  assert.equal(sanitizeUrl('https://[::1]/'), '');
+  assert.equal(sanitizeUrl('https://[::]/'), '');
+  assert.equal(sanitizeUrl('https://[fd00::1]/'), '');
+  assert.equal(sanitizeUrl('https://[fe80::1]/'), '');
+  assert.equal(sanitizeUrl('https://[::ffff:127.0.0.1]/'), '');
+});
+
+test('sanitizeUrl blocks multicast and reserved IPv4 ranges', () => {
+  assert.equal(sanitizeUrl('https://224.0.0.1'), '');
+  assert.equal(sanitizeUrl('https://255.255.255.255'), '');
+});
+
 test('sanitizeUrl allows legitimate public IPs', () => {
   assert.notEqual(sanitizeUrl('http://8.8.8.8'), '');
   assert.notEqual(sanitizeUrl('https://1.1.1.1'), '');
+  assert.notEqual(sanitizeUrl('https://[2606:4700:4700::1111]/'), '');
 });
 
 test('sanitizeUrl allows legitimate public domains', () => {

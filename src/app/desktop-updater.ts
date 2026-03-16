@@ -175,8 +175,12 @@ export class DesktopUpdater implements AppModule {
         } else {
           // Web or non-DMG: open in browser
           if (this.ctx.isDesktopApp) {
-            void invokeTauri<void>('open_url', { url: downloadUrl }).catch(() => {
-              window.open(downloadUrl, '_blank', 'noopener');
+            void invokeTauri<void>('open_url', { url: downloadUrl }).catch((error: unknown) => {
+              this.logUpdaterOutcome('open_failed', {
+                downloadUrl,
+                error: error instanceof Error ? error.message : String(error),
+              });
+              this.showInfoToast('Could not open the download link.');
             });
           } else {
             window.open(downloadUrl, '_blank', 'noopener');

@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::env;
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
+use std::net::IpAddr;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
@@ -477,34 +478,77 @@ fn open_path_in_shell(path: &Path) -> Result<(), String> {
     open_in_shell(&path.to_string_lossy())
 }
 
-#[tauri::command]
-fn open_url(url: String) -> Result<(), String> {
-    let parsed = Url::parse(&url).map_err(|_| "Invalid URL".to_string())?;
+fn is_private_or_reserved_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(addr) => {
+            let [a, b, _, _] = addr.octets();
+            a == 127
+                || a == 10
+                || (a == 172 && (16..=31).contains(&b))
+                || (a == 192 && b == 168)
+                || (a == 169 && b == 254)
+                || a == 0
+                || a >= 224
+        }
+        IpAddr::V6(addr) => {
+            if let Some(mapped) = addr.to_ipv4_mapped() {
+                return is_private_or_reserved_ip(IpAddr::V4(mapped));
+            }
 
-    // Only HTTPS is allowed. Local/internal URLs must never be opened via this command
-    // to prevent a compromised webview from hitting the local API server (127.0.0.1:46123)
-    // or other internal services through the system browser.
+            let first = addr.segments()[0];
+            addr.is_loopback()
+                || addr.is_unspecified()
+                || addr.is_multicast()
+                || (first & 0xfe00) == 0xfc00
+                || (first & 0xffc0) == 0xfe80
+        }
+    }
+}
+
+fn is_blocked_open_url_host(host: &str) -> bool {
+    let normalized = host
+        .trim()
+        .trim_end_matches('.')
+        .trim_matches(|c| c == '[' || c == ']')
+        .to_ascii_lowercase();
+    if normalized.is_empty() {
+        return true;
+    }
+
+    if normalized == "localhost"
+        || normalized.ends_with(".localhost")
+        || normalized.ends_with(".local")
+    {
+        return true;
+    }
+
+    normalized
+        .parse::<IpAddr>()
+        .map(is_private_or_reserved_ip)
+        .unwrap_or(false)
+}
+
+fn validate_open_url(url: &str) -> Result<Url, String> {
+    let parsed = Url::parse(url).map_err(|_| "Invalid URL".to_string())?;
+
     if parsed.scheme() != "https" {
         return Err("Only https:// URLs may be opened via open_url".to_string());
     }
 
-    // Block loopback, link-local, and private network hosts even over HTTPS
-    let host = parsed.host_str().unwrap_or("");
-    let blocked = host == "localhost"
-        || host == "127.0.0.1"
-        || host == "::1"
-        || host.starts_with("192.168.")
-        || host.starts_with("10.")
-        || host.ends_with(".local");
-    if blocked {
+    if is_blocked_open_url_host(parsed.host_str().unwrap_or("")) {
         return Err("Internal/private addresses may not be opened via open_url".to_string());
     }
 
-    // URL length guard — browsers accept long URLs but this prevents log spam
     if url.len() > 4096 {
         return Err("URL exceeds maximum allowed length".to_string());
     }
 
+    Ok(parsed)
+}
+
+#[tauri::command]
+fn open_url(url: String) -> Result<(), String> {
+    let parsed = validate_open_url(&url)?;
     open_in_shell(parsed.as_str())
 }
 
@@ -1081,6 +1125,59 @@ mod sanitize_path_tests {
             sanitize_path_for_node(raw),
             r"C:\Users\alice\sidecar\local-api-server.mjs".to_string()
         );
+    }
+}
+
+#[cfg(test)]
+mod open_url_validation_tests {
+    use super::validate_open_url;
+
+    fn assert_rejected(url: &str, expected: &str) {
+        assert_eq!(validate_open_url(url).unwrap_err(), expected);
+    }
+
+    #[test]
+    fn rejects_non_https_targets() {
+        assert_rejected(
+            "http://example.com",
+            "Only https:// URLs may be opened via open_url",
+        );
+    }
+
+    #[test]
+    fn rejects_private_and_local_hosts() {
+        for url in [
+            "https://localhost",
+            "https://localhost./",
+            "https://tauri.localhost",
+            "https://printer.local",
+            "https://127.0.0.2",
+            "https://10.0.0.1",
+            "https://172.16.0.1",
+            "https://192.168.1.25",
+            "https://169.254.169.254",
+            "https://0.0.0.0",
+            "https://224.0.0.1",
+            "https://[::1]/",
+            "https://[::]/",
+            "https://[fd00::1]/",
+            "https://[fe80::1]/",
+            "https://[::ffff:127.0.0.1]/",
+        ] {
+            assert_rejected(url, "Internal/private addresses may not be opened via open_url");
+        }
+    }
+
+    #[test]
+    fn allows_public_https_hosts() {
+        for url in [
+            "https://example.com",
+            "https://example.com./docs",
+            "https://1.1.1.1",
+            "https://[2606:4700:4700::1111]/dns-query",
+        ] {
+            assert!(validate_open_url(url).is_ok(), "{url} should be allowed");
+        }
     }
 }
 

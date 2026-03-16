@@ -370,7 +370,12 @@ export class RuntimeConfigPanel extends Panel {
         const url = link.dataset.signupUrl;
         if (!url) return;
         if (isDesktopRuntime()) {
-          void invokeTauri<void>('open_url', { url }).catch(() => window.open(url, '_blank'));
+          void invokeTauri<void>('open_url', { url }).catch((error: unknown) => {
+            console.warn('[runtime-config] Failed to open signup URL', {
+              url,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
         } else {
           window.open(url, '_blank');
         }

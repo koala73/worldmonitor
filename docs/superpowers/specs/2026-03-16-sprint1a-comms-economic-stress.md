@@ -167,6 +167,7 @@ Severity colors: normal = green, warning = amber, critical = red, unknown = neut
 Extends `Panel`. Uses `getContentElement()` directly for DOM updates — same pattern as GDACSAlertsPanel and VolcanoAlertsPanel, avoids the `setContent()` 150ms debounce.
 
 Layout:
+
 1. Overall status banner — colored pill, pulsing dot, summary text
 2. 2-column StatusCard grid: BGP Hijacks, BGP Leaks, IXP Status, DDoS L7 (inline note if Cloudflare token missing)
 3. Full-width cable status card with individual cable badges
@@ -182,6 +183,7 @@ Instance property: `_previousOverall: string = 'normal'` for transition detectio
 Extends `Panel`. Uses `getContentElement()` directly for DOM updates.
 
 Layout:
+
 1. Composite stress index bar — 0-100 gradient bar with needle, numeric score, trend arrow
 2. 3-column StatusCard grid: Yield Curve, Bank Spread, VIX, FSI, Supply Chain, Job Claims
 3. Full-width food security footnote row
@@ -233,6 +235,7 @@ Both call `getApiBaseUrl() + '/api/<route>'`. Return typed data or throw.
 ## Files to Create / Modify
 
 **New:**
+
 - `src/components/StatusCard.ts`
 - `src/components/CommsHealthPanel.ts`
 - `src/components/EconomicStressPanel.ts`
@@ -240,6 +243,7 @@ Both call `getApiBaseUrl() + '/api/<route>'`. Return typed data or throw.
 - `src/services/economic-stress.ts`
 
 **Modified:**
+
 - `src/components/index.ts` — add `export * from './StatusCard'`
 - `src-tauri/sidecar/local-api-server.mjs` — 2 new routes
 - `src/config/panels.ts` — 2 new panel entries + PANEL_CATEGORY_MAP
@@ -266,11 +270,13 @@ PANEL_CATEGORY_MAP: `comms-health` to `'infrastructure'`, `economic-stress` to `
 A panel key can appear in multiple priority lists — `_applyModePanelOrder` uses `currentKeys.includes(k)` per list independently.
 
 Priority list updates:
+
 - `WAR_PRIORITY`: add `'comms-health'` after `'space-weather'`
 - `DISASTER_PRIORITY`: add `'comms-health'` after `'air-quality'`, `'economic-stress'` after `'comms-health'`
 - `FINANCE_PRIORITY`: add `'economic-stress'` after `'economic'`
 
 Also fix two stale panel IDs already in DISASTER_PRIORITY (done in same commit):
+
 - `'natural-disasters'` removed (no such panel ID)
 - `'gdacs'` replaced with `'gdacs-alerts'` (correct registered key)
 
@@ -288,6 +294,7 @@ scheduleRefresh('economic-stress', fetchEconomicStress, 15 * 60 * 1000);
 ## Desktop Notifications
 
 Fire on state transitions only (store previous state in panel instance property):
+
 - **Comms Health:** `_previousOverall` transitions to `'warning'` or `'critical'`
 - **Economic Stress:** `_previousStressIndex` crosses 70 or 85 from below
 

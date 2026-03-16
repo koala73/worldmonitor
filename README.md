@@ -3,6 +3,8 @@
 **Real-time global intelligence dashboard** — AI-powered news aggregation, geopolitical monitoring, and infrastructure tracking in a unified situational awareness interface.
 
 > **World Monitor** is a free, open-source macOS desktop application built on top of [World Monitor](https://github.com/koala73/worldmonitor) by Elie Habib. It adds SF Pro typography, sidebar navigation, native vibrancy effects, HIG-compliant layout, and macOS-specific intelligence features including a live cyber threat map, persistent alert center, Air Strikes & Drones panel (ACLED), and World Bank economic country profiles.
+>
+> **Repository scope:** this repository tracks the macOS desktop fork. Upstream web demos and shared architecture docs are linked below, but release, install, and desktop security guarantees in this repo apply to the macOS build here unless noted otherwise.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![GitHub stars](https://img.shields.io/github/stars/bradleybond512/worldmonitor-macos?style=social)](https://github.com/bradleybond512/worldmonitor-macos/stargazers)
@@ -141,9 +143,9 @@ This fork includes several security hardening measures beyond the base project:
 | Area | Protection |
 |---|---|
 | **Auto-update** | Bundle identifier verified via `plutil` before any file is replaced — rejects DMGs whose app is not `com.bradleybond.worldmonitor` |
-| **URL opening** | `open_url` Tauri command blocks loopback/LAN addresses and non-HTTPS schemes — a compromised webview cannot trigger browser access to the local API server |
+| **URL opening** | `open_url` only allows `https://` and rejects localhost-style hosts plus literal loopback, private, link-local, unique-local, and reserved IP targets. The desktop renderer does not fall back to `window.open()` when the native guard rejects a URL |
 | **Notifications** | Input length-capped, control characters stripped, 30-second global rate limit to prevent AppleScript injection and notification spam |
-| **XSS (href)** | All external URLs used in `href` attributes go through `sanitizeUrl()` which validates `https:`/`http:` scheme — blocks `javascript:` and `data:` injection |
+| **XSS (href)** | All external URLs used in `href` attributes go through `sanitizeUrl()`, which allows only `http:`/`https:` and rejects `javascript:`, `data:`, localhost-style hosts, and literal private-address targets |
 | **Content Security Policy** | `object-src 'none'` (no plugins), `base-uri 'self'` (no `<base>` tag hijacking), `form-action 'self'` (no external form submission), `script-src 'self'` (no inline scripts) |
 | **Keychain** | API keys stored in macOS Keychain via `keyring` crate — never in `localStorage` on the desktop build |
 | **Hardened Runtime** | macOS Hardened Runtime enabled — prevents code injection and library hijacking |
@@ -161,7 +163,7 @@ This fork includes several security hardening measures beyond the base project:
 | Expensive OSINT tools ($$$)        | **100% free & open source**                                                                                |
 | Static news feeds                  | **Real-time updates** with live video streams                                                              |
 | Cloud-dependent AI tools           | **Run AI locally** with Ollama/LM Studio — no API keys, no data leaves your machine                       |
-| Web-only dashboards                | **Native desktop app** (Tauri) for macOS, Windows, and Linux + installable PWA with offline map support    |
+| Web-only dashboards                | **macOS desktop fork** (Tauri) with a local sidecar and native keychain storage, plus the upstream installable PWA/web deployments |
 | Flat 2D maps                       | **3D WebGL globe** with deck.gl rendering and 40+ toggleable data layers                                   |
 | Siloed financial data              | **Finance variant** with 92 stock exchanges, 19 financial centers, 13 central banks, BIS data, WTO trade policy, and Gulf FDI tracking |
 | Undocumented, fragile APIs         | **Proto-first API contracts** — 20 typed services with auto-generated clients, servers, and OpenAPI docs   |
@@ -192,6 +194,7 @@ Claude (Anthropic Claude Sonnet) is already built in as one of the AI summarizat
 4. Click the ✦ button on any panel — Claude Sonnet will analyze and summarize the live data
 
 **Want a completely free AI option instead?** Two alternatives cost nothing:
+
 - **Groq** (free tier: 14,400 requests/day) — register at [console.groq.com](https://console.groq.com/keys) and enter the key in **Settings → API Keys → Groq**
 - **Ollama** (fully local, no internet required) — install [Ollama](https://ollama.com/download), then in **Settings → General → AI Provider** enter your Ollama server URL (e.g. `http://localhost:11434`) and model name; your data never leaves your machine
 
@@ -362,8 +365,8 @@ All four variants run from a single codebase — switch between them with one cl
 ### Live News & Video
 
 - **150+ RSS feeds** across geopolitics, defense, energy, tech, and finance — domain-allowlisted proxy prevents CORS issues. Each variant loads its own curated feed set: ~25 categories for geopolitical, ~20 for tech, ~18 for finance
-- **8+ default live video streams** — Bloomberg, Sky News, Al Jazeera, Euronews, DW, France24, CNBC, Al Arabiya — with automatic live detection that scrapes YouTube channel pages every 5 minutes to find active streams. 30+ additional channels available from an expandable library (Fox, BBC, CNN Turk, TRT, RT, CBS, NBC, CNN Brasil, and more)
-- **HLS native streaming** — 10 channels (Sky News, Euronews, DW, France24, Al Arabiya, CBS News, TRT World, Sky News Arabia, Al Hadath, RT) stream via native HLS `<video>` elements instead of YouTube iframes, bypassing cookie popups, bot checks, and WKWebView autoplay restrictions. HLS failure triggers automatic 5-minute cooldown with YouTube iframe fallback. RT (Russia Today) — banned from YouTube — streams exclusively via HLS
+- **8+ default live video streams** — Bloomberg, Sky News, Al Jazeera, Euronews, DW, France24, CNBC, Al Arabiya — with automatic live detection that scrapes YouTube channel pages every 5 minutes to find active streams. 30+ additional channels available from an expandable library (Fox, BBC, CNN Turk, TRT, CBS, NBC, CNN Brasil, WION, and more)
+- **HLS native streaming** — 9 channels (Sky News, Euronews, DW, France24, Al Arabiya, CBS News, TRT World, Sky News Arabia, Al Hadath) stream via native HLS `<video>` elements instead of YouTube iframes, bypassing cookie popups, bot checks, and WKWebView autoplay restrictions. HLS failure triggers automatic 5-minute cooldown with YouTube iframe fallback
 - **Desktop embed bridge** — YouTube's IFrame API restricts playback in native webviews (error 153). The dashboard detects this and transparently routes through a cloud-hosted embed proxy with bidirectional message passing (play/pause/mute/unmute/loadVideo)
 - **Idle-aware playback** — video players pause and are removed from the DOM after 5 minutes of inactivity, resuming when the user returns. Tab visibility changes also suspend/resume streams
 - **Global streaming quality control** — a user-selectable quality setting (auto, 360p, 480p, 720p) that applies to all live video streams across the dashboard. The preference persists in localStorage and propagates to active players via a `stream-quality-changed` CustomEvent — no reload required when switching quality
@@ -389,7 +392,7 @@ All four variants run from a single codebase — switch between them with one cl
 
 ### Desktop Application (Tauri)
 
-- **Native desktop app** for macOS, Windows, and Linux — packages the full dashboard with a local Node.js sidecar that runs all 60+ API handlers locally
+- **macOS desktop fork** — this repository ships a Tauri desktop shell with a local Node.js sidecar that runs the shared API surface locally
 - **OS keychain integration** — API keys stored in the system credential manager (macOS Keychain, Windows Credential Manager), never in plaintext files
 - **Token-authenticated sidecar** — a unique session token prevents other local processes from accessing the sidecar on localhost. Generated per launch using randomized hashing
 - **Cloud fallback** — when a local API handler fails or is missing, requests transparently fall through to the cloud deployment (worldmonitor.app) with origin headers stripped
@@ -1375,7 +1378,7 @@ All Railway relay responses are gzip-compressed (zlib `gzipSync`) when the clien
 
 ## Desktop Application Architecture
 
-The Tauri desktop app wraps the dashboard in a native window (macOS, Windows, Linux) with a local Node.js sidecar that runs all API handlers without cloud dependency:
+The Tauri desktop app in this fork wraps the dashboard in a native macOS window with a local Node.js sidecar that runs the shared API surface without cloud dependency:
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -1707,9 +1710,9 @@ Set `WS_RELAY_URL` (server-side, HTTPS) and `VITE_WS_RELAY_URL` (client-side, WS
 | **Localization**      | i18next (16 languages: en, fr, de, es, it, pl, pt, nl, sv, ru, ar, zh, ja, tr, th, vi), RTL support, lazy-loaded bundles, native-language feeds for 7 locales |
 | **API Contracts**     | Protocol Buffers (92 proto files, 20 services), sebuf HTTP annotations, buf CLI (lint + breaking checks), auto-generated TypeScript clients/servers + OpenAPI 3.1.0 docs |
 | **Analytics**         | PostHog (privacy-first, typed event schemas, pseudonymous identity, ad-blocker bypass via reverse proxy, offline queue for desktop)             |
-| **Deployment**        | Vercel Edge Functions (60+ endpoints) + Railway (WebSocket relay + Telegram + OREF + Polymarket proxy + NOTAM) + Tauri (macOS/Windows/Linux) + PWA (installable) |
+| **Deployment**        | Vercel Edge Functions (60+ endpoints) + Railway (WebSocket relay + Telegram + OREF + Polymarket proxy + NOTAM) + Tauri desktop fork (macOS shipping focus) + PWA (installable) |
 | **Finance Data**      | 92 stock exchanges, 19 financial centers, 13 central banks, 10 commodity hubs, 64 Gulf FDI investments                                         |
-| **Data**              | 150+ RSS feeds, ADS-B transponders, AIS maritime data, VIIRS satellite imagery, 30+ live video channels (8+ default YouTube + 10 HLS native), 27 Telegram OSINT channels |
+| **Data**              | 150+ RSS feeds, ADS-B transponders, AIS maritime data, VIIRS satellite imagery, 30+ live video channels (8+ default YouTube + 9 HLS native), 27 Telegram OSINT channels |
 
 ---
 
@@ -1852,7 +1855,7 @@ Desktop release details, signing hooks, variant outputs, and clean-machine valid
 - [x] Government travel advisory aggregation (4 governments + 13 embassies + health agencies → CII score floors)
 - [x] Airport delay & NOTAM monitoring (128 airports, FAA + AviationStack + ICAO NOTAM closure detection)
 - [x] Strategic Risk Score algorithm (composite geopolitical risk from convergence, CII, infrastructure, theater, breaking news)
-- [x] HLS native streaming (10 channels bypass YouTube iframes — Sky News, Euronews, DW, France24, RT, and more)
+- [x] HLS native streaming (9 channels bypass YouTube iframes — Sky News, Euronews, DW, France24, TRT World, and more)
 - [x] Polymarket in-flight request deduplication and queue backpressure (max 20 queued, response slicing)
 - [ ] Mobile-optimized views
 - [ ] Push notifications for critical alerts

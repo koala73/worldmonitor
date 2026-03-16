@@ -431,7 +431,12 @@ function initFeatureSectionListeners(area: HTMLElement): void {
       const url = link.dataset.signupUrl;
       if (!url) return;
       if (isDesktopRuntime()) {
-        void invokeTauri<void>('open_url', { url }).catch(() => window.open(url, '_blank'));
+        void invokeTauri<void>('open_url', { url }).catch((error: unknown) => {
+          console.warn('[settings] Failed to open signup URL', {
+            url,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        });
       } else {
         window.open(url, '_blank');
       }

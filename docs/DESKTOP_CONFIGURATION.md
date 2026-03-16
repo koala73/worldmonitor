@@ -4,29 +4,33 @@ World Monitor desktop now uses a runtime configuration schema with per-feature t
 
 ## Secret keys
 
-The desktop vault schema (Rust `SUPPORTED_SECRET_KEYS`) supports the following 22 keys:
+The desktop vault schema (Rust `SUPPORTED_SECRET_KEYS`) supports the following 25 keys:
 
 - `GROQ_API_KEY`
 - `OPENROUTER_API_KEY`
 - `FRED_API_KEY`
 - `EIA_API_KEY`
-- `FINNHUB_API_KEY`
 - `CLOUDFLARE_API_TOKEN`
 - `ACLED_ACCESS_TOKEN`
+- `ACLED_EMAIL`
 - `URLHAUS_AUTH_KEY`
 - `OTX_API_KEY`
 - `ABUSEIPDB_API_KEY`
-- `NASA_FIRMS_API_KEY`
 - `WINGBITS_API_KEY`
 - `WS_RELAY_URL`
-- `VITE_WS_RELAY_URL`
 - `VITE_OPENSKY_RELAY_URL`
 - `OPENSKY_CLIENT_ID`
 - `OPENSKY_CLIENT_SECRET`
 - `AISSTREAM_API_KEY`
+- `VITE_WS_RELAY_URL`
+- `FINNHUB_API_KEY`
+- `NASA_FIRMS_API_KEY`
 - `OLLAMA_API_URL`
 - `OLLAMA_MODEL`
 - `WTO_API_KEY`
+- `AVIATIONSTACK_API`
+- `ICAO_API_KEY`
+- `THREATFOX_API_KEY`
 
 Note: `UC_DP_KEY` exists in the TypeScript `RuntimeSecretKey` union but is not in the desktop Rust keychain or sidecar.
 

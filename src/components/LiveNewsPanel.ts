@@ -82,7 +82,7 @@ export const OPTIONAL_LIVE_CHANNELS: LiveChannel[] = [
   { id: 'livenow-fox', name: 'LiveNOW from FOX', handle: '@LiveNOWfromFOX', fallbackVideoId: 'QaftgYkG-ek' },
   { id: 'fox-news', name: 'Fox News', handle: '@FoxNews', fallbackVideoId: 'QaftgYkG-ek', useFallbackOnly: true },
   { id: 'newsmax', name: 'Newsmax', handle: '@NEWSMAX', fallbackVideoId: 'S-lFBzloL2Y', useFallbackOnly: true },
-  { id: 'abc-news', name: 'ABC News', handle: '@ABCNews' },
+  { id: 'abc-news', name: 'ABC News', handle: '@ABCNews', fallbackVideoId: 'mD7t1mTtAss' },
   { id: 'cbs-news', name: 'CBS News', handle: '@CBSNews', fallbackVideoId: 'R9L8sDK8iEc' },
   { id: 'nbc-news', name: 'NBC News', handle: '@NBCNews', fallbackVideoId: 'yMr0neQhu6c' },
   { id: 'cbc-news', name: 'CBC News', handle: '@CBCNews', fallbackVideoId: 'jxP_h3V-Dv8' },
@@ -95,7 +95,6 @@ export const OPTIONAL_LIVE_CHANNELS: LiveChannel[] = [
   { id: 'ntv-turkey', name: 'NTV', handle: '@NTV', fallbackVideoId: 'pqq5c6k70kk' },
   { id: 'cnn-turk', name: 'CNN TURK', handle: '@cnnturk', fallbackVideoId: 'lsY4GFoj_xY' },
   { id: 'tv-rain', name: 'TV Rain', handle: '@tvrain' },
-  { id: 'rt', name: 'RT', handle: '' },
   { id: 'tvp-info', name: 'TVP Info', handle: '@tvpinfo', fallbackVideoId: '3jKb-uThfrg' },
   { id: 'telewizja-republika', name: 'Telewizja Republika', handle: '@Telewizja_Republika', fallbackVideoId: 'dzntyCTgJMQ' },
   // Latin America & Portuguese
@@ -114,7 +113,7 @@ export const OPTIONAL_LIVE_CHANNELS: LiveChannel[] = [
   { id: 'ann-news', name: 'ANN News', handle: '@ANNnewsCH' },
   { id: 'ntv-news', name: 'NTV News (Japan)', handle: '@ntv_news' },
   { id: 'cti-news', name: 'CTI News (Taiwan)', handle: '@中天新聞CtiNews' },
-  { id: 'wion', name: 'WION', handle: '@WION' },
+  { id: 'wion', name: 'WION', handle: '@WION', fallbackVideoId: 'LqMPBFXTCJM' },
   { id: 'cna-asia', name: 'CNA (NewsAsia)', handle: '@channelnewsasia', fallbackVideoId: 'XWq5kBlakcQ' },
   { id: 'nhk-world', name: 'NHK World Japan', handle: '@NHKWORLDJAPAN' },
   // Middle East
@@ -138,7 +137,7 @@ export const OPTIONAL_LIVE_CHANNELS: LiveChannel[] = [
 
 export const OPTIONAL_CHANNEL_REGIONS: { key: string; labelKey: string; channelIds: string[] }[] = [
   { key: 'na', labelKey: 'components.liveNews.regionNorthAmerica', channelIds: ['livenow-fox', 'fox-news', 'newsmax', 'abc-news', 'cbs-news', 'nbc-news', 'cbc-news'] },
-  { key: 'eu', labelKey: 'components.liveNews.regionEurope', channelIds: ['bbc-news', 'france24-en', 'welt', 'rtve', 'trt-haber', 'ntv-turkey', 'cnn-turk', 'tv-rain', 'rt', 'tvp-info', 'telewizja-republika'] },
+  { key: 'eu', labelKey: 'components.liveNews.regionEurope', channelIds: ['bbc-news', 'france24-en', 'welt', 'rtve', 'trt-haber', 'ntv-turkey', 'cnn-turk', 'tv-rain', 'tvp-info', 'telewizja-republika'] },
   { key: 'latam', labelKey: 'components.liveNews.regionLatinAmerica', channelIds: ['cnn-brasil', 'jovem-pan', 'record-news', 'band-jornalismo', 'tn-argentina', 'c5n', 'milenio', 'noticias-caracol', 'ntn24', 't13'] },
   { key: 'asia', labelKey: 'components.liveNews.regionAsia', channelIds: ['tbs-news', 'ann-news', 'ntv-news', 'cti-news', 'wion', 'cna-asia', 'nhk-world'] },
   { key: 'me', labelKey: 'components.liveNews.regionMiddleEast', channelIds: ['al-hadath', 'sky-news-arabia', 'trt-world', 'iran-intl', 'cgtn-arabic'] },
@@ -175,7 +174,6 @@ const DIRECT_HLS_MAP: Readonly<Record<string, string>> = {
   'trt-world': 'https://tv-trtworld.medya.trt.com.tr/master.m3u8',
   'sky-news-arabia': 'https://live-stream.skynewsarabia.com/c-horizontal-channel/horizontal-stream/index.m3u8',
   'al-hadath': 'https://av.alarabiya.net/alarabiapublish/alhadath.smil/playlist.m3u8',
-  'rt': 'https://rt-glb.rttv.com/dvr/rtnews/playlist.m3u8',
 };
 
 if (import.meta.env.DEV) {

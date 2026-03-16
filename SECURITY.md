@@ -45,14 +45,14 @@ World Monitor is a client-side intelligence dashboard that aggregates publicly a
 ### API Keys & Secrets
 
 - **Web deployment**: API keys are stored server-side in Vercel Edge Functions
-- **Desktop runtime**: API keys are stored in the OS keychain (macOS Keychain / Windows Credential Manager) via a consolidated vault entry, never on disk in plaintext
+- **Desktop runtime**: API keys are stored in the OS credential manager via a consolidated vault entry, never on disk in plaintext
 - No API keys should ever be committed to the repository
 - Environment variables (`.env.local`) are gitignored
 - The RSS proxy uses domain allowlisting to prevent SSRF
 
-### Edge Functions & Sebuf Handlers
+### Edge Functions & Shared Handlers
 
-- All 17 domain APIs are served through Sebuf (a Proto-first RPC framework) via Vercel Edge Functions
+- Shared web APIs are served through Sebuf-backed handlers in the web deployment, with matching local sidecar routes for the desktop runtime where applicable
 - Edge functions and handlers should validate/sanitize all input
 - CORS headers are configured per-function
 - Rate limiting and circuit breakers protect against abuse
@@ -70,6 +70,7 @@ World Monitor is a client-side intelligence dashboard that aggregates publicly a
 - **DevTools**: Disabled in production builds; gated behind an opt-in Cargo feature for development
 - **Sidecar authentication**: A per-session CSPRNG token (`LOCAL_API_TOKEN`) authenticates all renderer-to-sidecar requests, preventing other local processes from accessing the API
 - **Capability isolation**: The YouTube login window runs under a restricted capability with no access to secret or cache IPC commands
+- **External URL opening**: `open_url` only allows `https://` and rejects localhost-style hosts plus literal loopback/private/link-local/unique-local/reserved IPs; desktop renderers do not fall back to `window.open()` when this guard rejects a URL
 - **Fetch patch trust boundary**: The global fetch interceptor injects the sidecar token with a 5-minute TTL; the renderer is the intended client — if renderer integrity is compromised, Tauri IPC provides strictly more access than the fetch patch
 
 ### Data Sources
