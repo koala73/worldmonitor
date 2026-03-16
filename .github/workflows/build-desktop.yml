@@ -188,6 +188,20 @@ jobs:
             echo "SKIP_SIGNING=true" >> $GITHUB_ENV
           fi
 
+      # ── Detect whether Windows signing secrets are configured ──
+      - name: Check Windows signing secrets
+        if: matrix.label == 'Windows-x64'
+        id: windows-signing
+        shell: pwsh
+        run: |
+          if ("${{ secrets.WINDOWS_CERTIFICATE }}" -ne "" -and "${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}" -ne "") {
+            "available=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+            Write-Output "Windows signing secrets detected"
+          } else {
+            "available=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+            Write-Output "No Windows signing secrets — building unsigned"
+          }
+
       # ── Determine variant ──
       - name: Set build variant
         shell: bash
@@ -200,7 +214,8 @@ jobs:
 
       # ── Build with tauri-action ──
       # Signed builds: only when Apple signing secrets are valid and imported
-      # Unsigned builds: fallback when no signing (Windows always uses this path)
+      # Unsigned builds: fallback when no signing (Windows uses this path; signing secrets
+      #   are passed so Tauri auto-signs when WINDOWS_CERTIFICATE is configured)
 
       # ── Build: Full variant (signed) ──
       - name: Build Tauri app (full, signed)
@@ -227,6 +242,8 @@ jobs:
           retryAttempts: 1
 
       # ── Build: Full variant (unsigned — no Apple certs) ──
+      # Windows always uses this path; TAURI_BUNDLE_WINDOWS_CERTIFICATE is passed so Tauri
+      # will auto-sign when the secret is configured, or build unsigned when it is not.
       - name: Build Tauri app (full, unsigned)
         if: env.BUILD_VARIANT == 'full' && (steps.apple-signing.outputs.available != 'true' || env.SKIP_SIGNING == 'true')
         uses: tauri-apps/tauri-action@79c624843491f12ae9d63592534ed49df3bc4adb
@@ -235,6 +252,8 @@ jobs:
           VITE_VARIANT: full
           VITE_DESKTOP_RUNTIME: '1'
           CONVEX_URL: ${{ secrets.CONVEX_URL }}
+          TAURI_BUNDLE_WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          TAURI_BUNDLE_WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         with:
           tagName: v__VERSION__
           releaseName: 'World Monitor v__VERSION__'
@@ -270,6 +289,8 @@ jobs:
           retryAttempts: 1
 
       # ── Build: Tech variant (unsigned — no Apple certs) ──
+      # Windows always uses this path; TAURI_BUNDLE_WINDOWS_CERTIFICATE is passed so Tauri
+      # will auto-sign when the secret is configured, or build unsigned when it is not.
       - name: Build Tauri app (tech, unsigned)
         if: env.BUILD_VARIANT == 'tech' && (steps.apple-signing.outputs.available != 'true' || env.SKIP_SIGNING == 'true')
         uses: tauri-apps/tauri-action@79c624843491f12ae9d63592534ed49df3bc4adb
@@ -278,6 +299,8 @@ jobs:
           VITE_VARIANT: tech
           VITE_DESKTOP_RUNTIME: '1'
           CONVEX_URL: ${{ secrets.CONVEX_URL }}
+          TAURI_BUNDLE_WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          TAURI_BUNDLE_WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         with:
           tagName: v__VERSION__-tech
           releaseName: 'Tech Monitor v__VERSION__'
@@ -343,6 +366,44 @@ jobs:
           name: linux-smoke-test-screenshot-${{ matrix.label }}
           path: screenshot.png
           if-no-files-found: warn
+
+      - name: Smoke-test Windows installer
+        if: matrix.label == 'Windows-x64'
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem -Path "src-tauri/target" -Recurse -Filter "*_x64-setup.exe" | Select-Object -First 1
+          if (-not $installer) {
+            Write-Error "No NSIS installer found after build"
+            exit 1
+          }
+          Write-Output "✅ Windows NSIS installer: $($installer.Name) ($([math]::Round($installer.Length / 1MB, 1)) MB)"
+
+          $msi = Get-ChildItem -Path "src-tauri/target" -Recurse -Filter "*_x64_en-US.msi" | Select-Object -First 1
+          if ($msi) {
+            Write-Output "✅ Windows MSI installer: $($msi.Name) ($([math]::Round($msi.Length / 1MB, 1)) MB)"
+          }
+
+          Write-Output "Running NSIS installer silently..."
+          $proc = Start-Process -FilePath $installer.FullName -ArgumentList "/S" -Wait -PassThru
+          Write-Output "Installer exit code: $($proc.ExitCode)"
+
+          $searchPaths = @(
+            (Join-Path $env:LOCALAPPDATA "World Monitor\worldmonitor.exe"),
+            "C:\Program Files\World Monitor\worldmonitor.exe",
+            "C:\Program Files (x86)\World Monitor\worldmonitor.exe"
+          )
+          $found = $false
+          foreach ($p in $searchPaths) {
+            if (Test-Path $p) {
+              Write-Output "✅ Installed binary found: $p"
+              $found = $true
+              break
+            }
+          }
+          if (-not $found) {
+            Write-Warning "Binary not found in standard paths; installation may use a custom directory"
+          }
+          Write-Output "Windows smoke test complete"
 
       - name: Cleanup Apple signing materials
         if: always() && contains(matrix.platform, 'macos')

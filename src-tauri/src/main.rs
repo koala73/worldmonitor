@@ -1586,7 +1586,7 @@ fn main() {
             Ok(())
         })
         .build(tauri::generate_context!())
-        .expect("error while running worldmonitor-macos tauri application")
+        .expect("error while running worldmonitor tauri application")
         .run(|app, event| {
             match &event {
                 // macOS: hide window on close instead of quitting (standard behavior)

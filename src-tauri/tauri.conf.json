@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "World Monitor",
-  "mainBinaryName": "worldmonitor-macos",
+  "mainBinaryName": "worldmonitor",
   "version": "2.5.25",
   "identifier": "com.bradleybond.crystalball",
   "build": {

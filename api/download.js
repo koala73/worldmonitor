@@ -1,8 +1,8 @@
 // Non-sebuf: returns XML/HTML, stays as standalone Vercel function
 export const config = { runtime: 'edge' };
 
-const RELEASES_URL = 'https://api.github.com/repos/bradleybond512/crystal-ball/releases/latest';
-const RELEASES_PAGE = 'https://github.com/bradleybond512/crystal-ball/releases/latest';
+const RELEASES_URL = 'https://api.github.com/repos/bradleybond512/worldmonitor-macos/releases/latest';
+const RELEASES_PAGE = 'https://github.com/bradleybond512/worldmonitor-macos/releases/latest';
 
 const PLATFORM_PATTERNS = {
   'windows-exe': (name) => name.endsWith('_x64-setup.exe'),
@@ -14,8 +14,8 @@ const PLATFORM_PATTERNS = {
 };
 
 const VARIANT_IDENTIFIERS = {
-  full: ['crystalball', 'crystal ball'],
-  world: ['crystalball', 'crystal ball'],
+  full: ['worldmonitor', 'world monitor'],
+  world: ['worldmonitor', 'world monitor'],
   tech: ['techmonitor'],
   finance: ['financemonitor'],
 };
@@ -51,7 +51,7 @@ export default async function handler(req) {
     const res = await fetch(RELEASES_URL, {
       headers: {
         'Accept': 'application/vnd.github+json',
-        'User-Agent': 'CrystalBall-Download-Redirect',
+        'User-Agent': 'WorldMonitor-Download-Redirect',
       },
     });
 

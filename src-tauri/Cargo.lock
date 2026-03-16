@@ -5422,7 +5422,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "worldmonitor-macos"
+name = "worldmonitor"
 version = "2.5.25"
 dependencies = [
  "getrandom 0.2.17",
