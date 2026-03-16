@@ -4,7 +4,7 @@ All JSON API endpoints in WorldMonitor **must** use sebuf. Do not create standal
 
 This guide walks through adding a new RPC to an existing service and adding an entirely new service.
 
-> **Important:** After modifying any `.proto` file, you **must** run `make generate` before building or pushing. The generated TypeScript files in `src/generated/` are checked into the repo and must stay in sync with the proto definitions. CI does not run generation yet — this is your responsibility until we add it to the pipeline (see [#200](https://github.com/bradleybond512/crystal-ball/issues)).
+> **Important:** After modifying any `.proto` file, you **must** run `make generate` before building or pushing. The generated TypeScript files in `src/generated/` are checked into the repo and must stay in sync with the proto definitions. CI does not run generation yet — this is your responsibility until we add it to the pipeline (see [#200](https://github.com/bradleybond512/worldmonitor-macos/issues)).
 
 ## Prerequisites
 

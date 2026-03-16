@@ -3303,8 +3303,8 @@ const header = `World Monitor v${__APP_VERSION__}`;
 
 ```bash
 # Clone the repository
-git clone https://github.com/bradleybond512/crystal-ball.git
-cd crystal-ball
+git clone https://github.com/bradleybond512/worldmonitor-macos.git
+cd worldmonitor-macos
 
 # Install everything (buf, sebuf plugins, npm deps, proto deps)
 make install

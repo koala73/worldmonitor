@@ -19,7 +19,7 @@ Thank you for helping spread the word about World Monitor! This guide provides t
 | [worldmonitor.app](https://worldmonitor.app) | Main dashboard — geopolitics, military, conflicts |
 | [tech.worldmonitor.app](https://tech.worldmonitor.app) | Tech variant — startups, AI/ML, cybersecurity |
 | [finance.worldmonitor.app](https://finance.worldmonitor.app) | Finance variant — markets, exchanges, central banks |
-| [GitHub](https://github.com/bradleybond512/crystal-ball) | Source code (AGPL-3.0) |
+| [GitHub](https://github.com/bradleybond512/worldmonitor-macos) | Source code (AGPL-3.0) |
 
 ---
 
