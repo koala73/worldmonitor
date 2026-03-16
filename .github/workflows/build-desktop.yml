@@ -223,7 +223,7 @@ jobs:
       # ── Build: Full variant (signed) ──
       - name: Build Tauri app (full, signed)
         if: env.BUILD_VARIANT == 'full' && steps.apple-signing.outputs.available == 'true' && env.SKIP_SIGNING != 'true'
-        uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa
+        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VITE_VARIANT: full
@@ -249,7 +249,7 @@ jobs:
       # will auto-sign when the secret is configured, or build unsigned when it is not.
       - name: Build Tauri app (full, unsigned)
         if: env.BUILD_VARIANT == 'full' && (steps.apple-signing.outputs.available != 'true' || env.SKIP_SIGNING == 'true')
-        uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa
+        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VITE_VARIANT: full
@@ -269,7 +269,7 @@ jobs:
       # ── Build: Tech variant (signed) ──
       - name: Build Tauri app (tech, signed)
         if: env.BUILD_VARIANT == 'tech' && steps.apple-signing.outputs.available == 'true' && env.SKIP_SIGNING != 'true'
-        uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa
+        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VITE_VARIANT: tech
@@ -296,7 +296,7 @@ jobs:
       # will auto-sign when the secret is configured, or build unsigned when it is not.
       - name: Build Tauri app (tech, unsigned)
         if: env.BUILD_VARIANT == 'tech' && (steps.apple-signing.outputs.available != 'true' || env.SKIP_SIGNING == 'true')
-        uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa
+        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VITE_VARIANT: tech
