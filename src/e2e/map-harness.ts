@@ -180,6 +180,7 @@ const allLayersEnabled: MapLayers = {
   tradeRoutes: true,
   iranAttacks: false,
   airstrikes: false,
+  s2pimu: false,
   dayNight: true,
 };
 
@@ -228,6 +229,7 @@ const allLayersDisabled: MapLayers = {
   tradeRoutes: false,
   iranAttacks: false,
   airstrikes: false,
+  s2pimu: false,
   dayNight: false,
 };
 

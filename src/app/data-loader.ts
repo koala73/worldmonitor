@@ -122,6 +122,7 @@ import { DiseaseOutbreakPanel } from '@/components/DiseaseOutbreakPanel';
 import { AirQualityPanel } from '@/components/AirQualityPanel';
 import { AirstrikesPanel } from '@/components/AirstrikesPanel';
 import { fetchAirstrikes } from '@/services/airstrikes';
+import { fetchS2Underground } from '@/services/s2-underground';
 import { fetchThreatFoxIOCs, fetchOpenPhishFeed, fetchSpamhausDrop, fetchCisaKev } from '@/services/cyber-extra';
 import { fetchSpaceWeather } from '@/services/space-weather';
 import { fetchDiseaseOutbreaks } from '@/services/disease-outbreak';
@@ -1252,6 +1253,20 @@ export class DataLoaderManager implements AppModule {
       } catch (error) {
         console.error('[Intelligence] Airstrikes fetch failed:', error);
         dataFreshness.recordError('acled_airstrikes', String(error));
+      }
+    })());
+
+    // S2 Underground intelligence (GhostMaps / ArcGIS CIP)
+    tasks.push((async () => {
+      try {
+        const events = await fetchS2Underground();
+        if (this.ctx.mapLayers.s2pimu) {
+          this.ctx.map?.setS2Underground(events);
+        }
+        if (events.length > 0) dataFreshness.recordUpdate('s2_underground', events.length);
+      } catch (error) {
+        console.error('[Intelligence] S2 Underground fetch failed:', error);
+        dataFreshness.recordError('s2_underground', String(error));
       }
     })());
 

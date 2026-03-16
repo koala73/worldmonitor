@@ -869,7 +869,8 @@
         "tradeRoutes": "Trade Routes",
         "iranAttacks": "Iran Attacks",
         "gpsJamming": "GPS JAMMING",
-        "dayNight": "Day/Night"
+        "dayNight": "Day/Night",
+        "s2pimu": "S2 Underground"
       },
       "tooltip": {
         "earthquake": "Earthquake",

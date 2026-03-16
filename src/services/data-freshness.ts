@@ -38,7 +38,8 @@ export type DataSourceId =
   | 'supply_chain'   // Supply chain disruption intelligence
   | 'security_advisories'  // Government travel/security advisories
   | 'gpsjam'               // GPS/GNSS interference
-  | 'acled_airstrikes';    // ACLED air/drone strikes & missile attacks
+  | 'acled_airstrikes'     // ACLED air/drone strikes & missile attacks
+  | 's2_underground';      // S2 Underground intelligence (GhostMaps)
 
 export type FreshnessStatus = 'fresh' | 'stale' | 'very_stale' | 'no_data' | 'disabled' | 'error';
 
@@ -107,6 +108,7 @@ const SOURCE_METADATA: Record<DataSourceId, { name: string; requiredForRisk: boo
   security_advisories: { name: 'Security Advisories', requiredForRisk: false, panelId: 'security-advisories' },
   gpsjam: { name: 'GPS/GNSS Interference', requiredForRisk: false, panelId: 'map' },
   acled_airstrikes: { name: 'Air Strikes & Drones (ACLED)', requiredForRisk: false, panelId: 'airstrikes' },
+  s2_underground: { name: 'S2 Underground Intelligence', requiredForRisk: false, panelId: 'map' },
 };
 
 class DataFreshnessTracker {
@@ -368,6 +370,7 @@ const INTELLIGENCE_GAP_MESSAGES: Record<DataSourceId, string> = {
   security_advisories: 'Government travel advisory data unavailable—security alerts may be missed',
   gpsjam: 'GPS/GNSS interference data unavailable—jamming zones undetected',
   acled_airstrikes: 'Air strike & drone event data unavailable—ACLED feed not responding',
+  s2_underground: 'S2 Underground intelligence data unavailable—GhostMaps CIP feed not responding',
 };
 
 /**

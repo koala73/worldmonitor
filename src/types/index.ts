@@ -544,6 +544,8 @@ export interface MapLayers {
   tradeRoutes: boolean;
   // Iran attacks layer
   iranAttacks: boolean;
+  // S2 Underground intelligence layer
+  s2pimu: boolean;
   // GPS/GNSS interference layer
   gpsJamming: boolean;
   // Overlay layers

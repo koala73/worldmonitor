@@ -249,6 +249,7 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   tradeRoutes: false,
   iranAttacks: false,
   airstrikes: false,
+  s2pimu: false,
   dayNight: false,
 };
 
@@ -301,6 +302,7 @@ export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   tradeRoutes: false,
   iranAttacks: false,
   airstrikes: false,
+  s2pimu: false,
   dayNight: false,
 };
 

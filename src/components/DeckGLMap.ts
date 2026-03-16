@@ -105,6 +105,7 @@ import {
 } from '@/services/arrival-choreography';
 import { isLowPowerMode } from '@/services/low-power';
 import type { AirstrikeEvent } from '@/services/airstrikes';
+import type { S2UndergroundEvent } from '@/services/s2-underground';
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
 export type DeckMapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
@@ -317,6 +318,7 @@ export class DeckGLMap {
   private newsLocationFirstSeen = new Map<string, number>();
   private ucdpEvents: UcdpGeoEvent[] = [];
   private airstrikesData: AirstrikeEvent[] = [];
+  private s2pimuData: S2UndergroundEvent[] = [];
   private displacementFlows: DisplacementFlow[] = [];
   private gpsJammingHexes: GpsJamHex[] = [];
   private climateAnomalies: ClimateAnomaly[] = [];
@@ -1267,6 +1269,11 @@ export class DeckGLMap {
     // Air strikes & drone events layer
     if (mapLayers.airstrikes && this.airstrikesData.length > 0) {
       layers.push(this.createAirstrikesLayer());
+    }
+
+    // S2 Underground intelligence layer
+    if (mapLayers.s2pimu && this.s2pimuData.length > 0) {
+      layers.push(this.createS2UndergroundLayer());
     }
 
     // Displacement flows arc layer
@@ -3047,6 +3054,13 @@ export class DeckGLMap {
         const actorStr = obj.actor ? `<br/><span style="opacity:.8">${text(obj.actor)}</span>` : '';
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.subEventType || obj.eventType)}</strong><br/>${text([obj.location, obj.country].filter(Boolean).join(', '))}${actorStr}${fatStr}<br/><span style="opacity:.6">${text(obj.date)}</span></div>` };
       }
+      case 's2underground-layer': {
+        const nameStr = obj.name ? `<strong>${text(obj.name)}</strong><br/>` : '';
+        const typeStr = obj.eventType ? `<span style="opacity:.9">${text(obj.eventType)}</span><br/>` : '';
+        const descStr = obj.description ? `<span style="opacity:.7;font-size:0.85em">${text(obj.description).slice(0, 200)}</span><br/>` : '';
+        const dateStr = obj.date ? `<span style="opacity:.6">${text(String(obj.date))}</span>` : '';
+        return { html: `<div class="deckgl-tooltip">${nameStr}${typeStr}${descStr}${dateStr}<br/><span style="opacity:.5;font-size:0.8em">S2 Underground — ${text(obj.layerTitle)}</span></div>` };
+      }
       default:
         return null;
     }
@@ -3406,6 +3420,7 @@ export class DeckGLMap {
         { key: 'flights', label: t('components.deckgl.layers.flightDelays'), icon: '&#9992;' },
         { key: 'protests', label: t('components.deckgl.layers.protests'), icon: '&#128226;' },
         { key: 'ucdpEvents', label: t('components.deckgl.layers.ucdpEvents'), icon: '&#9876;' },
+        { key: 's2pimu', label: t('components.deckgl.layers.s2pimu'), icon: '&#128123;' },
         { key: 'displacement', label: t('components.deckgl.layers.displacementFlows'), icon: '&#128101;' },
         { key: 'climate', label: t('components.deckgl.layers.climateAnomalies'), icon: '&#127787;' },
         { key: 'weather', label: t('components.deckgl.layers.weatherAlerts'), icon: '&#9928;' },
@@ -3913,6 +3928,31 @@ export class DeckGLMap {
     });
   }
 
+  private createS2UndergroundLayer(): ScatterplotLayer<S2UndergroundEvent> {
+    return new ScatterplotLayer<S2UndergroundEvent>({
+      id: 's2underground-layer',
+      data: this.s2pimuData,
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: 10000,
+      getFillColor: (d) => {
+        const t = (d.eventType || d.layerTitle || '').toLowerCase();
+        if (t.includes('kinetic') || t.includes('attack') || t.includes('strike')) return [255, 60, 60, 220];
+        if (t.includes('military') || t.includes('base') || t.includes('installation')) return [100, 180, 255, 200];
+        if (t.includes('border') || t.includes('crisis') || t.includes('migration')) return [255, 165, 0, 200];
+        if (t.includes('fire') || t.includes('thermal') || t.includes('hotspot')) return [255, 120, 30, 200];
+        if (t.includes('threat') || t.includes('terror')) return [200, 40, 40, 220];
+        if (t.includes('weather') || t.includes('storm') || t.includes('flood')) return [30, 180, 255, 200];
+        return [180, 120, 255, 200]; // default S2 purple
+      },
+      radiusMinPixels: 4,
+      radiusMaxPixels: 20,
+      stroked: true,
+      getLineColor: [255, 255, 255, 100],
+      lineWidthMinPixels: 1,
+      pickable: true,
+    });
+  }
+
   private createDisplacementArcsLayer(): ArcLayer<DisplacementFlow> {
     const withCoords = this.displacementFlows.filter(f => f.originLat != null && f.asylumLat != null);
     const top50 = withCoords.slice(0, 50);
@@ -4192,6 +4232,11 @@ export class DeckGLMap {
 
   public setAirstrikes(events: AirstrikeEvent[]): void {
     this.airstrikesData = events;
+    this.render();
+  }
+
+  public setS2Underground(events: S2UndergroundEvent[]): void {
+    this.s2pimuData = events;
     this.render();
   }
 

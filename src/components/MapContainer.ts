@@ -38,6 +38,7 @@ import type { SpeciesRecovery } from '@/services/conservation-data';
 import type { RenewableInstallation } from '@/services/renewable-installations';
 import type { GpsJamHex } from '@/services/gps-interference';
 import type { AirstrikeEvent } from '@/services/airstrikes';
+import type { S2UndergroundEvent } from '@/services/s2-underground';
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
 export type MapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
@@ -331,6 +332,12 @@ export class MapContainer {
   public setAirstrikes(events: AirstrikeEvent[]): void {
     if (this.useDeckGL) {
       this.deckGLMap?.setAirstrikes(events);
+    }
+  }
+
+  public setS2Underground(events: S2UndergroundEvent[]): void {
+    if (this.useDeckGL) {
+      this.deckGLMap?.setS2Underground(events);
     }
   }
 

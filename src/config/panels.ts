@@ -97,6 +97,7 @@ const FULL_MAP_LAYERS: MapLayers = {
   // Data source layers
   ucdpEvents: false,
   airstrikes: false,
+  s2pimu: false,
   displacement: false,
   climate: false,
   // Tech layers (disabled in full variant)
@@ -149,6 +150,7 @@ const FULL_MOBILE_MAP_LAYERS: MapLayers = {
   // Data source layers
   ucdpEvents: false,
   airstrikes: false,
+  s2pimu: false,
   displacement: false,
   climate: false,
   // Tech layers (disabled in full variant)
@@ -240,6 +242,7 @@ const TECH_MAP_LAYERS: MapLayers = {
   // Data source layers
   ucdpEvents: false,
   airstrikes: false,
+  s2pimu: false,
   displacement: false,
   climate: false,
   // Tech layers (enabled in tech variant)
@@ -292,6 +295,7 @@ const TECH_MOBILE_MAP_LAYERS: MapLayers = {
   // Data source layers
   ucdpEvents: false,
   airstrikes: false,
+  s2pimu: false,
   displacement: false,
   climate: false,
   // Tech layers (limited on mobile)
@@ -381,6 +385,7 @@ const FINANCE_MAP_LAYERS: MapLayers = {
   // Data source layers
   ucdpEvents: false,
   airstrikes: false,
+  s2pimu: false,
   displacement: false,
   climate: false,
   // Tech layers (disabled in finance variant)
@@ -433,6 +438,7 @@ const FINANCE_MOBILE_MAP_LAYERS: MapLayers = {
   // Data source layers
   ucdpEvents: false,
   airstrikes: false,
+  s2pimu: false,
   displacement: false,
   climate: false,
   // Tech layers (disabled)
@@ -501,6 +507,7 @@ const HAPPY_MAP_LAYERS: MapLayers = {
   // Data source layers
   ucdpEvents: false,
   airstrikes: false,
+  s2pimu: false,
   displacement: false,
   climate: false,
   // Tech layers (disabled)
@@ -553,6 +560,7 @@ const HAPPY_MOBILE_MAP_LAYERS: MapLayers = {
   // Data source layers
   ucdpEvents: false,
   airstrikes: false,
+  s2pimu: false,
   displacement: false,
   climate: false,
   // Tech layers (disabled)
@@ -597,6 +605,7 @@ export const LAYER_TO_SOURCE: Partial<Record<keyof MapLayers, DataSourceId[]>> =
   ucdpEvents: ['ucdp_events'],
   displacement: ['unhcr'],
   climate: ['climate'],
+  s2pimu: ['s2_underground'],
 };
 
 // ============================================
