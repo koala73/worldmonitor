@@ -623,6 +623,42 @@ function setCached(key, data) {
   _sidecarCache.set(key, { data, ts: Date.now() });
 }
 
+let _prevEconomicStressIndex = null;
+
+async function fetchFredSeries(seriesId, apiKey) {
+  const url = `https://api.stlouisfed.org/fred/series/observations?series_id=${seriesId}&api_key=${apiKey}&file_type=json&sort_order=desc&limit=1`;
+  const res = await fetchWithTimeout(url);
+  const text = await res.text();
+  let data;
+  try { data = JSON.parse(text); } catch { throw new Error(`No data for ${seriesId}: non-JSON response`); }
+  const obs = data?.observations?.[0];
+  if (!obs || obs.value === '.') throw new Error(`No data for ${seriesId}`);
+  return parseFloat(obs.value);
+}
+
+function clamp(x) { return Math.min(100, Math.max(0, x)); }
+
+function computeStressIndex(yieldVal, spreadVal, vixVal, fsiVal, scVal, claimsVal) {
+  const yieldScore  = clamp((0.5 - yieldVal)  / (0.5 - (-1.5)) * 100);
+  const spreadScore = clamp((0.5 - spreadVal)  / (0.5 - (-1.0)) * 100);
+  const vixScore    = clamp((vixVal - 15)      / (80 - 15)      * 100);
+  const fsiScore    = clamp((fsiVal - (-1))    / (5 - (-1))     * 100);
+  const scScore     = clamp((scVal - (-2))     / (4 - (-2))     * 100);
+  const claimsScore = clamp((claimsVal - 180000) / (500000 - 180000) * 100);
+  return Math.round(
+    yieldScore  * 0.20 +
+    spreadScore * 0.15 +
+    vixScore    * 0.20 +
+    fsiScore    * 0.20 +
+    scScore     * 0.15 +
+    claimsScore * 0.10
+  );
+}
+
+function indicatorSeverity(score) {
+  return score >= 70 ? 'critical' : score >= 40 ? 'warning' : 'normal';
+}
+
 function relayToHttpUrl(rawUrl) {
   try {
     const parsed = new URL(rawUrl);
@@ -2393,6 +2429,82 @@ async function dispatch(requestUrl, req, routes, context) {
         updatedAt: new Date().toISOString(),
         error: e?.message ?? 'unknown',
       });
+    }
+  }
+
+  if (requestUrl.pathname === '/api/economic-stress') {
+    const cached = getCached('economic-stress', 15 * 60 * 1000);
+    if (cached) return json(cached);
+
+    const fredKey = process.env.FRED_API_KEY;
+    if (!fredKey) return json({ fredKeyMissing: true, error: 'FRED_API_KEY required' });
+
+    try {
+      const [t10y2yRes, t10y3mRes, vixRes, fsiRes, gscpiRes, icsaRes, wbRes] = await Promise.allSettled([
+        fetchFredSeries('T10Y2Y',  fredKey),
+        fetchFredSeries('T10Y3M',  fredKey),
+        fetchFredSeries('VIXCLS',  fredKey),
+        fetchFredSeries('STLFSI4', fredKey),
+        fetchFredSeries('GSCPI',   fredKey),
+        fetchFredSeries('ICSA',    fredKey),
+        fetchWithTimeout('https://api.worldbank.org/v2/country/WLD/indicator/AG.PRD.FOOD.XD?format=json&mrv=1'),
+      ]);
+
+      const yieldVal  = t10y2yRes.status === 'fulfilled' ? t10y2yRes.value : 0;
+      const spreadVal = t10y3mRes.status === 'fulfilled' ? t10y3mRes.value : 0;
+      const vixVal    = vixRes.status   === 'fulfilled' ? vixRes.value   : 20;
+      const fsiVal    = fsiRes.status   === 'fulfilled' ? fsiRes.value   : 0;
+      const scVal     = gscpiRes.status === 'fulfilled' ? gscpiRes.value : 0;
+      const claimsVal = icsaRes.status  === 'fulfilled' ? icsaRes.value  : 220000;
+
+      const yieldScore  = clamp((0.5 - yieldVal)  / (0.5 - (-1.5)) * 100);
+      const spreadScore = clamp((0.5 - spreadVal)  / (0.5 - (-1.0)) * 100);
+      const vixScore    = clamp((vixVal - 15)      / (80 - 15)      * 100);
+      const fsiScore    = clamp((fsiVal - (-1))    / (5 - (-1))     * 100);
+      const scScore     = clamp((scVal - (-2))     / (4 - (-2))     * 100);
+      const claimsScore = clamp((claimsVal - 180000) / (500000 - 180000) * 100);
+
+      const stressIndex = computeStressIndex(yieldVal, spreadVal, vixVal, fsiVal, scVal, claimsVal);
+
+      const trend = _prevEconomicStressIndex === null ? 'stable'
+        : stressIndex > _prevEconomicStressIndex + 2 ? 'rising'
+        : stressIndex < _prevEconomicStressIndex - 2 ? 'falling'
+        : 'stable';
+      _prevEconomicStressIndex = stressIndex;
+
+      let foodSecurity;
+      if (wbRes.status === 'fulfilled') {
+        try {
+          const wbData = await wbRes.value.json();
+          const val = wbData?.[1]?.[0]?.value;
+          foodSecurity = val != null
+            ? { value: Math.round(val * 10) / 10, severity: val < 50 ? 'critical' : val < 65 ? 'warning' : 'normal' }
+            : { value: null, severity: 'unknown' };
+        } catch {
+          foodSecurity = { value: null, severity: 'unknown' };
+        }
+      } else {
+        foodSecurity = { value: null, severity: 'unknown' };
+      }
+
+      const result = {
+        stressIndex,
+        trend,
+        indicators: {
+          yieldCurve:  { value: yieldVal,  label: yieldVal < -0.1 ? 'INVERTED' : yieldVal < 0.2 ? 'FLAT' : 'NORMAL',    severity: indicatorSeverity(yieldScore)  },
+          bankSpread:  { value: spreadVal, label: spreadVal < -0.1 ? 'INVERTED' : 'NORMAL',                               severity: indicatorSeverity(spreadScore) },
+          vix:         { value: vixVal,    label: vixVal > 30 ? 'ELEVATED' : vixVal > 20 ? 'RISING' : 'NORMAL',          severity: indicatorSeverity(vixScore)    },
+          fsi:         { value: fsiVal,    label: fsiVal > 1 ? 'ELEVATED' : fsiVal > 0 ? 'RISING' : 'NORMAL',            severity: indicatorSeverity(fsiScore)    },
+          supplyChain: { value: scVal,     label: scVal > 1 ? 'STRAINED' : 'NORMAL',                                      severity: indicatorSeverity(scScore),    lagWeeks: 6 },
+          jobClaims:   { value: claimsVal, label: claimsVal > 300000 ? 'RISING' : 'NORMAL',                               severity: indicatorSeverity(claimsScore) },
+        },
+        foodSecurity,
+        updatedAt: new Date().toISOString(),
+      };
+      setCached('economic-stress', result);
+      return json(result);
+    } catch (e) {
+      return json({ stressIndex: 0, error: e?.message ?? 'unknown', fredKeyMissing: false });
     }
   }
 
