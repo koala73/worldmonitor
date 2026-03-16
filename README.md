@@ -168,6 +168,69 @@ This fork includes several security hardening measures beyond the base project:
 
 ---
 
+## Frequently Asked Questions
+
+### Will this still be free?
+
+**Yes — always.** World Monitor is 100% free and open-source under the [AGPL-3.0 license](LICENSE). There are no paywalls, no subscriptions, no license keys, and no paid tiers — ever. The app itself costs nothing to download or use.
+
+The optional third-party API keys listed in the Quick Start Guide are all **free to register**. The only exceptions are Wingbits (commercial ADS-B) and Cloudflare Radar (enterprise) — both are entirely optional enhancements. Every core feature works without spending a cent.
+
+> **Bottom line:** Download the DMG, launch the app, and use it. You can add free API keys later if you want more data sources.
+
+---
+
+### How does Claude AI integration work?
+
+Claude (Anthropic Claude Sonnet) is already built in as one of the AI summarization providers. Every data panel has a **✦ button** — clicking it asks your configured AI to generate a real-time summary of the panel's current content.
+
+**To use Claude:**
+
+1. Sign up at [console.anthropic.com](https://console.anthropic.com/settings/keys) and generate an API key — Claude is **pay-per-use** (billed by Anthropic per request; no World Monitor subscription)
+2. Open **Settings → API Keys** in the app and paste your key into the **Anthropic** field
+3. Open **Settings → General → AI Provider** and select **Claude**
+4. Click the ✦ button on any panel — Claude Sonnet will analyze and summarize the live data
+
+**Want a completely free AI option instead?** Two alternatives cost nothing:
+- **Groq** (free tier: 14,400 requests/day) — register at [console.groq.com](https://console.groq.com/keys) and enter the key in **Settings → API Keys → Groq**
+- **Ollama** (fully local, no internet required) — install [Ollama](https://ollama.com/download), then in **Settings → General → AI Provider** enter your Ollama server URL (e.g. `http://localhost:11434`) and model name; your data never leaves your machine
+
+The primary AI fallback chain is: **Ollama → Groq → OpenRouter → built-in browser model**. Claude is an opt-in provider selected explicitly via Settings — it does not participate in the automatic fallback chain.
+
+---
+
+### Is there a sign-in? What's required?
+
+**No account or sign-in is required** to use World Monitor. Download the app and launch it — that's it.
+
+The optional API keys in Settings are for individual third-party data services (not a World Monitor account). You only need them if you want the corresponding data source:
+
+| Required for full experience | Optional enhancement |
+|---|---|
+| Nothing — core panels work out of the box | ACLED (conflict data, free researcher account) |
+| | NASA FIRMS (wildfire detection, free) |
+| | Finnhub (stock data, free tier) |
+| | Groq (AI summaries, free tier) or Anthropic Claude (AI summaries, pay-per-use) |
+| | OpenSky / AISStream (live flight & ship tracking, free) |
+
+> **Privacy note:** API keys are stored in the macOS Keychain on desktop — never in plain text or `localStorage`.
+
+---
+
+### How does this work?
+
+World Monitor is a **real-time intelligence dashboard** that pulls data from 30+ open data sources and displays it in a unified interface:
+
+1. **3D globe** — MapLibre GL + deck.gl render conflict events, wildfires, cyber threats, flights, ships, earthquakes, and more as interactive layers on a WebGL globe
+2. **Sidebar panels** — ~50 specialized panels (news, markets, weather, cyber threats, geopolitics) each poll their data sources every few minutes and display live, sortable tables and charts
+3. **AI summaries** — click ✦ on any panel to get an AI-generated brief of what's currently happening in that domain
+4. **Monitoring Modes** — the app automatically switches to War Mode, Finance Mode, or Disaster Mode when it detects escalation signals (conflict spikes, market moves ≥2.5%, GDACS Red alerts)
+5. **Alert Center** — a persistent notification history logs breaking intelligence signals with unread badge count
+
+There is no central server or account — the app runs entirely on your Mac and fetches data directly from public APIs.
+
+---
+
 ## Live Demos
 
 > These are the **upstream World Monitor web app** variants — World Monitor Desktop uses the same codebase and can connect to them as a cloud fallback.
