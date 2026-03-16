@@ -97,6 +97,18 @@ components:
                     type: integer
                     format: int32
                     description: Number of Safecast observations included.
+                anomalyCount:
+                    type: integer
+                    format: int32
+                    description: Total observations classified above normal.
+                elevatedCount:
+                    type: integer
+                    format: int32
+                    description: Observations classified as elevated.
+                spikeCount:
+                    type: integer
+                    format: int32
+                    description: Observations classified as spike-level anomalies.
             description: ListRadiationObservationsResponse contains normalized readings plus coverage metadata.
         RadiationObservation:
             type: object
@@ -140,6 +152,26 @@ components:
                         - RADIATION_FRESHNESS_RECENT
                         - RADIATION_FRESHNESS_HISTORICAL
                     description: RadiationFreshness groups observations by recency.
+                baselineValue:
+                    type: number
+                    format: double
+                    description: Rolling baseline for this station in nSv/h.
+                delta:
+                    type: number
+                    format: double
+                    description: Current reading minus rolling baseline in nSv/h.
+                zScore:
+                    type: number
+                    format: double
+                    description: Standard deviation distance from the rolling baseline.
+                severity:
+                    type: string
+                    enum:
+                        - RADIATION_SEVERITY_UNSPECIFIED
+                        - RADIATION_SEVERITY_NORMAL
+                        - RADIATION_SEVERITY_ELEVATED
+                        - RADIATION_SEVERITY_SPIKE
+                    description: RadiationSeverity classifies whether a reading is behaving normally.
             required:
                 - id
             description: RadiationObservation represents a normalized ambient dose-rate reading.

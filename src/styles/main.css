@@ -8560,6 +8560,40 @@ a.prediction-link:hover {
   gap: 8px;
 }
 
+.radiation-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 0 8px;
+}
+
+.radiation-summary-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  background: var(--overlay-subtle);
+}
+
+.radiation-summary-card-spike {
+  border-color: rgba(239, 68, 68, 0.35);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.radiation-summary-label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+}
+
+.radiation-summary-value {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
 .radiation-table {
   width: 100%;
   border-collapse: collapse;
@@ -8587,13 +8621,45 @@ a.prediction-link:hover {
   white-space: nowrap;
 }
 
-.radiation-source,
-.radiation-freshness {
+.radiation-location-name {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.radiation-location-meta {
+  margin-top: 2px;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.radiation-delta {
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+
+.radiation-freshness,
+.radiation-severity {
   display: inline-flex;
   padding: 2px 6px;
   border: 1px solid var(--border);
   border-radius: 999px;
   font-size: 10px;
+}
+
+.radiation-severity-normal {
+  color: var(--text-dim);
+}
+
+.radiation-severity-elevated {
+  color: var(--semantic-elevated);
+  border-color: rgba(234, 179, 8, 0.35);
+  background: rgba(234, 179, 8, 0.08);
+}
+
+.radiation-severity-spike {
+  color: var(--semantic-critical);
+  border-color: rgba(239, 68, 68, 0.35);
+  background: rgba(239, 68, 68, 0.08);
 }
 
 .radiation-freshness-live {

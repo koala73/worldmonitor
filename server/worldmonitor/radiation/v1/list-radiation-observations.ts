@@ -1,20 +1,25 @@
 import type {
   ListRadiationObservationsRequest,
   ListRadiationObservationsResponse,
-  RadiationObservation,
-  RadiationServiceHandler,
   RadiationFreshness,
+  RadiationObservation,
+  RadiationSeverity,
+  RadiationServiceHandler,
   ServerContext,
 } from '../../../../src/generated/server/worldmonitor/radiation/v1/service_server';
 
 import { CHROME_UA } from '../../../_shared/constants';
-import { cachedFetchJson } from '../../../_shared/redis';
+import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
 
 const REDIS_CACHE_KEY = 'radiation:observations:v1';
+const LIVE_FALLBACK_CACHE_KEY = 'radiation:observations:live:v1';
 const REDIS_CACHE_TTL = 15 * 60;
+const SEED_FRESHNESS_MS = 90 * 60 * 1000;
 const DEFAULT_MAX_ITEMS = 18;
 const MAX_ITEMS_LIMIT = 25;
 const EPA_TIMEOUT_MS = 20_000;
+const BASELINE_WINDOW_SIZE = 168; // Last 7 days of hourly readings
+const BASELINE_MIN_SAMPLES = 48;
 
 type EpaSite = {
   state: string;
@@ -40,6 +45,11 @@ type SafecastMeasurement = {
   captured_at?: string;
   latitude?: number;
   longitude?: number;
+};
+
+type RadNetReading = {
+  observedAt: number;
+  value: number;
 };
 
 const EPA_SITES: EpaSite[] = [
@@ -69,6 +79,30 @@ function classifyFreshness(observedAt: number): RadiationFreshness {
   if (ageMs <= 6 * 60 * 60 * 1000) return 'RADIATION_FRESHNESS_LIVE';
   if (ageMs <= 14 * 24 * 60 * 60 * 1000) return 'RADIATION_FRESHNESS_RECENT';
   return 'RADIATION_FRESHNESS_HISTORICAL';
+}
+
+function classifySeverity(
+  delta: number,
+  zScore: number,
+  freshness: RadiationFreshness,
+): RadiationSeverity {
+  if (freshness === 'RADIATION_FRESHNESS_HISTORICAL') {
+    return 'RADIATION_SEVERITY_NORMAL';
+  }
+  if (delta >= 15 || zScore >= 3) return 'RADIATION_SEVERITY_SPIKE';
+  if (delta >= 8 || zScore >= 2) return 'RADIATION_SEVERITY_ELEVATED';
+  return 'RADIATION_SEVERITY_NORMAL';
+}
+
+function severityRank(value: RadiationSeverity): number {
+  switch (value) {
+    case 'RADIATION_SEVERITY_SPIKE':
+      return 0;
+    case 'RADIATION_SEVERITY_ELEVATED':
+      return 1;
+    default:
+      return 2;
+  }
 }
 
 function freshnessRank(value: RadiationFreshness): number {
@@ -103,9 +137,10 @@ function normalizeUnit(value: number, unit: string): { value: number; unit: stri
   return null;
 }
 
-function latestApprovedRadNetObservation(csv: string): { observedAt: number; value: number } | null {
+function parseApprovedRadNetReadings(csv: string): RadNetReading[] {
   const lines = csv.trim().split(/\r?\n/);
-  if (lines.length < 2) return null;
+  if (lines.length < 2) return [];
+  const readings: RadNetReading[] = [];
 
   for (let i = lines.length - 1; i >= 1; i -= 1) {
     const line = lines[i];
@@ -117,10 +152,119 @@ function latestApprovedRadNetObservation(csv: string): { observedAt: number; val
     const observedAt = parseRadNetTimestamp(columns[1] ?? '');
     const value = Number(columns[2] ?? '');
     if (!observedAt || !Number.isFinite(value)) continue;
-    return { observedAt, value };
+    readings.push({ observedAt, value });
   }
 
-  return null;
+  return readings.sort((a, b) => a.observedAt - b.observedAt);
+}
+
+function average(values: number[]): number {
+  return values.length > 0
+    ? values.reduce((sum, value) => sum + value, 0) / values.length
+    : 0;
+}
+
+function stdDev(values: number[], mean: number): number {
+  if (values.length < 2) return 0;
+  const variance = values.reduce((sum, value) => sum + ((value - mean) ** 2), 0) / (values.length - 1);
+  return Math.sqrt(Math.max(variance, 0));
+}
+
+function round(value: number, digits = 1): number {
+  const factor = 10 ** digits;
+  return Math.round(value * factor) / factor;
+}
+
+function buildRadNetObservation(
+  site: EpaSite,
+  readings: RadNetReading[],
+): RadiationObservation | null {
+  if (readings.length < 2) return null;
+
+  const latest = readings[readings.length - 1];
+  if (!latest) return null;
+
+  const freshness = classifyFreshness(latest.observedAt);
+  const baselineReadings = readings.slice(-1 - BASELINE_WINDOW_SIZE, -1);
+  const baselineValues = baselineReadings.map((reading) => reading.value);
+  const baselineValue = baselineValues.length > 0 ? average(baselineValues) : latest.value;
+  const sigma = baselineValues.length >= BASELINE_MIN_SAMPLES ? stdDev(baselineValues, baselineValue) : 0;
+  const delta = latest.value - baselineValue;
+  const zScore = sigma > 0 ? delta / sigma : 0;
+  const severity = classifySeverity(delta, zScore, freshness);
+
+  return {
+    id: `epa:${site.state}:${site.slug}:${latest.observedAt}`,
+    source: 'RADIATION_SOURCE_EPA_RADNET',
+    locationName: site.name,
+    country: site.country,
+    location: {
+      latitude: site.lat,
+      longitude: site.lon,
+    },
+    value: round(latest.value, 1),
+    unit: 'nSv/h',
+    observedAt: latest.observedAt,
+    freshness,
+    baselineValue: round(baselineValue, 1),
+    delta: round(delta, 1),
+    zScore: round(zScore, 2),
+    severity,
+  };
+}
+
+function summarizeObservations(
+  observations: RadiationObservation[],
+  fetchedAt: number,
+  maxItems: number,
+): ListRadiationObservationsResponse {
+  const sorted = [...observations].sort((a, b) => {
+    const severityDelta = severityRank(a.severity) - severityRank(b.severity);
+    if (severityDelta !== 0) return severityDelta;
+    const freshnessDelta = freshnessRank(a.freshness) - freshnessRank(b.freshness);
+    if (freshnessDelta !== 0) return freshnessDelta;
+    return b.observedAt - a.observedAt;
+  });
+
+  return {
+    observations: sorted.slice(0, maxItems),
+    fetchedAt,
+    epaCount: observations.filter((item) => item.source === 'RADIATION_SOURCE_EPA_RADNET').length,
+    safecastCount: observations.filter((item) => item.source === 'RADIATION_SOURCE_SAFECAST').length,
+    anomalyCount: observations.filter((item) => item.severity !== 'RADIATION_SEVERITY_NORMAL').length,
+    elevatedCount: observations.filter((item) => item.severity === 'RADIATION_SEVERITY_ELEVATED').length,
+    spikeCount: observations.filter((item) => item.severity === 'RADIATION_SEVERITY_SPIKE').length,
+  };
+}
+
+function trimSeededResponse(
+  data: ListRadiationObservationsResponse,
+  maxItems: number,
+): ListRadiationObservationsResponse {
+  return {
+    ...data,
+    observations: (data.observations ?? []).slice(0, maxItems),
+  };
+}
+
+async function trySeededData(maxItems: number): Promise<ListRadiationObservationsResponse | null> {
+  try {
+    const [seedData, seedMeta] = await Promise.all([
+      getCachedJson(REDIS_CACHE_KEY, true) as Promise<ListRadiationObservationsResponse | null>,
+      getCachedJson('seed-meta:radiation:observations', true) as Promise<{ fetchedAt?: number } | null>,
+    ]);
+
+    if (!seedData?.observations?.length) return null;
+
+    const fetchedAt = seedMeta?.fetchedAt ?? 0;
+    const isFresh = Date.now() - fetchedAt < SEED_FRESHNESS_MS;
+    if (isFresh || !process.env.SEED_FALLBACK_RADIATION) {
+      return trimSeededResponse(seedData, maxItems);
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 async function fetchEpaObservation(site: EpaSite, year: number): Promise<RadiationObservation | null> {
@@ -134,23 +278,8 @@ async function fetchEpaObservation(site: EpaSite, year: number): Promise<Radiati
   }
 
   const csv = await response.text();
-  const latest = latestApprovedRadNetObservation(csv);
-  if (!latest) return null;
-
-  return {
-    id: `epa:${site.state}:${site.slug}:${latest.observedAt}`,
-    source: 'RADIATION_SOURCE_EPA_RADNET',
-    locationName: site.name,
-    country: site.country,
-    location: {
-      latitude: site.lat,
-      longitude: site.lon,
-    },
-    value: latest.value,
-    unit: 'nSv/h',
-    observedAt: latest.observedAt,
-    freshness: classifyFreshness(latest.observedAt),
-  };
+  const readings = parseApprovedRadNetReadings(csv);
+  return buildRadNetObservation(site, readings);
 }
 
 async function fetchSafecastObservation(site: SafecastSite, capturedAfter: string): Promise<RadiationObservation | null> {
@@ -210,6 +339,10 @@ async function fetchSafecastObservation(site: SafecastSite, capturedAfter: strin
     unit: latest.normalized.unit,
     observedAt: latest.observedAt,
     freshness: classifyFreshness(latest.observedAt),
+    baselineValue: latest.normalized.value,
+    delta: 0,
+    zScore: 0,
+    severity: 'RADIATION_SEVERITY_NORMAL',
   };
 }
 
@@ -230,19 +363,7 @@ async function collectObservations(maxItems: number): Promise<ListRadiationObser
     console.error('[RADIATION]', result.reason?.message ?? result.reason);
   }
 
-  observations.sort((a, b) => {
-    const freshnessDelta = freshnessRank(a.freshness) - freshnessRank(b.freshness);
-    if (freshnessDelta !== 0) return freshnessDelta;
-    return b.observedAt - a.observedAt;
-  });
-
-  const trimmed = observations.slice(0, maxItems);
-  return {
-    observations: trimmed,
-    fetchedAt: Date.now(),
-    epaCount: trimmed.filter((item) => item.source === 'RADIATION_SOURCE_EPA_RADNET').length,
-    safecastCount: trimmed.filter((item) => item.source === 'RADIATION_SOURCE_SAFECAST').length,
-  };
+  return summarizeObservations(observations, Date.now(), maxItems);
 }
 
 export const listRadiationObservations: RadiationServiceHandler['listRadiationObservations'] = async (
@@ -251,8 +372,11 @@ export const listRadiationObservations: RadiationServiceHandler['listRadiationOb
 ): Promise<ListRadiationObservationsResponse> => {
   const maxItems = clampMaxItems(req.maxItems);
   try {
+    const seeded = await trySeededData(maxItems);
+    if (seeded) return seeded;
+
     return await cachedFetchJson<ListRadiationObservationsResponse>(
-      `${REDIS_CACHE_KEY}:${maxItems}`,
+      `${LIVE_FALLBACK_CACHE_KEY}:${maxItems}`,
       REDIS_CACHE_TTL,
       async () => collectObservations(maxItems),
     ) ?? {
@@ -260,6 +384,9 @@ export const listRadiationObservations: RadiationServiceHandler['listRadiationOb
       fetchedAt: Date.now(),
       epaCount: 0,
       safecastCount: 0,
+      anomalyCount: 0,
+      elevatedCount: 0,
+      spikeCount: 0,
     };
   } catch {
     return {
@@ -267,6 +394,9 @@ export const listRadiationObservations: RadiationServiceHandler['listRadiationOb
       fetchedAt: Date.now(),
       epaCount: 0,
       safecastCount: 0,
+      anomalyCount: 0,
+      elevatedCount: 0,
+      spikeCount: 0,
     };
   }
 };

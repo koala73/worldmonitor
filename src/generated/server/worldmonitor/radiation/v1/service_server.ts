@@ -10,6 +10,9 @@ export interface ListRadiationObservationsResponse {
   fetchedAt: number;
   epaCount: number;
   safecastCount: number;
+  anomalyCount: number;
+  elevatedCount: number;
+  spikeCount: number;
 }
 
 export interface RadiationObservation {
@@ -22,6 +25,10 @@ export interface RadiationObservation {
   unit: string;
   observedAt: number;
   freshness: RadiationFreshness;
+  baselineValue: number;
+  delta: number;
+  zScore: number;
+  severity: RadiationSeverity;
 }
 
 export interface GeoCoordinates {
@@ -30,6 +37,8 @@ export interface GeoCoordinates {
 }
 
 export type RadiationFreshness = "RADIATION_FRESHNESS_UNSPECIFIED" | "RADIATION_FRESHNESS_LIVE" | "RADIATION_FRESHNESS_RECENT" | "RADIATION_FRESHNESS_HISTORICAL";
+
+export type RadiationSeverity = "RADIATION_SEVERITY_UNSPECIFIED" | "RADIATION_SEVERITY_NORMAL" | "RADIATION_SEVERITY_ELEVATED" | "RADIATION_SEVERITY_SPIKE";
 
 export type RadiationSource = "RADIATION_SOURCE_UNSPECIFIED" | "RADIATION_SOURCE_EPA_RADNET" | "RADIATION_SOURCE_SAFECAST";
 

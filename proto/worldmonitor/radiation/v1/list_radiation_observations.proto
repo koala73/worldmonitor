@@ -24,4 +24,13 @@ message ListRadiationObservationsResponse {
 
   // Number of Safecast observations included.
   int32 safecast_count = 4;
+
+  // Total observations classified above normal.
+  int32 anomaly_count = 5;
+
+  // Observations classified as elevated.
+  int32 elevated_count = 6;
+
+  // Observations classified as spike-level anomalies.
+  int32 spike_count = 7;
 }

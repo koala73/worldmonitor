@@ -38,6 +38,18 @@ message RadiationObservation {
 
   // Freshness bucket derived from observation age.
   RadiationFreshness freshness = 9;
+
+  // Rolling baseline for this station in nSv/h.
+  double baseline_value = 10;
+
+  // Current reading minus rolling baseline in nSv/h.
+  double delta = 11;
+
+  // Standard deviation distance from the rolling baseline.
+  double z_score = 12;
+
+  // Interpreted anomaly severity for the current reading.
+  RadiationSeverity severity = 13;
 }
 
 // RadiationSource identifies the upstream measurement network.
@@ -53,4 +65,12 @@ enum RadiationFreshness {
   RADIATION_FRESHNESS_LIVE = 1;
   RADIATION_FRESHNESS_RECENT = 2;
   RADIATION_FRESHNESS_HISTORICAL = 3;
+}
+
+// RadiationSeverity classifies whether a reading is behaving normally.
+enum RadiationSeverity {
+  RADIATION_SEVERITY_UNSPECIFIED = 0;
+  RADIATION_SEVERITY_NORMAL = 1;
+  RADIATION_SEVERITY_ELEVATED = 2;
+  RADIATION_SEVERITY_SPIKE = 3;
 }

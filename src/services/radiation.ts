@@ -1,13 +1,17 @@
 import { createCircuitBreaker } from '@/utils';
 import { getRpcBaseUrl } from '@/services/rpc-client';
+import { getHydratedData } from '@/services/bootstrap';
 import {
   RadiationServiceClient,
   type RadiationFreshness as ProtoRadiationFreshness,
   type RadiationObservation as ProtoRadiationObservation,
+  type RadiationSeverity as ProtoRadiationSeverity,
   type RadiationSource as ProtoRadiationSource,
+  type ListRadiationObservationsResponse,
 } from '@/generated/client/worldmonitor/radiation/v1/service_client';
 
 export type RadiationFreshness = 'live' | 'recent' | 'historical';
+export type RadiationSeverity = 'normal' | 'elevated' | 'spike';
 
 export interface RadiationObservation {
   id: string;
@@ -20,12 +24,21 @@ export interface RadiationObservation {
   unit: string;
   observedAt: Date;
   freshness: RadiationFreshness;
+  baselineValue: number;
+  delta: number;
+  zScore: number;
+  severity: RadiationSeverity;
 }
 
 export interface RadiationWatchResult {
   fetchedAt: Date;
   observations: RadiationObservation[];
   coverage: { epa: number; safecast: number };
+  summary: {
+    anomalyCount: number;
+    elevatedCount: number;
+    spikeCount: number;
+  };
 }
 
 const breaker = createCircuitBreaker<RadiationWatchResult>({
@@ -39,6 +52,7 @@ const emptyResult: RadiationWatchResult = {
   fetchedAt: new Date(0),
   observations: [],
   coverage: { epa: 0, safecast: 0 },
+  summary: { anomalyCount: 0, elevatedCount: 0, spikeCount: 0 },
 };
 
 function toObservation(raw: ProtoRadiationObservation): RadiationObservation {
@@ -53,26 +67,43 @@ function toObservation(raw: ProtoRadiationObservation): RadiationObservation {
     unit: raw.unit,
     observedAt: new Date(raw.observedAt),
     freshness: mapFreshness(raw.freshness),
+    baselineValue: raw.baselineValue ?? raw.value,
+    delta: raw.delta ?? 0,
+    zScore: raw.zScore ?? 0,
+    severity: mapSeverity(raw.severity),
   };
 }
 
 export async function fetchRadiationWatch(): Promise<RadiationWatchResult> {
+  const hydrated = getHydratedData('radiationWatch') as ListRadiationObservationsResponse | undefined;
+  if (hydrated?.observations?.length) {
+    return toResult(hydrated);
+  }
+
   return breaker.execute(async () => {
     const response = await client.listRadiationObservations({
       maxItems: 18,
     }, {
       signal: AbortSignal.timeout(20_000),
     });
-
-    return {
-      fetchedAt: new Date(response.fetchedAt),
-      observations: (response.observations ?? []).map(toObservation),
-      coverage: {
-        epa: response.epaCount ?? 0,
-        safecast: response.safecastCount ?? 0,
-      },
-    };
+    return toResult(response);
   }, emptyResult);
+}
+
+function toResult(response: ListRadiationObservationsResponse): RadiationWatchResult {
+  return {
+    fetchedAt: new Date(response.fetchedAt),
+    observations: (response.observations ?? []).map(toObservation),
+    coverage: {
+      epa: response.epaCount ?? 0,
+      safecast: response.safecastCount ?? 0,
+    },
+    summary: {
+      anomalyCount: response.anomalyCount ?? 0,
+      elevatedCount: response.elevatedCount ?? 0,
+      spikeCount: response.spikeCount ?? 0,
+    },
+  };
 }
 
 function mapSource(source: ProtoRadiationSource): RadiationObservation['source'] {
@@ -94,5 +125,16 @@ function mapFreshness(freshness: ProtoRadiationFreshness): RadiationFreshness {
       return 'recent';
     default:
       return 'historical';
+  }
+}
+
+function mapSeverity(severity: ProtoRadiationSeverity): RadiationSeverity {
+  switch (severity) {
+    case 'RADIATION_SEVERITY_SPIKE':
+      return 'spike';
+    case 'RADIATION_SEVERITY_ELEVATED':
+      return 'elevated';
+    default:
+      return 'normal';
   }
 }

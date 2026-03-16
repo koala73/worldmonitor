@@ -2671,7 +2671,7 @@ export class DataLoaderManager implements AppModule {
   async loadRadiationWatch(): Promise<void> {
     try {
       const result = await fetchRadiationWatch();
-      this.callPanel('radiation-watch', 'setData', result.observations, result.fetchedAt);
+      this.callPanel('radiation-watch', 'setData', result);
       if (result.observations.length > 0) {
         dataFreshness.recordUpdate('radiation', result.observations.length);
       }
