@@ -203,7 +203,7 @@ export function getProviderCredentials(provider: string): ProviderCredentials | 
     if (!apiKey) return null;
     return {
       apiUrl: 'https://api.anthropic.com/v1/messages',
-      model: 'claude-haiku-4-5',
+      model: 'claude-sonnet-4-6',
       headers: {
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',

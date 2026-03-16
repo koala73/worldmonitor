@@ -122,7 +122,7 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
   {
     id: 'aiClaude',
     name: 'Claude AI summarization',
-    description: 'Anthropic Claude Haiku — high-quality, cost-effective AI analysis.',
+    description: 'Anthropic Claude Sonnet 4.6 — high-quality AI analysis with advanced reasoning and coding.',
     requiredSecrets: ['ANTHROPIC_API_KEY'],
     desktopRequiredSecrets: [],
     fallback: 'Falls back to OpenRouter, then local browser model.',

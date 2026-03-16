@@ -4,6 +4,10 @@ All notable changes to World Monitor are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- **Claude AI model upgraded to Sonnet 4.6** — Anthropic provider now uses `claude-sonnet-4-6` (released February 2026), replacing Haiku 4.5. Sonnet 4.6 offers improved reasoning, advanced coding assistance, and a 1M-token context window, making AI intelligence briefs and panel summaries significantly more capable.
+
 ---
 
 ## [2.6.0] - 2026-03-14

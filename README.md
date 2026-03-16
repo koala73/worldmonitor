@@ -44,7 +44,7 @@
 | **Disease Outbreaks panel** | WHO Disease Outbreak News + ReliefWeb health situation reports — 15-min refresh |
 | **Air Quality panel** | Open-Meteo global AQI for 18 major cities — PM2.5, ozone, NO₂, US AQI scale |
 | **World Bank profiles** | GDP, military spend %, trade %, population injected into every country brief AI context |
-| **Claude AI provider** | Anthropic Claude Haiku in the summarization fallback chain alongside Groq/OpenRouter |
+| **Claude AI provider** | Anthropic Claude Sonnet 4.6 in the summarization fallback chain alongside Groq/OpenRouter |
 | **Earthquakes panel** | USGS M4.5+ live seismic data with magnitude-color-coded table |
 | **Air Strikes & Drones panel** | ACLED-sourced air/drone strikes and missile attacks — last 30 days, mapped to globe, click-to-fly |
 | **Monitoring Modes** | 5 modes — Peace / Finance / War / Disaster / Ghost. Finance auto-triggers on ≥2.5% S&P or ≥5% BTC move; War on geopolitical escalation signals; Disaster on GDACS Red alert or M≥6.5 earthquake; Ghost is manual stealth mode (⌘⇧G) |
