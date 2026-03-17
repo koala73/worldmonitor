@@ -228,13 +228,22 @@ if (urlParams.get('settings') === '1') {
     }
   );
 } else {
-  const app = new App('app');
-  app
-    .init()
-    .then(() => {
-      clearChunkReloadGuard(chunkReloadStorageKey);
-    })
-    .catch(console.error);
+  const boot = async () => {
+    if (isDesktopRuntime()) {
+      const { ensureBiometricUnlock } = await import('./app/biometric-gate');
+      const unlocked = await ensureBiometricUnlock();
+      if (!unlocked) return;
+    }
+
+    const app = new App('app');
+    app
+      .init()
+      .then(() => {
+        clearChunkReloadGuard(chunkReloadStorageKey);
+      })
+      .catch(console.error);
+  };
+  void boot();
 }
 
 // Debug helpers for geo-convergence testing (development only)

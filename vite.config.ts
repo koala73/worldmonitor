@@ -926,6 +926,7 @@ export default defineConfig({
       'papaparse',
       'posthog-js',
       'fast-xml-parser',
+      'lz-string',
     ],
   },
   server: {

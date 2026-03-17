@@ -18,6 +18,7 @@ use serde::Serialize;
 use serde_json::{Map, Value};
 use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Manager, RunEvent, Webview, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+use tauri_plugin_biometry;
 
 const DEFAULT_LOCAL_API_PORT: u16 = 46123;
 const KEYRING_SERVICE: &str = "world-monitor";
@@ -1556,6 +1557,7 @@ fn main() {
         .on_menu_event(handle_menu_event)
         .manage(LocalApiState::default())
         .manage(SecretsCache::load_from_keychain())
+        .plugin(tauri_plugin_biometry::init())
         .invoke_handler(tauri::generate_handler![
             list_supported_secret_keys,
             get_secret,
