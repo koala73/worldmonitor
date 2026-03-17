@@ -1,3 +1,5 @@
+import { SITE_VARIANT } from '@/config/variant';
+
 /**
  * Standalone settings window: panel toggles only.
  * Loaded when the app is opened with ?settings=1 (e.g. from the main window's Settings button).
@@ -24,7 +26,7 @@ export function initSettingsWindow(): void {
   if (!appEl) return;
 
   // This window shows only "which panels to display" (panel display settings).
-  document.title = `${t('header.settings')} - World Monitor`;
+  document.title = `${t('header.settings')} - ${SITE_VARIANT === 'ireland' ? 'IrishTech Daily' : 'World Monitor'}`;
 
   const panelSettings = loadFromStorage<Record<string, PanelConfig>>(
     STORAGE_KEYS.panels,

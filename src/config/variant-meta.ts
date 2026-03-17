@@ -149,3 +149,24 @@ export const IRELAND_META: VariantMeta = {
     'Irish unicorn tracking',
   ],
 };
+
+// IrishTech Daily - 爱尔兰科技情报平台
+export const IRELAND_META: VariantMeta = {
+  title: 'IrishTech Daily - Ireland\'s Tech Pulse',
+  description: 'Real-time tech news and insights for Ireland\'s startup ecosystem. Track Dublin tech scene, Irish unicorns, and European tech trends.',
+  keywords: 'Irish tech, Dublin startups, Ireland technology, Silicon Docks, tech news Ireland, Irish unicorns, European tech, Dublin tech summit, Irish fintech',
+  url: 'https://ireland-monitor.vercel.app/',
+  siteName: 'IrishTech Daily',
+  shortName: 'IrishTech',
+  subject: 'Ireland Tech Industry Intelligence',
+  classification: 'Tech Dashboard, Irish Tech News, Startup Intelligence',
+  categories: ['news', 'technology'],
+  features: [
+    'Irish tech news aggregation',
+    'Dublin startup tracking',
+    'European tech trends',
+    'Tech event calendar',
+    'Funding round alerts',
+    'Irish unicorn tracking',
+  ],
+};
