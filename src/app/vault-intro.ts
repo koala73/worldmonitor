@@ -134,7 +134,9 @@ function injectStyles(): void {
   s.textContent = `
     @keyframes vi-fadein   { from{opacity:0;transform:scale(1.04)} to{opacity:1;transform:scale(1)} }
     @keyframes vi-scan     { 0%,100%{opacity:.35;stroke-width:1.5px} 50%{opacity:.9;stroke-width:2px} }
+    @keyframes vi-warmup   { 0%,100%{opacity:.6;stroke-width:1.8px} 50%{opacity:1;stroke-width:2.5px} }
     @keyframes vi-glow     { 0%,100%{opacity:0} 50%{opacity:.55} }
+    @keyframes vi-glowwarm { 0%,100%{opacity:.3} 50%{opacity:.85} }
     @keyframes vi-scanerr  { 0%,100%{opacity:.5;stroke-width:1.5px} 50%{opacity:1;stroke-width:2px} }
     @keyframes vi-shake    { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-4px)} 40%{transform:translateX(4px)} 60%{transform:translateX(-3px)} 80%{transform:translateX(3px)} }
     @keyframes vi-bolt     { 0%{transform:translateY(0);opacity:1} 100%{transform:translateY(22px);opacity:0} }
@@ -381,7 +383,7 @@ function buildDoor(): DoorParts {
     'font-size': '11', 'font-weight': '500', 'letter-spacing': '0.18em',
     fill: 'rgba(100,148,200,0.7)',
   });
-  statusText.textContent = 'TAP TO AUTHENTICATE';
+  statusText.textContent = 'BIOMETRIC SCAN READY';
   svg.appendChild(statusText);
 
   // ── Logo text (etched into door, above scanner) ───────────────────────────
@@ -457,35 +459,32 @@ function buildOverlay(): OverlayRefs {
 // ── Scanner state ──────────────────────────────────────────────────────────────
 
 function setScannerIdle(p: DoorParts): void {
-  const setIdleColors = () => {
-    p.scannerRing.setAttribute('stroke', '#1e6ab8');
-    p.scannerGlow.setAttribute('stroke', '#1a5a9e');
-    for (const fp of p.fpPaths) fp.setAttribute('stroke', '#3080b8');
-  };
-
   p.scannerRing.style.animation = 'vi-scan 2.8s ease-in-out infinite';
   p.scannerGlow.style.animation = 'vi-glow 2.8s ease-in-out infinite';
-  setIdleColors();
+  p.scannerRing.setAttribute('stroke', '#1e6ab8');
+  p.scannerGlow.setAttribute('stroke', '#1a5a9e');
+  for (const fp of p.fpPaths) fp.setAttribute('stroke', '#3080b8');
   p.padFill.setAttribute('fill', 'url(#vi-sg)');
   p.statusText.setAttribute('fill', 'rgba(100,148,200,0.7)');
-  p.statusText.textContent = 'TAP TO AUTHENTICATE';
+  p.statusText.textContent = 'TAP TO RETRY';
   p.scannerBtn.style.cursor = 'pointer';
-  p.scannerBtn.onmouseenter = () => {
-    if (p.statusText.textContent !== 'TAP TO AUTHENTICATE') return;
-    p.scannerRing.setAttribute('stroke', '#3898e8');
-    p.scannerGlow.setAttribute('stroke', '#2878cc');
-    for (const fp of p.fpPaths) fp.setAttribute('stroke', '#4a9ad8');
-  };
-  p.scannerBtn.onmouseleave = () => {
-    if (p.statusText.textContent !== 'TAP TO AUTHENTICATE') return;
-    setIdleColors();
-  };
+  p.scannerBtn.onmouseenter = null;
+  p.scannerBtn.onmouseleave = null;
+}
+
+function setScannerWarmup(p: DoorParts): void {
+  p.scannerRing.style.animation = 'vi-warmup 0.9s ease-in-out infinite';
+  p.scannerGlow.style.animation = 'vi-glowwarm 0.9s ease-in-out infinite';
+  p.scannerRing.setAttribute('stroke', '#2a88e0');
+  p.scannerGlow.setAttribute('stroke', '#2272c8');
+  p.statusText.setAttribute('fill', 'rgba(130,175,230,0.85)');
+  p.statusText.textContent = 'SCANNING…';
 }
 
 function setScannerScanning(p: DoorParts): void {
-  p.scannerRing.style.animation = 'vi-scan 1.2s ease-in-out infinite';
-  p.scannerGlow.style.animation = 'vi-glow 1.2s ease-in-out infinite';
-  p.statusText.textContent = 'SCANNING…';
+  p.scannerRing.style.animation = 'vi-warmup 0.5s ease-in-out infinite';
+  p.scannerGlow.style.animation = 'vi-glowwarm 0.5s ease-in-out infinite';
+  p.statusText.textContent = 'PLACE FINGER ON SENSOR';
 }
 
 function setScannerError(p: DoorParts, msg: string): void {
@@ -569,14 +568,24 @@ async function runBiometricFlow(
     onQuit();
   });
 
-  const tryAuth = async () => {
+  const tryAuth = async (manual: boolean) => {
     if (settled || inFlight) return;
     inFlight = true;
 
     const ready = await waitForBridge();
     if (!ready || settled) { inFlight = false; return; }
 
+    if (!manual) {
+      // Warmup phase — scanner builds intensity before Touch ID fires
+      setScannerWarmup(refs);
+      await sleep(900);
+      if (settled) return;
+    }
+
     setScannerScanning(refs);
+    await sleep(300);
+    if (settled) return;
+
     try {
       await invokeTauri<void>(CMD, { reason: REASON, options: { allowDeviceCredential: true } });
       if (settled) return;
@@ -587,15 +596,17 @@ async function runBiometricFlow(
       if (settled) return;
       inFlight = false;
       const msg = err instanceof Error ? err.message : '';
-      const text = msg.toLowerCase().includes('cancel') ? 'CANCELLED — TAP TO TRY AGAIN' : 'TRY AGAIN';
+      const text = msg.toLowerCase().includes('cancel') ? 'CANCELLED — TAP TO RETRY' : 'TAP TO RETRY';
       setScannerError(refs, text);
-      // Re-arm the tap handler after the shake settles
-      setTimeout(() => { if (!settled) setScannerIdle(refs); }, 1200);
+      setTimeout(() => { if (!settled) setScannerIdle(refs); }, 1400);
     }
   };
 
-  // Scanner tap triggers Touch ID — user initiates, no auto-popup surprise
-  refs.scannerBtn.addEventListener('click', () => void tryAuth());
+  // Auto-trigger after door finishes its entrance
+  setTimeout(() => void tryAuth(false), 1200);
+
+  // Tap scanner to retry after failure
+  refs.scannerBtn.addEventListener('click', () => void tryAuth(true));
 
   return result;
 }
