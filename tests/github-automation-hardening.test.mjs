@@ -24,6 +24,14 @@ const claude = readFileSync(
   path.join(repoRoot, 'CLAUDE.md'),
   'utf8',
 );
+const agents = readFileSync(
+  path.join(repoRoot, 'AGENTS.md'),
+  'utf8',
+);
+const copilot = readFileSync(
+  path.join(repoRoot, '.github', 'copilot-instructions.md'),
+  'utf8',
+);
 
 test('github automation hardening adds actionlint and always-on typecheck coverage', () => {
   assert.match(
@@ -66,5 +74,15 @@ test('release ownership and Claude guidance exist for the hardened release path'
     claude,
     /npm run release:prepare -- --bump patch --push/,
     'CLAUDE.md should document the supported release command',
+  );
+  assert.match(
+    agents,
+    /\.worldmonitor-main-sync\/repo/,
+    'AGENTS.md should document the dedicated clean clone used for main sync',
+  );
+  assert.match(
+    copilot,
+    /GitHub auto-merge[\s\S]*main-sync:setup/,
+    'Copilot instructions should describe the same auto-merge and local main-to-Mac delivery path',
   );
 });

@@ -45,6 +45,11 @@ Always commit with: `Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>`
 - `Build Desktop App` publishes only from `v*` tags. `workflow_dispatch` is build-only and must not be used as a substitute for a release.
 - Release artifacts are verified by manifest. The workflow generates per-platform manifests, uploads a consolidated `release-manifest.json`, and re-downloads the uploaded assets to verify filenames and checksums.
 - The app’s Settings view exposes build identity. Use it to confirm version, variant, release tag, commit SHA, and build timestamp when debugging mismatched installs.
+- Agent branches (`claude/*`, `codex/*`, `copilot/*`) must use GitHub auto-merge after required checks pass. Never call the direct PR merge API to bypass the gate stack.
+- `main` to local Mac sync is handled by a local LaunchAgent installed with `npm run main-sync:setup`.
+- The sync agent uses a dedicated clean clone at `~/.worldmonitor-main-sync/repo`, verifies that GitHub required checks for `main` are green, then reruns `lockfile:check`, `npm ci`, `version:check`, `typecheck:all`, `build`, and `desktop:build:app:full` before installing with `node scripts/install-built-app.mjs --relaunch`.
+- Inspect `~/.worldmonitor-main-sync/status.json` and `~/.worldmonitor-main-sync/logs/` when the Mac install lags behind `main`.
+- If `scripts/sync-main-to-mac.mjs` or `scripts/setup-main-sync-agent.mjs` changes, rerun `npm run main-sync:setup`.
 - GitHub release governance expectations:
   - `main` must keep passing `release-integrity`, `typecheck`, and CodeQL before merge
   - desktop publish job runs in the `release` environment

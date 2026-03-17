@@ -129,7 +129,7 @@ jobs:
             }
 
   auto-merge:
-    name: Auto-merge when checks pass
+    name: Enable GitHub auto-merge
     needs: auto-pr
     runs-on: ubuntu-latest
     if: startsWith(github.ref_name, 'claude/') || startsWith(github.ref_name, 'codex/') || startsWith(github.ref_name, 'copilot/')
@@ -151,13 +151,23 @@ jobs:
               state: 'open'
             });
             if (prs.length > 0) {
-              await github.rest.pulls.merge({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: prs[0].number,
-                merge_method: 'squash',
-                commit_title: `merge(${branch}): auto-merge AI agent branch`,
-                commit_message: `Auto-merged from ${branch} after checks passed.`
+              const pr = prs[0];
+              await github.graphql(`
+                mutation EnableAutoMerge($pullRequestId: ID!) {
+                  enablePullRequestAutoMerge(input: {
+                    pullRequestId: $pullRequestId,
+                    mergeMethod: SQUASH
+                  }) {
+                    pullRequest {
+                      number
+                      autoMergeRequest {
+                        enabledAt
+                      }
+                    }
+                  }
+                }
+              `, {
+                pullRequestId: pr.node_id
               });
-              console.log(`Auto-merged PR #${prs[0].number}`);
+              console.log(`Enabled GitHub auto-merge for PR #${pr.number}`);
             }
