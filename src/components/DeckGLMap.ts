@@ -5355,33 +5355,6 @@ export class DeckGLMap {
           filter: ['==', ['get', 'ISO3166-1-Alpha-2'], ''],
         });
 
-        // Ireland variant: darken other countries, brighten Ireland
-        if (SITE_VARIANT === 'ireland') {
-          // Darken non-Ireland countries
-          this.maplibreMap.addLayer({
-            id: 'ireland-dim-overlay',
-            type: 'fill',
-            source: 'country-boundaries',
-            paint: {
-              'fill-color': '#000000',
-              'fill-opacity': 0.4,
-            },
-            filter: ['!=', ['get', 'ISO3166-1-Alpha-2'], 'IE'],
-          }, 'country-interactive');
-          
-          // Brighten Ireland with a subtle light overlay
-          this.maplibreMap.addLayer({
-            id: 'ireland-bright-overlay',
-            type: 'fill',
-            source: 'country-boundaries',
-            paint: {
-              'fill-color': '#ffffff',
-              'fill-opacity': 0.15,
-            },
-            filter: ['==', ['get', 'ISO3166-1-Alpha-2'], 'IE'],
-          }, 'country-interactive');
-        }
-
         if (!this.countryHoverSetup) this.setupCountryHover();
         const paintProvider = getMapProvider();
         const paintMapTheme = getMapTheme(paintProvider);
