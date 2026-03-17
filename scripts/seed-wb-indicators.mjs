@@ -441,6 +441,32 @@ async function main() {
     process.exit(1);
   }
 
+  // Percentage-drop guard: if new count < 50% of prior count, extend TTLs instead of overwriting
+  try {
+    const priorMetaResp = await redisPipeline(redisUrl, redisToken, [
+      ['GET', `seed-meta:${BOOTSTRAP_KEY}`],
+    ]);
+    const priorMeta = priorMetaResp[0]?.result ? JSON.parse(priorMetaResp[0].result) : null;
+    if (priorMeta && typeof priorMeta.recordCount === 'number' && priorMeta.recordCount > 0) {
+      if (rankings.length < priorMeta.recordCount * 0.5) {
+        console.warn(`Rankings dropped >50%: ${rankings.length} vs prior ${priorMeta.recordCount} — extending TTLs instead of overwriting.`);
+        const extendPipeline = [
+          ['EXPIRE', fullKey, String(TTL_SECONDS)],
+          ['EXPIRE', `seed-meta:${BOOTSTRAP_KEY}`, String(TTL_SECONDS + 3600)],
+          ['EXPIRE', progressKey, String(TTL_SECONDS)],
+          ['EXPIRE', `seed-meta:${PROGRESS_KEY}`, String(TTL_SECONDS + 3600)],
+          ['EXPIRE', renewableKey, String(TTL_SECONDS)],
+          ['EXPIRE', `seed-meta:${RENEWABLE_KEY}`, String(TTL_SECONDS + 3600)],
+        ];
+        await redisPipeline(redisUrl, redisToken, extendPipeline);
+        console.log('TTLs extended. Exiting without overwriting.');
+        process.exit(0);
+      }
+    }
+  } catch (err) {
+    console.warn(`Percentage-drop guard failed (proceeding with write): ${err.message}`);
+  }
+
   // Write all keys + seed-meta to Redis in one pipeline
   const metaTtl = String(TTL_SECONDS + 3600); // seed-meta outlives data by 1h
   const pipeline = [

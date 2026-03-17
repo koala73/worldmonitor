@@ -1319,7 +1319,13 @@ async function main() {
   }
 
   if (flights.length === 0) {
-    console.log('  SKIPPED: 0 military flights — preserving stale data');
+    console.log('  SKIPPED: 0 military flights — extending existing TTLs');
+    await extendExistingTtl([LIVE_KEY, 'seed-meta:military:flights'], LIVE_TTL);
+    await extendExistingTtl([STALE_KEY, THEATER_POSTURE_STALE_KEY, MILITARY_SURGES_STALE_KEY, MILITARY_FORECAST_INPUTS_STALE_KEY, MILITARY_CLASSIFICATION_AUDIT_STALE_KEY], STALE_TTL);
+    await extendExistingTtl([THEATER_POSTURE_LIVE_KEY, MILITARY_FORECAST_INPUTS_LIVE_KEY, MILITARY_CLASSIFICATION_AUDIT_LIVE_KEY], THEATER_POSTURE_LIVE_TTL);
+    await extendExistingTtl([THEATER_POSTURE_BACKUP_KEY], THEATER_POSTURE_BACKUP_TTL);
+    await extendExistingTtl([MILITARY_SURGES_LIVE_KEY], MILITARY_SURGES_LIVE_TTL);
+    await extendExistingTtl(['seed-meta:theater-posture', 'seed-meta:military-forecast-inputs', 'seed-meta:military-surges'], STALE_TTL);
     await releaseLock('military:flights', runId);
     lockReleased = true;
     process.exit(0);
